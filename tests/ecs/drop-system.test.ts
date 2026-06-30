@@ -33,10 +33,17 @@ import {
 import { AI_TYPE } from '../../src/game/index.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { MINI_SLIME_SPAWN_ANIM_MS } from '../../src/shared/spawn-anim.js';
+import type { EntitySpriteMappings } from '../../src/shared/data/entity-sprite-mappings.js';
+import ENTITY_SPRITE_MAPPINGS from '../../src/shared/data/entity-sprite-mappings.json';
 
 // 64 deterministic seeds gives ample headroom to find at least one 35% split roll
 // without making the regression test search unbounded.
 const MAX_SPLIT_BABY_SLIME_SEED_ATTEMPTS = 64;
+const babySlimeTextureId = (ENTITY_SPRITE_MAPPINGS as EntitySpriteMappings).enemies.enemy_baby_slime
+  ?.textureId;
+if (babySlimeTextureId === undefined) {
+  throw new Error('Missing enemy_baby_slime texture id in entity sprite mappings fixture.');
+}
 
 function setupSplitBabySlimeWorld(unlockedDrops = false): {
   world: ReturnType<typeof createTestWorld>;
@@ -252,6 +259,7 @@ describe('dropSystem', () => {
       // Babies render smaller than their 2 ft parent, and the feet-scale size is
       // preserved exactly (0.65×) rather than rounded up to a whole foot.
       expect(hasComponent(world.ecs, miniEid, Sprite)).toBe(true);
+      expect(world.stores.sprite.textureId[miniEid]).toBe(babySlimeTextureId);
       expect(world.stores.sprite.width[miniEid]).toBeCloseTo(2 * 0.65);
       expect(world.stores.sprite.height[miniEid]).toBeCloseTo(2 * 0.65);
       expect(world.stores.sprite.width[miniEid]).not.toBe(1);

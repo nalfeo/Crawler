@@ -7,6 +7,152 @@
     "enemy_slime": {
       "textureId": 2,
       "description": "Slime enemy variant"
+    },
+    "enemy_baby_slime": {
+      "textureId": 4,
+      "description": "Baby slime split variant"
+    }
+  },
+  "renderKinds": {
+    "default": {
+      "proceduralTexture": "default"
+    },
+    "player": {
+      "proceduralTexture": "player",
+      "kenneySpriteId": "player",
+      "kenneyScale": 1.6
+    },
+    "enemy": {
+      "proceduralTexture": "enemy",
+      "kenneySpriteId": "enemy.orc",
+      "kenneyScale": 1.4
+    },
+    "enemy_rat": {
+      "proceduralTexture": "enemy_rat",
+      "kenneySpriteId": "enemy.rat",
+      "kenneyScale": 1.4,
+      "generated": {
+        "briefId": "rat-v1",
+        "pinnedTextureKey": "rat-v1-var-9",
+        "scale": 0.4
+      }
+    },
+    "enemy_slime": {
+      "proceduralTexture": "enemy_slime",
+      "kenneySpriteId": "enemy.slime",
+      "kenneyScale": 1.4,
+      "generated": {
+        "briefId": "slime-v1",
+        "pinnedTextureKey": "slime-v1-var-9",
+        "scale": 0.4
+      }
+    },
+    "enemy_baby_slime": {
+      "proceduralTexture": "enemy_slime",
+      "kenneySpriteId": "enemy.slime",
+      "kenneyScale": 1.4,
+      "generated": {
+        "briefId": "baby-slime-v1",
+        "pinnedTextureKey": "baby-slime-v1-var-8",
+        "scale": 0.4
+      }
+    },
+    "enemy_boss": {
+      "proceduralTexture": "enemy_boss",
+      "kenneySpriteId": "enemy.boss",
+      "kenneyScale": 2.5
+    },
+    "enemy_boss_ratslime": {
+      "proceduralTexture": "enemy_boss",
+      "kenneySpriteId": "enemy.boss",
+      "kenneyScale": 2.5,
+      "generated": {
+        "briefId": "rat-slime-v1",
+        "pinnedTextureKey": "rat-slime-v1-var-1",
+        "scale": 0.6
+      }
+    },
+    "npc": {
+      "proceduralTexture": "npc",
+      "kenneySpriteId": "npc.guide",
+      "kenneyScale": 1.4
+    },
+    "gem": {
+      "proceduralTexture": "gem",
+      "kenneySpriteId": "item.gem",
+      "kenneyScale": 1.0
+    },
+    "gold": {
+      "proceduralTexture": "gold"
+    },
+    "proj": {
+      "proceduralTexture": "proj",
+      "kenneySpriteId": "weapon.arrow",
+      "kenneyScale": 1.0
+    },
+    "enemy_proj": {
+      "proceduralTexture": "enemy_proj",
+      "kenneySpriteId": "effect.enemy_proj",
+      "kenneyScale": 1.0
+    },
+    "aoe_proj": {
+      "proceduralTexture": "aoe_proj",
+      "kenneySpriteId": "effect.aoe",
+      "kenneyScale": 1.4
+    },
+    "enemy_aoe_proj": {
+      "proceduralTexture": "enemy_aoe_proj",
+      "kenneySpriteId": "effect.enemy_aoe",
+      "kenneyScale": 1.4
+    },
+    "returning": {
+      "proceduralTexture": "returning",
+      "kenneySpriteId": "weapon.returning",
+      "kenneyScale": 1.2
+    },
+    "aoe": {
+      "proceduralTexture": "melee",
+      "kenneyScale": 4.0
+    },
+    "enemy_aoe": {
+      "proceduralTexture": "enemy_explosion",
+      "kenneyScale": 4.0
+    },
+    "trap": {
+      "proceduralTexture": "trap_arming"
+    },
+    "trap_arming": {
+      "proceduralTexture": "trap_arming",
+      "kenneySpriteId": "effect.trap_arming",
+      "kenneyScale": 1.0
+    },
+    "trap_armed": {
+      "proceduralTexture": "trap_armed",
+      "kenneySpriteId": "effect.trap_armed",
+      "kenneyScale": 1.0
+    },
+    "explosion": {
+      "proceduralTexture": "explosion",
+      "kenneySpriteId": "effect.explosion",
+      "kenneyScale": 4.0
+    },
+    "enemy_explosion": {
+      "proceduralTexture": "enemy_explosion",
+      "kenneySpriteId": "effect.enemy_explosion",
+      "kenneyScale": 4.0
+    },
+    "melee": {
+      "proceduralTexture": "melee",
+      "kenneySpriteId": "effect.melee",
+      "kenneyScale": 4.0
+    },
+    "dead_skull": {
+      "proceduralTexture": "dead_skull",
+      "kenneySpriteId": "effect.dead",
+      "kenneyScale": 1.0
+    },
+    "welcome_sign": {
+      "proceduralTexture": "welcome_sign"
     }
   }
 }

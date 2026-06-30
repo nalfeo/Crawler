@@ -469,11 +469,11 @@ export function createInventoryUI(
       });
 
       // Item icon: prefer the approved generated sprite when the item's
-      // id matches a manifest entry's briefId and Phaser has loaded the
-      // texture. When a brief has multiple approved variants, one is chosen
-      // deterministically per (item, run). Falls back to the 2-character
-      // placeholder otherwise.
-      const generatedEntry = selectGeneratedEntry(def.id);
+      // icon (or id when no override) matches a manifest entry's briefId and
+      // Phaser has loaded the texture. When a brief has multiple approved
+      // variants, one is chosen deterministically per (item, run). Falls back
+      // to the 2-character placeholder otherwise.
+      const generatedEntry = selectGeneratedEntry(def.icon);
       const generatedTextureLoaded =
         generatedEntry !== null && scene.textures?.exists(generatedEntry.textureKey) === true;
 
@@ -669,7 +669,8 @@ export function createInventoryUI(
       // finishes (the slot contents alone are unchanged, so without this the
       // cells would stay on their text fallback until the next inventory
       // mutation). Selecting via the same path as the icon keeps them in sync.
-      const entry = selectGeneratedEntry(slot.itemId);
+      const iconBriefId = getItemById(slot.itemId)?.icon ?? slot.itemId;
+      const entry = selectGeneratedEntry(iconBriefId);
       const iconReady = entry !== null && scene.textures?.exists(entry.textureKey) === true;
       signature += `;${slot.itemId}:${slot.quantity}:${entry?.textureKey ?? ''}:${iconReady ? 1 : 0}`;
     }
