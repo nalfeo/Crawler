@@ -7,16 +7,17 @@ on:
     branches: [main]
 
 jobs:
-  # Job 0: Detect the change scope. When a push/PR touches ONLY the approved-art
-  # surface (public/assets/generated/** + sprite-catalog.json), the heavy
-  # gameplay gates (integration, headless, e2e, build) are skipped — adding a
-  # checked-in sprite cannot change game logic. typecheck/lint/format/unit always
-  # run. The merge-gate treats those skipped jobs as PASS for art-only changes.
+  # Job 0: Detect the change scope.
+  # art_only=true  → heavy gameplay gates skipped; typecheck/lint/format/unit run.
+  # docs_only=true → ALL heavy gates skipped; only commit-lint (separate workflow)
+  #                  and the merge-gate no-op run. Markdown cannot change game logic.
+  # The merge-gate treats skipped jobs as PASS for both scope flags.
   changes:
     name: Detect change scope
     runs-on: ubuntu-latest
     outputs:
       art_only: ${{ steps.detect.outputs.art_only }}
+      docs_only: ${{ steps.detect.outputs.docs_only }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,6 +33,8 @@ jobs:
   check-types-and-lint:
     name: Types & Lint
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.docs_only != 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -63,6 +66,8 @@ jobs:
   check-format-and-labs:
     name: Format & Labs
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.docs_only != 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -86,6 +91,8 @@ jobs:
   test-unit:
     name: Unit Tests
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.docs_only != 'true'
     permissions:
       contents: read
       pull-requests: write
@@ -121,7 +128,7 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     needs: [changes]
-    if: needs.changes.outputs.art_only != 'true'
+    if: needs.changes.outputs.art_only != 'true' && needs.changes.outputs.docs_only != 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -138,7 +145,7 @@ jobs:
     name: Headless Floor 1 Gate
     runs-on: ubuntu-latest
     needs: [changes]
-    if: needs.changes.outputs.art_only != 'true'
+    if: needs.changes.outputs.art_only != 'true' && needs.changes.outputs.docs_only != 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -152,7 +159,7 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     needs: [changes, test-unit]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.art_only != 'true'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.art_only != 'true' && needs.changes.outputs.docs_only != 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -195,6 +202,8 @@ jobs:
     steps:
       - name: Check required jobs
         run: |
+          docs_only="${{ needs.changes.outputs.docs_only }}"
+
           check() {
             local name="$1" result="$2" allow_skipped="${3:-false}"
             if [ "$result" = "success" ]; then
@@ -205,19 +214,23 @@ jobs:
               echo "✅ $name: $result (skipped — art-only change)"
               return
             fi
-            if [ "$result" != "success" ]; then
-              echo "❌ $name failed (result: $result)"
-              exit 1
+            # docs-only PRs skip all heavy jobs; treat any skip as PASS.
+            if [ "$docs_only" = "true" ] && [ "$result" = "skipped" ]; then
+              echo "✅ $name: $result (skipped — docs-only change)"
+              return
             fi
+            echo "❌ $name failed (result: $result)"
+            exit 1
           }
           # The `changes` job MUST succeed. Heavy gates are skipped both when
-          # art_only == 'true' AND when `changes` fails (a failed `needs`
+          # art_only/docs_only == 'true' AND when `changes` fails (a failed `needs`
           # dependency skips downstream jobs). Without this explicit, non-
           # skippable check, a `changes`/detect-art-only failure on a code PR
           # would skip every heavy gate and be silently counted as PASS.
           check "Change scope detection"        "${{ needs.changes.result }}"
           # Heavy gameplay gates are allowed to be skipped on art-only changes
           # (see the `changes` job). They still BLOCK on any code change.
+          # docs-only changes (docs_only=true) also skip all heavy gates.
           check "Types & Lint"                  "${{ needs.check-types-and-lint.result }}"
           check "Format & Labs"                 "${{ needs.check-format-and-labs.result }}"
           check "Unit tests"                    "${{ needs.test-unit.result }}"
@@ -245,7 +258,7 @@ jobs:
     name: E2E Visual Regression
     runs-on: ubuntu-latest
     needs: [changes]
-    if: needs.changes.outputs.art_only != 'true'
+    if: needs.changes.outputs.art_only != 'true' && needs.changes.outputs.docs_only != 'true'
     permissions:
       contents: read
     steps:
