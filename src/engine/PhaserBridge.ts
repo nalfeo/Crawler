@@ -48,8 +48,15 @@ import {
   resolveRenderKind,
   SLIME_FULL_SPRITE_WIDTH,
 } from './phaser-bridge/sprite-kind.js';
+import { BOSS_BAR_COLORS } from './boss-health-bar-state.js';
 
 const DEAD_SKULL_Y_OFFSET = 18;
+const MOB_HEALTH_BAR_HEIGHT_PX = 4;
+const MOB_HEALTH_BAR_MIN_WIDTH_PX = 16;
+const MOB_HEALTH_BAR_MAX_WIDTH_PX = 28;
+const MOB_HEALTH_BAR_Y_GAP_PX = 6;
+/** Fallback half-height when a sprite's displayHeight is unavailable. */
+const MOB_HEALTH_BAR_DEFAULT_SPRITE_HALF_HEIGHT_PX = 8;
 const logger = createLogger('engine:phaser-bridge');
 
 interface EntityVisual {
@@ -274,6 +281,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const deathMarkers = new Map<number, Phaser.GameObjects.Image>();
   const beamGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   const arcGraphics = new Map<number, Phaser.GameObjects.Graphics>();
+  const mobHealthBars = new Map<number, Phaser.GameObjects.Graphics>();
   /** Tracks spawn time for arc entities so we can animate the sweep. */
   const arcSpawnMs = new Map<number, number>();
   /** Per-harvestable node Graphics (body circle + progress ring redrawn each frame). */
@@ -931,6 +939,57 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           }
           visual.deathTotalMs = undefined;
         }
+
+        if (entityType === 'enemy') {
+          const shouldShowMobHealthBar =
+            !isBoss && !isDeadEnemy && isVisible && typeof scene.add.graphics === 'function';
+          const existingBar = mobHealthBars.get(eid);
+          if (!shouldShowMobHealthBar) {
+            existingBar?.setVisible(false);
+          } else {
+            const current = Math.max(0, world.stores.health.current[eid] ?? 0);
+            const max = Math.max(1, world.stores.health.max[eid] ?? 1);
+            const pct = Math.max(0, Math.min(1, current / max));
+            const displayWidth =
+              typeof img.displayWidth === 'number' && Number.isFinite(img.displayWidth)
+                ? img.displayWidth
+                : MOB_HEALTH_BAR_MIN_WIDTH_PX;
+            const displayHeight =
+              typeof img.displayHeight === 'number' && Number.isFinite(img.displayHeight)
+                ? img.displayHeight
+                : MOB_HEALTH_BAR_DEFAULT_SPRITE_HALF_HEIGHT_PX * 2;
+            const barWidth = Math.max(
+              MOB_HEALTH_BAR_MIN_WIDTH_PX,
+              Math.min(MOB_HEALTH_BAR_MAX_WIDTH_PX, Math.round(displayWidth)),
+            );
+            const barX = x - barWidth / 2;
+            const barY = y + displayHeight / 2 + MOB_HEALTH_BAR_Y_GAP_PX;
+            const fillWidth = Math.max(0, Math.round(barWidth * pct));
+            const fillColor =
+              pct > 0.5
+                ? BOSS_BAR_COLORS.high
+                : pct >= 0.25
+                  ? BOSS_BAR_COLORS.mid
+                  : BOSS_BAR_COLORS.low;
+            const bar = existingBar ?? scene.add.graphics();
+            if (!existingBar) {
+              mobHealthBars.set(eid, bar);
+            }
+            bar
+              .setDepth((img.depth ?? 0) + 1)
+              .setVisible(true)
+              .setAlpha(img.alpha ?? 1);
+            bar.clear();
+            bar.fillStyle(0x111827, 0.9);
+            bar.fillRect(barX - 1, barY - 1, barWidth + 2, MOB_HEALTH_BAR_HEIGHT_PX + 2);
+            if (fillWidth > 0) {
+              bar.fillStyle(fillColor, 1);
+              bar.fillRect(barX, barY, fillWidth, MOB_HEALTH_BAR_HEIGHT_PX);
+            }
+            bar.lineStyle(1, 0x000000, 1);
+            bar.strokeRect(barX - 1, barY - 1, barWidth + 2, MOB_HEALTH_BAR_HEIGHT_PX + 2);
+          }
+        }
       }
 
       // --- Prop render pass ---
@@ -1018,6 +1077,14 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         harvestNodeGraphics.delete(eid);
       }
 
+      for (const [eid, bar] of mobHealthBars) {
+        if (activeEntities.has(eid)) {
+          continue;
+        }
+        bar.destroy();
+        mobHealthBars.delete(eid);
+      }
+
       // Iterate the spawn-time maps (always populated on first sight), not the
       // shadow maps (only populated when the scene supports add.ellipse), so
       // gem/gold entities clean up even in headless/test render paths that never
@@ -1087,6 +1154,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         hg.destroy();
       }
       harvestNodeGraphics.clear();
+
+      for (const bar of mobHealthBars.values()) {
+        bar.destroy();
+      }
+      mobHealthBars.clear();
 
       for (const shadow of gemShadows.values()) {
         shadow.destroy();

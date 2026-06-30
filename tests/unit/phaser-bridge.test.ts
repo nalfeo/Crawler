@@ -441,6 +441,42 @@ describe('createPhaserBridge', () => {
     expect(images[1]?.textureKey).toBe('kenney-tiny-dungeon');
   });
 
+  it('renders mob health bars for non-boss enemies only', () => {
+    const { scene, images, graphics } = createSceneStub({
+      kenneyLoaded: false,
+      withGraphics: true,
+    });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const normalEnemy = addEntity(world.ecs);
+    const bossEnemy = addEntity(world.ecs);
+
+    addComponent(world.ecs, normalEnemy, set(Position, { x: 10, y: 10 }));
+    addComponent(world.ecs, normalEnemy, Enemy);
+    addComponent(world.ecs, normalEnemy, set(Sprite, { textureId: 2, width: 3, height: 3 }));
+    world.stores.health.current[normalEnemy] = 60;
+    world.stores.health.max[normalEnemy] = 100;
+
+    addComponent(world.ecs, bossEnemy, set(Position, { x: 30, y: 10 }));
+    addComponent(world.ecs, bossEnemy, Enemy);
+    addComponent(world.ecs, bossEnemy, set(Sprite, { textureId: 2, width: 4, height: 4 }));
+    world.stores.health.current[bossEnemy] = 90;
+    world.stores.health.max[bossEnemy] = 100;
+
+    world.floor1 = {
+      enemyArchetypes: new Map<number, string>(),
+      objective: {
+        bossBattles: new Map([['slime-rat', { bossEid: bossEnemy }]]),
+      },
+    } as unknown as NonNullable<typeof world.floor1>;
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(2);
+    expect(graphics).toHaveLength(1);
+    expect(graphics[0]!.fillRects.length).toBeGreaterThanOrEqual(2);
+  });
+
   it('renders slime-mini babies smaller than a full slime', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: false });
     const bridge = createPhaserBridge(scene);
