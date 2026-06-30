@@ -27,6 +27,8 @@
   `npm run dev` — and capture it (screenshot, a `tests/e2e/helpers/ui-probe.ts`
   probe, or headless `RunStats`), then re-observe after the fix to confirm the
   behavior actually changed. State the before/after observation in the PR/handoff.
+- UX visual validation should be **headless and deterministic by default** so checks
+  do not depend on an interactive manual run.
 - Promote any recurring readability/overlap bug into a **deterministic** check —
   `tests/e2e/helpers/pixels.ts` / `ui-probe.ts` (see `tests/e2e/hud-overlap-visual.test.ts`)
   or a headless assertion (see `tests/headless/floor1-completion.test.ts`).
