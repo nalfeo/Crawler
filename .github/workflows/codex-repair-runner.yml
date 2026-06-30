@@ -72,6 +72,7 @@ jobs:
         if: steps.parse.outputs.bounced == 'true'
         env:
           BOUNCE_REASON: ${{ steps.parse.outputs.bounce_reason }}
+          CODEX_ASSIGN_TOKEN: ${{ secrets.CODEX_ASSIGN_TOKEN }}
         run: |
           echo "Bouncing repair: ${{ steps.parse.outputs.bounce_reason }}"
           node .github/scripts/codex/bounce.mjs

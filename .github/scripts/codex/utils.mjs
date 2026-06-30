@@ -74,9 +74,9 @@ export async function githubRequest(
   return response.text();
 }
 
-export async function githubGraphql(query, variables = {}) {
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) {
+export async function githubGraphql(query, variables = {}, { token } = {}) {
+  const authToken = token || process.env.GITHUB_TOKEN;
+  if (!authToken) {
     throw new Error('GITHUB_TOKEN is required');
   }
 
@@ -84,7 +84,7 @@ export async function githubGraphql(query, variables = {}) {
   const response = await fetch(apiBase + '/graphql', {
     method: 'POST',
     headers: {
-      Authorization: 'Bearer ' + token,
+      Authorization: 'Bearer ' + authToken,
       Accept: 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2022-11-28',
       'Content-Type': 'application/json',

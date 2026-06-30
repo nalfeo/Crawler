@@ -11,6 +11,7 @@ const [owner, repo] = repository.split('/');
 const prNumber = Number.parseInt(getEnv('PR_NUMBER', ''), 10);
 const bounceReason = getEnv('BOUNCE_REASON', '');
 const label = getEnv('CODEX_BOUNCE_LABEL', 'auto-heal-bounced');
+const assignToken = getEnv('CODEX_ASSIGN_TOKEN', '');
 const runUrl = `${getEnv('GITHUB_SERVER_URL', 'https://github.com')}/${repository}/actions/runs/${getEnv('GITHUB_RUN_ID', '')}`;
 const COMMENT_MARKER = '<!-- codex-bounce -->';
 
@@ -75,7 +76,11 @@ query($owner: String!, $repo: String!, $number: Int!) {
   let copilot;
   let existingAssigneeIds;
   try {
-    const data = await githubGraphql(query, { owner, repo, number: prNumber });
+    const data = await githubGraphql(
+      query,
+      { owner, repo, number: prNumber },
+      { token: assignToken || undefined },
+    );
     const actors = data.repository?.suggestedActors?.nodes || [];
     copilot = actors.find(
       (actor) =>
@@ -92,7 +97,9 @@ query($owner: String!, $repo: String!, $number: Int!) {
   if (!copilot?.id) {
     return {
       assigned: false,
-      reason: 'Copilot coding agent is not an assignable actor on this repo',
+      reason: assignToken
+        ? 'Copilot coding agent is not an assignable actor on this repo'
+        : 'no CODEX_ASSIGN_TOKEN set — the Actions token cannot assign the Copilot coding agent',
     };
   }
 
@@ -108,7 +115,7 @@ mutation($assignableId: ID!, $actorIds: [ID!]!) {
   }
 }`;
   try {
-    await githubGraphql(mutation, { assignableId, actorIds });
+    await githubGraphql(mutation, { assignableId, actorIds }, { token: assignToken || undefined });
     return { assigned: true, reason: '' };
   } catch (error) {
     return { assigned: false, reason: `assignment failed: ${error.message}` };
