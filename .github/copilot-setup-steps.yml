@@ -2,6 +2,14 @@ name: 'Copilot Setup Steps'
 steps:
   - name: 'Install dependencies'
     run: npm ci
+  - name: 'Install Playwright Chromium'
+    shell: bash
+    run: |
+      if [ "${RUNNER_OS:-Linux}" = "Linux" ]; then
+        npx playwright install chromium --with-deps
+      else
+        npx playwright install chromium
+      fi
   - name: 'Verify build'
     run: npm run typecheck
   - name: 'Verify fast'
