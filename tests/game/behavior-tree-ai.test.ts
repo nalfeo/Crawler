@@ -676,6 +676,36 @@ describe('BehaviorTreeAI', () => {
     expect(decision.reason).toContain('meet shopkeeper');
   });
 
+  it('prioritizes a safe-room quest NPC interaction even when another objective exists', () => {
+    const world = createTestWorld({ seed: 31 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    enterKillGrindStage(world);
+    world.playerInSafeRoom = true;
+    const shopPos = world.floor1!.objective.shopRoomPos;
+    world.stores.position.x[player] = shopPos.x;
+    world.stores.position.y[player] = shopPos.y;
+
+    const shopkeeperNpcEid = world.floor1!.shopkeeperNpcEid;
+    expect(shopkeeperNpcEid).toBeDefined();
+    world.stores.position.x[shopkeeperNpcEid!] = shopPos.x + 2;
+    world.stores.position.y[shopkeeperNpcEid!] = shopPos.y;
+
+    // Keep a valid non-NPC progress objective active (kill-grind enemy) so the
+    // safe-room override has to actively choose the NPC.
+    const questEnemy = spawnEnemy(world, shopPos.x + 28, shopPos.y, 20);
+    world.floor1!.enemyArchetypes.set(questEnemy, 'rat');
+
+    const ai = new BehaviorTreeAI({ seed: 31 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.INTERACT);
+    expect(decision.targetEid).toBe(shopkeeperNpcEid);
+    expect(decision.reason).toContain('Interacting with shopkeeper');
+  });
+
   it('engages nearby enemies before long NPC approach paths', () => {
     const world = createTestWorld({ seed: 12 });
     const player = spawnPlayer(world, 0, 0);
@@ -701,6 +731,55 @@ describe('BehaviorTreeAI', () => {
     const decision = ai.getDecision();
     expect(decision.state).toBe(AIState.ENGAGE);
     expect(decision.reason).toContain('Clearing nearby threat before NPC interaction');
+  });
+
+  it('does not engage an unseen enemy once minimap/FOV perception is initialized', () => {
+    const world = createTestWorld({ seed: 19 });
+    spawnPlayer(world, 10, 10);
+    world.floorMap = makeOpenRoom(24, 24);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+
+    const hiddenEnemy = spawnEnemy(world, 18, 10, 20);
+    const floorMap = world.floorMap;
+    const playerTile = floorMap.worldToTile(10, 10);
+    const hiddenTile = floorMap.worldToTile(18, 10);
+    floorMap.visible[playerTile.y * floorMap.width + playerTile.x] = 1;
+    floorMap.visible[hiddenTile.y * floorMap.width + hiddenTile.x] = 0;
+
+    const ai = new BehaviorTreeAI({ seed: 19 });
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().targetEid).not.toBe(hiddenEnemy);
+
+    // Once the enemy appears in FOV/minimap-known tiles, it becomes a valid target.
+    floorMap.visible[hiddenTile.y * floorMap.width + hiddenTile.x] = 1;
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().targetEid).toBe(hiddenEnemy);
+  });
+
+  it('transitions from permissive (no FOV) to restrictive (FOV initialized) perception', () => {
+    const world = createTestWorld({ seed: 25 });
+    spawnPlayer(world, 10, 10);
+    world.floorMap = makeOpenRoom(24, 24);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+
+    const hiddenEnemy = spawnEnemy(world, 18, 10, 20);
+    const floorMap = world.floorMap;
+    const playerTile = floorMap.worldToTile(10, 10);
+    const hiddenTile = floorMap.worldToTile(18, 10);
+
+    // Before FOV initialization: no visibility set yet (permissive mode)
+    const ai = new BehaviorTreeAI({ seed: 25 });
+    ai.poll(createInputState(), world);
+    // In permissive mode (no FOV data yet), hidden enemy is accessible
+    expect(ai.getDecision().targetEid).toBe(hiddenEnemy);
+
+    // After FOV initialization with visibility bitmap (restrictive mode)
+    floorMap.visible[playerTile.y * floorMap.width + playerTile.x] = 1;
+    floorMap.visible[hiddenTile.y * floorMap.width + hiddenTile.x] = 0;
+
+    ai.poll(createInputState(), world);
+    // Now that FOV is initialized, hidden enemy should NOT be targeted
+    expect(ai.getDecision().targetEid).not.toBe(hiddenEnemy);
   });
 
   it('recalculates destination immediately after accepting a new quest', () => {
