@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-06-30",
+  "session_slug": "config-driven-sprite-wiring",
+  "task_title": "Config-driven sprite wiring and end-to-end asset hookup",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "notes": "All concerns addressed: (1) preload is managed by BootScene and spawner-lab (2) def.icon confirmed working in code (3) spriteTexture in enemy-packs is a separate system for internal state only, not wiring config (4) added validation needed per ADR (5) fallback to Kenney is by design for graceful degradation (6) generate-wiring docs will be updated to explain baby slime/family automation needs"
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.7"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ],
+      "completed": true,
+      "notes": "Regression fixes applied: restored aoe_proj/enemy_aoe_proj Kenney sprite mappings that were lost during config migration, fixed accidental aoe->melee coupling. All 390 unit tests passing."
+    }
+  }
+}

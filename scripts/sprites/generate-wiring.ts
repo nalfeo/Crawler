@@ -5,7 +5,7 @@
  * This module is pure: no IO, no globals. It examines which placeholders have
  * real assets available and emits code changes needed to wire them up in:
  *   1. src/shared/mobDefs.ts (spriteId replacements)
- *   2. src/engine/PhaserBridge.ts (ENTITY_GENERATED_SPRITE mapping updates)
+ *   2. src/shared/data/entity-sprite-mappings.json (renderKinds generated pins)
  *
  * Manifest items (resolved by itemId === briefId) require no code changes.
  *
@@ -13,6 +13,8 @@
  */
 
 import type { PlaceholderAuditReport, ConceptAudit } from './placeholder-audit.js';
+import type { EntitySpriteMappings } from '../../src/shared/data/entity-sprite-mappings.js';
+import ENTITY_SPRITE_MAPPINGS from '../../src/shared/data/entity-sprite-mappings.json';
 
 /** A single code patch to apply. */
 export interface CodePatch {
@@ -120,8 +122,9 @@ function generateMobDefPatches(
 }
 
 /**
- * Generate patches for src/engine/PhaserBridge.ts. The ENTITY_GENERATED_SPRITE
- * mapping is updated to point to the new generated sprite brief IDs.
+ * Generate patches for src/shared/data/entity-sprite-mappings.json. The
+ * renderKinds.<entity>.generated.pinnedTextureKey is updated to point to the
+ * newest generated sprite variant.
  */
 function generateEntitySpritePatches(
   needsWiring: readonly ConceptAudit[],
@@ -143,15 +146,16 @@ function generateEntitySpritePatches(
       const entityType = inferEntityTypeFromSprite(spriteId);
       if (!entityType) continue;
 
-      const currentTextureKey = inferCurrentTextureKey(spriteId);
+      const currentTextureKey = inferCurrentTextureKey(entityType);
       if (!currentTextureKey) continue;
+      if (currentTextureKey === newTextureKey) continue;
 
-      const description = `Update ENTITY_GENERATED_SPRITE[${entityType}] to '${newTextureKey}'`;
-      const oldPattern = `  ${entityType}: '${currentTextureKey}',`;
-      const newPattern = `  ${entityType}: '${newTextureKey}',`;
+      const description = `Update renderKinds.${entityType}.generated.pinnedTextureKey to '${newTextureKey}'`;
+      const oldPattern = `"pinnedTextureKey": "${currentTextureKey}"`;
+      const newPattern = `"pinnedTextureKey": "${newTextureKey}"`;
 
       patches.push({
-        filePath: 'src/engine/PhaserBridge.ts',
+        filePath: 'src/shared/data/entity-sprite-mappings.json',
         description,
         oldText: oldPattern,
         newText: newPattern,
@@ -173,14 +177,11 @@ function inferEntityTypeFromSprite(spriteId: string): string | null {
 }
 
 /**
- * Infer the current (placeholder or old) brief ID from a sprite registry ID.
- * Used to generate the old-text pattern in patches.
+ * Read the current generated pinned texture key from renderKinds config.
  */
-function inferCurrentTextureKey(spriteId: string): string | null {
-  // Keep this aligned with ENTITY_GENERATED_SPRITE in src/engine/PhaserBridge.ts.
-  if (spriteId === 'enemy.rat') return 'rat-v1-var-3';
-  if (spriteId === 'enemy.slime') return 'slime-v1-var-2';
-  return null;
+function inferCurrentTextureKey(entityType: string): string | null {
+  const renderKinds = (ENTITY_SPRITE_MAPPINGS as EntitySpriteMappings).renderKinds;
+  return renderKinds[entityType]?.generated?.pinnedTextureKey ?? null;
 }
 
 /**

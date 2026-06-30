@@ -33,6 +33,30 @@ export const TEX_DEAD_SKULL = '__cw_dead_skull';
 export const TEX_WELCOME_SIGN = '__cw_welcome_sign';
 export const TEX_WELCOME_SIGN_LEFT = '__cw_welcome_sign_left';
 export const TEX_GOLD = '__cw_gold';
+export const PROCEDURAL_TEXTURE_KEYS = {
+  default: TEX_BULLET,
+  player: TEX_PLAYER,
+  enemy: TEX_ENEMY,
+  npc: TEX_NPC,
+  enemy_rat: TEX_ENEMY_RAT,
+  enemy_slime: TEX_ENEMY_SLIME,
+  enemy_boss: TEX_ENEMY_BOSS,
+  gem: TEX_GEM,
+  gold: TEX_GOLD,
+  proj: TEX_BULLET,
+  enemy_proj: TEX_ENEMY_BULLET,
+  aoe_proj: TEX_AOE_PROJ,
+  enemy_aoe_proj: TEX_ENEMY_AOE_PROJ,
+  returning: TEX_RETURNING,
+  melee: TEX_MELEE,
+  trap_armed: TEX_TRAP_ARMED,
+  trap_arming: TEX_TRAP_ARMING,
+  explosion: TEX_EXPLOSION,
+  enemy_explosion: TEX_ENEMY_EXPLOSION,
+  dead_skull: TEX_DEAD_SKULL,
+  welcome_sign: TEX_WELCOME_SIGN,
+} as const;
+export type ProceduralTextureToken = keyof typeof PROCEDURAL_TEXTURE_KEYS;
 /** Native dimensions of the baked welcome-sign texture (board + word + arrow). */
 const WELCOME_SIGN_WIDTH = 48;
 const WELCOME_SIGN_HEIGHT = 26;

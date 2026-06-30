@@ -8,4 +8,19 @@ export interface EntitySpriteMappings {
       }
     >
   >;
+  readonly renderKinds: Readonly<
+    Record<
+      string,
+      {
+        readonly proceduralTexture: string;
+        readonly kenneySpriteId?: string;
+        readonly kenneyScale?: number;
+        readonly generated?: {
+          readonly briefId: string;
+          readonly pinnedTextureKey: string;
+          readonly scale: number;
+        };
+      }
+    >
+  >;
 }

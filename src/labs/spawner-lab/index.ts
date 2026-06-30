@@ -21,13 +21,21 @@ import {
 import { createInputCapture } from '../../engine/InputCapture.js';
 import { createPhaserBridge } from '../../engine/PhaserBridge.js';
 import {
+  fetchGeneratedSpriteRegistry,
+  GENERATED_SPRITE_REGISTRY_KEY,
+  preloadGeneratedSprites,
+} from '../../engine/generatedAssets/index.js';
+import { SHEETS } from '../../engine/sprites/index.js';
+import {
   enemyAISystem,
   getSpawnerArchetype,
   getSpawnerArchetypeIndex,
   spawnerSystem,
 } from '../../game/index.js';
 import { GAME } from '../../shared/constants.js';
+import { emptyGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
 import { createInputState, type InputState } from '../../shared/input.js';
+import { createLogger } from '../../shared/logger.js';
 import { ftToPx, pxToFt } from '../../shared/units.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
@@ -35,6 +43,13 @@ const LAB_ID = 'spawner-lab';
 const MAX_STEPS_PER_FRAME = 4;
 const PLAYER_HEALTH = 5_000;
 const POKE_DAMAGE = 15;
+const logger = createLogger('labs:spawner-lab');
+const CRITICAL_SHEET_KEYS = new Set([
+  'kenney-tiny-dungeon',
+  'kenney-tiny-town',
+  'kenney-roguelike-rpg-pack',
+  'custom-pixel-sprites',
+]);
 
 const RATS_NEST = getSpawnerArchetype('rats-nest')!;
 const SLIME_POOL = getSpawnerArchetype('slime-pool')!;
@@ -100,6 +115,31 @@ function createSpawnerLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       super({ key: 'SpawnerLabScene' });
     }
 
+    preload(): void {
+      if (!this.load) return;
+
+      // Failures are non-fatal: PhaserBridge falls back to procedural textures.
+      this.load.on('loaderror', (file: Phaser.Loader.File) => {
+        logger.warn('Sprite asset failed to load; falling back to procedural texture', {
+          key: file.key,
+          url: file.url,
+        });
+      });
+
+      for (const sheet of SHEETS) {
+        if (!CRITICAL_SHEET_KEYS.has(sheet.key)) continue;
+        this.load.spritesheet(sheet.key, sheet.path, {
+          frameWidth: sheet.frameWidth,
+          frameHeight: sheet.frameHeight,
+          margin: sheet.margin,
+          spacing: sheet.spacing,
+        });
+      }
+
+      // Seed a non-null registry immediately, then warm generated textures.
+      this.game.registry.set(GENERATED_SPRITE_REGISTRY_KEY, emptyGeneratedSpriteRegistry());
+    }
+
     create(): void {
       this.cameras.main.setBackgroundColor('#0a0810');
       this.accumulator = 0;
@@ -129,6 +169,7 @@ function createSpawnerLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       this.bridge = createPhaserBridge(this);
       this.bridge.sync(this.world);
       this.updateInfo();
+      void this.warmGeneratedSprites();
 
       pokeNests = (archetypeIndex?: number) => this.pokeNests(archetypeIndex);
       destroyNests = (archetypeIndex?: number) => this.destroyNests(archetypeIndex);
@@ -156,6 +197,21 @@ function createSpawnerLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         this.bridge?.destroy();
         this.bridge = undefined;
       });
+    }
+
+    private async warmGeneratedSprites(): Promise<void> {
+      try {
+        const registry = await fetchGeneratedSpriteRegistry();
+        this.game.registry.set(GENERATED_SPRITE_REGISTRY_KEY, registry);
+        if (registry.size === 0 || !this.load) return;
+        const queued = preloadGeneratedSprites(this.load, registry);
+        if (queued.length === 0) return;
+        this.load.start();
+      } catch (error) {
+        logger.warn('Generated sprite load failed; continuing with built-in sprites', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     update(_time: number, delta: number): void {

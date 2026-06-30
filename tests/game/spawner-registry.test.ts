@@ -7,12 +7,21 @@ import {
   pickFromPool,
 } from '../../src/game/spawners/registry.js';
 import type { SpawnPoolEntry } from '../../src/game/spawners/types.js';
+import type { EntitySpriteMappings } from '../../src/shared/data/entity-sprite-mappings.js';
+import ENTITY_SPRITE_MAPPINGS from '../../src/shared/data/entity-sprite-mappings.json';
 
 function poolIds(pool: readonly SpawnPoolEntry[]): string[] {
   return pool.map((entry) => entry.mob.id);
 }
 
 describe('spawner registry', () => {
+  const enemyTextures = (ENTITY_SPRITE_MAPPINGS as EntitySpriteMappings).enemies;
+  const ratTextureId = enemyTextures.enemy_rat?.textureId;
+  const slimeTextureId = enemyTextures.enemy_slime?.textureId;
+  if (ratTextureId === undefined || slimeTextureId === undefined) {
+    throw new Error('Missing enemy texture ids in entity sprite mappings test fixture.');
+  }
+
   it('exposes both shipped archetypes in stable index order', () => {
     expect(SPAWNER_ARCHETYPES.map((a) => a.id)).toEqual(['rats-nest', 'slime-pool']);
   });
@@ -52,6 +61,34 @@ describe('spawner registry', () => {
     expect(pool!.defensive.maxAlive).toBeGreaterThan(pool!.passive.maxAlive);
     const deathIds = pool!.onDeath.flatMap((g) => poolIds(g.pool));
     expect(deathIds).toEqual(expect.arrayContaining(['mama-slime', 'papa-slime']));
+  });
+
+  it('uses configured rat/slime texture ids for spawners and their spawn pools', () => {
+    const ratsNest = getSpawnerArchetype('rats-nest');
+    const slimePool = getSpawnerArchetype('slime-pool');
+    expect(ratsNest).toBeDefined();
+    expect(slimePool).toBeDefined();
+
+    expect(ratsNest!.textureId).toBe(ratTextureId);
+    expect(slimePool!.textureId).toBe(slimeTextureId);
+
+    const ratMobTextureIds = [
+      ...ratsNest!.passive.pool.map((entry) => entry.mob.textureId),
+      ...ratsNest!.defensive.pool.map((entry) => entry.mob.textureId),
+      ...ratsNest!.onDeath.flatMap((group) => group.pool.map((entry) => entry.mob.textureId)),
+    ];
+    for (const textureId of ratMobTextureIds) {
+      expect(textureId).toBe(ratTextureId);
+    }
+
+    const slimeMobTextureIds = [
+      ...slimePool!.passive.pool.map((entry) => entry.mob.textureId),
+      ...slimePool!.defensive.pool.map((entry) => entry.mob.textureId),
+      ...slimePool!.onDeath.flatMap((group) => group.pool.map((entry) => entry.mob.textureId)),
+    ];
+    for (const textureId of slimeMobTextureIds) {
+      expect(textureId).toBe(slimeTextureId);
+    }
   });
 
   it('every defensive mode is at least as aggressive as passive', () => {

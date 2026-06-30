@@ -175,6 +175,7 @@ describe('enemyVariantFromTextureId', () => {
   it.each([
     [1, 'enemy_rat'],
     [2, 'enemy_slime'],
+    [4, 'enemy_baby_slime'],
     [0, 'enemy'],
     [3, 'enemy'],
     [99, 'enemy'],

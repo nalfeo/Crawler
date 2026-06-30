@@ -38,6 +38,8 @@ import {
 import { getItemIndex } from '../../shared/items.js';
 import { createLogger } from '../../shared/logger.js';
 import { MINI_SLIME_SPAWN_ANIM_MS } from '../../shared/spawn-anim.js';
+import type { EntitySpriteMappings } from '../../shared/data/entity-sprite-mappings.js';
+import ENTITY_SPRITE_MAPPINGS from '../../shared/data/entity-sprite-mappings.json';
 import { markImmuneToActiveMeleeSwings } from './meleeSwingSystem.js';
 
 const logger = createLogger('core:drop-system');
@@ -56,6 +58,8 @@ const SLIME_LEAPER_AI_TYPE = 3;
 const SLIME_SPLIT_CHANCE = 0.35;
 const MINI_SLIME_COUNT = 2;
 const MINI_SLIME_SIZE_SCALE = 0.65;
+const MINI_SLIME_TEXTURE_ID = (ENTITY_SPRITE_MAPPINGS as EntitySpriteMappings).enemies
+  .enemy_baby_slime?.textureId;
 /**
  * Floor for a baby slime's sprite size in feet, so a degenerate (zero-width)
  * parent can't yield an invisible baby. Equal to the legacy 1px floor ÷
@@ -245,7 +249,7 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
       },
     );
     setComponent(world.ecs, miniEid, Sprite, {
-      textureId: parentSpriteTexture,
+      textureId: MINI_SLIME_TEXTURE_ID ?? parentSpriteTexture,
       width: miniWidth,
       height: miniHeight,
     });

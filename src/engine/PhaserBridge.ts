@@ -19,25 +19,8 @@ import { PROP_DEPTH } from '../shared/render-depths.js';
 import { getHarvestableDefByIndex } from '../shared/harvestableDefs.js';
 import {
   generateTextures,
-  TEX_AOE_PROJ,
-  TEX_BULLET,
-  TEX_DEAD_SKULL,
-  TEX_ENEMY,
-  TEX_ENEMY_AOE_PROJ,
-  TEX_ENEMY_BOSS,
-  TEX_ENEMY_BULLET,
-  TEX_ENEMY_EXPLOSION,
-  TEX_ENEMY_RAT,
-  TEX_ENEMY_SLIME,
-  TEX_EXPLOSION,
-  TEX_GEM,
-  TEX_GOLD,
-  TEX_MELEE,
-  TEX_NPC,
-  TEX_PLAYER,
-  TEX_RETURNING,
-  TEX_TRAP_ARMED,
-  TEX_TRAP_ARMING,
+  PROCEDURAL_TEXTURE_KEYS,
+  type ProceduralTextureToken,
   TEX_WELCOME_SIGN,
   TEX_WELCOME_SIGN_LEFT,
 } from './phaser-bridge/textures.js';
@@ -49,6 +32,8 @@ import {
   SLIME_FULL_SPRITE_WIDTH,
 } from './phaser-bridge/sprite-kind.js';
 import { BOSS_BAR_COLORS } from './boss-health-bar-state.js';
+import type { EntitySpriteMappings } from '../shared/data/entity-sprite-mappings.js';
+import ENTITY_SPRITE_MAPPINGS from '../shared/data/entity-sprite-mappings.json';
 
 const DEAD_SKULL_Y_OFFSET = 18;
 const MOB_HEALTH_BAR_HEIGHT_PX = 4;
@@ -77,64 +62,7 @@ interface EntityVisual {
   deathTotalMs?: number;
 }
 
-/**
- * Mapping from entity type to a logical sprite ID in the registry.
- * Types that omit a mapping always render with the procedural
- * __cw_* texture. Types whose mapping resolves but whose sheet
- * failed to load also fall back to the procedural texture, so the
- * renderer is robust to missing sprite packs.
- */
-const ENTITY_KENNEY_SPRITE: Readonly<Record<string, string>> = {
-  player: 'player',
-  enemy: 'enemy.orc',
-  enemy_rat: 'enemy.rat',
-  enemy_slime: 'enemy.slime',
-  enemy_boss: 'enemy.boss',
-  // Staircase Rat Slime falls back to the generic boss sprite when the
-  // generated rat-slime art isn't loaded.
-  enemy_boss_ratslime: 'enemy.boss',
-  npc: 'npc.guide',
-  gem: 'item.gem',
-  proj: 'weapon.arrow',
-  enemy_proj: 'effect.enemy_proj',
-  aoe_proj: 'effect.aoe',
-  enemy_aoe_proj: 'effect.enemy_aoe',
-  returning: 'weapon.returning',
-  melee: 'effect.melee',
-  trap_arming: 'effect.trap_arming',
-  trap_armed: 'effect.trap_armed',
-  explosion: 'effect.explosion',
-  enemy_explosion: 'effect.enemy_explosion',
-  dead_skull: 'effect.dead',
-};
-
-/**
- * Per-Kenney-sprite render scale, applied when the bridge picks a
- * Kenney sprite for an entity type. 16x16 source pixels are scaled up
- * so the sprite reads at roughly the same on-screen size as the
- * procedural texture it replaces.
- */
-const KENNEY_SCALE: Readonly<Record<string, number>> = {
-  player: 1.6, // procedural player texture is 26x26
-  enemy: 1.4, // procedural enemy texture is 22x22
-  enemy_rat: 1.4,
-  enemy_slime: 1.4,
-  enemy_boss: 2.5, // boss is larger
-  enemy_boss_ratslime: 2.5,
-  npc: 1.4,
-  gem: 1.0,
-  proj: 1.0,
-  enemy_proj: 1.0,
-  aoe_proj: 1.4,
-  enemy_aoe_proj: 1.4,
-  returning: 1.2,
-  melee: 4.0,
-  trap_arming: 1.0,
-  trap_armed: 1.0,
-  explosion: 4.0,
-  enemy_explosion: 4.0,
-  dead_skull: 1.0,
-};
+const RENDER_KIND_CONFIGS = (ENTITY_SPRITE_MAPPINGS as EntitySpriteMappings).renderKinds;
 
 interface ResolvedTexture {
   key: string;
@@ -145,26 +73,6 @@ interface ResolvedTexture {
   /** True when the engine fell back to a procedural __cw_* texture. */
   fallback: boolean;
 }
-
-/**
- * Mapping from entity type to a generated-sprite texture key (the manifest
- * entry key queued by {@link preloadGeneratedSprites}). When the matching
- * texture is loaded it takes priority over the Kenney sprite, so approved
- * custom art replaces the temp CC0 placeholders. Types/keys absent here, or
- * present but not yet loaded, fall through to the Kenney registry below.
- */
-const ENTITY_GENERATED_SPRITE: Readonly<Record<string, string>> = {
-  enemy_rat: 'rat-v1-var-3',
-  enemy_slime: 'slime-v1-var-2',
-  enemy_boss_ratslime: 'rat-slime-v1-var-1',
-};
-
-/** Render scale for each generated texture (PNGs are 64–128px, not 16px). */
-const GENERATED_SCALE: Readonly<Record<string, number>> = {
-  enemy_rat: 0.4,
-  enemy_slime: 0.4,
-  enemy_boss_ratslime: 0.6,
-};
 
 function getGeneratedSpriteRegistry(scene: Phaser.Scene): GeneratedSpriteRegistry | null {
   const registry = scene.game?.registry?.get?.(GENERATED_SPRITE_REGISTRY_KEY);
@@ -189,28 +97,23 @@ function resolveTexture(
   type: string,
   options?: { appearanceKey?: string; variantRoll?: number },
 ): ResolvedTexture {
-  const generatedKey =
-    pickGeneratedEnemyTextureKey(
-      getGeneratedSpriteRegistry(scene),
-      type,
-      options?.variantRoll,
-      options?.appearanceKey,
-    ) ?? ENTITY_GENERATED_SPRITE[type];
-  if (generatedKey !== undefined && scene.textures?.exists(generatedKey)) {
+  const config = RENDER_KIND_CONFIGS[type];
+  const generated = resolveGeneratedTexture(scene, type, config?.generated, options);
+  if (generated !== null) {
     return {
-      key: generatedKey,
-      scale: GENERATED_SCALE[type] ?? 1,
+      key: generated.key,
+      scale: generated.scale,
       fallback: false,
     };
   }
-  const spriteId = ENTITY_KENNEY_SPRITE[type];
+  const spriteId = config?.kenneySpriteId;
   if (spriteId !== undefined) {
     const sprite = getSprite(spriteId);
     if (sprite !== undefined && scene.textures?.exists(sprite.sheetKey)) {
       return {
         key: sprite.sheetKey,
         frame: sprite.frame,
-        scale: KENNEY_SCALE[type] ?? 1,
+        scale: config?.kenneyScale ?? 1,
         fallback: false,
       };
     }
@@ -218,57 +121,61 @@ function resolveTexture(
   return { key: getProceduralTextureForType(type), scale: 1, fallback: true };
 }
 
-function getProceduralTextureForType(type: string): string {
-  switch (type) {
-    case 'player':
-      return TEX_PLAYER;
-    case 'enemy':
-      return TEX_ENEMY;
-    case 'npc':
-      return TEX_NPC;
-    case 'enemy_boss':
-    case 'enemy_boss_ratslime':
-      return TEX_ENEMY_BOSS;
-    case 'enemy_rat':
-      return TEX_ENEMY_RAT;
-    case 'enemy_slime':
-      return TEX_ENEMY_SLIME;
-    case 'gem':
-      return TEX_GEM;
-    case 'gold':
-      return TEX_GOLD;
-    case 'proj':
-      return TEX_BULLET;
-    case 'enemy_proj':
-      return TEX_ENEMY_BULLET;
-    case 'aoe_proj':
-      return TEX_AOE_PROJ;
-    case 'welcome_sign':
-      return TEX_WELCOME_SIGN;
-    case 'enemy_aoe_proj':
-      return TEX_ENEMY_AOE_PROJ;
-    case 'returning':
-      return TEX_RETURNING;
-    case 'aoe':
-      return TEX_MELEE;
-    case 'enemy_aoe':
-      return TEX_ENEMY_EXPLOSION;
-    case 'trap':
-    case 'trap_arming':
-      return TEX_TRAP_ARMING;
-    case 'trap_armed':
-      return TEX_TRAP_ARMED;
-    case 'explosion':
-      return TEX_EXPLOSION;
-    case 'enemy_explosion':
-      return TEX_ENEMY_EXPLOSION;
-    case 'melee':
-      return TEX_MELEE;
-    case 'dead_skull':
-      return TEX_DEAD_SKULL;
-    default:
-      return TEX_BULLET;
+function resolveGeneratedTexture(
+  scene: Phaser.Scene,
+  type: string,
+  generated: EntitySpriteMappings['renderKinds'][string]['generated'] | undefined,
+  options?: { appearanceKey?: string; variantRoll?: number },
+): { key: string; scale: number } | null {
+  if (generated === undefined || scene.textures === undefined) {
+    return null;
   }
+
+  const registryKey = pickGeneratedEnemyTextureKey(
+    getGeneratedSpriteRegistry(scene),
+    type,
+    options?.variantRoll,
+    options?.appearanceKey,
+  );
+  if (registryKey !== null && scene.textures.exists(registryKey)) {
+    return { key: registryKey, scale: generated.scale };
+  }
+
+  if (scene.textures.exists(generated.pinnedTextureKey)) {
+    return { key: generated.pinnedTextureKey, scale: generated.scale };
+  }
+
+  if (scene.textures.exists(generated.briefId)) {
+    return { key: generated.briefId, scale: generated.scale };
+  }
+
+  const textureKeys = scene.textures.getTextureKeys?.();
+  if (!Array.isArray(textureKeys)) {
+    return null;
+  }
+
+  const prefix = `${generated.briefId}-var-`;
+  let selectedKey: string | undefined;
+  let selectedVariant = -1;
+  for (const key of textureKeys) {
+    if (!key.startsWith(prefix) || !scene.textures.exists(key)) {
+      continue;
+    }
+    const variantPart = key.slice(prefix.length);
+    const variantIndex = Number.parseInt(variantPart, 10);
+    if (!Number.isFinite(variantIndex) || variantIndex < selectedVariant) {
+      continue;
+    }
+    selectedVariant = variantIndex;
+    selectedKey = key;
+  }
+  return selectedKey === undefined ? null : { key: selectedKey, scale: generated.scale };
+}
+
+function getProceduralTextureForType(type: string): string {
+  const token = (RENDER_KIND_CONFIGS[type]?.proceduralTexture ??
+    'default') as ProceduralTextureToken;
+  return PROCEDURAL_TEXTURE_KEYS[token] ?? PROCEDURAL_TEXTURE_KEYS.default;
 }
 
 export function createPhaserBridge(scene: Phaser.Scene): {
@@ -309,7 +216,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   let lastRenderMs: number | null = null;
 
   function logFallback(type: string): void {
-    const spriteId = ENTITY_KENNEY_SPRITE[type];
+    const spriteId = RENDER_KIND_CONFIGS[type]?.kenneySpriteId;
     if (spriteId !== undefined) {
       const warningKey = `${type}:${spriteId}`;
       if (missingSpriteWarnings.has(warningKey)) {
@@ -335,6 +242,20 @@ export function createPhaserBridge(scene: Phaser.Scene): {
     sync(world: GameWorld, renderElapsedMs = world.elapsedMs, interpAlpha = 0): void {
       const entities = query(world.ecs, [Sprite, Position]);
       const activeEntities = new Set<number>();
+      const preferredTextureCache = new Map<string, ResolvedTexture>();
+      const resolvePreferredTexture = (
+        type: string,
+        options?: { appearanceKey?: string; variantRoll?: number },
+      ): ResolvedTexture => {
+        const cacheKey = `${type}|${options?.appearanceKey ?? ''}|${options?.variantRoll ?? ''}`;
+        const cached = preferredTextureCache.get(cacheKey);
+        if (cached !== undefined) {
+          return cached;
+        }
+        const resolved = resolveTexture(scene, type, options);
+        preferredTextureCache.set(cacheKey, resolved);
+        return resolved;
+      };
       const { position, velocity, lineDamage, trap, areaDamage, lifetime, meleeSwing } =
         world.stores;
 
@@ -655,6 +576,19 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         }
 
         const img = visual.obj;
+        if (entityType === 'enemy') {
+          const preferred = resolvePreferredTexture(visualType, {
+            appearanceKey,
+            variantRoll: world.stores.sprite.variantRoll[eid],
+          });
+          // Enemy visuals may be created before generated textures are ready
+          // (e.g. timeout/late load). Reconcile to the preferred texture key when
+          // it becomes available so slimes/rats upgrade off placeholder art.
+          if (img.texture.key !== preferred.key) {
+            img.setTexture(preferred.key, preferred.frame);
+            visual.baseScale = preferred.scale;
+          }
+        }
         let isVisible = true;
         if (entityType === 'enemy' && world.floorMap) {
           // Use tile-level visibility (any quarter lit) to stay consistent with

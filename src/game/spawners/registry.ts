@@ -8,11 +8,19 @@
  */
 import { AI_TYPE } from '../enemyAISystem.js';
 import type { MobTemplate, SpawnPoolEntry, SpawnerArchetype } from './types.js';
+import type { EntitySpriteMappings } from '../../shared/data/entity-sprite-mappings.js';
+import ENTITY_SPRITE_MAPPINGS from '../../shared/data/entity-sprite-mappings.json';
 
 /** Rats bleed red. */
 const BLOOD_RAT = 0xcc0000;
 /** Slimes bleed green ichor. */
 const BLOOD_SLIME = 0x66cc33;
+const ENEMY_TEXTURES = (ENTITY_SPRITE_MAPPINGS as EntitySpriteMappings).enemies;
+const RAT_TEXTURE_ID = ENEMY_TEXTURES.enemy_rat?.textureId;
+const SLIME_TEXTURE_ID = ENEMY_TEXTURES.enemy_slime?.textureId;
+if (RAT_TEXTURE_ID === undefined || SLIME_TEXTURE_ID === undefined) {
+  throw new Error('Missing enemy texture ids in entity sprite mappings for spawner registry.');
+}
 
 // --- Rats Nest mobs ---------------------------------------------------------
 
@@ -27,7 +35,7 @@ const RAT: MobTemplate = {
   contactDamage: 4,
   weight: 6,
   bloodColor: BLOOD_RAT,
-  textureId: 0,
+  textureId: RAT_TEXTURE_ID,
   spriteWidth: 1.5,
   spriteHeight: 1.5,
 };
@@ -43,7 +51,7 @@ const RAT_BRUTE: MobTemplate = {
   contactDamage: 10,
   weight: 30,
   bloodColor: BLOOD_RAT,
-  textureId: 0,
+  textureId: RAT_TEXTURE_ID,
   spriteWidth: 2.25,
   spriteHeight: 2.25,
 };
@@ -59,7 +67,7 @@ const RAT_KING: MobTemplate = {
   contactDamage: 16,
   weight: 70,
   bloodColor: BLOOD_RAT,
-  textureId: 0,
+  textureId: RAT_TEXTURE_ID,
   spriteWidth: 3,
   spriteHeight: 3,
 };
@@ -75,7 +83,7 @@ const RAT_QUEEN: MobTemplate = {
   contactDamage: 14,
   weight: 60,
   bloodColor: BLOOD_RAT,
-  textureId: 0,
+  textureId: RAT_TEXTURE_ID,
   spriteWidth: 3,
   spriteHeight: 3,
 };
@@ -93,7 +101,7 @@ const SLIME: MobTemplate = {
   contactDamage: 6,
   weight: 20,
   bloodColor: BLOOD_SLIME,
-  textureId: 0,
+  textureId: SLIME_TEXTURE_ID,
   spriteWidth: 2,
   spriteHeight: 2,
 };
@@ -109,7 +117,7 @@ const MAMA_SLIME: MobTemplate = {
   contactDamage: 18,
   weight: 130,
   bloodColor: BLOOD_SLIME,
-  textureId: 0,
+  textureId: SLIME_TEXTURE_ID,
   spriteWidth: 3.5,
   spriteHeight: 3.5,
 };
@@ -125,7 +133,7 @@ const PAPA_SLIME: MobTemplate = {
   contactDamage: 22,
   weight: 160,
   bloodColor: BLOOD_SLIME,
-  textureId: 0,
+  textureId: SLIME_TEXTURE_ID,
   spriteWidth: 3.75,
   spriteHeight: 3.75,
 };
@@ -138,7 +146,7 @@ const RATS_NEST: SpawnerArchetype = {
   hp: 120,
   weight: 200,
   bloodColor: BLOOD_RAT,
-  textureId: 0,
+  textureId: RAT_TEXTURE_ID,
   spriteWidth: 3.25,
   spriteHeight: 3.25,
   contactDamage: 4,
@@ -182,7 +190,7 @@ const SLIME_POOL: SpawnerArchetype = {
   hp: 140,
   weight: 250,
   bloodColor: BLOOD_SLIME,
-  textureId: 0,
+  textureId: SLIME_TEXTURE_ID,
   spriteWidth: 3.5,
   spriteHeight: 3.5,
   contactDamage: 5,
