@@ -56,6 +56,36 @@ export function dimensionsExact(image: RgbaImage, brief: Brief): SensorResult {
   if (brief.postprocessing?.trimAndFit) {
     return ok(sensor);
   }
+  const isDoubleWide = brief.size.width >= brief.size.height * 2;
+  if (isDoubleWide) {
+    if (image.width !== brief.size.width) {
+      return fail(
+        sensor,
+        `expected width ${brief.size.width} for double-wide sprite, got ${image.width}x${image.height}`,
+      );
+    }
+    return ok(sensor);
+  }
+  const isDoubleTall = brief.size.height >= brief.size.width * 2;
+  if (isDoubleTall) {
+    if (image.height !== brief.size.height) {
+      return fail(
+        sensor,
+        `expected height ${brief.size.height} for tall sprite, got ${image.width}x${image.height}`,
+      );
+    }
+    return ok(sensor);
+  }
+  const isLargeSquare = brief.size.width === brief.size.height && brief.size.width >= 128;
+  if (isLargeSquare) {
+    if (image.width < brief.size.width || image.height < brief.size.height) {
+      return fail(
+        sensor,
+        `expected at least ${brief.size.width}x${brief.size.height} for large sprite occupancy, got ${image.width}x${image.height}`,
+      );
+    }
+    return ok(sensor);
+  }
   if (image.width !== brief.size.width || image.height !== brief.size.height) {
     return fail(
       sensor,
