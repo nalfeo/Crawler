@@ -14,7 +14,10 @@ It executes a CLI-based coding agent (Codex by default) and can be extended to o
    - Optional secret: `OPENAI_API_KEY` (for the `codex` provider)
    - Optional secret: `GEMINI_API_KEY` (for the `gemini` provider; free AI Studio key works)
    - Optional secret: `AZURE_OPENAI_API_KEY` (for the `azure` provider; billed to your Azure subscription)
-   - Optional secret: `CODEX_ASSIGN_TOKEN` (a user PAT used **only** to auto-assign the Copilot coding agent on a bounce; the default Actions `GITHUB_TOKEN` cannot assign Copilot. Fine-grained PAT with **Pull requests: write** + **Issues: write** on the repo, or a classic PAT with `repo` scope. Without it, a bounce still comments + labels and asks for a manual assignment)
+   - Optional secrets for Copilot auto-assignment on a bounce (the default Actions `GITHUB_TOKEN` **cannot** assign the Copilot coding agent — GitHub ignores bot-identity assignment for the Copilot trigger, so a user-acting token is required):
+     - `APP_ID` + `APP_PRIVATE_KEY` (**preferred** — a GitHub App installation token; this repo already configures these for other workflows like `coverage-gap-copilot.yml`, so no new secret is needed). The App needs **Issues: write** + **Pull requests: write**.
+     - `CODEX_ASSIGN_TOKEN` (optional fallback/override — a user PAT used only when no App token is available; fine-grained with **Pull requests: write** + **Issues: write**, or classic with `repo` scope).
+     - With neither configured, a bounce still comments + labels and asks for a manual assignment.
    - Optional repo variables:
      - `CODEX_MODEL` (default: CLI's own default; set a valid model to override — for `azure` this is the **deployment** name, e.g. `gpt-4o`)
      - `CODEX_PROVIDER` (default: `codex`; set to `gemini` or `azure`)
@@ -139,11 +142,14 @@ On a bounce, `bounce.mjs` (idempotent, best-effort):
 1. posts/updates a sticky `<!-- codex-bounce -->` comment explaining why and the
    measured-vs-budget numbers,
 2. adds the `CODEX_BOUNCE_LABEL` label (`auto-heal-bounced`), and
-3. auto-assigns the **Copilot coding agent** (`copilot-swe-agent`) via GraphQL
-   `replaceActorsForAssignable`. The default Actions `GITHUB_TOKEN` **cannot** assign
-   Copilot (it isn't returned as an assignable actor for the bot token), so this only
-   fires when a `CODEX_ASSIGN_TOKEN` user PAT secret is configured. Without it — or if
-   the call fails — the comment says to assign `@Copilot` manually.
+3. auto-assigns the **Copilot coding agent** (`copilot-swe-agent`) via the REST
+   assignees endpoint, then verifies the assignment stuck. The default Actions
+   `GITHUB_TOKEN` **cannot** assign Copilot (GitHub ignores bot-identity assignment
+   for the Copilot trigger), so the workflow mints a user-acting **GitHub App
+   installation token** (`APP_ID` / `APP_PRIVATE_KEY`) for this step — the same
+   mechanism `coverage-gap-copilot.yml` uses. An optional `CODEX_ASSIGN_TOKEN` PAT
+   is used as a fallback when the App isn't configured. With neither — or if the
+   assignment is rejected — the comment says to assign `@Copilot` manually.
 
 The job still finishes **green** on a bounce (it's an intended outcome, not a failure),
 and the status/report comment is skipped so the bounce comment is the only one.

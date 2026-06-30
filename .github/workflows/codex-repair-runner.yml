@@ -45,6 +45,7 @@ jobs:
     timeout-minutes: 45
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      APP_ID: ${{ secrets.APP_ID }}
       AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT || '' }}
       AZURE_OPENAI_API_VERSION: ${{ vars.AZURE_OPENAI_API_VERSION || '' }}
       CODEX_MODEL: ${{ vars.CODEX_MODEL || '' }}
@@ -68,11 +69,24 @@ jobs:
         id: parse
         run: node .github/scripts/codex/event-parse.mjs
 
+      - name: Generate app token for Copilot assignment
+        id: assign-token
+        # Mint a user-acting GitHub App installation token so the bounce can
+        # actually assign the Copilot coding agent. The default Actions
+        # GITHUB_TOKEN cannot (GitHub ignores bot-identity assignment for the
+        # Copilot trigger). Only runs on the bounce path and only when the App
+        # is configured; otherwise the bounce falls back to a manual-assign note.
+        if: steps.parse.outputs.bounced == 'true' && env.APP_ID != ''
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Bounce oversized repair to a human
         if: steps.parse.outputs.bounced == 'true'
         env:
           BOUNCE_REASON: ${{ steps.parse.outputs.bounce_reason }}
-          CODEX_ASSIGN_TOKEN: ${{ secrets.CODEX_ASSIGN_TOKEN }}
+          CODEX_ASSIGN_TOKEN: ${{ steps.assign-token.outputs.token || secrets.CODEX_ASSIGN_TOKEN }}
         run: |
           echo "Bouncing repair: ${{ steps.parse.outputs.bounce_reason }}"
           node .github/scripts/codex/bounce.mjs
