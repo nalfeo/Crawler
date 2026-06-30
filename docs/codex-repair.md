@@ -14,10 +14,7 @@ It executes a CLI-based coding agent (Codex by default) and can be extended to o
    - Optional secret: `OPENAI_API_KEY` (for the `codex` provider)
    - Optional secret: `GEMINI_API_KEY` (for the `gemini` provider; free AI Studio key works)
    - Optional secret: `AZURE_OPENAI_API_KEY` (for the `azure` provider; billed to your Azure subscription)
-   - Optional secrets for Copilot auto-assignment on a bounce (the default Actions `GITHUB_TOKEN` **cannot** assign the Copilot coding agent — GitHub ignores bot-identity assignment for the Copilot trigger, so a user-acting token is required):
-     - `APP_ID` + `APP_PRIVATE_KEY` (**preferred** — a GitHub App installation token; this repo already configures these for other workflows like `coverage-gap-copilot.yml`, so no new secret is needed). The App needs **Issues: write** + **Pull requests: write**.
-     - `CODEX_ASSIGN_TOKEN` (optional fallback/override — a user PAT used only when no App token is available; fine-grained with **Pull requests: write** + **Issues: write**, or classic with `repo` scope).
-     - With neither configured, a bounce still comments + labels and asks for a manual assignment.
+   - Optional secret for Copilot auto-assignment on a bounce: `CODEX_ASSIGN_TOKEN` — a **user** PAT (fine-grained with **Pull requests: write** + **Issues: write**, or classic with `repo` scope). A user token is **required** to assign the Copilot coding agent: GitHub rejects agent assignment from both the default Actions `GITHUB_TOKEN` and **GitHub App installation tokens** ("Assigning agents is not supported with GitHub App installation tokens. Use a user token instead"). Without it, a bounce still comments + labels and asks for a manual assignment.
    - Optional repo variables:
      - `CODEX_MODEL` (default: CLI's own default; set a valid model to override — for `azure` this is the **deployment** name, e.g. `gpt-4o`)
      - `CODEX_PROVIDER` (default: `codex`; set to `gemini` or `azure`)
@@ -146,12 +143,12 @@ On a bounce, `bounce.mjs` (idempotent, best-effort):
    GraphQL `replaceActorsForAssignable`. (Assigning Copilot to a _pull request_
    requires GraphQL — the REST assignees endpoint returns 201 but silently drops
    the Copilot bot on PRs; REST only works for issues, e.g. `coverage-gap-copilot.yml`.)
-   The default Actions `GITHUB_TOKEN` **cannot** assign Copilot (GitHub ignores
-   bot-identity assignment for the Copilot trigger), so the workflow mints a
-   user-acting **GitHub App installation token** (`APP_ID` / `APP_PRIVATE_KEY`) for
-   the bounce step. An optional `CODEX_ASSIGN_TOKEN` PAT is used as a fallback when
-   the App isn't configured (or lacks the permission). With neither — or if the
-   assignment is rejected — the comment says to assign `@Copilot` manually.
+   Assigning an agent requires a **user** token: GitHub rejects it from the default
+   Actions `GITHUB_TOKEN` _and_ from **GitHub App installation tokens** ("Assigning
+   agents is not supported with GitHub App installation tokens. Use a user token
+   instead"). So the bounce uses a `CODEX_ASSIGN_TOKEN` PAT (with Copilot access).
+   Without it — or if the assignment is rejected — the comment says to assign
+   `@Copilot` manually.
 
 The job still finishes **green** on a bounce (it's an intended outcome, not a failure),
 and the status/report comment is skipped so the bounce comment is the only one.

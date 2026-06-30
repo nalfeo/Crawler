@@ -15,11 +15,6 @@ const assignToken = getEnv('CODEX_ASSIGN_TOKEN', '');
 const runUrl = `${getEnv('GITHUB_SERVER_URL', 'https://github.com')}/${repository}/actions/runs/${getEnv('GITHUB_RUN_ID', '')}`;
 const COMMENT_MARKER = '<!-- codex-bounce -->';
 
-// Global node id of the Copilot coding-agent bot (the actor id GitHub expects in
-// replaceActorsForAssignable). suggestedActors surfaces this for user PATs but not
-// for GitHub App installation tokens, so it's used as a fallback for the App path.
-const COPILOT_BOT_NODE_ID = 'BOT_kgDOC9w8XQ';
-
 if (!owner || !repo || !Number.isFinite(prNumber)) {
   throw new Error('Missing repository/pr context for bounce');
 }
@@ -59,12 +54,12 @@ async function addLabel() {
 }
 
 async function assignCopilot(assignableId) {
-  // Assigning the Copilot coding agent to a PULL REQUEST requires GraphQL
-  // (replaceActorsForAssignable) — the REST assignees endpoint returns 201 but
-  // silently drops the Copilot bot on PRs (verified empirically; REST only works
-  // for issues, e.g. coverage-gap-copilot.yml). The default Actions GITHUB_TOKEN
-  // can't assign Copilot at all, so this uses the user-acting assign token
-  // (GitHub App installation token, or a CODEX_ASSIGN_TOKEN PAT fallback).
+  // Assigning the Copilot coding agent requires GraphQL replaceActorsForAssignable
+  // AND a user token. GitHub explicitly rejects this for both the default Actions
+  // GITHUB_TOKEN and GitHub App installation tokens ("Assigning agents is not
+  // supported with GitHub App installation tokens. Use a user token instead"), so
+  // a CODEX_ASSIGN_TOKEN PAT (with Copilot access) is required. The REST assignees
+  // endpoint also can't do this — it returns 201 but silently drops Copilot on PRs.
   const query = `
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
@@ -105,23 +100,16 @@ query($owner: String!, $repo: String!, $number: Int!) {
     return { assigned: false, reason: `lookup failed: ${error.message}` };
   }
 
-  // GitHub App installation tokens don't surface Copilot via suggestedActors
-  // (the App has no Copilot seat), so fall back to the well-known global
-  // Copilot coding-agent bot node id and let the mutation decide. A user PAT
-  // does surface it, so this fallback only matters for the App-token path.
-  let copilotId = copilot?.id;
-  if (!copilotId) {
-    if (!assignToken) {
-      return {
-        assigned: false,
-        reason:
-          'no assign token available — the default Actions token cannot assign the Copilot coding agent (configure the GitHub App or a CODEX_ASSIGN_TOKEN PAT)',
-      };
-    }
-    copilotId = COPILOT_BOT_NODE_ID;
+  if (!copilot?.id) {
+    return {
+      assigned: false,
+      reason: assignToken
+        ? 'the assign token cannot assign Copilot (use a user PAT with Copilot access; GitHub App tokens are not supported for agent assignment)'
+        : 'no CODEX_ASSIGN_TOKEN set — the default Actions token cannot assign the Copilot coding agent (a user PAT is required)',
+    };
   }
 
-  const actorIds = Array.from(new Set([...existingAssigneeIds, copilotId]));
+  const actorIds = Array.from(new Set([...existingAssigneeIds, copilot.id]));
   const mutation = `
 mutation($assignableId: ID!, $actorIds: [ID!]!) {
   replaceActorsForAssignable(input: { assignableId: $assignableId, actorIds: $actorIds }) {
