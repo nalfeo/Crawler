@@ -28,7 +28,7 @@ This skill has two modes. Pick based on the request:
 
 ## Crawler merge facts (authoritative)
 
-- **Merge command:** `gh pr merge <n> --auto --squash`. This enables GitHub auto-merge; it completes on its own once required checks pass. Do **not** poll/wait manually after arming it.
+- **Merge command:** `gh pr merge <n> --auto --squash`. This enables GitHub auto-merge; it completes on its own once required checks pass. Do **not** run open-ended manual polling/wait loops after arming, but do perform a **bounded final-state verification** (`state=MERGED` and non-null `mergeCommit`) and resolve any blocking review threads before idling.
 - **Required checks (branch protection):** only `ci` (the aggregate) and `commit-lint`. Everything else (`Build` shows "skipping", `PR Ready/Reviewer Guard`, coverage, security advisory) is **non-required** and never blocks merge.
 - **`required_conversation_resolution: true`** — an unresolved review thread blocks auto-merge **even when CI is green**. Always reply to and resolve every review thread.
 - **No required human review.** `reviewDecision` is empty by design. Auto-approve automation satisfies any nominal 1-review rule.

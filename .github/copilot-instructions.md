@@ -14,7 +14,8 @@ Crawler is a crafting-focused vampire-survivors-like game set in a reality show 
 ## Validation
 
 - After every change: `npm run verify:fast` (typecheck + lint + changed unit tests, ~30s)
-- Before committing: `npm run verify` (full suite — typecheck, lint, format, unit/integration/headless tests, build). Coverage is **not** run locally by default (it ~5x's unit-test time and is enforced in CI); add `VERIFY_COVERAGE=1` or run `npm run verify:coverage` for a local coverage gate.
+- Before committing: `npm run verify` (full suite — typecheck, lint, format, unit/integration/headless tests, **early PR prerequisites**, build). Coverage is **not** run locally by default (it ~5x's unit-test time and is enforced in CI); add `VERIFY_COVERAGE=1` or run `npm run verify:coverage` for a local coverage gate.
+- When execution is complete (before asking for PR creation): `npm run verify:pr-prereqs` so review-harness and preflight blockers are surfaced immediately instead of at `create_pull_request`.
 - Before creating PR: Ensure `scripts/agent/lab-gate-check.sh` passes
 - Before creating PR: Run the **review harness** for the change's apple tier and record a valid **review ledger** (`npm run review:ledger -- validate`) — the `pr-review-ledger` guard hard-denies `create_pull_request` otherwise. See `.github/skills/review-harness/SKILL.md`.
 - During fixes/implementations, make a best effort to improve or preserve unit-test coverage in touched areas so changes move toward UT coverage goals.
@@ -36,7 +37,7 @@ Crawler is a crafting-focused vampire-survivors-like game set in a reality show 
 
 ## Merge Policy
 
-- When authorized to merge a PR (via agent-merge automation or explicit instruction), always use `gh pr merge --auto --squash` to enable GitHub's auto-merge. This completes the merge automatically once all required checks pass — do not poll or wait manually.
+- When authorized to merge a PR (via agent-merge automation or explicit instruction), always use `gh pr merge --auto --squash` to enable GitHub's auto-merge. This completes the merge automatically once all required checks pass. Do not run open-ended manual polling/wait loops after arming, but do perform a bounded final-state verification (`state=MERGED` and non-null `mergeCommit`) and clear unresolved review threads before idling.
 - **No human review is required to merge.** There is no branch protection rule requiring an approving review. Never attribute a merge failure to a "human review block" without explicit proof.
 - When `gh pr merge` fails, diagnose the actual cause before giving up:
   1. Run `gh pr checks <pr-number>` to see which checks are failing.

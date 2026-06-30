@@ -165,6 +165,8 @@ export interface RunListEntry {
   readonly candidateCount: number | null;
   /** True iff any candidate has a non-null judgeScorecard. */
   readonly hasJudge: boolean;
+  /** Whether this run has an approved variant promoted into generated manifest content. */
+  readonly promotionState: 'promoted' | 'not-promoted';
 }
 
 interface RunSummaryShape {
@@ -216,6 +218,24 @@ interface LatestRunQuery {
 interface RunPostprocessBody {
   readonly options?: unknown;
   readonly sheet?: unknown;
+}
+
+interface RunsQuery {
+  readonly promoted?: unknown;
+}
+
+interface WorkflowStoreClearBody {
+  readonly scope?: unknown;
+}
+
+interface WorkflowAssetRequestsQuery {
+  readonly state?: unknown;
+}
+
+interface WorkflowAssetRequestRejectBody {
+  readonly issueNumber?: unknown;
+  readonly fingerprint?: unknown;
+  readonly reason?: unknown;
 }
 
 interface RunJudgeBody {
@@ -300,7 +320,33 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     issueIngester: issueIngester.status(),
   }));
 
-  app.get('/api/runs', async () => ({ runs: await listRunsFromStore(store) }));
+  app.get<{ Querystring: RunsQuery }>('/api/runs', async (req, reply) => {
+    const promotedRaw = req.query.promoted;
+    const promotedFilter =
+      promotedRaw === undefined || promotedRaw === null || promotedRaw === ''
+        ? 'all'
+        : promotedRaw === 'promoted' || promotedRaw === 'not-promoted' || promotedRaw === 'all'
+          ? promotedRaw
+          : null;
+    if (promotedFilter === null) {
+      reply.code(400);
+      return {
+        error: 'bad-request',
+        message: 'query.promoted must be all, promoted, or not-promoted',
+      };
+    }
+    const publicAssetsDir = deps.publicAssetsDir ?? path.join(deps.repoRoot, 'public', 'assets');
+    const manifestPath =
+      deps.manifestPath ?? path.join(publicAssetsDir, 'generated', 'manifest.json');
+    const promotedRuns = readPromotedRunsFromManifest(manifestPath);
+    const runs = await listRunsFromStore(store, promotedRuns);
+    return {
+      runs:
+        promotedFilter === 'all'
+          ? runs
+          : runs.filter((run) => run.promotionState === promotedFilter),
+    };
+  });
 
   app.get<{ Params: { briefId: string; runId: string } }>(
     '/api/runs/:briefId/:runId',
@@ -887,6 +933,8 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       return {
         branch: result.branch,
         issueUrl: result.issueUrl,
+        issueTitle: result.plan.issueTitle,
+        issueBody: result.plan.issueBody,
         assets: result.plan.assets,
       };
     } catch (err) {
@@ -1205,6 +1253,57 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
 
   app.get('/api/workflow/issues/status', async () => issueIngester.status());
 
+  app.get<{ Querystring: WorkflowAssetRequestsQuery }>(
+    '/api/workflow/asset-requests',
+    async (req, reply) => {
+      const stateRaw = req.query.state;
+      const state =
+        stateRaw === undefined || stateRaw === null || stateRaw === ''
+          ? 'all'
+          : stateRaw === 'all' ||
+              stateRaw === 'pending' ||
+              stateRaw === 'claimed' ||
+              stateRaw === 'rejected'
+            ? stateRaw
+            : null;
+      if (state === null) {
+        reply.code(400);
+        return {
+          error: 'bad-request',
+          message: 'query.state must be all, pending, claimed, or rejected',
+        };
+      }
+      return { entries: await issueIngester.listRequests(state) };
+    },
+  );
+
+  app.post<{ Body: WorkflowAssetRequestRejectBody }>(
+    '/api/workflow/asset-requests/reject',
+    async (req, reply) => {
+      const body = (req.body ?? {}) as WorkflowAssetRequestRejectBody;
+      const issueNumber = body.issueNumber;
+      const fingerprint = body.fingerprint;
+      if (typeof issueNumber !== 'number' || !Number.isInteger(issueNumber) || issueNumber < 1) {
+        reply.code(400);
+        return { error: 'bad-request', message: 'body.issueNumber must be a positive integer' };
+      }
+      if (typeof fingerprint !== 'string' || fingerprint.trim() === '') {
+        reply.code(400);
+        return { error: 'bad-request', message: 'body.fingerprint must be a non-empty string' };
+      }
+      if (body.reason !== undefined && typeof body.reason !== 'string') {
+        reply.code(400);
+        return { error: 'bad-request', message: 'body.reason must be a string when provided' };
+      }
+      const entry = await issueIngester.rejectRequest({
+        issueNumber,
+        fingerprint: fingerprint.trim(),
+        ...(typeof body.reason === 'string' ? { reason: body.reason } : {}),
+      });
+      return { ok: true, entry };
+    },
+  );
+
   app.get<{ Querystring: LatestRunQuery }>('/api/workflow/latest-run', async (req, reply) => {
     const briefIdRaw = req.query.briefId;
     const requestedAtRaw = req.query.requestedAt;
@@ -1322,6 +1421,56 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     const etag = computeStateEtag(bytes);
     reply.header('ETag', etag);
     return { ok: true, etag };
+  });
+
+  app.post<{ Body: WorkflowStoreClearBody }>('/api/workflow/store/clear', async (req, reply) => {
+    const body = (req.body ?? {}) as WorkflowStoreClearBody;
+    const scopeRaw = body.scope;
+    const scope =
+      scopeRaw === undefined || scopeRaw === null || scopeRaw === ''
+        ? 'all'
+        : scopeRaw === 'all' || scopeRaw === 'runs' || scopeRaw === 'workflow'
+          ? scopeRaw
+          : null;
+    if (scope === null) {
+      reply.code(400);
+      return { error: 'bad-request', message: 'body.scope must be all, runs, or workflow' };
+    }
+    const wasWorkerRunning = worker.status().running;
+    const wasIssueIngesterRunning = issueIngester.status().running;
+    if (wasWorkerRunning) {
+      await worker.stop();
+    }
+    if (wasIssueIngesterRunning) {
+      await issueIngester.stop();
+    }
+    let targetKeys: string[];
+    try {
+      const allKeys = await store.list('');
+      targetKeys = [
+        ...new Set(
+          allKeys.filter((key) => {
+            const isWorkflow = key.startsWith('workflow-state/');
+            if (scope === 'all') return true;
+            if (scope === 'runs') return !isWorkflow;
+            return isWorkflow;
+          }),
+        ),
+      ];
+      await Promise.all(targetKeys.map((key) => store.remove(key)));
+    } finally {
+      if (wasIssueIngesterRunning) {
+        issueIngester.start();
+      }
+      if (wasWorkerRunning) {
+        worker.start();
+      }
+    }
+    return {
+      ok: true,
+      scope,
+      deletedCount: targetKeys.length,
+    };
   });
 
   app.post<{
@@ -1674,7 +1823,10 @@ function workflowRequestedBy(env: NodeJS.ProcessEnv): string {
  *
  * Sorted newest-first by runId (timestamp-prefixed).
  */
-async function listRunsFromStore(store: RunStore): Promise<RunListEntry[]> {
+async function listRunsFromStore(
+  store: RunStore,
+  promotedRuns: ReadonlySet<string>,
+): Promise<RunListEntry[]> {
   const allKeys = await store.list('');
   // Keep only keys of the shape <briefId>/<runId>/summary.json (exactly 3 parts).
   const summaryKeys = allKeys.filter((k) => {
@@ -1703,6 +1855,7 @@ async function listRunsFromStore(store: RunStore): Promise<RunListEntry[]> {
       hasJudge: (summary?.candidates ?? []).some(
         (c) => c.judgeScorecard !== null && c.judgeScorecard !== undefined,
       ),
+      promotionState: promotedRuns.has(`${briefId}/${runId}`) ? 'promoted' : 'not-promoted',
     });
   }
   entries.sort((a, b) => (a.runId < b.runId ? 1 : a.runId > b.runId ? -1 : 0));
@@ -1747,6 +1900,7 @@ export function listRuns(runsDir: string): RunListEntry[] {
         hasJudge: (summary?.candidates ?? []).some(
           (c) => c.judgeScorecard !== null && c.judgeScorecard !== undefined,
         ),
+        promotionState: 'not-promoted',
       });
     }
   }
@@ -1754,6 +1908,34 @@ export function listRuns(runsDir: string): RunListEntry[] {
   // string sort is the right order.
   entries.sort((a, b) => (a.runId < b.runId ? 1 : a.runId > b.runId ? -1 : 0));
   return entries;
+}
+
+function readPromotedRunsFromManifest(manifestPath: string): ReadonlySet<string> {
+  if (!existsSync(manifestPath)) {
+    return new Set<string>();
+  }
+  try {
+    const parsed = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      entries?: Record<string, { sourceRun?: unknown }>;
+    };
+    const entries = parsed?.entries ?? {};
+    const promoted = new Set<string>();
+    for (const entry of Object.values(entries)) {
+      if (!entry || typeof entry.sourceRun !== 'string') continue;
+      const normalized = entry.sourceRun.replace(/\\/g, '/');
+      const parts = normalized
+        .split('/')
+        .filter((segment) => segment !== '')
+        .slice(-2);
+      if (parts.length !== 2) continue;
+      const [briefId, runId] = parts;
+      if (!briefId || !runId) continue;
+      promoted.add(`${briefId}/${runId}`);
+    }
+    return promoted;
+  } catch {
+    return new Set<string>();
+  }
 }
 
 function safeReaddir(dir: string): string[] {

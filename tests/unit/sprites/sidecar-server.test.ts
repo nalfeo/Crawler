@@ -240,6 +240,37 @@ describe('buildServer routes (inject)', () => {
     expect(body.runs[0].runId).toBe('2026-06-04T12-00-00-deadbeef');
   });
 
+  it('GET /api/runs marks promoted runs from Azure-style sourceRun paths', async () => {
+    const generatedDir = path.join(root, 'public', 'assets', 'generated');
+    mkdirSync(generatedDir, { recursive: true });
+    writeFileSync(
+      path.join(generatedDir, 'manifest.json'),
+      JSON.stringify({
+        version: 1,
+        entries: {
+          'iron-sword-var-1': {
+            sourceRun: path.join(
+              root,
+              'tmp',
+              'azure-hydration',
+              'iron-sword',
+              '2026-06-04T12-00-00-deadbeef',
+            ),
+          },
+        },
+      }),
+    );
+    const res = await app.inject({ method: 'GET', url: '/api/runs?promoted=promoted' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.runs).toHaveLength(1);
+    expect(body.runs[0]).toMatchObject({
+      briefId: 'iron-sword',
+      runId: '2026-06-04T12-00-00-deadbeef',
+      promotionState: 'promoted',
+    });
+  });
+
   it('GET /api/workflow/latest-run returns 400 when requestedAt is invalid', async () => {
     const res = await app.inject({
       method: 'GET',
@@ -1531,6 +1562,8 @@ describe('worker control endpoints (/api/workflow/worker/*)', () => {
         enqueued: 0,
         skippedDuplicate: 0,
       }),
+      listRequests: async () => [],
+      rejectRequest: async () => null,
     };
     app = buildServer({
       repoRoot: root,
@@ -1593,6 +1626,62 @@ describe('worker control endpoints (/api/workflow/worker/*)', () => {
     const res = await app.inject({ method: 'GET', url: '/api/workflow/issues/status' });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ running: false });
+  });
+
+  it('GET /api/workflow/asset-requests returns issue-request manifest entries', async () => {
+    const entry = {
+      key: '42:abc',
+      issueNumber: 42,
+      fingerprint: 'abc',
+      name: 'bone-dagger',
+      briefSentence: 'A chipped bone dagger with twine handle.',
+      state: 'pending' as const,
+      claimedAt: null,
+      rejectedAt: null,
+      rejectionReason: null,
+      isOpen: true,
+    };
+    issueIngester.listRequests = vi.fn(async () => [entry]);
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workflow/asset-requests?state=pending',
+    });
+    expect(res.statusCode).toBe(200);
+    expect(issueIngester.listRequests).toHaveBeenCalledWith('pending');
+    expect(res.json()).toEqual({ entries: [entry] });
+  });
+
+  it('POST /api/workflow/asset-requests/reject persists a permanent rejection marker', async () => {
+    issueIngester.rejectRequest = vi.fn(async () => ({
+      key: '42:abc',
+      issueNumber: 42,
+      fingerprint: 'abc',
+      name: 'bone-dagger',
+      briefSentence: 'A chipped bone dagger with twine handle.',
+      state: 'rejected' as const,
+      claimedAt: null,
+      rejectedAt: '2026-06-29T00:00:00.000Z',
+      rejectionReason: 'not needed this season',
+      isOpen: true,
+    }));
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/asset-requests/reject',
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        issueNumber: 42,
+        fingerprint: 'abc',
+        reason: 'not needed this season',
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(issueIngester.rejectRequest).toHaveBeenCalledWith({
+      issueNumber: 42,
+      fingerprint: 'abc',
+      reason: 'not needed this season',
+    });
+    expect(res.json().ok).toBe(true);
+    expect(res.json().entry.state).toBe('rejected');
   });
 });
 

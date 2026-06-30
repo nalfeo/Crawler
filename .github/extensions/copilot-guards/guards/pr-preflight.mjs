@@ -19,6 +19,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import process from 'node:process';
 import { branchFiles, branchAddedFiles } from '../lib/git.mjs';
 
 // ci-policy.md: feat|fix|chore|lab|docs|refactor|test|perf|ci|build
@@ -50,10 +51,6 @@ const HANDOFF_DATED_RE =
 // Files we treat as "trivial" for handoff-required purposes.
 const TRIVIAL_PATH_RE =
   /^(docs[\\/]|README\.md$|CHANGELOG\.md$|\.github[\\/](workflows|dependabot)|package(-lock)?\.json$|pnpm-lock\.yaml$|yarn\.lock$)/;
-
-function isLayerHit(files, re) {
-  return files.some((f) => re.test(f));
-}
 
 function extractTitle(args) {
   if (!args) return '';
@@ -151,6 +148,38 @@ function checkCrossSystemAdr(files) {
   return `Diff touches ${hitCount} architectural layers (src/core, src/engine, src/game). Per memory policy, every change affecting 2+ systems requires an ADR under docs/knowledge/adr/. Create one documenting: context, decision, consequences (positive/negative/risks), and alternatives considered.`;
 }
 
+function evaluatePreflightChecks({ files, addedFiles, cwd, toolArgs, skipSemanticTitle = false }) {
+  const denyParts = [];
+  if (!skipSemanticTitle) {
+    const titleIssue = checkSemanticTitle(toolArgs);
+    if (titleIssue) denyParts.push(titleIssue);
+  }
+
+  const handoffIssue = checkHandoff(files, addedFiles);
+  if (handoffIssue) denyParts.push(handoffIssue);
+
+  const forbiddenIssue = checkForbiddenPaths(files);
+  if (forbiddenIssue) denyParts.push(forbiddenIssue);
+
+  const labIssue = checkLabGate(files, cwd);
+  if (labIssue) denyParts.push(labIssue);
+
+  const adrIssue = checkCrossSystemAdr(files);
+  if (adrIssue) denyParts.push(adrIssue);
+
+  if (denyParts.length > 0) {
+    const reason = denyParts.join('\n\n--- next finding ---\n\n');
+    return {
+      decision: 'deny',
+      reason,
+    };
+  }
+
+  return {
+    decision: 'allow',
+  };
+}
+
 export default {
   id: 'pr-preflight',
   category: 'pr',
@@ -183,32 +212,12 @@ export default {
       };
     }
 
-    const denyParts = [];
-    const titleIssue = checkSemanticTitle(toolArgs);
-    if (titleIssue) denyParts.push(titleIssue);
-
-    const handoffIssue = checkHandoff(files, addedFiles);
-    if (handoffIssue) denyParts.push(handoffIssue);
-
-    const forbiddenIssue = checkForbiddenPaths(files);
-    if (forbiddenIssue) denyParts.push(forbiddenIssue);
-
-    const labIssue = checkLabGate(files, cwd);
-    if (labIssue) denyParts.push(labIssue);
-
-    const adrIssue = checkCrossSystemAdr(files);
-    if (adrIssue) denyParts.push(adrIssue);
-
-    if (denyParts.length > 0) {
-      const reason = denyParts.join('\n\n--- next finding ---\n\n');
-      return {
-        decision: 'deny',
-        reason,
-      };
-    }
-    return {
-      decision: 'allow',
-    };
+    return evaluatePreflightChecks({
+      files,
+      addedFiles,
+      cwd,
+      toolArgs,
+    });
   },
 };
 
@@ -216,7 +225,9 @@ export {
   checkSemanticTitle,
   checkHandoff,
   checkForbiddenPaths,
+  checkLabGate,
   checkCrossSystemAdr,
+  evaluatePreflightChecks,
   CONVENTIONAL_TITLE_RE,
   HANDOFF_DATED_RE,
   TRIVIAL_PATH_RE,

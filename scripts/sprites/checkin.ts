@@ -51,6 +51,10 @@ export interface CheckinAsset {
 /** Machine-readable payload embedded in the issue body for the consolidator. */
 export interface AssetCheckinPayload {
   readonly version: 1;
+  /** Workflow state marker for tooling that consumes issue payloads. */
+  readonly state?: 'checked-in';
+  /** ISO timestamp for when the tracking issue was filed. */
+  readonly filedAt?: string;
   readonly branch: string;
   readonly baseBranch: string;
   readonly assets: readonly CheckinAsset[];
@@ -104,7 +108,14 @@ export function planAssetCheckin(input: PlanAssetCheckinInput): AssetCheckinPlan
   const commitMessage = `feat(sprites): check in ${count} approved ${noun}`;
   const issueTitle = `Asset check-in: ${count} approved ${noun} (${slug})`;
 
-  const payload: AssetCheckinPayload = { version: 1, branch, baseBranch, assets };
+  const payload: AssetCheckinPayload = {
+    version: 1,
+    state: 'checked-in',
+    filedAt: input.now.toISOString(),
+    branch,
+    baseBranch,
+    assets,
+  };
   const issueBody = renderIssueBody(branch, baseBranch, assets, payload);
 
   return {

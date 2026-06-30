@@ -69,8 +69,10 @@ start of the session (see `docs/agent-os/policies/complexity-policy.md`).
 4. **Plan review** (>1🍎): a separate model reviews the (final) plan; address every
    concern → record `plan_review`. See
    [`references/plan-review.md`](references/plan-review.md).
-5. **Implement**, then `npm run verify:fast` / `npm run verify`.
-6. **Code-review loop** (all) → record `code_review`. See
+5. **Implement**, then `npm run verify:fast`.
+6. **As soon as implementation is done, run the review stages immediately**
+   (do **not** wait for `create_pull_request`):
+   **Code-review loop** (all) → record `code_review`. See
    [`references/code-review-loop.md`](references/code-review-loop.md).
 7. **Multi-model review + adjudication loop** (>3🍎) → record
    `multi_model_review`. See
@@ -81,8 +83,13 @@ start of the session (see `docs/agent-os/policies/complexity-policy.md`).
    ```
    Exit 0 = the guard will allow your PR. Exit 1 = it prints exactly which stage
    is incomplete.
-9. Write the dated handoff (pr-preflight still requires it), then
-   `create_pull_request`.
+9. Run full verify, which now includes an early PR-prereq pass:
+   ```
+   npm run verify
+   ```
+   (`verify` runs `verify:pr-prereqs`, surfacing review-ledger/preflight blockers before PR creation.)
+10. Write the dated handoff (pr-preflight still requires it), then
+    `create_pull_request`.
 
 ## Recording stages
 

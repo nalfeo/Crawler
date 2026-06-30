@@ -373,15 +373,6 @@ export function createBriefSelectorProvider(
   const apiKey = env.AZURE_OPENAI_API_KEY;
   const selectorDeployment = env.AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT;
   if (!endpoint || !apiKey || !selectorDeployment) return null;
-  const warn = options.warn ?? defaultWarn;
-  const synthResolved = resolveChatDeployment(env, warn);
-  const synthDeployment = synthResolved?.deployment ?? env.AZURE_OPENAI_CHAT_DEPLOYMENT ?? null;
-  if (synthDeployment && synthDeployment === selectorDeployment) {
-    throw new Error(
-      'AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT must differ from the synthesizer deployment ' +
-        `(resolved synth='${synthDeployment}').`,
-    );
-  }
   const apiVersion = env.AZURE_OPENAI_API_VERSION ?? DEFAULT_AZURE_API_VERSION;
   return new AzureOpenAIBriefSelectorProvider({
     endpoint,

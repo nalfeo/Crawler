@@ -29,6 +29,8 @@ interface PlaceholderAuditCliArgs {
   readonly failOnReplaceable: boolean;
 }
 
+export type { PlaceholderAuditCliArgs };
+
 const DEFAULT_MANIFEST_PATH = path.join('public', 'assets', 'generated', 'manifest.json');
 const GENERATED_ASSET_DIR = 'public/assets/generated';
 const PUBLIC_ASSET_PREFIX = 'public/assets/';

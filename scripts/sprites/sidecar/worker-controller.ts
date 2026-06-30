@@ -47,6 +47,7 @@ import {
   createGhAssetRequestIssueApi,
   type AssetRequestIssueApi,
 } from './asset-request-issue-api.js';
+import { isIssueRequestRejectedIngestState } from './issue-ingester-controller.js';
 
 /** Signature of {@link runWorker}; injectable so tests avoid a real loop. */
 export type RunWorkerFn = (options: WorkerOptions) => Promise<void>;
@@ -225,6 +226,8 @@ export function createWorkerController(deps: WorkerControllerDeps): WorkerContro
         briefSelectorProvider,
         visionProvider,
         issueApi,
+        shouldSkipIssueRequest: async (request) =>
+          isIssueRequestRejectedIngestState(deps.store, request.issueNumber, request.fingerprint),
         signal: abortController.signal,
         onStatus: recordStatus,
         ...(deps.pollIntervalMs !== undefined ? { pollIntervalMs: deps.pollIntervalMs } : {}),

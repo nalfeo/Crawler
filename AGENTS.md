@@ -7,7 +7,7 @@
 3. Check `docs/knowledge/handoffs/` for recent session context
 4. Load durable facts: call the memory MCP `read_graph` (or `search_nodes`) and skim `docs/knowledge/memory/` — see `docs/guides/agent-memory.md`
 5. Run `bash scripts/agent/verify-fast.sh` after every meaningful change
-6. Run `bash scripts/agent/verify.sh` before committing
+6. Run `bash scripts/agent/verify.sh` before committing (includes `verify:pr-prereqs`, so review-harness + other PR prerequisites fail early instead of waiting for `create_pull_request`)
 7. Write a handoff file before ending your session
 8. If `files/guard-telemetry.jsonl` exists, paste `npx tsx scripts/agent/docs/guard-telemetry.ts --handoff-section` into the handoff
 
@@ -43,6 +43,7 @@
 | Sprite metadata        | `npm run sprites:metadata`         |
 | Fast verify            | `npm run verify:fast`              |
 | Full verify            | `npm run verify`                   |
+| PR prereq check        | `npm run verify:pr-prereqs`        |
 | Full verify + coverage | `VERIFY_COVERAGE=1 npm run verify` |
 | Guard + ledger tests   | `npm run test:guards`              |
 | Review ledger          | `npm run review:ledger`            |
@@ -135,7 +136,7 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 
 ## Merge Policy
 
-- When authorized to merge a PR, always use `gh pr merge --auto --squash`. This enables GitHub's auto-merge and completes once all required checks pass — do not poll or wait manually.
+- When authorized to merge a PR, always use `gh pr merge --auto --squash`. This enables GitHub's auto-merge and completes once all required checks pass. Do not run open-ended manual polling/wait loops after arming, but do perform a bounded final-state verification (`state=MERGED` and non-null `mergeCommit`) and clear unresolved review threads before idling.
 - **No human review is required to merge.** Branch protection does NOT require an approving review. Never attribute a merge failure to a "human review block" without explicit proof from `gh pr merge` output.
 - When `gh pr merge` fails, diagnose the actual cause before giving up:
   1. Run `gh pr checks <pr-number>` to see which checks are failing.

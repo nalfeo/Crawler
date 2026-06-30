@@ -1,0 +1,21 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-06-30",
+  "session_slug": "pr-shepherd-thread-first-auto-merge",
+  "task_title": "Update PR shepherd with thread-first auto-merge verification",
+  "estimated_apples": 1,
+  "stages": {
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

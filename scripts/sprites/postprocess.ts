@@ -21,8 +21,9 @@
  *   - No randomness (no Math.random; if you need ties broken, break them
  *     deterministically on index).
  *   - No environment reads (no process.env).
- *   - No filesystem access. The function takes the raw PNG bytes and returns
- *     the encoded result.
+ *   - No network access or environment-driven behavior.
+ *   - Pipeline templates are loaded from disk via a cached resolver; image
+ *     processing itself remains pure for a given raw PNG + brief + palette.
  *
  * Note on signature: the spec writes `(rawPng, brief) => Buffer`, but the brief
  * carries a palette *id*, not the resolved color list. To keep this function
@@ -33,7 +34,12 @@
 
 import { PNG } from 'pngjs';
 import type { Brief, PaletteColors, RgbTriple } from './brief-schema.js';
-import { resizeSpriteStrategy } from './size-variants.js';
+import { getPipelineForType, getActiveModules } from './template-pipeline.js';
+import { postprocessModules } from './postprocess-modules.js';
+import {
+  BACKGROUND_B_COLOR_TOLERANCE_SQ,
+  BACKGROUND_B_FRINGE_TOLERANCE_SQ,
+} from './postprocess-constants.js';
 
 interface RgbaImage {
   readonly width: number;
@@ -89,6 +95,7 @@ export function postprocessWithTrace(
   if (palette.length === 0) {
     throw new Error('postprocess: palette must contain at least one color');
   }
+
   const steps: PostprocessStepTrace[] = [];
   const pushStep = (id: string, label: string, image: RgbaImage): void => {
     steps.push({ id, label, png: encodePng(image) });
@@ -96,104 +103,62 @@ export function postprocessWithTrace(
 
   let image = decodePng(rawPng);
   const backgroundSource = image;
-  const defaultBackgroundColorToleranceSq = BACKGROUND_B_COLOR_TOLERANCE_SQ;
-  const backgroundColorToleranceSq = normalizeTolerance(
-    options.background?.colorToleranceSq,
-    defaultBackgroundColorToleranceSq,
-  );
-  const backgroundFringeToleranceSq = normalizeTolerance(
-    options.background?.fringeToleranceSq,
-    BACKGROUND_B_FRINGE_TOLERANCE_SQ,
-  );
-  image = removeBackgroundB(image, {
-    colorToleranceSq: backgroundColorToleranceSq,
-    fringeToleranceSq: backgroundFringeToleranceSq,
-    clearEnclosedIslands: false,
-  });
-  pushStep('background-removal', 'Background removal', image);
+
+  // Determine if enclosed-region cleanup should run
   const enclosedRegionMode: EnclosedBackgroundMode =
     options.modules?.enclosedBackgroundMode ?? 'enabled';
   const shouldRunEnclosedBackgroundCleanup =
     enclosedRegionMode !== 'disabled' && (brief.type === 'enemy' || brief.type === 'character');
-  if (shouldRunEnclosedBackgroundCleanup) {
-    image = removeEnclosedBackgroundRegions(image, backgroundSource, backgroundFringeToleranceSq);
-    pushStep('background-enclosed-regions', 'Background enclosed-region cleanup', image);
-  } else {
-    pushStep(
-      'background-enclosed-regions-disabled',
-      'Background enclosed-region cleanup (disabled)',
-      image,
-    );
-  }
 
-  // Trim phase: crop to the opaque bounding box, then re-pad with a small
-  // proportional transparent margin on every edge. The margin keeps the subject
-  // off the frame edge after the resize (so opaque-bbox-fits still passes) and
-  // guarantees every subject-boundary pixel has a transparent neighbour, which
-  // the post-resize background re-removal relies on to reach reintroduced
-  // fringe. The same crop runs for every sprite type so the resize no longer
-  // needs its own internal re-trim. `tightlyTrimmed` is already the tight crop,
-  // so we pad it directly rather than re-scanning the full-resolution source.
-  const tightlyTrimmed = trimTransparentEdges(image);
-  if (tightlyTrimmed.width > 0 && tightlyTrimmed.height > 0) {
-    const marginPx = subjectTrimMarginPx(tightlyTrimmed.width, tightlyTrimmed.height);
-    image = trimTransparentEdges(tightlyTrimmed, marginPx);
-    pushStep('transparent-trim', `Transparent trim (${marginPx}px margin)`, image);
-  } else {
-    pushStep('transparent-trim', 'Transparent trim (skipped, empty)', image);
-  }
+  // Load the pipeline template for this sprite type
+  const pipeline = getPipelineForType(brief.type);
+  const activeModules = getActiveModules(pipeline, brief.type);
 
-  const fitResize = fitWithinNearest(
-    image,
-    brief.size.width,
-    brief.size.height,
-    resizeSpriteStrategy(brief.type, brief.size.width, brief.size.height),
-  );
-  image = fitResize.image;
-  pushStep(
-    'resize-nearest',
-    `Resize (nearest-fit, ${fitResize.fittedWidth}x${fitResize.fittedHeight} in ${image.width}x${image.height})`,
-    image,
-  );
-
-  // Re-run background removal after the resize. Stretching the trimmed subject
-  // with nearest-neighbor sampling can re-expose background-coloured (pink)
-  // fringe pixels; re-key against the ORIGINAL background colours to clear them
-  // without eating the now transparent-padded canvas's dark foreground.
-  image = removeReintroducedBackground(image, backgroundSource, {
-    fringeToleranceSq: backgroundFringeToleranceSq,
-    clearEnclosedIslands: shouldRunEnclosedBackgroundCleanup,
-  });
-  pushStep('background-rekey', 'Background re-removal (post-resize)', image);
-
-  const speckleMode = options.modules?.speckleMode ?? 'edge-drop';
-  if (speckleMode !== 'disabled') {
-    image = removeIsolatedNearWhiteSpeckles(image, {
-      ...options.speckle,
-      ...(speckleMode === 'preserve-orphans' ? { dropEdgeOrphans: false } : {}),
-    });
-    pushStep('speckle-cleanup', `Speckle cleanup (${speckleMode})`, image);
-  } else {
-    pushStep('speckle-cleanup-disabled', 'Speckle cleanup (disabled)', image);
-  }
-
-  if (brief.postprocessing?.paletteMode === 'strict') {
-    image = quantizeToPalette(image, palette);
-    pushStep('palette-quantize', 'Palette quantize (strict)', image);
-  } else {
-    pushStep('palette-quantize-skipped', 'Palette quantize (skipped)', image);
-  }
-
-  image = hardThresholdAlpha(image);
-  pushStep('alpha-threshold', 'Alpha threshold', image);
-
-  if (brief.postprocessing?.trimAndFit) {
-    const trimmed = trimTransparentEdges(image);
-    if (trimmed.width > 0 && trimmed.height > 0) {
-      const minDim = brief.postprocessing.minDimension ?? 64;
-      image = scaleToMinDimension(trimmed, minDim);
-      pushStep('trim-fit', `Trim + fit (${minDim}px min)`, image);
+  // Execute each module in the pipeline
+  for (const { name, config } of activeModules) {
+    const handler = postprocessModules[config.type];
+    if (!handler) {
+      throw new Error(`Unknown module type: ${config.type} (from module: ${name})`);
     }
+
+    // Apply options overrides to module params
+    const moduleParams: Record<string, unknown> = { ...config.params };
+    if (config.type === 'background-removal' && options.background) {
+      if (options.background.colorToleranceSq !== undefined) {
+        moduleParams.colorToleranceSq = options.background.colorToleranceSq;
+      }
+      if (options.background.fringeToleranceSq !== undefined) {
+        moduleParams.fringeToleranceSq = options.background.fringeToleranceSq;
+      }
+    }
+    if (
+      (config.type === 'enclosed-region-cleanup' || config.type === 'background-rekey') &&
+      options.background?.fringeToleranceSq !== undefined
+    ) {
+      moduleParams.fringeToleranceSq = options.background.fringeToleranceSq;
+    }
+    if (config.type === 'speckle-cleanup' && options.speckle) {
+      if (options.speckle.minChannel !== undefined) {
+        moduleParams.minChannel = options.speckle.minChannel;
+      }
+      if (options.speckle.maxOpaqueNeighbors !== undefined) {
+        moduleParams.maxOpaqueNeighbors = options.speckle.maxOpaqueNeighbors;
+      }
+      if (options.speckle.dropEdgeOrphans !== undefined) {
+        moduleParams.dropEdgeOrphans = options.speckle.dropEdgeOrphans;
+      }
+    }
+    if (config.type === 'speckle-cleanup' && options.modules?.speckleMode !== undefined) {
+      moduleParams.mode = options.modules.speckleMode;
+    }
+
+    image = handler(image, moduleParams, {
+      brief,
+      palette,
+      pushStep,
+      backgroundSource,
+      shouldRunEnclosedBackgroundCleanup,
+    });
   }
 
   return { finalPng: encodePng(image), steps };
@@ -305,8 +270,7 @@ function encodePng(image: RgbaImage): Buffer {
  */
 export const BACKGROUND_COLOR_TOLERANCE_SQ = 32 * 32; // squared Euclidean RGB tolerance
 export const BACKGROUND_FRINGE_TOLERANCE_SQ = 56 * 56; // post-flood edge cleanup tolerance
-export const BACKGROUND_B_COLOR_TOLERANCE_SQ = 4000; // fringe-clean default flood-fill tolerance
-export const BACKGROUND_B_FRINGE_TOLERANCE_SQ = 12000; // fringe-clean default cleanup tolerance
+export { BACKGROUND_B_COLOR_TOLERANCE_SQ, BACKGROUND_B_FRINGE_TOLERANCE_SQ };
 /**
  * Minimum pixel area for an enclosed background-coloured region to be cleared.
  *
@@ -636,13 +600,6 @@ function floodFill(
   }
 }
 
-function normalizeTolerance(raw: number | undefined, fallback: number): number {
-  if (raw === undefined) return fallback;
-  if (!Number.isFinite(raw)) return fallback;
-  const normalized = Math.round(raw);
-  return normalized >= 0 ? normalized : fallback;
-}
-
 /**
  * Fraction of the trimmed subject's larger dimension kept as a transparent
  * margin on every edge by the trim phase. ~6% leaves the subject occupying
@@ -666,7 +623,7 @@ export function subjectTrimMarginPx(width: number, height: number): number {
   return Math.max(1, Math.round(maxDim * SUBJECT_TRIM_MARGIN_FRACTION));
 }
 
-function fitWithinNearest(
+export function fitWithinNearest(
   image: RgbaImage,
   boxW: number,
   boxH: number,

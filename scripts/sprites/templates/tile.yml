@@ -1,0 +1,28 @@
+# Tile post-processing pipeline template
+#
+# Tiles must be edge-to-edge with no processing:
+# - No background removal
+# - No transparent trimming
+# - No resizing
+#
+# Inherits from base.yml but disables trim/resize-specific steps.
+
+extends: base.yml
+name: tile-postprocess-pipeline
+description: Pipeline for tiles - edge-to-edge, no trim/resize/background-removal
+
+modules:
+  background-removal:
+    enabled: false
+
+  enclosed-regions:
+    enabled: false
+
+  transparent-trim:
+    enabled: false
+
+  resize:
+    enabled: false
+
+  background-rekey:
+    enabled: false

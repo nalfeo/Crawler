@@ -40,6 +40,8 @@ function isAssetCheckinPayload(value: unknown): value is AssetCheckinPayload {
   if (typeof value !== 'object' || value === null) return false;
   const v = value as Record<string, unknown>;
   if (v.version !== 1) return false;
+  if (v.state !== undefined && v.state !== 'checked-in') return false;
+  if (v.filedAt !== undefined && typeof v.filedAt !== 'string') return false;
   if (typeof v.branch !== 'string' || typeof v.baseBranch !== 'string') return false;
   if (!Array.isArray(v.assets)) return false;
   return v.assets.every(isCheckinAsset);
