@@ -1,0 +1,9 @@
+{
+  "date": "2026-06-30",
+  "slug": "mob-health-bars",
+  "task": "Render health bars below mobs while excluding bosses",
+  "estimated_apples": 2,
+  "actual_apples": 2,
+  "verdict": "exact",
+  "notes": "Small engine rendering addition with targeted fixture/test updates and review-ledger compliance."
+}

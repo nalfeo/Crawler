@@ -6,10 +6,9 @@
  * provide a minimal mock `Phaser.Scene` whose `add.image(...)` records a
  * lightweight {@link MockImage} for every sprite the bridge creates.
  *
- * The stub deliberately exposes ONLY `add.image` (plus an optional `textures`
- * probe). The bridge guards optional shape factories (e.g. `add.ellipse` for
- * gem/gold shadows) behind a `typeof scene.add.ellipse === 'function'` check, so
- * a stub without them yields exactly one image per renderable entity — the
+ * The stub exposes `add.image` plus optional `add.graphics` (for features like
+ * enemy health bars). By default graphics are omitted, so a stub world with only
+ * sprite-like entities yields exactly one image per renderable entity — the
  * cleanest surface for counting/identity assertions.
  *
  * Extracted from `tests/unit/phaser-bridge.test.ts` so the original behavioral
@@ -137,8 +136,93 @@ export class MockImage {
   }
 }
 
+export class MockGraphics {
+  destroyed = false;
+  visible = true;
+  alpha = 1;
+  depth = 0;
+  fillRects: Array<{ x: number; y: number; w: number; h: number }> = [];
+
+  clear(): this {
+    this.fillRects = [];
+    return this;
+  }
+
+  fillStyle(_color: number, _alpha = 1): this {
+    return this;
+  }
+
+  fillRect(x: number, y: number, w: number, h: number): this {
+    this.fillRects.push({ x, y, w, h });
+    return this;
+  }
+
+  lineStyle(_width: number, _color: number, _alpha = 1): this {
+    return this;
+  }
+
+  strokeRect(_x: number, _y: number, _w: number, _h: number): this {
+    return this;
+  }
+
+  beginPath(): this {
+    return this;
+  }
+
+  moveTo(_x: number, _y: number): this {
+    return this;
+  }
+
+  lineTo(_x: number, _y: number): this {
+    return this;
+  }
+
+  strokePath(): this {
+    return this;
+  }
+
+  arc(
+    _x: number,
+    _y: number,
+    _r: number,
+    _a0: number,
+    _a1: number,
+    _anticlockwise?: boolean,
+  ): this {
+    return this;
+  }
+
+  fillCircle(_x: number, _y: number, _r: number): this {
+    return this;
+  }
+
+  strokeCircle(_x: number, _y: number, _r: number): this {
+    return this;
+  }
+
+  setVisible(visible: boolean): this {
+    this.visible = visible;
+    return this;
+  }
+
+  setAlpha(alpha: number): this {
+    this.alpha = alpha;
+    return this;
+  }
+
+  setDepth(depth: number): this {
+    this.depth = depth;
+    return this;
+  }
+
+  destroy(): void {
+    this.destroyed = true;
+  }
+}
+
 /** Result of {@link createSceneStub}: the recorded images plus the mock scene. */
 export interface SceneStub {
+  graphics: MockGraphics[];
   images: MockImage[];
   scene: Phaser.Scene;
 }
@@ -148,20 +232,30 @@ export interface SceneStub {
  * `images` and returns it. `kenneyLoaded` toggles the optional `textures.exists`
  * probe so tests can exercise both the procedural and Kenney sprite-sheet paths.
  */
-export function createSceneStub(options: { kenneyLoaded?: boolean } = {}): SceneStub {
+export function createSceneStub(
+  options: { kenneyLoaded?: boolean; withGraphics?: boolean } = {},
+): SceneStub {
   const images: MockImage[] = [];
+  const graphics: MockGraphics[] = [];
   const image = vi.fn((x = 0, y = 0, textureKey = '', frame?: number) => {
     const mockImage = new MockImage(x, y, textureKey, frame);
     images.push(mockImage);
     return mockImage as unknown as Phaser.GameObjects.Image;
   });
+  const addGraphics = vi.fn(() => {
+    const mockGraphics = new MockGraphics();
+    graphics.push(mockGraphics);
+    return mockGraphics as unknown as Phaser.GameObjects.Graphics;
+  });
 
   const textures = options.kenneyLoaded ? { exists: (_key: string) => true } : undefined;
 
   return {
+    graphics,
     images,
     scene: {
       add: {
+        ...(options.withGraphics ? { graphics: addGraphics } : {}),
         image,
       },
       textures,
