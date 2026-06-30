@@ -10,6 +10,7 @@ import {
 import { emptyGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
 
 const logger = createLogger('engine:boot-scene');
+const GENERATED_SPRITE_LOAD_TIMEOUT_MS = 15000;
 const CRITICAL_SHEET_KEYS = new Set([
   'kenney-tiny-dungeon',
   'kenney-tiny-town',
@@ -19,6 +20,7 @@ const CRITICAL_SHEET_KEYS = new Set([
 
 export class BootScene extends Phaser.Scene {
   static readonly KEY = 'BootScene';
+  private startedMainGame = false;
 
   constructor() {
     super({ key: BootScene.KEY });
@@ -61,35 +63,78 @@ export class BootScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.scene.start(MainGameScene.KEY);
-    void this.warmGeneratedSprites();
+    // Fetch and queue generated sprites, then start the main game scene once
+    // the sprites are loaded. This ensures approved custom art is available
+    // before MainGameScene renders any entities.
+    void this.loadGeneratedSpritesAndStartGame();
   }
 
-  private async warmGeneratedSprites(): Promise<void> {
+  private async loadGeneratedSpritesAndStartGame(): Promise<void> {
     try {
       const registry = await fetchGeneratedSpriteRegistry();
       this.game.registry.set(GENERATED_SPRITE_REGISTRY_KEY, registry);
 
       if (registry.size === 0 || !this.load) {
-        logger.info('No generated sprites to warm after startup');
+        logger.info('No generated sprites to load; starting game now');
+        this.startMainGame();
         return;
       }
 
       const queued = preloadGeneratedSprites(this.load, registry);
       if (queued.length === 0) {
+        logger.info('No sprites queued; starting game now');
+        this.startMainGame();
         return;
       }
 
-      this.load.once(Phaser.Loader.Events.COMPLETE, () => {
-        logger.info('Generated sprite warm load complete', {
-          count: queued.length,
-        });
+      logger.info('Waiting for generated sprites to load before starting main game', {
+        count: queued.length,
       });
-      this.load.start();
+
+      // Wait for all generated sprite loads to complete, then start the game.
+      // If the load cycle stalls, continue after a timeout so boot cannot hang.
+      await new Promise<void>((resolve) => {
+        let settled = false;
+        const onComplete = (): void => {
+          logger.info('Generated sprites loaded; starting main game scene', {
+            count: queued.length,
+          });
+          finalize();
+        };
+        const finalize = (): void => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          this.load.off(Phaser.Loader.Events.COMPLETE, onComplete);
+          clearTimeout(timeoutId);
+          resolve();
+        };
+
+        this.load.on(Phaser.Loader.Events.COMPLETE, onComplete);
+        const timeoutId = setTimeout(() => {
+          logger.warn('Generated sprite load timed out; starting game with built-in sprites', {
+            count: queued.length,
+            timeoutMs: GENERATED_SPRITE_LOAD_TIMEOUT_MS,
+          });
+          finalize();
+        }, GENERATED_SPRITE_LOAD_TIMEOUT_MS);
+        this.load.start();
+      });
+      this.startMainGame();
     } catch (err) {
-      logger.warn('Generated sprite warm load errored; continuing with built-in sprites', {
+      logger.warn('Generated sprite load failed; continuing with built-in sprites', {
         error: err instanceof Error ? err.message : String(err),
       });
+      this.startMainGame();
     }
+  }
+
+  private startMainGame(): void {
+    if (this.startedMainGame) {
+      return;
+    }
+    this.startedMainGame = true;
+    this.scene.start(MainGameScene.KEY);
   }
 }

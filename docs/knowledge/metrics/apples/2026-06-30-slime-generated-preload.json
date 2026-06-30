@@ -1,0 +1,9 @@
+{
+  "date": "2026-06-30",
+  "slug": "slime-generated-preload",
+  "task": "Load generated slime sprites before main scene startup",
+  "estimated_apples": 1,
+  "actual_apples": 1,
+  "verdict": "exact",
+  "notes": "Single-engine-file behavior fix plus timeout hardening and review-ledger compliance."
+}
