@@ -27,6 +27,7 @@ import {
 import {
   computeEnemyScale,
   enemyVariantFromTextureId,
+  generatedBriefIdForEnemy,
   pickGeneratedEnemyTextureKey,
   resolveRenderKind,
   SLIME_FULL_SPRITE_WIDTH,
@@ -247,7 +248,13 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         type: string,
         options?: { appearanceKey?: string; variantRoll?: number },
       ): ResolvedTexture => {
-        const cacheKey = `${type}|${options?.appearanceKey ?? ''}|${options?.variantRoll ?? ''}`;
+        const registry = getGeneratedSpriteRegistry(scene);
+        const briefId = generatedBriefIdForEnemy(type, options?.appearanceKey);
+        const hasGeneratedVariants =
+          briefId !== undefined && registry !== null && registry.variants(briefId).length > 0;
+        const cacheKey = `${type}:${options?.appearanceKey ?? ''}:${
+          hasGeneratedVariants ? (options?.variantRoll ?? '') : ''
+        }`;
         const cached = preferredTextureCache.get(cacheKey);
         if (cached !== undefined) {
           return cached;
