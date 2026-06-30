@@ -48,12 +48,15 @@ import {
   resolveRenderKind,
   SLIME_FULL_SPRITE_WIDTH,
 } from './phaser-bridge/sprite-kind.js';
+import { BOSS_BAR_COLORS } from './boss-health-bar-state.js';
 
 const DEAD_SKULL_Y_OFFSET = 18;
 const MOB_HEALTH_BAR_HEIGHT_PX = 4;
 const MOB_HEALTH_BAR_MIN_WIDTH_PX = 16;
 const MOB_HEALTH_BAR_MAX_WIDTH_PX = 28;
 const MOB_HEALTH_BAR_Y_GAP_PX = 6;
+/** Fallback half-height when a sprite's displayHeight is unavailable. */
+const MOB_HEALTH_BAR_DEFAULT_SPRITE_HALF_HEIGHT_PX = 8;
 const logger = createLogger('engine:phaser-bridge');
 
 interface EntityVisual {
@@ -942,8 +945,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             !isBoss && !isDeadEnemy && isVisible && typeof scene.add.graphics === 'function';
           const existingBar = mobHealthBars.get(eid);
           if (!shouldShowMobHealthBar) {
-            existingBar?.destroy();
-            mobHealthBars.delete(eid);
+            existingBar?.setVisible(false);
           } else {
             const current = Math.max(0, world.stores.health.current[eid] ?? 0);
             const max = Math.max(1, world.stores.health.max[eid] ?? 1);
@@ -955,7 +957,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             const displayHeight =
               typeof img.displayHeight === 'number' && Number.isFinite(img.displayHeight)
                 ? img.displayHeight
-                : MOB_HEALTH_BAR_MAX_WIDTH_PX / 2;
+                : MOB_HEALTH_BAR_DEFAULT_SPRITE_HALF_HEIGHT_PX * 2;
             const barWidth = Math.max(
               MOB_HEALTH_BAR_MIN_WIDTH_PX,
               Math.min(MOB_HEALTH_BAR_MAX_WIDTH_PX, Math.round(displayWidth)),
@@ -963,7 +965,12 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             const barX = x - barWidth / 2;
             const barY = y + displayHeight / 2 + MOB_HEALTH_BAR_Y_GAP_PX;
             const fillWidth = Math.max(1, Math.round(barWidth * pct));
-            const fillColor = pct > 0.5 ? 0x22c55e : pct >= 0.25 ? 0xf59e0b : 0xef4444;
+            const fillColor =
+              pct > 0.5
+                ? BOSS_BAR_COLORS.high
+                : pct >= 0.25
+                  ? BOSS_BAR_COLORS.mid
+                  : BOSS_BAR_COLORS.low;
             const bar = existingBar ?? scene.add.graphics();
             if (!existingBar) {
               mobHealthBars.set(eid, bar);
