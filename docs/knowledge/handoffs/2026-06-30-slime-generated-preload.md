@@ -46,8 +46,6 @@ Fixed startup sprite resolution so generated enemy art is available before `Main
 
 ## Agent-OS Telemetry
 
-## Agent-OS Telemetry
-
 Guard telemetry artifact: `files/guard-telemetry.jsonl`
 
 ```json
