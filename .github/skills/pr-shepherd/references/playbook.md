@@ -185,8 +185,8 @@ thinking "CI will handle it" — they didn't check for blocking threads first.
 **Shepherd responsibility:**
 
 1. Arm auto-merge with `gh pr merge <n> --auto --squash`
-2. Poll up to 2 min: check `gh pr view <n> --json state`
-3. If still BLOCKED after 60s, check for unresolved review threads (GraphQL query above)
+2. Poll up to 2 min: check `gh pr view <n> --json state,mergeStateStatus,mergeCommit`
+3. If `mergeStateStatus` is still `BLOCKED` after 60s, check for unresolved review threads (GraphQL query above)
 4. If threads found: resolve them, re-arm auto-merge
 5. Verify merge completes: `state === "MERGED"` + `mergeCommit !== null`
 6. Only then go idle (report merge commit SHA to creator)
