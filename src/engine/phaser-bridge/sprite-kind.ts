@@ -21,6 +21,8 @@ import {
 import type { GameWorld } from '../../core/world.js';
 import { TeamId } from '../../shared/constants.js';
 import { computeSpawnPopScale, spawnAnimProgress } from '../../shared/spawn-anim.js';
+import type { EntitySpriteMappings } from '../../shared/data/entity-sprite-mappings.js';
+import ENTITY_SPRITE_MAPPINGS from '../../shared/data/entity-sprite-mappings.json';
 
 /**
  * Pure entity → render-kind resolution for {@link createPhaserBridge}.
@@ -100,15 +102,29 @@ export function resolveRenderKind(world: RenderKindWorld, eid: number): string {
 }
 
 /**
+ * Build a reverse lookup of textureId → variant from the config.
+ * Cached at module load so lookups remain O(1).
+ */
+const textureIdToVariant = (() => {
+  const map = new Map<number, string>();
+  for (const [variant, mapping] of Object.entries(
+    (ENTITY_SPRITE_MAPPINGS as EntitySpriteMappings).enemies,
+  )) {
+    map.set(mapping.textureId, variant);
+  }
+  return map;
+})();
+
+/**
  * Map a `Sprite.textureId` variant to the enemy visual type understood by the
  * texture resolver. Used both to refine a live `'enemy'` into its rat/slime
  * variant and as the corpse-explosion texture fallback when the dying enemy's
  * on-screen visual is no longer available.
  */
 export function enemyVariantFromTextureId(textureId: number | undefined): string {
-  if (textureId === 1) return 'enemy_rat';
-  if (textureId === 2) return 'enemy_slime';
-  return 'enemy';
+  if (textureId === undefined) return 'enemy';
+  const variant = textureIdToVariant.get(textureId);
+  return variant ?? 'enemy';
 }
 
 /** Result of {@link computeEnemyScale}: the live X/Y render scale for an enemy. */

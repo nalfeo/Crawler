@@ -44,6 +44,15 @@ test('classifyPath: code (everything else)', () => {
   assert.equal(classifyPath('tsconfig.json'), 'code');
 });
 
+test('classifyPath: config (whitelisted src/shared/data config files)', () => {
+  assert.equal(classifyPath('src/shared/data/entity-sprite-mappings.json'), 'config');
+  assert.equal(classifyPath('src/shared/data/sprite-catalog.json'), 'config');
+  // Non-whitelisted src/shared/data files are still code (including tuning.json for gameplay)
+  assert.equal(classifyPath('src/shared/data/tuning.json'), 'code');
+  assert.equal(classifyPath('src/shared/data/enemies.floor1.json'), 'code');
+  assert.equal(classifyPath('src/shared/data/weapons.json'), 'code');
+});
+
 test('classifyPath: src/** is NEVER skippable, even a markdown under src', () => {
   assert.equal(classifyPath('src/core/foo.ts'), 'code');
   assert.equal(classifyPath('src/labs/demo.ts'), 'code');
@@ -100,6 +109,18 @@ test('decideLedger: empty diff -> skip', () => {
 
 test('decideLedger: docs-only diff -> skip with context', () => {
   const d = decideLedger(['docs/a.md', 'README.md'], []);
+  assert.equal(d.decision, 'skip');
+  assert.match(d.additionalContext, /docs\/art\/deps-only/);
+});
+
+test('decideLedger: config-only diff (entity-sprite-mappings) -> skip with context', () => {
+  const d = decideLedger(['src/shared/data/entity-sprite-mappings.json'], []);
+  assert.equal(d.decision, 'skip');
+  assert.match(d.additionalContext, /docs\/art\/deps-only/);
+});
+
+test('decideLedger: config-only diff (sprite-catalog) -> skip with context', () => {
+  const d = decideLedger(['src/shared/data/sprite-catalog.json'], []);
   assert.equal(d.decision, 'skip');
   assert.match(d.additionalContext, /docs\/art\/deps-only/);
 });
