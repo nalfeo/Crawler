@@ -55,7 +55,9 @@ Objective score = weighted sum of dimensions.
 
 Overall score:
 
-- with surveys: `0.6 * objective + 0.4 * subjective`
+- with surveys: blend subjective weight by survey coverage  
+  `subjective_weight = 0.4 * survey_coverage`  
+  `overall = objective * (1 - subjective_weight) + subjective * subjective_weight`
 - without surveys: objective only
 
 ## Gate defaults

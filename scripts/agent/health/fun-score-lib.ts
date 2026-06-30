@@ -58,10 +58,35 @@ export interface FunScoreConfig {
   readonly minDimension: number;
 }
 
+export interface FunScoreCLIArgs {
+  readonly inputPath: string;
+  readonly outputPath: string | null;
+  readonly minOverall: number;
+  readonly minDimension: number;
+}
+
+type UnknownRecord = Record<string, unknown>;
+const VALID_OUTCOMES = new Set<RunStats['outcome']>([
+  'victory',
+  'death',
+  'timeout',
+  'stalled',
+  'error',
+]);
+
 const DEFAULT_CONFIG: FunScoreConfig = {
   minOverall: 70,
   minDimension: 55,
 };
+
+export const GATED_DIMENSIONS: ReadonlyArray<keyof FunDimensionScores> = [
+  'engagement',
+  'challenge_balance',
+  'excitement',
+  'pacing',
+  'competence_growth',
+  'choice_depth',
+];
 
 const DIMENSION_WEIGHTS: Readonly<Record<keyof FunDimensionScores, number>> = {
   engagement: 25,
@@ -72,6 +97,150 @@ const DIMENSION_WEIGHTS: Readonly<Record<keyof FunDimensionScores, number>> = {
   choice_depth: 7,
   run_distinctness: 7,
 };
+
+// Keep in sync with FLOOR_1_MAX_STARTER_CHOICES in src/game/floorScenario.ts.
+const FLOOR_1_STARTER_WEAPON_CHOICES = 3;
+const SUBJECTIVE_BLEND_WEIGHT = 0.4;
+
+function hasNumberField(obj: UnknownRecord, key: string): boolean {
+  return typeof obj[key] === 'number' && Number.isFinite(obj[key]);
+}
+
+export function parseFunScoreArgs(argv: ReadonlyArray<string>): FunScoreCLIArgs {
+  let inputPath = '';
+  let outputPath: string | null = null;
+  let minOverall = 70;
+  let minDimension = 55;
+
+  for (let i = 2; i < argv.length; i += 1) {
+    const arg = argv[i];
+    const next = argv[i + 1];
+    if (arg === '--input' && typeof next === 'string') {
+      inputPath = next;
+      i += 1;
+      continue;
+    }
+    if (arg === '--out' && typeof next === 'string') {
+      outputPath = next;
+      i += 1;
+      continue;
+    }
+    if (arg === '--min-overall' && typeof next === 'string') {
+      minOverall = Number.parseFloat(next);
+      i += 1;
+      continue;
+    }
+    if (arg === '--min-dimension' && typeof next === 'string') {
+      minDimension = Number.parseFloat(next);
+      i += 1;
+      continue;
+    }
+  }
+
+  if (!inputPath) {
+    throw new Error(
+      'Missing --input <path>. Accepted JSON: RunStats[], { runs: RunStats[] }, { sessions: [{ id, run, survey? }] }.',
+    );
+  }
+  if (!Number.isFinite(minOverall) || !Number.isFinite(minDimension)) {
+    throw new Error('--min-overall and --min-dimension must be numbers.');
+  }
+
+  return { inputPath, outputPath, minOverall, minDimension };
+}
+
+export function parsePlaytestSurvey(value: unknown): PlaytestSurvey | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const obj = value as UnknownRecord;
+  const survey: {
+    enjoyment?: number;
+    immersion?: number;
+    mastery?: number;
+    control?: number;
+    tension?: number;
+  } = {};
+  if (typeof obj.enjoyment === 'number' && Number.isFinite(obj.enjoyment))
+    survey.enjoyment = obj.enjoyment;
+  if (typeof obj.immersion === 'number' && Number.isFinite(obj.immersion))
+    survey.immersion = obj.immersion;
+  if (typeof obj.mastery === 'number' && Number.isFinite(obj.mastery)) survey.mastery = obj.mastery;
+  if (typeof obj.control === 'number' && Number.isFinite(obj.control)) survey.control = obj.control;
+  if (typeof obj.tension === 'number' && Number.isFinite(obj.tension)) survey.tension = obj.tension;
+  return Object.keys(survey).length > 0 ? survey : undefined;
+}
+
+export function isRunStats(value: unknown): value is RunStats {
+  if (typeof value !== 'object' || value === null) return false;
+  const run = value as UnknownRecord;
+  const combat =
+    typeof run.combat === 'object' && run.combat !== null ? (run.combat as UnknownRecord) : null;
+  const health =
+    typeof run.health === 'object' && run.health !== null ? (run.health as UnknownRecord) : null;
+  const quests =
+    typeof run.quests === 'object' && run.quests !== null ? (run.quests as UnknownRecord) : null;
+  const firstQuestCompletedOk =
+    quests !== null &&
+    (quests.firstQuestCompletedMs === null ||
+      (typeof quests.firstQuestCompletedMs === 'number' &&
+        Number.isFinite(quests.firstQuestCompletedMs)));
+  return (
+    typeof run.outcome === 'string' &&
+    VALID_OUTCOMES.has(run.outcome as RunStats['outcome']) &&
+    hasNumberField(run, 'gameTimeMs') &&
+    typeof run.startingWeapon === 'string' &&
+    hasNumberField(run, 'finalLevel') &&
+    hasNumberField(run, 'totalXp') &&
+    Array.isArray(run.levelUps) &&
+    combat !== null &&
+    hasNumberField(combat, 'totalKills') &&
+    hasNumberField(combat, 'combatTimeMs') &&
+    hasNumberField(combat, 'engagementCount') &&
+    hasNumberField(combat, 'damageDealt') &&
+    health !== null &&
+    hasNumberField(health, 'minHealthPercent') &&
+    hasNumberField(health, 'closeCallCount') &&
+    hasNumberField(health, 'lowHealthCount') &&
+    hasNumberField(health, 'finalHealthPercent') &&
+    quests !== null &&
+    hasNumberField(quests, 'questsAccepted') &&
+    hasNumberField(quests, 'questsCompleted') &&
+    firstQuestCompletedOk
+  );
+}
+
+export function normalizeFunSessions(payload: unknown): FunSession[] {
+  const toSession = (candidate: unknown, index: number): FunSession => {
+    if (typeof candidate !== 'object' || candidate === null) {
+      throw new Error(`Entry ${index + 1} is not an object.`);
+    }
+    const obj = candidate as UnknownRecord;
+    const id = typeof obj.id === 'string' ? obj.id : `run-${index + 1}`;
+    const runCandidate = 'run' in obj ? obj.run : obj;
+    if (!isRunStats(runCandidate)) {
+      throw new Error(`Entry ${index + 1} is missing a valid RunStats payload.`);
+    }
+    return { id, run: runCandidate, survey: parsePlaytestSurvey(obj.survey) };
+  };
+
+  if (Array.isArray(payload)) {
+    return payload.map((entry, index) => toSession(entry, index));
+  }
+  if (typeof payload === 'object' && payload !== null) {
+    const root = payload as UnknownRecord;
+    if (Array.isArray(root.sessions)) {
+      return root.sessions.map((entry, index) => toSession(entry, index));
+    }
+    if (Array.isArray(root.runs)) {
+      return root.runs.map((entry, index) => toSession(entry, index));
+    }
+    if (isRunStats(root)) {
+      return [{ id: 'run-1', run: root }];
+    }
+  }
+  throw new Error(
+    'Unsupported input shape. Expected RunStats[], { runs: RunStats[] }, or { sessions: [{ id, run, survey? }] }.',
+  );
+}
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
@@ -228,19 +397,11 @@ function weightedObjectiveScore(dimensions: FunDimensionScores): number {
 }
 
 function weightedGatedObjectiveScore(dimensions: FunDimensionScores): number {
-  const gatedKeys: ReadonlyArray<keyof FunDimensionScores> = [
-    'engagement',
-    'challenge_balance',
-    'excitement',
-    'pacing',
-    'competence_growth',
-    'choice_depth',
-  ];
-  const numerator = gatedKeys.reduce(
+  const numerator = GATED_DIMENSIONS.reduce(
     (sum, key) => sum + dimensions[key] * DIMENSION_WEIGHTS[key],
     0,
   );
-  const denominator = gatedKeys.reduce((sum, key) => sum + DIMENSION_WEIGHTS[key], 0);
+  const denominator = GATED_DIMENSIONS.reduce((sum, key) => sum + DIMENSION_WEIGHTS[key], 0);
   return round2(numerator / denominator);
 }
 
@@ -259,7 +420,7 @@ function choiceDepthAcrossRuns(sessions: ReadonlyArray<FunSession>): number {
   }
   const maxEntropy = weaponCounts.size > 1 ? Math.log2(weaponCounts.size) : 1;
   const normalizedEntropy = clamp01(entropy / maxEntropy);
-  const uniqueRatio = clamp01(weaponCounts.size / 3);
+  const uniqueRatio = clamp01(weaponCounts.size / FLOOR_1_STARTER_WEAPON_CHOICES);
   return round2((normalizedEntropy * 0.65 + uniqueRatio * 0.35) * 100);
 }
 
@@ -355,15 +516,7 @@ export function scoreFunSessions(
         min_dimension: merged.minDimension,
         gating_overall_score: 0,
         pass: false,
-        failing_dimensions: [
-          'engagement',
-          'challenge_balance',
-          'excitement',
-          'pacing',
-          'competence_growth',
-          'choice_depth',
-          'run_distinctness',
-        ],
+        failing_dimensions: [...GATED_DIMENSIONS],
       },
       hotspots: [
         {
@@ -434,24 +587,18 @@ export function scoreFunSessions(
   const gatingObjectiveScore = weightedGatedObjectiveScore(dimensions);
   const subjectiveScore = surveyScores.length > 0 ? round2(mean(surveyScores)) : null;
   const surveyCoverage = round2(surveyScores.length / sessions.length);
+  const subjectiveWeight = subjectiveScore === null ? 0 : SUBJECTIVE_BLEND_WEIGHT * surveyCoverage;
+  const objectiveWeight = 1 - subjectiveWeight;
   const overall =
     subjectiveScore === null
       ? objectiveScore
-      : round2(objectiveScore * 0.6 + subjectiveScore * 0.4);
+      : round2(objectiveScore * objectiveWeight + subjectiveScore * subjectiveWeight);
   const gatingOverall =
     subjectiveScore === null
       ? gatingObjectiveScore
-      : round2(gatingObjectiveScore * 0.6 + subjectiveScore * 0.4);
+      : round2(gatingObjectiveScore * objectiveWeight + subjectiveScore * subjectiveWeight);
 
-  const gatedDimensions: ReadonlyArray<keyof FunDimensionScores> = [
-    'engagement',
-    'challenge_balance',
-    'excitement',
-    'pacing',
-    'competence_growth',
-    'choice_depth',
-  ];
-  const failingDimensions = gatedDimensions.filter((key) => dimensions[key] < merged.minDimension);
+  const failingDimensions = GATED_DIMENSIONS.filter((key) => dimensions[key] < merged.minDimension);
 
   const gate: FunGate = {
     min_overall: merged.minOverall,

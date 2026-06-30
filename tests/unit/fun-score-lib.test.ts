@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { RunStats } from '../../src/game/ai/types.js';
 import type { FunSession } from '../../scripts/agent/health/fun-score-lib.js';
-import { scoreFunSessions } from '../../scripts/agent/health/fun-score-lib.js';
+import { GATED_DIMENSIONS, scoreFunSessions } from '../../scripts/agent/health/fun-score-lib.js';
 
 function makeRun(overrides: Partial<RunStats> = {}): RunStats {
   const run: RunStats = {
@@ -109,6 +109,12 @@ describe('scoreFunSessions', () => {
     expect(report.gate.failing_dimensions.length).toBeGreaterThan(0);
   });
 
+  it('uses only gated dimensions for empty-input gate failures', () => {
+    const report = scoreFunSessions([]);
+    expect(report.gate.failing_dimensions).toEqual([...GATED_DIMENSIONS]);
+    expect(report.gate.failing_dimensions).not.toContain('run_distinctness');
+  });
+
   it('blends in survey sentiment when available', () => {
     const baseSessions: FunSession[] = [
       { id: 'x', run: makeRun() },
@@ -194,5 +200,39 @@ describe('scoreFunSessions', () => {
 
     expect(varied.dimensions.run_distinctness).toBeGreaterThan(samey.dimensions.run_distinctness);
     expect(varied.sameness_grade).toBeLessThan(samey.sameness_grade);
+  });
+
+  it('scales subjective blending with survey coverage', () => {
+    const objectiveSessions: FunSession[] = [
+      { id: 'o1', run: makeRun({ startingWeapon: 'sword' }) },
+      { id: 'o2', run: makeRun({ startingWeapon: 'bow' }) },
+      { id: 'o3', run: makeRun({ startingWeapon: 'baseball-bat' }) },
+      { id: 'o4', run: makeRun({ startingWeapon: 'sword' }) },
+      { id: 'o5', run: makeRun({ startingWeapon: 'bow' }) },
+    ];
+    const sparseSurveySessions: FunSession[] = objectiveSessions.map((session, index) =>
+      index === 0
+        ? {
+            ...session,
+            survey: { enjoyment: 1, immersion: 1, mastery: 1, control: 1, tension: 5 },
+          }
+        : session,
+    );
+
+    const objective = scoreFunSessions(objectiveSessions);
+    const sparse = scoreFunSessions(sparseSurveySessions);
+    const full = scoreFunSessions(
+      objectiveSessions.map((session) => ({
+        ...session,
+        survey: { enjoyment: 1, immersion: 1, mastery: 1, control: 1, tension: 5 },
+      })),
+    );
+
+    expect(sparse.survey_coverage).toBe(0.2);
+    expect(full.survey_coverage).toBe(1);
+    expect(sparse.overall_fun_score).toBeGreaterThan(full.overall_fun_score);
+    expect(objective.overall_fun_score - sparse.overall_fun_score).toBeLessThan(
+      objective.overall_fun_score - full.overall_fun_score,
+    );
   });
 });
