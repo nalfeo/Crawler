@@ -15,6 +15,11 @@ const assignToken = getEnv('CODEX_ASSIGN_TOKEN', '');
 const runUrl = `${getEnv('GITHUB_SERVER_URL', 'https://github.com')}/${repository}/actions/runs/${getEnv('GITHUB_RUN_ID', '')}`;
 const COMMENT_MARKER = '<!-- codex-bounce -->';
 
+// Global node id of the Copilot coding-agent bot (the actor id GitHub expects in
+// replaceActorsForAssignable). suggestedActors surfaces this for user PATs but not
+// for GitHub App installation tokens, so it's used as a fallback for the App path.
+const COPILOT_BOT_NODE_ID = 'BOT_kgDOC9w8XQ';
+
 if (!owner || !repo || !Number.isFinite(prNumber)) {
   throw new Error('Missing repository/pr context for bounce');
 }
@@ -100,16 +105,23 @@ query($owner: String!, $repo: String!, $number: Int!) {
     return { assigned: false, reason: `lookup failed: ${error.message}` };
   }
 
-  if (!copilot?.id) {
-    return {
-      assigned: false,
-      reason: assignToken
-        ? 'Copilot is not assignable for the assign token (the GitHub App may lack the needed permission; set a CODEX_ASSIGN_TOKEN PAT as a fallback)'
-        : 'no assign token available — the default Actions token cannot assign the Copilot coding agent (configure the GitHub App or a CODEX_ASSIGN_TOKEN PAT)',
-    };
+  // GitHub App installation tokens don't surface Copilot via suggestedActors
+  // (the App has no Copilot seat), so fall back to the well-known global
+  // Copilot coding-agent bot node id and let the mutation decide. A user PAT
+  // does surface it, so this fallback only matters for the App-token path.
+  let copilotId = copilot?.id;
+  if (!copilotId) {
+    if (!assignToken) {
+      return {
+        assigned: false,
+        reason:
+          'no assign token available — the default Actions token cannot assign the Copilot coding agent (configure the GitHub App or a CODEX_ASSIGN_TOKEN PAT)',
+      };
+    }
+    copilotId = COPILOT_BOT_NODE_ID;
   }
 
-  const actorIds = Array.from(new Set([...existingAssigneeIds, copilot.id]));
+  const actorIds = Array.from(new Set([...existingAssigneeIds, copilotId]));
   const mutation = `
 mutation($assignableId: ID!, $actorIds: [ID!]!) {
   replaceActorsForAssignable(input: { assignableId: $assignableId, actorIds: $actorIds }) {
@@ -121,8 +133,25 @@ mutation($assignableId: ID!, $actorIds: [ID!]!) {
   }
 }`;
   try {
-    await githubGraphql(mutation, { assignableId, actorIds }, { token: assignToken || undefined });
-    return { assigned: true, reason: '' };
+    const result = await githubGraphql(
+      mutation,
+      { assignableId, actorIds },
+      { token: assignToken || undefined },
+    );
+    const finalAssignees =
+      result.replaceActorsForAssignable?.assignable?.assignees?.nodes?.map((node) =>
+        (node.login || '').toLowerCase(),
+      ) || [];
+    const stuck =
+      finalAssignees.includes('copilot') || finalAssignees.includes('copilot-swe-agent');
+    if (stuck) {
+      return { assigned: true, reason: '' };
+    }
+    return {
+      assigned: false,
+      reason:
+        'assignment was not accepted (the assign token may lack Copilot rights; a CODEX_ASSIGN_TOKEN PAT works)',
+    };
   } catch (error) {
     return { assigned: false, reason: `assignment failed: ${error.message}` };
   }
