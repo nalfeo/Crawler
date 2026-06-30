@@ -1,0 +1,9 @@
+{
+  "date": "2026-06-30",
+  "slug": "quest-path-dodge-loot",
+  "title": "Quest path dodge + panic beeline",
+  "estimated_apples": 2,
+  "actual_apples": 2,
+  "verdict": "accurate",
+  "notes": "AI behavior update in game/ai with deterministic collapse-pressure model, dynamic opportunistic weighting, panic beeline routing under 60s, and targeted unit/behavior tests. One blocking review concern (panic fallback COLLECT) resolved before PR."
+}

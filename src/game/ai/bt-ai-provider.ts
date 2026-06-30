@@ -145,6 +145,11 @@ import {
   FARM_FORWARD_SCAN_RADIUS_FT,
   FARM_FORWARD_DOT_MIN,
   FARM_MIN_HEALTH_FRACTION,
+  PANIC_BEELINE_REMAINING_MS,
+  PANIC_RAMP_START_REMAINING_MS,
+  PANIC_LOCKED_STAIRS_MULTIPLIER,
+  PANIC_MIN_DODGE_WEIGHT_SCALE,
+  PANIC_MIN_DODGE_WEIGHT_SCALE_LOCKED,
   QUEST_GIVER_DETOUR_MAX_EXTRA_FT,
   QUEST_GIVER_DETOUR_MAX_EXTRA_FRACTION,
   NPC_INTERACTION_RADIUS_FT,
@@ -177,6 +182,35 @@ interface LootTarget extends WorldTarget {
 
 interface ProgressTarget extends WorldTarget {
   reason: string;
+}
+
+interface CollapsePanicInput {
+  elapsedMs: number;
+  deadlineMs: number;
+  staircaseUnlocked: boolean;
+  staircaseDiscovered: boolean;
+}
+
+export interface CollapsePanicProfile {
+  remainingMs: number | null;
+  panic: number;
+  beeline: boolean;
+  stairsUnlocked: boolean;
+}
+
+export function computeCollapsePanicProfile(
+  input: CollapsePanicInput | null | undefined,
+): CollapsePanicProfile {
+  if (!input) {
+    return { remainingMs: null, panic: 0, beeline: false, stairsUnlocked: true };
+  }
+  const remainingMs = Math.max(0, input.deadlineMs - input.elapsedMs);
+  const panicSpan = Math.max(1, PANIC_RAMP_START_REMAINING_MS - PANIC_BEELINE_REMAINING_MS);
+  const ramp = Math.max(0, Math.min(1, (PANIC_RAMP_START_REMAINING_MS - remainingMs) / panicSpan));
+  const stairsMultiplier = input.staircaseUnlocked ? 1 : PANIC_LOCKED_STAIRS_MULTIPLIER;
+  const panic = Math.min(1, ramp * stairsMultiplier);
+  const beeline = remainingMs <= PANIC_BEELINE_REMAINING_MS && !input.staircaseDiscovered;
+  return { remainingMs, panic, beeline, stairsUnlocked: input.staircaseUnlocked };
 }
 
 interface NpcTarget extends WorldTarget {
@@ -708,6 +742,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     return sequence(
       'Collect',
       condition('Loot Nearby', (ctx) => {
+        if (this.getCollapsePanicProfile(ctx.world).beeline) {
+          return false;
+        }
         const nearest = this.findNearestLoot(ctx.world, ctx.playerX, ctx.playerY);
         if (nearest && nearest.distance < this.config.scanRadius) {
           ctx.blackboard['nearestLoot'] = nearest;
@@ -927,6 +964,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       ) {
         return BTStatus.FAILURE;
       }
+      if (this.getCollapsePanicProfile(ctx.world).beeline) return BTStatus.FAILURE;
 
       // "...and I am not actively dodging enemies." Dodge ticks before Collect in
       // the Track B parallel, so a non-zero dodge vector means a dodge is in
@@ -1138,6 +1176,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       // Dormant unless a non-zero farm weight is configured; skip the enemy scan
       // entirely when the pull would be multiplied to nothing.
       if (this.config.farmPullWeight <= 0) return BTStatus.FAILURE;
+      if (this.getCollapsePanicProfile(ctx.world).beeline) return BTStatus.FAILURE;
 
       // Surplus-time behavior only: a hurt runner skips the farm pull and beelines
       // its objective so it cannot drift onto more swarm and get overwhelmed.
@@ -1814,16 +1853,17 @@ export class BehaviorTreeAI implements AIInputProvider {
     // The result is re-normalized to unit length if it exceeds 1 so the player
     // moves at full speed regardless of blend magnitudes. The loot-detour pull
     // and the (default-dormant) enemy-farm pull ride independent weights.
+    const weights = this.getDynamicOpportunisticWeights(world);
     const blendX =
       state.moveX +
-      this.dodgeVecX * this.config.dodgeWeight +
-      this.opportunisticPullX * this.config.collectPullWeight +
-      this.farmPullX * this.config.farmPullWeight;
+      this.dodgeVecX * weights.dodgeWeight +
+      this.opportunisticPullX * weights.collectPullWeight +
+      this.farmPullX * weights.farmPullWeight;
     const blendY =
       state.moveY +
-      this.dodgeVecY * this.config.dodgeWeight +
-      this.opportunisticPullY * this.config.collectPullWeight +
-      this.farmPullY * this.config.farmPullWeight;
+      this.dodgeVecY * weights.dodgeWeight +
+      this.opportunisticPullY * weights.collectPullWeight +
+      this.farmPullY * weights.farmPullWeight;
     const blendLen = Math.hypot(blendX, blendY);
     if (blendLen > 1) {
       state.moveX = blendX / blendLen;
@@ -1955,13 +1995,49 @@ export class BehaviorTreeAI implements AIInputProvider {
     };
   }
 
+  private getCollapsePanicProfile(world: GameWorld): CollapsePanicProfile {
+    const objective = world.floor1?.objective;
+    if (!objective) {
+      return computeCollapsePanicProfile(null);
+    }
+    return computeCollapsePanicProfile({
+      elapsedMs: world.elapsedMs,
+      deadlineMs: objective.deadlineMs,
+      staircaseUnlocked: objective.staircaseUnlocked,
+      staircaseDiscovered: objective.staircaseDiscovered,
+    });
+  }
+
+  private getDynamicOpportunisticWeights(world: GameWorld): {
+    dodgeWeight: number;
+    collectPullWeight: number;
+    farmPullWeight: number;
+  } {
+    const profile = this.getCollapsePanicProfile(world);
+    const collectScale = profile.beeline ? 0 : Math.max(0, 1 - profile.panic * 1.1);
+    const farmScale = profile.beeline ? 0 : Math.max(0, 1 - profile.panic * 1.35);
+    const dodgeFloor = profile.stairsUnlocked
+      ? PANIC_MIN_DODGE_WEIGHT_SCALE
+      : PANIC_MIN_DODGE_WEIGHT_SCALE_LOCKED;
+    const dodgeScale = Math.max(dodgeFloor, 1 - profile.panic * 0.9);
+    return {
+      dodgeWeight: this.config.dodgeWeight * dodgeScale,
+      collectPullWeight: this.config.collectPullWeight * collectScale,
+      farmPullWeight: this.config.farmPullWeight * farmScale,
+    };
+  }
+
   private withQuestGiverDetour(
     world: GameWorld,
     playerEid: number,
     playerX: number,
     playerY: number,
     target: ProgressTarget,
+    panicProfile: CollapsePanicProfile,
   ): ProgressTarget {
+    if (panicProfile.beeline) {
+      return target;
+    }
     if (target.eid >= 0 && world.npcs.has(target.eid)) {
       return target;
     }
@@ -2672,8 +2748,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerX: number,
     playerY: number,
   ): ProgressTarget | null {
+    const panicProfile = this.getCollapsePanicProfile(world);
     const maybeDetourToQuestGiver = (target: ProgressTarget): ProgressTarget =>
-      this.withQuestGiverDetour(world, playerEid, playerX, playerY, target);
+      this.withQuestGiverDetour(world, playerEid, playerX, playerY, target, panicProfile);
     const floor1 = world.floor1;
     const objective = floor1?.objective;
     if (!floor1 || !objective) {
