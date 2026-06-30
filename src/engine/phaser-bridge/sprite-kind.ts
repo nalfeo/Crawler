@@ -20,6 +20,7 @@ import {
 } from '../../core/components.js';
 import type { GameWorld } from '../../core/world.js';
 import { TeamId } from '../../shared/constants.js';
+import type { GeneratedSpriteRegistry } from '../../shared/generated-assets.js';
 import { computeSpawnPopScale, spawnAnimProgress } from '../../shared/spawn-anim.js';
 import type { EntitySpriteMappings } from '../../shared/data/entity-sprite-mappings.js';
 import ENTITY_SPRITE_MAPPINGS from '../../shared/data/entity-sprite-mappings.json';
@@ -45,7 +46,7 @@ const SPRITE_TEX_WELCOME_SIGN = 3;
  * feet-based `Sprite.width` by it, so a pixel value here shrinks babies to the
  * 0.2 floor.
  */
-const SLIME_FULL_SPRITE_WIDTH = 3;
+export const SLIME_FULL_SPRITE_WIDTH = 3;
 
 /**
  * Structural slice of {@link GameWorld} that {@link resolveRenderKind} reads:
@@ -142,7 +143,10 @@ export interface EnemyScaleWorld {
   readonly ecs: GameWorld['ecs'];
   readonly floor1: { readonly enemyArchetypes: ReadonlyMap<number, string> } | null;
   readonly stores: {
-    readonly sprite: { readonly width: ArrayLike<number> };
+    readonly sprite: {
+      readonly width: ArrayLike<number>;
+      readonly sizeScale: ArrayLike<number>;
+    };
     readonly spawnAnim: {
       readonly remainingMs: ArrayLike<number>;
       readonly totalMs: ArrayLike<number>;
@@ -164,6 +168,9 @@ export function computeEnemyScale(
 ): EnemyScale {
   let scaleX = baseScale;
   let scaleY = baseScale;
+  const sizeScale = world.stores.sprite.sizeScale[eid] || 1;
+  scaleX *= sizeScale;
+  scaleY *= sizeScale;
 
   // Baby slimes carry a shrunken Sprite.width; render them at the matching
   // fraction of a full slime. Scoped to the 'slime-mini' archetype so full
@@ -187,4 +194,55 @@ export function computeEnemyScale(
   }
 
   return { scaleX, scaleY };
+}
+
+const GENERATED_BRIEF_BY_TYPE: Readonly<Record<string, string>> = {
+  enemy_rat: 'rat-v1',
+  enemy_slime: 'slime-v1',
+  enemy_boss_ratslime: 'rat-slime-v1',
+};
+
+const GENERATED_BRIEF_BY_APPEARANCE_KEY: Readonly<Record<string, string>> = {
+  rat: 'rat-v1',
+  slime: 'slime-v1',
+  'slime-mini': 'baby-slime-v1',
+  'rat-slime': 'rat-slime-v1',
+};
+
+function normalizeVariantRoll(variantRoll: number | undefined): number {
+  if (variantRoll === undefined || !Number.isFinite(variantRoll)) {
+    return 0;
+  }
+  return Math.min(0.999999, Math.max(0, variantRoll));
+}
+
+export function generatedBriefIdForEnemy(type: string, appearanceKey?: string): string | undefined {
+  if (appearanceKey !== undefined) {
+    const byAppearance = GENERATED_BRIEF_BY_APPEARANCE_KEY[appearanceKey];
+    if (byAppearance !== undefined) {
+      return byAppearance;
+    }
+  }
+  return GENERATED_BRIEF_BY_TYPE[type];
+}
+
+export function pickGeneratedEnemyTextureKey(
+  registry: GeneratedSpriteRegistry | null | undefined,
+  type: string,
+  variantRoll: number | undefined,
+  appearanceKey?: string,
+): string | null {
+  if (registry === null || registry === undefined) {
+    return null;
+  }
+  const briefId = generatedBriefIdForEnemy(type, appearanceKey);
+  if (briefId === undefined) {
+    return null;
+  }
+  const variants = registry.variants(briefId);
+  if (variants.length === 0) {
+    return null;
+  }
+  const index = Math.floor(normalizeVariantRoll(variantRoll) * variants.length);
+  return variants[index]?.textureKey ?? null;
 }

@@ -14,6 +14,7 @@ import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { set } from '../../src/core/world.js';
 import { createSceneStub, createBridgeTestMap } from '../fixtures/phaser-bridge-harness.js';
+import { buildGeneratedSpriteRegistry } from '../../src/shared/generated-assets.js';
 
 describe('createPhaserBridge', () => {
   it('handles empty worlds without creating game objects', () => {
@@ -354,6 +355,58 @@ describe('createPhaserBridge', () => {
 
     expect(images).toHaveLength(1);
     expect(images[0]?.textureKey).toBe('rat-v1-var-3');
+  });
+
+  it('uses the stored spawn-time roll to pick a loaded generated slime variant', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: true });
+    (scene.game as unknown) = {
+      registry: {
+        get: () =>
+          buildGeneratedSpriteRegistry({
+            version: 1,
+            entries: {
+              'slime-v1-var-2': {
+                briefId: 'slime-v1',
+                spriteName: 'slime-v1-var-2',
+                assetPath: 'generated/slime-v1-var-2.png',
+                approvedAt: '2026-06-30T00:00:00.000Z',
+                sourceRun: 'test',
+                variantIndex: 2,
+                anchor: null,
+                sensorScore: '7/8',
+                judgeScore: '2',
+              },
+              'slime-v1-var-9': {
+                briefId: 'slime-v1',
+                spriteName: 'slime-v1-var-9',
+                assetPath: 'generated/slime-v1-var-9.png',
+                approvedAt: '2026-06-30T00:00:00.000Z',
+                sourceRun: 'test',
+                variantIndex: 9,
+                anchor: null,
+                sensorScore: '7/8',
+                judgeScore: '2',
+              },
+            },
+          }),
+      },
+    };
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const slime = addEntity(world.ecs);
+
+    addComponent(world.ecs, slime, set(Position, { x: 10, y: 10 }));
+    addComponent(world.ecs, slime, Enemy);
+    addComponent(
+      world.ecs,
+      slime,
+      set(Sprite, { textureId: 2, width: 16, height: 16, variantRoll: 0.99, sizeScale: 1 }),
+    );
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(1);
+    expect(images[0]?.textureKey).toBe('slime-v1-var-9');
   });
 
   it('uses the generated rat-slime art for the staircase boss, not the slime-rat', () => {

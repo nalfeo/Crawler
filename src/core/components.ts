@@ -134,6 +134,16 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       textureId: new Uint16Array(maxEntities),
       width: new Float32Array(maxEntities),
       height: new Float32Array(maxEntities),
+      /**
+       * Spawn-time roll in [0, 1). The renderer uses this to pick a stable
+       * generated-art variant for this entity without consuming runtime RNG.
+       */
+      variantRoll: new Float32Array(maxEntities),
+      /**
+       * Render-only per-entity size multiplier. 0 means "unset" and should be
+       * treated as 1 by consumers.
+       */
+      sizeScale: new Float32Array(maxEntities),
     },
     enemyBehavior: {
       type: new Uint8Array(maxEntities),

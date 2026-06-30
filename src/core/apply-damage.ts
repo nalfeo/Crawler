@@ -26,6 +26,10 @@ function emitCorpseExplosion(
       (world.stores.bloodColor.b[target] ?? 0)
     : DEFAULT_BLOOD_COLOR;
   const spriteTextureId = world.stores.sprite.textureId[target] ?? 0;
+  const spriteAppearanceKey = world.enemyAppearanceKeys.get(target);
+  const spriteVariantRoll = world.stores.sprite.variantRoll[target] ?? 0;
+  const spriteSizeScale = world.stores.sprite.sizeScale[target] || 1;
+  const spriteWidth = world.stores.sprite.width[target] ?? 0;
 
   // Shards spray away from the attacker (the same way the force travelled).
   let dirX = 0;
@@ -52,6 +56,10 @@ function emitCorpseExplosion(
     targetEid: target,
     bloodColor,
     spriteTextureId,
+    spriteAppearanceKey,
+    spriteVariantRoll,
+    spriteSizeScale,
+    spriteWidth,
     knockbackDirX: dirX,
     knockbackDirY: dirY,
     sourceX,

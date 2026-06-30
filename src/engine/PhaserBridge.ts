@@ -10,6 +10,8 @@ import { createEffectsVfx } from './EffectsVfx.js';
 import { computeCorpseDecay, type CorpseDecay } from './corpse-decay.js';
 import { createLogger } from '../shared/logger.js';
 import { MeleeSpriteId } from '../shared/constants.js';
+import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
+import type { GeneratedSpriteRegistry } from '../shared/generated-assets.js';
 import { ftToPx } from '../shared/units.js';
 import { DEFAULT_HANDHELD_SPRITE_ANCHOR } from '../shared/sprite-anchor.js';
 import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../shared/decorationDefs.js';
@@ -42,7 +44,9 @@ import {
 import {
   computeEnemyScale,
   enemyVariantFromTextureId,
+  pickGeneratedEnemyTextureKey,
   resolveRenderKind,
+  SLIME_FULL_SPRITE_WIDTH,
 } from './phaser-bridge/sprite-kind.js';
 
 const DEAD_SKULL_Y_OFFSET = 18;
@@ -155,14 +159,36 @@ const GENERATED_SCALE: Readonly<Record<string, number>> = {
   enemy_boss_ratslime: 0.6,
 };
 
+function getGeneratedSpriteRegistry(scene: Phaser.Scene): GeneratedSpriteRegistry | null {
+  const registry = scene.game?.registry?.get?.(GENERATED_SPRITE_REGISTRY_KEY);
+  if (
+    registry &&
+    typeof registry === 'object' &&
+    typeof (registry as GeneratedSpriteRegistry).variants === 'function'
+  ) {
+    return registry as GeneratedSpriteRegistry;
+  }
+  return null;
+}
+
 /**
  * Resolve the texture (and frame) to use for the given entity type.
  * Prefers an approved generated sprite, then a Kenney sprite when both
  * the registry mapping and the loaded texture exist; otherwise falls
  * back to the procedural `__cw_*` texture.
  */
-function resolveTexture(scene: Phaser.Scene, type: string): ResolvedTexture {
-  const generatedKey = ENTITY_GENERATED_SPRITE[type];
+function resolveTexture(
+  scene: Phaser.Scene,
+  type: string,
+  options?: { appearanceKey?: string; variantRoll?: number },
+): ResolvedTexture {
+  const generatedKey =
+    pickGeneratedEnemyTextureKey(
+      getGeneratedSpriteRegistry(scene),
+      type,
+      options?.variantRoll,
+      options?.appearanceKey,
+    ) ?? ENTITY_GENERATED_SPRITE[type];
   if (generatedKey !== undefined && scene.textures?.exists(generatedKey)) {
     return {
       key: generatedKey,
@@ -326,10 +352,23 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             scale = visual.obj.scaleX || visual.baseScale;
             tint = visual.obj.isTinted ? visual.obj.tintTopLeft : undefined;
           } else {
-            const tex = resolveTexture(scene, enemyVariantFromTextureId(event.spriteTextureId));
+            const tex = resolveTexture(scene, enemyVariantFromTextureId(event.spriteTextureId), {
+              appearanceKey: event.spriteAppearanceKey,
+              variantRoll: event.spriteVariantRoll,
+            });
             textureKey = tex.key;
             frame = tex.frame;
-            scale = tex.scale;
+            scale = tex.scale * (event.spriteSizeScale ?? 1);
+            if (event.spriteAppearanceKey === 'slime-mini') {
+              const slimeMiniMul = Math.max(
+                0.2,
+                Math.min(
+                  1,
+                  (event.spriteWidth ?? SLIME_FULL_SPRITE_WIDTH) / SLIME_FULL_SPRITE_WIDTH,
+                ),
+              );
+              scale *= slimeMiniMul;
+            }
           }
           (pendingShatter ??= []).push({
             x: event.x,
@@ -373,6 +412,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
                 : 'enemy_boss'
               : enemyVariantFromTextureId(world.stores.sprite.textureId[eid])
             : entityType;
+        const appearanceKey =
+          entityType === 'enemy' ? world.enemyAppearanceKeys.get(eid) : undefined;
         // Positions/velocities are stored in feet; scale feet → pixels for
         // rendering (the only place pixels exist). All downstream geometry
         // (beam/melee/aoe lengths, tip offsets) is computed in pixels too.
@@ -587,7 +628,10 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           if (visual) {
             visual.obj.destroy();
           }
-          const resolved = resolveTexture(scene, visualType);
+          const resolved = resolveTexture(scene, visualType, {
+            appearanceKey,
+            variantRoll: world.stores.sprite.variantRoll[eid],
+          });
           const img =
             resolved.frame !== undefined
               ? scene.add.image(x, y, resolved.key, resolved.frame)

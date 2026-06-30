@@ -235,11 +235,19 @@ describe('dropSystem', () => {
     expect(slainSlime).toBeGreaterThan(0);
     expect(miniSlimes).toHaveLength(2);
     const expectedMiniDamage = Math.max(1, Math.round(7 * 0.5));
+    const slainSlimeSizeScale = world.stores.sprite.sizeScale[slainSlime] || 1;
+    const slainSlimeBaseWeight =
+      (world.stores.weight.value[slainSlime] ?? 120) / slainSlimeSizeScale;
     for (const miniEid of miniSlimes) {
       expect(world.stores.health.max[miniEid]).toBe(15);
       expect(world.stores.health.current[miniEid]).toBe(15);
       expect(world.stores.damage.amount[miniEid]).toBe(expectedMiniDamage);
       expect(world.floor1?.enemyArchetypes.get(miniEid)).toBe('slime-mini');
+      expect(world.enemyAppearanceKeys.get(miniEid)).toBe('slime-mini');
+      expect(world.stores.weight.value[miniEid]).toBeCloseTo(
+        slainSlimeBaseWeight * 0.5 * (world.stores.sprite.sizeScale[miniEid] || 1),
+        4,
+      );
       expect(world.stores.enemyBehavior.type[miniEid]).toBe(AI_TYPE.LEAPER);
       // Babies render smaller than their 2 ft parent, and the feet-scale size is
       // preserved exactly (0.65×) rather than rounded up to a whole foot.

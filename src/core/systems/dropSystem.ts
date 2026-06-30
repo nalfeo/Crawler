@@ -19,6 +19,7 @@ import {
 } from '../components.js';
 import {
   DEFAULT_BLOOD_COLOR,
+  setEnemyAppearanceKey,
   spawnBehaviorEnemy,
   spawnDroppedItem,
   spawnGold,
@@ -198,6 +199,8 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
   const parentSpriteTexture = hasSprite ? (world.stores.sprite.textureId[eid] ?? 0) : 0;
   const parentSpriteWidth = hasSprite ? (world.stores.sprite.width[eid] ?? 2) : 2;
   const parentSpriteHeight = hasSprite ? (world.stores.sprite.height[eid] ?? 2) : 2;
+  const parentSizeScale = hasSprite ? world.stores.sprite.sizeScale[eid] || 1 : 1;
+  const parentBaseWeight = (world.stores.weight.value[eid] ?? 120) / parentSizeScale;
   const miniWidth = Math.max(MINI_SLIME_MIN_SIZE_FT, parentSpriteWidth * MINI_SLIME_SIZE_SCALE);
   const miniHeight = Math.max(MINI_SLIME_MIN_SIZE_FT, parentSpriteHeight * MINI_SLIME_SIZE_SCALE);
   // Inherit blood colour from the parent slime
@@ -225,7 +228,7 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
         flankDistance: world.stores.enemyBehavior.flankDistance[eid] ?? 12,
         pathRefreshFrames: world.stores.enemyBehavior.pathRefreshFrames[eid] ?? 10,
         isFlying: (world.stores.enemyBehavior.traversalMode[eid] ?? 0) === 1,
-        weight: Math.max(1, (world.stores.weight.value[eid] ?? 120) * 0.5),
+        weight: Math.max(1, parentBaseWeight * 0.5),
         bloodColor: parentBloodColor,
       },
     );
@@ -234,6 +237,7 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
       width: miniWidth,
       height: miniHeight,
     });
+    setEnemyAppearanceKey(world, miniEid, 'slime-mini');
     addComponent(world.ecs, miniEid, set(Damage, { amount: miniDamage }));
     // Babies pop out smaller and wiggle into existence; spawnAnimSystem ticks the
     // timer and strips SpawnAnim when it expires (purely cosmetic).

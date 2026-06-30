@@ -136,6 +136,12 @@ export interface GameWorld {
   floorObjectiveTick: ((world: GameWorld) => void) | null;
   /** Per-entity NPC instance state (eid → NpcInstance). Side-car for variable-length NPC data. */
   npcs: Map<number, NpcInstance>;
+  /**
+   * Stable per-enemy appearance identity (eid → archetype/mob key). The engine
+   * uses this to resolve generated-art families more precisely than textureId
+   * buckets alone.
+   */
+  enemyAppearanceKeys: Map<number, string>;
   /** Active/completed quests keyed by quest id. Drives the quest tracker HUD. */
   questLog: Map<string, QuestState>;
   /** Quest progression events queued this frame. Drained by questSystem. */
@@ -288,6 +294,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     floor1: null,
     floorObjectiveTick: null,
     npcs: new Map(),
+    enemyAppearanceKeys: new Map(),
     questLog: new Map(),
     questEvents: [],
     featureUnlocks: {

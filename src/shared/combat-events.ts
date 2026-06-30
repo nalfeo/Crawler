@@ -41,4 +41,12 @@ export interface CombatEvent {
    * `corpseExplode` event. 1 = rat, 2 = slime, otherwise the generic enemy.
    */
   spriteTextureId?: number;
+  /** Stable spawned mob identity used to resolve generated-art families. */
+  spriteAppearanceKey?: string;
+  /** Spawn-time roll in [0, 1) used to pick a stable generated-art variant. */
+  spriteVariantRoll?: number;
+  /** Render-only size multiplier chosen at spawn time. */
+  spriteSizeScale?: number;
+  /** Sprite width in feet, for size-class-specific fallback scaling. */
+  spriteWidth?: number;
 }

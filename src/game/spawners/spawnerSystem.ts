@@ -29,7 +29,7 @@ import {
   Spawner,
   Sprite,
 } from '../../core/components.js';
-import { spawnBehaviorEnemy } from '../../core/helpers.js';
+import { setEnemyAppearanceKey, spawnBehaviorEnemy } from '../../core/helpers.js';
 import type { GameWorld } from '../../core/world.js';
 import { createLogger } from '../../shared/logger.js';
 import { getSpawnerArchetypeByIndex, pickFromPool } from './registry.js';
@@ -101,6 +101,7 @@ function spawnChild(
     width: mob.spriteWidth,
     height: mob.spriteHeight,
   });
+  setEnemyAppearanceKey(world, eid, mob.id);
 
   if (mob.contactDamage > 0) {
     addComponent(
