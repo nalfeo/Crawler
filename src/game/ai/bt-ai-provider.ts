@@ -29,6 +29,8 @@ import {
   type TilePoint,
 } from '../../core/map/pathfinding.js';
 import { buildDoorAwarePassable, getNavigationBlockedDoors } from '../../core/door-navigation.js';
+import { isPointInSafeSpace } from '../../core/safe-space.js';
+import { RoomRole } from '../../shared/map-types.js';
 import {
   type AILockedDoorMemory,
   type FrontierGrid,
@@ -273,6 +275,8 @@ export class BehaviorTreeAI implements AIInputProvider {
    * exploration, not omniscience. Lazily sized on first use; `null` until then.
    */
   private exploredSeen: Uint8Array | null = null;
+  /** True once FOV has exposed at least one tile this run (perception initialized). */
+  private hasPerceptionData = false;
   /** Reused per-tile BFS visited scratch for {@link findNearestFrontier}; sized to the floor. */
   private frontierBfsVisited: Uint8Array | null = null;
   private globalDwellActive: boolean = false;
@@ -537,6 +541,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
       const ex = world.stores.position.x[eid] ?? 0;
       const ey = world.stores.position.y[eid] ?? 0;
+      if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
       if (Math.hypot(ex - playerX, ey - playerY) > RETREAT_THREAT_SCAN_FT) continue;
       enemyPositions.push({ x: ex, y: ey });
       centroidX += ex;
@@ -1058,6 +1063,7 @@ export class BehaviorTreeAI implements AIInputProvider {
 
         const ex = ctx.world.stores.position.x[eid] ?? 0;
         const ey = ctx.world.stores.position.y[eid] ?? 0;
+        if (!this.canPerceiveWorldPosition(ctx.world, ex, ey)) continue;
         const dist = Math.hypot(ex - ctx.playerX, ey - ctx.playerY);
         if (dist > DODGE_THREAT_RADIUS_FT) continue;
 
@@ -1072,11 +1078,11 @@ export class BehaviorTreeAI implements AIInputProvider {
 
         // Blocking = enemy parked just ahead on the travel path (forward cone),
         // close enough that the player would bulldoze into body contact.
+        // Must satisfy: (1) enemy is in forward cone, (2) close enough, and
+        // (3) enemy is actually between player and objective (closer to objective than to player).
+        const aheadDot = ((ex - ctx.playerX) * headX + (ey - ctx.playerY) * headY) / (dist || 1);
         const ahead =
-          hasHeading &&
-          dist <= DODGE_BLOCK_RADIUS_FT &&
-          ((ex - ctx.playerX) * headX + (ey - ctx.playerY) * headY) / (dist || 1) >=
-            DODGE_BLOCK_AHEAD_DOT;
+          hasHeading && dist <= DODGE_BLOCK_RADIUS_FT && aheadDot >= DODGE_BLOCK_AHEAD_DOT;
 
         if (!closing && !ahead) continue;
         if (dist >= closestThreatDist) continue;
@@ -1547,6 +1553,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (hp <= 0) continue;
       const ex = world.stores.position.x[eid] ?? 0;
       const ey = world.stores.position.y[eid] ?? 0;
+      if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
       const dx = ex - playerX;
       const dy = ey - playerY;
       if (dx * dx + dy * dy <= radiusSq) {
@@ -1664,6 +1671,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (hp <= 0) continue;
       const ex = world.stores.position.x[eid] ?? 0;
       const ey = world.stores.position.y[eid] ?? 0;
+      if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
       const dx = ex - playerX;
       const dy = ey - playerY;
       if (dx * dx + dy * dy <= radiusSq) {
@@ -1967,6 +1975,44 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
     if (nearestNpc.eid === target.eid) {
       return target;
+    }
+    if (world.playerInSafeRoom && isPointInSafeSpace(world, nearestNpc.x, nearestNpc.y)) {
+      const floorMap = world.floorMap;
+      if (floorMap) {
+        const playerTile = floorMap.worldToTile(playerX, playerY);
+        const npcTile = floorMap.worldToTile(nearestNpc.x, nearestNpc.y);
+        const safeRooms = floorMap.roomGraph.getRoomsByRole(RoomRole.SAFE);
+
+        // Check if both player and NPC are in the same safe room
+        let sameRoom = false;
+        for (const {
+          bounds: { x: rx, y: ry, width, height },
+        } of safeRooms) {
+          const playerInRoom =
+            playerTile.x >= rx &&
+            playerTile.x < rx + width &&
+            playerTile.y >= ry &&
+            playerTile.y < ry + height;
+          const npcInRoom =
+            npcTile.x >= rx && npcTile.x < rx + width && npcTile.y >= ry && npcTile.y < ry + height;
+          if (playerInRoom && npcInRoom) {
+            sameRoom = true;
+            break;
+          }
+        }
+
+        if (sameRoom) {
+          const readableReason = nearestNpc.interactionReason.replaceAll('-', ' ');
+          return this.createProgressTarget(
+            nearestNpc.x,
+            nearestNpc.y,
+            playerX,
+            playerY,
+            `Detouring to ${nearestNpc.defId} (${readableReason})`,
+            nearestNpc.eid,
+          );
+        }
+      }
     }
 
     const viaNpcDistance =
@@ -2443,6 +2489,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       const health = world.stores.health.current[eid] ?? 0;
 
       if (health <= 0) continue;
+      if (!this.canPerceiveWorldPosition(world, x, y)) continue;
 
       const dist = Math.hypot(x - playerX, y - playerY);
       if (dist <= maxRadius) {
@@ -2505,6 +2552,7 @@ export class BehaviorTreeAI implements AIInputProvider {
 
       const x = world.stores.position.x[eid] ?? 0;
       const y = world.stores.position.y[eid] ?? 0;
+      if (!this.canPerceiveWorldPosition(world, x, y)) continue;
       const dist = Math.hypot(x - playerX, y - playerY);
       if (dist <= maxRadius) {
         candidates.push({ eid, x, y, distance: dist });
@@ -3074,8 +3122,27 @@ export class BehaviorTreeAI implements AIInputProvider {
     for (let i = 0; i < visible.length; i += 1) {
       if (visible[i]) {
         seen[i] = 1;
+        this.hasPerceptionData = true;
       }
     }
+  }
+
+  /**
+   * Enemy/NPC perception rule: only entities in current FOV or on minimap-known
+   * tiles are considered known. Before perception initializes (e.g. isolated unit
+   * tests without an FOV step), fall back to permissive behavior.
+   */
+  private canPerceiveWorldPosition(world: GameWorld, x: number, y: number): boolean {
+    const floorMap = world.floorMap;
+    if (!floorMap) return true;
+    const tile = floorMap.worldToTile(x, y);
+    if (tile.x < 0 || tile.y < 0 || tile.x >= floorMap.width || tile.y >= floorMap.height) {
+      return false;
+    }
+    if (!this.hasPerceptionData) return true;
+    const idx = tile.y * floorMap.width + tile.x;
+    if (floorMap.visible[idx]) return true;
+    return this.exploredSeen?.[idx] === 1;
   }
 
   /**
@@ -3323,6 +3390,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (eid === primaryTarget.eid) continue;
       const ex = world.stores.position.x[eid] ?? 0;
       const ey = world.stores.position.y[eid] ?? 0;
+      if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
       const dx = ex - playerX;
       const dy = ey - playerY;
       const dist = Math.hypot(dx, dy);
@@ -3639,8 +3707,14 @@ export class BehaviorTreeAI implements AIInputProvider {
 
       const x = world.stores.position.x[eid] ?? 0;
       const y = world.stores.position.y[eid] ?? 0;
+      if (!this.canPerceiveWorldPosition(world, x, y)) {
+        continue;
+      }
       // A POI is only worth seeking while it still needs interaction; handled
       // NPCs (interactionReason === null) stay discovered but become irrelevant.
+      if (world.playerInSafeRoom && !isPointInSafeSpace(world, x, y)) {
+        continue;
+      }
       candidates.push({
         eid,
         x,
@@ -3652,7 +3726,12 @@ export class BehaviorTreeAI implements AIInputProvider {
       });
     }
 
-    const pick = pickNearestPoi(candidates, playerX, playerY, this.config.scanRadius);
+    const pick = pickNearestPoi(
+      candidates,
+      playerX,
+      playerY,
+      world.playerInSafeRoom ? Number.POSITIVE_INFINITY : this.config.scanRadius,
+    );
     if (!pick) {
       return null;
     }
@@ -3849,6 +3928,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.navEpoch = 0;
     this.navSignature = null;
     this.exploredSeen = null;
+    this.hasPerceptionData = false;
     this.frontierBfsVisited = null;
     this.retreating = false;
     this.retreatTargetX = null;

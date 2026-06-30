@@ -382,9 +382,11 @@ export const DODGE_CLOSING_SPEED_FT_PER_FRAME = 0.15;
 // beeline to an objective must be stepped around, not bulldozed through. An
 // enemy within this body-contact radius AND roughly ahead of the travel heading
 // (forward dot ≥ DODGE_BLOCK_AHEAD_DOT) triggers a perpendicular sidestep toward
-// the open side, regardless of its closing speed. Sized just outside body
-// contact (player 1.5ft + swarm 1.5ft = 3ft) so the curve starts before overlap.
-export const DODGE_BLOCK_RADIUS_FT = 6;
+// the open side, regardless of its closing speed. Sized to start curving early
+// (at roughly ¾ of the threat scan radius) so the player arcs around stationary
+// mobs well before the path converges on them, giving direction-blending time
+// to produce smooth curves instead of sharp last-second veer corrections.
+export const DODGE_BLOCK_RADIUS_FT = 10;
 export const DODGE_BLOCK_AHEAD_DOT = 0.4;
 // --- On-path loot detour (OpportunisticCollect) ---
 // Rule (player's words): "if there is loot within 5' of my path and I am not
