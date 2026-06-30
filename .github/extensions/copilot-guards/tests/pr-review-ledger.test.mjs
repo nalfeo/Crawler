@@ -37,9 +37,6 @@ test('classifyPath: code (everything else)', () => {
   assert.equal(classifyPath('scripts/agent/review/cli.mjs'), 'code');
   assert.equal(classifyPath('.github/workflows/ci.yml'), 'code');
   assert.equal(classifyPath('.github/extensions/copilot-guards/extension.mjs'), 'code');
-  assert.equal(classifyPath('.github/skills/review-harness/SKILL.md'), 'code');
-  assert.equal(classifyPath('.github/copilot-instructions.md'), 'code');
-  assert.equal(classifyPath('.specify/specs/foo.md'), 'code');
   assert.equal(classifyPath('eslint.config.js'), 'code');
   assert.equal(classifyPath('tsconfig.json'), 'code');
 });
@@ -51,6 +48,14 @@ test('classifyPath: config (whitelisted src/shared/data config files)', () => {
   assert.equal(classifyPath('src/shared/data/tuning.json'), 'code');
   assert.equal(classifyPath('src/shared/data/enemies.floor1.json'), 'code');
   assert.equal(classifyPath('src/shared/data/weapons.json'), 'code');
+});
+
+test('classifyPath: non-src .md/.txt files are docs (markdown cannot hold game logic)', () => {
+  assert.equal(classifyPath('.github/skills/review-harness/SKILL.md'), 'docs');
+  assert.equal(classifyPath('.github/copilot-instructions.md'), 'docs');
+  assert.equal(classifyPath('.specify/specs/foo.md'), 'docs');
+  assert.equal(classifyPath('.github/instructions/game.instructions.md'), 'docs');
+  assert.equal(classifyPath('CONTRIBUTING.md'), 'docs');
 });
 
 test('classifyPath: src/** is NEVER skippable, even a markdown under src', () => {
@@ -65,6 +70,8 @@ test('isSkippablePath mirrors classifyPath', () => {
   assert.equal(isSkippablePath('docs/x.md'), true);
   assert.equal(isSkippablePath('public/assets/x.png'), true);
   assert.equal(isSkippablePath('package-lock.json'), true);
+  assert.equal(isSkippablePath('.github/copilot-instructions.md'), true);
+  assert.equal(isSkippablePath('.specify/specs/foo.md'), true);
   assert.equal(isSkippablePath('src/core/x.ts'), false);
   assert.equal(isSkippablePath('package.json'), false);
 });
@@ -121,6 +128,12 @@ test('decideLedger: config-only diff (entity-sprite-mappings) -> skip with conte
 
 test('decideLedger: config-only diff (sprite-catalog) -> skip with context', () => {
   const d = decideLedger(['src/shared/data/sprite-catalog.json'], []);
+  assert.equal(d.decision, 'skip');
+  assert.match(d.additionalContext, /docs\/art\/deps-only/);
+});
+
+test('decideLedger: non-docs-dir .md files (e.g. .github/copilot-instructions.md) -> skip', () => {
+  const d = decideLedger(['.github/copilot-instructions.md', '.specify/specs/foo.md'], []);
   assert.equal(d.decision, 'skip');
   assert.match(d.additionalContext, /docs\/art\/deps-only/);
 });

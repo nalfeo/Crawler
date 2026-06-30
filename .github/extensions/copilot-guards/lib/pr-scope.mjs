@@ -8,10 +8,12 @@
 // skippable paths. Anything not explicitly listed — including scripts/**,
 // .github/workflows/**, .github/extensions/**, .github/skills/**,
 // .github/copilot-instructions.md, eslint/vite/vitest/tsconfig/commitlint
-// config, and package.json — counts as CODE and requires a ledger. We never
-// classify any src/** path as skippable EXCEPT entity-sprite mappings and
-// other whitelisted config files. Erring toward over-enforcement is intentional:
-// a skipped review is a silent hole, a needless ledger is cheap.
+// config, and package.json — counts as CODE and requires a ledger. However,
+// ANY .md or .txt file outside src/ is always classified as docs, because
+// markdown/plaintext cannot contain game logic. We never classify any src/**
+// path as skippable EXCEPT entity-sprite mappings and other whitelisted config
+// files. Erring toward over-enforcement is intentional: a skipped review is a
+// silent hole, a needless ledger is cheap.
 
 // Skippable buckets (paths are normalized to forward slashes first).
 const DOCS_RE = /^docs\//;
@@ -19,6 +21,10 @@ const ROOT_DOC_RE = /^[^/]+\.(md|txt)$/; // README.md, CHANGELOG.md, LICENSE.txt
 const ART_RE = /^(public\/assets|briefs|data\/palettes)\//;
 const DEPS_RE = /^(package-lock\.json|pnpm-lock\.yaml|yarn\.lock)$/;
 const CONFIG_RE = /^src\/shared\/data\/(entity-sprite-mappings|sprite-catalog)\.(json)$/;
+// Any .md or .txt file outside src/ is docs — markdown/plaintext cannot contain
+// game logic. src/** is caught first by SRC_NEVER_RE, so this safely matches
+// paths like .github/instructions/*.md, .specify/specs/*.md, etc.
+const ANY_MD_TXT_RE = /\.(md|txt)$/i;
 
 // src/** is NEVER skippable EXCEPT for whitelisted config files (defense in depth).
 const SRC_NEVER_RE = /^src\//;
@@ -36,6 +42,7 @@ export function classifyPath(p) {
   if (DEPS_RE.test(f)) return 'deps';
   if (CONFIG_ALLOWLIST_RE.test(f) && CONFIG_RE.test(f)) return 'config';
   if (SRC_NEVER_RE.test(f)) return 'code';
+  if (ANY_MD_TXT_RE.test(f)) return 'docs';
   return 'code';
 }
 
@@ -60,4 +67,4 @@ export function codeFiles(files) {
   return files.map(normalize).filter((f) => classifyPath(f) === 'code');
 }
 
-export { DOCS_RE, ROOT_DOC_RE, ART_RE, DEPS_RE, CONFIG_RE, CONFIG_ALLOWLIST_RE, SRC_NEVER_RE };
+export { DOCS_RE, ROOT_DOC_RE, ART_RE, DEPS_RE, CONFIG_RE, CONFIG_ALLOWLIST_RE, SRC_NEVER_RE, ANY_MD_TXT_RE };
