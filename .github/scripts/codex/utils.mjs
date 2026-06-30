@@ -121,3 +121,52 @@ export function parseStatusStateFromBody(body) {
 export function isExplicitCommand(command) {
   return typeof command === 'string' && command.startsWith('/codex');
 }
+
+function parseIntEnv(value, fallback) {
+  const parsed = Number.parseInt(String(value ?? '').trim(), 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+/**
+ * Cost guardrail budgets for the auto-healer. Auto (non-explicit) repairs that
+ * exceed any budget are bounced to a human instead of spending model tokens.
+ * Set a budget to a negative number to disable that individual dimension, or
+ * set CODEX_BOUNCE_ENABLED=false to disable bouncing entirely.
+ */
+export function getRepairBudgets(env = process.env) {
+  return {
+    enabled: parseBoolean(env.CODEX_BOUNCE_ENABLED, true),
+    maxChangedFiles: parseIntEnv(env.CODEX_BOUNCE_MAX_CHANGED_FILES, 20),
+    maxDiffLines: parseIntEnv(env.CODEX_BOUNCE_MAX_DIFF_LINES, 1500),
+    maxFailingChecks: parseIntEnv(env.CODEX_BOUNCE_MAX_FAILING_CHECKS, 6),
+  };
+}
+
+/**
+ * Pure complexity/cost evaluation. Given cheap pre-flight metrics (PR diff size,
+ * changed-file count, failing-check count) and budgets, decide whether the
+ * repair is too expensive/complex for the auto-healer and should be bounced.
+ */
+export function evaluateRepairComplexity(metrics = {}, budgets = getRepairBudgets()) {
+  const changedFiles = Number(metrics.changedFiles || 0);
+  const diffLines = Number(metrics.additions || 0) + Number(metrics.deletions || 0);
+  const failingChecks = Number(metrics.failingChecks || 0);
+
+  const reasons = [];
+  if (budgets.maxChangedFiles >= 0 && changedFiles > budgets.maxChangedFiles) {
+    reasons.push(`${changedFiles} changed files exceeds budget of ${budgets.maxChangedFiles}`);
+  }
+  if (budgets.maxDiffLines >= 0 && diffLines > budgets.maxDiffLines) {
+    reasons.push(`${diffLines} changed lines exceeds budget of ${budgets.maxDiffLines}`);
+  }
+  if (budgets.maxFailingChecks >= 0 && failingChecks > budgets.maxFailingChecks) {
+    reasons.push(`${failingChecks} failing checks exceeds budget of ${budgets.maxFailingChecks}`);
+  }
+
+  return {
+    tooComplex: Boolean(budgets.enabled) && reasons.length > 0,
+    reasons,
+    metrics: { changedFiles, diffLines, failingChecks },
+    budgets,
+  };
+}

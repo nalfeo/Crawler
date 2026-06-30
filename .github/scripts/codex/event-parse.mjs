@@ -1,5 +1,12 @@
 import { appendFileSync } from 'node:fs';
-import { getEnv, githubRequest, parseStatusStateFromBody, readJsonFile } from './utils.mjs';
+import {
+  evaluateRepairComplexity,
+  getEnv,
+  getRepairBudgets,
+  githubRequest,
+  parseStatusStateFromBody,
+  readJsonFile,
+} from './utils.mjs';
 
 const eventName = getEnv('GITHUB_EVENT_NAME', '');
 const eventPath = getEnv('GITHUB_EVENT_PATH', '');
@@ -215,8 +222,46 @@ if (!explicit && shouldStopAuto(state)) {
   process.exit(0);
 }
 
+if (!explicit) {
+  const budgets = getRepairBudgets();
+  if (budgets.enabled) {
+    let failingChecks = 0;
+    try {
+      const checkRuns = await githubRequest(
+        `/repos/${owner}/${repo}/commits/${headSha}/check-runs?per_page=100`,
+      );
+      failingChecks = (checkRuns?.check_runs || []).filter(
+        (check) => check.conclusion === 'failure',
+      ).length;
+    } catch {
+      // best-effort: leave failingChecks at its default of 0
+    }
+
+    const complexity = evaluateRepairComplexity(
+      {
+        changedFiles: pr.changed_files,
+        additions: pr.additions,
+        deletions: pr.deletions,
+        failingChecks,
+      },
+      budgets,
+    );
+
+    if (complexity.tooComplex) {
+      setOutput('should_run', 'false');
+      setOutput('bounced', 'true');
+      setOutput('bounce_reason', complexity.reasons.join('; '));
+      setOutput('skip_reason', `bounced to human: ${complexity.reasons.join('; ')}`);
+      setOutput('pr_number', pr.number);
+      setOutput('pr_branch', pr.head.ref || '');
+      process.exit(0);
+    }
+  }
+}
+
 setOutput('should_run', 'true');
 setOutput('skip_reason', '');
+setOutput('bounced', 'false');
 setOutput('dispatch_required', dispatchRequired ? 'true' : 'false');
 setOutput('pr_number', pr.number);
 setOutput('pr_branch', pr.head.ref || '');

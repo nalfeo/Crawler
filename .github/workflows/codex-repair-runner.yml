@@ -50,6 +50,11 @@ jobs:
       CODEX_MODEL: ${{ vars.CODEX_MODEL || '' }}
       CODEX_PROVIDER: ${{ vars.CODEX_PROVIDER || 'codex' }}
       CODEX_BIN: ${{ vars.CODEX_BIN || '' }}
+      CODEX_BOUNCE_ENABLED: ${{ vars.CODEX_BOUNCE_ENABLED || 'true' }}
+      CODEX_BOUNCE_MAX_CHANGED_FILES: ${{ vars.CODEX_BOUNCE_MAX_CHANGED_FILES || '20' }}
+      CODEX_BOUNCE_MAX_DIFF_LINES: ${{ vars.CODEX_BOUNCE_MAX_DIFF_LINES || '1500' }}
+      CODEX_BOUNCE_MAX_FAILING_CHECKS: ${{ vars.CODEX_BOUNCE_MAX_FAILING_CHECKS || '6' }}
+      CODEX_BOUNCE_LABEL: ${{ vars.CODEX_BOUNCE_LABEL || 'auto-heal-bounced' }}
       PR_NUMBER: ${{ github.event.inputs.pr_number }}
       REPAIR_TRIGGER: ${{ github.event.inputs.trigger }}
       REPAIR_MODE: ${{ github.event.inputs.mode }}
@@ -63,40 +68,53 @@ jobs:
         id: parse
         run: node .github/scripts/codex/event-parse.mjs
 
+      - name: Bounce oversized repair to a human
+        if: steps.parse.outputs.bounced == 'true'
+        env:
+          BOUNCE_REASON: ${{ steps.parse.outputs.bounce_reason }}
+        run: |
+          echo "Bouncing repair: ${{ steps.parse.outputs.bounce_reason }}"
+          node .github/scripts/codex/bounce.mjs
+
       - name: Enforce repair eligibility
-        if: steps.parse.outputs.should_run != 'true'
+        if: steps.parse.outputs.should_run != 'true' && steps.parse.outputs.bounced != 'true'
         run: |
           echo "Repair not eligible: ${{ steps.parse.outputs.skip_reason }}"
           echo "Refusing to run before checkout/install/provider (keeps secrets and the PR branch out of ineligible runs)."
           exit 1
 
       - name: Checkout PR branch
+        if: steps.parse.outputs.should_run == 'true'
         uses: actions/checkout@v4
         with:
           ref: ${{ steps.parse.outputs.pr_branch }}
           fetch-depth: 0
 
       - name: Setup Node
+        if: steps.parse.outputs.should_run == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
       - name: Install repo dependencies
+        if: steps.parse.outputs.should_run == 'true'
         run: npm ci
 
       - name: Install Codex CLI
-        if: env.CODEX_PROVIDER == 'codex' || env.CODEX_PROVIDER == 'azure'
+        if: steps.parse.outputs.should_run == 'true' && (env.CODEX_PROVIDER == 'codex' || env.CODEX_PROVIDER == 'azure')
         run: npm install -g @openai/codex@latest
 
       - name: Install Gemini CLI
-        if: env.CODEX_PROVIDER == 'gemini'
+        if: steps.parse.outputs.should_run == 'true' && env.CODEX_PROVIDER == 'gemini'
         run: npm install -g @google/gemini-cli@latest
 
       - name: Gather PR context
+        if: steps.parse.outputs.should_run == 'true'
         run: node .github/scripts/codex/gather-context.mjs
 
       - name: Run Codex provider
         id: codex
+        if: steps.parse.outputs.should_run == 'true'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -107,6 +125,7 @@ jobs:
 
       - name: Validate changes
         id: validate
+        if: steps.parse.outputs.should_run == 'true'
         continue-on-error: true
         env:
           CODEX_RESULT_PATH: ${{ github.workspace }}/.github/scripts/codex/runtime/codex-result.json
@@ -122,7 +141,7 @@ jobs:
         run: bash .github/scripts/codex/commit-and-push.sh
 
       - name: Report status and thread updates
-        if: always()
+        if: always() && steps.parse.outputs.bounced != 'true'
         env:
           VALIDATION_SUCCEEDED: ${{ steps.validate.outcome == 'success' }}
           CODEX_SUCCEEDED: ${{ steps.codex.outcome == 'success' }}
@@ -130,7 +149,7 @@ jobs:
         run: node .github/scripts/codex/report.mjs
 
       - name: Fail job when repair did not pass validation
-        if: steps.codex.outcome != 'success' || steps.validate.outcome != 'success'
+        if: steps.parse.outputs.bounced != 'true' && (steps.codex.outcome != 'success' || steps.validate.outcome != 'success')
         run: |
           echo "Codex repair did not complete successfully"
           exit 1

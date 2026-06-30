@@ -22,6 +22,12 @@ It executes a CLI-based coding agent (Codex by default) and can be extended to o
      - `AZURE_OPENAI_API_VERSION` (for the `azure` provider; default `2025-04-01-preview`)
      - `CODEX_ROUTER_ENABLED` (auto-trigger kill switch; the event router only runs when set to `'true'`. Leave unset/`false` for manual-testing-only — the runner's `workflow_dispatch` path is unaffected)
      - `CODEX_VALIDATION_COMMANDS` (newline-separated validation commands override)
+     - Cost guardrail (bounce) — see [Cost guardrail](#cost-guardrail-bounce-oversized-repairs-to-a-human):
+       - `CODEX_BOUNCE_ENABLED` (default `true`; set `false` to disable bouncing)
+       - `CODEX_BOUNCE_MAX_CHANGED_FILES` (default `20`; `-1` disables this dimension)
+       - `CODEX_BOUNCE_MAX_DIFF_LINES` (default `1500`; additions + deletions; `-1` disables)
+       - `CODEX_BOUNCE_MAX_FAILING_CHECKS` (default `6`; `-1` disables)
+       - `CODEX_BOUNCE_LABEL` (default `auto-heal-bounced`)
 3. (Optional) Add `.github/codex-repair.json` for future per-repo settings.
 
 ## Local auth + wrapper run (PR-synced sessions)
@@ -111,6 +117,37 @@ What this wrapper does:
 - Uses PR-scoped concurrency.
 - Tracks attempts/failure streak in a persistent status comment.
 - Auto-repair pauses when thresholds are exceeded.
+
+## Cost guardrail: bounce oversized repairs to a human
+
+The agentic repair loop re-sends the gathered prompt every turn, so cost scales with
+PR size. To avoid spending tokens on PRs that are too large/complex to fix
+automatically, the eligibility step (`event-parse.mjs`) runs a **pre-flight complexity
+check before any checkout/install/model call** — so a bounce costs ~zero tokens and
+near-zero CI minutes.
+
+For **auto** (non-explicit) runs only, the PR is **bounced to a human** when any budget
+is exceeded:
+
+- changed files > `CODEX_BOUNCE_MAX_CHANGED_FILES` (default 20)
+- diff lines (additions + deletions) > `CODEX_BOUNCE_MAX_DIFF_LINES` (default 1500)
+- failing checks > `CODEX_BOUNCE_MAX_FAILING_CHECKS` (default 6)
+
+On a bounce, `bounce.mjs` (idempotent, best-effort):
+
+1. posts/updates a sticky `<!-- codex-bounce -->` comment explaining why and the
+   measured-vs-budget numbers,
+2. adds the `CODEX_BOUNCE_LABEL` label (`auto-heal-bounced`), and
+3. auto-assigns the **Copilot coding agent** via GraphQL `replaceActorsForAssignable`
+   (if the Actions token can't assign it, the comment says to assign `@Copilot`
+   manually).
+
+The job still finishes **green** on a bounce (it's an intended outcome, not a failure),
+and the status/report comment is skipped so the bounce comment is the only one.
+
+**Escape hatches:** explicit runs (`/codex …` or `workflow_dispatch` with
+`explicit=true`) **bypass** the budget entirely. Set `CODEX_BOUNCE_ENABLED=false` to
+disable bouncing, or set any individual budget to `-1` to disable just that dimension.
 
 ## Context gathered for Codex
 
