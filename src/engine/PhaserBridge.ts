@@ -37,10 +37,10 @@ import type { EntitySpriteMappings } from '../shared/data/entity-sprite-mappings
 import ENTITY_SPRITE_MAPPINGS from '../shared/data/entity-sprite-mappings.json';
 
 const DEAD_SKULL_Y_OFFSET = 18;
-const MOB_HEALTH_BAR_HEIGHT_PX = 4;
+const MOB_HEALTH_BAR_HEIGHT_PX = 3;
 const MOB_HEALTH_BAR_MIN_WIDTH_PX = 16;
 const MOB_HEALTH_BAR_MAX_WIDTH_PX = 28;
-const MOB_HEALTH_BAR_Y_GAP_PX = 6;
+const MOB_HEALTH_BAR_Y_GAP_PX = 2;
 /** Fallback half-height when a sprite's displayHeight is unavailable. */
 const MOB_HEALTH_BAR_DEFAULT_SPRITE_HALF_HEIGHT_PX = 8;
 const logger = createLogger('engine:phaser-bridge');

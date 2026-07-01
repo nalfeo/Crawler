@@ -546,7 +546,18 @@ describe('createPhaserBridge', () => {
 
     expect(images).toHaveLength(2);
     expect(graphics).toHaveLength(1);
-    expect(graphics[0]!.fillRects.length).toBeGreaterThanOrEqual(2);
+    const barGraphics = graphics[0]!;
+    expect(barGraphics.fillRects.length).toBeGreaterThanOrEqual(2);
+    const [shellRect, fillRect] = barGraphics.fillRects;
+    expect(shellRect).toBeDefined();
+    expect(fillRect).toBeDefined();
+
+    // Geometry lock: the mob bar should stay close to the sprite and remain thin.
+    // MockImage has no displayHeight, so PhaserBridge uses the 8px-half-height fallback.
+    const enemyImg = images[0]!;
+    expect(fillRect!.y).toBe(enemyImg.y + 8 + 2);
+    expect(fillRect!.h).toBe(3);
+    expect(shellRect!.h).toBe(5);
   });
 
   it('renders slime-mini babies smaller than a full slime', () => {
