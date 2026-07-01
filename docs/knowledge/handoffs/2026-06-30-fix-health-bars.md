@@ -6,17 +6,17 @@
 
 ## Persona(s) adopted
 
-Producer for cross-layer coordination (engine UX tweak + policy docs), with UX-focused implementation in `src/engine/PhaserBridge.ts`.
+Producer for runtime rendering change validation and PR/handoff coordination, with the implementation itself focused in `src/engine/PhaserBridge.ts`.
 
 ## Routing verdict
 
-✅ right persona - the task combined runtime rendering changes and policy/handoff coordination.
+✅ right persona - the task centered on a small engine UX tweak plus validation and release coordination.
 
 ## Apples
 
 Estimated: 🍎 x 2
 Actual: 🍎 x 2
-Verdict: 🎯 Exact - narrow rendering tweak plus lightweight validation/policy updates.
+Verdict: 🎯 Exact - narrow rendering tweak plus lightweight regression locking and visual validation.
 
 Hello kitties: 2/5 = 0.40 🎀
 
@@ -35,9 +35,6 @@ Stages: `plan_review` ✅ · `code_review` ✅
 - Captured headless visual validation screenshots in lab mode:
   - `files/spawner-lab-headless.png`
   - `files/enemy-ai-lab-headless.png`
-- In a stacked subsession, added explicit UX policy language requiring headless/deterministic visual validation for UX changes; cherry-picked back into this branch:
-  - `AGENTS.md`
-  - `docs/agent-os/personas/ux-designer.md`
 
 ## What's Next
 
