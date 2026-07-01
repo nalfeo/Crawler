@@ -10,6 +10,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   fetchGeneratedSpriteRegistry,
   preloadGeneratedSprites,
+  resolvePublicAssetUrl,
 } from '../../src/engine/generatedAssets/index.js';
 import {
   buildGeneratedSpriteRegistry,
@@ -109,6 +110,15 @@ describe('fetchGeneratedSpriteRegistry', () => {
 });
 
 describe('preloadGeneratedSprites', () => {
+  it('resolves public asset URLs under a Pages base path', () => {
+    expect(resolvePublicAssetUrl('assets/generated/manifest.json', '/Crawler/')).toBe(
+      '/Crawler/assets/generated/manifest.json',
+    );
+    expect(resolvePublicAssetUrl('/assets/generated/iron-sword.png', '/Crawler/dev/')).toBe(
+      '/Crawler/dev/assets/generated/iron-sword.png',
+    );
+  });
+
   it('does nothing for an empty registry', () => {
     const image = vi.fn();
     const queued = preloadGeneratedSprites({ image }, emptyGeneratedSpriteRegistry());

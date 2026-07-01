@@ -1,0 +1,21 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-01",
+  "session_slug": "pages-generated-sprite-basepath",
+  "task_title": "Make generated sprite URLs Pages-aware",
+  "estimated_apples": 1,
+  "stages": {
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

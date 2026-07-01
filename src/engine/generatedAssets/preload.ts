@@ -33,9 +33,23 @@ import {
 import { createLogger } from '../../shared/logger.js';
 
 const logger = createLogger('engine:generated-assets');
+type ImportMetaWithEnv = ImportMeta & { env?: { BASE_URL?: string } };
+const ENV_BASE_PATH = (import.meta as ImportMetaWithEnv).env?.BASE_URL;
+const BROWSER_BASE_PATH =
+  typeof document === 'undefined' ? undefined : new URL('.', document.baseURI).pathname;
+
+/**
+ * Resolve a public asset path against the app base path so GitHub Pages builds
+ * under `/Crawler/` fetch generated sprite assets from the deployed subpath.
+ */
+export function resolvePublicAssetUrl(path: string, basePath?: string): string {
+  const base = normalizeBase(basePath ?? ENV_BASE_PATH ?? BROWSER_BASE_PATH ?? '/');
+  return `${base}${stripLeadingSlash(path)}`;
+}
 
 /** Default browser-relative URL for the manifest. */
-export const DEFAULT_MANIFEST_URL = '/assets/generated/manifest.json';
+export const DEFAULT_MANIFEST_URL = resolvePublicAssetUrl('assets/generated/manifest.json');
+const DEFAULT_ASSETS_BASE_URL = resolvePublicAssetUrl('assets');
 
 /** Minimum subset of `Phaser.Loader.LoaderPlugin` we need at preload. */
 export interface LoaderLike {
@@ -124,7 +138,8 @@ export async function fetchGeneratedSpriteRegistry(
 
 export interface PreloadOptions {
   /**
-   * Base URL to resolve `assetPath` against. Defaults to `/assets/` so
+   * Base URL to resolve `assetPath` against. Defaults to the app-base-aware
+   * `/assets/` URL so
    * `assetPath: "generated/iron-sword.png"` becomes
    * `"/assets/generated/iron-sword.png"`. Tests can override.
    */
@@ -142,7 +157,7 @@ export function preloadGeneratedSprites(
   registry: GeneratedSpriteRegistry,
   options: PreloadOptions = {},
 ): ReadonlyArray<{ textureKey: string; url: string }> {
-  const base = normalizeBase(options.assetsBaseUrl ?? '/assets/');
+  const base = normalizeBase(options.assetsBaseUrl ?? DEFAULT_ASSETS_BASE_URL);
   const queued: { textureKey: string; url: string }[] = [];
   const seen = new Set<string>();
   for (const entry of registry.entries()) {

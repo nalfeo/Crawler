@@ -2,6 +2,7 @@ export {
   fetchGeneratedSpriteRegistry,
   preloadGeneratedSprites,
   DEFAULT_MANIFEST_URL,
+  resolvePublicAssetUrl,
   type FetchManifestOptions,
   type LoaderLike,
   type PreloadOptions,
