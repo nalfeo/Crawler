@@ -412,6 +412,50 @@ describe('BehaviorTreeAI', () => {
       expect(dbg.pullY).toBe(0);
     });
 
+    it('suppresses on-path loot detours in low-time beeline mode', () => {
+      const s = pollQuestNavHeading(42);
+      spawnXpGem(s.world, s.px + s.ux * 10, s.py + s.uy * 10, 5);
+
+      s.ai.poll(s.input, s.world);
+      const control = s.ai.getOpportunisticDebug();
+      expect(Math.hypot(control.pullX, control.pullY)).toBeGreaterThan(0.5);
+
+      const objective = s.world.floor1!.objective;
+      objective.staircaseUnlocked = false;
+      objective.staircaseDiscovered = false;
+      s.world.elapsedMs = objective.deadlineMs - 55_000;
+
+      s.ai.poll(s.input, s.world);
+      const panic = s.ai.getOpportunisticDebug();
+      expect(panic.pullX).toBe(0);
+      expect(panic.pullY).toBe(0);
+    });
+
+    it('does not switch to COLLECT in low-time beeline fallback windows', () => {
+      const world = createTestWorld({ seed: 42 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+      meetTutorialGoon(world); // puts progression in level-1 grind (no explicit progress objective)
+
+      const px = world.stores.position.x[player] ?? 0;
+      const py = world.stores.position.y[player] ?? 0;
+      spawnXpGem(world, px + 6, py, 5);
+
+      const ai = new BehaviorTreeAI({ seed: 42 });
+      const input = createInputState();
+      ai.poll(input, world);
+      expect(ai.getDecision().state).toBe(AIState.COLLECT);
+
+      const objective = world.floor1!.objective;
+      objective.staircaseUnlocked = false;
+      objective.staircaseDiscovered = false;
+      world.elapsedMs = objective.deadlineMs - 55_000;
+
+      ai.poll(input, world);
+      expect(ai.getDecision().state).not.toBe(AIState.COLLECT);
+    });
+
     it('ignores loot farther than 5 ft to the side of its path', () => {
       const s = pollQuestNavHeading(42);
       // 7.5 ft forward + 10 ft lateral (perp to heading): total 12.5 ft is inside the

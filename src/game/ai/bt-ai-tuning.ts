@@ -428,6 +428,22 @@ export const FARM_FORWARD_DOT_MIN = 0.35;
 // (and dodges) instead of drifting onto more swarm and getting overwhelmed — the
 // over-engagement death mode the forward bias must never reintroduce.
 export const FARM_MIN_HEALTH_FRACTION = 0.6;
+// --- Collapse-pressure panic routing ---
+// Remaining-time threshold for hard beeline behavior. At or below this value the
+// AI drops opportunistic loot/farm detours and commits to objective progress.
+export const PANIC_BEELINE_REMAINING_MS = 60_000;
+// Panic pressure ramps in from this remaining-time mark down to
+// PANIC_BEELINE_REMAINING_MS, increasing risk tolerance as collapse nears.
+export const PANIC_RAMP_START_REMAINING_MS = 180_000;
+// Pressure boost while stairs are still locked: if the player is behind on the
+// unlock chain, panic escalates faster for the same remaining time.
+export const PANIC_LOCKED_STAIRS_MULTIPLIER = 1.35;
+// Lower bound for dodge-weight scaling under panic. Keep > 0 so emergency beelines
+// still perform some evasive movement rather than pure face-tanking.
+export const PANIC_MIN_DODGE_WEIGHT_SCALE = 0.45;
+// Pre-unlock emergency floor for dodge scaling. Slightly lower than the generic
+// floor so low-time, pre-unlock runs prioritize progress over perfect safety.
+export const PANIC_MIN_DODGE_WEIGHT_SCALE_LOCKED = 0.3;
 // Opportunistic quest-NPC detour while pathing: if an NPC with a pending quest
 // interaction is seen and visiting it adds only a small path-length penalty,
 // route Progress to that NPC first so interactions are not skipped while
