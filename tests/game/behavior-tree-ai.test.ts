@@ -552,13 +552,16 @@ describe('BehaviorTreeAI', () => {
       // rather than the dodge gate under test.
       expect(dodging.getDecision().state).toBe(AIState.EXPLORE);
       expect(dodging.getDecision().targetEid).toBeNull();
+      // Travel steering (not the retired additive dodge) now owns the heading, and
+      // the opportunistic loot detour stays suppressed while a perceived threat sits
+      // on the forward path — the runner won't bend toward the gem into danger.
+      expect(dodging.getTravelSteeringDebug()).not.toBeNull();
       const dodgeDbg = dodging.getOpportunisticDebug();
-      expect(Math.hypot(dodgeDbg.dodgeX, dodgeDbg.dodgeY)).toBeGreaterThan(0); // dodge active
       expect(dodgeDbg.pullX).toBe(0); // loot detour suppressed this frame
       expect(dodgeDbg.pullY).toBe(0);
     });
 
-    it('dodges charging enemies while pathing to quest objectives', () => {
+    it('arcs around a charging enemy while pathing to quest objectives (travel steering)', () => {
       const s = pollQuestNavHeading(42);
       const enemy = spawnEnemy(s.world, s.px + s.ux * 9, s.py + s.uy * 3, 20);
       const toPlayerX = s.px - (s.world.stores.position.x[enemy] ?? 0);
@@ -569,16 +572,23 @@ describe('BehaviorTreeAI', () => {
 
       s.ai.poll(s.input, s.world);
 
+      // Track A still navigates the quest (EXPLORE); predictive travel steering —
+      // not the retired additive dodge — now shapes the heading into a safe arc.
       expect(s.ai.getDecision().state).toBe(AIState.EXPLORE);
       expect(s.ai.getDecision().targetEid).not.toBeNull();
+      const steer = s.ai.getTravelSteeringDebug();
+      expect(steer).not.toBeNull();
+      expect(steer!.progressDot).toBeGreaterThan(0); // never reverses off-objective
+      // The additive travel dodge is folded into the steered heading (retired).
       const dbg = s.ai.getOpportunisticDebug();
-      expect(Math.hypot(dbg.dodgeX, dbg.dodgeY)).toBeGreaterThan(0);
+      expect(Math.hypot(dbg.dodgeX, dbg.dodgeY)).toBe(0);
     });
 
-    it('sidesteps a stationary enemy parked on the beeline instead of charging through', () => {
-      // Regression: a still/idle enemy never "closes", so the old dodge ignored it
-      // and the player bulldozed straight into body contact. A blocker dead ahead
-      // and inside the contact band must now draw a perpendicular sidestep.
+    it('arcs around a stationary enemy parked on the beeline instead of charging through', () => {
+      // Regression: a still/idle enemy never "closes", so the old additive dodge
+      // ignored it and the player bulldozed into body contact. Predictive steering
+      // reasons about the *current* predicted gap, so a blocker dead ahead draws a
+      // lateral arc that keeps forward progress.
       const s = pollQuestNavHeading(42);
       const enemy = spawnEnemy(s.world, s.px + s.ux * 4, s.py + s.uy * 4, 20);
       s.world.stores.velocity.x[enemy] = 0;
@@ -587,15 +597,17 @@ describe('BehaviorTreeAI', () => {
       s.ai.poll(s.input, s.world);
 
       expect(s.ai.getDecision().state).toBe(AIState.EXPLORE);
-      const dbg = s.ai.getOpportunisticDebug();
-      const mag = Math.hypot(dbg.dodgeX, dbg.dodgeY);
-      expect(mag).toBeGreaterThan(0); // sidestep fired despite zero closing speed
-      // Lateral, not a head-on push into the blocker: dodge does not point at it.
-      const towardEnemyX = s.world.stores.position.x[enemy]! - s.px;
-      const towardEnemyY = s.world.stores.position.y[enemy]! - s.py;
-      const teLen = Math.hypot(towardEnemyX, towardEnemyY) || 1;
-      const intoEnemy = (dbg.dodgeX * towardEnemyX + dbg.dodgeY * towardEnemyY) / (mag * teLen);
-      expect(Math.abs(intoEnemy)).toBeLessThan(0.8);
+      const steer = s.ai.getTravelSteeringDebug();
+      expect(steer).not.toBeNull();
+      // Forward progress preserved (never reverses off-objective)...
+      expect(steer!.progressDot).toBeGreaterThan(0);
+      // ...but deflected laterally off the head-on line. The enemy sits exactly on
+      // objDir, so any nonzero cross-product between objDir and the chosen heading
+      // is a genuine sidestep, and the heading does not point straight at the mob.
+      const lateral = Math.abs(s.ux * steer!.moveY - s.uy * steer!.moveX);
+      expect(lateral).toBeGreaterThan(0.05);
+      const into = steer!.moveX * s.ux + steer!.moveY * s.uy;
+      expect(into).toBeLessThan(0.99);
     });
 
     it('does not dodge a stationary enemy that is behind the travel heading', () => {

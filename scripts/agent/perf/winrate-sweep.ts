@@ -35,6 +35,7 @@ interface CLIArgs {
   weapons: string[];
   maxFrames: number;
   out: string | null;
+  enemyDamageMultiplier: number;
 }
 
 function parseSeeds(spec: string): number[] {
@@ -58,6 +59,7 @@ function parseArgs(): CLIArgs {
     weapons: FLOOR1_WEAPONS,
     maxFrames: BUDGET_FRAMES,
     out: null,
+    enemyDamageMultiplier: 1,
   };
   for (let i = 2; i < process.argv.length; i++) {
     const arg = process.argv[i];
@@ -73,6 +75,9 @@ function parseArgs(): CLIArgs {
       i++;
     } else if (arg === '--out' && next) {
       args.out = next;
+      i++;
+    } else if (arg === '--enemy-damage-multiplier' && next) {
+      args.enemyDamageMultiplier = parseFloat(next);
       i++;
     }
   }
@@ -91,6 +96,57 @@ interface FailRecord {
   stall: string;
 }
 
+/** Per-run metrics captured for every run (win or loss) so we can report the
+ * quality of a clear — the user's real goals: max XP/loot, min damage taken. */
+interface RunMetric {
+  weapon: string;
+  seed: number;
+  win: boolean;
+  gameTimeSec: number;
+  damageTaken: number;
+  damageTakenPerSec: number;
+  xp: number;
+  gold: number;
+  kills: number;
+  minHealthPercent: number;
+  finalHealthPercent: number;
+}
+
+function mean(nums: number[]): number {
+  if (nums.length === 0) return 0;
+  return nums.reduce((a, b) => a + b, 0) / nums.length;
+}
+
+function aggregateOf(rows: RunMetric[]): Record<string, number> {
+  return {
+    n: rows.length,
+    damageTakenPerSec: mean(rows.map((r) => r.damageTakenPerSec)),
+    damageTaken: mean(rows.map((r) => r.damageTaken)),
+    xp: mean(rows.map((r) => r.xp)),
+    gold: mean(rows.map((r) => r.gold)),
+    kills: mean(rows.map((r) => r.kills)),
+    minHealthPercent: mean(rows.map((r) => r.minHealthPercent)),
+    gameTimeSec: mean(rows.map((r) => r.gameTimeSec)),
+  };
+}
+
+function summarizeMetrics(label: string, rows: RunMetric[]): void {
+  if (rows.length === 0) {
+    console.log(`${label.padEnd(10)} (no runs)`);
+    return;
+  }
+  console.log(
+    `${label.padEnd(10)}` +
+      `dmg/s ${mean(rows.map((r) => r.damageTakenPerSec)).toFixed(2)}`.padEnd(14) +
+      `dmg ${mean(rows.map((r) => r.damageTaken)).toFixed(0)}`.padEnd(12) +
+      `xp ${mean(rows.map((r) => r.xp)).toFixed(0)}`.padEnd(10) +
+      `gold ${mean(rows.map((r) => r.gold)).toFixed(0)}`.padEnd(11) +
+      `kills ${mean(rows.map((r) => r.kills)).toFixed(0)}`.padEnd(12) +
+      `minHP ${(mean(rows.map((r) => r.minHealthPercent)) * 100).toFixed(0)}%`.padEnd(12) +
+      `t ${mean(rows.map((r) => r.gameTimeSec)).toFixed(0)}s`,
+  );
+}
+
 async function sweep(args: CLIArgs): Promise<void> {
   const start = Date.now();
   console.log('🎯 Floor 1 Win-Rate Sweep');
@@ -100,10 +156,12 @@ async function sweep(args: CLIArgs): Promise<void> {
   );
   console.log(`Weapons: ${args.weapons.join(', ')}`);
   console.log(`Budget:  ${args.maxFrames} frames (~${(args.maxFrames / 60).toFixed(0)}s)`);
+  console.log(`Damage:  ${args.enemyDamageMultiplier}x hostile damage`);
   console.log(`Runs:    ${args.seeds.length * args.weapons.length}`);
   console.log('');
 
   const fails: FailRecord[] = [];
+  const metrics: RunMetric[] = [];
   const perWeapon: { weapon: string; wins: number; runs: number }[] = [];
 
   for (const weapon of args.weapons) {
@@ -115,8 +173,23 @@ async function sweep(args: CLIArgs): Promise<void> {
         seed,
         maxFrames: args.maxFrames,
         forceWeaponId: weapon,
+        enemyDamageMultiplier: args.enemyDamageMultiplier,
         eventSampleInterval: 60,
         recordEvent: (e) => events.push(e),
+      });
+      const gameTimeSec = stats.gameTimeMs / 1000;
+      metrics.push({
+        weapon,
+        seed,
+        win: stats.outcome === 'victory',
+        gameTimeSec: Math.round(gameTimeSec),
+        damageTaken: stats.combat.damageTaken,
+        damageTakenPerSec: gameTimeSec > 0 ? stats.combat.damageTaken / gameTimeSec : 0,
+        xp: stats.totalXp,
+        gold: stats.totalGold,
+        kills: stats.combat.totalKills,
+        minHealthPercent: stats.health.minHealthPercent,
+        finalHealthPercent: stats.health.finalHealthPercent,
       });
       if (stats.outcome === 'victory') {
         wins++;
@@ -164,6 +237,25 @@ async function sweep(args: CLIArgs): Promise<void> {
       `${((totalWins / totalRuns) * 100).toFixed(1)}%`,
   );
 
+  console.log('');
+  console.log('Quality (means per run) — user goals: max xp/gold, MIN damage taken');
+  console.log('─'.repeat(70));
+  summarizeMetrics('ALL', metrics);
+  summarizeMetrics(
+    'WINS',
+    metrics.filter((m) => m.win),
+  );
+  summarizeMetrics(
+    'LOSSES',
+    metrics.filter((m) => !m.win),
+  );
+  for (const weapon of args.weapons) {
+    summarizeMetrics(
+      weapon,
+      metrics.filter((m) => m.weapon === weapon),
+    );
+  }
+
   if (fails.length > 0) {
     console.log('');
     console.log(`❌ ${fails.length} failures:`);
@@ -198,7 +290,20 @@ async function sweep(args: CLIArgs): Promise<void> {
     writeFileSync(
       args.out,
       JSON.stringify(
-        { perWeapon, totalWins, totalRuns, winRate: totalWins / totalRuns, fails },
+        {
+          enemyDamageMultiplier: args.enemyDamageMultiplier,
+          perWeapon,
+          totalWins,
+          totalRuns,
+          winRate: totalWins / totalRuns,
+          aggregate: {
+            all: aggregateOf(metrics),
+            wins: aggregateOf(metrics.filter((m) => m.win)),
+            losses: aggregateOf(metrics.filter((m) => !m.win)),
+          },
+          metrics,
+          fails,
+        },
         null,
         2,
       ),

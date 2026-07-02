@@ -458,3 +458,90 @@ export const NPC_INTERACTION_RADIUS_FT = 12.5;
 // Clamp for the "clear a nearby threat before approaching an NPC" check: a threat
 // must be within min(engageRadius, this) feet to pre-empt the NPC approach.
 export const NPC_APPROACH_THREAT_RADIUS_FT = 8;
+
+// --- Predictive safe-gap travel steering (travel-steering.ts) ---
+// Replaces the additive single-closest-threat "dodge nudge" during travel with a
+// context-steering controller that fans out candidate headings around the
+// objective direction and picks the safest forward-progressing arc. This
+// generalizes the excellent ENGAGE kite's spacing philosophy to travel so the
+// runner *dances around* mobs instead of bulldozing through them. Damage-agnostic
+// (nothing here scales with hostile damage) — see the review ledger 2026-07-02.
+//
+// Master switch: when false the wrapper is skipped and the legacy additive dodge
+// path runs unchanged (safe rollback without deleting code).
+export const TRAVEL_STEERING_ENABLED = true;
+// Combined contact radius (player + enemy half-extents) used to convert predicted
+// centre-to-centre distances into true surface (edge-to-edge) clearances. Anchored
+// to the AI's existing contact model so travel spacing agrees with ENGAGE.
+export const TRAVEL_BODY_RADIUS_FT = MIN_PLAYER_ENEMY_CONTACT_FT;
+// Surface gaps (edge-to-edge feet). Below HARD = contact imminent (steep penalty);
+// SAFE is the spacing the runner keeps while travelling. Anchored to the proven
+// ENGAGE kite, which orbits mobs at CONTACT_SAFE_ORBIT_FT (4.5) and dodges superbly
+// — travel reuses that spacing philosophy rather than brushing bodies. The runner
+// is ~2.5x faster than mobs, so holding a real gap costs little (it re-plans every
+// frame and resumes the beeline the instant the lane clears); the earlier, wider
+// arc is what actually sheds contact damage. COMFORT biases toward extra room when
+// otherwise indifferent. Clear-time may rise for a safer, richer win — that is an
+// explicit design goal, not a regression (only missing the floor collapse is).
+// Surface gaps (edge-to-edge feet). HARD is the true "never overlap" floor: the
+// thread-past pass (see pickSafeTravelHeading) only ever commits to lanes whose
+// predicted gap stays ≥ HARD, so HARD must be wide enough to absorb one frame of
+// closing speed + discretisation error (~1 ft) and reliably avoid body contact —
+// contact damage is binary at overlap, so keeping gap ≥ HARD is what actually
+// shrinks damage taken, independent of the damage multiplier. SAFE is the comfort
+// standoff the runner tries to keep while travelling and the beeline-accept
+// threshold: it stays on the EXACT objective beeline whenever the beeline's
+// predicted gap ≥ SAFE (beeline short-circuit), so SAFE is the deviation knob —
+// smaller SAFE ⇒ leave the beeline only when a brush is closer, preserving the
+// baseline trajectory/win-rate; larger SAFE ⇒ arc earlier/wider (more damage shed,
+// more detour time). Kept modest because the runner is faster and re-plans every
+// frame, so it needs little buffer. Crucially, leaving the beeline now means
+// threading FORWARD past the mob (Pass 2), not backing away, so the time cost of a
+// slightly larger SAFE is small — no more radial-retreat limit cycle. The panic
+// ramp (computeTravelSteering) eases SAFE toward HARD as the collapse deadline nears.
+export const TRAVEL_HARD_GAP_FT = 1.5;
+export const TRAVEL_SAFE_GAP_FT = 1.85;
+export const TRAVEL_COMFORT_GAP_FT = 2.5;
+// Only threats within this centre distance (feet) are scored. Kept modest so the
+// runner reacts to genuinely closing mobs, not distant ones it will never touch —
+// reacting early adds detour time that risks the deadline on marginal seeds.
+export const TRAVEL_THREAT_RADIUS_FT = 10;
+// Closest-approach prediction horizon, frames (~0.27 s at 60 fps). Long enough to
+// see an imminent body contact and slip it, short enough not to pre-emptively
+// orbit mobs that cannot reach the (faster) runner within the window.
+export const TRAVEL_HORIZON_FRAMES = 14;
+// Candidate heading offsets from the objective direction, degrees (mirrored ±).
+// Fine near objDir (cheap arcs), coarse toward the back (only used in pincers).
+export const TRAVEL_CANDIDATE_OFFSETS_DEG: readonly number[] = [
+  0, 15, 30, 45, 60, 75, 90, 110, 135, 160, 180,
+];
+// Wall-probe sample distances along a candidate, feet (ascending). A wall within
+// the FIRST step makes the candidate impassable; farther walls are only penalized.
+// Probes out to 15 ft so the Pass-2 kite filter (wallPenalty === 0 ⟺ deeply clear)
+// can tell a genuine open escape lane from a shallow wall pocket that reads clear
+// at 9 ft but dead-ends just beyond — the pocket that re-wedged a doorway at 159 s.
+export const TRAVEL_WALL_PROBE_DISTANCES_FT: readonly number[] = [3, 6, 9, 12, 15];
+// Minimum progress dot for a candidate to count as "progressing" toward objective.
+export const TRAVEL_MIN_SAFE_PROGRESS_DOT = 0.05;
+// Scoring weights. Progress dominates unless a real predicted contact is imminent
+// (safety term is steep near contact). Continuity yields smooth arcs; kite bias
+// arcs *around* the nearest mob like the engage orbit.
+export const TRAVEL_W_PROGRESS = 4;
+export const TRAVEL_W_SAFETY = 10;
+export const TRAVEL_W_CONTINUITY = 0.8;
+export const TRAVEL_W_KITE = 1.2;
+// v1 keeps loot/farm biasing at 0 so the existing Track-B opportunistic collect
+// and farm pulls stay in charge; the scoring hooks are ready to enable in a later
+// phase once the safety-only steering is proven not to regress win-rate.
+export const TRAVEL_W_LOOT = 0;
+export const TRAVEL_W_FARM = 0;
+export const TRAVEL_LOOT_LOOKAHEAD_FT = 12;
+export const TRAVEL_LOOT_CORRIDOR_FT = 4;
+// |Vrel|² below this ⇒ closest-approach is degenerate (truly co-moving); fall back
+// to the current separation instead of a spurious projection. Kept far below
+// (playerSpeed · small-angle)² so a slow-but-real closing course is never
+// misclassified as parallel and short-circuited to the current (larger) gap.
+export const TRAVEL_REL_SPEED_EPSILON_SQ = 1e-8;
+// COLLECT uses steering only while farther than this from the pickup, so the final
+// harvest overlap approach (Track A close-range slide) is left untouched.
+export const TRAVEL_COLLECT_MIN_STEER_DIST_FT = CLOSE_APPROACH_DIRECT_FT;

@@ -66,6 +66,10 @@ export interface SimEvent {
   netDisp: number;
   /** Total path distance actually traveled since the previous sample (ft). */
   pathTravel: number;
+  /** Remaining time before floor collapse (ms), or null if no floor objective. */
+  remainingMs?: number | null;
+  /** Whether the player was inside a safe room this sample (deadline paused). */
+  inSafe?: boolean;
   /** Optional annotation for non-sample events. */
   note?: string;
 }

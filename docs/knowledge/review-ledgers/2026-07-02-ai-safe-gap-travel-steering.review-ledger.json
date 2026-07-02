@@ -1,0 +1,58 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "ai-safe-gap-travel-steering",
+  "task_title": "AI Runner predictive safe-gap travel steering",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 12,
+      "resolved_count": 12,
+      "notes": "rubber-duck gpt-5.4 xhigh reviewed synthesized plan: 2 blocking (progress-watchdog keyed to objective distance; door-aware passability predicate for wall probes), 8 important, 2 minor. All folded into plan. Bisect 2026-07-02 CONFIRMED concern #3: f4f538d7 dodge-widening = the entire red-gate regression; Phase 0 reverts it."
+    },
+    "dual_plan_synthesis": {
+      "completed": true,
+      "plan_models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+      "judge_model": "claude-opus-4.8",
+      "notes": "plan-a (gpt-5.5) + plan-b (gemini-3.1-pro) synthesized by opus-4.8 judge into plan.md; centered on measured baseline (all 1x losses are marginal timeouts-while-alive, gate currently red) so steering must preserve throughput via lateral arcs + reuse engage kite tangent"
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview", "claude-sonnet-4.6"],
+          "concerns_count": 5,
+          "resolved_count": 5,
+          "clean": false,
+          "notes": "3 distinct code-review agents surfaced 5 concerns: G1 (static spawners excluded from the travel threat query), Gem1 (flat body-radius under-sizes 3x3 spawner bodies), S1 (Track-B loot/farm pull can deflect a steered arc), S2 (CCD degenerate-parallel epsilon 1e-4 too large), Gem2 (dead if-block in extractKiteTangent). All 5 implemented and unit-tested."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Fresh review of the FINAL shipping branch diff (after the win-rate-driven revert of G1/Gem1/S1) reported 'No concerns - clean'. Shipping delta over the reviewed envelope = S2 epsilon hardening + Gem2 dead-code removal + 2 pure-module tests; verify:fast green (100 tests)."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview", "claude-sonnet-4.6"],
+          "concerns_count": 5,
+          "valid_count": 5,
+          "resolved_count": 5,
+          "clean": true,
+          "notes": "opus-4.8 adjudicated all 5 concerns (distinct from the 3 reviewer models). Remedies: S2 (CCD epsilon 1e-4->1e-8) and Gem2 (dead-code) FIXED & SHIPPED in 214f553b - behavior-neutral, a full 1x sweep (seeds 1-16 x 3 weapons) is byte-identical to the committed envelope (40/48=83.3%, same 8 fails on seeds 2/12/13, same outcomes). G1 (spawner threat inclusion), Gem1 (per-body contact radius), S1 (loot/farm-pull gate) were implemented then DEFERRED: bundled they flipped 3 previously-winning seeds (6-bow, 15-bow, 8-baseball-bat) into nav-wedges, regressing win-rate 83.3%->77.1%. All three are main-parity enhancements (main is equally blind to spawners and equally blends the loot pull) - i.e. non-regression improvements, NOT fixes for a defect this branch introduced - so per project rule #13 (gate on win-RATE; never ship a win-rate regression) they are tracked as a dedicated nav-layer follow-up rather than forced green. Adjudication resolved = each concern reached a final documented disposition (2 shipped, 3 deferred-with-root-cause)."
+        }
+      ]
+    }
+  }
+}

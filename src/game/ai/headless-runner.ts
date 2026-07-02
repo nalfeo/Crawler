@@ -20,6 +20,7 @@ import { createInputState } from '../../shared/input.js';
 import { GAME } from '../../shared/constants.js';
 import { createLogger } from '../../shared/logger.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
+import { FLOOR1_TUTORIAL_QUEST_ID } from '../../shared/quest-types.js';
 import { type AIInputProvider, type RunStats, type LevelUpEvent } from './types.js';
 import { AI_STATE_NAME, type SimEvent } from './event-log.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
@@ -77,6 +78,8 @@ export interface HeadlessRunnerConfig {
    * present in the pool the run throws immediately.
    */
   forceWeaponId?: string;
+  /** Multiply hostile (Enemy + EnemyProjectile) Damage component amounts by this factor. */
+  enemyDamageMultiplier?: number;
   /**
    * Frames of zero floor-progress (no quest objective tick, completion, or gold
    * gain) before the run is declared `'stalled'` and terminated early with a
@@ -101,7 +104,31 @@ const DEFAULT_CONFIG: Required<
   debug: false,
   eventSampleInterval: 15,
   questStallFrames: 21_600, // ~360s of frozen quest progress on the 240×140 map
+  enemyDamageMultiplier: 1,
 };
+
+function applyConfiguredHostileDamageMultiplier(
+  world: GameWorld,
+  configuredMultiplier: number,
+): void {
+  const clampedMultiplier = normalizeHostileDamageMultiplier(configuredMultiplier);
+  // Avoid a deterministic spawn-camp death spiral: apply the high multiplier once
+  // the runner has entered objective flow and reached level 2 (post-tutorial
+  // unlock point where it can meaningfully execute quest-pathing + dodge).
+  const hasStartedObjectiveFlow = world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID);
+  const hasCombatMaturity = (world.playerLevel.level ?? 0) >= 2;
+  world.hostileDamageMultiplier =
+    hasStartedObjectiveFlow && hasCombatMaturity ? clampedMultiplier : 1;
+}
+
+function normalizeHostileDamageMultiplier(configuredMultiplier: number): number {
+  if (!Number.isFinite(configuredMultiplier)) {
+    throw new Error(
+      `Invalid enemyDamageMultiplier "${String(configuredMultiplier)}" (must be a finite number)`,
+    );
+  }
+  return Math.max(1, configuredMultiplier);
+}
 
 /**
  * Run a complete game simulation headlessly with an AI player.
@@ -124,10 +151,14 @@ export async function runHeadless(
   // Create world and spawn player
   const world = createGameWorld({ seed: mergedConfig.seed });
   const playerEid = spawnPlayer(world, 400, 400);
+  const hostileDamageMultiplier = normalizeHostileDamageMultiplier(
+    mergedConfig.enemyDamageMultiplier,
+  );
 
   // Initialize Floor1 scenario (generates map, sets up objectives, NPCs, etc.)
   // This sets world.state = 'loadout'
   initializeFloor1Scenario(world, playerEid);
+  applyConfiguredHostileDamageMultiplier(world, hostileDamageMultiplier);
 
   // Select starter weapon: either the forced weapon ID or option index 0.
   let starterWeaponIndex = 0;
@@ -253,6 +284,11 @@ export async function runHeadless(
       pathLen: nav?.pathWaypoints.length ?? 0,
       netDisp: Math.round(netDisp),
       pathTravel: Math.round(pathTravelAccum),
+      remainingMs:
+        world.floor1?.objective.deadlineMs != null
+          ? Math.round(world.floor1.objective.deadlineMs - world.elapsedMs)
+          : null,
+      inSafe: world.playerInSafeRoom === true,
       ...(note ? { note } : {}),
     };
   };
@@ -282,6 +318,7 @@ export async function runHeadless(
         frameCount,
         NPC_INTERACTION_COOLDOWN,
       );
+      applyConfiguredHostileDamageMultiplier(world, hostileDamageMultiplier);
 
       // Run one simulation step with Floor1 systems enabled
       runSimulationStep(world, inputState, GAME.DELTA_MS, {

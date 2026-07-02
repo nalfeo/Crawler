@@ -12,6 +12,7 @@ import {
   Health,
   Enemy,
   Velocity,
+  Stats,
   XpGem,
   Gold,
   DroppedItem,
@@ -45,7 +46,7 @@ import { normalizeInputDirection } from '../../shared/input.js';
 import { hasItem } from '../../shared/inventory.js';
 import { SeededRandom } from '../../shared/random.js';
 import { createLogger } from '../../shared/logger.js';
-import { WeaponType } from '../../shared/constants.js';
+import { WeaponType, PLAYER_SPEED } from '../../shared/constants.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_TUTORIAL_QUEST_ID,
@@ -154,14 +155,68 @@ import {
   QUEST_GIVER_DETOUR_MAX_EXTRA_FRACTION,
   NPC_INTERACTION_RADIUS_FT,
   NPC_APPROACH_THREAT_RADIUS_FT,
+  TRAVEL_STEERING_ENABLED,
+  TRAVEL_BODY_RADIUS_FT,
+  TRAVEL_HARD_GAP_FT,
+  TRAVEL_SAFE_GAP_FT,
+  TRAVEL_COMFORT_GAP_FT,
+  TRAVEL_THREAT_RADIUS_FT,
+  TRAVEL_HORIZON_FRAMES,
+  TRAVEL_CANDIDATE_OFFSETS_DEG,
+  TRAVEL_WALL_PROBE_DISTANCES_FT,
+  TRAVEL_MIN_SAFE_PROGRESS_DOT,
+  TRAVEL_W_PROGRESS,
+  TRAVEL_W_SAFETY,
+  TRAVEL_W_CONTINUITY,
+  TRAVEL_W_KITE,
+  TRAVEL_W_LOOT,
+  TRAVEL_W_FARM,
+  TRAVEL_LOOT_LOOKAHEAD_FT,
+  TRAVEL_LOOT_CORRIDOR_FT,
+  TRAVEL_REL_SPEED_EPSILON_SQ,
+  TRAVEL_COLLECT_MIN_STEER_DIST_FT,
 } from './bt-ai-tuning.js';
 // Floor-progress scoring + its weight live in ./scoring.ts (re-exported below so
 // this module's public surface is unchanged).
 import { computeFloorProgressScore } from './scoring.js';
 // Pure line-of-sight sampling lives in ./bt-ai-geometry.ts (unit-tested).
 import { hasClearLineOfSight } from './bt-ai-geometry.js';
+// Pure predictive safe-gap travel steering (unit-tested; damage-agnostic).
+import {
+  pickSafeTravelHeading,
+  type TravelSteeringInput,
+  type TravelSteeringParams,
+  type TravelThreat,
+  type TravelSteeringResult,
+} from './travel-steering.js';
 
 const logger = createLogger('game:bt-ai-provider');
+
+// Below this magnitude a heading is treated as "no direction" (skip steering /
+// neutral continuity) — matches the pure module's own zero-vector epsilon.
+const TRAVEL_HEADING_EPSILON = 1e-6;
+
+// Assembled once from the TRAVEL_* tuning constants; the pure steering module
+// reads it by reference each frame and never mutates it.
+const TRAVEL_PARAMS: TravelSteeringParams = {
+  hardGapFt: TRAVEL_HARD_GAP_FT,
+  safeGapFt: TRAVEL_SAFE_GAP_FT,
+  comfortGapFt: TRAVEL_COMFORT_GAP_FT,
+  threatRadiusFt: TRAVEL_THREAT_RADIUS_FT,
+  horizonFrames: TRAVEL_HORIZON_FRAMES,
+  candidateOffsetsDeg: TRAVEL_CANDIDATE_OFFSETS_DEG,
+  wallProbeDistancesFt: TRAVEL_WALL_PROBE_DISTANCES_FT,
+  minSafeProgressDot: TRAVEL_MIN_SAFE_PROGRESS_DOT,
+  wProgress: TRAVEL_W_PROGRESS,
+  wSafety: TRAVEL_W_SAFETY,
+  wContinuity: TRAVEL_W_CONTINUITY,
+  wKite: TRAVEL_W_KITE,
+  wLoot: TRAVEL_W_LOOT,
+  wFarm: TRAVEL_W_FARM,
+  lootLookaheadFt: TRAVEL_LOOT_LOOKAHEAD_FT,
+  lootCorridorFt: TRAVEL_LOOT_CORRIDOR_FT,
+  relSpeedEpsilonSq: TRAVEL_REL_SPEED_EPSILON_SQ,
+};
 
 // Re-exported so bt-ai-provider.ts's public surface is unchanged: no importer
 // (or its existing unit test) needs to change.
@@ -257,6 +312,9 @@ export class BehaviorTreeAI implements AIInputProvider {
    * carries over from the previous frame. */
   private smoothMoveX: number = 0;
   private smoothMoveY: number = 0;
+  /** Last travel-steering result (or null when steering did not drive the most
+   * recent poll). Exposed via {@link getTravelSteeringDebug} for tests/telemetry. */
+  private lastTravelSteering: TravelSteeringResult | null = null;
   /**
    * Whether the AI is currently committed to a retreat. Latched so the retreat
    * condition can apply hysteresis (see {@link RETREAT_HYSTERESIS_MULT}) instead
@@ -1849,6 +1907,36 @@ export class BehaviorTreeAI implements AIInputProvider {
       state.moveY = 0;
     }
 
+    // Predictive safe-gap travel steering: for travel states, replace the raw
+    // objective heading (Track A) with a safe, forward-progressing arc that
+    // *dances around* perceived mobs — generalizing the ENGAGE kite's spacing to
+    // travel. Damage-agnostic (nothing here reads a hostile-damage multiplier).
+    let travelEmergency = false;
+    this.lastTravelSteering = null;
+    if (TRAVEL_STEERING_ENABLED && this.shouldTravelSteer(playerX, playerY)) {
+      const objMag = Math.hypot(state.moveX, state.moveY);
+      if (objMag > TRAVEL_HEADING_EPSILON) {
+        const steer = this.computeTravelSteering(
+          world,
+          playerEid,
+          playerX,
+          playerY,
+          state.moveX,
+          state.moveY,
+        );
+        state.moveX = steer.moveX;
+        state.moveY = steer.moveY;
+        travelEmergency = steer.emergency;
+        this.lastTravelSteering = steer;
+        // The steering heading already encodes predictive spacing; blending the
+        // legacy single-closest-threat dodge on top would double-count and
+        // reintroduce the oscillation that widening it caused (commit f4f538d7),
+        // so retire the additive travel dodge whenever steering drives the frame.
+        this.dodgeVecX = 0;
+        this.dodgeVecY = 0;
+      }
+    }
+
     // Blend Track B opportunistic vectors additively into the Track A direction.
     // The result is re-normalized to unit length if it exceeds 1 so the player
     // moves at full speed regardless of blend magnitudes. The loot-detour pull
@@ -1878,8 +1966,15 @@ export class BehaviorTreeAI implements AIInputProvider {
     // values are passed directly to playerInputSystem; normalizeInputDirection
     // keeps them unchanged when their length is ≤ 1, so the player naturally
     // accelerates/decelerates through turns at sub-full speed.
-    this.smoothMoveX += (state.moveX - this.smoothMoveX) * MOVE_SMOOTH_FACTOR;
-    this.smoothMoveY += (state.moveY - this.smoothMoveY) * MOVE_SMOOTH_FACTOR;
+    if (travelEmergency) {
+      // Imminent predicted contact / no safe lane: skip smoothing so the evasive
+      // arc reaches playerInputSystem this frame instead of being averaged away.
+      this.smoothMoveX = state.moveX;
+      this.smoothMoveY = state.moveY;
+    } else {
+      this.smoothMoveX += (state.moveX - this.smoothMoveX) * MOVE_SMOOTH_FACTOR;
+      this.smoothMoveY += (state.moveY - this.smoothMoveY) * MOVE_SMOOTH_FACTOR;
+    }
     state.moveX = this.smoothMoveX;
     state.moveY = this.smoothMoveY;
 
@@ -3484,6 +3579,131 @@ export class BehaviorTreeAI implements AIInputProvider {
     return false;
   }
 
+  /**
+   * Whether predictive travel steering should drive the heading this frame.
+   * EXPLORE always steers (the long-haul dance around mobs); long-range COLLECT
+   * steers until close to the pickup (the final harvest-overlap approach is left
+   * to Track A's close-range slide); ENGAGE / RETREAT / INTERACT never steer —
+   * they own their own movement.
+   */
+  private shouldTravelSteer(playerX: number, playerY: number): boolean {
+    const s = this.decision.state;
+    if (s === AIState.EXPLORE) {
+      return true;
+    }
+    if (s === AIState.COLLECT) {
+      if (this.decision.targetX === null || this.decision.targetY === null) {
+        return true;
+      }
+      const dx = this.decision.targetX - playerX;
+      const dy = this.decision.targetY - playerY;
+      return Math.hypot(dx, dy) > TRAVEL_COLLECT_MIN_STEER_DIST_FT;
+    }
+    return false;
+  }
+
+  /**
+   * Thin ECS→pure-input wrapper around {@link pickSafeTravelHeading}. Reads
+   * perceived hostiles, the player's speed, and a door-aware passability probe,
+   * then delegates the heading choice to the pure, deterministic, damage-agnostic
+   * travel-steering module. All game state is read-only here.
+   */
+  private computeTravelSteering(
+    world: GameWorld,
+    playerEid: number,
+    playerX: number,
+    playerY: number,
+    objDirX: number,
+    objDirY: number,
+  ): TravelSteeringResult {
+    const playerSpeed = hasComponent(world.ecs, playerEid, Stats)
+      ? (world.stores.stats.moveSpeed[playerEid] ?? PLAYER_SPEED)
+      : PLAYER_SPEED;
+
+    // Perceived hostiles within the threat radius (same perception gate the rest
+    // of the AI uses, so steering never reacts to enemies the player can't see).
+    const threats: TravelThreat[] = [];
+    const enemies = query(world.ecs, [Enemy, Position, Velocity, Health]);
+    for (const eid of enemies) {
+      if (eid === undefined) {
+        continue;
+      }
+      if ((world.stores.health.current[eid] ?? 0) <= 0) {
+        continue;
+      }
+      const ex = world.stores.position.x[eid] ?? 0;
+      const ey = world.stores.position.y[eid] ?? 0;
+      if (Math.hypot(ex - playerX, ey - playerY) > TRAVEL_THREAT_RADIUS_FT) {
+        continue;
+      }
+      if (!this.canPerceiveWorldPosition(world, ex, ey)) {
+        continue;
+      }
+      threats.push({
+        x: ex,
+        y: ey,
+        vx: world.stores.velocity.x[eid] ?? 0,
+        vy: world.stores.velocity.y[eid] ?? 0,
+        bodyRadiusFt: TRAVEL_BODY_RADIUS_FT,
+      });
+    }
+
+    // Door-aware passability in world coordinates (wraps the tile-space predicate
+    // so steering never refuses a quest-critical closed-but-openable door).
+    const floorMap = world.floorMap;
+    const doorAwarePassable = this.doorAwarePassable;
+    const probePassable = (worldX: number, worldY: number): boolean => {
+      if (!floorMap) {
+        return true;
+      }
+      const tile = floorMap.worldToTile(worldX, worldY);
+      return doorAwarePassable
+        ? doorAwarePassable(tile.x, tile.y)
+        : floorMap.tileMap.isPassable(tile.x, tile.y);
+    };
+
+    // Continuity uses last frame's *smoothed* output heading (unit); a ~0 heading
+    // yields a neutral (0,0) prevDir so re-entry from ENGAGE never snaps sideways.
+    const smoothMag = Math.hypot(this.smoothMoveX, this.smoothMoveY);
+    const prevDirX = smoothMag > TRAVEL_HEADING_EPSILON ? this.smoothMoveX / smoothMag : 0;
+    const prevDirY = smoothMag > TRAVEL_HEADING_EPSILON ? this.smoothMoveY / smoothMag : 0;
+
+    // Time-pressure envelope: as the floor-collapse panic ramps 0→1, ease the
+    // spacing target toward the hard (contact) gap so the runner stops spending
+    // time on wide avoidance arcs it can no longer afford and beelines to finish.
+    // It still clears actual contact (hard-gap floor); only the *comfort* spacing
+    // is surrendered. Damage-agnostic — driven by remaining time, not hostile damage.
+    const panicProfile = this.getCollapsePanicProfile(world);
+    const panic = panicProfile.panic;
+    const params: TravelSteeringParams =
+      panic > 0
+        ? {
+            ...TRAVEL_PARAMS,
+            safeGapFt: TRAVEL_SAFE_GAP_FT - (TRAVEL_SAFE_GAP_FT - TRAVEL_HARD_GAP_FT) * panic,
+          }
+        : TRAVEL_PARAMS;
+
+    const input: TravelSteeringInput = {
+      px: playerX,
+      py: playerY,
+      objDirX,
+      objDirY,
+      prevDirX,
+      prevDirY,
+      playerSpeedFtPerFrame: playerSpeed,
+      orbitSign: this.kiteOrbitSign,
+      panic: panicProfile.beeline,
+      // v1: loot/farm biasing is off (TRAVEL_W_LOOT/W_FARM = 0); the existing
+      // Track-B opportunistic-collect and farm pulls still ride the blend below.
+      weaponReachFt: 0,
+      farmEligible: false,
+      threats,
+      pickups: [],
+      probePassable,
+    };
+    return pickSafeTravelHeading(input, params);
+  }
+
   /** Player health as a 0..1 fraction, or 1 when no player is found. */
   private getPlayerHealthFraction(world: GameWorld): number {
     const players = query(world.ecs, [Player, Health]);
@@ -3910,6 +4130,15 @@ export class BehaviorTreeAI implements AIInputProvider {
       dodgeX: this.dodgeVecX,
       dodgeY: this.dodgeVecY,
     };
+  }
+
+  /**
+   * Last predictive travel-steering result, or null when steering did not drive
+   * the most recent poll (non-travel state, disabled, or a zero objective
+   * heading). Mirrors {@link getOpportunisticDebug} for deterministic tests.
+   */
+  getTravelSteeringDebug(): TravelSteeringResult | null {
+    return this.lastTravelSteering;
   }
 
   getNavigationDebug(): AINavigationDebug {
