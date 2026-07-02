@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "manifest-loader-default",
+  "task_title": "DevTools: manifest loader defaults to unselected + Azure runs auto-load/refresh/load-on-select",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "notes": "approved_with_changes; 2 blocking (load race, hydration overwrite) + 5 others all adopted"
+    }
+  }
+}

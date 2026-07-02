@@ -1174,6 +1174,12 @@ function render(): void {
       color: '#e5e7eb',
     },
   });
+  // Default to an unselected placeholder so the assets table stays empty until
+  // the operator explicitly picks a manifest (see renderActivePlan).
+  const planPlaceholder = document.createElement('option');
+  planPlaceholder.value = '';
+  planPlaceholder.textContent = 'Select a manifest…';
+  planSelect.append(planPlaceholder);
   for (const plan of plans) {
     const option = document.createElement('option');
     option.value = plan.id;
@@ -1709,7 +1715,7 @@ function render(): void {
       cursor: 'pointer',
       fontSize: '11px',
     },
-  });
+  }) as HTMLButtonElement;
   const reloadLoadBtn = el('button', {
     text: 'Load sheet',
     title: 'Reconstruct a queue item from the selected run at the Sheet step.',
@@ -1722,7 +1728,7 @@ function render(): void {
       cursor: 'pointer',
       fontSize: '11px',
     },
-  });
+  }) as HTMLButtonElement;
   const reloadStatus = el('span', {
     text: '',
     style: { fontSize: '11px', color: '#64748b' },
@@ -1749,12 +1755,37 @@ function render(): void {
     clearStoreBtn,
     reloadStatus,
   );
-  const refreshAzureRuns = async (): Promise<void> => {
-    reloadStatus.textContent = 'Loading…';
+  const azureRunKey = (run: SidecarRunListEntry): string => `${run.briefId}::${run.runId}`;
+  // Serialize run loads (one at a time) and drop stale periodic-refresh responses
+  // so a slow list can't clobber a newer one — or overwrite a just-loaded run.
+  let azureLoadInFlight = false;
+  let azureRefreshToken = 0;
+  const AZURE_RUNS_REFRESH_MS = 15000;
+  const setAzureControlsEnabled = (enabled: boolean): void => {
+    reloadSelect.disabled = !enabled;
+    reloadStateFilter.disabled = !enabled;
+    reloadRefreshBtn.disabled = !enabled;
+    reloadLoadBtn.disabled = !enabled;
+  };
+  const refreshAzureRuns = async (options: { silent?: boolean } = {}): Promise<void> => {
+    // `silent` (init/background) skips the transient "Loading…" and the success
+    // "N run(s)." writes so a periodic poll never stomps a "Loaded X." message;
+    // it still surfaces errors.
+    const silent = options.silent === true;
+    const token = ++azureRefreshToken;
+    // Preserve the operator's current selection (by stable key) across rebuilds.
+    const previousKey = reloadSelect.value;
+    if (!silent) {
+      reloadStatus.textContent = 'Loading…';
+    }
     try {
       const runs = await listSidecarRuns({
         promoted: reloadStateFilter.value as 'all' | 'promoted' | 'not-promoted',
       });
+      // A newer refresh started while we awaited: discard this stale response.
+      if (token !== azureRefreshToken) {
+        return;
+      }
       azureRunChoices = runs;
       reloadSelect.replaceChildren();
       if (runs.length === 0) {
@@ -1762,12 +1793,18 @@ function render(): void {
         opt.value = '';
         opt.textContent = 'No runs found in the store';
         reloadSelect.append(opt);
-        reloadStatus.textContent = 'No runs available.';
+        if (!silent) {
+          reloadStatus.textContent = 'No runs available.';
+        }
         return;
       }
-      runs.forEach((run, i) => {
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Select a run…';
+      reloadSelect.append(placeholder);
+      for (const run of runs) {
         const opt = document.createElement('option');
-        opt.value = String(i);
+        opt.value = azureRunKey(run);
         const ts = run.timestamp ? new Date(run.timestamp).toLocaleString() : 'unknown time';
         const promoted = run.promotionState === 'promoted' ? 'promoted' : 'needs promotion';
         opt.textContent =
@@ -1775,11 +1812,86 @@ function render(): void {
           `${run.hasJudge ? ' · judged' : ''}` +
           ` · ${promoted} · ${ts}`;
         reloadSelect.append(opt);
-      });
-      reloadStatus.textContent = `${runs.length} run(s).`;
+      }
+      // Restore the prior selection if it still exists. Setting `.value`
+      // programmatically does not fire `change`, so a refresh never auto-loads.
+      reloadSelect.value =
+        previousKey && runs.some((run) => azureRunKey(run) === previousKey) ? previousKey : '';
+      if (!silent) {
+        reloadStatus.textContent = `${runs.length} run(s).`;
+      }
     } catch (err) {
+      if (token !== azureRefreshToken) {
+        return;
+      }
       reloadStatus.textContent = `Failed: ${err instanceof Error ? err.message : String(err)}`;
     }
+  };
+  // Reconstruct a queue item from the selected run at the Sheet step. Selecting a
+  // run in the dropdown loads it immediately; the button is an explicit fallback.
+  const loadSelectedAzureRun = async (): Promise<void> => {
+    if (azureLoadInFlight) {
+      return;
+    }
+    const key = reloadSelect.value;
+    const run = key ? azureRunChoices.find((choice) => azureRunKey(choice) === key) : undefined;
+    if (!run) {
+      reloadStatus.textContent = 'Pick a run first.';
+      return;
+    }
+    azureLoadInFlight = true;
+    setAzureControlsEnabled(false);
+    setButtonBusy(reloadLoadBtn, true, 'Load sheet', 'Loading…');
+    reloadStatus.textContent = `Loading ${run.briefId}…`;
+    try {
+      // Reuse an existing queue item for this briefId, else create one.
+      let target: QueueItem | undefined = queueState.items.find(
+        (it) => it.kebabName === run.briefId,
+      );
+      if (target) {
+        queueState = queueSelectItem(queueState, target.id);
+      } else {
+        queueState = queueAddItem(queueState, run.briefId, '', 'auto', 'manual');
+        target = getSelectedItem(queueState) ?? undefined;
+      }
+      if (!target) {
+        reloadStatus.textContent = 'Could not create a queue item.';
+        return;
+      }
+      writeQueueState();
+      const summary = (await fetchRunSummary(run.briefId, run.runId)) as {
+        candidates?: RawGenerateCandidate[];
+      };
+      applyRunToQueue(target.id, run.briefId, run.runId, summary.candidates ?? [], {
+        stage: 'sheet',
+        status:
+          `Reloaded ${run.briefId} (${run.runId}) from the store at the Sheet step. ` +
+          'PostProcess reuses this sheet; Generate calls OpenAI again.',
+        resetApproval: true,
+      });
+      reloadStatus.textContent = `Loaded ${run.briefId}.`;
+    } catch (err) {
+      reloadStatus.textContent = `Failed: ${err instanceof Error ? err.message : String(err)}`;
+    } finally {
+      setButtonBusy(reloadLoadBtn, false, 'Load sheet', 'Loading…');
+      azureLoadInFlight = false;
+      setAzureControlsEnabled(true);
+    }
+  };
+  // Poll the store so newly generated runs appear without a manual refresh, and
+  // catch up immediately when the operator returns to the tab.
+  const startAzureAutoRefresh = (): void => {
+    window.setInterval(() => {
+      if (azureLoadInFlight || document.visibilityState !== 'visible') {
+        return;
+      }
+      void refreshAzureRuns({ silent: true });
+    }, AZURE_RUNS_REFRESH_MS);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && !azureLoadInFlight) {
+        void refreshAzureRuns({ silent: true });
+      }
+    });
   };
   reloadRefreshBtn.addEventListener('click', () => {
     void refreshAzureRuns();
@@ -1787,49 +1899,11 @@ function render(): void {
   reloadStateFilter.addEventListener('change', () => {
     void refreshAzureRuns();
   });
+  reloadSelect.addEventListener('change', () => {
+    void loadSelectedAzureRun();
+  });
   reloadLoadBtn.addEventListener('click', () => {
-    void (async () => {
-      const idx = Number.parseInt(reloadSelect.value, 10);
-      const run = Number.isInteger(idx) ? azureRunChoices[idx] : undefined;
-      if (!run) {
-        reloadStatus.textContent = 'Pick a run first (click ↻ Runs).';
-        return;
-      }
-      setButtonBusy(reloadLoadBtn, true, 'Load sheet', 'Loading…');
-      reloadStatus.textContent = `Loading ${run.briefId}…`;
-      try {
-        // Reuse an existing queue item for this briefId, else create one.
-        let target: QueueItem | undefined = queueState.items.find(
-          (it) => it.kebabName === run.briefId,
-        );
-        if (target) {
-          queueState = queueSelectItem(queueState, target.id);
-        } else {
-          queueState = queueAddItem(queueState, run.briefId, '', 'auto', 'manual');
-          target = getSelectedItem(queueState) ?? undefined;
-        }
-        if (!target) {
-          reloadStatus.textContent = 'Could not create a queue item.';
-          return;
-        }
-        writeQueueState();
-        const summary = (await fetchRunSummary(run.briefId, run.runId)) as {
-          candidates?: RawGenerateCandidate[];
-        };
-        applyRunToQueue(target.id, run.briefId, run.runId, summary.candidates ?? [], {
-          stage: 'sheet',
-          status:
-            `Reloaded ${run.briefId} (${run.runId}) from the store at the Sheet step. ` +
-            'PostProcess reuses this sheet; Generate calls OpenAI again.',
-          resetApproval: true,
-        });
-        reloadStatus.textContent = `Loaded ${run.briefId}.`;
-      } catch (err) {
-        reloadStatus.textContent = `Failed: ${err instanceof Error ? err.message : String(err)}`;
-      } finally {
-        setButtonBusy(reloadLoadBtn, false, 'Load sheet', 'Loading…');
-      }
-    })();
+    void loadSelectedAzureRun();
   });
   clearStoreBtn.addEventListener('click', () => {
     void (async () => {
@@ -5229,6 +5303,20 @@ function render(): void {
   };
 
   const renderActivePlan = (): void => {
+    // No manifest chosen (default): keep the table empty and show a prompt,
+    // but never swallow a real manifest-load failure surfaced by recompute().
+    if (planSelect.value === '') {
+      summary.replaceChildren();
+      tbody.replaceChildren();
+      emptyState.style.display = 'none';
+      manifestState.textContent = manifestError
+        ? `Manifest state: unavailable (${manifestError})`
+        : 'Select a manifest to view its assets.';
+      manifestState.style.color = manifestError ? '#fca5a5' : '#93c5fd';
+      renderQueue();
+      renderWorkflowSelection();
+      return;
+    }
     const plan = reports.find((candidate) => candidate.planId === planSelect.value) ?? reports[0];
     if (!plan) {
       return;
@@ -6617,7 +6705,22 @@ function render(): void {
   renderWorkflowSelection();
   void refreshDebuggerRuns();
   void checkWorkflowHealth();
-  void hydrateQueueFromSidecar();
+  // Gate the Azure runs UI on queue hydration: a run loaded before hydration
+  // finishes would be clobbered by the blind queue replace, so keep the controls
+  // disabled ("Syncing queue…") until hydration resolves, then enable, do the
+  // initial (non-silent) list, and start the periodic refresh.
+  if (showSpriteWorkflow) {
+    setAzureControlsEnabled(false);
+    reloadStatus.textContent = 'Syncing queue…';
+  }
+  void (async () => {
+    await hydrateQueueFromSidecar();
+    if (showSpriteWorkflow) {
+      setAzureControlsEnabled(true);
+      await refreshAzureRuns();
+      startAzureAutoRefresh();
+    }
+  })();
   void recompute();
 }
 
