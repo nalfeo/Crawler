@@ -124,7 +124,8 @@ None.
   `git log --oneline origin/main..HEAD` = only the nav-wedge commit).
 - All tests passing: yes (typecheck, verify:fast, headless repro 9/9, unit 3/3,
   ai-damage-invariance 2/2).
-- PR created: <!-- FILL: yes + link -->
+- PR created: yes — https://github.com/nalfeo/Crawler/pull/680 (base `main`,
+  auto-merge --squash armed).
 
 ## Agent-OS Telemetry
 
