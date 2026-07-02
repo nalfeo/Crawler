@@ -1,0 +1,10 @@
+{
+  "date": "2026-07-02",
+  "session": "sidecar-backlog-resume-visibility-timeout",
+  "estimated_apples": 1,
+  "actual_apples": 2,
+  "delta": 1,
+  "verdict": "under",
+  "hello_kitties": 0.4,
+  "notes": "Ops/coordination session (DevOps persona): start the sprite sidecar, drain the asset-request backlog, keep the live Azure-backed service safe, and route all code fixes to specialist subsessions. Estimated 1 (a routine one-command 'start + confirm' ops touch). Actual 2: a live queue visibility-timeout incident surfaced mid-resume (DEFAULT_VISIBILITY_TIMEOUT=300s marginal vs real ~4-6 min gpt-image-1 generations, causing stale pop-receipt ack failures 'The specified message does not exist' and zero processed progress), which I root-caused, mitigated live via a shell env override (AZURE_STORAGE_QUEUE_VISIBILITY_TIMEOUT=900), validated against the live pipeline (processed 0->27, acks succeeding), and delegated as a durable code-default PR (#670, raised to 900s, ADR 0041) — on top of shepherding four separate fix PRs to squash-merge (#659 startup, #661 metrics, #662 generation Bug A+B, #656 parser). No repo code changed from this coordinator session; this session's only committed diff is the handoff + this metrics JSON (docs-only, ledger-exempt)."
+}
