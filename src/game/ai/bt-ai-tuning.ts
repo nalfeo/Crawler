@@ -452,6 +452,24 @@ export const PANIC_MIN_DODGE_WEIGHT_SCALE_LOCKED = 0.3;
 // whichever is larger.
 export const QUEST_GIVER_DETOUR_MAX_EXTRA_FT = 26;
 export const QUEST_GIVER_DETOUR_MAX_EXTRA_FRACTION = 0.6;
+// Once a quest-giver detour has already been ACCEPTED (a committed NPC), tolerate
+// a relaxed detour cap of `baseCap * this` before abandoning it. Without this,
+// tiny per-frame distance changes at the safe-room-mouth boundary — where
+// `world.playerInSafeRoom` flickers as the body straddles the doorway — flip the
+// selected objective every frame and pin the runner in a net-zero limit cycle.
+// Only relaxes the cap for the already-committed path; brand-new detours still use
+// the strict base cap. Stale-commit lifetime is independently bounded by
+// QUEST_GIVER_DETOUR_ABANDON_FRAMES, so this can be generous without stranding.
+export const QUEST_GIVER_DETOUR_COMMIT_HYSTERESIS = 1.5;
+// Abandon a committed quest-giver detour after this many consecutive frames with
+// no improvement in player→NPC distance. Releases a body-blocked / locked-door /
+// otherwise-unreachable committed NPC well under the floor-collapse deadline so a
+// single sticky commitment cannot itself pin the runner for more than ~5s. This
+// clears the CURRENT commitment only — it does not blacklist the NPC, so if it
+// stays the nearest on-path candidate under the strict base cap, the fresh-
+// selection path may re-commit it next poll (exactly as the pre-hysteresis
+// baseline steered toward it every frame). ~5s at 60fps.
+export const QUEST_GIVER_DETOUR_ABANDON_FRAMES = 300;
 // An NPC within this radius (ft) of the player counts as "at the interaction
 // point"; beyond it the NPC is only a navigation/detour target.
 export const NPC_INTERACTION_RADIUS_FT = 12.5;
