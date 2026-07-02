@@ -1,0 +1,63 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "fix-sprite-asset-request-pipeline",
+  "task_title": "Fix sprite asset-request pipeline: poison-loop + bad-grid slice mismatch",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "notes": "gpt-5.4 reviewed synthesized plan. Blocking: (1) 'exactly-once' overclaimed across crash/ack-fail -> reframed honestly as at-most-once/best-effort per task wording, no store marker; (2) failure comment text said 'sidecar will retry on next restart' which is false for dropped msgs -> rewritten to state dropped(permanent|after-N)+won't auto-retry. Important: (3) classifier too narrow -> duck-type err.kind in {auth,bad-grid,non-png} (catches synth/vision auth); all else bounded by dequeueCount>=3 cap (already guarantees no infinite loop); nondeterministic synth 'malformed' intentionally NOT permanent; (4) test proved anti-spam not anti-loop -> add resurfacing queue fake that redelivers until ack observed + transient-then-success + assert dropped===true; (5) Bug B over-shrink risk -> word gutter thin-but-continuous. Minor: (6) faithful 8-cell test = 4 rows + one interior full-height vertical band. All 6 adopted."
+    },
+    "dual_plan_synthesis": {
+      "completed": true,
+      "plan_models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+      "judge_model": "claude-opus-4.8",
+      "notes": "Two independent plans (gpt-5.5, gemini-3.1-pro) converged on dequeueCount-gated poison handling + prompt-gutter fix. Judge (opus-4.8) synthesized final plan: unified giveUp = permanent || dequeueCount>=MAX rule for exactly-once comment (dropped message never redelivered => at most one comment); rejected Plan A durable store-marker/fingerprint as over-engineered for the stated requirement (recorded as considered ADR alternative); Bug B gutter reinforcement gated to non-tile so seamless tiles are untouched; exact-16 slice gate kept."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "clean": false,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview", "claude-opus-4.8"],
+          "concerns_count": 5,
+          "resolved_count": 5,
+          "notes": "Round 1: three parallel code-review agents (distinct models) on the full branch diff surfaced 5 material concerns in worker.ts / issue-pipeline.ts. (A) success-path msg.ack() was INSIDE the generation try -> a successful run whose ack throws was misreported as a generation failure (false ⚠️ comment); moved ack outside. (B) give-up msg.ack() was unwrapped (crashes worker on stale pop receipt) and commented-before-ack (redelivery could double-comment); wrapped in try/catch, ack-first, comment only if dropped===true -> at-most-once even across ack failure. (C) sleep() abort listener never removed on the normal timeout path -> listener leak / MaxListenersExceededWarning on the long-running idle poll; removeEventListener added. (D) buildFailureComment permanent-example wrongly cited an 'unparseable brief' (which is TRANSIENT, not in PERMANENT_FAILURE_KINDS); reworded to auth / unrenderable sprite grid. (E) runIssuePipeline posts 3 progress comments before the pipeline can throw and would re-post on transient retries; added postProgressComments option (worker passes dequeueCount<=1) suppressing them on redeliveries while keeping terminal ✅/⚠️. All 5 fixed."
+        },
+        {
+          "clean": true,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "notes": "Round 2 (confirmatory, post-fix): two distinct-model reviewers re-read the final in-scope diff. Both returned 'No material concerns — fixes verified correct' (verified: at-most-once airtight across ack failure, definite-assignment/continue control flow cannot leak into the success ack path, progress suppression keeps terminal comments, new ack-failure + slice-gate tests prove what they claim). Loop closed clean."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "clean": false,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview", "claude-opus-4.8"],
+          "concerns_count": 5,
+          "valid_count": 5,
+          "resolved_count": 5,
+          "notes": "Round 1: same three distinct-model reviews adjudicated by opus-4.8. All 5 concerns judged VALID (none spurious): A false-failure ack ordering (gemini+opus, blocking), B unwrapped give-up ack + comment-before-ack (all three, blocking), C sleep listener leak (gemini, high; pre-existing but in a touched file per repo rule #8), D misleading permanent-failure example text (opus, minor), E progress-comment re-post on transient retries (gpt-5.5, blocking). One informational note (ledger stages empty) was expected and is now filled. All 5 valid concerns resolved in worker.ts / issue-pipeline.ts + covered by new tests."
+        },
+        {
+          "clean": true,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "notes": "Round 2 (confirmatory, post-fix): two distinct-model reviewers adjudicated by opus-4.8 re-reviewed the final diff and both returned no material concerns. No further rounds needed."
+        }
+      ]
+    }
+  }
+}

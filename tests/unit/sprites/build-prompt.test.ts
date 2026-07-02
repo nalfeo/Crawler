@@ -269,6 +269,48 @@ describe('buildSheetPrompt', () => {
   });
 });
 
+describe('buildSheetPrompt — Bug B inter-cell gutters', () => {
+  // The incident's root cause: the old character/enemy prompt said "Horizontal
+  // side margins are acceptable", so adjacent columns could touch and the
+  // content-aware slicer merged 4 columns into 2 (16 → 8). The fix requires a
+  // background gutter between every row AND column so the slicer recovers the
+  // full grid, while keeping the honest 16-variant target.
+  it('requires a background gutter between every row and column on a character sheet', () => {
+    const character = makeBrief({
+      type: 'character',
+      anchor: { x: 8, y: 8 },
+      sensors: { enemy: { facing: 'front' } } as Brief['sensors'],
+    });
+    const out = buildSheetPrompt(character, FAKE_STYLE_GUIDE);
+    // New mandatory gutter language is present…
+    expect(out).toMatch(/Separate every adjacent row and column/i);
+    expect(out).toMatch(/background-only gutter/i);
+    expect(out).toMatch(/background margin on ALL FOUR sides/i);
+    // …and the permissive wording that allowed touching columns is gone.
+    expect(out).not.toMatch(/Horizontal side margins are acceptable/i);
+    // The honest target is unchanged: still 16 variants on a 4×4 grid.
+    expect(out).toMatch(/exactly 16 variants/i);
+    expect(out).toMatch(/4 rows.*4 columns/i);
+  });
+
+  it('keeps the inter-cell gutter and the 10% margin for weapon/item sheets', () => {
+    const out = buildSheetPrompt(makeBrief(), FAKE_STYLE_GUIDE);
+    expect(out).toMatch(/Separate every adjacent row and column/i);
+    expect(out).toMatch(/at least.*10%.*margin/i);
+  });
+
+  it('does NOT add an inter-cell gutter to tile sheets (tiles need seamless edges)', () => {
+    const tile = makeBrief({
+      type: 'tile',
+      size: { width: 64, height: 64 },
+      anchor: { x: 32, y: 63 },
+    });
+    const out = buildSheetPrompt(tile, FAKE_STYLE_GUIDE);
+    expect(out).not.toMatch(/background-only gutter/i);
+    expect(out).toMatch(/seamless tiling continuity/i);
+  });
+});
+
 describe('buildSheetPrompt — thematic variations', () => {
   it('omits the variations block entirely when none are declared', () => {
     const out = buildSheetPrompt(makeBrief(), FAKE_STYLE_GUIDE);
