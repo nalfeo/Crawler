@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "streamline-verify-ci-gates",
+  "task_title": "chore(ci): trim local verify, scope headless gate, PR-title-only commit-lint",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "notes": "Verdict rejected w/4 blocking. Resolutions: narrow item A to defer ONLY headless (build+integration stay local, they cover gaps CI skips); PR-only gameplay_safe skip so main-push headless backstop survives; title-specific commitlint config (ignores:[]) to avoid the (#n) title bypass; add SCOPE_FILES_OVERRIDE + deterministic detect-change-scope vitest test."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "1 Medium: SCOPE_FILES_OVERRIDE test hook used -n so set-but-empty fell through to git diffing instead of fail-closing. Fixed via presence detection ${VAR+x} + changed=${VAR:-} + added empty-string unit case."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Verified the ${SCOPE_FILES_OVERRIDE+x} fix under set -euo pipefail, gameplay_safe allowlist has no false-safe path for sim files, ci.yml headless if: preserves main-push backstop + PR skip + merge-gate PASS-on-skip, commit-lint title handling injection-safe and (#n) bypass closed, unit test deterministic. No concerns — clean."
+        }
+      ]
+    }
+  }
+}

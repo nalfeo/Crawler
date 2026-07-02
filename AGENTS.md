@@ -43,6 +43,7 @@
 | Sprite metadata         | `npm run sprites:metadata`         |
 | Fast verify             | `npm run verify:fast`              |
 | Full verify             | `npm run verify`                   |
+| Full verify + headless  | `VERIFY_FULL=1 npm run verify`     |
 | PR prereq check         | `npm run verify:pr-prereqs`        |
 | Guard telemetry capture | `npm run telemetry:capture`        |
 | Full verify + coverage  | `VERIFY_COVERAGE=1 npm run verify` |

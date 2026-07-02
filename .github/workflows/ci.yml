@@ -8,16 +8,20 @@ on:
 
 jobs:
   # Job 0: Detect the change scope.
-  # art_only=true  → heavy gameplay gates skipped; typecheck/lint/format/unit run.
-  # docs_only=true → ALL heavy gates skipped; only commit-lint (separate workflow)
-  #                  and the merge-gate no-op run. Markdown cannot change game logic.
-  # The merge-gate treats skipped jobs as PASS for both scope flags.
+  # art_only=true      → heavy gameplay gates skipped; typecheck/lint/format/unit run.
+  # docs_only=true     → ALL heavy gates skipped; only commit-lint (separate workflow)
+  #                      and the merge-gate no-op run. Markdown cannot change game logic.
+  # gameplay_safe=true → the diff provably can't change the deterministic Floor-1 sim
+  #                      (engine/labs/e2e/docs/assets only), so the headless gate is
+  #                      skipped ON PULL REQUESTS ONLY (main-push still runs it).
+  # The merge-gate treats skipped jobs as PASS for all scope flags.
   changes:
     name: Detect change scope
     runs-on: ubuntu-latest
     outputs:
       art_only: ${{ steps.detect.outputs.art_only }}
       docs_only: ${{ steps.detect.outputs.docs_only }}
+      gameplay_safe: ${{ steps.detect.outputs.gameplay_safe }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -148,11 +152,17 @@ jobs:
   # Deterministically proves the behavior-tree AI can still clear Floor 1
   # (victory + all quests, under the 5-minute game-time budget). Runs the same
   # pure-ECS pipeline as the CLI/lab, so no browser is needed.
+  # Scoped: skipped on art_only/docs_only, and on gameplay_safe PULL REQUESTS
+  # (engine/labs/e2e/docs/asset-only diffs the headless runner can't import).
+  # main-push always runs it, so a wrong allowlist is caught post-merge.
   test-headless:
     name: Headless Floor 1 Gate
     runs-on: ubuntu-latest
     needs: [changes]
-    if: needs.changes.outputs.art_only != 'true' && needs.changes.outputs.docs_only != 'true'
+    if: >-
+      needs.changes.outputs.art_only != 'true' &&
+      needs.changes.outputs.docs_only != 'true' &&
+      !(github.event_name == 'pull_request' && needs.changes.outputs.gameplay_safe == 'true')
     steps:
       - uses: actions/checkout@v4
 
@@ -218,7 +228,7 @@ jobs:
               return
             fi
             if [ "$allow_skipped" = "true" ] && [ "$result" = "skipped" ]; then
-              echo "✅ $name: $result (skipped — art-only change)"
+              echo "✅ $name: $result (skipped — scope-gated change)"
               return
             fi
             # docs-only PRs skip all heavy jobs; treat any skip as PASS.
