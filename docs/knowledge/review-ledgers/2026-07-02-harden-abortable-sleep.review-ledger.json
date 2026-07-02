@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "harden-abortable-sleep",
+  "task_title": "Harden abortable sleep() with post-registration re-check",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 1,
+      "resolved_count": 1,
+      "notes": "Separate-model (gpt-5.4) review of the sleep() abort-race hardening + tests. Verdict: implementation correct, no regression (idempotent resolve; no listener/timer leak; cleanup ordering fine); confirmed the reviewer race is a false positive for the current synchronous executor and the re-check is the right minimal no-deps hardening. 1 non-blocking concern: test 2 did not strictly pin resolution to the POST-registration re-check and regression-failed only via a slow 60s timeout. Resolved: rewrote test 2 to track listener registration (registered/reCheckObserved so only the post-registration re-check can resolve it) and assert prompt settlement via a microtask-sentinel race under fake timers."
+    }
+  }
+}
