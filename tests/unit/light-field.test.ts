@@ -404,6 +404,7 @@ describe('DEFAULT_LIGHTING_CONFIG', () => {
     expect(DEFAULT_LIGHTING_CONFIG).toEqual({
       stepPx: 4,
       ambient: 0.2,
+      discoveredLight: 0.05,
       sourceRadiusPx: 200,
       sourceIntensity: 0.6,
       falloffExponent: 2.5,
