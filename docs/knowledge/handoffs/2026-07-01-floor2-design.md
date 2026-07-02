@@ -22,7 +22,7 @@ rather than handled by a single specialist.
 
 Estimated: 🍎 x 5 <!-- declared before work began -->
 Actual: 🍎 x 4
-Verdict: 📉 Under — the design scope is massive (an entire systemic floor), but delivering
+Verdict: 📈 Over — the design scope is massive (an entire systemic floor), but delivering
 it as docs-only carried none of the build/test/integration/debug risk that characterizes
 a true 5🍎 code session; research + authoring completed in one focused pass.
 
