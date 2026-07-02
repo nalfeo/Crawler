@@ -87,9 +87,15 @@ sourceType:sourceId:stat:op`: `replace` (overwrite same-key — idempotent
    never `Math.random()`. `statusEffectSystem` runs in the same relative slot in both
    sim pipelines: injected via `preSystems` in the visual step
    (`floor-main-scene-options.ts` → `engine/sim/simulation-step.ts`) and hardcoded in
-   the headless step (`game/ai/simulation-step.ts`), in both cases **before**
-   `movementSystem` (so speed fold-in affects the same frame) and **before**
-   damage/`healthSystem` (so HoT can't mask a death).
+   the headless step (`game/ai/simulation-step.ts`). In both cases it runs **after**
+   both speed read-sites — `playerInputSystem` (which runs before all `preSystems`) and
+   `enemyAISystem` — so player and enemy effective-speed folds observe the **same
+   pre-expiry effect set** every frame (no 1-frame expiry skew between player and enemy
+   timed-speed effects), and **before** `movementSystem` (so speed fold-in affects the
+   same frame) and **before** damage/`healthSystem` (so HoT can't mask a death). Because
+   speed is a read-site fold-in (the system never mutates speed), its order relative to
+   `enemyAISystem` is a pure timing choice, resolved here in favour of player/enemy
+   symmetry.
 
 9. **Authoritative recycled-EID cleanup.** `clearEntityStores`
    (`spawners/entity-core.ts`, the sole non-lab creation path) deletes

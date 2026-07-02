@@ -94,8 +94,11 @@ export function createFloorMainSceneOptions(_floorId: string = 'floor1') {
       manaSystem,
       floor1PlayerStatSystem,
       weaponSystem,
-      statusEffectSystem,
       enemyAISystem,
+      // statusEffectSystem runs AFTER enemyAISystem (and playerInputSystem, which
+      // runs before all preSystems) so player + enemy speed folds see the same
+      // pre-expiry effect set — expiry/HoT then apply before movement/damage/health.
+      statusEffectSystem,
       // spawnerSystem MUST run before floor1EnemyDirectorSystem in the same frame:
       // the director's countDirectorEnemies/countEngagingEnemies count Spawner-owned
       // children (Enemy without Spawner), so spawning first lets the director cap

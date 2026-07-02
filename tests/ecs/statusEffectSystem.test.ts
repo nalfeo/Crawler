@@ -199,6 +199,28 @@ describe('statusEffectSystem — heal-over-time (hpRegen)', () => {
     tick(world, 60);
     expect(world.stores.health.current[eid]!).toBe(0);
   });
+
+  it('does not touch a living entity whose max HP is 0 (uninitialized slot)', () => {
+    // health.max is a Float32 store: an unset slot reads 0, not undefined. Without
+    // the `max > 0` guard, Math.min(0, …) would zero a living entity's HP.
+    const world = createTestWorld();
+    const eid = createEntity(world);
+    addComponent(world.ecs, eid, set(Health, { current: 50, max: 0 }));
+    applyStatusEffect(world, eid, REGEN);
+    tick(world, 60);
+    expect(world.stores.health.current[eid]!).toBe(50);
+  });
+
+  it('clamps a negative hpRegen (future DoT) to a 0 floor — never negative HP', () => {
+    const world = createTestWorld();
+    const eid = createEntity(world);
+    addComponent(world.ecs, eid, set(Health, { current: 50, max: 100 }));
+    // A large negative add would drive current far below 0 in one tick without the
+    // Math.max(0, …) lower clamp; hpRegen is heal-only today but must stay safe.
+    applyStatusEffect(world, eid, { ...REGEN, op: 'add', value: -10_000, sourceId: 'dot' });
+    tick(world, 1);
+    expect(world.stores.health.current[eid]!).toBe(0);
+  });
 });
 
 describe('recycled-EID guard', () => {
@@ -256,6 +278,25 @@ describe('equipment integration (Merchant’s Charm HoT)', () => {
     expect(fx[0]!.sourceId).toBe('unrelated');
   });
 
+  it('unequip matches on sourceType too, not just the sourceId string', () => {
+    const { world, eid } = spawnWearer();
+    const result = equip(world, eid, MERCHANTS_CHARM_DEF, { force: true });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // A non-equipment effect that happens to reuse the same runtime sourceId string
+    // must NOT be swept by unequip — the predicate is (sourceType && sourceId).
+    applyStatusEffect(world, eid, {
+      ...CHILL,
+      sourceType: 'debug',
+      sourceId: `equipment:${result.instanceId}`,
+    });
+    expect(getStatusEffects(world, eid)).toHaveLength(2);
+    unequip(world, eid, 'neck', { force: true });
+    const fx = getStatusEffects(world, eid);
+    expect(fx).toHaveLength(1);
+    expect(fx[0]!.sourceType).toBe('debug');
+  });
+
   it('an invalid granted spec fails canEquip and equip mutates nothing (atomic)', () => {
     const { world, eid } = spawnWearer();
     const badCharm: EquipmentItemDef = {
@@ -281,5 +322,17 @@ describe('equipment integration (Merchant’s Charm HoT)', () => {
     expect(getStatusEffects(world, eid)).toHaveLength(0);
     // Slot was not consumed — the valid charm can still be equipped afterwards.
     expect(equip(world, eid, MERCHANTS_CHARM_DEF, { force: true }).ok).toBe(true);
+  });
+
+  it('a wounded wearer recovers HP over time after equipping the charm (demo end-to-end)', () => {
+    const { world, eid } = spawnWearer();
+    addComponent(world.ecs, eid, set(Health, { current: 20, max: 100 }));
+    equip(world, eid, MERCHANTS_CHARM_DEF, { force: true });
+    const before = world.stores.health.current[eid]!;
+    tick(world, 120); // 120 frames = 2s → +1.5 HP at 0.75 HP/s
+    const after = world.stores.health.current[eid]!;
+    expect(after).toBeGreaterThan(before);
+    expect(after).toBeCloseTo(21.5, 3);
+    expect(after).toBeLessThanOrEqual(100);
   });
 });

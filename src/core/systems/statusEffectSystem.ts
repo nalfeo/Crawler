@@ -41,9 +41,16 @@ export function statusEffectSystem(world: GameWorld): void {
       const current = health.current[eid] ?? 0;
       if (current > 0) {
         const rate = computeEffectiveValue(0, effects, 'hpRegen');
-        if (rate !== 0) {
-          const max = health.max[eid] ?? current;
-          health.current[eid] = Math.min(max, current + rate * dtSeconds);
+        // Guard max > 0 explicitly: health.max is a Float32 store, so an
+        // uninitialized slot reads 0 (never undefined) — a bare `?? current`
+        // fallback is dead code and `Math.min(0, …)` would zero a live entity.
+        const max = health.max[eid] ?? 0;
+        if (rate !== 0 && max > 0) {
+          // Clamp to [0, max]: hpRegen is heal-only today, but a future
+          // negative-add (DoT) spec must not drive current arbitrarily negative
+          // in a single tick.
+          const next = current + rate * dtSeconds;
+          health.current[eid] = Math.min(max, Math.max(0, next));
         }
       }
     }

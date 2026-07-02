@@ -4,6 +4,8 @@ import { applyStatusEffect } from '../../src/core/status-effects.js';
 import { statusEffectSystem } from '../../src/core/systems/statusEffectSystem.js';
 import { runSimulationStep as runHeadlessStep } from '../../src/game/ai/simulation-step.js';
 import { runSimulationStep as runVisualStep } from '../../src/engine/sim/simulation-step.js';
+import { enemyAISystem } from '../../src/game/index.js';
+import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 import { GAME } from '../../src/shared/constants.js';
 import { createInputState } from '../../src/shared/input.js';
 import type { StatusEffectSpec } from '../../src/shared/status-effect-types.js';
@@ -88,5 +90,22 @@ describe('status-effect cross-pipeline parity (HoT, no combat)', () => {
     }
 
     expect(hp(run.world, run.player)).toBe(hp(base.world, base.player));
+  });
+});
+
+describe('status-effect speed-expiry symmetry (pipeline ordering)', () => {
+  it('the Floor bootstrap runs statusEffectSystem AFTER enemyAISystem', () => {
+    // Both speed read-sites must observe the same pre-expiry effect set each frame:
+    // playerInputSystem folds player speed before all preSystems, and enemyAISystem
+    // folds enemy speed. statusEffectSystem (which expires effects) must therefore
+    // run AFTER enemyAISystem so a timed speed effect expires for player and enemy on
+    // the SAME frame (no 1-frame skew). This pins the visual seam; the headless step
+    // (game/ai/simulation-step.ts) mirrors it with enemyAISystem→statusEffectSystem.
+    const { preSystems } = createFloorMainSceneOptions('floor1');
+    const statusIdx = preSystems.indexOf(statusEffectSystem);
+    const enemyIdx = preSystems.indexOf(enemyAISystem);
+    expect(statusIdx).toBeGreaterThanOrEqual(0);
+    expect(enemyIdx).toBeGreaterThanOrEqual(0);
+    expect(statusIdx).toBeGreaterThan(enemyIdx);
   });
 });

@@ -29,13 +29,26 @@ export function stackKey(spec: StatusEffectSpec): string {
 }
 
 /**
- * Validate a spec. Rejects non-finite values, negative `multiply` factors, and
- * non-positive finite durations (`durationMs` must be `> 0` or `null`).
+ * Validate a spec. Rejects non-finite values, negative `multiply` factors,
+ * non-positive or non-finite durations (`durationMs` must be finite `> 0`, or
+ * `null` for persistent), and `stack` rules without a sane positive-integer cap.
  */
 export function isValidSpec(spec: StatusEffectSpec): boolean {
   if (!Number.isFinite(spec.value)) return false;
   if (spec.op === 'multiply' && spec.value < 0) return false;
-  if (spec.durationMs !== null && !(spec.durationMs > 0)) return false;
+  // Persistence is represented by null; a non-null duration must be finite and
+  // positive (Infinity would be a persistent effect masquerading as timed).
+  if (spec.durationMs !== null && !(Number.isFinite(spec.durationMs) && spec.durationMs > 0)) {
+    return false;
+  }
+  // A stack rule needs a positive-integer cap or applyStatusEffect's cap logic
+  // misbehaves (a 0/negative/NaN cap settles at a surprising steady state).
+  if (
+    spec.stackRule.mode === 'stack' &&
+    !(Number.isInteger(spec.stackRule.maxStacks) && spec.stackRule.maxStacks >= 1)
+  ) {
+    return false;
+  }
   return true;
 }
 

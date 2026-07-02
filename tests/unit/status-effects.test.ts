@@ -67,6 +67,26 @@ describe('isValidSpec', () => {
     expect(isValidSpec(spec({ durationMs: 0 }))).toBe(false);
     expect(isValidSpec(spec({ durationMs: -100 }))).toBe(false);
   });
+
+  it('rejects a non-finite duration (Infinity/NaN) — persistence is null only', () => {
+    // Infinity would be a persistent effect masquerading as timed; only `null`
+    // means persistent.
+    expect(isValidSpec(spec({ durationMs: Infinity }))).toBe(false);
+    expect(isValidSpec(spec({ durationMs: Number.NaN }))).toBe(false);
+  });
+
+  it('validates the stack cap: accepts a positive-integer maxStacks', () => {
+    expect(isValidSpec(spec({ stackRule: { mode: 'stack', maxStacks: 1 } }))).toBe(true);
+    expect(isValidSpec(spec({ stackRule: { mode: 'stack', maxStacks: 3 } }))).toBe(true);
+  });
+
+  it('rejects a stack rule with a non-positive, non-integer, or non-finite cap', () => {
+    expect(isValidSpec(spec({ stackRule: { mode: 'stack', maxStacks: 0 } }))).toBe(false);
+    expect(isValidSpec(spec({ stackRule: { mode: 'stack', maxStacks: -2 } }))).toBe(false);
+    expect(isValidSpec(spec({ stackRule: { mode: 'stack', maxStacks: 2.5 } }))).toBe(false);
+    expect(isValidSpec(spec({ stackRule: { mode: 'stack', maxStacks: Number.NaN } }))).toBe(false);
+    expect(isValidSpec(spec({ stackRule: { mode: 'stack', maxStacks: Infinity } }))).toBe(false);
+  });
 });
 
 describe('computeEffectiveValue (product-of-factors)', () => {

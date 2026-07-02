@@ -384,8 +384,12 @@ export function unequip(
   }
   state.instances.delete(instId);
 
-  // Remove only the status effects this specific instance granted.
-  clearStatusEffects(world, entity, (e) => e.sourceId === equipmentSourceId(instId));
+  // Remove only the status effects this specific equipment instance granted.
+  clearStatusEffects(
+    world,
+    entity,
+    (e) => e.sourceType === 'equipment' && e.sourceId === equipmentSourceId(instId),
+  );
 
   recomputeEffectiveStats(world, entity);
   return { ok: true, item: instance };
