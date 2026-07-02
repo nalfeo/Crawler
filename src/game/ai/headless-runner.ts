@@ -111,7 +111,7 @@ function applyConfiguredHostileDamageMultiplier(
   world: GameWorld,
   configuredMultiplier: number,
 ): void {
-  const clampedMultiplier = Math.max(1, configuredMultiplier);
+  const clampedMultiplier = normalizeHostileDamageMultiplier(configuredMultiplier);
   // Avoid a deterministic spawn-camp death spiral: apply the high multiplier once
   // the runner has entered objective flow and reached level 2 (post-tutorial
   // unlock point where it can meaningfully execute quest-pathing + dodge).
@@ -119,6 +119,15 @@ function applyConfiguredHostileDamageMultiplier(
   const hasCombatMaturity = (world.playerLevel.level ?? 0) >= 2;
   world.hostileDamageMultiplier =
     hasStartedObjectiveFlow && hasCombatMaturity ? clampedMultiplier : 1;
+}
+
+function normalizeHostileDamageMultiplier(configuredMultiplier: number): number {
+  if (!Number.isFinite(configuredMultiplier)) {
+    throw new Error(
+      `Invalid enemyDamageMultiplier "${String(configuredMultiplier)}" (must be a finite number)`,
+    );
+  }
+  return Math.max(1, configuredMultiplier);
 }
 
 /**
@@ -142,7 +151,9 @@ export async function runHeadless(
   // Create world and spawn player
   const world = createGameWorld({ seed: mergedConfig.seed });
   const playerEid = spawnPlayer(world, 400, 400);
-  const hostileDamageMultiplier = Math.max(1, mergedConfig.enemyDamageMultiplier);
+  const hostileDamageMultiplier = normalizeHostileDamageMultiplier(
+    mergedConfig.enemyDamageMultiplier,
+  );
 
   // Initialize Floor1 scenario (generates map, sets up objectives, NPCs, etc.)
   // This sets world.state = 'loadout'

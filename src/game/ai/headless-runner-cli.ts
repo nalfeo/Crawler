@@ -78,7 +78,11 @@ function parseArgs(): CLIArgs {
       args.weapon = next;
       i++;
     } else if (arg === '--enemy-damage-multiplier' && next) {
-      args.enemyDamageMultiplier = parseFloat(next);
+      const parsed = Number.parseFloat(next);
+      if (!Number.isFinite(parsed)) {
+        throw new Error(`Invalid --enemy-damage-multiplier "${next}" (must be a finite number)`);
+      }
+      args.enemyDamageMultiplier = parsed;
       i++;
     } else if (arg === '--debug') {
       args.debug = true;
