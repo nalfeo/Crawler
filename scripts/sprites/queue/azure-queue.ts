@@ -20,9 +20,14 @@
  *
  * Visibility timeout
  * ------------------
- * Defaults to 300 seconds (5 minutes) — enough time for a typical single-
- * brief generation run. Override via the `visibilityTimeout` constructor
- * option or `AZURE_STORAGE_QUEUE_VISIBILITY_TIMEOUT` env var.
+ * Defaults to 900 seconds (15 minutes). Generating one 16-cell sprite sheet via
+ * gpt-image-1 was measured live at ~4 minutes typically and up to ~6 minutes for
+ * slower briefs, so 900s leaves robust margin for a run to finish and `ack()`
+ * before the message resurfaces. (The prior 300s / 5-minute default was
+ * marginal: a slow brief ran past it, the pop receipt went stale mid-run, the
+ * delete-on-ack failed with "The specified message does not exist", and the
+ * brief was needlessly regenerated.) Override via the `visibilityTimeout`
+ * constructor option or `AZURE_STORAGE_QUEUE_VISIBILITY_TIMEOUT` env var.
  */
 
 import { QueueServiceClient, StorageSharedKeyCredential } from '@azure/storage-queue';
@@ -41,13 +46,17 @@ export interface AzureStorageQueueOptions {
   readonly queueName?: string;
   /**
    * Seconds a dequeued message stays invisible while processing.
-   * Defaults to 300 (5 minutes).
+   * Defaults to 900 (15 minutes) — see the class-level "Visibility timeout"
+   * note for the empirical generation timing behind this value.
    */
   readonly visibilityTimeout?: number;
 }
 
 const DEFAULT_QUEUE_NAME = 'asset-requests';
-const DEFAULT_VISIBILITY_TIMEOUT = 300;
+// 15 minutes. A 16-cell gpt-image-1 sheet runs ~4 min typically and up to ~6 min
+// for slow briefs; see the "Visibility timeout" note in the class JSDoc for why
+// the prior 300s default was too marginal.
+const DEFAULT_VISIBILITY_TIMEOUT = 900;
 
 export class AzureStorageQueue implements AssetQueue {
   readonly backend = 'azure-queue' as const;
@@ -72,11 +81,22 @@ export class AzureStorageQueue implements AssetQueue {
   /**
    * Construct from a full connection string. Supports Azurite
    * (`UseDevelopmentStorage=true`) and standard Azure connection strings.
+   *
+   * `visibilityTimeout` is honored here exactly as on {@link fromOptions} so the
+   * `AZURE_STORAGE_QUEUE_VISIBILITY_TIMEOUT` override applies to the
+   * connection-string path too; it falls back to the shared default when unset.
    */
-  static fromConnectionString(connectionString: string, queueName?: string): AzureStorageQueue {
+  static fromConnectionString(
+    connectionString: string,
+    queueName?: string,
+    visibilityTimeout?: number,
+  ): AzureStorageQueue {
     const service = QueueServiceClient.fromConnectionString(connectionString);
     const name = queueName ?? DEFAULT_QUEUE_NAME;
-    return new AzureStorageQueue(service.getQueueClient(name), DEFAULT_VISIBILITY_TIMEOUT);
+    return new AzureStorageQueue(
+      service.getQueueClient(name),
+      visibilityTimeout ?? DEFAULT_VISIBILITY_TIMEOUT,
+    );
   }
 
   async enqueue(request: AssetRequest): Promise<void> {

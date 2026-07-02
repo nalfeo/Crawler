@@ -2,13 +2,35 @@
  * Unit tests for AssetQueue implementations and factory.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NoopAssetQueue } from '../../../scripts/sprites/queue/noop-queue.js';
 import { createAssetQueue } from '../../../scripts/sprites/queue/index.js';
+import { AzureStorageQueue } from '../../../scripts/sprites/queue/azure-queue.js';
 import {
   normalizeAssetRequest,
   type BriefPathAssetRequest,
 } from '../../../scripts/sprites/queue/types.js';
+
+// ---------------------------------------------------------------------------
+// Mock the Azure Storage Queue SDK so the visibility-timeout tests can assert
+// the value the queue passes to receiveMessages() with no network access. The
+// fake QueueClient.receiveMessages records its args and returns an empty batch,
+// so dequeue() resolves to null while the spy captures { visibilityTimeout }.
+// ---------------------------------------------------------------------------
+const azureSdkMock = vi.hoisted(() => {
+  const receiveMessages = vi.fn(async () => ({ receivedMessageItems: [] as unknown[] }));
+  const getQueueClient = vi.fn(() => ({ receiveMessages }));
+  const fromConnectionString = vi.fn(() => ({ getQueueClient }));
+  return { receiveMessages, getQueueClient, fromConnectionString };
+});
+
+vi.mock('@azure/storage-queue', () => {
+  class QueueServiceClient {
+    getQueueClient = azureSdkMock.getQueueClient;
+    static fromConnectionString = azureSdkMock.fromConnectionString;
+  }
+  return { QueueServiceClient, StorageSharedKeyCredential: vi.fn() };
+});
 
 function makeRequest(overrides: Partial<BriefPathAssetRequest> = {}): BriefPathAssetRequest {
   return {
@@ -182,5 +204,74 @@ describe('createAssetQueue factory', () => {
       },
     });
     expect(q.backend).toBe('azure-queue');
+  });
+});
+
+describe('AzureStorageQueue visibility timeout', () => {
+  const azureEnv = {
+    SPRITES_ASSET_QUEUE: 'azure-queue',
+    AZURE_STORAGE_ACCOUNT: 'myaccount',
+    AZURE_STORAGE_KEY: 'dGVzdA==',
+  } as const;
+
+  beforeEach(() => {
+    azureSdkMock.receiveMessages.mockClear();
+  });
+
+  it('defaults to a 900s visibility timeout when none is configured', async () => {
+    const q = createAssetQueue({ env: { ...azureEnv } });
+    await q.dequeue();
+    expect(azureSdkMock.receiveMessages).toHaveBeenCalledWith(
+      expect.objectContaining({ visibilityTimeout: 900 }),
+    );
+  });
+
+  it('honors an explicit visibilityTimeout option over the default', async () => {
+    const q = AzureStorageQueue.fromOptions({
+      accountName: 'myaccount',
+      accountKey: 'dGVzdA==',
+      visibilityTimeout: 120,
+    });
+    await q.dequeue();
+    expect(azureSdkMock.receiveMessages).toHaveBeenCalledWith(
+      expect.objectContaining({ visibilityTimeout: 120 }),
+    );
+  });
+
+  it('lets AZURE_STORAGE_QUEUE_VISIBILITY_TIMEOUT override the default (account/key path)', async () => {
+    const q = createAssetQueue({
+      env: { ...azureEnv, AZURE_STORAGE_QUEUE_VISIBILITY_TIMEOUT: '600' },
+    });
+    await q.dequeue();
+    expect(azureSdkMock.receiveMessages).toHaveBeenCalledWith(
+      expect.objectContaining({ visibilityTimeout: 600 }),
+    );
+  });
+
+  it('applies the 900s default on the connection-string path', async () => {
+    const q = createAssetQueue({
+      env: {
+        SPRITES_ASSET_QUEUE: 'azure-queue',
+        AZURE_STORAGE_CONNECTION_STRING: 'UseDevelopmentStorage=true',
+      },
+    });
+    await q.dequeue();
+    expect(azureSdkMock.receiveMessages).toHaveBeenCalledWith(
+      expect.objectContaining({ visibilityTimeout: 900 }),
+    );
+  });
+
+  it('lets AZURE_STORAGE_QUEUE_VISIBILITY_TIMEOUT override the default (connection-string path)', async () => {
+    const q = createAssetQueue({
+      env: {
+        SPRITES_ASSET_QUEUE: 'azure-queue',
+        AZURE_STORAGE_CONNECTION_STRING: 'UseDevelopmentStorage=true',
+        AZURE_STORAGE_QUEUE_VISIBILITY_TIMEOUT: '450',
+      },
+    });
+    await q.dequeue();
+    expect(azureSdkMock.receiveMessages).toHaveBeenCalledWith(
+      expect.objectContaining({ visibilityTimeout: 450 }),
+    );
   });
 });
