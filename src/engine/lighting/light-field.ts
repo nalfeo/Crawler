@@ -19,16 +19,26 @@ export interface LightingConfig {
   targetComputeMs: number;
 }
 
+/**
+ * Global lighting defaults. These match the values tuned in the AI Runner Lab's
+ * Lighting panel and are the base config for any scene without a per-floor
+ * override.
+ *
+ * `ambient` here is only a fallback: the shipped game overrides it PER FLOOR from
+ * the floor manifest (see `FloorConfig.lighting.ambient`), so a deeper, darker
+ * floor can ship a lower ambient than Floor 1's 0.2. Labs / no-floor contexts
+ * fall back to this value.
+ */
 export const DEFAULT_LIGHTING_CONFIG: LightingConfig = {
-  stepPx: LIGHTING_PRESET_STEPS.quarterTile,
-  ambient: 0.08,
-  sourceRadiusPx: 320,
-  sourceIntensity: 0.95,
-  falloffExponent: 1.6,
-  softness: false,
+  stepPx: 4,
+  ambient: 0.2,
+  sourceRadiusPx: 200,
+  sourceIntensity: 0.6,
+  falloffExponent: 2.5,
+  softness: true,
   updateEveryNFrames: 1,
   autoAdjustQuality: true,
-  targetComputeMs: 3.5,
+  targetComputeMs: 10,
 };
 
 export interface LightField {

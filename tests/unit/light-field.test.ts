@@ -7,6 +7,7 @@ import {
   clampLightingStepPx,
   computeLightField,
   createLightField,
+  DEFAULT_LIGHTING_CONFIG,
   forEachDarknessRun,
   getLightingPresetStepPx,
   intersectDirtyRects,
@@ -337,5 +338,21 @@ describe('blurLightField', () => {
     // Only the top-left cell is blurred; the spike at center is untouched.
     expect(at(0, 0)).toBeCloseTo(1 / 4, 6);
     expect(at(1, 1)).toBe(1);
+  });
+});
+
+describe('DEFAULT_LIGHTING_CONFIG', () => {
+  it('matches the shipped lighting defaults tuned in the AI Runner Lab', () => {
+    expect(DEFAULT_LIGHTING_CONFIG).toEqual({
+      stepPx: 4,
+      ambient: 0.2,
+      sourceRadiusPx: 200,
+      sourceIntensity: 0.6,
+      falloffExponent: 2.5,
+      softness: true,
+      updateEveryNFrames: 1,
+      autoAdjustQuality: true,
+      targetComputeMs: 10,
+    });
   });
 });

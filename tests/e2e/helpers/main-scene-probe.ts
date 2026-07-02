@@ -26,8 +26,15 @@ declare global {
 const LAB_ID = 'main-scene-probe-lab';
 
 /** Navigate to the probe lab and wait for `window.__mainSceneProbe.ready()`. */
-export async function loadMainSceneProbeLab(page: Page): Promise<void> {
-  const url = `${E2E_LAB_BASE_URL}/lab.html?lab=${LAB_ID}`;
+export async function loadMainSceneProbeLab(
+  page: Page,
+  params: Record<string, string | number> = {},
+): Promise<void> {
+  const query = new URLSearchParams({ lab: LAB_ID });
+  for (const [key, value] of Object.entries(params)) {
+    query.set(key, String(value));
+  }
+  const url = `${E2E_LAB_BASE_URL}/lab.html?${query.toString()}`;
   // `commit` (not `networkidle`/`load`): Vite keeps a persistent HMR socket open
   // and may trigger a one-off optimize-deps page reload on the first load of a
   // lab, so waiting on network state is flaky. We commit the navigation and poll
