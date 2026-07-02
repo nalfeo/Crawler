@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-01",
+  "session_slug": "parse-multi-sentence-briefs",
+  "task_title": "Relax asset-request issue parser to accept rich multi-sentence briefs",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "notes": "gpt-5.4 rubber-duck plan review. Adopted all 4: (1) marker path preserves briefSentence verbatim - only the shared validation rule applies to both paths, form path alone collapses whitespace; (2) enforce BOTH raw-trimmed max (4000) and collapsed max (2000); (3) normalize CRLF->LF up front and lock inner-### boundary behavior with a test; (4) added regression tests for Type-after-brief, trailing blanks, CRLF, over-limit raw vs normalized, inner ###, invalid type."
+    },
+    "code_review": {
+      "completed": true,
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "details": "Independent code-review agent (gpt-5.4) reviewed the parser diff, tests, fixture, and ADR against the seven high-risk invariants (fingerprint stability, brief-capture regex boundaries/ReDoS, length caps, ${{}} guard, type validation, API stability, test quality). No significant issues found."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "details": "Second independent reviewer (claude-sonnet-4.6) deep-verified all six invariants, independently re-ran the hash algorithm to confirm the 4 hardcoded fixture fingerprints are correct (not copy-paste artifacts), and confirmed empty-section rejection, ### Type / <!-- boundaries, CRLF pre-normalization, trailing-newline handling, and O(n) (no ReDoS). Clean."
+        }
+      ]
+    }
+  }
+}

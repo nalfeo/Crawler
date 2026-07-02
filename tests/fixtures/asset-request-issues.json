@@ -1,0 +1,21 @@
+{
+  "_comment": "Verbatim GitHub issue-form bodies for asset-request parser regression tests. Real open issues #555 (single-sentence baseline) and #588/#607/#626 (rich multi-sentence, >240 chars). Do not edit by hand; bodies mirror production issue text.",
+  "issues": {
+    "555": {
+      "title": "Asset request: classified-dossier",
+      "body": "### Name\nclassified-dossier\n\n### Brief\nA production-ready sprite for classified-dossier in Crawler's dungeon reality-show style, readable at gameplay scale."
+    },
+    "588": {
+      "title": "Asset request: rhea-vale",
+      "body": "### Name\nrhea-vale\n\n### Brief\nRhea Vale is the player character — a sharp-eyed female dungeon contestant who dressed for a business casual interview and ended up in a monster-infested TV studio. Medium build, practical outfit (cargo pants, worn jacket), determined expression. Her silhouette must read clearly at gameplay scale and stay distinct from the NPCs and enemies she shares a dungeon with. Protagonist energy; not a fantasy hero, not a helpless victim."
+    },
+    "607": {
+      "title": "Asset request: tile-boss-staircase-floor",
+      "body": "### Name\ntile-boss-staircase-floor\n\n### Brief\nThe floor of the boss chamber and staircase room. Subtly distinct from regular stone — slightly darker, or a different cut pattern (herringbone, wider slabs, worn grooves). Should feel like you've crossed a threshold into somewhere more significant without being dramatically different from the rest of the dungeon. The floor that says: things are about to escalate. Seamless and suitable as a normal-sized special-room floor tile."
+    },
+    "626": {
+      "title": "Asset request: ability-icon-veteran-instinct",
+      "body": "### Name\nability-icon-veteran-instinct\n\n### Brief\nIcon for the Veteran Instinct passive ability — rewards experience and survival. Could be an eye, a footprint trail, a worn journal page, or a survival kit. Normal-sized ability icon. Should feel earned and perceptive rather than flashy. This is the \"I've been here before and I know how this ends\" ability. The icon of someone who has taken enough hits to stop getting surprised by them."
+    }
+  }
+}
