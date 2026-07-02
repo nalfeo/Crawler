@@ -209,7 +209,7 @@ export class FloorMap implements FloorMapData {
   }
 
   /**
-   * Check if the exact quarter-tile containing world position `(wx, wy)` is
+   * Check if the exact sub-tile containing world position `(wx, wy)` is
    * visible. More precise than `isVisible` — use for entity and lighting
    * queries where sub-tile accuracy matters.
    */
@@ -219,7 +219,7 @@ export class FloorMap implements FloorMapData {
   }
 
   /**
-   * Check if a specific quarter-tile coordinate `(hx, hy)` is visible.
+   * Check if a specific sub-tile coordinate `(hx, hy)` is visible.
    * Sub-tile coords: `hx ∈ [0, subWidth)`, `hy ∈ [0, subHeight)`.
    */
   isVisibleSubtile(hx: number, hy: number): boolean {

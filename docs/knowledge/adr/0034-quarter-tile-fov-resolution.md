@@ -84,19 +84,31 @@ and consequences above remain the shipped baseline.
 
 `FloorMap` gained an integer `subFactor` (default `DEFAULT_FOV_SUB_FACTOR = 2`,
 max `MAX_FOV_SUB_FACTOR = 8`) replacing the hardcoded ×2. `setSubFactor(n)`
-reallocates the `visible`/`discovered` bitmaps; `fovSystem` scales its radius and
-`lightPasses` mapping by the factor, so vision **range in feet is unchanged** at
-any factor. The engine bridges the pixel-facing `cellPx` the lab UI speaks to the
+reallocates the `visible`/`discovered` bitmaps (resetting discovered memory **by
+design** — every caller immediately recomputes FOV and rebuilds the light field,
+so no stale/black frame results); `fovSystem` scales its radius and `lightPasses`
+mapping by the factor, so vision **range in feet is unchanged** at any factor. The engine bridges the pixel-facing `cellPx` the lab UI speaks to the
 core integer (`src/engine/fov/fov-config.ts`), and the AI-runner lab exposes a
 "FOV" folder (preset buttons 32/16/8/4px + a sub-factor slider) with a Perf
 subfolder, mirroring the existing lighting-config pattern.
 
-**Why this does not reopen the gameplay-consistency risk:** `isVisible(tx, ty)`
-still ORs a tile's sub-tiles via an O(1) tile-level cache, so tile-level queries
-(AI perception, weapon range, entity hide/show, minimap) are **identical at any
-factor** — only the fog _visuals_ (`isVisibleSubtile`) get finer. The
-"hidden but targetable" paradox the original ADR guards against therefore cannot
-arise from the finer settings.
+**Why this does not reopen the gameplay-consistency risk:** the shipped default is
+frozen at `subFactor = 2`, byte-identical to the pre-amendment behavior
+(`setSubFactor(2)` is an early-return no-op), so **shipped gameplay is unchanged**;
+the finer factors (3–8) are **lab-only** opt-in. `isVisible(tx, ty)` ORs a tile's
+sub-tiles via an O(1) tile-level cache, so tile-level queries (AI perception,
+weapon range, entity hide/show, minimap) stay O(1) regardless of factor and — for
+tiles strictly **inside** the vision radius and unoccluded — return the **same**
+result at every factor. Tile visibility can differ by **≈1 tile at boundaries**
+(the circular vision-radius edge and shadow/occlusion edges), because those edges
+are rasterized on the finer sub-grid: a finer factor resolves the radius edge
+tighter (monotonically fewer radius-ring tiles) and the shadow wedges differently.
+This is the granularity knob working as intended, is confined to lab-only factors,
+and never affects the frozen default — so the "hidden but targetable" paradox the
+original ADR guards against cannot arise in the shipped game. See
+`tests/ecs/fov-system.test.ts` (the interior-identical test plus the radius- and
+occlusion-boundary divergence pins) for the exact, tested guarantees. Only the fog
+_visuals_ (`isVisibleSubtile`) get finer for gameplay purposes.
 
 **The "8× rejected" alternative above is revised, not reversed.** 8× (4px cells)
 is now selectable **at runtime only**; it is **not** the default. The original
@@ -119,7 +131,10 @@ measurable in the lab.
 ### 2. Discovered-terrain memory (dim, not black) — default ON
 
 `FloorMap` gained a persistent `discovered` bitmap (set by `fovSystem` alongside
-`visible`, cleared only on floor change). `computeLightField` renders
+`visible`; it persists for the whole floor and is otherwise cleared only on floor
+change — the one exception is `setSubFactor()` re-bucketing the fog buffers, which
+resets it **by design** as described above, since every caller immediately
+recomputes FOV). `computeLightField` renders
 discovered-but-not-currently-visible cells at a dim `discoveredLight`
 (`LightingConfig.discoveredLight`, default `0.05`) instead of full black. The
 value is clamped to `ambient` so remembered terrain is never brighter than the

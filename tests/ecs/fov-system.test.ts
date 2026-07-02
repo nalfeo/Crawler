@@ -42,6 +42,54 @@ function makeSmallMap(): FloorMap {
   return new FloorMap(config, tileMap, roomGraph, terrain, { x: 10, y: 10 });
 }
 
+/**
+ * Build an open N×N room (border walls, floor interior) at a given sub-factor,
+ * with an optional `paint` hook to add internal walls (doorways/corridors).
+ * Used by the boundary-divergence pins below, which need a map large enough that
+ * the vision-radius ring falls inside the map.
+ */
+function makeOpenMap(n: number, subFactor: number, paint?: (t: TileMap) => void): FloorMap {
+  const config: MapConfig = {
+    widthTiles: n,
+    heightTiles: n,
+    tileSizeFt: 32,
+    biome: BiomeType.ARENA,
+    seed: 42,
+    roomWidthRange: [4, 8],
+    roomHeightRange: [4, 8],
+    maxRooms: 1,
+    floorDensity: 0.5,
+  };
+  const tileMap = new TileMap(n, n);
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const idx = y * n + x;
+      tileMap.flags[idx] =
+        x === 0 || x === n - 1 || y === 0 || y === n - 1 ? TilePresets.WALL : TilePresets.FLOOR;
+    }
+  }
+  paint?.(tileMap);
+  return new FloorMap(
+    config,
+    tileMap,
+    new RoomGraph(),
+    new Uint8Array(n * n),
+    { x: 10, y: 10 },
+    subFactor,
+  );
+}
+
+/** Run the real fovSystem for a player at tile `(ptx, pty)` (tile center). */
+function runFovAt(floorMap: FloorMap, ptx: number, pty: number): FloorMap {
+  const w = createTestWorld({ seed: 42 });
+  w.floorMap = floorMap;
+  const eid = addEntity(w.ecs);
+  addComponent(w.ecs, eid, set(Position, { x: ptx * 32 + 16, y: pty * 32 + 16 }));
+  addComponent(w.ecs, eid, Player);
+  fovSystem(w);
+  return floorMap;
+}
+
 describe('FOV System', () => {
   let world: GameWorld;
 
@@ -227,22 +275,21 @@ describe('FOV System', () => {
     expect(floorMap.isDiscovered(10, 10)).toBe(true);
   });
 
-  it('keeps tile-level gameplay visibility identical at a finer sub-factor', () => {
-    // subFactor only changes fog *resolution*; tile-level isVisible (used by
-    // AI/culling) must be unchanged. Compare factor 2 (default) vs factor 8.
+  it('keeps interior tile visibility identical across sub-factors (default factor 2 is frozen)', () => {
+    // subFactor changes only fog *resolution*. For tiles strictly INSIDE the
+    // vision radius and unoccluded, tile-level isVisible (read by AI, culling,
+    // weapon range and the minimap) is identical at every factor. Boundary tiles
+    // (radius edge / shadow edges) may differ by ~1 tile — those are pinned in
+    // the two tests below. The 20×20 room sits entirely within the 25-tile radius
+    // from (10,10) (max sampled dist ≈7), so tiles 5..15 are all strictly
+    // interior. Factor 2 is the frozen shipped default.
     const coarse = makeSmallMap();
+    expect(coarse.subFactor).toBe(2);
     const fine = makeSmallMap();
     fine.setSubFactor(8);
     expect(fine.subFactor).toBe(8);
 
-    for (const floorMap of [coarse, fine]) {
-      world = createTestWorld({ seed: 42 });
-      world.floorMap = floorMap;
-      const eid = addEntity(world.ecs);
-      addComponent(world.ecs, eid, set(Position, { x: 320, y: 320 }));
-      addComponent(world.ecs, eid, Player);
-      fovSystem(world);
-    }
+    for (const floorMap of [coarse, fine]) runFovAt(floorMap, 10, 10);
 
     // Sample the interior tiles; tile-level visibility must match factor-for-factor.
     for (let ty = 5; ty <= 15; ty++) {
@@ -250,7 +297,74 @@ describe('FOV System', () => {
         expect(fine.isVisible(tx, ty)).toBe(coarse.isVisible(tx, ty));
       }
     }
-    // The finer map carries 16× the sub-tiles even though tile visibility matches.
+    // The finer map carries 16× the sub-tiles even though interior tiles match.
     expect(fine.visible.length).toBe(coarse.visible.length * 16);
+  });
+
+  it('pins the vision-radius boundary divergence (finer factor sees a strict subset)', () => {
+    // On a map large enough that the ~25-tile radius ring falls INSIDE the map,
+    // the circular radius edge rasterizes tighter at finer factors. Verified with
+    // the real fovSystem: factor-8 visibility is a strict subset of factor-2 (the
+    // finer pass never adds a radius-edge tile the coarse pass missed), they are
+    // NOT equal, and every differing tile lies on the radius ring (dist ∈ ~[24,27]).
+    // Interior (dist < 24) is identical — so gameplay diverges only at the extreme
+    // vision edge, and only at lab-only factors (the default stays 2).
+    const N = 40;
+    const coarse = runFovAt(makeOpenMap(N, 2), 10, 10);
+    const fine = runFovAt(makeOpenMap(N, 8), 10, 10);
+
+    let diffs = 0;
+    for (let ty = 0; ty < N; ty++) {
+      for (let tx = 0; tx < N; tx++) {
+        const c = coarse.isVisible(tx, ty);
+        const f = fine.isVisible(tx, ty);
+        const dist = Math.hypot(tx - 10, ty - 10);
+        if (dist < 24) {
+          expect(f).toBe(c); // strictly-interior tiles are factor-invariant
+          continue;
+        }
+        if (c !== f) {
+          diffs++;
+          expect(c).toBe(true); // coarse sees it...
+          expect(f).toBe(false); // ...finer does not (strict subset)
+          expect(dist).toBeLessThan(27); // and only on the radius ring
+        }
+      }
+    }
+    expect(diffs).toBeGreaterThan(0); // the invariant genuinely breaks at the edge
+  });
+
+  it('pins the shadow/occlusion-edge divergence at a doorway (well inside the radius)', () => {
+    // A vertical wall at column 12 with a 1-tile doorway at y=10 splits an open
+    // 40×40 room; the player stands left of the wall, aligned with the doorway.
+    // The shadow wedge cast through the doorway rasterizes differently per factor.
+    // Verified with the real fovSystem: tiles (21,8)/(22,8)/(23,8) — beyond the
+    // wall, dist ≈15–17 (far inside the 25-tile radius, so this is occlusion- not
+    // radius-driven) — are visible at factor 2 but NOT at factor 8. Tile-level
+    // visibility is therefore not globally factor-invariant; this is intended,
+    // lab-only behavior of the granularity knob, pinned here.
+    const N = 40;
+    const col = 12;
+    const doorY = 10;
+    const ptx = 6;
+    const pty = 10;
+    const paint = (t: TileMap): void => {
+      for (let y = 1; y < N - 1; y++) {
+        if (y === doorY) continue; // leave the doorway open
+        t.flags[y * N + col] = TilePresets.WALL;
+      }
+    };
+    const coarse = runFovAt(makeOpenMap(N, 2, paint), ptx, pty);
+    const fine = runFovAt(makeOpenMap(N, 8, paint), ptx, pty);
+
+    for (const [tx, ty] of [
+      [21, 8],
+      [22, 8],
+      [23, 8],
+    ] as const) {
+      expect(Math.hypot(tx - ptx, ty - pty)).toBeLessThan(20); // inside radius, not the edge
+      expect(coarse.isVisible(tx, ty)).toBe(true);
+      expect(fine.isVisible(tx, ty)).toBe(false);
+    }
   });
 });
