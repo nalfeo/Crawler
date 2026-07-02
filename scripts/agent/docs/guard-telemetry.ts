@@ -104,9 +104,11 @@ export interface GuardTelemetryCaptureRecord {
   readonly ignored_events: number;
   readonly unexpected_guard_ids: string[];
   /**
-   * True when the artifact carried a known test-fixture id and the whole record
-   * is guard test-suite leakage. Quarantined records are written with empty
-   * counts and are skipped by `loadMetricsSources`.
+   * True when the artifact carried a known test-fixture id, marking the whole
+   * record as guard test-suite leakage. `captureSessionMode` refuses to write
+   * such records; the empty-count shape here applies only to the
+   * defense-in-depth `loadMetricsSources` skip for any quarantined record that
+   * reaches disk by another path.
    */
   readonly quarantined: boolean;
   /** Known-fixture ids that triggered the quarantine (empty when clean). */

@@ -31,19 +31,19 @@ capture for the same session overwrites its file (idempotent, no double count).
 
 ## Schema (`agent-os-guard-telemetry-capture/v1`)
 
-| Field                  | Meaning                                                                                                                           |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `schema`               | `agent-os-guard-telemetry-capture/v1`                                                                                             |
-| `session`              | Stable session key (slug); the dedup authority for the union                                                                      |
-| `date`                 | Capture date (`YYYY-MM-DD`)                                                                                                       |
-| `artifact`             | Source artifact path (`files/guard-telemetry.jsonl`)                                                                              |
-| `events`               | Count of accepted, configured-guard events                                                                                        |
-| `guards`               | `{ "<guard_id>": { "<decision>": <count> } }` (configured only)                                                                   |
-| `tools`                | `{ "<tool_name>": <count> }`                                                                                                      |
-| `ignored_events`       | Count of events dropped (fixtures + unknown IDs)                                                                                  |
-| `unexpected_guard_ids` | Sorted list of non-configured IDs seen (fixtures + typos)                                                                         |
-| `quarantined`          | `true` when a known test-fixture ID was seen; whole record is discarded (`events`/`guards`/`tools` zeroed) and no file is written |
-| `fixture_guard_ids`    | Sorted list of `KNOWN_TEST_FIXTURE_GUARD_IDS` that triggered quarantine (empty when clean)                                        |
+| Field                  | Meaning                                                                                                                                                     |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schema`               | `agent-os-guard-telemetry-capture/v1`                                                                                                                       |
+| `session`              | Stable session key (slug); the dedup authority for the union                                                                                                |
+| `date`                 | Capture date (`YYYY-MM-DD`)                                                                                                                                 |
+| `artifact`             | Source artifact path (`files/guard-telemetry.jsonl`)                                                                                                        |
+| `events`               | Count of accepted, configured-guard events                                                                                                                  |
+| `guards`               | `{ "<guard_id>": { "<decision>": <count> } }` (configured only)                                                                                             |
+| `tools`                | `{ "<tool_name>": <count> }`                                                                                                                                |
+| `ignored_events`       | Count of events dropped (fixtures + unknown IDs)                                                                                                            |
+| `unexpected_guard_ids` | Non-configured, non-fixture guard ids seen in the artifact (typos or renamed guards). Known test-fixture ids are reported separately in `fixture_guard_ids` |
+| `quarantined`          | `true` when a known test-fixture ID was seen; whole record is discarded (`events`/`guards`/`tools` zeroed) and no file is written                           |
+| `fixture_guard_ids`    | Sorted list of `KNOWN_TEST_FIXTURE_GUARD_IDS` that triggered quarantine (empty when clean)                                                                  |
 
 ## Analyzer
 
