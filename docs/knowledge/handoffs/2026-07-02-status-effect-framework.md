@@ -236,3 +236,25 @@ original preflight are **not present** at this branch's base (`e55a0973`) — no
   write to a temp path so the session artifact reflects only real decisions.
 - When Floor 2 lands the hate-ramp, add a determinism/parity test that a per-frame
   re-applied enemy `op:'add'` speed source yields identical results across both pipelines.
+
+### Post-PR merge prep (rebase + review fix)
+
+- **Rebased onto latest `origin/main` as the effective second-merger** (main advanced
+  after the PR opened; the branch went `CONFLICTING`). The only conflicts were the two
+  pipeline-ordering files; resolved by keeping the new relative order
+  `enemyAISystem → statusEffectSystem → spawnerSystem → movement` (headless) and
+  `enemyAISystem → statusEffectSystem → spawnerSystem → floor1EnemyDirectorSystem`
+  (visual, preserving main's spawner→director adjacency contract). Per guardrail #3 I
+  re-ran the **full `npm run verify` (exit 0)** + the **headless Floor 1 win-rate gate
+  (19/19, sword/bow/baseball-bat)** + the **cross-pipeline parity + structural-ordering
+  tests** on the rebased tree before force-pushing. `statusEffectSystem` never moves
+  entities, so the reorder cannot perturb the combat-perf session's grid-build→melee window.
+- **Addressed the Copilot PR reviewer's one finding** (`fix(core)`, commit `3b63f500`):
+  `equip()` overrode a granted spec's `sourceId` but not its `sourceType`, while
+  `unequip()`'s clear predicate matched on both — so a `grantsStatusEffects` entry with a
+  non-`'equipment'` `sourceType` would apply on equip but never clear on unequip (latent
+  leak). Fix normalizes `sourceType` to `'equipment'` on equip (mirroring the `sourceId`
+  override); added a regression test (an `'aura'`-typed granted spec is applied as
+  `'equipment'` and cleared on unequip). Replied `✅ Addressed` and resolved the thread.
+- Net commit count on the branch is now **10** (the 9 above + the review fix). Auto-merge
+  is armed (`--squash`); the branch is `MERGEABLE` with 0 unresolved review threads.
