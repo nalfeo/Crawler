@@ -1,0 +1,21 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "worktree-server-localhost-url",
+  "task_title": "Render worktree-server canvas loopback links as localhost",
+  "estimated_apples": 1,
+  "stages": {
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "clean": true,
+          "models": ["claude-opus-4.8", "code-review-agent"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "notes": "Reviewed the formatLinkHost change (loopback/wildcard binds -> 'localhost'). One theoretical edge case raised (a port bound on both loopback families could have Happy Eyeballs probe the other family) and dismissed with rationale: implausible for a dev-server helper and would affect only best-effort route availability, nothing durable. Non-loopback IPv4 pass-through and non-loopback IPv6 bracketing verified unchanged. No code changes required."
+        }
+      ]
+    }
+  }
+}
