@@ -64,7 +64,7 @@ tuned **easy**, gated on a **90%+ seed win-rate**, never on cherry-picked seeds.
    - **Neutral** `50–75`: non-hostile to the player; ignores the player, keeps feuding.
    - **Friendly** `76–100`: follows the player and attacks anything attacking the player.
 9. **Hate speed ramp.** For a hate-band mob with relation `r ∈ [0,25)`, effective move
-   speed is `baseSpeed + (playerSpeed − baseSpeed) · (25 − r)/25`, clamped to
+   speed is `baseSpeed + (playerSpeed - baseSpeed) * (25 - r)/25`, clamped to
    `[baseSpeed, playerSpeed]`. At `r = 0` the mob matches player speed (uncatchable-proof);
    at `r → 25` the boost is zero. Mobs already faster than the player are unaffected.
 10. **Relationship levers (player-driven; no default decay).** Damaging/killing a

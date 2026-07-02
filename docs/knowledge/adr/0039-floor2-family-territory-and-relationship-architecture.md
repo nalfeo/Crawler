@@ -48,7 +48,7 @@ relationship number across hundreds of entities and matches the family-level HUD
 
 **D2 — Bands and the hate speed-ramp are pure functions.** `bandFor(relation)` yields
 hate `0–24` / hostile `25–49` / neutral `50–75` / friendly `76–100`. For a hate-band mob
-the effective speed is `baseSpeed + (playerSpeed − baseSpeed)·(25 − r)/25`, clamped to
+the effective speed is `baseSpeed + (playerSpeed - baseSpeed)*(25 - r)/25`, clamped to
 `[baseSpeed, playerSpeed]` — matching player speed at `r=0`, zero boost at `r→25`. These
 live in `src/shared/` (or `src/core/`) as testable pure logic and drive a mutable speed
 field the AI already supports.
