@@ -1,6 +1,7 @@
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { SPRITE_TYPES, type Brief } from './brief-schema.js';
 import { runFull } from './run-full.js';
 import { synthesizeBrief } from './synthesize-brief.js';
 import type { IssueAssetRequest } from './queue/types.js';
@@ -15,6 +16,7 @@ import { briefDirectoryForType } from './brief-paths.js';
 
 export interface IssuePipelineIssueApi {
   comment(issueNumber: number, body: string): Promise<void>;
+  addLabel(issueNumber: number, label: string): Promise<void>;
 }
 
 export interface RunIssuePipelineOptions {
@@ -40,6 +42,33 @@ interface IssueRunStatus {
 
 const ISSUE_STATUS_PREFIX = 'workflow-state/asset-request-jobs';
 
+/**
+ * Infer sprite type from asset name using common naming patterns.
+ * Falls back to 'character' if the pattern is not recognized.
+ */
+function inferSpriteTypeFromName(name: string): Brief['type'] {
+  const lowerName = name.toLowerCase();
+
+  // Explicit type prefixes in the asset name
+  for (const type of SPRITE_TYPES) {
+    if (lowerName.startsWith(`${type}-`)) {
+      return type;
+    }
+  }
+
+  // Pattern matching for common naming conventions
+  if (lowerName.startsWith('ability-') || lowerName.includes('-icon')) {
+    return 'item';
+  }
+
+  // Default guess based on heuristics
+  if (lowerName.includes('lichen') || lowerName.includes('plant') || lowerName.includes('rock')) {
+    return 'tile';
+  }
+
+  return 'character';
+}
+
 export async function runIssuePipeline(options: RunIssuePipelineOptions): Promise<{
   readonly briefId: string;
   readonly runId: string;
@@ -62,9 +91,11 @@ export async function runIssuePipeline(options: RunIssuePipelineOptions): Promis
 
   await setStatus('synthesizing');
   await comment(`🧪 Started asset-request pipeline for \`${request.name}\`.\n\nStage: synthesize`);
+  const spriteType = request.type || inferSpriteTypeFromName(request.name);
   const synth = await synthesizeBrief({
     name: request.name,
     briefHint: request.briefSentence,
+    type: spriteType as Brief['type'],
     candidates: 3,
     partial: true,
     provider: options.synthProvider,

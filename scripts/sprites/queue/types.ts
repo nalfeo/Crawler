@@ -37,6 +37,8 @@ export interface IssueAssetRequest extends AssetRequestBase {
   readonly name: string;
   /** One-sentence brief from the issue contract. */
   readonly briefSentence: string;
+  /** Optional sprite type from the issue contract (weapon/enemy/item/tile/vfx/character). */
+  readonly type?: string;
   /** Stable hash of normalized issue payload (`name + briefSentence`). */
   readonly fingerprint: string;
   /** ISO-8601 timestamp when the ingester claimed/enqueued this issue payload. */
@@ -78,6 +80,7 @@ export function normalizeAssetRequest(value: unknown): AssetRequest | null {
       issueNumber: v.issueNumber,
       name: v.name,
       briefSentence: v.briefSentence,
+      ...(typeof v.type === 'string' && v.type.trim() !== '' ? { type: v.type } : {}),
       fingerprint: v.fingerprint,
       claimedAt: v.claimedAt,
       requestedBy: v.requestedBy,

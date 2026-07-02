@@ -1,0 +1,20 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "asset-request-type-inference",
+  "task_title": "Add optional --type to asset-request template + blocked-label guard",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "notes": "all addressed: removed label-based blocking (too coarse), added SPRITE_TYPES validation, simplified to diagnostic comments only"
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    }
+  }
+}

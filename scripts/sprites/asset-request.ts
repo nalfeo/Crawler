@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { SPRITE_TYPES } from './brief-schema.js';
 
 export const ASSET_REQUEST_LABEL = 'asset-request';
 export const ASSET_REQUEST_MARKER = 'asset-request:v1';
@@ -7,11 +8,13 @@ export interface AssetRequestPayload {
   readonly version: 1;
   readonly name: string;
   readonly briefSentence: string;
+  readonly type?: string;
 }
 
 export interface ParsedAssetRequestIssue {
   readonly name: string;
   readonly briefSentence: string;
+  readonly type?: string;
   readonly fingerprint: string;
 }
 
@@ -32,12 +35,13 @@ export function parseAssetRequestIssueBody(body: string): ParsedAssetRequestIssu
         return {
           name: parsed.name,
           briefSentence: parsed.briefSentence,
+          type: parsed.type && parsed.type.trim() !== '' ? parsed.type : undefined,
           fingerprint: fingerprintAssetRequest(parsed.name, parsed.briefSentence),
         };
       }
     }
   }
-  // Fallback for issue-form rendered text ("### Name", "### Brief").
+  // Fallback for issue-form rendered text ("### Name", "### Brief", "### Type").
   const fallback = parseIssueFormBody(body);
   if (!fallback) return null;
   return {
@@ -72,12 +76,24 @@ function isSingleSentence(value: unknown): value is string {
 
 function parseIssueFormBody(
   body: string,
-): { readonly name: string; readonly briefSentence: string } | null {
+): { readonly name: string; readonly briefSentence: string; readonly type?: string } | null {
   const nameMatch = body.match(/(?:^|\n)###\s+Name\s*\n+([^\n]+)/i);
   const briefMatch = body.match(/(?:^|\n)###\s+Brief\s*\n+([^\n]+)/i);
   if (!nameMatch || !briefMatch) return null;
   const name = nameMatch[1]!.trim();
   const briefSentence = briefMatch[1]!.trim();
   if (name === '' || !isSingleSentence(briefSentence)) return null;
-  return { name, briefSentence };
+  const typeMatch = body.match(/(?:^|\n)###\s+Type\s*\n+([^\n]+)/i);
+  let type: string | undefined;
+  if (typeMatch) {
+    const candidate = typeMatch[1]!.trim().toLowerCase();
+    // Validate type against SPRITE_TYPES; reject if invalid
+    if (candidate && (SPRITE_TYPES as readonly string[]).includes(candidate)) {
+      type = candidate;
+    } else if (candidate !== '') {
+      // Non-empty but invalid type is a parsing error
+      return null;
+    }
+  }
+  return { name, briefSentence, type };
 }

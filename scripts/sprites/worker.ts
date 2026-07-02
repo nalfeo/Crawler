@@ -167,23 +167,37 @@ export async function runWorker(options: WorkerOptions): Promise<void> {
           'issue-request job requires synthProvider, briefSelectorProvider, and issueApi to be configured',
         );
       }
-      const result = await runIssuePipeline({
-        request,
-        repoRoot: options.repoRoot,
-        store: options.store,
-        imageProvider: options.provider,
-        textProvider: options.textProvider ?? null,
-        synthProvider: options.synthProvider,
-        briefSelectorProvider: options.briefSelectorProvider,
-        visionProvider: options.visionProvider ?? null,
-        issueApi: options.issueApi,
-      });
-      return {
-        summary: {
-          runId: result.runId,
-        },
-        summaryPath: result.summaryPath,
-      };
+      try {
+        const result = await runIssuePipeline({
+          request,
+          repoRoot: options.repoRoot,
+          store: options.store,
+          imageProvider: options.provider,
+          textProvider: options.textProvider ?? null,
+          synthProvider: options.synthProvider,
+          briefSelectorProvider: options.briefSelectorProvider,
+          visionProvider: options.visionProvider ?? null,
+          issueApi: options.issueApi,
+        });
+        return {
+          summary: {
+            runId: result.runId,
+          },
+          summaryPath: result.summaryPath,
+        };
+      } catch (err) {
+        // On pipeline error, post diagnostic comment. User can fix and restart sidecar.
+        const error = err instanceof Error ? err : new Error(String(err));
+        try {
+          await options.issueApi.comment(
+            request.issueNumber,
+            `⚠️ Asset-request pipeline failed.\n\nError: ${error.message}\n\nIf this is a parsing or validation error, please edit the issue and try again. If it's a transient service error, the sidecar will retry on next restart.`,
+          );
+        } catch {
+          // Ignore comment errors; rethrow pipeline error
+        }
+        throw error;
+      }
     }
   }
 

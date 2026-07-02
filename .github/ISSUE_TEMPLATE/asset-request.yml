@@ -19,3 +19,18 @@ body:
       placeholder: A chipped bone dagger with twine-wrapped handle and faint green runes.
     validations:
       required: true
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type (optional)
+      description: Sprite category. Leave blank to auto-detect from the name.
+      options:
+        - ''
+        - weapon
+        - enemy
+        - item
+        - tile
+        - vfx
+        - character
+    validations:
+      required: false
