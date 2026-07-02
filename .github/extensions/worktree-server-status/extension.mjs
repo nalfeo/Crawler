@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 import { createCanvas, joinSession } from '@github/copilot-sdk/extension';
 
 import { renderHtml } from './renderer.mjs';
+import { formatLinkHost } from './format-link-host.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -191,20 +192,6 @@ function dedupeCandidates(rawCandidates) {
     }
   }
   return [...byPort.values()].sort((left, right) => left.localPort - right.localPort);
-}
-
-function formatLinkHost(localAddress) {
-  const normalized = (localAddress || '').toLowerCase();
-  if (!normalized || normalized === '0.0.0.0' || normalized === '::') {
-    return '127.0.0.1';
-  }
-  if (normalized === '::1') {
-    return '[::1]';
-  }
-  if (normalized.includes(':') && !normalized.startsWith('[')) {
-    return `[${localAddress}]`;
-  }
-  return localAddress;
 }
 
 function extractWorkspacePathFromCommandLine(commandLine) {

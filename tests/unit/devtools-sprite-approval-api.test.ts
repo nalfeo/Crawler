@@ -7,6 +7,8 @@ import {
   prepareCheckin,
   ApproveRequestError,
   CheckinRequestError,
+  STALE_SIDECAR_HINT,
+  isSidecarRouteMissing,
 } from '../../src/devtools/sprite-approval-api.js';
 
 describe('devtools sprite approval api', () => {
@@ -267,5 +269,71 @@ describe('devtools sprite check-in api', () => {
     expect((error as CheckinRequestError).status).toBe(409);
     expect((error as CheckinRequestError).errorCode).toBe('nothing-to-checkin');
     expect((error as CheckinRequestError).message).toMatch(/prepare failed \(409\): /);
+  });
+});
+
+describe('isSidecarRouteMissing', () => {
+  const fastifyMissingRoute = (route: string, verb: 'prepare' | 'check-in') =>
+    new CheckinRequestError(
+      404,
+      'Not Found',
+      `${verb} failed (404): Route POST:${route} not found`,
+    );
+
+  it('is true for a Fastify missing-route 404 on the prepare route', () => {
+    expect(isSidecarRouteMissing(fastifyMissingRoute('/api/checkin/prepare', 'prepare'))).toBe(
+      true,
+    );
+  });
+
+  it('is true for a Fastify missing-route 404 on the checkin route', () => {
+    expect(isSidecarRouteMissing(fastifyMissingRoute('/api/checkin', 'check-in'))).toBe(true);
+  });
+
+  it('is false for the sidecar business-logic conflicts (409/403/500)', () => {
+    expect(
+      isSidecarRouteMissing(
+        new CheckinRequestError(409, 'nothing-to-checkin', 'prepare failed (409): none'),
+      ),
+    ).toBe(false);
+    expect(
+      isSidecarRouteMissing(new CheckinRequestError(403, 'ci-refused', 'prepare failed (403): ci')),
+    ).toBe(false);
+    expect(
+      isSidecarRouteMissing(
+        new CheckinRequestError(500, 'prepare-failed', 'prepare failed (500): boom'),
+      ),
+    ).toBe(false);
+  });
+
+  it('is false for an unrelated 404 that is not a Fastify missing-route reply', () => {
+    // A misconfigured SIDECAR_BASE hitting a different service: 404 but no Fastify
+    // { error: "Not Found", message: "Route ... not found" } body → errorCode null.
+    expect(
+      isSidecarRouteMissing(new CheckinRequestError(404, null, 'prepare failed (404): Not Found')),
+    ).toBe(false);
+    // A Fastify 404 that names a DIFFERENT route must not trigger the fallback.
+    expect(
+      isSidecarRouteMissing(
+        new CheckinRequestError(
+          404,
+          'Not Found',
+          'prepare failed (404): Route GET:/api/runs not found',
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  it('is false for non-CheckinRequestError values', () => {
+    expect(isSidecarRouteMissing(new Error('Route POST:/api/checkin not found'))).toBe(false);
+    expect(isSidecarRouteMissing(null)).toBe(false);
+    expect(isSidecarRouteMissing('nope')).toBe(false);
+  });
+});
+
+describe('STALE_SIDECAR_HINT', () => {
+  it('names the sidecar restart command so operators know how to recover', () => {
+    expect(STALE_SIDECAR_HINT.length).toBeGreaterThan(0);
+    expect(STALE_SIDECAR_HINT).toContain('sprites:gallery');
   });
 });

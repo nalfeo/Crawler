@@ -274,7 +274,7 @@ describe('runIssuePipeline', () => {
 
     // Verify synthesizeBrief was called with inferred weapon type
     expect(mockSynthesizeBrief).toHaveBeenCalled();
-    const callArgs = mockSynthesizeBrief.mock.calls[0]![0] as Record<string, unknown>;
+    const callArgs = mockSynthesizeBrief.mock.calls[0]![0];
     expect(callArgs.name).toBe('weapon-sword');
     expect(callArgs.type).toBe('weapon');
   });
@@ -330,7 +330,7 @@ describe('runIssuePipeline', () => {
 
     // Verify synthesizeBrief was called with explicit type
     expect(mockSynthesizeBrief).toHaveBeenCalled();
-    const callArgs = mockSynthesizeBrief.mock.calls[0]![0] as Record<string, unknown>;
+    const callArgs = mockSynthesizeBrief.mock.calls[0]![0];
     expect(callArgs.name).toBe('dagger');
     expect(callArgs.type).toBe('weapon');
   });
