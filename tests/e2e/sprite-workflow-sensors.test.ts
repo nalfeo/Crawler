@@ -333,6 +333,26 @@ describe('sprite workflow sensor-failure visibility + force-judge', () => {
   // button. Drive the new "Check in to GitHub" button against a mocked
   // /api/checkin and prove the filed issue URL is rendered as a clickable link.
   it('checks in approved sprites and surfaces the filed asset-checkin issue link', async () => {
+    await page.route('**/api/checkin/prepare', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          assetCount: 1,
+          branch: 'assets/checkin-2026-06-08-abc123',
+          slug: 'checkin-2026-06-08-abc123',
+          assets: [
+            {
+              assetPath: 'generated/slime-king-var-1.png',
+              manifestKey: 'slime-king-var-1',
+              briefId: 'slime-king',
+              variantIndex: 1,
+            },
+          ],
+          estimatedDuration: 'Pushing: ~5s · Filing issue: ~3s',
+        }),
+      });
+    });
     await page.route('**/api/checkin', async (route) => {
       await route.fulfill({
         status: 200,
@@ -357,7 +377,7 @@ describe('sprite workflow sensor-failure visibility + force-judge', () => {
       page.once('dialog', (dialog) => void dialog.accept());
       // Gate on the mocked /api/checkin response so the assertions below run once
       // the success result has been rendered.
-      const checkinResponse = page.waitForResponse((res) => res.url().includes('/api/checkin'));
+      const checkinResponse = page.waitForResponse((res) => res.url().endsWith('/api/checkin'));
       await page.getByRole('button', { name: /^Check in to GitHub$/ }).click();
       await checkinResponse;
       const issueLink = page.getByRole('link', { name: /View asset-checkin issue/ });
@@ -365,7 +385,9 @@ describe('sprite workflow sensor-failure visibility + force-judge', () => {
       expect(await issueLink.getAttribute('href')).toBe(
         'https://github.com/nalfeo/Crawler/issues/99',
       );
-      expect(await page.locator('body').textContent()).toContain('Checked in 1 asset on');
+      expect(await page.locator('body').textContent()).toContain(
+        'Successfully checked in 1 asset on',
+      );
       // Regression guard (issue #1 follow-up): the result + filed-issue link must
       // PERSIST. They used to live on the shared workflow-status line, which the
       // 1s renderWorkflowSelection poll overwrote with "Next: ..." within a
@@ -374,8 +396,11 @@ describe('sprite workflow sensor-failure visibility + force-judge', () => {
       // poll cycle (the poll interval is 1s).
       await page.waitForTimeout(1_200);
       expect(await issueLink.isVisible()).toBe(true);
-      expect(await page.locator('body').textContent()).toContain('Checked in 1 asset on');
+      expect(await page.locator('body').textContent()).toContain(
+        'Successfully checked in 1 asset on',
+      );
     } finally {
+      await page.unroute('**/api/checkin/prepare');
       await page.unroute('**/api/checkin');
     }
   });

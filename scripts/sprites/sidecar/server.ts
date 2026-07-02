@@ -957,11 +957,14 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         }
 
         const plan = planAssetCheckin({ assets, now: new Date(), baseBranch });
+        const slug = plan.branch.startsWith('assets/')
+          ? plan.branch.slice('assets/'.length)
+          : plan.branch;
 
         return {
           assetCount: assets.length,
           branch: plan.branch,
-          slug: plan.slug,
+          slug,
           assets: plan.assets,
           estimatedDuration: 'Pushing: ~5s · Filing issue: ~3s',
         };

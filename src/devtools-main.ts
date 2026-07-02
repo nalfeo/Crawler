@@ -6347,15 +6347,13 @@ function render(): void {
         }
       }
 
-      // Step 2: Execute the actual check-in with detailed progress
-      setButtonBusy(checkinBtn, true, 'Check in to GitHub', 'Pushing to git...');
+      // Step 2: Execute the actual check-in (push + issue filing happen in one request).
+      setButtonBusy(checkinBtn, true, 'Check in to GitHub', 'Checking in...');
       setWorkflowStatus(
-        `Pushing ${prepareData.assetCount} asset${prepareData.assetCount === 1 ? '' : 's'} to ${prepareData.branch}...`,
+        `Pushing ${prepareData.assetCount} asset${prepareData.assetCount === 1 ? '' : 's'} to ${prepareData.branch} ` +
+          'and filing the asset-checkin issue on GitHub...',
         '#60a5fa',
       );
-
-      setButtonBusy(checkinBtn, true, 'Check in to GitHub', 'Filing issue...');
-      setWorkflowStatus(`Filing asset-checkin issue on GitHub...`, '#60a5fa');
 
       const result = await postCheckin(prepareData.slug);
       const count = result.assets.length;
