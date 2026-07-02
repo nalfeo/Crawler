@@ -222,4 +222,116 @@ describe('runIssuePipeline', () => {
     );
     expect(mockLoadBrief).toHaveBeenCalledWith(promotedPath, { projectRoot: repoRoot });
   });
+
+  it('infers weapon type from weapon-* prefix', async () => {
+    const winnerPath = path.join(repoRoot, 'weapon-sword.yaml');
+    writeFileSync(winnerPath, 'name: weapon-sword\njudge:\n  enabled: false\n', 'utf8');
+    const store = makeStore();
+
+    mockSynthesizeBrief.mockResolvedValueOnce({
+      name: 'weapon-sword',
+      type: 'weapon',
+      sizeVariant: 'default',
+      outDir: repoRoot,
+      written: [
+        {
+          id: 'weapon-sword-v1',
+          type: 'weapon',
+          description: 'sword',
+          references: [],
+          embellishmentSeeds: [],
+          synthesisRationale: 'inferred type',
+          yamlPath: winnerPath,
+        },
+      ],
+      rejected: [],
+      sidecarPath: path.join(repoRoot, 'synthesis.json'),
+      providerLabel: 'azure-openai:synth',
+      promptHash: 'prompt-hash',
+    });
+    mockRunFull.mockResolvedValueOnce({
+      summary: { brief: 'weapon-sword', runId: 'run-1' },
+      summaryPath: '/tmp/run-1/summary.json',
+    } as never);
+
+    await runIssuePipeline({
+      request: makeRequest({ name: 'weapon-sword', type: undefined }),
+      repoRoot,
+      store,
+      imageProvider: {} as never,
+      textProvider: null,
+      synthProvider: {} as never,
+      briefSelectorProvider: {
+        modelDeployment: 'selector-deploy',
+        async selectBrief() {
+          return { index: 0, rationale: 'best match', modelDeployment: 'selector-deploy' };
+        },
+      },
+      visionProvider: null,
+      issueApi: { comment: async () => {} },
+      env: {},
+    });
+
+    // Verify synthesizeBrief was called with inferred weapon type
+    expect(mockSynthesizeBrief).toHaveBeenCalled();
+    const callArgs = mockSynthesizeBrief.mock.calls[0]![0] as Record<string, unknown>;
+    expect(callArgs.name).toBe('weapon-sword');
+    expect(callArgs.type).toBe('weapon');
+  });
+
+  it('uses explicit type field when provided', async () => {
+    const winnerPath = path.join(repoRoot, 'dagger.yaml');
+    writeFileSync(winnerPath, 'name: dagger\njudge:\n  enabled: false\n', 'utf8');
+    const store = makeStore();
+
+    mockSynthesizeBrief.mockResolvedValueOnce({
+      name: 'dagger',
+      type: 'weapon',
+      sizeVariant: 'default',
+      outDir: repoRoot,
+      written: [
+        {
+          id: 'dagger-v1',
+          type: 'weapon',
+          description: 'dagger',
+          references: [],
+          embellishmentSeeds: [],
+          synthesisRationale: 'explicit type',
+          yamlPath: winnerPath,
+        },
+      ],
+      rejected: [],
+      sidecarPath: path.join(repoRoot, 'synthesis.json'),
+      providerLabel: 'azure-openai:synth',
+      promptHash: 'prompt-hash',
+    });
+    mockRunFull.mockResolvedValueOnce({
+      summary: { brief: 'dagger', runId: 'run-1' },
+      summaryPath: '/tmp/run-1/summary.json',
+    } as never);
+
+    await runIssuePipeline({
+      request: makeRequest({ name: 'dagger', type: 'weapon' }),
+      repoRoot,
+      store,
+      imageProvider: {} as never,
+      textProvider: null,
+      synthProvider: {} as never,
+      briefSelectorProvider: {
+        modelDeployment: 'selector-deploy',
+        async selectBrief() {
+          return { index: 0, rationale: 'best match', modelDeployment: 'selector-deploy' };
+        },
+      },
+      visionProvider: null,
+      issueApi: { comment: async () => {} },
+      env: {},
+    });
+
+    // Verify synthesizeBrief was called with explicit type
+    expect(mockSynthesizeBrief).toHaveBeenCalled();
+    const callArgs = mockSynthesizeBrief.mock.calls[0]![0] as Record<string, unknown>;
+    expect(callArgs.name).toBe('dagger');
+    expect(callArgs.type).toBe('weapon');
+  });
 });

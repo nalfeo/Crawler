@@ -238,6 +238,7 @@ export function createIssueIngesterController(
           issueNumber: issue.number,
           name: payload.name,
           briefSentence: payload.briefSentence,
+          ...(payload.type ? { type: payload.type } : {}),
           fingerprint,
           claimedAt,
           requestedBy: options.requestedBy,

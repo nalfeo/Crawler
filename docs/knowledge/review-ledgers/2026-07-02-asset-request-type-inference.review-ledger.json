@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "asset-request-type-inference",
+  "task_title": "Add optional --type to asset-request template + blocked-label guard",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "notes": "all addressed: removed label-based blocking (too coarse), added SPRITE_TYPES validation, simplified to diagnostic comments only"
+    },
+    "code_review": {
+      "completed": true,
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "details": "Type validation missing at JSON marker path and queue deserialization layer"
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "details": "All concerns from round 1 resolved: comprehensive SPRITE_TYPES validation at both paths and comprehensive test coverage"
+        }
+      ]
+    }
+  }
+}
