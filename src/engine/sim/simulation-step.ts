@@ -57,10 +57,15 @@ export interface SimulationStepHooks {
 
 /**
  * Runs ONE fixed-timestep simulation step: the full ordered ECS system pipeline
- * extracted verbatim from `MainGameScene.update()`. The call order and arguments
- * are intentionally identical to the original inline loop body — this is a
- * behavior-preserving extraction whose equivalence is proven by the headless
- * Floor-1 win-rate gate.
+ * extracted from `MainGameScene.update()`. The call order and arguments match the
+ * original inline loop body — this is the behavior-preserving extraction of the
+ * VISUAL pipeline (the scene injects the Floor 1 pre/post systems via `hooks`).
+ *
+ * NOTE: the headless Floor-1 win-rate gate does NOT run this function — it runs a
+ * SEPARATE hand-maintained mirror (`src/game/ai/simulation-step.ts`) which is an
+ * APPROXIMATION with known ordering divergences (director + weapon absolute
+ * position, tracked in issue #663), not a byte-identical copy. Treat the gate as a
+ * close proxy for shipped behavior, not a proof of exact cross-pipeline equivalence.
  *
  * `collisionSystem` is run once and its result threaded into the systems that
  * consume it (`damageSystem`, `areaDamageSystem`, `trapSystem`,

@@ -1,8 +1,13 @@
 /**
- * Core simulation loop extracted from MainGameScene.
+ * Headless Floor 1 simulation loop.
  *
- * Pure ECS simulation step that can be used by both Phaser (visual mode)
- * and headless runner (maximum speed mode).
+ * This is the hand-maintained mirror that the headless AI runner
+ * (`headless-runner.ts`) and the Floor 1 win-rate gate execute at maximum speed.
+ * The VISUAL game does NOT run this file — `MainGameScene` runs the engine step
+ * (`src/engine/sim/simulation-step.ts`) with scene-injected pre/post systems.
+ * The two pipelines are kept close by hand but are NOT byte-identical; known
+ * ordering divergences (director + weapon absolute position) are tracked in
+ * issue #663.
  */
 import {
   playerInputSystem,
@@ -45,6 +50,7 @@ import {
   skillSystem,
   abilitySystem,
   achievementSystem,
+  spawnerSystem,
 } from '../index.js';
 import type { InputState } from '../../shared/input.js';
 
@@ -87,8 +93,17 @@ export function runSimulationStep(
     sys(world);
   }
 
-  // Faithful pre-movement game systems (mirrors MainGameScene preSystems order).
-  // Without these the headless pipeline silently drifts from the visual game:
+  // Pre-movement game systems. This APPROXIMATES the visual game's preSystems
+  // (src/bootstrap/floor-main-scene-options.ts) but is NOT a byte-for-byte mirror:
+  // this headless pipeline is hand-maintained separately, and several systems the
+  // visual game runs in preSystems sit ELSEWHERE here -- weaponSystem runs
+  // post-movement and floor1EnemyDirectorSystem runs post-core. spawnerSystem runs
+  // HERE (pre-movement) while the director runs post-core, so -- unlike the visual
+  // pipeline, where they are immediately adjacent -- the whole core ECS pipeline
+  // runs between them; only the weaker "spawner before director" ordering is shared
+  // across both pipelines. These absolute-position divergences are known and
+  // tracked in issue #663.
+  // Without the systems below the headless pipeline silently drifts from visual:
   // statsSystem recomputes player combat stats, statSystem recomputes the
   // EffectiveStats store (folding level-up core-stat points into crit/dodge so
   // the damage path sees them), manaSystem derives the Wisdom-scaled MP pool and
@@ -101,6 +116,7 @@ export function runSimulationStep(
     floor1PlayerStatSystem(world);
   }
   enemyAISystem(world);
+  spawnerSystem(world);
 
   movementSystem(world);
   returningProjectileSystem(world);
@@ -146,7 +162,18 @@ export function runSimulationStep(
     world.state = 'playing';
   }
 
-  // Floor 1 specific systems
+  // Floor 1 specific systems.
+  // NOTE: floor1EnemyDirectorSystem runs HERE (post-core: after movement/damage/
+  // death) in this headless pipeline, but the visual game runs it PRE-core (in
+  // preSystems). spawnerSystem still runs earlier this frame (pre-movement, above),
+  // so the director counts this frame's freshly-spawned children -- but unlike the
+  // visual pipeline the two are NOT adjacent here (the core ECS pipeline runs
+  // between them). This absolute-position divergence makes the headless win-rate
+  // gate an APPROXIMATE proxy for shipped behavior, not a byte-identical
+  // equivalence: conservative on the damage-order axis (visual's director sees a
+  // fatally-hit enemy as alive one frame longer) yet only a rough proxy on the
+  // movement-distance axis. Bounded to one-frame (~16ms) effects; tracked in
+  // issue #663.
   if (options.enableFloor1 && world.floor1) {
     floorObjectiveSystem(world);
     floor1EnemyDirectorSystem(world);

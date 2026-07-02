@@ -13,6 +13,7 @@ import {
   Projectile,
   Returning,
   SpawnAnim,
+  Spawner,
   Sprite,
   Team,
   Trap,
@@ -126,6 +127,30 @@ export function enemyVariantFromTextureId(textureId: number | undefined): string
   if (textureId === undefined) return 'enemy';
   const variant = textureIdToVariant.get(textureId);
   return variant ?? 'enemy';
+}
+
+/**
+ * Bright-red multiply tint painted over placeholder spawner structures (Rats
+ * Nest / Slime Pool). Spawners currently reuse their child mob's sprite
+ * (`enemy_rat` / `enemy_slime`) because no dedicated nest/pool art exists yet,
+ * so without a wash they are indistinguishable from the very mobs they emit.
+ * The red makes them read as obviously-different placeholders in-world. Kept
+ * slightly off pure red (a little green/blue survives the multiply) so dark
+ * source pixels still read as *bright* red rather than near-black.
+ *
+ * Retire this once real spawner art lands (see {@link generatedBriefIdForEnemy}).
+ */
+export const PLACEHOLDER_SPAWNER_TINT = 0xff3030;
+
+/**
+ * Resolve the placeholder tint for an entity: {@link PLACEHOLDER_SPAWNER_TINT}
+ * for a {@link Spawner} structure (no dedicated art yet), or `null` for
+ * everything else. Pure — takes only the ECS handle — so it is unit-testable
+ * without a Phaser scene; the caller applies the result via
+ * `img.setTint` / `img.clearTint`.
+ */
+export function placeholderSpawnerTint(ecs: GameWorld['ecs'], eid: number): number | null {
+  return hasComponent(ecs, eid, Spawner) ? PLACEHOLDER_SPAWNER_TINT : null;
 }
 
 /** Result of {@link computeEnemyScale}: the live X/Y render scale for an enemy. */
