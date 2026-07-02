@@ -8,7 +8,7 @@ description: >-
   ">3 apples" and needs pre-PR review. Covers: deciding required stages from the
   apple estimate, reviewing the plan with a separate model (>1🍎), generating two
   plans + synthesizing with a judge model (>3🍎), looping code-review agents until
-  no concerns (all changes), multi-model code-review with adjudication (>3🍎), and
+  no concerns (≥3🍎), multi-model code-review with adjudication (>3🍎), and
   writing/validating the review ledger that the `pr-review-ledger` guard enforces
   before `create_pull_request`.
 ---
@@ -40,15 +40,16 @@ start of the session (see `docs/agent-os/policies/complexity-policy.md`).
 
 | apples | plan review | dual-plan synthesis | code review (loop) | multi-model review |
 | ------ | ----------- | ------------------- | ------------------ | ------------------ |
-| 1🍎    | —           | —                   | ✅                 | —                  |
-| 2–3🍎  | ✅          | —                   | ✅                 | —                  |
+| 1🍎    | —           | —                   | —                  | —                  |
+| 2🍎    | ✅          | —                   | —                  | —                  |
+| 3🍎    | ✅          | —                   | ✅                 | —                  |
 | 4–5🍎  | ✅          | ✅                  | ✅                 | ✅                 |
 
 - **plan review** (>1🍎): before writing code, have a _separate model_ review the
   plan; address every concern.
 - **dual-plan synthesis** (>3🍎): generate **2** plans with **different** models,
   then a **3rd** reasoning model judges + synthesizes the final plan.
-- **code review** (all): run the appropriate code-review agent(s); address
+- **code review** (≥3🍎): run the appropriate code-review agent(s); address
   feedback; **loop until no concerns remain**.
 - **multi-model review** (>3🍎): run each appropriate code-review agent with
   **multiple models**; a final reasoning model adjudicates which concerns are
@@ -72,7 +73,7 @@ start of the session (see `docs/agent-os/policies/complexity-policy.md`).
 5. **Implement**, then `npm run verify:fast`.
 6. **As soon as implementation is done, run the review stages immediately**
    (do **not** wait for `create_pull_request`):
-   **Code-review loop** (all) → record `code_review`. See
+   **Code-review loop** (≥3🍎) → record `code_review`. See
    [`references/code-review-loop.md`](references/code-review-loop.md).
 7. **Multi-model review + adjudication loop** (>3🍎) → record
    `multi_model_review`. See

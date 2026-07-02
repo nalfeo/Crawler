@@ -63,13 +63,31 @@ function tier1() {
     session_slug: 'small-fix',
     task_title: 'Small fix',
     estimated_apples: 1,
-    stages: { code_review: { clean: true, rounds: [cleanRound()] } },
+    stages: {},
+  };
+}
+
+function tier2() {
+  return {
+    schema_version: SCHEMA_VERSION,
+    date: '2026-06-29',
+    session_slug: 'small-change',
+    task_title: 'Small change',
+    estimated_apples: 2,
+    stages: {
+      plan_review: {
+        completed: true,
+        reviewer_model: 'gpt-5.4',
+        concerns_count: 1,
+        resolved_count: 1,
+      },
+    },
   };
 }
 
 test('requiredStagesForApples maps tiers correctly', () => {
-  assert.deepEqual(requiredStagesForApples(1), ['code_review']);
-  assert.deepEqual(requiredStagesForApples(2), ['plan_review', 'code_review']);
+  assert.deepEqual(requiredStagesForApples(1), []);
+  assert.deepEqual(requiredStagesForApples(2), ['plan_review']);
   assert.deepEqual(requiredStagesForApples(3), ['plan_review', 'code_review']);
   assert.deepEqual(requiredStagesForApples(4), [
     'plan_review',
@@ -91,10 +109,24 @@ test('a complete tier-4 ledger is valid', () => {
   assert.equal(r.estimatedApples, 4);
 });
 
-test('a complete tier-1 ledger needs only code_review', () => {
+test('a tier-1 ledger requires no stages (empty stages object is valid)', () => {
   const r = validateLedger(tier1());
   assert.equal(r.ok, true, r.errors.join('; '));
-  assert.deepEqual(r.requiredStages, ['code_review']);
+  assert.deepEqual(r.requiredStages, []);
+});
+
+test('a tier-2 ledger needs only plan_review (no code_review)', () => {
+  const r = validateLedger(tier2());
+  assert.equal(r.ok, true, r.errors.join('; '));
+  assert.deepEqual(r.requiredStages, ['plan_review']);
+});
+
+test('code_review becomes required at 3🍎 (was not required at 2🍎)', () => {
+  const led = tier2();
+  led.estimated_apples = 3;
+  const r = validateLedger(led);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('\n'), /code_review.*missing/);
 });
 
 test('rejects wrong schema_version', () => {

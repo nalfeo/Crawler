@@ -1,10 +1,11 @@
-# Code-review loop (all changes) and multi-model review (>3🍎)
+# Code-review loop (≥3🍎) and multi-model review (>3🍎)
 
 These stages happen **after** you implement and `npm run verify` is green.
 
 ## Pick the right review agent(s)
 
-- `code-review` — general correctness, bugs, logic, design. Use on every change.
+- `code-review` — general correctness, bugs, logic, design. The core agent for the
+  ≥3🍎 code-review loop.
 - `security-review` — when the diff touches input handling, auth, file/network
   I/O, deserialization, or anything trust-sensitive. Add it alongside
   `code-review` for >3🍎 changes by default.
@@ -14,7 +15,7 @@ run things) in the prompt.
 
 ---
 
-## Code-review loop (all changes)
+## Code-review loop (≥3🍎)
 
 Run the appropriate review agent, address feedback, and **loop until no concerns
 remain**.
@@ -47,7 +48,7 @@ remain**.
    Validator: `clean===true`; ≥1 round; last round `clean===true`, ≥1 model,
    `resolved_count >= concerns_count`.
 
-> For a 1🍎–3🍎 change this single-model loop is the whole code-review requirement.
+> For a 3🍎 change this single-model loop is the whole code-review requirement.
 
 ---
 
