@@ -70,10 +70,16 @@ export class SidecarAzureCredentialsError extends Error {
 /**
  * Returns true when the environment carries Azure Storage credentials, via
  * either a full connection string or the account-name + account-key pair.
+ *
+ * Values are trimmed: a whitespace-only variable is treated as absent, so a
+ * partially-populated `.env.local` cannot masquerade as valid credentials and
+ * then fail later with a cryptic Azure SDK error.
  */
 export function hasAzureStorageCreds(env: Record<string, string | undefined>): boolean {
-  if (env['AZURE_STORAGE_CONNECTION_STRING']) return true;
-  return Boolean(env['AZURE_STORAGE_ACCOUNT'] && env['AZURE_STORAGE_KEY']);
+  const nonBlank = (value: string | undefined): boolean =>
+    typeof value === 'string' && value.trim() !== '';
+  if (nonBlank(env['AZURE_STORAGE_CONNECTION_STRING'])) return true;
+  return nonBlank(env['AZURE_STORAGE_ACCOUNT']) && nonBlank(env['AZURE_STORAGE_KEY']);
 }
 
 function normalizeSelector(raw: string | undefined): string | null {

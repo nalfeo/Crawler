@@ -75,10 +75,11 @@ When working in a Copilot worktree session, keep **at most one active dev/lab/de
 
 When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/sidecar/cli.ts`), treat Azure connectivity as required by default.
 
-1. Run `npm run setup:azure` first in the current worktree to refresh `.env.local` from `az`.
-2. Launch sidecar with default backend selection only (Azure: `azure-blob` + `azure-queue`).
-3. Do **not** switch to local/noop backends unless a human explicitly asks for local/offline mode.
-4. If Azure credentials are missing or invalid, report the blocker and stop instead of silently falling back.
+1. On a fresh worktree just run `npm run sprites:gallery` — the launcher auto-bootstraps `.env.local` via the fast, env-only path (`pwsh scripts/setup-azure-env.ps1 -IncludeStorage`, ~18s) when the required Azure credentials are missing, and skips instantly when they are already present.
+2. For a routine credential refresh, use `npm run setup:azure:env` (fast, env-only — fetches endpoint/keys, writes `.env.local`; no resource provisioning). Use `npm run setup:azure:env:force` to regenerate an existing/partial `.env.local`. Reserve `npm run setup:azure` (full `-ProvisionResources`, ~228s) for first-time or changed Azure resources.
+3. Launch sidecar with default backend selection only (Azure: `azure-blob` + `azure-queue`).
+4. Do **not** switch to local/noop backends unless a human explicitly asks for local/offline mode (opt in with `SPRITES_RUN_STORE=local SPRITES_ASSET_QUEUE=noop`).
+5. If Azure credentials are missing or invalid, report the blocker and stop instead of silently falling back — the launcher fails fast with an actionable message and never auto-overwrites an existing `.env.local`.
 
 ## Architecture
 

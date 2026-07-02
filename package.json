@@ -57,6 +57,8 @@
     "sprites:generate-wiring": "tsx scripts/sprites/generate-wiring-cli.ts",
     "setup:azure:provision": "pwsh scripts/setup-azure-resources.ps1",
     "setup:azure": "pwsh scripts/setup-azure-env.ps1 -ProvisionResources -IncludeStorage",
+    "setup:azure:env": "pwsh scripts/setup-azure-env.ps1 -IncludeStorage",
+    "setup:azure:env:force": "pwsh scripts/setup-azure-env.ps1 -IncludeStorage -Force",
     "setup:azure:github": "pwsh scripts/setup-azure-env.ps1 -ProvisionResources -IncludeStorage -SyncGitHubSecrets",
     "verify:fast": "bash scripts/agent/verify-fast.sh",
     "verify:flash": "vitest run --changed --project unit --reporter=dot",

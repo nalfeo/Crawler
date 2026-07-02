@@ -111,6 +111,16 @@ describe('hasAzureStorageCreds', () => {
   it('is false with account but no key', () => {
     expect(hasAzureStorageCreds({ AZURE_STORAGE_ACCOUNT: 'a' })).toBe(false);
   });
+
+  it('treats whitespace-only values as missing', () => {
+    expect(hasAzureStorageCreds({ AZURE_STORAGE_CONNECTION_STRING: '   ' })).toBe(false);
+    expect(hasAzureStorageCreds({ AZURE_STORAGE_ACCOUNT: '  ', AZURE_STORAGE_KEY: '\t' })).toBe(
+      false,
+    );
+    expect(hasAzureStorageCreds({ AZURE_STORAGE_ACCOUNT: 'a', AZURE_STORAGE_KEY: '   ' })).toBe(
+      false,
+    );
+  });
 });
 
 describe('loadEnvLocal', () => {
