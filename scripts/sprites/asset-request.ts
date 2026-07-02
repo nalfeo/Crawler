@@ -16,15 +16,25 @@ export const ASSET_REQUEST_MARKER = 'asset-request:v1';
  *   - too short  → empty / garbage (reject when the collapsed text is under
  *                  `BRIEF_MIN_LENGTH`).
  *   - too long   → a runaway paste (an entire template, a novel, an accidental
- *                  dump). We bound this on two axes: `BRIEF_MAX_RAW_LENGTH`
- *                  caps the raw trimmed input (bounding parse work regardless of
- *                  whitespace) and `BRIEF_MAX_NORMALIZED_LENGTH` caps the
- *                  whitespace-collapsed text (bounding the downstream prompt).
+ *                  dump). We bound this on two axes:
+ *                    • `BRIEF_MAX_NORMALIZED_LENGTH` caps the whitespace-collapsed
+ *                      text and is the effective ceiling for BOTH paths — it
+ *                      bounds the downstream prompt. On the issue-form path the
+ *                      brief is normalized (whitespace-collapsed) before its
+ *                      length is checked, so this normalized cap — not the raw
+ *                      cap — governs how much raw, whitespace-heavy input is
+ *                      accepted there.
+ *                    • `BRIEF_MAX_RAW_LENGTH` caps the raw trimmed input before
+ *                      normalization. This is primarily a marker-payload guard:
+ *                      the machine `asset-request:v1` marker is validated
+ *                      verbatim (before any whitespace collapse), so the raw cap
+ *                      bounds parse work on a pathological verbatim paste. It is
+ *                      effectively subsumed by the normalized cap on the
+ *                      issue-form path.
  *
  * The longest real brief observed across the open `asset-request` issues is
- * ~500 characters, so the normalized cap leaves ~4x headroom and the raw cap
- * ~8x, comfortably accepting multi-paragraph briefs while still rejecting
- * pathological input.
+ * ~500 characters, so the normalized cap leaves ~4x headroom, comfortably
+ * accepting multi-paragraph briefs while still rejecting pathological input.
  */
 const BRIEF_MIN_LENGTH = 8;
 const BRIEF_MAX_NORMALIZED_LENGTH = 2000;
@@ -135,8 +145,10 @@ function containsUnrenderedTemplate(value: unknown): boolean {
 function isValidBriefText(value: unknown): value is string {
   if (typeof value !== 'string') return false;
   const trimmed = value.trim();
-  // Bound raw input first so a huge whitespace-heavy paste is rejected before it
-  // is normalized (parse-work guard, independent of the collapsed length).
+  // Bound raw input before normalizing, so a pathological verbatim paste is
+  // rejected up front. This bites the marker path (validated verbatim); the
+  // issue-form path pre-normalizes its brief, so there the normalized cap below
+  // is the effective ceiling.
   if (trimmed.length > BRIEF_MAX_RAW_LENGTH) return false;
   const normalized = normalizeBriefText(trimmed);
   return normalized.length >= BRIEF_MIN_LENGTH && normalized.length <= BRIEF_MAX_NORMALIZED_LENGTH;
