@@ -71,6 +71,40 @@ postprocessing:
 `.trim();
 
 /**
+ * A 4×4 / 16-cell brief. This is the shape an issue-request synthesises
+ * (judge.maxVariants: 16) and the exact case that failed in production with
+ * "expected 16 cells, slicer produced 8". We prove the honest happy path:
+ * when the sheet genuinely contains 16 sliceable cells the exact-16 gate
+ * passes without loosening it.
+ */
+const BRIEF_YAML_16 = `
+type: weapon
+name: iron-sword-16
+size: { width: 32, height: 32 }
+palette: { id: test-palette }
+anchor: { x: 16, y: 16 }
+tags: [sword]
+prompt: An iron sword.
+references:
+  - { path: refs/a.png }
+  - { path: refs/b.png }
+generation:
+  sheet: { rows: 4, cols: 4, emptyCells: [], nativeCanvas: 1024 }
+sensors:
+  edge:
+    allowMainTouch: true
+    allowDetachedEdgeComponents: true
+    maxDetachedEdgePixels: 16
+  weapon:
+    orientation: diagonal
+minVariations: 0
+postprocessing:
+  trimAndFit: false
+  minDimension: 64
+  paletteMode: strict
+`.trim();
+
+/**
  * Tile N variant PNGs (each 1024x1024) into a single rows*1024 x cols*1024 sheet,
  * in row-major reading order. The test feeds this directly to the orchestrator
  * via the mock provider so the slicer recovers each 1024x1024 fixture intact.
@@ -255,5 +289,54 @@ describe('generateOne — sheet-only generate stage (integration)', () => {
       }),
     ).rejects.toMatchObject({ kind: 'bad-grid' });
     expect(callCount()).toBe(2);
+  });
+});
+
+describe('generateOne — exact-cell slice gate at 16 (Bug B honest happy path)', () => {
+  let root: string;
+  let outputRoot: string;
+  let preloaded: LoadedBrief;
+  let briefPath: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), 'crawler-genone16-'));
+    mkdirSync(path.join(root, 'data', 'palettes'), { recursive: true });
+    mkdirSync(path.join(root, 'docs', 'agent-os'), { recursive: true });
+    mkdirSync(path.join(root, 'briefs', 'weapons'), { recursive: true });
+    mkdirSync(path.join(root, 'refs'), { recursive: true });
+    writeFileSync(path.join(root, 'data', 'palettes', 'test-palette.json'), PALETTE_JSON);
+    writeFileSync(path.join(root, 'docs', 'agent-os', 'sprite-style.md'), STYLE_GUIDE);
+    briefPath = path.join(root, 'briefs', 'weapons', 'iron-sword-16.yaml');
+    writeFileSync(briefPath, BRIEF_YAML_16);
+    writeFileSync(path.join(root, 'refs', 'a.png'), buildGoodSwordFixture());
+    writeFileSync(path.join(root, 'refs', 'b.png'), buildGoodSwordFixture());
+    outputRoot = path.join(root, 'generated');
+    preloaded = loadBrief(briefPath, { projectRoot: root });
+  }, 30_000);
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('passes the exact-16 gate in one attempt when the sheet has 16 sliceable cells', async () => {
+    // 16 good fixtures tiled into a 4×4 sheet — each 1024×1024 cell is a
+    // centred sprite on a magenta background, so the content-aware slicer
+    // recovers exactly 16 cells and the exact-count gate is satisfied honestly
+    // (no gate loosening; the target stays 16).
+    const variants = Array.from({ length: 16 }, () => buildGoodSwordFixture());
+    const sheet = tileVariantsIntoSheet(variants, 4, 4);
+    const result = await generateOne({
+      briefPath,
+      preloaded,
+      provider: makeMockProvider(sheet),
+      repoRoot: root,
+      outputRoot,
+      now: () => new Date('2026-06-04T12:00:00.000Z'),
+    });
+
+    expect(result.attempts).toBe(1);
+    expect(result.summary.variantCount).toBe(16);
+    expect(existsSync(path.join(result.runDir, 'sheet-00.png'))).toBe(true);
+    expect(existsSync(result.summaryPath)).toBe(true);
   });
 });
