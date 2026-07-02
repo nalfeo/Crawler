@@ -961,6 +961,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         return {
           assetCount: assets.length,
           branch: plan.branch,
+          slug: plan.slug,
           assets: plan.assets,
           estimatedDuration: 'Pushing: ~5s · Filing issue: ~3s',
         };
@@ -974,44 +975,49 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     },
   );
 
-  app.post<{ Body: { base?: unknown; remote?: unknown } }>('/api/checkin', async (req, reply) => {
-    // Check-in publishes locally-approved art as a remote branch + tracking
-    // issue (NO PR). Like approve, it is local-only — `runAssetCheckin` refuses
-    // when `env.CI` is set; we map that to 403 here for the e2e/gallery caller.
-    const body = (req.body ?? {}) as { base?: unknown; remote?: unknown };
-    const options: { baseBranch?: string; remote?: string } = {};
-    if (typeof body.base === 'string' && body.base.trim() !== '') options.baseBranch = body.base;
-    if (typeof body.remote === 'string' && body.remote.trim() !== '') options.remote = body.remote;
+  app.post<{ Body: { base?: unknown; remote?: unknown; slug?: unknown } }>(
+    '/api/checkin',
+    async (req, reply) => {
+      // Check-in publishes locally-approved art as a remote branch + tracking
+      // issue (NO PR). Like approve, it is local-only — `runAssetCheckin` refuses
+      // when `env.CI` is set; we map that to 403 here for the e2e/gallery caller.
+      const body = (req.body ?? {}) as { base?: unknown; remote?: unknown; slug?: unknown };
+      const options: { baseBranch?: string; remote?: string; slug?: string } = {};
+      if (typeof body.base === 'string' && body.base.trim() !== '') options.baseBranch = body.base;
+      if (typeof body.remote === 'string' && body.remote.trim() !== '')
+        options.remote = body.remote;
+      if (typeof body.slug === 'string' && body.slug.trim() !== '') options.slug = body.slug;
 
-    try {
-      const env = deps.env ?? process.env;
-      const result = await runAssetCheckin(
-        deps.repoRoot,
-        createDefaultCheckinDeps(deps.repoRoot, env),
-        options,
-      );
-      return {
-        branch: result.branch,
-        issueUrl: result.issueUrl,
-        issueTitle: result.plan.issueTitle,
-        issueBody: result.plan.issueBody,
-        assets: result.plan.assets,
-      };
-    } catch (err) {
-      if (err instanceof CheckinError) {
-        // ci-refused -> 403, nothing-to-checkin -> 409, git/gh failures -> 502.
-        const status =
-          err.kind === 'ci-refused' ? 403 : err.kind === 'nothing-to-checkin' ? 409 : 502;
-        reply.code(status);
-        return { error: err.kind, message: err.message };
+      try {
+        const env = deps.env ?? process.env;
+        const result = await runAssetCheckin(
+          deps.repoRoot,
+          createDefaultCheckinDeps(deps.repoRoot, env),
+          options,
+        );
+        return {
+          branch: result.branch,
+          issueUrl: result.issueUrl,
+          issueTitle: result.plan.issueTitle,
+          issueBody: result.plan.issueBody,
+          assets: result.plan.assets,
+        };
+      } catch (err) {
+        if (err instanceof CheckinError) {
+          // ci-refused -> 403, nothing-to-checkin -> 409, git/gh failures -> 502.
+          const status =
+            err.kind === 'ci-refused' ? 403 : err.kind === 'nothing-to-checkin' ? 409 : 502;
+          reply.code(status);
+          return { error: err.kind, message: err.message };
+        }
+        reply.code(500);
+        return {
+          error: 'checkin-failed',
+          message: err instanceof Error ? err.message : String(err),
+        };
       }
-      reply.code(500);
-      return {
-        error: 'checkin-failed',
-        message: err instanceof Error ? err.message : String(err),
-      };
-    }
-  });
+    },
+  );
 
   app.post<{ Body: WorkflowSynthesizeBody }>('/api/workflow/synthesize', async (req, reply) => {
     const body = (req.body ?? {}) as WorkflowSynthesizeBody;

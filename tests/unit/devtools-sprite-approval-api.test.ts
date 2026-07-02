@@ -161,7 +161,7 @@ describe('devtools sprite check-in api', () => {
       }),
     );
 
-    const result = await postCheckin(fetcher as unknown as typeof fetch);
+    const result = await postCheckin(undefined, fetcher as unknown as typeof fetch);
 
     expect(result).toEqual(payload);
     expect(fetcher).toHaveBeenCalledTimes(1);
@@ -182,7 +182,7 @@ describe('devtools sprite check-in api', () => {
         { status: 409, statusText: 'Conflict', headers: { 'Content-Type': 'application/json' } },
       ),
     );
-    const error = await postCheckin(fetcher as unknown as typeof fetch).catch(
+    const error = await postCheckin(undefined, fetcher as unknown as typeof fetch).catch(
       (err: unknown) => err,
     );
     expect(error).toBeInstanceOf(CheckinRequestError);
@@ -195,7 +195,7 @@ describe('devtools sprite check-in api', () => {
     const fetcher = vi
       .fn()
       .mockResolvedValue(new Response('not json', { status: 502, statusText: 'Bad Gateway' }));
-    await expect(postCheckin(fetcher as unknown as typeof fetch)).rejects.toThrow(
+    await expect(postCheckin(undefined, fetcher as unknown as typeof fetch)).rejects.toThrow(
       /check-in failed \(502\): Bad Gateway/,
     );
   });

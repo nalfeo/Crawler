@@ -213,11 +213,14 @@ export async function postApprove(
  * `postApprove`'s error contract, surfacing the sidecar `error` code so callers
  * can special-case the benign `nothing-to-checkin` (409) conflict.
  */
-export async function postCheckin(fetcher: typeof fetch = fetch): Promise<CheckinResponse> {
+export async function postCheckin(
+  slug?: string,
+  fetcher: typeof fetch = fetch,
+): Promise<CheckinResponse> {
   const response = await fetcher(`${SIDECAR_BASE}/api/checkin`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({}),
+    body: JSON.stringify(slug ? { slug } : {}),
   });
   if (!response.ok) {
     let detail = '';
@@ -246,6 +249,7 @@ export async function postCheckin(fetcher: typeof fetch = fetch): Promise<Checki
 export interface CheckinPrepareResponse {
   readonly assetCount: number;
   readonly branch: string;
+  readonly slug: string;
   readonly assets: readonly CheckinAsset[];
   readonly estimatedDuration: string;
 }

@@ -6354,11 +6354,11 @@ function render(): void {
         '#60a5fa',
       );
 
-      const result = await postCheckin();
-      const count = result.assets.length;
-
       setButtonBusy(checkinBtn, true, 'Check in to GitHub', 'Filing issue...');
       setWorkflowStatus(`Filing asset-checkin issue on GitHub...`, '#60a5fa');
+
+      const result = await postCheckin(prepareData.slug);
+      const count = result.assets.length;
 
       const normalizeCheckedAssetPath = (assetPath: string): string =>
         assetPath.startsWith('public/assets/')
