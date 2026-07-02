@@ -9,6 +9,7 @@ describe('AI runner lighting controls', () => {
     expect(source).toContain('const persisted = loadLabState<AiRunnerLabState>(LAB_ID);');
     expect(source).toContain("const panelRoot = document.createElement('div');");
     expect(source).toContain("const lightingFolder = gui.addFolder('Lighting');");
+    expect(source).toContain('lightingFolder.close();');
     expect(source).toContain(
       'const tryGetLightingDebugApi = () => window.__floor1Debug?.lighting ?? null;',
     );
