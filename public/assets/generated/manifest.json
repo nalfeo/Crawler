@@ -1783,6 +1783,206 @@
       "sensorScore": "7/7",
       "judgeScore": "2",
       "contentHash": "856b6b7385148d4bf461a2b9de301105eac6660106add6809b44262726bb2ed7"
+    },
+    "camera-lens-v1-var-0": {
+      "briefId": "camera-lens-v1",
+      "spriteName": "camera-lens-v1-var-0",
+      "assetPath": "generated/camera-lens-v1-var-0.png",
+      "approvedAt": "2026-07-02T03:01:49.053Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-UTQS7o/camera-lens-v1/2026-07-02T00-15-27-88f5a172",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 31,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 31,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "2",
+      "contentHash": "d0ee6e94ebcca556d2f3d05888ca3b20dffe5c13b853d8fee0fc31b1c5e84cc9"
+    },
+    "flame-dagger-v2-var-3": {
+      "briefId": "flame-dagger-v2",
+      "spriteName": "flame-dagger-v2-var-3",
+      "assetPath": "generated/flame-dagger-v2-var-3.png",
+      "approvedAt": "2026-07-02T03:02:53.052Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-Ot8mWB/flame-dagger-v2/2026-07-01T23-42-47-e5841d6b",
+      "variantIndex": 3,
+      "anchor": {
+        "x": 31,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "8/8",
+      "judgeScore": "2",
+      "contentHash": "07299e230d7ccfd469dbea9de3053da5f49405f9af97188a8bd77d14fa4c1fb3"
+    },
+    "crystal-wand-v2-var-1": {
+      "briefId": "crystal-wand-v2",
+      "spriteName": "crystal-wand-v2-var-1",
+      "assetPath": "generated/crystal-wand-v2-var-1.png",
+      "approvedAt": "2026-07-02T03:03:33.298Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-z5CePE/crystal-wand-v2/2026-07-01T23-23-40-adcf0b5a",
+      "variantIndex": 1,
+      "anchor": null,
+      "anchors": {
+        "hold": null,
+        "centerOfGravity": {
+          "x": 32,
+          "y": 27,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "2",
+      "contentHash": "ad890d8f05abdae278f3d56292726bbdf83c68c7dc4eb8aff89e0e0d06d4144f"
+    },
+    "crystal-wand-v2-var-10": {
+      "briefId": "crystal-wand-v2",
+      "spriteName": "crystal-wand-v2-var-10",
+      "assetPath": "generated/crystal-wand-v2-var-10.png",
+      "approvedAt": "2026-07-02T03:03:42.310Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-O5zYAG/crystal-wand-v2/2026-07-01T23-23-40-adcf0b5a",
+      "variantIndex": 10,
+      "anchor": null,
+      "anchors": {
+        "hold": null,
+        "centerOfGravity": {
+          "x": 32,
+          "y": 28,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "2",
+      "contentHash": "15050745902be375b291fe70c7f6db6048972ae319067b53e9a81f5f2daf95a9"
+    },
+    "crystal-wand-v2-var-3": {
+      "briefId": "crystal-wand-v2",
+      "spriteName": "crystal-wand-v2-var-3",
+      "assetPath": "generated/crystal-wand-v2-var-3.png",
+      "approvedAt": "2026-07-02T03:03:39.040Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-zSO3oR/crystal-wand-v2/2026-07-01T23-23-40-adcf0b5a",
+      "variantIndex": 3,
+      "anchor": null,
+      "anchors": {
+        "hold": null,
+        "centerOfGravity": {
+          "x": 32,
+          "y": 26,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "2",
+      "contentHash": "3edc81b4ebf805c0600de7c2a2e052c35c2b19e3b59cd1067e93e7aa544bf99f"
+    },
+    "directors-cue-card-v1-var-0": {
+      "briefId": "directors-cue-card-v1",
+      "spriteName": "directors-cue-card-v1-var-0",
+      "assetPath": "generated/directors-cue-card-v1-var-0.png",
+      "approvedAt": "2026-07-02T03:03:54.687Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-uPtLq7/directors-cue-card-v1/2026-07-01T23-19-06-10018060",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 34,
+        "y": 59,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 34,
+          "y": 59,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 31,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "2",
+      "contentHash": "b331dd2199e8269e3d8d59111e84f0b165506d00e1105d5c340b6feda07a15c2"
+    },
+    "slime-pool-v1-var-0": {
+      "briefId": "slime-pool-v1",
+      "spriteName": "slime-pool-v1-var-0",
+      "assetPath": "generated/slime-pool-v1-var-0.png",
+      "approvedAt": "2026-07-02T03:09:04.918Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-C1BdTw/slime-pool-v1/2026-07-02T03-07-17-83cbf896",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 242,
+        "y": 232,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 242,
+          "y": 232,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 242,
+          "y": 116,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "5/7",
+      "judgeScore": null,
+      "contentHash": "9ca6b4b34de0ec92b94472be25c7574b847361d1a096e38c2f6d75105da3a570"
+    },
+    "slime-pool-v1-var-3": {
+      "briefId": "slime-pool-v1",
+      "spriteName": "slime-pool-v1-var-3",
+      "assetPath": "generated/slime-pool-v1-var-3.png",
+      "approvedAt": "2026-07-02T03:09:13.293Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-QFZWmv/slime-pool-v1/2026-07-02T03-07-17-83cbf896",
+      "variantIndex": 3,
+      "anchor": {
+        "x": 242,
+        "y": 247,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 242,
+          "y": 247,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 242,
+          "y": 123,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "5/7",
+      "judgeScore": null,
+      "contentHash": "1317ac9fdab9a30bf1cecbb1b13660b0d57061a3962f8c4e62d9a3b3a110f62e"
     }
   }
 }
