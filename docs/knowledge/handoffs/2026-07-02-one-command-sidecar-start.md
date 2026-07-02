@@ -25,7 +25,7 @@ npm scripts, a hardened shared cred check, unit tests, and a policy reword. The
 plan review + poison-safe runtime validation added rigor but no extra
 implementation surface; landed right at the 2🍎 estimate.
 
-Hello kitties: 3/5 = 0.60 🎀
+Hello kitties: 2/5 = 0.40 🎀 (canonical `actual_apples / 5`)
 
 ## Review Harness
 
