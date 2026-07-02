@@ -1,0 +1,9 @@
+{
+  "date": "2026-07-02",
+  "slug": "charm-effect-doc-comment",
+  "task": "Broaden the grantsStatusEffects JSDoc in src/shared/equipment-types.ts to note that BOTH sourceType (forced to 'equipment') and sourceId are overridden per equipped instance (post-merge review nit on PR #679)",
+  "estimated_apples": 1,
+  "actual_apples": 1,
+  "verdict": "exact",
+  "notes": "Comment-only accuracy fix, no behavior change. A single JSDoc edit above one field, verified against equip() in src/core/systems/equipmentSystem.ts (which already overrides both sourceType and sourceId). Tier-1 harness: one code-review agent round, 0 concerns. verify:fast + verify green. No surprises, no scope creep — exactly one apple as declared."
+}
