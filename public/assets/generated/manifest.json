@@ -1515,6 +1515,274 @@
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
+    },
+    "baseball-bat-v3-var-6": {
+      "briefId": "baseball-bat-v3",
+      "spriteName": "baseball-bat-v3-var-6",
+      "assetPath": "generated/baseball-bat-v3-var-6.png",
+      "approvedAt": "2026-07-01T23:50:06.996Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-epAsqG/baseball-bat-v3/2026-07-01T05-44-14-a5501f8d",
+      "variantIndex": 6,
+      "anchor": null,
+      "anchors": {
+        "hold": null,
+        "centerOfGravity": {
+          "x": 34,
+          "y": 29,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "2",
+      "contentHash": "d266dc9661f90db29c6611c241bcf96cecdbde3e61df48f09071a6d5cb4db47a"
+    },
+    "sewer-grate-floor-tile-v1-var-1": {
+      "briefId": "sewer-grate-floor-tile-v1",
+      "spriteName": "sewer-grate-floor-tile-v1-var-1",
+      "assetPath": "generated/sewer-grate-floor-tile-v1-var-1.png",
+      "approvedAt": "2026-07-01T23:52:24.808Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-j38iT9/sewer-grate-floor-tile-v1/2026-06-30T04-58-24-e7dea160",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 127,
+        "y": 254,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 127,
+          "y": 254,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 127,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "5/7",
+      "judgeScore": null,
+      "contentHash": "c0506aa92b28591130fb41530defb4068fda8214ba61aa2c3bf2930638b16524"
+    },
+    "sewer-grate-floor-tile-v1-var-3": {
+      "briefId": "sewer-grate-floor-tile-v1",
+      "spriteName": "sewer-grate-floor-tile-v1-var-3",
+      "assetPath": "generated/sewer-grate-floor-tile-v1-var-3.png",
+      "approvedAt": "2026-07-01T23:52:39.663Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-HarkdK/sewer-grate-floor-tile-v1/2026-06-30T04-58-24-e7dea160",
+      "variantIndex": 3,
+      "anchor": {
+        "x": 125,
+        "y": 254,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 125,
+          "y": 254,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 125,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "5/7",
+      "judgeScore": null,
+      "contentHash": "ca2e3aa7ccf1d42af0f4b53619dc78bc6ba833934c3a49c02ee8005b8485bef6"
+    },
+    "sewer-grate-floor-tile-v1-var-5": {
+      "briefId": "sewer-grate-floor-tile-v1",
+      "spriteName": "sewer-grate-floor-tile-v1-var-5",
+      "assetPath": "generated/sewer-grate-floor-tile-v1-var-5.png",
+      "approvedAt": "2026-07-01T23:52:47.987Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-bWdCYR/sewer-grate-floor-tile-v1/2026-06-30T04-58-24-e7dea160",
+      "variantIndex": 5,
+      "anchor": {
+        "x": 127,
+        "y": 254,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 127,
+          "y": 254,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 127,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "5/7",
+      "judgeScore": null,
+      "contentHash": "e0f4e2be8a17d80c73c570b45c561da2844542c2c5120a8c7f6ec60c565ada25"
+    },
+    "sewer-grate-floor-tile-v1-var-6": {
+      "briefId": "sewer-grate-floor-tile-v1",
+      "spriteName": "sewer-grate-floor-tile-v1-var-6",
+      "assetPath": "generated/sewer-grate-floor-tile-v1-var-6.png",
+      "approvedAt": "2026-07-01T23:52:44.799Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-Q5MAMS/sewer-grate-floor-tile-v1/2026-06-30T04-58-24-e7dea160",
+      "variantIndex": 6,
+      "anchor": {
+        "x": 127,
+        "y": 254,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 127,
+          "y": 254,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 127,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "5/7",
+      "judgeScore": null,
+      "contentHash": "7199c43c07d8b31017cf0fad4815dfdb9dc2f9b020243b415f92c5f1fd099f1b"
+    },
+    "bone-shard-v1-var-1": {
+      "briefId": "bone-shard-v1",
+      "spriteName": "bone-shard-v1-var-1",
+      "assetPath": "generated/bone-shard-v1-var-1.png",
+      "approvedAt": "2026-07-01T23:57:24.944Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-EZxWIo/bone-shard-v1/2026-07-01T22-43-18-d7d3dcba",
+      "variantIndex": 1,
+      "anchor": null,
+      "anchors": {
+        "hold": null,
+        "centerOfGravity": {
+          "x": 31,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "2",
+      "contentHash": "408f3d3f9a37b4d16c0af30bcc7250c1ac1d755ae9a41b0168a1533a54d45de4"
+    },
+    "bone-shard-v1-var-3": {
+      "briefId": "bone-shard-v1",
+      "spriteName": "bone-shard-v1-var-3",
+      "assetPath": "generated/bone-shard-v1-var-3.png",
+      "approvedAt": "2026-07-01T23:57:19.120Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-191jRm/bone-shard-v1/2026-07-01T22-43-18-d7d3dcba",
+      "variantIndex": 3,
+      "anchor": null,
+      "anchors": {
+        "hold": null,
+        "centerOfGravity": {
+          "x": 30,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "2",
+      "contentHash": "c35d08db740d34afee830dfcb7f560080272fcccda7c770e8cdb7f116a9b00a0"
+    },
+    "bone-shard-v1-var-6": {
+      "briefId": "bone-shard-v1",
+      "spriteName": "bone-shard-v1-var-6",
+      "assetPath": "generated/bone-shard-v1-var-6.png",
+      "approvedAt": "2026-07-01T23:57:27.537Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-dmeXcS/bone-shard-v1/2026-07-01T22-43-18-d7d3dcba",
+      "variantIndex": 6,
+      "anchor": null,
+      "anchors": {
+        "hold": null,
+        "centerOfGravity": {
+          "x": 29,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "2",
+      "contentHash": "ece75a36d13fa3bc89dfba9b6a6ec57c744ff53b1d58fcb2ea6f4962a6bf1cf7"
+    },
+    "copper-ore-v1-var-6": {
+      "briefId": "copper-ore-v1",
+      "spriteName": "copper-ore-v1-var-6",
+      "assetPath": "generated/copper-ore-v1-var-6.png",
+      "approvedAt": "2026-07-01T23:54:38.697Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-NHu75H/copper-ore-v1/2026-07-01T23-34-30-182a81f1",
+      "variantIndex": 6,
+      "anchor": null,
+      "anchors": {
+        "hold": null,
+        "centerOfGravity": {
+          "x": 31,
+          "y": 31,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "2",
+      "contentHash": "879cbaa25b1bc411f754fa6a8d9fe98617cdfd804156ba96c1e42994308383a4"
+    },
+    "crystal-fiber-v1-var-4": {
+      "briefId": "crystal-fiber-v1",
+      "spriteName": "crystal-fiber-v1-var-4",
+      "assetPath": "generated/crystal-fiber-v1-var-4.png",
+      "approvedAt": "2026-07-01T23:56:11.584Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-XbFpQF/crystal-fiber-v1/2026-07-01T23-29-24-37fe9732",
+      "variantIndex": 4,
+      "anchor": {
+        "x": 26,
+        "y": 57,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 26,
+          "y": 57,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "2",
+      "contentHash": "ef0d972a8cc160aff1920c7de405c89d190f3c7ca4a6b28571591ffb0f2d7fea"
+    },
+    "dragon-scale-v3-var-2": {
+      "briefId": "dragon-scale-v3",
+      "spriteName": "dragon-scale-v3-var-2",
+      "assetPath": "generated/dragon-scale-v3-var-2.png",
+      "approvedAt": "2026-07-01T23:57:00.694Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-T1qiNe/dragon-scale-v3/2026-07-01T23-13-49-35c69f47",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 37,
+        "y": 59,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 37,
+          "y": 59,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 34,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "2",
+      "contentHash": "856b6b7385148d4bf461a2b9de301105eac6660106add6809b44262726bb2ed7"
     }
   }
 }
