@@ -144,7 +144,7 @@ function buildProbeFloorMap(): FloorMap {
     x: Math.floor(GW / 2),
     y: Math.floor(GH / 2),
   });
-  map.visible.fill(1);
+  map.revealAll();
   return map;
 }
 

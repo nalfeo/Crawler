@@ -50,7 +50,9 @@ describe('MainGameScene lighting overlay behavior', () => {
   it('computes initial FOV before first lighting overlay draw in create()', () => {
     const createMethod = findSceneMethod('create');
     const body = createMethod.body?.getText(file) ?? '';
-    const initialFovIndex = body.indexOf('fovSystem(this.world);');
+    // Initial FOV is computed via the perf-timed wrapper (behavior-identical to
+    // calling fovSystem(world) directly, but records the lab granularity EWMA).
+    const initialFovIndex = body.indexOf('this.runFovSystemWithPerf(this.world);');
     const initialLightingDrawIndex = body.indexOf('this.updateLightingOverlay(true);');
 
     expect(initialFovIndex).toBeGreaterThanOrEqual(0);

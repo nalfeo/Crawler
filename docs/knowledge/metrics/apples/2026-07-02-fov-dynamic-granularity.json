@@ -1,0 +1,11 @@
+{
+  "date": "2026-07-02",
+  "session": "fov-dynamic-granularity",
+  "task": "Dynamic lab-testable FOV granularity (sub-tile down to 4px) + discovered-terrain darkening (dim, not black)",
+  "estimated_apples": 4,
+  "actual_apples": 4,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.8,
+  "notes": "Multi-layer change (core FloorMap subFactor + discovered bitmap, fovSystem, engine light-field + fov-config bridge, MainGameScene FOV API + perf telemetry, simulation-step hook, AI-runner lab FOV folder) with an ADR-0034 amendment and unit/ecs/headless tests. The full 4-apple review harness (dual-plan synthesis, separate-model plan review, 3-model code review, distinct-model adjudication, and a 3-round multi-model review) surfaced one genuine truth-in-labeling defect: tile visibility diverges ~1 tile at radius/occlusion boundaries across sub-factors, so the over-broad invariant claim was replaced with a precise guarantee plus two empirically-verified divergence pins. Scope matched the estimate."
+}

@@ -10,6 +10,12 @@ export type LightingPresetId = keyof typeof LIGHTING_PRESET_STEPS;
 export interface LightingConfig {
   stepPx: number;
   ambient: number;
+  /**
+   * Light level for discovered-but-not-currently-visible cells (fog "memory").
+   * Rendered clamped to `ambient` so remembered terrain is never brighter than
+   * the dimmest visible cell. 0 ⇒ explored areas go fully black (legacy).
+   */
+  discoveredLight: number;
   sourceRadiusPx: number;
   sourceIntensity: number;
   falloffExponent: number;
@@ -32,6 +38,7 @@ export interface LightingConfig {
 export const DEFAULT_LIGHTING_CONFIG: LightingConfig = {
   stepPx: 4,
   ambient: 0.2,
+  discoveredLight: 0.05,
   sourceRadiusPx: 200,
   sourceIntensity: 0.6,
   falloffExponent: 2.5,
@@ -166,6 +173,12 @@ export interface ComputeLightFieldParams {
   map: {
     pixelToTile: (px: number, py: number) => { x: number; y: number };
     isVisible: (tx: number, ty: number) => boolean;
+    /**
+     * Optional discovered-check (sub-tile granularity, mirroring `isVisible`).
+     * When provided, discovered-but-not-visible cells render at `discoveredLight`
+     * instead of full black. Absent ⇒ legacy behavior (explored areas go black).
+     */
+    isDiscovered?: (tx: number, ty: number) => boolean;
     hasLineOfSight: (px0: number, py0: number, px1: number, py1: number) => boolean;
   };
   field: LightField;
@@ -180,6 +193,12 @@ export interface ComputeLightFieldParams {
   /** @deprecated Use `sources` instead. */
   source?: LightSource;
   ambient: number;
+  /**
+   * Light level for discovered-but-not-visible cells. Clamped to `[0, 1]` and
+   * then to `ambient` (so it can never exceed the dimmest visible cell).
+   * Defaults to 0 (legacy full-black) when omitted.
+   */
+  discoveredLight?: number;
   falloffExponent: number;
   dirtyRect?: LightFieldDirtyRect | null;
 }
@@ -187,6 +206,8 @@ export interface ComputeLightFieldParams {
 export function computeLightField(params: ComputeLightFieldParams): void {
   const { map, field } = params;
   const ambient = clamp(params.ambient, 0, 1);
+  // Never let remembered terrain out-shine the dimmest visible (ambient) cell.
+  const discoveredLight = Math.min(clamp(params.discoveredLight ?? 0, 0, 1), ambient);
   const falloffExponent = Math.max(0.1, params.falloffExponent);
   const step = field.stepPx;
 
@@ -212,7 +233,10 @@ export function computeLightField(params: ComputeLightFieldParams): void {
       const sy = Math.min(field.heightPx - 1, cy * step + step * 0.5);
       const tile = map.pixelToTile(sx, sy);
       if (!map.isVisible(tile.x, tile.y)) {
-        field.values[idx] = 0;
+        // Discovered-but-not-visible cells render at a dim memory level (already
+        // clamped to ambient) so explored terrain doesn't go fully black.
+        field.values[idx] =
+          discoveredLight > 0 && map.isDiscovered?.(tile.x, tile.y) ? discoveredLight : 0;
         continue;
       }
       let intensity = ambient;

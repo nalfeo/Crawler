@@ -94,6 +94,64 @@ describe('light-field', () => {
     expect(litLeft).toBeGreaterThan(0.2);
     expect(darkRight).toBe(0);
   });
+
+  describe('discovered-darkening', () => {
+    // 4×2 cells at stepPx 16: cell (cx,cy) samples tile (cx,cy). Tile (0,0) is
+    // currently visible; tile (1,0) is discovered-but-not-visible; the rest are
+    // undiscovered.
+    const map: ComputeLightFieldParams['map'] = {
+      pixelToTile: (px, py) => ({ x: Math.floor(px / 16), y: Math.floor(py / 16) }),
+      isVisible: (tx, ty) => tx === 0 && ty === 0,
+      isDiscovered: (tx, ty) => ty === 0 && (tx === 0 || tx === 1),
+      hasLineOfSight: () => true,
+    };
+
+    function compute(ambient: number, discoveredLight: number | undefined, withMemory = true) {
+      const field = createLightField(64, 32, 16);
+      computeLightField({
+        map: withMemory ? map : { ...map, isDiscovered: undefined },
+        field,
+        // No light source: a visible cell resolves to exactly `ambient`.
+        sources: [],
+        ambient,
+        discoveredLight,
+        falloffExponent: 1.6,
+      });
+      return field;
+    }
+
+    it('renders discovered-but-not-visible cells at the dim memory level', () => {
+      const field = compute(0.08, 0.05);
+      const visible = field.values[0 * field.widthCells + 0] ?? -1;
+      const discovered = field.values[0 * field.widthCells + 1] ?? -1;
+      const undiscovered = field.values[0 * field.widthCells + 2] ?? -1;
+      expect(visible).toBeCloseTo(0.08, 6); // visible ⇒ at least ambient
+      expect(discovered).toBeCloseTo(0.05, 6); // discovered ⇒ dim memory
+      expect(undiscovered).toBe(0); // never seen ⇒ black
+      expect(discovered).toBeLessThan(visible); // memory dimmer than visible
+      expect(discovered).toBeGreaterThan(undiscovered);
+    });
+
+    it('never lets discovered memory out-shine the dimmest visible cell (clamp to ambient)', () => {
+      const field = compute(0.08, 0.5); // request brighter-than-ambient memory
+      const visible = field.values[0 * field.widthCells + 0] ?? -1;
+      const discovered = field.values[0 * field.widthCells + 1] ?? -1;
+      expect(discovered).toBeCloseTo(0.08, 6); // clamped down to ambient
+      expect(discovered).toBeLessThanOrEqual(visible);
+    });
+
+    it('falls back to legacy full-black when discoveredLight is omitted', () => {
+      const field = compute(0.08, undefined);
+      const discovered = field.values[0 * field.widthCells + 1] ?? -1;
+      expect(discovered).toBe(0);
+    });
+
+    it('falls back to legacy full-black when the map has no isDiscovered check', () => {
+      const field = compute(0.08, 0.05, false);
+      const discovered = field.values[0 * field.widthCells + 1] ?? -1;
+      expect(discovered).toBe(0);
+    });
+  });
 });
 
 describe('forEachDarknessRun', () => {
@@ -346,6 +404,7 @@ describe('DEFAULT_LIGHTING_CONFIG', () => {
     expect(DEFAULT_LIGHTING_CONFIG).toEqual({
       stepPx: 4,
       ambient: 0.2,
+      discoveredLight: 0.05,
       sourceRadiusPx: 200,
       sourceIntensity: 0.6,
       falloffExponent: 2.5,

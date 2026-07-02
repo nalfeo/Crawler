@@ -72,4 +72,30 @@ describe('runSimulationStep', () => {
     expect(seen[0]).toBe(world);
     expect(seen[1]).toBe(world);
   });
+
+  it('invokes an injected runFovSystem override exactly once with the world', () => {
+    const world = freshFloor1World();
+    const calls: GameWorld[] = [];
+
+    runSimulationStep(world, createInputState(), {
+      runFovSystem: (w) => calls.push(w),
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toBe(world);
+  });
+
+  it('runs the built-in fovSystem when no override is supplied (FOV still computed)', () => {
+    const world = freshFloor1World();
+    const floorMap = world.floorMap;
+    expect(floorMap).not.toBeNull();
+    // Wipe visibility so any lit cell afterward must come from this step's FOV.
+    floorMap!.clearVisibility();
+    expect(floorMap!.visible.some((v) => v !== 0)).toBe(false);
+
+    // With no runFovSystem hook, the default fovSystem must run and light cells.
+    runSimulationStep(world, createInputState());
+
+    expect(floorMap!.visible.some((v) => v !== 0)).toBe(true);
+  });
 });
