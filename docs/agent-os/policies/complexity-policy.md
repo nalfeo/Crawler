@@ -60,8 +60,9 @@ for its tier.
 
 | Apples | Required review stages (recorded in the ledger)                         |
 | ------ | ----------------------------------------------------------------------- |
-| 1🍎    | code review (loop until clean)                                          |
-| 2–3🍎  | + separate-model **plan review** before coding                          |
+| 1🍎    | (none — the ledger records the tier only)                               |
+| 2🍎    | separate-model **plan review** before coding                            |
+| 3🍎    | + **code review** (loop until clean)                                    |
 | 4–5🍎  | + **dual-plan synthesis** (2 models + judge) and **multi-model review** |
 
 Run the harness with the [`review-harness` skill](../../../.github/skills/review-harness/SKILL.md);

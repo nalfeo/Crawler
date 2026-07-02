@@ -1,0 +1,9 @@
+{
+  "date": "2026-07-02",
+  "slug": "raise-code-review-floor",
+  "task": "Raise the review-harness code-review loop floor to 3🍎 (plan review stays 2🍎; dual-plan synthesis + multi-model review stay 4🍎)",
+  "estimated_apples": 3,
+  "actual_apples": 3,
+  "verdict": "exact",
+  "notes": "Policy change with a single source-of-truth code edit (requiredStagesForApples) plus an ADR, driving broad but mechanical doc/persona sync (~20 files) and a self-run 3🍎 harness (separate-model plan review + 2-round code-review loop + committed ledger). Estimate held: the logic change is tiny and well-tested, but the ADR, cross-doc consistency, guard-help/test updates, and running the harness on itself keep it firmly above a 2. Both self-review stages surfaced only should-fix/nit items (stale operator line, ADR rule-#12 misattribution, ADR 'nightly'→'weekly' calibration cadence) — all resolved honestly with no weakened assertions. No dual-plan synthesis or multi-model review needed (single system, sub-4🍎)."
+}

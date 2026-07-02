@@ -16,7 +16,7 @@
 
 ## Tools & Workflows
 
-- **Plan-first + review harness:** Before writing any code, output your **full plan** in the session (for a **>3🍎** change, the _synthesized final_ plan). Then run the apple-scaled review harness — separate-model **plan review** (>1🍎), **dual-plan synthesis** (>3🍎), **code-review loop** until no concerns (all changes), and **multi-model review + adjudication** (>3🍎) — recording each required stage in the review ledger the `pr-review-ledger` guard checks before PR. See [`.github/skills/review-harness/`](../../../.github/skills/review-harness/SKILL.md).
+- **Plan-first + review harness:** Before writing any code, output your **full plan** in the session (for a **>3🍎** change, the _synthesized final_ plan). Then run the apple-scaled review harness — separate-model **plan review** (>1🍎), **dual-plan synthesis** (>3🍎), **code-review loop** until no concerns (≥3🍎), and **multi-model review + adjudication** (>3🍎) — recording each required stage in the review ledger the `pr-review-ledger` guard checks before PR. See [`.github/skills/review-harness/`](../../../.github/skills/review-harness/SKILL.md).
 - Order CI gates for fast failure and minimal wasted runtime.
 - Maintain scripts, GitHub workflows, and harness checks with clear exit conditions.
 - Prefer portable, scripted verification paths that can run locally and in CI.

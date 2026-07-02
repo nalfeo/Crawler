@@ -41,8 +41,9 @@ export { SLUG_RE };
 
 /**
  * Required review stages for a given apple estimate.
- *   1     -> code_review
- *   2-3   -> plan_review, code_review
+ *   1     -> (none; the ledger records the tier, no stages required)
+ *   2     -> plan_review
+ *   3     -> plan_review, code_review
  *   4-5   -> plan_review, dual_plan_synthesis, code_review, multi_model_review
  * @param {number} apples
  * @returns {string[]}
@@ -51,10 +52,13 @@ export function requiredStagesForApples(apples) {
   if (apples >= 4) {
     return ['plan_review', 'dual_plan_synthesis', 'code_review', 'multi_model_review'];
   }
-  if (apples >= 2) {
+  if (apples >= 3) {
     return ['plan_review', 'code_review'];
   }
-  return ['code_review'];
+  if (apples >= 2) {
+    return ['plan_review'];
+  }
+  return [];
 }
 
 /** Normalize a repo-relative path to forward slashes, stripping a leading `./`. */
