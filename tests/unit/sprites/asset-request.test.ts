@@ -314,6 +314,23 @@ describe('parseAssetRequestIssueBody — multi-sentence briefs', () => {
     expect(parsed?.briefSentence).not.toContain('trailing prose');
   });
 
+  it('collapses heavy internal whitespace on the form path before length checks', () => {
+    // On the issue-form path the brief is normalized BEFORE validation, so a
+    // whitespace-padded brief collapses to 1801 chars and is accepted. The raw
+    // 4000-char cap only bites on the verbatim marker path (see marker suite).
+    const brief = `${'a'.repeat(900)}${' '.repeat(3001)}${'b'.repeat(900)}`;
+    const body = formBody({ name: 'foo-thing', brief });
+    const parsed = parseAssetRequestIssueBody(body);
+    expect(parsed?.briefSentence).toBe(`${'a'.repeat(900)} ${'b'.repeat(900)}`);
+  });
+
+  it('accepts a brief just under the normalized cap', () => {
+    const brief = 'y'.repeat(1990);
+    const body = formBody({ name: 'foo-thing', brief });
+    const parsed = parseAssetRequestIssueBody(body);
+    expect(parsed?.briefSentence).toBe(brief);
+  });
+
   describe('reject cases', () => {
     it('rejects an empty brief section (### Brief followed immediately by ### Type)', () => {
       const body = ['### Name', 'foo-thing', '', '### Brief', '', '### Type', 'item'].join('\n');
@@ -335,23 +352,6 @@ describe('parseAssetRequestIssueBody — multi-sentence briefs', () => {
       // normalized cap (2000), isolating the normalized-length guard.
       const body = formBody({ name: 'foo-thing', brief: 'x'.repeat(2100) });
       expect(parseAssetRequestIssueBody(body)).toBeNull();
-    });
-
-    it('collapses heavy internal whitespace on the form path before length checks', () => {
-      // On the issue-form path the brief is normalized BEFORE validation, so a
-      // whitespace-padded brief collapses to 1801 chars and is accepted. The raw
-      // 4000-char cap only bites on the verbatim marker path (see marker suite).
-      const brief = `${'a'.repeat(900)}${' '.repeat(3001)}${'b'.repeat(900)}`;
-      const body = formBody({ name: 'foo-thing', brief });
-      const parsed = parseAssetRequestIssueBody(body);
-      expect(parsed?.briefSentence).toBe(`${'a'.repeat(900)} ${'b'.repeat(900)}`);
-    });
-
-    it('accepts a brief just under the normalized cap', () => {
-      const brief = 'y'.repeat(1990);
-      const body = formBody({ name: 'foo-thing', brief });
-      const parsed = parseAssetRequestIssueBody(body);
-      expect(parsed?.briefSentence).toBe(brief);
     });
 
     it('rejects a body missing the Name section', () => {
