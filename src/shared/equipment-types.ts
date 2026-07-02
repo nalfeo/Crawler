@@ -4,6 +4,7 @@
 
 import type { EquipmentSlotId } from './equipment-slots.js';
 import type { StatId } from './stats.js';
+import type { StatusEffectSpec } from './status-effect-types.js';
 
 // --- Rarity ---
 
@@ -29,6 +30,14 @@ export interface EquipmentItemDef {
   readonly rarity: ItemRarity;
   readonly tags?: readonly string[];
   readonly requirements?: readonly EquipRequirement[];
+  /**
+   * Timed / source-tracked status effects granted while this item is equipped.
+   * Distinct from `statBonuses` (the permanent character-sheet lane): these flow
+   * through the status-effect framework, so they can be temporary, stack, and be
+   * cleared on unequip. The runtime `sourceId` is overridden per equipped instance
+   * (see `equipmentSystem.equip`), so the value here is only a placeholder.
+   */
+  readonly grantsStatusEffects?: readonly StatusEffectSpec[];
 }
 
 // --- Equipment Instance ---

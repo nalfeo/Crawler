@@ -33,7 +33,7 @@ import {
   selectSpellFromBossBattle,
   SHOPKEEPER_EQUIPMENT_COST,
 } from '../game/floorScenario.js';
-import { statSystem, manaSystem, type GameWorld } from '../core/index.js';
+import { statSystem, manaSystem, statusEffectSystem, type GameWorld } from '../core/index.js';
 import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
 import { getFloorConfig } from '../shared/floor-config.js';
 import type { Floor1BossRewardSpellId } from '../shared/abilities.js';
@@ -95,6 +95,10 @@ export function createFloorMainSceneOptions(_floorId: string = 'floor1') {
       floor1PlayerStatSystem,
       weaponSystem,
       enemyAISystem,
+      // statusEffectSystem runs AFTER enemyAISystem (and playerInputSystem, which
+      // runs before all preSystems) so player + enemy speed folds see the same
+      // pre-expiry effect set — expiry/HoT then apply before movement/damage/health.
+      statusEffectSystem,
       // spawnerSystem MUST run before floor1EnemyDirectorSystem in the same frame:
       // the director's countDirectorEnemies/countEngagingEnemies count Spawner-owned
       // children (Enemy without Spawner), so spawning first lets the director cap

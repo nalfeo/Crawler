@@ -13,6 +13,11 @@ import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from './quest-types.js';
 /**
  * The magic charm the Floor 1 merchant gives as a quest reward — a necklace
  * (neck slot) granting +1 charisma. Modest, slightly cursed, fully wearable.
+ *
+ * It also radiates a faint restorative warmth: a slow heal-over-time
+ * (`hpRegen`) status effect, our first live consumer of the status-effect
+ * framework. The `sourceId` here is a placeholder — `equip()` overrides it with
+ * the equipped instance's id so duplicate items track independently.
  */
 export const MERCHANTS_CHARM_DEF: EquipmentItemDef = {
   id: SHOPKEEPER_EQUIPMENT_ITEM_ID,
@@ -20,6 +25,17 @@ export const MERCHANTS_CHARM_DEF: EquipmentItemDef = {
   slots: ['neck'],
   statBonuses: { charisma: 1 },
   rarity: 'uncommon',
+  grantsStatusEffects: [
+    {
+      stat: 'hpRegen',
+      op: 'add',
+      value: 0.75,
+      durationMs: null,
+      sourceType: 'equipment',
+      sourceId: 'merchants-charm',
+      stackRule: { mode: 'replace' },
+    },
+  ],
 };
 
 /** Cost (in gold) of the merchant's charm. */

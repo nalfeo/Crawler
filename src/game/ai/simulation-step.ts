@@ -36,6 +36,7 @@ import {
   npcSystem,
   statSystem,
   manaSystem,
+  statusEffectSystem,
   type GameWorld,
 } from '../../core/index.js';
 import {
@@ -109,6 +110,13 @@ export function runSimulationStep(
   // the damage path sees them), manaSystem derives the Wisdom-scaled MP pool and
   // regenerates MP, floor1PlayerStatSystem applies Floor 1 stat scaling, and
   // enemyAISystem drives enemy movement intent.
+  //
+  // statusEffectSystem runs AFTER both speed read-sites (playerInputSystem above,
+  // enemyAISystem here) so player and enemy effective-speed folds observe the SAME
+  // pre-expiry effect set on every frame — no 1-frame expiry skew between them —
+  // and still before movement/damage/health so a HoT tick can't mask a same-frame
+  // death. It reads speed via fold-in (never mutates it), so ordering vs the AI
+  // read is a pure timing choice, resolved here in favour of symmetry.
   statsSystem(world);
   statSystem(world);
   manaSystem(world);
@@ -116,6 +124,7 @@ export function runSimulationStep(
     floor1PlayerStatSystem(world);
   }
   enemyAISystem(world);
+  statusEffectSystem(world);
   spawnerSystem(world);
 
   movementSystem(world);
