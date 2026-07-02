@@ -100,6 +100,42 @@ export class CheckinRequestError extends Error {
   }
 }
 
+/**
+ * Actionable guidance shown when the sidecar answers a check-in route with a bare
+ * 404 — the tell-tale sign it is a long-lived process running code from before the
+ * route existed (the `tsx` sidecar does not hot-reload). Restarting it reloads the
+ * route table.
+ */
+export const STALE_SIDECAR_HINT =
+  'The sprite sidecar is running out-of-date code (a check-in route is missing). ' +
+  'Restart it to pick up the latest routes: stop the current process (Ctrl-C) and ' +
+  'run `npm run sprites:gallery` again.';
+
+/**
+ * True when `err` is a check-in failure caused by the sidecar lacking the route —
+ * i.e. a stale, pre-route sidecar process. Deliberately matches Fastify's default
+ * missing-route reply specifically (HTTP 404 + `error: 'Not Found'` + a
+ * `Route <METHOD>:<url> not found` message naming an `/api/checkin` route) so that
+ * an unrelated 404 — a misconfigured `SIDECAR_BASE`, a different local service on
+ * the port — cannot be mistaken for a stale sidecar and silently trigger the
+ * pre-flight fallback.
+ */
+export function isSidecarRouteMissing(err: unknown): boolean {
+  if (
+    !(err instanceof CheckinRequestError) ||
+    err.status !== 404 ||
+    err.errorCode !== 'Not Found'
+  ) {
+    return false;
+  }
+  const message = err.message.toLowerCase();
+  return (
+    /route\s+\w+:/.test(message) &&
+    message.includes('not found') &&
+    message.includes('/api/checkin')
+  );
+}
+
 function runSummaryUrl(briefId: string, runId: string): string {
   return `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}`;
 }

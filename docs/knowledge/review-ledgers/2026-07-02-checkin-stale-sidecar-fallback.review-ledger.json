@@ -1,0 +1,28 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "checkin-stale-sidecar-fallback",
+  "task_title": "Robust asset check-in against a stale sidecar",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "notes": "gpt-5.4 rubber-duck plan review: approved_with_changes. Adopted all 5: (1) render stale hint into persistent checkinResult not transient status; (2) tighten isSidecarRouteMissing to Fastify missing-route signature (404 + errorCode Not Found + route regex + mentions /api/checkin) to avoid spurious 404 fallback; (3) add dedicated test for postCheckin 404 branch; (4) assert fallback sends no slug in /api/checkin body; (5) keep pre-existing typecheck repairs as a separate labeled commit."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
