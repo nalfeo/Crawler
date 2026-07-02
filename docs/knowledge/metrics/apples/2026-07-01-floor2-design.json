@@ -1,0 +1,9 @@
+{
+  "date": "2026-07-01",
+  "session": "floor2-design",
+  "estimated_apples": 5,
+  "actual_apples": 4,
+  "delta": -1,
+  "verdict": "under",
+  "hello_kitties": 0.8
+}
