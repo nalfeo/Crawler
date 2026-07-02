@@ -120,6 +120,15 @@ export function normalizeAssetRequest(value: unknown): AssetRequest | null {
  */
 export interface DequeuedMessage {
   readonly request: AssetRequest;
+  /**
+   * How many times this message has been dequeued, including the current
+   * delivery. Azure Storage Queue reports this as `dequeueCount` (1 on the
+   * first receive, incrementing each time the visibility timeout re-surfaces
+   * an un-acked message). The worker uses it to cap retries so a
+   * deterministically-failing "poison" message cannot loop forever. Queue
+   * backends that cannot track redelivery should report `1`.
+   */
+  readonly dequeueCount: number;
   ack(): Promise<void>;
 }
 

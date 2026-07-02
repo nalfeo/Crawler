@@ -1,4 +1,4 @@
-# ADR 0035: Asset-request briefs accept rich multi-sentence text
+# ADR 0038: Asset-request briefs accept rich multi-sentence text
 
 ## Status
 

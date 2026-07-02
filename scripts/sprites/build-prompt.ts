@@ -336,6 +336,11 @@ function sheetLayoutBlock(brief: Brief, count: number): string {
   lines.push(
     `Each grid cell must be the same size, ${cellShape}, and the variants must be laid out left-to-right, top-to-bottom in reading order.`,
   );
+  if (brief.type !== 'tile') {
+    lines.push(
+      'Separate every adjacent row and column with a uniform, flat, background-only gutter: a consistent strip of the sheet background color running the full width between rows and the full height between columns, so no two cells touch and a clean background channel divides every neighbouring cell. This gutter is empty background, NOT a drawn line, border, or divider — keep each subject well inside its own cell so nothing bleeds across a gutter into the next cell.',
+    );
+  }
   if (emptyCells.length > 0) {
     const coords = emptyCells.map(([r, c]) => `(row ${r + 1}, col ${c + 1})`).join(', ');
     lines.push(
@@ -387,7 +392,7 @@ function sheetConstraintsBlock(brief: Brief): string {
   return [
     '## Per-variant requirements (apply to every cell)',
     brief.type === 'character' || brief.type === 'enemy'
-      ? '- Each variant must fit fully within its grid cell — none cut off at any edge. Keep a small but explicit top/bottom margin so hair and feet never touch or cross the cell border. Horizontal side margins are acceptable.'
+      ? '- Each variant must fit fully within its grid cell — none cut off at any edge. Keep a small but explicit background margin on ALL FOUR sides so hair, feet, and outstretched limbs never touch or cross the cell border and a clean vertical background channel separates every column. Do not fill the horizontal space edge-to-edge: leave the side margins as empty background rather than widening or stretching the subject to fill them.'
       : '- Each variant must fit fully within its grid cell — none cut off at any edge. Leave at least a 10% margin between the subject and the cell edge.',
     aspectOf(brief.size.width, brief.size.height) === 'square'
       ? '- All variants are square, share the same dimensions, and use the same orientation and scale.'

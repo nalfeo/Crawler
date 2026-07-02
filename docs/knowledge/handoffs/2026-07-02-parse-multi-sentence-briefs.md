@@ -78,7 +78,7 @@ Supporting changes:
   #555 (single-sentence baseline) / #588 / #607 / #626.
 - `.github/ISSUE_TEMPLATE/asset-request.yml` — Brief field description/placeholder updated
   to describe the multi-sentence contract.
-- `docs/knowledge/adr/0035-asset-request-multi-sentence-brief.md` — ADR (Accepted) for the
+- `docs/knowledge/adr/0038-asset-request-multi-sentence-brief.md` — ADR (Accepted) for the
   contract relaxation (2 consumers: ingest parser + downstream brief synthesis), plus
   registration in `docs/knowledge/adr/README.md`.
 
@@ -158,7 +158,7 @@ real session events — but pasted per the handoff rule):
   byte-for-byte (that contract is producer-controlled).
 - **Kept the public parse API stable** (`parseAssetRequestIssueBody`,
   `fingerprintAssetRequest`) — renamed only the private helper.
-- **Wrote ADR 0035** because the contract is consumed by 2 systems (ingest + synthesis),
+- **Wrote ADR 0038** because the contract is consumed by 2 systems (ingest + synthesis),
   per the ADR-required rule.
 
 ## Retrospective
