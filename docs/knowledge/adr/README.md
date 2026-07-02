@@ -32,7 +32,7 @@ hundreds of inbound references.
 ### Adding a new ADR
 
 1. Copy `TEMPLATE.md` to `NNNN-your-slug.md`, where `NNNN` is **the next unused
-   number** (currently **0036** — `0034` ×3 and `0035` are taken).
+   number** (currently **0040**).
 2. Fill in `## Status`, `## Date`, `## Estimated Complexity`, `## Context`,
    `## Decision`, `## Consequences`.
 3. Always **link by slug**, never by bare number, so collisions stay
@@ -88,7 +88,7 @@ hundreds of inbound references.
 - [Set-piece themed rooms](0024-set-piece-themed-rooms.md)
 - [Door-pointing welcome-sign wayfinding](0026-welcome-sign-wayfinding.md)
 - [Parameterized floor configuration system](0005-parameterized-floor-configuration.md) — floor1→floor params via floor-registry; enables multi-floor progression.
-- [Floor 2 family-territory & relationship architecture](0035-floor2-family-territory-and-relationship-architecture.md) — open cave system of feuding mob families, per-family player relationships, and a two-shape (sole-ally / total-war) win condition.
+- [Floor 2 family-territory & relationship architecture](0039-floor2-family-territory-and-relationship-architecture.md) — open cave system of feuding mob families, per-family player relationships, and a two-shape (sole-ally / total-war) win condition.
 
 ### Quests & NPCs
 
@@ -111,6 +111,8 @@ hundreds of inbound references.
 - [Devtools sprite workflow — 7-stage restructure](0025-workflow-7-stage-restructure.md)
 - [Multi-variant generated sprites](0028-generated-sprite-variants.md) — identity, selection, approval, and check-in.
 - [Migrate content generation to Azure AI Foundry](0033-azure-foundry-content-generation.md) — broaden model access behind the existing provider seam.
+- [Sprite worker poison-message handling](0037-sprite-worker-poison-message-handling.md) — bounded failures (dequeueCount cap), permanent-drop, and comment-once to stop runaway retry loops and issue-comment spam.
+- [Asset-request briefs accept rich multi-sentence text](0038-asset-request-multi-sentence-brief.md) — relax the issue/marker brief contract so multi-sentence briefs enqueue.
 
 ### Rendering, HUD & VFX
 
@@ -178,4 +180,6 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0027 | [Explode Corpses Into Sprite Shards When Hit During Death-Linger](0027-corpse-explosion-on-hit.md)                              | Accepted | 2026-06-27 |
 | 0028 | [Multi-Variant Generated Sprites](0028-generated-sprite-variants.md)                                                            | Accepted | 2026-06-26 |
 | 0033 | [Migrate Content Generation to Azure AI Foundry](0033-azure-foundry-content-generation.md)                                      | Proposed | 2026-06-29 |
-| 0035 | [Floor 2 Family-Territory & Relationship Architecture](0035-floor2-family-territory-and-relationship-architecture.md)           | Proposed | 2026-07-01 |
+| 0037 | [Sprite Worker Poison-Message Handling (bounded failures, comment-once)](0037-sprite-worker-poison-message-handling.md)         | Accepted | 2026-07-02 |
+| 0038 | [Asset-Request Briefs Accept Rich Multi-Sentence Text](0038-asset-request-multi-sentence-brief.md)                              | Accepted | 2026-07-01 |
+| 0039 | [Floor 2 Family-Territory & Relationship Architecture](0039-floor2-family-territory-and-relationship-architecture.md)           | Proposed | 2026-07-01 |

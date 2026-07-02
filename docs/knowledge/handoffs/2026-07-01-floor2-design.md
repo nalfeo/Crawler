@@ -48,7 +48,7 @@ Delivered the complete **Floor 2 design package** as committed docs:
    requirements + Design (data model, `FamilyMembership` component, `factionRelations`
    map, systems, cave generator, 8-slice follow-up plan), a Test Plan, and a
    Constitutional Compliance table.
-3. **ADR 0035** — `docs/knowledge/adr/0035-floor2-family-territory-and-relationship-architecture.md`:
+3. **ADR 0039** — `docs/knowledge/adr/0039-floor2-family-territory-and-relationship-architecture.md`:
    eight decisions (D1 family-level relationship state; D2 pure bands + hate speed-ramp;
    D3 seeded data-driven selection; D4 reuse Team/goal-flags/quests/door-lock/sealing;
    D5 band-keyed AI foe-set; D6 `BiomeType.CAVE_SYSTEM` reusing rot-js `ROT.Map.Cellular`;
@@ -135,7 +135,7 @@ file)" info line. `check-adr-consistency` → 0 blocking (3 pre-existing Status 
   explicit file lists over inline wildcards in ADRs.
 - The ADR README's "next unused number" pointer (and by-number table) is hand-maintained
   and **stale** — verify against `Get-ChildItem docs/knowledge/adr` before picking a
-  number. 0034 was already used ×3; I took **0035**.
+  number. 0034 was already used ×3; I took **0039**.
 - Spec files (`.specify/specs/`) and game-design docs are **not** path-scanned by any
   docs gate — only ADRs and the core doc set are. Still kept them accurate.
 

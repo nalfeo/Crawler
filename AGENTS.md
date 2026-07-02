@@ -9,47 +9,49 @@
 5. Run `bash scripts/agent/verify-fast.sh` after every meaningful change
 6. Run `bash scripts/agent/verify.sh` before committing (includes `verify:pr-prereqs`, so review-harness + other PR prerequisites fail early instead of waiting for `create_pull_request`)
 7. Write a handoff file before ending your session
-8. If `files/guard-telemetry.jsonl` exists, paste `npx tsx scripts/agent/docs/guard-telemetry.ts --handoff-section` into the handoff
+8. If `files/guard-telemetry.jsonl` exists, run `npm run telemetry:capture -- <session-slug>` to write a committed per-session summary under `docs/knowledge/metrics/guard-telemetry/` (the durable, contamination-filtered collection path). Pasting `npx tsx scripts/agent/docs/guard-telemetry.ts --handoff-section` into the handoff still works as a fallback.
 
 ## Commands
 
-| Task                   | Command                            |
-| ---------------------- | ---------------------------------- |
-| Typecheck              | `npm run typecheck`                |
-| Lint                   | `npm run lint`                     |
-| Lint (fix)             | `npm run lint:fix`                 |
-| Format                 | `npm run format`                   |
-| Format (check)         | `npm run format:check`             |
-| Unit tests             | `npm run test:unit`                |
-| All tests (4 projects) | `npm test`                         |
-| Unit tests (watch)     | `npm run test:watch`               |
-| Integration tests      | `npm run test:integration`         |
-| E2E tests              | `npm run test:e2e`                 |
-| Coverage (unit)        | `npm run verify:coverage`          |
-| Dev server             | `npm run dev`                      |
-| Lab mode               | `npm run lab`                      |
-| DevTools mode          | `npm run devtools`                 |
-| Build                  | `npm run build`                    |
-| Dead code              | `npm run lint:dead-code`           |
-| Sprite extract palette | `npm run sprites:extract-palette`  |
-| Sprite run             | `npm run sprites:run`              |
-| Sprite gallery         | `npm run sprites:gallery`          |
-| Sprite approve         | `npm run sprites:approve`          |
-| Sprite synth           | `npm run sprites:synth`            |
-| Sprite batch           | `npm run sprites:batch`            |
-| Sprite asset plan      | `npm run sprites:asset-plan`       |
-| Sprite plan drafts     | `npm run sprites:plan-drafts`      |
-| Sprite sync catalog    | `npm run sprites:sync-catalog`     |
-| Sprite metadata        | `npm run sprites:metadata`         |
-| Fast verify            | `npm run verify:fast`              |
-| Full verify            | `npm run verify`                   |
-| PR prereq check        | `npm run verify:pr-prereqs`        |
-| Full verify + coverage | `VERIFY_COVERAGE=1 npm run verify` |
-| Guard + ledger tests   | `npm run test:guards`              |
-| Review ledger          | `npm run review:ledger`            |
-| Docs loop (local)      | `npm run docs:check`               |
-| Security loop          | `npm run security:check`           |
-| Health loop            | `npm run health:check`             |
+| Task                    | Command                            |
+| ----------------------- | ---------------------------------- |
+| Typecheck               | `npm run typecheck`                |
+| Lint                    | `npm run lint`                     |
+| Lint (fix)              | `npm run lint:fix`                 |
+| Format                  | `npm run format`                   |
+| Format (check)          | `npm run format:check`             |
+| Unit tests              | `npm run test:unit`                |
+| All tests (4 projects)  | `npm test`                         |
+| Unit tests (watch)      | `npm run test:watch`               |
+| Integration tests       | `npm run test:integration`         |
+| E2E tests               | `npm run test:e2e`                 |
+| Coverage (unit)         | `npm run verify:coverage`          |
+| Dev server              | `npm run dev`                      |
+| Lab mode                | `npm run lab`                      |
+| DevTools mode           | `npm run devtools`                 |
+| Build                   | `npm run build`                    |
+| Dead code               | `npm run lint:dead-code`           |
+| Sprite extract palette  | `npm run sprites:extract-palette`  |
+| Sprite run              | `npm run sprites:run`              |
+| Sprite gallery          | `npm run sprites:gallery`          |
+| Sprite approve          | `npm run sprites:approve`          |
+| Sprite synth            | `npm run sprites:synth`            |
+| Sprite batch            | `npm run sprites:batch`            |
+| Sprite asset plan       | `npm run sprites:asset-plan`       |
+| Sprite plan drafts      | `npm run sprites:plan-drafts`      |
+| Sprite sync catalog     | `npm run sprites:sync-catalog`     |
+| Sprite metadata         | `npm run sprites:metadata`         |
+| Fast verify             | `npm run verify:fast`              |
+| Full verify             | `npm run verify`                   |
+| Full verify + headless  | `VERIFY_FULL=1 npm run verify`     |
+| PR prereq check         | `npm run verify:pr-prereqs`        |
+| Guard telemetry capture | `npm run telemetry:capture`        |
+| Full verify + coverage  | `VERIFY_COVERAGE=1 npm run verify` |
+| Guard + ledger tests    | `npm run test:guards`              |
+| Review ledger           | `npm run review:ledger`            |
+| Docs loop (local)       | `npm run docs:check`               |
+| Security loop           | `npm run security:check`           |
+| Health loop             | `npm run health:check`             |
 
 For sprite workflow details and when to use sprite commands, see
 `scripts/sprites/` for implementation details or `docs/knowledge/game-design/art-style-guide.md` for art context.
@@ -73,10 +75,11 @@ When working in a Copilot worktree session, keep **at most one active dev/lab/de
 
 When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/sidecar/cli.ts`), treat Azure connectivity as required by default.
 
-1. Run `npm run setup:azure` first in the current worktree to refresh `.env.local` from `az`.
-2. Launch sidecar with default backend selection only (Azure: `azure-blob` + `azure-queue`).
-3. Do **not** switch to local/noop backends unless a human explicitly asks for local/offline mode.
-4. If Azure credentials are missing or invalid, report the blocker and stop instead of silently falling back.
+1. On a fresh worktree just run `npm run sprites:gallery` — the launcher auto-bootstraps `.env.local` via the fast, env-only path (`pwsh scripts/setup-azure-env.ps1 -IncludeStorage`, ~18s) when the required Azure credentials are missing, and skips instantly when they are already present.
+2. For a routine credential refresh, use `npm run setup:azure:env` (fast, env-only — fetches endpoint/keys, writes `.env.local`; no resource provisioning). Use `npm run setup:azure:env:force` to regenerate an existing/partial `.env.local`. Reserve `npm run setup:azure` (full `-ProvisionResources`, ~228s) for first-time or changed Azure resources.
+3. Launch sidecar with default backend selection only (Azure: `azure-blob` + `azure-queue`).
+4. Do **not** switch to local/noop backends unless a human explicitly asks for local/offline mode (opt in with `SPRITES_RUN_STORE=local SPRITES_ASSET_QUEUE=noop`).
+5. If Azure credentials are missing or invalid, report the blocker and stop instead of silently falling back — the launcher fails fast with an actionable message and never auto-overwrites an existing `.env.local`.
 
 ## Architecture
 
@@ -126,7 +129,7 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 11. **PR title/description synthesis**: When creating or updating a PR title/description — including after any feedback turns — always synthesize the _entire_ session's work. Read the existing PR title/description first (via `gh pr view`), then write a holistic title and description that covers every change on the branch, not just the most recent task. Never replace the primary purpose of the PR with a secondary or follow-up concern. The title must reflect the dominant feature/fix; secondary changes belong as bullet points in the description.
 12. **Never weaken explicit human requirements without asking**: Do NOT cut corners by quietly relaxing, disabling, or disregarding an explicit, user-stated requirement for a session — including the feature's own defining parameter — just to make a gate/test pass. This holds in every mode, **including autopilot**. If the only way you can see to get green is to weaken the requirement, STOP and ask the human first (state the trade-off and options); fix the test/gate around the requirement, not the requirement around the test.
 13. **Never bend gameplay to pass seeds; gate on win-RATE, not cherry-picked seeds**: Do not tune game balance to rescue specific pre-existing seed runs, and do not add shortcuts/cheats that hold map structure fixed just to avoid recomputing success/failure rates. **Target: 90%+ of Floor 1 seeds should easily reach a win condition.** If a broad seed sweep shows materially less, treat it as a likely **AI-runner bug or extreme gameplay regression** and fix the root cause — never hand-pick a handful of comfortable seeds to make the gate green.
-14. **Apple-scaled review harness before PR**: Every code-touching change runs the review harness scaled to its apple estimate and records it in a **review ledger** (`docs/knowledge/review-ledgers/<date>-<slug>.review-ledger.json`). >1🍎 → separate-model **plan review**; >3🍎 → **dual-plan synthesis** (2 models + judge) **and** **multi-model review** with adjudication; **all** → a **code-review loop until no concerns**. The `pr-review-ledger` guard hard-denies `create_pull_request` without a valid ledger for the tier (docs/art/deps-only diffs are exempt). Author it with the [`review-harness` skill](.github/skills/review-harness/SKILL.md); never weaken a stage to go green (see rule #12). Canonical: [`docs/agent-os/policies/review-harness-policy.md`](docs/agent-os/policies/review-harness-policy.md).
+14. **Apple-scaled review harness before PR**: Every code-touching change runs the review harness scaled to its apple estimate and records it in a **review ledger** (`docs/knowledge/review-ledgers/<date>-<slug>.review-ledger.json`). >1🍎 → separate-model **plan review**; >3🍎 → **dual-plan synthesis** (2 models + judge) **and** **multi-model review** with adjudication; **≥3🍎** → a **code-review loop until no concerns**. The `pr-review-ledger` guard hard-denies `create_pull_request` without a valid ledger for the tier (docs/art/deps-only diffs are exempt). Author it with the [`review-harness` skill](.github/skills/review-harness/SKILL.md); never weaken a stage to go green (see rule #12). Canonical: [`docs/agent-os/policies/review-harness-policy.md`](docs/agent-os/policies/review-harness-policy.md).
 
 > Several of these rules are now **hard-enforced** at the tool-call boundary by
 > the `copilot-guards` extension. See

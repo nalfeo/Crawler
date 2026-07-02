@@ -36,8 +36,9 @@ npm run review:ledger -- validate <path>
 
 | apples | stages the validator requires                                             |
 | ------ | ------------------------------------------------------------------------- |
-| 1      | `code_review`                                                             |
-| 2–3    | `plan_review`, `code_review`                                              |
+| 1      | (none)                                                                    |
+| 2      | `plan_review`                                                             |
+| 3      | `plan_review`, `code_review`                                              |
 | 4–5    | `plan_review`, `dual_plan_synthesis`, `code_review`, `multi_model_review` |
 
 A stage that is _present but not required_ is still validated — don't add a

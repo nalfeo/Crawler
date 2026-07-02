@@ -1,0 +1,35 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "raise-code-review-floor",
+  "task_title": "Raise review-harness code-review floor to 3 apples",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "notes": "Separate-model plan review via rubber-duck (gpt-5.4). No blocking concerns. 3 items raised: (1) should-fix stale 'Use on every change' operator line in code-review-loop.md -> fixed to scope to >=3 apples; (2) should-fix ADR misattributed the apple under-declaration mitigation to rule #12 -> fixed to cite complexity-policy.md 'Deflation' anti-pattern; (3) nit suggesting direct CLI init tier-1/2 tests -> resolved with rationale (the tier->required-stages surface is directly unit-tested via requiredStagesForApples and cmdInit is a thin loop over it; LEDGER_DIR is hardcoded and drives the guard, so an env-override test would be scope creep/risk). Reviewer confirmed matrix has no off-by-one and no hidden consumer assumes code_review is always required."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "clean": false,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "notes": "Round 1: matrix, tests, guard help text, and all doc/persona sites confirmed consistent with the new >=3-apple floor. One should-fix: ADR 0036 said the apple-calibration report runs 'nightly' but docs-update.yml schedules it weekly (cron '0 9 * * 1'). Fixed ADR wording nightly -> weekly."
+        },
+        {
+          "clean": true,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "notes": "Round 2: confirmed the ADR now reads 'weekly' matching the cron, no new issues introduced, matrix/tests/guard-help/docs still internally consistent. All 215 guard tests pass. CLEAN."
+        }
+      ]
+    }
+  }
+}

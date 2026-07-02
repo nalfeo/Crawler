@@ -38,15 +38,16 @@ The required stages scale with the apple estimate you declare per
 
 | Apples | plan review | dual-plan synthesis | code review (loop) | multi-model review |
 | ------ | ----------- | ------------------- | ------------------ | ------------------ |
-| 1🍎    | —           | —                   | ✅                 | —                  |
-| 2–3🍎  | ✅          | —                   | ✅                 | —                  |
+| 1🍎    | —           | —                   | —                  | —                  |
+| 2🍎    | ✅          | —                   | —                  | —                  |
+| 3🍎    | ✅          | —                   | ✅                 | —                  |
 | 4–5🍎  | ✅          | ✅                  | ✅                 | ✅                 |
 
 - **plan review** (>1🍎) — a _separate model_ reviews the plan before any code is
   written; every concern is resolved.
 - **dual-plan synthesis** (>3🍎) — two plans authored by two _different_ models, a
   _third_ reasoning model judges + synthesizes the final plan.
-- **code review** (all) — run the appropriate review agent(s), address feedback,
+- **code review** (≥3🍎) — run the appropriate review agent(s), address feedback,
   **loop until no concerns remain**.
 - **multi-model review** (>3🍎) — run each appropriate review agent across
   _multiple distinct models_; a final reasoning model adjudicates validity +

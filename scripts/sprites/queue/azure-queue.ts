@@ -107,6 +107,7 @@ export class AzureStorageQueue implements AssetQueue {
 
     return {
       request,
+      dequeueCount: msg.dequeueCount ?? 1,
       ack: async () => {
         await this.client.deleteMessage(msg.messageId, msg.popReceipt);
       },

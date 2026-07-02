@@ -223,6 +223,86 @@ describe('runIssuePipeline', () => {
     expect(mockLoadBrief).toHaveBeenCalledWith(promotedPath, { projectRoot: repoRoot });
   });
 
+  async function runWithComments(
+    comments: string[],
+    extra: { postProgressComments?: boolean } = {},
+  ): Promise<void> {
+    const winnerPath = path.join(repoRoot, 'progress-probe.yaml');
+    writeFileSync(winnerPath, 'name: progress-probe\njudge:\n  enabled: false\n', 'utf8');
+    const store = makeStore();
+    mockSynthesizeBrief.mockResolvedValueOnce({
+      name: 'progress-probe',
+      type: 'weapon',
+      sizeVariant: 'default',
+      outDir: repoRoot,
+      written: [
+        {
+          id: 'progress-probe-v1',
+          type: 'weapon',
+          description: 'probe',
+          references: [],
+          embellishmentSeeds: [],
+          synthesisRationale: 'best silhouette',
+          yamlPath: winnerPath,
+        },
+      ],
+      rejected: [],
+      sidecarPath: path.join(repoRoot, 'synthesis.json'),
+      providerLabel: 'azure-openai:synth',
+      promptHash: 'prompt-hash',
+    });
+    mockRunFull.mockResolvedValueOnce({
+      summary: { brief: 'progress-probe', runId: 'run-1' },
+      summaryPath: '/tmp/run-1/summary.json',
+    } as never);
+
+    await runIssuePipeline({
+      request: makeRequest({ name: 'progress-probe' }),
+      repoRoot,
+      store,
+      imageProvider: {} as never,
+      textProvider: null,
+      synthProvider: {} as never,
+      briefSelectorProvider: {
+        modelDeployment: 'selector-deploy',
+        async selectBrief() {
+          return { index: 0, rationale: 'best match', modelDeployment: 'selector-deploy' };
+        },
+      },
+      visionProvider: null,
+      issueApi: {
+        async comment(_issueNumber, body) {
+          comments.push(body);
+        },
+      },
+      env: {},
+      ...extra,
+    });
+  }
+
+  it('posts all progress comments plus the terminal summary by default', async () => {
+    const comments: string[] = [];
+    await runWithComments(comments);
+
+    expect(comments.some((c) => c.startsWith('🧪 Started'))).toBe(true);
+    expect(comments.some((c) => c.startsWith('🧠 Selected'))).toBe(true);
+    expect(comments.some((c) => c.startsWith('📌 Promoted'))).toBe(true);
+    expect(comments.some((c) => c.startsWith('✅ Asset-request pipeline complete.'))).toBe(true);
+  });
+
+  it('suppresses intermediate progress comments but keeps the terminal summary when postProgressComments is false', async () => {
+    const comments: string[] = [];
+    await runWithComments(comments, { postProgressComments: false });
+
+    // The three live-progress comments are silenced on redeliveries so a
+    // recurring transient failure cannot re-post them on every retry...
+    expect(comments.some((c) => c.startsWith('🧪 Started'))).toBe(false);
+    expect(comments.some((c) => c.startsWith('🧠 Selected'))).toBe(false);
+    expect(comments.some((c) => c.startsWith('📌 Promoted'))).toBe(false);
+    // ...but a terminal success summary still posts.
+    expect(comments.some((c) => c.startsWith('✅ Asset-request pipeline complete.'))).toBe(true);
+  });
+
   it('infers weapon type from weapon-* prefix', async () => {
     const winnerPath = path.join(repoRoot, 'weapon-sword.yaml');
     writeFileSync(winnerPath, 'name: weapon-sword\njudge:\n  enabled: false\n', 'utf8');

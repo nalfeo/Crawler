@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /* global console */
 import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { evaluatePreflightChecks } from '../../../.github/extensions/copilot-guards/guards/pr-preflight.mjs';
 import { decideLedger } from '../../../.github/extensions/copilot-guards/guards/pr-review-ledger.mjs';
 import { mergeBaseWithMain } from '../../../.github/extensions/copilot-guards/lib/git.mjs';
@@ -51,6 +53,21 @@ export function evaluatePrereqs(files, addedFiles, cwd, opts = {}) {
     validateFile: opts.validateFile,
   });
   return summarizePrereqResult(preflightDecision, ledgerDecision);
+}
+
+export function telemetryCaptureNote(cwd, files) {
+  const artifact = join(cwd, 'files', 'guard-telemetry.jsonl');
+  if (!existsSync(artifact)) return null;
+  const hasCapture = (files || []).some(
+    (f) => f.startsWith('docs/knowledge/metrics/guard-telemetry/') && f.endsWith('.json'),
+  );
+  if (hasCapture) return null;
+  return section(
+    'guard-telemetry',
+    'files/guard-telemetry.jsonl exists but no capture file is staged. Run ' +
+      '`npm run telemetry:capture -- <session-slug>` to commit a durable per-session ' +
+      'summary (non-blocking).',
+  );
 }
 
 function git(cwd, args) {
@@ -124,6 +141,10 @@ function main() {
   }
 
   const result = evaluatePrereqs(diff.files, diff.addedFiles, cwd);
+  const telemetryNote = telemetryCaptureNote(cwd, diff.files);
+  if (telemetryNote) {
+    result.notes.push(telemetryNote);
+  }
   if (!result.ok) {
     console.error(
       `❌ PR prerequisites are incomplete. Run these checks when execution is done, before opening PR.${result.failures.join(

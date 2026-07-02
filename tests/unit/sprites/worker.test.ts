@@ -13,9 +13,11 @@ import type {
   AssetRequest,
   BriefPathAssetRequest,
   DequeuedMessage,
+  IssueAssetRequest,
 } from '../../../scripts/sprites/queue/types.js';
 import type { RunStore } from '../../../scripts/sprites/store/types.js';
 import type { ImageProvider } from '../../../scripts/sprites/provider/types.js';
+import { ProviderError } from '../../../scripts/sprites/provider/types.js';
 import { runWorker, type WorkerStatus } from '../../../scripts/sprites/worker.js';
 
 // ---------------------------------------------------------------------------
@@ -51,8 +53,9 @@ function makeRequest(briefId = 'iron-sword'): BriefPathAssetRequest {
 function makeMessage(
   request: AssetRequest,
   ackFn = vi.fn().mockResolvedValue(undefined),
+  dequeueCount = 1,
 ): DequeuedMessage {
-  return { request, ack: ackFn };
+  return { request, dequeueCount, ack: ackFn };
 }
 
 function makeQueue(messages: Array<DequeuedMessage | null>): AssetQueue {
@@ -351,5 +354,273 @@ describe('runWorker', () => {
     });
     expect(ack).toHaveBeenCalledOnce();
     expect(mockIssuePipeline).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bug A: bounded-failure / poison-message policy
+// ---------------------------------------------------------------------------
+
+function makeIssueRequest(overrides: Partial<IssueAssetRequest> = {}): IssueAssetRequest {
+  return {
+    kind: 'issue-request',
+    issueNumber: 555,
+    name: 'classified-dossier',
+    briefSentence: 'A classified dossier character in a trench coat.',
+    fingerprint: 'fp-555',
+    claimedAt: new Date().toISOString(),
+    requestedBy: 'test',
+    requestedAt: new Date().toISOString(),
+    priority: 'normal',
+    ...overrides,
+  };
+}
+
+/**
+ * A queue that redelivers a single un-acked message, incrementing
+ * `dequeueCount` on each delivery (mirroring Azure's visibility-timeout
+ * re-surfacing) and returning null once the message is acked. This is the
+ * anti-loop harness: if the worker never acked, `dequeue()` would keep
+ * handing back the same poison message forever.
+ */
+function makeResurfacingQueue(
+  request: AssetRequest,
+  opts: { ackFailsTimes?: number } = {},
+): {
+  queue: AssetQueue;
+  ack: ReturnType<typeof vi.fn>;
+  deliveries: () => number;
+} {
+  let acked = false;
+  let dequeueCount = 0;
+  let deliveries = 0;
+  let ackCalls = 0;
+  const ackFailsTimes = opts.ackFailsTimes ?? 0;
+  const ack = vi.fn(async () => {
+    ackCalls += 1;
+    if (ackCalls <= ackFailsTimes) {
+      // Model a stale pop receipt: the visibility timeout expired mid-run so
+      // the delete/ack is rejected and the message resurfaces.
+      throw new Error(`stale pop receipt (ack failure #${ackCalls})`);
+    }
+    acked = true;
+  });
+  const queue: AssetQueue = {
+    backend: 'noop',
+    async enqueue() {},
+    async dequeue() {
+      if (acked) return null;
+      dequeueCount += 1;
+      deliveries += 1;
+      return { request, dequeueCount, ack };
+    },
+    async peek() {
+      return [];
+    },
+  };
+  return { queue, ack, deliveries: () => deliveries };
+}
+
+/**
+ * Drive the worker until `abortOn` matches a status, then return the observed
+ * statuses. Keeps the individual failure-policy tests focused on assertions.
+ */
+async function drive(opts: {
+  queue: AssetQueue;
+  comment?: (issueNumber: number, body: string) => Promise<void>;
+  issueJob?: boolean;
+  abortOn: WorkerStatus['type'] | ((s: WorkerStatus) => boolean);
+}): Promise<WorkerStatus[]> {
+  const statuses: WorkerStatus[] = [];
+  const controller = new AbortController();
+  const predicate =
+    typeof opts.abortOn === 'function'
+      ? opts.abortOn
+      : (s: WorkerStatus) => s.type === opts.abortOn;
+  await runWorker({
+    queue: opts.queue,
+    store: makeStore(),
+    repoRoot: '/repo',
+    provider: stubProvider,
+    textProvider: null,
+    ...(opts.issueJob ? { synthProvider: {} as never, briefSelectorProvider: {} as never } : {}),
+    ...(opts.comment ? { issueApi: { comment: opts.comment } } : {}),
+    signal: controller.signal,
+    pollIntervalMs: 0,
+    onStatus: (s) => {
+      statuses.push(s);
+      if (predicate(s)) controller.abort();
+    },
+  });
+  return statuses;
+}
+
+describe('runWorker failure handling (poison-message policy)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('drops an issue-request on a permanent bad-grid error at first delivery and comments once', async () => {
+    mockIssuePipeline.mockRejectedValueOnce(
+      new ProviderError('bad-grid', 'expected 16 cells, slicer produced 8'),
+    );
+    const ack = vi.fn().mockResolvedValue(undefined);
+    const comment = vi.fn().mockResolvedValue(undefined);
+    const queue = makeQueue([makeMessage(makeIssueRequest(), ack, 1), null]);
+
+    const statuses = await drive({ queue, comment, issueJob: true, abortOn: 'error' });
+
+    expect(ack).toHaveBeenCalledOnce();
+    expect(comment).toHaveBeenCalledOnce();
+    expect(comment).toHaveBeenCalledWith(555, expect.stringContaining('permanent'));
+    const err = statuses.find((s) => s.type === 'error') as Extract<
+      WorkerStatus,
+      { type: 'error' }
+    >;
+    expect(err.dropped).toBe(true);
+  });
+
+  it('leaves a transient issue-request un-acked and does not comment below the retry cap', async () => {
+    mockIssuePipeline.mockRejectedValueOnce(new ProviderError('rate-limit', 'slow down'));
+    const ack = vi.fn().mockResolvedValue(undefined);
+    const comment = vi.fn().mockResolvedValue(undefined);
+    const queue = makeQueue([makeMessage(makeIssueRequest(), ack, 1), null]);
+
+    const statuses = await drive({ queue, comment, issueJob: true, abortOn: 'error' });
+
+    expect(ack).not.toHaveBeenCalled();
+    expect(comment).not.toHaveBeenCalled();
+    const err = statuses.find((s) => s.type === 'error') as Extract<
+      WorkerStatus,
+      { type: 'error' }
+    >;
+    expect(err.dropped).toBeUndefined();
+  });
+
+  it('drops a transient issue-request once dequeueCount reaches the cap and comments once', async () => {
+    mockIssuePipeline.mockRejectedValueOnce(new ProviderError('network', 'boom'));
+    const ack = vi.fn().mockResolvedValue(undefined);
+    const comment = vi.fn().mockResolvedValue(undefined);
+    // dequeueCount already at the cap (3) — the next failure must give up.
+    const queue = makeQueue([makeMessage(makeIssueRequest(), ack, 3), null]);
+
+    const statuses = await drive({ queue, comment, issueJob: true, abortOn: 'error' });
+
+    expect(ack).toHaveBeenCalledOnce();
+    expect(comment).toHaveBeenCalledOnce();
+    expect(comment).toHaveBeenCalledWith(555, expect.stringContaining('delivery attempts'));
+    const err = statuses.find((s) => s.type === 'error') as Extract<
+      WorkerStatus,
+      { type: 'error' }
+    >;
+    expect(err.dropped).toBe(true);
+  });
+
+  it('drops a permanent brief-path failure without posting any comment', async () => {
+    mockGenerate.mockRejectedValueOnce(new ProviderError('auth', 'bad api key'));
+    const ack = vi.fn().mockResolvedValue(undefined);
+    const comment = vi.fn().mockResolvedValue(undefined);
+    const queue = makeQueue([makeMessage(makeRequest('iron-sword'), ack, 1), null]);
+
+    const statuses = await drive({ queue, comment, abortOn: 'error' });
+
+    expect(ack).toHaveBeenCalledOnce();
+    expect(comment).not.toHaveBeenCalled();
+    const err = statuses.find((s) => s.type === 'error') as Extract<
+      WorkerStatus,
+      { type: 'error' }
+    >;
+    expect(err.dropped).toBe(true);
+  });
+
+  it('terminates a transient poison loop at the cap: redelivered until acked, comments exactly once', async () => {
+    // Fails on EVERY delivery with a transient error. Without the dequeueCount
+    // cap this would loop forever; the resurfacing queue would never return null.
+    mockIssuePipeline.mockRejectedValue(new ProviderError('network', 'flaky provider'));
+    const comment = vi.fn().mockResolvedValue(undefined);
+    const { queue, ack, deliveries } = makeResurfacingQueue(makeIssueRequest());
+
+    const statuses = await drive({
+      queue,
+      comment,
+      issueJob: true,
+      abortOn: (s) => s.type === 'error' && s.dropped === true,
+    });
+
+    expect(deliveries()).toBe(3); // MAX_DEQUEUE_ATTEMPTS
+    expect(ack).toHaveBeenCalledOnce();
+    expect(comment).toHaveBeenCalledOnce();
+    const dropped = statuses.filter((s) => s.type === 'error' && s.dropped);
+    const transient = statuses.filter((s) => s.type === 'error' && !s.dropped);
+    expect(dropped).toHaveLength(1);
+    expect(transient).toHaveLength(2);
+  });
+
+  it('drops a deterministic poison message on the first delivery (no redelivery loop)', async () => {
+    // A permanent error must not even reach a second delivery.
+    mockIssuePipeline.mockRejectedValue(
+      new ProviderError('bad-grid', 'expected 16 cells, slicer produced 8'),
+    );
+    const comment = vi.fn().mockResolvedValue(undefined);
+    const { queue, ack, deliveries } = makeResurfacingQueue(makeIssueRequest());
+
+    await drive({
+      queue,
+      comment,
+      issueJob: true,
+      abortOn: (s) => s.type === 'error' && s.dropped === true,
+    });
+
+    expect(deliveries()).toBe(1);
+    expect(ack).toHaveBeenCalledOnce();
+    expect(comment).toHaveBeenCalledOnce();
+  });
+
+  it('does not crash and comments exactly once when the give-up ack fails then succeeds on redelivery', async () => {
+    // A permanent failure whose FIRST give-up ack throws (stale pop receipt).
+    // The worker must not crash: it leaves the message for redelivery WITHOUT
+    // commenting, then on the next delivery the ack succeeds and the single
+    // failure comment is posted — proving at-most-once holds even across an ack
+    // failure.
+    mockIssuePipeline.mockRejectedValue(
+      new ProviderError('bad-grid', 'expected 16 cells, slicer produced 8'),
+    );
+    const comment = vi.fn().mockResolvedValue(undefined);
+    const { queue, ack, deliveries } = makeResurfacingQueue(makeIssueRequest(), {
+      ackFailsTimes: 1,
+    });
+
+    const statuses = await drive({
+      queue,
+      comment,
+      issueJob: true,
+      abortOn: (s) => s.type === 'error' && s.dropped === true,
+    });
+
+    expect(deliveries()).toBe(2); // give-up@1 ack throws (resurfaces), give-up@2 ack succeeds
+    expect(ack).toHaveBeenCalledTimes(2);
+    expect(comment).toHaveBeenCalledOnce();
+    const dropped = statuses.filter((s) => s.type === 'error' && s.dropped === true);
+    const notDropped = statuses.filter((s) => s.type === 'error' && s.dropped === false);
+    expect(dropped).toHaveLength(1); // only the delivery whose ack succeeded
+    expect(notDropped).toHaveLength(1); // the delivery whose ack failed — no comment
+  });
+
+  it('retries a transient brief-path failure then acks on success without commenting', async () => {
+    mockGenerate
+      .mockRejectedValueOnce(new ProviderError('network', 'blip'))
+      .mockResolvedValueOnce(fakeSummaryResult as never);
+    const comment = vi.fn().mockResolvedValue(undefined);
+    const { queue, ack, deliveries } = makeResurfacingQueue(makeRequest('iron-sword'));
+
+    await drive({ queue, comment, abortOn: 'done' });
+
+    expect(deliveries()).toBe(2); // fail@1 (no ack), succeed@2 (ack)
+    expect(ack).toHaveBeenCalledOnce();
+    expect(comment).not.toHaveBeenCalled();
   });
 });

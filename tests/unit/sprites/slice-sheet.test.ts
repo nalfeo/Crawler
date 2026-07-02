@@ -307,3 +307,73 @@ describe('sliceSheetFromBrief', () => {
     expect(cells).toHaveLength(3);
   });
 });
+
+describe('Bug B regression: inter-cell gutters govern the recovered grid', () => {
+  // A correctly-gutted 4×4 sheet slices into exactly 16 cells — the honest
+  // target the generate-one gate requires. This is what the strengthened sheet
+  // prompt (mandatory background gutter between every row AND column) is meant
+  // to make gpt-image-1 draw.
+  it('recovers exactly 16 cells from a 4×4 sheet with gutters on both axes', () => {
+    const sheet = encodeContentGrid(4, 4, {
+      block: 8,
+      gutter: 4,
+      margin: 4,
+      color: (r, c) => ({ r: 10 + r * 40, g: 10 + c * 40, b: 60 }),
+    });
+    const map = computeSliceMap(sheet);
+    expect(map.rows).toBe(4);
+    expect(map.cols).toBe(4);
+    expect(map.cells).toHaveLength(16);
+  });
+
+  // The incident: gpt-image-1 drew a 4×4 character sheet but adjacent columns
+  // touched horizontally (the old prompt said "Horizontal side margins are
+  // acceptable", so no vertical background channel was required). The
+  // content-aware slicer keys off background bands, so it merged each pair of
+  // touching columns and produced 8 cells — the exact "expected 16 cells,
+  // slicer produced 8" failure. This pins the root cause WITHOUT changing the
+  // slicer: the fix lives in the prompt (require the gutters). Four rows are
+  // separated by full-width horizontal gutters; the four columns have only ONE
+  // interior vertical background band (down the middle), so 4 rows × 2 detected
+  // columns = 8.
+  it('collapses 4×4 to 8 cells when adjacent columns touch (reproduces expected-16-produced-8)', () => {
+    const block = 8;
+    const gutter = 4;
+    const margin = 4;
+    const rows = 4;
+    // Cols 0,1 touch; a single central gutter; cols 2,3 touch.
+    const width = margin * 2 + 4 * block + gutter;
+    const height = margin * 2 + rows * block + (rows - 1) * gutter;
+    const png = new PNG({ width, height });
+    for (let i = 0; i < png.data.length; i += 4) {
+      png.data[i] = BG.r;
+      png.data[i + 1] = BG.g;
+      png.data[i + 2] = BG.b;
+      png.data[i + 3] = 255;
+    }
+    const colX = (c: number): number => {
+      const base = margin + c * block;
+      return c < 2 ? base : base + gutter;
+    };
+    const rowY = (r: number): number => margin + r * (block + gutter);
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < 4; c++) {
+        const x0 = colX(c);
+        const y0 = rowY(r);
+        const color = { r: 10 + r * 40, g: 10 + c * 40, b: 60 };
+        for (let y = y0; y < y0 + block; y++) {
+          for (let x = x0; x < x0 + block; x++) {
+            const i = (y * width + x) * 4;
+            png.data[i] = color.r;
+            png.data[i + 1] = color.g;
+            png.data[i + 2] = color.b;
+          }
+        }
+      }
+    }
+    const map = computeSliceMap(PNG.sync.write(png));
+    expect(map.rows).toBe(4);
+    expect(map.cols).toBe(2);
+    expect(map.cells).toHaveLength(8);
+  });
+});

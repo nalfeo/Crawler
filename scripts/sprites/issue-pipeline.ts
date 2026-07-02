@@ -28,6 +28,14 @@ export interface RunIssuePipelineOptions {
   readonly briefSelectorProvider: BriefSelectorProvider;
   readonly visionProvider: VisionProvider | null;
   readonly issueApi: IssuePipelineIssueApi;
+  /**
+   * When false, suppress the intermediate progress comments (synthesize /
+   * select / promote) posted during a run. The terminal success summary comment
+   * is unaffected, as is the worker's failure comment. The worker sets this
+   * false on redeliveries (dequeueCount > 1) so a transient failure that recurs
+   * cannot re-post the same progress updates on every retry. Defaults to true.
+   */
+  readonly postProgressComments?: boolean;
   readonly env?: NodeJS.ProcessEnv;
 }
 
@@ -87,9 +95,18 @@ export async function runIssuePipeline(options: RunIssuePipelineOptions): Promis
     await options.store.put(statusKey, Buffer.from(`${JSON.stringify(doc, null, 2)}\n`));
   };
   const comment = (text: string) => options.issueApi.comment(request.issueNumber, text);
+  // Progress comments show live pipeline status. They are suppressed on
+  // redeliveries (see postProgressComments) so a transient failure that recurs
+  // does not re-post the same updates on every natural retry; terminal comments
+  // (success summary here, failure comment in the worker) always post.
+  const postProgress = options.postProgressComments !== false;
+  const progressComment = (text: string): Promise<void> =>
+    postProgress ? comment(text) : Promise.resolve();
 
   await setStatus('synthesizing');
-  await comment(`🧪 Started asset-request pipeline for \`${request.name}\`.\n\nStage: synthesize`);
+  await progressComment(
+    `🧪 Started asset-request pipeline for \`${request.name}\`.\n\nStage: synthesize`,
+  );
   const spriteType = request.type || inferSpriteTypeFromName(request.name);
   const synth = await synthesizeBrief({
     name: request.name,
@@ -115,7 +132,7 @@ export async function runIssuePipeline(options: RunIssuePipelineOptions): Promis
   if (!winner) {
     throw new Error(`Brief selector picked out-of-range index ${selected.index}`);
   }
-  await comment(
+  await progressComment(
     `🧠 Selected candidate ${selected.index + 1}/${synth.written.length} ` +
       `using \`${selected.modelDeployment}\`: ${selected.rationale}`,
   );
@@ -137,7 +154,7 @@ export async function runIssuePipeline(options: RunIssuePipelineOptions): Promis
   const judgeEnabled = options.visionProvider !== null;
   enableJudge(promotedAbs, options.repoRoot, judgeEnabled);
 
-  await comment(
+  await progressComment(
     `📌 Promoted brief to \`${promotedRel}\`.\n\nStage: generate → postprocess` +
       `${judgeEnabled ? ' → judge' : ' (judge disabled: no vision deployment configured)'}`,
   );

@@ -60,8 +60,19 @@ else
   echo "ℹ️  No integration tests found; skipping."
 fi
 
-echo "🔍 Step 8/10: Headless Floor 1 completion gate..."
-npx vitest run --project headless --reporter=dot
+# The Headless Floor 1 gate replays a full ~20k-frame deterministic sim per
+# losing (seed, weapon) and is the single slowest step (~300s in CI, the CI
+# long-pole). It is authoritatively enforced by the REQUIRED `test-headless`
+# job in CI (ci.yml) on every code PR, so this local pre-commit gate SKIPS it by
+# default to keep the inner loop fast (mirrors the VERIFY_COVERAGE opt-in above).
+# Opt back in for a full local run — e.g. when touching core/game AI/balance —
+# with VERIFY_FULL=1.
+if [ "${VERIFY_FULL:-}" = "1" ]; then
+  echo "🔍 Step 8/10: Headless Floor 1 completion gate (VERIFY_FULL=1)..."
+  npx vitest run --project headless --reporter=dot
+else
+  echo "🔍 Step 8/10: Headless Floor 1 gate — deferred to the required CI job (set VERIFY_FULL=1 to run locally)..."
+fi
 
 echo "🔍 Step 9/10: PR prerequisites (run early, before create_pull_request)..."
 npm run verify:pr-prereqs

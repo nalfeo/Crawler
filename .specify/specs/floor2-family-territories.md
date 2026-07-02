@@ -8,7 +8,7 @@
 > [`docs/knowledge/game-design/floor2-families-and-resources.md`](../../docs/knowledge/game-design/floor2-families-and-resources.md)
 > (families roster, resources, emergent events, tone).
 > **Architecture:**
-> [ADR 0035](../../docs/knowledge/adr/0035-floor2-family-territory-and-relationship-architecture.md).
+> [ADR 0039](../../docs/knowledge/adr/0039-floor2-family-territory-and-relationship-architecture.md).
 > **Reused ADRs:** 0005 (parameterized floor config), 0010 (boss door-lock), 0011
 > (data-driven quests), 0021 (reachability), 0023 (generic special-room sealing), 0024
 > (engagement budget / themed set-pieces).
@@ -228,7 +228,7 @@ tuned to the **rate**, never to rescue specific seeds.
   `src/core/` + `src/game/`; only the HUD widget imports Phaser in `src/engine/`. ✅
 - **P6 AI content load-only:** Director/emergent narration has authored static fallbacks
   and any LLM spice is load-time with Zod validation — never in the CI path. ✅
-- **P7 Memory governance:** this 2+-system change is backed by ADR 0035. ✅
+- **P7 Memory governance:** this 2+-system change is backed by ADR 0039. ✅
 - **P8 Conventional commits** for all follow-up PRs. ✅
 - **P9 Coverage:** new pure logic (bands, ramp, win evaluator, shop generator, schema
   loaders) targets the core/game/shared 90% bar; the HUD widget the engine 50% bar. ✅

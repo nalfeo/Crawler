@@ -18,6 +18,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getSessionServerPorts } from '../../shared/session-server-ports.js';
+import { ensureAzureEnvLocal, EnvBootstrapError } from './env-bootstrap.js';
 import { loadEnvLocal } from './env-local.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -30,6 +31,21 @@ const SESSION_PORTS = getSessionServerPorts({ cwd: REPO_ROOT, env: process.env }
  * `scripts/setup-azure-env.ps1`. Shared with the sidecar entry point.
  */
 loadEnvLocal(REPO_ROOT);
+
+/**
+ * Make `npm run sprites:gallery` a true one command on a fresh worktree: if the
+ * sidecar needs Azure credentials it does not already have, generate `.env.local`
+ * via the fast env-only setup path before spawning children. Skips instantly when
+ * creds are present, and fails fast (never falls back to local) with an
+ * actionable message otherwise — see `env-bootstrap.ts` for the full contract.
+ */
+try {
+  ensureAzureEnvLocal({ repoRoot: REPO_ROOT });
+} catch (err) {
+  const message = err instanceof EnvBootstrapError ? err.message : String(err);
+  process.stderr.write(`\n[launcher] Azure environment not ready:\n${message}\n\n`);
+  process.exit(1);
+}
 
 interface ChildSpec {
   readonly name: string;

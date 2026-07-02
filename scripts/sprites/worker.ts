@@ -2,10 +2,17 @@
  * Sprite-generation queue worker.
  *
  * Polls an {@link AssetQueue} in a loop, calls {@link generateOne} for each
- * dequeued request, and acks the message on success. On failure the message
- * is NOT acked so it becomes visible again after the queue's visibility
- * timeout — this gives a natural retry without a local retry loop that could
- * burn through the same broken brief repeatedly.
+ * dequeued request, and acks the message on success.
+ *
+ * Failure handling (see {@link isPermanentFailure} / MAX_DEQUEUE_ATTEMPTS):
+ *  - TRANSIENT failure below the retry cap → the message is left un-acked so
+ *    the queue's visibility timeout re-surfaces it for a natural retry.
+ *  - PERMANENT failure (a deterministic provider error — `auth`, `bad-grid`,
+ *    `non-png`) OR once `dequeueCount` reaches MAX_DEQUEUE_ATTEMPTS → the
+ *    message is acked (dropped) so a deterministically-failing "poison"
+ *    message cannot loop forever. For issue-requests a single failure comment
+ *    is posted on the give-up path (at most once per message under normal
+ *    operation), instead of once per redelivery.
  *
  * Usage:
  *   import { runWorker } from './worker.js';
@@ -27,6 +34,36 @@ import type { BriefSelectorProvider } from './provider/brief-selector-types.js';
 import type { VisionProvider } from './provider/vision-types.js';
 import type { IssuePipelineIssueApi } from './issue-pipeline.js';
 import { runIssuePipeline } from './issue-pipeline.js';
+
+/**
+ * Maximum number of times a single message may be dequeued before the worker
+ * gives up and drops it. Azure Storage Queue increments `dequeueCount` on each
+ * redelivery, so this caps the natural-retry loop for TRANSIENT failures (a
+ * deterministic failure is dropped immediately via {@link isPermanentFailure}).
+ * Three attempts gives transient infrastructure blips two natural retries
+ * without letting a poison message loop forever.
+ */
+const MAX_DEQUEUE_ATTEMPTS = 3;
+
+/**
+ * Provider-error kinds that are DETERMINISTIC and therefore never worth
+ * retrying at the worker level: a bad API key (`auth`), and grid/format
+ * failures (`bad-grid`, `non-png`) which {@link generateSheetCore} has already
+ * retried in-run before the error reached the worker. We duck-type on `kind`
+ * (rather than `instanceof ProviderError`) so the same classification applies
+ * to the synth / vision / text provider error families, which also surface an
+ * `auth` kind. Nondeterministic kinds (`rate-limit`, `network`,
+ * `provider-error`, synth `malformed`, or any plain `Error`) are intentionally
+ * left to the {@link MAX_DEQUEUE_ATTEMPTS} cap so they still get bounded
+ * natural retries.
+ */
+const PERMANENT_FAILURE_KINDS: ReadonlySet<string> = new Set(['auth', 'bad-grid', 'non-png']);
+
+/** True when `err` is a deterministic, non-retryable provider failure. */
+function isPermanentFailure(err: unknown): boolean {
+  const kind = (err as { readonly kind?: unknown } | null | undefined)?.kind;
+  return typeof kind === 'string' && PERMANENT_FAILURE_KINDS.has(kind);
+}
 
 export interface WorkerOptions {
   /** Queue to poll for generation requests. */
@@ -82,7 +119,12 @@ export type WorkerStatus =
       readonly runId: string;
       readonly summaryPath: string;
     }
-  | { readonly type: 'error'; readonly briefId: string; readonly error: Error }
+  | {
+      readonly type: 'error';
+      readonly briefId: string;
+      readonly error: Error;
+      readonly dropped?: boolean;
+    }
   | { readonly type: 'stopping' };
 
 /**
@@ -92,7 +134,9 @@ export type WorkerStatus =
  *   1. Dequeue one message.
  *   2. On null (empty queue) → emit `idle`, sleep `pollIntervalMs`, repeat.
  *   3. On message → emit `processing`, call `generateOne`, ack, emit `done`.
- *   4. On `generateOne` error → emit `error`, do NOT ack (retry later), continue.
+ *   4. On error → emit `error`. If the failure is permanent, or `dequeueCount`
+ *      has reached the cap, drop the message (ack) and — for issue-requests —
+ *      post one failure comment; otherwise leave it un-acked for a natural retry.
  *   5. On abort signal → finish the current message (if any) then exit.
  */
 export async function runWorker(options: WorkerOptions): Promise<void> {
@@ -123,12 +167,14 @@ export async function runWorker(options: WorkerOptions): Promise<void> {
     }
     onStatus?.({ type: 'processing', briefId: describeRequest(request) });
 
+    let result: { readonly summary: { readonly runId: string }; readonly summaryPath: string };
     try {
-      const result =
+      result =
         request.kind === 'issue-request'
           ? await runIssueRequest({
               request,
               options,
+              dequeueCount: msg.dequeueCount,
             })
           : await generateOne({
               briefPath: path.resolve(repoRoot, request.briefPath),
@@ -137,6 +183,59 @@ export async function runWorker(options: WorkerOptions): Promise<void> {
               repoRoot,
               store,
             });
+    } catch (err) {
+      // GENERATION failed. Ack failures are handled separately on the success
+      // path below and can never reach this branch, so a run that SUCCEEDS but
+      // whose ack fails is not misreported here as a generation failure.
+      const error = err instanceof Error ? err : new Error(String(err));
+      const permanent = isPermanentFailure(err);
+      const giveUp = permanent || msg.dequeueCount >= MAX_DEQUEUE_ATTEMPTS;
+
+      if (giveUp) {
+        // Deterministic failure, or the retry cap is reached: DROP the message
+        // first so a poison message cannot loop forever. We ack BEFORE posting
+        // the issue-request failure comment, and comment ONLY when the ack
+        // actually succeeded: a successful ack deletes the message so it can
+        // never be redelivered, which is what makes the comment strictly
+        // at-most-once. If the ack itself fails (e.g. a stale pop receipt after
+        // the visibility timeout expired mid-run) we leave the message for
+        // redelivery WITHOUT commenting and WITHOUT crashing the worker — the
+        // single comment is then posted later, on whichever delivery's ack
+        // succeeds.
+        let dropped = false;
+        try {
+          await msg.ack();
+          dropped = true;
+        } catch {
+          // Swallow the ack failure: letting the message resurface for a bounded
+          // retry is far better than crashing the whole poll loop.
+        }
+        if (dropped && request.kind === 'issue-request' && options.issueApi) {
+          try {
+            await options.issueApi.comment(
+              request.issueNumber,
+              buildFailureComment(error, { permanent, dequeueCount: msg.dequeueCount }),
+            );
+          } catch {
+            // Best-effort: a comment failure must not turn a dropped message
+            // back into a retry.
+          }
+        }
+        onStatus?.({ type: 'error', briefId: describeRequest(request), error, dropped });
+      } else {
+        // Transient failure below the cap: do NOT ack. The message becomes
+        // visible again after the visibility timeout so a fixed worker can
+        // retry it. No comment yet — that would spam the issue on every retry.
+        onStatus?.({ type: 'error', briefId: describeRequest(request), error });
+      }
+      continue;
+    }
+
+    // SUCCESS: ack OUTSIDE the generation try/catch so an ack failure is never
+    // mistaken for a generation failure (which could post a false ⚠️ comment).
+    // If the ack fails the message simply resurfaces and the run is retried; we
+    // report it as an error WITHOUT a failure comment.
+    try {
       await msg.ack();
       onStatus?.({
         type: 'done',
@@ -144,10 +243,8 @@ export async function runWorker(options: WorkerOptions): Promise<void> {
         runId: result.summary.runId,
         summaryPath: result.summaryPath,
       });
-    } catch (err) {
-      // Do NOT ack — the message will become visible again after the
-      // visibility timeout so a fixed worker can retry it.
-      const error = err instanceof Error ? err : new Error(String(err));
+    } catch (ackErr) {
+      const error = ackErr instanceof Error ? ackErr : new Error(String(ackErr));
       onStatus?.({ type: 'error', briefId: describeRequest(request), error });
     }
 
@@ -160,48 +257,70 @@ export async function runWorker(options: WorkerOptions): Promise<void> {
     async function runIssueRequest(args: {
       readonly request: IssueAssetRequest;
       readonly options: WorkerOptions;
+      readonly dequeueCount: number;
     }) {
-      const { request, options } = args;
+      const { request, options, dequeueCount } = args;
       if (!options.synthProvider || !options.briefSelectorProvider || !options.issueApi) {
         throw new Error(
           'issue-request job requires synthProvider, briefSelectorProvider, and issueApi to be configured',
         );
       }
-      try {
-        const result = await runIssuePipeline({
-          request,
-          repoRoot: options.repoRoot,
-          store: options.store,
-          imageProvider: options.provider,
-          textProvider: options.textProvider ?? null,
-          synthProvider: options.synthProvider,
-          briefSelectorProvider: options.briefSelectorProvider,
-          visionProvider: options.visionProvider ?? null,
-          issueApi: options.issueApi,
-        });
-        return {
-          summary: {
-            runId: result.runId,
-          },
-          summaryPath: result.summaryPath,
-        };
-      } catch (err) {
-        // On pipeline error, post diagnostic comment. User can fix and restart sidecar.
-        const error = err instanceof Error ? err : new Error(String(err));
-        try {
-          await options.issueApi.comment(
-            request.issueNumber,
-            `⚠️ Asset-request pipeline failed.\n\nError: ${error.message}\n\nIf this is a parsing or validation error, please edit the issue and try again. If it's a transient service error, the sidecar will retry on next restart.`,
-          );
-        } catch {
-          // Ignore comment errors; rethrow pipeline error
-        }
-        throw error;
-      }
+      // NOTE: the failure comment is intentionally NOT posted here. The outer
+      // catch owns failure handling so the comment is gated by the give-up
+      // (permanent / dequeue-cap) decision and posted at most once per message
+      // rather than on every visibility-timeout redelivery.
+      //
+      // Intermediate progress comments (synth / select / promote) are likewise
+      // suppressed on REDELIVERIES (dequeueCount > 1): the first delivery shows
+      // live progress, while natural retries stay quiet so a transient failure
+      // that recurs cannot re-post the same progress updates on every attempt.
+      const result = await runIssuePipeline({
+        request,
+        repoRoot: options.repoRoot,
+        store: options.store,
+        imageProvider: options.provider,
+        textProvider: options.textProvider ?? null,
+        synthProvider: options.synthProvider,
+        briefSelectorProvider: options.briefSelectorProvider,
+        visionProvider: options.visionProvider ?? null,
+        issueApi: options.issueApi,
+        postProgressComments: dequeueCount <= 1,
+      });
+      return {
+        summary: {
+          runId: result.runId,
+        },
+        summaryPath: result.summaryPath,
+      };
     }
   }
 
   onStatus?.({ type: 'stopping' });
+}
+
+/**
+ * Build the issue comment posted when a request is dropped. The text is honest
+ * about the outcome: the message has been dropped (not left to auto-retry), and
+ * whether that was because the error looked permanent or because the delivery
+ * cap was reached. This replaces the old "the sidecar will retry on next
+ * restart" wording, which was false for dropped messages.
+ */
+function buildFailureComment(
+  error: Error,
+  opts: { readonly permanent: boolean; readonly dequeueCount: number },
+): string {
+  const reason = opts.permanent
+    ? 'This looks like a permanent error (for example an authentication failure, or a sheet the image model could not render as a valid sprite grid), so the request was dropped and will NOT be retried automatically.'
+    : `The request failed ${opts.dequeueCount} delivery attempts, so it was dropped to avoid an endless retry loop.`;
+  return [
+    '⚠️ Asset-request pipeline failed.',
+    '',
+    `Error: ${error.message}`,
+    '',
+    reason,
+    '',
+    'If this was a parsing or validation problem, edit the issue to fix it and request the asset again.',
+  ].join('\n');
 }
 
 /** Abortable sleep — resolves immediately when the signal fires or is already aborted. */
@@ -213,14 +332,18 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
       resolve();
       return;
     }
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(timer);
-        resolve();
-      },
-      { once: true },
-    );
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      // Remove the abort listener on the normal timeout path. Otherwise a
+      // long-running idle-polling worker accumulates one listener per poll on
+      // the process-lifetime signal — a slow leak that also trips Node's
+      // MaxListenersExceededWarning.
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
 }
