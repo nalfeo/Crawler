@@ -10,7 +10,7 @@
 > layers). The **system contracts** live in
 > [`.specify/specs/floor2-family-territories.md`](../../../.specify/specs/floor2-family-territories.md);
 > the **architecture decision** lives in
-> [ADR 0039](../adr/0039-floor2-family-territory-and-relationship-architecture.md).
+> [ADR 0040](../adr/0040-floor2-family-territory-and-relationship-architecture.md).
 > Tone must stay consistent with the [Lore Bible](lore-bible.md): dark comedy, never
 > grimdark; the horror is bureaucratic; vices are played for absurd mob-drama laughs,
 > never glorified.
@@ -253,6 +253,6 @@ Story Designer, runtime spice by the AI Content Engineer (load-time only).
 - **System contracts & test plan:**
   [`.specify/specs/floor2-family-territories.md`](../../../.specify/specs/floor2-family-territories.md)
 - **Architecture decision:**
-  [ADR 0039](../adr/0039-floor2-family-territory-and-relationship-architecture.md)
+  [ADR 0040](../adr/0040-floor2-family-territory-and-relationship-architecture.md)
 - **Lore & tone:** [Lore Bible](lore-bible.md) · **Game vision:**
   [Game Design Document](game-design-document.md)
