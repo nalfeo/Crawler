@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   ALLOWLIST,
+  MIN_EXPECTED_SYSTEMS,
   REQUIRED_ALLOWLIST_FIELDS,
   SYSTEM_SOURCE_ROOTS,
   WIRING_SITES,
@@ -12,6 +13,7 @@ import {
   collectWiredRefs,
   extractReferencedSystems,
   extractSystemDefs,
+  findDuplicateSystemDeclarations,
   findMalformedAllowlistEntries,
   findOrphanedSystems,
   findStaleAllowlistEntries,
@@ -109,6 +111,51 @@ describe('extractSystemDefs', () => {
     expect(names).toEqual(['barSystem', 'fooSystem']);
     // Re-exports are marked as such so a barrel does not shadow the real def.
     expect(defs.every((d) => d.kind === 'reexport')).toBe(true);
+  });
+
+  it('detects export-default / export-= assignment forms as declarations (dangerous false-clean)', () => {
+    // A system shipped via `export default fooSystem` would otherwise be
+    // invisible to discovery — never enumerated, so an orphan could merge green.
+    // When the identifier names a LOCAL declaration, the file IS the
+    // implementation, so it must be classified `declaration` (not `reexport`) —
+    // otherwise duplicate detection and barrel attribution both break.
+    const def: SourceFile = {
+      path: 'src/game/foo.ts',
+      content: ['const fooSystem = (world) => {};', 'export default fooSystem;'].join('\n'),
+    };
+    const defDefs = extractSystemDefs(def);
+    expect(defDefs.map((d) => d.name)).toEqual(['fooSystem']);
+    expect(defDefs[0]!.kind).toBe('declaration');
+
+    const eq: SourceFile = {
+      path: 'src/game/bar.ts',
+      content: ['const barSystem = (world) => {};', 'export = barSystem;'].join('\n'),
+    };
+    const eqDefs = extractSystemDefs(eq);
+    expect(eqDefs.map((d) => d.name)).toEqual(['barSystem']);
+    expect(eqDefs[0]!.kind).toBe('declaration');
+  });
+
+  it('records export-default of a FORWARDED (imported) symbol as a re-export', () => {
+    // No local declaration behind the assignment → it forwards an imported
+    // symbol, so it is a genuine re-export, not this file's implementation.
+    const file: SourceFile = {
+      path: 'src/game/barrel.ts',
+      content: ["import { fooSystem } from './foo.js';", 'export default fooSystem;'].join('\n'),
+    };
+    const defs = extractSystemDefs(file);
+    expect(defs.map((d) => d.name)).toEqual(['fooSystem']);
+    expect(defs[0]!.kind).toBe('reexport');
+  });
+
+  it('detects a named default-exported function (export default function fooSystem)', () => {
+    const file: SourceFile = {
+      path: 'src/game/foo.ts',
+      content: 'export default function fooSystem(world) {}',
+    };
+    const defs = extractSystemDefs(file);
+    expect(defs.map((d) => d.name)).toEqual(['fooSystem']);
+    expect(defs[0]!.kind).toBe('declaration');
   });
 });
 
@@ -213,6 +260,92 @@ describe('extractReferencedSystems (AST)', () => {
       content: 'const all = [...coreSystems, spawnerSystem];',
     };
     expect(extractReferencedSystems(file).has('spawnerSystem')).toBe(true);
+  });
+
+  it('DOCUMENTED LIMITATION: an incidental reference in a wiring file counts as wired', () => {
+    // The wiring sites are a tiny, curated, trusted set; distinguishing a live
+    // pipeline array from a dead one would need whole-program dataflow. This
+    // pins the accepted trusted-oracle behavior as a conscious contract: a dead
+    // reference inside a wiring file DOES mark the system wired. (It is a
+    // distinct, review-catchable smell, and far narrower than the lab-only bug
+    // this guard targets.) If this ever changes, update the doc block + ADR.
+    const deadArray: SourceFile = {
+      path: 'src/engine/scenes/MainGameScene.ts',
+      content: 'const unused = [spawnerSystem];',
+    };
+    expect(extractReferencedSystems(deadArray).has('spawnerSystem')).toBe(true);
+    const deadCall: SourceFile = {
+      path: 'src/engine/scenes/MainGameScene.ts',
+      content: 'function debug(world) { spawnerSystem(world); }',
+    };
+    expect(extractReferencedSystems(deadCall).has('spawnerSystem')).toBe(true);
+  });
+});
+
+describe('findDuplicateSystemDeclarations', () => {
+  it('flags a *System name declared in two files (name-based-wiring false-clean)', () => {
+    const files: SourceFile[] = [
+      { path: 'src/game/a/fooSystem.ts', content: 'export function fooSystem(w) {}' },
+      { path: 'src/game/b/fooSystem.ts', content: 'export const fooSystem = (w) => {};' },
+    ];
+    const dups = findDuplicateSystemDeclarations(files);
+    expect(dups).toHaveLength(1);
+    expect(dups[0]!.name).toBe('fooSystem');
+    expect(dups[0]!.files).toEqual(['src/game/a/fooSystem.ts', 'src/game/b/fooSystem.ts']);
+  });
+
+  it('does NOT flag a declaration plus its re-export barrel', () => {
+    const files: SourceFile[] = [
+      {
+        path: 'src/game/spawners/spawnerSystem.ts',
+        content: 'export function spawnerSystem(w) {}',
+      },
+      {
+        path: 'src/game/index.ts',
+        content: "export { spawnerSystem } from './spawners/spawnerSystem.js';",
+      },
+    ];
+    expect(findDuplicateSystemDeclarations(files)).toEqual([]);
+  });
+
+  it('ignores duplicate names across .test.ts files', () => {
+    const files: SourceFile[] = [
+      { path: 'src/game/fooSystem.ts', content: 'export function fooSystem(w) {}' },
+      { path: 'src/game/fooSystem.test.ts', content: 'export function fooSystem(w) {}' },
+    ];
+    expect(findDuplicateSystemDeclarations(files)).toEqual([]);
+  });
+
+  it('flags two default-exported systems with the same name (export-assignment false-clean)', () => {
+    // Regression for the round-2 Blocking finding: `export default fooSystem`
+    // behind a local decl must be a `declaration`, so two such files collide and
+    // the duplicate guard catches the ambiguity (one could be wired, one orphan).
+    const files: SourceFile[] = [
+      {
+        path: 'src/game/a/foo.ts',
+        content: ['const fooSystem = (w) => {};', 'export default fooSystem;'].join('\n'),
+      },
+      {
+        path: 'src/game/b/foo.ts',
+        content: ['const fooSystem = (w) => {};', 'export default fooSystem;'].join('\n'),
+      },
+    ];
+    const dups = findDuplicateSystemDeclarations(files);
+    expect(dups).toHaveLength(1);
+    expect(dups[0]!.name).toBe('fooSystem');
+  });
+
+  it('the real source tree has no duplicate *System declarations', () => {
+    const files: SourceFile[] = [];
+    for (const root of SYSTEM_SOURCE_ROOTS) {
+      for (const abs of walkTs(path.join(repoRoot, root))) {
+        files.push({
+          path: path.relative(repoRoot, abs).replace(/\\/g, '/'),
+          content: readFileSync(abs, 'utf8'),
+        });
+      }
+    }
+    expect(findDuplicateSystemDeclarations(files)).toEqual([]);
   });
 });
 
@@ -341,5 +474,7 @@ describe('ALLOWLIST honesty invariants (against the real source tree)', () => {
     expect(names).toContain('movementSystem');
     expect(names).toContain('spawnerSystem');
     expect(realSystems.length).toBeGreaterThan(20);
+    // The real tree must stay comfortably above the partial-scan floor.
+    expect(realSystems.length).toBeGreaterThanOrEqual(MIN_EXPECTED_SYSTEMS);
   });
 });

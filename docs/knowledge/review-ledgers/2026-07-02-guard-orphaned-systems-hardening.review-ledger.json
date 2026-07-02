@@ -1,0 +1,83 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "guard-orphaned-systems-hardening",
+  "task_title": "Orphaned-system guard hardening + 4-apple harness completion",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "notes": "Separate-model plan review (gpt-5.4) of the guard design: 1 Blocking (token-presence detection too weak; need AST) + 2 Major (allowlist check in lib+CLI; structured allowlist reason+trackedIssue+owner) + 1 Minor (weapons doc). All resolved on the base guard (PR #667) and carried into this hardening follow-up."
+    },
+    "dual_plan_synthesis": {
+      "completed": true,
+      "plan_models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+      "judge_model": "claude-opus-4.8",
+      "notes": "Two independent plans on distinct models (gpt-5.4 per-file ts.createSourceFile + identifier matching; gemini-3.1-pro ts-morph + LanguageService findReferences). Judge (claude-opus-4.8) adopted Plan A hermetic per-file backbone; audited the built impl SOUND with no merge blockers and flagged 3 dangerous-direction hardening items (duplicate-declared-name, partial-scan floor, default/anonymous-export invisibility) - all implemented in this PR."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "model": "gpt-5.4",
+          "models": ["gpt-5.4"],
+          "clean": false,
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "verdict": "concerns",
+          "notes": "Regex not syntax-aware; re-export defs invisible. Fixed via TS compiler API (AST) on the base guard."
+        },
+        {
+          "round": 2,
+          "model": "gpt-5.4",
+          "models": ["gpt-5.4"],
+          "clean": false,
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "verdict": "concerns",
+          "notes": "CLI failed OPEN on 0 systems (now fails closed); findings attributed to barrel not real def (added SystemDef.kind)."
+        },
+        {
+          "round": 3,
+          "model": "gpt-5.4",
+          "models": ["gpt-5.4"],
+          "clean": true,
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "verdict": "approve",
+          "notes": "CLEAN."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+          "clean": false,
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "verdict": "concerns",
+          "notes": "Two distinct-model reviewers on the real branch diff. Consensus dangerous-direction (false-clean) findings: (a) export default/export = assignment invisible to defs [all 3 models; gemini Blocking]; (b) incidental reference inside a trusted wiring file counts as wired [gpt+gemini Major]; (c) duplicate-declared-name + partial-scan hardening from the judge. Adjudicator (claude-opus-4.8): FIX the cheap dangerous holes (export-assignment detection, duplicate-name finder, MIN_EXPECTED_SYSTEMS floor); DOCUMENT + pin negative regression tests for the incidental-ref-in-wiring-file limitation."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+          "clean": true,
+          "concerns_count": 1,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "verdict": "approve",
+          "notes": "Re-review of the updated diff. gpt-5.4 raised 1 Blocking: export default of a LOCAL decl still classified reexport (duplicate detection + barrel attribution broke) - FIXED via locallyDeclared/exportAssignedNames (local decl behind an assignment => declaration). gemini-3.1-pro: CLEAN, no blocking/major; 1 negligible Minor (destructured registry exports - documented blind spot). Adjudicator: sole round-2 Blocking resolved and re-verified (31 unit tests + typecheck + eslint pass; guard exits 0 on main); Minor documented. Loop clean."
+        }
+      ]
+    }
+  }
+}
