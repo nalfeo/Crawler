@@ -307,8 +307,10 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             }
           }
           (pendingShatter ??= []).push({
-            x: event.x,
-            y: event.y,
+            // event.x/event.y are world feet; CorpseShatterVfx works in render
+            // pixels, so convert at this boundary like every other bridge coord.
+            x: ftToPx(event.x),
+            y: ftToPx(event.y),
             textureKey,
             frame,
             scale,

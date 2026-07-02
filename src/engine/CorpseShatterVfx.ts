@@ -41,7 +41,7 @@ const SPECK_GRAVITY = 90;
 const NO_TINT = 0xffffff;
 
 export interface CorpseExplodeOptions {
-  /** Corpse centre in world space. */
+  /** Corpse centre in render pixels (the caller converts from world feet). */
   x: number;
   y: number;
   /** Texture + frame of the corpse sprite to cut up. */
