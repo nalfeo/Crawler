@@ -148,6 +148,18 @@ export const floorManifestDefSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * Per-floor lighting defaults. Only `ambient` (the base light level applied
+     * to visible tiles outside any light source) is authored per floor; all
+     * other lighting parameters come from the engine's DEFAULT_LIGHTING_CONFIG.
+     * Floor 1 ships 0.2; deeper/darker floors can ship lower values.
+     */
+    lighting: z
+      .object({
+        /** Base ambient light level in [0,1] applied to visible tiles. */
+        ambient: z.number().min(0).max(1),
+      })
+      .strict(),
   })
   .strict();
 

@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "per-floor-ambient-lighting",
+  "task_title": "Per-floor ambient lighting defaults",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 10,
+      "resolved_count": 10,
+      "notes": "Two rounds rejected then approved_with_changes. Apply via setLightingConfig before drawFloorTerrain; pin bootstrap to floor1; add fieldStepPx to getPerf; all-manifests schema test; observe via probe lab."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "notes": "Single-model code-review loop (gpt-5.4, high effort) on staged diff; no significant issues. Independently verified required-field manifest migration is safe (only 2 manifest.json files, both updated; makeManifest spreads floor1Manifest so it carries lighting)."
+    }
+  }
+}

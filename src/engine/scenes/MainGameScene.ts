@@ -173,6 +173,13 @@ export interface MainGameSceneOptions {
    * shared {@link SessionRecorder} interface, keeping layer boundaries intact.
    */
   sessionRecorderFactory?: (world: GameWorld, playerEid: number) => SessionRecorder;
+  /**
+   * Per-floor lighting overrides, merged over {@link DEFAULT_LIGHTING_CONFIG}
+   * when the scene is created. The shipped game passes the floor manifest's
+   * ambient here (see `createFloorMainSceneOptions`); labs may omit it to use
+   * the global defaults.
+   */
+  lightingConfig?: Partial<LightingConfig>;
 }
 
 declare global {
@@ -193,6 +200,7 @@ declare global {
         getPerf: () => {
           computeMsAvg: number;
           stepPx: number;
+          fieldStepPx: number;
           updateEveryNFrames: number;
         };
       };
@@ -511,6 +519,11 @@ export class MainGameScene extends Phaser.Scene {
     });
     this.input.on('pointerdown', this.handlePointerDown, this);
     this.initializeUi();
+    // Apply this floor's lighting over a clean DEFAULT base BEFORE the first
+    // light-field build in drawFloorTerrain(), so the field is built with the
+    // right stepPx, and so a scene restart resets any prior live tweaks. Routing
+    // through setLightingConfig() gives clamping + a stepPx-change rebuild.
+    this.setLightingConfig({ ...DEFAULT_LIGHTING_CONFIG, ...this.options.lightingConfig });
     this.drawFloorTerrain();
     this.ensureUiCamera();
     this.events.on(Phaser.Scenes.Events.ADDED_TO_SCENE, this.markCameraMasksDirty, this);
@@ -549,6 +562,7 @@ export class MainGameScene extends Phaser.Scene {
           getPerf: () => ({
             computeMsAvg: this.lightingComputeMsAvg,
             stepPx: this.lighting.stepPx,
+            fieldStepPx: this.lightField?.stepPx ?? 0,
             updateEveryNFrames: this.lighting.updateEveryNFrames,
           }),
         },
