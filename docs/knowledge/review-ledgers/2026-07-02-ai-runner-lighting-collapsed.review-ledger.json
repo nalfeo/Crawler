@@ -1,0 +1,22 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "ai-runner-lighting-collapsed",
+  "task_title": "Collapse AI runner Lighting panel by default",
+  "estimated_apples": 1,
+  "stages": {
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "notes": "Single-model code-review loop (1 apple). Reviewer confirmed close() placement is after all lightingFolder controls and the Perf subfolder; nothing re-opens the folder (no lightingFolder.open() exists; applyLightingSettings only pushes config to the debug API); the test assertion matches the source string; and no lil-gui folder open/close state is persisted via loadLabState/saveLabState. No concerns."
+    }
+  }
+}

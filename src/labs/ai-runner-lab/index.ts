@@ -548,6 +548,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   lightingPerfFolder.add(lightingPerf, 'computeMsAvg').name('Compute ms').listen();
   lightingPerfFolder.add(lightingPerf, 'stepPx').name('Live step').listen();
   lightingPerfFolder.add(lightingPerf, 'updateEveryNFrames').name('Live cadence').listen();
+  lightingFolder.close();
 
   /**
    * Lazily build a real hardware input capture (keyboard/mouse/touch) bound to
