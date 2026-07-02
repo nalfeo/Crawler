@@ -160,9 +160,11 @@ export function createGoreVfx(
     const initialW = targetW * BLOOD_POOL_INITIAL_SCALE;
     const initialH = targetH * BLOOD_POOL_INITIAL_SCALE;
 
+    // x/y are world feet; scale to pixels for the rendering layer. The size and
+    // jitter constants below are already pixel-space, so only the centre converts.
     const ellipse = scene.add.ellipse(
-      x + (vfxRandom() - 0.5) * 6,
-      y + (vfxRandom() - 0.5) * 4,
+      ftToPx(x) + (vfxRandom() - 0.5) * 6,
+      ftToPx(y) + (vfxRandom() - 0.5) * 4,
       initialW,
       initialH,
       poolColor,
