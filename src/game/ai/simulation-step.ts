@@ -65,6 +65,20 @@ export interface SimulationOptions {
   postSystems?: ReadonlyArray<(world: GameWorld) => void>;
   /** Enable Floor 1 scenario systems */
   enableFloor1?: boolean;
+  /**
+   * Melee hit-detection broad-phase mode. Defaults to `true` (grid): melee uses
+   * the frame's fresh spatial-hash grid as a superset broad-phase, preserving
+   * legacy iteration order via a canonical rank map (identical-by-construction).
+   * Set to `false` to force the legacy full-`[Health,Position]` scan.
+   *
+   * This is a determinism rollback / guard seam, not a gameplay toggle: both
+   * paths are proven to produce byte-identical outcomes. It lets the permanent
+   * pipeline differential regression test drive grid-vs-fallback through the
+   * REAL full pipeline (so a future system inserted into the collision→melee
+   * seam that moved combat targets would trip the guard), and gives ops a
+   * one-line kill-switch if a grid regression is ever suspected in the field.
+   */
+  meleeBroadPhase?: boolean;
 }
 
 /**
@@ -135,7 +149,7 @@ export function runSimulationStep(
   damageSystem(world, collision);
   aoeOnImpactPostDamage(world);
   areaDamageSystem(world, collision);
-  meleeSwingSystem(world);
+  meleeSwingSystem(world, options.meleeBroadPhase === false ? undefined : collision);
   knockbackSystem(world);
   beamSystem(world);
   trapSystem(world, collision);

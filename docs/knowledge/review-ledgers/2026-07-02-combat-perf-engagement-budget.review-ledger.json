@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "combat-perf-engagement-budget",
+  "task_title": "Combat perf: melee spatial-hash broad-phase (beam fast-follow)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 9,
+      "resolved_count": 9,
+      "notes": "Separate-model plan review (gpt-5.4, high effort) on the full beam+melee plan: 9 concerns (2 blocking, 3 major, 4 minor), all resolved in plan.md. Scope then narrowed to Path B melee-only at 3 apples. B1 (beam actual-segment radius) and B2 (authoritative knockback-staleness margin) are beam-specific, resolved-by-design and DEFERRED to the beam fast-follow PR. The 7 melee-applicable concerns are satisfied by this PR: M3 executable sprite-less-Health fallback to full scan, M4 multi-frame lockstep differential test carrying exact RNG state, M5 same-PR legacy-vs-new A/B benches, m6 once-per-frame canonical rank map (precondition VERIFIED: beam/melee/applyDamage never mutate the Health,Position set mid-invocation), m7 copy queryRadius reused buffer to scratch, m8 EPS plus sentinel plus boundary tests, m9 tier."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "notes": "Round 1 (project code-review agent, claude-sonnet-4.6) reviewed the full meleeSwingSystem full-scan->spatial-hash conversion: no substantive defects. It verified all 3 determinism properties (superset radius dominates every hit case, byte-identical narrow-phase, cross-world-safe gen-stamped rank map), the no-mid-invocation-mutation precondition, scratch-copy aliasing safety, capacity alignment, and that the executable fallback is real. It raised ONE non-blocking future-proofing observation: the unit differential test runs melee immediately after collision, so it cannot catch a FUTURE pipeline change that inserts a target-moving system into the collision->melee seam. RESOLVED (rule #10 - promote the determinism-risk class into a permanent deterministic check) by adding the meleeBroadPhase guard seam on SimulationOptions plus tests/headless/melee-broadphase-pipeline-determinism.test.ts, which drives the REAL full pipeline grid-vs-forced-fallback across contiguous seeds and asserts byte-identical RunStats. Round 2 (claude-sonnet-4.6) reviewed that fix delta (the flag threading + new guard test): no significant issues; confirmed default routing is grid for all existing callers, only explicit false triggers fallback, wall-time terminator is disabled so the deterministic frame cap is the sole terminator, and wallTimeMs is genuinely the only nondeterministic RunStats field stripped. Loop closed clean."
+    }
+  }
+}

@@ -101,7 +101,12 @@ export function runSimulationStep(
   damageSystem(world, collision);
   aoeOnImpactPostDamage(world);
   areaDamageSystem(world, collision);
-  meleeSwingSystem(world);
+  // meleeSwingSystem uses this frame's fresh spatial-hash grid (built by
+  // collisionSystem above) as a superset broad-phase. That is only sound while
+  // nothing moves a combat target between the grid build and here — do NOT insert
+  // a target-translating system into this seam without re-proving determinism.
+  // The invariant is guarded by tests/headless/melee-broadphase-pipeline-determinism.test.ts.
+  meleeSwingSystem(world, collision);
   knockbackSystem(world);
   beamSystem(world);
   trapSystem(world, collision);

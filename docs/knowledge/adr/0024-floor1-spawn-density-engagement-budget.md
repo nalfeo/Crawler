@@ -212,3 +212,87 @@ from `flowFieldStep`, and a goal marker.
 in `tests/ecs/flow-field.test.ts` (door routing parity with A\*, diagonal descent,
 straight-diagonal travel, and corner-cut prevention); like `pathfinding.ts` it is a
 primitive, not an ECS system, so it needs no lab of its own.
+
+## Follow-up (2026-07-02): combat hit-detection broad-phase + engagement-budget validation
+
+### Estimated Complexity
+
+🍎 x 3 — a behaviour-preserving optimisation of one hit-detection system (melee),
+a permanent multi-frame differential determinism regression test, and A/B benches
+at Floor-2 scale. No gameplay change, no new lab (pure optimisation of an existing
+system), no core-AI change.
+
+### Context
+
+The `enemyCap = 100` ceiling (and Floor 2's larger territories) makes the
+per-frame cost of the combat hit-detection systems the next thing to budget
+against. `meleeSwingSystem` and `beamSystem` both resolved hits by scanning
+**every** `[Health, Position]` entity each swing/frame (O(swings × entities)) — a
+full linear scan that ignores the `SpatialHashGrid` the collision stage already
+builds and threads to `areaDamageSystem`/`trapSystem` via `collisionResult.grid`.
+
+### Decision
+
+Convert combat hit-detection to a spatial-hash **broad-phase**, reusing the
+existing grid (the exact pattern `areaDamageSystem` uses), as a strictly
+**behaviour-preserving, identical-by-construction** optimisation — delivered in
+two focused PRs:
+
+- **Melee now (this follow-up).** `meleeSwingSystem(world, collisionResult?)`
+  narrows candidates via `grid.queryRadius(cx, cy, R)` where `R` is a proven
+  **superset** of the exact swing hit region (`bladeLength + max(BLADE_HIT_HALF_WIDTH,
+headRadius) + EPS`, attacker-centred). The unchanged legacy narrow-phase
+  predicate is then applied to the superset. Melee is provably **grid-staleness-free**:
+  nothing translates entity positions between the grid build (`collisionSystem`)
+  and the melee stage, so the grid is fresh and no knockback-margin term is needed.
+- **Beam: fast-follow PR (held).** The beam runs after `knockbackSystem`, so it can
+  see ≤1 step of position staleness; the fix touches `knockbackSystem.ts`
+  (movement-displacement), sequenced separately to avoid colliding with the
+  concurrent status-effect/movement work.
+
+**Determinism invariant (the #1 risk).** `applyDamage` draws `world.rng.next()` per
+qualifying hit (crit for enemy targets, dodge for player targets) _before_ HP is
+computed, and hit events are emitted in processing order — so **target processing
+order is determinism-observable**. Reordering hits would change the RNG draw
+sequence and silently break the 90% Floor-1 seed win-rate gate. Three properties
+keep the result identical to the legacy scan:
+
+1. **Superset broad-phase** — `queryRadius(R)` ⊇ legacy candidates (uses
+   `circleIntersectsAabb`, over-inclusive → safe).
+2. **Unchanged narrow-phase** — the exact legacy predicate/LoS/hit-once/immunity
+   logic is applied untouched.
+3. **Preserved iteration order** — a **once-per-frame canonical rank map** (bitecs
+   dense-array order of `query([Health, Position])`) re-sorts broad-phase
+   candidates into legacy order. Verified safe because neither `meleeSwingSystem`
+   nor `apply-damage.ts` mutates the entity/component set mid-invocation, so the
+   dense order is stable within the call and the once-per-frame map is identical to
+   legacy's per-swing re-query order. An **executable fallback** to the full scan
+   runs when the grid is absent or any `[Health, Position]` entity lacks a `Sprite`
+   (⇒ not grid-indexed) — not a comment, a real prod branch that is also the
+   differential-test oracle and the A/B-bench legacy driver.
+
+### Validation (before / after)
+
+- **Permanent differential determinism regression test**
+  (`tests/ecs/melee-broadphase-determinism.test.ts`, rule #10). Multi-frame
+  lockstep: two identically seeded `createTestWorld({ seed })` worlds — one grid
+  broad-phase, one no-arg full scan — stepped together over **30 seeds × 12
+  frames**, asserting byte-identical `Health`, `Position`, `world.combatEvents`,
+  `world.skillUsageEvents`, and the **exact `SeededRandom` cursor** every frame,
+  plus boundary/fallback units (empty grid, exact-radius/head-hit boundary,
+  superset-rejected, zero-reach, spriteless-Health fallback, non-combat-entity
+  filter). 8/8 green.
+- **A/B benches, same PR** (`tests/bench/core-systems.bench.ts`): legacy full scan
+  vs grid broad-phase over identical Floor-2-scale scenes (180 enemies, 6
+  simultaneous swings). Grid is **~3.5×–5× faster** in the realistic _spread_ scene
+  (the target); in a pathological _all-clustered_ worst case it is within ~6–30% of
+  legacy (the sort/copy overhead isn't amortised when every enemy shares a cell) —
+  i.e. a large win where it matters and no catastrophic regression at the extreme.
+
+### Engagement budget (this ADR's model) — validated, no change
+
+The director engagement budget defined above (`enemyCap = 100`,
+`engageTarget = 6` @ `engageRadiusPx = 720`, burst `maxSpawnsPerTick = 3`,
+recycle-at-cap) was re-confirmed as the active, sole enforcement of active-set
+density. This follow-up **validates** it holds at Floor-2 spawn scale via the
+extended benches; **no gameplay/tuning change** was made.
