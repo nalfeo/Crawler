@@ -639,6 +639,74 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   fovPerfFolder.add(fovPerf, 'cellPx').name('Live cell px').listen();
   fovPerfFolder.add(fovPerf, 'subFactor').name('Live factor').listen();
 
+  const tryGetFovDebugApi = () => window.__floor1Debug?.fov ?? null;
+
+  const syncFovTelemetry = (): void => {
+    const fov = tryGetFovDebugApi();
+    if (!fov) {
+      return;
+    }
+    const config = fov.getConfig();
+    Object.assign(fovSettings, config);
+    const perf = fov.getPerf();
+    fovPerf.computeMsAvg = perf.computeMsAvg;
+    fovPerf.lastComputeMs = perf.lastComputeMs;
+    fovPerf.subFactor = perf.subFactor;
+    fovPerf.cellPx = perf.cellPx;
+  };
+
+  const applyFovSettings = (): void => {
+    const fov = tryGetFovDebugApi();
+    if (!fov) {
+      return;
+    }
+    // setConfig prioritizes `subFactor` over `cellPx`, so sending the whole
+    // object applies the canonical factor and routes `discoveredLight` to the
+    // lighting config (its owner). The echoed result re-syncs the derived cellPx.
+    fov.setConfig({ ...fovSettings });
+    syncFovTelemetry();
+  };
+
+  const useFovPreset = (preset: FovPresetId): void => {
+    const fov = tryGetFovDebugApi();
+    if (!fov) {
+      return;
+    }
+    fov.usePreset(preset);
+    syncFovTelemetry();
+    persistLabState();
+  };
+
+  const fovFolder = gui.addFolder('FOV');
+  for (const [preset, label] of [
+    ['tile', 'Preset: 32px (f1)'],
+    ['halfTile', 'Preset: 16px (f2, default)'],
+    ['quarterTile', 'Preset: 8px (f4)'],
+    ['fine', 'Preset: 4px (f8)'],
+  ] as const satisfies ReadonlyArray<readonly [FovPresetId, string]>) {
+    fovFolder.add({ activate: () => useFovPreset(preset) }, 'activate').name(label);
+  }
+  fovFolder
+    .add(fovSettings, 'subFactor', 1, MAX_FOV_SUB_FACTOR, 1)
+    .name('Sub-factor')
+    .listen()
+    .onChange(() => {
+      persistLabState();
+      applyFovSettings();
+    });
+  fovFolder
+    .add(fovSettings, 'discoveredLight', 0, 0.2, 0.005)
+    .name('Discovered dim')
+    .listen()
+    .onChange(() => {
+      persistLabState();
+      applyFovSettings();
+    });
+  const fovPerfFolder = fovFolder.addFolder('Perf');
+  fovPerfFolder.add(fovPerf, 'computeMsAvg').name('Compute ms').listen();
+  fovPerfFolder.add(fovPerf, 'cellPx').name('Live cell px').listen();
+  fovPerfFolder.add(fovPerf, 'subFactor').name('Live factor').listen();
+
   /**
    * Lazily build a real hardware input capture (keyboard/mouse/touch) bound to
    * the live scene. Used only while {@link manualControl} is active so the human
