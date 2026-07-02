@@ -41,7 +41,7 @@ function parseArgs(): CLIArgs {
     eventSummary: null,
     sampleInterval: 15,
     weapon: null,
-    enemyDamageMultiplier: 10,
+    enemyDamageMultiplier: 1,
   };
 
   for (let i = 2; i < process.argv.length; i++) {
@@ -107,7 +107,7 @@ Options:
   --sample-interval <n>   Frames between telemetry samples (default: 15)
   --debug                 Enable verbose logging
   --enemy-damage-multiplier <n>
-                           Multiply hostile Damage values (default: 10)
+                           Multiply hostile Damage values (default: 1)
   --help, -h              Show this help message
 
 Examples:

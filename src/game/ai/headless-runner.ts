@@ -273,6 +273,11 @@ export async function runHeadless(
       pathLen: nav?.pathWaypoints.length ?? 0,
       netDisp: Math.round(netDisp),
       pathTravel: Math.round(pathTravelAccum),
+      remainingMs:
+        world.floor1?.objective.deadlineMs != null
+          ? Math.round(world.floor1.objective.deadlineMs - world.elapsedMs)
+          : null,
+      inSafe: world.playerInSafeRoom === true,
       ...(note ? { note } : {}),
     };
   };

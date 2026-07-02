@@ -19,7 +19,7 @@ export const DEFAULT_CONFIG: Required<AIConfig> = {
   scanRadius: 50,
   rangedSafeDistance: 15,
   opportunisticGrabRadius: 18,
-  dodgeWeight: 0.38,
+  dodgeWeight: 0.25,
   // Loot-detour pull weight. The opportunistic collect layer only pulls toward
   // loot within 5 ft of the player's forward path (an "on-path detour"), so
   // unlike the old omnidirectional pull it cannot systematically drift the net
@@ -27,14 +27,14 @@ export const DEFAULT_CONFIG: Required<AIConfig> = {
   // mode that previously forced this to 0.0 and blew the headless floor-clear
   // budget. A modest weight keeps Track A's path dominant so the player just
   // curves toward pickups it passes near.
-  collectPullWeight: 0.35,
+  collectPullWeight: 0.5,
   // Enemy-farm pull: drift toward the nearest enemy AHEAD on the player's path
   // while travelling (explore + quest-objective navigation), so auto-fire starts
   // sooner on swarm the player walks past. Kept low and forward-biased (see
   // OpportunisticFarm) so Track A's quest path stays dominant and the pull can
   // never drag the player off-objective into an off-path fight — the failure
   // mode that previously forced this to 0.0 and blew the floor-clear budget.
-  farmPullWeight: 0.04,
+  farmPullWeight: 0.07,
   debug: false,
 };
 
@@ -135,7 +135,7 @@ export const NAVIGATION_LOOKAHEAD_FT = 3;
 // produce a smooth arc rather than an instant 90° snap. Value is tuned so a
 // full cardinal-direction change completes in ~4-5 frames (~70ms at 60fps) while
 // keeping top speed virtually unaffected during straight-line travel.
-export const MOVE_SMOOTH_FACTOR = 0.45;
+export const MOVE_SMOOTH_FACTOR = 0.5;
 // Close-range direct approach threshold (~1.5 tiles). Within this distance, and
 // with a clear straight corridor, the AI abandons tile-granular A* and slides
 // straight at the exact target position. Tile A* targets tile CENTERS and cannot
@@ -373,7 +373,7 @@ export const GOLD_FARM_COLLECT_RADIUS_FT = 32.5;
 // Enemy must be within this radius (ft) to count as a dodge threat. Sized so the
 // player evades swarm contact while travelling toward quest objectives but not so
 // wide it routes around enemy pockets it should engage.
-export const DODGE_THREAT_RADIUS_FT = 16;
+export const DODGE_THREAT_RADIUS_FT = 14;
 // Minimum closing speed (ft/frame): dot product of enemy velocity with the
 // unit toward-player vector. Low enough that ordinary chasers (not just sprint
 // chargers) trigger an evasive strafe while the player is navigating.
@@ -386,23 +386,8 @@ export const DODGE_CLOSING_SPEED_FT_PER_FRAME = 0.15;
 // (at roughly ¾ of the threat scan radius) so the player arcs around stationary
 // mobs well before the path converges on them, giving direction-blending time
 // to produce smooth curves instead of sharp last-second veer corrections.
-export const DODGE_BLOCK_RADIUS_FT = 14;
-export const DODGE_BLOCK_AHEAD_DOT = 0.2;
-// When dodging a path-blocking enemy, blend a mostly-perpendicular sidestep with
-// a smaller backtrack component to create a natural arc around the blocker.
-export const DODGE_SIDESTEP_WEIGHT = 0.95;
-export const DODGE_BACKTRACK_WEIGHT = 0.15;
-// While Track A is travelling a quest-critical Progress objective (state EXPLORE
-// with a progress target), bias strongly toward safety: more dodge, fewer detours.
-// At high damage multipliers (10x+), enemies circle at 20-50 ft instead of charging,
-// so the player needs to see them as dodge threats from farther away to arc around them
-// while still pursuing the objective. Separated from normal threat radii so regular
-// engagement/exploration is not affected.
-export const OBJECTIVE_TRAVEL_DODGE_WEIGHT_MULT = 1.3;
-export const OBJECTIVE_TRAVEL_DODGE_THREAT_RADIUS_FT = 32;
-export const OBJECTIVE_TRAVEL_DODGE_BLOCK_RADIUS_FT = 28;
-export const OBJECTIVE_TRAVEL_COLLECT_SCALE = 0.35;
-export const OBJECTIVE_TRAVEL_FARM_SCALE = 0.2;
+export const DODGE_BLOCK_RADIUS_FT = 10;
+export const DODGE_BLOCK_AHEAD_DOT = 0.4;
 // --- On-path loot detour (OpportunisticCollect) ---
 // Rule (player's words): "if there is loot within 5' of my path and I am not
 // actively fighting or dodging enemies, make the slight detour to grab it."
@@ -465,11 +450,96 @@ export const PANIC_MIN_DODGE_WEIGHT_SCALE_LOCKED = 0.3;
 // traversing toward combat/room objectives. Distances are in feet (the internal
 // spatial unit): allow up to ~20 ft of extra path, or 0.5x the direct distance,
 // whichever is larger.
-export const QUEST_GIVER_DETOUR_MAX_EXTRA_FT = 16;
-export const QUEST_GIVER_DETOUR_MAX_EXTRA_FRACTION = 0.35;
+export const QUEST_GIVER_DETOUR_MAX_EXTRA_FT = 26;
+export const QUEST_GIVER_DETOUR_MAX_EXTRA_FRACTION = 0.6;
 // An NPC within this radius (ft) of the player counts as "at the interaction
 // point"; beyond it the NPC is only a navigation/detour target.
 export const NPC_INTERACTION_RADIUS_FT = 12.5;
 // Clamp for the "clear a nearby threat before approaching an NPC" check: a threat
 // must be within min(engageRadius, this) feet to pre-empt the NPC approach.
 export const NPC_APPROACH_THREAT_RADIUS_FT = 8;
+
+// --- Predictive safe-gap travel steering (travel-steering.ts) ---
+// Replaces the additive single-closest-threat "dodge nudge" during travel with a
+// context-steering controller that fans out candidate headings around the
+// objective direction and picks the safest forward-progressing arc. This
+// generalizes the excellent ENGAGE kite's spacing philosophy to travel so the
+// runner *dances around* mobs instead of bulldozing through them. Damage-agnostic
+// (nothing here scales with hostile damage) — see the review ledger 2026-07-02.
+//
+// Master switch: when false the wrapper is skipped and the legacy additive dodge
+// path runs unchanged (safe rollback without deleting code).
+export const TRAVEL_STEERING_ENABLED = true;
+// Combined contact radius (player + enemy half-extents) used to convert predicted
+// centre-to-centre distances into true surface (edge-to-edge) clearances. Anchored
+// to the AI's existing contact model so travel spacing agrees with ENGAGE.
+export const TRAVEL_BODY_RADIUS_FT = MIN_PLAYER_ENEMY_CONTACT_FT;
+// Surface gaps (edge-to-edge feet). Below HARD = contact imminent (steep penalty);
+// SAFE is the spacing the runner keeps while travelling. Anchored to the proven
+// ENGAGE kite, which orbits mobs at CONTACT_SAFE_ORBIT_FT (4.5) and dodges superbly
+// — travel reuses that spacing philosophy rather than brushing bodies. The runner
+// is ~2.5x faster than mobs, so holding a real gap costs little (it re-plans every
+// frame and resumes the beeline the instant the lane clears); the earlier, wider
+// arc is what actually sheds contact damage. COMFORT biases toward extra room when
+// otherwise indifferent. Clear-time may rise for a safer, richer win — that is an
+// explicit design goal, not a regression (only missing the floor collapse is).
+// Surface gaps (edge-to-edge feet). HARD is the true "never overlap" floor: the
+// thread-past pass (see pickSafeTravelHeading) only ever commits to lanes whose
+// predicted gap stays ≥ HARD, so HARD must be wide enough to absorb one frame of
+// closing speed + discretisation error (~1 ft) and reliably avoid body contact —
+// contact damage is binary at overlap, so keeping gap ≥ HARD is what actually
+// shrinks damage taken, independent of the damage multiplier. SAFE is the comfort
+// standoff the runner tries to keep while travelling and the beeline-accept
+// threshold: it stays on the EXACT objective beeline whenever the beeline's
+// predicted gap ≥ SAFE (beeline short-circuit), so SAFE is the deviation knob —
+// smaller SAFE ⇒ leave the beeline only when a brush is closer, preserving the
+// baseline trajectory/win-rate; larger SAFE ⇒ arc earlier/wider (more damage shed,
+// more detour time). Kept modest because the runner is faster and re-plans every
+// frame, so it needs little buffer. Crucially, leaving the beeline now means
+// threading FORWARD past the mob (Pass 2), not backing away, so the time cost of a
+// slightly larger SAFE is small — no more radial-retreat limit cycle. The panic
+// ramp (computeTravelSteering) eases SAFE toward HARD as the collapse deadline nears.
+export const TRAVEL_HARD_GAP_FT = 1.5;
+export const TRAVEL_SAFE_GAP_FT = 1.85;
+export const TRAVEL_COMFORT_GAP_FT = 2.5;
+// Only threats within this centre distance (feet) are scored. Kept modest so the
+// runner reacts to genuinely closing mobs, not distant ones it will never touch —
+// reacting early adds detour time that risks the deadline on marginal seeds.
+export const TRAVEL_THREAT_RADIUS_FT = 10;
+// Closest-approach prediction horizon, frames (~0.27 s at 60 fps). Long enough to
+// see an imminent body contact and slip it, short enough not to pre-emptively
+// orbit mobs that cannot reach the (faster) runner within the window.
+export const TRAVEL_HORIZON_FRAMES = 14;
+// Candidate heading offsets from the objective direction, degrees (mirrored ±).
+// Fine near objDir (cheap arcs), coarse toward the back (only used in pincers).
+export const TRAVEL_CANDIDATE_OFFSETS_DEG: readonly number[] = [
+  0, 15, 30, 45, 60, 75, 90, 110, 135, 160, 180,
+];
+// Wall-probe sample distances along a candidate, feet (ascending). A wall within
+// the FIRST step makes the candidate impassable; farther walls are only penalized.
+// Probes out to 15 ft so the Pass-2 kite filter (wallPenalty === 0 ⟺ deeply clear)
+// can tell a genuine open escape lane from a shallow wall pocket that reads clear
+// at 9 ft but dead-ends just beyond — the pocket that re-wedged a doorway at 159 s.
+export const TRAVEL_WALL_PROBE_DISTANCES_FT: readonly number[] = [3, 6, 9, 12, 15];
+// Minimum progress dot for a candidate to count as "progressing" toward objective.
+export const TRAVEL_MIN_SAFE_PROGRESS_DOT = 0.05;
+// Scoring weights. Progress dominates unless a real predicted contact is imminent
+// (safety term is steep near contact). Continuity yields smooth arcs; kite bias
+// arcs *around* the nearest mob like the engage orbit.
+export const TRAVEL_W_PROGRESS = 4;
+export const TRAVEL_W_SAFETY = 10;
+export const TRAVEL_W_CONTINUITY = 0.8;
+export const TRAVEL_W_KITE = 1.2;
+// v1 keeps loot/farm biasing at 0 so the existing Track-B opportunistic collect
+// and farm pulls stay in charge; the scoring hooks are ready to enable in a later
+// phase once the safety-only steering is proven not to regress win-rate.
+export const TRAVEL_W_LOOT = 0;
+export const TRAVEL_W_FARM = 0;
+export const TRAVEL_LOOT_LOOKAHEAD_FT = 12;
+export const TRAVEL_LOOT_CORRIDOR_FT = 4;
+// |Vrel|² below this ⇒ closest-approach is degenerate (near-parallel); use the
+// current separation instead of a spurious projection.
+export const TRAVEL_REL_SPEED_EPSILON_SQ = 1e-4;
+// COLLECT uses steering only while farther than this from the pickup, so the final
+// harvest overlap approach (Track A close-range slide) is left untouched.
+export const TRAVEL_COLLECT_MIN_STEER_DIST_FT = CLOSE_APPROACH_DIRECT_FT;

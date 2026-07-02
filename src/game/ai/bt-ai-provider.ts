@@ -12,6 +12,7 @@ import {
   Health,
   Enemy,
   Velocity,
+  Stats,
   XpGem,
   Gold,
   DroppedItem,
@@ -45,7 +46,7 @@ import { normalizeInputDirection } from '../../shared/input.js';
 import { hasItem } from '../../shared/inventory.js';
 import { SeededRandom } from '../../shared/random.js';
 import { createLogger } from '../../shared/logger.js';
-import { WeaponType } from '../../shared/constants.js';
+import { WeaponType, PLAYER_SPEED } from '../../shared/constants.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_TUTORIAL_QUEST_ID,
@@ -140,13 +141,6 @@ import {
   DODGE_CLOSING_SPEED_FT_PER_FRAME,
   DODGE_BLOCK_RADIUS_FT,
   DODGE_BLOCK_AHEAD_DOT,
-  DODGE_SIDESTEP_WEIGHT,
-  DODGE_BACKTRACK_WEIGHT,
-  OBJECTIVE_TRAVEL_DODGE_WEIGHT_MULT,
-  OBJECTIVE_TRAVEL_DODGE_THREAT_RADIUS_FT,
-  OBJECTIVE_TRAVEL_DODGE_BLOCK_RADIUS_FT,
-  OBJECTIVE_TRAVEL_COLLECT_SCALE,
-  OBJECTIVE_TRAVEL_FARM_SCALE,
   PATH_CORRIDOR_HALF_WIDTH_FT,
   DETOUR_MIN_HEADING_MAGNITUDE,
   FARM_FORWARD_SCAN_RADIUS_FT,
@@ -161,14 +155,68 @@ import {
   QUEST_GIVER_DETOUR_MAX_EXTRA_FRACTION,
   NPC_INTERACTION_RADIUS_FT,
   NPC_APPROACH_THREAT_RADIUS_FT,
+  TRAVEL_STEERING_ENABLED,
+  TRAVEL_BODY_RADIUS_FT,
+  TRAVEL_HARD_GAP_FT,
+  TRAVEL_SAFE_GAP_FT,
+  TRAVEL_COMFORT_GAP_FT,
+  TRAVEL_THREAT_RADIUS_FT,
+  TRAVEL_HORIZON_FRAMES,
+  TRAVEL_CANDIDATE_OFFSETS_DEG,
+  TRAVEL_WALL_PROBE_DISTANCES_FT,
+  TRAVEL_MIN_SAFE_PROGRESS_DOT,
+  TRAVEL_W_PROGRESS,
+  TRAVEL_W_SAFETY,
+  TRAVEL_W_CONTINUITY,
+  TRAVEL_W_KITE,
+  TRAVEL_W_LOOT,
+  TRAVEL_W_FARM,
+  TRAVEL_LOOT_LOOKAHEAD_FT,
+  TRAVEL_LOOT_CORRIDOR_FT,
+  TRAVEL_REL_SPEED_EPSILON_SQ,
+  TRAVEL_COLLECT_MIN_STEER_DIST_FT,
 } from './bt-ai-tuning.js';
 // Floor-progress scoring + its weight live in ./scoring.ts (re-exported below so
 // this module's public surface is unchanged).
 import { computeFloorProgressScore } from './scoring.js';
 // Pure line-of-sight sampling lives in ./bt-ai-geometry.ts (unit-tested).
 import { hasClearLineOfSight } from './bt-ai-geometry.js';
+// Pure predictive safe-gap travel steering (unit-tested; damage-agnostic).
+import {
+  pickSafeTravelHeading,
+  type TravelSteeringInput,
+  type TravelSteeringParams,
+  type TravelThreat,
+  type TravelSteeringResult,
+} from './travel-steering.js';
 
 const logger = createLogger('game:bt-ai-provider');
+
+// Below this magnitude a heading is treated as "no direction" (skip steering /
+// neutral continuity) — matches the pure module's own zero-vector epsilon.
+const TRAVEL_HEADING_EPSILON = 1e-6;
+
+// Assembled once from the TRAVEL_* tuning constants; the pure steering module
+// reads it by reference each frame and never mutates it.
+const TRAVEL_PARAMS: TravelSteeringParams = {
+  hardGapFt: TRAVEL_HARD_GAP_FT,
+  safeGapFt: TRAVEL_SAFE_GAP_FT,
+  comfortGapFt: TRAVEL_COMFORT_GAP_FT,
+  threatRadiusFt: TRAVEL_THREAT_RADIUS_FT,
+  horizonFrames: TRAVEL_HORIZON_FRAMES,
+  candidateOffsetsDeg: TRAVEL_CANDIDATE_OFFSETS_DEG,
+  wallProbeDistancesFt: TRAVEL_WALL_PROBE_DISTANCES_FT,
+  minSafeProgressDot: TRAVEL_MIN_SAFE_PROGRESS_DOT,
+  wProgress: TRAVEL_W_PROGRESS,
+  wSafety: TRAVEL_W_SAFETY,
+  wContinuity: TRAVEL_W_CONTINUITY,
+  wKite: TRAVEL_W_KITE,
+  wLoot: TRAVEL_W_LOOT,
+  wFarm: TRAVEL_W_FARM,
+  lootLookaheadFt: TRAVEL_LOOT_LOOKAHEAD_FT,
+  lootCorridorFt: TRAVEL_LOOT_CORRIDOR_FT,
+  relSpeedEpsilonSq: TRAVEL_REL_SPEED_EPSILON_SQ,
+};
 
 // Re-exported so bt-ai-provider.ts's public surface is unchanged: no importer
 // (or its existing unit test) needs to change.
@@ -264,8 +312,9 @@ export class BehaviorTreeAI implements AIInputProvider {
    * carries over from the previous frame. */
   private smoothMoveX: number = 0;
   private smoothMoveY: number = 0;
-  /** True only while Track A is travelling a quest-critical Progress position goal. */
-  private objectiveTravelActive: boolean = false;
+  /** Last travel-steering result (or null when steering did not drive the most
+   * recent poll). Exposed via {@link getTravelSteeringDebug} for tests/telemetry. */
+  private lastTravelSteering: TravelSteeringResult | null = null;
   /**
    * Whether the AI is currently committed to a retreat. Latched so the retreat
    * condition can apply hysteresis (see {@link RETREAT_HYSTERESIS_MULT}) instead
@@ -282,8 +331,6 @@ export class BehaviorTreeAI implements AIInputProvider {
   private retreatTargetX: number | null = null;
   private retreatTargetY: number | null = null;
   private retreatRepickFrame: number = 0;
-  /** Frames spent in continuous retreat state. Reset on re-engagement or damage taken. */
-  private retreatStallFrames: number = 0;
   /**
    * Persistent melee-kite orbit direction (+1 / -1) and the frame it was last
    * flipped. Held across polls so the player circles the enemy steadily instead
@@ -440,21 +487,21 @@ export class BehaviorTreeAI implements AIInputProvider {
       // Track A: exclusive priority selector (original logic, unchanged)
       selector(
         'Track A: Movement Goal',
-        // Priority 0: Retreat when low health
+        // Priority 1: Retreat when low health
         this.buildRetreatBehavior(),
-        // Priority 1: Interact with nearby NPCs
+        // Priority 2: Interact with nearby NPCs
         this.buildInteractBehavior(),
-        // Priority 2: Seek progression objectives.
+        // Priority 3: Seek progression objectives.
         this.buildProgressBehavior(),
-        // Priority 2.5: Leave a safe room when enemies are present.
+        // Priority 3.5: Leave a safe room when enemies are present.
         this.buildLeaveSafeRoomBehavior(),
-        // Priority 3: Engage enemies
+        // Priority 4: Engage enemies
         this.buildEngageBehavior(),
-        // Priority 4: Collect nearby loot
+        // Priority 5: Collect nearby loot
         this.buildCollectBehavior(),
-        // Priority 5: Close distance to nearby enemies before wandering off
+        // Priority 6: Close distance to nearby enemies before wandering off
         this.buildHuntBehavior(),
-        // Priority 6: Explore when nothing else to do
+        // Priority 7: Explore when nothing else to do
         this.buildExploreBehavior(),
       ),
       // Track B: opportunistic layer — side-effectful, never gates the tree
@@ -479,15 +526,13 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.retreating = false;
     this.retreatTargetX = null;
     this.retreatTargetY = null;
-    this.retreatStallFrames = 0;
   }
 
   private buildRetreatBehavior(): BTNode {
     return sequence(
       'Retreat',
       condition('Low Health Under Threat', (ctx) => {
-        const retreatThreshold = this.getEffectiveRetreatThreshold(ctx.world, ctx.healthPercent);
-        if (ctx.healthPercent >= retreatThreshold) {
+        if (ctx.healthPercent >= this.config.retreatThreshold) {
           this.endRetreat();
           return false;
         }
@@ -508,7 +553,6 @@ export class BehaviorTreeAI implements AIInputProvider {
         return true;
       }),
       action('Set Retreat State', (ctx) => {
-        this.retreatStallFrames++;
         const threat = ctx.blackboard['retreatThreat'] as WorldTarget | undefined;
         this.decision.state = AIState.RETREAT;
         this.decision.reason = `Low health (${(ctx.healthPercent * 100).toFixed(0)}%) near threat`;
@@ -545,39 +589,6 @@ export class BehaviorTreeAI implements AIInputProvider {
         return BTStatus.SUCCESS;
       }),
     );
-  }
-
-  private getDynamicRetreatThreshold(world: GameWorld): number {
-    const hostileMult = Math.max(1, world.hostileDamageMultiplier ?? 1);
-    if (hostileMult <= 1) {
-      return this.config.retreatThreshold;
-    }
-    // Under higher hostile damage multipliers, retreat earlier so the AI does not
-    // keep trading contact hits while pathing between objectives, but keep the
-    // threshold bounded so it can still re-enter combat and progress objectives.
-    return Math.min(0.45, this.config.retreatThreshold + (hostileMult - 1) * 0.015);
-  }
-
-  /**
-   * Get the effective retreat exit threshold, considering stall-escape logic.
-   * If the AI has been retreating for sustained time at very low health, force
-   * re-engagement to break out of low-health kite loops.
-   */
-  private getEffectiveRetreatThreshold(world: GameWorld, healthPercent: number): number {
-    const baseThreshold = this.getDynamicRetreatThreshold(world);
-    // After 360 frames (~12s at 30fps) of sustained retreat at very low health,
-    // force re-engagement by lowering the exit threshold to a floor based on current health.
-    const STALL_ESCAPE_FRAMES = 360;
-    const STALL_ESCAPE_HEALTH_FLOOR = 0.2; // Force escape at 20% or below
-    if (
-      this.retreatStallFrames > STALL_ESCAPE_FRAMES &&
-      healthPercent < STALL_ESCAPE_HEALTH_FLOOR
-    ) {
-      // Force escape by setting threshold just above current health,
-      // which guarantees the condition (healthPercent >= threshold) will be true on next poll
-      return Math.max(0, healthPercent - 0.01);
-    }
-    return baseThreshold;
   }
 
   /**
@@ -765,7 +776,6 @@ export class BehaviorTreeAI implements AIInputProvider {
         const enemyTarget = this.progressTargetAsEnemy(ctx.world, target, ctx.playerX, ctx.playerY);
         if (enemyTarget) {
           const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, enemyTarget);
-          this.objectiveTravelActive = false;
           this.decision.state = AIState.ENGAGE;
           this.decision.targetEid = enemyTarget.eid;
           this.decision.targetX = plan.targetX;
@@ -778,7 +788,6 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.decision.targetX = target.x;
         this.decision.targetY = target.y;
         this.decision.reason = target.reason;
-        this.objectiveTravelActive = true;
         return BTStatus.SUCCESS;
       }),
     );
@@ -1137,15 +1146,6 @@ export class BehaviorTreeAI implements AIInputProvider {
         headY /= headMag;
       }
 
-      // During objective travel, use wider threat radii to detect enemies
-      // circling at safe distance (especially at high damage multipliers)
-      const threatRadius = this.objectiveTravelActive
-        ? OBJECTIVE_TRAVEL_DODGE_THREAT_RADIUS_FT
-        : DODGE_THREAT_RADIUS_FT;
-      const blockRadius = this.objectiveTravelActive
-        ? OBJECTIVE_TRAVEL_DODGE_BLOCK_RADIUS_FT
-        : DODGE_BLOCK_RADIUS_FT;
-
       const enemies = query(ctx.world.ecs, [Enemy, Position, Velocity, Health]);
       let closestThreatDist = Number.POSITIVE_INFINITY;
       let bestDodgeX = 0;
@@ -1161,7 +1161,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         const ey = ctx.world.stores.position.y[eid] ?? 0;
         if (!this.canPerceiveWorldPosition(ctx.world, ex, ey)) continue;
         const dist = Math.hypot(ex - ctx.playerX, ey - ctx.playerY);
-        if (dist > threatRadius) continue;
+        if (dist > DODGE_THREAT_RADIUS_FT) continue;
 
         const vx = ctx.world.stores.velocity.x[eid] ?? 0;
         const vy = ctx.world.stores.velocity.y[eid] ?? 0;
@@ -1177,7 +1177,8 @@ export class BehaviorTreeAI implements AIInputProvider {
         // Must satisfy: (1) enemy is in forward cone, (2) close enough, and
         // (3) enemy is actually between player and objective (closer to objective than to player).
         const aheadDot = ((ex - ctx.playerX) * headX + (ey - ctx.playerY) * headY) / (dist || 1);
-        const ahead = hasHeading && dist <= blockRadius && aheadDot >= DODGE_BLOCK_AHEAD_DOT;
+        const ahead =
+          hasHeading && dist <= DODGE_BLOCK_RADIUS_FT && aheadDot >= DODGE_BLOCK_AHEAD_DOT;
 
         if (!closing && !ahead) continue;
         if (dist >= closestThreatDist) continue;
@@ -1194,22 +1195,11 @@ export class BehaviorTreeAI implements AIInputProvider {
           }
         } else {
           // Sidestep perpendicular to the heading, toward whichever side the
-          // enemy is NOT on, then blend in a smaller backward component so the
-          // trajectory arcs around the blocker instead of clipping into it.
+          // enemy is NOT on, so the player curves around the obstacle.
           const cross = headX * (ey - ctx.playerY) - headY * (ex - ctx.playerX);
           const sign = cross > 0 ? -1 : 1;
-          const strafeX = -headY * sign;
-          const strafeY = headX * sign;
-          const mixedX = strafeX * DODGE_SIDESTEP_WEIGHT - headX * DODGE_BACKTRACK_WEIGHT;
-          const mixedY = strafeY * DODGE_SIDESTEP_WEIGHT - headY * DODGE_BACKTRACK_WEIGHT;
-          const mixedLen = Math.hypot(mixedX, mixedY);
-          if (mixedLen > 0) {
-            bestDodgeX = mixedX / mixedLen;
-            bestDodgeY = mixedY / mixedLen;
-          } else {
-            bestDodgeX = strafeX;
-            bestDodgeY = strafeY;
-          }
+          bestDodgeX = -headY * sign;
+          bestDodgeY = headX * sign;
         }
         found = true;
       }
@@ -1893,7 +1883,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.farmPullY = 0;
     this.dodgeVecX = 0;
     this.dodgeVecY = 0;
-    this.objectiveTravelActive = false;
 
     // Build context for behavior tree
     const context: BTContext = {
@@ -1910,40 +1899,42 @@ export class BehaviorTreeAI implements AIInputProvider {
     // opportunisticPullX/Y and dodgeVecX/Y as side-effects)
     this.tree.tick(context);
 
-    // Monitor sustained retreat state and force re-engagement if stalled at low health.
-    // If the AI has been retreating for too long at very low health with no progress,
-    // we need to break the stall by forcing engagement with defensive spacing, which
-    // allows the AI to finish kills and heal despite taking hits.
-    if (
-      this.decision.state === AIState.RETREAT &&
-      healthPercent < 0.25 &&
-      this.retreatStallFrames > 360
-    ) {
-      // Override the state to ENGAGE, which will use defensive melee kiting (wider
-      // orbit, safer strikes) instead of pure kite-retreat. This allows the AI to
-      // deal damage and finish kills while still maintaining some safety.
-      const threat = this.findNearestEnemy(context.world, context.playerX, context.playerY);
-      if (threat) {
-        this.decision.state = AIState.ENGAGE;
-        this.decision.reason = 'Forced engagement from retreat stall (low health)';
-        this.decision.targetEid = threat.eid;
-        this.decision.targetX = threat.x;
-        this.decision.targetY = threat.y;
-        this.engageTargetEid = threat.eid;
-        this.engageNoProgressFrames = 0;
-        this.endRetreat();
-        if (this.config.debug) {
-          logger.debug('AI stalled in retreat, forcing ENGAGE with defensive spacing');
-        }
-      }
-    }
-
     // Execute decision: move toward target (Track A direction)
     if (this.decision.targetX !== null && this.decision.targetY !== null) {
       this.moveToward(state, world, playerX, playerY, this.decision.targetX, this.decision.targetY);
     } else {
       state.moveX = 0;
       state.moveY = 0;
+    }
+
+    // Predictive safe-gap travel steering: for travel states, replace the raw
+    // objective heading (Track A) with a safe, forward-progressing arc that
+    // *dances around* perceived mobs — generalizing the ENGAGE kite's spacing to
+    // travel. Damage-agnostic (nothing here reads a hostile-damage multiplier).
+    let travelEmergency = false;
+    this.lastTravelSteering = null;
+    if (TRAVEL_STEERING_ENABLED && this.shouldTravelSteer(playerX, playerY)) {
+      const objMag = Math.hypot(state.moveX, state.moveY);
+      if (objMag > TRAVEL_HEADING_EPSILON) {
+        const steer = this.computeTravelSteering(
+          world,
+          playerEid,
+          playerX,
+          playerY,
+          state.moveX,
+          state.moveY,
+        );
+        state.moveX = steer.moveX;
+        state.moveY = steer.moveY;
+        travelEmergency = steer.emergency;
+        this.lastTravelSteering = steer;
+        // The steering heading already encodes predictive spacing; blending the
+        // legacy single-closest-threat dodge on top would double-count and
+        // reintroduce the oscillation that widening it caused (commit f4f538d7),
+        // so retire the additive travel dodge whenever steering drives the frame.
+        this.dodgeVecX = 0;
+        this.dodgeVecY = 0;
+      }
     }
 
     // Blend Track B opportunistic vectors additively into the Track A direction.
@@ -1975,8 +1966,15 @@ export class BehaviorTreeAI implements AIInputProvider {
     // values are passed directly to playerInputSystem; normalizeInputDirection
     // keeps them unchanged when their length is ≤ 1, so the player naturally
     // accelerates/decelerates through turns at sub-full speed.
-    this.smoothMoveX += (state.moveX - this.smoothMoveX) * MOVE_SMOOTH_FACTOR;
-    this.smoothMoveY += (state.moveY - this.smoothMoveY) * MOVE_SMOOTH_FACTOR;
+    if (travelEmergency) {
+      // Imminent predicted contact / no safe lane: skip smoothing so the evasive
+      // arc reaches playerInputSystem this frame instead of being averaged away.
+      this.smoothMoveX = state.moveX;
+      this.smoothMoveY = state.moveY;
+    } else {
+      this.smoothMoveX += (state.moveX - this.smoothMoveX) * MOVE_SMOOTH_FACTOR;
+      this.smoothMoveY += (state.moveY - this.smoothMoveY) * MOVE_SMOOTH_FACTOR;
+    }
     state.moveX = this.smoothMoveX;
     state.moveY = this.smoothMoveY;
 
@@ -2117,13 +2115,10 @@ export class BehaviorTreeAI implements AIInputProvider {
       ? PANIC_MIN_DODGE_WEIGHT_SCALE
       : PANIC_MIN_DODGE_WEIGHT_SCALE_LOCKED;
     const dodgeScale = Math.max(dodgeFloor, 1 - profile.panic * 0.9);
-    const objectiveDodgeScale = this.objectiveTravelActive ? OBJECTIVE_TRAVEL_DODGE_WEIGHT_MULT : 1;
-    const objectiveCollectScale = this.objectiveTravelActive ? OBJECTIVE_TRAVEL_COLLECT_SCALE : 1;
-    const objectiveFarmScale = this.objectiveTravelActive ? OBJECTIVE_TRAVEL_FARM_SCALE : 1;
     return {
-      dodgeWeight: this.config.dodgeWeight * dodgeScale * objectiveDodgeScale,
-      collectPullWeight: this.config.collectPullWeight * collectScale * objectiveCollectScale,
-      farmPullWeight: this.config.farmPullWeight * farmScale * objectiveFarmScale,
+      dodgeWeight: this.config.dodgeWeight * dodgeScale,
+      collectPullWeight: this.config.collectPullWeight * collectScale,
+      farmPullWeight: this.config.farmPullWeight * farmScale,
     };
   }
 
@@ -3584,6 +3579,131 @@ export class BehaviorTreeAI implements AIInputProvider {
     return false;
   }
 
+  /**
+   * Whether predictive travel steering should drive the heading this frame.
+   * EXPLORE always steers (the long-haul dance around mobs); long-range COLLECT
+   * steers until close to the pickup (the final harvest-overlap approach is left
+   * to Track A's close-range slide); ENGAGE / RETREAT / INTERACT never steer —
+   * they own their own movement.
+   */
+  private shouldTravelSteer(playerX: number, playerY: number): boolean {
+    const s = this.decision.state;
+    if (s === AIState.EXPLORE) {
+      return true;
+    }
+    if (s === AIState.COLLECT) {
+      if (this.decision.targetX === null || this.decision.targetY === null) {
+        return true;
+      }
+      const dx = this.decision.targetX - playerX;
+      const dy = this.decision.targetY - playerY;
+      return Math.hypot(dx, dy) > TRAVEL_COLLECT_MIN_STEER_DIST_FT;
+    }
+    return false;
+  }
+
+  /**
+   * Thin ECS→pure-input wrapper around {@link pickSafeTravelHeading}. Reads
+   * perceived hostiles, the player's speed, and a door-aware passability probe,
+   * then delegates the heading choice to the pure, deterministic, damage-agnostic
+   * travel-steering module. All game state is read-only here.
+   */
+  private computeTravelSteering(
+    world: GameWorld,
+    playerEid: number,
+    playerX: number,
+    playerY: number,
+    objDirX: number,
+    objDirY: number,
+  ): TravelSteeringResult {
+    const playerSpeed = hasComponent(world.ecs, playerEid, Stats)
+      ? (world.stores.stats.moveSpeed[playerEid] ?? PLAYER_SPEED)
+      : PLAYER_SPEED;
+
+    // Perceived hostiles within the threat radius (same perception gate the rest
+    // of the AI uses, so steering never reacts to enemies the player can't see).
+    const threats: TravelThreat[] = [];
+    const enemies = query(world.ecs, [Enemy, Position, Velocity, Health]);
+    for (const eid of enemies) {
+      if (eid === undefined) {
+        continue;
+      }
+      if ((world.stores.health.current[eid] ?? 0) <= 0) {
+        continue;
+      }
+      const ex = world.stores.position.x[eid] ?? 0;
+      const ey = world.stores.position.y[eid] ?? 0;
+      if (Math.hypot(ex - playerX, ey - playerY) > TRAVEL_THREAT_RADIUS_FT) {
+        continue;
+      }
+      if (!this.canPerceiveWorldPosition(world, ex, ey)) {
+        continue;
+      }
+      threats.push({
+        x: ex,
+        y: ey,
+        vx: world.stores.velocity.x[eid] ?? 0,
+        vy: world.stores.velocity.y[eid] ?? 0,
+        bodyRadiusFt: TRAVEL_BODY_RADIUS_FT,
+      });
+    }
+
+    // Door-aware passability in world coordinates (wraps the tile-space predicate
+    // so steering never refuses a quest-critical closed-but-openable door).
+    const floorMap = world.floorMap;
+    const doorAwarePassable = this.doorAwarePassable;
+    const probePassable = (worldX: number, worldY: number): boolean => {
+      if (!floorMap) {
+        return true;
+      }
+      const tile = floorMap.worldToTile(worldX, worldY);
+      return doorAwarePassable
+        ? doorAwarePassable(tile.x, tile.y)
+        : floorMap.tileMap.isPassable(tile.x, tile.y);
+    };
+
+    // Continuity uses last frame's *smoothed* output heading (unit); a ~0 heading
+    // yields a neutral (0,0) prevDir so re-entry from ENGAGE never snaps sideways.
+    const smoothMag = Math.hypot(this.smoothMoveX, this.smoothMoveY);
+    const prevDirX = smoothMag > TRAVEL_HEADING_EPSILON ? this.smoothMoveX / smoothMag : 0;
+    const prevDirY = smoothMag > TRAVEL_HEADING_EPSILON ? this.smoothMoveY / smoothMag : 0;
+
+    // Time-pressure envelope: as the floor-collapse panic ramps 0→1, ease the
+    // spacing target toward the hard (contact) gap so the runner stops spending
+    // time on wide avoidance arcs it can no longer afford and beelines to finish.
+    // It still clears actual contact (hard-gap floor); only the *comfort* spacing
+    // is surrendered. Damage-agnostic — driven by remaining time, not hostile damage.
+    const panicProfile = this.getCollapsePanicProfile(world);
+    const panic = panicProfile.panic;
+    const params: TravelSteeringParams =
+      panic > 0
+        ? {
+            ...TRAVEL_PARAMS,
+            safeGapFt: TRAVEL_SAFE_GAP_FT - (TRAVEL_SAFE_GAP_FT - TRAVEL_HARD_GAP_FT) * panic,
+          }
+        : TRAVEL_PARAMS;
+
+    const input: TravelSteeringInput = {
+      px: playerX,
+      py: playerY,
+      objDirX,
+      objDirY,
+      prevDirX,
+      prevDirY,
+      playerSpeedFtPerFrame: playerSpeed,
+      orbitSign: this.kiteOrbitSign,
+      panic: panicProfile.beeline,
+      // v1: loot/farm biasing is off (TRAVEL_W_LOOT/W_FARM = 0); the existing
+      // Track-B opportunistic-collect and farm pulls still ride the blend below.
+      weaponReachFt: 0,
+      farmEligible: false,
+      threats,
+      pickups: [],
+      probePassable,
+    };
+    return pickSafeTravelHeading(input, params);
+  }
+
   /** Player health as a 0..1 fraction, or 1 when no player is found. */
   private getPlayerHealthFraction(world: GameWorld): number {
     const players = query(world.ecs, [Player, Health]);
@@ -4010,6 +4130,15 @@ export class BehaviorTreeAI implements AIInputProvider {
       dodgeX: this.dodgeVecX,
       dodgeY: this.dodgeVecY,
     };
+  }
+
+  /**
+   * Last predictive travel-steering result, or null when steering did not drive
+   * the most recent poll (non-travel state, disabled, or a zero objective
+   * heading). Mirrors {@link getOpportunisticDebug} for deterministic tests.
+   */
+  getTravelSteeringDebug(): TravelSteeringResult | null {
+    return this.lastTravelSteering;
   }
 
   getNavigationDebug(): AINavigationDebug {
