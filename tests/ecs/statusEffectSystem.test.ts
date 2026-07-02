@@ -297,6 +297,44 @@ describe('equipment integration (Merchant’s Charm HoT)', () => {
     expect(fx[0]!.sourceType).toBe('debug');
   });
 
+  it('normalizes a granted spec’s sourceType to equipment so unequip can never leak it', () => {
+    // A def author could write a granted spec with a non-'equipment' sourceType.
+    // equip() must normalize it (mirroring the sourceId override) or unequip()'s
+    // (sourceType === 'equipment' && sourceId === …) predicate would never match,
+    // leaking a persistent effect. Regression guard for that latent inconsistency.
+    const { world, eid } = spawnWearer();
+    const auraCharm: EquipmentItemDef = {
+      id: 'aura-charm',
+      name: 'Aura Charm',
+      slots: ['neck'],
+      statBonuses: {},
+      rarity: 'common',
+      grantsStatusEffects: [
+        {
+          stat: 'hpRegen',
+          op: 'add',
+          value: 0.5,
+          durationMs: null,
+          sourceType: 'aura', // deliberately NOT 'equipment'
+          sourceId: 'author-supplied-ignored',
+          stackRule: { mode: 'replace' },
+        },
+      ],
+    };
+    const result = equip(world, eid, auraCharm, { force: true });
+    expect(result.ok).toBe(true);
+    const fx = getStatusEffects(world, eid);
+    expect(fx).toHaveLength(1);
+    // sourceType is normalized to 'equipment' (the author's 'aura' is overridden).
+    expect(fx[0]!.sourceType).toBe('equipment');
+    if (result.ok) {
+      expect(fx[0]!.sourceId).toBe(`equipment:${result.instanceId}`);
+    }
+    // …and therefore unequip clears it — no leak.
+    unequip(world, eid, 'neck', { force: true });
+    expect(getStatusEffects(world, eid)).toHaveLength(0);
+  });
+
   it('an invalid granted spec fails canEquip and equip mutates nothing (atomic)', () => {
     const { world, eid } = spawnWearer();
     const badCharm: EquipmentItemDef = {

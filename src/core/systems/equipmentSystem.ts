@@ -343,10 +343,16 @@ export function equip(
 
   // Grant any timed/tracked status effects this item provides. Specs were
   // pre-validated in canEquip (validateItemDef), so these writes are infallible
-  // and equip() stays atomic. The runtime sourceId is scoped to this equipment
-  // instance so duplicate-capable items (e.g. two rings) track independently.
+  // and equip() stays atomic. Both sourceType and sourceId are normalized to this
+  // equipment instance so unequip() clears them symmetrically (a def's granted spec
+  // can never leak via a non-'equipment' sourceType), and duplicate-capable items
+  // (e.g. two rings) track independently.
   for (const spec of itemDef.grantsStatusEffects ?? []) {
-    applyStatusEffect(world, entity, { ...spec, sourceId: equipmentSourceId(instanceId) });
+    applyStatusEffect(world, entity, {
+      ...spec,
+      sourceType: 'equipment',
+      sourceId: equipmentSourceId(instanceId),
+    });
   }
 
   return { ok: true, instanceId };
