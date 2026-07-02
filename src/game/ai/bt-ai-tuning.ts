@@ -19,7 +19,7 @@ export const DEFAULT_CONFIG: Required<AIConfig> = {
   scanRadius: 50,
   rangedSafeDistance: 15,
   opportunisticGrabRadius: 18,
-  dodgeWeight: 0.25,
+  dodgeWeight: 0.38,
   // Loot-detour pull weight. The opportunistic collect layer only pulls toward
   // loot within 5 ft of the player's forward path (an "on-path detour"), so
   // unlike the old omnidirectional pull it cannot systematically drift the net
@@ -27,14 +27,14 @@ export const DEFAULT_CONFIG: Required<AIConfig> = {
   // mode that previously forced this to 0.0 and blew the headless floor-clear
   // budget. A modest weight keeps Track A's path dominant so the player just
   // curves toward pickups it passes near.
-  collectPullWeight: 0.5,
+  collectPullWeight: 0.35,
   // Enemy-farm pull: drift toward the nearest enemy AHEAD on the player's path
   // while travelling (explore + quest-objective navigation), so auto-fire starts
   // sooner on swarm the player walks past. Kept low and forward-biased (see
   // OpportunisticFarm) so Track A's quest path stays dominant and the pull can
   // never drag the player off-objective into an off-path fight — the failure
   // mode that previously forced this to 0.0 and blew the floor-clear budget.
-  farmPullWeight: 0.07,
+  farmPullWeight: 0.04,
   debug: false,
 };
 
@@ -135,7 +135,7 @@ export const NAVIGATION_LOOKAHEAD_FT = 3;
 // produce a smooth arc rather than an instant 90° snap. Value is tuned so a
 // full cardinal-direction change completes in ~4-5 frames (~70ms at 60fps) while
 // keeping top speed virtually unaffected during straight-line travel.
-export const MOVE_SMOOTH_FACTOR = 0.5;
+export const MOVE_SMOOTH_FACTOR = 0.45;
 // Close-range direct approach threshold (~1.5 tiles). Within this distance, and
 // with a clear straight corridor, the AI abandons tile-granular A* and slides
 // straight at the exact target position. Tile A* targets tile CENTERS and cannot
@@ -373,7 +373,7 @@ export const GOLD_FARM_COLLECT_RADIUS_FT = 32.5;
 // Enemy must be within this radius (ft) to count as a dodge threat. Sized so the
 // player evades swarm contact while travelling toward quest objectives but not so
 // wide it routes around enemy pockets it should engage.
-export const DODGE_THREAT_RADIUS_FT = 14;
+export const DODGE_THREAT_RADIUS_FT = 16;
 // Minimum closing speed (ft/frame): dot product of enemy velocity with the
 // unit toward-player vector. Low enough that ordinary chasers (not just sprint
 // chargers) trigger an evasive strafe while the player is navigating.
@@ -386,8 +386,23 @@ export const DODGE_CLOSING_SPEED_FT_PER_FRAME = 0.15;
 // (at roughly ¾ of the threat scan radius) so the player arcs around stationary
 // mobs well before the path converges on them, giving direction-blending time
 // to produce smooth curves instead of sharp last-second veer corrections.
-export const DODGE_BLOCK_RADIUS_FT = 10;
-export const DODGE_BLOCK_AHEAD_DOT = 0.4;
+export const DODGE_BLOCK_RADIUS_FT = 14;
+export const DODGE_BLOCK_AHEAD_DOT = 0.2;
+// When dodging a path-blocking enemy, blend a mostly-perpendicular sidestep with
+// a smaller backtrack component to create a natural arc around the blocker.
+export const DODGE_SIDESTEP_WEIGHT = 0.95;
+export const DODGE_BACKTRACK_WEIGHT = 0.15;
+// While Track A is travelling a quest-critical Progress objective (state EXPLORE
+// with a progress target), bias strongly toward safety: more dodge, fewer detours.
+// At high damage multipliers (10x+), enemies circle at 20-50 ft instead of charging,
+// so the player needs to see them as dodge threats from farther away to arc around them
+// while still pursuing the objective. Separated from normal threat radii so regular
+// engagement/exploration is not affected.
+export const OBJECTIVE_TRAVEL_DODGE_WEIGHT_MULT = 1.3;
+export const OBJECTIVE_TRAVEL_DODGE_THREAT_RADIUS_FT = 32;
+export const OBJECTIVE_TRAVEL_DODGE_BLOCK_RADIUS_FT = 28;
+export const OBJECTIVE_TRAVEL_COLLECT_SCALE = 0.35;
+export const OBJECTIVE_TRAVEL_FARM_SCALE = 0.2;
 // --- On-path loot detour (OpportunisticCollect) ---
 // Rule (player's words): "if there is loot within 5' of my path and I am not
 // actively fighting or dodging enemies, make the slight detour to grab it."
@@ -450,8 +465,8 @@ export const PANIC_MIN_DODGE_WEIGHT_SCALE_LOCKED = 0.3;
 // traversing toward combat/room objectives. Distances are in feet (the internal
 // spatial unit): allow up to ~20 ft of extra path, or 0.5x the direct distance,
 // whichever is larger.
-export const QUEST_GIVER_DETOUR_MAX_EXTRA_FT = 26;
-export const QUEST_GIVER_DETOUR_MAX_EXTRA_FRACTION = 0.6;
+export const QUEST_GIVER_DETOUR_MAX_EXTRA_FT = 16;
+export const QUEST_GIVER_DETOUR_MAX_EXTRA_FRACTION = 0.35;
 // An NPC within this radius (ft) of the player counts as "at the interaction
 // point"; beyond it the NPC is only a navigation/detour target.
 export const NPC_INTERACTION_RADIUS_FT = 12.5;

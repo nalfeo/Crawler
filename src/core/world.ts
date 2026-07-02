@@ -80,6 +80,8 @@ export interface GameWorld {
   frameCount: number;
   /** Time elapsed in current floor (ms) */
   elapsedMs: number;
+  /** Optional hostile-damage multiplier for simulation/testing modes (default 1). */
+  hostileDamageMultiplier?: number;
   /** Current floor number (1-indexed) */
   floor: number;
   /** Game state */

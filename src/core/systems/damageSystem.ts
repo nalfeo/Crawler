@@ -187,7 +187,8 @@ function applyPlayerEnemyHit(
   }
 
   const raw = getDamageAmount(world, enemy, DEFAULT_CONTACT_DAMAGE);
-  const amount = applyArmorReduction(world, player, raw);
+  const hostileMult = world.hostileDamageMultiplier ?? 1;
+  const amount = applyArmorReduction(world, player, raw * hostileMult);
   applyDamage(
     world,
     player,
@@ -225,7 +226,8 @@ function applyEnemyProjectileHit(
   }
 
   const raw = getDamageAmount(world, projectile, DEFAULT_PROJECTILE_DAMAGE);
-  const amount = applyArmorReduction(world, player, raw);
+  const hostileMult = world.hostileDamageMultiplier ?? 1;
+  const amount = applyArmorReduction(world, player, raw * hostileMult);
   applyDamage(
     world,
     player,

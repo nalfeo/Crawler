@@ -25,6 +25,7 @@ interface CLIArgs {
   eventSummary: string | null;
   sampleInterval: number;
   weapon: string | null;
+  enemyDamageMultiplier: number;
 }
 
 function parseArgs(): CLIArgs {
@@ -40,6 +41,7 @@ function parseArgs(): CLIArgs {
     eventSummary: null,
     sampleInterval: 15,
     weapon: null,
+    enemyDamageMultiplier: 10,
   };
 
   for (let i = 2; i < process.argv.length; i++) {
@@ -75,6 +77,9 @@ function parseArgs(): CLIArgs {
     } else if (arg === '--weapon' && next) {
       args.weapon = next;
       i++;
+    } else if (arg === '--enemy-damage-multiplier' && next) {
+      args.enemyDamageMultiplier = parseFloat(next);
+      i++;
     } else if (arg === '--debug') {
       args.debug = true;
     }
@@ -101,6 +106,8 @@ Options:
   --event-summary <path>  Write wasted-time summary JSON to <path>
   --sample-interval <n>   Frames between telemetry samples (default: 15)
   --debug                 Enable verbose logging
+  --enemy-damage-multiplier <n>
+                           Multiply hostile Damage values (default: 10)
   --help, -h              Show this help message
 
 Examples:
@@ -131,6 +138,7 @@ async function main(): Promise<void> {
   if (args.weapon !== null) {
     console.log(`Weapon: ${args.weapon} (forced)`);
   }
+  console.log(`Enemy damage mult: ${args.enemyDamageMultiplier}x`);
   console.log('');
 
   const ai = new BehaviorTreeAI({
@@ -150,6 +158,7 @@ async function main(): Promise<void> {
     debug: args.debug,
     eventSampleInterval: args.sampleInterval,
     ...(args.weapon !== null ? { forceWeaponId: args.weapon } : {}),
+    enemyDamageMultiplier: args.enemyDamageMultiplier,
     ...(recording
       ? {
           recordEvent: (event: SimEvent): void => {
