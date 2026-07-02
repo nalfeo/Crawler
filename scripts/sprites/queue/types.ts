@@ -10,6 +10,8 @@
  * to route through Azure Storage Queue.
  */
 
+import { SPRITE_TYPES } from '../brief-schema.js';
+
 export interface AssetRequestBase {
   /** `brief.name` slug (e.g. `'iron-sword'`). */
   readonly requestedBy: string;
@@ -80,7 +82,11 @@ export function normalizeAssetRequest(value: unknown): AssetRequest | null {
       issueNumber: v.issueNumber,
       name: v.name,
       briefSentence: v.briefSentence,
-      ...(typeof v.type === 'string' && v.type.trim() !== '' ? { type: v.type } : {}),
+      ...(typeof v.type === 'string' &&
+      v.type.trim() !== '' &&
+      (SPRITE_TYPES as readonly string[]).includes(v.type.trim().toLowerCase())
+        ? { type: v.type.trim().toLowerCase() }
+        : {}),
       fingerprint: v.fingerprint,
       claimedAt: v.claimedAt,
       requestedBy: v.requestedBy,

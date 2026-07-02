@@ -82,6 +82,56 @@ describe('normalizeAssetRequest', () => {
       }),
     ).toMatchObject({ kind: 'issue-request', issueNumber: 42 });
   });
+
+  it('accepts issue-request with valid type field', () => {
+    const result = normalizeAssetRequest({
+      kind: 'issue-request',
+      issueNumber: 42,
+      name: 'bone-dagger',
+      briefSentence: 'A chipped bone dagger with twine-wrapped handle.',
+      fingerprint: 'abc',
+      claimedAt: '2026-06-10T00:00:00.000Z',
+      requestedBy: 'test',
+      requestedAt: '2026-06-10T00:00:00.000Z',
+      priority: 'normal',
+      type: 'weapon',
+    });
+    expect(result).toMatchObject({ kind: 'issue-request', type: 'weapon' });
+  });
+
+  it('silently omits invalid type field', () => {
+    const result = normalizeAssetRequest({
+      kind: 'issue-request',
+      issueNumber: 42,
+      name: 'bone-dagger',
+      briefSentence: 'A chipped bone dagger with twine-wrapped handle.',
+      fingerprint: 'abc',
+      claimedAt: '2026-06-10T00:00:00.000Z',
+      requestedBy: 'test',
+      requestedAt: '2026-06-10T00:00:00.000Z',
+      priority: 'normal',
+      type: 'invalid-type',
+    });
+    // Invalid type is silently omitted; request still proceeds without type field
+    expect(result).toMatchObject({ kind: 'issue-request', issueNumber: 42 });
+    expect(result?.type).toBeUndefined();
+  });
+
+  it('normalizes type to lowercase when valid', () => {
+    const result = normalizeAssetRequest({
+      kind: 'issue-request',
+      issueNumber: 42,
+      name: 'bone-dagger',
+      briefSentence: 'A chipped bone dagger with twine-wrapped handle.',
+      fingerprint: 'abc',
+      claimedAt: '2026-06-10T00:00:00.000Z',
+      requestedBy: 'test',
+      requestedAt: '2026-06-10T00:00:00.000Z',
+      priority: 'normal',
+      type: 'WEAPON',
+    });
+    expect(result).toMatchObject({ type: 'weapon' });
+  });
 });
 
 describe('createAssetQueue factory', () => {

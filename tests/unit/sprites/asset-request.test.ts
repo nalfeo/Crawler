@@ -59,4 +59,67 @@ describe('parseAssetRequestIssueBody', () => {
       ),
     });
   });
+
+  it('parses marker payload with valid type field', () => {
+    const body = [
+      '### Name',
+      'bone-dagger',
+      '',
+      `<!-- ${ASSET_REQUEST_MARKER}`,
+      '{"version":1,"name":"bone-dagger","briefSentence":"A chipped bone dagger with twine-wrapped handle.","type":"weapon"}',
+      '-->',
+    ].join('\n');
+    const parsed = parseAssetRequestIssueBody(body);
+    expect(parsed?.name).toBe('bone-dagger');
+    expect(parsed?.type).toBe('weapon');
+  });
+
+  it('rejects marker payload with invalid type field', () => {
+    const body = [
+      '### Name',
+      'bone-dagger',
+      '',
+      '### Brief',
+      'A chipped bone dagger with twine-wrapped handle.',
+      '',
+      `<!-- ${ASSET_REQUEST_MARKER}`,
+      '{"version":1,"name":"bone-dagger","briefSentence":"A chipped bone dagger with twine-wrapped handle.","type":"invalid-type"}',
+      '-->',
+    ].join('\n');
+    // Should fall back to form parsing, which succeeds without the invalid type
+    const parsed = parseAssetRequestIssueBody(body);
+    expect(parsed?.name).toBe('bone-dagger');
+    expect(parsed?.type).toBeUndefined();
+  });
+
+  it('parses form-rendered type field when valid', () => {
+    const body = [
+      '### Name',
+      'bone-dagger',
+      '',
+      '### Brief',
+      'A chipped bone dagger with twine-wrapped handle.',
+      '',
+      '### Type',
+      'weapon',
+    ].join('\n');
+    const parsed = parseAssetRequestIssueBody(body);
+    expect(parsed?.name).toBe('bone-dagger');
+    expect(parsed?.type).toBe('weapon');
+  });
+
+  it('rejects form-rendered type field when invalid', () => {
+    const body = [
+      '### Name',
+      'bone-dagger',
+      '',
+      '### Brief',
+      'A chipped bone dagger with twine-wrapped handle.',
+      '',
+      '### Type',
+      'invalid-type',
+    ].join('\n');
+    // Should reject entirely if form has a non-empty invalid type
+    expect(parseAssetRequestIssueBody(body)).toBeNull();
+  });
 });
