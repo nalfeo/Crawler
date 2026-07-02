@@ -30,6 +30,8 @@ import {
 } from '../../src/core/index.js';
 import { initializeFloor1Scenario, selectFloor1StarterWeapon } from '../../src/game/index.js';
 import { runSimulationStep } from '../../src/game/ai/simulation-step.js';
+import { runSimulationStep as runVisualSimulationStep } from '../../src/engine/sim/simulation-step.js';
+import { createFloor1MainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 import { createInputState } from '../../src/shared/input.js';
 import { GAME } from '../../src/shared/constants.js';
 
@@ -90,6 +92,43 @@ describe('Floor 1 spawners — wired into the headless AI pipeline', () => {
 
     // And those children are real, live enemies in the world — the structures
     // (also tagged Enemy) plus at least one emitted child exceed the start count.
+    const enemiesAfter = query(world.ecs, [Enemy]).length;
+    expect(enemiesAfter).toBeGreaterThan(enemiesBefore);
+  });
+});
+
+describe('Floor 1 spawners — wired into the visual (engine) game pipeline', () => {
+  it('emits spawner children when the real Floor 1 scene options drive the engine sim step', () => {
+    // This drives the SHIPPED VISUAL pipeline end-to-end: the engine
+    // `runSimulationStep` (`src/engine/sim/simulation-step.ts`, the exact function
+    // `MainGameScene.update()` calls) fed with the REAL
+    // `createFloor1MainSceneOptions().preSystems/postSystems`. The original bug
+    // shipped precisely because the feature "worked in the spawner lab" but was
+    // never exercised in this path — and an order-only assertion on `preSystems`
+    // cannot catch a regression where the array stops actually executing
+    // `spawnerSystem`. This proves the browser game path spawns, deterministically
+    // (fixed seed, `SeededRandom`, fixed `GAME.DELTA_MS`, empty input).
+    const world = createPlayingFloor1World(7);
+    const input = createInputState();
+    const options = createFloor1MainSceneOptions();
+
+    const enemiesBefore = query(world.ecs, [Enemy]).length;
+
+    // Mirror MainGameScene's fixed-timestep loop exactly: it advances
+    // frameCount/elapsedMs ITSELF (MainGameScene.update, before calling the engine
+    // step) because — unlike the headless `game/ai` step — the engine
+    // `runSimulationStep` does not advance time internally.
+    for (let frame = 0; frame < 600; frame += 1) {
+      world.frameCount += 1;
+      world.elapsedMs += GAME.DELTA_MS;
+      runVisualSimulationStep(world, input, {
+        preSystems: options.preSystems,
+        postSystems: options.postSystems,
+      });
+    }
+
+    // Load-bearing: the shipped visual pipeline actually emitted spawner children.
+    expect(totalSpawnedChildren(world)).toBeGreaterThan(0);
     const enemiesAfter = query(world.ecs, [Enemy]).length;
     expect(enemiesAfter).toBeGreaterThan(enemiesBefore);
   });

@@ -95,8 +95,19 @@ export function createFloorMainSceneOptions(_floorId: string = 'floor1') {
       floor1PlayerStatSystem,
       weaponSystem,
       enemyAISystem,
-      floor1EnemyDirectorSystem,
+      // spawnerSystem MUST run before floor1EnemyDirectorSystem in the same frame:
+      // the director's countDirectorEnemies/countEngagingEnemies count Spawner-owned
+      // children (Enemy without Spawner), so spawning first lets the director cap
+      // against this frame's children. In THIS visual pipeline we keep the two
+      // immediately adjacent (locked by the preSystems contract test). The headless
+      // gate pipeline (src/game/ai/simulation-step.ts) guarantees only the weaker
+      // "spawner before director" ordering -- there spawnerSystem runs pre-movement
+      // while the director runs post-core, so the core ECS pipeline runs between
+      // them. That absolute-position divergence is a known, tracked approximation
+      // (see issue #663). Reordering these so the director runs first would let the
+      // visual game transiently overshoot the enemy cap.
       spawnerSystem,
+      floor1EnemyDirectorSystem,
     ],
     postSystems: [
       levelSystem,

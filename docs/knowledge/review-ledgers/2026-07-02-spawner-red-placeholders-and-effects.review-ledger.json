@@ -1,0 +1,76 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "spawner-red-placeholders-and-effects",
+  "task_title": "Wire spawnerSystem into real pipelines + red placeholder tint",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "notes": "gpt-5.4 reviewed the synthesized plan and raised 5 concerns, all resolved. (1) Pipeline parity: floor1EnemyDirectorSystem runs pre-core in the visual pipeline but post-core in headless, so the win-rate gate is not a byte-identical proxy -- adjudicated DOCUMENT-AND-TRACK by claude-opus-4.8; honest comments added in both simulation-step.ts files, floor-main-scene-options.ts, and the contract test, plus tracking issue #663 with a two-directional (conservative on damage-order axis, mildly optimistic on movement/aim axes, all one-frame-bounded) risk analysis. (2,3,5) Wiring/tint proof only existed in the headless path -- added a visual/engine-pipeline integration test (tests/integration/floor1-spawners-pipeline.test.ts) driving the real createFloor1MainSceneOptions preSystems/postSystems, plus unit render-path coverage for the corpse-gated red placeholder tint. (4) Overfit risk from down-tuning registry rates to the gate seeds 1-8 -- ran a 60-run holdout sweep seeds 1-20: 75% (45/60), identical to the pre-change baseline 75%, with held-out seeds 9-20 marginally better than baseline (69.4 vs 66.7 pct); all 15 failures are EXPLORE-timeout AI-runner bug (#652), not spawner deaths."
+    },
+    "dual_plan_synthesis": {
+      "completed": true,
+      "plan_models": ["gpt-5.5", "claude-opus-4.7"],
+      "judge_model": "claude-opus-4.8",
+      "notes": "Two independent plans authored (gpt-5.5=Plan A spawner-before-director; claude-opus-4.7=Plan B spawner-after-director). Judge (claude-opus-4.8) decisively selected Plan A: running spawner before the director lets the director cap against this frames children. Plan Bs double-count rationale is factually false against countEngagingEnemies/countDirectorEnemies, which skip Spawner and count each Enemy child once. Current tree implements Plan A in both pipelines."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "clean": false,
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "notes": "codex (major) + sonnet (minor) converged on one real concern: spawnerSystem ran AFTER floor1EnemyDirectorSystem in the visual pipeline but BEFORE it in headless, so the visual game could transiently overshoot the enemy cap and the two pipelines were inconsistent. Fixed by reordering visual preSystems to spawner-before-director and adding an ordering-contract test. Other reviewer remarks (parity/finale-once tests) were nice-to-haves folded into round 2."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "clean": true,
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "notes": "Re-review of the ordering fix: verified both pipelines are spawner-before-director, the contract test uses correct function identities, no regression in the red-tint/corpse-decay gating, and no determinism or ECS-layering violations."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "clean": false,
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "notes": "Round 1: gpt-5.3-codex CLEAN; gemini-3.1-pro-preview raised a HIGH pipeline-parity concern (floor1EnemyDirectorSystem pre-core in visual vs post-core in headless, so the win-rate gate is not a byte-identical proxy). Adjudicated by claude-opus-4.8 as DOCUMENT-AND-TRACK: pipeline-order moves are out of scope (need full re-gate plus in-game re-observation), conditional on removing over-claiming equivalence comments and filing tracking issue #663."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "clean": false,
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "notes": "Round 2: after honesty comments were drafted, both gpt-5.3-codex and gemini-3.1-pro-preview independently caught a NEW false claim -- the comments asserted spawner-to-director ADJACENCY holds in both pipelines, which is false (headless runs spawner pre-movement and director post-core, with the core pipeline between them). codex proposed moving the headless spawner; rejected as an out-of-scope pipeline-order change per the adjudication and #663. Resolved via documentation: all four comments corrected to the true shared invariant (spawner before director in both; adjacent only in visual)."
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "clean": true,
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "notes": "Round 3 (final): re-review of the corrected comments by gpt-5.3-codex and gemini-3.1-pro-preview -- both CLEAN. No remaining false equivalence or adjacency claims; red-tint rendering robust vs corpses and recycled entity ids; registry tuning safe; new tests respect determinism. Residual director/weapon parity documented and tracked in #663 (out of scope)."
+        }
+      ]
+    }
+  }
+}

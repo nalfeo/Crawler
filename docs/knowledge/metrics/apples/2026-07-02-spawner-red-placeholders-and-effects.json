@@ -1,0 +1,11 @@
+{
+  "date": "2026-07-02",
+  "session": "spawner-red-placeholders-and-effects",
+  "task": "Wire spawnerSystem into both real pipelines, bright-red placeholder tint, tune spawner balance, and document/track the visual-vs-headless pipeline divergence",
+  "estimated_apples": 4,
+  "actual_apples": 4,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.8,
+  "notes": "Root cause was a one-line omission (spawnerSystem never called in either real pipeline) but the change touched shared/game/engine/test layers and the 4-apple review harness earned its keep: the code-review loop caught a visual-pipeline spawner/director ordering bug, and multi-model review caught (a) a cross-pipeline director-position divergence -> adjudicated DOCUMENT-AND-TRACK (#663) and (b) an over-claimed 'adjacency identical across pipelines' comment -> corrected to the true 'spawner-before-director in both, adjacent only in visual' invariant. Also ran a 60-run holdout sweep (75%, identical to baseline, no overfit) and filed AI-runner bug #652."
+}
