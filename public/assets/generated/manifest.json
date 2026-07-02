@@ -1983,6 +1983,34 @@
       "sensorScore": "5/7",
       "judgeScore": null,
       "contentHash": "1317ac9fdab9a30bf1cecbb1b13660b0d57061a3962f8c4e62d9a3b3a110f62e"
+    },
+    "berserker-brew-v2-var-0": {
+      "briefId": "berserker-brew-v2",
+      "spriteName": "berserker-brew-v2-var-0",
+      "assetPath": "generated/berserker-brew-v2-var-0.png",
+      "approvedAt": "2026-07-02T05:19:58.941Z",
+      "sourceRun": "generated/runs/berserker-brew-v2/2026-07-02T00-04-24-9935d2d6",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 30,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 30,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "contentHash": "cc182b05f1feb6f1a9902cfa98952db9fd9603fa84e36c4dab00199cc8e9c6e3"
     }
   }
 }

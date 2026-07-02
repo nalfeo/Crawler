@@ -844,5 +844,18 @@
     "frame": 0,
     "col": 0,
     "row": 0
+  },
+  {
+    "id": "generated:berserker-brew-v2-var-0",
+    "kind": "sprite",
+    "label": "berserker-brew-v2-var-0",
+    "description": "Generated sprite from brief: berserker-brew-v2.",
+    "tags": ["generated", "pipeline-approved"],
+    "spriteId": "berserker-brew-v2-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/berserker-brew-v2-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
   }
 ]
