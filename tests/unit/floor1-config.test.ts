@@ -91,4 +91,9 @@ describe('floor1Config', () => {
     expect(floor1Config.sprites).toBeDefined();
     expect(floor1Config.sprites!.welcomeSign).toBe(3);
   });
+
+  it('should carry the per-floor ambient lighting default', () => {
+    expect(floor1Config.lighting).toBeDefined();
+    expect(floor1Config.lighting.ambient).toBe(0.2);
+  });
 });

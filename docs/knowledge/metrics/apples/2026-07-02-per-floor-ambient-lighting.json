@@ -1,0 +1,9 @@
+{
+  "date": "2026-07-02",
+  "slug": "per-floor-ambient-lighting",
+  "task": "Tune shipped lighting defaults and make ambient a per-floor manifest setting",
+  "estimated_apples": 3,
+  "actual_apples": 3,
+  "verdict": "exact",
+  "notes": "Cross-layer change (engine defaults + shared manifest/config schema + bootstrap wiring + scene apply) with a required-field manifest migration. Estimate held: the design was settled in plan review (2 rounds), code review found no issues, and the required-field migration was low-risk (only two manifest JSONs; the sole in-memory builder spreads floor1Manifest). Runtime observation done via a deterministic probe-lab e2e."
+}

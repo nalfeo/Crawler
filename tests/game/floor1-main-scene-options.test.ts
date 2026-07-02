@@ -18,6 +18,11 @@ describe('createFloor1MainSceneOptions', () => {
     expect(typeof options.shopkeeper.purchasePostQuestItem).toBe('function');
   });
 
+  it("passes the floor's per-floor ambient lighting default to the scene", () => {
+    const options = createFloor1MainSceneOptions();
+    expect(options.lightingConfig?.ambient).toBe(0.2);
+  });
+
   it('accepts the boss-battle quest when the Spell Broker is met through the scene options', () => {
     const options = createFloor1MainSceneOptions();
     const world = createTestWorld({ seed: 42 });

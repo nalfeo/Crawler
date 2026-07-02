@@ -38,6 +38,23 @@ const SCENE_KEY = 'MainGameScene';
 const PROBE_SEED = 4242;
 
 /**
+ * Parse an optional `?ambient=<0..1>` query param used only by the
+ * lighting-defaults e2e to force a DISTINGUISHING per-floor ambient (one that
+ * differs from DEFAULT_LIGHTING_CONFIG.ambient), proving `options.lightingConfig`
+ * actually flows into the live scene. Returns null when the param is absent or is
+ * not a finite number in [0, 1] — in which case the floor's authored default is
+ * kept and boot stays byte-for-byte deterministic for every other e2e.
+ */
+function readAmbientOverride(): number | null {
+  const raw = new URLSearchParams(window.location.search).get('ambient');
+  if (raw === null) {
+    return null;
+  }
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 && value <= 1 ? value : null;
+}
+
+/**
  * The slice of MainGameScene's runtime shape this probe reads. The fields are
  * declared `private` in the class but are plain instance properties at runtime,
  * so a structural cast exposes them without modifying the engine layer.
@@ -125,9 +142,17 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
   hint.style.lineHeight = '1.6';
   controls.append(hint);
 
+  // The bootstrap ships Floor 1's authored per-floor ambient via `lightingConfig`;
+  // an optional `?ambient=` override lets the lighting-defaults e2e exercise a
+  // distinguishing value end-to-end (see readAmbientOverride). Absent → default.
+  const baseOptions = createFloor1MainSceneOptions();
+  const ambientOverride = readAmbientOverride();
   const sceneOptions = {
-    ...createFloor1MainSceneOptions(),
+    ...baseOptions,
     worldSeed: PROBE_SEED,
+    ...(ambientOverride !== null
+      ? { lightingConfig: { ...baseOptions.lightingConfig, ambient: ambientOverride } }
+      : {}),
   };
   const config = createFloor1GameConfig(gameHost, sceneOptions);
   const game = new Phaser.Game(config);
