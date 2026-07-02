@@ -335,4 +335,22 @@ describe('equipment integration (Merchant’s Charm HoT)', () => {
     expect(after).toBeCloseTo(21.5, 3);
     expect(after).toBeLessThanOrEqual(100);
   });
+
+  // Win-rate honesty (project rule #13): the headless AI buys + equips this charm
+  // mid-run, so its HoT is live during part of every Floor 1 win-rate run. The
+  // ≥90% gate was set on the pre-charm-HoT baseline and this heal can only help it,
+  // so the gate is not silently *dependent* on the charm. Pin the heal to a modest
+  // design ceiling so a future change can't quietly crank free healing to mask a
+  // balance regression behind the gate — that would require consciously editing
+  // this bound, not slipping past it.
+  it('the charm HoT stays a modest, additive heal (win-rate cannot hide behind it)', () => {
+    const specs = MERCHANTS_CHARM_DEF.grantsStatusEffects ?? [];
+    const heal = specs.find((s) => s.stat === 'hpRegen');
+    expect(heal).toBeDefined();
+    expect(heal!.op).toBe('add');
+    expect(heal!.durationMs).toBeNull(); // persistent while equipped, never a timed burst
+    expect(heal!.value).toBeGreaterThan(0);
+    // ≤ 1 HP/s ≈ ≤ 60 HP over a ~60s floor — a nudge, not a crutch.
+    expect(heal!.value).toBeLessThanOrEqual(1);
+  });
 });
