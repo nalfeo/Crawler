@@ -1,0 +1,9 @@
+{
+  "date": "2026-07-02",
+  "slug": "status-effect-framework",
+  "task": "Generic deterministic status-effect / stat-modifier framework (Floor 2 prep) with a Floor 1 Merchant's-Charm heal-over-time demo",
+  "estimated_apples": 4,
+  "actual_apples": 4,
+  "verdict": "exact",
+  "notes": "Held at 4. Genuinely cross-layer: new shared types, a core system + pure helpers + GameWorld sidecar + recycled-EID cleanup, speed read-site fold-ins in BOTH playerInputSystem and enemyAISystem (wander/leap/cap, preserving slime-leap), ordering wiring in both sim pipelines, data-driven equipment integration (grantsStatusEffects) + the charm demo, a lab, 5 test files (~50 tests incl. fast-check property + cross-pipeline parity + no-wallclock static scan), and an ADR. The full tier-4 harness was the bulk of the non-code effort: dual-plan synthesis (gpt-5.5 + gemini, opus judge), 2 plan-review rounds (which correctly caught a recycled-EID leak and an equip-atomicity hazard before any code), and a 2-round 3-model code review that surfaced 1 real (latent) MAJOR speed-expiry-asymmetry plus 5 MINORs, all adjudicated valid and fixed with regression tests. No scope explosion, no blockers; the determinism/parity discipline and the review loop are inherent to the tier rather than overruns, so the estimate was accurate."
+}
