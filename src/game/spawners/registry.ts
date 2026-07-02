@@ -150,10 +150,12 @@ const RATS_NEST: SpawnerArchetype = {
   spriteWidth: 3.25,
   spriteHeight: 3.25,
   contactDamage: 4,
-  // Passive: a slow trickle of rats, with the occasional brute.
+  // Passive: a slow trickle of rats, with the occasional brute. Concurrent cap
+  // kept low so the nest reads as juicy (regular spawn pulses) without flooding
+  // Floor 1 — tuned against the headless win-rate gate.
   passive: {
-    intervalMs: 2500,
-    maxAlive: 6,
+    intervalMs: 3600,
+    maxAlive: 3,
     perPulse: 1,
     pool: [
       { weight: 85, mob: RAT },
@@ -161,10 +163,11 @@ const RATS_NEST: SpawnerArchetype = {
     ],
   },
   // Defensive: once hit, the nest boils over — faster, a higher cap, and far
-  // more brutes in the mix.
+  // more brutes in the mix (still capped so an engaged nest is a spike, not a
+  // wipe).
   defensive: {
-    intervalMs: 1200,
-    maxAlive: 10,
+    intervalMs: 2000,
+    maxAlive: 5,
     perPulse: 2,
     pool: [
       { weight: 60, mob: RAT },
@@ -194,17 +197,19 @@ const SLIME_POOL: SpawnerArchetype = {
   spriteWidth: 3.5,
   spriteHeight: 3.5,
   contactDamage: 5,
-  // Passive: lone slimes ooze out slowly.
+  // Passive: lone slimes ooze out slowly. Low concurrent cap keeps the pool
+  // visibly active (steady spawn pulses) without swamping Floor 1.
   passive: {
-    intervalMs: 3000,
-    maxAlive: 5,
+    intervalMs: 4200,
+    maxAlive: 3,
     perPulse: 1,
     pool: [{ weight: 100, mob: SLIME }],
   },
-  // Defensive: more slimes, faster — the pool churns once disturbed.
+  // Defensive: more slimes, faster — the pool churns once disturbed (capped so
+  // it stays a manageable surge).
   defensive: {
-    intervalMs: 1400,
-    maxAlive: 9,
+    intervalMs: 2200,
+    maxAlive: 5,
     perPulse: 2,
     pool: [{ weight: 100, mob: SLIME }],
   },
