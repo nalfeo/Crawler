@@ -1,0 +1,51 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "guard-orphaned-systems",
+  "task_title": "Deterministic orphaned-system wiring guard",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "notes": "Round 1 REJECT (gpt-5.4): 1 Blocking (token-presence detection too weak - string literals/URLs counted as refs, need structural/AST detection); 2 Major (move allowlisted-but-now-wired check into lib+CLI; make allowlist entries structured with reason+trackedIssue+owner); 1 Minor (weapons doc contradicts reality). All resolved: detection rewritten on the TypeScript compiler API (AST) matching only CallExpression-identifier-callee and ArrayLiteral element/spread forms; findStaleAllowlistEntries(systems,wiredRefs) now returns {name,kind:missing|redundant} and is enforced by the CLI; AllowlistEntry is structured with REQUIRED_ALLOWLIST_FIELDS + findMalformedAllowlistEntries; docs/systems/03-weapons.md corrected to mark weaponEntitySystem not-wired (refs #666). Revised plan re-approved by creator/human via exit_plan_mode (autopilot)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "model": "gpt-5.4",
+          "models": ["gpt-5.4"],
+          "clean": false,
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "verdict": "concerns",
+          "notes": "1 Blocking: regex/comment-strip detection not syntax-aware (string literals counted as refs; URL truncated real ref). 1 Major: export{}/re-export defs invisible. Both fixed by rewriting detection on the TypeScript compiler API (AST)."
+        },
+        {
+          "round": 2,
+          "model": "gpt-5.4",
+          "models": ["gpt-5.4"],
+          "clean": false,
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "verdict": "concerns",
+          "notes": "1 Major: CLI failed OPEN (exit 0 + warn) when 0 systems discovered - now fails closed with report.error. 1 Minor: orphan findings attributed to re-export barrel (src/game/index.ts) not the real def - added SystemDef.kind and collectExportedSystems now prefers the concrete declaration file."
+        },
+        {
+          "round": 3,
+          "model": "gpt-5.4",
+          "models": ["gpt-5.4"],
+          "clean": true,
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "verdict": "approve",
+          "notes": "CLEAN - both round-2 fixes confirmed correct (fail-closed yields exit 1; reexport->declaration upgrade deterministic, no downgrade), no new issues. 22 unit tests + typecheck + eslint pass."
+        }
+      ]
+    }
+  }
+}

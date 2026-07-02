@@ -8,12 +8,22 @@
 
 ## Systems in this group
 
-| System                      | File                                            | Pipeline position            |
-| --------------------------- | ----------------------------------------------- | ---------------------------- |
-| `weaponSystem`              | `src/game/weaponSystem.ts`                      | preSystems (player weapons)  |
-| `weaponEntitySystem`        | `src/game/weaponSystem.ts`                      | preSystems (weapon entities) |
-| `returningProjectileSystem` | `src/core/systems/returningProjectileSystem.ts` | 3                            |
-| `projectileCleanupSystem`   | `src/core/systems/projectileCleanupSystem.ts`   | 18                           |
+| System                      | File                                            | Pipeline position             |
+| --------------------------- | ----------------------------------------------- | ----------------------------- |
+| `weaponSystem`              | `src/game/weaponSystem.ts`                      | preSystems (player weapons)   |
+| `weaponEntitySystem`        | `src/game/weaponSystem.ts`                      | ⚠️ not wired — see note below |
+| `returningProjectileSystem` | `src/core/systems/returningProjectileSystem.ts` | 3                             |
+| `projectileCleanupSystem`   | `src/core/systems/projectileCleanupSystem.ts`   | 18                            |
+
+> ⚠️ **`weaponEntitySystem` is NOT wired into any real pipeline.** It processes
+> `[Weapon, Owner]` entities, but its only producer (`spawnWeapon` in
+> `src/core/spawners/pickups.ts`) and the system itself are called **only in
+> tests** — nothing in the visual game or headless runner spawns weapon entities
+> or runs this system. Player weapons use the singleton `weaponSystem` instead.
+> This is a latent, never-wired feature (same failure class as the pre-#665
+> `spawnerSystem`); it is allowlisted by the orphaned-system guard and tracked in
+> [#666](https://github.com/nalfeo/Crawler/issues/666) for a wire-or-delete
+> decision. See ADR 0039.
 
 ---
 

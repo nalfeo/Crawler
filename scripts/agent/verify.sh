@@ -32,6 +32,13 @@ npx knip || echo "⚠️  Knip found unused exports (non-blocking for now)"
 echo "🔍 Step 5/10: Guard + review-ledger tests..."
 npm run test:guards
 
+echo "🔍 Step 5b/10: Orphaned-system wiring guard..."
+# Deterministic architecture guard: every *System exported from src/core|src/game
+# must be referenced by a REAL runtime pipeline (see WIRING_SITES) or be on the
+# documented allowlist. Catches the class of bug where spawnerSystem shipped
+# inert because only its lab force-called it (ADR 0039).
+npx tsx scripts/agent/health/orphaned-systems.ts
+
 # v8 coverage instrumentation roughly 5x's the unit-suite wall time (~27s ->
 # ~140s on a typical dev box). Coverage thresholds are authoritatively enforced
 # in CI (ci.yml `test-unit` job) on every PR, so this local pre-commit gate runs
