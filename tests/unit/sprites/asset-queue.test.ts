@@ -114,7 +114,10 @@ describe('normalizeAssetRequest', () => {
     });
     // Invalid type is silently omitted; request still proceeds without type field
     expect(result).toMatchObject({ kind: 'issue-request', issueNumber: 42 });
-    expect(result?.type).toBeUndefined();
+    // Only IssueAssetRequest carries `type`; narrow before asserting it was dropped.
+    if (result?.kind === 'issue-request') {
+      expect(result.type).toBeUndefined();
+    }
   });
 
   it('normalizes type to lowercase when valid', () => {

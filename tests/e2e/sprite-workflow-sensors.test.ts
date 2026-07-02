@@ -405,6 +405,123 @@ describe('sprite workflow sensor-failure visibility + force-judge', () => {
     }
   });
 
+  // Regression for the stale-sidecar 404 the user hit: a long-lived sidecar started
+  // before the pre-flight route (#635) 404s on /api/checkin/prepare but still serves
+  // the older /api/checkin. The UI must fall back — skip pre-flight, check in anyway
+  // (sending NO slug so the sidecar computes its own branch) — and persist a
+  // "restart the sidecar" note instead of aborting on the raw 404.
+  it('falls back to a slug-less check-in when the sidecar lacks the pre-flight route', async () => {
+    let checkinBody: unknown = null;
+    await page.route('**/api/checkin/prepare', async (route) => {
+      await route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          message: 'Route POST:/api/checkin/prepare not found',
+          error: 'Not Found',
+          statusCode: 404,
+        }),
+      });
+    });
+    await page.route('**/api/checkin', async (route) => {
+      checkinBody = route.request().postDataJSON();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          branch: 'assets/checkin-2026-06-08-stale01',
+          issueUrl: 'https://github.com/nalfeo/Crawler/issues/101',
+          issueTitle: 'Asset check-in',
+          issueBody: 'body',
+          assets: [
+            {
+              assetPath: 'generated/slime-king-var-1.png',
+              manifestKey: 'slime-king-var-1',
+              briefId: 'slime-king',
+              variantIndex: 1,
+            },
+          ],
+        }),
+      });
+    });
+    try {
+      await loadSeededDevtools();
+      page.once('dialog', (dialog) => void dialog.accept());
+      const checkinResponse = page.waitForResponse((res) => res.url().endsWith('/api/checkin'));
+      await page.getByRole('button', { name: /^Check in to GitHub$/ }).click();
+      await checkinResponse;
+      // The check-in still succeeds despite the missing pre-flight route.
+      const issueLink = page.getByRole('link', { name: /View asset-checkin issue/ });
+      await issueLink.waitFor({ state: 'visible', timeout: 10_000 });
+      expect(await issueLink.getAttribute('href')).toBe(
+        'https://github.com/nalfeo/Crawler/issues/101',
+      );
+      // The fallback must NOT thread a stale slug — it sends an empty body so the
+      // sidecar computes its own branch (exactly the pre-#635 behavior).
+      expect(checkinBody).toEqual({});
+      // The actionable stale-sidecar hint persists past a full poll cycle (1s).
+      await page.waitForTimeout(1_200);
+      expect(await page.locator('body').textContent()).toContain('sprites:gallery');
+      expect(await issueLink.isVisible()).toBe(true);
+    } finally {
+      await page.unroute('**/api/checkin/prepare');
+      await page.unroute('**/api/checkin');
+    }
+  });
+
+  // A sidecar so old it lacks even /api/checkin (or any route regression) must not
+  // dump the raw Fastify 404 on the operator — it gets the actionable hint instead,
+  // in the persistent result element, with no false success banner.
+  it('shows the stale-sidecar hint (not a raw 404) when /api/checkin is missing', async () => {
+    await page.route('**/api/checkin/prepare', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          assetCount: 1,
+          branch: 'assets/checkin-2026-06-08-stale02',
+          slug: 'checkin-2026-06-08-stale02',
+          assets: [
+            {
+              assetPath: 'generated/slime-king-var-1.png',
+              manifestKey: 'slime-king-var-1',
+              briefId: 'slime-king',
+              variantIndex: 1,
+            },
+          ],
+          estimatedDuration: 'Pushing: ~5s · Filing issue: ~3s',
+        }),
+      });
+    });
+    await page.route('**/api/checkin', async (route) => {
+      await route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          message: 'Route POST:/api/checkin not found',
+          error: 'Not Found',
+          statusCode: 404,
+        }),
+      });
+    });
+    try {
+      await loadSeededDevtools();
+      page.once('dialog', (dialog) => void dialog.accept());
+      const checkinResponse = page.waitForResponse((res) => res.url().endsWith('/api/checkin'));
+      await page.getByRole('button', { name: /^Check in to GitHub$/ }).click();
+      await checkinResponse;
+      await page.waitForFunction(() => document.body.textContent?.includes('sprites:gallery'));
+      const bodyText = await page.locator('body').textContent();
+      // The raw Fastify 404 text must NOT be surfaced to the operator...
+      expect(bodyText).not.toContain('Route POST:/api/checkin not found');
+      // ...and there must be no false success banner.
+      expect(bodyText).not.toContain('Successfully checked in');
+    } finally {
+      await page.unroute('**/api/checkin/prepare');
+      await page.unroute('**/api/checkin');
+    }
+  });
+
   // Issue #2 the user hit: a Judge (or PostProcess) request had no Cancel/retry,
   // so a hung step wedged the button until a page reload. Hold the judge request
   // pending, prove the shared "Cancel step" button appears, cancel it, and prove

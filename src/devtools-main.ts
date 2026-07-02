@@ -30,6 +30,9 @@ import {
   prepareCheckin,
   ApproveRequestError,
   CheckinRequestError,
+  STALE_SIDECAR_HINT,
+  isSidecarRouteMissing,
+  type CheckinPrepareResponse,
   type SidecarRunListEntry,
 } from './devtools/sprite-approval-api.js';
 import { getSpriteSidecarBaseUrl } from './shared/session-server-env.js';
@@ -6311,7 +6314,8 @@ function render(): void {
 
     try {
       // Step 1: Fast pre-flight check — detect what will be checked in
-      let prepareData;
+      let prepareData: CheckinPrepareResponse | null = null;
+      let preflightSkippedStale = false;
       try {
         setWorkflowStatus('Checking approved assets...', '#60a5fa');
         prepareData = await prepareCheckin();
@@ -6340,6 +6344,16 @@ function render(): void {
             '#fca5a5',
           );
           return;
+        } else if (isSidecarRouteMissing(prepareErr)) {
+          // Stale sidecar: it lacks the newer pre-flight route but still serves
+          // the older /api/checkin route. Skip pre-flight and continue — the
+          // sidecar computes its own slug/branch, exactly as it did pre-#635.
+          preflightSkippedStale = true;
+          prepareData = null;
+          setWorkflowStatus(
+            `Pre-flight unavailable — ${STALE_SIDECAR_HINT} Continuing check-in without it...`,
+            '#fcd34d',
+          );
         } else {
           const message = prepareErr instanceof Error ? prepareErr.message : String(prepareErr);
           setWorkflowStatus(`Pre-flight check failed: ${message}`, '#fca5a5');
@@ -6349,13 +6363,17 @@ function render(): void {
 
       // Step 2: Execute the actual check-in (push + issue filing happen in one request).
       setButtonBusy(checkinBtn, true, 'Check in to GitHub', 'Checking in...');
-      setWorkflowStatus(
-        `Pushing ${prepareData.assetCount} asset${prepareData.assetCount === 1 ? '' : 's'} to ${prepareData.branch} ` +
-          'and filing the asset-checkin issue on GitHub...',
-        '#60a5fa',
-      );
+      if (prepareData) {
+        setWorkflowStatus(
+          `Pushing ${prepareData.assetCount} asset${prepareData.assetCount === 1 ? '' : 's'} to ${prepareData.branch} ` +
+            'and filing the asset-checkin issue on GitHub...',
+          '#60a5fa',
+        );
+      } else {
+        setWorkflowStatus('Checking in approved assets (pre-flight unavailable)...', '#60a5fa');
+      }
 
-      const result = await postCheckin(prepareData.slug);
+      const result = await postCheckin(prepareData?.slug);
       const count = result.assets.length;
 
       const normalizeCheckedAssetPath = (assetPath: string): string =>
@@ -6411,6 +6429,16 @@ function render(): void {
         ),
         link,
       );
+      if (preflightSkippedStale) {
+        // Persist the actionable hint next to the success banner so the 1s
+        // renderWorkflowSelection poll can't wipe it from the status line.
+        checkinResult.appendChild(
+          el('div', {
+            text: `Note: pre-flight was skipped — ${STALE_SIDECAR_HINT}`,
+            style: { color: '#fcd34d', marginTop: '6px' },
+          }),
+        );
+      }
 
       setWorkflowStatus(
         `✅ Checked in ${count} asset${count === 1 ? '' : 's'}. Branch: ${result.branch}`,
@@ -6428,6 +6456,14 @@ function render(): void {
           'Check-in is disabled in CI (it runs only from a local sidecar).',
           '#fca5a5',
         );
+      } else if (isSidecarRouteMissing(error)) {
+        // Render into the persistent result element (not the transient status
+        // line) so the operator retains the "restart the sidecar" instruction.
+        checkinResult.style.display = 'block';
+        checkinResult.replaceChildren(
+          el('div', { text: STALE_SIDECAR_HINT, style: { color: '#fca5a5' } }),
+        );
+        setWorkflowStatus('Check-in failed — the sidecar is out of date.', '#fca5a5');
       } else {
         const message = error instanceof Error ? error.message : String(error);
         setWorkflowStatus(`Check-in failed: ${message}`, '#fca5a5');
