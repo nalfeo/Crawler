@@ -237,3 +237,42 @@ export async function postCheckin(fetcher: typeof fetch = fetch): Promise<Checki
   }
   return (await response.json()) as CheckinResponse;
 }
+
+/**
+ * Pre-flight check for check-in: detects what will be checked in without
+ * performing the slow git push / GitHub issue operations. Returns immediately
+ * to provide fast feedback on asset count and estimated time.
+ */
+export interface CheckinPrepareResponse {
+  readonly assetCount: number;
+  readonly branch: string;
+  readonly assets: readonly CheckinAsset[];
+  readonly estimatedDuration: string;
+}
+
+export async function prepareCheckin(
+  fetcher: typeof fetch = fetch,
+): Promise<CheckinPrepareResponse> {
+  const response = await fetcher(`${SIDECAR_BASE}/api/checkin/prepare`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  if (!response.ok) {
+    let detail = '';
+    let errorCode: string | null = null;
+    try {
+      const body = (await response.json()) as ApproveErrorBody;
+      detail = body.message ?? body.error ?? '';
+      errorCode = body.error ?? null;
+    } catch {
+      // Body wasn't JSON; fall through with status text only.
+    }
+    throw new CheckinRequestError(
+      response.status,
+      errorCode,
+      `prepare failed (${response.status}): ${detail || response.statusText}`,
+    );
+  }
+  return (await response.json()) as CheckinPrepareResponse;
+}

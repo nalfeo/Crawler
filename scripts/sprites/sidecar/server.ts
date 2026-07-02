@@ -914,6 +914,66 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     return entry;
   });
 
+  app.post<{ Body: { base?: unknown; remote?: unknown } }>(
+    '/api/checkin/prepare',
+    async (req, reply) => {
+      // Fast pre-flight check: detect what will be checked in WITHOUT pushing/filing issue.
+      // This provides immediate feedback and allows the UI to show progress for the slow parts.
+      const body = (req.body ?? {}) as { base?: unknown; remote?: unknown };
+      const options: { baseBranch?: string; remote?: string } = {};
+      if (typeof body.base === 'string' && body.base.trim() !== '') options.baseBranch = body.base;
+      if (typeof body.remote === 'string' && body.remote.trim() !== '')
+        options.remote = body.remote;
+
+      try {
+        const env = deps.env ?? process.env;
+        if (env.CI !== undefined) {
+          reply.code(403);
+          return { error: 'ci-refused', message: 'Check-in is disabled in CI (local-only).' };
+        }
+
+        const remote = options.remote ?? 'origin';
+        const baseBranch = options.baseBranch ?? 'main';
+
+        // Import and use detectApprovedAssets to see what would be checked in
+        const { detectApprovedAssets, planAssetCheckin } = await import('../checkin.js');
+        const defaultDeps = createDefaultCheckinDeps(deps.repoRoot, env);
+
+        // Detect approved assets without full operations (skip manifest enrichment in prepare for speed)
+        const assets = await detectApprovedAssets(
+          defaultDeps.exec,
+          deps.repoRoot,
+          remote,
+          baseBranch,
+          {},
+        );
+
+        if (assets.length === 0) {
+          reply.code(409);
+          return {
+            error: 'nothing-to-checkin',
+            message: `No approved art differs from ${remote}/${baseBranch}.`,
+          };
+        }
+
+        const plan = planAssetCheckin({ assets, now: new Date(), baseBranch });
+
+        return {
+          assetCount: assets.length,
+          branch: plan.branch,
+          assets: plan.assets,
+          estimatedDuration: 'Pushing: ~5s · Filing issue: ~3s',
+        };
+      } catch (err) {
+        reply.code(500);
+        return {
+          error: 'prepare-failed',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
+
   app.post<{ Body: { base?: unknown; remote?: unknown } }>('/api/checkin', async (req, reply) => {
     // Check-in publishes locally-approved art as a remote branch + tracking
     // issue (NO PR). Like approve, it is local-only — `runAssetCheckin` refuses
