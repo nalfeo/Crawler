@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "guard-telemetry-repair",
+  "task_title": "Repair copilot-guards telemetry pipeline",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 9,
+      "resolved_count": 9,
+      "notes": "approved_with_changes; 4 blocking + 3 non-blocking + 2 suggestions all adopted: session-keyed dedup (metrics>handoff), fixture-signature quarantine + per-ID drop for unknowns, per-family dead-guard gate, shared clean applied to both sources, mkdtempSync test isolation, deterministic ordering, surfaced ignored/unexpected, +2 E2E regressions"
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "notes": "Single-model code-review loop (claude-sonnet-4.6). Round 1 traced quarantine, dedup order-independence, per-family gating, summarizeGuardTelemetry back-compat, telemetryCaptureNote exit-code safety, and dispatcher temp-cwd isolation; no substantive concerns."
+    }
+  }
+}

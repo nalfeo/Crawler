@@ -51,8 +51,14 @@ Hello kitties: N/5 = N.NN 🎀 <!-- actual_apples / 5, two decimal places -->
 
 ## Agent-OS Telemetry
 
-<!-- If `files/guard-telemetry.jsonl` exists, paste the output of
-     `npx tsx scripts/agent/docs/guard-telemetry.ts --handoff-section` here. -->
+<!-- If `files/guard-telemetry.jsonl` exists, run `npm run telemetry:capture -- <session-slug>`
+     to write a committed, contamination-filtered per-session summary under
+     `docs/knowledge/metrics/guard-telemetry/`. That structured file is the durable
+     collection path the analyzer reads. Pasting the output of
+     `npx tsx scripts/agent/docs/guard-telemetry.ts --handoff-section` below still
+     works as a fallback for legacy tooling. -->
+
+Guard telemetry captured via: [`npm run telemetry:capture` | handoff block below | none]
 
 ## Test Results
 

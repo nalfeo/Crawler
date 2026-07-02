@@ -9,47 +9,48 @@
 5. Run `bash scripts/agent/verify-fast.sh` after every meaningful change
 6. Run `bash scripts/agent/verify.sh` before committing (includes `verify:pr-prereqs`, so review-harness + other PR prerequisites fail early instead of waiting for `create_pull_request`)
 7. Write a handoff file before ending your session
-8. If `files/guard-telemetry.jsonl` exists, paste `npx tsx scripts/agent/docs/guard-telemetry.ts --handoff-section` into the handoff
+8. If `files/guard-telemetry.jsonl` exists, run `npm run telemetry:capture -- <session-slug>` to write a committed per-session summary under `docs/knowledge/metrics/guard-telemetry/` (the durable, contamination-filtered collection path). Pasting `npx tsx scripts/agent/docs/guard-telemetry.ts --handoff-section` into the handoff still works as a fallback.
 
 ## Commands
 
-| Task                   | Command                            |
-| ---------------------- | ---------------------------------- |
-| Typecheck              | `npm run typecheck`                |
-| Lint                   | `npm run lint`                     |
-| Lint (fix)             | `npm run lint:fix`                 |
-| Format                 | `npm run format`                   |
-| Format (check)         | `npm run format:check`             |
-| Unit tests             | `npm run test:unit`                |
-| All tests (4 projects) | `npm test`                         |
-| Unit tests (watch)     | `npm run test:watch`               |
-| Integration tests      | `npm run test:integration`         |
-| E2E tests              | `npm run test:e2e`                 |
-| Coverage (unit)        | `npm run verify:coverage`          |
-| Dev server             | `npm run dev`                      |
-| Lab mode               | `npm run lab`                      |
-| DevTools mode          | `npm run devtools`                 |
-| Build                  | `npm run build`                    |
-| Dead code              | `npm run lint:dead-code`           |
-| Sprite extract palette | `npm run sprites:extract-palette`  |
-| Sprite run             | `npm run sprites:run`              |
-| Sprite gallery         | `npm run sprites:gallery`          |
-| Sprite approve         | `npm run sprites:approve`          |
-| Sprite synth           | `npm run sprites:synth`            |
-| Sprite batch           | `npm run sprites:batch`            |
-| Sprite asset plan      | `npm run sprites:asset-plan`       |
-| Sprite plan drafts     | `npm run sprites:plan-drafts`      |
-| Sprite sync catalog    | `npm run sprites:sync-catalog`     |
-| Sprite metadata        | `npm run sprites:metadata`         |
-| Fast verify            | `npm run verify:fast`              |
-| Full verify            | `npm run verify`                   |
-| PR prereq check        | `npm run verify:pr-prereqs`        |
-| Full verify + coverage | `VERIFY_COVERAGE=1 npm run verify` |
-| Guard + ledger tests   | `npm run test:guards`              |
-| Review ledger          | `npm run review:ledger`            |
-| Docs loop (local)      | `npm run docs:check`               |
-| Security loop          | `npm run security:check`           |
-| Health loop            | `npm run health:check`             |
+| Task                    | Command                            |
+| ----------------------- | ---------------------------------- |
+| Typecheck               | `npm run typecheck`                |
+| Lint                    | `npm run lint`                     |
+| Lint (fix)              | `npm run lint:fix`                 |
+| Format                  | `npm run format`                   |
+| Format (check)          | `npm run format:check`             |
+| Unit tests              | `npm run test:unit`                |
+| All tests (4 projects)  | `npm test`                         |
+| Unit tests (watch)      | `npm run test:watch`               |
+| Integration tests       | `npm run test:integration`         |
+| E2E tests               | `npm run test:e2e`                 |
+| Coverage (unit)         | `npm run verify:coverage`          |
+| Dev server              | `npm run dev`                      |
+| Lab mode                | `npm run lab`                      |
+| DevTools mode           | `npm run devtools`                 |
+| Build                   | `npm run build`                    |
+| Dead code               | `npm run lint:dead-code`           |
+| Sprite extract palette  | `npm run sprites:extract-palette`  |
+| Sprite run              | `npm run sprites:run`              |
+| Sprite gallery          | `npm run sprites:gallery`          |
+| Sprite approve          | `npm run sprites:approve`          |
+| Sprite synth            | `npm run sprites:synth`            |
+| Sprite batch            | `npm run sprites:batch`            |
+| Sprite asset plan       | `npm run sprites:asset-plan`       |
+| Sprite plan drafts      | `npm run sprites:plan-drafts`      |
+| Sprite sync catalog     | `npm run sprites:sync-catalog`     |
+| Sprite metadata         | `npm run sprites:metadata`         |
+| Fast verify             | `npm run verify:fast`              |
+| Full verify             | `npm run verify`                   |
+| PR prereq check         | `npm run verify:pr-prereqs`        |
+| Guard telemetry capture | `npm run telemetry:capture`        |
+| Full verify + coverage  | `VERIFY_COVERAGE=1 npm run verify` |
+| Guard + ledger tests    | `npm run test:guards`              |
+| Review ledger           | `npm run review:ledger`            |
+| Docs loop (local)       | `npm run docs:check`               |
+| Security loop           | `npm run security:check`           |
+| Health loop             | `npm run health:check`             |
 
 For sprite workflow details and when to use sprite commands, see
 `scripts/sprites/` for implementation details or `docs/knowledge/game-design/art-style-guide.md` for art context.

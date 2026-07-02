@@ -1,8 +1,20 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { dispatch } from '../lib/dispatcher.mjs';
 
-const noopCtx = { cwd: process.cwd(), log: async () => {} };
+// The dispatcher appends a telemetry event to `<ctx.cwd>/files/guard-telemetry.jsonl`
+// on every guard decision. If ctx.cwd were process.cwd() (the repo root when the
+// suite runs), these synthetic fixture events — including the real configured id
+// `edit-guard-self-protection` used below — would pollute the real artifact that
+// feeds cross-session telemetry analysis. Point every dispatch test at a throwaway
+// temp dir so the suite can never contaminate that artifact.
+const telemetryCwd = mkdtempSync(path.join(tmpdir(), 'guard-dispatch-'));
+after(() => rmSync(telemetryCwd, { recursive: true, force: true }));
+
+const noopCtx = { cwd: telemetryCwd, log: async () => {} };
 
 test('dispatch returns undefined when no guards match', async () => {
   const result = await dispatch(
@@ -257,4 +269,27 @@ test('dispatch never upgrades ask to deny via severity', async () => {
     noopCtx,
   );
   assert.equal(result.permissionDecision, 'ask');
+});
+
+test('guard telemetry is written under the isolated temp cwd, never the repo root', async () => {
+  await dispatch(
+    [
+      {
+        id: 'shell-bad',
+        category: 'shell',
+        matches: () => true,
+        check: () => ({ decision: 'deny', reason: 'isolation probe' }),
+      },
+    ],
+    'powershell',
+    {},
+    noopCtx,
+  );
+  const artifact = path.join(telemetryCwd, 'files', 'guard-telemetry.jsonl');
+  assert.ok(existsSync(artifact), 'telemetry must land in the isolated temp cwd');
+  assert.notEqual(
+    path.resolve(telemetryCwd),
+    path.resolve(process.cwd()),
+    'dispatch tests must not use the repo root as cwd',
+  );
 });

@@ -113,10 +113,16 @@ export default {
 ### Telemetry artifact
 
 Every guard decision is also appended to `files/guard-telemetry.jsonl` in the
-current worktree. Use
-`npx tsx scripts/agent/docs/guard-telemetry.ts --handoff-section` near session
-end to generate the handoff-ready summary block that preserves telemetry across
-sessions.
+current worktree. Near session end, run `npm run telemetry:capture -- <session-slug>`
+to write a committed, contamination-filtered per-session summary under
+`docs/knowledge/metrics/guard-telemetry/` — this is the durable path the
+cross-session analyzer reads. `npx tsx scripts/agent/docs/guard-telemetry.ts --handoff-section`
+still generates a paste-able handoff block as a fallback.
+
+Fixture guard ids used by this extension's own tests (e.g. `boom`, `shell-bad`,
+`pr-hard`) are quarantined by the analyzer, so guard-dev sessions never skew the
+real fire-rate. Dispatcher tests write telemetry only to a temp dir, never the
+repo-root artifact.
 
 ### Dispatcher semantics
 
