@@ -1,0 +1,10 @@
+{
+  "date": "2026-07-02",
+  "session": "guard-orphaned-systems",
+  "estimated_apples": 3,
+  "actual_apples": 4,
+  "delta": 1,
+  "verdict": "under",
+  "hello_kitties": 0.8,
+  "notes": "Estimated 3 (script + tests + wiring + rule/doc changes + ADR). Came in at 4: the code-review loop rejected the first regex detection draft and forced an AST (TypeScript compiler API) rewrite, plus a fail-open + barrel-attribution fix in round 2. Extra apple was earned rigor, not scope creep."
+}

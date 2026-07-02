@@ -26,6 +26,7 @@ Crawler is a crafting-focused vampire-survivors-like game set in a reality show 
 - ECS systems are deterministic and usually shaped as `(world: GameWorld) => void` (pipeline systems may accept/return deterministic data)
 - No Phaser imports in `src/core/` — the bridge pattern keeps logic portable
 - Every new ECS system MUST have a lab in `src/labs/`
+- **Every `*System` exported from `src/core/**`/`src/game/**` MUST be wired into a real runtime pipeline** (`src/bootstrap/floor-main-scene-options.ts`, `src/engine/sim/simulation-step.ts`, `src/game/ai/simulation-step.ts`, `src/game/ai/headless-runner.ts`, `src/engine/scenes/MainGameScene.ts`) or added to the documented allowlist in `scripts/agent/health/orphaned-systems-lib.ts`. A green lab does NOT prove the real game calls the system — lab-only validation is insufficient for wiring/behavior changes; "observe before done" must name the real game or headless artifact. Enforced by `npm run check:wired-systems` (ADR 0039).
 - Write conventional commits. Allowed types (enforced by commitlint): `feat`, `fix`, `chore`, `docs`, `lab`, `refactor`, `test`, `perf`, `ci`, `build`, `revert`
 - Write a handoff file before ending your session
 - If `files/guard-telemetry.jsonl` exists, run `npm run telemetry:capture -- <session-slug>` to commit a per-session guard-telemetry summary under `docs/knowledge/metrics/guard-telemetry/` (durable, contamination-filtered). Pasting `npx tsx scripts/agent/docs/guard-telemetry.ts --handoff-section` into the handoff remains a fallback.

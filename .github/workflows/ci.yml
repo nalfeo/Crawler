@@ -93,6 +93,15 @@ jobs:
       - name: Lab gate check
         run: bash scripts/agent/lab-gate-check.sh
 
+      # Deterministic architecture guard (ADR 0039): every *System exported from
+      # src/core|src/game must be referenced by a real runtime pipeline (visual
+      # bootstrap, engine/AI sim steps, headless runner, MainGameScene) or be on
+      # the documented allowlist. Blocks the class of bug where spawnerSystem
+      # shipped inert because only its lab force-called it. Gated into merge-gate
+      # via check-format-and-labs.
+      - name: Orphaned-system wiring guard
+        run: npm run check:wired-systems
+
       # copilot-guards + review-ledger validator tests (node:test). These run
       # nowhere else in CI; this is their merge-gate home.
       - name: Guard + review-ledger tests
