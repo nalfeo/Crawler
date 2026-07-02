@@ -1,0 +1,21 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "asset-checkin-flow",
+  "task_title": "Asset checkin flow: faster and clearer progress feedback",
+  "estimated_apples": 1,
+  "stages": {
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

@@ -1709,4 +1709,16 @@ describe('sidecar POST /api/checkin', () => {
     expect(res.statusCode).toBe(403);
     expect(res.json()).toMatchObject({ error: 'ci-refused' });
   });
+
+  it('prepare checkin also refuses with 403 when CI is set', async () => {
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'runs'),
+      version: 'test',
+      env: { CI: 'true' },
+    });
+    const res = await app.inject({ method: 'POST', url: '/api/checkin/prepare', payload: {} });
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toMatchObject({ error: 'ci-refused' });
+  });
 });

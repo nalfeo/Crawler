@@ -213,11 +213,14 @@ export async function postApprove(
  * `postApprove`'s error contract, surfacing the sidecar `error` code so callers
  * can special-case the benign `nothing-to-checkin` (409) conflict.
  */
-export async function postCheckin(fetcher: typeof fetch = fetch): Promise<CheckinResponse> {
+export async function postCheckin(
+  slug?: string,
+  fetcher: typeof fetch = fetch,
+): Promise<CheckinResponse> {
   const response = await fetcher(`${SIDECAR_BASE}/api/checkin`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({}),
+    body: JSON.stringify(slug ? { slug } : {}),
   });
   if (!response.ok) {
     let detail = '';
@@ -236,4 +239,44 @@ export async function postCheckin(fetcher: typeof fetch = fetch): Promise<Checki
     );
   }
   return (await response.json()) as CheckinResponse;
+}
+
+/**
+ * Pre-flight check for check-in: detects what will be checked in without
+ * performing the slow git push / GitHub issue operations. Returns immediately
+ * to provide fast feedback on asset count and estimated time.
+ */
+export interface CheckinPrepareResponse {
+  readonly assetCount: number;
+  readonly branch: string;
+  readonly slug: string;
+  readonly assets: readonly CheckinAsset[];
+  readonly estimatedDuration: string;
+}
+
+export async function prepareCheckin(
+  fetcher: typeof fetch = fetch,
+): Promise<CheckinPrepareResponse> {
+  const response = await fetcher(`${SIDECAR_BASE}/api/checkin/prepare`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  if (!response.ok) {
+    let detail = '';
+    let errorCode: string | null = null;
+    try {
+      const body = (await response.json()) as ApproveErrorBody;
+      detail = body.message ?? body.error ?? '';
+      errorCode = body.error ?? null;
+    } catch {
+      // Body wasn't JSON; fall through with status text only.
+    }
+    throw new CheckinRequestError(
+      response.status,
+      errorCode,
+      `prepare failed (${response.status}): ${detail || response.statusText}`,
+    );
+  }
+  return (await response.json()) as CheckinPrepareResponse;
 }

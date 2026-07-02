@@ -27,6 +27,7 @@ import {
   listSidecarRuns,
   postApprove,
   postCheckin,
+  prepareCheckin,
   ApproveRequestError,
   CheckinRequestError,
   type SidecarRunListEntry,
@@ -6301,14 +6302,62 @@ function render(): void {
         'and files an asset-checkin issue on GitHub (no PR is opened).',
     );
     if (!ok) return;
-    setButtonBusy(checkinBtn, true, 'Check in to GitHub', 'Checking in...');
+
+    setButtonBusy(checkinBtn, true, 'Check in to GitHub', 'Preparing...');
     // Clear any prior result so a stale success banner can't linger if this
     // attempt fails.
     checkinResult.style.display = 'none';
     checkinResult.replaceChildren();
+
     try {
-      const result = await postCheckin();
+      // Step 1: Fast pre-flight check — detect what will be checked in
+      let prepareData;
+      try {
+        setWorkflowStatus('Checking approved assets...', '#60a5fa');
+        prepareData = await prepareCheckin();
+        setWorkflowStatus(
+          `Ready to check in ${prepareData.assetCount} asset${prepareData.assetCount === 1 ? '' : 's'} ` +
+            `on branch ${prepareData.branch}. Estimated time: ${prepareData.estimatedDuration}`,
+          '#60a5fa',
+        );
+      } catch (prepareErr) {
+        if (
+          prepareErr instanceof CheckinRequestError &&
+          prepareErr.errorCode === 'nothing-to-checkin'
+        ) {
+          setWorkflowStatus(
+            'Nothing to check in — approve a sprite first. Only assets that differ from ' +
+              'origin/main are published.',
+            '#fcd34d',
+          );
+          return;
+        } else if (
+          prepareErr instanceof CheckinRequestError &&
+          prepareErr.errorCode === 'ci-refused'
+        ) {
+          setWorkflowStatus(
+            'Check-in is disabled in CI (it runs only from a local sidecar).',
+            '#fca5a5',
+          );
+          return;
+        } else {
+          const message = prepareErr instanceof Error ? prepareErr.message : String(prepareErr);
+          setWorkflowStatus(`Pre-flight check failed: ${message}`, '#fca5a5');
+          return;
+        }
+      }
+
+      // Step 2: Execute the actual check-in (push + issue filing happen in one request).
+      setButtonBusy(checkinBtn, true, 'Check in to GitHub', 'Checking in...');
+      setWorkflowStatus(
+        `Pushing ${prepareData.assetCount} asset${prepareData.assetCount === 1 ? '' : 's'} to ${prepareData.branch} ` +
+          'and filing the asset-checkin issue on GitHub...',
+        '#60a5fa',
+      );
+
+      const result = await postCheckin(prepareData.slug);
       const count = result.assets.length;
+
       const normalizeCheckedAssetPath = (assetPath: string): string =>
         assetPath.startsWith('public/assets/')
           ? assetPath.slice('public/assets/'.length)
@@ -6344,6 +6393,8 @@ function render(): void {
         renderQueue();
         renderWorkflowSelection();
       }
+
+      // Success message with link to the issue
       const link = el('a', {
         text: 'View asset-checkin issue ↗',
         style: { color: '#93c5fd', textDecoration: 'underline' },
@@ -6356,9 +6407,14 @@ function render(): void {
       checkinResult.style.display = 'block';
       checkinResult.replaceChildren(
         document.createTextNode(
-          `Checked in ${count} asset${count === 1 ? '' : 's'} on ${result.branch}. `,
+          `✅ Successfully checked in ${count} asset${count === 1 ? '' : 's'} on ${result.branch}. `,
         ),
         link,
+      );
+
+      setWorkflowStatus(
+        `✅ Checked in ${count} asset${count === 1 ? '' : 's'}. Branch: ${result.branch}`,
+        '#86efac',
       );
     } catch (error) {
       if (error instanceof CheckinRequestError && error.errorCode === 'nothing-to-checkin') {
