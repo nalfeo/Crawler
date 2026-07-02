@@ -32,7 +32,7 @@ hundreds of inbound references.
 ### Adding a new ADR
 
 1. Copy `TEMPLATE.md` to `NNNN-your-slug.md`, where `NNNN` is **the next unused
-   number** (currently **0034**).
+   number** (currently **0039**).
 2. Fill in `## Status`, `## Date`, `## Estimated Complexity`, `## Context`,
    `## Decision`, `## Consequences`.
 3. Always **link by slug**, never by bare number, so collisions stay
@@ -111,6 +111,7 @@ hundreds of inbound references.
 - [Multi-variant generated sprites](0028-generated-sprite-variants.md) — identity, selection, approval, and check-in.
 - [Migrate content generation to Azure AI Foundry](0033-azure-foundry-content-generation.md) — broaden model access behind the existing provider seam.
 - [Sprite worker poison-message handling](0037-sprite-worker-poison-message-handling.md) — bounded failures (dequeueCount cap), permanent-drop, and comment-once to stop runaway retry loops and issue-comment spam.
+- [Asset-request briefs accept rich multi-sentence text](0038-asset-request-multi-sentence-brief.md) — relax the issue/marker brief contract so multi-sentence briefs enqueue.
 
 ### Rendering, HUD & VFX
 
@@ -179,3 +180,4 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0028 | [Multi-Variant Generated Sprites](0028-generated-sprite-variants.md)                                                            | Accepted | 2026-06-26 |
 | 0033 | [Migrate Content Generation to Azure AI Foundry](0033-azure-foundry-content-generation.md)                                      | Proposed | 2026-06-29 |
 | 0037 | [Sprite Worker Poison-Message Handling (bounded failures, comment-once)](0037-sprite-worker-poison-message-handling.md)         | Accepted | 2026-07-02 |
+| 0038 | [Asset-Request Briefs Accept Rich Multi-Sentence Text](0038-asset-request-multi-sentence-brief.md)                              | Accepted | 2026-07-01 |

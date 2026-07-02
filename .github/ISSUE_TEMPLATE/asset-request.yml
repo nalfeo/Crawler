@@ -15,8 +15,8 @@ body:
     id: brief
     attributes:
       label: Brief
-      description: One sentence describing the requested sprite.
-      placeholder: A chipped bone dagger with twine-wrapped handle and faint green runes.
+      description: A short brief — one or more sentences — describing the requested sprite.
+      placeholder: A chipped bone dagger with twine-wrapped handle and faint green runes. Reads clearly at gameplay scale and stays distinct from nearby loot.
     validations:
       required: true
   - type: dropdown
