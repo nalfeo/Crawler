@@ -1,0 +1,67 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "status-effect-framework",
+  "task_title": "Generic status-effect / stat-modifier framework (Floor 2 prep)",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "notes": "Two separate-model plan-review rounds (both gpt-5.4 rubber-duck, xhigh), 8 concerns total, all verified against real code and resolved in plan.md. ROUND 1 (synthesized speed-framework plan) -> approved_with_changes, 4 concerns: (1)[BLOCKING] recycled-EID leak: entityExists pruning misses recycled bitecs EIDs; fixed by deleting world.statusEffectsByEntity[eid] in clearEntityStores (entity-core.ts) - the sole non-lab creation path - plus a recycle regression test; entityExists sweep downgraded to memory hygiene. (2)[BLOCKING] plan.md contradicted the synthesis (old (1+sum) multiply, negative chill value, multiply-based Floor2 ramp, 'first pre-movement' placement); Design rewritten to canonical product-of-factors, op:add Floor2 ramp, 0.8 chill factor, placement immediately before enemyAISystem. (3)[non-blocking] parity test too shallow (superseded by r2 #2). (4)[suggestion] trimmed scope: dropped appliedFrame/sequence, kept stack+maxStacks. ROUND 2 (Floor 1 demo swapped to merchant's-charm slow HoT; re-reviewed the health-mutating-system delta) -> approved_with_changes, 4 concerns: (5)[BLOCKING] equip() atomicity broken by applying grantsStatusEffects after slot/stat mutation; fixed by validating specs (isValidSpec) up front in canEquip so post-mutation apply is infallible and equip stays all-or-nothing. (6)[BLOCKING] raw full-run health.current is not a safe cross-pipeline parity oracle (pipelines already differ around weaponSystem/floor1EnemyDirectorSystem); parity test changed to a controlled no-combat fixture comparing the isolated HoT delta with exact-equal (no epsilon). (7)[non-blocking] sourceId=itemDef.id not generic for duplicate-capable slots; runtime source key is now equipment:<instanceId> so instances track/clear independently. (8)[suggestion] ADR layer wording: name BaseStats/EffectiveStats (effective-stats.ts) as the equipment character-sheet lane vs grantsStatusEffects as the timed/source-tracked gameplay-effect lane. r2 confirmed prior #1/#2/#4 still resolved and healing-before-damage placement prevents same-frame revive/masked-death."
+    },
+    "dual_plan_synthesis": {
+      "completed": true,
+      "plan_models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+      "judge_model": "claude-opus-4.8",
+      "notes": "Two independent plans (gpt-5.5, gemini-3.1-pro-preview), both independently rated 4 apples; judged/synthesized by claude-opus-4.8. Adjudicated: product-of-factors multiply (reject value<0); configurable clamps default [0, base*3] with Floor2 passing explicit maxSpeed; discriminated-union stackRule replace/refresh/stack+maxStacks (drop-oldest by array order, no sequence counter); complete enemy fold-in (wander L1676 + leap L554 + cap L234, not just cap); statusEffectSystem slotted immediately before enemyAISystem in BOTH pipelines (visual preSystems + headless hardcoded block); render-only optional chill tint; no-Date.now static test on new files only."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8", "gpt-5.5", "gemini-3.1-pro-preview"],
+          "concerns_count": 6,
+          "resolved_count": 6,
+          "clean": false,
+          "notes": "3 distinct-model code-review agents on `git diff main...HEAD`. opus: CLEAN + 3 latent MINORs; gemini: CLEAN; gpt-5.5: 1 MAJOR + 2 MINOR. 6 distinct concerns after dedup, all fixed in commit 94b3a453 with regression tests (per-concern breakdown recorded under multi_model_review round 1)."
+        },
+        {
+          "round": 2,
+          "models": ["claude-opus-4.8", "gpt-5.5", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Re-ran all 3 distinct models on the fixed diff (94b3a453). All three returned CLEAN — each explicitly verified findings #1-#6 RESOLVED and found no new issues. 50 status-effect tests pass; build + verify:fast green."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8", "gpt-5.5", "gemini-3.1-pro-preview"],
+          "concerns_count": 6,
+          "valid_count": 6,
+          "resolved_count": 6,
+          "clean": false,
+          "notes": "Adjudication (claude-opus-4.8) of the 3-model round 1. Deduped distinct concerns, all judged valid + fixed in 94b3a453: (C1 MAJOR, gpt) player/enemy speed-expiry asymmetry — statusEffectSystem expired effects between the player fold-in (playerInputSystem, pre-preSystems) and the enemy read (enemyAISystem), so timed player-speed effects would outlive enemy ones by 1 frame; LATENT today (no timed speed effects ship; charm is persistent hpRegen; the Floor 2 hate-ramp is an enemy-side effect re-applied per frame) but fixed by moving statusEffectSystem to run AFTER enemyAISystem (still before movement/damage/health) in BOTH pipelines. (C2 MINOR, opus) HoT `health.max[eid] ?? current` is dead on a Float32Array (unset reads 0) and Math.min(0,…) would zero a live entity — guarded `max > 0`. (C3 MINOR, opus) HoT write lacked a lower clamp — a future negative add (DoT) could drive HP negative — clamped Math.max(0,…). (C4a MINOR, gpt) isValidSpec accepted durationMs:Infinity (persistence is null only) — now requires finite > 0. (C4b MINOR, opus/gpt) isValidSpec did not validate stack maxStacks — now requires integer >= 1. (C5 MINOR, gpt) unequip cleared by sourceId only — predicate now also matches sourceType==='equipment'. Regression tests added for each (isValidSpec rejections, HoT max/negative guards, unequip sourceType discrimination, visual-pipeline ordering guard)."
+        },
+        {
+          "round": 2,
+          "models": ["claude-opus-4.8", "gpt-5.5", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Re-review of the fixed diff by all 3 distinct models — all CLEAN. opus explicitly verified there is no double-run of statusEffectSystem in the visual path (injected only via preSystems, never hardcoded in engine/sim/simulation-step.ts) and that the parity test would fail on a double-run/dropped slot; gpt-5.5 confirmed its 3 round-1 concerns + the HoT guard resolved; gemini confirmed determinism/layering/parity upheld and slime-leap scale preserved. No new concerns."
+        }
+      ]
+    }
+  }
+}
