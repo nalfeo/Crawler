@@ -195,11 +195,18 @@ function dedupeCandidates(rawCandidates) {
 
 function formatLinkHost(localAddress) {
   const normalized = (localAddress || '').toLowerCase();
-  if (!normalized || normalized === '0.0.0.0' || normalized === '::') {
-    return '127.0.0.1';
-  }
-  if (normalized === '::1') {
-    return '[::1]';
+  // Loopback and wildcard binds are all reachable through `localhost`, which
+  // resolves to both IPv4 (127.0.0.1) and IPv6 (::1). Prefer it so links stay
+  // readable/clickable even when Vite binds only to the IPv6 loopback (`::1`).
+  if (
+    !normalized ||
+    normalized === '0.0.0.0' ||
+    normalized === '::' ||
+    normalized === '127.0.0.1' ||
+    normalized === '::1' ||
+    normalized === 'localhost'
+  ) {
+    return 'localhost';
   }
   if (normalized.includes(':') && !normalized.startsWith('[')) {
     return `[${localAddress}]`;
