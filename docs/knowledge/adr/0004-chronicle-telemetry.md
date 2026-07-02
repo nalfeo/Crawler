@@ -96,3 +96,38 @@ is queryable.
 5. **No telemetry** — Continue operating blind. Rejected because the memory
    policy defines thresholds (3+ sessions, 30 days) that are impossible to
    measure without observation.
+
+## Amendment (2026-07-02) — Contamination filter, committed capture path, evidence gating
+
+The baseline pipeline shipped but was effectively blind. A guard-infra audit found
+three defects, repaired here (measurement only — no guards were pruned):
+
+1. **Contamination filtering.** The analyzer did not restrict aggregation to the
+   configured guard ids, so the extension's own dispatcher-test fixtures (`boom`,
+   `ctx*`, `edit-bad`, `pr-*`, `shell-*`) — plus synthetic counts for the real id
+   `edit-guard-self-protection` they wrote alongside — leaked into the report. The
+   analyzer now loads the configured ids from
+   `.github/extensions/copilot-guards/config.json`, quarantines any record carrying
+   a known test-fixture id (dropping its synthetic real-id counts too), and drops
+   unknown ids individually with a warning while keeping the real session. The
+   dispatcher tests were also isolated to a temp `cwd` so they can no longer append
+   to the repo-root `files/guard-telemetry.jsonl`.
+
+2. **Committed capture path is now the preferred durable transport.** Decision #2's
+   hand-pasted `--handoff-section` block is retained as a supported fallback, but the
+   primary path is `npm run telemetry:capture -- <slug>`, which writes a committed,
+   contamination-filtered per-session summary under
+   `docs/knowledge/metrics/guard-telemetry/<YYYY-MM-DD>-<slug>.json`. The analyzer
+   unions both sources and de-duplicates by session (committed capture wins).
+
+3. **Evidence-gated dead-guard reporting replaces the coverage-ratio defer.** The
+   report previously refused to run until paste-coverage ≥ 50%, so it never ran at
+   real ~12% coverage. It now always runs and grades each guard: a 0-fire guard is
+   flagged **dead (WARN)** only when its `shell`/`edit`/`pr` family has enough real
+   volume to trust a zero (≥10 configured-guard events across ≥3 clean sessions);
+   otherwise it is reported as low-confidence **unobserved**. See
+   `docs/agent-os/policies/telemetry-policy.md` for the operational thresholds.
+
+Decision #1's `session.log()` emission is unchanged but remains best-effort only
+(not queryable in the session store); the committed artifacts above are the
+authority. This amendment does not change the human-in-the-loop rule (#5).
