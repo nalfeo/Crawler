@@ -79,7 +79,7 @@ without penalty.
   **Deflation** anti-pattern in
   [`complexity-policy.md`](../../agent-os/policies/complexity-policy.md) (marking work
   as fewer apples than it is) — reinforced by the general "never weaken a gate to go
-  green" spirit of AGENTS.md rule #12. The mitigation is that calibration policy plus
+  green" spirit of AGENTS.md rule #12. The mitigation is the calibration policy plus
   the weekly apple-calibration report that surfaces estimate-vs-actual drift.
 - **Doc drift.** The threshold lives in prose across many docs/personas; the guard
   help text and the `test:guards` suite pin the behavior, but stale prose could
