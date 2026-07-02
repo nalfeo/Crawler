@@ -1836,7 +1836,7 @@ function render(): void {
     const key = reloadSelect.value;
     const run = key ? azureRunChoices.find((choice) => azureRunKey(choice) === key) : undefined;
     if (!run) {
-      reloadStatus.textContent = 'Pick a run first (click ↻ Runs).';
+      reloadStatus.textContent = 'Pick a run first.';
       return;
     }
     azureLoadInFlight = true;
