@@ -2,8 +2,9 @@
   "date": "2026-07-02",
   "session": "worktree-server-localhost-url",
   "estimated_apples": 1,
-  "actual_apples": 1,
-  "delta": 0,
-  "verdict": "exact",
-  "hello_kitties": 0.2
+  "actual_apples": 2,
+  "delta": 1,
+  "verdict": "under",
+  "hello_kitties": 0.4,
+  "notes": "Estimated 1 (a one-line loopback->localhost helper fix). Actual 2: running the full verify surfaced 3 pre-existing typecheck errors that a CI backgrounding bug had been masking on main, and the user directed 'fix everything before you open the PR'. Scope grew to repair the ci.yml typecheck/format gating (2 jobs) and extract formatLinkHost into a unit-tested pure module per plan review — two distinct bug classes (localhost rendering + CI masking). The 3 unmasked sprite-test type errors were fixed during the session but landed independently on main (#640/#642) in the interim, so after rebasing they carry no net change and are not part of the final PR diff."
 }

@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 import { createCanvas, joinSession } from '@github/copilot-sdk/extension';
 
 import { renderHtml } from './renderer.mjs';
+import { formatLinkHost } from './format-link-host.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -191,27 +192,6 @@ function dedupeCandidates(rawCandidates) {
     }
   }
   return [...byPort.values()].sort((left, right) => left.localPort - right.localPort);
-}
-
-function formatLinkHost(localAddress) {
-  const normalized = (localAddress || '').toLowerCase();
-  // Loopback and wildcard binds are all reachable through `localhost`, which
-  // resolves to both IPv4 (127.0.0.1) and IPv6 (::1). Prefer it so links stay
-  // readable/clickable even when Vite binds only to the IPv6 loopback (`::1`).
-  if (
-    !normalized ||
-    normalized === '0.0.0.0' ||
-    normalized === '::' ||
-    normalized === '127.0.0.1' ||
-    normalized === '::1' ||
-    normalized === 'localhost'
-  ) {
-    return 'localhost';
-  }
-  if (normalized.includes(':') && !normalized.startsWith('[')) {
-    return `[${localAddress}]`;
-  }
-  return localAddress;
 }
 
 function extractWorkspacePathFromCommandLine(commandLine) {

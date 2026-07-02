@@ -2,9 +2,16 @@
   "schema_version": "review-ledger/v1",
   "date": "2026-07-02",
   "session_slug": "worktree-server-localhost-url",
-  "task_title": "Render worktree-server canvas loopback links as localhost",
-  "estimated_apples": 1,
+  "task_title": "Render worktree-server canvas loopback links as localhost (+ CI gating & pre-existing typecheck fixes)",
+  "estimated_apples": 2,
   "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "notes": "Separate-model plan review (gpt-5.4, rubber-duck) returned approved_with_changes with 5 concerns, all addressed: (1) add a regression test for the loopback->localhost mapping — ADOPTED by extracting formatLinkHost into a pure, SDK-free sibling module (.github/extensions/worktree-server-status/format-link-host.mjs) with a colocated .d.mts and a deterministic test matrix (tests/unit/extensions/format-link-host.test.ts); (2) broaden input normalization — ADOPTED the .trim() hardening; consciously deferred speculative mapped-IPv4 collapsing and bracket-stripping since discovery never emits those forms (both reviewers deemed them cosmetic); (3) prove the ci.yml exit-code gating with intentional pass/fail children — DONE via a local `bash -eo pipefail` simulation of the wait-per-PID pattern (both-pass=0, typecheck-fails=1, lint-fails=1, both-fail=1); (4) replace the `as unknown as Record<string, unknown>` casts in issue-pipeline.test.ts with typed access — ADOPTED (the mock arg is already typed SynthesizeBriefOptions); note main landed an equivalent sprite-test fix in the interim, so after rebasing this carries no net change in the final diff; (5) PR title/body must cover all three fixes, not just localhost — ADOPTED in the PR description (localhost-dominant title, other fixes as body bullets)."
+    },
     "code_review": {
       "clean": true,
       "rounds": [
@@ -13,7 +20,14 @@
           "models": ["claude-opus-4.8", "code-review-agent"],
           "concerns_count": 1,
           "resolved_count": 1,
-          "notes": "Reviewed the formatLinkHost change (loopback/wildcard binds -> 'localhost'). One theoretical edge case raised (a port bound on both loopback families could have Happy Eyeballs probe the other family) and dismissed with rationale: implausible for a dev-server helper and would affect only best-effort route availability, nothing durable. Non-loopback IPv4 pass-through and non-loopback IPv6 bracketing verified unchanged. No code changes required."
+          "notes": "Round 1 over the initial diff (inline formatLinkHost fix + ci.yml gating + 3 sprite-test typecheck fixes). One theoretical edge case raised — a port bound on both loopback families could have Happy Eyeballs probe the other family — and dismissed with rationale: implausible for a dev-server helper, affects only best-effort route availability, nothing durable. Non-loopback IPv4 pass-through and non-loopback IPv6 bracketing confirmed unchanged. No code changes required."
+        },
+        {
+          "clean": true,
+          "models": ["claude-opus-4.8", "code-review-agent"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "notes": "Round 2 over the FINAL diff after adopting the plan-review concerns (formatLinkHost extracted to a pure module + .trim(), new regression test, typed issue-pipeline test access). Verified the extraction is behavior-identical, the test assertions match the implementation (fe80::1->[fe80::1]; FE80::1 preserves original case; already-bracketed [2001:db8::1] not double-bracketed; loopback/wildcard/empty/null/undefined->localhost), and the issue-pipeline typed access is type-safe. tsc --noEmit clean; all 38 tests in the 3 touched files pass. No significant issues found."
         }
       ]
     }
