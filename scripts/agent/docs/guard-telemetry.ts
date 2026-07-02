@@ -9,7 +9,11 @@
  *   --handoff-section    — render a handoff-ready Markdown block from the
  *                          session-local `files/guard-telemetry.jsonl`.
  *   --capture-session    — write a durable, committed per-session capture file
- *                          (the preferred, structured collection path).
+ *                          (the preferred, structured collection path). Refuses
+ *                          to write when the artifact carries a known test-fixture
+ *                          id, mirroring the analysis path's whole-record
+ *                          quarantine so guard test-suite leakage never lands as a
+ *                          committed capture file.
  *
  * Contamination handling: guard-dev sessions run the guard test-suite, whose
  * dispatcher fixtures (see `KNOWN_TEST_FIXTURE_GUARD_IDS`) historically leaked
@@ -99,6 +103,16 @@ export interface GuardTelemetryCaptureRecord {
   readonly tools: Record<string, number>;
   readonly ignored_events: number;
   readonly unexpected_guard_ids: string[];
+  /**
+   * True when the artifact carried a known test-fixture id, marking the whole
+   * record as guard test-suite leakage. `captureSessionMode` refuses to write
+   * such records; the empty-count shape here applies only to the
+   * defense-in-depth `loadMetricsSources` skip for any quarantined record that
+   * reaches disk by another path.
+   */
+  readonly quarantined: boolean;
+  /** Known-fixture ids that triggered the quarantine (empty when clean). */
+  readonly fixture_guard_ids: string[];
 }
 
 interface SummarizeOptions {
@@ -426,6 +440,10 @@ function loadMetricsSources(now: Date): SourceRecord[] {
       continue;
     }
     if (record?.schema !== CAPTURE_SCHEMA || !record.guards || !record.tools) continue;
+    // Defense-in-depth: a quarantined capture record is guard test-suite leakage
+    // with synthetic counts. captureSessionMode now refuses to write these, but
+    // skip any that predate that guard or arrive from another source.
+    if (record.quarantined) continue;
     const date = parseIsoDate(record.date ?? entry);
     if (!date || daysBetween(now, date) > DAYS_WINDOW) continue;
     sources.push({
@@ -562,6 +580,7 @@ export function buildCaptureRecord(
   const guards: GuardCounts = {};
   const tools: Record<string, number> = {};
   const unexpected = new Set<string>();
+  const fixtures = new Set<string>();
   let counted = 0;
   let ignored = 0;
 
@@ -573,20 +592,30 @@ export function buildCaptureRecord(
       counted += 1;
     } else {
       ignored += 1;
-      if (!KNOWN_TEST_FIXTURE_GUARD_IDS.has(event.guard_id)) unexpected.add(event.guard_id);
+      if (KNOWN_TEST_FIXTURE_GUARD_IDS.has(event.guard_id)) {
+        fixtures.add(event.guard_id);
+      } else {
+        unexpected.add(event.guard_id);
+      }
     }
   }
 
+  // Whole-record quarantine mirrors cleanTelemetryRecord: any known fixture id
+  // proves this artifact is guard test-suite output, so the configured-id counts
+  // in the same session are synthetic too and must never be persisted.
+  const quarantined = fixtures.size > 0;
   return {
     schema: CAPTURE_SCHEMA,
     session,
     date,
     artifact: SESSION_ARTIFACT_PATH,
-    events: counted,
-    guards: sortObject(guards),
-    tools: sortObject(tools),
+    events: quarantined ? 0 : counted,
+    guards: quarantined ? {} : sortObject(guards),
+    tools: quarantined ? {} : sortObject(tools),
     ignored_events: ignored,
     unexpected_guard_ids: [...unexpected].sort(),
+    quarantined,
+    fixture_guard_ids: [...fixtures].sort(),
   };
 }
 
@@ -604,6 +633,19 @@ function captureSessionMode(slug: string): void {
     date: today(),
     configuredIds: new Set(loadActiveGuardIds()),
   });
+
+  if (record.quarantined) {
+    report.warn(
+      `Refusing to write a capture file for session "${slug}": ${SESSION_ARTIFACT_PATH} carries known test-fixture guard id(s) (${record.fixture_guard_ids.join(
+        ', ',
+      )}). The whole artifact is guard test-suite leakage, so its counts are synthetic and are discarded.`,
+      {
+        remediation:
+          'This session ran the guard test-suite; do not commit a capture file. Run `npm run telemetry:capture` only from a session whose artifact is free of fixture ids.',
+      },
+    );
+    report.finish();
+  }
 
   const dir = fromRepo(METRICS_DIR);
   mkdirSync(dir, { recursive: true });

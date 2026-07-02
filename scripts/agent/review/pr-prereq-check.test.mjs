@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { evaluatePrereqs, summarizePrereqResult } from './pr-prereq-check.mjs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  evaluatePrereqs,
+  summarizePrereqResult,
+  telemetryCaptureNote,
+} from './pr-prereq-check.mjs';
 
 const CODE_FILE = 'src/core/components/movement.ts';
 const HANDOFF = 'docs/knowledge/handoffs/2026-06-29-prereq-check.md';
@@ -41,4 +48,46 @@ test('evaluatePrereqs skips ledger for docs-only changes', () => {
   const r = evaluatePrereqs(['docs/knowledge/handoffs/2026-06-29-note.md'], [], '.');
   assert.equal(r.ok, true);
   assert.match(r.notes.join('\n'), /review ledger not required|docs\/art\/deps-only/);
+});
+
+function withTelemetryArtifact(fn) {
+  const dir = mkdtempSync(join(tmpdir(), 'telemetry-note-'));
+  try {
+    mkdirSync(join(dir, 'files'), { recursive: true });
+    writeFileSync(
+      join(dir, 'files', 'guard-telemetry.jsonl'),
+      '{"guard_id":"edit-determinism","tool_name":"edit","decision":"allow","ts":"2026-07-02T00:00:00.000Z"}\n',
+    );
+    return fn(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('telemetryCaptureNote returns null when no session artifact exists', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'telemetry-note-empty-'));
+  try {
+    assert.equal(telemetryCaptureNote(dir, ['src/core/foo.ts']), null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('telemetryCaptureNote warns when artifact exists but no capture file is staged', () => {
+  withTelemetryArtifact((dir) => {
+    const note = telemetryCaptureNote(dir, ['src/core/foo.ts']);
+    assert.ok(note, 'expected a non-null note');
+    assert.match(note, /\[guard-telemetry\]/);
+    assert.match(note, /npm run telemetry:capture/);
+  });
+});
+
+test('telemetryCaptureNote returns null once a capture file is staged', () => {
+  withTelemetryArtifact((dir) => {
+    const note = telemetryCaptureNote(dir, [
+      'src/core/foo.ts',
+      'docs/knowledge/metrics/guard-telemetry/2026-07-02-demo.json',
+    ]);
+    assert.equal(note, null);
+  });
 });

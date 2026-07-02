@@ -232,7 +232,7 @@ describe('buildCaptureRecord', () => {
     const record = buildCaptureRecord(
       [
         event({ guard_id: 'edit-determinism', decision: 'allow' }),
-        event({ guard_id: 'boom', tool_name: 'powershell', decision: 'crash' }),
+        event({ guard_id: 'pr-renamed', tool_name: 'create_pull_request', decision: 'deny' }),
         event({ guard_id: 'edit-typo', decision: 'allow' }),
       ],
       { session: 'demo', date: '2026-07-02', configuredIds: CONFIGURED },
@@ -240,11 +240,13 @@ describe('buildCaptureRecord', () => {
 
     expect(record.schema).toBe('agent-os-guard-telemetry-capture/v1');
     expect(record.session).toBe('demo');
+    expect(record.quarantined).toBe(false);
     expect(record.events).toBe(1);
     expect(record.guards).toEqual({ 'edit-determinism': { allow: 1 } });
     expect(record.ignored_events).toBe(2);
-    // boom is a known fixture (not "unexpected"); edit-typo is a real surprise.
-    expect(record.unexpected_guard_ids).toEqual(['edit-typo']);
+    // Both are real surprises (typo / renamed), not known test fixtures.
+    expect(record.unexpected_guard_ids).toEqual(['edit-typo', 'pr-renamed']);
+    expect(record.fixture_guard_ids).toEqual([]);
   });
 
   it('is idempotent for the same inputs', () => {
@@ -262,6 +264,44 @@ describe('buildCaptureRecord', () => {
       configuredIds: CONFIGURED,
     });
     expect(second).toEqual(first);
+  });
+
+  it('flags a clean record as not quarantined with no fixture ids', () => {
+    const record = buildCaptureRecord(
+      [event({ guard_id: 'edit-determinism', decision: 'allow' })],
+      { session: 'demo', date: '2026-07-02', configuredIds: CONFIGURED },
+    );
+    expect(record.quarantined).toBe(false);
+    expect(record.fixture_guard_ids).toEqual([]);
+  });
+
+  it('quarantines the whole record on a known fixture id, discarding synthetic real-id counts', () => {
+    const record = buildCaptureRecord(
+      [
+        event({ guard_id: 'edit-guard-self-protection', decision: 'ask' }),
+        event({ guard_id: 'boom', tool_name: 'powershell', decision: 'crash' }),
+        event({ guard_id: 'shell-bad', tool_name: 'powershell', decision: 'deny' }),
+      ],
+      { session: 'demo', date: '2026-07-02', configuredIds: CONFIGURED },
+    );
+    expect(record.quarantined).toBe(true);
+    expect(record.fixture_guard_ids).toEqual(['boom', 'shell-bad']);
+    // The synthetic edit-guard-self-protection:1 must NOT be persisted.
+    expect(record.guards).toEqual({});
+    expect(record.tools).toEqual({});
+    expect(record.events).toBe(0);
+    // Diagnostics still reflect what the contaminated artifact contained.
+    expect(record.ignored_events).toBe(2);
+  });
+
+  it('quarantines even when no configured events accompany the fixture id', () => {
+    const record = buildCaptureRecord(
+      [event({ guard_id: 'pr-warn', tool_name: 'create_pull_request', decision: 'ask' })],
+      { session: 'demo', date: '2026-07-02', configuredIds: CONFIGURED },
+    );
+    expect(record.quarantined).toBe(true);
+    expect(record.fixture_guard_ids).toEqual(['pr-warn']);
+    expect(record.events).toBe(0);
   });
 });
 
