@@ -57,4 +57,4 @@ Implement spawn-time appearance assignment as a deterministic system that:
 ## References
 
 - Implementation: `src/core/spawners/combatants.ts` (appearance init), `src/engine/phaser-bridge/sprite-kind.ts` (multi-variant selection), `src/engine/PhaserBridge.ts` (corpse integration)
-- Tests: `tests/ecs/spawners/combatants.test.ts`, `tests/ecs/drop-system.test.ts`, `tests/unit/phaser-bridge*.test.ts`
+- Tests: `tests/ecs/spawners/combatants.test.ts`, `tests/ecs/drop-system.test.ts`, `tests/unit/phaser-bridge.test.ts`, `tests/unit/phaser-bridge-characterization.test.ts`, `tests/unit/phaser-bridge-sprite-kind.test.ts`

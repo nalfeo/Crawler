@@ -32,7 +32,7 @@ hundreds of inbound references.
 ### Adding a new ADR
 
 1. Copy `TEMPLATE.md` to `NNNN-your-slug.md`, where `NNNN` is **the next unused
-   number** (currently **0034**).
+   number** (currently **0036** — `0034` ×3 and `0035` are taken).
 2. Fill in `## Status`, `## Date`, `## Estimated Complexity`, `## Context`,
    `## Decision`, `## Consequences`.
 3. Always **link by slug**, never by bare number, so collisions stay
@@ -88,6 +88,7 @@ hundreds of inbound references.
 - [Set-piece themed rooms](0024-set-piece-themed-rooms.md)
 - [Door-pointing welcome-sign wayfinding](0026-welcome-sign-wayfinding.md)
 - [Parameterized floor configuration system](0005-parameterized-floor-configuration.md) — floor1→floor params via floor-registry; enables multi-floor progression.
+- [Floor 2 family-territory & relationship architecture](0035-floor2-family-territory-and-relationship-architecture.md) — open cave system of feuding mob families, per-family player relationships, and a two-shape (sole-ally / total-war) win condition.
 
 ### Quests & NPCs
 
@@ -177,3 +178,4 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0027 | [Explode Corpses Into Sprite Shards When Hit During Death-Linger](0027-corpse-explosion-on-hit.md)                              | Accepted | 2026-06-27 |
 | 0028 | [Multi-Variant Generated Sprites](0028-generated-sprite-variants.md)                                                            | Accepted | 2026-06-26 |
 | 0033 | [Migrate Content Generation to Azure AI Foundry](0033-azure-foundry-content-generation.md)                                      | Proposed | 2026-06-29 |
+| 0035 | [Floor 2 Family-Territory & Relationship Architecture](0035-floor2-family-territory-and-relationship-architecture.md)           | Proposed | 2026-07-01 |
