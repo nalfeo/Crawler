@@ -53,14 +53,20 @@ jobs:
             eslint-${{ runner.os }}-${{ hashFiles('eslint.config.js', 'package-lock.json') }}-
             eslint-${{ runner.os }}-
 
-      - name: Typecheck
-        run: npm run typecheck &
-
-      - name: Lint
-        run: npm run lint:cache
-
-      - name: Wait for typecheck
-        run: wait
+      # Run typecheck and lint in parallel, but FAIL the step if either fails.
+      # Previously these were separate steps: `npm run typecheck &` backgrounded
+      # the process and a trailing `run: wait` step tried to reap it. Because
+      # every `run:` is a fresh shell, that `wait` saw no background job and the
+      # typecheck exit code was silently discarded — a broken `tsc` never failed
+      # CI. Backgrounding both here and waiting on their PIDs enforces both.
+      - name: Typecheck & Lint
+        run: |
+          npm run typecheck & tc=$!
+          npm run lint:cache & lint=$!
+          rc=0
+          wait "$tc" || rc=1
+          wait "$lint" || rc=1
+          exit "$rc"
 
   # Job 2: Format & Lab gate (fast, independent checks)
   check-format-and-labs:
@@ -73,8 +79,12 @@ jobs:
 
       - uses: ./.github/actions/setup-node
 
+      # Run synchronously so a failing format check actually fails CI. These
+      # were previously `npm run format:check &` plus a trailing `run: wait`
+      # step; because each `run:` is a fresh shell, that `wait` reaped nothing
+      # and the format:check exit code was silently discarded.
       - name: Format check
-        run: npm run format:check &
+        run: npm run format:check
 
       - name: Lab gate check
         run: bash scripts/agent/lab-gate-check.sh
@@ -83,9 +93,6 @@ jobs:
       # nowhere else in CI; this is their merge-gate home.
       - name: Guard + review-ledger tests
         run: npm run test:guards
-
-      - name: Wait for format check
-        run: wait
 
   # Job 3: Unit tests (critical path, must pass)
   test-unit:
