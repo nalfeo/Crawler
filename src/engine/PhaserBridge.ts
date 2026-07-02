@@ -29,6 +29,7 @@ import {
   enemyVariantFromTextureId,
   generatedBriefIdForEnemy,
   pickGeneratedEnemyTextureKey,
+  placeholderSpawnerTint,
   resolveRenderKind,
   SLIME_FULL_SPRITE_WIDTH,
 } from './phaser-bridge/sprite-kind.js';
@@ -881,6 +882,23 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             img.clearTint();
           }
           visual.deathTotalMs = undefined;
+        }
+
+        // Placeholder spawner structures (Rats Nest / Slime Pool) reuse their
+        // child mob's sprite, so wash them bright red to read as obviously-
+        // different placeholders — not the rats/slimes they emit. Applied from
+        // live component state every frame; skipped while a corpse (its grey
+        // decay tint above wins). Non-spawner living enemies clear any tint so a
+        // recycled former-spawner image never keeps a stale red wash.
+        if (entityType === 'enemy' && !corpseDecay) {
+          const spawnerTint = placeholderSpawnerTint(world.ecs, eid);
+          if (spawnerTint !== null) {
+            if (typeof img.setTint === 'function') {
+              img.setTint(spawnerTint);
+            }
+          } else if (typeof img.clearTint === 'function') {
+            img.clearTint();
+          }
         }
 
         if (entityType === 'enemy') {

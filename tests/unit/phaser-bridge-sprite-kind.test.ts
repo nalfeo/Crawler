@@ -14,6 +14,7 @@ import {
   Projectile,
   Returning,
   SpawnAnim,
+  Spawner,
   Sprite,
   Team,
   Trap,
@@ -27,6 +28,8 @@ import {
   computeEnemyScale,
   enemyVariantFromTextureId,
   pickGeneratedEnemyTextureKey,
+  placeholderSpawnerTint,
+  PLACEHOLDER_SPAWNER_TINT,
   resolveRenderKind,
 } from '../../src/engine/phaser-bridge/sprite-kind.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -365,5 +368,40 @@ describe('computeEnemyScale — spawn-in pop animation', () => {
 
     expect(scaleX).toBeCloseTo(2 * 0.65 * pop.x, 6);
     expect(scaleY).toBeCloseTo(2 * 0.65 * pop.y, 6);
+  });
+});
+
+describe('placeholderSpawnerTint — bright-red wash for art-less spawner structures', () => {
+  it('returns the placeholder tint for an entity tagged Spawner', () => {
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, Spawner);
+    expect(placeholderSpawnerTint(world.ecs, eid)).toBe(PLACEHOLDER_SPAWNER_TINT);
+  });
+
+  it('returns null for a plain enemy (no Spawner) so real mobs keep their sprite colour', () => {
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, Enemy);
+    expect(placeholderSpawnerTint(world.ecs, eid)).toBeNull();
+  });
+
+  it('returns null for an entity with no render-relevant components', () => {
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+    expect(placeholderSpawnerTint(world.ecs, eid)).toBeNull();
+  });
+
+  it('exposes a genuinely bright red constant (dominant red, non-zero green/blue for luminance)', () => {
+    const r = (PLACEHOLDER_SPAWNER_TINT >> 16) & 0xff;
+    const g = (PLACEHOLDER_SPAWNER_TINT >> 8) & 0xff;
+    const b = PLACEHOLDER_SPAWNER_TINT & 0xff;
+    // A multiply-tint of pure 0xff0000 crushes dark sprites to near-black; keep
+    // some green/blue so the wash reads as *bright* red rather than muddy.
+    expect(r).toBe(0xff);
+    expect(g).toBeGreaterThan(0);
+    expect(b).toBeGreaterThan(0);
+    expect(g).toBeLessThan(r);
+    expect(b).toBeLessThan(r);
   });
 });

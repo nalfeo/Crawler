@@ -45,6 +45,7 @@ import {
   skillSystem,
   abilitySystem,
   achievementSystem,
+  spawnerSystem,
 } from '../index.js';
 import type { InputState } from '../../shared/input.js';
 
@@ -101,6 +102,7 @@ export function runSimulationStep(
     floor1PlayerStatSystem(world);
   }
   enemyAISystem(world);
+  spawnerSystem(world);
 
   movementSystem(world);
   returningProjectileSystem(world);

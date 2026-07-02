@@ -8,10 +8,12 @@ import {
   Player,
   Position,
   Rotation,
+  Spawner,
   Sprite,
   XpGem,
 } from '../../src/core/components.js';
 import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
+import { PLACEHOLDER_SPAWNER_TINT } from '../../src/engine/phaser-bridge/sprite-kind.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { set } from '../../src/core/world.js';
 import { buildGeneratedSpriteRegistry } from '../../src/shared/generated-assets.js';
@@ -232,6 +234,54 @@ describe('createPhaserBridge', () => {
     bridge.sync(world);
     expect(corpse.tint).toBe(0xffffff);
     expect(corpse.alpha).toBe(1);
+  });
+
+  it('washes placeholder spawner structures bright red, and clears the tint for non-spawner enemies', () => {
+    const { scene, images } = createSceneStub();
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+
+    // A living spawner structure (Rats Nest / Slime Pool): tagged Enemy like any
+    // mob, but also carrying the Spawner component. It has no dedicated art yet,
+    // so it reuses a child mob's texture — the bridge must wash it bright red so
+    // it reads as an obvious placeholder rather than the rats/slimes it emits.
+    const spawnerEid = addEntity(world.ecs);
+    addComponent(world.ecs, spawnerEid, set(Position, { x: 10, y: 20 }));
+    addComponent(world.ecs, spawnerEid, Enemy);
+    addComponent(world.ecs, spawnerEid, Spawner);
+    addComponent(world.ecs, spawnerEid, set(Sprite, { textureId: 0, width: 0, height: 0 }));
+
+    // A plain enemy (no Spawner) sharing the same frame.
+    const mobEid = addEntity(world.ecs);
+    addComponent(world.ecs, mobEid, set(Position, { x: 30, y: 40 }));
+    addComponent(world.ecs, mobEid, Enemy);
+    addComponent(world.ecs, mobEid, set(Sprite, { textureId: 0, width: 0, height: 0 }));
+
+    bridge.sync(world);
+
+    const spawnerImg = images[0]!;
+    const mobImg = images[1]!;
+    expect(spawnerImg.tinted).toBe(true);
+    expect(spawnerImg.tint).toBe(PLACEHOLDER_SPAWNER_TINT);
+    // The neighbouring plain mob is untouched (tint actively cleared so a
+    // recycled former-spawner sprite can never keep a stale red wash).
+    expect(mobImg.tinted).toBe(false);
+    expect(mobImg.tint).toBe(0xffffff);
+
+    // While it lives the red persists across frames (applied from live state).
+    bridge.sync(world);
+    expect(spawnerImg.tint).toBe(PLACEHOLDER_SPAWNER_TINT);
+
+    // Once the spawner dies its corpse styling wins over the placeholder red:
+    // the grey multiply-tint of a decaying corpse takes over, so a dying nest
+    // reads as a corpse (and still fires its death finale) rather than staying
+    // bright red.
+    addComponent(world.ecs, spawnerEid, set(DeathTimer, { remainingMs: 3000 }));
+    bridge.sync(world);
+    world.stores.deathTimer.remainingMs[spawnerEid] = 1500;
+    bridge.sync(world);
+    expect(spawnerImg.tint).not.toBe(PLACEHOLDER_SPAWNER_TINT);
+    expect(spawnerImg.tint).not.toBe(0xffffff); // draining toward grey
   });
 
   it('detonates a hit corpse into cropped sprite shards on a corpseExplode event', () => {

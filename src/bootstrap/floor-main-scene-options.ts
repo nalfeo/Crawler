@@ -15,6 +15,7 @@ import {
   meetTutorialGoon,
   questSystem,
   selectFloor1StarterWeapon,
+  spawnerSystem,
   weaponSystem,
 } from '../game/index.js';
 import {
@@ -95,6 +96,7 @@ export function createFloorMainSceneOptions(_floorId: string = 'floor1') {
       weaponSystem,
       enemyAISystem,
       floor1EnemyDirectorSystem,
+      spawnerSystem,
     ],
     postSystems: [
       levelSystem,
