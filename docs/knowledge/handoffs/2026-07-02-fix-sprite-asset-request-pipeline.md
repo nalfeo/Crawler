@@ -93,7 +93,7 @@ tripping the exact-16 gate at `generate-one.ts:212`.
 
 ### ADR
 
-`docs/knowledge/adr/0035-sprite-worker-poison-message-handling.md` (registered in the ADR README) —
+`docs/knowledge/adr/0037-sprite-worker-poison-message-handling.md` (registered in the ADR README) —
 documents the dequeueCount-gated bounded-failure contract, ack-first/comment-only-if-dropped
 at-most-once guarantee, progress-comment suppression, and the rejected store-marker / DLQ
 alternatives.
@@ -105,7 +105,7 @@ alternatives.
 - A **sibling subsession** owns the issue-body **parser** fix (unparseable multi-sentence briefs) in
   `scripts/sprites/asset-request.ts` / the ingester — out of scope here; coordinate before merge if
   both PRs touch overlapping brief flows (they should not).
-- Optional future: a real dead-letter sub-queue (deferred in ADR 0035) if operators want to inspect
+- Optional future: a real dead-letter sub-queue (deferred in ADR 0037) if operators want to inspect
   dropped messages rather than re-request.
 
 ## Blockers
@@ -140,7 +140,7 @@ a coarse wall-clock blowup guard unrelated to the sprite-script changes (differe
 
 - **At-most-once, not durable exactly-once.** dequeueCount + ack-first/comment-only-if-dropped
   satisfies the task's "at most once" requirement without a new durable-state dependency; a
-  store-marker/fingerprint was rejected as over-engineered (ADR 0035).
+  store-marker/fingerprint was rejected as over-engineered (ADR 0037).
 - **Honest 16-cell target kept.** Fixed the model's grid via the prompt (background gutters) instead
   of loosening the gate or lowering the expected count (repo rules #12/#13).
 - **`bad-grid`/`non-png` classified permanent** even though they are retried in-run by
@@ -177,4 +177,4 @@ a coarse wall-clock blowup guard unrelated to the sprite-script changes (differe
   frames (deterministic) rather than wall-clock, or skipping it when host CPU is saturated, so
   concurrent local runs don't produce false regressions.
 - A real Azure Storage poison sub-queue (DLQ) would let operators inspect dropped messages instead of
-  re-requesting; deferred in ADR 0035.
+  re-requesting; deferred in ADR 0037.

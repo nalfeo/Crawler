@@ -110,7 +110,7 @@ hundreds of inbound references.
 - [Devtools sprite workflow — 7-stage restructure](0025-workflow-7-stage-restructure.md)
 - [Multi-variant generated sprites](0028-generated-sprite-variants.md) — identity, selection, approval, and check-in.
 - [Migrate content generation to Azure AI Foundry](0033-azure-foundry-content-generation.md) — broaden model access behind the existing provider seam.
-- [Sprite worker poison-message handling](0035-sprite-worker-poison-message-handling.md) — bounded failures (dequeueCount cap), permanent-drop, and comment-once to stop runaway retry loops and issue-comment spam.
+- [Sprite worker poison-message handling](0037-sprite-worker-poison-message-handling.md) — bounded failures (dequeueCount cap), permanent-drop, and comment-once to stop runaway retry loops and issue-comment spam.
 
 ### Rendering, HUD & VFX
 
@@ -178,4 +178,4 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0027 | [Explode Corpses Into Sprite Shards When Hit During Death-Linger](0027-corpse-explosion-on-hit.md)                              | Accepted | 2026-06-27 |
 | 0028 | [Multi-Variant Generated Sprites](0028-generated-sprite-variants.md)                                                            | Accepted | 2026-06-26 |
 | 0033 | [Migrate Content Generation to Azure AI Foundry](0033-azure-foundry-content-generation.md)                                      | Proposed | 2026-06-29 |
-| 0035 | [Sprite Worker Poison-Message Handling (bounded failures, comment-once)](0035-sprite-worker-poison-message-handling.md)         | Accepted | 2026-07-02 |
+| 0037 | [Sprite Worker Poison-Message Handling (bounded failures, comment-once)](0037-sprite-worker-poison-message-handling.md)         | Accepted | 2026-07-02 |

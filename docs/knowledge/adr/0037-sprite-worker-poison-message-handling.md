@@ -1,4 +1,4 @@
-# ADR 0035: Sprite worker poison-message handling (bounded failures, comment-once)
+# ADR 0037: Sprite worker poison-message handling (bounded failures, comment-once)
 
 ## Status
 
