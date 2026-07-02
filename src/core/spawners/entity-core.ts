@@ -16,6 +16,7 @@ export function clearEntityStores(world: GameWorld, eid: number): void {
     }
   }
   world.enemyAppearanceKeys.delete(eid);
+  world.statusEffectsByEntity.delete(eid);
 }
 
 /** Create an entity with zeroed store slots (safe against ID recycling). */

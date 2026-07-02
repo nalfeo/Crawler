@@ -46,6 +46,15 @@ export type {
   UnequipResult,
   CanEquipResult,
 } from './equipment-types.js';
+export type {
+  StatusEffectStat,
+  StatusEffectOp,
+  StatusEffectSourceType,
+  StackRule,
+  StatusEffectSpec,
+  StatusEffectClamps,
+  StatusEffect,
+} from './status-effect-types.js';
 export {
   STAT_KEYS,
   STAT_BASE,

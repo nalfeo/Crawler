@@ -4,6 +4,7 @@ export { damageSystem } from './damageSystem.js';
 export { statSystem } from './statSystem.js';
 export { manaSystem } from './manaSystem.js';
 export { healthSystem } from './healthSystem.js';
+export { statusEffectSystem } from './statusEffectSystem.js';
 export { itemPickupSystem } from './itemPickupSystem.js';
 export { movementSystem } from './movementSystem.js';
 export { playerInputSystem } from './playerInputSystem.js';

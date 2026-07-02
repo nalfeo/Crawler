@@ -8,6 +8,7 @@
 import { createWorld as createBitecsWorld, observe, onSet } from 'bitecs';
 import { SeededRandom } from '../shared/random.js';
 import type { InventoryBag } from '../shared/inventory.js';
+import type { StatusEffect } from '../shared/status-effect-types.js';
 import type { CombatEvent } from '../shared/combat-events.js';
 import type { VfxEvent } from '../shared/vfx-events.js';
 import type { AbilityState, AbilityTriggerEvent } from '../shared/abilities.js';
@@ -113,6 +114,8 @@ export interface GameWorld {
   statsDirty: boolean;
   /** Per-entity inventory bags (eid → bag). Side-car for variable-length data. */
   inventories: Map<number, InventoryBag>;
+  /** Per-entity active status effects (eid → effects). Side-car for variable-length data. */
+  statusEffectsByEntity: Map<number, StatusEffect[]>;
   /** Per-door lock configurations (eid → lock config). */
   doorLockConfigs: Map<number, DoorLockConfig>;
   /** Scenario/world objective flags used by lock conditions and other systems. */
@@ -287,6 +290,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     abilityTriggerEvents: [],
     statsDirty: true,
     inventories: new Map(),
+    statusEffectsByEntity: new Map(),
     doorLockConfigs: new Map(),
     goalFlags: new Map(),
     combatEvents: [],

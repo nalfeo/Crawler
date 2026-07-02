@@ -6,4 +6,5 @@ export * from './components.js';
 export * from './door-lock.js';
 export * from './apply-damage.js';
 export * from './helpers.js';
+export * from './status-effects.js';
 export * from './systems/index.js';

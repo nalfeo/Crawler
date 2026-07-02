@@ -14,6 +14,7 @@ import { computeFlowField, flowFieldStep, type FlowField } from '../core/map/flo
 import { spawnAoeProjectile, spawnEnemyProjectile } from '../core/helpers.js';
 import { isPointInSafeSpace } from '../core/safe-space.js';
 import type { GameWorld } from '../core/world.js';
+import { computeEffectiveSpeed, getStatusEffects } from '../core/status-effects.js';
 import { ENEMY_PROJECTILE, TeamId } from '../shared/constants.js';
 import { PATH_PERSONA, TRAVERSAL_MODE } from '../shared/enemy-behavior.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
@@ -227,8 +228,13 @@ function setVelocity(world: GameWorld, eid: number, x: number, y: number): void 
 }
 
 function getEnemySpeed(world: GameWorld, eid: number): number {
-  const speed = world.stores.enemyBehavior.speed[eid]!;
-  return speed > 0 ? speed : DEFAULT_ENEMY_SPEED;
+  const stored = world.stores.enemyBehavior.speed[eid]!;
+  const base = stored > 0 ? stored : DEFAULT_ENEMY_SPEED;
+  // Fold active status effects into the base speed here — the single seam every
+  // enemy speed read (wander, slime-leap prep/pounce, and the speed cap) derives
+  // from. Slime-leap multipliers layer on top of this modified base, so a slowed
+  // slime still leaps, just proportionally slower.
+  return computeEffectiveSpeed(base, getStatusEffects(world, eid));
 }
 
 function getEnemySpeedCap(world: GameWorld, eid: number): number {

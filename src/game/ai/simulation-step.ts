@@ -36,6 +36,7 @@ import {
   npcSystem,
   statSystem,
   manaSystem,
+  statusEffectSystem,
   type GameWorld,
 } from '../../core/index.js';
 import {
@@ -115,6 +116,7 @@ export function runSimulationStep(
   if (options.enableFloor1 && world.floor1) {
     floor1PlayerStatSystem(world);
   }
+  statusEffectSystem(world);
   enemyAISystem(world);
   spawnerSystem(world);
 
