@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { FloorMap } from '../../src/core/map/FloorMap';
+import {
+  FloorMap,
+  DEFAULT_FOV_SUB_FACTOR,
+  MAX_FOV_SUB_FACTOR,
+  normalizeSubFactor,
+} from '../../src/core/map/FloorMap';
 import { TileMap } from '../../src/core/map/TileMap';
 import { RoomGraph } from '../../src/core/map/RoomGraph';
 import { TilePresets, DEFAULT_MAP_CONFIG, TerrainType } from '../../src/shared/map-types';
@@ -144,6 +149,127 @@ describe('FloorMap', () => {
       expect(floor.hasLineOfSight(2 * 4 + 2, 5 * 4 + 2, 9 * 4 + 2, 5 * 4 + 2)).toBe(false);
       floor.tileMap.openDoor(5, 5);
       expect(floor.hasLineOfSight(2 * 4 + 2, 5 * 4 + 2, 9 * 4 + 2, 5 * 4 + 2)).toBe(true);
+    });
+  });
+
+  describe('discovered memory', () => {
+    it('starts fully undiscovered', () => {
+      const floor = createSmallFloorMap();
+      expect(floor.isDiscovered(5, 5)).toBe(false);
+      expect(floor.isDiscoveredSubtile(10, 10)).toBe(false);
+    });
+
+    it('marks sub-tiles discovered and exposes them at tile granularity', () => {
+      const floor = createSmallFloorMap();
+      floor.setDiscovered(10, 10);
+      expect(floor.isDiscovered(5, 5)).toBe(true);
+      expect(floor.isDiscoveredSubtile(10, 10)).toBe(true);
+      expect(floor.isDiscoveredSubtile(11, 10)).toBe(false);
+      expect(floor.isDiscovered(0, 0)).toBe(false);
+    });
+
+    it('isDiscoveredAt resolves world position to a sub-tile (tileSizeFt=4, halfTile=2)', () => {
+      const floor = createSmallFloorMap();
+      floor.setDiscovered(10, 10);
+      expect(floor.isDiscoveredAt(20, 20)).toBe(true);
+      expect(floor.isDiscoveredAt(22, 20)).toBe(false);
+    });
+
+    it('persists discovered memory across clearVisibility (fog memory survives a frame)', () => {
+      const floor = createSmallFloorMap();
+      floor.setVisible(10, 10);
+      floor.setDiscovered(10, 10);
+      floor.clearVisibility();
+      expect(floor.isVisible(5, 5)).toBe(false);
+      // Discovered memory must NOT be cleared by the per-frame visibility reset.
+      expect(floor.isDiscovered(5, 5)).toBe(true);
+    });
+
+    it('clearDiscovered wipes both sub-tile and tile-level discovered caches', () => {
+      const floor = createSmallFloorMap();
+      floor.setDiscovered(10, 10);
+      floor.clearDiscovered();
+      expect(floor.isDiscovered(5, 5)).toBe(false);
+      expect(floor.isDiscoveredSubtile(10, 10)).toBe(false);
+    });
+
+    it('handles out-of-bounds discovered writes/reads gracefully', () => {
+      const floor = createSmallFloorMap();
+      expect(floor.isDiscovered(-1, 0)).toBe(false);
+      expect(() => floor.setDiscovered(-1, 0)).not.toThrow();
+      expect(floor.isDiscoveredSubtile(9999, 9999)).toBe(false);
+    });
+
+    it('revealAll lights every tile without touching discovered memory', () => {
+      const floor = createSmallFloorMap();
+      floor.revealAll();
+      expect(floor.isVisible(0, 0)).toBe(true);
+      expect(floor.isVisible(floor.width - 1, floor.height - 1)).toBe(true);
+      expect(floor.isVisibleSubtile(0, 0)).toBe(true);
+      // revealAll is a visibility convenience only — discovered stays as-is.
+      expect(floor.isDiscovered(0, 0)).toBe(false);
+    });
+  });
+
+  describe('dynamic subFactor', () => {
+    it('defaults to the historical quarter-tile factor', () => {
+      const floor = createSmallFloorMap();
+      expect(floor.subFactor).toBe(DEFAULT_FOV_SUB_FACTOR);
+      expect(DEFAULT_FOV_SUB_FACTOR).toBe(2);
+    });
+
+    it('honors an explicit factor at construction (normalized/clamped)', () => {
+      const base = createSmallFloorMap();
+      const floor = new FloorMap(
+        base.config,
+        base.tileMap,
+        base.roomGraph,
+        base.terrain,
+        { x: 0, y: 0 },
+        8,
+      );
+      expect(floor.subFactor).toBe(8);
+      expect(floor.subWidth).toBe(floor.width * 8);
+      expect(floor.visible.length).toBe(floor.width * floor.height * 64);
+    });
+
+    it('reallocates the sub-tile buffers when the factor changes', () => {
+      const floor = createSmallFloorMap();
+      const applied = floor.setSubFactor(8);
+      expect(applied).toBe(8);
+      expect(floor.subFactor).toBe(8);
+      expect(floor.subWidth).toBe(floor.width * 8);
+      expect(floor.subHeight).toBe(floor.height * 8);
+      expect(floor.visible.length).toBe(floor.width * floor.height * 64);
+      expect(floor.discovered.length).toBe(floor.width * floor.height * 64);
+    });
+
+    it('is a no-op that PRESERVES discovered memory when the factor is unchanged', () => {
+      const floor = createSmallFloorMap();
+      floor.setDiscovered(10, 10);
+      const before = floor.discovered;
+      const applied = floor.setSubFactor(DEFAULT_FOV_SUB_FACTOR);
+      expect(applied).toBe(DEFAULT_FOV_SUB_FACTOR);
+      // Same underlying buffer (no realloc) and the memory still reads discovered.
+      expect(floor.discovered).toBe(before);
+      expect(floor.isDiscovered(5, 5)).toBe(true);
+    });
+
+    it('resets discovered + visible memory on a real factor change', () => {
+      const floor = createSmallFloorMap();
+      floor.setVisible(10, 10);
+      floor.setDiscovered(10, 10);
+      floor.setSubFactor(4);
+      expect(floor.isVisible(5, 5)).toBe(false);
+      expect(floor.isDiscovered(5, 5)).toBe(false);
+    });
+
+    it('clamps out-of-range factors to [1, MAX_FOV_SUB_FACTOR]', () => {
+      const floor = createSmallFloorMap();
+      expect(floor.setSubFactor(999)).toBe(MAX_FOV_SUB_FACTOR);
+      expect(floor.setSubFactor(0)).toBe(1);
+      expect(normalizeSubFactor(3.4)).toBe(3);
+      expect(normalizeSubFactor(Number.NaN)).toBe(DEFAULT_FOV_SUB_FACTOR);
     });
   });
 });

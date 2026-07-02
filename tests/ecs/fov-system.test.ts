@@ -180,4 +180,77 @@ describe('FOV System', () => {
     expect(floorMap.subWidth).toBe(floorMap.width * 2);
     expect(floorMap.subHeight).toBe(floorMap.height * 2);
   });
+
+  it('marks discovered alongside visible', () => {
+    const floorMap = makeSmallMap();
+    world.floorMap = floorMap;
+
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(Position, { x: 320, y: 320 }));
+    addComponent(world.ecs, eid, Player);
+
+    fovSystem(world);
+
+    // Everything currently visible must also be recorded as discovered.
+    expect(floorMap.isVisible(10, 10)).toBe(true);
+    expect(floorMap.isDiscovered(10, 10)).toBe(true);
+    expect(floorMap.isDiscovered(11, 10)).toBe(true);
+  });
+
+  it('retains discovered memory for tiles that leave the view', () => {
+    const floorMap = makeSmallMap();
+    world.floorMap = floorMap;
+
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(Position, { x: 320, y: 320 }));
+    addComponent(world.ecs, eid, Player);
+
+    fovSystem(world);
+    expect(floorMap.isVisible(10, 10)).toBe(true);
+    expect(floorMap.isDiscovered(10, 10)).toBe(true);
+
+    // Wall-ring tile (10,10) so it can't be seen from afar, then move the player
+    // away. (The 20×20 room is smaller than the vision radius, so occlusion —
+    // not distance — is what removes a tile from FOV here.)
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        if (dx === 0 && dy === 0) continue;
+        floorMap.tileMap.flags[(10 + dy) * floorMap.tileMap.width + (10 + dx)] = TilePresets.WALL;
+      }
+    }
+    world.stores.position.x[eid] = 64; // tile (2,2)
+    world.stores.position.y[eid] = 64;
+    fovSystem(world);
+
+    // No longer visible, but the discovered memory persists (dim, not black).
+    expect(floorMap.isVisible(10, 10)).toBe(false);
+    expect(floorMap.isDiscovered(10, 10)).toBe(true);
+  });
+
+  it('keeps tile-level gameplay visibility identical at a finer sub-factor', () => {
+    // subFactor only changes fog *resolution*; tile-level isVisible (used by
+    // AI/culling) must be unchanged. Compare factor 2 (default) vs factor 8.
+    const coarse = makeSmallMap();
+    const fine = makeSmallMap();
+    fine.setSubFactor(8);
+    expect(fine.subFactor).toBe(8);
+
+    for (const floorMap of [coarse, fine]) {
+      world = createTestWorld({ seed: 42 });
+      world.floorMap = floorMap;
+      const eid = addEntity(world.ecs);
+      addComponent(world.ecs, eid, set(Position, { x: 320, y: 320 }));
+      addComponent(world.ecs, eid, Player);
+      fovSystem(world);
+    }
+
+    // Sample the interior tiles; tile-level visibility must match factor-for-factor.
+    for (let ty = 5; ty <= 15; ty++) {
+      for (let tx = 5; tx <= 15; tx++) {
+        expect(fine.isVisible(tx, ty)).toBe(coarse.isVisible(tx, ty));
+      }
+    }
+    // The finer map carries 16× the sub-tiles even though tile visibility matches.
+    expect(fine.visible.length).toBe(coarse.visible.length * 16);
+  });
 });

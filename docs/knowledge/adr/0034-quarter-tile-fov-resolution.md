@@ -70,3 +70,69 @@ Key choices:
   rejected; fog rendering uses sub-tile but entity hide/show stays tile-level.
 - **Smooth fog via shader/texture blur**: Would require a separate render pass;
   the sub-tile bitmap approach achieves similar smoothing at lower complexity.
+
+## Amendment (2026-07-02): dynamic granularity + discovered-terrain memory
+
+**Session:** nalfeo-reimagined-invention · **Status:** Accepted (extends, does not
+supersede, the decision above).
+
+Two changes were made to the FOV/fog-of-war system. **The default is unchanged:**
+FOV still runs at 2× (quarter-tile, 16px cells) out of the box, so the decision
+and consequences above remain the shipped baseline.
+
+### 1. `subFactor` is now a runtime-tunable integer (was hardcoded ×2)
+
+`FloorMap` gained an integer `subFactor` (default `DEFAULT_FOV_SUB_FACTOR = 2`,
+max `MAX_FOV_SUB_FACTOR = 8`) replacing the hardcoded ×2. `setSubFactor(n)`
+reallocates the `visible`/`discovered` bitmaps; `fovSystem` scales its radius and
+`lightPasses` mapping by the factor, so vision **range in feet is unchanged** at
+any factor. The engine bridges the pixel-facing `cellPx` the lab UI speaks to the
+core integer (`src/engine/fov/fov-config.ts`), and the AI-runner lab exposes a
+"FOV" folder (preset buttons 32/16/8/4px + a sub-factor slider) with a Perf
+subfolder, mirroring the existing lighting-config pattern.
+
+**Why this does not reopen the gameplay-consistency risk:** `isVisible(tx, ty)`
+still ORs a tile's sub-tiles via an O(1) tile-level cache, so tile-level queries
+(AI perception, weapon range, entity hide/show, minimap) are **identical at any
+factor** — only the fog _visuals_ (`isVisibleSubtile`) get finer. The
+"hidden but targetable" paradox the original ADR guards against therefore cannot
+arise from the finer settings.
+
+**The "8× rejected" alternative above is revised, not reversed.** 8× (4px cells)
+is now selectable **at runtime only**; it is **not** the default. The original
+"16× memory and CPU" objection holds as a _ratio_ but is trivial in absolute
+terms on a real map — measured on the actual 240×140 floor-1 map, radius 25 tiles:
+
+| cell | factor      | bitmap  | FOV compute/frame |
+| ---- | ----------- | ------- | ----------------- |
+| 32px | 1           | 0.03 MB | 0.010 ms          |
+| 16px | 2 (default) | 0.13 MB | 0.030 ms          |
+| 8px  | 4           | 0.54 MB | 0.069 ms          |
+| 4px  | 8           | 2.15 MB | 0.260 ms          |
+
+Even the finest setting costs <0.3 ms/frame and ~2 MB, so keeping the finer tiers
+as opt-in (rather than forbidden) is safe; the default stays 2× purely to avoid
+changing shipped behavior. Per-frame FOV cost is surfaced as engine-only EWMA
+telemetry (`runFovSystem` hook on `SimulationStepHooks`) so the knob is
+measurable in the lab.
+
+### 2. Discovered-terrain memory (dim, not black) — default ON
+
+`FloorMap` gained a persistent `discovered` bitmap (set by `fovSystem` alongside
+`visible`, cleared only on floor change). `computeLightField` renders
+discovered-but-not-currently-visible cells at a dim `discoveredLight`
+(`LightingConfig.discoveredLight`, default `0.05`) instead of full black. The
+value is clamped to `ambient` so remembered terrain is never brighter than the
+dimmest visible cell, and `0` reproduces the legacy full-black behavior. This
+gives explored areas a "memory" on both the fog overlay and minimap, matching how
+players expect previously-seen terrain to persist.
+
+### Consequences of the amendment
+
+- **No default behavior change**: 2× quarter-tile fog remains the shipped
+  resolution; discovered-darkening is the only visible default change and is
+  purely additive (previously-black explored cells now render dim).
+- **New single source of truth for "discovered"**: `FloorMap.discovered`
+  (tile-level O(1) cache mirrors it), consumed by both lighting and minimap.
+- **Lab-testable**: FOV granularity + discovered dimming are live-tunable in the
+  AI-runner lab exactly like lighting, including per-frame perf readout.
