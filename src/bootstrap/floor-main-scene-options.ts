@@ -34,6 +34,7 @@ import {
 } from '../game/floorScenario.js';
 import { statSystem, manaSystem, type GameWorld } from '../core/index.js';
 import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
+import { getFloorConfig } from '../shared/floor-config.js';
 import type { Floor1BossRewardSpellId } from '../shared/abilities.js';
 
 /**
@@ -41,7 +42,15 @@ import type { Floor1BossRewardSpellId } from '../shared/abilities.js';
  * @param floorId - The floor identifier (e.g., "floor1")
  */
 export function createFloorMainSceneOptions(_floorId: string = 'floor1') {
+  // The world scenario + systems below are floor1-specific, so this helper only
+  // supports floor1 today; `_floorId` is reserved for when multi-floor boot lands
+  // (thread it through both getFloorConfig and the scenario wiring at that point).
+  // Per-floor ambient lighting (see FloorConfig.lighting) is sourced from the
+  // floor1 manifest so the scene ships the authored ambient rather than the
+  // engine's global fallback.
+  const { lighting } = getFloorConfig('floor1');
   return {
+    lightingConfig: { ambient: lighting.ambient },
     configureWorld: initializeFloor1Scenario,
     selectLoadoutOption: selectFloor1StarterWeapon,
     onStairDescend: confirmFloor1StairDescend,

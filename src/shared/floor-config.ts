@@ -123,6 +123,13 @@ export const floorConfigSchema = z
       })
       .strict()
       .optional(),
+    /** Per-floor lighting defaults (see floor manifest `lighting`). */
+    lighting: z
+      .object({
+        /** Base ambient light level in [0,1] applied to visible tiles. */
+        ambient: z.number().min(0).max(1),
+      })
+      .strict(),
   })
   .strict();
 
@@ -189,6 +196,7 @@ export function loadFloorConfigFromManifest(floorId: string): FloorConfig | null
     },
     player: manifest.player,
     camera: manifest.camera,
+    lighting: manifest.lighting,
     sprites:
       manifest.sprites?.welcomeSign !== undefined
         ? {

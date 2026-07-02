@@ -34,6 +34,9 @@
   "camera": {
     "zoom": 2.0
   },
+  "lighting": {
+    "ambient": 0.2
+  },
   "sprites": {
     "welcomeSign": 3
   },
