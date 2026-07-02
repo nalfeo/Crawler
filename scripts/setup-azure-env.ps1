@@ -51,6 +51,7 @@ param(
     [string]$OpenAIChatDeployment = 'gpt-4o',
     [string]$OpenAIVisionDeployment = 'gpt-4o',
     [string]$OpenAIImageDeployment = 'gpt-image-1',
+    [string]$OpenAIBriefSelectorDeployment = 'gpt-4o',
     [string]$OpenAIApiVersion = '2025-04-01-preview',
     [string]$StorageResourceGroup = 'crawler-sprites-rg',
     [string]$StorageAccountName = 'crawlersprites',
@@ -206,6 +207,7 @@ AZURE_OPENAI_API_KEY=$openAIKey
 AZURE_OPENAI_CHAT_DEPLOYMENT=$OpenAIChatDeployment
 AZURE_OPENAI_VISION_DEPLOYMENT=$OpenAIVisionDeployment
 AZURE_OPENAI_IMAGE_DEPLOYMENT=$OpenAIImageDeployment
+AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT=$OpenAIBriefSelectorDeployment
 AZURE_OPENAI_API_VERSION=$OpenAIApiVersion$storageBlock
 "@ | Set-Content $outPath -Encoding UTF8
 
@@ -228,6 +230,7 @@ if ($SyncGitHubSecrets) {
     Set-GitHubSecretValue -Repo $GitHubRepo -Name 'AZURE_OPENAI_CHAT_DEPLOYMENT' -Value $OpenAIChatDeployment
     Set-GitHubSecretValue -Repo $GitHubRepo -Name 'AZURE_OPENAI_VISION_DEPLOYMENT' -Value $OpenAIVisionDeployment
     Set-GitHubSecretValue -Repo $GitHubRepo -Name 'AZURE_OPENAI_IMAGE_DEPLOYMENT' -Value $OpenAIImageDeployment
+    Set-GitHubSecretValue -Repo $GitHubRepo -Name 'AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT' -Value $OpenAIBriefSelectorDeployment
     Set-GitHubSecretValue -Repo $GitHubRepo -Name 'AZURE_OPENAI_API_VERSION' -Value $OpenAIApiVersion
     Set-GitHubSecretValue -Repo $GitHubRepo -Name 'AZURE_STORAGE_ACCOUNT' -Value $StorageAccountName
     Set-GitHubSecretValue -Repo $GitHubRepo -Name 'AZURE_STORAGE_KEY' -Value $storageKey
