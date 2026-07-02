@@ -16,7 +16,6 @@ import { briefDirectoryForType } from './brief-paths.js';
 
 export interface IssuePipelineIssueApi {
   comment(issueNumber: number, body: string): Promise<void>;
-  addLabel(issueNumber: number, label: string): Promise<void>;
 }
 
 export interface RunIssuePipelineOptions {
