@@ -30,6 +30,7 @@ import type {
   EquipFailureReason,
 } from '../../shared/equipment-types.js';
 import { isInSafeContext } from '../safe-space.js';
+import { applyStatusEffect, clearStatusEffects, isValidSpec } from '../status-effects.js';
 
 // --- Side-map storage ---
 
@@ -145,6 +146,15 @@ function validateItemDef(itemDef: EquipmentItemDef): EquipFailureReason[] {
       reasons.push({
         type: 'invalidDef',
         message: `Primary stat ${stat} must be integer, got ${value}`,
+      });
+    }
+  }
+
+  for (const spec of itemDef.grantsStatusEffects ?? []) {
+    if (!isValidSpec(spec)) {
+      reasons.push({
+        type: 'invalidDef',
+        message: `Invalid status-effect spec (stat: ${spec.stat}, op: ${spec.op})`,
       });
     }
   }
@@ -295,6 +305,11 @@ export function canEquip(
   return { allowed: reasons.length === 0, reasons };
 }
 
+/** Runtime status-effect sourceId for an equipped instance (see equip/unequip). */
+function equipmentSourceId(instanceId: EquipmentInstanceId): string {
+  return `equipment:${instanceId}`;
+}
+
 /** Equip an item. Atomic — either fully succeeds or no state change. */
 export function equip(
   world: GameWorld,
@@ -325,6 +340,15 @@ export function equip(
   state.instances.set(instanceId, instance);
 
   recomputeEffectiveStats(world, entity);
+
+  // Grant any timed/tracked status effects this item provides. Specs were
+  // pre-validated in canEquip (validateItemDef), so these writes are infallible
+  // and equip() stays atomic. The runtime sourceId is scoped to this equipment
+  // instance so duplicate-capable items (e.g. two rings) track independently.
+  for (const spec of itemDef.grantsStatusEffects ?? []) {
+    applyStatusEffect(world, entity, { ...spec, sourceId: equipmentSourceId(instanceId) });
+  }
+
   return { ok: true, instanceId };
 }
 
@@ -359,6 +383,9 @@ export function unequip(
     }
   }
   state.instances.delete(instId);
+
+  // Remove only the status effects this specific instance granted.
+  clearStatusEffects(world, entity, (e) => e.sourceId === equipmentSourceId(instId));
 
   recomputeEffectiveStats(world, entity);
   return { ok: true, item: instance };
