@@ -1,0 +1,91 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "fov-dynamic-granularity",
+  "task_title": "Dynamic lab-testable FOV granularity + discovered-darkening",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "notes": "rubber-duck plan review of plan-synthesized.md; verdict REJECTED with 2 blocking + 3 non-blocking + 1 suggestion. All 6 adopted (see plan-synthesized.md 'Plan-review resolutions'): C1 full-viewRect lighting recompute on player move (FOV radius>torch radius); C2 discoveredLight default 0.05<ambient 0.08 + effective=min(discoveredLight,ambient) clamp (fixes darkness inversion); C3 scene reapplies subFactor on FloorMap replacement; C4 subFactor canonical + exact preset dropdown, API echoes snapped value; C5 O(1) tileVisible/tileDiscovered caches keep gameplay isVisible O(1) at any factor; C6 four edge-case tests added. No stage weakened."
+    },
+    "dual_plan_synthesis": {
+      "completed": true,
+      "plan_models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+      "judge_model": "claude-opus-4.8",
+      "notes": "Two independent plans (gpt-5.5, gemini-3.1-pro) synthesized by claude-opus-4.8 into plan-synthesized.md; adopted plan-a timing-hook + fov-config engine module + correct computeLightField signature, corrected plan-b's map-interface/config errors, and established default=2 keeps existing factor-2 tests as the regression guard."
+    },
+    "code_review": {
+      "clean": true,
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4", "claude-sonnet-4.6", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "gpt-5.4 + claude-sonnet-4.6 flagged that tile-level isVisible(tx,ty) is NOT globally identical across subFactor: the shadowcast radius scales by subFactor and rasterizes differently, so ~1 tile diverges at the vision-radius boundary and at occlusion/doorway edges (interior byte-identical). gemini-3.1-pro clean. Empirically verified via the real fovSystem (finer is a strict subset of coarser). Separately, the full unit suite surfaced 1 failing overlay source-guard test after the fovSystem->runFovSystemWithPerf rename. Both resolved: Remedy B (honest ADR guarantee + 3 pinning tests, 2 of which pin the divergence) + guard-literal update."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Re-review of the post-Remedy-B state. Both confirmed the round-1 divergence concern resolved; gemini-3.1-pro fully clean. gpt-5.4 found 1 non-blocking documentation-accuracy contradiction: ADR section 2 said the discovered bitmap is 'cleared only on floor change', contradicting the earlier amendment note that setSubFactor() also resets it by design. Resolved by rewording ADR section 2."
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.4", "claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Confirmation of the ADR fix. claude-sonnet-4.6 CLEAN and verified ADR<->code consistency. gpt-5.4 raised a 'blocking' ci.yml backgrounded-typecheck concern; adjudicated FALSE POSITIVE and dismissed: git diff main...HEAD is empty for .github/, and merge-base analysis shows .github/workflows/ci.yml is owned by an advanced main (commit 8c6ccbaf), not changed by this branch. No outstanding concerns."
+        }
+      ],
+      "notes": "3-round code-review loop with distinct models, looped until genuinely clean. The one true code concern (subFactor tile-visibility divergence) was fixed via honest docs + divergence pins (Remedy B), not by weakening any requirement or decoupling gameplay from the fog knob."
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "concerns_count": 3,
+      "valid_count": 2,
+      "resolved_count": 2,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4", "claude-sonnet-4.6", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "subFactor tile-visibility divergence + over-broad invariant claim (gpt-5.4 + claude-sonnet-4.6; gemini clean). Distinct adjudicator claude-opus-4.8 ruled VALID / non-blocking: default subFactor 2 is a verified no-op == main, finer factors are lab-only, zero production impact. Remedy B adopted (document honestly + pin divergences); decoupling gameplay from the fog knob REJECTED (would make the finer setting cosmetic-only and add a worse doorway mismatch)."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Divergence confirmed resolved by both reviewers; gemini fully clean. gpt-5.4: ADR internal contradiction on discovered-memory lifecycle. Adjudicator claude-opus-4.8: VALID -> reworded ADR section 2 to carve out the setSubFactor() reset-by-design exception."
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.4", "claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "claude-sonnet-4.6 CLEAN + confirmed ADR fix. gpt-5.4 'blocking' ci.yml backgrounded-typecheck concern adjudicated by claude-opus-4.8 as a FALSE POSITIVE: three-dot git diff main...HEAD is empty for .github/, and merge-base analysis shows ci.yml belongs to an advanced main (8c6ccbaf), not this branch. valid_count 0; no outstanding valid concerns."
+        }
+      ],
+      "notes": "Multi-model code review across gpt-5.4, claude-sonnet-4.6 and gemini-3.1-pro-preview with a distinct adjudicator (claude-opus-4.8). Looped 3 rounds until genuinely clean. Two valid concerns fixed (subFactor divergence truth-in-labeling via honest docs + pins; ADR lifecycle contradiction); one round-3 concern dismissed as a two-dot-diff false positive against an advanced main. No stage weakened."
+    }
+  }
+}

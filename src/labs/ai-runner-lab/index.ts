@@ -34,6 +34,13 @@ import {
   type LightingConfig,
   type LightingPresetId,
 } from '../../engine/lighting/light-field.js';
+import {
+  DEFAULT_FOV_SUB_FACTOR,
+  MAX_FOV_SUB_FACTOR,
+  subFactorToCellPx,
+  type FovConfig,
+  type FovPresetId,
+} from '../../engine/fov/fov-config.js';
 import { peekGroundFlowField } from '../../game/enemyAISystem.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
@@ -59,6 +66,7 @@ type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 interface AiRunnerLabState {
   showFlowField: boolean;
   lighting: LightingConfig;
+  fov: FovConfig;
 }
 
 /**
@@ -181,6 +189,18 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     stepPx: lightingSettings.stepPx,
     updateEveryNFrames: lightingSettings.updateEveryNFrames,
   };
+  const fovSettings: FovConfig = {
+    subFactor: DEFAULT_FOV_SUB_FACTOR,
+    cellPx: subFactorToCellPx(DEFAULT_FOV_SUB_FACTOR),
+    discoveredLight: DEFAULT_LIGHTING_CONFIG.discoveredLight,
+    ...(persisted?.fov ?? {}),
+  };
+  const fovPerf = {
+    computeMsAvg: 0,
+    lastComputeMs: 0,
+    subFactor: fovSettings.subFactor,
+    cellPx: fovSettings.cellPx,
+  };
   const panelRoot = document.createElement('div');
   controls.append(panelRoot);
   let currentSeed = INITIAL_SEED;
@@ -213,6 +233,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     saveLabState(LAB_ID, {
       showFlowField,
       lighting: { ...lightingSettings },
+      fov: { ...fovSettings },
     });
   };
 
@@ -550,6 +571,74 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   lightingPerfFolder.add(lightingPerf, 'updateEveryNFrames').name('Live cadence').listen();
   lightingFolder.close();
 
+  const tryGetFovDebugApi = () => window.__floor1Debug?.fov ?? null;
+
+  const syncFovTelemetry = (): void => {
+    const fov = tryGetFovDebugApi();
+    if (!fov) {
+      return;
+    }
+    const config = fov.getConfig();
+    Object.assign(fovSettings, config);
+    const perf = fov.getPerf();
+    fovPerf.computeMsAvg = perf.computeMsAvg;
+    fovPerf.lastComputeMs = perf.lastComputeMs;
+    fovPerf.subFactor = perf.subFactor;
+    fovPerf.cellPx = perf.cellPx;
+  };
+
+  const applyFovSettings = (): void => {
+    const fov = tryGetFovDebugApi();
+    if (!fov) {
+      return;
+    }
+    // setConfig prioritizes `subFactor` over `cellPx`, so sending the whole
+    // object applies the canonical factor and routes `discoveredLight` to the
+    // lighting config (its owner). The echoed result re-syncs the derived cellPx.
+    fov.setConfig({ ...fovSettings });
+    syncFovTelemetry();
+  };
+
+  const useFovPreset = (preset: FovPresetId): void => {
+    const fov = tryGetFovDebugApi();
+    if (!fov) {
+      return;
+    }
+    fov.usePreset(preset);
+    syncFovTelemetry();
+    persistLabState();
+  };
+
+  const fovFolder = gui.addFolder('FOV');
+  for (const [preset, label] of [
+    ['tile', 'Preset: 32px (f1)'],
+    ['halfTile', 'Preset: 16px (f2, default)'],
+    ['quarterTile', 'Preset: 8px (f4)'],
+    ['fine', 'Preset: 4px (f8)'],
+  ] as const satisfies ReadonlyArray<readonly [FovPresetId, string]>) {
+    fovFolder.add({ activate: () => useFovPreset(preset) }, 'activate').name(label);
+  }
+  fovFolder
+    .add(fovSettings, 'subFactor', 1, MAX_FOV_SUB_FACTOR, 1)
+    .name('Sub-factor')
+    .listen()
+    .onChange(() => {
+      persistLabState();
+      applyFovSettings();
+    });
+  fovFolder
+    .add(fovSettings, 'discoveredLight', 0, 0.2, 0.005)
+    .name('Discovered dim')
+    .listen()
+    .onChange(() => {
+      persistLabState();
+      applyFovSettings();
+    });
+  const fovPerfFolder = fovFolder.addFolder('Perf');
+  fovPerfFolder.add(fovPerf, 'computeMsAvg').name('Compute ms').listen();
+  fovPerfFolder.add(fovPerf, 'cellPx').name('Live cell px').listen();
+  fovPerfFolder.add(fovPerf, 'subFactor').name('Live factor').listen();
+
   /**
    * Lazily build a real hardware input capture (keyboard/mouse/touch) bound to
    * the live scene. Used only while {@link manualControl} is active so the human
@@ -658,6 +747,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         syncSceneSimulationState();
         getScene()?.setDebugFlag?.('showAllRooms', floorDebug.showAllRooms);
         applyLightingSettings();
+        applyFovSettings();
       });
       phaserScene.scene.restart();
     }
@@ -1085,6 +1175,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
             <div>• Toggle "Show enemy flow field" to heatmap the shared chase gradient with flow arrows (hot = near player); off by default</div>
             <div>• Floor 1 Debug adds teleport, map reveal, and quest advancement helpers</div>
             <div>• Use the lil-gui Lighting folder to tune darkness quality, cadence, and falloff live</div>
+            <div>• Use the lil-gui FOV folder to change fog granularity (32/16/8/4px) + discovered-terrain dimming live</div>
           </div>
         </div>
       </div>
@@ -1251,6 +1342,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     syncSceneSimulationState();
     getScene()?.setDebugFlag?.('showAllRooms', floorDebug.showAllRooms);
     applyLightingSettings();
+    applyFovSettings();
   });
 
   const onKeyDown = (event: KeyboardEvent): void => {
@@ -1380,6 +1472,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       renderDecisionTree(treeElem, ai.getTree().serialize(), decision);
     }
     syncLightingTelemetry();
+    syncFovTelemetry();
     drawPathOverlay();
     drawFlowFieldOverlay();
     const debugElem = document.getElementById('ai-runner-debug');

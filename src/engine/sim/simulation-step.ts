@@ -53,6 +53,14 @@ export interface SimulationStepHooks {
    * the original interleaved call order is preserved byte-for-byte.
    */
   afterInput?: () => void;
+  /**
+   * Overrides the built-in `fovSystem` call in the pipeline. When provided, the
+   * scene supplies a wrapper that runs `fovSystem` while timing it (engine-only
+   * perf telemetry) so the FOV granularity knob is measurable in the lab. The
+   * override MUST still run `fovSystem(world)` exactly once with identical
+   * semantics — it exists purely to instrument, not to alter, the step.
+   */
+  runFovSystem?: SimulationSystem;
 }
 
 /**
@@ -106,7 +114,7 @@ export function runSimulationStep(
   lifetimeSystem(world);
   projectileCleanupSystem(world);
   doorSystem(world);
-  fovSystem(world);
+  (hooks.runFovSystem ?? fovSystem)(world);
   safeRoomSystem(world);
   npcSystem(world);
 

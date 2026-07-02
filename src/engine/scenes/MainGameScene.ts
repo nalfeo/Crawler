@@ -45,7 +45,6 @@ import { createGameOverUI } from '../GameOverUI.js';
 import { createLevelUpUI } from '../LevelUpUI.js';
 import {
   blurLightField,
-  buildDirtyRectFromCircles,
   chooseAutoStepPx,
   clampLightingStepPx,
   computeLightField,
@@ -53,7 +52,6 @@ import {
   DEFAULT_LIGHTING_CONFIG,
   forEachDarknessRun,
   getLightingPresetStepPx,
-  intersectDirtyRects,
   LIGHTING_DARKNESS_LEVELS,
   LIGHTING_MIN_DARKNESS,
   type LightField,
@@ -61,6 +59,17 @@ import {
   type LightingConfig,
   type LightingPresetId,
 } from '../lighting/light-field.js';
+import {
+  cellPxToSubFactor,
+  DEFAULT_FOV_SUB_FACTOR,
+  FOV_TILE_SIZE_PX,
+  getFovPresetSubFactor,
+  normalizeSubFactor,
+  subFactorToCellPx,
+  type FovConfig,
+  type FovPerfSnapshot,
+  type FovPresetId,
+} from '../fov/fov-config.js';
 import { PRIMARY_STATS, type PrimaryStatId } from '../../shared/stats.js';
 import { createLogger } from '../../shared/logger.js';
 import { getItemById } from '../../shared/items.js';
@@ -203,6 +212,12 @@ declare global {
           fieldStepPx: number;
           updateEveryNFrames: number;
         };
+      };
+      fov: {
+        getConfig: () => FovConfig;
+        setConfig: (partial: Partial<FovConfig>) => FovConfig;
+        usePreset: (preset: FovPresetId) => FovConfig;
+        getPerf: () => FovPerfSnapshot;
       };
     };
     /** Dev-only: human player session recorder. Set when MainGameSceneOptions.sessionRecorderFactory is provided. */
@@ -418,6 +433,18 @@ export class MainGameScene extends Phaser.Scene {
 
   private lightingOverBudgetFrames = 0;
 
+  /**
+   * Scene-owned canonical FOV sub-tile factor (the lab's selection). Re-applied
+   * to each freshly-installed FloorMap in `drawFloorTerrain` so a chosen
+   * granularity survives floor transitions / reseeds (C3). Defaults to the
+   * historical quarter-tile resolution.
+   */
+  private fovSubFactor: number = DEFAULT_FOV_SUB_FACTOR;
+
+  private fovComputeMsAvg = 0;
+
+  private fovLastComputeMs = 0;
+
   constructor(private readonly options: MainGameSceneOptions = {}) {
     super({ key: MainGameScene.KEY });
   }
@@ -530,7 +557,7 @@ export class MainGameScene extends Phaser.Scene {
     this.events.on(Phaser.Scenes.Events.REMOVED_FROM_SCENE, this.markCameraMasksDirty, this);
     this.refreshCameraMasks();
     this.openLoadoutModal();
-    fovSystem(this.world);
+    this.runFovSystemWithPerf(this.world);
     this.updateLightingOverlay(true);
     this.bridge.sync(this.world);
     this.updateOverlayText();
@@ -565,6 +592,12 @@ export class MainGameScene extends Phaser.Scene {
             fieldStepPx: this.lightField?.stepPx ?? 0,
             updateEveryNFrames: this.lighting.updateEveryNFrames,
           }),
+        },
+        fov: {
+          getConfig: () => this.getFovConfig(),
+          setConfig: (partial: Partial<FovConfig>) => this.setFovConfig(partial),
+          usePreset: (preset: FovPresetId) => this.setFovPreset(preset),
+          getPerf: () => this.getFovPerf(),
         },
       };
     }
@@ -648,6 +681,8 @@ export class MainGameScene extends Phaser.Scene {
       this.lightingDirty = true;
       this.lightingComputeMsAvg = 0;
       this.lightingOverBudgetFrames = 0;
+      this.fovComputeMsAvg = 0;
+      this.fovLastComputeMs = 0;
       this.events.off(Phaser.Scenes.Events.ADDED_TO_SCENE, this.markCameraMasksDirty, this);
       this.events.off(Phaser.Scenes.Events.REMOVED_FROM_SCENE, this.markCameraMasksDirty, this);
       this.input.off('pointerdown', this.handlePointerDown, this);
@@ -892,6 +927,7 @@ export class MainGameScene extends Phaser.Scene {
       runSimulationStep(this.world, this.inputState, {
         preSystems: this.options.preSystems,
         postSystems: this.options.postSystems,
+        runFovSystem: (world) => this.runFovSystemWithPerf(world),
         afterInput: () => {
           if (this.simulationPaused && this.pendingSimulationSteps > 0) {
             // Each loop iteration runs exactly one sim step, so consume one
@@ -1364,6 +1400,13 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
+    // C3: a freshly-built FloorMap constructs at the default sub-factor. Re-apply
+    // the scene's canonical FOV selection BEFORE the initial FOV compute + light
+    // field build below, so a lab-chosen granularity survives floor reseeds.
+    if (floorMap.subFactor !== this.fovSubFactor) {
+      this.fovSubFactor = floorMap.setSubFactor(this.fovSubFactor);
+    }
+
     const { rt, colorCount } = buildTerrainLayer(this, floorMap);
     rt.setDepth(-20);
     this.mapRt = rt;
@@ -1400,6 +1443,7 @@ export class MainGameScene extends Phaser.Scene {
     const next: LightingConfig = { ...this.lighting, ...partial };
     next.stepPx = clampLightingStepPx(next.stepPx, tileSize);
     next.ambient = Math.max(0, Math.min(1, next.ambient));
+    next.discoveredLight = Math.max(0, Math.min(1, next.discoveredLight));
     next.sourceIntensity = Math.max(0, Math.min(2, next.sourceIntensity));
     next.sourceRadiusPx = Math.max(1, next.sourceRadiusPx);
     next.falloffExponent = Math.max(0.1, next.falloffExponent);
@@ -1454,16 +1498,13 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
     const radius = this.lighting.sourceRadiusPx;
-    const dirtyRect =
-      this.lightingDirty || !this.lightingLastSource || !viewRectUnchanged
-        ? viewRect
-        : (intersectDirtyRects(
-            buildDirtyRectFromCircles(field, [
-              { x: this.lightingLastSource.x, y: this.lightingLastSource.y, radiusPx: radius },
-              { x: px, y: py, radiusPx: radius },
-            ]),
-            viewRect,
-          ) ?? viewRect);
+    // C1: FOV visibility (radius ~25 tiles) changes across a far wider area than
+    // the torch light (`sourceRadiusPx`), so a torch-circle dirty rect would leave
+    // stale fog / discovered-dimmed cells outside the torch ring whenever the
+    // player moves while the camera is pinned (e.g. at a map edge). Recompute the
+    // entire camera-visible window — the only region we draw — which is both
+    // correct and cheap (< 0.03ms for a full field on the real floor-1 map).
+    const dirtyRect = viewRect;
 
     const t0 = performance.now();
 
@@ -1484,17 +1525,19 @@ export class MainGameScene extends Phaser.Scene {
       // The light field is expressed in render pixels; the FloorMap reasons in
       // feet (the single internal spatial unit). Bridge the two here — pixels
       // are an engine-only concept, so the conversion stays at this boundary.
-      // Use sub-tile (quarter-tile) resolution for isVisible so the fog-of-war
-      // boundary follows shadow edges at half-tile granularity.
+      // Use sub-tile resolution for isVisible/isDiscovered so the fog-of-war
+      // boundary follows shadow edges at the configured FOV granularity.
       map: {
         pixelToTile: (mx, my) => floorMap.worldToSubTile(pxToFt(mx), pxToFt(my)),
         isVisible: (hx, hy) => floorMap.isVisibleSubtile(hx, hy),
+        isDiscovered: (hx, hy) => floorMap.isDiscoveredSubtile(hx, hy),
         hasLineOfSight: (x0, y0, x1, y1) =>
           floorMap.hasLineOfSight(pxToFt(x0), pxToFt(y0), pxToFt(x1), pxToFt(y1)),
       },
       field,
       sources: lightSources,
       ambient: this.lighting.ambient,
+      discoveredLight: this.lighting.discoveredLight,
       falloffExponent: this.lighting.falloffExponent,
       dirtyRect,
     });
@@ -1547,6 +1590,92 @@ export class MainGameScene extends Phaser.Scene {
     } else {
       this.lightingOverBudgetFrames = 0;
     }
+  }
+
+  /** Tile size in render pixels for the active floor (falls back to the canonical 32px). */
+  private fovTileSizePx(): number {
+    const floorMap = this.world.floorMap;
+    return floorMap ? ftToPx(floorMap.config.tileSizeFt) : FOV_TILE_SIZE_PX;
+  }
+
+  /**
+   * Runs the core `fovSystem` while timing it (engine-only perf telemetry) so the
+   * FOV granularity knob is measurable in the lab. Behavior-identical to calling
+   * `fovSystem(world)` directly — this only records an EWMA of the compute cost.
+   */
+  private runFovSystemWithPerf(world: GameWorld): void {
+    const t0 = performance.now();
+    fovSystem(world);
+    const ms = performance.now() - t0;
+    this.fovLastComputeMs = ms;
+    this.fovComputeMsAvg = this.fovComputeMsAvg * 0.9 + ms * 0.1;
+  }
+
+  /** Current FOV configuration (granularity + the discovered-dim light level). */
+  private getFovConfig(): FovConfig {
+    const subFactor = this.world.floorMap?.subFactor ?? this.fovSubFactor;
+    return {
+      subFactor,
+      cellPx: subFactorToCellPx(subFactor, this.fovTileSizePx()),
+      discoveredLight: this.lighting.discoveredLight,
+    };
+  }
+
+  /** FOV perf snapshot (compute-cost EWMA + active granularity). */
+  private getFovPerf(): FovPerfSnapshot {
+    const subFactor = this.world.floorMap?.subFactor ?? this.fovSubFactor;
+    return {
+      computeMsAvg: this.fovComputeMsAvg,
+      lastComputeMs: this.fovLastComputeMs,
+      subFactor,
+      cellPx: subFactorToCellPx(subFactor, this.fovTileSizePx()),
+    };
+  }
+
+  /**
+   * Apply a FOV config change (lab-driven). A `subFactor` (or a `cellPx` that maps
+   * to one) re-buckets the fog grid; `discoveredLight` is routed to the lighting
+   * config (its single owner). Returns the resolved config (echoing the snapped
+   * sub-factor + its exact cellPx).
+   */
+  private setFovConfig(partial: Partial<FovConfig>): FovConfig {
+    if (partial.discoveredLight !== undefined) {
+      this.setLightingConfig({ discoveredLight: partial.discoveredLight });
+    }
+    let targetSubFactor: number | undefined;
+    if (partial.subFactor !== undefined) {
+      targetSubFactor = partial.subFactor;
+    } else if (partial.cellPx !== undefined) {
+      targetSubFactor = cellPxToSubFactor(partial.cellPx, this.fovTileSizePx());
+    }
+    if (targetSubFactor !== undefined) {
+      this.applyFovSubFactor(targetSubFactor);
+    }
+    return this.getFovConfig();
+  }
+
+  /** Apply a named FOV granularity preset (32/16/8/4px → factor 1/2/4/8). */
+  private setFovPreset(preset: FovPresetId): FovConfig {
+    return this.setFovConfig({ subFactor: getFovPresetSubFactor(preset, this.fovTileSizePx()) });
+  }
+
+  /**
+   * Change the active FOV sub-tile factor: update the scene's canonical selection,
+   * re-bucket the FloorMap's fog bitmaps, then recompute FOV + rebuild the light
+   * field so the change is visible immediately. Reallocation resets discovered
+   * memory (acceptable — this is a lab-only granularity switch).
+   */
+  private applyFovSubFactor(subFactor: number): void {
+    const floorMap = this.world.floorMap;
+    if (!floorMap) {
+      this.fovSubFactor = normalizeSubFactor(subFactor);
+      return;
+    }
+    this.fovSubFactor = floorMap.setSubFactor(subFactor);
+    this.runFovSystemWithPerf(this.world);
+    this.rebuildLightField();
+    this.lightingDirty = true;
+    this.updateLightingOverlay(true);
   }
 
   private ensureUiCamera(): void {
