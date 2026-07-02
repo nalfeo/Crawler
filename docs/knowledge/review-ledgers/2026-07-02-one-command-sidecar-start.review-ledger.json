@@ -1,0 +1,28 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "one-command-sidecar-start",
+  "task_title": "One-command sprite sidecar start (auto-bootstrap .env.local via fast path)",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "notes": "Two rounds (gpt-5.4 rubber-duck). R1 rejected w/ 6 concerns (predicate accuracy, blind -Force, stale reload shadow, CI no-op, messaging, test matrix); redesigned tiered predicate + absent-file-only safe bootstrap + cloud skip. R2 approved_with_changes w/ 2 (foundry provider gating, whitespace storage creds); predicate now provider-aware, hasAzureStorageCreds hardened to trim. All 8 resolved in plan."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
