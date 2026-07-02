@@ -35,6 +35,17 @@ Hello kitties: N/5 = N.NN 🎀 <!-- actual_apples / 5, two decimal places -->
 
 <!-- Summary of changes made this session -->
 
+## Runtime / real-artifact observation
+
+<!-- Required for any wiring or runtime-behavior change (rule #10). Name the REAL
+     artifact you observed the behavior in — the game (`npm run dev`) or a headless
+     pipeline / win-rate gate (src/engine/sim/simulation-step.ts,
+     src/game/ai/simulation-step.ts, src/game/ai/headless-runner.ts) — NOT a lab.
+     A green lab only proves the system works in isolation; it can never prove the
+     real game calls it (see the spawnerSystem inert-ship failure, ADR 0039).
+     State the before/after you saw. Use "N/A — no wiring/behavior change" only
+     when genuinely applicable. -->
+
 ## What's Next
 
 <!-- What should the next session focus on? -->

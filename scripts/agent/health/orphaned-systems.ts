@@ -1,0 +1,156 @@
+#!/usr/bin/env node
+/**
+ * health/orphaned-systems.ts — Deterministic guard against "orphaned" ECS
+ * systems: a `*System` exported from `src/core/**` or `src/game/**` that is
+ * never referenced by a REAL runtime pipeline entry point (and is not on the
+ * documented allowlist).
+ *
+ * This is the process backstop for the class of bug where `spawnerSystem`
+ * shipped fully inert because it was only ever force-called by its lab
+ * (`src/labs/spawner-lab/index.ts`), never by the visual game
+ * (`src/bootstrap/floor-main-scene-options.ts`) or the headless win-rate gate
+ * (`src/game/ai/simulation-step.ts`). See ADR 0039; fix landed in PR #665 /
+ * ADR 0036.
+ *
+ * Deterministic script + exit code (AGENTS.md rule #2 — no LLM-as-judge):
+ *   exit 0 → every system is wired or allowlisted.
+ *   exit 1 → at least one orphaned system (or a stale allowlist entry).
+ *   exit 2 → the guard itself crashed.
+ *
+ * Pure parsing/set logic lives in `orphaned-systems-lib.ts` for unit testing.
+ */
+
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import path from 'node:path';
+import process from 'node:process';
+import { Report, fromRepo } from '../shared/report.js';
+import {
+  ALLOWLIST,
+  SYSTEM_SOURCE_ROOTS,
+  WIRING_SITES,
+  collectExportedSystems,
+  collectWiredRefs,
+  findMalformedAllowlistEntries,
+  findOrphanedSystems,
+  findStaleAllowlistEntries,
+  type SourceFile,
+} from './orphaned-systems-lib.js';
+
+/** Recursively collect `.ts` files under a directory (skipping declaration files). */
+function walkTsFiles(absDir: string): string[] {
+  const out: string[] = [];
+  let entries: string[];
+  try {
+    entries = readdirSync(absDir);
+  } catch {
+    return out;
+  }
+  for (const entry of entries) {
+    const abs = path.join(absDir, entry);
+    if (statSync(abs).isDirectory()) {
+      out.push(...walkTsFiles(abs));
+    } else if (entry.endsWith('.ts') && !entry.endsWith('.d.ts')) {
+      out.push(abs);
+    }
+  }
+  return out;
+}
+
+/** Read a repo-relative file into a `SourceFile` (POSIX path + content). */
+function readSourceFile(relPath: string): SourceFile {
+  const content = readFileSync(fromRepo(relPath), 'utf8');
+  return { path: relPath.replace(/\\/g, '/'), content };
+}
+
+function loadSystemSourceFiles(): SourceFile[] {
+  const files: SourceFile[] = [];
+  for (const root of SYSTEM_SOURCE_ROOTS) {
+    for (const abs of walkTsFiles(fromRepo(root))) {
+      const rel = path.relative(fromRepo(), abs).replace(/\\/g, '/');
+      files.push({ path: rel, content: readFileSync(abs, 'utf8') });
+    }
+  }
+  return files;
+}
+
+function main(): void {
+  const report = new Report('health-orphaned-systems');
+
+  const systems = collectExportedSystems(loadSystemSourceFiles());
+  if (systems.length === 0) {
+    // Fail CLOSED: if discovery returns nothing the guard has effectively been
+    // disabled (source layout drift, a bad refactor, an extension change). A
+    // silent exit 0 here would let real orphans merge green — the exact class
+    // of failure this guard exists to prevent.
+    report.error('No exported *System functions found — the guard is not scanning anything.', {
+      remediation:
+        `Check SYSTEM_SOURCE_ROOTS (${SYSTEM_SOURCE_ROOTS.join(', ')}) and the file ` +
+        `walker in orphaned-systems.ts. The guard fails closed rather than pass vacuously.`,
+    });
+    report.finish();
+  }
+
+  const wiringFiles = WIRING_SITES.map(readSourceFile);
+  const wiredRefs = collectWiredRefs(wiringFiles);
+
+  const orphans = findOrphanedSystems({ systems, wiredRefs, allowlist: ALLOWLIST });
+  for (const orphan of orphans) {
+    report.error(
+      `Orphaned system "${orphan.name}" is defined but never referenced by any real pipeline.`,
+      {
+        file: orphan.file,
+        remediation:
+          `Wire ${orphan.name} into a real pipeline entry point (one of: ` +
+          `${WIRING_SITES.join(', ')}) — a lab that force-calls it does NOT count. ` +
+          `If it is intentionally not wired, add a structured entry to ALLOWLIST in ` +
+          `scripts/agent/health/orphaned-systems-lib.ts (reason + trackedIssue + owner).`,
+      },
+    );
+  }
+
+  // The allowlist is a tracked-debt list, not a mute button: every entry must
+  // carry reason + trackedIssue + owner, or the guard fails (rule #12).
+  for (const bad of findMalformedAllowlistEntries(ALLOWLIST)) {
+    report.error(
+      `ALLOWLIST entry "${bad.name}" is missing required field(s): ${bad.missing.join(', ')}.`,
+      {
+        file: 'scripts/agent/health/orphaned-systems-lib.ts',
+        remediation: `Add ${bad.missing.join(' + ')} to the "${bad.name}" allowlist entry.`,
+      },
+    );
+  }
+
+  for (const stale of findStaleAllowlistEntries(systems, wiredRefs, ALLOWLIST)) {
+    if (stale.kind === 'missing') {
+      report.error(`Stale ALLOWLIST entry "${stale.name}" — no such exported system exists.`, {
+        file: 'scripts/agent/health/orphaned-systems-lib.ts',
+        remediation: `Remove "${stale.name}" from ALLOWLIST; the system it excused is gone.`,
+      });
+    } else {
+      report.error(
+        `Redundant ALLOWLIST entry "${stale.name}" — it is now wired into a real pipeline.`,
+        {
+          file: 'scripts/agent/health/orphaned-systems-lib.ts',
+          remediation: `Remove "${stale.name}" from ALLOWLIST; it no longer needs an exemption.`,
+        },
+      );
+    }
+  }
+
+  if (orphans.length === 0) {
+    report.info(
+      `${systems.length} system(s) checked; all wired into a real pipeline or documented on the allowlist.`,
+    );
+  }
+
+  report.finish();
+}
+
+try {
+  main();
+} catch (err) {
+  process.stderr.write(
+    `orphaned-systems crashed: ${err instanceof Error ? err.stack : String(err)}\n`,
+  );
+  process.exit(2);
+}
