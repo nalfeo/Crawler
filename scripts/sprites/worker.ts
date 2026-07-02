@@ -324,7 +324,7 @@ function buildFailureComment(
 }
 
 /** Abortable sleep — resolves immediately when the signal fires or is already aborted. */
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     // Resolve immediately if the signal is already aborted so the caller
     // doesn't wait the full poll interval before checking the abort flag again.
@@ -345,5 +345,18 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
       resolve();
     }, ms);
     signal?.addEventListener('abort', onAbort, { once: true });
+    // Belt-and-suspenders: re-check after registering the listener. A
+    // `{ once: true }` listener added *after* the signal has already aborted
+    // never fires, so if the signal became aborted between the early
+    // `signal.aborted` guard above and this registration, resolve now instead
+    // of waiting the full `ms`. Unreachable while this executor stays
+    // synchronous (Node cannot interleave `abort()` mid-executor), but keeps
+    // the abort path correct if a future refactor ever introduces an `await`
+    // between the guard and the listener registration.
+    if (signal?.aborted) {
+      signal.removeEventListener('abort', onAbort);
+      clearTimeout(timer);
+      resolve();
+    }
   });
 }

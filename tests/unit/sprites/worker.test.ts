@@ -18,7 +18,7 @@ import type {
 import type { RunStore } from '../../../scripts/sprites/store/types.js';
 import type { ImageProvider } from '../../../scripts/sprites/provider/types.js';
 import { ProviderError } from '../../../scripts/sprites/provider/types.js';
-import { runWorker, type WorkerStatus } from '../../../scripts/sprites/worker.js';
+import { runWorker, sleep, type WorkerStatus } from '../../../scripts/sprites/worker.js';
 
 // ---------------------------------------------------------------------------
 // Stub generateOne so the worker tests run without real IO.
@@ -622,5 +622,54 @@ describe('runWorker failure handling (poison-message policy)', () => {
     expect(deliveries()).toBe(2); // fail@1 (no ack), succeed@2 (ack)
     expect(ack).toHaveBeenCalledOnce();
     expect(comment).not.toHaveBeenCalled();
+  });
+});
+
+describe('sleep (abortable)', () => {
+  it('resolves immediately when the signal is already aborted before the call', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    // Would hang for 60s (and time the test out) if the early guard regressed.
+    await expect(sleep(60_000, controller.signal)).resolves.toBeUndefined();
+  });
+
+  it('resolves via the post-registration re-check when abort lands right after listener registration', async () => {
+    // Deterministically reproduce the reviewer's race and pin the fix: `.aborted`
+    // is false at the initial guard and only flips to true AFTER the abort
+    // listener has been registered (tracked via `registered`). The `{ once: true }`
+    // listener is registered *after* the (fake) abort, so it can never fire — the
+    // ONLY thing that can resolve this sleep early is the post-registration
+    // re-check, and `reCheckObserved` proves that re-check actually ran.
+    vi.useFakeTimers();
+    try {
+      let registered = false;
+      let reCheckObserved = false;
+      const racingSignal = {
+        get aborted() {
+          if (registered) reCheckObserved = true;
+          return registered;
+        },
+        addEventListener: () => {
+          registered = true;
+        },
+        removeEventListener: () => {},
+      } as unknown as AbortSignal;
+
+      const slept = sleep(60_000, racingSignal);
+      // Prove it settles on the next microtask via the synchronous re-check
+      // rather than by waiting out the 60s timer: race against a microtask
+      // sentinel. Without the re-check `slept` stays pending and the sentinel
+      // wins, failing this assertion immediately (no 60s/timeout dependence).
+      const outcome = await Promise.race([
+        slept.then(() => 'resolved' as const),
+        Promise.resolve().then(() => 'pending' as const),
+      ]);
+
+      expect(outcome).toBe('resolved');
+      expect(registered).toBe(true);
+      expect(reCheckObserved).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
