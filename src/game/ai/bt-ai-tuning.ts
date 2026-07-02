@@ -537,9 +537,11 @@ export const TRAVEL_W_LOOT = 0;
 export const TRAVEL_W_FARM = 0;
 export const TRAVEL_LOOT_LOOKAHEAD_FT = 12;
 export const TRAVEL_LOOT_CORRIDOR_FT = 4;
-// |Vrel|² below this ⇒ closest-approach is degenerate (near-parallel); use the
-// current separation instead of a spurious projection.
-export const TRAVEL_REL_SPEED_EPSILON_SQ = 1e-4;
+// |Vrel|² below this ⇒ closest-approach is degenerate (truly co-moving); fall back
+// to the current separation instead of a spurious projection. Kept far below
+// (playerSpeed · small-angle)² so a slow-but-real closing course is never
+// misclassified as parallel and short-circuited to the current (larger) gap.
+export const TRAVEL_REL_SPEED_EPSILON_SQ = 1e-8;
 // COLLECT uses steering only while farther than this from the pickup, so the final
 // harvest overlap approach (Track A close-range slide) is left untouched.
 export const TRAVEL_COLLECT_MIN_STEER_DIST_FT = CLOSE_APPROACH_DIRECT_FT;

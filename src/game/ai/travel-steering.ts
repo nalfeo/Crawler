@@ -174,14 +174,12 @@ export function extractKiteTangent(
   enemyY: number,
   sign: 1 | -1,
 ): { x: number; y: number } {
-  let rx = px - enemyX;
-  let ry = py - enemyY;
+  const rx = px - enemyX;
+  const ry = py - enemyY;
   const dist = Math.hypot(rx, ry);
-  if (dist < EPSILON) {
-    // Enemy on top of us: pick an arbitrary outward axis (matches kite fallback).
-    rx = 1;
-    ry = 0;
-  }
+  // Enemy on top of us (dist ≈ 0): fall back to an arbitrary outward axis
+  // (ux=1, uy=0) so the tangent is still a valid unit vector (matches the kite
+  // fallback); otherwise normalize the enemy→player axis.
   const ux = dist < EPSILON ? 1 : rx / dist;
   const uy = dist < EPSILON ? 0 : ry / dist;
   return { x: -uy * sign, y: ux * sign };

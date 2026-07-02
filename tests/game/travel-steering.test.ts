@@ -44,7 +44,7 @@ const DEFAULT_PARAMS: TravelSteeringParams = {
   wFarm: 0,
   lootLookaheadFt: 12,
   lootCorridorFt: 4,
-  relSpeedEpsilonSq: 1e-4,
+  relSpeedEpsilonSq: 1e-8,
 };
 
 const makeParams = (over: Partial<TravelSteeringParams> = {}): TravelSteeringParams => ({
@@ -161,6 +161,34 @@ describe('predictedMinGapFt', () => {
       1e-4,
     );
     expect(moving).toBeLessThan(parked);
+  });
+
+  it('subtracts the per-body radius, so a larger body reports a tighter surface gap', () => {
+    // Same centre-to-centre geometry, different body sizes: the bigger body must
+    // read as closer-to-contact. This is the semantic the provider relies on when
+    // it enlarges the radius for physically bigger enemies (e.g. 3x3 spawners).
+    const small = predictedMinGapFt(
+      0,
+      0,
+      1,
+      0,
+      3,
+      threat({ x: 10, y: 5, bodyRadiusFt: 1.5 }),
+      32,
+      1e-8,
+    );
+    const big = predictedMinGapFt(
+      0,
+      0,
+      1,
+      0,
+      3,
+      threat({ x: 10, y: 5, bodyRadiusFt: 3 }),
+      32,
+      1e-8,
+    );
+    expect(big).toBeLessThan(small);
+    expect(small - big).toBeCloseTo(1.5); // difference equals the body-radius delta
   });
 });
 
@@ -352,6 +380,27 @@ describe('scoreTravelCandidate — loot & farm biases', () => {
     expect(eligible.farmBonus).toBe(1);
     expect(notEligible.farmBonus).toBe(0);
     expect(panicking.farmBonus).toBe(0);
+  });
+
+  it('penalizes a physically larger body more (tighter gap, higher threat cost)', () => {
+    // Identical off-beeline geometry, different body radii. The bigger body must
+    // read as closer to contact (smaller minGap) and cost strictly more, so the
+    // selector arcs wider around it. Pins the size→cost semantic the provider's
+    // per-body radius (enlarged for 3x3 spawners) depends on.
+    const small = scoreTravelCandidate(
+      1,
+      0,
+      baseInput({ threats: [threat({ x: 10, y: 3, bodyRadiusFt: 1.5 })] }),
+      makeParams(),
+    );
+    const big = scoreTravelCandidate(
+      1,
+      0,
+      baseInput({ threats: [threat({ x: 10, y: 3, bodyRadiusFt: 4.5 })] }),
+      makeParams(),
+    );
+    expect(big.minGapFt).toBeLessThan(small.minGapFt);
+    expect(big.threatCost).toBeGreaterThan(small.threatCost);
   });
 
   it('flags a candidate as impassable when a wall sits within the first probe step', () => {
