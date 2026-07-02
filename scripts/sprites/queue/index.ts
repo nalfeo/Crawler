@@ -13,7 +13,7 @@
  * | AZURE_STORAGE_ACCOUNT             | yes               | Storage account name                                     |
  * | AZURE_STORAGE_KEY                 | yes               | Storage account access key                               |
  * | AZURE_STORAGE_QUEUE_NAME          | no                | Queue name (default: `asset-requests`)                   |
- * | AZURE_STORAGE_QUEUE_VISIBILITY_TIMEOUT | no           | Visibility timeout in seconds (default: 300)             |
+ * | AZURE_STORAGE_QUEUE_VISIBILITY_TIMEOUT | no           | Visibility timeout in seconds (default: 900)             |
  *
  * Alternatively, set `AZURE_STORAGE_CONNECTION_STRING` to use a full
  * connection string instead of the separate account/key variables.
@@ -54,7 +54,7 @@ export function createAssetQueue(options: CreateAssetQueueOptions = {}): AssetQu
     const visibilityTimeout = rawTimeout !== undefined ? Number(rawTimeout) : undefined;
 
     if (connStr) {
-      return AzureStorageQueue.fromConnectionString(connStr, queueName);
+      return AzureStorageQueue.fromConnectionString(connStr, queueName, visibilityTimeout);
     }
 
     const accountName = required(env, 'AZURE_STORAGE_ACCOUNT');

@@ -6,7 +6,7 @@ decisions that affect **2+ systems** require an ADR (see the constitution and
 `.github/copilot-instructions.md`).
 
 - **Template:** `docs/knowledge/adr/TEMPLATE.md`
-- **Count:** 45 ADRs (0001–0028, with number reuse — see below)
+- **Count:** 64 ADR files (0001–0041, with number reuse and gaps in this index — see below)
 - **Status convention:** `## Status` heading with one of
   `Proposed | Accepted | Deprecated | Superseded by NNNN`
 
@@ -32,7 +32,7 @@ hundreds of inbound references.
 ### Adding a new ADR
 
 1. Copy `TEMPLATE.md` to `NNNN-your-slug.md`, where `NNNN` is **the next unused
-   number** (currently **0041**).
+   number** (currently **0042**).
 2. Fill in `## Status`, `## Date`, `## Estimated Complexity`, `## Context`,
    `## Decision`, `## Consequences`.
 3. Always **link by slug**, never by bare number, so collisions stay
@@ -113,6 +113,7 @@ hundreds of inbound references.
 - [Migrate content generation to Azure AI Foundry](0033-azure-foundry-content-generation.md) — broaden model access behind the existing provider seam.
 - [Sprite worker poison-message handling](0037-sprite-worker-poison-message-handling.md) — bounded failures (dequeueCount cap), permanent-drop, and comment-once to stop runaway retry loops and issue-comment spam.
 - [Asset-request briefs accept rich multi-sentence text](0038-asset-request-multi-sentence-brief.md) — relax the issue/marker brief contract so multi-sentence briefs enqueue.
+- [Raise Azure Storage Queue default visibility timeout to 900s](0041-raise-queue-visibility-timeout-default.md) — a 16-cell gpt-image-1 sheet outruns the old 300s window; 900s stops false "message does not exist" acks and needless regeneration.
 
 ### Rendering, HUD & VFX
 
@@ -125,6 +126,7 @@ hundreds of inbound references.
 - [Chronicle as Agent-OS telemetry backend](0004-chronicle-telemetry.md)
 - [Looping automation workflows](0007-automation-loops.md)
 - [PR150 post-merge review follow-up scope](0014-pr150-post-merge-review-followups.md)
+- [Deterministic orphaned-system wiring guard](0039-orphaned-system-wiring-guard.md) — every exported `*System` must be wired into a real pipeline or explicitly allowlisted.
 
 ---
 
@@ -182,4 +184,6 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0033 | [Migrate Content Generation to Azure AI Foundry](0033-azure-foundry-content-generation.md)                                      | Proposed | 2026-06-29 |
 | 0037 | [Sprite Worker Poison-Message Handling (bounded failures, comment-once)](0037-sprite-worker-poison-message-handling.md)         | Accepted | 2026-07-02 |
 | 0038 | [Asset-Request Briefs Accept Rich Multi-Sentence Text](0038-asset-request-multi-sentence-brief.md)                              | Accepted | 2026-07-01 |
+| 0039 | [Deterministic Orphaned-System Wiring Guard](0039-orphaned-system-wiring-guard.md)                                              | Accepted | 2026-07-02 |
 | 0040 | [Floor 2 Family-Territory & Relationship Architecture](0040-floor2-family-territory-and-relationship-architecture.md)           | Proposed | 2026-07-01 |
+| 0041 | [Raise Azure Storage Queue Default Visibility Timeout to 900s](0041-raise-queue-visibility-timeout-default.md)                  | Accepted | 2026-07-02 |

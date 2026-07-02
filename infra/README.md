@@ -88,7 +88,7 @@ SPRITES_ASSET_QUEUE=azure-queue               # 'noop' (default) | 'azure-queue'
 # Optional overrides (uncomment to change defaults):
 # AZURE_STORAGE_RUNS_CONTAINER=generated-runs
 # AZURE_STORAGE_QUEUE_NAME=asset-requests
-# AZURE_STORAGE_QUEUE_VISIBILITY_TIMEOUT=300
+# AZURE_STORAGE_QUEUE_VISIBILITY_TIMEOUT=900
 ```
 
 Alternatively, use a **connection string** (simplifies local Azurite use):

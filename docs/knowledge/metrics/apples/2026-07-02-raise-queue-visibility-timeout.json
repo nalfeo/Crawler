@@ -1,0 +1,11 @@
+{
+  "date": "2026-07-02",
+  "slug": "raise-queue-visibility-timeout",
+  "task": "Raise the Azure Storage Queue default visibility timeout from 300s to 900s so the one-command sprite sidecar (npm run sprites:gallery) processes slow gpt-image-1 briefs without a manual env override",
+  "estimated_apples": 2,
+  "actual_apples": 2,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.4,
+  "notes": "One durable constant change (DEFAULT_VISIBILITY_TIMEOUT 300->900) plus its JSDoc/doc rationale, an ADR (0041), and unit coverage. Estimate held at 2: the logic is a single named-constant default, but plan review (gpt-5.4) surfaced a latent blocking bug — AzureStorageQueue.fromConnectionString hard-coded the default and silently dropped the AZURE_STORAGE_QUEUE_VISIBILITY_TIMEOUT override on the connection-string path — so the change also threaded an optional visibilityTimeout param through fromConnectionString + index.ts and added connection-string test coverage (5 new tests, incl. a fresh @azure/storage-queue mock seam). Root cause was diagnosed and 900s live-validated by the coordinator session beforehand (processed 0->1->2, failed=0, zero 'message does not exist' acks), keeping this firmly a 2 rather than a 3. 2-apple review harness run: separate-model plan review + a genuine code-review loop, recorded in a committed ledger. Deviation logged: coordinator's 'next free ADR number 0039' was stale (0039 already taken by the orphaned-system-wiring-guard, merged PR #667), so this was first authored as ADR 0040; during the pre-merge rebase main had also merged its own 0040 (floor2-family-territory) plus 0039, so it shipped as ADR 0041 (next genuinely free number)."
+}

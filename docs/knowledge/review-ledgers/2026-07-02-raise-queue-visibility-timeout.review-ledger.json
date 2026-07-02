@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "raise-queue-visibility-timeout",
+  "task_title": "Raise Azure Storage Queue default visibility timeout to 900s",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "notes": "gpt-5.4 high-effort plan review. Blocking: fromConnectionString hard-coded DEFAULT_VISIBILITY_TIMEOUT and silently dropped the AZURE_STORAGE_QUEUE_VISIBILITY_TIMEOUT override on the connection-string path -> threaded an optional visibilityTimeout param through fromConnectionString + index.ts. Non-blocking: ADR README also omitted the existing 0039 entry + had stale next-unused/count text -> added 0039+0040 rows/links and fixed pointer/count. Non-blocking: add connection-string test coverage -> added default-900 and env-override conn-string tests. All 3 resolved."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "notes": "claude-sonnet-4.6 code-review agent, 231s. Verified: env override reaches BOTH fromConnectionString and fromOptions paths and falls back to 900 when unset; account/key path unchanged; the 5 new tests genuinely fail if default reverts to 300 or conn-string threading regresses; @azure/storage-queue mock seam does not break pre-existing .backend/normalizeAssetRequest tests; zero stale 300/5-minute wording; ADR 0040 + README index internally consistent. No concerns raised — clean on round 1."
+    }
+  }
+}
