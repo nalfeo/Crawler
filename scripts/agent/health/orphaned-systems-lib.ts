@@ -68,6 +68,16 @@ export interface SourceFile {
 export const SYSTEM_SOURCE_ROOTS: ReadonlyArray<string> = ['src/core', 'src/game'];
 
 /**
+ * A conservative lower bound on how many `*System` exports the guard expects to
+ * enumerate. The repo has far more than this today; the floor exists purely as
+ * defense-in-depth against a PARTIAL scan regression (the file walker silently
+ * returning a handful of files instead of the whole tree), which a plain
+ * "exactly zero" check would miss. If a legitimate shrink ever trips this,
+ * lower it deliberately in the same commit that removes the systems.
+ */
+export const MIN_EXPECTED_SYSTEMS = 10;
+
+/**
  * The REAL runtime pipeline entry points. A system referenced from any of these
  * is considered wired into the shipped game and/or the headless win-rate gate.
  *
@@ -181,24 +191,45 @@ function hasExportModifier(node: ts.Node): boolean {
 
 /**
  * Extract every exported `*System` name from one file via AST. Covers:
- * - `export function fooSystem(...)`
+ * - `export function fooSystem(...)` (incl. `export default function fooSystem`)
  * - `export const fooSystem = (...) => {...}` (and other exported var decls)
  * - `export { fooSystem }`, `export { x as barSystem }`,
  *   `export { fooSystem } from './fooSystem.js'`
+ * - `export default fooSystem` / `export = fooSystem` where `fooSystem` is a
+ *   *local* declaration in the same file — classified as a `declaration` (the
+ *   file IS the implementation), so duplicate-name detection and implementation-
+ *   file attribution both work. Only when the identifier forwards a non-local
+ *   (imported) symbol is it recorded as a `reexport`. Otherwise a system shipped
+ *   via a default assignment would be invisible to the guard (false-clean).
  * The *exported* name is what matters (so `x as barSystem` yields `barSystem`).
+ *
+ * KNOWN BLIND SPOT (accepted): destructured exports —
+ * `export const { fooSystem } = registry` — are not enumerated (the binding is an
+ * ObjectBindingPattern, not an Identifier). ECS systems are standalone functions,
+ * never destructured out of a registry, so this pattern does not occur here; the
+ * allowlist remains the escape hatch if it ever does.
  */
 export function extractSystemDefs(file: SourceFile): SystemDef[] {
   const sf = parse(file);
   const declared = new Set<string>();
   const reexported = new Set<string>();
+  // Every `*System` bound by a local declaration in this file, regardless of
+  // whether it carries an `export` modifier. Used to decide whether an
+  // `export default <ident>` / `export = <ident>` names a local implementation
+  // (→ declaration) or forwards an imported symbol (→ reexport).
+  const locallyDeclared = new Set<string>();
+  const exportAssignedNames = new Set<string>();
 
   const visit = (node: ts.Node): void => {
-    if (ts.isFunctionDeclaration(node) && node.name && hasExportModifier(node)) {
-      if (isSystemName(node.name.text)) declared.add(node.name.text);
-    } else if (ts.isVariableStatement(node) && hasExportModifier(node)) {
+    if (ts.isFunctionDeclaration(node) && node.name && isSystemName(node.name.text)) {
+      locallyDeclared.add(node.name.text);
+      if (hasExportModifier(node)) declared.add(node.name.text);
+    } else if (ts.isVariableStatement(node)) {
+      const exported = hasExportModifier(node);
       for (const decl of node.declarationList.declarations) {
         if (ts.isIdentifier(decl.name) && isSystemName(decl.name.text)) {
-          declared.add(decl.name.text);
+          locallyDeclared.add(decl.name.text);
+          if (exported) declared.add(decl.name.text);
         }
       }
     } else if (
@@ -210,10 +241,25 @@ export function extractSystemDefs(file: SourceFile): SystemDef[] {
         // `spec.name` is the exported (outward-facing) identifier.
         if (isSystemName(spec.name.text)) reexported.add(spec.name.text);
       }
+    } else if (ts.isExportAssignment(node) && ts.isIdentifier(node.expression)) {
+      // `export default fooSystem` (isExportEquals=false) and
+      // `export = fooSystem` (isExportEquals=true) both surface a name by
+      // reference. Resolve local-vs-forwarded after the full walk (a `const`
+      // may be declared before or after the assignment).
+      if (isSystemName(node.expression.text)) exportAssignedNames.add(node.expression.text);
     }
     ts.forEachChild(node, visit);
   };
   visit(sf);
+
+  for (const name of exportAssignedNames) {
+    // A local declaration behind the assignment means THIS file is the
+    // implementation; treat it as a declaration so duplicates are caught and the
+    // concrete file (not a barrel) wins attribution. A forwarded/imported symbol
+    // is a genuine re-export.
+    if (locallyDeclared.has(name)) declared.add(name);
+    else reexported.add(name);
+  }
 
   const defs: SystemDef[] = [];
   for (const name of declared) defs.push({ name, file: file.path, kind: 'declaration' });
@@ -233,6 +279,19 @@ export function extractSystemDefs(file: SourceFile): SystemDef[] {
  * Identifiers inside imports, strings, comments, type positions, or bare
  * assignments do NOT count — matching how systems are actually wired and
  * rejecting the false-confidence signals the reviewers flagged.
+ *
+ * KNOWN LIMITATION (accepted, trusted-oracle model): this counts ANY call or
+ * array-element reference in a wiring-site file, without proving the enclosing
+ * array/function is itself reached at runtime. So a dead reference inside a
+ * wiring file — e.g. `const unused = [fooSystem]` or an unused local
+ * `function debug(w){ fooSystem(w); }` — would mark `fooSystem` wired. This is
+ * acceptable because the {@link WIRING_SITES} are a tiny, curated set of trusted
+ * pipeline files: a dead system reference there is a distinct, review-catchable
+ * smell, and far narrower than the failure this guard targets (a system
+ * referenced ONLY by a lab and by no trusted file at all). Distinguishing
+ * live from dead references would require whole-program dataflow analysis,
+ * trading the guard's determinism/simplicity for a safe-direction edge. The
+ * negative regression tests pin this as a conscious contract, not an accident.
  */
 export function extractReferencedSystems(file: SourceFile): Set<string> {
   const sf = parse(file);
@@ -295,6 +354,43 @@ export function collectWiredRefs(wiringFiles: ReadonlyArray<SourceFile>): Set<st
     for (const ref of extractReferencedSystems(file)) wired.add(ref);
   }
   return wired;
+}
+
+/** A `*System` name that is declared as a real definition in two or more files. */
+export interface DuplicateSystemFinding {
+  readonly name: string;
+  readonly files: string[];
+}
+
+/**
+ * Find `*System` names that are DECLARED (not merely re-exported) in more than
+ * one file. Wiring detection is name-based, so a duplicate name is ambiguous: if
+ * `a/fooSystem` is wired and `b/fooSystem` is not, the single wired name would
+ * mark BOTH as wired and silently hide the orphan in `b` — a false-clean in the
+ * exact dangerous direction this guard exists to prevent. Surfacing duplicates
+ * forces a rename so name-based matching stays sound. Re-export barrels (which
+ * legitimately surface a name a second time) are excluded by the `declaration`
+ * kind filter. Deterministic, sorted by name.
+ */
+export function findDuplicateSystemDeclarations(
+  files: ReadonlyArray<SourceFile>,
+): DuplicateSystemFinding[] {
+  const byName = new Map<string, Set<string>>();
+  const sorted = [...files].sort((a, b) => a.path.localeCompare(b.path));
+  for (const file of sorted) {
+    if (/\.(test|spec)\.ts$/.test(file.path)) continue;
+    for (const def of extractSystemDefs(file)) {
+      if (def.kind !== 'declaration') continue;
+      const set = byName.get(def.name) ?? new Set<string>();
+      set.add(def.file);
+      byName.set(def.name, set);
+    }
+  }
+  const findings: DuplicateSystemFinding[] = [];
+  for (const [name, fileSet] of byName) {
+    if (fileSet.size > 1) findings.push({ name, files: [...fileSet].sort() });
+  }
+  return findings.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** A system that is neither wired into a real pipeline nor allowlisted. */

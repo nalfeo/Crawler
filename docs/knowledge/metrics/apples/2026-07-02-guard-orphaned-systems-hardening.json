@@ -1,0 +1,10 @@
+{
+  "date": "2026-07-02",
+  "session": "guard-orphaned-systems-hardening",
+  "estimated_apples": 4,
+  "actual_apples": 4,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.8,
+  "notes": "Follow-up to PR #667. Completes the full 4-apple review harness the orphaned-system guard's honest complexity warranted (dual_plan_synthesis + multi_model_review, both on distinct models with an opus adjudicator) and lands the dangerous-direction false-clean hardening those two extra stages surfaced: export-default/export-= local-declaration attribution, duplicate *System declaration detection, MIN_EXPECTED_SYSTEMS partial-scan floor, and a documented+pinned incidental-reference-in-wiring-file limitation. Estimated and actual both 4: the escalation and the hardening were exactly the owed rigor. The base guard's own calibration record (estimated 3 / actual 4, PR #667) is left untouched."
+}

@@ -26,10 +26,12 @@ import process from 'node:process';
 import { Report, fromRepo } from '../shared/report.js';
 import {
   ALLOWLIST,
+  MIN_EXPECTED_SYSTEMS,
   SYSTEM_SOURCE_ROOTS,
   WIRING_SITES,
   collectExportedSystems,
   collectWiredRefs,
+  findDuplicateSystemDeclarations,
   findMalformedAllowlistEntries,
   findOrphanedSystems,
   findStaleAllowlistEntries,
@@ -76,7 +78,8 @@ function loadSystemSourceFiles(): SourceFile[] {
 function main(): void {
   const report = new Report('health-orphaned-systems');
 
-  const systems = collectExportedSystems(loadSystemSourceFiles());
+  const sourceFiles = loadSystemSourceFiles();
+  const systems = collectExportedSystems(sourceFiles);
   if (systems.length === 0) {
     // Fail CLOSED: if discovery returns nothing the guard has effectively been
     // disabled (source layout drift, a bad refactor, an extension change). A
@@ -88,6 +91,35 @@ function main(): void {
         `walker in orphaned-systems.ts. The guard fails closed rather than pass vacuously.`,
     });
     report.finish();
+  } else if (systems.length < MIN_EXPECTED_SYSTEMS) {
+    // Defense-in-depth against a PARTIAL scan regression: a walker that returns
+    // only a few files could pass vacuously if those happen to be wired. The
+    // repo has far more than MIN_EXPECTED_SYSTEMS systems, so a count this low
+    // means the scan is broken, not that the game shrank.
+    report.error(
+      `Only ${systems.length} system(s) discovered (< MIN_EXPECTED_SYSTEMS=${MIN_EXPECTED_SYSTEMS}) — ` +
+        `the scan is almost certainly partial.`,
+      {
+        remediation:
+          `Investigate the file walker / SYSTEM_SOURCE_ROOTS. If the repo legitimately ` +
+          `shrank below the floor, lower MIN_EXPECTED_SYSTEMS in orphaned-systems-lib.ts ` +
+          `in the same change that removes the systems.`,
+      },
+    );
+    report.finish();
+  }
+
+  // Name-based wiring detection is ambiguous if a `*System` name is declared in
+  // two files (one wired, one not, would both read as wired). Fail on duplicates.
+  for (const dup of findDuplicateSystemDeclarations(sourceFiles)) {
+    report.error(
+      `Duplicate system name "${dup.name}" is declared in multiple files: ${dup.files.join(', ')}.`,
+      {
+        remediation:
+          `Rename one so each *System name is unique — name-based wiring detection ` +
+          `cannot otherwise tell which declaration a pipeline reference points at.`,
+      },
+    );
   }
 
   const wiringFiles = WIRING_SITES.map(readSourceFile);

@@ -10,13 +10,26 @@ Accepted
 
 ## Estimated Complexity
 
-🍎 x 3 estimated → 🍎 x 4 actual. A single deterministic script plus its unit
-tests and wiring into `verify`/CI, spanning a static-analysis lib, a CLI,
-docs/rule changes across `AGENTS.md` + `.github/copilot-instructions.md` + the
-handoff template, and proven to fail on the real pre-fix state. The extra apple
-came from review: a first regex/comment-strip draft was rejected (string
-literals counted as references, URLs truncated real references, re-exports were
-invisible), forcing a rewrite onto the TypeScript compiler API (AST).
+🍎 x 3 estimated → 🍎 x 4 actual (calibration verdict **under** — harder than
+estimated). A single deterministic script plus its unit tests and wiring into
+`verify`/CI, spanning a static-analysis lib, a CLI, docs/rule changes across
+`AGENTS.md` + `.github/copilot-instructions.md` + the handoff template, and
+proven to fail on the real pre-fix state. The extra apple came from review: a
+first regex/comment-strip draft was rejected (string literals counted as
+references, URLs truncated real references, re-exports were invisible), forcing a
+rewrite onto the TypeScript compiler API (AST).
+
+Because the honest actual is 4🍎, the review harness was run at the full **4-apple
+tier**: `plan_review` + `dual_plan_synthesis` (two plans on distinct models —
+gpt-5.4 and gemini-3.1-pro — synthesized/audited by a claude-opus-4.8 judge) +
+`code_review` + `multi_model_review` (two distinct-model reviewers looped to
+clean, adjudicated by claude-opus-4.8). The guard whose entire purpose is
+preventing under-validated features from shipping is itself validated at the
+maximum tier its complexity warrants. The base guard shipped in PR #667 (ledger
+`2026-07-02-guard-orphaned-systems.review-ledger.json`, 3-apple, merged before the
+harness was fully escalated); the 4-apple harness and the dangerous-direction
+hardening it surfaced landed as a follow-up (ledger
+`docs/knowledge/review-ledgers/2026-07-02-guard-orphaned-systems-hardening.review-ledger.json`).
 
 ## Context
 
@@ -63,8 +76,12 @@ wiring/behavior changes.
    unit-testable logic) parses each source file with the **TypeScript compiler
    API** (`ts.createSourceFile`) and enumerates every exported `*System`
    definition under `src/core/**` and `src/game/**` — covering
-   `export function`, `export const`, and `export { … }` / `export { x as
-fooSystem }` re-export forms. It then asserts each is referenced from a real
+   `export function`, `export const`, `export { … }` / `export { x as
+fooSystem }` re-export forms, and `export default fooSystem` / `export =
+   fooSystem` assignment forms (an assignment of a _local_ declaration is
+   attributed to that file, not treated as a barrel re-export, so a system
+   shipped via a default export can't slip past discovery). It then asserts each
+   is referenced from a real
    pipeline wiring site — `src/bootstrap/floor-main-scene-options.ts`,
    `src/engine/sim/simulation-step.ts`, `src/game/ai/simulation-step.ts`,
    `src/game/ai/headless-runner.ts`, `src/engine/scenes/MainGameScene.ts` — or
@@ -83,7 +100,11 @@ fooSystem }` re-export forms. It then asserts each is referenced from a real
    cannot rot into a silent mute button.
 2. **CLI.** `scripts/agent/health/orphaned-systems.ts` runs the lib via the
    shared `Report` helper and exits 0 (all wired/allowlisted), 1 (orphan, or a
-   malformed/stale allowlist entry), or 2 (crash). Exposed as
+   malformed/stale allowlist entry, or a duplicate `*System` declaration), or 2
+   (crash). It **fails closed** if discovery returns zero systems or fewer than
+   `MIN_EXPECTED_SYSTEMS` (a partial/broken scan must not pass vacuously), and
+   flags any `*System` name declared in two source files (name-based wiring would
+   otherwise mark both wired and hide an orphaned twin). Exposed as
    `npm run check:wired-systems`.
 3. **Enforcement.** Wired into `scripts/agent/verify.sh` (step 5b) and the
    blocking `check-format-and-labs` CI job (gated into the merge-gate), alongside
@@ -133,6 +154,16 @@ allowlisted "because it isn't wired." We deliberately did **not** allowlist
   false positive until either `extractReferencedSystems` learns that form or the
   system is allowlisted. Dynamic/aliased references are likewise out of scope.
   The `*System` naming convention and the two-form contract keep this low-risk.
+- **Trusted-oracle limitation (documented + pinned).** A reference counts if it
+  appears in a `WIRING_SITES` file in one of the two forms — the guard does not
+  prove the enclosing array/function is itself reached at runtime. A dead
+  reference inside a wiring file (`const unused = [fooSystem]`, or a call inside
+  an unused local helper) would mark `fooSystem` wired. Tightening this by
+  parent-context would break the legitimate direct-call form used in
+  `MainGameScene`/`headless-runner`, so it is accepted, documented in the lib,
+  and pinned by negative regression tests. Destructured registry exports
+  (`export const { fooSystem } = …`) are likewise an accepted blind spot — ECS
+  systems are standalone functions, never destructured.
 - One more gate to keep green. Genuinely not-yet-wired systems require a
   structured allowlist entry (reason + trackedIssue + owner).
 
