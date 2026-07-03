@@ -44,7 +44,7 @@ jobs:
 
       - name: Install Playwright Chromium
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install chromium
+        run: npx playwright install chromium --with-deps
 
       - name: Verify (typecheck + lint + tests)
         run: npm run verify:fast
