@@ -6,6 +6,7 @@
  */
 import { z } from 'zod';
 import floor1EnemyPackJson from './data/enemies.floor1.json';
+import floor2EnemyPackJson from './data/enemies.floor2.json';
 
 /**
  * Single enemy archetype configuration for spawning.
@@ -32,8 +33,28 @@ export const enemyArchetypeDefSchema = z
     aiType: z.enum(['chase', 'patrol', 'ranged', 'flee']).default('chase'),
     /** Spawn weight for weighted random selection (0-1). */
     spawnWeight: z.number().min(0).max(1),
+    /**
+     * Family this archetype belongs to (Floor 2, FR6/FR18). Omitted for
+     * floor-neutral trash mobs. Matches `FamilyId` from
+     * `src/core/faction-relations.ts`.
+     */
+    familyId: z.string().min(1).optional(),
+    /**
+     * `true` when this archetype is a family boss (spawned once into a
+     * `BOSS_DEN` at floor-init). Bosses require `familyId`.
+     */
+    isBoss: z.boolean().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((archetype, ctx) => {
+    if (archetype.isBoss === true && archetype.familyId === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['familyId'],
+        message: `isBoss archetype "${archetype.id}" must set familyId`,
+      });
+    }
+  });
 
 export type EnemyArchetypeDef = z.infer<typeof enemyArchetypeDefSchema>;
 
@@ -99,6 +120,7 @@ function loadEnemyPackByJson(json: unknown): EnemyPackDef {
  */
 const ENEMY_PACK_REGISTRY = new Map<string, EnemyPackDef>([
   ['floor1-ambient', loadEnemyPackByJson(floor1EnemyPackJson)],
+  ['floor2-families', loadEnemyPackByJson(floor2EnemyPackJson)],
 ]);
 
 /**
@@ -114,6 +136,29 @@ export function getFloorEnemyPack(packId: string): EnemyPackDef | undefined {
  * @deprecated Use getFloorEnemyPack("floor1-ambient") instead
  */
 export const floor1EnemyPack: EnemyPackDef = ENEMY_PACK_REGISTRY.get('floor1-ambient')!;
+
+/**
+ * Floor 2 enemy pack — family bosses (`isBoss:true`, spawnWeight 0), family
+ * trash (`familyId` set), and floor-neutral trash (no `familyId`). Boss
+ * archetypes carry `spawnWeight: 0` so the ambient spawner never rolls them —
+ * they are placed by {@link initializeFloor2Bosses} at floor init.
+ */
+export const floor2EnemyPack: EnemyPackDef = ENEMY_PACK_REGISTRY.get('floor2-families')!;
+
+/** Get the boss archetype for a specific family id, or undefined if missing. */
+export function getFloor2BossArchetype(familyId: string): EnemyArchetypeDef | undefined {
+  return floor2EnemyPack.archetypes.find((a) => a.isBoss === true && a.familyId === familyId);
+}
+
+/** Get all trash archetypes for a specific family id. */
+export function getFloor2FamilyTrash(familyId: string): readonly EnemyArchetypeDef[] {
+  return floor2EnemyPack.archetypes.filter((a) => a.familyId === familyId && a.isBoss !== true);
+}
+
+/** Get the floor-neutral trash pool (no `familyId`). */
+export function getFloor2NeutralTrash(): readonly EnemyArchetypeDef[] {
+  return floor2EnemyPack.archetypes.filter((a) => a.familyId === undefined);
+}
 
 /**
  * Selects a random enemy archetype from the pack using weighted selection.
