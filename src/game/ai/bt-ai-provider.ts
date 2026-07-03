@@ -146,6 +146,7 @@ import {
   FARM_FORWARD_SCAN_RADIUS_FT,
   FARM_FORWARD_DOT_MIN,
   FARM_MIN_HEALTH_FRACTION,
+  FLOOR1_AI_COLLAPSE_PANIC_DEADLINE_MS,
   PANIC_BEELINE_REMAINING_MS,
   PANIC_RAMP_START_REMAINING_MS,
   PANIC_LOCKED_STAIRS_MULTIPLIER,
@@ -253,6 +254,10 @@ export interface CollapsePanicProfile {
   panic: number;
   beeline: boolean;
   stairsUnlocked: boolean;
+}
+
+export function resolveFloor1AiCollapsePanicDeadlineMs(objectiveDeadlineMs: number): number {
+  return Math.min(objectiveDeadlineMs, FLOOR1_AI_COLLAPSE_PANIC_DEADLINE_MS);
 }
 
 export function computeCollapsePanicProfile(
@@ -2121,7 +2126,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
     return computeCollapsePanicProfile({
       elapsedMs: world.elapsedMs,
-      deadlineMs: objective.deadlineMs,
+      deadlineMs: resolveFloor1AiCollapsePanicDeadlineMs(objective.deadlineMs),
       staircaseUnlocked: objective.staircaseUnlocked,
       staircaseDiscovered: objective.staircaseDiscovered,
     });
