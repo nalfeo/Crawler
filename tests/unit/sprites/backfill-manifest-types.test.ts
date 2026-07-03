@@ -116,6 +116,14 @@ describe('resolveManifestEntryType', () => {
     expect(res).toEqual({ type: 'tile', source: 'heuristic' });
   });
 
+  it('resolves a dash-less concept that is itself a bare type (no truncation)', () => {
+    // `concept.indexOf('-')` is -1 here; the old `slice(0, -1)` truncated "tile"
+    // to "til" and mis-classified it as unresolved.
+    const entry = manifestEntry({ briefId: 'tile' });
+    const res = resolveManifestEntryType(entry, sources());
+    expect(res).toEqual({ type: 'tile', source: 'heuristic' });
+  });
+
   it('returns null (unresolved) when nothing matches', () => {
     const entry = manifestEntry({ briefId: 'gizmo-v1' });
     const res = resolveManifestEntryType(entry, sources());

@@ -21,6 +21,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { assertResolvedUnderGenerated, isSafeGeneratedAssetPath } from './generated-asset-path.js';
 import type { RunSummary } from './run-artifacts.js';
 
 export interface LoadRecordedReferencePngsOptions {
@@ -58,7 +59,18 @@ export function loadRecordedReferencePngs(options: LoadRecordedReferencePngsOpti
 
   const publicAssetsRoot = path.resolve(repoRoot, 'public', 'assets');
   return selection.selected.map((ref) => {
+    // Our art only: a tampered/legacy summary must not be able to read outside
+    // the generated tree (e.g. a smuggled `generated/../kenney/...` path). Reject
+    // unsafe paths, then verify post-resolve containment as defence in depth.
+    if (!isSafeGeneratedAssetPath(ref.assetPath)) {
+      throw new Error(
+        `loadRecordedReferencePngs: recorded reference "${ref.spriteName}" has an unsafe ` +
+          `assetPath "${ref.assetPath}" for run "${summary.brief}". References must be an ` +
+          `in-tree generated/*.png path with no traversal — re-generate rather than re-judging.`,
+      );
+    }
     const absolutePath = path.resolve(publicAssetsRoot, ref.assetPath);
+    assertResolvedUnderGenerated(absolutePath, publicAssetsRoot, 'loadRecordedReferencePngs');
     if (!assetExists(absolutePath)) {
       throw new Error(
         `loadRecordedReferencePngs: recorded reference "${ref.spriteName}" (${ref.assetPath}) ` +

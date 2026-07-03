@@ -61,6 +61,7 @@ import {
 } from './reference-selector.js';
 import { parseGeneratedManifest, type ManifestEntry } from '../../src/shared/generated-assets.js';
 import { isSpriteType } from '../../src/shared/sprite-types.js';
+import { assertResolvedUnderGenerated, isSafeGeneratedAssetPath } from './generated-asset-path.js';
 
 export interface GenerateOneOptions {
   readonly briefPath: string;
@@ -262,8 +263,10 @@ export async function generateSheetCore(
       return Object.values(manifest.entries);
     });
 
-  const presentCandidates = loadReferenceCandidates().filter((entry) =>
-    referenceAssetExists(resolveAssetPath(entry.assetPath)),
+  const presentCandidates = loadReferenceCandidates().filter(
+    (entry) =>
+      isSafeGeneratedAssetPath(entry.assetPath) &&
+      referenceAssetExists(resolveAssetPath(entry.assetPath)),
   );
   const selection = selectReferences({
     candidates: presentCandidates,
@@ -280,9 +283,11 @@ export async function generateSheetCore(
         `quality floor with an on-disk PNG. Approve at least one high-quality sprite first.`,
     );
   }
-  const referencePngs = selection.selected.map((entry) =>
-    readReference(resolveAssetPath(entry.assetPath)),
-  );
+  const referencePngs = selection.selected.map((entry) => {
+    const absolutePath = resolveAssetPath(entry.assetPath);
+    assertResolvedUnderGenerated(absolutePath, publicAssetsRoot, 'generateSheetCore');
+    return readReference(absolutePath);
+  });
   const referenceSprites: ReferenceSpriteSelection = {
     selectorVersion: SELECTOR_VERSION,
     seed: selection.seed,

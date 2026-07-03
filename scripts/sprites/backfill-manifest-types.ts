@@ -95,7 +95,11 @@ export function resolveManifestEntryType(
     return { type: override, source: 'override' };
   }
 
-  const prefix = concept.slice(0, concept.indexOf('-'));
+  // Last-resort heuristic: a leading `type-` prefix on the concept (e.g.
+  // `weapon-iron-sword`). Guard the dash lookup — a dash-less concept that IS a
+  // bare type (`weapon`) must not be truncated by `slice(0, -1)`.
+  const dashIndex = concept.indexOf('-');
+  const prefix = dashIndex >= 0 ? concept.slice(0, dashIndex) : concept;
   if (prefix && isSpriteType(prefix)) {
     return { type: prefix, source: 'heuristic' };
   }

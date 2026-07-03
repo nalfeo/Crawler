@@ -189,4 +189,25 @@ describe('loadRecordedReferencePngs', () => {
       }),
     ).toThrow(/content hash drifted/);
   });
+
+  it('throws on an unsafe/escaping recorded assetPath before touching the filesystem', () => {
+    // A tampered or corrupt summary must not read outside the generated tree.
+    const escaping = ref({
+      spriteName: 'evil',
+      contentHash: null,
+      assetPath: 'generated/../kenney/roguelike/spritesheet.png',
+    });
+    expect(() =>
+      loadRecordedReferencePngs({
+        summary: summary(selection([escaping])),
+        repoRoot: REPO_ROOT,
+        assetExists: () => {
+          throw new Error('assetExists must not be called for an unsafe path');
+        },
+        readReference: () => {
+          throw new Error('readReference must not be called for an unsafe path');
+        },
+      }),
+    ).toThrow(/unsafe/);
+  });
 });

@@ -245,6 +245,47 @@ describe('selectReferences — eligibility filtering', () => {
     expect(names(result.selected)).toEqual(['good-v1-var-0']);
   });
 
+  it('excludes traversal / escaping assetPaths (generated/ prefix is not enough)', () => {
+    const candidates: ManifestEntry[] = [
+      entry({ briefId: 'good-v1', type: 'item' }),
+      // All start with "generated/" but escape the tree or aren't PNGs — a
+      // smuggled Kenney/other-file reference must never survive eligibility.
+      entry({
+        briefId: 'escape-1',
+        type: 'item',
+        spriteName: 'escape-1',
+        assetPath: 'generated/../kenney/roguelike/spritesheet.png',
+      }),
+      entry({
+        briefId: 'escape-2',
+        type: 'item',
+        spriteName: 'escape-2',
+        assetPath: 'generated/../../etc/passwd.png',
+      }),
+      entry({
+        briefId: 'winsep',
+        type: 'item',
+        spriteName: 'winsep',
+        assetPath: 'generated\\..\\kenney\\x.png',
+      }),
+      entry({
+        briefId: 'notpng',
+        type: 'item',
+        spriteName: 'notpng',
+        assetPath: 'generated/lamp.json',
+      }),
+    ];
+    const result = selectReferences({
+      candidates,
+      briefName: 'subject-v1',
+      briefType: 'item',
+      count: 5,
+      seed: SEED,
+    });
+    expect(names(result.selected)).toEqual(['good-v1-var-0']);
+    expect(result.eligibleCount).toBe(1);
+  });
+
   it('excludes untyped entries', () => {
     const candidates: ManifestEntry[] = [
       entry({ briefId: 'good-v1', type: 'item' }),
@@ -277,6 +318,25 @@ describe('selectReferences — eligibility filtering', () => {
     });
     expect(new Set(names(result.selected))).toEqual(
       new Set(['nulljudge-v1-var-0', 'floorsensor-v1-var-0']),
+    );
+  });
+
+  it('fails closed on a present-but-malformed judgeScore (only null is treated as unscored)', () => {
+    const candidates: ManifestEntry[] = [
+      entry({ briefId: 'good-v1', type: 'item', judgeScore: '4' }),
+      entry({ briefId: 'unscored-v1', type: 'item', judgeScore: null }), // legit unscored → kept
+      entry({ briefId: 'junk-v1', type: 'item', judgeScore: 'unknown' }), // malformed → excluded
+      entry({ briefId: 'zero-v1', type: 'item', judgeScore: '0' }), // out of 1–5 → excluded
+    ];
+    const result = selectReferences({
+      candidates,
+      briefName: 'subject-v1',
+      briefType: 'item',
+      count: 5,
+      seed: SEED,
+    });
+    expect(new Set(names(result.selected))).toEqual(
+      new Set(['good-v1-var-0', 'unscored-v1-var-0']),
     );
   });
 });

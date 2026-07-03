@@ -24,6 +24,7 @@
 import type { ManifestEntry } from '../../src/shared/generated-assets.js';
 import { hashStringToSeed, SeededRandom } from '../../src/shared/random.js';
 import { isSpriteType, type SpriteType } from '../../src/shared/sprite-types.js';
+import { isSafeGeneratedAssetPath } from './generated-asset-path.js';
 import { isPlaceholderManifestEntry, normalizeConcept } from './placeholder-audit.js';
 
 /** Bump when the selection algorithm changes in a way that alters output. */
@@ -83,9 +84,8 @@ function parseSensorRatio(sensorScore: string): number | null {
   return Math.max(0, Math.min(1, numerator / denominator));
 }
 
-/** Parse a judge score string into an integer 1–5, or `null` (unscored/invalid). */
-function parseJudge(judgeScore: string | null): number | null {
-  if (judgeScore === null) return null;
+/** Parse a non-null judge score string into an integer 1–5, or `null` if unparseable. */
+function parseJudge(judgeScore: string): number | null {
   const value = Number.parseInt(judgeScore, 10);
   return Number.isInteger(value) && value >= 1 && value <= 5 ? value : null;
 }
@@ -105,14 +105,24 @@ interface EligibleEntry {
 function toEligible(entry: ManifestEntry, briefName: string): EligibleEntry | null {
   if (isPlaceholderManifestEntry(entry)) return null;
   if (entry.briefId === briefName) return null; // exact self — a v2 may still ref v1
-  if (!entry.assetPath.startsWith('generated/')) return null;
+  // Our art only: reject anything that isn't a safe, in-tree `generated/*.png`
+  // path. `startsWith('generated/')` alone would let `generated/../kenney/...`
+  // through and resolve outside the generated tree.
+  if (!isSafeGeneratedAssetPath(entry.assetPath)) return null;
   if (entry.type == null || !isSpriteType(entry.type)) return null;
 
   const sensorRatio = parseSensorRatio(entry.sensorScore);
   if (sensorRatio === null || sensorRatio < SENSOR_FLOOR) return null;
 
-  const judge = parseJudge(entry.judgeScore);
-  if (judge !== null && judge < JUDGE_FLOOR) return null;
+  // judgeScore: `null` = legitimately unscored (allowed); a NON-null string MUST
+  // parse to an integer 1–5. A present-but-malformed score fails closed — it can
+  // never sneak past the quality floor by masquerading as "unscored".
+  let judge: number | null = null;
+  if (entry.judgeScore !== null) {
+    judge = parseJudge(entry.judgeScore);
+    if (judge === null) return null; // present but unparseable
+    if (judge < JUDGE_FLOOR) return null;
+  }
 
   const judgeQuality = judge === null ? 0.6 : judge / 5;
   const quality = 0.65 * sensorRatio + 0.35 * judgeQuality;
