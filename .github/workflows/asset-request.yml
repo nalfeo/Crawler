@@ -84,20 +84,12 @@ jobs:
           # (spawns `gh issue list`).
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-          # Azure OpenAI (brief-selector runs during ingestion for issue-originated
-          # requests; the other deployments are pulled by the worker step but the
-          # createRunStore/createAssetQueue factories may probe env at import).
-          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
-          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
-          AZURE_OPENAI_API_VERSION: ${{ secrets.AZURE_OPENAI_API_VERSION }}
-          AZURE_OPENAI_CHAT_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_CHAT_DEPLOYMENT }}
-          # Fall back to CHAT_DEPLOYMENT when the dedicated brief-selector secret
-          # isn't set — matches the setup-azure-env.ps1 default (`gpt-4o` for both).
-          # Without a value here, `createBriefSelectorProvider` returns null and
-          # issue-originated worker jobs fail; see `scripts/sprites/provider/factory.ts`.
-          AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT: >-
-            ${{ secrets.AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT
-                || secrets.AZURE_OPENAI_CHAT_DEPLOYMENT }}
+          # No AZURE_OPENAI_* here on purpose: ingestion never talks to Azure
+          # OpenAI. `sprites:ingest-once` (createIssueIngesterController.pollOnce)
+          # only lists open issues and enqueues new ones — it never constructs a
+          # provider, and createAssetQueue()/createRunStore() read only
+          # SPRITES_* + AZURE_STORAGE_*. The brief-selector / image / vision
+          # deployments are consumed exclusively by the worker (drain) step below.
 
           # Azure Storage — the ingester writes to the queue + state blob.
           AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
