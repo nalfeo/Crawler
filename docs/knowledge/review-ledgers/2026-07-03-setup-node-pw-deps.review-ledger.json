@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "setup-node-pw-deps",
+  "task_title": "always install Playwright system deps in setup-node (fix cache-hit gap)",
+  "estimated_apples": 1,
+  "stages": {}
+}
