@@ -5,6 +5,7 @@
  */
 import type { GameWorld } from '../../core/world.js';
 import type { InputState } from '../../shared/input.js';
+import type { RunPlanSegmentPhase } from './run-planner.js';
 
 /**
  * AI behavioral state machine states.
@@ -49,6 +50,7 @@ export interface AISuppressedProgressNavDebug {
   state: typeof AIDecisionDebugState.SUPPRESSED_PROGRESS_NAV;
   reason: 'progressGoalSuppressed';
   source: AIProgressSuppressionSourceValue;
+  criticalChainPhase: RunPlanSegmentPhase;
   blockedTargetReason: string;
   suppressedUntilFrame: number;
   remainingFrames: number;

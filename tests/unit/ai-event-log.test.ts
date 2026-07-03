@@ -135,6 +135,7 @@ describe('summarizeEvents', () => {
           state: 'suppressedProgressNav',
           reason: 'progressGoalSuppressed',
           source: AIProgressSuppressionSource.EXPLORE_DWELL_FIXED_POSITION_TARGET,
+          criticalChainPhase: 'pre-chain',
           blockedTargetReason: 'Seeking Tutorial Goon to unlock the floor quest',
           suppressedUntilFrame: 420,
           remainingFrames: 120,
@@ -161,6 +162,7 @@ describe('summarizeEvents', () => {
           state: 'suppressedProgressNav',
           reason: 'progressGoalSuppressed',
           source: AIProgressSuppressionSource.EXPLORE_DWELL_FIXED_POSITION_TARGET,
+          criticalChainPhase: 'pre-chain',
           blockedTargetReason: 'Seeking Tutorial Goon to unlock the floor quest',
           suppressedUntilFrame: 420,
           remainingFrames: 120,
@@ -190,6 +192,7 @@ describe('eventsToJsonl', () => {
           state: 'suppressedProgressNav',
           reason: 'progressGoalSuppressed',
           source: AIProgressSuppressionSource.QUEST_PROGRESS_DWELL_WATCHDOG,
+          criticalChainPhase: 'spell-broker',
           blockedTargetReason: 'Heading to the Slime Rat room',
           suppressedUntilFrame: 900,
           remainingFrames: 300,
@@ -206,6 +209,7 @@ describe('eventsToJsonl', () => {
       state: 'suppressedProgressNav',
       reason: 'progressGoalSuppressed',
       source: AIProgressSuppressionSource.QUEST_PROGRESS_DWELL_WATCHDOG,
+      criticalChainPhase: 'spell-broker',
       blockedTargetReason: 'Heading to the Slime Rat room',
     });
   });

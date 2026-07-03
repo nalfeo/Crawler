@@ -230,6 +230,7 @@ describe('BehaviorTreeAI', () => {
       state: 'suppressedProgressNav',
       reason: 'progressGoalSuppressed',
       source: AIProgressSuppressionSource.EXPLORE_DWELL_FIXED_POSITION_TARGET,
+      criticalChainPhase: 'pre-chain',
       blockedTargetReason: 'Seeking Tutorial Goon to unlock the floor quest',
       suppressedUntilFrame: 120,
       remainingFrames: 120,

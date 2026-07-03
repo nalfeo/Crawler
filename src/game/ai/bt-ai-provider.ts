@@ -237,6 +237,7 @@ import {
   estimateFloor1RunPlan,
   type Floor1RunPlan,
   type Floor1RunPlannerSnapshot,
+  type RunPlanSegmentPhase,
   type RunPlannerCurrentTargetKind,
   type RunPlannerParams,
 } from './run-planner.js';
@@ -3581,7 +3582,8 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     if (!tutorialAccepted) {
       const reason = 'Seeking Tutorial Goon to unlock the floor quest';
-      if (progressSuppressed) return this.recordSuppressedProgressNavigation(world, reason);
+      if (progressSuppressed)
+        return this.recordSuppressedProgressNavigation(world, reason, 'pre-chain');
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.welcomeOfficePos.x,
@@ -3631,7 +3633,7 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     if (shopStage === 'not-met') {
       const reason = 'Seeking Shopkeeper to start the merchant errand';
-      if (progressSuppressed) return this.recordSuppressedProgressNavigation(world, reason);
+      if (progressSuppressed) return this.recordSuppressedProgressNavigation(world, reason, 'shop');
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.shopRoomPos.x,
@@ -3648,7 +3650,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       const reason = hasFetchItem
         ? 'Returning the merchant prize'
         : 'Seeking the merchant fetch item';
-      if (progressSuppressed) return this.recordSuppressedProgressNavigation(world, reason);
+      if (progressSuppressed) return this.recordSuppressedProgressNavigation(world, reason, 'shop');
       return maybeDetourToQuestGiver(
         this.createProgressTarget(target.x, target.y, playerX, playerY, reason),
       );
@@ -3657,7 +3659,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (shopStage === 'ready-to-buy') {
       if (world.playerGold >= SHOPKEEPER_EQUIPMENT_COST) {
         const reason = 'Returning to the Shopkeeper to buy the charm';
-        if (progressSuppressed) return this.recordSuppressedProgressNavigation(world, reason);
+        if (progressSuppressed)
+          return this.recordSuppressedProgressNavigation(world, reason, 'shop');
         return maybeDetourToQuestGiver(
           this.createProgressTarget(
             objective.shopRoomPos.x,
@@ -3735,7 +3738,8 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     if (!bossBattleAccepted) {
       const reason = 'Seeking the Spell Broker to start the Slime Rat quest';
-      if (progressSuppressed) return this.recordSuppressedProgressNavigation(world, reason);
+      if (progressSuppressed)
+        return this.recordSuppressedProgressNavigation(world, reason, 'spell-broker');
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.spellQuestGiverPos.x,
@@ -3749,7 +3753,8 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     if (!objective.bossBattles.get('slime-rat')!.started) {
       const reason = 'Heading to the Slime Rat room';
-      if (progressSuppressed) return this.recordSuppressedProgressNavigation(world, reason);
+      if (progressSuppressed)
+        return this.recordSuppressedProgressNavigation(world, reason, 'spell-broker');
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.slimeRatRoomPos.x,
@@ -3763,7 +3768,8 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     if (objective.bossBattles.get('slime-rat')!.defeated && !world.featureUnlocks.spells) {
       const reason = 'Returning to the Spell Broker to claim a spell reward';
-      if (progressSuppressed) return this.recordSuppressedProgressNavigation(world, reason);
+      if (progressSuppressed)
+        return this.recordSuppressedProgressNavigation(world, reason, 'spell-broker');
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.spellQuestGiverPos.x,
@@ -3780,7 +3786,8 @@ export class BehaviorTreeAI implements AIInputProvider {
       !objective.bossBattles.get('staircase')!.started
     ) {
       const reason = 'Heading to the staircase boss room';
-      if (progressSuppressed) return this.recordSuppressedProgressNavigation(world, reason);
+      if (progressSuppressed)
+        return this.recordSuppressedProgressNavigation(world, reason, 'staircase');
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.staircasePos.x,
@@ -3794,7 +3801,8 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     if (objective.staircaseUnlocked && !objective.staircaseDiscovered) {
       const reason = 'Heading to the stairs to clear the floor';
-      if (progressSuppressed) return this.recordSuppressedProgressNavigation(world, reason);
+      if (progressSuppressed)
+        return this.recordSuppressedProgressNavigation(world, reason, 'post-stairs');
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.staircasePos.x,
@@ -3809,13 +3817,18 @@ export class BehaviorTreeAI implements AIInputProvider {
     return null;
   }
 
-  private recordSuppressedProgressNavigation(world: GameWorld, blockedTargetReason: string): null {
+  private recordSuppressedProgressNavigation(
+    world: GameWorld,
+    blockedTargetReason: string,
+    criticalChainPhase: RunPlanSegmentPhase,
+  ): null {
     this.pendingSuppressedProgressNavDebug = {
       state: AIDecisionDebugState.SUPPRESSED_PROGRESS_NAV,
       reason: 'progressGoalSuppressed',
       source:
         this.progressGoalSuppressionSource ??
         AIProgressSuppressionSource.PROGRESS_GOAL_SUPPRESSION_WINDOW,
+      criticalChainPhase,
       blockedTargetReason,
       suppressedUntilFrame: this.progressGoalSuppressedUntilFrame,
       remainingFrames: Math.max(0, this.progressGoalSuppressedUntilFrame - world.frameCount),

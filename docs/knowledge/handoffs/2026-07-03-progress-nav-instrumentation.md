@@ -15,6 +15,7 @@ Metric file: `docs/knowledge/metrics/apples/2026-07-03-progress-nav-instrumentat
 - Added typed telemetry-only decision debug payloads in `src/game/ai/types.ts`.
   - Debug state: `suppressedProgressNav`.
   - Suppression sources: `exploreDwellFixedPositionTarget`, `exploreDwellFrontierTarget`, `questProgressDwellWatchdog`, and fallback `progressGoalSuppressionWindow`.
+  - `criticalChainPhase` uses PR #735's shipped taxonomy: `detour | pre-chain | shop | spell-broker | staircase | post-stairs | other`.
   - `AIDecision.state` remains the existing numeric gameplay state; `AIDecision.debug` is separate and never drives movement.
 - Wired `BehaviorTreeAI` to classify suppressed fixed-position progress objectives.
   - Existing watchdogs now remember which suppression source set `progressGoalSuppressedUntilFrame`.
@@ -24,6 +25,7 @@ Metric file: `docs/knowledge/metrics/apples/2026-07-03-progress-nav-instrumentat
 - Wired headless telemetry.
   - `SimEvent.state` now emits `suppressedProgressNav` when decision debug is present.
   - Raw events include `baseState: "EXPLORE"` plus the typed `decisionDebug` payload.
+  - Raw debug payloads include `criticalChainPhase` so future slices can distinguish pre-chain/shop/spell-broker/staircase suppression.
   - State-transition notes compare emitted string labels, so entry/exit from `suppressedProgressNav` is visible in JSONL.
   - `summarizeEvents()` naturally reports `suppressedProgressNav` as its own `stateMs` / `statePct` bucket.
 - Added tests.
@@ -41,6 +43,16 @@ Metric file: `docs/knowledge/metrics/apples/2026-07-03-progress-nav-instrumentat
 - `tests/unit/ai-event-log.test.ts`
 - `docs/knowledge/review-ledgers/2026-07-03-progress-nav-instrumentation.review-ledger.json`
 - `docs/knowledge/metrics/apples/2026-07-03-progress-nav-instrumentation.json`
+- `docs/knowledge/metrics/guard-telemetry/2026-07-03-progress-nav-instrumentation.json`
+
+## Supporting evidence from stood-down Spell Broker slice
+
+Read the preserved salvage-branch handoff via `origin/nalfeo-floor1-spell-broker-timing-guard:docs/knowledge/handoffs/2026-07-03-floor1-spell-broker-chain-timing.md`.
+
+- PR #737 was closed/stood down; branch `nalfeo-floor1-spell-broker-timing-guard` is salvage only.
+- That session found the pre-classified Spell Broker bucket was **0/14 baseline** and **0/14 post-chain-filtering**, with byte-identical dominant EXPLORE percentages.
+- Interpretation from the handoff: those seeds wedge in pre-chain phases before `chainStatus.onCriticalPath` can arm; root cause is `progressGoalSuppressedUntilFrame` wedge-thrash around fixed-position NPC/room progress targets.
+- This slice consumes PR #735's shipped phase names directly and keeps the Spell Broker chain timing work as supporting evidence, not a gameplay fix dependency.
 
 ## Verification
 
@@ -50,6 +62,7 @@ Metric file: `docs/knowledge/metrics/apples/2026-07-03-progress-nav-instrumentat
 - `npm run verify` - green.
 - `bash scripts/agent/lab-gate-check.sh` - green.
 - `npm run verify:pr-prereqs` - green.
+- `npm run telemetry:capture -- progress-nav-instrumentation` - wrote `docs/knowledge/metrics/guard-telemetry/2026-07-03-progress-nav-instrumentation.json`.
 - Review harness:
   - Plan review: `gpt-5.4`; 2 concerns, both resolved.
   - Code review: `claude-sonnet-4.6`; 2 rounds, clean.
@@ -76,7 +89,7 @@ The exact "Spell Broker bucket" seed list was not present in the checked-in hand
 | sword seed 21 | `sword-21-suppressed-search-summary.json` | `sword-21-suppressed-search.jsonl` | 26750 ms, 133 events    |
 
 Example raw event from seed 21 includes:
-`state: "suppressedProgressNav"`, `baseState: "EXPLORE"`, `decisionDebug.source: "exploreDwellFixedPositionTarget"`, and `decisionDebug.blockedTargetReason: "Seeking Tutorial Goon to unlock the floor quest"`.
+`state: "suppressedProgressNav"`, `baseState: "EXPLORE"`, `decisionDebug.source: "exploreDwellFixedPositionTarget"`, `decisionDebug.criticalChainPhase: "pre-chain"`, and `decisionDebug.blockedTargetReason: "Seeking Tutorial Goon to unlock the floor quest"`.
 
 ## Observe before done - real pipeline
 
