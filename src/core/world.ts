@@ -52,6 +52,7 @@ import {
   Prop,
   PropLight,
   Harvestable,
+  FamilyMembership,
   createComponentStores,
   type ComponentStores,
 } from './components.js';
@@ -60,6 +61,12 @@ import type { Floor1ScenarioState } from '../shared/floor-types.js';
 import type { NpcInstance } from '../shared/npc-types.js';
 import type { QuestState } from '../shared/quest-types.js';
 import type { QuestEvent } from '../shared/quest-events.js';
+import type {
+  FamilyId,
+  FactionRelationChangedEvent,
+  FactionRelationDelta,
+  Floor2State,
+} from './faction-relations.js';
 
 const logger = createLogger('core:world');
 
@@ -145,6 +152,37 @@ export interface GameWorld {
   floorMap: FloorMap | null;
   /** Floor 1 tutorial scenario state. */
   floor1: Floor1ScenarioState | null;
+  /**
+   * Floor 2 scenario state (present families, contested resource, betrayer
+   * latch). Populated by the Floor 2 scenario initializer (Slice 8); `null`
+   * on every other floor.
+   */
+  floor2State: Floor2State | null;
+  /**
+   * Floor 2 per-family relationship values, clamped `[0, 100]`. Single source
+   * of truth (ADR 0040 · D1) — mobs read this at decision time via the
+   * helpers in `src/core/faction-relations.ts`, never store it per-entity.
+   */
+  factionRelations: Map<FamilyId, number>;
+  /**
+   * Change events emitted this frame by `adjustFactionRelation`. Consumed by
+   * the HUD widget (Slice 7) and quest triggers; drained by the render/HUD
+   * layer, never trusted to persist between frames.
+   */
+  factionRelationEvents: FactionRelationChangedEvent[];
+  /**
+   * Queued relationship deltas awaiting `familyRelationshipSystem`. Combat,
+   * quest, and emergent-event systems push here; the system drains + applies
+   * every tick.
+   */
+  factionRelationDeltas: FactionRelationDelta[];
+  /**
+   * Per-world timestamp (`elapsedMs`) at which `familyRelationshipSystem` last
+   * applied passive relationship decay. `null` until the decay branch first
+   * runs. Held on the world (not a module-level map) so decay timing is
+   * per-world, serializable, and reset with the world.
+   */
+  factionRelationDecayLastMs: number | null;
   /**
    * Generic per-floor objective tick registered by each floor's scenario at
    * initialisation. `floorObjectiveSystem` calls this every frame so no
@@ -277,6 +315,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Prop, stores.prop);
   wireStore(ecs, PropLight, stores.propLight);
   wireStore(ecs, Harvestable, stores.harvestable);
+  wireStore(ecs, FamilyMembership, stores.familyMembership);
 
   const world: GameWorld = {
     ecs,
@@ -311,6 +350,11 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     playerGold: 0,
     floorMap: null,
     floor1: null,
+    floor2State: null,
+    factionRelations: new Map(),
+    factionRelationEvents: [],
+    factionRelationDeltas: [],
+    factionRelationDecayLastMs: null,
     floorObjectiveTick: null,
     npcs: new Map(),
     enemyAppearanceKeys: new Map(),

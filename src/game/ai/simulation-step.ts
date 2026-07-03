@@ -37,6 +37,7 @@ import {
   statSystem,
   manaSystem,
   statusEffectSystem,
+  familyRelationshipSystem,
   type GameWorld,
 } from '../../core/index.js';
 import {
@@ -149,6 +150,9 @@ export function runSimulationStep(
   statsSystem(world);
   statSystem(world);
   manaSystem(world);
+  // Drain queued faction-relation deltas. Always-safe (Floor 1 empties queue
+  // to a near-noop); Floor-2-onwards this feeds band-driven AI (Slice 3).
+  familyRelationshipSystem(world);
   if (options.enableFloor1 && world.floor1) {
     floor1PlayerStatSystem(world);
   }

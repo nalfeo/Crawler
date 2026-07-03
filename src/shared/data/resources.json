@@ -1,0 +1,110 @@
+[
+  {
+    "id": "glimmercap",
+    "name": "Glimmercap Spores",
+    "streetName": "Glimmercap",
+    "product": "psychedelics"
+  },
+  {
+    "id": "cavesugar",
+    "name": "Cave Sugar",
+    "streetName": "Speleothem crystal",
+    "product": "Crank Candy stimulant"
+  },
+  {
+    "id": "deeproot",
+    "name": "Deeproot Mash",
+    "streetName": "Deeproot",
+    "product": "moonshine"
+  },
+  {
+    "id": "bloomthistle",
+    "name": "Bloomthistle Nectar",
+    "streetName": "Bloomthistle",
+    "product": "faerie wine / opiate"
+  },
+  {
+    "id": "browngold",
+    "name": "Bat Guano",
+    "streetName": "Brown Gold",
+    "product": "gunpowder and snuff"
+  },
+  {
+    "id": "screamroot",
+    "name": "Screamroot",
+    "streetName": "Shrieking mandrake",
+    "product": "hallucinogen / anesthetic"
+  },
+  {
+    "id": "moltenhoney",
+    "name": "Molten Honey",
+    "streetName": "Cave-bee comb",
+    "product": "mead / the buzz"
+  },
+  {
+    "id": "corpseglow",
+    "name": "Corpseglow Lichen",
+    "streetName": "Corpseglow",
+    "product": "Widow's Kiss embalming liquor"
+  },
+  {
+    "id": "sparkle",
+    "name": "Quartz Dust",
+    "streetName": "Sparkle",
+    "product": "inhalant stimulant"
+  },
+  {
+    "id": "newtsweat",
+    "name": "Newt Sweat",
+    "streetName": "Amphibian slime",
+    "product": "Toad topical psychoactive"
+  },
+  {
+    "id": "deepcaviar",
+    "name": "Fermented Deep Caviar",
+    "streetName": "Deep Caviar",
+    "product": "luxury narcotic paste"
+  },
+  {
+    "id": "brimstonesalt",
+    "name": "Sulfur Brimstone Salts",
+    "streetName": "Brimstone Salt",
+    "product": "volatile party drug / explosive"
+  },
+  {
+    "id": "dreamsyrup",
+    "name": "Weepwillow Sap",
+    "streetName": "Dream Syrup",
+    "product": "sedative syrup"
+  },
+  {
+    "id": "voidcap",
+    "name": "Voidcap Truffles",
+    "streetName": "Voidcap",
+    "product": "premium reality-bending hallucinogen"
+  },
+  {
+    "id": "palealgae",
+    "name": "Pale Ale-gae",
+    "streetName": "Cave algae",
+    "product": "craft beer"
+  },
+  {
+    "id": "gloompoppy",
+    "name": "Gloomshade Poppy",
+    "streetName": "Gloompoppy",
+    "product": "Nod opiate"
+  },
+  {
+    "id": "backstage",
+    "name": "Ancient Craft-Services Rations",
+    "streetName": "Backstage",
+    "product": "Backstage Brew"
+  },
+  {
+    "id": "frostmoss",
+    "name": "Frostmoss Menthol",
+    "streetName": "Frostmoss",
+    "product": "numbing menthol chew"
+  }
+]

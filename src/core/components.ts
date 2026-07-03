@@ -106,6 +106,13 @@ export const PropLight = {};
  */
 export const Harvestable = {};
 
+/**
+ * Floor 2 tag: marks a mob as belonging to a specific family (`familyId` is
+ * a `ui8` index into `world.floor2State.presentFamilies`). `isBoss=1` marks
+ * the single boss per family. Introduced by Floor 2 Slice 1 (ADR 0040 · D1).
+ */
+export const FamilyMembership = {};
+
 // --- Component Stores ---
 // Typed array stores for component data. Accessed directly: world.stores.<name>.<field>[eid]
 export const DEFAULT_MAX_ENTITIES = 10_000;
@@ -373,6 +380,12 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       colorG: new Uint8Array(maxEntities),
       /** Blue channel 0–255. */
       colorB: new Uint8Array(maxEntities),
+    },
+    familyMembership: {
+      /** Index into `world.floor2State.presentFamilies` (see faction-relations). */
+      familyId: new Uint8Array(maxEntities),
+      /** 1 for the family boss, 0 for regular members. */
+      isBoss: new Uint8Array(maxEntities),
     },
   };
 }

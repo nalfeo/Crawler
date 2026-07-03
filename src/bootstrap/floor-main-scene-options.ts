@@ -33,7 +33,13 @@ import {
   selectSpellFromBossBattle,
   SHOPKEEPER_EQUIPMENT_COST,
 } from '../game/floorScenario.js';
-import { statSystem, manaSystem, statusEffectSystem, type GameWorld } from '../core/index.js';
+import {
+  statSystem,
+  manaSystem,
+  statusEffectSystem,
+  familyRelationshipSystem,
+  type GameWorld,
+} from '../core/index.js';
 import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
 import { getFloorConfig } from '../shared/floor-config.js';
 import type { Floor1BossRewardSpellId } from '../shared/abilities.js';
@@ -92,6 +98,10 @@ export function createFloorMainSceneOptions(_floorId: string = 'floor1') {
       statsSystem,
       statSystem,
       manaSystem,
+      // Drain queued faction-relation deltas early so any preSystem or
+      // postSystem downstream this frame reads consistent post-adjust bands.
+      // Always-safe: on Floor 1 the deltas queue stays empty (near-noop).
+      familyRelationshipSystem,
       floor1PlayerStatSystem,
       weaponSystem,
       enemyAISystem,

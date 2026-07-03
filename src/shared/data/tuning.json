@@ -58,5 +58,21 @@
     "levelUpIntervalMinS": 60,
     "levelUpIntervalMaxS": 90,
     "combatTimePercent": 0.65
+  },
+  "factionRelations": {
+    "defaultRelation": 45,
+    "passiveDecayPerSecond": 0,
+    "deltas": {
+      "damageHit": -1,
+      "killMob": -5,
+      "allyKillsRival": 2,
+      "favorQuestComplete": 15,
+      "tributeDelivered": 10,
+      "protectionPaid": 5,
+      "betrayAlly": -50,
+      "pickASideChosen": 8,
+      "pickASideRejected": -8,
+      "poisonTheWell": -12
+    }
   }
 }

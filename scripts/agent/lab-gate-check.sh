@@ -19,6 +19,9 @@ declare -A SHARED_LAB_MAP=(
   # Achievement reward claim helpers are reveal-only state, exercised by the
   # achievements-ui-lab (unlock → open reward → marked claimed).
   [achievementrewards]="achievements-ui-lab"
+  # The family-relationship drain/decay system is exercised by the
+  # family-territory-lab (its delta buttons queue + drain relationship deltas).
+  [familyrelationship]="family-territory-lab"
 )
 
 echo "🔬 Lab Gate Check: Verifying every system has a lab..."

@@ -1,0 +1,182 @@
+[
+  {
+    "id": "goblins",
+    "name": "The Snaggle Cartel",
+    "species": "Goblins",
+    "boss": { "title": "Matriarch", "name": "Nana Snaggle Grubwix", "archetype": "swarm" },
+    "aiArchetype": "swarm",
+    "hudColor": "#7ea832",
+    "refinementStyle": "cut it cheap in bulk",
+    "signature": "Snaggle Special"
+  },
+  {
+    "id": "llamas",
+    "name": "The Spit Syndicate",
+    "species": "Llamas",
+    "boss": { "title": "Don", "name": "Paco 'The Gob'", "archetype": "ranged" },
+    "aiArchetype": "ranged",
+    "hudColor": "#e8d9a8",
+    "refinementStyle": "distill rotgut",
+    "signature": "Llambrusco"
+  },
+  {
+    "id": "pandas",
+    "name": "The Bamboo Triad",
+    "species": "Pandas",
+    "boss": { "title": "Honcho", "name": "Big Panda Wei", "archetype": "chase" },
+    "aiArchetype": "chase",
+    "hudColor": "#2a2a2a",
+    "refinementStyle": "ferment a mellow brew",
+    "signature": "Bamboo Baijiu"
+  },
+  {
+    "id": "faeries",
+    "name": "The Glitterkin",
+    "species": "Faeries",
+    "boss": { "title": "Queen", "name": "Mab Tarnish", "archetype": "leaper" },
+    "aiArchetype": "leaper",
+    "hudColor": "#d63aa8",
+    "refinementStyle": "refine a hallucinogen",
+    "signature": "Faedust"
+  },
+  {
+    "id": "kobolds",
+    "name": "The Emberkin Clan",
+    "species": "Kobolds",
+    "boss": { "title": "King", "name": "Skritt the Unburnt", "archetype": "swarm" },
+    "aiArchetype": "swarm",
+    "hudColor": "#a94422",
+    "refinementStyle": "burn ritual incense",
+    "signature": "Dragon's Breath"
+  },
+  {
+    "id": "myconids",
+    "name": "The Sporeholders",
+    "species": "Mushroomfolk",
+    "boss": { "title": "Sovereign", "name": "The Sovereign Cap", "archetype": "ranged" },
+    "aiArchetype": "ranged",
+    "hudColor": "#8a5cbf",
+    "refinementStyle": "culture spore-wine",
+    "signature": "Sporeshine"
+  },
+  {
+    "id": "toadkin",
+    "name": "The Croak Family",
+    "species": "Toadfolk",
+    "boss": { "title": "Big Mama", "name": "Bufo", "archetype": "ambush" },
+    "aiArchetype": "ambush",
+    "hudColor": "#5a7a3a",
+    "refinementStyle": "sweat a topical",
+    "signature": "Toad Sweat"
+  },
+  {
+    "id": "gnomes",
+    "name": "The Cog Combine",
+    "species": "Gnomes",
+    "boss": { "title": "Overseer", "name": "Fizzwick", "archetype": "ranged" },
+    "aiArchetype": "ranged",
+    "hudColor": "#4a70a8",
+    "refinementStyle": "mass-produce industrial pharma",
+    "signature": "Cog-Grade"
+  },
+  {
+    "id": "ratfolk",
+    "name": "The Gutter Guild",
+    "species": "Ratfolk",
+    "boss": { "title": "Plague-Boss", "name": "Squick", "archetype": "swarm" },
+    "aiArchetype": "swarm",
+    "hudColor": "#7a5a3a",
+    "refinementStyle": "adulterate with filth",
+    "signature": "Gutter Dust"
+  },
+  {
+    "id": "cactusfolk",
+    "name": "The Thornbloom Growers",
+    "species": "Cactusfolk",
+    "boss": { "title": "Abuela", "name": "Saguaro", "archetype": "chase" },
+    "aiArchetype": "chase",
+    "hudColor": "#6b8f47",
+    "refinementStyle": "grow artisanal organic",
+    "signature": "Sun-Grown"
+  },
+  {
+    "id": "batfolk",
+    "name": "The Nightwing Coven",
+    "species": "Batfolk",
+    "boss": { "title": "Countess", "name": "Vesper", "archetype": "leaper" },
+    "aiArchetype": "leaper",
+    "hudColor": "#3a2555",
+    "refinementStyle": "air-freight an inhalant",
+    "signature": "Echo"
+  },
+  {
+    "id": "crabfolk",
+    "name": "The Tidewrack Mob",
+    "species": "Crabfolk",
+    "boss": { "title": "Kingpin", "name": "Molt", "archetype": "chase" },
+    "aiArchetype": "chase",
+    "hudColor": "#c94a1e",
+    "refinementStyle": "brine-cure euphoric candy",
+    "signature": "Saltwater Taffy"
+  },
+  {
+    "id": "beetlefolk",
+    "name": "The Chitin Clan",
+    "species": "Beetlefolk",
+    "boss": { "title": "Broodfather", "name": "The Broodfather", "archetype": "swarm" },
+    "aiArchetype": "swarm",
+    "hudColor": "#1a1a24",
+    "refinementStyle": "press time-release pellets",
+    "signature": "Scarab Caps"
+  },
+  {
+    "id": "molefolk",
+    "name": "The Deepdig Union",
+    "species": "Molefolk",
+    "boss": { "title": "Foreman", "name": "Grubbs", "archetype": "ambush" },
+    "aiArchetype": "ambush",
+    "hudColor": "#665244",
+    "refinementStyle": "sell uncut premium",
+    "signature": "Motherlode"
+  },
+  {
+    "id": "raccoons",
+    "name": "The Trash Panda Family",
+    "species": "Raccoons",
+    "boss": { "title": "Boss Bandit", "name": "Rocco", "archetype": "leaper" },
+    "aiArchetype": "leaper",
+    "hudColor": "#525258",
+    "refinementStyle": "dilute a party mix from stolen stock",
+    "signature": "Dumpster Fire"
+  },
+  {
+    "id": "geese",
+    "name": "The Honk Mob",
+    "species": "Geese",
+    "boss": { "title": "Don", "name": "Honkrado (the Godgoose)", "archetype": "chase" },
+    "aiArchetype": "chase",
+    "hudColor": "#f5f0e6",
+    "refinementStyle": "run a protection racket over it",
+    "signature": "Honk Tax"
+  },
+  {
+    "id": "imps",
+    "name": "The Brimstone Boys",
+    "species": "Imps",
+    "boss": { "title": "Foreman", "name": "Scorch", "archetype": "ranged" },
+    "aiArchetype": "ranged",
+    "hudColor": "#b8221a",
+    "refinementStyle": "cook a volatile hellfire batch",
+    "signature": "Brimstone"
+  },
+  {
+    "id": "snailfolk",
+    "name": "The Slowlane Syndicate",
+    "species": "Snailfolk",
+    "boss": { "title": "Godfather", "name": "The Gastropod Godfather", "archetype": "chase" },
+    "aiArchetype": "chase",
+    "hudColor": "#6b7a3a",
+    "refinementStyle": "slow-age top-shelf",
+    "signature": "Vintage Slime"
+  }
+]
