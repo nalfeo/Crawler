@@ -14,6 +14,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { execFileSync } from 'node:child_process';
 import { parseArgs } from 'util';
 
 interface TriageResult {
@@ -42,6 +43,78 @@ interface Slice {
   pr_number?: number;
   session_id?: string;
   created_at?: string;
+}
+
+interface OrchestrationState {
+  schema: 'producer-orchestration-state/v1';
+  timestamp: string;
+  session_id: string;
+  feature: string;
+  triage_type: string;
+  slices: Slice[];
+  overall_progress: number;
+  shepherd_interventions: number;
+  blockers: string[];
+}
+
+interface ProducerEvent {
+  schema: 'producer-orchestration-event/v1';
+  timestamp: string;
+  session_id: string;
+  event:
+    | 'decompose_completed'
+    | 'force_publish_requested'
+    | 'pr_published'
+    | 'auto_merge_armed'
+    | 'shepherd_watch_requested';
+  feature?: string;
+  pr_number?: number;
+  details?: Record<string, string | number | boolean>;
+}
+
+const ORCHESTRATION_FILE = path.join(process.cwd(), 'files', 'producer-orchestration.jsonl');
+
+function ensureParentDirectory(filePath: string): void {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+}
+
+function appendJsonlLine(filePath: string, payload: OrchestrationState | ProducerEvent): void {
+  ensureParentDirectory(filePath);
+  fs.appendFileSync(filePath, `${JSON.stringify(payload)}\n`, 'utf-8');
+}
+
+function isSlice(value: unknown): value is Slice {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<Slice>;
+  return (
+    typeof candidate.name === 'string' &&
+    typeof candidate.persona === 'string' &&
+    typeof candidate.apple_tier === 'number' &&
+    Array.isArray(candidate.dependencies) &&
+    typeof candidate.description === 'string' &&
+    typeof candidate.status === 'string'
+  );
+}
+
+function isOrchestrationState(value: unknown): value is OrchestrationState {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<OrchestrationState>;
+  return (
+    candidate.schema === 'producer-orchestration-state/v1' &&
+    typeof candidate.timestamp === 'string' &&
+    typeof candidate.session_id === 'string' &&
+    typeof candidate.feature === 'string' &&
+    typeof candidate.triage_type === 'string' &&
+    Array.isArray(candidate.slices) &&
+    candidate.slices.every((slice) => isSlice(slice)) &&
+    typeof candidate.overall_progress === 'number' &&
+    typeof candidate.shepherd_interventions === 'number' &&
+    Array.isArray(candidate.blockers)
+  );
+}
+
+function getSessionId(): string {
+  return process.env.COPILOT_SESSION_ID || process.env.GITHUB_RUN_ID || 'local-session';
 }
 
 /**
@@ -168,16 +241,14 @@ function handleTriage(request: string): void {
  * Show current orchestration status
  */
 function handleStatus(): void {
-  const orchestrationPath = path.join(process.cwd(), 'files', 'producer-orchestration.jsonl');
-
-  if (!fs.existsSync(orchestrationPath)) {
+  if (!fs.existsSync(ORCHESTRATION_FILE)) {
     console.log('\n📊 PRODUCER ORCHESTRATION STATUS\n');
     console.log('No active orchestration. Start a new session to begin.\n');
     return;
   }
 
   try {
-    const fileContent = fs.readFileSync(orchestrationPath, 'utf-8').trim();
+    const fileContent = fs.readFileSync(ORCHESTRATION_FILE, 'utf-8').trim();
     if (!fileContent) {
       console.log('\n📊 PRODUCER ORCHESTRATION STATUS\n');
       console.log('No orchestration state recorded yet.\n');
@@ -185,26 +256,28 @@ function handleStatus(): void {
     }
 
     const lines = fileContent.split('\n');
-    const latestLine = lines[lines.length - 1];
-    if (!latestLine) {
+    const latestStateLine = [...lines]
+      .reverse()
+      .find((line) => line.includes('"schema":"producer-orchestration-state/v1"'));
+    if (!latestStateLine) {
       console.log('\n📊 PRODUCER ORCHESTRATION STATUS\n');
-      console.log('No orchestration state recorded yet.\n');
+      console.log('No orchestration state snapshots found yet.\n');
       return;
     }
-
-    const state = JSON.parse(latestLine) as any;
-
-    if (!state || typeof state.feature !== 'string') {
+    const parsedState = JSON.parse(latestStateLine) as unknown;
+    if (!isOrchestrationState(parsedState)) {
       console.log('\n📊 PRODUCER ORCHESTRATION STATUS\n');
       console.log('Invalid orchestration state. Try again.\n');
       return;
     }
+    const state = parsedState;
+    const mergedCount = state.slices.filter((slice) => slice.status === 'MERGED').length;
 
     console.log('\n┌─────────────────────────────────────────────────────────────────┐');
     console.log('│ 🎬 PRODUCER ORCHESTRATION STATUS                               │');
     console.log(`│ Feature: "${state.feature}"`.padEnd(66) + '│');
     console.log(
-      `│ Overall: ${Math.round(state.overall_progress * 100)}% complete (${state.slices.filter((s: any) => s.status === 'MERGED').length}/${state.slices.length} slices merged)`.padEnd(
+      `│ Overall: ${Math.round(state.overall_progress * 100)}% complete (${mergedCount}/${state.slices.length} slices merged)`.padEnd(
         66,
       ) + '│',
     );
@@ -491,6 +564,127 @@ function handleDecompose(request: string): void {
       console.log(`  - ${escalation}`);
     }
   }
+
+  const initialSlices: Slice[] = result.slices.map((slice) => ({
+    name: slice.name,
+    persona: slice.persona,
+    apple_tier: slice.apples,
+    dependencies: slice.dependencies,
+    description: slice.description,
+    status: slice.dependencies.length > 0 ? 'BLOCKED_UPSTREAM' : 'PENDING',
+    created_at: new Date().toISOString(),
+  }));
+  const state: OrchestrationState = {
+    schema: 'producer-orchestration-state/v1',
+    timestamp: new Date().toISOString(),
+    session_id: getSessionId(),
+    feature: request,
+    triage_type: 'FEATURE',
+    slices: initialSlices,
+    overall_progress: 0,
+    shepherd_interventions: 0,
+    blockers: result.escalations,
+  };
+  appendJsonlLine(ORCHESTRATION_FILE, state);
+  const event: ProducerEvent = {
+    schema: 'producer-orchestration-event/v1',
+    timestamp: new Date().toISOString(),
+    session_id: state.session_id,
+    event: 'decompose_completed',
+    feature: request,
+    details: {
+      slice_count: result.slices.length,
+      total_apples: result.totalApples,
+      parallel_groups: result.parallelizableGroups.length,
+    },
+  };
+  appendJsonlLine(ORCHESTRATION_FILE, event);
+  console.log('📝 Orchestration snapshot saved to files/producer-orchestration.jsonl\n');
+}
+
+/**
+ * Command: --force-publish
+ * Publish a draft PR immediately, arm auto-merge, and request Shepherd watch.
+ */
+function handleForcePublish(prNumberText: string): void {
+  const prNumber = Number(prNumberText);
+  if (!Number.isInteger(prNumber) || prNumber <= 0) {
+    console.error('Error: --force-publish requires a positive numeric PR number');
+    process.exit(1);
+  }
+
+  const sessionId = getSessionId();
+  appendJsonlLine(ORCHESTRATION_FILE, {
+    schema: 'producer-orchestration-event/v1',
+    timestamp: new Date().toISOString(),
+    session_id: sessionId,
+    event: 'force_publish_requested',
+    pr_number: prNumber,
+  } satisfies ProducerEvent);
+
+  let isDraft = false;
+  let headRef = '';
+  try {
+    const viewRaw = execFileSync(
+      'gh',
+      ['pr', 'view', String(prNumber), '--json', 'isDraft,headRefName,url,title'],
+      { encoding: 'utf-8' },
+    );
+    const parsed = JSON.parse(viewRaw) as {
+      isDraft?: boolean;
+      headRefName?: string;
+      url?: string;
+      title?: string;
+    };
+    isDraft = parsed.isDraft === true;
+    headRef = parsed.headRefName || '';
+    console.log(`\nPR #${prNumber}: ${parsed.title || '(untitled)'}`);
+    if (parsed.url) console.log(parsed.url);
+  } catch (err) {
+    console.error(`Unable to query PR #${prNumber}: ${err}`);
+    process.exit(1);
+  }
+
+  if (isDraft) {
+    execFileSync('gh', ['pr', 'ready', String(prNumber)], { stdio: 'inherit' });
+    appendJsonlLine(ORCHESTRATION_FILE, {
+      schema: 'producer-orchestration-event/v1',
+      timestamp: new Date().toISOString(),
+      session_id: sessionId,
+      event: 'pr_published',
+      pr_number: prNumber,
+    } satisfies ProducerEvent);
+    console.log(`✅ Published PR #${prNumber} from draft.`);
+  } else {
+    console.log(`ℹ️ PR #${prNumber} is already published.`);
+  }
+
+  // Arm autonomous merge immediately per policy.
+  execFileSync('gh', ['pr', 'merge', String(prNumber), '--auto', '--squash'], {
+    stdio: 'inherit',
+  });
+  appendJsonlLine(ORCHESTRATION_FILE, {
+    schema: 'producer-orchestration-event/v1',
+    timestamp: new Date().toISOString(),
+    session_id: sessionId,
+    event: 'auto_merge_armed',
+    pr_number: prNumber,
+    details: headRef ? { branch: headRef } : undefined,
+  } satisfies ProducerEvent);
+
+  // Producer documents Shepherd handoff immediately after publication/arming.
+  appendJsonlLine(ORCHESTRATION_FILE, {
+    schema: 'producer-orchestration-event/v1',
+    timestamp: new Date().toISOString(),
+    session_id: sessionId,
+    event: 'shepherd_watch_requested',
+    pr_number: prNumber,
+    details: {
+      mode: 'reactive',
+      note: 'Invoke pr-shepherd skill immediately in watch-only mode.',
+    },
+  } satisfies ProducerEvent);
+  console.log('🐑 Shepherd handoff requested (reactive watch mode).\n');
 }
 
 /**
@@ -563,7 +757,7 @@ Commands:
       console.error('Error: --force-publish requires --pr <number>');
       process.exit(1);
     }
-    console.log(`\n[Force publish not yet implemented - coming in Phase 2]\n`);
+    handleForcePublish(values.pr);
     process.exit(0);
   }
 
