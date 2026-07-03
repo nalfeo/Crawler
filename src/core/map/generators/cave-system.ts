@@ -182,8 +182,11 @@ export class CaveSystemGenerator implements MapGenerator {
         size: r.cells.length,
       }))
       .sort((a, b) => a.d - b.d);
-    const heartIdx = scored[0].i;
+    const heartScore = scored[0];
+    if (!heartScore) throw new Error('no scored region for RESOURCE_HEART');
+    const heartIdx = heartScore.i;
     const heart = regions[heartIdx];
+    if (!heart) throw new Error('regions[heartIdx] missing');
 
     // Order remaining regions by distance FROM heart (descending) for territory placement.
     const nonHeart = regions
@@ -195,30 +198,41 @@ export class CaveSystemGenerator implements MapGenerator {
       .filter((s) => s.i !== heartIdx)
       .sort((a, b) => b.d - a.d);
 
+    if (nonHeart.length < this.options.presentCount + 2) {
+      throw new Error(
+        `only ${nonHeart.length} non-heart regions for presentCount=${this.options.presentCount}`,
+      );
+    }
+
     // Farthest region -> SPAWN. Next presentCount -> TERRITORY. Next largest -> SETTLEMENT.
-    const spawnRegion = regions[nonHeart[0].i];
+    const spawnScore = nonHeart[0]!;
+    const spawnRegion = regions[spawnScore.i]!;
     const territoryRegions: RegionInfo[] = [];
     for (let k = 1; k <= this.options.presentCount; k++) {
-      territoryRegions.push(regions[nonHeart[k].i]);
+      const s = nonHeart[k]!;
+      const r = regions[s.i];
+      if (!r) throw new Error(`territory region missing at nonHeart[${k}]`);
+      territoryRegions.push(r);
     }
-    // Settlement: pick the largest remaining region (falls back to the next candidate).
+    // Settlement: pick the largest remaining region.
     const settlementPool = nonHeart.slice(this.options.presentCount + 1);
     if (settlementPool.length === 0) {
       throw new Error('no candidate region left for SETTLEMENT');
     }
     settlementPool.sort((a, b) => b.size - a.size);
-    const settlementRegion = regions[settlementPool[0].i];
+    const settlementRegion = regions[settlementPool[0]!.i];
+    if (!settlementRegion) throw new Error('settlement region missing');
 
     // --- 6. Register regions as RoomData -------------------------------
-    const spawnRoomId = this.addRegionAsRoom(roomGraph, spawnRegion, RoomRole.SPAWN);
+    void this.addRegionAsRoom(roomGraph, spawnRegion, RoomRole.SPAWN);
     const territoryRoomIds: number[] = [];
     for (let fi = 0; fi < territoryRegions.length; fi++) {
-      const region = territoryRegions[fi];
+      const region = territoryRegions[fi]!;
       const rid = this.addRegionAsRoom(roomGraph, region, RoomRole.TERRITORY, fi);
       territoryRoomIds.push(rid);
     }
-    const settlementRoomId = this.addRegionAsRoom(roomGraph, settlementRegion, RoomRole.SETTLEMENT);
-    const heartRoomId = this.addRegionAsRoom(roomGraph, heart, RoomRole.RESOURCE_HEART);
+    void this.addRegionAsRoom(roomGraph, settlementRegion, RoomRole.SETTLEMENT);
+    void this.addRegionAsRoom(roomGraph, heart, RoomRole.RESOURCE_HEART);
 
     // Stamp RESOURCE_HEART centre and immediate neighbours with BOSS_STAIR_FLOOR
     // so Slice 5 can reuse Floor 1's stair-spawn logic unchanged.
@@ -226,23 +240,21 @@ export class CaveSystemGenerator implements MapGenerator {
 
     // --- 7. Boss-den carving (one per territory) -----------------------
     for (let fi = 0; fi < territoryRegions.length; fi++) {
-      const territory = territoryRegions[fi];
+      const territory = territoryRegions[fi]!;
       const denBounds = this.carveBossDen(tileMap, terrain, territory, fi, w, h);
       if (!denBounds) {
         throw new Error(`could not carve boss-den for familyIndex=${fi}`);
       }
-      // Add BOSS_DEN room with familyIndex. The single door tile is the doorway;
-      // stored as a door on the boss-den room and mirrored as a neighbour link.
+      const territoryRoomId = territoryRoomIds[fi]!;
       const denRoomId = roomGraph.add(
         denBounds.bounds,
         [denBounds.door],
-        [territoryRoomIds[fi]],
+        [territoryRoomId],
         RoomRole.BOSS_DEN,
         `boss_den_${fi}`,
         fi,
       );
-      // Bidirectional adjacency.
-      const territoryRoom = roomGraph.get(territoryRoomIds[fi]);
+      const territoryRoom = roomGraph.get(territoryRoomId);
       if (territoryRoom) {
         (territoryRoom.neighbors as number[]).push(denRoomId);
       }
@@ -258,19 +270,20 @@ export class CaveSystemGenerator implements MapGenerator {
       { x: settlementRegion.centroidX, y: settlementRegion.centroidY, label: 'SETTLEMENT' },
     ];
     for (let fi = 0; fi < territoryRegions.length; fi++) {
+      const tr = territoryRegions[fi]!;
       required.push({
-        x: territoryRegions[fi].centroidX,
-        y: territoryRegions[fi].centroidY,
+        x: tr.centroidX,
+        y: tr.centroidY,
         label: `TERRITORY[${fi}]`,
       });
-      // Also require the boss-den door tile is reachable.
       const denRoom = roomGraph
         .getAll()
         .find((r) => r.role === RoomRole.BOSS_DEN && r.familyIndex === fi);
-      if (denRoom && denRoom.doors.length > 0) {
+      const door0 = denRoom?.doors[0];
+      if (door0) {
         required.push({
-          x: denRoom.doors[0].x,
-          y: denRoom.doors[0].y,
+          x: door0.x,
+          y: door0.y,
           label: `BOSS_DEN[${fi}].door`,
         });
       }
@@ -314,10 +327,10 @@ export class CaveSystemGenerator implements MapGenerator {
     // 8-connected BFS from all walls; result is Chebyshev distance to nearest wall.
     let head = 0;
     while (head < queue.length) {
-      const idx = queue[head++];
+      const idx = queue[head++]!;
       const x = idx % w;
       const y = (idx / w) | 0;
-      const d = dist[idx];
+      const d = dist[idx]!;
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
           if (dx === 0 && dy === 0) continue;
@@ -347,7 +360,7 @@ export class CaveSystemGenerator implements MapGenerator {
     const cands: Array<{ x: number; y: number; d: number }> = [];
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
-        const d = dist[y * w + x];
+        const d = dist[y * w + x]!;
         if (d >= 3) cands.push({ x, y, d });
       }
     }
@@ -382,17 +395,17 @@ export class CaveSystemGenerator implements MapGenerator {
     const owner = new Int32Array(w * h).fill(-1);
     const queue: number[] = [];
     for (let i = 0; i < seeds.length; i++) {
-      const s = seeds[i];
+      const s = seeds[i]!;
       const idx = s.y * w + s.x;
       owner[idx] = i;
       queue.push(idx);
     }
     let head = 0;
     while (head < queue.length) {
-      const idx = queue[head++];
+      const idx = queue[head++]!;
       const x = idx % w;
       const y = (idx / w) | 0;
-      const src = owner[idx];
+      const src = owner[idx]!;
       // 4-connected propagation.
       const neighbours: Array<[number, number]> = [
         [x + 1, y],
@@ -427,9 +440,9 @@ export class CaveSystemGenerator implements MapGenerator {
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const idx = y * w + x;
-        const o = owner[idx];
+        const o = owner[idx]!;
         if (o < 0) continue;
-        const r = regions[o];
+        const r = regions[o]!;
         r.cells.push(idx);
         r.centroidX += x;
         r.centroidY += y;
@@ -606,7 +619,7 @@ export class CaveSystemGenerator implements MapGenerator {
     const cy = region.centroidY;
     if (tileMap.isPassable(cx, cy)) return { x: cx, y: cy };
     if (region.cells.length > 0) {
-      const idx = region.cells[0];
+      const idx = region.cells[0]!;
       return { x: idx % w, y: (idx / w) | 0 };
     }
     return { x: cx, y: cy };
@@ -627,7 +640,7 @@ export class CaveSystemGenerator implements MapGenerator {
     reached[sy * w + sx] = 1;
     let head = 0;
     while (head < queue.length) {
-      const idx = queue[head++];
+      const idx = queue[head++]!;
       const x = idx % w;
       const y = (idx / w) | 0;
       const neighbours: Array<[number, number]> = [
