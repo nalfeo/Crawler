@@ -27,6 +27,8 @@ function status(overrides: Partial<IssueIngesterStatus> = {}): IssueIngesterStat
     skippedDuplicate: 0,
     reclaimedStale: 0,
     enqueueCommentsPosted: 0,
+    enqueueCommentErrors: 0,
+    lastEnqueueCommentError: null,
     ...overrides,
   };
 }
@@ -74,6 +76,18 @@ describe('exitCodeForStatus', () => {
 
   it('returns 1 when lastError is populated (the poll surfaced a real failure)', () => {
     expect(exitCodeForStatus(status({ lastError: 'gh CLI failed' }))).toBe(1);
+  });
+
+  it('returns 0 when only enqueue-comment posts failed (best-effort, must not skip the drain)', () => {
+    expect(
+      exitCodeForStatus(
+        status({
+          enqueued: 2,
+          enqueueCommentErrors: 1,
+          lastEnqueueCommentError: 'enqueue-comment failed for issue #7: gh 403',
+        }),
+      ),
+    ).toBe(0);
   });
 });
 

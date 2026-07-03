@@ -316,7 +316,7 @@ describe('issue ingester controller', () => {
       expect(commentCalls).toHaveLength(0);
     });
 
-    it('captures a comment failure in lastError without rolling back the enqueue', async () => {
+    it('records a comment failure in enqueueCommentErrors WITHOUT failing the step (lastError stays null)', async () => {
       const enqueued: AssetRequest[] = [];
       const queue = {
         backend: 'azure-queue' as const,
@@ -342,9 +342,15 @@ describe('issue ingester controller', () => {
       });
       const status = await controller.pollOnce();
       expect(status.enqueued).toBe(1);
-      expect(status.enqueueCommentsPosted).toBe(0);
-      expect(status.lastError).toContain('enqueue-comment failed');
       expect(enqueued).toHaveLength(1);
+      expect(status.enqueueCommentsPosted).toBe(0);
+      // A best-effort notification failure must NOT be fatal: it stays off
+      // `lastError` (which drives exitCodeForStatus → the ingest step exit code
+      // → whether the drain worker runs) and is surfaced on the dedicated
+      // enqueueCommentErrors / lastEnqueueCommentError diagnostics instead.
+      expect(status.lastError).toBeNull();
+      expect(status.enqueueCommentErrors).toBe(1);
+      expect(status.lastEnqueueCommentError).toContain('enqueue-comment failed');
     });
   });
 
@@ -576,6 +582,63 @@ describe('issue ingester controller', () => {
       expect(statusB.reclaimedStale).toBe(0);
       expect(statusB.skippedDuplicate).toBe(1);
       expect(enqueued).toHaveLength(1);
+    });
+  });
+
+  describe('per-issue state durability (mid-poll enqueue failure)', () => {
+    const bodyFor = (name: string, brief: string) =>
+      `<!-- ${ASSET_REQUEST_MARKER}\n${JSON.stringify({ version: 1, name, briefSentence: brief })}\n-->`;
+    const issueNums = (rs: readonly AssetRequest[]): number[] =>
+      rs.map((r) => ('issueNumber' in r ? r.issueNumber : -1));
+
+    it('persists an earlier claim when a later enqueue fails, so it is not re-enqueued next poll', async () => {
+      const enqueued: AssetRequest[] = [];
+      let failIssue200 = true;
+      const queue = {
+        backend: 'azure-queue' as const,
+        enqueue: async (r: AssetRequest) => {
+          if (failIssue200 && 'issueNumber' in r && r.issueNumber === 200) {
+            throw new Error('azure queue 503');
+          }
+          enqueued.push(r);
+        },
+        dequeue: async () => null,
+        peek: async () => [],
+      };
+      const issues = issuesMock({
+        list: async () => [
+          { number: 100, body: bodyFor('bone-dagger', 'A chipped bone dagger.') },
+          { number: 200, body: bodyFor('angry-roomba', 'A grumpy roomba mob.') },
+        ],
+      });
+      const store = memStore();
+      const controller = createIssueIngesterController({
+        queue,
+        store,
+        issues,
+        requestedBy: 'test',
+        pollIntervalMs: 24 * 60 * 60 * 1000,
+        now: () => new Date('2026-07-03T00:00:00.000Z'),
+      });
+
+      // First poll: 100 enqueues + claims (persisted immediately), then 200's
+      // enqueue throws. The throw surfaces on lastError, but 100's claim must
+      // already be committed to the store.
+      const first = await controller.pollOnce();
+      expect(first.lastError).toContain('azure queue 503');
+      expect(issueNums(enqueued)).toEqual([100]);
+      const claimedAfterFirst = await controller.listRequests('claimed');
+      expect(claimedAfterFirst).toHaveLength(1);
+      expect(claimedAfterFirst[0]?.issueNumber).toBe(100);
+
+      // Second poll with the queue healthy: 100 must be recognized as already
+      // claimed (skippedDuplicate) and NOT re-enqueued. A batched save would
+      // have lost 100's claim when 200 threw, re-enqueuing 100 here (→ a
+      // duplicate queue message and duplicate sprite generation).
+      failIssue200 = false;
+      const second = await controller.pollOnce();
+      expect(second.skippedDuplicate).toBeGreaterThanOrEqual(1);
+      expect(issueNums(enqueued).sort((a, b) => a - b)).toEqual([100, 200]);
     });
   });
 });

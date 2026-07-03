@@ -1,0 +1,44 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "asset-request-e2e-fixes",
+  "task_title": "E2E-harden issue -> sprite pipeline (asset-request follow-up to #714)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.5",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "reviewer": "self",
+      "verdict": "pass",
+      "notes": "Separate-model (gpt-5.5) plan/design review of the 5-fix E2E-hardening change surfaced 3 concerns. (1) MAJOR - the enqueue-completion comment loop set `lastError` on a `gh issue comment` failure; `exitCodeForStatus` returns 1 whenever `lastError` is set, so the ingest step would exit 1 and the drain worker step (default `if: success()`) would be SKIPPED. This directly contradicts the PR's own design intent that comment posting is best-effort. RESOLVED: comment failures now increment a dedicated `enqueueCommentErrors` counter and set `lastEnqueueCommentError` (diagnostic only) and NO LONGER touch `lastError`, so a 403/network blip on the notification can never skip the drain. (2) MAJOR - the poll loop batched a single `saveState` after the loop (`if (dirty) saveState`); a mid-loop `queue.enqueue` throw rejected the state-lock callback and skipped the save entirely, so an EARLIER issue's already-sent queue message lost its claim and was re-enqueued next poll (duplicate Azure sprite generation; the pipeline has no already-completed entry guard). RESOLVED: `saveState` now runs per-issue immediately after each successful enqueue+claim; the stale-claim reclaim delete is only persisted by that same per-issue save, so a throw discards the in-memory delete on reload (never a delete without a matching re-enqueue). (3) MINOR - dropping the `opened` issues trigger. Reviewed and ACCEPTED as-designed: the repo's asset-request issue-form template auto-applies the `asset-request` label, so a `labeled` event always fires on creation; the manual-label entrypoint also fires `labeled`; keeping `opened` double-fired the enqueue. No code change; documented here."
+    },
+    "code_review": {
+      "clean": true,
+      "reviewer": "self+code-review",
+      "verdict": "pass",
+      "rounds": [
+        {
+          "round": 1,
+          "clean": false,
+          "models": ["gpt-5.5"],
+          "reviewer_model": "gpt-5.5",
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "notes": "Multi-file code review (gpt-5.5) of the diff independently flagged the same MAJOR issue as plan-review concern 1: a comment-post failure sets `lastError` -> ingest step exits 1 -> drain worker skipped. Confirmed against `exitCodeForStatus` (`status.lastError ? 1 : 0`) and the workflow (drain step has no `if:`, so default `success()` gating). No other blocking/major concerns on the workflow, issue-API `getIssue`, the targetIssueNumber priority path, the CLI helpers, or enqueue-comment body formatting."
+        },
+        {
+          "round": 2,
+          "clean": true,
+          "models": ["gpt-5.5"],
+          "reviewer_model": "gpt-5.5",
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "notes": "Post-fix round. Verified: (a) comment failures no longer set `lastError` (moved to `enqueueCommentErrors`/`lastEnqueueCommentError`), so `exitCodeForStatus` stays 0 and the drain runs; (b) per-issue `saveState` persists each claim before the next issue is processed, so a later enqueue throw cannot orphan an earlier claim. New/updated unit coverage: `ingest-once-cli.test.ts` proves `exitCodeForStatus` returns 0 when only enqueue-comment posts failed; `issue-ingester-controller.test.ts` renames the comment-failure test to assert it records on `enqueueCommentErrors` with `lastError` null, and adds a `per-issue state durability` test proving an earlier claim survives a later mid-poll enqueue failure and is NOT re-enqueued next poll. New required status fields propagated to all fixtures (`ingest-once-cli.test.ts` status() helper, 4 `sidecar-server.test.ts` mocks) and the CLI completion log. All 136 sprite unit tests + `npm run verify:fast` (typecheck/lint/changed tests) green. Clean."
+        }
+      ],
+      "notes": "Two rounds; round 1 surfaced 1 major concern (comment-failure fatal to the drain), resolved; round 2 clean after both fixes plus tests."
+    }
+  }
+}

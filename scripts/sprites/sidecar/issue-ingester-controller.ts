@@ -81,6 +81,20 @@ export interface IssueIngesterStatus {
    * without failing the enqueue itself.
    */
   readonly enqueueCommentsPosted: number;
+  /**
+   * Count of enqueue-time comment posts that FAILED this session. Tracked
+   * separately from `lastError` on purpose: a best-effort notification failure
+   * must NOT fail the ingest step (the enqueue + claim are already committed
+   * and the drain worker must still run), so it must never flow into
+   * `exitCodeForStatus` via `lastError`. See the enqueue-comment loop below.
+   */
+  readonly enqueueCommentErrors: number;
+  /**
+   * Most recent enqueue-comment failure message this session, or `null` if
+   * none. Purely diagnostic — surfaced in the CLI status JSON so a comment
+   * failure stays visible in CI logs without being fatal.
+   */
+  readonly lastEnqueueCommentError: string | null;
 }
 
 export interface IssueIngesterController {
@@ -200,6 +214,8 @@ export function createIssueIngesterController(
   let skippedDuplicate = 0;
   let reclaimedStale = 0;
   let enqueueCommentsPosted = 0;
+  let enqueueCommentErrors = 0;
+  let lastEnqueueCommentError: string | null = null;
   let timer: NodeJS.Timeout | null = null;
   let stateLock: Promise<void> = Promise.resolve();
 
@@ -227,6 +243,8 @@ export function createIssueIngesterController(
     skippedDuplicate,
     reclaimedStale,
     enqueueCommentsPosted,
+    enqueueCommentErrors,
+    lastEnqueueCommentError,
   });
 
   const claimKey = (issueNumber: number, fingerprint: string): string =>
@@ -387,7 +405,6 @@ export function createIssueIngesterController(
     const enqueueComments: EnqueueCommentContext[] = [];
     await withStateLock(async () => {
       const state = await loadState();
-      let dirty = false;
       for (const issue of issuesToProcess) {
         const payload = parseAssetRequestIssueBody(issue.body);
         if (!payload) continue;
@@ -419,10 +436,10 @@ export function createIssueIngesterController(
           delete state.claims[key];
           reclaimedStale += 1;
           reclaimed = true;
-          // dirty is set once enqueue succeeds (line below). If enqueue
-          // throws, we intentionally leave dirty=false so the in-memory
-          // reclaim is discarded when withStateLock reloads next poll —
-          // otherwise we'd persist a stale-claim delete without a matching
+          // The in-memory delete is only persisted by the per-issue saveState
+          // below, which runs AFTER a successful enqueue. If enqueue throws we
+          // return before saving, so the stale-claim delete is discarded when
+          // withStateLock reloads next poll — never a delete without a matching
           // re-enqueue.
         }
         const claimedAt = now().toISOString();
@@ -447,7 +464,12 @@ export function createIssueIngesterController(
           briefSentence: payload.briefSentence,
         };
         enqueued += 1;
-        dirty = true;
+        // Persist immediately (not batched at loop end) so a committed enqueue
+        // survives a LATER issue's enqueue failure in the same poll. A batched
+        // save was skipped entirely when a subsequent enqueue threw, orphaning
+        // already-sent queue messages and re-enqueuing them (→ duplicate sprite
+        // generation) on the next poll.
+        await saveState(state);
         if (options.postEnqueueComment) {
           enqueueComments.push({
             issueNumber: issue.number,
@@ -459,12 +481,13 @@ export function createIssueIngesterController(
           });
         }
       }
-      if (dirty) await saveState(state);
     });
     // Fire enqueue-completion comments after the state lock releases. Each
-    // failure is captured on `lastError` but does not roll back the enqueue
-    // (already committed). We continue posting remaining comments to avoid
-    // silently dropping notifications for issues after the first failure.
+    // failure is recorded on `enqueueCommentErrors`/`lastEnqueueCommentError`
+    // (NOT `lastError`) so a best-effort notification failure never fails the
+    // ingest step or rolls back the already-committed enqueue. We continue
+    // posting remaining comments to avoid silently dropping notifications for
+    // issues after the first failure.
     if (options.postEnqueueComment && enqueueComments.length > 0) {
       for (const context of enqueueComments) {
         try {
@@ -474,7 +497,8 @@ export function createIssueIngesterController(
             enqueueCommentsPosted += 1;
           }
         } catch (err) {
-          lastError = `enqueue-comment failed for issue #${context.issueNumber}: ${
+          enqueueCommentErrors += 1;
+          lastEnqueueCommentError = `enqueue-comment failed for issue #${context.issueNumber}: ${
             err instanceof Error ? err.message : String(err)
           }`;
         }
