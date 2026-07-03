@@ -105,4 +105,34 @@ describe('Weapon equipping', () => {
     expect(state.equipped.mainHand).toBeNull();
     expect(state.equipped.offHand).toBeNull();
   });
+
+  it('clears lingering hand equipment when the starter is re-selected on a reused world', () => {
+    const { world, player } = withPlayer();
+    world.state = 'loadout';
+    world.floor1 = {
+      ...(world.floor1 ?? {
+        starterChoices: [],
+        selectedWeaponId: undefined,
+        selectedChoiceIndex: undefined,
+      }),
+      starterChoices: ['sword', 'bow', 'baseball-bat'],
+    };
+
+    // First loadout: pick the sword. Lands in mainHand.
+    selectFloor1StarterWeapon(world, 0);
+    expect(getActiveWeaponDef(world)?.id).toBe('sword');
+
+    // Simulate a dev tool / respawn flow that re-runs the loadout modal.
+    world.state = 'loadout';
+    // Now pick the two-handed bow — it wants BOTH hand slots.
+    selectFloor1StarterWeapon(world, 1);
+
+    const state = getEquipmentState(world, player);
+    // Old sword must have been evicted; bow now owns both hand slots.
+    expect(state.equipped.mainHand).not.toBeNull();
+    expect(state.equipped.mainHand).toBe(state.equipped.offHand);
+    const bowInstance = state.instances.get(state.equipped.mainHand!);
+    expect(bowInstance?.def.id).toBe('frost-bow');
+    expect(getActiveWeaponDef(world)?.id).toBe('bow');
+  });
 });

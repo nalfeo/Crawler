@@ -1,9 +1,9 @@
 import { query } from 'bitecs';
 import { Player } from '../../core/components.js';
-import { equip } from '../../core/systems/equipmentSystem.js';
+import { equip, unequip } from '../../core/systems/equipmentSystem.js';
 import type { GameWorld } from '../../core/world.js';
-import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { getEquipmentDefForStarterWeapon } from '../../shared/equipmentDefs.js';
+import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { type ModalPickerScenario } from '../../shared/modal-picker.js';
 import { setActiveWeapon } from '../weaponSystem.js';
 
@@ -51,13 +51,24 @@ export function applyFloor1LoadoutChoice(
   }
   // Prefer the equipment-driven path so the chosen weapon lives in the
   // corresponding hand slot(s). Falls back to a raw setActiveWeapon when
-  // there's no player entity or when the starter has no equipment def
-  // registered (mirrors selectFloor1StarterWeapon).
+  // there's no player entity, when the starter has no equipment def
+  // registered, or when equip() fails (e.g. hand slot occupied by a
+  // previous run's leftover); the fallback keeps combat working while a
+  // downstream cleanup handles the equipment desync.
   const player = findPlayerEid(world);
   const equipmentDef = getEquipmentDefForStarterWeapon(resolvedChoice);
+  let equipped = false;
   if (player !== undefined && equipmentDef !== undefined) {
-    equip(world, player, equipmentDef, { force: true });
-  } else {
+    // Clear any lingering hand-slot equipment first so re-initializing the
+    // same world (dev tools, test harness, respawn) can't leave a stale
+    // sword sitting in mainHand while the new starter routes through
+    // setActiveWeapon only.
+    unequip(world, player, 'mainHand', { force: true });
+    unequip(world, player, 'offHand', { force: true });
+    const result = equip(world, player, equipmentDef, { force: true });
+    equipped = result.ok;
+  }
+  if (!equipped) {
     setActiveWeapon(world, weaponDef);
   }
   return resolvedChoice;

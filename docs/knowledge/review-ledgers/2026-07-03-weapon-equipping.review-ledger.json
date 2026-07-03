@@ -8,13 +8,30 @@
     "plan_review": {
       "completed": true,
       "reviewer_model": "gpt-5.4",
-      "concerns_count": 4,
+      "concerns_count": 3,
       "resolved_count": 3,
-      "notes": "approved-with-notes; 3 valid concerns addressed: (1) selectFloor1StarterWeapon/applyFloor1LoadoutChoice now check equip result.ok and fall back to setActiveWeapon with a logger.warn on failure, plus module-load validation that every weapon-equipment def references a real WeaponDef; (2) STARTER_WEAPON_ID_TO_ITEM_ID exported from equipmentDefs.ts and consumed by floorScenario.ts (single source of truth, duplicate FLOOR_1_STARTER_WEAPON_TO_SHOP_ITEM_ID deleted); (3) equipPurchasedGear loops all equippable slugs so a purchased hand weapon that cannot equip does not stall the charm; auto-swap-starter deferred as intentional UX (weapons ARE equippable per user spec; slot conflict resolution is a separate follow-up). Concern 4 (getShopkeeperPostQuestStock filters starterChoices not selectedWeaponId) is pre-existing and out of scope."
+      "notes": "approved-with-notes; 3 valid concerns addressed: (1) selectFloor1StarterWeapon/applyFloor1LoadoutChoice check equip result.ok and fall back to setActiveWeapon; module-load validation added that every weapon-equipment def references a real WeaponDef and every starter weaponId resolves; (2) STARTER_WEAPON_ID_TO_ITEM_ID exported from equipmentDefs.ts and consumed by floorScenario.ts (single source of truth, duplicate FLOOR_1_STARTER_WEAPON_TO_SHOP_ITEM_ID deleted); (3) equipPurchasedGear loops all equippable slugs so a purchased hand weapon that cannot equip does not stall the charm; auto-swap-starter deferred as intentional UX (weapons ARE equippable per user spec; slot-conflict resolution is a separate follow-up). Rubber duck also flagged a 4th non-blocking suggestion (getShopkeeperPostQuestStock filters starterChoices not selectedWeaponId) but that behavior is pre-existing and unrelated to this feature; tracked as a follow-up."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "High-severity finding: on reused GameWorlds (dev tools/respawn/re-run of loadout modal) the previous run leaves mainHand occupied; equip() fails with occupiedSlot and applyFloor1LoadoutChoice silently discards the failure while combat routes through setActiveWeapon fallback. Fixed in eb7d6ecd: both selectFloor1StarterWeapon and applyFloor1LoadoutChoice now force-unequip mainHand+offHand before force-equipping the starter, and applyFloor1LoadoutChoice checks result.ok with the same setActiveWeapon fallback. Regression test added covering loadout re-run (sword then bow on the same world)."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Re-review of eb7d6ecd on top of e073f0c5. No new blocking concerns. Pre-unequip is idempotent (safe on empty slot), 2H shared-instance unequip is handled cleanly by equipmentSystem, applyFloor1LoadoutChoice fallback matches selectFloor1StarterWeapon semantics."
+        }
+      ]
     }
   }
 }

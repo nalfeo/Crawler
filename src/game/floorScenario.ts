@@ -57,7 +57,7 @@ import { GAME, PLAYER_SPEED } from '../shared/constants.js';
 import { pxToFt } from '../shared/units.js';
 import { addItem, hasItem, removeItem } from '../shared/inventory.js';
 import { HARVESTABLE_DEFS } from '../shared/harvestableDefs.js';
-import { equip, initializeBaseStats } from '../core/systems/equipmentSystem.js';
+import { equip, initializeBaseStats, unequip } from '../core/systems/equipmentSystem.js';
 import {
   MERCHANTS_CHARM_COST,
   getEquipmentDefForItem,
@@ -1295,6 +1295,13 @@ export function selectFloor1StarterWeapon(world: GameWorld, optionIndex: number)
   const equipmentDef = getEquipmentDefForStarterWeapon(weaponId);
   let equipped = false;
   if (player !== undefined && equipmentDef !== undefined) {
+    // Clear any lingering hand-slot equipment first so re-initializing the
+    // same world (dev tools, respawn, back-to-loadout debugging) can't
+    // leave a stale weapon in mainHand while the new starter routes
+    // through the raw setActiveWeapon fallback below. Force is required
+    // because `world.state === 'loadout'` fails the safe-context gate.
+    unequip(world, player, 'mainHand', { force: true });
+    unequip(world, player, 'offHand', { force: true });
     const result = equip(world, player, equipmentDef, { force: true });
     equipped = result.ok;
     if (!result.ok) {
