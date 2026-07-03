@@ -11,7 +11,11 @@ import { computeCorpseDecay, type CorpseDecay } from './corpse-decay.js';
 import { createLogger } from '../shared/logger.js';
 import { MeleeSpriteId } from '../shared/constants.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
-import type { GeneratedSpriteRegistry } from '../shared/generated-assets.js';
+import {
+  pickGeneratedVariant,
+  type GeneratedSpriteEntry,
+  type GeneratedSpriteRegistry,
+} from '../shared/generated-assets.js';
 import { ftToPx } from '../shared/units.js';
 import { DEFAULT_HANDHELD_SPRITE_ANCHOR } from '../shared/sprite-anchor.js';
 import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../shared/decorationDefs.js';
@@ -512,52 +516,124 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           }
 
           // --- Weapon sprite pivoting from the player center ---
-          // The hold anchor (DEFAULT_HANDHELD_SPRITE_ANCHOR) marks the grip on a
-          // 16×16 frame (x=8, y=14 — near the handle end). We pin that anchor to
-          // the player center so the weapon always appears to be held at the body.
+          // The hold anchor marks the grip pixel; we pin it to the player
+          // center so the weapon appears held at the body.
           //
           // Derivation: with rotation = tipAngle + π/2 the local-up direction
           // (0,−1) maps to screen direction (cos tipAngle, sin tipAngle), so the
           // tip of the sprite is at origin + holdAnchor.y × scale × (cos, sin).
           // Setting holdAnchor.y × scale = bladeLen makes the sprite tip land
           // exactly at tipX/tipY while the grip stays at the player center.
-          const WEAPON_SPRITE_FRAME_HEIGHT = 16;
-          const holdY = DEFAULT_HANDHELD_SPRITE_ANCHOR.y; // 14 px from top
-          // Minimum scale ensuring the sprite remains visually readable for
-          // very short weapons where the computed scale would be near-zero.
-          const MIN_WEAPON_SPRITE_SCALE = 1.8;
-          const weaponScale = bladeLen > holdY ? bladeLen / holdY : MIN_WEAPON_SPRITE_SCALE;
           const handX = x;
           const handY = y;
 
           const swingSprite = meleeSwing.spriteId[eid] ?? 0;
-          const weaponSpriteKey = swingSprite === MeleeSpriteId.BAT ? 'weapon.bat' : 'weapon.sword';
-          const weaponSpriteDef = getSprite(weaponSpriteKey);
+
+          // Prefer the approved generated art (see InventoryUI.ts and
+          // items.ts icon: 'baseball-bat-v1'). Only the bat has approved
+          // generated melee art today — the sword branch still resolves to
+          // the Kenney placeholder. When a `sword-v1` (or hammer variant)
+          // gets approved, add its briefId here.
+          const generatedBriefId = swingSprite === MeleeSpriteId.BAT ? 'baseball-bat-v1' : null;
+          const generatedRegistry = generatedBriefId ? getGeneratedSpriteRegistry(scene) : null;
+          const generatedEntry: GeneratedSpriteEntry | null =
+            generatedRegistry && generatedBriefId
+              ? pickGeneratedVariant(generatedRegistry, generatedBriefId, eid | 0)
+              : null;
+          const generatedTextureReady =
+            generatedEntry !== null && scene.textures?.exists?.(generatedEntry.textureKey) === true;
+
+          const fallbackSpriteKey =
+            swingSprite === MeleeSpriteId.BAT ? 'weapon.bat' : 'weapon.sword';
+          const fallbackSpriteDef = getSprite(fallbackSpriteKey);
+
+          // Resolve texture + anchor + frame size. Defaults describe the
+          // Kenney tiny-dungeon 16×16 handheld convention; generated art can
+          // ship at 32×32 or 64×64 with its own hold anchor.
+          let weaponTextureKey: string | null = null;
+          let weaponFrame: string | number | undefined;
+          let holdX = DEFAULT_HANDHELD_SPRITE_ANCHOR.x;
+          let holdY = DEFAULT_HANDHELD_SPRITE_ANCHOR.y;
+          let frameWidth = 16;
+          let frameHeight = 16;
+
+          if (generatedEntry && generatedTextureReady) {
+            weaponTextureKey = generatedEntry.textureKey;
+            weaponFrame = undefined;
+            holdX = generatedEntry.anchor.x;
+            holdY = generatedEntry.anchor.y;
+            const src = scene.textures.get(weaponTextureKey).getSourceImage() as
+              | { width?: number; height?: number }
+              | undefined;
+            const w = src?.width;
+            const h = src?.height;
+            if (typeof w === 'number' && w > 0 && typeof h === 'number' && h > 0) {
+              frameWidth = w;
+              frameHeight = h;
+            }
+          } else if (fallbackSpriteDef) {
+            weaponTextureKey = fallbackSpriteDef.sheetKey;
+            weaponFrame = fallbackSpriteDef.frame;
+          }
+
+          // Minimum scale ensuring the sprite remains visually readable for
+          // very short weapons where the computed scale would be near-zero.
+          // Only applied to the 16×16 Kenney fallback path — generated art
+          // ships at 32/64 px so its natural size is already readable, and
+          // clamping the scale would decouple the tip from `bladeLen`
+          // (e.g. baseball-bat-v1 is 64×64 with holdY=60; bladeLen=44 gives
+          // rawScale ≈ 0.73, clamped to 1.8 would put the tip ~108 px away
+          // from the hand instead of 44).
+          const MIN_WEAPON_SPRITE_SCALE = 1.8;
+          const isGeneratedWeaponSprite = generatedEntry !== null && generatedTextureReady;
+          const rawWeaponScale = holdY > 0 ? bladeLen / holdY : 1;
+          const weaponScale =
+            !isGeneratedWeaponSprite && rawWeaponScale < MIN_WEAPON_SPRITE_SCALE
+              ? MIN_WEAPON_SPRITE_SCALE
+              : rawWeaponScale;
+          const originX = frameWidth > 0 ? holdX / frameWidth : 0.5;
+          const originY =
+            frameHeight > 0 ? holdY / frameHeight : DEFAULT_HANDHELD_SPRITE_ANCHOR.y / 16;
 
           let visual = visuals.get(eid);
-          if (!visual && weaponSpriteDef) {
-            const img = scene.add.image(
-              handX,
-              handY,
-              weaponSpriteDef.sheetKey,
-              weaponSpriteDef.frame,
-            );
+          if (!visual && weaponTextureKey !== null) {
+            const img =
+              weaponFrame !== undefined
+                ? scene.add.image(handX, handY, weaponTextureKey, weaponFrame)
+                : scene.add.image(handX, handY, weaponTextureKey);
             // Origin at hold anchor so the sprite pivots from the player's hand
-            img.setOrigin(0.5, holdY / WEAPON_SPRITE_FRAME_HEIGHT);
+            img.setOrigin(originX, originY);
             img.setScale(weaponScale);
             visuals.set(eid, { obj: img, type: entityType, baseScale: weaponScale });
             visual = visuals.get(eid);
           }
 
-          if (visual) {
-            visual.obj.setVisible(alpha > 0.05);
-            visual.obj.setAlpha(alpha);
+          if (visual && weaponTextureKey !== null) {
+            const img = visual.obj;
+            // Reconcile to the preferred texture key + frame when either
+            // changes: (a) the generated manifest finished loading mid-swing
+            // (Kenney sheet → generated texture — key changes), or (b) an
+            // eid reuse landed a different weapon on the same Kenney sheet
+            // (bat frame 117 ↔ sword frame 72 — key matches, frame differs).
+            // Mirrors the enemy reconcile pattern below.
+            const currentKey = img.texture.key;
+            const currentFrameName = img.frame?.name;
+            const desiredFrameName = weaponFrame === undefined ? undefined : String(weaponFrame);
+            if (currentKey !== weaponTextureKey || currentFrameName !== desiredFrameName) {
+              if (weaponFrame !== undefined) {
+                img.setTexture(weaponTextureKey, weaponFrame);
+              } else {
+                img.setTexture(weaponTextureKey);
+              }
+            }
+            img.setVisible(alpha > 0.05);
+            img.setAlpha(alpha);
             // Recompute origin/scale each frame in case the sprite was reused
-            visual.obj.setOrigin(0.5, holdY / WEAPON_SPRITE_FRAME_HEIGHT);
-            visual.obj.setScale(weaponScale);
-            visual.obj.setPosition(handX, handY);
+            img.setOrigin(originX, originY);
+            img.setScale(weaponScale);
+            img.setPosition(handX, handY);
             // +π/2 aligns local-up (blade tip) with tipAngle (away from player)
-            visual.obj.setRotation(tipAngle + Math.PI / 2);
+            img.setRotation(tipAngle + Math.PI / 2);
           }
           continue;
         }
