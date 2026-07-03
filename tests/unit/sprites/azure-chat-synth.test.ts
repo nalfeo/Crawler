@@ -17,7 +17,6 @@ function makeRequest(overrides: Partial<SynthesizeBriefRequest> = {}): Synthesiz
     name: 'skull-mace',
     type: 'weapon',
     candidates: 2,
-    referenceCatalog: [],
     effectiveMinSeeds: 3,
     effectiveMaxSeeds: 5,
     ...overrides,

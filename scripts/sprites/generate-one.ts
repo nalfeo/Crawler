@@ -34,7 +34,7 @@
  * their own modules with their own unit tests.
  */
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { variantCount } from './brief-schema.js';
 import type { Brief, PaletteColors } from './brief-schema.js';
@@ -47,7 +47,20 @@ import { ProviderError } from './provider/types.js';
 import type { TextProvider } from './provider/text-types.js';
 import { LocalRunStore } from './store/local-store.js';
 import type { RunStore } from './store/types.js';
-import { makeRunId, type RunSummary } from './run-artifacts.js';
+import {
+  makeRunId,
+  type ReferenceSpriteRef,
+  type ReferenceSpriteSelection,
+  type RunSummary,
+} from './run-artifacts.js';
+import {
+  REFERENCE_COUNT,
+  referenceSelectorSeed,
+  selectReferences,
+  SELECTOR_VERSION,
+} from './reference-selector.js';
+import { parseGeneratedManifest, type ManifestEntry } from '../../src/shared/generated-assets.js';
+import { isSpriteType } from '../../src/shared/sprite-types.js';
 
 export interface GenerateOneOptions {
   readonly briefPath: string;
@@ -73,6 +86,26 @@ export interface GenerateOneOptions {
   readonly now?: () => Date;
   /** Reference PNG loader injection; defaults to `fs.readFileSync`. */
   readonly readReference?: (absolutePath: string) => Buffer;
+  /**
+   * Absolute path to the generated-sprite manifest the reference selector
+   * draws from. Defaults to `<repoRoot>/public/assets/generated/manifest.json`.
+   * Ignored when `loadReferenceCandidates` is provided.
+   */
+  readonly manifestPath?: string;
+  /**
+   * Candidate loader injection for the reference selector (tests). Defaults to
+   * reading + parsing {@link manifestPath} and returning its entries. Kenney is
+   * NOT a candidate source — references are our own approved generated sprites.
+   */
+  readonly loadReferenceCandidates?: () => readonly ManifestEntry[];
+  /**
+   * Asset-existence check injection (tests). Defaults to `fs.existsSync`. Used
+   * to pre-filter manifest entries to those whose PNG is actually on disk
+   * before the pure selector runs.
+   */
+  readonly referenceAssetExists?: (absolutePath: string) => boolean;
+  /** How many references to select. Defaults to {@link REFERENCE_COUNT}. */
+  readonly referenceCount?: number;
   /** Optional brief override (avoid re-loading from disk in tests). */
   readonly preloaded?: LoadedBrief;
   /** Warning sink (mainly for expand-variations). Defaults to logger.warn. */
@@ -114,6 +147,7 @@ export type RunSummaryIdentity = Pick<
   | 'attempts'
   | 'variantCount'
   | 'variations'
+  | 'referenceSprites'
 >;
 
 /**
@@ -148,6 +182,29 @@ export interface GenerateSheetCoreResult {
 }
 
 const RETRYABLE_PROVIDER_KINDS: ReadonlySet<ProviderErrorKind> = new Set(['bad-grid', 'non-png']);
+
+/**
+ * Project a selected manifest entry into the auditable run-summary shape. The
+ * selector only ever returns typed entries, so an untyped one here is a bug —
+ * fail loudly rather than silently write an invalid summary.
+ */
+function toReferenceSpriteRef(entry: ManifestEntry): ReferenceSpriteRef {
+  if (!isSpriteType(entry.type)) {
+    throw new Error(
+      `generateSheetCore: selected reference "${entry.spriteName}" (${entry.assetPath}) ` +
+        `has no valid sprite type — the reference selector must not return untyped entries.`,
+    );
+  }
+  return {
+    briefId: entry.briefId,
+    spriteName: entry.spriteName,
+    type: entry.type,
+    assetPath: entry.assetPath,
+    sensorScore: entry.sensorScore,
+    judgeScore: entry.judgeScore ?? null,
+    contentHash: entry.contentHash ?? null,
+  };
+}
 
 export async function generateSheetCore(
   options: GenerateOneOptions,
@@ -184,10 +241,56 @@ export async function generateSheetCore(
   const styleGuide = loadStyleGuide(repoRoot);
   const prompt = buildSheetPrompt(effectiveBrief, styleGuide);
 
-  // Reference PNG paths are repo-relative in briefs; resolve against repoRoot.
-  const referencePngs = brief.references.map((ref) =>
-    readReference(path.resolve(repoRoot, ref.path)),
+  // References are OUR own highest-quality approved sprites, chosen
+  // deterministically per brief — Kenney placeholder spritesheets are retired.
+  // The pure selector does no IO, so we load the manifest and pre-filter to
+  // entries whose PNG actually exists on disk here, then hand the survivors
+  // to `selectReferences`, which favours the brief's own `type` (with injected,
+  // seeded randomness) and broadens to other high-quality generated art when
+  // the same-type pool is thin.
+  const referenceCount = options.referenceCount ?? REFERENCE_COUNT;
+  const publicAssetsRoot = path.resolve(repoRoot, 'public', 'assets');
+  const resolveAssetPath = (assetPath: string) => path.resolve(publicAssetsRoot, assetPath);
+  const referenceAssetExists =
+    options.referenceAssetExists ?? ((absolutePath) => existsSync(absolutePath));
+  const loadReferenceCandidates =
+    options.loadReferenceCandidates ??
+    (() => {
+      const manifestPath =
+        options.manifestPath ?? path.join(publicAssetsRoot, 'generated', 'manifest.json');
+      const manifest = parseGeneratedManifest(JSON.parse(readFileSync(manifestPath, 'utf8')));
+      return Object.values(manifest.entries);
+    });
+
+  const presentCandidates = loadReferenceCandidates().filter((entry) =>
+    referenceAssetExists(resolveAssetPath(entry.assetPath)),
   );
+  const selection = selectReferences({
+    candidates: presentCandidates,
+    briefName: brief.name,
+    briefType: brief.type,
+    count: referenceCount,
+    seed: referenceSelectorSeed(brief.name),
+  });
+  if (selection.selected.length === 0) {
+    throw new Error(
+      `generateSheetCore: no eligible generated reference sprites for brief "${brief.name}" ` +
+        `(type="${brief.type}"). Generation now sends our own approved sprites as references ` +
+        `(Kenney placeholders are retired), but the generated manifest has none that clear the ` +
+        `quality floor with an on-disk PNG. Approve at least one high-quality sprite first.`,
+    );
+  }
+  const referencePngs = selection.selected.map((entry) =>
+    readReference(resolveAssetPath(entry.assetPath)),
+  );
+  const referenceSprites: ReferenceSpriteSelection = {
+    selectorVersion: SELECTOR_VERSION,
+    seed: selection.seed,
+    requestedCount: selection.requestedCount,
+    eligibleCount: selection.eligibleCount,
+    sameTypeCount: selection.sameTypeCount,
+    selected: selection.selected.map(toReferenceSpriteRef),
+  };
 
   const runId = makeRunId(createdAt, `${brief.name}|${prompt}`);
   // Store-key helper: returns a key relative to the store root.
@@ -246,6 +349,7 @@ export async function generateSheetCore(
       minVariations: brief.minVariations,
       skippedReason: expansion.skippedReason,
     },
+    referenceSprites,
   };
 
   return {

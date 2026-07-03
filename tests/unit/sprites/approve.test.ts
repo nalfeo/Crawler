@@ -213,6 +213,7 @@ describe('approveVariant', () => {
           anchors: { hold: null, centerOfGravity: null },
           sensorScore: '7/7',
           judgeScore: null,
+          type: 'enemy',
         },
         'cloth-shirt': {
           briefId: 'cloth-shirt',
@@ -225,6 +226,7 @@ describe('approveVariant', () => {
           anchors: { hold: null, centerOfGravity: null },
           sensorScore: '7/7',
           judgeScore: null,
+          type: 'item',
         },
       },
     };
@@ -569,7 +571,7 @@ describe('approveVariant', () => {
     mkdirSync(path.dirname(briefAbsPath), { recursive: true });
     writeFileSync(briefAbsPath, `type: item\nname: ${briefId}\ndescription: A test sprite.\n`);
 
-    approveVariant({
+    const entry = approveVariant({
       runDir,
       variantIndex: 1,
       manifestPath,
@@ -583,6 +585,8 @@ describe('approveVariant', () => {
     const catalogEntry = catalog.find((e) => e.id === `generated:${briefId}-var-1`);
     expect(catalogEntry).toBeDefined();
     expect(catalogEntry!.tags).toEqual(['item', 'generated', 'pipeline-approved']);
+    // The resolved type is also stamped on the manifest entry itself.
+    expect(entry.type).toBe('item');
   });
 
   it('falls back to default tags when the brief YAML is missing', () => {
@@ -590,7 +594,7 @@ describe('approveVariant', () => {
       variantIndices: [0, 1],
       chosenIndex: 1,
     });
-    approveVariant({
+    const entry = approveVariant({
       runDir,
       variantIndex: 1,
       manifestPath,
@@ -603,5 +607,7 @@ describe('approveVariant', () => {
     const catalog = JSON.parse(readFileSync(catalogPath, 'utf8')) as Array<Record<string, unknown>>;
     const catalogEntry = catalog.find((e) => e.id === `generated:${briefId}-var-1`);
     expect(catalogEntry!.tags).toEqual(['generated', 'pipeline-approved']);
+    // No resolvable brief ⇒ the manifest entry's type is null.
+    expect(entry.type).toBeNull();
   });
 });

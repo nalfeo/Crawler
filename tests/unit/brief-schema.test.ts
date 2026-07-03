@@ -47,7 +47,7 @@ describe('briefSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('defaults tags to an empty array and requires at least 2 references (F2.3)', () => {
+  it('defaults tags and references to empty arrays; references are optional (Kenney retired)', () => {
     const minimal = {
       type: 'weapon',
       name: 'iron-sword',
@@ -56,11 +56,14 @@ describe('briefSchema', () => {
       anchor: { x: 0, y: 0 },
       prompt: 'p',
     };
+    // `references` is retired as a generation input — generate-time reference
+    // selection (reference-selector.ts) draws from our approved manifest — so a
+    // brief with no `references` is valid and the field defaults to `[]`.
     const result = briefSchema.safeParse(minimal);
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      const paths = result.error.issues.map((i) => i.path.join('.'));
-      expect(paths).toContain('references');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.tags).toEqual([]);
+      expect(result.data.references).toEqual([]);
     }
 
     const withRefs = briefSchema.safeParse({
@@ -69,20 +72,18 @@ describe('briefSchema', () => {
     });
     expect(withRefs.success).toBe(true);
     if (withRefs.success) {
-      expect(withRefs.data.tags).toEqual([]);
       expect(withRefs.data.references).toHaveLength(2);
     }
   });
 
-  it('rejects a brief with fewer than 2 references (F2.3)', () => {
+  it('accepts fewer than 2 references now that the min-2 rule is retired', () => {
     const result = briefSchema.safeParse({
       ...validBrief,
       references: [{ path: 'docs/refs/sword-1.png' }],
     });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      const paths = result.error.issues.map((i) => i.path.join('.'));
-      expect(paths).toContain('references');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.references).toHaveLength(1);
     }
   });
 

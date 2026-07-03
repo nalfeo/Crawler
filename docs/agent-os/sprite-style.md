@@ -1,6 +1,6 @@
 # Crawler Sprite Style Guide
 
-> Source of truth for the visual style of every sprite the generation pipeline produces. This file is loaded as plain text and concatenated into **every** prompt sent to the image provider as a hard preamble. It is how we keep the model grounded on the project's style — alongside the mandatory ≥2 reference images per brief (see ADR `0003`, spec F2.3). Reference images show subject-matter context and composition conventions; this preamble sets the hard constraints and visual richness level.
+> Source of truth for the visual style of every sprite the generation pipeline produces. This file is loaded as plain text and concatenated into **every** prompt sent to the image provider as a hard preamble. It is how we keep the model grounded on the project's style — alongside the reference images attached to each request (see ADR `0003`, spec F2.3). Those references are now **our own highest-quality approved generated sprites**, selected at generate time by a deterministic same-`type`-favoring sampler (`scripts/sprites/reference-selector.ts`) — no longer Kenney placeholder spritesheets. They are the canonical style ground truth: the candidate should look like it belongs in the same shipped set. This preamble sets the hard constraints and visual richness level; the references show the exact look to match.
 
 ## The style in one paragraph
 
@@ -56,7 +56,7 @@ The exact text below is what `scripts/sprites/build-prompt.ts` concatenates at t
 > 6. **Transparent or flat high-contrast background** that is clearly distinct from the sprite palette (prefer bright magenta `#ff00ff`, electric cyan `#00ffff`, neon lime `#39ff14`, or vivid yellow `#fff200`). Do not use black backgrounds. No decorative backgrounds, no shadows under the subject, no scene props.
 > 7. **No text, numbers, digits, labels, captions, watermarks, signatures, or UI chrome anywhere in the image.** This is the single most common failure mode and it makes the output unusable.
 > 8. Silhouette-first composition: the shape must read clearly even with all interior detail removed.
-> 9. Reference images attached to this request are Kenney-style flat spritesheets. Use them **only** for subject-matter context — how the subject type fills a 64px cell, orientation, scale conventions. Do not imitate their flat two-tone shading. Bring the full grungy-indie depth: 3–5 shading stops, textural dithering, bold colors.
+> 9. Reference images attached to this request are our own approved Crawler sprites, chosen to favor the same `type` as this brief. Treat them as the style ground truth: **match** their outline weight, palette depth, shading stops (3–5), textural dithering, and bold colors so the candidate reads as same-family. Use them for subject-matter context too — how the subject type fills a 64px cell, orientation, scale conventions.
 >
 > --- END STYLE PREAMBLE ---
 
@@ -102,7 +102,7 @@ What you get:
 
 ### What the synthesiser does for you
 
-- **Picks references from an allow-list.** The model is shown the list of `public/assets/kenney/*/spritesheet.png` files discovered on disk and picks 2–3 ids per candidate. It never invents reference paths.
+- **Leaves references to generate time.** The synthesiser no longer picks reference images — briefs carry no `references`. At generate time, `scripts/sprites/reference-selector.ts` deterministically samples our own highest-quality approved sprites (favoring the brief's `type`) as the style anchors, and the chosen set is recorded in the run summary. Kenney spritesheets are fully retired as a reference source.
 - **Refuses vague adjectives.** `cool / awesome / epic / amazing / nice` are rejected at validation time — every candidate must read as a concrete pose/silhouette/colour description.
 - **Forces visibly distinct candidates.** The system prompt requires each candidate to differ in silhouette from the others (tall narrow vs short wide vs symmetrical, etc.). The CLI prints the rationale next to each candidate.
 - **Classifies type when you omit `--type`.** Only auto-assigns if the model is ≥ 0.9 confident; otherwise it tells you to re-run with `--type`.
@@ -160,7 +160,7 @@ Verify any non-trivial prompt change with a **real round-trip** against the depl
 
 After the deterministic sensors (palette/silhouette/edges/bbox) pass, an **optional** VLM judge can score each sensor-passing variant on three axes that pixel-level sensors can't measure:
 
-1. **`style_match`** (1–5) — does the variant read as same-family with the brief's reference PNGs? Catches "technically on-palette but the wrong silhouette language".
+1. **`style_match`** (1–5) — does the variant read as same-family with the reference PNGs (our approved same-`type` sprites selected at generate time)? Catches "technically on-palette but the wrong silhouette language".
 2. **`brief_match`** (1–5) — does the variant depict what the brief's `prompt` asks for? Catches "valid sword sprite, wrong sword".
 3. **`readability`** (1–5) — at 1× over a dark floor tile, is the subject still legible? Catches subjects that disappear into the background or read as noise once downscaled.
 

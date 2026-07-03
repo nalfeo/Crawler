@@ -1,0 +1,35 @@
+{
+  "_comment": "Authoritative concept -> SpriteType overrides for `sprites:backfill-manifest-types`. Consulted after catalog-tag and brief-YAML resolution, before the conservative prefix heuristic. Keyed by NORMALIZED concept (normalizeConcept: variant/version suffixes like -v1, -var-2, -placeholder stripped). Only add a concept here when its briefs/runs are gone AND the catalog carries no usable type tag for it, so the cascade genuinely cannot recover the type. Every value must be one of the SPRITE_TYPES. See docs/agent-os/sprite-style.md and scripts/sprites/reference-selector.ts.",
+  "overrides": {
+    "bent-pipe": "weapon",
+    "baseball-bat": "weapon",
+    "slime": "enemy",
+    "slime-king": "enemy",
+    "rat-king": "enemy",
+    "rat-queen": "enemy",
+    "sewer-grate-floor-tile": "tile",
+    "berserker-brew": "item",
+    "prop-junk-pile": "tile",
+    "prop-torch": "tile",
+    "welcome-sign-left": "tile",
+    "ability-icon-heal": "item",
+    "ability-icon-fireball": "item",
+    "ability-icon-pulse-shield": "item"
+  },
+  "_reasoning": {
+    "bent-pipe": "Improvised melee weapon wielded by the player/mobs.",
+    "baseball-bat": "Melee weapon; concept-cascade usually rescues it, kept here as a belt-and-suspenders anchor.",
+    "slime": "Basic mob.",
+    "slime-king": "Boss mob.",
+    "rat-king": "Boss mob.",
+    "rat-queen": "Boss mob.",
+    "sewer-grate-floor-tile": "Environment floor tile.",
+    "berserker-brew": "Consumable pickup (buff potion).",
+    "prop-junk-pile": "Decoration prop -> environment/tile art.",
+    "prop-torch": "Decoration prop -> environment/tile art.",
+    "welcome-sign-left": "Procedural signage texture -> environment/tile art.",
+    "ability-icon-heal": "UI/ability icon; grouped with item for a clean same-type reference pool.",
+    "ability-icon-fireball": "UI/ability icon; grouped with item for a clean same-type reference pool.",
+    "ability-icon-pulse-shield": "UI/ability icon; grouped with item for a clean same-type reference pool."
+  }
+}

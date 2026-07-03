@@ -8,7 +8,6 @@
  * `synthesize-brief.ts` so the provider stays a thin transport.
  */
 
-import type { ReferenceSheet } from '../reference-allow-list.js';
 import { SPRITE_TYPES } from '../brief-schema.js';
 
 export interface SynthesizeBriefRequest {
@@ -24,8 +23,6 @@ export interface SynthesizeBriefRequest {
   readonly type: (typeof SPRITE_TYPES)[number] | null;
   /** Number of distinct candidates to return (1..5). */
   readonly candidates: number;
-  /** The allow-list the model must pick reference ids from. */
-  readonly referenceCatalog: ReadonlyArray<ReferenceSheet>;
   /**
    * Inclusive lower bound for `embellishmentSeeds` per candidate. The
    * synthesizer derives this from the sprite-type's `minVariations`
@@ -38,18 +35,9 @@ export interface SynthesizeBriefRequest {
   readonly effectiveMaxSeeds: number;
 }
 
-export interface SynthesizedReference {
-  /** Reference id; must appear in the request's catalog. */
-  readonly id: string;
-  /** One-sentence note describing why this ref is a good fit. */
-  readonly note: string;
-}
-
 export interface SynthesizedCandidate {
   /** Concrete pose/silhouette description (no vague adjectives). */
   readonly description: string;
-  /** 2-3 picks from the reference catalog. */
-  readonly references: ReadonlyArray<SynthesizedReference>;
   /** 3-5 starter variation ideas for the expander. */
   readonly embellishmentSeeds: ReadonlyArray<string>;
   /** Why this candidate's silhouette differs from the others. */

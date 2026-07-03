@@ -1,0 +1,31 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "sprite-reference-selector",
+  "task_title": "Dynamic on-style reference selection (retire Kenney refs)",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "notes": "rejected verdict; 5 blocking (backfill coverage gap 27/56, shared enum type, rerun reproducibility via contentHash, exact-briefId self-exclusion, hard quality floor) + 3 non-blocking (concept-collapse, test migration, numeric seed) all adopted into plan"
+    },
+    "dual_plan_synthesis": {
+      "completed": true,
+      "plan_models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+      "judge_model": "claude-opus-4.8",
+      "notes": "gpt-5.5 caught rejudge/sidecar+per-type-defaults+layering; gemini added tiered pooling; synthesized pool-first same-type selector, ignore brief.references, fail-fast on zero eligible"
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    }
+  }
+}

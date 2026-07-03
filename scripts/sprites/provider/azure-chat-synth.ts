@@ -15,7 +15,7 @@
  * The provider does NOT validate the structured response semantically
  * — it only parses it as JSON and confirms the top-level shape is
  * plausible. Field-level validation (banned adjectives, allow-list
- * membership, candidate count) is the synthesizer's job, so all the
+ * candidate count) is the synthesizer's job, so all the
  * rejection logic lives in one place.
  */
 
@@ -27,7 +27,6 @@ import type {
   SynthProviderErrorKind,
 } from './synth-types.js';
 import { SynthProviderError } from './synth-types.js';
-import { formatCatalogForPrompt } from '../reference-allow-list.js';
 import { SPRITE_TYPES } from '../brief-schema.js';
 import {
   DEFAULT_PROVIDER_TIMEOUT_MS,
@@ -178,7 +177,6 @@ export class AzureOpenAISynthProvider implements SynthProvider {
 
 export function buildSystemPrompt(request: SynthesizeBriefRequest): string {
   const wantClassify = request.type === null;
-  const referenceList = formatCatalogForPrompt(request.referenceCatalog);
   const lines: string[] = [
     'You are an art director writing concept briefs for 64x64-frame pixel-art sprites in the grungy indie style of the game Crawler — think expressive Earthbound characters crossed with worn Mad Max textures in a dark fantasy dungeon. Given a subject name, write multiple short concept briefs that a human collaborator will then pick from to send to an illustrator.',
     '',
@@ -186,12 +184,9 @@ export function buildSystemPrompt(request: SynthesizeBriefRequest): string {
     '',
     'Aim for visibly distinct candidates. Each candidate should differ in silhouette, proportion, and on-theme detail from the others — not just colour swaps. For weapons, the default orientation is vertical with the grip at the bottom.',
     '',
-    `Each candidate also picks 2-3 reference spritesheets from the catalog below, by id (use ids from the catalog exactly; do not invent paths), with a one-sentence note for each saying why it grounds that particular candidate. And ${request.effectiveMinSeeds}-${request.effectiveMaxSeeds} short, discrete embellishment ideas (4-12 words each, no compound "and" entries), which the downstream variation expander will build on. And one sentence of rationale describing how this candidate differs from the others.`,
+    `Each candidate also includes ${request.effectiveMinSeeds}-${request.effectiveMaxSeeds} short, discrete embellishment ideas (4-12 words each, no compound "and" entries), which the downstream variation expander will build on. And one sentence of rationale describing how this candidate differs from the others.`,
     '',
     `Allowed sprite types: ${SPRITE_TYPES.join(', ')}.`,
-    '',
-    'Reference catalog (id: contents):',
-    referenceList,
     '',
   ];
   if (wantClassify) {
@@ -212,7 +207,6 @@ export function buildSystemPrompt(request: SynthesizeBriefRequest): string {
     '  "candidates": [',
     '    {',
     '      "description": "<concrete prose, 50-300 chars>",',
-    '      "references": [{"id": "<catalog-id>", "note": "<one sentence>"}, ...],',
     '      "embellishmentSeeds": ["<idea1>", "<idea2>", ...],',
     '      "rationale": "<one sentence>"',
     '    }',
@@ -238,8 +232,7 @@ export function buildUserPrompt(request: SynthesizeBriefRequest): string {
 
 /**
  * Parse + lightly-validate the structured response. Heavy semantic
- * validation (banned adjectives, reference-id membership, file
- * existence) is the synthesizer's job — this function only confirms
+ * validation (banned adjectives, seed bounds) is the synthesizer's job — this function only confirms
  * the response is parseable JSON in the expected envelope so the
  * synthesizer doesn't have to deal with raw strings.
  */
@@ -297,25 +290,6 @@ function parseCandidate(value: unknown, idx: number): SynthesizedCandidate {
   const obj = value as Record<string, unknown>;
   const description = stringField(obj.description, `candidates[${idx}].description`);
   const rationale = stringField(obj.rationale, `candidates[${idx}].rationale`);
-  const refsRaw = obj.references;
-  if (!Array.isArray(refsRaw) || refsRaw.length === 0) {
-    throw new SynthProviderError(
-      'malformed',
-      `candidates[${idx}].references must be a non-empty array.`,
-    );
-  }
-  const references = refsRaw.map((r, j) => {
-    if (!r || typeof r !== 'object' || Array.isArray(r)) {
-      throw new SynthProviderError(
-        'malformed',
-        `candidates[${idx}].references[${j}] is not an object.`,
-      );
-    }
-    const robj = r as Record<string, unknown>;
-    const id = stringField(robj.id, `candidates[${idx}].references[${j}].id`);
-    const note = stringField(robj.note, `candidates[${idx}].references[${j}].note`);
-    return { id, note };
-  });
   const seedsRaw = obj.embellishmentSeeds;
   if (!Array.isArray(seedsRaw)) {
     throw new SynthProviderError(
@@ -332,7 +306,7 @@ function parseCandidate(value: unknown, idx: number): SynthesizedCandidate {
     }
     return s.trim();
   });
-  return { description, rationale, references, embellishmentSeeds };
+  return { description, rationale, embellishmentSeeds };
 }
 
 function parseInferredType(value: unknown): SynthesizeBriefResponse['inferredType'] {

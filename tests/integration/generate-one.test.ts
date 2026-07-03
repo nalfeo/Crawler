@@ -3,13 +3,20 @@
  *
  * Uses a mock ImageProvider that returns a synthetic 2x2 sheet built from the
  * same primitives the unit tests use. Generate must:
- *   load brief -> build prompt -> mock provider -> slice (GATE ONLY) ->
- *   store the RAW sheet + a minimal sheet-only summary.
+ *   load brief -> build prompt -> select OUR reference sprites -> mock provider
+ *   -> slice (GATE ONLY) -> store the RAW sheet + a minimal sheet-only summary.
  *
  * It must NOT post-process, score, or judge — those are explicit, re-runnable
  * stages exercised in `run-full.test.ts` and `sprites/rerun.test.ts`. The
  * sliceability retry gate (bad-grid -> retry) is still covered here because it
  * is the one quality check Generate keeps.
+ *
+ * References are our OWN highest-quality approved generated sprites, selected
+ * deterministically per brief (`reference-selector.ts`) — Kenney placeholder
+ * spritesheets are retired. The selector is pure, so the caller pre-filters
+ * candidates to those present on disk; this test injects a synthetic manifest
+ * plus an existence/read shim so no real `public/assets/` files are needed, and
+ * asserts the provider is handed bytes for `generated/` assets (never Kenney).
  *
  * No real network and no on-disk briefs from the repo root — the test writes a
  * temporary brief + style guide + palette into a tmp dir.
@@ -21,9 +28,12 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { PNG } from 'pngjs';
 import { generateOne } from '../../scripts/sprites/generate-one.js';
+import { loadRecordedReferencePngs } from '../../scripts/sprites/load-reference-pngs.js';
 import { loadBrief, type LoadedBrief } from '../../scripts/sprites/load-brief.js';
 import type { GenerateSheetRequest, ImageProvider } from '../../scripts/sprites/provider/types.js';
 import { ProviderError } from '../../scripts/sprites/provider/types.js';
+import type { ManifestEntry } from '../../src/shared/generated-assets.js';
+import type { SpriteType } from '../../src/shared/sprite-types.js';
 import { buildGoodSwordFixture } from '../fixtures/sprites/builders.js';
 
 const STYLE_GUIDE = [
@@ -43,6 +53,8 @@ const PALETTE_JSON = JSON.stringify([
   [255, 255, 255],
 ]);
 
+// No `references:` — generation no longer reads them; it selects our own
+// approved sprites at generate time. Kept absent to prove briefs need none.
 const BRIEF_YAML = `
 type: weapon
 name: iron-sword
@@ -51,9 +63,6 @@ palette: { id: test-palette }
 anchor: { x: 16, y: 16 }
 tags: [sword]
 prompt: An iron sword.
-references:
-  - { path: refs/a.png }
-  - { path: refs/b.png }
 generation:
   sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 }
 sensors:
@@ -85,9 +94,6 @@ palette: { id: test-palette }
 anchor: { x: 16, y: 16 }
 tags: [sword]
 prompt: An iron sword.
-references:
-  - { path: refs/a.png }
-  - { path: refs/b.png }
 generation:
   sheet: { rows: 4, cols: 4, emptyCells: [], nativeCanvas: 1024 }
 sensors:
@@ -103,6 +109,47 @@ postprocessing:
   minDimension: 64
   paletteMode: strict
 `.trim();
+
+/** Build a valid, ELIGIBLE (real, high-quality, typed) generated-manifest entry. */
+function refEntry(over: Pick<ManifestEntry, 'briefId'> & { type: SpriteType }): ManifestEntry {
+  const spriteName = `${over.briefId}-var-0`;
+  return {
+    spriteName,
+    assetPath: `generated/${spriteName}.png`,
+    approvedAt: '2026-01-01T00:00:00.000Z',
+    sourceRun: 'run-001',
+    variantIndex: 0,
+    anchor: null,
+    sensorScore: '9/10',
+    judgeScore: '4',
+    ...over,
+  };
+}
+
+/**
+ * A pool of OUR approved weapon sprites the selector can draw from. All eligible
+ * and same-`type` as the `iron-sword` briefs, so the selector fills all 3 refs
+ * from same-type generated art. None is a Kenney path.
+ */
+const REFERENCE_CANDIDATES: readonly ManifestEntry[] = [
+  refEntry({ briefId: 'battle-axe-v1', type: 'weapon' }),
+  refEntry({ briefId: 'war-hammer-v1', type: 'weapon' }),
+  refEntry({ briefId: 'dagger-v1', type: 'weapon' }),
+  refEntry({ briefId: 'greatsword-v1', type: 'weapon' }),
+  refEntry({ briefId: 'short-bow-v1', type: 'weapon' }),
+];
+
+/**
+ * Reference-plumbing injection shared by every generateOne call: feed the
+ * synthetic manifest, treat every asset as present, and return the resolved
+ * absolute path as the "PNG" bytes so the test can assert exactly which files
+ * were handed to the provider without needing real image bytes on disk.
+ */
+const refInjection = {
+  loadReferenceCandidates: () => REFERENCE_CANDIDATES,
+  referenceAssetExists: () => true,
+  readReference: (absolutePath: string) => Buffer.from(absolutePath),
+} as const;
 
 /**
  * Tile N variant PNGs (each 1024x1024) into a single rows*1024 x cols*1024 sheet,
@@ -137,6 +184,23 @@ function makeMockProvider(sheet: Buffer): ImageProvider {
   return {
     async generateSheet(_req: GenerateSheetRequest): Promise<Buffer> {
       return sheet;
+    },
+  };
+}
+
+/** Mock provider that records the last request so the test can inspect refs. */
+function makeCapturingProvider(sheet: Buffer): {
+  provider: ImageProvider;
+  lastRequest: () => GenerateSheetRequest | null;
+} {
+  let last: GenerateSheetRequest | null = null;
+  return {
+    lastRequest: () => last,
+    provider: {
+      async generateSheet(req: GenerateSheetRequest): Promise<Buffer> {
+        last = req;
+        return sheet;
+      },
     },
   };
 }
@@ -179,14 +243,10 @@ describe('generateOne — sheet-only generate stage (integration)', () => {
     mkdirSync(path.join(root, 'data', 'palettes'), { recursive: true });
     mkdirSync(path.join(root, 'docs', 'agent-os'), { recursive: true });
     mkdirSync(path.join(root, 'briefs', 'weapons'), { recursive: true });
-    mkdirSync(path.join(root, 'refs'), { recursive: true });
     writeFileSync(path.join(root, 'data', 'palettes', 'test-palette.json'), PALETTE_JSON);
     writeFileSync(path.join(root, 'docs', 'agent-os', 'sprite-style.md'), STYLE_GUIDE);
     briefPath = path.join(root, 'briefs', 'weapons', 'iron-sword.yaml');
     writeFileSync(briefPath, BRIEF_YAML);
-    // Two reference PNGs; the orchestrator just passes the bytes through.
-    writeFileSync(path.join(root, 'refs', 'a.png'), buildGoodSwordFixture());
-    writeFileSync(path.join(root, 'refs', 'b.png'), buildGoodSwordFixture());
     outputRoot = path.join(root, 'generated');
     // Preload so palette resolution honors our tmp `root` instead of cwd.
     preloaded = loadBrief(briefPath, { projectRoot: root });
@@ -212,6 +272,7 @@ describe('generateOne — sheet-only generate stage (integration)', () => {
       repoRoot: root,
       outputRoot,
       now: fixedClock,
+      ...refInjection,
     });
 
     // The raw sheet + summary are written...
@@ -235,6 +296,101 @@ describe('generateOne — sheet-only generate stage (integration)', () => {
     expect(Array.isArray(result.summary.variations.final)).toBe(true);
   });
 
+  it('sends OUR approved generated sprites as references and records the selection (no Kenney)', async () => {
+    const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
+    const sheet = tileVariantsIntoSheet(variants, 2, 2);
+    const { provider, lastRequest } = makeCapturingProvider(sheet);
+    const result = await generateOne({
+      briefPath,
+      preloaded,
+      provider,
+      repoRoot: root,
+      outputRoot,
+      now: fixedClock,
+      ...refInjection,
+    });
+
+    // The provider was handed reference PNG bytes drawn from OUR generated
+    // assets — the resolved absolute paths all live under public/assets/generated
+    // and none is a Kenney placeholder spritesheet.
+    const req = lastRequest();
+    expect(req).not.toBeNull();
+    expect(req!.referencePngs.length).toBe(3);
+    for (const buf of req!.referencePngs) {
+      const resolved = buf.toString();
+      expect(resolved).toContain(path.join('public', 'assets', 'generated'));
+      expect(resolved.toLowerCase()).not.toContain('kenney');
+    }
+
+    // The run summary records exactly which of our sprites were chosen, so a
+    // later rejudge can replay the same references (see load-reference-pngs.ts).
+    const selection = result.summary.referenceSprites;
+    expect(selection).toBeTruthy();
+    expect(selection!.selectorVersion).toBe('v1');
+    expect(selection!.requestedCount).toBe(3);
+    expect(selection!.selected.length).toBe(3);
+    // All eligible candidates were same-type (weapon), so the whole set is same-type.
+    expect(selection!.sameTypeCount).toBe(REFERENCE_CANDIDATES.length);
+    for (const ref of selection!.selected) {
+      expect(ref.type).toBe('weapon');
+      expect(ref.assetPath.startsWith('generated/')).toBe(true);
+      expect(ref.assetPath.toLowerCase()).not.toContain('kenney');
+    }
+    // Distinct concepts (no duplicate assets in a single 3-ref set).
+    const paths = selection!.selected.map((r) => r.assetPath);
+    expect(new Set(paths).size).toBe(paths.length);
+  });
+
+  it('records references a later rejudge replays verbatim (generate → summary → rejudge)', async () => {
+    const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
+    const sheet = tileVariantsIntoSheet(variants, 2, 2);
+    const result = await generateOne({
+      briefPath,
+      preloaded,
+      provider: makeMockProvider(sheet),
+      repoRoot: root,
+      outputRoot,
+      now: fixedClock,
+      ...refInjection,
+    });
+
+    // A re-judge reloads references straight from the recorded selection — OUR
+    // generated assets, resolved under public/assets/ — never the retired Kenney
+    // `brief.references`. The bytes it loads must be exactly the files generate
+    // selected, proving the generate → summary → rejudge contract end-to-end.
+    const replayed = loadRecordedReferencePngs({
+      summary: result.summary,
+      repoRoot: root,
+      assetExists: () => true,
+      readReference: (absolutePath: string) => Buffer.from(absolutePath),
+    });
+    const expectedPaths = result.summary.referenceSprites!.selected.map((ref) =>
+      path.resolve(root, 'public', 'assets', ref.assetPath),
+    );
+    expect(replayed.map((buf) => buf.toString())).toEqual(expectedPaths);
+    for (const buf of replayed) {
+      expect(buf.toString().toLowerCase()).not.toContain('kenney');
+    }
+  });
+
+  it('fails fast with an actionable error when no generated references are eligible', async () => {
+    const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
+    const sheet = tileVariantsIntoSheet(variants, 2, 2);
+    await expect(
+      generateOne({
+        briefPath,
+        preloaded,
+        provider: makeMockProvider(sheet),
+        repoRoot: root,
+        outputRoot,
+        now: fixedClock,
+        loadReferenceCandidates: () => [],
+        referenceAssetExists: () => true,
+        readReference: (absolutePath: string) => Buffer.from(absolutePath),
+      }),
+    ).rejects.toThrow(/no eligible generated reference sprites/);
+  });
+
   it('retries on a bad-grid error and ultimately succeeds within maxAttempts', async () => {
     const { provider, callCount } = makeFailingProvider(
       new ProviderError('bad-grid', 'too few cells'),
@@ -248,6 +404,7 @@ describe('generateOne — sheet-only generate stage (integration)', () => {
       outputRoot,
       maxAttempts: 3,
       now: fixedClock,
+      ...refInjection,
     });
     expect(callCount()).toBe(2);
     expect(result.attempts).toBe(2);
@@ -268,6 +425,7 @@ describe('generateOne — sheet-only generate stage (integration)', () => {
         outputRoot,
         maxAttempts: 3,
         now: fixedClock,
+        ...refInjection,
       }),
     ).rejects.toMatchObject({ kind: 'auth' });
     expect(callCount()).toBe(1);
@@ -286,6 +444,7 @@ describe('generateOne — sheet-only generate stage (integration)', () => {
         outputRoot,
         maxAttempts: 2,
         now: fixedClock,
+        ...refInjection,
       }),
     ).rejects.toMatchObject({ kind: 'bad-grid' });
     expect(callCount()).toBe(2);
@@ -303,13 +462,10 @@ describe('generateOne — exact-cell slice gate at 16 (Bug B honest happy path)'
     mkdirSync(path.join(root, 'data', 'palettes'), { recursive: true });
     mkdirSync(path.join(root, 'docs', 'agent-os'), { recursive: true });
     mkdirSync(path.join(root, 'briefs', 'weapons'), { recursive: true });
-    mkdirSync(path.join(root, 'refs'), { recursive: true });
     writeFileSync(path.join(root, 'data', 'palettes', 'test-palette.json'), PALETTE_JSON);
     writeFileSync(path.join(root, 'docs', 'agent-os', 'sprite-style.md'), STYLE_GUIDE);
     briefPath = path.join(root, 'briefs', 'weapons', 'iron-sword-16.yaml');
     writeFileSync(briefPath, BRIEF_YAML_16);
-    writeFileSync(path.join(root, 'refs', 'a.png'), buildGoodSwordFixture());
-    writeFileSync(path.join(root, 'refs', 'b.png'), buildGoodSwordFixture());
     outputRoot = path.join(root, 'generated');
     preloaded = loadBrief(briefPath, { projectRoot: root });
   }, 30_000);
@@ -332,6 +488,7 @@ describe('generateOne — exact-cell slice gate at 16 (Bug B honest happy path)'
       repoRoot: root,
       outputRoot,
       now: () => new Date('2026-06-04T12:00:00.000Z'),
+      ...refInjection,
     });
 
     expect(result.attempts).toBe(1);
