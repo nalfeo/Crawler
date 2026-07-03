@@ -30,6 +30,7 @@ import {
   buildEmptyFixture,
   buildHorizontalBarFixture,
 } from '../fixtures/sprites/builders.js';
+import { seedGeneratedReference } from '../fixtures/sprites/seed-generated-reference.js';
 
 const STYLE_GUIDE = [
   '# Style guide',
@@ -131,6 +132,7 @@ describe('runFull — one-shot full pipeline (integration)', () => {
     // Two reference PNGs; the orchestrator just passes the bytes through.
     writeFileSync(path.join(root, 'refs', 'a.png'), buildGoodSwordFixture());
     writeFileSync(path.join(root, 'refs', 'b.png'), buildGoodSwordFixture());
+    seedGeneratedReference(root);
     outputRoot = path.join(root, 'generated');
     // Preload so palette resolution honors our tmp `root` instead of cwd.
     preloaded = loadBrief(briefPath, { projectRoot: root });

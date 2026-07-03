@@ -27,6 +27,7 @@ import type {
 import { LocalRunStore } from '../../../scripts/sprites/store/local-store.js';
 import type { RunStore } from '../../../scripts/sprites/store/types.js';
 import { buildGoodSwordFixture } from './builders.js';
+import { seedGeneratedReference } from './seed-generated-reference.js';
 
 const STYLE_GUIDE = [
   '# Style guide',
@@ -192,6 +193,9 @@ export async function seedRun(options: SeedRunOptions): Promise<SeededRun> {
   writeFileSync(briefPath, briefYaml(options.judgeBlock ?? '  enabled: false'));
   writeFileSync(path.join(root, 'refs', 'a.png'), buildGoodSwordFixture());
   writeFileSync(path.join(root, 'refs', 'b.png'), buildGoodSwordFixture());
+  // Generation sends our own approved sprites as references now, so seed one
+  // eligible weapon-typed generated entry for the selector to pick.
+  seedGeneratedReference(root);
 
   const preloaded = loadBrief(briefPath, { projectRoot: root });
   const variants = options.variants ?? Array.from({ length: 4 }, () => buildGoodSwordFixture());

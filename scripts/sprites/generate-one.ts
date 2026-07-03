@@ -259,6 +259,10 @@ export async function generateSheetCore(
     (() => {
       const manifestPath =
         options.manifestPath ?? path.join(publicAssetsRoot, 'generated', 'manifest.json');
+      // No manifest yet (cold start) == no approved sprites. Return an empty
+      // pool so the zero-eligible guard below raises its actionable error
+      // instead of an opaque ENOENT.
+      if (!existsSync(manifestPath)) return [];
       const manifest = parseGeneratedManifest(JSON.parse(readFileSync(manifestPath, 'utf8')));
       return Object.values(manifest.entries);
     });
