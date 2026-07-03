@@ -3,10 +3,10 @@ import {
   createGameWorld,
   selectFloor2Roster,
   initializeFactionRelations,
+  getRelation,
   type GameWorld,
 } from '../../core/index.js';
 import { SeededRandom } from '../../shared/random.js';
-import { getRelation } from '../../core/faction-relations.js';
 import { BiomeType } from '../../shared/map-types.js';
 import type { MapConfig } from '../../shared/map-types.js';
 import { CaveSystemGenerator } from '../../core/map/generators/cave-system.js';
