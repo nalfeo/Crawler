@@ -39,6 +39,8 @@
 | Sprite batch            | `npm run sprites:batch`            |
 | Sprite asset plan       | `npm run sprites:asset-plan`       |
 | Sprite plan drafts      | `npm run sprites:plan-drafts`      |
+| Sprite worker           | `npm run sprites:worker`           |
+| Sprite ingest once      | `npm run sprites:ingest-once`      |
 | Sprite sync catalog     | `npm run sprites:sync-catalog`     |
 | Sprite metadata         | `npm run sprites:metadata`         |
 | Fast verify             | `npm run verify:fast`              |

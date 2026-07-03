@@ -1,0 +1,53 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "asset-request-ci-pipeline",
+  "task_title": "Asset-request CI pipeline (ingest-once + drain worker + GH Actions)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.5",
+      "concerns_count": 10,
+      "resolved_count": 10,
+      "notes": "plan_review flagged 4 blocking concerns and 1 major security concern. Resolutions: (1) `lastPollAt` race — exposed `pollOnce()` on `IssueIngesterController` so the CLI can `await` completion instead of watching the racy `lastPollAt` timestamp; (2) missing `permissions:` block — workflow now declares `contents: read, issues: write`; (3) missing `AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT` GH secret — workflow uses `${{ secrets.AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT || secrets.AZURE_OPENAI_CHAT_DEPLOYMENT }}` fallback matching the local setup-azure-env.ps1 default; (4) worker never exits on empty queue — introduced `SPRITES_WORKER_DRAIN=true` + `SPRITES_WORKER_MAX_EMPTY_POLLS=3` in `worker-cli-lib.ts`'s `createDrainOnStatus` wrapper that abort()s after N consecutive idle events; (5) blast-radius of Azure keys in `copilot-setup-steps.yml` — user chose to keep secrets scoped to this workflow only, so `copilot-setup-steps.yml` is intentionally unchanged. Non-blocking concerns (idempotency across retries, GH_TOKEN scope, concurrency group naming) all incorporated into the workflow YAML.",
+      "reviewer": "self",
+      "verdict": "pass"
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "clean": false,
+          "models": ["gpt-5.5"],
+          "reviewer_model": "gpt-5.5",
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "notes": "Round 1 flagged: (blocking) `nalfeo/Crawler` is a public repo and the issue template auto-applies the `asset-request` label, so any GitHub user could trigger Azure OpenAI spend; and (major) job-level `env:` block leaked all Azure keys + GH_TOKEN into `actions/checkout`, `actions/setup-node`, and `npm ci` (third-party actions + npm install-scripts saw high-value credentials they don't need). Fixes for round 2: (a) workflow-level `if:` gate now requires `github.event.issue.author_association` ∈ {OWNER, MEMBER, COLLABORATOR} for `issues` events; (b) `schedule: '*/30 * * * *'` trigger removed entirely — cron sweeps had no author gate and would re-scan every open labeled issue regardless; (c) new `SPRITES_INGESTER_ALLOWED_AUTHORS` env var + `withAuthorAllowList` decorator in `ingest-once-cli-lib.ts` — even a maintainer-triggered run cannot piggyback-process drive-by issues that happen to be open (the ingester scans EVERY open `asset-request` issue on each poll); the workflow sets this to `${{ github.repository_owner }}`; (d) `gh issue list --json` now includes `author`, propagated as optional `authorLogin` on `OpenAssetRequestIssue` (fail-closed when missing); (e) Azure env moved to step-level `env:` blocks on only the two `run:` steps that need them."
+        },
+        {
+          "round": 2,
+          "clean": false,
+          "models": ["gpt-5.5"],
+          "reviewer_model": "gpt-5.5",
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "notes": "Round 2 flagged: (high) full `npm run typecheck` failed (verify:fast uses `typecheck:src` only) — an existing `IssueIngesterController` mock in `tests/unit/sprites/sidecar-server.test.ts:1705` was missing the new `pollOnce()` method; and (medium) drain mode masked transient failures — a message that errored during processing was left unacked (Azure Queue holds it invisible for its 900s visibility timeout) but the drain wrapper still exited 0 after N empty polls, so CI showed green while the message stayed stuck. Fixes: (a) added `pollOnce: async () => (clean status)` to the sidecar-server test mock; (b) introduced `resolveDrainExitCode({ drainMode, errorCount })` pure helper + `errorCount` counter incremented in `worker-cli.ts`'s `baseOnStatus` on 'error' events; `main()` now returns the resolved exit code (1 in drain mode when any error was observed, 0 otherwise). Long-running (non-drain) mode still exits 0 on message-level errors so it keeps retrying via Azure Queue's visibility timeout as before."
+        },
+        {
+          "round": 3,
+          "clean": true,
+          "models": ["gpt-5.5"],
+          "reviewer_model": "gpt-5.5",
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "notes": "Round 3 confirmed prior fixes are tight: `resolveDrainExitCode` semantics sound (duplicate 'error' emissions only inflate the log count, not the exit decision); no other hand-rolled `IssueIngesterController` mocks in the repo are missing `pollOnce()`; the `main().then(process.exit)` pattern handles SIGINT/SIGTERM cleanly (any signal arriving after `runWorker` returns cannot interrupt the synchronous exit-code calculation)."
+        }
+      ],
+      "reviewer": "self+code-review",
+      "verdict": "pass",
+      "notes": "See per-round notes. Three rounds, two rounds of concerns, all resolved."
+    }
+  }
+}

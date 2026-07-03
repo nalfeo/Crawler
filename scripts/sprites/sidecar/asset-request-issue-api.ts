@@ -7,6 +7,14 @@ const execFileAsync = promisify(execFile);
 export interface OpenAssetRequestIssue {
   readonly number: number;
   readonly body: string;
+  /**
+   * GitHub username of the issue author. Populated by `createGhAssetRequestIssueApi`
+   * via `gh issue list --json author`. Optional so hand-constructed mock issues in
+   * tests + prior callers keep compiling without change. Consumers that want to
+   * apply an author-based trust gate (see `scripts/sprites/ingest-once-cli.ts`)
+   * must treat `undefined` as "unknown → reject".
+   */
+  readonly authorLogin?: string;
 }
 
 export interface AssetRequestIssueApi {
@@ -17,6 +25,7 @@ export interface AssetRequestIssueApi {
 interface GhIssueListItem {
   readonly number?: unknown;
   readonly body?: unknown;
+  readonly author?: unknown;
 }
 
 const OPEN_ASSET_REQUEST_ISSUE_LIMIT = '200';
@@ -36,7 +45,7 @@ export function createGhAssetRequestIssueApi(repoRoot: string): AssetRequestIssu
           '--limit',
           OPEN_ASSET_REQUEST_ISSUE_LIMIT,
           '--json',
-          'number,body',
+          'number,body,author',
         ],
         { cwd: repoRoot },
       );
@@ -54,7 +63,16 @@ export function createGhAssetRequestIssueApi(repoRoot: string): AssetRequestIssu
         if (typeof row.body !== 'string') continue;
         // Filter to issues that actually carry the machine-readable contract.
         if (!parseAssetRequestIssueBody(row.body)) continue;
-        out.push({ number: row.number, body: row.body });
+        // `gh issue list --json author` returns `{ login, id, name, is_bot }`.
+        // We only need `login` for downstream trust-gates.
+        const authorLogin =
+          row.author &&
+          typeof row.author === 'object' &&
+          'login' in row.author &&
+          typeof (row.author as { login: unknown }).login === 'string'
+            ? (row.author as { login: string }).login
+            : undefined;
+        out.push({ number: row.number, body: row.body, authorLogin });
       }
       return out;
     },

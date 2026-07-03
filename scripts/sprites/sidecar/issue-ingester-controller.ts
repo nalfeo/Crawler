@@ -66,6 +66,15 @@ export interface IssueIngesterController {
   start(): { readonly started: boolean; readonly status: IssueIngesterStatus };
   stop(): Promise<IssueIngesterStatus>;
   status(): IssueIngesterStatus;
+  /**
+   * Run a single ingest poll and resolve once it completes. Unlike {@link start},
+   * this does NOT arm the background timer — callers use it for one-shot CI runs
+   * where they need to await ingestion (so `process.exit` doesn't cut off an
+   * in-flight enqueue / state save). Safe to call when the background loop is
+   * not running; the underlying poll uses the same state lock, so a caller that
+   * accidentally interleaves it with a running loop won't corrupt state.
+   */
+  pollOnce(): Promise<IssueIngesterStatus>;
   listRequests(
     state?: 'all' | 'pending' | 'claimed' | 'rejected',
   ): Promise<readonly AssetRequestManifestEntry[]>;
@@ -293,6 +302,14 @@ export function createIssueIngesterController(
       if (timer) clearTimeout(timer);
       timer = null;
       stoppedAt = now().toISOString();
+      return snapshot();
+    },
+    async pollOnce() {
+      try {
+        await pollOnce();
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+      }
       return snapshot();
     },
     status: snapshot,
