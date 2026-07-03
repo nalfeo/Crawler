@@ -347,6 +347,10 @@ interface NpcTarget extends WorldTarget {
   interactionReason: string;
 }
 
+interface TacticalOpportunityEnemySnapshot extends WorldTarget {
+  hp: number;
+}
+
 export interface AINavigationDebug {
   pathWaypoints: TilePoint[];
   pathIndex: number;
@@ -2349,19 +2353,39 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
   }
 
-  private estimateOpportunityDanger(
+  private collectTacticalOpportunityEnemySnapshots(
     world: GameWorld,
+    playerX: number,
+    playerY: number,
+    radiusFt: number = TRAVEL_THREAT_RADIUS_FT,
+  ): TacticalOpportunityEnemySnapshot[] {
+    const maxPlayerDistance = TACTICAL_OPPORTUNITY_SCAN_RADIUS_FT + radiusFt;
+    const maxPlayerDistanceSq = maxPlayerDistance * maxPlayerDistance;
+    const enemies: TacticalOpportunityEnemySnapshot[] = [];
+    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
+      if (eid === undefined) continue;
+      const hp = world.stores.health.current[eid] ?? 0;
+      if (hp <= 0) continue;
+      const x = world.stores.position.x[eid] ?? 0;
+      const y = world.stores.position.y[eid] ?? 0;
+      const dx = x - playerX;
+      const dy = y - playerY;
+      const distanceSq = dx * dx + dy * dy;
+      if (distanceSq > maxPlayerDistanceSq) continue;
+      enemies.push({ eid, hp, x, y, distance: Math.sqrt(distanceSq) });
+    }
+    return enemies;
+  }
+
+  private estimateOpportunityDanger(
+    enemies: readonly TacticalOpportunityEnemySnapshot[],
     x: number,
     y: number,
     radiusFt: number = TRAVEL_THREAT_RADIUS_FT,
   ): number {
     let danger = 0;
-    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
-      if (eid === undefined) continue;
-      if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
-      const ex = world.stores.position.x[eid] ?? 0;
-      const ey = world.stores.position.y[eid] ?? 0;
-      const dist = Math.hypot(ex - x, ey - y);
+    for (const enemy of enemies) {
+      const dist = Math.hypot(enemy.x - x, enemy.y - y);
       if (dist > radiusFt) continue;
       danger += 1 - dist / radiusFt;
     }
@@ -2374,6 +2398,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
   ): TacticalOpportunityCandidate[] {
     const candidates: TacticalOpportunityCandidate[] = [];
+    const enemies = this.collectTacticalOpportunityEnemySnapshots(world, playerX, playerY);
     const lootSources: Array<{ kind: TacticalPickupKind; entities: ReturnType<typeof query> }> = [
       { kind: 'xp', entities: query(world.ecs, [XpGem, Position]) },
       { kind: 'gold', entities: query(world.ecs, [Gold, Position]) },
@@ -2400,33 +2425,32 @@ export class BehaviorTreeAI implements AIInputProvider {
           x,
           y,
           value: this.getLootOpportunityValue(world, eid, source.kind),
-          danger: this.estimateOpportunityDanger(world, x, y),
+          danger: this.estimateOpportunityDanger(enemies, x, y),
           reachable: this.isLootCollectable(world, playerX, playerY, loot),
         });
       }
     }
 
     if (this.config.debug) {
-      for (const eid of query(world.ecs, [Enemy, Position, Health])) {
-        if (eid === undefined) continue;
-        const hp = world.stores.health.current[eid] ?? 0;
-        if (hp <= 0) continue;
-        const x = world.stores.position.x[eid] ?? 0;
-        const y = world.stores.position.y[eid] ?? 0;
-        const distance = Math.hypot(x - playerX, y - playerY);
-        if (distance > TACTICAL_OPPORTUNITY_SCAN_RADIUS_FT) continue;
-        const target: WorldTarget = { eid, x, y, distance };
+      for (const enemy of enemies) {
+        if (enemy.distance > TACTICAL_OPPORTUNITY_SCAN_RADIUS_FT) continue;
+        const target: WorldTarget = {
+          eid: enemy.eid,
+          x: enemy.x,
+          y: enemy.y,
+          distance: enemy.distance,
+        };
         candidates.push({
-          id: eid,
+          id: enemy.eid,
           kind: 'enemyPack',
-          x,
-          y,
+          x: enemy.x,
+          y: enemy.y,
           value: Math.max(
             TACTICAL_OPPORTUNITY_ENEMY_PACK_MIN_VALUE,
             TACTICAL_OPPORTUNITY_ENEMY_PACK_BASE_VALUE -
-              hp * TACTICAL_OPPORTUNITY_ENEMY_PACK_HP_PENALTY,
+              enemy.hp * TACTICAL_OPPORTUNITY_ENEMY_PACK_HP_PENALTY,
           ),
-          danger: this.estimateOpportunityDanger(world, x, y),
+          danger: this.estimateOpportunityDanger(enemies, enemy.x, enemy.y),
           reachable: this.isTargetReachable(world, playerX, playerY, target),
           debugOnly: true,
         });
