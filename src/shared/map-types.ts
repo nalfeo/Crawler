@@ -162,6 +162,13 @@ export interface RoomData {
   readonly label?: string;
   /** Floor 2 — index into the present-families roster (0..presentCount-1) for TERRITORY / BOSS_DEN rooms. Slice 8 binds this to a real family id. */
   readonly familyIndex?: number;
+  /**
+   * Explicit interior tile mask. Populated by irregular-shape generators (e.g. CaveSystemGenerator)
+   * where the axis-aligned {@link bounds} would falsely claim wall tiles as interior. When present,
+   * RoomGraph uses these tiles for `getRoomAt` / `getRandomInteriorTile`; when absent, generators
+   * fall back to the classic 1-tile-inset-of-bounds behaviour used by rectangular room generators.
+   */
+  readonly interiorCells?: ReadonlyArray<{ readonly x: number; readonly y: number }>;
 }
 
 // --- Floor Map (composite output of generation) ---

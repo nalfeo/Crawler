@@ -196,4 +196,67 @@ describe('CaveSystemGenerator', () => {
   it('rejects presentCount < 1', () => {
     expect(() => new CaveSystemGenerator({ presentCount: 0 })).toThrowError(/presentCount/);
   });
+
+  it('BOSS_STAIR_FLOOR is stamped inside the RESOURCE_HEART region on every seed', () => {
+    // Guards against the "centroid falls on a wall pocket -> stamps zero tiles" bug
+    // that neither the reachability check nor the bounds-centered search would catch.
+    for (const seed of [1, 2, 3, 4, 5, 7, 11, 42, 100, 12345]) {
+      const floor = generateWithPresent(seed, 4);
+      const w = floor.config.widthTiles;
+      let count = 0;
+      for (let i = 0; i < floor.terrain.length; i++) {
+        if (floor.terrain[i] === TerrainType.BOSS_STAIR_FLOOR) count++;
+      }
+      expect(count, `seed=${seed} produced no BOSS_STAIR_FLOOR tile`).toBeGreaterThanOrEqual(1);
+      const heart = floor.roomGraph.getAll().find((r) => r.role === RoomRole.RESOURCE_HEART)!;
+      const { x, y, width, height } = heart.bounds;
+      for (let ty = 0; ty < floor.config.heightTiles; ty++) {
+        for (let tx = 0; tx < w; tx++) {
+          if (floor.terrain[ty * w + tx] !== TerrainType.BOSS_STAIR_FLOOR) continue;
+          expect(
+            tx >= x && tx < x + width && ty >= y && ty < y + height,
+            `seed=${seed} BOSS_STAIR_FLOOR at ${tx},${ty} outside RESOURCE_HEART bounds`,
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('open cave regions register non-empty semantic adjacency in RoomGraph', () => {
+    const floor = generateWithPresent(42, 4);
+    const roles = [
+      RoomRole.SPAWN,
+      RoomRole.TERRITORY,
+      RoomRole.SETTLEMENT,
+      RoomRole.RESOURCE_HEART,
+    ];
+    for (const room of floor.roomGraph.getAll()) {
+      if (!roles.includes(room.role)) continue;
+      const neighbours = floor.roomGraph.getConnectedRooms(room.id);
+      expect(neighbours.length, `room ${room.id} (${room.role}) has no neighbours`).toBeGreaterThan(
+        0,
+      );
+    }
+  });
+
+  it('RoomGraph.getRoomAt reports -1 for a wall tile inside a cave region bbox', () => {
+    // Rectangular-bounds spatial cache used to falsely claim wall tiles as room
+    // members; irregular caves now supply `interiorCells` so wall tiles inside
+    // the bbox are not attributed to any room.
+    const floor = generateWithPresent(1, 4);
+    const w = floor.config.widthTiles;
+    const room = floor.roomGraph
+      .getAll()
+      .find((r) => r.role === RoomRole.SPAWN || r.role === RoomRole.TERRITORY)!;
+    let checked = 0;
+    for (let ty = room.bounds.y; ty < room.bounds.y + room.bounds.height && checked < 5; ty++) {
+      for (let tx = room.bounds.x; tx < room.bounds.x + room.bounds.width && checked < 5; tx++) {
+        if (!floor.tileMap.isPassable(tx, ty)) {
+          expect(floor.roomGraph.getRoomAt(tx, ty)).toBe(-1);
+          checked++;
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
 });

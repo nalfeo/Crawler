@@ -23,9 +23,7 @@
     "roomHeightRange": [6, 14],
     "maxRooms": 55,
     "floorDensity": 0.45,
-    "tileSizeFt": 4.0,
-    "_biome": "cave_system",
-    "_TODO_floor2_slice_8": "Slice 8 owns: (a) extending the loader schema to read `biome`, `presentCount`, and family/resource/shop config; (b) wiring floorScenario to look up BiomeType.CAVE_SYSTEM here; (c) picking present-count (3 or 4) and the roster. Slice 2 only sets the geometry (270x156 cave-system biome). These `_` fields are informational until then."
+    "tileSizeFt": 4.0
   },
   "enemyPackId": "floor2-ambient",
   "player": {

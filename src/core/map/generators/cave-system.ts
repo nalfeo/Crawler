@@ -166,7 +166,7 @@ export class CaveSystemGenerator implements MapGenerator {
     }
 
     // --- 4. Multi-source BFS segmentation ------------------------------
-    const regions = this.segmentRegions(tileMap, w, h, seeds);
+    const { regions, adjacency } = this.segmentRegions(tileMap, w, h, seeds);
     if (regions.length < needed) {
       throw new Error(`segmentation produced ${regions.length}/${needed} regions`);
     }
@@ -224,15 +224,43 @@ export class CaveSystemGenerator implements MapGenerator {
     if (!settlementRegion) throw new Error('settlement region missing');
 
     // --- 6. Register regions as RoomData -------------------------------
-    void this.addRegionAsRoom(roomGraph, spawnRegion, RoomRole.SPAWN);
+    // Track region.id -> roomGraph roomId so we can wire cavern-to-cavern
+    // adjacency post-registration (fixes RoomGraph.getConnectedRooms returning
+    // empty for open-cave regions).
+    const regionIdToRoomId = new Map<number, number>();
+    regionIdToRoomId.set(
+      spawnRegion.id,
+      this.addRegionAsRoom(roomGraph, spawnRegion, RoomRole.SPAWN, w),
+    );
     const territoryRoomIds: number[] = [];
     for (let fi = 0; fi < territoryRegions.length; fi++) {
       const region = territoryRegions[fi]!;
-      const rid = this.addRegionAsRoom(roomGraph, region, RoomRole.TERRITORY, fi);
+      const rid = this.addRegionAsRoom(roomGraph, region, RoomRole.TERRITORY, w, fi);
+      regionIdToRoomId.set(region.id, rid);
       territoryRoomIds.push(rid);
     }
-    void this.addRegionAsRoom(roomGraph, settlementRegion, RoomRole.SETTLEMENT);
-    void this.addRegionAsRoom(roomGraph, heart, RoomRole.RESOURCE_HEART);
+    regionIdToRoomId.set(
+      settlementRegion.id,
+      this.addRegionAsRoom(roomGraph, settlementRegion, RoomRole.SETTLEMENT, w),
+    );
+    regionIdToRoomId.set(
+      heart.id,
+      this.addRegionAsRoom(roomGraph, heart, RoomRole.RESOURCE_HEART, w),
+    );
+
+    // Wire cavern-to-cavern semantic adjacency from the segmentation adjacency map.
+    // Only add each undirected edge once by iterating with a < b guard.
+    for (const [regionA, neighbours] of adjacency) {
+      const roomA = regionIdToRoomId.get(regionA);
+      if (roomA === undefined) continue;
+      for (const regionB of neighbours) {
+        if (regionB <= regionA) continue; // dedupe
+        const roomB = regionIdToRoomId.get(regionB);
+        if (roomB === undefined) continue;
+        roomGraph.addNeighbor(roomA, roomB);
+        roomGraph.addNeighbor(roomB, roomA);
+      }
+    }
 
     // Stamp RESOURCE_HEART centre and immediate neighbours with BOSS_STAIR_FLOOR
     // so Slice 5 can reuse Floor 1's stair-spawn logic unchanged.
@@ -390,7 +418,7 @@ export class CaveSystemGenerator implements MapGenerator {
     w: number,
     h: number,
     seeds: Array<{ x: number; y: number }>,
-  ): RegionInfo[] {
+  ): { regions: RegionInfo[]; adjacency: Map<number, Set<number>> } {
     const owner = new Int32Array(w * h).fill(-1);
     const queue: number[] = [];
     for (let i = 0; i < seeds.length; i++) {
@@ -457,14 +485,54 @@ export class CaveSystemGenerator implements MapGenerator {
         r.centroidY = Math.round(r.centroidY / r.cells.length);
       }
     }
+    // Compute inter-region adjacency by walking every passable cell and comparing
+    // its 4-neighbours' owner. This is the semantic-graph counterpart to the
+    // tile-level `.connect()` flood, so that Slice 3+ AI systems that navigate by
+    // `RoomGraph.getConnectedRooms` see the same topology the tile map already has.
+    const adjacency = new Map<number, Set<number>>();
+    for (let i = 0; i < seeds.length; i++) adjacency.set(i, new Set<number>());
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = y * w + x;
+        const a = owner[idx]!;
+        if (a < 0) continue;
+        const rightIdx = x + 1 < w ? idx + 1 : -1;
+        const downIdx = y + 1 < h ? idx + w : -1;
+        if (rightIdx >= 0) {
+          const b = owner[rightIdx]!;
+          if (b >= 0 && b !== a) {
+            adjacency.get(a)!.add(b);
+            adjacency.get(b)!.add(a);
+          }
+        }
+        if (downIdx >= 0) {
+          const b = owner[downIdx]!;
+          if (b >= 0 && b !== a) {
+            adjacency.get(a)!.add(b);
+            adjacency.get(b)!.add(a);
+          }
+        }
+      }
+    }
     // Filter tiny regions (<25 tiles) — they'd make lousy caverns.
-    return regions.filter((r) => r.cells.length >= 25);
+    const kept = regions.filter((r) => r.cells.length >= 25);
+    const keptIds = new Set(kept.map((r) => r.id));
+    // Drop adjacency entries pointing to filtered-out regions.
+    for (const [id, set] of adjacency) {
+      if (!keptIds.has(id)) {
+        adjacency.delete(id);
+        continue;
+      }
+      for (const n of Array.from(set)) if (!keptIds.has(n)) set.delete(n);
+    }
+    return { regions: kept, adjacency };
   }
 
   private addRegionAsRoom(
     roomGraph: RoomGraph,
     region: RegionInfo,
     role: RoomRole,
+    w: number,
     familyIndex?: number,
   ): number {
     const bounds: RoomBounds = {
@@ -473,10 +541,20 @@ export class CaveSystemGenerator implements MapGenerator {
       width: region.maxX - region.minX + 1,
       height: region.maxY - region.minY + 1,
     };
-    return roomGraph.add(bounds, [], [], role, undefined, familyIndex);
+    const interiorCells = region.cells.map((idx) => ({ x: idx % w, y: (idx / w) | 0 }));
+    return roomGraph.add(bounds, [], [], role, undefined, familyIndex, interiorCells);
   }
 
-  /** Stamp the resource-heart centre + immediate 3×3 with BOSS_STAIR_FLOOR terrain. */
+  /**
+   * Stamp the resource-heart centre + immediate 3×3 with BOSS_STAIR_FLOOR terrain
+   * so Slice 5's stair-spawn logic can pick a deterministic tile.
+   *
+   * The heart region can be non-convex (cellular.connect() may stitch narrow arms
+   * on), so the arithmetic centroid can land on a wall pocket with no passable
+   * neighbours in the immediate 3×3. When that happens we fall back to the
+   * region's most-interior floor cell (max distance-to-wall) and stamp a 3×3
+   * around it.
+   */
   private stampBossStairAtHeart(
     heart: RegionInfo,
     terrain: Uint8Array,
@@ -484,15 +562,58 @@ export class CaveSystemGenerator implements MapGenerator {
     w: number,
     h: number,
   ): void {
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const nx = heart.centroidX + dx;
-        const ny = heart.centroidY + dy;
-        if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
-        if (tileMap.isPassable(nx, ny)) {
-          terrain[ny * w + nx] = TerrainType.BOSS_STAIR_FLOOR;
+    const stampAround = (cx: number, cy: number): number => {
+      let stamped = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = cx + dx;
+          const ny = cy + dy;
+          if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+          if (tileMap.isPassable(nx, ny)) {
+            terrain[ny * w + nx] = TerrainType.BOSS_STAIR_FLOOR;
+            stamped++;
+          }
         }
       }
+      return stamped;
+    };
+
+    let stamped = stampAround(heart.centroidX, heart.centroidY);
+    if (stamped === 0) {
+      // Fallback: pick the passable cell in the heart region farthest from any wall.
+      let bestIdx = -1;
+      let bestDist = -1;
+      for (const idx of heart.cells) {
+        const cx = idx % w;
+        const cy = (idx / w) | 0;
+        if (!tileMap.isPassable(cx, cy)) continue;
+        // Cheap "distance to wall" proxy: min chebyshev distance to a non-passable neighbour within radius 2.
+        let d = 3;
+        for (let dy = -2; dy <= 2 && d > 0; dy++) {
+          for (let dx = -2; dx <= 2 && d > 0; dx++) {
+            const nx = cx + dx;
+            const ny = cy + dy;
+            if (nx < 0 || nx >= w || ny < 0 || ny >= h || !tileMap.isPassable(nx, ny)) {
+              const chebyshev = Math.max(Math.abs(dx), Math.abs(dy));
+              if (chebyshev < d) d = chebyshev;
+            }
+          }
+        }
+        if (d > bestDist) {
+          bestDist = d;
+          bestIdx = idx;
+        }
+      }
+      if (bestIdx >= 0) {
+        stamped = stampAround(bestIdx % w, (bestIdx / w) | 0);
+      }
+    }
+    if (stamped === 0) {
+      // Structural failure: the reachability retry loop will bail on this attempt
+      // and try the next sub-seed, but throw here so the caller diagnoses it early.
+      throw new Error(
+        `resource-heart region has no passable cell to stamp BOSS_STAIR_FLOOR (centroid=${heart.centroidX},${heart.centroidY}, cells=${heart.cells.length})`,
+      );
     }
   }
 
