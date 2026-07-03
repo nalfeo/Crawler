@@ -153,6 +153,8 @@ import {
   PANIC_MIN_DODGE_WEIGHT_SCALE_LOCKED,
   QUEST_GIVER_DETOUR_MAX_EXTRA_FT,
   QUEST_GIVER_DETOUR_MAX_EXTRA_FRACTION,
+  QUEST_GIVER_DETOUR_COMMIT_HYSTERESIS,
+  QUEST_GIVER_DETOUR_ABANDON_FRAMES,
   NPC_INTERACTION_RADIUS_FT,
   NPC_APPROACH_THREAT_RADIUS_FT,
   TRAVEL_STEERING_ENABLED,
@@ -445,6 +447,28 @@ export class BehaviorTreeAI implements AIInputProvider {
   private dodgeVecX: number = 0;
   private dodgeVecY: number = 0;
   private acceptedQuestCount: number = 0;
+  /**
+   * Quest-giver detour hysteresis. Once {@link withQuestGiverDetour} ACCEPTS a
+   * detour to a quest NPC, its entity id is latched here and re-derived directly
+   * each poll (bypassing {@link findNearestRelevantNpc}'s `playerInSafeRoom`
+   * filter) so the detour survives the safe-room-mouth boundary flicker instead
+   * of flip-flopping the selected objective every frame. Released when the NPC is
+   * reached/handled/gone, when the relaxed cap is exceeded, when progress-goal
+   * suppression is active, or by the no-progress abandon valve below. `null` when
+   * no detour is committed; reset per run in {@link reset}.
+   */
+  private committedDetourNpcEid: number | null = null;
+  /** Smallest player→committed-NPC distance seen since committing; drives the
+   * no-progress abandon valve. `+Infinity` while no detour is committed. */
+  private committedDetourBestDistance: number = Number.POSITIVE_INFINITY;
+  /** Consecutive polls with no improvement toward the committed NPC. Once it
+   * exceeds {@link QUEST_GIVER_DETOUR_ABANDON_FRAMES} the CURRENT commitment is
+   * released. Note this only drops the latch — it does not blacklist the NPC, so
+   * if that NPC is still the nearest on-path candidate under the strict base cap,
+   * Block D may re-select it on a later poll, exactly as the pre-hysteresis
+   * baseline did. The valve therefore bounds a single sticky commitment, not the
+   * runner's total time near an unreachable NPC. */
+  private committedDetourNoProgressFrames: number = 0;
 
   constructor(config: AIConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -2130,64 +2154,80 @@ export class BehaviorTreeAI implements AIInputProvider {
     target: ProgressTarget,
     panicProfile: CollapsePanicProfile,
   ): ProgressTarget {
+    // A. Hard early exits (release any stale commitment first).
     if (panicProfile.beeline) {
+      // Late-floor emergency beeline: never sit on a detour.
+      this.releaseDetourCommitment();
       return target;
     }
     if (target.eid >= 0 && world.npcs.has(target.eid)) {
+      // The main objective is itself an NPC; don't stack a detour on top.
+      this.releaseDetourCommitment();
       return target;
     }
+    if (world.frameCount < this.progressGoalSuppressedUntilFrame) {
+      // Stall-recovery is suppressing wedged progress goals. Yield entirely — drop
+      // any held commitment AND make no fresh one — so the BT falls through to
+      // Hunt/Engage relocation instead of re-parking on a quest NPC. Hoisted above
+      // Blocks B–D so it closes every commit path (a Block-C-only check let Block B
+      // and Block D immediately re-commit and defeat the watchdog).
+      this.releaseDetourCommitment();
+      return target;
+    }
+
     const nearestNpc = this.findNearestRelevantNpc(world, playerEid, playerX, playerY);
+    const nearestRelevant =
+      nearestNpc &&
+      typeof nearestNpc.interactionReason === 'string' &&
+      nearestNpc.interactionReason.length > 0 &&
+      nearestNpc.eid !== target.eid
+        ? nearestNpc
+        : null;
+
+    // B. A fresh same-safe-room relevant NPC is a stable, high-priority pick that
+    //    PREEMPTS any stale outside-room commitment. Same-room is a steady state
+    //    (both bodies inside the safe room), not the mouth-boundary flicker, so it
+    //    cannot reintroduce per-frame thrash. Only a DIFFERENT NPC preempts here:
+    //    if it is already the committed NPC, fall through to Block C so the
+    //    no-progress valve / relaxed cap keep ticking (Block B is a same-eid no-op,
+    //    so a same-room commit routed through here would never self-release).
     if (
-      !nearestNpc ||
-      typeof nearestNpc.interactionReason !== 'string' ||
-      nearestNpc.interactionReason.length === 0
+      nearestRelevant &&
+      nearestRelevant.eid !== this.committedDetourNpcEid &&
+      world.playerInSafeRoom &&
+      isPointInSafeSpace(world, nearestRelevant.x, nearestRelevant.y) &&
+      this.isPlayerAndNpcInSameSafeRoom(
+        world,
+        playerX,
+        playerY,
+        nearestRelevant.x,
+        nearestRelevant.y,
+      )
     ) {
+      return this.commitDetourTo(nearestRelevant, playerX, playerY);
+    }
+
+    // C. Honor an existing commitment, re-derived live (bypassing the
+    //    findNearestRelevantNpc safe-room filter) so it survives the
+    //    playerInSafeRoom mouth-boundary flicker. This is the core fix.
+    const committed = this.getCommittedQuestGiverDetour(world, playerEid, playerX, playerY, target);
+    if (committed) {
+      return this.detourTargetFor(committed, playerX, playerY);
+    }
+
+    // D. No commitment → fresh candidate selection with the STRICT base cap.
+    if (!nearestRelevant) {
       return target;
     }
-    if (nearestNpc.eid === target.eid) {
+    // Arrival guard: within interaction range the Interact node owns the NPC
+    // (nearestRelevant came from findNearestRelevantNpc, so it is eligible now).
+    if (this.withinInteractionRange(nearestRelevant.distance)) {
       return target;
-    }
-    if (world.playerInSafeRoom && isPointInSafeSpace(world, nearestNpc.x, nearestNpc.y)) {
-      const floorMap = world.floorMap;
-      if (floorMap) {
-        const playerTile = floorMap.worldToTile(playerX, playerY);
-        const npcTile = floorMap.worldToTile(nearestNpc.x, nearestNpc.y);
-        const safeRooms = floorMap.roomGraph.getRoomsByRole(RoomRole.SAFE);
-
-        // Check if both player and NPC are in the same safe room
-        let sameRoom = false;
-        for (const {
-          bounds: { x: rx, y: ry, width, height },
-        } of safeRooms) {
-          const playerInRoom =
-            playerTile.x >= rx &&
-            playerTile.x < rx + width &&
-            playerTile.y >= ry &&
-            playerTile.y < ry + height;
-          const npcInRoom =
-            npcTile.x >= rx && npcTile.x < rx + width && npcTile.y >= ry && npcTile.y < ry + height;
-          if (playerInRoom && npcInRoom) {
-            sameRoom = true;
-            break;
-          }
-        }
-
-        if (sameRoom) {
-          const readableReason = nearestNpc.interactionReason.replaceAll('-', ' ');
-          return this.createProgressTarget(
-            nearestNpc.x,
-            nearestNpc.y,
-            playerX,
-            playerY,
-            `Detouring to ${nearestNpc.defId} (${readableReason})`,
-            nearestNpc.eid,
-          );
-        }
-      }
     }
 
     const viaNpcDistance =
-      nearestNpc.distance + Math.hypot(target.x - nearestNpc.x, target.y - nearestNpc.y);
+      nearestRelevant.distance +
+      Math.hypot(target.x - nearestRelevant.x, target.y - nearestRelevant.y);
     const detourExtra = viaNpcDistance - target.distance;
     const detourCap = Math.max(
       QUEST_GIVER_DETOUR_MAX_EXTRA_FT,
@@ -2197,15 +2237,163 @@ export class BehaviorTreeAI implements AIInputProvider {
       return target;
     }
 
-    const readableReason = nearestNpc.interactionReason.replaceAll('-', ' ');
+    return this.commitDetourTo(nearestRelevant, playerX, playerY);
+  }
+
+  /** Interaction-range predicate, matching the `Interact` BT node exactly (strict
+   * `<`) so a committed detour hands off to Interact on the same frame it would
+   * fire, with no 1-frame "drop the NPC" gap. */
+  private withinInteractionRange(distance: number): boolean {
+    return distance < NPC_INTERACTION_RADIUS_FT;
+  }
+
+  /** Whether an NPC at (npcX, npcY) is eligible for interaction this frame — i.e.
+   * not filtered by the same `playerInSafeRoom && !isPointInSafeSpace` guard that
+   * {@link findNearestRelevantNpc} and the Interact node apply. */
+  private isNpcInteractEligible(world: GameWorld, npcX: number, npcY: number): boolean {
+    return !(world.playerInSafeRoom && !isPointInSafeSpace(world, npcX, npcY));
+  }
+
+  /** True when the player and the NPC occupy the same SAFE room. */
+  private isPlayerAndNpcInSameSafeRoom(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    npcX: number,
+    npcY: number,
+  ): boolean {
+    const floorMap = world.floorMap;
+    if (!floorMap) {
+      return false;
+    }
+    const playerTile = floorMap.worldToTile(playerX, playerY);
+    const npcTile = floorMap.worldToTile(npcX, npcY);
+    const safeRooms = floorMap.roomGraph.getRoomsByRole(RoomRole.SAFE);
+    for (const {
+      bounds: { x: rx, y: ry, width, height },
+    } of safeRooms) {
+      const playerInRoom =
+        playerTile.x >= rx &&
+        playerTile.x < rx + width &&
+        playerTile.y >= ry &&
+        playerTile.y < ry + height;
+      const npcInRoom =
+        npcTile.x >= rx && npcTile.x < rx + width && npcTile.y >= ry && npcTile.y < ry + height;
+      if (playerInRoom && npcInRoom) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Build a "Detouring to …" progress target pointing at the given NPC. */
+  private detourTargetFor(npc: NpcTarget, playerX: number, playerY: number): ProgressTarget {
+    const readableReason = npc.interactionReason.replaceAll('-', ' ');
     return this.createProgressTarget(
-      nearestNpc.x,
-      nearestNpc.y,
+      npc.x,
+      npc.y,
       playerX,
       playerY,
-      `Detouring to ${nearestNpc.defId} (${readableReason})`,
-      nearestNpc.eid,
+      `Detouring to ${npc.defId} (${readableReason})`,
+      npc.eid,
     );
+  }
+
+  /** Latch a detour commitment on the given NPC (resetting the no-progress valve
+   * when the committed entity changes) and return the detour target. */
+  private commitDetourTo(npc: NpcTarget, playerX: number, playerY: number): ProgressTarget {
+    if (this.committedDetourNpcEid !== npc.eid) {
+      this.committedDetourNpcEid = npc.eid;
+      this.committedDetourBestDistance = npc.distance;
+      this.committedDetourNoProgressFrames = 0;
+    }
+    return this.detourTargetFor(npc, playerX, playerY);
+  }
+
+  /** Clear any active detour commitment and its no-progress bookkeeping. */
+  private releaseDetourCommitment(): void {
+    this.committedDetourNpcEid = null;
+    this.committedDetourBestDistance = Number.POSITIVE_INFINITY;
+    this.committedDetourNoProgressFrames = 0;
+  }
+
+  /**
+   * Re-derive the currently-committed quest-giver detour NPC directly from world
+   * state — deliberately NOT via {@link findNearestRelevantNpc}, whose
+   * `playerInSafeRoom` filter is exactly what flip-flops at the safe-room mouth.
+   * Returns the live NPC target while the commitment is still valid, or null (and
+   * clears the commitment) on any release condition.
+   */
+  private getCommittedQuestGiverDetour(
+    world: GameWorld,
+    playerEid: number,
+    playerX: number,
+    playerY: number,
+    target: ProgressTarget,
+  ): NpcTarget | null {
+    const eid = this.committedDetourNpcEid;
+    if (eid === null) {
+      return null;
+    }
+    // NOTE: progress-goal suppression is handled up-front in withQuestGiverDetour
+    // (Block A), which releases the commitment and returns before this helper runs,
+    // so no suppression check is needed (or reachable) here.
+    const instance = world.npcs.get(eid);
+    if (!instance) {
+      this.releaseDetourCommitment();
+      return null;
+    }
+    const x = world.stores.position.x[eid];
+    const y = world.stores.position.y[eid];
+    if (x === undefined || y === undefined || !Number.isFinite(x) || !Number.isFinite(y)) {
+      this.releaseDetourCommitment();
+      return null;
+    }
+    const interactionReason = this.getNpcInteractionReason(world, playerEid, eid);
+    if (typeof interactionReason !== 'string' || interactionReason.length === 0) {
+      // NPC handled — nothing left to interact with.
+      this.releaseDetourCommitment();
+      return null;
+    }
+    const distance = Math.hypot(x - playerX, y - playerY);
+    // Arrival: within range AND actually eligible this frame → let Interact own it.
+    // If in range but still filtered (in-safe, NPC outside), KEEP steering so the
+    // player crosses out and Interact becomes eligible, rather than dropping it.
+    if (this.withinInteractionRange(distance) && this.isNpcInteractEligible(world, x, y)) {
+      this.releaseDetourCommitment();
+      return null;
+    }
+    // No-progress abandon valve: release an unreachable / body-blocked / locked-out
+    // committed NPC well under the floor-collapse deadline.
+    if (distance < this.committedDetourBestDistance - ENGAGE_PROGRESS_EPSILON_FT) {
+      this.committedDetourBestDistance = distance;
+      this.committedDetourNoProgressFrames = 0;
+    } else {
+      this.committedDetourNoProgressFrames += 1;
+      if (this.committedDetourNoProgressFrames > QUEST_GIVER_DETOUR_ABANDON_FRAMES) {
+        this.releaseDetourCommitment();
+        return null;
+      }
+    }
+    // Relaxed cap: only the already-committed path tolerates the widened detour.
+    const viaNpcDistance = distance + Math.hypot(target.x - x, target.y - y);
+    const detourExtra = viaNpcDistance - target.distance;
+    const detourCap = Math.max(
+      QUEST_GIVER_DETOUR_MAX_EXTRA_FT,
+      target.distance * QUEST_GIVER_DETOUR_MAX_EXTRA_FRACTION,
+    );
+    if (detourExtra > detourCap * QUEST_GIVER_DETOUR_COMMIT_HYSTERESIS) {
+      this.releaseDetourCommitment();
+      return null;
+    }
+    return {
+      eid,
+      x,
+      y,
+      distance,
+      defId: instance.defId,
+      interactionReason,
+    };
   }
 
   private moveToward(
@@ -4252,5 +4440,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.dodgeVecX = 0;
     this.dodgeVecY = 0;
     this.acceptedQuestCount = 0;
+    this.committedDetourNpcEid = null;
+    this.committedDetourBestDistance = Number.POSITIVE_INFINITY;
+    this.committedDetourNoProgressFrames = 0;
   }
 }

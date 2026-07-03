@@ -1,0 +1,10 @@
+{
+  "date": "2026-07-02",
+  "session": "fix-ai-nav-wedge-cluster",
+  "estimated_apples": 4,
+  "actual_apples": 4,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.8,
+  "notes": "Reproduced the Floor-1 safe-room-mouth objective-selection thrash as a deterministic headless red gate, root-caused it to playerInSafeRoom flicker + findNearestRelevantNpc filtering flip-flopping withQuestGiverDetour, and fixed it by latching the accepted detour NPC (committedDetourNpcEid) with a monotonic no-progress abandon valve, relaxed committed-path cap, and stall-recovery suppression early-exit. Full review harness (dual-plan synthesis + plan review + code-review loop + multi-model review with gpt-5.4 adjudication of 3 gemini concerns). Sweep-validated +4 wins / zero flips, rebased onto squash-merged main."
+}
