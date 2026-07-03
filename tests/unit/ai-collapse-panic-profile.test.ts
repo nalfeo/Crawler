@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { computeCollapsePanicProfile } from '../../src/game/ai/bt-ai-provider.js';
+import {
+  computeCollapsePanicProfile,
+  resolveFloor1AiCollapsePanicDeadlineMs,
+} from '../../src/game/ai/bt-ai-provider.js';
 
 describe('computeCollapsePanicProfile', () => {
   it('returns neutral pressure when floor-collapse context is absent', () => {
@@ -69,5 +72,20 @@ describe('computeCollapsePanicProfile', () => {
       staircaseDiscovered: true,
     });
     expect(discovered.beeline).toBe(false);
+  });
+
+  it('anchors Floor 1 AI panic to the 6-minute gate despite the 10-minute floor timer', () => {
+    const aiDeadlineMs = resolveFloor1AiCollapsePanicDeadlineMs(600_000);
+    expect(aiDeadlineMs).toBe(6 * 60 * 1000);
+
+    const pressure = computeCollapsePanicProfile({
+      elapsedMs: 6 * 60 * 1000 - 55_000,
+      deadlineMs: aiDeadlineMs,
+      staircaseUnlocked: false,
+      staircaseDiscovered: false,
+    });
+
+    expect(pressure.remainingMs).toBe(55_000);
+    expect(pressure.beeline).toBe(true);
   });
 });

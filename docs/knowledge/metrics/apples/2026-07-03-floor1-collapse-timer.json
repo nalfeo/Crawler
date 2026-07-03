@@ -2,8 +2,8 @@
   "date": "2026-07-03",
   "session": "floor1-collapse-timer",
   "estimated_apples": 1,
-  "actual_apples": 1,
-  "delta": 0,
-  "verdict": "exact",
-  "hello_kitties": 0.2
+  "actual_apples": 2,
+  "delta": 1,
+  "verdict": "under",
+  "hello_kitties": 0.4
 }
