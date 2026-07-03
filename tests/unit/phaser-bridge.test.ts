@@ -21,7 +21,133 @@ import {
   createSceneStub,
   createBridgeTestMap,
   MockImage,
+  MockGraphics,
 } from '../fixtures/phaser-bridge-harness.js';
+import { spawnMeleeSwing } from '../../src/core/spawners/melee.js';
+import { MeleeSpriteId } from '../../src/shared/constants.js';
+import { getSprite } from '../../src/engine/sprites/index.js';
+
+/**
+ * Faithful local stand-in for a Phaser weapon image on the melee-swing render
+ * path. Unlike the shared `MockImage` (whose `frame` is a raw number), this
+ * models `frame` as `{ name }` — matching how production reads
+ * `img.frame?.name` — and counts `setTexture` calls so a test can assert the
+ * mid-swing reconcile guard only re-applies the texture when it actually
+ * changes. This is the regression net for the every-frame re-apply bug where a
+ * `loader.image` texture's frame is named `'__BASE'` (never `undefined`), so
+ * the old `'__BASE' !== undefined` compare stayed true forever.
+ */
+class SwingImage {
+  setTextureCalls = 0;
+  visible = true;
+  alpha = 1;
+  scaleX = 1;
+  originX = 0.5;
+  originY = 0.5;
+  rotation = 0;
+  frame: { name: string | number };
+
+  constructor(
+    public x: number,
+    public y: number,
+    public textureKey: string,
+    frame?: number,
+  ) {
+    this.frame = { name: frame ?? '__BASE' };
+  }
+
+  get texture(): { key: string } {
+    return { key: this.textureKey };
+  }
+
+  setTexture(key: string, frame?: number): this {
+    this.setTextureCalls += 1;
+    this.textureKey = key;
+    this.frame = { name: frame ?? '__BASE' };
+    return this;
+  }
+
+  setOrigin(x: number, y: number): this {
+    this.originX = x;
+    this.originY = y;
+    return this;
+  }
+
+  setScale(x: number): this {
+    this.scaleX = x;
+    return this;
+  }
+
+  setPosition(x: number, y: number): this {
+    this.x = x;
+    this.y = y;
+    return this;
+  }
+
+  setRotation(r: number): this {
+    this.rotation = r;
+    return this;
+  }
+
+  setVisible(v: boolean): this {
+    this.visible = v;
+    return this;
+  }
+
+  setAlpha(a: number): this {
+    this.alpha = a;
+    return this;
+  }
+}
+
+/**
+ * Minimal scene whose generated-sprite registry knows about the approved
+ * `baseball-bat-v1` art. `readyKeys` controls which texture keys report as
+ * loaded via `textures.exists`, letting a test simulate the generated PNG
+ * finishing its async load mid-swing.
+ */
+function makeBatSwingScene(readyKeys: Set<string>): {
+  scene: Phaser.Scene;
+  images: SwingImage[];
+} {
+  const images: SwingImage[] = [];
+  const registry = buildGeneratedSpriteRegistry({
+    version: 1,
+    entries: {
+      'baseball-bat-v1-var-0': {
+        briefId: 'baseball-bat-v1',
+        spriteName: 'baseball-bat-v1-var-0',
+        assetPath: 'generated/baseball-bat-v1-var-0.png',
+        approvedAt: '2026-07-01T00:00:00.000Z',
+        sourceRun: 'test-run',
+        variantIndex: 0,
+        anchor: { x: 32, y: 60, source: 'brief' },
+        sensorScore: '8/8',
+        judgeScore: '2',
+      },
+    },
+  });
+  const scene = {
+    game: { registry: { get: () => registry } },
+    add: {
+      image: vi.fn((x = 0, y = 0, textureKey = '', frame?: number) => {
+        const img = new SwingImage(x, y, textureKey, frame);
+        images.push(img);
+        return img as unknown as Phaser.GameObjects.Image;
+      }),
+      graphics: vi.fn(() => new MockGraphics() as unknown as Phaser.GameObjects.Graphics),
+    },
+    textures: {
+      // generateTextures() early-returns when the player texture already
+      // exists, so report every procedural/Kenney key as present and let
+      // `readyKeys` govern only the generated bat texture (the async load we
+      // want to simulate).
+      exists: (key: string) => (key === 'baseball-bat-v1-var-0' ? readyKeys.has(key) : true),
+      get: () => ({ getSourceImage: () => ({ width: 64, height: 64 }) }),
+    },
+  } as unknown as Phaser.Scene;
+  return { scene, images };
+}
 
 describe('createPhaserBridge', () => {
   it('handles empty worlds without creating game objects', () => {
@@ -561,6 +687,72 @@ describe('createPhaserBridge', () => {
     // Staircase Rat Slime gets the generated art; the slime-rat tutorial boss stays generic.
     expect(images[0]?.textureKey).toBe('rat-slime-v1-var-1');
     expect(images[1]?.textureKey).toBe('kenney-tiny-dungeon');
+  });
+
+  it('renders the approved baseball-bat-v1 generated art on a bat swing once its texture is ready', () => {
+    const { scene, images } = makeBatSwingScene(new Set(['baseball-bat-v1-var-0']));
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const owner = addEntity(world.ecs);
+    spawnMeleeSwing(world, 10, 10, owner, 5, 3, 5_000, 1, 0, 90, 0, 0, 0, 1, 0, MeleeSpriteId.BAT);
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(1);
+    expect(images[0]?.textureKey).toBe('baseball-bat-v1-var-0');
+  });
+
+  it('falls back to the Kenney weapon.bat sprite when the generated bat texture has not loaded', () => {
+    const { scene, images } = makeBatSwingScene(new Set());
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const owner = addEntity(world.ecs);
+    spawnMeleeSwing(world, 10, 10, owner, 5, 3, 5_000, 1, 0, 90, 0, 0, 0, 1, 0, MeleeSpriteId.BAT);
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(1);
+    expect(images[0]?.textureKey).toBe('kenney-tiny-dungeon');
+    // The bat's Kenney placeholder is frame 117 on the tiny-dungeon sheet.
+    expect(images[0]?.frame.name).toBe(getSprite('weapon.bat')?.frame);
+  });
+
+  it('upgrades a bat swing to the generated art mid-swing and then stops re-applying the texture', () => {
+    // Generated PNG not loaded yet — the fallback path is used.
+    const readyKeys = new Set<string>();
+    const { scene, images } = makeBatSwingScene(readyKeys);
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const owner = addEntity(world.ecs);
+    spawnMeleeSwing(world, 10, 10, owner, 5, 3, 5_000, 1, 0, 90, 0, 0, 0, 1, 0, MeleeSpriteId.BAT);
+
+    // Frame 1: generated texture missing -> Kenney fallback (frame 117).
+    bridge.sync(world);
+    expect(images).toHaveLength(1);
+    const img = images[0]!;
+    expect(img.textureKey).toBe('kenney-tiny-dungeon');
+    expect(img.frame.name).toBe(getSprite('weapon.bat')?.frame);
+
+    // Frame 2: still the stable fallback -> guard must not re-`setTexture`.
+    bridge.sync(world);
+    expect(img.setTextureCalls).toBe(0);
+
+    // Frame 3: the generated PNG finishes loading -> upgrade with exactly one
+    // setTexture (key changed: kenney sheet -> generated texture).
+    readyKeys.add('baseball-bat-v1-var-0');
+    bridge.sync(world);
+    expect(img.textureKey).toBe('baseball-bat-v1-var-0');
+    expect(img.setTextureCalls).toBe(1);
+
+    // Frames 4-6: stable generated art. The pre-fix guard mis-fired here —
+    // a loader.image texture's frame is named '__BASE' (never undefined), so
+    // `'__BASE' !== undefined` stayed true and setTexture ran every sync.
+    // The fixed guard only reconciles on a real key/frame change, so the
+    // count stays pinned at 1.
+    bridge.sync(world);
+    bridge.sync(world);
+    bridge.sync(world);
+    expect(img.setTextureCalls).toBe(1);
   });
 
   it('renders mob health bars for non-boss enemies only', () => {

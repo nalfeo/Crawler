@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "baseball-bat-swing-sprite",
+  "task_title": "Render approved baseball-bat-v1 art on the in-game melee swing",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "notes": "rubber-duck gpt-5.4 (high) plan-reviewed the change against src/engine/PhaserBridge.ts, src/engine/InventoryUI.ts, src/shared/generated-assets.ts, and the manifest. Two concerns raised — both addressed before commit b12cef4c: (1) BLOCKING — MIN_WEAPON_SPRITE_SCALE=1.8 floor applied to generated 64x64 bat art produces scale 1.8 instead of ~0.73 (holdY=60, bladeLen=44), putting the tip ~108 px from the hand instead of 44. Fix: the floor is now scoped to the Kenney 16px fallback path (isGeneratedWeaponSprite gate); generated art uses raw `bladeLen/holdY` unclamped so the tip lands exactly at bladeLen. (2) IMPORTANT — key-only reconcile misses same-sheet frame differences (bat frame 117 vs sword frame 72 both live on 'kenney-tiny-dungeon'). Fix: reconcile now compares both texture key AND frame name via `img.texture.key` + `img.frame?.name`. Reviewer confirmed 'baseball-bat-v1' is the correct briefId (manifest entry 'baseball-bat-v1-var-0', briefId 'baseball-bat-v1'), that `eid | 0` is an acceptable seed today (single approved variant — noted as a follow-up if more land), no other runtime code path renders 'weapon.bat', and that leaving `getMeleeSpriteId` (hammer discrepancy) alone is correctly scoped."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["copilot-pull-request-reviewer", "gpt-5.4"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ],
+      "notes": "Round 1: the plan-review pass doubled as the initial code review (inspected imports, resolution branching, anchor/scale math, reconcile logic); both concerns folded into commit b12cef4c before push. Round 2 (post-PR, driven by the copilot-pull-request-reviewer): two follow-up concerns on src/engine/PhaserBridge.ts, both resolved on this branch by the reconcile-guard fix + new phaser-bridge tests. (A) Reconcile mis-fire — even comparing key AND frame, setTexture re-ran EVERY swing frame because a texture loaded via loader.image has a single frame Phaser names '__BASE' (never undefined), so with weaponFrame undefined the '__BASE' !== undefined compare stayed true forever; and Kenney spritesheet frame names are numeric (117 !== '117'). Fixed: frames are compared only when the texture key already matches AND a specific weaponFrame is requested, with String() coercion on both sides. (B) No unit coverage for the generated-art bat resolution/fallback/mid-swing upgrade — added three deterministic tests in tests/unit/phaser-bridge.test.ts using a faithful local image stub (frame modeled as { name }, setTexture call counter). Observe-before-done (rule #10) for this visual change: the mid-swing regression test was run against the pre-fix guard (stash of PhaserBridge.ts) and FAILED (setTextureCalls grew to 2 on the stable fallback alone), then passed after restoring the fix (0 pre-upgrade, exactly 1 after upgrade) — a deterministic before/after on the real render path."
+    }
+  }
+}
