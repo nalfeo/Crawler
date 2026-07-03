@@ -18,13 +18,14 @@ already on disk — nothing is sent over the network.
 
 ## Data sources
 
-| Source                                                     | Used for                                                          |
-| ---------------------------------------------------------- | ----------------------------------------------------------------- |
-| `~/.copilot/session-store.db` (SQLite)                     | Session listing, repository grouping, branch/summary metadata     |
-| `~/.copilot/session-state/<id>/events.jsonl`               | Per-event stream (tool starts/completes, hooks, tokens, compactions, skills, sub-agents) |
+| Source                                       | Used for                                                                                 |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `~/.copilot/session-store.db` (SQLite)       | Session listing, repository grouping, branch/summary metadata                            |
+| `~/.copilot/session-state/<id>/events.jsonl` | Per-event stream (tool starts/completes, hooks, tokens, compactions, skills, sub-agents) |
 
-Node 24's built-in `node:sqlite` is used, so no native dependencies are
-required.
+Requires **Node 24+** for the built-in `node:sqlite` module (unflagged since
+Node 24; introduced experimentally behind `--experimental-sqlite` in Node 22.5),
+so no native dependencies are required.
 
 ## Views
 

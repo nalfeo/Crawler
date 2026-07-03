@@ -1,8 +1,9 @@
 // sessions-db: read-only accessor over ~/.copilot/session-store.db (SQLite).
 //
-// Uses Node's built-in `node:sqlite` module (available since Node 22) so this
-// stays zero-dep. We only ever read, and we open with `readOnly: true` so the
-// live CLI's writer isn't blocked by the extension.
+// Uses Node's built-in `node:sqlite` module (unflagged since Node 24; it was
+// introduced experimentally behind `--experimental-sqlite` in Node 22.5) so
+// this stays zero-dep. We only ever read, and we open with `readOnly: true` so
+// the live CLI's writer isn't blocked by the extension.
 
 import { DatabaseSync } from 'node:sqlite';
 import { homedir } from 'node:os';
@@ -68,7 +69,7 @@ export function listSessions(opts = {}) {
     params.until = opts.untilIso;
   }
   const where = clauses.length ? 'WHERE ' + clauses.join(' AND ') : '';
-  const limit = opts.limit ? `LIMIT ${Math.max(1, Math.min(500, opts.limit | 0))}` : 'LIMIT 200';
+  const limit = opts.limit ? `LIMIT ${Math.max(1, Math.min(2000, opts.limit | 0))}` : 'LIMIT 200';
   const sql = `SELECT id, cwd, repository, host_type, branch, summary, created_at, updated_at
                FROM sessions ${where}
                ORDER BY datetime(updated_at) DESC ${limit}`;

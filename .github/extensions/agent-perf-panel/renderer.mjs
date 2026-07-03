@@ -173,9 +173,11 @@ const CLIENT_SCRIPT = `
       opt.textContent = r.repository + ' (' + r.sessionCount + ')';
       sel.appendChild(opt);
     }
-    // Default to Crawler if present, else first
+    // Honor a repo pre-selected via the open() URL fragment; else default to
+    // Crawler if present; else the first (most-active) repo.
+    const preselected = state.repo && repositories.some((r) => r.repository === state.repo);
     const crawler = repositories.find((r) => /crawler/i.test(r.repository));
-    sel.value = crawler ? crawler.repository : repositories[0]?.repository || '';
+    sel.value = preselected ? state.repo : crawler ? crawler.repository : repositories[0]?.repository || '';
     state.repo = sel.value;
   }
 
@@ -197,6 +199,19 @@ const CLIENT_SCRIPT = `
       opt.textContent = label + '  · ' + size + (s.hasEventLog ? '' : '  · NO LOG');
       opt.disabled = !s.hasEventLog;
       sel.appendChild(opt);
+    }
+    // Keep the dropdown in sync with a session pre-selected via the open()
+    // fragment or preserved across a refresh. If that session is outside the
+    // current range, inject a synthetic option instead of silently dropping the
+    // deep link back to the aggregate view.
+    if (state.sessionId) {
+      if (!sessions.some((s) => s.id === state.sessionId)) {
+        const opt = document.createElement('option');
+        opt.value = state.sessionId;
+        opt.textContent = 'selected session ' + state.sessionId.slice(0, 8) + '… (outside range)';
+        sel.appendChild(opt);
+      }
+      sel.value = state.sessionId;
     }
     setStatus(sessions.length + ' sessions in range');
     return sessions;
@@ -298,8 +313,12 @@ const CLIENT_SCRIPT = `
       const toolBars = inTurnTools.map((x) => {
         const offset = ((x.start - t.start) / totalDur) * trackW;
         const width = Math.max(0.5, (x.durationMs / totalDur) * trackW);
-        const cls = x.success === false ? 'err' : 'seg';
-        return '<div class="seg ' + (cls === 'seg' ? '' : cls) + '" title="' + esc(x.name) + ' — ' + fmtMs(x.durationMs) + '" style="left:' + offset + '%;width:' + width + '%;background:' + colorForTool(x.name) + '"></div>';
+        const failed = x.success === false;
+        // Failed calls keep the .err class with NO inline background so the
+        // \`.seg.err { background: var(--err) }\` rule wins; successful calls get
+        // the deterministic per-tool hash color inline.
+        const bg = failed ? '' : ';background:' + colorForTool(x.name);
+        return '<div class="seg ' + (failed ? 'err' : '') + '" title="' + esc(x.name) + ' — ' + fmtMs(x.durationMs) + (failed ? ' (failed)' : '') + '" style="left:' + offset + '%;width:' + width + '%' + bg + '"></div>';
       }).join('');
       rows.push(\`
         <div class="wf-row">
@@ -653,12 +672,25 @@ const CLIENT_SCRIPT = `
   }
 
   // ---------- Boot ----------
+  // Seed repo/session from the URL fragment the canvas open() handler sets
+  // (#repo=…&session=…) so open({ repository, sessionId }) pre-selects them.
+  function parseHash() {
+    const raw = (location.hash || '').replace(/^#/, '');
+    if (!raw) return;
+    const params = new URLSearchParams(raw);
+    const repo = params.get('repo');
+    const session = params.get('session');
+    if (repo) state.repo = repo;
+    if (session) state.sessionId = session;
+  }
+
   document.querySelectorAll('#tabs button').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
-  $('repoSel').addEventListener('change', async () => { state.repo = $('repoSel').value; state.currentAggregate = null; state.currentSummary = null; await loadSessions(); await render(); });
+  $('repoSel').addEventListener('change', async () => { state.repo = $('repoSel').value; state.sessionId = ''; state.currentAggregate = null; state.currentSummary = null; await loadSessions(); await render(); });
   $('rangeSel').addEventListener('change', async () => { state.currentAggregate = null; await loadSessions(); await render(); });
   $('sessSel').addEventListener('change', async () => { state.sessionId = $('sessSel').value; state.currentSummary = null; state.currentAggregate = null; await render(); });
   $('refreshBtn').addEventListener('click', async () => { state.currentAggregate = null; state.currentSummary = null; await loadSessions(); await render(); });
 
+  parseHash();
   await loadRepos();
   await loadSessions();
   await render();

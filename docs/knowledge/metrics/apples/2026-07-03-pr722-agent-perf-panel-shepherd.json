@@ -1,0 +1,10 @@
+{
+  "date": "2026-07-03",
+  "session": "pr722-agent-perf-panel-shepherd",
+  "estimated_apples": 2,
+  "actual_apples": 3,
+  "delta": 1,
+  "verdict": "under-estimated",
+  "hello_kitties": 0.7,
+  "notes": "Shepherded PR #722. Beyond the pure merge dance, fixed 6 real copilot-pull-request-reviewer threads across a ~2000-LOC SPA (renderer.mjs), aggregator, and sessions-db; ran tier-3 review harness (plan_review gpt-5.4 + code_review gpt-5.4, both clean); observe-before-done via extensions_reload + open_canvas + loopback runtime probe. The code-fix + review-harness surface pushed actual above the ~2-apple shepherding estimate."
+}

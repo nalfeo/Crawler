@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "add-agent-perf-panel",
+  "task_title": "feat(devtools): add agent-perf-panel canvas extension",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "notes": "Fix plan for the 6 copilot-pull-request-reviewer threads was reviewed by gpt-5.4 (rubber-duck, distinct from the implementing model claude-opus-4.8) before any code was written. Two concerns raised and both adopted: (1) BLOCKING — parseHash() must strip the leading '#' from location.hash before URLSearchParams parsing or repo/session deep-links never match; (2) regression risk — loadSessions() must not unconditionally overwrite state.sessionId when the deep-linked session falls outside the fetched range; instead inject a synthetic '(outside range)' option so a valid deep-linked session is never flipped back to aggregate."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "clean": true,
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "notes": "code-review agent (gpt-5.4, distinct from implementing model claude-opus-4.8) reviewed the working-tree diff of all six fixes across renderer.mjs, aggregator.mjs, sessions-db.mjs, and README.md. Verdict: 'No concerns — all six fixes are correct and complete.' Verified boot ordering (parseHash before loadRepos), dropdown/state sync without clobbering deep-links, failed-tool red rendering via .seg.err, single-pass aggregator with no double counting or dropped sessions, and the 2000 limit clamp matching the advertised max."
+        }
+      ]
+    }
+  }
+}

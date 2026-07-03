@@ -14,6 +14,10 @@ export async function aggregate(filter) {
   const sessions = listSessions({ ...filter, limit: filter.limit || 200 });
   const perSession = [];
   const errors = [];
+  // Global tool + model aggregates are built in the same pass as perSession so
+  // each session is analyzed once and every failure is recorded consistently.
+  const toolTotals = new Map();
+  const toolByModel = new Map();
 
   for (const s of sessions) {
     if (!s.hasEventLog) continue;
@@ -47,19 +51,6 @@ export async function aggregate(filter) {
         startedAt: summary.startedAt,
         endedAt: summary.endedAt,
       });
-    } catch (e) {
-      errors.push({ sessionId: s.id, error: String(e?.message || e) });
-    }
-  }
-
-  // Global tool aggregate across sessions.
-  const toolTotals = new Map();
-  const toolByModel = new Map();
-  for (const s of sessions) {
-    if (!s.hasEventLog) continue;
-    try {
-      const summary = await analyzeSession(s.id);
-      if (!summary) continue;
       for (const t of summary.toolAggregates) {
         const row = toolTotals.get(t.name) || {
           name: t.name,
@@ -92,8 +83,8 @@ export async function aggregate(filter) {
         row.cost += m.cost;
         toolByModel.set(m.model, row);
       }
-    } catch {
-      /* ignore, already tallied above */
+    } catch (e) {
+      errors.push({ sessionId: s.id, error: String(e?.message || e) });
     }
   }
 
