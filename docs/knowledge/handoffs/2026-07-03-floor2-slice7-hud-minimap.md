@@ -149,3 +149,54 @@ overlap — Slice 7 only touches `src/engine/hud/**` + a lab + tests + docs
   the event array directly. Slice 7 uses a snapshot fingerprint
   (`familyId:relation:band:bossDefeated` per row) so it stays correct
   regardless of who drains events or when.
+
+## PR-Shepherd Addendum (2026-07-03, follow-up session)
+
+A follow-up PR-shepherd session drove #703 to merge after the original cloud
+session went idle. Work done in this session:
+
+- **Rebased twice onto advancing `main`.** Resolved the same `src/lab-main.ts`
+  `LAB_MODULE_PATHS` conflict each time by keeping every sibling lab entry
+  (`floor2-settlement-lab`, `family-feud-lab`, `hud-family-relationships-lab`).
+  Final rebase base: `ce21dbf1` (#701 Slice 3 family-aware AI). Linear history,
+  no merge commits.
+- **Addressed the 5 `copilot-pull-request-reviewer` threads on their merits**
+  (not weakened — rule #12):
+  1. `minimap-family-tint.ts` TERRITORY rooms with a missing/invalid
+     `familyIndex` now fall back to `TERRITORY_NEUTRAL_TINT` (`0x6b7280`)
+     instead of `null`, so `roleDotColor()` returns a color and the marker
+     still draws. New unit test covers undefined + out-of-range indices.
+  2. Removed dead exports `DEFEATED_TINT` + `blendColors` (and the
+     `blendColors` unit test).
+  3. Removed dead export `BAND_BAR_COLORS_HEX`.
+  4. Wired `shortLabel` via a new pure `displayNameForRow()`
+     (`FAMILY_NAME_MAX_CHARS = 18`): long names (e.g. "The Thornbloom
+     Growers", 22 chars) render the species shortLabel; short names render
+     in full. New unit tests.
+  5. **Strengthened** the dirty-flag e2e test: it now captures panel pixels
+     BEFORE the mutation and asserts a real per-region repaint delta
+     (`changedPixelRatio > 0.03`) AFTER hating every family + defeating
+     bosses — a broken dirty flag collapses before≈after to ~0 and fails.
+
+- **Observe-before-done (rule #10) — deterministic artifact:**
+  `tests/e2e/hud-family-relationships.deterministic.test.ts` (2 tests, ~7s,
+  headless Playwright ui-probe, no LLM judge). Test 1 proves the panel renders
+  populated rows (incl. the neutral-tint fallback path). Test 2 is the
+  strengthened dirty-flag proof that the re-render actually repaints. Ran green
+  locally post-rebase. Unit proof for the tint fallback:
+  `tests/unit/minimap-family-tint.test.ts`.
+- **Re-validated post-rebase:** `verify:fast`, targeted unit (84), lab-gate,
+  `check:wired-systems` (44 systems, 0 blocking — now includes #701's
+  `familyRelationshipSystem`), full `npm run verify` (typecheck/lint/format/
+  dead-code/guards/tests/build/pr-prereqs) — all green. knip stayed green
+  after the 3 dead-export removals.
+- **#701 synergy:** now that Slice 3 (family-aware AI, `FamilyMembership` on
+  Floor-2 mobs) is on `main`, the minimap enemy-dot family coloring lights up
+  as this handoff originally predicted.
+- Replied `✅ Addressed in 493ccc3b: …` on each thread and resolved all 5 as
+  owner via GraphQL `resolveReviewThread` (copilot-reviewer threads need an
+  owner resolve). Armed `gh pr merge 703 --auto --squash`.
+
+Final commits: `82c8b2e6` (feat) + `493ccc3b` (fix). Apple verdict unchanged:
+2🍎 estimated / 2🍎 actual — rebase + review-thread cleanup added conflict &
+review toil but no new subsystems.
