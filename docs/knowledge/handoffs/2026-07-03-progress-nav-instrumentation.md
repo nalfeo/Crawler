@@ -37,6 +37,7 @@ Metric file: `docs/knowledge/metrics/apples/2026-07-03-progress-nav-instrumentat
 - `src/game/ai/event-log.ts`
 - `src/game/ai/headless-runner.ts`
 - `tests/game/behavior-tree-ai.test.ts`
+- `tests/game/auto-progression-npc.test.ts`
 - `tests/unit/ai-event-log.test.ts`
 - `docs/knowledge/review-ledgers/2026-07-03-progress-nav-instrumentation.review-ledger.json`
 - `docs/knowledge/metrics/apples/2026-07-03-progress-nav-instrumentation.json`
@@ -46,9 +47,12 @@ Metric file: `docs/knowledge/metrics/apples/2026-07-03-progress-nav-instrumentat
 - `npx vitest run tests/unit/ai-event-log.test.ts tests/game/behavior-tree-ai.test.ts --reporter=dot` - green, 54 tests.
 - `npm run verify:fast` - green, 123 tests.
 - `npm run verify:game` - green, 618 tests.
+- `npm run verify` - green.
+- `bash scripts/agent/lab-gate-check.sh` - green.
+- `npm run verify:pr-prereqs` - green.
 - Review harness:
   - Plan review: `gpt-5.4`; 2 concerns, both resolved.
-  - Code review: `claude-sonnet-4.6`; clean.
+  - Code review: `claude-sonnet-4.6`; 2 rounds, clean.
   - Ledger validated: `docs/knowledge/review-ledgers/2026-07-03-progress-nav-instrumentation.review-ledger.json`.
 
 ## Headless artifacts
