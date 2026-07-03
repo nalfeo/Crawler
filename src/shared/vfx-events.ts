@@ -9,8 +9,14 @@
  * Combat-derived juice (hit sparks, crit bursts, death pops, player-hurt flash)
  * is synthesised by `EffectsVfx` directly from `world.combatEvents`, so those
  * kinds do NOT need to be pushed here — they exist in the union purely so the
- * renderer can share one preset switch. Non-combat signals (pickups, level-ups)
- * have no combat event to ride on, so they ARE pushed here.
+ * renderer can share one preset switch. Non-combat signals (pickups, level-ups,
+ * spell casts) have no combat event to ride on, so they ARE pushed here.
+ *
+ * Spell-cast kinds (`fireballBlast`, `pulseShieldWave`, `healGlow`) are pushed
+ * by `progressionEffects.ts` when an ability actually fires. Damage numbers
+ * still ride on the combat-event pipeline; these events add the *cast* visual
+ * (explosion, shockwave, restorative glow) so the player sees the spell trigger
+ * even when it misses or on a lone target.
  */
 
 export type VfxEffectKind =
@@ -20,7 +26,10 @@ export type VfxEffectKind =
   | 'hitSpark'
   | 'critBurst'
   | 'deathPop'
-  | 'playerHurt';
+  | 'playerHurt'
+  | 'fireballBlast'
+  | 'pulseShieldWave'
+  | 'healGlow';
 
 export interface VfxEvent {
   /** Which preset the renderer should spawn. */
@@ -32,6 +41,14 @@ export interface VfxEvent {
   color?: number;
   /** Optional intensity multiplier (scales particle count / size). Default 1. */
   intensity?: number;
+  /**
+   * Optional world-space effect radius in FEET. Used by presets whose visual
+   * size is tied to a gameplay range (e.g. a spell blast's actual reach), so
+   * the ring visually matches the area of effect regardless of tile size.
+   * Kept separate from `intensity` to avoid overloading a unitless multiplier
+   * with feet — pass whichever you need, or both.
+   */
+  radiusFt?: number;
 }
 
 /** Pickup categories that emit a collect sparkle. */

@@ -46,6 +46,29 @@ const COLOR_CRIT_SPARK = 0xff8800;
 const COLOR_LEVEL_UP = 0xffd166;
 const COLOR_SPAWNER_PULSE = 0x9be15d;
 const COLOR_PLAYER_HURT = { r: 220, g: 40, b: 40 } as const;
+const COLOR_FIREBALL_CORE = 0xffe066;
+const COLOR_FIREBALL_RING = 0xff5522;
+const COLOR_PULSE_SHIELD_INNER = 0xe0f7ff;
+const COLOR_PULSE_SHIELD_RING = 0x38bdf8;
+const COLOR_HEAL_GLOW = 0x86efac;
+
+/** Duration a spell blast/wave ring animates for (feels weightier than a hit spark). */
+const SPELL_CAST_LIFETIME_MS = 520;
+
+/**
+ * Sparks per unit of fireball blast intensity (bestHits + 1, clamped 1..4 in the
+ * caller). Kept modest so a giant cluster hit doesn't erase the arena visually.
+ */
+const FIREBALL_SPARKS_PER_INTENSITY = 6;
+
+/** Pixel-radius of the fireball blast's inner core; the outer ring is scaled up from this. */
+const FIREBALL_CORE_PX = 10;
+
+/** Base pixel-radius of the pulse-shield's inner ring. The outer ring scales up from this. */
+const PULSE_SHIELD_INNER_PX = 12;
+
+/** Base pixel-radius of the heal glow's inner ring. */
+const HEAL_GLOW_INNER_PX = 8;
 
 export function createEffectsVfx(scene: Phaser.Scene): {
   update(world: GameWorld, renderElapsedMs: number): void;
@@ -195,6 +218,99 @@ export function createEffectsVfx(scene: Phaser.Scene): {
     }
   }
 
+  /**
+   * Fireball blast: bright yellow core flashes and an orange outer ring expands
+   * to the ACTUAL blast reach (`radiusFt`), so a solo hit still reads as the
+   * full explosion the gameplay implies. `intensity` (cluster hit count) only
+   * scales the spark count so bigger clusters feel weightier without inflating
+   * the ring past the real damage radius. Both args have safe fallbacks so a
+   * missing radius still produces a visible explosion.
+   */
+  function fireballBlast(x: number, y: number, radiusFt: number, intensity: number): void {
+    const depth = WORLD_VFX_DEPTH.spellCast;
+    const clampedIntensity = Math.max(1, Math.min(intensity, 4));
+    const radiusPx = Math.max(24, ftToPx(Math.max(1, radiusFt)));
+    const outerScale = Math.max(2.0, radiusPx / FIREBALL_CORE_PX);
+    spawnRing(
+      x,
+      y,
+      COLOR_FIREBALL_CORE,
+      FIREBALL_CORE_PX,
+      outerScale * 0.55,
+      depth,
+      SPARK_LIFETIME_MS,
+      0.85,
+    );
+    spawnRing(
+      x,
+      y,
+      COLOR_FIREBALL_RING,
+      FIREBALL_CORE_PX + 2,
+      outerScale,
+      depth,
+      SPELL_CAST_LIFETIME_MS,
+      0.55,
+    );
+    const sparks = Math.round(FIREBALL_SPARKS_PER_INTENSITY * clampedIntensity);
+    for (let i = 0; i < sparks; i += 1) {
+      spawnSpark(x, y, COLOR_FIREBALL_RING, depth, 110);
+    }
+  }
+
+  /**
+   * Pulse-shield wave: expanding cyan ring centred on the caster, scaled to the
+   * actual knockback reach (`radiusFt`, 16 ft on Floor 1) so the wave matches
+   * gameplay. Falls back to a modest wave if no radius is supplied.
+   */
+  function pulseShieldWave(x: number, y: number, radiusFt: number): void {
+    const depth = WORLD_VFX_DEPTH.spellCast;
+    const radiusPx = Math.max(24, ftToPx(Math.max(1, radiusFt)));
+    const scale = Math.max(1.5, radiusPx / PULSE_SHIELD_INNER_PX);
+    spawnRing(
+      x,
+      y,
+      COLOR_PULSE_SHIELD_INNER,
+      PULSE_SHIELD_INNER_PX,
+      scale * 0.7,
+      depth,
+      SPARK_LIFETIME_MS,
+      0.7,
+    );
+    spawnRing(
+      x,
+      y,
+      COLOR_PULSE_SHIELD_RING,
+      PULSE_SHIELD_INNER_PX,
+      scale,
+      depth,
+      SPELL_CAST_LIFETIME_MS,
+      0.45,
+    );
+  }
+
+  /**
+   * Heal glow: a soft expanding green ring plus rising motes around the caster.
+   * Read from a distance so an off-screen heal auto-cast is still perceptible
+   * on the periphery.
+   */
+  function healGlow(x: number, y: number): void {
+    const depth = WORLD_VFX_DEPTH.spellCast;
+    spawnRing(x, y, 0xffffff, HEAL_GLOW_INNER_PX, 1.6, depth, SPARK_LIFETIME_MS, 0.6);
+    spawnRing(
+      x,
+      y,
+      COLOR_HEAL_GLOW,
+      HEAL_GLOW_INNER_PX + 2,
+      2.8,
+      depth,
+      SPELL_CAST_LIFETIME_MS,
+      0.45,
+    );
+    for (let i = 0; i < 6; i += 1) {
+      spawnRisingMote(x, y, COLOR_HEAL_GLOW, depth);
+    }
+  }
+
   function playerHurt(renderElapsedMs: number): void {
     if (renderElapsedMs - lastPlayerHurtMs < PLAYER_HURT_THROTTLE_MS) return;
     lastPlayerHurtMs = renderElapsedMs;
@@ -230,6 +346,15 @@ export function createEffectsVfx(scene: Phaser.Scene): {
         break;
       case 'deathPop':
         deathPop(x, y, event.color ?? 0xcc0000, event.intensity ?? 1);
+        break;
+      case 'fireballBlast':
+        fireballBlast(x, y, event.radiusFt ?? 12, event.intensity ?? 1);
+        break;
+      case 'pulseShieldWave':
+        pulseShieldWave(x, y, event.radiusFt ?? 16);
+        break;
+      case 'healGlow':
+        healGlow(x, y);
         break;
       case 'playerHurt':
         // Queue-sourced player-hurt shares the combat throttle; stamp it with the

@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "spell-cast-vfx",
+  "task_title": "Add cast VFX for fireball/pulse-shield/heal + HUD slot flash",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "notes": "1 blocking + 4 non-blocking. #1 (spellCast depth 17 might be under actors): empirically FALSE for this codebase — actor sprites use default Phaser depth 0 (no setDepth in PhaserBridge), so 17 renders above actors and hit sparks (12), below combatText (20). Documented in render-depths.ts comment. #2/#3 (intensity semantics + fireball ring not tied to radius): FIXED. Added optional radiusFt to VfxEvent; fireballBlast + pulseShieldWave now pass radiusFt for ring size; fireball intensity remains hit count but drives spark count only. #4 (before/after applyDamage ordering doesn't control overlap — depth does): acknowledged, no code change needed (depth handles it). #5 (HUD yellow flash collides with yellow cooldown bar): FIXED. Changed flash to cool cyan/white palette (fill 0xf0f9ff, border 0x22d3ee) with dark cyan label, distinct from warm-yellow cooldown ring 0xfbbf24."
+    }
+  }
+}
