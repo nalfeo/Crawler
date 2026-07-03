@@ -86,7 +86,11 @@ function parseSensorRatio(sensorScore: string): number | null {
 
 /** Parse a non-null judge score string into an integer 1–5, or `null` if unparseable. */
 function parseJudge(judgeScore: string): number | null {
-  const value = Number.parseInt(judgeScore, 10);
+  // Require the entire (trimmed) string to be a bare integer. `Number.parseInt`
+  // is too lenient — it would accept `"3abc"`→3, `"3.5"`→3, `"5/5"`→5, letting a
+  // malformed score sneak past the quality floor.
+  if (!/^\s*\d+\s*$/.test(judgeScore)) return null;
+  const value = Number(judgeScore.trim());
   return Number.isInteger(value) && value >= 1 && value <= 5 ? value : null;
 }
 

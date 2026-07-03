@@ -327,6 +327,11 @@ describe('selectReferences — eligibility filtering', () => {
       entry({ briefId: 'unscored-v1', type: 'item', judgeScore: null }), // legit unscored → kept
       entry({ briefId: 'junk-v1', type: 'item', judgeScore: 'unknown' }), // malformed → excluded
       entry({ briefId: 'zero-v1', type: 'item', judgeScore: '0' }), // out of 1–5 → excluded
+      // Leading-digit garbage that `Number.parseInt` would have silently accepted
+      // (as 3, 3, and 5 respectively) — must all fail closed under strict parsing.
+      entry({ briefId: 'trailing-v1', type: 'item', judgeScore: '3abc' }),
+      entry({ briefId: 'float-v1', type: 'item', judgeScore: '3.5' }),
+      entry({ briefId: 'ratio-v1', type: 'item', judgeScore: '5/5' }),
     ];
     const result = selectReferences({
       candidates,
