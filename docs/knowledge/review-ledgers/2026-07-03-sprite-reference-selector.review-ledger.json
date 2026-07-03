@@ -19,13 +19,66 @@
       "notes": "gpt-5.5 caught rejudge/sidecar+per-type-defaults+layering; gemini added tiered pooling; synthesized pool-first same-type selector, ignore brief.references, fail-fast on zero eligible"
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview", "gpt-5.3-codex"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": false,
+          "notes": "initial multi-model review of 6ce190d5..a5a6a739; 4 distinct valid concerns (generation path traversal BLOCKING, rejudge-loader path traversal BLOCKING, malformed non-null judgeScore passing the quality floor, backfill dash-less prefix-slice bug) fixed in d9df6432 with regression tests + new generated-asset-path guard"
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "re-review of the fixes on d9df6432; gemini clean, gpt-5.5 found the judge fail-closed fix incomplete (Number.parseInt lenient: '3abc'->3, '3.5'->3, '5/5'->5 still passed) -> tightened parseJudge to a strict integer regex + extended test in e27e612c"
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "confirmation on final state e27e612c; both distinct models reviewed the strict judge-parse logic and the hardened path-safety and reported no concerns"
+        }
+      ]
     },
     "multi_model_review": {
-      "clean": false,
-      "adjudicator_model": "",
-      "rounds": []
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview", "gpt-5.3-codex"],
+          "concerns_count": 5,
+          "valid_count": 4,
+          "resolved_count": 4,
+          "clean": false,
+          "notes": "3 distinct models on 6ce190d5..a5a6a739; claude-opus-4.8 adjudicated 5 raw findings (two models independently flagged the generation-side traversal) down to 4 distinct valid concerns; all 4 delegated-fixed in d9df6432"
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "re-review of d9df6432; adjudicated gpt-5.5's residual judgeScore parseInt-leniency finding as valid -> strict-integer parseJudge fix in e27e612c; gemini independently confirmed the fix closes the gap"
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "final confirmation on e27e612c; both distinct models clean, no new concerns; loop terminates clean"
+        }
+      ]
     }
   }
 }
