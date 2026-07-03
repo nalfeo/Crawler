@@ -44,8 +44,12 @@ the room-level scope Slice 7 lands (see ledger notes).
   `parseHexColor`. Band → bar-color palette (`BAND_BAR_COLORS`).
 - `src/engine/minimap-family-tint.ts` — `familyTintForRoom`,
   `familyColorForEnemy`, `resolveFamilyByIndex`, `isFamilyBossDefeated`,
-  `toGrayscale`, `blendColors`. Boss-defeated families' territories collapse
-  to grayscale (`toGrayscale` on the family's `hudColor`).
+  `toGrayscale`, `TERRITORY_NEUTRAL_TINT`. Boss-defeated families' territories
+  collapse to grayscale (`toGrayscale` on the family's `hudColor`); TERRITORY
+  rooms with a missing/invalid `familyIndex` fall back to
+  `TERRITORY_NEUTRAL_TINT` so the marker still draws. (The `blendColors` and
+  `DEFEATED_TINT` exports flagged in review were removed — see the
+  PR-Shepherd Addendum below.)
 
 **New Phaser widget:**
 
@@ -86,11 +90,12 @@ the room-level scope Slice 7 lands (see ledger notes).
   pinning FR8 band boundaries, band-bar colors, boss-flag key, and
   `resolveFamilyRows` behavior on null-floor2 / missing-family / roster
   order. Pure — no Phaser.
-- `tests/unit/minimap-family-tint.test.ts` — 13 assertions covering
-  `toGrayscale`, `blendColors` (t=0/0.5/1 + clamping), `resolveFamilyByIndex`
-  (null-floor / out-of-range / valid), `familyTintForRoom` for each
-  RoomRole (including boss-defeated grayscale path), and
-  `familyColorForEnemy` fallbacks.
+- `tests/unit/minimap-family-tint.test.ts` — assertions covering
+  `toGrayscale`, `resolveFamilyByIndex` (null-floor / out-of-range / valid),
+  `familyTintForRoom` for each RoomRole (including the boss-defeated grayscale
+  path and the `TERRITORY_NEUTRAL_TINT` fallback for missing/invalid
+  `familyIndex`), and `familyColorForEnemy` fallbacks. (The `blendColors`
+  `describe` block was removed with the export — see addendum.)
 - `tests/e2e/hud-family-relationships.deterministic.test.ts` — Playwright
   test that boots the lab, waits for `__familyRelProbe.ready()`, screenshots
   the canvas, and asserts the bottom-right panel region has visible pixels
