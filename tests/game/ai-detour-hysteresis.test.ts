@@ -80,7 +80,7 @@ function setUpAcceptedDetour(seed: number): {
   const questEnemy = spawnEnemy(world, 50, 14, 20);
   world.floor1!.enemyArchetypes.set(questEnemy, 'rat');
   const spellNpcEid = world.floor1!.spellQuestGiverNpcEid;
-  expect(spellNpcEid).toBeDefined();
+  expect(spellNpcEid).toEqual(expect.any(Number));
   world.stores.position.x[spellNpcEid!] = 30;
   world.stores.position.y[spellNpcEid!] = 14;
 
