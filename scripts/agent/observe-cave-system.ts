@@ -18,11 +18,12 @@ const gen = getGenerator(BiomeType.CAVE_SYSTEM);
 console.log(`Generator: ${gen.name}`);
 
 for (const seed of seeds) {
-  const t0 = Date.now();
+  const t0 = performance.now();
   const rng = new SeededRandom(seed);
   const map = gen.generate(
     {
       seed,
+      biome: BiomeType.CAVE_SYSTEM,
       widthTiles: width,
       heightTiles: height,
       roomWidthRange: [7, 16],
@@ -39,7 +40,7 @@ for (const seed of seeds) {
     roleCounts[r.role] = (roleCounts[r.role] ?? 0) + 1;
   }
   const passable = countPassable(map.tileMap, width, height);
-  const elapsed = Date.now() - t0;
+  const elapsed = Math.round(performance.now() - t0);
   console.log(
     `seed=${seed}  ${elapsed}ms  rooms=${rooms.length}  passable=${passable}/${width * height}  roles=${JSON.stringify(roleCounts)}`,
   );
