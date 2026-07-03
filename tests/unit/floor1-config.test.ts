@@ -15,7 +15,7 @@ describe('floor1Config', () => {
   });
 
   it('should have valid timer configuration', () => {
-    expect(floor1Config.timer.durationMs).toBe(360_000);
+    expect(floor1Config.timer.durationMs).toBe(600_000);
     expect(floor1Config.timer.stairSpawnCountdownMs).toBe(30_000);
   });
 

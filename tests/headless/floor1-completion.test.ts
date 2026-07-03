@@ -12,8 +12,9 @@
  *   - the behavior-tree AI navigates Floor 1's geometry and progression points,
  *   - every Floor 1 quest can be completed (tutorial, shopkeeper errand, boss
  *     unlock, boss battle),
- *   - the floor is cleared (`outcome === 'victory'`) within the 6-minute design
- *     budget, in deterministic *game* time.
+ *   - the floor is cleared (`outcome === 'victory'`) within the stricter
+ *     6-minute AI budget, in deterministic *game* time. The human-facing
+ *     collapse timer is longer and remains configured in the Floor 1 manifest.
  *
  * ## Why a sampled win-RATE, not cherry-picked seeds
  *
@@ -47,7 +48,7 @@
  * `gameTimeMs` is simulated time and is identical on every machine; wall-clock
  * time is not (Windows dev box vs. ubuntu CI runner differ by 2–3x). The gate
  * asserts on `gameTimeMs < 6 min` so cross-platform CPU differences can never
- * flake it. `maxFrames` is capped just past the 6-minute deadline so a
+ * flake it. `maxFrames` is capped just past the AI budget so a
  * regression that *fails* to clear ends deterministically and quickly instead
  * of grinding to the 100k-frame default.
  */
@@ -64,13 +65,13 @@ import {
   FLOOR1_LEAVE_FLOOR_QUEST_ID,
 } from '../../src/shared/quest-types.js';
 
-/** Floor 1 design budget: the AI must clear the floor in under six minutes (240×140 map). */
+/** Floor 1 AI budget: the AI must clear the floor in under six minutes (240×140 map). */
 const FLOOR1_TIME_BUDGET_MS = 6 * 60 * 1000;
 const HEADLESS_WALL_TIME_CAP_MS = 30 * 60 * 1000;
 
 /**
  * Frame cap for the gate. One frame is `GAME.DELTA_MS` (1000/60 ms) of game
- * time, so this allows the run to advance slightly past the 6-minute deadline
+ * time, so this allows the run to advance slightly past the 6-minute AI budget
  * (~6.6 min of game time). A legitimate clear finishes well before the budget;
  * a regression that never clears stops here deterministically (bounded wall
  * time) and is then caught by the `outcome`/budget assertions rather than
