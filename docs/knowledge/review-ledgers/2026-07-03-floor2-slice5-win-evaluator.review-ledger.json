@@ -1,0 +1,20 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "floor2-slice5-win-evaluator",
+  "task_title": "Floor 2 Slice 5: win evaluator + resource-heart stairs (PR #713 shepherd — orphan-system wiring + lab floorMap fix)",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "notes": "Separate-model plan review (rubber-duck agent on gpt-5.4; author model claude-opus-4.8) of the two PR-shepherd blockers. (A) CI orphan-system: exported floor2VictorySystem tripped check:wired-systems (/^[A-Za-z_$][\\w$]*System$/) because it was only referenced from floor2ObjectiveTick (same module, not a WIRING_SITE), the lab, and tests. Two viable fixes were considered — rename off the System suffix, OR wire the system into real runtime pipelines. The PR OWNER (nalfeo) shipped the WIRING fix (commit f29a6030: added floor2VictorySystem to src/bootstrap/floor-main-scene-options.ts preSystems, src/game/ai/simulation-step.ts, and src/game/ai/headless-runner.ts, each guarded as an always-safe no-op on Floor 1 / non-Floor-2 worlds via the early if (!floor2State) return). This is the strictly-preferred fix per rule #15 (wire the system, don't rename to dodge the guard), so the shepherd adopted the owner's HEAD rather than force-pushing a rename. (B) Lab runtime: assign w.floorMap = floorMap in family-boss-den-lab reseed() so popFloor2ResourceHeartStairs -> findResourceHeartStairTile no longer bails on the null floorMap that createGameWorld initializes. Reviewer confirmed the floorMap assignment is correct and sufficient, with no ordering concern vs initializeFloor2Bosses (which consumes its explicit floorMap arg, not world.floorMap). VERDICT: no concerns."
+    },
+    "observe_before_done": {
+      "completed": true,
+      "notes": "Rule #10 runtime observation for the lab floorMap fix, performed on the CURRENT merged code path (owner's wired floor2VictorySystem + shepherd's world.floorMap assignment), not the earlier discarded rename branch. Ran npm run lab (http://localhost:23622) and loaded ?lab=family-boss-den-lab in a real browser (Playwright). BROKEN reproduction (fix temporarily disabled via HMR): after Force Win A (sole ally) the panel showed Victory: yes, Stairs popped: waiting with NO world-pos row — victory latches but stairs never pop, exactly the Thread B bug. AFTER restoring w.floorMap = floorMap: fresh reseed shows Victory: waiting, Stairs popped: waiting; Force Win A -> Victory: yes, Stairs popped: yes + Stairs world-pos: (130.0, 90.0) spawned=yes unlocked=yes; and Force Win B (all bosses dead) likewise -> Victory: yes, Stairs popped: yes, Stairs world-pos: (130.0, 90.0). Screenshot in session files (floor2-slice5-lab-winB-stairs-current.png). The victory logic itself is additionally proven deterministically by tests/unit/floor2-victory-system.test.ts and tests/integration/floor2-victory-pipeline.test.ts, which drive floor2ObjectiveTick -> floor2VictorySystem -> popFloor2ResourceHeartStairs with world.floorMap set and assert staircaseSpawned/staircasePos. The live-game path for floor2VictorySystem is now wired (owner f29a6030) and exercised by the required Headless Floor 1 Gate (no-op there); full Floor 2 objective flow lands in Slice 8."
+    }
+  }
+}

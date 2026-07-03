@@ -34,10 +34,15 @@ import { addComponent, hasComponent, set, setComponent } from 'bitecs';
 import { DoorState, FamilyMembership, Sprite, Damage, type GameWorld } from '../core/index.js';
 import { createEntity } from '../core/spawners/entity-core.js';
 import { setDoorLockConfig, setGoalFlag } from '../core/door-lock.js';
-import { asFamilyId, type FamilyId, type Floor2State } from '../core/faction-relations.js';
+import {
+  asFamilyId,
+  getRelation,
+  type FamilyId,
+  type Floor2State,
+} from '../core/faction-relations.js';
 import { spawnBehaviorEnemy } from '../core/spawners/combatants.js';
 import { AI_TYPE } from '../game/enemyAISystem.js';
-import { RoomRole, type RoomData } from '../shared/map-types.js';
+import { RoomRole, TerrainType, type RoomData } from '../shared/map-types.js';
 import type { FloorMap } from '../core/map/FloorMap.js';
 import { floor2EnemyPack, getFloor2BossArchetype } from '../shared/enemy-packs.js';
 import {
@@ -67,6 +72,11 @@ export interface Floor2DenObjective {
   /** Goal flag that latches when the boss dies. */
   readonly defeatGoalId: string;
 }
+
+/** Latched once either Floor 2 win shape triggers (FR15 / ADR-0040 D7). */
+export const FLOOR2_VICTORY_GOAL_ID = 'floor2-victory';
+/** Latched once stairs are popped on the resource-heart tile (FR16). */
+export const FLOOR2_STAIRS_POPPED_GOAL_ID = 'floor2-stairs-popped';
 
 /** Goal-flag name for a family's den-unlock latch. */
 export function denUnlockGoalId(familyId: FamilyId): string {
@@ -371,13 +381,13 @@ export function initializeFloor2Bosses(
  * time. Called every frame by `floorObjectiveSystem` (already wired into the
  * postSystems pipeline for Floor 1; Slice 8 wires the Floor 2 entry point).
  *
- * Responsibilities in Slice 4:
+ * Responsibilities in Slice 5:
  *   - Detect boss deaths from `world.combatEvents` and latch
  *     `floor2-family-<id>-boss-defeated`.
  *   - Track defeated families in `world.floor2State.decapitatedFamilies` so the
  *     spawner (Slice 8) can gate future spawns.
- *
- * Slice 5 will extend this tick with the win-condition evaluator.
+ *   - Run the per-tick Floor 2 win evaluator (Win A / Win B) and, on first
+ *     trigger, latch `floor2-victory` + pop resource-heart stairs.
  */
 export function floor2ObjectiveTick(world: GameWorld): void {
   const floor2State = world.floor2State;
@@ -400,6 +410,37 @@ export function floor2ObjectiveTick(world: GameWorld): void {
     decapitated.add(familyId);
     setGoalFlag(world, bossDefeatGoalId(familyId), true);
   }
+
+  floor2VictorySystem(world);
+}
+
+/**
+ * Per-tick Floor 2 win evaluator (FR15 / ADR-0040 D7).
+ *
+ * Win A ("sole ally"): exactly one present family is alive and its relation > 75.
+ * Win B ("total war"): every present family's boss is defeated.
+ *
+ * On first trigger, latches `floor2-victory` and pops stairs at a
+ * `BOSS_STAIR_FLOOR` tile in the resource-heart room.
+ */
+export function floor2VictorySystem(world: GameWorld): void {
+  const floor2State = world.floor2State;
+  if (!floor2State) return;
+  if (world.goalFlags.get(FLOOR2_VICTORY_GOAL_ID) === true) return;
+
+  const presentFamilies = floor2State.presentFamilies;
+  if (presentFamilies.length === 0) return;
+  const decapitated = ensureDecapitatedSet(world);
+  const aliveFamilies = presentFamilies.filter((familyId) => !decapitated.has(familyId));
+  const allBossesDead = aliveFamilies.length === 0;
+  const soleAliveFamily = aliveFamilies.length === 1 ? aliveFamilies[0]! : null;
+  const soleAllyWin =
+    soleAliveFamily !== null && getRelation(world, soleAliveFamily) > 75 && !allBossesDead;
+
+  if (!soleAllyWin && !allBossesDead) return;
+
+  setGoalFlag(world, FLOOR2_VICTORY_GOAL_ID, true);
+  popFloor2ResourceHeartStairs(world);
 }
 
 /**
@@ -441,6 +482,9 @@ export function countFloor2BossArchetypes(): number {
 
 interface Floor2ExtendedState {
   decapitatedFamilies?: Set<FamilyId>;
+  staircasePos?: { x: number; y: number };
+  staircaseSpawned?: boolean;
+  staircaseUnlocked?: boolean;
 }
 
 function ensureDecapitatedSet(world: GameWorld): Set<FamilyId> {
@@ -454,4 +498,46 @@ function ensureDecapitatedSet(world: GameWorld): Set<FamilyId> {
     floor2State.decapitatedFamilies = new Set<FamilyId>();
   }
   return floor2State.decapitatedFamilies;
+}
+
+function popFloor2ResourceHeartStairs(world: GameWorld): void {
+  const floor2State = world.floor2State as (Floor2State & Floor2ExtendedState) | null;
+  if (!floor2State) return;
+  if (world.goalFlags.get(FLOOR2_STAIRS_POPPED_GOAL_ID) === true) return;
+
+  const stairTile = findResourceHeartStairTile(world);
+  if (!stairTile || !world.floorMap) return;
+
+  floor2State.staircasePos = world.floorMap.tileToWorld(stairTile.x, stairTile.y);
+  floor2State.staircaseSpawned = true;
+  floor2State.staircaseUnlocked = true;
+  setGoalFlag(world, FLOOR2_STAIRS_POPPED_GOAL_ID, true);
+}
+
+function findResourceHeartStairTile(world: GameWorld): { x: number; y: number } | null {
+  const floorMap = world.floorMap;
+  if (!floorMap) return null;
+
+  const heart = floorMap.roomGraph.getFirstRoomByRole(RoomRole.RESOURCE_HEART);
+  const terrain = floorMap.terrain;
+  const w = floorMap.width;
+  const h = floorMap.height;
+  const cx = heart ? heart.bounds.x + heart.bounds.width / 2 : w / 2;
+  const cy = heart ? heart.bounds.y + heart.bounds.height / 2 : h / 2;
+
+  let best: { x: number; y: number; dist2: number; idx: number } | null = null;
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const idx = y * w + x;
+      if (terrain[idx] !== TerrainType.BOSS_STAIR_FLOOR) continue;
+      if (!floorMap.tileMap.isPassable(x, y)) continue;
+      const dx = x - cx;
+      const dy = y - cy;
+      const dist2 = dx * dx + dy * dy;
+      if (!best || dist2 < best.dist2 || (dist2 === best.dist2 && idx < best.idx)) {
+        best = { x, y, dist2, idx };
+      }
+    }
+  }
+  return best ? { x: best.x, y: best.y } : null;
 }

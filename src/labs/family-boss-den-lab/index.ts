@@ -3,6 +3,7 @@ import {
   createGameWorld,
   selectFloor2Roster,
   initializeFactionRelations,
+  getRelation,
   type GameWorld,
 } from '../../core/index.js';
 import { SeededRandom } from '../../shared/random.js';
@@ -14,10 +15,13 @@ import { loadResources } from '../../shared/data/resources.js';
 import {
   initializeFloor2Bosses,
   floor2ObjectiveTick,
+  floor2VictorySystem,
   isDenUnlocked,
   isFamilySpawnGated,
   markDenUnlocked,
   bossDefeatGoalId,
+  FLOOR2_STAIRS_POPPED_GOAL_ID,
+  FLOOR2_VICTORY_GOAL_ID,
   type Floor2DenObjective,
 } from '../../game/floor2Scenario.js';
 import { registerLab, type LabCategory } from '../registry.js';
@@ -73,7 +77,23 @@ function createFamilyBossDenLab(canvasHost: HTMLElement, controls: HTMLElement):
       return;
     }
     const rows: string[] = [];
+    const f2 = world.floor2State as {
+      staircasePos?: { x: number; y: number };
+      staircaseSpawned?: boolean;
+      staircaseUnlocked?: boolean;
+    } | null;
+    const victory = world.goalFlags.get(FLOOR2_VICTORY_GOAL_ID) === true;
+    const stairsPopped = world.goalFlags.get(FLOOR2_STAIRS_POPPED_GOAL_ID) === true;
     rows.push(`<b>Seed:</b> ${state.seed}  <b>Present families:</b> ${objectives.length}`);
+    rows.push(
+      `<b>Victory:</b> ${victory ? '✅' : '⏳'}  <b>Stairs popped:</b> ${stairsPopped ? '✅' : '⏳'}`,
+    );
+    if (f2?.staircasePos) {
+      rows.push(
+        `<b>Stairs world-pos:</b> (${f2.staircasePos.x.toFixed(1)}, ${f2.staircasePos.y.toFixed(1)})` +
+          ` · spawned=${f2.staircaseSpawned === true ? 'yes' : 'no'} unlocked=${f2.staircaseUnlocked === true ? 'yes' : 'no'}`,
+      );
+    }
     rows.push('');
     for (const obj of objectives) {
       const fam = familyById.get(obj.familyId);
@@ -82,9 +102,11 @@ function createFamilyBossDenLab(canvasHost: HTMLElement, controls: HTMLElement):
       const unlocked = isDenUnlocked(world, obj.familyId);
       const defeated = world.goalFlags.get(bossDefeatGoalId(obj.familyId)) === true;
       const gated = isFamilySpawnGated(world, obj.familyId);
+      const relation = getRelation(world, obj.familyId);
       rows.push(
         `<span style="color:${color}">■</span> <b>${name}</b> [${obj.familyId}]<br>` +
           `&nbsp;&nbsp;archetype: <i>${obj.archetypeId}</i><br>` +
+          `&nbsp;&nbsp;relation: <code>${relation}</code><br>` +
           `&nbsp;&nbsp;unlock: <code>${obj.unlockGoalId}</code> — ${unlocked ? '✅' : '⏳'}<br>` +
           `&nbsp;&nbsp;defeat: <code>${obj.defeatGoalId}</code> — ${defeated ? '☠' : '❤'}<br>` +
           `&nbsp;&nbsp;spawn-gated: ${gated ? '🚫 yes' : '✅ no'}`,
@@ -108,6 +130,11 @@ function createFamilyBossDenLab(canvasHost: HTMLElement, controls: HTMLElement):
     };
     const gen = new CaveSystemGenerator({ presentCount: roster.presentFamilies.length });
     const floorMap = gen.generate(smallCaveConfig(state.seed), new SeededRandom(state.seed));
+    // Assign the generated map to the world so the Force Win actions drive the
+    // real stair pop: floor2VictorySystem -> popFloor2ResourceHeartStairs ->
+    // findResourceHeartStairTile reads world.floorMap (createGameWorld inits it
+    // null, so without this the stairs never pop in the lab).
+    w.floorMap = floorMap;
     objectives = initializeFloor2Bosses(w, floorMap, w.floor2State);
     world = w;
     render();
@@ -144,19 +171,62 @@ function createFamilyBossDenLab(canvasHost: HTMLElement, controls: HTMLElement):
     render();
   }
 
+  function forceWinASoleAlly(): void {
+    if (!world || objectives.length === 0) return;
+    const survivor = objectives[0]!.familyId;
+    for (const obj of objectives) {
+      if (obj.familyId === survivor) {
+        world.factionRelations.set(obj.familyId, 80);
+        continue;
+      }
+      world.factionRelations.set(obj.familyId, 25);
+      world.goalFlags.set(bossDefeatGoalId(obj.familyId), true);
+      (world.floor2State as { decapitatedFamilies?: Set<string> }).decapitatedFamilies ??=
+        new Set<string>();
+      (world.floor2State as { decapitatedFamilies?: Set<string> }).decapitatedFamilies!.add(
+        obj.familyId,
+      );
+    }
+    floor2VictorySystem(world);
+    render();
+  }
+
+  function forceWinBAllBossesDead(): void {
+    if (!world) return;
+    (world.floor2State as { decapitatedFamilies?: Set<string> }).decapitatedFamilies ??=
+      new Set<string>();
+    for (const obj of objectives) {
+      world.goalFlags.set(bossDefeatGoalId(obj.familyId), true);
+      (world.floor2State as { decapitatedFamilies?: Set<string> }).decapitatedFamilies!.add(
+        obj.familyId,
+      );
+    }
+    floor2VictorySystem(world);
+    render();
+  }
+
   gui.add(state, 'seed', 1, 999999, 1).name('Seed').onFinishChange(reseed);
   gui.add(state, 'presentCount', [3, 4]).name('Present families').onFinishChange(reseed);
-  const actions = { reseed, forceUnlockFirst, killFirstBoss, unlockAll };
+  const actions = {
+    reseed,
+    forceUnlockFirst,
+    killFirstBoss,
+    unlockAll,
+    forceWinASoleAlly,
+    forceWinBAllBossesDead,
+  };
   gui.add(actions, 'reseed').name('Re-init floor');
   gui.add(actions, 'forceUnlockFirst').name('Force unlock first den');
   gui.add(actions, 'killFirstBoss').name('Simulate first boss death');
   gui.add(actions, 'unlockAll').name('Unlock all dens');
+  gui.add(actions, 'forceWinASoleAlly').name('Force Win A (sole ally)');
+  gui.add(actions, 'forceWinBAllBossesDead').name('Force Win B (all bosses dead)');
 
   reseed();
 
   const hint = document.createElement('p');
   hint.textContent =
-    'Family Boss Den Lab — sealed dens, seeded unlock objectives, and boss-defeat spawn-gating (FR13/FR14).';
+    'Family Boss Den Lab — den unlocks + boss-defeat spawn-gating + Slice 5 win evaluator / stair pop (FR13–FR16).';
   hint.style.cssText =
     'padding:8px 16px;color:#bfdbfe;font-family:monospace;font-size:12px;background:#0d0d14;';
   controls.append(hint);
@@ -171,6 +241,6 @@ registerLab('family-boss-den-lab', {
   category: 'Entities' as LabCategory,
   name: 'Family Boss Den Lab',
   description:
-    'Floor 2 boss dens, seeded unlock objectives, boss-defeat spawn-gating. Force unlocks + boss deaths to observe the FR13/FR14 pipeline.',
+    'Floor 2 boss dens, seeded unlock objectives, boss-defeat spawn-gating, and Slice 5 win-condition stair pop. Drive FR13–FR16 with force actions.',
   create: createFamilyBossDenLab,
 });

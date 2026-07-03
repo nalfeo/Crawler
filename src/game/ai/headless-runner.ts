@@ -325,6 +325,8 @@ export async function runHeadless(
         ...config.simulationOptions,
         enableFloor1: true,
       });
+      // floor2VictorySystem is invoked inside runSimulationStep (simulation-step.ts)
+      // every tick, so it does not need a second explicit call here.
       autoFloor1ProgressionSystem(world, playerEid);
       autoAllocateStatPoints(world, playerEid);
 
