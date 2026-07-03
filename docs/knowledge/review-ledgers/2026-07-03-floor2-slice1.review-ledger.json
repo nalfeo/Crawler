@@ -1,0 +1,35 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "floor2-slice1",
+  "task_title": "Floor 2 Slice 1 — Family data + factionRelations + familyRelationshipSystem",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-4.7",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "notes": "Plan reviewed against .specify/specs/floor2-family-territories.md and ADR 0040. Deliverables scoped to Slice 1 only: data + Zod loaders + tuning block + FamilyMembership component + factionRelations world state + helpers (bandFor, adjustFactionRelation, speedMultiplierForHate, selectFloor2Roster) + familyRelationshipSystem drain + real-pipeline wiring + lab + tests. Non-goals (cave map, AI targeting, bosses, HUD, scenario wiring) explicitly deferred to later slices.",
+      "reviewer": "self",
+      "verdict": "pass"
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "clean": true,
+          "models": ["claude-opus-4.7"],
+          "reviewer_model": "claude-opus-4.7",
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "notes": "Reviewed determinism (rng-only, no Math.random/Date.now), band boundary math at 24/25/49/50/75/76, clamp at 0/100, event emission shape, wiring in both real pipelines (bootstrap + headless), locked orderings preserved, layer rules honored."
+        }
+      ],
+      "reviewer": "self+rubber-duck",
+      "verdict": "pass",
+      "notes": "See round 1 notes."
+    }
+  }
+}

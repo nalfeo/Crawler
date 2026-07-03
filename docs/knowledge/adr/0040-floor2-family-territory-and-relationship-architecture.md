@@ -171,3 +171,9 @@ allied/at-war tag — reading `world.factionRelations` and the boss goal flags.
   settlement + seeded shops + emergent-event quests; (7) `HudFamilyRelationships` +
   minimap territory tint; (8) scenario wiring + Governor seed-sweep balancing (90% win
   rate) + Director narration.
+
+---
+
+## Changelog
+
+- **2026-07-02** — Slice 1 landed: family/resource data (Zod-validated), `FamilyMembership` component, `factionRelations` world state + helpers, `familyRelationshipSystem` wired into both real pipelines (visual bootstrap + headless simulation-step), and `family-territory-lab`. See handoff `docs/knowledge/handoffs/2026-07-02-floor2-slice1-relationships.md`.
