@@ -188,4 +188,31 @@ describe('estimateFloor1RunPlan', () => {
     expect(awaitingPrize.estimatedRequiredMs).toBeGreaterThan(readyToBuy.estimatedRequiredMs);
     expect(readyToBuy.estimatedRequiredMs).toBeGreaterThan(awaitingEquip.estimatedRequiredMs);
   });
+
+  it('uses the total kill requirement even when species minimums are satisfied', () => {
+    const plan = estimateFloor1RunPlan(
+      snapshot({
+        tutorialAccepted: true,
+        playerLevel: 2,
+        ratsKilled: 1,
+        slimesKilled: 1,
+        requiredRats: 1,
+        requiredSlimes: 1,
+        requiredTotalKills: 5,
+        shopStage: 'complete',
+        bossBattleAccepted: true,
+        slimeRatStarted: true,
+        slimeRatDefeated: true,
+        spellsUnlocked: true,
+        staircaseStarted: true,
+        staircaseDefeated: true,
+        staircaseUnlocked: true,
+        staircaseDiscovered: true,
+      }),
+      PARAMS,
+    );
+
+    const killSegment = plan.segments.find((segment) => segment.id === 'complete-goon-kills');
+    expect(killSegment?.workMs).toBe(3 * PARAMS.questKillMs);
+  });
 });

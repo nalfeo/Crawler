@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   evaluateTacticalOpportunities,
+  projectTacticalObjectiveLookahead,
   scoreTacticalOpportunity,
   type TacticalOpportunityInput,
   type TacticalOpportunityParams,
@@ -156,5 +157,20 @@ describe('tactical opportunity evaluator', () => {
 
     expect(result.acceptedPickups.map((pickup) => pickup.id)).toEqual([2, 3]);
     expect(result.acceptedPickups).toHaveLength(2);
+  });
+
+  it('projects heading-only objectives out to the tactical scan horizon', () => {
+    const projected = projectTacticalObjectiveLookahead(4, 8, 3, 4, PARAMS.scanRadiusFt);
+
+    expect(projected.x).toBeCloseTo(18.4);
+    expect(projected.y).toBeCloseTo(27.2);
+    expect(Math.hypot(projected.x - 4, projected.y - 8)).toBeCloseTo(PARAMS.scanRadiusFt);
+  });
+
+  it('keeps a heading-only objective at the player when no direction is available', () => {
+    expect(projectTacticalObjectiveLookahead(4, 8, 0, 0, PARAMS.scanRadiusFt)).toEqual({
+      x: 4,
+      y: 8,
+    });
   });
 });

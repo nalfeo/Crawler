@@ -47,6 +47,7 @@ import { hasItem } from '../../shared/inventory.js';
 import { SeededRandom } from '../../shared/random.js';
 import { createLogger } from '../../shared/logger.js';
 import { GAME, WeaponType, PLAYER_SPEED } from '../../shared/constants.js';
+import { floor1Config } from '../../shared/floor-config.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_TUTORIAL_QUEST_ID,
@@ -228,6 +229,7 @@ import {
 } from './run-planner.js';
 import {
   evaluateTacticalOpportunities,
+  projectTacticalObjectiveLookahead,
   type TacticalOpportunityCandidate,
   type TacticalOpportunityEvaluation,
   type TacticalOpportunityParams,
@@ -2317,7 +2319,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       slimesKilled: objective.slimesKilled,
       requiredRats: objective.requiredRats,
       requiredSlimes: objective.requiredSlimes,
-      requiredTotalKills: objective.requiredRats + objective.requiredSlimes,
+      requiredTotalKills: floor1Config.objectives.requiredTotalKills,
       shopStage,
       playerGold: world.playerGold,
       shopkeeperEquipmentCost: SHOPKEEPER_EQUIPMENT_COST,
@@ -4152,8 +4154,15 @@ export class BehaviorTreeAI implements AIInputProvider {
     const playerSpeed = this.getPlayerSpeedFtPerFrame(world, playerEid);
     const runPlan = this.estimateCurrentRunPlan(world, playerEid, playerX, playerY, playerSpeed);
     this.lastRunPlan = runPlan;
-    const objectiveX = this.decision.targetX ?? playerX + objDirX;
-    const objectiveY = this.decision.targetY ?? playerY + objDirY;
+    const fallbackObjective = projectTacticalObjectiveLookahead(
+      playerX,
+      playerY,
+      objDirX,
+      objDirY,
+      TACTICAL_OPPORTUNITY_SCAN_RADIUS_FT,
+    );
+    const objectiveX = this.decision.targetX ?? fallbackObjective.x;
+    const objectiveY = this.decision.targetY ?? fallbackObjective.y;
     const tacticalOpportunities = this.evaluateTacticalObjectiveOpportunities(
       world,
       playerX,

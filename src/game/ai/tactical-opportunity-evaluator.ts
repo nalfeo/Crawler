@@ -77,6 +77,24 @@ function distance(ax: number, ay: number, bx: number, by: number): number {
   return Math.hypot(ax - bx, ay - by);
 }
 
+export function projectTacticalObjectiveLookahead(
+  playerX: number,
+  playerY: number,
+  objDirX: number,
+  objDirY: number,
+  lookaheadFt: number,
+): { x: number; y: number } {
+  const magnitude = Math.hypot(objDirX, objDirY);
+  if (magnitude <= EPSILON) {
+    return { x: playerX, y: playerY };
+  }
+  const distanceFt = Math.max(0, lookaheadFt);
+  return {
+    x: playerX + (objDirX / magnitude) * distanceFt,
+    y: playerY + (objDirY / magnitude) * distanceFt,
+  };
+}
+
 export function scoreTacticalOpportunity(
   input: TacticalOpportunityInput,
   params: TacticalOpportunityParams,
