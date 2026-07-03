@@ -35,6 +35,7 @@ import {
   selectSpellFromBossBattle,
   SHOPKEEPER_EQUIPMENT_COST,
 } from '../game/floorScenario.js';
+import { floor2VictorySystem } from '../game/floor2Scenario.js';
 import {
   statSystem,
   manaSystem,
@@ -104,6 +105,9 @@ export function createFloorMainSceneOptions(_floorId: string = 'floor1') {
       // postSystem downstream this frame reads consistent post-adjust bands.
       // Always-safe: on Floor 1 the deltas queue stays empty (near-noop).
       familyRelationshipSystem,
+      // Floor 2 Slice 5: per-tick dynamic victory evaluator (sole-ally or
+      // all-bosses-dead). Always-safe no-op on Floor 1 / non-Floor-2 worlds.
+      floor2VictorySystem,
       emergentEventSystem,
       floor1PlayerStatSystem,
       weaponSystem,
