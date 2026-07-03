@@ -32,9 +32,11 @@ import {
   closeQuietly,
 } from './helpers/ui-probe.js';
 
-// The probe lab bakes a 16×16 icon texture filled with this magenta (0xff2fd0)
+// The probe lab bakes a 64×64 icon texture filled with this magenta (0xff2fd0)
 // and injects it as the charm's "approved sprite", so a real image renders in
-// the first cell. Detecting it proves the sprite path (not the text fallback).
+// the first cell. Detecting it proves the sprite path (not the text fallback);
+// the 64×64 source (larger than the ~48px cell target) also exercises the
+// resize-to-fit path, so an over-scaled icon can't silently overflow its cell.
 const PROBE_ICON_MAGENTA = { r: 0xff, g: 0x2f, b: 0xd0 };
 
 function saveDebugShot(buf: Buffer, filename: string): void {
@@ -95,6 +97,32 @@ describe('inventory flow (e2e)', () => {
       'Expected the charm cell to contain the magenta generated-sprite icon. ' +
         'If this fails, the inventory is rendering the text fallback instead of the sprite.',
     ).toBe(true);
+
+    // Fit-to-cell: the 64×64 source icon must be resized to fit its cell, not
+    // blown up by assuming a fixed 16px source. The old hardcoded `/16` scaled
+    // it to 192px (half-width 96px), 3× the 64px cell; the fixed 48px icon has a
+    // 24px half-width and can't even reach the cell edge. Sample one cell-width
+    // right of the icon centre (32px beyond the cell's right edge) — reachable
+    // only by the old overflow, so it must stay clear of the icon's magenta.
+    const outsidePt = designToScreen(
+      rect,
+      game,
+      cell.x + cell.width / 2 + cell.width,
+      cell.y + cell.height / 2,
+    );
+    const sample = 12;
+    const outsideRegion = {
+      x: Math.round(outsidePt.x - sample / 2),
+      y: Math.round(outsidePt.y - sample / 2),
+      w: sample,
+      h: sample,
+    };
+    expect(
+      regionContainsColor(png, outsideRegion, PROBE_ICON_MAGENTA, 70),
+      'The charm icon overflowed its cell — it was not resized to fit. ' +
+        'InventoryUI must scale generated icons from their real texture size ' +
+        '(fitScaleForBox), never assuming a 16px source.',
+    ).toBe(false);
   });
 
   it('shows a tooltip on hover and clears it on hover-out (unpinned)', async () => {

@@ -1,0 +1,28 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "fix-asset-pr-title-and-wire-classified-dossier",
+  "task_title": "Fit inventory sprite icons to cell size + wire classified-dossier + fix asset-pr title",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "notes": "Plan reviewed by gpt-5.4 (high, background agent). VERDICT: REJECTED. 2 concerns, both resolved: (1) BLOCKING - InventoryUI.ts scaled generated icons assuming 16x16 source (round(48/16)=3x), so 64x64 approved art rendered at 192px and overflowed the 64px cell (also latent for baseball-bat-v1); resolved by new pure fitScaleForBox(srcW,srcH,box) in ui-scale.ts + InventoryUI reading real texture dims (integer upscale for pixel art, exact downscale for hi-res). (2) NON-BLOCKING - integration 'bare concept = placeholder' witness coupled to today's manifest shape; resolved by dropping the brittle bare-internals assertion and keeping the durable icon-override + versioned-brief-is-real guards. Before/after observed in real artifact: e2e fit-to-cell FAILS on old formula (magenta 32px past cell edge), PASSES after fix (all 5 e2e green)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "concerns_count": 1,
+          "models": ["claude-sonnet-4.6"]
+        }
+      ]
+    }
+  }
+}

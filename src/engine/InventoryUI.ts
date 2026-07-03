@@ -10,7 +10,7 @@
  */
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
-import { fitUiScale, type ScreenBounds } from './ui-scale.js';
+import { fitScaleForBox, fitUiScale, type ScreenBounds } from './ui-scale.js';
 import { getRenderScale } from './render-scale.js';
 import { GAME } from '../shared/constants.js';
 import type { InventoryBag, InventorySlot, TabPreferences } from '../shared/inventory.js';
@@ -479,11 +479,15 @@ export function createInventoryUI(
 
       let iconObject: Phaser.GameObjects.GameObject;
       if (generatedEntry && generatedTextureLoaded) {
-        // Sprites are 16x16; scale to fit ~75% of the cell so the rarity
-        // border stays visible around the edges.
-        const iconScale = Math.max(1, Math.round((CELL_SIZE * 0.75) / 16));
         const iconImage = scene.add.image(cellX, cellY - 6, generatedEntry.textureKey);
         iconImage.setOrigin(0.5, 0.5);
+        // Fit the sprite to ~75% of the cell from its ACTUAL source size so the
+        // rarity border stays visible — never assume a fixed source size.
+        // Approved art ranges from 16×16 placeholders to 64×64 generated
+        // sprites; the old hardcoded `/16` blew 64px art up 3× (192px) and
+        // overflowed the 64px cell. fitScaleForBox keeps small pixel art crisp
+        // (integer upscale) and shrinks higher-resolution art down to fit.
+        const iconScale = fitScaleForBox(iconImage.width, iconImage.height, CELL_SIZE * 0.75);
         iconImage.setScale(iconScale);
         iconObject = iconImage;
       } else {

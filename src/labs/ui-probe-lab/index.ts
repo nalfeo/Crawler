@@ -232,14 +232,17 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       this.cameras.main.setBackgroundColor('#05050a');
 
       // Bake the synthetic inventory icon so at least one cell renders a sprite
-      // (deterministic, independent of the real generated-sprite manifest).
+      // (deterministic, independent of the real generated-sprite manifest). Baked
+      // at 64×64 — the real approved-art resolution (e.g. classified-dossier-v1),
+      // larger than the ~48px cell target — so the e2e exercises the "resize
+      // higher-resolution art down to fit the cell" path, not just 1:1 icons.
       if (!this.textures.exists(PROBE_ICON_TEXTURE)) {
         const g = this.add.graphics();
         g.fillStyle(0xff2fd0, 1);
-        g.fillRect(0, 0, 16, 16);
+        g.fillRect(0, 0, 64, 64);
         g.fillStyle(0xffffff, 1);
-        g.fillRect(5, 5, 6, 6);
-        g.generateTexture(PROBE_ICON_TEXTURE, 16, 16);
+        g.fillRect(20, 20, 24, 24);
+        g.generateTexture(PROBE_ICON_TEXTURE, 64, 64);
         g.destroy();
       }
       this.game.registry.set(GENERATED_SPRITE_REGISTRY_KEY, buildProbeSpriteRegistry());

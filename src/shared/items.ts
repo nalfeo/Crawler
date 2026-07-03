@@ -267,7 +267,10 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   key('broadcast-chip', 'Broadcast Chip', 'Contains a recording. Of what?', U),
   key('elevator-fuse', 'Elevator Fuse', "The elevator won't move without it.", R),
   key('vip-lanyard', 'VIP Lanyard', 'Looks important. Feels important.', U),
-  key('classified-dossier', 'Classified Dossier', 'Eyes only. (Everyone reads it anyway.)', E),
+  {
+    ...key('classified-dossier', 'Classified Dossier', 'Eyes only. (Everyone reads it anyway.)', E),
+    icon: 'classified-dossier-v1',
+  },
   key(
     'glistening-rat-tail',
     'Glistening Rat Tail',

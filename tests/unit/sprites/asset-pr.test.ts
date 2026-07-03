@@ -93,6 +93,10 @@ describe('planConsolidation', () => {
     expect(plan.prBody).toContain('Closes #3');
     expect(plan.prBody).toContain('Closes #7');
     expect(plan.commitMessage).toContain('2 approved assets');
+    // PR title is the squash-merge subject linted by the commit-lint CI job, so
+    // it MUST be a conventional commit — regression guard for the missing prefix
+    // that blocked every asset PR on commit-lint.
+    expect(plan.prTitle).toBe('feat(sprites): add 2 approved assets (2 check-ins)');
   });
 
   it('dedupes assets that appear in multiple issues by assetPath', () => {
