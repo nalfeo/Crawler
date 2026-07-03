@@ -244,7 +244,6 @@ describe('CaveSystemGenerator', () => {
     // members; irregular caves now supply `interiorCells` so wall tiles inside
     // the bbox are not attributed to any room.
     const floor = generateWithPresent(1, 4);
-    const w = floor.config.widthTiles;
     const room = floor.roomGraph
       .getAll()
       .find((r) => r.role === RoomRole.SPAWN || r.role === RoomRole.TERRITORY)!;
