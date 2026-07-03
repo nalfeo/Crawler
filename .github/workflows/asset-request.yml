@@ -51,18 +51,32 @@ jobs:
   drain:
     name: Ingest issues + drain queue
     runs-on: ubuntu-latest
-    # Two-gate filter:
-    #   - For `issues` events: skip issues without the `asset-request` label,
-    #     AND skip issues whose ORIGINAL AUTHOR isn't a trusted repo role.
-    #     The `author_association` payload field reflects the issue author's
-    #     permission on this repo at the time of the event.
-    #   - `workflow_dispatch` (and any future non-issues trigger) always
-    #     proceeds — that's the maintainer's explicit opt-in.
+    # Two-gate filter for `issues` events:
+    #   1. Trusted human authors (repo permission ≥ COLLABORATOR).
+    #   2. Trusted bots — Copilot cloud sessions file issues as
+    #      `user.login=Copilot` with `user.type=Bot` and
+    #      `author_association=CONTRIBUTOR`, so (1) alone would block them.
+    #      The extra `user.type=='Bot'` check + explicit login allow-list
+    #      keeps the surface tight (a random bot with commenter/contributor
+    #      history can't slip in).
+    #   3. `workflow_dispatch` (and any future non-issues trigger) always
+    #      proceeds — that's the maintainer's explicit opt-in.
+    #
+    # NOTE: the webhook payload's `user.login` for the Copilot cloud agent is
+    # `Copilot` (REST-style), whereas `gh issue list --json author.login`
+    # returns `app/copilot-swe-agent` (GraphQL-style). The workflow gate uses
+    # the REST form; the ingester's `SPRITES_INGESTER_ALLOWED_AUTHORS` (below)
+    # uses the GraphQL form. Both are required for Copilot to work end-to-end.
     if: |
       github.event_name == 'workflow_dispatch' || (
         github.event_name == 'issues' &&
-        contains(github.event.issue.labels.*.name, 'asset-request') &&
-        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)
+        contains(github.event.issue.labels.*.name, 'asset-request') && (
+          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association) ||
+          (
+            github.event.issue.user.type == 'Bot' &&
+            contains(fromJSON('["Copilot"]'), github.event.issue.user.login)
+          )
+        )
       )
     # Hard safety net so a stuck worker (e.g. a hung Azure/provider call that
     # never emits `idle` and doesn't respect SIGTERM) can't burn CI minutes.
@@ -108,9 +122,13 @@ jobs:
           # open `asset-request` issue when it runs — so a legit maintainer
           # trigger would otherwise piggyback-process any drive-by user's
           # issue that happens to be open. Restrict enqueue to the repo
-          # owner. Extend with additional trusted logins (comma-separated) if
-          # you accept issues from bots / collaborators.
-          SPRITES_INGESTER_ALLOWED_AUTHORS: ${{ github.repository_owner }}
+          # owner and the Copilot cloud coding agent (which appears as
+          # `app/copilot-swe-agent` via `gh issue list --json author.login`
+          # — the GraphQL variant of `Copilot` used in the workflow gate
+          # above). Extend with additional trusted logins (comma-separated)
+          # if you accept issues from other bots / collaborators.
+          SPRITES_INGESTER_ALLOWED_AUTHORS: >-
+            ${{ github.repository_owner }},app/copilot-swe-agent
         run: npm run sprites:ingest-once
 
       # Step 2: drain the queue. Exits with 0 after SPRITES_WORKER_MAX_EMPTY_POLLS

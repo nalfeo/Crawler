@@ -104,9 +104,13 @@ clean); `npm run typecheck` (previously failed with TS2741; now clean).
 
 1. **Merge the PR** and file a test asset-request issue to end-to-end validate
    the pipeline. Watch the Actions tab for `Asset Request Pipeline`.
-2. **If Copilot cloud sessions will file asset-request issues**, add their bot
-   login to the workflow's `SPRITES_INGESTER_ALLOWED_AUTHORS`. Today it's just
-   `${{ github.repository_owner }}` = `nalfeo`.
+2. **Copilot cloud sessions are supported**: the workflow gate accepts issues
+   filed by `user.login=Copilot` with `user.type=Bot` (the REST/webhook form),
+   and the ingester allow-list includes `app/copilot-swe-agent` (the GraphQL
+   form that `gh issue list --json author.login` returns). Both are needed
+   because GitHub exposes the SAME bot under two different login strings
+   depending on which API surfaces the data — the workflow gate reads the
+   webhook payload, the ingester reads `gh` output.
 3. **Consider re-adding `schedule:`** as a safety net if the fail-loud
    drain-mode + `issues:labeled` webhook path proves insufficient. The
    `SPRITES_INGESTER_ALLOWED_AUTHORS` filter protects the ingester side of any
@@ -209,7 +213,11 @@ Test Files  290 passed (290)
   the sidecar HTTP-server path** — the sidecar server is local-only so this
   isn't exploitable today, but a future "run sidecar in a shared/hosted
   environment" scenario would need to plumb `withAuthorAllowList` there too.
-- **The Copilot cloud coding agent's issue-author login is currently unknown**
-  to me — I set `SPRITES_INGESTER_ALLOWED_AUTHORS: ${{ github.repository_owner }}`
-  (nalfeo). If cloud sessions file issues as a bot account, that account needs
-  to be added, or issues from it will silently sit unprocessed. Test this next.
+- **The Copilot cloud coding agent files issues/PRs as TWO different login
+  strings depending on the API**: `Copilot` via REST/webhook payload,
+  `app/copilot-swe-agent` via `gh` CLI (GraphQL). `author_association` is
+  `CONTRIBUTOR` (not OWNER/MEMBER/COLLABORATOR), so a naive `author_association`
+  gate rejects Copilot outright. Any workflow that wants to trust Copilot must
+  either add an explicit login allow-list AND use `user.type == 'Bot'` for the
+  webhook gate, OR carry BOTH login strings in any downstream allow-list that
+  reads `gh` output.
