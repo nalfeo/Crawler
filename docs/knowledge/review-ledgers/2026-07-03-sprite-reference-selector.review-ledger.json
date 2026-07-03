@@ -44,6 +44,14 @@
           "resolved_count": 0,
           "clean": true,
           "notes": "confirmation on final state e27e612c; both distinct models reviewed the strict judge-parse logic and the hardened path-safety and reported no concerns"
+        },
+        {
+          "round": 4,
+          "models": ["gpt-5.5", "gpt-5.3-codex"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "regression fix (missing-manifest fail-closed + fixture seeding in fbd61254) surfaced by npm run verify; re-reviewed by 2 distinct models past the previously-reviewed HEAD; both confirmed the empty-pool guard still trips the zero-eligible fail-closed before any provider call and the seeded fixture exercises (not masks) the real generated-reference path; no concerns"
         }
       ]
     },
@@ -77,6 +85,15 @@
           "resolved_count": 0,
           "clean": true,
           "notes": "final confirmation on e27e612c; both distinct models clean, no new concerns; loop terminates clean"
+        },
+        {
+          "round": 4,
+          "models": ["gpt-5.5", "gpt-5.3-codex"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "honest re-review of the fbd61254 regression fix (missing-manifest fail-closed guard + shared seed-generated-reference fixture) which added a production line past the previously-reviewed HEAD; adjudicator claude-opus-4.8; 2 distinct models (gpt-5.5, gpt-5.3-codex) both confirmed the never-Kenney/fail-closed invariant is preserved and the fixture exercises the real selector path; no new concerns"
         }
       ]
     }
