@@ -34,6 +34,7 @@ import {
   Npc,
 } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
+import { createLogger } from '../shared/logger.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { setActiveWeapon } from './weaponSystem.js';
 import {
@@ -60,7 +61,9 @@ import { equip, initializeBaseStats } from '../core/systems/equipmentSystem.js';
 import {
   MERCHANTS_CHARM_COST,
   getEquipmentDefForItem,
+  getEquipmentDefForStarterWeapon,
   isEquippableItem,
+  STARTER_WEAPON_ID_TO_ITEM_ID,
 } from '../shared/equipmentDefs.js';
 import {
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
@@ -98,6 +101,8 @@ import type { NpcPlacementDef } from '../shared/npc-placements.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
 import { getSpawnerArchetype, getSpawnerArchetypeIndex } from './spawners/registry.js';
 import { hashStringToSeed, SeededRandom } from '../shared/random.js';
+
+const logger = createLogger('game:floor-scenario');
 
 // Derived constants computed from config at module initialization.
 // The camera/viewport is a render-pixel concept, so convert it to feet at this
@@ -1275,7 +1280,34 @@ export function selectFloor1StarterWeapon(world: GameWorld, optionIndex: number)
 
   world.floor1.selectedWeaponId = weaponId;
   world.floor1.selectedChoiceIndex = optionIndex;
-  setActiveWeapon(world, weaponDef);
+
+  // Route the starter through the equipment system so the weapon lives in the
+  // hand slot(s) — one-handed → mainHand, two-handed → mainHand + offHand —
+  // from frame one. `equip()` also activates the underlying WeaponDef via
+  // core/active-weapon, so the player begins auto-firing without a separate
+  // setActiveWeapon call. `force: true` bypasses the safe-context gate: the
+  // loadout modal runs before `world.state` becomes `'playing'`/`'safe_room'`,
+  // and this equip is a scenario-driver action, not a player input. If for
+  // any reason an equipment def isn't registered for this starter (data
+  // divergence) we fall back to a raw setActiveWeapon so the run still starts
+  // with a working weapon rather than a silent no-op.
+  const player = findPlayerEid(world);
+  const equipmentDef = getEquipmentDefForStarterWeapon(weaponId);
+  let equipped = false;
+  if (player !== undefined && equipmentDef !== undefined) {
+    const result = equip(world, player, equipmentDef, { force: true });
+    equipped = result.ok;
+    if (!result.ok) {
+      logger.warn('Starter weapon equip failed; falling back to setActiveWeapon', {
+        weaponId,
+        itemId: equipmentDef.id,
+        reasons: result.reasons.map((r) => r.type),
+      });
+    }
+  }
+  if (!equipped) {
+    setActiveWeapon(world, weaponDef);
+  }
   world.state = 'playing';
 }
 
@@ -2425,15 +2457,6 @@ export interface ShopkeeperStockItem {
   readonly cost: number;
 }
 
-const FLOOR_1_STARTER_WEAPON_TO_SHOP_ITEM_ID: Readonly<Record<string, string>> = {
-  sword: 'iron-sword',
-  bow: 'frost-bow',
-  'baseball-bat': 'bone-club',
-  pistol: 'plasma-pistol',
-  'throwing-knife': 'rusty-shiv',
-  fireball: 'crystal-wand',
-};
-
 const SHOPKEEPER_POST_QUEST_ITEM_COSTS: Readonly<Record<string, number>> = {
   'rusty-shiv': 18,
   'iron-sword': 24,
@@ -2480,7 +2503,7 @@ export function getShopkeeperPostQuestStock(world: GameWorld): ShopkeeperStockIt
     if (
       seen.has(weaponId) ||
       getWeaponDef(weaponId) === undefined ||
-      FLOOR_1_STARTER_WEAPON_TO_SHOP_ITEM_ID[weaponId] === undefined
+      STARTER_WEAPON_ID_TO_ITEM_ID.get(weaponId) === undefined
     ) {
       continue;
     }
@@ -2506,7 +2529,7 @@ export function getShopkeeperPostQuestStock(world: GameWorld): ShopkeeperStockIt
     }
   }
   return pickedWeaponIds
-    .map((weaponId) => FLOOR_1_STARTER_WEAPON_TO_SHOP_ITEM_ID[weaponId])
+    .map((weaponId) => STARTER_WEAPON_ID_TO_ITEM_ID.get(weaponId))
     .filter((itemId): itemId is string => itemId !== undefined)
     .slice(0, 2)
     .map((itemId) => ({
@@ -2716,28 +2739,34 @@ export function purchaseShopkeeperPostQuestItem(
 }
 
 /**
- * Equip a purchased, equippable item from the bag. Removes it from the bag once
- * worn. Returns true when something was equipped.
+ * Equip any purchased, equippable items from the bag. Iterates the full bag
+ * so the charm still gets equipped when a purchased two-handed weapon (whose
+ * `mainHand`/`offHand` slot may already be occupied by the starter) can't be
+ * accepted; the AI would otherwise stall on the first blocking item and
+ * never reach the charm. Removes each equipped item from the bag and returns
+ * true when at least one item was equipped this call.
  */
 export function equipPurchasedGear(world: GameWorld, playerEid: number): boolean {
   const bag = world.inventories.get(playerEid);
   if (!bag) {
     return false;
   }
-  const slot = bag.slots.find((s) => isEquippableItem(s.itemId));
-  if (!slot) {
-    return false;
+  let equippedAny = false;
+  // Snapshot the equippable slugs before mutation — `removeItem` may reshape
+  // the underlying array while we iterate.
+  const equippableItemIds = bag.slots
+    .filter((s) => isEquippableItem(s.itemId))
+    .map((s) => s.itemId);
+  for (const itemId of equippableItemIds) {
+    const def = getEquipmentDefForItem(itemId);
+    if (!def) continue;
+    const result = equip(world, playerEid, def, { force: true });
+    if (result.ok) {
+      removeItem(bag, itemId, 1);
+      equippedAny = true;
+    }
   }
-  const def = getEquipmentDefForItem(slot.itemId);
-  if (!def) {
-    return false;
-  }
-  const result = equip(world, playerEid, def, { force: true });
-  if (!result.ok) {
-    return false;
-  }
-  removeItem(bag, slot.itemId, 1);
-  return true;
+  return equippedAny;
 }
 
 // ---------------------------------------------------------------------------

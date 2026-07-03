@@ -1,5 +1,9 @@
+import { query } from 'bitecs';
+import { Player } from '../../core/components.js';
+import { equip } from '../../core/systems/equipmentSystem.js';
 import type { GameWorld } from '../../core/world.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
+import { getEquipmentDefForStarterWeapon } from '../../shared/equipmentDefs.js';
 import { type ModalPickerScenario } from '../../shared/modal-picker.js';
 import { setActiveWeapon } from '../weaponSystem.js';
 
@@ -32,6 +36,10 @@ function resolveFloor1LoadoutChoice(choiceId: string | undefined): Floor1Loadout
   return DEFAULT_FLOOR1_LOADOUT_CHOICE;
 }
 
+function findPlayerEid(world: GameWorld): number | undefined {
+  return query(world.ecs, [Player])[0];
+}
+
 export function applyFloor1LoadoutChoice(
   world: GameWorld,
   choiceId: string | undefined,
@@ -41,7 +49,17 @@ export function applyFloor1LoadoutChoice(
   if (!weaponDef) {
     throw new Error(`Missing weapon definition for floor 1 loadout: ${resolvedChoice}`);
   }
-  setActiveWeapon(world, weaponDef);
+  // Prefer the equipment-driven path so the chosen weapon lives in the
+  // corresponding hand slot(s). Falls back to a raw setActiveWeapon when
+  // there's no player entity or when the starter has no equipment def
+  // registered (mirrors selectFloor1StarterWeapon).
+  const player = findPlayerEid(world);
+  const equipmentDef = getEquipmentDefForStarterWeapon(resolvedChoice);
+  if (player !== undefined && equipmentDef !== undefined) {
+    equip(world, player, equipmentDef, { force: true });
+  } else {
+    setActiveWeapon(world, weaponDef);
+  }
   return resolvedChoice;
 }
 

@@ -1,5 +1,6 @@
 export { createGameWorld, set } from './world.js';
 export type { GameWorld, CreateWorldOptions } from './world.js';
+export * from './active-weapon.js';
 export * from './faction-relations.js';
 export type { CollisionPair, SpatialHashGrid } from './collision.js';
 export { createSpatialHashGrid } from './collision.js';

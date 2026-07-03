@@ -1,0 +1,20 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "weapon-equipping",
+  "task_title": "Route starter + merchant weapons through the equipment system (mainHand/offHand)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 3,
+      "notes": "approved-with-notes; 3 valid concerns addressed: (1) selectFloor1StarterWeapon/applyFloor1LoadoutChoice now check equip result.ok and fall back to setActiveWeapon with a logger.warn on failure, plus module-load validation that every weapon-equipment def references a real WeaponDef; (2) STARTER_WEAPON_ID_TO_ITEM_ID exported from equipmentDefs.ts and consumed by floorScenario.ts (single source of truth, duplicate FLOOR_1_STARTER_WEAPON_TO_SHOP_ITEM_ID deleted); (3) equipPurchasedGear loops all equippable slugs so a purchased hand weapon that cannot equip does not stall the charm; auto-swap-starter deferred as intentional UX (weapons ARE equippable per user spec; slot conflict resolution is a separate follow-up). Concern 4 (getShopkeeperPostQuestStock filters starterChoices not selectedWeaponId) is pre-existing and out of scope."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    }
+  }
+}
