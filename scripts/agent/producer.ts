@@ -44,16 +44,6 @@ interface Slice {
   created_at?: string;
 }
 
-interface OrchestrationState {
-  session_id: string;
-  feature: string;
-  triage_type: string;
-  slices: Slice[];
-  overall_progress: number;
-  shepherd_interventions: number;
-  blockers: string[];
-}
-
 /**
  * Triage decision logic
  */
@@ -187,9 +177,28 @@ function handleStatus(): void {
   }
 
   try {
-    const lines = fs.readFileSync(orchestrationPath, 'utf-8').trim().split('\n');
+    const fileContent = fs.readFileSync(orchestrationPath, 'utf-8').trim();
+    if (!fileContent) {
+      console.log('\n📊 PRODUCER ORCHESTRATION STATUS\n');
+      console.log('No orchestration state recorded yet.\n');
+      return;
+    }
+
+    const lines = fileContent.split('\n');
     const latestLine = lines[lines.length - 1];
+    if (!latestLine) {
+      console.log('\n📊 PRODUCER ORCHESTRATION STATUS\n');
+      console.log('No orchestration state recorded yet.\n');
+      return;
+    }
+
     const state = JSON.parse(latestLine) as any;
+
+    if (!state || typeof state.feature !== 'string') {
+      console.log('\n📊 PRODUCER ORCHESTRATION STATUS\n');
+      console.log('Invalid orchestration state. Try again.\n');
+      return;
+    }
 
     console.log('\n┌─────────────────────────────────────────────────────────────────┐');
     console.log('│ 🎬 PRODUCER ORCHESTRATION STATUS                               │');
@@ -268,10 +277,227 @@ function handleShepherdStatus(prNumber: string): void {
 }
 
 /**
+ * Slice definition: a decomposed piece of work mapped to a persona
+ */
+interface SliceDecomposition {
+  id: string;
+  name: string;
+  persona: string;
+  systems: string[];
+  apples: number;
+  description: string;
+  dependencies: string[];
+}
+
+/**
+ * Decomposition result: feature broken into parallelizable slices
+ */
+interface DecompositionResult {
+  feature: string;
+  slices: SliceDecomposition[];
+  totalApples: number;
+  criticalPath: string[];
+  parallelizableGroups: string[][];
+  escalations: string[];
+}
+
+/**
+ * Decompose a feature into slices mapped to personas and systems
+ */
+function decompose(request: string): DecompositionResult {
+  const req = request.toLowerCase();
+
+  // System analysis: which game systems does this touch?
+  const systemsInvolved: string[] = [];
+
+  if (/combat|damage|hit|attack|enemy/.test(req)) systemsInvolved.push('combat');
+  if (/enemy|ai|behavior|pathfind/.test(req)) systemsInvolved.push('ai');
+  if (/loot|drop|reward|chest|rare/.test(req)) systemsInvolved.push('loot');
+  if (/progression|xp|level|tier|prestige/.test(req)) systemsInvolved.push('progression');
+  if (/shop|buy|sell|currency|gold/.test(req)) systemsInvolved.push('economy');
+  if (/floor|room|wave|spawn/.test(req)) systemsInvolved.push('floor-generation');
+  if (/ui|menu|hud|button|screen/.test(req)) systemsInvolved.push('ui');
+  if (/visual|sprite|vfx|particle|effect/.test(req)) systemsInvolved.push('graphics');
+  if (/sound|audio|sfx|music/.test(req)) systemsInvolved.push('audio');
+  if (/quest|objective|trigger|event/.test(req)) systemsInvolved.push('quests');
+  if (/story|lore|dialogue|narrative/.test(req)) systemsInvolved.push('story');
+
+  // Default to game/core systems if nothing specific matched
+  if (systemsInvolved.length === 0) {
+    systemsInvolved.push('game', 'core');
+  }
+
+  // Create slices based on systems and personas
+  const slices: SliceDecomposition[] = [];
+  const sliceId = (name: string) => name.toLowerCase().replace(/\s+/g, '-');
+
+  // Persona-to-systems mapping (from routing matrix)
+  const personaMapping: Record<string, string[]> = {
+    'Game Designer': ['combat', 'loot', 'progression', 'economy', 'floor-generation'],
+    'Content Designer': ['quests', 'floor-generation'],
+    'Graphics Designer': ['graphics'],
+    'Sound Designer': ['audio'],
+    'Story Designer': ['story'],
+    'UX Designer': ['ui'],
+    'Systems Engineer': ['ai', 'core'],
+  };
+
+  // Group systems by persona
+  const personaWork: Record<string, string[]> = {};
+  for (const system of systemsInvolved) {
+    let assigned = false;
+    for (const [persona, systems] of Object.entries(personaMapping)) {
+      if (systems.includes(system)) {
+        if (!personaWork[persona]) personaWork[persona] = [];
+        personaWork[persona].push(system);
+        assigned = true;
+        break;
+      }
+    }
+    if (!assigned) {
+      // Default to Game Designer for unknown systems
+      if (!personaWork['Game Designer']) personaWork['Game Designer'] = [];
+      personaWork['Game Designer'].push(system);
+    }
+  }
+
+  // Create one slice per persona
+  let sliceIndex = 1;
+  for (const [persona, systems] of Object.entries(personaWork)) {
+    const sid = sliceId(`${persona}-${sliceIndex}`);
+    const apples = systems.length <= 2 ? 2 : systems.length <= 4 ? 3 : 3; // Cap at 3 apples
+
+    slices.push({
+      id: sid,
+      name: `${persona} work (${systems.join(', ')})`,
+      persona,
+      systems,
+      apples,
+      description: `Implement ${systems.join(', ')} for: ${request}`,
+      dependencies: [],
+    });
+    sliceIndex++;
+  }
+
+  // Determine dependencies: UI/graphics/audio typically wait for core game logic
+  const coreSlices = slices.filter((s) =>
+    ['Game Designer', 'Systems Engineer'].includes(s.persona),
+  );
+  const uiSlices = slices.filter((s) => s.persona === 'UX Designer');
+  const graphicsSlices = slices.filter((s) => s.persona === 'Graphics Designer');
+  const audioSlices = slices.filter((s) => s.persona === 'Sound Designer');
+
+  // UI depends on core
+  for (const slice of uiSlices) {
+    slice.dependencies = coreSlices.map((s) => s.id);
+  }
+
+  // Graphics depends on core
+  for (const slice of graphicsSlices) {
+    slice.dependencies = coreSlices.map((s) => s.id);
+  }
+
+  // Audio depends on core
+  for (const slice of audioSlices) {
+    slice.dependencies = coreSlices.map((s) => s.id);
+  }
+
+  // Story can be parallel (no dependencies unless it references game systems)
+
+  // Compute parallelizable groups
+  const parallelizableGroups: string[][] = [];
+  const processed = new Set<string>();
+
+  for (const slice of slices) {
+    if (!processed.has(slice.id)) {
+      // Find all slices with same dependencies
+      const group = slices.filter(
+        (s) =>
+          JSON.stringify(s.dependencies.sort()) ===
+          JSON.stringify(slice.dependencies.slice().sort()),
+      );
+      parallelizableGroups.push(group.map((g) => g.id));
+      group.forEach((g) => processed.add(g.id));
+    }
+  }
+
+  // Compute critical path (longest dependency chain)
+  const criticalPath: string[] = [];
+  for (const slice of slices) {
+    if (slice.dependencies.length === 0) {
+      criticalPath.push(slice.id);
+    }
+  }
+
+  const totalApples = slices.reduce((sum, s) => sum + s.apples, 0);
+
+  return {
+    feature: request,
+    slices,
+    totalApples,
+    criticalPath,
+    parallelizableGroups,
+    escalations: [],
+  };
+}
+
+/**
+ * Command: --decompose
+ * Decompose a feature into parallelizable slices
+ */
+function handleDecompose(request: string): void {
+  const result = decompose(request);
+
+  console.log('\n🎯 PRODUCER DECOMPOSITION\n');
+  console.log(`Feature: "${result.feature}"`);
+  console.log(`Total Apple Estimate: ${result.totalApples}🍎`);
+  console.log(`Slices: ${result.slices.length}`);
+  console.log(`Parallelizable Groups: ${result.parallelizableGroups.length}`);
+
+  if (result.totalApples > 12) {
+    console.log(
+      '\n⚠️  WARNING: Total apples > 12. Consider further decomposition or human review.',
+    );
+  }
+
+  if (result.slices.length > 8) {
+    console.log('\n⚠️  WARNING: More than 8 slices. Escalate to human for scope review.');
+  }
+
+  console.log('\n📋 SLICES:\n');
+  for (const slice of result.slices) {
+    const deps =
+      slice.dependencies.length > 0
+        ? ` (depends on: ${slice.dependencies.join(', ')})`
+        : ' (independent)';
+    console.log(`  ${slice.id}`);
+    console.log(`    Persona: ${slice.persona}`);
+    console.log(`    Systems: ${slice.systems.join(', ')}`);
+    console.log(`    Apples: ${slice.apples}🍎`);
+    console.log(`    ${slice.description}${deps}\n`);
+  }
+
+  console.log('🔗 PARALLELIZABLE GROUPS:\n');
+  for (let i = 0; i < result.parallelizableGroups.length; i++) {
+    const group = result.parallelizableGroups[i];
+    if (group) {
+      console.log(`  Group ${i + 1}: ${group.join(', ')}\n`);
+    }
+  }
+
+  if (result.escalations.length > 0) {
+    console.log('\n⚠️  ESCALATIONS:');
+    for (const escalation of result.escalations) {
+      console.log(`  - ${escalation}`);
+    }
+  }
+}
+
+/**
  * Parse CLI arguments and route to handlers
  */
 function main(): void {
-  const { values, positionals } = parseArgs({
+  const { values } = parseArgs({
     options: {
       triage: { type: 'string' },
       decompose: { type: 'string' },
@@ -314,7 +540,7 @@ Commands:
   }
 
   if (values.decompose) {
-    console.log(`\n[Decompose not yet implemented - coming in Phase 2]\n`);
+    handleDecompose(values.decompose);
     process.exit(0);
   }
 
