@@ -72,6 +72,7 @@
     "telemetry:capture": "tsx scripts/agent/docs/guard-telemetry.ts --capture-session",
     "verify:coverage": "vitest run --project unit --coverage",
     "review:ledger": "node scripts/agent/review/cli.mjs",
+    "producer": "tsx scripts/agent/producer.ts",
     "verify:core": "npm run typecheck:src && npm run lint:core && vitest run tests/ecs tests/property --reporter=dot",
     "verify:game": "npm run typecheck:src && npm run lint:game && vitest run tests/game --reporter=dot",
     "verify:engine": "npm run typecheck:src && npm run lint:engine && vitest run tests/unit --reporter=dot",
