@@ -45,7 +45,14 @@ export interface CreateProviderOptions {
 }
 
 const DEFAULT_AZURE_API_VERSION = '2025-04-01-preview';
-const DEFAULT_AZURE_DEPLOYMENT = 'gpt-image-1';
+/**
+ * Baseline Azure image deployment used when `AZURE_OPENAI_IMAGE_DEPLOYMENT` is
+ * unset. Exported so the `sprites:run` `--model` allowlist can include the
+ * default/baseline deployment — otherwise the flag would be strictly more
+ * restrictive than the env var and could not target (or benchmark against) the
+ * baseline.
+ */
+export const DEFAULT_AZURE_DEPLOYMENT = 'gpt-image-1';
 
 /**
  * Supported content-generation backends (ADR 0033). `azure-openai` hits a

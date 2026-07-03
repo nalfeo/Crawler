@@ -30,13 +30,19 @@ import { JudgeBudget } from './cost-tracker.js';
 import { runFull } from './run-full.js';
 import { JudgeCache } from './judge-cache.js';
 import {
+  DEFAULT_AZURE_DEPLOYMENT,
   createImageProvider,
   createTextProvider,
   createVisionProvider,
 } from './provider/factory.js';
 import { ProviderError } from './provider/types.js';
 
-const SUPPORTED_IMAGE_MODELS = [
+// The baseline `DEFAULT_AZURE_DEPLOYMENT` (provider/factory.ts) is listed first
+// so the default/only-tested deployment stays selectable and benchmarkable via
+// `--model`; without it the flag would be strictly more restrictive than the
+// `AZURE_OPENAI_IMAGE_DEPLOYMENT` env var it overrides.
+export const SUPPORTED_IMAGE_MODELS = [
+  DEFAULT_AZURE_DEPLOYMENT,
   'gpt-image-2',
   'mai-image-2.5-flash',
   'gpt-image-1-mini',
@@ -116,7 +122,7 @@ async function ensureGalleryRunning(): Promise<void> {
   );
 }
 
-function parseArgs(argv: ReadonlyArray<string>): CliArgs {
+export function parseArgs(argv: ReadonlyArray<string>): CliArgs {
   const briefs: string[] = [];
   let all = false;
   let pick: number | undefined;
