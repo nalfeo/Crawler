@@ -69,6 +69,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'main-scene-probe-lab': '/src/labs/main-scene-probe-lab/index.ts',
   'family-territory-lab': '/src/labs/family-territory-lab/index.ts',
   'family-boss-den-lab': '/src/labs/family-boss-den-lab/index.ts',
+  'floor2-settlement-lab': '/src/labs/floor2-settlement-lab/index.ts',
 };
 
 function humanizeLabId(labId: string): string {

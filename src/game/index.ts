@@ -84,6 +84,15 @@ export {
   evaluateAchievementUnlocksForPhase,
   unlockAchievement,
 } from './systems/achievementSystem.js';
+export {
+  emergentEventSystem,
+  getFiredEmergentEvents,
+  forceFireEmergentEvent,
+  nextTimerEventEta,
+  _resetEmergentEventScheduler,
+} from './systems/emergentEventSystem.js';
+export { initializeFloor2Settlement } from './floor2Settlement.js';
+export type { InitializeFloor2SettlementOptions } from './floor2Settlement.js';
 export { getSkillDefinition, getAllSkillDefinitions } from './skills/registry.js';
 export { getAbilityDefinition, getAllAbilityDefinitions } from './abilities/registry.js';
 export type {

@@ -1,0 +1,76 @@
+{
+  "id": "floor2-emergent-events",
+  "_note": "Floor 2 emergent-event archetypes (spec §Design → Emergent events; content bible §9). Each event fires deterministically on a trigger (timer / region-enter / relationship-threshold) and queues faction-relation deltas via world.factionRelationDeltas. Director narration lines are static (P6 — LLM spice is load-time only, never in CI path). Owned by Slice 6; Slice 4 owns quests.floor2.dens.json (the den-unlock quests).",
+  "version": 1,
+  "events": [
+    {
+      "id": "floor2-event-turf-war-flashpoint",
+      "title": "Turf-War Flashpoint",
+      "narration": "Welcome back to Family Matters! We've got a turf-war flashpoint at the chokepoint — two families spitting nails at each other, and the contestant just walked in. PICK. A. SIDE.",
+      "trigger": { "type": "timer", "atMs": 45000 },
+      "oneShot": true,
+      "effects": [
+        { "familyIndex": 0, "deltaKey": "pickASideChosen", "reason": "turf-war: sided with" },
+        { "familyIndex": 1, "deltaKey": "pickASideRejected", "reason": "turf-war: rejected" }
+      ]
+    },
+    {
+      "id": "floor2-event-tribute-run",
+      "title": "The Tribute Run",
+      "narration": "The consigliere wants a tribute run — walk product back to the family and you'll be their favorite contestant of the season.",
+      "trigger": { "type": "regionEnter", "roomRole": "settlement" },
+      "oneShot": true,
+      "effects": [
+        { "familyIndex": 0, "deltaKey": "tributeDelivered", "reason": "tribute-run: delivered" }
+      ]
+    },
+    {
+      "id": "floor2-event-the-hit",
+      "title": "The Hit",
+      "narration": "A rival family's calling in a hit. Cash on the barrel to open a sealed den — and yeah, they'll owe you one.",
+      "trigger": { "type": "threshold", "familyIndex": 0, "crosses": "hostile" },
+      "oneShot": true,
+      "effects": [
+        {
+          "familyIndex": 1,
+          "deltaKey": "favorQuestComplete",
+          "reason": "the-hit: requester rewarded"
+        },
+        { "familyIndex": 0, "deltaKey": "killMob", "reason": "the-hit: target family tanked" }
+      ]
+    },
+    {
+      "id": "floor2-event-protection-racket",
+      "title": "Protection Racket",
+      "narration": "The Broker's pitching a protection racket — pay the family in gold or take the heat on the way out. Real classy stuff, folks.",
+      "trigger": { "type": "regionEnter", "roomRole": "territory" },
+      "oneShot": true,
+      "effects": [
+        { "familyIndex": 0, "deltaKey": "protectionPaid", "reason": "protection: paid up" }
+      ]
+    },
+    {
+      "id": "floor2-event-betrayal-tax",
+      "title": "The Betrayal Tax",
+      "narration": "The whole settlement heard about the betrayal. Now everyone's watching, and the ledger just went red across the board.",
+      "trigger": { "type": "threshold", "familyIndex": 0, "crosses": "hate" },
+      "oneShot": true,
+      "effects": [
+        { "familyIndex": 0, "deltaKey": "betrayAlly", "reason": "betrayal-tax: marked reputation" },
+        { "familyIndex": 1, "deltaKey": "pickASideRejected", "reason": "betrayal-tax: side-eye" }
+      ]
+    },
+    {
+      "id": "floor2-event-poison-the-well",
+      "title": "Poison the Well",
+      "narration": "The Mother Lode's been dosed. Chaos in the caves, my kind of episode. Multiple families are furious — and one's laughing.",
+      "trigger": { "type": "timer", "atMs": 120000 },
+      "oneShot": true,
+      "effects": [
+        { "familyIndex": 0, "deltaKey": "poisonTheWell", "reason": "poison-well: sabotaged" },
+        { "familyIndex": 1, "deltaKey": "poisonTheWell", "reason": "poison-well: sabotaged" },
+        { "familyIndex": 2, "deltaKey": "pickASideChosen", "reason": "poison-well: benefactor" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "floor2-slice6",
+  "task_title": "Floor 2 Slice 6 — Settlement, seeded shops, emergent events",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-4.7",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "notes": "Plan reviewed against .specify/specs/floor2-family-territories.md (FR10, FR18, FR19, §Emergent events, §Shop generator) and ADR 0040 D8 (settlement/shops/HUD). Deliverables scoped to Slice 6 only: (1) 6-event data-driven pack quests.floor2.events.json + Zod schema + loader; (2) emergentEventSystem scheduler wired into both real pipelines; (3) pure seeded generateShopInventory + shop-archetypes.floor2.json + Zod loader; (4) initializeFloor2Settlement retag-SAFE + seal + spawn Broker + 1–2 shops via existing spawnNpc; (5) NPC defs for Broker + 4 shop archetypes; (6) tuning.json extensions (eventCooldownsMs, shopPricing); (7) full unit/integration/property tests; (8) settlement lab; (9) handoff. Non-goals (Slices 1/2/3/4/5/7/8) explicitly deferred; quests.floor2.dens.json + enemy-spawner + door-lock owned by Slice 4 (parallel session).",
+      "reviewer": "self",
+      "verdict": "pass"
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "clean": true,
+          "models": ["claude-opus-4.7"],
+          "reviewer_model": "claude-opus-4.7",
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "notes": "Reviewed determinism (rng-only + elapsedMs-only, no Math.random / Date.now anywhere in Slice 6), WeakMap-per-world scheduler state, one-shot enforcement (firedEventIds set) + per-event cooldown, region-enter fires only on room-id change (edge-detect, not per-frame), threshold triggers scan factionRelationEvents non-destructively so HUD Slice 7 can co-consume, family-index resolution respects world.floor2State.presentFamilies so packs stay family-agnostic, deltas queued via queueFactionRelationDelta (never direct mutation) so band recomputes atomically in the next familyRelationshipSystem drain, both real pipelines wired (bootstrap preSystems after familyRelationshipSystem + headless simulation-step.ts). Shop inventory generator is pure (SeededRandom-only, no world dep), weighted-without-replacement, price bounded ≥1, references only known catalog ids (weapons.json + merchant's-charm) enforced at load-time. Settlement initializer is idempotent, uses existing sealSpecialRooms + spawnNpc plumbing, and paints SAFE_ROOM_FLOOR tiles for the calm-blue tint. Tuning extensions carry _note fields. 3🍎 tier."
+        }
+      ],
+      "reviewer": "self+rubber-duck",
+      "verdict": "pass",
+      "notes": "See round 1 notes."
+    }
+  }
+}

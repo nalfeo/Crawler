@@ -1,0 +1,63 @@
+{
+  "_note": "Floor 2 shop archetypes (spec FR19; content bible §8). The Broker isn't a shop — she's a quest-giver with her own NpcDef in npc-types.ts. Shops each roll a seeded inventory via generateShopInventory(rng, archetype). itemId values MUST match existing item ids (weapons.json ids or the merchant's-charm placeholder id).",
+  "version": 1,
+  "archetypes": [
+    {
+      "id": "the-fence",
+      "name": "The Fence",
+      "npcId": "shop-the-fence",
+      "priceMultiplier": 1.1,
+      "minInventorySize": 3,
+      "maxInventorySize": 5,
+      "entries": [
+        { "itemId": "knife", "weight": 3, "basePrice": 22 },
+        { "itemId": "sword", "weight": 2, "basePrice": 55 },
+        { "itemId": "baseball-bat", "weight": 2, "basePrice": 40 },
+        { "itemId": "throwing-knife", "weight": 3, "basePrice": 18 },
+        { "itemId": "boomerang", "weight": 1, "basePrice": 60 },
+        { "itemId": "pistol", "weight": 1, "basePrice": 70 }
+      ]
+    },
+    {
+      "id": "the-apothecary",
+      "name": "The Apothecary",
+      "npcId": "shop-the-apothecary",
+      "priceMultiplier": 0.95,
+      "minInventorySize": 2,
+      "maxInventorySize": 4,
+      "entries": [
+        { "itemId": "merchants-stained-charm", "weight": 3, "basePrice": 30 },
+        { "itemId": "fireball", "weight": 2, "basePrice": 45 },
+        { "itemId": "laser", "weight": 1, "basePrice": 65 }
+      ]
+    },
+    {
+      "id": "the-quartermaster",
+      "name": "The Quartermaster",
+      "npcId": "shop-the-quartermaster",
+      "priceMultiplier": 1.0,
+      "minInventorySize": 3,
+      "maxInventorySize": 4,
+      "entries": [
+        { "itemId": "hammer", "weight": 2, "basePrice": 65 },
+        { "itemId": "crossbow", "weight": 2, "basePrice": 75 },
+        { "itemId": "bow", "weight": 2, "basePrice": 55 },
+        { "itemId": "landmine", "weight": 1, "basePrice": 90 },
+        { "itemId": "merchants-stained-charm", "weight": 1, "basePrice": 35 }
+      ]
+    },
+    {
+      "id": "the-resource-broker",
+      "name": "The Resource Broker",
+      "npcId": "shop-the-resource-broker",
+      "priceMultiplier": 1.2,
+      "minInventorySize": 2,
+      "maxInventorySize": 3,
+      "entries": [
+        { "itemId": "bowling-ball", "weight": 1, "basePrice": 120 },
+        { "itemId": "merchants-stained-charm", "weight": 3, "basePrice": 40 },
+        { "itemId": "throwing-knife", "weight": 2, "basePrice": 20 }
+      ]
+    }
+  ]
+}
