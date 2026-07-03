@@ -1,0 +1,61 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "floor1-spell-broker-chain-timing",
+  "task_title": "Floor 1 AI: Spell Broker / Slime Rat chain timing guard",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "notes": "Reviewer approved the chain-scoped urgency/filter shape and explicitly recommended extending the slice with a chain-target-only suppression override plus deterministic tests. Extension implemented (chainSuppressionOverride in findProgressObjective, plus 5 BT tests). No pairwise travel-time estimator introduced; Session 1 integration surface documented (per-segment travelMs / estimateSegmentMs replacement).",
+      "effort": "xhigh",
+      "verdict": "approve-with-extension"
+    },
+    "dual_plan_synthesis": {
+      "completed": true,
+      "plan_models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+      "judge_model": "claude-opus-4.8",
+      "notes": "Judge approved current chain-scoped urgency + detour-suppression implementation. Winner: Plan A shape with Plan B risk mitigations."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 5,
+          "resolved_count": 5,
+          "clean": false,
+          "notes": "1 CHANGES REQUESTED (gate 6 dead clause) + 4 non-blocking (0.75 magic num, onCriticalPath detour flip note, test 4 weakness, thrash upper bound). Blocking + 2 nits addressed in code (gate 6 clause dropped + comment; 0.75 -> CHAIN_SUPPRESSION_OVERRIDE_URGENCY constant + docstring; NOTE comment in computeSpellBrokerChainStatus). Test 4 kept (valid invariant assertion) and thrash trade-off documented in docstring."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Round 1 items all verified resolved. Typecheck + unit tests green (62/62). Two non-blocking observations only: (a) micro-redundant !complete guard is defensive and OK; (b) estimateCurrentRunPlan runs twice per tick when findProgressObjective is reached, rationale documented, no measurable perf. No blocking issues."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.7",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview", "claude-opus-4.8"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "gpt-5.5 and gemini-3.1-pro-preview returned CLEAN. claude-opus-4.8 flagged one substantive non-blocking design flaw prior reviewers missed: Math.max(baseUrgency, chainUrgency) in bt-ai-provider.ts is provably inert. Algebra: chainUrgency non-zero only when onCriticalPath=true; onCriticalPath requires no pre-chain/shop/other segments remain; at that point global segments = chain+staircase+post-stairs identically to chain remainingRequiredMs composition (both = sum(spellBroker)+sum(staircase)+sum(postStairs)+safetyBuffer); identical slack window; identical urgency. Chain work is strict subset of global work so chainUrgency <= globalUrgency unconditionally, with equality when used. Empirical sweep confirmed max delta == 0. Self-verified against run-planner.ts:434-438 and :481. Reported to human sender with 3 options, sender chose A (delete inert block). Applied: removed Math.max block, reverted urgency to runPlan?.urgency ?? panic; removed the one planner test whose author-comment already conceded it could not assert inequality; updated BT test comment to attribute pickup suppression to chainBeeline (real mechanism) not urgency saturation (dead). Retained real mechanisms: chainBeeline detour tightening + chainSuppressionOverride. Post-cleanup: 61/61 targeted tests pass.",
+          "adjudication_notes": "Escalated the flaw to the human rather than rationalizing it, per rule #12. Option A keeps the two genuinely new mechanisms and drops the decorative one."
+        }
+      ]
+    }
+  }
+}
