@@ -98,6 +98,33 @@ describe('floor2VictorySystem', () => {
     expect(world.goalFlags.get(FLOOR2_VICTORY_GOAL_ID)).not.toBe(true);
   });
 
+  it('does not trigger Win A when two or more families are still alive and friendly (FR15 exclusivity)', () => {
+    const seed = 1204;
+    const world = createTestWorld({ seed, floor: 2 });
+    const roster = selectFloor2Roster(new SeededRandom(seed), loadFamilies(), loadResources(), {
+      presentCountFourProbability: 0,
+    });
+    world.floor2State = {
+      presentFamilies: [...roster.presentFamilies],
+      contestedResource: roster.contestedResource,
+      betrayerFlag: false,
+    };
+    initializeFactionRelations(world, world.floor2State.presentFamilies);
+
+    // Two or more families present, NONE decapitated (all alive), all friendly
+    // (relation > 75). "Allying two families is not a win" (FR15), so Win A must
+    // NOT latch — soleAliveFamily is null when aliveFamilies.length !== 1.
+    expect(world.floor2State.presentFamilies.length).toBeGreaterThanOrEqual(2);
+    for (const familyId of world.floor2State.presentFamilies) {
+      world.factionRelations.set(familyId, 80);
+    }
+
+    floor2VictorySystem(world);
+
+    expect(world.goalFlags.get(FLOOR2_VICTORY_GOAL_ID)).not.toBe(true);
+    expect(world.goalFlags.get(FLOOR2_STAIRS_POPPED_GOAL_ID)).not.toBe(true);
+  });
+
   it('latches floor2-victory for Win B (all bosses dead)', () => {
     const seed = 1203;
     const world = createTestWorld({ seed, floor: 2 });
