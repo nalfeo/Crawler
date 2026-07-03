@@ -447,6 +447,41 @@ export const PANIC_MIN_DODGE_WEIGHT_SCALE = 0.45;
 // Pre-unlock emergency floor for dodge scaling. Slightly lower than the generic
 // floor so low-time, pre-unlock runs prioritize progress over perfect safety.
 export const PANIC_MIN_DODGE_WEIGHT_SCALE_LOCKED = 0.3;
+
+// --- Time-aware run planner -------------------------------------------------
+// Coarse, deterministic estimates only: they bias optional-value decisions, never
+// select objectives. The BT/Floor 1 quest state remains authoritative.
+export const RUN_PLANNER_SAFETY_BUFFER_MS = 20_000;
+export const RUN_PLANNER_URGENCY_SLACK_WINDOW_MS = 120_000;
+export const RUN_PLANNER_INTERACTION_MS = 1_500;
+export const RUN_PLANNER_LEVEL_2_GRIND_MS = 35_000;
+export const RUN_PLANNER_QUEST_KILL_MS = 4_500;
+export const RUN_PLANNER_GOLD_FARM_MS = 3_000;
+export const RUN_PLANNER_FETCH_PICKUP_MS = 1_000;
+export const RUN_PLANNER_MINOR_BOSS_KILL_MS = 25_000;
+export const RUN_PLANNER_FINAL_BOSS_KILL_MS = 45_000;
+export const RUN_PLANNER_STAIRS_INTERACT_MS = 1_000;
+
+// --- Tactical opportunities during objective travel ------------------------
+// Pickup opportunities are filtered by reachability first, then ranked by
+// path-relative detour cost. Enemy packs are scored for debug only in this slice.
+export const TACTICAL_OPPORTUNITY_SCAN_RADIUS_FT = 24;
+export const TACTICAL_OPPORTUNITY_MAX_DETOUR_FT = 8;
+export const TACTICAL_OPPORTUNITY_TRIVIAL_DETOUR_FT = 0.75;
+export const TACTICAL_OPPORTUNITY_MIN_DETOUR_MS = 250;
+export const TACTICAL_OPPORTUNITY_URGENCY_PENALTY = 0.95;
+export const TACTICAL_OPPORTUNITY_DANGER_PENALTY = 1.5;
+export const TACTICAL_OPPORTUNITY_ACCEPT_SCORE = 2;
+export const TACTICAL_OPPORTUNITY_MAX_ACCEPTED = 4;
+export const TACTICAL_OPPORTUNITY_TRAVEL_WEIGHT_DIVISOR = 8;
+export const TACTICAL_OPPORTUNITY_MAX_TRAVEL_WEIGHT = 2;
+export const TACTICAL_TRAVEL_W_LOOT = 1.15;
+export const TACTICAL_OPPORTUNITY_GOLD_VALUE = 3;
+export const TACTICAL_OPPORTUNITY_ITEM_VALUE = 18;
+export const TACTICAL_OPPORTUNITY_ENEMY_PACK_MIN_VALUE = 1;
+export const TACTICAL_OPPORTUNITY_ENEMY_PACK_BASE_VALUE = 8;
+export const TACTICAL_OPPORTUNITY_ENEMY_PACK_HP_PENALTY = 0.15;
+
 // Opportunistic quest-NPC detour while pathing: if an NPC with a pending quest
 // interaction is seen and visiting it adds only a small path-length penalty,
 // route Progress to that NPC first so interactions are not skipped while
@@ -553,9 +588,9 @@ export const TRAVEL_W_PROGRESS = 4;
 export const TRAVEL_W_SAFETY = 10;
 export const TRAVEL_W_CONTINUITY = 0.8;
 export const TRAVEL_W_KITE = 1.2;
-// v1 keeps loot/farm biasing at 0 so the existing Track-B opportunistic collect
-// and farm pulls stay in charge; the scoring hooks are ready to enable in a later
-// phase once the safety-only steering is proven not to regress win-rate.
+// Base loot/farm weights stay 0; BehaviorTreeAI enables the loot hook dynamically
+// only for reachable, planner-approved tactical pickups so there is still one
+// travel-state loot channel.
 export const TRAVEL_W_LOOT = 0;
 export const TRAVEL_W_FARM = 0;
 export const TRAVEL_LOOT_LOOKAHEAD_FT = 12;
