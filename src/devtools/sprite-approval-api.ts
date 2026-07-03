@@ -241,6 +241,38 @@ export async function postApprove(
   return (await response.json()) as ApproveResponse;
 }
 
+/** Sidecar confirmation for a single-run delete. */
+export interface DeleteRunResponse {
+  /** The `briefId/runId` key the sidecar removed. */
+  readonly deleted: string;
+}
+
+/**
+ * Deletes exactly one run's artifacts from the sidecar store via
+ * `DELETE /api/runs/:briefId/:runId`. Scoped to the single `briefId/runId`
+ * pair — it never touches other runs, other briefs, or the workflow queue
+ * state. Returns the `briefId/runId` key the sidecar confirms it removed, and
+ * throws on any non-2xx response (e.g. `404` when the run no longer exists).
+ */
+export async function deleteSidecarRun(
+  briefId: string,
+  runId: string,
+  fetcher: typeof fetch = fetch,
+): Promise<DeleteRunResponse> {
+  const response = await fetcher(runSummaryUrl(briefId, runId), { method: 'DELETE' });
+  if (!response.ok) {
+    let detail = '';
+    try {
+      const body = (await response.json()) as ApproveErrorBody;
+      detail = body.message ?? body.error ?? '';
+    } catch {
+      // Body wasn't JSON; fall through with status text only.
+    }
+    throw new Error(`delete failed (${response.status}): ${detail || response.statusText}`);
+  }
+  return (await response.json()) as DeleteRunResponse;
+}
+
 /**
  * Triggers the sidecar check-in: publishes every locally-approved asset that
  * differs from `origin/main` as a dedicated `assets/<slug>` branch + an

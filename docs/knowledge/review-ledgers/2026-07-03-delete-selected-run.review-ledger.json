@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "delete-selected-run",
+  "task_title": "Scope sprite devtools delete button to the selected run",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "notes": "gpt-5.4 rubber-duck, approved_with_changes. #1 serialize delete with load/auto-refresh via azureLoadInFlight+setAzureControlsEnabled (adopted); #2 reconcile stale/deleted selection via silent refresh in finally (adopted); #3 add source-level regression guard test since devtools-main has no DOM harness/seam (adopted)."
+    }
+  }
+}

@@ -25,6 +25,7 @@ import {
   fetchLatestRunForBriefSince,
   fetchRunSummary,
   listSidecarRuns,
+  deleteSidecarRun,
   postApprove,
   postCheckin,
   prepareCheckin,
@@ -1733,9 +1734,10 @@ function render(): void {
     text: '',
     style: { fontSize: '11px', color: '#64748b' },
   });
-  const clearStoreBtn = el('button', {
-    text: 'Clear Azure state',
-    title: 'Delete generated runs + workflow state in the sidecar store for this workspace.',
+  const deleteRunBtn = el('button', {
+    text: 'Delete run',
+    title:
+      'Delete the selected run from the sidecar store. Removes only that run — other runs and workflow state are left untouched.',
     style: {
       padding: '6px 10px',
       borderRadius: '8px',
@@ -1752,7 +1754,7 @@ function render(): void {
     reloadSelect,
     reloadRefreshBtn,
     reloadLoadBtn,
-    clearStoreBtn,
+    deleteRunBtn,
     reloadStatus,
   );
   const azureRunKey = (run: SidecarRunListEntry): string => `${run.briefId}::${run.runId}`;
@@ -1766,6 +1768,7 @@ function render(): void {
     reloadStateFilter.disabled = !enabled;
     reloadRefreshBtn.disabled = !enabled;
     reloadLoadBtn.disabled = !enabled;
+    deleteRunBtn.disabled = !enabled;
   };
   const refreshAzureRuns = async (options: { silent?: boolean } = {}): Promise<void> => {
     // `silent` (init/background) skips the transient "Loading…" and the success
@@ -1905,36 +1908,42 @@ function render(): void {
   reloadLoadBtn.addEventListener('click', () => {
     void loadSelectedAzureRun();
   });
-  clearStoreBtn.addEventListener('click', () => {
+  deleteRunBtn.addEventListener('click', () => {
     void (async () => {
+      // Share the load path's in-flight flag so a delete can't race a
+      // "Load sheet" click or the 15s background auto-refresh (both bail while
+      // `azureLoadInFlight` is set), which could otherwise reload a run into the
+      // local queue moments before its artifacts are deleted.
+      if (azureLoadInFlight) {
+        return;
+      }
+      const key = reloadSelect.value;
+      const run = key ? azureRunChoices.find((choice) => azureRunKey(choice) === key) : undefined;
+      if (!run) {
+        reloadStatus.textContent = 'Pick a run to delete first.';
+        return;
+      }
       const ok = window.confirm(
-        'Clear generated runs + workflow state from the sidecar store? This permanently abandons pending/reloadable work for this workspace.',
+        `Delete run ${run.briefId} · ${run.runId} from the sidecar store? ` +
+          'This removes only this run and cannot be undone.',
       );
       if (!ok) return;
-      setButtonBusy(clearStoreBtn, true, 'Clear Azure state', 'Clearing…');
+      azureLoadInFlight = true;
+      setAzureControlsEnabled(false);
+      setButtonBusy(deleteRunBtn, true, 'Delete run', 'Deleting…');
       try {
-        const result = await fetchJson<{ ok: true; deletedCount: number }>(
-          `${SIDECAR_BASE}/api/workflow/store/clear`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ scope: 'all' }),
-          },
-        );
-        queueState = queueClear(queueState);
-        writeQueueState();
-        debugTarget = null;
-        renderPostprocessDebugger();
-        renderQueue();
-        renderWorkflowSelection();
-        writeWorkflowState();
-        reloadStatus.textContent = `Cleared ${result.deletedCount} stored artifact(s).`;
-        setWorkflowStatus('Cleared sidecar store state. Queue reset to empty.', '#fcd34d');
-        await refreshAzureRuns();
+        const result = await deleteSidecarRun(run.briefId, run.runId);
+        reloadStatus.textContent = `Deleted ${result.deleted}.`;
       } catch (error) {
-        reloadStatus.textContent = `Clear failed: ${error instanceof Error ? error.message : String(error)}`;
+        reloadStatus.textContent = `Delete failed: ${error instanceof Error ? error.message : String(error)}`;
       } finally {
-        setButtonBusy(clearStoreBtn, false, 'Clear Azure state', 'Clearing…');
+        setButtonBusy(deleteRunBtn, false, 'Delete run', 'Deleting…');
+        azureLoadInFlight = false;
+        setAzureControlsEnabled(true);
+        // Reconcile the dropdown whether the delete succeeded or hit a stale
+        // 404 (run already gone), so the deleted option can't linger selected.
+        // Silent so the "Deleted …"/"Delete failed …" status is preserved.
+        await refreshAzureRuns({ silent: true });
       }
     })();
   });
