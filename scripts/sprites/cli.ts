@@ -30,11 +30,25 @@ import { JudgeBudget } from './cost-tracker.js';
 import { runFull } from './run-full.js';
 import { JudgeCache } from './judge-cache.js';
 import {
+  DEFAULT_AZURE_DEPLOYMENT,
   createImageProvider,
   createTextProvider,
   createVisionProvider,
 } from './provider/factory.js';
 import { ProviderError } from './provider/types.js';
+
+// The baseline `DEFAULT_AZURE_DEPLOYMENT` (provider/factory.ts) is listed first
+// so the default/only-tested deployment stays selectable and benchmarkable via
+// `--model`; without it the flag would be strictly more restrictive than the
+// `AZURE_OPENAI_IMAGE_DEPLOYMENT` env var it overrides.
+export const SUPPORTED_IMAGE_MODELS = [
+  DEFAULT_AZURE_DEPLOYMENT,
+  'gpt-image-2',
+  'mai-image-2.5-flash',
+  'gpt-image-1-mini',
+  'mai-image-2.5',
+] as const;
+type SupportedImageModel = (typeof SUPPORTED_IMAGE_MODELS)[number];
 
 interface CliArgs {
   readonly briefs: ReadonlyArray<string>;
@@ -45,6 +59,7 @@ interface CliArgs {
   readonly noJudgeCache: boolean;
   readonly pruneJudgeCacheHours: number | undefined;
   readonly cacheMaxEntries: number | undefined;
+  readonly model: SupportedImageModel | undefined;
 }
 
 interface BriefRunOutcome {
@@ -107,7 +122,7 @@ async function ensureGalleryRunning(): Promise<void> {
   );
 }
 
-function parseArgs(argv: ReadonlyArray<string>): CliArgs {
+export function parseArgs(argv: ReadonlyArray<string>): CliArgs {
   const briefs: string[] = [];
   let all = false;
   let pick: number | undefined;
@@ -116,6 +131,7 @@ function parseArgs(argv: ReadonlyArray<string>): CliArgs {
   let noJudgeCache = false;
   let pruneJudgeCacheHours: number | undefined;
   let cacheMaxEntries: number | undefined;
+  let model: SupportedImageModel | undefined;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--brief') {
@@ -156,6 +172,15 @@ function parseArgs(argv: ReadonlyArray<string>): CliArgs {
       if (!Number.isInteger(n) || n < 1)
         throw new Error(`--cache-max-entries must be a positive integer, got ${value}`);
       cacheMaxEntries = n;
+    } else if (arg === '--model') {
+      const value = argv[++i];
+      if (!value) throw new Error('--model requires a model name');
+      if (!(SUPPORTED_IMAGE_MODELS as ReadonlyArray<string>).includes(value)) {
+        throw new Error(
+          `--model '${value}' is not supported. Choose one of: ${SUPPORTED_IMAGE_MODELS.join(', ')}.`,
+        );
+      }
+      model = value as SupportedImageModel;
     } else if (arg === '--help' || arg === '-h') {
       printHelp();
       process.exit(0);
@@ -184,6 +209,7 @@ function parseArgs(argv: ReadonlyArray<string>): CliArgs {
     noJudgeCache,
     pruneJudgeCacheHours,
     cacheMaxEntries,
+    model,
   };
 }
 
@@ -201,6 +227,8 @@ function printHelp(): void {
       '  --brief <path>             Path to a YAML brief. Repeatable.',
       '  --all                      Run every brief under briefs/**/*.yaml.',
       '  --pick <n>                 Mark variant n as the chosen output (writes selection.json).',
+      '  --model <name>             Image model to use. Overrides AZURE_OPENAI_IMAGE_DEPLOYMENT.',
+      `                             Supported: ${SUPPORTED_IMAGE_MODELS.join(', ')}.`,
       '  --judge-budget-usd <n>     Cross-run USD ceiling on VLM judge spend (default: unlimited).',
       '                             Also reads SPRITES_JUDGE_BUDGET_USD when unset.',
       '  --reset-budget             Clear the persisted cost-state.json before running.',
@@ -212,7 +240,7 @@ function printHelp(): void {
       '',
       'Provider configuration is read from environment:',
       '  AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY (required)',
-      '  AZURE_OPENAI_IMAGE_DEPLOYMENT, AZURE_OPENAI_API_VERSION (optional)',
+      '  AZURE_OPENAI_IMAGE_DEPLOYMENT, AZURE_OPENAI_API_VERSION (optional; --model takes precedence)',
       '  SPRITES_PROVIDER=azure-openai (default; future: mai-image)',
       '',
     ].join('\n'),
@@ -532,6 +560,10 @@ async function main(): Promise<number> {
 
   const briefs = await resolveBriefs(args);
   process.stdout.write(`sprites:run — ${briefs.length} brief${briefs.length === 1 ? '' : 's'}\n`);
+  if (args.model) {
+    process.env.AZURE_OPENAI_IMAGE_DEPLOYMENT = args.model;
+    process.stdout.write(`  model   : ${args.model} (--model override)\n`);
+  }
   if (Number.isFinite(budgetUsd)) {
     process.stdout.write(`  judge-budget: $${budgetUsd.toFixed(4)} cap, ${judgeBudget.format()}\n`);
   }
