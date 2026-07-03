@@ -139,18 +139,18 @@ describe('estimateFloor1RunPlan', () => {
 
     // Canonical id → phase mapping. Chain-scoped consumers rely on this.
     const phaseById = new Map(plan.segments.map((s) => [s.id, s.criticalChainPhase]));
-    expect(phaseById.get('meet-tutorial-goon')).toBe('tutorial');
-    expect(phaseById.get('reach-level-2')).toBe('tutorial');
-    expect(phaseById.get('complete-goon-kills')).toBe('tutorial');
-    expect(phaseById.get('meet-shopkeeper')).toBe('merchant');
-    expect(phaseById.get('fetch-shop-prize')).toBe('merchant');
-    expect(phaseById.get('return-shop-prize')).toBe('merchant');
-    expect(phaseById.get('buy-shop-charm')).toBe('merchant');
-    expect(phaseById.get('equip-shop-charm')).toBe('merchant');
-    expect(phaseById.get('accept-spell-quest')).toBe('spell-slime-rat');
-    expect(phaseById.get('kill-slime-rat')).toBe('spell-slime-rat');
-    expect(phaseById.get('kill-staircase-boss')).toBe('boss');
-    expect(phaseById.get('take-stairs')).toBe('leave-floor');
+    expect(phaseById.get('meet-tutorial-goon')).toBe('pre-chain');
+    expect(phaseById.get('reach-level-2')).toBe('pre-chain');
+    expect(phaseById.get('complete-goon-kills')).toBe('pre-chain');
+    expect(phaseById.get('meet-shopkeeper')).toBe('shop');
+    expect(phaseById.get('fetch-shop-prize')).toBe('shop');
+    expect(phaseById.get('return-shop-prize')).toBe('shop');
+    expect(phaseById.get('buy-shop-charm')).toBe('shop');
+    expect(phaseById.get('equip-shop-charm')).toBe('shop');
+    expect(phaseById.get('accept-spell-quest')).toBe('spell-broker');
+    expect(phaseById.get('kill-slime-rat')).toBe('spell-broker');
+    expect(phaseById.get('kill-staircase-boss')).toBe('staircase');
+    expect(phaseById.get('take-stairs')).toBe('post-stairs');
   });
 
   it('tags active-battle finish segments with their originating phase', () => {
@@ -169,11 +169,11 @@ describe('estimateFloor1RunPlan', () => {
       PARAMS,
     );
     const phaseById = new Map(plan.segments.map((s) => [s.id, s.criticalChainPhase]));
-    expect(phaseById.get('finish-slime-rat')).toBe('spell-slime-rat');
-    expect(phaseById.get('finish-staircase-boss')).toBe('boss');
+    expect(phaseById.get('finish-slime-rat')).toBe('spell-broker');
+    expect(phaseById.get('finish-staircase-boss')).toBe('staircase');
   });
 
-  it('tags the claim-spell-reward segment as spell-slime-rat phase', () => {
+  it('tags the claim-spell-reward segment as spell-broker phase', () => {
     const plan = estimateFloor1RunPlan(
       snapshot({
         tutorialAccepted: true,
@@ -188,7 +188,7 @@ describe('estimateFloor1RunPlan', () => {
       PARAMS,
     );
     const claim = plan.segments.find((s) => s.id === 'claim-spell-reward');
-    expect(claim?.criticalChainPhase).toBe('spell-slime-rat');
+    expect(claim?.criticalChainPhase).toBe('spell-broker');
   });
 
   it('drops completed prerequisites from the estimate', () => {
