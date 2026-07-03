@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   extractVariantIndices,
   listSidecarRuns,
+  deleteSidecarRun,
   postApprove,
   postCheckin,
   prepareCheckin,
@@ -138,6 +139,68 @@ describe('devtools sprite approval api', () => {
       candidates: [{ index: 3 }, {}, { index: 5 }, { index: 3 }],
     });
     expect(indices).toEqual([3, 1, 5]);
+  });
+});
+
+describe('deleteSidecarRun', () => {
+  it('issues a DELETE to the single run route and returns the deleted key', async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ ok: true, deleted: 'iron-sword/2026-06-08T12-00-00-deadbeef' }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      ),
+    );
+
+    const result = await deleteSidecarRun(
+      'iron-sword',
+      '2026-06-08T12-00-00-deadbeef',
+      fetcher as unknown as typeof fetch,
+    );
+
+    expect(result.deleted).toBe('iron-sword/2026-06-08T12-00-00-deadbeef');
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const [url, init] = fetcher.mock.calls[0]!;
+    expect(url).toBe('http://127.0.0.1:3010/api/runs/iron-sword/2026-06-08T12-00-00-deadbeef');
+    expect(init.method).toBe('DELETE');
+  });
+
+  it('URL-encodes path segments so a slash in briefId cannot escape the route', async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ deleted: 'a/b/run-1' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    await deleteSidecarRun('a/b', 'run-1', fetcher as unknown as typeof fetch);
+    const [url] = fetcher.mock.calls[0]!;
+    expect(url).toBe('http://127.0.0.1:3010/api/runs/a%2Fb/run-1');
+  });
+
+  it('surfaces the sidecar error message when the run is gone (404)', async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: 'run-not-found' }), {
+        status: 404,
+        statusText: 'Not Found',
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    await expect(
+      deleteSidecarRun('iron-sword', 'run-1', fetcher as unknown as typeof fetch),
+    ).rejects.toThrow(/delete failed \(404\): run-not-found/);
+  });
+
+  it('falls back to status text when the error body is not JSON', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(
+        new Response('not json', { status: 500, statusText: 'Internal Server Error' }),
+      );
+    await expect(
+      deleteSidecarRun('iron-sword', 'run-1', fetcher as unknown as typeof fetch),
+    ).rejects.toThrow(/delete failed \(500\): Internal Server Error/);
   });
 });
 
