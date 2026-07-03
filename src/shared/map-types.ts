@@ -63,6 +63,8 @@ export enum BiomeType {
   OPEN_WORLD = 'open_world',
   /** Starter floor — structured rooms with high variety (round, L-shaped, wide corridors). */
   BASIC_UNDERGROUND = 'basic_underground',
+  /** Floor 2 — open cavern network with family territories, boss dens, settlement, resource heart. */
+  CAVE_SYSTEM = 'cave_system',
 }
 
 // --- Map Configuration ---
@@ -113,6 +115,14 @@ export enum RoomRole {
   SAFE = 'safe',
   /** Standard combat/loot room. */
   NORMAL = 'normal',
+  /** Floor 2 — a family faction's home cavern. Carries `familyIndex`. */
+  TERRITORY = 'territory',
+  /** Floor 2 — sealed sub-chamber holding a family's boss. Carries `familyIndex`. */
+  BOSS_DEN = 'boss_den',
+  /** Floor 2 — neutral safe cavern (traders, quest-givers). */
+  SETTLEMENT = 'settlement',
+  /** Floor 2 — central objective cavern; Slice 5 spawns floor-exit stairs at its centre. */
+  RESOURCE_HEART = 'resource_heart',
 }
 
 // --- Room Data ---
@@ -150,6 +160,8 @@ export interface RoomData {
   role: RoomRole;
   /** Optional label for AI/narrative use. */
   readonly label?: string;
+  /** Floor 2 — index into the present-families roster (0..presentCount-1) for TERRITORY / BOSS_DEN rooms. Slice 8 binds this to a real family id. */
+  readonly familyIndex?: number;
 }
 
 // --- Floor Map (composite output of generation) ---

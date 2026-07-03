@@ -39,9 +39,10 @@ export class RoomGraph {
     neighbors: number[] = [],
     role: RoomRole = RoomRole.NORMAL,
     label?: string,
+    familyIndex?: number,
   ): number {
     const id = this.rooms.length;
-    this.rooms.push({ id, bounds, doors, neighbors, role, label });
+    this.rooms.push({ id, bounds, doors, neighbors, role, label, familyIndex });
     this.spatialCache = null; // invalidate cache
     return id;
   }
