@@ -309,7 +309,6 @@ const CLIENT_SCRIPT = `
       const totalDur = Math.max(1, t.durationMs);
       const inTurnTools = s.tools.filter((x) => x.turnIndex === t.turnIndex).sort((a,b)=>a.start-b.start);
       const trackW = 100; // percent
-      const hookW = totalDur ? (t.hookMs / totalDur) * trackW : 0;
       const toolBars = inTurnTools.map((x) => {
         const offset = ((x.start - t.start) / totalDur) * trackW;
         const width = Math.max(0.5, (x.durationMs / totalDur) * trackW);

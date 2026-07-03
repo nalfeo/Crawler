@@ -18,7 +18,7 @@ function dbPath() {
   return join(homedir(), '.copilot', 'session-store.db');
 }
 
-function events_jsonl_path(id) {
+function eventsJsonlPath(id) {
   return join(homedir(), '.copilot', 'session-state', id, 'events.jsonl');
 }
 
@@ -83,8 +83,8 @@ export function listSessions(opts = {}) {
     summary: r.summary,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
-    hasEventLog: existsSync(events_jsonl_path(r.id)),
-    eventLogBytes: safeFileSize(events_jsonl_path(r.id)),
+    hasEventLog: existsSync(eventsJsonlPath(r.id)),
+    eventLogBytes: safeFileSize(eventsJsonlPath(r.id)),
   }));
 }
 
@@ -107,8 +107,8 @@ export function getSessionMetadata(sessionId) {
     summary: row.summary,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    hasEventLog: existsSync(events_jsonl_path(row.id)),
-    eventLogBytes: safeFileSize(events_jsonl_path(row.id)),
+    hasEventLog: existsSync(eventsJsonlPath(row.id)),
+    eventLogBytes: safeFileSize(eventsJsonlPath(row.id)),
   };
 }
 

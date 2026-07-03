@@ -23,7 +23,8 @@ const IGNORED_TYPES = new Set([
 ]);
 
 /** Best-effort per-model context-window budgets (tokens). Used only for the
- *  "% of window" line — parsed values are canonical. */
+ *  "% of window" line. Exact entries win; anything not enumerated here falls
+ *  back to the documented per-family prefix (see `resolveContextWindow`). */
 const MODEL_CONTEXT_WINDOW = {
   'claude-opus-4.7': 200_000,
   'claude-opus-4.6': 200_000,
@@ -40,6 +41,32 @@ const MODEL_CONTEXT_WINDOW = {
   'gemini-3.5-flash': 1_000_000,
   'mai-code-1-flash-picker': 200_000,
 };
+
+/** Per-family prefix fallbacks, matched in order when a model id is not an
+ *  exact key above. Mirrors the budgets documented in README.md so models that
+ *  aren't literally enumerated (e.g. `claude-opus-4.8`, `gpt-5.4-codex`) still
+ *  resolve to a budget instead of silently dropping the whole panel. */
+const MODEL_CONTEXT_WINDOW_PREFIXES = [
+  ['claude-', 200_000],
+  ['gpt-5', 400_000],
+  ['gemini-', 1_000_000],
+  ['mai-code-', 200_000],
+];
+
+/**
+ * Resolve a model's context-window budget (tokens): exact map first, then the
+ * documented per-family prefix. Returns null for an unknown/empty model.
+ * @param {string|null|undefined} model
+ * @returns {number|null}
+ */
+export function resolveContextWindow(model) {
+  if (!model) return null;
+  if (MODEL_CONTEXT_WINDOW[model]) return MODEL_CONTEXT_WINDOW[model];
+  for (const [prefix, windowTokens] of MODEL_CONTEXT_WINDOW_PREFIXES) {
+    if (model.startsWith(prefix)) return windowTokens;
+  }
+  return null;
+}
 
 const cache = new Map(); // sessionId → { mtimeMs, summary }
 
@@ -216,11 +243,7 @@ async function parseEventsFile(path, sessionId) {
         // Local token data lives on assistant.message rather than a distinct
         // assistant.usage event — Copilot CLI emits `outputTokens` here, and
         // occasionally `inputTokens`/`cacheReadTokens` when available.
-        if (
-          d.model ||
-          typeof d.outputTokens === 'number' ||
-          typeof d.inputTokens === 'number'
-        ) {
+        if (d.model || typeof d.outputTokens === 'number' || typeof d.inputTokens === 'number') {
           usages.push({
             ts,
             model: d.model || selectedModel || null,
@@ -511,7 +534,7 @@ async function parseEventsFile(path, sessionId) {
 }
 
 /** Convert raw per-event arrays into a normalized summary shape. */
-function buildSummary(raw) {
+export function buildSummary(raw) {
   const walltimeMs = Math.max(0, raw.endedAt - raw.startedAt);
   const toolTimeMs = raw.tools.reduce((s, t) => s + t.durationMs, 0);
   const hookTimeMs = raw.hooks.reduce((s, h) => s + h.durationMs, 0);
@@ -547,7 +570,8 @@ function buildSummary(raw) {
   const toolAggregates = [...byToolName.values()]
     .map((r) => {
       const sorted = r._durations.sort((a, b) => a - b);
-      const p = (frac) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * frac))] || 0;
+      const p = (frac) =>
+        sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * frac))] || 0;
       return {
         name: r.name,
         count: r.count,
@@ -638,7 +662,7 @@ function buildSummary(raw) {
     raw.selectedModel && raw.selectedModel !== 'auto'
       ? raw.selectedModel
       : raw.usages.find((u) => u.model && u.model !== 'auto')?.model || raw.selectedModel;
-  const modelBudget = budgetModel ? MODEL_CONTEXT_WINDOW[budgetModel] : null;
+  const modelBudget = resolveContextWindow(budgetModel);
 
   // Peak context tokens observed at compaction points — the most reliable
   // local signal for context-window pressure.
@@ -721,7 +745,7 @@ function sanitizeToolForClient(t) {
  *   - the peak concurrency observed
  *   - parallelismRatio = parallelToolTimeMs / (parallelToolTimeMs + serialToolTimeMs)
  */
-function computeParallelStats(tools) {
+export function computeParallelStats(tools) {
   if (tools.length === 0) {
     return { parallelToolTimeMs: 0, serialToolTimeMs: 0, parallelismRatio: 0, maxParallelism: 0 };
   }
@@ -731,7 +755,10 @@ function computeParallelStats(tools) {
     events.push([t.start, 1]);
     events.push([t.end, -1]);
   }
-  events.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
+  // Sort by timestamp; on ties process end (-1) before start (+1) so that
+  // adjacent, non-overlapping intervals (e.g. [0,10] then [10,20]) never
+  // register a transient overlap and overstate maxParallelism.
+  events.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   let active = 0;
   let last = events[0][0];
   let parallelMs = 0;

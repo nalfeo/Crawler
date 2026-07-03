@@ -17,7 +17,7 @@ export async function aggregate(filter) {
   // Global tool + model aggregates are built in the same pass as perSession so
   // each session is analyzed once and every failure is recorded consistently.
   const toolTotals = new Map();
-  const toolByModel = new Map();
+  const perModelTotals = new Map();
 
   for (const s of sessions) {
     if (!s.hasEventLog) continue;
@@ -66,7 +66,7 @@ export async function aggregate(filter) {
         toolTotals.set(t.name, row);
       }
       for (const m of summary.modelBreakdown) {
-        const row = toolByModel.get(m.model) || {
+        const row = perModelTotals.get(m.model) || {
           model: m.model,
           sessions: 0,
           apiCalls: 0,
@@ -81,7 +81,7 @@ export async function aggregate(filter) {
         row.inputTokens += m.inputTokens;
         row.cacheReadTokens += m.cacheReadTokens;
         row.cost += m.cost;
-        toolByModel.set(m.model, row);
+        perModelTotals.set(m.model, row);
       }
     } catch (e) {
       errors.push({ sessionId: s.id, error: String(e?.message || e) });
@@ -92,9 +92,30 @@ export async function aggregate(filter) {
     .map((r) => ({ ...r, avgMs: Math.round(r.totalMs / Math.max(1, r.count)) }))
     .sort((a, b) => b.totalMs - a.totalMs);
 
-  const modelAggregate = [...toolByModel.values()].sort((a, b) => b.outputTokens - a.outputTokens);
+  const modelAggregate = [...perModelTotals.values()].sort(
+    (a, b) => b.outputTokens - a.outputTokens,
+  );
 
-  const totals = perSession.reduce(
+  const totals = sumSessionTotals(perSession);
+
+  return {
+    filter,
+    totals,
+    sessions: perSession,
+    toolAggregate,
+    modelAggregate,
+    errors,
+  };
+}
+
+/**
+ * Sum the numeric per-session rows into a single cross-session totals object.
+ * Pure and side-effect free — exported so the reduction can be unit-tested
+ * without touching the SQLite store or the filesystem.
+ * @param {Array<object>} perSession
+ */
+export function sumSessionTotals(perSession) {
+  return perSession.reduce(
     (acc, s) => {
       acc.sessions += 1;
       acc.walltimeMs += s.walltimeMs;
@@ -135,13 +156,4 @@ export async function aggregate(filter) {
       reasoningChars: 0,
     },
   );
-
-  return {
-    filter,
-    totals,
-    sessions: perSession,
-    toolAggregate,
-    modelAggregate,
-    errors,
-  };
 }

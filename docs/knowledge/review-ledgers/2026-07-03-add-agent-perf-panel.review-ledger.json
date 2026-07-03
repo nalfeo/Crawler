@@ -21,7 +21,23 @@
           "clean": true,
           "concerns_count": 0,
           "resolved_count": 0,
-          "notes": "code-review agent (gpt-5.4, distinct from implementing model claude-opus-4.8) reviewed the working-tree diff of all six fixes across renderer.mjs, aggregator.mjs, sessions-db.mjs, and README.md. Verdict: 'No concerns — all six fixes are correct and complete.' Verified boot ordering (parseHash before loadRepos), dropdown/state sync without clobbering deep-links, failed-tool red rendering via .seg.err, single-pass aggregator with no double counting or dropped sessions, and the 2000 limit clamp matching the advertised max."
+          "notes": "code-review agent (gpt-5.4, distinct from implementing model claude-opus-4.8) reviewed the working-tree diff of the first six fixes across renderer.mjs, aggregator.mjs, sessions-db.mjs, and README.md. Verdict: 'No concerns — all six fixes are correct and complete.' Verified boot ordering (parseHash before loadRepos), dropdown/state sync without clobbering deep-links, failed-tool red rendering via .seg.err, single-pass aggregator with no double counting or dropped sessions, and the 2000 limit clamp matching the advertised max."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4"],
+          "clean": false,
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "notes": "A second copilot-pull-request-reviewer round on the rebased branch raised 8 fresh threads; all were fixed in code (never dismissed): (1) context-window budget was an exact-map lookup returning null for un-enumerated in-use models like claude-opus-4.8/gpt-5.4-codex — added MODEL_CONTEXT_WINDOW_PREFIXES + resolveContextWindow() prefix fallback matching the README's documented per-family design; (2) removed dead hookW in renderer.mjs waterfall; (3/7) renamed misleading Map toolByModel -> perModelTotals in aggregator.mjs; (4) renamed snake_case events_jsonl_path -> eventsJsonlPath in sessions-db.mjs; (5) fixed apple-metric schema (verdict under-estimated->under, hello_kitties 0.7->0.6); (6) added fixture-driven node:test unit tests (analyzer.test.mjs + aggregator.test.mjs, 15 tests) following the copilot-guards convention, exported the pure helpers, extracted aggregator sumSessionTotals(), and wired the new tests into the test:guards CI glob. code-review agent (gpt-5.4, distinct from implementing model claude-opus-4.8) reviewed these fixes and found ONE concern: computeParallelStats() sorted start-before-end on tied timestamps, so adjacent non-overlapping tool intervals ([0,10],[10,20]) overstated maxParallelism as 2. Resolved by flipping the tie-break to end-before-start plus a regression test."
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.4"],
+          "clean": true,
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "notes": "Verification re-review (gpt-5.4, distinct from implementing model claude-opus-4.8) of the computeParallelStats tie-break fix. The agent executed the function on adjacent, overlapping, nested, identical, empty, and single-tool inputs and confirmed: touching intervals now report maxParallelism 1 / 0 parallel ms; genuinely overlapping intervals still report correct parallel time and peak; no new edge-case regressions. Verdict: 'No concerns.' Full npm run verify green (typecheck, lint, format, 232 guard tests incl. 15 new extension tests, 80 unit+integration, build); PR prereqs incl. this ledger validate."
         }
       ]
     }
