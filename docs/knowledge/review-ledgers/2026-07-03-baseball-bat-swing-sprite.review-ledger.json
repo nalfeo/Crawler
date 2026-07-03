@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "baseball-bat-swing-sprite",
+  "task_title": "Render approved baseball-bat-v1 art on the in-game melee swing",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "notes": "rubber-duck gpt-5.4 (high) plan-reviewed the change against src/engine/PhaserBridge.ts, src/engine/InventoryUI.ts, src/shared/generated-assets.ts, and the manifest. Two concerns raised — both addressed before commit b12cef4c: (1) BLOCKING — MIN_WEAPON_SPRITE_SCALE=1.8 floor applied to generated 64x64 bat art produces scale 1.8 instead of ~0.73 (holdY=60, bladeLen=44), putting the tip ~108 px from the hand instead of 44. Fix: the floor is now scoped to the Kenney 16px fallback path (isGeneratedWeaponSprite gate); generated art uses raw `bladeLen/holdY` unclamped so the tip lands exactly at bladeLen. (2) IMPORTANT — key-only reconcile misses same-sheet frame differences (bat frame 117 vs sword frame 72 both live on 'kenney-tiny-dungeon'). Fix: reconcile now compares both texture key AND frame name via `img.texture.key` + `img.frame?.name`. Reviewer confirmed 'baseball-bat-v1' is the correct briefId (manifest entry 'baseball-bat-v1-var-0', briefId 'baseball-bat-v1'), that `eid | 0` is an acceptable seed today (single approved variant — noted as a follow-up if more land), no other runtime code path renders 'weapon.bat', and that leaving `getMeleeSpriteId` (hammer discrepancy) alone is correctly scoped."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ],
+      "notes": "The plan-review pass acted as the initial code-review pass since it inspected the actual diff (imports, resolution branching, anchor/scale math, reconcile logic). Both concerns folded into commit b12cef4c before push."
+    }
+  }
+}
