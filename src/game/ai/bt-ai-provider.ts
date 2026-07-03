@@ -46,7 +46,7 @@ import { normalizeInputDirection } from '../../shared/input.js';
 import { hasItem } from '../../shared/inventory.js';
 import { SeededRandom } from '../../shared/random.js';
 import { createLogger } from '../../shared/logger.js';
-import { WeaponType, PLAYER_SPEED } from '../../shared/constants.js';
+import { GAME, WeaponType, PLAYER_SPEED } from '../../shared/constants.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_TUTORIAL_QUEST_ID,
@@ -172,6 +172,11 @@ import {
   TACTICAL_OPPORTUNITY_MAX_ACCEPTED,
   TACTICAL_OPPORTUNITY_TRAVEL_WEIGHT_DIVISOR,
   TACTICAL_OPPORTUNITY_MAX_TRAVEL_WEIGHT,
+  TACTICAL_OPPORTUNITY_GOLD_VALUE,
+  TACTICAL_OPPORTUNITY_ITEM_VALUE,
+  TACTICAL_OPPORTUNITY_ENEMY_PACK_MIN_VALUE,
+  TACTICAL_OPPORTUNITY_ENEMY_PACK_BASE_VALUE,
+  TACTICAL_OPPORTUNITY_ENEMY_PACK_HP_PENALTY,
   TACTICAL_TRAVEL_W_LOOT,
   QUEST_GIVER_DETOUR_MAX_EXTRA_FT,
   QUEST_GIVER_DETOUR_MAX_EXTRA_FRACTION,
@@ -257,10 +262,8 @@ const TRAVEL_PARAMS: TravelSteeringParams = {
   relSpeedEpsilonSq: TRAVEL_REL_SPEED_EPSILON_SQ,
 };
 
-const FRAMES_PER_SECOND = 60;
-
 const RUN_PLANNER_PARAMS: RunPlannerParams = {
-  moveSpeedFtPerMs: PLAYER_SPEED / (1000 / FRAMES_PER_SECOND),
+  moveSpeedFtPerMs: PLAYER_SPEED / GAME.DELTA_MS,
   safetyBufferMs: RUN_PLANNER_SAFETY_BUFFER_MS,
   urgencySlackWindowMs: RUN_PLANNER_URGENCY_SLACK_WINDOW_MS,
   interactionMs: RUN_PLANNER_INTERACTION_MS,
@@ -2241,7 +2244,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   private getRunPlannerParams(playerSpeedFtPerFrame: number): RunPlannerParams {
     return {
       ...RUN_PLANNER_PARAMS,
-      moveSpeedFtPerMs: playerSpeedFtPerFrame / (1000 / FRAMES_PER_SECOND),
+      moveSpeedFtPerMs: playerSpeedFtPerFrame / GAME.DELTA_MS,
     };
   }
 
@@ -2340,9 +2343,9 @@ export class BehaviorTreeAI implements AIInputProvider {
       case 'xp':
         return Math.max(1, world.stores.xpGem.value[eid] ?? 1);
       case 'gold':
-        return 3;
+        return TACTICAL_OPPORTUNITY_GOLD_VALUE;
       case 'item':
-        return 18;
+        return TACTICAL_OPPORTUNITY_ITEM_VALUE;
     }
   }
 
@@ -2403,25 +2406,31 @@ export class BehaviorTreeAI implements AIInputProvider {
       }
     }
 
-    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
-      if (eid === undefined) continue;
-      const hp = world.stores.health.current[eid] ?? 0;
-      if (hp <= 0) continue;
-      const x = world.stores.position.x[eid] ?? 0;
-      const y = world.stores.position.y[eid] ?? 0;
-      const distance = Math.hypot(x - playerX, y - playerY);
-      if (distance > TACTICAL_OPPORTUNITY_SCAN_RADIUS_FT) continue;
-      const target: WorldTarget = { eid, x, y, distance };
-      candidates.push({
-        id: eid,
-        kind: 'enemyPack',
-        x,
-        y,
-        value: Math.max(1, 8 - hp * 0.15),
-        danger: this.estimateOpportunityDanger(world, x, y),
-        reachable: this.isTargetReachable(world, playerX, playerY, target),
-        debugOnly: true,
-      });
+    if (this.config.debug) {
+      for (const eid of query(world.ecs, [Enemy, Position, Health])) {
+        if (eid === undefined) continue;
+        const hp = world.stores.health.current[eid] ?? 0;
+        if (hp <= 0) continue;
+        const x = world.stores.position.x[eid] ?? 0;
+        const y = world.stores.position.y[eid] ?? 0;
+        const distance = Math.hypot(x - playerX, y - playerY);
+        if (distance > TACTICAL_OPPORTUNITY_SCAN_RADIUS_FT) continue;
+        const target: WorldTarget = { eid, x, y, distance };
+        candidates.push({
+          id: eid,
+          kind: 'enemyPack',
+          x,
+          y,
+          value: Math.max(
+            TACTICAL_OPPORTUNITY_ENEMY_PACK_MIN_VALUE,
+            TACTICAL_OPPORTUNITY_ENEMY_PACK_BASE_VALUE -
+              hp * TACTICAL_OPPORTUNITY_ENEMY_PACK_HP_PENALTY,
+          ),
+          danger: this.estimateOpportunityDanger(world, x, y),
+          reachable: this.isTargetReachable(world, playerX, playerY, target),
+          debugOnly: true,
+        });
+      }
     }
 
     return candidates;
@@ -2451,7 +2460,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         objectiveX,
         objectiveY,
         urgency: runPlan?.urgency ?? this.getCollapsePanicProfile(world).panic,
-        speedFtPerMs: playerSpeedFtPerFrame / (1000 / FRAMES_PER_SECOND),
+        speedFtPerMs: playerSpeedFtPerFrame / GAME.DELTA_MS,
         opportunities: this.buildTacticalOpportunityCandidates(world, playerX, playerY),
       },
       params,

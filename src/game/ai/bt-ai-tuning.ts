@@ -476,6 +476,11 @@ export const TACTICAL_OPPORTUNITY_MAX_ACCEPTED = 4;
 export const TACTICAL_OPPORTUNITY_TRAVEL_WEIGHT_DIVISOR = 8;
 export const TACTICAL_OPPORTUNITY_MAX_TRAVEL_WEIGHT = 2;
 export const TACTICAL_TRAVEL_W_LOOT = 1.15;
+export const TACTICAL_OPPORTUNITY_GOLD_VALUE = 3;
+export const TACTICAL_OPPORTUNITY_ITEM_VALUE = 18;
+export const TACTICAL_OPPORTUNITY_ENEMY_PACK_MIN_VALUE = 1;
+export const TACTICAL_OPPORTUNITY_ENEMY_PACK_BASE_VALUE = 8;
+export const TACTICAL_OPPORTUNITY_ENEMY_PACK_HP_PENALTY = 0.15;
 
 // Opportunistic quest-NPC detour while pathing: if an NPC with a pending quest
 // interaction is seen and visiting it adds only a small path-length penalty,
