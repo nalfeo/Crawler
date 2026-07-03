@@ -10,7 +10,7 @@
       "reviewer_model": "gpt-5.4",
       "concerns_count": 1,
       "resolved_count": 1,
-      "notes": "Separate-model (GPT-5.4) plan review of the fix approach + full diff. No blocking issues; confirmed feat(sprites) is the correct type and header-max-length is not a practical risk. 1 non-blocking concern: the regression test used a hand-rolled regex that could drift from commitlint.title.config.cjs. Resolved: the test now derives the allowed type-enum + header-max-length from the real config via createRequire, so it cannot pass while CI blocks."
+      "notes": "Separate-model (GPT-5.4) plan review of the fix approach + full diff. No blocking issues; confirmed feat(sprites) is the correct type and header-max-length is not a practical risk. 1 non-blocking concern: the regression test used a hand-rolled regex that could drift from commitlint.title.config.cjs. Resolved: the test now derives the allowed type-enum + header-max-length from the real config via createRequire (plus a local conventional-header regex for shape), so those two rules track CI automatically instead of hardcoded copies. It does not execute commitlint, so it is a targeted guard for the missing-type-prefix regression, not full 1:1 parity with every CI rule."
     },
     "code_review": {
       "clean": true,
@@ -23,7 +23,7 @@
           "clean": true
         }
       ],
-      "notes": "Separate-model (Gemini 3.1 Pro) code review of commit e4571324 diff against the real commitlint.title.config.cjs / commitlint.config.cjs: no significant issues. Not required at tier 2 but recorded because it was actually run. Post-review the test was hardened (test-only, per the plan-review concern); the production fix in asset-pr.ts is unchanged from what was reviewed. Empirically re-verified: the emitted title passes `commitlint --config commitlint.title.config.cjs` (exit 0) while the old title fails (type-empty/subject-empty)."
+      "notes": "Separate-model (Gemini 3.1 Pro) code review of commit e4571324 diff against the real commitlint.title.config.cjs / commitlint.config.cjs: no significant issues. Not required at tier 2 but recorded because it was actually run. Post-review the test was hardened (per the plan-review concern). NOTE: while arming auto-merge, PR #689 was found to have shipped a byte-for-byte-identical asset-pr.ts prTitle fix in parallel, so after rebasing onto that merged main the asset-pr.ts change was dropped as redundant (zero diff) and this PR ships test-only + docs. The dropped fix is what was reviewed here; empirically re-verified that the title now on main passes `commitlint --config commitlint.title.config.cjs` (exit 0) while the old title fails (type-empty/subject-empty)."
     }
   }
 }
