@@ -123,6 +123,18 @@ export interface GameWorld {
   /** Combat events emitted this frame — consumed and drained by the render layer. */
   combatEvents: CombatEvent[];
   /**
+   * Max REALIZED knockback displacement (feet) applied to any entity this frame.
+   * Reset to 0 at the top of `knockbackSystem` and accumulated (max) there after
+   * each entity's final post-clamp position is written. Read by `beamSystem` to
+   * inflate its spatial-hash broad-phase radius so a beam still finds targets the
+   * grid indexed at a now-stale (pre-knockback) position — the grid is built by
+   * `collisionSystem`, then `knockbackSystem` moves entities, then `beamSystem`
+   * queries the stale grid. Determinism-load-bearing (see the superset proof in
+   * beamSystem); NOT a gameplay value. Measuring realized (not commanded)
+   * displacement keeps the bound writer-agnostic and wall-clamp-aware.
+   */
+  maxKnockbackStepThisFrame: number;
+  /**
    * Generic cosmetic VFX effect-requests emitted this frame — drained by the
    * engine-layer EffectsVfx renderer. Cosmetic-only; never read by game logic.
    */
@@ -294,6 +306,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     doorLockConfigs: new Map(),
     goalFlags: new Map(),
     combatEvents: [],
+    maxKnockbackStepThisFrame: 0,
     vfxEvents: [],
     playerGold: 0,
     floorMap: null,

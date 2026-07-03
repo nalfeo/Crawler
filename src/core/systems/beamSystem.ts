@@ -1,9 +1,10 @@
 import { entityExists, hasComponent, query } from 'bitecs';
-import { Enemy, Health, LineDamage, Owner, Player, Position, Team } from '../components.js';
+import { Enemy, Health, LineDamage, Owner, Player, Position, Sprite, Team } from '../components.js';
 import { applyDamage } from '../apply-damage.js';
 import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
 import { emitWeaponHitSkillEvents } from '../weapon-skill-bridge.js';
+import type { CollisionResult } from './collisionSystem.js';
 
 /** Distance from a point to a line segment. */
 function pointToSegmentDistSq(
@@ -34,10 +35,115 @@ function pointToSegmentDistSq(
 
 const BEAM_HIT_HALF_WIDTH = 1;
 
+/**
+ * Broad-phase epsilon (feet) padding the query radius so floating-point boundary
+ * cases — including the grid's Float32 center quantization — can never exclude a
+ * candidate the narrow-phase (on live Float64 positions) would accept. 1e-3 ft
+ * dominates the Float32 ULP at Floor arena scale (ulp32(C) ≈ C · 2⁻²³, so this
+ * holds for |coord| up to ~8.4e3 ft; arenas are hundreds of ft).
+ */
+const BEAM_BROAD_PHASE_EPS = 1e-3;
+
+/**
+ * Canonical iteration-order map for the beam broad-phase (mirrors meleeSwingSystem).
+ *
+ * Determinism-critical: `applyDamage` draws `world.rng` per qualifying hit, so the
+ * ORDER targets are processed is observable (crit/dodge draws, event order). The
+ * legacy full scan iterates `query([Health, Position])` in bitecs dense-array
+ * order; the grid broad-phase returns candidates in cell order, so we re-sort them
+ * back into that canonical order via a rank map built once per system invocation.
+ *
+ * Generation stamping lets the module-level buffers be reused across worlds/frames
+ * without clearing: a rank is valid only when its stamp equals the current
+ * generation. This keeps two worlds stepped in lockstep (the differential
+ * regression test) fully isolated. Kept beam-local (not shared with melee's
+ * buffers) so the two systems can never alias mid-frame.
+ */
+let beamRankGen = 0;
+let beamRankStamp = new Uint32Array(0);
+let beamRankIdx = new Int32Array(0);
+const beamCandidateScratch: number[] = [];
+
+/**
+ * Build the canonical rank map from the current [Health, Position] set and report
+ * whether the grid broad-phase is safe to use this invocation.
+ *
+ * Returns false when any combat target lacks a Sprite: the spatial grid only
+ * indexes [Position, Sprite] entities, so a spriteless target would be invisible
+ * to `queryRadius` and the caller must fall back to the full scan.
+ */
+function buildBeamRankMap(world: GameWorld): boolean {
+  const targets = query(world.ecs, [Health, Position]);
+  const capacity = world.stores.position.x.length;
+  if (beamRankStamp.length < capacity) {
+    beamRankStamp = new Uint32Array(capacity);
+    beamRankIdx = new Int32Array(capacity);
+  }
+  beamRankGen = (beamRankGen + 1) >>> 0;
+  if (beamRankGen === 0) {
+    beamRankStamp.fill(0);
+    beamRankGen = 1;
+  }
+  let safe = true;
+  for (let i = 0; i < targets.length; i += 1) {
+    const eid = targets[i]!;
+    if (eid >= capacity) continue;
+    beamRankStamp[eid] = beamRankGen;
+    beamRankIdx[eid] = i;
+    if (!hasComponent(world.ecs, eid, Sprite)) {
+      safe = false;
+    }
+  }
+  return safe;
+}
+
+/** Dense-array rank of a target this invocation, or -1 if it is not a current [Health, Position] combat target. */
+function beamRankOf(eid: number): number {
+  return beamRankStamp[eid] === beamRankGen ? beamRankIdx[eid]! : -1;
+}
+
+function compareBeamRank(a: number, b: number): number {
+  return beamRankOf(a) - beamRankOf(b);
+}
+
+/**
+ * Gather the [Health, Position] candidates within the beam's bounding circle,
+ * ordered identically to the legacy full scan (bitecs dense-array order).
+ *
+ * `queryRadius` returns a REUSED internal buffer, so we copy the ranked (i.e.
+ * current combat-target) candidates into module-owned scratch before
+ * sorting/iterating. Non-combat grid entities (props, pickups) rank -1 and are
+ * dropped — they are exactly the entities the legacy [Health, Position] query
+ * never saw.
+ */
+function gatherBeamCandidates(
+  grid: CollisionResult['grid'],
+  x: number,
+  y: number,
+  radius: number,
+): number[] {
+  const raw = grid.queryRadius(x, y, radius);
+  beamCandidateScratch.length = 0;
+  for (let i = 0; i < raw.length; i += 1) {
+    const candidate = raw[i]!;
+    if (beamRankOf(candidate) !== -1) {
+      beamCandidateScratch.push(candidate);
+    }
+  }
+  beamCandidateScratch.sort(compareBeamRank);
+  return beamCandidateScratch;
+}
+
 /** Applies line/beam damage using segment-vs-point checks. */
-export function beamSystem(world: GameWorld): void {
+export function beamSystem(world: GameWorld, collisionResult?: CollisionResult): void {
   const beams = query(world.ecs, [LineDamage, Position]);
   const { position, lineDamage, team } = world.stores;
+
+  // Lazy grid broad-phase state: resolved once, on the first beam that passes the
+  // tick + safe-space gates (see the gather block below). Beam-absent / no-tick
+  // frames therefore add zero [Health, Position] scans, matching legacy.
+  let gridResolved = false;
+  let useGrid = collisionResult !== undefined;
 
   for (const eid of beams) {
     if (eid === undefined || !entityExists(world.ecs, eid)) {
@@ -73,8 +179,34 @@ export function beamSystem(world: GameWorld): void {
     const by = ay + dirY * length;
     const hitDistSq = BEAM_HIT_HALF_WIDTH * BEAM_HIT_HALF_WIDTH;
 
-    // Check all Health entities (not ideal for large counts, but correct)
-    const targets = query(world.ecs, [Health, Position]);
+    // Broad-phase: reuse the spatial-hash grid (built this frame by collisionSystem)
+    // instead of scanning every [Health, Position] entity per beam. Behavior-
+    // preserving: a superset radius query + the unchanged narrow-phase + preserved
+    // legacy iteration order (via the rank map) yields an identical hit set and
+    // identical applyDamage/RNG order. Built LAZILY on the first beam to reach this
+    // point (past the tick + safe-space gates), so beam-absent/no-tick frames add
+    // zero scans. Falls back to the full scan when no grid is supplied or a combat
+    // target lacks a Sprite (see buildBeamRankMap).
+    if (useGrid && !gridResolved) {
+      useGrid = buildBeamRankMap(world);
+      gridResolved = true;
+    }
+
+    // Bounding circle centered at the beam midpoint. R supersets the exact hit
+    // region: half the segment length (L/2) + the hit half-width (w) + the max
+    // realized knockback displacement this frame (k — the grid is stale by up to
+    // this much because beamSystem runs after knockbackSystem) + an epsilon
+    // covering the grid's Float32 center quantization. Segment length is computed
+    // from the endpoints (dir may not be unit-length).
+    const midX = (ax + bx) * 0.5;
+    const midY = (ay + by) * 0.5;
+    const halfLen = Math.hypot(bx - ax, by - ay) * 0.5;
+    const beamReachRadius =
+      halfLen + BEAM_HIT_HALF_WIDTH + world.maxKnockbackStepThisFrame + BEAM_BROAD_PHASE_EPS;
+    const targets =
+      useGrid && collisionResult
+        ? gatherBeamCandidates(collisionResult.grid, midX, midY, beamReachRadius)
+        : query(world.ecs, [Health, Position]);
 
     for (const target of targets) {
       if (

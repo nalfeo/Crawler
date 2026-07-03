@@ -1,0 +1,71 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "combat-perf-engagement-budget",
+  "task_title": "Combat perf: melee + beam spatial-hash broad-phase (combined Path A)",
+  "estimated_apples": 4,
+  "stages": {
+    "dual_plan_synthesis": {
+      "completed": true,
+      "plan_models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+      "judge_model": "claude-opus-4.8",
+      "notes": "Path A (human-chosen: beam+melee in ONE 4-apple PR) required dual-plan synthesis for the beam+knockback half. Two independent plans generated: Planner A (gpt-5.4, high effort) and Planner B (gemini-3.1-pro-preview, high effort). Judge (claude-opus-4.8) synthesized into files/beam-synthesized-plan.md after grounding every premise via direct reads. Both plans converged on: world.maxKnockbackStepThisFrame bound reset+accumulated in knockbackSystem; single midpoint-circle superset R = L/2 + w + k + eps with an identical triangle-inequality guaranteed-superset proof; beam-local gen-stamped rank-map clone (NOT reusing melee's helper); executable spriteless->full-scan fallback; beamBroadPhase flag seam; copy queryRadius buffer to scratch; permanent seeded differential + headless guard tests incl. a knockback-staleness witness; extend ADR 0024 (no new number). Judge REJECTED two divergences: (1) Planner B's inline production query-count mutation throw (it re-scans [Health,Position] every invocation, defeating the optimization) -> assert the no-mutation invariant in the differential TEST instead (matches the orchestrator ask); (2) Planner A's lab-parity item (wiring collision into weapon-lab/abilities-lab) -> labs stay on the fallback path, matching the already-shipped melee precedent (verified labs call meleeSwingSystem(world) with no collision). Verified load-bearing facts: both Knockback writers (meleeSwingSystem, dropSystem) use unit-length dir so step bounds displacement; apply-damage.ts never mutates the entity set; 'laser' is a real LineDamage weapon so the headless forceWeaponId test is feasible; bench-baseline.json is empty."
+    },
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.5",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "notes": "Independent separate-model plan review (gpt-5.5, xhigh) of the SYNTHESIZED combined beam+knockback plan (files/beam-synthesized-plan.md). Reviewer is distinct from both planners (gpt-5.4, gemini-3.1-pro-preview) and the judge (claude-opus-4.8). 7 concerns (1 blocking, 4 major, 2 minor); all 7 resolved in the plan, each grounded by direct code reads this session. (1) [BLOCKING] Eager buildBeamRankMap before the beams loop adds an O(N) [Health,Position] scan on every beam-absent/no-tick frame, because the legacy scan only runs per-beam AFTER the tick gate (beamSystem L50) and safe-space gate (L64) -> RESOLVED: lazy rank-map build resolved on the first gate-passing beam; ALSO convert the shipped melee (eager at meleeSwingSystem L219) to the same lazy pattern for consistency; add idle-frame no-scan test + idle bench. (2) [MAJOR] Knockback-writer inventory omitted castPulseShield (progressionEffects L125-126) -> RESOLVED: premise lists all three unit-length writers; rendered moot by (3). (3) [MAJOR] step-based bound is fragile (bounds displacement only if every writer stores a unit dir) -> RESOLVED: measure REALIZED displacement hypot(finalX-oldX, finalY-oldY) in knockbackSystem after the final position write; writer-agnostic and clamp-aware. (4) [MAJOR] Superset proof ignored that queryRadius reads centers from a Float32Array (collision.ts L203; circleIntersectsAabb L208) -> RESOLVED: proof extended to cover ulp32; eps=1e-3 dominates ulp32 at Floor coordinate scale (ulp32(C)~C*2^-23, holds for |coord|<~8.4e3 ft) plus a Float32-boundary test; the shipped melee already relies on the same eps. (5) [MAJOR] no-mutation invariant started too late: a system spawning a spriteful [Health,Position] target in the collision->beam seam would be in the fresh-query rank map but absent from the grid -> RESOLVED: VERIFIED spawn-free today in BOTH pipelines (seam holds only damage/areaDamage/melee/knockback; dropSystem spawns baby slimes AFTER beam - headless L133 vs L129, engine L102 vs L98), locked with a beam-entry [Health,Position] set subset-of grid-build set assertion, mirrored on melee. (6) [MINOR] ambiguous bench order -> RESOLVED: benches spell out collisionSystem -> knockbackSystem -> beamSystem(world, collision). (7) [MINOR] npm run verify does not run benches -> RESOLVED: npm run bench run explicitly for the perf claim. Reviewer verdict: core geometry sound; blocker (lazy build) fixed before implementation."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 3,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        },
+        {
+          "round": 4,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ],
+      "notes": "Round 1 (project code-review agent, claude-sonnet-4.6) reviewed the full meleeSwingSystem full-scan->spatial-hash conversion: no substantive defects. It verified all 3 determinism properties (superset radius dominates every hit case, byte-identical narrow-phase, cross-world-safe gen-stamped rank map), the no-mid-invocation-mutation precondition, scratch-copy aliasing safety, capacity alignment, and that the executable fallback is real. It raised ONE non-blocking future-proofing observation: the unit differential test runs melee immediately after collision, so it cannot catch a FUTURE pipeline change that inserts a target-moving system into the collision->melee seam. RESOLVED (rule #10 - promote the determinism-risk class into a permanent deterministic check) by adding the meleeBroadPhase guard seam on SimulationOptions plus tests/headless/melee-broadphase-pipeline-determinism.test.ts, which drives the REAL full pipeline grid-vs-forced-fallback across contiguous seeds and asserts byte-identical RunStats. Round 2 (claude-sonnet-4.6) reviewed that fix delta (the flag threading + new guard test): no significant issues; confirmed default routing is grid for all existing callers, only explicit false triggers fallback, wall-time terminator is disabled so the deterministic frame cap is the sole terminator, and wallTimeMs is genuinely the only nondeterministic RunStats field stripped. Loop closed clean. Round 3 (claude-sonnet-4.6) reviewed the beam+knockback delta (beamSystem full-scan->grid broad-phase, knockbackSystem realized-displacement bound, world.maxKnockbackStepThisFrame, meleeSwingSystem eager->lazy refinement, both-pipeline beamBroadPhase threading, beam determinism/boundary/knockback-witness tests + headless guard + beam A/B benches) and caught ONE MAJOR test-integrity defect the multi-model round missed: the once-per-frame 'grid-path-actually-exercised / set-stable' invariant guard in BOTH tests/ecs/beam-broadphase-determinism.test.ts and tests/ecs/melee-broadphase-determinism.test.ts was VACUOUS - `expect(gridScene.world.stores.sprite.width[target]).not.toBeUndefined()` reads a Float32Array at an in-bounds EID, which always returns a number (0 for uninitialized) and never undefined, so the guard passed for every valid EID even when the target lacked the Sprite component, failing to prove the beam/melee broad-phase actually took the grid path (vs silently falling back to full scan). RESOLVED by replacing it with a genuine component-membership assertion `expect(hasComponent(gridScene.world.ecs, target, Sprite)).toBe(true)` in both files (added hasComponent to the bitecs imports). Re-verified: re-ran both determinism suites (19 tests) green, so the guard is now non-vacuous AND passing - it truly asserts every [Health,Position] combat target is in the grid ([Position,Sprite]) and would trip red on a future on-hit component mutation that broke rank-map stability. Loop closed clean; no remaining concerns across all reviewers. Round 4 (GitHub Copilot PR reviewer, copilot-pull-request-reviewer, on PR #678) surfaced TWO findings on the melee code, both resolved without weakening any requirement (rule #12). (1) [perf] buildMeleeRankMap could run a full [Health,Position] scan on swing-less frames when a grid is supplied — ALREADY RESOLVED by the round-3 eager->lazy refinement (commit 65498563): the rank-map build is invoked only inside the `for (const eid of swings)` loop, so swing-absent frames do zero scans (the reviewer reviewed the earlier eager melee-only commit b262f7eb); verified by re-reading the shipped code, no further change. (2) [test coverage] the differential suite + benches + headless guard only spawned knockback:0 swings, so no test exercised the one place meleeSwingSystem mutates the ECS component set mid-invocation — the hit branch's addComponent(target, set(Knockback, ...)) — which is the exact stress on the once-per-frame rank-map==legacy-per-swing-order invariant when >=2 swings share targets with a knockback weapon (real mace/hammer play). RESOLVED (rule #10) by adding a permanent differential case to tests/ecs/melee-broadphase-determinism.test.ts: two player knockback swings over a scrambled enemy cluster, Knockback stripped from all enemies in BOTH worlds each frame so the earlier swing re-takes the addComponent path before the later swing re-queries, asserting byte-identical Health/Position/RNG-cursor/combatEvents/skillUsageEvents across 30 seeds x 12 frames with non-vacuity guards (sawHit/sawCrit/sawKnockbackAdded) and a [Health,Position]-membership-stable assertion. The new case PASSES, empirically confirming that adding an unrelated component does not reorder the bitecs [Health,Position] query, so the grid path stays identical-by-construction under knockback weapons. Loop closed clean."
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview", "gpt-5.5"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "notes": "Path A (4-apple combined beam+melee) multi-model review of the beam+knockback broad-phase delta. Three code-review agents on DISTINCT models — gpt-5.3-codex, gemini-3.1-pro-preview (high), and gpt-5.5 — independently reviewed src/core/systems/beamSystem.ts, knockbackSystem.ts, meleeSwingSystem.ts (eager->lazy), world.ts, both pipeline callsites, and the new beam determinism/headless/bench delta, each primed with the identical-by-construction invariant (applyDamage draws world.rng per qualifying hit => target ORDER is determinism-observable). All THREE returned no substantive concerns. Adjudicator (claude-opus-4.8) verdict: 0 valid concerns => no fixes required. Independently verified by the reviewers: (1) queryRadius(cx,cy,R) from the beam midpoint with R = halfLength + BEAM_HIT_HALF_WIDTH + world.maxKnockbackStepThisFrame + BEAM_BROAD_PHASE_EPS is a guaranteed superset by triangle inequality, with the maxKnockbackStepThisFrame term covering the STALE grid (knockback moves entities after grid build, before beam) and EPS(1e-3) dominating Float32 center quantization at Floor scale; a target on the inflated-circle edge is still correctly rejected by the unchanged narrow-phase. (2) knockbackSystem is the sole translator in the collision->beam seam and nothing spawns/reaps in it (dropSystem runs after beam), so the [Health,Position] set + dense order are stable => the lazy once-per-frame rank map reproduces legacy per-beam re-query order exactly. (3) world.maxKnockbackStepThisFrame is reset at top of knockbackSystem and accumulated as realized post-clamp displacement hypot(finalX-oldX, finalY-oldY) (max), making the bound writer-agnostic (all Knockback writers + castPulseShield), clamp/wall-slide-aware, and 0 when idle. (4) lazy rank-map build => zero O(N) scan on beam-absent/tick-gated frames; executable spriteless-Health full-scan fallback is byte-identical to legacy; gen-stamped scratch buffers are cross-world safe incl. 32-bit generation wrap; queryRadius's reused buffer is copied to scratch before sort. (5) beamBroadPhase defaults to grid, only explicit false forces fallback, single-arg callers (labs/existing tests) unaffected, NO pipeline reorder. (6) tests assert byte-identical RNG cursor/Health/Position/combatEvents/skillUsageEvents across grid-vs-fallback over 30 seeds x 12 frames with non-vacuity + no-mutation/subset invariant guards; the knockback-staleness witness proves the inflation term is load-bearing; the headless guard drives the REAL runSimulationStep. gpt-5.5 additionally RAN the beam+headless tests, typecheck, and a randomized grid-vs-full-scan parity smoke test with knockback."
+    }
+  }
+}
