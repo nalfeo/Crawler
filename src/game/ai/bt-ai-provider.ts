@@ -53,7 +53,16 @@ import {
   FLOOR1_TUTORIAL_QUEST_ID,
   SHOPKEEPER_FETCH_ITEM_ID,
 } from '../../shared/quest-types.js';
-import { AIState, type AIInputProvider, type AIDecision, type AIConfig } from './types.js';
+import {
+  AIState,
+  AIDecisionDebugState,
+  AIProgressSuppressionSource,
+  type AIInputProvider,
+  type AIDecision,
+  type AIConfig,
+  type AIProgressSuppressionSourceValue,
+  type AISuppressedProgressNavDebug,
+} from './types.js';
 import {
   BehaviorTree,
   BTStatus,
@@ -525,6 +534,8 @@ export class BehaviorTreeAI implements AIInputProvider {
    * unreachable position forever.
    */
   private progressGoalSuppressedUntilFrame: number = 0;
+  private progressGoalSuppressionSource: AIProgressSuppressionSourceValue | null = null;
+  private pendingSuppressedProgressNavDebug: AISuppressedProgressNavDebug | null = null;
   /**
    * Cumulative fog-of-war "seen" bitmap (one byte per tile, 1 = ever seen),
    * OR-accumulated from {@link FloorMap.visible} every poll. This is exactly the
@@ -644,6 +655,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       targetX: null,
       targetY: null,
       reason: 'Initializing',
+      debug: null,
     };
 
     // Build the behavior tree
@@ -1128,6 +1140,9 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.decision.state = AIState.EXPLORE;
         this.decision.targetEid = null;
         this.decision.reason = 'Exploring map';
+        this.decision.debug = this.pendingSuppressedProgressNavDebug
+          ? { ...this.pendingSuppressedProgressNavDebug }
+          : null;
 
         // Pick a random exploration target if we don't have one
         if (this.decision.targetX === null || this.decision.targetY === null) {
@@ -1725,6 +1740,10 @@ export class BehaviorTreeAI implements AIInputProvider {
     // counter resets to 0, and the AI freezes forever without ever fighting.
     if (this.decision.targetEid === null || this.decision.targetEid < 0) {
       this.progressGoalSuppressedUntilFrame = currentFrame + PROGRESS_SUPPRESS_FRAMES;
+      this.progressGoalSuppressionSource =
+        this.decision.targetEid === null
+          ? AIProgressSuppressionSource.EXPLORE_DWELL_FRONTIER_TARGET
+          : AIProgressSuppressionSource.EXPLORE_DWELL_FIXED_POSITION_TARGET;
     }
     if (this.config.debug) {
       logger.debug(
@@ -1930,6 +1949,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     // / coin pile), so suppress position-based progress goals too and let
     // Hunt/Explore take the wheel until the player has relocated.
     this.progressGoalSuppressedUntilFrame = world.frameCount + ENEMY_IGNORE_FRAMES;
+    this.progressGoalSuppressionSource = AIProgressSuppressionSource.QUEST_PROGRESS_DWELL_WATCHDOG;
     this.questProgressActive = false;
     this.questProgressStallFrames = 0;
     if (this.config.debug) {
@@ -1968,6 +1988,12 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   poll(state: InputState, world: GameWorld): void {
+    this.pendingSuppressedProgressNavDebug = null;
+    this.decision.debug = null;
+    if (world.frameCount >= this.progressGoalSuppressedUntilFrame) {
+      this.progressGoalSuppressionSource = null;
+    }
+
     // Find player entity
     const playerEntities = query(world.ecs, [Player, Position, Health]);
     if (playerEntities.length === 0) {
@@ -3554,14 +3580,15 @@ export class BehaviorTreeAI implements AIInputProvider {
     const progressSuppressed = world.frameCount < this.progressGoalSuppressedUntilFrame;
 
     if (!tutorialAccepted) {
-      if (progressSuppressed) return null;
+      const reason = 'Seeking Tutorial Goon to unlock the floor quest';
+      if (progressSuppressed) return this.recordSuppressedProgressNavigation(world, reason);
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.welcomeOfficePos.x,
           objective.welcomeOfficePos.y,
           playerX,
           playerY,
-          'Seeking Tutorial Goon to unlock the floor quest',
+          reason,
         ),
       );
     }
@@ -3603,42 +3630,41 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (shopStage === 'not-met') {
-      if (progressSuppressed) return null;
+      const reason = 'Seeking Shopkeeper to start the merchant errand';
+      if (progressSuppressed) return this.recordSuppressedProgressNavigation(world, reason);
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.shopRoomPos.x,
           objective.shopRoomPos.y,
           playerX,
           playerY,
-          'Seeking Shopkeeper to start the merchant errand',
+          reason,
         ),
       );
     }
 
     if (shopStage === 'awaiting-prize') {
-      if (progressSuppressed) return null;
       const target = hasFetchItem ? objective.shopRoomPos : objective.questItemPos;
+      const reason = hasFetchItem
+        ? 'Returning the merchant prize'
+        : 'Seeking the merchant fetch item';
+      if (progressSuppressed) return this.recordSuppressedProgressNavigation(world, reason);
       return maybeDetourToQuestGiver(
-        this.createProgressTarget(
-          target.x,
-          target.y,
-          playerX,
-          playerY,
-          hasFetchItem ? 'Returning the merchant prize' : 'Seeking the merchant fetch item',
-        ),
+        this.createProgressTarget(target.x, target.y, playerX, playerY, reason),
       );
     }
 
     if (shopStage === 'ready-to-buy') {
       if (world.playerGold >= SHOPKEEPER_EQUIPMENT_COST) {
-        if (progressSuppressed) return null;
+        const reason = 'Returning to the Shopkeeper to buy the charm';
+        if (progressSuppressed) return this.recordSuppressedProgressNavigation(world, reason);
         return maybeDetourToQuestGiver(
           this.createProgressTarget(
             objective.shopRoomPos.x,
             objective.shopRoomPos.y,
             playerX,
             playerY,
-            'Returning to the Shopkeeper to buy the charm',
+            reason,
           ),
         );
       }
@@ -3708,40 +3734,43 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (!bossBattleAccepted) {
-      if (progressSuppressed) return null;
+      const reason = 'Seeking the Spell Broker to start the Slime Rat quest';
+      if (progressSuppressed) return this.recordSuppressedProgressNavigation(world, reason);
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.spellQuestGiverPos.x,
           objective.spellQuestGiverPos.y,
           playerX,
           playerY,
-          'Seeking the Spell Broker to start the Slime Rat quest',
+          reason,
         ),
       );
     }
 
     if (!objective.bossBattles.get('slime-rat')!.started) {
-      if (progressSuppressed) return null;
+      const reason = 'Heading to the Slime Rat room';
+      if (progressSuppressed) return this.recordSuppressedProgressNavigation(world, reason);
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.slimeRatRoomPos.x,
           objective.slimeRatRoomPos.y,
           playerX,
           playerY,
-          'Heading to the Slime Rat room',
+          reason,
         ),
       );
     }
 
     if (objective.bossBattles.get('slime-rat')!.defeated && !world.featureUnlocks.spells) {
-      if (progressSuppressed) return null;
+      const reason = 'Returning to the Spell Broker to claim a spell reward';
+      if (progressSuppressed) return this.recordSuppressedProgressNavigation(world, reason);
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.spellQuestGiverPos.x,
           objective.spellQuestGiverPos.y,
           playerX,
           playerY,
-          'Returning to the Spell Broker to claim a spell reward',
+          reason,
         ),
       );
     }
@@ -3750,31 +3779,47 @@ export class BehaviorTreeAI implements AIInputProvider {
       objective.bossBattles.get('slime-rat')!.defeated &&
       !objective.bossBattles.get('staircase')!.started
     ) {
-      if (progressSuppressed) return null;
+      const reason = 'Heading to the staircase boss room';
+      if (progressSuppressed) return this.recordSuppressedProgressNavigation(world, reason);
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.staircasePos.x,
           objective.staircasePos.y,
           playerX,
           playerY,
-          'Heading to the staircase boss room',
+          reason,
         ),
       );
     }
 
     if (objective.staircaseUnlocked && !objective.staircaseDiscovered) {
-      if (progressSuppressed) return null;
+      const reason = 'Heading to the stairs to clear the floor';
+      if (progressSuppressed) return this.recordSuppressedProgressNavigation(world, reason);
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.staircasePos.x,
           objective.staircasePos.y,
           playerX,
           playerY,
-          'Heading to the stairs to clear the floor',
+          reason,
         ),
       );
     }
 
+    return null;
+  }
+
+  private recordSuppressedProgressNavigation(world: GameWorld, blockedTargetReason: string): null {
+    this.pendingSuppressedProgressNavDebug = {
+      state: AIDecisionDebugState.SUPPRESSED_PROGRESS_NAV,
+      reason: 'progressGoalSuppressed',
+      source:
+        this.progressGoalSuppressionSource ??
+        AIProgressSuppressionSource.PROGRESS_GOAL_SUPPRESSION_WINDOW,
+      blockedTargetReason,
+      suppressedUntilFrame: this.progressGoalSuppressedUntilFrame,
+      remainingFrames: Math.max(0, this.progressGoalSuppressedUntilFrame - world.frameCount),
+    };
     return null;
   }
 
@@ -4826,7 +4871,10 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   getDecision(): AIDecision {
-    return { ...this.decision };
+    return {
+      ...this.decision,
+      debug: this.decision.debug ? { ...this.decision.debug } : null,
+    };
   }
 
   /**
@@ -4921,6 +4969,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       targetX: null,
       targetY: null,
       reason: 'Reset',
+      debug: null,
     };
     this.pathWaypoints = [];
     this.pathIndex = 0;
@@ -4941,6 +4990,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.collectDwellAnchorY = 0;
     this.collectDwellFrames = 0;
     this.exploreDwell.reset();
+    this.progressGoalSuppressedUntilFrame = 0;
+    this.progressGoalSuppressionSource = null;
+    this.pendingSuppressedProgressNavDebug = null;
     this.globalDwellActive = false;
     this.globalDwellAnchorX = 0;
     this.globalDwellAnchorY = 0;

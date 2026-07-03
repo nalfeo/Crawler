@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_SUMMARY_THRESHOLDS,
   eventsToJsonl,
+  getDecisionEventState,
   summarizeEvents,
   type SimEvent,
   type SimEventType,
 } from '../../src/game/ai/event-log.js';
+import { AIProgressSuppressionSource, AIState } from '../../src/game/ai/types.js';
 
 /** Build a SimEvent with sensible defaults, overriding only what a case cares about. */
 function mk(type: SimEventType, gameMs: number, overrides: Partial<SimEvent> = {}): SimEvent {
@@ -122,6 +124,50 @@ describe('summarizeEvents', () => {
     expect(summary.longestKillGapMs).toBeNull();
     expect(summary.travelEfficiency).toBe(0);
   });
+
+  it('buckets suppressed progress navigation separately from ordinary EXPLORE', () => {
+    const events = [
+      mk('sample', 0, { state: 'EXPLORE', pathTravel: 1, netDisp: 1 }),
+      mk('sample', 250, {
+        state: 'suppressedProgressNav',
+        baseState: 'EXPLORE',
+        decisionDebug: {
+          state: 'suppressedProgressNav',
+          reason: 'progressGoalSuppressed',
+          source: AIProgressSuppressionSource.EXPLORE_DWELL_FIXED_POSITION_TARGET,
+          blockedTargetReason: 'Seeking Tutorial Goon to unlock the floor quest',
+          suppressedUntilFrame: 420,
+          remainingFrames: 120,
+        },
+        pathTravel: 1,
+        netDisp: 1,
+      }),
+      mk('sample', 500, { state: 'EXPLORE', pathTravel: 1, netDisp: 1 }),
+    ];
+
+    const summary = summarizeEvents(events);
+
+    expect(summary.stateMs.EXPLORE).toBe(250);
+    expect(summary.stateMs.suppressedProgressNav).toBe(250);
+    expect(summary.statePct.EXPLORE).toBe(50);
+    expect(summary.statePct.suppressedProgressNav).toBe(50);
+  });
+
+  it('uses debug state labels for headless event-state transitions', () => {
+    expect(
+      getDecisionEventState({
+        state: AIState.EXPLORE,
+        debug: {
+          state: 'suppressedProgressNav',
+          reason: 'progressGoalSuppressed',
+          source: AIProgressSuppressionSource.EXPLORE_DWELL_FIXED_POSITION_TARGET,
+          blockedTargetReason: 'Seeking Tutorial Goon to unlock the floor quest',
+          suppressedUntilFrame: 420,
+          remainingFrames: 120,
+        },
+      }),
+    ).toBe('suppressedProgressNav');
+  });
 });
 
 describe('eventsToJsonl', () => {
@@ -133,5 +179,34 @@ describe('eventsToJsonl', () => {
     expect(lines[2]).toBe('');
     expect(JSON.parse(lines[0]!).type).toBe('sample');
     expect(JSON.parse(lines[1]!).note).toBe('kill 1');
+  });
+
+  it('preserves typed suppressed-progress debug payloads', () => {
+    const events = [
+      mk('sample', 0, {
+        state: 'suppressedProgressNav',
+        baseState: 'EXPLORE',
+        decisionDebug: {
+          state: 'suppressedProgressNav',
+          reason: 'progressGoalSuppressed',
+          source: AIProgressSuppressionSource.QUEST_PROGRESS_DWELL_WATCHDOG,
+          blockedTargetReason: 'Heading to the Slime Rat room',
+          suppressedUntilFrame: 900,
+          remainingFrames: 300,
+        },
+      }),
+    ];
+
+    const [line] = eventsToJsonl(events).trimEnd().split('\n');
+    const parsed = JSON.parse(line!);
+
+    expect(parsed.state).toBe('suppressedProgressNav');
+    expect(parsed.baseState).toBe('EXPLORE');
+    expect(parsed.decisionDebug).toMatchObject({
+      state: 'suppressedProgressNav',
+      reason: 'progressGoalSuppressed',
+      source: AIProgressSuppressionSource.QUEST_PROGRESS_DWELL_WATCHDOG,
+      blockedTargetReason: 'Heading to the Slime Rat room',
+    });
   });
 });

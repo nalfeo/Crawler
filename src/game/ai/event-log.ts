@@ -9,7 +9,7 @@
  *
  * Pure module: no `fs`, no Phaser. Safe to import from labs and tests.
  */
-import { AIState, type AIStateValue } from './types.js';
+import { AIState, type AIDecision, type AIDecisionDebug, type AIStateValue } from './types.js';
 
 /** Human-readable name for each {@link AIState} value. */
 export const AI_STATE_NAME: Record<AIStateValue, string> = {
@@ -19,6 +19,11 @@ export const AI_STATE_NAME: Record<AIStateValue, string> = {
   [AIState.COLLECT]: 'COLLECT',
   [AIState.INTERACT]: 'INTERACT',
 };
+
+/** State label emitted to JSONL/summaries, including telemetry-only refinements. */
+export function getDecisionEventState(decision: Pick<AIDecision, 'state' | 'debug'>): string {
+  return decision.debug?.state ?? AI_STATE_NAME[decision.state] ?? String(decision.state);
+}
 
 /** Discriminator for the kind of telemetry record. */
 export type SimEventType = 'sample' | 'state' | 'kill' | 'levelup' | 'quest' | 'npc' | 'control';
@@ -38,8 +43,12 @@ export interface SimEvent {
   px: number;
   /** Player world Y (ft). */
   py: number;
-  /** AI behavioral state name (see {@link AI_STATE_NAME}). */
+  /** Emitted AI state label; may be a telemetry-only refinement of the base state. */
   state: string;
+  /** Coarse gameplay state before telemetry-only refinement, when different. */
+  baseState?: string;
+  /** Typed decision debug payload that produced a telemetry-only state label. */
+  decisionDebug?: AIDecisionDebug | null;
   /** Human-readable reason the AI gave for its decision. */
   reason: string;
   /** Target entity id, if any. */

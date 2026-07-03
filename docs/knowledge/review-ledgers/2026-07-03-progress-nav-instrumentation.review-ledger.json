@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "progress-nav-instrumentation",
+  "task_title": "Instrument suppressed progress navigation EXPLORE stalls",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "notes": "Plan review found one blocking debug lifecycle/reference concern and one headless state-transition coverage gap. Resolved by clearing decision.debug and pending suppressed-progress telemetry every poll, cloning debug payloads from getDecision/buildEvent, adding getDecisionEventState as the single label helper, and adding unit/provider tests for summary buckets, JSONL payload preservation, transition label selection, and clone isolation."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Reviewed working tree diff for telemetry correctness, type safety, unintended gameplay changes, and tests. No actionable concerns found."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Final post-verification review after the AIDecision test-helper fix and formatting. No actionable concerns found."
+        }
+      ]
+    }
+  }
+}
