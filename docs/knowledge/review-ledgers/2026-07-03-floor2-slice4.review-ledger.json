@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "floor2-slice4-bosses-dens",
+  "task_title": "Floor 2 Slice 4: bosses + sealed dens + seeded unlock objectives + boss-defeat spawn-gating",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-4.7",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "notes": "Plan review captured during initial spec/ADR read-through. (1) `floor2ObjectiveTick` deliberately does NOT end in `System` so it doesn't trip `check:wired-systems` before Slice 8 wires the Floor 2 pipeline — matches Floor 1's `floor1ObjectiveTick` naming convention. (2) Quest pack registry is a REPLACE not APPEND (installQuestPacks), so buildDenUnlockQuestPack merges with `getQuestPacks()` output to avoid clobbering Floor 1 content. (3) `enemies.floor2.json` bosses use `spawnWeight: 0` so ambient spawner rolls skip them — bosses are placed by `initializeFloor2Bosses`, not by weighted selection. (4) `world.floor2State.decapitatedFamilies` is stored via a lazy monkey-patch (typed as `Floor2State & { decapitatedFamilies?: Set<FamilyId> }`) so Slice 8 can formalize the type on `Floor2State` in `faction-relations.ts` without a Slice-4-owned type change. All four decisions carried forward into implementation without deviation."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["self-review"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true,
+          "notes": "Self-review pass after implementation. (a) Original draft passed `familyIdxField[eid]` without a non-null assertion — typecheck flagged `number | undefined` when tests migrated to a stricter tsconfig; fixed in the same commit as the lab. (b) The Zod schema for `enemies.floor2.json` originally accepted `isBoss:true` without `familyId`, letting orphan bosses through; added a `superRefine` and a negative test in `enemies-floor2-schema.test.ts`. (c) Idempotency: `floor2ObjectiveTick` initially latched duplicate defeat events into `combatEvents` because the tick reads a persistent queue; added a `decapitatedFamilies.has(familyId)` short-circuit so repeated ticks + duplicate `type:'death'` events are safe. Covered by the second case in `floor2-den-unlock-pipeline.test.ts`."
+        }
+      ]
+    },
+    "observe_before_done": {
+      "completed": true,
+      "notes": "Observed via the integration test + lab. `tests/integration/floor2-den-unlock-pipeline.test.ts` drives the full pipeline end-to-end: `initializeFloor2Bosses` places one boss per present family into its BOSS_DEN, seeds unlock/defeat flags to false, then simulates the quest completion (flag latch) and the boss death (via a synthesized `combatEvents` entry) and asserts the defeat flag + `isFamilySpawnGated` transition. The `family-boss-den-lab` provides the same pipeline under a real `createGameWorld` + `CaveSystemGenerator` for interactive inspection."
+    },
+    "shared_worktree_hazard": {
+      "recorded": true,
+      "notes": "The cloud worktree at `C:/tmp/Crawler` was concurrently mutated by sibling Slice 3/6/7 sessions. Symptoms: (a) branch silently switched to `floor2-slice6-settlement-events` twice; (b) `src/shared/npc-types.ts`, `src/game/index.ts`, `src/game/systems/index.ts`, `src/core/world.ts`, `src/shared/floor-types.ts` were mutated in place; (c) `emergentEventSystem.ts`, `familyFeudSystem.ts`, `HudFamilyRelationships.ts`, `floor2Settlement.ts`, `generateShopInventory.ts`, `emergent-events.ts`, `shop-archetypes.ts`, `shop-archetypes.floor2.json`, `quests.floor2.events.json` were created out-of-scope. Once a sibling deleted and recreated `floor2-slice4-bosses-dens` at `cdb126b2`, losing my WIP commits; recovered by `git reset --hard <sha>` from `git reflog` (commits `29595c11`, `a1398c87`). Mitigation for future stacked-PR work: (i) rebase-aware branch protection so branches can't be silently reset; (ii) worktree-per-session — cloud sessions on the same repo should use separate worktrees, not a shared checkout."
+    }
+  }
+}
