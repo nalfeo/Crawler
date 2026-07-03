@@ -1,4 +1,5 @@
 import type GUI from 'lil-gui';
+import { DEFAULT_MANIFEST_URL } from '../../engine/generatedAssets/index.js';
 import catalogJson from '../../shared/data/sprite-catalog.json';
 import {
   ensureSentence,
@@ -9,6 +10,7 @@ import {
 } from '../../shared/sprite-catalog.js';
 import { getRepoWriteCapability, saveTuning } from '../lab-tuning.js';
 import { registerLab } from '../registry.js';
+import { generatedSpritePreviewUrl, sheetImageUrl } from './asset-urls.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 type AiProviderMode = 'auto' | 'heuristic' | 'openai';
@@ -59,7 +61,7 @@ function loadSheetImage(path: string): SheetImageCache {
   entry.image.addEventListener('error', () => {
     entry.error = true;
   });
-  entry.image.src = path;
+  entry.image.src = sheetImageUrl(path);
   return entry;
 }
 
@@ -374,7 +376,7 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
     img.style.imageRendering = 'pixelated';
     img.style.maxWidth = '256px';
     img.style.maxHeight = '256px';
-    img.src = `/assets/${sprite.assetPath || `generated/${sprite.spriteId}.png`}`;
+    img.src = generatedSpritePreviewUrl(sprite);
     img.alt = sprite.spriteId;
 
     wrap.append(previewLabel, img);
@@ -452,7 +454,7 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
     previewLabel.style.fontWeight = '600';
 
     const img = document.createElement('img');
-    img.src = sheet.path;
+    img.src = sheetImageUrl(sheet.path);
     img.style.maxWidth = '100%';
     img.style.maxHeight = '200px';
     img.style.imageRendering = 'pixelated';
@@ -984,7 +986,7 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
   renderDetails();
 
   // Fetch and merge approved generated sprites from the manifest (async, fire and forget)
-  fetch('/assets/generated/manifest.json')
+  fetch(DEFAULT_MANIFEST_URL)
     .then((res) => res.json())
     .then(
       (manifest: {

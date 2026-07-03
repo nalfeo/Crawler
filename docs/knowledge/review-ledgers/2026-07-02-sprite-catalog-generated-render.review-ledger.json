@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "sprite-catalog-generated-render",
+  "task_title": "Render generated sprites in sprite-catalog lab on GitHub Pages",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "notes": "Separate-model (gpt-5.4 via rubber-duck) plan review: APPROVE-WITH-CHANGES. Adopted both: (1) defensive assetPath normalization in generatedSpritePreviewUrl; (2) reuse existing DEFAULT_MANIFEST_URL instead of a new manifest helper. Confirmed sheets are in scope and resolvePublicAssetUrl reuse is preferred over rewriting catalog paths or withBasePath."
+    }
+  }
+}
