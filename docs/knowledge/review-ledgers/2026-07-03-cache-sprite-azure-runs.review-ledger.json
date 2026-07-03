@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "cache-sprite-azure-runs",
+  "task_title": "Cache Azure runs in the sprite workflow tool",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "notes": "approved_with_changes; all 6 adopted (2 blocking: debugger selection-preserve + on-demand variant resolve on Load; plus token-bump load race, per-filter hydrate on filter change, cached-status + 404 reconcile, race tests)"
+    }
+  }
+}
