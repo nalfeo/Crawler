@@ -3,6 +3,7 @@ import type { GameWorld } from '../core/world.js';
 import { ACTIVE_ABILITY_SLOT_LIMIT } from '../shared/abilities.js';
 import { GAME } from '../shared/constants.js';
 import { applyCrispText } from './ui-scale.js';
+import { isAbilitySlotCastFlashing } from './ability-bar-flash-state.js';
 
 const DEPTH = 1000;
 const SLOT_SIZE = 64;
@@ -24,13 +25,6 @@ const COLORS = {
   slotCastFlashBorder: 0x22d3ee,
   cooldownRing: 0xfbbf24,
 } as const;
-
-/**
- * Duration in frames that the slot stays visibly flashed after an ability
- * fires. Sized generously so a 60 fps user still perceives the flash even if
- * their eyes happened to be elsewhere at trigger time.
- */
-const CAST_FLASH_FRAMES = 15;
 
 function shortAbilityLabel(id: string): string {
   const [head] = id.split('-');
@@ -124,12 +118,12 @@ export function createHudAbilityBar(
       if (id) {
         const lastTriggerFrame = cooldowns.get(id);
         const cooldownDuration = cooldownFrames.get(id) ?? 0;
-        // Cast-flash: right after a trigger, the slot pulses bright yellow so
-        // the fire is unmistakable in the HUD. Falls back to the normal active
-        // colour once the flash window elapses.
-        const framesSinceTrigger =
-          lastTriggerFrame !== undefined ? world.frameCount - lastTriggerFrame : Infinity;
-        const flashing = framesSinceTrigger >= 0 && framesSinceTrigger < CAST_FLASH_FRAMES;
+        // Cast-flash: right after a trigger, the slot flashes with a cool
+        // near-white fill + cyan border (COLORS.slotCastFlash /
+        // slotCastFlashBorder) so the fire is unmistakable in the HUD while
+        // staying visually distinct from the warm-yellow cooldown bar. Falls
+        // back to the normal active colour once the flash window elapses.
+        const flashing = isAbilitySlotCastFlashing(world.frameCount, lastTriggerFrame);
         if (flashing) {
           slot
             .setFillStyle(COLORS.slotCastFlash, 0.98)

@@ -14,6 +14,7 @@ import {
   queueAbilityTrigger,
   statsSystem,
 } from '../../src/game/systems/index.js';
+import { applyCatalogEffect } from '../../src/game/systems/progressionEffects.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 function setupPlayer() {
@@ -382,18 +383,46 @@ describe('abilitySystem', () => {
     expect(waves[0]!.radiusFt).toBeGreaterThan(0);
   });
 
-  it('emits a healGlow VFX event on every heal cast (even when nothing to heal)', () => {
+  it('heals the caster and emits a healGlow VFX event when the heal spell auto-triggers on a deficit', () => {
     const { world, player } = setupPlayer();
     world.featureUnlocks.spells = true;
     world.playerMp = 30;
     memorizeSpell(world, player, 'heal');
     world.stores.health.max[player] = 100;
-    world.stores.health.current[player] = 70; // deficit 30 — triggers cast
+    world.stores.health.current[player] = 70; // deficit 30 meets health_deficit_at_least
 
     world.vfxEvents.length = 0;
     world.frameCount = 100;
     abilitySystem(world);
 
+    // The auto-trigger fires only on a real deficit, so HP is restored by
+    // baseHeal (30, capped at max) and exactly one glow is emitted at the caster.
+    expect(world.stores.health.current[player]).toBe(100);
+    const glows = world.vfxEvents.filter((e) => e.kind === 'healGlow');
+    expect(glows).toHaveLength(1);
+    expect(glows[0]!.x).toBe(0);
+    expect(glows[0]!.y).toBe(0);
+  });
+
+  it('still emits a healGlow VFX event on a full-HP cast when there is nothing to heal', () => {
+    const { world, player } = setupPlayer();
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 100; // full HP — zero healable
+
+    world.vfxEvents.length = 0;
+    world.frameCount = 100;
+    // The health_deficit_at_least(30) auto-trigger can NEVER fire at full HP, so
+    // drive the cast directly the way activateAbility() does. This exercises
+    // castHeal's deliberate "always emit the glow on cast" branch (the spell
+    // fired — MP spent, cooldown started) which the trigger path cannot reach.
+    applyCatalogEffect(world, {
+      sourceType: 'ability',
+      sourceId: `heal:active:${player}`,
+      effect: { type: 'spell_heal', baseHeal: 30 },
+      holderEid: player,
+    });
+
+    expect(world.stores.health.current[player]).toBe(100); // nothing healed
     const glows = world.vfxEvents.filter((e) => e.kind === 'healGlow');
     expect(glows).toHaveLength(1);
     expect(glows[0]!.x).toBe(0);

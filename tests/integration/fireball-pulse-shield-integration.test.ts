@@ -20,7 +20,6 @@ import { describe, expect, it } from 'vitest';
 import {
   Enemy,
   Health,
-  Player,
   Position,
   Velocity,
   Weight,
@@ -99,8 +98,13 @@ describe('Fireball auto-triggers in the shipped visual pipeline', () => {
     const state = world.abilityStatesByEntity.get(playerEid);
     expect(state?.equippedActiveAbilityIds).toContain('fireball');
 
-    spawnStationaryEnemyNearPlayer(world, playerEid, 3);
-    expect(query(world.ecs, [Enemy, Position, Health, Player]).length).toBeGreaterThanOrEqual(0);
+    const dummyEid = spawnStationaryEnemyNearPlayer(world, playerEid, 3);
+    // Confirm the training dummy is a live, queryable enemy (Enemy + Position +
+    // Health) so the fireball has a real target. The earlier assertion queried
+    // [Enemy, Position, Health, Player] — which no entity ever matches, since an
+    // entity is never both Enemy and Player — and asserted `.length >= 0`, a
+    // tautology that verified nothing.
+    expect([...query(world.ecs, [Enemy, Position, Health])]).toContain(dummyEid);
 
     // Fireball's trigger is enemy_cluster (withinFeet=6, minEnemies=1) with no
     // cooldown history yet, so it should latch on the very first frame the
