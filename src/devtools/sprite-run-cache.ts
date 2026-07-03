@@ -41,8 +41,11 @@ function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string';
 }
 
-function isNullableInteger(value: unknown): value is number | null {
-  return value === null || (typeof value === 'number' && Number.isInteger(value));
+// `chosenIndex` (an array index) and `candidateCount` (a count) are only ever
+// non-negative; the UI guards on `>= 0`, so a negative value is corrupt cache
+// data and the entry is rejected wholesale (see sanitizeRunEntry).
+function isNullableNonNegativeInteger(value: unknown): value is number | null {
+  return value === null || (typeof value === 'number' && Number.isInteger(value) && value >= 0);
 }
 
 /**
@@ -57,8 +60,8 @@ export function sanitizeRunEntry(value: unknown): SidecarRunListEntry | null {
   if (typeof entry.runId !== 'string' || entry.runId.length === 0) return null;
   if (!isNullableString(entry.timestamp)) return null;
   if (!isNullableString(entry.briefHash)) return null;
-  if (!isNullableInteger(entry.chosenIndex)) return null;
-  if (!isNullableInteger(entry.candidateCount)) return null;
+  if (!isNullableNonNegativeInteger(entry.chosenIndex)) return null;
+  if (!isNullableNonNegativeInteger(entry.candidateCount)) return null;
   if (typeof entry.hasJudge !== 'boolean') return null;
   if (entry.promotionState !== 'promoted' && entry.promotionState !== 'not-promoted') return null;
   return {

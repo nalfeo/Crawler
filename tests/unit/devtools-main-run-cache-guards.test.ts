@@ -76,4 +76,31 @@ describe('devtools sprite run cache guards', () => {
     expect(source).toContain("reloadStatus.textContent = 'Showing cached runs — refreshing…';");
     expect(source).toContain('Showing cached runs (${cached.length}) — refreshing…');
   });
+
+  it('concern #2/#3: hydrate paints a cached empty list ([]) rather than dropping it', () => {
+    // The buggy guard early-returned for BOTH null (never cached) and [] (known
+    // empty), leaving a blank dropdown even when the cache said "no runs". That
+    // combined guard must be gone from both hydrate helpers.
+    expect(source).not.toContain('if (!cached || cached.length === 0) {');
+
+    const sliceFn = (marker: string): string => {
+      const start = source.indexOf(marker);
+      expect(start).toBeGreaterThan(-1);
+      const end = source.indexOf('\n  };', start);
+      expect(end).toBeGreaterThan(start);
+      return source.slice(start, end);
+    };
+
+    // Both hydrate helpers now bail only on a null (never-cached) slot, so a
+    // cached [] falls through to render the known-empty state.
+    const azure = sliceFn('const hydrateAzureRunsFromCache = (): void => {');
+    expect(azure).toContain('if (!cached) {');
+    expect(azure).not.toContain('cached.length === 0) {');
+    // ...and the empty case gets its own status text.
+    expect(azure).toContain('(none found)');
+
+    const dbg = sliceFn('const hydrateDebuggerRunsFromCache = (): void => {');
+    expect(dbg).toContain('if (!cached) {');
+    expect(dbg).not.toContain('cached.length === 0) {');
+  });
 });

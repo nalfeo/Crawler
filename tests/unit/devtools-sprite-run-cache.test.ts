@@ -73,9 +73,18 @@ describe('sprite-run-cache', () => {
       ['non-boolean hasJudge', { ...makeRun(), hasJudge: 'yes' }],
       ['bad promotionState', { ...makeRun(), promotionState: 'maybe' }],
       ['non-integer chosenIndex', { ...makeRun(), chosenIndex: 1.5 }],
+      ['negative chosenIndex', makeRun({ chosenIndex: -1 })],
+      ['negative candidateCount', makeRun({ candidateCount: -3 })],
       ['string timestamp wrong type', { ...makeRun(), timestamp: 123 }],
     ])('rejects %s', (_label, value) => {
       expect(sanitizeRunEntry(value)).toBeNull();
+    });
+
+    it('accepts zero for chosenIndex and candidateCount', () => {
+      const sanitized = sanitizeRunEntry(makeRun({ chosenIndex: 0, candidateCount: 0 }));
+      expect(sanitized).not.toBeNull();
+      expect(sanitized?.chosenIndex).toBe(0);
+      expect(sanitized?.candidateCount).toBe(0);
     });
   });
 
@@ -143,6 +152,22 @@ describe('sprite-run-cache', () => {
       const runs = readRunCache(raw, 'all');
       expect(runs).toHaveLength(2);
       expect(runs?.map((run) => run.runId)).toEqual(['2026-07-03T12-00-00-deadbeef', 'ok-2']);
+    });
+
+    it('drops entries with negative chosenIndex/candidateCount from a slot', () => {
+      const raw = JSON.stringify({
+        version: 1,
+        byFilter: {
+          all: [
+            makeRun(),
+            makeRun({ runId: 'neg-count', candidateCount: -1 }),
+            makeRun({ runId: 'neg-index', chosenIndex: -5 }),
+          ],
+        },
+      });
+      const runs = readRunCache(raw, 'all');
+      expect(runs).toHaveLength(1);
+      expect(runs?.[0]?.runId).toBe('2026-07-03T12-00-00-deadbeef');
     });
 
     it('replaces a version-mismatched envelope on the next write, keeping only the new slot', () => {

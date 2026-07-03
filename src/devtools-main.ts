@@ -1884,19 +1884,23 @@ function render(): void {
     }
   };
   // Instant first paint: fill the dropdown from the last cached run list for the
-  // active filter so the operator can pick immediately after a reload, before
+  // active filter so the operator sees runs immediately after a reload, before
   // the slow `/api/runs` revalidate returns. A `null` slot (never cached) is
-  // left for the network refresh; a cached empty list is intentionally skipped
-  // (nothing to paint).
+  // left for the network refresh; a cached empty list (`[]` — the store
+  // genuinely had no runs) paints the "no runs found" state via
+  // `renderAzureRunOptions` rather than leaving a blank dropdown.
   const hydrateAzureRunsFromCache = (): void => {
     const filter = normalizePromotedFilter(reloadStateFilter.value);
     const cached = readCachedRuns(filter);
-    if (!cached || cached.length === 0) {
+    if (!cached) {
       return;
     }
     azureRunChoices = cached;
     renderAzureRunOptions(cached, reloadSelect.value);
-    reloadStatus.textContent = 'Showing cached runs — refreshing…';
+    reloadStatus.textContent =
+      cached.length === 0
+        ? 'Showing cached runs (none found) — refreshing…'
+        : 'Showing cached runs — refreshing…';
   };
   // Reconstruct a queue item from the selected run at the Sheet step. Selecting a
   // run in the dropdown loads it immediately; the button is an explicit fallback.
@@ -2969,11 +2973,13 @@ function render(): void {
   };
   // Instant first paint for the debugger picker: fill the dropdown from the
   // cached run list, restore the loaded debugTarget, and warm the variant cache
-  // (one fast blob GET) so Load has real indices. The slow list revalidates in
-  // the background afterwards.
+  // (one fast blob GET) so Load has real indices. A `null` slot (never cached)
+  // bails to the background refresh; a cached empty list (`[]`) paints the "no
+  // runs available" state via `populateDebuggerRunOptions` instead of a blank
+  // dropdown. The slow list revalidates in the background afterwards.
   const hydrateDebuggerRunsFromCache = (): void => {
     const cached = readCachedRuns('all');
-    if (!cached || cached.length === 0) {
+    if (!cached) {
       return;
     }
     debuggerRuns = cached;
@@ -6929,8 +6935,10 @@ function render(): void {
   // disabled ("Syncing queue…") until hydration resolves, then enable, do the
   // initial (non-silent) list, and start the periodic refresh.
   if (showSpriteWorkflow) {
-    // Paint the reload dropdown from cache immediately so the operator can pick a
-    // run during the (short) queue-sync gate, before the slow list revalidates.
+    // Paint the reload dropdown from cache now so the cached runs are visible
+    // during the (short) queue-sync gate and the picker is ready the instant the
+    // gate lifts. The controls are disabled just below, so it is not interactive
+    // until then — this only avoids a blank dropdown while the slow list loads.
     hydrateAzureRunsFromCache();
     setAzureControlsEnabled(false);
     reloadStatus.textContent = 'Syncing queue…';
