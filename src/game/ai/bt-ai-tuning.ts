@@ -623,3 +623,12 @@ export const TRAVEL_REL_SPEED_EPSILON_SQ = 1e-8;
 // COLLECT uses steering only while farther than this from the pickup, so the final
 // harvest overlap approach (Track A close-range slide) is left untouched.
 export const TRAVEL_COLLECT_MIN_STEER_DIST_FT = CLOSE_APPROACH_DIRECT_FT;
+
+// Chain-scoped suppression override urgency floor. When the Spell Broker chain is
+// on the critical path AND `spellBrokerChain.urgency` (0=safe, 1=deadline reached)
+// meets or exceeds this floor, `findProgressObjective` bypasses the position-goal
+// dwell-watchdog for the three pre-completion chain-critical targets (Broker,
+// Slime Rat room, spell reward return). Kept high enough that only genuine deep
+// panic reopens a wedged position target; the wedge-watchdog still re-suppresses
+// on the next tick if the AI cannot actually make progress.
+export const CHAIN_SUPPRESSION_OVERRIDE_URGENCY = 0.75;

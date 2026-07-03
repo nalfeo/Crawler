@@ -209,6 +209,7 @@ import {
   TRAVEL_LOOT_CORRIDOR_FT,
   TRAVEL_REL_SPEED_EPSILON_SQ,
   TRAVEL_COLLECT_MIN_STEER_DIST_FT,
+  CHAIN_SUPPRESSION_OVERRIDE_URGENCY,
 } from './bt-ai-tuning.js';
 // Floor-progress scoring + its weight live in ./scoring.ts (re-exported below so
 // this module's public surface is unchanged).
@@ -2628,13 +2629,25 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerSpeedFtPerFrame: number,
   ): TacticalOpportunityEvaluation {
     const inQuestGiverDetour = this.committedDetourNpcEid !== null;
-    const params: TacticalOpportunityParams = inQuestGiverDetour
-      ? {
-          ...TACTICAL_OPPORTUNITY_PARAMS,
-          maxDetourFt: TACTICAL_OPPORTUNITY_TRIVIAL_DETOUR_FT,
-          maxAccepted: 1,
-        }
-      : TACTICAL_OPPORTUNITY_PARAMS;
+    // When the Spell Broker / Slime Rat chain is on the critical path and its
+    // own budget is exhausted (slack <= 0), we treat it like an active
+    // quest-giver detour for opportunity budgeting: only trivial-distance
+    // pickups, at most one accepted. This keeps the AI from farming loot/enemy
+    // packs on the way to the Spell Broker or on the return-reward leg when
+    // that chain alone is already breaching the deadline — even if the total
+    // plan slack would still look comfortable.
+    const chainBeeline =
+      runPlan?.spellBrokerChain.onCriticalPath === true &&
+      !runPlan.spellBrokerChain.complete &&
+      runPlan.spellBrokerChain.slackMs <= 0;
+    const params: TacticalOpportunityParams =
+      inQuestGiverDetour || chainBeeline
+        ? {
+            ...TACTICAL_OPPORTUNITY_PARAMS,
+            maxDetourFt: TACTICAL_OPPORTUNITY_TRIVIAL_DETOUR_FT,
+            maxAccepted: 1,
+          }
+        : TACTICAL_OPPORTUNITY_PARAMS;
     return evaluateTacticalOpportunities(
       {
         playerX,
@@ -3553,6 +3566,38 @@ export class BehaviorTreeAI implements AIInputProvider {
     // NOT affected — only fixed-position NPC/room targets get suppressed.
     const progressSuppressed = world.frameCount < this.progressGoalSuppressedUntilFrame;
 
+    // Chain-urgency override: when the Spell Broker chain is on the critical
+    // path AND deadline slack for the chain itself has gone deeply negative,
+    // retrying a wedged chain NPC/room is preferable to wandering an Explore
+    // frontier that burns budget without contributing to the chain. Applies
+    // ONLY to the three chain-critical position targets below (Spell Broker,
+    // Slime Rat room, spell reward return) — the staircase-boss target sits
+    // AFTER `chainStatus.complete` flips true (once spells unlock), so the
+    // override is a no-op there by construction. Non-chain phases (tutorial,
+    // shop, gold farming) are untouched. Threshold `CHAIN_SUPPRESSION_OVERRIDE_URGENCY`
+    // keeps this to genuine deep panic — the wedge-watchdog still fires and
+    // re-suppresses if the AI cannot make progress, but under a tight chain
+    // deadline the loop is worth reopening.
+    //
+    // We compute a fresh runPlan here rather than reusing `this.lastRunPlan`
+    // because the cached plan is written by resolveTravelSteering *after* the
+    // BT tick, so during findProgressObjective it is one frame stale — that
+    // lag hides the very panic window the override is meant to catch.
+    const playerSpeedForChain = this.getPlayerSpeedFtPerFrame(world, playerEid);
+    const currentRunPlan = this.estimateCurrentRunPlan(
+      world,
+      playerEid,
+      playerX,
+      playerY,
+      playerSpeedForChain,
+    );
+    const chainStatus = currentRunPlan?.spellBrokerChain;
+    const chainSuppressionOverride =
+      chainStatus !== undefined &&
+      chainStatus.onCriticalPath &&
+      !chainStatus.complete &&
+      chainStatus.urgency >= CHAIN_SUPPRESSION_OVERRIDE_URGENCY;
+
     if (!tutorialAccepted) {
       if (progressSuppressed) return null;
       return maybeDetourToQuestGiver(
@@ -3708,7 +3753,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (!bossBattleAccepted) {
-      if (progressSuppressed) return null;
+      if (progressSuppressed && !chainSuppressionOverride) return null;
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.spellQuestGiverPos.x,
@@ -3721,7 +3766,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (!objective.bossBattles.get('slime-rat')!.started) {
-      if (progressSuppressed) return null;
+      if (progressSuppressed && !chainSuppressionOverride) return null;
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.slimeRatRoomPos.x,
@@ -3734,7 +3779,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (objective.bossBattles.get('slime-rat')!.defeated && !world.featureUnlocks.spells) {
-      if (progressSuppressed) return null;
+      if (progressSuppressed && !chainSuppressionOverride) return null;
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.spellQuestGiverPos.x,
@@ -3750,6 +3795,10 @@ export class BehaviorTreeAI implements AIInputProvider {
       objective.bossBattles.get('slime-rat')!.defeated &&
       !objective.bossBattles.get('staircase')!.started
     ) {
+      // Gate reached only after spells unlocked (previous gate returns while
+      // spells are still locked), so `chainStatus.complete` is true here and
+      // `chainSuppressionOverride` is a no-op by construction — the staircase-
+      // boss target sits AFTER the Spell Broker chain, not inside it.
       if (progressSuppressed) return null;
       return maybeDetourToQuestGiver(
         this.createProgressTarget(

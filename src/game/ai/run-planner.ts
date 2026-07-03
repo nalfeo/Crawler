@@ -76,16 +76,61 @@ export interface RunPlannerParams {
   readonly stairsInteractMs: number;
 }
 
+/**
+ * Critical-path phase a segment belongs to.
+ *
+ * The AI uses these tags to reason about *sub-critical-path* budgets — e.g.
+ * how much time the Spell Broker → Slime Rat → return-reward chain still has
+ * before it eats into the mandatory post-chain work (final boss + stairs).
+ *
+ * Kept simple on purpose: this is a deterministic classification the planner
+ * assigns as it emits segments; downstream layers should not have to re-scan
+ * segment ids to figure out which phase they belong to.
+ */
+export type RunPlanCriticalChain =
+  | 'pre-chain'
+  | 'shop'
+  | 'spell-broker'
+  | 'staircase'
+  | 'post-stairs'
+  | 'other';
+
 export interface RunPlanSegment {
   readonly id: string;
   readonly label: string;
   readonly kind: 'travel' | 'work' | 'boss' | 'detour';
+  readonly criticalChainPhase: RunPlanCriticalChain;
   readonly from: RunPlannerPoint;
   readonly to: RunPlannerPoint;
   readonly travelMs: number;
   readonly workMs: number;
   readonly estimatedMs: number;
   readonly detail: string;
+}
+
+/**
+ * Chain-scoped time budget for the Spell Broker / Slime Rat critical-path
+ * chain (accept Spell Broker quest → reach + kill Slime Rat → claim spell
+ * reward → then the mandatory staircase boss + stairs descent).
+ *
+ * Why include the post-chain work in `remainingRequiredMs`: the chain's
+ * "affordability" is not just its own segments — if the AI burns 30s of
+ * optional detour before the chain, that 30s also has to fit alongside the
+ * final boss + stairs. So the useful slack signal for chain-timing decisions
+ * is `remainingMs - (chain + staircase + post-stairs + safetyBuffer)`.
+ *
+ * `onCriticalPath` is true when the first pending segment is a chain
+ * segment (no pre-chain work left). That is the moment the tactical layer
+ * must start treating chain urgency as the dominant signal instead of the
+ * global-plan urgency.
+ */
+export interface RunPlanChainStatus {
+  readonly requiredMs: number;
+  readonly remainingRequiredMs: number;
+  readonly slackMs: number;
+  readonly urgency: number;
+  readonly onCriticalPath: boolean;
+  readonly complete: boolean;
 }
 
 export interface Floor1RunPlan {
@@ -105,6 +150,7 @@ export interface Floor1RunPlan {
   readonly slackMs: number;
   readonly urgency: number;
   readonly segments: readonly RunPlanSegment[];
+  readonly spellBrokerChain: RunPlanChainStatus;
 }
 
 const EPSILON = 1e-6;
@@ -138,6 +184,7 @@ export function estimateFloor1RunPlan(
     id: string,
     label: string,
     kind: RunPlanSegment['kind'],
+    criticalChainPhase: RunPlanCriticalChain,
     to: RunPlannerPoint,
     workMs: number,
     detail: string,
@@ -147,6 +194,7 @@ export function estimateFloor1RunPlan(
       id,
       label,
       kind,
+      criticalChainPhase,
       from: cursor,
       to,
       travelMs,
@@ -162,6 +210,7 @@ export function estimateFloor1RunPlan(
       'current-detour',
       snapshot.currentTarget.reason,
       'detour',
+      'other',
       snapshot.currentTarget,
       params.interactionMs,
       'Committed quest-giver detour before resuming the critical path',
@@ -173,6 +222,7 @@ export function estimateFloor1RunPlan(
       'meet-tutorial-goon',
       'Meet Tutorial Goon',
       'travel',
+      'pre-chain',
       snapshot.positions.welcomeOffice,
       params.interactionMs,
       'Accept the opening Floor 1 quest and unlock drops',
@@ -184,6 +234,7 @@ export function estimateFloor1RunPlan(
       'reach-level-2',
       'Reach level 2',
       'work',
+      'pre-chain',
       cursor,
       params.level2GrindMs,
       'Farm ambient XP until merchant and spell quests unlock',
@@ -206,6 +257,7 @@ export function estimateFloor1RunPlan(
       'complete-goon-kills',
       'Complete Goon kill quota',
       'work',
+      'pre-chain',
       target,
       totalLeft * params.questKillMs,
       `${ratsLeft} rats, ${slimesLeft} slimes, ${totalLeft} total kills remaining`,
@@ -218,6 +270,7 @@ export function estimateFloor1RunPlan(
         'fetch-shop-prize',
         'Fetch merchant prize',
         'travel',
+        'shop',
         snapshot.positions.questItem,
         params.fetchPickupMs,
         'Collect the merchant fetch item',
@@ -227,6 +280,7 @@ export function estimateFloor1RunPlan(
       'return-shop-prize',
       'Return merchant prize',
       'travel',
+      'shop',
       snapshot.positions.shop,
       params.interactionMs,
       'Return the merchant fetch item',
@@ -244,6 +298,7 @@ export function estimateFloor1RunPlan(
         'farm-shop-gold',
         'Farm charm gold',
         'work',
+        'shop',
         target,
         goldOwed * params.goldFarmMs,
         `${goldOwed} gold remaining for the merchant charm`,
@@ -253,6 +308,7 @@ export function estimateFloor1RunPlan(
       'buy-shop-charm',
       'Buy merchant charm',
       'travel',
+      'shop',
       snapshot.positions.shop,
       params.interactionMs,
       'Buy the merchant reward',
@@ -264,6 +320,7 @@ export function estimateFloor1RunPlan(
       'equip-shop-charm',
       'Equip merchant charm',
       'work',
+      'shop',
       cursor,
       params.interactionMs,
       'Equip the purchased merchant reward',
@@ -276,6 +333,7 @@ export function estimateFloor1RunPlan(
         'meet-shopkeeper',
         'Meet Shopkeeper',
         'travel',
+        'shop',
         snapshot.positions.shop,
         params.interactionMs,
         'Start the merchant errand',
@@ -305,6 +363,7 @@ export function estimateFloor1RunPlan(
       'accept-spell-quest',
       'Accept Spell Broker quest',
       'travel',
+      'spell-broker',
       snapshot.positions.spellQuestGiver,
       params.interactionMs,
       'Unlock the Slime Rat room objective',
@@ -316,6 +375,7 @@ export function estimateFloor1RunPlan(
       'kill-slime-rat',
       'Reach and kill Slime Rat',
       'boss',
+      'spell-broker',
       snapshot.positions.slimeRatRoom,
       params.minorBossKillMs,
       'Complete the spell-unlock boss battle',
@@ -325,6 +385,7 @@ export function estimateFloor1RunPlan(
       'finish-slime-rat',
       'Finish Slime Rat',
       'boss',
+      'spell-broker',
       cursor,
       params.minorBossKillMs,
       'Finish the active spell-unlock boss battle',
@@ -336,6 +397,7 @@ export function estimateFloor1RunPlan(
       'claim-spell-reward',
       'Claim spell reward',
       'travel',
+      'spell-broker',
       snapshot.positions.spellQuestGiver,
       params.interactionMs,
       'Claim the spell reward before the final boss',
@@ -347,6 +409,7 @@ export function estimateFloor1RunPlan(
       'kill-staircase-boss',
       'Reach and kill staircase boss',
       'boss',
+      'staircase',
       snapshot.positions.staircase,
       params.finalBossKillMs,
       'Unlock the stairs by defeating the final Floor 1 boss',
@@ -356,6 +419,7 @@ export function estimateFloor1RunPlan(
       'finish-staircase-boss',
       'Finish staircase boss',
       'boss',
+      'staircase',
       cursor,
       params.finalBossKillMs,
       'Finish the active final boss battle',
@@ -367,6 +431,7 @@ export function estimateFloor1RunPlan(
       'take-stairs',
       'Take the stairs',
       'travel',
+      'post-stairs',
       snapshot.positions.staircase,
       params.stairsInteractMs,
       snapshot.staircaseUnlocked
@@ -382,6 +447,12 @@ export function estimateFloor1RunPlan(
   const slackMs = remainingMs - estimatedRequiredMs;
   const urgency = clamp01(1 - slackMs / Math.max(params.urgencySlackWindowMs, 1));
 
+  const spellBrokerChain = computeSpellBrokerChainStatus(segments, snapshot, {
+    remainingMs,
+    safetyBufferMs: params.safetyBufferMs,
+    urgencySlackWindowMs: params.urgencySlackWindowMs,
+  });
+
   return {
     criticalPathObjective: segments[0]?.label ?? 'Floor clear',
     remainingMs,
@@ -391,5 +462,72 @@ export function estimateFloor1RunPlan(
     slackMs,
     urgency,
     segments,
+    spellBrokerChain,
+  };
+}
+
+/**
+ * Signals-only view of the run plan used for chain-timing decisions. The chain
+ * budget accounts for the mandatory post-chain segments (final boss, stairs)
+ * so the AI treats "chain slack" as "budget left for chain + everything after
+ * it, given what's already committed / done."
+ */
+function computeSpellBrokerChainStatus(
+  segments: readonly RunPlanSegment[],
+  snapshot: Floor1RunPlannerSnapshot,
+  budget: {
+    readonly remainingMs: number;
+    readonly safetyBufferMs: number;
+    readonly urgencySlackWindowMs: number;
+  },
+): RunPlanChainStatus {
+  const chainSegments = segments.filter((seg) => seg.criticalChainPhase === 'spell-broker');
+  const requiredMs = chainSegments.reduce((sum, seg) => sum + seg.estimatedMs, 0);
+
+  // "Remaining required" = chain + mandatory post-chain work + safety buffer.
+  // If the chain is already complete this collapses to just post-chain work.
+  const postChainMs = segments
+    .filter(
+      (seg) => seg.criticalChainPhase === 'staircase' || seg.criticalChainPhase === 'post-stairs',
+    )
+    .reduce((sum, seg) => sum + seg.estimatedMs, 0);
+  const remainingRequiredMs = requiredMs + postChainMs + budget.safetyBufferMs;
+  const slackMs = budget.remainingMs - remainingRequiredMs;
+  const urgency = clamp01(1 - slackMs / Math.max(budget.urgencySlackWindowMs, 1));
+
+  // The chain is on the critical path once the first pending segment is a
+  // chain segment: no pre-chain (tutorial / level-2 / kill quota) and no shop
+  // work remains. A committed quest-giver detour still counts as pre-chain
+  // (from the AI's perspective, it must resolve that first), so we treat any
+  // 'other' segment ahead of a chain segment as blocking too.
+  //
+  // NOTE: this means if the AI commits to a quest-giver detour AFTER the chain
+  // is already on the critical path, `onCriticalPath` flips back to false and
+  // both the tactical `chainBeeline` and the `chainSuppressionOverride` in
+  // findProgressObjective silently disarm until the detour clears. That is
+  // intentional — the detour is a bounded, deterministic side-trip and the
+  // panic system is meant to fire only when the chain is truly next-up — but
+  // it does mean the chain-scoped panic can be paused mid-flight by a live
+  // detour commitment. Rearming happens automatically as soon as
+  // `committedDetourNpcEid` clears (typically within a few frames).
+  const firstBlocking = segments.find(
+    (seg) =>
+      seg.criticalChainPhase !== 'spell-broker' &&
+      seg.criticalChainPhase !== 'staircase' &&
+      seg.criticalChainPhase !== 'post-stairs',
+  );
+  const firstChainIdx = segments.findIndex((seg) => seg.criticalChainPhase === 'spell-broker');
+  const onCriticalPath = firstChainIdx >= 0 && !firstBlocking;
+
+  const complete =
+    snapshot.bossBattleAccepted && snapshot.slimeRatDefeated && snapshot.spellsUnlocked;
+
+  return {
+    requiredMs,
+    remainingRequiredMs,
+    slackMs,
+    urgency,
+    onCriticalPath,
+    complete,
   };
 }

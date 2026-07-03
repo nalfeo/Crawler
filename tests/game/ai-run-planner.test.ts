@@ -249,3 +249,120 @@ describe('estimateFloor1RunPlan', () => {
     expect(killSegment?.workMs).toBe(3 * PARAMS.questKillMs);
   });
 });
+
+describe('estimateFloor1RunPlan spell-broker chain breakdown', () => {
+  const CHAIN_OPEN: Partial<Floor1RunPlannerSnapshot> = {
+    tutorialAccepted: true,
+    playerLevel: 2,
+    questCompleted: true,
+    shopStage: 'complete',
+  };
+
+  it('tags critical-path phases on segments', () => {
+    const plan = estimateFloor1RunPlan(snapshot(), PARAMS);
+    const byId = new Map(plan.segments.map((seg) => [seg.id, seg]));
+
+    expect(byId.get('meet-tutorial-goon')?.criticalChainPhase).toBe('pre-chain');
+    expect(byId.get('reach-level-2')?.criticalChainPhase).toBe('pre-chain');
+    expect(byId.get('complete-goon-kills')?.criticalChainPhase).toBe('pre-chain');
+    expect(byId.get('meet-shopkeeper')?.criticalChainPhase).toBe('shop');
+    expect(byId.get('buy-shop-charm')?.criticalChainPhase).toBe('shop');
+    expect(byId.get('accept-spell-quest')?.criticalChainPhase).toBe('spell-broker');
+    expect(byId.get('kill-slime-rat')?.criticalChainPhase).toBe('spell-broker');
+    expect(byId.get('kill-staircase-boss')?.criticalChainPhase).toBe('staircase');
+    expect(byId.get('take-stairs')?.criticalChainPhase).toBe('post-stairs');
+  });
+
+  it('reports chain not on critical path while pre-chain / shop work remains', () => {
+    const plan = estimateFloor1RunPlan(snapshot(), PARAMS);
+
+    expect(plan.spellBrokerChain.onCriticalPath).toBe(false);
+    expect(plan.spellBrokerChain.complete).toBe(false);
+    expect(plan.spellBrokerChain.requiredMs).toBeGreaterThan(0);
+  });
+
+  it('flags the chain as on the critical path once shop + pre-chain are done', () => {
+    const plan = estimateFloor1RunPlan(snapshot(CHAIN_OPEN), PARAMS);
+
+    expect(plan.segments[0]?.criticalChainPhase).toBe('spell-broker');
+    expect(plan.spellBrokerChain.onCriticalPath).toBe(true);
+    expect(plan.spellBrokerChain.complete).toBe(false);
+    // Required chain time should include: accept-spell + kill-slime-rat +
+    // claim-spell-reward (only claim once slime is defeated; here it's not
+    // defeated yet so claim is absent).
+    expect(plan.spellBrokerChain.requiredMs).toBeGreaterThan(0);
+  });
+
+  it('reports chain complete once slime rat is defeated and spells are unlocked', () => {
+    const plan = estimateFloor1RunPlan(
+      snapshot({
+        ...CHAIN_OPEN,
+        bossBattleAccepted: true,
+        slimeRatStarted: true,
+        slimeRatDefeated: true,
+        spellsUnlocked: true,
+      }),
+      PARAMS,
+    );
+
+    expect(plan.spellBrokerChain.complete).toBe(true);
+    expect(plan.spellBrokerChain.requiredMs).toBe(0);
+    // On critical path is false because there are no chain segments left; the
+    // staircase segment is what's next.
+    expect(plan.spellBrokerChain.onCriticalPath).toBe(false);
+    expect(plan.segments[0]?.criticalChainPhase).toBe('staircase');
+  });
+
+  it('chain slack shrinks as deadline approaches even when total-plan slack is comfortable', () => {
+    // Set up a snapshot where chain is on critical path and there is
+    // *plenty* of headroom on the total plan (large deadline). Then advance
+    // nowMs to squeeze chain slack specifically.
+    const earlyPlan = estimateFloor1RunPlan(
+      snapshot({ ...CHAIN_OPEN, deadlineMs: 600_000, nowMs: 0 }),
+      PARAMS,
+    );
+    const latePlan = estimateFloor1RunPlan(
+      snapshot({ ...CHAIN_OPEN, deadlineMs: 600_000, nowMs: 450_000 }),
+      PARAMS,
+    );
+
+    expect(latePlan.spellBrokerChain.slackMs).toBeLessThan(earlyPlan.spellBrokerChain.slackMs);
+    expect(latePlan.spellBrokerChain.urgency).toBeGreaterThan(earlyPlan.spellBrokerChain.urgency);
+  });
+
+  it('remainingRequiredMs includes staircase and post-stairs work', () => {
+    const plan = estimateFloor1RunPlan(snapshot(CHAIN_OPEN), PARAMS);
+
+    const chainMs = plan.segments
+      .filter((s) => s.criticalChainPhase === 'spell-broker')
+      .reduce((sum, s) => sum + s.estimatedMs, 0);
+    const staircaseMs = plan.segments
+      .filter((s) => s.criticalChainPhase === 'staircase')
+      .reduce((sum, s) => sum + s.estimatedMs, 0);
+    const postStairsMs = plan.segments
+      .filter((s) => s.criticalChainPhase === 'post-stairs')
+      .reduce((sum, s) => sum + s.estimatedMs, 0);
+
+    expect(plan.spellBrokerChain.requiredMs).toBe(chainMs);
+    expect(plan.spellBrokerChain.remainingRequiredMs).toBe(
+      chainMs + staircaseMs + postStairsMs + PARAMS.safetyBufferMs,
+    );
+  });
+
+  it('a committed quest-giver detour keeps the chain off the critical path', () => {
+    // Even if all pre-chain work were done, a live detour must be resolved
+    // first — the AI should not treat the chain as the immediate critical
+    // path yet.
+    const plan = estimateFloor1RunPlan(
+      snapshot({
+        ...CHAIN_OPEN,
+        activeQuestGiverDetour: true,
+        currentTarget: { x: 5, y: 0, eid: 42, reason: 'Detouring to Shopkeeper', kind: 'other' },
+      }),
+      PARAMS,
+    );
+
+    expect(plan.segments[0]?.id).toBe('current-detour');
+    expect(plan.spellBrokerChain.onCriticalPath).toBe(false);
+  });
+});

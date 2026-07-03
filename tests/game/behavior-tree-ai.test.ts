@@ -28,6 +28,8 @@ import { TileMap } from '../../src/core/map/TileMap.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import { AIState } from '../../src/game/ai/types.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
+import { FLOOR1_BOSS_BATTLE_QUEST_ID } from '../../src/shared/quest-types.js';
+import { acceptQuest } from '../../src/core/systems/questSystem.js';
 
 /**
  * Build an all-open room (walls only on the border) so A* has a clear straight
@@ -463,6 +465,182 @@ describe('BehaviorTreeAI', () => {
 
       ai.poll(input, world);
       expect(ai.getDecision().state).not.toBe(AIState.COLLECT);
+    });
+
+    it('exposes chain-on-critical-path once pre-chain and shop phases are done', () => {
+      const world = createTestWorld({ seed: 42 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+      meetTutorialGoon(world);
+      world.playerLevel.level = 2;
+      world.goalFlags.set('floor1-leveling-quest-complete', true);
+      world.goalFlags.set('floor1-shop-quest-complete', true);
+      world.floor1!.objective.questCompleted = true;
+
+      const ai = new BehaviorTreeAI({ seed: 42 });
+      const input = createInputState();
+      ai.poll(input, world);
+
+      const tactical = ai.getTacticalRunDebug();
+      expect(tactical.runPlan).not.toBeNull();
+      // Pre-chain + shop are all resolved, so the next segment must be the
+      // Spell Broker chain and it must be flagged on the critical path.
+      expect(tactical.runPlan!.segments[0]?.criticalChainPhase).toBe('spell-broker');
+      expect(tactical.runPlan!.spellBrokerChain.onCriticalPath).toBe(true);
+      expect(tactical.runPlan!.spellBrokerChain.complete).toBe(false);
+      expect(tactical.runPlan!.spellBrokerChain.requiredMs).toBeGreaterThan(0);
+    });
+
+    it('suppresses on-path loot when Spell Broker chain slack goes negative even without global panic', () => {
+      const world = createTestWorld({ seed: 42 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+      meetTutorialGoon(world);
+      world.playerLevel.level = 2;
+      world.goalFlags.set('floor1-leveling-quest-complete', true);
+      world.goalFlags.set('floor1-shop-quest-complete', true);
+      world.floor1!.objective.questCompleted = true;
+
+      const px = world.stores.position.x[player] ?? 0;
+      const py = world.stores.position.y[player] ?? 0;
+
+      const ai = new BehaviorTreeAI({ seed: 42 });
+      const input = createInputState();
+      // Warm-up poll so the AI has a heading toward the Spell Broker.
+      ai.poll(input, world);
+      const heading = Math.hypot(input.moveX, input.moveY);
+      if (heading > 0.05) {
+        const ux = input.moveX / heading;
+        const uy = input.moveY / heading;
+        // Gem 10 ft dead ahead on the forward path (would be an easy accept
+        // under normal budget).
+        spawnXpGem(world, px + ux * 10, py + uy * 10, 5);
+      } else {
+        spawnXpGem(world, px + 6, py, 5);
+      }
+
+      // Squeeze remaining time so *chain* slack goes negative. We pick a
+      // remaining-time value that keeps global panic below the beeline
+      // threshold (the test above already covers pure global panic) but
+      // makes chain-required + safety buffer exceed remainingMs.
+      ai.poll(input, world);
+      const runPlan = ai.getTacticalRunDebug().runPlan!;
+      const chainRequired = runPlan.spellBrokerChain.remainingRequiredMs;
+      world.elapsedMs = world.floor1!.objective.deadlineMs - Math.max(0, chainRequired - 5_000);
+
+      ai.poll(input, world);
+      const tactical = ai.getTacticalRunDebug();
+      // Chain is on critical path AND its slack is negative — `chainBeeline`
+      // in the tactical layer tightens opportunity params to the trivial
+      // detour distance with maxAccepted=1, so no opportunistic pickups may
+      // be accepted while the chain is out of budget.
+      expect(tactical.runPlan!.spellBrokerChain.onCriticalPath).toBe(true);
+      expect(tactical.runPlan!.spellBrokerChain.slackMs).toBeLessThanOrEqual(0);
+      expect(tactical.opportunities?.acceptedPickups).toHaveLength(0);
+    });
+
+    it('overrides progressGoalSuppressedUntilFrame for chain-critical targets when chain urgency saturates', () => {
+      const world = createTestWorld({ seed: 42 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+      meetTutorialGoon(world);
+      world.playerLevel.level = 2;
+      world.goalFlags.set('floor1-leveling-quest-complete', true);
+      world.goalFlags.set('floor1-shop-quest-complete', true);
+      world.floor1!.objective.questCompleted = true;
+
+      const ai = new BehaviorTreeAI({ seed: 42 });
+      const input = createInputState();
+      // Warm-up poll so lastRunPlan is populated.
+      ai.poll(input, world);
+      // Squeeze remaining time so chain urgency saturates.
+      const runPlan0 = ai.getTacticalRunDebug().runPlan!;
+      world.elapsedMs =
+        world.floor1!.objective.deadlineMs -
+        Math.max(0, runPlan0.spellBrokerChain.remainingRequiredMs - 5_000);
+      // Simulate the wedge dwell-watchdog having suppressed all position-based
+      // progress goals; without the chain-urgency override this would flip
+      // Progress to null and the BT would fall through to Explore/Hunt.
+      (
+        ai as unknown as { progressGoalSuppressedUntilFrame: number }
+      ).progressGoalSuppressedUntilFrame = world.frameCount + 600;
+
+      ai.poll(input, world);
+      const decision = ai.getDecision();
+      // The chain-critical Spell Broker target must still drive the decision —
+      // Progress-state (EXPLORE with a fixed target) rather than a free
+      // Explore frontier.
+      const tactical = ai.getTacticalRunDebug();
+      expect(tactical.runPlan!.spellBrokerChain.onCriticalPath).toBe(true);
+      expect(tactical.runPlan!.spellBrokerChain.urgency).toBeGreaterThanOrEqual(0.75);
+      expect(decision.reason.toLowerCase()).toContain('spell broker');
+    });
+
+    it('does not override suppression for the pre-chain tutorial target', () => {
+      const world = createTestWorld({ seed: 42 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+      // Tutorial NOT met — pre-chain phase.
+
+      const ai = new BehaviorTreeAI({ seed: 42 });
+      const input = createInputState();
+      // Even squeezing time to force any latent chain urgency high must NOT
+      // reopen suppression for the tutorial target — the chain is not on the
+      // critical path (tutorial + shop are ahead of it).
+      world.elapsedMs = world.floor1!.objective.deadlineMs - 30_000;
+      (
+        ai as unknown as { progressGoalSuppressedUntilFrame: number }
+      ).progressGoalSuppressedUntilFrame = world.frameCount + 600;
+
+      ai.poll(input, world);
+      const decision = ai.getDecision();
+      const tactical = ai.getTacticalRunDebug();
+      expect(tactical.runPlan!.spellBrokerChain.onCriticalPath).toBe(false);
+      expect(decision.reason.toLowerCase()).not.toContain('tutorial');
+    });
+
+    it('does not override suppression once the Spell Broker chain is complete', () => {
+      const world = createTestWorld({ seed: 42 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+      meetTutorialGoon(world);
+      world.playerLevel.level = 2;
+      world.goalFlags.set('floor1-leveling-quest-complete', true);
+      world.goalFlags.set('floor1-shop-quest-complete', true);
+      const objective = world.floor1!.objective;
+      objective.questCompleted = true;
+      // Mark the entire Spell Broker chain done: boss accepted, Slime Rat
+      // defeated, spells unlocked, staircase boss started.
+      acceptQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+      objective.bossBattles.get('slime-rat')!.started = true;
+      objective.bossBattles.get('slime-rat')!.defeated = true;
+      world.featureUnlocks.spells = true;
+      objective.bossBattles.get('staircase')!.started = true;
+      objective.staircaseUnlocked = true;
+      objective.staircaseDiscovered = false;
+
+      const ai = new BehaviorTreeAI({ seed: 42 });
+      const input = createInputState();
+      ai.poll(input, world);
+      // Squeeze time and set suppression.
+      world.elapsedMs = world.floor1!.objective.deadlineMs - 5_000;
+      (
+        ai as unknown as { progressGoalSuppressedUntilFrame: number }
+      ).progressGoalSuppressedUntilFrame = world.frameCount + 600;
+
+      ai.poll(input, world);
+      const tactical = ai.getTacticalRunDebug();
+      // Chain is complete — override must be off. staircase-descent is not
+      // gated by the chain-scoped override (only the pre-completion targets
+      // are), so suppression must still hold and the AI falls to Explore.
+      expect(tactical.runPlan!.spellBrokerChain.complete).toBe(true);
+      const reason = ai.getDecision().reason.toLowerCase();
+      expect(reason).not.toContain('staircase');
     });
 
     it('ignores loot farther than 5 ft to the side of its path', () => {
