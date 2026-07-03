@@ -1,6 +1,6 @@
 import { hasComponent, query } from 'bitecs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Damage, EnemyProjectile, Position, Projectile } from '../../src/core/components.js';
+import { Damage, EnemyProjectile, Owner, Position, Projectile } from '../../src/core/components.js';
 import {
   collisionSystem,
   damageSystem,
@@ -130,6 +130,27 @@ describe('enemy projectile damage', () => {
     expect(hasComponent(world.ecs, projEid, EnemyProjectile)).toBe(false);
   });
 
+  it('records the firing enemy (not the transient projectile) as the player last attacker', () => {
+    // Floor 2 Slice 3 ally-defend (bug 2): the projectile is destroyed on
+    // impact, so the retaliation source must be the shooter threaded through
+    // Owner — never the projectile eid, which no longer exists next frame.
+    const world = createTestWorld();
+    world.elapsedMs = 100;
+
+    spawnPlayer(world, 50, 50);
+    const shooter = spawnBehaviorEnemy(world, 60, 50, 30, AI_TYPE.RANGED, 1, 200, 150);
+    const projEid = spawnEnemyProjectile(world, 50, 50, 1, 0, 15, shooter);
+
+    const collisionResult = collisionSystem(world);
+    damageSystem(world, collisionResult);
+
+    expect(world.lastPlayerHit?.attackerEid).toBe(shooter);
+    expect(world.lastPlayerHit?.attackerEid).not.toBe(projEid);
+    // The projectile is gone, so the recorded attacker is a live enemy.
+    expect(hasComponent(world.ecs, projEid, EnemyProjectile)).toBe(false);
+    expect(hasComponent(world.ecs, shooter, Position)).toBe(true);
+  });
+
   it('enemy projectile does NOT damage enemies', () => {
     const world = createTestWorld();
     world.elapsedMs = 100;
@@ -213,5 +234,19 @@ describe('spawnEnemyProjectile', () => {
     expect(world.stores.damage.amount[eid]).toBe(5);
     expect(world.stores.position.x[eid]).toBe(10);
     expect(world.stores.position.y[eid]).toBe(20);
+  });
+
+  it('omits Owner when no ownerEid is supplied', () => {
+    const world = createTestWorld();
+    const eid = spawnEnemyProjectile(world, 10, 20, 3, 4, 5);
+    expect(hasComponent(world.ecs, eid, Owner)).toBe(false);
+  });
+
+  it('attaches Owner = the firing enemy when ownerEid is supplied', () => {
+    const world = createTestWorld();
+    const shooter = spawnBehaviorEnemy(world, 0, 0, 30, AI_TYPE.RANGED, 1, 200, 150);
+    const eid = spawnEnemyProjectile(world, 10, 20, 3, 4, 5, shooter);
+    expect(hasComponent(world.ecs, eid, Owner)).toBe(true);
+    expect(world.stores.owner.eid[eid]).toBe(shooter);
   });
 });

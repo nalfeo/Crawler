@@ -93,6 +93,18 @@ export {
 } from './systems/emergentEventSystem.js';
 export { initializeFloor2Settlement } from './floor2Settlement.js';
 export type { InitializeFloor2SettlementOptions } from './floor2Settlement.js';
+export {
+  familyFeudSystem,
+  getFamilyAIDecision,
+  resolveHostileFallback,
+  findNearestRival,
+  getMobFamilyId,
+  peekFamilyFeudGrid,
+  peekFriendlyRetaliation,
+  isFriendlyInLeash,
+  resetFamilyFeudState,
+} from './systems/familyFeudSystem.js';
+export type { FamilyAIDecision, FamilyTargetKind } from './systems/familyFeudSystem.js';
 export { getSkillDefinition, getAllSkillDefinitions } from './skills/registry.js';
 export { getAbilityDefinition, getAllAbilityDefinitions } from './abilities/registry.js';
 export type {

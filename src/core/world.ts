@@ -130,6 +130,17 @@ export interface GameWorld {
   /** Combat events emitted this frame — consumed and drained by the render layer. */
   combatEvents: CombatEvent[];
   /**
+   * Durable record of the most recent damaging hit that landed on the player,
+   * written at the `applyDamage` choke point. Unlike {@link combatEvents} —
+   * which the render layer drains every rendered frame (`combatVfx.update`)
+   * BEFORE the next frame's AI prepass runs — this field persists across
+   * frames. Floor 2 Slice 3's ally-defend retaliation reads it so it observes
+   * the attacker in the REAL visual frame loop, not just in headless (which
+   * never drains the queue). `attackerEid` can be stale a frame later, so
+   * consumers must re-validate the entity before targeting it.
+   */
+  lastPlayerHit?: { attackerEid: number; atMs: number };
+  /**
    * Max REALIZED knockback displacement (feet) applied to any entity this frame.
    * Reset to 0 at the top of `knockbackSystem` and accumulated (max) there after
    * each entity's final post-clamp position is written. Read by `beamSystem` to

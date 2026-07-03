@@ -92,6 +92,7 @@ export function applyDamage(
   weaponGoreFactor?: number,
   sourceX?: number,
   sourceY?: number,
+  sourceEid?: number,
 ): number {
   if (!Number.isFinite(amount) || amount <= 0) return 0;
   if (hasComponent(world.ecs, target, Invincible)) return 0;
@@ -165,7 +166,17 @@ export function applyDamage(
       sourceY,
     };
     if (isCrit) event.isCrit = true;
+    if (sourceEid !== undefined) event.sourceEid = sourceEid;
     world.combatEvents.push(event);
+
+    // Floor 2 Slice 3 ally-defend: record who last hit the player into a
+    // DURABLE per-world signal. The transient `combatEvents` queue above is
+    // drained by the VFX layer every rendered frame, so a friendly-band mob's
+    // retaliation prepass (familyFeudSystem) would never see this hit in the
+    // real game if it scanned the queue. This field survives the drain.
+    if (isPlayerTarget && sourceEid !== undefined && sourceEid >= 0) {
+      world.lastPlayerHit = { attackerEid: sourceEid, atMs: world.elapsedMs };
+    }
   }
 
   return dealt;

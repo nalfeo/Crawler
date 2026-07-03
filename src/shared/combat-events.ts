@@ -31,6 +31,14 @@ export interface CombatEvent {
   /** Source position of the damage (attacker/projectile). Used for directional gore on hits. */
   sourceX?: number;
   sourceY?: number;
+  /**
+   * Attacker entity id — the mob (or projectile owner) whose action caused this
+   * event. Optional and best-effort; consumers must validate before use because
+   * the entity may not exist next frame. Consumed by Floor 2 Slice 3's
+   * ally-defend logic to identify who a friendly-band mob should retaliate
+   * against.
+   */
+  sourceEid?: number;
   /** Blood/ichor colour of the dying entity (0xRRGGBB). Defaults to red when absent. */
   bloodColor?: number;
   /** True when this hit critically struck (player-sourced damage only). */

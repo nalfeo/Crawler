@@ -198,6 +198,7 @@ function applyPlayerEnemyHit(
     undefined,
     world.stores.position.x[enemy] ?? 0,
     world.stores.position.y[enemy] ?? 0,
+    enemy,
   );
   hitTimestamps[player] = world.elapsedMs;
 }
@@ -228,6 +229,9 @@ function applyEnemyProjectileHit(
   const raw = getDamageAmount(world, projectile, DEFAULT_PROJECTILE_DAMAGE);
   const hostileMult = world.hostileDamageMultiplier ?? 1;
   const amount = applyArmorReduction(world, player, raw * hostileMult);
+  const projectileOwner = hasComponent(world.ecs, projectile, Owner)
+    ? (world.stores.owner.eid[projectile] ?? -1)
+    : -1;
   applyDamage(
     world,
     player,
@@ -237,6 +241,7 @@ function applyEnemyProjectileHit(
     undefined,
     world.stores.position.x[projectile] ?? 0,
     world.stores.position.y[projectile] ?? 0,
+    projectileOwner !== -1 ? projectileOwner : projectile,
   );
   hitTimestamps[player] = world.elapsedMs;
 
