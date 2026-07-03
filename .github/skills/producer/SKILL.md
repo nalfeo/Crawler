@@ -1,3 +1,15 @@
+---
+name: producer
+description: >-
+  Session-level Producer workflow that triages requests, decomposes feature
+  work for parallel execution, and drives PRs toward autonomous merge while
+  escalating true gameplay decisions back to the human. Use when asked to
+  "triage a request", "decompose a feature", "run the producer", "orchestrate
+  slices", "force-publish a PR", or when kicking off any multi-system feature
+  work. Covers request classification, persona-mapped slice decomposition,
+  dependency grouping, force-publish + auto-merge arming, and Shepherd handoff.
+---
+
 # Producer Skill
 
 Mandatory kickoff handler for all sessions. Triages feature requests, clarifies scope, detects game-design decisions, and delegates slices to specialist personas. Publishes PRs eagerly and invokes Shepherd immediately for reactive watch.
@@ -268,7 +280,7 @@ For each slice:
    - IN_PROGRESS (session active, code being written)
    - PUBLISHED_WATCHED (PR live, Shepherd watching)
    - MERGED (PR merged to main)
-   - BLOCKED_ON_UPSTREAM (waiting for dependency)
+   - BLOCKED_UPSTREAM (waiting for dependency)
    - BLOCKED_ON_APPROVAL (waiting for human gate)
    - FAILED (CI/review failure)
 
@@ -596,4 +608,4 @@ Producer writes to:
 - Shepherd skill: `.github/skills/pr-shepherd/SKILL.md`
 - Review harness: `.github/skills/review-harness/SKILL.md`
 - Complexity policy: `docs/agent-os/policies/complexity-policy.md`
-- Cloud sessions: `docs/guides/cloud-session-orchestration.md`
+- Cloud sessions: _(planned — `docs/guides/cloud-session-orchestration.md` not yet written)_

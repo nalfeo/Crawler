@@ -16,6 +16,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execFileSync } from 'node:child_process';
 import { parseArgs } from 'util';
+import { fileURLToPath } from 'url';
+import { basename } from 'path';
 
 interface TriageResult {
   requestType: string;
@@ -121,17 +123,17 @@ function getSessionId(): string {
 /**
  * Triage decision logic
  */
-function triage(request: string): TriageResult {
+export function triage(request: string): TriageResult {
   const req = request.toLowerCase();
 
   // Bug indicators: look for issue/problem keywords
   const bugKeywords =
     /crash|bug|error|fail|reproduce|diagnose|broken|can't|cannot|not working|should not|issue|glitch|problem|collision|walk through|stuck|blocked/;
 
-  // Game balancing: explicit mention of balance + numbers/metrics
+  // Game balancing: explicit mention of balance + numbers/metrics (distinct quantitative signals)
   if (
     /balance|tuning|scale|damage|economy|difficulty|drops|spawn|winrate/.test(req) &&
-    /\d+%|damage|winrate|playtest/.test(req)
+    /\d+%|playtest/.test(req)
   ) {
     return {
       requestType: 'GAME_BALANCING',
@@ -407,7 +409,7 @@ interface DecompositionResult {
 /**
  * Decompose a feature into slices mapped to personas and systems
  */
-function decompose(request: string): DecompositionResult {
+export function decompose(request: string): DecompositionResult {
   const req = request.toLowerCase();
 
   // System analysis: which game systems does this touch?
@@ -437,7 +439,7 @@ function decompose(request: string): DecompositionResult {
   // Persona-to-systems mapping (from routing matrix)
   const personaMapping: Record<string, string[]> = {
     'Game Designer': ['combat', 'loot', 'progression', 'economy', 'floor-generation'],
-    'Content Designer': ['quests', 'floor-generation'],
+    'Content Designer': ['quests'],
     'Graphics Designer': ['graphics'],
     'Sound Designer': ['audio'],
     'Story Designer': ['story'],
@@ -468,7 +470,7 @@ function decompose(request: string): DecompositionResult {
   let sliceIndex = 1;
   for (const [persona, systems] of Object.entries(personaWork)) {
     const sid = sliceId(`${persona}-${sliceIndex}`);
-    const apples = systems.length <= 2 ? 2 : systems.length <= 4 ? 3 : 3; // Cap at 3 apples
+    const apples = systems.length <= 2 ? 2 : 3; // Cap at 3 apples
 
     slices.push({
       id: sid,
@@ -524,7 +526,7 @@ function decompose(request: string): DecompositionResult {
     }
   }
 
-  // Compute critical path (longest dependency chain)
+  // Collect root slices (those with no dependencies — the DAG entry points)
   const criticalPath: string[] = [];
   for (const slice of slices) {
     if (slice.dependencies.length === 0) {
@@ -840,4 +842,11 @@ Commands:
   process.exit(0);
 }
 
-main();
+if (process.argv[1] && basename(process.argv[1]) === basename(fileURLToPath(import.meta.url))) {
+  try {
+    main();
+  } catch (err) {
+    process.stderr.write(`producer crashed: ${err instanceof Error ? err.stack : String(err)}\n`);
+    process.exit(2);
+  }
+}
