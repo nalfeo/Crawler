@@ -55,11 +55,19 @@ function isFootprintPassable(world: GameWorld, eid: number, x: number, y: number
  * Each frame, moves the entity by (dirX * speed, dirY * speed) and
  * decrements `remaining` by `speed`. When remaining <= 0, the
  * Knockback component is removed.
+ *
+ * Also records `world.maxKnockbackStepThisFrame` — the max REALIZED (post-clamp)
+ * displacement of any entity this frame — so `beamSystem` (which runs after this
+ * system, against the pre-knockback collision grid) can inflate its broad-phase
+ * radius to still find targets the grid indexed at a now-stale position. Measured
+ * from the actually-written position so the bound is writer-agnostic and correct
+ * even when a wall/flying-bounds clamp reduces the move.
  */
 export function knockbackSystem(world: GameWorld): void {
   const entities = query(world.ecs, [Knockback, Position]);
   const { position, knockback } = world.stores;
   const floorMap = world.floorMap;
+  world.maxKnockbackStepThisFrame = 0;
 
   for (const eid of entities) {
     if (eid === undefined) continue;
@@ -120,6 +128,17 @@ export function knockbackSystem(world: GameWorld): void {
     } else {
       position.x[eid] = oldX + dirX * step;
       position.y[eid] = oldY + dirY * step;
+    }
+
+    // Record the max realized displacement (post-clamp) so beamSystem can bound
+    // its stale-grid broad-phase radius. Reading the written position — rather
+    // than `step` or the commanded (dirX,dirY)*step — makes this correct
+    // regardless of the writer's dir magnitude or any wall/bounds clamp above.
+    const finalX = position.x[eid] ?? oldX;
+    const finalY = position.y[eid] ?? oldY;
+    const realized = Math.hypot(finalX - oldX, finalY - oldY);
+    if (realized > world.maxKnockbackStepThisFrame) {
+      world.maxKnockbackStepThisFrame = realized;
     }
 
     knockback.remaining[eid] = remaining - step;

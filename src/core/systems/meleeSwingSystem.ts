@@ -216,7 +216,11 @@ export function meleeSwingSystem(world: GameWorld, collisionResult?: CollisionRe
   // order. Falls back to the full scan when no grid is supplied or a combat target
   // lacks a Sprite (see buildMeleeRankMap). Melee is grid-staleness-free: nothing
   // moves entities between the collisionSystem build and this stage.
-  const useGrid = collisionResult !== undefined && buildMeleeRankMap(world);
+  //
+  // Built LAZILY on the first swing to reach the gather (past the safe-space gate),
+  // so swing-absent frames add zero [Health, Position] scans (matching legacy).
+  let gridResolved = false;
+  let useGrid = collisionResult !== undefined;
 
   for (const eid of swings) {
     if (!entityExists(world.ecs, eid) || eid >= storeSize) continue;
@@ -284,6 +288,14 @@ export function meleeSwingSystem(world: GameWorld, collisionResult?: CollisionRe
     // bounding radius is attacker-centered and supersets the exact hit region: the
     // blade segment (length <= bladeLength) inflated by BLADE_HIT_HALF_WIDTH, unioned
     // with the head circle (headRadius) at the tip.
+    // Resolve the grid path lazily on the first swing that reaches the gather (this
+    // is past the safe-space gate above). Because apply-damage never mutates the
+    // [Health, Position] set, the map built here equals one built before the loop —
+    // this only defers the O(N) build so swing-free frames pay nothing.
+    if (useGrid && !gridResolved) {
+      useGrid = buildMeleeRankMap(world);
+      gridResolved = true;
+    }
     const bladeReachRadius =
       bladeLength + Math.max(BLADE_HIT_HALF_WIDTH, headRadius) + MELEE_BROAD_PHASE_EPS;
     const targets =

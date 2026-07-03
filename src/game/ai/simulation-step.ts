@@ -79,6 +79,21 @@ export interface SimulationOptions {
    * one-line kill-switch if a grid regression is ever suspected in the field.
    */
   meleeBroadPhase?: boolean;
+  /**
+   * Beam hit-detection broad-phase mode. Defaults to `true` (grid): beamSystem
+   * uses the frame's spatial-hash grid as a superset broad-phase, preserving legacy
+   * iteration order via a canonical rank map (identical-by-construction). Set to
+   * `false` to force the legacy full-`[Health,Position]` scan.
+   *
+   * Like `meleeBroadPhase`, this is a determinism rollback / guard seam, not a
+   * gameplay toggle: both paths produce byte-identical outcomes. Unlike melee, the
+   * grid is STALE for beams (knockbackSystem moves entities after the grid is
+   * built), so the broad-phase radius is inflated by `world.maxKnockbackStepThisFrame`
+   * to stay a guaranteed superset. The pipeline differential regression test drives
+   * grid-vs-fallback through the REAL full pipeline so a future target-moving or
+   * target-spawning system inserted into the collision→beam seam trips the guard.
+   */
+  beamBroadPhase?: boolean;
 }
 
 /**
@@ -151,7 +166,7 @@ export function runSimulationStep(
   areaDamageSystem(world, collision);
   meleeSwingSystem(world, options.meleeBroadPhase === false ? undefined : collision);
   knockbackSystem(world);
-  beamSystem(world);
+  beamSystem(world, options.beamBroadPhase === false ? undefined : collision);
   trapSystem(world, collision);
   itemPickupSystem(world, collision);
   harvestSystem(world);

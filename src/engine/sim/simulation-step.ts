@@ -108,7 +108,14 @@ export function runSimulationStep(
   // The invariant is guarded by tests/headless/melee-broadphase-pipeline-determinism.test.ts.
   meleeSwingSystem(world, collision);
   knockbackSystem(world);
-  beamSystem(world);
+  // beamSystem reuses the same grid, but knockbackSystem above has since moved
+  // entities, so the grid is STALE by up to world.maxKnockbackStepThisFrame (set by
+  // knockbackSystem). beamSystem inflates its broad-phase radius by exactly that
+  // bound to remain a guaranteed superset, preserving legacy iteration order via a
+  // canonical rank map (identical-by-construction). Do NOT insert a target-moving
+  // OR target-spawning system into the collision→beam seam without re-proving the
+  // bound; guarded by tests/headless/beam-broadphase-pipeline-determinism.test.ts.
+  beamSystem(world, collision);
   trapSystem(world, collision);
   itemPickupSystem(world, collision);
   harvestSystem(world);

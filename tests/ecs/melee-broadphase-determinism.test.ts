@@ -1,4 +1,4 @@
-import { addComponent, query, removeComponent } from 'bitecs';
+import { addComponent, hasComponent, query, removeComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { EffectiveStats, Enemy, Health, Position, Sprite } from '../../src/core/components.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
@@ -173,6 +173,17 @@ describe('meleeSwingSystem broad-phase determinism', () => {
         gridScene.world.elapsedMs += 16;
         refScene.world.elapsedMs += 16;
 
+        // Broad-phase invariant guards (rule the once-per-frame rank map depends
+        // on): every [Health, Position] combat target is also in the grid
+        // ([Position, Sprite]) ⇒ the grid path is actually exercised (not silently
+        // falling back), and the set is STABLE across the melee invocation
+        // (apply-damage never adds/removes Health), so a future on-hit component
+        // mutation that would break rank-map stability trips here.
+        const targetsBefore = Array.from(query(gridScene.world.ecs, [Health, Position]));
+        for (const target of targetsBefore) {
+          expect(hasComponent(gridScene.world.ecs, target, Sprite)).toBe(true);
+        }
+
         // Grid driver: broad-phase (grid threaded in, same as areaDamageSystem).
         const collision = collisionSystem(gridScene.world);
         meleeSwingSystem(gridScene.world, collision);
@@ -180,6 +191,7 @@ describe('meleeSwingSystem broad-phase determinism', () => {
         // Reference driver: no grid ⇒ the executable full-scan fallback = legacy.
         meleeSwingSystem(refScene.world);
 
+        expect(query(gridScene.world.ecs, [Health, Position]).length).toBe(targetsBefore.length);
         expect(rngCursor(gridScene.world)).toBe(rngCursor(refScene.world));
         expect(healthSnapshot(gridScene.world)).toEqual(healthSnapshot(refScene.world));
         expect(positionSnapshot(gridScene.world)).toEqual(positionSnapshot(refScene.world));
