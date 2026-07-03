@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deploy-url.outputs.page_url }}
     steps:
       - name: Admin check
         env:
@@ -145,6 +145,30 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Wait before retry (transient Pages failure)
+        if: steps.deployment.outcome == 'failure'
+        run: |
+          echo "Deploy attempt 1 failed — waiting 60 s before retry..."
+          sleep 60
+
+      - name: Deploy to GitHub Pages (retry)
+        id: deployment-retry
+        if: steps.deployment.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+
+      - name: Resolve deployment URL
+        id: deploy-url
+        if: always()
+        run: |
+          if [ "${{ steps.deployment-retry.outcome }}" = "success" ]; then
+            echo "page_url=${{ steps.deployment-retry.outputs.page_url }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ steps.deployment.outcome }}" = "success" ]; then
+            echo "page_url=${{ steps.deployment.outputs.page_url }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Both deployment attempts failed; page_url will be empty."
+          fi
 
       - name: Summary
         run: |
