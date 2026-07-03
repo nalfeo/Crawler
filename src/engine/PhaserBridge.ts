@@ -610,16 +610,31 @@ export function createPhaserBridge(scene: Phaser.Scene): {
 
           if (visual && weaponTextureKey !== null) {
             const img = visual.obj;
-            // Reconcile to the preferred texture key + frame when either
-            // changes: (a) the generated manifest finished loading mid-swing
-            // (Kenney sheet → generated texture — key changes), or (b) an
-            // eid reuse landed a different weapon on the same Kenney sheet
-            // (bat frame 117 ↔ sword frame 72 — key matches, frame differs).
-            // Mirrors the enemy reconcile pattern below.
+            // Reconcile to the preferred texture key + frame only when it
+            // actually changes, so a stable swing does not re-`setTexture` every
+            // frame. Two cases warrant a reconcile:
+            //   (a) the texture KEY changed — the generated manifest finished
+            //       loading mid-swing (Kenney sheet → generated texture), or a
+            //       procedural placeholder resolved to real art; or
+            //   (b) the key is unchanged but the FRAME changed — an eid reuse
+            //       landed a different weapon on the same Kenney sheet
+            //       (bat frame 117 ↔ sword frame 104).
+            // Frames are compared ONLY when the key already matches and a
+            // specific frame is requested, and both sides are String()-coerced.
+            // A spritesheet's `frame.name` is numeric (117) while `weaponFrame`
+            // is a number, and a texture loaded via `loader.image` has a single
+            // frame Phaser names '__BASE' (never `undefined`). Comparing those
+            // raw values mis-fired every frame — `'__BASE' !== undefined` and
+            // `117 !== '117'` both stay true forever, defeating the guard and
+            // re-applying the texture on every swing frame. Mirrors the enemy
+            // reconcile pattern below.
             const currentKey = img.texture.key;
-            const currentFrameName = img.frame?.name;
-            const desiredFrameName = weaponFrame === undefined ? undefined : String(weaponFrame);
-            if (currentKey !== weaponTextureKey || currentFrameName !== desiredFrameName) {
+            const keyChanged = currentKey !== weaponTextureKey;
+            const frameChanged =
+              !keyChanged &&
+              weaponFrame !== undefined &&
+              String(img.frame?.name) !== String(weaponFrame);
+            if (keyChanged || frameChanged) {
               if (weaponFrame !== undefined) {
                 img.setTexture(weaponTextureKey, weaponFrame);
               } else {
