@@ -25,7 +25,6 @@ import { type AIInputProvider, type RunStats, type LevelUpEvent } from './types.
 import { AI_STATE_NAME, type SimEvent } from './event-log.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
 import { initializeFloor1Scenario, selectFloor1StarterWeapon } from '../index.js';
-import { floor2VictorySystem } from '../floor2Scenario.js';
 import {
   autoAllocateStatPoints,
   autoFloor1ProgressionSystem,
@@ -326,7 +325,8 @@ export async function runHeadless(
         ...config.simulationOptions,
         enableFloor1: true,
       });
-      floor2VictorySystem(world);
+      // floor2VictorySystem is invoked inside runSimulationStep (simulation-step.ts)
+      // every tick, so it does not need a second explicit call here.
       autoFloor1ProgressionSystem(world, playerEid);
       autoAllocateStatPoints(world, playerEid);
 

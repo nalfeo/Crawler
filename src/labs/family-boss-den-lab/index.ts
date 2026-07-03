@@ -6,6 +6,7 @@ import {
   type GameWorld,
 } from '../../core/index.js';
 import { SeededRandom } from '../../shared/random.js';
+import { getRelation } from '../../core/faction-relations.js';
 import { BiomeType } from '../../shared/map-types.js';
 import type { MapConfig } from '../../shared/map-types.js';
 import { CaveSystemGenerator } from '../../core/map/generators/cave-system.js';
@@ -101,7 +102,7 @@ function createFamilyBossDenLab(canvasHost: HTMLElement, controls: HTMLElement):
       const unlocked = isDenUnlocked(world, obj.familyId);
       const defeated = world.goalFlags.get(bossDefeatGoalId(obj.familyId)) === true;
       const gated = isFamilySpawnGated(world, obj.familyId);
-      const relation = world.factionRelations.get(obj.familyId) ?? 45;
+      const relation = getRelation(world, obj.familyId);
       rows.push(
         `<span style="color:${color}">■</span> <b>${name}</b> [${obj.familyId}]<br>` +
           `&nbsp;&nbsp;archetype: <i>${obj.archetypeId}</i><br>` +
