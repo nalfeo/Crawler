@@ -124,6 +124,7 @@ async function main(): Promise<number> {
       `skippedDuplicate=${status.skippedDuplicate}, ` +
       `reclaimedStale=${status.reclaimedStale}, ` +
       `enqueueCommentsPosted=${status.enqueueCommentsPosted}, ` +
+      `enqueueCommentErrors=${status.enqueueCommentErrors}, ` +
       `lastError=${status.lastError ?? 'none'}`,
   );
   process.stdout.write(`${JSON.stringify(status)}\n`);
