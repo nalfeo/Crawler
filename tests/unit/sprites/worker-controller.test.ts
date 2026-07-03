@@ -105,7 +105,11 @@ function baseDeps(over: Partial<WorkerControllerDeps> = {}): WorkerControllerDep
     createBriefSelectorProvider: () =>
       ({ modelDeployment: 'selector', selectBrief: async () => ({}) }) as never,
     createVisionProvider: () => null,
-    issueApi: { listOpenAssetRequestIssues: async () => [], comment: async () => {} },
+    issueApi: {
+      listOpenAssetRequestIssues: async () => [],
+      getIssue: async () => null,
+      comment: async () => {},
+    },
     now: () => FIXED_NOW,
     ...over,
   };

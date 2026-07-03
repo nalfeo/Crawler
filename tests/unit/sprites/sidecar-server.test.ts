@@ -1713,6 +1713,8 @@ describe('worker control endpoints (/api/workflow/worker/*)', () => {
           lastError: null,
           enqueued: 0,
           skippedDuplicate: 0,
+          reclaimedStale: 0,
+          enqueueCommentsPosted: 0,
         },
       }),
       stop: async () => ({
@@ -1723,6 +1725,8 @@ describe('worker control endpoints (/api/workflow/worker/*)', () => {
         lastError: null,
         enqueued: 0,
         skippedDuplicate: 0,
+        reclaimedStale: 0,
+        enqueueCommentsPosted: 0,
       }),
       status: () => ({
         running: false,
@@ -1732,6 +1736,8 @@ describe('worker control endpoints (/api/workflow/worker/*)', () => {
         lastError: null,
         enqueued: 0,
         skippedDuplicate: 0,
+        reclaimedStale: 0,
+        enqueueCommentsPosted: 0,
       }),
       pollOnce: async () => ({
         running: false,
@@ -1741,6 +1747,8 @@ describe('worker control endpoints (/api/workflow/worker/*)', () => {
         lastError: null,
         enqueued: 0,
         skippedDuplicate: 0,
+        reclaimedStale: 0,
+        enqueueCommentsPosted: 0,
       }),
       listRequests: async () => [],
       rejectRequest: async () => null,

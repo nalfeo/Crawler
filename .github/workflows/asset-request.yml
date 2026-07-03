@@ -31,7 +31,15 @@ name: Asset Request Pipeline
 
 on:
   issues:
-    types: [opened, edited, labeled, reopened]
+    # NOTE: intentionally NOT triggering on `opened`. The issue-template
+    # (`.github/ISSUE_TEMPLATE/asset-request.yml`) auto-applies the
+    # `asset-request` label, which fires `labeled` right after `opened` — so
+    # `[opened, labeled]` produces two runs per new issue. Dropping `opened`
+    # gives us exactly one run per newly-labeled issue while still covering
+    # (a) issues filed via `Issues → New issue` without the template (author
+    # applies the label manually → `labeled`), (b) re-opened issues, and
+    # (c) issues whose body was edited to fix a validation error.
+    types: [labeled, edited, reopened]
   workflow_dispatch:
 
 permissions:
@@ -98,6 +106,12 @@ jobs:
           # (spawns `gh issue list`).
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+          # In-CI logs default to warn (see src/shared/logger.ts's
+          # `isQuietLoggingEnvironment`). Force info so the ingester's
+          # startup + completion lines actually appear in the run log — the
+          # JSON status printed to stdout is not enough context on its own.
+          LOG_LEVEL: info
+
           # No AZURE_OPENAI_* here on purpose: ingestion never talks to Azure
           # OpenAI. `sprites:ingest-once` (createIssueIngesterController.pollOnce)
           # only lists open issues and enqueues new ones — it never constructs a
@@ -129,6 +143,27 @@ jobs:
           # if you accept issues from other bots / collaborators.
           SPRITES_INGESTER_ALLOWED_AUTHORS: >-
             ${{ github.repository_owner }},app/copilot-swe-agent
+
+          # Kill the GraphQL search-indexing lag: force-fetch the triggering
+          # issue by number (REST-backed, immediately consistent) so a
+          # freshly-labeled issue is never missed by the sweep. Empty on
+          # `workflow_dispatch` runs — the sweep alone handles that case.
+          SPRITES_INGESTER_TARGET_ISSUE: ${{ github.event.issue.number }}
+
+          # Stale-claim recovery: if a prior run enqueued an issue but the
+          # worker never wrote a `completed` status doc within this many ms,
+          # drop the claim so this poll re-enqueues it. 45 min is chosen to
+          # exceed any healthy pipeline run + Azure queue visibility timeout,
+          # so a legitimately-in-flight worker won't be steamrolled.
+          # Combined with the heartbeat check (see `isClaimStale`) this makes
+          # stuck runs self-healing on the next issue event / manual dispatch.
+          SPRITES_INGESTER_STALE_CLAIM_TTL_MS: '2700000'
+
+          # Emitted verbatim by the ingester as the "Workflow run" link in
+          # its enqueue comment. Downstream automation can follow the link
+          # to check whether this specific run actually produced artifacts.
+          SPRITES_INGEST_RUN_URL: >-
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: npm run sprites:ingest-once
 
       # Step 2: drain the queue. Exits with 0 after SPRITES_WORKER_MAX_EMPTY_POLLS
@@ -140,6 +175,14 @@ jobs:
           # gh CLI auth — the worker uses it to post failure comments on issues
           # via `createGhAssetRequestIssueApi` in worker-cli.ts.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # Force info-level logs so the worker's per-stage output
+          # ("processing", "done", "error") appears in the run log. The
+          # in-CI default is warn (see src/shared/logger.ts). Without this
+          # the drain step is a black box between "worker started" and
+          # exit, which is exactly the regression we hit on the first live
+          # E2E run.
+          LOG_LEVEL: info
 
           # Azure OpenAI (image + text providers).
           AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}

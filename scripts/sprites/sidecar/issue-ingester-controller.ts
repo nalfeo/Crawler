@@ -1,9 +1,17 @@
 import { fingerprintAssetRequest, parseAssetRequestIssueBody } from '../asset-request.js';
 import type { AssetQueue, IssueAssetRequest } from '../queue/types.js';
 import type { RunStore } from '../store/types.js';
-import type { AssetRequestIssueApi } from './asset-request-issue-api.js';
+import type { AssetRequestIssueApi, OpenAssetRequestIssue } from './asset-request-issue-api.js';
 
 export const INGEST_STATE_KEY = 'workflow-state/asset-request-ingest.json';
+
+/**
+ * Blob-store key prefix the sprite worker pipeline uses to write per-issue
+ * status docs (see `scripts/sprites/issue-pipeline.ts`). Exported here so the
+ * ingester's stale-claim TTL check can find them, and so tests + the CLI can
+ * pin against the same constant.
+ */
+export const ISSUE_STATUS_KEY_PREFIX = 'workflow-state/asset-request-jobs';
 
 export async function isIssueRequestRejectedIngestState(
   store: RunStore,
@@ -60,6 +68,19 @@ export interface IssueIngesterStatus {
   readonly lastError: string | null;
   readonly enqueued: number;
   readonly skippedDuplicate: number;
+  /**
+   * Count of stale claims dropped this session, allowing the issue to be
+   * re-enqueued the same pass. Populated only when `staleClaimTtlMs` is set on
+   * the controller. See `CreateIssueIngesterOptions.staleClaimTtlMs`.
+   */
+  readonly reclaimedStale: number;
+  /**
+   * Count of enqueue-time comments the ingester posted to the source issue in
+   * this session (see `CreateIssueIngesterOptions.postEnqueueComment`).
+   * Independent of `enqueued` because comment posting can fail (e.g. `gh` 403)
+   * without failing the enqueue itself.
+   */
+  readonly enqueueCommentsPosted: number;
 }
 
 export interface IssueIngesterController {
@@ -98,6 +119,16 @@ export interface AssetRequestManifestEntry {
   readonly isOpen: boolean;
 }
 
+export interface EnqueueCommentContext {
+  readonly issueNumber: number;
+  readonly name: string;
+  readonly briefSentence: string;
+  readonly fingerprint: string;
+  readonly claimedAt: string;
+  /** True iff a prior stale claim was dropped and this is a re-enqueue. */
+  readonly reclaimed: boolean;
+}
+
 export interface CreateIssueIngesterOptions {
   readonly queue: AssetQueue;
   readonly store: RunStore;
@@ -105,6 +136,54 @@ export interface CreateIssueIngesterOptions {
   readonly requestedBy: string;
   readonly pollIntervalMs?: number;
   readonly now?: () => Date;
+  /**
+   * When set, `pollOnce` fetches this specific issue by number via
+   * {@link AssetRequestIssueApi.getIssue} in addition to running the normal
+   * sweep. This is how the CI workflow bypasses the GraphQL search-indexing
+   * lag on the issue that actually triggered the run — REST fetch-by-id is
+   * immediately consistent, whereas `gh issue list --label` (search-backed)
+   * can miss issues filed within the last ~1–2 minutes.
+   *
+   * Setting this to a rejected/completed/duplicate issue is a no-op — the
+   * sweep-side dedup still applies.
+   */
+  readonly targetIssueNumber?: number;
+  /**
+   * When set and a claim's `claimedAt` is older than this many milliseconds,
+   * the claim is treated as stale and dropped IFF the pipeline never wrote a
+   * `completed` status doc for that issueNumber+fingerprint. Dropping the
+   * claim lets `pollOnce` re-enqueue the request in the same pass so a stuck
+   * or crashed worker doesn't leave an issue in limbo forever.
+   *
+   * Skipped when unset — preserves the strictly-monotonic dedup semantics
+   * that local dev + the historical sidecar rely on. CI sets this to the
+   * expected worst-case pipeline duration (e.g. 45 min).
+   *
+   * Callers should also provide `issueStatusPrefix` so the ingester knows
+   * where the pipeline writes its status doc. If missing, the TTL check
+   * degrades to "no status doc = stale after TTL" which is still safe (the
+   * pipeline updates the doc on every stage transition) but slightly more
+   * aggressive.
+   */
+  readonly staleClaimTtlMs?: number;
+  /**
+   * Blob-store key prefix the pipeline uses to write its per-issue status
+   * doc (see `scripts/sprites/issue-pipeline.ts`'s `ISSUE_STATUS_PREFIX`).
+   * The ingester reads `<prefix>/<issueNumber>-<fingerprint>.json` to
+   * distinguish "stale claim, safe to reclaim" from "actively running,
+   * leave alone" during TTL evaluation.
+   */
+  readonly issueStatusPrefix?: string;
+  /**
+   * Optional callback that, when it returns a non-empty string, causes the
+   * ingester to post that string as a comment on the source issue right
+   * after a successful enqueue + state save. Returning `null`/empty skips
+   * the comment (used to noop the hook in local dev). A thrown/rejected
+   * error is logged as `lastError` and does NOT roll back the enqueue —
+   * the claim is already committed and the queue message is already sent,
+   * so a comment failure must not surface as a pipeline failure.
+   */
+  readonly postEnqueueComment?: (context: EnqueueCommentContext) => string | null;
 }
 
 export function createIssueIngesterController(
@@ -119,6 +198,8 @@ export function createIssueIngesterController(
   let lastError: string | null = null;
   let enqueued = 0;
   let skippedDuplicate = 0;
+  let reclaimedStale = 0;
+  let enqueueCommentsPosted = 0;
   let timer: NodeJS.Timeout | null = null;
   let stateLock: Promise<void> = Promise.resolve();
 
@@ -144,6 +225,8 @@ export function createIssueIngesterController(
     lastError,
     enqueued,
     skippedDuplicate,
+    reclaimedStale,
+    enqueueCommentsPosted,
   });
 
   const claimKey = (issueNumber: number, fingerprint: string): string =>
@@ -222,13 +305,90 @@ export function createIssueIngesterController(
     await options.store.put(INGEST_STATE_KEY, Buffer.from(`${JSON.stringify(state, null, 2)}\n`));
   }
 
+  async function readCompletionStage(
+    issueNumber: number,
+    fingerprint: string,
+  ): Promise<{ readonly stage: string; readonly updatedAt: string | null } | null> {
+    if (!options.issueStatusPrefix) return null;
+    const key = `${options.issueStatusPrefix}/${issueNumber}-${fingerprint}.json`;
+    if (!(await options.store.has(key))) return null;
+    try {
+      const parsed = JSON.parse((await options.store.get(key)).toString('utf8')) as {
+        stage?: unknown;
+        updatedAt?: unknown;
+      };
+      if (!parsed || typeof parsed !== 'object') return null;
+      const stage = typeof parsed.stage === 'string' ? parsed.stage : '';
+      const updatedAt = typeof parsed.updatedAt === 'string' ? parsed.updatedAt : null;
+      return { stage, updatedAt };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Decide whether a claim should be dropped and re-enqueued on this pass.
+   *
+   * "Stale" is a two-signal check to avoid re-enqueuing an actively-running
+   * worker (which could then race a second worker on the same issue):
+   *
+   *   1. The claim itself is older than `staleClaimTtlMs`.
+   *   2. Either there's no pipeline status doc yet (worker never got the
+   *      message, or crashed before its first `setStatus` call) OR the doc
+   *      exists but its `updatedAt` heartbeat is also older than TTL/2 (the
+   *      pipeline is not writing status transitions — worker likely dead).
+   *
+   * A `stage === 'completed'` status doc always short-circuits to "not
+   * stale" — the request is already done and re-enqueueing would produce a
+   * duplicate sprite.
+   */
+  async function isClaimStale(input: {
+    readonly claim: {
+      readonly claimedAt: string;
+      readonly issueNumber: number;
+      readonly fingerprint: string;
+    };
+    readonly ttlMs: number;
+    readonly nowMs: number;
+  }): Promise<boolean> {
+    const claimAgeMs = input.nowMs - Date.parse(input.claim.claimedAt);
+    if (!Number.isFinite(claimAgeMs) || claimAgeMs < input.ttlMs) return false;
+    const status = await readCompletionStage(input.claim.issueNumber, input.claim.fingerprint);
+    if (!status) return true;
+    if (status.stage === 'completed') return false;
+    if (!status.updatedAt) return true;
+    const heartbeatAgeMs = input.nowMs - Date.parse(status.updatedAt);
+    if (!Number.isFinite(heartbeatAgeMs)) return true;
+    return heartbeatAgeMs >= input.ttlMs / 2;
+  }
+
   async function pollOnce(): Promise<void> {
     lastPollAt = now().toISOString();
-    const open = await options.issues.listOpenAssetRequestIssues();
+    const swept = await options.issues.listOpenAssetRequestIssues();
+    // Prepend the workflow-triggering issue (fetched via REST for
+    // immediate consistency) so a fresh issue that hasn't propagated to the
+    // GraphQL search index yet still gets enqueued in this run. Deduped by
+    // `issue.number` against the sweep list — if the sweep already saw it
+    // we don't double-process here.
+    let issuesToProcess: readonly OpenAssetRequestIssue[] = swept;
+    if (typeof options.targetIssueNumber === 'number') {
+      const targetNumber = options.targetIssueNumber;
+      const alreadyInSweep = swept.some((issue) => issue.number === targetNumber);
+      if (!alreadyInSweep) {
+        const priority = await options.issues.getIssue(targetNumber);
+        if (priority) {
+          issuesToProcess = [priority, ...swept];
+        }
+      }
+    }
+    // Collect enqueue-completion notifications outside the state lock so we
+    // don't hold it across a network call to `gh issue comment` (posts can
+    // take ~1s each and would serialize with any other state operation).
+    const enqueueComments: EnqueueCommentContext[] = [];
     await withStateLock(async () => {
       const state = await loadState();
       let dirty = false;
-      for (const issue of open) {
+      for (const issue of issuesToProcess) {
         const payload = parseAssetRequestIssueBody(issue.body);
         if (!payload) continue;
         const fingerprint = fingerprintAssetRequest(payload.name, payload.briefSentence);
@@ -237,9 +397,33 @@ export function createIssueIngesterController(
           skippedDuplicate += 1;
           continue;
         }
-        if (state.claims[key]) {
-          skippedDuplicate += 1;
-          continue;
+        let reclaimed = false;
+        const existingClaim = state.claims[key];
+        if (existingClaim) {
+          const shouldReclaim =
+            typeof options.staleClaimTtlMs === 'number' &&
+            options.staleClaimTtlMs > 0 &&
+            (await isClaimStale({
+              claim: {
+                claimedAt: existingClaim.claimedAt,
+                issueNumber: existingClaim.issueNumber,
+                fingerprint: existingClaim.fingerprint,
+              },
+              ttlMs: options.staleClaimTtlMs,
+              nowMs: now().getTime(),
+            }));
+          if (!shouldReclaim) {
+            skippedDuplicate += 1;
+            continue;
+          }
+          delete state.claims[key];
+          reclaimedStale += 1;
+          reclaimed = true;
+          // dirty is set once enqueue succeeds (line below). If enqueue
+          // throws, we intentionally leave dirty=false so the in-memory
+          // reclaim is discarded when withStateLock reloads next poll —
+          // otherwise we'd persist a stale-claim delete without a matching
+          // re-enqueue.
         }
         const claimedAt = now().toISOString();
         const message: IssueAssetRequest = {
@@ -264,9 +448,38 @@ export function createIssueIngesterController(
         };
         enqueued += 1;
         dirty = true;
+        if (options.postEnqueueComment) {
+          enqueueComments.push({
+            issueNumber: issue.number,
+            name: payload.name,
+            briefSentence: payload.briefSentence,
+            fingerprint,
+            claimedAt,
+            reclaimed,
+          });
+        }
       }
       if (dirty) await saveState(state);
     });
+    // Fire enqueue-completion comments after the state lock releases. Each
+    // failure is captured on `lastError` but does not roll back the enqueue
+    // (already committed). We continue posting remaining comments to avoid
+    // silently dropping notifications for issues after the first failure.
+    if (options.postEnqueueComment && enqueueComments.length > 0) {
+      for (const context of enqueueComments) {
+        try {
+          const body = options.postEnqueueComment(context);
+          if (typeof body === 'string' && body.trim() !== '') {
+            await options.issues.comment(context.issueNumber, body);
+            enqueueCommentsPosted += 1;
+          }
+        } catch (err) {
+          lastError = `enqueue-comment failed for issue #${context.issueNumber}: ${
+            err instanceof Error ? err.message : String(err)
+          }`;
+        }
+      }
+    }
   }
 
   function schedule(): void {
