@@ -15,3 +15,10 @@ export {
   evaluateAchievementUnlocksForPhase,
   unlockAchievement,
 } from './achievementSystem.js';
+export {
+  emergentEventSystem,
+  getFiredEmergentEvents,
+  forceFireEmergentEvent,
+  nextTimerEventEta,
+  _resetEmergentEventScheduler,
+} from './emergentEventSystem.js';

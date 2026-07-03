@@ -73,6 +73,19 @@
       "pickASideChosen": 8,
       "pickASideRejected": -8,
       "poisonTheWell": -12
+    },
+    "_eventCooldownsNote": "Per-emergent-event minimum re-fire interval in ms. Only meaningful for non-one-shot events; one-shot events fire at most once per run regardless. Slice 6.",
+    "eventCooldownsMs": {
+      "floor2-event-turf-war-flashpoint": 60000,
+      "floor2-event-tribute-run": 60000,
+      "floor2-event-the-hit": 60000,
+      "floor2-event-protection-racket": 60000,
+      "floor2-event-betrayal-tax": 60000,
+      "floor2-event-poison-the-well": 60000
     }
+  },
+  "shopPricing": {
+    "_note": "Floor 2 shop pricing (Slice 6). Runtime price = basePrice * archetype.priceMultiplier * floor2TierMultiplier. Kept at 1.0 for the slice; Slice 8 may sweep this alongside scenario tuning.",
+    "floor2TierMultiplier": 1.0
   }
 }

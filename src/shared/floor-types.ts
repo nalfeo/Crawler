@@ -107,6 +107,42 @@ export interface FloorScenarioState {
   runSummary: FloorRunSummary | null;
 }
 
+/**
+ * Floor 2 · Slice 6 — a single line of a settlement shop's rolled inventory.
+ * Prices are pre-computed at generation time (base × archetype × tier).
+ */
+export interface Floor2ShopInventoryItem {
+  readonly itemId: string;
+  readonly unitPrice: number;
+  readonly stock: number;
+}
+
+/**
+ * Floor 2 · Slice 6 — a spawned settlement shopkeeper NPC and its rolled
+ * inventory. Held on the settlement snapshot so the HUD / shop UI can reach
+ * an NPC's wares by eid.
+ */
+export interface Floor2ShopInstance {
+  readonly archetypeId: string;
+  readonly npcId: string;
+  readonly npcEid: number;
+  readonly inventory: readonly Floor2ShopInventoryItem[];
+}
+
+/**
+ * Floor 2 · Slice 6 — the settlement snapshot written to
+ * `world.floor2Settlement` by `initializeFloor2Settlement`. Consumed by the
+ * lab, tests, and HUD (Slice 7).
+ */
+export interface Floor2SettlementSnapshot {
+  /** Room id in `world.floorMap.roomGraph` for the settlement (now retagged SAFE). */
+  readonly settlementRoomId: number;
+  /** EID of the spawned Broker NPC, or -1 if the def was not registered. */
+  readonly brokerEid: number;
+  /** 1–2 seeded shop instances. */
+  readonly shops: readonly Floor2ShopInstance[];
+}
+
 // Backward compatibility exports
 export type Floor1EnemyArchetype = FloorEnemyArchetype;
 export type Floor1BossEncounterState = FloorBossEncounterState;

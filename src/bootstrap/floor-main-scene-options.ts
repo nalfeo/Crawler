@@ -11,6 +11,7 @@ import {
   floorObjectiveSystem,
   floor1PlayerStatSystem,
   achievementSystem,
+  emergentEventSystem,
   initializeFloor1Scenario,
   meetTutorialGoon,
   questSystem,
@@ -102,6 +103,7 @@ export function createFloorMainSceneOptions(_floorId: string = 'floor1') {
       // postSystem downstream this frame reads consistent post-adjust bands.
       // Always-safe: on Floor 1 the deltas queue stays empty (near-noop).
       familyRelationshipSystem,
+      emergentEventSystem,
       floor1PlayerStatSystem,
       weaponSystem,
       enemyAISystem,

@@ -57,7 +57,7 @@ import {
   type ComponentStores,
 } from './components.js';
 import type { StatModifier, SkillState, SkillUsageEvent, PlayerLevel } from '../shared/skills.js';
-import type { Floor1ScenarioState } from '../shared/floor-types.js';
+import type { Floor1ScenarioState, Floor2SettlementSnapshot } from '../shared/floor-types.js';
 import type { NpcInstance } from '../shared/npc-types.js';
 import type { QuestState } from '../shared/quest-types.js';
 import type { QuestEvent } from '../shared/quest-events.js';
@@ -158,6 +158,12 @@ export interface GameWorld {
    * on every other floor.
    */
   floor2State: Floor2State | null;
+  /**
+   * Floor 2 · Slice 6 — settlement snapshot (safe room, seeded shops, The
+   * Broker quest-giver). Populated by `initializeFloor2Settlement`; `null`
+   * on every other floor and before Floor 2's init runs.
+   */
+  floor2Settlement: Floor2SettlementSnapshot | null;
   /**
    * Floor 2 per-family relationship values, clamped `[0, 100]`. Single source
    * of truth (ADR 0040 · D1) — mobs read this at decision time via the
@@ -351,6 +357,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     floorMap: null,
     floor1: null,
     floor2State: null,
+    floor2Settlement: null,
     factionRelations: new Map(),
     factionRelationEvents: [],
     factionRelationDeltas: [],

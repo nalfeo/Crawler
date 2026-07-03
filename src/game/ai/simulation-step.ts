@@ -53,6 +53,7 @@ import {
   abilitySystem,
   achievementSystem,
   spawnerSystem,
+  emergentEventSystem,
 } from '../index.js';
 import type { InputState } from '../../shared/input.js';
 
@@ -153,6 +154,10 @@ export function runSimulationStep(
   // Drain queued faction-relation deltas. Always-safe (Floor 1 empties queue
   // to a near-noop); Floor-2-onwards this feeds band-driven AI (Slice 3).
   familyRelationshipSystem(world);
+  // Emergent event scheduler runs immediately after the drain — a threshold
+  // event that flips a band this frame can queue its own follow-on deltas
+  // for next frame's drain (Slice 6).
+  emergentEventSystem(world);
   if (options.enableFloor1 && world.floor1) {
     floor1PlayerStatSystem(world);
   }

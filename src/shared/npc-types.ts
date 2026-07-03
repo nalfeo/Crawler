@@ -231,10 +231,93 @@ export function selectTutorialGoonDialogue(
   return null;
 }
 
+// ---- Floor 2 · Slice 6 : The Broker + settlement shopkeepers ----
+
+/**
+ * The Broker — Floor 2 settlement quest-giver. Dispenses the "family favor"
+ * meta-quest that introduces the emergent-event mechanic (spec FR19).
+ */
+const THE_BROKER_DEF: NpcDef = {
+  id: 'the-broker',
+  name: 'The Broker',
+  dialogue: [
+    {
+      text: 'Contestant, sit. The families are watching the tape — every gesture, every double-cross. I broker the favors that keep this floor turning.',
+    },
+    {
+      text: "Pick a family, take a job, keep your promises. Or don't. Turns out the audience loves a snake — and so do I, if the numbers are right.",
+    },
+    {
+      text: 'Watch the ledger over my shoulder. Every deal moves someone up, someone down. Play the whole board, not just the friendliest face.',
+    },
+  ],
+  quests: [
+    {
+      questId: 'floor2-broker-family-favor',
+      title: 'A Family Favor',
+      description:
+        'Meet The Broker in the settlement, hear her pitch, and complete a single emergent-event favor to see the ledger shift.',
+    },
+  ],
+  textureId: 10,
+  widthFt: 2.5,
+  heightFt: 3.5,
+};
+
+/** Helper: build a boilerplate shopkeeper NPC def for Floor 2 shop archetypes. */
+function makeShopNpcDef(id: string, name: string, dialogue: readonly string[]): NpcDef {
+  return {
+    id,
+    name,
+    dialogue: dialogue.map((text) => ({ text })),
+    quests: [],
+    textureId: 10,
+    widthFt: 2.5,
+    heightFt: 3.5,
+  };
+}
+
+const SHOP_THE_FENCE_DEF: NpcDef = makeShopNpcDef('shop-the-fence', 'The Fence', [
+  "Everything's fenced, contestant. No receipts, no questions, no refunds.",
+  "Whatever the last family lost, I've got. Whatever this one's about to lose, I'm buying.",
+  'You want cheap and hot? Pick your poison off the rack. Cash on the barrel.',
+]);
+
+const SHOP_THE_APOTHECARY_DEF: NpcDef = makeShopNpcDef('shop-the-apothecary', 'The Apothecary', [
+  'Powders, philters, and the occasional charm — all guaranteed to do *something*, sweetheart.',
+  "The stained charm? House specialty. Don't sniff it. Don't lick it. Don't ask.",
+  'Pay in gold. My credit line closed three floors ago.',
+]);
+
+const SHOP_THE_QUARTERMASTER_DEF: NpcDef = makeShopNpcDef(
+  'shop-the-quartermaster',
+  'The Quartermaster',
+  [
+    "Real gear. Real prices. No family markup — I sell to whoever's still upright.",
+    'Hammer for the up-close, crossbow for the polite distance, mine for the exit.',
+    'Bring the coin, take the kit, remember who armed you.',
+  ],
+);
+
+const SHOP_THE_RESOURCE_BROKER_DEF: NpcDef = makeShopNpcDef(
+  'shop-the-resource-broker',
+  'The Resource Broker',
+  [
+    'You wanted volume? Wholesale? Off-inventory? This is the counter, friend.',
+    'Prices are steep because the resource wars mean I bought steep. Blame the families.',
+    "Big-ticket items only. I don't do trinkets. Well — one charm. Fine, two.",
+  ],
+);
+
 const NPC_REGISTRY: ReadonlyMap<string, NpcDef> = new Map([
   [TUTORIAL_GOON_DEF.id, TUTORIAL_GOON_DEF],
   [SPELL_QUEST_GIVER_DEF.id, SPELL_QUEST_GIVER_DEF],
   [SHOPKEEPER_DEF.id, SHOPKEEPER_DEF],
+  [THE_BROKER_DEF.id, THE_BROKER_DEF],
+  [SHOP_THE_FENCE_DEF.id, SHOP_THE_FENCE_DEF],
+  [SHOP_THE_APOTHECARY_DEF.id, SHOP_THE_APOTHECARY_DEF],
+  [SHOP_THE_QUARTERMASTER_DEF.id, SHOP_THE_QUARTERMASTER_DEF],
+  [SHOP_THE_RESOURCE_BROKER_DEF.id, SHOP_THE_RESOURCE_BROKER_DEF],
 ]);
 
 export function getNpcDef(id: string): NpcDef | undefined {
