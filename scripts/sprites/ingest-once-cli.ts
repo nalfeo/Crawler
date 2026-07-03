@@ -27,6 +27,20 @@
  * |                                   | asset-request issues. Unset = allow all         |
  * |                                   | (local dev). CI sets this to fail-closed        |
  * |                                   | on drive-by issues in the public repo.          |
+ * | SPRITES_INGESTER_TARGET_ISSUE     | Issue number that triggered this run. When set, |
+ * |                                   | the ingester force-fetches this issue via REST  |
+ * |                                   | (`gh issue view`) before the GraphQL sweep, so  |
+ * |                                   | a freshly-labeled issue that hasn't hit the     |
+ * |                                   | search index yet still gets enqueued.           |
+ * | SPRITES_INGESTER_STALE_CLAIM_TTL_MS | Number of ms after which a claim without a    |
+ * |                                   | pipeline `completed` status doc is reclaimed    |
+ * |                                   | (dropped so the next poll re-enqueues). Unset   |
+ * |                                   | disables reclaim. CI sets ~2.7e6 (45 min).      |
+ * | SPRITES_INGEST_RUN_URL            | URL of the workflow run that spawned this       |
+ * |                                   | ingest. When set, the ingester posts a comment  |
+ * |                                   | linking to it on each newly-enqueued issue so   |
+ * |                                   | downstream automation can check whether the     |
+ * |                                   | run finished + produced artifacts.              |
  * | AZURE_STORAGE_ACCOUNT             | Required for the Azure queue + blob backend     |
  * | AZURE_STORAGE_KEY                 | ↑                                               |
  * | GITHUB_ACTOR                      | Recorded as `requestedBy` on queued messages    |
@@ -47,11 +61,18 @@ import { createAssetQueue } from './queue/index.js';
 import { createRunStore } from './store/index.js';
 import { createLogger } from '../../src/shared/logger.js';
 import { createGhAssetRequestIssueApi } from './sidecar/asset-request-issue-api.js';
-import { createIssueIngesterController } from './sidecar/issue-ingester-controller.js';
+import {
+  createIssueIngesterController,
+  ISSUE_STATUS_KEY_PREFIX,
+} from './sidecar/issue-ingester-controller.js';
 import {
   exitCodeForStatus,
+  formatEnqueueCommentBody,
   resolveAllowedAuthorLogins,
   resolveRequestedBy,
+  resolveRunUrl,
+  resolveStaleClaimTtlMs,
+  resolveTargetIssueNumber,
   withAuthorAllowList,
 } from './ingest-once-cli-lib.js';
 
@@ -68,9 +89,16 @@ async function main(): Promise<number> {
   const allowedAuthors = resolveAllowedAuthorLogins(process.env);
   const issues = allowedAuthors ? withAuthorAllowList(rawIssues, allowedAuthors) : rawIssues;
   const requestedBy = resolveRequestedBy(process.env);
+  const targetIssueNumber = resolveTargetIssueNumber(process.env);
+  const staleClaimTtlMs = resolveStaleClaimTtlMs(process.env);
+  const runUrl = resolveRunUrl(process.env);
 
   logger.info(
-    `ingest-once starting (queue=${queue.backend}, store=${store.backend}, requestedBy=${requestedBy}, allowedAuthors=${allowedAuthors ? [...allowedAuthors].join(',') : 'ALL'})`,
+    `ingest-once starting (queue=${queue.backend}, store=${store.backend}, requestedBy=${requestedBy}, ` +
+      `allowedAuthors=${allowedAuthors ? [...allowedAuthors].join(',') : 'ALL'}, ` +
+      `targetIssue=${targetIssueNumber ?? 'none'}, ` +
+      `staleClaimTtlMs=${staleClaimTtlMs ?? 'disabled'}, ` +
+      `runUrl=${runUrl ?? 'none'})`,
   );
 
   const controller = createIssueIngesterController({
@@ -83,12 +111,20 @@ async function main(): Promise<number> {
     // public pollOnce() does NOT arm the internal setTimeout loop — but it's a
     // belt-and-suspenders default for anyone who refactors this later.
     pollIntervalMs: 24 * 60 * 60 * 1000,
+    ...(typeof targetIssueNumber === 'number' ? { targetIssueNumber } : {}),
+    ...(typeof staleClaimTtlMs === 'number' ? { staleClaimTtlMs } : {}),
+    issueStatusPrefix: ISSUE_STATUS_KEY_PREFIX,
+    postEnqueueComment: (context) => formatEnqueueCommentBody({ context, runUrl }),
   });
 
   const status = await controller.pollOnce();
 
   logger.info(
-    `ingest-once complete: enqueued=${status.enqueued}, skippedDuplicate=${status.skippedDuplicate}, lastError=${status.lastError ?? 'none'}`,
+    `ingest-once complete: enqueued=${status.enqueued}, ` +
+      `skippedDuplicate=${status.skippedDuplicate}, ` +
+      `reclaimedStale=${status.reclaimedStale}, ` +
+      `enqueueCommentsPosted=${status.enqueueCommentsPosted}, ` +
+      `lastError=${status.lastError ?? 'none'}`,
   );
   process.stdout.write(`${JSON.stringify(status)}\n`);
   return exitCodeForStatus(status);

@@ -13,6 +13,7 @@ import type { VisionProvider } from './provider/vision-types.js';
 import { loadBrief } from './load-brief.js';
 import type { RunStore } from './store/types.js';
 import { briefDirectoryForType } from './brief-paths.js';
+import { ISSUE_STATUS_KEY_PREFIX } from './sidecar/issue-ingester-controller.js';
 
 export interface IssuePipelineIssueApi {
   comment(issueNumber: number, body: string): Promise<void>;
@@ -47,7 +48,7 @@ interface IssueRunStatus {
   readonly details?: Record<string, unknown>;
 }
 
-const ISSUE_STATUS_PREFIX = 'workflow-state/asset-request-jobs';
+const ISSUE_STATUS_PREFIX = ISSUE_STATUS_KEY_PREFIX;
 
 /**
  * Infer sprite type from asset name using common naming patterns.
