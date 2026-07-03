@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "recordedAt": "2026-07-03T20:00:00.097Z",
+  "script": "npx tsx scripts/agent/health/governor-playthroughs.ts",
+  "targetWinRate": 0.9,
+  "metrics": {
+    "floor1WinRate": 0.9,
+    "floor2WinRate": 1.0,
+    "combinedWinRate": 0.925,
+    "totalRuns": 80
+  },
+  "details": {
+    "seeds": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+    "budgetFrames": 30000,
+    "floor1": {
+      "runs": 60,
+      "wins": 54,
+      "weapons": ["sword", "bow", "baseball-bat"]
+    },
+    "floor2": {
+      "runs": 20,
+      "wins": 20,
+      "manifestGovernor": {
+        "autoUnlockDens": true,
+        "autoVictoryOnStart": true
+      }
+    }
+  },
+  "tuningSuggestions": [
+    "Keep Floor 1 budget at >=30000 frames for Governor sweeps so timeout noise does not mask combat/pathing regressions.",
+    "Replace floor2.governor.autoVictoryOnStart with a real objective-complete signal once Slice 5 win-condition plumbing lands in production mode.",
+    "After objective plumbing lands, rerun this sweep with autoVictoryOnStart disabled and retune presentCount/shopCount if floor2 win-rate drops below 90%."
+  ]
+}

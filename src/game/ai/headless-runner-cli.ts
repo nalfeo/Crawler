@@ -26,6 +26,7 @@ interface CLIArgs {
   sampleInterval: number;
   weapon: string | null;
   enemyDamageMultiplier: number;
+  floorId: string;
 }
 
 function parseArgs(): CLIArgs {
@@ -42,6 +43,7 @@ function parseArgs(): CLIArgs {
     sampleInterval: 15,
     weapon: null,
     enemyDamageMultiplier: 1,
+    floorId: 'floor1',
   };
 
   for (let i = 2; i < process.argv.length; i++) {
@@ -84,6 +86,9 @@ function parseArgs(): CLIArgs {
       }
       args.enemyDamageMultiplier = parsed;
       i++;
+    } else if (arg === '--floor' && next) {
+      args.floorId = next;
+      i++;
     } else if (arg === '--debug') {
       args.debug = true;
     }
@@ -112,6 +117,7 @@ Options:
   --debug                 Enable verbose logging
   --enemy-damage-multiplier <n>
                            Multiply hostile Damage values (default: 1)
+  --floor <id>            Scenario floor id (default: floor1)
   --help, -h              Show this help message
 
 Examples:
@@ -143,6 +149,7 @@ async function main(): Promise<void> {
     console.log(`Weapon: ${args.weapon} (forced)`);
   }
   console.log(`Enemy damage mult: ${args.enemyDamageMultiplier}x`);
+  console.log(`Floor: ${args.floorId}`);
   console.log('');
 
   const ai = new BehaviorTreeAI({
@@ -163,6 +170,7 @@ async function main(): Promise<void> {
     eventSampleInterval: args.sampleInterval,
     ...(args.weapon !== null ? { forceWeaponId: args.weapon } : {}),
     enemyDamageMultiplier: args.enemyDamageMultiplier,
+    floorId: args.floorId,
     ...(recording
       ? {
           recordEvent: (event: SimEvent): void => {

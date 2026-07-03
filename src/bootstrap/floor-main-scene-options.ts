@@ -13,10 +13,9 @@ import {
   floor1PlayerStatSystem,
   achievementSystem,
   emergentEventSystem,
-  initializeFloor1Scenario,
+  getScenarioDefinition,
   meetTutorialGoon,
   questSystem,
-  selectFloor1StarterWeapon,
   spawnerSystem,
   weaponSystem,
 } from '../game/index.js';
@@ -44,26 +43,26 @@ import {
   type GameWorld,
 } from '../core/index.js';
 import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
-import { getFloorConfig } from '../shared/floor-config.js';
+import { getFloorManifest } from '../shared/floor-registry.js';
 import type { Floor1BossRewardSpellId } from '../shared/abilities.js';
 
 /**
  * Create main scene options for a floor.
  * @param floorId - The floor identifier (e.g., "floor1")
  */
-export function createFloorMainSceneOptions(_floorId: string = 'floor1') {
-  // The world scenario + systems below are floor1-specific, so this helper only
-  // supports floor1 today; `_floorId` is reserved for when multi-floor boot lands
-  // (thread it through both getFloorConfig and the scenario wiring at that point).
-  // Per-floor ambient lighting (see FloorConfig.lighting) is sourced from the
-  // floor1 manifest so the scene ships the authored ambient rather than the
-  // engine's global fallback.
-  const { lighting } = getFloorConfig('floor1');
+export function createFloorMainSceneOptions(floorId: string = 'floor1') {
+  const scenario = getScenarioDefinition(floorId);
+  const manifest = getFloorManifest(floorId);
+  if (!manifest) {
+    throw new Error(`Unknown floor manifest: ${floorId}`);
+  }
+  const floor1Callbacks = floorId === 'floor1';
   return {
-    lightingConfig: { ambient: lighting.ambient },
-    configureWorld: initializeFloor1Scenario,
-    selectLoadoutOption: selectFloor1StarterWeapon,
-    onStairDescend: confirmFloor1StairDescend,
+    lightingConfig: { ambient: manifest.lighting.ambient },
+    configureWorld: scenario.configureWorld,
+    selectLoadoutOption: scenario.selectLoadoutOption,
+    director: scenario.director,
+    onStairDescend: floor1Callbacks ? confirmFloor1StairDescend : undefined,
     selectSpellFromBossBattle: (world: GameWorld, playerEid: number, spellId: string) => {
       selectSpellFromBossBattle(world, playerEid, spellId as Floor1BossRewardSpellId);
     },
@@ -74,29 +73,36 @@ export function createFloorMainSceneOptions(_floorId: string = 'floor1') {
     ) => {
       spendPoints(world, allocations);
     },
-    shopkeeper: {
-      getIndicatorState: (world: GameWorld) => getNpcQuestIndicatorState(world, 'shopkeeper'),
-      getStage: getShopkeeperStage,
-      meet: meetShopkeeper,
-      returnPrize: returnShopkeeperPrize,
-      purchase: purchaseShopkeeperEquipment,
-      getPostQuestStock: getShopkeeperPostQuestStock,
-      purchasePostQuestItem: purchaseShopkeeperPostQuestItem,
-      equip: equipPurchasedGear,
-      equipmentCost: SHOPKEEPER_EQUIPMENT_COST,
-      equipmentName: MERCHANTS_CHARM_DEF.name,
-      isLocked: (world: GameWorld) => !hasCompletedWelcomeGoonQuest(world),
-    },
-    tutorialGoon: {
-      meet: meetTutorialGoon,
-      getIndicatorState: (world: GameWorld) => getNpcQuestIndicatorState(world, 'tutorial-goon'),
-    },
-    spellQuestGiver: {
-      getIndicatorState: (world: GameWorld) =>
-        getNpcQuestIndicatorState(world, 'spell-quest-giver'),
-      meet: meetSpellQuestGiver,
-      isLocked: (world: GameWorld) => !hasCompletedWelcomeGoonQuest(world),
-    },
+    shopkeeper: floor1Callbacks
+      ? {
+          getIndicatorState: (world: GameWorld) => getNpcQuestIndicatorState(world, 'shopkeeper'),
+          getStage: getShopkeeperStage,
+          meet: meetShopkeeper,
+          returnPrize: returnShopkeeperPrize,
+          purchase: purchaseShopkeeperEquipment,
+          getPostQuestStock: getShopkeeperPostQuestStock,
+          purchasePostQuestItem: purchaseShopkeeperPostQuestItem,
+          equip: equipPurchasedGear,
+          equipmentCost: SHOPKEEPER_EQUIPMENT_COST,
+          equipmentName: MERCHANTS_CHARM_DEF.name,
+          isLocked: (world: GameWorld) => !hasCompletedWelcomeGoonQuest(world),
+        }
+      : undefined,
+    tutorialGoon: floor1Callbacks
+      ? {
+          meet: meetTutorialGoon,
+          getIndicatorState: (world: GameWorld) =>
+            getNpcQuestIndicatorState(world, 'tutorial-goon'),
+        }
+      : undefined,
+    spellQuestGiver: floor1Callbacks
+      ? {
+          getIndicatorState: (world: GameWorld) =>
+            getNpcQuestIndicatorState(world, 'spell-quest-giver'),
+          meet: meetSpellQuestGiver,
+          isLocked: (world: GameWorld) => !hasCompletedWelcomeGoonQuest(world),
+        }
+      : undefined,
     preSystems: [
       statsSystem,
       statSystem,

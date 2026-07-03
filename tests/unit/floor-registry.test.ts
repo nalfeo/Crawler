@@ -6,7 +6,11 @@ import {
   hasFloorManifest,
   registerFloorManifest,
 } from '../../src/shared/floor-registry';
-import { floor1Manifest, type FloorManifestDef } from '../../src/shared/floor-manifest';
+import {
+  floor1Manifest,
+  floor2Manifest,
+  type FloorManifestDef,
+} from '../../src/shared/floor-manifest';
 
 function makeManifest(id: string): FloorManifestDef {
   return { ...floor1Manifest, id };
@@ -28,6 +32,11 @@ describe('floor-registry', () => {
     expect(hasFloorManifest('floor1')).toBe(true);
   });
 
+  it('resolves the built-in floor2 manifest', () => {
+    expect(getFloorManifest('floor2')).toBe(floor2Manifest);
+    expect(hasFloorManifest('floor2')).toBe(true);
+  });
+
   it('returns undefined for an unknown floor id', () => {
     expect(getFloorManifest('does-not-exist')).toBeUndefined();
     expect(hasFloorManifest('does-not-exist')).toBe(false);
@@ -35,6 +44,7 @@ describe('floor-registry', () => {
 
   it('lists available floor ids including the built-in floor', () => {
     expect(getAvailableFloorIds()).toContain('floor1');
+    expect(getAvailableFloorIds()).toContain('floor2');
   });
 
   it('registers a new manifest and makes it discoverable', () => {

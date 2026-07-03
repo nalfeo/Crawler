@@ -88,6 +88,11 @@ export interface MapConfig {
   readonly maxRooms: number;
   /** Target percentage of floor tiles (for cellular automata generators). */
   readonly floorDensity: number;
+  /** Optional biome-specific cave-system knobs (Floor 2). */
+  readonly caveSystem?: {
+    /** Number of family territories to stamp (3–4). */
+    readonly presentCount?: number;
+  };
 }
 
 /** Sensible defaults — 2 min × 2 min traversal at base player speed. */

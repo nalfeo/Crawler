@@ -197,6 +197,17 @@ describe('CaveSystemGenerator', () => {
     expect(() => new CaveSystemGenerator({ presentCount: 0 })).toThrowError(/presentCount/);
   });
 
+  it('clamps config caveSystem.presentCount to generator bounds', () => {
+    const gen = new CaveSystemGenerator({ presentCount: 4 });
+    const config = smallConfig(1234);
+    config.caveSystem = { presentCount: 99 };
+    const floor = gen.generate(config, new SeededRandom(1234));
+    const territoryCount = floor.roomGraph
+      .getAll()
+      .filter((room) => room.role === RoomRole.TERRITORY).length;
+    expect(territoryCount).toBe(4);
+  });
+
   it('BOSS_STAIR_FLOOR is stamped inside the RESOURCE_HEART region on every seed', () => {
     // Guards against the "centroid falls on a wall pocket -> stamps zero tiles" bug
     // that neither the reachability check nor the bounds-centered search would catch.

@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { floorManifestDefSchema } from '../../src/shared/floor-manifest.js';
+import { BiomeType } from '../../src/shared/map-types.js';
 
 const floorsDir = join(dirname(fileURLToPath(import.meta.url)), '../../src/shared/data/floors');
 
@@ -19,5 +20,13 @@ describe('floor manifest lighting defaults', () => {
     expect(typeof manifest.lighting.ambient).toBe('number');
     expect(manifest.lighting.ambient).toBeGreaterThanOrEqual(0);
     expect(manifest.lighting.ambient).toBeLessThanOrEqual(1);
+  });
+
+  it('floor2 manifest declares cave-system biome and floor2 config', () => {
+    const raw = JSON.parse(readFileSync(join(floorsDir, 'floor2.manifest.json'), 'utf-8'));
+    const manifest = floorManifestDefSchema.parse(raw);
+    expect(manifest.map.biome).toBe(BiomeType.CAVE_SYSTEM);
+    expect(manifest.floor2?.presentCount).toBeGreaterThanOrEqual(3);
+    expect(manifest.floor2?.settlement?.shopCountRange[0]).toBeGreaterThanOrEqual(1);
   });
 });

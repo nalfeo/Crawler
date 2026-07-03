@@ -189,6 +189,12 @@ export interface MainGameSceneOptions {
    * the global defaults.
    */
   lightingConfig?: Partial<LightingConfig>;
+  /** Floor-specific Director narration copy. */
+  director?: {
+    intro: string;
+    victory: string;
+    timeout?: string;
+  };
 }
 
 declare global {
@@ -2169,46 +2175,70 @@ export class MainGameScene extends Phaser.Scene {
       this.commentaryHideAtMs = 0;
     }
 
-    const floor1 = this.world.floor1;
-    if (!floor1 || this.world.floor !== 1) {
+    const director = this.options.director;
+    if (!director) {
       return;
     }
-
-    const objective = floor1.objective;
+    const floor1 = this.world.floor1;
+    if (floor1 && this.world.floor === 1) {
+      const objective = floor1.objective;
+      if (!this.commentaryMilestones.floorIntro) {
+        this.commentaryMilestones.floorIntro = true;
+        this.queueDirectorCommentary(director.intro ?? FLOOR_1_COMMENTARY.intro);
+        return;
+      }
+      if (objective.questAccepted && !this.commentaryMilestones.questAccepted) {
+        this.commentaryMilestones.questAccepted = true;
+        this.queueDirectorCommentary(FLOOR_1_COMMENTARY.questAccepted);
+        return;
+      }
+      if (objective.questCompleted && !this.commentaryMilestones.questCompleted) {
+        this.commentaryMilestones.questCompleted = true;
+        this.queueDirectorCommentary(FLOOR_1_COMMENTARY.questCompleted);
+        return;
+      }
+      const staircaseBattle = objective.bossBattles.get('staircase');
+      if (staircaseBattle?.started && !this.commentaryMilestones.bossBattleStarted) {
+        this.commentaryMilestones.bossBattleStarted = true;
+        this.queueDirectorCommentary(FLOOR_1_COMMENTARY.bossBattleStarted);
+        return;
+      }
+      if (staircaseBattle?.defeated && !this.commentaryMilestones.staircaseBossDefeated) {
+        this.commentaryMilestones.staircaseBossDefeated = true;
+        this.queueDirectorCommentary(FLOOR_1_COMMENTARY.staircaseBossDefeated);
+        return;
+      }
+      if (objective.staircaseDiscovered && !this.commentaryMilestones.staircaseDiscovered) {
+        this.commentaryMilestones.staircaseDiscovered = true;
+        this.queueDirectorCommentary(director.victory ?? FLOOR_1_COMMENTARY.staircaseDiscovered);
+        return;
+      }
+      if (floor1.failReason === 'stair_timeout' && !this.commentaryMilestones.timeout) {
+        this.commentaryMilestones.timeout = true;
+        this.queueDirectorCommentary(director.timeout ?? FLOOR_1_COMMENTARY.timeout);
+      }
+      return;
+    }
     if (!this.commentaryMilestones.floorIntro) {
       this.commentaryMilestones.floorIntro = true;
-      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.intro);
+      this.queueDirectorCommentary(director.intro);
       return;
     }
-    if (objective.questAccepted && !this.commentaryMilestones.questAccepted) {
-      this.commentaryMilestones.questAccepted = true;
-      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.questAccepted);
-      return;
-    }
-    if (objective.questCompleted && !this.commentaryMilestones.questCompleted) {
-      this.commentaryMilestones.questCompleted = true;
-      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.questCompleted);
-      return;
-    }
-    const staircaseBattle = objective.bossBattles.get('staircase');
-    if (staircaseBattle?.started && !this.commentaryMilestones.bossBattleStarted) {
-      this.commentaryMilestones.bossBattleStarted = true;
-      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.bossBattleStarted);
-      return;
-    }
-    if (staircaseBattle?.defeated && !this.commentaryMilestones.staircaseBossDefeated) {
-      this.commentaryMilestones.staircaseBossDefeated = true;
-      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.staircaseBossDefeated);
-      return;
-    }
-    if (objective.staircaseDiscovered && !this.commentaryMilestones.staircaseDiscovered) {
+    if (
+      this.world.goalFlags.get('floor2-victory') === true &&
+      !this.commentaryMilestones.staircaseDiscovered
+    ) {
       this.commentaryMilestones.staircaseDiscovered = true;
-      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.staircaseDiscovered);
+      this.queueDirectorCommentary(director.victory);
       return;
     }
-    if (floor1.failReason === 'stair_timeout' && !this.commentaryMilestones.timeout) {
+    if (
+      this.world.state === 'game_over' &&
+      director.timeout &&
+      !this.commentaryMilestones.timeout
+    ) {
       this.commentaryMilestones.timeout = true;
-      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.timeout);
+      this.queueDirectorCommentary(director.timeout);
     }
   }
 
