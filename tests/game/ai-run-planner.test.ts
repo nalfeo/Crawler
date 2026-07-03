@@ -72,6 +72,39 @@ describe('estimateFloor1RunPlan', () => {
     expect(plan.urgency).toBeLessThanOrEqual(1);
   });
 
+  it('exposes estimatedTravelMs as the sum of every segment travelMs', () => {
+    const plan = estimateFloor1RunPlan(snapshot(), PARAMS);
+    const expectedTravel = plan.segments.reduce((sum, segment) => sum + segment.travelMs, 0);
+    expect(plan.estimatedTravelMs).toBe(expectedTravel);
+    // Sanity check: with distinct positions and non-empty segments the total
+    // travel-time budget must be strictly positive.
+    expect(plan.estimatedTravelMs).toBeGreaterThan(0);
+    // Cleared prerequisites shouldn't leak into travel budget.
+    expect(plan.estimatedTravelMs).toBeLessThan(plan.estimatedRequiredMs);
+  });
+
+  it('reports zero estimatedTravelMs once every objective is cleared', () => {
+    const cleared = estimateFloor1RunPlan(
+      snapshot({
+        tutorialAccepted: true,
+        playerLevel: 2,
+        questCompleted: true,
+        shopStage: 'complete',
+        bossBattleAccepted: true,
+        slimeRatStarted: true,
+        slimeRatDefeated: true,
+        spellsUnlocked: true,
+        staircaseStarted: true,
+        staircaseDefeated: true,
+        staircaseUnlocked: true,
+        staircaseDiscovered: true,
+      }),
+      PARAMS,
+    );
+    expect(cleared.segments).toHaveLength(0);
+    expect(cleared.estimatedTravelMs).toBe(0);
+  });
+
   it('increases urgency as remaining time shrinks for the same remaining work', () => {
     const early = estimateFloor1RunPlan(snapshot({ nowMs: 60_000 }), PARAMS);
     const late = estimateFloor1RunPlan(snapshot({ nowMs: 560_000 }), PARAMS);

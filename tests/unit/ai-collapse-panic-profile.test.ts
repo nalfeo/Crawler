@@ -11,6 +11,7 @@ describe('computeCollapsePanicProfile', () => {
       panic: 0,
       beeline: false,
       stairsUnlocked: true,
+      travelBeelineActive: false,
     });
   });
 
@@ -87,5 +88,116 @@ describe('computeCollapsePanicProfile', () => {
 
     expect(pressure.remainingMs).toBe(55_000);
     expect(pressure.beeline).toBe(true);
+  });
+
+  describe('travel-time beeline threshold escalation', () => {
+    it('escalates beeline threshold above the fixed 60s when travel time is high', () => {
+      // Post-boss regression: 63s remaining, staircase unlocked but not yet
+      // discovered, A* says the run needs ~45s of travel. The legacy fixed 60s
+      // threshold would leave beeline false (63s > 60s) and let the AI keep
+      // taking XP/farm detours until it's physically impossible to reach the
+      // stairs. With the travel-derived escalation (45s + 5s safety = 50s)
+      // the threshold rises to max(60_000, 50_000) → stays 60_000, so still
+      // false; but with a longer travel estimate the beeline must fire early.
+      const withHighTravel = computeCollapsePanicProfile({
+        elapsedMs: 297_000,
+        deadlineMs: 360_000,
+        staircaseUnlocked: true,
+        staircaseDiscovered: false,
+        playerToStairsTravelMs: 70_000,
+      });
+      expect(withHighTravel.remainingMs).toBe(63_000);
+      expect(withHighTravel.beeline).toBe(true);
+      expect(withHighTravel.travelBeelineActive).toBe(true);
+    });
+
+    it('does NOT escalate before the staircase is unlocked (early prerequisite protection)', () => {
+      // Same remaining/travel as above but staircase still locked → the AI
+      // should still be working on prerequisites (quests, bosses), so we must
+      // NOT fire the travel beeline and starve XP/gold progression.
+      const stillLocked = computeCollapsePanicProfile({
+        elapsedMs: 297_000,
+        deadlineMs: 360_000,
+        staircaseUnlocked: false,
+        staircaseDiscovered: false,
+        playerToStairsTravelMs: 70_000,
+      });
+      expect(stillLocked.remainingMs).toBe(63_000);
+      expect(stillLocked.beeline).toBe(false);
+      expect(stillLocked.travelBeelineActive).toBe(false);
+    });
+
+    it('does NOT escalate once the staircase has been discovered', () => {
+      // After discovery the base BT already commits to the stairs — the
+      // travel threshold is moot and must not override the discovered branch.
+      const discovered = computeCollapsePanicProfile({
+        elapsedMs: 297_000,
+        deadlineMs: 360_000,
+        staircaseUnlocked: true,
+        staircaseDiscovered: true,
+        playerToStairsTravelMs: 70_000,
+      });
+      expect(discovered.beeline).toBe(false);
+      expect(discovered.travelBeelineActive).toBe(false);
+    });
+
+    it('ignores non-finite / negative travel-time inputs (defensive)', () => {
+      const nan = computeCollapsePanicProfile({
+        elapsedMs: 100_000,
+        deadlineMs: 300_000,
+        staircaseUnlocked: true,
+        staircaseDiscovered: false,
+        playerToStairsTravelMs: Number.NaN,
+      });
+      const inf = computeCollapsePanicProfile({
+        elapsedMs: 100_000,
+        deadlineMs: 300_000,
+        staircaseUnlocked: true,
+        staircaseDiscovered: false,
+        playerToStairsTravelMs: Number.POSITIVE_INFINITY,
+      });
+      const neg = computeCollapsePanicProfile({
+        elapsedMs: 100_000,
+        deadlineMs: 300_000,
+        staircaseUnlocked: true,
+        staircaseDiscovered: false,
+        playerToStairsTravelMs: -500,
+      });
+      // 200_000 ms remaining → beeline false regardless; travelBeelineActive
+      // must also be false for all three since inputs were rejected.
+      for (const profile of [nan, inf, neg]) {
+        expect(profile.beeline).toBe(false);
+        expect(profile.travelBeelineActive).toBe(false);
+      }
+    });
+
+    it('does NOT flip travelBeelineActive when the travel estimate is below 60s', () => {
+      // Travel estimate is small (5s + 5s safety = 10s), which does not raise
+      // the beeline threshold above the fixed 60s floor. The eventual beeline
+      // must therefore be attributed to the legacy remaining-time path.
+      const pressure = computeCollapsePanicProfile({
+        elapsedMs: 259_000,
+        deadlineMs: 300_000,
+        staircaseUnlocked: true,
+        staircaseDiscovered: false,
+        playerToStairsTravelMs: 5_000,
+      });
+      expect(pressure.remainingMs).toBe(41_000);
+      expect(pressure.beeline).toBe(true);
+      expect(pressure.travelBeelineActive).toBe(false);
+    });
+
+    it('preserves legacy behavior when playerToStairsTravelMs is omitted', () => {
+      // No optional field → identical to the pre-existing behavior tested
+      // above (60s remaining → beeline).
+      const pressure = computeCollapsePanicProfile({
+        elapsedMs: 240_000,
+        deadlineMs: 300_000,
+        staircaseUnlocked: true,
+        staircaseDiscovered: false,
+      });
+      expect(pressure.beeline).toBe(true);
+      expect(pressure.travelBeelineActive).toBe(false);
+    });
   });
 });

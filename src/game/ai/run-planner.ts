@@ -92,6 +92,15 @@ export interface Floor1RunPlan {
   readonly criticalPathObjective: string;
   readonly remainingMs: number;
   readonly estimatedRequiredMs: number;
+  /**
+   * Sum of {@link RunPlanSegment.travelMs} across every remaining segment. This
+   * is the AI's deterministic straight-line travel-time budget between the
+   * player and every remaining Floor 1 objective node — the perfect-world-
+   * knowledge chain-travel figure that time-based panic/priority layers feed
+   * on top of the raw deadline. Per-segment travel remains accessible on
+   * {@link RunPlanSegment.travelMs} for chain-scoped consumers.
+   */
+  readonly estimatedTravelMs: number;
   readonly safetyBufferMs: number;
   readonly slackMs: number;
   readonly urgency: number;
@@ -367,6 +376,7 @@ export function estimateFloor1RunPlan(
   }
 
   const estimatedBeforeBuffer = segments.reduce((sum, segment) => sum + segment.estimatedMs, 0);
+  const estimatedTravelMs = segments.reduce((sum, segment) => sum + segment.travelMs, 0);
   const estimatedRequiredMs = estimatedBeforeBuffer + params.safetyBufferMs;
   const remainingMs = Math.max(0, snapshot.deadlineMs - snapshot.nowMs);
   const slackMs = remainingMs - estimatedRequiredMs;
@@ -376,6 +386,7 @@ export function estimateFloor1RunPlan(
     criticalPathObjective: segments[0]?.label ?? 'Floor clear',
     remainingMs,
     estimatedRequiredMs,
+    estimatedTravelMs,
     safetyBufferMs: params.safetyBufferMs,
     slackMs,
     urgency,
