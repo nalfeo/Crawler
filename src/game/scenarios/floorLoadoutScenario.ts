@@ -1,7 +1,7 @@
 import type { GameWorld } from '../../core/world.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { type ModalPickerScenario } from '../../shared/modal-picker.js';
-import { setActiveWeapon } from '../weaponSystem.js';
+import { equipStarterOrFallback } from './starterWeaponEquip.js';
 
 export type Floor1LoadoutChoiceId = 'sword' | 'bow' | 'baseball-bat';
 
@@ -41,7 +41,11 @@ export function applyFloor1LoadoutChoice(
   if (!weaponDef) {
     throw new Error(`Missing weapon definition for floor 1 loadout: ${resolvedChoice}`);
   }
-  setActiveWeapon(world, weaponDef);
+  // Prefer the equipment-driven path so the chosen weapon lands in the
+  // corresponding hand slot(s); falls back to setActiveWeapon when there's no
+  // player, no equipment def, or equip() fails. Shared with
+  // selectFloor1StarterWeapon so both loadout entry points stay in lockstep.
+  equipStarterOrFallback(world, resolvedChoice, weaponDef);
   return resolvedChoice;
 }
 

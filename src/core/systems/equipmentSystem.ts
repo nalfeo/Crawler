@@ -7,7 +7,7 @@
  */
 
 import { addComponent, hasComponent, removeComponent, setComponent } from 'bitecs';
-import { Equipment, BaseStats, EffectiveStats } from '../components.js';
+import { Equipment, BaseStats, EffectiveStats, Player } from '../components.js';
 import type { GameWorld } from '../world.js';
 import { SLOT_REGISTRY, isValidSlotId } from '../../shared/equipment-slots.js';
 import type { EquipmentSlotId } from '../../shared/equipment-slots.js';
@@ -31,6 +31,8 @@ import type {
 } from '../../shared/equipment-types.js';
 import { isInSafeContext } from '../safe-space.js';
 import { applyStatusEffect, clearStatusEffects, isValidSpec } from '../status-effects.js';
+import { getWeaponDef } from '../../shared/weaponDefs.js';
+import { setActiveWeaponDef, clearActiveWeaponDef } from '../active-weapon.js';
 
 // --- Side-map storage ---
 
@@ -355,6 +357,16 @@ export function equip(
     });
   }
 
+  // Weapon-typed equipment: activate the underlying WeaponDef when the player
+  // equips it. Non-player entities silently skip this (equipment is entity-
+  // agnostic in principle; only the player has an active weapon today).
+  if (itemDef.weaponId !== undefined && hasComponent(world.ecs, entity, Player)) {
+    const weaponDef = getWeaponDef(itemDef.weaponId);
+    if (weaponDef !== undefined) {
+      setActiveWeaponDef(world, weaponDef);
+    }
+  }
+
   return { ok: true, instanceId };
 }
 
@@ -396,6 +408,13 @@ export function unequip(
     entity,
     (e) => e.sourceType === 'equipment' && e.sourceId === equipmentSourceId(instId),
   );
+
+  // Weapon-typed equipment: clear the active weapon when the player unequips
+  // it. Non-player entities silently skip this (equipment is entity-agnostic
+  // in principle; only the player has an active weapon today).
+  if (instance.def.weaponId !== undefined && hasComponent(world.ecs, entity, Player)) {
+    clearActiveWeaponDef(world);
+  }
 
   recomputeEffectiveStats(world, entity);
   return { ok: true, item: instance };

@@ -25,6 +25,12 @@ import {
 import { clearMeleeSwingHits } from '../core/systems/meleeSwingSystem.js';
 import { isEntityInSafeSpace } from '../core/safe-space.js';
 import type { GameWorld } from '../core/world.js';
+import {
+  setActiveWeaponDef,
+  clearActiveWeaponDef,
+  getActiveWeaponDef,
+  getActiveWeaponGeneration,
+} from '../core/active-weapon.js';
 import { TeamId, MeleeSpriteId, WEAPON, WeaponType } from '../shared/constants.js';
 import type { WeaponDef } from '../shared/weaponDefs.js';
 import { createLogger } from '../shared/logger.js';
@@ -34,10 +40,13 @@ interface WeaponState {
   lastFireMs: number;
   aimX: number;
   aimY: number;
-  /** Active weapon definition id, or undefined when no weapon is equipped. */
-  activeWeaponId: string | undefined;
-  /** Cached weapon def for the active weapon. */
-  activeWeaponDef: WeaponDef | undefined;
+  /**
+   * Last active-weapon generation observed by this system. When the core
+   * `active-weapon` module bumps its generation on a real weapon switch we
+   * reset `lastFireMs` so the new weapon can fire immediately instead of
+   * inheriting the previous weapon's cooldown state.
+   */
+  lastActiveGeneration: number;
 }
 
 interface EnemyTarget {
@@ -67,13 +76,28 @@ function getWeaponState(world: GameWorld): WeaponState {
       lastFireMs: -WEAPON.FIRE_RATE_MS,
       aimX: 1,
       aimY: 0,
-      activeWeaponId: undefined,
-      activeWeaponDef: undefined,
+      lastActiveGeneration: getActiveWeaponGeneration(world),
     };
     weaponStates.set(world, state);
   }
 
   return state;
+}
+
+/**
+ * Sync this system's local fire-timer bookkeeping with the core active-weapon
+ * generation. Called each tick before we consult `getActiveWeaponDef` — on a
+ * real switch we reset `lastFireMs` so the freshly-equipped weapon can fire
+ * immediately.
+ */
+function syncActiveWeaponGeneration(world: GameWorld, state: WeaponState): void {
+  const generation = getActiveWeaponGeneration(world);
+  if (generation === state.lastActiveGeneration) {
+    return;
+  }
+  state.lastActiveGeneration = generation;
+  const def = getActiveWeaponDef(world);
+  state.lastFireMs = def === undefined ? world.elapsedMs : world.elapsedMs - def.cooldownMs;
 }
 
 function normalizeVector(x: number, y: number): { x: number; y: number } {
@@ -671,18 +695,35 @@ function dispatchAttack(
   }
 }
 
-/** Set the active weapon definition for the weapon system. */
+/**
+ * Set the active weapon definition for the weapon system.
+ *
+ * Thin wrapper around `setActiveWeaponDef` in `core/active-weapon.ts` — kept
+ * as a game-layer entry point so labs and legacy callers that bypass the
+ * equipment path (weapon-lab, gore-lab, abilities-lab) can drive the active
+ * weapon directly. The equipment-driven path (`equipmentSystem.equip`) writes
+ * to the same core state, so both paths converge on one source of truth.
+ *
+ * Also eagerly syncs this system's local fire-timer bookkeeping: captures
+ * `world.elapsedMs - def.cooldownMs` into `lastFireMs` immediately so callers
+ * that swap weapons and then rewind `elapsedMs` for testing (see
+ * `behavior-tree-ai.test.ts`) see a fully-charged weapon at the wall-clock
+ * moment of the swap, not at the next tick.
+ */
 export function setActiveWeapon(world: GameWorld, weaponDef: WeaponDef): void {
+  const currentId = getActiveWeaponDef(world)?.id;
+  setActiveWeaponDef(world, weaponDef);
   const state = getWeaponState(world);
-  if (state.activeWeaponId === weaponDef.id) {
-    // Update def for live tuning without resetting cooldown
-    state.activeWeaponDef = weaponDef;
+  const isSwitch = currentId !== weaponDef.id;
+  state.lastActiveGeneration = getActiveWeaponGeneration(world);
+  if (isSwitch) {
+    // Real switch: charge the new weapon so it can fire immediately.
+    state.lastFireMs = world.elapsedMs - weaponDef.cooldownMs;
+  }
+  if (!isSwitch) {
     logger.debug('Updated active weapon tuning in place', { weaponId: weaponDef.id });
     return;
   }
-  state.activeWeaponId = weaponDef.id;
-  state.activeWeaponDef = weaponDef;
-  state.lastFireMs = world.elapsedMs - weaponDef.cooldownMs;
   logger.info('Equipped active weapon', {
     weaponId: weaponDef.id,
     weaponType: weaponDef.weaponType,
@@ -692,16 +733,17 @@ export function setActiveWeapon(world: GameWorld, weaponDef: WeaponDef): void {
 
 /** Clear the active weapon. The player will not auto-fire until a new weapon is set. */
 export function clearActiveWeapon(world: GameWorld): void {
+  const previousWeaponId = getActiveWeaponDef(world)?.id;
+  clearActiveWeaponDef(world);
   const state = getWeaponState(world);
-  const previousWeaponId = state.activeWeaponId;
-  state.activeWeaponId = undefined;
-  state.activeWeaponDef = undefined;
+  state.lastActiveGeneration = getActiveWeaponGeneration(world);
+  state.lastFireMs = world.elapsedMs;
   logger.info('Cleared active weapon', { previousWeaponId });
 }
 
 /** Get the active weapon definition, if any. */
 export function getActiveWeapon(world: GameWorld): WeaponDef | undefined {
-  return getWeaponState(world).activeWeaponDef;
+  return getActiveWeaponDef(world);
 }
 
 /**
@@ -715,7 +757,8 @@ export function getActiveWeaponReadiness(
   world: GameWorld,
 ): { ready: boolean; remainingMs: number; cooldownMs: number } | null {
   const state = getWeaponState(world);
-  const def = state.activeWeaponDef;
+  syncActiveWeaponGeneration(world, state);
+  const def = getActiveWeaponDef(world);
   if (def === undefined) {
     return null;
   }
@@ -734,6 +777,7 @@ export function weaponSystem(world: GameWorld): void {
   }
 
   const state = getWeaponState(world);
+  syncActiveWeaponGeneration(world, state);
   updateAimFromVelocity(world, player, state);
 
   const playerX = world.stores.position.x[player]!;
@@ -755,8 +799,9 @@ export function weaponSystem(world: GameWorld): void {
   }
 
   // Data-driven weapon mode
-  if (state.activeWeaponDef !== undefined) {
-    const def = state.activeWeaponDef;
+  const activeDef = getActiveWeaponDef(world);
+  if (activeDef !== undefined) {
+    const def = activeDef;
 
     // Trap weapons deploy at the player's feet regardless of enemy proximity.
     if (def.weaponType === WeaponType.TRAP) {

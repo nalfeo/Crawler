@@ -39,6 +39,14 @@ export interface EquipmentItemDef {
    * those two field values here are only placeholders.
    */
   readonly grantsStatusEffects?: readonly StatusEffectSpec[];
+  /**
+   * When present, equipping this item activates the corresponding WeaponDef
+   * (from `weaponDefs.ts`) as the player's active weapon; unequipping clears
+   * it. Handedness is encoded via `slots`: `['mainHand']` for one-handed,
+   * `['mainHand', 'offHand']` for two-handed weapons. Non-player entities
+   * ignore this field — only the player has an active weapon.
+   */
+  readonly weaponId?: string;
 }
 
 // --- Equipment Instance ---
