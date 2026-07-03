@@ -281,6 +281,13 @@ interface SliceMapResponse {
   cells: SliceBboxEntry[];
   sheetFile: string;
   algorithm?: string;
+  /**
+   * False when the slice map was computed WITHOUT the brief's `emptyCells`
+   * (the brief was unavailable). In that degraded mode cells are renumbered
+   * sequentially, so `cell.index` no longer maps to a run's `variantIndex` and
+   * must not be trusted for selection / highlight / raw-cell cropping.
+   */
+  emptyCellsApplied?: boolean;
 }
 
 interface PostprocessDebugTarget {
@@ -4351,7 +4358,12 @@ function render(): void {
       ctx2.fillRect(0, 0, dw, dh);
 
       // Draw each cell with its actual (nudged) bounds
-      const selectedCell = sliceMap.cells.find((c) => c.index === variantIndex) ?? null;
+      // In degraded mode (brief unavailable) cell indices are renumbered and
+      // unreliable, so we do not resolve or highlight a "selected" cell from them.
+      const indicesTrustworthy = sliceMap.emptyCellsApplied !== false;
+      const selectedCell = indicesTrustworthy
+        ? (sliceMap.cells.find((c) => c.index === variantIndex) ?? null)
+        : null;
       for (const cell of sliceMap.cells) {
         const sx = cell.x0;
         const sy = cell.y0;
@@ -4359,7 +4371,7 @@ function render(): void {
         const dy = Math.round(sy * scale);
         const dCellW = Math.round(cell.w * scale);
         const dCellH = Math.round(cell.h * scale);
-        const isSelected = cell.index === variantIndex;
+        const isSelected = indicesTrustworthy && cell.index === variantIndex;
         hitCells.push({ cell, x: dx, y: dy, w: dCellW, h: dCellH });
 
         if (cell.empty) {
@@ -4397,15 +4409,22 @@ function render(): void {
         selectedCell && !selectedCell.empty
           ? ` — variant #${variantIndex} at (${selectedCell.x0},${selectedCell.y0}) ${selectedCell.w}×${selectedCell.h}px`
           : '';
+      const degradedNote = indicesTrustworthy
+        ? ''
+        : ' · ⚠ approximate slicing (brief unavailable) — cell indices not authoritative';
       slicingStatus.textContent =
         `${sliceMap.cols}×${sliceMap.rows} grid · ${sliceMap.cellW}×${sliceMap.cellH}px cells` +
         nudgeNote +
-        cellLabel;
+        cellLabel +
+        degradedNote;
       slicingCanvas.style.display = 'block';
     };
 
     slicingCanvas.onclick = (event: MouseEvent): void => {
       if (!debugTarget || hitCells.length === 0) return;
+      // Degraded slice map: cell indices are not authoritative, so click-to-
+      // reselect would jump to the wrong variant. Ignore clicks in that mode.
+      if (getActiveSliceMap()?.emptyCellsApplied === false) return;
       const rect = slicingCanvas.getBoundingClientRect();
       const x = ((event.clientX - rect.left) * slicingCanvas.width) / rect.width;
       const y = ((event.clientY - rect.top) * slicingCanvas.height) / rect.height;
@@ -4505,6 +4524,10 @@ function render(): void {
     const makeSelectedRawCellDataUrl = (): string | null => {
       const activeSliceMap = getActiveSliceMap();
       if (!activeSliceMap || !lastSheetImg || !lastSheetImg.complete) return null;
+      // Degraded slice map: indices are unreliable, so cropping the sheet at
+      // `variantIndex` could return the wrong cell. Return null so the caller
+      // falls back to the index-keyed stored raw `NN.png` (always correct).
+      if (activeSliceMap.emptyCellsApplied === false) return null;
       const selectedCell = activeSliceMap.cells.find(
         (cell) => cell.index === variantIndex && !cell.empty,
       );
@@ -4941,9 +4964,14 @@ function render(): void {
 
         // Cache for live-computed pipeline results (by rawCellUrl)
         const liveResultsCache = new Map<string, LivePostprocessResult>();
+        // Sticky terminal flag: once live postprocess fails for this target we
+        // stop re-hitting /api/postprocess on every rerender and show the
+        // pre-baked pipeline instead. Reset on an explicit user reprocess.
+        let livePostprocessFailed = false;
         let pipelineRenderVersion = 0;
         rerenderPostprocessPipeline = () => {
           liveResultsCache.clear();
+          livePostprocessFailed = false;
           void renderPipelineSteps();
         };
 
@@ -4988,8 +5016,71 @@ function render(): void {
             `f=${appliedBackgroundTweaks.fringeToleranceSq}`;
           let selectedOutputForNextStep: string | null = rawCellSource;
 
-          // If we have briefPath, compute live pipeline steps; otherwise show pre-baked
-          const useLivePostprocess = briefPathStr !== null;
+          // Renders the pre-baked pipeline (per-step PNGs from the run store),
+          // seeded from `initialSource` as the step-0 "before" image. Extracted so
+          // BOTH the no-briefPath path and the live-failure fallback (catch below)
+          // can reuse it; it keeps its OWN `selectedOutput` accumulator so it never
+          // mutates the live branch's `selectedOutputForNextStep`.
+          const renderPrebakedSteps = (initialSource: string | null): void => {
+            let selectedOutput: string | null = initialSource;
+            if (stepEntries.length > 0) {
+              pipelineBody.append(
+                makeReprocessStepBridge(() => {
+                  void renderPipelineSteps();
+                }),
+              );
+            }
+            for (let i = 0; i < stepEntries.length; i++) {
+              const step = stepEntries[i]!;
+              const combinedIdx = i + 1; // 0 = slicing
+              const beforeSrc: string | null = selectedOutput;
+              const selectedBranch = selectedBranches[i]!;
+              const isSkipped = collapsedSteps.has(combinedIdx);
+              pipelineBody.append(
+                makeComparisonStepCard(
+                  step.label,
+                  beforeSrc,
+                  step.afterASrc,
+                  step.afterBSrc,
+                  'B',
+                  selectedBranch,
+                  (branch) => {
+                    const requested = branch === 'B' && step.afterBSrc === null ? 'A' : branch;
+                    if (selectedBranches[i] === requested) return;
+                    selectedBranches[i] = requested;
+                    void renderPipelineSteps();
+                  },
+                  isSkipped,
+                  () => {
+                    if (collapsedSteps.has(combinedIdx)) {
+                      collapsedSteps.delete(combinedIdx);
+                    } else {
+                      collapsedSteps.add(combinedIdx);
+                    }
+                    void renderPipelineSteps();
+                  },
+                ),
+              );
+              if (i < stepEntries.length - 1) {
+                pipelineBody.append(
+                  makeReprocessStepBridge(() => {
+                    void renderPipelineSteps();
+                  }),
+                );
+              }
+              if (isSkipped) {
+                selectedOutput = beforeSrc;
+              } else {
+                selectedOutput =
+                  selectedBranch === 'B' && step.afterBSrc ? step.afterBSrc : step.afterASrc;
+              }
+            }
+            pipelineBody.append(makeFinalOutputCard(finalSrc));
+          };
+
+          // If we have briefPath (and live postprocess hasn't already failed for
+          // this target), compute live pipeline steps; otherwise show pre-baked.
+          const useLivePostprocess = briefPathStr !== null && !livePostprocessFailed;
 
           if (useLivePostprocess) {
             // Compute all live steps from the raw cell
@@ -5083,69 +5174,46 @@ function render(): void {
               const finalOutputSrc = `data:image/png;base64,${liveResult.finalPng}`;
               pipelineBody.append(makeFinalOutputCard(finalOutputSrc));
             } catch (err) {
+              // A newer render (rerender or target switch) may have superseded
+              // this one while we awaited; that newer render already reset
+              // pipelineBody via replaceChildren, so appending now would orphan
+              // stale nodes into it. Bail if superseded.
+              if (renderVersion !== pipelineRenderVersion || renderToken !== debuggerRenderToken) {
+                return;
+              }
+              // Terminal for this target: stop re-hitting /api/postprocess on
+              // subsequent rerenders and fall back to the pre-baked pipeline.
+              livePostprocessFailed = true;
               pipelineBody.append(
                 el('div', {
-                  text: `Live postprocessing failed: ${err instanceof Error ? err.message : String(err)}`,
-                  style: { fontSize: '11px', color: '#fca5a5', marginTop: '10px' },
+                  text: `Live re-processing unavailable (${err instanceof Error ? err.message : String(err)}). Showing pre-baked pipeline output.`,
+                  style: {
+                    fontSize: '11px',
+                    color: '#fbbf24',
+                    marginTop: '10px',
+                    marginBottom: '6px',
+                  },
                 }),
               );
+              renderPrebakedSteps(rawCellSource);
             }
           } else {
-            // Fall back to pre-baked images if no briefPath
-            if (stepEntries.length > 0) {
+            // No briefPath, or live postprocess already failed for this target:
+            // render the pre-baked pipeline images.
+            if (livePostprocessFailed && briefPathStr !== null) {
               pipelineBody.append(
-                makeReprocessStepBridge(() => {
-                  void renderPipelineSteps();
+                el('div', {
+                  text: 'Live re-processing unavailable. Showing pre-baked pipeline output.',
+                  style: {
+                    fontSize: '11px',
+                    color: '#fbbf24',
+                    marginTop: '10px',
+                    marginBottom: '6px',
+                  },
                 }),
               );
             }
-            for (let i = 0; i < stepEntries.length; i++) {
-              const step = stepEntries[i]!;
-              const combinedIdx = i + 1; // 0 = slicing
-              const beforeSrc: string | null = selectedOutputForNextStep;
-              const selectedBranch = selectedBranches[i]!;
-              const isSkipped = collapsedSteps.has(combinedIdx);
-              pipelineBody.append(
-                makeComparisonStepCard(
-                  step.label,
-                  beforeSrc,
-                  step.afterASrc,
-                  step.afterBSrc,
-                  'B',
-                  selectedBranch,
-                  (branch) => {
-                    const requested = branch === 'B' && step.afterBSrc === null ? 'A' : branch;
-                    if (selectedBranches[i] === requested) return;
-                    selectedBranches[i] = requested;
-                    void renderPipelineSteps();
-                  },
-                  isSkipped,
-                  () => {
-                    if (collapsedSteps.has(combinedIdx)) {
-                      collapsedSteps.delete(combinedIdx);
-                    } else {
-                      collapsedSteps.add(combinedIdx);
-                    }
-                    void renderPipelineSteps();
-                  },
-                ),
-              );
-              if (i < stepEntries.length - 1) {
-                pipelineBody.append(
-                  makeReprocessStepBridge(() => {
-                    void renderPipelineSteps();
-                  }),
-                );
-              }
-              if (isSkipped) {
-                selectedOutputForNextStep = beforeSrc;
-              } else {
-                selectedOutputForNextStep =
-                  selectedBranch === 'B' && step.afterBSrc ? step.afterBSrc : step.afterASrc;
-              }
-            }
-
-            pipelineBody.append(makeFinalOutputCard(finalSrc));
+            renderPrebakedSteps(selectedOutputForNextStep);
           }
         };
 

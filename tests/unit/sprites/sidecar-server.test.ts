@@ -445,6 +445,96 @@ describe('buildServer routes (inject)', () => {
     expect(badSheetName.statusCode).toBe(415);
   });
 
+  it('slice-map degrades to 200 with emptyCellsApplied:false when the brief is gone', async () => {
+    // A run whose gitignored draft brief was wiped and never mirrored: the brief
+    // is absent from BOTH disk and the store. The debugger must still get a slice
+    // map (200) so it can render the pre-baked pipeline — just flagged degraded so
+    // the client stops trusting cell indices.
+    const runId = '2026-07-03T00-02-09-e362a01d';
+    const runDir = path.join(root, 'runs', 'tile-corridor-v1', runId);
+    mkdirSync(runDir, { recursive: true });
+    writeFileSync(
+      path.join(runDir, 'summary.json'),
+      JSON.stringify({
+        brief: 'tile-corridor-v1',
+        runId,
+        briefPath: 'briefs/draft/tiles/tile-corridor.yaml',
+        promptHash: 'e362a01d',
+        chosen: { index: 0 },
+        candidates: [{ index: 0, judgeScorecard: null }],
+      }),
+    );
+    writeFileSync(path.join(runDir, 'sheet-00.png'), makeSolidPng(16, 16, [255, 255, 255]));
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/runs/tile-corridor-v1/${runId}/slice-map`,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.emptyCellsApplied).toBe(false);
+    expect(body.algorithm).toBe('content-aware');
+    // Degraded mode cannot honour emptyCells, so no cell is flagged empty (-1).
+    expect(body.cells.every((c: { index: number }) => c.index !== -1)).toBe(true);
+  });
+
+  it('slice-map loads the brief (emptyCellsApplied:true) resolving palette against repoRoot, not cwd', async () => {
+    // Regression guard for the latent projectRoot bug: the handler must resolve
+    // palette / type-defaults against deps.repoRoot. We use a palette id that
+    // exists ONLY under the temp repo root (absent from the real repo cwd), so
+    // WITHOUT `{ projectRoot }` the palette loader reads cwd, throws, and degrades
+    // (emptyCellsApplied:false); WITH it the brief loads and we get true.
+    mkdirSync(path.join(root, 'data', 'palettes'), { recursive: true });
+    mkdirSync(path.join(root, 'data', 'sprite-types'), { recursive: true });
+    writeFileSync(
+      path.join(root, 'data', 'palettes', 'iso-projroot-pal.json'),
+      '[[0,0,0],[255,255,255]]',
+    );
+    // Copy the real weapon type-defaults so the minimal brief validates under the
+    // temp root (defaults=null would drop required fields the strict schema needs).
+    writeFileSync(
+      path.join(root, 'data', 'sprite-types', 'weapon.json'),
+      readFileSync(path.join(process.cwd(), 'data', 'sprite-types', 'weapon.json'), 'utf8'),
+    );
+    mkdirSync(path.join(root, 'briefs'), { recursive: true });
+    writeFileSync(
+      path.join(root, 'briefs', 'iso-weapon.yaml'),
+      [
+        'type: weapon',
+        'name: iso-weapon',
+        'description: isolated projectRoot weapon',
+        'size: { width: 16, height: 16 }',
+        'palette: { id: iso-projroot-pal }',
+        'anchor: { x: 8, y: 14 }',
+        'references:',
+        '  - { path: public/assets/ref-a.png }',
+        '  - { path: public/assets/ref-b.png }',
+      ].join('\n'),
+    );
+    const runId = '2026-06-04T12-00-00-abcdef01';
+    const runDir = path.join(root, 'runs', 'iso-weapon', runId);
+    mkdirSync(runDir, { recursive: true });
+    writeFileSync(
+      path.join(runDir, 'summary.json'),
+      JSON.stringify({
+        brief: 'iso-weapon',
+        runId,
+        briefPath: 'briefs/iso-weapon.yaml',
+        promptHash: 'abcdef01',
+        chosen: { index: 0 },
+        candidates: [{ index: 0, judgeScorecard: null }],
+      }),
+    );
+    writeFileSync(path.join(runDir, 'sheet-00.png'), makeSolidPng(16, 16, [255, 255, 255]));
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/runs/iso-weapon/${runId}/slice-map`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().emptyCellsApplied).toBe(true);
+  });
+
   it('GET /api/runs/:brief/:run/sheet/:filename serves sheet PNGs', async () => {
     const runDir = path.join(root, 'runs', 'iron-sword', '2026-06-04T12-00-00-deadbeef');
     const sheet = Buffer.from('PNG-SHEET');
@@ -1086,6 +1176,87 @@ describe('workflow brief durability (Phase 2 re-materialise / mirror)', () => {
     expect(res.statusCode).toBe(404);
     expect(res.json().error).toBe('brief-not-found');
     expect(enqueued).toHaveLength(0);
+  });
+
+  it('generate mirrors an on-disk brief into the store (prevention)', async () => {
+    // The brief is present on disk but NOT yet in the store. Generating must
+    // mirror it so a later checkpoint wipe stays recoverable.
+    const briefRel = 'briefs/draft/items/green-axe/green-axe.yaml';
+    const briefAbs = path.join(root, briefRel);
+    mkdirSync(path.dirname(briefAbs), { recursive: true });
+    const yaml = 'name: green-axe\ntype: item\n';
+    writeFileSync(briefAbs, yaml);
+    expect(await store.has(workflowBriefKey(briefRel))).toBe(false);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/generate',
+      headers: { 'content-type': 'application/json' },
+      payload: { briefPath: briefRel },
+    });
+    expect(res.statusCode).toBe(202);
+    expect(await store.has(workflowBriefKey(briefRel))).toBe(true);
+    expect((await store.get(workflowBriefKey(briefRel))).toString('utf8')).toBe(yaml);
+  });
+
+  it('postprocess 404s when the brief is missing from both disk and store', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/postprocess',
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        briefPath: 'briefs/draft/tiles/nope.yaml',
+        rawPng: makeSolidPng(16, 16, [255, 255, 255]).toString('base64'),
+      },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toBe('brief-not-found');
+  });
+
+  it('postprocess re-materialises a wiped brief from the store and runs the pipeline', async () => {
+    const briefRel = 'briefs/draft/weapons/rusty-dagger.yaml';
+    const briefAbs = path.join(root, briefRel);
+    mkdirSync(path.join(root, 'data', 'palettes'), { recursive: true });
+    mkdirSync(path.join(root, 'data', 'sprite-types'), { recursive: true });
+    writeFileSync(
+      path.join(root, 'data', 'palettes', 'kenney-roguelike.json'),
+      '[[0,0,0],[255,255,255]]',
+    );
+    writeFileSync(
+      path.join(root, 'data', 'sprite-types', 'weapon.json'),
+      readFileSync(path.join(process.cwd(), 'data', 'sprite-types', 'weapon.json'), 'utf8'),
+    );
+    const yaml = [
+      'type: weapon',
+      'name: rusty-dagger',
+      'description: a rusty dagger',
+      'size: { width: 16, height: 16 }',
+      'palette: { id: kenney-roguelike }',
+      'anchor: { x: 8, y: 14 }',
+      'references:',
+      '  - { path: public/assets/ref-a.png }',
+      '  - { path: public/assets/ref-b.png }',
+      '',
+    ].join('\n');
+    // Only in the store — the local (gitignored) draft copy was "wiped".
+    await store.put(workflowBriefKey(briefRel), Buffer.from(yaml, 'utf8'));
+    expect(existsSync(briefAbs)).toBe(false);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/postprocess',
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        briefPath: briefRel,
+        rawPng: makeSolidPng(16, 16, [255, 255, 255]).toString('base64'),
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(typeof body.finalPng).toBe('string');
+    expect(Array.isArray(body.steps)).toBe(true);
+    // The brief was restored to disk as a side effect of recovery.
+    expect(existsSync(briefAbs)).toBe(true);
   });
 });
 

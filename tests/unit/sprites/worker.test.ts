@@ -6,6 +6,8 @@
  * real providers.
  */
 
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
@@ -19,6 +21,7 @@ import type { RunStore } from '../../../scripts/sprites/store/types.js';
 import type { ImageProvider } from '../../../scripts/sprites/provider/types.js';
 import { ProviderError } from '../../../scripts/sprites/provider/types.js';
 import { runWorker, sleep, type WorkerStatus } from '../../../scripts/sprites/worker.js';
+import { workflowBriefKey } from '../../../scripts/sprites/sidecar/workflow-state.js';
 
 // ---------------------------------------------------------------------------
 // Stub generateOne so the worker tests run without real IO.
@@ -76,11 +79,15 @@ function makeStore(): RunStore {
   return {
     backend: 'local',
     async put() {},
+    // Model a store that DOES hold a durably-mirrored brief: brief-path jobs
+    // materialise it back onto disk (into the per-test temp repoRoot) before
+    // generation, exercising the real recovery path. generateOne is mocked, so
+    // the exact YAML bytes are irrelevant to these loop tests.
     async get() {
-      return Buffer.alloc(0);
+      return Buffer.from('name: stub\ntype: item\nreferences:\n  - a.png\n  - b.png\n');
     },
     async has() {
-      return false;
+      return true;
     },
     async list() {
       return [];
@@ -125,6 +132,17 @@ const fakeSummaryResult = {
 // Tests
 // ---------------------------------------------------------------------------
 
+// Per-test temp repo root so brief materialisation/mirroring writes land in an
+// isolated, auto-cleaned directory instead of polluting the real worktree. A
+// root-level hook applies to every describe block in this file.
+let repoRoot: string;
+beforeEach(() => {
+  repoRoot = mkdtempSync(path.join(tmpdir(), 'crawler-worker-'));
+});
+afterEach(() => {
+  rmSync(repoRoot, { recursive: true, force: true });
+});
+
 describe('runWorker', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -142,7 +160,7 @@ describe('runWorker', () => {
     await runWorker({
       queue: makeQueue([]),
       store: makeStore(),
-      repoRoot: '/tmp',
+      repoRoot,
       provider: stubProvider,
       signal: controller.signal,
       onStatus: (s) => statuses.push(s),
@@ -168,7 +186,7 @@ describe('runWorker', () => {
     await runWorker({
       queue,
       store: makeStore(),
-      repoRoot: '/tmp',
+      repoRoot,
       provider: stubProvider,
       signal: controller.signal,
       pollIntervalMs: 0, // don't actually wait
@@ -196,7 +214,7 @@ describe('runWorker', () => {
     await runWorker({
       queue,
       store: makeStore(),
-      repoRoot: '/tmp',
+      repoRoot,
       provider: stubProvider,
       signal: controller.signal,
       pollIntervalMs: 0,
@@ -229,7 +247,7 @@ describe('runWorker', () => {
     await runWorker({
       queue,
       store: makeStore(),
-      repoRoot: '/tmp',
+      repoRoot,
       provider: stubProvider,
       signal: controller.signal,
       pollIntervalMs: 0,
@@ -266,7 +284,7 @@ describe('runWorker', () => {
     await runWorker({
       queue,
       store: makeStore(),
-      repoRoot: '/repo',
+      repoRoot,
       provider: stubProvider,
       signal: controller.signal,
       pollIntervalMs: 0,
@@ -275,9 +293,78 @@ describe('runWorker', () => {
 
     expect(mockGenerate).toHaveBeenCalledWith(
       expect.objectContaining({
-        briefPath: path.resolve('/repo', 'briefs/weapons/iron-sword.yaml'),
-        repoRoot: '/repo',
+        briefPath: path.resolve(repoRoot, 'briefs/weapons/iron-sword.yaml'),
+        repoRoot,
       }),
+    );
+  });
+
+  it('drops a brief-path job as a permanent failure when the brief is absent from disk and store', async () => {
+    // The referenced brief exists in neither the worktree nor the store, so no
+    // retry can conjure the missing bytes. The job must be dropped (acked) on the
+    // first delivery and never reach generateOne, rather than retried to the cap.
+    const ack = vi.fn().mockResolvedValue(undefined);
+    const request = makeRequest('ghost-brief');
+    const statuses: WorkerStatus[] = [];
+    const controller = new AbortController();
+    const emptyStore: RunStore = {
+      ...makeStore(),
+      async has() {
+        return false;
+      },
+    };
+
+    const queue = makeQueue([makeMessage(request, ack), null]);
+    await runWorker({
+      queue,
+      store: emptyStore,
+      repoRoot,
+      provider: stubProvider,
+      signal: controller.signal,
+      pollIntervalMs: 0,
+      onStatus: (s) => {
+        statuses.push(s);
+        if (s.type === 'error') controller.abort();
+      },
+    });
+
+    expect(mockGenerate).not.toHaveBeenCalled();
+    expect(ack).toHaveBeenCalledOnce();
+    const err = statuses.find((s) => s.type === 'error') as Extract<
+      WorkerStatus,
+      { type: 'error' }
+    >;
+    expect(err).toBeDefined();
+    expect(err.dropped).toBe(true);
+    expect(err.error.message).toMatch(/brief/i);
+  });
+
+  it('mirrors the brief into the store on a successful brief-path run', async () => {
+    // Path-level durability: a worker-produced run mirrors its (recovered) brief
+    // back under the stable workflow-briefs key, so a later checkpoint wipe of the
+    // gitignored draft is recoverable even for CLI-enqueued jobs.
+    mockGenerate.mockResolvedValueOnce(fakeSummaryResult as never);
+    const put = vi.fn().mockResolvedValue(undefined);
+    const store: RunStore = { ...makeStore(), put };
+    const request = makeRequest('iron-sword');
+    const controller = new AbortController();
+
+    const queue = makeQueue([makeMessage(request, vi.fn().mockResolvedValue(undefined)), null]);
+    await runWorker({
+      queue,
+      store,
+      repoRoot,
+      provider: stubProvider,
+      signal: controller.signal,
+      pollIntervalMs: 0,
+      onStatus: (s) => {
+        if (s.type === 'done') controller.abort();
+      },
+    });
+
+    expect(put).toHaveBeenCalledWith(
+      workflowBriefKey('briefs/weapons/iron-sword.yaml'),
+      expect.any(Buffer),
     );
   });
 
@@ -304,7 +391,7 @@ describe('runWorker', () => {
     await runWorker({
       queue,
       store: makeStore(),
-      repoRoot: '/repo',
+      repoRoot,
       provider: stubProvider,
       textProvider: null,
       synthProvider: {} as never,
@@ -338,7 +425,7 @@ describe('runWorker', () => {
     await runWorker({
       queue,
       store: makeStore(),
-      repoRoot: '/repo',
+      repoRoot,
       provider: stubProvider,
       textProvider: null,
       synthProvider: {} as never,
@@ -427,6 +514,7 @@ function makeResurfacingQueue(
  */
 async function drive(opts: {
   queue: AssetQueue;
+  store?: RunStore;
   comment?: (issueNumber: number, body: string) => Promise<void>;
   issueJob?: boolean;
   abortOn: WorkerStatus['type'] | ((s: WorkerStatus) => boolean);
@@ -439,8 +527,8 @@ async function drive(opts: {
       : (s: WorkerStatus) => s.type === opts.abortOn;
   await runWorker({
     queue: opts.queue,
-    store: makeStore(),
-    repoRoot: '/repo',
+    store: opts.store ?? makeStore(),
+    repoRoot,
     provider: stubProvider,
     textProvider: null,
     ...(opts.issueJob ? { synthProvider: {} as never, briefSelectorProvider: {} as never } : {}),
@@ -622,6 +710,38 @@ describe('runWorker failure handling (poison-message policy)', () => {
     expect(deliveries()).toBe(2); // fail@1 (no ack), succeed@2 (ack)
     expect(ack).toHaveBeenCalledOnce();
     expect(comment).not.toHaveBeenCalled();
+  });
+
+  it('retries a TRANSIENT store outage during brief recovery instead of dropping it as not-found', async () => {
+    // Regression: the brief is NOT on disk but IS in the store, and the download
+    // errors on the first delivery (network blip). materializeBriefFromStore must
+    // THROW (not return false), so the worker treats it as transient and retries —
+    // never mistaking a store outage for a permanently-missing brief and dropping
+    // a recoverable job. On redelivery the read succeeds and the run completes.
+    let getCalls = 0;
+    const flakyStore: RunStore = {
+      ...makeStore(),
+      async get() {
+        getCalls += 1;
+        if (getCalls === 1) throw new Error('transient store read failure');
+        return Buffer.from('name: stub\ntype: item\nreferences:\n  - a.png\n  - b.png\n');
+      },
+    };
+    mockGenerate.mockResolvedValueOnce(fakeSummaryResult as never);
+    const comment = vi.fn().mockResolvedValue(undefined);
+    const { queue, ack, deliveries } = makeResurfacingQueue(makeRequest('iron-sword'));
+
+    const statuses = await drive({ queue, store: flakyStore, comment, abortOn: 'done' });
+
+    expect(deliveries()).toBe(2); // transient store read@1 (no ack), recover+succeed@2 (ack)
+    expect(ack).toHaveBeenCalledOnce();
+    expect(comment).not.toHaveBeenCalled();
+    expect(mockGenerate).toHaveBeenCalledOnce(); // only the successful 2nd delivery
+    // The first-delivery error must be a transient (non-dropped) failure, proving
+    // it was retried rather than permanently dropped like a BriefNotFoundError.
+    // The transient path emits an `error` status without a `dropped` flag.
+    const transient = statuses.filter((s) => s.type === 'error' && !s.dropped);
+    expect(transient).toHaveLength(1);
   });
 });
 
