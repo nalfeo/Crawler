@@ -1,7 +1,34 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { resolveContextWindow, computeParallelStats, buildSummary } from '../analyzer.mjs';
+import {
+  resolveContextWindow,
+  computeParallelStats,
+  buildSummary,
+  isSafeSessionId,
+} from '../analyzer.mjs';
+
+// --- isSafeSessionId ------------------------------------------------------
+
+test('isSafeSessionId accepts normal session ids', () => {
+  assert.equal(isSafeSessionId('4759f218-3740-48c9-836a-adefe575f059'), true);
+  assert.equal(isSafeSessionId('abc123'), true);
+});
+
+test('isSafeSessionId rejects path traversal and separators', () => {
+  assert.equal(isSafeSessionId('../secrets'), false);
+  assert.equal(isSafeSessionId('a/b'), false);
+  assert.equal(isSafeSessionId('a\\b'), false);
+  assert.equal(isSafeSessionId('..'), false);
+  assert.equal(isSafeSessionId('a\0b'), false);
+});
+
+test('isSafeSessionId rejects empty and non-string input', () => {
+  assert.equal(isSafeSessionId(''), false);
+  assert.equal(isSafeSessionId(null), false);
+  assert.equal(isSafeSessionId(undefined), false);
+  assert.equal(isSafeSessionId(42), false);
+});
 
 // --- resolveContextWindow -------------------------------------------------
 

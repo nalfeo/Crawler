@@ -70,6 +70,26 @@ export function resolveContextWindow(model) {
 
 const cache = new Map(); // sessionId → { mtimeMs, summary }
 
+/**
+ * A session id is interpolated into a filesystem path under
+ * ~/.copilot/session-state. Reject anything containing a path separator, a
+ * `..` traversal segment, or a NUL byte so a caller cannot escape that
+ * directory (defense-in-depth — the loopback server is local-only, but the id
+ * flows unvalidated from the HTTP route and the analyze_session action).
+ * @param {unknown} id
+ * @returns {boolean}
+ */
+export function isSafeSessionId(id) {
+  return (
+    typeof id === 'string' &&
+    id.length > 0 &&
+    !id.includes('/') &&
+    !id.includes('\\') &&
+    !id.includes('..') &&
+    !id.includes('\0')
+  );
+}
+
 function sessionEventsPath(sessionId) {
   return join(homedir(), '.copilot', 'session-state', sessionId, 'events.jsonl');
 }
@@ -95,6 +115,7 @@ function toEpochMs(iso) {
  * @returns {Promise<object|null>} summary, or null if the log is missing.
  */
 export async function analyzeSession(sessionId, opts = {}) {
+  if (!isSafeSessionId(sessionId)) return null;
   const path = sessionEventsPath(sessionId);
   let stat;
   try {

@@ -379,10 +379,18 @@ const CLIENT_SCRIPT = `
   function viewTokens(s) {
     const t = s.totals.tokens;
     const budget = s.modelContextBudget || 0;
+    // System-prompt + tool-definitions overhead. Exact values are only recorded
+    // at compaction boundaries (contextEvents[].systemTokens); use the latest
+    // observed value when present, else fall back to a rough fixed estimate and
+    // label the bar "(est)" so it does not read as measured data.
+    const SYSTEM_TOKENS_ESTIMATE = 9600;
+    const observedSystem = s.contextEvents.filter((c) => c.systemTokens > 0).map((c) => c.systemTokens).pop();
+    const systemTokens = observedSystem || SYSTEM_TOKENS_ESTIMATE;
+    const systemLabel = observedSystem ? 'System' : 'System (est)';
     const budgetLine = budget ? \`
       <div class="panel">
         <h2>Context-window budget (\${esc(s.budgetModel || 'unknown')})</h2>
-        \${budgetBar('System', 9600, budget, 'var(--api)')}
+        \${budgetBar(systemLabel, systemTokens, budget, 'var(--api)')}
         \${s.compactions.map((c) => budgetBar('Peak at compaction ' + new Date(c.ts).toLocaleTimeString(), c.preTokens || 0, budget, 'var(--warn)')).join('')}
       </div>\` : '';
     const compactionRows = s.compactions.map((c) => \`
@@ -552,7 +560,11 @@ const CLIENT_SCRIPT = `
     const t0 = s.startedAt, t1 = s.endedAt;
     const evs = [];
     for (const t of tools) { evs.push([t.start, 1]); evs.push([t.end, -1]); }
-    evs.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
+    // On tied timestamps process ends (-1) before starts (+1) so tools that
+    // merely touch at a boundary ([0,10] then [10,20]) are not counted as
+    // concurrent. Matches computeParallelStats() in analyzer.mjs so this chart's
+    // peak agrees with the Overview maxParallelism KPI.
+    evs.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
     let active = 0, peak = 0;
     const points = [[0, 0]];
     for (const [ts, delta] of evs) {
