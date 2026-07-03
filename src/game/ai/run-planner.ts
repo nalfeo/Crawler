@@ -76,10 +76,31 @@ export interface RunPlannerParams {
   readonly stairsInteractMs: number;
 }
 
+/**
+ * Broad phase of the Floor 1 critical chain a {@link RunPlanSegment} belongs
+ * to. Chain-scoped panic / prioritization consumers can filter or bucket the
+ * remaining plan by phase without having to parse per-segment stable ids —
+ * `id` remains available for finer-grained decisions. Phases are ordered
+ * roughly along the critical path; a `detour` is off-chain optional work.
+ */
+export type RunPlanSegmentPhase =
+  | 'detour'
+  | 'tutorial'
+  | 'merchant'
+  | 'spell-slime-rat'
+  | 'boss'
+  | 'leave-floor';
+
 export interface RunPlanSegment {
   readonly id: string;
   readonly label: string;
   readonly kind: 'travel' | 'work' | 'boss' | 'detour';
+  /**
+   * Broad critical-chain phase this segment belongs to. See
+   * {@link RunPlanSegmentPhase}. Data-only — behavior is unchanged; downstream
+   * consumers may use it to compute chain-scoped remaining-time / slack.
+   */
+  readonly criticalChainPhase: RunPlanSegmentPhase;
   readonly from: RunPlannerPoint;
   readonly to: RunPlannerPoint;
   readonly travelMs: number;
@@ -138,6 +159,7 @@ export function estimateFloor1RunPlan(
     id: string,
     label: string,
     kind: RunPlanSegment['kind'],
+    phase: RunPlanSegmentPhase,
     to: RunPlannerPoint,
     workMs: number,
     detail: string,
@@ -147,6 +169,7 @@ export function estimateFloor1RunPlan(
       id,
       label,
       kind,
+      criticalChainPhase: phase,
       from: cursor,
       to,
       travelMs,
@@ -162,6 +185,7 @@ export function estimateFloor1RunPlan(
       'current-detour',
       snapshot.currentTarget.reason,
       'detour',
+      'detour',
       snapshot.currentTarget,
       params.interactionMs,
       'Committed quest-giver detour before resuming the critical path',
@@ -173,6 +197,7 @@ export function estimateFloor1RunPlan(
       'meet-tutorial-goon',
       'Meet Tutorial Goon',
       'travel',
+      'tutorial',
       snapshot.positions.welcomeOffice,
       params.interactionMs,
       'Accept the opening Floor 1 quest and unlock drops',
@@ -184,6 +209,7 @@ export function estimateFloor1RunPlan(
       'reach-level-2',
       'Reach level 2',
       'work',
+      'tutorial',
       cursor,
       params.level2GrindMs,
       'Farm ambient XP until merchant and spell quests unlock',
@@ -206,6 +232,7 @@ export function estimateFloor1RunPlan(
       'complete-goon-kills',
       'Complete Goon kill quota',
       'work',
+      'tutorial',
       target,
       totalLeft * params.questKillMs,
       `${ratsLeft} rats, ${slimesLeft} slimes, ${totalLeft} total kills remaining`,
@@ -218,6 +245,7 @@ export function estimateFloor1RunPlan(
         'fetch-shop-prize',
         'Fetch merchant prize',
         'travel',
+        'merchant',
         snapshot.positions.questItem,
         params.fetchPickupMs,
         'Collect the merchant fetch item',
@@ -227,6 +255,7 @@ export function estimateFloor1RunPlan(
       'return-shop-prize',
       'Return merchant prize',
       'travel',
+      'merchant',
       snapshot.positions.shop,
       params.interactionMs,
       'Return the merchant fetch item',
@@ -244,6 +273,7 @@ export function estimateFloor1RunPlan(
         'farm-shop-gold',
         'Farm charm gold',
         'work',
+        'merchant',
         target,
         goldOwed * params.goldFarmMs,
         `${goldOwed} gold remaining for the merchant charm`,
@@ -253,6 +283,7 @@ export function estimateFloor1RunPlan(
       'buy-shop-charm',
       'Buy merchant charm',
       'travel',
+      'merchant',
       snapshot.positions.shop,
       params.interactionMs,
       'Buy the merchant reward',
@@ -264,6 +295,7 @@ export function estimateFloor1RunPlan(
       'equip-shop-charm',
       'Equip merchant charm',
       'work',
+      'merchant',
       cursor,
       params.interactionMs,
       'Equip the purchased merchant reward',
@@ -276,6 +308,7 @@ export function estimateFloor1RunPlan(
         'meet-shopkeeper',
         'Meet Shopkeeper',
         'travel',
+        'merchant',
         snapshot.positions.shop,
         params.interactionMs,
         'Start the merchant errand',
@@ -305,6 +338,7 @@ export function estimateFloor1RunPlan(
       'accept-spell-quest',
       'Accept Spell Broker quest',
       'travel',
+      'spell-slime-rat',
       snapshot.positions.spellQuestGiver,
       params.interactionMs,
       'Unlock the Slime Rat room objective',
@@ -316,6 +350,7 @@ export function estimateFloor1RunPlan(
       'kill-slime-rat',
       'Reach and kill Slime Rat',
       'boss',
+      'spell-slime-rat',
       snapshot.positions.slimeRatRoom,
       params.minorBossKillMs,
       'Complete the spell-unlock boss battle',
@@ -325,6 +360,7 @@ export function estimateFloor1RunPlan(
       'finish-slime-rat',
       'Finish Slime Rat',
       'boss',
+      'spell-slime-rat',
       cursor,
       params.minorBossKillMs,
       'Finish the active spell-unlock boss battle',
@@ -336,6 +372,7 @@ export function estimateFloor1RunPlan(
       'claim-spell-reward',
       'Claim spell reward',
       'travel',
+      'spell-slime-rat',
       snapshot.positions.spellQuestGiver,
       params.interactionMs,
       'Claim the spell reward before the final boss',
@@ -347,6 +384,7 @@ export function estimateFloor1RunPlan(
       'kill-staircase-boss',
       'Reach and kill staircase boss',
       'boss',
+      'boss',
       snapshot.positions.staircase,
       params.finalBossKillMs,
       'Unlock the stairs by defeating the final Floor 1 boss',
@@ -355,6 +393,7 @@ export function estimateFloor1RunPlan(
     addSegment(
       'finish-staircase-boss',
       'Finish staircase boss',
+      'boss',
       'boss',
       cursor,
       params.finalBossKillMs,
@@ -367,6 +406,7 @@ export function estimateFloor1RunPlan(
       'take-stairs',
       'Take the stairs',
       'travel',
+      'leave-floor',
       snapshot.positions.staircase,
       params.stairsInteractMs,
       snapshot.staircaseUnlocked

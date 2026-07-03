@@ -126,6 +126,69 @@ describe('estimateFloor1RunPlan', () => {
     expect(plan.criticalPathObjective).toBe('Detouring to Shopkeeper');
     expect(plan.segments[0]?.id).toBe('current-detour');
     expect(plan.segments[0]?.kind).toBe('detour');
+    expect(plan.segments[0]?.criticalChainPhase).toBe('detour');
+  });
+
+  it('tags every segment with a broad critical-chain phase along the canonical path', () => {
+    const plan = estimateFloor1RunPlan(snapshot(), PARAMS);
+
+    // Every segment must carry a phase (no undefined leaks).
+    for (const segment of plan.segments) {
+      expect(segment.criticalChainPhase).toBeDefined();
+    }
+
+    // Canonical id → phase mapping. Chain-scoped consumers rely on this.
+    const phaseById = new Map(plan.segments.map((s) => [s.id, s.criticalChainPhase]));
+    expect(phaseById.get('meet-tutorial-goon')).toBe('tutorial');
+    expect(phaseById.get('reach-level-2')).toBe('tutorial');
+    expect(phaseById.get('complete-goon-kills')).toBe('tutorial');
+    expect(phaseById.get('meet-shopkeeper')).toBe('merchant');
+    expect(phaseById.get('fetch-shop-prize')).toBe('merchant');
+    expect(phaseById.get('return-shop-prize')).toBe('merchant');
+    expect(phaseById.get('buy-shop-charm')).toBe('merchant');
+    expect(phaseById.get('equip-shop-charm')).toBe('merchant');
+    expect(phaseById.get('accept-spell-quest')).toBe('spell-slime-rat');
+    expect(phaseById.get('kill-slime-rat')).toBe('spell-slime-rat');
+    expect(phaseById.get('kill-staircase-boss')).toBe('boss');
+    expect(phaseById.get('take-stairs')).toBe('leave-floor');
+  });
+
+  it('tags active-battle finish segments with their originating phase', () => {
+    const plan = estimateFloor1RunPlan(
+      snapshot({
+        tutorialAccepted: true,
+        playerLevel: 2,
+        questCompleted: true,
+        shopStage: 'complete',
+        bossBattleAccepted: true,
+        slimeRatStarted: true,
+        slimeRatDefeated: false,
+        staircaseStarted: true,
+        staircaseDefeated: false,
+      }),
+      PARAMS,
+    );
+    const phaseById = new Map(plan.segments.map((s) => [s.id, s.criticalChainPhase]));
+    expect(phaseById.get('finish-slime-rat')).toBe('spell-slime-rat');
+    expect(phaseById.get('finish-staircase-boss')).toBe('boss');
+  });
+
+  it('tags the claim-spell-reward segment as spell-slime-rat phase', () => {
+    const plan = estimateFloor1RunPlan(
+      snapshot({
+        tutorialAccepted: true,
+        playerLevel: 2,
+        questCompleted: true,
+        shopStage: 'complete',
+        bossBattleAccepted: true,
+        slimeRatStarted: true,
+        slimeRatDefeated: true,
+        spellsUnlocked: false,
+      }),
+      PARAMS,
+    );
+    const claim = plan.segments.find((s) => s.id === 'claim-spell-reward');
+    expect(claim?.criticalChainPhase).toBe('spell-slime-rat');
   });
 
   it('drops completed prerequisites from the estimate', () => {
