@@ -68,6 +68,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'achievements-ui-lab': '/src/labs/achievements-ui-lab/index.ts',
   'main-scene-probe-lab': '/src/labs/main-scene-probe-lab/index.ts',
   'family-territory-lab': '/src/labs/family-territory-lab/index.ts',
+  'family-boss-den-lab': '/src/labs/family-boss-den-lab/index.ts',
 };
 
 function humanizeLabId(labId: string): string {

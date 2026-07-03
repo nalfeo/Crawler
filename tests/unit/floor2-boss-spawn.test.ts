@@ -65,7 +65,7 @@ describe('spawnFamilyBoss / initializeFloor2Bosses', () => {
     // Each boss's familyIndex maps back to a present family.
     const seenIdx = new Set<number>();
     for (const eid of bossEids) {
-      const idx = familyIdxField[eid];
+      const idx = familyIdxField[eid]!;
       expect(idx).toBeLessThan(roster.presentFamilies.length);
       expect(seenIdx.has(idx)).toBe(false);
       seenIdx.add(idx);
