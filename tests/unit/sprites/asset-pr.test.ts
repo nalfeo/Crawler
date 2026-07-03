@@ -6,6 +6,7 @@
  * the merge math it relies on is covered by asset-issues.test.ts.
  */
 
+import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
 import {
   planAssetCheckin,
@@ -20,6 +21,20 @@ import {
 } from '../../../scripts/sprites/asset-pr.js';
 
 const NOW = new Date('2026-06-09T10:00:00Z');
+
+// Bind the PR-title assertions to the SAME rules the `commit-lint` CI gate uses
+// (commitlint.title.config.cjs) instead of a hand-rolled copy, so the regression
+// test can never pass while CI blocks — e.g. if the allowed type-enum or the
+// header-max-length change, this test picks up the new values automatically.
+const requireCjs = createRequire(import.meta.url);
+const titleCommitlint = requireCjs('../../../commitlint.title.config.cjs') as {
+  rules: {
+    'type-enum': [number, string, readonly string[]];
+    'header-max-length': [number, string, number];
+  };
+};
+const ALLOWED_COMMIT_TYPES = titleCommitlint.rules['type-enum'][2];
+const MAX_HEADER_LENGTH = titleCommitlint.rules['header-max-length'][2];
 
 function asset(over: Partial<CheckinAsset> = {}): CheckinAsset {
   return {
@@ -97,6 +112,26 @@ describe('planConsolidation', () => {
     // it MUST be a conventional commit — regression guard for the missing prefix
     // that blocked every asset PR on commit-lint.
     expect(plan.prTitle).toBe('feat(sprites): add 2 approved assets (2 check-ins)');
+  });
+
+  it('emits a PR title that satisfies the real commit-lint title config (squash-merge subject)', () => {
+    // Squash-merge uses the PR title as the commit subject on main, which the
+    // `commit-lint` CI gate validates via commitlint.title.config.cjs. Assert
+    // against that config's OWN type-enum + header-max-length so the test can't
+    // pass while CI blocks. Regression guard: the title was `Add N approved
+    // assets (…)` with no type prefix, which failed commit-lint (type-empty) and
+    // left the art PR BLOCKED from merging.
+    const single = planConsolidation({ issues: [issues[0]!], now: NOW });
+    const multi = planConsolidation({ issues, now: NOW });
+    const header = /^(?<type>[a-z]+)(?:\([^)]+\))?: .+/;
+    for (const plan of [single, multi]) {
+      const match = header.exec(plan.prTitle);
+      expect(match, `PR title is not conventional-commit format: ${plan.prTitle}`).not.toBeNull();
+      expect(ALLOWED_COMMIT_TYPES).toContain(match!.groups!.type);
+      expect(plan.prTitle.length).toBeLessThanOrEqual(MAX_HEADER_LENGTH);
+    }
+    expect(single.prTitle).toContain('1 approved asset (1 check-in)');
+    expect(multi.prTitle).toContain('2 approved assets (2 check-ins)');
   });
 
   it('dedupes assets that appear in multiple issues by assetPath', () => {
