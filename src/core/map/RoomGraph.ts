@@ -55,6 +55,20 @@ export class RoomGraph {
     }
   }
 
+  /**
+   * Append a neighbour to `id`'s adjacency list, rebuilding the underlying
+   * array (RoomData.neighbors is declared readonly, so we replace the array
+   * instead of mutating it). No-op if the neighbour is already present.
+   */
+  addNeighbor(id: number, neighborId: number): void {
+    const room = this.rooms[id];
+    if (!room) return;
+    if (room.neighbors.includes(neighborId)) return;
+    const next = [...room.neighbors, neighborId];
+    this.rooms[id] = { ...room, neighbors: next };
+    this.spatialCache = null;
+  }
+
   /** Return the first room that has the given role, or undefined if none. */
   getFirstRoomByRole(role: RoomRole): RoomData | undefined {
     return this.rooms.find((r) => r.role === role);

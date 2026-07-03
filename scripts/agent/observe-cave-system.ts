@@ -6,7 +6,6 @@
  */
 
 import { BiomeType } from '../../src/shared/map-types';
-import { RoomRole } from '../../src/shared/map-types';
 import { getGenerator } from '../../src/core/map/generators';
 import { SeededRandom } from '../../src/shared/random';
 
@@ -59,6 +58,3 @@ function countPassable(
   }
   return n;
 }
-
-// Silence unused-import warnings; RoomRole used in log JSON keys implicitly.
-void RoomRole;

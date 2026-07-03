@@ -254,10 +254,9 @@ export class CaveSystemGenerator implements MapGenerator {
         `boss_den_${fi}`,
         fi,
       );
-      const territoryRoom = roomGraph.get(territoryRoomId);
-      if (territoryRoom) {
-        (territoryRoom.neighbors as number[]).push(denRoomId);
-      }
+      // Bidirectional adjacency — RoomGraph.addNeighbor rebuilds the readonly
+      // neighbors array rather than mutating it in place.
+      roomGraph.addNeighbor(territoryRoomId, denRoomId);
     }
 
     // --- 8. Spawn tile ------------------------------------------------
@@ -502,8 +501,12 @@ export class CaveSystemGenerator implements MapGenerator {
    * is a solid-walled bossDenSize × bossDenSize rectangle with a single
    * closed door on the shared edge with the territory.
    *
-   * Returns the chamber bounds + door location, or null if no valid slot
-   * was found near the territory.
+   * Strategy: iterate over the territory's boundary tiles (passable cells
+   * whose neighbour is wall), and for each candidate direction try to fit
+   * a wall-only chamber immediately outside that boundary. This guarantees
+   * the door is adjacent to a tile that BELONGS to this territory.
+   *
+   * Returns the chamber bounds + door location, or null on failure.
    */
   private carveBossDen(
     tileMap: TileMap,
@@ -514,102 +517,98 @@ export class CaveSystemGenerator implements MapGenerator {
     h: number,
   ): { bounds: RoomBounds; door: DoorLocation } | null {
     const size = this.options.bossDenSize;
-    // Try candidate positions offset from territory centroid in each of 8 directions.
+    const territoryCells = new Set(territory.cells);
+
+    // Collect (territoryCell, direction) candidate slots — the direction
+    // is the offset from the territory tile through the door tile into
+    // the chamber interior.
     const dirs: Array<[number, number]> = [
       [1, 0],
       [-1, 0],
       [0, 1],
       [0, -1],
-      [1, 1],
-      [1, -1],
-      [-1, 1],
-      [-1, -1],
     ];
-    // Search radii — start close, grow.
-    for (let radius = size + 1; radius < Math.max(w, h); radius += 2) {
+
+    // Prefer candidates closer to territory centroid for compactness.
+    const candidates: Array<{ tx: number; ty: number; dx: number; dy: number; score: number }> = [];
+    for (const idx of territory.cells) {
+      const tx = idx % w;
+      const ty = (idx / w) | 0;
       for (const [dx, dy] of dirs) {
-        const anchorX = territory.centroidX + dx * radius;
-        const anchorY = territory.centroidY + dy * radius;
-        const bx = anchorX - Math.floor(size / 2);
-        const by = anchorY - Math.floor(size / 2);
-        if (bx < 1 || by < 1 || bx + size >= w - 1 || by + size >= h - 1) continue;
-
-        // The chamber footprint must currently be all wall (no overlap with cavern).
-        let allWall = true;
-        for (let y = by; y < by + size && allWall; y++) {
-          for (let x = bx; x < bx + size && allWall; x++) {
-            if (tileMap.isPassable(x, y)) allWall = false;
-          }
-        }
-        if (!allWall) continue;
-
-        // Find a door tile: adjacent to a passable tile on the territory side.
-        const door = this.findDoorSlot(tileMap, w, h, bx, by, size, territory);
-        if (!door) continue;
-
-        // Carve interior floor.
-        for (let y = by + 1; y < by + size - 1; y++) {
-          for (let x = bx + 1; x < bx + size - 1; x++) {
-            const idx = y * w + x;
-            tileMap.flags[idx] = TilePresets.FLOOR;
-            terrain[idx] = TerrainType.STONE_FLOOR;
-          }
-        }
-        // Walls stay walls (they already are). Door tile:
-        const didx = door.y * w + door.x;
-        tileMap.flags[didx] = TilePresets.DOOR_CLOSED;
-        terrain[didx] = TerrainType.DOOR;
-
-        const bounds: RoomBounds = { x: bx, y: by, width: size, height: size };
-        const doorLoc: DoorLocation = { x: door.x, y: door.y, connectsTo: -1 };
-        void familyIndex;
-        return { bounds, door: doorLoc };
+        const wallX = tx + dx;
+        const wallY = ty + dy;
+        if (wallX < 1 || wallX >= w - 1 || wallY < 1 || wallY >= h - 1) continue;
+        if (tileMap.isPassable(wallX, wallY)) continue; // must be wall (becomes the door)
+        candidates.push({
+          tx,
+          ty,
+          dx,
+          dy,
+          score: Math.hypot(tx - territory.centroidX, ty - territory.centroidY),
+        });
       }
     }
-    return null;
-  }
+    candidates.sort((a, b) => a.score - b.score);
 
-  /**
-   * Find a wall tile on the boss-den perimeter that has a passable neighbour
-   * OUTSIDE the chamber — that neighbour becomes the natural corridor. We
-   * also need to punch a floor tile from the outside into the chamber (via
-   * the door itself). The door tile is on the chamber perimeter.
-   */
-  private findDoorSlot(
-    tileMap: TileMap,
-    w: number,
-    h: number,
-    bx: number,
-    by: number,
-    size: number,
-    _territory: RegionInfo,
-  ): { x: number; y: number } | null {
-    // Perimeter tiles.
-    const perim: Array<{ x: number; y: number }> = [];
-    for (let x = bx; x < bx + size; x++) {
-      perim.push({ x, y: by });
-      perim.push({ x, y: by + size - 1 });
-    }
-    for (let y = by + 1; y < by + size - 1; y++) {
-      perim.push({ x: bx, y });
-      perim.push({ x: bx + size - 1, y });
-    }
-    for (const p of perim) {
-      // The perimeter tile must have a passable neighbour outside the chamber.
-      const outsideDirs: Array<[number, number]> = [];
-      if (p.y === by) outsideDirs.push([0, -1]);
-      if (p.y === by + size - 1) outsideDirs.push([0, 1]);
-      if (p.x === bx) outsideDirs.push([-1, 0]);
-      if (p.x === bx + size - 1) outsideDirs.push([1, 0]);
-      for (const [dx, dy] of outsideDirs) {
-        const nx = p.x + dx;
-        const ny = p.y + dy;
-        if (nx < 1 || nx >= w - 1 || ny < 1 || ny >= h - 1) continue;
-        if (tileMap.isPassable(nx, ny)) {
-          return { x: p.x, y: p.y };
+    for (const cand of candidates) {
+      // The door tile is (cand.tx + cand.dx, cand.ty + cand.dy). The chamber
+      // extends further in the same direction. Pick a chamber footprint that
+      // includes the door on its perimeter facing the territory.
+      const doorX = cand.tx + cand.dx;
+      const doorY = cand.ty + cand.dy;
+
+      // The chamber's near edge is the door. Place the chamber so the door
+      // lies on that near edge, centred perpendicular to the door direction.
+      let bx: number;
+      let by: number;
+      if (cand.dx !== 0) {
+        // Door faces horizontally — chamber extends left or right.
+        bx = cand.dx > 0 ? doorX : doorX - size + 1;
+        by = doorY - Math.floor(size / 2);
+      } else {
+        // Door faces vertically.
+        bx = doorX - Math.floor(size / 2);
+        by = cand.dy > 0 ? doorY : doorY - size + 1;
+      }
+      if (bx < 1 || by < 1 || bx + size >= w - 1 || by + size >= h - 1) continue;
+
+      // Chamber footprint must currently be all wall.
+      let allWall = true;
+      for (let y = by; y < by + size && allWall; y++) {
+        for (let x = bx; x < bx + size && allWall; x++) {
+          if (tileMap.isPassable(x, y)) allWall = false;
         }
       }
+      if (!allWall) continue;
+
+      // Sanity check: door must be on the chamber perimeter.
+      const doorOnPerim =
+        doorX === bx || doorX === bx + size - 1 || doorY === by || doorY === by + size - 1;
+      if (!doorOnPerim) continue;
+
+      // Verify the door's territory-side neighbour is a cell in THIS territory.
+      const outsideIdx = (doorY - cand.dy) * w + (doorX - cand.dx);
+      if (!territoryCells.has(outsideIdx)) continue;
+
+      // Carve interior floor.
+      for (let y = by + 1; y < by + size - 1; y++) {
+        for (let x = bx + 1; x < bx + size - 1; x++) {
+          const idx = y * w + x;
+          tileMap.flags[idx] = TilePresets.FLOOR;
+          terrain[idx] = TerrainType.STONE_FLOOR;
+        }
+      }
+      // Stamp the door tile.
+      const didx = doorY * w + doorX;
+      tileMap.flags[didx] = TilePresets.DOOR_CLOSED;
+      terrain[didx] = TerrainType.DOOR;
+
+      const bounds: RoomBounds = { x: bx, y: by, width: size, height: size };
+      const doorLoc: DoorLocation = { x: doorX, y: doorY, connectsTo: -1 };
+      void familyIndex;
+      return { bounds, door: doorLoc };
     }
+
     return null;
   }
 
