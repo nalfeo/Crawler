@@ -52,11 +52,12 @@ Stages: plan_review ✅ · code_review ✅
   `ResourceId`; `bandFor` (inclusive FR8 bands 0–24 / 25–49 / 50–75 / 76–100);
   `clampRelation`; `getRelation`; `adjustFactionRelation` (clamps + emits
   `{familyId, before, after, band}`); `queueFactionRelationDelta`;
-  `speedMultiplierForHate` (FR9 pure ramp, bracketed by `[base, player]`,
-  no-op at `r >= 25` or `base >= player`); `initializeFactionRelations`;
+  `effectiveSpeedForHate` (FR9 pure ramp returning an absolute effective speed
+  bracketed by `[base, player]`, no-op at `r >= 25` or `base >= player`);
+  `initializeFactionRelations`;
   `selectFloor2Roster` (deterministic — rng-only Fisher-Yates on a copy,
   60% 3 / 40% 4 present families, one contested resource).
-- **System:** `src/core/familyRelationshipSystem.ts` drains
+- **System:** `src/core/systems/familyRelationshipSystem.ts` drains
   `world.factionRelationDeltas` each tick; passive-decay branch guarded (off
   by default because `passiveDecayPerSecond: 0`).
 - **Real-pipeline wiring (rule #15):** system registered in
@@ -71,8 +72,9 @@ Stages: plan_review ✅ · code_review ✅
   debug affordance — the wiring proof lives in the integration test.
 - **Tests (40 new, all passing):**
   - `tests/unit/family-relationship.test.ts` — band boundaries 24/25, 49/50,
-    75/76; clamp at 0/100; event emission; `speedMultiplierForHate` corners
-    (`r=0`, `r=25`, `base>=player`); monotonicity.
+    75/76; clamp at 0/100; event emission; `effectiveSpeedForHate` corners
+    (`r=0`, `r=25`, `base>=player`); monotonicity. (System drain + passive-decay
+    coverage lives in `tests/ecs/familyRelationshipSystem.test.ts`.)
   - `tests/unit/floor2-selection.test.ts` — determinism (same seed → same
     selection); presentCount ∈ {3, 4}; disjoint families; resource in pool.
   - `tests/unit/family-data-schemas.test.ts` — Zod-validate both JSON files;
@@ -105,7 +107,7 @@ system (spawnerSystem inert-ship failure, ADR 0039).
 
 Slice 2 (`CaveSystemGenerator`) is being landed in parallel by a sibling
 session. Slice 3 (AI band-driven targeting + ally follow + hate-ramp _applied_
-at runtime via `speedMultiplierForHate` — helper already lives here) is the
+at runtime via `effectiveSpeedForHate` — helper already lives here) is the
 next dependency for this slice. Slices 4–8 follow the spec.
 
 ## Blockers
@@ -138,7 +140,7 @@ tests/unit/floor2-selection.test.ts` → 4 files, 40 tests, all pass.
 - **Wire the drain system in BOTH pipelines unconditionally.** The drain is a
   near-noop when the queue is empty, so gating it on floor id would add code
   paths without value and would risk Slice 3+ forgetting to enable it.
-- **`speedMultiplierForHate` lives here even though Slice 3 owns its runtime
+- **`effectiveSpeedForHate` lives here even though Slice 3 owns its runtime
   wiring.** Landing the pure helper now keeps Slice 3 from having to touch
   `faction-relations.ts` (avoids a rebase cost for the sibling session).
 - **Deterministic Fisher-Yates on a copy in `selectFloor2Roster`.** Mutating

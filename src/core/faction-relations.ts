@@ -125,10 +125,12 @@ export function clampRelation(relation: number): number {
  * as fast as the player, this returns `baseSpeed` unchanged — the ramp only
  * *raises* slow mobs up to the player's speed, never past it, never lowers.
  *
- * Landing this helper in Slice 1 (rather than Slice 3 where it's consumed)
- * means Slice 3 doesn't have to touch these files.
+ * Returns an *absolute effective speed* bracketed by `[baseSpeed, playerSpeed]`
+ * — not a dimensionless multiplier — so callers apply it directly. Landing this
+ * helper in Slice 1 (rather than Slice 3 where it's consumed) means Slice 3
+ * doesn't have to touch these files.
  */
-export function speedMultiplierForHate(
+export function effectiveSpeedForHate(
   relation: number,
   baseSpeed: number,
   playerSpeed: number,

@@ -177,6 +177,13 @@ export interface GameWorld {
    */
   factionRelationDeltas: FactionRelationDelta[];
   /**
+   * Per-world timestamp (`elapsedMs`) at which `familyRelationshipSystem` last
+   * applied passive relationship decay. `null` until the decay branch first
+   * runs. Held on the world (not a module-level map) so decay timing is
+   * per-world, serializable, and reset with the world.
+   */
+  factionRelationDecayLastMs: number | null;
+  /**
    * Generic per-floor objective tick registered by each floor's scenario at
    * initialisation. `floorObjectiveSystem` calls this every frame so no
    * floor needs its own named system slot in `postSystems`.
@@ -347,6 +354,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     factionRelations: new Map(),
     factionRelationEvents: [],
     factionRelationDeltas: [],
+    factionRelationDecayLastMs: null,
     floorObjectiveTick: null,
     npcs: new Map(),
     enemyAppearanceKeys: new Map(),

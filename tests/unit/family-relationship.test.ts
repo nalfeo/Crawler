@@ -7,24 +7,24 @@ import {
   asFamilyId,
   bandFor,
   clampRelation,
-  familyRelationshipSystem,
+  effectiveSpeedForHate,
   getRelation,
   initializeFactionRelations,
-  queueFactionRelationDelta,
-  speedMultiplierForHate,
 } from '../../src/core/index.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 /**
- * Unit coverage for the Floor 2 Slice 1 faction-relationship model:
+ * Unit coverage for the pure/helper surface of the Floor 2 Slice 1
+ * faction-relationship model:
  *   - `bandFor` boundary math (FR8, inclusive)
  *   - `clampRelation` and `adjustFactionRelation` clamping / event emission
- *   - `speedMultiplierForHate` corners (FR9)
- *   - `familyRelationshipSystem` drain semantics
+ *   - `effectiveSpeedForHate` corners (FR9)
+ *
+ * The `familyRelationshipSystem` (a `src/core` ECS system) is exercised under
+ * `tests/ecs/familyRelationshipSystem.test.ts` per the tests-layer convention.
  */
 
 const goblins = asFamilyId('goblins');
-const llamas = asFamilyId('llamas');
 
 describe('bandFor — inclusive boundaries per FR8', () => {
   it('classifies hate (0..24)', () => {
@@ -112,67 +112,40 @@ describe('adjustFactionRelation', () => {
   });
 });
 
-describe('speedMultiplierForHate — FR9 corners', () => {
+describe('effectiveSpeedForHate — FR9 corners', () => {
   it('returns baseSpeed at r=25 (top of hate band)', () => {
-    expect(speedMultiplierForHate(25, 1, 3)).toBe(1);
+    expect(effectiveSpeedForHate(25, 1, 3)).toBe(1);
   });
 
   it('matches player speed at r=0', () => {
-    expect(speedMultiplierForHate(0, 1, 3)).toBe(3);
+    expect(effectiveSpeedForHate(0, 1, 3)).toBe(3);
   });
 
   it('interpolates linearly between r=0 and r=25', () => {
     // r=12.5 → boost = 0.5 → 1 + 0.5*(3-1) = 2
-    expect(speedMultiplierForHate(12.5, 1, 3)).toBe(2);
+    expect(effectiveSpeedForHate(12.5, 1, 3)).toBe(2);
   });
 
   it('never lowers a mob whose base speed already exceeds the player', () => {
-    expect(speedMultiplierForHate(0, 5, 3)).toBe(5);
+    expect(effectiveSpeedForHate(0, 5, 3)).toBe(5);
   });
 
   it('never exceeds the player speed', () => {
-    const s = speedMultiplierForHate(0, 1, 3);
+    const s = effectiveSpeedForHate(0, 1, 3);
     expect(s).toBeLessThanOrEqual(3);
   });
 
   it('is a noop outside the hate band', () => {
-    expect(speedMultiplierForHate(45, 2, 4)).toBe(2);
-    expect(speedMultiplierForHate(76, 2, 4)).toBe(2);
+    expect(effectiveSpeedForHate(45, 2, 4)).toBe(2);
+    expect(effectiveSpeedForHate(76, 2, 4)).toBe(2);
   });
 
   it('is monotonically non-increasing in relation between 0 and 25', () => {
-    let prev = speedMultiplierForHate(0, 1, 3);
+    let prev = effectiveSpeedForHate(0, 1, 3);
     for (let r = 1; r <= 25; r++) {
-      const s = speedMultiplierForHate(r, 1, 3);
+      const s = effectiveSpeedForHate(r, 1, 3);
       expect(s).toBeLessThanOrEqual(prev + 1e-9);
       prev = s;
     }
-  });
-});
-
-describe('familyRelationshipSystem drain semantics', () => {
-  it('applies queued deltas via adjustFactionRelation and clears the queue', () => {
-    const world = createTestWorld();
-    initializeFactionRelations(world, [goblins, llamas]);
-    queueFactionRelationDelta(world, { familyId: goblins, delta: 10, reason: 'test' });
-    queueFactionRelationDelta(world, { familyId: llamas, delta: -20, reason: 'test' });
-
-    familyRelationshipSystem(world);
-
-    expect(world.factionRelationDeltas).toHaveLength(0);
-    expect(getRelation(world, goblins)).toBe(55);
-    expect(getRelation(world, llamas)).toBe(25);
-    // Two events emitted, one per applied delta.
-    expect(world.factionRelationEvents.filter((e) => e.familyId === goblins)).toHaveLength(1);
-    expect(world.factionRelationEvents.filter((e) => e.familyId === llamas)).toHaveLength(1);
-  });
-
-  it('is a noop when nothing is queued', () => {
-    const world = createTestWorld();
-    initializeFactionRelations(world, [goblins]);
-    const before = getRelation(world, goblins);
-    familyRelationshipSystem(world);
-    expect(getRelation(world, goblins)).toBe(before);
-    expect(world.factionRelationEvents).toHaveLength(0);
   });
 });

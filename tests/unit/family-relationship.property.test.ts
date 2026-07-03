@@ -7,7 +7,7 @@ import {
   asFamilyId,
   bandFor,
   initializeFactionRelations,
-  speedMultiplierForHate,
+  effectiveSpeedForHate,
 } from '../../src/core/index.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -16,7 +16,7 @@ import { createTestWorld } from '../helpers/world-factory.js';
  * guarantees the rest of Floor 2 will rely on:
  *   - `bandFor` is monotonic non-decreasing in relation
  *   - Any sequence of deltas leaves the stored relation in `[0, 100]`
- *   - `speedMultiplierForHate` is bracketed by `[baseSpeed, playerSpeed]`
+ *   - `effectiveSpeedForHate` is bracketed by `[baseSpeed, playerSpeed]`
  *     when `baseSpeed <= playerSpeed`
  */
 
@@ -57,7 +57,7 @@ describe('faction-relations properties', () => {
     );
   });
 
-  it('speedMultiplierForHate stays within [baseSpeed, playerSpeed] when baseSpeed<=playerSpeed', () => {
+  it('effectiveSpeedForHate stays within [baseSpeed, playerSpeed] when baseSpeed<=playerSpeed', () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 0, max: 100 }),
@@ -65,20 +65,20 @@ describe('faction-relations properties', () => {
         fc.double({ min: 0.1, max: 5, noNaN: true }),
         (relation, base, player) => {
           const [lo, hi] = base <= player ? [base, player] : [player, base];
-          const s = speedMultiplierForHate(relation, lo, hi);
+          const s = effectiveSpeedForHate(relation, lo, hi);
           return s >= lo - 1e-9 && s <= hi + 1e-9;
         },
       ),
     );
   });
 
-  it('speedMultiplierForHate returns baseSpeed when relation>=25 or base>=player', () => {
+  it('effectiveSpeedForHate returns baseSpeed when relation>=25 or base>=player', () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 25, max: 100 }),
         fc.double({ min: 0.1, max: 5, noNaN: true }),
         fc.double({ min: 0.1, max: 5, noNaN: true }),
-        (relation, base, player) => speedMultiplierForHate(relation, base, player) === base,
+        (relation, base, player) => effectiveSpeedForHate(relation, base, player) === base,
       ),
     );
     fc.assert(
@@ -87,7 +87,7 @@ describe('faction-relations properties', () => {
         fc.double({ min: 1, max: 5, noNaN: true }),
         (relation, base) => {
           // baseSpeed == playerSpeed → return base unchanged
-          return speedMultiplierForHate(relation, base, base) === base;
+          return effectiveSpeedForHate(relation, base, base) === base;
         },
       ),
     );

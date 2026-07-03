@@ -12,19 +12,30 @@
  * Determinism: reads `world.elapsedMs` only when applying passive decay; never
  * touches `Date.now()` or `Math.random()`.
  */
-import type { GameWorld } from './world.js';
+import type { GameWorld } from '../world.js';
 import {
   adjustFactionRelation,
   DEFAULT_RELATION,
   PASSIVE_DECAY_PER_SECOND,
   clampRelation,
   type FamilyId,
-} from './faction-relations.js';
+} from '../faction-relations.js';
 
-/** Last elapsedMs read per world instance — used to compute the decay dt. */
-const lastDecayElapsedMs = new WeakMap<GameWorld, number>();
+/** Options for {@link familyRelationshipSystem}. */
+export interface FamilyRelationshipSystemOptions {
+  /**
+   * Passive-decay rate in relation points/second, applied toward
+   * {@link DEFAULT_RELATION}. Resolved per-call (never captured at module
+   * load) so callers and tests can inject a non-zero rate even though the
+   * shipped tuning default is `0`. Defaults to {@link PASSIVE_DECAY_PER_SECOND}.
+   */
+  passiveDecayPerSecond?: number;
+}
 
-export function familyRelationshipSystem(world: GameWorld): void {
+export function familyRelationshipSystem(
+  world: GameWorld,
+  options: FamilyRelationshipSystemOptions = {},
+): void {
   // 1. Drain queued deltas. Copy-then-clear so a delta handler that itself
   //    enqueues more work processes on the next tick, not this one — bounded.
   const deltas = world.factionRelationDeltas;
@@ -37,21 +48,25 @@ export function familyRelationshipSystem(world: GameWorld): void {
     }
   }
 
-  // 2. Passive decay (default 0 — off unless tuning turns it on). Only runs
+  // 2. Passive decay (default 0 — off unless tuning or a caller turns it on).
+  //    The rate is resolved per-call from `options` (falling back to the tuning
+  //    default) so it is injectable and testable; per-world decay timing lives
+  //    on `world.factionRelationDecayLastMs`, not a module-level map. Only runs
   //    when Floor 2 state has seeded relations; otherwise there's nothing to
   //    drift. Uses `world.elapsedMs` for dt; never Date.now.
-  if (PASSIVE_DECAY_PER_SECOND !== 0 && world.factionRelations.size > 0) {
+  const decayRate = options.passiveDecayPerSecond ?? PASSIVE_DECAY_PER_SECOND;
+  if (decayRate !== 0 && world.factionRelations.size > 0) {
     const now = world.elapsedMs;
-    const prev = lastDecayElapsedMs.get(world) ?? now;
+    const prev = world.factionRelationDecayLastMs ?? now;
     const dtMs = now - prev;
-    lastDecayElapsedMs.set(world, now);
+    world.factionRelationDecayLastMs = now;
     if (dtMs > 0) {
       const dtSec = dtMs / 1000;
       for (const [familyId, current] of world.factionRelations.entries()) {
         const target = DEFAULT_RELATION;
         const dir = current > target ? -1 : current < target ? 1 : 0;
         if (dir === 0) continue;
-        const step = PASSIVE_DECAY_PER_SECOND * dtSec * dir;
+        const step = decayRate * dtSec * dir;
         const next = clampRelation(
           dir > 0 ? Math.min(target, current + step) : Math.max(target, current + step),
         );
