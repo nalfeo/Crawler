@@ -66,7 +66,8 @@ interface ProducerEvent {
     | 'force_publish_requested'
     | 'pr_published'
     | 'auto_merge_armed'
-    | 'shepherd_watch_requested';
+    | 'shepherd_watch_requested'
+    | 'force_publish_failed';
   feature?: string;
   pr_number?: number;
   details?: Record<string, string | number | boolean>;
@@ -331,22 +332,51 @@ function handleStatus(): void {
  * Query Shepherd watch status for a specific PR
  */
 function handleShepherdStatus(prNumber: string): void {
-  console.log(`\n🐑 SHEPHERD WATCH STATUS\n`);
-  console.log(`PR: #${prNumber}`);
-  console.log(`Status: WATCHING (reactive mode)`);
-  console.log(`Watched since: [timestamp]`);
-  console.log(`Auto-merge: Armed (eligible if review approved)\n`);
-  console.log('Events captured:');
-  console.log('  • CI: pass (all checks)');
-  console.log('  • Review threads: 0 open');
-  console.log('  • Approvals: 0 (waiting)');
-  console.log('  • Force pushes: 0');
-  console.log('  • Blocker history: []\n');
-  console.log('Next actions:');
-  console.log('  • Waiting for code review approval');
-  console.log('  • Will auto-merge once approval + CI confirmed');
-  console.log('  • No intervention needed yet\n');
-  console.log('Estimated time to merge: 20-30 min\n');
+  try {
+    const viewRaw = execFileSync(
+      'gh',
+      [
+        'pr',
+        'view',
+        String(prNumber),
+        '--json',
+        'isDraft,mergeStateStatus,reviewDecision,statusCheckRollup,url,title',
+      ],
+      { encoding: 'utf-8' },
+    );
+    const parsed = JSON.parse(viewRaw) as {
+      isDraft?: boolean;
+      mergeStateStatus?: string;
+      reviewDecision?: string;
+      statusCheckRollup?: Array<{ conclusion?: string }>;
+      url?: string;
+      title?: string;
+    };
+    const checks = parsed.statusCheckRollup ?? [];
+    const failingConclusions = new Set([
+      'FAILURE',
+      'TIMED_OUT',
+      'CANCELLED',
+      'ACTION_REQUIRED',
+      'STARTUP_FAILURE',
+    ]);
+    const failingChecks = checks.filter(
+      (check) => check.conclusion && failingConclusions.has(check.conclusion),
+    ).length;
+    const passingChecks = checks.filter((check) => check.conclusion === 'SUCCESS').length;
+
+    console.log(`\n🐑 SHEPHERD WATCH STATUS\n`);
+    console.log(`PR: #${prNumber} ${parsed.title ? `- ${parsed.title}` : ''}`);
+    if (parsed.url) console.log(parsed.url);
+    console.log(`Draft: ${parsed.isDraft ? 'yes' : 'no'}`);
+    console.log(`Merge state: ${parsed.mergeStateStatus ?? 'UNKNOWN'}`);
+    console.log(`Review decision: ${parsed.reviewDecision ?? 'PENDING'}`);
+    console.log(`Checks: ${passingChecks} passing, ${failingChecks} failing`);
+    console.log('\nProducer handoff policy: Shepherd should run in reactive watch mode.');
+  } catch (err) {
+    console.error(`Unable to query live PR status for #${prNumber}: ${err}`);
+    process.exit(1);
+  }
 }
 
 /**
@@ -486,7 +516,7 @@ function decompose(request: string): DecompositionResult {
       // Find all slices with same dependencies
       const group = slices.filter(
         (s) =>
-          JSON.stringify(s.dependencies.sort()) ===
+          JSON.stringify(s.dependencies.slice().sort()) ===
           JSON.stringify(slice.dependencies.slice().sort()),
       );
       parallelizableGroups.push(group.map((g) => g.id));
@@ -519,6 +549,23 @@ function decompose(request: string): DecompositionResult {
  * Decompose a feature into parallelizable slices
  */
 function handleDecompose(request: string): void {
+  const triageResult = triage(request);
+  if (triageResult.escalation === 'HUMAN_GATE' || triageResult.requestType === 'UNCLEAR') {
+    console.log('\n⛔ DECOMPOSITION BLOCKED\n');
+    console.log(
+      `Request classified as ${triageResult.requestType} (${triageResult.escalation ?? 'n/a'}).`,
+    );
+    console.log('Resolve required human clarification/approval before decomposition.\n');
+    return;
+  }
+  if (triageResult.requestType !== 'FEATURE') {
+    console.log('\n⛔ DECOMPOSITION BLOCKED\n');
+    console.log(
+      `Request classified as ${triageResult.requestType}. Decomposition is only for FEATURE requests.\n`,
+    );
+    return;
+  }
+
   const result = decompose(request);
 
   console.log('\n🎯 PRODUCER DECOMPOSITION\n');
@@ -646,7 +693,20 @@ function handleForcePublish(prNumberText: string): void {
   }
 
   if (isDraft) {
-    execFileSync('gh', ['pr', 'ready', String(prNumber)], { stdio: 'inherit' });
+    try {
+      execFileSync('gh', ['pr', 'ready', String(prNumber)], { stdio: 'inherit' });
+    } catch (err) {
+      appendJsonlLine(ORCHESTRATION_FILE, {
+        schema: 'producer-orchestration-event/v1',
+        timestamp: new Date().toISOString(),
+        session_id: sessionId,
+        event: 'force_publish_failed',
+        pr_number: prNumber,
+        details: { step: 'publish', error: String(err) },
+      } satisfies ProducerEvent);
+      console.error(`Failed to publish draft PR #${prNumber}: ${err}`);
+      process.exit(1);
+    }
     appendJsonlLine(ORCHESTRATION_FILE, {
       schema: 'producer-orchestration-event/v1',
       timestamp: new Date().toISOString(),
@@ -660,9 +720,24 @@ function handleForcePublish(prNumberText: string): void {
   }
 
   // Arm autonomous merge immediately per policy.
-  execFileSync('gh', ['pr', 'merge', String(prNumber), '--auto', '--squash'], {
-    stdio: 'inherit',
-  });
+  try {
+    execFileSync('gh', ['pr', 'merge', String(prNumber), '--auto', '--squash'], {
+      stdio: 'inherit',
+    });
+  } catch (err) {
+    appendJsonlLine(ORCHESTRATION_FILE, {
+      schema: 'producer-orchestration-event/v1',
+      timestamp: new Date().toISOString(),
+      session_id: sessionId,
+      event: 'force_publish_failed',
+      pr_number: prNumber,
+      details: { step: 'arm_auto_merge', error: String(err) },
+    } satisfies ProducerEvent);
+    console.error(
+      `PR #${prNumber} may be published but auto-merge could not be armed: ${String(err)}`,
+    );
+    process.exit(1);
+  }
   appendJsonlLine(ORCHESTRATION_FILE, {
     schema: 'producer-orchestration-event/v1',
     timestamp: new Date().toISOString(),
