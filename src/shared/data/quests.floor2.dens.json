@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "packId": "floor2-den-unlock-archetypes",
+  "archetypes": [
+    {
+      "id": "thin-the-ranks",
+      "title": "Thin the Ranks",
+      "summary": "Cull enough of the family's rank-and-file that their boss's own den will crack open — nobody guards a boss they can't afford to lose.",
+      "objectiveLabel": "Kill {familyName} trash mobs",
+      "kind": "killTargets",
+      "killTarget": 8
+    },
+    {
+      "id": "steal-ledger",
+      "title": "Steal the Ledger",
+      "summary": "Lift the family's book of favors from a spawned drop in their territory. Without it their den's outer wards go dark and the door falls open.",
+      "objectiveLabel": "Recover the {familyName} ledger",
+      "kind": "collect",
+      "itemIdSuffix": "family-ledger",
+      "collectTarget": 1
+    },
+    {
+      "id": "win-favor",
+      "title": "Win Their Favor",
+      "summary": "Play nice — get to Friendly (>75) with the family and they'll invite you inside themselves. The peaceful path to the den.",
+      "objectiveLabel": "Raise the {familyName} to Friendly (>75)",
+      "kind": "friendly"
+    },
+    {
+      "id": "sabotage-still",
+      "title": "Sabotage the Still",
+      "summary": "Wreck the family's refinery set-piece in their territory. Their boss won't dare leave the safe of the den until the racket downstairs is fixed — but the door's guards do.",
+      "objectiveLabel": "Destroy the {familyName} still",
+      "kind": "goalFlag",
+      "goalIdSuffix": "still-sabotaged"
+    },
+    {
+      "id": "bring-tribute",
+      "title": "Bring Tribute",
+      "summary": "Deliver units of the contested resource to the den door and the family opens up — you're 'family' now, at least for the length of one bribe.",
+      "objectiveLabel": "Collect contested-resource units for {familyName}",
+      "kind": "collect",
+      "itemIdSuffix": "contested-tribute",
+      "collectTarget": 5
+    },
+    {
+      "id": "rivals-hit",
+      "title": "The Rival's Hit",
+      "summary": "A rival family will crack this den open for you if you take out one of their competitor's key mobs first. Contract killing, mob-drama style.",
+      "objectiveLabel": "Complete the rival's hit on {familyName}",
+      "kind": "goalFlag",
+      "goalIdSuffix": "rivals-hit-complete"
+    }
+  ]
+}
