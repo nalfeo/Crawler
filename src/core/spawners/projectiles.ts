@@ -56,8 +56,12 @@ export function spawnEnemyProjectile(
   vx: number,
   vy: number,
   damage: number,
+  ownerEid?: number,
 ): number {
-  const eid = spawnProjectile(world, x, y, vx, vy, damage);
+  // Thread the firing enemy through as Owner so a hit on the player records the
+  // shooter (not the transient projectile eid, which is destroyed on impact) as
+  // the attacker — Floor 2 Slice 3 ally-defend retaliation targets the shooter.
+  const eid = spawnProjectile(world, x, y, vx, vy, damage, 0, 0, 1, ownerEid);
   addComponent(world.ecs, eid, EnemyProjectile);
   return eid;
 }

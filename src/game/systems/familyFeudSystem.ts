@@ -21,9 +21,10 @@
  * their player-relation (FR5) — the rival check is purely `otherMob.familyId
  * !== self.familyId`.
  *
- * Determinism: reads `world.rng` when tie-breaking equidistant rivals via a
- * stable eid-order sort. No `Math.random()`, no `Date.now()`. Retaliation
- * expiry uses `world.elapsedMs`.
+ * Determinism: rival tie-breaks are purely by lower eid (a stable sort with no
+ * `world.rng` draw), so the same seed always yields the same choice. No
+ * `Math.random()`, no `Date.now()`. Retaliation arms off the durable
+ * `world.lastPlayerHit` signal and expires via `world.elapsedMs`.
  *
  * Perf: rival lookups go through a per-frame spatial hash of family mobs so
  * candidate lists stay bounded by the tuning-configured
@@ -42,7 +43,6 @@ import {
   type FamilyId,
 } from '../../core/faction-relations.js';
 import type { GameWorld } from '../../core/world.js';
-import type { CombatEvent } from '../../shared/combat-events.js';
 import tuning from '../../shared/data/tuning.json';
 
 /**
@@ -89,7 +89,6 @@ const retaliationByWorld = new WeakMap<
   GameWorld,
   { attackerEid: number; untilMs: number } | null
 >();
-const combatEventCursorByWorld = new WeakMap<GameWorld, number>();
 
 /** Public read: the last decision computed for `eid`, or `undefined`. */
 export function getFamilyAIDecision(world: GameWorld, eid: number): FamilyAIDecision | undefined {
@@ -209,42 +208,41 @@ export function findNearestRival(
 }
 
 /**
- * Drain fresh `type === 'hit'` events targeting the player into the
- * retaliation latch. We consume the tail of `world.combatEvents` from a
- * per-world cursor so replaying older events on a rebuilt world doesn't
- * re-arm retaliation.
+ * Refresh the friendly-retaliation latch from the DURABLE `world.lastPlayerHit`
+ * signal that `applyDamage` writes whenever a hit lands on the player.
+ *
+ * We deliberately do NOT scan the transient `world.combatEvents` queue here. In
+ * the real visual frame loop that queue is drained every frame by the VFX layer
+ * (`combatVfx.update`, invoked from the scene's `bridge.sync`) BEFORE the next
+ * frame's prepass runs — so a player-hit event pushed by `damageSystem` in
+ * frame N is already gone when this prepass runs in frame N+1. Scanning it made
+ * ally-defend silently never fire in the shipped game; it only "worked" in the
+ * headless mirror, which never drains the queue. Reading the durable signal
+ * makes the feature fire identically in both pipelines.
  */
 function updateRetaliationFromHitEvents(world: GameWorld): void {
-  const events = world.combatEvents;
-  const cursor = combatEventCursorByWorld.get(world) ?? 0;
-  const start = Math.min(cursor, events.length);
-  let latest: { attackerEid: number; untilMs: number } | null =
-    retaliationByWorld.get(world) ?? null;
   const windowMs = tuning.factionRelations.friendlyRetaliationMs;
-  for (let i = start; i < events.length; i++) {
-    const ev = events[i] as CombatEvent | undefined;
-    if (ev === undefined) continue;
-    if (ev.type !== 'hit') continue;
-    if (ev.targetType !== 'player') continue;
-    if (ev.sourceEid === undefined) continue;
-    latest = { attackerEid: ev.sourceEid, untilMs: world.elapsedMs + windowMs };
+  const hit = world.lastPlayerHit;
+  let latch: { attackerEid: number; untilMs: number } | null = null;
+  if (hit !== undefined && hit.attackerEid >= 0) {
+    const untilMs = hit.atMs + windowMs;
+    // Arm only while the retaliation window (measured from the actual hit) is
+    // still open; otherwise the latch expires and the ally reverts to follow.
+    if (untilMs > world.elapsedMs) {
+      latch = { attackerEid: hit.attackerEid, untilMs };
+    }
   }
-  combatEventCursorByWorld.set(world, events.length);
-  // Expire retaliation whose window has elapsed.
-  if (latest !== null && latest.untilMs <= world.elapsedMs) {
-    latest = null;
-  }
-  retaliationByWorld.set(world, latest);
+  retaliationByWorld.set(world, latch);
 }
 
 /**
- * Public helper — reset the retaliation latch and event cursor. Used by tests
- * and the lab to isolate scenarios.
+ * Public helper — reset the retaliation latch and the durable player-hit
+ * signal. Used by tests and the lab to isolate scenarios.
  */
 export function resetFamilyFeudState(world: GameWorld): void {
   decisionsByWorld.delete(world);
   retaliationByWorld.delete(world);
-  combatEventCursorByWorld.delete(world);
+  world.lastPlayerHit = undefined;
 }
 
 /**

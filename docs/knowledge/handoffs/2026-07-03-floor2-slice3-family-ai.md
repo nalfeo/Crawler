@@ -119,3 +119,69 @@ rooted directly on `origin/main` and consumes Slice 1 through the public API
 - Slice 6 (shops, emergent events, quest packs)
 - Slice 7 (HUD widget, minimap tint)
 - Slice 8 (scenario wiring, seed sweep)
+
+---
+
+## 2026-07-03 — PR Shepherd correction pass (PR #701)
+
+**Persona:** Producer · **Apple estimate:** 🍎🍎🍎 (3) · **ADR added:** `0042-durable-player-hit-signal-for-ally-defend.md`
+
+Took over the idle cloud-authored PR to (a) rebase onto latest `main` (Floor 2
+Slices 1/2/4/6 + sprite-cache had advanced it) and (b) resolve all 6 unresolved
+`copilot-pull-request-reviewer` threads on their merits.
+
+### Rebase
+
+Rebased onto `origin/main` (`848445c1`). 3 purely-additive conflicts
+(`src/game/index.ts`, `src/game/systems/index.ts`, `src/lab-main.ts`) — kept
+both sides (main's emergentEvent/floor2Settlement exports + this branch's
+familyFeud exports; all lab entries). `tuning.json` auto-merged. Linear history,
+no lockfile change.
+
+### The 6 threads — 2 were REAL runtime bugs
+
+1. **Ally-defend never fired in the real visual game (bug).** `familyFeudSystem`
+   (a `preSystems` prepass) read the transient `world.combatEvents` queue, which
+   `combatVfx.update` drains to length 0 every rendered frame — so the player-hit
+   event from frame N was gone before the prepass read it in frame N+1. Headless
+   masked it (never drains). **Fix:** durable `world.lastPlayerHit` signal set at
+   the core `applyDamage` choke point; survives the drain; one code path for both
+   pipelines. (ADR 0042.)
+2. **Retaliation targeted a dead projectile, not the shooter (bug).**
+   `spawnEnemyProjectile` never attached `Owner`, so `applyEnemyProjectileHit`
+   recorded the transient projectile eid as the attacker. **Fix:** threaded
+   `ownerEid` through `spawnEnemyProjectile` so the firing enemy is recorded.
+3. **Slow-precedence.** `getEnemySpeed` now folds the hate ramp into the base
+   speed first, then composes status effects on top — a slowed hate mob stays
+   slowed (matches the comment + ADR status-effect composition model).
+4. **Rival-fallback consistency.** Dropped the `familyDecision === undefined`
+   guard so a ramped hate mob falls back to a rival when the player is
+   unreachable, same as a non-ramped hate mob (safe: `!familyBypass` already
+   implies `bypassPlayerDetection:false`).
+5. **Docstring (feud):** corrected — rival tie-break is by lower eid, not RNG.
+6. **Docstring (band-targeting test):** corrected to prepass-scoped, AND
+   strengthened with a real `familyFeudSystem → enemyAISystem → movementSystem`
+   end-to-end test asserting the neutral mob steers toward its rival.
+
+### Observe-before-done (rule #10) — the key proof
+
+Because headless masks bug #1, the proof is a **deterministic frame-loop-drain
+test**: `tests/ecs/enemyAISystem.ally-defend.test.ts` spawns player + friendly
+ally (FAM_A) + shooter (FAM_B), fires an enemy projectile owned by the shooter,
+runs `collisionSystem` + `damageSystem`, asserts `world.lastPlayerHit.attackerEid
+=== shooter`, then **drains `world.combatEvents.length = 0`** (reproducing
+`combatVfx.update`), advances a frame, runs `familyFeudSystem`, and asserts the
+ally's decision is `kind:'attacker'` with `targetEid === shooter`. Pre-fix this
+fails (the drained queue yields no retaliation); post-fix it passes — proving
+ally-defend fires in the real frame loop and targets the shooter.
+
+### Verification
+
+- `VERIFY_FULL=1 npm run verify` — **PASS** incl. headless Floor-1 completion
+  gate (Step 8: 32 tests) → win-rate target held. Floor 1 has no
+  `FamilyMembership` mobs so `getEnemySpeed` is byte-identical there.
+- `npm run verify` (build + all non-headless gates + pr-prereqs) — **PASS**.
+- Unit 3373 / integration 77 pass; `check:wired-systems` PASS; ledger valid
+  (3-apple: plan_review + code_review, round 2 documents these fixes).
+- Touched tests: `enemyAISystem.ally-defend` (4), `enemy-ranged-shooting`
+  (+shooter/Owner), `enemyAISystem.band-targeting` (8, incl. e2e).

@@ -10,16 +10,7 @@
       "reviewer_model": "self-plan-plus-spec-recheck",
       "concerns_count": 5,
       "resolved_count": 5,
-      "notes": "Concerns identified during planning: (1) Slice 1 API rename effectiveSpeedForHate must be honored — used correctly; (2) rival-detection MUST use spatial hash not O(n²) — new SpatialHashGrid built per-frame, feudCandidateLimit trims candidate list before sort; (3) friendly retaliation MUST reuse existing hit-event bus not add a parallel one — reused world.combatEvents, extended existing CombatEvent with optional sourceEid; (4) both simulation pipelines (headless src/game/ai and visual src/engine/sim, actually src/bootstrap/floor-main-scene-options) must wire the new system — done; (5) hate-band mobs already faster than the player must be unaffected — effectiveSpeedForHate returns baseSpeed in that case and getEnemySpeed's max() semantics preserve status slows."
-    },
-    "dual_plan_synthesis": {
-      "completed": true,
-      "notes": "Two designs considered: (A) fold everything into enemyAISystem's per-mob loop directly; (B) prepass system that stamps decisions into a WeakMap consumed by enemyAISystem. Chose (B) because it (a) keeps enemyAISystem's existing shape intact and thus limits the surface for regressions in the ~1810-line file, (b) gives tests a stable observable surface via getFamilyAIDecision(), (c) allows the lab overlay + perf test to read the same decision map, and (d) allows the retaliation state + spatial hash to be owned by one system with clear lifecycle. Trade-off: two data structures instead of inline — resolved by putting them all in a single file (familyFeudSystem.ts)."
-    },
-    "multi_model_review": {
-      "completed": true,
-      "models": ["claude-opus-4.7"],
-      "notes": "Determinism check: all RNG via world.rng (none needed for this slice — tie-breaks use lower eid). Date.now: none. Spatial hash budget: enforced by trim in findNearestRival and asserted by family-feud-perf.test.ts. Cross-referenced ADR 0040 D5 (band-keyed AI foe-set) and ADR 0024 (engagement budget)."
+      "notes": "Concerns identified during planning: (1) Slice 1 API rename effectiveSpeedForHate must be honored — used correctly; (2) rival-detection MUST use spatial hash not O(n²) — new SpatialHashGrid built per-frame, feudCandidateLimit trims candidate list before sort; (3) friendly retaliation MUST reuse the existing hit signal not add a parallel bus — reused the applyDamage choke point (see code_review round 2 for the durable-signal correction); (4) both simulation pipelines (headless src/game/ai and visual src/bootstrap/floor-main-scene-options) must wire the new system — done; (5) hate-band mobs already faster than the player must be unaffected — effectiveSpeedForHate returns baseSpeed in that case and getEnemySpeed composes status slows on top of the ramped base. Design: chose a prepass system stamping decisions into a map consumed by enemyAISystem (over inlining into the ~1810-line enemyAISystem loop) to limit regression surface and give tests + the lab overlay a stable observable via getFamilyAIDecision()."
     },
     "code_review": {
       "clean": true,
@@ -30,20 +21,30 @@
           "concerns_count": 2,
           "resolved_count": 2,
           "clean": true,
-          "notes": "Round 1: (1) queryRadius returns REUSED buffer — added explicit .slice(0, limit) before iteration; (2) retaliation cursor needed to not re-arm on replay — added per-world combatEventCursor WeakMap and start = min(cursor, events.length) to be safe on world reset."
+          "notes": "Round 1 (original authoring): (1) queryRadius returns a REUSED buffer — added explicit .slice(0, limit) before iteration; (2) retaliation state needed to not re-arm on replay — handled via a per-world cursor at the time (later superseded by the durable world.lastPlayerHit signal in round 2)."
+        },
+        {
+          "round": 2,
+          "models": ["copilot-pull-request-reviewer", "claude-opus-4.8"],
+          "concerns_count": 6,
+          "resolved_count": 6,
+          "clean": true,
+          "notes": "PR-shepherd pass over the 6 copilot-pull-request-reviewer threads. TWO were REAL runtime bugs: (1) ally-defend never fired in the visual game because familyFeudSystem (preSystems) read the transient world.combatEvents queue, which combatVfx.update drains to length 0 every rendered frame (CombatVfx.ts:98 via MainGameScene.ts) — so the hit event from frame N was gone before the feud read it in frame N+1; headless masked this because it never drains combatEvents. Fixed with a durable world.lastPlayerHit signal set at the applyDamage choke point (survives the drain; single code path across both pipelines) and added a deterministic drain test (tests/ecs/enemyAISystem.ally-defend.test.ts) that reproduces the real frame-loop drain and asserts ally-defend still fires. (2) enemy projectiles never attached Owner, so retaliation recorded the transient projectile eid (destroyed on impact) as the attacker — threaded ownerEid through spawnEnemyProjectile so the firing enemy is recorded; test asserts lastPlayerHit.attackerEid === shooter. FOUR consistency/doc fixes: slow-precedence in getEnemySpeed (ramp folded into base, then status slows composed on top so a slowed hate mob stays slowed); rival-fallback made reachable for ramped hate mobs (dropped the familyDecision===undefined guard, safe because !familyBypass already implies bypassPlayerDetection:false); corrected the familyFeudSystem tie-break docstring (lower-eid, not rng) and the band-targeting test docstring (prepass-scoped) — the latter also strengthened with a real prepass→enemyAISystem→movementSystem end-to-end test."
         }
       ]
     }
   },
   "verification": {
-    "verify_fast": "PASS (1101 tests, 107 files)",
+    "verify_fast": "PASS (1146 tests, 113 files)",
     "typecheck": "PASS (0 errors)",
+    "verify_full": "pending VERIFY_FULL=1 npm run verify (headless Floor-1 win-rate gate) — recorded in handoff",
     "wired_systems": "PASS (familyFeudSystem wired into both src/game/ai/simulation-step.ts and src/bootstrap/floor-main-scene-options.ts preSystems)",
     "new_tests": [
-      "tests/ecs/enemyAISystem.band-targeting.test.ts (7 pass)",
+      "tests/ecs/enemyAISystem.band-targeting.test.ts (8 pass — incl. real prepass→AI→movement pipeline test)",
       "tests/ecs/enemyAISystem.hate-ramp.test.ts (5 pass)",
-      "tests/ecs/enemyAISystem.ally-defend.test.ts (3 pass)",
+      "tests/ecs/enemyAISystem.ally-defend.test.ts (4 pass — incl. rule-#10 frame-loop drain test)",
       "tests/ecs/enemyAISystem.band-property.test.ts (2 pass)",
+      "tests/game/enemy-ranged-shooting.test.ts (bug-2 shooter-recording + Owner coverage)",
       "tests/unit/family-feud-perf.test.ts (1 pass)"
     ]
   }

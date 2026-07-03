@@ -231,22 +231,19 @@ function setVelocity(world: GameWorld, eid: number, x: number, y: number): void 
 function getEnemySpeed(world: GameWorld, eid: number): number {
   const stored = world.stores.enemyBehavior.speed[eid]!;
   const base = stored > 0 ? stored : DEFAULT_ENEMY_SPEED;
-  // Fold active status effects into the base speed here — the single seam every
-  // enemy speed read (wander, slime-leap prep/pounce, and the speed cap) derives
-  // from. Slime-leap multipliers layer on top of this modified base, so a slowed
-  // slime still leaps, just proportionally slower.
-  const withStatus = computeEffectiveSpeed(base, getStatusEffects(world, eid));
-  // Floor 2 Slice 3: fold in the hate-band speed ramp (FR9). The prepass in
-  // familyFeudSystem already clamped the boost to `[baseSpeed, playerSpeed]`
-  // and only sets `effectiveSpeed` when it differs from base, so this is a
-  // pure raise-up-toward-player operation. Status-effect slows still take
-  // precedence — a slowed hate mob doesn't leap over its own slow debuff.
+  // Floor 2 Slice 3: fold the hate-band speed ramp (FR9) into the PRE-status
+  // base first. The prepass in familyFeudSystem already clamped the boost to
+  // `[baseSpeed, playerSpeed]` and only sets `effectiveSpeed` when it raises
+  // above base, so this is a pure raise-up-toward-player of the base speed.
   const decision = getFamilyAIDecision(world, eid);
   const rampSpeed = decision?.effectiveSpeed;
-  if (rampSpeed !== undefined && rampSpeed > withStatus) {
-    return rampSpeed;
-  }
-  return withStatus;
+  const rampedBase = rampSpeed !== undefined && rampSpeed > base ? rampSpeed : base;
+  // Then compose active status effects on top — the single seam every enemy
+  // speed read (wander, slime-leap prep/pounce, and the speed cap) derives
+  // from. Because the slow multiplies the ramped base, status slows genuinely
+  // take precedence: a slowed hate mob is slowed proportionally rather than
+  // leaping over its own debuff, and slime-leap multipliers still layer on top.
+  return computeEffectiveSpeed(rampedBase, getStatusEffects(world, eid));
 }
 
 function getEnemySpeedCap(world: GameWorld, eid: number): number {
@@ -1236,6 +1233,7 @@ function tryFireEnemyProjectile(
       direction.x * ENEMY_PROJECTILE.SPEED,
       direction.y * ENEMY_PROJECTILE.SPEED,
       ENEMY_PROJECTILE.DAMAGE,
+      eid,
     );
   }
 
@@ -1722,10 +1720,17 @@ export function enemyAISystem(world: GameWorld): void {
         (hasOpenRoomDoor || playerSharesRoom || permanentAggro) &&
         inAggroRange);
 
-    // Hate/hostile mobs without a family-driven decision fall back to a rival
-    // target when the player is genuinely unreachable this frame. The prepass
-    // couldn't do this itself because it doesn't know canDetectPlayer.
-    if (!familyBypass && !canDetectPlayer && familyDecision === undefined) {
+    // Hate/hostile mobs fall back to a rival target when the player is genuinely
+    // unreachable this frame. The prepass couldn't do this itself because it
+    // doesn't know canDetectPlayer. `!familyBypass` already excludes any mob
+    // that ALREADY holds a bypass target (rival-primary / follow / attacker /
+    // idle); the only non-bypass decision the prepass stamps is the hate
+    // speed-ramp (kind:'player', bypassPlayerDetection:false). So we must NOT
+    // additionally gate on `familyDecision === undefined` — doing so let a hate
+    // mob whose ramp fired skip the fallback while an identical un-ramped hate
+    // mob reached it. resolveHostileFallback returns null for non-family and
+    // non-hate/hostile mobs, so trash/neutral/friendly mobs are unaffected.
+    if (!familyBypass && !canDetectPlayer) {
       const fallback = resolveHostileFallback(world, eid);
       if (fallback !== null) {
         virtualPlayerX = fallback.x;

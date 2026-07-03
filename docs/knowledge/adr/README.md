@@ -6,7 +6,7 @@ decisions that affect **2+ systems** require an ADR (see the constitution and
 `.github/copilot-instructions.md`).
 
 - **Template:** `docs/knowledge/adr/TEMPLATE.md`
-- **Count:** 64 ADR files (0001–0041, with number reuse and gaps in this index — see below)
+- **Count:** 65 ADR files (0001–0042, with number reuse and gaps in this index — see below)
 - **Status convention:** `## Status` heading with one of
   `Proposed | Accepted | Deprecated | Superseded by NNNN`
 
@@ -89,6 +89,7 @@ hundreds of inbound references.
 - [Door-pointing welcome-sign wayfinding](0026-welcome-sign-wayfinding.md)
 - [Parameterized floor configuration system](0005-parameterized-floor-configuration.md) — floor1→floor params via floor-registry; enables multi-floor progression.
 - [Floor 2 family-territory & relationship architecture](0040-floor2-family-territory-and-relationship-architecture.md) — open cave system of feuding mob families, per-family player relationships, and a two-shape (sole-ally / total-war) win condition.
+- [Durable player-hit signal for ally-defend retaliation](0042-durable-player-hit-signal-for-ally-defend.md) — a durable `world.lastPlayerHit` set at the core `applyDamage` choke point (survives the frame-end VFX drain) plus projectile `Owner` threading, so ally-defend fires in the real game and retaliates against the shooter.
 
 ### Quests & NPCs
 
@@ -187,3 +188,4 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0039 | [Deterministic Orphaned-System Wiring Guard](0039-orphaned-system-wiring-guard.md)                                              | Accepted | 2026-07-02 |
 | 0040 | [Floor 2 Family-Territory & Relationship Architecture](0040-floor2-family-territory-and-relationship-architecture.md)           | Proposed | 2026-07-01 |
 | 0041 | [Raise Azure Storage Queue Default Visibility Timeout to 900s](0041-raise-queue-visibility-timeout-default.md)                  | Accepted | 2026-07-02 |
+| 0042 | [Durable Player-Hit Signal for Ally-Defend Retaliation](0042-durable-player-hit-signal-for-ally-defend.md)                      | Accepted | 2026-07-03 |

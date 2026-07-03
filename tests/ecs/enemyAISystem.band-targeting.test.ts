@@ -1,15 +1,19 @@
 /**
- * Floor 2 Slice 3 — band-driven target selection through enemyAISystem.
+ * Floor 2 Slice 3 — band-driven target selection.
  *
- * These are behavioural tests, not unit tests: they build a real world, spawn
- * family mobs, seed relations, run the WHOLE headless pipeline for one tick,
- * then inspect the family-AI decision the mob observed. The point is to prove
- * the target-selection contract holds end-to-end.
+ * Most tests here exercise the family-AI PREPASS in isolation: they build a
+ * real world, spawn family mobs, seed relations, run `familyFeudSystem` for one
+ * tick, then inspect the decision it stamped for each mob. That is enough to
+ * pin the target-selection contract. The final test goes further and runs the
+ * real prepass → `enemyAISystem` → `movementSystem` pipeline to prove the
+ * stamped rival target is actually consumed and steers the mob end-to-end, not
+ * merely recorded.
  */
 import { addComponent, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import {
   FamilyMembership,
+  movementSystem,
   spawnBehaviorEnemy,
   spawnPlayer,
   asFamilyId,
@@ -17,7 +21,12 @@ import {
   initializeFactionRelations,
   DEFAULT_RELATION,
 } from '../../src/core/index.js';
-import { AI_TYPE, familyFeudSystem, getFamilyAIDecision } from '../../src/game/index.js';
+import {
+  AI_TYPE,
+  enemyAISystem,
+  familyFeudSystem,
+  getFamilyAIDecision,
+} from '../../src/game/index.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 const FAM_A = asFamilyId('a');
@@ -148,5 +157,28 @@ describe('familyFeudSystem — band-driven target selection', () => {
     // A targets B and vice versa.
     expect(getFamilyAIDecision(world, a)?.targetEid).toBe(b);
     expect(getFamilyAIDecision(world, b)?.targetEid).toBe(a);
+  });
+
+  it('steers a neutral mob toward its rival through the real prepass → AI → movement pipeline', () => {
+    // Unlike the prepass-only tests above, this runs the real runtime pipeline
+    // (familyFeudSystem → enemyAISystem → movementSystem) to prove the stamped
+    // rival target is actually consumed and moves the mob, not just recorded.
+    const world = createTestWorld();
+    seedFloor2(world);
+    spawnPlayer(world, 5, -10); // player well below; neutral mobs ignore it
+    adjustFactionRelation(world, FAM_A, 15); // neutral
+    adjustFactionRelation(world, FAM_B, 15); // neutral
+    const neutralMob = spawnFamilyMob(world, 5, 0, 0);
+    const rival = spawnFamilyMob(world, 5, 10, 1); // directly above
+
+    familyFeudSystem(world);
+    enemyAISystem(world);
+    movementSystem(world);
+
+    const decision = getFamilyAIDecision(world, neutralMob);
+    expect(decision?.kind).toBe('rival-primary');
+    expect(decision?.targetEid).toBe(rival);
+    // The mob moved UP toward the rival (+y), not DOWN toward the player (−y).
+    expect(world.stores.position.y[neutralMob]).toBeGreaterThan(0);
   });
 });
