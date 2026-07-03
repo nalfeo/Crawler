@@ -23,14 +23,6 @@ export const BAND_BAR_COLORS: Readonly<Record<FactionBand, number>> = Object.fre
   friendly: 0x22c55e,
 });
 
-/** Same colors as CSS-style hex strings — useful for tests + lab. */
-export const BAND_BAR_COLORS_HEX: Readonly<Record<FactionBand, string>> = Object.freeze({
-  hate: '#991b1b',
-  hostile: '#ea580c',
-  neutral: '#475569',
-  friendly: '#22c55e',
-});
-
 /** Player-facing status tag shown on each row. */
 export type FamilyStatusTag = 'Allied' | 'At War' | 'Neutral';
 
@@ -45,7 +37,10 @@ export function statusTagForBand(band: FactionBand): FamilyStatusTag {
 export interface FamilyRow {
   familyId: FamilyId;
   name: string;
-  /** Short label (`species`) shown when there's no room for the full name. */
+  /**
+   * Short label (`species`, e.g. `Cactusfolk`) shown by `displayNameForRow`
+   * when the full family name is too wide for the row's name column.
+   */
   shortLabel: string;
   /** Family HUD color, parsed from `#RRGGBB` into a `0xRRGGBB` number. */
   hudColor: number;
@@ -98,6 +93,29 @@ export function familyRowFromRelation(
 /** Look up a family def by id from the loaded roster. */
 function findFamilyDef(families: readonly FamilyDef[], id: FamilyId): FamilyDef | undefined {
   return families.find((f) => (f.id as FamilyId) === id);
+}
+
+/** Max characters the row's name column can show before falling back to the short label. */
+export const FAMILY_NAME_MAX_CHARS = 18;
+
+/**
+ * Choose the label to show in a row's name column. Prefers the full family
+ * name; when it's wider than `maxChars`, falls back to the shorter
+ * `shortLabel` (species) if that fits, and only hard-truncates with an
+ * ellipsis as a last resort. Pure so the widget's truncation behavior can be
+ * unit-tested without mounting Phaser.
+ */
+export function displayNameForRow(
+  row: Pick<FamilyRow, 'name' | 'shortLabel'>,
+  maxChars = FAMILY_NAME_MAX_CHARS,
+): string {
+  if (row.name.length <= maxChars) return row.name;
+  const short = row.shortLabel;
+  if (short.length > 0 && short.length <= maxChars) return short;
+  // Neither the full name nor the short label fits — hard-truncate the
+  // shortest non-empty candidate so we drop as few characters as possible.
+  const base = short.length > 0 && short.length < row.name.length ? short : row.name;
+  return base.slice(0, Math.max(1, maxChars - 1)) + '…';
 }
 
 /**

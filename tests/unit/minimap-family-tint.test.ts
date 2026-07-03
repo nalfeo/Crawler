@@ -3,7 +3,7 @@ import {
   BOSS_DEN_OUTLINE,
   RESOURCE_HEART_TINT,
   SETTLEMENT_TINT,
-  blendColors,
+  TERRITORY_NEUTRAL_TINT,
   familyColorForEnemy,
   familyTintForRoom,
   isFamilyBossDefeated,
@@ -66,22 +66,6 @@ describe('toGrayscale', () => {
     const b = gray & 0xff;
     expect(r).toBe(g);
     expect(g).toBe(b);
-  });
-});
-
-describe('blendColors', () => {
-  it('returns the first color at t=0 and the second at t=1', () => {
-    expect(blendColors(0x000000, 0xffffff, 0)).toBe(0x000000);
-    expect(blendColors(0x000000, 0xffffff, 1)).toBe(0xffffff);
-  });
-
-  it('interpolates channels at t=0.5', () => {
-    expect(blendColors(0x000000, 0xffffff, 0.5)).toBe(0x808080);
-  });
-
-  it('clamps t to [0, 1]', () => {
-    expect(blendColors(0x000000, 0xffffff, -1)).toBe(0x000000);
-    expect(blendColors(0x000000, 0xffffff, 2)).toBe(0xffffff);
   });
 });
 
@@ -182,6 +166,21 @@ describe('familyTintForRoom', () => {
       familyIndex: 0,
     });
     expect(tint).toBe(toGrayscale(0x22c55e));
+  });
+
+  it('falls back to a neutral tint (not null) for a TERRITORY room with no/invalid family index', () => {
+    const world = stubWorld(['goblins', 'kobolds']);
+    // familyIndex is optional on RoomData; a territory with no index must still
+    // draw its marker rather than vanish from the minimap.
+    expect(
+      familyTintForRoom(world as never, families, {
+        role: RoomRole.TERRITORY,
+        familyIndex: undefined,
+      }),
+    ).toBe(TERRITORY_NEUTRAL_TINT);
+    expect(
+      familyTintForRoom(world as never, families, { role: RoomRole.TERRITORY, familyIndex: 99 }),
+    ).toBe(TERRITORY_NEUTRAL_TINT);
   });
 
   it('falls back to the classic red outline for BOSS_DEN without a family', () => {

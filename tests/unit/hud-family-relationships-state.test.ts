@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   BAND_BAR_COLORS,
+  FAMILY_NAME_MAX_CHARS,
   bossDefeatedGoalFlag,
+  displayNameForRow,
   familyRowFromRelation,
   parseHexColor,
   resolveFamilyRows,
@@ -87,6 +89,48 @@ describe('familyRowFromRelation', () => {
 
   it('parses the family hud color', () => {
     expect(familyRowFromRelation(fam, 50, false).hudColor).toBe(0x22c55e);
+  });
+});
+
+describe('displayNameForRow', () => {
+  it('returns the full name when it fits within the column', () => {
+    // "The Bamboo Triad" is 16 chars, "The Snaggle Cartel" is exactly 18.
+    expect(displayNameForRow({ name: 'The Bamboo Triad', shortLabel: 'Pandas' })).toBe(
+      'The Bamboo Triad',
+    );
+    expect(displayNameForRow({ name: 'The Snaggle Cartel', shortLabel: 'Goblins' })).toBe(
+      'The Snaggle Cartel',
+    );
+  });
+
+  it('falls back to the short species label when the full name is too wide', () => {
+    // Real roster case: "The Thornbloom Growers" (22) → "Cactusfolk" (10).
+    expect(displayNameForRow({ name: 'The Thornbloom Growers', shortLabel: 'Cactusfolk' })).toBe(
+      'Cactusfolk',
+    );
+    expect(displayNameForRow({ name: 'The Trash Panda Family', shortLabel: 'Raccoons' })).toBe(
+      'Raccoons',
+    );
+  });
+
+  it('hard-truncates with an ellipsis when neither label fits', () => {
+    const name = 'A'.repeat(25);
+    const shortLabel = 'B'.repeat(20);
+    // Short label is shorter than the name, so it wins the truncation base.
+    const out = displayNameForRow({ name, shortLabel });
+    expect(out).toBe('B'.repeat(FAMILY_NAME_MAX_CHARS - 1) + '…');
+    expect(out.length).toBe(FAMILY_NAME_MAX_CHARS);
+  });
+
+  it('truncates the name when the short label is empty', () => {
+    const name = 'The Extremely Long Family Name';
+    expect(displayNameForRow({ name, shortLabel: '' })).toBe(
+      name.slice(0, FAMILY_NAME_MAX_CHARS - 1) + '…',
+    );
+  });
+
+  it('respects a custom maxChars', () => {
+    expect(displayNameForRow({ name: 'abcdef', shortLabel: 'xy' }, 4)).toBe('xy');
   });
 });
 

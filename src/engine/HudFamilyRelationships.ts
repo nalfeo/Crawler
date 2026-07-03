@@ -17,7 +17,11 @@ import { GAME } from '../shared/constants.js';
 import { PIXEL_UI, PIXEL_UI_DEPTH, createBeveledPanel } from './pixel-ui.js';
 import { applyCrispText } from './ui-scale.js';
 import { loadFamilies, type FamilyDef } from '../shared/data/families.js';
-import { resolveFamilyRows, type FamilyRow } from './family-relationships-state.js';
+import {
+  resolveFamilyRows,
+  displayNameForRow,
+  type FamilyRow,
+} from './family-relationships-state.js';
 
 const PANEL_WIDTH = 232;
 const TITLE_H = 22;
@@ -171,9 +175,8 @@ export function createHudFamilyRelationships(
     }
     rv.container.setVisible(true);
     rv.swatch.setFillStyle(row.hudColor);
-    // Truncate long names to keep the row compact.
-    const displayName = row.name.length > 18 ? row.name.slice(0, 17) + '…' : row.name;
-    rv.name.setText(displayName);
+    // Prefer the full name; fall back to the short species label when it's too wide.
+    rv.name.setText(displayNameForRow(row));
 
     const inner = BAR_WIDTH - 2;
     const pct = Math.max(0, Math.min(1, row.relation / 100));

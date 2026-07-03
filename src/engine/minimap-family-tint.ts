@@ -14,8 +14,12 @@ export const SETTLEMENT_TINT = 0xf5c542; // warm gold
 export const RESOURCE_HEART_TINT = 0xd946ef; // magenta
 export const BOSS_DEN_OUTLINE = 0xdc2626; // fallback red when family unknown
 
-/** Grayscale fallback for a family whose boss is dead. */
-export const DEFEATED_TINT = 0x6b7280;
+/**
+ * Neutral tint for a TERRITORY room whose family index is missing/invalid.
+ * Returning this (instead of `null`) keeps the room marker on the minimap
+ * rather than dropping it entirely when `RoomData.familyIndex` is unset.
+ */
+export const TERRITORY_NEUTRAL_TINT = 0x6b7280; // slate gray
 
 /** Roles the tint helper knows how to color. */
 export type FamilyTintRole =
@@ -61,24 +65,6 @@ export function toGrayscale(color: number): number {
 }
 
 /**
- * Blend two colors channel-wise. `t` in `[0,1]` picks the ratio of `b` to mix
- * into `a` (0 → all `a`, 1 → all `b`).
- */
-export function blendColors(a: number, b: number, t: number): number {
-  const clamped = Math.max(0, Math.min(1, t));
-  const ar = (a >> 16) & 0xff;
-  const ag = (a >> 8) & 0xff;
-  const ab = a & 0xff;
-  const br = (b >> 16) & 0xff;
-  const bg = (b >> 8) & 0xff;
-  const bb = b & 0xff;
-  const rr = Math.round(ar + (br - ar) * clamped);
-  const rg = Math.round(ag + (bg - ag) * clamped);
-  const rb = Math.round(ab + (bb - ab) * clamped);
-  return (rr << 16) | (rg << 8) | rb;
-}
-
-/**
  * Pick the minimap tint for a Floor-2 room. Returns `null` for roles that
  * aren't part of the family palette (SPAWN/SAFE/BOSS_STAIR/NORMAL) so the
  * caller can fall through to the classic accent palette.
@@ -95,7 +81,7 @@ export function familyTintForRoom(
       return RESOURCE_HEART_TINT;
     case RoomRole.TERRITORY: {
       const fam = resolveFamilyByIndex(world, families, room.familyIndex);
-      if (!fam) return null;
+      if (!fam) return TERRITORY_NEUTRAL_TINT;
       const base = parseHexColor(fam.def.hudColor);
       return isFamilyBossDefeated(world, fam.id) ? toGrayscale(base) : base;
     }
