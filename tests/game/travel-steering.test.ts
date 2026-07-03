@@ -218,6 +218,19 @@ describe('pickSafeTravelHeading', () => {
     expect(r.emergency).toBe(false);
   });
 
+  it('can bend clear travel toward an accepted tactical pickup', () => {
+    const r = pickSafeTravelHeading(
+      baseInput({ pickups: [{ eid: 7, x: 10, y: 3, weight: 8 }] }),
+      makeParams({ wLoot: 5 }),
+    );
+
+    expect(r.moveX).toBeGreaterThan(0);
+    expect(r.moveY).toBeGreaterThan(0);
+    expect(r.selectedPickupEid).toBe(7);
+    expect(r.lootBonus).toBeGreaterThan(0);
+    expect(r.reason).toBe('safe tactical arc');
+  });
+
   it('returns zero when there is no objective direction', () => {
     const r = pickSafeTravelHeading(baseInput({ objDirX: 0, objDirY: 0 }), makeParams());
     expect(r.moveX).toBe(0);

@@ -152,6 +152,27 @@ import {
   PANIC_LOCKED_STAIRS_MULTIPLIER,
   PANIC_MIN_DODGE_WEIGHT_SCALE,
   PANIC_MIN_DODGE_WEIGHT_SCALE_LOCKED,
+  RUN_PLANNER_SAFETY_BUFFER_MS,
+  RUN_PLANNER_URGENCY_SLACK_WINDOW_MS,
+  RUN_PLANNER_INTERACTION_MS,
+  RUN_PLANNER_LEVEL_2_GRIND_MS,
+  RUN_PLANNER_QUEST_KILL_MS,
+  RUN_PLANNER_GOLD_FARM_MS,
+  RUN_PLANNER_FETCH_PICKUP_MS,
+  RUN_PLANNER_MINOR_BOSS_KILL_MS,
+  RUN_PLANNER_FINAL_BOSS_KILL_MS,
+  RUN_PLANNER_STAIRS_INTERACT_MS,
+  TACTICAL_OPPORTUNITY_SCAN_RADIUS_FT,
+  TACTICAL_OPPORTUNITY_MAX_DETOUR_FT,
+  TACTICAL_OPPORTUNITY_TRIVIAL_DETOUR_FT,
+  TACTICAL_OPPORTUNITY_MIN_DETOUR_MS,
+  TACTICAL_OPPORTUNITY_URGENCY_PENALTY,
+  TACTICAL_OPPORTUNITY_DANGER_PENALTY,
+  TACTICAL_OPPORTUNITY_ACCEPT_SCORE,
+  TACTICAL_OPPORTUNITY_MAX_ACCEPTED,
+  TACTICAL_OPPORTUNITY_TRAVEL_WEIGHT_DIVISOR,
+  TACTICAL_OPPORTUNITY_MAX_TRAVEL_WEIGHT,
+  TACTICAL_TRAVEL_W_LOOT,
   QUEST_GIVER_DETOUR_MAX_EXTRA_FT,
   QUEST_GIVER_DETOUR_MAX_EXTRA_FRACTION,
   QUEST_GIVER_DETOUR_COMMIT_HYSTERESIS,
@@ -191,7 +212,22 @@ import {
   type TravelSteeringParams,
   type TravelThreat,
   type TravelSteeringResult,
+  type TravelPickup,
 } from './travel-steering.js';
+import {
+  estimateFloor1RunPlan,
+  type Floor1RunPlan,
+  type Floor1RunPlannerSnapshot,
+  type RunPlannerCurrentTargetKind,
+  type RunPlannerParams,
+} from './run-planner.js';
+import {
+  evaluateTacticalOpportunities,
+  type TacticalOpportunityCandidate,
+  type TacticalOpportunityEvaluation,
+  type TacticalOpportunityParams,
+  type TacticalPickupKind,
+} from './tactical-opportunity-evaluator.js';
 
 const logger = createLogger('game:bt-ai-provider');
 
@@ -219,6 +255,34 @@ const TRAVEL_PARAMS: TravelSteeringParams = {
   lootLookaheadFt: TRAVEL_LOOT_LOOKAHEAD_FT,
   lootCorridorFt: TRAVEL_LOOT_CORRIDOR_FT,
   relSpeedEpsilonSq: TRAVEL_REL_SPEED_EPSILON_SQ,
+};
+
+const FRAMES_PER_SECOND = 60;
+
+const RUN_PLANNER_PARAMS: RunPlannerParams = {
+  moveSpeedFtPerMs: PLAYER_SPEED / (1000 / FRAMES_PER_SECOND),
+  safetyBufferMs: RUN_PLANNER_SAFETY_BUFFER_MS,
+  urgencySlackWindowMs: RUN_PLANNER_URGENCY_SLACK_WINDOW_MS,
+  interactionMs: RUN_PLANNER_INTERACTION_MS,
+  level2GrindMs: RUN_PLANNER_LEVEL_2_GRIND_MS,
+  questKillMs: RUN_PLANNER_QUEST_KILL_MS,
+  goldFarmMs: RUN_PLANNER_GOLD_FARM_MS,
+  fetchPickupMs: RUN_PLANNER_FETCH_PICKUP_MS,
+  minorBossKillMs: RUN_PLANNER_MINOR_BOSS_KILL_MS,
+  finalBossKillMs: RUN_PLANNER_FINAL_BOSS_KILL_MS,
+  stairsInteractMs: RUN_PLANNER_STAIRS_INTERACT_MS,
+};
+
+const TACTICAL_OPPORTUNITY_PARAMS: TacticalOpportunityParams = {
+  scanRadiusFt: TACTICAL_OPPORTUNITY_SCAN_RADIUS_FT,
+  maxDetourFt: TACTICAL_OPPORTUNITY_MAX_DETOUR_FT,
+  minDetourMs: TACTICAL_OPPORTUNITY_MIN_DETOUR_MS,
+  urgencyPenalty: TACTICAL_OPPORTUNITY_URGENCY_PENALTY,
+  dangerPenalty: TACTICAL_OPPORTUNITY_DANGER_PENALTY,
+  acceptScore: TACTICAL_OPPORTUNITY_ACCEPT_SCORE,
+  maxAccepted: TACTICAL_OPPORTUNITY_MAX_ACCEPTED,
+  travelWeightDivisor: TACTICAL_OPPORTUNITY_TRAVEL_WEIGHT_DIVISOR,
+  maxTravelWeight: TACTICAL_OPPORTUNITY_MAX_TRAVEL_WEIGHT,
 };
 
 // Re-exported so bt-ai-provider.ts's public surface is unchanged: no importer
@@ -295,6 +359,11 @@ export interface AINpcMemoryDebug {
 
 export type { AILockedDoorMemory };
 
+export interface TacticalRunDebug {
+  runPlan: Floor1RunPlan | null;
+  opportunities: TacticalOpportunityEvaluation | null;
+}
+
 /**
  * Behavior Tree AI that simulates human input.
  * Uses composable behavior tree nodes for decision-making.
@@ -322,6 +391,9 @@ export class BehaviorTreeAI implements AIInputProvider {
   /** Last travel-steering result (or null when steering did not drive the most
    * recent poll). Exposed via {@link getTravelSteeringDebug} for tests/telemetry. */
   private lastTravelSteering: TravelSteeringResult | null = null;
+  private lastRunPlan: Floor1RunPlan | null = null;
+  private lastTacticalOpportunityEvaluation: TacticalOpportunityEvaluation | null = null;
+  private tacticalTravelOwnsLoot: boolean = false;
   /**
    * Whether the AI is currently committed to a retreat. Latched so the retreat
    * condition can apply hysteresis (see {@link RETREAT_HYSTERESIS_MULT}) instead
@@ -1912,6 +1984,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.farmPullY = 0;
     this.dodgeVecX = 0;
     this.dodgeVecY = 0;
+    this.lastRunPlan = null;
+    this.lastTacticalOpportunityEvaluation = null;
+    this.tacticalTravelOwnsLoot = false;
 
     // Build context for behavior tree
     const context: BTContext = {
@@ -1957,6 +2032,12 @@ export class BehaviorTreeAI implements AIInputProvider {
         state.moveY = steer.moveY;
         travelEmergency = steer.emergency;
         this.lastTravelSteering = steer;
+        if (this.tacticalTravelOwnsLoot) {
+          this.opportunisticPullX = 0;
+          this.opportunisticPullY = 0;
+          this.farmPullX = 0;
+          this.farmPullY = 0;
+        }
         // The steering heading already encodes predictive spacing; blending the
         // legacy single-closest-threat dodge on top would double-count and
         // reintroduce the oscillation that widening it caused (commit f4f538d7),
@@ -2149,6 +2230,232 @@ export class BehaviorTreeAI implements AIInputProvider {
       collectPullWeight: this.config.collectPullWeight * collectScale,
       farmPullWeight: this.config.farmPullWeight * farmScale,
     };
+  }
+
+  private getPlayerSpeedFtPerFrame(world: GameWorld, playerEid: number): number {
+    return hasComponent(world.ecs, playerEid, Stats)
+      ? (world.stores.stats.moveSpeed[playerEid] ?? PLAYER_SPEED)
+      : PLAYER_SPEED;
+  }
+
+  private getRunPlannerParams(playerSpeedFtPerFrame: number): RunPlannerParams {
+    return {
+      ...RUN_PLANNER_PARAMS,
+      moveSpeedFtPerMs: playerSpeedFtPerFrame / (1000 / FRAMES_PER_SECOND),
+    };
+  }
+
+  private getCurrentRunPlannerTargetKind(
+    world: GameWorld,
+    shopStage: ReturnType<typeof getShopkeeperStage>,
+  ): RunPlannerCurrentTargetKind {
+    const targetEid = this.decision.targetEid;
+    const objective = world.floor1?.objective;
+    if (!objective || targetEid === null || targetEid < 0) {
+      return 'other';
+    }
+    if (!objective.questCompleted && world.floor1?.enemyArchetypes.has(targetEid)) {
+      return 'quest-kills';
+    }
+    if (shopStage === 'ready-to-buy' && world.playerGold < SHOPKEEPER_EQUIPMENT_COST) {
+      if (hasComponent(world.ecs, targetEid, Gold) || hasComponent(world.ecs, targetEid, Enemy)) {
+        return 'gold-farm';
+      }
+    }
+    return 'other';
+  }
+
+  private estimateCurrentRunPlan(
+    world: GameWorld,
+    playerEid: number,
+    playerX: number,
+    playerY: number,
+    playerSpeedFtPerFrame: number,
+  ): Floor1RunPlan | null {
+    const floor1 = world.floor1;
+    const objective = floor1?.objective;
+    if (!floor1 || !objective) {
+      return null;
+    }
+
+    const hasWorldFetchItem =
+      floor1.questItemEid !== null &&
+      entityExists(world.ecs, floor1.questItemEid) &&
+      hasComponent(world.ecs, floor1.questItemEid, DroppedItem);
+    const bag = world.inventories.get(playerEid);
+    const hasFetchItem = bag ? hasItem(bag, SHOPKEEPER_FETCH_ITEM_ID) : false;
+    const slimeRat = objective.bossBattles.get('slime-rat')!;
+    const staircase = objective.bossBattles.get('staircase')!;
+    const shopStage = getShopkeeperStage(world);
+    const currentTarget =
+      this.decision.targetX !== null && this.decision.targetY !== null
+        ? {
+            x: this.decision.targetX,
+            y: this.decision.targetY,
+            eid: this.decision.targetEid,
+            reason: this.decision.reason,
+            kind: this.getCurrentRunPlannerTargetKind(world, shopStage),
+          }
+        : null;
+    const snapshot: Floor1RunPlannerSnapshot = {
+      nowMs: world.elapsedMs,
+      deadlineMs: objective.deadlineMs,
+      player: { x: playerX, y: playerY },
+      currentTarget,
+      activeQuestGiverDetour: this.committedDetourNpcEid !== null,
+      tutorialAccepted: world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID),
+      playerLevel: world.playerLevel.level,
+      questCompleted: objective.questCompleted,
+      ratsKilled: objective.ratsKilled,
+      slimesKilled: objective.slimesKilled,
+      requiredRats: objective.requiredRats,
+      requiredSlimes: objective.requiredSlimes,
+      requiredTotalKills: objective.requiredRats + objective.requiredSlimes,
+      shopStage,
+      playerGold: world.playerGold,
+      shopkeeperEquipmentCost: SHOPKEEPER_EQUIPMENT_COST,
+      hasShopFetchItem: hasFetchItem || !hasWorldFetchItem,
+      bossBattleAccepted: world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID),
+      slimeRatStarted: slimeRat.started,
+      slimeRatDefeated: slimeRat.defeated,
+      spellsUnlocked: world.featureUnlocks.spells,
+      staircaseStarted: staircase.started,
+      staircaseDefeated: staircase.defeated,
+      staircaseUnlocked: objective.staircaseUnlocked,
+      staircaseDiscovered: objective.staircaseDiscovered,
+      positions: {
+        welcomeOffice: objective.welcomeOfficePos,
+        shop: objective.shopRoomPos,
+        questItem: objective.questItemPos,
+        spellQuestGiver: objective.spellQuestGiverPos,
+        slimeRatRoom: objective.slimeRatRoomPos,
+        staircase: objective.staircasePos,
+      },
+    };
+    return estimateFloor1RunPlan(snapshot, this.getRunPlannerParams(playerSpeedFtPerFrame));
+  }
+
+  private getLootOpportunityValue(world: GameWorld, eid: number, kind: TacticalPickupKind): number {
+    switch (kind) {
+      case 'xp':
+        return Math.max(1, world.stores.xpGem.value[eid] ?? 1);
+      case 'gold':
+        return 3;
+      case 'item':
+        return 18;
+    }
+  }
+
+  private estimateOpportunityDanger(
+    world: GameWorld,
+    x: number,
+    y: number,
+    radiusFt: number = TRAVEL_THREAT_RADIUS_FT,
+  ): number {
+    let danger = 0;
+    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
+      if (eid === undefined) continue;
+      if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
+      const ex = world.stores.position.x[eid] ?? 0;
+      const ey = world.stores.position.y[eid] ?? 0;
+      const dist = Math.hypot(ex - x, ey - y);
+      if (dist > radiusFt) continue;
+      danger += 1 - dist / radiusFt;
+    }
+    return danger;
+  }
+
+  private buildTacticalOpportunityCandidates(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+  ): TacticalOpportunityCandidate[] {
+    const candidates: TacticalOpportunityCandidate[] = [];
+    const lootSources: Array<{ kind: TacticalPickupKind; entities: ReturnType<typeof query> }> = [
+      { kind: 'xp', entities: query(world.ecs, [XpGem, Position]) },
+      { kind: 'gold', entities: query(world.ecs, [Gold, Position]) },
+      { kind: 'item', entities: query(world.ecs, [DroppedItem, Position]) },
+    ];
+
+    for (const source of lootSources) {
+      for (const eid of source.entities) {
+        if (eid === undefined) continue;
+        const ignoredUntil = this.ignoredLootUntilFrame.get(eid);
+        if (ignoredUntil !== undefined && ignoredUntil > world.frameCount) continue;
+        if (ignoredUntil !== undefined && ignoredUntil <= world.frameCount) {
+          this.ignoredLootUntilFrame.delete(eid);
+        }
+        const x = world.stores.position.x[eid] ?? 0;
+        const y = world.stores.position.y[eid] ?? 0;
+        const distance = Math.hypot(x - playerX, y - playerY);
+        if (distance > TACTICAL_OPPORTUNITY_SCAN_RADIUS_FT) continue;
+        const loot: LootTarget = { eid, x, y, distance, kind: source.kind };
+        candidates.push({
+          id: eid,
+          kind: 'pickup',
+          pickupKind: source.kind,
+          x,
+          y,
+          value: this.getLootOpportunityValue(world, eid, source.kind),
+          danger: this.estimateOpportunityDanger(world, x, y),
+          reachable: this.isLootCollectable(world, playerX, playerY, loot),
+        });
+      }
+    }
+
+    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
+      if (eid === undefined) continue;
+      const hp = world.stores.health.current[eid] ?? 0;
+      if (hp <= 0) continue;
+      const x = world.stores.position.x[eid] ?? 0;
+      const y = world.stores.position.y[eid] ?? 0;
+      const distance = Math.hypot(x - playerX, y - playerY);
+      if (distance > TACTICAL_OPPORTUNITY_SCAN_RADIUS_FT) continue;
+      const target: WorldTarget = { eid, x, y, distance };
+      candidates.push({
+        id: eid,
+        kind: 'enemyPack',
+        x,
+        y,
+        value: Math.max(1, 8 - hp * 0.15),
+        danger: this.estimateOpportunityDanger(world, x, y),
+        reachable: this.isTargetReachable(world, playerX, playerY, target),
+        debugOnly: true,
+      });
+    }
+
+    return candidates;
+  }
+
+  private evaluateTacticalObjectiveOpportunities(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    objectiveX: number,
+    objectiveY: number,
+    runPlan: Floor1RunPlan | null,
+    playerSpeedFtPerFrame: number,
+  ): TacticalOpportunityEvaluation {
+    const inQuestGiverDetour = this.committedDetourNpcEid !== null;
+    const params: TacticalOpportunityParams = inQuestGiverDetour
+      ? {
+          ...TACTICAL_OPPORTUNITY_PARAMS,
+          maxDetourFt: TACTICAL_OPPORTUNITY_TRIVIAL_DETOUR_FT,
+          maxAccepted: 1,
+        }
+      : TACTICAL_OPPORTUNITY_PARAMS;
+    return evaluateTacticalOpportunities(
+      {
+        playerX,
+        playerY,
+        objectiveX,
+        objectiveY,
+        urgency: runPlan?.urgency ?? this.getCollapsePanicProfile(world).panic,
+        speedFtPerMs: playerSpeedFtPerFrame / (1000 / FRAMES_PER_SECOND),
+        opportunities: this.buildTacticalOpportunityCandidates(world, playerX, playerY),
+      },
+      params,
+    );
   }
 
   private withQuestGiverDetour(
@@ -3809,9 +4116,29 @@ export class BehaviorTreeAI implements AIInputProvider {
     objDirX: number,
     objDirY: number,
   ): TravelSteeringResult {
-    const playerSpeed = hasComponent(world.ecs, playerEid, Stats)
-      ? (world.stores.stats.moveSpeed[playerEid] ?? PLAYER_SPEED)
-      : PLAYER_SPEED;
+    const playerSpeed = this.getPlayerSpeedFtPerFrame(world, playerEid);
+    const runPlan = this.estimateCurrentRunPlan(world, playerEid, playerX, playerY, playerSpeed);
+    this.lastRunPlan = runPlan;
+    const objectiveX = this.decision.targetX ?? playerX + objDirX;
+    const objectiveY = this.decision.targetY ?? playerY + objDirY;
+    const tacticalOpportunities = this.evaluateTacticalObjectiveOpportunities(
+      world,
+      playerX,
+      playerY,
+      objectiveX,
+      objectiveY,
+      runPlan,
+      playerSpeed,
+    );
+    this.lastTacticalOpportunityEvaluation = tacticalOpportunities;
+    const acceptedPickups: TravelPickup[] = tacticalOpportunities.acceptedPickups.map((pickup) => ({
+      eid: pickup.id,
+      kind: pickup.pickupKind,
+      x: pickup.x,
+      y: pickup.y,
+      weight: pickup.travelWeight,
+    }));
+    this.tacticalTravelOwnsLoot = acceptedPickups.length > 0;
 
     // Perceived hostiles within the threat radius (same perception gate the rest
     // of the AI uses, so steering never reacts to enemies the player can't see).
@@ -3868,13 +4195,17 @@ export class BehaviorTreeAI implements AIInputProvider {
     // is surrendered. Damage-agnostic — driven by remaining time, not hostile damage.
     const panicProfile = this.getCollapsePanicProfile(world);
     const panic = panicProfile.panic;
-    const params: TravelSteeringParams =
+    const baseParams: TravelSteeringParams =
       panic > 0
         ? {
             ...TRAVEL_PARAMS,
             safeGapFt: TRAVEL_SAFE_GAP_FT - (TRAVEL_SAFE_GAP_FT - TRAVEL_HARD_GAP_FT) * panic,
           }
         : TRAVEL_PARAMS;
+    const params: TravelSteeringParams =
+      acceptedPickups.length > 0 && !panicProfile.beeline
+        ? { ...baseParams, wLoot: TACTICAL_TRAVEL_W_LOOT }
+        : baseParams;
 
     const input: TravelSteeringInput = {
       px: playerX,
@@ -3886,12 +4217,10 @@ export class BehaviorTreeAI implements AIInputProvider {
       playerSpeedFtPerFrame: playerSpeed,
       orbitSign: this.kiteOrbitSign,
       panic: panicProfile.beeline,
-      // v1: loot/farm biasing is off (TRAVEL_W_LOOT/W_FARM = 0); the existing
-      // Track-B opportunistic-collect and farm pulls still ride the blend below.
       weaponReachFt: 0,
       farmEligible: false,
       threats,
-      pickups: [],
+      pickups: acceptedPickups,
       probePassable,
     };
     return pickSafeTravelHeading(input, params);
@@ -4334,6 +4663,13 @@ export class BehaviorTreeAI implements AIInputProvider {
     return this.lastTravelSteering;
   }
 
+  getTacticalRunDebug(): TacticalRunDebug {
+    return {
+      runPlan: this.lastRunPlan,
+      opportunities: this.lastTacticalOpportunityEvaluation,
+    };
+  }
+
   getNavigationDebug(): AINavigationDebug {
     return {
       pathWaypoints: this.pathWaypoints.map((waypoint) => ({ ...waypoint })),
@@ -4444,6 +4780,10 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.farmPullY = 0;
     this.dodgeVecX = 0;
     this.dodgeVecY = 0;
+    this.lastTravelSteering = null;
+    this.lastRunPlan = null;
+    this.lastTacticalOpportunityEvaluation = null;
+    this.tacticalTravelOwnsLoot = false;
     this.acceptedQuestCount = 0;
     this.committedDetourNpcEid = null;
     this.committedDetourBestDistance = Number.POSITIVE_INFINITY;

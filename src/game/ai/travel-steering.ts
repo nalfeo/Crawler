@@ -56,6 +56,9 @@ export interface TravelThreat {
 
 /** A pickup the steering may lightly bend toward — only when already safe. */
 export interface TravelPickup {
+  /** Stable entity id for debug / single-channel assertions. */
+  eid?: number;
+  kind?: 'xp' | 'gold' | 'item';
   x: number;
   y: number;
   /** Caller-precomputed desirability (item > xp > gold). */
@@ -132,6 +135,7 @@ export interface TravelCandidateScore {
   wallPenalty: number;
   kiteBonus: number;
   lootBonus: number;
+  bestPickupEid: number | null;
   farmBonus: number;
   score: number;
 }
@@ -142,6 +146,12 @@ export interface TravelSteeringResult {
   minPredictedGapFt: number;
   progressDot: number;
   threatCost: number;
+  lootBonus: number;
+  farmBonus: number;
+  score: number;
+  selectedCandidateX: number | null;
+  selectedCandidateY: number | null;
+  selectedPickupEid: number | null;
   /** True when contact is imminent / no safe lane exists — caller may bypass
    * heading smoothing so the dodge is not blended away. */
   emergency: boolean;
@@ -362,6 +372,8 @@ export function scoreTravelCandidate(
 
   // --- Loot bias: only when already safe & progressing & not panicking ---
   let lootBonus = 0;
+  let bestPickupEid: number | null = null;
+  let bestPickupContribution = 0;
   if (params.wLoot > 0 && safe && progressing && !input.panic) {
     for (const pickup of input.pickups) {
       const rx = pickup.x - px;
@@ -370,7 +382,13 @@ export function scoreTravelCandidate(
       if (proj <= 0 || proj > params.lootLookaheadFt) continue;
       const perp = Math.abs(rx * -candDirY + ry * candDirX);
       const closeness = 1 - perp / Math.max(params.lootCorridorFt, EPSILON);
-      if (closeness > 0) lootBonus += closeness * pickup.weight;
+      if (closeness <= 0) continue;
+      const contribution = closeness * pickup.weight;
+      lootBonus += contribution;
+      if (contribution > bestPickupContribution) {
+        bestPickupContribution = contribution;
+        bestPickupEid = pickup.eid ?? null;
+      }
     }
   }
 
@@ -407,6 +425,7 @@ export function scoreTravelCandidate(
     wallPenalty,
     kiteBonus,
     lootBonus,
+    bestPickupEid,
     farmBonus,
     score,
   };
@@ -446,6 +465,12 @@ export function pickSafeTravelHeading(
       minPredictedGapFt: Number.POSITIVE_INFINITY,
       progressDot: 0,
       threatCost: 0,
+      lootBonus: 0,
+      farmBonus: 0,
+      score: 0,
+      selectedCandidateX: null,
+      selectedCandidateY: null,
+      selectedPickupEid: null,
       emergency: false,
       reason: 'no objective direction',
     };
@@ -453,17 +478,26 @@ export function pickSafeTravelHeading(
   const objDirX = input.objDirX / objMag;
   const objDirY = input.objDirY / objMag;
   const normInput: TravelSteeringInput = { ...input, objDirX, objDirY };
+  const hasLootBias = params.wLoot > 0 && input.pickups.length > 0 && !input.panic;
+  const preferCompositeScore =
+    hasLootBias || (params.wFarm > 0 && input.farmEligible && !input.panic);
 
   // Fast path: no threats ⇒ steer exactly along the objective (keeps the beeline
-  // and the throughput it implies). Wall avoidance during clear travel is left to
-  // the caller's existing local navigation.
-  if (input.threats.length === 0) {
+  // and the throughput it implies), unless tactical loot is explicitly active.
+  // Wall avoidance during clear travel is left to the caller's existing local navigation.
+  if (input.threats.length === 0 && !hasLootBias) {
     return {
       moveX: objDirX,
       moveY: objDirY,
       minPredictedGapFt: Number.POSITIVE_INFINITY,
       progressDot: 1,
       threatCost: 0,
+      lootBonus: 0,
+      farmBonus: 0,
+      score: 0,
+      selectedCandidateX: input.px + objDirX * params.lootLookaheadFt,
+      selectedCandidateY: input.py + objDirY * params.lootLookaheadFt,
+      selectedPickupEid: null,
       emergency: false,
       reason: 'clear travel',
     };
@@ -480,8 +514,8 @@ export function pickSafeTravelHeading(
   // frame triggers an arc then — no need to pre-emptively orbit. `scored[0]` is
   // the 0° candidate (buildTravelCandidateFan emits objDir first).
   const beeline = scored[0];
-  if (beeline && beeline.passable && beeline.minGapFt >= params.safeGapFt) {
-    return toResult(beeline, false, 'safe beeline');
+  if (beeline && beeline.passable && beeline.minGapFt >= params.safeGapFt && !hasLootBias) {
+    return toResult(beeline, normInput, params, false, 'safe beeline');
   }
 
   // Pass 1: safe + progressing + passable — take the *tightest* such arc (max
@@ -499,11 +533,16 @@ export function pickSafeTravelHeading(
   );
   if (safeProgressing.length > 0) {
     const best = safeProgressing.reduce((b, cur) => {
+      if (preferCompositeScore) {
+        if (cur.score > b.score + EPSILON) return cur;
+        if (cur.score >= b.score - EPSILON && cur.progressDot > b.progressDot) return cur;
+        return b;
+      }
       if (cur.progressDot > b.progressDot + EPSILON) return cur;
       if (cur.progressDot >= b.progressDot - EPSILON && cur.score > b.score) return cur;
       return b;
     });
-    return toResult(best, false, 'safe arc');
+    return toResult(best, normInput, params, false, hasLootBias ? 'safe tactical arc' : 'safe arc');
   }
 
   // Pass 2: no safe + progressing lane exists — a mob stands between the runner
@@ -546,7 +585,7 @@ export function pickSafeTravelHeading(
       }
       return b;
     }, first);
-    return toResult(best, false, 'thread past');
+    return toResult(best, normInput, params, false, 'thread past');
   }
 
   // Pass 2b: no open escape lane (walls hem in the whole forward hemisphere) — a
@@ -562,7 +601,7 @@ export function pickSafeTravelHeading(
     const first = passableOnly[0];
     if (first === undefined) {
       // Unreachable (length checked above) — satisfies the type narrower.
-      return toResult(scored[0] as TravelCandidateScore, true, 'pincer escape');
+      return toResult(scored[0] as TravelCandidateScore, normInput, params, true, 'pincer escape');
     }
     const best = passableOnly.reduce((b, cur) => {
       if (cur.progressDot > b.progressDot + EPSILON) return cur;
@@ -576,25 +615,37 @@ export function pickSafeTravelHeading(
       }
       return b;
     }, first);
-    return toResult(best, best.minGapFt < params.hardGapFt, 'commit through');
+    return toResult(best, normInput, params, best.minGapFt < params.hardGapFt, 'commit through');
   }
 
   // Pass 3: boxed in — least-bad gap, never freeze.
   const best = scored.reduce((b, cur) => (cur.minGapFt > b.minGapFt ? cur : b));
-  return toResult(best, true, 'pincer escape');
+  return toResult(best, normInput, params, true, 'pincer escape');
 }
 
 function toResult(
   c: TravelCandidateScore,
+  input: TravelSteeringInput,
+  params: TravelSteeringParams,
   emergency: boolean,
   reason: string,
 ): TravelSteeringResult {
+  const candidateDistance = Math.max(
+    params.lootLookaheadFt,
+    params.wallProbeDistancesFt[0] ?? params.lootLookaheadFt,
+  );
   return {
     moveX: c.dirX,
     moveY: c.dirY,
     minPredictedGapFt: c.minGapFt,
     progressDot: c.progressDot,
     threatCost: c.threatCost,
+    lootBonus: c.lootBonus,
+    farmBonus: c.farmBonus,
+    score: c.score,
+    selectedCandidateX: input.px + c.dirX * candidateDistance,
+    selectedCandidateY: input.py + c.dirY * candidateDistance,
+    selectedPickupEid: c.bestPickupEid,
     emergency,
     reason,
   };

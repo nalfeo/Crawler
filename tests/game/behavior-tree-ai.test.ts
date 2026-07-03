@@ -382,7 +382,7 @@ describe('BehaviorTreeAI', () => {
     expect(ai.getDecision().state).not.toBe(AIState.COLLECT);
   });
 
-  describe('on-path loot detour (Track B opportunistic collect)', () => {
+  describe('on-path loot detour (tactical travel)', () => {
     it('detours toward loot within 5 ft of its forward path during quest navigation', () => {
       const s = pollQuestNavHeading(42);
       // Gem 10 ft dead ahead along the travel heading: inside the 15 ft grab radius
@@ -392,12 +392,19 @@ describe('BehaviorTreeAI', () => {
       s.ai.poll(s.input, s.world);
 
       // Track A stays on the quest objective (Progress outranks Collect), so the
-      // gem is ignored by Track A — the detour layer is what grabs it.
+      // gem is ignored by Track A. Tactical travel now owns the loot bend, keeping
+      // the legacy Track-B pull at zero so the same gem is not double-counted.
       expect(s.ai.getDecision().state).toBe(AIState.EXPLORE);
+      const steer = s.ai.getTravelSteeringDebug();
+      expect(steer).not.toBeNull();
+      expect(steer!.selectedPickupEid).not.toBeNull();
+      expect(steer!.lootBonus).toBeGreaterThan(0);
       const dbg = s.ai.getOpportunisticDebug();
-      expect(Math.hypot(dbg.pullX, dbg.pullY)).toBeGreaterThan(0.5);
-      // Pull is aligned with the heading (points at the on-path gem).
-      expect(dbg.pullX * s.ux + dbg.pullY * s.uy).toBeGreaterThan(0.9);
+      expect(dbg.pullX).toBe(0);
+      expect(dbg.pullY).toBe(0);
+      const tactical = s.ai.getTacticalRunDebug();
+      expect(tactical.runPlan?.criticalPathObjective).toBeTruthy();
+      expect(tactical.opportunities?.acceptedPickups).toHaveLength(1);
     });
 
     it('ignores loot behind the player (not on the forward path)', () => {
@@ -417,8 +424,8 @@ describe('BehaviorTreeAI', () => {
       spawnXpGem(s.world, s.px + s.ux * 10, s.py + s.uy * 10, 5);
 
       s.ai.poll(s.input, s.world);
-      const control = s.ai.getOpportunisticDebug();
-      expect(Math.hypot(control.pullX, control.pullY)).toBeGreaterThan(0.5);
+      const control = s.ai.getTravelSteeringDebug();
+      expect(control?.selectedPickupEid).not.toBeNull();
 
       const objective = s.world.floor1!.objective;
       objective.staircaseUnlocked = false;
@@ -426,9 +433,11 @@ describe('BehaviorTreeAI', () => {
       s.world.elapsedMs = objective.deadlineMs - 55_000;
 
       s.ai.poll(s.input, s.world);
-      const panic = s.ai.getOpportunisticDebug();
-      expect(panic.pullX).toBe(0);
-      expect(panic.pullY).toBe(0);
+      const panic = s.ai.getTravelSteeringDebug();
+      expect(panic?.selectedPickupEid).toBeNull();
+      const tactical = s.ai.getTacticalRunDebug();
+      expect(tactical.runPlan?.urgency).toBeGreaterThan(0.9);
+      expect(tactical.opportunities?.acceptedPickups).toHaveLength(0);
     });
 
     it('does not switch to COLLECT in low-time beeline fallback windows', () => {
