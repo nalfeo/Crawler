@@ -2179,6 +2179,418 @@
       "sensorScore": "7/7",
       "judgeScore": null,
       "contentHash": "2c904b134df8b3d2f6bd16373887524449021b670977f48fd9212f401eb25507"
+    },
+    "ability-icon-heal-v1-var-1": {
+      "briefId": "ability-icon-heal-v1",
+      "spriteName": "ability-icon-heal-v1-var-1",
+      "assetPath": "generated/ability-icon-heal-v1-var-1.png",
+      "approvedAt": "2026-07-03T01:37:55.709Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-7he5vm/ability-icon-heal-v1/2026-07-02T23-23-44-6aa6a3c9",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 40,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 40,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "2",
+      "contentHash": "37ed0f1d134b53a2e406c55d5c360d99bfdbe877421c018ae11766dc72a63a11"
+    },
+    "prop-junk-pile-v1-var-0": {
+      "briefId": "prop-junk-pile-v1",
+      "spriteName": "prop-junk-pile-v1-var-0",
+      "assetPath": "generated/prop-junk-pile-v1-var-0.png",
+      "approvedAt": "2026-07-03T01:33:15.779Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-8UfZbh/prop-junk-pile-v1/2026-07-02T23-41-53-06f9e5cd",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 33,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "2",
+      "contentHash": "66b119229ec9f2eba730e21695eba5b5fcfe382c2433d345fab5b939d705c8ba"
+    },
+    "prop-junk-pile-v1-var-3": {
+      "briefId": "prop-junk-pile-v1",
+      "spriteName": "prop-junk-pile-v1-var-3",
+      "assetPath": "generated/prop-junk-pile-v1-var-3.png",
+      "approvedAt": "2026-07-03T01:33:22.795Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-7PET6P/prop-junk-pile-v1/2026-07-02T23-41-53-06f9e5cd",
+      "variantIndex": 3,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "2",
+      "contentHash": "4034085ecd9ec122152fb34133867abdc65907fe631c734716947ac228959871"
+    },
+    "prop-torch-v1-var-10": {
+      "briefId": "prop-torch-v1",
+      "spriteName": "prop-torch-v1-var-10",
+      "assetPath": "generated/prop-torch-v1-var-10.png",
+      "approvedAt": "2026-07-03T01:36:18.030Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-ntO04g/prop-torch-v1/2026-07-03T00-17-15-c9137bd4",
+      "variantIndex": 10,
+      "anchor": {
+        "x": 29,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 29,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "contentHash": "c3fd43bcc09e03807a5be6338b8d69cbb1cac726200c2129bc2f03f12d35a148"
+    },
+    "prop-torch-v1-var-14": {
+      "briefId": "prop-torch-v1",
+      "spriteName": "prop-torch-v1-var-14",
+      "assetPath": "generated/prop-torch-v1-var-14.png",
+      "approvedAt": "2026-07-03T01:36:28.115Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-fjSEQU/prop-torch-v1/2026-07-03T00-17-15-c9137bd4",
+      "variantIndex": 14,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "5/8",
+      "judgeScore": "4",
+      "contentHash": "e7a3c699d372b21c1ab82c27b7980316aae5ea02c4c91f883539a55fb2d43833"
+    },
+    "prop-torch-v1-var-2": {
+      "briefId": "prop-torch-v1",
+      "spriteName": "prop-torch-v1-var-2",
+      "assetPath": "generated/prop-torch-v1-var-2.png",
+      "approvedAt": "2026-07-03T01:36:17.028Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-JQgNVs/prop-torch-v1/2026-07-03T00-17-15-c9137bd4",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "contentHash": "d4ef1c0915580fdc0f4b66747ac0e19b762a01dab65eff2dce1ed38216a082d7"
+    },
+    "prop-torch-v1-var-8": {
+      "briefId": "prop-torch-v1",
+      "spriteName": "prop-torch-v1-var-8",
+      "assetPath": "generated/prop-torch-v1-var-8.png",
+      "approvedAt": "2026-07-03T01:36:19.333Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-o5ADhZ/prop-torch-v1/2026-07-03T00-17-15-c9137bd4",
+      "variantIndex": 8,
+      "anchor": {
+        "x": 30,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 30,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "5/8",
+      "judgeScore": "4",
+      "contentHash": "8821a076e8deee9750f8b01d599a9941440e9a8adb3635323635d13fff88c311"
+    },
+    "welcome-sign-left-v1-var-0": {
+      "briefId": "welcome-sign-left-v1",
+      "spriteName": "welcome-sign-left-v1-var-0",
+      "assetPath": "generated/welcome-sign-left-v1-var-0.png",
+      "approvedAt": "2026-07-03T01:36:43.943Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-uOShiB/welcome-sign-left-v1/2026-07-03T00-12-24-022f040a",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 31,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 29,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/8",
+      "judgeScore": "2",
+      "contentHash": "da3d92bdddc15b04b85396043e075e31f8149964a20c1c6c3cb285ffbf0fd55f"
+    },
+    "welcome-sign-left-v1-var-13": {
+      "briefId": "welcome-sign-left-v1",
+      "spriteName": "welcome-sign-left-v1-var-13",
+      "assetPath": "generated/welcome-sign-left-v1-var-13.png",
+      "approvedAt": "2026-07-03T01:37:02.299Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-IrjRXC/welcome-sign-left-v1/2026-07-03T00-12-24-022f040a",
+      "variantIndex": 13,
+      "anchor": {
+        "x": 30,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 30,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 30,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/8",
+      "judgeScore": "2",
+      "contentHash": "8596448df5742a67333ab95671278c9faa88a1e2d8829cd783892b263ce107de"
+    },
+    "welcome-sign-left-v1-var-3": {
+      "briefId": "welcome-sign-left-v1",
+      "spriteName": "welcome-sign-left-v1-var-3",
+      "assetPath": "generated/welcome-sign-left-v1-var-3.png",
+      "approvedAt": "2026-07-03T01:36:47.786Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-81d6C9/welcome-sign-left-v1/2026-07-03T00-12-24-022f040a",
+      "variantIndex": 3,
+      "anchor": null,
+      "anchors": {
+        "hold": null,
+        "centerOfGravity": {
+          "x": 30,
+          "y": 29,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/8",
+      "judgeScore": "2",
+      "contentHash": "546edb4d8b771bb9e46a97f27a69ba7e79958a80a960c9861372d32f142f1473"
+    },
+    "welcome-sign-left-v1-var-5": {
+      "briefId": "welcome-sign-left-v1",
+      "spriteName": "welcome-sign-left-v1-var-5",
+      "assetPath": "generated/welcome-sign-left-v1-var-5.png",
+      "approvedAt": "2026-07-03T01:36:54.294Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-PuTWnm/welcome-sign-left-v1/2026-07-03T00-12-24-022f040a",
+      "variantIndex": 5,
+      "anchor": {
+        "x": 30,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 30,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 29,
+          "y": 30,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/8",
+      "judgeScore": "2",
+      "contentHash": "768fff7a602616a5b4bfc8f61ab9cc52a9a562f0d03c447f5d7f7966b3cd8450"
+    },
+    "ability-icon-fireball-v1-var-11": {
+      "briefId": "ability-icon-fireball-v1",
+      "spriteName": "ability-icon-fireball-v1-var-11",
+      "assetPath": "generated/ability-icon-fireball-v1-var-11.png",
+      "approvedAt": "2026-07-03T01:46:26.152Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-npDHaX/ability-icon-fireball-v1/2026-07-02T22-58-35-6a096c6b",
+      "variantIndex": 11,
+      "anchor": {
+        "x": 27,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 27,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "3",
+      "contentHash": "f35e12cf40e6f3a577e1759a37578c1618e685f3c6734a1915789483859c928d"
+    },
+    "ability-icon-pulse-shield-v1-var-0": {
+      "briefId": "ability-icon-pulse-shield-v1",
+      "spriteName": "ability-icon-pulse-shield-v1-var-0",
+      "assetPath": "generated/ability-icon-pulse-shield-v1-var-0.png",
+      "approvedAt": "2026-07-03T01:48:24.848Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-NoarrN/ability-icon-pulse-shield-v1/2026-07-02T21-40-29-eeca98d7",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 32,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "2",
+      "contentHash": "a7fcfaceacc3f2d433ba5915a32faa2d26ecaa1c385e21748b0fcc229fb5e74b"
+    },
+    "rat-king-v1-var-7": {
+      "briefId": "rat-king-v1",
+      "spriteName": "rat-king-v1-var-7",
+      "assetPath": "generated/rat-king-v1-var-7.png",
+      "approvedAt": "2026-07-03T01:46:58.548Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-I5BHoB/rat-king-v1/2026-07-02T22-24-00-ee35959e",
+      "variantIndex": 7,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "5/8",
+      "judgeScore": "4",
+      "contentHash": "6219063caaf2343774fdc0416b8111685c0e4dcdc7c8eb897174c145117bfd94"
+    },
+    "rat-queen-v1-var-7": {
+      "briefId": "rat-queen-v1",
+      "spriteName": "rat-queen-v1-var-7",
+      "assetPath": "generated/rat-queen-v1-var-7.png",
+      "approvedAt": "2026-07-03T01:45:48.198Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-Pwutu0/rat-queen-v1/2026-07-02T23-01-59-b4544afb",
+      "variantIndex": 7,
+      "anchor": {
+        "x": 29,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 29,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "contentHash": "678cd12ba0ca0a8a8364d7f3276ea34036bad1500b2db27cead90f9d84c14d9d"
     }
   }
 }
