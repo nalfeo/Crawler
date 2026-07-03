@@ -1,0 +1,9 @@
+{
+  "date": "2026-07-03",
+  "slug": "spell-cast-vfx",
+  "title": "Add cast VFX for fireball / pulse-shield / heal + HUD slot flash",
+  "estimated_apples": 2,
+  "actual_apples": 2,
+  "verdict": "exact",
+  "notes": "Estimate was accurate. Two-layer fix: shared (VfxEvent kinds + radiusFt field), game/systems (progressionEffects pushes), engine (EffectsVfx renderer presets + HudAbilityBar cast flash). No schema migration, no new ECS system, no core-loop change. Plan review by gpt-5.4 surfaced 5 concerns (1 blocking-turned-empirically-false, 4 non-blocking); addressed all in code (radiusFt refactor, HUD flash re-coloured to cyan/white). Tests: 3 unit + 2 integration; verify:fast green (536/536)."
+}

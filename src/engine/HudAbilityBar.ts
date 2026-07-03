@@ -17,8 +17,20 @@ const COLORS = {
   slotBorder: 0x334155,
   slotActive: 0x1d4ed8,
   slotActiveBorder: 0x93c5fd,
+  // Cast-flash uses a distinctly cool palette (near-white fill + cyan border)
+  // so it cannot visually collide with the warm-yellow cooldown bar rendered
+  // at the bottom of the slot immediately after the trigger.
+  slotCastFlash: 0xf0f9ff,
+  slotCastFlashBorder: 0x22d3ee,
   cooldownRing: 0xfbbf24,
 } as const;
+
+/**
+ * Duration in frames that the slot stays visibly flashed after an ability
+ * fires. Sized generously so a 60 fps user still perceives the flash even if
+ * their eyes happened to be elsewhere at trigger time.
+ */
+const CAST_FLASH_FRAMES = 15;
 
 function shortAbilityLabel(id: string): string {
   const [head] = id.split('-');
@@ -110,11 +122,25 @@ export function createHudAbilityBar(
       const cooldownBar = cooldownBars[i]!;
 
       if (id) {
-        slot.setFillStyle(COLORS.slotActive, 0.92).setStrokeStyle(2, COLORS.slotActiveBorder);
-        label.setText(shortAbilityLabel(id)).setColor('#f8fafc');
-
         const lastTriggerFrame = cooldowns.get(id);
         const cooldownDuration = cooldownFrames.get(id) ?? 0;
+        // Cast-flash: right after a trigger, the slot pulses bright yellow so
+        // the fire is unmistakable in the HUD. Falls back to the normal active
+        // colour once the flash window elapses.
+        const framesSinceTrigger =
+          lastTriggerFrame !== undefined ? world.frameCount - lastTriggerFrame : Infinity;
+        const flashing = framesSinceTrigger >= 0 && framesSinceTrigger < CAST_FLASH_FRAMES;
+        if (flashing) {
+          slot
+            .setFillStyle(COLORS.slotCastFlash, 0.98)
+            .setStrokeStyle(3, COLORS.slotCastFlashBorder);
+          label.setColor('#0c4a6e');
+        } else {
+          slot.setFillStyle(COLORS.slotActive, 0.92).setStrokeStyle(2, COLORS.slotActiveBorder);
+          label.setColor('#f8fafc');
+        }
+        label.setText(shortAbilityLabel(id));
+
         if (lastTriggerFrame !== undefined && cooldownDuration > 0) {
           const elapsedFrames = Math.max(0, world.frameCount - lastTriggerFrame);
           const remainingRatio = Math.max(0, 1 - elapsedFrames / cooldownDuration);

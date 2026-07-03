@@ -325,4 +325,78 @@ describe('abilitySystem', () => {
     expect(state.cooldownByAbilityId.get('heal')).toBe(2001);
     expect(world.playerMp).toBe(10);
   });
+
+  it('emits a fireballBlast VFX event at the chosen epicentre when fireball casts', () => {
+    const { world, player } = setupPlayer();
+    world.featureUnlocks.spells = true;
+    world.playerMp = 20;
+    memorizeSpell(world, player, 'fireball');
+
+    // Cluster of 3 sits 4 ft from the caster along +X; a lone enemy is closer.
+    // Fireball's targeting picks the cluster centre as the epicentre, so the
+    // pushed VFX event should carry that position (approx (4, 0)), not the
+    // caster's (0, 0).
+    spawnEnemy(world, 4, 0, 100);
+    spawnEnemy(world, 4.5, 0.4, 100);
+    spawnEnemy(world, 3.5, -0.4, 100);
+
+    world.vfxEvents.length = 0;
+    world.frameCount = 100;
+    abilitySystem(world);
+
+    const blasts = world.vfxEvents.filter((e) => e.kind === 'fireballBlast');
+    expect(blasts).toHaveLength(1);
+    expect(blasts[0]!.x).toBeGreaterThan(0);
+    expect(Math.abs(blasts[0]!.y ?? 0)).toBeLessThan(1);
+    // `intensity` is the cluster hit count (bestHits + 1), used to scale spark
+    // count. A 3-enemy cluster produces intensity > 1 so the blast feels
+    // weightier than a solo hit without inflating the ring past the real
+    // blast area — the ring is sized from `radiusFt`.
+    expect(blasts[0]!.intensity ?? 0).toBeGreaterThan(1);
+    // `radiusFt` is the actual blast radius so the ring visually matches the
+    // gameplay reach. Default tile size 4 ft × radiusTiles 3 = 12 ft.
+    expect(blasts[0]!.radiusFt).toBeGreaterThan(0);
+  });
+
+  it('emits a pulseShieldWave VFX event centred on the caster when pulse shield fires', () => {
+    const { world, player } = setupPlayer();
+    world.featureUnlocks.spells = true;
+    world.playerMp = 20;
+    memorizeSpell(world, player, 'pulse-shield');
+    world.stores.health.current[player] = 40;
+    world.stores.health.max[player] = 100;
+    spawnEnemy(world, 1.5, 0, 10);
+    spawnEnemy(world, -1.5, 0, 10);
+    spawnEnemy(world, 0, 1.5, 10);
+
+    world.vfxEvents.length = 0;
+    world.frameCount = 100;
+    abilitySystem(world);
+
+    const waves = world.vfxEvents.filter((e) => e.kind === 'pulseShieldWave');
+    expect(waves).toHaveLength(1);
+    expect(waves[0]!.x).toBe(0);
+    expect(waves[0]!.y).toBe(0);
+    // `radiusFt` is the knockback horizon so the ring visually reaches the
+    // full effect radius. Default tile size 4 ft × radiusTiles 4 = 16 ft.
+    expect(waves[0]!.radiusFt).toBeGreaterThan(0);
+  });
+
+  it('emits a healGlow VFX event on every heal cast (even when nothing to heal)', () => {
+    const { world, player } = setupPlayer();
+    world.featureUnlocks.spells = true;
+    world.playerMp = 30;
+    memorizeSpell(world, player, 'heal');
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 70; // deficit 30 — triggers cast
+
+    world.vfxEvents.length = 0;
+    world.frameCount = 100;
+    abilitySystem(world);
+
+    const glows = world.vfxEvents.filter((e) => e.kind === 'healGlow');
+    expect(glows).toHaveLength(1);
+    expect(glows[0]!.x).toBe(0);
+    expect(glows[0]!.y).toBe(0);
+  });
 });

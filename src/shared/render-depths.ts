@@ -61,6 +61,10 @@ export const WORLD_VFX_DEPTH = {
   spawnerPulse: 14,
   /** Pickup collect sparkle — gem / gold / item (EffectsVfx). */
   pickupSparkle: 15,
+  /** Spell cast VFX (fireball blast, pulse-shield wave, heal glow). Sits above
+   * hit sparks so a big blast reads clearly over the individual damage sparks
+   * it triggers on the enemies it hits. */
+  spellCast: 17,
   /** Level-up celebratory burst (EffectsVfx). */
   levelUpBurst: 18,
   /** Floating damage numbers / MISS / BLOCKED text. */
