@@ -28,7 +28,7 @@ echo "🔍 Step 1-2/3: Type checking + Linting (parallel)..."
 # typical change set is a handful of files (~3-5s), making this the biggest win
 # on the most frequently run command.
 LINT_CMD=(npx eslint src/ tests/ scripts/ --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0)
-if [ "${CI:-}" != "1" ] && command -v git >/dev/null 2>&1; then
+if [ -z "${CI:-}" ] && command -v git >/dev/null 2>&1; then
   base="$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD main 2>/dev/null || true)"
   changed_ts=()
   while IFS= read -r f; do
@@ -77,7 +77,7 @@ if [ "$eslint_status" -ne 0 ]; then
 fi
 
 echo "🔍 Step 3/3: Unit tests..."
-if [ "${CI:-}" = "1" ]; then
+if [ -n "${CI:-}" ]; then
   npx vitest run --project unit --reporter=dot
 else
   npx vitest run --changed --project unit --reporter=dot --passWithNoTests
