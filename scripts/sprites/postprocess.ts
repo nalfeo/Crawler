@@ -10,7 +10,7 @@
  *   2. Transparent trim: crop to the opaque bounding box, then re-pad with a
  *      small proportional transparent margin (~6% of the larger subject
  *      dimension, min 1px) on each edge so the subject stays off the frame edge.
- *   3. Resample: nearest-neighbor fit to brief.size (preserve aspect ratio).
+ *   3. Resample: nearest-neighbor fit to brief.size (tiles stretch exactly).
  *   4. Background re-removal: re-key against the original background colours to
  *      clear pink fringe that nearest-neighbor stretching re-exposes.
  *   5. Speckle cleanup, palette quantize (strict only), alpha hard-threshold,
@@ -627,7 +627,7 @@ export function fitWithinNearest(
   image: RgbaImage,
   boxW: number,
   boxH: number,
-  strategy: 'fit' | 'width' | 'height' | 'cover' = 'fit',
+  strategy: 'fit' | 'width' | 'height' | 'cover' | 'stretch' = 'fit',
 ): { image: RgbaImage; fittedWidth: number; fittedHeight: number } {
   const { width: srcW, height: srcH } = image;
   if (srcW <= 0 || srcH <= 0) {
@@ -635,6 +635,13 @@ export function fitWithinNearest(
       image: { width: boxW, height: boxH, data: new Uint8Array(boxW * boxH * 4) },
       fittedWidth: 0,
       fittedHeight: 0,
+    };
+  }
+  if (strategy === 'stretch') {
+    return {
+      image: upscaleNearest(image, boxW, boxH),
+      fittedWidth: boxW,
+      fittedHeight: boxH,
     };
   }
   const scale =

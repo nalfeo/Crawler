@@ -106,10 +106,15 @@ export const postprocessModules: Record<string, ModuleHandler> = {
 
     const tightlyTrimmed = trimTransparentEdges(image);
     if (tightlyTrimmed.width > 0 && tightlyTrimmed.height > 0) {
-      const marginFraction_ = marginFraction > 0 ? marginFraction : Math.max(1, minMarginPx);
+      const normalizedMarginFraction =
+        Number.isFinite(marginFraction) && marginFraction > 0 ? marginFraction : 0;
+      const normalizedMinMarginPx =
+        Number.isFinite(minMarginPx) && minMarginPx > 0 ? Math.trunc(minMarginPx) : 0;
       const marginPx = Math.max(
-        minMarginPx,
-        Math.round(Math.max(tightlyTrimmed.width, tightlyTrimmed.height) * marginFraction_),
+        normalizedMinMarginPx,
+        Math.round(
+          Math.max(tightlyTrimmed.width, tightlyTrimmed.height) * normalizedMarginFraction,
+        ),
       );
       const result = trimTransparentEdges(tightlyTrimmed, marginPx);
       ctx.pushStep('transparent-trim', `Transparent trim (${marginPx}px margin)`, result);
@@ -122,16 +127,13 @@ export const postprocessModules: Record<string, ModuleHandler> = {
 
   'resize-nearest': (image, _params, ctx) => {
     const { width: targetW, height: targetH } = ctx.brief.size;
-    const fitResize = fitWithinNearest(
-      image,
-      targetW,
-      targetH,
-      resizeSpriteStrategy(ctx.brief.type, targetW, targetH),
-    );
+    const strategy = resizeSpriteStrategy(ctx.brief.type, targetW, targetH);
+    const fitResize = fitWithinNearest(image, targetW, targetH, strategy);
+    const mode = strategy === 'stretch' ? 'nearest-stretch' : 'nearest-fit';
 
     ctx.pushStep(
       'resize-nearest',
-      `Resize (nearest-fit, ${fitResize.fittedWidth}x${fitResize.fittedHeight} in ${fitResize.image.width}x${fitResize.image.height})`,
+      `Resize (${mode}, ${fitResize.fittedWidth}x${fitResize.fittedHeight} in ${fitResize.image.width}x${fitResize.image.height})`,
       fitResize.image,
     );
 

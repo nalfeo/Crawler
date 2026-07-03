@@ -201,7 +201,7 @@ function outputSizeBlock(brief: Brief): string {
   const aspect = aspectOf(width, height);
   const strategy = resizeSpriteStrategy(brief.type, width, height);
   const lines: string[] = ['## Output size'];
-  if (strategy === 'fit' && brief.type === 'tile') {
+  if (brief.type === 'tile') {
     lines.push(
       `- Each finished tile resolves to exactly ${width}x${height} pixels after post-processing.`,
     );

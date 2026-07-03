@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "tile-postprocess",
+  "task_title": "Tile postprocess",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "notes": "Adopted plan review concerns: tile defaults must be 256x256; tile resize must avoid fit letterboxing for non-square crops; avoid transparent-trim zero-margin hazard; keep background removal disabled for tiles while retaining existing speckle/alpha cleanup."
+    }
+  }
+}
