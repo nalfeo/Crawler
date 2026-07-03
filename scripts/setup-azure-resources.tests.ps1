@@ -143,7 +143,9 @@ Assert-True ($block -match 'FOUNDRY_TEXT_MODEL=gpt-4o(\r?\n)') 'env block writes
 Assert-True ($block -match 'FOUNDRY_BRIEF_SELECTOR_MODEL=gpt-4o-mini') 'env block writes selector alias'
 # Selectors stay COMMENTED so azure-openai remains the default (ADR 0033).
 Assert-True ($block -match '#\s*SPRITES_PROVIDER=foundry') 'SPRITES_PROVIDER selector is commented out'
-Assert-True (-not ($block -match '(?m)^SPRITES_\w+_?PROVIDER=foundry')) 'no selector is written uncommented'
+# \w* (not \w+) so this also catches an uncommented bare SPRITES_PROVIDER=foundry
+# (the image selector), not only the *_PROVIDER variants.
+Assert-True (-not ($block -match '(?m)^SPRITES_\w*PROVIDER=foundry')) 'no selector is written uncommented'
 
 # ── Get-FoundrySecretNames + setup-azure-env.ps1 contract ───────────────────
 

@@ -197,12 +197,15 @@ describe('foundry backend (ADR 0033)', () => {
 });
 
 describe('foundry starter catalog (setup-azure-env.ps1 contract)', () => {
-  // Mirrors exactly the FOUNDRY_* env that scripts/azure-foundry-plan.ps1 emits
-  // and setup-azure-env.ps1 writes to .env.local for the provisioned starter
+  // Uses the FOUNDRY_* aliases that scripts/azure-foundry-plan.ps1 emits and
+  // setup-azure-env.ps1 writes to .env.local for the provisioned starter
   // catalog. Aliases are the /openai/deployments/{alias} path segments, so the
   // gpt-4o deployment is shared by text + vision, and the brief selector uses a
-  // distinct gpt-4o-mini deployment. If the provisioning plan ever drifts from
-  // what the factory can consume, this contract test fails.
+  // distinct gpt-4o-mini deployment. NOTE: the emitted .env.local leaves every
+  // SPRITES_*_PROVIDER=foundry selector COMMENTED (azure-openai stays default);
+  // here they are set uncommented on purpose so the factory actually constructs
+  // the foundry providers. If the provisioning plan ever drifts from what the
+  // factory can consume, this contract test fails.
   const STARTER_FOUNDRY_ENV = {
     FOUNDRY_ENDPOINT: 'https://aif-crawler-nalfeo.services.ai.azure.com',
     FOUNDRY_API_KEY: 'fk',

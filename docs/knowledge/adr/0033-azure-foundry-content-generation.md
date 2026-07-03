@@ -2,9 +2,9 @@
 
 ## Status
 
-Accepted (2026-07-03) — superseded phase-by-phase; see **Migration Phases**.
-Phases 1–2 (groundwork) are implemented; Phases 2 (default flip) → 4 remain
-tracked follow-ups.
+Accepted (2026-07-03) — delivered incrementally; see **Migration Phases**.
+Phase 1 and the Phase 2 groundwork are implemented; the Phase 2 default flip and
+Phases 3–4 remain tracked follow-ups.
 
 ## Date
 
