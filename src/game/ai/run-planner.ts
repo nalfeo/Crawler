@@ -83,7 +83,9 @@ export interface RunPlannerParams {
  * `id` remains available for finer-grained decisions. Phases are ordered
  * roughly along the critical path (`pre-chain → shop → spell-broker →
  * staircase → post-stairs`); `detour` is off-chain optional work that
- * chain-scoped consumers should typically exclude from chain totals.
+ * chain-scoped consumers should typically exclude from chain totals. `other`
+ * is reserved for future segment kinds that don't yet map to a canonical
+ * phase; the current planner never emits it.
  */
 export type RunPlanSegmentPhase =
   | 'detour'
@@ -91,7 +93,8 @@ export type RunPlanSegmentPhase =
   | 'shop'
   | 'spell-broker'
   | 'staircase'
-  | 'post-stairs';
+  | 'post-stairs'
+  | 'other';
 
 export interface RunPlanSegment {
   readonly id: string;
