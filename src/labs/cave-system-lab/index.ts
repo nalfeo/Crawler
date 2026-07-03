@@ -52,7 +52,12 @@ const ROLE_TINTS: Partial<Record<RoomRole, string>> = {
   [RoomRole.SPAWN]: 'rgba(255, 255, 255, 0.20)',
 };
 
-/** Flood from spawn over passable + door tiles (matches gameplay reachability). */
+/**
+ * Flood from spawn over passable tiles only (matches gameplay reachability).
+ * Open doors are PASSABLE so they traverse; DOOR_CLOSED tiles carry the DOOR
+ * flag WITHOUT PASSABLE and must block, so sealed regions (e.g. boss dens)
+ * are correctly reported unreachable rather than flooded into.
+ */
 function floodFromSpawn(map: FloorMap): Uint8Array {
   const w = map.width;
   const h = map.height;
@@ -74,7 +79,10 @@ function floodFromSpawn(map: FloorMap): Uint8Array {
       const nIdx = ny * w + nx;
       if (visited[nIdx]) continue;
       const flags = map.flags[nIdx]!;
-      if ((flags & TileFlags.PASSABLE) === 0 && (flags & TileFlags.DOOR) === 0) continue;
+      // Only walkable tiles propagate. DOOR_CLOSED sets DOOR without PASSABLE,
+      // so checking PASSABLE alone treats closed doors as blocking (open doors
+      // include PASSABLE and still traverse).
+      if ((flags & TileFlags.PASSABLE) === 0) continue;
       visited[nIdx] = 1;
       stack.push(nIdx);
     }

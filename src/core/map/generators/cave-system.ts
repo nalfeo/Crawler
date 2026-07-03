@@ -633,7 +633,7 @@ export class CaveSystemGenerator implements MapGenerator {
     tileMap: TileMap,
     terrain: Uint8Array,
     territory: RegionInfo,
-    familyIndex: number,
+    _familyIndex: number,
     w: number,
     h: number,
   ): { bounds: RoomBounds; door: DoorLocation } | null {
@@ -726,7 +726,6 @@ export class CaveSystemGenerator implements MapGenerator {
 
       const bounds: RoomBounds = { x: bx, y: by, width: size, height: size };
       const doorLoc: DoorLocation = { x: doorX, y: doorY, connectsTo: -1 };
-      void familyIndex;
       return { bounds, door: doorLoc };
     }
 
