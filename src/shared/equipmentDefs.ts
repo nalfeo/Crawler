@@ -61,9 +61,10 @@ export const MERCHANTS_CHARM_COST = 15;
  *
  * `id` matches the corresponding inventory item slug in `items.ts` (so
  * purchased weapons in the bag round-trip cleanly through equip → unequip →
- * bag). Two of the starter weapons re-use the same inventory item slug the
- * Floor 1 post-quest merchant offers, so equipping them from the bag lands
- * in the exact same slot as the starter.
+ * bag). All three Floor 1 starter weapons (sword/bow/baseball-bat) re-use the
+ * same inventory item slugs the Floor 1 post-quest merchant offers
+ * (iron-sword/frost-bow/bone-club), so equipping them from the bag lands in
+ * the exact same slots as the starter.
  */
 interface WeaponEquipmentDef extends EquipmentItemDef {
   readonly weaponId: string;

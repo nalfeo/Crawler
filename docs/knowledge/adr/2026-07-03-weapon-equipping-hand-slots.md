@@ -45,9 +45,13 @@ derive the active weapon from what is equipped.
    weapons live alongside it, and `getEquipmentDefForStarterWeapon` resolves a
    weapon id to its hand-slot equipment def.
 
-2. **Active weapon derives from equipped hand slots.** `src/core/active-weapon.ts`
-   resolves the wielded weapon from the equipment state, and `src/core/index.ts`
-   re-exports it so the game layer can consume it without importing engine code.
+2. **Active weapon is a per-`GameWorld` side-map, set/cleared by equip/unequip.**
+   `src/core/active-weapon.ts` stores the wielded `WeaponDef` in a per-`GameWorld`
+   `WeakMap`, plus a `generation` counter bumped on each real switch. `equipmentSystem`
+   sets it on equip and clears it on unequip; the `setActiveWeapon` fallback sets it
+   directly; `weaponSystem` reads it and watches the `generation` to reset per-weapon
+   fire-timer state on a swap. `src/core/index.ts` re-exports it so the game layer can
+   consume it without a `core` → `game` cycle.
 
 3. **One eviction/equip/fallback helper.** Both loadout entry points delegate to
    `equipStarterOrFallback(world, weaponId, weaponDef)` in
