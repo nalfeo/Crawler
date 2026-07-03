@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "azure-foundry-provisioning",
+  "task_title": "Azure Foundry Phase 2 groundwork: provisionable + selectable",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "notes": "approved_with_changes; 1 blocking (alias vs model-ID) + 5 NB + 1 suggestion, all adopted. Single source of truth = new paramless scripts/azure-foundry-plan.ps1 (role table -> deployments + FOUNDRY_* env map, throws on text==selector). OpenAI-compatible subset only; FLUX/router deferred to Phase 4. Added -FoundryLocation, Format-FoundryEnvBlock + Get-FoundrySecretNames contract tests, documented live smoke + sidecar-bootstrap gap."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "code-review agent reviewed full working-tree diff; verified all 6 invariants (azure-openai default, aliases-not-model-ids, selector!=text, OpenAI-format-only, 3 deployments/4 env vars, no env.local clobber) plus PowerShell dot-source/param-clobber/secret-sync correctness. No significant issues."
+        }
+      ]
+    }
+  }
+}

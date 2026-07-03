@@ -195,3 +195,38 @@ describe('foundry backend (ADR 0033)', () => {
     );
   });
 });
+
+describe('foundry starter catalog (setup-azure-env.ps1 contract)', () => {
+  // Mirrors exactly the FOUNDRY_* env that scripts/azure-foundry-plan.ps1 emits
+  // and setup-azure-env.ps1 writes to .env.local for the provisioned starter
+  // catalog. Aliases are the /openai/deployments/{alias} path segments, so the
+  // gpt-4o deployment is shared by text + vision, and the brief selector uses a
+  // distinct gpt-4o-mini deployment. If the provisioning plan ever drifts from
+  // what the factory can consume, this contract test fails.
+  const STARTER_FOUNDRY_ENV = {
+    FOUNDRY_ENDPOINT: 'https://aif-crawler-nalfeo.services.ai.azure.com',
+    FOUNDRY_API_KEY: 'fk',
+    FOUNDRY_API_VERSION: '2025-04-01-preview',
+    FOUNDRY_IMAGE_MODEL: 'gpt-image-1',
+    FOUNDRY_TEXT_MODEL: 'gpt-4o',
+    FOUNDRY_VISION_MODEL: 'gpt-4o',
+    FOUNDRY_BRIEF_SELECTOR_MODEL: 'gpt-4o-mini',
+    SPRITES_PROVIDER: 'foundry',
+    SPRITES_TEXT_PROVIDER: 'foundry',
+    SPRITES_SYNTH_PROVIDER: 'foundry',
+    SPRITES_VISION_PROVIDER: 'foundry',
+  } as const;
+
+  it('builds all four providers from the provisioned starter env', () => {
+    expect(createImageProvider({ env: STARTER_FOUNDRY_ENV })).not.toBeNull();
+    expect(createTextProvider({ env: STARTER_FOUNDRY_ENV })).not.toBeNull();
+    expect(createVisionProvider({ env: STARTER_FOUNDRY_ENV })).not.toBeNull();
+    // selector (gpt-4o-mini) differs from text (gpt-4o) -> must NOT throw.
+    expect(createBriefSelectorProvider({ env: STARTER_FOUNDRY_ENV })).not.toBeNull();
+  });
+
+  it('labels synth candidates with the shared gpt-4o deployment', () => {
+    const p = createSynthProvider({ env: STARTER_FOUNDRY_ENV });
+    expect(p.providerLabel).toBe('foundry:gpt-4o');
+  });
+});
