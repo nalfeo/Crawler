@@ -22,10 +22,14 @@ import {
 
 const NOW = new Date('2026-06-09T10:00:00Z');
 
-// Bind the PR-title assertions to the SAME rules the `commit-lint` CI gate uses
-// (commitlint.title.config.cjs) instead of a hand-rolled copy, so the regression
-// test can never pass while CI blocks — e.g. if the allowed type-enum or the
-// header-max-length change, this test picks up the new values automatically.
+// Pull the `type-enum` + `header-max-length` values from the real
+// `commitlint.title.config.cjs` (instead of hardcoding copies) so the assertions
+// below track those two rules automatically if they change — e.g. a type added
+// to or removed from the enum, or a different max length. NOTE: this does NOT
+// execute commitlint; it checks the conventional-commit *shape* (a local header
+// regex) plus those two config-derived constraints. It is therefore not 1:1 with
+// every CI rule (subject-case, etc.) — it is a targeted guard for the regression
+// where the emitted PR title had no type prefix at all.
 const requireCjs = createRequire(import.meta.url);
 const titleCommitlint = requireCjs('../../../commitlint.title.config.cjs') as {
   rules: {
@@ -116,11 +120,13 @@ describe('planConsolidation', () => {
 
   it('emits a PR title that satisfies the real commit-lint title config (squash-merge subject)', () => {
     // Squash-merge uses the PR title as the commit subject on main, which the
-    // `commit-lint` CI gate validates via commitlint.title.config.cjs. Assert
-    // against that config's OWN type-enum + header-max-length so the test can't
-    // pass while CI blocks. Regression guard: the title was `Add N approved
-    // assets (…)` with no type prefix, which failed commit-lint (type-empty) and
-    // left the art PR BLOCKED from merging.
+    // `commit-lint` CI gate validates via commitlint.title.config.cjs. Assert the
+    // conventional-commit shape (local header regex) using that config's OWN
+    // type-enum + header-max-length (not hardcoded copies) so those two rules
+    // stay in sync with CI. This does not run commitlint, so it is not full parity
+    // with the gate; it is a targeted regression guard for the title once reading
+    // `Add N approved assets (…)` with no type prefix, which failed commit-lint
+    // (type-empty) and left the art PR BLOCKED from merging.
     const single = planConsolidation({ issues: [issues[0]!], now: NOW });
     const multi = planConsolidation({ issues, now: NOW });
     const header = /^(?<type>[a-z]+)(?:\([^)]+\))?: .+/;
