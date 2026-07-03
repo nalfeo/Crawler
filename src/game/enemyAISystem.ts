@@ -20,6 +20,7 @@ import { PATH_PERSONA, TRAVERSAL_MODE } from '../shared/enemy-behavior.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { SeededRandom } from '../shared/random.js';
 import { normalize } from '../shared/vec.js';
+import { getFamilyAIDecision, resolveHostileFallback } from './systems/familyFeudSystem.js';
 
 export const AI_TYPE = { CHASE: 0, SWARM: 1, RANGED: 2, LEAPER: 3 } as const;
 export { PATH_PERSONA, TRAVERSAL_MODE };
@@ -234,7 +235,18 @@ function getEnemySpeed(world: GameWorld, eid: number): number {
   // enemy speed read (wander, slime-leap prep/pounce, and the speed cap) derives
   // from. Slime-leap multipliers layer on top of this modified base, so a slowed
   // slime still leaps, just proportionally slower.
-  return computeEffectiveSpeed(base, getStatusEffects(world, eid));
+  const withStatus = computeEffectiveSpeed(base, getStatusEffects(world, eid));
+  // Floor 2 Slice 3: fold in the hate-band speed ramp (FR9). The prepass in
+  // familyFeudSystem already clamped the boost to `[baseSpeed, playerSpeed]`
+  // and only sets `effectiveSpeed` when it differs from base, so this is a
+  // pure raise-up-toward-player operation. Status-effect slows still take
+  // precedence — a slowed hate mob doesn't leap over its own slow debuff.
+  const decision = getFamilyAIDecision(world, eid);
+  const rampSpeed = decision?.effectiveSpeed;
+  if (rampSpeed !== undefined && rampSpeed > withStatus) {
+    return rampSpeed;
+  }
+  return withStatus;
 }
 
 function getEnemySpeedCap(world: GameWorld, eid: number): number {
@@ -1673,9 +1685,23 @@ export function enemyAISystem(world: GameWorld): void {
 
     const enemyX = position.x[eid]!;
     const enemyY = position.y[eid]!;
-    const playerDx = playerX - enemyX;
-    const playerDy = playerY - enemyY;
-    const distanceToPlayer = Math.hypot(playerDx, playerDy);
+    // Floor 2 Slice 3: family AI target override. If familyFeudSystem picked a
+    // virtual target for this mob (band-driven follow/idle/attacker/rival), use
+    // it as the "player" the rest of this loop chases. Trash mobs (no
+    // FamilyMembership) and hate/hostile mobs whose player IS reachable receive
+    // no override here — familyFeudSystem left decision.bypassPlayerDetection
+    // false in that case. The hate/hostile rival-fallback is resolved lower
+    // down, once canDetectPlayer has been computed.
+    const familyDecision = getFamilyAIDecision(world, eid);
+    let virtualPlayerX = playerX;
+    let virtualPlayerY = playerY;
+    if (familyDecision !== undefined && familyDecision.bypassPlayerDetection) {
+      virtualPlayerX = familyDecision.x;
+      virtualPlayerY = familyDecision.y;
+    }
+    let playerDx = virtualPlayerX - enemyX;
+    let playerDy = virtualPlayerY - enemyY;
+    let distanceToPlayer = Math.hypot(playerDx, playerDy);
     const behaviorType = enemyBehavior.type[eid]!;
     const aggroRange = enemyBehavior.aggroRange[eid]!;
     const attackRange = enemyBehavior.attackRange[eid]!;
@@ -1684,11 +1710,32 @@ export function enemyAISystem(world: GameWorld): void {
     const hasOpenRoomDoor = isEnemyRoomDoorOpen(world, eid);
     const playerSharesRoom = isPlayerInEnemyRoom(world, eid, playerX, playerY);
     const permanentAggro = (enemyBehavior.aggroedPermanently?.[eid] ?? 0) === 1;
-    const inAggroRange = permanentAggro || isAggroActive(aggroRange, distanceToPlayer);
-    const canDetectPlayer =
-      !playerHiddenInSafeRoom &&
-      (hasOpenRoomDoor || playerSharesRoom || permanentAggro) &&
-      inAggroRange;
+    // For a mob with a family-driven virtual target we measure aggro against
+    // the virtual target (distanceToPlayer already reflects that), and set
+    // `familyBypass` so player-side FOV/room checks don't cancel engagement.
+    const familyBypass = familyDecision !== undefined && familyDecision.bypassPlayerDetection;
+    const inAggroRange =
+      familyBypass || permanentAggro || isAggroActive(aggroRange, distanceToPlayer);
+    let canDetectPlayer =
+      familyBypass ||
+      (!playerHiddenInSafeRoom &&
+        (hasOpenRoomDoor || playerSharesRoom || permanentAggro) &&
+        inAggroRange);
+
+    // Hate/hostile mobs without a family-driven decision fall back to a rival
+    // target when the player is genuinely unreachable this frame. The prepass
+    // couldn't do this itself because it doesn't know canDetectPlayer.
+    if (!familyBypass && !canDetectPlayer && familyDecision === undefined) {
+      const fallback = resolveHostileFallback(world, eid);
+      if (fallback !== null) {
+        virtualPlayerX = fallback.x;
+        virtualPlayerY = fallback.y;
+        playerDx = virtualPlayerX - enemyX;
+        playerDy = virtualPlayerY - enemyY;
+        distanceToPlayer = Math.hypot(playerDx, playerDy);
+        canDetectPlayer = true;
+      }
+    }
 
     const currentVx = velocity.x[eid] ?? 0;
     const currentVy = velocity.y[eid] ?? 0;
@@ -1704,8 +1751,8 @@ export function enemyAISystem(world: GameWorld): void {
       if (playerHiddenInSafeRoom || inAggroRange) {
         applyIdleWander(world, eid, speed, {
           avoidDoors: true,
-          playerX,
-          playerY,
+          playerX: virtualPlayerX,
+          playerY: virtualPlayerY,
         });
       } else {
         applyIdleWander(world, eid, speed);
@@ -1732,8 +1779,8 @@ export function enemyAISystem(world: GameWorld): void {
           world,
           eid,
           AI_TYPE.CHASE,
-          playerX,
-          playerY,
+          virtualPlayerX,
+          virtualPlayerY,
           distanceToPlayer,
           speed,
           attackRange,
@@ -1779,8 +1826,8 @@ export function enemyAISystem(world: GameWorld): void {
         world,
         eid,
         behaviorType,
-        playerX,
-        playerY,
+        virtualPlayerX,
+        virtualPlayerY,
         distanceToPlayer,
         speed,
         attackRange,

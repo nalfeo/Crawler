@@ -7,6 +7,7 @@ import {
 } from '../game/systems/index.js';
 import {
   enemyAISystem,
+  familyFeudSystem,
   floor1EnemyDirectorSystem,
   floorObjectiveSystem,
   floor1PlayerStatSystem,
@@ -106,6 +107,11 @@ export function createFloorMainSceneOptions(_floorId: string = 'floor1') {
       emergentEventSystem,
       floor1PlayerStatSystem,
       weaponSystem,
+      // Floor 2 Slice 3: band-driven AI prepass runs AFTER familyRelationshipSystem
+      // (so this frame's post-adjust bands are visible) and BEFORE enemyAISystem
+      // (so it can plant a virtual target + hate speed ramp the AI will consume).
+      // Always-safe on Floor 1 (no FamilyMembership → near-noop).
+      familyFeudSystem,
       enemyAISystem,
       // statusEffectSystem runs AFTER enemyAISystem (and playerInputSystem, which
       // runs before all preSystems) so player + enemy speed folds see the same

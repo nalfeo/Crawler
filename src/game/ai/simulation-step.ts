@@ -48,6 +48,7 @@ import {
   weaponSystem,
   statsSystem,
   enemyAISystem,
+  familyFeudSystem,
   levelSystem,
   skillSystem,
   abilitySystem,
@@ -161,6 +162,12 @@ export function runSimulationStep(
   if (options.enableFloor1 && world.floor1) {
     floor1PlayerStatSystem(world);
   }
+  // Floor 2 Slice 3: band-driven AI prepass. Runs AFTER familyRelationshipSystem
+  // (so it observes this frame's post-adjust relations) and BEFORE enemyAISystem
+  // (so it can plant a virtual target + hate speed ramp the AI will consume).
+  // Always-safe on Floor 1 — no mobs have FamilyMembership, so the system is a
+  // near-noop (retaliation cursor advance only).
+  familyFeudSystem(world);
   enemyAISystem(world);
   statusEffectSystem(world);
   spawnerSystem(world);

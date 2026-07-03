@@ -22,3 +22,15 @@ export {
   nextTimerEventEta,
   _resetEmergentEventScheduler,
 } from './emergentEventSystem.js';
+export {
+  familyFeudSystem,
+  getFamilyAIDecision,
+  resolveHostileFallback,
+  findNearestRival,
+  getMobFamilyId,
+  peekFamilyFeudGrid,
+  peekFriendlyRetaliation,
+  isFriendlyInLeash,
+  resetFamilyFeudState,
+} from './familyFeudSystem.js';
+export type { FamilyAIDecision, FamilyTargetKind } from './familyFeudSystem.js';

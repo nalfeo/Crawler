@@ -62,6 +62,14 @@
   "factionRelations": {
     "defaultRelation": 45,
     "passiveDecayPerSecond": 0,
+    "friendlyLeashTiles": 6,
+    "_friendlyLeashTiles_note": "Friendly-band ally mobs stop closing on the player once inside this radius (tiles). Beyond it they steer toward the player to close ranks. Slice 3 / FR11.",
+    "friendlyRetaliationMs": 5000,
+    "_friendlyRetaliationMs_note": "How long (world.elapsedMs) a friendly-band mob prioritises the player's most recent attacker before reverting to follow. Slice 3 / FR11.",
+    "feudEngagementRadiusTiles": 12,
+    "_feudEngagementRadiusTiles_note": "Radius (tiles) used when a family-driven mob searches for a rival-family target. Bounds the spatial-hash candidate lookup so feud targeting stays inside the Floor-1 engagement budget (ADR 0024). Slice 3 / FR12.",
+    "feudCandidateLimit": 32,
+    "_feudCandidateLimit_note": "Hard cap on the number of candidate rivals inspected per mob per frame. Prevents O(n^2) rival scanning at Floor-2 entity counts; the spatial-hash query is trimmed to this before nearest-selection. Slice 3 / FR12.",
     "deltas": {
       "damageHit": -1,
       "killMob": -5,

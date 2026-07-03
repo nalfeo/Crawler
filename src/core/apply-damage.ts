@@ -92,6 +92,7 @@ export function applyDamage(
   weaponGoreFactor?: number,
   sourceX?: number,
   sourceY?: number,
+  sourceEid?: number,
 ): number {
   if (!Number.isFinite(amount) || amount <= 0) return 0;
   if (hasComponent(world.ecs, target, Invincible)) return 0;
@@ -165,6 +166,7 @@ export function applyDamage(
       sourceY,
     };
     if (isCrit) event.isCrit = true;
+    if (sourceEid !== undefined) event.sourceEid = sourceEid;
     world.combatEvents.push(event);
   }
 

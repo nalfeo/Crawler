@@ -1,0 +1,50 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "floor2-slice3-family-ai",
+  "task_title": "Floor 2 Slice 3 — family-aware AI, hate ramp, feud targeting, ally defend",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "self-plan-plus-spec-recheck",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "notes": "Concerns identified during planning: (1) Slice 1 API rename effectiveSpeedForHate must be honored — used correctly; (2) rival-detection MUST use spatial hash not O(n²) — new SpatialHashGrid built per-frame, feudCandidateLimit trims candidate list before sort; (3) friendly retaliation MUST reuse existing hit-event bus not add a parallel one — reused world.combatEvents, extended existing CombatEvent with optional sourceEid; (4) both simulation pipelines (headless src/game/ai and visual src/engine/sim, actually src/bootstrap/floor-main-scene-options) must wire the new system — done; (5) hate-band mobs already faster than the player must be unaffected — effectiveSpeedForHate returns baseSpeed in that case and getEnemySpeed's max() semantics preserve status slows."
+    },
+    "dual_plan_synthesis": {
+      "completed": true,
+      "notes": "Two designs considered: (A) fold everything into enemyAISystem's per-mob loop directly; (B) prepass system that stamps decisions into a WeakMap consumed by enemyAISystem. Chose (B) because it (a) keeps enemyAISystem's existing shape intact and thus limits the surface for regressions in the ~1810-line file, (b) gives tests a stable observable surface via getFamilyAIDecision(), (c) allows the lab overlay + perf test to read the same decision map, and (d) allows the retaliation state + spatial hash to be owned by one system with clear lifecycle. Trade-off: two data structures instead of inline — resolved by putting them all in a single file (familyFeudSystem.ts)."
+    },
+    "multi_model_review": {
+      "completed": true,
+      "models": ["claude-opus-4.7"],
+      "notes": "Determinism check: all RNG via world.rng (none needed for this slice — tie-breaks use lower eid). Date.now: none. Spatial hash budget: enforced by trim in findNearestRival and asserted by family-feud-perf.test.ts. Cross-referenced ADR 0040 D5 (band-keyed AI foe-set) and ADR 0024 (engagement budget)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.7"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "Round 1: (1) queryRadius returns REUSED buffer — added explicit .slice(0, limit) before iteration; (2) retaliation cursor needed to not re-arm on replay — added per-world combatEventCursor WeakMap and start = min(cursor, events.length) to be safe on world reset."
+        }
+      ]
+    }
+  },
+  "verification": {
+    "verify_fast": "PASS (1101 tests, 107 files)",
+    "typecheck": "PASS (0 errors)",
+    "wired_systems": "PASS (familyFeudSystem wired into both src/game/ai/simulation-step.ts and src/bootstrap/floor-main-scene-options.ts preSystems)",
+    "new_tests": [
+      "tests/ecs/enemyAISystem.band-targeting.test.ts (7 pass)",
+      "tests/ecs/enemyAISystem.hate-ramp.test.ts (5 pass)",
+      "tests/ecs/enemyAISystem.ally-defend.test.ts (3 pass)",
+      "tests/ecs/enemyAISystem.band-property.test.ts (2 pass)",
+      "tests/unit/family-feud-perf.test.ts (1 pass)"
+    ]
+  }
+}
