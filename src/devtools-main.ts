@@ -36,6 +36,14 @@ import {
   type CheckinPrepareResponse,
   type SidecarRunListEntry,
 } from './devtools/sprite-approval-api.js';
+import {
+  RUN_CACHE_STORAGE_KEY,
+  normalizePromotedFilter,
+  readRunCache,
+  resolveRunPickerSelection,
+  writeRunCache,
+  type PromotedFilter,
+} from './devtools/sprite-run-cache.js';
 import { getSpriteSidecarBaseUrl } from './shared/session-server-env.js';
 import {
   QUEUE_STORAGE_KEY,
@@ -1765,6 +1773,63 @@ function render(): void {
     reloadStatus,
   );
   const azureRunKey = (run: SidecarRunListEntry): string => `${run.briefId}::${run.runId}`;
+  // Instant-first-paint cache (localStorage) for the run list, mirroring the
+  // workflow-queue convention: the sidecar stays the source of truth, this only
+  // avoids a blank dropdown while the slow `GET /api/runs` (one blob GET per run)
+  // revalidates after a reload/navigation. Wrappers are shared by both pickers.
+  const readCachedRuns = (filter: PromotedFilter): SidecarRunListEntry[] | null => {
+    try {
+      return readRunCache(window.localStorage.getItem(RUN_CACHE_STORAGE_KEY), filter);
+    } catch {
+      return null;
+    }
+  };
+  const writeCachedRuns = (filter: PromotedFilter, runs: readonly SidecarRunListEntry[]): void => {
+    try {
+      window.localStorage.setItem(
+        RUN_CACHE_STORAGE_KEY,
+        writeRunCache(window.localStorage.getItem(RUN_CACHE_STORAGE_KEY), filter, runs),
+      );
+    } catch {
+      // Ignore storage quota/serialization failures; the UI still works uncached.
+    }
+  };
+  // Shared option-builder for the reload dropdown so the cache-hydrate and the
+  // network-refresh paths render identically.
+  const renderAzureRunOptions = (
+    runs: readonly SidecarRunListEntry[],
+    previousKey: string,
+  ): void => {
+    reloadSelect.replaceChildren();
+    if (runs.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'No runs found in the store';
+      reloadSelect.append(opt);
+      return;
+    }
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Select a run…';
+    reloadSelect.append(placeholder);
+    for (const run of runs) {
+      const opt = document.createElement('option');
+      opt.value = azureRunKey(run);
+      const ts = run.timestamp ? new Date(run.timestamp).toLocaleString() : 'unknown time';
+      const promoted = run.promotionState === 'promoted' ? 'promoted' : 'needs promotion';
+      opt.textContent =
+        `${run.briefId} · ${run.runId}` +
+        `${run.hasJudge ? ' · judged' : ''}` +
+        ` · ${promoted} · ${ts}`;
+      reloadSelect.append(opt);
+    }
+    // Restore the prior selection if it still exists. Setting `.value`
+    // programmatically does not fire `change`, so a refresh never auto-loads.
+    reloadSelect.value = resolveRunPickerSelection(
+      previousKey,
+      runs.map((run) => azureRunKey(run)),
+    );
+  };
   // Serialize run loads (one at a time) and drop stale periodic-refresh responses
   // so a slow list can't clobber a newer one — or overwrite a just-loaded run.
   let azureLoadInFlight = false;
@@ -1783,50 +1848,31 @@ function render(): void {
     // it still surfaces errors.
     const silent = options.silent === true;
     const token = ++azureRefreshToken;
+    // Capture the filter once so a mid-flight filter change can't mis-key the
+    // cache write (a stale response is dropped by the token check anyway).
+    const filter = normalizePromotedFilter(reloadStateFilter.value);
     // Preserve the operator's current selection (by stable key) across rebuilds.
     const previousKey = reloadSelect.value;
     if (!silent) {
       reloadStatus.textContent = 'Loading…';
     }
     try {
-      const runs = await listSidecarRuns({
-        promoted: reloadStateFilter.value as 'all' | 'promoted' | 'not-promoted',
-      });
+      const runs = await listSidecarRuns({ promoted: filter });
       // A newer refresh started while we awaited: discard this stale response.
       if (token !== azureRefreshToken) {
         return;
       }
       azureRunChoices = runs;
-      reloadSelect.replaceChildren();
+      renderAzureRunOptions(runs, previousKey);
+      // Persist for instant first paint on the next reload/navigation. Only on a
+      // successful fetch — a failed fetch must never clobber a good cache.
+      writeCachedRuns(filter, runs);
       if (runs.length === 0) {
-        const opt = document.createElement('option');
-        opt.value = '';
-        opt.textContent = 'No runs found in the store';
-        reloadSelect.append(opt);
         if (!silent) {
           reloadStatus.textContent = 'No runs available.';
         }
         return;
       }
-      const placeholder = document.createElement('option');
-      placeholder.value = '';
-      placeholder.textContent = 'Select a run…';
-      reloadSelect.append(placeholder);
-      for (const run of runs) {
-        const opt = document.createElement('option');
-        opt.value = azureRunKey(run);
-        const ts = run.timestamp ? new Date(run.timestamp).toLocaleString() : 'unknown time';
-        const promoted = run.promotionState === 'promoted' ? 'promoted' : 'needs promotion';
-        opt.textContent =
-          `${run.briefId} · ${run.runId}` +
-          `${run.hasJudge ? ' · judged' : ''}` +
-          ` · ${promoted} · ${ts}`;
-        reloadSelect.append(opt);
-      }
-      // Restore the prior selection if it still exists. Setting `.value`
-      // programmatically does not fire `change`, so a refresh never auto-loads.
-      reloadSelect.value =
-        previousKey && runs.some((run) => azureRunKey(run) === previousKey) ? previousKey : '';
       if (!silent) {
         reloadStatus.textContent = `${runs.length} run(s).`;
       }
@@ -1836,6 +1882,21 @@ function render(): void {
       }
       reloadStatus.textContent = `Failed: ${err instanceof Error ? err.message : String(err)}`;
     }
+  };
+  // Instant first paint: fill the dropdown from the last cached run list for the
+  // active filter so the operator can pick immediately after a reload, before
+  // the slow `/api/runs` revalidate returns. A `null` slot (never cached) is
+  // left for the network refresh; a cached empty list is intentionally skipped
+  // (nothing to paint).
+  const hydrateAzureRunsFromCache = (): void => {
+    const filter = normalizePromotedFilter(reloadStateFilter.value);
+    const cached = readCachedRuns(filter);
+    if (!cached || cached.length === 0) {
+      return;
+    }
+    azureRunChoices = cached;
+    renderAzureRunOptions(cached, reloadSelect.value);
+    reloadStatus.textContent = 'Showing cached runs — refreshing…';
   };
   // Reconstruct a queue item from the selected run at the Sheet step. Selecting a
   // run in the dropdown loads it immediately; the button is an explicit fallback.
@@ -1850,6 +1911,9 @@ function render(): void {
       return;
     }
     azureLoadInFlight = true;
+    // Invalidate any in-flight (init/auto) refresh so a slow list can't rebuild
+    // the dropdown or stomp the load status mid-load; it bails at its token check.
+    ++azureRefreshToken;
     setAzureControlsEnabled(false);
     setButtonBusy(reloadLoadBtn, true, 'Load sheet', 'Loading…');
     reloadStatus.textContent = `Loading ${run.briefId}…`;
@@ -1882,6 +1946,12 @@ function render(): void {
       reloadStatus.textContent = `Loaded ${run.briefId}.`;
     } catch (err) {
       reloadStatus.textContent = `Failed: ${err instanceof Error ? err.message : String(err)}`;
+      // If the run vanished from the store (deleted out-of-band since the cached
+      // list was painted), reconcile so the dead option can't linger selectable.
+      // Silent so the "Failed: …" message is preserved on a successful re-list.
+      if (err instanceof Error && /\b404\b/.test(err.message)) {
+        void refreshAzureRuns({ silent: true });
+      }
     } finally {
       setButtonBusy(reloadLoadBtn, false, 'Load sheet', 'Loading…');
       azureLoadInFlight = false;
@@ -1907,6 +1977,25 @@ function render(): void {
     void refreshAzureRuns();
   });
   reloadStateFilter.addEventListener('change', () => {
+    // Paint this filter's cached slot instantly (incl. a cached empty list) so
+    // switching filters after a reload doesn't wait on the slow list — and a
+    // failed revalidate never leaves the previous filter's runs mislabeled.
+    const filter = normalizePromotedFilter(reloadStateFilter.value);
+    const cached = readCachedRuns(filter);
+    if (cached) {
+      azureRunChoices = cached;
+      renderAzureRunOptions(cached, reloadSelect.value);
+      reloadStatus.textContent = 'Showing cached runs — refreshing…';
+    } else {
+      // Never cached for this filter yet: clear the previous filter's options so
+      // the wrong-filter list is never shown while the fetch is in flight.
+      azureRunChoices = [];
+      reloadSelect.replaceChildren();
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'Loading runs…';
+      reloadSelect.append(opt);
+    }
     void refreshAzureRuns();
   });
   reloadSelect.addEventListener('change', () => {
@@ -2831,28 +2920,70 @@ function render(): void {
       debuggerPickerStatus.textContent = `Failed to load variants: ${error instanceof Error ? error.message : String(error)}`;
     }
   };
-  const refreshDebuggerRuns = async (): Promise<void> => {
-    debuggerPickerStatus.textContent = 'Loading available runs…';
-    debuggerRefreshPickerBtn.disabled = true;
-    debuggerLoadPickerBtn.disabled = true;
+  const refreshDebuggerRuns = async (options: { background?: boolean } = {}): Promise<void> => {
+    const background = options.background === true;
+    // A background revalidate with a usable cached list must not disrupt the
+    // operator: keep the buttons live and the current options in place.
+    const quiet = background && debuggerRuns.length > 0;
+    // Preserve the operator's in-progress dropdown pick across the rebuild.
+    const previousKey = debuggerRunSelect.value;
+    if (!quiet) {
+      debuggerPickerStatus.textContent = 'Loading available runs…';
+      debuggerRefreshPickerBtn.disabled = true;
+      debuggerLoadPickerBtn.disabled = true;
+    }
     try {
-      debuggerRuns = await listSidecarRuns();
+      const runs = await listSidecarRuns();
+      debuggerRuns = runs;
       populateDebuggerRunOptions();
-      const targetKey = debugTarget ? makeRunKey(debugTarget.briefId, debugTarget.runId) : '';
-      if (targetKey && findRunByKey(targetKey)) {
-        debuggerRunSelect.value = targetKey;
+      // Restore priority: the operator's in-progress selection (survives a
+      // background refresh) → the loaded debugTarget → the first run (populate's
+      // default when this resolves to '').
+      const debugTargetKey = debugTarget ? makeRunKey(debugTarget.briefId, debugTarget.runId) : '';
+      const restoreKey = resolveRunPickerSelection(
+        previousKey,
+        debuggerRuns.map((run) => makeRunKey(run.briefId, run.runId)),
+        debugTargetKey,
+      );
+      if (restoreKey) {
+        debuggerRunSelect.value = restoreKey;
       }
       await loadDebuggerVariantOptions(debugTarget?.variantIndex);
       debuggerPickerStatus.textContent = `Available runs: ${debuggerRuns.length}`;
+      // Persist for instant first paint on the next reload.
+      writeCachedRuns('all', runs);
     } catch (error) {
-      debuggerRuns = [];
-      populateDebuggerRunOptions();
-      setDebuggerVariantOptions([0], 0);
-      debuggerPickerStatus.textContent = `Failed to load runs: ${error instanceof Error ? error.message : String(error)}`;
+      if (quiet) {
+        // Keep the cached options usable; just note the background refresh failed.
+        debuggerPickerStatus.textContent = `Refresh failed (showing cached runs): ${error instanceof Error ? error.message : String(error)}`;
+      } else {
+        debuggerRuns = [];
+        populateDebuggerRunOptions();
+        setDebuggerVariantOptions([0], 0);
+        debuggerPickerStatus.textContent = `Failed to load runs: ${error instanceof Error ? error.message : String(error)}`;
+      }
     } finally {
       debuggerRefreshPickerBtn.disabled = false;
       debuggerLoadPickerBtn.disabled = false;
     }
+  };
+  // Instant first paint for the debugger picker: fill the dropdown from the
+  // cached run list, restore the loaded debugTarget, and warm the variant cache
+  // (one fast blob GET) so Load has real indices. The slow list revalidates in
+  // the background afterwards.
+  const hydrateDebuggerRunsFromCache = (): void => {
+    const cached = readCachedRuns('all');
+    if (!cached || cached.length === 0) {
+      return;
+    }
+    debuggerRuns = cached;
+    populateDebuggerRunOptions();
+    const targetKey = debugTarget ? makeRunKey(debugTarget.briefId, debugTarget.runId) : '';
+    if (targetKey && findRunByKey(targetKey)) {
+      debuggerRunSelect.value = targetKey;
+    }
+    void loadDebuggerVariantOptions(debugTarget?.variantIndex);
+    debuggerPickerStatus.textContent = `Showing cached runs (${cached.length}) — refreshing…`;
   };
 
   const setWorkflowStatus = (message: string, color = '#cbd5e1') => {
@@ -5257,17 +5388,25 @@ function render(): void {
     void refreshDebuggerRuns();
   });
   debuggerLoadPickerBtn.addEventListener('click', () => {
-    const run = findRunByKey(debuggerRunSelect.value);
-    if (!run) {
-      debuggerPickerStatus.textContent = 'Select a run first.';
-      return;
-    }
-    const runKey = makeRunKey(run.briefId, run.runId);
-    const cachedVariants = debuggerVariantCache.get(runKey) ?? [0];
-    const variantIndex = cachedVariants[0] ?? 0;
-    debugTarget = { briefId: run.briefId, runId: run.runId, variantIndex };
-    renderPostprocessDebugger();
-    writeWorkflowState();
+    void (async () => {
+      const run = findRunByKey(debuggerRunSelect.value);
+      if (!run) {
+        debuggerPickerStatus.textContent = 'Select a run first.';
+        return;
+      }
+      const runKey = makeRunKey(run.briefId, run.runId);
+      // Resolve the real variant indices before pinning one: a cached/background
+      // paint can leave `debuggerVariantCache` unpopulated for this run, and
+      // defaulting to index 0 would load the wrong variant.
+      if (!debuggerVariantCache.has(runKey)) {
+        await loadDebuggerVariantOptions();
+      }
+      const cachedVariants = debuggerVariantCache.get(runKey) ?? [0];
+      const variantIndex = cachedVariants[0] ?? 0;
+      debugTarget = { briefId: run.briefId, runId: run.runId, variantIndex };
+      renderPostprocessDebugger();
+      writeWorkflowState();
+    })();
   });
 
   const addBriefToQueue = (): void => {
@@ -6780,13 +6919,19 @@ function render(): void {
   renderPostprocessDebugger();
   renderQueue();
   renderWorkflowSelection();
-  void refreshDebuggerRuns();
+  // Instant first paint from cache, then revalidate in the background so the
+  // slow run list never blanks the debugger picker on reload.
+  hydrateDebuggerRunsFromCache();
+  void refreshDebuggerRuns({ background: true });
   void checkWorkflowHealth();
   // Gate the Azure runs UI on queue hydration: a run loaded before hydration
   // finishes would be clobbered by the blind queue replace, so keep the controls
   // disabled ("Syncing queue…") until hydration resolves, then enable, do the
   // initial (non-silent) list, and start the periodic refresh.
   if (showSpriteWorkflow) {
+    // Paint the reload dropdown from cache immediately so the operator can pick a
+    // run during the (short) queue-sync gate, before the slow list revalidates.
+    hydrateAzureRunsFromCache();
     setAzureControlsEnabled(false);
     reloadStatus.textContent = 'Syncing queue…';
   }
