@@ -1,0 +1,45 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "postprocess-brief-load-fix",
+  "task_title": "Postprocess debugger brief-load resilience + mirror-on-generate",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "notes": "approve-with-changes; 2 blocking + 4 should-fix + 1 nit all adopted into plan.md (emptyCellsApplied degraded flag, stale-render guards, worker permanent-fail, isolated projectRoot test, degraded assertions, terminal live-failure cache, path-level durability doc)"
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Full-file review across durability helpers, all five sidecar call sites, the worker brief-path branch, frontend degradation, and tests. No issues found."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "Found 2 real bugs. BLOCKING: materializeBriefFromStore returned false on ANY exception, so the worker converted a transient store/network error into a permanent BriefNotFoundError drop (silent loss of a recoverable queued job). SHOULD-FIX: the parent-directory confinement check under-blocked Windows cross-drive and UNC paths and over-blocked a legitimate child name beginning with double-dot."
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.4"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Re-reviewed the two fixes (throw-on-transient materialize contract with a best-effort tryMaterialiseBrief wrapper at the five sidecar sites; shared isRepoConfined using both win32 and posix isAbsolute). Confirmed both concerns fully resolved with no new issues; 119/119 targeted tests pass."
+        }
+      ]
+    }
+  }
+}

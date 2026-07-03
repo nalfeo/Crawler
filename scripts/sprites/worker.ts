@@ -34,6 +34,7 @@ import type { BriefSelectorProvider } from './provider/brief-selector-types.js';
 import type { VisionProvider } from './provider/vision-types.js';
 import type { IssuePipelineIssueApi } from './issue-pipeline.js';
 import { runIssuePipeline } from './issue-pipeline.js';
+import { materializeBriefFromStore, mirrorBriefToStore } from './brief-durability.js';
 
 /**
  * Maximum number of times a single message may be dequeued before the worker
@@ -57,12 +58,45 @@ const MAX_DEQUEUE_ATTEMPTS = 3;
  * left to the {@link MAX_DEQUEUE_ATTEMPTS} cap so they still get bounded
  * natural retries.
  */
-const PERMANENT_FAILURE_KINDS: ReadonlySet<string> = new Set(['auth', 'bad-grid', 'non-png']);
+/**
+ * Kinds that are DETERMINISTIC and therefore never worth retrying at the worker
+ * level: a bad API key (`auth`), grid/format failures (`bad-grid`, `non-png`)
+ * which {@link generateSheetCore} has already retried in-run before the error
+ * reached the worker, and a brief absent from BOTH disk and the store
+ * (`brief-not-found`, see {@link BriefNotFoundError}) — no retry can make missing
+ * bytes reappear. We duck-type on `kind` (rather than `instanceof ProviderError`)
+ * so the same classification applies to the synth / vision / text provider error
+ * families, which also surface an `auth` kind. Nondeterministic kinds
+ * (`rate-limit`, `network`, `provider-error`, synth `malformed`, or any plain
+ * `Error`) are intentionally left to the {@link MAX_DEQUEUE_ATTEMPTS} cap so they
+ * still get bounded natural retries.
+ */
+const PERMANENT_FAILURE_KINDS: ReadonlySet<string> = new Set([
+  'auth',
+  'bad-grid',
+  'non-png',
+  'brief-not-found',
+]);
 
 /** True when `err` is a deterministic, non-retryable provider failure. */
 function isPermanentFailure(err: unknown): boolean {
   const kind = (err as { readonly kind?: unknown } | null | undefined)?.kind;
   return typeof kind === 'string' && PERMANENT_FAILURE_KINDS.has(kind);
+}
+
+/**
+ * Thrown when a `brief-path` job's YAML is absent from BOTH the working tree and
+ * the run store (e.g. a gitignored draft wiped by a checkpoint that was never
+ * mirrored). Carries `kind: 'brief-not-found'` so {@link isPermanentFailure}
+ * classifies it as permanent: the worker drops the message immediately instead
+ * of retrying to the {@link MAX_DEQUEUE_ATTEMPTS} cap.
+ */
+class BriefNotFoundError extends Error {
+  readonly kind = 'brief-not-found';
+  constructor(briefPath: string) {
+    super(`brief not found on disk or in store: ${briefPath}`);
+    this.name = 'BriefNotFoundError';
+  }
 }
 
 export interface WorkerOptions {
@@ -169,20 +203,35 @@ export async function runWorker(options: WorkerOptions): Promise<void> {
 
     let result: { readonly summary: { readonly runId: string }; readonly summaryPath: string };
     try {
-      result =
-        request.kind === 'issue-request'
-          ? await runIssueRequest({
-              request,
-              options,
-              dequeueCount: msg.dequeueCount,
-            })
-          : await generateOne({
-              briefPath: path.resolve(repoRoot, request.briefPath),
-              provider,
-              textProvider: options.textProvider ?? null,
-              repoRoot,
-              store,
-            });
+      if (request.kind === 'issue-request') {
+        result = await runIssueRequest({
+          request,
+          options,
+          dequeueCount: msg.dequeueCount,
+        });
+      } else {
+        // Brief-path job. Give the brief path-level durability around the run:
+        // recover a wiped gitignored draft from the store, then mirror it back so
+        // even CLI-enqueued jobs survive a later checkpoint wipe (idempotent —
+        // same-key write). `materializeBriefFromStore` returns `false` ONLY when
+        // the brief is absent from BOTH disk and store — a PERMANENT failure (no
+        // retry can conjure missing bytes), surfaced as BriefNotFoundError so the
+        // poison message is dropped immediately. A TRANSIENT store/fs outage
+        // instead THROWS and propagates to the catch below, where it is retried
+        // (never mistaken for a missing brief and dropped).
+        const absBrief = path.resolve(repoRoot, request.briefPath);
+        if (!(await materializeBriefFromStore(store, repoRoot, absBrief))) {
+          throw new BriefNotFoundError(request.briefPath);
+        }
+        await mirrorBriefToStore(store, repoRoot, absBrief);
+        result = await generateOne({
+          briefPath: absBrief,
+          provider,
+          textProvider: options.textProvider ?? null,
+          repoRoot,
+          store,
+        });
+      }
     } catch (err) {
       // GENERATION failed. Ack failures are handled separately on the success
       // path below and can never reach this branch, so a run that SUCCEEDS but

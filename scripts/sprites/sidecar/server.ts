@@ -78,6 +78,11 @@ import {
 import { synthesizeBrief } from '../synthesize-brief.js';
 import { isSizeVariant, SIZE_VARIANTS, type SizeVariant } from '../size-variants.js';
 import { loadBrief, type LoadedBrief } from '../load-brief.js';
+import {
+  materializeBriefFromStore,
+  mirrorBriefToStore,
+  toRepoRelativePath,
+} from '../brief-durability.js';
 import { parseSpriteCatalog } from '../../../src/shared/sprite-catalog.js';
 import { LocalRunStore } from '../store/local-store.js';
 import { StoreNotFoundError, type RunStore } from '../store/types.js';
@@ -93,7 +98,6 @@ import {
   etagPreconditionFails,
   parseWorkflowState,
   serializeWorkflowState,
-  workflowBriefKey,
 } from './workflow-state.js';
 
 export interface SidecarDeps {
@@ -264,6 +268,19 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
   const app = Fastify({ logger: deps.logger ?? false });
   // Default to a LocalRunStore rooted at runsDir — same layout as before.
   const store: RunStore = deps.store ?? new LocalRunStore(deps.runsDir);
+  // Best-effort brief recovery for the sidecar's READ / degradation paths.
+  // `materializeBriefFromStore` now THROWS on a transient store/fs outage (so
+  // the queue worker can retry instead of mistaking a blip for a missing
+  // brief). These handlers only care whether the brief is on disk now — a
+  // transient failure must degrade (404 / brief-less slice map), never 500 —
+  // so we swallow the throw and report "not recovered".
+  const tryMaterialiseBrief = async (absPath: string): Promise<boolean> => {
+    try {
+      return await materializeBriefFromStore(store, deps.repoRoot, absPath);
+    } catch {
+      return false;
+    }
+  };
   const queue: AssetQueue = deps.queue ?? new NoopAssetQueue();
   // The sidecar owns an in-process worker so a queue consumer always exists
   // wherever the sidecar runs. It is NOT started here — see worker-controller.ts.
@@ -510,12 +527,17 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         reply.code(403);
         return { error: 'forbidden-brief-path' };
       }
-      let brief: Brief;
+      // Recover a wiped gitignored draft brief from the store before loading.
+      await tryMaterialiseBrief(resolved);
+      // Pass `projectRoot` so loadBrief resolves palette / type-defaults against
+      // THIS repo (every other call site does; omitting it falls back to
+      // process.cwd()). A brief that still cannot load degrades to a brief-less
+      // slice map below instead of 500ing the debugger.
+      let brief: Brief | null;
       try {
-        brief = loadBrief(resolved).brief;
+        brief = loadBrief(resolved, { projectRoot: deps.repoRoot }).brief;
       } catch {
-        reply.code(500);
-        return { error: 'brief-load-failed' };
+        brief = null;
       }
       const runPrefix = `${briefId}/${runId}/`;
       const keys = await store.list(runPrefix);
@@ -549,10 +571,19 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         return { error: 'sheet-not-found' };
       }
       try {
-        const sliceMap = computeSliceMap(sheetPng, {
-          emptyCells: brief.generation.sheet.emptyCells,
-        });
-        return { ...sliceMap, sheetFile, algorithm: 'content-aware' };
+        // Without the brief we cannot honour its `emptyCells`, so computeSliceMap
+        // numbers every cell sequentially and `cell.index` no longer lines up with
+        // the run's `variantIndex`. Flag that with `emptyCellsApplied:false` so the
+        // client stops trusting cell indices (selection / highlight / raw crop).
+        const sliceMap = brief
+          ? computeSliceMap(sheetPng, { emptyCells: brief.generation.sheet.emptyCells })
+          : computeSliceMap(sheetPng, {});
+        return {
+          ...sliceMap,
+          sheetFile,
+          algorithm: 'content-aware',
+          emptyCellsApplied: brief !== null,
+        };
       } catch (err) {
         reply.code(500);
         return { error: 'slice-failed', message: String(err) };
@@ -661,10 +692,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     }
     // A re-run can happen after a checkpoint wiped the gitignored draft brief:
     // re-materialise it from the store before failing (same as /api/workflow/generate).
-    if (
-      !existsSync(resolved) &&
-      !(await materializeBriefFromStore(store, deps.repoRoot, resolved))
-    ) {
+    if (!existsSync(resolved) && !(await tryMaterialiseBrief(resolved))) {
       return { ok: false, status: 404, body: { error: 'brief-not-found' } };
     }
     let loaded: LoadedBrief;
@@ -1152,10 +1180,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     // The source candidate lives under the gitignored briefs/draft tree, so a
     // worktree checkpoint may have wiped it. Re-materialise it from the store
     // before failing (Phase 2 durability).
-    if (
-      !existsSync(sourceAbs) &&
-      !(await materializeBriefFromStore(store, deps.repoRoot, sourceAbs))
-    ) {
+    if (!existsSync(sourceAbs) && !(await tryMaterialiseBrief(sourceAbs))) {
       reply.code(404);
       return { error: 'source-not-found', message: 'sourceYamlPath does not exist in repo' };
     }
@@ -1245,13 +1270,15 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     }
     // A mid-flight generate must survive a checkpoint that wiped the gitignored
     // draft brief: re-materialise it from the store before failing.
-    if (
-      !existsSync(briefPath) &&
-      !(await materializeBriefFromStore(store, deps.repoRoot, briefPath))
-    ) {
+    if (!existsSync(briefPath) && !(await tryMaterialiseBrief(briefPath))) {
       reply.code(404);
       return { error: 'brief-not-found', message: 'briefPath does not exist in repo' };
     }
+    // Prevention: now that the brief is confirmed on disk, mirror it into the
+    // store so a later checkpoint wipe stays recoverable. Path-level durability
+    // (keyed by repo-relative path), idempotent, covering BOTH the queue and the
+    // inline branches below.
+    await mirrorBriefToStore(store, deps.repoRoot, briefPath);
     try {
       const env = deps.env ?? process.env;
       if (queue.backend !== 'noop') {
@@ -1559,7 +1586,10 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       reply.code(400);
       return { error: 'bad-request', message: 'body.briefPath must be a repo-relative path' };
     }
-    if (!existsSync(briefPath)) {
+    // Recover a wiped gitignored draft brief from the store before failing, so
+    // live re-processing works for a run whose brief was mirrored (mirrors the
+    // /api/workflow/generate recovery path).
+    if (!existsSync(briefPath) && !(await tryMaterialiseBrief(briefPath))) {
       reply.code(404);
       return { error: 'brief-not-found', message: 'briefPath does not exist in repo' };
     }
@@ -1669,10 +1699,6 @@ function resolveRepoPath(repoRoot: string, relativePath: string): string | null 
   return resolved;
 }
 
-function toRepoRelativePath(repoRoot: string, absolutePath: string): string {
-  return path.relative(repoRoot, absolutePath).replace(/\\/g, '/');
-}
-
 /** Map a {@link RerunError} kind to the HTTP status the re-run routes return. */
 function rerunErrorStatus(kind: RerunErrorKind): number {
   switch (kind) {
@@ -1687,53 +1713,6 @@ function rerunErrorStatus(kind: RerunErrorKind): number {
     case 'summary-invalid':
     case 'slice-failed':
       return 500;
-  }
-}
-
-/**
- * Mirror a brief YAML file into the store under the `workflow-state/briefs/`
- * prefix, keyed by its repo-relative path. Best-effort: a mirror failure must
- * never fail the originating request — durability lagging is recoverable, a
- * 500 on synthesize/promote is not.
- */
-async function mirrorBriefToStore(
-  store: RunStore,
-  repoRoot: string,
-  absPath: string,
-): Promise<void> {
-  try {
-    const rel = toRepoRelativePath(repoRoot, absPath);
-    if (rel.startsWith('..')) return;
-    await store.put(workflowBriefKey(rel), readFileSync(absPath));
-  } catch {
-    // Swallow: the brief is still on disk for the current request; the next
-    // synthesize/promote will re-attempt the mirror.
-  }
-}
-
-/**
- * Re-materialise a brief YAML file from the store back onto disk when the
- * local (gitignored) copy was wiped by a worktree checkpoint. Returns true iff
- * the file exists on disk afterwards. Callers pass an already repo-confined
- * absolute path (validated via `resolveRepoPath`).
- */
-async function materializeBriefFromStore(
-  store: RunStore,
-  repoRoot: string,
-  absPath: string,
-): Promise<boolean> {
-  if (existsSync(absPath)) return true;
-  const rel = toRepoRelativePath(repoRoot, absPath);
-  if (rel.startsWith('..')) return false;
-  const key = workflowBriefKey(rel);
-  try {
-    if (!(await store.has(key))) return false;
-    const bytes = await store.get(key);
-    mkdirSync(path.dirname(absPath), { recursive: true });
-    writeFileSync(absPath, bytes);
-    return true;
-  } catch {
-    return false;
   }
 }
 
