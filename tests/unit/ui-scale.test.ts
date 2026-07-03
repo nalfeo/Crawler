@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   computeTextResolution,
   computeUiScale,
+  fitScaleForBox,
   MAX_TEXT_RESOLUTION,
   MAX_UI_SCALE,
   MIN_UI_SCALE,
@@ -93,5 +94,66 @@ describe('computeTextResolution', () => {
     expect(computeTextResolution(2, 0)).toBe(2); // uiScale → 1, ceil(2)
     expect(computeTextResolution(Number.NaN, 1)).toBe(1);
     expect(computeTextResolution(1, Number.NaN)).toBe(1);
+  });
+});
+
+describe('fitScaleForBox', () => {
+  // InventoryUI fits item icons into ~75% of a 64px cell.
+  const ICON_BOX = 64 * 0.75; // = 48
+
+  it('keeps the 16x16 placeholder at its crisp integer upscale (unchanged)', () => {
+    // Matches the pre-fix behaviour for the ONLY size the old `/16` formula was
+    // ever correct for: round(48/16) = 3 → 48px, exactly filling the target.
+    expect(fitScaleForBox(16, 16, ICON_BOX)).toBe(3);
+  });
+
+  it('shrinks 64x64 generated art down to fit the cell (the fix)', () => {
+    // 48 / 64 = 0.75 → 64 * 0.75 = 48px, contained in the cell instead of the
+    // 192px overflow the old hardcoded /16 produced.
+    expect(fitScaleForBox(64, 64, ICON_BOX)).toBe(0.75);
+  });
+
+  it('snaps intermediate sizes to the largest integer scale that still fits', () => {
+    // 48 / 32 = 1.5 → floor → 1 (32px, crisp) rather than a blurry 1.5x upscale.
+    expect(fitScaleForBox(32, 32, ICON_BOX)).toBe(1);
+    // 48 / 24 = 2.0 → 2 (48px).
+    expect(fitScaleForBox(24, 24, ICON_BOX)).toBe(2);
+  });
+
+  it('never lets the scaled sprite overflow the target box', () => {
+    for (const size of [8, 12, 16, 20, 24, 32, 40, 48, 64, 96, 128, 256]) {
+      const scale = fitScaleForBox(size, size, ICON_BOX);
+      expect(scale).toBeGreaterThan(0);
+      expect(size * scale).toBeLessThanOrEqual(ICON_BOX + 1e-9);
+    }
+  });
+
+  it('contains non-square art by fitting its longest side', () => {
+    // Longest side = 64 → scale 0.75; both axes stay within the box.
+    const scale = fitScaleForBox(64, 32, ICON_BOX);
+    expect(scale).toBe(0.75);
+    expect(64 * scale).toBeLessThanOrEqual(ICON_BOX + 1e-9);
+    expect(32 * scale).toBeLessThanOrEqual(ICON_BOX + 1e-9);
+  });
+
+  it('falls back to 1 for degenerate dimensions', () => {
+    expect(fitScaleForBox(0, 0, ICON_BOX)).toBe(1);
+    expect(fitScaleForBox(16, 16, 0)).toBe(1);
+    expect(fitScaleForBox(Number.NaN, 16, ICON_BOX)).toBe(1);
+    expect(fitScaleForBox(-32, -32, ICON_BOX)).toBe(1);
+  });
+
+  it('fixes the InventoryUI icon-overflow bug (before/after witness)', () => {
+    // BEFORE: the old render path scaled EVERY icon by a hardcoded /16, so a
+    // 64x64 approved sprite rendered at 3x = 192px, ~3x the 64px cell.
+    const oldFixed16Scale = Math.max(1, Math.round(ICON_BOX / 16)); // = 3
+    expect(64 * oldFixed16Scale).toBe(192);
+    expect(64 * oldFixed16Scale).toBeGreaterThan(64); // overflows the cell
+
+    // AFTER: fitScaleForBox reads the real 64x64 source and lands it at 48px —
+    // inside the cell, with the rarity border still visible.
+    const newScale = fitScaleForBox(64, 64, ICON_BOX);
+    expect(64 * newScale).toBe(ICON_BOX);
+    expect(64 * newScale).toBeLessThanOrEqual(64);
   });
 });

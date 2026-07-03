@@ -1,0 +1,10 @@
+{
+  "date": "2026-07-02",
+  "session": "inventory-icon-fit-and-dossier-wiring",
+  "estimated_apples": 2,
+  "actual_apples": 3,
+  "delta": 1,
+  "verdict": "under",
+  "hello_kitties": 0.6,
+  "notes": "Started as a 2-apple follow-up to an asset-ingestion run: wire the classified-dossier icon (src/shared/items.ts) and fix a non-conventional PR-title string in scripts/sprites/asset-pr.ts (two small edits + regression tests). Plan review (gpt-5.4) upgraded it to 3 apples by finding a real engine render-path bug: InventoryUI scaled generated item icons by a hardcoded Math.round((CELL_SIZE*0.75)/16)=3x, assuming a 16x16 source, so 64x64 approved art overflowed its 64px cell at 192px (latent for baseball-bat-v1 too). The fix added a reusable pure helper fitScaleForBox in src/engine/ui-scale.ts (contain-fit: integer upscale for crisp pixel art, exact fractional downscale for hi-res art), wired InventoryUI to read real texture dims, plus unit + integration + e2e observe coverage and a 64x64 probe-lab icon. 9 files vs the ~3 estimated. Before/after observed in the real e2e artifact (fit-to-cell FAILs on the old formula, PASSes after). No blocking code-review concerns."
+}

@@ -18,7 +18,11 @@ import {
   fetchGeneratedSpriteRegistry,
   preloadGeneratedSprites,
 } from '../../src/engine/generatedAssets/index.js';
-import { GENERATED_MANIFEST_VERSION } from '../../src/shared/generated-assets.js';
+import {
+  GENERATED_MANIFEST_VERSION,
+  pickGeneratedVariant,
+} from '../../src/shared/generated-assets.js';
+import { getItemById } from '../../src/shared/items.js';
 
 const REPO_MANIFEST = path.resolve(__dirname, '../../public/assets/generated/manifest.json');
 
@@ -212,5 +216,47 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     // Whatever count it has, it must be a valid registry.
     expect(registry.version).toBe(GENERATED_MANIFEST_VERSION);
     expect(typeof registry.size).toBe('number');
+  });
+
+  it('wires the classified-dossier item to real approved art, not the placeholder', async () => {
+    if (!existsSync(REPO_MANIFEST)) {
+      // Fresh checkout without generated art on disk — nothing to observe.
+      return;
+    }
+    const raw = readFileSync(REPO_MANIFEST, 'utf8');
+    const fetcher = (async () =>
+      new Response(raw, {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })) as unknown as typeof fetch;
+    const registry = await fetchGeneratedSpriteRegistry({
+      url: '/assets/generated/manifest.json',
+      fetcher,
+    });
+
+    // The item must point its icon at the versioned brief that carries real art.
+    const item = getItemById('classified-dossier');
+    expect(item?.icon).toBe('classified-dossier-v1');
+
+    // AFTER (wired): the versioned brief resolves to real, approved variants —
+    // every resolved asset path is checked-in art, never a placeholder.
+    const wired = registry.variants('classified-dossier-v1');
+    expect(wired.length).toBeGreaterThan(0);
+    for (const entry of wired) {
+      expect(entry.assetPath).toContain('classified-dossier-v1');
+      expect(entry.assetPath).not.toContain('placeholder');
+    }
+    // Deterministic pick (mirrors the runtime InventoryUI resolution) is real.
+    const picked = pickGeneratedVariant(registry, item!.icon, 0);
+    expect(picked?.assetPath).toContain('classified-dossier-v1');
+    expect(picked?.assetPath).not.toContain('placeholder');
+
+    // Historical context (deliberately NOT asserted — scoped to today's manifest
+    // shape): before this fix the item resolved via its bare id
+    // `classified-dossier`, whose only manifest entry is the 16×16 placeholder,
+    // so the inventory rendered a placeholder. The durable guards are the ones
+    // above (icon override → versioned brief → real, non-placeholder art); we
+    // avoid asserting the bare concept's manifest internals so a future pipeline
+    // change (alias generation, concept-collapsing) can't false-fail this test.
   });
 });

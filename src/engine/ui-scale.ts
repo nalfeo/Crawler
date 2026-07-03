@@ -140,6 +140,29 @@ export function fitUiScale(
 }
 
 /**
+ * Pure: the scale factor that fits a source sprite of `srcWidth × srcHeight`
+ * source pixels inside a square `box`-pixel target, preserving aspect ratio
+ * ("contain" — the longest side lands within `box`).
+ *
+ * Sprite art must never be scaled against an assumed fixed source size: approved
+ * assets range from 16×16 placeholders to 64×64 (or larger) generated art, so
+ * callers derive the scale from the *actual* texture dimensions and pass them
+ * here. Upscaling (source smaller than the box) snaps to the largest integer
+ * scale that still fits, so nearest-neighbour pixel art stays crisp; downscaling
+ * (source larger than the box) uses the exact fractional fit so higher-resolution
+ * art lands precisely at the target size instead of overflowing. Degenerate
+ * (non-positive) dimensions fall back to 1.
+ */
+export function fitScaleForBox(srcWidth: number, srcHeight: number, box: number): number {
+  const longestSide = Math.max(srcWidth, srcHeight);
+  if (!(longestSide > 0) || !(box > 0)) {
+    return 1;
+  }
+  const exact = box / longestSide;
+  return exact >= 1 ? Math.max(1, Math.floor(exact)) : exact;
+}
+
+/**
  * Subscribe to UI-scale changes. The callback fires whenever the canvas is
  * resized. The callback does not fire on subscription — call `getUiScale` for
  * the initial value. Returns an unsubscribe function.
