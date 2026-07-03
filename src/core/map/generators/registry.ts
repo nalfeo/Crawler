@@ -9,6 +9,7 @@ import type { MapGenerator } from './types';
 import { DungeonGenerator } from './DungeonGenerator';
 import { CaveGenerator } from './CaveGenerator';
 import { ArenaGenerator } from './ArenaGenerator';
+import { CaveSystemGenerator } from './cave-system';
 
 const registry = new Map<BiomeType, MapGenerator>();
 
@@ -63,3 +64,9 @@ registerGenerator(BiomeType.ARENA, arenaGen);
 registerGenerator(BiomeType.FOREST, new CaveGenerator({ initialFill: 0.4, smoothingPasses: 5 }));
 registerGenerator(BiomeType.OPEN_WORLD, arenaGen); // placeholder
 registerGenerator(BiomeType.TOWN, arenaGen); // placeholder
+
+// Floor 2 — open cave system with 3–4 family territories, boss dens, settlement,
+// and a central resource-heart cavern. Slice 8 will pass presentCount through
+// the manifest; today the generator defaults to 4.
+// TODO(floor2-slice-8): wire presentCount + family roster from manifest.
+registerGenerator(BiomeType.CAVE_SYSTEM, new CaveSystemGenerator());

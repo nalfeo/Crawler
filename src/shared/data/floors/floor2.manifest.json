@@ -16,8 +16,8 @@
     "markerRadiusFt": 8.0
   },
   "map": {
-    "widthTiles": 140,
-    "heightTiles": 80,
+    "widthTiles": 270,
+    "heightTiles": 156,
     "seed": 84,
     "roomWidthRange": [7, 16],
     "roomHeightRange": [6, 14],

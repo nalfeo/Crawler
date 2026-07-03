@@ -39,9 +39,11 @@ export class RoomGraph {
     neighbors: number[] = [],
     role: RoomRole = RoomRole.NORMAL,
     label?: string,
+    familyIndex?: number,
+    interiorCells?: ReadonlyArray<{ readonly x: number; readonly y: number }>,
   ): number {
     const id = this.rooms.length;
-    this.rooms.push({ id, bounds, doors, neighbors, role, label });
+    this.rooms.push({ id, bounds, doors, neighbors, role, label, familyIndex, interiorCells });
     this.spatialCache = null; // invalidate cache
     return id;
   }
@@ -52,6 +54,20 @@ export class RoomGraph {
     if (room) {
       room.role = role;
     }
+  }
+
+  /**
+   * Append a neighbour to `id`'s adjacency list, rebuilding the underlying
+   * array (RoomData.neighbors is declared readonly, so we replace the array
+   * instead of mutating it). No-op if the neighbour is already present.
+   */
+  addNeighbor(id: number, neighborId: number): void {
+    const room = this.rooms[id];
+    if (!room) return;
+    if (room.neighbors.includes(neighborId)) return;
+    const next = [...room.neighbors, neighborId];
+    this.rooms[id] = { ...room, neighbors: next };
+    this.spatialCache = null;
   }
 
   /** Return the first room that has the given role, or undefined if none. */
@@ -102,6 +118,13 @@ export class RoomGraph {
   ): { x: number; y: number } | null {
     const room = this.rooms[roomId];
     if (!room) return null;
+    // Irregular-shape rooms (e.g. cave caverns) pre-populate an explicit interior mask;
+    // fall back to the bounds-inset for rectangular rooms.
+    if (room.interiorCells && room.interiorCells.length > 0) {
+      const idx = rng.nextInt(0, room.interiorCells.length - 1);
+      const cell = room.interiorCells[idx]!;
+      return { x: cell.x, y: cell.y };
+    }
     const { x, y, width, height } = room.bounds;
     // Interior = 1 tile inset from bounds
     const ix = x + 1;
@@ -117,6 +140,12 @@ export class RoomGraph {
   private buildSpatialCache(): void {
     this.spatialCache = new Map();
     for (const room of this.rooms) {
+      if (room.interiorCells && room.interiorCells.length > 0) {
+        for (const cell of room.interiorCells) {
+          this.spatialCache.set(`${cell.x},${cell.y}`, room.id);
+        }
+        continue;
+      }
       const { x, y, width, height } = room.bounds;
       // Interior tiles (1 tile inset from walls)
       for (let ty = y + 1; ty < y + height - 1; ty++) {

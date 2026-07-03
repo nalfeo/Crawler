@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-02",
+  "session_slug": "floor2-slice2-cave-system",
+  "task_title": "Floor 2 Slice 2: CaveSystemGenerator + BiomeType.CAVE_SYSTEM + region roles + reachability",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "notes": "Plan review captured during initial spec/ADR read-through: (1) reuse of the boss-stair TerrainType (not RoomRole) as the stair-spawn hand-off surface for Slice 5 -- documented in plan and honored by stampBossStairAtHeart; (2) filesystem approach of an isolated worktree to avoid the shared workspace being reset by the parallel Slice-1 session -- adopted; (3) non-goal boundary with Slice 1's family selection (integer presentCount only, never reads families.json) -- honored. All three carried forward into implementation."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 5,
+          "resolved_count": 5,
+          "clean": true,
+          "notes": "GitHub Copilot's automated reviewer on the initial PR #693 push: (a) unused RoomRole import + `void RoomRole;` workaround in scripts/agent/observe-cave-system.ts; (b) readonly-cast mutation of RoomData.neighbors in cave-system.ts; (c) findDoorSlot ignored the territory arg so boss-den doors could open onto the wrong cavern; (d) corner-cell perimeter enumeration for boss-den door candidates -- door could have no floor tile behind it; (e) MapConfig.biome missing in observe-cave-system.ts (typecheck fail). Fixed in commits ff6924e5 (biome + performance.now()) and 1cd3339e (all remaining: new RoomGraph.addNeighbor helper that rebuilds the readonly array; rewritten carveBossDen that iterates the territory's boundary tiles with a Set<flatIdx> membership check so the door's outside neighbour is guaranteed to be in territory.cells; axis-aligned mid-edge placement never a corner; removed unused RoomRole import and void-workaround). All 9 threads replied to with '✅ Addressed in <sha>' and resolved via GraphQL resolveReviewThread."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.4"],
+          "concerns_count": 5,
+          "resolved_count": 5,
+          "clean": true,
+          "notes": "Multi-model post-fix code review kicked off in parallel over the working-tree diff after Copilot round. Findings:\n\ngpt-5.4:\n  1. BLOCKING: getRoomAt/getRandomInteriorTile use axis-aligned bounds inset by 1 -- for irregular caves, wall tiles inside a bbox got attributed to that room and getRandomInteriorTile could return impassable tiles.\n  2. BLOCKING: floor2.manifest.json `_biome`/`_TODO_floor2_slice_8` keys are strict-schema violations -- caught by tests/unit/floor-manifests-lighting.test.ts on `npm run verify`.\n  3. Non-blocking: SETTLEMENT/RESOURCE_HEART are new roles, so floor.safeRoom/floor.bossStairRoom (which look for SAFE/BOSS_STAIR) are null on cave maps. Intentional per spec -- Slice 5 wires the stair via the BOSS_STAIR_FLOOR tile stamp, not the room role. Documented, no code change.\n\nclaude-sonnet-4.6:\n  1. BLOCKING: stampBossStairAtHeart can silently stamp zero BOSS_STAIR_FLOOR tiles when the heart region's arithmetic centroid lands on a wall pocket (non-convex regions from cellular.connect stitching narrow arms). Reachability check passes because a floor tile is still nearby, but Slice 5's stair-spawn logic would find nothing.\n  2. Non-blocking (blocking for Slice 3): RoomGraph.neighbors were empty for every non-den open-cave region -- getConnectedRooms(spawnId) returned [] because addRegionAsRoom passed neighbors=[]. AI routing/quest-giver placement in future slices would silently break.\n  3. Non-blocking: reachability check for boss-den doors used ±3 radius which is trivially satisfied by the territory-side floor tile even if the door's own interior wasn't navigable. Slice 4's door-lock/unlock will add the interior-after-unlock test.\n\nAll BLOCKING findings fixed in commit 1294bf9d and covered by 3 new tests in cave-system-generator.test.ts:\n  - `BOSS_STAIR_FLOOR is stamped inside the RESOURCE_HEART region on every seed` (10 seeds, guards against silent zero-stamp and mislocated stamps).\n  - `open cave regions register non-empty semantic adjacency in RoomGraph` (fixes the empty-forest bug).\n  - `RoomGraph.getRoomAt reports -1 for a wall tile inside a cave region bbox` (proves interiorCells mask is honored).\nCode changes: (a) stampBossStairAtHeart fallback walks heart.cells for the deepest passable cell (chebyshev distance-to-wall) and throws if the entire region has zero passable tiles -- retry loop bumps sub-seed. (b) segmentRegions now returns cavern adjacency; the caller wires it into roomGraph via addNeighbor. (c) RoomData.interiorCells optional mask populated by addRegionAsRoom; RoomGraph.buildSpatialCache and getRandomInteriorTile prefer it when present, falling back to bounds-inset for rectangular rooms. (d) floor2.manifest.json _biome/_TODO fields dropped -- the biome/present-count/family-config wiring is Slice 8-owned; the handoff captures the semantic intent.\nDeferred (documented, not weakened): Slice 5 will consume RESOURCE_HEART via the BOSS_STAIR_FLOOR tile stamp; Slice 4 owns door-interior-after-unlock reachability; Slice 8 owns the manifest schema extension for biome/families/resources."
+        }
+      ]
+    }
+  }
+}
