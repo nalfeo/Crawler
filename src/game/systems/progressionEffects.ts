@@ -82,9 +82,10 @@ function castFireball(
   // Cast VFX: the fireball's damage numbers ride on the combat-event pipeline
   // (per-target hitSpark + damage floater), but nothing visualises the *cast*
   // itself — without this the player sees enemies quietly lose HP with no cue
-  // that a spell fired. Push a blast preset at the chosen epicentre so the
-  // explosion is always visible, even when the spell fires at a lone target or
-  // hits nothing (rare but possible when all targets are already dead).
+  // that a spell fired. We only reach here when the spell actually connects (we
+  // returned early above if no living enemy was in blast reach), and the chosen
+  // epicentre is itself a living enemy, so the blast always catches at least one
+  // target — even a lone-target hit reads as the full explosion.
   //
   // `radiusFt` scales the outer ring to the ACTUAL blast area (12 ft on Floor
   // 1), so a solo hit still reads as the full explosion the gameplay implies.

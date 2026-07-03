@@ -46,22 +46,23 @@ function createPlayingFloor1World(seed: number): { world: GameWorld; playerEid: 
 }
 
 /**
- * Plant a stationary training-dummy enemy at `(px + offsetFt, py)`, low HP so
- * the melee weapon doesn't finish it before the trigger check runs. We spawn
- * directly (not via the enemy AI catalog) so we get an entity that stays still,
- * has zero attack range, and only exercises the ability trigger radius.
+ * Plant a stationary training-dummy enemy `offsetFt` feet to the +x side of the
+ * player (coordinates are feet-space, see src/shared/units.ts), with high HP
+ * (500) so the melee weapon doesn't finish it before the trigger check runs. We
+ * spawn directly (not via the enemy AI catalog) so we get an entity that stays
+ * still, has zero attack range, and only exercises the ability trigger radius.
  */
 function spawnStationaryEnemyNearPlayer(
   world: GameWorld,
   playerEid: number,
   offsetFt: number,
 ): number {
-  const px = world.stores.position.x[playerEid] ?? 0;
-  const py = world.stores.position.y[playerEid] ?? 0;
+  const playerXFt = world.stores.position.x[playerEid] ?? 0;
+  const playerYFt = world.stores.position.y[playerEid] ?? 0;
   // Reuse the raw ECS setup used by combatants.spawnEnemy so we don't drag in
   // AI / spawn-anim components — this dummy just needs Position + Enemy + Health.
   const eid = addEntity(world.ecs);
-  addComponent(world.ecs, eid, set(Position, { x: px + offsetFt, y: py }));
+  addComponent(world.ecs, eid, set(Position, { x: playerXFt + offsetFt, y: playerYFt }));
   addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
   addComponent(world.ecs, eid, set(Health, { current: 500, max: 500 }));
   addComponent(world.ecs, eid, set(Weight, { value: 120 }));
