@@ -203,6 +203,64 @@ export function estimateFloor1RunPlan(
     );
   }
 
+  const addShopFetchAndReturnSegments = (): void => {
+    if (!snapshot.hasShopFetchItem) {
+      addSegment(
+        'fetch-shop-prize',
+        'Fetch merchant prize',
+        'travel',
+        snapshot.positions.questItem,
+        params.fetchPickupMs,
+        'Collect the merchant fetch item',
+      );
+    }
+    addSegment(
+      'return-shop-prize',
+      'Return merchant prize',
+      'travel',
+      snapshot.positions.shop,
+      params.interactionMs,
+      'Return the merchant fetch item',
+    );
+  };
+
+  const addShopBuySegment = (): void => {
+    const goldOwed = Math.max(0, snapshot.shopkeeperEquipmentCost - snapshot.playerGold);
+    if (goldOwed > 0) {
+      const target =
+        !snapshot.activeQuestGiverDetour && snapshot.currentTarget?.kind === 'gold-farm'
+          ? snapshot.currentTarget
+          : cursor;
+      addSegment(
+        'farm-shop-gold',
+        'Farm charm gold',
+        'work',
+        target,
+        goldOwed * params.goldFarmMs,
+        `${goldOwed} gold remaining for the merchant charm`,
+      );
+    }
+    addSegment(
+      'buy-shop-charm',
+      'Buy merchant charm',
+      'travel',
+      snapshot.positions.shop,
+      params.interactionMs,
+      'Buy the merchant reward',
+    );
+  };
+
+  const addShopEquipSegment = (): void => {
+    addSegment(
+      'equip-shop-charm',
+      'Equip merchant charm',
+      'work',
+      cursor,
+      params.interactionMs,
+      'Equip the purchased merchant reward',
+    );
+  };
+
   switch (snapshot.shopStage) {
     case 'not-met':
       addSegment(
@@ -213,62 +271,21 @@ export function estimateFloor1RunPlan(
         params.interactionMs,
         'Start the merchant errand',
       );
+      addShopFetchAndReturnSegments();
+      addShopBuySegment();
+      addShopEquipSegment();
       break;
     case 'awaiting-prize':
-      if (!snapshot.hasShopFetchItem) {
-        addSegment(
-          'fetch-shop-prize',
-          'Fetch merchant prize',
-          'travel',
-          snapshot.positions.questItem,
-          params.fetchPickupMs,
-          'Collect the merchant fetch item',
-        );
-      }
-      addSegment(
-        'return-shop-prize',
-        'Return merchant prize',
-        'travel',
-        snapshot.positions.shop,
-        params.interactionMs,
-        'Return the merchant fetch item',
-      );
+      addShopFetchAndReturnSegments();
+      addShopBuySegment();
+      addShopEquipSegment();
       break;
-    case 'ready-to-buy': {
-      const goldOwed = Math.max(0, snapshot.shopkeeperEquipmentCost - snapshot.playerGold);
-      if (goldOwed > 0) {
-        const target =
-          !snapshot.activeQuestGiverDetour && snapshot.currentTarget?.kind === 'gold-farm'
-            ? snapshot.currentTarget
-            : cursor;
-        addSegment(
-          'farm-shop-gold',
-          'Farm charm gold',
-          'work',
-          target,
-          goldOwed * params.goldFarmMs,
-          `${goldOwed} gold remaining for the merchant charm`,
-        );
-      }
-      addSegment(
-        'buy-shop-charm',
-        'Buy merchant charm',
-        'travel',
-        snapshot.positions.shop,
-        params.interactionMs,
-        'Buy and equip the merchant reward',
-      );
+    case 'ready-to-buy':
+      addShopBuySegment();
+      addShopEquipSegment();
       break;
-    }
     case 'awaiting-equip':
-      addSegment(
-        'equip-shop-charm',
-        'Equip merchant charm',
-        'work',
-        cursor,
-        params.interactionMs,
-        'Equip the purchased merchant reward',
-      );
+      addShopEquipSegment();
       break;
     case 'complete':
       break;

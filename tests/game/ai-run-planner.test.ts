@@ -118,4 +118,74 @@ describe('estimateFloor1RunPlan', () => {
     expect(almostDone.segments).toHaveLength(0);
     expect(almostDone.estimatedRequiredMs).toBe(PARAMS.safetyBufferMs);
   });
+
+  it('counts downstream merchant steps and decreases as shop stages advance', () => {
+    const onlyShopRemaining: Partial<Floor1RunPlannerSnapshot> = {
+      tutorialAccepted: true,
+      playerLevel: 2,
+      questCompleted: true,
+      bossBattleAccepted: true,
+      slimeRatStarted: true,
+      slimeRatDefeated: true,
+      spellsUnlocked: true,
+      staircaseStarted: true,
+      staircaseDefeated: true,
+      staircaseUnlocked: true,
+      staircaseDiscovered: true,
+    };
+
+    const notMet = estimateFloor1RunPlan(snapshot(onlyShopRemaining), PARAMS);
+    const awaitingPrize = estimateFloor1RunPlan(
+      snapshot({
+        ...onlyShopRemaining,
+        shopStage: 'awaiting-prize',
+        player: { x: 20, y: 0 },
+      }),
+      PARAMS,
+    );
+    const readyToBuy = estimateFloor1RunPlan(
+      snapshot({
+        ...onlyShopRemaining,
+        shopStage: 'ready-to-buy',
+        player: { x: 20, y: 0 },
+        hasShopFetchItem: true,
+      }),
+      PARAMS,
+    );
+    const awaitingEquip = estimateFloor1RunPlan(
+      snapshot({
+        ...onlyShopRemaining,
+        shopStage: 'awaiting-equip',
+        player: { x: 20, y: 0 },
+        playerGold: 10,
+        hasShopFetchItem: true,
+      }),
+      PARAMS,
+    );
+
+    expect(notMet.segments.map((segment) => segment.id)).toEqual([
+      'meet-shopkeeper',
+      'fetch-shop-prize',
+      'return-shop-prize',
+      'farm-shop-gold',
+      'buy-shop-charm',
+      'equip-shop-charm',
+    ]);
+    expect(awaitingPrize.segments.map((segment) => segment.id)).toEqual([
+      'fetch-shop-prize',
+      'return-shop-prize',
+      'farm-shop-gold',
+      'buy-shop-charm',
+      'equip-shop-charm',
+    ]);
+    expect(readyToBuy.segments.map((segment) => segment.id)).toEqual([
+      'farm-shop-gold',
+      'buy-shop-charm',
+      'equip-shop-charm',
+    ]);
+    expect(awaitingEquip.segments.map((segment) => segment.id)).toEqual(['equip-shop-charm']);
+    expect(notMet.estimatedRequiredMs).toBeGreaterThan(awaitingPrize.estimatedRequiredMs);
+    expect(awaitingPrize.estimatedRequiredMs).toBeGreaterThan(readyToBuy.estimatedRequiredMs);
+    expect(readyToBuy.estimatedRequiredMs).toBeGreaterThan(awaitingEquip.estimatedRequiredMs);
+  });
 });
