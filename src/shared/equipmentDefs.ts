@@ -76,8 +76,8 @@ function weapon(def: WeaponEquipmentDef): WeaponEquipmentDef {
 /**
  * All weapon-equipment defs, keyed by their inventory item slug (the id
  * players see in the bag). Each references a canonical `WeaponDef` from
- * `weaponDefs.ts`. See `FLOOR_1_STARTER_WEAPON_TO_SHOP_ITEM_ID` in
- * `floorScenario.ts` for the starter → shop-item mapping used at loadout time.
+ * `weaponDefs.ts`. See `STARTER_WEAPON_ID_TO_ITEM_ID` below for the
+ * starter → shop-item mapping used at loadout time.
  */
 const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
   // --- Floor 1 starter weapons (each maps to a shop item slug) ---

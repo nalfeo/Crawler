@@ -34,9 +34,8 @@ import {
   Npc,
 } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
-import { createLogger } from '../shared/logger.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
-import { setActiveWeapon } from './weaponSystem.js';
+import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
 import {
   clearEntityStores,
   spawnBehaviorEnemy,
@@ -57,11 +56,10 @@ import { GAME, PLAYER_SPEED } from '../shared/constants.js';
 import { pxToFt } from '../shared/units.js';
 import { addItem, hasItem, removeItem } from '../shared/inventory.js';
 import { HARVESTABLE_DEFS } from '../shared/harvestableDefs.js';
-import { equip, initializeBaseStats, unequip } from '../core/systems/equipmentSystem.js';
+import { equip, initializeBaseStats } from '../core/systems/equipmentSystem.js';
 import {
   MERCHANTS_CHARM_COST,
   getEquipmentDefForItem,
-  getEquipmentDefForStarterWeapon,
   isEquippableItem,
   STARTER_WEAPON_ID_TO_ITEM_ID,
 } from '../shared/equipmentDefs.js';
@@ -101,8 +99,6 @@ import type { NpcPlacementDef } from '../shared/npc-placements.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
 import { getSpawnerArchetype, getSpawnerArchetypeIndex } from './spawners/registry.js';
 import { hashStringToSeed, SeededRandom } from '../shared/random.js';
-
-const logger = createLogger('game:floor-scenario');
 
 // Derived constants computed from config at module initialization.
 // The camera/viewport is a render-pixel concept, so convert it to feet at this
@@ -1281,40 +1277,12 @@ export function selectFloor1StarterWeapon(world: GameWorld, optionIndex: number)
   world.floor1.selectedWeaponId = weaponId;
   world.floor1.selectedChoiceIndex = optionIndex;
 
-  // Route the starter through the equipment system so the weapon lives in the
-  // hand slot(s) — one-handed → mainHand, two-handed → mainHand + offHand —
-  // from frame one. `equip()` also activates the underlying WeaponDef via
-  // core/active-weapon, so the player begins auto-firing without a separate
-  // setActiveWeapon call. `force: true` bypasses the safe-context gate: the
-  // loadout modal runs before `world.state` becomes `'playing'`/`'safe_room'`,
-  // and this equip is a scenario-driver action, not a player input. If for
-  // any reason an equipment def isn't registered for this starter (data
-  // divergence) we fall back to a raw setActiveWeapon so the run still starts
-  // with a working weapon rather than a silent no-op.
-  const player = findPlayerEid(world);
-  const equipmentDef = getEquipmentDefForStarterWeapon(weaponId);
-  let equipped = false;
-  if (player !== undefined && equipmentDef !== undefined) {
-    // Clear any lingering hand-slot equipment first so re-initializing the
-    // same world (dev tools, respawn, back-to-loadout debugging) can't
-    // leave a stale weapon in mainHand while the new starter routes
-    // through the raw setActiveWeapon fallback below. Force is required
-    // because `world.state === 'loadout'` fails the safe-context gate.
-    unequip(world, player, 'mainHand', { force: true });
-    unequip(world, player, 'offHand', { force: true });
-    const result = equip(world, player, equipmentDef, { force: true });
-    equipped = result.ok;
-    if (!result.ok) {
-      logger.warn('Starter weapon equip failed; falling back to setActiveWeapon', {
-        weaponId,
-        itemId: equipmentDef.id,
-        reasons: result.reasons.map((r) => r.type),
-      });
-    }
-  }
-  if (!equipped) {
-    setActiveWeapon(world, weaponDef);
-  }
+  // Route the starter through the shared equip helper so the weapon lands in
+  // the hand slot(s) — one-handed → mainHand, two-handed → mainHand + offHand —
+  // and auto-fires from frame one, with a setActiveWeapon fallback if the
+  // equipment path can't run. Shared with applyFloor1LoadoutChoice so both
+  // loadout entry points keep identical eviction/equip/fallback semantics.
+  equipStarterOrFallback(world, weaponId, weaponDef);
   world.state = 'playing';
 }
 

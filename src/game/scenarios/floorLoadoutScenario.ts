@@ -1,11 +1,7 @@
-import { query } from 'bitecs';
-import { Player } from '../../core/components.js';
-import { equip, unequip } from '../../core/systems/equipmentSystem.js';
 import type { GameWorld } from '../../core/world.js';
-import { getEquipmentDefForStarterWeapon } from '../../shared/equipmentDefs.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { type ModalPickerScenario } from '../../shared/modal-picker.js';
-import { setActiveWeapon } from '../weaponSystem.js';
+import { equipStarterOrFallback } from './starterWeaponEquip.js';
 
 export type Floor1LoadoutChoiceId = 'sword' | 'bow' | 'baseball-bat';
 
@@ -36,10 +32,6 @@ function resolveFloor1LoadoutChoice(choiceId: string | undefined): Floor1Loadout
   return DEFAULT_FLOOR1_LOADOUT_CHOICE;
 }
 
-function findPlayerEid(world: GameWorld): number | undefined {
-  return query(world.ecs, [Player])[0];
-}
-
 export function applyFloor1LoadoutChoice(
   world: GameWorld,
   choiceId: string | undefined,
@@ -49,28 +41,11 @@ export function applyFloor1LoadoutChoice(
   if (!weaponDef) {
     throw new Error(`Missing weapon definition for floor 1 loadout: ${resolvedChoice}`);
   }
-  // Prefer the equipment-driven path so the chosen weapon lives in the
-  // corresponding hand slot(s). Falls back to a raw setActiveWeapon when
-  // there's no player entity, when the starter has no equipment def
-  // registered, or when equip() fails (e.g. hand slot occupied by a
-  // previous run's leftover); the fallback keeps combat working while a
-  // downstream cleanup handles the equipment desync.
-  const player = findPlayerEid(world);
-  const equipmentDef = getEquipmentDefForStarterWeapon(resolvedChoice);
-  let equipped = false;
-  if (player !== undefined && equipmentDef !== undefined) {
-    // Clear any lingering hand-slot equipment first so re-initializing the
-    // same world (dev tools, test harness, respawn) can't leave a stale
-    // sword sitting in mainHand while the new starter routes through
-    // setActiveWeapon only.
-    unequip(world, player, 'mainHand', { force: true });
-    unequip(world, player, 'offHand', { force: true });
-    const result = equip(world, player, equipmentDef, { force: true });
-    equipped = result.ok;
-  }
-  if (!equipped) {
-    setActiveWeapon(world, weaponDef);
-  }
+  // Prefer the equipment-driven path so the chosen weapon lands in the
+  // corresponding hand slot(s); falls back to setActiveWeapon when there's no
+  // player, no equipment def, or equip() fails. Shared with
+  // selectFloor1StarterWeapon so both loadout entry points stay in lockstep.
+  equipStarterOrFallback(world, resolvedChoice, weaponDef);
   return resolvedChoice;
 }
 
