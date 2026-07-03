@@ -1733,6 +1733,15 @@ describe('worker control endpoints (/api/workflow/worker/*)', () => {
         enqueued: 0,
         skippedDuplicate: 0,
       }),
+      pollOnce: async () => ({
+        running: false,
+        startedAt: null,
+        stoppedAt: null,
+        lastPollAt: null,
+        lastError: null,
+        enqueued: 0,
+        skippedDuplicate: 0,
+      }),
       listRequests: async () => [],
       rejectRequest: async () => null,
     };

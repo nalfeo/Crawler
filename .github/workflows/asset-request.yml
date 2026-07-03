@@ -1,0 +1,172 @@
+# Ingest `asset-request`-labeled GitHub issues into the Azure sprite queue and
+# run the sprite worker to drain it. Runs entirely in CI with API-key auth to
+# Azure — no `az login` / OIDC federation needed.
+#
+# ─── Security posture (public repo!) ────────────────────────────────────────
+# `nalfeo/Crawler` is a **public** repository and `.github/ISSUE_TEMPLATE/
+# asset-request.yml` auto-applies the `asset-request` label. Without a gate,
+# any GitHub user could file an asset-request issue and burn Azure OpenAI
+# spend. To close that:
+#
+#   1. Issue-event runs require the ISSUE AUTHOR to be
+#      OWNER / MEMBER / COLLABORATOR of the repo (`author_association` gate).
+#      Random-drive-by issues sit unprocessed until a maintainer intervenes.
+#   2. There is **no `schedule:` trigger** — a cron sweep would re-scan every
+#      open `asset-request` issue regardless of author, defeating (1).
+#   3. Maintainer escape hatch: `workflow_dispatch` runs after a maintainer
+#      re-labels or re-opens the issue as themselves, or a manual
+#      `gh workflow run asset-request.yml`. Both paths make the maintainer
+#      the acting sender, which is auditable.
+#   4. Azure keys are wired at STEP level (only on the two `run:` steps that
+#      need them), not job level — so `actions/checkout`, `actions/setup-node`,
+#      and any npm install-script don't inherit high-value credentials.
+#   5. Secrets stay scoped to THIS workflow (not `copilot-setup-steps.yml`) so
+#      the coding-agent runner env can't exfiltrate them either.
+#
+# ─── Auth model ─────────────────────────────────────────────────────────────
+# The sprite worker/queue/store use **API-key auth** to Azure (endpoint + key),
+# NOT Azure identity. That's why we can run this entirely from GitHub-hosted
+# runners without OIDC federation.
+name: Asset Request Pipeline
+
+on:
+  issues:
+    types: [opened, edited, labeled, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Required so `gh issue list` and the worker's failure-comment path can read
+  # + comment on asset-request issues.
+  issues: write
+
+# Serialize workers so two runs don't race on the same Azure queue message.
+# Azure Storage Queue is at-least-once and its visibility timeout keeps things
+# safe even if two workers overlap; this just avoids duplicate work + noise.
+concurrency:
+  group: ${{ github.workflow }}-worker
+  cancel-in-progress: false
+
+jobs:
+  drain:
+    name: Ingest issues + drain queue
+    runs-on: ubuntu-latest
+    # Two-gate filter for `issues` events:
+    #   1. Trusted human authors (repo permission ≥ COLLABORATOR).
+    #   2. Trusted bots — Copilot cloud sessions file issues as
+    #      `user.login=Copilot` with `user.type=Bot` and
+    #      `author_association=CONTRIBUTOR`, so (1) alone would block them.
+    #      The extra `user.type=='Bot'` check + explicit login allow-list
+    #      keeps the surface tight (a random bot with commenter/contributor
+    #      history can't slip in).
+    #   3. `workflow_dispatch` (and any future non-issues trigger) always
+    #      proceeds — that's the maintainer's explicit opt-in.
+    #
+    # NOTE: the webhook payload's `user.login` for the Copilot cloud agent is
+    # `Copilot` (REST-style), whereas `gh issue list --json author.login`
+    # returns `app/copilot-swe-agent` (GraphQL-style). The workflow gate uses
+    # the REST form; the ingester's `SPRITES_INGESTER_ALLOWED_AUTHORS` (below)
+    # uses the GraphQL form. Both are required for Copilot to work end-to-end.
+    if: |
+      github.event_name == 'workflow_dispatch' || (
+        github.event_name == 'issues' &&
+        contains(github.event.issue.labels.*.name, 'asset-request') && (
+          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association) ||
+          (
+            github.event.issue.user.type == 'Bot' &&
+            contains(fromJSON('["Copilot"]'), github.event.issue.user.login)
+          )
+        )
+      )
+    # Hard safety net so a stuck worker (e.g. a hung Azure/provider call that
+    # never emits `idle` and doesn't respect SIGTERM) can't burn CI minutes.
+    # Drain-mode is the soft exit for the empty-queue common case (~30s).
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-node
+
+      # Step 1: scan open `asset-request` issues, enqueue any new ones into the
+      # Azure queue (deduped by issueNumber+fingerprint via the blob state file).
+      # Non-zero exit iff the poll itself failed (gh CLI error, Azure network
+      # failure, etc). Zero enqueued is a normal outcome and returns 0.
+      - name: Ingest asset-request issues
+        env:
+          # gh CLI auth — used by scripts/sprites/sidecar/asset-request-issue-api.ts
+          # (spawns `gh issue list`).
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # No AZURE_OPENAI_* here on purpose: ingestion never talks to Azure
+          # OpenAI. `sprites:ingest-once` (createIssueIngesterController.pollOnce)
+          # only lists open issues and enqueues new ones — it never constructs a
+          # provider, and createAssetQueue()/createRunStore() read only
+          # SPRITES_* + AZURE_STORAGE_*. The brief-selector / image / vision
+          # deployments are consumed exclusively by the worker (drain) step below.
+
+          # Azure Storage — the ingester writes to the queue + state blob.
+          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+          AZURE_STORAGE_QUEUE_NAME: ${{ secrets.AZURE_STORAGE_QUEUE_NAME }}
+          AZURE_STORAGE_RUNS_CONTAINER: ${{ secrets.AZURE_STORAGE_RUNS_CONTAINER }}
+
+          # Force Azure backends. The default CLI falls back to `noop`/`local`
+          # if unset, which would silently no-op the workflow.
+          SPRITES_ASSET_QUEUE: ${{ secrets.SPRITES_ASSET_QUEUE || 'azure-queue' }}
+          SPRITES_RUN_STORE: ${{ secrets.SPRITES_RUN_STORE || 'azure-blob' }}
+
+          # Trust boundary: even though the workflow-level `if:` gate blocks
+          # untrusted authors from triggering a run, the ingester scans EVERY
+          # open `asset-request` issue when it runs — so a legit maintainer
+          # trigger would otherwise piggyback-process any drive-by user's
+          # issue that happens to be open. Restrict enqueue to the repo
+          # owner and the Copilot cloud coding agent (which appears as
+          # `app/copilot-swe-agent` via `gh issue list --json author.login`
+          # — the GraphQL variant of `Copilot` used in the workflow gate
+          # above). Extend with additional trusted logins (comma-separated)
+          # if you accept issues from other bots / collaborators.
+          SPRITES_INGESTER_ALLOWED_AUTHORS: >-
+            ${{ github.repository_owner }},app/copilot-swe-agent
+        run: npm run sprites:ingest-once
+
+      # Step 2: drain the queue. Exits with 0 after SPRITES_WORKER_MAX_EMPTY_POLLS
+      # consecutive empty polls — or when the timeout-minutes cap fires, whichever
+      # is first. In-flight generation on SIGTERM is safe: Azure Queue's
+      # visibility timeout re-surfaces the message on the next run.
+      - name: Drain worker
+        env:
+          # gh CLI auth — the worker uses it to post failure comments on issues
+          # via `createGhAssetRequestIssueApi` in worker-cli.ts.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # Azure OpenAI (image + text providers).
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          AZURE_OPENAI_API_VERSION: ${{ secrets.AZURE_OPENAI_API_VERSION }}
+          AZURE_OPENAI_CHAT_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_CHAT_DEPLOYMENT }}
+          AZURE_OPENAI_VISION_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_VISION_DEPLOYMENT }}
+          AZURE_OPENAI_IMAGE_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_IMAGE_DEPLOYMENT }}
+          AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT: >-
+            ${{ secrets.AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT
+                || secrets.AZURE_OPENAI_CHAT_DEPLOYMENT }}
+
+          # Azure Storage (queue + blob).
+          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+          AZURE_STORAGE_QUEUE_NAME: ${{ secrets.AZURE_STORAGE_QUEUE_NAME }}
+          AZURE_STORAGE_RUNS_CONTAINER: ${{ secrets.AZURE_STORAGE_RUNS_CONTAINER }}
+
+          # Force Azure backends.
+          SPRITES_ASSET_QUEUE: ${{ secrets.SPRITES_ASSET_QUEUE || 'azure-queue' }}
+          SPRITES_RUN_STORE: ${{ secrets.SPRITES_RUN_STORE || 'azure-blob' }}
+
+          # Drain-mode: exit after 3 consecutive idle polls (~15s at 5s poll
+          # interval). Without this the worker CLI idles forever and burns the
+          # 25min job timeout.
+          SPRITES_WORKER_DRAIN: 'true'
+          SPRITES_WORKER_MAX_EMPTY_POLLS: '3'
+          SPRITES_WORKER_POLL_MS: '5000'
+        run: npm run sprites:worker
