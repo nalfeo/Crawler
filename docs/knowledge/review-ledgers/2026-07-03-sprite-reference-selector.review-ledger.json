@@ -1,0 +1,101 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "sprite-reference-selector",
+  "task_title": "Dynamic on-style reference selection (retire Kenney refs)",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "notes": "rejected verdict; 5 blocking (backfill coverage gap 27/56, shared enum type, rerun reproducibility via contentHash, exact-briefId self-exclusion, hard quality floor) + 3 non-blocking (concept-collapse, test migration, numeric seed) all adopted into plan"
+    },
+    "dual_plan_synthesis": {
+      "completed": true,
+      "plan_models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+      "judge_model": "claude-opus-4.8",
+      "notes": "gpt-5.5 caught rejudge/sidecar+per-type-defaults+layering; gemini added tiered pooling; synthesized pool-first same-type selector, ignore brief.references, fail-fast on zero eligible"
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview", "gpt-5.3-codex"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": false,
+          "notes": "initial multi-model review of 6ce190d5..a5a6a739; 4 distinct valid concerns (generation path traversal BLOCKING, rejudge-loader path traversal BLOCKING, malformed non-null judgeScore passing the quality floor, backfill dash-less prefix-slice bug) fixed in d9df6432 with regression tests + new generated-asset-path guard"
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "re-review of the fixes on d9df6432; gemini clean, gpt-5.5 found the judge fail-closed fix incomplete (Number.parseInt lenient: '3abc'->3, '3.5'->3, '5/5'->5 still passed) -> tightened parseJudge to a strict integer regex + extended test in e27e612c"
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "confirmation on final state e27e612c; both distinct models reviewed the strict judge-parse logic and the hardened path-safety and reported no concerns"
+        },
+        {
+          "round": 4,
+          "models": ["gpt-5.5", "gpt-5.3-codex"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "regression fix (missing-manifest fail-closed + fixture seeding in fbd61254) surfaced by npm run verify; re-reviewed by 2 distinct models past the previously-reviewed HEAD; both confirmed the empty-pool guard still trips the zero-eligible fail-closed before any provider call and the seeded fixture exercises (not masks) the real generated-reference path; no concerns"
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview", "gpt-5.3-codex"],
+          "concerns_count": 5,
+          "valid_count": 4,
+          "resolved_count": 4,
+          "clean": false,
+          "notes": "3 distinct models on 6ce190d5..a5a6a739; claude-opus-4.8 adjudicated 5 raw findings (two models independently flagged the generation-side traversal) down to 4 distinct valid concerns; all 4 delegated-fixed in d9df6432"
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "re-review of d9df6432; adjudicated gpt-5.5's residual judgeScore parseInt-leniency finding as valid -> strict-integer parseJudge fix in e27e612c; gemini independently confirmed the fix closes the gap"
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "final confirmation on e27e612c; both distinct models clean, no new concerns; loop terminates clean"
+        },
+        {
+          "round": 4,
+          "models": ["gpt-5.5", "gpt-5.3-codex"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "honest re-review of the fbd61254 regression fix (missing-manifest fail-closed guard + shared seed-generated-reference fixture) which added a production line past the previously-reviewed HEAD; adjudicator claude-opus-4.8; 2 distinct models (gpt-5.5, gpt-5.3-codex) both confirmed the never-Kenney/fail-closed invariant is preserved and the fixture exercises the real selector path; no new concerns"
+        }
+      ]
+    }
+  }
+}

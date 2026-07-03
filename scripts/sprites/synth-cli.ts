@@ -166,11 +166,9 @@ async function main(): Promise<number> {
     process.stdout.write(`Provider   : ${result.providerLabel}\n`);
     process.stdout.write(`Prompt hash: ${result.promptHash.slice(0, 12)}…\n\n`);
 
-    process.stdout.write(`  ${pad('id', 24)}${pad('refs', 8)}description\n`);
+    process.stdout.write(`  ${pad('id', 24)}description\n`);
     for (const c of result.written) {
-      process.stdout.write(
-        `  ${pad(c.id, 24)}${pad(String(c.references.length), 8)}${truncate(c.description, 80)}\n`,
-      );
+      process.stdout.write(`  ${pad(c.id, 24)}${truncate(c.description, 80)}\n`);
     }
     if (result.rejected.length > 0) {
       process.stdout.write('\nRejected candidates:\n');

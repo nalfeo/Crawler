@@ -1,8 +1,7 @@
 /**
- * Unit tests for the brief synthesizer. The provider, the reference
- * catalog hooks, and the filesystem are all stubbed; the goal of this
- * suite is to lock down the validation policy (banned adjectives,
- * allow-list enforcement, count constraints, confidence threshold) and
+ * Unit tests for the brief synthesizer. The provider and filesystem are
+ * stubbed; the goal of this suite is to lock down the validation policy
+ * (banned adjectives, seed-count constraints, confidence threshold) and
  * the partial/strict write policy.
  *
  * The happy path test additionally round-trips one written YAML through
@@ -41,16 +40,6 @@ function makeProvider(
   };
 }
 
-function makeCatalogHooks(): {
-  readPacks: () => ReadonlyArray<string>;
-  fileExists: (abs: string) => boolean;
-} {
-  return {
-    readPacks: () => ['tiny-dungeon', 'roguelike-rpg-pack', 'tiny-battle'],
-    fileExists: () => true,
-  };
-}
-
 function makeFsWrites(): {
   hooks: FsWriteHooks & {
     mkdir: ReturnType<typeof vi.fn>;
@@ -70,10 +59,6 @@ function makeCandidate(overrides: Partial<SynthesizedCandidate> = {}): Synthesiz
   return {
     description:
       'A vertically oriented serrated blade, tip pointing up, hilt centered, with a dark steel silhouette and a brass crossguard.',
-    references: [
-      { id: 'roguelike-rpg-pack', note: 'silhouette anchor for slender blades' },
-      { id: 'tiny-battle', note: 'secondary palette for steel/wood mix' },
-    ],
     // 4 seeds matches weapon's minVariations=4 default. Tests that
     // specifically exercise lower bounds pass an explicit override.
     embellishmentSeeds: [
@@ -141,7 +126,6 @@ describe('synthesizeBrief — happy path', () => {
       provider,
       repoRoot: REPO_ROOT,
       env: {},
-      referenceCatalogOptions: makeCatalogHooks(),
       fsWrites: hooks,
     });
 
@@ -166,6 +150,7 @@ describe('synthesizeBrief — happy path', () => {
       expect(parsed.type).toBe('weapon');
       expect(typeof parsed.name).toBe('string');
       expect(typeof parsed.description).toBe('string');
+      expect('references' in parsed).toBe(false);
       const merged = mergeMinimalIntoDefaults(parsed, WEAPON_DEFAULTS);
       expect(merged.prompt).toBe(parsed.description);
       expect(merged.description).toBeUndefined();
@@ -207,7 +192,6 @@ describe('synthesizeBrief — happy path', () => {
         provider,
         repoRoot: root,
         env: {},
-        referenceCatalogOptions: makeCatalogHooks(),
         fsWrites: hooks,
       });
       const [written] = result.written;
@@ -242,7 +226,6 @@ describe('synthesizeBrief — size variants', () => {
       provider,
       repoRoot: REPO_ROOT,
       env: {},
-      referenceCatalogOptions: makeCatalogHooks(),
       fsWrites: hooks,
     });
 
@@ -272,7 +255,6 @@ describe('synthesizeBrief — size variants', () => {
       provider,
       repoRoot: REPO_ROOT,
       env: {},
-      referenceCatalogOptions: makeCatalogHooks(),
       fsWrites: hooks,
     });
 
@@ -295,7 +277,6 @@ describe('synthesizeBrief — size variants', () => {
         provider,
         repoRoot: REPO_ROOT,
         env: {},
-        referenceCatalogOptions: makeCatalogHooks(),
         fsWrites: makeFsWrites().hooks,
       }),
     ).rejects.toThrow(/Invalid sizeVariant/);
@@ -312,7 +293,6 @@ describe('synthesizeBrief — CI guard', () => {
         provider,
         repoRoot: REPO_ROOT,
         env: { CI: 'true' },
-        referenceCatalogOptions: makeCatalogHooks(),
         fsWrites: makeFsWrites().hooks,
       }),
     ).rejects.toThrow(/refuses to run in CI/);
@@ -330,7 +310,6 @@ describe('synthesizeBrief — CI guard', () => {
         provider,
         repoRoot: REPO_ROOT,
         env,
-        referenceCatalogOptions: makeCatalogHooks(),
         fsWrites: makeFsWrites().hooks,
       });
       expect(result.written).toHaveLength(1);
@@ -352,7 +331,6 @@ describe('synthesizeBrief — type confidence', () => {
         provider,
         repoRoot: REPO_ROOT,
         env: {},
-        referenceCatalogOptions: makeCatalogHooks(),
         fsWrites: makeFsWrites().hooks,
       }),
     ).rejects.toThrow(/below the required 0.9|Re-run with --type/);
@@ -366,7 +344,6 @@ describe('synthesizeBrief — type confidence', () => {
         provider,
         repoRoot: REPO_ROOT,
         env: {},
-        referenceCatalogOptions: makeCatalogHooks(),
         fsWrites: makeFsWrites().hooks,
       }),
     ).rejects.toThrow(/did not return a classification/);
@@ -385,7 +362,6 @@ describe('synthesizeBrief — type confidence', () => {
       provider,
       repoRoot: REPO_ROOT,
       env: {},
-      referenceCatalogOptions: makeCatalogHooks(),
       fsWrites: makeFsWrites().hooks,
     });
     expect(result.type).toBe('weapon');
@@ -407,7 +383,6 @@ describe('synthesizeBrief — candidate validation', () => {
         provider,
         repoRoot: REPO_ROOT,
         env: {},
-        referenceCatalogOptions: makeCatalogHooks(),
         fsWrites: makeFsWrites().hooks,
       }),
     ).rejects.toThrow(/banned vague adjective 'cool'/);
@@ -429,82 +404,9 @@ describe('synthesizeBrief — candidate validation', () => {
       provider,
       repoRoot: REPO_ROOT,
       env: {},
-      referenceCatalogOptions: makeCatalogHooks(),
       fsWrites: makeFsWrites().hooks,
     });
     expect(result.written).toHaveLength(1);
-  });
-
-  it('rejects a candidate that references a path NOT in the allow-list', async () => {
-    const provider = makeProvider(() =>
-      makeWeaponResponse([
-        makeCandidate({
-          references: [
-            { id: 'roguelike-rpg-pack', note: 'ok' },
-            { id: 'made-up-pack', note: 'fake' },
-          ],
-        }),
-      ]),
-    );
-    await expect(
-      synthesizeBrief({
-        name: 'scythe',
-        type: 'weapon',
-        candidates: 1,
-        provider,
-        repoRoot: REPO_ROOT,
-        env: {},
-        referenceCatalogOptions: makeCatalogHooks(),
-        fsWrites: makeFsWrites().hooks,
-      }),
-    ).rejects.toThrow(/made-up-pack/);
-  });
-
-  it('rejects a candidate that picks the same reference id twice', async () => {
-    const provider = makeProvider(() =>
-      makeWeaponResponse([
-        makeCandidate({
-          references: [
-            { id: 'roguelike-rpg-pack', note: 'a' },
-            { id: 'roguelike-rpg-pack', note: 'b' },
-          ],
-        }),
-      ]),
-    );
-    await expect(
-      synthesizeBrief({
-        name: 'scythe',
-        type: 'weapon',
-        candidates: 1,
-        provider,
-        repoRoot: REPO_ROOT,
-        env: {},
-        referenceCatalogOptions: makeCatalogHooks(),
-        fsWrites: makeFsWrites().hooks,
-      }),
-    ).rejects.toThrow(/appears twice/);
-  });
-
-  it('rejects candidates with the wrong reference count', async () => {
-    const provider = makeProvider(() =>
-      makeWeaponResponse([
-        makeCandidate({
-          references: [{ id: 'roguelike-rpg-pack', note: 'lonely' }],
-        }),
-      ]),
-    );
-    await expect(
-      synthesizeBrief({
-        name: 'scythe',
-        type: 'weapon',
-        candidates: 1,
-        provider,
-        repoRoot: REPO_ROOT,
-        env: {},
-        referenceCatalogOptions: makeCatalogHooks(),
-        fsWrites: makeFsWrites().hooks,
-      }),
-    ).rejects.toThrow(/references must be 2-3/);
   });
 
   it('rejects candidates with the wrong seed count', async () => {
@@ -523,7 +425,6 @@ describe('synthesizeBrief — candidate validation', () => {
         provider,
         repoRoot: REPO_ROOT,
         env: {},
-        referenceCatalogOptions: makeCatalogHooks(),
         fsWrites: makeFsWrites().hooks,
         // Hold the type to the static 3-5 window so this test isolates
         // the seed-count rule from the sprite-type minVariations rule
@@ -553,7 +454,6 @@ describe('synthesizeBrief — candidate validation', () => {
         provider,
         repoRoot: REPO_ROOT,
         env: {},
-        referenceCatalogOptions: makeCatalogHooks(),
         fsWrites: makeFsWrites().hooks,
         // weapon-shaped sprite-type defaults: minVariations=4.
         loadMinVariations: (t) => (t === 'weapon' ? 4 : null),
@@ -581,7 +481,6 @@ describe('synthesizeBrief — candidate validation', () => {
       provider,
       repoRoot: REPO_ROOT,
       env: {},
-      referenceCatalogOptions: makeCatalogHooks(),
       fsWrites: makeFsWrites().hooks,
       loadMinVariations: (t) => (t === 'weapon' ? 4 : null),
     });
@@ -607,41 +506,11 @@ describe('synthesizeBrief — candidate validation', () => {
       provider,
       repoRoot: REPO_ROOT,
       env: {},
-      referenceCatalogOptions: makeCatalogHooks(),
       fsWrites: makeFsWrites().hooks,
       loadMinVariations: (t) => (t === 'weapon' ? 4 : null),
     });
     expect(captured).toBe(4);
     expect(capturedMax).toBe(5);
-  });
-
-  it('rejects a candidate whose reference resolves to a missing file on disk', async () => {
-    const provider = makeProvider(() =>
-      makeWeaponResponse([
-        makeCandidate({
-          references: [
-            { id: 'tiny-battle', note: 'a' },
-            { id: 'roguelike-rpg-pack', note: 'b' },
-          ],
-        }),
-      ]),
-    );
-    await expect(
-      synthesizeBrief({
-        name: 'scythe',
-        type: 'weapon',
-        candidates: 1,
-        provider,
-        repoRoot: REPO_ROOT,
-        env: {},
-        // Catalog discovery sees all three packs as having spritesheets…
-        referenceCatalogOptions: makeCatalogHooks(),
-        // …but the per-candidate re-check finds tiny-battle's file
-        // missing, simulating a delete between catalog build and write.
-        referenceFileExistsAtSynthesisTime: (abs: string) => !abs.includes('tiny-battle'),
-        fsWrites: makeFsWrites().hooks,
-      }),
-    ).rejects.toThrow(/file is missing on disk/);
   });
 });
 
@@ -659,7 +528,6 @@ describe('synthesizeBrief — partial vs strict policy', () => {
         provider,
         repoRoot: REPO_ROOT,
         env: {},
-        referenceCatalogOptions: makeCatalogHooks(),
         fsWrites: hooks,
       }),
     ).rejects.toThrow(/candidates were rejected/);
@@ -686,7 +554,6 @@ describe('synthesizeBrief — partial vs strict policy', () => {
       provider,
       repoRoot: REPO_ROOT,
       env: {},
-      referenceCatalogOptions: makeCatalogHooks(),
       fsWrites: hooks,
     });
     expect(result.written).toHaveLength(2);
@@ -714,7 +581,6 @@ describe('synthesizeBrief — partial vs strict policy', () => {
         provider,
         repoRoot: REPO_ROOT,
         env: {},
-        referenceCatalogOptions: makeCatalogHooks(),
         fsWrites: makeFsWrites().hooks,
       }),
     ).rejects.toThrow(SynthesizeBriefError);
@@ -763,7 +629,6 @@ describe('synthesizeBrief — argument validation', () => {
           provider,
           repoRoot: REPO_ROOT,
           env: {},
-          referenceCatalogOptions: makeCatalogHooks(),
           fsWrites: makeFsWrites().hooks,
         }),
       ).rejects.toThrow(/candidates must be an integer/);

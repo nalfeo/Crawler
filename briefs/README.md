@@ -92,7 +92,7 @@ description: |
 | `name`        | Lowercase kebab-case. Becomes the brief id and the output folder name under `generated/`.                                          |
 | `description` | Free-form prose. Becomes the `## Subject` block in the prompt and is the primary signal the model gets about what to draw.         |
 
-Everything else — `size`, `palette`, `anchor`, `references`, sheet layout,
+Everything else — `size`, `palette`, `anchor`, sheet layout,
 sensor thresholds, even `prompt` — comes from `data/sprite-types/<type>.json`
 and can be overridden inline if a particular brief needs to.
 
@@ -153,15 +153,21 @@ The repo uses these conventional family folders:
 Defaults live in `data/sprite-types/<type>.json`. Weapons, enemies, items,
 tiles, VFX, and characters now all ship with committed defaults so minimal
 briefs are runnable across the same workflow. Those family defaults set size,
-palette, anchor, references, sheet layout, and any family-specific
+palette, anchor, sheet layout, and any family-specific
 sensor/judge knobs.
 
 The loader deep-merges minimal briefs on top of the defaults:
 
 - Scalars and per-leaf object keys from the brief win over defaults.
-- Arrays (`references`, `tags`) **replace** the defaults' arrays — they are
-  never concatenated. If you set `references:` on a brief, you're declaring
+- Arrays (`tags`) **replace** the defaults' arrays — they are
+  never concatenated. If you set `tags:` on a brief, you're declaring
   the complete list.
+
+> **`references` is retired.** Briefs and per-type defaults no longer carry a
+> `references` array, and the generator ignores any legacy `references:` still
+> present. Reference images are now selected at generate time from our own
+> approved sprites (see `scripts/sprites/reference-selector.ts`). The schema
+> keeps the field optional purely for backward compatibility.
 
 ## When to override defaults
 
@@ -171,8 +177,7 @@ Examples:
 - **`iron-sword.yaml`** overrides `sensors.weapon.orientation: diagonal`
   because a side-profile sword reads at ~45° rather than vertical.
 - A larger boss enemy might override `size: { width: 96, height: 96 }`.
-- A brief that wants only one specific reference image overrides
-  `references: [{ path: ..., note: ... }]` (always at least 2).
+- A brief that needs a different palette overrides `palette: [...]`.
 
 If you find yourself overriding the same field on lots of briefs, that's
 a signal to update the per-type default instead.
@@ -182,8 +187,9 @@ a signal to update the per-type default instead.
 1. Load + merge defaults → full validated brief.
 2. Concatenate the global style guide (`docs/agent-os/sprite-style.md`)
    with `description` and sheet constraints → one prompt string.
-3. Send to the configured image provider with the reference PNGs, get back
-   a 4×4 sheet PNG.
+3. Select reference PNGs at generate time from our own approved sprites
+   (favoring this brief's `type`), send them plus the prompt to the configured
+   image provider, get back a 4×4 sheet PNG.
 4. Slice the sheet into 16 native-resolution variants.
 5. Post-process each variant: background removal, palette quantisation,
    nearest-neighbor downscale to `size`.

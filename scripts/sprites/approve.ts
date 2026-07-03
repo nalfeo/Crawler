@@ -49,6 +49,7 @@
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { toSpriteType, type SpriteType } from '../../src/shared/sprite-types.js';
 
 /** Subset of `node:fs` calls approveVariant needs. Exposed for tests. */
 export interface ApproveFs {
@@ -98,6 +99,13 @@ export interface ManifestEntry {
   readonly sensorScore: string;
   /** Judge `minScore` as a string, or `null` if not judged. */
   readonly judgeScore: string | null;
+  /**
+   * Canonical sprite type resolved from the brief (`weapon`/`enemy`/`item`/
+   * `tile`/`vfx`/`character`), or `null` when it couldn't be resolved. Written
+   * so the reference selector can favour same-type examples without re-reading
+   * briefs (which are often deleted after approval).
+   */
+  readonly type: SpriteType | null;
   /**
    * SHA-256 (hex) of the approved processed PNG's bytes. Lets re-approval tell a
    * genuine content change (e.g. after re-post-processing) apart from a true
@@ -296,6 +304,8 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
       ? String(candidate.judgeScorecard.minScore)
       : null;
 
+  const type = resolveBriefType(fs, options.repoRoot, summary.briefPath);
+
   const entry: ManifestEntry = {
     briefId,
     // Variant-unique sprite name == manifest key == engine texture key.
@@ -309,17 +319,12 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
     anchors,
     sensorScore,
     judgeScore,
+    type,
     contentHash,
   };
 
   upsertManifest(fs, options.manifestPath, entry, variantId);
-  upsertCatalog(
-    fs,
-    options.catalogPath,
-    entry,
-    variantId,
-    resolveBriefType(fs, options.repoRoot, summary.briefPath),
-  );
+  upsertCatalog(fs, options.catalogPath, entry, variantId, entry.type);
   return entry;
 }
 
@@ -329,7 +334,7 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
  * type so it is discoverable in-game. Returns `null` when the brief path is
  * missing/unreadable or has no top-level `type:` field.
  */
-function resolveBriefType(fs: ApproveFs, repoRoot: string, briefPath?: string): string | null {
+function resolveBriefType(fs: ApproveFs, repoRoot: string, briefPath?: string): SpriteType | null {
   if (!briefPath) return null;
   const absPath = path.isAbsolute(briefPath) ? briefPath : path.join(repoRoot, briefPath);
   if (!fs.existsSync(absPath)) return null;
@@ -340,9 +345,7 @@ function resolveBriefType(fs: ApproveFs, repoRoot: string, briefPath?: string): 
     return null;
   }
   const match = raw.match(/^type:\s*([A-Za-z][\w-]*)\s*$/m);
-  const captured = match?.[1];
-  if (!captured) return null;
-  return captured.toLowerCase();
+  return toSpriteType(match?.[1]);
 }
 
 /**
@@ -437,7 +440,7 @@ function upsertCatalog(
   catalogPath: string,
   manifestEntry: ManifestEntry,
   catalogId: string,
-  briefType: string | null,
+  briefType: SpriteType | null,
 ): void {
   let catalog: Array<Record<string, unknown>>;
 

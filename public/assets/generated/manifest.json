@@ -10,7 +10,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "alien-tooth-placeholder": {
       "briefId": "alien-tooth",
@@ -21,7 +22,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "anchor-mace-placeholder": {
       "briefId": "anchor-mace",
@@ -32,7 +34,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "ancient-cipher-placeholder": {
       "briefId": "ancient-cipher",
@@ -43,7 +46,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "antidote-pill-placeholder": {
       "briefId": "antidote-pill",
@@ -54,7 +58,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "audience-rating-card-placeholder": {
       "briefId": "audience-rating-card",
@@ -65,7 +70,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "audience-snack-placeholder": {
       "briefId": "audience-snack",
@@ -76,7 +82,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "audience-token-placeholder": {
       "briefId": "audience-token",
@@ -87,7 +94,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "autograph-book-placeholder": {
       "briefId": "autograph-book",
@@ -98,7 +106,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "baby-slime-v1-var-1": {
       "briefId": "baby-slime-v1",
@@ -126,6 +135,7 @@
       },
       "sensorScore": "7/8",
       "judgeScore": "4",
+      "type": "enemy",
       "contentHash": "846c82cfe9c8f9e4cad08cb9e5893250fb02d8fecdc393ec97227a476fe2577a"
     },
     "baby-slime-v1-var-8": {
@@ -154,6 +164,7 @@
       },
       "sensorScore": "7/8",
       "judgeScore": "4",
+      "type": "enemy",
       "contentHash": "bd51fd12d56c89376666aa5766e6dd929ac8b5a32f70a7f6c90a6c1a4f25cbd4"
     },
     "baseball-bat-v1-var-0": {
@@ -182,6 +193,7 @@
       },
       "sensorScore": "8/8",
       "judgeScore": "2",
+      "type": "weapon",
       "contentHash": "85bbc108b1c0e32f647d63fd4dd906d0979501e562d4477f125910614614fb49"
     },
     "bent-pipe-v1-var-1": {
@@ -197,7 +209,8 @@
         "source": "derived"
       },
       "sensorScore": "7/7",
-      "judgeScore": "4"
+      "judgeScore": "4",
+      "type": "weapon"
     },
     "bent-pipe-v1-var-5": {
       "briefId": "bent-pipe-v1",
@@ -212,7 +225,8 @@
         "source": "derived"
       },
       "sensorScore": "7/7",
-      "judgeScore": "3"
+      "judgeScore": "3",
+      "type": "weapon"
     },
     "berserker-brew-placeholder": {
       "briefId": "berserker-brew",
@@ -223,7 +237,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "bone-club-placeholder": {
       "briefId": "bone-club",
@@ -234,7 +249,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "bone-dust-placeholder": {
       "briefId": "bone-dust",
@@ -245,7 +261,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "bone-shard-placeholder": {
       "briefId": "bone-shard",
@@ -256,7 +273,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "bootleg-dvd-placeholder": {
       "briefId": "bootleg-dvd",
@@ -267,7 +285,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "boss-trophy-placeholder": {
       "briefId": "boss-trophy",
@@ -278,7 +297,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "broadcast-booster-placeholder": {
       "briefId": "broadcast-booster",
@@ -289,7 +309,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "broadcast-chip-placeholder": {
       "briefId": "broadcast-chip",
@@ -300,7 +321,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "broken-circuit-placeholder": {
       "briefId": "broken-circuit",
@@ -311,7 +333,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "camera-lens-placeholder": {
       "briefId": "camera-lens",
@@ -322,7 +345,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "celestial-ingot-placeholder": {
       "briefId": "celestial-ingot",
@@ -333,7 +357,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "chain-whip-placeholder": {
       "briefId": "chain-whip",
@@ -344,7 +369,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "classified-dossier-placeholder": {
       "briefId": "classified-dossier",
@@ -355,7 +381,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "character"
     },
     "confetti-popper-placeholder": {
       "briefId": "confetti-popper",
@@ -366,7 +393,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "contestant-badge-placeholder": {
       "briefId": "contestant-badge",
@@ -377,7 +405,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "copper-ore-placeholder": {
       "briefId": "copper-ore",
@@ -388,7 +417,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "crystal-fiber-placeholder": {
       "briefId": "crystal-fiber",
@@ -399,7 +429,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "crystal-wand-placeholder": {
       "briefId": "crystal-wand",
@@ -410,7 +441,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "weapon"
     },
     "director-mic-placeholder": {
       "briefId": "director-mic",
@@ -421,7 +453,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "directors-cue-card-placeholder": {
       "briefId": "directors-cue-card",
@@ -432,7 +465,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "directors-pass-placeholder": {
       "briefId": "directors-pass",
@@ -443,7 +477,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "dragon-scale-placeholder": {
       "briefId": "dragon-scale",
@@ -454,7 +489,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "ectoplasm-glob-placeholder": {
       "briefId": "ectoplasm-glob",
@@ -465,7 +501,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "elevator-fuse-placeholder": {
       "briefId": "elevator-fuse",
@@ -476,7 +513,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "exp-candy-placeholder": {
       "briefId": "exp-candy",
@@ -487,7 +525,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "expired-coupon-placeholder": {
       "briefId": "expired-coupon",
@@ -498,7 +537,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "feathersteel-placeholder": {
       "briefId": "feathersteel",
@@ -509,7 +549,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "flame-dagger-placeholder": {
       "briefId": "flame-dagger",
@@ -520,7 +561,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "weapon"
     },
     "floor-key-bronze-placeholder": {
       "briefId": "floor-key-bronze",
@@ -531,7 +573,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "floor-key-gold-placeholder": {
       "briefId": "floor-key-gold",
@@ -542,7 +585,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "floor-key-silver-placeholder": {
       "briefId": "floor-key-silver",
@@ -553,7 +597,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "floor-key-void-placeholder": {
       "briefId": "floor-key-void",
@@ -564,7 +609,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "floor-skip-pass-placeholder": {
       "briefId": "floor-skip-pass",
@@ -575,7 +621,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "foam-finger-placeholder": {
       "briefId": "foam-finger",
@@ -586,7 +633,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "frost-bow-placeholder": {
       "briefId": "frost-bow",
@@ -597,7 +645,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "ghost-photo-placeholder": {
       "briefId": "ghost-photo",
@@ -608,7 +657,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "glistening-rat-tail-placeholder": {
       "briefId": "glistening-rat-tail",
@@ -619,7 +669,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "glitch-marble-placeholder": {
       "briefId": "glitch-marble",
@@ -630,7 +681,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "gold-nugget-placeholder": {
       "briefId": "gold-nugget",
@@ -641,7 +693,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "gravity-hammer-placeholder": {
       "briefId": "gravity-hammer",
@@ -652,7 +705,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "green-room-key-placeholder": {
       "briefId": "green-room-key",
@@ -663,7 +717,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "green-slime-baby-v1-var-2": {
       "briefId": "green-slime-baby-v1",
@@ -691,6 +746,7 @@
       },
       "sensorScore": "6/7",
       "judgeScore": "4",
+      "type": "enemy",
       "contentHash": "dd5aabb4324937f80bafd717f4207a6589662fd35f30e378e9704835da1013a3"
     },
     "hardite-plank-placeholder": {
@@ -702,7 +758,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "healing-fungus-placeholder": {
       "briefId": "healing-fungus",
@@ -713,7 +770,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "health-vial-placeholder": {
       "briefId": "health-vial",
@@ -724,7 +782,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "iron-ore-placeholder": {
       "briefId": "iron-ore",
@@ -735,7 +794,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "iron-sword-placeholder": {
       "briefId": "iron-sword",
@@ -746,7 +806,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "weapon"
     },
     "laugh-track-tape-placeholder": {
       "briefId": "laugh-track-tape",
@@ -757,7 +818,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "lava-glass-placeholder": {
       "briefId": "lava-glass",
@@ -768,7 +830,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "living-stone-placeholder": {
       "briefId": "living-stone",
@@ -779,7 +842,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "lucky-charm-placeholder": {
       "briefId": "lucky-charm",
@@ -790,7 +854,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "lucky-dice-placeholder": {
       "briefId": "lucky-dice",
@@ -801,7 +866,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "mana-flask-placeholder": {
       "briefId": "mana-flask",
@@ -812,7 +878,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "map-fragment-a-placeholder": {
       "briefId": "map-fragment-a",
@@ -823,7 +890,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "map-fragment-b-placeholder": {
       "briefId": "map-fragment-b",
@@ -834,7 +902,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "map-fragment-c-placeholder": {
       "briefId": "map-fragment-c",
@@ -845,7 +914,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "merchants-stained-charm-placeholder": {
       "briefId": "merchants-stained-charm",
@@ -856,7 +926,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "mushroom-cap-placeholder": {
       "briefId": "mushroom-cap",
@@ -867,7 +938,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "mystery-meat-placeholder": {
       "briefId": "mystery-meat",
@@ -878,7 +950,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "obsidian-axe-placeholder": {
       "briefId": "obsidian-axe",
@@ -889,7 +962,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "old-sock-placeholder": {
       "briefId": "old-sock",
@@ -900,7 +974,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "participation-trophy-placeholder": {
       "briefId": "participation-trophy",
@@ -911,7 +986,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "pebble-placeholder": {
       "briefId": "pebble",
@@ -922,7 +998,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "phoenix-tear-placeholder": {
       "briefId": "phoenix-tear",
@@ -933,7 +1010,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "plasma-pistol-placeholder": {
       "briefId": "plasma-pistol",
@@ -944,7 +1022,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "producers-note-placeholder": {
       "briefId": "producers-note",
@@ -955,7 +1034,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "purple-potion-bottle-v1-var-4": {
       "briefId": "purple-potion-bottle-v1",
@@ -982,7 +1062,8 @@
         }
       },
       "sensorScore": "6/6",
-      "judgeScore": "2"
+      "judgeScore": "2",
+      "type": "item"
     },
     "rage-elixir-placeholder": {
       "briefId": "rage-elixir",
@@ -993,7 +1074,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "rat-slime-v1-var-1": {
       "briefId": "rat-slime-v1",
@@ -1021,6 +1103,7 @@
       },
       "sensorScore": "7/8",
       "judgeScore": null,
+      "type": "enemy",
       "contentHash": "9fa3e05ce0b77c0ede9af6f62f58e58a1f7cc5052b7d1a202462e826c1e81163"
     },
     "rat-v1-var-3": {
@@ -1049,6 +1132,7 @@
       },
       "sensorScore": "7/8",
       "judgeScore": "4",
+      "type": "enemy",
       "contentHash": "3dd55e3d2012c2770557094414df62c96c11f1b2381a8741d43ccb75798dfe10"
     },
     "rat-v1-var-9": {
@@ -1077,6 +1161,7 @@
       },
       "sensorScore": "7/8",
       "judgeScore": "3",
+      "type": "enemy",
       "contentHash": "390dee2ea1a072093f5d7b5dd6be13c024673c0fe95df98ba1f1a214360c0abb"
     },
     "raw-wood-placeholder": {
@@ -1088,7 +1173,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "recall-stone-placeholder": {
       "briefId": "recall-stone",
@@ -1099,7 +1185,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "revival-kit-placeholder": {
       "briefId": "revival-kit",
@@ -1110,7 +1197,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "rusted-scrap-placeholder": {
       "briefId": "rusted-scrap",
@@ -1121,7 +1209,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "rusty-shiv-placeholder": {
       "briefId": "rusty-shiv",
@@ -1132,7 +1221,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "season-badge-placeholder": {
       "briefId": "season-badge",
@@ -1143,7 +1233,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "shadow-shard-placeholder": {
       "briefId": "shadow-shard",
@@ -1154,7 +1245,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "shield-scroll-placeholder": {
       "briefId": "shield-scroll",
@@ -1165,7 +1257,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "shiny-button-placeholder": {
       "briefId": "shiny-button",
@@ -1176,7 +1269,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "silk-thread-placeholder": {
       "briefId": "silk-thread",
@@ -1187,7 +1281,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "slime-king-v1-var-4": {
       "briefId": "slime-king-v1",
@@ -1215,6 +1310,7 @@
       },
       "sensorScore": "6/7",
       "judgeScore": "2",
+      "type": "enemy",
       "contentHash": "bce10cd514dab77f63a941422f35aacd2f96b2a24d6a43809379f1d2bdb72c94"
     },
     "slime-queen-v1-var-0": {
@@ -1243,6 +1339,7 @@
       },
       "sensorScore": "6/7",
       "judgeScore": "2",
+      "type": "enemy",
       "contentHash": "15c2b665285ffb7e7f9c91329f14b66a5643a65271f9b32e6e74200074430404"
     },
     "slime-v1-var-2": {
@@ -1271,6 +1368,7 @@
       },
       "sensorScore": "7/8",
       "judgeScore": "2",
+      "type": "enemy",
       "contentHash": "7c0f09d9305b1a9ebcfe3796eaa9f49d9e15c3ff5327762b763dfc5b3b8c6e2e"
     },
     "slime-v1-var-3": {
@@ -1299,6 +1397,7 @@
       },
       "sensorScore": "7/8",
       "judgeScore": "3",
+      "type": "enemy",
       "contentHash": "4ba25a68c5395feba6cdbbfc821b9c34d4e10e36ee1e84566d5ddd28933072cf"
     },
     "slime-v1-var-9": {
@@ -1327,6 +1426,7 @@
       },
       "sensorScore": "7/8",
       "judgeScore": "4",
+      "type": "enemy",
       "contentHash": "e0d8f8971de41cf94f17c99512624c5bd0e171870d9e51a71832485deba2381a"
     },
     "sling-of-shame-placeholder": {
@@ -1338,7 +1438,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "smoke-bomb-placeholder": {
       "briefId": "smoke-bomb",
@@ -1349,7 +1450,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "spectral-blade-placeholder": {
       "briefId": "spectral-blade",
@@ -1360,7 +1462,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "sponsor-contract-placeholder": {
       "briefId": "sponsor-contract",
@@ -1371,7 +1474,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "sponsor-energy-drink-placeholder": {
       "briefId": "sponsor-energy-drink",
@@ -1382,7 +1486,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "sponsor-sword-placeholder": {
       "briefId": "sponsor-sword",
@@ -1393,7 +1498,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "star-fragment-placeholder": {
       "briefId": "star-fragment",
@@ -1404,7 +1510,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "star-lance-placeholder": {
       "briefId": "star-lance",
@@ -1415,7 +1522,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "stim-shot-placeholder": {
       "briefId": "stim-shot",
@@ -1426,7 +1534,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "stress-ball-placeholder": {
       "briefId": "stress-ball",
@@ -1437,7 +1546,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "thunder-staff-placeholder": {
       "briefId": "thunder-staff",
@@ -1448,7 +1558,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "time-capsule-placeholder": {
       "briefId": "time-capsule",
@@ -1459,7 +1570,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "toxic-blowgun-placeholder": {
       "briefId": "toxic-blowgun",
@@ -1470,7 +1582,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "twin-fangs-placeholder": {
       "briefId": "twin-fangs",
@@ -1481,7 +1594,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "vip-lanyard-placeholder": {
       "briefId": "vip-lanyard",
@@ -1492,7 +1606,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "void-crystal-placeholder": {
       "briefId": "void-crystal",
@@ -1503,7 +1618,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "void-scythe-placeholder": {
       "briefId": "void-scythe",
@@ -1514,7 +1630,8 @@
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "baseball-bat-v3-var-6": {
       "briefId": "baseball-bat-v3",
@@ -1534,6 +1651,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "2",
+      "type": "weapon",
       "contentHash": "d266dc9661f90db29c6611c241bcf96cecdbde3e61df48f09071a6d5cb4db47a"
     },
     "sewer-grate-floor-tile-v1-var-1": {
@@ -1562,6 +1680,7 @@
       },
       "sensorScore": "5/7",
       "judgeScore": null,
+      "type": "tile",
       "contentHash": "c0506aa92b28591130fb41530defb4068fda8214ba61aa2c3bf2930638b16524"
     },
     "sewer-grate-floor-tile-v1-var-3": {
@@ -1590,6 +1709,7 @@
       },
       "sensorScore": "5/7",
       "judgeScore": null,
+      "type": "tile",
       "contentHash": "ca2e3aa7ccf1d42af0f4b53619dc78bc6ba833934c3a49c02ee8005b8485bef6"
     },
     "sewer-grate-floor-tile-v1-var-5": {
@@ -1618,6 +1738,7 @@
       },
       "sensorScore": "5/7",
       "judgeScore": null,
+      "type": "tile",
       "contentHash": "e0f4e2be8a17d80c73c570b45c561da2844542c2c5120a8c7f6ec60c565ada25"
     },
     "sewer-grate-floor-tile-v1-var-6": {
@@ -1646,6 +1767,7 @@
       },
       "sensorScore": "5/7",
       "judgeScore": null,
+      "type": "tile",
       "contentHash": "7199c43c07d8b31017cf0fad4815dfdb9dc2f9b020243b415f92c5f1fd099f1b"
     },
     "bone-shard-v1-var-1": {
@@ -1666,6 +1788,7 @@
       },
       "sensorScore": "6/7",
       "judgeScore": "2",
+      "type": "item",
       "contentHash": "408f3d3f9a37b4d16c0af30bcc7250c1ac1d755ae9a41b0168a1533a54d45de4"
     },
     "bone-shard-v1-var-3": {
@@ -1686,6 +1809,7 @@
       },
       "sensorScore": "6/7",
       "judgeScore": "2",
+      "type": "item",
       "contentHash": "c35d08db740d34afee830dfcb7f560080272fcccda7c770e8cdb7f116a9b00a0"
     },
     "bone-shard-v1-var-6": {
@@ -1706,6 +1830,7 @@
       },
       "sensorScore": "6/7",
       "judgeScore": "2",
+      "type": "item",
       "contentHash": "ece75a36d13fa3bc89dfba9b6a6ec57c744ff53b1d58fcb2ea6f4962a6bf1cf7"
     },
     "copper-ore-v1-var-6": {
@@ -1726,6 +1851,7 @@
       },
       "sensorScore": "6/7",
       "judgeScore": "2",
+      "type": "item",
       "contentHash": "879cbaa25b1bc411f754fa6a8d9fe98617cdfd804156ba96c1e42994308383a4"
     },
     "crystal-fiber-v1-var-4": {
@@ -1754,6 +1880,7 @@
       },
       "sensorScore": "7/7",
       "judgeScore": "2",
+      "type": "item",
       "contentHash": "ef0d972a8cc160aff1920c7de405c89d190f3c7ca4a6b28571591ffb0f2d7fea"
     },
     "dragon-scale-v3-var-2": {
@@ -1782,6 +1909,7 @@
       },
       "sensorScore": "7/7",
       "judgeScore": "2",
+      "type": "item",
       "contentHash": "856b6b7385148d4bf461a2b9de301105eac6660106add6809b44262726bb2ed7"
     },
     "camera-lens-v1-var-0": {
@@ -1810,6 +1938,7 @@
       },
       "sensorScore": "7/7",
       "judgeScore": "2",
+      "type": "item",
       "contentHash": "d0ee6e94ebcca556d2f3d05888ca3b20dffe5c13b853d8fee0fc31b1c5e84cc9"
     },
     "flame-dagger-v2-var-3": {
@@ -1838,6 +1967,7 @@
       },
       "sensorScore": "8/8",
       "judgeScore": "2",
+      "type": "weapon",
       "contentHash": "07299e230d7ccfd469dbea9de3053da5f49405f9af97188a8bd77d14fa4c1fb3"
     },
     "crystal-wand-v2-var-1": {
@@ -1858,6 +1988,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "2",
+      "type": "weapon",
       "contentHash": "ad890d8f05abdae278f3d56292726bbdf83c68c7dc4eb8aff89e0e0d06d4144f"
     },
     "crystal-wand-v2-var-10": {
@@ -1878,6 +2009,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "2",
+      "type": "weapon",
       "contentHash": "15050745902be375b291fe70c7f6db6048972ae319067b53e9a81f5f2daf95a9"
     },
     "crystal-wand-v2-var-3": {
@@ -1898,6 +2030,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "2",
+      "type": "weapon",
       "contentHash": "3edc81b4ebf805c0600de7c2a2e052c35c2b19e3b59cd1067e93e7aa544bf99f"
     },
     "directors-cue-card-v1-var-0": {
@@ -1926,6 +2059,7 @@
       },
       "sensorScore": "6/7",
       "judgeScore": "2",
+      "type": "item",
       "contentHash": "b331dd2199e8269e3d8d59111e84f0b165506d00e1105d5c340b6feda07a15c2"
     },
     "slime-pool-v1-var-0": {
@@ -1954,6 +2088,7 @@
       },
       "sensorScore": "5/7",
       "judgeScore": null,
+      "type": "tile",
       "contentHash": "9ca6b4b34de0ec92b94472be25c7574b847361d1a096e38c2f6d75105da3a570"
     },
     "slime-pool-v1-var-3": {
@@ -1982,6 +2117,7 @@
       },
       "sensorScore": "5/7",
       "judgeScore": null,
+      "type": "tile",
       "contentHash": "1317ac9fdab9a30bf1cecbb1b13660b0d57061a3962f8c4e62d9a3b3a110f62e"
     },
     "berserker-brew-v2-var-0": {
@@ -2010,6 +2146,7 @@
       },
       "sensorScore": "7/7",
       "judgeScore": "4",
+      "type": "item",
       "contentHash": "cc182b05f1feb6f1a9902cfa98952db9fd9603fa84e36c4dab00199cc8e9c6e3"
     },
     "azure-mushroom-v1-var-0": {
@@ -2038,6 +2175,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "4",
+      "type": "character",
       "contentHash": "cf0657a7dbf6842d7fa5229a7c4010869cff45ce4d37051f3c3db0fc82cb2732"
     },
     "azure-mushroom-v1-var-8": {
@@ -2066,6 +2204,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "4",
+      "type": "character",
       "contentHash": "9e5643540dbcf1002c2cf338361cc70e6db49e78103931929de8758d4ede3638"
     },
     "classified-dossier-v1-var-1": {
@@ -2094,6 +2233,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "4",
+      "type": "character",
       "contentHash": "f88d72535b4d9e8609b048200b982adcc21fc2bb2a567a24a993c980b9ef92de"
     },
     "classified-dossier-v1-var-2": {
@@ -2122,6 +2262,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "4",
+      "type": "character",
       "contentHash": "0c9c7d748c4510f3fe2693a97601a47b4aa4a1a2d1077f3403e60c335e807881"
     },
     "classified-dossier-v1-var-5": {
@@ -2150,6 +2291,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "4",
+      "type": "character",
       "contentHash": "5bd32259bf3db2581120367118eeb937692df5775082b77c7ea90ac9d147bd34"
     },
     "rat-slime-v1-var-2": {
@@ -2178,6 +2320,7 @@
       },
       "sensorScore": "7/7",
       "judgeScore": null,
+      "type": "enemy",
       "contentHash": "2c904b134df8b3d2f6bd16373887524449021b670977f48fd9212f401eb25507"
     },
     "ability-icon-heal-v1-var-1": {
@@ -2206,6 +2349,7 @@
       },
       "sensorScore": "7/7",
       "judgeScore": "2",
+      "type": "item",
       "contentHash": "37ed0f1d134b53a2e406c55d5c360d99bfdbe877421c018ae11766dc72a63a11"
     },
     "prop-junk-pile-v1-var-0": {
@@ -2234,6 +2378,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "2",
+      "type": "tile",
       "contentHash": "66b119229ec9f2eba730e21695eba5b5fcfe382c2433d345fab5b939d705c8ba"
     },
     "prop-junk-pile-v1-var-3": {
@@ -2262,6 +2407,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "2",
+      "type": "tile",
       "contentHash": "4034085ecd9ec122152fb34133867abdc65907fe631c734716947ac228959871"
     },
     "prop-torch-v1-var-10": {
@@ -2290,6 +2436,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "4",
+      "type": "tile",
       "contentHash": "c3fd43bcc09e03807a5be6338b8d69cbb1cac726200c2129bc2f03f12d35a148"
     },
     "prop-torch-v1-var-14": {
@@ -2318,6 +2465,7 @@
       },
       "sensorScore": "5/8",
       "judgeScore": "4",
+      "type": "tile",
       "contentHash": "e7a3c699d372b21c1ab82c27b7980316aae5ea02c4c91f883539a55fb2d43833"
     },
     "prop-torch-v1-var-2": {
@@ -2346,6 +2494,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "4",
+      "type": "tile",
       "contentHash": "d4ef1c0915580fdc0f4b66747ac0e19b762a01dab65eff2dce1ed38216a082d7"
     },
     "prop-torch-v1-var-8": {
@@ -2374,6 +2523,7 @@
       },
       "sensorScore": "5/8",
       "judgeScore": "4",
+      "type": "tile",
       "contentHash": "8821a076e8deee9750f8b01d599a9941440e9a8adb3635323635d13fff88c311"
     },
     "welcome-sign-left-v1-var-0": {
@@ -2402,6 +2552,7 @@
       },
       "sensorScore": "7/8",
       "judgeScore": "2",
+      "type": "tile",
       "contentHash": "da3d92bdddc15b04b85396043e075e31f8149964a20c1c6c3cb285ffbf0fd55f"
     },
     "welcome-sign-left-v1-var-13": {
@@ -2430,6 +2581,7 @@
       },
       "sensorScore": "7/8",
       "judgeScore": "2",
+      "type": "tile",
       "contentHash": "8596448df5742a67333ab95671278c9faa88a1e2d8829cd783892b263ce107de"
     },
     "welcome-sign-left-v1-var-3": {
@@ -2450,6 +2602,7 @@
       },
       "sensorScore": "7/8",
       "judgeScore": "2",
+      "type": "tile",
       "contentHash": "546edb4d8b771bb9e46a97f27a69ba7e79958a80a960c9861372d32f142f1473"
     },
     "welcome-sign-left-v1-var-5": {
@@ -2478,6 +2631,7 @@
       },
       "sensorScore": "7/8",
       "judgeScore": "2",
+      "type": "tile",
       "contentHash": "768fff7a602616a5b4bfc8f61ab9cc52a9a562f0d03c447f5d7f7966b3cd8450"
     },
     "ability-icon-fireball-v1-var-11": {
@@ -2506,6 +2660,7 @@
       },
       "sensorScore": "7/7",
       "judgeScore": "3",
+      "type": "item",
       "contentHash": "f35e12cf40e6f3a577e1759a37578c1618e685f3c6734a1915789483859c928d"
     },
     "ability-icon-pulse-shield-v1-var-0": {
@@ -2534,6 +2689,7 @@
       },
       "sensorScore": "7/7",
       "judgeScore": "2",
+      "type": "item",
       "contentHash": "a7fcfaceacc3f2d433ba5915a32faa2d26ecaa1c385e21748b0fcc229fb5e74b"
     },
     "rat-king-v1-var-7": {
@@ -2562,6 +2718,7 @@
       },
       "sensorScore": "5/8",
       "judgeScore": "4",
+      "type": "enemy",
       "contentHash": "6219063caaf2343774fdc0416b8111685c0e4dcdc7c8eb897174c145117bfd94"
     },
     "rat-queen-v1-var-7": {
@@ -2590,6 +2747,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "4",
+      "type": "enemy",
       "contentHash": "678cd12ba0ca0a8a8364d7f3276ea34036bad1500b2db27cead90f9d84c14d9d"
     }
   }

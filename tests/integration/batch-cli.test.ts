@@ -33,6 +33,7 @@ import type {
   EvaluateResponse,
 } from '../../scripts/sprites/provider/vision-types.js';
 import { buildGoodSwordFixture } from '../fixtures/sprites/builders.js';
+import { seedGeneratedReference } from '../fixtures/sprites/seed-generated-reference.js';
 
 const STYLE_GUIDE = [
   '# Style guide',
@@ -182,6 +183,7 @@ function setupBatchHarness(briefNames: string[]): BatchHarness {
   writeFileSync(path.join(root, 'docs', 'agent-os', 'sprite-style.md'), STYLE_GUIDE);
   writeFileSync(path.join(root, 'refs', 'a.png'), buildGoodSwordFixture());
   writeFileSync(path.join(root, 'refs', 'b.png'), buildGoodSwordFixture());
+  seedGeneratedReference(root);
   const briefPaths = briefNames.map((name) => {
     const briefPath = path.join(root, 'briefs', 'weapons', `${name}.yaml`);
     writeFileSync(briefPath, briefYaml());

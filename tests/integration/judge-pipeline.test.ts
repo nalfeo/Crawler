@@ -25,6 +25,7 @@ import type {
   EvaluateResponse,
 } from '../../scripts/sprites/provider/vision-types.js';
 import { buildGoodSwordFixture, buildEmptyFixture } from '../fixtures/sprites/builders.js';
+import { seedGeneratedReference } from '../fixtures/sprites/seed-generated-reference.js';
 import { LocalRunStore } from '../../scripts/sprites/store/local-store.js';
 import type { RunStore } from '../../scripts/sprites/store/types.js';
 
@@ -194,6 +195,7 @@ describe('runFull + VLM judge (integration)', () => {
     writeFileSync(briefPath, briefYaml(judgeBlock));
     writeFileSync(path.join(root, 'refs', 'a.png'), buildGoodSwordFixture());
     writeFileSync(path.join(root, 'refs', 'b.png'), buildGoodSwordFixture());
+    seedGeneratedReference(root);
     outputRoot = path.join(root, 'generated');
     preloaded = loadBrief(briefPath, { projectRoot: root });
   }

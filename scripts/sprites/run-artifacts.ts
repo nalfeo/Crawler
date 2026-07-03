@@ -35,6 +35,7 @@ import type { ExpansionSkipReason } from './expand-variations.js';
 import type { JudgeScorecard } from './judge.js';
 import type { Scorecard } from './score-candidate.js';
 import type { DerivedAnchor } from './sensors/derive-anchor.js';
+import type { SpriteType } from '../../src/shared/sprite-types.js';
 
 export interface RunPaths {
   readonly root: string;
@@ -160,6 +161,40 @@ export interface ChosenCandidate {
   readonly combinedPassed: boolean;
 }
 
+/**
+ * A single reference sprite the selector picked to send to the image provider
+ * (and, transitively, the judge). Mirrors the manifest entry's identity +
+ * quality signals so a rerun/rejudge can re-resolve the exact bytes and
+ * fail loudly if the on-disk asset drifted (`contentHash` mismatch).
+ */
+export interface ReferenceSpriteRef {
+  readonly briefId: string;
+  readonly spriteName: string;
+  readonly type: SpriteType;
+  /** Repo-relative under `public/assets/` (always starts with `generated/`). */
+  readonly assetPath: string;
+  readonly sensorScore: string;
+  readonly judgeScore: string | null;
+  /** SHA of the asset bytes when the manifest recorded one; null for legacy entries. */
+  readonly contentHash: string | null;
+}
+
+/**
+ * Auditable record of the deterministic reference-sprite selection for a run.
+ * Replaces the retired static Kenney `brief.references`: generation now sends
+ * our own highest-quality approved sprites, chosen by `selectReferences`.
+ */
+export interface ReferenceSpriteSelection {
+  readonly selectorVersion: string;
+  readonly seed: number;
+  readonly requestedCount: number;
+  /** Eligible candidates after quality-floor + placeholder/self filtering. */
+  readonly eligibleCount: number;
+  /** Of the eligible candidates, how many shared the brief's `type`. */
+  readonly sameTypeCount: number;
+  readonly selected: ReadonlyArray<ReferenceSpriteRef>;
+}
+
 export interface RunSummary {
   readonly brief: string;
   readonly briefPath: string;
@@ -227,6 +262,12 @@ export interface RunSummary {
     readonly image?: string | null;
     readonly vision?: string | null;
   };
+  /**
+   * Deterministic reference-sprite selection fed to the image provider (and
+   * judge) for this run. Present on runs produced after the Kenney-reference
+   * retirement; absent on legacy runs whose refs came from `brief.references`.
+   */
+  readonly referenceSprites?: ReferenceSpriteSelection;
   /**
    * Optional deterministic sensor telemetry counters for operator dashboards.
    */

@@ -66,6 +66,7 @@ import { NoopAssetQueue } from '../queue/noop-queue.js';
 import type { AssetQueue } from '../queue/types.js';
 import { computeSliceMap } from '../slice-sheet.js';
 import { loadStyleGuide } from '../build-prompt.js';
+import { loadRecordedReferencePngs } from '../load-reference-pngs.js';
 import type { PostprocessOptions } from '../postprocess.js';
 import type { RunSummary } from '../run-artifacts.js';
 import {
@@ -812,9 +813,13 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     }
     try {
       const brief = resolution.loaded.brief;
-      const referencePngs = brief.references.map((ref) =>
-        readFileSync(path.resolve(deps.repoRoot, ref.path)),
-      );
+      // Re-judge against the SAME references the run was generated with (our
+      // approved sprites recorded in the summary), never the retired Kenney
+      // `brief.references`. Fails loudly if those assets drifted or are absent.
+      const referencePngs = loadRecordedReferencePngs({
+        summary: resolution.summary,
+        repoRoot: deps.repoRoot,
+      });
       const result = await rejudgeRun({
         store,
         briefId,

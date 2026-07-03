@@ -14,6 +14,7 @@
  */
 import { z } from 'zod';
 import { SeededRandom } from './random.js';
+import { SPRITE_TYPES } from './sprite-types.js';
 
 /**
  * Default anchor used when a manifest entry's `anchor` is `null` — i.e.
@@ -62,6 +63,19 @@ export const manifestEntrySchema = z
     anchors: anchorsSchema.optional(),
     sensorScore: z.string().min(1),
     judgeScore: z.string().nullable(),
+    /**
+     * Canonical sprite type (`weapon`/`enemy`/`item`/`tile`/`vfx`/`character`).
+     * Optional + nullable so pre-`type` manifests still parse and so the
+     * approve side can write an explicit `null` when a brief's type can't be
+     * resolved. The reference selector uses this to favour same-type examples.
+     */
+    type: z.enum(SPRITE_TYPES).nullable().optional(),
+    /**
+     * SHA-256 of the approved PNG bytes. Present on entries approved after
+     * content-hashing landed; used by the reference selector's run summary to
+     * pin the exact bytes a reference was sampled from (rerun reproducibility).
+     */
+    contentHash: z.string().optional(),
   })
   .passthrough();
 

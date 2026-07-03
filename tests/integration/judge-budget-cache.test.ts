@@ -33,6 +33,7 @@ import type {
   EvaluateResponse,
 } from '../../scripts/sprites/provider/vision-types.js';
 import { buildGoodSwordFixture } from '../fixtures/sprites/builders.js';
+import { seedGeneratedReference } from '../fixtures/sprites/seed-generated-reference.js';
 
 const STYLE_GUIDE = [
   '# Style guide',
@@ -189,6 +190,7 @@ function setupHarness(): Harness {
   writeFileSync(briefPath, briefYaml());
   writeFileSync(path.join(root, 'refs', 'a.png'), buildGoodSwordFixture());
   writeFileSync(path.join(root, 'refs', 'b.png'), buildGoodSwordFixture());
+  seedGeneratedReference(root);
   const outputRoot = path.join(root, 'generated');
   const preloaded = loadBrief(briefPath, { projectRoot: root });
   return { root, briefPath, preloaded, outputRoot };

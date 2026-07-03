@@ -7,45 +7,32 @@
  *      local-only because each call costs money and is non-deterministic).
  *   2. Normalise + validate the subject name (lowercase kebab-case, no
  *      path separators, ≤64 chars).
- *   3. Build the reference allow-list from disk.
- *   4. Issue ONE structured-output call to the synth provider for all
+ *   3. Issue ONE structured-output call to the synth provider for all
  *      N candidates. Per-candidate calls would scale cost linearly for
  *      no quality gain.
- *   5. For each candidate:
+ *   4. For each candidate:
  *        a. Reject if the description contains a banned vague adjective.
- *        b. Reject if any reference id is not in the catalog OR its
- *           file does not exist on disk. (Catalog membership alone is
- *           technically enough — the catalog only contains existing
- *           files — but the explicit existence check is a defence
- *           against a stale in-memory catalog if anything ever
- *           re-introduces caching here.)
- *        c. Require 2-3 references and 3-5 embellishment seeds.
- *   6. Decide write policy with `partial`:
+ *        b. Require the sprite-type-aware embellishment seed count.
+ *   5. Decide write policy with `partial`:
  *        - `partial=false` (default): if any candidate is rejected, throw
  *          an aggregated error and write nothing.
  *        - `partial=true`: write the valid candidates and surface
  *          rejections in the sidecar.
- *   7. If type was not supplied: require `typeConfidence >= 0.9`,
+ *   6. If type was not supplied: require `typeConfidence >= 0.9`,
  *      otherwise throw (the user must re-run with --type).
- *   8. Write `<outDir>/<name>/<name>-v{1,N}.yaml` and `synthesis.json`.
+ *   7. Write `<outDir>/<name>/<name>-v{1,N}.yaml` and `synthesis.json`.
  *      Atomic-ish: all validation happens before any write.
  *
  * Everything except the provider call and the filesystem hooks is pure.
  */
 
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
 
 import { SPRITE_TYPES, type Brief } from './brief-schema.js';
 import { coerceSizeVariant, DEFAULT_SIZE_VARIANT, type SizeVariant } from './size-variants.js';
-import {
-  buildReferenceCatalog,
-  resolveReferenceId,
-  type ReferenceSheet,
-  type BuildReferenceCatalogOptions,
-} from './reference-allow-list.js';
 import { buildSystemPrompt, buildUserPrompt } from './provider/azure-chat-synth.js';
 import type {
   SynthProvider,
@@ -61,8 +48,6 @@ const MAX_NAME_LENGTH = 64;
 const NAME_REGEX = /^[a-z0-9][a-z0-9-]*$/;
 const BANNED_ADJECTIVES = ['cool', 'awesome', 'epic', 'amazing', 'nice'] as const;
 const BANNED_REGEX = new RegExp(`\\b(${BANNED_ADJECTIVES.join('|')})\\b`, 'i');
-const MIN_REFS_PER_CANDIDATE = 2;
-const MAX_REFS_PER_CANDIDATE = 3;
 const MIN_SEEDS_PER_CANDIDATE = 3;
 const MAX_SEEDS_PER_CANDIDATE = 5;
 const MIN_TYPE_CONFIDENCE = 0.9;
@@ -100,7 +85,7 @@ export interface SynthesizeBriefOptions {
   readonly sizeVariant?: SizeVariant;
   /** Synth provider — typically `createSynthProvider()` from `factory`. */
   readonly provider: SynthProvider;
-  /** Repository root used to resolve the reference catalog + output dir. */
+  /** Repository root used to resolve sprite-type defaults + output dir. */
   readonly repoRoot: string;
   /**
    * Output directory. Defaults to `<repoRoot>/generated/brief-candidates`.
@@ -118,22 +103,6 @@ export interface SynthesizeBriefOptions {
    * Tests pass an empty object to exercise the success path.
    */
   readonly env?: Readonly<Record<string, string | undefined>>;
-  /**
-   * Optional override for the reference-catalog builder hooks. Lets
-   * unit tests bypass disk lookups while still exercising the real
-   * allow-list module.
-   */
-  readonly referenceCatalogOptions?: Pick<BuildReferenceCatalogOptions, 'readPacks' | 'fileExists'>;
-  /**
-   * Optional override for the per-candidate filesystem re-check. The
-   * catalog builder already proves each reference's `spritesheet.png`
-   * exists at catalog-build time; this hook is the defence-in-depth
-   * check that fires if a sheet is deleted/renamed between catalog
-   * build and YAML write. Production uses the same `statSync`-based
-   * default as the catalog builder; tests inject a separate function
-   * so the failure mode can be exercised directly.
-   */
-  readonly referenceFileExistsAtSynthesisTime?: (absolutePath: string) => boolean;
   /**
    * Optional override for filesystem writes. Tests inject an in-memory
    * sink; production uses real `fs`.
@@ -161,8 +130,6 @@ export interface SynthesizedBriefCandidate {
   readonly type: SpriteType;
   /** Concrete description (becomes the YAML `description` field). */
   readonly description: string;
-  /** Resolved references with repo-relative paths. */
-  readonly references: ReadonlyArray<{ readonly path: string; readonly note: string }>;
   /** Variation seeds (become the YAML `variations` field). */
   readonly embellishmentSeeds: ReadonlyArray<string>;
   /** Why this candidate's silhouette differs from the others. */
@@ -228,27 +195,6 @@ export async function synthesizeBrief(
     );
   }
 
-  const catalog = buildReferenceCatalog({
-    repoRoot: options.repoRoot,
-    ...(options.referenceCatalogOptions?.readPacks
-      ? { readPacks: options.referenceCatalogOptions.readPacks }
-      : {}),
-    ...(options.referenceCatalogOptions?.fileExists
-      ? { fileExists: options.referenceCatalogOptions.fileExists }
-      : {}),
-  });
-  // Resolution order for the per-candidate re-check:
-  //   1. explicit synthesis-time hook (tests use this to exercise the
-  //      defence-in-depth without also affecting catalog discovery),
-  //   2. the catalog's fileExists hook (so a unit test that bypasses
-  //      disk for catalog discovery doesn't accidentally fall back to
-  //      real disk for the re-check),
-  //   3. the real fs-backed default.
-  const referenceFileExists =
-    options.referenceFileExistsAtSynthesisTime ??
-    options.referenceCatalogOptions?.fileExists ??
-    defaultFileExistsAtSynthesisTime;
-
   const callerType = options.type ?? null;
   const loadMinVariations = options.loadMinVariations ?? defaultLoadMinVariations(options.repoRoot);
   const { effectiveMinSeeds, effectiveMaxSeeds } = resolveSeedBounds(callerType, loadMinVariations);
@@ -258,12 +204,11 @@ export async function synthesizeBrief(
     ...(briefHint ? { briefHint } : {}),
     type: callerType,
     candidates: requested,
-    referenceCatalog: catalog,
     effectiveMinSeeds,
     effectiveMaxSeeds,
   } as const;
 
-  const promptHash = hashPrompt(buildSystemPrompt(request), buildUserPrompt(request), catalog);
+  const promptHash = hashPrompt(buildSystemPrompt(request), buildUserPrompt(request));
 
   const response = await options.provider.synthesizeBrief(request);
 
@@ -284,11 +229,8 @@ export async function synthesizeBrief(
     evaluateCandidate(
       c,
       i + 1,
-      catalog,
-      options.repoRoot,
       name,
       type,
-      referenceFileExists,
       finalBounds.effectiveMinSeeds,
       finalBounds.effectiveMaxSeeds,
     ),
@@ -437,11 +379,8 @@ type EvaluatedCandidate =
 function evaluateCandidate(
   source: SynthesizedCandidate,
   index: number,
-  catalog: ReadonlyArray<ReferenceSheet>,
-  repoRoot: string,
   name: string,
   type: SpriteType,
-  fileExists: (absolutePath: string) => boolean,
   effectiveMinSeeds: number,
   effectiveMaxSeeds: number,
 ): EvaluatedCandidate {
@@ -456,16 +395,6 @@ function evaluateCandidate(
     );
   }
   if (
-    source.references.length < MIN_REFS_PER_CANDIDATE ||
-    source.references.length > MAX_REFS_PER_CANDIDATE
-  ) {
-    return reject(
-      index,
-      `references must be ${MIN_REFS_PER_CANDIDATE}-${MAX_REFS_PER_CANDIDATE} entries, ` +
-        `got ${source.references.length}.`,
-    );
-  }
-  if (
     source.embellishmentSeeds.length < effectiveMinSeeds ||
     source.embellishmentSeeds.length > effectiveMaxSeeds
   ) {
@@ -476,37 +405,6 @@ function evaluateCandidate(
         `got ${source.embellishmentSeeds.length}.`,
     );
   }
-  const seenIds = new Set<string>();
-  const resolvedRefs: { path: string; note: string }[] = [];
-  for (const ref of source.references) {
-    if (seenIds.has(ref.id)) {
-      return reject(index, `reference id '${ref.id}' appears twice in this candidate.`);
-    }
-    seenIds.add(ref.id);
-    let sheet: ReferenceSheet;
-    try {
-      sheet = resolveReferenceId(catalog, ref.id);
-    } catch (err) {
-      return reject(
-        index,
-        `reference id '${ref.id}' is not in the allow-list. ` +
-          `(${err instanceof Error ? err.message : String(err)})`,
-      );
-    }
-    // Defensive: even though buildReferenceCatalog already confirmed the
-    // file exists on disk when assembling the catalog, re-check at write
-    // time so a deleted/renamed sheet between catalog build and write
-    // surfaces here rather than poisoning a YAML.
-    const absolute = path.join(repoRoot, sheet.path);
-    if (!fileExists(absolute)) {
-      return reject(
-        index,
-        `reference '${ref.id}' resolved to ${sheet.path} but the file is missing on disk.`,
-      );
-    }
-    resolvedRefs.push({ path: sheet.path, note: ref.note });
-  }
-
   // The candidate is valid. Build the canonical SynthesizedBriefCandidate
   // record (yamlPath is overwritten when we actually write).
   return {
@@ -515,7 +413,6 @@ function evaluateCandidate(
       id: `${name}-v${index}`,
       type,
       description: source.description,
-      references: resolvedRefs,
       embellishmentSeeds: source.embellishmentSeeds,
       synthesisRationale: source.rationale,
       yamlPath: '',
@@ -532,7 +429,7 @@ function renderCandidateYaml(
   sizeVariant: SizeVariant,
 ): string {
   // Minimal-brief shape only: type, name, [sizeVariant], description,
-  // references, variations. Let the loader's deep-merge fill in defaults.
+  // variations. Let the loader's deep-merge fill in defaults.
   // `sizeVariant` is emitted only when non-default so default briefs stay
   // byte-for-byte identical to the pre-variant output.
   const doc = {
@@ -540,7 +437,6 @@ function renderCandidateYaml(
     name: candidate.id,
     ...(sizeVariant === DEFAULT_SIZE_VARIANT ? {} : { sizeVariant }),
     description: candidate.description,
-    references: candidate.references.map((r) => ({ path: r.path, note: r.note })),
     variations: candidate.embellishmentSeeds.slice(),
   };
   return [
@@ -556,22 +452,17 @@ function renderCandidateYaml(
   ].join('\n');
 }
 
-function hashPrompt(system: string, user: string, catalog: ReadonlyArray<ReferenceSheet>): string {
+function hashPrompt(system: string, user: string): string {
   const h = createHash('sha256');
   h.update(system);
   h.update('\n---\n');
   h.update(user);
-  h.update('\n---\n');
-  for (const r of catalog) {
-    h.update(`${r.id}|${r.path}\n`);
-  }
   return h.digest('hex');
 }
 
 function serialiseResponse(response: SynthesizeBriefResponse): unknown {
   // We deliberately drop nothing here — the sidecar is for forensic
-  // review by the human. We do NOT serialise the prompt body (which
-  // would duplicate the catalog and bloat the file) or any provider
+  // review by the human. We do NOT serialise the prompt body or any provider
   // credentials (which never reach this function in the first place).
   return {
     inferredType: response.inferredType,
@@ -579,7 +470,6 @@ function serialiseResponse(response: SynthesizeBriefResponse): unknown {
     candidates: response.candidates.map((c) => ({
       description: c.description,
       rationale: c.rationale,
-      references: c.references.map((r) => ({ id: r.id, note: r.note })),
       embellishmentSeeds: c.embellishmentSeeds.slice(),
     })),
   };
@@ -590,14 +480,6 @@ function defaultFsHooks(): FsWriteHooks {
     mkdir: (p) => mkdirSync(p, { recursive: true }),
     writeFile: (p, contents) => writeFileSync(p, contents),
   };
-}
-
-function defaultFileExistsAtSynthesisTime(absolutePath: string): boolean {
-  try {
-    return statSync(absolutePath).isFile();
-  } catch {
-    return false;
-  }
 }
 
 /**

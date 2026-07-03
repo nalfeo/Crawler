@@ -313,14 +313,17 @@ function buildSystemInstructions(styleGuide: string): string {
     '',
     'You will be shown a CANDIDATE sprite (upscaled for legibility), a READABILITY-COMPOSITE',
     '(the same sprite at 1x size on a dark floor tile, then upscaled), and one or more',
-    'REFERENCE sprites that anchor the target visual style.',
+    'REFERENCE sprites. The references are our OWN highest-quality approved in-game sprites —',
+    'the canonical Crawler art style, not off-style stock art — so the candidate should look',
+    'like it belongs in the same shipped set.',
     '',
     'Score the candidate on three independent 1-5 ordinal axes:',
     '',
-    '  1. style_match  — Does the candidate read as same-family as the references?',
-    '                    Match: outline thickness, palette, shading stops, anti-aliasing,',
-    '                    silhouette weight. 5 = indistinguishable from references. 1 = generic',
-    '                    AI pixel art that obviously does not belong with them.',
+    '  1. style_match  — Does the candidate read as same-family as the references (our',
+    '                    canonical approved Crawler sprites)? Match: outline thickness, palette,',
+    '                    shading stops, anti-aliasing, silhouette weight. 5 = indistinguishable',
+    '                    from references. 1 = generic AI pixel art that obviously does not belong',
+    '                    with them.',
     '',
     '  2. brief_match  — Does the candidate depict the subject described in the brief',
     '                    (provided in the user prompt)? 5 = unambiguously the requested',
@@ -341,7 +344,8 @@ function buildSystemInstructions(styleGuide: string): string {
     'Rationale per axis: 1-2 sentences max. Be specific (e.g. "outline too thin compared',
     'to references" not "looks wrong"). No prose outside the JSON.',
     '',
-    'Style ground truth (the references take precedence when these conflict):',
+    'Style ground truth (the reference sprites are approved in-game art and take precedence',
+    'over this prose when they conflict):',
     truncate(styleGuide, 1500),
     '',
     'Respond with STRICT JSON only — no prose, no markdown — matching this shape:',
@@ -370,7 +374,8 @@ function buildUserPrompt(brief: Brief, referenceCount: number): string {
   ];
   if (hasReferences) {
     lines.push(
-      '  3+. reference-N            — visual style anchor(s). The candidate must read as same-family.',
+      '  3+. reference-N            — our approved in-game sprites; the style ground truth.',
+      '                               The candidate must read as same-family with them.',
     );
   }
   lines.push(

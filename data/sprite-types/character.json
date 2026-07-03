@@ -4,16 +4,6 @@
   "palette": { "id": "kenney-roguelike" },
   "anchor": { "x": 32, "y": 63 },
   "tags": ["character", "npc"],
-  "references": [
-    {
-      "path": "public/assets/kenney/roguelike-characters/spritesheet.png",
-      "note": "scale and composition reference only — how a character fills a 64px cell, proportions, orientation. Do not imitate the flat two-tone shading style."
-    },
-    {
-      "path": "public/assets/kenney/tiny-town/spritesheet.png",
-      "note": "scale reference for civilian figures and biome context. Style guidance comes from the preamble, not these sheets."
-    }
-  ],
   "generation": {
     "sheet": { "rows": 4, "cols": 4, "emptyCells": [], "nativeCanvas": 1024 }
   },

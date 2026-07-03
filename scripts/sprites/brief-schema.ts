@@ -13,7 +13,11 @@ import { SIZE_VARIANTS } from './size-variants.js';
  * validation, but Zod is format-agnostic.
  */
 
-export const SPRITE_TYPES = ['weapon', 'enemy', 'item', 'tile', 'vfx', 'character'] as const;
+// Canonical sprite-type vocabulary lives in `src/shared/sprite-types.ts` (the
+// single source of truth shared with the engine-facing manifest schema).
+// Re-exported here so the many `./brief-schema.js` importers stay unchanged.
+export { SPRITE_TYPES, type SpriteType } from '../../src/shared/sprite-types.js';
+import { SPRITE_TYPES } from '../../src/shared/sprite-types.js';
 
 const rgbTriple = z
   .tuple([
@@ -195,9 +199,15 @@ export const briefSchema = z
     anchor: anchorSchema,
     tags: z.array(z.string().min(1)).default([]),
     prompt: z.string().min(1),
-    references: z
-      .array(referenceSchema)
-      .min(2, 'references must contain at least 2 entries (F2.3)'),
+    /**
+     * Legacy author-pinned reference images. NO LONGER READ by generation:
+     * the pipeline now selects our own highest-quality approved sprites at
+     * generate-time (see `reference-selector.ts`), and the Kenney placeholder
+     * spritesheets these historically pointed at are retired. Kept optional +
+     * defaulting to `[]` so existing briefs (and the per-type defaults) still
+     * validate; forward-compat only, not a generation input.
+     */
+    references: z.array(referenceSchema).default([]),
     generation: generationSchema,
     sensors: sensorOverridesSchema,
     /**

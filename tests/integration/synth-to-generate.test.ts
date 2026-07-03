@@ -96,10 +96,6 @@ function makeSynthProvider(): SynthProvider {
             description:
               'A long curved scythe blade pointing up-left, narrow wooden snath running diagonal, ' +
               'with iron rivets at the join and a darkened steel edge.',
-            references: [
-              { id: 'roguelike-rpg-pack', note: 'silhouette anchor for slender weapons' },
-              { id: 'tiny-battle', note: 'secondary palette for steel/wood mix' },
-            ],
             embellishmentSeeds: [
               'shorter wider blade',
               'wrapped leather grip',
@@ -123,12 +119,7 @@ describe('sprites:synth → loadBrief → runFull (integration)', () => {
     mkdirSync(path.join(root, 'data', 'sprite-types'), { recursive: true });
     mkdirSync(path.join(root, 'docs', 'agent-os'), { recursive: true });
     mkdirSync(path.join(root, 'briefs', 'draft', 'weapons'), { recursive: true });
-    mkdirSync(path.join(root, 'public', 'assets', 'kenney', 'roguelike-rpg-pack'), {
-      recursive: true,
-    });
-    mkdirSync(path.join(root, 'public', 'assets', 'kenney', 'tiny-battle'), {
-      recursive: true,
-    });
+    mkdirSync(path.join(root, 'public', 'assets', 'generated'), { recursive: true });
 
     // Style guide + palette + weapon defaults so loadBrief succeeds against
     // the synthesised YAML.
@@ -149,16 +140,29 @@ describe('sprites:synth → loadBrief → runFull (integration)', () => {
       path.join(root, 'data', 'sprite-types', 'weapon.json'),
     );
 
-    // Stub reference PNGs so the catalog's fileExists guard passes and
-    // generate-one can read the reference bytes.
+    // Stub one approved generated sprite so generate-one can select our own
+    // art as a reference without relying on Kenney brief references.
     const fakePng = buildGoodSwordFixture();
+    writeFileSync(path.join(root, 'public', 'assets', 'generated', 'ref-sword.png'), fakePng);
     writeFileSync(
-      path.join(root, 'public', 'assets', 'kenney', 'roguelike-rpg-pack', 'spritesheet.png'),
-      fakePng,
-    );
-    writeFileSync(
-      path.join(root, 'public', 'assets', 'kenney', 'tiny-battle', 'spritesheet.png'),
-      fakePng,
+      path.join(root, 'public', 'assets', 'generated', 'manifest.json'),
+      JSON.stringify({
+        version: 1,
+        entries: {
+          'ref-sword-v1': {
+            briefId: 'ref-sword',
+            spriteName: 'ref-sword-v1',
+            assetPath: 'generated/ref-sword.png',
+            approvedAt: '2026-06-05T00:00:00.000Z',
+            sourceRun: 'run-ref-sword',
+            variantIndex: 0,
+            anchor: { x: 8, y: 14, source: 'derived' },
+            sensorScore: '4/4',
+            judgeScore: '5',
+            type: 'weapon',
+          },
+        },
+      }),
     );
   });
 
@@ -191,13 +195,7 @@ describe('sprites:synth → loadBrief → runFull (integration)', () => {
     expect(loaded.brief.type).toBe('weapon');
     expect(loaded.brief.name).toBe('scythe-v1');
     expect(loaded.brief.prompt).toContain('scythe blade');
-    // References from the synth's allow-list pick survived the merge.
-    expect(loaded.brief.references.map((r) => r.path)).toEqual(
-      expect.arrayContaining([
-        'public/assets/kenney/roguelike-rpg-pack/spritesheet.png',
-        'public/assets/kenney/tiny-battle/spritesheet.png',
-      ]),
-    );
+    expect(loaded.brief.references).toEqual([]);
 
     // 4. Run the generate-one pipeline with a mock image provider. A
     //    4x4 sheet of `buildGoodSwordFixture` variants is enough to
