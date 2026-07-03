@@ -461,8 +461,10 @@ export const QUEST_GIVER_DETOUR_MAX_EXTRA_FRACTION = 0.6;
 // the strict base cap. Stale-commit lifetime is independently bounded by
 // QUEST_GIVER_DETOUR_ABANDON_FRAMES, so this can be generous without stranding.
 export const QUEST_GIVER_DETOUR_COMMIT_HYSTERESIS = 1.5;
-// Abandon a committed quest-giver detour after this many consecutive frames with
-// no improvement in player→NPC distance. Releases a body-blocked / locked-door /
+// Abandon a committed quest-giver detour once the no-progress frame count EXCEEDS
+// this many consecutive frames (strict `>`): exactly this many no-improvement
+// frames are tolerated and the release fires on the very next one. Releases a
+// body-blocked / locked-door /
 // otherwise-unreachable committed NPC well under the floor-collapse deadline so a
 // single sticky commitment cannot itself pin the runner for more than ~5s. This
 // clears the CURRENT commitment only — it does not blacklist the NPC, so if it
