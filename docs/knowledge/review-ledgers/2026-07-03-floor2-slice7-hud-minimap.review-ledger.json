@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "floor2-slice7-hud-minimap",
+  "task_title": "Floor 2 Slice 7 — HUD & minimap",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.5",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "notes": "plan_review flagged 4 blocking concerns: (1) terrain-rebake staleness on late boss-defeat, (2) unreliable event-length dirty flag, (3) FamilyMembership.familyId is a Uint8 index into presentFamilies (not a FamilyId string), (4) irregular cave rooms carry interiorCells so bounds-based tile stamping over-tints walls. Slice 7 addresses these by (a) scoping the minimap tint to room-level dot color (no per-tile terrain baking, so 1 + 4 collapse), (b) using a snapshot-fingerprint dirty flag on the widget that reads relation+band+bossDefeated per family instead of factionRelationEvents.length, and (c) resolving family index -> FamilyId via resolveFamilyByIndex in minimap-family-tint.ts. 3 non-blocking suggestions on naming + panel geometry were adopted."
+    }
+  }
+}

@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
-import { query } from 'bitecs';
-import { Enemy, Npc, Position } from '../core/components.js';
+import { hasComponent, query } from 'bitecs';
+import { Enemy, FamilyMembership, Npc, Position } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
 import { getQuestWaypoints } from '../core/systems/questWaypoints.js';
 import { RoomRole, type RoomData, TerrainType } from '../shared/map-types.js';
 import type { FloorMap } from '../core/map/FloorMap.js';
+import { loadFamilies, type FamilyDef } from '../shared/data/families.js';
 import {
   clampMinimapViewState,
   panMinimapByScreenDelta,
@@ -12,6 +13,7 @@ import {
   type MinimapViewState,
   type MinimapZoomLimits,
 } from './minimap-view-state.js';
+import { familyTintForRoom, familyColorForEnemy } from './minimap-family-tint.js';
 import { PIXEL_UI } from './pixel-ui.js';
 import { applyCrispText, getUiScale, type ScreenBounds } from './ui-scale.js';
 import { getRenderScale } from './render-scale.js';
@@ -484,6 +486,47 @@ export function createHudMinimap(scene: Phaser.Scene): {
     dotGraphics.setPosition(Math.round(originX), Math.round(originY)).setScale(RADAR_PX_PER_TILE);
   }
 
+  const familyDefs: readonly FamilyDef[] = loadFamilies();
+
+  /**
+   * Pick the minimap dot color for a room's role. Floor-2 territories/settlements
+   * read from the family palette (`minimap-family-tint`); classic Floor-1 roles
+   * (SAFE/SPAWN/BOSS_STAIR) use the fixed accent palette.
+   */
+  function roleDotColor(room: RoomData, world: GameWorld): number | null {
+    const familyTint = familyTintForRoom(world, familyDefs, room);
+    if (familyTint !== null) return familyTint;
+    switch (room.role) {
+      case RoomRole.SAFE:
+        return DOT_SAFE_ROOM;
+      case RoomRole.BOSS_STAIR:
+        return DOT_BOSS_ROOM;
+      case RoomRole.SPAWN:
+        return DOT_SPAWN_ROOM;
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Pick the enemy-dot color + radius for a mob. Mobs with `FamilyMembership`
+   * (Floor 2) draw in their family's color; bosses render larger. Trash mobs
+   * without membership fall back to the classic red enemy dot.
+   */
+  function resolveEnemyDotStyle(
+    world: GameWorld,
+    eid: number,
+    baseRadius: number,
+  ): { color: number; radius: number } {
+    if (!hasComponent(world.ecs, eid, FamilyMembership)) {
+      return { color: DOT_ENEMY, radius: baseRadius };
+    }
+    const familyIndex = world.stores.familyMembership.familyId[eid] ?? 0;
+    const isBoss = (world.stores.familyMembership.isBoss[eid] ?? 0) === 1;
+    const color = familyColorForEnemy(world, familyDefs, familyIndex) ?? DOT_ENEMY;
+    return { color, radius: isBoss ? baseRadius * 1.6 : baseRadius };
+  }
+
   function drawDots(
     world: GameWorld,
     playerEid: number,
@@ -492,14 +535,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
   ): void {
     dotGraphics.clear();
     for (const room of floorMap.rooms) {
-      const color =
-        room.role === RoomRole.SAFE
-          ? DOT_SAFE_ROOM
-          : room.role === RoomRole.BOSS_STAIR
-            ? DOT_BOSS_ROOM
-            : room.role === RoomRole.SPAWN
-              ? DOT_SPAWN_ROOM
-              : null;
+      const color = roleDotColor(room, world);
       if (color === null) {
         continue;
       }
@@ -508,7 +544,8 @@ export function createHudMinimap(scene: Phaser.Scene): {
       }
       const centerX = room.bounds.x + Math.floor(room.bounds.width / 2);
       const centerY = room.bounds.y + Math.floor(room.bounds.height / 2);
-      drawSquareMarker(dotGraphics, centerX, centerY, color, ROOM_MARKER_SIZE);
+      const size = room.role === RoomRole.BOSS_DEN ? ROOM_MARKER_SIZE * 1.4 : ROOM_MARKER_SIZE;
+      drawSquareMarker(dotGraphics, centerX, centerY, color, size);
     }
 
     const objective = world.floor1?.objective;
@@ -550,10 +587,11 @@ export function createHudMinimap(scene: Phaser.Scene): {
       if (tx < 0 || ty < 0 || tx >= floorMap.width || ty >= floorMap.height) continue;
       const idx = ty * floorMap.width + tx;
       if (!visited[idx]) continue;
+      const style = resolveEnemyDotStyle(world, eid, DOT_ENEMY_RADIUS);
       dotGraphics.fillStyle(DOT_OUTLINE, 1);
-      dotGraphics.fillCircle(tx + 0.5, ty + 0.5, DOT_ENEMY_RADIUS + DOT_OUTLINE_WIDTH);
-      dotGraphics.fillStyle(DOT_ENEMY, 1);
-      dotGraphics.fillCircle(tx + 0.5, ty + 0.5, DOT_ENEMY_RADIUS);
+      dotGraphics.fillCircle(tx + 0.5, ty + 0.5, style.radius + DOT_OUTLINE_WIDTH);
+      dotGraphics.fillStyle(style.color, 1);
+      dotGraphics.fillCircle(tx + 0.5, ty + 0.5, style.radius);
     }
 
     const npcs = query(world.ecs, [Npc, Position]);
@@ -671,20 +709,15 @@ export function createHudMinimap(scene: Phaser.Scene): {
     radarScratch.clear();
 
     for (const room of floorMap.rooms) {
-      const roomColor =
-        room.role === RoomRole.SAFE
-          ? DOT_SAFE_ROOM
-          : room.role === RoomRole.BOSS_STAIR
-            ? DOT_BOSS_ROOM
-            : room.role === RoomRole.SPAWN
-              ? DOT_SPAWN_ROOM
-              : null;
+      const roomColor = roleDotColor(room, world);
       if (roomColor === null) continue;
       if (!roomHasDiscoveredTile(room, floorMap, visited)) continue;
       const rx = localX(room.bounds.x + Math.floor(room.bounds.width / 2) + 0.5);
       const ry = localY(room.bounds.y + Math.floor(room.bounds.height / 2) + 0.5);
       if (!inDial(rx, ry)) continue;
-      const half = ROOM_MARKER_SIZE * scale * 0.5;
+      const markerSize =
+        room.role === RoomRole.BOSS_DEN ? ROOM_MARKER_SIZE * 1.4 : ROOM_MARKER_SIZE;
+      const half = markerSize * scale * 0.5;
       radarScratch.fillStyle(roomColor, 1);
       radarScratch.fillRect(rx - half, ry - half, half * 2, half * 2);
     }
@@ -734,10 +767,11 @@ export function createHudMinimap(scene: Phaser.Scene): {
       const ex = localX(wx / tileFt);
       const ey = localY(wy / tileFt);
       if (!inDial(ex, ey)) continue;
+      const style = resolveEnemyDotStyle(world, eid, DOT_ENEMY_RADIUS);
       radarScratch.fillStyle(DOT_OUTLINE, 1);
-      radarScratch.fillCircle(ex, ey, DOT_ENEMY_RADIUS * scale + outline);
-      radarScratch.fillStyle(DOT_ENEMY, 1);
-      radarScratch.fillCircle(ex, ey, DOT_ENEMY_RADIUS * scale);
+      radarScratch.fillCircle(ex, ey, style.radius * scale + outline);
+      radarScratch.fillStyle(style.color, 1);
+      radarScratch.fillCircle(ex, ey, style.radius * scale);
     }
 
     const npcEids = query(world.ecs, [Npc, Position]);

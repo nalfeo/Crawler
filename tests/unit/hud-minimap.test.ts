@@ -114,9 +114,9 @@ describe('HudMinimap architectural guard', () => {
       source.indexOf('roomHasDiscoveredTile(room, floorMap, visited)'),
     );
     expect(source).toContain('for (const eid of enemies)');
-    expect(source).toContain('dotGraphics.fillStyle(DOT_ENEMY, 1);');
+    expect(source).toContain('resolveEnemyDotStyle(world, eid, DOT_ENEMY_RADIUS);');
     expect(source.indexOf('for (const eid of enemies)')).toBeLessThan(
-      source.indexOf('dotGraphics.fillStyle(DOT_ENEMY, 1);'),
+      source.indexOf('dotGraphics.fillStyle(style.color, 1);'),
     );
     expect(source).toContain('if (!visited[idx]) continue;');
   });
@@ -223,13 +223,13 @@ describe('HudMinimap small/docked radar architectural guards', () => {
     expect(source).toContain('radarRt.draw(radarScratch);');
   });
 
-  it('draws enemy blips on radarScratch in red', () => {
-    expect(source).toContain('radarScratch.fillStyle(DOT_ENEMY, 1);');
-    const enemyStyleIdx = source.indexOf('radarScratch.fillStyle(DOT_ENEMY, 1);');
-    const enemyCircleIdx = source.indexOf(
-      'radarScratch.fillCircle(ex, ey, DOT_ENEMY_RADIUS * scale)',
+  it('draws enemy blips on radarScratch tinted by resolveEnemyDotStyle', () => {
+    expect(source).toContain('radarScratch.fillStyle(style.color, 1);');
+    const styleIdx = source.indexOf(
+      'const style = resolveEnemyDotStyle(world, eid, DOT_ENEMY_RADIUS);',
     );
-    expect(enemyCircleIdx).toBeGreaterThan(enemyStyleIdx);
+    const enemyCircleIdx = source.indexOf('radarScratch.fillCircle(ex, ey, style.radius * scale)');
+    expect(enemyCircleIdx).toBeGreaterThan(styleIdx);
   });
 
   it('draws NPC blips on radarScratch in green', () => {
@@ -256,8 +256,12 @@ describe('HudMinimap small/docked radar architectural guards', () => {
   it('clears radarScratch before drawing blips to prevent cross-frame accumulation', () => {
     expect(source).toContain('radarScratch.clear();');
     const clearIdx = source.indexOf('radarScratch.clear();');
-    // clear must come before the enemy loop in drawRadar
-    const enemyLoopIdx = source.indexOf('radarScratch.fillStyle(DOT_ENEMY, 1);');
+    // clear must come before the enemy loop in drawRadar; the same helper is
+    // reused in drawDots (before clear) so search from clearIdx forward.
+    const enemyLoopIdx = source.indexOf(
+      'const style = resolveEnemyDotStyle(world, eid, DOT_ENEMY_RADIUS);',
+      clearIdx,
+    );
     expect(enemyLoopIdx).toBeGreaterThan(clearIdx);
   });
 
@@ -307,17 +311,17 @@ describe('HudMinimap enlarged overlay architectural guards', () => {
 
   it('draws discovered safe-room markers in teal (DOT_SAFE_ROOM = 0x2dd4bf)', () => {
     expect(source).toContain('const DOT_SAFE_ROOM = 0x2dd4bf;');
-    expect(source).toContain('? DOT_SAFE_ROOM');
+    expect(source).toContain('return DOT_SAFE_ROOM;');
   });
 
   it('draws boss-stair room markers in amber (DOT_BOSS_ROOM = 0xf59e0b)', () => {
     expect(source).toContain('const DOT_BOSS_ROOM = 0xf59e0b;');
-    expect(source).toContain('? DOT_BOSS_ROOM');
+    expect(source).toContain('return DOT_BOSS_ROOM;');
   });
 
   it('draws spawn room markers in blue (DOT_SPAWN_ROOM = 0x60a5fa)', () => {
     expect(source).toContain('const DOT_SPAWN_ROOM = 0x60a5fa;');
-    expect(source).toContain('? DOT_SPAWN_ROOM');
+    expect(source).toContain('return DOT_SPAWN_ROOM;');
   });
 
   it('draws staircase marker only when spawned and discovered by the player', () => {
@@ -327,8 +331,8 @@ describe('HudMinimap enlarged overlay architectural guards', () => {
     expect(stairsIdx).toBeGreaterThan(gateIdx);
   });
 
-  it('draws enemy blips on dotGraphics in red for the overlay', () => {
-    expect(source).toContain('dotGraphics.fillStyle(DOT_ENEMY, 1);');
+  it('draws enemy blips on dotGraphics using resolveEnemyDotStyle for the overlay', () => {
+    expect(source).toContain('dotGraphics.fillStyle(style.color, 1);');
   });
 
   it('draws NPC blips on dotGraphics in green for the overlay', () => {

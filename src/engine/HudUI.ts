@@ -18,6 +18,7 @@ import { createHudQuestTracker } from './HudQuestTracker.js';
 import { createHudAbilityBar } from './HudAbilityBar.js';
 import { createHudSkillTracker } from './HudSkillTracker.js';
 import { createHudDirectionArrows } from './HudDirectionArrows.js';
+import { createHudFamilyRelationships } from './HudFamilyRelationships.js';
 import { getUiScale, onUiScaleChange } from './ui-scale.js';
 import { GAME } from '../shared/constants.js';
 
@@ -50,6 +51,7 @@ export function createHudUI(scene: Phaser.Scene): {
   const bottomCenter = makeGroup(); // ability bar
   const topCenter = makeGroup(); // floor timer + boss bar
   const topRight = makeGroup(); // quest tracker
+  const bottomRight = makeGroup(); // family relationships (Floor 2)
 
   const healthBar = createHudHealthBar(scene, { parent: bottomLeft });
   const manaBar = createHudManaBar(scene, { parent: bottomLeft });
@@ -60,6 +62,7 @@ export function createHudUI(scene: Phaser.Scene): {
   const floorTimer = createHudFloorTimer(scene, { parent: topCenter });
   const bossBar = createHudBossBar(scene, { parent: topCenter });
   const questTracker = createHudQuestTracker(scene, { parent: topRight });
+  const familyRelationships = createHudFamilyRelationships(scene, { parent: bottomRight });
 
   // Minimap manages its own dynamic children/overlay and screen-space layout,
   // so it scales its docked radar dial internally (see HudMinimap.updateLayout)
@@ -72,7 +75,7 @@ export function createHudUI(scene: Phaser.Scene): {
 
   // Phaser containers render children in insertion order; pixel-ui builders set
   // explicit depths, so sort each group to preserve intended layering.
-  for (const group of [bottomLeft, bottomCenter, topCenter, topRight]) {
+  for (const group of [bottomLeft, bottomCenter, topCenter, topRight, bottomRight]) {
     group.sort('depth');
   }
 
@@ -89,6 +92,7 @@ export function createHudUI(scene: Phaser.Scene): {
       .setPosition(cx * (1 - bottomCenterScale), h * (1 - bottomCenterScale));
     topCenter.setScale(s).setPosition(cx * (1 - s), 0);
     topRight.setScale(s).setPosition(w * (1 - s), 0);
+    bottomRight.setScale(s).setPosition(w * (1 - s), h * (1 - s));
   }
 
   applyScale();
@@ -106,6 +110,7 @@ export function createHudUI(scene: Phaser.Scene): {
     questTracker.sync(world, playerEid);
     directionArrows.sync(world, playerEid);
     abilityBar.sync(world, playerEid);
+    familyRelationships.sync(world);
   }
 
   function destroy(): void {
@@ -121,10 +126,12 @@ export function createHudUI(scene: Phaser.Scene): {
     questTracker.destroy();
     directionArrows.destroy();
     abilityBar.destroy();
+    familyRelationships.destroy();
     bottomLeft.destroy();
     bottomCenter.destroy();
     topCenter.destroy();
     topRight.destroy();
+    bottomRight.destroy();
   }
 
   return { sync, isMapOverlayOpen: minimap.isOverlayOpen, destroy };
