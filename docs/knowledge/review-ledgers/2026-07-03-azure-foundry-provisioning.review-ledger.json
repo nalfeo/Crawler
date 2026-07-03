@@ -21,7 +21,15 @@
           "concerns_count": 0,
           "resolved_count": 0,
           "clean": true,
-          "notes": "code-review agent reviewed full working-tree diff; verified all 6 invariants (azure-openai default, aliases-not-model-ids, selector!=text, OpenAI-format-only, 3 deployments/4 env vars, no env.local clobber) plus PowerShell dot-source/param-clobber/secret-sync correctness. No significant issues."
+          "notes": "code-review agent over full working-tree diff: verified all 6 invariants + PowerShell dot-source/param-clobber/secret-sync correctness. No significant issues."
+        },
+        {
+          "round": 2,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true,
+          "notes": "Post-PR GitHub Copilot reviewer: 1 real test gap (guard regex SPRITES_\\w+_?PROVIDER missed a bare uncommented SPRITES_PROVIDER=foundry) + 2 doc/comment clarity items (ADR reserved-status term; factory test comment). All fixed in bdc3ab1b; ps1(54)+factory(18) re-run green; threads resolved."
         }
       ]
     }
