@@ -1,15 +1,15 @@
 # Tile post-processing pipeline template
 #
-# Tiles must be edge-to-edge with no processing:
+# Tiles must end edge-to-edge at their requested frame size:
 # - No background removal
-# - No transparent trimming
-# - No resizing
+# - Slice away transparent sheet/cell buffer with zero margin
+# - Stretch-resize exactly to brief.size
 #
-# Inherits from base.yml but disables trim/resize-specific steps.
+# Inherits from base.yml but disables background-specific steps.
 
 extends: base.yml
 name: tile-postprocess-pipeline
-description: Pipeline for tiles - edge-to-edge, no trim/resize/background-removal
+description: Pipeline for tiles - slice and exact edge-to-edge resize without background removal
 
 modules:
   background-removal:
@@ -19,10 +19,13 @@ modules:
     enabled: false
 
   transparent-trim:
-    enabled: false
+    enabled: true
+    params:
+      marginFraction: 0
+      minMarginPx: 0
 
   resize:
-    enabled: false
+    enabled: true
 
   background-rekey:
     enabled: false

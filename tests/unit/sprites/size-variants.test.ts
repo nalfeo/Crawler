@@ -15,6 +15,7 @@ import {
   isSizeVariant,
   SIZE_VARIANTS,
   SIZE_VARIANT_MULTIPLIERS,
+  resizeSpriteStrategy,
 } from '../../../scripts/sprites/size-variants.js';
 
 function enemyDefaults(): Record<string, unknown> {
@@ -34,6 +35,13 @@ const sheetOf = (v: unknown): Sheet => (v as { sheet: Sheet }).sheet;
 describe('SIZE_VARIANTS / multipliers', () => {
   it('exposes the four expected variants', () => {
     expect(SIZE_VARIANTS).toEqual(['default', 'wide', 'tall', 'large']);
+  });
+
+  describe('resizeSpriteStrategy', () => {
+    it('stretches tiles to their exact frame so postprocess cannot letterbox them', () => {
+      expect(resizeSpriteStrategy('tile', 256, 256)).toBe('stretch');
+      expect(resizeSpriteStrategy('tile', 256, 128)).toBe('stretch');
+    });
   });
 
   it('maps each variant to the documented width/height multipliers', () => {

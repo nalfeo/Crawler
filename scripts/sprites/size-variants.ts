@@ -51,14 +51,16 @@ export const SIZE_VARIANT_MULTIPLIERS: Readonly<Record<SizeVariant, SizeMultipli
 
 /**
  * Resize strategy for post-processing a sprite whose brief declares the given
- * sprite type and output dimensions. Tiles always use `'fit'` (exact frame);
- * non-tile variants use axis-priority strategies so the dominant axis is fully
- * occupied rather than letterboxed:
+ * sprite type and output dimensions. Tiles stretch to the exact frame after a
+ * transparent slice so they ship edge-to-edge instead of letterboxed; non-tile
+ * variants use axis-priority strategies so the dominant axis is fully occupied
+ * rather than letterboxed:
  *
  *   wide   (w >= 2*h) → 'width'  — lock width, allow height growth
  *   tall   (h >= 2*w) → 'height' — lock height, allow width growth
  *   large  (square, w===h, >=128) → 'cover' — max occupancy, expand secondary axis
- *   other             → 'fit'    — nearest-fit inside frame (original behavior)
+ *   tile              → 'stretch' — exact W×H frame, no transparent gutters
+ *   other             → 'fit'     — nearest-fit inside frame (original behavior)
  *
  * Exported so `postprocess.ts`, `sensors/common.ts`, and `build-prompt.ts`
  * all derive the same answer from the same source of truth.
@@ -67,8 +69,8 @@ export function resizeSpriteStrategy(
   type: string,
   width: number,
   height: number,
-): 'fit' | 'width' | 'height' | 'cover' {
-  if (type === 'tile') return 'fit';
+): 'fit' | 'width' | 'height' | 'cover' | 'stretch' {
+  if (type === 'tile') return 'stretch';
   if (width >= height * 2) return 'width';
   if (height >= width * 2) return 'height';
   if (width === height && width >= 128) return 'cover';
