@@ -2,7 +2,9 @@
 
 ## Status
 
-Proposed
+Accepted (2026-07-03) — delivered incrementally; see **Migration Phases**.
+Phase 1 and the Phase 2 groundwork are implemented; the Phase 2 default flip and
+Phases 3–4 remain tracked follow-ups.
 
 ## Date
 
@@ -109,7 +111,15 @@ deterministic gates only (ADR‑0003); the model router never lands in a gate.
 
 ## Migration Phases
 
-1. Factory `foundry` mode + `FOUNDRY_*` env + mocked tests + this ADR (Proposed→Accepted).
-2. Live image+text on Foundry default; re-baseline sensors/judge.
+1. ✅ **Done** — Factory `foundry` mode + `FOUNDRY_*` env + mocked tests + this ADR.
+2. **Groundwork landed (operator opt-in); default flip pending.**
+   - ✅ `setup:azure:foundry` provisions an `AIServices` resource + the
+     **OpenAI-format** starter catalog (`gpt-image-1`, `gpt-4o` shared by
+     text+vision, `gpt-4o-mini` brief selector) and writes `FOUNDRY_*` creds.
+     `azure-openai` stays default — `SPRITES_*_PROVIDER=foundry` selectors are
+     written **commented**. See `infra/README.md` → "Azure AI Foundry".
+   - ⏳ Flip live image+text to Foundry by default; re-baseline sensors/judge.
 3. Entra/MI auth; deprecate `AZURE_OPENAI_*`.
-4. Wire model router; record label.
+4. **Non-OpenAI catalog + router.** FLUX/SDXL/Llama/Phi and the model **router**
+   need the Azure AI **Model-Inference** route (not `/openai/deployments/{alias}`),
+   i.e. a provider URL change — explicitly out of scope for Phase 2 groundwork.
