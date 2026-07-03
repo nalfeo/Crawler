@@ -129,6 +129,11 @@ function createFamilyBossDenLab(canvasHost: HTMLElement, controls: HTMLElement):
     };
     const gen = new CaveSystemGenerator({ presentCount: roster.presentFamilies.length });
     const floorMap = gen.generate(smallCaveConfig(state.seed), new SeededRandom(state.seed));
+    // Assign the generated map to the world so the Force Win actions drive the
+    // real stair pop: floor2VictorySystem -> popFloor2ResourceHeartStairs ->
+    // findResourceHeartStairTile reads world.floorMap (createGameWorld inits it
+    // null, so without this the stairs never pop in the lab).
+    w.floorMap = floorMap;
     objectives = initializeFloor2Bosses(w, floorMap, w.floor2State);
     world = w;
     render();
