@@ -19,8 +19,8 @@ describe('createFloor1GameConfig', () => {
   it('makes the main game boot through the shared helper', () => {
     const source = readFileSync('src/main.ts', 'utf-8');
 
-    expect(source).toContain(
-      "const config = createFloor1GameConfig('game-container', createFloor1MainSceneOptions());",
-    );
+    // main.ts now uses createFloorGameConfig (floor-aware) and reads ?floor= URL param
+    expect(source).toContain('createFloorGameConfig');
+    expect(source).toContain('createFloorMainSceneOptions');
   });
 });

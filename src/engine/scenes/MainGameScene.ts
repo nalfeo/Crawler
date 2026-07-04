@@ -94,6 +94,8 @@ const DIRECTOR_COMMENTARY_MS = 3600;
 const MOBILE_CORNER_BUTTON_MAX_SCALE = 1.4;
 const INTERACTION_HINT_MAX_SCALE = 1.25;
 const INTERACTION_HINT_BOTTOM_MARGIN = 12;
+/** Interaction radius (ft) for the Floor 2 exit staircase marker. Mirrors Floor 1's markerRadiusFt. */
+const FLOOR2_STAIR_RADIUS_FT = 8.0;
 const FLOOR_1_COMMENTARY = {
   intro: 'Floor 1 opens. Rhea Vale enters the dungeon and the cameras are rolling.',
   questAccepted: 'Tutorial Goon unlocks XP drops. First milestone: hit level 2 for the audience.',
@@ -2040,8 +2042,49 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private updateObjectiveMarkers(): void {
+    const floor2State = this.world.floor2State;
     if (!this.world.floor1) {
-      this.staircaseMarker?.setVisible(false);
+      // Floor 2: show exit staircase marker once victory fires and stairs pop
+      if (
+        floor2State?.staircaseSpawned &&
+        !floor2State.staircaseDiscovered &&
+        floor2State.staircasePos
+      ) {
+        const staircaseX = ftToPx(floor2State.staircasePos.x);
+        const staircaseY = ftToPx(floor2State.staircasePos.y);
+        const markerRadiusPx = ftToPx(FLOOR2_STAIR_RADIUS_FT);
+        if (!this.staircaseMarker) {
+          this.staircaseMarker = this.add
+            .circle(staircaseX, staircaseY, markerRadiusPx, 0x10b981, 0.25)
+            .setStrokeStyle(2, 0x86efac, 0.95)
+            .setDepth(20);
+        }
+        this.staircaseMarker.setPosition(staircaseX, staircaseY);
+        this.staircaseMarker.setRadius(markerRadiusPx);
+        this.staircaseMarker.setFillStyle(0x10b981, 0.25);
+        this.staircaseMarker.setStrokeStyle(2, 0x86efac, 0.95);
+        this.staircaseMarker.setVisible(true);
+        if (!this.stairsLabel) {
+          this.stairsLabel = this.add
+            .text(staircaseX, staircaseY - markerRadiusPx - 10, '▼ EXIT', {
+              fontFamily: 'monospace',
+              fontSize: '13px',
+              color: '#fef9c3',
+              backgroundColor: '#422006cc',
+              padding: { x: 8, y: 4 },
+              align: 'center',
+            })
+            .setOrigin(0.5, 1)
+            .setDepth(25)
+            .setVisible(false);
+        }
+        this.stairsLabel.setPosition(staircaseX, staircaseY - markerRadiusPx - 10);
+        this.stairsLabel.setColor('#86efac');
+        this.stairsLabel.setVisible(true);
+      } else {
+        this.staircaseMarker?.setVisible(false);
+        this.stairsLabel?.setVisible(false);
+      }
       this.updateNpcQuestIndicators();
       return;
     }
@@ -2254,6 +2297,12 @@ export class MainGameScene extends Phaser.Scene {
       this.floorCompletionBodyText?.setText(
         'You ran out of time before reaching the stairs.\nTry again and move faster through objectives.',
       );
+    } else if (this.world.floor2State?.staircaseDiscovered) {
+      this.floorCompletionTitleText?.setText('Victory!');
+      this.floorCompletionSubtitleText?.setText('Floor 2 complete!');
+      this.floorCompletionBodyText?.setText(
+        'Congratulations — you escaped the dungeon!\nMore floors coming soon...',
+      );
     } else {
       this.floorCompletionTitleText?.setText('Game Over');
       this.floorCompletionSubtitleText?.setText('Floor 1 complete!');
@@ -2347,13 +2396,14 @@ export class MainGameScene extends Phaser.Scene {
     this.queuedInteraction = false;
     this.queuedConversationClose = false;
 
-    if (!this.world.floor1 || this.world.state !== 'playing') {
+    if ((!this.world.floor1 && !this.world.floor2State) || this.world.state !== 'playing') {
       this.interactionHint?.setVisible(false);
       this.dialogueBox?.hide();
       return;
     }
 
-    const objective = this.world.floor1.objective;
+    const floor1Objective = this.world.floor1?.objective;
+    const floor2State = this.world.floor2State;
     const playerX = this.world.stores.position.x[this.playerEid] ?? 0;
     const playerY = this.world.stores.position.y[this.playerEid] ?? 0;
 
@@ -2411,13 +2461,22 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
-    // Check stair proximity (only when unlocked and not yet discovered)
-    const nearStairs =
-      objective.staircaseUnlocked &&
-      objective.staircaseSpawned &&
-      !objective.staircaseDiscovered &&
-      Math.hypot(playerX - objective.staircasePos.x, playerY - objective.staircasePos.y) <=
-        objective.markerRadiusFt;
+    // Check stair proximity — floor-aware (Floor 1 vs Floor 2)
+    const nearStairs = floor2State
+      ? floor2State.staircaseUnlocked === true &&
+        floor2State.staircaseSpawned === true &&
+        floor2State.staircaseDiscovered !== true &&
+        floor2State.staircasePos !== undefined &&
+        Math.hypot(playerX - floor2State.staircasePos.x, playerY - floor2State.staircasePos.y) <=
+          FLOOR2_STAIR_RADIUS_FT
+      : floor1Objective !== undefined &&
+        floor1Objective.staircaseUnlocked &&
+        floor1Objective.staircaseSpawned &&
+        !floor1Objective.staircaseDiscovered &&
+        Math.hypot(
+          playerX - floor1Objective.staircasePos.x,
+          playerY - floor1Objective.staircasePos.y,
+        ) <= floor1Objective.markerRadiusFt;
 
     if (nearNpcEid >= 0) {
       this.interactionHint?.setText('Talk').setVisible(true);
@@ -2464,13 +2523,20 @@ export class MainGameScene extends Phaser.Scene {
         this.modalPicker
       ) {
         if (!this.modalPicker.isOpen()) {
+          const isFloor2 = floor2State !== null;
           this.modalPicker.open(
             {
-              title: 'Proceed to the next floor?',
-              subtitle: 'You are at the stairs.',
-              body: 'The boss is defeated. Are you ready to descend to the next floor?',
+              title: isFloor2 ? 'Victory! Ready to exit?' : 'Proceed to the next floor?',
+              subtitle: isFloor2 ? 'You are at the exit.' : 'You are at the stairs.',
+              body: isFloor2
+                ? 'Floor 2 is cleared. Are you ready to exit the dungeon?'
+                : 'The boss is defeated. Are you ready to descend to the next floor?',
               options: [
-                { id: 'confirm-descend', label: 'Yes, descend now', description: 'Start Floor 2.' },
+                {
+                  id: 'confirm-descend',
+                  label: isFloor2 ? 'Yes, exit now' : 'Yes, descend now',
+                  description: isFloor2 ? 'You win!' : 'Start Floor 2.',
+                },
               ],
               allowCancel: true,
               initialSelectedId: 'confirm-descend',

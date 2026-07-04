@@ -33,11 +33,17 @@ import {
 export const LIGHTING_VIEW_BUFFER_PX = 64;
 
 /**
- * The floor-run terminal outcome, if the run has reached one. Mirrors the
- * former `MainGameScene.getFloorRunOutcome()` — only `cleared_floor` and
- * `failed_timeout` are treated as terminal; anything else is `null`.
+ * The floor-run terminal outcome, if the run has reached one. Handles both
+ * Floor 1 (runSummary) and Floor 2 (staircaseDiscovered) terminal states.
+ * Only `cleared_floor` and `failed_timeout` are treated as terminal; anything
+ * else is `null`.
  */
 export function getFloorRunOutcome(world: GameWorld): 'cleared_floor' | 'failed_timeout' | null {
+  // Floor 2: player confirmed exit descent → victory
+  if (world.floor2State?.staircaseDiscovered === true) {
+    return 'cleared_floor';
+  }
+  // Floor 1
   const outcome = world.floor1?.runSummary?.outcome;
   if (outcome === 'cleared_floor' || outcome === 'failed_timeout') {
     return outcome;
