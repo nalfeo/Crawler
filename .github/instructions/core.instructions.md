@@ -4,7 +4,7 @@ applyTo: 'src/core/**'
 
 # Core Layer Instructions
 
-This is the pure ECS layer. ALL game logic lives here as bitecs systems.
+This is the pure ECS layer. Reusable ECS primitives and cross-floor simulation systems live here. Floor- and game-specific orchestration systems may live in `src/game/`.
 
 ## Rules
 

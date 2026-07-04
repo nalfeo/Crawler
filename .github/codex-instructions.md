@@ -1,5 +1,11 @@
 # Codex Repair Instructions
 
+> **Scope:** These instructions apply **only** to the GitHub Actions
+> `codex-repair` workflow (see `.github/workflows/` + `.github/scripts/codex/`).
+> They are consumed by the codex-repair session driver and are **not** general
+> guidance for interactive Copilot sessions. In particular, the required output
+> file below is a workflow contract — do not write it from any other context.
+
 You are running inside the GitHub Actions codex-repair workflow.
 
 ## Goals
@@ -29,7 +35,8 @@ For each unresolved review thread in context:
 
 ## Required output file
 
-Write `.github/scripts/codex/runtime/codex-result.json` with:
+_Applies only inside the codex-repair GitHub Actions workflow._ Write
+`.github/scripts/codex/runtime/codex-result.json` with:
 
 ```json
 {

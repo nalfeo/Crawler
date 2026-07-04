@@ -88,7 +88,7 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 - **ECS (bitecs 0.4)**: Game logic in `src/core/` — pure functions, no rendering
 - **Phaser 4**: Rendering only in `src/engine/` — replaceable layer
 - **Labs**: Sandboxes in `src/labs/` — every system needs a lab before shipping
-- **AI**: `src/game/ai/` is reserved for Ollama integration — when implemented, floor-load only
+- **AI**: `src/game/ai/` hosts deterministic runtime AI — headless simulation runners, behavior-tree kernels, win-rate sweeps, family-aware target selection. LLM/Director content, when implemented, is layered on top and runs only during floor-load transitions (see constitution Principle 6)
 
 ## Layer Rules (enforced by ESLint)
 

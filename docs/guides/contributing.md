@@ -58,11 +58,40 @@ This is the minimum bar before pushing branch updates.
 Before a pull request, run:
 
 ```bash
-npm run verify
+npm run verify                # includes typecheck, lint, format, guard tests,
+                              # check:wired-systems, unit + integration,
+                              # PR prereqs, and vite build
+npm run verify:pr-prereqs     # run standalone if you want just the PR-shape checks
 bash scripts/agent/lab-gate-check.sh
 ```
 
-If the change adds or touches an ECS system, the lab gate is mandatory.
+Add `VERIFY_COVERAGE=1` to include coverage locally; add `VERIFY_FULL=1` to also
+run the headless Floor 1 win-rate gate. CI enforces coverage, headless, and e2e
+independently as required merge-gate inputs.
+
+If the change adds or touches an ECS system, the lab gate is mandatory and the
+real-pipeline wiring guard (`check:wired-systems`, ADR 0039) must pass — a lab
+alone is not sufficient proof that the system runs in the real game or headless
+pipeline.
+
+## 6a. Apple-scaled review harness (before requesting review)
+
+Before opening or updating a PR that touches code, run the apple-scaled review
+harness and append the result to the review ledger. See
+[`.github/skills/review-harness/SKILL.md`](../../.github/skills/review-harness/SKILL.md)
+and [`docs/agent-os/policies/review-harness-policy.md`](../agent-os/policies/review-harness-policy.md).
+Record the apple estimate (declared before writing code) and actuals + verdict
+at handoff time per
+[`docs/agent-os/policies/complexity-policy.md`](../agent-os/policies/complexity-policy.md).
+
+## 6b. Observe before done (real-artifact validation)
+
+For any change that adds/moves a system or alters runtime behavior, name the
+**real pipeline artifact** you observed the behavior in — `npm run dev`, the
+headless runner (`src/game/ai/headless-runner.ts`), or a win-rate sweep. A green
+lab proves isolated correctness but can never prove the real game or headless
+pipeline actually calls the system. See constitution Principle 13 and rule #14
+in `AGENTS.md`.
 
 ## 7. Open a reviewable PR
 

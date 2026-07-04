@@ -10,9 +10,11 @@ Crawler is a crafting-focused vampire-survivors-like set inside a brutal interga
 
 The model provides reasoning. The harness is everything else: tools, memory, sandbox, context, gates, sensors, loops, policies. LLMs are for creative pursuits only. All enforcement is deterministic.
 
-### 2. Lab-Gated Development
+### 2. Lab-Gated Development + Real-Pipeline Wiring
 
-No ECS system ships to production without a corresponding lab sandbox. Labs live in `src/labs/<system>-lab/`. This is enforced by CI, not by instructions alone.
+No ECS system ships to production without a corresponding lab sandbox. Labs live in `src/labs/<system>-lab/`. Lab coverage is enforced by `scripts/agent/lab-gate-check.sh` (currently scoped to `src/core/systems`).
+
+Lab-only proof is **insufficient** for wiring/behavior changes: any `*System` exported from `src/core/**` or `src/game/**` must also be referenced by a real runtime wiring site (`src/bootstrap/floor-main-scene-options.ts`, `src/engine/sim/simulation-step.ts`, `src/game/ai/simulation-step.ts`, `src/game/ai/headless-runner.ts`, `src/engine/scenes/MainGameScene.ts`) or explicitly allowlisted in `scripts/agent/health/orphaned-systems-lib.ts` with a reason. Enforced by `npm run check:wired-systems` (ADR 0039). See rule #15 in `AGENTS.md`.
 
 ### 3. Deterministic CI Only
 
@@ -26,9 +28,14 @@ All game randomness uses `SeededRandom` — never `Math.random()`. All time uses
 
 Game logic lives entirely in bitecs systems (pure functions). Phaser is a replaceable rendering layer. `src/core/` never imports from `src/engine/`.
 
-### 6. AI Content During Load Only
+### 6. Generated Content Load-Only; Deterministic AI Runtime
 
-Ollama (The Director) generates content during floor-load transitions. Never mid-gameplay. Always provide static JSON fallbacks. Validate with Zod schemas.
+Two distinct AI layers coexist and must not be conflated:
+
+- **LLM / Director-generated content** (Ollama, "The Director"), when implemented, runs **only during floor-load transitions** — never mid-gameplay. It must have static JSON fallbacks and be validated with Zod schemas.
+- **Deterministic runtime AI** — headless simulation runners (`src/game/ai/headless-runner-cli.ts`, `simulation-step.ts`), behavior-tree kernels (`src/game/ai/behavior-tree.ts`), family-aware AI (`src/game/systems/familyFeudSystem.ts`), and win-rate sweeps (`ai:hill-climb`, `ai:winrate-sweep`, `ai:weapon-sweep`) — is a normal game system. It runs every frame, uses seeded randomness and delta/frame time, and must be validated through the real pipeline, not just labs.
+
+Neither layer may call `Math.random()` or `Date.now()`.
 
 ### 7. Memory Governance
 
@@ -71,7 +78,23 @@ This means:
 - Every boolean or enum UX state must appear in the snapshot so the AI can observe it.
 - Every user-triggerable action must have a corresponding programmatic entry point callable from the control interface.
 
-CI enforcement: the lab-gate check (`scripts/agent/lab-gate-check.sh`) must verify that any lab hosting interactive UX exports both a snapshot and a control interface.
+CI enforcement: `scripts/agent/lab-gate-check.sh` currently enforces the system-→-lab coverage mapping for `src/core/systems`. The snapshot/control-interface contract above is a project rule verified today by tests and code review; a dedicated CI checker for `window.__<camelLabId>Debug()` / `Control` exports remains a TODO, and until it lands, PRs that add interactive UX labs must cite the snapshot + control functions in their description.
+
+### 13. Observe Before Done (Real Artifact Validation)
+
+For any change that adds/moves a system or alters runtime behavior, the "observe before done" note must name the **real pipeline artifact** the change was observed in — the game (`npm run dev`), the headless runner (`src/game/ai/headless-runner.ts`), or a win-rate gate — never a lab. Labs prove isolated correctness; they can never prove the real game or headless pipeline actually calls the system. This rule exists because `spawnerSystem` shipped fully inert — lab-proven, ADR'd, merged — yet never referenced by either real pipeline (ADR 0034 → ADR 0036).
+
+### 14. Never Weaken Human Requirements to Pass a Gate
+
+Explicit human requirements (from the user, spec, or ADR) are load-bearing. If a test, gate, or lint blocks progress, fix the code — never soften the requirement, lower a threshold, add a skip, or delete an assertion to make CI pass. If a requirement is genuinely wrong, raise it explicitly with the human and record the revision in a handoff or ADR.
+
+### 15. Win-Rate, Not Cherry-Picked Seeds
+
+Gameplay balance is tuned against **deterministic seed sweeps** (e.g. `ai:winrate-sweep`, headless Floor gates). The 90 %+ win-rate target is a rate over many seeds; never adjust code to rescue a specific seed at the expense of the aggregate rate. Governor/balance changes must cite the sweep before and after.
+
+### 16. Apple-Scaled Review Harness
+
+Before opening a PR that touches code, run the apple-scaled review harness and append the result to the review ledger (`scripts/agent/review/ledger.mjs`). Apple complexity is declared before writing code and scored at handoff (see `docs/agent-os/policies/complexity-policy.md` and `.github/skills/review-harness/SKILL.md`).
 
 ## Architectural Boundaries
 

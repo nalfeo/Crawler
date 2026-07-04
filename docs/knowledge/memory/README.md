@@ -34,6 +34,7 @@ Each note uses Basic Memory's conventions so it can be parsed into a graph:
 - [[Conventions and Invariants]]
 - [[Systems Map]]
 - [[Decisions Index]]
+- [[Current State 2026-07-03]] (latest — supersedes 2026-06-26)
 - [[Current State 2026-06-26]]
 
 ## Enabling Basic Memory
