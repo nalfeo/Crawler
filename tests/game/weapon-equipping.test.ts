@@ -14,7 +14,7 @@
 import { describe, it, expect } from 'vitest';
 import { spawnPlayer } from '../../src/core/spawners/combatants.js';
 import { equip, unequip, getEquipmentState } from '../../src/core/systems/equipmentSystem.js';
-import { getActiveWeaponDef } from '../../src/core/active-weapon.js';
+import { getActiveWeaponDef, clearActiveWeaponDef } from '../../src/core/active-weapon.js';
 import {
   getEquipmentDefForItem,
   getEquipmentDefForStarterWeapon,
@@ -194,5 +194,14 @@ describe('equipStarterOrFallback', () => {
 
     expect(equipped).toBe(false);
     expect(getActiveWeaponDef(world)?.id).toBe('sword');
+  });
+});
+
+describe('clearActiveWeaponDef (direct)', () => {
+  it('is a no-op when no weapon is currently active', () => {
+    const world = createTestWorld();
+    // Nothing set yet — calling clear should not throw and leaves state undefined
+    expect(() => clearActiveWeaponDef(world)).not.toThrow();
+    expect(getActiveWeaponDef(world)).toBeUndefined();
   });
 });

@@ -392,3 +392,19 @@ describe('equipment integration (Merchant’s Charm HoT)', () => {
     expect(heal!.value).toBeLessThanOrEqual(1);
   });
 });
+
+describe('statusEffectSystem — orphaned-entity cleanup', () => {
+  it('drops effects for an entity removed via removeEntity without clearEntityStores', () => {
+    const world = createTestWorld();
+    const eid = createEntity(world);
+    applyStatusEffect(world, eid, CHILL);
+    expect(getStatusEffects(world, eid)).toHaveLength(1);
+
+    // Remove entity directly, bypassing clearEntityStores (the secondary safety-net path)
+    removeEntity(world.ecs, eid);
+
+    // statusEffectSystem should detect the orphaned entry and delete it
+    tick(world, 1);
+    expect(getStatusEffects(world, eid)).toHaveLength(0);
+  });
+});

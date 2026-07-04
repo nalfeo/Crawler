@@ -1,0 +1,20 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-04",
+  "session_slug": "coverage-pass",
+  "task_title": "Improve unit test coverage across core/game/shared",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4-5",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "notes": "",
+      "model": "claude-sonnet-4-5",
+      "summary": "Coverage-only change: adds test cases for existing exported functions. No new production code. All branches targeted are real uncovered paths. No logic changes, no regression risk.",
+      "concerns": [],
+      "verdict": "approved"
+    }
+  }
+}

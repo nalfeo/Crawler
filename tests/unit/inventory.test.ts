@@ -104,6 +104,21 @@ describe('InventoryBag', () => {
     it('throws for unknown item ids', () => {
       expect(() => addItem(bag, 'unknown-item', 1, testCatalog)).toThrow('Unknown itemId');
     });
+
+    it('throws when an item def has maxStack <= 0', () => {
+      const badCatalog: ItemDef[] = [
+        {
+          id: 'bad-item',
+          name: 'Bad Item',
+          description: 'An item with invalid maxStack',
+          tags: [],
+          rarity: ItemRarity.Common,
+          maxStack: 0,
+          icon: 'bad-item',
+        },
+      ];
+      expect(() => addItem(bag, 'bad-item', 1, badCatalog)).toThrow('Invalid maxStack');
+    });
   });
 
   describe('removeItem', () => {
