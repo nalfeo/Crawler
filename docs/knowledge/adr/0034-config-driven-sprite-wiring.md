@@ -4,6 +4,10 @@
 **Status:** Accepted  
 **Affected Systems:** src/core (dropSystem), src/engine (PhaserBridge, InventoryUI), src/game (spawners)
 
+## Status
+
+Accepted (2026-06-30).
+
 ## Context
 
 Sprite wiring was scattered across multiple files:

@@ -4,6 +4,10 @@
 **Status:** Accepted  
 **Scope:** src/shared (spec types), src/core (runtime helpers, ECS system, world sidecar, entity lifecycle), src/game + src/engine (speed read-site fold-ins, pipeline wiring), src/core/systems/equipmentSystem (data-driven source)
 
+## Status
+
+Accepted (2026-07-02).
+
 ## Estimated Complexity
 
 🍎 x 4 — one new generic ECS system plus a sidecar data model, two sim-pipeline
@@ -31,7 +35,7 @@ layer boundary, driven from the fixed-step frame clock.
    (`StatusEffectSpec`) lives in `src/shared/status-effect-types.ts` so
    `EquipmentItemDef` (also in `src/shared`) can reference it — `src/shared` cannot
    import `src/core`. Runtime helpers and the ECS system live in `src/core`
-   (`status-effects.ts`, `systems/statusEffectSystem.ts`). `StatusEffect` extends the
+   (`src/core/status-effects.ts`, `src/core/systems/statusEffectSystem.ts`). `StatusEffect` extends the
    spec with a mutable `remainingMs` (`Infinity` for persistent effects).
 
 2. **Sidecar map, not a component store.** Active effects live in
@@ -86,8 +90,8 @@ sourceType:sourceId:stat:op`: `replace` (overwrite same-key — idempotent
    fixed `GAME.DELTA_MS` (`1000/60`) per frame — never `Date.now()`/`performance.now()`,
    never `Math.random()`. `statusEffectSystem` runs in the same relative slot in both
    sim pipelines: injected via `preSystems` in the visual step
-   (`floor-main-scene-options.ts` → `engine/sim/simulation-step.ts`) and hardcoded in
-   the headless step (`game/ai/simulation-step.ts`). In both cases it runs **after**
+   (`src/bootstrap/floor-main-scene-options.ts` → `src/engine/sim/simulation-step.ts`) and hardcoded in
+   the headless step (`src/game/ai/simulation-step.ts`). In both cases it runs **after**
    both speed read-sites — `playerInputSystem` (which runs before all `preSystems`) and
    `enemyAISystem` — so player and enemy effective-speed folds observe the **same
    pre-expiry effect set** every frame (no 1-frame expiry skew between player and enemy
@@ -98,7 +102,7 @@ sourceType:sourceId:stat:op`: `replace` (overwrite same-key — idempotent
    symmetry.
 
 9. **Authoritative recycled-EID cleanup.** `clearEntityStores`
-   (`spawners/entity-core.ts`, the sole non-lab creation path) deletes
+   (`src/core/spawners/entity-core.ts`, the sole non-lab creation path) deletes
    `statusEffectsByEntity[eid]`, so a recycled bitecs EID can never inherit a dead
    entity's effects. The system's `entityExists` sweep is only secondary memory
    hygiene.

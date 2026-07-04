@@ -4,6 +4,10 @@
 **Status:** Accepted  
 **Scope:** src/core (ECS state), src/engine (PhaserBridge texture resolution), src/game (spawn paths)
 
+## Status
+
+Accepted (2026-06-30).
+
 ## Context
 
 Mobs with multi-variant generated art (slime, rat) were only using a single variant each. Players saw the same visual every spawn, reducing visual variety. Size variation (+/-10% per mob) was requested to enhance perceived differentiation and tie to weight for physics coherence.

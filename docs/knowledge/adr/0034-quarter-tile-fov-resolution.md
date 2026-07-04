@@ -4,6 +4,10 @@
 **Status:** Accepted  
 **Deciders:** Agent session (nalfeo-feat-quarter-tile-fov)
 
+## Status
+
+Accepted (2026-06-30). Amended 2026-07-02 (see amendment section below).
+
 ## Context
 
 The FOV/fog-of-war system previously operated at full-tile granularity. The

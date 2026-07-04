@@ -4,6 +4,10 @@
 **Status:** Accepted  
 **Affected Systems:** review harness (`scripts/agent/review/ledger.mjs`), `pr-review-ledger` guard, review-harness skill + policy docs, persona docs
 
+## Status
+
+Accepted (2026-07-02).
+
 ## Estimated Complexity
 
 🍎 × 3 — one source-of-truth function plus its tests and guard help text, and a
