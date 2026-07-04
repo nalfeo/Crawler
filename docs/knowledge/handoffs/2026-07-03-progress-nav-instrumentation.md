@@ -28,9 +28,11 @@ Metric file: `docs/knowledge/metrics/apples/2026-07-03-progress-nav-instrumentat
   - Raw debug payloads include `criticalChainPhase` so future slices can distinguish pre-chain/shop/spell-broker/staircase suppression.
   - State-transition notes compare emitted string labels, so entry/exit from `suppressedProgressNav` is visible in JSONL.
   - `summarizeEvents()` naturally reports `suppressedProgressNav` as its own `stateMs` / `statePct` bucket.
+  - `RunStats.aiTelemetry` now rolls up per-poll `decisionStateCounts`, `decisionStateMs`, `suppressedProgressNavCount`, and `suppressedProgressNavMs` so batch consumers can detect the stall class without parsing JSONL.
 - Added tests.
   - `tests/game/behavior-tree-ai.test.ts` proves suppression fallback keeps `AIState.EXPLORE`, attaches `suppressedProgressNav`, records the blocked progress target, and clones debug payloads on read.
   - `tests/unit/ai-event-log.test.ts` proves summary bucketing, JSONL preservation, and event-state label selection.
+  - `tests/headless/headless-runner-telemetry.test.ts` proves the headless runner rolls telemetry-only decision labels into `RunStats.aiTelemetry`.
 
 ## Files touched
 
@@ -40,16 +42,22 @@ Metric file: `docs/knowledge/metrics/apples/2026-07-03-progress-nav-instrumentat
 - `src/game/ai/headless-runner.ts`
 - `tests/game/behavior-tree-ai.test.ts`
 - `tests/game/auto-progression-npc.test.ts`
+- `tests/headless/headless-runner-telemetry.test.ts`
 - `tests/unit/ai-event-log.test.ts`
 - `docs/knowledge/review-ledgers/2026-07-03-progress-nav-instrumentation.review-ledger.json`
 - `docs/knowledge/metrics/apples/2026-07-03-progress-nav-instrumentation.json`
 - `docs/knowledge/metrics/guard-telemetry/2026-07-03-progress-nav-instrumentation.json`
+- `docs/knowledge/metrics/guard-telemetry/2026-07-04-progress-nav-instrumentation.json`
 
 ## Supporting evidence from stood-down Spell Broker slice
 
-Read the preserved salvage-branch handoff via `origin/nalfeo-floor1-spell-broker-timing-guard:docs/knowledge/handoffs/2026-07-03-floor1-spell-broker-chain-timing.md`.
+Read the preserved salvage-branch audit docs from `origin/nalfeo-floor1-spell-broker-timing-guard`:
 
-- PR #737 was closed/stood down; branch `nalfeo-floor1-spell-broker-timing-guard` is salvage only.
+- `docs/knowledge/handoffs/2026-07-03-floor1-spell-broker-chain-timing.md`
+- `docs/knowledge/metrics/apples/2026-07-03-floor1-spell-broker-chain-timing.json`
+- `docs/knowledge/review-ledgers/2026-07-03-floor1-spell-broker-chain-timing.review-ledger.json`
+
+- PR #737 was closed/stood down; branch `nalfeo-floor1-spell-broker-timing-guard` is salvage/docs-only. Reviewed chain-filtering code is preserved only at closed PR #737 commit `009807ce` for salvage/reference, not as a dependency for this PR.
 - That session found the pre-classified Spell Broker bucket was **0/14 baseline** and **0/14 post-chain-filtering**, with byte-identical dominant EXPLORE percentages.
 - Interpretation from the handoff: those seeds wedge in pre-chain phases before `chainStatus.onCriticalPath` can arm; root cause is `progressGoalSuppressedUntilFrame` wedge-thrash around fixed-position NPC/room progress targets.
 - This slice consumes PR #735's shipped phase names directly and keeps the Spell Broker chain timing work as supporting evidence, not a gameplay fix dependency.
@@ -57,15 +65,16 @@ Read the preserved salvage-branch handoff via `origin/nalfeo-floor1-spell-broker
 ## Verification
 
 - `npx vitest run tests/unit/ai-event-log.test.ts tests/game/behavior-tree-ai.test.ts --reporter=dot` - green, 54 tests.
+- `npx vitest run tests/headless/headless-runner-telemetry.test.ts` - green, 1 test.
 - `npm run verify:fast` - green, 123 tests.
 - `npm run verify:game` - green, 618 tests.
 - `npm run verify` - green.
 - `bash scripts/agent/lab-gate-check.sh` - green.
 - `npm run verify:pr-prereqs` - green.
-- `npm run telemetry:capture -- progress-nav-instrumentation` - wrote `docs/knowledge/metrics/guard-telemetry/2026-07-03-progress-nav-instrumentation.json`.
+- `npm run telemetry:capture -- progress-nav-instrumentation` - wrote `docs/knowledge/metrics/guard-telemetry/2026-07-03-progress-nav-instrumentation.json` and refreshed `docs/knowledge/metrics/guard-telemetry/2026-07-04-progress-nav-instrumentation.json`.
 - Review harness:
   - Plan review: `gpt-5.4`; 2 concerns, both resolved.
-  - Code review: `claude-sonnet-4.6`; 2 rounds, clean.
+  - Code review: `claude-sonnet-4.6`; 4 rounds, clean.
   - Ledger validated: `docs/knowledge/review-ledgers/2026-07-03-progress-nav-instrumentation.review-ledger.json`.
 
 ## Headless artifacts
@@ -75,18 +84,20 @@ Artifacts are under:
 
 Representative requested/nearby runs:
 
-| Run                 | Summary                                                                                                                    | Result                                |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| sword seed 36       | `sword-36-summary.json`, `sword-36.jsonl`, `sword-36-console.txt`                                                          | victory; `suppressedProgressNav` 0 ms |
-| sword seed 2        | `sword-2-summary.json`, `sword-2.jsonl`, `sword-2-console.txt`                                                             | victory; `suppressedProgressNav` 0 ms |
-| sword seed 7 sample | `sword-7-spell-broker-sample-summary.json`, `sword-7-spell-broker-sample.jsonl`, `sword-7-spell-broker-sample-console.txt` | victory; `suppressedProgressNav` 0 ms |
+| Run                 | Summary                                                                                                                                                                 | Result                                |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| sword seed 36       | `sword-36-summary.json`, `sword-36-runstats.json`, `sword-36.jsonl`, `sword-36-console.txt`                                                                             | victory; `suppressedProgressNav` 0 ms |
+| sword seed 2        | `sword-2-summary.json`, `sword-2-runstats.json`, `sword-2.jsonl`, `sword-2-console.txt`                                                                                 | victory; `suppressedProgressNav` 0 ms |
+| sword seed 7 sample | `sword-7-spell-broker-sample-summary.json`, `sword-7-spell-broker-sample-runstats.json`, `sword-7-spell-broker-sample.jsonl`, `sword-7-spell-broker-sample-console.txt` | victory; `suppressedProgressNav` 0 ms |
 
 The exact "Spell Broker bucket" seed list was not present in the checked-in handoffs, so I also ran a bounded sword seed search (`suppressed-search-results.json`) to prove the new label appears in real headless artifacts:
 
-| Run           | Summary                                   | Raw log                            | `suppressedProgressNav` |
-| ------------- | ----------------------------------------- | ---------------------------------- | ----------------------- |
-| sword seed 12 | `sword-12-suppressed-search-summary.json` | `sword-12-suppressed-search.jsonl` | 1000 ms, 5 events       |
-| sword seed 21 | `sword-21-suppressed-search-summary.json` | `sword-21-suppressed-search.jsonl` | 26750 ms, 133 events    |
+| Run           | Summary / stats                                                                       | Raw log                            | `suppressedProgressNav`                                                 |
+| ------------- | ------------------------------------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------- |
+| sword seed 12 | `sword-12-suppressed-search-summary.json`, `sword-12-suppressed-search-runstats.json` | `sword-12-suppressed-search.jsonl` | event summary 1000 ms; `RunStats.aiTelemetry` 61 frames / 1016.7 ms     |
+| sword seed 21 | `sword-21-suppressed-search-summary.json`, `sword-21-suppressed-search-runstats.json` | `sword-21-suppressed-search.jsonl` | event summary 26750 ms; `RunStats.aiTelemetry` 1641 frames / 27350.0 ms |
+
+`runstats-refresh-status.json` lists all refreshed per-run stats artifacts. Event-summary milliseconds are sampled-window attribution; `RunStats.aiTelemetry` is per-poll frame attribution, so small differences are expected and deterministic.
 
 Example raw event from seed 21 includes:
 `state: "suppressedProgressNav"`, `baseState: "EXPLORE"`, `decisionDebug.source: "exploreDwellFixedPositionTarget"`, `decisionDebug.criticalChainPhase: "pre-chain"`, and `decisionDebug.blockedTargetReason: "Seeking Tutorial Goon to unlock the floor quest"`.

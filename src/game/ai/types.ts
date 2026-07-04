@@ -223,6 +223,20 @@ export interface QuestMetrics {
 }
 
 /**
+ * AI decision-state rollups captured during a headless run.
+ */
+export interface AIDecisionTelemetryMetrics {
+  /** Number of AI poll frames spent in each emitted decision-state label. */
+  decisionStateCounts: Record<string, number>;
+  /** Simulated time spent in each emitted decision-state label. */
+  decisionStateMs: Record<string, number>;
+  /** Number of poll frames classified as suppressed progress navigation. */
+  suppressedProgressNavCount: number;
+  /** Simulated time classified as suppressed progress navigation. */
+  suppressedProgressNavMs: number;
+}
+
+/**
  * Run statistics for performance tracking.
  */
 export interface RunStats {
@@ -263,4 +277,6 @@ export interface RunStats {
   totalGold: number;
   /** ID of the starting weapon selected for this run */
   startingWeapon: string;
+  /** Optional telemetry rollups for AI decision-state accounting. */
+  aiTelemetry?: AIDecisionTelemetryMetrics;
 }
