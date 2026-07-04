@@ -1,0 +1,10 @@
+{
+  "date": "2026-07-03",
+  "session": "trim-handoff-template",
+  "estimated_apples": 3,
+  "actual_apples": 3,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.6,
+  "notes": "Shepherded PR #745 (trim handoff template + close the written-but-not-read loop). Ran the 3-apple review harness (plan review gpt-5.4 + code-review loop claude-sonnet-4.6 to clean) which surfaced 4 real bugs, all fixed: (1) docs-update.yml discarded the promote-mistakes agent-memory write on the common weekly run — broadened change detection + added add-paths; (2) preflight.sh digest awk dropped ALL ### Lessons Learned (buffer never flushed before switching to Mistakes) — added an awk flush() function, empirically confirmed before/after; (3) promote-mistakes parseMemory silently deleted malformed JSONL lines on --apply — now aborts before any write; (4) extracted a shared side-effect-free handoff-parse.ts so lint-handoff and promote-mistakes agree, and scoped Mistakes extraction to ## Retrospective. Added tests/unit/handoff-parse.test.ts (10 tests). Low blast radius (agent tooling, no game runtime), but multi-file with a new shared parser module + a shell-awk fix requiring empirical validation → an honest 3."
+}

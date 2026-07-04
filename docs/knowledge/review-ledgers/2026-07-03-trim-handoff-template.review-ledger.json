@@ -1,0 +1,35 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "trim-handoff-template",
+  "task_title": "Trim handoff template and close the written-but-not-read loop",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "notes": "Separate-model (gpt-5.4, rubber-duck) plan review of the fix plan. 8 concerns raised: (1) docs-update.yml discards the agent-memory write on the common weekly run, (2) MCP memory server only seeds the live graph when absent, (3) parseMemory silently drops malformed JSONL on --apply, (4) append-only promotion has no reconcile-by-slug for edited handoffs, (5) PLACEHOLDER_TOKENS/isProseLine duplicated across the two scripts, (6) extractMistakesBlock not scoped to ## Retrospective, (7) continue-on-error on a mutating step, (8) preflight SEARCH_ROOTS expansion risks false-positive reference counts. Resolved: #1 fixed (broadened detection + add-paths), #3 fixed (abort-before-write on malformed lines), #5+#6 fixed (shared handoff-parse.ts + retrospective-scoped extraction). Accepted with rationale (out-of-scope / pre-existing): #2 (preflight digest reads repo handoffs directly, so the read loop closes independent of MCP seeding), #4 (handoffs are rarely edited; append-only is an acceptable idempotency tradeoff), #7 (mitigated by the #3 abort and consistent with the advisory docs-loop pattern), #8 (info-only, not touched by this PR)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
