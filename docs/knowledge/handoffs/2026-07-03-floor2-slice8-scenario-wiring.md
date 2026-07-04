@@ -22,14 +22,14 @@
 ## Verification run
 
 - ✅ `npm run verify:fast`
-- ⚠️ `npm run verify` fails at `format:check` due existing repository-wide Prettier drift outside this slice (same list repeatedly reported by guard).
+- ✅ `npm run verify` passes on the current head (CI `Format & Labs` + `Types & Lint` green; earlier local Prettier drift resolved).
 - ⚠️ `npm run verify:pr-prereqs` initially failed for missing handoff/ADR/review-ledger; mitigated by adding:
   - this handoff
   - ADR 0043
   - review ledger `docs/knowledge/review-ledgers/2026-07-03-floor2-slice8-scenario-wiring.review-ledger.json`
 - ✅ Governor sweep:
   - `LOG_LEVEL=error npx tsx scripts/agent/health/governor-playthroughs.ts`
-  - Floor1 90.0%, Floor2 100.0%, Combined 92.5%
+  - Floor1 98.3% (59/60), Floor2 0% (0/20 — expected at this slice; Win A / Win B objective-complete wiring not yet productionised), Combined 73.75% (59/80); combinedGate FAIL (expected for this slice)
 
 ## Files touched (high level)
 
@@ -45,10 +45,9 @@
 See `docs/knowledge/metrics/floor2-slice8-governor-sweep.json`:
 
 1. Keep Governor budget at >=30000 frames for stable Floor 1 rate checks.
-2. Replace Floor 2 `autoVictoryOnStart` with true objective-complete flow once full Slice 5 wiring is finalized.
-3. Re-run sweep with `autoVictoryOnStart` disabled after objective closeout and retune if Floor 2 drops below 90%.
+2. Keep Floor 2 `autoVictoryOnStart` disabled and complete Win A / Win B objective-closeout wiring in production mode.
+3. Re-run sweep after objective-closeout wiring and retune if Floor 2 remains below 90%.
 
 ## Outstanding risks / next steps
 
-- Remove or gate Floor 2 governor easy-mode flags before final production-balance signoff.
-- Resolve repo-wide Prettier drift to restore green `npm run verify` in local gate.
+- Complete Floor 2 Win A / Win B objective-closeout production wiring, then re-run governor sweep to validate >=90% Floor 2 win rate.

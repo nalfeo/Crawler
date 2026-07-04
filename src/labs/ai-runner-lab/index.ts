@@ -233,7 +233,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   /** True after the level boost has been applied for the current run. Reset on reseed. */
   let startLevelApplied = false;
 
-  /** One-shot preSystems hook: apply the requested start level once per run. */
+  /** One-shot postSystems hook: apply the requested start level once per run. */
   const applyStartLevelSystem = (world: GameWorld): void => {
     if (startLevelApplied || startPlayerLevel <= 1) {
       return;
