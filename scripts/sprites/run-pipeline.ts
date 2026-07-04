@@ -142,6 +142,8 @@ export async function postprocessScoreAndStoreVariant(
       ),
     );
     anchorSidecarPath = store.resolve(anchorKey);
+  } else {
+    await store.remove(storeKey(`processed/${id}.anchor.json`));
   }
   if (args.manualAnchor?.variantIndex === index) {
     await store.put(
@@ -160,6 +162,8 @@ export async function postprocessScoreAndStoreVariant(
         )}\n`,
       ),
     );
+  } else {
+    await store.remove(storeKey(`processed/${id}.manual-anchor.json`));
   }
   let centerOfGravitySidecarPath: string | null = null;
   if (scorecard.derivedAnchors.centerOfGravity) {
@@ -179,6 +183,8 @@ export async function postprocessScoreAndStoreVariant(
       ),
     );
     centerOfGravitySidecarPath = store.resolve(cogKey);
+  } else {
+    await store.remove(storeKey(`processed/${id}.anchor.cog.json`));
   }
 
   function applyManualAnchorToScorecard(

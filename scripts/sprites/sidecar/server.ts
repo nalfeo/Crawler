@@ -68,7 +68,11 @@ import { computeSliceMap } from '../slice-sheet.js';
 import { loadStyleGuide } from '../build-prompt.js';
 import { loadRecordedReferencePngs } from '../load-reference-pngs.js';
 import type { PostprocessOptions } from '../postprocess.js';
-import { removeManualAnchor, writeManualAnchor } from '../postprocess-overrides.js';
+import {
+  removeManualAnchor,
+  writeManualAnchor,
+  type ManualAnchorOverride,
+} from '../postprocess-overrides.js';
 import type { RunSummary } from '../run-artifacts.js';
 import {
   loadRunSummary,
@@ -451,12 +455,31 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         skipped.push(raw);
         continue;
       }
-      for (const key of keys) {
-        const target = `archive/${key}`;
-        await store.put(target, await store.get(key));
-      }
-      for (const key of keys) {
-        await store.remove(key);
+      const copiedTargets: string[] = [];
+      let removePhase = false;
+      try {
+        for (const key of keys) {
+          const target = `archive/${key}`;
+          await store.put(target, await store.get(key));
+          copiedTargets.push(target);
+        }
+        removePhase = true;
+        for (const key of keys) {
+          await store.remove(key);
+        }
+      } catch (err) {
+        if (!removePhase) {
+          // Best-effort rollback for copy-phase failures only: remove any
+          // copied archive keys so source remains authoritative.
+          for (const target of copiedTargets) {
+            await store.remove(target);
+          }
+        }
+        reply.code(500);
+        return {
+          error: 'archive-failed',
+          message: err instanceof Error ? err.message : String(err),
+        };
       }
       archived.push(raw);
     }
@@ -880,7 +903,8 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       };
     }
     const manualAnchor = parseManualAnchorPayload(body.manualAnchor);
-    if (body.manualAnchor !== undefined && manualAnchor === null) {
+    const clearManualAnchor = body.manualAnchor === null;
+    if (body.manualAnchor !== undefined && body.manualAnchor !== null && manualAnchor === null) {
       reply.code(400);
       return {
         error: 'bad-request',
@@ -899,6 +923,18 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       return resolution.body;
     }
     try {
+      let persistedManualAnchor: ManualAnchorOverride | null | undefined = undefined;
+      if (manualAnchor) {
+        persistedManualAnchor = await writeManualAnchor(
+          store,
+          `${briefId}/${runId}`,
+          manualAnchor,
+          new Date().toISOString(),
+        );
+      } else if (clearManualAnchor) {
+        await removeManualAnchor(store, `${briefId}/${runId}`);
+        persistedManualAnchor = null;
+      }
       const result = await repostprocessRun({
         store,
         briefId,
@@ -908,16 +944,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         palette: resolution.loaded.palette,
         ...(options ? { options } : {}),
         ...(mode ? { optionsMode: mode } : {}),
-        ...(manualAnchor
-          ? {
-              manualAnchor: await writeManualAnchor(
-                store,
-                `${briefId}/${runId}`,
-                manualAnchor,
-                new Date().toISOString(),
-              ),
-            }
-          : {}),
+        ...(persistedManualAnchor !== undefined ? { manualAnchor: persistedManualAnchor } : {}),
         ...(sheet ? { sheetFile: sheet } : {}),
       });
       return {

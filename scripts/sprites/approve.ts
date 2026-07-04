@@ -583,17 +583,8 @@ function resolveSingleAnchor(
   }
 
   // Legacy mode: brief.anchor applies to every variant uniformly.
-  if (
-    chosenAnchor &&
-    (chosenAnchor.source === 'brief' ||
-      chosenAnchor.source === 'derived' ||
-      chosenAnchor.source === 'manual')
-  ) {
-    return {
-      x: chosenAnchor.x,
-      y: chosenAnchor.y,
-      source: chosenAnchor.source as ManifestAnchor['source'],
-    };
+  if (chosenAnchor && chosenAnchor.source === 'brief') {
+    return { x: chosenAnchor.x, y: chosenAnchor.y, source: 'brief' };
   }
 
   // Derive-mode + derivation failed for this variant. The engine should

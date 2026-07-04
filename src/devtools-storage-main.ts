@@ -45,15 +45,30 @@ async function render(): Promise<void> {
   const renderRows = (scope: 'active' | 'archive') => {
     const table = el('table', { style: { width: '100%', borderCollapse: 'collapse' } });
     const head = document.createElement('thead');
-    head.innerHTML =
-      '<tr><th></th><th>Brief</th><th>Run</th><th>Timestamp</th><th>Summary key</th></tr>';
+    const headRow = document.createElement('tr');
+    for (const label of ['', 'Brief', 'Run', 'Timestamp', 'Summary key']) {
+      const th = document.createElement('th');
+      th.textContent = label;
+      headRow.append(th);
+    }
+    head.append(headRow);
     table.append(head);
     const body = document.createElement('tbody');
     for (const run of currentRuns) {
       const row = document.createElement('tr');
       const key = keyForRun(scope, run);
-      const checked = selected.has(key) ? 'checked' : '';
-      row.innerHTML = `<td><input type="checkbox" data-key="${key}" ${checked} /></td><td>${run.briefId}</td><td>${run.runId}</td><td>${run.timestamp ?? '—'}</td><td>${run.summaryKey}</td>`;
+      const checkCell = document.createElement('td');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.dataset.key = key;
+      checkbox.checked = selected.has(key);
+      checkCell.append(checkbox);
+      row.append(checkCell);
+      for (const value of [run.briefId, run.runId, run.timestamp ?? '—', run.summaryKey]) {
+        const cell = document.createElement('td');
+        cell.textContent = value;
+        row.append(cell);
+      }
       body.append(row);
     }
     table.append(body);

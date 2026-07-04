@@ -52,6 +52,7 @@ import {
   POSTPROCESS_PROFILE_KEY,
   readManualAnchor,
   readPostprocessProfile,
+  removeManualAnchor,
   removePostprocessProfile,
   type ManualAnchorOverride,
   writeEffectivePipelineSnapshot,
@@ -195,7 +196,12 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
       : args.options !== undefined
         ? args.options
         : (persistedProfile?.options ?? {});
-  const effectiveManualAnchor = args.manualAnchor ?? persistedManualAnchor ?? null;
+  const effectiveManualAnchor =
+    optionsMode === 'reset'
+      ? null
+      : args.manualAnchor !== undefined
+        ? args.manualAnchor
+        : (persistedManualAnchor ?? null);
 
   const { sheetFile, sheetPng } = await resolveRunSheet(store, briefId, runId, args.sheetFile);
 
@@ -244,6 +250,7 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
   }
 
   if (optionsMode === 'reset') {
+    await removeManualAnchor(store, `${briefId}/${runId}`);
     await removePostprocessProfile(store, `${briefId}/${runId}`);
   } else {
     await writePostprocessProfile(store, `${briefId}/${runId}`, effectiveOptions, nowIso);
