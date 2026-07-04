@@ -17,10 +17,10 @@ Enemies (`brief.type === 'enemy'`) skip the `silhouette-orientation-axis` sensor
 
 - [x] **Code implementation**: `scripts/sprites/score-candidate.ts` correctly conditions orientation-axis sensor on `brief.type === 'character'` only (lines 111-122)
 - [x] **Documentation**: `scripts/sprites/brief-schema.ts` documents enemy sensors and explicitly notes orientation-axis is not used (line 149)
-- [x] **Test suite**: `tests/unit/sprites/score-candidate.test.ts` includes 3 dedicated tests for this constraint (all passing)
-  - "enemy briefs derive anchors from center of mass without orientation gating" (line 158)
-  - "enemy briefs ignore orientation-axis even when facing is front" (line 174)
-  - Test ensuring `sensors.enemy.facing` config is ignored for enemy briefs (line 174)
+- [x] **Test suite**: `tests/unit/sprites/score-candidate.test.ts` includes 2 dedicated enemy tests for this constraint, plus 1 complementary character-side test (all passing)
+  - "enemy briefs derive anchors from center of mass without orientation gating" (line 158) — an enemy brief scores **without** the `silhouette-orientation-axis` sensor
+  - "enemy briefs ignore orientation-axis even when facing is front" (line 174) — the sensor stays absent even when `sensors.enemy.facing: 'front'` is set
+  - "character briefs stay front-facing when an enemy sensor block omits facing" (line 188) — confirms **characters** still run the orientation check, proving the enemy-vs-character split
 - [x] **Test count**: All 24 sprite scoring tests pass
 - [x] **Fast verify**: `npm run verify:fast` ✅ passes
 
