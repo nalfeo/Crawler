@@ -55,10 +55,38 @@ describe('createRunStore factory', () => {
         SPRITES_RUN_STORE: 'azure-blob',
         AZURE_STORAGE_ACCOUNT: 'myaccount',
         AZURE_STORAGE_KEY: 'dGVzdA==',
+        SPRITES_AZURE_CACHE: 'off',
       },
       repoRoot: REPO_ROOT,
     });
     expect(store.backend).toBe('azure-blob');
+  });
+
+  it('wraps the Azure store in the local sheet cache by default', () => {
+    const store = createRunStore({
+      env: {
+        SPRITES_RUN_STORE: 'azure-blob',
+        AZURE_STORAGE_ACCOUNT: 'myaccount',
+        AZURE_STORAGE_KEY: 'dGVzdA==',
+      },
+      repoRoot: REPO_ROOT,
+    });
+    // Proxied backend tag stays the same; the wrapper is transparent.
+    expect(store.backend).toBe('azure-blob');
+    expect(store.constructor.name).toBe('CachingRunStore');
+  });
+
+  it('skips the cache wrapper when SPRITES_AZURE_CACHE=off', () => {
+    const store = createRunStore({
+      env: {
+        SPRITES_RUN_STORE: 'azure-blob',
+        AZURE_STORAGE_ACCOUNT: 'myaccount',
+        AZURE_STORAGE_KEY: 'dGVzdA==',
+        SPRITES_AZURE_CACHE: 'off',
+      },
+      repoRoot: REPO_ROOT,
+    });
+    expect(store.constructor.name).toBe('AzureBlobRunStore');
   });
 
   it('resolve() on LocalRunStore returns path inside generated/runs', () => {
