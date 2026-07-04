@@ -16,7 +16,9 @@
  */
 import { z } from 'zod';
 import floor1ManifestJson from './data/floors/floor1.manifest.json';
+import floor2ManifestJson from './data/floors/floor2.manifest.json';
 import { npcPlacementDefSchema } from './npc-placements.js';
+import { BiomeType } from './map-types.js';
 
 /**
  * Floor manifest configuration schema.
@@ -68,6 +70,8 @@ export const floorManifestDefSchema = z
         tileSizeFt: z.number().positive(),
         /** Map generation seed. */
         seed: z.number().int().positive(),
+        /** Biome/generator id for this floor. */
+        biome: z.nativeEnum(BiomeType).optional(),
         /** Room width range [min, max] in tiles. */
         roomWidthRange: z.tuple([z.number().int().positive(), z.number().int().positive()]),
         /** Room height range [min, max] in tiles. */
@@ -160,6 +164,32 @@ export const floorManifestDefSchema = z
         ambient: z.number().min(0).max(1),
       })
       .strict(),
+    /** Floor-2-specific scenario config (ignored by Floor 1). */
+    floor2: z
+      .object({
+        presentCount: z.number().int().min(3).max(4).optional(),
+        familyPool: z.array(z.string().min(1)).min(4).optional(),
+        resourcePool: z.array(z.string().min(1)).min(1).optional(),
+        settlement: z
+          .object({
+            shopCountRange: z.tuple([
+              z.number().int().min(1).max(2),
+              z.number().int().min(1).max(2),
+            ]),
+            shopArchetypes: z.array(z.string().min(1)).min(1).optional(),
+          })
+          .strict()
+          .optional(),
+        governor: z
+          .object({
+            autoUnlockDens: z.boolean().optional(),
+            autoVictoryOnStart: z.boolean().optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -173,9 +203,10 @@ export type FloorManifestDef = z.infer<typeof floorManifestDefSchema>;
 function loadFloorManifest(floorId: string): FloorManifestDef {
   let manifestJson: unknown;
 
-  // For now, only floor1 is available
   if (floorId === 'floor1') {
     manifestJson = floor1ManifestJson;
+  } else if (floorId === 'floor2') {
+    manifestJson = floor2ManifestJson;
   } else {
     throw new Error(`Floor manifest not found: ${floorId}`);
   }
@@ -189,3 +220,4 @@ function loadFloorManifest(floorId: string): FloorManifestDef {
  * @deprecated Use floor-registry.ts instead
  */
 export const floor1Manifest: FloorManifestDef = loadFloorManifest('floor1');
+export const floor2Manifest: FloorManifestDef = loadFloorManifest('floor2');

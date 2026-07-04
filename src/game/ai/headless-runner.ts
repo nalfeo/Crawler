@@ -21,6 +21,7 @@ import { GAME } from '../../shared/constants.js';
 import { createLogger } from '../../shared/logger.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { FLOOR1_TUTORIAL_QUEST_ID } from '../../shared/quest-types.js';
+import { xpRequiredForLevel } from '../../shared/xpMath.js';
 import {
   AIDecisionDebugState,
   type AIInputProvider,
@@ -29,7 +30,7 @@ import {
 } from './types.js';
 import { AI_STATE_NAME, getDecisionEventState, type SimEvent } from './event-log.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
-import { initializeFloor1Scenario, selectFloor1StarterWeapon } from '../index.js';
+import { getScenarioDefinition } from '../scenarioDefinitions.js';
 import {
   autoAllocateStatPoints,
   autoFloor1ProgressionSystem,
@@ -85,6 +86,14 @@ export interface HeadlessRunnerConfig {
   forceWeaponId?: string;
   /** Multiply hostile (Enemy + EnemyProjectile) Damage component amounts by this factor. */
   enemyDamageMultiplier?: number;
+  /** Scenario floor id to run. */
+  floorId?: string;
+  /**
+   * Start the run at this player character level (applies XP and unspent stat
+   * points to match). Level 1 (default) is a normal run with no boost.
+   * Supports any positive level; clamped to ≥1.
+   */
+  startPlayerLevel?: number;
   /**
    * Frames of zero floor-progress (no quest objective tick, completion, or gold
    * gain) before the run is declared `'stalled'` and terminated early with a
@@ -110,6 +119,8 @@ const DEFAULT_CONFIG: Required<
   eventSampleInterval: 15,
   questStallFrames: 21_600, // ~360s of frozen quest progress on the 240×140 map
   enemyDamageMultiplier: 1,
+  floorId: 'floor1',
+  startPlayerLevel: 1,
 };
 
 function applyConfiguredHostileDamageMultiplier(
@@ -133,6 +144,22 @@ function normalizeHostileDamageMultiplier(configuredMultiplier: number): number 
     );
   }
   return Math.max(1, configuredMultiplier);
+}
+
+export function applyStartPlayerLevel(world: GameWorld, targetLevel: number): void {
+  const level = Math.max(1, Math.floor(targetLevel));
+  if (level <= 1) {
+    return;
+  }
+  const previousLevel = Math.max(1, world.playerLevel.level);
+  if (previousLevel >= level) {
+    return;
+  }
+  const levelsGained = level - previousLevel;
+  world.playerLevel.level = level;
+  world.playerLevel.xp = Math.max(world.playerLevel.xp, xpRequiredForLevel(level));
+  world.playerLevel.unspentPoints += levelsGained * world.playerLevel.pointsPerLevel;
+  world.statsDirty = true;
 }
 
 /**
@@ -160,31 +187,36 @@ export async function runHeadless(
     mergedConfig.enemyDamageMultiplier,
   );
 
-  // Initialize Floor1 scenario (generates map, sets up objectives, NPCs, etc.)
-  // This sets world.state = 'loadout'
-  initializeFloor1Scenario(world, playerEid);
+  // Initialize selected scenario (map/objective/NPC wiring).
+  const scenario = getScenarioDefinition(mergedConfig.floorId);
+  scenario.configureWorld(world, playerEid);
+  applyStartPlayerLevel(world, mergedConfig.startPlayerLevel);
   applyConfiguredHostileDamageMultiplier(world, hostileDamageMultiplier);
 
-  // Select starter weapon: either the forced weapon ID or option index 0.
+  // Select starter weapon when the scenario exposes a loadout phase.
   let starterWeaponIndex = 0;
   const forceWeaponId = config.forceWeaponId;
-  if (forceWeaponId !== undefined && world.floor1) {
-    const idx = world.floor1.starterChoices.indexOf(forceWeaponId);
-    if (idx === -1) {
-      if (!getWeaponDef(forceWeaponId)) {
-        throw new Error(`Unknown forceWeaponId "${forceWeaponId}"`);
+  if (scenario.selectLoadoutOption && world.state === 'loadout') {
+    if (forceWeaponId !== undefined && world.floor1) {
+      const idx = world.floor1.starterChoices.indexOf(forceWeaponId);
+      if (idx === -1) {
+        if (!getWeaponDef(forceWeaponId)) {
+          throw new Error(`Unknown forceWeaponId "${forceWeaponId}"`);
+        }
+        world.floor1.starterChoices.push(forceWeaponId);
+        starterWeaponIndex = world.floor1.starterChoices.length - 1;
+      } else {
+        starterWeaponIndex = idx;
       }
-      // Keep gameplay starter choices constrained, but allow deterministic
-      // headless runs to force any implemented weapon for gate coverage.
-      world.floor1.starterChoices.push(forceWeaponId);
-      starterWeaponIndex = world.floor1.starterChoices.length - 1;
-    } else {
-      starterWeaponIndex = idx;
     }
+    scenario.selectLoadoutOption(world, starterWeaponIndex);
   }
-  selectFloor1StarterWeapon(world, starterWeaponIndex);
+
   const startingWeapon: string =
-    world.floor1?.selectedWeaponId ?? world.floor1?.starterChoices[starterWeaponIndex] ?? 'unknown';
+    forceWeaponId ??
+    world.floor1?.selectedWeaponId ??
+    world.floor1?.starterChoices[starterWeaponIndex] ??
+    'unknown';
 
   // Verify we transitioned to 'playing' state
   if (world.state !== 'playing') {
@@ -350,10 +382,10 @@ export async function runHeadless(
       // Run one simulation step with Floor1 systems enabled
       runSimulationStep(world, inputState, GAME.DELTA_MS, {
         ...config.simulationOptions,
-        enableFloor1: true,
+        enableFloor1: mergedConfig.floorId === 'floor1',
       });
-      // floor2VictorySystem is invoked inside runSimulationStep (simulation-step.ts)
-      // every tick, so it does not need a second explicit call here.
+      // Floor objective handling (including Floor 2 objective ticks) runs inside
+      // runSimulationStep, so no second explicit objective call is needed here.
       autoFloor1ProgressionSystem(world, playerEid);
       autoAllocateStatPoints(world, playerEid);
 
@@ -513,6 +545,10 @@ export async function runHeadless(
         break;
       }
       if (world.floor1?.runSummary?.outcome === 'cleared_floor') {
+        outcome = 'victory';
+        break;
+      }
+      if (world.goalFlags.get('floor2-victory') === true) {
         outcome = 'victory';
         break;
       }

@@ -26,6 +26,8 @@ interface CLIArgs {
   sampleInterval: number;
   weapon: string | null;
   enemyDamageMultiplier: number;
+  floorId: string;
+  startPlayerLevel: number;
 }
 
 function parseArgs(): CLIArgs {
@@ -42,6 +44,8 @@ function parseArgs(): CLIArgs {
     sampleInterval: 15,
     weapon: null,
     enemyDamageMultiplier: 1,
+    floorId: 'floor1',
+    startPlayerLevel: 1,
   };
 
   for (let i = 2; i < process.argv.length; i++) {
@@ -84,6 +88,16 @@ function parseArgs(): CLIArgs {
       }
       args.enemyDamageMultiplier = parsed;
       i++;
+    } else if (arg === '--floor' && next) {
+      args.floorId = next;
+      i++;
+    } else if (arg === '--start-level' && next) {
+      const parsed = parseInt(next, 10);
+      if (!Number.isFinite(parsed) || parsed < 1) {
+        throw new Error(`Invalid --start-level "${next}" (must be a positive integer)`);
+      }
+      args.startPlayerLevel = parsed;
+      i++;
     } else if (arg === '--debug') {
       args.debug = true;
     }
@@ -112,6 +126,8 @@ Options:
   --debug                 Enable verbose logging
   --enemy-damage-multiplier <n>
                            Multiply hostile Damage values (default: 1)
+  --floor <id>            Scenario floor id (default: floor1)
+  --start-level <n>       Start at player character level N (default: 1, no boost)
   --help, -h              Show this help message
 
 Examples:
@@ -143,6 +159,10 @@ async function main(): Promise<void> {
     console.log(`Weapon: ${args.weapon} (forced)`);
   }
   console.log(`Enemy damage mult: ${args.enemyDamageMultiplier}x`);
+  console.log(`Floor: ${args.floorId}`);
+  if (args.startPlayerLevel > 1) {
+    console.log(`Start player level: ${args.startPlayerLevel}`);
+  }
   console.log('');
 
   const ai = new BehaviorTreeAI({
@@ -163,6 +183,8 @@ async function main(): Promise<void> {
     eventSampleInterval: args.sampleInterval,
     ...(args.weapon !== null ? { forceWeaponId: args.weapon } : {}),
     enemyDamageMultiplier: args.enemyDamageMultiplier,
+    floorId: args.floorId,
+    startPlayerLevel: args.startPlayerLevel,
     ...(recording
       ? {
           recordEvent: (event: SimEvent): void => {

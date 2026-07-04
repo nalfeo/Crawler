@@ -30,26 +30,51 @@
  * 0011 (data-driven quest packs), ADR 0023 (special-room sealing already
  * applied by CaveSystemGenerator + the generic sealing pass).
  */
-import { addComponent, hasComponent, set, setComponent } from 'bitecs';
-import { DoorState, FamilyMembership, Sprite, Damage, type GameWorld } from '../core/index.js';
+import { addComponent, hasComponent, query, set, setComponent } from 'bitecs';
+import {
+  BroadcastScore,
+  Damage,
+  DoorState,
+  FamilyMembership,
+  Health,
+  Position,
+  Sprite,
+  type GameWorld,
+} from '../core/index.js';
 import { createEntity } from '../core/spawners/entity-core.js';
 import { setDoorLockConfig, setGoalFlag } from '../core/door-lock.js';
 import {
   asFamilyId,
   getRelation,
+  initializeFactionRelations,
+  selectFloor2Roster,
   type FamilyId,
   type Floor2State,
 } from '../core/faction-relations.js';
 import { spawnBehaviorEnemy } from '../core/spawners/combatants.js';
 import { AI_TYPE } from '../game/enemyAISystem.js';
-import { RoomRole, TerrainType, type RoomData } from '../shared/map-types.js';
+import {
+  BiomeType,
+  type MapConfig,
+  RoomRole,
+  TerrainType,
+  type RoomData,
+} from '../shared/map-types.js';
 import type { FloorMap } from '../core/map/FloorMap.js';
 import { floor2EnemyPack, getFloor2BossArchetype } from '../shared/enemy-packs.js';
+import { getFloorManifest } from '../shared/floor-registry.js';
+import { getGenerator } from '../core/map/generators/registry.js';
+import { loadResources } from '../shared/data/resources.js';
+import { loadShopArchetypes } from '../shared/data/shop-archetypes.js';
 import {
   loadDenUnlockArchetypes,
   type DenUnlockArchetype,
 } from '../shared/data/den-unlock-archetypes.js';
 import { loadFamilies, type FamilyDef } from '../shared/data/families.js';
+import { initializeFloor2Settlement } from './floor2Settlement.js';
+import { getWeaponDef } from '../shared/weaponDefs.js';
+import { setActiveWeapon } from './weaponSystem.js';
+import { addStatModifier, removeStatModifiers } from './systems/statsSystem.js';
 import {
   installQuestPacks,
   type QuestPackDef,
@@ -441,6 +466,181 @@ export function floor2VictorySystem(world: GameWorld): void {
 
   setGoalFlag(world, FLOOR2_VICTORY_GOAL_ID, true);
   popFloor2ResourceHeartStairs(world);
+}
+
+/**
+ * Floor 2 scenario initializer used by scenario wiring (Slice 8).
+ */
+export function initializeFloor2Scenario(world: GameWorld, playerEid: number): void {
+  const manifest = getFloorManifest('floor2');
+  if (!manifest) {
+    throw new Error('Missing floor2 manifest');
+  }
+
+  const floor2Config = manifest.floor2;
+  const families = loadFamilies();
+  const resources = loadResources();
+
+  const configuredFamilyPool = floor2Config?.familyPool;
+  if (configuredFamilyPool && configuredFamilyPool.length > 0) {
+    const knownFamilyIds = new Set(families.map((family) => family.id));
+    const unknownFamilyIds = configuredFamilyPool.filter(
+      (familyId) => !knownFamilyIds.has(familyId),
+    );
+    if (unknownFamilyIds.length > 0) {
+      throw new Error(
+        `floor2 manifest misconfigured: floor2.familyPool contains unknown family ids: ${unknownFamilyIds.join(', ')}`,
+      );
+    }
+  }
+  const familyPool =
+    configuredFamilyPool && configuredFamilyPool.length > 0
+      ? families.filter((family) => configuredFamilyPool.includes(family.id))
+      : families;
+  if (familyPool.length < 4) {
+    throw new Error(
+      `floor2 manifest misconfigured: floor2.familyPool resolves to ${familyPool.length} families (minimum 4 required for roster selection)`,
+    );
+  }
+
+  const configuredResourcePool = floor2Config?.resourcePool;
+  if (configuredResourcePool && configuredResourcePool.length > 0) {
+    const knownResourceIds = new Set(resources.map((resource) => resource.id));
+    const unknownResourceIds = configuredResourcePool.filter(
+      (resourceId) => !knownResourceIds.has(resourceId),
+    );
+    if (unknownResourceIds.length > 0) {
+      throw new Error(
+        `floor2 manifest misconfigured: floor2.resourcePool contains unknown resource ids: ${unknownResourceIds.join(', ')}`,
+      );
+    }
+  }
+  const resourcePool =
+    configuredResourcePool && configuredResourcePool.length > 0
+      ? resources.filter((resource) => configuredResourcePool.includes(resource.id))
+      : resources;
+  if (resourcePool.length === 0) {
+    throw new Error(
+      'floor2 manifest misconfigured: floor2.resourcePool resolves to zero resources',
+    );
+  }
+
+  const presentCount = floor2Config?.presentCount;
+  const roster = selectFloor2Roster(world.rng, familyPool, resourcePool, {
+    presentCountFourProbability: presentCount === 4 ? 1 : presentCount === 3 ? 0 : undefined,
+  });
+  initializeFactionRelations(world, roster.presentFamilies);
+  world.floor2State = {
+    presentFamilies: roster.presentFamilies.slice(),
+    contestedResource: roster.contestedResource,
+    betrayerFlag: false,
+  };
+  world.floor2Settlement = null;
+  world.floor1 = null;
+  setGoalFlag(world, FLOOR2_VICTORY_GOAL_ID, false);
+  setGoalFlag(world, FLOOR2_STAIRS_POPPED_GOAL_ID, false);
+
+  removeStatModifiers(world, 'floor', 'floor2-manifest-player');
+  if (manifest.player.moveSpeedBonus > 0) {
+    addStatModifier(world, {
+      sourceType: 'floor',
+      sourceId: 'floor2-manifest-player',
+      stat: 'moveSpeed',
+      op: 'add',
+      value: manifest.player.moveSpeedBonus,
+    });
+  }
+  if (manifest.player.pickupRangeBonus > 0) {
+    addStatModifier(world, {
+      sourceType: 'floor',
+      sourceId: 'floor2-manifest-player',
+      stat: 'pickupRange',
+      op: 'add',
+      value: manifest.player.pickupRangeBonus,
+    });
+  }
+
+  const mapConfig: MapConfig = {
+    widthTiles: manifest.map.widthTiles,
+    heightTiles: manifest.map.heightTiles,
+    tileSizeFt: manifest.map.tileSizeFt,
+    biome: manifest.map.biome ?? BiomeType.CAVE_SYSTEM,
+    seed: world.rng.nextInt(1, 2_000_000),
+    roomWidthRange: manifest.map.roomWidthRange,
+    roomHeightRange: manifest.map.roomHeightRange,
+    maxRooms: manifest.map.maxRooms,
+    floorDensity: manifest.map.floorDensity,
+    caveSystem: { presentCount: roster.presentFamilies.length },
+  };
+  const floorMap = getGenerator(mapConfig.biome).generate(mapConfig, world.rng);
+  world.floorMap = floorMap;
+  world.floor = 2;
+  const spawn = floorMap.tileToWorld(floorMap.playerSpawn.x, floorMap.playerSpawn.y);
+  if (hasComponent(world.ecs, playerEid, Position)) {
+    setComponent(world.ecs, playerEid, Position, { x: spawn.x, y: spawn.y });
+  }
+  if (!hasComponent(world.ecs, playerEid, BroadcastScore)) {
+    addComponent(world.ecs, playerEid, set(BroadcastScore, { current: 0 }));
+  }
+  const maxHp = (world.stores.health.max[playerEid] ?? 100) + manifest.player.hpBonus;
+  setComponent(world.ecs, playerEid, Health, { current: maxHp, max: maxHp });
+
+  const objectives = initializeFloor2Bosses(world, floorMap, world.floor2State);
+  if (floor2Config?.governor?.autoUnlockDens === true) {
+    for (const objective of objectives) {
+      setGoalFlag(world, objective.unlockGoalId, true);
+    }
+    for (const doorEid of query(world.ecs, [DoorState])) {
+      world.stores.doorState.isLocked[doorEid] = 0;
+      world.stores.doorState.isOpen[doorEid] = 1;
+    }
+  }
+
+  const settlementShopRange = floor2Config?.settlement?.shopCountRange;
+  const shopCount =
+    settlementShopRange !== undefined
+      ? world.rng.nextInt(settlementShopRange[0], settlementShopRange[1])
+      : undefined;
+
+  const configuredShopArchetypes = floor2Config?.settlement?.shopArchetypes;
+  let settlementArchetypes: ReturnType<typeof loadShopArchetypes> | undefined;
+  if (configuredShopArchetypes && configuredShopArchetypes.length > 0) {
+    const allArchetypes = loadShopArchetypes();
+    const knownArchetypeIds = new Set(allArchetypes.map((archetype) => archetype.id));
+    const unknownArchetypes = configuredShopArchetypes.filter((id) => !knownArchetypeIds.has(id));
+    if (unknownArchetypes.length > 0) {
+      throw new Error(
+        `floor2 manifest misconfigured: floor2.settlement.shopArchetypes contains unknown ids: ${unknownArchetypes.join(', ')}`,
+      );
+    }
+    settlementArchetypes = allArchetypes.filter((archetype) =>
+      configuredShopArchetypes.includes(archetype.id),
+    );
+    if (settlementArchetypes.length === 0) {
+      throw new Error(
+        'floor2 manifest misconfigured: floor2.settlement.shopArchetypes resolves to zero archetypes',
+      );
+    }
+  }
+
+  initializeFloor2Settlement(world, {
+    ...(shopCount === 1 || shopCount === 2 ? { shopCount } : {}),
+    ...(settlementArchetypes ? { archetypes: settlementArchetypes } : {}),
+  });
+
+  const starterWeapon = manifest.starterWeapons[0];
+  if (starterWeapon) {
+    const weaponDef = getWeaponDef(starterWeapon);
+    if (weaponDef) {
+      setActiveWeapon(world, weaponDef);
+    }
+  }
+
+  if (floor2Config?.governor?.autoVictoryOnStart === true) {
+    setGoalFlag(world, FLOOR2_VICTORY_GOAL_ID, true);
+  }
+  world.state = 'playing';
+  world.floorObjectiveTick = floor2ObjectiveTick;
 }
 
 /**

@@ -1,0 +1,49 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "floor2-slice8-scenario-wiring",
+  "task_title": "Floor2 slice8 scenario wiring",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "notes": "Separate-model plan review captured and resolved across the five follow-up wiring/validation concerns raised during PR #721 shepherding."
+    },
+    "dual_plan_synthesis": {
+      "completed": true,
+      "plan_models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+      "judge_model": "claude-opus-4.8",
+      "notes": "Dual-plan synthesis used for the scenario-wiring and governor-sweep integration plan before implementation."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 11,
+          "resolved_count": 11,
+          "clean": true,
+          "notes": "Copilot review wave findings addressed in code/docs and resolved."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 11,
+          "valid_count": 11,
+          "resolved_count": 11,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

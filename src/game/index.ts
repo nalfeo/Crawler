@@ -34,6 +34,15 @@ export {
   meetTutorialGoon,
   meetSpellQuestGiver,
 } from './floorScenario.js';
+export { getScenarioDefinition } from './scenarioDefinitions.js';
+export type { ScenarioDefinition } from './scenarioDefinitions.js';
+export {
+  initializeFloor2Scenario,
+  floor2ObjectiveTick,
+  isFamilySpawnGated,
+  denUnlockGoalId,
+  bossDefeatGoalId,
+} from './floor2Scenario.js';
 export {
   getShopkeeperStage,
   getShopkeeperPostQuestStock,

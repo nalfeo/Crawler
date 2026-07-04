@@ -237,6 +237,9 @@ export function runSimulationStep(
     questSystem(world);
     achievementSystem(world);
   }
+  if (!options.enableFloor1 && world.floorObjectiveTick) {
+    world.floorObjectiveTick(world);
+  }
 
   for (const sys of options.postSystems ?? []) {
     sys(world);

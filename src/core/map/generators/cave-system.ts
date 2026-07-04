@@ -94,6 +94,18 @@ export class CaveSystemGenerator implements MapGenerator {
     return this.options.presentCount;
   }
 
+  private resolvePresentCount(config: MapConfig): number {
+    const fromConfig = config.caveSystem?.presentCount;
+    if (fromConfig === undefined) {
+      return this.options.presentCount;
+    }
+    const normalized = Math.floor(fromConfig);
+    if (!Number.isFinite(normalized)) {
+      return this.options.presentCount;
+    }
+    return Math.max(1, Math.min(this.options.presentCount, normalized));
+  }
+
   generate(config: MapConfig, rng: SeededRandom): FloorMap {
     const errors: string[] = [];
     for (let attempt = 0; attempt < this.options.maxRetries; attempt++) {
@@ -112,6 +124,7 @@ export class CaveSystemGenerator implements MapGenerator {
   private tryGenerate(config: MapConfig, _rng: SeededRandom, subSeed: number): FloorMap {
     const { widthTiles: w, heightTiles: h } = config;
     const total = w * h;
+    const presentCount = this.resolvePresentCount(config);
 
     RNG.setSeed(subSeed);
 
@@ -155,7 +168,7 @@ export class CaveSystemGenerator implements MapGenerator {
 
     // --- 3. Pick region seeds via greedy farthest-point sampling -------
     // We need at least: presentCount TERRITORY + 1 SETTLEMENT + 1 RESOURCE_HEART + 1 SPAWN.
-    const needed = this.options.presentCount + 3;
+    const needed = presentCount + 3;
     const sep =
       this.options.regionSeparationTiles > 0
         ? this.options.regionSeparationTiles
@@ -198,24 +211,22 @@ export class CaveSystemGenerator implements MapGenerator {
       .filter((s) => s.i !== heartIdx)
       .sort((a, b) => b.d - a.d);
 
-    if (nonHeart.length < this.options.presentCount + 2) {
-      throw new Error(
-        `only ${nonHeart.length} non-heart regions for presentCount=${this.options.presentCount}`,
-      );
+    if (nonHeart.length < presentCount + 2) {
+      throw new Error(`only ${nonHeart.length} non-heart regions for presentCount=${presentCount}`);
     }
 
     // Farthest region -> SPAWN. Next presentCount -> TERRITORY. Next largest -> SETTLEMENT.
     const spawnScore = nonHeart[0]!;
     const spawnRegion = regions[spawnScore.i]!;
     const territoryRegions: RegionInfo[] = [];
-    for (let k = 1; k <= this.options.presentCount; k++) {
+    for (let k = 1; k <= presentCount; k++) {
       const s = nonHeart[k]!;
       const r = regions[s.i];
       if (!r) throw new Error(`territory region missing at nonHeart[${k}]`);
       territoryRegions.push(r);
     }
     // Settlement: pick the largest remaining region.
-    const settlementPool = nonHeart.slice(this.options.presentCount + 1);
+    const settlementPool = nonHeart.slice(presentCount + 1);
     if (settlementPool.length === 0) {
       throw new Error('no candidate region left for SETTLEMENT');
     }
