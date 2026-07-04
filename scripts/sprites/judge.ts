@@ -17,7 +17,8 @@
  * REFUSES to run when `process.env.CI` is defined. The judge calls a
  * live Azure deployment, is non-deterministic, and costs credits;
  * none of those are acceptable in a CI gate. Bypassing requires an
- * ADR, period.
+ * ADR — see ADR 0043 for the asset-request CI worker exception, which
+ * opens the gate when `SPRITES_ALLOW_CI_PIPELINE=true` is ALSO set.
  *
  * Cost discipline: one vision call per variant — all three evaluators
  * are requested in a single structured-output response, NOT fanned out
@@ -34,6 +35,7 @@ import { writeFileSync } from 'node:fs';
 import { PNG } from 'pngjs';
 import { z } from 'zod';
 import type { Brief } from './brief-schema.js';
+import { isCiPipelineBypassed } from './ci-bypass.js';
 import { JudgeCache } from './judge-cache.js';
 import type { EvaluateRequest, VisionProvider } from './provider/vision-types.js';
 
@@ -169,18 +171,20 @@ export class JudgeError extends Error {
  * to disk next to the existing sensor scorecard. Does NOT mutate the
  * sensor scorecard.
  *
- * Throws `JudgeError('ci-refused')` if `env.CI` is defined. Throws
+ * Throws `JudgeError('ci-refused')` if `env.CI` is defined and the
+ * ADR-0043 bypass (`SPRITES_ALLOW_CI_PIPELINE=true`) is NOT set. Throws
  * `VisionProviderError` on provider failures. Throws `JudgeError('malformed')`
  * when the provider returned valid JSON that fails the evaluator schema.
  */
 export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeScorecard> {
   const env = options.env ?? process.env;
-  if (env.CI !== undefined) {
+  if (env.CI !== undefined && !isCiPipelineBypassed(env)) {
     throw new JudgeError(
       'ci-refused',
       'Per Constitutional §3, judge.ts is local-only — it costs Azure credits and is ' +
         'non-deterministic. Bypassing requires an ADR. Unset the CI environment variable ' +
-        'to run locally, or disable the judge for this brief.',
+        'to run locally, disable the judge for this brief, or set SPRITES_ALLOW_CI_PIPELINE=true ' +
+        'in the asset-request CI workflow (see ADR 0043).',
     );
   }
 

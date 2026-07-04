@@ -4,7 +4,9 @@
  *
  * Workflow:
  *   1. Refuse if `env.CI` is set (constitutional §3: synthesizer is
- *      local-only because each call costs money and is non-deterministic).
+ *      local-only because each call costs money and is non-deterministic),
+ *      UNLESS `SPRITES_ALLOW_CI_PIPELINE=true` is also set — the ADR-0043
+ *      bypass reserved for the asset-request CI worker (author-allowlisted).
  *   2. Normalise + validate the subject name (lowercase kebab-case, no
  *      path separators, ≤64 chars).
  *   3. Issue ONE structured-output call to the synth provider for all
@@ -32,6 +34,7 @@ import path from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
 
 import { SPRITE_TYPES, type Brief } from './brief-schema.js';
+import { isCiPipelineBypassed } from './ci-bypass.js';
 import { coerceSizeVariant, DEFAULT_SIZE_VARIANT, type SizeVariant } from './size-variants.js';
 import { buildSystemPrompt, buildUserPrompt } from './provider/azure-chat-synth.js';
 import type {
@@ -178,11 +181,12 @@ export async function synthesizeBrief(
   options: SynthesizeBriefOptions,
 ): Promise<SynthesizeBriefResult> {
   const env = options.env ?? process.env;
-  if (isCi(env)) {
+  if (isCi(env) && !isCiPipelineBypassed(env)) {
     throw new SynthesizeBriefError(
       'synthesizeBrief refuses to run in CI (env.CI is set). The synthesizer is ' +
         'local-only by policy: each call costs money and the output is non-deterministic. ' +
-        'Run on a developer workstation instead.',
+        'Run on a developer workstation instead, or set SPRITES_ALLOW_CI_PIPELINE=true ' +
+        'in the asset-request CI workflow (see ADR 0043).',
     );
   }
 

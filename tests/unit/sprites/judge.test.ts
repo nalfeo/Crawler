@@ -190,6 +190,47 @@ describe('judgeVariant — Constitutional §3 CI guard', () => {
       }),
     ).resolves.toMatchObject({ passed: true });
   });
+
+  it('runs in CI when the ADR-0043 pipeline bypass is set', async () => {
+    const { provider, calls } = stubProvider({
+      responseJson: {
+        style_match: { score: 5, rationale: 'a' },
+        brief_match: { score: 5, rationale: 'b' },
+        readability: { score: 5, rationale: 'c' },
+      },
+    });
+    await expect(
+      judgeVariant({
+        processed: makeTinyPng(),
+        referencePngs: [],
+        brief: makeBrief(),
+        styleGuide: '',
+        provider,
+        variantIndex: 0,
+        env: { CI: 'true', SPRITES_ALLOW_CI_PIPELINE: 'true' },
+        now: FIXED_NOW,
+      }),
+    ).resolves.toMatchObject({ passed: true });
+    expect(calls).toHaveLength(1);
+  });
+
+  it('still refuses in CI when the bypass flag is anything other than an accepted opt-in', async () => {
+    const { provider, calls } = stubProvider({ responseJson: {} });
+    for (const val of ['', 'false', '0', 'no', 'garbage']) {
+      await expect(
+        judgeVariant({
+          processed: makeTinyPng(),
+          referencePngs: [],
+          brief: makeBrief(),
+          styleGuide: '',
+          provider,
+          variantIndex: 0,
+          env: { CI: '1', SPRITES_ALLOW_CI_PIPELINE: val },
+        }),
+      ).rejects.toMatchObject({ kind: 'ci-refused' });
+    }
+    expect(calls).toHaveLength(0);
+  });
 });
 
 describe('judgeVariant — happy path', () => {
