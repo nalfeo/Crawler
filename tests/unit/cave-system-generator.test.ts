@@ -199,8 +199,10 @@ describe('CaveSystemGenerator', () => {
 
   it('clamps config caveSystem.presentCount to generator bounds', () => {
     const gen = new CaveSystemGenerator({ presentCount: 4 });
-    const config = smallConfig(1234);
-    config.caveSystem = { presentCount: 99 };
+    const config: MapConfig = {
+      ...smallConfig(1234),
+      caveSystem: { presentCount: 99 },
+    };
     const floor = gen.generate(config, new SeededRandom(1234));
     const territoryCount = floor.roomGraph
       .getAll()

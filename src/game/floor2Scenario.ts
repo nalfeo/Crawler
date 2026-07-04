@@ -53,7 +53,13 @@ import {
 } from '../core/faction-relations.js';
 import { spawnBehaviorEnemy } from '../core/spawners/combatants.js';
 import { AI_TYPE } from '../game/enemyAISystem.js';
-import { BiomeType, type MapConfig, RoomRole, TerrainType, type RoomData } from '../shared/map-types.js';
+import {
+  BiomeType,
+  type MapConfig,
+  RoomRole,
+  TerrainType,
+  type RoomData,
+} from '../shared/map-types.js';
 import type { FloorMap } from '../core/map/FloorMap.js';
 import { floor2EnemyPack, getFloor2BossArchetype } from '../shared/enemy-packs.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
@@ -597,9 +603,7 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
       : undefined;
 
   const configuredShopArchetypes = floor2Config?.settlement?.shopArchetypes;
-  let settlementArchetypes:
-    | ReturnType<typeof loadShopArchetypes>
-    | undefined;
+  let settlementArchetypes: ReturnType<typeof loadShopArchetypes> | undefined;
   if (configuredShopArchetypes && configuredShopArchetypes.length > 0) {
     const allArchetypes = loadShopArchetypes();
     const knownArchetypeIds = new Set(allArchetypes.map((archetype) => archetype.id));

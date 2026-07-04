@@ -21,11 +21,13 @@ describe('scenario definitions', () => {
     const realGetFloorManifest = floorRegistry.getFloorManifest;
     const floor2Manifest = realGetFloorManifest('floor2');
     expect(floor2Manifest).toBeDefined();
-    const manifestSpy = vi.spyOn(floorRegistry, 'getFloorManifest').mockImplementation((floorId) =>
-      floorId === 'floor-test-unregistered'
-        ? ({ ...floor2Manifest!, id: floorId, name: 'Floor Test Unregistered' } as never)
-        : realGetFloorManifest(floorId),
-    );
+    const manifestSpy = vi
+      .spyOn(floorRegistry, 'getFloorManifest')
+      .mockImplementation((floorId) =>
+        floorId === 'floor-test-unregistered'
+          ? ({ ...floor2Manifest!, id: floorId, name: 'Floor Test Unregistered' } as never)
+          : realGetFloorManifest(floorId),
+      );
 
     expect(() => getScenarioDefinition('floor-test-unregistered')).toThrowError(
       /No scenario definition registered for floor manifest/,

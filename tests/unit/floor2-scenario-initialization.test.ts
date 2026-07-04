@@ -35,14 +35,12 @@ describe('initializeFloor2Scenario manifest validation', () => {
     const badManifest = structuredClone(originalFloor2Manifest);
     badManifest.floor2 = {
       ...badManifest.floor2,
-      familyPool: ['pack-rats', 'slimes', 'sovran-goons'],
+      familyPool: ['goblins', 'llamas', 'pandas'],
     };
     registerFloorManifest('floor2', badManifest);
 
     const { world, playerEid } = createScenarioWorld();
-    expect(() => initializeFloor2Scenario(world, playerEid)).toThrowError(
-      /minimum 4 required/,
-    );
+    expect(() => initializeFloor2Scenario(world, playerEid)).toThrowError(/minimum 4 required/);
   });
 
   it('throws an actionable error when resourcePool contains unknown ids', () => {
@@ -65,6 +63,7 @@ describe('initializeFloor2Scenario manifest validation', () => {
       ...badManifest.floor2,
       settlement: {
         ...badManifest.floor2!.settlement,
+        shopCountRange: badManifest.floor2!.settlement?.shopCountRange ?? [1, 1],
         shopArchetypes: ['unknown-archetype'],
       },
     };
