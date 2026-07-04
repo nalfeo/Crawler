@@ -68,6 +68,7 @@ import { computeSliceMap } from '../slice-sheet.js';
 import { loadStyleGuide } from '../build-prompt.js';
 import { loadRecordedReferencePngs } from '../load-reference-pngs.js';
 import type { PostprocessOptions } from '../postprocess.js';
+import { removeManualAnchor, writeManualAnchor } from '../postprocess-overrides.js';
 import type { RunSummary } from '../run-artifacts.js';
 import {
   loadRunSummary,
@@ -223,10 +224,28 @@ interface LatestRunQuery {
 interface RunPostprocessBody {
   readonly options?: unknown;
   readonly sheet?: unknown;
+  readonly mode?: unknown;
+  readonly manualAnchor?: unknown;
+}
+
+interface RunManualAnchorBody {
+  readonly variantIndex?: unknown;
+  readonly x?: unknown;
+  readonly y?: unknown;
+  readonly clear?: unknown;
 }
 
 interface RunsQuery {
   readonly promoted?: unknown;
+}
+
+interface StorageRunsQuery {
+  readonly scope?: unknown;
+  readonly search?: unknown;
+}
+
+interface StorageBatchBody {
+  readonly keys?: unknown;
 }
 
 interface WorkflowStoreClearBody {
@@ -364,6 +383,109 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           ? runs
           : runs.filter((run) => run.promotionState === promotedFilter),
     };
+  });
+
+  app.get<{ Querystring: StorageRunsQuery }>('/api/storage/runs', async (req, reply) => {
+    const scope =
+      req.query.scope === 'archive'
+        ? 'archive'
+        : req.query.scope === 'active' || req.query.scope === undefined
+          ? 'active'
+          : null;
+    if (scope === null) {
+      reply.code(400);
+      return { error: 'bad-request', message: 'query.scope must be active or archive' };
+    }
+    const search =
+      typeof req.query.search === 'string' ? req.query.search.trim().toLowerCase() : '';
+    const allKeys = await store.list(scope === 'archive' ? 'archive/' : '');
+    const summaryKeys = allKeys.filter((key) => {
+      const parts = key.split('/');
+      if (scope === 'archive') {
+        return parts.length === 4 && parts[0] === 'archive' && parts[3] === 'summary.json';
+      }
+      return parts.length === 3 && parts[2] === 'summary.json' && parts[0] !== 'archive';
+    });
+    const runs = summaryKeys
+      .map((key) => {
+        const parts = key.split('/');
+        const briefId = scope === 'archive' ? parts[1]! : parts[0]!;
+        const runId = scope === 'archive' ? parts[2]! : parts[1]!;
+        return { key, briefId, runId };
+      })
+      .filter((run) =>
+        search.length === 0
+          ? true
+          : run.briefId.toLowerCase().includes(search) || run.runId.toLowerCase().includes(search),
+      )
+      .sort((a, b) => (a.runId < b.runId ? 1 : a.runId > b.runId ? -1 : 0));
+    return {
+      scope,
+      runs: runs.map((run) => ({
+        briefId: run.briefId,
+        runId: run.runId,
+        timestamp: parseRunIdTimestamp(run.runId),
+        summaryKey: run.key,
+      })),
+    };
+  });
+
+  app.post<{ Body: StorageBatchBody }>('/api/storage/runs/archive', async (req, reply) => {
+    const body = (req.body ?? {}) as StorageBatchBody;
+    if (!Array.isArray(body.keys) || body.keys.length === 0) {
+      reply.code(400);
+      return { error: 'bad-request', message: 'body.keys must be a non-empty array' };
+    }
+    const archived: string[] = [];
+    const skipped: string[] = [];
+    for (const raw of body.keys) {
+      if (typeof raw !== 'string') continue;
+      const parts = raw.split('/');
+      if (parts.length !== 2) continue;
+      const [briefId, runId] = parts;
+      if (!briefId || !runId) continue;
+      if (safeJoin(deps.runsDir, [briefId, runId, 'summary.json']) === null) continue;
+      const fromPrefix = `${briefId}/${runId}/`;
+      const keys = await store.list(fromPrefix);
+      if (keys.length === 0) {
+        skipped.push(raw);
+        continue;
+      }
+      for (const key of keys) {
+        const target = `archive/${key}`;
+        await store.put(target, await store.get(key));
+      }
+      for (const key of keys) {
+        await store.remove(key);
+      }
+      archived.push(raw);
+    }
+    return { ok: true, archived, skipped };
+  });
+
+  app.post<{ Body: StorageBatchBody }>('/api/storage/runs/delete', async (req, reply) => {
+    const body = (req.body ?? {}) as StorageBatchBody;
+    if (!Array.isArray(body.keys) || body.keys.length === 0) {
+      reply.code(400);
+      return { error: 'bad-request', message: 'body.keys must be a non-empty array' };
+    }
+    const deleted: string[] = [];
+    for (const raw of body.keys) {
+      if (typeof raw !== 'string') continue;
+      const archive = raw.startsWith('archive/');
+      const parts = raw.split('/');
+      const scopeParts = archive ? parts.slice(1) : parts;
+      if (scopeParts.length !== 2) continue;
+      const [briefId, runId] = scopeParts;
+      if (!briefId || !runId) continue;
+      if (safeJoin(deps.runsDir, [briefId, runId, 'summary.json']) === null) continue;
+      const prefix = `${archive ? 'archive/' : ''}${briefId}/${runId}/`;
+      for (const key of await store.list(prefix)) {
+        await store.remove(key);
+      }
+      deleted.push(raw);
+    }
+    return { ok: true, deleted };
   });
 
   app.get<{ Params: { briefId: string; runId: string } }>(
@@ -705,6 +827,37 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     return { ok: true, summary, loaded };
   };
 
+  const parsePostprocessMode = (
+    value: unknown,
+    hasOptions: boolean,
+  ): 'default' | 'persisted' | 'replace' | 'reset' | null => {
+    if (value === undefined || value === null || value === '') {
+      return hasOptions ? 'replace' : 'default';
+    }
+    return value === 'default' || value === 'persisted' || value === 'replace' || value === 'reset'
+      ? value
+      : null;
+  };
+
+  const parseManualAnchorPayload = (
+    value: unknown,
+  ): { variantIndex: number; x: number; y: number } | null => {
+    if (!value || typeof value !== 'object') return null;
+    const candidate = value as { variantIndex?: unknown; x?: unknown; y?: unknown };
+    if (
+      !Number.isInteger(candidate.variantIndex) ||
+      typeof candidate.x !== 'number' ||
+      typeof candidate.y !== 'number'
+    ) {
+      return null;
+    }
+    return {
+      variantIndex: candidate.variantIndex,
+      x: candidate.x,
+      y: candidate.y,
+    };
+  };
+
   // POST /api/runs/:briefId/:runId/postprocess — re-run PostProcess (content-aware
   // re-slice + re-post-process + re-score) over the STORED sheet with tweakable
   // options, WITHOUT regenerating. Deterministic (no LLM), so it is CI-safe.
@@ -718,6 +871,22 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       typeof body.options === 'object' && body.options !== null
         ? (body.options as PostprocessOptions)
         : undefined;
+    const mode = parsePostprocessMode(body.mode, options !== undefined);
+    if (mode === null) {
+      reply.code(400);
+      return {
+        error: 'bad-request',
+        message: 'body.mode must be default, persisted, replace, or reset',
+      };
+    }
+    const manualAnchor = parseManualAnchorPayload(body.manualAnchor);
+    if (body.manualAnchor !== undefined && manualAnchor === null) {
+      reply.code(400);
+      return {
+        error: 'bad-request',
+        message: 'body.manualAnchor must be { variantIndex, x, y }',
+      };
+    }
     if (body.sheet !== undefined && typeof body.sheet !== 'string') {
       reply.code(400);
       return { error: 'bad-request', message: 'body.sheet must be a sheet-NN.png filename' };
@@ -738,6 +907,17 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         brief: resolution.loaded.brief,
         palette: resolution.loaded.palette,
         ...(options ? { options } : {}),
+        ...(mode ? { optionsMode: mode } : {}),
+        ...(manualAnchor
+          ? {
+              manualAnchor: await writeManualAnchor(
+                store,
+                `${briefId}/${runId}`,
+                manualAnchor,
+                new Date().toISOString(),
+              ),
+            }
+          : {}),
         ...(sheet ? { sheetFile: sheet } : {}),
       });
       return {
@@ -845,6 +1025,42 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         message: err instanceof Error ? err.message : String(err),
       };
     }
+  });
+
+  app.post<{
+    Params: { briefId: string; runId: string };
+    Body: RunManualAnchorBody;
+  }>('/api/runs/:briefId/:runId/manual-anchor', async (req, reply) => {
+    const { briefId, runId } = req.params;
+    if (safeJoin(deps.runsDir, [briefId, runId, 'summary.json']) === null) {
+      reply.code(403);
+      return { error: 'forbidden-path' };
+    }
+    const summaryKey = `${briefId}/${runId}/summary.json`;
+    if (!(await store.has(summaryKey))) {
+      reply.code(404);
+      return { error: 'run-not-found', briefId, runId };
+    }
+    const body = (req.body ?? {}) as RunManualAnchorBody;
+    if (body.clear === true) {
+      await removeManualAnchor(store, `${briefId}/${runId}`);
+      return { status: 'cleared' as const };
+    }
+    const parsed = parseManualAnchorPayload(body);
+    if (!parsed) {
+      reply.code(400);
+      return {
+        error: 'bad-request',
+        message: 'body must include clear:true or manual anchor { variantIndex, x, y }',
+      };
+    }
+    const manualAnchor = await writeManualAnchor(
+      store,
+      `${briefId}/${runId}`,
+      parsed,
+      new Date().toISOString(),
+    );
+    return { status: 'set' as const, manualAnchor };
   });
 
   app.post<{
@@ -1884,7 +2100,7 @@ async function listRunsFromStore(
   // Keep only keys of the shape <briefId>/<runId>/summary.json (exactly 3 parts).
   const summaryKeys = allKeys.filter((k) => {
     const parts = k.split('/');
-    return parts.length === 3 && parts[2] === 'summary.json';
+    return parts.length === 3 && parts[2] === 'summary.json' && parts[0] !== 'archive';
   });
 
   const entries: RunListEntry[] = [];

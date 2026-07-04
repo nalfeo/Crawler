@@ -26,6 +26,13 @@ import {
   type ProcessedVariant,
   runJudgePass,
 } from './run-pipeline.js';
+import {
+  EFFECTIVE_PIPELINE_JSON_KEY,
+  EFFECTIVE_PIPELINE_YAML_KEY,
+  POSTPROCESS_PROFILE_KEY,
+  writeEffectivePipelineSnapshot,
+  writePostprocessProfile,
+} from './postprocess-overrides.js';
 import type { VisionProvider } from './provider/vision-types.js';
 import { pickChosen, rankCandidates, type RunSummary } from './run-artifacts.js';
 
@@ -74,6 +81,17 @@ export async function runFull(options: RunFullOptions): Promise<RunFullResult> {
     identity,
   } = core;
 
+  const nowIso = (options.now ?? (() => new Date()))().toISOString();
+  await writePostprocessProfile(store, `${identity.brief}/${identity.runId}`, {}, nowIso);
+  await writeEffectivePipelineSnapshot({
+    store,
+    baseKey: `${identity.brief}/${identity.runId}`,
+    brief,
+    options: {},
+    manualAnchor: null,
+    nowIso,
+  });
+
   // --- Postprocess + score each variant via the shared run pipeline. ---
   // Keep the post-processed buffers so the diversity pass doesn't re-read
   // every variant from the store. Sensor scoring + artifact writes live in
@@ -88,6 +106,10 @@ export async function runFull(options: RunFullOptions): Promise<RunFullResult> {
       raw: sliced[i]!,
       brief,
       palette,
+      traceRefs: {
+        overrideProfilePath: store.resolve(storeKey(POSTPROCESS_PROFILE_KEY)),
+        effectivePipelineSnapshotPath: store.resolve(storeKey(EFFECTIVE_PIPELINE_JSON_KEY)),
+      },
     });
     sensorEntries.push(variant);
     processedBuffers.push(variant.processed);
@@ -159,6 +181,15 @@ export async function runFull(options: RunFullOptions): Promise<RunFullResult> {
         }
       : null,
     judgeCache: cacheStats,
+    postprocessOverrides: {
+      profilePath: store.resolve(storeKey(POSTPROCESS_PROFILE_KEY)),
+      snapshotJsonPath: store.resolve(storeKey(EFFECTIVE_PIPELINE_JSON_KEY)),
+      snapshotYamlPath: store.resolve(storeKey(EFFECTIVE_PIPELINE_YAML_KEY)),
+      options: {},
+      manualAnchor: null,
+      appliedMode: 'default',
+      updatedAt: nowIso,
+    },
     sensorTelemetry: {
       orientation: {
         failed: orientationFailed,

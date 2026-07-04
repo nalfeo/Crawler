@@ -1918,3 +1918,64 @@ describe('sidecar POST /api/checkin', () => {
     expect(res.json()).toMatchObject({ error: 'ci-refused' });
   });
 });
+
+describe('storage lifecycle + manual anchor endpoints', () => {
+  let root: string;
+  let runsDir: string;
+  let app: FastifyInstance;
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), 'sidecar-storage-'));
+    runsDir = path.join(root, 'runs');
+    writeMinimalRun(runsDir, 'iron-sword', '2026-07-04T00-00-00-abc');
+    app = buildServer({ repoRoot: root, runsDir, version: 'test' });
+  });
+
+  afterEach(async () => {
+    await app.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('archives and then lists runs under archive scope', async () => {
+    const archiveRes = await app.inject({
+      method: 'POST',
+      url: '/api/storage/runs/archive',
+      payload: { keys: ['iron-sword/2026-07-04T00-00-00-abc'] },
+    });
+    expect(archiveRes.statusCode).toBe(200);
+    expect(archiveRes.json()).toMatchObject({ archived: ['iron-sword/2026-07-04T00-00-00-abc'] });
+
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/api/storage/runs?scope=archive',
+    });
+    expect(listRes.statusCode).toBe(200);
+    const list = listRes.json() as { runs: Array<{ briefId: string; runId: string }> };
+    expect(list.runs).toHaveLength(1);
+    expect(list.runs[0]).toMatchObject({
+      briefId: 'iron-sword',
+      runId: '2026-07-04T00-00-00-abc',
+    });
+  });
+
+  it('sets and clears run-level manual anchor artifacts', async () => {
+    const setRes = await app.inject({
+      method: 'POST',
+      url: '/api/runs/iron-sword/2026-07-04T00-00-00-abc/manual-anchor',
+      payload: { variantIndex: 0, x: 7, y: 11 },
+    });
+    expect(setRes.statusCode).toBe(200);
+    expect(setRes.json()).toMatchObject({
+      status: 'set',
+      manualAnchor: { variantIndex: 0, x: 7, y: 11, source: 'manual' },
+    });
+
+    const clearRes = await app.inject({
+      method: 'POST',
+      url: '/api/runs/iron-sword/2026-07-04T00-00-00-abc/manual-anchor',
+      payload: { clear: true },
+    });
+    expect(clearRes.statusCode).toBe(200);
+    expect(clearRes.json()).toEqual({ status: 'cleared' });
+  });
+});

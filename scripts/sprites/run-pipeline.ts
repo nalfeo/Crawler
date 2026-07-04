@@ -19,11 +19,13 @@ import type { JudgeBudget } from './cost-tracker.js';
 import type { JudgeCache } from './judge-cache.js';
 import { judgeVariant, type JudgeScorecard } from './judge.js';
 import { type PostprocessOptions, postprocessWithTrace } from './postprocess.js';
+import type { ManualAnchorOverride } from './postprocess-overrides.js';
 import { scoreCandidate } from './score-candidate.js';
 import type { JudgeSkipReason, RunSummaryEntry } from './run-artifacts.js';
 import type { RunStore } from './store/types.js';
 import type { VisionProvider } from './provider/vision-types.js';
 import { createLogger } from '../../src/shared/logger.js';
+import { ANCHOR_CENTER_OF_MASS_SENSOR, ANCHOR_DERIVABLE_SENSOR } from './score-candidate.js';
 
 const logger = createLogger('infra:run-pipeline');
 
@@ -63,6 +65,13 @@ export interface ProcessVariantArgs {
   readonly palette: PaletteColors;
   /** Post-processing tweaks. Omit for generation defaults. */
   readonly options?: PostprocessOptions;
+  /** Optional persisted manual anchor override for this variant. */
+  readonly manualAnchor?: ManualAnchorOverride | null;
+  /** Optional provenance references surfaced in pipeline manifests. */
+  readonly traceRefs?: {
+    readonly overrideProfilePath?: string | null;
+    readonly effectivePipelineSnapshotPath?: string | null;
+  };
 }
 
 /**
@@ -80,7 +89,10 @@ export async function postprocessScoreAndStoreVariant(
   const { store, storeKey, index, raw, brief, palette } = args;
   const traced = postprocessWithTrace(raw, brief, palette, args.options ?? {});
   const processed = traced.finalPng;
-  const scorecard = scoreCandidate(processed, brief, palette);
+  const scorecard = applyManualAnchorToScorecard(
+    scoreCandidate(processed, brief, palette),
+    args.manualAnchor?.variantIndex === index ? args.manualAnchor : null,
+  );
   const id = pad2(index);
 
   await store.put(storeKey(`raw/${id}.png`), raw);
@@ -102,6 +114,12 @@ export async function postprocessScoreAndStoreVariant(
       `${JSON.stringify(
         {
           profile: 'default',
+          ...(args.traceRefs?.overrideProfilePath
+            ? { overrideProfilePath: args.traceRefs.overrideProfilePath }
+            : {}),
+          ...(args.traceRefs?.effectivePipelineSnapshotPath
+            ? { effectivePipelineSnapshotPath: args.traceRefs.effectivePipelineSnapshotPath }
+            : {}),
           steps: pipelineSteps.map((step) => ({
             id: step.id,
             label: step.label,
@@ -125,6 +143,24 @@ export async function postprocessScoreAndStoreVariant(
     );
     anchorSidecarPath = store.resolve(anchorKey);
   }
+  if (args.manualAnchor?.variantIndex === index) {
+    await store.put(
+      storeKey(`processed/${id}.manual-anchor.json`),
+      Buffer.from(
+        `${JSON.stringify(
+          {
+            x: args.manualAnchor.x,
+            y: args.manualAnchor.y,
+            variantIndex: args.manualAnchor.variantIndex,
+            source: 'manual' as const,
+            updatedAt: args.manualAnchor.updatedAt,
+          },
+          null,
+          2,
+        )}\n`,
+      ),
+    );
+  }
   let centerOfGravitySidecarPath: string | null = null;
   if (scorecard.derivedAnchors.centerOfGravity) {
     const cogKey = storeKey(`processed/${id}.anchor.cog.json`);
@@ -143,6 +179,34 @@ export async function postprocessScoreAndStoreVariant(
       ),
     );
     centerOfGravitySidecarPath = store.resolve(cogKey);
+  }
+
+  function applyManualAnchorToScorecard(
+    scorecard: ReturnType<typeof scoreCandidate>,
+    manualAnchor: ManualAnchorOverride | null,
+  ): ReturnType<typeof scoreCandidate> {
+    if (!manualAnchor) return scorecard;
+    const breakdown = scorecard.breakdown.map((entry) => {
+      const isAnchorSensor =
+        entry.sensor === 'anchor-opaque' ||
+        entry.sensor === ANCHOR_DERIVABLE_SENSOR ||
+        entry.sensor === ANCHOR_CENTER_OF_MASS_SENSOR;
+      if (!isAnchorSensor || entry.ok) return entry;
+      return { ok: true as const, sensor: entry.sensor };
+    });
+    const score = breakdown.filter((entry) => entry.ok).length;
+    return {
+      ...scorecard,
+      score,
+      outOf: breakdown.length,
+      passed: score === breakdown.length,
+      breakdown,
+      derivedAnchor: { x: manualAnchor.x, y: manualAnchor.y },
+      derivedAnchors: {
+        hold: { x: manualAnchor.x, y: manualAnchor.y },
+        centerOfGravity: scorecard.derivedAnchors.centerOfGravity,
+      },
+    };
   }
 
   const { width: overlayW, height: overlayH } = (() => {
