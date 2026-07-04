@@ -1,7 +1,6 @@
 # ADR: Generic Status-Effect / Stat-Modifier Framework
 
 **Date:** 2026-07-02  
-**Status:** Accepted  
 **Scope:** src/shared (spec types), src/core (runtime helpers, ECS system, world sidecar, entity lifecycle), src/game + src/engine (speed read-site fold-ins, pipeline wiring), src/core/systems/equipmentSystem (data-driven source)
 
 ## Status

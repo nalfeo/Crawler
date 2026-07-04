@@ -1,7 +1,6 @@
 # ADR-0034: Quarter-tile FOV/fog-of-war resolution
 
 **Date:** 2026-06-30  
-**Status:** Accepted  
 **Deciders:** Agent session (nalfeo-feat-quarter-tile-fov)
 
 ## Status

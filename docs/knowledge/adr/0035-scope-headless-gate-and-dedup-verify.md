@@ -1,7 +1,6 @@
 # ADR 0035: Scope the Headless Gate, De-duplicate Local Verify, and Title-Only Commit-Lint
 
 **Date:** 2026-07-02  
-**Status:** Accepted  
 **Affected Systems:** scripts/agent/verify.sh, scripts/agent/ci/detect-art-only.sh, .github/workflows/ci.yml, .github/workflows/commit-lint.yml, tests/unit
 
 ## Status

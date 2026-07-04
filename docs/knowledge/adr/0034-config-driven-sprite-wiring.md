@@ -1,7 +1,6 @@
 # ADR 0034: Config-Driven Sprite Wiring
 
 **Date:** 2026-06-30  
-**Status:** Accepted  
 **Affected Systems:** src/core (dropSystem), src/engine (PhaserBridge, InventoryUI), src/game (spawners)
 
 ## Status
