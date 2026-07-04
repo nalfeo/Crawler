@@ -315,6 +315,36 @@ describe('synthesizeBrief — CI guard', () => {
       expect(result.written).toHaveLength(1);
     }
   });
+
+  it('runs in CI when the ADR-0043 pipeline bypass is set', async () => {
+    const provider = makeProvider(() => makeWeaponResponse([makeCandidate()]));
+    const result = await synthesizeBrief({
+      name: 'scythe',
+      type: 'weapon',
+      candidates: 1,
+      provider,
+      repoRoot: REPO_ROOT,
+      env: { CI: 'true', SPRITES_ALLOW_CI_PIPELINE: 'true' },
+      fsWrites: makeFsWrites().hooks,
+    });
+    expect(result.written).toHaveLength(1);
+  });
+
+  it('still refuses in CI when the bypass flag is anything other than an accepted opt-in', async () => {
+    const provider = makeProvider(() => makeWeaponResponse([makeCandidate()]));
+    for (const val of ['', 'false', '0', 'garbage']) {
+      await expect(
+        synthesizeBrief({
+          name: 'scythe',
+          type: 'weapon',
+          provider,
+          repoRoot: REPO_ROOT,
+          env: { CI: 'true', SPRITES_ALLOW_CI_PIPELINE: val },
+          fsWrites: makeFsWrites().hooks,
+        }),
+      ).rejects.toThrow(/refuses to run in CI/);
+    }
+  });
 });
 
 describe('synthesizeBrief — type confidence', () => {

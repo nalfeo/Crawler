@@ -212,4 +212,16 @@ jobs:
           SPRITES_WORKER_DRAIN: 'true'
           SPRITES_WORKER_MAX_EMPTY_POLLS: '3'
           SPRITES_WORKER_POLL_MS: '5000'
+
+          # ADR-0043 bypass for Constitutional §3. The asset-request worker is
+          # the ONLY sanctioned CI caller of `synthesizeBrief` and `judgeVariant`.
+          # Both of those otherwise refuse to run in CI (non-deterministic, costs
+          # Azure credits). See docs/knowledge/adr/0043-ci-asset-request-worker-bypass.md
+          # for the rationale + cost/abuse mitigations.
+          #
+          # DO NOT copy this env var into any other workflow. `checkin.ts` and
+          # `asset-pr.ts` (which push commits / open PRs) remain hard-blocked
+          # in CI regardless of this flag — the bypass is narrowly scoped to
+          # synth + judge, which are the two calls the drain worker needs.
+          SPRITES_ALLOW_CI_PIPELINE: 'true'
         run: npm run sprites:worker
