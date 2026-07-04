@@ -228,6 +228,16 @@ import {
   type RunPlannerParams,
 } from './run-planner.js';
 import {
+  estimateObjectiveTravelLeg,
+  estimateObjectiveTravelMatrix,
+  objectiveTravelMatrixFromEstimates,
+  type Floor1ObjectiveNodeId,
+  type ObjectiveTravelEstimate,
+  type ObjectiveTravelMatrix,
+  type ObjectiveTravelNode,
+  type ObjectiveTravelParams,
+} from './objective-travel-time.js';
+import {
   evaluateTacticalOpportunities,
   projectTacticalObjectiveLookahead,
   type TacticalOpportunityCandidate,
@@ -370,6 +380,7 @@ export type { AILockedDoorMemory };
 
 export interface TacticalRunDebug {
   runPlan: Floor1RunPlan | null;
+  hardGateRunPlan: Floor1RunPlan | null;
   opportunities: TacticalOpportunityEvaluation | null;
 }
 
@@ -401,8 +412,15 @@ export class BehaviorTreeAI implements AIInputProvider {
    * recent poll). Exposed via {@link getTravelSteeringDebug} for tests/telemetry. */
   private lastTravelSteering: TravelSteeringResult | null = null;
   private lastRunPlan: Floor1RunPlan | null = null;
+  private lastHardGateRunPlan: Floor1RunPlan | null = null;
   private lastTacticalOpportunityEvaluation: TacticalOpportunityEvaluation | null = null;
   private tacticalTravelOwnsLoot: boolean = false;
+  private staticObjectiveTravelCache: {
+    signature: string;
+    matrix: ObjectiveTravelMatrix<Floor1ObjectiveNodeId>;
+  } | null = null;
+  private objectiveTravelPathCacheEpoch = -1;
+  private readonly objectiveTravelPathCache = new Map<string, TilePoint[] | null>();
   /**
    * Whether the AI is currently committed to a retreat. Latched so the retreat
    * condition can apply hysteresis (see {@link RETREAT_HYSTERESIS_MULT}) instead
@@ -863,19 +881,21 @@ export class BehaviorTreeAI implements AIInputProvider {
         // already inside engagement range, clear the threat first instead of
         // pathing straight through it toward the NPC.
         if (targetIsNpc && target.distance > NPC_INTERACTION_RADIUS_FT) {
-          const nearestEnemy = this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY);
-          const npcThreatRadius = Math.min(
-            this.getEngageRadius(ctx.world),
-            NPC_APPROACH_THREAT_RADIUS_FT,
-          );
-          if (nearestEnemy && nearestEnemy.distance <= npcThreatRadius) {
-            const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, nearestEnemy);
-            this.decision.state = AIState.ENGAGE;
-            this.decision.targetEid = nearestEnemy.eid;
-            this.decision.targetX = plan.targetX;
-            this.decision.targetY = plan.targetY;
-            this.decision.reason = `Clearing nearby threat before NPC interaction — ${plan.reason}`;
-            return BTStatus.SUCCESS;
+          if (!this.shouldSkipNpcThreatClearForRouteSlack(ctx.world)) {
+            const nearestEnemy = this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY);
+            const npcThreatRadius = Math.min(
+              this.getEngageRadius(ctx.world),
+              NPC_APPROACH_THREAT_RADIUS_FT,
+            );
+            if (nearestEnemy && nearestEnemy.distance <= npcThreatRadius) {
+              const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, nearestEnemy);
+              this.decision.state = AIState.ENGAGE;
+              this.decision.targetEid = nearestEnemy.eid;
+              this.decision.targetX = plan.targetX;
+              this.decision.targetY = plan.targetY;
+              this.decision.reason = `Clearing nearby threat before NPC interaction — ${plan.reason}`;
+              return BTStatus.SUCCESS;
+            }
           }
         }
         // If this progress goal points at a living enemy (e.g. hunting quest mobs,
@@ -1994,8 +2014,25 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.dodgeVecX = 0;
     this.dodgeVecY = 0;
     this.lastRunPlan = null;
+    this.lastHardGateRunPlan = null;
     this.lastTacticalOpportunityEvaluation = null;
     this.tacticalTravelOwnsLoot = false;
+    const playerSpeedFtPerFrame = this.getPlayerSpeedFtPerFrame(world, playerEid);
+    this.lastRunPlan = this.estimateCurrentRunPlan(
+      world,
+      playerEid,
+      playerX,
+      playerY,
+      playerSpeedFtPerFrame,
+    );
+    this.lastHardGateRunPlan = this.estimateCurrentRunPlan(
+      world,
+      playerEid,
+      playerX,
+      playerY,
+      playerSpeedFtPerFrame,
+      true,
+    );
 
     // Build context for behavior tree
     const context: BTContext = {
@@ -2209,17 +2246,271 @@ export class BehaviorTreeAI implements AIInputProvider {
     };
   }
 
+  private getStaticObjectiveTravelNodes(
+    objective: NonNullable<GameWorld['floor1']>['objective'],
+  ): ObjectiveTravelNode<Floor1ObjectiveNodeId>[] {
+    return [
+      { id: 'welcome-office', point: objective.welcomeOfficePos },
+      { id: 'shopkeeper', point: objective.shopRoomPos },
+      { id: 'merchant-fetch', point: objective.questItemPos },
+      { id: 'spell-broker', point: objective.spellQuestGiverPos },
+      { id: 'slime-rat-room', point: objective.slimeRatRoomPos },
+      { id: 'staircase-boss-room', point: objective.staircasePos },
+      { id: 'stairs-exit', point: objective.staircasePos },
+    ];
+  }
+
+  private getObjectiveTravelParams(
+    world: GameWorld,
+    moveSpeedFtPerMs: number,
+  ): ObjectiveTravelParams<Floor1ObjectiveNodeId> {
+    const floorMap = world.floorMap;
+    if (!floorMap) {
+      return { moveSpeedFtPerMs };
+    }
+    return {
+      moveSpeedFtPerMs,
+      estimateDistanceFt: (from, to) => {
+        const endpointRoomIds = this.getObjectiveEndpointRoomIds(floorMap, from.point, to.point);
+        const objectivePathOptions: PathfindingOptions = {
+          traversalMode: PATH_TRAVERSAL.GROUND,
+          maxPathLength: NAVIGATION_MAX_PATH_LENGTH,
+          isTilePassable: (x: number, y: number): boolean =>
+            this.isObjectiveTravelTilePassable(floorMap, x, y, endpointRoomIds),
+        };
+        const pathDistance = this.estimateObjectivePathDistanceFt(
+          floorMap,
+          from.point,
+          to.point,
+          objectivePathOptions,
+        );
+        return pathDistance === null
+          ? null
+          : { distanceFt: pathDistance, source: 'deterministic-path' };
+      },
+    };
+  }
+
+  private getObjectiveEndpointRoomIds(
+    floorMap: FloorMap,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+  ): ReadonlySet<number> {
+    const roomIds = new Set<number>();
+    for (const point of [from, to]) {
+      const tile = floorMap.worldToTile(point.x, point.y);
+      const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
+      if (roomId >= 0) {
+        roomIds.add(roomId);
+      }
+    }
+    return roomIds;
+  }
+
+  private isObjectiveEndpointDoor(
+    floorMap: FloorMap,
+    tileX: number,
+    tileY: number,
+    endpointRoomIds: ReadonlySet<number>,
+  ): boolean {
+    if (!floorMap.tileMap.isDoor(tileX, tileY)) {
+      return false;
+    }
+    for (const roomId of endpointRoomIds) {
+      const room = floorMap.roomGraph.get(roomId);
+      if (room?.doors.some((door) => door.x === tileX && door.y === tileY) === true) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private isObjectiveTravelTilePassable(
+    floorMap: FloorMap,
+    tileX: number,
+    tileY: number,
+    endpointRoomIds: ReadonlySet<number>,
+  ): boolean {
+    if (this.doorAwarePassable?.(tileX, tileY) ?? floorMap.tileMap.isPassable(tileX, tileY)) {
+      return true;
+    }
+    return this.isObjectiveEndpointDoor(floorMap, tileX, tileY, endpointRoomIds);
+  }
+
+  private estimateObjectivePathDistanceFt(
+    floorMap: FloorMap,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    pathOptions: PathfindingOptions,
+  ): number | null {
+    const startTile = floorMap.worldToTile(from.x, from.y);
+    const goalTile = floorMap.worldToTile(to.x, to.y);
+    const path = this.getCachedObjectiveTravelPath(floorMap, startTile, goalTile, pathOptions);
+    if (path === null) {
+      return null;
+    }
+    if (path.length === 1) {
+      return Math.hypot(to.x - from.x, to.y - from.y);
+    }
+
+    let total = 0;
+    let prev = from;
+    for (let i = 1; i < path.length; i += 1) {
+      const tile = path[i]!;
+      const waypoint = floorMap.tileToWorld(tile.x, tile.y);
+      total += Math.hypot(waypoint.x - prev.x, waypoint.y - prev.y);
+      prev = waypoint;
+    }
+    total += Math.hypot(to.x - prev.x, to.y - prev.y);
+    return total;
+  }
+
+  private getCachedObjectiveTravelPath(
+    floorMap: FloorMap,
+    startTile: TilePoint,
+    goalTile: TilePoint,
+    pathOptions: PathfindingOptions,
+  ): TilePoint[] | null {
+    if (this.objectiveTravelPathCacheEpoch !== this.navEpoch) {
+      this.objectiveTravelPathCacheEpoch = this.navEpoch;
+      this.objectiveTravelPathCache.clear();
+    }
+    const key = `${startTile.x},${startTile.y}->${goalTile.x},${goalTile.y}`;
+    if (this.objectiveTravelPathCache.has(key)) {
+      return this.objectiveTravelPathCache.get(key) ?? null;
+    }
+    const path = findTilePath(floorMap, startTile, goalTile, pathOptions);
+    const cached = path.length > 0 ? path : null;
+    this.objectiveTravelPathCache.set(key, cached);
+    return cached;
+  }
+
+  private staticObjectiveTravelSignature(
+    nodes: readonly ObjectiveTravelNode<Floor1ObjectiveNodeId>[],
+    moveSpeedFtPerMs: number,
+  ): string {
+    return `${this.navEpoch}:${moveSpeedFtPerMs.toFixed(8)}:${nodes
+      .map((node) => `${node.id}:${node.point.x.toFixed(3)},${node.point.y.toFixed(3)}`)
+      .join('|')}`;
+  }
+
+  private getStaticObjectiveTravelMatrix(
+    world: GameWorld,
+    nodes: readonly ObjectiveTravelNode<Floor1ObjectiveNodeId>[],
+    moveSpeedFtPerMs: number,
+  ): ObjectiveTravelMatrix<Floor1ObjectiveNodeId> {
+    const signature = this.staticObjectiveTravelSignature(nodes, moveSpeedFtPerMs);
+    if (this.staticObjectiveTravelCache?.signature === signature) {
+      return this.staticObjectiveTravelCache.matrix;
+    }
+    const matrix = estimateObjectiveTravelMatrix(
+      nodes,
+      this.getObjectiveTravelParams(world, moveSpeedFtPerMs),
+    );
+    this.staticObjectiveTravelCache = { signature, matrix };
+    return matrix;
+  }
+
+  private buildRunPlannerObjectiveTravelMatrix(
+    world: GameWorld,
+    player: { x: number; y: number },
+    currentTarget: Floor1RunPlannerSnapshot['currentTarget'],
+    playerSpeedFtPerFrame: number,
+  ): ObjectiveTravelMatrix<Floor1ObjectiveNodeId> | null {
+    const objective = world.floor1?.objective;
+    if (!objective) {
+      return null;
+    }
+
+    const moveSpeedFtPerMs = playerSpeedFtPerFrame / GAME.DELTA_MS;
+    const staticNodes = this.getStaticObjectiveTravelNodes(objective);
+    const staticMatrix = this.getStaticObjectiveTravelMatrix(world, staticNodes, moveSpeedFtPerMs);
+    const params = this.getObjectiveTravelParams(world, moveSpeedFtPerMs);
+    const dynamicNodes: ObjectiveTravelNode<Floor1ObjectiveNodeId>[] = [
+      { id: 'player', point: player },
+    ];
+    if (currentTarget) {
+      dynamicNodes.push({ id: 'current-target', point: currentTarget });
+    }
+
+    const estimates: ObjectiveTravelEstimate<Floor1ObjectiveNodeId>[] = [...staticMatrix.estimates];
+    const targets = [...staticNodes, ...dynamicNodes];
+    for (const from of dynamicNodes) {
+      for (const to of targets) {
+        estimates.push(estimateObjectiveTravelLeg(from, to, params));
+      }
+    }
+    for (const from of staticNodes) {
+      for (const to of dynamicNodes) {
+        estimates.push(estimateObjectiveTravelLeg(from, to, params));
+      }
+    }
+    return objectiveTravelMatrixFromEstimates(estimates);
+  }
+
   private getCollapsePanicProfile(world: GameWorld): CollapsePanicProfile {
     const objective = world.floor1?.objective;
     if (!objective) {
       return computeCollapsePanicProfile(null);
     }
-    return computeCollapsePanicProfile({
+    const raw = computeCollapsePanicProfile({
       elapsedMs: world.elapsedMs,
       deadlineMs: resolveFloor1AiCollapsePanicDeadlineMs(objective.deadlineMs),
       staircaseUnlocked: objective.staircaseUnlocked,
       staircaseDiscovered: objective.staircaseDiscovered,
     });
+    const runPlan = this.lastRunPlan;
+    if (!runPlan) {
+      return raw;
+    }
+    const routeIsUsableForPanic =
+      runPlan.segments.length > 0 &&
+      runPlan.segments.every(
+        (segment) => segment.reachable && Number.isFinite(segment.estimatedMs),
+      );
+    if (!routeIsUsableForPanic) {
+      return raw;
+    }
+    return {
+      ...raw,
+      panic: Math.max(raw.panic, runPlan.urgency),
+      beeline: raw.beeline || (runPlan.slackMs <= 0 && !objective.staircaseDiscovered),
+    };
+  }
+
+  private shouldSkipNpcThreatClearForRouteSlack(world: GameWorld): boolean {
+    const profile = this.getCollapsePanicProfile(world);
+    if (profile.beeline) {
+      return true;
+    }
+    return this.hasHardGateRoutePressure(world);
+  }
+
+  private isUsableRunPlan(runPlan: Floor1RunPlan | null): runPlan is Floor1RunPlan {
+    return (
+      runPlan !== null &&
+      runPlan.segments.length > 0 &&
+      runPlan.segments.every((segment) => segment.reachable && Number.isFinite(segment.estimatedMs))
+    );
+  }
+
+  private isHardGateRoutePressureEligible(world: GameWorld): boolean {
+    const objective = world.floor1?.objective;
+    return (
+      objective !== undefined &&
+      objective.questCompleted &&
+      world.playerLevel.level >= 2 &&
+      !objective.staircaseDiscovered
+    );
+  }
+
+  private hasHardGateRoutePressure(world: GameWorld): boolean {
+    const runPlan = this.lastHardGateRunPlan;
+    return (
+      this.isHardGateRoutePressureEligible(world) &&
+      this.isUsableRunPlan(runPlan) &&
+      runPlan.slackMs <= 0
+    );
   }
 
   private getDynamicOpportunisticWeights(world: GameWorld): {
@@ -2280,6 +2571,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerX: number,
     playerY: number,
     playerSpeedFtPerFrame: number,
+    useHardGateDeadline: boolean = false,
   ): Floor1RunPlan | null {
     const floor1 = world.floor1;
     const objective = floor1?.objective;
@@ -2306,11 +2598,20 @@ export class BehaviorTreeAI implements AIInputProvider {
             kind: this.getCurrentRunPlannerTargetKind(world, shopStage),
           }
         : null;
+    const objectiveTravel = this.buildRunPlannerObjectiveTravelMatrix(
+      world,
+      { x: playerX, y: playerY },
+      currentTarget,
+      playerSpeedFtPerFrame,
+    );
     const snapshot: Floor1RunPlannerSnapshot = {
       nowMs: world.elapsedMs,
-      deadlineMs: objective.deadlineMs,
+      deadlineMs: useHardGateDeadline
+        ? resolveFloor1AiCollapsePanicDeadlineMs(objective.deadlineMs)
+        : objective.deadlineMs,
       player: { x: playerX, y: playerY },
       currentTarget,
+      objectiveTravel,
       activeQuestGiverDetour: this.committedDetourNpcEid !== null,
       tutorialAccepted: world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID),
       playerLevel: world.playerLevel.level,
@@ -2338,7 +2639,8 @@ export class BehaviorTreeAI implements AIInputProvider {
         questItem: objective.questItemPos,
         spellQuestGiver: objective.spellQuestGiverPos,
         slimeRatRoom: objective.slimeRatRoomPos,
-        staircase: objective.staircasePos,
+        staircaseBossRoom: objective.staircasePos,
+        stairsExit: objective.staircasePos,
       },
     };
     return estimateFloor1RunPlan(snapshot, this.getRunPlannerParams(playerSpeedFtPerFrame));
@@ -2469,6 +2771,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     objectiveX: number,
     objectiveY: number,
     runPlan: Floor1RunPlan | null,
+    hardGateRunPlan: Floor1RunPlan | null,
     playerSpeedFtPerFrame: number,
   ): TacticalOpportunityEvaluation {
     const inQuestGiverDetour = this.committedDetourNpcEid !== null;
@@ -2485,7 +2788,11 @@ export class BehaviorTreeAI implements AIInputProvider {
         playerY,
         objectiveX,
         objectiveY,
-        urgency: runPlan?.urgency ?? this.getCollapsePanicProfile(world).panic,
+        urgency: Math.max(
+          runPlan?.urgency ?? 0,
+          this.hasHardGateRoutePressure(world) ? (hardGateRunPlan?.urgency ?? 0) : 0,
+          this.getCollapsePanicProfile(world).panic,
+        ),
         speedFtPerMs: playerSpeedFtPerFrame / GAME.DELTA_MS,
         opportunities: this.buildTacticalOpportunityCandidates(world, playerX, playerY),
       },
@@ -2502,8 +2809,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     panicProfile: CollapsePanicProfile,
   ): ProgressTarget {
     // A. Hard early exits (release any stale commitment first).
-    if (panicProfile.beeline) {
-      // Late-floor emergency beeline: never sit on a detour.
+    if (panicProfile.beeline || this.hasHardGateRoutePressure(world)) {
+      // Late-floor or hard-gate route pressure: never sit on an optional detour.
       this.releaseDetourCommitment();
       return target;
     }
@@ -4154,6 +4461,15 @@ export class BehaviorTreeAI implements AIInputProvider {
     const playerSpeed = this.getPlayerSpeedFtPerFrame(world, playerEid);
     const runPlan = this.estimateCurrentRunPlan(world, playerEid, playerX, playerY, playerSpeed);
     this.lastRunPlan = runPlan;
+    const hardGateRunPlan = this.estimateCurrentRunPlan(
+      world,
+      playerEid,
+      playerX,
+      playerY,
+      playerSpeed,
+      true,
+    );
+    this.lastHardGateRunPlan = hardGateRunPlan;
     const fallbackObjective = projectTacticalObjectiveLookahead(
       playerX,
       playerY,
@@ -4170,6 +4486,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       objectiveX,
       objectiveY,
       runPlan,
+      hardGateRunPlan,
       playerSpeed,
     );
     this.lastTacticalOpportunityEvaluation = tacticalOpportunities;
@@ -4708,6 +5025,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   getTacticalRunDebug(): TacticalRunDebug {
     return {
       runPlan: this.lastRunPlan,
+      hardGateRunPlan: this.lastHardGateRunPlan,
       opportunities: this.lastTacticalOpportunityEvaluation,
     };
   }
@@ -4809,6 +5127,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.resolveGoalMemoEpoch = -1;
     this.navEpoch = 0;
     this.navSignature = null;
+    this.staticObjectiveTravelCache = null;
+    this.objectiveTravelPathCache.clear();
+    this.objectiveTravelPathCacheEpoch = -1;
     this.exploredSeen = null;
     this.hasPerceptionData = false;
     this.frontierBfsVisited = null;
@@ -4824,6 +5145,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.dodgeVecY = 0;
     this.lastTravelSteering = null;
     this.lastRunPlan = null;
+    this.lastHardGateRunPlan = null;
     this.lastTacticalOpportunityEvaluation = null;
     this.tacticalTravelOwnsLoot = false;
     this.acceptedQuestCount = 0;

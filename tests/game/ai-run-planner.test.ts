@@ -46,13 +46,15 @@ function snapshot(overrides: Partial<Floor1RunPlannerSnapshot> = {}): Floor1RunP
     staircaseDefeated: false,
     staircaseUnlocked: false,
     staircaseDiscovered: false,
+    objectiveTravel: null,
     positions: {
       welcomeOffice: { x: 10, y: 0 },
       shop: { x: 20, y: 0 },
       questItem: { x: 30, y: 0 },
       spellQuestGiver: { x: 40, y: 0 },
       slimeRatRoom: { x: 50, y: 0 },
-      staircase: { x: 60, y: 0 },
+      staircaseBossRoom: { x: 60, y: 0 },
+      stairsExit: { x: 60, y: 0 },
     },
     ...overrides,
   };
@@ -214,5 +216,104 @@ describe('estimateFloor1RunPlan', () => {
 
     const killSegment = plan.segments.find((segment) => segment.id === 'complete-goon-kills');
     expect(killSegment?.workMs).toBe(3 * PARAMS.questKillMs);
+  });
+
+  it('uses objective path travel for low-slack post-boss stairs routing', () => {
+    const plan = estimateFloor1RunPlan(
+      snapshot({
+        nowMs: 285_000,
+        deadlineMs: 360_000,
+        player: { x: 0, y: 0 },
+        tutorialAccepted: true,
+        playerLevel: 2,
+        questCompleted: true,
+        shopStage: 'complete',
+        bossBattleAccepted: true,
+        slimeRatStarted: true,
+        slimeRatDefeated: true,
+        spellsUnlocked: true,
+        staircaseStarted: true,
+        staircaseDefeated: true,
+        staircaseUnlocked: true,
+        staircaseDiscovered: false,
+        objectiveTravel: {
+          estimates: [
+            {
+              fromId: 'player',
+              toId: 'stairs-exit',
+              distanceFt: 7_200,
+              travelMs: 60_000,
+              reachable: true,
+              source: 'deterministic-path',
+            },
+          ],
+          byPair: {
+            'player->stairs-exit': {
+              fromId: 'player',
+              toId: 'stairs-exit',
+              distanceFt: 7_200,
+              travelMs: 60_000,
+              reachable: true,
+              source: 'deterministic-path',
+            },
+          },
+        },
+      }),
+      PARAMS,
+    );
+
+    expect(plan.criticalPathObjective).toBe('Take the stairs');
+    expect(plan.segments.map((segment) => segment.id)).toEqual(['take-stairs']);
+    expect(plan.segments[0]?.travelSource).toBe('deterministic-path');
+    expect(plan.slackMs).toBeLessThan(0);
+    expect(plan.urgency).toBe(1);
+  });
+
+  it('uses objective path travel from static objectives to the current dynamic target', () => {
+    const plan = estimateFloor1RunPlan(
+      snapshot({
+        tutorialAccepted: true,
+        playerLevel: 2,
+        questCompleted: true,
+        shopStage: 'not-met',
+        currentTarget: {
+          x: 80,
+          y: 0,
+          eid: 99,
+          reason: 'Hunting the swarm for charm gold',
+          kind: 'gold-farm',
+        },
+        objectiveTravel: {
+          estimates: [
+            {
+              fromId: 'shopkeeper',
+              toId: 'current-target',
+              distanceFt: 480,
+              travelMs: 4_000,
+              reachable: true,
+              source: 'deterministic-path',
+            },
+          ],
+          byPair: {
+            'shopkeeper->current-target': {
+              fromId: 'shopkeeper',
+              toId: 'current-target',
+              distanceFt: 480,
+              travelMs: 4_000,
+              reachable: true,
+              source: 'deterministic-path',
+            },
+          },
+        },
+      }),
+      PARAMS,
+    );
+
+    const goldSegment = plan.segments.find((segment) => segment.id === 'farm-shop-gold');
+    expect(goldSegment).toBeDefined();
+    expect(goldSegment?.fromNodeId).toBe('shopkeeper');
+    expect(goldSegment?.toNodeId).toBe('current-target');
+    expect(goldSegment?.travelSource).toBe('deterministic-path');
+    expect(goldSegment?.travelMs).toBe(4_000);
   });
 });

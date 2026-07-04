@@ -440,6 +440,31 @@ describe('BehaviorTreeAI', () => {
       expect(tactical.opportunities?.acceptedPickups).toHaveLength(0);
     });
 
+    it('suppresses on-path loot detours when hard-gate route slack is gone before beeline', () => {
+      const s = pollQuestNavHeading(42);
+      spawnXpGem(s.world, s.px + s.ux * 10, s.py + s.uy * 10, 5);
+
+      s.ai.poll(s.input, s.world);
+      const control = s.ai.getTravelSteeringDebug();
+      expect(control?.selectedPickupEid).not.toBeNull();
+
+      const objective = s.world.floor1!.objective;
+      s.world.playerLevel.level = 2;
+      objective.questCompleted = true;
+      objective.staircaseUnlocked = false;
+      objective.staircaseDiscovered = false;
+      s.world.elapsedMs = 260_000;
+
+      s.ai.poll(s.input, s.world);
+
+      const pressured = s.ai.getTravelSteeringDebug();
+      expect(pressured?.selectedPickupEid).toBeNull();
+      const tactical = s.ai.getTacticalRunDebug();
+      expect(tactical.hardGateRunPlan?.slackMs).toBeLessThanOrEqual(0);
+      expect(tactical.hardGateRunPlan!.slackMs).toBeLessThan(tactical.runPlan!.slackMs);
+      expect(tactical.opportunities?.acceptedPickups).toHaveLength(0);
+    });
+
     it('does not switch to COLLECT in low-time beeline fallback windows', () => {
       const world = createTestWorld({ seed: 42 });
       const player = spawnPlayer(world, 0, 0);
@@ -796,6 +821,38 @@ describe('BehaviorTreeAI', () => {
     const decision = ai.getDecision();
     expect(decision.state).toBe(AIState.ENGAGE);
     expect(decision.reason).toContain('Clearing nearby threat before NPC interaction');
+  });
+
+  it('keeps beelining to required NPCs under low route slack instead of clearing nearby threats', () => {
+    const world = createTestWorld({ seed: 12 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    meetTutorialGoon(world);
+    world.playerLevel.level = 2;
+    world.floor1!.objective.questCompleted = true;
+    world.floor1!.objective.bossBattles.get('slime-rat')!.defeated = true;
+    world.floorMap = makeOpenRoom(40, 20);
+    world.stores.position.x[player] = 14;
+    world.stores.position.y[player] = 14;
+    world.elapsedMs = 6 * 60 * 1000 - 55_000;
+
+    const shopkeeperNpcEid = world.floor1!.shopkeeperNpcEid;
+    expect(shopkeeperNpcEid).toBeDefined();
+    world.stores.position.x[shopkeeperNpcEid!] = 38;
+    world.stores.position.y[shopkeeperNpcEid!] = 14;
+
+    spawnEnemy(world, 22, 14, 20);
+
+    const ai = new BehaviorTreeAI({ seed: 12 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.EXPLORE);
+    expect(decision.targetEid).toBe(-1);
+    expect(decision.targetX).toBe(world.floor1!.objective.shopRoomPos.x);
+    expect(decision.targetY).toBe(world.floor1!.objective.shopRoomPos.y);
+    expect(decision.reason).toContain('Seeking Shopkeeper');
   });
 
   it('does not engage an unseen enemy once minimap/FOV perception is initialized', () => {
@@ -1162,12 +1219,17 @@ describe('BehaviorTreeAI', () => {
       resolveGoalMemoEpoch: number;
       navEpoch: number;
       navSignature: string | null;
+      staticObjectiveTravelCache: unknown | null;
+      objectiveTravelPathCache: Map<string, unknown>;
+      objectiveTravelPathCacheEpoch: number;
+      lastHardGateRunPlan: unknown | null;
     };
 
     it('clears the memo and resets the nav signature/epoch to construction state', () => {
       const world = createTestWorld({ seed: 99 });
-      world.floorMap = makeOpenRoom(16, 16);
-      spawnPlayer(world, 112, 112); // tile (3,3)
+      const player = spawnPlayer(world, 112, 112); // tile (3,3)
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
       spawnGold(world, 400, 112, 3); // distant gold drives Collect path planning
 
       const ai = new BehaviorTreeAI({ seed: 99 });
@@ -1180,6 +1242,10 @@ describe('BehaviorTreeAI', () => {
       expect(state.navSignature).not.toBeNull();
       expect(state.navEpoch).toBeGreaterThan(0);
       expect(state.resolveGoalMemo.size).toBeGreaterThan(0);
+      expect(state.staticObjectiveTravelCache).not.toBeNull();
+      expect(state.objectiveTravelPathCache.size).toBeGreaterThan(0);
+      expect(state.objectiveTravelPathCacheEpoch).toBeGreaterThanOrEqual(0);
+      expect(state.lastHardGateRunPlan).not.toBeNull();
 
       ai.reset();
 
@@ -1188,6 +1254,10 @@ describe('BehaviorTreeAI', () => {
       expect(state.resolveGoalMemoEpoch).toBe(-1);
       expect(state.navEpoch).toBe(0);
       expect(state.navSignature).toBeNull();
+      expect(state.staticObjectiveTravelCache).toBeNull();
+      expect(state.objectiveTravelPathCache.size).toBe(0);
+      expect(state.objectiveTravelPathCacheEpoch).toBe(-1);
+      expect(state.lastHardGateRunPlan).toBeNull();
     });
   });
 
@@ -1236,6 +1306,77 @@ describe('BehaviorTreeAI', () => {
       ai.poll(createInputState(), world);
 
       expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+    });
+  });
+
+  describe('objective travel estimates', () => {
+    type ObjectiveTravelPassabilityState = {
+      doorAwarePassable: ((x: number, y: number) => boolean) | null;
+      getObjectiveEndpointRoomIds: (
+        floorMap: FloorMap,
+        from: { x: number; y: number },
+        to: { x: number; y: number },
+      ) => ReadonlySet<number>;
+      isObjectiveTravelTilePassable: (
+        floorMap: FloorMap,
+        tileX: number,
+        tileY: number,
+        endpointRoomIds: ReadonlySet<number>,
+      ) => boolean;
+    };
+
+    it('allows locked endpoint-room doors without allowing unrelated locked-room shortcuts', () => {
+      const widthTiles = 9;
+      const heightTiles = 5;
+      const tileMap = new TileMap(widthTiles, heightTiles);
+      const terrain = new Uint8Array(widthTiles * heightTiles);
+      const config: MapConfig = {
+        widthTiles,
+        heightTiles,
+        tileSizeFt: 4,
+        biome: BiomeType.ARENA,
+        seed: 1,
+        roomWidthRange: [4, 4],
+        roomHeightRange: [5, 5],
+        maxRooms: 3,
+        floorDensity: 1,
+      };
+      for (let y = 0; y < heightTiles; y += 1) {
+        for (let x = 0; x < widthTiles; x += 1) {
+          const idx = y * widthTiles + x;
+          const isBorder = x === 0 || y === 0 || x === widthTiles - 1 || y === heightTiles - 1;
+          tileMap.flags[idx] = isBorder ? TilePresets.WALL : TilePresets.FLOOR;
+        }
+      }
+      tileMap.flags[2 * widthTiles + 3] = TilePresets.DOOR_CLOSED;
+      tileMap.flags[1 * widthTiles + 4] = TilePresets.DOOR_CLOSED;
+
+      const roomGraph = new RoomGraph();
+      const leftRoom = roomGraph.add(
+        { x: 0, y: 0, width: 4, height: 5 },
+        [{ x: 3, y: 2, connectsTo: 1 }],
+        [1],
+      );
+      const rightRoom = roomGraph.add(
+        { x: 5, y: 0, width: 4, height: 5 },
+        [{ x: 5, y: 2, connectsTo: 0 }],
+        [0],
+      );
+      roomGraph.add({ x: 3, y: 0, width: 3, height: 3 }, [{ x: 4, y: 1, connectsTo: 0 }], []);
+      const floorMap = new FloorMap(config, tileMap, roomGraph, terrain, { x: 1, y: 2 });
+      const ai = new BehaviorTreeAI({ seed: 1 });
+      const state = ai as unknown as ObjectiveTravelPassabilityState;
+      state.doorAwarePassable = (x, y) => floorMap.tileMap.isPassable(x, y);
+
+      const endpointRoomIds = state.getObjectiveEndpointRoomIds(
+        floorMap,
+        floorMap.tileToWorld(1, 2),
+        floorMap.tileToWorld(6, 2),
+      );
+
+      expect(endpointRoomIds).toEqual(new Set([leftRoom, rightRoom]));
+      expect(state.isObjectiveTravelTilePassable(floorMap, 3, 2, endpointRoomIds)).toBe(true);
+      expect(state.isObjectiveTravelTilePassable(floorMap, 4, 1, endpointRoomIds)).toBe(false);
     });
   });
 });

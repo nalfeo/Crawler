@@ -6,6 +6,15 @@
  * chain so tactical layers can decide whether optional value is still affordable.
  */
 
+import {
+  estimateObjectiveTravelLeg,
+  getObjectiveTravelEstimate,
+  type Floor1ObjectiveNodeId,
+  type ObjectiveTravelEstimate,
+  type ObjectiveTravelMatrix,
+  type ObjectiveTravelSource,
+} from './objective-travel-time.js';
+
 export type RunPlannerShopStage =
   | 'not-met'
   | 'awaiting-prize'
@@ -52,13 +61,15 @@ export interface Floor1RunPlannerSnapshot {
   readonly staircaseDefeated: boolean;
   readonly staircaseUnlocked: boolean;
   readonly staircaseDiscovered: boolean;
+  readonly objectiveTravel: ObjectiveTravelMatrix<Floor1ObjectiveNodeId> | null;
   readonly positions: {
     readonly welcomeOffice: RunPlannerPoint;
     readonly shop: RunPlannerPoint;
     readonly questItem: RunPlannerPoint;
     readonly spellQuestGiver: RunPlannerPoint;
     readonly slimeRatRoom: RunPlannerPoint;
-    readonly staircase: RunPlannerPoint;
+    readonly staircaseBossRoom: RunPlannerPoint;
+    readonly stairsExit: RunPlannerPoint;
   };
 }
 
@@ -80,11 +91,16 @@ export interface RunPlanSegment {
   readonly id: string;
   readonly label: string;
   readonly kind: 'travel' | 'work' | 'boss' | 'detour';
+  readonly fromNodeId: Floor1ObjectiveNodeId | null;
+  readonly toNodeId: Floor1ObjectiveNodeId | null;
   readonly from: RunPlannerPoint;
   readonly to: RunPlannerPoint;
+  readonly distanceFt: number;
   readonly travelMs: number;
   readonly workMs: number;
   readonly estimatedMs: number;
+  readonly reachable: boolean;
+  readonly travelSource: ObjectiveTravelSource;
   readonly detail: string;
 }
 
@@ -98,24 +114,24 @@ export interface Floor1RunPlan {
   readonly segments: readonly RunPlanSegment[];
 }
 
-const EPSILON = 1e-6;
-
 function clamp01(value: number): number {
   if (value <= 0) return 0;
   if (value >= 1) return 1;
   return value;
 }
 
-function distance(a: RunPlannerPoint, b: RunPlannerPoint): number {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-function travelTimeMs(
+function straightLineTravelEstimate(
+  fromId: Floor1ObjectiveNodeId | null,
+  toId: Floor1ObjectiveNodeId | null,
   from: RunPlannerPoint,
   to: RunPlannerPoint,
   params: RunPlannerParams,
-): number {
-  return distance(from, to) / Math.max(params.moveSpeedFtPerMs, EPSILON);
+): ObjectiveTravelEstimate<Floor1ObjectiveNodeId> {
+  return estimateObjectiveTravelLeg(
+    { id: fromId ?? 'current-target', point: from },
+    { id: toId ?? 'current-target', point: to },
+    { moveSpeedFtPerMs: params.moveSpeedFtPerMs },
+  );
 }
 
 export function estimateFloor1RunPlan(
@@ -124,28 +140,41 @@ export function estimateFloor1RunPlan(
 ): Floor1RunPlan {
   const segments: RunPlanSegment[] = [];
   let cursor: RunPlannerPoint = snapshot.player;
+  let cursorNodeId: Floor1ObjectiveNodeId = 'player';
 
   const addSegment = (
     id: string,
     label: string,
     kind: RunPlanSegment['kind'],
+    toNodeId: Floor1ObjectiveNodeId,
     to: RunPlannerPoint,
     workMs: number,
     detail: string,
   ): void => {
-    const travelMs = travelTimeMs(cursor, to, params);
+    const travelEstimate =
+      snapshot.objectiveTravel !== null
+        ? (getObjectiveTravelEstimate(snapshot.objectiveTravel, cursorNodeId, toNodeId) ??
+          straightLineTravelEstimate(cursorNodeId, toNodeId, cursor, to, params))
+        : straightLineTravelEstimate(cursorNodeId, toNodeId, cursor, to, params);
+    const travelMs = travelEstimate.travelMs;
     segments.push({
       id,
       label,
       kind,
+      fromNodeId: cursorNodeId,
+      toNodeId,
       from: cursor,
       to,
+      distanceFt: travelEstimate.distanceFt,
       travelMs,
       workMs,
       estimatedMs: travelMs + workMs,
+      reachable: travelEstimate.reachable,
+      travelSource: travelEstimate.source,
       detail,
     });
     cursor = to;
+    cursorNodeId = toNodeId;
   };
 
   if (snapshot.activeQuestGiverDetour && snapshot.currentTarget) {
@@ -153,6 +182,7 @@ export function estimateFloor1RunPlan(
       'current-detour',
       snapshot.currentTarget.reason,
       'detour',
+      'current-target',
       snapshot.currentTarget,
       params.interactionMs,
       'Committed quest-giver detour before resuming the critical path',
@@ -164,6 +194,7 @@ export function estimateFloor1RunPlan(
       'meet-tutorial-goon',
       'Meet Tutorial Goon',
       'travel',
+      'welcome-office',
       snapshot.positions.welcomeOffice,
       params.interactionMs,
       'Accept the opening Floor 1 quest and unlock drops',
@@ -175,6 +206,7 @@ export function estimateFloor1RunPlan(
       'reach-level-2',
       'Reach level 2',
       'work',
+      cursorNodeId,
       cursor,
       params.level2GrindMs,
       'Farm ambient XP until merchant and spell quests unlock',
@@ -193,10 +225,15 @@ export function estimateFloor1RunPlan(
       !snapshot.activeQuestGiverDetour && snapshot.currentTarget?.kind === 'quest-kills'
         ? snapshot.currentTarget
         : cursor;
+    const targetNodeId =
+      !snapshot.activeQuestGiverDetour && snapshot.currentTarget?.kind === 'quest-kills'
+        ? 'current-target'
+        : cursorNodeId;
     addSegment(
       'complete-goon-kills',
       'Complete Goon kill quota',
       'work',
+      targetNodeId,
       target,
       totalLeft * params.questKillMs,
       `${ratsLeft} rats, ${slimesLeft} slimes, ${totalLeft} total kills remaining`,
@@ -209,6 +246,7 @@ export function estimateFloor1RunPlan(
         'fetch-shop-prize',
         'Fetch merchant prize',
         'travel',
+        'merchant-fetch',
         snapshot.positions.questItem,
         params.fetchPickupMs,
         'Collect the merchant fetch item',
@@ -218,6 +256,7 @@ export function estimateFloor1RunPlan(
       'return-shop-prize',
       'Return merchant prize',
       'travel',
+      'shopkeeper',
       snapshot.positions.shop,
       params.interactionMs,
       'Return the merchant fetch item',
@@ -231,10 +270,15 @@ export function estimateFloor1RunPlan(
         !snapshot.activeQuestGiverDetour && snapshot.currentTarget?.kind === 'gold-farm'
           ? snapshot.currentTarget
           : cursor;
+      const targetNodeId =
+        !snapshot.activeQuestGiverDetour && snapshot.currentTarget?.kind === 'gold-farm'
+          ? 'current-target'
+          : cursorNodeId;
       addSegment(
         'farm-shop-gold',
         'Farm charm gold',
         'work',
+        targetNodeId,
         target,
         goldOwed * params.goldFarmMs,
         `${goldOwed} gold remaining for the merchant charm`,
@@ -244,6 +288,7 @@ export function estimateFloor1RunPlan(
       'buy-shop-charm',
       'Buy merchant charm',
       'travel',
+      'shopkeeper',
       snapshot.positions.shop,
       params.interactionMs,
       'Buy the merchant reward',
@@ -255,6 +300,7 @@ export function estimateFloor1RunPlan(
       'equip-shop-charm',
       'Equip merchant charm',
       'work',
+      cursorNodeId,
       cursor,
       params.interactionMs,
       'Equip the purchased merchant reward',
@@ -267,6 +313,7 @@ export function estimateFloor1RunPlan(
         'meet-shopkeeper',
         'Meet Shopkeeper',
         'travel',
+        'shopkeeper',
         snapshot.positions.shop,
         params.interactionMs,
         'Start the merchant errand',
@@ -296,6 +343,7 @@ export function estimateFloor1RunPlan(
       'accept-spell-quest',
       'Accept Spell Broker quest',
       'travel',
+      'spell-broker',
       snapshot.positions.spellQuestGiver,
       params.interactionMs,
       'Unlock the Slime Rat room objective',
@@ -307,6 +355,7 @@ export function estimateFloor1RunPlan(
       'kill-slime-rat',
       'Reach and kill Slime Rat',
       'boss',
+      'slime-rat-room',
       snapshot.positions.slimeRatRoom,
       params.minorBossKillMs,
       'Complete the spell-unlock boss battle',
@@ -316,6 +365,7 @@ export function estimateFloor1RunPlan(
       'finish-slime-rat',
       'Finish Slime Rat',
       'boss',
+      cursorNodeId,
       cursor,
       params.minorBossKillMs,
       'Finish the active spell-unlock boss battle',
@@ -327,6 +377,7 @@ export function estimateFloor1RunPlan(
       'claim-spell-reward',
       'Claim spell reward',
       'travel',
+      'spell-broker',
       snapshot.positions.spellQuestGiver,
       params.interactionMs,
       'Claim the spell reward before the final boss',
@@ -338,7 +389,8 @@ export function estimateFloor1RunPlan(
       'kill-staircase-boss',
       'Reach and kill staircase boss',
       'boss',
-      snapshot.positions.staircase,
+      'staircase-boss-room',
+      snapshot.positions.staircaseBossRoom,
       params.finalBossKillMs,
       'Unlock the stairs by defeating the final Floor 1 boss',
     );
@@ -347,6 +399,7 @@ export function estimateFloor1RunPlan(
       'finish-staircase-boss',
       'Finish staircase boss',
       'boss',
+      cursorNodeId,
       cursor,
       params.finalBossKillMs,
       'Finish the active final boss battle',
@@ -358,7 +411,8 @@ export function estimateFloor1RunPlan(
       'take-stairs',
       'Take the stairs',
       'travel',
-      snapshot.positions.staircase,
+      'stairs-exit',
+      snapshot.positions.stairsExit,
       params.stairsInteractMs,
       snapshot.staircaseUnlocked
         ? 'Descend the unlocked stairs'

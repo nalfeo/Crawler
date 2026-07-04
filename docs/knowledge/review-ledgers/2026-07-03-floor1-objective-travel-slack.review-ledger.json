@@ -1,0 +1,53 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "floor1-objective-travel-slack",
+  "task_title": "Floor 1 objective travel slack",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "notes": "Adopted caching, dynamic legs/distinct stairs nodes, and no mapped straight-line fallback."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Added static-objective to dynamic current-target objective-travel legs and a planner regression."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Cleared static/dynamic objective-travel caches and hard-gate run-plan state in BehaviorTreeAI.reset with regression coverage."
+        },
+        {
+          "round": 3,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Changed objective travel path passability to respect locked-door navigation except for from/to objective endpoint-room doors, with focused coverage."
+        },
+        {
+          "round": 4,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "No concerns."
+        }
+      ]
+    }
+  }
+}
