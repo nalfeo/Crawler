@@ -8,7 +8,7 @@ Crawler is a crafting-focused vampire-survivors-like game set in a reality show 
 
 1. Run `bash scripts/agent/preflight.sh`
 2. Select your persona from the routing matrix in `docs/agent-os/personas/README.md` (default to **Producer** for multi-layer or ambiguous tasks), then read that persona doc
-3. Check recent handoffs in `docs/knowledge/handoffs/`
+3. Before planning work in a system, read the relevant section of `docs/knowledge/handoffs/INDEX.md` and skim the top 3-5 listed handoffs for that system. Fall back to a broader scan of `docs/knowledge/handoffs/` only if the index has no coverage for your target system. New handoffs must declare `## Systems touched` (comma-separated slugs from `docs/systems/README.md`) — required once the handoff-tooling lint wires it in, advisory until then.
 4. **Declare your apple estimate** — read `docs/agent-os/policies/complexity-policy.md`, pick 🍎–🍎🍎🍎🍎🍎, and state it in your first turn before writing any code
 
 ## Validation

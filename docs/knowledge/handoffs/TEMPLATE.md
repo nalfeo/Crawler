@@ -9,6 +9,13 @@ YYYY-MM-DD
 <!-- Which persona(s) you selected from docs/agent-os/personas/README.md, and why.
      For orchestrated work, name the Producer plus the specialists it routed to. -->
 
+## Systems touched
+
+<!-- Comma-separated slugs from the canonical system list in docs/systems/README.md.
+     E.g. `ai-pathfinding, ai-combat-balance, ci-policy`. Used by
+     scripts/agent/docs/build-system-index.ts to generate the per-system handoff index.
+     Leave blank ONLY for docs/tooling-only sessions with no runtime impact. -->
+
 ## Routing verdict
 
 <!-- Was the routing right? One of: ✅ right persona | 🔀 another persona would

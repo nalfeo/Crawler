@@ -4,7 +4,7 @@
 
 1. Run `bash scripts/agent/preflight.sh` at session start
 2. Select your persona from the routing matrix in `docs/agent-os/personas/README.md` (default to **Producer** for multi-layer or ambiguous tasks), then read that persona doc
-3. Check `docs/knowledge/handoffs/` for recent session context
+3. Before planning work in a system, read the relevant section of `docs/knowledge/handoffs/INDEX.md` and skim the top 3-5 listed handoffs for that system. Fall back to a broader scan of `docs/knowledge/handoffs/` only if the index has no coverage for your target system.
 4. Load durable facts: call the memory MCP `read_graph` (or `search_nodes`) and skim `docs/knowledge/memory/` — see `docs/guides/agent-memory.md`
 5. Run `bash scripts/agent/verify-fast.sh` after every meaningful change
 6. Run `bash scripts/agent/verify.sh` before committing (includes `verify:pr-prereqs`, so review-harness + other PR prerequisites fail early instead of waiting for `create_pull_request`)
@@ -123,7 +123,7 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 3. **Never use Math.random()**: Use `SeededRandom` from `src/shared/random.ts`
 4. **Never use Date.now()**: Pass delta/frameCount as parameters
 5. **Conventional commits**: full type set enforced by commitlint — `feat:`, `fix:`, `chore:`, `docs:`, `lab:`, `refactor:`, `test:`, `perf:`, `ci:`, `build:`, `revert:`
-6. **Handoff required**: Write `docs/knowledge/handoffs/YYYY-MM-DD-<slug>.md` before ending session
+6. **Handoff required**: Write `docs/knowledge/handoffs/YYYY-MM-DD-<slug>.md` before ending session. Include the `## Systems touched` field (comma-separated slugs from `docs/systems/README.md`) so the session shows up in `docs/knowledge/handoffs/INDEX.md`. It will be required by the pre-flight lint once the handoff tooling PR wires that in; treat as advisory until then.
 7. **ADR required**: Any decision affecting 2+ systems needs an ADR
 8. **Always fix test and infra failures**: Never skip, ignore, or document broken tests/lint/build issues as "preexisting" or "unrelated" and move on. Fix every failure you encounter, regardless of whether you caused it. There is no such thing as a pre-existing issue that is out of scope — cruft compounds and wastes future agent time.
 9. **Best-effort UT coverage progress**: As part of every fix/implementation, make a best effort to improve or preserve unit-test coverage in touched areas so work moves toward UT coverage goals.
