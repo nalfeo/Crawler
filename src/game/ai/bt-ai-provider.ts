@@ -53,7 +53,16 @@ import {
   FLOOR1_TUTORIAL_QUEST_ID,
   SHOPKEEPER_FETCH_ITEM_ID,
 } from '../../shared/quest-types.js';
-import { AIState, type AIInputProvider, type AIDecision, type AIConfig } from './types.js';
+import {
+  AIState,
+  AIDecisionDebugState,
+  AIProgressSuppressionSource,
+  type AIInputProvider,
+  type AIDecision,
+  type AIConfig,
+  type AIProgressSuppressionSourceValue,
+  type AISuppressedProgressNavDebug,
+} from './types.js';
 import {
   BehaviorTree,
   BTStatus,
@@ -153,6 +162,10 @@ import {
   PANIC_LOCKED_STAIRS_MULTIPLIER,
   PANIC_MIN_DODGE_WEIGHT_SCALE,
   PANIC_MIN_DODGE_WEIGHT_SCALE_LOCKED,
+  PANIC_STAIRS_TRAVEL_SAFETY_MS,
+  OBJECTIVE_TRAVEL_WALL_SAFETY_FACTOR,
+  OBJECTIVE_TRAVEL_WALL_SAFETY_BUFFER_MS,
+  OBJECTIVE_TRAVEL_ASTAR_REFRESH_TICKS,
   RUN_PLANNER_SAFETY_BUFFER_MS,
   RUN_PLANNER_URGENCY_SLACK_WINDOW_MS,
   RUN_PLANNER_INTERACTION_MS,
@@ -224,9 +237,14 @@ import {
   estimateFloor1RunPlan,
   type Floor1RunPlan,
   type Floor1RunPlannerSnapshot,
+  type RunPlanSegmentPhase,
   type RunPlannerCurrentTargetKind,
   type RunPlannerParams,
 } from './run-planner.js';
+import {
+  estimateObjectiveTravelMs,
+  type ObjectiveTravelAdapters,
+} from './objective-travel-estimate.js';
 import {
   evaluateTacticalOpportunities,
   projectTacticalObjectiveLookahead,
@@ -316,6 +334,18 @@ interface CollapsePanicInput {
   deadlineMs: number;
   staircaseUnlocked: boolean;
   staircaseDiscovered: boolean;
+  /**
+   * Deterministic AI estimate of the current travel time (ms) from the player
+   * to the Floor 1 staircase entry marker. When provided and the run is in the
+   * post-unlock/pre-discovery phase, the beeline threshold escalates to at
+   * least {@link CollapsePanicInput.playerToStairsTravelMs} +
+   * {@link PANIC_STAIRS_TRAVEL_SAFETY_MS} so that the AI drops optional
+   * detours in time to physically reach the stairs before the collapse
+   * deadline. Callers pass `null`/`undefined` to preserve the legacy
+   * fixed-threshold behavior; non-finite / negative values are ignored so
+   * callers do not have to sanitize inputs.
+   */
+  playerToStairsTravelMs?: number | null;
 }
 
 export interface CollapsePanicProfile {
@@ -323,6 +353,11 @@ export interface CollapsePanicProfile {
   panic: number;
   beeline: boolean;
   stairsUnlocked: boolean;
+  /** True when {@link beeline} fired specifically because the AI's travel-time
+   * estimate to the stairs exceeded the remaining collapse budget. Useful for
+   * debug/telemetry and unit-test assertions; downstream behavior treats this
+   * bit the same as the legacy remaining-time beeline. */
+  travelBeelineActive: boolean;
 }
 
 export function resolveFloor1AiCollapsePanicDeadlineMs(objectiveDeadlineMs: number): number {
@@ -333,15 +368,50 @@ export function computeCollapsePanicProfile(
   input: CollapsePanicInput | null | undefined,
 ): CollapsePanicProfile {
   if (!input) {
-    return { remainingMs: null, panic: 0, beeline: false, stairsUnlocked: true };
+    return {
+      remainingMs: null,
+      panic: 0,
+      beeline: false,
+      stairsUnlocked: true,
+      travelBeelineActive: false,
+    };
   }
   const remainingMs = Math.max(0, input.deadlineMs - input.elapsedMs);
-  const panicSpan = Math.max(1, PANIC_RAMP_START_REMAINING_MS - PANIC_BEELINE_REMAINING_MS);
-  const ramp = Math.max(0, Math.min(1, (PANIC_RAMP_START_REMAINING_MS - remainingMs) / panicSpan));
   const stairsMultiplier = input.staircaseUnlocked ? 1 : PANIC_LOCKED_STAIRS_MULTIPLIER;
+
+  // Phase-gate the travel-derived threshold to the post-unlock/pre-discovery
+  // window. Before the staircase is unlocked, the AI still has real
+  // prerequisite work to do (quest bosses, fetch chain) — using the raw
+  // straight-line travel-to-stairs number would starve XP/gold progression by
+  // firing the beeline too early. Once discovery has happened the base BT
+  // already commits to the stairs interact, so the travel threshold is moot.
+  const rawTravel = input.playerToStairsTravelMs;
+  const travelEligible =
+    input.staircaseUnlocked &&
+    !input.staircaseDiscovered &&
+    typeof rawTravel === 'number' &&
+    Number.isFinite(rawTravel) &&
+    rawTravel >= 0;
+  const travelSafeMs = travelEligible ? (rawTravel as number) + PANIC_STAIRS_TRAVEL_SAFETY_MS : 0;
+  const beelineThreshold = Math.max(PANIC_BEELINE_REMAINING_MS, travelSafeMs);
+  // Preserve the legacy 120 s pressure ramp window: as the travel threshold
+  // rises, the ramp-start floor rises with it so panic still starts ramping
+  // ~120 s before the (elevated) beeline mark, not suddenly at t=beeline.
+  const rampFloor = beelineThreshold + (PANIC_RAMP_START_REMAINING_MS - PANIC_BEELINE_REMAINING_MS);
+  const rampStart = Math.max(PANIC_RAMP_START_REMAINING_MS, rampFloor);
+  const panicSpan = Math.max(1, rampStart - beelineThreshold);
+  const ramp = Math.max(0, Math.min(1, (rampStart - remainingMs) / panicSpan));
   const panic = Math.min(1, ramp * stairsMultiplier);
-  const beeline = remainingMs <= PANIC_BEELINE_REMAINING_MS && !input.staircaseDiscovered;
-  return { remainingMs, panic, beeline, stairsUnlocked: input.staircaseUnlocked };
+  const beeline = remainingMs <= beelineThreshold && !input.staircaseDiscovered;
+  const travelBeelineActive =
+    beeline && travelEligible && travelSafeMs > PANIC_BEELINE_REMAINING_MS;
+  return {
+    remainingMs,
+    panic,
+    beeline,
+    stairsUnlocked: input.staircaseUnlocked,
+    travelBeelineActive,
+  };
 }
 
 interface NpcTarget extends WorldTarget {
@@ -401,6 +471,25 @@ export class BehaviorTreeAI implements AIInputProvider {
    * recent poll). Exposed via {@link getTravelSteeringDebug} for tests/telemetry. */
   private lastTravelSteering: TravelSteeringResult | null = null;
   private lastRunPlan: Floor1RunPlan | null = null;
+  /**
+   * Cached deterministic player→stairs travel-time estimate (ms), refreshed
+   * every {@link OBJECTIVE_TRAVEL_ASTAR_REFRESH_TICKS} BT polls (or when the
+   * player crosses a tile) via {@link refreshPlayerToStairsTravelEstimate}.
+   * Null when Floor-1 objective state is unavailable, when the staircase is
+   * still locked, or when the discovery marker has already been reached (in
+   * which case downstream code short-circuits to the legacy fixed-threshold
+   * beeline). Used by {@link getCollapsePanicProfile} to phase-gate the panic
+   * beeline threshold on the AI's perfect-world travel-time knowledge.
+   */
+  private lastPlayerToStairsTravelMs: number | null = null;
+  /** Frame the travel estimate was last refreshed on; used with
+   * {@link OBJECTIVE_TRAVEL_ASTAR_REFRESH_TICKS} to throttle A* recomputes. */
+  private lastPlayerToStairsRefreshFrame: number = -Infinity;
+  /** Player tile the travel estimate was last computed from; if the player
+   * has stepped to a new tile we refresh immediately even when the frame
+   * throttle would otherwise defer. */
+  private lastPlayerToStairsTileX: number | null = null;
+  private lastPlayerToStairsTileY: number | null = null;
   private lastTacticalOpportunityEvaluation: TacticalOpportunityEvaluation | null = null;
   private tacticalTravelOwnsLoot: boolean = false;
   /**
@@ -446,6 +535,8 @@ export class BehaviorTreeAI implements AIInputProvider {
    * unreachable position forever.
    */
   private progressGoalSuppressedUntilFrame: number = 0;
+  private progressGoalSuppressionSource: AIProgressSuppressionSourceValue | null = null;
+  private pendingSuppressedProgressNavDebug: AISuppressedProgressNavDebug | null = null;
   /**
    * Cumulative fog-of-war "seen" bitmap (one byte per tile, 1 = ever seen),
    * OR-accumulated from {@link FloorMap.visible} every poll. This is exactly the
@@ -565,6 +656,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       targetX: null,
       targetY: null,
       reason: 'Initializing',
+      debug: null,
     };
 
     // Build the behavior tree
@@ -1049,6 +1141,9 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.decision.state = AIState.EXPLORE;
         this.decision.targetEid = null;
         this.decision.reason = 'Exploring map';
+        this.decision.debug = this.pendingSuppressedProgressNavDebug
+          ? { ...this.pendingSuppressedProgressNavDebug }
+          : null;
 
         // Pick a random exploration target if we don't have one
         if (this.decision.targetX === null || this.decision.targetY === null) {
@@ -1646,6 +1741,10 @@ export class BehaviorTreeAI implements AIInputProvider {
     // counter resets to 0, and the AI freezes forever without ever fighting.
     if (this.decision.targetEid === null || this.decision.targetEid < 0) {
       this.progressGoalSuppressedUntilFrame = currentFrame + PROGRESS_SUPPRESS_FRAMES;
+      this.progressGoalSuppressionSource =
+        this.decision.targetEid === null
+          ? AIProgressSuppressionSource.EXPLORE_DWELL_FRONTIER_TARGET
+          : AIProgressSuppressionSource.EXPLORE_DWELL_FIXED_POSITION_TARGET;
     }
     if (this.config.debug) {
       logger.debug(
@@ -1851,6 +1950,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     // / coin pile), so suppress position-based progress goals too and let
     // Hunt/Explore take the wheel until the player has relocated.
     this.progressGoalSuppressedUntilFrame = world.frameCount + ENEMY_IGNORE_FRAMES;
+    this.progressGoalSuppressionSource = AIProgressSuppressionSource.QUEST_PROGRESS_DWELL_WATCHDOG;
     this.questProgressActive = false;
     this.questProgressStallFrames = 0;
     if (this.config.debug) {
@@ -1889,6 +1989,12 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   poll(state: InputState, world: GameWorld): void {
+    this.pendingSuppressedProgressNavDebug = null;
+    this.decision.debug = null;
+    if (world.frameCount >= this.progressGoalSuppressedUntilFrame) {
+      this.progressGoalSuppressionSource = null;
+    }
+
     // Find player entity
     const playerEntities = query(world.ecs, [Player, Position, Health]);
     if (playerEntities.length === 0) {
@@ -1979,6 +2085,17 @@ export class BehaviorTreeAI implements AIInputProvider {
     // passable for A*, while locked-unsatisfied doors stay walls. Rebuilding
     // here picks up unlock conditions the player has just satisfied.
     this.refreshDoorNavigation(world);
+
+    // Refresh the deterministic player→staircase travel-time estimate so the
+    // collapse-panic profile can consult it during this poll's tree.tick. Runs
+    // only in the post-unlock/pre-discovery phase; A* is throttled to
+    // OBJECTIVE_TRAVEL_ASTAR_REFRESH_TICKS frames.
+    this.refreshPlayerToStairsTravelEstimate(
+      world,
+      playerX,
+      playerY,
+      this.getPlayerSpeedFtPerFrame(world, playerEid),
+    );
 
     // Fold this frame's field-of-view into the cumulative fog-of-war "seen"
     // bitmap so frontier exploration (pickExploreTarget) can steer toward unseen
@@ -2209,6 +2326,71 @@ export class BehaviorTreeAI implements AIInputProvider {
     };
   }
 
+  /**
+   * Refresh the cached deterministic player→staircase-marker travel-time
+   * estimate. Only meaningful while the staircase is unlocked but not yet
+   * discovered — before unlock the AI still has quest work to do, so a stairs
+   * beeline would starve XP/gold progression; after discovery the base BT
+   * already commits to the stairs interact.
+   *
+   * The A* recompute is throttled to
+   * {@link OBJECTIVE_TRAVEL_ASTAR_REFRESH_TICKS} frames (or one tile of player
+   * movement) so the extra pathfinding cost stays bounded. Determinism is
+   * preserved because `world.frameCount` is deterministic and the throttle
+   * only affects _when_ we recompute, not the value returned.
+   */
+  private refreshPlayerToStairsTravelEstimate(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    playerSpeedFtPerFrame: number,
+  ): void {
+    const objective = world.floor1?.objective;
+    const floorMap = world.floorMap;
+    if (!objective || !floorMap) {
+      this.lastPlayerToStairsTravelMs = null;
+      return;
+    }
+    // Phase-gate: only run in the post-unlock, pre-discovery window.
+    if (!objective.staircaseUnlocked || objective.staircaseDiscovered) {
+      this.lastPlayerToStairsTravelMs = null;
+      return;
+    }
+
+    const startTile = floorMap.worldToTile(playerX, playerY);
+    const tileChanged =
+      startTile.x !== this.lastPlayerToStairsTileX || startTile.y !== this.lastPlayerToStairsTileY;
+    const frameDelta = world.frameCount - this.lastPlayerToStairsRefreshFrame;
+    if (
+      this.lastPlayerToStairsTravelMs !== null &&
+      !tileChanged &&
+      frameDelta < OBJECTIVE_TRAVEL_ASTAR_REFRESH_TICKS
+    ) {
+      return; // still fresh
+    }
+
+    const stairs = objective.staircasePos;
+    const adapters: ObjectiveTravelAdapters = {
+      worldToTile: (x, y) => floorMap.worldToTile(x, y),
+      findTilePath: (start, goal) => findTilePath(floorMap, start, goal, this.groundPathOptions()),
+      tileSizeFt: floorMap.config.tileSizeFt,
+    };
+    const estimate = estimateObjectiveTravelMs(
+      { x: playerX, y: playerY },
+      { x: stairs.x, y: stairs.y },
+      adapters,
+      {
+        moveSpeedFtPerMs: playerSpeedFtPerFrame / GAME.DELTA_MS,
+        wallSafetyFactor: OBJECTIVE_TRAVEL_WALL_SAFETY_FACTOR,
+        wallSafetyBufferMs: OBJECTIVE_TRAVEL_WALL_SAFETY_BUFFER_MS,
+      },
+    );
+    this.lastPlayerToStairsTravelMs = estimate.travelMs;
+    this.lastPlayerToStairsRefreshFrame = world.frameCount;
+    this.lastPlayerToStairsTileX = startTile.x;
+    this.lastPlayerToStairsTileY = startTile.y;
+  }
+
   private getCollapsePanicProfile(world: GameWorld): CollapsePanicProfile {
     const objective = world.floor1?.objective;
     if (!objective) {
@@ -2219,6 +2401,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       deadlineMs: resolveFloor1AiCollapsePanicDeadlineMs(objective.deadlineMs),
       staircaseUnlocked: objective.staircaseUnlocked,
       staircaseDiscovered: objective.staircaseDiscovered,
+      playerToStairsTravelMs: this.lastPlayerToStairsTravelMs,
     });
   }
 
@@ -3398,14 +3581,16 @@ export class BehaviorTreeAI implements AIInputProvider {
     const progressSuppressed = world.frameCount < this.progressGoalSuppressedUntilFrame;
 
     if (!tutorialAccepted) {
-      if (progressSuppressed) return null;
+      const reason = 'Seeking Tutorial Goon to unlock the floor quest';
+      if (progressSuppressed)
+        return this.recordSuppressedProgressNavigation(world, reason, 'pre-chain');
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.welcomeOfficePos.x,
           objective.welcomeOfficePos.y,
           playerX,
           playerY,
-          'Seeking Tutorial Goon to unlock the floor quest',
+          reason,
         ),
       );
     }
@@ -3447,42 +3632,42 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (shopStage === 'not-met') {
-      if (progressSuppressed) return null;
+      const reason = 'Seeking Shopkeeper to start the merchant errand';
+      if (progressSuppressed) return this.recordSuppressedProgressNavigation(world, reason, 'shop');
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.shopRoomPos.x,
           objective.shopRoomPos.y,
           playerX,
           playerY,
-          'Seeking Shopkeeper to start the merchant errand',
+          reason,
         ),
       );
     }
 
     if (shopStage === 'awaiting-prize') {
-      if (progressSuppressed) return null;
       const target = hasFetchItem ? objective.shopRoomPos : objective.questItemPos;
+      const reason = hasFetchItem
+        ? 'Returning the merchant prize'
+        : 'Seeking the merchant fetch item';
+      if (progressSuppressed) return this.recordSuppressedProgressNavigation(world, reason, 'shop');
       return maybeDetourToQuestGiver(
-        this.createProgressTarget(
-          target.x,
-          target.y,
-          playerX,
-          playerY,
-          hasFetchItem ? 'Returning the merchant prize' : 'Seeking the merchant fetch item',
-        ),
+        this.createProgressTarget(target.x, target.y, playerX, playerY, reason),
       );
     }
 
     if (shopStage === 'ready-to-buy') {
       if (world.playerGold >= SHOPKEEPER_EQUIPMENT_COST) {
-        if (progressSuppressed) return null;
+        const reason = 'Returning to the Shopkeeper to buy the charm';
+        if (progressSuppressed)
+          return this.recordSuppressedProgressNavigation(world, reason, 'shop');
         return maybeDetourToQuestGiver(
           this.createProgressTarget(
             objective.shopRoomPos.x,
             objective.shopRoomPos.y,
             playerX,
             playerY,
-            'Returning to the Shopkeeper to buy the charm',
+            reason,
           ),
         );
       }
@@ -3552,40 +3737,46 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (!bossBattleAccepted) {
-      if (progressSuppressed) return null;
+      const reason = 'Seeking the Spell Broker to start the Slime Rat quest';
+      if (progressSuppressed)
+        return this.recordSuppressedProgressNavigation(world, reason, 'spell-broker');
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.spellQuestGiverPos.x,
           objective.spellQuestGiverPos.y,
           playerX,
           playerY,
-          'Seeking the Spell Broker to start the Slime Rat quest',
+          reason,
         ),
       );
     }
 
     if (!objective.bossBattles.get('slime-rat')!.started) {
-      if (progressSuppressed) return null;
+      const reason = 'Heading to the Slime Rat room';
+      if (progressSuppressed)
+        return this.recordSuppressedProgressNavigation(world, reason, 'spell-broker');
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.slimeRatRoomPos.x,
           objective.slimeRatRoomPos.y,
           playerX,
           playerY,
-          'Heading to the Slime Rat room',
+          reason,
         ),
       );
     }
 
     if (objective.bossBattles.get('slime-rat')!.defeated && !world.featureUnlocks.spells) {
-      if (progressSuppressed) return null;
+      const reason = 'Returning to the Spell Broker to claim a spell reward';
+      if (progressSuppressed)
+        return this.recordSuppressedProgressNavigation(world, reason, 'spell-broker');
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.spellQuestGiverPos.x,
           objective.spellQuestGiverPos.y,
           playerX,
           playerY,
-          'Returning to the Spell Broker to claim a spell reward',
+          reason,
         ),
       );
     }
@@ -3594,31 +3785,54 @@ export class BehaviorTreeAI implements AIInputProvider {
       objective.bossBattles.get('slime-rat')!.defeated &&
       !objective.bossBattles.get('staircase')!.started
     ) {
-      if (progressSuppressed) return null;
+      const reason = 'Heading to the staircase boss room';
+      if (progressSuppressed)
+        return this.recordSuppressedProgressNavigation(world, reason, 'staircase');
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.staircasePos.x,
           objective.staircasePos.y,
           playerX,
           playerY,
-          'Heading to the staircase boss room',
+          reason,
         ),
       );
     }
 
     if (objective.staircaseUnlocked && !objective.staircaseDiscovered) {
-      if (progressSuppressed) return null;
+      const reason = 'Heading to the stairs to clear the floor';
+      if (progressSuppressed)
+        return this.recordSuppressedProgressNavigation(world, reason, 'post-stairs');
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.staircasePos.x,
           objective.staircasePos.y,
           playerX,
           playerY,
-          'Heading to the stairs to clear the floor',
+          reason,
         ),
       );
     }
 
+    return null;
+  }
+
+  private recordSuppressedProgressNavigation(
+    world: GameWorld,
+    blockedTargetReason: string,
+    criticalChainPhase: RunPlanSegmentPhase,
+  ): null {
+    this.pendingSuppressedProgressNavDebug = {
+      state: AIDecisionDebugState.SUPPRESSED_PROGRESS_NAV,
+      reason: 'progressGoalSuppressed',
+      source:
+        this.progressGoalSuppressionSource ??
+        AIProgressSuppressionSource.PROGRESS_GOAL_SUPPRESSION_WINDOW,
+      criticalChainPhase,
+      blockedTargetReason,
+      suppressedUntilFrame: this.progressGoalSuppressedUntilFrame,
+      remainingFrames: Math.max(0, this.progressGoalSuppressedUntilFrame - world.frameCount),
+    };
     return null;
   }
 
@@ -4670,7 +4884,10 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   getDecision(): AIDecision {
-    return { ...this.decision };
+    return {
+      ...this.decision,
+      debug: this.decision.debug ? { ...this.decision.debug } : null,
+    };
   }
 
   /**
@@ -4765,6 +4982,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       targetX: null,
       targetY: null,
       reason: 'Reset',
+      debug: null,
     };
     this.pathWaypoints = [];
     this.pathIndex = 0;
@@ -4785,6 +5003,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.collectDwellAnchorY = 0;
     this.collectDwellFrames = 0;
     this.exploreDwell.reset();
+    this.progressGoalSuppressedUntilFrame = 0;
+    this.progressGoalSuppressionSource = null;
+    this.pendingSuppressedProgressNavDebug = null;
     this.globalDwellActive = false;
     this.globalDwellAnchorX = 0;
     this.globalDwellAnchorY = 0;
@@ -4824,6 +5045,10 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.dodgeVecY = 0;
     this.lastTravelSteering = null;
     this.lastRunPlan = null;
+    this.lastPlayerToStairsTravelMs = null;
+    this.lastPlayerToStairsRefreshFrame = -Infinity;
+    this.lastPlayerToStairsTileX = null;
+    this.lastPlayerToStairsTileY = null;
     this.lastTacticalOpportunityEvaluation = null;
     this.tacticalTravelOwnsLoot = false;
     this.acceptedQuestCount = 0;

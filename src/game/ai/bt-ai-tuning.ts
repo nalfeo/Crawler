@@ -447,6 +447,26 @@ export const PANIC_MIN_DODGE_WEIGHT_SCALE = 0.45;
 // Pre-unlock emergency floor for dodge scaling. Slightly lower than the generic
 // floor so low-time, pre-unlock runs prioritize progress over perfect safety.
 export const PANIC_MIN_DODGE_WEIGHT_SCALE_LOCKED = 0.3;
+// Additive safety margin, in milliseconds, layered on top of the AI's
+// deterministic player→stairs travel-time estimate before it becomes the
+// panic-beeline threshold. Small buffer that covers steering wobble, door
+// interactions, and the last-tile marker-radius approach so a run that just
+// killed the final boss cannot be caught out by a slightly-too-tight estimate.
+export const PANIC_STAIRS_TRAVEL_SAFETY_MS = 5_000;
+// Wall-safety inflation factor applied to raw straight-line distance when the
+// A* tile path is unavailable (unit tests, unusual world states). Real Floor-1
+// layouts add 30–70% to the Euclidean distance for typical player→stairs
+// routes, so 1.5x is a defensive fallback that keeps the estimate honest.
+export const OBJECTIVE_TRAVEL_WALL_SAFETY_FACTOR = 1.5;
+// Fixed additive buffer, in milliseconds, layered on the wall-safety fallback
+// so it always exceeds the raw straight-line planner travel time even for very
+// short distances where the multiplier alone barely bumps the estimate.
+export const OBJECTIVE_TRAVEL_WALL_SAFETY_BUFFER_MS = 750;
+// A* path recomputes are throttled to this many BT ticks (~250ms at the
+// default 60 FPS BT cadence). Frame count is deterministic, so this stays
+// deterministic; the throttle keeps the cost of `findTilePath` bounded while
+// still refreshing quickly enough to react to the boss dying / doors opening.
+export const OBJECTIVE_TRAVEL_ASTAR_REFRESH_TICKS = 15;
 
 // --- Time-aware run planner -------------------------------------------------
 // Coarse, deterministic estimates only: they bias optional-value decisions, never

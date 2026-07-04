@@ -1,0 +1,8 @@
+{
+  "date": "2026-07-03",
+  "slug": "floor1-post-boss-stairs-slack",
+  "estimated_apples": 3,
+  "actual_apples": 3,
+  "verdict": "on-target",
+  "notes": "Three coupled surfaces: (1) top-level Floor1RunPlan.estimatedTravelMs (data-only), (2) new pure objective-travel-estimate.ts with A*-or-fallback estimator, (3) phase-gated player→stairs travel wired into CollapsePanicProfile.beelineThreshold. Plan review (gpt-5.5, 3 blocking concerns resolved) + code review (claude-opus-4.7, no concerns) round-tripped as required for 3🍎 tier. Headless sweep (120 runs) shows the current failure class evolved from post-boss stairs to pre-boss EXPLORE stalls, so the runtime win-count delta on the analyzed failure set is 0 by phase-gate construction, but the infrastructure required by the human ('deterministic estimates of travel time between all known Floor 1 quest objective nodes... feed into panic') is now in place and shared with the sister chain-scoped filtering slice."
+}

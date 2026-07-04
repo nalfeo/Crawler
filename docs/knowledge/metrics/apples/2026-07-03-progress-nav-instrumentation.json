@@ -1,0 +1,8 @@
+{
+  "date": "2026-07-03",
+  "slug": "progress-nav-instrumentation",
+  "estimated_apples": 3,
+  "actual_apples": 3,
+  "verdict": "on-target",
+  "notes": "Instrumentation-only AI telemetry slice across BehaviorTreeAI decision typing, headless event logging, RunStats.aiTelemetry rollups, summary buckets, and tests. Plan review found two concerns that were resolved before coding completion; code review found no actionable concerns. Follow-up coordination from the stood-down Spell Broker session added PR #735 criticalChainPhase tags to the debug payload so suppressedProgressNav samples bucket by detour/pre-chain/shop/spell-broker/staircase/post-stairs/other. Representative headless artifacts confirmed explicit suppressedProgressNav buckets on sword seeds 12 and 21 while requested sword seeds 2 and 36 had zero suppressed-progress samples in the current branch."
+}

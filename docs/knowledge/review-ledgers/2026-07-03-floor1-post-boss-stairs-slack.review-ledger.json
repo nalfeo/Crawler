@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "floor1-post-boss-stairs-slack",
+  "task_title": "Floor 1 post-boss stairs slack + shared perfect-world travel-time API",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.5",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "notes": "Plan reviewed by gpt-5.5 via rubber-duck agent. 3 blocking concerns surfaced and every one resolved in the final plan: (1) global chainSafeMs threshold could starve XP/gold progression -> phase-gated to staircaseUnlocked && !staircaseDiscovered; (2) straight-line * 1.5 is not truly perfect-world knowledge -> use A* findTilePath with door-aware groundPathOptions; (3) travel-only threshold ignores boss/grind work time -> phase gate rescues this since post-unlock has near-zero remaining work."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.7"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Reviewed by claude-opus-4.7 via built-in code-review agent. Traced determinism (world.frameCount + adapter path), phase-gate correctness (post-unlock has no remaining prereqs), A* throttle (15-tick + tile-change, reset-on-phase-exit), estimator edge cases (single-tile=0, empty=fallback, NaN/Infinity rejected by consumer), layer rules (no engine/core-map leakage in objective-travel-estimate), CollapsePanicProfile additive field, panic ramp math with elevated threshold, reset() completeness, and behavioral test coverage. No concerns."
+        }
+      ]
+    }
+  }
+}
