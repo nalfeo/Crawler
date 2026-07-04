@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   extractRetrospectiveSubsections,
   findRetrospectiveSubsection,
+  hasRetrospectiveSection,
   isProseLine,
   proseLinesOf,
   subsectionIsEmpty,
@@ -71,6 +72,56 @@ describe('extractRetrospectiveSubsections', () => {
     // The trailing `## Next Steps` content must not bleed into the last subsection.
     const opportunities = subs[2]!;
     expect(opportunities.lines.join('\n')).not.toContain('Ship it');
+  });
+});
+
+// Same handoff as RETRO_HANDOFF but with a lowercase `## retrospective` heading.
+const LOWERCASE_RETRO_HANDOFF = RETRO_HANDOFF.replace('## Retrospective', '## retrospective');
+
+describe('hasRetrospectiveSection (shared case-insensitive predicate)', () => {
+  it('detects the canonical "## Retrospective" heading', () => {
+    expect(hasRetrospectiveSection(RETRO_HANDOFF)).toBe(true);
+  });
+
+  it('detects a lowercase "## retrospective" heading', () => {
+    // Regression guard: the lint gate's grandfather skip once used a
+    // case-SENSITIVE regex, so a lowercase heading was skipped (subsection
+    // checks bypassed) while the parser matched it case-insensitively.
+    expect(hasRetrospectiveSection(LOWERCASE_RETRO_HANDOFF)).toBe(true);
+    // ...and the parser must extract the same subsections it does for the
+    // canonical casing, proving both call sites act on the lowercase heading.
+    expect(extractRetrospectiveSubsections(LOWERCASE_RETRO_HANDOFF).map((s) => s.title)).toEqual([
+      'Lessons Learned',
+      'Mistakes Made',
+      'Opportunities for Future Improvement',
+    ]);
+  });
+
+  it('returns false when there is no retrospective heading', () => {
+    expect(hasRetrospectiveSection('# Handoff\n\n## Summary\n\nDid some work.\n')).toBe(false);
+    // A `### retrospective` (h3, not the section heading) must not count.
+    expect(hasRetrospectiveSection('# Handoff\n\n### Retrospective notes\n')).toBe(false);
+  });
+
+  it('stays in lock-step with the parser across headings that do and do not exist', () => {
+    // The lint gate skips a handoff iff !hasRetrospectiveSection(content); the
+    // parser returns [] iff the section is absent. They must ALWAYS agree — the
+    // PR #745 mismatch let the lint skip a lowercase-heading file the parser
+    // still scanned. Detection is per-line with one shared regex, so agreement
+    // holds even when a heading's marker and title are split across lines
+    // (which a whole-document `\s+` match would wrongly treat as present).
+    const splitHeading = '## \nRetrospective\n\n### Lessons Learned\n\n- x\n';
+    const noHeading = '# Handoff\n\n## Summary\n\nNo retrospective here.\n';
+    for (const [label, md, present] of [
+      ['canonical', RETRO_HANDOFF, true],
+      ['lowercase', LOWERCASE_RETRO_HANDOFF, true],
+      ['none', noHeading, false],
+      ['split across lines', splitHeading, false],
+    ] as const) {
+      const has = hasRetrospectiveSection(md);
+      expect(has, label).toBe(extractRetrospectiveSubsections(md).length > 0);
+      expect(has, label).toBe(present);
+    }
   });
 });
 
