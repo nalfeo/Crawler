@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-04",
+  "session_slug": "handoff-retrospective-case-fix",
+  "task_title": "fix(agent): make handoff retrospective detection case-insensitive",
+  "estimated_apples": 1,
+  "stages": {}
+}

@@ -66,14 +66,38 @@ export function isProseLine(line: string): boolean {
 }
 
 /**
+ * Case-insensitive matcher for a `## Retrospective` section heading. Applied
+ * per physical line by both consumers below (`hasRetrospectiveSection` and
+ * `extractRetrospectiveSubsections` each split on newlines first), so `^`
+ * anchors to a line start and `\s+` can only match intra-line whitespace,
+ * never a newline. Using one regex for both, per line, is what makes the lint
+ * gate's grandfather skip and the parser agree by construction. There is no
+ * `g`/`y` flag, so `.test()` is stateless and safe to reuse across calls.
+ */
+const RETROSPECTIVE_HEADING = /^##\s+Retrospective\b/i;
+
+/**
+ * True when `content` has a `## Retrospective` section heading
+ * (case-insensitive). Detects per line with the SAME regex the parser uses to
+ * locate the heading, so `hasRetrospectiveSection(md)` is true for exactly the
+ * inputs where `extractRetrospectiveSubsections(md)` finds the section — the
+ * lint gate's grandfather skip and the parser can never disagree, whether the
+ * heading is lowercase `## retrospective` (the PR #745 bug) or its marker and
+ * title are split across lines.
+ */
+export function hasRetrospectiveSection(content: string): boolean {
+  return content.split(/\r?\n/).some((line) => RETROSPECTIVE_HEADING.test(line));
+}
+
+/**
  * Extract the `### ...` subsections that live under the first `## Retrospective`
  * heading. Returns `[]` when the document has no `## Retrospective` section
  * (legacy handoffs that predate the retrospective requirement).
  */
 export function extractRetrospectiveSubsections(md: string): Subsection[] {
+  if (!hasRetrospectiveSection(md)) return [];
   const lines = md.split(/\r?\n/);
-  const retroIdx = lines.findIndex((l) => /^##\s+Retrospective\b/i.test(l));
-  if (retroIdx === -1) return [];
+  const retroIdx = lines.findIndex((l) => RETROSPECTIVE_HEADING.test(l));
   const results: Subsection[] = [];
   let cursor = retroIdx + 1;
   while (cursor < lines.length) {

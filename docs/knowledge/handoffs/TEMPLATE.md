@@ -36,7 +36,10 @@ YYYY-MM-DD
 ## Retrospective
 
 <!-- Required. "None" is rarely the right answer for any subsection — be specific.
-     A pre-flight guard rejects handoffs where any subsection below is empty or literally "None". -->
+     `npm run docs:check` (advisory) flags handoffs where any subsection below is
+     empty or only a placeholder like "None"/"N/A"/"TBD". It reports findings but
+     does not hard-reject: the docs-update.yml lint runs continue-on-error and
+     aggregates into a tracking issue, and docs:check is not part of `npm run verify`. -->
 
 ### Lessons Learned
 
