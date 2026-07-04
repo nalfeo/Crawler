@@ -70,6 +70,7 @@
     "verify:pr-prereqs": "node scripts/agent/review/pr-prereq-check.mjs",
     "check:wired-systems": "tsx scripts/agent/health/orphaned-systems.ts",
     "telemetry:capture": "tsx scripts/agent/docs/guard-telemetry.ts --capture-session",
+    "docs:index": "tsx scripts/agent/docs/build-system-index.ts --apply",
     "verify:coverage": "vitest run --project unit --coverage",
     "review:ledger": "node scripts/agent/review/cli.mjs",
     "producer": "tsx scripts/agent/producer.ts",
