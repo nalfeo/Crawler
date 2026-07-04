@@ -92,6 +92,38 @@ describe('POST /api/runs/:briefId/:runId/postprocess', () => {
     expect(res.statusCode).toBe(404);
     expect(res.json().error).toBe('run-not-found');
   });
+
+  it('persists manual-anchor + override profile metadata for replay', async () => {
+    const seed = await setup();
+    const baseline = await app!.inject({
+      method: 'POST',
+      url: `/api/runs/${seed.briefId}/${seed.runId}/postprocess`,
+      headers: { 'content-type': 'application/json' },
+      payload: {},
+    });
+    const chosenIndex = baseline.json().summary?.chosen?.index ?? 0;
+    const res = await app!.inject({
+      method: 'POST',
+      url: `/api/runs/${seed.briefId}/${seed.runId}/postprocess`,
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        mode: 'replace',
+        options: { background: { colorToleranceSq: 4200, fringeToleranceSq: 12345 } },
+        manualAnchor: { variantIndex: chosenIndex, x: 9, y: 14 },
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.summary.postprocessOverrides?.appliedMode).toBe('replace');
+    expect(body.summary.postprocessOverrides?.options?.background?.colorToleranceSq).toBe(4200);
+    expect(body.summary.postprocessOverrides?.manualAnchor).toMatchObject({
+      variantIndex: chosenIndex,
+      x: 9,
+      y: 14,
+      source: 'manual',
+    });
+    expect(body.summary.chosen?.anchor?.source).toBe('manual');
+  });
 });
 
 describe('POST /api/runs/:briefId/:runId/judge', () => {

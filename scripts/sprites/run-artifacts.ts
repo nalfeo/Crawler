@@ -33,6 +33,8 @@ import type { Brief } from './brief-schema.js';
 import type { DiversitySummary } from './diversity.js';
 import type { ExpansionSkipReason } from './expand-variations.js';
 import type { JudgeScorecard } from './judge.js';
+import type { PostprocessOptions } from './postprocess.js';
+import type { ManualAnchorOverride } from './postprocess-overrides.js';
 import type { Scorecard } from './score-candidate.js';
 import type { DerivedAnchor } from './sensors/derive-anchor.js';
 import type { SpriteType } from '../../src/shared/sprite-types.js';
@@ -121,7 +123,7 @@ export interface RunSummaryEntry {
  * means the `anchor-derivable` sensor produced it from the silhouette;
  * `brief` means it came from the static `brief.anchor` pixel.
  */
-export type ChosenAnchorSource = 'derived' | 'brief';
+export type ChosenAnchorSource = 'manual' | 'derived' | 'brief';
 
 export interface ChosenAnchor {
   readonly x: number;
@@ -252,6 +254,15 @@ export interface RunSummary {
     readonly misses: number;
     readonly bypassed: number;
   } | null;
+  readonly postprocessOverrides?: {
+    readonly profilePath: string | null;
+    readonly snapshotJsonPath: string | null;
+    readonly snapshotYamlPath: string | null;
+    readonly options: PostprocessOptions | null;
+    readonly manualAnchor: ManualAnchorOverride | null;
+    readonly appliedMode: 'default' | 'persisted' | 'replace' | 'reset';
+    readonly updatedAt: string | null;
+  };
   /**
    * Optional model/deployment IDs attached by orchestrators that perform
    * additional LLM stages (for example issue-originated synth + brief selection).
@@ -463,16 +474,20 @@ export function rankCandidates(entries: ReadonlyArray<RunSummaryEntry>): RunSumm
 export function pickChosen(
   ranked: ReadonlyArray<RunSummaryEntry>,
   brief: Brief,
+  manualAnchor: ManualAnchorOverride | null = null,
 ): ChosenCandidate | null {
   const top = ranked[0];
   if (!top) return null;
   const deriveMode = brief.sensors.anchor?.derive === true;
   const resolvedHold = top.derivedAnchors.hold ?? top.derivedAnchor;
-  const holdAnchor: ChosenAnchor | null = resolvedHold
-    ? { x: resolvedHold.x, y: resolvedHold.y, source: 'derived' }
-    : deriveMode
-      ? null
-      : { x: brief.anchor.x, y: brief.anchor.y, source: 'brief' };
+  const holdAnchor: ChosenAnchor | null =
+    manualAnchor && manualAnchor.variantIndex === top.index
+      ? { x: manualAnchor.x, y: manualAnchor.y, source: 'manual' }
+      : resolvedHold
+        ? { x: resolvedHold.x, y: resolvedHold.y, source: 'derived' }
+        : deriveMode
+          ? null
+          : { x: brief.anchor.x, y: brief.anchor.y, source: 'brief' };
   const centerOfGravityAnchor: ChosenAnchor | null = top.derivedAnchors.centerOfGravity
     ? {
         x: top.derivedAnchors.centerOfGravity.x,

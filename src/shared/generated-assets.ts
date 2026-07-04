@@ -33,7 +33,7 @@ const anchorSchema = z
   .object({
     x: z.number().int(),
     y: z.number().int(),
-    source: z.enum(['derived', 'brief']),
+    source: z.enum(['manual', 'derived', 'brief']),
   })
   .strict();
 
@@ -76,6 +76,10 @@ export const manifestEntrySchema = z
      * pin the exact bytes a reference was sampled from (rerun reproducibility).
      */
     contentHash: z.string().optional(),
+    postprocessOverrideProfilePath: z.string().nullable().optional(),
+    effectivePipelineSnapshotPath: z.string().nullable().optional(),
+    effectivePipelineSnapshotYamlPath: z.string().nullable().optional(),
+    effectiveAnchorSource: z.enum(['manual', 'derived', 'brief']).nullable().optional(),
   })
   .passthrough();
 

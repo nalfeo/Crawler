@@ -403,6 +403,12 @@ interface BackgroundTweakState {
   fringeToleranceSq: number;
 }
 
+interface ManualAnchorState {
+  variantIndex: number;
+  x: number;
+  y: number;
+}
+
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   const chunkSize = 0x8000;
@@ -2553,7 +2559,31 @@ function render(): void {
     text: 'Using default background-removal parameters.',
     style: { fontSize: '10px', color: '#64748b' },
   });
-  tweakButtonRow.append(applyTweaksBtn, resetTweaksBtn, tweakStatus);
+  const manualAnchorXInput = document.createElement('input');
+  manualAnchorXInput.type = 'number';
+  manualAnchorXInput.step = '1';
+  manualAnchorXInput.style.width = '72px';
+  const manualAnchorYInput = document.createElement('input');
+  manualAnchorYInput.type = 'number';
+  manualAnchorYInput.step = '1';
+  manualAnchorYInput.style.width = '72px';
+  const setManualAnchorBtn = el('button', { text: 'Set manual anchor' }) as HTMLButtonElement;
+  const clearManualAnchorBtn = el('button', { text: 'Clear manual anchor' }) as HTMLButtonElement;
+  const manualAnchorStatus = el('span', {
+    text: 'No manual anchor override.',
+    style: { fontSize: '10px', color: '#94a3b8' },
+  });
+  tweakButtonRow.append(
+    applyTweaksBtn,
+    resetTweaksBtn,
+    el('span', { text: 'Anchor x/y:' }),
+    manualAnchorXInput,
+    manualAnchorYInput,
+    setManualAnchorBtn,
+    clearManualAnchorBtn,
+    tweakStatus,
+    manualAnchorStatus,
+  );
   tweakPanel.append(tweakTitle, tweakIntro, tweakGrid, tweakButtonRow);
   const debuggerTraceHost = el('div', { style: { marginTop: '8px' } });
   debuggerPanel.append(
@@ -2593,6 +2623,8 @@ function render(): void {
     colorToleranceSq: DEFAULT_BACKGROUND_TWEAKS.colorToleranceSq,
     fringeToleranceSq: DEFAULT_BACKGROUND_TWEAKS.fringeToleranceSq,
   };
+  let pendingPostprocessMode: 'default' | 'replace' | 'reset' = 'default';
+  let manualAnchorOverride: ManualAnchorState | null = null;
   let queueState: QueueState = createEmptyQueue();
   const pendingGenerationPolls = new Set<string>();
   // In-flight AbortControllers for the synchronous generate POST, keyed by
@@ -2797,6 +2829,11 @@ function render(): void {
   const syncTweakInputsFromState = (): void => {
     colorTolField.input.value = String(appliedBackgroundTweaks.colorToleranceSq);
     fringeTolField.input.value = String(appliedBackgroundTweaks.fringeToleranceSq);
+    manualAnchorXInput.value = manualAnchorOverride ? String(manualAnchorOverride.x) : '';
+    manualAnchorYInput.value = manualAnchorOverride ? String(manualAnchorOverride.y) : '';
+    manualAnchorStatus.textContent = manualAnchorOverride
+      ? `Manual anchor active for #${manualAnchorOverride.variantIndex} at (${manualAnchorOverride.x}, ${manualAnchorOverride.y}).`
+      : 'No manual anchor override.';
   };
   const rerenderDebuggerAfterTweaks = (): void => {
     if (rerenderPostprocessPipeline) {
@@ -2822,6 +2859,7 @@ function render(): void {
       colorToleranceSq: color,
       fringeToleranceSq: fringe,
     };
+    pendingPostprocessMode = 'replace';
     tweakStatus.textContent = 'Tweaks applied.';
     tweakStatus.style.color = '#93c5fd';
     return true;
@@ -2837,12 +2875,54 @@ function render(): void {
       colorToleranceSq: DEFAULT_BACKGROUND_TWEAKS.colorToleranceSq,
       fringeToleranceSq: DEFAULT_BACKGROUND_TWEAKS.fringeToleranceSq,
     };
+    pendingPostprocessMode = 'reset';
     syncTweakInputsFromState();
     tweakStatus.textContent = 'Reset to defaults.';
     tweakStatus.style.color = '#93c5fd';
     if (debugTarget) {
       rerenderDebuggerAfterTweaks();
     }
+  });
+  setManualAnchorBtn.addEventListener('click', async () => {
+    if (!debugTarget) {
+      manualAnchorStatus.textContent = 'Select a debug target first.';
+      return;
+    }
+    const x = Number.parseInt(manualAnchorXInput.value, 10);
+    const y = Number.parseInt(manualAnchorYInput.value, 10);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      manualAnchorStatus.textContent = 'Manual anchor x/y must be integers.';
+      return;
+    }
+    await fetchJson(
+      `${SIDECAR_BASE}/api/runs/${encodeURIComponent(debugTarget.briefId)}/${encodeURIComponent(debugTarget.runId)}/manual-anchor`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ variantIndex: debugTarget.variantIndex, x, y }),
+      },
+    );
+    manualAnchorOverride = { variantIndex: debugTarget.variantIndex, x, y };
+    syncTweakInputsFromState();
+    pendingPostprocessMode = 'replace';
+    manualAnchorStatus.textContent = `Manual anchor saved for #${debugTarget.variantIndex}.`;
+  });
+  clearManualAnchorBtn.addEventListener('click', async () => {
+    if (!debugTarget) {
+      manualAnchorStatus.textContent = 'Select a debug target first.';
+      return;
+    }
+    await fetchJson(
+      `${SIDECAR_BASE}/api/runs/${encodeURIComponent(debugTarget.briefId)}/${encodeURIComponent(debugTarget.runId)}/manual-anchor`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clear: true }),
+      },
+    );
+    manualAnchorOverride = null;
+    syncTweakInputsFromState();
+    manualAnchorStatus.textContent = 'Manual anchor cleared.';
   });
   syncTweakInputsFromState();
   let debuggerRuns: SidecarRunListEntry[] = [];
@@ -5098,6 +5178,38 @@ function render(): void {
             : null;
         const briefPathStr =
           typeof briefPath === 'string' && briefPath.length > 0 ? briefPath : null;
+        if (summaryResult.status === 'fulfilled') {
+          const post = (summaryResult.value as { postprocessOverrides?: unknown })
+            .postprocessOverrides;
+          if (post && typeof post === 'object') {
+            const options = (post as { options?: unknown }).options;
+            const bg =
+              options && typeof options === 'object'
+                ? (options as { background?: unknown }).background
+                : null;
+            if (bg && typeof bg === 'object') {
+              const color = (bg as { colorToleranceSq?: unknown }).colorToleranceSq;
+              const fringe = (bg as { fringeToleranceSq?: unknown }).fringeToleranceSq;
+              if (typeof color === 'number' && typeof fringe === 'number') {
+                appliedBackgroundTweaks = { colorToleranceSq: color, fringeToleranceSq: fringe };
+              }
+            }
+            const manual = (post as { manualAnchor?: unknown }).manualAnchor;
+            if (manual && typeof manual === 'object') {
+              const variantIndex = (manual as { variantIndex?: unknown }).variantIndex;
+              const x = (manual as { x?: unknown }).x;
+              const y = (manual as { y?: unknown }).y;
+              if (
+                typeof variantIndex === 'number' &&
+                typeof x === 'number' &&
+                typeof y === 'number'
+              ) {
+                manualAnchorOverride = { variantIndex, x, y };
+              }
+            }
+            syncTweakInputsFromState();
+          }
+        }
 
         // Cache for live-computed pipeline results (by rawCellUrl)
         const liveResultsCache = new Map<string, LivePostprocessResult>();
@@ -6203,7 +6315,20 @@ function render(): void {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
+          body: JSON.stringify({
+            mode: pendingPostprocessMode,
+            ...(pendingPostprocessMode === 'replace'
+              ? {
+                  options: {
+                    background: {
+                      colorToleranceSq: appliedBackgroundTweaks.colorToleranceSq,
+                      fringeToleranceSq: appliedBackgroundTweaks.fringeToleranceSq,
+                    },
+                  },
+                }
+              : {}),
+            ...(manualAnchorOverride ? { manualAnchor: manualAnchorOverride } : {}),
+          }),
           signal: abort.signal,
         },
       );
@@ -6213,6 +6338,7 @@ function render(): void {
         status: `Post-processed ${candidates.length} variant(s) for ${briefId}. Click Judge to rank, or Approve a variant directly.`,
         resetApproval: true,
       });
+      pendingPostprocessMode = 'default';
     } catch (error) {
       // A user-initiated Cancel aborts the fetch; the Cancel handler has already
       // restored this item's prior stage, so don't clobber it with an error.

@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  archiveStorageRuns,
+  deleteStorageRunsBatch,
   extractVariantIndices,
+  listStorageRuns,
   listSidecarRuns,
   deleteSidecarRun,
   postApprove,
@@ -165,6 +168,67 @@ describe('deleteSidecarRun', () => {
     const [url, init] = fetcher.mock.calls[0]!;
     expect(url).toBe('http://127.0.0.1:3010/api/runs/iron-sword/2026-06-08T12-00-00-deadbeef');
     expect(init.method).toBe('DELETE');
+  });
+
+  describe('storage lifecycle api', () => {
+    it('lists active storage runs with scope + search query', async () => {
+      const fetcher = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            scope: 'active',
+            runs: [
+              {
+                briefId: 'iron-sword',
+                runId: 'run-1',
+                timestamp: null,
+                summaryKey: 'iron-sword/run-1/summary.json',
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+      const result = await listStorageRuns('active', 'iron', fetcher as unknown as typeof fetch);
+      expect(result.scope).toBe('active');
+      const [url] = fetcher.mock.calls[0]!;
+      expect(url).toContain('/api/storage/runs?');
+      expect(url).toContain('scope=active');
+      expect(url).toContain('search=iron');
+    });
+
+    it('archives selected runs through the batch endpoint', async () => {
+      const fetcher = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ archived: ['iron-sword/run-1'], skipped: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+      const result = await archiveStorageRuns(
+        ['iron-sword/run-1'],
+        fetcher as unknown as typeof fetch,
+      );
+      expect(result.archived).toEqual(['iron-sword/run-1']);
+      const [url, init] = fetcher.mock.calls[0]!;
+      expect(url).toBe('http://127.0.0.1:3010/api/storage/runs/archive');
+      expect(init.method).toBe('POST');
+    });
+
+    it('deletes selected runs through the batch endpoint', async () => {
+      const fetcher = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ deleted: ['archive/iron-sword/run-1'] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+      const result = await deleteStorageRunsBatch(
+        ['archive/iron-sword/run-1'],
+        fetcher as unknown as typeof fetch,
+      );
+      expect(result.deleted).toEqual(['archive/iron-sword/run-1']);
+      const [url, init] = fetcher.mock.calls[0]!;
+      expect(url).toBe('http://127.0.0.1:3010/api/storage/runs/delete');
+      expect(init.method).toBe('POST');
+    });
   });
 
   it('URL-encodes path segments so a slash in briefId cannot escape the route', async () => {

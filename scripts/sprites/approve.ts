@@ -76,7 +76,7 @@ const DEFAULT_FS: ApproveFs = {
 export interface ManifestAnchor {
   readonly x: number;
   readonly y: number;
-  readonly source: 'derived' | 'brief';
+  readonly source: 'manual' | 'derived' | 'brief';
 }
 
 /** Shape of one entry in `manifest.json`. */
@@ -113,6 +113,10 @@ export interface ManifestEntry {
    * existed omit it, and the guard falls back to hashing the on-disk asset.
    */
   readonly contentHash?: string;
+  readonly postprocessOverrideProfilePath?: string | null;
+  readonly effectivePipelineSnapshotPath?: string | null;
+  readonly effectivePipelineSnapshotYamlPath?: string | null;
+  readonly effectiveAnchorSource?: ManifestAnchor['source'] | null;
 }
 
 export interface Manifest {
@@ -165,6 +169,11 @@ interface RunSummaryShape {
     } | null;
     readonly judgeScorecard?: { readonly minScore?: number } | null;
   }>;
+  readonly postprocessOverrides?: {
+    readonly profilePath?: string | null;
+    readonly snapshotJsonPath?: string | null;
+    readonly snapshotYamlPath?: string | null;
+  } | null;
 }
 
 interface VariantAnchorSidecar {
@@ -321,6 +330,10 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
     judgeScore,
     type,
     contentHash,
+    postprocessOverrideProfilePath: summary.postprocessOverrides?.profilePath ?? null,
+    effectivePipelineSnapshotPath: summary.postprocessOverrides?.snapshotJsonPath ?? null,
+    effectivePipelineSnapshotYamlPath: summary.postprocessOverrides?.snapshotYamlPath ?? null,
+    effectiveAnchorSource: anchors.hold?.source ?? null,
   };
 
   upsertManifest(fs, options.manifestPath, entry, variantId);
@@ -534,6 +547,23 @@ function resolveSingleAnchor(
   candidateDerivedAnchor: { readonly x: number; readonly y: number } | null,
   chosenAnchor: { readonly x: number; readonly y: number; readonly source: string } | null,
 ): ManifestAnchor | null {
+  if (sidecarPath.endsWith('.anchor.json')) {
+    const manualPath = sidecarPath.replace(/\.anchor\.json$/, '.manual-anchor.json');
+    if (fs.existsSync(manualPath)) {
+      try {
+        const raw = JSON.parse(fs.readFileSync(manualPath, 'utf8')) as {
+          x?: unknown;
+          y?: unknown;
+          source?: unknown;
+        };
+        if (typeof raw.x === 'number' && typeof raw.y === 'number' && raw.source === 'manual') {
+          return { x: raw.x, y: raw.y, source: 'manual' };
+        }
+      } catch {
+        // Fall through; corrupt manual sidecar must not block approval.
+      }
+    }
+  }
   if (fs.existsSync(sidecarPath)) {
     try {
       const raw = JSON.parse(fs.readFileSync(sidecarPath, 'utf8')) as VariantAnchorSidecar;

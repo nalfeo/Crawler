@@ -13,6 +13,18 @@ export interface SidecarRunListEntry {
   readonly promotionState: 'promoted' | 'not-promoted';
 }
 
+export interface SidecarStorageRunEntry {
+  readonly briefId: string;
+  readonly runId: string;
+  readonly timestamp: string | null;
+  readonly summaryKey: string;
+}
+
+export interface SidecarStorageRunListResponse {
+  readonly scope: 'active' | 'archive';
+  readonly runs: SidecarStorageRunEntry[];
+}
+
 interface SidecarRunListResponse {
   readonly runs: SidecarRunListEntry[];
 }
@@ -271,6 +283,54 @@ export async function deleteSidecarRun(
     throw new Error(`delete failed (${response.status}): ${detail || response.statusText}`);
   }
   return (await response.json()) as DeleteRunResponse;
+}
+
+export async function listStorageRuns(
+  scope: 'active' | 'archive',
+  search = '',
+  fetcher: typeof fetch = fetch,
+): Promise<SidecarStorageRunListResponse> {
+  const params = new URLSearchParams({ scope });
+  if (search.trim().length > 0) {
+    params.set('search', search.trim());
+  }
+  const response = await fetcher(`${SIDECAR_BASE}/api/storage/runs?${params.toString()}`, {
+    cache: 'no-store',
+  });
+  if (!response.ok) {
+    throw new Error(`storage list failed (${response.status}): ${response.statusText}`);
+  }
+  return (await response.json()) as SidecarStorageRunListResponse;
+}
+
+export async function archiveStorageRuns(
+  keys: string[],
+  fetcher: typeof fetch = fetch,
+): Promise<{ archived: string[]; skipped: string[] }> {
+  const response = await fetcher(`${SIDECAR_BASE}/api/storage/runs/archive`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ keys }),
+  });
+  if (!response.ok) {
+    throw new Error(`archive failed (${response.status}): ${response.statusText}`);
+  }
+  return (await response.json()) as { archived: string[]; skipped: string[] };
+}
+
+export async function deleteStorageRunsBatch(
+  keys: string[],
+  fetcher: typeof fetch = fetch,
+): Promise<{ deleted: string[] }> {
+  const response = await fetcher(`${SIDECAR_BASE}/api/storage/runs/delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ keys }),
+  });
+  if (!response.ok) {
+    throw new Error(`delete batch failed (${response.status}): ${response.statusText}`);
+  }
+  return (await response.json()) as { deleted: string[] };
 }
 
 /**

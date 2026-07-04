@@ -46,6 +46,18 @@ import {
   type ProcessedVariant,
 } from './run-pipeline.js';
 import type { PostprocessOptions } from './postprocess.js';
+import {
+  EFFECTIVE_PIPELINE_JSON_KEY,
+  EFFECTIVE_PIPELINE_YAML_KEY,
+  POSTPROCESS_PROFILE_KEY,
+  readManualAnchor,
+  readPostprocessProfile,
+  removeManualAnchor,
+  removePostprocessProfile,
+  type ManualAnchorOverride,
+  writeEffectivePipelineSnapshot,
+  writePostprocessProfile,
+} from './postprocess-overrides.js';
 import type { VisionProvider } from './provider/vision-types.js';
 import { sliceSheetFromBrief } from './slice-sheet.js';
 import type { RunStore } from './store/types.js';
@@ -153,8 +165,10 @@ export interface RepostprocessArgs {
   readonly palette: PaletteColors;
   /** Tweakable post-processing options. Omit for generation defaults. */
   readonly options?: PostprocessOptions;
+  readonly optionsMode?: 'default' | 'persisted' | 'replace' | 'reset';
   /** Explicit `sheet-NN.png`; defaults to the newest sheet. */
   readonly sheetFile?: string;
+  readonly manualAnchor?: ManualAnchorOverride | null;
 }
 
 /**
@@ -170,6 +184,24 @@ export interface RepostprocessArgs {
 export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunResult> {
   const { store, briefId, runId, summary, brief, palette } = args;
   const storeKey = (rel: string): string => `${briefId}/${runId}/${rel}`;
+  const nowIso = new Date().toISOString();
+  const persistedProfile = await readPostprocessProfile(store, `${briefId}/${runId}`);
+  const persistedManualAnchor = await readManualAnchor(store, `${briefId}/${runId}`);
+  const optionsMode =
+    args.optionsMode ??
+    (args.options !== undefined ? 'replace' : persistedProfile ? 'persisted' : 'default');
+  const effectiveOptions =
+    optionsMode === 'reset'
+      ? {}
+      : args.options !== undefined
+        ? args.options
+        : (persistedProfile?.options ?? {});
+  const effectiveManualAnchor =
+    optionsMode === 'reset'
+      ? null
+      : args.manualAnchor !== undefined
+        ? args.manualAnchor
+        : (persistedManualAnchor ?? null);
 
   const { sheetFile, sheetPng } = await resolveRunSheet(store, briefId, runId, args.sheetFile);
 
@@ -206,10 +238,30 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
       raw: sliced[i]!,
       brief,
       palette,
-      ...(args.options ? { options: args.options } : {}),
+      options: effectiveOptions,
+      ...(effectiveManualAnchor ? { manualAnchor: effectiveManualAnchor } : {}),
+      traceRefs: {
+        overrideProfilePath: store.resolve(storeKey(POSTPROCESS_PROFILE_KEY)),
+        effectivePipelineSnapshotPath: store.resolve(storeKey(EFFECTIVE_PIPELINE_JSON_KEY)),
+      },
     });
     variants.push(variant);
     processedBuffers.push(variant.processed);
+  }
+
+  if (optionsMode === 'reset') {
+    await removeManualAnchor(store, `${briefId}/${runId}`);
+    await removePostprocessProfile(store, `${briefId}/${runId}`);
+  } else {
+    await writePostprocessProfile(store, `${briefId}/${runId}`, effectiveOptions, nowIso);
+    await writeEffectivePipelineSnapshot({
+      store,
+      baseKey: `${briefId}/${runId}`,
+      brief,
+      options: effectiveOptions,
+      manualAnchor: effectiveManualAnchor,
+      nowIso,
+    });
   }
 
   // judgeEnabled=false ⇒ combinedPassed gates on sensors only; the empty
@@ -225,10 +277,22 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
   return writeRunSummary(store, storeKey, summary, {
     candidates: ranked,
     diversity: computeDiversity(processedBuffers),
-    chosen: pickChosen(ranked, brief),
+    chosen: pickChosen(ranked, brief, effectiveManualAnchor),
     judgeBudget: null,
     judgeCache: null,
     variantCount: expected,
+    postprocessOverrides: {
+      profilePath:
+        optionsMode === 'reset' ? null : store.resolve(storeKey(POSTPROCESS_PROFILE_KEY)),
+      snapshotJsonPath:
+        optionsMode === 'reset' ? null : store.resolve(storeKey(EFFECTIVE_PIPELINE_JSON_KEY)),
+      snapshotYamlPath:
+        optionsMode === 'reset' ? null : store.resolve(storeKey(EFFECTIVE_PIPELINE_YAML_KEY)),
+      options: optionsMode === 'reset' ? null : effectiveOptions,
+      manualAnchor: effectiveManualAnchor,
+      appliedMode: optionsMode,
+      updatedAt: nowIso,
+    },
     extra: { sheetFile },
   });
 }
@@ -326,7 +390,7 @@ export async function rejudgeRun(args: RejudgeArgs): Promise<RerunResult> {
   return writeRunSummary(store, storeKey, summary, {
     candidates: ranked,
     diversity: computeDiversity(variants.map((v) => v.processed)),
-    chosen: pickChosen(ranked, brief),
+    chosen: pickChosen(ranked, brief, summary.postprocessOverrides?.manualAnchor ?? null),
     judgeBudget: budgetSnap
       ? {
           budgetUsd: budgetSnap.budgetUsd,
@@ -341,6 +405,7 @@ export async function rejudgeRun(args: RejudgeArgs): Promise<RerunResult> {
         }
       : null,
     judgeCache: args.judgeCache ? { ...args.judgeCache.stats } : null,
+    postprocessOverrides: summary.postprocessOverrides,
   });
 }
 
@@ -375,6 +440,7 @@ async function writeRunSummary(
     chosen: RunSummary['chosen'];
     judgeBudget: RunSummary['judgeBudget'];
     judgeCache: RunSummary['judgeCache'];
+    postprocessOverrides?: RunSummary['postprocessOverrides'];
     /** Recomputed variant count. Omit to carry the prior summary's value. */
     variantCount?: number;
     extra?: { sheetFile?: string };
@@ -393,6 +459,7 @@ async function writeRunSummary(
     chosen: patch.chosen,
     judgeBudget: patch.judgeBudget,
     judgeCache: patch.judgeCache,
+    ...(patch.postprocessOverrides ? { postprocessOverrides: patch.postprocessOverrides } : {}),
     sensorTelemetry: {
       orientation: {
         failed: orientationFailed,

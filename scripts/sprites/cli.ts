@@ -462,7 +462,7 @@ async function runOne(
       let pickedAnchor: {
         readonly x: number;
         readonly y: number;
-        readonly source: 'derived' | 'brief';
+        readonly source: 'manual' | 'derived' | 'brief';
       } | null;
       if (result.summary.chosen && result.summary.chosen.index === picked.index) {
         pickedAnchor = result.summary.chosen.anchor;
