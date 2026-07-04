@@ -1,8 +1,11 @@
 # ADR: Mob Appearance Multiplayer Variants
 
 **Date:** 2026-06-30  
-**Status:** Accepted  
 **Scope:** src/core (ECS state), src/engine (PhaserBridge texture resolution), src/game (spawn paths)
+
+## Status
+
+Accepted (2026-06-30).
 
 ## Context
 

@@ -1,8 +1,11 @@
 # ADR 0036: Raise the Review-Harness Code-Review Floor to 3🍎
 
 **Date:** 2026-07-02  
-**Status:** Accepted  
 **Affected Systems:** review harness (`scripts/agent/review/ledger.mjs`), `pr-review-ledger` guard, review-harness skill + policy docs, persona docs
+
+## Status
+
+Accepted (2026-07-02).
 
 ## Estimated Complexity
 

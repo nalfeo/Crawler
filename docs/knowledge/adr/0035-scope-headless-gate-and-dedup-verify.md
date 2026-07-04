@@ -1,8 +1,11 @@
 # ADR 0035: Scope the Headless Gate, De-duplicate Local Verify, and Title-Only Commit-Lint
 
 **Date:** 2026-07-02  
-**Status:** Accepted  
 **Affected Systems:** scripts/agent/verify.sh, scripts/agent/ci/detect-art-only.sh, .github/workflows/ci.yml, .github/workflows/commit-lint.yml, tests/unit
+
+## Status
+
+Accepted (2026-07-02).
 
 ## Context
 
@@ -10,7 +13,7 @@ A guard/CI-infrastructure audit (sessions + PRs, 3-day window) found the same
 tests were paid for **multiple times per change** with no added protection:
 
 - **The Headless Floor 1 gate is the CI long-pole (~306s).** Local `npm run
-  verify` re-ran the _entire_ CI suite — including that 306s headless replay and
+verify` re-ran the _entire_ CI suite — including that 306s headless replay and
   a production build — before **every** commit, on top of the authoritative CI
   run and again on every PR-shepherd re-push. Measured ~4.7 CI runs/branch at a
   93% pass rate: most reruns re-validate rather than catch bugs.
@@ -76,7 +79,7 @@ Three surgical, protection-preserving changes:
   deterministic test enumerating every allowlist/deny case.
 - Local `verify` no longer catches a headless regression pre-push; contributors
   touching `src/core`, `src/game/ai`, or balance must run `VERIFY_FULL=1 npm run
-  verify` (documented in AGENTS.md and copilot-instructions.md). CI still blocks
+verify` (documented in AGENTS.md and copilot-instructions.md). CI still blocks
   the merge regardless.
 - Splitting commit-lint into a title config adds a second small config file.
 

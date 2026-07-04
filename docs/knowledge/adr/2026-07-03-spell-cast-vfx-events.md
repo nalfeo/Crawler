@@ -96,7 +96,7 @@ Spell casts are non-combat signals — they need to push their own
 
 ### Risks
 
-- **AI runner spell-selection gap**: `src/game/ai/auto-progression.ts:95`
+- **AI runner spell-selection gap**: `src/game/ai/auto-progression.ts` (line 95)
   hardcodes `heal` as the AI's spell choice, so the headless win-rate
   gate never exercises fireball / pulse-shield auto-triggering in real
   play. That is exactly how the invisibility bug slipped through in the
