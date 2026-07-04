@@ -255,6 +255,13 @@ jobs:
 
       - name: Close stale release-failure issues
         if: success()
+        # Best-effort cleanup: never let a transient `gh issue list`/`jq` hiccup
+        # fail an otherwise-successful deploy. The default runner shell is
+        # `bash -eo pipefail`, so a non-zero exit inside `OPEN=$(gh ... | jq ...)`
+        # would fail this step, flip the job to failed, and trigger the
+        # `Create failure issue` step below — manufacturing exactly the stale
+        # "Release failure: deploy workflow" issue this PR aims to eliminate.
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
