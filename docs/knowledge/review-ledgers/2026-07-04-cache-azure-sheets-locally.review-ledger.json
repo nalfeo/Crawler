@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-04",
+  "session_slug": "cache-azure-sheets-locally",
+  "task_title": "Cache Azure sheet PNGs locally + bounded size cap",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "notes": "approve-with-changes on the size-cap eviction plan; all 8 concerns adopted. 2 blocking: (1) walk uses lstat and skips symlinks so eviction cannot escape the cache tree; (2) owner-only eviction — only files whose cache-relative key passes shouldCache are counted or deleted, so an overridden cacheDir sharing space with unrelated files is untouched. Plus: exempt the just-written entry, short-circuit entries larger than the whole cap, strict parseMaxCacheBytes validation (trim + digits-only + safe-integer), stale .tmp- sweep, and added symlink/tmp/oversized/factory-wiring tests."
+    }
+  }
+}

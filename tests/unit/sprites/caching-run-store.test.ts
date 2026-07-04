@@ -7,7 +7,16 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, existsSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  existsSync,
+  mkdirSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -15,6 +24,7 @@ import {
   defaultAzureSheetCacheDir,
   isAzureCacheEnabled,
   isSheetKey,
+  parseMaxCacheBytes,
 } from '../../../scripts/sprites/store/caching-store.js';
 import { LocalRunStore } from '../../../scripts/sprites/store/local-store.js';
 import { StoreNotFoundError, type RunStore } from '../../../scripts/sprites/store/types.js';
@@ -308,5 +318,139 @@ describe('isAzureCacheEnabled', () => {
   });
   it.each(['off', 'OFF', '0', 'false', 'False'])('honours disable value %s', (v) => {
     expect(isAzureCacheEnabled({ SPRITES_AZURE_CACHE: v })).toBe(false);
+  });
+});
+
+describe('parseMaxCacheBytes', () => {
+  it('defaults to 2 GiB when unset', () => {
+    expect(parseMaxCacheBytes({})).toBe(2 * 1024 * 1024 * 1024);
+  });
+  it('parses an explicit non-negative integer', () => {
+    expect(parseMaxCacheBytes({ SPRITES_AZURE_CACHE_MAX_BYTES: '1048576' })).toBe(1048576);
+  });
+  it('treats 0 as unbounded (returns 0)', () => {
+    expect(parseMaxCacheBytes({ SPRITES_AZURE_CACHE_MAX_BYTES: '0' })).toBe(0);
+  });
+  it('trims surrounding whitespace', () => {
+    expect(parseMaxCacheBytes({ SPRITES_AZURE_CACHE_MAX_BYTES: '  2048  ' })).toBe(2048);
+  });
+  it.each(['', 'abc', '-5', '3.5', '1e6', '0x10', '  ', '9999999999999999999999'])(
+    'falls back to the default for malformed value %j',
+    (v) => {
+      expect(parseMaxCacheBytes({ SPRITES_AZURE_CACHE_MAX_BYTES: v })).toBe(2 * 1024 * 1024 * 1024);
+    },
+  );
+});
+
+describe('CachingRunStore size-cap eviction', () => {
+  const K1 = 'br/run-1/sheet-00.png';
+  const K2 = 'br/run-2/sheet-00.png';
+  const K3 = 'br/run-3/sheet-00.png';
+  const K4 = 'br/run-4/sheet-00.png';
+  const cachedPath = (key: string): string => path.join(cacheDir, ...key.split('/'));
+  const chunk = (n: number): Buffer => Buffer.alloc(n, 1);
+
+  it('evicts the oldest owned entries once the total exceeds the cap', async () => {
+    const capped = new CachingRunStore({ inner, cacheDir, maxCacheBytes: 300 });
+    await capped.put(K1, chunk(100));
+    await capped.put(K2, chunk(100));
+    await capped.put(K3, chunk(100));
+    // All three fit exactly (300 <= 300): nothing evicted yet.
+    expect(existsSync(cachedPath(K1))).toBe(true);
+
+    // Make K1 the oldest, K3 the newest (deterministic mtime ordering).
+    utimesSync(cachedPath(K1), 1000, 1000);
+    utimesSync(cachedPath(K2), 2000, 2000);
+    utimesSync(cachedPath(K3), 3000, 3000);
+
+    // The 4th write pushes total to 400 > 300 → oldest (K1) is evicted.
+    await capped.put(K4, chunk(100));
+
+    expect(existsSync(cachedPath(K1))).toBe(false);
+    expect(existsSync(cachedPath(K2))).toBe(true);
+    expect(existsSync(cachedPath(K3))).toBe(true);
+    expect(existsSync(cachedPath(K4))).toBe(true);
+  });
+
+  it('never evicts the just-written entry, even if it sorts oldest by mtime', async () => {
+    const capped = new CachingRunStore({ inner, cacheDir, maxCacheBytes: 150 });
+    await capped.put(K1, chunk(100));
+    // Backdate the NEW write's target so K2 (written next, mtime≈now) looks
+    // "older" than K1 — the exemption is by path identity, not mtime.
+    const future = Math.floor(Date.now() / 1000) + 10_000;
+    utimesSync(cachedPath(K1), future, future);
+
+    await capped.put(K2, chunk(100)); // total 200 > 150
+
+    // K2 is exempt (just written) so K1 is evicted despite its future mtime.
+    expect(existsSync(cachedPath(K1))).toBe(false);
+    expect(existsSync(cachedPath(K2))).toBe(true);
+  });
+
+  it('does not evict when unbounded (maxCacheBytes = 0)', async () => {
+    const unbounded = new CachingRunStore({ inner, cacheDir, maxCacheBytes: 0 });
+    for (const k of [K1, K2, K3, K4]) {
+      await unbounded.put(k, chunk(1000));
+    }
+    for (const k of [K1, K2, K3, K4]) {
+      expect(existsSync(cachedPath(k))).toBe(true);
+    }
+  });
+
+  it('does not cache a single entry larger than the whole cap', async () => {
+    const capped = new CachingRunStore({ inner, cacheDir, maxCacheBytes: 50 });
+    const data = chunk(100);
+    await capped.put(K1, data);
+    // Oversized entry is never written to the cache…
+    expect(existsSync(cachedPath(K1))).toBe(false);
+    // …but the inner store still received it and reads still work.
+    expect(await inner.has(K1)).toBe(true);
+    expect(await capped.get(K1)).toEqual(data);
+    // The failed-cache get must not have created a cache file either.
+    expect(existsSync(cachedPath(K1))).toBe(false);
+  });
+
+  it('sweeps stale .tmp- staging files but keeps in-flight ones', async () => {
+    const capped = new CachingRunStore({ inner, cacheDir, maxCacheBytes: 100_000 });
+    const runDir = path.join(cacheDir, 'br', 'run-tmp');
+    mkdirSync(runDir, { recursive: true });
+    const stale = path.join(runDir, 'sheet-00.png.tmp-stale');
+    const fresh = path.join(runDir, 'sheet-01.png.tmp-fresh');
+    writeFileSync(stale, chunk(10));
+    writeFileSync(fresh, chunk(10));
+    const twoHoursAgoSec = Math.floor(Date.now() / 1000) - 2 * 3600;
+    utimesSync(stale, twoHoursAgoSec, twoHoursAgoSec);
+
+    // Any successful cacheable write triggers the housekeeping walk.
+    await capped.put(K1, chunk(10));
+
+    expect(existsSync(stale)).toBe(false);
+    expect(existsSync(fresh)).toBe(true);
+  });
+
+  it('does not delete unrelated files reached through a symlinked subdir', async () => {
+    // Files the cache does not own must survive even if they live under a
+    // symlink/junction inside the cache dir. Best-effort on platforms where
+    // link creation is not permitted.
+    const external = mkdtempSync(path.join(tmpdir(), 'crawler-cache-external-'));
+    const secret = path.join(external, 'secret.bin');
+    writeFileSync(secret, chunk(5000));
+    let linked = false;
+    try {
+      symlinkSync(external, path.join(cacheDir, 'linked'), 'junction');
+      linked = true;
+    } catch {
+      // Symlink/junction creation not permitted here — skip the link assertion.
+    }
+
+    const capped = new CachingRunStore({ inner, cacheDir, maxCacheBytes: 100 });
+    await capped.put(K1, chunk(100));
+
+    expect(existsSync(secret)).toBe(true);
+    if (linked) {
+      // Sanity: the external file is genuinely reachable through the link.
+      expect(statSync(path.join(cacheDir, 'linked', 'secret.bin')).size).toBe(5000);
+    }
+    rmSync(external, { recursive: true, force: true });
   });
 });

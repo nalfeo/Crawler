@@ -15,6 +15,7 @@
  * | AZURE_STORAGE_RUNS_CONTAINER | no            | Blob container name (default: `generated-runs`)  |
  * | SPRITES_AZURE_CACHE          | no            | `on` (default) / `off` — persistent local cache of sheet PNGs when using Azure |
  * | SPRITES_AZURE_CACHE_DIR      | no            | Override for the cache dir (default: platform-specific, outside any worktree)  |
+ * | SPRITES_AZURE_CACHE_MAX_BYTES | no           | Total cache size cap in bytes (default: 2 GiB; `0` = unbounded)                |
  *
  * Alternatively, set `AZURE_STORAGE_CONNECTION_STRING` to use a full
  * connection string instead of the separate account/key variables.
@@ -26,6 +27,7 @@ import {
   CachingRunStore,
   defaultAzureSheetCacheDir,
   isAzureCacheEnabled,
+  parseMaxCacheBytes,
 } from './caching-store.js';
 import { LocalRunStore } from './local-store.js';
 import type { RunStore } from './types.js';
@@ -76,7 +78,11 @@ export function createRunStore(options: CreateRunStoreOptions): RunStore {
     // blobs. Cache lives OUTSIDE any git worktree so `git clean` / worktree
     // checkpoints don't wipe it and `.gitignore` doesn't need to know.
     if (!isAzureCacheEnabled(env)) return inner;
-    return new CachingRunStore({ inner, cacheDir: defaultAzureSheetCacheDir(env) });
+    return new CachingRunStore({
+      inner,
+      cacheDir: defaultAzureSheetCacheDir(env),
+      maxCacheBytes: parseMaxCacheBytes(env),
+    });
   }
 
   throw new Error(

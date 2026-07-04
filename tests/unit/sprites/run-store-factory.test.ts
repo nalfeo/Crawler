@@ -89,6 +89,34 @@ describe('createRunStore factory', () => {
     expect(store.constructor.name).toBe('AzureBlobRunStore');
   });
 
+  it('defaults the cache size cap to 2 GiB', () => {
+    const store = createRunStore({
+      env: {
+        SPRITES_RUN_STORE: 'azure-blob',
+        AZURE_STORAGE_ACCOUNT: 'myaccount',
+        AZURE_STORAGE_KEY: 'dGVzdA==',
+      },
+      repoRoot: REPO_ROOT,
+    });
+    // White-box: the factory must pass the parsed byte budget to the wrapper.
+    expect((store as unknown as { maxCacheBytes: number }).maxCacheBytes).toBe(
+      2 * 1024 * 1024 * 1024,
+    );
+  });
+
+  it('wires SPRITES_AZURE_CACHE_MAX_BYTES through to the cache size cap', () => {
+    const store = createRunStore({
+      env: {
+        SPRITES_RUN_STORE: 'azure-blob',
+        AZURE_STORAGE_ACCOUNT: 'myaccount',
+        AZURE_STORAGE_KEY: 'dGVzdA==',
+        SPRITES_AZURE_CACHE_MAX_BYTES: '5242880',
+      },
+      repoRoot: REPO_ROOT,
+    });
+    expect((store as unknown as { maxCacheBytes: number }).maxCacheBytes).toBe(5242880);
+  });
+
   it('resolve() on LocalRunStore returns path inside generated/runs', () => {
     const store = createRunStore({ env: {}, repoRoot: REPO_ROOT });
     const resolved = store.resolve('iron-sword/run-001/summary.json');
