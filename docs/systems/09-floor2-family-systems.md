@@ -15,16 +15,16 @@ bosses defeated) is reached.
 
 ## Slice map
 
-| Slice                               | Code                                                                                                                                       | Lab                    |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------- |
-| 1. Faction data + relationships     | `src/core/faction-relations.ts`, `FamilyMembership` in `src/core/components.ts`, `src/core/systems/familyRelationshipSystem.ts`            | `family-territory-lab` |
-| 2. Cave-system map generator        | `src/core/map/generators/cave-system.ts`, `BiomeType.CAVE_SYSTEM` in the generator registry                                                | `map-gen-lab`          |
-| 3. Family-aware AI + feuding        | `src/game/systems/familyFeudSystem.ts` + `enemyAISystem.ts` band/target extensions                                                         | `family-feud-lab`      |
-| 4. Boss dens + unlock objectives    | `src/game/floor2Scenario.ts` (den plumbing) reusing door-lock / sealing                                                                    | `floor2-scenario-lab`  |
-| 5. Dynamic win evaluator + stairs   | `floor2ObjectiveTick` in `src/game/floor2Scenario.ts`                                                                                      | `floor2-scenario-lab`  |
-| 6. Settlement + seeded shops        | Floor-2 quest packs, shop-inventory generator, "The Broker" NPC placement                                                                  | `settlement-shop-lab`  |
-| 7. HUD family relationships         | `HudFamilyRelationships` widget in `src/engine/` + minimap territory tint                                                                  | `family-hud-lab`       |
-| 8. Scenario wiring + Governor sweep | `src/shared/data/floors/floor2.manifest.json`, `src/game/floor2Scenario.ts`, win-rate sweep (`ai:winrate-sweep`), Director narration hooks | `floor2-scenario-lab`  |
+| Slice                               | Code                                                                                                                                       | Lab                            |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------ |
+| 1. Faction data + relationships     | `src/core/faction-relations.ts`, `FamilyMembership` in `src/core/components.ts`, `src/core/systems/familyRelationshipSystem.ts`            | `family-territory-lab`         |
+| 2. Cave-system map generator        | `src/core/map/generators/cave-system.ts`, `BiomeType.CAVE_SYSTEM` in the generator registry                                                | `map-gen-lab`                  |
+| 3. Family-aware AI + feuding        | `src/game/systems/familyFeudSystem.ts` + `enemyAISystem.ts` band/target extensions                                                         | `family-feud-lab`              |
+| 4. Boss dens + unlock objectives    | `src/game/floor2Scenario.ts` (den plumbing) reusing door-lock / sealing                                                                    | `family-boss-den-lab`          |
+| 5. Dynamic win evaluator + stairs   | `floor2ObjectiveTick` in `src/game/floor2Scenario.ts`                                                                                      | `family-boss-den-lab`          |
+| 6. Settlement + seeded shops        | Floor-2 quest packs, shop-inventory generator, "The Broker" NPC placement                                                                  | `floor2-settlement-lab`        |
+| 7. HUD family relationships         | `HudFamilyRelationships` widget in `src/engine/` + minimap territory tint                                                                  | `hud-family-relationships-lab` |
+| 8. Scenario wiring + Governor sweep | `src/shared/data/floors/floor2.manifest.json`, `src/game/floor2Scenario.ts`, win-rate sweep (`ai:winrate-sweep`), Director narration hooks | `family-boss-den-lab`          |
 
 ## Runtime shape
 

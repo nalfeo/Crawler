@@ -6,7 +6,7 @@
 > family-relationship HUD, scenario wiring + governor sweep) all exist in code as
 > of 2026-07-03. The main-scene bootstrap still targets Floor 1 only
 > (`src/bootstrap/floor-main-scene-options.ts`); Floor 2 is exercisable through
-> its labs (`family-territory-lab`, `floor2-scenario-lab`, `family-feud-lab`) and
+> its labs (`family-territory-lab`, `family-feud-lab`, `family-boss-den-lab`, `floor2-settlement-lab`, `hud-family-relationships-lab`) and
 > the headless simulator, not through the shipping `dev` entry-point flow yet.
 > **Last reconciled:** 2026-07-03.
 > **Estimated complexity:** 🍎🍎🍎🍎🍎 (Massive — spans core ECS, game systems,
@@ -38,7 +38,7 @@
 >    in `src/engine/`.
 > 8. Scenario wiring + Governor sweep + narration →
 >    `src/shared/data/floors/floor2.manifest.json`, `src/game/floor2Scenario.ts`,
->    win-rate sweep entry, `floor2-scenario-lab`.
+>    win-rate sweep entry, `family-boss-den-lab`.
 >    **Known implementation gaps:**
 >
 > - Main-scene bootstrap (`src/bootstrap/floor-main-scene-options.ts`) still
