@@ -17,7 +17,7 @@ import { Report, fromRepo } from '../shared/report.js';
 
 const HANDOFFS_DIR = 'docs/knowledge/handoffs';
 const PROMOTION_THRESHOLD = 3;
-const SEARCH_ROOTS = ['docs/knowledge/adr', 'docs/knowledge/handoffs'];
+const SEARCH_ROOTS = ['docs/knowledge/adr', 'docs/knowledge/handoffs', 'src', '.github'];
 
 function countReferences(filename: string, sinceDate: string): number {
   try {

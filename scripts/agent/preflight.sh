@@ -77,4 +77,37 @@ persona_hint() {
 }
 persona_hint || true
 
+# Non-blocking lessons-learned digest. Prints the `### Mistakes Made` and
+# `### Lessons Learned` sections from the 5 most recent non-archived handoffs
+# (sorted by filename date-prefix, descending). Quiet-fails if the handoffs
+# directory is missing. Closes the "written but not read" loop the 2026-07-03
+# audit surfaced.
+handoff_digest() {
+  local dir="docs/knowledge/handoffs"
+  [ -d "$dir" ] || return 0
+  echo "===== Recent handoff lessons (top 5, most recent first) ====="
+  local files
+  files=$(find "$dir" -maxdepth 1 -type f -name '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*.md' 2>/dev/null | sort -r | head -n 5)
+  [ -z "$files" ] && { echo "(no dated handoffs found)"; echo "============================================================="; return 0; }
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    local slug
+    slug=$(basename "$f" .md)
+    echo "$slug:"
+    awk '
+      function flush() {
+        if (sect=="L" && buf!="") print "  Lessons: " buf;
+        if (sect=="M" && buf!="") print "  Mistakes: " buf;
+      }
+      /^### Lessons Learned[[:space:]]*$/  { flush(); sect="L"; buf=""; next }
+      /^### Mistakes Made[[:space:]]*$/    { flush(); sect="M"; buf=""; next }
+      /^###[[:space:]]/ || /^##[[:space:]]/ { flush(); sect=""; buf=""; next }
+      sect!="" && $0 !~ /^[[:space:]]*$/ && $0 !~ /^[[:space:]]*<!--/ { line=$0; sub(/^[[:space:]]*[-*+][[:space:]]+/, "", line); if (buf=="") buf=line; else if (length(buf) < 160) buf=buf "; " line }
+      END { flush() }
+    ' "$f"
+  done <<< "$files"
+  echo "============================================================="
+}
+handoff_digest || true
+
 echo "✅ Preflight complete. Environment is ready."
