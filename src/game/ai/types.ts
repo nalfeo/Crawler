@@ -5,6 +5,7 @@
  */
 import type { GameWorld } from '../../core/world.js';
 import type { InputState } from '../../shared/input.js';
+import type { RunPlanSegmentPhase } from './run-planner.js';
 
 /**
  * AI behavioral state machine states.
@@ -24,6 +25,39 @@ export const AIState = {
 
 export type AIStateValue = (typeof AIState)[keyof typeof AIState];
 
+/** Telemetry-only state labels that refine the coarse gameplay state. */
+export const AIDecisionDebugState = {
+  /** EXPLORE fallback caused by a suppressed fixed-position progress objective. */
+  SUPPRESSED_PROGRESS_NAV: 'suppressedProgressNav',
+} as const;
+
+export type AIDecisionDebugStateValue =
+  (typeof AIDecisionDebugState)[keyof typeof AIDecisionDebugState];
+
+/** Existing watchdogs/suppression windows that can suppress progress navigation. */
+export const AIProgressSuppressionSource = {
+  EXPLORE_DWELL_FIXED_POSITION_TARGET: 'exploreDwellFixedPositionTarget',
+  EXPLORE_DWELL_FRONTIER_TARGET: 'exploreDwellFrontierTarget',
+  QUEST_PROGRESS_DWELL_WATCHDOG: 'questProgressDwellWatchdog',
+  PROGRESS_GOAL_SUPPRESSION_WINDOW: 'progressGoalSuppressionWindow',
+} as const;
+
+export type AIProgressSuppressionSourceValue =
+  (typeof AIProgressSuppressionSource)[keyof typeof AIProgressSuppressionSource];
+
+/** Typed debug payload for EXPLORE samples that are really suppressed progress nav. */
+export interface AISuppressedProgressNavDebug {
+  state: typeof AIDecisionDebugState.SUPPRESSED_PROGRESS_NAV;
+  reason: 'progressGoalSuppressed';
+  source: AIProgressSuppressionSourceValue;
+  criticalChainPhase: RunPlanSegmentPhase;
+  blockedTargetReason: string;
+  suppressedUntilFrame: number;
+  remainingFrames: number;
+}
+
+export type AIDecisionDebug = AISuppressedProgressNavDebug;
+
 /**
  * AI decision context - what the AI is currently thinking about.
  */
@@ -37,6 +71,8 @@ export interface AIDecision {
   targetY: number | null;
   /** Human-readable reason for current decision */
   reason: string;
+  /** Telemetry-only refinement; never drives gameplay behavior. */
+  debug: AIDecisionDebug | null;
 }
 
 /**
@@ -187,6 +223,20 @@ export interface QuestMetrics {
 }
 
 /**
+ * AI decision-state rollups captured during a headless run.
+ */
+export interface AIDecisionTelemetryMetrics {
+  /** Number of AI poll frames spent in each emitted decision-state label. */
+  decisionStateCounts: Record<string, number>;
+  /** Simulated time spent in each emitted decision-state label. */
+  decisionStateMs: Record<string, number>;
+  /** Number of poll frames classified as suppressed progress navigation. */
+  suppressedProgressNavCount: number;
+  /** Simulated time classified as suppressed progress navigation. */
+  suppressedProgressNavMs: number;
+}
+
+/**
  * Run statistics for performance tracking.
  */
 export interface RunStats {
@@ -227,4 +277,6 @@ export interface RunStats {
   totalGold: number;
   /** ID of the starting weapon selected for this run */
   startingWeapon: string;
+  /** Optional telemetry rollups for AI decision-state accounting. */
+  aiTelemetry?: AIDecisionTelemetryMetrics;
 }

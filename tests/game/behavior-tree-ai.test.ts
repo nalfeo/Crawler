@@ -26,7 +26,7 @@ import type { TilePoint } from '../../src/core/map/pathfinding.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
-import { AIState } from '../../src/game/ai/types.js';
+import { AIProgressSuppressionSource, AIState } from '../../src/game/ai/types.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 
 /**
@@ -204,6 +204,40 @@ describe('BehaviorTreeAI', () => {
     expect(decision.reason).toContain('Tutorial Goon');
     expect(decision.targetX).toBe(world.floor1?.objective.welcomeOfficePos.x);
     expect(decision.targetY).toBe(world.floor1?.objective.welcomeOfficePos.y);
+  });
+
+  it('labels EXPLORE fallback caused by suppressed fixed-position progress navigation', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+
+    const ai = new BehaviorTreeAI({ seed: 42, scanRadius: 0 });
+    const suppressionHarness = ai as unknown as {
+      progressGoalSuppressedUntilFrame: number;
+      progressGoalSuppressionSource: string | null;
+    };
+    suppressionHarness.progressGoalSuppressedUntilFrame = world.frameCount + 120;
+    suppressionHarness.progressGoalSuppressionSource =
+      AIProgressSuppressionSource.EXPLORE_DWELL_FIXED_POSITION_TARGET;
+
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.EXPLORE);
+    expect(decision.reason).toBe('Exploring map');
+    expect(decision.debug).toMatchObject({
+      state: 'suppressedProgressNav',
+      reason: 'progressGoalSuppressed',
+      source: AIProgressSuppressionSource.EXPLORE_DWELL_FIXED_POSITION_TARGET,
+      criticalChainPhase: 'pre-chain',
+      blockedTargetReason: 'Seeking Tutorial Goon to unlock the floor quest',
+      suppressedUntilFrame: 120,
+      remainingFrames: 120,
+    });
+
+    decision.debug!.remainingFrames = 0;
+    expect(ai.getDecision().debug?.remainingFrames).toBe(120);
   });
 
   it('approaches enemies into honest melee range instead of targeting their center', () => {

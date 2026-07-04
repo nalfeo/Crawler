@@ -25,6 +25,7 @@ function decision(partial: Partial<AIDecision>): AIDecision {
     targetX: null,
     targetY: null,
     reason: 'test',
+    debug: null,
     ...partial,
   };
 }

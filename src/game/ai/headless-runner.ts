@@ -21,8 +21,13 @@ import { GAME } from '../../shared/constants.js';
 import { createLogger } from '../../shared/logger.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { FLOOR1_TUTORIAL_QUEST_ID } from '../../shared/quest-types.js';
-import { type AIInputProvider, type RunStats, type LevelUpEvent } from './types.js';
-import { AI_STATE_NAME, type SimEvent } from './event-log.js';
+import {
+  AIDecisionDebugState,
+  type AIInputProvider,
+  type RunStats,
+  type LevelUpEvent,
+} from './types.js';
+import { AI_STATE_NAME, getDecisionEventState, type SimEvent } from './event-log.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
 import { initializeFloor1Scenario, selectFloor1StarterWeapon } from '../index.js';
 import {
@@ -239,7 +244,24 @@ export async function runHeadless(
   let pathTravelAccum = 0;
   let lastSampleX = lastFrameX;
   let lastSampleY = lastFrameY;
-  let lastLoggedState: number | null = null;
+  let lastLoggedState: string | null = null;
+  const decisionStateCounts: Record<string, number> = {};
+  const decisionStateMs: Record<string, number> = {};
+
+  const recordDecisionState = (state: string): void => {
+    decisionStateCounts[state] = (decisionStateCounts[state] ?? 0) + 1;
+    decisionStateMs[state] = (decisionStateMs[state] ?? 0) + GAME.DELTA_MS;
+  };
+
+  const buildAiTelemetry = (): NonNullable<RunStats['aiTelemetry']> => {
+    const suppressedState = AIDecisionDebugState.SUPPRESSED_PROGRESS_NAV;
+    return {
+      decisionStateCounts: { ...decisionStateCounts },
+      decisionStateMs: { ...decisionStateMs },
+      suppressedProgressNavCount: decisionStateCounts[suppressedState] ?? 0,
+      suppressedProgressNavMs: decisionStateMs[suppressedState] ?? 0,
+    };
+  };
 
   const buildEvent = (
     type: SimEvent['type'],
@@ -247,6 +269,9 @@ export async function runHeadless(
     note?: string,
   ): SimEvent => {
     const decision = aiProvider.getDecision();
+    const baseState = AI_STATE_NAME[decision.state] ?? String(decision.state);
+    const decisionDebug = decision.debug ? { ...decision.debug } : null;
+    const emittedState = getDecisionEventState(decision);
     const px = world.stores.position.x[playerEid] ?? 0;
     const py = world.stores.position.y[playerEid] ?? 0;
     let nearestEnemyDist: number | null = null;
@@ -270,7 +295,8 @@ export async function runHeadless(
       gameMs: world.elapsedMs,
       px: Math.round(px),
       py: Math.round(py),
-      state: AI_STATE_NAME[decision.state] ?? String(decision.state),
+      state: emittedState,
+      ...(decisionDebug ? { baseState, decisionDebug } : {}),
       reason: decision.reason,
       targetEid: decision.targetEid,
       targetDist: targetDist === null ? null : Math.round(targetDist),
@@ -309,6 +335,7 @@ export async function runHeadless(
 
       // AI decides input for this frame
       aiProvider.poll(inputState, world);
+      recordDecisionState(getDecisionEventState(aiProvider.getDecision()));
 
       // Auto-interact with nearby NPCs (simulates pressing E)
       lastNpcInteractionFrame = autoNpcInteractionSystem(
@@ -466,15 +493,9 @@ export async function runHeadless(
 
       // Telemetry: state-change annotations + periodic samples.
       if (recordEvent) {
-        const decisionState = aiProvider.getDecision().state;
+        const decisionState = getDecisionEventState(aiProvider.getDecision());
         if (decisionState !== lastLoggedState) {
-          recordEvent(
-            buildEvent(
-              'state',
-              enemyEids,
-              `state -> ${AI_STATE_NAME[decisionState] ?? decisionState}`,
-            ),
-          );
+          recordEvent(buildEvent('state', enemyEids, `state -> ${decisionState}`));
           lastLoggedState = decisionState;
         }
         if (frameCount % sampleInterval === 0) {
@@ -598,6 +619,7 @@ export async function runHeadless(
       totalXp: world.playerLevel?.xp ?? 0,
       totalGold: world.playerGold,
       startingWeapon,
+      aiTelemetry: buildAiTelemetry(),
     };
   }
 
@@ -651,6 +673,7 @@ export async function runHeadless(
     totalXp: world.playerLevel?.xp ?? 0,
     totalGold: world.playerGold,
     startingWeapon,
+    aiTelemetry: buildAiTelemetry(),
   };
 
   if (mergedConfig.debug || mergedConfig.progressInterval > 0) {
