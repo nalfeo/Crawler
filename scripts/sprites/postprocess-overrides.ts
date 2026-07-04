@@ -106,7 +106,7 @@ export async function readManualAnchor(
       typeof parsed.updatedAt === 'string'
     ) {
       return {
-        variantIndex: parsed.variantIndex,
+        variantIndex: parsed.variantIndex as number,
         x: parsed.x,
         y: parsed.y,
         source: 'manual',

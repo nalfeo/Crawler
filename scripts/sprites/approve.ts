@@ -169,6 +169,11 @@ interface RunSummaryShape {
     } | null;
     readonly judgeScorecard?: { readonly minScore?: number } | null;
   }>;
+  readonly postprocessOverrides?: {
+    readonly profilePath?: string | null;
+    readonly snapshotJsonPath?: string | null;
+    readonly snapshotYamlPath?: string | null;
+  } | null;
 }
 
 interface VariantAnchorSidecar {

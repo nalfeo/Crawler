@@ -852,7 +852,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       return null;
     }
     return {
-      variantIndex: candidate.variantIndex,
+      variantIndex: candidate.variantIndex as number,
       x: candidate.x,
       y: candidate.y,
     };

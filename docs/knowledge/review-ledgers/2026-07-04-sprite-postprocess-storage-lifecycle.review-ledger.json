@@ -1,0 +1,31 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-04",
+  "session_slug": "sprite-postprocess-storage-lifecycle",
+  "task_title": "Persist postprocess overrides and add storage lifecycle devtool",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": false,
+      "reviewer_model": "",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "notes": ""
+    },
+    "dual_plan_synthesis": {
+      "completed": false,
+      "plan_models": ["", ""],
+      "judge_model": "",
+      "notes": ""
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    }
+  }
+}
