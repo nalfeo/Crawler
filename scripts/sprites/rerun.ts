@@ -291,7 +291,7 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
       options: optionsMode === 'reset' ? null : effectiveOptions,
       manualAnchor: effectiveManualAnchor,
       appliedMode: optionsMode,
-      updatedAt: optionsMode === 'reset' ? nowIso : nowIso,
+      updatedAt: nowIso,
     },
     extra: { sheetFile },
   });

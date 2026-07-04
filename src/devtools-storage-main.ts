@@ -19,6 +19,10 @@ function keyForRun(scope: 'active' | 'archive', run: SidecarStorageRunEntry): st
   return `${scope === 'archive' ? 'archive/' : ''}${run.briefId}/${run.runId}`;
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 async function render(): Promise<void> {
   const root = document.querySelector('#storage-root');
   if (!(root instanceof HTMLElement)) return;
@@ -85,10 +89,14 @@ async function render(): Promise<void> {
   const reload = async () => {
     const scope = scopeSelect.value === 'archive' ? 'archive' : 'active';
     status.textContent = 'Loading runs…';
-    const payload = await listStorageRuns(scope, searchInput.value);
-    currentRuns = payload.runs;
-    renderRows(scope);
-    status.textContent = `Loaded ${currentRuns.length} ${scope} run(s).`;
+    try {
+      const payload = await listStorageRuns(scope, searchInput.value);
+      currentRuns = payload.runs;
+      renderRows(scope);
+      status.textContent = `Loaded ${currentRuns.length} ${scope} run(s).`;
+    } catch (error) {
+      status.textContent = `Failed to load runs: ${errorMessage(error)}`;
+    }
   };
 
   refreshBtn.addEventListener('click', () => void reload());
@@ -105,10 +113,14 @@ async function render(): Promise<void> {
       return;
     }
     if (!window.confirm(`Archive ${keys.length} run(s)?`)) return;
-    const result = await archiveStorageRuns(keys);
-    status.textContent = `Archived ${result.archived.length}; skipped ${result.skipped.length}.`;
-    selected = new Set<string>();
-    await reload();
+    try {
+      const result = await archiveStorageRuns(keys);
+      status.textContent = `Archived ${result.archived.length}; skipped ${result.skipped.length}.`;
+      selected = new Set<string>();
+      await reload();
+    } catch (error) {
+      status.textContent = `Failed to archive runs: ${errorMessage(error)}`;
+    }
   });
 
   deleteBtn.addEventListener('click', async () => {
@@ -118,10 +130,14 @@ async function render(): Promise<void> {
       return;
     }
     if (!window.confirm(`Permanently delete ${keys.length} run(s)? This cannot be undone.`)) return;
-    const result = await deleteStorageRunsBatch(keys);
-    status.textContent = `Deleted ${result.deleted.length} run(s).`;
-    selected = new Set<string>();
-    await reload();
+    try {
+      const result = await deleteStorageRunsBatch(keys);
+      status.textContent = `Deleted ${result.deleted.length} run(s).`;
+      selected = new Set<string>();
+      await reload();
+    } catch (error) {
+      status.textContent = `Failed to delete runs: ${errorMessage(error)}`;
+    }
   });
 
   await reload();
