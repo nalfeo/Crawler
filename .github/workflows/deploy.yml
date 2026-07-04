@@ -281,7 +281,7 @@ jobs:
           for N in $OPEN; do
             gh issue close "$N" \
               --repo "${{ github.repository }}" \
-              --comment "✅ Auto-closed: deploy run #${{ github.run_number }} succeeded (commit \`${{ github.sha }}\`). The transient Pages failure that opened this issue has resolved." \
+              --comment "✅ Auto-closed: a later deploy run (#${{ github.run_number }}, commit \`${{ github.sha }}\`) succeeded, so this release-failure issue is no longer active. If the underlying failure was not transient, please reopen." \
             || echo "::warning::Failed to close issue #$N"
           done
 
