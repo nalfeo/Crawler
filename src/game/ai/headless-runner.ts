@@ -21,6 +21,7 @@ import { GAME } from '../../shared/constants.js';
 import { createLogger } from '../../shared/logger.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { FLOOR1_TUTORIAL_QUEST_ID } from '../../shared/quest-types.js';
+import { xpRequiredForLevel } from '../../shared/xpMath.js';
 import {
   AIDecisionDebugState,
   type AIInputProvider,
@@ -88,6 +89,12 @@ export interface HeadlessRunnerConfig {
   /** Scenario floor id to run. */
   floorId?: string;
   /**
+   * Start the run at this player character level (applies XP and unspent stat
+   * points to match). Level 1 (default) is a normal run with no boost.
+   * Supports any positive level; clamped to ≥1.
+   */
+  startPlayerLevel?: number;
+  /**
    * Frames of zero floor-progress (no quest objective tick, completion, or gold
    * gain) before the run is declared `'stalled'` and terminated early with a
    * quest-level diagnostic. Keys on quest progress, not on the AI reaching its
@@ -113,6 +120,7 @@ const DEFAULT_CONFIG: Required<
   questStallFrames: 21_600, // ~360s of frozen quest progress on the 240×140 map
   enemyDamageMultiplier: 1,
   floorId: 'floor1',
+  startPlayerLevel: 1,
 };
 
 function applyConfiguredHostileDamageMultiplier(
@@ -136,6 +144,22 @@ function normalizeHostileDamageMultiplier(configuredMultiplier: number): number 
     );
   }
   return Math.max(1, configuredMultiplier);
+}
+
+export function applyStartPlayerLevel(world: GameWorld, targetLevel: number): void {
+  const level = Math.max(1, Math.floor(targetLevel));
+  if (level <= 1) {
+    return;
+  }
+  const previousLevel = Math.max(1, world.playerLevel.level);
+  if (previousLevel >= level) {
+    return;
+  }
+  const levelsGained = level - previousLevel;
+  world.playerLevel.level = level;
+  world.playerLevel.xp = Math.max(world.playerLevel.xp, xpRequiredForLevel(level));
+  world.playerLevel.unspentPoints += levelsGained * world.playerLevel.pointsPerLevel;
+  world.statsDirty = true;
 }
 
 /**
@@ -166,6 +190,7 @@ export async function runHeadless(
   // Initialize selected scenario (map/objective/NPC wiring).
   const scenario = getScenarioDefinition(mergedConfig.floorId);
   scenario.configureWorld(world, playerEid);
+  applyStartPlayerLevel(world, mergedConfig.startPlayerLevel);
   applyConfiguredHostileDamageMultiplier(world, hostileDamageMultiplier);
 
   // Select starter weapon when the scenario exposes a loadout phase.
