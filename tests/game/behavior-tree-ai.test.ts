@@ -791,6 +791,19 @@ describe('BehaviorTreeAI', () => {
     world.stores.position.x[shopkeeperNpcEid!] = shopPos.x + 2;
     world.stores.position.y[shopkeeperNpcEid!] = shopPos.y;
 
+    // All three NPCs now share the welcome bar. Move the tutorial goon and spell
+    // broker far away so only the shopkeeper is in the player's interaction radius.
+    const guideNpcEid = world.floor1!.guideNpcEid;
+    if (guideNpcEid != null) {
+      world.stores.position.x[guideNpcEid] = shopPos.x + 500;
+      world.stores.position.y[guideNpcEid] = shopPos.y;
+    }
+    const spellBrokerEid = world.floor1!.spellQuestGiverNpcEid;
+    if (spellBrokerEid != null) {
+      world.stores.position.x[spellBrokerEid] = shopPos.x + 500;
+      world.stores.position.y[spellBrokerEid] = shopPos.y;
+    }
+
     // Keep a valid non-NPC progress objective active (kill-grind enemy) so the
     // safe-room override has to actively choose the NPC.
     const questEnemy = spawnEnemy(world, shopPos.x + 28, shopPos.y, 20);

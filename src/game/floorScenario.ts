@@ -1003,9 +1003,9 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     shopRoomPos,
     questItemPos,
   } = chooseObjectiveTiles(world);
+  // The welcome room is the only safe room on Floor 1 — the bar/hub where all
+  // three quest NPCs live. The shop and spell-broker rooms are regular rooms.
   tagRoomAsSafe(world, welcomeOfficePos);
-  tagRoomAsSafe(world, shopRoomPos);
-  tagRoomAsSafe(world, spellQuestGiverPos);
 
   // Door-gate every special room. Corridors carved between room centres regularly
   // clip a room's bounding-box perimeter at non-door tiles, letting enemies tunnel
@@ -1059,8 +1059,10 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       staircasePos,
       welcomeOfficePos,
       slimeRatRoomPos,
-      spellQuestGiverPos,
-      shopRoomPos,
+      // Both the Spell Broker and Sweaty Merchant now live in the welcome bar,
+      // so point AI navigation targets there instead of the old separate rooms.
+      spellQuestGiverPos: welcomeOfficePos,
+      shopRoomPos: welcomeOfficePos,
       questItemPos,
       markerRadiusFt: floor1Config.objectives.markerRadiusFt,
       questAccepted: false,
@@ -1165,11 +1167,16 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     );
     world.floor1.spellQuestGiverNpcEid = spawnNpc(
       world,
-      world.floor1.objective.spellQuestGiverPos.x,
-      world.floor1.objective.spellQuestGiverPos.y,
+      world.floor1.objective.welcomeOfficePos.x,
+      world.floor1.objective.welcomeOfficePos.y,
       'spell-quest-giver',
     );
-    world.floor1.shopkeeperNpcEid = spawnNpc(world, shopRoomPos.x, shopRoomPos.y, 'shopkeeper');
+    world.floor1.shopkeeperNpcEid = spawnNpc(
+      world,
+      world.floor1.objective.welcomeOfficePos.x,
+      world.floor1.objective.welcomeOfficePos.y,
+      'shopkeeper',
+    );
   }
 
   // Plant the welcome wayfinding signs now that NPCs exist, so a sign never

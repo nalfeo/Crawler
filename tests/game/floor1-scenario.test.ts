@@ -150,43 +150,7 @@ describe('floor1Scenario', () => {
     expect(avg).toBeLessThanOrEqual(6);
   });
 
-  it('places the shop ≥ 3 hops from welcome and further from spawn than welcome', () => {
-    // BFS hop count between two room ids on the room graph.
-    const roomHopsBetween = (
-      map: ReturnType<typeof createTestWorld>['floorMap'],
-      fromId: number,
-      toId: number,
-    ): number => {
-      if (!map || fromId === toId) return 0;
-      const queue: number[] = [fromId];
-      let head = 0;
-      const dist = new Map<number, number>([[fromId, 0]]);
-      while (head < queue.length) {
-        const curr = queue[head++]!;
-        const room = map.roomGraph.get(curr);
-        for (const n of room?.neighbors ?? []) {
-          if (!dist.has(n)) {
-            dist.set(n, dist.get(curr)! + 1);
-            if (n === toId) return dist.get(n)!;
-            queue.push(n);
-          }
-        }
-      }
-      return -1;
-    };
-
-    const centerDistSq = (
-      map: ReturnType<typeof createTestWorld>['floorMap'],
-      pos: { x: number; y: number },
-    ) => {
-      if (!map) return 0;
-      const spawnTile = map.playerSpawn;
-      const tile = map.worldToTile(pos.x, pos.y);
-      const dx = tile.x - spawnTile.x;
-      const dy = tile.y - spawnTile.y;
-      return dx * dx + dy * dy;
-    };
-
+  it('co-locates all quest NPCs (shopkeeper, spell broker) in the welcome bar', () => {
     const seeds = [42, 7, 99, 123, 2024, 1, 14, 321, 999, 500];
     for (const seed of seeds) {
       const world = createTestWorld({ seed });
@@ -200,32 +164,30 @@ describe('floor1Scenario', () => {
         objective.welcomeOfficePos.x,
         objective.welcomeOfficePos.y,
       );
-      const shopTile = map.worldToTile(objective.shopRoomPos.x, objective.shopRoomPos.y);
       const welcomeRoomId = map.roomGraph.getRoomAt(welcomeTile.x, welcomeTile.y);
-      const shopRoomId = map.roomGraph.getRoomAt(shopTile.x, shopTile.y);
 
-      // Shop must be in a different room from welcome.
-      expect(shopRoomId, `seed ${seed}: shop must be in a different room from welcome`).not.toBe(
+      // Shopkeeper is now in the welcome bar.
+      const shopTile = map.worldToTile(objective.shopRoomPos.x, objective.shopRoomPos.y);
+      const shopRoomId = map.roomGraph.getRoomAt(shopTile.x, shopTile.y);
+      expect(shopRoomId, `seed ${seed}: shopkeeper must be in the welcome bar`).toBe(welcomeRoomId);
+
+      // Spell broker is now in the welcome bar.
+      const spellTile = map.worldToTile(
+        objective.spellQuestGiverPos.x,
+        objective.spellQuestGiverPos.y,
+      );
+      const spellRoomId = map.roomGraph.getRoomAt(spellTile.x, spellTile.y);
+      expect(spellRoomId, `seed ${seed}: spell broker must be in the welcome bar`).toBe(
         welcomeRoomId,
       );
 
-      // Shop must be ≥ 3 hops from welcome room (or the map is too small to enforce it).
-      const hopsShopFromWelcome = roomHopsBetween(map, welcomeRoomId, shopRoomId);
-      if (hopsShopFromWelcome >= 0) {
-        expect(
-          hopsShopFromWelcome,
-          `seed ${seed}: shop must be ≥ 3 hops from welcome, got ${hopsShopFromWelcome}`,
-        ).toBeGreaterThanOrEqual(3);
-      }
-
-      // Shop must be further from spawn than welcome (or equal distance is acceptable
-      // only when no farther room exists — i.e., the map is too small).
-      const shopDist = centerDistSq(map, objective.shopRoomPos);
-      const welcomeDist = centerDistSq(map, objective.welcomeOfficePos);
+      // Quest item (rat tail) must still be in a distinct room from welcome.
+      const itemTile = map.worldToTile(objective.questItemPos.x, objective.questItemPos.y);
+      const itemRoomId = map.roomGraph.getRoomAt(itemTile.x, itemTile.y);
       expect(
-        shopDist,
-        `seed ${seed}: shop must be further from spawn than welcome`,
-      ).toBeGreaterThanOrEqual(welcomeDist);
+        itemRoomId,
+        `seed ${seed}: quest item must be in a different room from welcome`,
+      ).not.toBe(welcomeRoomId);
     }
   });
 
@@ -1143,8 +1105,8 @@ describe('floor1Scenario', () => {
       expect(slimeRoomId).toBeGreaterThanOrEqual(0);
       targetRoomIds.add(slimeRoomId);
 
-      // At least the four SAFE rooms + one boss-stair + slime-rat must be present.
-      expect(targetRoomIds.size).toBeGreaterThanOrEqual(5);
+      // At least the one SAFE room (welcome bar) + one boss-stair + slime-rat must be present.
+      expect(targetRoomIds.size).toBeGreaterThanOrEqual(3);
 
       for (const roomId of targetRoomIds) {
         const room = floorMap.roomGraph.get(roomId);
