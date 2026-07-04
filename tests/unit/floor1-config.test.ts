@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { floor1Config } from '../../src/shared/floor-config.js';
+import {
+  floor1Config,
+  getFloorConfig,
+  loadFloorConfigFromManifest,
+  loadFloor1ConfigFromManifest,
+} from '../../src/shared/floor-config.js';
 
 describe('floor1Config', () => {
   it('should load and validate the manifest-derived floor1 config', () => {
@@ -95,5 +100,38 @@ describe('floor1Config', () => {
   it('should carry the per-floor ambient lighting default', () => {
     expect(floor1Config.lighting).toBeDefined();
     expect(floor1Config.lighting.ambient).toBe(0.2);
+  });
+});
+
+describe('loadFloorConfigFromManifest', () => {
+  it('returns null for an unknown floor id', () => {
+    expect(loadFloorConfigFromManifest('floor99')).toBeNull();
+  });
+
+  it('returns a config object for a known floor id', () => {
+    const config = loadFloorConfigFromManifest('floor1');
+    expect(config).not.toBeNull();
+    expect(config!.protagonist).toBe('Rhea Vale');
+  });
+});
+
+describe('getFloorConfig', () => {
+  it('throws for an unknown floor id', () => {
+    expect(() => getFloorConfig('floor99')).toThrow('Floor configuration not found: floor99');
+  });
+
+  it('returns the config for a known floor id', () => {
+    const config = getFloorConfig('floor1');
+    expect(config).toBeDefined();
+    expect(config.protagonist).toBe('Rhea Vale');
+  });
+});
+
+describe('loadFloor1ConfigFromManifest (deprecated compat)', () => {
+  it('returns the same data as getFloorConfig("floor1")', () => {
+    const deprecated = loadFloor1ConfigFromManifest();
+    const canonical = getFloorConfig('floor1');
+    expect(deprecated.protagonist).toBe(canonical.protagonist);
+    expect(deprecated.starterWeapons).toEqual(canonical.starterWeapons);
   });
 });
