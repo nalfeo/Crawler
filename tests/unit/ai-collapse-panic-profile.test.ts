@@ -93,12 +93,13 @@ describe('computeCollapsePanicProfile', () => {
   describe('travel-time beeline threshold escalation', () => {
     it('escalates beeline threshold above the fixed 60s when travel time is high', () => {
       // Post-boss regression: 63s remaining, staircase unlocked but not yet
-      // discovered, A* says the run needs ~45s of travel. The legacy fixed 60s
+      // discovered, A* says the run needs ~70s of travel. The legacy fixed 60s
       // threshold would leave beeline false (63s > 60s) and let the AI keep
       // taking XP/farm detours until it's physically impossible to reach the
-      // stairs. With the travel-derived escalation (45s + 5s safety = 50s)
-      // the threshold rises to max(60_000, 50_000) → stays 60_000, so still
-      // false; but with a longer travel estimate the beeline must fire early.
+      // stairs. With the travel-derived escalation (70s + 5s safety = 75s)
+      // the threshold rises to max(60_000, 75_000) → 75_000, so 63s remaining
+      // now falls below the threshold and the beeline fires early — well
+      // before the AI runs out of time to reach the stairs.
       const withHighTravel = computeCollapsePanicProfile({
         elapsedMs: 297_000,
         deadlineMs: 360_000,
