@@ -416,6 +416,43 @@ already designed for this swap.
 
 ---
 
+## Environment Isolation
+
+When multiple sessions or CI jobs share a single Azure storage account, the
+default queue name `asset-requests` becomes a **shared drain point** — a
+worker in one session dequeues messages another session enqueued, and the
+work disappears from that session's perspective.
+
+- For **E2E / validation runs**, set a per-suite queue name so drains stay
+  isolated:
+
+  ```bash
+  AZURE_STORAGE_QUEUE_NAME=asset-requests-e2e
+  ```
+
+  Any suite that has its own storage backend (e.g. Azurite) does not need
+  this, but any suite pointing at the shared cloud account does.
+
+- **Never `path.join(blobUrl, …)` unconditionally.** When the sprite store
+  is Azure blob, `store.rootPath` is a URL like
+  `https://acct.blob.core.windows.net/generated-runs`, and `path.join` on
+  Windows silently strips the scheme and normalizes it into a bogus
+  CWD-relative filesystem path (e.g. `C:\repo\https:\acct.blob...`). Guard
+  first:
+
+  ```ts
+  if (store.backend === 'local') {
+    return path.join(store.rootPath, ...rest);
+  }
+  return store.joinUrl(...rest); // or the backend's own concat
+  ```
+
+  The bug surfaces as "file not found" errors that reference a path
+  containing `https:` — a good signal that a `path.join` needs a backend
+  guard added.
+
+<!-- Source handoff: 2026-06-24-azure-workflow-state-persistence.md -->
+
 ## Security notes
 
 - The storage account is provisioned with `allowBlobPublicAccess: false`.

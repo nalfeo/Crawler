@@ -6,7 +6,7 @@ decisions that affect **2+ systems** require an ADR (see the constitution and
 `.github/copilot-instructions.md`).
 
 - **Template:** `docs/knowledge/adr/TEMPLATE.md`
-- **Count:** 65 ADR files (0001–0042, with number reuse and gaps in this index — see below)
+- **Count:** 66 ADR files (0001–0043, with number reuse and gaps in this index — see below)
 - **Status convention:** `## Status` heading with one of
   `Proposed | Accepted | Deprecated | Superseded by NNNN`
 
@@ -32,7 +32,7 @@ hundreds of inbound references.
 ### Adding a new ADR
 
 1. Copy `TEMPLATE.md` to `NNNN-your-slug.md`, where `NNNN` is **the next unused
-   number** (currently **0042**).
+   number** (currently **0043**).
 2. Fill in `## Status`, `## Date`, `## Estimated Complexity`, `## Context`,
    `## Decision`, `## Consequences`.
 3. Always **link by slug**, never by bare number, so collisions stay
@@ -72,6 +72,7 @@ hundreds of inbound references.
 ### Enemy AI, spawning & behavior
 
 - [Extract pure BT exploration decision kernels (C1–C4)](0022-bt-exploration-pure-kernels.md)
+- [Behavior tree — build vs. buy (hand-roll for determinism)](0043-behavior-tree-build-vs-buy.md)
 - [Baby slime spawn animation (size + pop-out) and swing-immunity](0026-baby-slime-spawn-animation-and-swing-immunity.md)
 - [Floor 1 spawn density via a director engagement budget](0024-floor1-spawn-density-engagement-budget.md)
 - [Generic Spawner mob-type](0025-spawner-mob-type.md)
@@ -189,3 +190,4 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0040 | [Floor 2 Family-Territory & Relationship Architecture](0040-floor2-family-territory-and-relationship-architecture.md)           | Proposed | 2026-07-01 |
 | 0041 | [Raise Azure Storage Queue Default Visibility Timeout to 900s](0041-raise-queue-visibility-timeout-default.md)                  | Accepted | 2026-07-02 |
 | 0042 | [Durable Player-Hit Signal for Ally-Defend Retaliation](0042-durable-player-hit-signal-for-ally-defend.md)                      | Accepted | 2026-07-03 |
+| 0043 | [Behavior Tree — Build vs. Buy](0043-behavior-tree-build-vs-buy.md)                                                             | Accepted | 2026-06-26 |

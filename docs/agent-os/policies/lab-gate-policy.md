@@ -48,3 +48,28 @@ The check fails if a system in `src/core/systems/` has no matching lab directory
 ## Shipping Rule
 
 If the lab is missing, the system does not ship.
+
+## Lab Fidelity
+
+A lab is only useful as a fidelity check if it replicates the **production
+feature flags** the real game sets for the component under test. A lab that
+runs in a world where the tested feature is silently gated off can appear
+green while the component is completely inert.
+
+Cautionary example: `HudAbilityBar.sync()` early-returns when
+`world.featureUnlocks.spells === true`. `hud-lab` never set that flag, so
+the ability bar was permanently invisible in the lab and its
+`abilityBandRatio` probe returned `0` — a silent false-positive that the
+production HUD had regressed.
+
+Rules:
+
+- Each lab **must document which `featureUnlocks` / world flags it sets**
+  and why, in its `README.md`.
+- If a system under test reads a runtime flag, the lab **must set that flag
+  to the value it will have in the real pipeline** (or run both cases
+  explicitly).
+- Wiring/behavior changes to gated components require validation in the
+  real pipeline (game or headless), not the lab. See `AGENTS.md` rule #10.
+
+<!-- Source handoff: 2026-06-26-hud-overlap-merge-shepherd.md -->

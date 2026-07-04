@@ -9,7 +9,7 @@
 5. Run `bash scripts/agent/verify-fast.sh` after every meaningful change
 6. Run `bash scripts/agent/verify.sh` before committing (includes `verify:pr-prereqs`, so review-harness + other PR prerequisites fail early instead of waiting for `create_pull_request`)
 7. Write a handoff file before ending your session
-8. If `files/guard-telemetry.jsonl` exists, run `npm run telemetry:capture -- <session-slug>` to write a committed per-session summary under `docs/knowledge/metrics/guard-telemetry/` (the durable, contamination-filtered collection path). Pasting `npx tsx scripts/agent/docs/guard-telemetry.ts --handoff-section` into the handoff still works as a fallback.
+8. If `files/guard-telemetry.jsonl` exists, run `npm run telemetry:capture -- <session-slug>` to write a committed per-session summary under `docs/knowledge/metrics/guard-telemetry/` (the durable, contamination-filtered collection path). The trimmed handoff template no longer carries a telemetry block — the committed summary file is the record.
 
 ## Commands
 
@@ -157,6 +157,24 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 - When you address a review comment — whether by pushing a fix **or** by explaining in-thread why no change is needed — reply **in that thread** with the marker `✅ Addressed` (ideally `✅ Addressed in <sha>: <one-line note>`). The workflow resolves the thread on the next push/sweep. The code does **not** need to be outdated.
 - Only replies from the PR owner/member/collaborator or a trusted bot (e.g. the Copilot coding agent) count, so drive-by comments cannot bypass the conversation-resolution merge gate.
 - **Copilot code-review threads need an owner resolve.** Threads authored by the `copilot-pull-request-reviewer` app come back with `viewerCanResolve: false` for the auto-resolve workflow's App token (a GitHub App can't resolve another App's thread), so the bot **skips** them even after you reply with the marker. After you reply `✅ Addressed in <sha>` on such a thread, resolve it yourself as the PR owner via GraphQL `resolveReviewThread` rather than waiting on the bot — otherwise an already-armed `--auto` merge stays **BLOCKED** on the conversation-resolution gate. Example: `gh api graphql -f query='mutation($t:ID!){resolveReviewThread(input:{threadId:$t}){thread{isResolved}}}' -f t='<thread-node-id>'`.
+- **Bot-pushed CI checks park in `action_required`.** When a commit is pushed by
+  the same App token that would run the workflow, GitHub Actions parks the
+  workflow run in `action_required` and does not schedule it. `gh pr checks`
+  will never show those checks completing, so an armed `--auto` merge sits
+  forever. Fix: push one commit under a **human or a different GitHub App
+  identity** (an empty no-op commit — `git commit --allow-empty -m "chore: retrigger CI"` — is fine) to re-trigger the runs.
+  <!-- Source handoff: 2026-06-24-safe-room-zoom-shepherd.md -->
+
+## Known Environment Quirks
+
+- **`scripts/agent/lab-gate-check.sh` is pathologically slow (~50 s/system) on
+  Windows Git Bash.** The check forks a subprocess per system, and Windows
+  Git Bash's per-fork overhead dominates the total. Independently
+  rediscovered in ≥ 3 handoffs (`mana-and-abilities`,
+  `headless-runner-pathfinding-slowdown`, `ai-exploration-kernels`). Run it
+  on CI or in WSL locally; do not add "the lab gate is slow" to the handoff
+  again.
+  <!-- Source handoff: 2026-06-17-headless-ai-runner.md -->
 
 ## Tech Stack
 

@@ -201,3 +201,29 @@ Local SQLite index/artifacts live under `~/.basic-memory/` and are git-ignored.
 - `.mcp.json` and wrapper changes apply **next session** (servers load at startup).
 - Basic Memory's server **cannot build on arm64 Windows** here yet; the Markdown
   KB is still valuable and portable in the meantime.
+
+## Known Platform Gotchas
+
+Specific paper-cuts to know about when wiring the memory MCP into a fresh
+worktree or a new session.
+
+- **`@modelcontextprotocol/server-memory` resolves `MEMORY_FILE_PATH`
+  relative to its own npx-cache install directory**, not the workspace root.
+  Passing a relative path silently persists memory into a per-user cache
+  location that no other session or worktree can see, so the graph appears
+  to reset on every install.
+- **Copilot CLI does NOT expand `${env:VAR}` or `${workspaceFolder}` inside
+  `.mcp.json`.** Values are used as literal strings. Any variable-style
+  path there becomes a directory literally named `${env:...}` under the
+  npx-cache dir.
+- Fix pattern: ship a portable launcher script — this repo uses
+  `scripts/agent/mcp-memory-server.mjs` — that:
+  1. resolves an **absolute** `MEMORY_FILE_PATH` from `os.homedir()`, and
+  2. `exec`s the real `@modelcontextprotocol/server-memory` with the
+     absolute path set as an env var.
+
+  Wire the launcher's `--ensure` step into `scripts/agent/preflight.sh` so
+  every session bootstrap creates the file if it is missing rather than
+  failing on first `read_graph` call.
+
+<!-- Source handoff: 2026-06-26-agent-memory-systems.md -->
