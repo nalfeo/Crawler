@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import fc from 'fast-check';
 import { spawnPlayer } from '../../src/core/helpers.js';
-import { safeRoomSystem, isInSafeContext, isPointInSafeSpace } from '../../src/core/safe-space.js';
+import {
+  safeRoomSystem,
+  isInSafeContext,
+  isPointInSafeSpace,
+  isEntityInSafeSpace,
+} from '../../src/core/safe-space.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
@@ -227,5 +232,14 @@ describe('safeRoomSystem property tests', () => {
         },
       ),
     );
+  });
+});
+
+describe('isEntityInSafeSpace', () => {
+  it('returns false when the entity has no position (undefined x/y)', () => {
+    const world = createTestWorld();
+    world.floorMap = makeMapWithSafeRoom();
+    // Use eid 9999 which was never assigned position data
+    expect(isEntityInSafeSpace(world, 9999)).toBe(false);
   });
 });
