@@ -261,13 +261,23 @@ jobs:
           # Only close issues created more than 120 seconds ago to avoid closing
           # a concurrently created issue from a different failing run.
           # Requires GNU date (standard on ubuntu-latest runners).
+          #
+          # Scope to *this* workflow's failure issues by title prefix.
+          # promote-to-prod.yml also creates "release"-labelled issues titled
+          # "Release failure: promote workflow run #N"; a successful deploy must
+          # NOT auto-close those, since promote-to-prod is a separate,
+          # manually-dispatched pipeline that this deploy did not re-run.
+          # (The stale deploy issues all use the "Release failure: deploy
+          # workflow" prefix, so they still match.) --limit lifts the default
+          # 30-item cap as light hardening against re-accumulation.
           CUTOFF=$(date -u -d '120 seconds ago' +%Y-%m-%dT%H:%M:%SZ)
           OPEN=$(gh issue list \
             --repo "${{ github.repository }}" \
             --state open \
             --label "release" \
-            --json number,createdAt \
-            | jq -r --arg cutoff "$CUTOFF" '.[] | select(.createdAt < $cutoff) | .number')
+            --limit 100 \
+            --json number,title,createdAt \
+            | jq -r --arg cutoff "$CUTOFF" '.[] | select(.createdAt < $cutoff) | select(.title | startswith("Release failure: deploy workflow")) | .number')
           for N in $OPEN; do
             gh issue close "$N" \
               --repo "${{ github.repository }}" \
