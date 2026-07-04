@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-03",
+  "session_slug": "release-pipeline-fix",
+  "task_title": "Release pipeline: retry logic and auto-close stale issues",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-4.6",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "notes": "Concerns resolved: (1) retry step must not use continue-on-error (already planned); (2) explicit outcome==success check in URL resolver; (3) environment URL must reference deploy-url step ID (required, not optional); (4) auto-close filtered to issues >120s old to avoid race conditions; (5) promote-to-prod.yml environment URL also updated; (6) wait increased to 60s."
+    }
+  }
+}

@@ -31,7 +31,7 @@ jobs:
       github.event.workflow_run.conclusion == 'success'
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deploy-url.outputs.page_url }}
     steps:
       - name: Admin check (manual triggers only)
         if: github.event_name == 'workflow_dispatch'
@@ -176,12 +176,36 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Wait before retry (transient Pages failure)
+        if: steps.deployment.outcome == 'failure'
+        run: |
+          echo "Deploy attempt 1 failed — waiting 60 s before retry..."
+          sleep 60
+
+      - name: Deploy to GitHub Pages (retry)
+        id: deployment-retry
+        if: steps.deployment.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+
+      - name: Resolve deployment URL
+        id: deploy-url
+        if: always()
+        run: |
+          if [ "${{ steps.deployment-retry.outcome }}" = "success" ]; then
+            echo "page_url=${{ steps.deployment-retry.outputs.page_url }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ steps.deployment.outcome }}" = "success" ]; then
+            echo "page_url=${{ steps.deployment.outputs.page_url }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Both deployment attempts failed; page_url will be empty."
+          fi
 
       - name: Label and comment on released PRs
         if: success()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PAGES_URL: ${{ steps.deployment.outputs.page_url }}
+          PAGES_URL: ${{ steps.deploy-url.outputs.page_url }}
         run: |
           # Ensure the "released" label exists
           if ! gh label create "released" --repo "${{ github.repository }}" \
@@ -227,6 +251,45 @@ jobs:
             if ! gh pr comment "$PR" --repo "${{ github.repository }}" --body "$BODY"; then
               echo "::warning::Failed to comment on PR #$PR"
             fi
+          done
+
+      - name: Close stale release-failure issues
+        if: success()
+        # Best-effort cleanup: never let a transient `gh issue list`/`jq` hiccup
+        # fail an otherwise-successful deploy. The default runner shell is
+        # `bash -eo pipefail`, so a non-zero exit inside `OPEN=$(gh ... | jq ...)`
+        # would fail this step, flip the job to failed, and trigger the
+        # `Create failure issue` step below — manufacturing exactly the stale
+        # "Release failure: deploy workflow" issue this PR aims to eliminate.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Only close issues created more than 120 seconds ago to avoid closing
+          # a concurrently created issue from a different failing run.
+          # Requires GNU date (standard on ubuntu-latest runners).
+          #
+          # Scope to *this* workflow's failure issues by title prefix.
+          # promote-to-prod.yml also creates "release"-labelled issues titled
+          # "Release failure: promote workflow run #N"; a successful deploy must
+          # NOT auto-close those, since promote-to-prod is a separate,
+          # manually-dispatched pipeline that this deploy did not re-run.
+          # (The stale deploy issues all use the "Release failure: deploy
+          # workflow" prefix, so they still match.) --limit lifts the default
+          # 30-item cap as light hardening against re-accumulation.
+          CUTOFF=$(date -u -d '120 seconds ago' +%Y-%m-%dT%H:%M:%SZ)
+          OPEN=$(gh issue list \
+            --repo "${{ github.repository }}" \
+            --state open \
+            --label "release" \
+            --limit 100 \
+            --json number,title,createdAt \
+            | jq -r --arg cutoff "$CUTOFF" '.[] | select(.createdAt < $cutoff) | select(.title | startswith("Release failure: deploy workflow")) | .number')
+          for N in $OPEN; do
+            gh issue close "$N" \
+              --repo "${{ github.repository }}" \
+              --comment "✅ Auto-closed: a later deploy run (#${{ github.run_number }}, commit \`${{ github.sha }}\`) succeeded, so this release-failure issue is no longer active. If the underlying failure was not transient, please reopen." \
+            || echo "::warning::Failed to close issue #$N"
           done
 
       - name: Create failure issue for copilot
