@@ -39,16 +39,16 @@ Floor 2 slices 1–7 landed subsystem pieces (families, cave generator, AI, boss
 - Floor 2 can now be selected from production scenario wiring.
 - Manifest-driven biome/present-count/shop/family/resource config is parsed and consumed.
 - Governor sweep produces real win-rate telemetry across both floors.
+- Full `npm run verify` (including `VERIFY_FULL=1`) passes on this slice branch.
 
 ### Negative
 
-- Full `npm run verify` (including `VERIFY_FULL=1`) now passes on this slice branch.
-- Floor 2 balance tuning is still early; with easy-mode flags disabled the governor sweep now reflects real objective flow and may surface additional follow-up tuning work.
+- Floor 2 balance tuning is still early; the governor sweep now reflects real objective flow (easy-mode flags shipped disabled) and may surface additional follow-up tuning work once objective-complete wiring is fully productionised.
 
 ### Risks
 
-- Governor convenience flags may be left enabled unintentionally for production gameplay if not gated by future slice cleanup.
-- Floor 2 balance signals are currently optimistic while easy-mode flags are enabled.
+- Governor convenience flags (`autoUnlockDens`, `autoVictoryOnStart`) are shipped disabled in the Floor 2 manifest; if they are re-enabled unintentionally the Governor gate will report a trivially inflated win-rate.
+- The governor sweep telemetry artifact (`docs/knowledge/metrics/floor2-slice8-governor-sweep.json`) was initially captured with easy-mode flags enabled; it should be regenerated after each balance pass to remain accurate.
 
 ## Alternatives considered
 
