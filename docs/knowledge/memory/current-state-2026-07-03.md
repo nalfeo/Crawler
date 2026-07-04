@@ -18,7 +18,7 @@ note as the project evolves; do not treat it as live status.
 - [ai] src/game/ai now hosts both deterministic runtime AI (headless runner CLI, BT kernels, win-rate sweeps ai:hill-climb/ai:winrate-sweep/ai:weapon-sweep/ai:headless) and remains reserved for future LLM/Director content (floor-load only when implemented) #ai
 - [gates] npm run verify is opt-in: coverage runs only with VERIFY_COVERAGE=1 and headless Floor 1 win-rate runs only with VERIFY_FULL=1; wiring guard (check:wired-systems) and PR prerequisites (verify:pr-prereqs) are always part of verify #gates
 - [gates] The orphaned-system wiring guard (ADR 0039) enforces that every \*System exported from src/core/** or src/game/** is either wired into a real pipeline site or explicitly allowlisted; lab-only references do not count #gates
-- [adr] ADR count is 65 files; last accepted is ADR 0042 (durable player-hit signal for ally-defend); next unused number is 0043 #adr
+- [adr] ADR count is 71 files (66 numbered + 5 date-prefixed); highest number is 0043 (reused twice: behavior-tree build-vs-buy, CI asset-request worker bypass); next unused number is 0044 #adr
 - [memory] Basic Memory KB under docs/knowledge/memory/ superseded 2026-06-26 snapshot with this note; agent-memory.jsonl Verification_Commands entity refreshed to match verify.sh / verify-fast.sh #memory
 
 ## Relations

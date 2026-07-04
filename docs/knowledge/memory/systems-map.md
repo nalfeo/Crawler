@@ -23,7 +23,7 @@ systems live in `src/game` and each must have a corresponding lab in `src/labs`.
 - [system] Status Effects — src/core/systems/statusEffectSystem.ts #status-effects
 - [system] Harvest and Props — src/core/systems/harvestSystem.ts + src/shared/harvestableDefs.ts + src/game/systems/propPlacer.ts #harvest
 - [system] Spawner — src/game/spawners/spawnerSystem.ts; ADR 0025 (spawner) + ADR 0034/0036/0039 (orphaned-system wiring guard) #spawner
-- [system] Sprite pipeline — multi-stage generation and judging under scripts/sprites; commands npm run sprites:_; Azure sidecar (npm run assets:azure:_) for GPU generation #sprites
+- [system] Sprite pipeline — multi-stage generation and judging under scripts/sprites; commands npm run sprites:\_; Azure sidecar (npm run sprites:gallery) for GPU generation #sprites
 - [timing] Fixed timestep at 60 FPS; GAME.DELTA_MS = 1000/60 #loop
 
 ## Relations

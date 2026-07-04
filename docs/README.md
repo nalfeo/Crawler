@@ -18,7 +18,7 @@ for governance rules that appear in more than one place.
 | **Architecture overview** | [`architecture.md`](architecture.md)                                       | Layer model, the full systems catalogue, the update pipeline, planned work. Start here for "how the code fits together."                                              |
 | **System docs**           | [`systems/`](systems/)                                                     | Narrative/onboarding view of each subsystem (`01-movement-input` … `09-floor2-family-systems`).                                                                       |
 | **Specs**                 | [`../.specify/specs/README.md`](../.specify/specs/README.md)               | Durable per-system contracts + the missing-spec backlog.                                                                                                              |
-| **ADRs**                  | [`knowledge/adr/README.md`](knowledge/adr/README.md)                       | Architecture Decision Records (65 files, latest `0042`) with thematic + by-number indexes and the numbering policy.                                                   |
+| **ADRs**                  | [`knowledge/adr/README.md`](knowledge/adr/README.md)                       | Architecture Decision Records (71 files, latest `0043`) with thematic + by-number indexes and the numbering policy.                                                   |
 | **Constitution**          | [`../.specify/memory/constitution.md`](../.specify/memory/constitution.md) | The non-negotiable project principles.                                                                                                                                |
 | **Personas**              | [`agent-os/personas/README.md`](agent-os/personas/README.md)               | Agent roles + the routing matrix (default **Producer**).                                                                                                              |
 | **Policies**              | [`agent-os/policies/`](agent-os/policies/)                                 | CI, complexity (apples), review harness, lab-gate, memory/handoff, telemetry.                                                                                         |
@@ -82,7 +82,7 @@ treat the others as pointers.
 
 | You are writing…                       | Put it in                                                                |
 | -------------------------------------- | ------------------------------------------------------------------------ |
-| A single decision affecting 2+ systems | a new [ADR](knowledge/adr/README.md) (`NNNN-slug.md`, next # = **0043**) |
+| A single decision affecting 2+ systems | a new [ADR](knowledge/adr/README.md) (`NNNN-slug.md`, next # = **0044**) |
 | The durable contract for a system      | a [spec](../.specify/specs/README.md) (`.specify/specs/<system>.md`)     |
 | Onboarding narrative for a subsystem   | a [system doc](systems/) (`docs/systems/NN-name.md`)                     |
 | Path-scoped coding rules               | a [`*.instructions.md`](../.github/instructions/) file with `applyTo:`   |
