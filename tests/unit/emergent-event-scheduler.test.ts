@@ -21,6 +21,29 @@ import {
 } from '../../src/game/systems/emergentEventSystem.js';
 import { _resetEmergentEventCache } from '../../src/shared/data/emergent-events.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { FloorMap } from '../../src/core/map/FloorMap.js';
+import { RoomGraph } from '../../src/core/map/RoomGraph.js';
+import { TileMap } from '../../src/core/map/TileMap.js';
+import { BiomeType, RoomRole, TilePresets } from '../../src/shared/map-types.js';
+
+function makeSettlementMap(): FloorMap {
+  const config = {
+    widthTiles: 20,
+    heightTiles: 20,
+    tileSizeFt: 32,
+    biome: BiomeType.DUNGEON,
+    seed: 1,
+    roomWidthRange: [4, 8] as [number, number],
+    roomHeightRange: [4, 8] as [number, number],
+    maxRooms: 4,
+    floorDensity: 0.5,
+  };
+  const tileMap = new TileMap(20, 20);
+  tileMap.fill(TilePresets.FLOOR);
+  const graph = new RoomGraph();
+  graph.add({ x: 1, y: 1, width: 4, height: 4 }, [], [], RoomRole.SETTLEMENT);
+  return new FloorMap(config, tileMap, graph, new Uint8Array(20 * 20), { x: 2, y: 2 });
+}
 
 function seedFloor2State(world: ReturnType<typeof createTestWorld>, families: FamilyId[]) {
   world.floor2State = {
@@ -175,5 +198,29 @@ describe('emergentEventSystem · determinism', () => {
     const a = run(1234);
     const b = run(1234);
     expect(a).toEqual(b);
+  });
+});
+
+describe('emergentEventSystem · regionEnter trigger', () => {
+  beforeEach(() => {
+    _resetEmergentEventScheduler();
+    _resetEmergentEventCache();
+  });
+
+  it('fires tribute-run when player enters a settlement room', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    seedFloor2State(world, [FAM_A, FAM_B, FAM_C, FAM_D]);
+    world.state = 'playing';
+    world.elapsedMs = 100;
+
+    // Place player inside the settlement room (tile 2,2 = feet 64,64 with tileSizeFt=32)
+    world.floorMap = makeSettlementMap();
+    world.stores.position.x[player] = 64;
+    world.stores.position.y[player] = 64;
+
+    emergentEventSystem(world);
+
+    expect(getFiredEmergentEvents(world).has('floor2-event-tribute-run')).toBe(true);
   });
 });

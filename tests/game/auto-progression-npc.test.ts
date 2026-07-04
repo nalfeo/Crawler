@@ -2,13 +2,65 @@ import { describe, expect, it } from 'vitest';
 import {
   NPC_INTERACTION_COOLDOWN,
   autoAllocateStatPoints,
+  autoFloor1ProgressionSystem,
   autoNpcInteractionSystem,
 } from '../../src/game/ai/auto-progression.js';
 import { AIState, type AIDecision, type AIInputProvider } from '../../src/game/ai/types.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import type { NpcInstance } from '../../src/shared/npc-types.js';
 import type { GameWorld } from '../../src/core/world.js';
+import type { FloorScenarioState } from '../../src/shared/floor-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+
+function makeFloor1(overrides: Partial<FloorScenarioState['objective']> = {}): FloorScenarioState {
+  return {
+    protagonistName: 'Test',
+    starterWeaponPool: [],
+    starterChoices: [],
+    selectedWeaponId: null,
+    selectedChoiceIndex: null,
+    baseStatBonuses: { maxHp: 0, moveSpeed: 0, pickupRange: 0 },
+    enemyArchetypes: new Map(),
+    guideNpcEid: null,
+    spellQuestGiverNpcEid: null,
+    shopkeeperNpcEid: null,
+    questItemEid: null,
+    bossRoomDoorEids: new Map(),
+    objective: {
+      requiredRats: 6,
+      requiredSlimes: 4,
+      requiredGold: 50,
+      requiredJunk: 2,
+      deadlineMs: 600_000,
+      staircaseSpawnCountdownMs: 30_000,
+      safeRoomPos: { x: 0, y: 0 },
+      staircasePos: { x: 100, y: 100 },
+      welcomeOfficePos: { x: 10, y: 0 },
+      slimeRatRoomPos: { x: 50, y: 0 },
+      spellQuestGiverPos: { x: 40, y: 0 },
+      shopRoomPos: { x: 20, y: 0 },
+      questItemPos: { x: 30, y: 0 },
+      markerRadiusFt: 4,
+      questAccepted: false,
+      questCompleted: false,
+      ratsKilled: 0,
+      slimesKilled: 0,
+      goldCollected: 0,
+      junkCollected: 0,
+      safeRoomDiscovered: false,
+      staircaseSpawnStartedMs: null,
+      staircaseSpawnRemainingMs: null,
+      staircaseSpawned: false,
+      staircaseLocked: false,
+      staircaseUnlocked: false,
+      staircaseDiscovered: false,
+      bossBattles: new Map(),
+      ...overrides,
+    },
+    failReason: null,
+    runSummary: null,
+  };
+}
 
 function fakeProvider(decision: AIDecision): AIInputProvider {
   return {
@@ -178,5 +230,60 @@ describe('autoAllocateStatPoints', () => {
     autoAllocateStatPoints(world, player);
 
     expect(world.stores.coreStatPoints.strength[player]).toBeGreaterThan(armorBefore);
+  });
+});
+
+describe('autoFloor1ProgressionSystem', () => {
+  it('is a no-op when floor1 is null', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    world.floor1 = null;
+    expect(() => autoFloor1ProgressionSystem(world, player)).not.toThrow();
+  });
+
+  it('selects the heal spell when boss battle is complete and spells not unlocked', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    world.floor1 = makeFloor1();
+    world.goalFlags.set('floor1-boss-battle-complete', true);
+    world.featureUnlocks.spells = false;
+    // selectSpellFromBossBattle should not throw
+    expect(() => autoFloor1ProgressionSystem(world, player)).not.toThrow();
+    // Spell unlocks should be set after the call
+    expect(world.featureUnlocks.spells).toBe(true);
+  });
+
+  it('does not attempt staircase descend when staircase is not unlocked', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    world.floor1 = makeFloor1({ staircaseUnlocked: false });
+    expect(() => autoFloor1ProgressionSystem(world, player)).not.toThrow();
+    // No staircase action should have been taken (floor1 state unchanged)
+    expect(world.floor1.objective.staircaseDiscovered).toBe(false);
+  });
+
+  it('does not descend when staircase is already discovered', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    world.floor1 = makeFloor1({ staircaseUnlocked: true, staircaseDiscovered: true });
+    expect(() => autoFloor1ProgressionSystem(world, player)).not.toThrow();
+  });
+
+  it('triggers staircase descend when player is inside the marker radius', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    // Position player exactly at the staircase (100, 100) in feet
+    world.stores.position.x[player] = 100;
+    world.stores.position.y[player] = 100;
+    world.state = 'playing';
+    world.floor1 = makeFloor1({
+      staircaseUnlocked: true,
+      staircaseDiscovered: false,
+      staircaseSpawned: true,
+      staircasePos: { x: 100, y: 100 },
+    });
+    autoFloor1ProgressionSystem(world, player);
+    // confirmFloor1StairDescend sets staircaseDiscovered
+    expect(world.floor1.objective.staircaseDiscovered).toBe(true);
   });
 });
