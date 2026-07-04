@@ -61,6 +61,21 @@ Rules:
 
 Wire the system into the execution path that owns it (typically the engine scene update flow and any relevant lab entrypoint), and keep ordering explicit.
 
+**A lab alone is not enough.** The orphaned-system wiring guard
+(`npm run check:wired-systems`, ADR 0039) requires every `*System` exported from
+`src/core/**` or `src/game/**` to be referenced by a real runtime wiring site:
+
+- `src/bootstrap/floor-main-scene-options.ts`
+- `src/engine/sim/simulation-step.ts`
+- `src/game/ai/simulation-step.ts`
+- `src/game/ai/headless-runner.ts`
+- `src/engine/scenes/MainGameScene.ts`
+
+…or explicitly allowlisted in `scripts/agent/health/orphaned-systems-lib.ts`
+with a reason (only for systems intentionally not-yet-wired — never to silence
+the gate). Lab references do not count. The `spawnerSystem` incident (ADR
+0034 → 0036 → 0039) is why this rule exists.
+
 Typical pattern:
 
 ```ts

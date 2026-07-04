@@ -1,7 +1,14 @@
 # Spec: Floor 2 — Family Territories & Relationships
 
-> **Status:** **Design spec (proposed).** Describes a not-yet-built floor; it defines
-> the contracts the implementation sessions must satisfy, not shipped behavior.
+> **Status:** **Partial — slices 1–8 landed; full boot/win-rate shipping path incomplete.**
+> The systemic Floor 2 slices below (faction data & relations, cave generator,
+> family-aware AI, boss/den objectives, dynamic win evaluator, settlement + shops,
+> family-relationship HUD, scenario wiring + governor sweep) all exist in code as
+> of 2026-07-03. The main-scene bootstrap still targets Floor 1 only
+> (`src/bootstrap/floor-main-scene-options.ts`); Floor 2 is exercisable through
+> its labs (`family-territory-lab`, `floor2-scenario-lab`, `family-feud-lab`) and
+> the headless simulator, not through the shipping `dev` entry-point flow yet.
+> **Last reconciled:** 2026-07-03.
 > **Estimated complexity:** 🍎🍎🍎🍎🍎 (Massive — spans core ECS, game systems,
 > content, and UX; sliced into follow-up sessions in §Design).
 > **Authored content:**
@@ -12,6 +19,33 @@
 > **Reused ADRs:** 0005 (parameterized floor config), 0010 (boss door-lock), 0011
 > (data-driven quests), 0021 (reachability), 0023 (generic special-room sealing), 0024
 > (engagement budget / themed set-pieces).
+> **Code source-of-truth (slice → files):**
+>
+> 1. Faction data + relationships → `src/core/faction-relations.ts`,
+>    `src/core/components.ts` (`FamilyMembership`),
+>    `src/core/systems/familyRelationshipSystem.ts`, `family-territory-lab`.
+> 2. Cave-system generator → `src/core/map/generators/cave-system.ts`,
+>    `BiomeType.CAVE_SYSTEM` in the registry.
+> 3. Family-aware AI + feuding → `src/game/systems/familyFeudSystem.ts`,
+>    updates to `src/game/enemyAISystem.ts`.
+> 4. Boss dens + unlock objectives → `src/game/floor2Scenario.ts` (den plumbing),
+>    reuse of door-lock/sealing.
+> 5. Dynamic win evaluator + resource-heart stairs → `src/game/floor2Scenario.ts`
+>    (`floor2ObjectiveTick`).
+> 6. Settlement + seeded shops + emergent events → floor2 quest packs,
+>    shop-inventory generator, Broker NPC placement.
+> 7. HUD family relationships + minimap tint → `HudFamilyRelationships` widget
+>    in `src/engine/`.
+> 8. Scenario wiring + Governor sweep + narration →
+>    `src/shared/data/floors/floor2.manifest.json`, `src/game/floor2Scenario.ts`,
+>    win-rate sweep entry, `floor2-scenario-lab`.
+>    **Known implementation gaps:**
+>
+> - Main-scene bootstrap (`src/bootstrap/floor-main-scene-options.ts`) still
+>   targets Floor 1; Floor 2 is not selectable from the shipping player entry
+>   point.
+> - Broad content pass (final family roster tuning, shop archetype variety,
+>   emergent-event breadth) still narrowing to the 90 % win-rate gate.
 
 ## Context
 

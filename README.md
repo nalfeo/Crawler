@@ -22,6 +22,18 @@ Crawler uses [`loglevel`](https://github.com/pimterry/loglevel) with scoped logg
 | Dev       | [Play](https://nalfeo.github.io/Crawler/dev/)         |
 | Lab (Dev) | [Open](https://nalfeo.github.io/Crawler/dev/lab.html) |
 
+## Developer docs
+
+Full architecture, specs, ADRs, guides, and agent-OS policies live under [`docs/`](docs/README.md).
+Quick starts:
+
+```bash
+npm run dev            # Vite dev server (Floor 1 shipping bootstrap)
+npm run lab            # Labs harness (Floor 2 slices, per-system sandboxes)
+npm run verify:fast    # typecheck + changed-file lint + changed unit tests
+npm run verify         # full pre-commit chain (add VERIFY_COVERAGE=1 / VERIFY_FULL=1 for coverage / headless)
+```
+
 ## Sprite assets
 
 Player + enemy sprites come from [Kenney's CC0 asset packs](https://kenney.nl/).

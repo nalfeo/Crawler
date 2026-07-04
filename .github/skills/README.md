@@ -1,0 +1,33 @@
+# Crawler agent skills index
+
+Skills are focused, reusable playbooks that Copilot's model can pick up mid-session.
+Each folder contains a `SKILL.md` (with YAML frontmatter naming the skill and
+describing when to invoke it) plus any supporting scripts or templates.
+
+The canonical governance rules these skills implement live in `docs/agent-os/policies/`
+(complexity, review-harness, lab-gate, CI, memory) — the skills are the
+operational how-to.
+
+## Available skills
+
+| Skill                                                                                     | Purpose                                                                                                                                                                                                    |
+| ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`asset-pr`](asset-pr/SKILL.md)                                                           | Craft focused asset-only PRs, keep the `sprites:*` / Azure-sidecar pipeline correct, and separate art changes from follow-up wiring.                                                                       |
+| [`chrome-devtools`](chrome-devtools/SKILL.md)                                             | Drive Chrome DevTools MCP for browser automation, screenshots, network capture, and perf profiling of `dev` / `lab` sessions.                                                                              |
+| [`conventional-commit`](conventional-commit/SKILL.md)                                     | Generate commit messages that satisfy `commitlint.config.cjs`.                                                                                                                                             |
+| [`create-architectural-decision-record`](create-architectural-decision-record/SKILL.md)   | Author a new ADR under `docs/knowledge/adr/` (next unused number lives in [ADR index](../../docs/knowledge/adr/README.md)).                                                                                |
+| [`placeholder-audit`](placeholder-audit/SKILL.md)                                         | Audit and replace placeholder art/data using the deterministic guard scripts.                                                                                                                              |
+| [`playtest-fun-rater`](playtest-fun-rater/SKILL.md)                                       | Structured "is this actually fun?" playtest capture that feeds balance/design handoffs.                                                                                                                    |
+| [`playwright-explore-website`](playwright-explore-website/SKILL.md)                       | Explore a running app or lab via Playwright MCP to build up test scenarios.                                                                                                                                |
+| [`playwright-generate-test`](playwright-generate-test/SKILL.md)                           | Emit a Vitest + `playwright` (library, not `@playwright/test`) e2e test file for an explored scenario.                                                                                                     |
+| [`pr-shepherd`](pr-shepherd/SKILL.md)                                                     | Diagnose stuck PRs — CI failures, merge conflicts, review threads — and drive them to green.                                                                                                               |
+| [`review-harness`](review-harness/SKILL.md)                                               | Run the apple-scaled review harness before opening a PR and append the result to the review ledger; canonical policy: [`review-harness-policy.md`](../../docs/agent-os/policies/review-harness-policy.md). |
+| [`security-review`](security-review/SKILL.md)                                             | AI-driven security scan (injection, secrets, auth, crypto, deps, access control, business-logic).                                                                                                          |
+| [`suggest-awesome-github-copilot-skills`](suggest-awesome-github-copilot-skills/SKILL.md) | Recommend candidate skills from `awesome-copilot` based on repo context.                                                                                                                                   |
+
+## Adding a new skill
+
+1. Create `.github/skills/<slug>/SKILL.md` with frontmatter (`name`, `description`, and any `applyTo` scope).
+2. Keep the skill focused on **one operational job** — reference the canonical policy doc instead of duplicating rules.
+3. Add a row to the table above.
+4. If the skill enforces or automates a governance rule, list it in the source-of-truth registry in [`docs/README.md`](../../docs/README.md).

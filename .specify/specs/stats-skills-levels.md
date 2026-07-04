@@ -206,7 +206,7 @@ interface SkillDefinition {
   flavorText?: string;
 }
 
-type UsageMetric = 'hits_landed' | 'damage_dealt' | 'distance_dodged_near_threat';
+type UsageMetric = 'hits_landed' | 'damage_dealt' | 'distance_dodged_near_threat' | 'weapon_fired';
 
 interface SkillMilestone {
   level: 5 | 10 | 15 | 20;
