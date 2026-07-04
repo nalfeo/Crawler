@@ -24,7 +24,7 @@ release-failure issues.
   - Updated `environment.url` to reference `steps.deploy-url.outputs.page_url`
 
 - `docs/knowledge/review-ledgers/2026-07-03-release-pipeline-fix.review-ledger.json`
-  - 2-apple ledger with plan_review stage (claude-opus-4.6, 5 concerns, all resolved)
+  - 2-apple ledger with plan_review stage (claude-opus-4.6, 6 concerns, all resolved)
 
 - `docs/knowledge/metrics/apples/2026-07-03-release-pipeline-fix.json`
   - Estimated: 2, Actual: 2, Verdict: exact
