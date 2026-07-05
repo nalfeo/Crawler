@@ -5,11 +5,13 @@ import {
   DeathTimer,
   Position,
   Projectile,
+  Size,
   Sprite,
 } from '../../src/core/components.js';
 import { createEntity, spawnEnemy, spawnPlayer, spawnXpGem } from '../../src/core/helpers.js';
 import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
 import { damageSystem } from '../../src/core/systems/damageSystem.js';
+import { SHAPE_CIRCLE } from '../../src/core/physics-defs.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('damageSystem', () => {
@@ -20,6 +22,11 @@ describe('damageSystem', () => {
 
     addComponent(world.ecs, projectile, set(Position, { x: 0, y: 0 }));
     addComponent(world.ecs, projectile, set(Sprite, { textureId: 0, width: 8, height: 8 }));
+    addComponent(
+      world.ecs,
+      projectile,
+      set(Size, { radius: 4, halfWidth: 0, halfHeight: 0, shape: SHAPE_CIRCLE }),
+    );
     addComponent(world.ecs, projectile, Projectile);
 
     damageSystem(world, collisionSystem(world));
@@ -73,6 +80,11 @@ describe('damageSystem', () => {
     spawnEnemy(world, 1, 0, 25);
     addComponent(world.ecs, projectile, set(Position, { x: 0, y: 0 }));
     addComponent(world.ecs, projectile, set(Sprite, { textureId: 0, width: 8, height: 8 }));
+    addComponent(
+      world.ecs,
+      projectile,
+      set(Size, { radius: 4, halfWidth: 0, halfHeight: 0, shape: SHAPE_CIRCLE }),
+    );
     addComponent(world.ecs, projectile, Projectile);
 
     damageSystem(world, collisionSystem(world));
@@ -87,6 +99,11 @@ describe('damageSystem', () => {
 
     addComponent(world.ecs, projectile, set(Position, { x: 0, y: 0 }));
     addComponent(world.ecs, projectile, set(Sprite, { textureId: 0, width: 8, height: 8 }));
+    addComponent(
+      world.ecs,
+      projectile,
+      set(Size, { radius: 4, halfWidth: 0, halfHeight: 0, shape: SHAPE_CIRCLE }),
+    );
     addComponent(world.ecs, projectile, Projectile);
 
     damageSystem(world, collisionSystem(world));

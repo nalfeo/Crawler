@@ -35,7 +35,7 @@ import {
   Npc,
 } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
-import { SHAPE_CIRCLE } from '../core/physics-defs.js';
+import { SHAPE_BOX, SHAPE_CIRCLE } from '../core/physics-defs.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
 import {
@@ -951,10 +951,10 @@ function placeWelcomeSigns(world: GameWorld, welcomeOfficePos: { x: number; y: n
       world.ecs,
       eid,
       set(Size, {
-        radius: Math.max(WELCOME_SIGN_WIDTH, WELCOME_SIGN_HEIGHT) * 0.5,
-        halfWidth: 0,
-        halfHeight: 0,
-        shape: SHAPE_CIRCLE,
+        radius: 0,
+        halfWidth: WELCOME_SIGN_WIDTH * 0.5,
+        halfHeight: WELCOME_SIGN_HEIGHT * 0.5,
+        shape: SHAPE_BOX,
       }),
     );
   };

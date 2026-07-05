@@ -5,10 +5,23 @@
  * `Size` component (radius > 0, OR halfWidth > 0 AND halfHeight > 0).
  *
  * Coverage is measured via the shim counter in `src/core/physics-body.ts`:
- * every fallback path (a `getBodyHalfWidth/Height/Radius` call that had to
- * read from `sprite.width|height` because `Size` was unset) bumps the
- * counter. A green run means all spawners attach `Size` — which unblocks
- * the Slice-1 → post-Slice-1 shim removal (see spec §Slice plan step 8).
+ * every `getBodyHalfWidth/Height/Radius` call on a Size-less entity bumps
+ * the counter. A green run means every spawner that fires on Floor 1 in
+ * this deterministic slice attaches `Size`.
+ *
+ * ## What this guard PROVES
+ * - Every collision-grid entity in a real Floor 1 seed-42 run has a valid
+ *   Size. Regression = spawner forgot Size ⇒ CI failure at PR time.
+ *
+ * ## What this guard does NOT prove (documented Slice-1 follow-up)
+ * - Floor 2+ spawners fire (they are not reached in an 800-frame run). New
+ *   spawners in `floor2Scenario.ts` etc. can regress silently until Slice 2
+ *   or a later slice extends this check to a multi-floor sweep or a static
+ *   per-archetype enumeration. Complementary defenses in place today:
+ *   `check-physics-defs-sync.ts` (drift vs entity-sizing.md), the ESLint
+ *   `no-restricted-syntax` rule blocking new `sprite.width|height` reads
+ *   outside `src/engine/**`+`src/labs/**`, and unit tests
+ *   `tests/ecs/spawners/*.test.ts` that assert Size at spawn time.
  *
  * Wired into `verify:fast` per the Slice-1 spec.
  */

@@ -5,10 +5,12 @@
  * .height` for collision or knockback math routes through these helpers
  * instead. Sprite dims stay purely a render concern (see ADR 0044).
  *
- * The Slice-1 sprite-fallback shim was removed after `check:size-coverage`
- * proved every collision-grid entity carries a valid `Size`. New spawners
- * MUST attach `Size`; the shim counters remain to guard against future
- * regressions and `check:size-coverage` gates that in CI.
+ * The helpers return `0` (and warn once per eid) when Size is unset on an
+ * entity — no sprite fallback. The shim counters guard that: they count
+ * calls to any helper on a Size-less entity. Slice-1's `check:size-coverage`
+ * asserts the counter stays at 0 across a real headless seed-42 run, which
+ * proves every collision-grid entity spawned on Floor 1's live path carries
+ * a Size. It is a live-path assertion, not a static enumeration.
  */
 
 import type { GameWorld } from './world.js';
@@ -77,9 +79,14 @@ export function getBodyHalfHeight(world: GameWorld, eid: number, system = 'unkno
 }
 
 /**
- * Bounding-circle radius of `eid`'s body in ft. For box shapes returns the
- * circumscribing radius (`hypot(halfWidth, halfHeight)`) so
- * conservative-radius broad-phase queries stay correct.
+ * Bounding-circle radius of `eid`'s body in ft.
+ *
+ * For BOX bodies this returns `max(halfWidth, halfHeight)` — the legacy
+ * `Math.max(spriteW, spriteH) * 0.5` semantic that `weaponSystem` and other
+ * targeting-radius consumers used before Slice 1. Slice-1 parity depends on
+ * this. If a future slice needs the tighter *circumscribing* (diagonal)
+ * radius or a per-axis extent, it should read `size.halfWidth`/`halfHeight`
+ * directly rather than change this helper.
  */
 export function getBodyRadius(world: GameWorld, eid: number, system = 'unknown'): number {
   const { size } = world.stores;
@@ -87,7 +94,7 @@ export function getBodyRadius(world: GameWorld, eid: number, system = 'unknown')
   if (r > 0) return r;
   const hw = size.halfWidth[eid] ?? 0;
   const hh = size.halfHeight[eid] ?? 0;
-  if (hw > 0 || hh > 0) return Math.hypot(hw, hh);
+  if (hw > 0 || hh > 0) return Math.max(hw, hh);
   recordMissingSize(system, eid);
   return 0;
 }

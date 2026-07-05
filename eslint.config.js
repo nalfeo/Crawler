@@ -134,8 +134,13 @@ export default tseslint.config(
     files: ['src/core/**/*.ts', 'src/game/**/*.ts', 'tests/**/*.ts', 'scripts/**/*.ts'],
     ignores: [
       'src/core/physics-body.ts',
+      // Test fixtures that legitimately write / assert sprite dims for
+      // spawner correctness or set up legacy scenarios pre-migration:
       'tests/ecs/knockback-system.test.ts',
       'tests/**/collision-*.test.ts',
+      'tests/ecs/spawners/**/*.test.ts',
+      'tests/ecs/drop-system.test.ts',
+      'tests/game/ability-system.test.ts',
     ],
     rules: {
       'no-restricted-syntax': [
