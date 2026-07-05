@@ -1192,21 +1192,44 @@ describe('BehaviorTreeAI', () => {
     expect(decision.targetX!).toBeLessThan(0);
   });
 
-  it('preempts a farther ranged close with an immediate nearby threat', () => {
-    const world = createTestWorld({ seed: 7 });
-    spawnPlayer(world, 0, 0);
-    const farEnemy = spawnEnemy(world, 30, 0, 20);
-    const closeEnemy = spawnEnemy(world, 3.75, 0, 20);
+  it('preempts a farther quest target with a nearby threat while keeping the quest eid', () => {
+    // Ranged preemption (planRangedEngagement): when the primary engaged target is a
+    // far quest enemy but a *different* enemy has pushed inside contactThreatRadius,
+    // the movement plan is redirected to orbit the near threat while decision.targetEid
+    // stays the far quest enemy (preemption rewrites targetX/targetY/reason, never the
+    // eid). Deleting the preemption block makes the AI "close to ranged standoff" on the
+    // far target instead — driving targetX toward +44ft rather than orbiting the +X near
+    // threat away to -X — so both movement assertions below fail without it.
+    const world = createTestWorld({ seed: 2 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    enterKillGrindStage(world);
+    world.floorMap = makeOpenRoom(40, 20);
+    world.stores.position.x[player] = 14;
+    world.stores.position.y[player] = 14;
     setActiveWeapon(world, getWeaponDef('bow')!);
 
-    const ai = new BehaviorTreeAI({ seed: 7 });
+    // Far quest enemy (30ft): the only enemy in enemyArchetypes, so Progress (which
+    // outranks Engage during the kill-grind) makes it the primary engaged target.
+    const farQuestEnemy = spawnEnemy(world, 44, 14, 20);
+    world.floor1!.enemyArchetypes.set(farQuestEnemy, 'rat');
+    // Close non-quest threat (3.75ft) sitting inside the standoff bubble on the +X side.
+    const closeThreat = spawnEnemy(world, 17.75, 14, 20);
+
+    const ai = new BehaviorTreeAI({ seed: 2 });
     ai.poll(createInputState(), world);
 
     const decision = ai.getDecision();
-    expect(decision.targetEid).toBe(closeEnemy);
-    expect(decision.targetEid).not.toBe(farEnemy);
+    // Primary target stays the far quest enemy — preemption never rewrites targetEid.
+    expect(decision.reason).toContain('Hunting quest enemies');
+    expect(decision.targetEid).toBe(farQuestEnemy);
+    expect(decision.targetEid).not.toBe(closeThreat);
+    // Movement is redirected to orbit the near threat: it orbits (not "Closing to ranged
+    // standoff") and pushes to -X, away from the +X near enemy — the opposite direction
+    // from closing on the far quest target at +44ft.
     expect(decision.reason).toContain('Ranged orbit');
-    expect(decision.targetX!).toBeLessThan(0);
+    expect(decision.targetX!).toBeLessThan(14);
   });
 
   it('kites with a magic weapon instead of charging onto the enemy', () => {
