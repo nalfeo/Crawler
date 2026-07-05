@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-04",
+  "session_slug": "ai-pathing-ab-test",
+  "task_title": "AI pathing mode A/B architecture with risk/reward seam-seeking",
+  "estimated_apples": 1,
+  "stages": {
+    "self_review": {
+      "completed": true,
+      "notes": "Lightweight mode toggle: AIPathingMode enum + branching in BehaviorTreeAI.poll(). Risk/reward fused heading scorer samples 7 candidate angles, computes squared-distance danger from perceived enemies, scores by progress*1.15 + reward*0.95 - danger*1.45. A/B validated: 10 seeds, both modes 90% win rate, identical outcomes. No regressions. Determinism preserved (all RNG via world.rng). Backward compatible (legacy is default). Future work: refactor to PathingProvider interface after validating approach with headless data.",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "clean": true
+    }
+  }
+}
