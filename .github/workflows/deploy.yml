@@ -13,19 +13,20 @@ on:
         default: false
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
   issues: write
   pull-requests: write
 
-concurrency:
-  group: pages
-  cancel-in-progress: true
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Serialize Pages deploys only. The baseline-sweep job below runs
+    # per-release and must not be cancelled if a newer release lands mid-sweep.
+    concurrency:
+      group: pages
+      cancel-in-progress: true
     if: >
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
@@ -345,3 +346,179 @@ jobs:
             }
 
             core.info(`Created issue #${issue.data.number}`);
+
+  baseline-sweep:
+    name: Baseline win-rate sweep (100 seeds)
+    runs-on: ubuntu-latest
+    needs: deploy
+    # Only baseline what we actually released to Pages. On manual dispatches
+    # this always runs post-deploy; on the CI workflow_run trigger, deploy only
+    # runs when CI succeeded, so `needs: deploy` is sufficient.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so we can walk main to correlate baselines with
+          # branch-off commits later (see scripts/agent/perf/find-baseline.mjs).
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Resolve baseline commit
+        id: sha
+        run: |
+          # For workflow_run events, github.sha points at the *deploy* workflow
+          # commit, not the CI commit that was actually released. Prefer the
+          # triggering workflow_run head SHA when present.
+          SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "short=$(echo "$SHA" | cut -c1-12)" >> "$GITHUB_OUTPUT"
+          echo "Baseline will be tagged with SHA: $SHA"
+
+      - name: Run 100-seed win-rate sweep
+        id: sweep
+        run: |
+          mkdir -p .cache/baseline
+          npm run ai:winrate-sweep -- \
+            --seeds 1-100 \
+            --out .cache/baseline/baseline.json
+
+      - name: Enrich baseline with commit metadata
+        env:
+          SHA: ${{ steps.sha.outputs.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+        run: |
+          COMMIT_DATE=$(git show -s --format=%cI "$SHA")
+          COMMIT_SUBJECT=$(git show -s --format=%s "$SHA")
+          RUN_URL="$SERVER_URL/$REPO/actions/runs/$RUN_ID"
+          COMMIT_DATE="$COMMIT_DATE" \
+          COMMIT_SUBJECT="$COMMIT_SUBJECT" \
+          RUN_URL="$RUN_URL" \
+          node -e "
+            const fs = require('node:fs');
+            const data = JSON.parse(fs.readFileSync('.cache/baseline/baseline.json','utf8'));
+            const meta = {
+              commit: process.env.SHA,
+              commitDate: process.env.COMMIT_DATE,
+              commitSubject: process.env.COMMIT_SUBJECT,
+              capturedAt: new Date().toISOString(),
+              runId: process.env.RUN_ID,
+              runNumber: Number(process.env.RUN_NUMBER),
+              runUrl: process.env.RUN_URL,
+              sweep: { seeds: '1-100', kind: 'winrate' },
+            };
+            fs.writeFileSync('.cache/baseline/baseline.json', JSON.stringify({ meta, ...data }, null, 2));
+          "
+
+      - name: Publish to baselines branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ steps.sha.outputs.sha }}
+          SHORT: ${{ steps.sha.outputs.short }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Set up a scratch worktree on the `baselines` branch (create it as
+          # an orphan on first run so it stays disjoint from main history).
+          export WORKTREE="$RUNNER_TEMP/baselines-wt"
+          rm -rf "$WORKTREE"
+          if git ls-remote --exit-code --heads origin baselines >/dev/null 2>&1; then
+            git fetch origin baselines:baselines
+            git worktree add "$WORKTREE" baselines
+          else
+            git worktree add --detach "$WORKTREE"
+            git -C "$WORKTREE" checkout --orphan baselines
+            git -C "$WORKTREE" rm -rf . >/dev/null 2>&1 || true
+            node -e "
+              const fs = require('node:fs');
+              const path = require('node:path');
+              const wt = process.env.WORKTREE;
+              fs.writeFileSync(path.join(wt, 'README.md'), [
+                '# Baselines branch',
+                '',
+                'This branch stores baseline win-rate sweeps captured after every',
+                'successful GitHub Pages deploy from main. Each release commit gets',
+                'one file under by-sha/<commit-sha>.json, and index.json is a',
+                'chronological log sorted by commit date (newest first).',
+                '',
+                'Use npm run perf:find-baseline to resolve the baseline that was in',
+                'effect when a feature branch forked from main. Do not merge this',
+                'branch into main; it is history storage only.',
+                '',
+              ].join('\n'));
+            "
+            mkdir -p "$WORKTREE/by-sha"
+            echo "[]" > "$WORKTREE/index.json"
+          fi
+
+          mkdir -p "$WORKTREE/by-sha"
+          cp .cache/baseline/baseline.json "$WORKTREE/by-sha/$SHA.json"
+
+          # Append to index.json. Sort by commitDate desc so consumers can
+          # binary-search / early-exit when scanning for "most recent baseline
+          # at-or-before commit X".
+          node -e "
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const wt = process.env.WORKTREE;
+            const sha = process.env.SHA;
+            const b = JSON.parse(fs.readFileSync(path.join(wt, 'by-sha', sha + '.json'), 'utf8'));
+            const indexPath = path.join(wt, 'index.json');
+            const index = fs.existsSync(indexPath) ? JSON.parse(fs.readFileSync(indexPath, 'utf8')) : [];
+            const filtered = index.filter((e) => e.commit !== sha);
+            filtered.push({
+              commit: b.meta.commit,
+              commitDate: b.meta.commitDate,
+              commitSubject: b.meta.commitSubject,
+              capturedAt: b.meta.capturedAt,
+              runUrl: b.meta.runUrl,
+              winRate: b.winRate,
+              totalWins: b.totalWins,
+              totalRuns: b.totalRuns,
+              path: 'by-sha/' + sha + '.json',
+            });
+            filtered.sort((a, b) => (b.commitDate || '').localeCompare(a.commitDate || ''));
+            fs.writeFileSync(indexPath, JSON.stringify(filtered, null, 2) + '\n');
+          "
+
+          cd "$WORKTREE"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No baseline changes to commit."
+            exit 0
+          fi
+          git commit -m "baseline: $SHORT (run #${{ github.run_number }})" \
+            -m "Commit: $SHA" \
+            -m "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          # Retry push once to survive a race with a concurrent baseline job.
+          if ! git push origin baselines; then
+            echo "Push failed, refetching and rebasing..."
+            git fetch origin baselines
+            git rebase origin/baselines
+            git push origin baselines
+          fi
+
+      - name: Upload baseline as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-${{ steps.sha.outputs.short }}
+          path: .cache/baseline/baseline.json
+          if-no-files-found: warn
+          retention-days: 90
