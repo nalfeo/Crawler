@@ -26,7 +26,16 @@ import {
   setTrackedQuest,
   startFloor1BossEncounter,
 } from '../../game/index.js';
-import { Player, Enemy, Position, Health, XpGem, Gold, DroppedItem } from '../../core/index.js';
+import {
+  Player,
+  Enemy,
+  Position,
+  Health,
+  XpGem,
+  Gold,
+  DroppedItem,
+  Harvestable,
+} from '../../core/index.js';
 import type { GameWorld } from '../../core/world.js';
 import { setGoalFlag } from '../../core/door-lock.js';
 import { flowFieldStep, FLOW_UNREACHABLE } from '../../core/map/flow-field.js';
@@ -1190,6 +1199,13 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       }
     }
     for (const eid of query(world.ecs, [DroppedItem, Position])) {
+      const rx = world.stores.position.x[eid] ?? 0;
+      const ry = world.stores.position.y[eid] ?? 0;
+      if (Math.hypot(rx - playerX, ry - playerY) < sampleRadius + REWARD_RADIUS) {
+        rewardPoints.push({ x: rx, y: ry });
+      }
+    }
+    for (const eid of query(world.ecs, [Harvestable, Position])) {
       const rx = world.stores.position.x[eid] ?? 0;
       const ry = world.stores.position.y[eid] ?? 0;
       if (Math.hypot(rx - playerX, ry - playerY) < sampleRadius + REWARD_RADIUS) {
