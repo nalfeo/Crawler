@@ -30,11 +30,12 @@ gameplay in three problematic ways:
    to express that today. Contact damage — the user's motivating case,
    "mobs need to touch player to do damage" — thus fires the moment sprites
    overlap, even when the mob's silhouette is mostly empty air.
-3. **`Weight` is declarative-only.** `world.stores.weight.value` exists
-   (component defined `components.ts:91`, store wired `world.ts:330`,
-   spawners populate it — 180 lb player, 120 lb mob, 200 lb wall, 1 lb
-   projectile, etc.) but **no system reads it**. Knockback is a flat
-   distance regardless of target mass.
+3. **`Weight` is not canonical physics yet.** `world.stores.weight.value`
+   exists (component defined `components.ts:91`, store wired
+   `world.ts:330`, spawners populate it — 180 lb player, 120 lb default
+   mob, 200 lb spawner structure, 1 lb projectile, etc.) and a few
+   non-physics paths read it, but **no collision/knockback consumer uses
+   it**. Knockback is still a flat distance regardless of target mass.
 
 The user's ask makes both of these first-class: "All entities need to have
 a size and weight. Size is actually used for collision. Weight is used for
@@ -43,8 +44,9 @@ things like knockback."
 ## Decision
 
 Introduce a canonical `Size` component; make `Weight` a real consumer
-(knockback impulse ÷ weight ⇒ displacement); source both from a single
-canonical data table.
+(weight-scaled knockback impulse ⇒ displacement); source values from the
+owning authored defs, with mob default size, default weight, and allowed
+variance ranges living on the mob definition beside sprite/stats/AI data.
 
 ### New `Size` component
 
@@ -101,13 +103,17 @@ knockback.remaining[eid] = kbImpulse / targetWeightLb;
   lb, reserved for statues / bosses that specifically shouldn't slide)
   drop applied impulses entirely.
 
-### Canonical data table
+### Authored definition ownership
 
-`docs/knowledge/game-design/entity-sizing.md` is human-authored and holds
-the values + rationale. `src/core/physics-defs.ts` mirrors it programmatically
-(same table, keyed by mob defIndex / prop kind / projectile archetype) and
-every spawner reads from it. If they diverge, a `check:physics-defs-sync`
-script fails CI.
+`docs/knowledge/game-design/entity-sizing.md` remains the human-readable
+design reference, parity worksheet, and review aid — but it is **not**
+the authoring home for mob rows. Mob default size, default weight, and
+allowed variance ranges live on the mob definition record that already
+owns sprite/stats/AI data (today `MobTemplate` in
+`src/game/spawners/registry.ts`; if mobs later unify under shared defs,
+the same rule applies there). Player/projectile/prop/spawner values live
+with their own local authored defs. `src/core/physics-defs.ts` is the
+composed runtime registry, and CI checks validate that composition.
 
 ## Consequences
 

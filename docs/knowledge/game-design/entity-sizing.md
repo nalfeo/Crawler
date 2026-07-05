@@ -1,8 +1,10 @@
 # Entity sizing & weight — canonical values
 
-> **This table is the source of truth.** `src/core/physics-defs.ts` mirrors it
-> programmatically and `npm run check:physics-defs-sync` fails CI on drift.
-> When you change a value here, update the mirror in the same commit.
+> **This sheet is the review/reference view, not the authoring home for mob
+> rows.** `src/core/physics-defs.ts` is the composed runtime view and
+> `npm run check:physics-defs-sync` fails CI on drift between authored defs,
+> the runtime composition, and this sheet. For mobs, edit the mob
+> definition where sprite/stats/AI data already lives.
 >
 > Related: ADR 0044, spec `.specify/specs/entity-physics.md`.
 
@@ -12,6 +14,10 @@
 - **Weight** is in **pounds** (lb). Realistic-ish values so mental math works
   (e.g. a housecat is ~10 lb, an average man is ~180 lb, a granite boulder is
   ~600 lb per cubic foot × its volume).
+- **Mob authoring rule**: each mob definition owns its default body size,
+  default weight, and allowed variance range beside sprite/stats/AI
+  metadata. This sheet summarizes those values for review; it is not the
+  primary edit surface for mobs.
 - **Size shape**:
   - `circle` — one radius (`r`). Use for anything roughly round: mobs,
     projectiles, gems.
@@ -24,15 +30,16 @@
 
 ## Combatants
 
-| Entity                     | Spawner                                 | Shape  | Size (ft) | Weight (lb) | Immovable | Notes                                                                         |
-| -------------------------- | --------------------------------------- | ------ | --------- | ----------- | :-------: | ----------------------------------------------------------------------------- |
-| Player                     | `spawners/combatants.ts` `spawnPlayer`  | circle | r = 1.5   | 180         |     —     | Sprite is 3×3 ft; half-extent 1.5 ft → radius 1.5.                            |
-| Mob (default)              | `spawners/combatants.ts` `spawnEnemy`   | circle | r = 1.0   | 120         |     —     | Sprite 2×2. 120 lb baseline for knockback = 1.0×.                             |
-| Mob — light (bat / slime)  | mob defs, `weight` field                | circle | r = 0.75  | 60          |     —     | 60 lb → 2× knockback vs baseline.                                             |
-| Mob — heavy (ogre / brute) | mob defs, `weight` field                | circle | r = 1.25  | 240         |     —     | 240 lb → 0.5× knockback.                                                      |
-| Mob — boss (Floor 1)       | mob defs, `weight` field                | box    | 3 × 3     | 800         |     —     | Sprite is bigger than hitbox in shipping build; TBD Slice 1 audit.            |
-| NPC (quest giver, etc.)    | `spawners/combatants.ts` `spawnNpc`     | circle | r = 1.0   | 150         |    yes    | Never in `Knockback` query, so `Immovable` is a documentation-only assertion. |
-| Spawner (structure)        | `spawners/combatants.ts` `spawnSpawner` | circle | r = 1.5   | 200         |    yes    | Weight already set to 200 today; formalized here.                             |
+| Entity                   | Spawner                                               | Shape   | Size (ft) | Weight (lb) | Immovable | Notes                                                                                                    |
+| ------------------------ | ----------------------------------------------------- | ------- | --------- | ----------- | :-------: | -------------------------------------------------------------------------------------------------------- |
+| Player                   | `spawners/combatants.ts` `spawnPlayer`                | circle  | r = 1.5   | 180         |     —     | Sprite is 3×3 ft; half-extent 1.5 ft → radius 1.5.                                                       |
+| Mob (per definition)     | `src/game/spawners/registry.ts` `MobTemplate` (today) | per def | per def   | per def     |     —     | Author each mob's default size, default weight, and allowed variance range here, beside sprite/stats/AI. |
+| Mob — baseline guideline | mob definition body fields                            | circle  | r ≈ 1.0   | 120         |     —     | Review heuristic only. 120 lb stays the knockback 1.0× baseline unless a mob def overrides it.           |
+| Mob — light guideline    | mob definition body fields                            | circle  | r ≈ 0.75  | 60          |     —     | Example review band only; concrete values/variance still live on the mob def.                            |
+| Mob — heavy guideline    | mob definition body fields                            | circle  | r ≈ 1.25  | 240         |     —     | Example review band only; concrete values/variance still live on the mob def.                            |
+| Mob — boss guideline     | mob definition body fields                            | box     | ≈ 3 × 3   | 800         |     —     | Example review band only; Floor 1 boss still needs a per-def Slice-1 audit.                              |
+| NPC (quest giver, etc.)  | `spawners/combatants.ts` `spawnNpc`                   | circle  | r = 1.0   | 150         |    yes    | Never in `Knockback` query, so `Immovable` is a documentation-only assertion.                            |
+| Spawner (structure)      | `spawners/combatants.ts` `spawnSpawner`               | circle  | r = 1.5   | 200         |    yes    | Weight already set to 200 today; formalized here.                                                        |
 
 ## Projectiles
 
