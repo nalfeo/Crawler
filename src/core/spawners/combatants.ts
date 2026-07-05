@@ -9,11 +9,13 @@ import {
   Inventory,
   Player,
   Position,
+  Size,
   Sprite,
   Spawner,
   Velocity,
   Weight,
 } from '../components.js';
+import { PHYSICS_BODIES, SHAPE_CIRCLE } from '../physics-defs.js';
 import type { GameWorld } from '../world.js';
 import { DEFAULT_BLOOD_COLOR } from '../../shared/constants.js';
 import { PATH_PERSONA, TRAVERSAL_MODE } from '../../shared/enemy-behavior.js';
@@ -51,6 +53,16 @@ export function spawnPlayer(world: GameWorld, x: number, y: number, weight = 180
   addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
   addComponent(world.ecs, eid, set(Health, { current: 100, max: 100 }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 3, height: 3 }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      radius: PHYSICS_BODIES.player.radius,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    }),
+  );
   addComponent(world.ecs, eid, set(Weight, { value: weight }));
   addComponent(world.ecs, eid, Player);
   addComponent(world.ecs, eid, Inventory);
@@ -73,6 +85,16 @@ export function spawnEnemy(
   addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
   addComponent(world.ecs, eid, set(Health, { current: hp, max: hp }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 2, height: 2 }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      radius: PHYSICS_BODIES['mob-baseline'].radius,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    }),
+  );
   addComponent(world.ecs, eid, set(Weight, { value: weight }));
   addComponent(world.ecs, eid, Enemy);
   setBloodColor(world, eid, bloodColorHex);
@@ -108,6 +130,16 @@ export function spawnBehaviorEnemy(
   addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
   addComponent(world.ecs, eid, set(Health, { current: hp, max: hp }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 2, height: 2 }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      radius: PHYSICS_BODIES['mob-baseline'].radius,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    }),
+  );
   addComponent(world.ecs, eid, set(Weight, { value: options?.weight ?? 120 }));
   addComponent(world.ecs, eid, Enemy);
   addComponent(
@@ -203,6 +235,19 @@ export function spawnSpawner(
       textureId: options.textureId ?? 0,
       width: options.spriteWidth ?? 3,
       height: options.spriteHeight ?? 3,
+    }),
+  );
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      // Structural spawners aren't scaled through initializeEnemyAppearance,
+      // so we mirror the sprite's half-extents here rather than the registry's
+      // default 1.5 — a caller may pass a non-default spriteWidth/Height.
+      radius: Math.max(options.spriteWidth ?? 3, options.spriteHeight ?? 3) * 0.5,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
     }),
   );
   addComponent(world.ecs, eid, set(Weight, { value: options.weight ?? 200 }));

@@ -15,6 +15,7 @@ import {
   Health,
   Knockback,
   Owner,
+  Size,
   SpawnAnim,
   Spawner,
   Sprite,
@@ -44,6 +45,8 @@ import type { EntitySpriteMappings } from '../../shared/data/entity-sprite-mappi
 import ENTITY_SPRITE_MAPPINGS from '../../shared/data/entity-sprite-mappings.json';
 import { markImmuneToActiveMeleeSwings } from './meleeSwingSystem.js';
 import { SPAWNER_MAX_BANKED_CHILDREN } from '../spawner-arena.js';
+import { getBodyHalfWidth, getBodyHalfHeight } from '../physics-body.js';
+import { SHAPE_CIRCLE } from '../physics-defs.js';
 
 const logger = createLogger('core:drop-system');
 
@@ -218,8 +221,8 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
   const parentAggroRange = world.stores.enemyBehavior.aggroRange[eid] ?? 40;
   const hasSprite = hasComponent(world.ecs, eid, Sprite);
   const parentSpriteTexture = hasSprite ? (world.stores.sprite.textureId[eid] ?? 0) : 0;
-  const parentSpriteWidth = hasSprite ? (world.stores.sprite.width[eid] ?? 2) : 2;
-  const parentSpriteHeight = hasSprite ? (world.stores.sprite.height[eid] ?? 2) : 2;
+  const parentSpriteWidth = getBodyHalfWidth(world, eid, 'dropSystem') * 2 || 2;
+  const parentSpriteHeight = getBodyHalfHeight(world, eid, 'dropSystem') * 2 || 2;
   const parentSizeScale = hasSprite ? world.stores.sprite.sizeScale[eid] || 1 : 1;
   const parentBaseWeight = (world.stores.weight.value[eid] ?? 120) / parentSizeScale;
   const miniWidth = Math.max(MINI_SLIME_MIN_SIZE_FT, parentSpriteWidth * MINI_SLIME_SIZE_SCALE);
@@ -259,6 +262,12 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
       textureId: MINI_SLIME_TEXTURE_ID ?? parentSpriteTexture,
       width: miniWidth,
       height: miniHeight,
+    });
+    setComponent(world.ecs, miniEid, Size, {
+      radius: Math.max(miniWidth, miniHeight) * 0.5,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
     });
     setEnemyAppearanceKey(world, miniEid, 'slime-mini');
     addComponent(world.ecs, miniEid, set(Damage, { amount: miniDamage }));

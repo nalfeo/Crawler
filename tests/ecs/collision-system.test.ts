@@ -1,6 +1,6 @@
 import { addComponent, set, setComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { Position, Projectile, Sprite } from '../../src/core/components.js';
+import { Position, Projectile, Size, Sprite } from '../../src/core/components.js';
 import { createEntity, spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -23,6 +23,11 @@ describe('collisionSystem', () => {
 
     addComponent(world.ecs, projectile, set(Position, { x: 0, y: 0 }));
     addComponent(world.ecs, projectile, set(Sprite, { textureId: 0, width: 8, height: 8 }));
+    addComponent(
+      world.ecs,
+      projectile,
+      set(Size, { radius: 4, halfWidth: 0, halfHeight: 0, shape: 0 }),
+    );
     addComponent(world.ecs, projectile, Projectile);
 
     const result = collisionSystem(world);

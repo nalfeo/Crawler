@@ -7,10 +7,12 @@ import {
   Position,
   Prop,
   PropLight,
+  Size,
   Sprite,
   Team,
   Trap,
 } from '../components.js';
+import { PHYSICS_BODIES, SHAPE_CIRCLE } from '../physics-defs.js';
 import type { GameWorld } from '../world.js';
 import { getNpcDef, type NpcInstance } from '../../shared/npc-types.js';
 import {
@@ -49,6 +51,16 @@ export function spawnTrap(
   addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
   addComponent(world.ecs, eid, set(Team, { id: teamId }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 1.5, height: 1.5 }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      radius: PHYSICS_BODIES.trap.radius,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    }),
+  );
   return eid;
 }
 
@@ -71,6 +83,18 @@ export function spawnNpc(world: GameWorld, x: number, y: number, defId: string):
     world.ecs,
     eid,
     set(Sprite, { textureId: def.textureId, width: def.widthFt, height: def.heightFt }),
+  );
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      // NPCs use per-def dims for their body — round to the max half-extent
+      // as the circle radius so they broadly match today's sprite footprint.
+      radius: Math.max(def.widthFt, def.heightFt) * 0.5,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    }),
   );
   addComponent(world.ecs, eid, set(Npc, { defIdIndex: 0 }));
   addComponent(world.ecs, eid, Invincible);
@@ -110,6 +134,18 @@ export function spawnProp(world: GameWorld, x: number, y: number, defId: string)
     world.ecs,
     eid,
     set(Sprite, { textureId: 0, width: decorationDef.scale, height: decorationDef.scale }),
+  );
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      // Props use per-def `scale` — the sprite is `scale × scale` so the
+      // circumscribing radius equals `scale * 0.5`.
+      radius: decorationDef.scale * 0.5,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    }),
   );
   addComponent(
     world.ecs,
@@ -163,6 +199,16 @@ export function spawnHarvestableNode(
   addComponent(world.ecs, eid, set(Position, { x, y }));
   // Sprite dimensions in feet — nodes are roughly 1 ft wide/tall for collision sizing.
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 1, height: 1 }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      radius: PHYSICS_BODIES['harvestable-node'].radius,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    }),
+  );
   addComponent(
     world.ecs,
     eid,

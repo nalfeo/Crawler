@@ -25,6 +25,7 @@ import {
 import { clearMeleeSwingHits } from '../core/systems/meleeSwingSystem.js';
 import { isEntityInSafeSpace } from '../core/safe-space.js';
 import type { GameWorld } from '../core/world.js';
+import { getBodyRadius } from '../core/physics-body.js';
 import {
   setActiveWeaponDef,
   clearActiveWeaponDef,
@@ -238,8 +239,7 @@ function getNearestEnemyTarget(
     }
 
     nearestDistanceSq = distanceSq;
-    const enemyRadiusFt =
-      Math.max(world.stores.sprite.width[enemy] ?? 0, world.stores.sprite.height[enemy] ?? 0) * 0.5;
+    const enemyRadiusFt = getBodyRadius(world, enemy, 'weaponSystem');
     nearestTarget = {
       direction: normalizeVector(deltaX, deltaY),
       distanceSq,
@@ -315,8 +315,7 @@ function findBossTargetInRange(
       continue;
     }
     bestDistanceSq = distanceSq;
-    const enemyRadiusFt =
-      Math.max(world.stores.sprite.width[enemy] ?? 0, world.stores.sprite.height[enemy] ?? 0) * 0.5;
+    const enemyRadiusFt = getBodyRadius(world, enemy, 'weaponSystem');
     best = {
       direction: normalizeVector(deltaX, deltaY),
       distanceSq,

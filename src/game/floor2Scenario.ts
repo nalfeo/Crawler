@@ -38,11 +38,13 @@ import {
   FamilyMembership,
   Health,
   Position,
+  Size,
   Sprite,
   type GameWorld,
 } from '../core/index.js';
 import { createEntity } from '../core/spawners/entity-core.js';
 import { setDoorLockConfig, setGoalFlag } from '../core/door-lock.js';
+import { SHAPE_CIRCLE } from '../core/physics-defs.js';
 import {
   asFamilyId,
   getRelation,
@@ -291,6 +293,12 @@ export function spawnFamilyBoss(
     textureId: archetype.spriteTexture,
     width: archetype.spriteWidth,
     height: archetype.spriteHeight,
+  });
+  setComponent(world.ecs, eid, Size, {
+    radius: Math.max(archetype.spriteWidth, archetype.spriteHeight) * 0.5,
+    halfWidth: 0,
+    halfHeight: 0,
+    shape: SHAPE_CIRCLE,
   });
   addComponent(world.ecs, eid, set(FamilyMembership, { familyId: familyIdIndex, isBoss: 1 }));
   // Bosses hit hard on contact; ranged behaviour is layered later.

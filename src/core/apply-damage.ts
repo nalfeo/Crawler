@@ -12,6 +12,7 @@ import type { CombatEvent } from '../shared/combat-events.js';
 import type { GameWorld } from './world.js';
 import { resolveCrit, resolveDodge } from './combat-rolls.js';
 import { DEFAULT_BLOOD_COLOR } from '../shared/constants.js';
+import { getBodyHalfWidth } from './physics-body.js';
 
 /**
  * Emit a `corpseExplode` combat event for a corpse struck during its
@@ -39,7 +40,7 @@ function emitCorpseExplosion(
   const spriteAppearanceKey = world.enemyAppearanceKeys.get(target);
   const spriteVariantRoll = world.stores.sprite.variantRoll[target] ?? 0;
   const spriteSizeScale = world.stores.sprite.sizeScale[target] || 1;
-  const spriteWidth = world.stores.sprite.width[target] ?? 0;
+  const spriteWidth = getBodyHalfWidth(world, target, 'apply-damage') * 2;
 
   // Shards spray away from the attacker (the same way the force travelled).
   let dirX = 0;
