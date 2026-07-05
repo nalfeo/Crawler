@@ -130,31 +130,40 @@ export function formatAbilityTrigger(abilityId: string): string {
   return triggerText.get(abilityId) ?? 'Auto trigger';
 }
 
-export interface NearbyNpcCandidate {
-  readonly eid: number;
-  readonly x: number;
-  readonly y: number;
+/** Minimal NPC-instance shape the interaction picker reads. */
+export interface NearbyNpcLike {
   readonly nearbyPlayer: boolean;
 }
 
-/** Pick the nearest NPC whose nearbyPlayer flag is set, or -1 when none qualify. */
+/**
+ * Pick the nearest NPC whose `nearbyPlayer` flag is set, or -1 when none qualify.
+ *
+ * Iterates the npc map directly and reads positions from the entity-store
+ * arrays, so the per-frame call in the interaction update allocates nothing
+ * beyond the map's key iterator — no intermediate candidate array and no
+ * per-NPC objects. This runs every tick in a hot path, so the previous
+ * `Array.from(npcs.entries(), mapFn)` materialization was pure garbage churn.
+ */
 export function findNearestNearbyNpc(
   playerX: number,
   playerY: number,
-  candidates: readonly NearbyNpcCandidate[],
+  npcs: ReadonlyMap<number, NearbyNpcLike>,
+  positionX: ArrayLike<number>,
+  positionY: ArrayLike<number>,
 ): number {
   let nearNpcEid = -1;
   let nearNpcDistanceSq = Number.POSITIVE_INFINITY;
-  for (const candidate of candidates) {
-    if (!candidate.nearbyPlayer) {
+  for (const eid of npcs.keys()) {
+    const instance = npcs.get(eid);
+    if (!instance?.nearbyPlayer) {
       continue;
     }
-    const dx = playerX - candidate.x;
-    const dy = playerY - candidate.y;
+    const dx = playerX - (positionX[eid] ?? 0);
+    const dy = playerY - (positionY[eid] ?? 0);
     const distanceSq = dx * dx + dy * dy;
     if (distanceSq < nearNpcDistanceSq) {
       nearNpcDistanceSq = distanceSq;
-      nearNpcEid = candidate.eid;
+      nearNpcEid = eid;
     }
   }
   return nearNpcEid;

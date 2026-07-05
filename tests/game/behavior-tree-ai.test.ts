@@ -297,6 +297,50 @@ describe('BehaviorTreeAI', () => {
     expect(Math.abs(decision.targetY!)).toBeGreaterThan(1.25);
   });
 
+  it('latches a retreating threat into the ignore set when it disengages at low health', () => {
+    const world = createTestWorld({ seed: 7 });
+    const player = spawnPlayer(world, 0, 0);
+    // Enemy well within retreatDangerRadius (20ft) so a retreat starts.
+    const enemy = spawnEnemy(world, 10, 0, 20);
+    // Drop the player to 10% HP, below the 15% retreat threshold.
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 10;
+
+    const ai = new BehaviorTreeAI({ seed: 7 });
+    const harness = ai as unknown as {
+      retreating: boolean;
+      retreatThreatEid: number | null;
+      ignoredEnemyUntilFrame: Map<number, number>;
+    };
+
+    // Poll 1: low health + a nearby threat => RETREAT, threat latched, no ignore yet.
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().state).toBe(AIState.RETREAT);
+    expect(harness.retreating).toBe(true);
+    expect(harness.retreatThreatEid).toBe(enemy);
+    expect(harness.ignoredEnemyUntilFrame.has(enemy)).toBe(false);
+
+    // The threat disengages well beyond the hysteresis radius while HP stays low.
+    world.stores.position.x[enemy] = 60;
+    world.frameCount += 1;
+
+    // Poll 2: threat left danger range => endRetreat latches it as ignored so the
+    // wounded AI does not immediately re-target it and re-enter RETREAT.
+    ai.poll(createInputState(), world);
+    const ignoredUntil = harness.ignoredEnemyUntilFrame.get(enemy);
+    expect(ignoredUntil).toBeDefined();
+    expect(ignoredUntil!).toBeGreaterThan(world.frameCount);
+    expect(harness.retreating).toBe(false);
+    expect(ai.getDecision().state).not.toBe(AIState.RETREAT);
+
+    // Poll 3: even if the threat closes back in, the active ignore suppresses it,
+    // so the still-wounded AI keeps clearing the floor instead of latching RETREAT.
+    world.stores.position.x[enemy] = 10;
+    world.frameCount += 1;
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().state).not.toBe(AIState.RETREAT);
+  });
+
   it('micro-spaces with weapon cadence: pokes in when ready, eases out on cooldown', () => {
     // Baseball-bat reach = 5.5ft, strike gate = 8.25ft. Enemy at 3.75ft
     // is inside the gate so the player kites. When the swing is READY it pokes in

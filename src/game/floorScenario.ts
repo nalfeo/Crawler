@@ -376,7 +376,16 @@ function resolveFreeNpcTileInRoom(
         }
         return a.x - b.x;
       });
-    return sortedTiles[0] ?? null;
+    const bestInteriorTile = sortedTiles[0];
+    if (bestInteriorTile) {
+      return bestInteriorTile;
+    }
+    // Every interior cell is blocked or already claimed. Fall through to the
+    // bounds/radius scan below rather than returning null here: giving up early
+    // forces the caller onto its preferred-tile fallback, which could hand back
+    // an already-occupied tile and reintroduce NPC stacking in small/degenerate
+    // rooms. The bounds scan may still find a passable, unclaimed tile the
+    // interiorCells list didn't enumerate.
   }
 
   const { x: bx, y: by, width: bw, height: bh } = room.bounds;
@@ -434,7 +443,10 @@ function resolveNpcSpawnPosition(
     }
   }
 
-  if (floorMap.tileMap.isPassable(preferredTile.x, preferredTile.y)) {
+  if (
+    floorMap.tileMap.isPassable(preferredTile.x, preferredTile.y) &&
+    !occupiedTiles.has(tileKey(preferredTile.x, preferredTile.y))
+  ) {
     occupiedTiles.add(tileKey(preferredTile.x, preferredTile.y));
     return floorMap.tileToWorld(preferredTile.x, preferredTile.y);
   }

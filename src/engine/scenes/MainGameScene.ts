@@ -2428,16 +2428,14 @@ export class MainGameScene extends Phaser.Scene {
     const playerY = this.world.stores.position.y[this.playerEid] ?? 0;
 
     // Find the nearest NPC with nearbyPlayer flag set so shared-room hubs remain
-    // selectable when several NPCs are in interaction range at once.
+    // selectable when several NPCs are in interaction range at once. Reads the
+    // npc map + position stores directly to avoid a per-frame array allocation.
     const nearNpcEid = findNearestNearbyNpc(
       playerX,
       playerY,
-      Array.from(this.world.npcs.entries(), ([eid, instance]) => ({
-        eid,
-        x: this.world.stores.position.x[eid] ?? 0,
-        y: this.world.stores.position.y[eid] ?? 0,
-        nearbyPlayer: instance.nearbyPlayer,
-      })),
+      this.world.npcs,
+      this.world.stores.position.x,
+      this.world.stores.position.y,
     );
 
     // Active conversation: game is frozen until the player advances/closes dialogue.
