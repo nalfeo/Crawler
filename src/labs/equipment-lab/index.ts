@@ -3,7 +3,11 @@ import Phaser from 'phaser';
 import { addComponent, set } from 'bitecs';
 import { BroadcastScore } from '../../core/components.js';
 import { createGameWorld, spawnPlayer, type GameWorld } from '../../core/index.js';
-import { getEffectiveStats, getEquipmentState } from '../../core/systems/equipmentSystem.js';
+import {
+  getEffectiveStats,
+  getEquipmentState,
+  initializeBaseStats,
+} from '../../core/systems/equipmentSystem.js';
 import { isInSafeContext } from '../../core/safe-space.js';
 import { createEquipmentUI } from '../../engine/EquipmentUI.js';
 import {
@@ -201,6 +205,7 @@ function createEquipmentLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       this.world.featureUnlocks.equipment = true;
 
       this.playerEid = spawnPlayer(this.world, pxToFt(GAME.WIDTH / 2), pxToFt(GAME.HEIGHT / 2));
+      initializeBaseStats(this.world, this.playerEid);
       addComponent(this.world.ecs, this.playerEid, set(BroadcastScore, { current: 0 }));
       this.addDefaultLoadout();
       this.inventoryUI?.refresh(this.world);
