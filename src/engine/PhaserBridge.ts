@@ -953,9 +953,15 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             if (entityType === 'enemy') {
               const { scaleX, scaleY } = computeEnemyScale(world, eid, visual.baseScale);
               const movingRight = (velocity.x[eid] ?? 0) > ENEMY_RIGHTWARD_FLIP_EPSILON;
-              img.setScale(movingRight ? -scaleX : scaleX, scaleY);
+              img.setScale(scaleX, scaleY);
+              if (typeof img.setFlipX === 'function') {
+                img.setFlipX(movingRight);
+              }
             } else {
               img.setScale(visual.baseScale);
+              if (typeof img.setFlipX === 'function') {
+                img.setFlipX(false);
+              }
             }
             break;
         }

@@ -33,6 +33,7 @@ export class MockImage {
   destroyed = false;
   visible = true;
   alpha = 1;
+  flipX = false;
   scaleX = 1;
   scaleY = 1;
   rotation = 0;
@@ -92,6 +93,11 @@ export class MockImage {
 
   setVisible(visible: boolean): this {
     this.visible = visible;
+    return this;
+  }
+
+  setFlipX(flipX: boolean): this {
+    this.flipX = flipX;
     return this;
   }
 
