@@ -174,6 +174,7 @@ export function createEquipmentUI(
 
   // Object pools.
   const slotObjects: Phaser.GameObjects.GameObject[] = [];
+  const slotBounds = new Map<EquipmentSlotId, Phaser.GameObjects.Rectangle>();
   const statObjects: Phaser.GameObjects.GameObject[] = [];
   const gearObjects: Phaser.GameObjects.GameObject[] = [];
 
@@ -221,6 +222,7 @@ export function createEquipmentUI(
 
   function renderSlots(): void {
     clearPool(slotObjects);
+    slotBounds.clear();
     if (!lastWorld || playerEid < 0) return;
     const state = getEquipmentState(lastWorld, playerEid);
 
@@ -276,6 +278,7 @@ export function createEquipmentUI(
       container.add(box);
       container.add(label);
       container.add(value);
+      slotBounds.set(slot.id, box);
       slotObjects.push(box, label, value);
     }
   }
