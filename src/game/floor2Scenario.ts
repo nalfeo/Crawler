@@ -469,6 +469,21 @@ export function floor2VictorySystem(world: GameWorld): void {
 }
 
 /**
+ * Called when the player confirms exit descent on Floor 2.
+ * Sets `staircaseDiscovered` and transitions `world.state` to `'safe_room'`.
+ * Returns `true` on success, `false` if preconditions not met.
+ */
+export function confirmFloor2StairDescend(world: GameWorld, _playerEid: number): boolean {
+  const floor2State = world.floor2State;
+  if (!floor2State || world.state !== 'playing') return false;
+  if (!floor2State.staircaseSpawned || !floor2State.staircaseUnlocked) return false;
+  if (floor2State.staircaseDiscovered) return false;
+  floor2State.staircaseDiscovered = true;
+  world.state = 'safe_room';
+  return true;
+}
+
+/**
  * Floor 2 scenario initializer used by scenario wiring (Slice 8).
  */
 export function initializeFloor2Scenario(world: GameWorld, playerEid: number): void {
@@ -680,15 +695,8 @@ export function countFloor2BossArchetypes(): number {
 
 // Internal helpers ---------------------------------------------------------
 
-interface Floor2ExtendedState {
-  decapitatedFamilies?: Set<FamilyId>;
-  staircasePos?: { x: number; y: number };
-  staircaseSpawned?: boolean;
-  staircaseUnlocked?: boolean;
-}
-
 function ensureDecapitatedSet(world: GameWorld): Set<FamilyId> {
-  const floor2State = world.floor2State as (Floor2State & Floor2ExtendedState) | null;
+  const floor2State = world.floor2State;
   if (!floor2State) {
     // No Floor-2 state on non-Floor-2 worlds; return a throwaway set so
     // callers can no-op through this helper safely.
@@ -701,7 +709,7 @@ function ensureDecapitatedSet(world: GameWorld): Set<FamilyId> {
 }
 
 function popFloor2ResourceHeartStairs(world: GameWorld): void {
-  const floor2State = world.floor2State as (Floor2State & Floor2ExtendedState) | null;
+  const floor2State = world.floor2State;
   if (!floor2State) return;
   if (world.goalFlags.get(FLOOR2_STAIRS_POPPED_GOAL_ID) === true) return;
 

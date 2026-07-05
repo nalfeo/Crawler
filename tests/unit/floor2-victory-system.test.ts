@@ -8,6 +8,7 @@ import {
   FLOOR2_STAIRS_POPPED_GOAL_ID,
   FLOOR2_VICTORY_GOAL_ID,
   floor2VictorySystem,
+  confirmFloor2StairDescend,
 } from '../../src/game/floor2Scenario.js';
 import {
   initializeFactionRelations,
@@ -49,11 +50,8 @@ describe('floor2VictorySystem', () => {
     initializeFactionRelations(world, world.floor2State.presentFamilies);
     const [survivor, ...others] = world.floor2State.presentFamilies;
     for (const familyId of others) {
-      (world.floor2State as { decapitatedFamilies?: Set<string> }).decapitatedFamilies ??=
-        new Set<string>();
-      (world.floor2State as { decapitatedFamilies?: Set<string> }).decapitatedFamilies!.add(
-        familyId,
-      );
+      world.floor2State.decapitatedFamilies ??= new Set();
+      world.floor2State.decapitatedFamilies.add(familyId);
     }
     world.factionRelations.set(survivor!, 80);
 
@@ -61,14 +59,9 @@ describe('floor2VictorySystem', () => {
 
     expect(world.goalFlags.get(FLOOR2_VICTORY_GOAL_ID)).toBe(true);
     expect(world.goalFlags.get(FLOOR2_STAIRS_POPPED_GOAL_ID)).toBe(true);
-    const floor2 = world.floor2State as {
-      staircasePos?: { x: number; y: number };
-      staircaseSpawned?: boolean;
-      staircaseUnlocked?: boolean;
-    };
-    expect(floor2.staircaseSpawned).toBe(true);
-    expect(floor2.staircaseUnlocked).toBe(true);
-    expect(floor2.staircasePos).toBeDefined();
+    expect(world.floor2State.staircaseSpawned).toBe(true);
+    expect(world.floor2State.staircaseUnlocked).toBe(true);
+    expect(world.floor2State.staircasePos).toBeDefined();
   });
 
   it('does not trigger Win A when relation is 75', () => {
@@ -85,11 +78,8 @@ describe('floor2VictorySystem', () => {
     initializeFactionRelations(world, world.floor2State.presentFamilies);
     const [survivor, ...others] = world.floor2State.presentFamilies;
     for (const familyId of others) {
-      (world.floor2State as { decapitatedFamilies?: Set<string> }).decapitatedFamilies ??=
-        new Set<string>();
-      (world.floor2State as { decapitatedFamilies?: Set<string> }).decapitatedFamilies!.add(
-        familyId,
-      );
+      world.floor2State.decapitatedFamilies ??= new Set();
+      world.floor2State.decapitatedFamilies.add(familyId);
     }
     world.factionRelations.set(survivor!, 75);
 
@@ -143,5 +133,66 @@ describe('floor2VictorySystem', () => {
     floor2VictorySystem(world);
 
     expect(world.goalFlags.get(FLOOR2_VICTORY_GOAL_ID)).toBe(true);
+  });
+});
+
+describe('confirmFloor2StairDescend', () => {
+  function makeFloor2World(
+    overrides?: Partial<import('../../src/core/faction-relations.js').Floor2State>,
+  ) {
+    const world = createTestWorld({ seed: 42, floor: 2 });
+    world.floor2State = {
+      presentFamilies: [],
+      contestedResource: 'glimmercap' as import('../../src/core/faction-relations.js').ResourceId,
+      betrayerFlag: false,
+      ...overrides,
+    };
+    world.state = 'playing';
+    return world;
+  }
+
+  it('returns false when floor2State is null', () => {
+    const world = createTestWorld({ seed: 42 });
+    expect(confirmFloor2StairDescend(world, 0)).toBe(false);
+  });
+
+  it('returns false when world.state is not playing', () => {
+    const world = makeFloor2World({ staircaseSpawned: true, staircaseUnlocked: true });
+    world.state = 'game_over';
+    expect(confirmFloor2StairDescend(world, 0)).toBe(false);
+  });
+
+  it('returns false when staircase has not been spawned', () => {
+    const world = makeFloor2World({ staircaseSpawned: false });
+    expect(confirmFloor2StairDescend(world, 0)).toBe(false);
+  });
+
+  it('returns false when staircase is not unlocked', () => {
+    const world = makeFloor2World({ staircaseSpawned: true, staircaseUnlocked: false });
+    expect(confirmFloor2StairDescend(world, 0)).toBe(false);
+  });
+
+  it('returns false when staircase already discovered', () => {
+    const world = makeFloor2World({
+      staircaseSpawned: true,
+      staircaseUnlocked: true,
+      staircaseDiscovered: true,
+    });
+    expect(confirmFloor2StairDescend(world, 0)).toBe(false);
+  });
+
+  it('sets staircaseDiscovered and transitions to safe_room', () => {
+    const world = makeFloor2World({ staircaseSpawned: true, staircaseUnlocked: true });
+    const result = confirmFloor2StairDescend(world, 0);
+    expect(result).toBe(true);
+    expect(world.floor2State?.staircaseDiscovered).toBe(true);
+    expect(world.state).toBe('safe_room');
+  });
+
+  it('is idempotent — second call returns false after staircase discovered', () => {
+    const world = makeFloor2World({ staircaseSpawned: true, staircaseUnlocked: true });
+    confirmFloor2StairDescend(world, 0);
+    // state is now 'safe_room', not 'playing' — second call must fail
+    expect(confirmFloor2StairDescend(world, 0)).toBe(false);
   });
 });

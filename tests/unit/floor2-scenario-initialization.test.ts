@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { spawnPlayer } from '../../src/core/spawners/combatants.js';
+import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../src/shared/constants.js';
 import { initializeFloor2Scenario } from '../../src/game/floor2Scenario.js';
 import { getFloorManifest, registerFloorManifest } from '../../src/shared/floor-registry.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -73,5 +74,14 @@ describe('initializeFloor2Scenario manifest validation', () => {
     expect(() => initializeFloor2Scenario(world, playerEid)).toThrowError(
       /floor2\.settlement\.shopArchetypes contains unknown ids/,
     );
+  });
+});
+
+describe('Floor 2 stair marker radius', () => {
+  it('keeps FLOOR2_STAIR_MARKER_RADIUS_FT in lockstep with the floor2 manifest markerRadiusFt', () => {
+    // Floor 2 is not yet fully data-driven: the engine/game read the radius from
+    // the shared constant, while the manifest carries its own markerRadiusFt.
+    // This assertion is the drift guard promised by the constant's doc comment.
+    expect(FLOOR2_STAIR_MARKER_RADIUS_FT).toBe(originalFloor2Manifest.objectives.markerRadiusFt);
   });
 });

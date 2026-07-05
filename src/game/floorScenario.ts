@@ -1255,6 +1255,9 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   world.state = 'loadout';
   world.floorObjectiveTick = floor1ObjectiveTick;
 
+  // Ensure Floor 2 state is cleared so Floor 1 and Floor 2 are mutually exclusive
+  world.floor2State = null;
+
   // Spawn harvestable resource nodes after the map and all rooms are fully set up.
   spawnFloor1HarvestableNodes(world);
 }

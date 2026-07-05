@@ -71,6 +71,38 @@ describe('getFloorRunOutcome', () => {
       expect(getFloorRunOutcome(world)).toBe(outcome);
     }
   });
+
+  it('returns cleared_floor for Floor 2 when staircaseDiscovered is true', () => {
+    const world = createTestWorld();
+    world.floor2State = {
+      presentFamilies: [],
+      contestedResource: 'glimmercap' as import('../../src/core/faction-relations.js').ResourceId,
+      betrayerFlag: false,
+      staircaseDiscovered: true,
+    };
+    expect(getFloorRunOutcome(world)).toBe('cleared_floor');
+  });
+
+  it('returns null for Floor 2 when staircaseDiscovered is false', () => {
+    const world = createTestWorld();
+    world.floor2State = {
+      presentFamilies: [],
+      contestedResource: 'glimmercap' as import('../../src/core/faction-relations.js').ResourceId,
+      betrayerFlag: false,
+      staircaseDiscovered: false,
+    };
+    expect(getFloorRunOutcome(world)).toBeNull();
+  });
+
+  it('returns null for Floor 2 when staircaseDiscovered is absent', () => {
+    const world = createTestWorld();
+    world.floor2State = {
+      presentFamilies: [],
+      contestedResource: 'glimmercap' as import('../../src/core/faction-relations.js').ResourceId,
+      betrayerFlag: false,
+    };
+    expect(getFloorRunOutcome(world)).toBeNull();
+  });
 });
 
 describe('areLightingRectsEqual', () => {

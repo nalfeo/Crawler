@@ -34,7 +34,7 @@ import {
   selectSpellFromBossBattle,
   SHOPKEEPER_EQUIPMENT_COST,
 } from '../game/floorScenario.js';
-import { floor2VictorySystem } from '../game/floor2Scenario.js';
+import { floor2VictorySystem, confirmFloor2StairDescend } from '../game/floor2Scenario.js';
 import {
   statSystem,
   manaSystem,
@@ -62,7 +62,7 @@ export function createFloorMainSceneOptions(floorId: string = 'floor1') {
     configureWorld: scenario.configureWorld,
     selectLoadoutOption: scenario.selectLoadoutOption,
     director: scenario.director,
-    onStairDescend: floor1Callbacks ? confirmFloor1StairDescend : undefined,
+    onStairDescend: floor1Callbacks ? confirmFloor1StairDescend : confirmFloor2StairDescend,
     selectSpellFromBossBattle: (world: GameWorld, playerEid: number, spellId: string) => {
       selectSpellFromBossBattle(world, playerEid, spellId as Floor1BossRewardSpellId);
     },

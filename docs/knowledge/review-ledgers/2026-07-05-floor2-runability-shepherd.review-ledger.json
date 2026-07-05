@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-05",
+  "session_slug": "floor2-runability-shepherd",
+  "task_title": "Floor 2 visual runability: staircase, completion screen, floor param (+ shepherd rebase & review-thread fixes)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "notes": "Two separate-model (gpt-5.4) plan reviews across the PR's lifetime. Original review found 2 edge cases — mixed floor1+floor2State (fixed via mutual-exclusivity enforcement in floorScenario.ts) and invalid ?floor= param (fixed via floor-registry validation + floor1 fallback in main.ts); both landed with tests. Shepherd refresh (after rebasing onto origin/main, dropping the 5 commits already squash-merged as #721 and keeping only the 4 genuinely-new commits) reviewed: (a) rebase correctness — two-dot diff is exactly the 14 new-work files, no #721 re-introduction; (b) dead FLOOR2_STAIR_MARKER_RADIUS_FT export — verdict APPROVE, confirmed hoisted to src/shared/constants.ts and genuinely wired into MainGameScene marker render + proximity check; (c) honest governor-gate scope — confirmed Floor 1 stays hard-gated at 0.9 (98.3% actual) and Floor 2 0% is reported-but-not-gating per #721's documented artifact, NO gate weakening / NO seed bending. Refresh raised 1 non-blocking suggestion (manifest markerRadiusFt could drift from the constant) — resolved by adding a deterministic lockstep unit test (tests/unit/floor2-scenario-initialization.test.ts) and toning down the constant's doc comment."
+    },
+    "code_review": {
+      "clean": true,
+      "reviewer_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Code-review agent (gpt-5.4) reviewed origin/main...HEAD including shepherd commit 9bd2fe6a. Verified: no dangling references to the removed dead export or the old FLOOR2_STAIR_RADIUS_FT name; stair radius 8.0 consistent across render + proximity; governor gate still exits 1 when Floor 1 < 0.9 (Floor-1 gating intact); ?floor= param validated with safe fallback; floor1/floor2 state mutual-exclusivity has no both-set path; no Math.random()/Date.now() introduced, no Phaser import in src/core, deterministic. Verdict: No concerns — APPROVE (clean on first round). Only post-review change was a doc-comment edit plus a new non-logic lockstep test; runtime logic unchanged from the reviewed commit."
+        }
+      ]
+    }
+  }
+}
