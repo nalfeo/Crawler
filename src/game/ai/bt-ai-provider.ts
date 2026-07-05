@@ -268,6 +268,9 @@ const RISK_REWARD_DANGER_RADIUS_FT = 12;
 const RISK_REWARD_W_PROGRESS = 1.15;
 const RISK_REWARD_W_REWARD = 0.95;
 const RISK_REWARD_W_DANGER = 1.45;
+// Continuity bonus: small nudge toward the previous frame's heading to dampen
+// oscillation when candidates score nearly equally (e.g. dense symmetric packs).
+const RISK_REWARD_W_CONTINUITY = 0.18;
 
 // Assembled once from the TRAVEL_* tuning constants; the pure steering module
 // reads it by reference each frame and never mutates it.
@@ -645,6 +648,9 @@ export class BehaviorTreeAI implements AIInputProvider {
    */
   private dodgeVecX: number = 0;
   private dodgeVecY: number = 0;
+  // Previous fused heading — used for the continuity bonus to reduce oscillation.
+  private prevFusedDirX: number = 0;
+  private prevFusedDirY: number = 0;
   private acceptedQuestCount: number = 0;
   /**
    * Quest-giver detour hysteresis. Once {@link withQuestGiverDetour} ACCEPTS a
@@ -2659,21 +2665,35 @@ export class BehaviorTreeAI implements AIInputProvider {
 
       const sampleX = playerX + dirX * RISK_REWARD_DANGER_LOOKAHEAD_FT;
       const sampleY = playerY + dirY * RISK_REWARD_DANGER_LOOKAHEAD_FT;
+      // Wall occlusion: if the sample point is inside a wall, enemies behind it
+      // cannot realistically threaten through it — skip their contribution.
+      const samplePassable = !world.floorMap || world.floorMap.isPassableAt(sampleX, sampleY);
       let danger = 0;
-      for (const threat of threatPoints) {
-        const dist = Math.hypot(threat.x - sampleX, threat.y - sampleY);
-        if (dist >= RISK_REWARD_DANGER_RADIUS_FT) continue;
-        const norm = 1 - dist / RISK_REWARD_DANGER_RADIUS_FT;
-        danger += norm * norm;
+      if (samplePassable) {
+        for (const threat of threatPoints) {
+          const dist = Math.hypot(threat.x - sampleX, threat.y - sampleY);
+          if (dist >= RISK_REWARD_DANGER_RADIUS_FT) continue;
+          const norm = 1 - dist / RISK_REWARD_DANGER_RADIUS_FT;
+          danger += norm * norm;
+        }
       }
 
       const progress = Math.max(0, dirX * objectiveX + dirY * objectiveY);
       const reward =
         rewardLen > TRAVEL_HEADING_EPSILON ? Math.max(0, dirX * rewardDirX + dirY * rewardDirY) : 0;
+      // `reward * rewardLen` carries raw pull magnitude; pull vectors are always
+      // unit-normalised (rewardLen ≤ ~0.57) so the term stays [0, 1]-bounded and
+      // comparable to progress/danger. Distance-weighted pull sources would break
+      // this invariant and should re-normalise before passing in.
+      const continuity =
+        this.prevFusedDirX !== 0 || this.prevFusedDirY !== 0
+          ? dirX * this.prevFusedDirX + dirY * this.prevFusedDirY
+          : 0;
       const score =
         progress * RISK_REWARD_W_PROGRESS +
         reward * rewardLen * RISK_REWARD_W_REWARD -
-        danger * RISK_REWARD_W_DANGER;
+        danger * RISK_REWARD_W_DANGER +
+        continuity * RISK_REWARD_W_CONTINUITY;
       if (score > bestScore) {
         bestScore = score;
         bestX = dirX;
@@ -2681,6 +2701,8 @@ export class BehaviorTreeAI implements AIInputProvider {
       }
     }
 
+    this.prevFusedDirX = bestX;
+    this.prevFusedDirY = bestY;
     return { moveX: bestX, moveY: bestY };
   }
 
