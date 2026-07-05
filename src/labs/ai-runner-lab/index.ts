@@ -1227,11 +1227,11 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         const cx = ftToPx(x);
         const cy = ftToPx(y);
         // Red = danger, green = reward, yellow = both
-        const rv = Math.round(255 * Math.min(1, dc / 2 + (rc / 2) * 0.4));
-        const gv = Math.round(200 * Math.min(1, rc / 2 + (dc / 2) * 0.1));
-        const bv = Math.round(50 * Math.max(0, rc / 2 - dc / 2));
+        const rv = Math.round(255 * Math.min(1, dc / 1.5 + (rc / 2) * 0.3));
+        const gv = Math.round(220 * Math.min(1, rc / 1.5 + (dc / 2) * 0.05));
+        const bv = Math.round(40 * Math.max(0, rc / 2 - dc / 2));
         const color = (rv << 16) | (gv << 8) | bv;
-        const alpha = Math.min(0.55, (dc + rc) * 0.25);
+        const alpha = Math.min(0.78, dc * 0.55 + rc * 0.35);
         graphics.fillStyle(color, alpha);
         graphics.fillRect(cx - cellSizePx / 2, cy - cellSizePx / 2, cellSizePx, cellSizePx);
       }
