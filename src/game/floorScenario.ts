@@ -99,6 +99,7 @@ import type { NpcPlacementDef } from '../shared/npc-placements.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
 import { getSpawnerArchetype, getSpawnerArchetypeIndex } from './spawners/registry.js';
 import { hashStringToSeed, SeededRandom } from '../shared/random.js';
+import { computeMobLevelScale } from '../shared/mob-scaling.js';
 
 // Derived constants computed from config at module initialization.
 // The camera/viewport is a render-pixel concept, so convert it to feet at this
@@ -1913,19 +1914,75 @@ function evictFurthestAmbient(
 }
 
 /**
+ * Apply distance-from-spawn level scaling to an ambient archetype's base stats.
+ *
+ * Extracted and exported so the spawn wiring — that a mob spawned far from the
+ * floor spawn tile actually receives boosted HP/speed — has assertion-level
+ * coverage ({@link computeMobLevelScale} itself is unit-tested in
+ * `tests/unit/mob-scaling.test.ts`). Pure given the spawn-tile world position.
+ *
+ * @param baseHp - Archetype base HP before scaling.
+ * @param baseSpeed - Archetype base speed before scaling.
+ * @param spawnX - Mob spawn X in world feet.
+ * @param spawnY - Mob spawn Y in world feet.
+ * @param spawnTileWorldX - Player spawn tile X in world feet.
+ * @param spawnTileWorldY - Player spawn tile Y in world feet.
+ * @returns Integer HP (clamped to ≥ 1) and scaled speed for the spawn.
+ */
+export function scaleAmbientSpawnStats(
+  baseHp: number,
+  baseSpeed: number,
+  spawnX: number,
+  spawnY: number,
+  spawnTileWorldX: number,
+  spawnTileWorldY: number,
+): { hp: number; speed: number } {
+  const dx = spawnX - spawnTileWorldX;
+  const dy = spawnY - spawnTileWorldY;
+  const distFt = Math.sqrt(dx * dx + dy * dy);
+  const scale = computeMobLevelScale(distFt);
+  return {
+    hp: Math.max(1, Math.round(baseHp * scale.hpMult)),
+    speed: baseSpeed * scale.speedMult,
+  };
+}
+
+/**
  * Spawn one weighted ambient archetype at a world (feet) position, wiring its sprite,
  * blood colour, and ambient-tracking entry. Returns the new entity id.
  */
 function spawnAmbientArchetype(world: GameWorld, x: number, y: number): number {
   const pack = floor1EnemyPack;
   const archetype = pickEnemyArchetype(pack.archetypes, () => world.rng.next());
+
+  // Scale HP and speed based on distance from the player's starting tile so
+  // enemies deeper in the dungeon feel progressively more dangerous.
+  let hp = archetype.hp;
+  let speed = archetype.speed;
+  if (world.floorMap) {
+    const spawnWorld = world.floorMap.tileToWorld(
+      world.floorMap.playerSpawn.x,
+      world.floorMap.playerSpawn.y,
+    );
+    const scaled = scaleAmbientSpawnStats(
+      archetype.hp,
+      archetype.speed,
+      x,
+      y,
+      spawnWorld.x,
+      spawnWorld.y,
+    );
+    hp = scaled.hp;
+    speed = scaled.speed;
+  }
+
   const eid = spawnBehaviorEnemy(
     world,
     x,
     y,
-    archetype.hp,
+    hp,
     archetype.id === 'slime' ? AI_TYPE.LEAPER : AI_TYPE.CHASE,
-    archetype.speed,
+    speed,
     archetype.detectRange,
     0,
   );
