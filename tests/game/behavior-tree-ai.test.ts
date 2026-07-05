@@ -26,7 +26,7 @@ import type { TilePoint } from '../../src/core/map/pathfinding.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
-import { AIProgressSuppressionSource, AIState } from '../../src/game/ai/types.js';
+import { AIPathingMode, AIProgressSuppressionSource, AIState } from '../../src/game/ai/types.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 
 /**
@@ -736,6 +736,82 @@ describe('BehaviorTreeAI', () => {
       const offDbg = offAi.getOpportunisticDebug();
       expect(offDbg.farmX).toBe(0);
       expect(offDbg.farmY).toBe(0);
+    });
+  });
+
+  describe('pathing A/B: risk-reward fused mode', () => {
+    it('accepts explicit pathing modes for A/B runs', () => {
+      const legacy = new BehaviorTreeAI({ seed: 42, pathingMode: AIPathingMode.LEGACY });
+      const fused = new BehaviorTreeAI({ seed: 42, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
+      expect(legacy).toBeTruthy();
+      expect(fused).toBeTruthy();
+    });
+
+    it('prefers overlap seams across enemy danger fields', () => {
+      const world = createTestWorld({ seed: 42 });
+      world.floorMap = makeOpenRoom(24, 24);
+      spawnPlayer(world, 20, 20);
+      const ai = new BehaviorTreeAI({ seed: 42, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
+      const harness = ai as unknown as {
+        opportunisticPullX: number;
+        opportunisticPullY: number;
+        farmPullX: number;
+        farmPullY: number;
+        dodgeVecX: number;
+        dodgeVecY: number;
+        computeRiskRewardFusedHeading: (
+          world: GameWorld,
+          playerX: number,
+          playerY: number,
+          baseMoveX: number,
+          baseMoveY: number,
+          weights: { dodgeWeight: number; collectPullWeight: number; farmPullWeight: number },
+        ) => { moveX: number; moveY: number };
+      };
+      harness.opportunisticPullX = 0;
+      harness.opportunisticPullY = 0;
+      harness.farmPullX = 0;
+      harness.farmPullY = 0;
+      harness.dodgeVecX = 0;
+      harness.dodgeVecY = 0;
+
+      // Single lopsided danger blob ahead nudges away from centerline.
+      spawnEnemy(world, 28, 23, 20);
+      const oneBlob = harness.computeRiskRewardFusedHeading(world, 20, 20, 1, 0, {
+        dodgeWeight: 0,
+        collectPullWeight: 0,
+        farmPullWeight: 0,
+      });
+      expect(oneBlob.moveX).toBeGreaterThan(0);
+      expect(Math.abs(oneBlob.moveY)).toBeGreaterThan(0.02);
+
+      // Mirroring that blob creates an overlap valley between both fields; the
+      // fused scorer should travel closer to that seam (smaller lateral deflection).
+      spawnEnemy(world, 28, 17, 20);
+      const seam = harness.computeRiskRewardFusedHeading(world, 20, 20, 1, 0, {
+        dodgeWeight: 0,
+        collectPullWeight: 0,
+        farmPullWeight: 0,
+      });
+      expect(seam.moveX).toBeGreaterThan(0);
+      const sampleDanger = (dirX: number, dirY: number): number => {
+        const sampleX = 20 + dirX * 8;
+        const sampleY = 20 + dirY * 8;
+        let danger = 0;
+        for (const { x, y } of [
+          { x: 28, y: 23 },
+          { x: 28, y: 17 },
+        ]) {
+          const dist = Math.hypot(x - sampleX, y - sampleY);
+          if (dist >= 12) continue;
+          const norm = 1 - dist / 12;
+          danger += norm * norm;
+        }
+        return danger;
+      };
+      // The mirrored overlap case should pick a heading that samples less danger
+      // than blindly marching straight down the objective centerline.
+      expect(sampleDanger(seam.moveX, seam.moveY)).toBeLessThan(sampleDanger(1, 0));
     });
   });
 
