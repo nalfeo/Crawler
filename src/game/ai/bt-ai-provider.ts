@@ -289,6 +289,11 @@ const RISK_REWARD_DOOR_DANGER = 0.6;
 // How many frames ahead to project enemy positions via their current velocity.
 // Enemies moving toward the player appear closer in danger-space, forcing earlier avoidance.
 const RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES = 10;
+// Wall proximity penalty: moving through a narrow corridor (wall within this many ft
+// perpendicular to the travel direction) adds extra danger.  Stacks with the full
+// wall-blocking penalty applied when a ray step actually enters impassable geometry.
+const RISK_REWARD_WALL_PROXIMITY_FT = 2.0;
+const RISK_REWARD_WALL_PROXIMITY_DANGER = 0.9;
 
 // Assembled once from the TRAVEL_* tuning constants; the pure steering module
 // reads it by reference each frame and never mutates it.
@@ -2724,24 +2729,19 @@ export class BehaviorTreeAI implements AIInputProvider {
     const rewardDirX = rewardLen > TRAVEL_HEADING_EPSILON ? rewardX / rewardLen : 0;
     const rewardDirY = rewardLen > TRAVEL_HEADING_EPSILON ? rewardY / rewardLen : 0;
 
-    const threatPoints: { x: number; y: number }[] = [];
+    const threatPoints: { x: number; y: number; projX: number; projY: number }[] = [];
     for (const eid of query(world.ecs, [Enemy, Position, Health])) {
       if (eid === undefined) continue;
       if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
       const ex = world.stores.position.x[eid] ?? 0;
       const ey = world.stores.position.y[eid] ?? 0;
       if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
-      // Project forward by velocity so enemies moving toward the player
-      // appear closer in danger-space, triggering avoidance earlier.
+      // Project the enemy forward so approaching threats register danger earlier.
       const vx = world.stores.velocity.x[eid] ?? 0;
       const vy = world.stores.velocity.y[eid] ?? 0;
       const projX = ex + vx * RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES;
       const projY = ey + vy * RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES;
-      // Use whichever position is closer to the player — projected or current —
-      // so a retreating enemy doesn't appear artificially safe.
-      const distCurrent = Math.hypot(ex - playerX, ey - playerY);
-      const distProj = Math.hypot(projX - playerX, projY - playerY);
-      threatPoints.push(distProj < distCurrent ? { x: projX, y: projY } : { x: ex, y: ey });
+      threatPoints.push({ x: ex, y: ey, projX, projY });
     }
 
     const desiredX = blended.moveX / blendedLen;
@@ -2761,29 +2761,61 @@ export class BehaviorTreeAI implements AIInputProvider {
       const floorMap = world.floorMap;
       let danger = 0;
 
-      if (floorMap && !floorMap.isPassableAt(sampleX, sampleY)) {
-        // Sample point is inside a wall: assign maximum danger so the player
-        // never hugs a wall into an enemy (previously this was treated as safe).
-        danger = RISK_REWARD_WALL_DANGER;
-      } else {
-        // Normal enemy threat accumulation
-        for (const threat of threatPoints) {
-          const dist = Math.hypot(threat.x - sampleX, threat.y - sampleY);
-          if (dist >= RISK_REWARD_DANGER_RADIUS_FT) continue;
-          const norm = 1 - dist / RISK_REWARD_DANGER_RADIUS_FT;
-          danger += norm * norm;
+      if (floorMap) {
+        // Multi-step raycast: walk 4 points along the candidate ray. Any step that
+        // lands in impassable geometry means this direction hugs or enters a wall —
+        // assign max danger and skip further checks for this candidate.
+        const steps = [0.25, 0.5, 0.75, 1.0] as const;
+        let wallHit = false;
+        for (const t of steps) {
+          if (
+            !floorMap.isPassableAt(sampleX * t + playerX * (1 - t), sampleY * t + playerY * (1 - t))
+          ) {
+            danger = RISK_REWARD_WALL_DANGER;
+            wallHit = true;
+            break;
+          }
         }
 
-        if (floorMap) {
-          // Unseen-area penalty: heading into fog-of-war is risky (unknown enemies).
+        if (!wallHit) {
+          // Enemy threat: for each threat use the closer of current/projected
+          // position TO THIS SAMPLE POINT — not to the player — so approaching
+          // enemies raise danger on ALL candidate directions near their path,
+          // while retreating enemies don't artificially inflate safe directions.
+          for (const threat of threatPoints) {
+            const distCurr = Math.hypot(threat.x - sampleX, threat.y - sampleY);
+            const distProj = Math.hypot(threat.projX - sampleX, threat.projY - sampleY);
+            const dist = Math.min(distCurr, distProj);
+            if (dist >= RISK_REWARD_DANGER_RADIUS_FT) continue;
+            const norm = 1 - dist / RISK_REWARD_DANGER_RADIUS_FT;
+            danger += norm * norm;
+          }
+
+          // Perpendicular wall-proximity: if either side of the travel corridor
+          // is within RISK_REWARD_WALL_PROXIMITY_FT of a wall at the midpoint,
+          // add extra danger — prevents confident movement through tight passages.
+          const midX = playerX + dirX * RISK_REWARD_DANGER_LOOKAHEAD_FT * 0.5;
+          const midY = playerY + dirY * RISK_REWARD_DANGER_LOOKAHEAD_FT * 0.5;
+          const perpX = -dirY;
+          const perpY = dirX;
+          const leftBlocked = !floorMap.isPassableAt(
+            midX + perpX * RISK_REWARD_WALL_PROXIMITY_FT,
+            midY + perpY * RISK_REWARD_WALL_PROXIMITY_FT,
+          );
+          const rightBlocked = !floorMap.isPassableAt(
+            midX - perpX * RISK_REWARD_WALL_PROXIMITY_FT,
+            midY - perpY * RISK_REWARD_WALL_PROXIMITY_FT,
+          );
+          if (leftBlocked || rightBlocked) {
+            danger += RISK_REWARD_WALL_PROXIMITY_DANGER;
+          }
+
+          // Unseen-area penalty: heading into fog-of-war is risky.
           if (!floorMap.isVisibleAt(sampleX, sampleY)) {
             danger += RISK_REWARD_FOG_DANGER;
           }
 
           // Door-crossing penalty: path toward a door whose far side isn't visible.
-          // Sample halfway along so the penalty activates when approaching the door.
-          const midX = playerX + dirX * RISK_REWARD_DANGER_LOOKAHEAD_FT * 0.55;
-          const midY = playerY + dirY * RISK_REWARD_DANGER_LOOKAHEAD_FT * 0.55;
           const midTile = floorMap.worldToTile(midX, midY);
           if (
             floorMap.tileMap.isDoor(midTile.x, midTile.y) &&
@@ -2791,6 +2823,16 @@ export class BehaviorTreeAI implements AIInputProvider {
           ) {
             danger += RISK_REWARD_DOOR_DANGER;
           }
+        }
+      } else {
+        // No floor map: enemy-only danger (no geometry checks).
+        for (const threat of threatPoints) {
+          const distCurr = Math.hypot(threat.x - sampleX, threat.y - sampleY);
+          const distProj = Math.hypot(threat.projX - sampleX, threat.projY - sampleY);
+          const dist = Math.min(distCurr, distProj);
+          if (dist >= RISK_REWARD_DANGER_RADIUS_FT) continue;
+          const norm = 1 - dist / RISK_REWARD_DANGER_RADIUS_FT;
+          danger += norm * norm;
         }
       }
 
@@ -3161,12 +3203,15 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (this.withinInteractionRange(nearestRelevant.distance)) {
       return target;
     }
-    // Cooldown guard: this NPC was recently abandoned after repeated failed approaches
-    // (e.g., an unkillable enemy parked in front of it). Suppress re-commitment
-    // until the cooldown expires, so ENGAGE has time to resolve or give up instead
-    // of the AI looping EXPLORE→ENGAGE→EXPLORE indefinitely.
+    // Cooldown guard: this NPC was recently abandoned after repeated failed approaches.
     const cooldownUntil = this.npcApproachCooldowns.get(nearestRelevant.eid) ?? 0;
     if (cooldownUntil > world.frameCount) {
+      return target;
+    }
+    // Enemy proximity guard: don't commit to a detour when a visible enemy is
+    // within NPC_APPROACH_THREAT_RADIUS_FT of the NPC — the path is actively blocked
+    // and we'd loop into EXPLORE→ENGAGE indefinitely. Let ENGAGE resolve it first.
+    if (this.isEnemyBlockingNpc(world, nearestRelevant.x, nearestRelevant.y)) {
       return target;
     }
 
@@ -3190,6 +3235,24 @@ export class BehaviorTreeAI implements AIInputProvider {
    * fire, with no 1-frame "drop the NPC" gap. */
   private withinInteractionRange(distance: number): boolean {
     return distance < NPC_INTERACTION_RADIUS_FT;
+  }
+
+  /** True if any alive, visible enemy is within NPC_APPROACH_THREAT_RADIUS_FT of
+   * the given NPC world position — meaning the path to that NPC is actively blocked.
+   * Used to prevent committing to (or honoring) a quest-giver detour when an enemy
+   * is parked in front of the NPC, which would loop EXPLORE→ENGAGE indefinitely. */
+  private isEnemyBlockingNpc(world: GameWorld, npcX: number, npcY: number): boolean {
+    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
+      if (eid === undefined) continue;
+      if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
+      const ex = world.stores.position.x[eid] ?? 0;
+      const ey = world.stores.position.y[eid] ?? 0;
+      if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
+      if (Math.hypot(ex - npcX, ey - npcY) < NPC_APPROACH_THREAT_RADIUS_FT) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Whether an NPC at (npcX, npcY) is eligible for interaction this frame — i.e.
@@ -3305,6 +3368,19 @@ export class BehaviorTreeAI implements AIInputProvider {
     // If in range but still filtered (in-safe, NPC outside), KEEP steering so the
     // player crosses out and Interact becomes eligible, rather than dropping it.
     if (this.withinInteractionRange(distance) && this.isNpcInteractEligible(world, x, y)) {
+      this.releaseDetourCommitment();
+      return null;
+    }
+    // Enemy proximity early-release: if a visible enemy is blocking the NPC, drop
+    // the commitment immediately and record a cooldown — don't wait for the slow
+    // no-progress valve.  This prevents the EXPLORE→ENGAGE→EXPLORE loop where the
+    // player keeps re-committing to an NPC that an unkillable enemy is parked in
+    // front of.  The cooldown prevents instant Block-D re-commitment.
+    if (this.isEnemyBlockingNpc(world, x, y)) {
+      this.npcApproachCooldowns.set(
+        eid,
+        world.frameCount + QUEST_GIVER_DETOUR_BLOCKED_COOLDOWN_FRAMES,
+      );
       this.releaseDetourCommitment();
       return null;
     }

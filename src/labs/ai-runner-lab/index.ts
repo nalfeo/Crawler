@@ -1172,14 +1172,24 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     const FOG_DANGER = 0.35; // mirrors RISK_REWARD_FOG_DANGER
     const DRAW_THRESHOLD = 0.05; // skip cells with no meaningful field value
 
-    // Live enemies only — mirrors scorer's health.current > 0 filter (dead corpses excluded)
-    const threatPoints: { x: number; y: number }[] = [];
+    // Live enemies — mirrors scorer: track both current AND projected positions
+    const VELOCITY_LOOKAHEAD = 10;
+    const WALL_PROXIMITY_FT = 2.0;
+    const WALL_PROXIMITY_DANGER = 0.9;
+    const threatPoints: { x: number; y: number; projX: number; projY: number }[] = [];
     for (const eid of query(world.ecs, [Enemy, Position, Health])) {
       if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
       const ex = world.stores.position.x[eid] ?? 0;
       const ey = world.stores.position.y[eid] ?? 0;
       if (Math.hypot(ex - playerX, ey - playerY) < sampleRadius + DANGER_RADIUS) {
-        threatPoints.push({ x: ex, y: ey });
+        const vx = world.stores.velocity.x[eid] ?? 0;
+        const vy = world.stores.velocity.y[eid] ?? 0;
+        threatPoints.push({
+          x: ex,
+          y: ey,
+          projX: ex + vx * VELOCITY_LOOKAHEAD,
+          projY: ey + vy * VELOCITY_LOOKAHEAD,
+        });
       }
     }
 
@@ -1219,16 +1229,28 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     for (let x = playerX - sampleRadius; x <= playerX + sampleRadius; x += gridSpacing) {
       for (let y = playerY - sampleRadius; y <= playerY + sampleRadius; y += gridSpacing) {
         let danger = 0;
-        // Wall danger — same logic as scorer: walls are maximum danger
+        // Wall: check the cell itself and a step toward the nearest wall
         if (!world.floorMap!.isPassableAt(x, y)) {
           danger = 2.0; // RISK_REWARD_WALL_DANGER
         } else {
+          // Velocity-aware enemy danger: use min(dist_current, dist_projected) per cell
           for (const t of threatPoints) {
-            const dist = Math.hypot(x - t.x, y - t.y);
+            const distCurr = Math.hypot(x - t.x, y - t.y);
+            const distProj = Math.hypot(x - t.projX, y - t.projY);
+            const dist = Math.min(distCurr, distProj);
             if (dist < DANGER_RADIUS) {
               const norm = 1 - dist / DANGER_RADIUS;
               danger += norm * norm;
             }
+          }
+          // Wall proximity penalty
+          const hasNearWall =
+            !world.floorMap!.isPassableAt(x + WALL_PROXIMITY_FT, y) ||
+            !world.floorMap!.isPassableAt(x - WALL_PROXIMITY_FT, y) ||
+            !world.floorMap!.isPassableAt(x, y + WALL_PROXIMITY_FT) ||
+            !world.floorMap!.isPassableAt(x, y - WALL_PROXIMITY_FT);
+          if (hasNearWall) {
+            danger += WALL_PROXIMITY_DANGER;
           }
           // Fog-of-war baseline danger
           if (!world.floorMap!.isVisibleAt(x, y)) {
