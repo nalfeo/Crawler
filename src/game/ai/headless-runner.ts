@@ -159,12 +159,14 @@ function computeSpawnerArenaMetrics(world: GameWorld): {
   total: number;
   triggered: number;
   resolved: number;
+  barrierArmed: number;
   bankedXpTotal: number;
 } {
   const spawners = query(world.ecs, [Spawner]);
   let total = 0;
   let triggered = 0;
   let resolved = 0;
+  let barrierArmed = 0;
   let bankedXpTotal = 0;
   const store = world.stores.spawner;
   for (const eid of spawners) {
@@ -172,9 +174,17 @@ function computeSpawnerArenaMetrics(world: GameWorld): {
     const state = store.arenaState[eid] ?? 0;
     if (state >= 1) triggered += 1;
     if (state === 2) resolved += 1;
+    // Count spawners that raised a *real* barrier at some point in the run:
+    // fence snapshot on `world.spawnerArenaFence` for open-fence arenas, or
+    // a non-empty door list on `world.spawnerArenaDoors` for sealed-room
+    // arenas. Snapshots are cleared on resolution, so we OR the resolved
+    // bit in so a killed arena still counts as "was armed at some point".
+    const hasFence = (world.spawnerArenaFence?.get(eid)?.length ?? 0) > 0;
+    const hasLockedDoors = (world.spawnerArenaDoors?.get(eid)?.length ?? 0) > 0;
+    if (hasFence || hasLockedDoors || state === 2) barrierArmed += 1;
     bankedXpTotal += store.bankedXp[eid] ?? 0;
   }
-  return { total, triggered, resolved, bankedXpTotal };
+  return { total, triggered, resolved, barrierArmed, bankedXpTotal };
 }
 
 export function applyStartPlayerLevel(world: GameWorld, targetLevel: number): void {
