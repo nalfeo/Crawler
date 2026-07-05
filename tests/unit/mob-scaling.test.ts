@@ -34,8 +34,9 @@ describe('computeMobLevelScale', () => {
 
   it('returns midpoint values at half the reference distance', () => {
     const scale = computeMobLevelScale(MOB_SCALING_REFERENCE_DIST_FT / 2);
-    const expectedHp = (MOB_SCALING_HP_MULT_MIN + MOB_SCALING_HP_MULT_MAX) / 2;
-    const expectedSpeed = (1.0 + MOB_SCALING_SPEED_MULT_MAX) / 2;
+    const expectedHp =
+      MOB_SCALING_HP_MULT_MIN + (MOB_SCALING_HP_MULT_MAX - MOB_SCALING_HP_MULT_MIN) / 2;
+    const expectedSpeed = 1.0 + (MOB_SCALING_SPEED_MULT_MAX - 1.0) / 2;
     expect(scale.hpMult).toBeCloseTo(expectedHp, 5);
     expect(scale.speedMult).toBeCloseTo(expectedSpeed, 5);
   });

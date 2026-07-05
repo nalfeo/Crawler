@@ -1,0 +1,28 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-05",
+  "session_slug": "mob-level-scaling",
+  "task_title": "Distance-from-spawn mob level scaling",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "notes": "#1 adopted comment+todo; #2 deferred as todo; #3 deferred (spawner children, future work); #4 not a defect; #5 adopted HP 2.0->1.5 speed 1.15->1.1; #6 CI headless gate noted; #7 adopted as TODO"
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

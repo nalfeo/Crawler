@@ -12,6 +12,18 @@
 /**
  * Distance (ft) at which the scaling multipliers reach their maximum.
  * Enemies spawned at or beyond this distance are fully scaled.
+ *
+ * The signal used is **Euclidean** distance from the floor spawn tile, which is
+ * a good approximation of "how far into the dungeon" the player is. Enemies
+ * always spawn within 20–300 ft of the current player position, so this tracks
+ * player progression naturally. Room-graph hop-distance would be a more
+ * topologically accurate depth metric but requires plumbing `floorMap.roomGraph`
+ * through the spawn path — tracked as a future improvement if tuning shows the
+ * Euclidean metric misfires (e.g. on compact loopy maps).
+ *
+ * TODO: These constants should migrate into the per-floor config / enemy-pack
+ * JSON once the data-driven tuning path (floor-config.ts) supports balance
+ * scaling parameters, so designers can adjust them without touching shared code.
  */
 export const MOB_SCALING_REFERENCE_DIST_FT = 250;
 
@@ -23,16 +35,17 @@ export const MOB_SCALING_HP_MULT_MIN = 1.0;
 
 /**
  * HP multiplier at {@link MOB_SCALING_REFERENCE_DIST_FT} and beyond.
- * A value of 2.0 means mobs at the far edge of the floor have twice the HP of
- * their near-spawn counterparts.
+ * Conservative 1.5× so distant trash mobs feel meaningfully tougher while
+ * remaining beatable by a player who has levelled up through the floor.
  */
-export const MOB_SCALING_HP_MULT_MAX = 2.0;
+export const MOB_SCALING_HP_MULT_MAX = 1.5;
 
 /**
  * Speed multiplier at {@link MOB_SCALING_REFERENCE_DIST_FT} and beyond.
- * Kept conservative (1.15×) so distant mobs feel faster but not overwhelming.
+ * Kept small (1.1×) — speed increases disproportionately raise difficulty for
+ * ranged/kiting play styles and can spike run failures unexpectedly.
  */
-export const MOB_SCALING_SPEED_MULT_MAX = 1.15;
+export const MOB_SCALING_SPEED_MULT_MAX = 1.1;
 
 /** Result returned by {@link computeMobLevelScale}. */
 export interface MobLevelScale {
