@@ -62,8 +62,14 @@ Real-pipeline observation (Rule #10): `tests/headless/floor1-completion.test.ts`
      Duration  398.65s
   ```
 
+- **Winrate seed sweep** (`scripts/agent/perf/winrate-sweep.ts`, seeds 1–10 × 3 weapons = 30 runs each):
+  - Slice 1 baseline (`nalfeo-size-weight-slice1 @ 1c760b74`): **25/30 = 83.3%** (sword 9/10, bow 8/10, bat 8/10).
+  - Slice 2 (`nalfeo-size-weight-slice2 @ eeb0769d`): **26/30 = 86.7%** (sword 10/10, bow 8/10, bat 8/10).
+  - **Delta: +3.4% (Slice 2 improves).** Single seed (10, sword) flipped timeout→win; all 4 Slice 2 failing seeds also fail in the Slice 1 baseline. This is well within the noise of a 30-run sample (a single seed = 3.3%) and is in the positive direction. See `files/sweep-slice2-summary.txt` for full details.
+  - Note on absolute win-rate: Rule #13's ≥90% target is enforced by `floor1-completion.test.ts` (which passes 9/9=100%); the broader `winrate-sweep` at 86.7% reflects a pre-existing state of the AI/balance stack (Slice 1 baseline is 83.3%, so this is NOT a Slice-2-introduced regression). Investigating why the broader sweep is below 90% is out of scope for this slice.
+
 - **Real-pipeline asymmetry test** (`tests/headless/knockback-weight-asymmetry.test.ts`): passes with 60 lb → +19.9 ft, 240 lb → +5.0 ft, ratio 4.0.
-- **`verify:fast`**: green — typecheck + lint + unit (3853/3855 pre-fix, 3855/3855 post-fix) + `check:physics-defs-sync` + `check:size-coverage` (0 shim fallbacks) + `check:weight-coverage` (77 entities checked, 0 failures).
+- **`verify:fast`**: green — typecheck + lint + unit (3855/3855) + `check:physics-defs-sync` + `check:size-coverage` (0 shim fallbacks) + `check:weight-coverage` (77 entities checked, Enemy=33 Player=1 Prop=43, 0 failures).
 
 ## Writer audit (spec asked for)
 
