@@ -150,8 +150,11 @@ export function renderLaunchContextBanner(): void {
   banner.className = 'launch-context-banner';
 
   const lines = describeLaunchContext(context);
+  const nonPrDetails = lines.filter((line) => !line.startsWith('PR'));
   const details =
-    lines.length > 0 ? lines : ['Launch context was provided, but no details were available.'];
+    nonPrDetails.length > 0
+      ? nonPrDetails
+      : ['Launch context was provided, but no details were available.'];
   const header = document.createElement('div');
   header.className = 'launch-context-banner__header';
 
