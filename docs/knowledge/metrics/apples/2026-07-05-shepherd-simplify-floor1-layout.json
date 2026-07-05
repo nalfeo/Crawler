@@ -1,0 +1,10 @@
+{
+  "date": "2026-07-05",
+  "session": "shepherd-simplify-floor1-layout",
+  "estimated_apples": 2,
+  "actual_apples": 1,
+  "delta": -1,
+  "verdict": "over",
+  "hello_kitties": 0.2,
+  "notes": "Shepherded PR #765 to merge. The genuine CI blocker was a single TS2540 typecheck error in tests/game/behavior-tree-ai.test.ts: the 'treats shared-room merchant goals as direct NPC progress targets' test assigned to objective.shopRoomPos / spellQuestGiverPos, which are readonly on FloorObjectiveState. Fixed by reassigning the whole mutable objective via spread (no type weakening, rule #12). The review-thread concern (three spawn-role NPCs stacking on welcomeOfficePos) was already fixed on the branch via a generic resolveNpcSpawnPosition + occupiedTiles de-dup and nearest-NPC interaction selection; verified the overlap is gone in the real headless scenario (initializeFloor1Scenario) through the deterministic 10-seed floor1-scenario test asserting uniqueNpcTiles.size === 3. Estimated 2 apples expecting to author the placement fix; actual 1 because it was already implemented and covered — reading the branch diff first would have yielded a 1-apple call. verify:fast green; targeted tests 90/90; CI's required Headless Floor 1 Gate re-validates win-rate on the new head."
+}
