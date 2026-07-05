@@ -1,7 +1,7 @@
 {
   "schema_version": "review-ledger/v1",
-  "date": "2026-07-04",
-  "session_slug": "floor2-runability",
+  "date": "2026-07-05",
+  "session_slug": "floor2-runability-shepherd",
   "task_title": "Floor 2 visual runability: staircase, completion screen, floor param (+ shepherd rebase & review-thread fixes)",
   "estimated_apples": 3,
   "stages": {

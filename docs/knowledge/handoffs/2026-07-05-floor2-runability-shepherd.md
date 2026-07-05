@@ -63,8 +63,12 @@ artifact documents Floor 2 as 0%/not-yet-wired at this slice).
 - Ran a separate-model **plan review** (rubber-duck, gpt-5.4) → APPROVE, and a
   **code-review** agent (gpt-5.4) → no concerns / APPROVE. Addressed the one non-blocking
   plan-review suggestion (drift risk) with the lockstep test + toned-down doc comment.
-- Rewrote `docs/knowledge/review-ledgers/2026-07-04-floor2-runability.review-ledger.json`
-  to `estimated_apples: 3` with `plan_review` + `code_review` stages;
+- Recorded the 3🍎 harness in
+  `docs/knowledge/review-ledgers/2026-07-05-floor2-runability-shepherd.review-ledger.json`
+  (`estimated_apples: 3` with `plan_review` + `code_review` stages). Renamed from the
+  original `2026-07-04-floor2-runability` slug so the gating ledger's identity matches this
+  shepherd session and pairs with `2026-07-05-floor2-runability-shepherd.json` (both 3🍎),
+  leaving the feature session's `2026-07-04-floor2-runability.json` (2🍎) standing alone;
   `npm run review:ledger -- validate` → **valid 3-apple ledger**.
 
 ### 5. ADR 0044
