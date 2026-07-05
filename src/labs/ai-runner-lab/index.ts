@@ -81,6 +81,7 @@ interface AiRunnerLabState {
   aiConfig: {
     pathingMode: AIPathingModeValue;
     visualRiskRewardFields: boolean;
+    threatPreviewFrames: number;
   };
 }
 
@@ -224,6 +225,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   const aiConfig = {
     pathingMode: (persisted?.aiConfig?.pathingMode ?? AIPathingMode.LEGACY) as AIPathingModeValue,
     visualRiskRewardFields: persisted?.aiConfig?.visualRiskRewardFields ?? false,
+    threatPreviewFrames: persisted?.aiConfig?.threatPreviewFrames ?? 0,
   };
 
   let ai = new BehaviorTreeAI({
@@ -691,6 +693,12 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   aiFolder
     .add(aiConfig, 'visualRiskRewardFields')
     .name('Show risk/reward fields')
+    .onChange(() => {
+      persistLabState();
+    });
+  aiFolder
+    .add(aiConfig, 'threatPreviewFrames', 0, 60, 1)
+    .name('Threat preview (frames ahead)')
     .onChange(() => {
       persistLabState();
     });
@@ -1172,11 +1180,14 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     const FOG_DANGER = 0.35; // mirrors RISK_REWARD_FOG_DANGER
     const DRAW_THRESHOLD = 0.05; // skip cells with no meaningful field value
 
-    // Live enemies — mirrors scorer: track both current AND projected positions
+    // Live enemies — mirrors scorer: project by velocity * (lookahead + preview frames)
+    // Enemies always move toward the player (flow-map driven), so projected position
+    // is always closer — use it directly, not min(current, projected).
     const VELOCITY_LOOKAHEAD = 10;
     const WALL_PROXIMITY_FT = 2.0;
-    const WALL_PROXIMITY_DANGER = 0.9;
-    const threatPoints: { x: number; y: number; projX: number; projY: number }[] = [];
+    const WALL_AMPLIFICATION = 1.8;
+    const totalLookahead = VELOCITY_LOOKAHEAD + aiConfig.threatPreviewFrames;
+    const threatPoints: { x: number; y: number }[] = [];
     for (const eid of query(world.ecs, [Enemy, Position, Health])) {
       if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
       const ex = world.stores.position.x[eid] ?? 0;
@@ -1184,12 +1195,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       if (Math.hypot(ex - playerX, ey - playerY) < sampleRadius + DANGER_RADIUS) {
         const vx = world.stores.velocity.x[eid] ?? 0;
         const vy = world.stores.velocity.y[eid] ?? 0;
-        threatPoints.push({
-          x: ex,
-          y: ey,
-          projX: ex + vx * VELOCITY_LOOKAHEAD,
-          projY: ey + vy * VELOCITY_LOOKAHEAD,
-        });
+        threatPoints.push({ x: ex + vx * totalLookahead, y: ey + vy * totalLookahead });
       }
     }
 
@@ -1229,29 +1235,25 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     for (let x = playerX - sampleRadius; x <= playerX + sampleRadius; x += gridSpacing) {
       for (let y = playerY - sampleRadius; y <= playerY + sampleRadius; y += gridSpacing) {
         let danger = 0;
-        // Wall: check the cell itself and a step toward the nearest wall
         if (!world.floorMap!.isPassableAt(x, y)) {
-          danger = 2.0; // RISK_REWARD_WALL_DANGER
+          // Wall cells have no independent danger — skip. The amplifier is
+          // applied to *adjacent* passable cells below.
         } else {
-          // Velocity-aware enemy danger: use min(dist_current, dist_projected) per cell
+          // Enemy danger using projected positions.
           for (const t of threatPoints) {
-            const distCurr = Math.hypot(x - t.x, y - t.y);
-            const distProj = Math.hypot(x - t.projX, y - t.projY);
-            const dist = Math.min(distCurr, distProj);
+            const dist = Math.hypot(x - t.x, y - t.y);
             if (dist < DANGER_RADIUS) {
               const norm = 1 - dist / DANGER_RADIUS;
               danger += norm * norm;
             }
           }
-          // Wall proximity penalty
+          // Wall proximity amplification — same 4-cardinal check as scorer.
           const hasNearWall =
             !world.floorMap!.isPassableAt(x + WALL_PROXIMITY_FT, y) ||
             !world.floorMap!.isPassableAt(x - WALL_PROXIMITY_FT, y) ||
             !world.floorMap!.isPassableAt(x, y + WALL_PROXIMITY_FT) ||
             !world.floorMap!.isPassableAt(x, y - WALL_PROXIMITY_FT);
-          if (hasNearWall) {
-            danger += WALL_PROXIMITY_DANGER;
-          }
+          if (hasNearWall && danger > 0) danger *= WALL_AMPLIFICATION;
           // Fog-of-war baseline danger
           if (!world.floorMap!.isVisibleAt(x, y)) {
             danger += FOG_DANGER;
