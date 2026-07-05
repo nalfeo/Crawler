@@ -113,7 +113,9 @@ owns sprite/stats/AI data (today `MobTemplate` in
 `src/game/spawners/registry.ts`; if mobs later unify under shared defs,
 the same rule applies there). Player/projectile/prop/spawner values live
 with their own local authored defs. `src/core/physics-defs.ts` is the
-composed runtime registry, and CI checks validate that composition.
+composed runtime registry, and CI fails on missing entries, schema drift,
+or mismatched numeric values between the authored defs, the composed
+runtime view, and the review sheet.
 
 ## Consequences
 
