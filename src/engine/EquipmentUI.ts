@@ -29,6 +29,7 @@ import type { EquipmentItemDef, ItemRarity } from '../shared/equipment-types.js'
 import { PRIMARY_STATS, SECONDARY_STATS, type StatId } from '../shared/stats.js';
 import { addItem, removeItem } from '../shared/inventory.js';
 import type { InventoryBag } from '../shared/inventory.js';
+import { filterByEquipmentSlot } from '../shared/inventory.js';
 import { getItemById } from '../shared/items.js';
 
 // ---------------------------------------------------------------------------
@@ -347,12 +348,10 @@ export function createEquipmentUI(
     container.add(heading);
     gearObjects.push(heading);
 
-    const equippable = currentBag.slots.filter((slot) => {
-      if (!isEquippableItem(slot.itemId)) return false;
-      if (selectedSlotFilter === null) return true;
-      const def = getEquipmentDefForItem(slot.itemId);
-      return def?.slots.includes(selectedSlotFilter) === true;
-    });
+    const equippable =
+      selectedSlotFilter === null
+        ? currentBag.slots.filter((slot) => isEquippableItem(slot.itemId))
+        : filterByEquipmentSlot(currentBag, selectedSlotFilter);
 
     if (equippable.length === 0) {
       const none = crispText(
