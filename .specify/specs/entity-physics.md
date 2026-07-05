@@ -17,8 +17,9 @@ need to touch player to do damage). Weight is used for things like knockback."
 
 Today (`origin/main` @ c53ff04):
 
-- `Weight` is declared, stored, and populated everywhere — but read
-  nowhere. It's a dead component.
+- `Weight` is declared, stored, and populated everywhere, and a few
+  non-physics paths read it — but no knockback/collision consumer uses
+  it yet.
 - Physical size is `sprite.width` × `sprite.height` (a render field) —
   read directly by `collisionSystem.ts` (broad-phase AABB insert) and
   `knockbackSystem.ts` (footprint passability). Any change to sprite scale
@@ -53,10 +54,13 @@ constants. A 60 lb target moves 2× as far; a 240 lb target moves 0.5× as
 far; a target with `Weight ≥ IMMOVABLE_THRESHOLD` or `Immovable` sees no
 displacement.
 
-**R6.** All numerical Size / Weight values live in
-`docs/knowledge/game-design/entity-sizing.md` (human-authored, canonical)
-and are mirrored programmatically in `src/core/physics-defs.ts`.
-`npm run check:physics-defs-sync` diffs the two and fails CI on drift.
+**R6.** Authored Size / Weight values live with the owning definition
+type. For mobs, default size, default weight, and allowed variance ranges
+live on the mob definition record beside sprite/stats/AI metadata.
+`docs/knowledge/game-design/entity-sizing.md` is the human-readable review
+sheet; `src/core/physics-defs.ts` is the composed runtime registry. CI
+checks fail on drift between the authored defs, the composed runtime view,
+and the review sheet.
 
 **R7.** Slice-1 landing MUST NOT shift `tests/headless/floor1-completion.test.ts`
 win-rate below 90% (per project Rule #13). Slice-2 landing MUST NOT shift
@@ -69,16 +73,25 @@ values for Slice 1 are set equal to today's shipping sprite dimensions.
 
 ## Design
 
-Component + store schema, data-table location, per-writer semantic change
-for weight/knockback, and the shim/coverage gate: see ADR 0044 §Decision.
+Component + store schema, authored-definition ownership, per-writer
+semantic change for weight/knockback, and the shim/coverage gate: see ADR
+0044 §Decision.
+
+For mobs specifically, the authored body data lives with the same
+definition record that already owns sprite/stats/AI data. Slice 1 should
+extend that record with default size, default weight, and allowed variance
+ranges, then have the composed runtime registry read from it.
 
 ### Slice 1 (Size foundation)
 
 1. Add `Size` component + `size` store.
-2. Author `docs/knowledge/game-design/entity-sizing.md` (values equal to
-   current sprite dims for shipped entities).
-3. Add `src/core/physics-defs.ts` mirror + `check:physics-defs-sync` gate.
-4. Route every spawner through the registry.
+2. Extend mob definitions with body defaults + variance ranges beside
+   sprite/stats/AI metadata; keep
+   `docs/knowledge/game-design/entity-sizing.md` as the review sheet.
+3. Add `src/core/physics-defs.ts` composition + `check:physics-defs-sync`
+   gate.
+4. Route every spawner through the composed registry, with mob spawners
+   sourcing their defaults from mob defs.
 5. `collisionSystem` reads `Size` first, `Sprite` as legacy shim; log dev
    warning on shim path.
 6. `knockbackSystem.isFootprintPassable` reads from `Size`.
