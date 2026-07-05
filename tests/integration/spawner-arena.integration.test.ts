@@ -14,10 +14,21 @@
  */
 import { addComponent, hasComponent, query, set, setComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { Enemy, Health, Owner, Position, Spawner, XpGem } from '../../src/core/components.js';
+import {
+  DeathTimer,
+  Enemy,
+  Health,
+  Owner,
+  Position,
+  Spawner,
+  XpGem,
+} from '../../src/core/components.js';
+import { applyDamage } from '../../src/core/apply-damage.js';
 import { spawnBehaviorEnemy, spawnPlayer, spawnSpawner } from '../../src/core/helpers.js';
+import { deathTimerSystem } from '../../src/core/systems/deathTimerSystem.js';
 import { dropSystem } from '../../src/core/systems/dropSystem.js';
 import { spawnerArenaSystem } from '../../src/game/spawners/spawnerArenaSystem.js';
+import { spawnerSystem } from '../../src/game/spawners/spawnerSystem.js';
 import { getSpawnerArchetype, getSpawnerArchetypeIndex } from '../../src/game/spawners/registry.js';
 import { AI_TYPE } from '../../src/game/index.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -88,5 +99,53 @@ describe('spawner arena — integration', () => {
     // introspect the terminal state.
     expect(hasComponent(world.ecs, spawnerEid, Spawner)).toBe(true);
     expect(hasComponent(world.ecs, spawnerEid, Enemy)).toBe(true);
+  });
+
+  it('a burst hit on the lingering spawner corpse does not orphan the locked arena', () => {
+    // Regression guard for the corpse-step interference bug: a dying spawner
+    // lingers as an Enemy+DeathTimer corpse only so its scripted death handshake
+    // can run (spawnerSystem sets deathResolved next tick → spawnerArenaSystem
+    // moves LOCKED → RESOLVED). If a burst hit (corpseStepSystem, or any stray
+    // AoE/beam funnelling through applyDamage) reaps the corpse early, the
+    // entity is destroyed before the handshake completes and the locked arena is
+    // orphaned forever — the player is trapped. This drives the REAL systems to
+    // prove the guard in applyDamage keeps the invariant across the kill frame.
+    const world = createTestWorld();
+    const playerEid = spawnPlayer(world, 200, 200);
+    const spawnerEid = spawnSpawner(world, 100, 100, RATS_NEST.hp, {
+      defIndex: RATS_NEST_INDEX,
+      contactDamage: RATS_NEST.contactDamage,
+      arenaRadiusFt: RATS_NEST.arenaRadiusFt,
+    });
+
+    // ── Lock the arena: move the player into the disc.
+    world.stores.position.x[playerEid] = 102;
+    world.stores.position.y[playerEid] = 102;
+    spawnerArenaSystem(world);
+    expect(world.stores.spawner.arenaState[spawnerEid]).toBe(1); // LOCKED
+
+    // ── Kill the spawner; it lingers as an Enemy+DeathTimer corpse (as the
+    //    death/linger path would leave it) while the handshake plays out.
+    world.stores.health.current[spawnerEid] = 0;
+    addComponent(world.ecs, spawnerEid, set(DeathTimer, { remainingMs: 500 }));
+
+    // ── A burst attempt lands on the spawner corpse this frame — the exact path
+    //    corpseStepSystem or a stray AoE/beam funnels through. The guard in
+    //    applyDamage must skip it, so the death timer is NOT zeroed.
+    applyDamage(world, spawnerEid, 1, 100, 100);
+    expect(world.stores.deathTimer.remainingMs[spawnerEid]).toBe(500);
+    expect(world.combatEvents.some((e) => e.type === 'corpseExplode')).toBe(false);
+
+    // ── deathTimerSystem must NOT reap the spawner early (timer intact) …
+    deathTimerSystem(world);
+    expect(query(world.ecs, [Spawner]).includes(spawnerEid)).toBe(true);
+
+    // ── … so the scripted handshake still runs: spawnerSystem sets
+    //    deathResolved, then spawnerArenaSystem moves LOCKED → RESOLVED.
+    spawnerSystem(world);
+    expect(world.stores.spawner.deathResolved[spawnerEid]).toBe(1);
+    spawnerArenaSystem(world);
+    expect(world.stores.spawner.arenaState[spawnerEid]).toBe(2); // RESOLVED
+    expect(world.vfxEvents.filter((e) => e.kind === 'spawnerArenaEnd').length).toBe(1);
   });
 });
