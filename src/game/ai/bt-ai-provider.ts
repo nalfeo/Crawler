@@ -271,19 +271,21 @@ const logger = createLogger('game:bt-ai-provider');
 // Below this magnitude a heading is treated as "no direction" (skip steering /
 // neutral continuity) — matches the pure module's own zero-vector epsilon.
 const TRAVEL_HEADING_EPSILON = 1e-6;
-const RISK_REWARD_CANDIDATE_OFFSETS_DEG = [0, -15, 15, -30, 30, -45, 45] as const;
+const RISK_REWARD_CANDIDATE_OFFSETS_DEG = [
+  0, -15, 15, -30, 30, -45, 45, -60, 60, -75, 75, -90, 90,
+] as const;
 const RISK_REWARD_DANGER_LOOKAHEAD_FT = 8;
 const RISK_REWARD_DANGER_RADIUS_FT = 15; // wider threat halo → earlier avoidance
 const RISK_REWARD_W_PROGRESS = 1.0; // baseline — danger must reliably beat this
 const RISK_REWARD_W_REWARD = 0.95;
-const RISK_REWARD_W_DANGER = 2.2; // raised: a nearby enemy must decisively block progress
+const RISK_REWARD_W_DANGER = 2.8; // corridor travel should yield decisively to nearby projected threats
 // Continuity bonus: small nudge toward the previous frame's heading to dampen
 // oscillation when candidates score nearly equally (e.g. dense symmetric packs).
 const RISK_REWARD_W_CONTINUITY = 0.18;
 // Walls amplify danger from nearby enemies — being trapped against a wall with
 // an enemy is worse than facing that enemy in open space.  Walls alone (no enemies
 // nearby) produce NO danger, so open-but-adjacent-to-wall corridors are still safe.
-const RISK_REWARD_WALL_AMPLIFICATION = 1.8; // multiply accumulated danger by this factor
+const RISK_REWARD_WALL_AMPLIFICATION = 2.4; // corridor/choke threats should feel much worse than open-room threats
 // Unseen-area baseline: moderate penalty for heading into fog-of-war.
 const RISK_REWARD_FOG_DANGER = 0.35; // reduced slightly so it doesn't swamp enemy danger
 // Door-crossing penalty: the AI doesn't know what is behind a closed door.
@@ -291,11 +293,14 @@ const RISK_REWARD_DOOR_DANGER = 0.6;
 // How many frames ahead to project enemy positions via their current velocity.
 // Enemies always move toward the player (flow-map driven), so projected position
 // is always closer — use it directly rather than picking min(current, projected).
-const RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES = 10;
+const RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES = 14;
 // Wall proximity check: if a wall is within this many ft perpendicular to the
 // travel direction, the corridor is considered "wall-adjacent" and the amplifier
 // is applied even when the ray center stays passable.
 const RISK_REWARD_WALL_PROXIMITY_FT = 2.0;
+const RISK_REWARD_BLOCKED_CORRIDOR_THREAT_LOOKAHEAD_FT = 24;
+const RISK_REWARD_BLOCKED_CORRIDOR_THREAT_WIDTH_FT = 6;
+const RISK_REWARD_BLOCKED_CORRIDOR_STUCK_FRAMES = 10;
 
 // Assembled once from the TRAVEL_* tuning constants; the pure steering module
 // reads it by reference each frame and never mutates it.
@@ -1237,6 +1242,26 @@ export class BehaviorTreeAI implements AIInputProvider {
           this.decision.targetX = plan.targetX;
           this.decision.targetY = plan.targetY;
           this.decision.reason = `${target.reason} — ${plan.reason}`;
+          return BTStatus.SUCCESS;
+        }
+        const blockingThreat = this.findBlockingCorridorThreat(
+          ctx.world,
+          ctx.playerX,
+          ctx.playerY,
+          target.x,
+          target.y,
+        );
+        if (
+          blockingThreat &&
+          (this.moveWedgeFrames >= RISK_REWARD_BLOCKED_CORRIDOR_STUCK_FRAMES ||
+            blockingThreat.distance <= this.getEngageRadius(ctx.world) * 1.75)
+        ) {
+          const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, blockingThreat);
+          this.decision.state = AIState.ENGAGE;
+          this.decision.targetEid = blockingThreat.eid;
+          this.decision.targetX = plan.targetX;
+          this.decision.targetY = plan.targetY;
+          this.decision.reason = `${target.reason} — corridor blocked, clearing threat first (${plan.reason})`;
           return BTStatus.SUCCESS;
         }
         this.decision.state = AIState.EXPLORE;
@@ -3239,6 +3264,94 @@ export class BehaviorTreeAI implements AIInputProvider {
    * fire, with no 1-frame "drop the NPC" gap. */
   private withinInteractionRange(distance: number): boolean {
     return distance < NPC_INTERACTION_RADIUS_FT;
+  }
+
+  /** True when the current progress direction is wall-adjacent at the player or
+   * midpoint, meaning the player is effectively threading a corridor/choke. */
+  private isCorridorDirection(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    dirX: number,
+    dirY: number,
+  ): boolean {
+    const floorMap = world.floorMap;
+    if (!floorMap) {
+      return false;
+    }
+    const perpX = -dirY;
+    const perpY = dirX;
+    for (const t of [0, 0.5] as const) {
+      const probeX = playerX + dirX * RISK_REWARD_DANGER_LOOKAHEAD_FT * t;
+      const probeY = playerY + dirY * RISK_REWARD_DANGER_LOOKAHEAD_FT * t;
+      if (
+        !floorMap.isPassableAt(
+          probeX + perpX * RISK_REWARD_WALL_PROXIMITY_FT,
+          probeY + perpY * RISK_REWARD_WALL_PROXIMITY_FT,
+        ) ||
+        !floorMap.isPassableAt(
+          probeX - perpX * RISK_REWARD_WALL_PROXIMITY_FT,
+          probeY - perpY * RISK_REWARD_WALL_PROXIMITY_FT,
+        )
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Returns the nearest visible enemy projected into the player's forward corridor
+   * when travelling toward a progress target through a choke. This is the signal
+   * for "stop trying to squeeze past and clear/backtrack first". */
+  private findBlockingCorridorThreat(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    targetX: number,
+    targetY: number,
+  ): WorldTarget | null {
+    const deltaX = targetX - playerX;
+    const deltaY = targetY - playerY;
+    const targetDist = Math.hypot(deltaX, deltaY);
+    if (targetDist <= TRAVEL_HEADING_EPSILON) {
+      return null;
+    }
+    const dirX = deltaX / targetDist;
+    const dirY = deltaY / targetDist;
+    if (!this.isCorridorDirection(world, playerX, playerY, dirX, dirY)) {
+      return null;
+    }
+
+    let best: WorldTarget | null = null;
+    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
+      if (eid === undefined) continue;
+      if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
+      const ex = world.stores.position.x[eid] ?? 0;
+      const ey = world.stores.position.y[eid] ?? 0;
+      if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
+      const vx = world.stores.velocity.x[eid] ?? 0;
+      const vy = world.stores.velocity.y[eid] ?? 0;
+      const projX = ex + vx * RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES;
+      const projY = ey + vy * RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES;
+      const relX = projX - playerX;
+      const relY = projY - playerY;
+      const forward = relX * dirX + relY * dirY;
+      if (
+        forward <= 0 ||
+        forward > Math.min(targetDist, RISK_REWARD_BLOCKED_CORRIDOR_THREAT_LOOKAHEAD_FT)
+      ) {
+        continue;
+      }
+      const lateral = Math.abs(relX * dirY - relY * dirX);
+      if (lateral > RISK_REWARD_BLOCKED_CORRIDOR_THREAT_WIDTH_FT) {
+        continue;
+      }
+      const dist = Math.hypot(projX - playerX, projY - playerY);
+      if (!best || dist < best.distance) {
+        best = { eid, x: ex, y: ey, distance: dist };
+      }
+    }
+    return best;
   }
 
   /** True if any alive, visible enemy is within NPC_APPROACH_THREAT_RADIUS_FT of
