@@ -142,7 +142,8 @@ export interface AIConfig {
   farmPullWeight?: number;
   /**
    * Execution order for travel routing vs local steering. Defaults to
-   * {@link AIPathingMode.LEGACY} so existing behavior is preserved.
+   * {@link AIPathingMode.RISK_REWARD_FUSED}; pass
+   * {@link AIPathingMode.LEGACY} explicitly when you need the old A/B baseline.
    */
   pathingMode?: AIPathingModeValue;
   /** Enable debug logging */

@@ -225,7 +225,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
 
   // AI configuration state
   const aiConfig = {
-    pathingMode: (persisted?.aiConfig?.pathingMode ?? AIPathingMode.LEGACY) as AIPathingModeValue,
+    pathingMode: (persisted?.aiConfig?.pathingMode ??
+      AIPathingMode.RISK_REWARD_FUSED) as AIPathingModeValue,
     visualRiskRewardFields: persisted?.aiConfig?.visualRiskRewardFields ?? false,
     threatPreviewFrames: persisted?.aiConfig?.threatPreviewFrames ?? 0,
     autoPauseOnDamage: persisted?.aiConfig?.autoPauseOnDamage ?? false,

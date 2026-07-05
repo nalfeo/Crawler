@@ -36,7 +36,7 @@ export const DEFAULT_CONFIG: Required<AIConfig> = {
   // never drag the player off-objective into an off-path fight — the failure
   // mode that previously forced this to 0.0 and blew the floor-clear budget.
   farmPullWeight: 0.07,
-  pathingMode: AIPathingMode.LEGACY,
+  pathingMode: AIPathingMode.RISK_REWARD_FUSED,
   debug: false,
 };
 
