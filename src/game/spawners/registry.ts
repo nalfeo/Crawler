@@ -150,6 +150,9 @@ const RATS_NEST: SpawnerArchetype = {
   spriteWidth: 3.25,
   spriteHeight: 3.25,
   contactDamage: 4,
+  // Slightly larger than the pool because rats emerge from further away and
+  // the nest is meant to feel like a bigger room presence.
+  arenaRadiusFt: 7,
   // Passive: a slow trickle of rats, with the occasional brute. Concurrent cap
   // kept low so the nest reads as juicy (regular spawn pulses) without flooding
   // Floor 1 — tuned against the headless win-rate gate.
@@ -197,6 +200,9 @@ const SLIME_POOL: SpawnerArchetype = {
   spriteWidth: 3.5,
   spriteHeight: 3.5,
   contactDamage: 5,
+  // Default arena size (6 ft, per registry policy); leapers close distance
+  // faster than the rats so the arena reads plenty large.
+  arenaRadiusFt: 6,
   // Passive: lone slimes ooze out slowly. Low concurrent cap keeps the pool
   // visibly active (steady spawn pulses) without swamping Floor 1.
   passive: {
