@@ -268,10 +268,11 @@ function createEquipmentLab(canvasHost: HTMLElement, controls: HTMLElement): () 
     private renderHud(): void {
       const bag = this.getBag();
       const state = getEquipmentState(this.world, this.playerEid);
-      const equippedCount =
-        state?.equipped && Object.values(state.equipped).filter((inst) => inst !== null).length > 0
-          ? new Set(Object.values(state.equipped).filter((inst) => inst !== null)).size
-          : 0;
+      const equippedInstanceIds =
+        state == null
+          ? []
+          : Object.values(state.equipped).filter((inst): inst is number => inst !== null);
+      const equippedCount = new Set(equippedInstanceIds).size;
       const charisma = getEffectiveStats(this.world, this.playerEid).charisma;
       const slotFilter = this.inventoryUI?.getEquipmentSlotFilter() ?? 'none';
 
