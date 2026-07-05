@@ -46,7 +46,7 @@ function parseArgs(): CLIArgs {
     sampleInterval: 15,
     weapon: null,
     enemyDamageMultiplier: 1,
-    pathingMode: AIPathingMode.LEGACY,
+    pathingMode: AIPathingMode.RISK_REWARD_FUSED,
     floorId: 'floor1',
     startPlayerLevel: 1,
   };
@@ -137,7 +137,7 @@ Options:
   --debug                 Enable verbose logging
   --enemy-damage-multiplier <n>
                            Multiply hostile Damage values (default: 1)
-  --pathing-mode <mode>    Pathing A/B mode: legacy | riskRewardFused (default: legacy)
+  --pathing-mode <mode>    Pathing A/B mode: legacy | riskRewardFused (default: riskRewardFused)
   --floor <id>            Scenario floor id (default: floor1)
   --start-level <n>       Start at player character level N (default: 1, no boost)
   --help, -h              Show this help message
