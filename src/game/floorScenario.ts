@@ -345,6 +345,103 @@ function resolvePassableRoomCenter(
   return floorMap.tileToWorld(center.x, center.y);
 }
 
+function tileKey(x: number, y: number): string {
+  return `${x},${y}`;
+}
+
+function resolveFreeNpcTileInRoom(
+  floorMap: FloorMap,
+  room: RoomData,
+  preferredTile: TilePoint,
+  occupiedTiles: ReadonlySet<string>,
+): TilePoint | null {
+  const isFree = (tx: number, ty: number): boolean =>
+    floorMap.tileMap.isPassable(tx, ty) && !occupiedTiles.has(tileKey(tx, ty));
+
+  if (room.interiorCells && room.interiorCells.length > 0) {
+    const sortedTiles = [...room.interiorCells]
+      .filter((cell) => isFree(cell.x, cell.y))
+      .sort((a, b) => {
+        const aDist =
+          (a.x - preferredTile.x) * (a.x - preferredTile.x) +
+          (a.y - preferredTile.y) * (a.y - preferredTile.y);
+        const bDist =
+          (b.x - preferredTile.x) * (b.x - preferredTile.x) +
+          (b.y - preferredTile.y) * (b.y - preferredTile.y);
+        if (aDist !== bDist) {
+          return aDist - bDist;
+        }
+        if (a.y !== b.y) {
+          return a.y - b.y;
+        }
+        return a.x - b.x;
+      });
+    return sortedTiles[0] ?? null;
+  }
+
+  const { x: bx, y: by, width: bw, height: bh } = room.bounds;
+  const minX = bx + 1;
+  const minY = by + 1;
+  const maxX = bx + bw - 2;
+  const maxY = by + bh - 2;
+  if (
+    preferredTile.x >= minX &&
+    preferredTile.x <= maxX &&
+    preferredTile.y >= minY &&
+    preferredTile.y <= maxY &&
+    isFree(preferredTile.x, preferredTile.y)
+  ) {
+    return preferredTile;
+  }
+
+  const maxRadius = Math.max(bw, bh);
+  for (let r = 0; r <= maxRadius; r += 1) {
+    for (let dy = -r; dy <= r; dy += 1) {
+      for (let dx = -r; dx <= r; dx += 1) {
+        if (r > 0 && Math.abs(dx) !== r && Math.abs(dy) !== r) {
+          continue;
+        }
+        const tx = preferredTile.x + dx;
+        const ty = preferredTile.y + dy;
+        if (tx >= minX && tx <= maxX && ty >= minY && ty <= maxY && isFree(tx, ty)) {
+          return { x: tx, y: ty };
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+function resolveNpcSpawnPosition(
+  world: GameWorld,
+  preferredPos: { x: number; y: number },
+  occupiedTiles: Set<string>,
+): { x: number; y: number } {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return preferredPos;
+  }
+
+  const preferredTile = floorMap.worldToTile(preferredPos.x, preferredPos.y);
+  const roomId = floorMap.roomGraph.getRoomAt(preferredTile.x, preferredTile.y);
+  const room = roomId >= 0 ? floorMap.roomGraph.get(roomId) : undefined;
+  if (room) {
+    const freeTile = resolveFreeNpcTileInRoom(floorMap, room, preferredTile, occupiedTiles);
+    if (freeTile) {
+      occupiedTiles.add(tileKey(freeTile.x, freeTile.y));
+      return floorMap.tileToWorld(freeTile.x, freeTile.y);
+    }
+  }
+
+  if (floorMap.tileMap.isPassable(preferredTile.x, preferredTile.y)) {
+    occupiedTiles.add(tileKey(preferredTile.x, preferredTile.y));
+    return floorMap.tileToWorld(preferredTile.x, preferredTile.y);
+  }
+
+  return preferredPos;
+}
+
 /**
  * Spawn harvestable resource nodes (mushrooms, flowers, lichens) across the
  * normal and spawn rooms of floor 1. Each def in HARVESTABLE_DEFS spawns up to
@@ -867,6 +964,7 @@ function spawnNpcFromPlacement(
     shopRoomPos: { x: number; y: number };
     questItemPos: { x: number; y: number };
   },
+  occupiedTiles: Set<string>,
 ): number {
   // Resolve position from room role or explicit position
   let x: number;
@@ -911,8 +1009,8 @@ function spawnNpcFromPlacement(
     y = objectiveTiles.welcomeOfficePos.y;
   }
 
-  // Spawn the NPC entity
-  return spawnNpc(world, x, y, placement.npcTypeId);
+  const spawnPos = resolveNpcSpawnPosition(world, { x, y }, occupiedTiles);
+  return spawnNpc(world, spawnPos.x, spawnPos.y, placement.npcTypeId);
 }
 
 /**
@@ -1059,8 +1157,9 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       staircasePos,
       welcomeOfficePos,
       slimeRatRoomPos,
-      // Both the Spell Broker and Sweaty Merchant now live in the welcome bar,
-      // so point AI navigation targets there instead of the old separate rooms.
+      // Seed these to the welcome bar; after NPC spawn we tighten them to the
+      // exact spawned NPC positions so shared-room hubs stay selectable and AI
+      // navigation targets the actual quest giver/merchant tile.
       spellQuestGiverPos: welcomeOfficePos,
       shopRoomPos: welcomeOfficePos,
       questItemPos,
@@ -1134,49 +1233,77 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   setGoalFlag(world, 'floor1-leave-floor-complete', false);
 
   // Spawn NPCs from placement definitions (if available in manifest)
+  const floor1State = world.floor1;
   const npcPlacements = floor1Manifest.npcPlacements;
+  const occupiedNpcTiles = new Set<string>();
+  const updateObjective = (patch: Partial<typeof floor1State.objective>): void => {
+    floor1State.objective = {
+      ...floor1State.objective,
+      ...patch,
+    };
+  };
   if (npcPlacements && npcPlacements.length > 0) {
     // Data-driven NPC spawning
     for (const placement of npcPlacements) {
-      const eid = spawnNpcFromPlacement(world, placement, {
-        welcomeOfficePos,
-        safeRoomPos,
-        staircasePos,
-        slimeRatRoomPos,
-        spellQuestGiverPos,
-        shopRoomPos,
-        questItemPos,
-      });
+      const eid = spawnNpcFromPlacement(
+        world,
+        placement,
+        {
+          welcomeOfficePos,
+          safeRoomPos,
+          staircasePos,
+          slimeRatRoomPos,
+          spellQuestGiverPos,
+          shopRoomPos,
+          questItemPos,
+        },
+        occupiedNpcTiles,
+      );
 
       // Store EIDs based on NPC type for backward compatibility
+      const npcX = world.stores.position.x[eid];
+      const npcY = world.stores.position.y[eid];
       if (placement.npcTypeId === 'tutorial-goon') {
         world.floor1.guideNpcEid = eid;
       } else if (placement.npcTypeId === 'spell-quest-giver') {
         world.floor1.spellQuestGiverNpcEid = eid;
+        if (npcX !== undefined && npcY !== undefined) {
+          updateObjective({ spellQuestGiverPos: { x: npcX, y: npcY } });
+        }
       } else if (placement.npcTypeId === 'shopkeeper') {
         world.floor1.shopkeeperNpcEid = eid;
+        if (npcX !== undefined && npcY !== undefined) {
+          updateObjective({ shopRoomPos: { x: npcX, y: npcY } });
+        }
       }
     }
   } else {
     // Fallback to hardcoded NPC spawning (backward compatibility)
-    world.floor1.guideNpcEid = spawnNpc(
+    const guidePos = resolveNpcSpawnPosition(
       world,
-      world.floor1.objective.welcomeOfficePos.x,
-      world.floor1.objective.welcomeOfficePos.y,
-      'tutorial-goon',
+      world.floor1.objective.welcomeOfficePos,
+      occupiedNpcTiles,
+    );
+    world.floor1.guideNpcEid = spawnNpc(world, guidePos.x, guidePos.y, 'tutorial-goon');
+    const spellPos = resolveNpcSpawnPosition(
+      world,
+      world.floor1.objective.welcomeOfficePos,
+      occupiedNpcTiles,
     );
     world.floor1.spellQuestGiverNpcEid = spawnNpc(
       world,
-      world.floor1.objective.welcomeOfficePos.x,
-      world.floor1.objective.welcomeOfficePos.y,
+      spellPos.x,
+      spellPos.y,
       'spell-quest-giver',
     );
-    world.floor1.shopkeeperNpcEid = spawnNpc(
+    updateObjective({ spellQuestGiverPos: spellPos });
+    const shopPos = resolveNpcSpawnPosition(
       world,
-      world.floor1.objective.welcomeOfficePos.x,
-      world.floor1.objective.welcomeOfficePos.y,
-      'shopkeeper',
+      world.floor1.objective.welcomeOfficePos,
+      occupiedNpcTiles,
     );
+    world.floor1.shopkeeperNpcEid = spawnNpc(world, shopPos.x, shopPos.y, 'shopkeeper');
+    updateObjective({ shopRoomPos: shopPos });
   }
 
   // Plant the welcome wayfinding signs now that NPCs exist, so a sign never

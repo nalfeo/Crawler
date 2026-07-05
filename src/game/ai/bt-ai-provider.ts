@@ -508,6 +508,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   private retreatTargetX: number | null = null;
   private retreatTargetY: number | null = null;
   private retreatRepickFrame: number = 0;
+  private retreatThreatEid: number | null = null;
   /**
    * Persistent melee-kite orbit direction (+1 / -1) and the frame it was last
    * flipped. Held across polls so the player circles the enemy steadily instead
@@ -724,10 +725,22 @@ export class BehaviorTreeAI implements AIInputProvider {
    * behaviors (interact / collect / explore) and keeps clearing the floor.
    */
   /** Clear the retreat latch and discard any cached kite target. */
-  private endRetreat(): void {
+  private endRetreat(world?: GameWorld): void {
+    if (
+      world &&
+      this.retreating &&
+      this.retreatThreatEid !== null &&
+      this.getPlayerHealthFraction(world) < this.config.retreatThreshold
+    ) {
+      this.ignoredEnemyUntilFrame.set(
+        this.retreatThreatEid,
+        world.frameCount + Math.max(RETREAT_REPICK_INTERVAL_FRAMES * 4, 60),
+      );
+    }
     this.retreating = false;
     this.retreatTargetX = null;
     this.retreatTargetY = null;
+    this.retreatThreatEid = null;
   }
 
   private buildRetreatBehavior(): BTNode {
@@ -735,7 +748,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       'Retreat',
       condition('Low Health Under Threat', (ctx) => {
         if (ctx.healthPercent >= this.config.retreatThreshold) {
-          this.endRetreat();
+          this.endRetreat(ctx.world);
           return false;
         }
         const threat = this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY);
@@ -747,10 +760,11 @@ export class BehaviorTreeAI implements AIInputProvider {
           ? this.config.retreatDangerRadius * RETREAT_HYSTERESIS_MULT
           : this.config.retreatDangerRadius;
         if (!threat || threat.distance > radius) {
-          this.endRetreat();
+          this.endRetreat(ctx.world);
           return false;
         }
         this.retreating = true;
+        this.retreatThreatEid = threat.eid;
         ctx.blackboard['retreatThreat'] = threat;
         return true;
       }),
@@ -2695,6 +2709,15 @@ export class BehaviorTreeAI implements AIInputProvider {
       this.releaseDetourCommitment();
       return target;
     }
+    if (world.playerInSafeRoom && target.eid >= 0 && this.committedDetourNpcEid === null) {
+      // Shared-room hubs make same-safe-room NPCs visible while the player is
+      // retreating through the welcome room from a dynamic objective (enemy/loot).
+      // Do not start a fresh pinball detour in that state; once the dynamic
+      // objective is resumed outside the safe room, the normal detour rules can
+      // evaluate again. Existing detour commitments still fall through to the
+      // hysteresis/no-progress path below so safe-room mouth flicker stays stable.
+      return target;
+    }
     if (world.frameCount < this.progressGoalSuppressedUntilFrame) {
       // Stall-recovery is suppressing wedged progress goals. Yield entirely — drop
       // any held commitment AND make no fresh one — so the BT falls through to
@@ -3641,6 +3664,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           playerX,
           playerY,
           reason,
+          floor1.shopkeeperNpcEid ?? -1,
         ),
       );
     }
@@ -3668,6 +3692,7 @@ export class BehaviorTreeAI implements AIInputProvider {
             playerX,
             playerY,
             reason,
+            floor1.shopkeeperNpcEid ?? -1,
           ),
         );
       }
@@ -3747,6 +3772,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           playerX,
           playerY,
           reason,
+          floor1.spellQuestGiverNpcEid ?? -1,
         ),
       );
     }
@@ -3777,6 +3803,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           playerX,
           playerY,
           reason,
+          floor1.spellQuestGiverNpcEid ?? -1,
         ),
       );
     }
@@ -4652,24 +4679,36 @@ export class BehaviorTreeAI implements AIInputProvider {
       CONTACT_SAFE_ORBIT_FT,
       Math.min(reachFt * RANGED_STANDOFF_FRACTION, RANGED_STANDOFF_ABS_FT),
     );
+    const contactThreatRadius = desiredOrbit + RANGED_APPROACH_BUFFER_FT;
+    let activeTarget = target;
 
-    if (target.distance > desiredOrbit + RANGED_APPROACH_BUFFER_FT) {
+    // If a different enemy has already pushed into the standoff/contact bubble,
+    // kite that immediate threat first instead of continuing to "close" on a
+    // farther target and tanking free body-contact hits on the way in.
+    if (target.distance > contactThreatRadius) {
+      const nearbyThreat = this.findNearestEnemy(world, playerX, playerY, contactThreatRadius);
+      if (nearbyThreat && nearbyThreat.eid !== target.eid) {
+        activeTarget = nearbyThreat;
+      }
+    }
+
+    if (activeTarget.distance > contactThreatRadius) {
       // Too far to orbit: navigate toward a point at the desired standoff distance
       // from the enemy so A* can plan the full route.
-      const dx = target.x - playerX;
-      const dy = target.y - playerY;
-      const scale = (target.distance - desiredOrbit) / target.distance;
+      const dx = activeTarget.x - playerX;
+      const dy = activeTarget.y - playerY;
+      const scale = (activeTarget.distance - desiredOrbit) / activeTarget.distance;
       return {
         targetX: playerX + dx * scale,
         targetY: playerY + dy * scale,
-        reason: `Closing to ranged standoff (${desiredOrbit.toFixed(1)}ft) from ${target.distance.toFixed(1)}ft`,
+        reason: `Closing to ranged standoff (${desiredOrbit.toFixed(1)}ft) from ${activeTarget.distance.toFixed(1)}ft`,
       };
     }
 
     // At or inside the standoff band: orbit laterally while the radial correction
     // keeps the distance near desiredOrbit (pushing away if too close, nudging in
     // if slightly too far).
-    return this.computeRangedKiteTarget(world, playerX, playerY, target, desiredOrbit);
+    return this.computeRangedKiteTarget(world, playerX, playerY, activeTarget, desiredOrbit);
   }
 
   /**
@@ -5037,6 +5076,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.retreatTargetX = null;
     this.retreatTargetY = null;
     this.retreatRepickFrame = 0;
+    this.retreatThreatEid = null;
     this.opportunisticPullX = 0;
     this.opportunisticPullY = 0;
     this.farmPullX = 0;

@@ -2426,12 +2426,21 @@ export class MainGameScene extends Phaser.Scene {
     const playerX = this.world.stores.position.x[this.playerEid] ?? 0;
     const playerY = this.world.stores.position.y[this.playerEid] ?? 0;
 
-    // Find nearest NPC with nearbyPlayer flag set
+    // Find the nearest NPC with nearbyPlayer flag set so shared-room hubs remain
+    // selectable when several NPCs are in interaction range at once.
     let nearNpcEid = -1;
+    let nearNpcDistanceSq = Number.POSITIVE_INFINITY;
     for (const [eid, instance] of this.world.npcs.entries()) {
       if (instance.nearbyPlayer) {
-        nearNpcEid = eid;
-        break;
+        const npcX = this.world.stores.position.x[eid] ?? 0;
+        const npcY = this.world.stores.position.y[eid] ?? 0;
+        const dx = playerX - npcX;
+        const dy = playerY - npcY;
+        const distanceSq = dx * dx + dy * dy;
+        if (distanceSq < nearNpcDistanceSq) {
+          nearNpcDistanceSq = distanceSq;
+          nearNpcEid = eid;
+        }
       }
     }
 

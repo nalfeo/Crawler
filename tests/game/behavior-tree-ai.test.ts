@@ -845,6 +845,38 @@ describe('BehaviorTreeAI', () => {
     expect(decision.reason).toContain('Clearing nearby threat before NPC interaction');
   });
 
+  it('treats shared-room merchant goals as direct NPC progress targets', () => {
+    const world = createTestWorld({ seed: 12 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    meetTutorialGoon(world);
+    world.playerLevel.level = 2;
+    world.floor1!.objective.questCompleted = true;
+    world.floorMap = makeOpenRoom(40, 20);
+    world.stores.position.x[player] = 14;
+    world.stores.position.y[player] = 14;
+
+    const shopkeeperNpcEid = world.floor1!.shopkeeperNpcEid;
+    const spellBrokerEid = world.floor1!.spellQuestGiverNpcEid;
+    expect(shopkeeperNpcEid).toBeDefined();
+    expect(spellBrokerEid).toBeDefined();
+    world.stores.position.x[shopkeeperNpcEid!] = 40;
+    world.stores.position.y[shopkeeperNpcEid!] = 14;
+    world.stores.position.x[spellBrokerEid!] = 36;
+    world.stores.position.y[spellBrokerEid!] = 14;
+    world.floor1!.objective.shopRoomPos = { x: 40, y: 14 };
+    world.floor1!.objective.spellQuestGiverPos = { x: 36, y: 14 };
+
+    const ai = new BehaviorTreeAI({ seed: 12 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.EXPLORE);
+    expect(decision.targetEid).toBe(shopkeeperNpcEid);
+    expect(decision.reason).toBe('Seeking Shopkeeper to start the merchant errand');
+  });
+
   it('does not engage an unseen enemy once minimap/FOV perception is initialized', () => {
     const world = createTestWorld({ seed: 19 });
     spawnPlayer(world, 10, 10);
@@ -1108,6 +1140,23 @@ describe('BehaviorTreeAI', () => {
     expect(decision.reason).toContain('Ranged orbit');
     // Radial correction pushes the AI away from the enemy (negative X when enemy
     // is at +X), so the target must be to the left of the player's start.
+    expect(decision.targetX!).toBeLessThan(0);
+  });
+
+  it('preempts a farther ranged close with an immediate nearby threat', () => {
+    const world = createTestWorld({ seed: 7 });
+    spawnPlayer(world, 0, 0);
+    const farEnemy = spawnEnemy(world, 30, 0, 20);
+    const closeEnemy = spawnEnemy(world, 3.75, 0, 20);
+    setActiveWeapon(world, getWeaponDef('bow')!);
+
+    const ai = new BehaviorTreeAI({ seed: 7 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.targetEid).toBe(closeEnemy);
+    expect(decision.targetEid).not.toBe(farEnemy);
+    expect(decision.reason).toContain('Ranged orbit');
     expect(decision.targetX!).toBeLessThan(0);
   });
 

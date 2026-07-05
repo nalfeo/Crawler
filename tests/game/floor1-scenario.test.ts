@@ -150,7 +150,7 @@ describe('floor1Scenario', () => {
     expect(avg).toBeLessThanOrEqual(6);
   });
 
-  it('co-locates all quest NPCs (shopkeeper, spell broker) in the welcome bar', () => {
+  it('keeps welcome-bar quest NPCs in one room but on distinct tiles', () => {
     const seeds = [42, 7, 99, 123, 2024, 1, 14, 321, 999, 500];
     for (const seed of seeds) {
       const world = createTestWorld({ seed });
@@ -158,7 +158,8 @@ describe('floor1Scenario', () => {
       initializeFloor1Scenario(world, player);
 
       const map = world.floorMap!;
-      const objective = world.floor1!.objective;
+      const floor1 = world.floor1!;
+      const objective = floor1.objective;
 
       const welcomeTile = map.worldToTile(
         objective.welcomeOfficePos.x,
@@ -166,20 +167,44 @@ describe('floor1Scenario', () => {
       );
       const welcomeRoomId = map.roomGraph.getRoomAt(welcomeTile.x, welcomeTile.y);
 
-      // Shopkeeper is now in the welcome bar.
-      const shopTile = map.worldToTile(objective.shopRoomPos.x, objective.shopRoomPos.y);
+      const tutorialTile = map.worldToTile(
+        world.stores.position.x[floor1.guideNpcEid!]!,
+        world.stores.position.y[floor1.guideNpcEid!]!,
+      );
+      const shopTile = map.worldToTile(
+        world.stores.position.x[floor1.shopkeeperNpcEid!]!,
+        world.stores.position.y[floor1.shopkeeperNpcEid!]!,
+      );
+      const spellTile = map.worldToTile(
+        world.stores.position.x[floor1.spellQuestGiverNpcEid!]!,
+        world.stores.position.y[floor1.spellQuestGiverNpcEid!]!,
+      );
+
+      expect(map.roomGraph.getRoomAt(tutorialTile.x, tutorialTile.y)).toBe(welcomeRoomId);
+
       const shopRoomId = map.roomGraph.getRoomAt(shopTile.x, shopTile.y);
       expect(shopRoomId, `seed ${seed}: shopkeeper must be in the welcome bar`).toBe(welcomeRoomId);
 
-      // Spell broker is now in the welcome bar.
-      const spellTile = map.worldToTile(
-        objective.spellQuestGiverPos.x,
-        objective.spellQuestGiverPos.y,
-      );
       const spellRoomId = map.roomGraph.getRoomAt(spellTile.x, spellTile.y);
       expect(spellRoomId, `seed ${seed}: spell broker must be in the welcome bar`).toBe(
         welcomeRoomId,
       );
+
+      const uniqueNpcTiles = new Set([
+        `${tutorialTile.x},${tutorialTile.y}`,
+        `${shopTile.x},${shopTile.y}`,
+        `${spellTile.x},${spellTile.y}`,
+      ]);
+      expect(uniqueNpcTiles.size, `seed ${seed}: welcome-bar NPCs should not stack`).toBe(3);
+
+      expect(objective.shopRoomPos).toEqual({
+        x: world.stores.position.x[floor1.shopkeeperNpcEid!]!,
+        y: world.stores.position.y[floor1.shopkeeperNpcEid!]!,
+      });
+      expect(objective.spellQuestGiverPos).toEqual({
+        x: world.stores.position.x[floor1.spellQuestGiverNpcEid!]!,
+        y: world.stores.position.y[floor1.spellQuestGiverNpcEid!]!,
+      });
 
       // Quest item (rat tail) must still be in a distinct room from welcome.
       const itemTile = map.worldToTile(objective.questItemPos.x, objective.questItemPos.y);
