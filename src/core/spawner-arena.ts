@@ -26,9 +26,11 @@ import { TileFlags } from '../shared/map-types.js';
 export const SPAWNER_MAX_BANKED_CHILDREN = 10;
 
 /**
- * Result of the sealable-vs-fence decision. Mirrors the two arenaKind SoA
- * values (`0` = sealed, `1` = fence). `unresolved` is a callable option so
- * tests can express the "no floorMap yet" state without touching the SoA.
+ * Result of the sealable-vs-fence decision. Mirrors the two concrete arenaKind
+ * SoA values (`0` = sealed-room, `1` = open-fence). There is intentionally no
+ * `unresolved` member here: the "no floorMap yet / not yet decided" state is
+ * represented in the SoA by the numeric sentinel `255`
+ * (`SPAWNER_ARENA_KIND_UNRESOLVED`), never by this string union.
  */
 export type ArenaKind = 'sealed-room' | 'open-fence';
 

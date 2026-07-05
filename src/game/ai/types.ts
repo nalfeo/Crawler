@@ -253,15 +253,25 @@ export interface SpawnerArenaMetrics {
   /**
    * Count of spawners that raised a *real* barrier at some point in the run —
    * either a fence snapshot (open-fence arenas) or one or more locked doors
-   * (sealed-room arenas). Resolved arenas count here too because the run
-   * necessarily passed through the armed state on the way to resolution.
+   * (sealed-room arenas). Derived from the persistent `spawnerArenaEverArmed`
+   * latch, which is set ONLY when a non-empty barrier is stored and is never
+   * cleared on resolve. An IDLE→RESOLVED short-circuit (spawner killed before
+   * it ever armed) is deliberately excluded — it never trapped the player.
    *
    * This is the correct denominator for "did the AI resolve arenas that
    * actually trapped it?" — a triggered arena whose barrier code path was a
-   * no-op (empty fence ring, roomless spawner) never traps the AI, so
-   * asking the AI to resolve it would be a false requirement.
+   * no-op (empty fence ring, roomless spawner, no matching door entity) never
+   * traps the AI, so asking the AI to resolve it would be a false requirement.
    */
   barrierArmed: number;
+  /**
+   * Count of arenas that both armed a real barrier AND reached the terminal
+   * resolved state (`arenaState === 2`). This — not `resolved` — is the correct
+   * numerator for the ADR-0045 resolved/armed gate: `resolved` also includes
+   * IDLE→RESOLVED short-circuits that never armed, which would push the ratio
+   * above 1.0 and mask a genuine "AI walked past an armed barrier" miss.
+   */
+  resolvedArmed: number;
   /** Sum of `bankedXp` across all spawners at run end. */
   bankedXpTotal: number;
 }

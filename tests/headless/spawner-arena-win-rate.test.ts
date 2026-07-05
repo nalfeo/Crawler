@@ -120,10 +120,12 @@ describe('spawner battle-arena · headless Floor-1 sweep', () => {
       if (!arenas) continue;
       anyTriggered += arenas.triggered;
       totalBarrierArmed += arenas.barrierArmed;
-      // A resolved arena necessarily armed at some point in the run.
-      totalResolvedAmongArmed += arenas.resolved;
+      // `resolvedArmed` counts arenas that both armed a real barrier AND
+      // resolved — the only ones that necessarily passed through the armed
+      // state (a bare `resolved` also includes IDLE→RESOLVED short-circuits).
+      totalResolvedAmongArmed += arenas.resolvedArmed;
       perSeed.push(
-        `${seed}:t=${arenas.triggered}/armed=${arenas.barrierArmed}/r=${arenas.resolved}/o=${s.outcome}`,
+        `${seed}:t=${arenas.triggered}/armed=${arenas.barrierArmed}/ra=${arenas.resolvedArmed}/r=${arenas.resolved}/o=${s.outcome}`,
       );
     }
     console.log(
@@ -147,18 +149,21 @@ describe('spawner battle-arena · headless Floor-1 sweep', () => {
     // arena whose barrier code path was a no-op (empty fence ring, roomless
     // spawner) never actually traps the AI. Forcing the AI to fight those
     // is a policy choice for future work, not the fix the user asked for.
+    // Numerator is `resolvedArmed` (resolved AND armed), NOT the bare
+    // `resolved` count, which also includes IDLE→RESOLVED short-circuits that
+    // never armed — those would push the ratio above 1.0 and mask a real miss.
     // See ADR 0045 for the semantics.
     let armed = 0;
-    let resolved = 0;
+    let resolvedArmed = 0;
     const misses: string[] = [];
     for (const seed of SAMPLE_SEEDS) {
       const s = runs.get(seed)!;
       const arenas = s.spawnerArenas;
       if (!arenas) continue;
       armed += arenas.barrierArmed;
-      resolved += arenas.resolved;
-      if (arenas.barrierArmed > arenas.resolved) {
-        misses.push(`${seed}:armed=${arenas.barrierArmed}/resolved=${arenas.resolved}`);
+      resolvedArmed += arenas.resolvedArmed;
+      if (arenas.barrierArmed > arenas.resolvedArmed) {
+        misses.push(`${seed}:armed=${arenas.barrierArmed}/resolvedArmed=${arenas.resolvedArmed}`);
       }
     }
     if (armed === 0) {
@@ -171,10 +176,10 @@ describe('spawner battle-arena · headless Floor-1 sweep', () => {
       // starts asserting the 95% rate automatically.
       return;
     }
-    const rate = resolved / armed;
+    const rate = resolvedArmed / armed;
     expect(
       rate,
-      `[arena-lockin] resolved/armed ${(rate * 100).toFixed(0)}% (${resolved}/${armed}) ` +
+      `[arena-lockin] resolvedArmed/armed ${(rate * 100).toFixed(0)}% (${resolvedArmed}/${armed}) ` +
         `below 95% floor — misses: [${misses.join(', ')}]`,
     ).toBeGreaterThanOrEqual(0.95);
   });
