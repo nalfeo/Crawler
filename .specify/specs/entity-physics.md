@@ -62,6 +62,9 @@ sheet; `src/core/physics-defs.ts` is the composed runtime registry. CI
 checks fail on drift between the authored defs, the composed runtime view,
 and the review sheet — including missing entries, schema violations, or
 mismatched numeric values.
+For this spec, a variance range is the authored min/max band around a
+mob's default body values; Slice 1 may keep it zero-width (`min = default
+= max`) so migration stays parity-safe.
 
 **R7.** Slice-1 landing MUST NOT shift `tests/headless/floor1-completion.test.ts`
 win-rate below 90% (per project Rule #13). Slice-2 landing MUST NOT shift
@@ -86,9 +89,9 @@ ranges, then have the composed runtime registry read from it.
 ### Slice 1 (Size foundation)
 
 1. Add `Size` component + `size` store.
-2. Extend mob definitions with body defaults + variance ranges beside
-   sprite/stats/AI metadata, keeping
-   `docs/knowledge/game-design/entity-sizing.md` as the review sheet.
+2. Extend mob definitions with body defaults + variance ranges beside sprite/stats/AI
+   metadata, keeping `docs/knowledge/game-design/entity-sizing.md` as the
+   review sheet.
 3. Add `src/core/physics-defs.ts` composition + `check:physics-defs-sync`
    gate.
 4. Route every spawner through the composed registry, with mob spawners
