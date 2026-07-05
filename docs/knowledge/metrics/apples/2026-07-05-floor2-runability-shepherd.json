@@ -1,0 +1,11 @@
+{
+  "session": "floor2-runability-shepherd",
+  "date": "2026-07-05",
+  "branch": "floor2-slice8-scenario-wiring",
+  "description": "Shepherd PR #761 to clean squash-merge: rebase off already-merged #721, fix dead stair-radius export, make Governor win-rate gate scope honest, review harness + valid 3-apple ledger",
+  "estimate": "🍎🍎🍎",
+  "actual": "🍎🍎🍎",
+  "verdict": "on-estimate",
+  "rationale": "Rebase --onto origin/main to drop the 5 commits already captured by #721's squash (verified git diff 35c3397e 74b4f74d was empty), leaving only the 4 genuinely-new commits — clean, no conflicts, no #721 re-introduction. Investigated the flagged dead FLOOR2_STAIR_MARKER_RADIUS_FT export on the merits and WIRED it: hoisted to src/shared/constants.ts and consumed it as the real staircase interaction radius in MainGameScene (marker render + proximity check), plus a lockstep drift-guard test against the manifest. Made the Governor gate scope honest per rules #12/#13 — hard-gate only wired floors (Floor 1 ~98.3%), report-not-gate Floor 2's expected 0% — without weakening the Floor-1 90% gate or bending seeds. Ran the 3-apple review harness (separate-model plan review + code-review loop, both APPROVE) and recorded a valid ledger; authored ADR 0044 for the cross-layer decisions. On-estimate: no single hard sub-problem, but breadth (rebase reasoning, dead-code merits call, honesty-preserving gate fix, review harness, ADR, thread resolution, merge) squarely medium.",
+  "systems_touched": ["floor2", "main-game-scene", "faction-relations", "bootstrap"]
+}
