@@ -1151,8 +1151,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
 
     const sampleRadius = 30; // feet
     const gridSpacing = 2; // feet
-    const DANGER_RADIUS = 12; // ft — mirrors RISK_REWARD_DANGER_RADIUS_FT in scorer
+    const DANGER_RADIUS = 15; // ft — mirrors updated RISK_REWARD_DANGER_RADIUS_FT in scorer
     const REWARD_RADIUS = 10; // ft — pickup pull radius
+    const FOG_DANGER = 0.45; // mirrors RISK_REWARD_FOG_DANGER
     const DRAW_THRESHOLD = 0.05; // skip cells with no meaningful field value
 
     // Live enemies only — mirrors scorer's health.current > 0 filter (dead corpses excluded)
@@ -1202,11 +1203,20 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     for (let x = playerX - sampleRadius; x <= playerX + sampleRadius; x += gridSpacing) {
       for (let y = playerY - sampleRadius; y <= playerY + sampleRadius; y += gridSpacing) {
         let danger = 0;
-        for (const t of threatPoints) {
-          const dist = Math.hypot(x - t.x, y - t.y);
-          if (dist < DANGER_RADIUS) {
-            const norm = 1 - dist / DANGER_RADIUS;
-            danger += norm * norm;
+        // Wall danger — same logic as scorer: walls are maximum danger
+        if (!world.floorMap!.isPassableAt(x, y)) {
+          danger = 2.0; // RISK_REWARD_WALL_DANGER
+        } else {
+          for (const t of threatPoints) {
+            const dist = Math.hypot(x - t.x, y - t.y);
+            if (dist < DANGER_RADIUS) {
+              const norm = 1 - dist / DANGER_RADIUS;
+              danger += norm * norm;
+            }
+          }
+          // Fog-of-war baseline danger
+          if (!world.floorMap!.isVisibleAt(x, y)) {
+            danger += FOG_DANGER;
           }
         }
 
