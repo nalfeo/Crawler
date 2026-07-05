@@ -264,13 +264,21 @@ const logger = createLogger('game:bt-ai-provider');
 const TRAVEL_HEADING_EPSILON = 1e-6;
 const RISK_REWARD_CANDIDATE_OFFSETS_DEG = [0, -15, 15, -30, 30, -45, 45] as const;
 const RISK_REWARD_DANGER_LOOKAHEAD_FT = 8;
-const RISK_REWARD_DANGER_RADIUS_FT = 12;
+const RISK_REWARD_DANGER_RADIUS_FT = 15; // wider threat halo → earlier avoidance
 const RISK_REWARD_W_PROGRESS = 1.15;
 const RISK_REWARD_W_REWARD = 0.95;
-const RISK_REWARD_W_DANGER = 1.45;
+const RISK_REWARD_W_DANGER = 1.75; // increased from 1.45 — danger must strongly outweigh progress
 // Continuity bonus: small nudge toward the previous frame's heading to dampen
 // oscillation when candidates score nearly equally (e.g. dense symmetric packs).
 const RISK_REWARD_W_CONTINUITY = 0.18;
+// Heading into a wall → maximum danger; prevents player from hugging walls into enemies.
+const RISK_REWARD_WALL_DANGER = 2.0;
+// Unseen-area baseline: moderate penalty for heading into fog-of-war.
+// Encourages the AI to prefer lit, known corridors over blind rushing.
+const RISK_REWARD_FOG_DANGER = 0.45;
+// Door-crossing penalty: the AI doesn't know what is behind a closed door;
+// treat a direct path through it as risky until the far side is visible.
+const RISK_REWARD_DOOR_DANGER = 0.6;
 
 // Assembled once from the TRAVEL_* tuning constants; the pure steering module
 // reads it by reference each frame and never mutates it.
@@ -2665,16 +2673,39 @@ export class BehaviorTreeAI implements AIInputProvider {
 
       const sampleX = playerX + dirX * RISK_REWARD_DANGER_LOOKAHEAD_FT;
       const sampleY = playerY + dirY * RISK_REWARD_DANGER_LOOKAHEAD_FT;
-      // Wall occlusion: if the sample point is inside a wall, enemies behind it
-      // cannot realistically threaten through it — skip their contribution.
-      const samplePassable = !world.floorMap || world.floorMap.isPassableAt(sampleX, sampleY);
+      const floorMap = world.floorMap;
       let danger = 0;
-      if (samplePassable) {
+
+      if (floorMap && !floorMap.isPassableAt(sampleX, sampleY)) {
+        // Sample point is inside a wall: assign maximum danger so the player
+        // never hugs a wall into an enemy (previously this was treated as safe).
+        danger = RISK_REWARD_WALL_DANGER;
+      } else {
+        // Normal enemy threat accumulation
         for (const threat of threatPoints) {
           const dist = Math.hypot(threat.x - sampleX, threat.y - sampleY);
           if (dist >= RISK_REWARD_DANGER_RADIUS_FT) continue;
           const norm = 1 - dist / RISK_REWARD_DANGER_RADIUS_FT;
           danger += norm * norm;
+        }
+
+        if (floorMap) {
+          // Unseen-area penalty: heading into fog-of-war is risky (unknown enemies).
+          if (!floorMap.isVisibleAt(sampleX, sampleY)) {
+            danger += RISK_REWARD_FOG_DANGER;
+          }
+
+          // Door-crossing penalty: path toward a door whose far side isn't visible.
+          // Sample halfway along so the penalty activates when approaching the door.
+          const midX = playerX + dirX * RISK_REWARD_DANGER_LOOKAHEAD_FT * 0.55;
+          const midY = playerY + dirY * RISK_REWARD_DANGER_LOOKAHEAD_FT * 0.55;
+          const midTile = floorMap.worldToTile(midX, midY);
+          if (
+            floorMap.tileMap.isDoor(midTile.x, midTile.y) &&
+            !floorMap.isVisibleAt(sampleX, sampleY)
+          ) {
+            danger += RISK_REWARD_DOOR_DANGER;
+          }
         }
       }
 
