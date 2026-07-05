@@ -1025,6 +1025,20 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       graphics.strokePath();
     }
 
+    if (upcomingPoints.length > 0) {
+      graphics.lineStyle(1, 0x80deea, 0.55);
+      graphics.beginPath();
+      graphics.moveTo(ftToPx(playerX), ftToPx(playerY));
+      for (const point of upcomingPoints) {
+        graphics.lineTo(ftToPx(point.x), ftToPx(point.y));
+      }
+      graphics.strokePath();
+      graphics.fillStyle(0x80deea, 0.65);
+      for (const point of upcomingPoints) {
+        graphics.fillCircle(ftToPx(point.x), ftToPx(point.y), 3.5);
+      }
+    }
+
     const activeWaypoint =
       worldPoints[Math.min(nav.pathIndex, Math.max(0, worldPoints.length - 1))];
     if (activeWaypoint) {
