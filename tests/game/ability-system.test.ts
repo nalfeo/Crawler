@@ -14,6 +14,7 @@ import {
   queueAbilityTrigger,
   statsSystem,
 } from '../../src/game/systems/index.js';
+import { forceActivateAbility } from '../../src/game/systems/abilitySystem.js';
 import { applyCatalogEffect } from '../../src/game/systems/progressionEffects.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -427,5 +428,93 @@ describe('abilitySystem', () => {
     expect(glows).toHaveLength(1);
     expect(glows[0]!.x).toBe(0);
     expect(glows[0]!.y).toBe(0);
+  });
+
+  describe('forceActivateAbility', () => {
+    it('returns false for passive abilities', () => {
+      const { world, player } = setupPlayer();
+      grantPassiveAbility(world, player, 'veteran-instinct');
+      const beforeMods = world.statModifiers.length;
+
+      const fired = forceActivateAbility(world, player, 'veteran-instinct');
+
+      expect(fired).toBe(false);
+      // No `active` modifier for the passive ability id gets pushed.
+      expect(
+        world.statModifiers.filter((m) => m.sourceId === `veteran-instinct:active:${player}`),
+      ).toHaveLength(0);
+      expect(world.statModifiers.length).toBe(beforeMods);
+    });
+
+    it('returns false for unknown ability ids', () => {
+      const { world, player } = setupPlayer();
+
+      expect(forceActivateAbility(world, player, 'not-a-real-ability')).toBe(false);
+    });
+
+    it('returns false when the holder has no ability state', () => {
+      const { world } = setupPlayer();
+      // spawn a second entity but do NOT allocate ability state for it
+      const stranger = spawnEnemy(world, 5, 5, 100);
+      expect(world.abilityStatesByEntity.has(stranger)).toBe(false);
+
+      expect(forceActivateAbility(world, stranger, 'battle-focus')).toBe(false);
+    });
+
+    it('returns false for spells when the spells feature is locked', () => {
+      const { world, player } = setupPlayer();
+      world.featureUnlocks.spells = false;
+      world.playerMp = 50;
+      // memorizeSpell equips it in an active slot even while the feature is locked.
+      memorizeSpell(world, player, 'fireball');
+      world.frameCount = 100;
+
+      const fired = forceActivateAbility(world, player, 'fireball');
+
+      expect(fired).toBe(false);
+      const state = world.abilityStatesByEntity.get(player)!;
+      expect(state.cooldownByAbilityId.has('fireball')).toBe(false);
+      expect(world.playerMp).toBe(50);
+    });
+
+    it('bypasses cooldown and MP cost when it fires, applies effects, and records the cast frame', () => {
+      const { world, player } = setupPlayer();
+      world.featureUnlocks.spells = true;
+      world.playerMp = 0; // heal normally costs 10 MP; force must ignore that.
+      memorizeSpell(world, player, 'heal');
+      world.stores.health.max[player] = 100;
+      world.stores.health.current[player] = 50;
+
+      const state = world.abilityStatesByEntity.get(player)!;
+      // Pre-seed the cooldown map so a normal activation would be blocked.
+      state.cooldownByAbilityId.set('heal', 1000);
+      world.frameCount = 1001;
+
+      const fired = forceActivateAbility(world, player, 'heal');
+
+      expect(fired).toBe(true);
+      // Cast frame stamped at the current frame despite the recent prior cast.
+      expect(state.cooldownByAbilityId.get('heal')).toBe(1001);
+      // MP untouched — force bypasses the cost.
+      expect(world.playerMp).toBe(0);
+      // Effects were applied: HP restored above the pre-cast value.
+      expect(world.stores.health.current[player]).toBeGreaterThan(50);
+    });
+
+    it('force-fires an active ability twice back-to-back, ignoring its own cooldown', () => {
+      const { world, player } = setupPlayer();
+      equipActiveAbility(world, player, 'battle-focus');
+      const state = world.abilityStatesByEntity.get(player)!;
+
+      world.frameCount = 100;
+      expect(forceActivateAbility(world, player, 'battle-focus')).toBe(true);
+      expect(state.cooldownByAbilityId.get('battle-focus')).toBe(100);
+
+      // No frame advance — a normal activation would be gated by cooldown here,
+      // but forceActivateAbility must still fire and re-stamp the timestamp.
+      world.frameCount = 101;
+      expect(forceActivateAbility(world, player, 'battle-focus')).toBe(true);
+      expect(state.cooldownByAbilityId.get('battle-focus')).toBe(101);
+    });
   });
 });
