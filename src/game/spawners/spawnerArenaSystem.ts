@@ -48,6 +48,7 @@ import {
   setGoalFlag,
 } from '../../core/door-lock.js';
 import { spawnXpGem } from '../../core/helpers.js';
+import { SPAWNER_ARENA_KIND_UNRESOLVED } from '../../core/spawners/combatants.js';
 import type { GameWorld } from '../../core/world.js';
 import {
   FENCE_TILE_FLAGS,
@@ -63,11 +64,12 @@ import { getSpawnerArchetypeByIndex } from './registry.js';
 const logger = createLogger('game:spawner-arena');
 
 /**
- * `spawner.arenaKind` sentinel meaning "not yet resolved". Kept in sync with
- * the SoA docstring in `src/core/components.ts` and the initializer in
- * `spawnSpawner`.
+ * Local alias for the canonical `spawner.arenaKind` "not yet resolved"
+ * sentinel. Bound to `SPAWNER_ARENA_KIND_UNRESOLVED` (its single source of
+ * truth in `src/core/spawners/combatants.ts`) rather than re-hard-coding the
+ * numeric value, so the sentinel can never drift out of sync with core.
  */
-const ARENA_KIND_UNRESOLVED = 255;
+const ARENA_KIND_UNRESOLVED = SPAWNER_ARENA_KIND_UNRESOLVED;
 
 /** Numeric enum for `arenaState` — mirrors the SoA docstring. */
 const ARENA_STATE = { IDLE: 0, LOCKED: 1, RESOLVED: 2 } as const;

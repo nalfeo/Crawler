@@ -542,8 +542,11 @@ export const NPC_APPROACH_THREAT_RADIUS_FT = 8;
 // at least this much closer than the objective. Prevents oscillation between
 // spawner and swarm when they are the same distance away, while still letting
 // the AI clear a hugging mob before walking through it toward the objective.
-// Anchored to CONTACT_SAFE_ORBIT_FT so the threshold is the natural strike
-// band of the melee weapon.
+// A ~3 ft hysteresis margin — deliberately a bit under the
+// CONTACT_SAFE_ORBIT_FT strike band (4.5 ft) so an add must be clearly closer
+// than the objective before it steals priority, rather than merely sharing the
+// same strike band. The value is chosen directly, not derived from
+// CONTACT_SAFE_ORBIT_FT.
 export const ARENA_LOCKIN_ADD_HYSTERESIS_FT = 3;
 
 // --- Predictive safe-gap travel steering (travel-steering.ts) ---
