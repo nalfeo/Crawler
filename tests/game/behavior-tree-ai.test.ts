@@ -865,8 +865,13 @@ describe('BehaviorTreeAI', () => {
     world.stores.position.y[shopkeeperNpcEid!] = 14;
     world.stores.position.x[spellBrokerEid!] = 36;
     world.stores.position.y[spellBrokerEid!] = 14;
-    world.floor1!.objective.shopRoomPos = { x: 40, y: 14 };
-    world.floor1!.objective.spellQuestGiverPos = { x: 36, y: 14 };
+    // `shopRoomPos`/`spellQuestGiverPos` are readonly on the objective type, so
+    // override them by reassigning the whole (mutable) objective with a spread.
+    world.floor1!.objective = {
+      ...world.floor1!.objective,
+      shopRoomPos: { x: 40, y: 14 },
+      spellQuestGiverPos: { x: 36, y: 14 },
+    };
 
     const ai = new BehaviorTreeAI({ seed: 12 });
     ai.poll(createInputState(), world);
