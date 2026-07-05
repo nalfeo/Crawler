@@ -10,6 +10,7 @@ import {
   Rotation,
   Spawner,
   Sprite,
+  Velocity,
   XpGem,
 } from '../../src/core/components.js';
 import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
@@ -451,7 +452,7 @@ describe('createPhaserBridge', () => {
     expect(area).toBe(16 * 16);
   });
 
-  it('shatters a baby-slime corpse at its shrunken on-screen scale, not the base scale', () => {
+  it('shatters a right-facing baby-slime corpse at its shrunken on-screen scale', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: false });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
@@ -466,6 +467,7 @@ describe('createPhaserBridge', () => {
     // its base scale is larger than what the player actually sees.
     const eid = addEntity(world.ecs);
     addComponent(world.ecs, eid, set(Position, { x: 60, y: 60 }));
+    addComponent(world.ecs, eid, set(Velocity, { x: 2, y: 0 }));
     addComponent(world.ecs, eid, Enemy);
     addComponent(world.ecs, eid, set(Sprite, { textureId: 2, width: 1.95, height: 1.95 }));
     addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: 500 }));
@@ -473,6 +475,7 @@ describe('createPhaserBridge', () => {
 
     bridge.sync(world);
     const corpseImg = images[0]!;
+    expect(corpseImg.flipX).toBe(true);
     const renderedScale = corpseImg.scaleX; // baseScale * 0.65, the on-screen size
     const baseline = images.length;
 
@@ -497,6 +500,7 @@ describe('createPhaserBridge', () => {
     expect(shards.length).toBeGreaterThanOrEqual(9);
     for (const s of shards) {
       expect(s.scaleX).toBeCloseTo(renderedScale, 5);
+      expect(s.scaleX).toBeGreaterThan(0);
     }
   });
 
@@ -846,6 +850,43 @@ describe('createPhaserBridge', () => {
     expect(miniImg.scaleX).toBeLessThan(fullImg.scaleX);
     expect(miniImg.scaleX).toBeCloseTo(miniImg.scaleY, 6);
     expect(miniImg.scaleX).toBeCloseTo(fullImg.scaleX * 0.65, 5);
+  });
+
+  it('faces enemies left by default and flips them only while moving right', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: false });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const enemy = addEntity(world.ecs);
+
+    addComponent(world.ecs, enemy, set(Position, { x: 10, y: 10 }));
+    addComponent(world.ecs, enemy, set(Velocity, { x: 0, y: 0 }));
+    addComponent(world.ecs, enemy, Enemy);
+    addComponent(world.ecs, enemy, set(Sprite, { textureId: 1, width: 2, height: 2 }));
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(1);
+    const enemyImg = images[0]!;
+    const leftFacingScale = enemyImg.scaleX;
+    expect(leftFacingScale).toBeGreaterThan(0);
+    expect(enemyImg.scaleY).toBeGreaterThan(0);
+    expect(enemyImg.flipX).toBe(false);
+
+    world.stores.velocity.x[enemy] = 0.0005;
+    bridge.sync(world);
+    expect(enemyImg.scaleX).toBeCloseTo(leftFacingScale, 6);
+    expect(enemyImg.scaleY).toBeGreaterThan(0);
+    expect(enemyImg.flipX).toBe(false);
+
+    world.stores.velocity.x[enemy] = 0.002;
+    bridge.sync(world);
+    expect(enemyImg.scaleX).toBeCloseTo(leftFacingScale, 6);
+    expect(enemyImg.flipX).toBe(true);
+
+    world.stores.velocity.x[enemy] = -1.5;
+    bridge.sync(world);
+    expect(enemyImg.scaleX).toBeCloseTo(leftFacingScale, 6);
+    expect(enemyImg.flipX).toBe(false);
   });
 
   // A welcome sign is a Sprite+Position entity whose textureId is the welcome

@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-05",
+  "session_slug": "enemy-sprite-facing-left",
+  "task_title": "Face enemy sprites left by default",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "notes": "Checked the existing branch baseline, switched enemy facing to flipX, added epsilon-boundary coverage, and covered right-facing corpse shatter; no extra health-bar change needed once orientation stopped using signed scale."
+    }
+  }
+}
