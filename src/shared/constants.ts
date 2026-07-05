@@ -110,10 +110,14 @@ export const FLOOR = {
 } as const;
 
 /**
- * Interaction radius (ft) for the Floor 2 exit-staircase marker — the single
- * source of truth shared by the engine (marker render + proximity check) and
- * the game layer. Mirrors Floor 1's `objectives.markerRadiusFt` (8.0); keep in
- * sync with `floor2.manifest.json` `objectives.markerRadiusFt`.
+ * Interaction radius (ft) for the Floor 2 exit-staircase marker, shared by the
+ * engine (marker render + proximity check) and the game layer. Floor 2 is not
+ * yet fully data-driven, so — unlike Floor 1, which threads
+ * `objectives.markerRadiusFt` through `world.floor1.objective` — this constant
+ * is the engine/game source until the objective-plumbing follow-up lands. It is
+ * kept in lockstep with `floor2.manifest.json` `objectives.markerRadiusFt` (8.0)
+ * by a unit test (see tests/unit/floor2-scenario-initialization.test.ts) so the
+ * two values cannot silently drift apart.
  */
 export const FLOOR2_STAIR_MARKER_RADIUS_FT = 8.0;
 
