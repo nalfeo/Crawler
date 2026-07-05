@@ -1914,6 +1914,40 @@ function evictFurthestAmbient(
 }
 
 /**
+ * Apply distance-from-spawn level scaling to an ambient archetype's base stats.
+ *
+ * Extracted and exported so the spawn wiring — that a mob spawned far from the
+ * floor spawn tile actually receives boosted HP/speed — has assertion-level
+ * coverage ({@link computeMobLevelScale} itself is unit-tested in
+ * `tests/unit/mob-scaling.test.ts`). Pure given the spawn-tile world position.
+ *
+ * @param baseHp - Archetype base HP before scaling.
+ * @param baseSpeed - Archetype base speed before scaling.
+ * @param spawnX - Mob spawn X in world feet.
+ * @param spawnY - Mob spawn Y in world feet.
+ * @param spawnTileWorldX - Player spawn tile X in world feet.
+ * @param spawnTileWorldY - Player spawn tile Y in world feet.
+ * @returns Integer HP (clamped to ≥ 1) and scaled speed for the spawn.
+ */
+export function scaleAmbientSpawnStats(
+  baseHp: number,
+  baseSpeed: number,
+  spawnX: number,
+  spawnY: number,
+  spawnTileWorldX: number,
+  spawnTileWorldY: number,
+): { hp: number; speed: number } {
+  const dx = spawnX - spawnTileWorldX;
+  const dy = spawnY - spawnTileWorldY;
+  const distFt = Math.sqrt(dx * dx + dy * dy);
+  const scale = computeMobLevelScale(distFt);
+  return {
+    hp: Math.max(1, Math.round(baseHp * scale.hpMult)),
+    speed: baseSpeed * scale.speedMult,
+  };
+}
+
+/**
  * Spawn one weighted ambient archetype at a world (feet) position, wiring its sprite,
  * blood colour, and ambient-tracking entry. Returns the new entity id.
  */
@@ -1930,12 +1964,16 @@ function spawnAmbientArchetype(world: GameWorld, x: number, y: number): number {
       world.floorMap.playerSpawn.x,
       world.floorMap.playerSpawn.y,
     );
-    const dx = x - spawnWorld.x;
-    const dy = y - spawnWorld.y;
-    const distFt = Math.sqrt(dx * dx + dy * dy);
-    const scale = computeMobLevelScale(distFt);
-    hp = Math.max(1, Math.round(archetype.hp * scale.hpMult));
-    speed = archetype.speed * scale.speedMult;
+    const scaled = scaleAmbientSpawnStats(
+      archetype.hp,
+      archetype.speed,
+      x,
+      y,
+      spawnWorld.x,
+      spawnWorld.y,
+    );
+    hp = scaled.hp;
+    speed = scaled.speed;
   }
 
   const eid = spawnBehaviorEnemy(

@@ -21,6 +21,14 @@
           "concerns_count": 0,
           "resolved_count": 0,
           "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "copilot-pull-request-reviewer"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "Shepherd re-review after tuning the ramp to 1.25x HP / 1.05x speed @250ft (calibrated against the headless Floor-1 AI-time budget). code-review subagent: no significant issues — determinism (no RNG-sequence change), src/shared->src/game layering, clamping, and HP-round-never-weakens all confirmed; calibration is a real +25%HP/+5%spd ramp, not a no-op. copilot-pull-request-reviewer raised 2 nits, both resolved: (1) mob-scaling.ts doc comment '20-300ft' -> accurate spawnRadiusMin(20ft)..ambientSpawnMaxDistanceFt(160ft) citing floor-config; (2) no assertion-level wiring coverage -> extracted exported scaleAmbientSpawnStats + added tests/game/ambient-spawn-scaling.test.ts."
         }
       ]
     }

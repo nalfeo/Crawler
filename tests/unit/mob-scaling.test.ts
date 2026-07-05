@@ -69,4 +69,16 @@ describe('computeMobLevelScale', () => {
       expect(scale.speedMult).toBeGreaterThanOrEqual(1.0);
     }
   });
+
+  // Regression guard: these endpoints are CALIBRATED against the headless
+  // Floor-1 AI-time budget, not free design knobs. A steeper 1.5×/1.1× ramp
+  // pushed one winning sword+arena seed's clear time to 379s, past the 360s
+  // budget in `tests/headless/spawner-arena-win-rate.test.ts`, because deeper
+  // mobs take proportionally longer to kill. If you change these values,
+  // RE-RUN `npm run test:headless` — the ramp must stay under the AI budget.
+  it('keeps the calibrated endpoints under the headless AI-time budget', () => {
+    expect(MOB_SCALING_HP_MULT_MAX).toBe(1.25);
+    expect(MOB_SCALING_SPEED_MULT_MAX).toBe(1.05);
+    expect(MOB_SCALING_REFERENCE_DIST_FT).toBe(250);
+  });
 });
