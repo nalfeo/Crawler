@@ -13,6 +13,7 @@ import { createFloor1GameConfig } from '../../bootstrap/floor-game-config.js';
 import { query } from 'bitecs';
 import { createFloor1MainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { AIState, BehaviorTreeAI } from '../../game/ai/index.js';
+import { AIPathingMode, type AIPathingModeValue } from '../../game/ai/types.js';
 import {
   autoFloor1ProgressionSystem,
   computeAutoStatAllocation,
@@ -24,7 +25,7 @@ import {
   setTrackedQuest,
   startFloor1BossEncounter,
 } from '../../game/index.js';
-import { Player } from '../../core/index.js';
+import { Player, Enemy, Position } from '../../core/index.js';
 import type { GameWorld } from '../../core/world.js';
 import { setGoalFlag } from '../../core/door-lock.js';
 import { flowFieldStep, FLOW_UNREACHABLE } from '../../core/map/flow-field.js';
@@ -67,6 +68,10 @@ interface AiRunnerLabState {
   showFlowField: boolean;
   lighting: LightingConfig;
   fov: FovConfig;
+  aiConfig: {
+    pathingMode: AIPathingModeValue;
+    visualRiskRewardFields: boolean;
+  };
 }
 
 /**
@@ -204,11 +209,19 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   const panelRoot = document.createElement('div');
   controls.append(panelRoot);
   let currentSeed = INITIAL_SEED;
+
+  // AI configuration state
+  const aiConfig = {
+    pathingMode: (persisted?.aiConfig?.pathingMode ?? AIPathingMode.LEGACY) as AIPathingModeValue,
+    visualRiskRewardFields: persisted?.aiConfig?.visualRiskRewardFields ?? false,
+  };
+
   let ai = new BehaviorTreeAI({
     seed: currentSeed,
     aggression: 1,
     retreatThreshold: 0.15,
     debug: true,
+    pathingMode: aiConfig.pathingMode,
   });
   let selectedSpeed = 1;
   let isPaused = true;
@@ -220,6 +233,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   const lastMove = { x: 0, y: 0, action: false };
   let pathGraphics: Phaser.GameObjects.Graphics | null = null;
   let flowFieldGraphics: Phaser.GameObjects.Graphics | null = null;
+  let riskRewardFieldsGraphics: Phaser.GameObjects.Graphics | null = null;
   let showFlowField = persisted?.showFlowField ?? false;
   let lastStepReason = '';
   const floorDebug = {
@@ -234,6 +248,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       showFlowField,
       lighting: { ...lightingSettings },
       fov: { ...fovSettings },
+      aiConfig: { ...aiConfig },
     });
   };
 
@@ -638,6 +653,37 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   fovPerfFolder.add(fovPerf, 'computeMsAvg').name('Compute ms').listen();
   fovPerfFolder.add(fovPerf, 'cellPx').name('Live cell px').listen();
   fovPerfFolder.add(fovPerf, 'subFactor').name('Live factor').listen();
+  fovFolder.close();
+
+  /**
+   * AI pathing and visualization configuration.
+   */
+  const updateAIPathingMode = (): void => {
+    // Recreate the AI with the new pathing mode
+    ai = new BehaviorTreeAI({
+      seed: currentSeed,
+      aggression: 1,
+      retreatThreshold: 0.15,
+      debug: true,
+      pathingMode: aiConfig.pathingMode,
+    });
+  };
+
+  const aiFolder = gui.addFolder('AI Configuration');
+  aiFolder
+    .add(aiConfig, 'pathingMode', [AIPathingMode.LEGACY, AIPathingMode.RISK_REWARD_FUSED])
+    .name('Pathing mode')
+    .onChange(() => {
+      updateAIPathingMode();
+      persistLabState();
+    });
+  aiFolder
+    .add(aiConfig, 'visualRiskRewardFields')
+    .name('Show risk/reward fields')
+    .onChange(() => {
+      persistLabState();
+    });
+  aiFolder.close();
 
   /**
    * Lazily build a real hardware input capture (keyboard/mouse/touch) bound to
@@ -725,6 +771,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       aggression: 1,
       retreatThreshold: 0.15,
       debug: true,
+      pathingMode: aiConfig.pathingMode,
     });
     pollCount = 0;
     lastStepReason = '';
@@ -739,6 +786,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     pathGraphics = null;
     flowFieldGraphics?.destroy();
     flowFieldGraphics = null;
+    riskRewardFieldsGraphics?.destroy();
+    riskRewardFieldsGraphics = null;
 
     const phaserScene = getPhaserScene();
     if (phaserScene) {
@@ -1044,6 +1093,108 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     const goal = floorMap.tileToWorld(field.goalX, field.goalY);
     graphics.lineStyle(2, 0x9cff57, 0.95);
     graphics.strokeCircle(ftToPx(goal.x), ftToPx(goal.y), tileSizePx * 0.4);
+  };
+
+  const ensureRiskRewardFieldsGraphics = (): Phaser.GameObjects.Graphics | null => {
+    const scene = getPhaserScene();
+    if (!scene) {
+      return null;
+    }
+    if (!riskRewardFieldsGraphics || !riskRewardFieldsGraphics.scene) {
+      riskRewardFieldsGraphics = scene.add.graphics();
+      // World-space debug overlay: depth should be similar to flowFieldGraphics
+      riskRewardFieldsGraphics.setDepth(WORLD_VFX_DEPTH.debugFlowField + 1);
+      (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(
+        riskRewardFieldsGraphics,
+      );
+    }
+    return riskRewardFieldsGraphics;
+  };
+
+  /**
+   * Render the risk/reward fields around the player when in fused pathing mode.
+   * Samples danger at a grid of positions and draws a heatmap overlay.
+   */
+  const drawRiskRewardFieldsOverlay = (): void => {
+    if (
+      !aiConfig.visualRiskRewardFields ||
+      aiConfig.pathingMode !== AIPathingMode.RISK_REWARD_FUSED
+    ) {
+      riskRewardFieldsGraphics?.clear();
+      return;
+    }
+    const graphics = ensureRiskRewardFieldsGraphics();
+    const scene = getScene();
+    const world = scene?.world;
+    if (!graphics || !scene || !world || !world.floorMap) {
+      return;
+    }
+    graphics.clear();
+
+    const playerEid = scene.playerEid;
+    if (typeof playerEid !== 'number' || playerEid < 0) {
+      return;
+    }
+    const playerX = world.stores.position.x[playerEid] ?? 0;
+    const playerY = world.stores.position.y[playerEid] ?? 0;
+
+    // Sample danger on a grid around the player
+    const sampleRadius = 30; // feet
+    const gridSpacing = 2; // feet
+    let maxDanger = 0;
+    const samples: { x: number; y: number; danger: number }[] = [];
+
+    // Query all nearby enemies for danger calculation
+    const enemyPositions: { x: number; y: number }[] = [];
+    for (const eid of query(world.ecs, [Enemy, Position])) {
+      const ex = world.stores.position.x[eid] ?? 0;
+      const ey = world.stores.position.y[eid] ?? 0;
+      const distSq = (ex - playerX) ** 2 + (ey - playerY) ** 2;
+      if (distSq < sampleRadius ** 2) {
+        enemyPositions.push({ x: ex, y: ey });
+      }
+    }
+
+    // Sample danger on a grid
+    for (let x = playerX - sampleRadius; x <= playerX + sampleRadius; x += gridSpacing) {
+      for (let y = playerY - sampleRadius; y <= playerY + sampleRadius; y += gridSpacing) {
+        let danger = 0;
+        // Calculate squared-distance danger from nearby enemies
+        for (const enemy of enemyPositions) {
+          const dx = x - enemy.x;
+          const dy = y - enemy.y;
+          const distSq = dx * dx + dy * dy;
+          const normDist = Math.sqrt(distSq) / 12; // 12ft danger radius
+          if (normDist < 1) {
+            const norm = 1 - normDist;
+            danger += norm * norm;
+          }
+        }
+        samples.push({ x, y, danger });
+        if (danger > maxDanger) {
+          maxDanger = danger;
+        }
+      }
+    }
+
+    // Draw heatmap
+    const cellSizePx = ftToPx(gridSpacing);
+    for (const sample of samples) {
+      const cx = ftToPx(sample.x);
+      const cy = ftToPx(sample.y);
+      const ratio = maxDanger > 0 ? sample.danger / maxDanger : 0;
+      // Red (high danger) to green (low danger/seams)
+      const r = Math.round(255 * ratio);
+      const g = Math.round(255 * (1 - ratio * 0.7));
+      const b = Math.round(100 * (1 - ratio));
+      const color = (r << 16) | (g << 8) | b;
+      graphics.fillStyle(color, 0.4);
+      graphics.fillRect(cx - cellSizePx / 2, cy - cellSizePx / 2, cellSizePx, cellSizePx);
+    }
+
+    // Draw player position marker
+    graphics.fillStyle(0xffffff, 0.8);
+    graphics.fillCircle(ftToPx(playerX), ftToPx(playerY), 6);
   };
 
   const renderDecisionTree = (
@@ -1475,6 +1626,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     syncFovTelemetry();
     drawPathOverlay();
     drawFlowFieldOverlay();
+    drawRiskRewardFieldsOverlay();
     const debugElem = document.getElementById('ai-runner-debug');
     if (debugElem) {
       const scene = getScene();
