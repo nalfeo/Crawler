@@ -11,6 +11,9 @@
 7. Write a handoff file before ending your session
 8. If `files/guard-telemetry.jsonl` exists, run `npm run telemetry:capture -- <session-slug>` to write a committed per-session summary under `docs/knowledge/metrics/guard-telemetry/` (the durable, contamination-filtered collection path). The trimmed handoff template no longer carries a telemetry block — the committed summary file is the record.
 
+- **Kickoff verdict is mandatory:** At session kickoff, explicitly say whether the ask is **recommended**, **risky**, or **not recommended**, with a short reason.
+- **Plans stay in session chat:** When giving a plan, write the full plan in session chat. Do **not** hide plans in repo files unless the human explicitly asks for a file artifact.
+
 ## Commands
 
 | Task                    | Command                            |

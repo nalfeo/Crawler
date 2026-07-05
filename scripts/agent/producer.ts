@@ -21,6 +21,8 @@ import { basename } from 'path';
 
 interface TriageResult {
   requestType: string;
+  verdict: 'RECOMMENDED' | 'RISKY' | 'NOT_RECOMMENDED';
+  verdictReason: string;
   escalation?: string;
   message: string;
   blockers?: string[];
@@ -137,6 +139,8 @@ export function triage(request: string): TriageResult {
   ) {
     return {
       requestType: 'GAME_BALANCING',
+      verdict: 'RISKY',
+      verdictReason: 'Gameplay balance changes need human approval and baseline metrics first.',
       escalation: 'HUMAN_GATE',
       message:
         '🎮 GAME BALANCING REQUEST\n\nThis is a gameplay balance decision. Requires human approval before implementation.\nNeed to collect baseline metrics, propose changes, and validate with playtesting.',
@@ -147,6 +151,8 @@ export function triage(request: string): TriageResult {
   if (bugKeywords.test(req) && !/add|implement|new|create|build/.test(req)) {
     return {
       requestType: 'DEBUGGING',
+      verdict: 'RECOMMENDED',
+      verdictReason: 'Fixing a concrete bug is usually a good idea and low ambiguity.',
       message:
         '🐛 DEBUGGING REQUEST\n\nThis is a diagnosis task. QA will reproduce and determine root cause.\nRoute to QA Engineer.',
     };
@@ -159,6 +165,8 @@ export function triage(request: string): TriageResult {
   ) {
     return {
       requestType: 'INVESTIGATION',
+      verdict: 'RECOMMENDED',
+      verdictReason: 'Investigation is a safe way to reduce uncertainty before changing behavior.',
       escalation: 'CONDITIONAL',
       message:
         '🔍 INVESTIGATION REQUEST\n\nThis is exploratory work. Will collect data and may spawn a follow-up task.\nRoute to QA Engineer + Game Designer for analysis.',
@@ -169,6 +177,9 @@ export function triage(request: string): TriageResult {
   if (/add|implement|new|create|build|design/.test(req)) {
     return {
       requestType: 'FEATURE',
+      verdict: 'RECOMMENDED',
+      verdictReason:
+        'A feature request is reasonable to plan, but it still needs scope clarification first.',
       message:
         '✨ FEATURE REQUEST\n\nThis is a feature/enhancement. Will decompose into slices and parallelize.\nProceed to clarification phase.',
       questions: [
@@ -185,6 +196,8 @@ export function triage(request: string): TriageResult {
   if (/refactor|restructure|clean|update|upgrade|modernize|optimize/.test(req)) {
     return {
       requestType: 'CHORE',
+      verdict: 'RECOMMENDED',
+      verdictReason: 'Non-gameplay cleanup is usually safe and suitable for direct execution.',
       message:
         '🧹 CHORE/REFACTOR REQUEST\n\nThis is a safe, non-gameplay change. Can be parallelized.\nRoute to Systems Engineer or DevOps.',
     };
@@ -193,6 +206,8 @@ export function triage(request: string): TriageResult {
   // Fallback: unclear
   return {
     requestType: 'UNCLEAR',
+    verdict: 'NOT_RECOMMENDED',
+    verdictReason: 'The request is too ambiguous to execute safely without clarification.',
     escalation: 'CLARIFY',
     message:
       '❓ UNCLEAR REQUEST\n\nThe request is ambiguous. Need clarification before proceeding.',
@@ -215,6 +230,7 @@ function handleTriage(request: string): void {
 
   const result = triage(request);
   console.log(`Type: ${result.requestType}`);
+  console.log(`Verdict: ${result.verdict} — ${result.verdictReason}`);
 
   if (result.escalation) {
     console.log(`Escalation: ${result.escalation}`);

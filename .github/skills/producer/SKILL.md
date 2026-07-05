@@ -73,7 +73,13 @@ Mandatory kickoff handler for all sessions. Triages feature requests, clarifies 
 
 ### Phase 1: TRIAGE
 
-Classify the request and route appropriately:
+Classify the request, emit a visible verdict, and route appropriately:
+
+- **Verdict is mandatory:** say whether the ask is **RECOMMENDED**, **RISKY**, or
+  **NOT RECOMMENDED**, with a short reason before moving on.
+- **Plans stay in chat:** when a plan is needed, write the full plan in session
+  chat. Do not hide it in repo files unless the human explicitly asks for a
+  file artifact.
 
 ```
 REQUEST TRIAGE
@@ -139,6 +145,7 @@ Present baseline metrics and proposed change, then ask human:
 
 Request: "Reduce player damage scaling by 20%"
 Type: GAME_BALANCING
+Verdict: RISKY — gameplay balance changes need human approval and baseline metrics first
 Status: WAITING FOR HUMAN APPROVAL
 
 Current Baseline Metrics:
@@ -180,6 +187,7 @@ Wait for answers, re-triage if needed.
 If triage returned FEATURE/ENHANCEMENT, ask upfront clarifying questions:
 
 ```
+Verdict: RECOMMENDED — reasonable to plan, but scope needs clarification first
 Q1: "Which game systems does this touch? (core / game / engine / content)"
 Q2: "What's the success metric? (fun / completion rate / balance / engagement)"
 Q3: "Are there gameplay implications? (economy, difficulty, progression)"
@@ -473,6 +481,13 @@ Classify a request and output triage result.
 
 ```bash
 npm run producer -- --triage "Add a bowling minigame"
+```
+
+Expected output includes:
+
+```text
+Type: FEATURE
+Verdict: RECOMMENDED — reasonable to plan, but scope needs clarification first
 # Output: FEATURE | Escalation: NONE | Status: PROCEED_TO_CLARIFY
 ```
 

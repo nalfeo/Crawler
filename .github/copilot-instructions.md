@@ -11,6 +11,9 @@ Crawler is a crafting-focused vampire-survivors-like game set in a reality show 
 3. Before planning work in a system, read the relevant section of `docs/knowledge/handoffs/INDEX.md` and skim the top 3-5 listed handoffs for that system. Fall back to a broader scan of `docs/knowledge/handoffs/` only if the index has no coverage for your target system. New handoffs must declare `## Systems touched` (comma-separated slugs from `docs/systems/README.md`) — required once the handoff-tooling lint wires it in, advisory until then.
 4. **Declare your apple estimate** — read `docs/agent-os/policies/complexity-policy.md`, pick 🍎–🍎🍎🍎🍎🍎, and state it in your first turn before writing any code
 
+- **Kickoff verdict is mandatory:** At session kickoff, explicitly say whether the ask is **recommended**, **risky**, or **not recommended**, with a short reason.
+- **Plans stay in session chat:** When giving a plan, write the full plan in session chat. Do **not** hide plans in repo files unless the human explicitly asks for a file artifact.
+
 ## Validation
 
 - After every change: `npm run verify:fast` (typecheck + lint + changed unit tests, ~30s)
