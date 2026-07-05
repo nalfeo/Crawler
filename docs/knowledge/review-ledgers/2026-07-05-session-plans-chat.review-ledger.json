@@ -6,11 +6,11 @@
   "estimated_apples": 2,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "notes": "Post-implementation plan review raised six concerns; I added rendered-output coverage, completed docs/tooling validation, documented the baseline ADR-artifact repair, and confirmed the remaining concerns were already satisfied by the shipped change."
     }
   }
 }
