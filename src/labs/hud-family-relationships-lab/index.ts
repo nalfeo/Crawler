@@ -17,9 +17,13 @@ import {
   asFamilyId,
   createGameWorld,
   initializeFactionRelations,
+  spawnPlayer,
   type FamilyId,
   type GameWorld,
 } from '../../core/index.js';
+import { FloorMap } from '../../core/map/FloorMap.js';
+import { RoomGraph } from '../../core/map/RoomGraph.js';
+import { TileMap } from '../../core/map/TileMap.js';
 import { loadFamilies, type FamilyDef } from '../../shared/data/families.js';
 import { bossDefeatedGoalFlag } from '../../engine/family-relationships-state.js';
 import {
@@ -27,6 +31,7 @@ import {
   RESOURCE_HEART_TINT,
   BOSS_DEN_OUTLINE,
 } from '../../engine/minimap-family-tint.js';
+import { BiomeType, RoomRole, TerrainType, TilePresets } from '../../shared/map-types.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
@@ -35,6 +40,10 @@ const LAB_ID = 'hud-family-relationships-lab';
 const SCENE_KEY = 'HudFamilyRelationshipsLabScene';
 
 const PRESENT_COUNT = 4;
+const LAB_MAP_WIDTH = 24;
+const LAB_MAP_HEIGHT = 16;
+const LAB_TILE_SIZE_FT = 4;
+const LAB_PLAYER_TILE = { x: 12, y: 8 };
 
 export interface FamilyRelProbeApi {
   ready(): boolean;
@@ -51,6 +60,80 @@ function hexHash(color: number): string {
   return '#' + color.toString(16).padStart(6, '0');
 }
 
+function buildFloor2LabMap(families: readonly FamilyDef[]): FloorMap {
+  const tileMap = new TileMap(LAB_MAP_WIDTH, LAB_MAP_HEIGHT);
+  const terrain = new Uint8Array(LAB_MAP_WIDTH * LAB_MAP_HEIGHT);
+  tileMap.fill(TilePresets.FLOOR);
+  terrain.fill(TerrainType.CAVE_FLOOR);
+
+  for (let y = 0; y < LAB_MAP_HEIGHT; y += 1) {
+    for (let x = 0; x < LAB_MAP_WIDTH; x += 1) {
+      if (x === 0 || y === 0 || x === LAB_MAP_WIDTH - 1 || y === LAB_MAP_HEIGHT - 1) {
+        tileMap.setFlags(x, y, TilePresets.WALL);
+        terrain[y * LAB_MAP_WIDTH + x] = TerrainType.CAVE_WALL;
+      }
+    }
+  }
+
+  const roomGraph = new RoomGraph();
+  roomGraph.add(
+    { x: 0, y: 0, width: 12, height: 8 },
+    [],
+    [],
+    RoomRole.TERRITORY,
+    'West Territory',
+    0,
+  );
+  roomGraph.add(
+    { x: 12, y: 0, width: 12, height: 8 },
+    [],
+    [],
+    RoomRole.TERRITORY,
+    'North Territory',
+    1,
+  );
+  roomGraph.add(
+    { x: 0, y: 8, width: 12, height: 8 },
+    [],
+    [],
+    RoomRole.TERRITORY,
+    'South Territory',
+    2,
+  );
+  roomGraph.add(
+    { x: 12, y: 8, width: 12, height: 8 },
+    [],
+    [],
+    RoomRole.TERRITORY,
+    'East Territory',
+    3,
+  );
+
+  const floorMap = new FloorMap(
+    {
+      widthTiles: LAB_MAP_WIDTH,
+      heightTiles: LAB_MAP_HEIGHT,
+      tileSizeFt: LAB_TILE_SIZE_FT,
+      biome: BiomeType.CAVE_SYSTEM,
+      seed: 424242,
+      roomWidthRange: [6, 12],
+      roomHeightRange: [4, 8],
+      maxRooms: 4,
+      floorDensity: 0.5,
+      caveSystem: { presentCount: Math.min(PRESENT_COUNT, families.length) },
+    },
+    tileMap,
+    roomGraph,
+    terrain,
+    {
+      x: LAB_PLAYER_TILE.x,
+      y: LAB_PLAYER_TILE.y,
+    },
+  );
+  floorMap.revealAll();
+  return floorMap;
+}
+
 function createHudFamilyRelationshipsLab(
   canvasHost: HTMLElement,
   controls: HTMLElement,
@@ -65,6 +148,8 @@ function createHudFamilyRelationshipsLab(
   const settingsById = new Map<string, FamilySettings>(
     present.map((f, i) => [f.id, { relation: 50 + i * 10, bossDefeated: false }]),
   );
+  const floorMap = buildFloor2LabMap(present);
+  const playerSpawn = floorMap.tileToWorld(LAB_PLAYER_TILE.x, LAB_PLAYER_TILE.y);
 
   const root = document.createElement('div');
   root.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden;';
@@ -88,6 +173,8 @@ function createHudFamilyRelationshipsLab(
   let world: GameWorld | undefined;
   let hudUi: ReturnType<typeof createHudUI> | undefined;
   let sceneReady = false;
+  let hudSynced = false;
+  let playerEid = -1;
   interface FamilyRelProbeApiLocal extends FamilyRelProbeApi {
     _sentinel?: never;
   }
@@ -108,6 +195,8 @@ function createHudFamilyRelationshipsLab(
         contestedResource: 'contested' as never,
         betrayerFlag: false,
       };
+      w.floorMap = floorMap;
+      playerEid = spawnPlayer(w, playerSpawn.x, playerSpawn.y);
       world = w;
 
       this.add.rectangle(0, 0, GAME.WIDTH, GAME.HEIGHT, 0x05070f).setOrigin(0, 0);
@@ -129,7 +218,7 @@ function createHudFamilyRelationshipsLab(
       sceneReady = true;
 
       probeWindow.__familyRelProbe = {
-        ready: () => sceneReady,
+        ready: () => sceneReady && hudSynced,
         setRelation: (i, value) => {
           const fam = present[i];
           if (fam) settingsById.get(fam.id)!.relation = value;
@@ -155,7 +244,8 @@ function createHudFamilyRelationshipsLab(
         world.factionRelations.set(fid, s.relation);
         world.goalFlags.set(bossDefeatedGoalFlag(fid), s.bossDefeated);
       }
-      hudUi.sync(world, -1);
+      hudUi.sync(world, playerEid);
+      hudSynced = true;
     }
   }
 
