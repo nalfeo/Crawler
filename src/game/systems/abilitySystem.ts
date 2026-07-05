@@ -186,6 +186,44 @@ function spendMp(world: GameWorld, holderEid: number, mpCost: number): void {
   world.playerMp = Math.max(0, world.playerMp - mpCost);
 }
 
+/**
+ * Debug helper: force an active/spell ability to fire NOW, bypassing cooldown
+ * and mana cost. Intended for the abilities lab's clickable hotbar so any
+ * ability can be exercised on demand, independent of its authored trigger
+ * (enemy_cluster / low_health / skill_usage). Does NOT bypass the spells
+ * feature-unlock gate — call sites unlock `world.featureUnlocks.spells` first
+ * if they want to fire spells.
+ *
+ * Returns true if the ability fired (its effects were applied), false when
+ * the ability id / state is unknown or the ability is a passive.
+ */
+export function forceActivateAbility(
+  world: GameWorld,
+  holderEid: number,
+  abilityId: string,
+): boolean {
+  const state = world.abilityStatesByEntity.get(holderEid);
+  const def = getAbilityDefinition(abilityId);
+  if (state === undefined || def === undefined || def.kind === 'passive') return false;
+
+  if (def.kind === 'spell' && !world.featureUnlocks.spells) {
+    return false;
+  }
+
+  removeStatModifiers(world, 'ability', `${abilityId}:active:${holderEid}`);
+  for (const effect of def.effects) {
+    applyCatalogEffect(world, {
+      sourceType: 'ability',
+      sourceId: `${abilityId}:active:${holderEid}`,
+      effect,
+      holderEid,
+    });
+  }
+  state.cooldownByAbilityId.set(abilityId, world.frameCount);
+  state.cooldownFramesByAbilityId.set(abilityId, def.cooldownFrames);
+  return true;
+}
+
 function activateAbility(world: GameWorld, holderEid: number, abilityId: string): void {
   const state = world.abilityStatesByEntity.get(holderEid);
   const def = getAbilityDefinition(abilityId);

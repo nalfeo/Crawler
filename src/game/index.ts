@@ -87,6 +87,7 @@ export {
   grantPassiveAbility,
   queueAbilityTrigger,
   getOrCreateAbilityState,
+  forceActivateAbility,
 } from './systems/abilitySystem.js';
 export {
   achievementSystem,

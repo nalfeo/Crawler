@@ -1,92 +1,263 @@
-import { addComponent, query, set, setComponent } from 'bitecs';
+/**
+ * Abilities Lab
+ *
+ * Boots the real {@link MainGameScene} onto a proper Arena floor map generated
+ * by {@link ArenaGenerator} (biome ARENA). Every ability in the shared catalog
+ * can be equipped/granted via toggles and exercised against configurable
+ * enemy scenarios that trip each authored trigger (cluster / low-HP / skill
+ * usage / boss). A debug hotbar overlay lets you click any equipped ability
+ * slot to force-fire it, bypassing cooldown + mana cost.
+ *
+ * Replaces the previous naked-Phaser sandbox: the same shipped simulation
+ * pipeline (runSimulationStep) and world are used, so what you see in the
+ * lab matches what runs in-game.
+ */
 import GUI from 'lil-gui';
 import Phaser from 'phaser';
-import { BroadcastScore, Enemy, Velocity } from '../../core/components.js';
+import { query } from 'bitecs';
+import { createFloorGameConfig } from '../../bootstrap/floor-game-config.js';
+import { ArenaGenerator } from '../../core/map/generators/ArenaGenerator.js';
+import { Enemy, type GameWorld } from '../../core/index.js';
+import { spawnEnemy } from '../../core/helpers.js';
 import {
-  collisionSystem,
-  createGameWorld,
-  damageSystem,
-  healthSystem,
+  familyRelationshipSystem,
   manaSystem,
-  movementSystem,
-  playerInputSystem,
-  projectileCleanupSystem,
-  lifetimeSystem,
-  areaDamageSystem,
-  beamSystem,
-  trapSystem,
-  returningProjectileSystem,
-  aoeOnImpactPreDamage,
-  aoeOnImpactPostDamage,
-  meleeSwingSystem,
-  knockbackSystem,
-  dropSystem,
-  deathTimerSystem,
-  spawnAnimSystem,
-  spawnPlayer,
   statSystem,
-  type GameWorld,
+  statusEffectSystem,
 } from '../../core/index.js';
 import { initializeBaseStats } from '../../core/systems/equipmentSystem.js';
-import { createInputCapture } from '../../engine/InputCapture.js';
-import { createPhaserBridge } from '../../engine/PhaserBridge.js';
+import type { MainGameSceneOptions } from '../../engine/scenes/MainGameScene.js';
 import {
   abilitySystem,
   configureEnemySpawner,
+  enemyAISystem,
   enemySpawnerSystem,
   equipActiveAbility,
+  forceActivateAbility,
   getAllAbilityDefinitions,
   grantPassiveAbility,
   memorizeSpell,
   queueAbilityTrigger,
   setActiveWeapon,
   skillSystem,
+  spawnerSystem,
   statsSystem,
   unequipActiveAbility,
   weaponSystem,
   type AbilityDefinition,
 } from '../../game/index.js';
-import { GAME, PLAYER_SPEED } from '../../shared/constants.js';
-import { ftToPx, pxToFt } from '../../shared/units.js';
-import { createInputState, type InputState } from '../../shared/input.js';
+import { BiomeType } from '../../shared/map-types.js';
+import type { MapConfig } from '../../shared/map-types.js';
 import { WEAPON_DEFS } from '../../shared/weaponDefs.js';
-import { registerLab, type LabCategory } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
+import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
 const LAB_ID = 'abilities-lab';
-const WEAPON_IDS = [...WEAPON_DEFS.keys()];
-const ABILITIES = getAllAbilityDefinitions();
-const MAX_STEPS_PER_FRAME = 8;
 const LAB_SEED = 8842;
+const ARENA_TILE_SIZE_FT = 4;
+const ARENA_WIDTH_TILES = 60;
+const ARENA_HEIGHT_TILES = 40;
+
+const ABILITIES = getAllAbilityDefinitions();
+const WEAPON_IDS = [...WEAPON_DEFS.keys()];
+
+// ---------------------------------------------------------------------------
+// Scenarios — presets that trip each authored ability trigger.
+// ---------------------------------------------------------------------------
+
+type ScenarioId = 'solo' | 'target-dummy' | 'cluster' | 'low-hp' | 'boss' | 'skill-trigger';
+
+interface ScenarioDefinition {
+  readonly id: ScenarioId;
+  readonly label: string;
+  readonly description: string;
+  /** Recurring spawner (max enemies). 0 → recurring spawner disabled. */
+  readonly maxEnemies: number;
+  readonly spawnIntervalMs: number;
+  readonly enemyHp: number;
+  /** How many enemies to hand-place at scene start, and how tight the cluster is. */
+  readonly staticEnemyCount: number;
+  readonly clusterRadiusFt: number;
+  /** If true, drop the player to 40% HP so low-HP triggers fire immediately. */
+  readonly startAtLowHp: boolean;
+  /** If true, queue a synthetic skill_usage event on world reset. */
+  readonly queueSkillTrigger: boolean;
+}
+
+const SCENARIOS: readonly ScenarioDefinition[] = [
+  {
+    id: 'solo',
+    label: 'Solo — no enemies (force-fire only)',
+    description:
+      'Empty arena. Use the debug hotbar to force-fire abilities; nothing else fires them.',
+    maxEnemies: 0,
+    spawnIntervalMs: 1000,
+    enemyHp: 30,
+    staticEnemyCount: 0,
+    clusterRadiusFt: 0,
+    startAtLowHp: false,
+    queueSkillTrigger: false,
+  },
+  {
+    id: 'target-dummy',
+    label: 'Target Dummy — single stationary enemy',
+    description: 'One high-HP stationary enemy to soak damage and tune single-target output.',
+    maxEnemies: 0,
+    spawnIntervalMs: 1000,
+    enemyHp: 500,
+    staticEnemyCount: 1,
+    clusterRadiusFt: 0,
+    startAtLowHp: false,
+    queueSkillTrigger: false,
+  },
+  {
+    id: 'cluster',
+    label: 'Cluster — trips enemy_cluster triggers',
+    description: 'Ten stationary enemies packed within 8ft of the player to fire cluster spells.',
+    maxEnemies: 0,
+    spawnIntervalMs: 1000,
+    enemyHp: 30,
+    staticEnemyCount: 10,
+    clusterRadiusFt: 8,
+    startAtLowHp: false,
+    queueSkillTrigger: false,
+  },
+  {
+    id: 'low-hp',
+    label: 'Low HP — trips low_health triggers',
+    description:
+      'Player starts at 40% HP surrounded by 6 enemies to trip low_health and low_health_crowded.',
+    maxEnemies: 0,
+    spawnIntervalMs: 1000,
+    enemyHp: 30,
+    staticEnemyCount: 6,
+    clusterRadiusFt: 10,
+    startAtLowHp: true,
+    queueSkillTrigger: false,
+  },
+  {
+    id: 'boss',
+    label: 'Boss — continuous horde',
+    description:
+      'Recurring spawner floods the arena with enemies (max 30) so every autofire trigger keeps firing.',
+    maxEnemies: 30,
+    spawnIntervalMs: 750,
+    enemyHp: 30,
+    staticEnemyCount: 0,
+    clusterRadiusFt: 0,
+    startAtLowHp: false,
+    queueSkillTrigger: false,
+  },
+  {
+    id: 'skill-trigger',
+    label: 'Skill Trigger — trips skill_usage triggers',
+    description:
+      'Queues a hits-landed=10 skill_usage event every reset so hit/damage-count abilities fire.',
+    maxEnemies: 0,
+    spawnIntervalMs: 1000,
+    enemyHp: 30,
+    staticEnemyCount: 3,
+    clusterRadiusFt: 6,
+    startAtLowHp: false,
+    queueSkillTrigger: true,
+  },
+] as const;
+
+function getScenario(id: ScenarioId): ScenarioDefinition {
+  return SCENARIOS.find((s) => s.id === id) ?? SCENARIOS[0]!;
+}
+
+// ---------------------------------------------------------------------------
+// Persistence
+// ---------------------------------------------------------------------------
 
 interface AbilitiesLabSettings {
-  playerSpeed: number;
-  maxEnemies: number;
-  spawnIntervalMs: number;
-  enemyHp: number;
-  enemySpeed: number;
+  scenario: ScenarioId;
   activeWeapon: string;
   invulnerable: boolean;
   infiniteMana: boolean;
 }
 
-/** Serializable snapshot that survives HMR / lab reloads. */
 interface AbilitiesLabSnapshot {
   settings: AbilitiesLabSettings;
   equipped: Record<string, boolean>;
 }
 
-function abilityKindLabel(def: AbilityDefinition): string {
-  switch (def.kind) {
-    case 'spell':
-      return 'Spell';
-    case 'passive':
-      return 'Passive';
-    default:
-      return 'Active';
+function loadSnapshot(): AbilitiesLabSnapshot {
+  const saved = loadLabState<AbilitiesLabSnapshot>(LAB_ID);
+  const settings: AbilitiesLabSettings = {
+    scenario: 'cluster',
+    activeWeapon: 'pistol',
+    invulnerable: true,
+    infiniteMana: true,
+    ...(saved?.settings ?? {}),
+  };
+  const equipped: Record<string, boolean> = {};
+  for (const def of ABILITIES) {
+    equipped[def.id] = saved?.equipped?.[def.id] ?? true;
   }
+  return { settings, equipped };
+}
+
+function abilityKindLabel(def: AbilityDefinition): string {
+  if (def.kind === 'spell') return 'Spell';
+  if (def.kind === 'passive') return 'Passive';
+  return 'Active';
+}
+
+// ---------------------------------------------------------------------------
+// Arena floor map
+// ---------------------------------------------------------------------------
+
+function buildArenaFloorMap(world: GameWorld) {
+  const cfg: MapConfig = {
+    widthTiles: ARENA_WIDTH_TILES,
+    heightTiles: ARENA_HEIGHT_TILES,
+    tileSizeFt: ARENA_TILE_SIZE_FT,
+    biome: BiomeType.ARENA,
+    seed: world.rng.nextInt(1, 2_000_000),
+    roomWidthRange: [ARENA_WIDTH_TILES - 4, ARENA_WIDTH_TILES - 4] as [number, number],
+    roomHeightRange: [ARENA_HEIGHT_TILES - 4, ARENA_HEIGHT_TILES - 4] as [number, number],
+    maxRooms: 1,
+    floorDensity: 1,
+  };
+  return new ArenaGenerator({ obstacleCount: 12, maxObstacleSize: 3 }).generate(cfg, world.rng);
+}
+
+// ---------------------------------------------------------------------------
+// Ability equipping — syncs the equipped-toggle record onto the player.
+// ---------------------------------------------------------------------------
+
+function syncEquippedAbilities(
+  world: GameWorld,
+  playerEid: number,
+  equipped: Record<string, boolean>,
+): void {
+  if (playerEid < 0) return;
+  for (const def of ABILITIES) {
+    if (!equipped[def.id]) {
+      if (def.kind !== 'passive') unequipActiveAbility(world, playerEid, def.id);
+      continue;
+    }
+    if (def.kind === 'passive') {
+      grantPassiveAbility(world, playerEid, def.id);
+    } else if (def.kind === 'spell') {
+      memorizeSpell(world, playerEid, def.id);
+    } else {
+      equipActiveAbility(world, playerEid, def.id);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Lab entry
+// ---------------------------------------------------------------------------
+
+interface LabRuntime {
+  world?: GameWorld;
+  playerEid?: number;
 }
 
 function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () => void {
@@ -95,344 +266,309 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
     throw new Error('Lab runner did not initialize lil-gui.');
   }
 
+  const { settings, equipped } = loadSnapshot();
+
+  // Mutable runtime updated by the scene's configureWorld hook. Shared with the
+  // debug hotbar overlay so click handlers can address the live world.
+  const runtime: LabRuntime = {};
+
+  // ---- Layout ----
   const root = document.createElement('div');
   root.style.position = 'relative';
   root.style.width = '100%';
   root.style.height = '100%';
   root.style.overflow = 'hidden';
-  root.style.background = 'radial-gradient(circle at top, #1a2040 0%, #0c0e1a 45%, #050510 100%)';
+  root.style.background = '#050510';
 
   const gameHost = document.createElement('div');
   gameHost.style.width = '100%';
   gameHost.style.height = '100%';
 
+  // ---- Debug hotbar overlay (HTML — clickable slots that force-fire) ----
+  const hotbarWrap = document.createElement('div');
+  hotbarWrap.style.position = 'absolute';
+  hotbarWrap.style.left = '50%';
+  hotbarWrap.style.bottom = '16px';
+  hotbarWrap.style.transform = 'translateX(-50%)';
+  hotbarWrap.style.display = 'flex';
+  hotbarWrap.style.flexDirection = 'column';
+  hotbarWrap.style.alignItems = 'center';
+  hotbarWrap.style.gap = '6px';
+  hotbarWrap.style.pointerEvents = 'auto';
+  hotbarWrap.style.zIndex = '20';
+
+  const hotbarLabel = document.createElement('div');
+  hotbarLabel.textContent = 'DEBUG HOTBAR — click a slot to force-fire';
+  hotbarLabel.style.color = '#cbd5e1';
+  hotbarLabel.style.fontFamily = 'Arial, sans-serif';
+  hotbarLabel.style.fontSize = '11px';
+  hotbarLabel.style.letterSpacing = '0.08em';
+  hotbarLabel.style.textShadow = '0 1px 2px rgba(0,0,0,0.8)';
+
+  const hotbarRow = document.createElement('div');
+  hotbarRow.style.display = 'flex';
+  hotbarRow.style.gap = '4px';
+
+  hotbarWrap.append(hotbarLabel, hotbarRow);
+
+  // HUD (top-left status)
   const hud = document.createElement('div');
   hud.style.position = 'absolute';
   hud.style.top = '16px';
   hud.style.left = '16px';
-  hud.style.padding = '12px 14px';
-  hud.style.borderRadius = '12px';
-  hud.style.background = 'rgba(10, 12, 30, 0.82)';
+  hud.style.padding = '10px 12px';
+  hud.style.borderRadius = '10px';
+  hud.style.background = 'rgba(10, 12, 30, 0.78)';
   hud.style.border = '1px solid rgba(255, 255, 255, 0.12)';
   hud.style.color = '#f8fafc';
   hud.style.lineHeight = '1.5';
   hud.style.whiteSpace = 'pre-line';
   hud.style.pointerEvents = 'none';
+  hud.style.fontSize = '12px';
+  hud.style.fontFamily = 'Arial, sans-serif';
+  hud.style.zIndex = '20';
 
   const hint = document.createElement('p');
   hint.textContent =
-    'Move with WASD / arrows. Equip abilities in the controls panel — they fire on their real triggers ' +
-    '(cluster/low-HP) in the live combat engine. Spells spend MP; toggle Infinite Mana to spam them. ' +
-    'Use "Take 60% HP" to trip Heal / Pulse Shield, or "Trigger hits→10" for skill-usage actives.';
+    'The lab boots the real MainGameScene on a walled Arena map (BiomeType.ARENA). ' +
+    'Pick a scenario to spawn the enemy setup you want to test against; toggle abilities to ' +
+    'equip/grant them; click a slot in the debug hotbar (below the game view) to force-fire it ' +
+    'without waiting for its authored trigger.';
   hint.style.marginTop = '16px';
   hint.style.color = '#a5b4fc';
   hint.style.lineHeight = '1.6';
 
   controls.append(hint);
-  root.append(gameHost, hud);
+  root.append(gameHost, hud, hotbarWrap);
   canvasHost.append(root);
 
-  const saved = loadLabState<AbilitiesLabSnapshot>(LAB_ID);
-
-  const settings: AbilitiesLabSettings = {
-    playerSpeed: PLAYER_SPEED,
-    maxEnemies: 30,
-    spawnIntervalMs: 750,
-    enemyHp: 30,
-    enemySpeed: 0.15625,
-    activeWeapon: 'pistol',
-    invulnerable: true,
-    infiniteMana: true,
-    ...(saved?.settings ?? {}),
-  };
-
-  // Which abilities are equipped/granted. Defaults to all so every ability is observable.
-  const equipped: Record<string, boolean> = {};
-  for (const def of ABILITIES) {
-    equipped[def.id] = saved?.equipped?.[def.id] ?? true;
+  // ---- Debug hotbar rendering ----
+  function renderHotbar(): void {
+    hotbarRow.replaceChildren();
+    const activeIds = ABILITIES.filter((d) => equipped[d.id] && d.kind !== 'passive');
+    if (activeIds.length === 0) {
+      const empty = document.createElement('div');
+      empty.textContent = '(no active/spell abilities equipped)';
+      empty.style.color = '#64748b';
+      empty.style.fontSize = '11px';
+      empty.style.fontStyle = 'italic';
+      empty.style.padding = '6px 10px';
+      hotbarRow.append(empty);
+      return;
+    }
+    for (const def of activeIds) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = def.name;
+      btn.title = `${def.description}\n\nClick to force-fire (bypasses cooldown + MP).`;
+      btn.style.padding = '10px 12px';
+      btn.style.minWidth = '80px';
+      btn.style.background = def.kind === 'spell' ? '#1e3a8a' : '#166534';
+      btn.style.color = '#f8fafc';
+      btn.style.border = '2px solid ' + (def.kind === 'spell' ? '#93c5fd' : '#86efac');
+      btn.style.borderRadius = '6px';
+      btn.style.fontFamily = 'Arial, sans-serif';
+      btn.style.fontSize = '12px';
+      btn.style.fontWeight = 'bold';
+      btn.style.cursor = 'pointer';
+      btn.style.boxShadow = '0 2px 6px rgba(0,0,0,0.4)';
+      btn.addEventListener('mouseenter', () => {
+        btn.style.filter = 'brightness(1.2)';
+      });
+      btn.addEventListener('mouseleave', () => {
+        btn.style.filter = '';
+      });
+      btn.addEventListener('click', () => {
+        const world = runtime.world;
+        const eid = runtime.playerEid ?? -1;
+        if (!world || eid < 0) return;
+        const fired = forceActivateAbility(world, eid, def.id);
+        btn.style.outline = fired ? '2px solid #fbbf24' : '2px solid #ef4444';
+        window.setTimeout(() => {
+          btn.style.outline = '';
+        }, 200);
+      });
+      hotbarRow.append(btn);
+    }
   }
+  renderHotbar();
 
-  let resetWorldFromGui = () => undefined;
-  let damagePlayerFromGui = () => undefined;
-  let triggerHitsFromGui = () => undefined;
+  // ---- Scenario execution (custom configureWorld) ----
 
-  class AbilitiesLabScene extends Phaser.Scene {
-    private accumulator = 0;
+  function configureWorld(world: GameWorld, playerEid: number): void {
+    // 1. Build the arena floor map (walls + obstacles), reposition player.
+    world.floorMap = buildArenaFloorMap(world);
+    const spawnFt = world.floorMap.tileToWorld(
+      world.floorMap.playerSpawn.x,
+      world.floorMap.playerSpawn.y,
+    );
+    world.stores.position.x[playerEid] = spawnFt.x;
+    world.stores.position.y[playerEid] = spawnFt.y;
 
-    private bridge?: ReturnType<typeof createPhaserBridge>;
+    // 2. Base stats + feature unlocks (so HUD ability bar renders + inventory
+    //    is available for parity with the shipped game).
+    initializeBaseStats(world, playerEid);
+    world.featureUnlocks.spells = true;
+    world.featureUnlocks.inventory = true;
+    world.featureUnlocks.equipment = true;
 
-    private inputCapture?: ReturnType<typeof createInputCapture>;
-
-    private inputState!: InputState;
-
-    private playerEid = -1;
-
-    private world!: GameWorld;
-
-    private castCounts = new Map<string, number>();
-
-    constructor() {
-      super({ key: 'AbilitiesLabScene' });
+    // 3. Weapon.
+    const weapon = WEAPON_DEFS.get(settings.activeWeapon);
+    if (weapon !== undefined) {
+      setActiveWeapon(world, weapon);
     }
 
-    create(): void {
-      resetWorldFromGui = () => {
-        this.resetWorld();
-      };
-      damagePlayerFromGui = () => {
-        this.damagePlayer();
-      };
-      triggerHitsFromGui = () => {
-        this.triggerHits();
-      };
+    // 4. Equip abilities per the toggle map.
+    syncEquippedAbilities(world, playerEid, equipped);
 
-      this.inputState = createInputState();
-      this.inputCapture = createInputCapture(this, {
-        getFollowOrigin: () =>
-          this.playerEid < 0
-            ? undefined
-            : {
-                x: ftToPx(this.world.stores.position.x[this.playerEid] ?? 0),
-                y: ftToPx(this.world.stores.position.y[this.playerEid] ?? 0),
-              },
-      });
-      this.accumulator = 0;
-
-      this.cameras.main.setBackgroundColor('#0c0e1a');
-      this.bridge = createPhaserBridge(this);
-      this.resetWorld();
-
-      const handleResize = () => this.applySpawnerBounds();
-      this.scale.on('resize', handleResize);
-      this.events.once('shutdown', () => {
-        resetWorldFromGui = () => undefined;
-        damagePlayerFromGui = () => undefined;
-        triggerHitsFromGui = () => undefined;
-        this.scale.off('resize', handleResize);
-        this.inputCapture?.destroy();
-        this.inputCapture = undefined;
-        this.bridge?.destroy();
-        this.bridge = undefined;
-      });
-    }
-
-    update(_time: number, delta: number): void {
-      if (!this.bridge || !this.inputCapture) {
-        return;
-      }
-
-      if (this.world.state === 'playing') {
-        this.inputCapture.poll(this.inputState);
-        this.accumulator += delta;
-        let steps = 0;
-
-        while (
-          this.accumulator >= GAME.DELTA_MS &&
-          steps < MAX_STEPS_PER_FRAME &&
-          this.world.state === 'playing'
-        ) {
-          this.world.frameCount += 1;
-          this.world.elapsedMs += GAME.DELTA_MS;
-
-          this.applySpawnerBounds();
-
-          playerInputSystem(this.world, this.inputState);
-          this.applyPlayerSpeedSetting();
-          statsSystem(this.world);
-          statSystem(this.world);
-          manaSystem(this.world);
-          this.applyInfiniteMana();
-          enemySpawnerSystem(this.world, {
-            maxEnemies: settings.maxEnemies,
-            spawnIntervalMs: settings.spawnIntervalMs,
-            enemyHp: settings.enemyHp,
-            enemySpeed: settings.enemySpeed,
-          });
-          movementSystem(this.world);
-          returningProjectileSystem(this.world);
-          weaponSystem(this.world);
-
-          const collision = collisionSystem(this.world);
-          aoeOnImpactPreDamage(this.world);
-          damageSystem(this.world, collision);
-          aoeOnImpactPostDamage(this.world);
-          areaDamageSystem(this.world, collision);
-          meleeSwingSystem(this.world);
-          knockbackSystem(this.world);
-          beamSystem(this.world);
-          trapSystem(this.world, collision);
-
-          dropSystem(this.world);
-          deathTimerSystem(this.world);
-          spawnAnimSystem(this.world);
-          healthSystem(this.world);
-          this.applyInvulnerability();
-          lifetimeSystem(this.world);
-          projectileCleanupSystem(this.world);
-
-          skillSystem(this.world);
-          this.tallyCasts(() => abilitySystem(this.world));
-
-          this.accumulator -= GAME.DELTA_MS;
-          steps += 1;
-        }
-
-        if (this.accumulator > GAME.DELTA_MS * MAX_STEPS_PER_FRAME) {
-          this.accumulator = GAME.DELTA_MS;
-        }
-      }
-
-      const interpAlpha = Math.min(1, Math.max(0, this.accumulator / GAME.DELTA_MS));
-      const renderElapsedMs = this.world.elapsedMs + this.accumulator;
-      this.bridge.sync(this.world, renderElapsedMs, interpAlpha);
-      this.updateHud();
-    }
-
-    /** Count abilities that fired this frame by diffing cooldown timestamps before/after. */
-    private tallyCasts(runAbilities: () => void): void {
-      const state = this.world.abilityStatesByEntity.get(this.playerEid);
-      const before = new Map(state?.cooldownByAbilityId ?? []);
-      runAbilities();
-      const after = state?.cooldownByAbilityId;
-      if (!after) return;
-      for (const [abilityId, frame] of after) {
-        if (before.get(abilityId) !== frame) {
-          this.castCounts.set(abilityId, (this.castCounts.get(abilityId) ?? 0) + 1);
-        }
+    // 5. Scenario-specific spawns + player-state tweaks.
+    const scenario = getScenario(settings.scenario);
+    configureEnemySpawner(world, {
+      width: world.floorMap.widthFt,
+      height: world.floorMap.heightFt,
+    });
+    if (scenario.staticEnemyCount > 0) {
+      const clusterCenterFt = { x: spawnFt.x + 10, y: spawnFt.y };
+      for (let i = 0; i < scenario.staticEnemyCount; i += 1) {
+        const angle = (i / scenario.staticEnemyCount) * Math.PI * 2;
+        const radius = scenario.clusterRadiusFt > 0 ? scenario.clusterRadiusFt * 0.5 : 0;
+        spawnEnemy(
+          world,
+          clusterCenterFt.x + Math.cos(angle) * radius,
+          clusterCenterFt.y + Math.sin(angle) * radius,
+          scenario.enemyHp,
+        );
       }
     }
-
-    private applyPlayerSpeedSetting(): void {
-      if (this.playerEid < 0) return;
-      const scale = PLAYER_SPEED > 0 ? settings.playerSpeed / PLAYER_SPEED : 1;
-      const velocityX = (this.world.stores.velocity.x[this.playerEid] ?? 0) * scale;
-      const velocityY = (this.world.stores.velocity.y[this.playerEid] ?? 0) * scale;
-      setComponent(this.world.ecs, this.playerEid, Velocity, { x: velocityX, y: velocityY });
+    if (scenario.startAtLowHp) {
+      const max = world.stores.health.max[playerEid] ?? 100;
+      world.stores.health.current[playerEid] = Math.max(1, Math.round(max * 0.4));
     }
-
-    private applyInfiniteMana(): void {
-      if (settings.infiniteMana) {
-        this.world.playerMp = this.world.playerMaxMp;
-      }
-    }
-
-    private applyInvulnerability(): void {
-      if (!settings.invulnerable || this.playerEid < 0) return;
-      const max = this.world.stores.health.max[this.playerEid] ?? 100;
-      this.world.stores.health.current[this.playerEid] = max;
-    }
-
-    private damagePlayer(): void {
-      if (this.playerEid < 0) return;
-      const max = this.world.stores.health.max[this.playerEid] ?? 100;
-      this.world.stores.health.current[this.playerEid] = Math.max(1, Math.round(max * 0.4));
-    }
-
-    private triggerHits(): void {
-      if (this.playerEid < 0) return;
-      queueAbilityTrigger(this.world, {
-        holderEid: this.playerEid,
+    if (scenario.queueSkillTrigger) {
+      queueAbilityTrigger(world, {
+        holderEid: playerEid,
         kind: 'skill_usage',
         metric: 'hits_landed',
         amount: 10,
       });
     }
 
-    private applySpawnerBounds(): void {
-      configureEnemySpawner(this.world, {
-        width: pxToFt(this.getSimulationWidth()),
-        height: pxToFt(this.getSimulationHeight()),
+    // 6. Publish the live world to the closure so debug hotbar + HUD can read it.
+    runtime.world = world;
+    runtime.playerEid = playerEid;
+  }
+
+  // Per-frame preSystem that (a) reruns the recurring enemy spawner with the
+  // active scenario's config and (b) enforces the Invulnerable / Infinite Mana
+  // debug toggles. Kept as a preSystem so it slots into the shipped
+  // runSimulationStep pipeline in the exact same order every frame.
+  function labPreSystem(world: GameWorld): void {
+    const eid = runtime.playerEid ?? -1;
+    if (eid < 0) return;
+
+    if (settings.infiniteMana) {
+      world.playerMp = world.playerMaxMp;
+    }
+    if (settings.invulnerable) {
+      const max = world.stores.health.max[eid] ?? 100;
+      world.stores.health.current[eid] = max;
+    }
+
+    const scenario = getScenario(settings.scenario);
+    if (scenario.maxEnemies > 0) {
+      enemySpawnerSystem(world, {
+        maxEnemies: scenario.maxEnemies,
+        spawnIntervalMs: scenario.spawnIntervalMs,
+        enemyHp: scenario.enemyHp,
+        enemySpeed: 0.15625,
       });
-    }
-
-    private getSimulationHeight(): number {
-      return Math.max(1, Math.round(this.scale.height || this.cameras.main.height || GAME.HEIGHT));
-    }
-
-    private getSimulationWidth(): number {
-      return Math.max(1, Math.round(this.scale.width || this.cameras.main.width || GAME.WIDTH));
-    }
-
-    private resetWorld(): void {
-      this.accumulator = 0;
-      this.castCounts.clear();
-      this.world = createGameWorld({ seed: LAB_SEED });
-      this.world.featureUnlocks.spells = true;
-      this.playerEid = spawnPlayer(
-        this.world,
-        pxToFt(this.getSimulationWidth()) / 2,
-        pxToFt(this.getSimulationHeight()) / 2,
-      );
-      initializeBaseStats(this.world, this.playerEid);
-      addComponent(this.world.ecs, this.playerEid, set(BroadcastScore, { current: 0 }));
-      const weapon = WEAPON_DEFS.get(settings.activeWeapon);
-      if (weapon !== undefined) {
-        setActiveWeapon(this.world, weapon);
-      }
-      this.syncEquippedAbilities();
-      this.applySpawnerBounds();
-      this.bridge?.sync(this.world);
-      this.updateHud();
-    }
-
-    /** Equip/grant abilities from the lab toggles onto the player. */
-    syncEquippedAbilities(): void {
-      if (this.playerEid < 0) return;
-      for (const def of ABILITIES) {
-        if (!equipped[def.id]) {
-          if (def.kind !== 'passive') unequipActiveAbility(this.world, this.playerEid, def.id);
-          continue;
-        }
-        if (def.kind === 'passive') {
-          grantPassiveAbility(this.world, this.playerEid, def.id);
-        } else if (def.kind === 'spell') {
-          memorizeSpell(this.world, this.playerEid, def.id);
-        } else {
-          equipActiveAbility(this.world, this.playerEid, def.id);
-        }
-      }
-    }
-
-    private updateHud(): void {
-      const playerHp =
-        this.playerEid >= 0 ? (this.world.stores.health.current[this.playerEid] ?? 0) : 0;
-      const enemyCount = query(this.world.ecs, [Enemy]).length;
-      const state = this.world.abilityStatesByEntity.get(this.playerEid);
-      const active = state?.equippedActiveAbilityIds ?? [];
-      const passives = state?.passiveAbilityIds ?? [];
-      const castLines = ABILITIES.filter((d) => equipped[d.id]).map((d) => {
-        const casts = this.castCounts.get(d.id) ?? 0;
-        return `  ${d.name}: ${d.kind === 'passive' ? 'on' : `${casts} cast`}`;
-      });
-
-      hud.textContent = [
-        `MP: ${this.world.playerMp.toFixed(0)} / ${this.world.playerMaxMp.toFixed(0)}`,
-        `Player HP: ${playerHp.toFixed(0)}`,
-        `Enemies: ${enemyCount}`,
-        `Active/Spell slots: ${active.length}  Passives: ${passives.length}`,
-        'Abilities:',
-        ...castLines,
-        `State: ${this.world.state}`,
-      ].join('\n');
     }
   }
 
-  let scene: AbilitiesLabScene | undefined;
+  // ---- MainGameSceneOptions (mirrors the shipped floor bootstrap, minus the
+  //      floor1-specific director/objective/quest/family systems, which would
+  //      require a full floor manifest to work). ----
+  const sceneOptions: MainGameSceneOptions = {
+    worldSeed: LAB_SEED,
+    configureWorld,
+    preSystems: [
+      statsSystem,
+      statSystem,
+      manaSystem,
+      familyRelationshipSystem,
+      weaponSystem,
+      enemyAISystem,
+      statusEffectSystem,
+      spawnerSystem,
+      labPreSystem,
+    ],
+    postSystems: [skillSystem, abilitySystem],
+  };
 
+  // ---- Boot Phaser ----
+  const config = createFloorGameConfig(gameHost, sceneOptions);
+  let game = new Phaser.Game(config);
+
+  function restartScene(): void {
+    // Rebuild the entire Phaser game so every closure (configureWorld,
+    // preSystems) captures the current toggle state and the arena regen
+    // reseeds cleanly. Matches how weapon-lab handles Reset.
+    runtime.world = undefined;
+    runtime.playerEid = undefined;
+    game.destroy(true);
+    game = new Phaser.Game(createFloorGameConfig(gameHost, sceneOptions));
+  }
+
+  // ---- HUD ticker (reads live world) ----
+  const hudInterval = window.setInterval(() => {
+    const world = runtime.world;
+    const eid = runtime.playerEid ?? -1;
+    if (!world || eid < 0) {
+      hud.textContent = 'Booting…';
+      return;
+    }
+    const state = world.abilityStatesByEntity.get(eid);
+    const enemyCount = query(world.ecs, [Enemy]).length;
+    const equippedCount = state?.equippedActiveAbilityIds.length ?? 0;
+    const passives = state?.passiveAbilityIds.length ?? 0;
+    const hp = world.stores.health.current[eid] ?? 0;
+    const hpMax = world.stores.health.max[eid] ?? 0;
+    hud.textContent = [
+      `Scenario: ${getScenario(settings.scenario).label}`,
+      `HP: ${hp.toFixed(0)} / ${hpMax.toFixed(0)}`,
+      `MP: ${world.playerMp.toFixed(0)} / ${world.playerMaxMp.toFixed(0)}`,
+      `Enemies: ${enemyCount}`,
+      `Equipped: ${equippedCount} active/spell   ${passives} passive`,
+      `State: ${world.state}`,
+    ].join('\n');
+  }, 100);
+
+  // ---- GUI ----
   function persistState(): void {
     saveLabState<AbilitiesLabSnapshot>(LAB_ID, { settings, equipped });
   }
 
-  const controlsApi = {
-    reset: () => resetWorldFromGui(),
-    damage: () => damagePlayerFromGui(),
-    hits: () => triggerHitsFromGui(),
-  };
+  const scenarioIds = SCENARIOS.map((s) => s.id);
+  const scenarioLabels: Record<string, string> = {};
+  for (const s of SCENARIOS) scenarioLabels[s.label] = s.id;
+
+  gui
+    .add(settings, 'scenario', scenarioIds)
+    .name('Scenario')
+    .onChange(() => {
+      persistState();
+      restartScene();
+    });
 
   gui
     .add(settings, 'activeWeapon', WEAPON_IDS)
     .name('Auto-Weapon')
-    .onChange(() => resetWorldFromGui());
+    .onChange(() => {
+      const world = runtime.world;
+      const weapon = WEAPON_DEFS.get(settings.activeWeapon);
+      if (world && weapon) setActiveWeapon(world, weapon);
+      persistState();
+    });
 
   const abilityFolder = gui.addFolder('Abilities');
   abilityFolder.open();
@@ -441,68 +577,69 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       .add(equipped, def.id)
       .name(`${def.name} (${abilityKindLabel(def)})`)
       .onChange(() => {
-        scene?.syncEquippedAbilities();
+        const world = runtime.world;
+        const eid = runtime.playerEid ?? -1;
+        if (world && eid >= 0) syncEquippedAbilities(world, eid, equipped);
+        renderHotbar();
         persistState();
       });
   }
 
-  gui.add(controlsApi, 'damage').name('Take 60% HP');
-  gui.add(controlsApi, 'hits').name('Trigger hits→10');
+  const helpers = {
+    'Take 60% HP': () => {
+      const world = runtime.world;
+      const eid = runtime.playerEid ?? -1;
+      if (!world || eid < 0) return;
+      const max = world.stores.health.max[eid] ?? 100;
+      world.stores.health.current[eid] = Math.max(1, Math.round(max * 0.4));
+    },
+    'Queue hits→10 (skill_usage)': () => {
+      const world = runtime.world;
+      const eid = runtime.playerEid ?? -1;
+      if (!world || eid < 0) return;
+      queueAbilityTrigger(world, {
+        holderEid: eid,
+        kind: 'skill_usage',
+        metric: 'hits_landed',
+        amount: 10,
+      });
+    },
+    'Full Heal': () => {
+      const world = runtime.world;
+      const eid = runtime.playerEid ?? -1;
+      if (!world || eid < 0) return;
+      const max = world.stores.health.max[eid] ?? 100;
+      world.stores.health.current[eid] = max;
+      world.playerMp = world.playerMaxMp;
+    },
+    'Reset Arena': () => restartScene(),
+  };
+  const helperFolder = gui.addFolder('Helpers');
+  helperFolder.add(helpers, 'Take 60% HP');
+  helperFolder.add(helpers, 'Queue hits→10 (skill_usage)');
+  helperFolder.add(helpers, 'Full Heal');
+  helperFolder.add(helpers, 'Reset Arena');
 
-  const arena = gui.addFolder('Arena');
-  arena.add(settings, 'infiniteMana').name('Infinite Mana');
-  arena.add(settings, 'invulnerable').name('Invulnerable');
-  arena.add(settings, 'playerSpeed', 0.125, 1.875, 0.0125).name('Player Speed');
-  arena.add(settings, 'maxEnemies', 5, 200, 1).name('Max Enemies');
-  arena.add(settings, 'spawnIntervalMs', 100, 5000, 1).name('Spawn Interval');
-  arena.add(settings, 'enemyHp', 10, 500, 1).name('Enemy HP');
-  arena.add(settings, 'enemySpeed', 0.0625, 0.625, 0.0125).name('Enemy Speed');
-  arena.add(controlsApi, 'reset').name('Reset');
+  const arenaFolder = gui.addFolder('Debug Toggles');
+  arenaFolder.add(settings, 'infiniteMana').name('Infinite Mana');
+  arenaFolder.add(settings, 'invulnerable').name('Invulnerable');
 
   gui.onChange(persistState);
 
-  const getSize = () => ({
-    width: Math.max(1, Math.round(gameHost.clientWidth || GAME.WIDTH)),
-    height: Math.max(1, Math.round(gameHost.clientHeight || GAME.HEIGHT)),
-  });
-
-  const initialSize = getSize();
-  const config: Phaser.Types.Core.GameConfig = {
-    type: Phaser.AUTO,
-    parent: gameHost,
-    width: initialSize.width,
-    height: initialSize.height,
-    backgroundColor: '#0c0e1a',
-    scene: [AbilitiesLabScene],
-    scale: {
-      mode: Phaser.Scale.RESIZE,
-      autoCenter: Phaser.Scale.CENTER_BOTH,
-    },
-  };
-
-  const game = new Phaser.Game(config);
-  game.events.once('ready', () => {
-    scene = game.scene.getScene('AbilitiesLabScene') as AbilitiesLabScene;
-  });
-  const resizeObserver = new ResizeObserver(() => {
-    const nextSize = getSize();
-    game.scale.resize(nextSize.width, nextSize.height);
-  });
-  resizeObserver.observe(gameHost);
-
   return () => {
-    resizeObserver.disconnect();
+    window.clearInterval(hudInterval);
     game.destroy(true);
     hint.remove();
     root.remove();
   };
 }
 
-registerLab('abilities-lab', {
+registerLab(LAB_ID, {
   category: 'Combat' as LabCategory,
   name: 'Abilities Lab',
   description:
-    'Spawn enemies and test real abilities (spells, actives, passives) in the live combat engine. ' +
-    'Equip via toggles; abilities fire on their true triggers and spend MP.',
+    'Boot MainGameScene onto an Arena floor. Pick a scenario (solo, target dummy, cluster, ' +
+    'low-HP, boss horde, skill-trigger), equip any spells/actives/passives, and click the ' +
+    'debug hotbar overlay to force-fire abilities bypassing cooldown + MP.',
   create: createAbilitiesLab,
 });
