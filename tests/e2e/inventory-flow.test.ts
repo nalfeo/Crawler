@@ -197,6 +197,28 @@ describe('inventory flow (e2e)', () => {
     await probe.openEquipment(page);
     await page.waitForTimeout(300);
     expect(await probe.isEquipmentOpen(page), 'equipment paper-doll should open').toBe(true);
+    expect(await probe.isInventoryOpen(page), 'opening equipment should also open inventory').toBe(
+      true,
+    );
+  });
+
+  it('selecting an equipment slot applies matching inventory slot filter', async () => {
+    await loadUiProbeLab(page);
+    await hideLabChrome(page);
+    await probe.openEquipment(page);
+    await page.waitForTimeout(250);
+
+    expect(await probe.selectEquipmentSlot(page, 'mainHand')).toBe(true);
+    await page.waitForTimeout(200);
+    expect(await probe.getEquipmentSlotFilter(page)).toBe('mainHand');
+    expect(await probe.getInventorySlotFilter(page)).toBe('mainHand');
+    expect(await probe.getInventoryCellBounds(page, 0)).toBeNull();
+
+    expect(await probe.selectEquipmentSlot(page, 'neck')).toBe(true);
+    await page.waitForTimeout(200);
+    expect(await probe.getEquipmentSlotFilter(page)).toBe('neck');
+    expect(await probe.getInventorySlotFilter(page)).toBe('neck');
+    expect(await probe.getInventoryCellBounds(page, 0)).not.toBeNull();
   });
 
   it('grants +1 Charisma when the merchant charm is equipped', async () => {

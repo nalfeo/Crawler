@@ -17,6 +17,7 @@ import { E2E_LAB_BASE_URL } from '../e2e-constants.js';
 import type { UiProbeApi } from '../../../src/labs/ui-probe-lab/index.js';
 import type { ScreenBounds } from '../../../src/engine/ui-scale.js';
 import type { PrimaryStatId } from '../../../src/shared/stats.js';
+import type { EquipmentSlotId } from '../../../src/shared/equipment-slots.js';
 
 declare global {
   interface Window {
@@ -133,6 +134,12 @@ export const probe = {
 
   openEquipment: (page: Page) => page.evaluate(() => window.__uiProbe!.openEquipment()),
   isEquipmentOpen: (page: Page) => page.evaluate(() => window.__uiProbe!.isEquipmentOpen()),
+  selectEquipmentSlot: (page: Page, slotId: EquipmentSlotId) =>
+    page.evaluate((slot) => window.__uiProbe!.selectEquipmentSlot(slot), slotId),
+  getEquipmentSlotFilter: (page: Page) =>
+    page.evaluate(() => window.__uiProbe!.getEquipmentSlotFilter()),
+  getInventorySlotFilter: (page: Page) =>
+    page.evaluate(() => window.__uiProbe!.getInventorySlotFilter()),
   getCharisma: (page: Page) => page.evaluate(() => window.__uiProbe!.getCharisma()),
   equipCharm: (page: Page) => page.evaluate(() => window.__uiProbe!.equipCharm()),
 

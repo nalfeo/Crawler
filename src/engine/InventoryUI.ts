@@ -16,12 +16,14 @@ import { GAME } from '../shared/constants.js';
 import type { InventoryBag, InventorySlot, TabPreferences } from '../shared/inventory.js';
 import {
   createTabPreferences,
+  filterByEquipmentSlot,
   filterByTag,
   getVisibleTabs,
   search,
   sortSlots,
   type SortField,
 } from '../shared/inventory.js';
+import type { EquipmentSlotId } from '../shared/equipment-slots.js';
 import { type ItemDef, type ItemTag, RARITY_COLORS, getItemById } from '../shared/items.js';
 import {
   emptyGeneratedSpriteRegistry,
@@ -91,6 +93,8 @@ export function createInventoryUI(
   isTooltipVisible(): boolean;
   /** Test/automation affordance: true while a tooltip is pinned (click/tap). */
   isTooltipPinned(): boolean;
+  setEquipmentSlotFilter(slotId: EquipmentSlotId | null): void;
+  getEquipmentSlotFilter(): EquipmentSlotId | null;
   destroy(): void;
 } {
   scene.cameras.main.roundPixels = true;
@@ -121,6 +125,7 @@ export function createInventoryUI(
   let visible = false;
   let activeTag: ItemTag | null = null;
   let searchQuery = '';
+  let externalSlotFilter: EquipmentSlotId | null = null;
   let currentBag: InventoryBag | null = null;
   let currentSortBy: SortField = 'rarity';
   const tabPrefs: TabPreferences = createTabPreferences();
@@ -195,6 +200,13 @@ export function createInventoryUI(
   });
   container.add(title);
 
+  const slotFilterLabel = crispText(panelX + PANEL_PADDING + 138, panelY + PANEL_PADDING + 4, '', {
+    fontFamily: FONT_FAMILY,
+    fontSize: '12px',
+    color: '#7ee0ff',
+  });
+  container.add(slotFilterLabel);
+
   // Sort button
   const sortBtn = scene.add
     .text(snap(panelX + panelWidth - PANEL_PADDING), snap(panelY + PANEL_PADDING), '⇅ Rarity', {
@@ -266,6 +278,9 @@ export function createInventoryUI(
 
     bg.setPosition(panelX + panelWidth / 2, panelY + panelHeight / 2);
     title.setPosition(panelX + PANEL_PADDING, panelY + PANEL_PADDING).setResolution(textResolution);
+    slotFilterLabel
+      .setPosition(panelX + PANEL_PADDING + 138, panelY + PANEL_PADDING + 4)
+      .setResolution(textResolution);
     sortBtn
       .setPosition(panelX + panelWidth - PANEL_PADDING, panelY + PANEL_PADDING)
       .setResolution(textResolution);
@@ -395,14 +410,18 @@ export function createInventoryUI(
   function getFilteredSlots(): InventorySlot[] {
     if (!currentBag) return [];
 
-    let slots: InventorySlot[];
+    let slots: InventorySlot[] = currentBag.slots;
+
+    if (externalSlotFilter !== null) {
+      slots = filterByEquipmentSlot(currentBag, externalSlotFilter);
+    }
+
+    const filteredBag: InventoryBag = { slots };
 
     if (searchQuery) {
-      slots = search(currentBag, searchQuery);
+      slots = search(filteredBag, searchQuery);
     } else if (activeTag) {
-      slots = filterByTag(currentBag, activeTag);
-    } else {
-      slots = currentBag.slots;
+      slots = filterByTag(filteredBag, activeTag);
     }
 
     // Sort
@@ -632,6 +651,14 @@ export function createInventoryUI(
     }
   }
 
+  function updateSlotFilterLabel(): void {
+    if (externalSlotFilter === null) {
+      slotFilterLabel.setText('');
+      return;
+    }
+    slotFilterLabel.setText(`SLOT FILTER: ${externalSlotFilter}`);
+  }
+
   scene.input.keyboard?.on('keydown', handleKeyDown);
   scene.scale.on('resize', applyLayout);
 
@@ -658,6 +685,7 @@ export function createInventoryUI(
     // tooltip, breaking hover (see lastRenderSignature comment above).
     const signature = computeRenderSignature();
     if (signature !== lastRenderSignature) {
+      updateSlotFilterLabel();
       renderTabs();
       renderItems();
       lastRenderSignature = signature;
@@ -666,7 +694,7 @@ export function createInventoryUI(
 
   function computeRenderSignature(): string {
     const slots = currentBag?.slots ?? [];
-    let signature = `${activeTag ?? '*'}|${searchQuery}|${currentSortBy}`;
+    let signature = `${activeTag ?? '*'}|${searchQuery}|${currentSortBy}|${externalSlotFilter ?? '*'}`;
     for (const slot of slots) {
       // Fold in the *selected* generated icon variant and whether its texture is
       // loaded yet, so the grid re-renders once async sprite warm-loading
@@ -709,6 +737,13 @@ export function createInventoryUI(
     },
     isTooltipVisible: () => tooltipObjects.length > 0,
     isTooltipPinned: () => pinned !== null,
+    setEquipmentSlotFilter: (slotId: EquipmentSlotId | null) => {
+      if (externalSlotFilter === slotId) return;
+      externalSlotFilter = slotId;
+      lastRenderSignature = null;
+      updateSlotFilterLabel();
+    },
+    getEquipmentSlotFilter: () => externalSlotFilter,
     destroy() {
       scene.input.keyboard?.off('keydown', handleKeyDown);
       scene.scale.off('resize', applyLayout);

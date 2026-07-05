@@ -44,6 +44,7 @@ import { GAME } from '../../shared/constants.js';
 import { PIXELS_PER_FOOT, pxToFt } from '../../shared/units.js';
 import { addItem } from '../../shared/inventory.js';
 import { PRIMARY_STATS, type PrimaryStatId } from '../../shared/stats.js';
+import type { EquipmentSlotId } from '../../shared/equipment-slots.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
@@ -89,6 +90,9 @@ export interface UiProbeApi {
   // Equipment ---------------------------------------------------------------
   openEquipment(): void;
   isEquipmentOpen(): boolean;
+  selectEquipmentSlot(slotId: EquipmentSlotId): boolean;
+  getEquipmentSlotFilter(): EquipmentSlotId | null;
+  getInventorySlotFilter(): EquipmentSlotId | null;
   /** Effective Charisma of the player (base + equipment bonuses). */
   getCharisma(): number;
   /** Equip the merchant's charm via the real equipment system (safe-room). */
@@ -263,7 +267,9 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       }
 
       this.inventoryUI = createInventoryUI(this);
-      this.equipmentUI = createEquipmentUI(this);
+      this.equipmentUI = createEquipmentUI(this, {
+        onSlotFilterChange: (slotId) => this.inventoryUI?.setEquipmentSlotFilter(slotId),
+      });
       this.minimap = createHudMinimap(this);
       this.levelUpUI = createLevelUpUI(this, { onConfirm: () => undefined });
 
@@ -328,12 +334,26 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
         openEquipment: () => {
           this.closeOverlays();
+          if (this.inventoryUI && !this.inventoryUI.isOpen()) {
+            this.inventoryUI.toggle(this.world);
+          }
           if (this.equipmentUI && !this.equipmentUI.isOpen()) {
             this.equipmentUI.toggle(this.world);
           }
+          this.inventoryUI?.refresh(this.world);
           this.equipmentUI?.refresh(this.world);
         },
         isEquipmentOpen: () => this.equipmentUI?.isOpen() ?? false,
+        selectEquipmentSlot: (slotId: EquipmentSlotId) => {
+          if (!this.equipmentUI || !this.equipmentUI.isOpen()) {
+            return false;
+          }
+          this.equipmentUI.selectSlot(slotId);
+          this.inventoryUI?.refresh(this.world);
+          return true;
+        },
+        getEquipmentSlotFilter: () => this.equipmentUI?.getSelectedSlotFilter() ?? null,
+        getInventorySlotFilter: () => this.inventoryUI?.getEquipmentSlotFilter() ?? null,
         getCharisma: () => getEffectiveStats(this.world, this.playerEid).charisma,
         equipCharm: () => {
           const result = equip(this.world, this.playerEid, MERCHANTS_CHARM_DEF);
