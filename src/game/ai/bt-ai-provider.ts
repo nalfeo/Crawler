@@ -273,20 +273,21 @@ const TRAVEL_HEADING_EPSILON = 1e-6;
 const RISK_REWARD_CANDIDATE_OFFSETS_DEG = [0, -15, 15, -30, 30, -45, 45] as const;
 const RISK_REWARD_DANGER_LOOKAHEAD_FT = 8;
 const RISK_REWARD_DANGER_RADIUS_FT = 15; // wider threat halo → earlier avoidance
-const RISK_REWARD_W_PROGRESS = 1.15;
+const RISK_REWARD_W_PROGRESS = 1.0; // baseline — danger must reliably beat this
 const RISK_REWARD_W_REWARD = 0.95;
-const RISK_REWARD_W_DANGER = 1.75; // increased from 1.45 — danger must strongly outweigh progress
+const RISK_REWARD_W_DANGER = 2.2; // raised: a nearby enemy must decisively block progress
 // Continuity bonus: small nudge toward the previous frame's heading to dampen
 // oscillation when candidates score nearly equally (e.g. dense symmetric packs).
 const RISK_REWARD_W_CONTINUITY = 0.18;
 // Heading into a wall → maximum danger; prevents player from hugging walls into enemies.
 const RISK_REWARD_WALL_DANGER = 2.0;
 // Unseen-area baseline: moderate penalty for heading into fog-of-war.
-// Encourages the AI to prefer lit, known corridors over blind rushing.
-const RISK_REWARD_FOG_DANGER = 0.45;
-// Door-crossing penalty: the AI doesn't know what is behind a closed door;
-// treat a direct path through it as risky until the far side is visible.
+const RISK_REWARD_FOG_DANGER = 0.35; // reduced slightly so it doesn't swamp enemy danger
+// Door-crossing penalty: the AI doesn't know what is behind a closed door.
 const RISK_REWARD_DOOR_DANGER = 0.6;
+// How many frames ahead to project enemy positions via their current velocity.
+// Enemies moving toward the player appear closer in danger-space, forcing earlier avoidance.
+const RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES = 10;
 
 // Assembled once from the TRAVEL_* tuning constants; the pure steering module
 // reads it by reference each frame and never mutates it.
@@ -2726,7 +2727,17 @@ export class BehaviorTreeAI implements AIInputProvider {
       const ex = world.stores.position.x[eid] ?? 0;
       const ey = world.stores.position.y[eid] ?? 0;
       if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
-      threatPoints.push({ x: ex, y: ey });
+      // Project forward by velocity so enemies moving toward the player
+      // appear closer in danger-space, triggering avoidance earlier.
+      const vx = world.stores.velocity.x[eid] ?? 0;
+      const vy = world.stores.velocity.y[eid] ?? 0;
+      const projX = ex + vx * RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES;
+      const projY = ey + vy * RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES;
+      // Use whichever position is closer to the player — projected or current —
+      // so a retreating enemy doesn't appear artificially safe.
+      const distCurrent = Math.hypot(ex - playerX, ey - playerY);
+      const distProj = Math.hypot(projX - playerX, projY - playerY);
+      threatPoints.push(distProj < distCurrent ? { x: projX, y: projY } : { x: ex, y: ey });
     }
 
     const desiredX = blended.moveX / blendedLen;
