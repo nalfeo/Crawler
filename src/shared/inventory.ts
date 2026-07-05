@@ -13,6 +13,8 @@ import {
   isKnownTag,
   getItemById,
 } from './items.js';
+import { getEquipmentDefForItem } from './equipmentDefs.js';
+import type { EquipmentSlotId } from './equipment-slots.js';
 
 // ---------------------------------------------------------------------------
 // Data types
@@ -170,6 +172,14 @@ export function filterByTag(
     const def = catalog ? catalog.find((d) => d.id === slot.itemId) : getItemById(slot.itemId);
     if (!def) return false;
     return def.tags.includes(tag);
+  });
+}
+
+/** Filter slots to equippable items that can be worn in the given equipment slot. */
+export function filterByEquipmentSlot(bag: InventoryBag, slotId: EquipmentSlotId): InventorySlot[] {
+  return bag.slots.filter((slot) => {
+    const def = getEquipmentDefForItem(slot.itemId);
+    return def !== undefined && def.slots.includes(slotId);
   });
 }
 

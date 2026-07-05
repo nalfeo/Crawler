@@ -8,6 +8,7 @@ import {
   getItemCount,
   search,
   filterByTag,
+  filterByEquipmentSlot,
   sortSlots,
   getActiveTags,
   getVisibleTabs,
@@ -226,6 +227,32 @@ describe('InventoryBag', () => {
       addItem(bag, 'stinky-bone', 1, testCatalog);
       expect(filterByTag(bag, 'Materials', testCatalog)).toHaveLength(1);
       expect(filterByTag(bag, customTag('Smelly Stuff'), testCatalog)).toHaveLength(1);
+    });
+  });
+
+  describe('filterByEquipmentSlot', () => {
+    it('returns equippable items for the selected slot only', () => {
+      addItem(bag, 'merchants-stained-charm', 1);
+      addItem(bag, 'iron-ore', 3);
+      addItem(bag, 'iron-sword', 1);
+      const neck = filterByEquipmentSlot(bag, 'neck');
+      const mainHand = filterByEquipmentSlot(bag, 'mainHand');
+      const offHand = filterByEquipmentSlot(bag, 'offHand');
+
+      expect(neck.map((slot) => slot.itemId)).toEqual(['merchants-stained-charm']);
+      expect(mainHand.map((slot) => slot.itemId)).toEqual(['iron-sword']);
+      expect(offHand).toHaveLength(0);
+    });
+
+    it('includes two-handed weapons in both hand slot filters', () => {
+      addItem(bag, 'frost-bow', 1);
+
+      expect(filterByEquipmentSlot(bag, 'mainHand').map((slot) => slot.itemId)).toEqual([
+        'frost-bow',
+      ]);
+      expect(filterByEquipmentSlot(bag, 'offHand').map((slot) => slot.itemId)).toEqual([
+        'frost-bow',
+      ]);
     });
   });
 
