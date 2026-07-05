@@ -26,7 +26,7 @@ import {
   setTrackedQuest,
   startFloor1BossEncounter,
 } from '../../game/index.js';
-import { Player, Enemy, Position } from '../../core/index.js';
+import { Player, Enemy, Position, Health, XpGem, Gold, DroppedItem } from '../../core/index.js';
 import type { GameWorld } from '../../core/world.js';
 import { setGoalFlag } from '../../core/door-lock.js';
 import { flowFieldStep, FLOW_UNREACHABLE } from '../../core/map/flow-field.js';
@@ -1129,7 +1129,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
 
   /**
    * Render the risk/reward fields around the player when in fused pathing mode.
-   * Samples danger at a grid of positions and draws a heatmap overlay.
+   * - Red:   danger from *live* enemies only (mirrors scorer's health > 0 filter)
+   * - Green: reward from nearby pickups (XP gems, gold, dropped items)
+   * - Cells with no risk AND no reward are skipped entirely (transparent)
    */
   const drawRiskRewardFieldsOverlay = (): void => {
     if (
@@ -1154,58 +1156,85 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     const playerX = world.stores.position.x[playerEid] ?? 0;
     const playerY = world.stores.position.y[playerEid] ?? 0;
 
-    // Sample danger on a grid around the player
     const sampleRadius = 30; // feet
     const gridSpacing = 2; // feet
-    let maxDanger = 0;
-    const samples: { x: number; y: number; danger: number }[] = [];
+    const DANGER_RADIUS = 12; // ft — mirrors RISK_REWARD_DANGER_RADIUS_FT in scorer
+    const REWARD_RADIUS = 10; // ft — pickup pull radius
+    const DRAW_THRESHOLD = 0.05; // skip cells with no meaningful field value
 
-    // Query all nearby enemies for danger calculation
-    const enemyPositions: { x: number; y: number }[] = [];
-    for (const eid of query(world.ecs, [Enemy, Position])) {
+    // Live enemies only — mirrors scorer's health.current > 0 filter (dead corpses excluded)
+    const threatPoints: { x: number; y: number }[] = [];
+    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
+      if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
       const ex = world.stores.position.x[eid] ?? 0;
       const ey = world.stores.position.y[eid] ?? 0;
-      const distSq = (ex - playerX) ** 2 + (ey - playerY) ** 2;
-      if (distSq < sampleRadius ** 2) {
-        enemyPositions.push({ x: ex, y: ey });
+      if (Math.hypot(ex - playerX, ey - playerY) < sampleRadius + DANGER_RADIUS) {
+        threatPoints.push({ x: ex, y: ey });
       }
     }
 
-    // Sample danger on a grid
+    // Reward sources: XP gems, gold, dropped items
+    const rewardPoints: { x: number; y: number }[] = [];
+    for (const eid of query(world.ecs, [XpGem, Position])) {
+      const rx = world.stores.position.x[eid] ?? 0;
+      const ry = world.stores.position.y[eid] ?? 0;
+      if (Math.hypot(rx - playerX, ry - playerY) < sampleRadius + REWARD_RADIUS) {
+        rewardPoints.push({ x: rx, y: ry });
+      }
+    }
+    for (const eid of query(world.ecs, [Gold, Position])) {
+      const rx = world.stores.position.x[eid] ?? 0;
+      const ry = world.stores.position.y[eid] ?? 0;
+      if (Math.hypot(rx - playerX, ry - playerY) < sampleRadius + REWARD_RADIUS) {
+        rewardPoints.push({ x: rx, y: ry });
+      }
+    }
+    for (const eid of query(world.ecs, [DroppedItem, Position])) {
+      const rx = world.stores.position.x[eid] ?? 0;
+      const ry = world.stores.position.y[eid] ?? 0;
+      if (Math.hypot(rx - playerX, ry - playerY) < sampleRadius + REWARD_RADIUS) {
+        rewardPoints.push({ x: rx, y: ry });
+      }
+    }
+
+    // Sample grid and draw only cells that carry meaningful field signal
+    const cellSizePx = ftToPx(gridSpacing);
     for (let x = playerX - sampleRadius; x <= playerX + sampleRadius; x += gridSpacing) {
       for (let y = playerY - sampleRadius; y <= playerY + sampleRadius; y += gridSpacing) {
         let danger = 0;
-        // Calculate squared-distance danger from nearby enemies
-        for (const enemy of enemyPositions) {
-          const dx = x - enemy.x;
-          const dy = y - enemy.y;
-          const distSq = dx * dx + dy * dy;
-          const normDist = Math.sqrt(distSq) / 12; // 12ft danger radius
-          if (normDist < 1) {
-            const norm = 1 - normDist;
+        for (const t of threatPoints) {
+          const dist = Math.hypot(x - t.x, y - t.y);
+          if (dist < DANGER_RADIUS) {
+            const norm = 1 - dist / DANGER_RADIUS;
             danger += norm * norm;
           }
         }
-        samples.push({ x, y, danger });
-        if (danger > maxDanger) {
-          maxDanger = danger;
-        }
-      }
-    }
 
-    // Draw heatmap
-    const cellSizePx = ftToPx(gridSpacing);
-    for (const sample of samples) {
-      const cx = ftToPx(sample.x);
-      const cy = ftToPx(sample.y);
-      const ratio = maxDanger > 0 ? sample.danger / maxDanger : 0;
-      // Red (high danger) to green (low danger/seams)
-      const r = Math.round(255 * ratio);
-      const g = Math.round(255 * (1 - ratio * 0.7));
-      const b = Math.round(100 * (1 - ratio));
-      const color = (r << 16) | (g << 8) | b;
-      graphics.fillStyle(color, 0.4);
-      graphics.fillRect(cx - cellSizePx / 2, cy - cellSizePx / 2, cellSizePx, cellSizePx);
+        let reward = 0;
+        for (const r of rewardPoints) {
+          const dist = Math.hypot(x - r.x, y - r.y);
+          if (dist < REWARD_RADIUS) {
+            const norm = 1 - dist / REWARD_RADIUS;
+            reward += norm * norm;
+          }
+        }
+
+        // Skip empty cells — don't color what has no field value
+        const dc = Math.min(danger, 2);
+        const rc = Math.min(reward, 2);
+        if (dc < DRAW_THRESHOLD && rc < DRAW_THRESHOLD) continue;
+
+        const cx = ftToPx(x);
+        const cy = ftToPx(y);
+        // Red = danger, green = reward, yellow = both
+        const rv = Math.round(255 * Math.min(1, dc / 2 + (rc / 2) * 0.4));
+        const gv = Math.round(200 * Math.min(1, rc / 2 + (dc / 2) * 0.1));
+        const bv = Math.round(50 * Math.max(0, rc / 2 - dc / 2));
+        const color = (rv << 16) | (gv << 8) | bv;
+        const alpha = Math.min(0.55, (dc + rc) * 0.25);
+        graphics.fillStyle(color, alpha);
+        graphics.fillRect(cx - cellSizePx / 2, cy - cellSizePx / 2, cellSizePx, cellSizePx);
+      }
     }
 
     // Draw player position marker
