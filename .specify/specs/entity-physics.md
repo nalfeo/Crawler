@@ -34,9 +34,13 @@ Design rationale, alternatives, and consequences: **ADR 0044**.
 explicit `Size` (either `radius > 0` or `halfWidth > 0 && halfHeight > 0`).
 Enforced by `npm run check:size-coverage`, added to `verify:fast`.
 
-**R2.** Every entity that can be a knockback target (has `Enemy`, `Player`,
-or `Prop` and is not `Immovable`) MUST have `Weight` with `value > 0`.
-Enforced by `npm run check:weight-coverage`, added to `verify:fast`.
+**R2.** Every entity with `Enemy`, `Player`, or `Prop` MUST have `Weight`
+with `value > 0` — including `Immovable` entities, whose weight is still
+meaningful (e.g. a 10 000 lb wall's weight is exactly what trips
+`IMMOVABLE_THRESHOLD`, and the data table assigns weights to every
+`Immovable` prop). `Immovable` affects knockback _displacement_ (R5), not
+weight _presence_. Enforced by `npm run check:weight-coverage`, added to
+`verify:fast`.
 
 **R3.** `collisionSystem` reads half-extents / radius **exclusively** from
 `Size` after Slice 1's shim is removed. `sprite.width` / `sprite.height` are
