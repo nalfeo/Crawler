@@ -146,11 +146,18 @@ const sensorOverridesSchema = z
       .object({
         /**
          * Shared orientation hint block used by character-facing checks and
-         * prompt generation. Enemy scoring no longer uses orientation-axis
-         * gating, but characters still default to front-facing checks when
-         * `facing` is omitted.
+         * prompt generation.
+         *
+         * - Characters still default to front-facing checks when `facing` is
+         *   omitted (score-candidate enforces vertical silhouette orientation
+         *   only for `facing: 'front'`).
+         * - Enemy scoring no longer uses orientation-axis gating, but the
+         *   value flows into the mob-rules prompt so authors can pin the
+         *   sideways direction the mob should face. The enemy sprite-type
+         *   template pins `right` by default so mobs land consistently
+         *   oriented instead of drifting between left/right runs.
          */
-        facing: z.enum(['front', 'any']).optional(),
+        facing: z.enum(['front', 'left', 'right', 'any']).optional(),
         toleranceDeg: z.number().min(0).max(45).default(2),
       })
       .strict()

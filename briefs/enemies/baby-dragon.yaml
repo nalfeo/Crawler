@@ -16,6 +16,10 @@ description: |
 sensors:
   enemy:
     toleranceDeg: 20
+    # Baby dragon is authored frontal-facing toward camera. Pin the facing
+    # override so it stays front-facing after the enemy template's default
+    # flipped to `right`.
+    facing: front
   edge:
     allowMainTouch: true
 variations:
