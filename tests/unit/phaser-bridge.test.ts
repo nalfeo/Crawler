@@ -10,6 +10,7 @@ import {
   Rotation,
   Spawner,
   Sprite,
+  Velocity,
   XpGem,
 } from '../../src/core/components.js';
 import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
@@ -846,6 +847,35 @@ describe('createPhaserBridge', () => {
     expect(miniImg.scaleX).toBeLessThan(fullImg.scaleX);
     expect(miniImg.scaleX).toBeCloseTo(miniImg.scaleY, 6);
     expect(miniImg.scaleX).toBeCloseTo(fullImg.scaleX * 0.65, 5);
+  });
+
+  it('faces enemies left by default and flips them only while moving right', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: false });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const enemy = addEntity(world.ecs);
+
+    addComponent(world.ecs, enemy, set(Position, { x: 10, y: 10 }));
+    addComponent(world.ecs, enemy, set(Velocity, { x: 0, y: 0 }));
+    addComponent(world.ecs, enemy, Enemy);
+    addComponent(world.ecs, enemy, set(Sprite, { textureId: 1, width: 2, height: 2 }));
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(1);
+    const enemyImg = images[0]!;
+    const leftFacingScale = enemyImg.scaleX;
+    expect(leftFacingScale).toBeGreaterThan(0);
+    expect(enemyImg.scaleY).toBeGreaterThan(0);
+
+    world.stores.velocity.x[enemy] = 1.5;
+    bridge.sync(world);
+    expect(enemyImg.scaleX).toBeCloseTo(-leftFacingScale, 6);
+    expect(enemyImg.scaleY).toBeGreaterThan(0);
+
+    world.stores.velocity.x[enemy] = -1.5;
+    bridge.sync(world);
+    expect(enemyImg.scaleX).toBeCloseTo(leftFacingScale, 6);
   });
 
   // A welcome sign is a Sprite+Position entity whose textureId is the welcome
