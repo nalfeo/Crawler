@@ -152,7 +152,9 @@ describe('spawner battle-arena · headless Floor-1 sweep', () => {
     // Numerator is `resolvedArmed` (resolved AND armed), NOT the bare
     // `resolved` count, which also includes IDLE→RESOLVED short-circuits that
     // never armed — those would push the ratio above 1.0 and mask a real miss.
-    // See ADR 0045 for the semantics.
+    // See ADR 0045 for the gate / `barrierArmed` denominator, and ADR 0046 for
+    // the `resolvedArmed` numerator semantics (the ever-armed latch + why the
+    // bare `resolved` count is the wrong numerator).
     let armed = 0;
     let resolvedArmed = 0;
     const misses: string[] = [];
