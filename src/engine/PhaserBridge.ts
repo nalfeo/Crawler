@@ -952,10 +952,22 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             img.setRotation(0);
             if (entityType === 'enemy') {
               const { scaleX, scaleY } = computeEnemyScale(world, eid, visual.baseScale);
+              // All generated enemy art is authored facing RIGHT by engine-wide
+              // convention (the sprite pipeline enforces `sensors.enemy.facing:
+              // 'right'` for enemy briefs — see data/sprite-types/enemy.json).
+              // Phaser's `flipX` MIRRORS the source texture, so the unflipped
+              // texture already faces right. We therefore flip it to face LEFT at
+              // rest and while moving left, and leave it unflipped (native
+              // right-facing) only once horizontal velocity is meaningfully
+              // positive. Net behaviour: enemies default to facing left and turn
+              // right only while moving right. This relies on every enemy texture
+              // sharing that right-facing orientation; if that convention ever
+              // changes, revisit this flip together with the pipeline contract
+              // rather than assuming a blind one-line inversion.
               const movingRight = (velocity.x[eid] ?? 0) > ENEMY_RIGHTWARD_FLIP_EPSILON;
               img.setScale(scaleX, scaleY);
               if (typeof img.setFlipX === 'function') {
-                img.setFlipX(movingRight);
+                img.setFlipX(!movingRight);
               }
             } else {
               img.setScale(visual.baseScale);

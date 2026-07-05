@@ -452,7 +452,7 @@ describe('createPhaserBridge', () => {
     expect(area).toBe(16 * 16);
   });
 
-  it('shatters a right-facing baby-slime corpse at its shrunken on-screen scale', () => {
+  it('shatters a baby-slime corpse at its shrunken on-screen scale', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: false });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
@@ -475,7 +475,9 @@ describe('createPhaserBridge', () => {
 
     bridge.sync(world);
     const corpseImg = images[0]!;
-    expect(corpseImg.flipX).toBe(true);
+    // NOTE: enemy facing (flipX) is exercised by the dedicated facing test below;
+    // this test deliberately asserts only shard SCALE so it doesn't become brittle
+    // to future facing-policy tweaks.
     const renderedScale = corpseImg.scaleX; // baseScale * 0.65, the on-screen size
     const baseline = images.length;
 
@@ -852,7 +854,7 @@ describe('createPhaserBridge', () => {
     expect(miniImg.scaleX).toBeCloseTo(fullImg.scaleX * 0.65, 5);
   });
 
-  it('faces enemies left by default and flips them only while moving right', () => {
+  it('faces enemies left at rest and turns them to face right only while moving right', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: false });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
@@ -867,26 +869,44 @@ describe('createPhaserBridge', () => {
 
     expect(images).toHaveLength(1);
     const enemyImg = images[0]!;
-    const leftFacingScale = enemyImg.scaleX;
-    expect(leftFacingScale).toBeGreaterThan(0);
+    // Generated enemy art is authored facing RIGHT, and flipX mirrors the texture,
+    // so flipX=true renders LEFT-facing and flipX=false renders (native) RIGHT-facing.
+    // scaleX magnitude is flip-independent, so it stays constant across every state.
+    const baselineScaleX = enemyImg.scaleX;
+    expect(baselineScaleX).toBeGreaterThan(0);
     expect(enemyImg.scaleY).toBeGreaterThan(0);
-    expect(enemyImg.flipX).toBe(false);
-
-    world.stores.velocity.x[enemy] = 0.0005;
-    bridge.sync(world);
-    expect(enemyImg.scaleX).toBeCloseTo(leftFacingScale, 6);
-    expect(enemyImg.scaleY).toBeGreaterThan(0);
-    expect(enemyImg.flipX).toBe(false);
-
-    world.stores.velocity.x[enemy] = 0.002;
-    bridge.sync(world);
-    expect(enemyImg.scaleX).toBeCloseTo(leftFacingScale, 6);
+    // At rest the enemy faces left (mirrored).
     expect(enemyImg.flipX).toBe(true);
 
+    // Sub-epsilon rightward jitter must not flip it to face right.
+    world.stores.velocity.x[enemy] = 0.0005;
+    bridge.sync(world);
+    expect(enemyImg.scaleX).toBeCloseTo(baselineScaleX, 6);
+    expect(enemyImg.scaleY).toBeGreaterThan(0);
+    expect(enemyImg.flipX).toBe(true);
+
+    // Exactly at the epsilon magnitude (vx = 0.001): Velocity is stored as
+    // Float32, so 0.001 rounds to ~0.00100000004 on read — just ABOVE the f64
+    // epsilon (0.001) — and the enemy DOES cross the threshold and unflips to
+    // face right. (No Float32 value equals the f64 epsilon exactly, so `>` and
+    // `>=` are equivalent here; this pins the effective threshold, so bumping the
+    // epsilon or changing the store width would break this assertion.)
+    world.stores.velocity.x[enemy] = 0.001;
+    bridge.sync(world);
+    expect(enemyImg.scaleX).toBeCloseTo(baselineScaleX, 6);
+    expect(enemyImg.flipX).toBe(false);
+
+    // Moving right past the epsilon: unflip to show the native right-facing art.
+    world.stores.velocity.x[enemy] = 0.002;
+    bridge.sync(world);
+    expect(enemyImg.scaleX).toBeCloseTo(baselineScaleX, 6);
+    expect(enemyImg.flipX).toBe(false);
+
+    // Moving left: back to the mirrored, left-facing pose.
     world.stores.velocity.x[enemy] = -1.5;
     bridge.sync(world);
-    expect(enemyImg.scaleX).toBeCloseTo(leftFacingScale, 6);
-    expect(enemyImg.flipX).toBe(false);
+    expect(enemyImg.scaleX).toBeCloseTo(baselineScaleX, 6);
+    expect(enemyImg.flipX).toBe(true);
   });
 
   // A welcome sign is a Sprite+Position entity whose textureId is the welcome
