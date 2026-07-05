@@ -47,6 +47,9 @@ Introduce a canonical `Size` component; make `Weight` a real consumer
 (weight-scaled knockback impulse ⇒ displacement); source values from the
 owning authored defs, with mob default size, default weight, and allowed
 variance ranges living on the mob definition beside sprite/stats/AI data.
+Here, a "variance range" is the authored min/max band around that mob's
+default body values; Slice 1 may keep it zero-width (`min = default =
+max`) and still satisfy the ownership rule.
 
 ### New `Size` component
 
@@ -107,8 +110,7 @@ knockback.remaining[eid] = kbImpulse / targetWeightLb;
 
 `docs/knowledge/game-design/entity-sizing.md` remains the human-readable
 design reference, Slice-1 sprite-parity worksheet, and review aid — but it
-is **not**
-the authoring home for mob rows. Mob default size, default weight, and
+is **not** the authoring home for mob rows. Mob default size, default weight, and
 allowed variance ranges live on the mob definition record that already
 owns sprite/stats/AI data (today `MobTemplate` in
 `src/game/spawners/registry.ts`; if mobs later unify under shared defs,
