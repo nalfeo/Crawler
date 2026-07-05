@@ -501,7 +501,7 @@ describe('abilitySystem', () => {
       expect(world.stores.health.current[player]).toBeGreaterThan(50);
     });
 
-    it('force-fires an active ability twice back-to-back, ignoring its own cooldown', () => {
+    it('force-fires an active ability twice in quick succession, ignoring its own cooldown', () => {
       const { world, player } = setupPlayer();
       equipActiveAbility(world, player, 'battle-focus');
       const state = world.abilityStatesByEntity.get(player)!;
@@ -510,8 +510,9 @@ describe('abilitySystem', () => {
       expect(forceActivateAbility(world, player, 'battle-focus')).toBe(true);
       expect(state.cooldownByAbilityId.get('battle-focus')).toBe(100);
 
-      // No frame advance — a normal activation would be gated by cooldown here,
-      // but forceActivateAbility must still fire and re-stamp the timestamp.
+      // Second cast one frame later — far inside battle-focus's cooldown, so
+      // a normal activation would be gated. forceActivateAbility must still
+      // fire and re-stamp the timestamp to the current frame.
       world.frameCount = 101;
       expect(forceActivateAbility(world, player, 'battle-focus')).toBe(true);
       expect(state.cooldownByAbilityId.get('battle-focus')).toBe(101);
