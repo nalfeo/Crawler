@@ -14,7 +14,7 @@ floor1-scenario, ai-bt-provider, ci-policy
 
 ## Apples
 
-2🍎 estimated, 3🍎 actual (📉 under — a bot rebase spawned a fresh review pass with 6 new findings; scope grew from a 1-line typecheck fix to two real placement bug fixes + a hot-path perf refactor + an AI test + a cross-system ADR).
+2🍎 estimated, 4🍎 actual (💥 miss — three bot rebases each spawned a fresh Copilot review pass; scope grew from a 1-line typecheck fix to two real placement bug fixes + a hot-path perf refactor + an AI test + a cross-system ADR (Phase 2), an apple-calibration + PR-scope correction (Phase 3), and a non-vacuous ranged-preemption test rewrite + two `origin/main` merge-conflict resolutions (Phase 4)). `|delta| = 2` maps to `miss` per `verdictFromDelta`.
 
 ## What Was Done
 
