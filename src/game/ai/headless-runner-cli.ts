@@ -12,6 +12,7 @@ import { writeFileSync } from 'node:fs';
 import { BehaviorTreeAI } from './bt-ai-provider.js';
 import { runHeadless } from './headless-runner.js';
 import { eventsToJsonl, summarizeEvents, type SimEvent } from './event-log.js';
+import { AIPathingMode, type AIPathingModeValue } from './types.js';
 
 interface CLIArgs {
   seed: number;
@@ -26,6 +27,7 @@ interface CLIArgs {
   sampleInterval: number;
   weapon: string | null;
   enemyDamageMultiplier: number;
+  pathingMode: AIPathingModeValue;
 }
 
 function parseArgs(): CLIArgs {
@@ -42,6 +44,7 @@ function parseArgs(): CLIArgs {
     sampleInterval: 15,
     weapon: null,
     enemyDamageMultiplier: 1,
+    pathingMode: AIPathingMode.LEGACY,
   };
 
   for (let i = 2; i < process.argv.length; i++) {
@@ -84,6 +87,15 @@ function parseArgs(): CLIArgs {
       }
       args.enemyDamageMultiplier = parsed;
       i++;
+    } else if (arg === '--pathing-mode' && next) {
+      if (next === AIPathingMode.LEGACY || next === AIPathingMode.RISK_REWARD_FUSED) {
+        args.pathingMode = next;
+      } else {
+        throw new Error(
+          `Invalid --pathing-mode "${next}" (expected "${AIPathingMode.LEGACY}" or "${AIPathingMode.RISK_REWARD_FUSED}")`,
+        );
+      }
+      i++;
     } else if (arg === '--debug') {
       args.debug = true;
     }
@@ -112,6 +124,7 @@ Options:
   --debug                 Enable verbose logging
   --enemy-damage-multiplier <n>
                            Multiply hostile Damage values (default: 1)
+  --pathing-mode <mode>    Pathing A/B mode: legacy | riskRewardFused (default: legacy)
   --help, -h              Show this help message
 
 Examples:
@@ -143,12 +156,14 @@ async function main(): Promise<void> {
     console.log(`Weapon: ${args.weapon} (forced)`);
   }
   console.log(`Enemy damage mult: ${args.enemyDamageMultiplier}x`);
+  console.log(`Pathing mode: ${args.pathingMode}`);
   console.log('');
 
   const ai = new BehaviorTreeAI({
     seed: args.seed,
     aggression: args.aggression,
     debug: args.debug,
+    pathingMode: args.pathingMode,
   });
 
   const recording = args.eventLog !== null || args.eventSummary !== null;

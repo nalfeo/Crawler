@@ -55,6 +55,7 @@ import {
 } from '../../shared/quest-types.js';
 import {
   AIState,
+  AIPathingMode,
   AIDecisionDebugState,
   AIProgressSuppressionSource,
   type AIInputProvider,
@@ -259,6 +260,12 @@ const logger = createLogger('game:bt-ai-provider');
 // Below this magnitude a heading is treated as "no direction" (skip steering /
 // neutral continuity) — matches the pure module's own zero-vector epsilon.
 const TRAVEL_HEADING_EPSILON = 1e-6;
+const RISK_REWARD_CANDIDATE_OFFSETS_DEG = [0, -15, 15, -30, 30, -45, 45] as const;
+const RISK_REWARD_DANGER_LOOKAHEAD_FT = 8;
+const RISK_REWARD_DANGER_RADIUS_FT = 12;
+const RISK_REWARD_W_PROGRESS = 1.15;
+const RISK_REWARD_W_REWARD = 0.95;
+const RISK_REWARD_W_DANGER = 1.45;
 
 // Assembled once from the TRAVEL_* tuning constants; the pure steering module
 // reads it by reference each frame and never mutates it.
@@ -2137,10 +2144,29 @@ export class BehaviorTreeAI implements AIInputProvider {
       state.moveY = 0;
     }
 
-    // Predictive safe-gap travel steering: for travel states, replace the raw
-    // objective heading (Track A) with a safe, forward-progressing arc that
-    // *dances around* perceived mobs — generalizing the ENGAGE kite's spacing to
-    // travel. Damage-agnostic (nothing here reads a hostile-damage multiplier).
+    const weights = this.getDynamicOpportunisticWeights(world);
+    const useRiskRewardFusedPathing = this.config.pathingMode === AIPathingMode.RISK_REWARD_FUSED;
+    if (useRiskRewardFusedPathing) {
+      // A/B pathing mode B: fuse Track A + Track B first, then let travel
+      // steering handle local execution. The fused heading scores candidate
+      // directions by objective progress, reward pull, and sampled overlap-danger
+      // so it prefers low-risk seams when moving through enemy pressure fields.
+      const fused = this.computeRiskRewardFusedHeading(
+        world,
+        playerX,
+        playerY,
+        state.moveX,
+        state.moveY,
+        weights,
+      );
+      state.moveX = fused.moveX;
+      state.moveY = fused.moveY;
+    }
+
+    // Predictive safe-gap travel steering: for travel states, replace the
+    // objective heading with a safe, forward-progressing arc that dances around
+    // perceived mobs. In risk/reward-fused mode the "objective heading" entering
+    // this step is already the Track A+Track B fused intent.
     let travelEmergency = false;
     this.lastTravelSteering = null;
     if (TRAVEL_STEERING_ENABLED && this.shouldTravelSteer(playerX, playerY)) {
@@ -2173,28 +2199,11 @@ export class BehaviorTreeAI implements AIInputProvider {
       }
     }
 
-    // Blend Track B opportunistic vectors additively into the Track A direction.
-    // The result is re-normalized to unit length if it exceeds 1 so the player
-    // moves at full speed regardless of blend magnitudes. The loot-detour pull
-    // and the (default-dormant) enemy-farm pull ride independent weights.
-    const weights = this.getDynamicOpportunisticWeights(world);
-    const blendX =
-      state.moveX +
-      this.dodgeVecX * weights.dodgeWeight +
-      this.opportunisticPullX * weights.collectPullWeight +
-      this.farmPullX * weights.farmPullWeight;
-    const blendY =
-      state.moveY +
-      this.dodgeVecY * weights.dodgeWeight +
-      this.opportunisticPullY * weights.collectPullWeight +
-      this.farmPullY * weights.farmPullWeight;
-    const blendLen = Math.hypot(blendX, blendY);
-    if (blendLen > 1) {
-      state.moveX = blendX / blendLen;
-      state.moveY = blendY / blendLen;
-    } else {
-      state.moveX = blendX;
-      state.moveY = blendY;
+    if (!useRiskRewardFusedPathing) {
+      // Legacy mode A: Track B blends AFTER travel steering.
+      const blend = this.blendWithTrackB(state.moveX, state.moveY, weights);
+      state.moveX = blend.moveX;
+      state.moveY = blend.moveY;
     }
 
     // Smooth the output direction so waypoint transitions and kite reversals
@@ -2422,6 +2431,106 @@ export class BehaviorTreeAI implements AIInputProvider {
       collectPullWeight: this.config.collectPullWeight * collectScale,
       farmPullWeight: this.config.farmPullWeight * farmScale,
     };
+  }
+
+  private blendWithTrackB(
+    baseMoveX: number,
+    baseMoveY: number,
+    weights: { dodgeWeight: number; collectPullWeight: number; farmPullWeight: number },
+  ): { moveX: number; moveY: number } {
+    const blendX =
+      baseMoveX +
+      this.dodgeVecX * weights.dodgeWeight +
+      this.opportunisticPullX * weights.collectPullWeight +
+      this.farmPullX * weights.farmPullWeight;
+    const blendY =
+      baseMoveY +
+      this.dodgeVecY * weights.dodgeWeight +
+      this.opportunisticPullY * weights.collectPullWeight +
+      this.farmPullY * weights.farmPullWeight;
+    const blendLen = Math.hypot(blendX, blendY);
+    if (blendLen <= 1) {
+      return { moveX: blendX, moveY: blendY };
+    }
+    return { moveX: blendX / blendLen, moveY: blendY / blendLen };
+  }
+
+  private computeRiskRewardFusedHeading(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    baseMoveX: number,
+    baseMoveY: number,
+    weights: { dodgeWeight: number; collectPullWeight: number; farmPullWeight: number },
+  ): { moveX: number; moveY: number } {
+    const baseLen = Math.hypot(baseMoveX, baseMoveY);
+    if (baseLen <= TRAVEL_HEADING_EPSILON) {
+      return { moveX: 0, moveY: 0 };
+    }
+
+    const blended = this.blendWithTrackB(baseMoveX, baseMoveY, weights);
+    const blendedLen = Math.hypot(blended.moveX, blended.moveY);
+    if (blendedLen <= TRAVEL_HEADING_EPSILON) {
+      return { moveX: baseMoveX / baseLen, moveY: baseMoveY / baseLen };
+    }
+
+    const objectiveX = baseMoveX / baseLen;
+    const objectiveY = baseMoveY / baseLen;
+    const rewardX =
+      this.opportunisticPullX * weights.collectPullWeight + this.farmPullX * weights.farmPullWeight;
+    const rewardY =
+      this.opportunisticPullY * weights.collectPullWeight + this.farmPullY * weights.farmPullWeight;
+    const rewardLen = Math.hypot(rewardX, rewardY);
+    const rewardDirX = rewardLen > TRAVEL_HEADING_EPSILON ? rewardX / rewardLen : 0;
+    const rewardDirY = rewardLen > TRAVEL_HEADING_EPSILON ? rewardY / rewardLen : 0;
+
+    const threatPoints: { x: number; y: number }[] = [];
+    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
+      if (eid === undefined) continue;
+      if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
+      const ex = world.stores.position.x[eid] ?? 0;
+      const ey = world.stores.position.y[eid] ?? 0;
+      if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
+      threatPoints.push({ x: ex, y: ey });
+    }
+
+    const desiredX = blended.moveX / blendedLen;
+    const desiredY = blended.moveY / blendedLen;
+    let bestX = desiredX;
+    let bestY = desiredY;
+    let bestScore = Number.NEGATIVE_INFINITY;
+    for (const deg of RISK_REWARD_CANDIDATE_OFFSETS_DEG) {
+      const rad = (deg * Math.PI) / 180;
+      const c = Math.cos(rad);
+      const s = Math.sin(rad);
+      const dirX = desiredX * c - desiredY * s;
+      const dirY = desiredX * s + desiredY * c;
+
+      const sampleX = playerX + dirX * RISK_REWARD_DANGER_LOOKAHEAD_FT;
+      const sampleY = playerY + dirY * RISK_REWARD_DANGER_LOOKAHEAD_FT;
+      let danger = 0;
+      for (const threat of threatPoints) {
+        const dist = Math.hypot(threat.x - sampleX, threat.y - sampleY);
+        if (dist >= RISK_REWARD_DANGER_RADIUS_FT) continue;
+        const norm = 1 - dist / RISK_REWARD_DANGER_RADIUS_FT;
+        danger += norm * norm;
+      }
+
+      const progress = Math.max(0, dirX * objectiveX + dirY * objectiveY);
+      const reward =
+        rewardLen > TRAVEL_HEADING_EPSILON ? Math.max(0, dirX * rewardDirX + dirY * rewardDirY) : 0;
+      const score =
+        progress * RISK_REWARD_W_PROGRESS +
+        reward * rewardLen * RISK_REWARD_W_REWARD -
+        danger * RISK_REWARD_W_DANGER;
+      if (score > bestScore) {
+        bestScore = score;
+        bestX = dirX;
+        bestY = dirY;
+      }
+    }
+
+    return { moveX: bestX, moveY: bestY };
   }
 
   private getPlayerSpeedFtPerFrame(world: GameWorld, playerEid: number): number {

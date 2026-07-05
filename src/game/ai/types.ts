@@ -59,6 +59,21 @@ export interface AISuppressedProgressNavDebug {
 export type AIDecisionDebug = AISuppressedProgressNavDebug;
 
 /**
+ * Pathing/steering experiment mode for A/B testing route execution.
+ */
+export const AIPathingMode = {
+  /** Existing behavior: travel steering runs before Track B blend. */
+  LEGACY: 'legacy',
+  /**
+   * New behavior: Track A + Track B fuse first, then travel steering executes on
+   * the fused intent with danger/reward seam scoring.
+   */
+  RISK_REWARD_FUSED: 'riskRewardFused',
+} as const;
+
+export type AIPathingModeValue = (typeof AIPathingMode)[keyof typeof AIPathingMode];
+
+/**
  * AI decision context - what the AI is currently thinking about.
  */
 export interface AIDecision {
@@ -125,6 +140,11 @@ export interface AIConfig {
    * setting > 0.
    */
   farmPullWeight?: number;
+  /**
+   * Execution order for travel routing vs local steering. Defaults to
+   * {@link AIPathingMode.LEGACY} so existing behavior is preserved.
+   */
+  pathingMode?: AIPathingModeValue;
   /** Enable debug logging */
   debug?: boolean;
 }
