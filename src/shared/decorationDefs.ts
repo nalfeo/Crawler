@@ -63,6 +63,15 @@ export interface DecorationDef {
   readonly lootTableId?: string;
   /** Optional light emission — present on props that emit a secondary light source. */
   readonly lightEmission?: LightEmission;
+  /**
+   * Prop weight in lb. Consumed by `knockbackSystem` (see ADR 0044 / Slice 2)
+   * to scale knockback displacement. Every entity with `Prop` MUST have a
+   * positive weight — `scripts/agent/health/check-weight-coverage.ts` fails CI
+   * if a spawner regresses. Defaults to 100 lb (a medium crate/table) via the
+   * `def(...)` factory; individual entries may override for stone/statue-class
+   * props that should shrug off knockback.
+   */
+  readonly weight?: number;
 }
 
 function def(
@@ -77,6 +86,7 @@ function def(
     depthLayer: 'mid',
     density: 0.05,
     isDestructible: false,
+    weight: 100,
     ...partial,
   };
 }

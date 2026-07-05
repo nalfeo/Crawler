@@ -33,6 +33,26 @@ export const SHAPE_CIRCLE = 0 as const;
 export const SHAPE_BOX = 1 as const;
 export type ShapeCode = typeof SHAPE_CIRCLE | typeof SHAPE_BOX;
 
+/**
+ * Weight (lb) at or above which `knockbackSystem` treats the target as
+ * immovable: it drops the Knockback component without displacing the entity.
+ * Walls (10 000 lb per `entity-sizing.md`) hit this by design.
+ *
+ * Independent of the `Immovable` tag component — an entity qualifies for
+ * short-circuit via *either* rule. See ADR 0044 (Slice 2).
+ */
+export const IMMOVABLE_THRESHOLD = 10_000 as const;
+
+/**
+ * Median mob weight (lb) used as the 1.0× knockback baseline in
+ * `knockbackSystem`. A target at this weight sees knockback identical to
+ * pre-Slice-2 behavior; lighter targets move farther, heavier targets move
+ * less. Writers keep their configured knockback speeds; scaling happens
+ * reader-side. See ADR 0044 (Slice 2) and `entity-sizing.md`
+ * §"Knockback baseline math".
+ */
+export const KNOCKBACK_WEIGHT_BASELINE_LB = 120 as const;
+
 /** A single physics-body definition. Keys are named for the runtime store. */
 export interface PhysicsBodyDef {
   /** Bounding radius in ft. Non-zero for `SHAPE_CIRCLE`; 0 for `SHAPE_BOX`. */

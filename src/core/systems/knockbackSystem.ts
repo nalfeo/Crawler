@@ -1,6 +1,7 @@
 import { hasComponent, query, removeComponent } from 'bitecs';
-import { Flying, Knockback, Position } from '../components.js';
+import { Flying, Immovable, Knockback, Position } from '../components.js';
 import { getBodyHalfWidth, getBodyHalfHeight } from '../physics-body.js';
+import { IMMOVABLE_THRESHOLD, KNOCKBACK_WEIGHT_BASELINE_LB } from '../physics-defs.js';
 import type { GameWorld } from '../world.js';
 
 // Sample just inside an entity's footprint so exact tile-edge contact does not
@@ -51,11 +52,28 @@ function isFootprintPassable(world: GameWorld, eid: number, x: number, y: number
 }
 
 /**
- * Knockback system — smoothly displaces entities each frame.
+ * Knockback system — smoothly displaces entities each frame, scaled by target
+ * weight.
  *
- * Each frame, moves the entity by (dirX * speed, dirY * speed) and
- * decrements `remaining` by `speed`. When remaining <= 0, the
- * Knockback component is removed.
+ * Each frame, moves the entity by (dirX * step, dirY * step) where
+ * `step = min(speed, remaining) * (KNOCKBACK_WEIGHT_BASELINE_LB / max(1, weight))`,
+ * and decrements `remaining` by the UNSCALED base step (`min(speed, remaining)`).
+ * When remaining <= 0, the Knockback component is removed. Consequences:
+ *
+ * - Impulse DURATION in frames is weight-invariant (depends only on writer's
+ *   `speed` and `remaining`).
+ * - Impulse TOTAL displacement scales with `weightScale`: a 60 lb target
+ *   travels ~2× as far as a 120 lb target for the same writer-configured
+ *   impulse; a 240 lb target travels ~0.5× as far. Matches spec R5.
+ *
+ * Weight is baseline-identity at `KNOCKBACK_WEIGHT_BASELINE_LB` (120 lb, the
+ * median mob), so writers that were tuned pre-Slice-2 against a 120 lb
+ * default enemy see bit-identical displacement — no per-writer recalibration
+ * needed.
+ *
+ * Short-circuits (immediate removeComponent without any movement):
+ * - `Immovable` tag component.
+ * - `weight.value[eid] >= IMMOVABLE_THRESHOLD` (walls @ 10 000 lb, statues).
  *
  * Also records `world.maxKnockbackStepThisFrame` — the max REALIZED (post-clamp)
  * displacement of any entity this frame — so `beamSystem` (which runs after this
@@ -63,15 +81,28 @@ function isFootprintPassable(world: GameWorld, eid: number, x: number, y: number
  * radius to still find targets the grid indexed at a now-stale position. Measured
  * from the actually-written position so the bound is writer-agnostic and correct
  * even when a wall/flying-bounds clamp reduces the move.
+ *
+ * See ADR 0044 §Weight-as-knockback-denominator, spec `entity-physics.md` R5,
+ * and `docs/knowledge/game-design/entity-sizing.md` §"Knockback baseline math".
  */
 export function knockbackSystem(world: GameWorld): void {
   const entities = query(world.ecs, [Knockback, Position]);
-  const { position, knockback } = world.stores;
+  const { position, knockback, weight } = world.stores;
   const floorMap = world.floorMap;
   world.maxKnockbackStepThisFrame = 0;
 
   for (const eid of entities) {
     if (eid === undefined) continue;
+
+    // Short-circuit: Immovable tag OR weight ≥ threshold ⇒ drop impulse
+    // without moving. Order matters: check before reading speed/remaining so
+    // a stale Knockback on an entity that gained Immovable mid-flight still
+    // aborts cleanly.
+    const targetWeight = weight.value[eid] ?? 0;
+    if (hasComponent(world.ecs, eid, Immovable) || targetWeight >= IMMOVABLE_THRESHOLD) {
+      removeComponent(world.ecs, eid, Knockback);
+      continue;
+    }
 
     const remaining = knockback.remaining[eid] ?? 0;
     const speed = knockback.speed[eid] ?? 0;
@@ -81,7 +112,21 @@ export function knockbackSystem(world: GameWorld): void {
       continue;
     }
 
-    const step = Math.min(speed, remaining);
+    // Weight scale: 120 lb median = 1.0×, 60 lb = 2×, 240 lb = 0.5×.
+    // max(1, ...) guards against a spawner shipping a 0 or missing weight;
+    // that entity should have been caught by check:weight-coverage, but a
+    // zero-weight bug here would divide-by-zero instead of just moving fast.
+    //
+    // We scale the per-frame displacement (`step`) but decrement `remaining`
+    // in *base* units (unscaled `min(speed, remaining)`). Because `remaining`
+    // is written by writers as an untuned base distance, this means:
+    //   - The impulse's DURATION in frames is identical for any weight.
+    //   - The TOTAL displacement over the impulse life scales with weightScale:
+    //     60 lb travels 2× as far total as 120 lb, 240 lb travels 0.5× as far.
+    // Matches spec R5: "A 60 lb target moves 2× as far".
+    const weightScale = KNOCKBACK_WEIGHT_BASELINE_LB / Math.max(1, targetWeight);
+    const baseStep = Math.min(speed, remaining);
+    const step = baseStep * weightScale;
     const dirX = knockback.dirX[eid] ?? 0;
     const dirY = knockback.dirY[eid] ?? 0;
     const oldX = position.x[eid] ?? 0;
@@ -142,9 +187,13 @@ export function knockbackSystem(world: GameWorld): void {
       world.maxKnockbackStepThisFrame = realized;
     }
 
-    knockback.remaining[eid] = remaining - step;
+    // Decrement `remaining` by the BASE (unscaled) step so impulse duration
+    // in frames is weight-invariant and total displacement scales with
+    // weightScale. See docblock.
+    const newRemaining = remaining - baseStep;
+    knockback.remaining[eid] = newRemaining;
 
-    if (remaining - step <= 0) {
+    if (newRemaining <= 0) {
       removeComponent(world.ecs, eid, Knockback);
     }
   }
