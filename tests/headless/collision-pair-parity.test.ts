@@ -37,18 +37,44 @@ interface CollisionFingerprint {
 }
 
 /**
- * Fingerprint captured on the base branch `feat/size-weight-design`
- * (commit `e8ae8adb`) BEFORE any Size migration — the legacy sprite path.
+ * Fingerprint captured on Slice 1's rebased parent commit — current `main`
+ * tip `4ab04365` (feat: distance-from-spawn mob level scaling, #781) — with
+ * ZERO Slice-1 code applied. This is the "legacy sprite half-extent" path
+ * on the branch's actual base, not the stale `feat/size-weight-design`
+ * design branch this slice was originally drafted against.
+ *
+ * ## Neutrality proof
+ *
+ * The guard's purpose is to prove the Size migration is byte-identical to
+ * the pre-migration sprite path. That was verified via a differential B vs
+ * H measurement on this same fingerprint:
+ *
+ *   B (parent 4ab04365, no Slice-1 code):
+ *     kills=7 damageDealt=261 damageTaken=25 finalScore=8 outcome=timeout
+ *   H (Slice-1 HEAD, all Slice-1 commits applied):
+ *     kills=7 damageDealt=261 damageTaken=25 finalScore=8 outcome=timeout
+ *
+ * B == H → migration is inert. The prior golden values
+ * `{kills:6, damageDealt:212.5, damageTaken:10, finalScore:5}` were
+ * captured on `feat/size-weight-design@e8ae8adb` before three unrelated
+ * PRs shifted Floor-1 seed-42 gameplay:
+ *   - #764 spawnerArenaSystem (arena locks/fences/banked-XP)
+ *   - #765 Floor-1 quest-NPC consolidation
+ *   - #781 distance-from-spawn mob level scaling
+ * None of that drift is Slice-1's doing. The guard still works — it now
+ * detects regressions against the CURRENT base, which is what it's for.
+ *
  * Regenerate this ONLY when the base branch has moved AND the run is
- * genuinely divergent for a documented reason.
+ * genuinely divergent for a documented reason, and record a fresh B==H
+ * proof at that time.
  */
 const GOLDEN_FINGERPRINT: CollisionFingerprint = {
   totalFrames: 1500,
   outcome: 'timeout',
-  kills: 6,
-  damageDealt: 212.5,
-  damageTaken: 10,
-  finalScore: 5,
+  kills: 7,
+  damageDealt: 261,
+  damageTaken: 25,
+  finalScore: 8,
 };
 
 async function runSlice(seed: number): Promise<RunStats> {
