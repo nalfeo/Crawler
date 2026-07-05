@@ -1,5 +1,9 @@
 # Spawner Battle Arena — 2026-07-04
 
+## Systems touched
+
+enemies, inventory, vfx, hud-ux, ai-behavior-tree, ai-combat-balance, ci-policy
+
 ## Summary
 
 Shipped the six-requirement Spawner Battle Arena feature end-to-end as one PR
@@ -130,5 +134,59 @@ Every gate was run from repo root and iterated to green:
   many overlapping short-lived ones.
 - Consider promoting `SpawnerArenaMetrics.resolved` to a required field on
   `RunStats` once the fun-score / ai-scoring test fixtures are refactored.
+
+## Shepherd close-out (PR #764, 2026-07-04)
+
+A separate shepherd session drove PR #764 to a clean squash-merge. During
+shepherding the branch was rebased twice by external automation: it first
+gained a **second feature** — #766's AI "arena lock-in" targeting priority
+(ADR 0045) — and was later replayed onto newer `main` (now including #762
+equipment slot filtering and #761 Floor-2 runability). PR #764 therefore ships
+**both** the spawner battle arena and the AI arena lock-in priority.
+
+### Real-requirement fix (rule 12)
+
+The copilot reviewer flagged a genuine **requirement-4 violation**: the
+`SPAWNER_MAX_BANKED_CHILDREN = 10` cap path let spawner-owned children **beyond**
+the cap fall through to the normal drop path and spawn on-map XP gems. Fixed in
+`src/core/systems/dropSystem.ts` by passing `interceptSpawnerOwnedXp = true`
+**unconditionally** for every spawner-owned child (line ~428); the cap now gates
+**only** the banked XP reward and never re-enables on-map drops. The fix is
+RNG-neutral (`spawnDrops` always consumes its scatter rolls), so seed order and
+win-rate are unchanged. `tests/unit/dropSystem-spawner-xp.test.ts` now spawns
+kills 11–15 and asserts zero XP gems + no further bank growth. Fixed the code to
+the requirement, not the requirement to the test.
+
+### Other review fixes
+
+- `spawnerArenaSystem.ts` — corrected a stale "25 Hz" comment to 60 Hz
+  (`GAME.DELTA_MS = 1000/60`); bound the arena-kind sentinel to the canonical
+  `SPAWNER_ARENA_KIND_UNRESOLVED` export (no hard-coded `255`).
+- `tests/unit/spawner-arena.test.ts` — wired the previously-orphaned
+  `assertFenceBlocks()` invariant so it actually runs in CI.
+- `src/game/ai/bt-ai-tuning.ts` — corrected the `ARENA_LOCKIN_ADD_HYSTERESIS_FT`
+  comment (value `3` is chosen directly, not anchored to `CONTACT_SAFE_ORBIT_FT`).
+- `docs/knowledge/adr/README.md` — count/range now include ADR 0045; next-unused
+  bumped to 0046.
+- PR description synthesized to cover **both** features (rule 11); the stale
+  "AI targets spawners as optional" follow-up bullet was removed because #766
+  implements exactly that.
+
+### Validation on the rebased base (main incl. #762 + #761)
+
+- `npm run verify:fast` — green.
+- `npm run check:wired-systems` — 46 systems, all wired/allowlisted.
+- Headless win-rate: `tests/headless/spawner-arena-win-rate.test.ts` +
+  `tests/headless/ai-arena-lockin-resolution.test.ts` — **5/5 passing (~230s)**.
+  Floor-1 win-rate intact on the new base; no seed cherry-picking (rule 13).
+  This partly retires the original "fence-closure on arbitrary layouts" caveat:
+  the AI lock-in priority now drives the runner to resolve an engaged arena.
+- 16 copilot review threads replied (`✅ Addressed in <sha>`) and owner-resolved
+  via GraphQL `resolveReviewThread`; 0 unresolved at merge-arm time.
+
+### Merge
+
+Armed `gh pr merge 764 --auto --squash` (required checks = `ci` + `commit-lint`;
+`enforce_admins:false`). No `--admin`, no gate weakening.
 
 Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
