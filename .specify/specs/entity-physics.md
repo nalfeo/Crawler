@@ -18,8 +18,9 @@ need to touch player to do damage). Weight is used for things like knockback."
 Today (`origin/main` @ c53ff04):
 
 - `Weight` is declared, stored, and populated everywhere, and a few
-  non-physics paths read it — but no knockback/collision consumer uses
-  it yet.
+  non-physics paths read it (`dropSystem.ts:217` derives a split slime's
+  child weight; `initializeEnemyAppearance` in `combatants.ts:36` rescales
+  it by `sizeScale`) — but no knockback/collision consumer uses it yet.
 - Physical size is `sprite.width` × `sprite.height` (a render field) —
   read directly by `collisionSystem.ts` (broad-phase AABB insert) and
   `knockbackSystem.ts` (footprint passability). Any change to sprite scale

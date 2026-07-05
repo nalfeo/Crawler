@@ -12,8 +12,8 @@
 
 - All linear measurements are in **feet** (canonical spatial unit — ADR 0007/0023).
 - **Weight** is in **pounds** (lb). Realistic-ish values so mental math works
-  (e.g. a housecat is ~10 lb, an average man is ~180 lb, a granite boulder is
-  ~600 lb per cubic foot × its volume).
+  (e.g. a housecat is ~10 lb, an average man is ~180 lb, and granite runs
+  ~168 lb per cubic foot × the boulder's volume).
 - **Mob authoring rule**: each mob definition owns its default body size,
   default weight, and allowed variance range beside sprite/stats/AI
   metadata. This sheet summarizes those values for review; it is not the
@@ -42,7 +42,7 @@
 | Mob — light guideline    | mob definition body fields                                                           | circle  | r ≈ 0.75  | 60          |     —     | Example review band only; concrete values/variance still live on the mob def.                                                          |
 | Mob — heavy guideline    | mob definition body fields                                                           | circle  | r ≈ 1.25  | 240         |     —     | Example review band only; concrete values/variance still live on the mob def.                                                          |
 | Mob — boss guideline     | mob definition body fields                                                           | box     | ≈ 3 × 3   | 800         |     —     | Example review band only; Floor 1 boss still needs a per-def Slice-1 audit.                                                            |
-| NPC (quest giver, etc.)  | `spawners/combatants.ts` `spawnNpc`                                                  | circle  | r = 1.0   | 150         |    yes    | Never in `Knockback` query, so `Immovable` is a documentation-only assertion.                                                          |
+| NPC (quest giver, etc.)  | `spawners/world-objects.ts` `spawnNpc`                                               | circle  | r = 1.0   | 150         |    yes    | Never in `Knockback` query, so `Immovable` is a documentation-only assertion.                                                          |
 | Spawner (structure)      | `spawners/combatants.ts` `spawnSpawner`                                              | circle  | r = 1.5   | 200         |    yes    | Weight already set to 200 today; formalized here.                                                                                      |
 
 ## Projectiles

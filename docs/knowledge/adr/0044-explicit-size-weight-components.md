@@ -34,7 +34,9 @@ gameplay in three problematic ways:
    exists (component defined `components.ts:91`, store wired
    `world.ts:330`, spawners populate it — 180 lb player, 120 lb default
    mob, 200 lb spawner structure, 1 lb projectile, etc.) and a few
-   non-physics paths read it, but **no collision/knockback consumer uses
+   non-physics paths read it (`dropSystem.ts:217` derives a split slime's
+   child weight from it; `initializeEnemyAppearance` in `combatants.ts:36`
+   rescales it by `sizeScale`), but **no collision/knockback consumer uses
    it**. Knockback is still a flat distance regardless of target mass.
 
 The user's ask makes both of these first-class: "All entities need to have
@@ -88,20 +90,26 @@ class still missing Size and must be empty before Slice 2 lands.
 ### Weight as knockback denominator
 
 Knockback WRITERS (meleeSwingSystem, projectiles, `applyPlayerEnemyHit`,
-corpse explosion, area damage) already carry a "knockback" scalar. Reinterpret
-it from **displacement distance (ft)** to **impulse (lb·ft, per frame budget)**:
+corpse explosion, area damage) already carry a "knockback" scalar — a
+displacement distance in ft. Keep that scalar as its shipping value
+(`writerImpulse`) and scale it by the mass ratio `120 / targetWeight`, so a
+120 lb median target is unchanged and no per-writer recalibration is needed
+(the canonical form documented in `entity-sizing.md` §"Knockback baseline
+math"):
 
 ```ts
-// Existing writer (meleeSwingSystem.ts)
-knockback.speed[eid] = kbImpulse / targetWeightLb;
-knockback.remaining[eid] = kbImpulse / targetWeightLb;
+// Existing writer (meleeSwingSystem.ts); writerImpulse is today's scalar
+knockback.speed[eid] = writerImpulse * (120 / Math.max(1, targetWeightLb));
+knockback.remaining[eid] = writerImpulse * (120 / Math.max(1, targetWeightLb));
 ```
 
-- Median mob = 120 lb. Pick constants so a 120 lb target sees the same
-  visible knockback as today. Lighter mobs (60 lb bat) get 2×; heavier mobs
-  (240 lb ogre) get 0.5×. Walls (200 lb) currently move under knockback in
-  no code path (they aren't in `query(Knockback, Position)`), so the number
-  is a display-only tag for them.
+- Median mob = 120 lb, so a 120 lb target sees the same visible knockback as
+  today with **no constant changes** — the `120 / targetWeight` ratio is 1.0
+  by construction. Lighter mobs (60 lb bat) get 2×; heavier mobs (240 lb
+  ogre) get 0.5×. Spawner structures (`spawnSpawner`, 200 lb default) never
+  move under knockback in any code path (they aren't in
+  `query(Knockback, Position)`), so the number is a display-only tag for
+  them; wall/door terrain isn't a `Weight`-bearing entity at all.
 - Entities with `Immovable` or `Weight ≥ IMMOVABLE_THRESHOLD` (e.g. 10 000
   lb, reserved for statues / bosses that specifically shouldn't slide)
   drop applied impulses entirely.
