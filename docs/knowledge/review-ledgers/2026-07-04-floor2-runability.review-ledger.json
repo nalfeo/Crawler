@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-04",
+  "session_slug": "floor2-runability",
+  "task_title": "Floor 2 visual runability: staircase, completion screen, floor param",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": false,
+      "reviewer_model": "",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "notes": ""
+    }
+  }
+}

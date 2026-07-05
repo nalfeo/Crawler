@@ -1,0 +1,11 @@
+{
+  "session": "floor2-runability",
+  "date": "2026-07-04",
+  "branch": "floor2-slice8-scenario-wiring",
+  "description": "Wire Floor 2 visual runability: staircase, completion screen, ?floor= URL param",
+  "estimate": "🍎🍎",
+  "actual": "🍎🍎",
+  "verdict": "on-estimate",
+  "rationale": "Multi-file wiring across engine/game/bootstrap layers with new tests. No algorithmic complexity, but required careful layer-boundary management (engine cannot import from game) and fixing existing test that string-matched old main.ts. Scope well-contained at ~250 LOC across 9 files.",
+  "systems_touched": ["floor2", "main-game-scene", "faction-relations", "bootstrap"]
+}
