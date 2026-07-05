@@ -99,6 +99,7 @@ import type { NpcPlacementDef } from '../shared/npc-placements.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
 import { getSpawnerArchetype, getSpawnerArchetypeIndex } from './spawners/registry.js';
 import { hashStringToSeed, SeededRandom } from '../shared/random.js';
+import { computeMobLevelScale } from '../shared/mob-scaling.js';
 
 // Derived constants computed from config at module initialization.
 // The camera/viewport is a render-pixel concept, so convert it to feet at this
@@ -1919,13 +1920,31 @@ function evictFurthestAmbient(
 function spawnAmbientArchetype(world: GameWorld, x: number, y: number): number {
   const pack = floor1EnemyPack;
   const archetype = pickEnemyArchetype(pack.archetypes, () => world.rng.next());
+
+  // Scale HP and speed based on distance from the player's starting tile so
+  // enemies deeper in the dungeon feel progressively more dangerous.
+  let hp = archetype.hp;
+  let speed = archetype.speed;
+  if (world.floorMap) {
+    const spawnWorld = world.floorMap.tileToWorld(
+      world.floorMap.playerSpawn.x,
+      world.floorMap.playerSpawn.y,
+    );
+    const dx = x - spawnWorld.x;
+    const dy = y - spawnWorld.y;
+    const distFt = Math.sqrt(dx * dx + dy * dy);
+    const scale = computeMobLevelScale(distFt);
+    hp = Math.max(1, Math.round(archetype.hp * scale.hpMult));
+    speed = archetype.speed * scale.speedMult;
+  }
+
   const eid = spawnBehaviorEnemy(
     world,
     x,
     y,
-    archetype.hp,
+    hp,
     archetype.id === 'slime' ? AI_TYPE.LEAPER : AI_TYPE.CHASE,
-    archetype.speed,
+    speed,
     archetype.detectRange,
     0,
   );
