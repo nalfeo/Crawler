@@ -30,12 +30,19 @@
 > global ≥90% Floor 1 win-rate target — Constitution rule 13).
 > **Known implementation gaps:**
 >
-> - No arena/lock concept for spawners today; spawners can be
->   kited outside their spawn zone and cheesed with ranged.
-> - Spawned children drop XP the same as normal mobs, so a spawner
->   effectively grants unbounded XP.
-> - No "encounter start" banner or dedicated VFX; VFX today is only the
->   per-pulse ripple in `spawnerSystem.ts:emitSpawnerPulse`.
+> - ~~No arena/lock concept for spawners today; spawners can be
+>   kited outside their spawn zone and cheesed with ranged.~~ (Resolved
+>   in ADR 0044.)
+> - ~~Spawned children drop XP the same as normal mobs, so a spawner
+>   effectively grants unbounded XP.~~ (Resolved in ADR 0044.)
+> - ~~No "encounter start" banner or dedicated VFX; VFX today is only the
+>   per-pulse ripple in `spawnerSystem.ts:emitSpawnerPulse`.~~ (Resolved
+>   in ADR 0044.)
+> - ~~Fence tiles are only impenetrable where the ring landed on
+>   passable tiles at trigger time — rings crossing walls leaked at the
+>   seam.~~ (Resolved in ADR 0046 by moving to the dynamic barrier
+>   primitive at `src/core/barriers/`. Barriers are a passability-agnostic
+>   overlay; the seam-leak class is impossible by construction.)
 
 ## Context
 
@@ -119,7 +126,7 @@ tool for tension instead of a hole in the loot economy.
      archetype's signature color, plus the fence-ring materialization
      when applicable),
    - an HUD announcement (`world.announcements.push({ kind:
-     'spawnerArenaStart', archetypeId, durationMs: 2500 })`) rendered
+'spawnerArenaStart', archetypeId, durationMs: 2500 })`) rendered
      by the existing HUD banner slot. The banner reads
      `"<Archetype display name> — Battle begins!"` (e.g. "Rat King —
      Battle begins!").
@@ -182,8 +189,14 @@ tool for tension instead of a hole in the loot economy.
 - **`spawnerSystem` change**: on interval spawn, publish
   `child.xpValue` to the drop system via the same
   `Owner`-linkage; no direct XP writes.
-- **Movement / pathfinding**: `ArenaFence` ring tiles register as
-  blocked in the existing tile-blocking mask; no new pathfinder branch.
+- **Movement / pathfinding**: The open-fence arena calls
+  `createRingBarrier(world, sx, sy, radiusFt, 'fence')`; the sealed-room
+  arena additionally calls
+  `createRoomBarrier(world, roomId, 'fence', { doorwaysOnly: true })` as
+  a belt-and-suspenders plug alongside the door-lock config. Both are
+  dropped on resolve. Physics reads
+  `world.barriers.blockedTiles` via `FloorMap.isPassableAt` and
+  `isTileTraversable`; no tile flags are mutated. See ADR 0046.
 
 ### VFX / HUD
 
@@ -243,16 +256,16 @@ tool for tension instead of a hole in the loot economy.
 
 ## Constitutional Compliance
 
-| Principle                                                     | How this spec complies                                                                                                                                                        |
-| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 3 — Deterministic core (no `Math.random`)                     | All arena state derives from `world.rng` + map/state; Requirement 10.                                                                                                         |
-| 4 — Deterministic timing                                      | No `Date.now()`; system runs per fixed step with `world.elapsedMs`.                                                                                                           |
-| 6 — LLM only at floor-load                                    | No LLM at runtime; announcements are template-driven from registry data.                                                                                                      |
-| 13 — Observe before done + 90% win rate                       | Headless sweep gate + `npm run dev` capture required before merge. No seed cherry-picking.                                                                                    |
-| 14 — Apple-scaled review harness                              | 🍎🍎🍎🍎 → dual-plan synthesis + multi-model review + code-review loop until no concerns; review ledger under `docs/knowledge/review-ledgers/`.                               |
-| 15 — Wired-systems guard (ADR 0039)                           | `spawnerArenaSystem` added to `simulation-step.ts` + AI headless runner + wired-systems allowlist NOT permitted — must be genuinely wired. Verified by `check:wired-systems`. |
-| Layer rules (core / engine / game)                            | New system lives in `src/core/systems/`; VFX flows via `world.vfxEvents`; HUD is engine-layer only.                                                                           |
-| Rule 12 — Never quietly weaken explicit human requirements    | The 10-child XP cap, the fence's total impassability, and the "sealed until spawner dead" rule are load-bearing user requirements. If a gate fails, ask — do not soften.      |
+| Principle                                                  | How this spec complies                                                                                                                                                        |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 3 — Deterministic core (no `Math.random`)                  | All arena state derives from `world.rng` + map/state; Requirement 10.                                                                                                         |
+| 4 — Deterministic timing                                   | No `Date.now()`; system runs per fixed step with `world.elapsedMs`.                                                                                                           |
+| 6 — LLM only at floor-load                                 | No LLM at runtime; announcements are template-driven from registry data.                                                                                                      |
+| 13 — Observe before done + 90% win rate                    | Headless sweep gate + `npm run dev` capture required before merge. No seed cherry-picking.                                                                                    |
+| 14 — Apple-scaled review harness                           | 🍎🍎🍎🍎 → dual-plan synthesis + multi-model review + code-review loop until no concerns; review ledger under `docs/knowledge/review-ledgers/`.                               |
+| 15 — Wired-systems guard (ADR 0039)                        | `spawnerArenaSystem` added to `simulation-step.ts` + AI headless runner + wired-systems allowlist NOT permitted — must be genuinely wired. Verified by `check:wired-systems`. |
+| Layer rules (core / engine / game)                         | New system lives in `src/core/systems/`; VFX flows via `world.vfxEvents`; HUD is engine-layer only.                                                                           |
+| Rule 12 — Never quietly weaken explicit human requirements | The 10-child XP cap, the fence's total impassability, and the "sealed until spawner dead" rule are load-bearing user requirements. If a gate fails, ask — do not soften.      |
 
 ## Docs / index updates required
 

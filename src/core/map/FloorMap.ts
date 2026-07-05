@@ -176,10 +176,44 @@ export class FloorMap implements FloorMapData {
     };
   }
 
+  /**
+   * Optional barrier lookup — installed by the ECS wiring so
+   * `isPassableAt` also refuses tiles occupied by a dynamic barrier
+   * (see `src/core/barriers/`). Returns `true` iff the tile at `tileX,tileY`
+   * has ANY live barrier on it. Kept as a callback rather than a direct
+   * `BarrierRegistry` reference so FloorMap has zero import dependency on
+   * the barrier module — the registry can grow without churning the map
+   * layer.
+   */
+  private barrierLookup: ((tileX: number, tileY: number) => boolean) | null = null;
+
+  /**
+   * Attach the barrier-tile predicate. Called once by the world wiring at
+   * floor-load; passing `null` detaches. `isPassableAt` and
+   * `isTilePassableWithBarriers` consult it.
+   */
+  setBarrierLookup(fn: ((tileX: number, tileY: number) => boolean) | null): void {
+    this.barrierLookup = fn;
+  }
+
+  /**
+   * Public accessor primarily for pathfinding — check whether a tile is
+   * blocked by a barrier without going through the world-position wrapper.
+   * Returns `false` when no lookup has been attached (i.e. no barriers on
+   * this floor), which is the "no overlay" happy path.
+   */
+  hasBarrierAtTile(tileX: number, tileY: number): boolean {
+    return this.barrierLookup ? this.barrierLookup(tileX, tileY) : false;
+  }
+
   /** Check if a feet world position is on a passable tile. */
   isPassableAt(x: number, y: number): boolean {
     const t = this.worldToTile(x, y);
-    return this.tileMap.isPassable(t.x, t.y);
+    if (!this.tileMap.isPassable(t.x, t.y)) return false;
+    // Barriers overlay tile passability: even on a normally-walkable tile,
+    // a live barrier blocks movement. Underlying flags are untouched — see
+    // ADR 0046 for why we don't mutate them.
+    return !this.hasBarrierAtTile(t.x, t.y);
   }
 
   /**

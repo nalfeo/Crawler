@@ -45,7 +45,7 @@ function makeLockedSpawnerNearPlayer(
   world.stores.spawner.arenaKind[spawnerEid] = 1; // open-fence
   // Simulate raiseFence's real barrier snapshot so the detector's barrier-
   // presence check (see arena-lockin.ts) treats the AI as actually stuck.
-  world.spawnerArenaFence.set(spawnerEid, [{ tileIdx: 0, originalFlags: 0 }]);
+  world.spawnerArenaBarriers.set(spawnerEid, { id: 1, kind: 'fence', tiles: [0] });
   return spawnerEid;
 }
 

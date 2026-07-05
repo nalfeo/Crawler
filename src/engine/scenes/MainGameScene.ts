@@ -28,6 +28,7 @@ import {
 } from '../../shared/abilities.js';
 import { createInputState, type InputState } from '../../shared/input.js';
 import { buildTerrainLayer } from '../terrain-renderer.js';
+import { createBarrierOverlay } from '../BarrierOverlay.js';
 import { createInputCapture } from '../InputCapture.js';
 import { createModalPickerUI } from '../ModalPickerUI.js';
 import { createDialogueBox, type DialogueBox } from '../DialogueBox.js';
@@ -286,6 +287,9 @@ export class MainGameScene extends Phaser.Scene {
   private lightOverlayRt?: Phaser.GameObjects.RenderTexture;
 
   private doorGraphics?: Phaser.GameObjects.Graphics;
+
+  /** Per-frame overlay renderer for dynamic barriers (spawner arena, etc.). */
+  private barrierOverlay?: ReturnType<typeof createBarrierOverlay>;
 
   /** Per-door sprite Images (Tiny Dungeon door art), rebuilt on door updates. */
   private doorImages: Phaser.GameObjects.Image[] = [];
@@ -627,6 +631,8 @@ export class MainGameScene extends Phaser.Scene {
       this.mapRt?.destroy();
       this.lightOverlayRt?.destroy();
       this.doorGraphics?.destroy();
+      this.barrierOverlay?.destroy();
+      this.barrierOverlay = undefined;
       for (const img of this.doorImages) {
         img.destroy();
       }
@@ -996,6 +1002,7 @@ export class MainGameScene extends Phaser.Scene {
     this.updateDoorOverlay();
     this.updateLightingOverlay();
     this.bridge.sync(this.world);
+    this.barrierOverlay?.update();
     this.playBossSpawnIntro();
     this.updateCamera();
     this.updateObjectiveMarkers();
@@ -1409,6 +1416,8 @@ export class MainGameScene extends Phaser.Scene {
     this.mapRt?.destroy();
     this.lightOverlayRt?.destroy();
     this.doorGraphics?.destroy();
+    this.barrierOverlay?.destroy();
+    this.barrierOverlay = undefined;
     for (const img of this.doorImages) {
       img.destroy();
     }
@@ -1447,6 +1456,8 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     this.doorGraphics = this.add.graphics().setDepth(-19);
+    this.barrierOverlay = createBarrierOverlay(this, floorMap, this.world.barriers);
+    this.barrierOverlay.update();
     this.lightOverlayRt = this.add
       .renderTexture(0, 0, ftToPx(floorMap.widthFt), ftToPx(floorMap.heightFt))
       .setOrigin(0, 0)

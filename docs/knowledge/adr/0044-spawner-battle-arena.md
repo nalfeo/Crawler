@@ -54,7 +54,22 @@ A room is considered "sealable" only when all three of these hold:
 2. The room has at least one door — there is actually something to lock.
 3. The arena disc fits entirely inside the room's bounding rectangle (1-tile inset for walls).
 
-Any failure falls back to open-fence, which enumerates the ring of currently-passable tiles at `radius ± halfTile` and clears their `PASSABLE` flag (leaving `TRANSPARENT` set so line-of-sight rays still pass — the fence is meant to feel like a shimmering barrier, not a black hole). Original tile flag bytes are snapshotted onto `world.spawnerArenaFence` so restore on resolve is byte-exact.
+Any failure falls back to open-fence, which raises a dynamic barrier ring around the arena disc.
+
+> **Superseded by ADR 0046 (2026-07-04).** The original implementation
+> enumerated the ring of currently-passable tiles at `radius ± halfTile`
+> and cleared their `PASSABLE` flag with a byte-exact snapshot on
+> `world.spawnerArenaFence` for restore. This leaked at the seam where
+> the ring crossed a wall: only currently-passable tiles were promoted,
+> so half of the ring band was still passable through the wall's other
+> side. ADR 0046 replaced this with a passability-agnostic barrier
+> overlay under `src/core/barriers/`, called via
+> `createRingBarrier(world, sx, sy, radiusFt, 'fence')`. The sealed-room
+> path also gained a belt-and-suspenders doorway barrier
+> (`createRoomBarrier(world, roomId, 'fence', { doorwaysOnly: true })`)
+> alongside the door-lock config. The `spawnerArenaFence` snapshot map
+> was replaced with a `spawnerArenaBarriers: Map<number, BarrierHandle>`
+> on `GameWorld`.
 
 Door locking uses the existing `setDoorLockConfig` protocol with a goal-flag predicate (`spawner-arena-<eid>-cleared`). Setting the goal flag to `true` on resolve is enough — `doorSystem` observes it and clears `isLocked` on the next tick, keeping the arena system out of the low-level door state loop.
 

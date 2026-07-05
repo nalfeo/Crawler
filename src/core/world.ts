@@ -17,6 +17,11 @@ import { createLogger } from '../shared/logger.js';
 import type { DoorLockConfig } from './door-lock.js';
 import type { FloorMap } from './map/FloorMap.js';
 import {
+  createBarrierRegistry,
+  type BarrierHandle,
+  type BarrierRegistry,
+} from './barriers/index.js';
+import {
   Position,
   Velocity,
   Rotation,
@@ -183,23 +188,26 @@ export interface GameWorld {
    */
   spawnerArenaDoors: Map<number, number[]>;
   /**
-   * Per-spawner snapshot of fence tiles for an open-fence arena. Each entry
-   * captures the pre-battle tile-flag byte so the ring can be restored bit-for-
-   * bit on resolve. Also keyed on spawner eid.
+   * Per-spawner barrier handles raised while the arena is armed. One entry
+   * per spawner for the ring (open-fence) or doorway plug (sealed-room);
+   * both are dropped on resolve. Replaces the pre-PR-#766 `spawnerArenaFence`
+   * side-car (which mutated `TileMap.flags` and produced leaky cages when the
+   * ring landed on walls — see ADR 0046).
    */
-  spawnerArenaFence: Map<number, Array<{ tileIdx: number; originalFlags: number }>>;
+  spawnerArenaBarriers: Map<number, BarrierHandle>;
   /**
-   * Per-spawner "ever raised a *real* barrier" latch. Set to the spawner eid at
-   * the idle → locked transition ONLY when a non-empty barrier is actually
-   * stored (a locked door list or a fence snapshot), and — unlike
-   * {@link spawnerArenaDoors}/{@link spawnerArenaFence} — deliberately NOT
-   * cleared on resolve. This gives headless telemetry an honest count of
-   * arenas that genuinely trapped the player, without the IDLE→RESOLVED
-   * short-circuit (spawner killed before it ever armed) inflating it.
-   *
-   * Shares the per-world lifetime of the two snapshot maps above (likewise
-   * never bulk-cleared); the sole consumer, `runHeadless`, builds a fresh world
-   * per run, so there is no cross-run contamination.
+   * First-class barrier registry — the single source of truth for dynamic,
+   * tile-granular impassable overlays. Movement, projectile cleanup, and
+   * pathfinding consult this instead of mutating `TileMap.flags`. See
+   * `src/core/barriers/` and ADR 0046.
+   */
+  barriers: BarrierRegistry;
+  /**
+   * Per-spawner "ever raised a *real* barrier" latch. Set at idle → locked
+   * only when a non-empty barrier handle is stored, and not cleared on resolve.
+   * This keeps headless telemetry honest by excluding IDLE→RESOLVED
+   * short-circuits where the spawner died before it ever physically caged the
+   * player.
    */
   spawnerArenaEverArmed: Set<number>;
   /** Player's gold (currency) — separate from BroadcastScore (reality show rating). */
@@ -411,7 +419,8 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     vfxEvents: [],
     announcements: [],
     spawnerArenaDoors: new Map(),
-    spawnerArenaFence: new Map(),
+    spawnerArenaBarriers: new Map(),
+    barriers: createBarrierRegistry(),
     spawnerArenaEverArmed: new Set(),
     playerGold: 0,
     floorMap: null,

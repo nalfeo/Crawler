@@ -66,6 +66,7 @@ import type { FloorMap } from '../core/map/FloorMap.js';
 import { floor2EnemyPack, getFloor2BossArchetype } from '../shared/enemy-packs.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
 import { getGenerator } from '../core/map/generators/registry.js';
+import { attachBarriersToFloorMap } from '../core/barriers/index.js';
 import { loadResources } from '../shared/data/resources.js';
 import { loadShopArchetypes } from '../shared/data/shop-archetypes.js';
 import {
@@ -598,6 +599,7 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
   };
   const floorMap = getGenerator(mapConfig.biome).generate(mapConfig, world.rng);
   world.floorMap = floorMap;
+  attachBarriersToFloorMap(world);
   world.floor = 2;
   world.floorId = 'floor2';
   const spawn = floorMap.tileToWorld(floorMap.playerSpawn.x, floorMap.playerSpawn.y);

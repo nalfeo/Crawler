@@ -104,7 +104,7 @@ function lockArena(world: ReturnType<typeof createTestWorld>, eid: number, kind:
   world.stores.spawner.arenaState[eid] = 1;
   world.stores.spawner.arenaKind[eid] = kind;
   if (kind === 1) {
-    world.spawnerArenaFence.set(eid, [{ tileIdx: 0, originalFlags: 0 }]);
+    world.spawnerArenaBarriers.set(eid, { id: 1, kind: 'fence', tiles: [0] });
   } else {
     world.spawnerArenaDoors.set(eid, [0]);
   }
@@ -189,7 +189,7 @@ describe('detectArenaLockin — spawner arena', () => {
     const spawnerEid = makeSpawner(world, 100, 100, 6);
     world.stores.spawner.arenaState[spawnerEid] = 1;
     world.stores.spawner.arenaKind[spawnerEid] = 1;
-    // Deliberately no fence snapshot on world.spawnerArenaFence.
+    // Deliberately no barrier handle on world.spawnerArenaBarriers.
     expect(detectArenaLockin(world, 103, 100)).toBeNull();
   });
 
@@ -223,7 +223,7 @@ describe('detectArenaLockin — spawner arena', () => {
     world.stores.spawner.arenaKind[spawnerEid] = 1;
     // Even with a stale fence snapshot the detector must ignore a
     // RESOLVED state — the barrier is on its way down.
-    world.spawnerArenaFence.set(spawnerEid, [{ tileIdx: 0, originalFlags: 0 }]);
+    world.spawnerArenaBarriers.set(spawnerEid, { id: 1, kind: 'fence', tiles: [0] });
     expect(detectArenaLockin(world, 100, 100)).toBeNull();
   });
 

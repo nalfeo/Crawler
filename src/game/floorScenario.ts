@@ -18,6 +18,7 @@ import {
 import type { FloorMap } from '../core/map/FloorMap.js';
 import { findTilePath, type TilePoint } from '../core/map/pathfinding.js';
 import { getGenerator } from '../core/map/generators/registry.js';
+import { attachBarriersToFloorMap } from '../core/barriers/index.js';
 import { sealRoomPerimeter, sealSpecialRooms } from '../core/map/special-rooms.js';
 import {
   Position,
@@ -1106,6 +1107,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   };
   const floorMap = getGenerator(config.biome).generate(config, world.rng);
   world.floorMap = floorMap;
+  attachBarriersToFloorMap(world);
 
   const spawn = floorMap.tileToWorld(floorMap.playerSpawn.x, floorMap.playerSpawn.y);
   if (hasComponent(world.ecs, playerEid, Position)) {

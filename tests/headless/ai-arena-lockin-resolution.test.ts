@@ -73,7 +73,7 @@ function runOneArena(seed: number): {
   world.stores.spawner.arenaKind[spawnerEid] = 1; // open-fence
   // Simulate raiseFence's non-empty snapshot so the detector treats the
   // arena as a real barrier — matches spawnerArenaSystem's post-lock state.
-  world.spawnerArenaFence.set(spawnerEid, [{ tileIdx: 0, originalFlags: 0 }]);
+  world.spawnerArenaBarriers.set(spawnerEid, { id: 1, kind: 'fence', tiles: [0] });
   world.state = 'playing';
 
   const ai = new BehaviorTreeAI({ seed });

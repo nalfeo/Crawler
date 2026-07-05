@@ -72,9 +72,10 @@ export interface ArenaLockinTarget {
  * Rules — a spawner arena locks the player when ALL are true:
  *   1. `arenaState[spawnerEid] === 1` (locked).
  *   2. Spawner is alive: `health.current > 0` and `deathResolved === 0`.
- *   3. A real barrier is present: either `world.spawnerArenaFence` has a
- *      non-empty snapshot for this spawner OR `world.spawnerArenaDoors` has
- *      one or more actually-locked doors. Without a real barrier the AI can
+ *   3. A real barrier is present: either `world.spawnerArenaBarriers` has a
+ *      barrier handle for this spawner with a non-empty tile set OR
+ *      `world.spawnerArenaDoors` has one or more actually-locked doors.
+ *      Without a real barrier the AI can
  *      walk out of the arena on its own — the "priority the objective"
  *      rule only applies when leaving requires killing it.
  *   4. Player is inside the arena:
@@ -148,7 +149,7 @@ function findSpawnerLockin(
     // snapshot came up empty), regressing the natural walk-past behaviour
     // there. The AI is only "stuck" when leaving requires killing the
     // objective.
-    const hasFence = (world.spawnerArenaFence?.get(eid)?.length ?? 0) > 0;
+    const hasFence = (world.spawnerArenaBarriers?.get(eid)?.tiles.length ?? 0) > 0;
     const hasLockedDoors = (world.spawnerArenaDoors?.get(eid)?.length ?? 0) > 0;
     if (!hasFence && !hasLockedDoors) continue;
 
