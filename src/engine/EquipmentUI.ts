@@ -80,14 +80,6 @@ export interface EquipmentUIConfig {
   onSlotFilterChange?: (slotId: EquipmentSlotId | null) => void;
 }
 
-const SLOT_LABEL_BY_ID: ReadonlyMap<EquipmentSlotId, string> = new Map(
-  SLOT_REGISTRY.map((slot) => [slot.id as EquipmentSlotId, slot.label]),
-);
-
-function toSlotLabel(slotId: EquipmentSlotId): string {
-  return SLOT_LABEL_BY_ID.get(slotId) ?? slotId;
-}
-
 export function createEquipmentUI(
   scene: Phaser.Scene,
   config: EquipmentUIConfig = {},
@@ -346,7 +338,7 @@ export function createEquipmentUI(
     const headingLabel =
       selectedSlotFilter === null
         ? 'AVAILABLE GEAR'
-        : `MATCHING ${toSlotLabel(selectedSlotFilter).toUpperCase()} GEAR`;
+        : `MATCHING ${getSlotLabel(selectedSlotFilter).toUpperCase()} GEAR`;
     const heading = crispText(dollX, gearY, headingLabel, {
       fontFamily: FONT_FAMILY,
       fontSize: '13px',
@@ -368,7 +360,7 @@ export function createEquipmentUI(
         gearY + 22,
         selectedSlotFilter === null
           ? 'No equippable gear in your bag.'
-          : `No gear in bag fits ${toSlotLabel(selectedSlotFilter)}.`,
+          : `No gear in bag fits ${getSlotLabel(selectedSlotFilter)}.`,
         {
           fontFamily: FONT_FAMILY,
           fontSize: '12px',
