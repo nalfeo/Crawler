@@ -548,9 +548,10 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
     saveLabState<AbilitiesLabSnapshot>(LAB_ID, { settings, equipped });
   }
 
-  // dat.GUI treats object keys as display labels and their values as the
-  // stored setting, so this shows human-readable scenario names in the
-  // dropdown while `settings.scenario` still holds the raw scenario id.
+  // lil-gui (like dat.GUI) treats object keys as display labels and their
+  // values as the stored setting, so this shows human-readable scenario
+  // names in the dropdown while `settings.scenario` still holds the raw
+  // scenario id.
   const scenarioLabels: Record<string, string> = {};
   for (const s of SCENARIOS) scenarioLabels[s.label] = s.id;
 
