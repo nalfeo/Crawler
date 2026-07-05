@@ -198,6 +198,7 @@ import {
   QUEST_GIVER_DETOUR_MAX_EXTRA_FRACTION,
   QUEST_GIVER_DETOUR_COMMIT_HYSTERESIS,
   QUEST_GIVER_DETOUR_ABANDON_FRAMES,
+  QUEST_GIVER_DETOUR_BLOCKED_COOLDOWN_FRAMES,
   NPC_INTERACTION_RADIUS_FT,
   NPC_APPROACH_THREAT_RADIUS_FT,
   ARENA_LOCKIN_ADD_HYSTERESIS_FT,
@@ -677,12 +678,15 @@ export class BehaviorTreeAI implements AIInputProvider {
   private committedDetourBestDistance: number = Number.POSITIVE_INFINITY;
   /** Consecutive polls with no improvement toward the committed NPC. Once it
    * exceeds {@link QUEST_GIVER_DETOUR_ABANDON_FRAMES} the CURRENT commitment is
-   * released. Note this only drops the latch — it does not blacklist the NPC, so
-   * if that NPC is still the nearest on-path candidate under the strict base cap,
-   * Block D may re-select it on a later poll, exactly as the pre-hysteresis
-   * baseline did. The valve therefore bounds a single sticky commitment, not the
-   * runner's total time near an unreachable NPC. */
+   * released and the NPC is placed into {@link npcApproachCooldowns} for
+   * {@link QUEST_GIVER_DETOUR_BLOCKED_COOLDOWN_FRAMES} frames to prevent the
+   * EXPLORE→ENGAGE→EXPLORE loop where Block D immediately re-commits the same NPC. */
   private committedDetourNoProgressFrames: number = 0;
+  /** Per-NPC suppression after a no-progress abandon: maps entity-id → frame at
+   * which it becomes re-committable.  Block D skips any NPC whose cooldown has
+   * not yet expired.  Block B (same-safe-room) bypasses this — in the safe room
+   * the NPC is clearly reachable.  Cleared on {@link reset}. */
+  private npcApproachCooldowns: Map<number, number> = new Map();
 
   constructor(config: AIConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -3087,6 +3091,14 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (this.withinInteractionRange(nearestRelevant.distance)) {
       return target;
     }
+    // Cooldown guard: this NPC was recently abandoned after repeated failed approaches
+    // (e.g., an unkillable enemy parked in front of it). Suppress re-commitment
+    // until the cooldown expires, so ENGAGE has time to resolve or give up instead
+    // of the AI looping EXPLORE→ENGAGE→EXPLORE indefinitely.
+    const cooldownUntil = this.npcApproachCooldowns.get(nearestRelevant.eid) ?? 0;
+    if (cooldownUntil > world.frameCount) {
+      return target;
+    }
 
     const viaNpcDistance =
       nearestRelevant.distance +
@@ -3234,6 +3246,10 @@ export class BehaviorTreeAI implements AIInputProvider {
     } else {
       this.committedDetourNoProgressFrames += 1;
       if (this.committedDetourNoProgressFrames > QUEST_GIVER_DETOUR_ABANDON_FRAMES) {
+        this.npcApproachCooldowns.set(
+          eid,
+          world.frameCount + QUEST_GIVER_DETOUR_BLOCKED_COOLDOWN_FRAMES,
+        );
         this.releaseDetourCommitment();
         return null;
       }
@@ -5407,5 +5423,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.committedDetourNpcEid = null;
     this.committedDetourBestDistance = Number.POSITIVE_INFINITY;
     this.committedDetourNoProgressFrames = 0;
+    this.npcApproachCooldowns.clear();
   }
 }
