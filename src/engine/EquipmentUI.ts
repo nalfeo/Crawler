@@ -23,7 +23,7 @@ import {
   getEffectiveStats,
   getEquipmentState,
 } from '../core/systems/equipmentSystem.js';
-import { SLOT_REGISTRY, type EquipmentSlotId } from '../shared/equipment-slots.js';
+import { SLOT_REGISTRY, getSlotLabel, type EquipmentSlotId } from '../shared/equipment-slots.js';
 import { getEquipmentDefForItem, isEquippableItem } from '../shared/equipmentDefs.js';
 import type { EquipmentItemDef, ItemRarity } from '../shared/equipment-types.js';
 import { PRIMARY_STATS, SECONDARY_STATS, type StatId } from '../shared/stats.js';
@@ -78,14 +78,6 @@ export interface EquipmentUIConfig {
   width?: number;
   height?: number;
   onSlotFilterChange?: (slotId: EquipmentSlotId | null) => void;
-}
-
-const SLOT_LABEL_BY_ID: ReadonlyMap<EquipmentSlotId, string> = new Map(
-  SLOT_REGISTRY.map((slot) => [slot.id as EquipmentSlotId, slot.label]),
-);
-
-function toSlotLabel(slotId: EquipmentSlotId): string {
-  return SLOT_LABEL_BY_ID.get(slotId) ?? slotId;
 }
 
 export function createEquipmentUI(
@@ -346,7 +338,7 @@ export function createEquipmentUI(
     const headingLabel =
       selectedSlotFilter === null
         ? 'AVAILABLE GEAR'
-        : `MATCHING ${toSlotLabel(selectedSlotFilter).toUpperCase()} GEAR`;
+        : `MATCHING ${getSlotLabel(selectedSlotFilter).toUpperCase()} GEAR`;
     const heading = crispText(dollX, gearY, headingLabel, {
       fontFamily: FONT_FAMILY,
       fontSize: '13px',
@@ -368,7 +360,7 @@ export function createEquipmentUI(
         gearY + 22,
         selectedSlotFilter === null
           ? 'No equippable gear in your bag.'
-          : `No gear in bag fits ${toSlotLabel(selectedSlotFilter)}.`,
+          : `No gear in bag fits ${getSlotLabel(selectedSlotFilter)}.`,
         {
           fontFamily: FONT_FAMILY,
           fontSize: '12px',

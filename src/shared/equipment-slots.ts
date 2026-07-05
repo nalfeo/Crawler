@@ -29,6 +29,10 @@ export const SLOT_REGISTRY: readonly SlotDefinition[] = [
   { id: 'feet', label: 'Feet', bodyGroup: 'legs', uiPosition: { x: 0.5, y: 0.85 } },
 ] as const;
 
+const SLOT_BY_ID: ReadonlyMap<string, SlotDefinition> = new Map(
+  SLOT_REGISTRY.map((slot) => [slot.id, slot]),
+);
+
 /** Set of valid slot IDs for O(1) lookup. */
 export const VALID_SLOT_IDS: ReadonlySet<string> = new Set(SLOT_REGISTRY.map((s) => s.id));
 
@@ -37,4 +41,8 @@ export type EquipmentSlotId = string;
 
 export function isValidSlotId(id: string): boolean {
   return VALID_SLOT_IDS.has(id);
+}
+
+export function getSlotLabel(slotId: EquipmentSlotId): string {
+  return SLOT_BY_ID.get(slotId)?.label ?? slotId;
 }
