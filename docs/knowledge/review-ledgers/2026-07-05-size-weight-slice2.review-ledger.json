@@ -1,0 +1,20 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-05",
+  "session_slug": "size-weight-slice2",
+  "task_title": "Slice 2 — weight-scaled knockback + Immovable tag",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": false,
+      "reviewer_model": "",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "notes": ""
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    }
+  }
+}

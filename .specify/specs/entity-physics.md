@@ -116,16 +116,34 @@ ranges, then have the composed runtime registry read from it.
 
 ### Slice 2 (Weight as knockback denominator)
 
-1. Update every knockback WRITER
-   (`meleeSwingSystem`, `applyProjectileHit`, `applyEnemyProjectileHit`,
-   `applyPlayerEnemyHit`, `areaDamageSystem`, `beamSystem`, corpse
-   explosion, `returningProjectileSystem`) to divide the configured
-   knockback scalar by target `weight.value` (with the 120 lb median as
-   the 1.0 baseline, i.e. `finalSpeed = writerKb * (120 / max(1, targetWeight))`).
+**Design note (2026-07-05, Slice 2 shipping):** Slice 2 applies the weight
+divide **reader-side** in `knockbackSystem`, not per-writer. This was chosen
+over the writer-side design originally sketched in ADR 0044 because it
+(a) keeps writer constants untouched — no per-writer recalibration risk,
+(b) automatically applies weight scaling to any future knockback writer,
+and (c) shrinks the audit surface to a single system. See ADR 0044
+§Weight as knockback denominator for the amended contract. Writers MUST
+keep their knockback speed/duration values in **raw, unscaled** units;
+the reader applies `speed * (120 / max(1, weight))` and decrements the
+remaining-distance budget by the unscaled base step so that impulse
+duration in frames is weight-invariant while only total displacement
+scales.
+
+1. Update `knockbackSystem` (single reader) to scale per-frame
+   displacement by `120 / max(1, targetWeight)`. Writers
+   (`meleeSwingSystem`, `dropSystem` corpse-explosion,
+   `progressionEffects`, and any future writer such as
+   `applyProjectileHit`, `applyEnemyProjectileHit`,
+   `applyPlayerEnemyHit`, `areaDamageSystem`, `beamSystem`,
+   `returningProjectileSystem`) keep writing raw knockback values.
 2. Add `Immovable` tag + `IMMOVABLE_THRESHOLD` short-circuit in
    `knockbackSystem` — drop the component without moving.
-3. Add `check:weight-coverage` gate + wire into `verify:fast`.
-4. Recalibrate any writer whose scalar looks wrong post-conversion.
+3. Add `check:weight-coverage` gate + wire into `verify:fast`. Gate
+   enforces per-kind non-vacuity (Enemy, Player, Prop each > 0) and
+   `weight.value > 0` for every knockback-eligible entity.
+4. Freeze enemy weight against the cosmetic `sizeScale` RNG in
+   `initializeEnemyAppearance` — weight is a first-class gameplay dial
+   now, not an appearance attribute.
 5. Real-pipeline validation:
    - `tests/headless/floor1-completion.test.ts` win-rate ≥ 90%
    - `scripts/agent/perf/winrate-sweep.ts` seed sweep matching pre-Slice-2

@@ -52,8 +52,19 @@ interface WeightFailure {
   readonly kind: 'Enemy' | 'Player' | 'Prop';
 }
 
-function inspectWeights(world: GameWorld): { checked: number; failures: WeightFailure[] } {
+interface WeightSnapshot {
+  readonly checked: number;
+  readonly countsByKind: Record<'Enemy' | 'Player' | 'Prop', number>;
+  readonly failures: WeightFailure[];
+}
+
+function inspectWeights(world: GameWorld): WeightSnapshot {
   const failures: WeightFailure[] = [];
+  const countsByKind: Record<'Enemy' | 'Player' | 'Prop', number> = {
+    Enemy: 0,
+    Player: 0,
+    Prop: 0,
+  };
   let checked = 0;
   const weightStore = world.stores.weight;
   // Walk the entire eid range using the presence of Position as the
@@ -75,16 +86,17 @@ function inspectWeights(world: GameWorld): { checked: number; failures: WeightFa
     }
     if (kind === null) continue;
     checked += 1;
+    countsByKind[kind] += 1;
     const weight = weightStore.value[eid] ?? 0;
     if (weight <= 0) {
       failures.push({ eid, weight, kind });
     }
   }
-  return { checked, failures };
+  return { checked, countsByKind, failures };
 }
 
 async function main(): Promise<void> {
-  let snapshot: { checked: number; failures: WeightFailure[] } | null = null;
+  let snapshot: WeightSnapshot | null = null;
 
   const ai = new BehaviorTreeAI({ seed: COVERAGE_SEED });
   const stats = await runHeadless(ai, {
@@ -104,12 +116,18 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Non-vacuity: the run must have observed knockback-eligible entities,
-  // otherwise the guard is inert.
-  const captured: { checked: number; failures: WeightFailure[] } = snapshot;
-  if (captured.checked === 0) {
+  const captured: WeightSnapshot = snapshot;
+
+  // Per-kind non-vacuity. Every Slice-2 headless slice MUST reach both an
+  // Enemy and a Prop (Player is spawned by the runner itself, so it can't
+  // masquerade for the other two — flagged by plan-review-slice2). Without
+  // this, the guard would pass on a run where the enemy spawner or the
+  // decoration spawner silently regressed to producing zero entities.
+  const requiredKinds: Array<'Enemy' | 'Player' | 'Prop'> = ['Enemy', 'Player', 'Prop'];
+  const missingKinds = requiredKinds.filter((k) => captured.countsByKind[k] === 0);
+  if (missingKinds.length > 0) {
     report.error(
-      `weight coverage FAILED: no Enemy/Player/Prop entities alive at end of headless run (seed=${COVERAGE_SEED}, frames=${stats.totalFrames}). The guard cannot verify coverage against a silent snapshot — investigate spawners.`,
+      `weight coverage FAILED (vacuity): headless seed=${COVERAGE_SEED} frames=${stats.totalFrames} did not observe any ${missingKinds.join(', ')} entities alive at end of run (counts: Enemy=${captured.countsByKind.Enemy}, Player=${captured.countsByKind.Player}, Prop=${captured.countsByKind.Prop}). A live-entity snapshot with zero of an expected kind cannot prove weight coverage for that kind — investigate spawners.`,
     );
     report.finish();
     return;
@@ -117,7 +135,7 @@ async function main(): Promise<void> {
 
   if (captured.failures.length === 0) {
     report.info(
-      `OK: seed=${COVERAGE_SEED} frames=${stats.totalFrames} — every Enemy/Player/Prop had positive Weight (${captured.checked} entities checked).`,
+      `OK: seed=${COVERAGE_SEED} frames=${stats.totalFrames} — every Enemy/Player/Prop had positive Weight (checked=${captured.checked}: Enemy=${captured.countsByKind.Enemy}, Player=${captured.countsByKind.Player}, Prop=${captured.countsByKind.Prop}).`,
     );
   } else {
     const sample = captured.failures
