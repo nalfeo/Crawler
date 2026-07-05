@@ -80,6 +80,14 @@ export interface EquipmentUIConfig {
   onSlotFilterChange?: (slotId: EquipmentSlotId | null) => void;
 }
 
+const SLOT_LABEL_BY_ID: ReadonlyMap<EquipmentSlotId, string> = new Map(
+  SLOT_REGISTRY.map((slot) => [slot.id as EquipmentSlotId, slot.label]),
+);
+
+function toSlotLabel(slotId: EquipmentSlotId): string {
+  return SLOT_LABEL_BY_ID.get(slotId) ?? slotId;
+}
+
 export function createEquipmentUI(
   scene: Phaser.Scene,
   config: EquipmentUIConfig = {},
@@ -174,7 +182,6 @@ export function createEquipmentUI(
 
   // Object pools.
   const slotObjects: Phaser.GameObjects.GameObject[] = [];
-  const slotBounds = new Map<EquipmentSlotId, Phaser.GameObjects.Rectangle>();
   const statObjects: Phaser.GameObjects.GameObject[] = [];
   const gearObjects: Phaser.GameObjects.GameObject[] = [];
 
@@ -222,7 +229,6 @@ export function createEquipmentUI(
 
   function renderSlots(): void {
     clearPool(slotObjects);
-    slotBounds.clear();
     if (!lastWorld || playerEid < 0) return;
     const state = getEquipmentState(lastWorld, playerEid);
 
@@ -278,7 +284,6 @@ export function createEquipmentUI(
       container.add(box);
       container.add(label);
       container.add(value);
-      slotBounds.set(slot.id, box);
       slotObjects.push(box, label, value);
     }
   }
@@ -341,7 +346,7 @@ export function createEquipmentUI(
     const headingLabel =
       selectedSlotFilter === null
         ? 'AVAILABLE GEAR'
-        : `MATCHING ${getSlotLabel(selectedSlotFilter).toUpperCase()} GEAR`;
+        : `MATCHING ${toSlotLabel(selectedSlotFilter).toUpperCase()} GEAR`;
     const heading = crispText(dollX, gearY, headingLabel, {
       fontFamily: FONT_FAMILY,
       fontSize: '13px',
@@ -363,7 +368,7 @@ export function createEquipmentUI(
         gearY + 22,
         selectedSlotFilter === null
           ? 'No equippable gear in your bag.'
-          : `No gear in bag fits ${getSlotLabel(selectedSlotFilter)}.`,
+          : `No gear in bag fits ${toSlotLabel(selectedSlotFilter)}.`,
         {
           fontFamily: FONT_FAMILY,
           fontSize: '12px',
