@@ -60,7 +60,8 @@ live on the mob definition record beside sprite/stats/AI metadata.
 `docs/knowledge/game-design/entity-sizing.md` is the human-readable review
 sheet; `src/core/physics-defs.ts` is the composed runtime registry. CI
 checks fail on drift between the authored defs, the composed runtime view,
-and the review sheet.
+and the review sheet — including missing entries, schema violations, or
+mismatched numeric values.
 
 **R7.** Slice-1 landing MUST NOT shift `tests/headless/floor1-completion.test.ts`
 win-rate below 90% (per project Rule #13). Slice-2 landing MUST NOT shift
