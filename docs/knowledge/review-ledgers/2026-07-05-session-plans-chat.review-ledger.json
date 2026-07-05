@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-05",
+  "session_slug": "session-plans-chat",
+  "task_title": "Add kickoff verdict guidance and in-chat plan enforcement",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": false,
+      "reviewer_model": "",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "notes": ""
+    }
+  }
+}

@@ -224,35 +224,39 @@ export function triage(request: string): TriageResult {
  * Command: --triage
  * Classify a request
  */
-function handleTriage(request: string): void {
-  console.log(`\n🎯 PRODUCER TRIAGE\n`);
-  console.log(`Request: "${request}"\n`);
-
+export function renderTriage(request: string): string {
   const result = triage(request);
-  console.log(`Type: ${result.requestType}`);
-  console.log(`Verdict: ${result.verdict} — ${result.verdictReason}`);
+  const lines = [``, '🎯 PRODUCER TRIAGE', '', `Request: "${request}"`, ''];
+  lines.push(`Type: ${result.requestType}`);
+  lines.push(`Verdict: ${result.verdict} — ${result.verdictReason}`);
 
   if (result.escalation) {
-    console.log(`Escalation: ${result.escalation}`);
+    lines.push(`Escalation: ${result.escalation}`);
   }
 
-  console.log(`\n${result.message}\n`);
+  lines.push('', result.message, '');
 
   if (result.questions && result.questions.length > 0) {
-    console.log('Clarifying questions:');
+    lines.push('Clarifying questions:');
     result.questions.forEach((q, i) => {
-      console.log(`  ${i + 1}. ${q}`);
+      lines.push(`  ${i + 1}. ${q}`);
     });
-    console.log();
+    lines.push('');
   }
 
   if (result.blockers && result.blockers.length > 0) {
-    console.log('Blockers:');
+    lines.push('Blockers:');
     result.blockers.forEach((b) => {
-      console.log(`  - ${b}`);
+      lines.push(`  - ${b}`);
     });
-    console.log();
+    lines.push('');
   }
+
+  return lines.join('\n');
+}
+
+function handleTriage(request: string): void {
+  console.log(renderTriage(request));
 }
 
 /**

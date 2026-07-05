@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { decompose, triage } from '../../scripts/agent/producer';
+import { decompose, renderTriage, triage } from '../../scripts/agent/producer';
 
 // ---------------------------------------------------------------------------
 // triage() — six classification paths
@@ -68,6 +68,16 @@ describe('triage()', () => {
     const result = triage('There is a bug in the newly added loot system');
     // Falls through to FEATURE because feature keywords override the debug exclusion
     expect(result.requestType).toBe('FEATURE');
+  });
+});
+
+describe('renderTriage()', () => {
+  it('includes the user-visible verdict line for feature requests', () => {
+    const output = renderTriage('Add a bowling minigame');
+    expect(output).toContain('Type: FEATURE');
+    expect(output).toContain(
+      'Verdict: RECOMMENDED — A feature request is reasonable to plan, but it still needs scope clarification first.',
+    );
   });
 });
 
