@@ -7,6 +7,7 @@ import { createCombatVfx } from './CombatVfx.js';
 import { createGoreVfx } from './GoreVfx.js';
 import { createCorpseShatterVfx, type CorpseExplodeOptions } from './CorpseShatterVfx.js';
 import { createEffectsVfx } from './EffectsVfx.js';
+import { createPlayerTrailVfx } from './PlayerTrailVfx.js';
 import { computeCorpseDecay, type CorpseDecay } from './corpse-decay.js';
 import { createLogger } from '../shared/logger.js';
 import { MeleeSpriteId } from '../shared/constants.js';
@@ -218,6 +219,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const corpseShatterVfx =
     typeof scene.add.image === 'function' ? createCorpseShatterVfx(scene) : null;
   const effectsVfx = createEffectsVfx(scene);
+  const playerTrailVfx = createPlayerTrailVfx(scene);
   const missingSpriteWarnings = new Set<string>();
   const missingTypeWarnings = new Set<string>();
   let lastRenderMs: number | null = null;
@@ -1197,6 +1199,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       // Juice effects (hit sparks, crit bursts, death pops, pickups, level-up).
       // Reads combatEvents BEFORE CombatVfx drains them; drains world.vfxEvents.
       effectsVfx.update(world, renderElapsedMs);
+      // Small dust puffs behind the player — cosmetic only.
+      playerTrailVfx.update(world, renderElapsedMs);
       // Process combat VFX (floating damage numbers)
       combatVfx.update(world, renderElapsedMs);
     },
@@ -1248,6 +1252,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       goreVfx?.destroy();
       corpseShatterVfx?.destroy();
       effectsVfx.destroy();
+      playerTrailVfx.destroy();
       combatVfx.destroy();
     },
   };
