@@ -106,7 +106,8 @@ knockback.remaining[eid] = kbImpulse / targetWeightLb;
 ### Authored definition ownership
 
 `docs/knowledge/game-design/entity-sizing.md` remains the human-readable
-design reference, parity worksheet, and review aid — but it is **not**
+design reference, Slice-1 sprite-parity worksheet, and review aid — but it
+is **not**
 the authoring home for mob rows. Mob default size, default weight, and
 allowed variance ranges live on the mob definition record that already
 owns sprite/stats/AI data (today `MobTemplate` in
