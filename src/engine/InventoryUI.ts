@@ -23,7 +23,7 @@ import {
   sortSlots,
   type SortField,
 } from '../shared/inventory.js';
-import { getSlotLabel, type EquipmentSlotId } from '../shared/equipment-slots.js';
+import { SLOT_REGISTRY, type EquipmentSlotId } from '../shared/equipment-slots.js';
 import { type ItemDef, type ItemTag, RARITY_COLORS, getItemById } from '../shared/items.js';
 import {
   emptyGeneratedSpriteRegistry,
@@ -64,6 +64,14 @@ const COLORS = {
   tooltipBg: 0x0a0a16,
   tooltipBorder: 0x444466,
 } as const;
+
+const SLOT_LABEL_BY_ID: ReadonlyMap<EquipmentSlotId, string> = new Map(
+  SLOT_REGISTRY.map((slot) => [slot.id as EquipmentSlotId, slot.label]),
+);
+
+function toSlotLabel(slotId: EquipmentSlotId): string {
+  return SLOT_LABEL_BY_ID.get(slotId) ?? slotId;
+}
 
 // ---------------------------------------------------------------------------
 // InventoryUI
@@ -656,7 +664,7 @@ export function createInventoryUI(
       slotFilterLabel.setText('');
       return;
     }
-    slotFilterLabel.setText(`SLOT FILTER: ${getSlotLabel(externalSlotFilter)}`);
+    slotFilterLabel.setText(`SLOT FILTER: ${toSlotLabel(externalSlotFilter)}`);
   }
 
   scene.input.keyboard?.on('keydown', handleKeyDown);
