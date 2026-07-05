@@ -280,20 +280,22 @@ const RISK_REWARD_W_DANGER = 2.2; // raised: a nearby enemy must decisively bloc
 // Continuity bonus: small nudge toward the previous frame's heading to dampen
 // oscillation when candidates score nearly equally (e.g. dense symmetric packs).
 const RISK_REWARD_W_CONTINUITY = 0.18;
-// Heading into a wall → maximum danger; prevents player from hugging walls into enemies.
-const RISK_REWARD_WALL_DANGER = 2.0;
+// Walls amplify danger from nearby enemies — being trapped against a wall with
+// an enemy is worse than facing that enemy in open space.  Walls alone (no enemies
+// nearby) produce NO danger, so open-but-adjacent-to-wall corridors are still safe.
+const RISK_REWARD_WALL_AMPLIFICATION = 1.8; // multiply accumulated danger by this factor
 // Unseen-area baseline: moderate penalty for heading into fog-of-war.
 const RISK_REWARD_FOG_DANGER = 0.35; // reduced slightly so it doesn't swamp enemy danger
 // Door-crossing penalty: the AI doesn't know what is behind a closed door.
 const RISK_REWARD_DOOR_DANGER = 0.6;
 // How many frames ahead to project enemy positions via their current velocity.
-// Enemies moving toward the player appear closer in danger-space, forcing earlier avoidance.
+// Enemies always move toward the player (flow-map driven), so projected position
+// is always closer — use it directly rather than picking min(current, projected).
 const RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES = 10;
-// Wall proximity penalty: moving through a narrow corridor (wall within this many ft
-// perpendicular to the travel direction) adds extra danger.  Stacks with the full
-// wall-blocking penalty applied when a ray step actually enters impassable geometry.
+// Wall proximity check: if a wall is within this many ft perpendicular to the
+// travel direction, the corridor is considered "wall-adjacent" and the amplifier
+// is applied even when the ray center stays passable.
 const RISK_REWARD_WALL_PROXIMITY_FT = 2.0;
-const RISK_REWARD_WALL_PROXIMITY_DANGER = 0.9;
 
 // Assembled once from the TRAVEL_* tuning constants; the pure steering module
 // reads it by reference each frame and never mutates it.
@@ -2729,19 +2731,21 @@ export class BehaviorTreeAI implements AIInputProvider {
     const rewardDirX = rewardLen > TRAVEL_HEADING_EPSILON ? rewardX / rewardLen : 0;
     const rewardDirY = rewardLen > TRAVEL_HEADING_EPSILON ? rewardY / rewardLen : 0;
 
-    const threatPoints: { x: number; y: number; projX: number; projY: number }[] = [];
+    const threatPoints: { x: number; y: number }[] = [];
     for (const eid of query(world.ecs, [Enemy, Position, Health])) {
       if (eid === undefined) continue;
       if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
       const ex = world.stores.position.x[eid] ?? 0;
       const ey = world.stores.position.y[eid] ?? 0;
       if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
-      // Project the enemy forward so approaching threats register danger earlier.
+      // Enemies always move toward the player (flow-map driven) so projected
+      // position is always at least as dangerous as current.  Use it directly.
       const vx = world.stores.velocity.x[eid] ?? 0;
       const vy = world.stores.velocity.y[eid] ?? 0;
-      const projX = ex + vx * RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES;
-      const projY = ey + vy * RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES;
-      threatPoints.push({ x: ex, y: ey, projX, projY });
+      threatPoints.push({
+        x: ex + vx * RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES,
+        y: ey + vy * RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES,
+      });
     }
 
     const desiredX = blended.moveX / blendedLen;
@@ -2760,76 +2764,76 @@ export class BehaviorTreeAI implements AIInputProvider {
       const sampleY = playerY + dirY * RISK_REWARD_DANGER_LOOKAHEAD_FT;
       const floorMap = world.floorMap;
       let danger = 0;
+      let wallAdjacent = false;
 
       if (floorMap) {
-        // Multi-step raycast: walk 4 points along the candidate ray. Any step that
-        // lands in impassable geometry means this direction hugs or enters a wall —
-        // assign max danger and skip further checks for this candidate.
+        // Multi-step raycast: detect if any step along the candidate ray enters a
+        // wall.  Marks wall-adjacent but does NOT set danger directly — walls alone
+        // produce zero danger; only wall + enemy = amplified danger.
         const steps = [0.25, 0.5, 0.75, 1.0] as const;
-        let wallHit = false;
         for (const t of steps) {
           if (
             !floorMap.isPassableAt(sampleX * t + playerX * (1 - t), sampleY * t + playerY * (1 - t))
           ) {
-            danger = RISK_REWARD_WALL_DANGER;
-            wallHit = true;
+            wallAdjacent = true;
             break;
           }
         }
 
-        if (!wallHit) {
-          // Enemy threat: for each threat use the closer of current/projected
-          // position TO THIS SAMPLE POINT — not to the player — so approaching
-          // enemies raise danger on ALL candidate directions near their path,
-          // while retreating enemies don't artificially inflate safe directions.
-          for (const threat of threatPoints) {
-            const distCurr = Math.hypot(threat.x - sampleX, threat.y - sampleY);
-            const distProj = Math.hypot(threat.projX - sampleX, threat.projY - sampleY);
-            const dist = Math.min(distCurr, distProj);
-            if (dist >= RISK_REWARD_DANGER_RADIUS_FT) continue;
-            const norm = 1 - dist / RISK_REWARD_DANGER_RADIUS_FT;
-            danger += norm * norm;
-          }
+        // Enemy threat accumulation against projected positions.
+        for (const threat of threatPoints) {
+          const dist = Math.hypot(threat.x - sampleX, threat.y - sampleY);
+          if (dist >= RISK_REWARD_DANGER_RADIUS_FT) continue;
+          const norm = 1 - dist / RISK_REWARD_DANGER_RADIUS_FT;
+          danger += norm * norm;
+        }
 
-          // Perpendicular wall-proximity: if either side of the travel corridor
-          // is within RISK_REWARD_WALL_PROXIMITY_FT of a wall at the midpoint,
-          // add extra danger — prevents confident movement through tight passages.
+        // Perpendicular wall-proximity: if either corridor wall is within
+        // RISK_REWARD_WALL_PROXIMITY_FT at the midpoint, mark wall-adjacent.
+        if (!wallAdjacent) {
           const midX = playerX + dirX * RISK_REWARD_DANGER_LOOKAHEAD_FT * 0.5;
           const midY = playerY + dirY * RISK_REWARD_DANGER_LOOKAHEAD_FT * 0.5;
           const perpX = -dirY;
           const perpY = dirX;
-          const leftBlocked = !floorMap.isPassableAt(
-            midX + perpX * RISK_REWARD_WALL_PROXIMITY_FT,
-            midY + perpY * RISK_REWARD_WALL_PROXIMITY_FT,
-          );
-          const rightBlocked = !floorMap.isPassableAt(
-            midX - perpX * RISK_REWARD_WALL_PROXIMITY_FT,
-            midY - perpY * RISK_REWARD_WALL_PROXIMITY_FT,
-          );
-          if (leftBlocked || rightBlocked) {
-            danger += RISK_REWARD_WALL_PROXIMITY_DANGER;
-          }
-
-          // Unseen-area penalty: heading into fog-of-war is risky.
-          if (!floorMap.isVisibleAt(sampleX, sampleY)) {
-            danger += RISK_REWARD_FOG_DANGER;
-          }
-
-          // Door-crossing penalty: path toward a door whose far side isn't visible.
-          const midTile = floorMap.worldToTile(midX, midY);
           if (
-            floorMap.tileMap.isDoor(midTile.x, midTile.y) &&
-            !floorMap.isVisibleAt(sampleX, sampleY)
+            !floorMap.isPassableAt(
+              midX + perpX * RISK_REWARD_WALL_PROXIMITY_FT,
+              midY + perpY * RISK_REWARD_WALL_PROXIMITY_FT,
+            ) ||
+            !floorMap.isPassableAt(
+              midX - perpX * RISK_REWARD_WALL_PROXIMITY_FT,
+              midY - perpY * RISK_REWARD_WALL_PROXIMITY_FT,
+            )
           ) {
-            danger += RISK_REWARD_DOOR_DANGER;
+            wallAdjacent = true;
           }
         }
+
+        // Apply wall amplifier: being trapped against a wall with an enemy is
+        // more dangerous than the same enemy in open space.  Empty corridors are fine.
+        if (wallAdjacent && danger > 0) {
+          danger *= RISK_REWARD_WALL_AMPLIFICATION;
+        }
+
+        // Unseen-area penalty: heading into fog-of-war is risky.
+        if (!floorMap.isVisibleAt(sampleX, sampleY)) {
+          danger += RISK_REWARD_FOG_DANGER;
+        }
+
+        // Door-crossing penalty.
+        const midX = playerX + dirX * RISK_REWARD_DANGER_LOOKAHEAD_FT * 0.5;
+        const midY = playerY + dirY * RISK_REWARD_DANGER_LOOKAHEAD_FT * 0.5;
+        const midTile = floorMap.worldToTile(midX, midY);
+        if (
+          floorMap.tileMap.isDoor(midTile.x, midTile.y) &&
+          !floorMap.isVisibleAt(sampleX, sampleY)
+        ) {
+          danger += RISK_REWARD_DOOR_DANGER;
+        }
       } else {
-        // No floor map: enemy-only danger (no geometry checks).
+        // No floor map: enemy-only danger.
         for (const threat of threatPoints) {
-          const distCurr = Math.hypot(threat.x - sampleX, threat.y - sampleY);
-          const distProj = Math.hypot(threat.projX - sampleX, threat.projY - sampleY);
-          const dist = Math.min(distCurr, distProj);
+          const dist = Math.hypot(threat.x - sampleX, threat.y - sampleY);
           if (dist >= RISK_REWARD_DANGER_RADIUS_FT) continue;
           const norm = 1 - dist / RISK_REWARD_DANGER_RADIUS_FT;
           danger += norm * norm;
