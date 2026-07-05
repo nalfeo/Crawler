@@ -264,6 +264,47 @@ async function resolveBranchName(workspacePath) {
   }
 }
 
+async function resolveOpenPullRequest(workspacePath, branchName) {
+  if (!workspacePath || !branchName) {
+    return null;
+  }
+
+  try {
+    const { stdout } = await execFileAsync(
+      'gh',
+      [
+        'pr',
+        'list',
+        '--head',
+        branchName,
+        '--state',
+        'open',
+        '--limit',
+        '1',
+        '--json',
+        'number,title,url',
+      ],
+      { windowsHide: true, maxBuffer: 1024 * 1024, cwd: workspacePath },
+    );
+    const trimmed = stdout.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const candidates = JSON.parse(trimmed);
+    const pullRequest = Array.isArray(candidates) ? candidates[0] : null;
+    if (!pullRequest || typeof pullRequest.number !== 'number') {
+      return null;
+    }
+    return {
+      number: pullRequest.number,
+      title: typeof pullRequest.title === 'string' ? pullRequest.title : null,
+      url: typeof pullRequest.url === 'string' ? pullRequest.url : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function getWorkspaceMetadata(workspacePath) {
   if (!workspacePath) {
     return {
@@ -271,6 +312,9 @@ async function getWorkspaceMetadata(workspacePath) {
       workspaceName: null,
       sessionName: null,
       branchName: null,
+      pullRequestNumber: null,
+      pullRequestTitle: null,
+      pullRequestUrl: null,
     };
   }
 
@@ -280,12 +324,19 @@ async function getWorkspaceMetadata(workspacePath) {
     return await cached.metadataPromise;
   }
 
-  const metadataPromise = (async () => ({
-    workspacePath,
-    workspaceName: basename(workspacePath),
-    sessionName: inferSessionName(workspacePath),
-    branchName: await resolveBranchName(workspacePath),
-  }))();
+  const metadataPromise = (async () => {
+    const branchName = await resolveBranchName(workspacePath);
+    const pullRequest = await resolveOpenPullRequest(workspacePath, branchName);
+    return {
+      workspacePath,
+      workspaceName: basename(workspacePath),
+      sessionName: inferSessionName(workspacePath),
+      branchName,
+      pullRequestNumber: pullRequest?.number ?? null,
+      pullRequestTitle: pullRequest?.title ?? null,
+      pullRequestUrl: pullRequest?.url ?? null,
+    };
+  })();
   workspaceMetadataCache.set(workspacePath, {
     fetchedAtMs: now,
     metadataPromise,
@@ -301,6 +352,9 @@ async function getWorkspaceMetadata(workspacePath) {
       workspaceName: basename(workspacePath),
       sessionName: inferSessionName(workspacePath),
       branchName: null,
+      pullRequestNumber: null,
+      pullRequestTitle: null,
+      pullRequestUrl: null,
       metadataError: error instanceof Error ? error.message : String(error),
     };
   }
@@ -400,6 +454,39 @@ async function enrichCandidate(candidate) {
     (line) => typeof line === 'string' && line.trim(),
   );
   const commandSummary = primaryFamilyCommand || primaryMatchedCommand || null;
+  const launchContextParams = new URLSearchParams();
+  if (workspaceMetadata.sessionName) {
+    launchContextParams.set('launchSession', workspaceMetadata.sessionName);
+  }
+  if (workspaceMetadata.branchName) {
+    launchContextParams.set('launchBranch', workspaceMetadata.branchName);
+  }
+  if (workspaceMetadata.pullRequestNumber !== null) {
+    launchContextParams.set('launchPrNumber', String(workspaceMetadata.pullRequestNumber));
+  }
+  if (workspaceMetadata.pullRequestTitle) {
+    launchContextParams.set('launchPrTitle', workspaceMetadata.pullRequestTitle);
+  }
+  if (workspaceMetadata.pullRequestUrl) {
+    launchContextParams.set('launchPrUrl', workspaceMetadata.pullRequestUrl);
+  }
+  const routesWithLaunchContext = routes.map((route) => {
+    try {
+      const launchUrl = new URL(route.url);
+      for (const [key, value] of launchContextParams.entries()) {
+        launchUrl.searchParams.set(key, value);
+      }
+      return {
+        ...route,
+        launchUrl: launchUrl.toString(),
+      };
+    } catch {
+      return {
+        ...route,
+        launchUrl: route.url,
+      };
+    }
+  });
 
   return {
     baseUrl,
@@ -412,6 +499,9 @@ async function enrichCandidate(candidate) {
     workspaceName: workspaceMetadata.workspaceName,
     sessionName: workspaceMetadata.sessionName,
     branchName: workspaceMetadata.branchName,
+    pullRequestNumber: workspaceMetadata.pullRequestNumber,
+    pullRequestTitle: workspaceMetadata.pullRequestTitle,
+    pullRequestUrl: workspaceMetadata.pullRequestUrl,
     mode: candidate.mode,
     modeLabel: getModeLabel(candidate.mode),
     availableRouteCount: availableRoutes.length,
@@ -419,7 +509,7 @@ async function enrichCandidate(candidate) {
     matchedCommandLines,
     familyCommandLines,
     commandSummary,
-    routes,
+    routes: routesWithLaunchContext,
   };
 }
 
