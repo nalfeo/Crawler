@@ -89,12 +89,12 @@ function parseTables(md: string): DocRow[] {
  */
 function parseSize(cell: string): { radius: number; halfWidth: number; halfHeight: number } {
   const rMatch = cell.match(/r\s*[=≈]\s*([\d.]+)/i);
-  if (rMatch) {
+  if (rMatch && rMatch[1] !== undefined) {
     return { radius: Number.parseFloat(rMatch[1]), halfWidth: 0, halfHeight: 0 };
   }
   // Box form. Left side may be "length" (dynamic) or a number, possibly with ≈.
   const dims = cell.split('×').map((s) => s.replace(/[≈~≃]/g, '').trim());
-  if (dims.length !== 2) {
+  if (dims.length !== 2 || dims[0] === undefined || dims[1] === undefined) {
     return { radius: 0, halfWidth: 0, halfHeight: 0 };
   }
   const leftNum = Number.parseFloat(dims[0]);
