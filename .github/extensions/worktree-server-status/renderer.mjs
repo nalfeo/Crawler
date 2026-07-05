@@ -272,7 +272,7 @@ export function renderHtml({ instanceId, pollIntervalMs, workspacePath }) {
           .replaceAll("'", '&#39;');
       }
 
-      function renderRoute(route, server) {
+      function renderRoute(route) {
         const statusBits = [];
         if (route.status !== null && route.status !== undefined) {
           statusBits.push('HTTP ' + route.status);
@@ -347,7 +347,7 @@ export function renderHtml({ instanceId, pollIntervalMs, workspacePath }) {
               <span>workspace: \${escapeHtml(server.workspacePath || 'unknown')}</span>
             </div>
             <div class="links">
-              <div class="link-grid">\${server.routes.map((route) => renderRoute(route, server)).join('')}</div>
+              <div class="link-grid">\${server.routes.map(renderRoute).join('')}</div>
             </div>
             \${commandMarkup}
           </article>
