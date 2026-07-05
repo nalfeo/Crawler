@@ -528,7 +528,9 @@ export class MainGameScene extends Phaser.Scene {
       window.addEventListener('keydown', this.handleWindowKeyDown, true);
     }
     this.inventoryUI = createInventoryUI(this);
-    this.equipmentUI = createEquipmentUI(this);
+    this.equipmentUI = createEquipmentUI(this, {
+      onSlotFilterChange: (slotId) => this.inventoryUI?.setEquipmentSlotFilter(slotId),
+    });
     this.achievementsUI = createAchievementsUI(this);
     this.gameOverUI = createGameOverUI(this, {
       // Both actions reload for now — a title screen / main menu doesn't exist yet.
@@ -1038,9 +1040,23 @@ export class MainGameScene extends Phaser.Scene {
     this.queuedEquip = false;
     if (unlocks.equipment && safeCtx && equipRequested) {
       this.equipmentUI?.toggle(this.world);
+      if (
+        this.equipmentUI?.isOpen() &&
+        unlocks.inventory &&
+        this.inventoryUI &&
+        !this.inventoryUI.isOpen()
+      ) {
+        this.inventoryUI.toggle(this.world);
+      }
+      if (this.equipmentUI?.isOpen() && unlocks.inventory) {
+        this.inventoryUI?.refresh(this.world);
+      }
     } else if (this.equipmentUI?.isOpen()) {
       if (safeCtx) {
         this.equipmentUI.refresh(this.world);
+        if (unlocks.inventory) {
+          this.inventoryUI?.refresh(this.world);
+        }
       } else {
         this.equipmentUI.toggle(this.world);
       }

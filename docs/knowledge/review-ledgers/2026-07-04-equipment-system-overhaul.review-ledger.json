@@ -1,0 +1,63 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-04",
+  "session_slug": "equipment-system-overhaul",
+  "task_title": "Equipment system overhaul",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "notes": "Approved with changes; plan updated to preserve tooltip pinning, centralize mutations in coordinator, define safe-room transitions, enforce focus-aware search, and add multi-slot coverage."
+    },
+    "dual_plan_synthesis": {
+      "completed": true,
+      "plan_models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+      "judge_model": "claude-opus-4.8",
+      "notes": "Merged into a single coordinator-based plan: unified equipment+inventory surface, slot-driven filtering, shared pure helpers, deterministic lab + real-scene validation."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gpt-5.4"],
+          "concerns_count": 2,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gpt-5.4"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
