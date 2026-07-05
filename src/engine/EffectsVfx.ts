@@ -201,6 +201,70 @@ export function createEffectsVfx(scene: Phaser.Scene): {
     }
   }
 
+  /**
+   * Spawner arena start — the "battle begins!" burst. A dramatic radial ring
+   * scaled to the actual arena radius plus a brief camera shake so the player
+   * feels the trap snap shut. Larger + longer than a normal spawner pulse.
+   */
+  function spawnerArenaStart(
+    x: number,
+    y: number,
+    color: number,
+    intensity: number,
+    radiusFt: number,
+  ): void {
+    const depth = WORLD_VFX_DEPTH.spawnerArenaBurst;
+    const clampedIntensity = Math.max(1.0, Math.min(2.5, intensity));
+    const targetPx = ftToPx(Math.max(1, radiusFt));
+    // Outer ring blows out to the true arena radius so the reach reads truthfully.
+    const outerScale = Math.max(1.5, (targetPx / 10) * 2);
+    spawnRing(x, y, color, 10, outerScale, depth, RING_LIFETIME_MS * 1.4, 0.55);
+    spawnRing(x, y, 0xffffff, 6, 1.6 * clampedIntensity, depth, SPARK_LIFETIME_MS, 0.6);
+    const sparks = Math.round(9 * clampedIntensity);
+    for (let i = 0; i < sparks; i++) {
+      spawnSpark(x, y, color, depth, 110);
+    }
+    const cam = scene.cameras?.main as Phaser.Cameras.Scene2D.Camera | undefined;
+    if (typeof cam?.shake === 'function') {
+      cam.shake(180, 0.008 * clampedIntensity);
+    }
+  }
+
+  /**
+   * Spawner arena end — a shrinking, brightening flash signalling the arena
+   * has cleared. Complement to `spawnerArenaStart`: no shake, quick pulse.
+   */
+  function spawnerArenaEnd(
+    x: number,
+    y: number,
+    color: number,
+    intensity: number,
+    radiusFt: number,
+  ): void {
+    const depth = WORLD_VFX_DEPTH.spawnerArenaBurst;
+    const clampedIntensity = Math.max(0.8, Math.min(1.8, intensity));
+    const targetPx = ftToPx(Math.max(1, radiusFt));
+    spawnRing(x, y, 0xffffff, Math.max(8, targetPx * 0.4), 0.6, depth, RING_LIFETIME_MS, 0.7);
+    spawnRing(x, y, color, 6, 2.0 * clampedIntensity, depth, SPARK_LIFETIME_MS, 0.45);
+    for (let i = 0; i < 5; i++) {
+      spawnSpark(x, y, color, depth, 80);
+    }
+  }
+
+  /**
+   * Spawner arena fence — a persistent shimmering ring at the arena boundary.
+   * Rendered as a wide, low-alpha annular pulse that expands to the radius
+   * and fades quickly; the game system re-emits every ~400ms so the effect
+   * reads as continuous shimmer without any per-eid renderer state.
+   */
+  function spawnerArenaFence(x: number, y: number, color: number, radiusFt: number): void {
+    const depth = WORLD_VFX_DEPTH.spawnerArenaFence;
+    const targetPx = ftToPx(Math.max(1, radiusFt));
+    const outerScale = Math.max(1.2, (targetPx / 10) * 2);
+    spawnRing(x, y, color, 10, outerScale, depth, RING_LIFETIME_MS * 1.1, 0.28);
+    spawnRing(x, y, 0xffffff, 6, outerScale * 0.6, depth, RING_LIFETIME_MS * 0.9, 0.18);
+  }
+
   function hitSpark(x: number, y: number, color: number, count: number, depth: number): void {
     spawnRing(x, y, color, 4, 1.4, depth, SPARK_LIFETIME_MS, 0.5);
     for (let i = 0; i < count; i++) {
@@ -337,6 +401,27 @@ export function createEffectsVfx(scene: Phaser.Scene): {
         break;
       case 'spawnerPulse':
         spawnerPulse(x, y, event.color ?? COLOR_SPAWNER_PULSE, event.intensity ?? 1);
+        break;
+      case 'spawnerArenaStart':
+        spawnerArenaStart(
+          x,
+          y,
+          event.color ?? COLOR_SPAWNER_PULSE,
+          event.intensity ?? 1.5,
+          event.radiusFt ?? 6,
+        );
+        break;
+      case 'spawnerArenaEnd':
+        spawnerArenaEnd(
+          x,
+          y,
+          event.color ?? COLOR_SPAWNER_PULSE,
+          event.intensity ?? 1.2,
+          event.radiusFt ?? 6,
+        );
+        break;
+      case 'spawnerArenaFence':
+        spawnerArenaFence(x, y, event.color ?? COLOR_SPAWNER_PULSE, event.radiusFt ?? 6);
         break;
       case 'hitSpark':
         hitSpark(x, y, event.color ?? COLOR_HIT_SPARK, HIT_SPARK_COUNT, WORLD_VFX_DEPTH.hitSpark);

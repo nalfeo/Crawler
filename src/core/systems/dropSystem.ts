@@ -14,7 +14,9 @@ import {
   Enemy,
   Health,
   Knockback,
+  Owner,
   SpawnAnim,
+  Spawner,
   Sprite,
 } from '../components.js';
 import {
@@ -41,6 +43,7 @@ import { MINI_SLIME_SPAWN_ANIM_MS } from '../../shared/spawn-anim.js';
 import type { EntitySpriteMappings } from '../../shared/data/entity-sprite-mappings.js';
 import ENTITY_SPRITE_MAPPINGS from '../../shared/data/entity-sprite-mappings.json';
 import { markImmuneToActiveMeleeSwings } from './meleeSwingSystem.js';
+import { SPAWNER_MAX_BANKED_CHILDREN } from '../spawner-arena.js';
 
 const logger = createLogger('core:drop-system');
 
@@ -140,6 +143,7 @@ function spawnDrops(
   y: number,
   drops: LootDrop[],
   allowDrops: boolean,
+  interceptSpawnerOwnedXp: boolean,
 ): void {
   logger.debug('Spawning drops', {
     dropCount: drops.length,
@@ -170,10 +174,13 @@ function spawnDrops(
       case 'xp':
         for (let i = 0; i < drop.quantity; i++) {
           // Always consume RNG to keep the seeded sequence stable regardless
-          // of whether drops are currently gated.
+          // of whether drops are currently gated. `interceptSpawnerOwnedXp`
+          // skips the actual gem spawn (the caller banked the value into the
+          // owning spawner) but still consumes the two scatter RNG rolls so
+          // seed order matches the un-owned kill path exactly.
           const ex = dx + (world.rng.next() - 0.5) * 1;
           const ey = dy + (world.rng.next() - 0.5) * 1;
-          if (allowDrops) {
+          if (allowDrops && !interceptSpawnerOwnedXp) {
             spawnXpGem(world, ex, ey, drop.value);
           }
         }
@@ -367,7 +374,61 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
         tables.floorTable,
       );
       const drops = rollLootTable(entries, world.rng);
-      spawnDrops(world, x, y, drops, allowFloorDrops && allowEnemyDrops);
+      // Spawner-arena XP intercept (spec `Requirements§4,5,7`): a spawner-owned
+      // child NEVER drops an on-map XP gem (requirement 4 — "mobs spawned by
+      // spawners do NOT drop experience"). Its XP portion is instead banked on
+      // the owning spawner and awarded once when the arena resolves. The
+      // banking is capped at SPAWNER_MAX_BANKED_CHILDREN kills (anti-farm), but
+      // that cap ONLY limits how much XP is banked — it does NOT re-enable
+      // on-map XP drops for the 11th+ kill. We do the intercept AFTER
+      // `rollLootTable` so the RNG stream stays exactly the same as it would in
+      // the un-owned case — only the destination of the XP entries changes.
+      const ownerEid = hasComponent(world.ecs, eid, Owner)
+        ? (world.stores.owner.eid[eid] ?? -1)
+        : -1;
+      if (ownerEid >= 0 && hasComponent(world.ecs, ownerEid, Spawner)) {
+        const bankedChildren = world.stores.spawner.bankedChildren[ownerEid] ?? 0;
+        // Only bank when the un-intercepted path would actually have spawned
+        // XP gems. Otherwise the spawner would grant XP that its children
+        // couldn't — violating the user's verbatim spec ("equal to the amount
+        // that would have dropped from killing the number of spawned mobs")
+        // and bypassing Floor-1 onboarding drop gates. This gate controls only
+        // the banked reward; the on-map XP gem is suppressed unconditionally
+        // below so requirement 4 holds for every owned kill.
+        const dropsAllowed = allowFloorDrops && allowEnemyDrops;
+        if (dropsAllowed && bankedChildren < SPAWNER_MAX_BANKED_CHILDREN) {
+          let intercepted = 0;
+          for (const drop of drops) {
+            if (drop.type !== 'xp') continue;
+            // Bank total value = value × quantity. spawnDrops still consumes
+            // its per-gem scatter RNG below because we leave the drop entry
+            // in the list with its original quantity — we just tell spawnDrops
+            // to skip spawning the XP gem for this specific enemy (via the
+            // `interceptSpawnerOwnedXp` flag). Preserves seed order.
+            intercepted += drop.value * drop.quantity;
+          }
+          if (intercepted > 0) {
+            world.stores.spawner.bankedXp[ownerEid] =
+              (world.stores.spawner.bankedXp[ownerEid] ?? 0) + intercepted;
+            world.stores.spawner.bankedChildren[ownerEid] = bankedChildren + 1;
+            logger.info('Spawner arena banked XP from child kill', {
+              childEid: eid,
+              spawnerEid: ownerEid,
+              intercepted,
+              bankedTotal: world.stores.spawner.bankedXp[ownerEid],
+              bankedChildren: world.stores.spawner.bankedChildren[ownerEid],
+            });
+          }
+        }
+        // Requirement 4: suppress the on-map XP gem for EVERY spawner-owned
+        // child, whether or not it was banked (beyond the cap or drop-gated).
+        // Gold/items still drop normally inside spawnDrops when drops are
+        // allowed; only the XP gem is intercepted. RNG-neutral: spawnDrops
+        // always consumes its scatter rolls regardless of the intercept flag.
+        spawnDrops(world, x, y, drops, allowFloorDrops && allowEnemyDrops, true);
+      } else {
+        spawnDrops(world, x, y, drops, allowFloorDrops && allowEnemyDrops, false);
+      }
       logger.info('Processed enemy death drops', {
         eid,
         archetypeId,

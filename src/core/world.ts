@@ -11,6 +11,7 @@ import type { InventoryBag } from '../shared/inventory.js';
 import type { StatusEffect } from '../shared/status-effect-types.js';
 import type { CombatEvent } from '../shared/combat-events.js';
 import type { VfxEvent } from '../shared/vfx-events.js';
+import type { AnnouncementEvent } from '../shared/announcement-events.js';
 import type { AbilityState, AbilityTriggerEvent } from '../shared/abilities.js';
 import { createLogger } from '../shared/logger.js';
 import type { DoorLockConfig } from './door-lock.js';
@@ -157,6 +158,24 @@ export interface GameWorld {
    * engine-layer EffectsVfx renderer. Cosmetic-only; never read by game logic.
    */
   vfxEvents: VfxEvent[];
+  /**
+   * HUD announcement banner events pushed by systems (arena start/end today,
+   * extensible). Drained by the engine-layer `HudAnnouncementBanner`. Data-only
+   * so `src/core` stays portable. Capped defensively by `pushAnnouncement`.
+   */
+  announcements: AnnouncementEvent[];
+  /**
+   * Per-spawner cached door entity IDs for a sealed-room arena. Populated at
+   * arena trigger, cleared once the arena resolves. Side-car (not SoA) because
+   * bitecs typed arrays cannot store variable-length door lists.
+   */
+  spawnerArenaDoors: Map<number, number[]>;
+  /**
+   * Per-spawner snapshot of fence tiles for an open-fence arena. Each entry
+   * captures the pre-battle tile-flag byte so the ring can be restored bit-for-
+   * bit on resolve. Also keyed on spawner eid.
+   */
+  spawnerArenaFence: Map<number, Array<{ tileIdx: number; originalFlags: number }>>;
   /** Player's gold (currency) — separate from BroadcastScore (reality show rating). */
   playerGold: number;
   /** Procedurally generated floor map — null until floor is loaded. */
@@ -364,6 +383,9 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     combatEvents: [],
     maxKnockbackStepThisFrame: 0,
     vfxEvents: [],
+    announcements: [],
+    spawnerArenaDoors: new Map(),
+    spawnerArenaFence: new Map(),
     playerGold: 0,
     floorMap: null,
     floor1: null,
