@@ -1,0 +1,23 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-04",
+  "session_slug": "ai-arena-lockin-priority",
+  "task_title": "BT AI arena lock-in priority (prioritize objective when trapped in spawner arena or Floor-1 boss room)",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "notes": "Plan-level concerns raised and resolved before implementation. (1) BLOCKING — inserting the priority above Retreat would let a nearly-dead AI stand toe-to-toe with a boss and die; resolved by placing the slot at 1.5 (BETWEEN Retreat and Interact) so life-critical retreat still wins. (2) SHOULD-FIX — a plain 'arenaState === 1' check would falsely fire on Floor-1 spawners whose fence/door snapshots come back empty (the arena mechanic optimistically sets state=1 even when raiseFence and lockRoomDoors produce empty snapshots because tiles aren't passable-to-start or the spawner has no containing room). Without the guard the AI would commit to an 'arena' it can walk out of, incurring avoidable engagements and regressing the natural Floor-1 win-rate floor. Resolved by adding the barrier-verified rule (world.spawnerArenaFence.get(eid)?.length > 0 OR world.spawnerArenaDoors.get(eid)?.length > 0). (3) SHOULD-FIX — 'the AI walks past' caveat from PR #764 is fundamentally about spawners that don't actually trap; the observable contract 'AI knows it is stuck AND prioritizes the objective' must be measured on arenas that DO trap. Resolved by adding a dedicated synthetic headless sweep (tests/headless/ai-arena-lockin-resolution.test.ts) that hand-arms a rats-nest arena with a non-empty fence snapshot across 8 deterministic seeds and asserts resolved/triggered >= 0.95; the natural Floor-1 sweep keeps its win-rate floor and adds a resolved/barrierArmed gate that is currently vacuous (0 barrier-armed) but activates automatically if the fixture ever produces real barriers. All 8 synthetic seeds resolved (100%)."
+    }
+  },
+  "complexity_rationale": "2 apples — pure detector helper + one new BT priority slot + tests. No new systems, no wiring changes to preSystems/postSystems, no schema changes. Touches ai/arena-lockin.ts (new), ai/bt-ai-provider.ts (priority slot + build method), ai/bt-ai-tuning.ts (one constant), ai/headless-runner.ts (barrierArmed telemetry), ai/types.ts (metrics field). Per review-harness policy at .github/skills/review-harness/SKILL.md, 2 apples => plan review only (single separate model).",
+  "acceptance_metric": {
+    "definition": "resolved / triggered >= 0.95 on the synthetic barrier-armed sweep (8 seeds).",
+    "observed": "100% (8/8) — seeds resolved at frames 331, 403, 295, 439, 259, 259, 331, 295 respectively (60s budget).",
+    "before_pr764_baseline": "0% (22 arenas triggered, 0 resolved across Floor-1 natural sweep, i.e. the caveat this PR was written to fix).",
+    "before_this_pr_baseline": "same 0/22 (this priority slot is what changes it)."
+  }
+}

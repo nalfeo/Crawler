@@ -14,6 +14,7 @@ import {
   createGameWorld,
   spawnPlayer,
   Enemy,
+  Spawner,
   type GameWorld,
 } from '../../core/index.js';
 import { createInputState } from '../../shared/input.js';
@@ -21,6 +22,7 @@ import { GAME } from '../../shared/constants.js';
 import { createLogger } from '../../shared/logger.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { FLOOR1_TUTORIAL_QUEST_ID } from '../../shared/quest-types.js';
+import { xpRequiredForLevel } from '../../shared/xpMath.js';
 import {
   AIDecisionDebugState,
   type AIInputProvider,
@@ -29,7 +31,7 @@ import {
 } from './types.js';
 import { AI_STATE_NAME, getDecisionEventState, type SimEvent } from './event-log.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
-import { initializeFloor1Scenario, selectFloor1StarterWeapon } from '../index.js';
+import { getScenarioDefinition } from '../scenarioDefinitions.js';
 import {
   autoAllocateStatPoints,
   autoFloor1ProgressionSystem,
@@ -85,6 +87,14 @@ export interface HeadlessRunnerConfig {
   forceWeaponId?: string;
   /** Multiply hostile (Enemy + EnemyProjectile) Damage component amounts by this factor. */
   enemyDamageMultiplier?: number;
+  /** Scenario floor id to run. */
+  floorId?: string;
+  /**
+   * Start the run at this player character level (applies XP and unspent stat
+   * points to match). Level 1 (default) is a normal run with no boost.
+   * Supports any positive level; clamped to ≥1.
+   */
+  startPlayerLevel?: number;
   /**
    * Frames of zero floor-progress (no quest objective tick, completion, or gold
    * gain) before the run is declared `'stalled'` and terminated early with a
@@ -110,6 +120,8 @@ const DEFAULT_CONFIG: Required<
   eventSampleInterval: 15,
   questStallFrames: 21_600, // ~360s of frozen quest progress on the 240×140 map
   enemyDamageMultiplier: 1,
+  floorId: 'floor1',
+  startPlayerLevel: 1,
 };
 
 function applyConfiguredHostileDamageMultiplier(
@@ -133,6 +145,69 @@ function normalizeHostileDamageMultiplier(configuredMultiplier: number): number 
     );
   }
   return Math.max(1, configuredMultiplier);
+}
+
+/**
+ * Roll up final spawner battle-arena state from a completed world. Used by
+ * `runHeadless` to populate `RunStats.spawnerArenas` so headless win-rate gates
+ * (e.g. `tests/headless/spawner-arena-win-rate.test.ts`) can assert every
+ * reachable spawner reached its terminal `arenaState === 2`.
+ *
+ * Non-throwing: if the sim never generated spawners, all counts are zero.
+ */
+function computeSpawnerArenaMetrics(world: GameWorld): {
+  total: number;
+  triggered: number;
+  resolved: number;
+  barrierArmed: number;
+  resolvedArmed: number;
+  bankedXpTotal: number;
+} {
+  const spawners = query(world.ecs, [Spawner]);
+  let total = 0;
+  let triggered = 0;
+  let resolved = 0;
+  let barrierArmed = 0;
+  let resolvedArmed = 0;
+  let bankedXpTotal = 0;
+  const store = world.stores.spawner;
+  for (const eid of spawners) {
+    total += 1;
+    const state = store.arenaState[eid] ?? 0;
+    if (state >= 1) triggered += 1;
+    if (state === 2) resolved += 1;
+    // Count spawners that raised a *real* barrier at some point in the run via
+    // the persistent `spawnerArenaEverArmed` latch. It is set only when a
+    // non-empty fence snapshot / locked-door list is actually stored, and is
+    // NOT cleared on resolve — so a killed arena still counts, while an
+    // IDLE→RESOLVED short-circuit (spawner died before it ever armed) does not
+    // inflate the count. `resolvedArmed` is the subset that also resolved — the
+    // correct numerator for the resolved/armed gate (a bare `resolved` count
+    // includes never-armed short-circuits and would dilute the ratio to 1.0).
+    const everArmed = world.spawnerArenaEverArmed?.has(eid) ?? false;
+    if (everArmed) {
+      barrierArmed += 1;
+      if (state === 2) resolvedArmed += 1;
+    }
+    bankedXpTotal += store.bankedXp[eid] ?? 0;
+  }
+  return { total, triggered, resolved, barrierArmed, resolvedArmed, bankedXpTotal };
+}
+
+export function applyStartPlayerLevel(world: GameWorld, targetLevel: number): void {
+  const level = Math.max(1, Math.floor(targetLevel));
+  if (level <= 1) {
+    return;
+  }
+  const previousLevel = Math.max(1, world.playerLevel.level);
+  if (previousLevel >= level) {
+    return;
+  }
+  const levelsGained = level - previousLevel;
+  world.playerLevel.level = level;
+  world.playerLevel.xp = Math.max(world.playerLevel.xp, xpRequiredForLevel(level));
+  world.playerLevel.unspentPoints += levelsGained * world.playerLevel.pointsPerLevel;
+  world.statsDirty = true;
 }
 
 /**
@@ -160,31 +235,36 @@ export async function runHeadless(
     mergedConfig.enemyDamageMultiplier,
   );
 
-  // Initialize Floor1 scenario (generates map, sets up objectives, NPCs, etc.)
-  // This sets world.state = 'loadout'
-  initializeFloor1Scenario(world, playerEid);
+  // Initialize selected scenario (map/objective/NPC wiring).
+  const scenario = getScenarioDefinition(mergedConfig.floorId);
+  scenario.configureWorld(world, playerEid);
+  applyStartPlayerLevel(world, mergedConfig.startPlayerLevel);
   applyConfiguredHostileDamageMultiplier(world, hostileDamageMultiplier);
 
-  // Select starter weapon: either the forced weapon ID or option index 0.
+  // Select starter weapon when the scenario exposes a loadout phase.
   let starterWeaponIndex = 0;
   const forceWeaponId = config.forceWeaponId;
-  if (forceWeaponId !== undefined && world.floor1) {
-    const idx = world.floor1.starterChoices.indexOf(forceWeaponId);
-    if (idx === -1) {
-      if (!getWeaponDef(forceWeaponId)) {
-        throw new Error(`Unknown forceWeaponId "${forceWeaponId}"`);
+  if (scenario.selectLoadoutOption && world.state === 'loadout') {
+    if (forceWeaponId !== undefined && world.floor1) {
+      const idx = world.floor1.starterChoices.indexOf(forceWeaponId);
+      if (idx === -1) {
+        if (!getWeaponDef(forceWeaponId)) {
+          throw new Error(`Unknown forceWeaponId "${forceWeaponId}"`);
+        }
+        world.floor1.starterChoices.push(forceWeaponId);
+        starterWeaponIndex = world.floor1.starterChoices.length - 1;
+      } else {
+        starterWeaponIndex = idx;
       }
-      // Keep gameplay starter choices constrained, but allow deterministic
-      // headless runs to force any implemented weapon for gate coverage.
-      world.floor1.starterChoices.push(forceWeaponId);
-      starterWeaponIndex = world.floor1.starterChoices.length - 1;
-    } else {
-      starterWeaponIndex = idx;
     }
+    scenario.selectLoadoutOption(world, starterWeaponIndex);
   }
-  selectFloor1StarterWeapon(world, starterWeaponIndex);
+
   const startingWeapon: string =
-    world.floor1?.selectedWeaponId ?? world.floor1?.starterChoices[starterWeaponIndex] ?? 'unknown';
+    forceWeaponId ??
+    world.floor1?.selectedWeaponId ??
+    world.floor1?.starterChoices[starterWeaponIndex] ??
+    'unknown';
 
   // Verify we transitioned to 'playing' state
   if (world.state !== 'playing') {
@@ -350,10 +430,10 @@ export async function runHeadless(
       // Run one simulation step with Floor1 systems enabled
       runSimulationStep(world, inputState, GAME.DELTA_MS, {
         ...config.simulationOptions,
-        enableFloor1: true,
+        enableFloor1: mergedConfig.floorId === 'floor1',
       });
-      // floor2VictorySystem is invoked inside runSimulationStep (simulation-step.ts)
-      // every tick, so it does not need a second explicit call here.
+      // Floor objective handling (including Floor 2 objective ticks) runs inside
+      // runSimulationStep, so no second explicit objective call is needed here.
       autoFloor1ProgressionSystem(world, playerEid);
       autoAllocateStatPoints(world, playerEid);
 
@@ -516,6 +596,10 @@ export async function runHeadless(
         outcome = 'victory';
         break;
       }
+      if (world.goalFlags.get('floor2-victory') === true) {
+        outcome = 'victory';
+        break;
+      }
 
       // Check for defeat. The floor sets `world.state = 'game_over'` either when
       // the player's HP hits zero (healthSystem) or when the in-game
@@ -620,6 +704,7 @@ export async function runHeadless(
       totalGold: world.playerGold,
       startingWeapon,
       aiTelemetry: buildAiTelemetry(),
+      spawnerArenas: computeSpawnerArenaMetrics(world),
     };
   }
 
@@ -674,6 +759,7 @@ export async function runHeadless(
     totalGold: world.playerGold,
     startingWeapon,
     aiTelemetry: buildAiTelemetry(),
+    spawnerArenas: computeSpawnerArenaMetrics(world),
   };
 
   if (mergedConfig.debug || mergedConfig.progressInterval > 0) {

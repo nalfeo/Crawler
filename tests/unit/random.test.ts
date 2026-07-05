@@ -40,6 +40,11 @@ describe('SeededRandom', () => {
     expect(options).toContain(value);
   });
 
+  it('throws when picking from an empty array', () => {
+    const rng = new SeededRandom(42);
+    expect(() => rng.pick([])).toThrow('Cannot pick from empty array');
+  });
+
   it('shuffles deterministically for the same seed', () => {
     const values = [1, 2, 3, 4, 5, 6];
     const a = new SeededRandom(42);

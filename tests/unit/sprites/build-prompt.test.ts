@@ -95,6 +95,27 @@ describe('buildPrompt (single)', () => {
     expect(out).toMatch(/no spell effects/i);
   });
 
+  it('defaults enemy briefs to profile facing right when facing is omitted', () => {
+    const enemy = makeBrief({
+      type: 'enemy',
+      anchor: { x: 8, y: 8 },
+      sensors: { anchor: { mode: 'center-of-mass' } } as Brief['sensors'],
+    });
+    const out = buildPrompt(enemy, FAKE_STYLE_GUIDE);
+    expect(out).toMatch(/profile facing right/i);
+    expect(out).not.toMatch(/profile facing left/i);
+  });
+
+  it('honors an explicit left-facing enemy brief', () => {
+    const enemy = makeBrief({
+      type: 'enemy',
+      anchor: { x: 8, y: 8 },
+      sensors: { enemy: { facing: 'left' } } as Brief['sensors'],
+    });
+    const out = buildPrompt(enemy, FAKE_STYLE_GUIDE);
+    expect(out).toMatch(/profile facing left/i);
+  });
+
   it('adds tile rules for tile briefs including exact output size', () => {
     const tile = makeBrief({
       type: 'tile',

@@ -18,6 +18,7 @@ import {
   autoFloor1ProgressionSystem,
   computeAutoStatAllocation,
 } from '../../game/ai/auto-progression.js';
+import { applyStartPlayerLevel } from '../../game/ai/headless-runner.js';
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
 import {
   acceptQuest,
@@ -257,6 +258,18 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     questId: FLOOR1_TUTORIAL_QUEST_ID,
     questAction: 'accept' as 'accept' | 'complete',
   };
+  let startPlayerLevel = 1;
+  /** True after the level boost has been applied for the current run. Reset on reseed. */
+  let startLevelApplied = false;
+
+  /** One-shot postSystems hook: apply the requested start level once per run. */
+  const applyStartLevelSystem = (world: GameWorld): void => {
+    if (startLevelApplied || startPlayerLevel <= 1) {
+      return;
+    }
+    startLevelApplied = true;
+    applyStartPlayerLevel(world, startPlayerLevel);
+  };
 
   const persistLabState = (): void => {
     saveLabState(LAB_ID, {
@@ -361,7 +374,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     ...baseSceneOptions,
     inputCaptureOverride: aiInputProvider,
     worldSeed: currentSeed,
-    postSystems: [...baseSceneOptions.postSystems, aiAutoDriverSystem],
+    postSystems: [...baseSceneOptions.postSystems, applyStartLevelSystem, aiAutoDriverSystem],
     autoLevelUpAllocator: computeAutoStatAllocation,
     sessionRecorderFactory: recorderControls.factory,
   };
@@ -835,6 +848,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     pollCount = 0;
     lastObservedPlayerHealth = null;
     lastStepReason = '';
+    startLevelApplied = false;
     isPaused = true;
     // A fresh floor always starts under AI control. Tear down the human input
     // capture bound to the old scene instance before it restarts.
@@ -1401,6 +1415,12 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
             <button id="ai-seed-apply" type="button" style="padding:4px 8px; cursor:pointer;">Apply</button>
             <button id="ai-seed-random" type="button" style="padding:4px 8px; cursor:pointer;">🎲 Randomize</button>
           </div>
+          <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:wrap;">
+            <label for="ai-start-level"><strong>Start player level:</strong></label>
+            <input id="ai-start-level" type="number" min="1" max="20" value="${startPlayerLevel}" style="width:64px; padding:4px; background:#151530; color:#ddd; border:1px solid #333; border-radius:3px;" />
+            <button id="ai-start-level-apply" type="button" style="padding:4px 8px; cursor:pointer;">Apply + Restart</button>
+            <span style="font-size:11px; color:#6b7280;">(1 = normal start; takes effect on next run)</span>
+          </div>
           <div id="ai-runner-status">Paused</div>
           <div id="ai-runner-debug">frame: 0</div>
           <div style="display:flex; gap:8px; margin:12px 0; flex-wrap:wrap;">
@@ -1569,6 +1589,19 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       button.onclick = () => {
         selectedSpeed = speed;
         syncSceneSimulationState();
+        renderControls();
+      };
+    }
+
+    const startLevelInput = document.getElementById('ai-start-level') as HTMLInputElement | null;
+    const startLevelApplyButton = document.getElementById(
+      'ai-start-level-apply',
+    ) as HTMLButtonElement | null;
+    if (startLevelApplyButton) {
+      startLevelApplyButton.onclick = () => {
+        const parsed = Number.parseInt(startLevelInput?.value ?? '', 10);
+        startPlayerLevel = Number.isFinite(parsed) && parsed >= 1 ? parsed : 1;
+        reseed(currentSeed);
         renderControls();
       };
     }

@@ -179,6 +179,38 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       spawnedTotal: new Uint16Array(maxEntities),
       /** Set to 1 once the on-death finale wave has been emitted. */
       deathResolved: new Uint8Array(maxEntities),
+      /**
+       * Battle-arena radius in feet. Minimum 4 ft, defaulted to the archetype's
+       * `arenaRadiusFt` at spawn time. Drives the trigger predicate and the
+       * fence/sealed-room geometry (see `spawnerArenaSystem`).
+       */
+      arenaRadiusFt: new Float32Array(maxEntities),
+      /**
+       * Cached arena topology decision:
+       * `0` = sealed-room (lock cached doors on trigger),
+       * `1` = open-fence (materialise a circular tile-blocking ring),
+       * `255` = unresolved (system decides on first tick when floorMap present).
+       */
+      arenaKind: new Uint8Array(maxEntities),
+      /**
+       * Arena lifecycle state:
+       * `0` = idle (waiting for trigger),
+       * `1` = locked (battle in progress),
+       * `2` = resolved (spawner dead + banked XP granted, terminal).
+       */
+      arenaState: new Uint8Array(maxEntities),
+      /**
+       * XP banked from up to `SPAWNER_MAX_BANKED_CHILDREN` intercepted child
+       * deaths. Awarded as a single XP gem at the arena-end tick — see
+       * requirement 5 (spawner drops what the pool would have dropped, capped).
+       */
+      bankedXp: new Float32Array(maxEntities),
+      /**
+       * How many spawner-owned child kills have been intercepted so far, capped
+       * at `SPAWNER_MAX_BANKED_CHILDREN` (10). Determines when the intercept
+       * counter saturates so late-fight kites can't inflate the reward.
+       */
+      bankedChildren: new Uint16Array(maxEntities),
     },
     broadcastScore: { current: new Float32Array(maxEntities) },
     droppedItem: { itemIndex: new Uint16Array(maxEntities) },

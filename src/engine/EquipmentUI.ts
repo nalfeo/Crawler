@@ -23,12 +23,13 @@ import {
   getEffectiveStats,
   getEquipmentState,
 } from '../core/systems/equipmentSystem.js';
-import { SLOT_REGISTRY } from '../shared/equipment-slots.js';
+import { SLOT_REGISTRY, getSlotLabel, type EquipmentSlotId } from '../shared/equipment-slots.js';
 import { getEquipmentDefForItem, isEquippableItem } from '../shared/equipmentDefs.js';
 import type { EquipmentItemDef, ItemRarity } from '../shared/equipment-types.js';
 import { PRIMARY_STATS, SECONDARY_STATS, type StatId } from '../shared/stats.js';
 import { addItem, removeItem } from '../shared/inventory.js';
 import type { InventoryBag } from '../shared/inventory.js';
+import { filterByEquipmentSlot } from '../shared/inventory.js';
 import { getItemById } from '../shared/items.js';
 
 // ---------------------------------------------------------------------------
@@ -37,8 +38,8 @@ import { getItemById } from '../shared/items.js';
 
 const PANEL_PADDING = 16;
 const FONT_FAMILY = 'Segoe UI, Arial, sans-serif';
-const SLOT_W = 78;
-const SLOT_H = 38;
+const SLOT_W = 90;
+const SLOT_H = 46;
 
 const COLORS = {
   panelBg: 0x0d0d1a,
@@ -77,6 +78,7 @@ function formatStatValue(value: number): string {
 export interface EquipmentUIConfig {
   width?: number;
   height?: number;
+  onSlotFilterChange?: (slotId: EquipmentSlotId | null) => void;
 }
 
 export function createEquipmentUI(
@@ -86,6 +88,8 @@ export function createEquipmentUI(
   toggle(world: GameWorld): void;
   refresh(world: GameWorld): void;
   isOpen(): boolean;
+  getSelectedSlotFilter(): EquipmentSlotId | null;
+  selectSlot(slotId: EquipmentSlotId | null): void;
   destroy(): void;
 } {
   scene.cameras.main.roundPixels = true;
@@ -101,8 +105,8 @@ export function createEquipmentUI(
   ): Phaser.GameObjects.Text =>
     scene.add.text(snap(x), snap(y), text, style).setResolution(textResolution);
 
-  const panelWidth = config.width ?? 660;
-  const panelHeight = config.height ?? 520;
+  const panelWidth = config.width ?? 760;
+  const panelHeight = config.height ?? 560;
 
   let uiScale = fitUiScale(scene, panelWidth, panelHeight);
   textResolution = Math.max(1, Math.round(baseResolution * uiScale));
@@ -112,6 +116,7 @@ export function createEquipmentUI(
   let visible = false;
   let currentBag: InventoryBag | null = null;
   let playerEid = -1;
+  let selectedSlotFilter: EquipmentSlotId | null = null;
   let lastSignature: string | null = null;
   let lastWorld: GameWorld | null = null;
 
@@ -143,7 +148,7 @@ export function createEquipmentUI(
   const hint = crispText(
     panelX + panelWidth - PANEL_PADDING,
     panelY + PANEL_PADDING + 2,
-    'Click gear below to equip · click a slot to remove',
+    'Click a slot to focus/filter · click focused occupied slot to unequip',
     { fontFamily: FONT_FAMILY, fontSize: '12px', color: hex(COLORS.textSecondary) },
   );
   hint.setOrigin(1, 0);
@@ -152,7 +157,7 @@ export function createEquipmentUI(
   // Paper-doll background panel (left ~58% of the panel).
   const dollX = panelX + PANEL_PADDING;
   const dollY = panelY + PANEL_PADDING + 34;
-  const dollW = Math.round(panelWidth * 0.56);
+  const dollW = Math.round(panelWidth * 0.6);
   const dollH = panelHeight - (PANEL_PADDING + 34) - PANEL_PADDING - 96;
   const dollBg = scene.add.rectangle(
     dollX + dollW / 2,
@@ -195,6 +200,13 @@ export function createEquipmentUI(
     }
   }
 
+  function setSelectedSlotFilter(slotId: EquipmentSlotId | null): void {
+    if (selectedSlotFilter === slotId) return;
+    selectedSlotFilter = slotId;
+    config.onSlotFilterChange?.(slotId);
+    invalidate();
+  }
+
   function unequipSlot(slotId: string): void {
     if (!currentBag || playerEid < 0 || !lastWorld) return;
     const result = unequip(lastWorld, playerEid, slotId);
@@ -226,9 +238,10 @@ export function createEquipmentUI(
       const instance = instId !== null ? (state?.instances.get(instId) ?? null) : null;
       const rarityColor = instance ? RARITY_HEX[instance.def.rarity] : COLORS.slotEmptyBorder;
 
+      const isSelected = selectedSlotFilter === slot.id;
       const box = scene.add.rectangle(snap(cx), snap(cy), SLOT_W, SLOT_H, COLORS.slotBg, 0.95);
-      box.setStrokeStyle(2, rarityColor);
-      box.setInteractive({ useHandCursor: Boolean(instance) });
+      box.setStrokeStyle(isSelected ? 3 : 2, isSelected ? 0x67e8f9 : rarityColor);
+      box.setInteractive({ useHandCursor: true });
 
       const label = crispText(snap(cx), snap(cy - SLOT_H / 2 + 8), slot.label.toUpperCase(), {
         fontFamily: FONT_FAMILY,
@@ -247,11 +260,19 @@ export function createEquipmentUI(
       });
       value.setOrigin(0.5, 0.5);
 
-      if (instance) {
-        box.on('pointerover', () => box.setFillStyle(COLORS.slotHover));
-        box.on('pointerout', () => box.setFillStyle(COLORS.slotBg));
-        box.on('pointerdown', () => unequipSlot(slot.id));
-      }
+      box.on('pointerover', () => box.setFillStyle(COLORS.slotHover));
+      box.on('pointerout', () => box.setFillStyle(COLORS.slotBg));
+      box.on('pointerdown', () => {
+        if (selectedSlotFilter !== slot.id) {
+          setSelectedSlotFilter(slot.id);
+          return;
+        }
+        if (instance) {
+          unequipSlot(slot.id);
+          return;
+        }
+        setSelectedSlotFilter(null);
+      });
 
       container.add(box);
       container.add(label);
@@ -315,7 +336,11 @@ export function createEquipmentUI(
     if (!currentBag) return;
 
     const gearY = dollY + dollH + 12;
-    const heading = crispText(dollX, gearY, 'AVAILABLE GEAR', {
+    const headingLabel =
+      selectedSlotFilter === null
+        ? 'AVAILABLE GEAR'
+        : `MATCHING ${getSlotLabel(selectedSlotFilter).toUpperCase()} GEAR`;
+    const heading = crispText(dollX, gearY, headingLabel, {
       fontFamily: FONT_FAMILY,
       fontSize: '13px',
       color: hex(0x7ee0ff),
@@ -323,14 +348,24 @@ export function createEquipmentUI(
     container.add(heading);
     gearObjects.push(heading);
 
-    const equippable = currentBag.slots.filter((slot) => isEquippableItem(slot.itemId));
+    const equippable =
+      selectedSlotFilter === null
+        ? currentBag.slots.filter((slot) => isEquippableItem(slot.itemId))
+        : filterByEquipmentSlot(currentBag, selectedSlotFilter);
 
     if (equippable.length === 0) {
-      const none = crispText(dollX, gearY + 22, 'No equippable gear in your bag.', {
-        fontFamily: FONT_FAMILY,
-        fontSize: '12px',
-        color: hex(0x555577),
-      });
+      const none = crispText(
+        dollX,
+        gearY + 22,
+        selectedSlotFilter === null
+          ? 'No equippable gear in your bag.'
+          : `No gear in bag fits ${getSlotLabel(selectedSlotFilter)}.`,
+        {
+          fontFamily: FONT_FAMILY,
+          fontSize: '12px',
+          color: hex(0x555577),
+        },
+      );
       container.add(none);
       gearObjects.push(none);
       return;
@@ -400,6 +435,7 @@ export function createEquipmentUI(
       }
     }
     const bagSlots = currentBag?.slots ?? [];
+    signature += `slot:${selectedSlotFilter ?? '-'}|`;
     for (const slot of bagSlots) {
       if (isEquippableItem(slot.itemId)) {
         signature += `${slot.itemId}x${slot.quantity};`;
@@ -470,8 +506,11 @@ export function createEquipmentUI(
     container.setVisible(visible);
     if (visible) {
       applyLayout();
+      setSelectedSlotFilter(null);
       lastSignature = null;
       refresh(world);
+    } else {
+      setSelectedSlotFilter(null);
     }
   }
 
@@ -481,6 +520,8 @@ export function createEquipmentUI(
     toggle,
     refresh,
     isOpen: () => visible,
+    getSelectedSlotFilter: () => selectedSlotFilter,
+    selectSlot: (slotId: EquipmentSlotId | null) => setSelectedSlotFilter(slotId),
     destroy() {
       scene.scale.off('resize', applyLayout);
       clearPool(slotObjects);

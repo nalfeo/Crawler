@@ -5,6 +5,7 @@ import { createEntity, spawnEnemy, spawnPlayer, spawnTrap } from '../../src/core
 import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
 import { trapSystem } from '../../src/core/systems/trapSystem.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { makeMapWithSafeRoom } from '../helpers/map-fixtures.js';
 
 describe('trapSystem', () => {
   it('does not trigger when no candidates are inside trigger radius', () => {
@@ -94,5 +95,31 @@ describe('trapSystem', () => {
 
     expect(query(world.ecs, [Trap])).toHaveLength(0);
     expect(query(world.ecs, [AreaDamage])).toHaveLength(1);
+  });
+
+  it('skips triggering when the player owner is inside a safe room', () => {
+    const world = createTestWorld();
+    // Safe room tiles (1,1)–(4,4) with tileSizeFt=32.
+    // Tile 2 centre = 2*32+16 = 80 ft.
+    const safeMap = makeMapWithSafeRoom({ tileSizeFt: 32, widthTiles: 20, heightTiles: 20 });
+    world.floorMap = safeMap;
+
+    // Place the player at the centre of tile (2,2) — inside the safe room.
+    const playerX = 2 * 32 + 16;
+    const playerY = 2 * 32 + 16;
+    const owner = spawnPlayer(world, playerX, playerY);
+
+    // Trap co-located with the player-owner
+    spawnTrap(world, playerX, playerY, 25, 16, 30, 0, owner, 2);
+
+    // Enemy right next to the trap (within trigger radius)
+    const enemy = spawnEnemy(world, playerX + 5, playerY, 30);
+    addComponent(world.ecs, enemy, set(Team, { id: 4 }));
+
+    trapSystem(world, collisionSystem(world));
+
+    // Trap should NOT trigger because the owner (player) is in a safe room
+    expect(query(world.ecs, [Trap])).toHaveLength(1);
+    expect(query(world.ecs, [AreaDamage])).toHaveLength(0);
   });
 });

@@ -284,6 +284,8 @@ export function renderHtml({ instanceId, pollIntervalMs, workspacePath }) {
           statusBits.push(route.error);
         }
 
+        const openUrl = route.launchUrl || route.url;
+
         return \`
           <article class="route-card \${route.available ? '' : 'route-card--missing'}">
             <div class="server-header">
@@ -292,7 +294,7 @@ export function renderHtml({ instanceId, pollIntervalMs, workspacePath }) {
                 \${route.available ? 'available' : 'unavailable'}
               </span>
             </div>
-            <a href="\${escapeHtml(route.url)}" data-open-url="\${escapeHtml(route.url)}">\${escapeHtml(route.url)}</a>
+            <a href="\${escapeHtml(openUrl)}" data-open-url="\${escapeHtml(openUrl)}">\${escapeHtml(route.url)}</a>
             <div class="meta">\${statusBits.map((bit) => '<span>' + escapeHtml(bit) + '</span>').join('')}</div>
           </article>
         \`;
@@ -329,6 +331,13 @@ export function renderHtml({ instanceId, pollIntervalMs, workspacePath }) {
             <div class="meta">
               <span>session: \${escapeHtml(server.sessionName || 'unknown')}</span>
               <span>branch: \${escapeHtml(server.branchName || 'unknown')}</span>
+              <span>PR: \${escapeHtml(
+                server.pullRequestNumber !== null
+                  ? '#' +
+                    server.pullRequestNumber +
+                    (server.pullRequestTitle ? ' — ' + server.pullRequestTitle : '')
+                  : 'none',
+              )}</span>
               <span>listen address: \${escapeHtml(server.localAddress)}</span>
               <span>owner PID: \${escapeHtml(server.owningProcess)}</span>
               <span>launch PID: \${escapeHtml(server.launchProcessId || 'unknown')}</span>

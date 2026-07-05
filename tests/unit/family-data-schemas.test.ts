@@ -1,6 +1,14 @@
-import { describe, expect, it } from 'vitest';
-import { loadFamilies, familyDefSchema } from '../../src/shared/data/families.js';
-import { loadResources, resourceDefSchema } from '../../src/shared/data/resources.js';
+import { describe, expect, it, afterEach } from 'vitest';
+import {
+  loadFamilies,
+  familyDefSchema,
+  _resetFamilyCache,
+} from '../../src/shared/data/families.js';
+import {
+  loadResources,
+  resourceDefSchema,
+  _resetResourceCache,
+} from '../../src/shared/data/resources.js';
 import familiesJson from '../../src/shared/data/families.json';
 import resourcesJson from '../../src/shared/data/resources.json';
 
@@ -11,6 +19,10 @@ import resourcesJson from '../../src/shared/data/resources.json';
  */
 
 describe('families.json', () => {
+  afterEach(() => {
+    _resetFamilyCache();
+  });
+
   it('parses under familyDefSchema', () => {
     for (const raw of familiesJson as unknown[]) {
       expect(() => familyDefSchema.parse(raw)).not.toThrow();
@@ -20,6 +32,20 @@ describe('families.json', () => {
   it('loads via loadFamilies() with ≥15 entries', () => {
     const families = loadFamilies();
     expect(families.length).toBeGreaterThanOrEqual(15);
+  });
+
+  it('returns the same cached reference on repeated calls', () => {
+    const first = loadFamilies();
+    const second = loadFamilies();
+    expect(first).toBe(second);
+  });
+
+  it('_resetFamilyCache causes a fresh load on next call', () => {
+    const first = loadFamilies();
+    _resetFamilyCache();
+    const second = loadFamilies();
+    // Same content, but fresh object after reset
+    expect(second.length).toBe(first.length);
   });
 
   it('has unique family ids', () => {
@@ -43,6 +69,10 @@ describe('families.json', () => {
 });
 
 describe('resources.json', () => {
+  afterEach(() => {
+    _resetResourceCache();
+  });
+
   it('parses under resourceDefSchema', () => {
     for (const raw of resourcesJson as unknown[]) {
       expect(() => resourceDefSchema.parse(raw)).not.toThrow();
@@ -53,6 +83,19 @@ describe('resources.json', () => {
     const resources = loadResources();
     expect(resources.length).toBeGreaterThanOrEqual(10);
     expect(resources.length).toBeLessThanOrEqual(20);
+  });
+
+  it('returns the same cached reference on repeated calls', () => {
+    const first = loadResources();
+    const second = loadResources();
+    expect(first).toBe(second);
+  });
+
+  it('_resetResourceCache causes a fresh load on next call', () => {
+    const first = loadResources();
+    _resetResourceCache();
+    const second = loadResources();
+    expect(second.length).toBe(first.length);
   });
 
   it('has unique resource ids', () => {

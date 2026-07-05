@@ -48,6 +48,7 @@ const MOB_HEALTH_BAR_MAX_WIDTH_PX = 28;
 const MOB_HEALTH_BAR_Y_GAP_PX = 2;
 /** Fallback half-height when a sprite's displayHeight is unavailable. */
 const MOB_HEALTH_BAR_DEFAULT_SPRITE_HALF_HEIGHT_PX = 8;
+const ENEMY_RIGHTWARD_FLIP_EPSILON = 0.001;
 const logger = createLogger('engine:phaser-bridge');
 
 interface EntityVisual {
@@ -288,9 +289,10 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           if (visual && visual.type.startsWith('enemy') && visual.obj.texture) {
             textureKey = visual.obj.texture.key;
             frame = visual.obj.frame?.name;
-            // Use the live render scale (not baseScale) so shrunken variants
-            // like baby slimes shatter at their actual on-screen size.
-            scale = visual.obj.scaleX || visual.baseScale;
+            // Use the live render scale magnitude (not baseScale) so shrunken
+            // variants like baby slimes shatter at their actual on-screen
+            // size even when the render path horizontally flips them.
+            scale = Math.abs(visual.obj.scaleX) || visual.baseScale;
             tint = visual.obj.isTinted ? visual.obj.tintTopLeft : undefined;
           } else {
             const tex = resolveTexture(scene, enemyVariantFromTextureId(event.spriteTextureId), {
@@ -950,9 +952,28 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             img.setRotation(0);
             if (entityType === 'enemy') {
               const { scaleX, scaleY } = computeEnemyScale(world, eid, visual.baseScale);
+              // All generated enemy art is authored facing RIGHT by engine-wide
+              // convention (the sprite pipeline enforces `sensors.enemy.facing:
+              // 'right'` for enemy briefs — see data/sprite-types/enemy.json).
+              // Phaser's `flipX` MIRRORS the source texture, so the unflipped
+              // texture already faces right. We therefore flip it to face LEFT at
+              // rest and while moving left, and leave it unflipped (native
+              // right-facing) only once horizontal velocity is meaningfully
+              // positive. Net behaviour: enemies default to facing left and turn
+              // right only while moving right. This relies on every enemy texture
+              // sharing that right-facing orientation; if that convention ever
+              // changes, revisit this flip together with the pipeline contract
+              // rather than assuming a blind one-line inversion.
+              const movingRight = (velocity.x[eid] ?? 0) > ENEMY_RIGHTWARD_FLIP_EPSILON;
               img.setScale(scaleX, scaleY);
+              if (typeof img.setFlipX === 'function') {
+                img.setFlipX(!movingRight);
+              }
             } else {
               img.setScale(visual.baseScale);
+              if (typeof img.setFlipX === 'function') {
+                img.setFlipX(false);
+              }
             }
             break;
         }

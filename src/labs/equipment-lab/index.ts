@@ -1,169 +1,46 @@
 import GUI from 'lil-gui';
-import { addEntity } from 'bitecs';
-import { createGameWorld, type GameWorld } from '../../core/index.js';
+import Phaser from 'phaser';
+import { addComponent, set } from 'bitecs';
+import { BroadcastScore } from '../../core/components.js';
+import { createGameWorld, spawnPlayer, type GameWorld } from '../../core/index.js';
 import {
-  initializeBaseStats,
-  equip,
-  unequip,
-  canEquip,
   getEffectiveStats,
   getEquipmentState,
-  setEntityTags,
-  getEntityTags,
-  registerCustomRequirement,
-  clearEquipmentState,
+  initializeBaseStats,
 } from '../../core/systems/equipmentSystem.js';
-import { SLOT_REGISTRY } from '../../shared/equipment-slots.js';
+import { isInSafeContext } from '../../core/safe-space.js';
+import { createEquipmentUI } from '../../engine/EquipmentUI.js';
 import {
-  PRIMARY_STATS,
-  SECONDARY_STATS,
-  DEFAULT_BASE_STATS,
-  type StatId,
-} from '../../shared/stats.js';
-import type {
-  EquipmentItemDef,
-  ItemRarity,
-  EquipFailureReason,
-} from '../../shared/equipment-types.js';
+  fetchGeneratedSpriteRegistry,
+  GENERATED_SPRITE_REGISTRY_KEY,
+  preloadGeneratedSprites,
+} from '../../engine/generatedAssets/index.js';
+import { createInventoryUI } from '../../engine/InventoryUI.js';
+import { createPhaserBridge } from '../../engine/PhaserBridge.js';
+import { GAME } from '../../shared/constants.js';
+import { emptyGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
+import { getEquippableItemIds } from '../../shared/equipmentDefs.js';
+import { addItem, type InventoryBag } from '../../shared/inventory.js';
+import { getItemById } from '../../shared/items.js';
+import { pxToFt } from '../../shared/units.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
-const LAB_SEED = 42;
-
-function formatReason(r: EquipFailureReason): string {
-  switch (r.type) {
-    case 'invalidDef':
-      return r.message;
-    case 'unknownSlot':
-      return `unknown slot: ${r.slotId}`;
-    case 'occupiedSlot':
-      return `slot occupied: ${r.slotId}`;
-    case 'requirementFailed':
-      return r.message;
-  }
+interface EquipmentLabSettings {
+  selectedItemId: string;
+  addQuantity: number;
+  keepSafeRoomContext: boolean;
 }
 
-// Sample items for interactive testing
-const SAMPLE_ITEMS: EquipmentItemDef[] = [
-  {
-    id: 'iron-helm',
-    name: 'Iron Helm',
-    slots: ['head'],
-    rarity: 'common',
-    statBonuses: { armor: 3, constitution: 2 },
-  },
-  {
-    id: 'gold-amulet',
-    name: 'Gold Amulet',
-    slots: ['neck'],
-    rarity: 'uncommon',
-    statBonuses: { intelligence: 2, cooldownReduction: 0.05 },
-  },
-  {
-    id: 'plate-armor',
-    name: 'Plate Armor',
-    slots: ['chest'],
-    rarity: 'rare',
-    statBonuses: { armor: 10, constitution: 5, moveSpeed: -0.5 },
-  },
-  {
-    id: 'leather-bracers',
-    name: 'Leather Bracers',
-    slots: ['wrists'],
-    rarity: 'common',
-    statBonuses: { dexterity: 1, armor: 1 },
-  },
-  {
-    id: 'greatsword',
-    name: 'Greatsword',
-    slots: ['mainHand', 'offHand'],
-    rarity: 'epic',
-    statBonuses: { strength: 5, attackSpeed: -0.1, damageBonus: 15 },
-    tags: ['two-handed', 'weapon'],
-  },
-  {
-    id: 'short-sword',
-    name: 'Short Sword',
-    slots: ['mainHand'],
-    rarity: 'common',
-    statBonuses: { strength: 2, damageBonus: 5, attackSpeed: 0.1 },
-    tags: ['one-handed', 'weapon'],
-  },
-  {
-    id: 'buckler',
-    name: 'Buckler',
-    slots: ['offHand'],
-    rarity: 'common',
-    statBonuses: { armor: 4, dodgeChance: 0.1 },
-    tags: ['shield'],
-  },
-  {
-    id: 'ruby-ring',
-    name: 'Ruby Ring',
-    slots: ['ringLeft'],
-    rarity: 'uncommon',
-    statBonuses: { strength: 3, critChance: 0.02 },
-  },
-  {
-    id: 'sapphire-ring',
-    name: 'Sapphire Ring',
-    slots: ['ringRight'],
-    rarity: 'uncommon',
-    statBonuses: { intelligence: 3, cooldownReduction: 0.03 },
-  },
-  {
-    id: 'cloak-of-shadows',
-    name: 'Cloak of Shadows',
-    slots: ['back'],
-    rarity: 'epic',
-    statBonuses: { dexterity: 4, dodgeChance: 0.1, moveSpeed: 0.3 },
-  },
-  {
-    id: 'iron-gauntlets',
-    name: 'Iron Gauntlets',
-    slots: ['gloves'],
-    rarity: 'common',
-    statBonuses: { strength: 1, armor: 2 },
-  },
-  {
-    id: 'enchanted-belt',
-    name: 'Enchanted Belt',
-    slots: ['belt'],
-    rarity: 'rare',
-    statBonuses: { constitution: 3, hpRegen: 2 },
-  },
-  {
-    id: 'greaves-of-haste',
-    name: 'Greaves of Haste',
-    slots: ['legs'],
-    rarity: 'rare',
-    statBonuses: { dexterity: 2, moveSpeed: 0.5, armor: 3 },
-  },
-  {
-    id: 'boots-of-speed',
-    name: 'Boots of Speed',
-    slots: ['feet'],
-    rarity: 'uncommon',
-    statBonuses: { moveSpeed: 1.0, dexterity: 1 },
-  },
-  {
-    id: 'cursed-crown',
-    name: 'Cursed Crown',
-    slots: ['head'],
-    rarity: 'legendary',
-    statBonuses: { intelligence: 8, strength: -3, critMultiplier: 0.5 },
-    requirements: [{ type: 'minStat', stat: 'intelligence' as StatId, value: 5 }],
-  },
+const LAB_SEED = 42424;
+const DEFAULT_EQUIP_LOADOUT: readonly string[] = [
+  'merchants-stained-charm',
+  'iron-sword',
+  'frost-bow',
+  'bone-club',
+  'plasma-pistol',
 ];
-
-const RARITY_COLORS: Record<ItemRarity, string> = {
-  common: '#9ca3af',
-  uncommon: '#22c55e',
-  rare: '#3b82f6',
-  epic: '#a855f7',
-  legendary: '#f59e0b',
-};
 
 function createEquipmentLab(canvasHost: HTMLElement, controls: HTMLElement): () => void {
   const gui = (controls as ControlsWithGui).__labGui;
@@ -171,234 +48,301 @@ function createEquipmentLab(canvasHost: HTMLElement, controls: HTMLElement): () 
     throw new Error('Lab runner did not initialize lil-gui.');
   }
 
-  let world: GameWorld = createGameWorld({ seed: LAB_SEED });
-  world.state = 'safe_room';
-  let entity = addEntity(world.ecs);
-  initializeBaseStats(world, entity);
-
-  // Container for the paper doll display
   const root = document.createElement('div');
-  root.style.cssText =
-    'display:grid; grid-template-columns:1fr 1fr; gap:24px; padding:24px; height:100%; overflow:auto; color:#f8fafc; font-family:monospace;';
+  root.style.position = 'relative';
+  root.style.width = '100%';
+  root.style.height = '100%';
+  root.style.overflow = 'hidden';
+  root.style.background = 'radial-gradient(circle at top, #10213a 0%, #08111f 45%, #04080f 100%)';
 
-  const slotsPanel = document.createElement('div');
-  const statsPanel = document.createElement('div');
+  const gameHost = document.createElement('div');
+  gameHost.style.width = '100%';
+  gameHost.style.height = '100%';
 
-  root.append(slotsPanel, statsPanel);
+  const hud = document.createElement('div');
+  hud.style.position = 'absolute';
+  hud.style.top = '16px';
+  hud.style.left = '16px';
+  hud.style.padding = '12px 14px';
+  hud.style.borderRadius = '12px';
+  hud.style.background = 'rgba(10, 15, 30, 0.84)';
+  hud.style.border = '1px solid rgba(255, 255, 255, 0.14)';
+  hud.style.color = '#f8fafc';
+  hud.style.lineHeight = '1.5';
+  hud.style.whiteSpace = 'pre-line';
+  hud.style.pointerEvents = 'none';
+
+  const hint = document.createElement('p');
+  hint.textContent =
+    'Real UI path: press [G] for Equipment and [I] for Inventory. Select a slot in equipment to filter matching bag gear, then equip through the inventory panel.';
+  hint.style.marginTop = '16px';
+  hint.style.color = '#7ee0ff';
+  hint.style.lineHeight = '1.6';
+
+  controls.append(hint);
+  root.append(gameHost, hud);
   canvasHost.append(root);
 
-  // Log panel
-  const logPanel = document.createElement('div');
-  logPanel.style.cssText =
-    'margin-top:12px; padding:12px; background:rgba(0,0,0,0.3); border-radius:8px; font-size:12px; max-height:200px; overflow-y:auto;';
-  const logLines: string[] = [];
-  function log(msg: string): void {
-    logLines.unshift(`[${new Date().toLocaleTimeString()}] ${msg}`);
-    if (logLines.length > 50) logLines.pop();
-    logPanel.innerHTML = logLines.map((l) => `<div>${l}</div>`).join('');
-  }
+  const equippableIds = getEquippableItemIds();
+  const initialItemId = equippableIds[0] ?? 'merchants-stained-charm';
+  const settings: EquipmentLabSettings = {
+    selectedItemId: initialItemId,
+    addQuantity: 1,
+    keepSafeRoomContext: true,
+  };
 
-  function renderSlots(): void {
-    slotsPanel.innerHTML = '';
-    const title = document.createElement('h2');
-    title.textContent = '⚔️ Equipment Slots';
-    title.style.marginBottom = '12px';
-    slotsPanel.append(title);
+  let openInventoryFromGui: () => void = () => {};
+  let openEquipmentFromGui: () => void = () => {};
+  let addSelectedItemFromGui: () => void = () => {};
+  let addDefaultLoadoutFromGui: () => void = () => {};
+  let resetWorldFromGui: () => void = () => {};
+  let clearBagFromGui: () => void = () => {};
+  let syncSafeRoomContextFromGui: () => void = () => {};
 
-    const state = getEquipmentState(world, entity);
-    const grid = document.createElement('div');
-    grid.style.cssText = 'display:grid; grid-template-columns:1fr 1fr; gap:8px;';
+  class EquipmentLabScene extends Phaser.Scene {
+    private bridge?: ReturnType<typeof createPhaserBridge>;
 
-    for (const slot of SLOT_REGISTRY) {
-      const instId = state?.equipped[slot.id] ?? null;
-      const instance = instId !== null ? state?.instances.get(instId) : null;
-      const box = document.createElement('div');
-      box.style.cssText = `padding:10px; border-radius:8px; border:2px solid ${
-        instance ? RARITY_COLORS[instance.def.rarity ?? 'common'] : 'rgba(255,255,255,0.1)'
-      }; background:${instance ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.2)'}; cursor:pointer;`;
+    private inventoryUI?: ReturnType<typeof createInventoryUI>;
 
-      const slotName = document.createElement('div');
-      slotName.style.cssText = 'font-size:11px; color:#7ee0ff; text-transform:uppercase;';
-      slotName.textContent = slot.label;
+    private equipmentUI?: ReturnType<typeof createEquipmentUI>;
 
-      const itemName = document.createElement('div');
-      itemName.style.cssText = `font-size:13px; margin-top:4px; color:${
-        instance ? RARITY_COLORS[instance.def.rarity ?? 'common'] : '#666'
-      };`;
-      itemName.textContent = instance ? instance.def.name : '(empty)';
+    private playerEid = -1;
 
-      box.append(slotName, itemName);
-      grid.append(box);
+    private world!: GameWorld;
 
-      if (instance) {
-        box.addEventListener('click', () => {
-          const result = unequip(world, entity, slot.id);
-          if (result.ok) {
-            log(`Unequipped ${instance.def.name} from ${slot.label}`);
-          } else {
-            log(`Failed: ${result.reason}`);
-          }
-          render();
+    constructor() {
+      super({ key: 'EquipmentLabScene' });
+    }
+
+    create(): void {
+      openInventoryFromGui = () => this.openInventory();
+      openEquipmentFromGui = () => this.openEquipment();
+      addSelectedItemFromGui = () => this.addSelectedItem();
+      addDefaultLoadoutFromGui = () => this.addDefaultLoadout();
+      resetWorldFromGui = () => this.resetWorld();
+      clearBagFromGui = () => this.clearBag();
+      syncSafeRoomContextFromGui = () => this.syncSafeRoomContext();
+
+      this.cameras.main.setBackgroundColor('#07101c');
+      this.bridge = createPhaserBridge(this);
+      this.inventoryUI = createInventoryUI(this);
+      this.equipmentUI = createEquipmentUI(this, {
+        onSlotFilterChange: (slotId) => this.inventoryUI?.setEquipmentSlotFilter(slotId),
+      });
+
+      this.game.registry.set(GENERATED_SPRITE_REGISTRY_KEY, emptyGeneratedSpriteRegistry());
+      void this.warmGeneratedSprites();
+
+      const onKeyDown = (event: KeyboardEvent) => {
+        if (event.key === 'i' || event.key === 'I') {
+          event.preventDefault();
+          this.openInventory();
+          return;
+        }
+        if (event.key === 'g' || event.key === 'G') {
+          event.preventDefault();
+          this.openEquipment();
+          return;
+        }
+        if (event.key === 'r' || event.key === 'R') {
+          event.preventDefault();
+          this.resetWorld();
+        }
+      };
+      this.input.keyboard?.on('keydown', onKeyDown);
+
+      this.resetWorld();
+
+      this.events.once('shutdown', () => {
+        openInventoryFromGui = () => undefined;
+        openEquipmentFromGui = () => undefined;
+        addSelectedItemFromGui = () => undefined;
+        addDefaultLoadoutFromGui = () => undefined;
+        resetWorldFromGui = () => undefined;
+        clearBagFromGui = () => undefined;
+        syncSafeRoomContextFromGui = () => undefined;
+        this.input.keyboard?.off('keydown', onKeyDown);
+        this.inventoryUI?.destroy();
+        this.equipmentUI?.destroy();
+        this.bridge?.destroy();
+        this.inventoryUI = undefined;
+        this.equipmentUI = undefined;
+        this.bridge = undefined;
+      });
+    }
+
+    update(): void {
+      if (!this.world) return;
+      this.bridge?.sync(this.world);
+      this.inventoryUI?.refresh(this.world);
+      this.equipmentUI?.refresh(this.world);
+      this.renderHud();
+    }
+
+    private async warmGeneratedSprites(): Promise<void> {
+      try {
+        const registry = await fetchGeneratedSpriteRegistry();
+        this.game.registry.set(GENERATED_SPRITE_REGISTRY_KEY, registry);
+        if (registry.size === 0 || !this.load) return;
+        const queued = preloadGeneratedSprites(this.load, registry);
+        if (queued.length === 0) return;
+        this.load.once(Phaser.Loader.Events.COMPLETE, () => {
+          this.inventoryUI?.refresh(this.world);
+          this.equipmentUI?.refresh(this.world);
         });
-        box.title = `Click to unequip. Stats: ${Object.entries(instance.def.statBonuses)
-          .map(([k, v]) => `${k}:${v}`)
-          .join(', ')}`;
+        this.load.start();
+      } catch {
+        // Non-fatal in labs: text fallback icons still let equipment flow run.
       }
     }
 
-    slotsPanel.append(grid, logPanel);
+    private resetWorld(): void {
+      this.world = createGameWorld({ seed: LAB_SEED });
+      this.world.floor = 1;
+      this.world.state = settings.keepSafeRoomContext ? 'safe_room' : 'playing';
+      this.world.playerInSafeRoom = settings.keepSafeRoomContext;
+      this.world.featureUnlocks.inventory = true;
+      this.world.featureUnlocks.equipment = true;
+
+      this.playerEid = spawnPlayer(this.world, pxToFt(GAME.WIDTH / 2), pxToFt(GAME.HEIGHT / 2));
+      initializeBaseStats(this.world, this.playerEid);
+      addComponent(this.world.ecs, this.playerEid, set(BroadcastScore, { current: 0 }));
+      this.addDefaultLoadout();
+      this.inventoryUI?.refresh(this.world);
+      this.equipmentUI?.refresh(this.world);
+    }
+
+    private getBag(): InventoryBag | null {
+      return this.world.inventories.get(this.playerEid) ?? null;
+    }
+
+    private addDefaultLoadout(): void {
+      const bag = this.getBag();
+      if (!bag) return;
+      for (const itemId of DEFAULT_EQUIP_LOADOUT) {
+        addItem(bag, itemId, 1);
+      }
+      addItem(bag, 'iron-ore', 6);
+      addItem(bag, 'health-vial', 2);
+    }
+
+    private addSelectedItem(): void {
+      const bag = this.getBag();
+      if (!bag) return;
+      addItem(bag, settings.selectedItemId, settings.addQuantity);
+      this.inventoryUI?.refresh(this.world);
+      this.equipmentUI?.refresh(this.world);
+    }
+
+    private clearBag(): void {
+      const bag = this.getBag();
+      if (!bag) return;
+      bag.slots.length = 0;
+      this.inventoryUI?.refresh(this.world);
+      this.equipmentUI?.refresh(this.world);
+    }
+
+    private openInventory(): void {
+      if (!this.inventoryUI) return;
+      this.inventoryUI.toggle(this.world);
+      this.inventoryUI.refresh(this.world);
+    }
+
+    private openEquipment(): void {
+      if (!this.equipmentUI) return;
+      this.equipmentUI.toggle(this.world);
+      if (this.equipmentUI.isOpen() && this.inventoryUI && !this.inventoryUI.isOpen()) {
+        this.inventoryUI.toggle(this.world);
+      }
+      this.inventoryUI?.refresh(this.world);
+      this.equipmentUI.refresh(this.world);
+    }
+
+    private syncSafeRoomContext(): void {
+      this.world.state = settings.keepSafeRoomContext ? 'safe_room' : 'playing';
+      this.world.playerInSafeRoom = settings.keepSafeRoomContext;
+      this.inventoryUI?.refresh(this.world);
+      this.equipmentUI?.refresh(this.world);
+    }
+
+    private renderHud(): void {
+      const bag = this.getBag();
+      const state = getEquipmentState(this.world, this.playerEid);
+      const equippedInstanceIds =
+        state == null
+          ? []
+          : Object.values(state.equipped).filter((inst): inst is number => inst !== null);
+      const equippedCount = new Set(equippedInstanceIds).size;
+      const charisma = getEffectiveStats(this.world, this.playerEid).charisma;
+      const slotFilter = this.inventoryUI?.getEquipmentSlotFilter() ?? 'none';
+
+      hud.textContent = [
+        `Safe context: ${isInSafeContext(this.world) ? 'yes' : 'no'} (state=${this.world.state})`,
+        `Overlays: inventory=${this.inventoryUI?.isOpen() ? 'open' : 'closed'} · equipment=${this.equipmentUI?.isOpen() ? 'open' : 'closed'}`,
+        `Inventory slots: ${bag?.slots.length ?? 0} · Equipped items: ${equippedCount}`,
+        `Active slot filter: ${slotFilter}`,
+        `Effective charisma: ${charisma}`,
+        'Keys: [I] inventory · [G] equipment · [R] reset',
+      ].join('\n');
+    }
   }
 
-  function renderStats(): void {
-    statsPanel.innerHTML = '';
-    const title = document.createElement('h2');
-    title.textContent = '📊 Effective Stats';
-    title.style.marginBottom = '12px';
-    statsPanel.append(title);
+  const itemChoices = Object.fromEntries(
+    equippableIds.map((itemId) => {
+      const item = getItemById(itemId);
+      return [item ? `${item.name} (${itemId})` : itemId, itemId];
+    }),
+  );
 
-    const stats = getEffectiveStats(world, entity);
+  const actions = {
+    openInventory: () => openInventoryFromGui(),
+    openEquipment: () => openEquipmentFromGui(),
+    addItem: () => addSelectedItemFromGui(),
+    addLoadout: () => addDefaultLoadoutFromGui(),
+    clearBag: () => clearBagFromGui(),
+    reset: () => resetWorldFromGui(),
+  };
 
-    const makeStat = (label: string, value: number, changed: boolean): HTMLDivElement => {
-      const row = document.createElement('div');
-      row.style.cssText = `display:flex; justify-content:space-between; padding:4px 8px; border-radius:4px; background:${
-        changed ? 'rgba(34,197,94,0.1)' : 'transparent'
-      };`;
-      const nameEl = document.createElement('span');
-      nameEl.textContent = label;
-      nameEl.style.color = '#c9d4ff';
-      const valEl = document.createElement('span');
-      valEl.textContent = Number.isInteger(value) ? String(value) : value.toFixed(3);
-      valEl.style.color = changed ? '#22c55e' : '#f8fafc';
-      valEl.style.fontWeight = changed ? 'bold' : 'normal';
-      row.append(nameEl, valEl);
-      return row;
-    };
+  const panel = gui.addFolder('Equipment Lab Controls');
+  panel.add(actions, 'openEquipment').name('Open Equipment [G]');
+  panel.add(actions, 'openInventory').name('Open Inventory [I]');
+  panel.add(settings, 'selectedItemId', itemChoices).name('Bag item');
+  panel.add(settings, 'addQuantity', 1, 5, 1).name('Quantity');
+  panel.add(actions, 'addItem').name('Add selected item');
+  panel.add(actions, 'addLoadout').name('Add default loadout');
+  panel.add(actions, 'clearBag').name('Clear bag');
+  panel
+    .add(settings, 'keepSafeRoomContext')
+    .name('Safe-room context')
+    .onChange(() => syncSafeRoomContextFromGui());
+  panel.add(actions, 'reset').name('Reset world [R]');
 
-    const primarySec = document.createElement('div');
-    primarySec.innerHTML = '<h3 style="color:#7ee0ff;margin:8px 0">Primary</h3>';
-    for (const s of PRIMARY_STATS) {
-      const val = stats[s];
-      const base = DEFAULT_BASE_STATS[s];
-      primarySec.append(makeStat(s, val, val !== base));
-    }
-    statsPanel.append(primarySec);
+  const config: Phaser.Types.Core.GameConfig = {
+    type: Phaser.AUTO,
+    parent: gameHost,
+    width: GAME.WIDTH,
+    height: GAME.HEIGHT,
+    autoRound: true,
+    roundPixels: true,
+    backgroundColor: '#07101c',
+    scene: [EquipmentLabScene],
+    scale: {
+      mode: Phaser.Scale.FIT,
+      autoCenter: Phaser.Scale.CENTER_BOTH,
+    },
+  };
 
-    const secondarySec = document.createElement('div');
-    secondarySec.innerHTML = '<h3 style="color:#7ee0ff;margin:12px 0 8px">Secondary</h3>';
-    for (const s of SECONDARY_STATS) {
-      const val = stats[s];
-      const base = DEFAULT_BASE_STATS[s];
-      secondarySec.append(makeStat(s, val, val !== base));
-    }
-    statsPanel.append(secondarySec);
-  }
-
-  function render(): void {
-    renderSlots();
-    renderStats();
-  }
-
-  // GUI: equip items
-  const equipFolder = gui.addFolder('Equip Items');
-  for (const item of SAMPLE_ITEMS) {
-    const color = RARITY_COLORS[item.rarity ?? 'common'];
-    const controller = equipFolder
-      .add({ equip: () => equipItem(item) }, 'equip')
-      .name(`${item.name} [${item.slots.join('+')}]`);
-    const el = controller.domElement?.closest('.controller');
-    if (el instanceof HTMLElement) {
-      el.style.borderLeft = `3px solid ${color}`;
-    }
-  }
-
-  function equipItem(item: EquipmentItemDef): void {
-    const check = canEquip(world, entity, item);
-    if (!check.allowed) {
-      log(`Cannot equip ${item.name}: ${check.reasons.map(formatReason).join(', ')}`);
-      render();
-      return;
-    }
-    const result = equip(world, entity, item);
-    if (result.ok) {
-      log(`Equipped ${item.name} → ${item.slots.join(', ')}`);
-    } else {
-      log(`Failed: ${result.reasons.map(formatReason).join(', ')}`);
-    }
-    render();
-  }
-
-  // GUI: actions
-  const actionsFolder = gui.addFolder('Actions');
-  actionsFolder
-    .add(
-      {
-        clearAll: () => {
-          clearEquipmentState(world, entity);
-          initializeBaseStats(world, entity);
-          log('Cleared all equipment');
-          render();
-        },
-      },
-      'clearAll',
-    )
-    .name('Clear All Equipment');
-
-  actionsFolder
-    .add(
-      {
-        reset: () => {
-          world = createGameWorld({ seed: LAB_SEED });
-          world.state = 'safe_room';
-          entity = addEntity(world.ecs);
-          initializeBaseStats(world, entity);
-          logLines.length = 0;
-          log('World reset');
-          render();
-        },
-      },
-      'reset',
-    )
-    .name('Reset World');
-
-  actionsFolder
-    .add(
-      {
-        addTag: () => {
-          setEntityTags(world, entity, ['vampire', 'undead']);
-          log('Added tags: vampire, undead');
-        },
-      },
-      'addTag',
-    )
-    .name('Add Entity Tags');
-
-  actionsFolder
-    .add(
-      {
-        registerReq: () => {
-          registerCustomRequirement(world, 'isVampire', (_w, eid) => {
-            const tags = getEntityTags(_w, eid);
-            return tags.has('vampire');
-          });
-          log('Registered custom requirement: isVampire');
-        },
-      },
-      'registerReq',
-    )
-    .name('Register Custom Req');
-
-  // Hint
-  const hint = document.createElement('p');
-  hint.textContent = 'Use the controls to equip/unequip items. Click equipped slots to unequip.';
-  hint.style.cssText = 'margin-top:16px; color:#fbcfe8; line-height:1.6;';
-  controls.append(hint);
-
-  // Initial render
-  render();
+  const game = new Phaser.Game(config);
+  const resizeObserver = new ResizeObserver(() => {
+    game.scale.refresh();
+  });
+  resizeObserver.observe(gameHost);
 
   return () => {
-    root.remove();
+    resizeObserver.disconnect();
+    game.destroy(true);
     hint.remove();
+    root.remove();
   };
 }
 
@@ -406,6 +350,6 @@ registerLab('equipment-lab', {
   category: 'Items & Equipment' as LabCategory,
   name: 'Equipment Lab',
   description:
-    'Interactive paper doll for testing equip/unequip operations, stat aggregation, requirements, and multi-slot items.',
+    'Phaser lab using the real EquipmentUI + InventoryUI integration path with slot filtering and safe-context controls.',
   create: createEquipmentLab,
 });

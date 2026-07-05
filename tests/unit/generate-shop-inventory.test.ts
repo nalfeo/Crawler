@@ -9,6 +9,7 @@ import { generateShopInventory } from '../../src/core/generateShopInventory.js';
 import {
   loadShopArchetypes,
   knownShopItemIds,
+  getShopArchetype,
   _resetShopArchetypeCache,
 } from '../../src/shared/data/shop-archetypes.js';
 
@@ -102,5 +103,17 @@ describe('generateShopInventory · property (seed sweep)', () => {
         expect(inv.items.length).toBeLessThanOrEqual(arch.maxInventorySize);
       }
     }
+  });
+});
+
+describe('getShopArchetype', () => {
+  it('returns the archetype for a known id', () => {
+    const archetypes = loadShopArchetypes();
+    const first = archetypes[0]!;
+    expect(getShopArchetype(first.id)).toEqual(first);
+  });
+
+  it('returns undefined for an unknown id', () => {
+    expect(getShopArchetype('no-such-archetype')).toBeUndefined();
   });
 });

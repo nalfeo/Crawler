@@ -13,6 +13,9 @@
  * | AZURE_STORAGE_ACCOUNT    | yes               | Storage account name                             |
  * | AZURE_STORAGE_KEY        | yes               | Storage account access key                       |
  * | AZURE_STORAGE_RUNS_CONTAINER | no            | Blob container name (default: `generated-runs`)  |
+ * | SPRITES_AZURE_CACHE          | no            | `on` (default) / `off` — persistent local cache of sheet PNGs when using Azure |
+ * | SPRITES_AZURE_CACHE_DIR      | no            | Override for the cache dir (default: platform-specific, outside any worktree)  |
+ * | SPRITES_AZURE_CACHE_MAX_BYTES | no           | Total cache size cap in bytes (default: 2 GiB; `0` = unbounded)                |
  *
  * Alternatively, set `AZURE_STORAGE_CONNECTION_STRING` to use a full
  * connection string instead of the separate account/key variables.
@@ -20,6 +23,12 @@
 
 import path from 'node:path';
 import { AzureBlobRunStore } from './azure-store.js';
+import {
+  CachingRunStore,
+  defaultAzureSheetCacheDir,
+  isAzureCacheEnabled,
+  parseMaxCacheBytes,
+} from './caching-store.js';
 import { LocalRunStore } from './local-store.js';
 import type { RunStore } from './types.js';
 
@@ -57,12 +66,23 @@ export function createRunStore(options: CreateRunStoreOptions): RunStore {
     // Connection string takes priority over separate account/key vars.
     const connStr = env['AZURE_STORAGE_CONNECTION_STRING'];
     const containerName = env['AZURE_STORAGE_RUNS_CONTAINER'];
-    if (connStr) {
-      return AzureBlobRunStore.fromConnectionString(connStr, containerName);
-    }
-    const accountName = required(env, 'AZURE_STORAGE_ACCOUNT');
-    const accountKey = required(env, 'AZURE_STORAGE_KEY');
-    return AzureBlobRunStore.fromOptions({ accountName, accountKey, containerName });
+    const inner = connStr
+      ? AzureBlobRunStore.fromConnectionString(connStr, containerName)
+      : AzureBlobRunStore.fromOptions({
+          accountName: required(env, 'AZURE_STORAGE_ACCOUNT'),
+          accountKey: required(env, 'AZURE_STORAGE_KEY'),
+          containerName,
+        });
+    // Wrap the Azure store in a persistent local cache for immutable sheet
+    // PNGs so a devtools reload paints without re-downloading multi-hundred-KB
+    // blobs. Cache lives OUTSIDE any git worktree so `git clean` / worktree
+    // checkpoints don't wipe it and `.gitignore` doesn't need to know.
+    if (!isAzureCacheEnabled(env)) return inner;
+    return new CachingRunStore({
+      inner,
+      cacheDir: defaultAzureSheetCacheDir(env),
+      maxCacheBytes: parseMaxCacheBytes(env),
+    });
   }
 
   throw new Error(

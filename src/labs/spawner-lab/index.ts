@@ -30,6 +30,7 @@ import {
   enemyAISystem,
   getSpawnerArchetype,
   getSpawnerArchetypeIndex,
+  spawnerArenaSystem,
   spawnerSystem,
 } from '../../game/index.js';
 import { GAME } from '../../shared/constants.js';
@@ -102,6 +103,7 @@ function createSpawnerLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
   let respawnNests = () => undefined as void;
   let clearMobs = () => undefined as void;
   let resetScene = () => undefined as void;
+  let simulateArenaTrigger = (_archetypeIndex?: number) => undefined as void;
 
   class SpawnerLabScene extends Phaser.Scene {
     private accumulator = 0;
@@ -173,6 +175,7 @@ function createSpawnerLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
       pokeNests = (archetypeIndex?: number) => this.pokeNests(archetypeIndex);
       destroyNests = (archetypeIndex?: number) => this.destroyNests(archetypeIndex);
+      simulateArenaTrigger = (archetypeIndex?: number) => this.simulateArenaTrigger(archetypeIndex);
       respawnNests = () => {
         this.clearAllEnemies();
         this.placeNests();
@@ -192,6 +195,7 @@ function createSpawnerLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         respawnNests = () => undefined;
         clearMobs = () => undefined;
         resetScene = () => undefined;
+        simulateArenaTrigger = () => undefined;
         this.inputCapture?.destroy();
         this.inputCapture = undefined;
         this.bridge?.destroy();
@@ -229,6 +233,10 @@ function createSpawnerLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
         playerInputSystem(this.world, this.inputState);
         enemyAISystem(this.world);
+        // Arena system runs immediately BEFORE spawnerSystem so its fence
+        // mutation (if any) is visible to the spawner tick when it computes
+        // child spawn positions — matches the real pipeline ordering.
+        spawnerArenaSystem(this.world);
         spawnerSystem(this.world);
         movementSystem(this.world);
         const collisions = collisionSystem(this.world);
@@ -261,6 +269,7 @@ function createSpawnerLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         bloodColor: RATS_NEST.bloodColor,
         spriteWidth: RATS_NEST.spriteWidth,
         spriteHeight: RATS_NEST.spriteHeight,
+        arenaRadiusFt: RATS_NEST.arenaRadiusFt,
       });
       spawnSpawner(this.world, viewportW * 0.72, cy, SLIME_POOL.hp, {
         defIndex: SLIME_POOL_INDEX,
@@ -269,7 +278,33 @@ function createSpawnerLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         bloodColor: SLIME_POOL.bloodColor,
         spriteWidth: SLIME_POOL.spriteWidth,
         spriteHeight: SLIME_POOL.spriteHeight,
+        arenaRadiusFt: SLIME_POOL.arenaRadiusFt,
       });
+    }
+
+    /**
+     * Teleport the player to the nearest spawner within its arena radius so
+     * lab users can validate the arena trigger without walking there — matches
+     * spec `Requirements§8` ("Simulate trigger" button).
+     */
+    private simulateArenaTrigger(archetypeIndex?: number): void {
+      if (this.playerEid < 0) return;
+      const spawners = query(this.world.ecs, [Spawner, Health]);
+      for (const eid of spawners) {
+        if (
+          archetypeIndex !== undefined &&
+          this.world.stores.spawner.defIndex[eid] !== archetypeIndex
+        ) {
+          continue;
+        }
+        const sx = this.world.stores.position.x[eid] ?? 0;
+        const sy = this.world.stores.position.y[eid] ?? 0;
+        // Place the player right on the spawner so any arena radius ≥ 0 triggers.
+        this.world.stores.position.x[this.playerEid] = sx + 0.5;
+        this.world.stores.position.y[this.playerEid] = sy + 0.5;
+        break;
+      }
+      this.updateInfo();
     }
 
     private pokeNests(archetypeIndex?: number): void {
@@ -344,8 +379,17 @@ function createSpawnerLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
             alive += 1;
           }
         }
+        const arenaState = this.world.stores.spawner.arenaState[eid] ?? 0;
+        const arenaLabel = arenaState === 0 ? 'idle' : arenaState === 1 ? 'LOCKED' : 'resolved';
+        const bankedXp = this.world.stores.spawner.bankedXp[eid] ?? 0;
+        const bankedChildren = this.world.stores.spawner.bankedChildren[eid] ?? 0;
+        const arenaRadius = this.world.stores.spawner.arenaRadiusFt[eid] ?? 0;
         lines.push(
           `${def.name}: HP ${hp.toFixed(0)}/${def.hp}  mode ${mode}  alive ${alive}  total ${total}`,
+        );
+        lines.push(
+          `  arena: ${arenaLabel}  radius ${arenaRadius.toFixed(1)}ft  ` +
+            `bankedXP ${bankedXp.toFixed(0)}  bankedChildren ${bankedChildren}/10`,
         );
       }
       if (spawners.length === 0) {
@@ -361,6 +405,8 @@ function createSpawnerLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     pokeSlimePool: () => pokeNests(SLIME_POOL_INDEX),
     destroyRatsNest: () => destroyNests(RATS_NEST_INDEX),
     destroySlimePool: () => destroyNests(SLIME_POOL_INDEX),
+    triggerRatsArena: () => simulateArenaTrigger(RATS_NEST_INDEX),
+    triggerSlimeArena: () => simulateArenaTrigger(SLIME_POOL_INDEX),
     respawnNests: () => respawnNests(),
     clearMobs: () => clearMobs(),
     reset: () => resetScene(),
@@ -370,6 +416,8 @@ function createSpawnerLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
   gui.add(api, 'pokeSlimePool').name('Poke Slime Pool (enrage)');
   gui.add(api, 'destroyRatsNest').name('Destroy Rats Nest (finale)');
   gui.add(api, 'destroySlimePool').name('Destroy Slime Pool (finale)');
+  gui.add(api, 'triggerRatsArena').name('Trigger Rats Arena (teleport)');
+  gui.add(api, 'triggerSlimeArena').name('Trigger Slime Arena (teleport)');
   gui.add(api, 'clearMobs').name('Clear spawned mobs');
   gui.add(api, 'respawnNests').name('Respawn nests');
   gui.add(api, 'reset').name('Reset');

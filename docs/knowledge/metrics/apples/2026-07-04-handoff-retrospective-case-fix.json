@@ -1,0 +1,10 @@
+{
+  "date": "2026-07-04",
+  "session": "handoff-retrospective-case-fix",
+  "estimated_apples": 1,
+  "actual_apples": 1,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.2,
+  "notes": "Redo-and-ship of a lost 1🍎 follow-up from PR #745 (worktree evaporated before a PR was opened). Two real post-merge findings: (1) case-sensitivity mismatch — lint-handoff.ts's grandfather-skip used a case-SENSITIVE /^##\\s+Retrospective\\b/m while handoff-parse.ts extracted case-INSENSITIVELY, so a lowercase `## retrospective` heading slipped past the lint (subsection enforcement bypassed) while the parser still recognised it. Extracted a single shared case-insensitive RETROSPECTIVE_HEADING regex + hasRetrospectiveSection(content) predicate consumed by both the lint grandfather-skip and extractRetrospectiveSubsections, so they agree by construction; added 4 unit tests to handoff-parse.test.ts (lowercase heading detected identically by both paths, plus a negative h3 guard). (2) TEMPLATE.md falsely claimed 'a pre-flight guard rejects' handoffs missing a Retrospective — reworded to the accurate ADVISORY npm run docs:check path (docs-update.yml runs lint-handoff continue-on-error; docs:check is not part of npm run verify). Surgical, single-system agent tooling; no game runtime. verify:fast + full verify green (headless deferred; not needed — no src/core|game/ai|balance touched)."
+}

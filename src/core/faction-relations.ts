@@ -74,6 +74,16 @@ export interface Floor2State {
   contestedResource: ResourceId;
   /** Betrayer latch — flipped true once the player attacks a Friendly family. */
   betrayerFlag: boolean;
+  /** Boss-defeated family IDs. Populated by floor2ObjectiveTick. */
+  decapitatedFamilies?: Set<FamilyId>;
+  /** World-space (ft) position of the exit staircase. Set on victory by popFloor2ResourceHeartStairs. */
+  staircasePos?: { x: number; y: number };
+  /** True once the exit staircase tile has been spawned (victory condition met). */
+  staircaseSpawned?: boolean;
+  /** True once the staircase is accessible to the player. */
+  staircaseUnlocked?: boolean;
+  /** True once the player confirms descent — terminal run state. */
+  staircaseDiscovered?: boolean;
 }
 
 /** Default starting relation applied to every present family (from tuning.json). */

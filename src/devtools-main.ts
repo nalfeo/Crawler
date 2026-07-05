@@ -1,5 +1,6 @@
 import { ITEM_CATALOG } from './shared/items.js';
 import { SPRITES } from './engine/sprites/index.js';
+import { renderLaunchContextBanner } from './launch-context-banner.js';
 import { DEVTOOLS_INDEX_ENTRIES } from './devtools/index.js';
 import {
   ACHIEVEMENT_ART_BACKLOG,
@@ -109,6 +110,8 @@ const STATUS_COLORS: Readonly<Record<FloorArtStatus, string>> = {
   'needs-art-placeholder': '#b91c1c',
   planned: '#475569',
 };
+
+renderLaunchContextBanner();
 
 // @ts-expect-error Vite provides import.meta.glob at runtime.
 const planSources = import.meta.glob('../plans/**/*.art.yaml', {

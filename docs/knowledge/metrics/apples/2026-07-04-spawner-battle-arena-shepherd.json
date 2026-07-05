@@ -1,0 +1,10 @@
+{
+  "date": "2026-07-04",
+  "session": "spawner-battle-arena-shepherd",
+  "estimated_apples": 5,
+  "actual_apples": 3,
+  "delta": -2,
+  "verdict": "miss",
+  "hello_kitties": 0.6,
+  "note": "Estimated 5 from the ~2304-line diff, but ~95% was pre-built by the original author; the shepherd's real surface was a correctness-critical requirement-4 XP fix (beyond-cap suppression, RNG-neutral) plus five doc/comment fixes, two external rebases (branch gained #766 AI lock-in then replayed onto #762+#761), 16 review threads across re-review rounds, and dual-feature PR synthesis. Comparable to a 3-apple shepherd session."
+}

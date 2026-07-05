@@ -13,14 +13,14 @@ import { createTestWorld } from '../helpers/world-factory.js';
 describe('createFloor1MainSceneOptions', () => {
   it('wires every quest-giver meet callback the browser scene relies on', () => {
     const options = createFloor1MainSceneOptions();
-    expect(typeof options.tutorialGoon.meet).toBe('function');
-    expect(typeof options.tutorialGoon.getIndicatorState).toBe('function');
-    expect(typeof options.spellQuestGiver.meet).toBe('function');
-    expect(typeof options.spellQuestGiver.getIndicatorState).toBe('function');
-    expect(typeof options.shopkeeper.meet).toBe('function');
-    expect(typeof options.shopkeeper.getIndicatorState).toBe('function');
-    expect(typeof options.shopkeeper.getPostQuestStock).toBe('function');
-    expect(typeof options.shopkeeper.purchasePostQuestItem).toBe('function');
+    expect(typeof options.tutorialGoon?.meet).toBe('function');
+    expect(typeof options.tutorialGoon?.getIndicatorState).toBe('function');
+    expect(typeof options.spellQuestGiver?.meet).toBe('function');
+    expect(typeof options.spellQuestGiver?.getIndicatorState).toBe('function');
+    expect(typeof options.shopkeeper?.meet).toBe('function');
+    expect(typeof options.shopkeeper?.getIndicatorState).toBe('function');
+    expect(typeof options.shopkeeper?.getPostQuestStock).toBe('function');
+    expect(typeof options.shopkeeper?.purchasePostQuestItem).toBe('function');
   });
 
   it("passes the floor's per-floor ambient lighting default to the scene", () => {
@@ -69,7 +69,7 @@ describe('createFloor1MainSceneOptions', () => {
     // The Spell Broker only offers the quest once the welcome Goon quest is done.
     world.playerLevel.level = 2;
     world.goalFlags.set('floor1-leveling-quest-complete', true);
-    options.spellQuestGiver.meet(world);
+    options.spellQuestGiver?.meet(world);
 
     expect(world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID)).toBe(true);
   });

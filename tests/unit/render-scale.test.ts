@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type Phaser from 'phaser';
 import {
   computeOnScreenScale,
@@ -6,6 +6,8 @@ import {
   getOnScreenScale,
   getRenderScale,
   MAX_RENDER_SCALE,
+  readDevicePixelRatio,
+  resolveBootRenderScale,
 } from '../../src/engine/render-scale.js';
 
 describe('computeRenderScale', () => {
@@ -121,5 +123,59 @@ describe('getOnScreenScale', () => {
   it('falls back to the integer render scale when the display size is unknown', () => {
     expect(getOnScreenScale(sceneWith(undefined, 2560))).toBe(2);
     expect(getOnScreenScale(sceneWith({ width: 0, height: 0 }, 1280))).toBe(1);
+  });
+});
+
+describe('readDevicePixelRatio', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('returns 1 when window is not defined (node env)', () => {
+    // In the node test environment window is undefined — the fallback kicks in.
+    expect(readDevicePixelRatio()).toBe(1);
+  });
+
+  it('returns the devicePixelRatio from window when positive', () => {
+    vi.stubGlobal('window', { devicePixelRatio: 2 });
+    expect(readDevicePixelRatio()).toBe(2);
+  });
+
+  it('falls back to 1 when window.devicePixelRatio is 0 or negative', () => {
+    vi.stubGlobal('window', { devicePixelRatio: 0 });
+    expect(readDevicePixelRatio()).toBe(1);
+  });
+});
+
+describe('resolveBootRenderScale', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('returns 1 when window is not defined (node env)', () => {
+    expect(resolveBootRenderScale(null)).toBe(1);
+  });
+
+  it('uses window.innerWidth/Height when no parent is provided', () => {
+    vi.stubGlobal('window', { devicePixelRatio: 1, innerWidth: 1920, innerHeight: 1080 });
+    vi.stubGlobal('document', { getElementById: () => null });
+    // 1920×1080 / 1280×720 = 1.5 FIT magnification at dpr 1 → rounds to 2
+    expect(resolveBootRenderScale(null)).toBe(2);
+  });
+
+  it('uses the parent element clientWidth/Height when an HTMLElement is passed', () => {
+    vi.stubGlobal('window', { devicePixelRatio: 1, innerWidth: 1920, innerHeight: 1080 });
+    vi.stubGlobal('document', { getElementById: () => null });
+    const fakeEl = { clientWidth: 1280, clientHeight: 720 } as HTMLElement;
+    // Exact design size → scale 1
+    expect(resolveBootRenderScale(fakeEl)).toBe(1);
+  });
+
+  it('resolves parent string id via document.getElementById', () => {
+    const fakeEl = { clientWidth: 2560, clientHeight: 1440 };
+    vi.stubGlobal('window', { devicePixelRatio: 1, innerWidth: 800, innerHeight: 600 });
+    vi.stubGlobal('document', { getElementById: () => fakeEl });
+    // 2560×1440 / 1280×720 = 2× → scale 2
+    expect(resolveBootRenderScale('game-container')).toBe(MAX_RENDER_SCALE);
   });
 });

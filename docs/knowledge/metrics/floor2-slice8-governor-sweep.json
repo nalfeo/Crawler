@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "recordedAt": "2026-07-04T08:09:21.407Z",
+  "script": "npx tsx scripts/agent/health/governor-playthroughs.ts",
+  "targetWinRate": 0.9,
+  "metrics": {
+    "floor1WinRate": 0.9833333333333333,
+    "floor2WinRate": 0,
+    "combinedWinRate": 0.7375,
+    "totalRuns": 80
+  },
+  "details": {
+    "seeds": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+    "budgetFrames": 30000,
+    "floor1": {
+      "runs": 60,
+      "wins": 59,
+      "weapons": ["sword", "bow", "baseball-bat"]
+    },
+    "floor2": {
+      "runs": 20,
+      "wins": 0,
+      "manifestGovernor": {
+        "autoUnlockDens": false,
+        "autoVictoryOnStart": false
+      },
+      "note": "0% win rate is expected at this slice: Win A (sole ally >75) and Win B (all bosses defeated) objective-complete wiring is not yet fully productionised. Re-run after Slice 5 win-condition plumbing lands."
+    }
+  },
+  "combinedGate": "FAIL - Floor 2 win-rate is 0% pending objective plumbing (expected for this slice)",
+  "tuningSuggestions": [
+    "Keep Floor 1 budget at >=30000 frames for Governor sweeps so timeout noise does not mask combat/pathing regressions.",
+    "Re-run sweep after Slice 5 win-condition plumbing (Win A / Win B) lands in production mode to verify Floor 2 reaches >=90%.",
+    "Retune presentCount/shopCount knobs if Floor 2 win-rate remains below 90% after objective wiring is complete."
+  ]
+}

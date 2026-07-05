@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-05",
+  "session_slug": "mob-level-scaling",
+  "task_title": "Distance-from-spawn mob level scaling",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "notes": "#1 adopted comment+todo; #2 deferred as todo; #3 deferred (spawner children, future work); #4 not a defect; #5 adopted HP 2.0->1.5 speed 1.15->1.1; #6 CI headless gate noted; #7 adopted as TODO"
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "copilot-pull-request-reviewer"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "Shepherd re-review after tuning the ramp to 1.25x HP / 1.05x speed @250ft (calibrated against the headless Floor-1 AI-time budget). code-review subagent: no significant issues — determinism (no RNG-sequence change), src/shared->src/game layering, clamping, and HP-round-never-weakens all confirmed; calibration is a real +25%HP/+5%spd ramp, not a no-op. copilot-pull-request-reviewer raised 2 nits, both resolved: (1) mob-scaling.ts doc comment '20-300ft' -> accurate spawnRadiusMin(20ft)..ambientSpawnMaxDistanceFt(160ft) citing floor-config; (2) no assertion-level wiring coverage -> extracted exported scaleAmbientSpawnStats + added tests/game/ambient-spawn-scaling.test.ts."
+        }
+      ]
+    }
+  }
+}

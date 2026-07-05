@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { GameWorld } from '../../src/core/world.js';
 import { GAME } from '../../src/shared/constants.js';
 import type { InputState } from '../../src/shared/input.js';
+import { xpRequiredForLevel } from '../../src/shared/xpMath.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import {
   AIDecisionDebugState,
@@ -85,5 +86,31 @@ describe('headless runner AI telemetry', () => {
       suppressedProgressNavCount: 1,
       suppressedProgressNavMs: GAME.DELTA_MS,
     });
+  });
+
+  it('supports jumping to an arbitrary player level at run start', async () => {
+    const stats = await runHeadless(new ScriptedDecisionProvider(), {
+      seed: 42,
+      maxFrames: 0,
+      maxWallTimeMs: 30_000,
+      startPlayerLevel: 3,
+      forceWeaponId: 'sword',
+    });
+
+    expect(stats.finalLevel).toBeGreaterThanOrEqual(3);
+    expect(stats.totalXp).toBeGreaterThanOrEqual(xpRequiredForLevel(3));
+  });
+
+  it('level 1 (default) applies no boost', async () => {
+    const stats = await runHeadless(new ScriptedDecisionProvider(), {
+      seed: 42,
+      maxFrames: 0,
+      maxWallTimeMs: 30_000,
+      startPlayerLevel: 1,
+      forceWeaponId: 'sword',
+    });
+
+    // No boost applied — player XP/level should not be inflated above a normal start.
+    expect(stats.finalLevel).toBeLessThan(2);
   });
 });

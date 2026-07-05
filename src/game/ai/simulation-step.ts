@@ -53,6 +53,7 @@ import {
   skillSystem,
   abilitySystem,
   achievementSystem,
+  spawnerArenaSystem,
   spawnerSystem,
   emergentEventSystem,
 } from '../index.js';
@@ -173,6 +174,10 @@ export function runSimulationStep(
   familyFeudSystem(world);
   enemyAISystem(world);
   statusEffectSystem(world);
+  // Runs immediately before spawnerSystem in both pipelines so fence tile
+  // mutations (open-fence arena) are visible when spawnerSystem picks child
+  // spawn positions this same tick. See `src/game/spawners/spawnerArenaSystem.ts`.
+  spawnerArenaSystem(world);
   spawnerSystem(world);
 
   movementSystem(world);
@@ -236,6 +241,9 @@ export function runSimulationStep(
     floor1EnemyDirectorSystem(world);
     questSystem(world);
     achievementSystem(world);
+  }
+  if (!options.enableFloor1 && world.floorObjectiveTick) {
+    world.floorObjectiveTick(world);
   }
 
   for (const sys of options.postSystems ?? []) {

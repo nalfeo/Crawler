@@ -2,6 +2,7 @@ import './labs/index.js';
 import { renderLabIndex } from './labs/lab-index.js';
 import { initLabShell } from './labs/lab-shell.js';
 import { runLab } from './labs/lab-runner.js';
+import { renderLaunchContextBanner } from './launch-context-banner.js';
 import type { LabCategory } from './labs/registry.js';
 
 const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
@@ -193,6 +194,7 @@ async function loadLabModule(labId: string): Promise<void> {
 async function main(): Promise<void> {
   const labId = new URLSearchParams(window.location.search).get('lab');
   initLabShell({ hasActiveLab: Boolean(labId) });
+  renderLaunchContextBanner();
 
   if (labId) {
     await loadLabModule(labId);

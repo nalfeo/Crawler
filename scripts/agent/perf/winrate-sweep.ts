@@ -36,6 +36,7 @@ interface CLIArgs {
   maxFrames: number;
   out: string | null;
   enemyDamageMultiplier: number;
+  floorId: string;
 }
 
 function parseSeeds(spec: string): number[] {
@@ -54,12 +55,14 @@ function parseSeeds(spec: string): number[] {
 }
 
 function parseArgs(): CLIArgs {
+  let weaponsProvided = false;
   const args: CLIArgs = {
     seeds: Array.from({ length: 40 }, (_, i) => i + 1),
     weapons: FLOOR1_WEAPONS,
     maxFrames: BUDGET_FRAMES,
     out: null,
     enemyDamageMultiplier: 1,
+    floorId: 'floor1',
   };
   for (let i = 2; i < process.argv.length; i++) {
     const arg = process.argv[i];
@@ -69,6 +72,7 @@ function parseArgs(): CLIArgs {
       i++;
     } else if (arg === '--weapons' && next) {
       args.weapons = next.split(',');
+      weaponsProvided = true;
       i++;
     } else if (arg === '--max-frames' && next) {
       args.maxFrames = parseInt(next, 10);
@@ -79,7 +83,17 @@ function parseArgs(): CLIArgs {
     } else if (arg === '--enemy-damage-multiplier' && next) {
       args.enemyDamageMultiplier = parseFloat(next);
       i++;
+    } else if (arg === '--floor' && next) {
+      args.floorId = next;
+      i++;
     }
+  }
+  if (
+    args.floorId === 'floor2' &&
+    !weaponsProvided &&
+    args.weapons.length === FLOOR1_WEAPONS.length
+  ) {
+    args.weapons = ['sword'];
   }
   return args;
 }
@@ -149,7 +163,7 @@ function summarizeMetrics(label: string, rows: RunMetric[]): void {
 
 async function sweep(args: CLIArgs): Promise<void> {
   const start = Date.now();
-  console.log('🎯 Floor 1 Win-Rate Sweep');
+  console.log(`🎯 ${args.floorId} Win-Rate Sweep`);
   console.log('━'.repeat(70));
   console.log(
     `Seeds:   ${args.seeds[0]}…${args.seeds[args.seeds.length - 1]} (${args.seeds.length})`,
@@ -175,6 +189,7 @@ async function sweep(args: CLIArgs): Promise<void> {
         forceWeaponId: weapon,
         enemyDamageMultiplier: args.enemyDamageMultiplier,
         eventSampleInterval: 60,
+        floorId: args.floorId,
         recordEvent: (e) => events.push(e),
       });
       const gameTimeSec = stats.gameTimeMs / 1000;
@@ -291,6 +306,7 @@ async function sweep(args: CLIArgs): Promise<void> {
       args.out,
       JSON.stringify(
         {
+          floorId: args.floorId,
           enemyDamageMultiplier: args.enemyDamageMultiplier,
           perWeapon,
           totalWins,

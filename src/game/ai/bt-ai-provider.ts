@@ -42,6 +42,7 @@ import {
   pickNearestPoi,
   updateLockedDoorMemory,
 } from './exploration.js';
+import { detectArenaLockin, type ArenaLockinTarget } from './arena-lockin.js';
 import { normalizeInputDirection } from '../../shared/input.js';
 import { hasItem } from '../../shared/inventory.js';
 import { SeededRandom } from '../../shared/random.js';
@@ -200,6 +201,7 @@ import {
   QUEST_GIVER_DETOUR_BLOCKED_COOLDOWN_FRAMES,
   NPC_INTERACTION_RADIUS_FT,
   NPC_APPROACH_THREAT_RADIUS_FT,
+  ARENA_LOCKIN_ADD_HYSTERESIS_FT,
   TRAVEL_STEERING_ENABLED,
   TRAVEL_BODY_RADIUS_FT,
   TRAVEL_HARD_GAP_FT,
@@ -529,6 +531,18 @@ export class BehaviorTreeAI implements AIInputProvider {
    * condition can apply hysteresis (see {@link RETREAT_HYSTERESIS_MULT}) instead
    * of re-deciding every frame at the danger-radius boundary.
    */
+  /**
+   * Track the previous frame's arena lock-in so the AI emits a single-shot
+   * log line on enter/exit (avoids per-frame spam while locked) and the
+   * blackboard payload stays stable across ticks.
+   *
+   * `null` = not in an arena lock-in last frame. When set, it holds the
+   * source spawner eid or the boss eid so the "still locked in on X" state
+   * can be recognized cheaply.
+   */
+  private lastArenaLockinEid: number | null = null;
+  private lastArenaLockinKind: 'spawner' | 'boss' | null = null;
+
   private retreating: boolean = false;
   /**
    * Cached kite-retreat destination (world center of a reachable open tile) plus
@@ -540,6 +554,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   private retreatTargetX: number | null = null;
   private retreatTargetY: number | null = null;
   private retreatRepickFrame: number = 0;
+  private retreatThreatEid: number | null = null;
   /**
    * Persistent melee-kite orbit direction (+1 / -1) and the frame it was last
    * flipped. Held across polls so the player circles the enemy steadily instead
@@ -708,9 +723,10 @@ export class BehaviorTreeAI implements AIInputProvider {
    * every frame:
    *
    * - **Track A** (Movement Goal): the exclusive priority Selector that picks
-   *   one movement target per frame. Logic is identical to the original flat
-   *   selector — Retreat > Interact > Progress > LeaveSafeRoom > Engage >
-   *   Collect > Hunt > Explore. Owns `this.decision` and `state.moveX/moveY`.
+   *   one movement target per frame. Retreat > ArenaLockin > Interact >
+   *   Progress > LeaveSafeRoom > Engage > Collect > Hunt > Explore. Owns
+   *   `this.decision` and `state.moveX/moveY`. See ADR 0045 for the
+   *   arena-lockin priority-slot decision.
    *
    * - **Track B** (Opportunistic): a side-effectful parallel that runs every
    *   frame regardless of Track A's outcome and writes into
@@ -729,6 +745,9 @@ export class BehaviorTreeAI implements AIInputProvider {
         'Track A: Movement Goal',
         // Priority 1: Retreat when low health
         this.buildRetreatBehavior(),
+        // Priority 1.5: Prioritize objective when locked inside a spawner
+        // arena or boss room — see `arena-lockin.ts` + ADR 0045.
+        this.buildArenaLockinBehavior(),
         // Priority 2: Interact with nearby NPCs
         this.buildInteractBehavior(),
         // Priority 3: Seek progression objectives.
@@ -762,10 +781,22 @@ export class BehaviorTreeAI implements AIInputProvider {
    * behaviors (interact / collect / explore) and keeps clearing the floor.
    */
   /** Clear the retreat latch and discard any cached kite target. */
-  private endRetreat(): void {
+  private endRetreat(world?: GameWorld): void {
+    if (
+      world &&
+      this.retreating &&
+      this.retreatThreatEid !== null &&
+      this.getPlayerHealthFraction(world) < this.config.retreatThreshold
+    ) {
+      this.ignoredEnemyUntilFrame.set(
+        this.retreatThreatEid,
+        world.frameCount + Math.max(RETREAT_REPICK_INTERVAL_FRAMES * 4, 60),
+      );
+    }
     this.retreating = false;
     this.retreatTargetX = null;
     this.retreatTargetY = null;
+    this.retreatThreatEid = null;
   }
 
   private buildRetreatBehavior(): BTNode {
@@ -773,7 +804,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       'Retreat',
       condition('Low Health Under Threat', (ctx) => {
         if (ctx.healthPercent >= this.config.retreatThreshold) {
-          this.endRetreat();
+          this.endRetreat(ctx.world);
           return false;
         }
         const threat = this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY);
@@ -785,10 +816,11 @@ export class BehaviorTreeAI implements AIInputProvider {
           ? this.config.retreatDangerRadius * RETREAT_HYSTERESIS_MULT
           : this.config.retreatDangerRadius;
         if (!threat || threat.distance > radius) {
-          this.endRetreat();
+          this.endRetreat(ctx.world);
           return false;
         }
         this.retreating = true;
+        this.retreatThreatEid = threat.eid;
         ctx.blackboard['retreatThreat'] = threat;
         return true;
       }),
@@ -930,6 +962,125 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     return awayFallback();
+  }
+
+  /**
+   * Arena lock-in behavior (Priority 1.5): when the player is trapped in a
+   * spawner arena (fence ring or sealed room) or a Floor-1 boss room, force
+   * the AI to target the spawner / boss instead of falling through to
+   * Interact / Progress / Explore — otherwise the AI wanders toward stale
+   * chain-plan targets (e.g. the far-away staircase) while sealed inside a
+   * room it cannot leave.
+   *
+   * Retreat (Priority 1) still takes precedence: low-HP-under-threat is
+   * life-critical and drops out of arena lock-in only long enough to kite
+   * to a safe tile. Because the arena also traps the threats, the kite is
+   * bounded and returns to lock-in as soon as HP recovers.
+   *
+   * Detection lives in `arena-lockin.ts`; the BT node here is purely a
+   * priority + blackboard/logging shim so the state machine stays inspect-
+   * able.
+   */
+  private buildArenaLockinBehavior(): BTNode {
+    return sequence(
+      'ArenaLockin',
+      condition('Player Locked In Arena', (ctx) => {
+        const target = detectArenaLockin(ctx.world, ctx.playerX, ctx.playerY);
+        // Always publish the blackboard snapshot so labs/tests can inspect
+        // the transition from a locked -> unlocked frame without the node
+        // having to fire.
+        ctx.blackboard['arenaLockin'] = {
+          active: target !== null,
+          kind: target?.kind ?? null,
+          targetEid: target?.eid ?? null,
+        };
+        if (target === null) {
+          if (this.lastArenaLockinEid !== null) {
+            logger.debug(
+              `AI arena lock-in cleared (${this.lastArenaLockinKind ?? 'unknown'} ${String(
+                this.lastArenaLockinEid,
+              )})`,
+            );
+          }
+          this.lastArenaLockinEid = null;
+          this.lastArenaLockinKind = null;
+          return false;
+        }
+        if (this.lastArenaLockinEid !== target.eid || this.lastArenaLockinKind !== target.kind) {
+          logger.debug(
+            `AI arena lock-in engaged: ${target.kind} eid=${String(target.eid)} at ` +
+              `(${target.x.toFixed(1)}, ${target.y.toFixed(1)})`,
+          );
+        }
+        this.lastArenaLockinEid = target.eid;
+        this.lastArenaLockinKind = target.kind;
+        ctx.blackboard['arenaLockinTarget'] = target;
+        return true;
+      }),
+      action('Set Arena Lock-In State', (ctx) => {
+        const target = ctx.blackboard['arenaLockinTarget'] as ArenaLockinTarget;
+        const dxTarget = target.x - ctx.playerX;
+        const dyTarget = target.y - ctx.playerY;
+        const targetDistance = Math.hypot(dxTarget, dyTarget) || 0;
+
+        // Add-clearing: for a *boss* lock-in (bosses have finite adds and
+        // move), interrupt to engage a nearby add first — this mirrors
+        // Progress's "clear-nearby-threat before NPC interaction" pattern
+        // (~line 1042). For a *spawner* lock-in the adds are Sisyphean —
+        // the spawner keeps producing them at ~2s intervals in defensive
+        // mode, so time spent on adds is time the spawner spends adding
+        // more. The safest strategy is to burn the spawner to zero first;
+        // its death queues an on-death monarch pool anyway (registry.ts
+        // rats-nest.onDeath), which the surviving adds get killed
+        // alongside once the fence lowers and normal Engage resumes.
+        const engageRadius = this.getEngageRadius(ctx.world);
+        const nearestEnemy = this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY);
+        if (
+          target.kind === 'boss' &&
+          nearestEnemy &&
+          nearestEnemy.eid !== target.eid &&
+          nearestEnemy.distance <= engageRadius &&
+          nearestEnemy.distance + ARENA_LOCKIN_ADD_HYSTERESIS_FT < targetDistance
+        ) {
+          const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, nearestEnemy);
+          this.decision.state = AIState.ENGAGE;
+          this.decision.targetEid = nearestEnemy.eid;
+          this.decision.targetX = plan.targetX;
+          this.decision.targetY = plan.targetY;
+          this.decision.reason = `Boss-room lock-in — clearing add ${String(nearestEnemy.eid)} before boss`;
+          return BTStatus.SUCCESS;
+        }
+
+        // Route the objective through the appropriate movement plan:
+        //   - Spawners are stationary structures, so orbit/kite is wasted
+        //     motion — walk straight in and let the weapon auto-fire once
+        //     the strike gate is reached. This is critical for melee: the
+        //     spawner's `defensive` mode floods the arena with adds every
+        //     2s, so any second spent orbiting a stationary target is a
+        //     second the swarm grows.
+        //   - Bosses move, so run `planEngagement` (kite/strafe) exactly
+        //     like normal Engage would.
+        this.decision.state = AIState.ENGAGE;
+        this.decision.targetEid = target.eid;
+        if (target.kind === 'boss') {
+          const bossWt: WorldTarget = {
+            eid: target.eid,
+            x: target.x,
+            y: target.y,
+            distance: targetDistance,
+          };
+          const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, bossWt);
+          this.decision.targetX = plan.targetX;
+          this.decision.targetY = plan.targetY;
+          this.decision.reason = `Boss-room lock-in — ${plan.reason} (boss ${String(target.eid)})`;
+        } else {
+          this.decision.targetX = target.x;
+          this.decision.targetY = target.y;
+          this.decision.reason = `Arena lock-in — attacking spawner ${String(target.eid)} at ${targetDistance.toFixed(1)}ft`;
+        }
+        return BTStatus.SUCCESS;
+      }),
+    );
   }
 
   /**
@@ -2943,6 +3094,15 @@ export class BehaviorTreeAI implements AIInputProvider {
       this.releaseDetourCommitment();
       return target;
     }
+    if (world.playerInSafeRoom && target.eid >= 0 && this.committedDetourNpcEid === null) {
+      // Shared-room hubs make same-safe-room NPCs visible while the player is
+      // retreating through the welcome room from a dynamic objective (enemy/loot).
+      // Do not start a fresh pinball detour in that state; once the dynamic
+      // objective is resumed outside the safe room, the normal detour rules can
+      // evaluate again. Existing detour commitments still fall through to the
+      // hysteresis/no-progress path below so safe-room mouth flicker stays stable.
+      return target;
+    }
     if (world.frameCount < this.progressGoalSuppressedUntilFrame) {
       // Stall-recovery is suppressing wedged progress goals. Yield entirely — drop
       // any held commitment AND make no fresh one — so the BT falls through to
@@ -4023,6 +4183,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           playerX,
           playerY,
           reason,
+          floor1.shopkeeperNpcEid ?? -1,
         ),
       );
     }
@@ -4050,6 +4211,7 @@ export class BehaviorTreeAI implements AIInputProvider {
             playerX,
             playerY,
             reason,
+            floor1.shopkeeperNpcEid ?? -1,
           ),
         );
       }
@@ -4129,6 +4291,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           playerX,
           playerY,
           reason,
+          floor1.spellQuestGiverNpcEid ?? -1,
         ),
       );
     }
@@ -4159,6 +4322,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           playerX,
           playerY,
           reason,
+          floor1.spellQuestGiverNpcEid ?? -1,
         ),
       );
     }
@@ -5034,24 +5198,36 @@ export class BehaviorTreeAI implements AIInputProvider {
       CONTACT_SAFE_ORBIT_FT,
       Math.min(reachFt * RANGED_STANDOFF_FRACTION, RANGED_STANDOFF_ABS_FT),
     );
+    const contactThreatRadius = desiredOrbit + RANGED_APPROACH_BUFFER_FT;
+    let activeTarget = target;
 
-    if (target.distance > desiredOrbit + RANGED_APPROACH_BUFFER_FT) {
+    // If a different enemy has already pushed into the standoff/contact bubble,
+    // kite that immediate threat first instead of continuing to "close" on a
+    // farther target and tanking free body-contact hits on the way in.
+    if (target.distance > contactThreatRadius) {
+      const nearbyThreat = this.findNearestEnemy(world, playerX, playerY, contactThreatRadius);
+      if (nearbyThreat && nearbyThreat.eid !== target.eid) {
+        activeTarget = nearbyThreat;
+      }
+    }
+
+    if (activeTarget.distance > contactThreatRadius) {
       // Too far to orbit: navigate toward a point at the desired standoff distance
       // from the enemy so A* can plan the full route.
-      const dx = target.x - playerX;
-      const dy = target.y - playerY;
-      const scale = (target.distance - desiredOrbit) / target.distance;
+      const dx = activeTarget.x - playerX;
+      const dy = activeTarget.y - playerY;
+      const scale = (activeTarget.distance - desiredOrbit) / activeTarget.distance;
       return {
         targetX: playerX + dx * scale,
         targetY: playerY + dy * scale,
-        reason: `Closing to ranged standoff (${desiredOrbit.toFixed(1)}ft) from ${target.distance.toFixed(1)}ft`,
+        reason: `Closing to ranged standoff (${desiredOrbit.toFixed(1)}ft) from ${activeTarget.distance.toFixed(1)}ft`,
       };
     }
 
     // At or inside the standoff band: orbit laterally while the radial correction
     // keeps the distance near desiredOrbit (pushing away if too close, nudging in
     // if slightly too far).
-    return this.computeRangedKiteTarget(world, playerX, playerY, target, desiredOrbit);
+    return this.computeRangedKiteTarget(world, playerX, playerY, activeTarget, desiredOrbit);
   }
 
   /**
@@ -5419,6 +5595,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.retreatTargetX = null;
     this.retreatTargetY = null;
     this.retreatRepickFrame = 0;
+    this.retreatThreatEid = null;
+    this.lastArenaLockinEid = null;
+    this.lastArenaLockinKind = null;
     this.opportunisticPullX = 0;
     this.opportunisticPullY = 0;
     this.farmPullX = 0;

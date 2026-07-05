@@ -255,9 +255,18 @@ function typeRulesBlock(brief: Brief): string | null {
   if (brief.type === 'enemy') {
     const { cellW, cellH } = cellDims(brief);
     const { loH, hiH } = sourceFootprint(brief);
+    const facing = brief.sensors.enemy?.facing ?? 'right';
+    const facingLine =
+      facing === 'front'
+        ? '- Draw the mob facing straight forward toward the camera, not angled or in three-quarter view.'
+        : facing === 'left'
+          ? '- Draw the mob in profile facing left (body and head oriented toward the left edge of the frame). Keep the pose consistent across every variant on the sheet.'
+          : facing === 'right'
+            ? '- Draw the mob in profile facing right (body and head oriented toward the right edge of the frame). Keep the pose consistent across every variant on the sheet.'
+            : '- Keep the mob orientation consistent across every variant on the sheet.';
     return [
       '## Mob rules',
-      '- Draw the mob facing straight forward, not angled or in three-quarter view.',
+      facingLine,
       '- Keep the sprite body-only: no held weapons, no shields, no spell effects, no fire, no glow, no floating orbs, and no particle trails.',
       `- For upright/humanoid mobs, normalize the figure to read as roughly a full ${brief.size.height}px-tall in-game sprite (about ${loH}-${hiH} source pixels tall in a ${cellW}x${cellH} cell) while keeping natural proportions. Avoid elongated, extra-tall limb/torso stretch.`,
       '- Anchor and composition should read from the mob silhouette itself, centered around the body mass.',

@@ -11,7 +11,12 @@ import {
   spawnPlayer,
   type GameWorld,
 } from '../../core/index.js';
-import { CAMERA, GAME, safeRoomCameraZoom } from '../../shared/constants.js';
+import {
+  CAMERA,
+  FLOOR2_STAIR_MARKER_RADIUS_FT,
+  GAME,
+  safeRoomCameraZoom,
+} from '../../shared/constants.js';
 import { LIGHTING_OVERLAY_DEPTH, UI_DEPTH_CUTOFF } from '../../shared/render-depths.js';
 import { ftToPx, pxToFt, PIXELS_PER_FOOT } from '../../shared/units.js';
 import { getRenderScale } from '../render-scale.js';
@@ -31,6 +36,7 @@ import { createPhaserBridge } from '../PhaserBridge.js';
 import { runSimulationStep } from '../sim/simulation-step.js';
 import {
   areLightingRectsEqual,
+  findNearestNearbyNpc,
   formatAbilityTrigger,
   getFloorRunOutcome,
   getLightingViewRect,
@@ -189,6 +195,12 @@ export interface MainGameSceneOptions {
    * the global defaults.
    */
   lightingConfig?: Partial<LightingConfig>;
+  /** Floor-specific Director narration copy. */
+  director?: {
+    intro: string;
+    victory: string;
+    timeout?: string;
+  };
 }
 
 declare global {
@@ -522,7 +534,9 @@ export class MainGameScene extends Phaser.Scene {
       window.addEventListener('keydown', this.handleWindowKeyDown, true);
     }
     this.inventoryUI = createInventoryUI(this);
-    this.equipmentUI = createEquipmentUI(this);
+    this.equipmentUI = createEquipmentUI(this, {
+      onSlotFilterChange: (slotId) => this.inventoryUI?.setEquipmentSlotFilter(slotId),
+    });
     this.achievementsUI = createAchievementsUI(this);
     this.gameOverUI = createGameOverUI(this, {
       // Both actions reload for now — a title screen / main menu doesn't exist yet.
@@ -1032,9 +1046,23 @@ export class MainGameScene extends Phaser.Scene {
     this.queuedEquip = false;
     if (unlocks.equipment && safeCtx && equipRequested) {
       this.equipmentUI?.toggle(this.world);
+      if (
+        this.equipmentUI?.isOpen() &&
+        unlocks.inventory &&
+        this.inventoryUI &&
+        !this.inventoryUI.isOpen()
+      ) {
+        this.inventoryUI.toggle(this.world);
+      }
+      if (this.equipmentUI?.isOpen() && unlocks.inventory) {
+        this.inventoryUI?.refresh(this.world);
+      }
     } else if (this.equipmentUI?.isOpen()) {
       if (safeCtx) {
         this.equipmentUI.refresh(this.world);
+        if (unlocks.inventory) {
+          this.inventoryUI?.refresh(this.world);
+        }
       } else {
         this.equipmentUI.toggle(this.world);
       }
@@ -2034,8 +2062,49 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private updateObjectiveMarkers(): void {
+    const floor2State = this.world.floor2State;
     if (!this.world.floor1) {
-      this.staircaseMarker?.setVisible(false);
+      // Floor 2: show exit staircase marker once victory fires and stairs pop
+      if (
+        floor2State?.staircaseSpawned &&
+        !floor2State.staircaseDiscovered &&
+        floor2State.staircasePos
+      ) {
+        const staircaseX = ftToPx(floor2State.staircasePos.x);
+        const staircaseY = ftToPx(floor2State.staircasePos.y);
+        const markerRadiusPx = ftToPx(FLOOR2_STAIR_MARKER_RADIUS_FT);
+        if (!this.staircaseMarker) {
+          this.staircaseMarker = this.add
+            .circle(staircaseX, staircaseY, markerRadiusPx, 0x10b981, 0.25)
+            .setStrokeStyle(2, 0x86efac, 0.95)
+            .setDepth(20);
+        }
+        this.staircaseMarker.setPosition(staircaseX, staircaseY);
+        this.staircaseMarker.setRadius(markerRadiusPx);
+        this.staircaseMarker.setFillStyle(0x10b981, 0.25);
+        this.staircaseMarker.setStrokeStyle(2, 0x86efac, 0.95);
+        this.staircaseMarker.setVisible(true);
+        if (!this.stairsLabel) {
+          this.stairsLabel = this.add
+            .text(staircaseX, staircaseY - markerRadiusPx - 10, '▼ EXIT', {
+              fontFamily: 'monospace',
+              fontSize: '13px',
+              color: '#fef9c3',
+              backgroundColor: '#422006cc',
+              padding: { x: 8, y: 4 },
+              align: 'center',
+            })
+            .setOrigin(0.5, 1)
+            .setDepth(25)
+            .setVisible(false);
+        }
+        this.stairsLabel.setPosition(staircaseX, staircaseY - markerRadiusPx - 10);
+        this.stairsLabel.setColor('#86efac');
+        this.stairsLabel.setVisible(true);
+      } else {
+        this.staircaseMarker?.setVisible(false);
+        this.stairsLabel?.setVisible(false);
+      }
       this.updateNpcQuestIndicators();
       return;
     }
@@ -2169,46 +2238,70 @@ export class MainGameScene extends Phaser.Scene {
       this.commentaryHideAtMs = 0;
     }
 
-    const floor1 = this.world.floor1;
-    if (!floor1 || this.world.floor !== 1) {
+    const director = this.options.director;
+    if (!director) {
       return;
     }
-
-    const objective = floor1.objective;
+    const floor1 = this.world.floor1;
+    if (floor1 && this.world.floor === 1) {
+      const objective = floor1.objective;
+      if (!this.commentaryMilestones.floorIntro) {
+        this.commentaryMilestones.floorIntro = true;
+        this.queueDirectorCommentary(director.intro ?? FLOOR_1_COMMENTARY.intro);
+        return;
+      }
+      if (objective.questAccepted && !this.commentaryMilestones.questAccepted) {
+        this.commentaryMilestones.questAccepted = true;
+        this.queueDirectorCommentary(FLOOR_1_COMMENTARY.questAccepted);
+        return;
+      }
+      if (objective.questCompleted && !this.commentaryMilestones.questCompleted) {
+        this.commentaryMilestones.questCompleted = true;
+        this.queueDirectorCommentary(FLOOR_1_COMMENTARY.questCompleted);
+        return;
+      }
+      const staircaseBattle = objective.bossBattles.get('staircase');
+      if (staircaseBattle?.started && !this.commentaryMilestones.bossBattleStarted) {
+        this.commentaryMilestones.bossBattleStarted = true;
+        this.queueDirectorCommentary(FLOOR_1_COMMENTARY.bossBattleStarted);
+        return;
+      }
+      if (staircaseBattle?.defeated && !this.commentaryMilestones.staircaseBossDefeated) {
+        this.commentaryMilestones.staircaseBossDefeated = true;
+        this.queueDirectorCommentary(FLOOR_1_COMMENTARY.staircaseBossDefeated);
+        return;
+      }
+      if (objective.staircaseDiscovered && !this.commentaryMilestones.staircaseDiscovered) {
+        this.commentaryMilestones.staircaseDiscovered = true;
+        this.queueDirectorCommentary(director.victory ?? FLOOR_1_COMMENTARY.staircaseDiscovered);
+        return;
+      }
+      if (floor1.failReason === 'stair_timeout' && !this.commentaryMilestones.timeout) {
+        this.commentaryMilestones.timeout = true;
+        this.queueDirectorCommentary(director.timeout ?? FLOOR_1_COMMENTARY.timeout);
+      }
+      return;
+    }
     if (!this.commentaryMilestones.floorIntro) {
       this.commentaryMilestones.floorIntro = true;
-      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.intro);
+      this.queueDirectorCommentary(director.intro);
       return;
     }
-    if (objective.questAccepted && !this.commentaryMilestones.questAccepted) {
-      this.commentaryMilestones.questAccepted = true;
-      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.questAccepted);
-      return;
-    }
-    if (objective.questCompleted && !this.commentaryMilestones.questCompleted) {
-      this.commentaryMilestones.questCompleted = true;
-      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.questCompleted);
-      return;
-    }
-    const staircaseBattle = objective.bossBattles.get('staircase');
-    if (staircaseBattle?.started && !this.commentaryMilestones.bossBattleStarted) {
-      this.commentaryMilestones.bossBattleStarted = true;
-      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.bossBattleStarted);
-      return;
-    }
-    if (staircaseBattle?.defeated && !this.commentaryMilestones.staircaseBossDefeated) {
-      this.commentaryMilestones.staircaseBossDefeated = true;
-      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.staircaseBossDefeated);
-      return;
-    }
-    if (objective.staircaseDiscovered && !this.commentaryMilestones.staircaseDiscovered) {
+    if (
+      this.world.goalFlags.get('floor2-victory') === true &&
+      !this.commentaryMilestones.staircaseDiscovered
+    ) {
       this.commentaryMilestones.staircaseDiscovered = true;
-      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.staircaseDiscovered);
+      this.queueDirectorCommentary(director.victory);
       return;
     }
-    if (floor1.failReason === 'stair_timeout' && !this.commentaryMilestones.timeout) {
+    if (
+      this.world.state === 'game_over' &&
+      director.timeout &&
+      !this.commentaryMilestones.timeout
+    ) {
       this.commentaryMilestones.timeout = true;
-      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.timeout);
+      this.queueDirectorCommentary(director.timeout);
     }
   }
 
@@ -2223,6 +2316,12 @@ export class MainGameScene extends Phaser.Scene {
       this.floorCompletionSubtitleText?.setText('Floor 1 failed');
       this.floorCompletionBodyText?.setText(
         'You ran out of time before reaching the stairs.\nTry again and move faster through objectives.',
+      );
+    } else if (this.world.floor2State?.staircaseDiscovered) {
+      this.floorCompletionTitleText?.setText('Victory!');
+      this.floorCompletionSubtitleText?.setText('Floor 2 complete!');
+      this.floorCompletionBodyText?.setText(
+        'Congratulations — you escaped the dungeon!\nMore floors coming soon...',
       );
     } else {
       this.floorCompletionTitleText?.setText('Game Over');
@@ -2317,24 +2416,27 @@ export class MainGameScene extends Phaser.Scene {
     this.queuedInteraction = false;
     this.queuedConversationClose = false;
 
-    if (!this.world.floor1 || this.world.state !== 'playing') {
+    if ((!this.world.floor1 && !this.world.floor2State) || this.world.state !== 'playing') {
       this.interactionHint?.setVisible(false);
       this.dialogueBox?.hide();
       return;
     }
 
-    const objective = this.world.floor1.objective;
+    const floor1Objective = this.world.floor1?.objective;
+    const floor2State = this.world.floor2State;
     const playerX = this.world.stores.position.x[this.playerEid] ?? 0;
     const playerY = this.world.stores.position.y[this.playerEid] ?? 0;
 
-    // Find nearest NPC with nearbyPlayer flag set
-    let nearNpcEid = -1;
-    for (const [eid, instance] of this.world.npcs.entries()) {
-      if (instance.nearbyPlayer) {
-        nearNpcEid = eid;
-        break;
-      }
-    }
+    // Find the nearest NPC with nearbyPlayer flag set so shared-room hubs remain
+    // selectable when several NPCs are in interaction range at once. Reads the
+    // npc map + position stores directly to avoid a per-frame array allocation.
+    const nearNpcEid = findNearestNearbyNpc(
+      playerX,
+      playerY,
+      this.world.npcs,
+      this.world.stores.position.x,
+      this.world.stores.position.y,
+    );
 
     // Active conversation: game is frozen until the player advances/closes dialogue.
     if (this.conversationNpcEid !== null) {
@@ -2381,13 +2483,22 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
-    // Check stair proximity (only when unlocked and not yet discovered)
-    const nearStairs =
-      objective.staircaseUnlocked &&
-      objective.staircaseSpawned &&
-      !objective.staircaseDiscovered &&
-      Math.hypot(playerX - objective.staircasePos.x, playerY - objective.staircasePos.y) <=
-        objective.markerRadiusFt;
+    // Check stair proximity — floor-aware (Floor 1 vs Floor 2)
+    const nearStairs = floor2State
+      ? floor2State.staircaseUnlocked === true &&
+        floor2State.staircaseSpawned === true &&
+        floor2State.staircaseDiscovered !== true &&
+        floor2State.staircasePos !== undefined &&
+        Math.hypot(playerX - floor2State.staircasePos.x, playerY - floor2State.staircasePos.y) <=
+          FLOOR2_STAIR_MARKER_RADIUS_FT
+      : floor1Objective !== undefined &&
+        floor1Objective.staircaseUnlocked &&
+        floor1Objective.staircaseSpawned &&
+        !floor1Objective.staircaseDiscovered &&
+        Math.hypot(
+          playerX - floor1Objective.staircasePos.x,
+          playerY - floor1Objective.staircasePos.y,
+        ) <= floor1Objective.markerRadiusFt;
 
     if (nearNpcEid >= 0) {
       this.interactionHint?.setText('Talk').setVisible(true);
@@ -2434,13 +2545,20 @@ export class MainGameScene extends Phaser.Scene {
         this.modalPicker
       ) {
         if (!this.modalPicker.isOpen()) {
+          const isFloor2 = floor2State !== null;
           this.modalPicker.open(
             {
-              title: 'Proceed to the next floor?',
-              subtitle: 'You are at the stairs.',
-              body: 'The boss is defeated. Are you ready to descend to the next floor?',
+              title: isFloor2 ? 'Victory! Ready to exit?' : 'Proceed to the next floor?',
+              subtitle: isFloor2 ? 'You are at the exit.' : 'You are at the stairs.',
+              body: isFloor2
+                ? 'Floor 2 is cleared. Are you ready to exit the dungeon?'
+                : 'The boss is defeated. Are you ready to descend to the next floor?',
               options: [
-                { id: 'confirm-descend', label: 'Yes, descend now', description: 'Start Floor 2.' },
+                {
+                  id: 'confirm-descend',
+                  label: isFloor2 ? 'Yes, exit now' : 'Yes, descend now',
+                  description: isFloor2 ? 'You win!' : 'Start Floor 2.',
+                },
               ],
               allowCancel: true,
               initialSelectedId: 'confirm-descend',

@@ -34,7 +34,11 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { Report, fromRepo } from '../shared/report.js';
-import { extractRetrospectiveSubsections, subsectionIsEmpty } from './handoff-parse.js';
+import {
+  extractRetrospectiveSubsections,
+  hasRetrospectiveSection,
+  subsectionIsEmpty,
+} from './handoff-parse.js';
 
 const HANDOFFS_DIR = 'docs/knowledge/handoffs';
 const DATE_PREFIX = /^\d{4}-\d{2}-\d{2}-/;
@@ -89,8 +93,12 @@ async function main(): Promise<void> {
     }
     // Grandfather legacy handoffs that predate the ## Retrospective section.
     // The trimmed template makes it mandatory going forward; the lint enforces
-    // its subsections only on files that have adopted the section.
-    if (!/^##\s+Retrospective\b/m.test(content)) {
+    // its subsections only on files that have adopted the section. Uses the
+    // shared, case-insensitive predicate so a lowercase `## retrospective`
+    // heading is treated identically here and by the parser below (and by
+    // promote-mistakes.ts) — otherwise it would slip past this skip while the
+    // parser still recognised the section.
+    if (!hasRetrospectiveSection(content)) {
       skipped += 1;
       continue;
     }

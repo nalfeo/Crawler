@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-05",
+  "session_slug": "launch-context-popup",
+  "task_title": "Show launch context popup",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "notes": "Addressed context preservation across internal navigation, PR URL validation, and preserved href targets for worktree-server launch links."
+    }
+  }
+}

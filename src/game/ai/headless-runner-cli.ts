@@ -28,6 +28,8 @@ interface CLIArgs {
   weapon: string | null;
   enemyDamageMultiplier: number;
   pathingMode: AIPathingModeValue;
+  floorId: string;
+  startPlayerLevel: number;
 }
 
 function parseArgs(): CLIArgs {
@@ -45,6 +47,8 @@ function parseArgs(): CLIArgs {
     weapon: null,
     enemyDamageMultiplier: 1,
     pathingMode: AIPathingMode.LEGACY,
+    floorId: 'floor1',
+    startPlayerLevel: 1,
   };
 
   for (let i = 2; i < process.argv.length; i++) {
@@ -95,6 +99,15 @@ function parseArgs(): CLIArgs {
           `Invalid --pathing-mode "${next}" (expected "${AIPathingMode.LEGACY}" or "${AIPathingMode.RISK_REWARD_FUSED}")`,
         );
       }
+    } else if (arg === '--floor' && next) {
+      args.floorId = next;
+      i++;
+    } else if (arg === '--start-level' && next) {
+      const parsed = parseInt(next, 10);
+      if (!Number.isFinite(parsed) || parsed < 1) {
+        throw new Error(`Invalid --start-level "${next}" (must be a positive integer)`);
+      }
+      args.startPlayerLevel = parsed;
       i++;
     } else if (arg === '--debug') {
       args.debug = true;
@@ -125,6 +138,8 @@ Options:
   --enemy-damage-multiplier <n>
                            Multiply hostile Damage values (default: 1)
   --pathing-mode <mode>    Pathing A/B mode: legacy | riskRewardFused (default: legacy)
+  --floor <id>            Scenario floor id (default: floor1)
+  --start-level <n>       Start at player character level N (default: 1, no boost)
   --help, -h              Show this help message
 
 Examples:
@@ -157,6 +172,10 @@ async function main(): Promise<void> {
   }
   console.log(`Enemy damage mult: ${args.enemyDamageMultiplier}x`);
   console.log(`Pathing mode: ${args.pathingMode}`);
+  console.log(`Floor: ${args.floorId}`);
+  if (args.startPlayerLevel > 1) {
+    console.log(`Start player level: ${args.startPlayerLevel}`);
+  }
   console.log('');
 
   const ai = new BehaviorTreeAI({
@@ -178,6 +197,8 @@ async function main(): Promise<void> {
     eventSampleInterval: args.sampleInterval,
     ...(args.weapon !== null ? { forceWeaponId: args.weapon } : {}),
     enemyDamageMultiplier: args.enemyDamageMultiplier,
+    floorId: args.floorId,
+    startPlayerLevel: args.startPlayerLevel,
     ...(recording
       ? {
           recordEvent: (event: SimEvent): void => {

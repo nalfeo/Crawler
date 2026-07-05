@@ -10,6 +10,7 @@ import {
   Rotation,
   Spawner,
   Sprite,
+  Velocity,
   XpGem,
 } from '../../src/core/components.js';
 import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
@@ -451,7 +452,7 @@ describe('createPhaserBridge', () => {
     expect(area).toBe(16 * 16);
   });
 
-  it('shatters a baby-slime corpse at its shrunken on-screen scale, not the base scale', () => {
+  it('shatters a baby-slime corpse at its shrunken on-screen scale', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: false });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
@@ -466,6 +467,7 @@ describe('createPhaserBridge', () => {
     // its base scale is larger than what the player actually sees.
     const eid = addEntity(world.ecs);
     addComponent(world.ecs, eid, set(Position, { x: 60, y: 60 }));
+    addComponent(world.ecs, eid, set(Velocity, { x: 2, y: 0 }));
     addComponent(world.ecs, eid, Enemy);
     addComponent(world.ecs, eid, set(Sprite, { textureId: 2, width: 1.95, height: 1.95 }));
     addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: 500 }));
@@ -473,6 +475,9 @@ describe('createPhaserBridge', () => {
 
     bridge.sync(world);
     const corpseImg = images[0]!;
+    // NOTE: enemy facing (flipX) is exercised by the dedicated facing test below;
+    // this test deliberately asserts only shard SCALE so it doesn't become brittle
+    // to future facing-policy tweaks.
     const renderedScale = corpseImg.scaleX; // baseScale * 0.65, the on-screen size
     const baseline = images.length;
 
@@ -497,6 +502,7 @@ describe('createPhaserBridge', () => {
     expect(shards.length).toBeGreaterThanOrEqual(9);
     for (const s of shards) {
       expect(s.scaleX).toBeCloseTo(renderedScale, 5);
+      expect(s.scaleX).toBeGreaterThan(0);
     }
   });
 
@@ -846,6 +852,61 @@ describe('createPhaserBridge', () => {
     expect(miniImg.scaleX).toBeLessThan(fullImg.scaleX);
     expect(miniImg.scaleX).toBeCloseTo(miniImg.scaleY, 6);
     expect(miniImg.scaleX).toBeCloseTo(fullImg.scaleX * 0.65, 5);
+  });
+
+  it('faces enemies left at rest and turns them to face right only while moving right', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: false });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const enemy = addEntity(world.ecs);
+
+    addComponent(world.ecs, enemy, set(Position, { x: 10, y: 10 }));
+    addComponent(world.ecs, enemy, set(Velocity, { x: 0, y: 0 }));
+    addComponent(world.ecs, enemy, Enemy);
+    addComponent(world.ecs, enemy, set(Sprite, { textureId: 1, width: 2, height: 2 }));
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(1);
+    const enemyImg = images[0]!;
+    // Generated enemy art is authored facing RIGHT, and flipX mirrors the texture,
+    // so flipX=true renders LEFT-facing and flipX=false renders (native) RIGHT-facing.
+    // scaleX magnitude is flip-independent, so it stays constant across every state.
+    const baselineScaleX = enemyImg.scaleX;
+    expect(baselineScaleX).toBeGreaterThan(0);
+    expect(enemyImg.scaleY).toBeGreaterThan(0);
+    // At rest the enemy faces left (mirrored).
+    expect(enemyImg.flipX).toBe(true);
+
+    // Sub-epsilon rightward jitter must not flip it to face right.
+    world.stores.velocity.x[enemy] = 0.0005;
+    bridge.sync(world);
+    expect(enemyImg.scaleX).toBeCloseTo(baselineScaleX, 6);
+    expect(enemyImg.scaleY).toBeGreaterThan(0);
+    expect(enemyImg.flipX).toBe(true);
+
+    // Exactly at the epsilon magnitude (vx = 0.001): Velocity is stored as
+    // Float32, so 0.001 rounds to ~0.00100000004 on read — just ABOVE the f64
+    // epsilon (0.001) — and the enemy DOES cross the threshold and unflips to
+    // face right. (No Float32 value equals the f64 epsilon exactly, so `>` and
+    // `>=` are equivalent here; this pins the effective threshold, so bumping the
+    // epsilon or changing the store width would break this assertion.)
+    world.stores.velocity.x[enemy] = 0.001;
+    bridge.sync(world);
+    expect(enemyImg.scaleX).toBeCloseTo(baselineScaleX, 6);
+    expect(enemyImg.flipX).toBe(false);
+
+    // Moving right past the epsilon: unflip to show the native right-facing art.
+    world.stores.velocity.x[enemy] = 0.002;
+    bridge.sync(world);
+    expect(enemyImg.scaleX).toBeCloseTo(baselineScaleX, 6);
+    expect(enemyImg.flipX).toBe(false);
+
+    // Moving left: back to the mirrored, left-facing pose.
+    world.stores.velocity.x[enemy] = -1.5;
+    bridge.sync(world);
+    expect(enemyImg.scaleX).toBeCloseTo(baselineScaleX, 6);
+    expect(enemyImg.flipX).toBe(true);
   });
 
   // A welcome sign is a Sprite+Position entity whose textureId is the welcome
