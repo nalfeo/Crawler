@@ -160,6 +160,7 @@ function computeSpawnerArenaMetrics(world: GameWorld): {
   triggered: number;
   resolved: number;
   barrierArmed: number;
+  resolvedArmed: number;
   bankedXpTotal: number;
 } {
   const spawners = query(world.ecs, [Spawner]);
@@ -167,6 +168,7 @@ function computeSpawnerArenaMetrics(world: GameWorld): {
   let triggered = 0;
   let resolved = 0;
   let barrierArmed = 0;
+  let resolvedArmed = 0;
   let bankedXpTotal = 0;
   const store = world.stores.spawner;
   for (const eid of spawners) {
@@ -174,17 +176,22 @@ function computeSpawnerArenaMetrics(world: GameWorld): {
     const state = store.arenaState[eid] ?? 0;
     if (state >= 1) triggered += 1;
     if (state === 2) resolved += 1;
-    // Count spawners that raised a *real* barrier at some point in the run:
-    // fence snapshot on `world.spawnerArenaFence` for open-fence arenas, or
-    // a non-empty door list on `world.spawnerArenaDoors` for sealed-room
-    // arenas. Snapshots are cleared on resolution, so we OR the resolved
-    // bit in so a killed arena still counts as "was armed at some point".
-    const hasFence = (world.spawnerArenaFence?.get(eid)?.length ?? 0) > 0;
-    const hasLockedDoors = (world.spawnerArenaDoors?.get(eid)?.length ?? 0) > 0;
-    if (hasFence || hasLockedDoors || state === 2) barrierArmed += 1;
+    // Count spawners that raised a *real* barrier at some point in the run via
+    // the persistent `spawnerArenaEverArmed` latch. It is set only when a
+    // non-empty fence snapshot / locked-door list is actually stored, and is
+    // NOT cleared on resolve — so a killed arena still counts, while an
+    // IDLE→RESOLVED short-circuit (spawner died before it ever armed) does not
+    // inflate the count. `resolvedArmed` is the subset that also resolved — the
+    // correct numerator for the resolved/armed gate (a bare `resolved` count
+    // includes never-armed short-circuits and would dilute the ratio to 1.0).
+    const everArmed = world.spawnerArenaEverArmed?.has(eid) ?? false;
+    if (everArmed) {
+      barrierArmed += 1;
+      if (state === 2) resolvedArmed += 1;
+    }
     bankedXpTotal += store.bankedXp[eid] ?? 0;
   }
-  return { total, triggered, resolved, barrierArmed, bankedXpTotal };
+  return { total, triggered, resolved, barrierArmed, resolvedArmed, bankedXpTotal };
 }
 
 export function applyStartPlayerLevel(world: GameWorld, targetLevel: number): void {

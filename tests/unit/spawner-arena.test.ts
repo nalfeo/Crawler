@@ -11,8 +11,8 @@
  * sealed-room and open-fence branches without the full dungeon generator.
  */
 import { describe, expect, it } from 'vitest';
-import { query } from 'bitecs';
-import { Health, Spawner, XpGem } from '../../src/core/components.js';
+import { addComponent, addEntity, query, set } from 'bitecs';
+import { DoorState, Health, Spawner, XpGem } from '../../src/core/components.js';
 import { spawnPlayer, spawnSpawner } from '../../src/core/helpers.js';
 import {
   SPAWNER_MAX_BANKED_CHILDREN,
@@ -270,6 +270,11 @@ describe('spawnerArenaSystem — state machine', () => {
     const xpGemsBefore = query(world.ecs, [XpGem]).length;
     spawnerArenaSystem(world);
     expect(world.stores.spawner.arenaState[spawnerEid]).toBe(2);
+    // Finding (1) lock-in: an IDLE→RESOLVED short-circuit never raised a real
+    // barrier, so it must NOT be latched as "ever armed" even though the arena
+    // reaches state 2 (RESOLVED). This is exactly the case the old
+    // `|| state === 2` headless condition wrongly counted as armed.
+    expect(world.spawnerArenaEverArmed.has(spawnerEid)).toBe(false);
     // A single XP gem was spawned carrying the banked pool.
     expect(query(world.ecs, [XpGem]).length).toBe(xpGemsBefore + 1);
     // No arena start/end VFX or announcements should have been emitted — the
@@ -277,6 +282,87 @@ describe('spawnerArenaSystem — state machine', () => {
     expect(world.vfxEvents.filter((e) => e.kind === 'spawnerArenaStart')).toHaveLength(0);
     expect(world.vfxEvents.filter((e) => e.kind === 'spawnerArenaEnd')).toHaveLength(0);
     expect(world.announcements).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sealed-room door lifecycle (finding 3)
+// ---------------------------------------------------------------------------
+
+describe('spawnerArenaSystem sealed-room door lifecycle', () => {
+  it('locks room doors on trigger and unlocks + clears the cache on resolve', () => {
+    const world = createTestWorld();
+    world.floorMap = makeSealedRoomMap();
+    // Spawner centred in the 8x8 NORMAL room; RATS_NEST radius (7 ft) fits the
+    // room interior at (32,32) → decideArenaKind resolves 'sealed-room'.
+    const spawnerEid = makeSpawner(world, 32, 32);
+    // A door entity sitting on the room's single door tile (8,6), initially
+    // closed and UNLOCKED so we can prove the arena performs the lock itself.
+    const doorEid = addEntity(world.ecs);
+    addComponent(
+      world.ecs,
+      doorEid,
+      set(DoorState, { tileX: 8, tileY: 6, isOpen: 0, isLocked: 0 }),
+    );
+    // Player inside the same room (tile 10,10 → 40,40 ft): same-sealed-room
+    // override fires the trigger even though it is outside the 7 ft disc.
+    spawnPlayer(world, 40, 40);
+    const goalId = `spawner-arena-${spawnerEid}-cleared`;
+
+    // ── Trigger: idle → locked, doors LOCK ──────────────────────────────────
+    spawnerArenaSystem(world);
+    expect(world.stores.spawner.arenaKind[spawnerEid]).toBe(0); // sealed-room
+    expect(world.stores.spawner.arenaState[spawnerEid]).toBe(1); // locked
+    // The system flipped the door from unlocked→locked and closed it.
+    expect(world.stores.doorState.isLocked[doorEid]).toBe(1);
+    expect(world.stores.doorState.isOpen[doorEid]).toBe(0);
+    expect(world.spawnerArenaDoors.get(spawnerEid)).toEqual([doorEid]);
+    // A real barrier was raised → the persistent "ever armed" latch is set.
+    expect(world.spawnerArenaEverArmed.has(spawnerEid)).toBe(true);
+    // Goal flag exists and is explicitly false while the arena is active.
+    expect(world.goalFlags.get(goalId)).toBe(false);
+
+    // ── Resolve: locked → resolved, doors UNLOCK, cache cleared ─────────────
+    world.stores.health.current[spawnerEid] = 0;
+    world.stores.spawner.deathResolved[spawnerEid] = 1;
+    world.stores.spawner.bankedXp[spawnerEid] = 18;
+    spawnerArenaSystem(world);
+    expect(world.stores.spawner.arenaState[spawnerEid]).toBe(2); // resolved
+    // Door lock is released and the cached door list is deleted.
+    expect(world.stores.doorState.isLocked[doorEid]).toBe(0);
+    expect(world.spawnerArenaDoors.has(spawnerEid)).toBe(false);
+    // Goal flag flips complete so doorSystem/quest logic can react.
+    expect(world.goalFlags.get(goalId)).toBe(true);
+    // The "ever armed" latch persists across resolve — this is what keeps the
+    // headless barrierArmed / resolvedArmed telemetry honest (a resolved arena
+    // that genuinely trapped the AI must stay counted as armed).
+    expect(world.spawnerArenaEverArmed.has(spawnerEid)).toBe(true);
+  });
+
+  it('does not arm when the sealed room has no matching door entity (empty-doors path)', () => {
+    const world = createTestWorld();
+    world.floorMap = makeSealedRoomMap();
+    const spawnerEid = makeSpawner(world, 32, 32);
+    // No DoorState entity on the room's door tile → lockRoomDoorsImpl returns
+    // an empty cache: the sealed path runs but nothing is actually locked.
+    spawnPlayer(world, 40, 40);
+
+    spawnerArenaSystem(world);
+    // The state machine still advances to LOCKED (sealed branch taken)…
+    expect(world.stores.spawner.arenaKind[spawnerEid]).toBe(0);
+    expect(world.stores.spawner.arenaState[spawnerEid]).toBe(1);
+    // …but the cached door list is empty and the barrier never armed, so the
+    // player is not trapped and telemetry must not count this as armed.
+    expect(world.spawnerArenaDoors.get(spawnerEid)).toEqual([]);
+    expect(world.spawnerArenaEverArmed.has(spawnerEid)).toBe(false);
+
+    // Resolve still cleans up the empty cache without error and never arms.
+    world.stores.health.current[spawnerEid] = 0;
+    world.stores.spawner.deathResolved[spawnerEid] = 1;
+    spawnerArenaSystem(world);
+    expect(world.stores.spawner.arenaState[spawnerEid]).toBe(2);
+    expect(world.spawnerArenaDoors.has(spawnerEid)).toBe(false);
+    expect(world.spawnerArenaEverArmed.has(spawnerEid)).toBe(false);
   });
 });
 

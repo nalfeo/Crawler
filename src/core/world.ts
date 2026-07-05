@@ -176,6 +176,20 @@ export interface GameWorld {
    * bit on resolve. Also keyed on spawner eid.
    */
   spawnerArenaFence: Map<number, Array<{ tileIdx: number; originalFlags: number }>>;
+  /**
+   * Per-spawner "ever raised a *real* barrier" latch. Set to the spawner eid at
+   * the idle → locked transition ONLY when a non-empty barrier is actually
+   * stored (a locked door list or a fence snapshot), and — unlike
+   * {@link spawnerArenaDoors}/{@link spawnerArenaFence} — deliberately NOT
+   * cleared on resolve. This gives headless telemetry an honest count of
+   * arenas that genuinely trapped the player, without the IDLE→RESOLVED
+   * short-circuit (spawner killed before it ever armed) inflating it.
+   *
+   * Shares the per-world lifetime of the two snapshot maps above (likewise
+   * never bulk-cleared); the sole consumer, `runHeadless`, builds a fresh world
+   * per run, so there is no cross-run contamination.
+   */
+  spawnerArenaEverArmed: Set<number>;
   /** Player's gold (currency) — separate from BroadcastScore (reality show rating). */
   playerGold: number;
   /** Procedurally generated floor map — null until floor is loaded. */
@@ -386,6 +400,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     announcements: [],
     spawnerArenaDoors: new Map(),
     spawnerArenaFence: new Map(),
+    spawnerArenaEverArmed: new Set(),
     playerGold: 0,
     floorMap: null,
     floor1: null,

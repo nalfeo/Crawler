@@ -311,10 +311,19 @@ export function spawnerArenaSystem(world: GameWorld): void {
           [],
         );
         world.spawnerArenaDoors.set(eid, cached);
+        // Latch "a real barrier was raised" ONLY when at least one door was
+        // actually locked. An empty list means the sealed path was a no-op
+        // (no matching door entity, or every candidate already carried its own
+        // lock config) — the player is not actually trapped, so it must not
+        // count as an armed arena in headless telemetry.
+        if (cached.length > 0) {
+          world.spawnerArenaEverArmed.add(eid);
+        }
       } else {
         const snapshot = raiseFence(world, sx, sy, radiusFt);
         if (snapshot && snapshot.length > 0) {
           world.spawnerArenaFence.set(eid, snapshot);
+          world.spawnerArenaEverArmed.add(eid);
         }
       }
       spawner.arenaState[eid] = ARENA_STATE.LOCKED;
