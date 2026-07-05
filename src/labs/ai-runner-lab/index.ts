@@ -1153,7 +1153,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     const gridSpacing = 2; // feet
     const DANGER_RADIUS = 15; // ft — mirrors updated RISK_REWARD_DANGER_RADIUS_FT in scorer
     const REWARD_RADIUS = 10; // ft — pickup pull radius
-    const FOG_DANGER = 0.45; // mirrors RISK_REWARD_FOG_DANGER
+    const FOG_DANGER = 0.35; // mirrors RISK_REWARD_FOG_DANGER
     const DRAW_THRESHOLD = 0.05; // skip cells with no meaningful field value
 
     // Live enemies only — mirrors scorer's health.current > 0 filter (dead corpses excluded)
