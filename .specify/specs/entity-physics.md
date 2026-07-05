@@ -87,7 +87,7 @@ ranges, then have the composed runtime registry read from it.
 
 1. Add `Size` component + `size` store.
 2. Extend mob definitions with body defaults + variance ranges beside
-   sprite/stats/AI metadata; keep
+   sprite/stats/AI metadata, keeping
    `docs/knowledge/game-design/entity-sizing.md` as the review sheet.
 3. Add `src/core/physics-defs.ts` composition + `check:physics-defs-sync`
    gate.
