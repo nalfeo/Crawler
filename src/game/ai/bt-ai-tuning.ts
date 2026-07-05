@@ -532,6 +532,11 @@ export const QUEST_GIVER_DETOUR_COMMIT_HYSTERESIS = 1.5;
 // selection path may re-commit it next poll (exactly as the pre-hysteresis
 // baseline steered toward it every frame). ~5s at 60fps.
 export const QUEST_GIVER_DETOUR_ABANDON_FRAMES = 300;
+// After the no-progress abandon valve fires, suppress fresh re-commitment to the
+// same NPC for this many frames.  This prevents the EXPLORE→ENGAGE→EXPLORE loop
+// where an unkillable/body-blocked NPC is re-selected on the very next poll.
+// 600 frames ≈ 10 s at 60 fps — long enough for ENGAGE to resolve or give up.
+export const QUEST_GIVER_DETOUR_BLOCKED_COOLDOWN_FRAMES = 600;
 // An NPC within this radius (ft) of the player counts as "at the interaction
 // point"; beyond it the NPC is only a navigation/detour target.
 export const NPC_INTERACTION_RADIUS_FT = 12.5;
