@@ -673,6 +673,7 @@ function spawnFloor1StaticSpawners(world: GameWorld): void {
         textureId: archetype.textureId,
         spriteWidth: archetype.spriteWidth,
         spriteHeight: archetype.spriteHeight,
+        arenaRadiusFt: archetype.arenaRadiusFt,
       });
     }
   }

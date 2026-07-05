@@ -1,0 +1,67 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-04",
+  "session_slug": "spawner-battle-arena",
+  "task_title": "Spawner battle arena (sealable-room lock + fence, banked XP, arena VFX)",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "notes": "gpt-5.4 flagged 4 BLOCKING (XP intercept timing, fence side-set alone will not block gameplay, doorState.isLocked stomps existing lock semantics, cannot insert between spawnerSystem and floor1EnemyDirectorSystem), 3 SHOULD-FIX (first-observed XP brittle basis, seam analysis one-frame lag, banked-XP drop-gate policy), 1 NICE-TO-HAVE (layer boundary — core emits archetypeIndex, HUD resolves display name). All addressed in synthesized plan: intercept post-roll actual XP and sum ALL drops per child; mutate tileMap.flags with snapshot/restore on ring; use setDoorLockConfig+goalFlag pattern (no isLocked stomp); place spawnerArenaSystem BEFORE spawnerSystem in both pipelines preserving adjacency; banked XP always spawns at arena end (spawner death is a discrete boss-like reward, not per-enemy loot, so it bypasses onboarding gates — same as existing bossBattles); core emits archetypeIndex only, HUD/engine resolves name."
+    },
+    "dual_plan_synthesis": {
+      "completed": true,
+      "plan_models": ["claude-sonnet-4.6", "gemini-3.1-pro-preview"],
+      "judge_model": "claude-opus-4.8",
+      "notes": "Plans diverged on wiring placement (postSystems vs before spawnerSystem), door-lock strategy (direct isLocked vs goalFlag+doorLockConfig), and XP model (per-mob xpValue registry vs post-roll intercept). claude-opus-4.8 judge synthesized: arena system BEFORE spawnerSystem in both preSystems and headless (preserves spawner→director adjacency contract locked by tests/game/floor1-main-scene-options.test.ts); door-lock via existing setDoorLockConfig+goal flag `spawner-arena-<eid>-cleared` (no isLocked stomp; doorSystem auto-unlocks); post-roll intercept for first-10 children only (matches user words literally, no registry churn, uses actual rolled XP); src/core system placement with archetypeIndex emitted."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "MEDIUM (spawnerArenaSystem.ts:213-378): banked XP is orphaned when spawner dies before arena triggers. Runtime repro: bankedXp=6, arenaState=IDLE, 0 XP gems awarded. LOW (spawnerArenaSystem.ts:116-155): lockRoomDoorsImpl docstring claims pre-locked doors are skipped, but the impl unconditionally overwrites via setDoorLockConfig and unlockRoomDoors then clears the config outright — future pre-locked rooms would be silently unlocked on resolve. Both flagged; fixes implemented (IDLE→RESOLVED short-circuit path added; getDoorLockConfig() guard added in lockRoomDoorsImpl); new unit test 'grants banked XP and transitions idle → resolved when the spawner dies before the arena triggers' added and passing."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Re-verified both fixes: (1) IDLE→RESOLVED short-circuit correctly grants banked XP without emitting arena VFX/announcement events (the arena never visibly happened); RESOLVED remains terminal. (2) lockRoomDoorsImpl now short-circuits on getDoorLockConfig() hit, and unlockRoomDoors only sees doors we actually wrote (skipped ones are never pushed to cachedEids). Unit + integration + dropSystem XP tests all pass (24/24)."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4", "claude-opus-4.7"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "gpt-5.4 (MEDIUM, dropSystem.ts:385-419): spawner-owned XP intercept bypasses the loot-drop gating (allowFloorDrops && allowEnemyDrops) — the arena banks XP even when the un-intercepted path would have produced zero XP gems (Floor-1 onboarding pre-`floor1-drops-unlocked`, or archetype dropsEnabled:false). Reproduced: bankedXp 0→2 while XpGem count stayed at 0. Violates the user's verbatim spec: 'equal to the amount that would have dropped from killing the number of spawned mobs' — if the mobs would drop 0, the spawner should also drop 0. claude-opus-4.7 independently verified everything else: RNG-neutrality of the intercept (rollLootTable called once, drops iterated read-only, spawnDrops always consumes scatter RNG regardless of intercept flag), 10-child cap arithmetic, terminal RESOLVED, fence snapshot/restore bit-exactness (single Uint8Array byte per tile), map lifetime, layer rules, wiring adjacency, announcement queue FIFO, determinism. Bottom line: 1 valid finding from gpt-5.4, 0 from claude-opus-4.7. Adjudicator (claude-opus-4.8) accepted the gpt-5.4 finding — see round 2 for the adjudication rationale and fix."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4", "claude-opus-4.7"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Adjudicator (claude-opus-4.8) rationale: the plan_review synthesis note about 'banked XP bypasses onboarding gates like bossBattles' was a design gloss, not a spec requirement; the more literal reading of the user's verbatim words matches AGENTS.md rule 12 (never weaken user reqs) — when the mobs would drop 0, the spawner drops 0. Fix applied: gated the intercept behind dropsAllowed = allowFloorDrops && allowEnemyDrops in dropSystem.ts. Covered by new unit test 'does not bank XP when Floor-1 drop gating is active' (passing). ADR 0044 §Negative updated to document the tradeoff. Both reviewers re-verified on the patched diff and converge on clean."
+        }
+      ]
+    }
+  }
+}

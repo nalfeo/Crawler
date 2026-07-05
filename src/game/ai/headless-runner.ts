@@ -14,6 +14,7 @@ import {
   createGameWorld,
   spawnPlayer,
   Enemy,
+  Spawner,
   type GameWorld,
 } from '../../core/index.js';
 import { createInputState } from '../../shared/input.js';
@@ -144,6 +145,36 @@ function normalizeHostileDamageMultiplier(configuredMultiplier: number): number 
     );
   }
   return Math.max(1, configuredMultiplier);
+}
+
+/**
+ * Roll up final spawner battle-arena state from a completed world. Used by
+ * `runHeadless` to populate `RunStats.spawnerArenas` so headless win-rate gates
+ * (e.g. `tests/headless/spawner-arena-win-rate.test.ts`) can assert every
+ * reachable spawner reached its terminal `arenaState === 2`.
+ *
+ * Non-throwing: if the sim never generated spawners, all counts are zero.
+ */
+function computeSpawnerArenaMetrics(world: GameWorld): {
+  total: number;
+  triggered: number;
+  resolved: number;
+  bankedXpTotal: number;
+} {
+  const spawners = query(world.ecs, [Spawner]);
+  let total = 0;
+  let triggered = 0;
+  let resolved = 0;
+  let bankedXpTotal = 0;
+  const store = world.stores.spawner;
+  for (const eid of spawners) {
+    total += 1;
+    const state = store.arenaState[eid] ?? 0;
+    if (state >= 1) triggered += 1;
+    if (state === 2) resolved += 1;
+    bankedXpTotal += store.bankedXp[eid] ?? 0;
+  }
+  return { total, triggered, resolved, bankedXpTotal };
 }
 
 export function applyStartPlayerLevel(world: GameWorld, targetLevel: number): void {
@@ -656,6 +687,7 @@ export async function runHeadless(
       totalGold: world.playerGold,
       startingWeapon,
       aiTelemetry: buildAiTelemetry(),
+      spawnerArenas: computeSpawnerArenaMetrics(world),
     };
   }
 
@@ -710,6 +742,7 @@ export async function runHeadless(
     totalGold: world.playerGold,
     startingWeapon,
     aiTelemetry: buildAiTelemetry(),
+    spawnerArenas: computeSpawnerArenaMetrics(world),
   };
 
   if (mergedConfig.debug || mergedConfig.progressInterval > 0) {

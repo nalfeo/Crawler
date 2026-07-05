@@ -95,6 +95,13 @@ export interface SpawnerArchetype {
   readonly spriteHeight: number;
   /** Contact damage the structure deals to the player on touch. */
   readonly contactDamage: number;
+  /**
+   * Arena radius in feet. The spawner's battle zone is the closed disc of this
+   * radius centered on the spawner: entering it triggers the arena
+   * (sealed-room lock or open-fence). Minimum 4 ft (spec `Requirements§1`);
+   * default 6 ft per registry policy.
+   */
+  readonly arenaRadiusFt: number;
   /** Slow trickle behaviour before the player engages. */
   readonly passive: SpawnMode;
   /** Enraged behaviour, latched once the player damages the structure. */
