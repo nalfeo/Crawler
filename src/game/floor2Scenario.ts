@@ -468,9 +468,6 @@ export function floor2VictorySystem(world: GameWorld): void {
   popFloor2ResourceHeartStairs(world);
 }
 
-/** Interaction radius (ft) for the Floor 2 exit staircase marker. Matches Floor 1's markerRadiusFt. */
-export const FLOOR2_STAIR_MARKER_RADIUS_FT = 8.0;
-
 /**
  * Called when the player confirms exit descent on Floor 2.
  * Sets `staircaseDiscovered` and transitions `world.state` to `'safe_room'`.

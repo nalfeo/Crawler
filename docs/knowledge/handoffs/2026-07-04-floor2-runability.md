@@ -33,7 +33,7 @@ floor2, main-game-scene, faction-relations, bootstrap
   - Returns `false` if `!world.floor2State` or `!staircaseUnlocked` (pre-conditions)
   - Returns `false` if already `staircaseDiscovered` (idempotent)
   - Sets `staircaseDiscovered = true` + `world.state = 'safe_room'`, returns `true`
-- Exported `FLOOR2_STAIR_MARKER_RADIUS_FT = 8.0`
+- Stair-marker interaction radius lives in `src/shared/constants.ts` as `FLOOR2_STAIR_MARKER_RADIUS_FT = 8.0` (single source of truth shared by engine + game; PR #761 review follow-up)
 - Wired `confirmFloor2StairDescend` as `onStairDescend` callback in `floor-main-scene-options.ts` for non-floor1
 
 ### 3. Completion detection (src/engine/scenes/main-game-scene-helpers.ts)
@@ -45,7 +45,7 @@ floor2, main-game-scene, faction-relations, bootstrap
 
 ### 4. Visual markers and interactions (src/engine/scenes/MainGameScene.ts)
 
-- Added local `FLOOR2_STAIR_RADIUS_FT = 8.0` constant (layer boundary: engine cannot import from game)
+- Imports `FLOOR2_STAIR_MARKER_RADIUS_FT` from `src/shared/constants.ts` (shared single source of truth; both engine and game layers import from shared)
 - **updateObjectiveMarkers()**: Added Floor 2 branch that draws staircase marker:
   - Green circle at `ftToPx(floor2State.staircasePos)`
   - Label "▼ EXIT" below circle
@@ -53,7 +53,7 @@ floor2, main-game-scene, faction-relations, bootstrap
   - Old: `if (!this.world.floor1) return;` (breaks Floor 2 NPCs + stairs)
   - New: `if (!this.world.floor1 && !this.world.floor2State) return;` (only bail if no floor active)
 - **nearStairs computation**: Floor 2-aware proximity check:
-  - Floor 2: `dist(playerPos, floor2State.staircasePos) < FLOOR2_STAIR_RADIUS_FT` when unlocked
+  - Floor 2: `dist(playerPos, floor2State.staircasePos) < FLOOR2_STAIR_MARKER_RADIUS_FT` when unlocked
   - Floor 1: existing logic unchanged
 - **showFloorCompletionScreenIfNeeded()**: Added Floor 2 branch:
   - Displays "Victory!" banner + "Floor 2 complete!" text
@@ -153,7 +153,7 @@ floor2, main-game-scene, faction-relations, bootstrap
 **Actual:** 🍎🍎  
 **Verdict:** On-estimate
 
-Multi-file wiring across engine/game/bootstrap layers with new tests; no algorithmic complexity; layer-boundary management required (engine cannot import from game, so `FLOOR2_STAIR_RADIUS_FT` is local constant). Scope well-contained at ~250 LOC across 9 files. Review harness identified 2 edge cases, both fixed with code + tests.
+Multi-file wiring across engine/game/bootstrap layers with new tests; no algorithmic complexity; layer-boundary management required (engine cannot import from game, so the shared stair-marker radius lives in `src/shared/constants.ts` as `FLOOR2_STAIR_MARKER_RADIUS_FT`). Scope well-contained at ~250 LOC across 9 files. Review harness identified 2 edge cases, both fixed with code + tests.
 
 ## Merge & next steps
 

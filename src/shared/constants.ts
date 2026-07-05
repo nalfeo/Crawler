@@ -109,6 +109,14 @@ export const FLOOR = {
   BOSS_TRIGGER_WARNING_S: tuning.floor.bossWarningS,
 } as const;
 
+/**
+ * Interaction radius (ft) for the Floor 2 exit-staircase marker — the single
+ * source of truth shared by the engine (marker render + proximity check) and
+ * the game layer. Mirrors Floor 1's `objectives.markerRadiusFt` (8.0); keep in
+ * sync with `floor2.manifest.json` `objectives.markerRadiusFt`.
+ */
+export const FLOOR2_STAIR_MARKER_RADIUS_FT = 8.0;
+
 export const SAFE_ROOM = {
   MIN_DURATION_S: tuning.safeRoom.minDurationS,
   OPTIMAL_DURATION_S: tuning.safeRoom.optimalDurationS,

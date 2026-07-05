@@ -11,7 +11,12 @@ import {
   spawnPlayer,
   type GameWorld,
 } from '../../core/index.js';
-import { CAMERA, GAME, safeRoomCameraZoom } from '../../shared/constants.js';
+import {
+  CAMERA,
+  FLOOR2_STAIR_MARKER_RADIUS_FT,
+  GAME,
+  safeRoomCameraZoom,
+} from '../../shared/constants.js';
 import { LIGHTING_OVERLAY_DEPTH, UI_DEPTH_CUTOFF } from '../../shared/render-depths.js';
 import { ftToPx, pxToFt, PIXELS_PER_FOOT } from '../../shared/units.js';
 import { getRenderScale } from '../render-scale.js';
@@ -94,8 +99,6 @@ const DIRECTOR_COMMENTARY_MS = 3600;
 const MOBILE_CORNER_BUTTON_MAX_SCALE = 1.4;
 const INTERACTION_HINT_MAX_SCALE = 1.25;
 const INTERACTION_HINT_BOTTOM_MARGIN = 12;
-/** Interaction radius (ft) for the Floor 2 exit staircase marker. Mirrors Floor 1's markerRadiusFt. */
-const FLOOR2_STAIR_RADIUS_FT = 8.0;
 const FLOOR_1_COMMENTARY = {
   intro: 'Floor 1 opens. Rhea Vale enters the dungeon and the cameras are rolling.',
   questAccepted: 'Tutorial Goon unlocks XP drops. First milestone: hit level 2 for the audience.',
@@ -2052,7 +2055,7 @@ export class MainGameScene extends Phaser.Scene {
       ) {
         const staircaseX = ftToPx(floor2State.staircasePos.x);
         const staircaseY = ftToPx(floor2State.staircasePos.y);
-        const markerRadiusPx = ftToPx(FLOOR2_STAIR_RADIUS_FT);
+        const markerRadiusPx = ftToPx(FLOOR2_STAIR_MARKER_RADIUS_FT);
         if (!this.staircaseMarker) {
           this.staircaseMarker = this.add
             .circle(staircaseX, staircaseY, markerRadiusPx, 0x10b981, 0.25)
@@ -2468,7 +2471,7 @@ export class MainGameScene extends Phaser.Scene {
         floor2State.staircaseDiscovered !== true &&
         floor2State.staircasePos !== undefined &&
         Math.hypot(playerX - floor2State.staircasePos.x, playerY - floor2State.staircasePos.y) <=
-          FLOOR2_STAIR_RADIUS_FT
+          FLOOR2_STAIR_MARKER_RADIUS_FT
       : floor1Objective !== undefined &&
         floor1Objective.staircaseUnlocked &&
         floor1Objective.staircaseSpawned &&
