@@ -135,7 +135,7 @@ function attachFloor1WithBoss(
   };
   // We only need the objective sub-tree; cast through unknown so the test
   // fixture stays terse instead of building a fully valid FloorScenarioState.
-  world.floor1 = { objective } as unknown as FloorScenarioState;
+  world.floorScenario = { objective } as unknown as FloorScenarioState;
 }
 
 // ---------------------------------------------------------------------------

@@ -74,7 +74,7 @@ describe('AI arena lock-in — integration', () => {
     let resolvedFrame = -1;
     for (let f = 0; f < MAX_FRAMES; f += 1) {
       ai.poll(input, world);
-      runSimulationStep(world, input, GAME.DELTA_MS, { enableFloor1: false });
+      runSimulationStep(world, input, GAME.DELTA_MS, {});
       if (world.stores.spawner.arenaState[spawnerEid] === 2) {
         resolvedFrame = f;
         break;

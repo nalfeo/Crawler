@@ -124,7 +124,7 @@ describe('dropSystem — spawner-owned XP intercept', () => {
     // mobs" — when drops are gated to 0, the bank should also stay at 0.
     const { world, spawnerEid } = makeSpawnerFixture();
     // Attach a floor1 context so `allowFloorDrops` gates on the goal flag.
-    world.floor1 = { enemyArchetypes: new Map() } as typeof world.floor1;
+    world.floorScenario = { enemyArchetypes: new Map() } as typeof world.floorScenario;
     // goalFlag `floor1-drops-unlocked` is unset → allowFloorDrops = false.
     killOwnedChild(world, spawnerEid);
     const gemsBefore = xpGemCount(world);

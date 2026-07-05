@@ -39,7 +39,7 @@ function withPlayer(): { world: GameWorld; player: number } {
  */
 function enterLoadout(world: GameWorld, starterChoices: string[]): void {
   world.state = 'loadout';
-  world.floor1 = {
+  world.floorScenario = {
     protagonistName: 'Test',
     starterWeaponPool: [],
     starterChoices,

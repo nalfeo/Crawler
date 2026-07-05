@@ -11,7 +11,7 @@
  *     `world.rng`. No `Date.now()`, no `Math.random()`.
  *   - One-shot events fire at most once per world (default), enforced by an
  *     in-memory `firedEventIds` set held on a WeakMap keyed by world.
- *   - No-op unless `world.floor2State !== null` and `world.state === 'playing'`.
+ *   - No-op unless `world.floorExtendedState?.familyState != null` and `world.state === 'playing'`.
  *   - Region-enter triggers check the player's current room role via
  *     `world.floorMap.roomGraph.getRoomAt` (pre-built spatial cache), not a
  *     global scan.
@@ -95,7 +95,7 @@ function eventCooldownMs(eventId: string): number {
  * without knowing which families were seeded this run.
  */
 function resolveFamilyId(world: GameWorld, familyIndex: number): FamilyId | null {
-  const roster = world.floor2State?.presentFamilies;
+  const roster = world.floorExtendedState?.familyState?.presentFamilies;
   if (!roster || familyIndex < 0 || familyIndex >= roster.length) {
     return null;
   }
@@ -185,7 +185,7 @@ function playerRoom(world: GameWorld): { roomId: number; role: RoomRole } | null
  */
 export function emergentEventSystem(world: GameWorld): void {
   if (world.state !== 'playing') return;
-  if (world.floor2State === null) return;
+  if (world.floorExtendedState?.familyState == null) return;
 
   const state = getState(world);
   if (state.pack === null) state.pack = loadEmergentEventPack();

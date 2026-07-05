@@ -86,10 +86,12 @@ function createSettlementLab(canvasHost: HTMLElement, controls: HTMLElement): ()
     world.factionRelationDeltas.length = 0;
     world.factionRelationEvents.length = 0;
     initializeFactionRelations(world, families);
-    world.floor2State = {
-      presentFamilies: families.slice(),
-      contestedResource: 'gold-veins' as never,
-      betrayerFlag: false,
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: families.slice(),
+        contestedResource: 'gold-veins' as never,
+        betrayerFlag: false,
+      },
     };
     const archetypes = loadShopArchetypes();
     const shuffled = [...archetypes];

@@ -26,11 +26,13 @@ import { createTestWorld } from '../helpers/world-factory.js';
 const FAM_A = asFamilyId('a');
 
 function seedFloor2(world: ReturnType<typeof createTestWorld>): void {
-  world.floor2State = {
-    presentFamilies: [FAM_A],
-    contestedResource: asFamilyId('ore') as unknown as never,
-    betrayerFlag: false,
-  } as never;
+  world.floorExtendedState = {
+    familyState: {
+      presentFamilies: [FAM_A],
+      contestedResource: asFamilyId('ore') as unknown as never,
+      betrayerFlag: false,
+    } as never,
+  };
   initializeFactionRelations(world, [FAM_A]);
 }
 

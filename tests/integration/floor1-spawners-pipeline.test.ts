@@ -83,7 +83,7 @@ describe('Floor 1 spawners — wired into the headless AI pipeline', () => {
     // if the system is wired in. Without the wiring this loop leaves
     // spawnedTotal at 0.
     for (let frame = 0; frame < 600; frame += 1) {
-      runSimulationStep(world, input, GAME.DELTA_MS, { enableFloor1: true });
+      runSimulationStep(world, input, GAME.DELTA_MS, {});
     }
 
     // The load-bearing assertion: spawners actually spawned. This is 0 unless

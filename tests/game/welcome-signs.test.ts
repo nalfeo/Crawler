@@ -42,8 +42,8 @@ function initFloor1(seed: number): ReturnType<typeof createTestWorld> {
 function navigableRoomSteps(world: ReturnType<typeof createTestWorld>): NavigableRoomStep[] {
   const floorMap = world.floorMap!;
   const welcomeTile = floorMap.worldToTile(
-    world.floor1!.objective.welcomeOfficePos.x,
-    world.floor1!.objective.welcomeOfficePos.y,
+    world.floorScenario!.objective.welcomeOfficePos.x,
+    world.floorScenario!.objective.welcomeOfficePos.y,
   );
   return findNavigableRoomPathSteps(floorMap, floorMap.playerSpawn, welcomeTile) ?? [];
 }

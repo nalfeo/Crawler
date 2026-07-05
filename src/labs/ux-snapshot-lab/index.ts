@@ -398,7 +398,7 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
       // XP unlocked so the experience bar is visible.
       world.goalFlags.set('floor1-drops-unlocked', true);
 
-      world.floor1 = {
+      world.floorScenario = {
         protagonistName: 'UX Lab Player',
         starterWeaponPool: [],
         starterChoices: [],
@@ -550,8 +550,8 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
 
       // Floor timer — hold elapsed at 0 so the slider directly sets remaining.
       world.elapsedMs = 0;
-      if (world.floor1) {
-        world.floor1.objective.deadlineMs = settings.timeRemainingS * 1000;
+      if (world.floorScenario) {
+        world.floorScenario.objective.deadlineMs = settings.timeRemainingS * 1000;
       }
 
       // Abilities toggle — latch the feature-unlock so the bar appears/hides.

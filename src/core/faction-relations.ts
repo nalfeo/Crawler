@@ -65,7 +65,8 @@ export interface FactionRelationsWorldFacet {
   factionRelations: Map<FamilyId, number>;
   factionRelationEvents: FactionRelationChangedEvent[];
   factionRelationDeltas: FactionRelationDelta[];
-  floor2State: Floor2State | null;
+  /** Floor extended state — use `.familyState` to access family faction data. */
+  floorExtendedState: { familyState?: Floor2State } | null;
 }
 
 /** Floor-scoped state written when a Floor-2 run is initialised. */

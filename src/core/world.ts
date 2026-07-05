@@ -59,7 +59,7 @@ import {
   type ComponentStores,
 } from './components.js';
 import type { StatModifier, SkillState, SkillUsageEvent, PlayerLevel } from '../shared/skills.js';
-import type { Floor1ScenarioState, Floor2SettlementSnapshot } from '../shared/floor-types.js';
+import type { FloorScenarioState, Floor2SettlementSnapshot } from '../shared/floor-types.js';
 import type { NpcInstance } from '../shared/npc-types.js';
 import type { QuestState } from '../shared/quest-types.js';
 import type { QuestEvent } from '../shared/quest-events.js';
@@ -71,6 +71,17 @@ import type {
 } from './faction-relations.js';
 
 const logger = createLogger('core:world');
+
+/**
+ * Floor-specific extended state that varies by scenario type. Populated by the
+ * floor initializer; `null` on floors that don't use these mechanics.
+ */
+export interface FloorExtendedState {
+  /** Family faction state for floors with a families mechanic (e.g. Floor 2). */
+  familyState?: Floor2State;
+  /** Settlement snapshot for floors with a settlement mechanic (e.g. Floor 2). */
+  settlement?: Floor2SettlementSnapshot;
+}
 
 export interface GameWorld {
   /** The bitecs ECS world instance */
@@ -195,20 +206,19 @@ export interface GameWorld {
   playerGold: number;
   /** Procedurally generated floor map — null until floor is loaded. */
   floorMap: FloorMap | null;
-  /** Floor 1 tutorial scenario state. */
-  floor1: Floor1ScenarioState | null;
   /**
-   * Floor 2 scenario state (present families, contested resource, betrayer
-   * latch). Populated by the Floor 2 scenario initializer (Slice 8); `null`
-   * on every other floor.
+   * String identifier for the current floor (e.g. `'floor1'`, `'floor2'`).
+   * Set by each floor's scenario initializer. Empty string when no floor is loaded.
    */
-  floor2State: Floor2State | null;
+  floorId: string;
+  /** Current floor scenario state — populated when a floor run is active, null otherwise. */
+  floorScenario: FloorScenarioState | null;
   /**
-   * Floor 2 · Slice 6 — settlement snapshot (safe room, seeded shops, The
-   * Broker quest-giver). Populated by `initializeFloor2Settlement`; `null`
-   * on every other floor and before Floor 2's init runs.
+   * Floor-specific extended state for floors that use families / settlement
+   * mechanics. Populated by the floor initializer; `null` on floors that don't
+   * use these mechanics (e.g. Floor 1).
    */
-  floor2Settlement: Floor2SettlementSnapshot | null;
+  floorExtendedState: FloorExtendedState | null;
   /**
    * Floor 2 per-family relationship values, clamped `[0, 100]`. Single source
    * of truth (ADR 0040 · D1) — mobs read this at decision time via the
@@ -405,9 +415,9 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     spawnerArenaEverArmed: new Set(),
     playerGold: 0,
     floorMap: null,
-    floor1: null,
-    floor2State: null,
-    floor2Settlement: null,
+    floorId: '',
+    floorScenario: null,
+    floorExtendedState: null,
     factionRelations: new Map(),
     factionRelationEvents: [],
     factionRelationDeltas: [],

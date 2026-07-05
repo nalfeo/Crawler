@@ -33,11 +33,13 @@ const FAM_A = asFamilyId('a');
 const FAM_B = asFamilyId('b');
 
 function seedFloor2(world: ReturnType<typeof createTestWorld>): void {
-  world.floor2State = {
-    presentFamilies: [FAM_A, FAM_B],
-    contestedResource: asFamilyId('ore') as unknown as never,
-    betrayerFlag: false,
-  } as never;
+  world.floorExtendedState = {
+    familyState: {
+      presentFamilies: [FAM_A, FAM_B],
+      contestedResource: asFamilyId('ore') as unknown as never,
+      betrayerFlag: false,
+    } as never,
+  };
   initializeFactionRelations(world, [FAM_A, FAM_B]);
 }
 
