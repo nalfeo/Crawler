@@ -2,6 +2,7 @@ export { AI_TYPE, PATH_PERSONA, TRAVERSAL_MODE, enemyAISystem } from './enemyAIS
 export { configureEnemySpawner, enemySpawnerSystem } from './enemySpawnerSystem.js';
 export type { SpawnerBounds, SpawnerConfig } from './enemySpawnerSystem.js';
 export { spawnerSystem } from './spawners/index.js';
+export { spawnerArenaSystem } from './spawners/index.js';
 export {
   SPAWNER_ARCHETYPES,
   getSpawnerArchetype,

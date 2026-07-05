@@ -8,10 +8,14 @@
 
 ## Systems in this group
 
-| System               | File                             | Pipeline position |
-| -------------------- | -------------------------------- | ----------------- |
-| `enemyAISystem`      | `src/game/enemyAISystem.ts`      | preSystems        |
-| `enemySpawnerSystem` | `src/game/enemySpawnerSystem.ts` | preSystems        |
+| System               | File                                      | Pipeline position                               |
+| -------------------- | ----------------------------------------- | ----------------------------------------------- |
+| `enemyAISystem`      | `src/game/enemyAISystem.ts`               | preSystems                                      |
+| `enemySpawnerSystem` | `src/game/enemySpawnerSystem.ts`          | preSystems                                      |
+| `spawnerArenaSystem` | `src/game/spawners/spawnerArenaSystem.ts` | preSystems (immediately BEFORE `spawnerSystem`) |
+| `spawnerSystem`      | `src/game/spawners/spawnerSystem.ts`      | preSystems                                      |
+
+> **Spawner Battle Arena.** The `spawnerArenaSystem` runs immediately before `spawnerSystem` and turns each spawner mob into a mini-boss encounter: entering the spawn zone locks the containing room's doors (or raises an impassable tile-flag fence when the room isn't sealable), banks up to 10 child-XP drops onto the spawner, and grants them as a single XP gem when the spawner dies. Start/end fire dedicated VFX events and push HUD announcements onto `world.announcements`. See [ADR 0044](../knowledge/adr/0044-spawner-battle-arena.md) and [`.specify/specs/spawner-battle-arena.md`](../../.specify/specs/spawner-battle-arena.md).
 
 ---
 

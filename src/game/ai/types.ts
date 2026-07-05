@@ -237,6 +237,24 @@ export interface AIDecisionTelemetryMetrics {
 }
 
 /**
+ * Spawner Battle-Arena rollup — captured once at the end of a headless run so
+ * the win-rate gate can assert every reachable spawner reached the resolved
+ * terminal state (`arenaState === 2`). Populated by `runHeadless`; if a run
+ * generates no spawners the counts are all zero. See ADR "Spawner Battle
+ * Arena" and `spawnerArenaSystem`.
+ */
+export interface SpawnerArenaMetrics {
+  /** Total spawner entities present at run end (includes resolved/dead ones). */
+  total: number;
+  /** Count that were triggered by the player (arenaState ≥ 1). */
+  triggered: number;
+  /** Count that reached the terminal resolved state (arenaState === 2). */
+  resolved: number;
+  /** Sum of `bankedXp` across all spawners at run end. */
+  bankedXpTotal: number;
+}
+
+/**
  * Run statistics for performance tracking.
  */
 export interface RunStats {
@@ -279,4 +297,11 @@ export interface RunStats {
   startingWeapon: string;
   /** Optional telemetry rollups for AI decision-state accounting. */
   aiTelemetry?: AIDecisionTelemetryMetrics;
+  /**
+   * Spawner battle-arena rollup captured once at run end. Optional because
+   * pre-existing test fixtures for other metrics (e.g. fun-score, ai-scoring)
+   * construct `RunStats` shapes manually and don't populate it; runHeadless
+   * always sets it.
+   */
+  spawnerArenas?: SpawnerArenaMetrics;
 }

@@ -6,7 +6,7 @@ decisions that affect **2+ systems** require an ADR (see the constitution and
 `.github/copilot-instructions.md`).
 
 - **Template:** `docs/knowledge/adr/TEMPLATE.md`
-- **Count:** 71 ADR files — 66 numbered (0001–0043, with number reuse and gaps in this index — see below) + 5 date-prefixed
+- **Count:** 72 ADR files — 67 numbered (0001–0044, with number reuse and gaps in this index — see below) + 5 date-prefixed
 - **Status convention:** `## Status` heading with one of
   `Proposed | Accepted | Deprecated | Superseded by NNNN`
 
@@ -193,3 +193,5 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0042 | [Durable Player-Hit Signal for Ally-Defend Retaliation](0042-durable-player-hit-signal-for-ally-defend.md)                      | Accepted | 2026-07-03 |
 | 0043 | [Behavior Tree — Build vs. Buy](0043-behavior-tree-build-vs-buy.md)                                                             | Accepted | 2026-06-26 |
 | 0043 | [Asset-request CI Worker Bypass for Constitutional §3](0043-ci-asset-request-worker-bypass.md)                                  | Accepted | 2026-07-03 |
+| 0043 | [Floor 2 Scenario Definition & Governor Sweep Wiring](0043-floor2-scenario-definition-and-governor-sweep-wiring.md)             | Accepted | 2026-07-03 |
+| 0044 | [Spawner Battle Arena](0044-spawner-battle-arena.md)                                                                            | Accepted | 2026-07-04 |

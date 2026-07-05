@@ -16,6 +16,7 @@ import {
   getScenarioDefinition,
   meetTutorialGoon,
   questSystem,
+  spawnerArenaSystem,
   spawnerSystem,
   weaponSystem,
 } from '../game/index.js';
@@ -127,6 +128,13 @@ export function createFloorMainSceneOptions(floorId: string = 'floor1') {
       // runs before all preSystems) so player + enemy speed folds see the same
       // pre-expiry effect set — expiry/HoT then apply before movement/damage/health.
       statusEffectSystem,
+      // spawnerArenaSystem runs IMMEDIATELY BEFORE spawnerSystem so the
+      // spawner ↔ director adjacency (locked by the preSystems contract test
+      // in `tests/game/floor1-main-scene-options.test.ts`) stays intact.
+      // Runs before spawnerSystem so any fence-tile mutation this frame is
+      // visible when spawnerSystem chooses child spawn positions in the same
+      // tick.
+      spawnerArenaSystem,
       // spawnerSystem MUST run before floor1EnemyDirectorSystem in the same frame:
       // the director's countDirectorEnemies/countEngagingEnemies count Spawner-owned
       // children (Enemy without Spawner), so spawning first lets the director cap

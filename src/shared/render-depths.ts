@@ -59,6 +59,16 @@ export const WORLD_VFX_DEPTH = {
   hitSpark: 12,
   /** Spawner pulse burst when a nest/pool emits children (EffectsVfx). */
   spawnerPulse: 14,
+  /**
+   * Spawner battle-arena start/end burst — brighter than the trickle pulse
+   * so the arena trigger reads immediately (EffectsVfx).
+   */
+  spawnerArenaBurst: 16,
+  /**
+   * Persistent fence ring during an open-fence spawner-arena battle. Sits
+   * just below the arena burst so a start pulse reads above the ring.
+   */
+  spawnerArenaFence: 13,
   /** Pickup collect sparkle — gem / gold / item (EffectsVfx). */
   pickupSparkle: 15,
   /** Spell cast VFX (fireball blast, pulse-shield wave, heal glow). Sits above

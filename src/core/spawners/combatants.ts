@@ -151,7 +151,29 @@ export interface SpawnSpawnerOptions {
   spriteHeight?: number;
   /** Extra delay (ms) before the first spawn pulse is allowed. Default 0. */
   initialDelayMs?: number;
+  /**
+   * Battle-arena radius in feet. Defaults to the archetype's `arenaRadiusFt`;
+   * clamped at construction to the {@link SPAWNER_MIN_ARENA_RADIUS_FT} floor.
+   * Callers only need to override for tests/labs — production placement uses
+   * the archetype default so registry data stays the source of truth.
+   */
+  arenaRadiusFt?: number;
 }
+
+/**
+ * Absolute minimum arena radius in feet (spec `Requirements§1`). Any smaller
+ * radius could allow melee-range spawners to skip the fence-materialise
+ * geometry entirely.
+ */
+export const SPAWNER_MIN_ARENA_RADIUS_FT = 4;
+/** Fallback arena radius (spec `Requirements§1`) used when no archetype value. */
+export const SPAWNER_DEFAULT_ARENA_RADIUS_FT = 6;
+/**
+ * Sentinel written into `spawner.arenaKind` at construction. Resolved to
+ * `0` (sealed-room) or `1` (open-fence) by `spawnerArenaSystem` on the first
+ * tick that observes a `floorMap`.
+ */
+export const SPAWNER_ARENA_KIND_UNRESOLVED = 255;
 
 /**
  * Spawn an immobile Spawner enemy — a structure that periodically spits out
@@ -194,6 +216,14 @@ export function spawnSpawner(
       nextSpawnMs: world.elapsedMs + Math.max(0, options.initialDelayMs ?? 0),
       spawnedTotal: 0,
       deathResolved: 0,
+      arenaRadiusFt: Math.max(
+        SPAWNER_MIN_ARENA_RADIUS_FT,
+        options.arenaRadiusFt ?? SPAWNER_DEFAULT_ARENA_RADIUS_FT,
+      ),
+      arenaKind: SPAWNER_ARENA_KIND_UNRESOLVED,
+      arenaState: 0,
+      bankedXp: 0,
+      bankedChildren: 0,
     }),
   );
   if (contactDamage > 0) {

@@ -1,0 +1,192 @@
+/**
+ * HudAnnouncementBanner — top-center HUD widget that drains
+ * `world.announcements` and shows one message at a time with a fade-in/out.
+ *
+ * Visual: a centred pixel-UI panel just below the floor timer, showing the
+ * archetype name + a state-specific verb ("Battle Begins!" / "Cleared!"). It
+ * auto-hides once the message's `durationMs` elapses.
+ *
+ * Rendering is idempotent — every `sync()` reads `world.elapsedMs`, drains any
+ * newly-pushed announcements into an ordered queue, and shows the head. If the
+ * head has expired we advance and reveal the next one, or hide the banner.
+ *
+ * This module has no simulation side-effects (no writes back into `world`),
+ * so headless runs that skip HUD rendering behave identically.
+ */
+import Phaser from 'phaser';
+import type { GameWorld } from '../core/world.js';
+import type { AnnouncementEvent, AnnouncementKind } from '../shared/announcement-events.js';
+import { GAME } from '../shared/constants.js';
+import { PIXEL_UI_DEPTH, createBeveledPanel } from './pixel-ui.js';
+import { applyCrispText } from './ui-scale.js';
+
+/**
+ * Vertical offset from the top of the screen. Sits below the floor timer
+ * (which lives at `TOP_Y = 14` for a 38 px panel, i.e. ~52 px reserved) with
+ * a small buffer so the two never touch.
+ */
+const TOP_Y = 60;
+const CENTER_X = GAME.WIDTH / 2;
+const PANEL_WIDTH = 360;
+const PANEL_HEIGHT = 42;
+
+const COLORS = {
+  start: '#f5f5f5',
+  end: '#a7f3d0',
+  fallback: '#e5e7eb',
+} as const;
+
+/** How many still-live announcements we render sequentially. Excess is dropped. */
+const MAX_QUEUE = 16;
+/** Fade-in / fade-out duration on either edge of an announcement. */
+const FADE_MS = 220;
+
+function verbForKind(kind: AnnouncementKind): string {
+  switch (kind) {
+    case 'spawnerArenaStart':
+      return 'Battle Begins!';
+    case 'spawnerArenaEnd':
+      return 'Cleared!';
+    default: {
+      const unreachable: never = kind;
+      throw new Error(`Unhandled announcement kind: ${String(unreachable)}`);
+    }
+  }
+}
+
+function colorForKind(kind: AnnouncementKind): string {
+  switch (kind) {
+    case 'spawnerArenaStart':
+      return COLORS.start;
+    case 'spawnerArenaEnd':
+      return COLORS.end;
+    default:
+      return COLORS.fallback;
+  }
+}
+
+export function createHudAnnouncementBanner(
+  scene: Phaser.Scene,
+  options: { parent?: Phaser.GameObjects.Container } = {},
+): {
+  sync(world: GameWorld): void;
+  destroy(): void;
+} {
+  const outerParent = options.parent;
+  // Wrap the panel + text in a container so we can fade both together via a
+  // single alpha tween. `BeveledPanel` is a factory return type, not a
+  // GameObject, so its `.setAlpha` isn't exposed — the container lets us
+  // control opacity without leaking into the panel API.
+  const wrapper = scene.add.container(0, 0).setScrollFactor(0).setDepth(PIXEL_UI_DEPTH.panel);
+  outerParent?.add(wrapper);
+
+  const panel = createBeveledPanel(
+    scene,
+    CENTER_X - PANEL_WIDTH / 2,
+    TOP_Y,
+    PANEL_WIDTH,
+    PANEL_HEIGHT,
+    { parent: wrapper },
+  );
+
+  const text = scene.add
+    .text(CENTER_X, TOP_Y + PANEL_HEIGHT / 2, '', {
+      fontFamily: 'monospace',
+      fontSize: '18px',
+      color: COLORS.fallback,
+      stroke: '#02040a',
+      strokeThickness: 3,
+      align: 'center',
+    })
+    .setOrigin(0.5, 0.5)
+    .setScrollFactor(0)
+    .setDepth(PIXEL_UI_DEPTH.content);
+  wrapper.add(text);
+  const detachCrispText = applyCrispText(scene, [text]);
+
+  // Hidden by default — banner only appears when an announcement is live.
+  wrapper.setAlpha(0);
+
+  /**
+   * Queue of announcements we've observed but not yet finished rendering. We
+   * copy events out of `world.announcements` into this local queue so replays
+   * (e.g. lab scene resets) can drain without disturbing the ECS-owned queue.
+   */
+  const queue: AnnouncementEvent[] = [];
+  // The last elapsedMs we processed a drain at — used to filter out events we
+  // already copied, since `world.announcements` is a persistent queue.
+  let lastDrainedElapsedMs = -1;
+  let activeTween: Phaser.Tweens.Tween | undefined;
+  let hidden = true;
+  // Track which announcement is currently on-screen so we correctly cross-fade
+  // to the next one when the head advances mid-lifetime.
+  let currentEvent: AnnouncementEvent | undefined;
+
+  function drainWorldAnnouncements(world: GameWorld): void {
+    for (const event of world.announcements) {
+      if (event.elapsedMs <= lastDrainedElapsedMs) continue;
+      queue.push(event);
+    }
+    lastDrainedElapsedMs = world.elapsedMs;
+    if (queue.length > MAX_QUEUE) {
+      queue.splice(0, queue.length - MAX_QUEUE);
+    }
+  }
+
+  function show(event: AnnouncementEvent): void {
+    const label = event.displayName ?? 'Spawner';
+    text.setText(`${label} — ${verbForKind(event.kind)}`);
+    text.setColor(colorForKind(event.kind));
+    activeTween?.remove();
+    activeTween = scene.tweens.add({
+      targets: wrapper,
+      alpha: { from: hidden ? 0 : 1, to: 1 },
+      duration: FADE_MS,
+      ease: 'Cubic.easeOut',
+    });
+    hidden = false;
+    currentEvent = event;
+  }
+
+  function hide(): void {
+    if (hidden) return;
+    activeTween?.remove();
+    activeTween = scene.tweens.add({
+      targets: wrapper,
+      alpha: { from: 1, to: 0 },
+      duration: FADE_MS,
+      ease: 'Cubic.easeIn',
+    });
+    hidden = true;
+    currentEvent = undefined;
+  }
+
+  function sync(world: GameWorld): void {
+    drainWorldAnnouncements(world);
+    // Drop expired heads until we find one still in its lifespan.
+    while (queue.length > 0) {
+      const head = queue[0]!;
+      const expiresAt = head.elapsedMs + head.durationMs;
+      if (world.elapsedMs <= expiresAt) break;
+      queue.shift();
+    }
+    if (queue.length === 0) {
+      hide();
+      return;
+    }
+    const head = queue[0]!;
+    if (currentEvent !== head) {
+      show(head);
+    }
+  }
+
+  function destroy(): void {
+    detachCrispText();
+    activeTween?.remove();
+    text.destroy();
+    panel.destroy();
+    wrapper.destroy();
+  }
+
+  return { sync, destroy };
+}
