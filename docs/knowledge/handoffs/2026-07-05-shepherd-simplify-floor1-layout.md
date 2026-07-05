@@ -77,6 +77,28 @@ re-ran the Headless Floor 1 Gate to confirm the win-rate holds (no seed bending,
 rule #13). A `code-review` subagent pass was run on the diff as a proportionate
 quality gate for the grown scope.
 
+### Phase 3 — second bot-rebase review pass + apple calibration fix
+
+A further `rebase-prs` rebase re-ran Copilot review and posted **2 more threads**;
+both addressed and owner-resolved:
+
+- **Apple calibration bug (real):** the apple JSON had `hello_kitties: 0.1`, but
+  the canonical formula (`apple-calibration-lib.ts:127`) is
+  `hello_kitties = actual_apples / 5`; with `actual_apples: 3` the correct value
+  is `0.6` (matches sibling `actual=3` apple files). Corrected in `1a1b12f7`.
+- **PR-description scope (re-quote):** the reviewer re-flagged the "only quest NPC
+  positioning" framing from the pre-rewrite description. Already handled — the
+  description now discloses the full combat-AI scope and the cross-system ADR
+  documents it; replied to that effect and resolved.
+
+Full-suite `test:unit` was green both with (3770) and without (3767) the Phase 2
+changes, and the 2 modified test files pass alongside the sidecar/floor2 tests
+that flaked once in an early `VERIFY_FULL` run — confirming that flake was a
+one-off (network/env-timing-sensitive sidecar tests), not a regression. The
+branch was reconciled twice against bot rebases via
+`reset --hard origin/<branch>` + cherry-pick/stash-pop (origin is the
+authoritative rebased superset; the Phase 2 diff re-applies by context).
+
 ## Key Decisions Made
 
 - Fixed the test around the requirement (readonly objective positions) rather
