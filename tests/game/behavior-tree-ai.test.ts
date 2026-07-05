@@ -747,7 +747,7 @@ describe('BehaviorTreeAI', () => {
       expect(fused).toBeTruthy();
     });
 
-    it('prefers overlap seams across enemy danger fields', () => {
+    it('prefers lower-danger arc through overlapping enemy threat fields', () => {
       const world = createTestWorld({ seed: 42 });
       world.floorMap = makeOpenRoom(24, 24);
       spawnPlayer(world, 20, 20);
@@ -785,15 +785,16 @@ describe('BehaviorTreeAI', () => {
       expect(oneBlob.moveX).toBeGreaterThan(0);
       expect(Math.abs(oneBlob.moveY)).toBeGreaterThan(0.02);
 
-      // Mirroring that blob creates an overlap valley between both fields; the
-      // fused scorer should travel closer to that seam (smaller lateral deflection).
+      // Mirroring that blob creates symmetric overlapping fields; the scorer must
+      // pick the candidate arc with the lowest sampled danger (not the centerline
+      // which cuts straight through the overlap at maximum density).
       spawnEnemy(world, 28, 17, 20);
-      const seam = harness.computeRiskRewardFusedHeading(world, 20, 20, 1, 0, {
+      const bestArc = harness.computeRiskRewardFusedHeading(world, 20, 20, 1, 0, {
         dodgeWeight: 0,
         collectPullWeight: 0,
         farmPullWeight: 0,
       });
-      expect(seam.moveX).toBeGreaterThan(0);
+      expect(bestArc.moveX).toBeGreaterThan(0);
       const sampleDanger = (dirX: number, dirY: number): number => {
         const sampleX = 20 + dirX * 8;
         const sampleY = 20 + dirY * 8;
@@ -809,9 +810,38 @@ describe('BehaviorTreeAI', () => {
         }
         return danger;
       };
-      // The mirrored overlap case should pick a heading that samples less danger
-      // than blindly marching straight down the objective centerline.
-      expect(sampleDanger(seam.moveX, seam.moveY)).toBeLessThan(sampleDanger(1, 0));
+      // The arc the scorer picks must expose it to less danger than straight ahead.
+      expect(sampleDanger(bestArc.moveX, bestArc.moveY)).toBeLessThan(sampleDanger(1, 0));
+    });
+
+    it('poll() produces a different heading in FUSED mode vs LEGACY when threats are present', () => {
+      const world = createTestWorld({ seed: 99 });
+      world.floorMap = makeOpenRoom(24, 24);
+      spawnPlayer(world, 20, 20);
+      // Place an enemy off-center so FUSED can steer around it
+      spawnEnemy(world, 28, 24, 20);
+
+      const legacy = new BehaviorTreeAI({ seed: 99, pathingMode: AIPathingMode.LEGACY });
+      const fused = new BehaviorTreeAI({ seed: 99, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
+
+      const stateL = { moveX: 0, moveY: 0 };
+      const stateF = { moveX: 0, moveY: 0 };
+      legacy.poll(stateL, world);
+      fused.poll(stateF, world);
+
+      // Both modes must produce a valid heading (non-zero and normalised ≤1)
+      const magL = Math.hypot(stateL.moveX, stateL.moveY);
+      const magF = Math.hypot(stateF.moveX, stateF.moveY);
+      expect(magL).toBeGreaterThan(0);
+      expect(magF).toBeGreaterThan(0);
+      expect(magL).toBeLessThanOrEqual(1.01);
+      expect(magF).toBeLessThanOrEqual(1.01);
+
+      // FUSED must produce a measurably different heading from LEGACY
+      // (the danger field steers it away from the off-center threat)
+      const headingDiff =
+        Math.abs(stateL.moveX - stateF.moveX) + Math.abs(stateL.moveY - stateF.moveY);
+      expect(headingDiff).toBeGreaterThan(0.01);
     });
   });
 
