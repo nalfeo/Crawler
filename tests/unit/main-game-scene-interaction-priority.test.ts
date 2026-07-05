@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { findNearestNearbyNpc } from '../../src/engine/scenes/main-game-scene-helpers.js';
 
 describe('MainGameScene NPC interaction priority', () => {
   it('chooses the nearest nearby NPC when several are in range', () => {
-    const source = readFileSync('src/engine/scenes/MainGameScene.ts', 'utf-8');
+    const nearNpcEid = findNearestNearbyNpc(10, 10, [
+      { eid: 11, x: 18, y: 10, nearbyPlayer: true },
+      { eid: 12, x: 13, y: 10, nearbyPlayer: true },
+      { eid: 13, x: 11, y: 10, nearbyPlayer: false },
+    ]);
 
-    expect(source).toContain('let nearNpcDistanceSq = Number.POSITIVE_INFINITY;');
-    expect(source).toContain('const distanceSq = dx * dx + dy * dy;');
-    expect(source).toContain('if (distanceSq < nearNpcDistanceSq) {');
-    expect(source).toContain('nearNpcDistanceSq = distanceSq;');
+    expect(nearNpcEid).toBe(12);
   });
 });

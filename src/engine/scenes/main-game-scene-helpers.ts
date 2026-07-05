@@ -130,6 +130,36 @@ export function formatAbilityTrigger(abilityId: string): string {
   return triggerText.get(abilityId) ?? 'Auto trigger';
 }
 
+export interface NearbyNpcCandidate {
+  readonly eid: number;
+  readonly x: number;
+  readonly y: number;
+  readonly nearbyPlayer: boolean;
+}
+
+/** Pick the nearest NPC whose nearbyPlayer flag is set, or -1 when none qualify. */
+export function findNearestNearbyNpc(
+  playerX: number,
+  playerY: number,
+  candidates: readonly NearbyNpcCandidate[],
+): number {
+  let nearNpcEid = -1;
+  let nearNpcDistanceSq = Number.POSITIVE_INFINITY;
+  for (const candidate of candidates) {
+    if (!candidate.nearbyPlayer) {
+      continue;
+    }
+    const dx = playerX - candidate.x;
+    const dy = playerY - candidate.y;
+    const distanceSq = dx * dx + dy * dy;
+    if (distanceSq < nearNpcDistanceSq) {
+      nearNpcDistanceSq = distanceSq;
+      nearNpcEid = candidate.eid;
+    }
+  }
+  return nearNpcEid;
+}
+
 /** Shopkeeper controller fields the dialogue resolver reads (subset of scene options). */
 interface DialogueShopkeeperController {
   isLocked?: (world: GameWorld) => boolean;

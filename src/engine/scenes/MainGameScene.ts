@@ -36,6 +36,7 @@ import { createPhaserBridge } from '../PhaserBridge.js';
 import { runSimulationStep } from '../sim/simulation-step.js';
 import {
   areLightingRectsEqual,
+  findNearestNearbyNpc,
   formatAbilityTrigger,
   getFloorRunOutcome,
   getLightingViewRect,
@@ -2428,21 +2429,16 @@ export class MainGameScene extends Phaser.Scene {
 
     // Find the nearest NPC with nearbyPlayer flag set so shared-room hubs remain
     // selectable when several NPCs are in interaction range at once.
-    let nearNpcEid = -1;
-    let nearNpcDistanceSq = Number.POSITIVE_INFINITY;
-    for (const [eid, instance] of this.world.npcs.entries()) {
-      if (instance.nearbyPlayer) {
-        const npcX = this.world.stores.position.x[eid] ?? 0;
-        const npcY = this.world.stores.position.y[eid] ?? 0;
-        const dx = playerX - npcX;
-        const dy = playerY - npcY;
-        const distanceSq = dx * dx + dy * dy;
-        if (distanceSq < nearNpcDistanceSq) {
-          nearNpcDistanceSq = distanceSq;
-          nearNpcEid = eid;
-        }
-      }
-    }
+    const nearNpcEid = findNearestNearbyNpc(
+      playerX,
+      playerY,
+      Array.from(this.world.npcs.entries(), ([eid, instance]) => ({
+        eid,
+        x: this.world.stores.position.x[eid] ?? 0,
+        y: this.world.stores.position.y[eid] ?? 0,
+        nearbyPlayer: instance.nearbyPlayer,
+      })),
+    );
 
     // Active conversation: game is frozen until the player advances/closes dialogue.
     if (this.conversationNpcEid !== null) {
