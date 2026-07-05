@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-05",
+  "session_slug": "enemy-sprite-flip-inversion",
+  "task_title": "Flip enemy sprites for right-facing source art (face left at rest)",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "notes": "gpt-5.4 rubber-duck verdict approved_with_changes; all 3 non-blocking concerns adopted: (1) added explicit epsilon-magnitude boundary assertion (encodes true Float32 rounding -> flips at stored 0.001, pins threshold); (2) removed incidental flipX assertion from corpse-shatter scale test to de-brittle it (facing owned by dedicated test); (3) reworded PhaserBridge comment as engine-wide art-orientation assumption, not blind one-line invert."
+    }
+  }
+}
