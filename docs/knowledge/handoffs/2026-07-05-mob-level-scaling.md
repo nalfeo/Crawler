@@ -14,14 +14,14 @@ spawning, combat-balance
 ## What was done
 
 - **`src/shared/mob-scaling.ts`** (new) — pure `computeMobLevelScale(distFt)`
-  returning `{hpMult, speedMult}`. Linear ramp from 1.0× at spawn to 2.0× HP /
-  1.15× speed at ≥250 ft. No RNG, fully deterministic.
+  returning `{hpMult, speedMult}`. Linear ramp from 1.0× at spawn to 1.5× HP /
+  1.1× speed at ≥250 ft. No RNG, fully deterministic.
 - **`src/game/floorScenario.ts`** — `spawnAmbientArchetype` now computes the
   Euclidean distance from `world.floorMap.playerSpawn` to the spawn position and
   applies the scale before calling `spawnBehaviorEnemy`. Room wave spawns via
   `prepopulateEnteredRoom` inherit this automatically (they call
   `spawnAmbientArchetype`).
-- **`tests/unit/mob-scaling.test.ts`** (new) — 7 unit tests covering boundary
+- **`tests/unit/mob-scaling.test.ts`** (new) — 8 unit tests covering boundary
   clamping, midpoint linearity, monotonicity, and ceiling enforcement.
 
 ## Verification
@@ -32,9 +32,9 @@ spawning, combat-balance
 ## Design notes
 
 - `MOB_SCALING_REFERENCE_DIST_FT = 250` — at this distance multipliers peak. Most
-  of the floor sits within 150–250 ft of spawn, so a typical run sees 1.0–2.0×.
-- HP 2.0× max keeps mobs dangerous-feeling without being unkillable.
-- Speed 1.15× max is intentionally small — faster enemies disproportionately
+  of the floor sits within 150–250 ft of spawn, so a typical run sees 1.0–1.5×.
+- HP 1.5× max keeps mobs dangerous-feeling without being unkillable.
+- Speed 1.1× max is intentionally small — faster enemies disproportionately
   increase difficulty.
 - The headless Floor-1 win-rate gate (CI) will catch any regression if the
   constants need to be tuned down.
