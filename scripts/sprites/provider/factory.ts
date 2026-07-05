@@ -6,12 +6,15 @@
  * codebase, and to give tests a clean construct-from-options path that
  * bypasses env entirely.
  *
- * Currently supports two backends: `azure-openai` (default, direct Azure
- * OpenAI resource) and `foundry` (Azure AI Foundry unified inference; ADR
- * 0033). Both speak the same OpenAI-compatible REST surface, so the provider
- * classes are shared — the factory just feeds them different env. Switch on
- * `SPRITES_PROVIDER` / `SPRITES_TEXT_PROVIDER` / `SPRITES_VISION_PROVIDER` /
- * `SPRITES_SYNTH_PROVIDER` here.
+ * Supports three backends for image generation:
+ * - `azure-openai` (default, direct Azure OpenAI resource)
+ * - `foundry` (Azure AI Foundry unified inference; ADR 0033)
+ * - `local-a1111` (local Stable Diffusion WebUI A1111/Forge fork)
+ *
+ * Azure backends speak the same OpenAI-compatible REST surface, so the classes
+ * are shared — the factory just feeds them different env. Local A1111 is a
+ * separate provider. Switch on `SPRITES_PROVIDER` / `SPRITES_TEXT_PROVIDER` /
+ * `SPRITES_VISION_PROVIDER` / `SPRITES_SYNTH_PROVIDER` here.
  */
 
 import { AzureOpenAIImageProvider } from './azure-openai.js';
@@ -19,6 +22,7 @@ import { AzureOpenAIChatProvider } from './azure-chat.js';
 import { AzureOpenAIBriefSelectorProvider } from './azure-chat-brief-selector.js';
 import { AzureOpenAISynthProvider } from './azure-chat-synth.js';
 import { AzureOpenAIVisionProvider } from './azure-vision.js';
+import { LocalA1111ImageProvider } from './local-a1111.js';
 import { resolveProviderTimeoutMs } from './fetch-timeout.js';
 import type { ImageProvider } from './types.js';
 import type { BriefSelectorProvider } from './brief-selector-types.js';
@@ -57,12 +61,11 @@ export const DEFAULT_AZURE_DEPLOYMENT = 'gpt-image-1';
 /**
  * Supported content-generation backends (ADR 0033). `azure-openai` hits a
  * direct Azure OpenAI resource; `foundry` hits an Azure AI Foundry unified
- * inference endpoint. Both speak the same OpenAI-compatible REST surface, so
- * the only differences are endpoint, model name, key, and api-version — the
- * provider classes are identical. `azure-openai` stays the default; `foundry`
- * is opt-in and reads its own `FOUNDRY_*` env vars.
+ * inference endpoint; `local-a1111` hits a local Stable Diffusion WebUI.
+ * Azure backends speak the same OpenAI-compatible REST surface. `azure-openai`
+ * stays the default; `foundry` and `local-a1111` are opt-in via env.
  */
-const SUPPORTED_BACKENDS = ['azure-openai', 'foundry'] as const;
+const SUPPORTED_BACKENDS = ['azure-openai', 'foundry', 'local-a1111'] as const;
 type Backend = (typeof SUPPORTED_BACKENDS)[number];
 
 function resolveBackend(value: string | undefined, varName: string): Backend {
@@ -143,6 +146,9 @@ export function createImageProvider(options: CreateProviderOptions = {}): ImageP
 
   if (which === 'foundry') {
     return createFoundryImageProvider(env, options.fetch);
+  }
+  if (which === 'local-a1111') {
+    return createLocalA1111ImageProvider(env, options.fetch);
   }
   return createAzureProvider(env, options.fetch);
 }
@@ -233,6 +239,30 @@ function createFoundryImageProvider(
     apiKey: conn.apiKey,
     apiVersion: conn.apiVersion,
     timeoutMs: resolveProviderTimeoutMs(env),
+    ...(fetchImpl ? { fetch: fetchImpl } : {}),
+  });
+}
+
+function createLocalA1111ImageProvider(
+  env: Readonly<Record<string, string | undefined>>,
+  fetchImpl?: typeof fetch,
+): ImageProvider {
+  const endpoint = env.LOCAL_A1111_ENDPOINT ?? 'http://localhost:7860';
+  const model = required(env, 'LOCAL_A1111_MODEL');
+  const steps = env.LOCAL_A1111_STEPS ? parseInt(env.LOCAL_A1111_STEPS, 10) : undefined;
+  const cfgScale = env.LOCAL_A1111_CFG_SCALE ? parseFloat(env.LOCAL_A1111_CFG_SCALE) : undefined;
+  const sampler = env.LOCAL_A1111_SAMPLER;
+  const seed = env.LOCAL_A1111_SEED ? parseInt(env.LOCAL_A1111_SEED, 10) : undefined;
+  const negativPrompt = env.LOCAL_A1111_NEGATIVE_PROMPT;
+  return new LocalA1111ImageProvider({
+    endpoint,
+    model,
+    timeoutMs: resolveProviderTimeoutMs(env),
+    steps,
+    cfgScale,
+    sampler,
+    seed,
+    negativPrompt,
     ...(fetchImpl ? { fetch: fetchImpl } : {}),
   });
 }

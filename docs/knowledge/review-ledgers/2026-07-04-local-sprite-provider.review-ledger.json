@@ -1,0 +1,17 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-04",
+  "session_slug": "local-sprite-provider",
+  "task_title": "Local A1111 sprite provider for icons/props",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "notes": "Adopted all review concerns: added singleVariantPrompt contract, provider capabilities for no-reference backends, local-a1111 type guard (weapon/item/tile/vfx only), deterministic guttered sheet assembly for slicer compatibility, model override_settings wiring, and integration coverage for reference-skip + sliceability.",
+      "clean": false
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "date": "2026-07-04",
+  "session": "local-sprite-provider",
+  "estimated_apples": 2,
+  "actual_apples": 2,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.4,
+  "notes": "Added a local A1111/Forge sprite provider for offline item/weapon/tile/VFX generation, wired factory/orchestrator capability handling, added integration coverage, and documented the session with a valid 2-apple review ledger and handoff."
+}

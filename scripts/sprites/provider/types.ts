@@ -21,6 +21,12 @@ import type { Brief } from '../brief-schema.js';
 export interface GenerateSheetRequest {
   readonly brief: Brief;
   readonly prompt: string;
+  /**
+   * Optional single-cell prompt for providers that cannot generate a whole
+   * multi-variant sheet in one call (for example local txt2img backends).
+   * When present, providers should prefer this over the sheet-level prompt.
+   */
+  readonly singleVariantPrompt?: string;
   readonly referencePngs: ReadonlyArray<Buffer>;
   /**
    * Number of variants the model is asked to produce on the sheet.
@@ -74,5 +80,16 @@ export class ProviderError extends Error {
  *   decide intelligently.
  */
 export interface ImageProvider {
+  /**
+   * Optional provider capabilities used by orchestrators to adapt behaviour
+   * without backend-specific type checks.
+   */
+  readonly capabilities?: {
+    /**
+     * Whether this provider can consume `referencePngs` directly.
+     * Defaults to true when omitted.
+     */
+    readonly referenceImages?: boolean;
+  };
   generateSheet(request: GenerateSheetRequest): Promise<Buffer>;
 }
