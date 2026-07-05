@@ -63,7 +63,7 @@ Door locking uses the existing `setDoorLockConfig` protocol with a goal-flag pre
 The intercept lives in `dropSystem`. The RNG order is preserved by calling `rollLootTable` once regardless of ownership; the intercept fires **after** the roll, walks the returned drops, sums the XP-type entries, and:
 
 - If the owner is a live `Spawner` and `bankedChildren < 10`: adds the sum to `spawner.bankedXp[ownerEid]`, increments `bankedChildren`, and passes `interceptSpawnerOwnedXp=true` to `spawnDrops` (which still consumes the per-gem scatter RNG but skips `spawnXpGem`). Non-XP drops (gold, items) still spawn.
-- If `bankedChildren === 10`: the intercept falls through — the 11th and later kills roll normally and their XP gems spawn on the map. This is intentional: the cap matches the user's literal "up to 10" wording, and letting subsequent kills spawn XP prevents the pool from being weaponised as an infinite-XP farm.
+- If `bankedChildren === 10` (cap reached): banking stops, but `interceptSpawnerOwnedXp=true` is **still** passed to `spawnDrops`, so the 11th and later owned kills also spawn no on-map XP gem. This honours requirement 4 literally — "mobs spawned by spawners do NOT drop experience" — for **every** owned kill. The 10× cap is purely an anti-farm bound on the banked finale reward; it is **not** a re-enable of on-map XP drops (an earlier draft let post-cap kills drop XP, which diverged from the verbatim requirement — corrected per rule 12). Gold/items from owned kills still drop.
 
 The XP unit is empirical: it's whatever `rollLootTable` would have produced, so the pool self-anchors to whatever loot table the child is on. This avoids a hardcoded XP number that would drift as loot tables tune.
 

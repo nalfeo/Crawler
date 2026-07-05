@@ -374,14 +374,15 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
         tables.floorTable,
       );
       const drops = rollLootTable(entries, world.rng);
-      // Spawner-arena XP intercept (spec `Requirements§5,7`): if this enemy is
-      // a spawner-owned child, its XP portion is banked on the owning spawner
-      // instead of spawning as an on-map XP gem. The first
-      // SPAWNER_MAX_BANKED_CHILDREN kills contribute; further kills roll
-      // normally (their drops still gate on `allowFloorDrops`/`allowEnemyDrops`,
-      // matching the un-owned path). We do the intercept AFTER `rollLootTable`
-      // so the RNG stream stays exactly the same as it would in the un-owned
-      // case — only the destination of the XP entries changes.
+      // Spawner-arena XP intercept (spec `Requirements§4,5,7`): a spawner-owned
+      // child NEVER drops an on-map XP gem (requirement 4 — "mobs spawned by
+      // spawners do NOT drop experience"). Its XP portion is instead banked on
+      // the owning spawner and awarded once when the arena resolves. The
+      // banking is capped at SPAWNER_MAX_BANKED_CHILDREN kills (anti-farm), but
+      // that cap ONLY limits how much XP is banked — it does NOT re-enable
+      // on-map XP drops for the 11th+ kill. We do the intercept AFTER
+      // `rollLootTable` so the RNG stream stays exactly the same as it would in
+      // the un-owned case — only the destination of the XP entries changes.
       const ownerEid = hasComponent(world.ecs, eid, Owner)
         ? (world.stores.owner.eid[eid] ?? -1)
         : -1;
@@ -391,7 +392,9 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
         // XP gems. Otherwise the spawner would grant XP that its children
         // couldn't — violating the user's verbatim spec ("equal to the amount
         // that would have dropped from killing the number of spawned mobs")
-        // and bypassing Floor-1 onboarding drop gates.
+        // and bypassing Floor-1 onboarding drop gates. This gate controls only
+        // the banked reward; the on-map XP gem is suppressed unconditionally
+        // below so requirement 4 holds for every owned kill.
         const dropsAllowed = allowFloorDrops && allowEnemyDrops;
         if (dropsAllowed && bankedChildren < SPAWNER_MAX_BANKED_CHILDREN) {
           let intercepted = 0;
@@ -416,10 +419,13 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
               bankedChildren: world.stores.spawner.bankedChildren[ownerEid],
             });
           }
-          spawnDrops(world, x, y, drops, allowFloorDrops && allowEnemyDrops, true);
-        } else {
-          spawnDrops(world, x, y, drops, allowFloorDrops && allowEnemyDrops, false);
         }
+        // Requirement 4: suppress the on-map XP gem for EVERY spawner-owned
+        // child, whether or not it was banked (beyond the cap or drop-gated).
+        // Gold/items still drop normally inside spawnDrops when drops are
+        // allowed; only the XP gem is intercepted. RNG-neutral: spawnDrops
+        // always consumes its scatter rolls regardless of the intercept flag.
+        spawnDrops(world, x, y, drops, allowFloorDrops && allowEnemyDrops, true);
       } else {
         spawnDrops(world, x, y, drops, allowFloorDrops && allowEnemyDrops, false);
       }

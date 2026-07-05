@@ -393,9 +393,12 @@ export function spawnerArenaSystem(world: GameWorld): void {
     }
 
     // Still locked, no death yet — periodically refresh the fence VFX so a
-    // late-mounted renderer can pick up the persistent ring. Cheap: at 25 Hz
-    // fixed step this pushes ~2-3 events per second. The event queue is
-    // drained each frame by the renderer, so no leak in headless either.
+    // late-mounted renderer can pick up the persistent ring. At the 60 Hz fixed
+    // step (`GAME.DELTA_MS = 1000/60` ≈ 16.67 ms) the `< 40` window below is
+    // satisfied on ~3 consecutive ticks each FENCE_VFX_REFRESH_MS (400 ms)
+    // cycle — a small burst, not a steady stream. In headless there is no
+    // renderer to drain `world.vfxEvents`; unbounded growth is instead bounded
+    // by `pushVfxEvent`'s VFX_EVENT_CAP, which evicts the oldest events.
     if (
       (arenaKind === 1 || arenaKind === ARENA_KIND_UNRESOLVED) &&
       world.elapsedMs % FENCE_VFX_REFRESH_MS < 40

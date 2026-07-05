@@ -4,9 +4,9 @@
  * Guarantees:
  *   1. When a spawner-owned enemy dies, no XpGem entity is spawned but the
  *      owning spawner's `bankedXp` grows by the same amount.
- *   2. Once `bankedChildren` hits `SPAWNER_MAX_BANKED_CHILDREN` (10), further
- *      spawner-owned kills roll normally — XP gems appear again and the bank
- *      stops growing.
+ *   2. Requirement 4 — a spawner-owned child NEVER drops an on-map XP gem, even
+ *      beyond `SPAWNER_MAX_BANKED_CHILDREN` (10). Past the cap the bank stops
+ *      growing (anti-farm), but the child's XP gem stays suppressed.
  *   3. Non-owned enemy kills follow the normal path: XpGem entities are
  *      spawned and no spawner bank is touched.
  */
@@ -72,7 +72,7 @@ describe('dropSystem — spawner-owned XP intercept', () => {
     expect(xpGemCount(world)).toBeGreaterThan(before);
   });
 
-  it('stops banking once SPAWNER_MAX_BANKED_CHILDREN intercepts are reached', () => {
+  it('caps banking at SPAWNER_MAX_BANKED_CHILDREN but keeps XP suppressed beyond the cap', () => {
     const { world, spawnerEid } = makeSpawnerFixture();
     // First 10 kills: banked, no XpGem.
     for (let i = 0; i < SPAWNER_MAX_BANKED_CHILDREN; i += 1) {
@@ -85,15 +85,22 @@ describe('dropSystem — spawner-owned XP intercept', () => {
     const bankedAtCap = world.stores.spawner.bankedXp[spawnerEid] ?? 0;
     expect(bankedAtCap).toBeGreaterThan(0);
     const gemsAtCap = xpGemCount(world);
+    // No owned kill ever produced an on-map XP gem, even the banked ones.
+    expect(gemsAtCap).toBe(0);
 
-    // 11th kill: bank should NOT grow further, and XpGems should appear.
-    world.frameCount += 1;
-    killOwnedChild(world, spawnerEid, 200, 200);
-    dropSystem(world);
+    // Kills 11–15 (beyond the cap): the bank must NOT grow, and — per
+    // requirement 4 — NO XP gems may appear. The cap only limits banked XP,
+    // it must never re-enable on-map XP drops for spawner-owned children.
+    for (let i = 0; i < 5; i += 1) {
+      world.frameCount += 1;
+      killOwnedChild(world, spawnerEid, 200 + i, 200);
+      dropSystem(world);
+    }
     expect(world.stores.spawner.bankedChildren[spawnerEid] ?? 0).toBe(SPAWNER_MAX_BANKED_CHILDREN);
     expect(world.stores.spawner.bankedXp[spawnerEid] ?? 0).toBe(bankedAtCap);
-    // At least one XP gem spawned from the 11th kill.
-    expect(xpGemCount(world)).toBeGreaterThan(gemsAtCap);
+    // Requirement 4: zero XP gems from any spawner-owned kill, cap or no cap.
+    expect(xpGemCount(world)).toBe(gemsAtCap);
+    expect(xpGemCount(world)).toBe(0);
   });
 
   it('does not touch the bank when the owner is not a Spawner', () => {

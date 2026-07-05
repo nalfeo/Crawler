@@ -16,6 +16,8 @@ import { Health, Spawner, XpGem } from '../../src/core/components.js';
 import { spawnPlayer, spawnSpawner } from '../../src/core/helpers.js';
 import {
   SPAWNER_MAX_BANKED_CHILDREN,
+  FENCE_TILE_FLAGS,
+  assertFenceBlocks,
   isArenaTriggered,
   discFitsInRoom,
   collectFenceRingTiles,
@@ -28,7 +30,13 @@ import { makeMapWithSafeRoom } from '../helpers/map-fixtures.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
-import { BiomeType, RoomRole, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
+import {
+  BiomeType,
+  RoomRole,
+  TilePresets,
+  TileFlags,
+  type MapConfig,
+} from '../../src/shared/map-types.js';
 
 const RATS_NEST_INDEX = getSpawnerArchetypeIndex('rats-nest');
 const RATS_NEST = getSpawnerArchetype('rats-nest')!;
@@ -281,6 +289,22 @@ describe('banked XP cap', () => {
     // The dropSystem test covers real intercept flow; here we assert the cap
     // constant is exported and matches the spec ("up to 10 children").
     expect(SPAWNER_MAX_BANKED_CHILDREN).toBe(10);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fence tile-flag invariant
+// ---------------------------------------------------------------------------
+
+describe('FENCE_TILE_FLAGS invariant', () => {
+  it('assertFenceBlocks passes because PASSABLE is cleared', () => {
+    // Wires the otherwise-orphan runtime guard into a deterministic CI check:
+    // if a future edit re-adds PASSABLE to FENCE_TILE_FLAGS the fence would no
+    // longer block movement/projectiles, and this assertion fails loudly.
+    expect(() => assertFenceBlocks()).not.toThrow();
+    expect(FENCE_TILE_FLAGS & TileFlags.PASSABLE).toBe(0);
+    // TRANSPARENT stays set so FOV rays still pass through the shimmer.
+    expect(FENCE_TILE_FLAGS & TileFlags.TRANSPARENT).toBe(TileFlags.TRANSPARENT);
   });
 });
 
