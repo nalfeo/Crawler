@@ -82,6 +82,7 @@ interface AiRunnerLabState {
     pathingMode: AIPathingModeValue;
     visualRiskRewardFields: boolean;
     threatPreviewFrames: number;
+    autoPauseOnDamage: boolean;
   };
 }
 
@@ -92,6 +93,7 @@ interface AiRunnerLabState {
  * of the same seed. Debug-only; lab scope, never shipped to the game build.
  */
 export interface AiRunnerDebugSnapshot {
+  frame: number | null;
   polls: number;
   paused: boolean;
   /** True when a human has taken over input from the AI runner. */
@@ -226,6 +228,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     pathingMode: (persisted?.aiConfig?.pathingMode ?? AIPathingMode.LEGACY) as AIPathingModeValue,
     visualRiskRewardFields: persisted?.aiConfig?.visualRiskRewardFields ?? false,
     threatPreviewFrames: persisted?.aiConfig?.threatPreviewFrames ?? 0,
+    autoPauseOnDamage: persisted?.aiConfig?.autoPauseOnDamage ?? false,
   };
 
   let ai = new BehaviorTreeAI({
@@ -240,6 +243,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   let manualControl = false;
   let hardwareInput: ReturnType<typeof createInputCapture> | null = null;
   let pollCount = 0;
+  let lastObservedPlayerHealth: number | null = null;
   let pendingGearPreviewTicks = 0;
   let pendingGearEquipPreview = false;
   const lastMove = { x: 0, y: 0, action: false };
@@ -277,6 +281,25 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       const scene = game.scene.getScene('MainGameScene') as unknown as RunnerSceneInternals | null;
       if (scene?.world) {
         const world = scene.world as GameWorld;
+        const playerEid = scene.playerEid;
+        const playerHealth =
+          typeof playerEid === 'number' && playerEid >= 0
+            ? (world.stores.health.current[playerEid] ?? null)
+            : null;
+        if (
+          aiConfig.autoPauseOnDamage &&
+          !manualControl &&
+          !isPaused &&
+          playerHealth !== null &&
+          lastObservedPlayerHealth !== null &&
+          playerHealth < lastObservedPlayerHealth
+        ) {
+          isPaused = true;
+          lastStepReason = 'damage taken';
+          syncSceneSimulationState();
+          renderControls();
+        }
+        lastObservedPlayerHealth = playerHealth;
         if (manualControl) {
           // Human has taken over: read real keyboard/mouse/touch instead of the
           // AI brain. The AI is intentionally NOT polled so its navigation state
@@ -296,6 +319,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         lastMove.y = state.moveY;
         lastMove.action = state.action;
       } else {
+        lastObservedPlayerHealth = null;
         state.moveX = 0;
         state.moveY = 0;
         state.action = false;
@@ -697,8 +721,26 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       persistLabState();
     });
   aiFolder
+    .add({ showFlowField }, 'showFlowField')
+    .name('Show enemy flow field')
+    .onChange((value: boolean) => {
+      showFlowField = value;
+      persistLabState();
+      if (showFlowField) {
+        drawFlowFieldOverlay();
+      } else {
+        flowFieldGraphics?.clear();
+      }
+    });
+  aiFolder
     .add(aiConfig, 'threatPreviewFrames', 0, 60, 1)
     .name('Threat preview (frames ahead)')
+    .onChange(() => {
+      persistLabState();
+    });
+  aiFolder
+    .add(aiConfig, 'autoPauseOnDamage')
+    .name('Auto pause on damage')
     .onChange(() => {
       persistLabState();
     });
@@ -793,6 +835,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       pathingMode: aiConfig.pathingMode,
     });
     pollCount = 0;
+    lastObservedPlayerHealth = null;
     lastStepReason = '';
     isPaused = true;
     // A fresh floor always starts under AI control. Tear down the human input
@@ -1383,7 +1426,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
             <button id="ai-floor-apply" type="button" style="padding:4px 8px; cursor:pointer;">Apply + Restart</button>
           </div>
           <div id="ai-runner-status">Paused</div>
-          <div id="ai-runner-debug">polls: 0</div>
+          <div id="ai-runner-debug">frame: 0</div>
           <div style="display:flex; gap:8px; margin:12px 0; flex-wrap:wrap;">
             <button id="ai-toggle-run" type="button" style="padding:6px 10px; cursor:pointer;">Resume</button>
             <button id="ai-step-frame" type="button" style="padding:6px 10px; cursor:pointer;">Advance 1 frame (Space)</button>
@@ -1394,12 +1437,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
           <div style="display:flex; gap:8px; margin:0 0 12px 0; flex-wrap:wrap; align-items:center;">
             <button id="ai-manual-toggle" type="button" style="padding:6px 10px; cursor:pointer; font-weight:bold;">🎮 Take manual control</button>
             <span id="ai-control-mode" style="font-size:12px;"></span>
-          </div>
-          <div style="display:flex; gap:8px; margin:0 0 12px 0; flex-wrap:wrap; align-items:center;">
-            <label for="ai-flow-field-toggle" style="display:flex; gap:6px; align-items:center; cursor:pointer; font-size:12px;">
-              <input id="ai-flow-field-toggle" type="checkbox" style="cursor:pointer;" />
-              <span>Show enemy flow field</span>
-            </label>
           </div>
           <div id="ai-decision" style="margin-top: 8px; padding: 8px; background: #2a2a4e; border-radius: 4px;">
             <div><strong>State:</strong> <span id="ai-state">-</span></div>
@@ -1440,7 +1477,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
             <div>• Take manual control to play it yourself (WASD/arrows move, Space attacks, E interacts)</div>
             <div>• The recorder tags every event AI vs MANUAL so handovers are clear in the log</div>
             <div>• Cyan line shows the AI's smoothed diagonal path, orange circle shows current target</div>
-            <div>• Toggle "Show enemy flow field" to heatmap the shared chase gradient with flow arrows (hot = near player); off by default</div>
+            <div>• AI Configuration now holds the flow-field heatmap, future-threat scrubber, and auto-pause-on-damage toggles</div>
             <div>• Floor 1 Debug adds teleport, map reveal, and quest advancement helpers</div>
             <div>• Use the lil-gui Lighting folder to tune darkness quality, cadence, and falloff live</div>
             <div>• Use the lil-gui FOV folder to change fog granularity (32/16/8/4px) + discovered-terrain dimming live</div>
@@ -1466,7 +1503,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     const debugElem = document.getElementById('ai-runner-debug');
     if (debugElem) {
       const stepSuffix = lastStepReason ? ` | step: ${lastStepReason}` : '';
-      debugElem.textContent = `polls: ${pollCount}${stepSuffix}`;
+      const frame = getScene()?.world?.frameCount ?? 0;
+      debugElem.textContent = `frame: ${frame}${stepSuffix}`;
     }
 
     const toggleButton = document.getElementById('ai-toggle-run') as HTMLButtonElement | null;
@@ -1497,24 +1535,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       manualButton.textContent = manualControl ? '🤖 Return to AI' : '🎮 Take manual control';
       manualButton.onclick = () => {
         setManualControl(!manualControl);
-      };
-    }
-
-    const flowFieldToggle = document.getElementById(
-      'ai-flow-field-toggle',
-    ) as HTMLInputElement | null;
-    if (flowFieldToggle) {
-      // renderControls() rebuilds innerHTML on every call, so restore the live
-      // state onto the freshly created checkbox.
-      flowFieldToggle.checked = showFlowField;
-      flowFieldToggle.onchange = () => {
-        showFlowField = flowFieldToggle.checked;
-        persistLabState();
-        if (showFlowField) {
-          drawFlowFieldOverlay();
-        } else {
-          flowFieldGraphics?.clear();
-        }
       };
     }
 
@@ -1670,6 +1690,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       (reason) => typeof reason === 'string' && reason.length > 0,
     ).length;
     return {
+      frame: world?.frameCount ?? null,
       polls: pollCount,
       paused: isPaused,
       manualControl,
@@ -1759,7 +1780,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       const neededCount = Object.values(npcMemory.neededInteractionReasons).filter(
         (reason) => typeof reason === 'string' && reason.length > 0,
       ).length;
-      debugElem.textContent = `polls: ${pollCount} | scenePaused: ${scene?.isSimulationPaused?.() ? 'yes' : 'no'} | npcMem: discovered=${npcMemory.discoveredNpcDefs.length}, talked=${npcMemory.talkedNpcDefs.length}, needed=${neededCount}`;
+      const frame = scene?.world?.frameCount ?? 0;
+      debugElem.textContent = `frame: ${frame} | scenePaused: ${scene?.isSimulationPaused?.() ? 'yes' : 'no'} | npcMem: discovered=${npcMemory.discoveredNpcDefs.length}, talked=${npcMemory.talkedNpcDefs.length}, needed=${neededCount}`;
     }
   }, 100);
 
