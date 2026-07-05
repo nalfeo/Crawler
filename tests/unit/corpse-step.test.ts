@@ -13,10 +13,14 @@
  *  5. Empirically ~10% of enter-transitions trigger across many rolls.
  *  6. Deterministic: same (seed, frame, corpseEid) → same outcome, and the
  *     roll never consumes from `world.rng`.
+ *  7. A `Spawner` structure lingering as a corpse is NEVER step-burst — its
+ *     scripted multi-tick death handshake (finale wave + arena resolution)
+ *     requires the entity to survive its full linger, so reaping it early
+ *     would orphan the arena and trap the player.
  */
 import { addComponent, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { DeathTimer, Enemy, Player, Position } from '../../src/core/components.js';
+import { DeathTimer, Enemy, Player, Position, Spawner } from '../../src/core/components.js';
 import { createEntity } from '../../src/core/helpers.js';
 import {
   CORPSE_STEP_RANGE_FT,
@@ -40,6 +44,21 @@ function spawnCorpse(world: TestWorld, x: number, y: number, remainingMs = 500):
   addComponent(world.ecs, eid, Enemy);
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(DeathTimer, { remainingMs }));
+  return eid;
+}
+
+/**
+ * A spawner structure (rats-nest / slime pit) lingering as a corpse: tagged
+ * `Enemy` + `DeathTimer` like any corpse, but ALSO carrying `Spawner`. These
+ * must be skipped by the step-burst — see the "does not burst a Spawner"
+ * guarantee below.
+ */
+function spawnSpawnerCorpse(world: TestWorld, x: number, y: number, remainingMs = 500): number {
+  const eid = createEntity(world);
+  addComponent(world.ecs, eid, Enemy);
+  addComponent(world.ecs, eid, set(Position, { x, y }));
+  addComponent(world.ecs, eid, set(DeathTimer, { remainingMs }));
+  addComponent(world.ecs, eid, set(Spawner, {}));
   return eid;
 }
 
@@ -118,6 +137,58 @@ describe('corpseStepSystem', () => {
     expect(world.stores.deathTimer.remainingMs[corpse]).toBe(0);
   });
 
+  it('never bursts a Spawner corpse, even across many guaranteed enter-transitions', () => {
+    // A regular corpse triggers on ~10% of enter-transitions (see the rate
+    // test above), so across 1000 fresh steps a burstable corpse would fire
+    // ~100 times. A Spawner structure must fire ZERO times: reaping it early
+    // would destroy the entity before spawnerSystem/spawnerArenaSystem finish
+    // its scripted death handshake, orphaning the arena and trapping the
+    // player. This is the regression guard for that bug.
+    const world = createTestWorld();
+    spawnPlayer(world, 5, 5);
+    const spawnerCorpse = spawnSpawnerCorpse(world, 5, 5);
+
+    for (let i = 0; i < 1000; i++) {
+      _resetCorpseStepTrackingForTest(world);
+      world.stores.deathTimer.remainingMs[spawnerCorpse] = 500;
+      world.combatEvents.length = 0;
+      corpseStepSystem(world);
+      // No burst event, ever — the spawner is excluded before the roll.
+      expect(world.combatEvents).toHaveLength(0);
+      // And its linger timer is left untouched so the natural death path runs.
+      expect(world.stores.deathTimer.remainingMs[spawnerCorpse]).toBe(500);
+      world.frameCount++;
+    }
+  });
+
+  it('still bursts a regular corpse on the same frame a co-located Spawner is skipped', () => {
+    // Both bodies sit on the player. The regular corpse remains fully
+    // burstable (feature intact); the Spawner is skipped regardless of its
+    // roll. Verifies the exclusion is per-entity, not a blanket disable.
+    const world = createTestWorld();
+    spawnPlayer(world, 5, 5);
+    const corpse = spawnCorpse(world, 5, 5);
+    const spawnerCorpse = spawnSpawnerCorpse(world, 5, 5);
+
+    let regularBurst = false;
+    for (let i = 0; i < 1000; i++) {
+      _resetCorpseStepTrackingForTest(world);
+      world.stores.deathTimer.remainingMs[corpse] = 500;
+      world.stores.deathTimer.remainingMs[spawnerCorpse] = 500;
+      world.combatEvents.length = 0;
+      corpseStepSystem(world);
+      for (const evt of world.combatEvents) {
+        expect(evt.targetEid).not.toBe(spawnerCorpse);
+        if (evt.targetEid === corpse) regularBurst = true;
+      }
+      // The Spawner's timer is never zeroed by the step-burst.
+      expect(world.stores.deathTimer.remainingMs[spawnerCorpse]).toBe(500);
+      world.frameCount++;
+    }
+    // Sanity: the regular corpse DID burst at least once across 1000 steps.
+    expect(regularBurst).toBe(true);
+  });
+
   it('triggers roughly ~10% of enter-transitions across many rolls', () => {
     const world = createTestWorld();
     spawnPlayer(world, 5, 5);
@@ -157,7 +228,7 @@ describe('corpseStepSystem', () => {
     const a2 = buildWorld();
     corpseStepSystem(a2.world);
     const rngAfterA = a2.world.rng.next();
-    // Cosmetic system must not touch the seeded gameplay RNG stream.
+    // This system must not touch the seeded gameplay RNG stream.
     expect(rngAfterA).toBe(rngBeforeA);
 
     const outcomeA = a2.world.combatEvents.length > 0;

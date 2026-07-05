@@ -10,17 +10,36 @@
  * (in `apply-damage.ts`) turns into a `corpseExplode` combat event AND zeroes
  * the corpse's `DeathTimer.remainingMs` so it's reaped this same frame.
  *
+ * Bursting a corpse is a REAL gameplay state change, not just a visual
+ * flourish: it removes the body from the world early, so any future system
+ * that consumes corpses (e.g. necromancy raising the dead) sees one fewer
+ * corpse available. This is why the burst must respect entities whose death
+ * carries additional scripted logic — see the `Spawner` exclusion below.
+ *
+ * Spawner exclusion: a {@link Spawner} structure (rats-nest, slime pit, …) is
+ * tagged `Enemy` and lingers via `DeathTimer` after it dies, so it would
+ * otherwise match the corpse query. We MUST NOT burst it. A spawner's death is
+ * a multi-tick scripted handshake: `spawnerSystem` fires its one-shot finale
+ * wave and sets `deathResolved` on the tick AFTER the kill, and
+ * `spawnerArenaSystem` then reads `deathResolved` to run its LOCKED→RESOLVED
+ * transition (lower the fence / unlock doors, grant banked XP). Reaping the
+ * spawner corpse early — the player is standing on it the instant it dies from
+ * a melee kill — destroys the entity before that handshake completes, so the
+ * arena is orphaned in a permanently-locked, target-less state and the player
+ * is trapped forever. Thematically a nest/structure also shouldn't gib into
+ * gore shards from a footstep. Both reasons say: skip `Spawner` corpses.
+ *
  * Determinism: the 10% roll is a hash of `(seed, frameCount, corpseEid)` via
- * {@link hashStringToSeed}, NOT `world.rng.next()`, so this cosmetic system
- * doesn't perturb the seeded RNG stream that gameplay rolls (crit, dodge,
- * enemy AI) consume. That keeps existing win-rate seeds byte-identical.
+ * {@link hashStringToSeed}, NOT `world.rng.next()`, so this system doesn't
+ * perturb the seeded RNG stream that gameplay rolls (crit, dodge, enemy AI)
+ * consume. That keeps existing win-rate seeds byte-identical.
  *
  * Runs after `movementSystem` (so player position is fresh) and before
  * `deathTimerSystem` (so a triggered corpse's zeroed timer is reaped this
  * frame).
  */
-import { query } from 'bitecs';
-import { DeathTimer, Enemy, Player, Position } from '../components.js';
+import { hasComponent, query } from 'bitecs';
+import { DeathTimer, Enemy, Player, Position, Spawner } from '../components.js';
 import { applyDamage } from '../apply-damage.js';
 import { hashStringToSeed } from '../../shared/random.js';
 import type { GameWorld } from '../world.js';
@@ -74,6 +93,13 @@ export function corpseStepSystem(world: GameWorld): void {
 
   for (const eid of corpses) {
     if (eid === undefined) continue;
+    // Structures (Spawner: rats-nest / slime pit) are tagged Enemy and linger
+    // via DeathTimer, so they match the corpse query — but bursting one early
+    // destroys the entity before its scripted death handshake completes
+    // (spawnerSystem's finale wave + deathResolved, then spawnerArenaSystem's
+    // LOCKED→RESOLVED transition), permanently orphaning the arena and trapping
+    // the player. Never step-burst a spawner corpse. See the file header.
+    if (hasComponent(world.ecs, eid, Spawner)) continue;
     // A corpse that already had its timer zeroed this frame (e.g. by a
     // player weapon hit) is on its way out; don't re-roll it.
     if ((world.stores.deathTimer.remainingMs[eid] ?? 0) <= 0) continue;
