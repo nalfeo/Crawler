@@ -537,6 +537,15 @@ export const NPC_INTERACTION_RADIUS_FT = 12.5;
 // must be within min(engageRadius, this) feet to pre-empt the NPC approach.
 export const NPC_APPROACH_THREAT_RADIUS_FT = 8;
 
+// Arena lock-in "add-first" hysteresis. When the AI is locked in a spawner /
+// boss arena, an adjacent add gets priority over the objective only if it is
+// at least this much closer than the objective. Prevents oscillation between
+// spawner and swarm when they are the same distance away, while still letting
+// the AI clear a hugging mob before walking through it toward the objective.
+// Anchored to CONTACT_SAFE_ORBIT_FT so the threshold is the natural strike
+// band of the melee weapon.
+export const ARENA_LOCKIN_ADD_HYSTERESIS_FT = 3;
+
 // --- Predictive safe-gap travel steering (travel-steering.ts) ---
 // Replaces the additive single-closest-threat "dodge nudge" during travel with a
 // context-steering controller that fans out candidate headings around the

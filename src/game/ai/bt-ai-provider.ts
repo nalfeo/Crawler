@@ -42,6 +42,7 @@ import {
   pickNearestPoi,
   updateLockedDoorMemory,
 } from './exploration.js';
+import { detectArenaLockin, type ArenaLockinTarget } from './arena-lockin.js';
 import { normalizeInputDirection } from '../../shared/input.js';
 import { hasItem } from '../../shared/inventory.js';
 import { SeededRandom } from '../../shared/random.js';
@@ -198,6 +199,7 @@ import {
   QUEST_GIVER_DETOUR_ABANDON_FRAMES,
   NPC_INTERACTION_RADIUS_FT,
   NPC_APPROACH_THREAT_RADIUS_FT,
+  ARENA_LOCKIN_ADD_HYSTERESIS_FT,
   TRAVEL_STEERING_ENABLED,
   TRAVEL_BODY_RADIUS_FT,
   TRAVEL_HARD_GAP_FT,
@@ -497,6 +499,18 @@ export class BehaviorTreeAI implements AIInputProvider {
    * condition can apply hysteresis (see {@link RETREAT_HYSTERESIS_MULT}) instead
    * of re-deciding every frame at the danger-radius boundary.
    */
+  /**
+   * Track the previous frame's arena lock-in so the AI emits a single-shot
+   * log line on enter/exit (avoids per-frame spam while locked) and the
+   * blackboard payload stays stable across ticks.
+   *
+   * `null` = not in an arena lock-in last frame. When set, it holds the
+   * source spawner eid or the boss eid so the "still locked in on X" state
+   * can be recognized cheaply.
+   */
+  private lastArenaLockinEid: number | null = null;
+  private lastArenaLockinKind: 'spawner' | 'boss' | null = null;
+
   private retreating: boolean = false;
   /**
    * Cached kite-retreat destination (world center of a reachable open tile) plus
@@ -670,9 +684,10 @@ export class BehaviorTreeAI implements AIInputProvider {
    * every frame:
    *
    * - **Track A** (Movement Goal): the exclusive priority Selector that picks
-   *   one movement target per frame. Logic is identical to the original flat
-   *   selector — Retreat > Interact > Progress > LeaveSafeRoom > Engage >
-   *   Collect > Hunt > Explore. Owns `this.decision` and `state.moveX/moveY`.
+   *   one movement target per frame. Retreat > ArenaLockin > Interact >
+   *   Progress > LeaveSafeRoom > Engage > Collect > Hunt > Explore. Owns
+   *   `this.decision` and `state.moveX/moveY`. See ADR 0045 for the
+   *   arena-lockin priority-slot decision.
    *
    * - **Track B** (Opportunistic): a side-effectful parallel that runs every
    *   frame regardless of Track A's outcome and writes into
@@ -691,6 +706,9 @@ export class BehaviorTreeAI implements AIInputProvider {
         'Track A: Movement Goal',
         // Priority 1: Retreat when low health
         this.buildRetreatBehavior(),
+        // Priority 1.5: Prioritize objective when locked inside a spawner
+        // arena or boss room — see `arena-lockin.ts` + ADR 0045.
+        this.buildArenaLockinBehavior(),
         // Priority 2: Interact with nearby NPCs
         this.buildInteractBehavior(),
         // Priority 3: Seek progression objectives.
@@ -892,6 +910,125 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     return awayFallback();
+  }
+
+  /**
+   * Arena lock-in behavior (Priority 1.5): when the player is trapped in a
+   * spawner arena (fence ring or sealed room) or a Floor-1 boss room, force
+   * the AI to target the spawner / boss instead of falling through to
+   * Interact / Progress / Explore — otherwise the AI wanders toward stale
+   * chain-plan targets (e.g. the far-away staircase) while sealed inside a
+   * room it cannot leave.
+   *
+   * Retreat (Priority 1) still takes precedence: low-HP-under-threat is
+   * life-critical and drops out of arena lock-in only long enough to kite
+   * to a safe tile. Because the arena also traps the threats, the kite is
+   * bounded and returns to lock-in as soon as HP recovers.
+   *
+   * Detection lives in `arena-lockin.ts`; the BT node here is purely a
+   * priority + blackboard/logging shim so the state machine stays inspect-
+   * able.
+   */
+  private buildArenaLockinBehavior(): BTNode {
+    return sequence(
+      'ArenaLockin',
+      condition('Player Locked In Arena', (ctx) => {
+        const target = detectArenaLockin(ctx.world, ctx.playerX, ctx.playerY);
+        // Always publish the blackboard snapshot so labs/tests can inspect
+        // the transition from a locked -> unlocked frame without the node
+        // having to fire.
+        ctx.blackboard['arenaLockin'] = {
+          active: target !== null,
+          kind: target?.kind ?? null,
+          targetEid: target?.eid ?? null,
+        };
+        if (target === null) {
+          if (this.lastArenaLockinEid !== null) {
+            logger.debug(
+              `AI arena lock-in cleared (${this.lastArenaLockinKind ?? 'unknown'} ${String(
+                this.lastArenaLockinEid,
+              )})`,
+            );
+          }
+          this.lastArenaLockinEid = null;
+          this.lastArenaLockinKind = null;
+          return false;
+        }
+        if (this.lastArenaLockinEid !== target.eid || this.lastArenaLockinKind !== target.kind) {
+          logger.debug(
+            `AI arena lock-in engaged: ${target.kind} eid=${String(target.eid)} at ` +
+              `(${target.x.toFixed(1)}, ${target.y.toFixed(1)})`,
+          );
+        }
+        this.lastArenaLockinEid = target.eid;
+        this.lastArenaLockinKind = target.kind;
+        ctx.blackboard['arenaLockinTarget'] = target;
+        return true;
+      }),
+      action('Set Arena Lock-In State', (ctx) => {
+        const target = ctx.blackboard['arenaLockinTarget'] as ArenaLockinTarget;
+        const dxTarget = target.x - ctx.playerX;
+        const dyTarget = target.y - ctx.playerY;
+        const targetDistance = Math.hypot(dxTarget, dyTarget) || 0;
+
+        // Add-clearing: for a *boss* lock-in (bosses have finite adds and
+        // move), interrupt to engage a nearby add first — this mirrors
+        // Progress's "clear-nearby-threat before NPC interaction" pattern
+        // (~line 1042). For a *spawner* lock-in the adds are Sisyphean —
+        // the spawner keeps producing them at ~2s intervals in defensive
+        // mode, so time spent on adds is time the spawner spends adding
+        // more. The safest strategy is to burn the spawner to zero first;
+        // its death queues an on-death monarch pool anyway (registry.ts
+        // rats-nest.onDeath), which the surviving adds get killed
+        // alongside once the fence lowers and normal Engage resumes.
+        const engageRadius = this.getEngageRadius(ctx.world);
+        const nearestEnemy = this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY);
+        if (
+          target.kind === 'boss' &&
+          nearestEnemy &&
+          nearestEnemy.eid !== target.eid &&
+          nearestEnemy.distance <= engageRadius &&
+          nearestEnemy.distance + ARENA_LOCKIN_ADD_HYSTERESIS_FT < targetDistance
+        ) {
+          const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, nearestEnemy);
+          this.decision.state = AIState.ENGAGE;
+          this.decision.targetEid = nearestEnemy.eid;
+          this.decision.targetX = plan.targetX;
+          this.decision.targetY = plan.targetY;
+          this.decision.reason = `Boss-room lock-in — clearing add ${String(nearestEnemy.eid)} before boss`;
+          return BTStatus.SUCCESS;
+        }
+
+        // Route the objective through the appropriate movement plan:
+        //   - Spawners are stationary structures, so orbit/kite is wasted
+        //     motion — walk straight in and let the weapon auto-fire once
+        //     the strike gate is reached. This is critical for melee: the
+        //     spawner's `defensive` mode floods the arena with adds every
+        //     2s, so any second spent orbiting a stationary target is a
+        //     second the swarm grows.
+        //   - Bosses move, so run `planEngagement` (kite/strafe) exactly
+        //     like normal Engage would.
+        this.decision.state = AIState.ENGAGE;
+        this.decision.targetEid = target.eid;
+        if (target.kind === 'boss') {
+          const bossWt: WorldTarget = {
+            eid: target.eid,
+            x: target.x,
+            y: target.y,
+            distance: targetDistance,
+          };
+          const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, bossWt);
+          this.decision.targetX = plan.targetX;
+          this.decision.targetY = plan.targetY;
+          this.decision.reason = `Boss-room lock-in — ${plan.reason} (boss ${String(target.eid)})`;
+        } else {
+          this.decision.targetX = target.x;
+          this.decision.targetY = target.y;
+          this.decision.reason = `Arena lock-in — attacking spawner ${String(target.eid)} at ${targetDistance.toFixed(1)}ft`;
+        }
+        return BTStatus.SUCCESS;
+      }),
+    );
   }
 
   /**
@@ -5037,6 +5174,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.retreatTargetX = null;
     this.retreatTargetY = null;
     this.retreatRepickFrame = 0;
+    this.lastArenaLockinEid = null;
+    this.lastArenaLockinKind = null;
     this.opportunisticPullX = 0;
     this.opportunisticPullY = 0;
     this.farmPullX = 0;

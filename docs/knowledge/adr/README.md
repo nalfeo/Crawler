@@ -195,3 +195,4 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0043 | [Asset-request CI Worker Bypass for Constitutional §3](0043-ci-asset-request-worker-bypass.md)                                  | Accepted | 2026-07-03 |
 | 0043 | [Floor 2 Scenario Definition & Governor Sweep Wiring](0043-floor2-scenario-definition-and-governor-sweep-wiring.md)             | Accepted | 2026-07-03 |
 | 0044 | [Spawner Battle Arena](0044-spawner-battle-arena.md)                                                                            | Accepted | 2026-07-04 |
+| 0045 | [AI Arena Lock-in Priority](0045-ai-arena-lockin-priority.md)                                                                   | Accepted | 2026-07-04 |

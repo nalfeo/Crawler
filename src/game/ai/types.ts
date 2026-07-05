@@ -250,6 +250,18 @@ export interface SpawnerArenaMetrics {
   triggered: number;
   /** Count that reached the terminal resolved state (arenaState === 2). */
   resolved: number;
+  /**
+   * Count of spawners that raised a *real* barrier at some point in the run —
+   * either a fence snapshot (open-fence arenas) or one or more locked doors
+   * (sealed-room arenas). Resolved arenas count here too because the run
+   * necessarily passed through the armed state on the way to resolution.
+   *
+   * This is the correct denominator for "did the AI resolve arenas that
+   * actually trapped it?" — a triggered arena whose barrier code path was a
+   * no-op (empty fence ring, roomless spawner) never traps the AI, so
+   * asking the AI to resolve it would be a false requirement.
+   */
+  barrierArmed: number;
   /** Sum of `bankedXp` across all spawners at run end. */
   bankedXpTotal: number;
 }
