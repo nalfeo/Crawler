@@ -6,11 +6,11 @@
   "estimated_apples": 2,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "notes": "Separate-model review (rubber-duck) identified two edge cases: mixed floor1+floor2State (now fixed with mutual exclusivity enforcement), and invalid ?floor= param (now fixed with validation+fallback). Both addressed with code fixes and tests."
     }
   }
 }
