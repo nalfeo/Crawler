@@ -270,7 +270,7 @@ const RISK_REWARD_DANGER_LOOKAHEAD_FT = 8;
 const RISK_REWARD_DANGER_RADIUS_FT = 15; // wider threat halo → earlier avoidance
 const RISK_REWARD_W_PROGRESS = 1.0; // baseline — danger must reliably beat this
 const RISK_REWARD_W_REWARD = 0.95;
-const RISK_REWARD_W_DANGER = 2.8; // corridor travel should yield decisively to nearby projected threats
+const RISK_REWARD_W_DANGER = 1.8; // danger significant but does not completely suppress engagement commitment
 // Continuity bonus: small nudge toward the previous frame's heading to dampen
 // oscillation when candidates score nearly equally (e.g. dense symmetric packs).
 const RISK_REWARD_W_CONTINUITY = 0.18;
