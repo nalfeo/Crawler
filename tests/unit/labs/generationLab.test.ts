@@ -178,6 +178,12 @@ describe('Generation Lab: Decoration Pipeline', () => {
     expect(torch?.biomeTag).toBe('dungeon');
   });
 
+  it('should wire floor-1 prop defs to generated sprite assets', () => {
+    expect(getDecorationDef('torch')?.spriteId).toBe('prop-torch-v1-var-10');
+    expect(getDecorationDef('junk-pile')?.spriteId).toBe('prop-junk-pile-v1-var-0');
+    expect(getDecorationDef('wall-sconce')?.spriteId).toBe('prop-wall-sconce-v1-var-1');
+  });
+
   it('should filter decorations by biome', () => {
     const dungeon = getDecorationsByBiome('dungeon');
     const organic = getDecorationsByBiome('organic');

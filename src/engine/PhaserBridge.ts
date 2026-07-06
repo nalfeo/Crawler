@@ -70,6 +70,13 @@ interface EntityVisual {
   deathTotalMs?: number;
 }
 
+interface PropVisual {
+  obj: Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle;
+  mode: 'sprite' | 'placeholder';
+  textureKey?: string;
+  frame?: number;
+}
+
 const RENDER_KIND_CONFIGS = (ENTITY_SPRITE_MAPPINGS as EntitySpriteMappings).renderKinds;
 
 interface ResolvedTexture {
@@ -209,8 +216,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const goldSpawnMs = new Map<number, number>();
   /** Ground shadow ellipses for each gold entity. */
   const goldShadows = new Map<number, Phaser.GameObjects.Ellipse>();
-  /** Placeholder rectangles for Prop entities (coloured by depth layer). */
-  const propVisuals = new Map<number, Phaser.GameObjects.Rectangle>();
+  /** Rendered visuals for Prop entities (sprite when wired, rectangle placeholder otherwise). */
+  const propVisuals = new Map<number, PropVisual>();
   const combatVfx = createCombatVfx(scene);
   const goreVfx =
     typeof scene.add.rectangle === 'function'
@@ -1076,8 +1083,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       }
 
       // --- Prop render pass ---
-      // Render Prop entities as coloured placeholder rectangles until real
-      // sprites are available. Props render at PROP_DEPTH below all entities.
+      // Render Prop entities as real sprites when a wired spriteId resolves;
+      // otherwise fall back to coloured placeholders so unknown props remain visible.
       const activePropEids = new Set<number>();
       for (const propEid of query(world.ecs, [Prop, Position])) {
         activePropEids.add(propEid);
@@ -1100,20 +1107,68 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             : decorationDef?.category === 'rubbish'
               ? 0x8b7355
               : 0x6b7280;
+        const spriteId = decorationDef?.spriteId;
+        const spriteDef = spriteId !== undefined ? getSprite(spriteId) : undefined;
+        const hasKenneySprite =
+          spriteDef !== undefined && scene.textures?.exists(spriteDef.sheetKey) === true;
+        const hasGeneratedSprite =
+          spriteId !== undefined && scene.textures?.exists(spriteId) === true;
+        const shouldRenderSprite =
+          typeof scene.add.image === 'function' && (hasKenneySprite || hasGeneratedSprite);
 
-        let rect = propVisuals.get(propEid);
-        if (!rect && typeof scene.add.rectangle === 'function') {
-          rect = scene.add.rectangle(propX, propY, scalePx, scalePx, fillColor, 0.6);
-          rect.setDepth(depth);
-          propVisuals.set(propEid, rect);
-        } else if (rect) {
-          rect.setPosition(propX, propY);
+        let visual = propVisuals.get(propEid);
+        if (shouldRenderSprite) {
+          const textureKey = hasKenneySprite ? spriteDef!.sheetKey : spriteId!;
+          const frame = hasKenneySprite ? spriteDef!.frame : undefined;
+          if (visual === undefined || visual.mode !== 'sprite') {
+            visual?.obj.destroy();
+            const img =
+              frame !== undefined
+                ? scene.add.image(propX, propY, textureKey, frame)
+                : scene.add.image(propX, propY, textureKey);
+            img.setOrigin(0.5, 0.5);
+            img.setDisplaySize(scalePx, scalePx);
+            img.setDepth(depth);
+            visual = { obj: img, mode: 'sprite', textureKey, frame };
+            propVisuals.set(propEid, visual);
+          } else {
+            const img = visual.obj as Phaser.GameObjects.Image;
+            img.setPosition(propX, propY);
+            img.setDisplaySize(scalePx, scalePx);
+            img.setDepth(depth);
+            const keyChanged = visual.textureKey !== textureKey;
+            const frameChanged =
+              !keyChanged && frame !== undefined && String(img.frame?.name) !== String(frame);
+            if (keyChanged || frameChanged) {
+              if (frame !== undefined) {
+                img.setTexture(textureKey, frame);
+              } else {
+                img.setTexture(textureKey);
+              }
+            }
+            visual.textureKey = textureKey;
+            visual.frame = frame;
+          }
+        } else if (typeof scene.add.rectangle === 'function') {
+          if (visual === undefined || visual.mode !== 'placeholder') {
+            visual?.obj.destroy();
+            const rect = scene.add.rectangle(propX, propY, scalePx, scalePx, fillColor, 0.6);
+            rect.setDepth(depth);
+            visual = { obj: rect, mode: 'placeholder' };
+            propVisuals.set(propEid, visual);
+          } else {
+            const rect = visual.obj as Phaser.GameObjects.Rectangle;
+            rect.setPosition(propX, propY);
+            rect.setSize(scalePx, scalePx);
+            rect.setFillStyle(fillColor, 0.6);
+            rect.setDepth(depth);
+          }
         }
       }
       // Clean up removed prop visuals.
-      for (const [propEid, rect] of propVisuals) {
+      for (const [propEid, visual] of propVisuals) {
         if (!activePropEids.has(propEid)) {
-          rect.destroy();
+          visual.obj.destroy();
           propVisuals.delete(propEid);
         }
       }
@@ -1244,6 +1299,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         bar.destroy();
       }
       mobHealthBars.clear();
+
+      for (const visual of propVisuals.values()) {
+        visual.obj.destroy();
+      }
+      propVisuals.clear();
 
       for (const shadow of gemShadows.values()) {
         shadow.destroy();
