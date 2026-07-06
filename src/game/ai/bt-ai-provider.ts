@@ -446,6 +446,64 @@ export interface TacticalRunDebug {
 }
 
 /**
+ * Breadth-first reachability flood over a 4-connected passable grid.
+ *
+ * Fills `depth[i]` with the BFS distance (in tiles) from `startIndex` to every
+ * reachable tile, bounded at `maxDepth`; unreachable tiles keep the caller's
+ * pre-filled sentinel (`-1`). `queue` is caller-owned scratch of length ≥ the
+ * tile count. `startIndex` must be in-bounds and passable — every caller guards
+ * that before calling, and this seeds `depth[startIndex] = 0`.
+ *
+ * Extracted verbatim from the two reachability paths — goal resolution in
+ * {@link BehaviorTreeAI.computeReachableGoalTile} and explore-target sampling in
+ * {@link BehaviorTreeAI.computeExploreReachabilityDepth} — so the shared
+ * 4-connected expansion and `NAVIGATION_MAX_PATH_LENGTH` depth bound cannot
+ * drift apart. The expansion order (+x, −x, +y, −y) is load-bearing for
+ * determinism: it fixes the BFS distances, and downstream candidate ranking
+ * (hence RNG consumption) depends on them, so it must not change.
+ */
+function floodReachabilityDepth(
+  depth: Int32Array,
+  queue: Int32Array,
+  width: number,
+  height: number,
+  startIndex: number,
+  maxDepth: number,
+  passable: (tx: number, ty: number) => boolean,
+): void {
+  let head = 0;
+  let tail = 0;
+  depth[startIndex] = 0;
+  queue[tail++] = startIndex;
+  while (head < tail) {
+    const index = queue[head++]!;
+    const currentDepth = depth[index]!;
+    if (currentDepth >= maxDepth) {
+      continue;
+    }
+    const cx = index % width;
+    const cy = (index - cx) / width;
+    // 4-connected expansion mirrors findTilePath's topology-4 A*.
+    if (cx + 1 < width && depth[index + 1] === -1 && passable(cx + 1, cy)) {
+      depth[index + 1] = currentDepth + 1;
+      queue[tail++] = index + 1;
+    }
+    if (cx - 1 >= 0 && depth[index - 1] === -1 && passable(cx - 1, cy)) {
+      depth[index - 1] = currentDepth + 1;
+      queue[tail++] = index - 1;
+    }
+    if (cy + 1 < height && depth[index + width] === -1 && passable(cx, cy + 1)) {
+      depth[index + width] = currentDepth + 1;
+      queue[tail++] = index + width;
+    }
+    if (cy - 1 >= 0 && depth[index - width] === -1 && passable(cx, cy - 1)) {
+      depth[index - width] = currentDepth + 1;
+      queue[tail++] = index - width;
+    }
+  }
+}
+
+/**
  * Behavior Tree AI that simulates human input.
  * Uses composable behavior tree nodes for decision-making.
  */
@@ -3356,37 +3414,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     const dist = new Int32Array(width * height).fill(-1);
     const queue = new Int32Array(width * height);
     const maxDepth = NAVIGATION_MAX_PATH_LENGTH - 1;
-    let head = 0;
-    let tail = 0;
     const startIndex = startTile.y * width + startTile.x;
-    dist[startIndex] = 0;
-    queue[tail++] = startIndex;
-    while (head < tail) {
-      const index = queue[head++]!;
-      const depth = dist[index]!;
-      if (depth >= maxDepth) {
-        continue;
-      }
-      const cx = index % width;
-      const cy = (index - cx) / width;
-      // 4-connected expansion mirrors findTilePath's topology-4 A*.
-      if (cx + 1 < width && dist[index + 1] === -1 && passable(cx + 1, cy)) {
-        dist[index + 1] = depth + 1;
-        queue[tail++] = index + 1;
-      }
-      if (cx - 1 >= 0 && dist[index - 1] === -1 && passable(cx - 1, cy)) {
-        dist[index - 1] = depth + 1;
-        queue[tail++] = index - 1;
-      }
-      if (cy + 1 < height && dist[index + width] === -1 && passable(cx, cy + 1)) {
-        dist[index + width] = depth + 1;
-        queue[tail++] = index + width;
-      }
-      if (cy - 1 >= 0 && dist[index - width] === -1 && passable(cx, cy - 1)) {
-        dist[index - width] = depth + 1;
-        queue[tail++] = index - width;
-      }
-    }
+    floodReachabilityDepth(dist, queue, width, height, startIndex, maxDepth, passable);
 
     // path length to a tile == findTilePath(start, tile).length, or 0 if the tile
     // is unreachable within NAVIGATION_MAX_PATH_LENGTH.
@@ -4331,36 +4360,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     const maxDepth = NAVIGATION_MAX_PATH_LENGTH - 1;
-    let head = 0;
-    let tail = 0;
-    depth[startIndex] = 0;
-    queue[tail++] = startIndex;
-    while (head < tail) {
-      const index = queue[head++]!;
-      const currentDepth = depth[index]!;
-      if (currentDepth >= maxDepth) {
-        continue;
-      }
-      const cx = index % width;
-      const cy = (index - cx) / width;
-      // 4-connected expansion mirrors `findTilePath` topology.
-      if (cx + 1 < width && depth[index + 1] === -1 && passable(cx + 1, cy)) {
-        depth[index + 1] = currentDepth + 1;
-        queue[tail++] = index + 1;
-      }
-      if (cx - 1 >= 0 && depth[index - 1] === -1 && passable(cx - 1, cy)) {
-        depth[index - 1] = currentDepth + 1;
-        queue[tail++] = index - 1;
-      }
-      if (cy + 1 < height && depth[index + width] === -1 && passable(cx, cy + 1)) {
-        depth[index + width] = currentDepth + 1;
-        queue[tail++] = index + width;
-      }
-      if (cy - 1 >= 0 && depth[index - width] === -1 && passable(cx, cy - 1)) {
-        depth[index - width] = currentDepth + 1;
-        queue[tail++] = index - width;
-      }
-    }
+    floodReachabilityDepth(depth, queue, width, height, startIndex, maxDepth, passable);
 
     return depth;
   }

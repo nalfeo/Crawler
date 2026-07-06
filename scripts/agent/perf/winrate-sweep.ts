@@ -22,7 +22,6 @@
  * failures is slow; that is expected — correctness, not speed, is the point.
  */
 import { writeFileSync } from 'node:fs';
-import { availableParallelism } from 'node:os';
 import { isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../../src/game/ai/headless-runner.js';
@@ -34,95 +33,7 @@ import {
   type WorkerTaskFailure,
   type WorkerTaskSuccess,
 } from './worker-pool.js';
-
-const FLOOR1_WEAPONS = ['sword', 'bow', 'baseball-bat'];
-/** Floor 1 design budget: 6 minutes of game time at 60 fps. */
-const BUDGET_FRAMES = 21_600;
-
-interface CLIArgs {
-  seeds: number[];
-  weapons: string[];
-  maxFrames: number;
-  out: string | null;
-  enemyDamageMultiplier: number;
-  floorId: string;
-  workers: number;
-  skipEvents: boolean;
-}
-
-function parseSeeds(spec: string): number[] {
-  const seeds: number[] = [];
-  for (const part of spec.split(',')) {
-    const range = part.split('-');
-    if (range.length === 2) {
-      const lo = parseInt(range[0]!, 10);
-      const hi = parseInt(range[1]!, 10);
-      for (let s = lo; s <= hi; s++) seeds.push(s);
-    } else {
-      seeds.push(parseInt(part, 10));
-    }
-  }
-  return seeds;
-}
-
-function parseArgs(): CLIArgs {
-  let weaponsProvided = false;
-  let workersProvided = false;
-  const args: CLIArgs = {
-    seeds: Array.from({ length: 40 }, (_, i) => i + 1),
-    weapons: FLOOR1_WEAPONS,
-    maxFrames: BUDGET_FRAMES,
-    out: null,
-    enemyDamageMultiplier: 1,
-    floorId: 'floor1',
-    workers: 1,
-    skipEvents: false,
-  };
-  for (let i = 2; i < process.argv.length; i++) {
-    const arg = process.argv[i];
-    const next = process.argv[i + 1];
-    if (arg === '--seeds' && next) {
-      args.seeds = parseSeeds(next);
-      i++;
-    } else if (arg === '--weapons' && next) {
-      args.weapons = next.split(',');
-      weaponsProvided = true;
-      i++;
-    } else if (arg === '--max-frames' && next) {
-      args.maxFrames = parseInt(next, 10);
-      i++;
-    } else if (arg === '--out' && next) {
-      args.out = next;
-      i++;
-    } else if (arg === '--enemy-damage-multiplier' && next) {
-      args.enemyDamageMultiplier = parseFloat(next);
-      i++;
-    } else if (arg === '--floor' && next) {
-      args.floorId = next;
-      i++;
-    } else if (arg === '--workers' && next) {
-      args.workers = Math.max(1, parseInt(next, 10));
-      workersProvided = true;
-      i++;
-    } else if (arg === '--skip-events') {
-      args.skipEvents = true;
-    }
-  }
-  if (
-    args.floorId === 'floor2' &&
-    !weaponsProvided &&
-    args.weapons.length === FLOOR1_WEAPONS.length
-  ) {
-    args.weapons = ['sword'];
-  }
-  if (!workersProvided) {
-    args.workers = Math.max(
-      1,
-      Math.min(availableParallelism(), args.seeds.length * args.weapons.length),
-    );
-  }
-  return args;
-}
+import { type CLIArgs, parseSweepArgs } from './winrate-sweep-args.js';
 
 interface SweepTask {
   weapon: string;
@@ -450,7 +361,14 @@ if (!isMainThread) {
       } satisfies WorkerTaskFailure);
     });
 } else {
-  sweep(parseArgs()).catch((err) => {
+  let args: CLIArgs;
+  try {
+    args = parseSweepArgs(process.argv);
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+  sweep(args).catch((err) => {
     console.error('Fatal:', err);
     process.exit(1);
   });
