@@ -1,0 +1,11 @@
+
+> crawler@0.1.0 verify:fast
+> bash scripts/agent/verify-fast.sh
+
+🔍 Step 1-2/3: Type checking + Linting (parallel)...
+   Linting 33 changed file(s) (full tree is re-linted in CI)...
+src/labs/ai-runner-lab/index.ts(422,29): error TS2551: Property 'floor1' does not exist on type 'GameWorld'. Did you mean 'floor'?
+src/labs/ai-runner-lab/index.ts(445,17): error TS2551: Property 'floor1' does not exist on type 'GameWorld'. Did you mean 'floor'?
+src/labs/ai-runner-lab/index.ts(451,17): error TS2551: Property 'floor1' does not exist on type 'GameWorld'. Did you mean 'floor'?
+src/labs/ai-runner-lab/index.ts(894,29): error TS2551: Property 'floor1' does not exist on type 'GameWorld'. Did you mean 'floor'?
+src/labs/ai-runner-lab/index.ts(1730,26): error TS2551: Property 'floor1' does not exist on type 'GameWorld'. Did you mean 'floor'?

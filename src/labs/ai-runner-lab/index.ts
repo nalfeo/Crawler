@@ -419,7 +419,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     world: GameWorld,
     target: Exclude<JumpTarget, 'boss-encounter'>,
   ): { x: number; y: number } | null => {
-    const objective = world.floor1?.objective;
+    const objective = world.floorScenario?.objective;
     if (!objective) {
       return null;
     }
@@ -442,13 +442,13 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       case 'spell-quest-giver':
         return getNpcOrFallbackPosition(
           world,
-          world.floor1?.spellQuestGiverNpcEid,
+          world.floorScenario?.spellQuestGiverNpcEid,
           objective.spellQuestGiverPos,
         );
       case 'shopkeeper':
         return getNpcOrFallbackPosition(
           world,
-          world.floor1?.shopkeeperNpcEid,
+          world.floorScenario?.shopkeeperNpcEid,
           objective.shopRoomPos,
         );
       default: {
@@ -891,7 +891,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
 
     const modalPicker = scene.modalPicker;
-    const objective = world.floor1?.objective;
+    const objective = world.floorScenario?.objective;
 
     if (world.state === 'loadout') {
       sceneOptions.selectLoadoutOption?.(world, 0);
@@ -1727,7 +1727,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       },
       conversationNpcEid: scene?.conversationNpcEid ?? null,
       modalOpen: scene?.modalPicker?.isOpen?.() ?? false,
-      runOutcome: world?.floor1?.runSummary?.outcome ?? null,
+      runOutcome: world?.floorScenario?.runSummary?.outcome ?? null,
       quests,
     };
   };
