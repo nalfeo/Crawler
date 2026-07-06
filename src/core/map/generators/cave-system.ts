@@ -404,8 +404,9 @@ export class CaveSystemGenerator implements MapGenerator {
       const target = denTargets[fi]!;
 
       // Circular blob of reachable passable tiles near the den target = TERRITORY semantic room.
-      // No claimedCells exclusion — territories may overlap the heart slightly; the later
-      // territory registration takes precedence in getRoomAt, which is acceptable.
+      // Exclude cells already claimed by a prior territory to keep each territory's
+      // interiorCells disjoint (later territories do NOT exclude the heart to avoid
+      // blocking den targets that overlap the heart's segmentation region).
       const synthRegion = this.collectCircularRegion(
         tileMap,
         w,
@@ -414,6 +415,7 @@ export class CaveSystemGenerator implements MapGenerator {
         target.y,
         territoryRoomRadius,
         fi,
+        claimedCells,
       );
       if (synthRegion.cells.length === 0) {
         throw new Error(`no passable cells for territory[${fi}] near (${target.x},${target.y})`);
