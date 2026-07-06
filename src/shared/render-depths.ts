@@ -51,6 +51,10 @@ export const PROP_DEPTH = {
 export const WORLD_VFX_DEPTH = {
   /** Persistent blood/ichor pools left on the ground after an enemy dies. */
   bloodPool: 5,
+  /** Small dust puffs kicked up behind the player as they move. Sits above
+   * the blood pool but below gore so a puff kicked up on a corpse doesn't
+   * hide the pool underneath. */
+  playerTrail: 6,
   /** Blood/gore splatter particles. */
   gore: 10,
   /** Enemy death "pop" ring + scatter (EffectsVfx). */

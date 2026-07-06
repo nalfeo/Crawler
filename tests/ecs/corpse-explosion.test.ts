@@ -7,6 +7,7 @@ import {
   Health,
   Invincible,
   Player,
+  Spawner,
 } from '../../src/core/components.js';
 import { applyDamage } from '../../src/core/apply-damage.js';
 import { createEntity } from '../../src/core/helpers.js';
@@ -19,6 +20,18 @@ function makeCorpse(world: ReturnType<typeof createTestWorld>, remainingMs = 500
   addComponent(world.ecs, eid, set(Health, { current: 0, max: 50 }));
   addComponent(world.ecs, eid, Enemy);
   addComponent(world.ecs, eid, set(DeathTimer, { remainingMs }));
+  return eid;
+}
+
+/**
+ * A dying Spawner structure (rats-nest / slime-pit) lingering as a corpse:
+ * `Enemy` + `DeathTimer` like any corpse, but ALSO carrying `Spawner`. It must
+ * survive its full linger so its scripted death handshake (finale wave + arena
+ * LOCKED→RESOLVED) can complete, so the corpse choke point must never burst it.
+ */
+function makeSpawnerCorpse(world: ReturnType<typeof createTestWorld>, remainingMs = 500): number {
+  const eid = makeCorpse(world, remainingMs);
+  addComponent(world.ecs, eid, set(Spawner, {}));
   return eid;
 }
 
@@ -163,5 +176,32 @@ describe('corpse explosion (applyDamage corpse choke point)', () => {
 
     expect(hasComponent(world.ecs, corpse, DeathTimer)).toBe(false);
     expect(query(world.ecs, [Enemy]).includes(corpse)).toBe(false);
+  });
+
+  it('does NOT detonate a Spawner corpse — preserves its timer for the death handshake', () => {
+    const world = createTestWorld();
+    const spawnerCorpse = makeSpawnerCorpse(world, 500);
+
+    const dealt = applyDamage(world, spawnerCorpse, 25, 10, 20);
+
+    // Blow is absorbed (corpse at 0 HP) but the burst is skipped entirely.
+    expect(dealt).toBe(0);
+    expect(world.combatEvents.some((e) => e.type === 'corpseExplode')).toBe(false);
+    // Timer untouched so the spawner survives its full linger and its scripted
+    // death handshake (deathResolved → arena RESOLVED) can complete.
+    expect(world.stores.deathTimer.remainingMs[spawnerCorpse]).toBe(500);
+  });
+
+  it('does NOT reap a Spawner corpse the frame it is hit (no early reap → no orphaned arena)', () => {
+    const world = createTestWorld();
+    const spawnerCorpse = makeSpawnerCorpse(world, 500);
+
+    // A stray hit (footstep burst, AoE, beam) on the lingering spawner corpse…
+    applyDamage(world, spawnerCorpse, 10, 0, 0);
+    // …must NOT let deathTimerSystem reap it this frame (timer still > 0).
+    deathTimerSystem(world);
+
+    expect(hasComponent(world.ecs, spawnerCorpse, DeathTimer)).toBe(true);
+    expect(query(world.ecs, [Enemy]).includes(spawnerCorpse)).toBe(true);
   });
 });

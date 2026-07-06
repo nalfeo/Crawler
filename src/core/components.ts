@@ -90,6 +90,14 @@ export const SpawnAnim = {};
 /** Physical weight of an entity (lbs). Used for knockback, strength interactions, etc. */
 export const Weight = {};
 /**
+ * Physical body of an entity. Read by collisionSystem (broad + narrow phase),
+ * knockbackSystem (footprint passability), and every radius query
+ * (areaDamageSystem, beamSystem, meleeSwingSystem, trapSystem, etc.).
+ * Independent of Sprite, which is render-only. See ADR 0044 and
+ * `src/core/physics-defs.ts` for the canonical per-entity-class values.
+ */
+export const Size = {};
+/**
  * Blood/ichor colour for this entity (0xRRGGBB stored as r, g, b channels).
  * Used by GoreVfx to tint hit splatter and death pools. Defaults to red (0xcc0000).
  */
@@ -108,7 +116,7 @@ export const Harvestable = {};
 
 /**
  * Floor 2 tag: marks a mob as belonging to a specific family (`familyId` is
- * a `ui8` index into `world.floor2State.presentFamilies`). `isBoss=1` marks
+ * a `ui8` index into `world.floorExtendedState?.familyState?.presentFamilies`). `isBoss=1` marks
  * the single boss per family. Introduced by Floor 2 Slice 1 (ADR 0040 · D1).
  */
 export const FamilyMembership = {};
@@ -312,6 +320,16 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
     weight: {
       value: new Float32Array(maxEntities),
     },
+    size: {
+      /** Bounding radius in feet (canonical spatial unit — ADR 0007/0023). */
+      radius: new Float32Array(maxEntities),
+      /** Optional box override half-width in ft. 0 ⇒ use `radius`. */
+      halfWidth: new Float32Array(maxEntities),
+      /** Optional box override half-height in ft. 0 ⇒ use `radius`. */
+      halfHeight: new Float32Array(maxEntities),
+      /** 0 = circle (default), 1 = axis-aligned box using halfWidth/halfHeight. */
+      shape: new Uint8Array(maxEntities),
+    },
     bloodColor: {
       /** Red channel 0–255. */
       r: new Uint8Array(maxEntities),
@@ -414,7 +432,7 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       colorB: new Uint8Array(maxEntities),
     },
     familyMembership: {
-      /** Index into `world.floor2State.presentFamilies` (see faction-relations). */
+      /** Index into `world.floorExtendedState?.familyState?.presentFamilies` (see faction-relations). */
       familyId: new Uint8Array(maxEntities),
       /** 1 for the family boss, 0 for regular members. */
       isBoss: new Uint8Array(maxEntities),

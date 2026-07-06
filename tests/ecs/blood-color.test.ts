@@ -114,7 +114,7 @@ describe('dropSystem blood color in death event', () => {
       const slime = spawnBehaviorEnemy(world, 100, 120, 30, AI_TYPE.LEAPER, 0.9, 320, 0, {
         bloodColor: GREEN_SLIME,
       });
-      world.floor1?.enemyArchetypes.set(slime, 'slime');
+      world.floorScenario?.enemyArchetypes.set(slime, 'slime');
       setComponent(world.ecs, slime, Health, { current: 0, max: 30 });
 
       dropSystem(world, { spawnLoot: false });

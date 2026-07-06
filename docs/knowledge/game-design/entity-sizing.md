@@ -47,31 +47,31 @@
 
 ## Projectiles
 
-| Entity              | Spawner                                     | Shape  | Size (ft)         | Weight (lb) | Notes                                                                           |
-| ------------------- | ------------------------------------------- | ------ | ----------------- | ----------- | ------------------------------------------------------------------------------- |
-| Bullet / arrow      | `spawners/projectiles.ts` `spawnProjectile` | circle | r = 0.375         | 1           | Sprite 0.75×0.75. Weight doesn't matter — projectiles aren't knockback targets. |
-| Beam segment        | `spawners/projectiles.ts` `spawnBeam`       | box    | length × 0.25     | 1           | Length is set per-cast; only h fixed here.                                      |
-| Melee swing (blade) | `spawners/melee.ts` `spawnMeleeSwing`       | circle | r ≈ `bladeLength` | 1           | Not a knockback target either; size drives the AABB the hash-grid inserts.      |
-| Melee swing (head)  | `spawners/melee.ts`                         | circle | r = `radius`      | 1           | Bat head.                                                                       |
+| Entity              | Spawner                                     | Shape  | Size (ft)         | Weight (lb) | Notes                                                                                  |
+| ------------------- | ------------------------------------------- | ------ | ----------------- | ----------- | -------------------------------------------------------------------------------------- |
+| Bullet / arrow      | `spawners/projectiles.ts` `spawnProjectile` | circle | r = 0.375         | 1           | Sprite 0.75×0.75. Weight doesn't matter — projectiles aren't knockback targets.        |
+| Beam segment        | `spawners/projectiles.ts` `spawnBeam`       | box    | length × 0.5      | 1           | Length is set per-cast; only h fixed here (sprite height 0.5 ft, half-extent 0.25 ft). |
+| Melee swing (blade) | `spawners/melee.ts` `spawnMeleeSwing`       | circle | r ≈ `bladeLength` | 1           | Not a knockback target either; size drives the AABB the hash-grid inserts.             |
+| Melee swing (head)  | `spawners/melee.ts`                         | circle | r = `radius`      | 1           | Bat head.                                                                              |
 
 ## Pickups & drops
 
-| Entity       | Spawner                                  | Shape  | Size (ft) | Weight (lb) | Notes             |
-| ------------ | ---------------------------------------- | ------ | --------- | ----------- | ----------------- |
-| XP gem       | `spawners/pickups.ts` `spawnXpGem`       | circle | r = 0.5   | 1           |                   |
-| Dropped item | `spawners/pickups.ts` `spawnDroppedItem` | circle | r = 0.5   | 1           |                   |
-| Gold pile    | `spawners/pickups.ts` `spawnGold`        | circle | r = 0.625 | 5           | Sprite 1.25×1.25. |
+| Entity       | Spawner                                  | Shape  | Size (ft) | Weight (lb) | Notes                                                                                         |
+| ------------ | ---------------------------------------- | ------ | --------- | ----------- | --------------------------------------------------------------------------------------------- |
+| XP gem       | `spawners/pickups.ts` `spawnXpGem`       | circle | r = 0.5   | 1           |                                                                                               |
+| Dropped item | `spawners/pickups.ts` `spawnDroppedItem` | circle | r = 0.625 | 5           | Sprite 1.25×1.25.                                                                             |
+| Gold pile    | `spawners/pickups.ts` `spawnGold`        | circle | r = 0.5   | 1           | Sprite 1×1 today; larger sprite (1.25×1.25 → r=0.625) is a candidate retune in a later slice. |
 
 ## World objects
 
-| Entity               | Spawner                                  | Shape  | Size (ft) | Weight (lb) | Immovable | Notes                                       |
-| -------------------- | ---------------------------------------- | ------ | --------- | ----------- | :-------: | ------------------------------------------- |
-| Wall segment         | `spawners/world-objects.ts` (varies)     | box    | 1 × 1     | 10 000      |    yes    | Match tile.                                 |
-| Door                 | `spawners/world-objects.ts`              | box    | 1 × 1     | 500         |    yes    | Not in Knockback query today.               |
-| Prop — small (torch) | `spawners/world-objects.ts` (decoration) | circle | r = 0.375 | 30          |    yes    | Uses `decorationDef.scale`.                 |
-| Prop — barrel        | `spawners/world-objects.ts`              | circle | r = 0.75  | 60          |    no     | Optional Slice-2 goal: barrels punt on hit. |
-| Trap                 | `spawners/world-objects.ts`              | circle | r = 0.5   | 100         |    yes    |                                             |
-| Harvestable node     | `spawners/world-objects.ts`              | circle | r = 0.5   | 50          |    yes    |                                             |
+| Entity               | Spawner                                  | Shape  | Size (ft) | Weight (lb) | Immovable | Notes                                                                                 |
+| -------------------- | ---------------------------------------- | ------ | --------- | ----------- | :-------: | ------------------------------------------------------------------------------------- |
+| Wall segment         | `spawners/world-objects.ts` (varies)     | box    | 1 × 1     | 10 000      |    yes    | Match tile.                                                                           |
+| Door                 | `spawners/world-objects.ts`              | box    | 1 × 1     | 500         |    yes    | Not in Knockback query today.                                                         |
+| Prop — small (torch) | `spawners/world-objects.ts` (decoration) | circle | r = 0.375 | 30          |    yes    | Uses `decorationDef.scale`.                                                           |
+| Prop — barrel        | `spawners/world-objects.ts`              | circle | r = 0.75  | 60          |    no     | Optional Slice-2 goal: barrels punt on hit.                                           |
+| Trap                 | `spawners/world-objects.ts`              | circle | r = 0.75  | 100         |    yes    | Sprite 1.5×1.5 today; not a knockback target, `weight` is nominal for the sync sheet. |
+| Harvestable node     | `spawners/world-objects.ts`              | circle | r = 0.5   | 50          |    yes    |                                                                                       |
 
 ## Knockback baseline math
 

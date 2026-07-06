@@ -59,7 +59,7 @@ function setupSplitBabySlimeWorld(unlockedDrops = false): {
     }
 
     const slime = spawnBehaviorEnemy(world, 100, 120, 30, AI_TYPE.LEAPER, 0.9, 320, 0);
-    world.floor1?.enemyArchetypes.set(slime, 'slime');
+    world.floorScenario?.enemyArchetypes.set(slime, 'slime');
     setComponent(world.ecs, slime, Damage, { amount: 7 });
     setComponent(world.ecs, slime, Health, { current: 0, max: 30 });
     dropSystem(world, { spawnLoot: false });
@@ -217,7 +217,7 @@ describe('dropSystem', () => {
       selectFloor1StarterWeapon(candidate, 0);
 
       const slime = spawnBehaviorEnemy(candidate, 100, 120, 30, AI_TYPE.LEAPER, 0.9, 320, 0);
-      candidate.floor1?.enemyArchetypes.set(slime, 'slime');
+      candidate.floorScenario?.enemyArchetypes.set(slime, 'slime');
       setComponent(candidate.ecs, slime, Damage, { amount: 7 });
       setComponent(candidate.ecs, slime, Health, { current: 0, max: 30 });
 
@@ -249,7 +249,7 @@ describe('dropSystem', () => {
       expect(world.stores.health.max[miniEid]).toBe(15);
       expect(world.stores.health.current[miniEid]).toBe(15);
       expect(world.stores.damage.amount[miniEid]).toBe(expectedMiniDamage);
-      expect(world.floor1?.enemyArchetypes.get(miniEid)).toBe('slime-mini');
+      expect(world.floorScenario?.enemyArchetypes.get(miniEid)).toBe('slime-mini');
       expect(world.enemyAppearanceKeys.get(miniEid)).toBe('slime-mini');
       expect(world.stores.weight.value[miniEid]).toBeCloseTo(
         slainSlimeBaseWeight * 0.5 * (world.stores.sprite.sizeScale[miniEid] || 1),
@@ -308,7 +308,7 @@ describe('dropSystem', () => {
       selectFloor1StarterWeapon(candidate, 0);
 
       const slime = spawnBehaviorEnemy(candidate, 100, 120, 30, AI_TYPE.LEAPER, 0.9, 320, 0);
-      candidate.floor1?.enemyArchetypes.set(slime, 'slime');
+      candidate.floorScenario?.enemyArchetypes.set(slime, 'slime');
       setComponent(candidate.ecs, slime, Damage, { amount: 7 });
       setComponent(candidate.ecs, slime, Health, { current: 0, max: 30 });
 

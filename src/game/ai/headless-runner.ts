@@ -245,14 +245,14 @@ export async function runHeadless(
   let starterWeaponIndex = 0;
   const forceWeaponId = config.forceWeaponId;
   if (scenario.selectLoadoutOption && world.state === 'loadout') {
-    if (forceWeaponId !== undefined && world.floor1) {
-      const idx = world.floor1.starterChoices.indexOf(forceWeaponId);
+    if (forceWeaponId !== undefined && world.floorScenario) {
+      const idx = world.floorScenario.starterChoices.indexOf(forceWeaponId);
       if (idx === -1) {
         if (!getWeaponDef(forceWeaponId)) {
           throw new Error(`Unknown forceWeaponId "${forceWeaponId}"`);
         }
-        world.floor1.starterChoices.push(forceWeaponId);
-        starterWeaponIndex = world.floor1.starterChoices.length - 1;
+        world.floorScenario.starterChoices.push(forceWeaponId);
+        starterWeaponIndex = world.floorScenario.starterChoices.length - 1;
       } else {
         starterWeaponIndex = idx;
       }
@@ -262,8 +262,8 @@ export async function runHeadless(
 
   const startingWeapon: string =
     forceWeaponId ??
-    world.floor1?.selectedWeaponId ??
-    world.floor1?.starterChoices[starterWeaponIndex] ??
+    world.floorScenario?.selectedWeaponId ??
+    world.floorScenario?.starterChoices[starterWeaponIndex] ??
     'unknown';
 
   // Verify we transitioned to 'playing' state
@@ -391,8 +391,8 @@ export async function runHeadless(
       netDisp: Math.round(netDisp),
       pathTravel: Math.round(pathTravelAccum),
       remainingMs:
-        world.floor1?.objective.deadlineMs != null
-          ? Math.round(world.floor1.objective.deadlineMs - world.elapsedMs)
+        world.floorScenario?.objective.deadlineMs != null
+          ? Math.round(world.floorScenario.objective.deadlineMs - world.elapsedMs)
           : null,
       inSafe: world.playerInSafeRoom === true,
       ...(note ? { note } : {}),
@@ -427,10 +427,9 @@ export async function runHeadless(
       );
       applyConfiguredHostileDamageMultiplier(world, hostileDamageMultiplier);
 
-      // Run one simulation step with Floor1 systems enabled
+      // Run one simulation step with floor scenario systems enabled based on world state
       runSimulationStep(world, inputState, GAME.DELTA_MS, {
         ...config.simulationOptions,
-        enableFloor1: mergedConfig.floorId === 'floor1',
       });
       // Floor objective handling (including Floor 2 objective ticks) runs inside
       // runSimulationStep, so no second explicit objective call is needed here.
@@ -542,8 +541,8 @@ export async function runHeadless(
       }
 
       // 4. Quest tracking (basic - would need event system for full tracking)
-      if (world.floor1) {
-        const objective = world.floor1.objective;
+      if (world.floorScenario) {
+        const objective = world.floorScenario.objective;
         if (objective.questAccepted && mainQuestAcceptedMs === null) {
           mainQuestAcceptedMs = world.elapsedMs;
           questsAccepted++;
@@ -592,7 +591,7 @@ export async function runHeadless(
         outcome = 'victory';
         break;
       }
-      if (world.floor1?.runSummary?.outcome === 'cleared_floor') {
+      if (world.floorScenario?.runSummary?.outcome === 'cleared_floor') {
         outcome = 'victory';
         break;
       }
@@ -608,7 +607,7 @@ export async function runHeadless(
       // the loop spins uselessly until maxFrames while the simulation is frozen,
       // misreporting the run and wasting thousands of frames.
       if (readRunState(world) === 'game_over') {
-        outcome = world.floor1?.failReason === 'stair_timeout' ? 'timeout' : 'death';
+        outcome = world.floorScenario?.failReason === 'stair_timeout' ? 'timeout' : 'death';
         break;
       }
 
@@ -715,9 +714,9 @@ export async function runHeadless(
   const finalHealthPercent = playerHealth / playerMaxHealth;
 
   // Attribute kills by archetype from the Floor 1 objective tally (accurate).
-  if (world.floor1) {
-    killsByType.rat = world.floor1.objective.ratsKilled;
-    killsByType.slime = world.floor1.objective.slimesKilled;
+  if (world.floorScenario) {
+    killsByType.rat = world.floorScenario.objective.ratsKilled;
+    killsByType.slime = world.floorScenario.objective.slimesKilled;
   }
 
   const stats: RunStats = {

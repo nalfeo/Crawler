@@ -42,16 +42,18 @@ describe('floor2VictorySystem', () => {
     const roster = selectFloor2Roster(new SeededRandom(seed), loadFamilies(), loadResources(), {
       presentCountFourProbability: 0,
     });
-    world.floor2State = {
-      presentFamilies: [...roster.presentFamilies],
-      contestedResource: roster.contestedResource,
-      betrayerFlag: false,
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [...roster.presentFamilies],
+        contestedResource: roster.contestedResource,
+        betrayerFlag: false,
+      },
     };
-    initializeFactionRelations(world, world.floor2State.presentFamilies);
-    const [survivor, ...others] = world.floor2State.presentFamilies;
+    initializeFactionRelations(world, world.floorExtendedState!.familyState!.presentFamilies);
+    const [survivor, ...others] = world.floorExtendedState!.familyState!.presentFamilies!;
     for (const familyId of others) {
-      world.floor2State.decapitatedFamilies ??= new Set();
-      world.floor2State.decapitatedFamilies.add(familyId);
+      world.floorExtendedState!.familyState!.decapitatedFamilies ??= new Set();
+      world.floorExtendedState!.familyState!.decapitatedFamilies!.add(familyId);
     }
     world.factionRelations.set(survivor!, 80);
 
@@ -59,9 +61,9 @@ describe('floor2VictorySystem', () => {
 
     expect(world.goalFlags.get(FLOOR2_VICTORY_GOAL_ID)).toBe(true);
     expect(world.goalFlags.get(FLOOR2_STAIRS_POPPED_GOAL_ID)).toBe(true);
-    expect(world.floor2State.staircaseSpawned).toBe(true);
-    expect(world.floor2State.staircaseUnlocked).toBe(true);
-    expect(world.floor2State.staircasePos).toBeDefined();
+    expect(world.floorExtendedState?.familyState?.staircaseSpawned).toBe(true);
+    expect(world.floorExtendedState?.familyState?.staircaseUnlocked).toBe(true);
+    expect(world.floorExtendedState?.familyState?.staircasePos).toBeDefined();
   });
 
   it('does not trigger Win A when relation is 75', () => {
@@ -70,16 +72,18 @@ describe('floor2VictorySystem', () => {
     const roster = selectFloor2Roster(new SeededRandom(seed), loadFamilies(), loadResources(), {
       presentCountFourProbability: 0,
     });
-    world.floor2State = {
-      presentFamilies: [...roster.presentFamilies],
-      contestedResource: roster.contestedResource,
-      betrayerFlag: false,
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [...roster.presentFamilies],
+        contestedResource: roster.contestedResource,
+        betrayerFlag: false,
+      },
     };
-    initializeFactionRelations(world, world.floor2State.presentFamilies);
-    const [survivor, ...others] = world.floor2State.presentFamilies;
+    initializeFactionRelations(world, world.floorExtendedState!.familyState!.presentFamilies);
+    const [survivor, ...others] = world.floorExtendedState!.familyState!.presentFamilies!;
     for (const familyId of others) {
-      world.floor2State.decapitatedFamilies ??= new Set();
-      world.floor2State.decapitatedFamilies.add(familyId);
+      world.floorExtendedState!.familyState!.decapitatedFamilies ??= new Set();
+      world.floorExtendedState!.familyState!.decapitatedFamilies!.add(familyId);
     }
     world.factionRelations.set(survivor!, 75);
 
@@ -94,18 +98,20 @@ describe('floor2VictorySystem', () => {
     const roster = selectFloor2Roster(new SeededRandom(seed), loadFamilies(), loadResources(), {
       presentCountFourProbability: 0,
     });
-    world.floor2State = {
-      presentFamilies: [...roster.presentFamilies],
-      contestedResource: roster.contestedResource,
-      betrayerFlag: false,
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [...roster.presentFamilies],
+        contestedResource: roster.contestedResource,
+        betrayerFlag: false,
+      },
     };
-    initializeFactionRelations(world, world.floor2State.presentFamilies);
+    initializeFactionRelations(world, world.floorExtendedState!.familyState!.presentFamilies);
 
     // Two or more families present, NONE decapitated (all alive), all friendly
     // (relation > 75). "Allying two families is not a win" (FR15), so Win A must
     // NOT latch — soleAliveFamily is null when aliveFamilies.length !== 1.
-    expect(world.floor2State.presentFamilies.length).toBeGreaterThanOrEqual(2);
-    for (const familyId of world.floor2State.presentFamilies) {
+    expect(world.floorExtendedState!.familyState!.presentFamilies.length).toBeGreaterThanOrEqual(2);
+    for (const familyId of world.floorExtendedState!.familyState!.presentFamilies) {
       world.factionRelations.set(familyId, 80);
     }
 
@@ -121,14 +127,16 @@ describe('floor2VictorySystem', () => {
     const roster = selectFloor2Roster(new SeededRandom(seed), loadFamilies(), loadResources(), {
       presentCountFourProbability: 0,
     });
-    world.floor2State = {
-      presentFamilies: [...roster.presentFamilies],
-      contestedResource: roster.contestedResource,
-      betrayerFlag: false,
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [...roster.presentFamilies],
+        contestedResource: roster.contestedResource,
+        betrayerFlag: false,
+      },
     };
-    (world.floor2State as { decapitatedFamilies?: Set<string> }).decapitatedFamilies = new Set(
-      world.floor2State.presentFamilies,
-    );
+    (
+      world.floorExtendedState!.familyState as { decapitatedFamilies?: Set<string> }
+    ).decapitatedFamilies = new Set(world.floorExtendedState!.familyState!.presentFamilies);
 
     floor2VictorySystem(world);
 
@@ -141,11 +149,13 @@ describe('confirmFloor2StairDescend', () => {
     overrides?: Partial<import('../../src/core/faction-relations.js').Floor2State>,
   ) {
     const world = createTestWorld({ seed: 42, floor: 2 });
-    world.floor2State = {
-      presentFamilies: [],
-      contestedResource: 'glimmercap' as import('../../src/core/faction-relations.js').ResourceId,
-      betrayerFlag: false,
-      ...overrides,
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [],
+        contestedResource: 'glimmercap' as import('../../src/core/faction-relations.js').ResourceId,
+        betrayerFlag: false,
+        ...overrides,
+      },
     };
     world.state = 'playing';
     return world;
@@ -185,7 +195,7 @@ describe('confirmFloor2StairDescend', () => {
     const world = makeFloor2World({ staircaseSpawned: true, staircaseUnlocked: true });
     const result = confirmFloor2StairDescend(world, 0);
     expect(result).toBe(true);
-    expect(world.floor2State?.staircaseDiscovered).toBe(true);
+    expect(world.floorExtendedState?.familyState?.staircaseDiscovered).toBe(true);
     expect(world.state).toBe('safe_room');
   });
 

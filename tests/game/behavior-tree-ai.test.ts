@@ -139,7 +139,7 @@ const MIN_DIAGONAL_COMPONENT = 0.15;
 function enterKillGrindStage(world: GameWorld): void {
   meetTutorialGoon(world);
   world.playerLevel.level = 2;
-  world.floor1!.objective.questCompleted = false;
+  world.floorScenario!.objective.questCompleted = false;
 }
 
 /**
@@ -202,8 +202,8 @@ describe('BehaviorTreeAI', () => {
 
     const decision = ai.getDecision();
     expect(decision.reason).toContain('Tutorial Goon');
-    expect(decision.targetX).toBe(world.floor1?.objective.welcomeOfficePos.x);
-    expect(decision.targetY).toBe(world.floor1?.objective.welcomeOfficePos.y);
+    expect(decision.targetX).toBe(world.floorScenario?.objective.welcomeOfficePos.x);
+    expect(decision.targetY).toBe(world.floorScenario?.objective.welcomeOfficePos.y);
   });
 
   it('labels EXPLORE fallback caused by suppressed fixed-position progress navigation', () => {
@@ -505,7 +505,7 @@ describe('BehaviorTreeAI', () => {
       const control = s.ai.getTravelSteeringDebug();
       expect(control?.selectedPickupEid).not.toBeNull();
 
-      const objective = s.world.floor1!.objective;
+      const objective = s.world.floorScenario!.objective;
       objective.staircaseUnlocked = false;
       objective.staircaseDiscovered = false;
       s.world.elapsedMs = objective.deadlineMs - 55_000;
@@ -534,7 +534,7 @@ describe('BehaviorTreeAI', () => {
       ai.poll(input, world);
       expect(ai.getDecision().state).toBe(AIState.COLLECT);
 
-      const objective = world.floor1!.objective;
+      const objective = world.floorScenario!.objective;
       objective.staircaseUnlocked = false;
       objective.staircaseDiscovered = false;
       world.elapsedMs = objective.deadlineMs - 55_000;
@@ -859,7 +859,7 @@ describe('BehaviorTreeAI', () => {
     const playerX = world.stores.position.x[player]!;
     const playerY = world.stores.position.y[player]!;
     const rat = spawnEnemy(world, playerX + 0.75, playerY, 20);
-    world.floor1!.enemyArchetypes.set(rat, 'rat');
+    world.floorScenario!.enemyArchetypes.set(rat, 'rat');
 
     const ai = new BehaviorTreeAI({ seed: 2 });
     const input = createInputState();
@@ -883,8 +883,8 @@ describe('BehaviorTreeAI', () => {
     world.stores.position.y[player] = 14;
 
     const questEnemy = spawnEnemy(world, 50, 14, 20);
-    world.floor1!.enemyArchetypes.set(questEnemy, 'rat');
-    const spellNpcEid = world.floor1!.spellQuestGiverNpcEid;
+    world.floorScenario!.enemyArchetypes.set(questEnemy, 'rat');
+    const spellNpcEid = world.floorScenario!.spellQuestGiverNpcEid;
     expect(spellNpcEid).toBeDefined();
     world.stores.position.x[spellNpcEid!] = 30;
     world.stores.position.y[spellNpcEid!] = 14;
@@ -909,8 +909,8 @@ describe('BehaviorTreeAI', () => {
     world.stores.position.y[player] = 14;
 
     const questEnemy = spawnEnemy(world, 50, 14, 20);
-    world.floor1!.enemyArchetypes.set(questEnemy, 'rat');
-    const shopkeeperNpcEid = world.floor1!.shopkeeperNpcEid;
+    world.floorScenario!.enemyArchetypes.set(questEnemy, 'rat');
+    const shopkeeperNpcEid = world.floorScenario!.shopkeeperNpcEid;
     expect(shopkeeperNpcEid).toBeDefined();
     world.stores.position.x[shopkeeperNpcEid!] = 30;
     world.stores.position.y[shopkeeperNpcEid!] = 14;
@@ -932,23 +932,23 @@ describe('BehaviorTreeAI', () => {
     selectFloor1StarterWeapon(world, 0);
     enterKillGrindStage(world);
     world.playerInSafeRoom = true;
-    const shopPos = world.floor1!.objective.shopRoomPos;
+    const shopPos = world.floorScenario!.objective.shopRoomPos;
     world.stores.position.x[player] = shopPos.x;
     world.stores.position.y[player] = shopPos.y;
 
-    const shopkeeperNpcEid = world.floor1!.shopkeeperNpcEid;
+    const shopkeeperNpcEid = world.floorScenario!.shopkeeperNpcEid;
     expect(shopkeeperNpcEid).toBeDefined();
     world.stores.position.x[shopkeeperNpcEid!] = shopPos.x + 2;
     world.stores.position.y[shopkeeperNpcEid!] = shopPos.y;
 
     // All three NPCs now share the welcome bar. Move the tutorial goon and spell
     // broker far away so only the shopkeeper is in the player's interaction radius.
-    const guideNpcEid = world.floor1!.guideNpcEid;
+    const guideNpcEid = world.floorScenario!.guideNpcEid;
     if (guideNpcEid != null) {
       world.stores.position.x[guideNpcEid] = shopPos.x + 500;
       world.stores.position.y[guideNpcEid] = shopPos.y;
     }
-    const spellBrokerEid = world.floor1!.spellQuestGiverNpcEid;
+    const spellBrokerEid = world.floorScenario!.spellQuestGiverNpcEid;
     if (spellBrokerEid != null) {
       world.stores.position.x[spellBrokerEid] = shopPos.x + 500;
       world.stores.position.y[spellBrokerEid] = shopPos.y;
@@ -957,7 +957,7 @@ describe('BehaviorTreeAI', () => {
     // Keep a valid non-NPC progress objective active (kill-grind enemy) so the
     // safe-room override has to actively choose the NPC.
     const questEnemy = spawnEnemy(world, shopPos.x + 28, shopPos.y, 20);
-    world.floor1!.enemyArchetypes.set(questEnemy, 'rat');
+    world.floorScenario!.enemyArchetypes.set(questEnemy, 'rat');
 
     const ai = new BehaviorTreeAI({ seed: 31 });
     ai.poll(createInputState(), world);
@@ -975,12 +975,12 @@ describe('BehaviorTreeAI', () => {
     selectFloor1StarterWeapon(world, 0);
     meetTutorialGoon(world);
     world.playerLevel.level = 2;
-    world.floor1!.objective.questCompleted = true;
+    world.floorScenario!.objective.questCompleted = true;
     world.floorMap = makeOpenRoom(40, 20);
     world.stores.position.x[player] = 14;
     world.stores.position.y[player] = 14;
 
-    const shopkeeperNpcEid = world.floor1!.shopkeeperNpcEid;
+    const shopkeeperNpcEid = world.floorScenario!.shopkeeperNpcEid;
     expect(shopkeeperNpcEid).toBeDefined();
     world.stores.position.x[shopkeeperNpcEid!] = 38;
     world.stores.position.y[shopkeeperNpcEid!] = 14;
@@ -1002,13 +1002,13 @@ describe('BehaviorTreeAI', () => {
     selectFloor1StarterWeapon(world, 0);
     meetTutorialGoon(world);
     world.playerLevel.level = 2;
-    world.floor1!.objective.questCompleted = true;
+    world.floorScenario!.objective.questCompleted = true;
     world.floorMap = makeOpenRoom(40, 20);
     world.stores.position.x[player] = 14;
     world.stores.position.y[player] = 14;
 
-    const shopkeeperNpcEid = world.floor1!.shopkeeperNpcEid;
-    const spellBrokerEid = world.floor1!.spellQuestGiverNpcEid;
+    const shopkeeperNpcEid = world.floorScenario!.shopkeeperNpcEid;
+    const spellBrokerEid = world.floorScenario!.spellQuestGiverNpcEid;
     expect(shopkeeperNpcEid).toBeDefined();
     expect(spellBrokerEid).toBeDefined();
     world.stores.position.x[shopkeeperNpcEid!] = 40;
@@ -1017,8 +1017,8 @@ describe('BehaviorTreeAI', () => {
     world.stores.position.y[spellBrokerEid!] = 14;
     // `shopRoomPos`/`spellQuestGiverPos` are readonly on the objective type, so
     // override them by reassigning the whole (mutable) objective with a spread.
-    world.floor1!.objective = {
-      ...world.floor1!.objective,
+    world.floorScenario!.objective = {
+      ...world.floorScenario!.objective,
       shopRoomPos: { x: 40, y: 14 },
       spellQuestGiverPos: { x: 36, y: 14 },
     };
@@ -1091,7 +1091,7 @@ describe('BehaviorTreeAI', () => {
     world.playerLevel.level = 2;
     world.goalFlags.set('floor1-leveling-quest-complete', true);
     world.goalFlags.set('floor1-shop-quest-complete', true);
-    world.floor1!.objective.questCompleted = true;
+    world.floorScenario!.objective.questCompleted = true;
 
     const ai = new BehaviorTreeAI({ seed: 7 });
     const input = createInputState();
@@ -1103,8 +1103,8 @@ describe('BehaviorTreeAI', () => {
     ai.poll(input, world);
     const after = ai.getDecision();
     expect(after.reason).toContain('Slime Rat room');
-    expect(after.targetX).toBe(world.floor1!.objective.slimeRatRoomPos.x);
-    expect(after.targetY).toBe(world.floor1!.objective.slimeRatRoomPos.y);
+    expect(after.targetX).toBe(world.floorScenario!.objective.slimeRatRoomPos.x);
+    expect(after.targetY).toBe(world.floorScenario!.objective.slimeRatRoomPos.y);
   });
 
   it('does not force a kill-grind Progress target when no swarm enemy is registered', () => {
@@ -1195,7 +1195,7 @@ describe('BehaviorTreeAI', () => {
     // onto the enemy center; it must now route through planEngagement and kite
     // (same as Engage/Hunt).
     const rat = spawnEnemy(world, 17.75, 14, 20);
-    world.floor1!.enemyArchetypes.set(rat, 'rat');
+    world.floorScenario!.enemyArchetypes.set(rat, 'rat');
 
     const ai = new BehaviorTreeAI({ seed: 2 });
     ai.poll(createInputState(), world);
@@ -1319,7 +1319,7 @@ describe('BehaviorTreeAI', () => {
     // Far quest enemy (30ft): the only enemy in enemyArchetypes, so Progress (which
     // outranks Engage during the kill-grind) makes it the primary engaged target.
     const farQuestEnemy = spawnEnemy(world, 44, 14, 20);
-    world.floor1!.enemyArchetypes.set(farQuestEnemy, 'rat');
+    world.floorScenario!.enemyArchetypes.set(farQuestEnemy, 'rat');
     // Close non-quest threat (3.75ft) sitting inside the standoff bubble on the +X side.
     const closeThreat = spawnEnemy(world, 17.75, 14, 20);
 

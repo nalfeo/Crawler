@@ -1,5 +1,6 @@
 import { hasComponent, query, removeComponent } from 'bitecs';
 import { Flying, Knockback, Position } from '../components.js';
+import { getBodyHalfWidth, getBodyHalfHeight } from '../physics-body.js';
 import type { GameWorld } from '../world.js';
 
 // Sample just inside an entity's footprint so exact tile-edge contact does not
@@ -18,8 +19,10 @@ function isFootprintPassable(world: GameWorld, eid: number, x: number, y: number
     return true;
   }
 
-  const width = world.stores.sprite.width[eid] ?? 0;
-  const height = world.stores.sprite.height[eid] ?? 0;
+  const halfWidth = getBodyHalfWidth(world, eid, 'knockbackSystem');
+  const halfHeight = getBodyHalfHeight(world, eid, 'knockbackSystem');
+  const width = halfWidth * 2;
+  const height = halfHeight * 2;
   // Small bodies (≤ half a tile) already match the historic center-point rule.
   // Tighten the check only for larger sprites such as the Floor 1 boss, whose
   // footprint can overlap a wall before its center crosses into the blocked tile.
@@ -34,8 +37,6 @@ function isFootprintPassable(world: GameWorld, eid: number, x: number, y: number
     return floorMap.isPassableAt(x, y);
   }
 
-  const halfWidth = width * 0.5;
-  const halfHeight = height * 0.5;
   const left = x - halfWidth + COLLISION_EPSILON;
   const right = x + halfWidth - COLLISION_EPSILON;
   const top = y - halfHeight + COLLISION_EPSILON;

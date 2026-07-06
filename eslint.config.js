@@ -125,4 +125,33 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // ADR 0044 / Size-Weight Slice 1: sprite.width / sprite.height are render
+    // concerns only. Physics (collision, knockback, radius, footprint) must
+    // read through `getBodyHalfWidth/Height/Radius` in `src/core/physics-body.ts`
+    // so a Size regression cannot silently reintroduce sprite-based bodies.
+    // Engine (renderer) and labs (dev sandboxes) are exempt.
+    files: ['src/core/**/*.ts', 'src/game/**/*.ts', 'tests/**/*.ts', 'scripts/**/*.ts'],
+    ignores: [
+      'src/core/physics-body.ts',
+      // Test fixtures that legitimately write / assert sprite dims for
+      // spawner correctness or set up legacy scenarios pre-migration:
+      'tests/ecs/knockback-system.test.ts',
+      'tests/**/collision-*.test.ts',
+      'tests/ecs/spawners/**/*.test.ts',
+      'tests/ecs/drop-system.test.ts',
+      'tests/game/ability-system.test.ts',
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "MemberExpression[object.type='MemberExpression'][object.property.name='sprite'][property.name=/^(width|height)$/]",
+          message:
+            'Do not read sprite.width/height for physics. Use getBodyHalfWidth/Height/Radius from src/core/physics-body.ts (ADR 0044). Renderer code lives in src/engine/**.',
+        },
+      ],
+    },
+  },
 );

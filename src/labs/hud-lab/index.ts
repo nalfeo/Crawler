@@ -122,7 +122,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
 
       // Fake a floor1 objective for timer display
       const deadlineMs = settings.timeRemainingS * 1000;
-      world.floor1 = {
+      world.floorScenario = {
         protagonistName: 'HUD Lab Player',
         starterWeaponPool: [],
         starterChoices: [],
@@ -191,7 +191,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
         pxToFt(GAME.HEIGHT) / 2 - 11.25,
         LAB_BOSS_MAX_HP,
       );
-      const slimeRatBattle = world.floor1.objective.bossBattles.get('slime-rat');
+      const slimeRatBattle = world.floorScenario.objective.bossBattles.get('slime-rat');
       if (slimeRatBattle) {
         slimeRatBattle.bossEid = bossEid;
       }
@@ -242,9 +242,9 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
       world.elapsedMs = elapsedTracker % Math.max(maxMs, 1);
       world.floor = settings.floor;
 
-      if (world.floor1) {
-        world.floor1.objective = {
-          ...world.floor1.objective,
+      if (world.floorScenario) {
+        world.floorScenario.objective = {
+          ...world.floorScenario.objective,
           deadlineMs: maxMs,
         };
       }
@@ -261,7 +261,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
       }
 
       // Drive the boss encounter so the boss bar shows beneath the floor timer.
-      const bossBattle = world.floor1?.objective.bossBattles.get('slime-rat');
+      const bossBattle = world.floorScenario?.objective.bossBattles.get('slime-rat');
       if (bossBattle && bossEid >= 0) {
         bossBattle.started = settings.bossFightActive;
         world.stores.health.max[bossEid] = LAB_BOSS_MAX_HP;

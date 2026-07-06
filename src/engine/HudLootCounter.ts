@@ -7,7 +7,7 @@
  * count, with a short scale pulse on the icon whenever a total increases.
  *
  * Gold reads from `world.playerGold` (persistent); junk reads from the active
- * floor-1 objective (`world.floor1.objective.junkCollected`), defaulting to 0
+ * floor-1 objective (`world.floorScenario.objective.junkCollected`), defaulting to 0
  * when no floor is loaded. Public `sync`/`destroy` mirror the other HUD widgets.
  *
  * Engine layer only (Phaser allowed). No imports from game/labs.
@@ -103,7 +103,7 @@ export function createHudLootCounter(
 
   function sync(world: GameWorld): void {
     const gold = Math.max(0, Math.floor(world.playerGold));
-    const junk = Math.max(0, Math.floor(world.floor1?.objective.junkCollected ?? 0));
+    const junk = Math.max(0, Math.floor(world.floorScenario?.objective.junkCollected ?? 0));
 
     if (gold !== lastGold) {
       goldText.setText(String(gold));

@@ -20,7 +20,7 @@
  *      frame it watches `world.combatEvents` for boss deaths (`type: 'death'`
  *      on an entity carrying `FamilyMembership.isBoss = 1`) and latches
  *      `floor2-family-<familyId>-boss-defeated`. Latched families are added to
- *      `world.floor2State.decapitatedFamilies` so the spawner can gate them
+ *      `world.floorExtendedState?.familyState?.decapitatedFamilies` so the spawner can gate them
  *      off (`isFamilySpawnGated`).
  *
  *   3. **`isFamilySpawnGated`** — the read-side of §2 exposed for Slice 8's
@@ -38,11 +38,13 @@ import {
   FamilyMembership,
   Health,
   Position,
+  Size,
   Sprite,
   type GameWorld,
 } from '../core/index.js';
 import { createEntity } from '../core/spawners/entity-core.js';
 import { setDoorLockConfig, setGoalFlag } from '../core/door-lock.js';
+import { SHAPE_CIRCLE } from '../core/physics-defs.js';
 import {
   asFamilyId,
   getRelation,
@@ -85,7 +87,7 @@ import type { SeededRandom } from '../shared/random.js';
 
 /**
  * Concrete result of picking a den-unlock archetype for one family. Stored on
- * `world.floor2State` for Slice 5's win evaluator + Slice 7's HUD.
+ * `world.floorExtendedState?.familyState` for Slice 5's win evaluator + Slice 7's HUD.
  */
 export interface Floor2DenObjective {
   readonly familyId: FamilyId;
@@ -292,6 +294,12 @@ export function spawnFamilyBoss(
     width: archetype.spriteWidth,
     height: archetype.spriteHeight,
   });
+  setComponent(world.ecs, eid, Size, {
+    radius: Math.max(archetype.spriteWidth, archetype.spriteHeight) * 0.5,
+    halfWidth: 0,
+    halfHeight: 0,
+    shape: SHAPE_CIRCLE,
+  });
   addComponent(world.ecs, eid, set(FamilyMembership, { familyId: familyIdIndex, isBoss: 1 }));
   // Bosses hit hard on contact; ranged behaviour is layered later.
   setComponent(world.ecs, eid, Damage, { amount: 10 });
@@ -409,13 +417,13 @@ export function initializeFloor2Bosses(
  * Responsibilities in Slice 5:
  *   - Detect boss deaths from `world.combatEvents` and latch
  *     `floor2-family-<id>-boss-defeated`.
- *   - Track defeated families in `world.floor2State.decapitatedFamilies` so the
+ *   - Track defeated families in `world.floorExtendedState?.familyState?.decapitatedFamilies` so the
  *     spawner (Slice 8) can gate future spawns.
  *   - Run the per-tick Floor 2 win evaluator (Win A / Win B) and, on first
  *     trigger, latch `floor2-victory` + pop resource-heart stairs.
  */
 export function floor2ObjectiveTick(world: GameWorld): void {
-  const floor2State = world.floor2State;
+  const floor2State = world.floorExtendedState?.familyState;
   if (!floor2State) return;
   const decapitated = ensureDecapitatedSet(world);
   const familyIdField = world.stores.familyMembership.familyId;
@@ -449,7 +457,7 @@ export function floor2ObjectiveTick(world: GameWorld): void {
  * `BOSS_STAIR_FLOOR` tile in the resource-heart room.
  */
 export function floor2VictorySystem(world: GameWorld): void {
-  const floor2State = world.floor2State;
+  const floor2State = world.floorExtendedState?.familyState;
   if (!floor2State) return;
   if (world.goalFlags.get(FLOOR2_VICTORY_GOAL_ID) === true) return;
 
@@ -474,7 +482,7 @@ export function floor2VictorySystem(world: GameWorld): void {
  * Returns `true` on success, `false` if preconditions not met.
  */
 export function confirmFloor2StairDescend(world: GameWorld, _playerEid: number): boolean {
-  const floor2State = world.floor2State;
+  const floor2State = world.floorExtendedState?.familyState;
   if (!floor2State || world.state !== 'playing') return false;
   if (!floor2State.staircaseSpawned || !floor2State.staircaseUnlocked) return false;
   if (floor2State.staircaseDiscovered) return false;
@@ -545,13 +553,14 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
     presentCountFourProbability: presentCount === 4 ? 1 : presentCount === 3 ? 0 : undefined,
   });
   initializeFactionRelations(world, roster.presentFamilies);
-  world.floor2State = {
-    presentFamilies: roster.presentFamilies.slice(),
-    contestedResource: roster.contestedResource,
-    betrayerFlag: false,
+  world.floorExtendedState = {
+    familyState: {
+      presentFamilies: roster.presentFamilies.slice(),
+      contestedResource: roster.contestedResource,
+      betrayerFlag: false,
+    },
   };
-  world.floor2Settlement = null;
-  world.floor1 = null;
+  world.floorScenario = null;
   setGoalFlag(world, FLOOR2_VICTORY_GOAL_ID, false);
   setGoalFlag(world, FLOOR2_STAIRS_POPPED_GOAL_ID, false);
 
@@ -590,6 +599,7 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
   const floorMap = getGenerator(mapConfig.biome).generate(mapConfig, world.rng);
   world.floorMap = floorMap;
   world.floor = 2;
+  world.floorId = 'floor2';
   const spawn = floorMap.tileToWorld(floorMap.playerSpawn.x, floorMap.playerSpawn.y);
   if (hasComponent(world.ecs, playerEid, Position)) {
     setComponent(world.ecs, playerEid, Position, { x: spawn.x, y: spawn.y });
@@ -600,7 +610,11 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
   const maxHp = (world.stores.health.max[playerEid] ?? 100) + manifest.player.hpBonus;
   setComponent(world.ecs, playerEid, Health, { current: maxHp, max: maxHp });
 
-  const objectives = initializeFloor2Bosses(world, floorMap, world.floor2State);
+  const objectives = initializeFloor2Bosses(
+    world,
+    floorMap,
+    world.floorExtendedState!.familyState!,
+  );
   if (floor2Config?.governor?.autoUnlockDens === true) {
     for (const objective of objectives) {
       setGoalFlag(world, objective.unlockGoalId, true);
@@ -696,7 +710,7 @@ export function countFloor2BossArchetypes(): number {
 // Internal helpers ---------------------------------------------------------
 
 function ensureDecapitatedSet(world: GameWorld): Set<FamilyId> {
-  const floor2State = world.floor2State;
+  const floor2State = world.floorExtendedState?.familyState;
   if (!floor2State) {
     // No Floor-2 state on non-Floor-2 worlds; return a throwaway set so
     // callers can no-op through this helper safely.
@@ -709,7 +723,7 @@ function ensureDecapitatedSet(world: GameWorld): Set<FamilyId> {
 }
 
 function popFloor2ResourceHeartStairs(world: GameWorld): void {
-  const floor2State = world.floor2State;
+  const floor2State = world.floorExtendedState?.familyState;
   if (!floor2State) return;
   if (world.goalFlags.get(FLOOR2_STAIRS_POPPED_GOAL_ID) === true) return;
 

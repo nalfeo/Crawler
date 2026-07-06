@@ -4,12 +4,14 @@ import {
   Gold,
   Owner,
   Position,
+  Size,
   Sprite,
   Team,
   Weapon,
   Weight,
   XpGem,
 } from '../components.js';
+import { PHYSICS_BODIES, SHAPE_CIRCLE } from '../physics-defs.js';
 import type { GameWorld } from '../world.js';
 import type { WeaponTypeValue } from '../../shared/constants.js';
 import { createEntity } from './entity-core.js';
@@ -26,6 +28,16 @@ export function spawnXpGem(
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(XpGem, { value }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 1, height: 1 }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      radius: PHYSICS_BODIES['xp-gem'].radius,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    }),
+  );
   addComponent(world.ecs, eid, set(Weight, { value: weight }));
 
   return eid;
@@ -43,6 +55,16 @@ export function spawnGold(
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(Gold, { value }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 1, height: 1 }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      radius: PHYSICS_BODIES.gold.radius,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    }),
+  );
   addComponent(world.ecs, eid, set(Weight, { value: weight }));
 
   return eid;
@@ -61,6 +83,16 @@ export function spawnDroppedItem(
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(DroppedItem, { itemIndex: sanitizedItemIndex }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 1.25, height: 1.25 }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      radius: PHYSICS_BODIES['dropped-item'].radius,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    }),
+  );
   addComponent(world.ecs, eid, set(Weight, { value: weight }));
 
   return eid;

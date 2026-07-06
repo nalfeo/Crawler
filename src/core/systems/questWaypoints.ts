@@ -75,7 +75,7 @@ function objectiveTarget(
 ): { pos: Vec2; kind: QuestWaypointKind } | null {
   switch (kind) {
     case 'talk': {
-      const f = world.floor1;
+      const f = world.floorScenario;
       const eid =
         npcId === 'tutorial-goon'
           ? f?.guideNpcEid
@@ -94,7 +94,7 @@ function objectiveTarget(
     case 'collect':
       // The lone collect objective is the merchant's fetch item.
       return {
-        pos: entityPos(world, world.floor1?.questItemEid ?? null) ?? objective.questItemPos,
+        pos: entityPos(world, world.floorScenario?.questItemEid ?? null) ?? objective.questItemPos,
         kind: 'item',
       };
     case 'counter':
@@ -124,7 +124,7 @@ function objectiveTarget(
  * empty array means "no location to guide to" (grind-anywhere or no quest).
  */
 export function getQuestWaypoints(world: GameWorld, playerEid?: number): QuestWaypoint[] {
-  const objective = world.floor1?.objective;
+  const objective = world.floorScenario?.objective;
   if (!objective) {
     return [];
   }

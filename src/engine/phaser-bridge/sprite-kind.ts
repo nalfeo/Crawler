@@ -166,7 +166,7 @@ export interface EnemyScale {
  */
 export interface EnemyScaleWorld {
   readonly ecs: GameWorld['ecs'];
-  readonly floor1: { readonly enemyArchetypes: ReadonlyMap<number, string> } | null;
+  readonly floorScenario: { readonly enemyArchetypes: ReadonlyMap<number, string> } | null;
   readonly stores: {
     readonly sprite: {
       readonly width: ArrayLike<number>;
@@ -200,7 +200,7 @@ export function computeEnemyScale(
   // Baby slimes carry a shrunken Sprite.width; render them at the matching
   // fraction of a full slime. Scoped to the 'slime-mini' archetype so full
   // slimes, rats, and slime-textured bosses are untouched.
-  if (world.floor1?.enemyArchetypes.get(eid) === 'slime-mini') {
+  if (world.floorScenario?.enemyArchetypes.get(eid) === 'slime-mini') {
     const width = world.stores.sprite.width[eid] ?? SLIME_FULL_SPRITE_WIDTH;
     const sizeMul = Math.max(0.2, Math.min(1, width / SLIME_FULL_SPRITE_WIDTH));
     scaleX *= sizeMul;

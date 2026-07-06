@@ -19,6 +19,11 @@ export { meleeSwingSystem, clearMeleeSwingHits } from './meleeSwingSystem.js';
 export { knockbackSystem } from './knockbackSystem.js';
 export { dropSystem, clearProcessedDeaths } from './dropSystem.js';
 export { deathTimerSystem } from './deathTimerSystem.js';
+export {
+  corpseStepSystem,
+  CORPSE_STEP_RANGE_FT,
+  CORPSE_STEP_TRIGGER_CHANCE,
+} from './corpseStepSystem.js';
 export { spawnAnimSystem } from './spawnAnimSystem.js';
 export { fovSystem } from './fovSystem.js';
 export { doorSystem } from './doorSystem.js';

@@ -5,7 +5,7 @@
  * and type skill (specific family, fast-levelling, accuracy bonus) with their
  * current level and a small progress bar toward the next level threshold.
  *
- * Reads the active weapon from `world.floor1.selectedWeaponId`, looks up its
+ * Reads the active weapon from `world.floorScenario.selectedWeaponId`, looks up its
  * WeaponDef for the skill IDs, then reads SkillState from
  * `world.skillStatesByEntity` (v2 path) falling back to `world.playerSkills`.
  *
@@ -204,7 +204,7 @@ export function createHudSkillTracker(
   }
 
   function sync(world: GameWorld, playerEid: number): void {
-    const weaponId = world.floor1?.selectedWeaponId ?? null;
+    const weaponId = world.floorScenario?.selectedWeaponId ?? null;
     if (!weaponId) {
       setAllVisible(false);
       return;

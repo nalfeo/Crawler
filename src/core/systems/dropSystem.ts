@@ -15,6 +15,7 @@ import {
   Health,
   Knockback,
   Owner,
+  Size,
   SpawnAnim,
   Spawner,
   Sprite,
@@ -43,7 +44,10 @@ import { MINI_SLIME_SPAWN_ANIM_MS } from '../../shared/spawn-anim.js';
 import type { EntitySpriteMappings } from '../../shared/data/entity-sprite-mappings.js';
 import ENTITY_SPRITE_MAPPINGS from '../../shared/data/entity-sprite-mappings.json';
 import { markImmuneToActiveMeleeSwings } from './meleeSwingSystem.js';
+import { getFloorManifest } from '../../shared/floor-registry.js';
 import { SPAWNER_MAX_BANKED_CHILDREN } from '../spawner-arena.js';
+import { getBodyHalfWidth, getBodyHalfHeight } from '../physics-body.js';
+import { SHAPE_CIRCLE } from '../physics-defs.js';
 
 const logger = createLogger('core:drop-system');
 
@@ -104,8 +108,8 @@ function getEnemyLootTables(
   // Detect boss entities by checking the floor 1 boss battle registry.
   // dropSystem runs before floorObjectiveSystem each frame, so bossEid is still
   // set when we process the death; it gets nulled out later that same tick.
-  if (world.floor1?.objective?.bossBattles) {
-    for (const battle of world.floor1.objective.bossBattles.values()) {
+  if (world.floorScenario?.objective?.bossBattles) {
+    for (const battle of world.floorScenario.objective.bossBattles.values()) {
       if (battle.bossEid === eid) {
         // Use the loot table ID stored on the encounter config; fall back to BOSS.
         const bossTable =
@@ -115,9 +119,12 @@ function getEnemyLootTables(
     }
   }
 
+  const floorLootTableId = world.floorId
+    ? getFloorManifest(world.floorId)?.floorLootTableId
+    : undefined;
   return {
     typeTable: LOOT_TABLES.BASIC_MELEE,
-    floorTable: world.floor === 1 ? LOOT_TABLES.FLOOR_1 : undefined,
+    floorTable: floorLootTableId ? getLootTable(floorLootTableId) : undefined,
   };
 }
 
@@ -201,7 +208,7 @@ function spawnDrops(
 }
 
 function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): void {
-  if (world.floor1?.enemyArchetypes.get(eid) !== 'slime') {
+  if (world.floorScenario?.enemyArchetypes.get(eid) !== 'slime') {
     return;
   }
   if (world.rng.next() >= SLIME_SPLIT_CHANCE) {
@@ -218,8 +225,8 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
   const parentAggroRange = world.stores.enemyBehavior.aggroRange[eid] ?? 40;
   const hasSprite = hasComponent(world.ecs, eid, Sprite);
   const parentSpriteTexture = hasSprite ? (world.stores.sprite.textureId[eid] ?? 0) : 0;
-  const parentSpriteWidth = hasSprite ? (world.stores.sprite.width[eid] ?? 2) : 2;
-  const parentSpriteHeight = hasSprite ? (world.stores.sprite.height[eid] ?? 2) : 2;
+  const parentSpriteWidth = getBodyHalfWidth(world, eid, 'dropSystem') * 2 || 2;
+  const parentSpriteHeight = getBodyHalfHeight(world, eid, 'dropSystem') * 2 || 2;
   const parentSizeScale = hasSprite ? world.stores.sprite.sizeScale[eid] || 1 : 1;
   const parentBaseWeight = (world.stores.weight.value[eid] ?? 120) / parentSizeScale;
   const miniWidth = Math.max(MINI_SLIME_MIN_SIZE_FT, parentSpriteWidth * MINI_SLIME_SIZE_SCALE);
@@ -260,6 +267,12 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
       width: miniWidth,
       height: miniHeight,
     });
+    setComponent(world.ecs, miniEid, Size, {
+      radius: Math.max(miniWidth, miniHeight) * 0.5,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    });
     setEnemyAppearanceKey(world, miniEid, 'slime-mini');
     addComponent(world.ecs, miniEid, set(Damage, { amount: miniDamage }));
     // Babies pop out smaller and wiggle into existence; spawnAnimSystem ticks the
@@ -272,7 +285,7 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
         totalMs: MINI_SLIME_SPAWN_ANIM_MS,
       }),
     );
-    world.floor1?.enemyArchetypes.set(miniEid, 'slime-mini');
+    world.floorScenario?.enemyArchetypes.set(miniEid, 'slime-mini');
     // Survive the swing that killed the parent: register this baby in every
     // active melee swing's hit set so the player must swing again to kill it.
     markImmuneToActiveMeleeSwings(world, miniEid);
@@ -288,7 +301,8 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
   // Floor 1 onboarding pacing: gold, XP, and junk only start dropping after the
   // player finds the Welcome Office and the Tutorial Goon explains the rules.
   // Off-floor (e.g. labs) drops are always enabled.
-  const allowFloorDrops = !world.floor1 || world.goalFlags.get('floor1-drops-unlocked') === true;
+  const allowFloorDrops =
+    !world.floorScenario || world.goalFlags.get('floor1-drops-unlocked') === true;
 
   for (const eid of Array.from(entities)) {
     if (eid === undefined) continue;
@@ -309,7 +323,7 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
 
     const x = position.x[eid] ?? 0;
     const y = position.y[eid] ?? 0;
-    const archetypeId = world.floor1?.enemyArchetypes.get(eid);
+    const archetypeId = world.floorScenario?.enemyArchetypes.get(eid);
     const allowEnemyDrops = getEnemyDropConfig(archetypeId)?.dropsEnabled ?? true;
     maybeSplitSlime(world, eid, x, y);
     const maxHp = health.max[eid] ?? 0;

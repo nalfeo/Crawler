@@ -264,11 +264,11 @@ describe('pickGeneratedEnemyTextureKey', () => {
 
 /** Minimal floor-1 sidecar shape the scale helper reads from (archetype map). */
 function withFloorArchetype(world: TestWorld, eid: number, archetype: string): void {
-  world.floor1 = {
+  world.floorScenario = {
     enemyArchetypes: new Map<number, string>(),
     objective: { bossBattles: new Map() },
-  } as unknown as NonNullable<typeof world.floor1>;
-  world.floor1.enemyArchetypes.set(eid, archetype);
+  } as unknown as NonNullable<typeof world.floorScenario>;
+  world.floorScenario.enemyArchetypes.set(eid, archetype);
 }
 
 describe('computeEnemyScale — baseline', () => {

@@ -16,7 +16,7 @@ import { xpRequiredForLevel } from '../../src/shared/xpMath.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 const STEP_MS = GAME.DELTA_MS;
-const FLOOR1_OPTS = { enableFloor1: true } as const;
+const FLOOR1_OPTS = {} as const;
 
 /** Build a Floor 1 world the same way the headless runner does. */
 function setupFloor1World(seed: number) {

@@ -188,6 +188,15 @@ function makeMockProvider(sheet: Buffer): ImageProvider {
   };
 }
 
+function makeLocalLikeProvider(sheet: Buffer): ImageProvider {
+  return {
+    capabilities: { referenceImages: false },
+    async generateSheet(_req: GenerateSheetRequest): Promise<Buffer> {
+      return sheet;
+    },
+  };
+}
+
 /** Mock provider that records the last request so the test can inspect refs. */
 function makeCapturingProvider(sheet: Buffer): {
   provider: ImageProvider;
@@ -389,6 +398,25 @@ describe('generateOne — sheet-only generate stage (integration)', () => {
         readReference: (absolutePath: string) => Buffer.from(absolutePath),
       }),
     ).rejects.toThrow(/no eligible generated reference sprites/);
+  });
+
+  it('skips reference selection for providers that declare no reference-image support', async () => {
+    const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
+    const sheet = tileVariantsIntoSheet(variants, 2, 2);
+    const result = await generateOne({
+      briefPath,
+      preloaded,
+      provider: makeLocalLikeProvider(sheet),
+      repoRoot: root,
+      outputRoot,
+      now: fixedClock,
+      loadReferenceCandidates: () => [],
+      referenceAssetExists: () => true,
+      readReference: () => Buffer.alloc(0),
+    });
+
+    expect(result.summary.referenceSprites).toBeUndefined();
+    expect(result.summary.variantCount).toBe(4);
   });
 
   it('retries on a bad-grid error and ultimately succeeds within maxAttempts', async () => {

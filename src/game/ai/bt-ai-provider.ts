@@ -1240,7 +1240,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     return sequence(
       'Hunt',
       condition('Enemy In Scan Range', (ctx) => {
-        const objective = ctx.world.floor1?.objective;
+        const objective = ctx.world.floorScenario?.objective;
         if (
           !ctx.world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID) ||
           objective?.questCompleted === true
@@ -2556,7 +2556,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
     playerSpeedFtPerFrame: number,
   ): void {
-    const objective = world.floor1?.objective;
+    const objective = world.floorScenario?.objective;
     const floorMap = world.floorMap;
     if (!objective || !floorMap) {
       this.lastPlayerToStairsTravelMs = null;
@@ -2603,7 +2603,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   private getCollapsePanicProfile(world: GameWorld): CollapsePanicProfile {
-    const objective = world.floor1?.objective;
+    const objective = world.floorScenario?.objective;
     if (!objective) {
       return computeCollapsePanicProfile(null);
     }
@@ -2841,11 +2841,11 @@ export class BehaviorTreeAI implements AIInputProvider {
     shopStage: ReturnType<typeof getShopkeeperStage>,
   ): RunPlannerCurrentTargetKind {
     const targetEid = this.decision.targetEid;
-    const objective = world.floor1?.objective;
+    const objective = world.floorScenario?.objective;
     if (!objective || targetEid === null || targetEid < 0) {
       return 'other';
     }
-    if (!objective.questCompleted && world.floor1?.enemyArchetypes.has(targetEid)) {
+    if (!objective.questCompleted && world.floorScenario?.enemyArchetypes.has(targetEid)) {
       return 'quest-kills';
     }
     if (shopStage === 'ready-to-buy' && world.playerGold < SHOPKEEPER_EQUIPMENT_COST) {
@@ -2863,16 +2863,16 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
     playerSpeedFtPerFrame: number,
   ): Floor1RunPlan | null {
-    const floor1 = world.floor1;
-    const objective = floor1?.objective;
-    if (!floor1 || !objective) {
+    const floorScenario = world.floorScenario;
+    const objective = floorScenario?.objective;
+    if (!floorScenario || !objective) {
       return null;
     }
 
     const hasWorldFetchItem =
-      floor1.questItemEid !== null &&
-      entityExists(world.ecs, floor1.questItemEid) &&
-      hasComponent(world.ecs, floor1.questItemEid, DroppedItem);
+      floorScenario.questItemEid !== null &&
+      entityExists(world.ecs, floorScenario.questItemEid) &&
+      hasComponent(world.ecs, floorScenario.questItemEid, DroppedItem);
     const bag = world.inventories.get(playerEid);
     const hasFetchItem = bag ? hasItem(bag, SHOPKEEPER_FETCH_ITEM_ID) : false;
     const slimeRat = objective.bossBattles.get('slime-rat')!;
@@ -3948,7 +3948,7 @@ export class BehaviorTreeAI implements AIInputProvider {
 
   /**
    * Nearest *living, reachable* boss-unlock quest enemy — an ambient-swarm
-   * rat/slime registered in {@link GameWorld.floor1}'s `enemyArchetypes`. Only
+   * rat/slime registered in {@link GameWorld.floorScenario}'s `enemyArchetypes`. Only
    * these registered enemies advance the 6-rat/4-slime kill quota; a kill counts
    * only when one dies in combat (out-of-range despawns are pruned without
    * counting). Mirrors {@link findNearestEnemy}'s reachability filtering so a
@@ -3963,13 +3963,13 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
     maxRadius: number = Number.POSITIVE_INFINITY,
   ): WorldTarget | null {
-    const floor1 = world.floor1;
-    if (!floor1) {
+    const floorScenario = world.floorScenario;
+    if (!floorScenario) {
       return null;
     }
 
     const candidates: WorldTarget[] = [];
-    for (const eid of floor1.enemyArchetypes.keys()) {
+    for (const eid of floorScenario.enemyArchetypes.keys()) {
       if (!entityExists(world.ecs, eid)) continue;
 
       const ignoredUntil = this.ignoredEnemyUntilFrame.get(eid);
@@ -4106,9 +4106,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     const panicProfile = this.getCollapsePanicProfile(world);
     const maybeDetourToQuestGiver = (target: ProgressTarget): ProgressTarget =>
       this.withQuestGiverDetour(world, playerEid, playerX, playerY, target, panicProfile);
-    const floor1 = world.floor1;
-    const objective = floor1?.objective;
-    if (!floor1 || !objective) {
+    const floorScenario = world.floorScenario;
+    const objective = floorScenario?.objective;
+    if (!floorScenario || !objective) {
       return null;
     }
 
@@ -4183,7 +4183,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           playerX,
           playerY,
           reason,
-          floor1.shopkeeperNpcEid ?? -1,
+          floorScenario.shopkeeperNpcEid ?? -1,
         ),
       );
     }
@@ -4211,7 +4211,7 @@ export class BehaviorTreeAI implements AIInputProvider {
             playerX,
             playerY,
             reason,
-            floor1.shopkeeperNpcEid ?? -1,
+            floorScenario.shopkeeperNpcEid ?? -1,
           ),
         );
       }
@@ -4291,7 +4291,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           playerX,
           playerY,
           reason,
-          floor1.spellQuestGiverNpcEid ?? -1,
+          floorScenario.spellQuestGiverNpcEid ?? -1,
         ),
       );
     }
@@ -4322,7 +4322,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           playerX,
           playerY,
           reason,
-          floor1.spellQuestGiverNpcEid ?? -1,
+          floorScenario.spellQuestGiverNpcEid ?? -1,
         ),
       );
     }
@@ -5388,8 +5388,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerEid: number,
     npcEid: number,
   ): string | null {
-    const floor1 = world.floor1;
-    if (!floor1) {
+    const floorScenario = world.floorScenario;
+    if (!floorScenario) {
       return 'generic-interaction';
     }
 
@@ -5398,7 +5398,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       return null;
     }
 
-    const objective = floor1.objective;
+    const objective = floorScenario.objective;
     const shopStage = getShopkeeperStage(world);
     const bag = world.inventories.get(playerEid);
     const hasFetchItem = bag ? hasItem(bag, SHOPKEEPER_FETCH_ITEM_ID) : false;

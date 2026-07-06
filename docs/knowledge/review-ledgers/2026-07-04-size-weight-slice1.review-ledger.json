@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-04",
+  "session_slug": "size-weight-slice1",
+  "task_title": "Slice 1 - Size component foundation (of the true size + weight system)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.5",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "notes": "Rubber-duck (gpt-5.5) surfaced: (a) R6 authored-mob-def ownership deferred; documented as intentional per spec Slice-1 rule mirroring sprite values, deferred to a later slice. (b) coverage-by-live-headless is not exhaustive; strengthened with docblock + follow-up + complementary ESLint/drift/parity defenses. (c) parity test using pair-counts too weak; the test now uses RunStats fingerprint locked against a base-branch golden. (d) shape/radius semantics; fixed getBodyRadius BOX branch to Math.max, and switched welcome sign to BOX."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.7"],
+          "concerns_count": 7,
+          "resolved_count": 5,
+          "clean": false,
+          "notes": "Critical: parity test self-comparing; welcome-sign non-square drift; ESLint failing on 11 test files; ability-system.test.ts broken by shim burn; getBodyRadius BOX using hypot vs legacy max. Medium (deferred to follow-ups): docblock accuracy for check-size-coverage; Floor 2 spawners not exercised. All critical concerns fixed in this branch."
+        },
+        {
+          "round": 2,
+          "models": ["claude-opus-4.7"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Post-fix verification: parity test now compares against golden captured from feat/size-weight-design; damage-system.test.ts projectile fixture updated with Size; all 3767 unit tests + collision-pair-parity + check-size-coverage green."
+        }
+      ]
+    }
+  }
+}

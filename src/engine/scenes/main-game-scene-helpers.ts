@@ -40,11 +40,11 @@ export const LIGHTING_VIEW_BUFFER_PX = 64;
  */
 export function getFloorRunOutcome(world: GameWorld): 'cleared_floor' | 'failed_timeout' | null {
   // Floor 2: player confirmed exit descent → victory
-  if (world.floor2State?.staircaseDiscovered === true) {
+  if (world.floorExtendedState?.familyState?.staircaseDiscovered === true) {
     return 'cleared_floor';
   }
   // Floor 1
-  const outcome = world.floor1?.runSummary?.outcome;
+  const outcome = world.floorScenario?.runSummary?.outcome;
   if (outcome === 'cleared_floor' || outcome === 'failed_timeout') {
     return outcome;
   }
@@ -199,7 +199,7 @@ export function resolveDialogueLines(
   world: GameWorld,
   deps: DialogueResolutionDeps,
 ): string[] {
-  const objective = world.floor1?.objective;
+  const objective = world.floorScenario?.objective;
   if (defId === 'tutorial-goon') {
     const goonLines = selectTutorialGoonDialogue({
       bossDefeated: objective?.bossBattles.get('staircase')?.defeated === true,

@@ -30,11 +30,13 @@ const FAM_B = asFamilyId('b');
 describe('familyFeudSystem — feud candidate budget (FR12)', () => {
   it('caps the rival candidate list at feudCandidateLimit even under dense packing', () => {
     const world = createTestWorld();
-    world.floor2State = {
-      presentFamilies: [FAM_A, FAM_B],
-      contestedResource: asFamilyId('ore') as unknown as never,
-      betrayerFlag: false,
-    } as never;
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [FAM_A, FAM_B],
+        contestedResource: asFamilyId('ore') as unknown as never,
+        betrayerFlag: false,
+      } as never,
+    };
     initializeFactionRelations(world, [FAM_A, FAM_B]);
     // Push both families to neutral so they feud freely.
     adjustFactionRelation(world, FAM_A, 10);

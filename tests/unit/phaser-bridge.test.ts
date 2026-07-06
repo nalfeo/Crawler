@@ -457,10 +457,10 @@ describe('createPhaserBridge', () => {
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
     // Floor1 sidecar so the renderer can read the 'slime-mini' archetype.
-    world.floor1 = {
+    world.floorScenario = {
       enemyArchetypes: new Map<number, string>(),
       objective: { bossBattles: new Map() },
-    } as unknown as NonNullable<typeof world.floor1>;
+    } as unknown as NonNullable<typeof world.floorScenario>;
 
     // A baby-slime corpse: shrunken Sprite.width + 'slime-mini' archetype, so it
     // renders at 0.65 of a full slime (1.95 ft / 3.0 ft, the real split scale) —
@@ -471,7 +471,7 @@ describe('createPhaserBridge', () => {
     addComponent(world.ecs, eid, Enemy);
     addComponent(world.ecs, eid, set(Sprite, { textureId: 2, width: 1.95, height: 1.95 }));
     addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: 500 }));
-    world.floor1!.enemyArchetypes.set(eid, 'slime-mini');
+    world.floorScenario!.enemyArchetypes.set(eid, 'slime-mini');
 
     bridge.sync(world);
     const corpseImg = images[0]!;
@@ -677,7 +677,7 @@ describe('createPhaserBridge', () => {
     addComponent(world.ecs, slimeRatBoss, Enemy);
     addComponent(world.ecs, slimeRatBoss, set(Sprite, { textureId: 2, width: 4, height: 4 }));
 
-    world.floor1 = {
+    world.floorScenario = {
       enemyArchetypes: new Map<number, string>(),
       objective: {
         bossBattles: new Map([
@@ -685,7 +685,7 @@ describe('createPhaserBridge', () => {
           ['staircase', { bossEid: staircaseBoss }],
         ]),
       },
-    } as unknown as NonNullable<typeof world.floor1>;
+    } as unknown as NonNullable<typeof world.floorScenario>;
 
     bridge.sync(world);
 
@@ -783,12 +783,12 @@ describe('createPhaserBridge', () => {
     world.stores.health.current[bossEnemy] = 90;
     world.stores.health.max[bossEnemy] = 100;
 
-    world.floor1 = {
+    world.floorScenario = {
       enemyArchetypes: new Map<number, string>(),
       objective: {
         bossBattles: new Map([['slime-rat', { bossEid: bossEnemy }]]),
       },
-    } as unknown as NonNullable<typeof world.floor1>;
+    } as unknown as NonNullable<typeof world.floorScenario>;
 
     bridge.sync(world);
 
@@ -814,10 +814,10 @@ describe('createPhaserBridge', () => {
     const world = createTestWorld();
     // Minimal floor1 sidecar so the renderer can read the 'slime-mini' archetype
     // and iterate boss battles (both accessed during enemy sync).
-    world.floor1 = {
+    world.floorScenario = {
       enemyArchetypes: new Map<number, string>(),
       objective: { bossBattles: new Map() },
-    } as unknown as NonNullable<typeof world.floor1>;
+    } as unknown as NonNullable<typeof world.floorScenario>;
 
     const fullSlime = addEntity(world.ecs);
     const miniSlime = addEntity(world.ecs);
@@ -834,7 +834,7 @@ describe('createPhaserBridge', () => {
     addComponent(world.ecs, miniSlime, set(Position, { x: 30, y: 10 }));
     addComponent(world.ecs, miniSlime, Enemy);
     addComponent(world.ecs, miniSlime, set(Sprite, { textureId: 2, width: 1.95, height: 1.95 }));
-    world.floor1!.enemyArchetypes.set(miniSlime, 'slime-mini');
+    world.floorScenario!.enemyArchetypes.set(miniSlime, 'slime-mini');
 
     bridge.sync(world);
 

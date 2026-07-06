@@ -1,7 +1,8 @@
 import { query } from 'bitecs';
 import type { CollisionPair, SpatialHashGrid } from '../collision.js';
 import { createSpatialHashGrid } from '../collision.js';
-import { Position, Sprite } from '../components.js';
+import { Position, Size } from '../components.js';
+import { getBodyHalfWidth, getBodyHalfHeight } from '../physics-body.js';
 import type { GameWorld } from '../world.js';
 
 export interface CollisionResult {
@@ -24,8 +25,11 @@ function getCollisionGrid(world: GameWorld): SpatialHashGrid {
 
 export function collisionSystem(world: GameWorld): CollisionResult {
   const grid = getCollisionGrid(world);
-  const entities = query(world.ecs, [Position, Sprite]);
-  const { position, sprite } = world.stores;
+  // Post-Slice-1: the grid is a Size-driven index (ADR 0044). Sprite dims are
+  // a render concern only. `check:size-coverage` guards that every collision
+  // participant carries Size, so entities without one are excluded here.
+  const entities = query(world.ecs, [Position, Size]);
+  const { position } = world.stores;
 
   grid.clear();
 
@@ -36,8 +40,8 @@ export function collisionSystem(world: GameWorld): CollisionResult {
 
     const x = position.x[eid] ?? 0;
     const y = position.y[eid] ?? 0;
-    const halfWidth = (sprite.width[eid] ?? 0) * 0.5;
-    const halfHeight = (sprite.height[eid] ?? 0) * 0.5;
+    const halfWidth = getBodyHalfWidth(world, eid, 'collisionSystem');
+    const halfHeight = getBodyHalfHeight(world, eid, 'collisionSystem');
 
     grid.insert(eid, x, y, halfWidth, halfHeight);
   }

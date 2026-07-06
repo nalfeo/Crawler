@@ -7,10 +7,12 @@ import {
   Position,
   Prop,
   PropLight,
+  Size,
   Sprite,
   Team,
   Trap,
 } from '../components.js';
+import { PHYSICS_BODIES, SHAPE_BOX, SHAPE_CIRCLE } from '../physics-defs.js';
 import type { GameWorld } from '../world.js';
 import { getNpcDef, type NpcInstance } from '../../shared/npc-types.js';
 import {
@@ -49,6 +51,16 @@ export function spawnTrap(
   addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
   addComponent(world.ecs, eid, set(Team, { id: teamId }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 1.5, height: 1.5 }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      radius: PHYSICS_BODIES.trap.radius,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    }),
+  );
   return eid;
 }
 
@@ -71,6 +83,21 @@ export function spawnNpc(world: GameWorld, x: number, y: number, defId: string):
     world.ecs,
     eid,
     set(Sprite, { textureId: def.textureId, width: def.widthFt, height: def.heightFt }),
+  );
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      // NPC defs are non-square (e.g. 2.5×3.5 ft), so we use a per-axis BOX
+      // that byte-matches the legacy `sprite.width/2 × sprite.height/2`
+      // collision footprint. A CIRCLE with `r = max(w,h)/2` would widen the
+      // horizontal extent by ~40% and is a Slice-1 spec violation ("do not
+      // change any numeric size value away from today's sprite half-extents").
+      radius: 0,
+      halfWidth: def.widthFt * 0.5,
+      halfHeight: def.heightFt * 0.5,
+      shape: SHAPE_BOX,
+    }),
   );
   addComponent(world.ecs, eid, set(Npc, { defIdIndex: 0 }));
   addComponent(world.ecs, eid, Invincible);
@@ -110,6 +137,18 @@ export function spawnProp(world: GameWorld, x: number, y: number, defId: string)
     world.ecs,
     eid,
     set(Sprite, { textureId: 0, width: decorationDef.scale, height: decorationDef.scale }),
+  );
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      // Props use per-def `scale` — the sprite is `scale × scale` so the
+      // circumscribing radius equals `scale * 0.5`.
+      radius: decorationDef.scale * 0.5,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    }),
   );
   addComponent(
     world.ecs,
@@ -163,6 +202,16 @@ export function spawnHarvestableNode(
   addComponent(world.ecs, eid, set(Position, { x, y }));
   // Sprite dimensions in feet — nodes are roughly 1 ft wide/tall for collision sizing.
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 1, height: 1 }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      radius: PHYSICS_BODIES['harvestable-node'].radius,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    }),
+  );
   addComponent(
     world.ecs,
     eid,

@@ -127,8 +127,8 @@ export function resolveFamilyRows(
   world: FactionRelationsWorldFacet & { goalFlags: Map<string, boolean> },
   families: readonly FamilyDef[],
 ): FamilyRow[] {
-  const floor2 = world.floor2State;
-  if (floor2 === null) return [];
+  const floor2 = world.floorExtendedState?.familyState;
+  if (!floor2) return [];
   const rows: FamilyRow[] = [];
   for (const familyId of floor2.presentFamilies) {
     const def = findFamilyDef(families, familyId);

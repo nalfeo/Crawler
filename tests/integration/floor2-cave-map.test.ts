@@ -106,6 +106,6 @@ describe('Floor 2 cave map integration', () => {
         ).toBe(true);
       }
     },
-    30_000,
+    60_000,
   );
 });

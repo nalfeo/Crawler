@@ -1,0 +1,10 @@
+{
+  "date": "2026-07-05",
+  "session": "local-sprite-provider-shepherd",
+  "estimated_apples": 3,
+  "actual_apples": 3,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.6,
+  "notes": "Shepherded PR #790 to merge (original owner archived). Ran an apple-scaled code-review loop (3 rounds: Copilot reviewer -> gpt-5.4 -> claude-sonnet-4.6) that reached no concerns. Fixed all 7 review threads in real code plus a second real 'bad-grid' grid-corruption bug found in round 2 (strict per-cell dimension validation + defensive stitch clamp + regression test). Owner-resolved all 7 Copilot threads via GraphQL and armed --auto --squash. Recorded a valid 3-apple review ledger. No game-runtime files touched, so the Floor 1 Gate was unaffected."
+}
