@@ -77,7 +77,8 @@ describe('CaveSystemGenerator', () => {
     const rooms = floor.roomGraph.getAll();
     const byRole = (role: RoomRole) => rooms.filter((r) => r.role === role);
     expect(byRole(RoomRole.SPAWN).length).toBe(1);
-    expect(byRole(RoomRole.SETTLEMENT).length).toBe(1);
+    expect(byRole(RoomRole.SETTLEMENT).length).toBeGreaterThanOrEqual(2);
+    expect(byRole(RoomRole.SETTLEMENT).length).toBeLessThanOrEqual(3);
     expect(byRole(RoomRole.RESOURCE_HEART).length).toBe(1);
     expect(byRole(RoomRole.TERRITORY).length).toBe(4);
     expect(byRole(RoomRole.BOSS_DEN).length).toBe(4);
@@ -87,8 +88,29 @@ describe('CaveSystemGenerator', () => {
     const floor = generateWithPresent(11, 3);
     const rooms = floor.roomGraph.getAll();
     const byRole = (role: RoomRole) => rooms.filter((r) => r.role === role);
+    expect(byRole(RoomRole.SETTLEMENT).length).toBeGreaterThanOrEqual(2);
+    expect(byRole(RoomRole.SETTLEMENT).length).toBeLessThanOrEqual(3);
     expect(byRole(RoomRole.TERRITORY).length).toBe(3);
     expect(byRole(RoomRole.BOSS_DEN).length).toBe(3);
+  });
+
+  it('always includes a settlement bar room with 1-2 adjacent annex rooms', () => {
+    for (const seed of [1, 7, 13, 42, 99, 500]) {
+      const floor = generateWithPresent(seed, 4);
+      const settlements = floor.roomGraph
+        .getAll()
+        .filter((room) => room.role === RoomRole.SETTLEMENT);
+      expect(settlements.length).toBeGreaterThanOrEqual(2);
+      expect(settlements.length).toBeLessThanOrEqual(3);
+      const bar = settlements.find((room) => room.label === 'settlement_bar');
+      expect(bar, `seed=${seed} missing settlement_bar`).toBeDefined();
+      const annexes = settlements.filter((room) => room.label?.startsWith('settlement_annex_'));
+      expect(annexes.length).toBe(settlements.length - 1);
+      const barNeighbours = floor.roomGraph
+        .getConnectedRooms(bar!.id)
+        .filter((room) => room.role === RoomRole.SETTLEMENT);
+      expect(barNeighbours.length).toBe(annexes.length);
+    }
   });
 
   it('assigns unique familyIndex 0..N-1 to territories and boss dens', () => {

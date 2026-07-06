@@ -92,6 +92,20 @@ export interface MapConfig {
   readonly caveSystem?: {
     /** Number of family territories to stamp (3–4). */
     readonly presentCount?: number;
+    /** Cellular initial fill ratio (higher = more open caverns). */
+    readonly initialFill?: number;
+    /** Cellular smoothing passes. */
+    readonly smoothingPasses?: number;
+    /** Boss-den side length in tiles. */
+    readonly bossDenSize?: number;
+    /** Minimum tile separation between region seeds. */
+    readonly regionSeparationTiles?: number;
+    /** Maximum retry attempts before generation fails. */
+    readonly maxRetries?: number;
+    /** Number of post-connect cavern widening passes. */
+    readonly cavernWidenPasses?: number;
+    /** Minimum run length to perturb straight hallway segments. */
+    readonly straightHallwayMinRun?: number;
   };
 }
 

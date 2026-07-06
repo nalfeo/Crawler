@@ -69,7 +69,8 @@ describe('Floor 2 cave map integration', () => {
       // Role counts.
       const byRole = (r: RoomRole) => rooms.filter((x) => x.role === r).length;
       expect(byRole(RoomRole.SPAWN)).toBe(1);
-      expect(byRole(RoomRole.SETTLEMENT)).toBe(1);
+      expect(byRole(RoomRole.SETTLEMENT)).toBeGreaterThanOrEqual(2);
+      expect(byRole(RoomRole.SETTLEMENT)).toBeLessThanOrEqual(3);
       expect(byRole(RoomRole.RESOURCE_HEART)).toBe(1);
       expect(byRole(RoomRole.TERRITORY)).toBe(4);
       expect(byRole(RoomRole.BOSS_DEN)).toBe(4);

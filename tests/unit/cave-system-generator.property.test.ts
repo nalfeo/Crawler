@@ -36,7 +36,8 @@ describe('CaveSystemGenerator properties', () => {
           const rooms = floor.roomGraph.getAll();
           const byRole = (r: RoomRole) => rooms.filter((x) => x.role === r).length;
           expect(byRole(RoomRole.SPAWN)).toBe(1);
-          expect(byRole(RoomRole.SETTLEMENT)).toBe(1);
+          expect(byRole(RoomRole.SETTLEMENT)).toBeGreaterThanOrEqual(2);
+          expect(byRole(RoomRole.SETTLEMENT)).toBeLessThanOrEqual(3);
           expect(byRole(RoomRole.RESOURCE_HEART)).toBe(1);
           expect(byRole(RoomRole.TERRITORY)).toBe(presentCount);
           expect(byRole(RoomRole.BOSS_DEN)).toBe(presentCount);

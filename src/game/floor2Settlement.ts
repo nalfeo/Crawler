@@ -57,18 +57,24 @@ export function initializeFloor2Settlement(
     throw new Error('initializeFloor2Settlement: world.floorMap is null');
   }
   const settlements = floorMap.roomGraph.getRoomsByRole(RoomRole.SETTLEMENT);
-  const settlement = settlements[0];
-  if (!settlement) {
-    throw new Error('initializeFloor2Settlement: no SETTLEMENT room in floor map');
+  const settlement = settlements.find((room) => room.label === 'settlement_bar') ?? settlements[0];
+  if (!settlement || settlements.length < 2 || settlements.length > 3) {
+    throw new Error(
+      `initializeFloor2Settlement: expected 2-3 settlement rooms, found ${settlements.length}`,
+    );
   }
 
-  // 1. Retag as SAFE + repaint floor tiles.
-  floorMap.roomGraph.setRole(settlement.id, RoomRole.SAFE);
-  repaintSafeRoomFloor(world, settlement);
+  // 1. Retag all settlement-cluster rooms as SAFE + repaint floor tiles.
+  for (const room of settlements) {
+    floorMap.roomGraph.setRole(room.id, RoomRole.SAFE);
+    repaintSafeRoomFloor(world, room);
+  }
 
-  // 2. Seal the perimeter — mirrors Floor 1's shop / welcome-office pass.
-  sealSpecialRooms(floorMap, { extraRoomIds: [settlement.id] });
-  installSettlementDoorEntities(world, settlement);
+  // 2. Seal perimeters — mirrors Floor 1's shop / welcome-office pass.
+  sealSpecialRooms(floorMap, { extraRoomIds: settlements.map((room) => room.id) });
+  for (const room of settlements) {
+    installSettlementDoorEntities(world, room);
+  }
 
   // 3. Compute centroid + spawn positions (tile → world).
   const centreTile = roomCentroidTile(settlement);
@@ -84,17 +90,13 @@ export function initializeFloor2Settlement(
   world.rng.shuffle(shuffled);
   const picked = shuffled.slice(0, Math.min(shopCount, shuffled.length));
 
-  const shopOffsetTiles = 3;
+  const shopRooms = settlements.filter((room) => room.id !== settlement.id);
+  const fallbackShopRoom = shopRooms[0] ?? settlement;
   const shops: Floor2ShopInstance[] = [];
   picked.forEach((archetype, idx) => {
-    // Fan shops out along the room's x axis relative to the centroid.
-    const offsetSign = idx === 0 ? -1 : 1;
-    const desiredTx = centreTile.x + offsetSign * shopOffsetTiles;
-    const clampedTx = Math.min(
-      settlement.bounds.x + settlement.bounds.width - 2,
-      Math.max(settlement.bounds.x + 1, desiredTx),
-    );
-    const worldPos = floorMap.tileToWorld(clampedTx, centreTile.y);
+    const spawnRoom = shopRooms[idx % Math.max(1, shopRooms.length)] ?? fallbackShopRoom;
+    const spawnTile = roomCentroidTile(spawnRoom);
+    const worldPos = floorMap.tileToWorld(spawnTile.x, spawnTile.y);
     const npcEid = spawnNpc(world, worldPos.x, worldPos.y, archetype.npcId);
     const rolled = generateShopInventory(world.rng, archetype);
     const inventory: Floor2ShopInventoryItem[] = rolled.items.map((item) => ({
@@ -112,6 +114,7 @@ export function initializeFloor2Settlement(
 
   const snapshot: Floor2SettlementSnapshot = {
     settlementRoomId: settlement.id,
+    settlementRoomIds: settlements.map((room) => room.id),
     brokerEid,
     shops,
   };
