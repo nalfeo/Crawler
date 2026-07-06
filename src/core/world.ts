@@ -81,6 +81,8 @@ export interface FloorExtendedState {
   familyState?: Floor2State;
   /** Settlement snapshot for floors with a settlement mechanic (e.g. Floor 2). */
   settlement?: Floor2SettlementSnapshot;
+  /** Trash territory assignments for floors with territorial trash spawning (e.g. Floor 2). Maps quadrant ID ('N', 'S', 'E', 'W') to archetype ID. */
+  trashTerritories?: Map<string, string>;
 }
 
 export interface GameWorld {
