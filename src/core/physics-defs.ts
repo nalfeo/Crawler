@@ -33,6 +33,42 @@ export const SHAPE_CIRCLE = 0 as const;
 export const SHAPE_BOX = 1 as const;
 export type ShapeCode = typeof SHAPE_CIRCLE | typeof SHAPE_BOX;
 
+/**
+ * Weight (lb) at or above which `knockbackSystem` treats the target as
+ * immovable: it drops the Knockback component without displacing the entity.
+ * Walls (10 000 lb per `entity-sizing.md`) hit this by design.
+ *
+ * Independent of the `Immovable` tag component — an entity qualifies for
+ * short-circuit via *either* rule. See ADR 0044 (Slice 2).
+ */
+export const IMMOVABLE_THRESHOLD = 10_000 as const;
+
+/**
+ * Median mob weight (lb) used as the 1.0× knockback baseline in
+ * `knockbackSystem`. A target at this weight sees knockback identical to
+ * pre-Slice-2 behavior; lighter targets move farther, heavier targets move
+ * less. Writers keep their configured knockback speeds; scaling happens
+ * reader-side. See ADR 0044 (Slice 2) and `entity-sizing.md`
+ * §"Knockback baseline math".
+ */
+export const KNOCKBACK_WEIGHT_BASELINE_LB = 120 as const;
+
+/**
+ * Upper bound on the reader-side `weightScale = BASELINE / weight` factor
+ * in `knockbackSystem`. Without this cap a rat @ 6 lb would receive 20×
+ * displacement and a slime @ 20 lb would receive 6× — enough to punt light
+ * mobs across a room from a single sword swing, breaking game feel. 2.5×
+ * puts the clamp boundary at 48 lb (below the 60 lb "light mob" data
+ * anchor), so authored weights ≥ 48 lb scale linearly and only extreme
+ * lightweights are clamped. Heavier-than-baseline targets are unaffected
+ * (`weightScale ≤ 1.0` there).
+ *
+ * Design-owned constant: ADR 0044 (Slice 2 refinement). Authored per-mob
+ * weights are intentionally left unchanged in Slice 2; retuning the mob
+ * registry is a later `ai-combat-balance` slice.
+ */
+export const KNOCKBACK_WEIGHT_SCALE_MAX = 2.5 as const;
+
 /** A single physics-body definition. Keys are named for the runtime store. */
 export interface PhysicsBodyDef {
   /** Bounding radius in ft. Non-zero for `SHAPE_CIRCLE`; 0 for `SHAPE_BOX`. */

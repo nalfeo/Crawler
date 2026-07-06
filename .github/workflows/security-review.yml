@@ -13,24 +13,14 @@ permissions:
   issues: write
 
 jobs:
-  # Parallel security checks (independent, can all run at once)
-  check-npm-audit:
-    name: npm audit
+  # All six security checks consolidated into one job to reduce runner-slot
+  # consumption (previously each check spun up its own runner and paid full
+  # setup overhead). Each step is independent; continue-on-error per-step
+  # ensures a single failure doesn't skip later checks.
+  security-checks:
+    name: Security checks
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-node
-
-      - name: npm audit
-        run: npx tsx scripts/agent/shared/wrap-step.ts --name security-npm-audit -- npm audit --audit-level=high
-        continue-on-error: ${{ github.event_name != 'pull_request' }}
-
-  check-secrets:
-    name: Secrets scan
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,76 +28,42 @@ jobs:
 
       - uses: ./.github/actions/setup-node
 
+      - name: npm audit
+        if: ${{ !cancelled() }}
+        run: npx tsx scripts/agent/shared/wrap-step.ts --name security-npm-audit -- npm audit --audit-level=high
+        continue-on-error: ${{ github.event_name != 'pull_request' }}
+
       - name: Scan for committed secrets
+        if: ${{ !cancelled() }}
         run: npx tsx scripts/agent/shared/wrap-step.ts --name security-scan-secrets -- bash scripts/agent/security/scan-secrets.sh
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 
-  check-codeowners:
-    name: CODEOWNERS coverage
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-node
-
       - name: CODEOWNERS coverage
+        if: ${{ !cancelled() }}
         run: npx tsx scripts/agent/security/check-codeowners.ts
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 
-  check-deps:
-    name: Dependency allowlist
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-node
-
       - name: Dependency allowlist
+        if: ${{ !cancelled() }}
         run: npx tsx scripts/agent/security/check-deps.ts
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 
-  check-dynamic-patterns:
-    name: Dynamic patterns
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-node
-
       - name: Dynamic-execution patterns
+        if: ${{ !cancelled() }}
         run: npx tsx scripts/agent/shared/wrap-step.ts --name security-dynamic-patterns -- bash scripts/agent/security/check-dynamic-patterns.sh
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 
-  check-ai-prompts:
-    name: AI prompt injection
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-node
-
       - name: AI prompt-injection scan
+        if: ${{ !cancelled() }}
         run: npx tsx scripts/agent/security/check-ai-prompts.ts
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 
-  # Aggregation job depends on all checks
+  # Aggregation job (scheduled runs only — PRs don't file issues)
   aggregate-results:
     name: Aggregate & file issues
     runs-on: ubuntu-latest
-    if: always()
-    needs:
-      [
-        check-npm-audit,
-        check-secrets,
-        check-codeowners,
-        check-deps,
-        check-dynamic-patterns,
-        check-ai-prompts,
-      ]
+    if: always() && github.event_name != 'pull_request'
+    needs: [security-checks]
     timeout-minutes: 10
     env:
       AUTOMATION_REPORT_DIR: ${{ github.workspace }}/.automation-reports
@@ -124,7 +80,6 @@ jobs:
 
       - name: Aggregate report
         id: aggregate
-        if: github.event_name != 'pull_request'
         run: |
           set +e
           npx tsx scripts/agent/shared/aggregate-report.ts > report.md
@@ -132,7 +87,7 @@ jobs:
         continue-on-error: true
 
       - name: File tracking issue
-        if: github.event_name != 'pull_request' && steps.aggregate.outputs.exitcode != '0'
+        if: steps.aggregate.outputs.exitcode != '0'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

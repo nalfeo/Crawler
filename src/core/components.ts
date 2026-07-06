@@ -90,6 +90,18 @@ export const SpawnAnim = {};
 /** Physical weight of an entity (lbs). Used for knockback, strength interactions, etc. */
 export const Weight = {};
 /**
+ * Marks an entity as immovable by knockback. `knockbackSystem` short-circuits
+ * targets carrying this tag: it removes the Knockback component immediately
+ * without applying any displacement. Independent of the numeric
+ * `IMMOVABLE_THRESHOLD` (see `physics-defs.ts`) — an entity may qualify for
+ * short-circuit via *either* rule.
+ *
+ * Use `Immovable` for entities whose immobility is a design invariant
+ * (statues, bosses that must stay in an arena, quest NPCs) even if their
+ * weight happens to be below the threshold. See ADR 0044.
+ */
+export const Immovable = {};
+/**
  * Physical body of an entity. Read by collisionSystem (broad + narrow phase),
  * knockbackSystem (footprint passability), and every radius query
  * (areaDamageSystem, beamSystem, meleeSwingSystem, trapSystem, etc.).

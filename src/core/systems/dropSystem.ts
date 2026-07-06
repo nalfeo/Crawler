@@ -12,6 +12,7 @@ import {
   Damage,
   DeathTimer,
   Enemy,
+  FamilyMembership,
   Health,
   Knockback,
   Owner,
@@ -227,8 +228,7 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
   const parentSpriteTexture = hasSprite ? (world.stores.sprite.textureId[eid] ?? 0) : 0;
   const parentSpriteWidth = getBodyHalfWidth(world, eid, 'dropSystem') * 2 || 2;
   const parentSpriteHeight = getBodyHalfHeight(world, eid, 'dropSystem') * 2 || 2;
-  const parentSizeScale = hasSprite ? world.stores.sprite.sizeScale[eid] || 1 : 1;
-  const parentBaseWeight = (world.stores.weight.value[eid] ?? 120) / parentSizeScale;
+  const parentBaseWeight = world.stores.weight.value[eid] ?? 120;
   const miniWidth = Math.max(MINI_SLIME_MIN_SIZE_FT, parentSpriteWidth * MINI_SLIME_SIZE_SCALE);
   const miniHeight = Math.max(MINI_SLIME_MIN_SIZE_FT, parentSpriteHeight * MINI_SLIME_SIZE_SCALE);
   // Inherit blood colour from the parent slime
@@ -459,6 +459,12 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
         (world.stores.bloodColor.g[eid]! << 8) |
         world.stores.bloodColor.b[eid]!
       : DEFAULT_BLOOD_COLOR;
+    const familyIndex = hasComponent(world.ecs, eid, FamilyMembership)
+      ? (world.stores.familyMembership.familyId[eid] ?? -1)
+      : -1;
+    const isBoss = hasComponent(world.ecs, eid, FamilyMembership)
+      ? ((world.stores.familyMembership.isBoss[eid] ?? 0) as 0 | 1)
+      : 0;
     world.combatEvents.push({
       type: 'death',
       x,
@@ -473,6 +479,8 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
       sourceX: killDirX !== 0 || killDirY !== 0 ? x - killDirX * 2.5 : undefined,
       sourceY: killDirX !== 0 || killDirY !== 0 ? y - killDirY * 2.5 : undefined,
       bloodColor,
+      familyIndex: familyIndex >= 0 ? familyIndex : undefined,
+      isBoss: familyIndex >= 0 ? isBoss : undefined,
     });
 
     // Add death linger timer so entity persists for knockback/death animation

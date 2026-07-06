@@ -89,16 +89,43 @@ class still missing Size and must be empty before Slice 2 lands.
 
 ### Weight as knockback denominator
 
-Knockback WRITERS (meleeSwingSystem, projectiles, `applyPlayerEnemyHit`,
-corpse explosion, area damage) already carry a "knockback" scalar — a
-displacement distance in ft. Keep that scalar as its shipping value
-(`writerImpulse`) and scale it by the mass ratio `120 / targetWeight`, so a
-120 lb median target is unchanged and no per-writer recalibration is needed
-(the canonical form documented in `entity-sizing.md` §"Knockback baseline
-math"):
+**Amended 2026-07-05 (Slice 2 refinement — cap on weight scale):** The
+reader-side `weightScale = 120 / max(1, weight)` factor in
+`knockbackSystem` is **clamped by `KNOCKBACK_WEIGHT_SCALE_MAX = 2.5`**
+(defined in `src/core/physics-defs.ts`). Without the cap, authored
+lightweights on the mob registry — rat @ 6 lb → raw 20×, slime @ 20 lb →
+raw 6× — would receive knockback displacements that visibly break game
+feel (a single sword swing punts a rat across a room). 2.5× puts the
+clamp boundary at 48 lb, below the 60 lb "light mob" data anchor: any
+authored weight ≥48 lb scales linearly (identity at 120, 2× at 60,
+0.5× at 240, …); only sub-48 lb entities clamp. Heavier-than-baseline
+scaling is unaffected (`weightScale ≤ 1.0` there). Authored per-mob
+weights in `src/game/spawners/registry.ts` are intentionally left
+as-shipped in Slice 2 — retuning the mob registry is a later
+`ai-combat-balance` slice ("revisit authored weights vs cap = 2.5").
+
+**Amended 2026-07-05 (Slice 2 shipping):** The final shipped design applies
+the weight divide **reader-side** in `knockbackSystem`, not per-writer as
+originally sketched below. Writers (`meleeSwingSystem`, `dropSystem`
+corpse-explosion, `progressionEffects`, and any future writer) MUST keep
+their knockback speed/duration values in **raw, unscaled** units. The
+reader multiplies displacement by `120 / max(1, targetWeight)` each frame
+and decrements the remaining budget by the **unscaled** base step, so
+impulse duration in frames is weight-invariant while only total
+displacement scales. Rationale: keeping the divide at the reader means
+(a) writer constants never need per-target recalibration; (b) future
+knockback writers inherit weight scaling automatically without a
+per-writer audit; (c) the audit surface for the weight contract is a
+single system. Visible math is identical to the writer-side sketch below
+for a 120 lb median target (both give 1.0×); the writer-side snippet is
+retained only as a canonical statement of the math.
+
+Original writer-side sketch (kept for math reference; NOT the shipping
+implementation):
 
 ```ts
-// Existing writer (meleeSwingSystem.ts); writerImpulse is today's scalar
+// Historical sketch — writers today do NOT do this. Reader-side scaling
+// in knockbackSystem is the shipping design (see amendment above).
 knockback.speed[eid] = writerImpulse * (120 / Math.max(1, targetWeightLb));
 knockback.remaining[eid] = writerImpulse * (120 / Math.max(1, targetWeightLb));
 ```

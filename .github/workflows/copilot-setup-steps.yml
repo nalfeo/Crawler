@@ -27,5 +27,9 @@ jobs:
       - name: Set up Node.js and install dependencies
         uses: ./.github/actions/setup-node
 
-      - name: Verify (typecheck + lint + tests)
-        run: npm run verify:fast
+      - name: Verify (typecheck src)
+        # Run a fast typecheck of src/ only to confirm the environment is
+        # correctly set up. The full suite (tests/ + scripts/) and all unit
+        # tests are gated by CI jobs on every PR — re-running them here adds
+        # ~30 s of latency to every new agent session for no incremental value.
+        run: npm run typecheck:src

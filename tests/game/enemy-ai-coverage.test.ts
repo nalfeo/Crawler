@@ -580,3 +580,33 @@ describe('enemyAISystem — branch coverage hardening', () => {
 function spread(point: { x: number; y: number }): [number, number] {
   return [point.x, point.y];
 }
+
+describe('enemyAISystem — out-of-aggro enemy still wanders', () => {
+  it('runs idle/wander AI for an enemy outside its aggro range', () => {
+    // Enemy at ~12 tiles from player (48ft), aggroRange=2ft — it can never
+    // detect the player, so it must fall through to idle/wander AI and move,
+    // rather than sitting frozen. (This exercises the !canDetectPlayer path.)
+    const world = createTestWorld();
+    world.floorMap = openArena(24, 18);
+
+    // Player at center, enemy 12 tiles away.
+    spawnPlayer(world, ...spread(tileCenter(2, 2)));
+    const enemy = spawnBehaviorEnemy(
+      world,
+      ...spread(tileCenter(14, 2)),
+      20,
+      AI_TYPE.CHASE,
+      0.25,
+      2, // aggroRange = 2ft — tiny, enemy can never detect player
+      0,
+    );
+
+    world.frameCount = 1;
+    enemyAISystem(world);
+
+    // After one tick the enemy should be executing idle/wander (non-zero velocity).
+    const vx = world.stores.velocity.x[enemy] ?? 0;
+    const vy = world.stores.velocity.y[enemy] ?? 0;
+    expect(Math.hypot(vx, vy)).toBeGreaterThan(0.05);
+  });
+});
