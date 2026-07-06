@@ -4,7 +4,7 @@
   "protagonist": "Rhea Vale",
   "starterWeapons": ["sword", "knife", "bow", "pistol", "throwing-knife"],
   "timer": {
-    "durationMs": 360000,
+    "durationMs": 1200000,
     "stairSpawnCountdownMs": 40000
   },
   "objectives": {
@@ -20,10 +20,10 @@
     "heightTiles": 156,
     "biome": "cave_system",
     "seed": 84,
-    "roomWidthRange": [7, 16],
-    "roomHeightRange": [6, 14],
+    "roomWidthRange": [12, 24],
+    "roomHeightRange": [10, 20],
     "maxRooms": 55,
-    "floorDensity": 0.45,
+    "floorDensity": 0.35,
     "tileSizeFt": 4.0
   },
   "enemyPackId": "floor2-families",

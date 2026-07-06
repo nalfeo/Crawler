@@ -96,7 +96,7 @@ import { evaluateAchievementUnlocksForPhase } from './systems/achievementSystem.
 import { getAllSkillDefinitions } from './skills/registry.js';
 import type { SkillState } from '../shared/skills.js';
 import { floor1Config } from '../shared/floor-config.js';
-import { floor1EnemyPack, pickEnemyArchetype } from '../shared/enemy-packs.js';
+import { floor1EnemyPack, floor2EnemyPack, pickEnemyArchetype } from '../shared/enemy-packs.js';
 import { floor1Manifest } from '../shared/floor-manifest.js';
 import type { NpcPlacementDef } from '../shared/npc-placements.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
@@ -141,16 +141,24 @@ interface Floor1SpawnerState {
   lastSpawnMs: number;
 }
 
-function pruneAmbientOverflow(
+function getAmbientEnemyArchetypes(world: GameWorld): Map<number, string> | undefined {
+  if (world.floorScenario) {
+    return world.floorScenario.enemyArchetypes;
+  }
+  return world.floorExtendedState?.ambientEnemyArchetypes;
+}
+
+export function pruneAmbientOverflow(
   world: GameWorld,
   playerX: number,
   playerY: number,
   overflowCount: number,
 ): void {
-  if (!world.floorScenario || overflowCount <= 0) {
+  const trackedAmbient = getAmbientEnemyArchetypes(world);
+  if (!trackedAmbient || overflowCount <= 0) {
     return;
   }
-  const rankedAmbient = [...world.floorScenario.enemyArchetypes.keys()]
+  const rankedAmbient = [...trackedAmbient.keys()]
     .filter((eid) => entityExists(world.ecs, eid))
     .map((eid) => {
       const ex = world.stores.position.x[eid] ?? 0;
@@ -167,7 +175,7 @@ function pruneAmbientOverflow(
     }
     clearEntityStores(world, victim);
     removeEntity(world.ecs, victim);
-    world.floorScenario.enemyArchetypes.delete(victim);
+    trackedAmbient.delete(victim);
   }
 }
 
@@ -193,15 +201,16 @@ export function sealRoomPerimeterOpenings(
   sealRoomPerimeter(floorMap, room);
 }
 
-function pruneAmbientOutOfRange(world: GameWorld, playerX: number, playerY: number): void {
-  if (!world.floorScenario) {
+export function pruneAmbientOutOfRange(world: GameWorld, playerX: number, playerY: number): void {
+  const trackedAmbient = getAmbientEnemyArchetypes(world);
+  if (!trackedAmbient) {
     return;
   }
-  const pack = floor1EnemyPack;
+  const pack = world.floor === 2 ? floor2EnemyPack : floor1EnemyPack;
   const maxDistanceSq = pack.despawnDistanceFt * pack.despawnDistanceFt;
-  for (const eid of [...world.floorScenario.enemyArchetypes.keys()]) {
+  for (const eid of [...trackedAmbient.keys()]) {
     if (!entityExists(world.ecs, eid)) {
-      world.floorScenario.enemyArchetypes.delete(eid);
+      trackedAmbient.delete(eid);
       continue;
     }
     const ex = world.stores.position.x[eid] ?? 0;
@@ -213,7 +222,7 @@ function pruneAmbientOutOfRange(world: GameWorld, playerX: number, playerY: numb
     }
     clearEntityStores(world, eid);
     removeEntity(world.ecs, eid);
-    world.floorScenario.enemyArchetypes.delete(eid);
+    trackedAmbient.delete(eid);
   }
 }
 
@@ -229,7 +238,7 @@ const playerBonusApplied = new WeakSet<GameWorld>();
  */
 const populatedRoomsByWorld = new WeakMap<GameWorld, Set<number>>();
 
-function getSpawnerState(world: GameWorld): Floor1SpawnerState {
+export function getSpawnerState(world: GameWorld): Floor1SpawnerState {
   let state = spawnerStateByWorld.get(world);
   if (state === undefined) {
     state = { lastSpawnMs: Number.NEGATIVE_INFINITY };
@@ -1875,7 +1884,7 @@ function distSq(ax: number, ay: number, bx: number, by: number): number {
  * director keeps topped up. Corpses in their death-linger window (health 0) are
  * excluded so a pile of fresh kills doesn't suppress replenishment.
  */
-function countEngagingEnemies(
+export function countEngagingEnemies(
   world: GameWorld,
   playerX: number,
   playerY: number,
@@ -1897,7 +1906,7 @@ function countEngagingEnemies(
   return count;
 }
 
-function countDirectorEnemies(world: GameWorld): number {
+export function countDirectorEnemies(world: GameWorld): number {
   let count = 0;
   for (const eid of query(world.ecs, [Enemy])) {
     if (hasComponent(world.ecs, eid, Spawner)) {
@@ -1915,17 +1924,18 @@ function countDirectorEnemies(world: GameWorld): number {
  * player is in) and only ever touches tracked ambient archetypes — bosses and
  * quest enemies are untouched. Returns the number actually evicted.
  */
-function evictFurthestAmbient(
+export function evictFurthestAmbient(
   world: GameWorld,
   playerX: number,
   playerY: number,
   minDistSq: number,
   count: number,
 ): number {
-  if (!world.floorScenario || count <= 0) {
+  const trackedAmbient = getAmbientEnemyArchetypes(world);
+  if (!trackedAmbient || count <= 0) {
     return 0;
   }
-  const candidates = [...world.floorScenario.enemyArchetypes.keys()]
+  const candidates = [...trackedAmbient.keys()]
     .filter((eid) => entityExists(world.ecs, eid))
     .map((eid) => ({
       eid,
@@ -1943,7 +1953,7 @@ function evictFurthestAmbient(
     const victim = candidates[i]!.eid;
     clearEntityStores(world, victim);
     removeEntity(world.ecs, victim);
-    world.floorScenario.enemyArchetypes.delete(victim);
+    trackedAmbient.delete(victim);
   }
   return evictCount;
 }
@@ -2144,12 +2154,12 @@ function isInvalidAmbientSpawn(
  * absolute validity ceiling stays at the ambient max distance, with a
  * whole-map passable-tile fallback. Returns null when no valid tile is found.
  */
-function resolveAmbientSpawnPoint(
+export function resolveAmbientSpawnPoint(
   world: GameWorld,
   playerX: number,
   playerY: number,
 ): { x: number; y: number } | null {
-  const pack = floor1EnemyPack;
+  const pack = world.floor === 2 ? floor2EnemyPack : floor1EnemyPack;
   const minDistanceSq =
     FLOOR_1_AMBIENT_MIN_PLAYER_DISTANCE_FT * FLOOR_1_AMBIENT_MIN_PLAYER_DISTANCE_FT;
   const maxDistanceSq =
@@ -2243,7 +2253,7 @@ function resolveRoomInteriorSpawn(
  * first visit regardless of the roll outcome, so leaving and re-entering never
  * re-rolls. SPAWN, SAFE, and BOSS_STAIR rooms are never seeded.
  */
-function prepopulateEnteredRoom(world: GameWorld, playerX: number, playerY: number): void {
+export function prepopulateEnteredRoom(world: GameWorld, playerX: number, playerY: number): void {
   const floorMap = world.floorMap;
   if (!floorMap || !world.floorScenario) {
     return;

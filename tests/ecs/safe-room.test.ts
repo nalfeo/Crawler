@@ -71,6 +71,22 @@ describe('isPointInSafeSpace', () => {
     world.floorMap = new FloorMap(MAP_CFG, tileMap, graph, new Uint8Array(400), { x: 2, y: 2 });
     expect(isPointInSafeSpace(world, SAFE_FT.x, SAFE_FT.y)).toBe(false);
   });
+
+  it('uses interiorCells for SAFE caverns instead of bounding-box membership', () => {
+    const graph = new RoomGraph();
+    graph.add({ x: 1, y: 1, width: 6, height: 6 }, [], [], RoomRole.SAFE, undefined, undefined, [
+      { x: 1, y: 1 },
+      { x: 1, y: 2 },
+      { x: 2, y: 1 },
+    ]);
+    const tileMap = new TileMap(20, 20);
+    world.floorMap = new FloorMap(MAP_CFG, tileMap, graph, new Uint8Array(400), { x: 2, y: 2 });
+
+    const insideBoundsButOutsideInterior = { x: 3 * 32 + 16, y: 3 * 32 + 16 }; // tile (3,3)
+    expect(
+      isPointInSafeSpace(world, insideBoundsButOutsideInterior.x, insideBoundsButOutsideInterior.y),
+    ).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
