@@ -1,0 +1,35 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-06",
+  "session_slug": "baseline-sweep-shepherd",
+  "task_title": "ci: capture 100-seed baseline sweep after each Pages release",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "notes": "gpt-5.4 high effort; verdict approved_with_changes, no blockers. (1) ls-remote used as an if-condition conflated branch-absent with a transient probe failure -> FIXED: capture rc, orphan only on rc=2, return 1 (retry) otherwise. (2) same-SHA rerun overwrite -> documented latest-baseline-per-commit semantic. (3) find-baseline --max-walk 500 is a real cutoff -> error message now advises retrying with a larger --max-walk."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

@@ -144,7 +144,8 @@ function main() {
 
   if (!found) {
     console.error(
-      `no baseline found within ${args.maxWalk} first-parent commits before ${mergeBase.slice(0, 12)}`,
+      `no baseline found within ${args.maxWalk} first-parent commits before ${mergeBase.slice(0, 12)}; ` +
+        `retry with a larger --max-walk if this branch forked from an older main.`,
     );
     process.exit(1);
   }
