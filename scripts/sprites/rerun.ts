@@ -175,9 +175,11 @@ export interface RepostprocessArgs {
   /** Restrict re-postprocess to these variant indexes; omit to process all. */
   readonly variantIndexes?: ReadonlyArray<number>;
   readonly manualAnchor?: ManualAnchorOverride | null;
-  readonly facing?:
-    | { variantIndex: number; direction: 'left' | 'right'; applyToAllVariants?: boolean }
-    | null;
+  readonly facing?: {
+    variantIndex: number;
+    direction: 'left' | 'right';
+    applyToAllVariants?: boolean;
+  } | null;
 }
 
 /**

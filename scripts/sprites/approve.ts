@@ -348,10 +348,7 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
   return entry;
 }
 
-function resolveFacingDirection(
-  summary: RunSummaryShape,
-  variantIndex: number,
-): 'left' | 'right' {
+function resolveFacingDirection(summary: RunSummaryShape, variantIndex: number): 'left' | 'right' {
   const facing = summary.postprocessOverrides?.facing;
   if (
     facing &&

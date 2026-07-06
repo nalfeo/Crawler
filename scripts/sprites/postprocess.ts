@@ -252,7 +252,6 @@ function encodePng(image: RgbaImage): Buffer {
   return PNG.sync.write(png);
 }
 
-
 /**
  * Mark every pixel reachable from any of the 4 corners (4-connected flood fill,
  * matching the corner pixel's RGB within `BACKGROUND_COLOR_TOLERANCE_SQ` in
