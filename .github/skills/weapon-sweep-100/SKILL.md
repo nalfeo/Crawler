@@ -93,7 +93,7 @@ PR / analysis write-up.
 ### What to look for
 
 - **Win-rate spread across weapons.** Per the repo constitution, Floor 1
-  should hit **90%+ win rate on most seeds**. A weapon materially below the
+  should hit a **90%+ aggregate win rate over many seeds**. A weapon materially below the
   others is a real balance signal at this sample size (n=100 per weapon is
   ample). A weapon materially _above_ 90% while others sit low is likely a
   broader AI/map problem, not that weapon being "overtuned".
