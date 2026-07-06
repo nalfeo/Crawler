@@ -19,6 +19,7 @@ import {
   DroppedItem,
   Harvestable,
   Npc,
+  Damage,
   HARVEST_RANGE_FT,
   type GameWorld,
 } from '../../core/index.js';
@@ -30,6 +31,7 @@ import {
   type PathfindingOptions,
   type TilePoint,
 } from '../../core/map/pathfinding.js';
+import { getBodyRadius } from '../../core/physics-body.js';
 import { buildDoorAwarePassable, getNavigationBlockedDoors } from '../../core/door-navigation.js';
 import { isPointInSafeSpace } from '../../core/safe-space.js';
 import { RoomRole } from '../../shared/map-types.js';
@@ -105,6 +107,9 @@ import {
   MELEE_DEFENSIVE_HP_FRACTION,
   ATTACK_GATE_MULTIPLIER,
   CONTACT_SAFE_ORBIT_FT,
+  MELEE_CONTACT_BUFFER_FRACTION,
+  MELEE_SWING_COMMIT_WINDOW_FRACTION,
+  MELEE_SWING_COMMIT_INSET_FRACTION,
   MELEE_DODGE_AMPLITUDE_FT,
   KITE_DODGE_BUFFER_FT,
   KITE_STEP_FT,
@@ -211,7 +216,6 @@ import {
   NPC_APPROACH_THREAT_RADIUS_FT,
   ARENA_LOCKIN_ADD_HYSTERESIS_FT,
   TRAVEL_STEERING_ENABLED,
-  TRAVEL_BODY_RADIUS_FT,
   TRAVEL_HARD_GAP_FT,
   TRAVEL_SAFE_GAP_FT,
   TRAVEL_COMFORT_GAP_FT,
@@ -271,6 +275,9 @@ const logger = createLogger('game:bt-ai-provider');
 // Below this magnitude a heading is treated as "no direction" (skip steering /
 // neutral continuity) — matches the pure module's own zero-vector epsilon.
 const TRAVEL_HEADING_EPSILON = 1e-6;
+// Mirrors damageSystem's fallback for enemies that do contact damage without an
+// explicit Damage component value.
+const DEFAULT_CONTACT_DAMAGE = 5;
 const RISK_REWARD_CANDIDATE_OFFSETS_DEG = [
   0, -15, 15, -30, 30, -45, 45, -60, 60, -75, 75, -90, 90,
 ] as const;
@@ -631,6 +638,13 @@ export class BehaviorTreeAI implements AIInputProvider {
   private kiteSignFrame: number = 0;
   private readonly ignoredLootUntilFrame = new Map<number, number>();
   private readonly ignoredEnemyUntilFrame = new Map<number, number>();
+  /**
+   * Short-lived latch for a corridor-clearing threat selected by Progress.
+   * Holds the same enemy across brief blocked/unblocked flicker so the AI does
+   * not bounce EXPLORE↔ENGAGE every few frames at a chokepoint.
+   */
+  private committedCorridorThreatEid: number | null = null;
+  private committedCorridorThreatUntilFrame: number = 0;
   private engageTargetEid: number | null = null;
   private engageNoProgressFrames: number = 0;
   private engageBestDistance: number = Number.POSITIVE_INFINITY;
@@ -1244,6 +1258,11 @@ export class BehaviorTreeAI implements AIInputProvider {
           this.decision.reason = `${target.reason} — ${plan.reason}`;
           return BTStatus.SUCCESS;
         }
+        const committedBlockingThreat = this.resolveCommittedCorridorThreat(
+          ctx.world,
+          ctx.playerX,
+          ctx.playerY,
+        );
         const blockingThreat = this.findBlockingCorridorThreat(
           ctx.world,
           ctx.playerX,
@@ -1251,14 +1270,20 @@ export class BehaviorTreeAI implements AIInputProvider {
           target.x,
           target.y,
         );
-        if (
-          blockingThreat &&
+        const corridorThreat =
+          committedBlockingThreat ??
+          (blockingThreat &&
           (this.moveWedgeFrames >= RISK_REWARD_BLOCKED_CORRIDOR_STUCK_FRAMES ||
             blockingThreat.distance <= this.getEngageRadius(ctx.world) * 1.75)
-        ) {
-          const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, blockingThreat);
+            ? blockingThreat
+            : null);
+        if (corridorThreat) {
+          this.committedCorridorThreatEid = corridorThreat.eid;
+          this.committedCorridorThreatUntilFrame =
+            ctx.world.frameCount + RISK_REWARD_BLOCKED_CORRIDOR_STUCK_FRAMES;
+          const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, corridorThreat);
           this.decision.state = AIState.ENGAGE;
-          this.decision.targetEid = blockingThreat.eid;
+          this.decision.targetEid = corridorThreat.eid;
           this.decision.targetX = plan.targetX;
           this.decision.targetY = plan.targetY;
           this.decision.reason = `${target.reason} — corridor blocked, clearing threat first (${plan.reason})`;
@@ -1283,6 +1308,17 @@ export class BehaviorTreeAI implements AIInputProvider {
       condition('Loot Nearby', (ctx) => {
         if (this.getCollapsePanicProfile(ctx.world).beeline) {
           return false;
+        }
+        if (ctx.healthPercent < this.config.retreatThreshold) {
+          const nearbyThreat = this.findNearestEnemy(
+            ctx.world,
+            ctx.playerX,
+            ctx.playerY,
+            this.config.retreatDangerRadius * RETREAT_HYSTERESIS_MULT,
+          );
+          if (nearbyThreat) {
+            return false;
+          }
         }
         const nearest = this.findNearestLoot(ctx.world, ctx.playerX, ctx.playerY);
         if (nearest && nearest.distance < this.config.scanRadius) {
@@ -2897,6 +2933,25 @@ export class BehaviorTreeAI implements AIInputProvider {
     return hasComponent(world.ecs, playerEid, Stats)
       ? (world.stores.stats.moveSpeed[playerEid] ?? PLAYER_SPEED)
       : PLAYER_SPEED;
+  }
+
+  private getKiteStepTuning(
+    world: GameWorld,
+    playerEid: number | undefined,
+  ): { stepFt: number; radialStepFt: number; strafeFt: number } {
+    const playerSpeedFtPerFrame =
+      playerEid !== undefined ? this.getPlayerSpeedFtPerFrame(world, playerEid) : PLAYER_SPEED;
+    const speedScale = playerSpeedFtPerFrame / PLAYER_SPEED;
+    const maxStepFt = Math.max(
+      DIRECT_MOVE_EPSILON_FT,
+      CLOSE_APPROACH_DIRECT_FT - DIRECT_MOVE_EPSILON_FT,
+    );
+    const stepFt = Math.max(DIRECT_MOVE_EPSILON_FT, Math.min(maxStepFt, KITE_STEP_FT * speedScale));
+    return {
+      stepFt,
+      radialStepFt: stepFt * (KITE_RADIAL_STEP_FT / KITE_STEP_FT),
+      strafeFt: stepFt * (KITE_STRAFE_FT / KITE_STEP_FT),
+    };
   }
 
   private getRunPlannerParams(playerSpeedFtPerFrame: number): RunPlannerParams {
@@ -4661,7 +4716,9 @@ export class BehaviorTreeAI implements AIInputProvider {
       // Prefer a *nearby* pile we can realistically walk onto. The stuck handler
       // blacklists piles we get wedged against, so a deadlocked coin eventually
       // drops out of this scan and we fall through to hunting.
-      if (goldPile && goldPile.distance <= GOLD_FARM_COLLECT_RADIUS_FT) {
+      const shouldPrioritizeGoldPile =
+        goldPile !== null && goldPile.distance <= GOLD_FARM_COLLECT_RADIUS_FT;
+      if (shouldPrioritizeGoldPile && goldPile) {
         return maybeDetourToQuestGiver(
           this.createProgressTarget(
             goldPile.x,
@@ -4860,6 +4917,47 @@ export class BehaviorTreeAI implements AIInputProvider {
       y: ey,
       distance: Math.hypot(ex - playerX, ey - playerY),
     };
+  }
+
+  private resolveCommittedCorridorThreat(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+  ): WorldTarget | null {
+    const eid = this.committedCorridorThreatEid;
+    if (eid === null) {
+      return null;
+    }
+    if (world.frameCount > this.committedCorridorThreatUntilFrame) {
+      this.committedCorridorThreatEid = null;
+      this.committedCorridorThreatUntilFrame = 0;
+      return null;
+    }
+    if (!entityExists(world.ecs, eid) || !hasComponent(world.ecs, eid, Enemy)) {
+      this.committedCorridorThreatEid = null;
+      this.committedCorridorThreatUntilFrame = 0;
+      return null;
+    }
+    const health = world.stores.health.current[eid];
+    const ex = world.stores.position.x[eid];
+    const ey = world.stores.position.y[eid];
+    if (health === undefined || health <= 0 || ex === undefined || ey === undefined) {
+      this.committedCorridorThreatEid = null;
+      this.committedCorridorThreatUntilFrame = 0;
+      return null;
+    }
+    if (!this.canPerceiveWorldPosition(world, ex, ey)) {
+      this.committedCorridorThreatEid = null;
+      this.committedCorridorThreatUntilFrame = 0;
+      return null;
+    }
+    const distance = Math.hypot(ex - playerX, ey - playerY);
+    if (distance > this.getEngageRadius(world) * 2) {
+      this.committedCorridorThreatEid = null;
+      this.committedCorridorThreatUntilFrame = 0;
+      return null;
+    }
+    return { eid, x: ex, y: ey, distance };
   }
 
   private getEngageRadius(world: GameWorld): number {
@@ -5251,6 +5349,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerX: number,
     playerY: number,
     target: WorldTarget,
+    goalBias?: { x: number; y: number },
   ): { targetX: number; targetY: number; reason: string } {
     const weapon = getActiveWeapon(world);
     if (!weapon) {
@@ -5272,7 +5371,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       weapon.weaponType === WeaponType.THROWN ||
       weapon.weaponType === WeaponType.BEAM
     ) {
-      return this.planRangedEngagement(world, playerX, playerY, target, reachFt);
+      return this.planRangedEngagement(world, playerX, playerY, target, reachFt, goalBias);
     }
 
     if (weapon.weaponType !== WeaponType.MELEE) {
@@ -5287,7 +5386,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     // player is moving). Once inside it we KITE instead of parking.
     const strikeGateFt = reachFt * ATTACK_GATE_MULTIPLIER;
     if (target.distance <= strikeGateFt) {
-      return this.computeMeleeKiteTarget(world, playerX, playerY, target, reachFt);
+      return this.computeMeleeKiteTarget(world, playerX, playerY, target, reachFt, goalBias);
     }
 
     // Out of strike range: close in toward the orbit band (just inside the gate) so
@@ -5330,7 +5429,8 @@ export class BehaviorTreeAI implements AIInputProvider {
       const dx = ex - playerX;
       const dy = ey - playerY;
       const dist = Math.hypot(dx, dy);
-      if (dist > KITE_BACK_THREAT_RADIUS_FT || dist < 0.125) continue;
+      const threatBodyRadius = getBodyRadius(world, eid, 'BehaviorTreeAI.hasThreatFromBehind');
+      if (dist > KITE_BACK_THREAT_RADIUS_FT + threatBodyRadius || dist < 0.125) continue;
       // Dot < 0 means the enemy is behind the player relative to primary target.
       const dot = (dx / dist) * fwdNx + (dy / dist) * fwdNy;
       if (dot < 0) return true;
@@ -5364,7 +5464,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   /**
    * Thin ECS→pure-input wrapper around {@link pickSafeTravelHeading}. Reads
    * perceived hostiles, the player's speed, and a door-aware passability probe,
-   * then delegates the heading choice to the pure, deterministic, damage-agnostic
+   * then delegates the heading choice to the pure, deterministic, severity-aware
    * travel-steering module. All game state is read-only here.
    */
   private computeTravelSteering(
@@ -5410,6 +5510,11 @@ export class BehaviorTreeAI implements AIInputProvider {
     // of the AI uses, so steering never reacts to enemies the player can't see).
     const threats: TravelThreat[] = [];
     const enemies = query(world.ecs, [Enemy, Position, Velocity, Health]);
+    const playerBodyRadius = getBodyRadius(
+      world,
+      playerEid,
+      'BehaviorTreeAI.computeTravelSteering:player',
+    );
     for (const eid of enemies) {
       if (eid === undefined) {
         continue;
@@ -5425,12 +5530,20 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (!this.canPerceiveWorldPosition(world, ex, ey)) {
         continue;
       }
+      const enemyBodyRadius = getBodyRadius(
+        world,
+        eid,
+        'BehaviorTreeAI.computeTravelSteering:enemy',
+      );
+      const contactDamage = this.getProjectedEnemyContactDamage(world, playerEid, eid);
+      const contactSeverity = Math.max(1, contactDamage / DEFAULT_CONTACT_DAMAGE);
       threats.push({
         x: ex,
         y: ey,
         vx: world.stores.velocity.x[eid] ?? 0,
         vy: world.stores.velocity.y[eid] ?? 0,
-        bodyRadiusFt: TRAVEL_BODY_RADIUS_FT,
+        bodyRadiusFt: playerBodyRadius + enemyBodyRadius,
+        dangerWeight: Math.sqrt(contactSeverity),
       });
     }
 
@@ -5458,7 +5571,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     // spacing target toward the hard (contact) gap so the runner stops spending
     // time on wide avoidance arcs it can no longer afford and beelines to finish.
     // It still clears actual contact (hard-gap floor); only the *comfort* spacing
-    // is surrendered. Damage-agnostic — driven by remaining time, not hostile damage.
+    // is surrendered. Threat severity still comes from the per-enemy danger
+    // weights above; the panic ramp only changes how much comfort spacing we
+    // can afford as the deadline closes.
     const panicProfile = this.getCollapsePanicProfile(world);
     const panic = panicProfile.panic;
     const baseParams: TravelSteeringParams =
@@ -5503,6 +5618,26 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   /**
+   * Mirrors the player-vs-enemy contact path in damageSystem so travel steering
+   * can scale danger by the actual hit the player would take from touching this
+   * enemy right now.
+   */
+  private getProjectedEnemyContactDamage(
+    world: GameWorld,
+    playerEid: number,
+    enemyEid: number,
+  ): number {
+    const raw = hasComponent(world.ecs, enemyEid, Damage)
+      ? (world.stores.damage.amount[enemyEid] ?? 0)
+      : DEFAULT_CONTACT_DAMAGE;
+    const hostileMult = world.hostileDamageMultiplier ?? 1;
+    const armor = hasComponent(world.ecs, playerEid, Stats)
+      ? (world.stores.stats.armor[playerEid] ?? 0)
+      : 0;
+    return Math.max(1, raw * hostileMult - armor);
+  }
+
+  /**
    * Melee kite: advance/retreat along the enemy axis so the weapon lands reliably,
    * while adding a small lateral juke to stay a moving target. Full lateral orbit
    * is used only when another enemy is approaching from behind.
@@ -5523,6 +5658,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
     target: WorldTarget,
     reachFt: number,
+    _goalBias?: { x: number; y: number },
   ): { targetX: number; targetY: number; reason: string } {
     const readiness = getActiveWeaponReadiness(world);
     const ready = readiness?.ready ?? true;
@@ -5536,16 +5672,31 @@ export class BehaviorTreeAI implements AIInputProvider {
         ? Math.max(0, Math.min(1, readiness.remainingMs / readiness.cooldownMs))
         : 0;
 
+    const playerEid = query(world.ecs, [Player])[0];
+    const kiteStep = this.getKiteStepTuning(world, playerEid);
     const innerOrbitFallback = Math.max(DIRECT_MOVE_EPSILON_FT, reachFt * MELEE_HOLD_FRACTION);
     const swingRadius = reachFt;
     const strikeGate = reachFt * ATTACK_GATE_MULTIPLIER;
+    const playerBodyRadius =
+      playerEid !== undefined
+        ? getBodyRadius(world, playerEid, 'BehaviorTreeAI.computeMeleeKiteTarget:player')
+        : 0;
+    const targetBodyRadius = getBodyRadius(
+      world,
+      target.eid,
+      'BehaviorTreeAI.computeMeleeKiteTarget:target',
+    );
+    const contactSafeOrbit = Math.max(
+      DIRECT_MOVE_EPSILON_FT,
+      playerBodyRadius + targetBodyRadius + reachFt * MELEE_CONTACT_BUFFER_FRACTION,
+    );
     let innerOrbit: number;
     let outerOrbit: number;
-    if (CONTACT_SAFE_ORBIT_FT <= swingRadius) {
+    if (contactSafeOrbit <= swingRadius) {
       // Weapon out-reaches swarm body contact: anchor the micro-spacing band JUST
       // outside contact (strike, hits still land within the swing radius) and poke a
       // modest amount further out on cooldown (dodge), capped at the strike gate.
-      innerOrbit = Math.min(swingRadius, CONTACT_SAFE_ORBIT_FT);
+      innerOrbit = Math.min(swingRadius, contactSafeOrbit);
       outerOrbit = Math.min(strikeGate, innerOrbit + MELEE_DODGE_AMPLITUDE_FT);
     } else {
       // Very short weapon (e.g. knife, reach < contact): cannot poke from outside
@@ -5555,6 +5706,13 @@ export class BehaviorTreeAI implements AIInputProvider {
       outerOrbit = Math.max(innerOrbit, reachFt * MELEE_RECOVER_HOLD_FRACTION);
     }
     let desiredOrbit = innerOrbit + (outerOrbit - innerOrbit) * cooldownFrac;
+    if (cooldownFrac <= MELEE_SWING_COMMIT_WINDOW_FRACTION) {
+      const commitT = 1 - cooldownFrac / Math.max(MELEE_SWING_COMMIT_WINDOW_FRACTION, 1e-6);
+      desiredOrbit = Math.max(
+        DIRECT_MOVE_EPSILON_FT,
+        desiredOrbit - reachFt * MELEE_SWING_COMMIT_INSET_FRACTION * commitT,
+      );
+    }
 
     const enemyAttackFt = world.stores.enemyBehavior.attackRange[target.eid] ?? 0;
     // When wounded, prioritise not being hit: allow the orbit to expand all the way
@@ -5594,15 +5752,22 @@ export class BehaviorTreeAI implements AIInputProvider {
     const uy = ry / dist;
     // Radial correction toward the desired orbit radius (+ux pushes outward).
     const radialMag = Math.max(
-      -KITE_RADIAL_STEP_FT,
-      Math.min(KITE_RADIAL_STEP_FT, desiredOrbit - dist),
+      -kiteStep.radialStepFt,
+      Math.min(kiteStep.radialStepFt, desiredOrbit - dist),
     );
 
     // Use full lateral orbit only when an enemy is closing from behind; otherwise
     // favour forward/backward motion (radial) with a small lateral juke so the
     // weapon stays on target instead of constantly circling past it.
     const backThreat = this.hasThreatFromBehind(world, playerX, playerY, target);
-    const strafeFt = backThreat ? KITE_STEP_FT : KITE_STRAFE_FT;
+    const strafeFt = backThreat ? kiteStep.stepFt : kiteStep.strafeFt;
+    const nearbyGold = this.findNearestGold(world, playerX, playerY, this.config.scanRadius);
+    const nearbyLoot =
+      nearbyGold ??
+      (() => {
+        const loot = this.findNearestLoot(world, playerX, playerY);
+        return loot && loot.kind !== 'harvest' ? loot : null;
+      })();
 
     const buildStep = (sign: 1 | -1): { x: number; y: number } => {
       const tx = -uy * sign;
@@ -5610,38 +5775,58 @@ export class BehaviorTreeAI implements AIInputProvider {
       let sx = ux * radialMag + tx * strafeFt;
       let sy = uy * radialMag + ty * strafeFt;
       const slen = Math.hypot(sx, sy) || 1;
-      sx = (sx / slen) * KITE_STEP_FT;
-      sy = (sy / slen) * KITE_STEP_FT;
+      sx = (sx / slen) * kiteStep.stepFt;
+      sy = (sy / slen) * kiteStep.stepFt;
       return { x: sx, y: sy };
     };
 
-    let step = buildStep(this.kiteOrbitSign);
-    // Wall-aware juking: if the strafe direction is blocked, reverse so the player
-    // dodges along open space instead of grinding the wall.
-    if (
-      !hasClearLineOfSight(world.floorMap, playerX, playerY, playerX + step.x, playerY + step.y)
-    ) {
-      const flipped: 1 | -1 = this.kiteOrbitSign === 1 ? -1 : 1;
-      const flippedStep = buildStep(flipped);
-      if (
-        hasClearLineOfSight(
-          world.floorMap,
-          playerX,
-          playerY,
-          playerX + flippedStep.x,
-          playerY + flippedStep.y,
-        )
-      ) {
-        this.kiteOrbitSign = flipped;
-        this.kiteSignFrame = world.frameCount;
+    const currentSign = this.kiteOrbitSign;
+    const flipped: 1 | -1 = currentSign === 1 ? -1 : 1;
+    const currentStep = buildStep(currentSign);
+    const flippedStep = buildStep(flipped);
+    const currentPassable = hasClearLineOfSight(
+      world.floorMap,
+      playerX,
+      playerY,
+      playerX + currentStep.x,
+      playerY + currentStep.y,
+    );
+    const flippedPassable = hasClearLineOfSight(
+      world.floorMap,
+      playerX,
+      playerY,
+      playerX + flippedStep.x,
+      playerY + flippedStep.y,
+    );
+
+    let chosenSign = currentSign;
+    let step = currentStep;
+    if (!currentPassable && flippedPassable) {
+      chosenSign = flipped;
+      step = flippedStep;
+    } else if (currentPassable && flippedPassable && nearbyLoot && !backThreat) {
+      const currentLootDist = Math.hypot(
+        nearbyLoot.x - (playerX + currentStep.x),
+        nearbyLoot.y - (playerY + currentStep.y),
+      );
+      const flippedLootDist = Math.hypot(
+        nearbyLoot.x - (playerX + flippedStep.x),
+        nearbyLoot.y - (playerY + flippedStep.y),
+      );
+      if (flippedLootDist + 0.25 < currentLootDist) {
+        chosenSign = flipped;
         step = flippedStep;
       }
+    }
+    if (chosenSign !== this.kiteOrbitSign) {
+      this.kiteOrbitSign = chosenSign;
+      this.kiteSignFrame = world.frameCount;
     }
 
     return {
       targetX: playerX + step.x,
       targetY: playerY + step.y,
-      reason: `Kiting enemy at ${target.distance.toFixed(1)}ft (${ready ? 'strike' : 'dodge'}, orbit ${desiredOrbit.toFixed(1)}ft)`,
+      reason: `Kiting enemy at ${target.distance.toFixed(1)}ft (${ready ? 'strike' : 'dodge'}, orbit ${desiredOrbit.toFixed(1)}ft${nearbyLoot && !backThreat ? `, drifting to ${nearbyLoot.kind}` : ''})`,
     };
   }
 
@@ -5657,6 +5842,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
     target: WorldTarget,
     reachFt: number,
+    _goalBias?: { x: number; y: number },
   ): { targetX: number; targetY: number; reason: string } {
     const desiredOrbit = Math.max(
       CONTACT_SAFE_ORBIT_FT,
@@ -5725,6 +5911,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
     const ux = rx / dist;
     const uy = ry / dist;
+    const playerEid = query(world.ecs, [Player])[0];
+    const kiteStep = this.getKiteStepTuning(world, playerEid);
     // Micro-spacing: ease farther out while the shot is on cooldown, then settle
     // back to the standoff radius as it readies — the same in/out stutter the
     // melee kite uses, so every weapon keeps moving instead of holding a static
@@ -5738,13 +5926,13 @@ export class BehaviorTreeAI implements AIInputProvider {
     // Positive radialMag = push away from enemy (when too close).
     // Negative radialMag = nudge toward enemy (when slightly too far).
     const radialMag = Math.max(
-      -KITE_RADIAL_STEP_FT,
-      Math.min(KITE_RADIAL_STEP_FT, spacedOrbit - dist),
+      -kiteStep.radialStepFt,
+      Math.min(kiteStep.radialStepFt, spacedOrbit - dist),
     );
 
     // Prefer radial (forward/backward) motion; orbit fully only when flanked.
     const backThreat = this.hasThreatFromBehind(world, playerX, playerY, target);
-    const strafeFt = backThreat ? KITE_STEP_FT : KITE_STRAFE_FT;
+    const strafeFt = backThreat ? kiteStep.stepFt : kiteStep.strafeFt;
 
     const buildStep = (sign: 1 | -1): { x: number; y: number } => {
       const tx = -uy * sign;
@@ -5752,8 +5940,8 @@ export class BehaviorTreeAI implements AIInputProvider {
       let sx = ux * radialMag + tx * strafeFt;
       let sy = uy * radialMag + ty * strafeFt;
       const slen = Math.hypot(sx, sy) || 1;
-      sx = (sx / slen) * KITE_STEP_FT;
-      sy = (sy / slen) * KITE_STEP_FT;
+      sx = (sx / slen) * kiteStep.stepFt;
+      sy = (sy / slen) * kiteStep.stepFt;
       return { x: sx, y: sy };
     };
 
@@ -6015,6 +6203,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.stuckFrames = 0;
     this.ignoredLootUntilFrame.clear();
     this.ignoredEnemyUntilFrame.clear();
+    this.committedCorridorThreatEid = null;
+    this.committedCorridorThreatUntilFrame = 0;
     this.targetReachableCache.clear();
     this.engageTargetEid = null;
     this.engageNoProgressFrames = 0;

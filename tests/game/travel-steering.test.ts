@@ -78,6 +78,7 @@ const threat = (over: Partial<TravelThreat> = {}): TravelThreat => ({
   vx: 0,
   vy: 0,
   bodyRadiusFt: 3,
+  dangerWeight: 1,
   ...over,
 });
 
@@ -414,6 +415,23 @@ describe('scoreTravelCandidate — loot & farm biases', () => {
     );
     expect(big.minGapFt).toBeLessThan(small.minGapFt);
     expect(big.threatCost).toBeGreaterThan(small.threatCost);
+  });
+
+  it('penalizes a heavier contact hit more at the same geometry', () => {
+    const baseline = scoreTravelCandidate(
+      1,
+      0,
+      baseInput({ threats: [threat({ x: 10, y: 3, dangerWeight: 1 })] }),
+      makeParams(),
+    );
+    const heavier = scoreTravelCandidate(
+      1,
+      0,
+      baseInput({ threats: [threat({ x: 10, y: 3, dangerWeight: 3 })] }),
+      makeParams(),
+    );
+    expect(heavier.minGapFt).toBeCloseTo(baseline.minGapFt);
+    expect(heavier.threatCost).toBeGreaterThan(baseline.threatCost);
   });
 
   it('flags a candidate as impassable when a wall sits within the first probe step', () => {
