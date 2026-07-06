@@ -396,6 +396,8 @@ interface LivePostprocessOptions {
   };
 }
 
+type FacingDirection = 'left' | 'right';
+
 // NOTE: These defaults MUST stay identical to the generation-side post-process
 // constants BACKGROUND_B_COLOR_TOLERANCE_SQ / BACKGROUND_B_FRINGE_TOLERANCE_SQ
 // in scripts/sprites/postprocess.ts. If they drift, the workflow grid
@@ -418,6 +420,13 @@ interface ManualAnchorState {
   variantIndex: number;
   x: number;
   y: number;
+  applyToAllVariants?: boolean;
+}
+
+interface AnchorMarkerState {
+  x: number;
+  y: number;
+  source: 'manual' | 'derived' | 'brief';
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -3002,32 +3011,90 @@ function render(): void {
     text: 'Using default background-removal parameters.',
     style: { fontSize: '10px', color: '#64748b' },
   });
+  tweakButtonRow.append(applyTweaksBtn, resetTweaksBtn, tweakStatus);
+  tweakPanel.append(tweakTitle, tweakIntro, tweakGrid, tweakButtonRow);
+  const finalAdjustStatus = el('span', {
+    text: 'Click a pixel in the final image to set the anchor.',
+    style: { fontSize: '10px', color: '#94a3b8' },
+  });
   const manualAnchorXInput = document.createElement('input');
   manualAnchorXInput.type = 'number';
   manualAnchorXInput.step = '1';
   manualAnchorXInput.style.width = '72px';
+  manualAnchorXInput.style.background = '#020617';
+  manualAnchorXInput.style.color = '#e2e8f0';
+  manualAnchorXInput.style.border = '1px solid rgba(148,163,184,0.4)';
+  manualAnchorXInput.style.borderRadius = '6px';
   const manualAnchorYInput = document.createElement('input');
   manualAnchorYInput.type = 'number';
   manualAnchorYInput.step = '1';
   manualAnchorYInput.style.width = '72px';
-  const setManualAnchorBtn = el('button', { text: 'Set manual anchor' }) as HTMLButtonElement;
-  const clearManualAnchorBtn = el('button', { text: 'Clear manual anchor' }) as HTMLButtonElement;
-  const manualAnchorStatus = el('span', {
-    text: 'No manual anchor override.',
-    style: { fontSize: '10px', color: '#94a3b8' },
-  });
-  tweakButtonRow.append(
-    applyTweaksBtn,
-    resetTweaksBtn,
-    el('span', { text: 'Anchor x/y:' }),
-    manualAnchorXInput,
-    manualAnchorYInput,
-    setManualAnchorBtn,
-    clearManualAnchorBtn,
-    tweakStatus,
-    manualAnchorStatus,
-  );
-  tweakPanel.append(tweakTitle, tweakIntro, tweakGrid, tweakButtonRow);
+  manualAnchorYInput.style.background = '#020617';
+  manualAnchorYInput.style.color = '#e2e8f0';
+  manualAnchorYInput.style.border = '1px solid rgba(148,163,184,0.4)';
+  manualAnchorYInput.style.borderRadius = '6px';
+  const applyScopeSelect = document.createElement('select');
+  applyScopeSelect.style.background = '#020617';
+  applyScopeSelect.style.color = '#e2e8f0';
+  applyScopeSelect.style.border = '1px solid rgba(148,163,184,0.4)';
+  applyScopeSelect.style.borderRadius = '6px';
+  applyScopeSelect.style.fontSize = '11px';
+  const scopeThisOption = document.createElement('option');
+  scopeThisOption.value = 'variant';
+  scopeThisOption.textContent = 'Apply to this variant';
+  const scopeAllOption = document.createElement('option');
+  scopeAllOption.value = 'all';
+  scopeAllOption.textContent = 'Apply to all variants';
+  applyScopeSelect.append(scopeThisOption, scopeAllOption);
+  const facingDirectionSelect = document.createElement('select');
+  facingDirectionSelect.style.background = '#020617';
+  facingDirectionSelect.style.color = '#e2e8f0';
+  facingDirectionSelect.style.border = '1px solid rgba(148,163,184,0.4)';
+  facingDirectionSelect.style.borderRadius = '6px';
+  facingDirectionSelect.style.fontSize = '11px';
+  const facingRightOption = document.createElement('option');
+  facingRightOption.value = 'right';
+  facingRightOption.textContent = 'Facing right →';
+  const facingLeftOption = document.createElement('option');
+  facingLeftOption.value = 'left';
+  facingLeftOption.textContent = 'Facing left ←';
+  facingDirectionSelect.append(facingRightOption, facingLeftOption);
+  const applyChangesBtn = el('button', {
+    text: 'Apply changes',
+    style: {
+      padding: '4px 10px',
+      borderRadius: '6px',
+      border: '1px solid rgba(56,189,248,0.5)',
+      background: '#082f49',
+      color: '#e0f2fe',
+      cursor: 'pointer',
+      fontSize: '11px',
+    },
+  }) as HTMLButtonElement;
+  const resetAnchorBtn = el('button', {
+    text: 'Reset anchor',
+    style: {
+      padding: '4px 10px',
+      borderRadius: '6px',
+      border: '1px solid rgba(148,163,184,0.4)',
+      background: '#1e293b',
+      color: '#e2e8f0',
+      cursor: 'pointer',
+      fontSize: '11px',
+    },
+  }) as HTMLButtonElement;
+  const returnToWorkflowBtn = el('button', {
+    text: 'Return to workflow',
+    style: {
+      padding: '4px 10px',
+      borderRadius: '6px',
+      border: '1px solid rgba(148,163,184,0.4)',
+      background: '#1e293b',
+      color: '#e2e8f0',
+      cursor: 'pointer',
+      fontSize: '11px',
+    },
+  }) as HTMLButtonElement;
   const debuggerTraceHost = el('div', { style: { marginTop: '8px' } });
   debuggerPanel.append(
     debuggerTitle,
@@ -3068,6 +3135,9 @@ function render(): void {
   };
   let pendingPostprocessMode: 'default' | 'replace' | 'reset' = 'default';
   let manualAnchorOverride: ManualAnchorState | null = null;
+  let facingDirection: FacingDirection = 'right';
+  let pendingManualAnchorClear = false;
+  let derivedAnchorForDebugVariant: AnchorMarkerState | null = null;
   let queueState: QueueState = createEmptyQueue();
   const pendingGenerationPolls = new Set<string>();
   // In-flight AbortControllers for the synchronous generate POST, keyed by
@@ -3274,9 +3344,14 @@ function render(): void {
     fringeTolField.input.value = String(appliedBackgroundTweaks.fringeToleranceSq);
     manualAnchorXInput.value = manualAnchorOverride ? String(manualAnchorOverride.x) : '';
     manualAnchorYInput.value = manualAnchorOverride ? String(manualAnchorOverride.y) : '';
-    manualAnchorStatus.textContent = manualAnchorOverride
-      ? `Manual anchor active for #${manualAnchorOverride.variantIndex} at (${manualAnchorOverride.x}, ${manualAnchorOverride.y}).`
-      : 'No manual anchor override.';
+    facingDirectionSelect.value = facingDirection;
+    applyScopeSelect.value = manualAnchorOverride?.applyToAllVariants === true ? 'all' : 'variant';
+    resetAnchorBtn.disabled = manualAnchorOverride === null && !pendingManualAnchorClear;
+    finalAdjustStatus.textContent = manualAnchorOverride
+      ? `Anchor set at (${manualAnchorOverride.x}, ${manualAnchorOverride.y}).`
+      : derivedAnchorForDebugVariant
+        ? `Current derived anchor at (${derivedAnchorForDebugVariant.x}, ${derivedAnchorForDebugVariant.y}).`
+        : 'Click a pixel in the final image to set the anchor.';
   };
   const rerenderDebuggerAfterTweaks = (): void => {
     if (rerenderPostprocessPipeline) {
@@ -3318,6 +3393,8 @@ function render(): void {
       colorToleranceSq: DEFAULT_BACKGROUND_TWEAKS.colorToleranceSq,
       fringeToleranceSq: DEFAULT_BACKGROUND_TWEAKS.fringeToleranceSq,
     };
+    manualAnchorOverride = null;
+    facingDirection = 'right';
     pendingPostprocessMode = 'reset';
     syncTweakInputsFromState();
     tweakStatus.textContent = 'Reset to defaults.';
@@ -3326,46 +3403,54 @@ function render(): void {
       rerenderDebuggerAfterTweaks();
     }
   });
-  setManualAnchorBtn.addEventListener('click', async () => {
-    if (!debugTarget) {
-      manualAnchorStatus.textContent = 'Select a debug target first.';
-      return;
-    }
+  const syncManualAnchorFromInputs = (): void => {
+    if (!debugTarget) return;
     const x = Number.parseInt(manualAnchorXInput.value, 10);
     const y = Number.parseInt(manualAnchorYInput.value, 10);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) {
-      manualAnchorStatus.textContent = 'Manual anchor x/y must be integers.';
-      return;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    pendingManualAnchorClear = false;
+    manualAnchorOverride = {
+      variantIndex: debugTarget.variantIndex,
+      x,
+      y,
+      ...(applyScopeSelect.value === 'all' ? { applyToAllVariants: true } : {}),
+    };
+  };
+  manualAnchorXInput.addEventListener('change', syncManualAnchorFromInputs);
+  manualAnchorYInput.addEventListener('change', syncManualAnchorFromInputs);
+  applyScopeSelect.addEventListener('change', () => {
+    if (manualAnchorOverride) {
+      manualAnchorOverride = {
+        variantIndex: manualAnchorOverride.variantIndex,
+        x: manualAnchorOverride.x,
+        y: manualAnchorOverride.y,
+        ...(applyScopeSelect.value === 'all' ? { applyToAllVariants: true } : {}),
+      };
     }
-    await fetchJson(
-      `${SIDECAR_BASE}/api/runs/${encodeURIComponent(debugTarget.briefId)}/${encodeURIComponent(debugTarget.runId)}/manual-anchor`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ variantIndex: debugTarget.variantIndex, x, y }),
-      },
-    );
-    manualAnchorOverride = { variantIndex: debugTarget.variantIndex, x, y };
-    syncTweakInputsFromState();
-    pendingPostprocessMode = 'replace';
-    manualAnchorStatus.textContent = `Manual anchor saved for #${debugTarget.variantIndex}.`;
   });
-  clearManualAnchorBtn.addEventListener('click', async () => {
+  facingDirectionSelect.addEventListener('change', () => {
+    facingDirection = facingDirectionSelect.value === 'left' ? 'left' : 'right';
+    pendingPostprocessMode = 'replace';
+    rerenderDebuggerAfterTweaks();
+  });
+  resetAnchorBtn.addEventListener('click', () => {
+    manualAnchorOverride = null;
+    pendingManualAnchorClear = true;
+    pendingPostprocessMode = 'replace';
+    syncTweakInputsFromState();
+    finalAdjustStatus.textContent = 'Manual anchor reset. Click Apply changes to persist.';
+    finalAdjustStatus.style.color = '#93c5fd';
+    rerenderDebuggerAfterTweaks();
+  });
+  returnToWorkflowBtn.addEventListener('click', () => {
     if (!debugTarget) {
-      manualAnchorStatus.textContent = 'Select a debug target first.';
+      window.location.href = devtoolsPageHref(DEVTOOLS_PAGE_SPRITE_WORKFLOW);
       return;
     }
-    await fetchJson(
-      `${SIDECAR_BASE}/api/runs/${encodeURIComponent(debugTarget.briefId)}/${encodeURIComponent(debugTarget.runId)}/manual-anchor`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clear: true }),
-      },
-    );
-    manualAnchorOverride = null;
-    syncTweakInputsFromState();
-    manualAnchorStatus.textContent = 'Manual anchor cleared.';
+    window.location.href = devtoolsPageHref(DEVTOOLS_PAGE_SPRITE_WORKFLOW, {
+      briefId: debugTarget.briefId,
+      runId: debugTarget.runId,
+    });
   });
   syncTweakInputsFromState();
   let debuggerRuns: SidecarRunListEntry[] = [];
@@ -5466,9 +5551,215 @@ function render(): void {
           letterSpacing: '0.02em',
         },
       });
+      const resolvedAnchor: AnchorMarkerState | null =
+        manualAnchorOverride &&
+        (manualAnchorOverride.applyToAllVariants === true ||
+          manualAnchorOverride.variantIndex === variantIndex)
+          ? { x: manualAnchorOverride.x, y: manualAnchorOverride.y, source: 'manual' }
+          : derivedAnchorForDebugVariant;
       const img = makeImgEl(128);
       img.src = src;
-      card.append(title, img);
+      img.style.cursor = 'crosshair';
+      img.title = 'Click a pixel to set the anchor.';
+      const imageWrap = el('div', {
+        style: { position: 'relative', display: 'inline-block', width: '128px', height: '128px' },
+      });
+      const anchorMarker = el('div', {
+        text: '+',
+        style: {
+          position: 'absolute',
+          left: '50%',
+          top: '50%',
+          transform: 'translate(-50%, -50%)',
+          color: '#facc15',
+          fontWeight: '700',
+          fontSize: '22px',
+          lineHeight: '1',
+          textShadow: '0 0 2px #000, 0 0 6px rgba(0,0,0,0.8)',
+          pointerEvents: 'none',
+          display: resolvedAnchor ? 'block' : 'none',
+        },
+      });
+      const updateAnchorMarker = (anchor: AnchorMarkerState | null): void => {
+        if (!anchor || img.naturalWidth <= 0 || img.naturalHeight <= 0) {
+          anchorMarker.style.display = 'none';
+          return;
+        }
+        const leftPct = ((anchor.x + 0.5) / img.naturalWidth) * 100;
+        const topPct = ((anchor.y + 0.5) / img.naturalHeight) * 100;
+        anchorMarker.style.left = `${Math.max(0, Math.min(100, leftPct))}%`;
+        anchorMarker.style.top = `${Math.max(0, Math.min(100, topPct))}%`;
+        anchorMarker.style.color = anchor.source === 'manual' ? '#facc15' : '#22d3ee';
+        anchorMarker.style.display = 'block';
+      };
+      img.onload = () => {
+        updateAnchorMarker(
+          manualAnchorOverride &&
+            (manualAnchorOverride.applyToAllVariants === true ||
+              manualAnchorOverride.variantIndex === variantIndex)
+            ? { x: manualAnchorOverride.x, y: manualAnchorOverride.y, source: 'manual' }
+            : derivedAnchorForDebugVariant,
+        );
+      };
+      img.onclick = (event) => {
+        if (!debugTarget) {
+          finalAdjustStatus.textContent = 'Select a debug target first.';
+          finalAdjustStatus.style.color = '#fca5a5';
+          return;
+        }
+        const rect = img.getBoundingClientRect();
+        if (
+          rect.width <= 0 ||
+          rect.height <= 0 ||
+          img.naturalWidth <= 0 ||
+          img.naturalHeight <= 0
+        ) {
+          return;
+        }
+        const x = Math.max(
+          0,
+          Math.min(
+            img.naturalWidth - 1,
+            Math.floor(((event.clientX - rect.left) / rect.width) * img.naturalWidth),
+          ),
+        );
+        const y = Math.max(
+          0,
+          Math.min(
+            img.naturalHeight - 1,
+            Math.floor(((event.clientY - rect.top) / rect.height) * img.naturalHeight),
+          ),
+        );
+        manualAnchorOverride = {
+          variantIndex: debugTarget.variantIndex,
+          x,
+          y,
+          ...(applyScopeSelect.value === 'all' ? { applyToAllVariants: true } : {}),
+        };
+        pendingManualAnchorClear = false;
+        syncTweakInputsFromState();
+        pendingPostprocessMode = 'replace';
+        finalAdjustStatus.textContent = `Anchor picked at (${x}, ${y}). Click Apply changes to persist.`;
+        finalAdjustStatus.style.color = '#93c5fd';
+        rerenderDebuggerAfterTweaks();
+      };
+      const controlPanel = el('div', {
+        style: {
+          marginTop: '10px',
+          padding: '10px',
+          borderRadius: '6px',
+          border: '1px solid rgba(56,189,248,0.25)',
+          background: 'rgba(8,47,73,0.35)',
+          display: 'grid',
+          gap: '8px',
+        },
+      });
+      const topRow = el('div', {
+        style: { display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' },
+      });
+      const facingLabel = el('label', {
+        style: {
+          display: 'inline-flex',
+          gap: '6px',
+          alignItems: 'center',
+          fontSize: '11px',
+          color: '#bae6fd',
+        },
+      });
+      facingLabel.append(el('span', { text: 'Facing' }), facingDirectionSelect);
+      topRow.append(
+        facingLabel,
+        el('span', { text: 'Scope', style: { fontSize: '11px', color: '#bae6fd' } }),
+        applyScopeSelect,
+      );
+      const anchorRow = el('div', {
+        style: { display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' },
+      });
+      anchorRow.append(
+        el('span', { text: 'Anchor x/y', style: { fontSize: '11px', color: '#bae6fd' } }),
+        manualAnchorXInput,
+        manualAnchorYInput,
+      );
+      const actionRow = el('div', {
+        style: { display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' },
+      });
+      actionRow.append(applyChangesBtn, resetAnchorBtn, returnToWorkflowBtn, finalAdjustStatus);
+      applyChangesBtn.onclick = async () => {
+        if (!debugTarget) {
+          finalAdjustStatus.textContent = 'Select a debug target first.';
+          finalAdjustStatus.style.color = '#fca5a5';
+          return;
+        }
+        syncManualAnchorFromInputs();
+        const hasManualAnchor = manualAnchorOverride !== null;
+        const currentManualAnchor = manualAnchorOverride;
+        const applyToAll = applyScopeSelect.value === 'all';
+        finalAdjustStatus.textContent = 'Applying…';
+        finalAdjustStatus.style.color = '#93c5fd';
+        applyChangesBtn.disabled = true;
+        try {
+          const manualAnchorPayload =
+            pendingManualAnchorClear || !hasManualAnchor
+              ? pendingManualAnchorClear
+                ? null
+                : undefined
+              : {
+                  variantIndex: debugTarget.variantIndex,
+                  x: currentManualAnchor!.x,
+                  y: currentManualAnchor!.y,
+                  ...(applyToAll ? { applyToAllVariants: true } : {}),
+                };
+          await fetchJson(
+            `${SIDECAR_BASE}/api/runs/${encodeURIComponent(debugTarget.briefId)}/${encodeURIComponent(debugTarget.runId)}/postprocess`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                mode: 'replace',
+                options: {
+                  background: {
+                    colorToleranceSq: appliedBackgroundTweaks.colorToleranceSq,
+                    fringeToleranceSq: appliedBackgroundTweaks.fringeToleranceSq,
+                  },
+                },
+                facing: {
+                  variantIndex: debugTarget.variantIndex,
+                  direction: facingDirection,
+                  ...(applyToAll ? { applyToAllVariants: true } : {}),
+                },
+                ...(manualAnchorPayload !== undefined ? { manualAnchor: manualAnchorPayload } : {}),
+                ...(!applyToAll ? { variantIndexes: [debugTarget.variantIndex] } : {}),
+              }),
+            },
+          );
+          if (pendingManualAnchorClear) {
+            manualAnchorOverride = null;
+          }
+          pendingManualAnchorClear = false;
+          pendingPostprocessMode = 'default';
+          finalAdjustStatus.textContent = applyToAll
+            ? 'Applied to all variants.'
+            : `Applied to variant #${debugTarget.variantIndex}.`;
+          finalAdjustStatus.style.color = '#86efac';
+          rerenderDebuggerAfterTweaks();
+          void refreshDebuggerRuns();
+        } catch (error) {
+          finalAdjustStatus.textContent =
+            error instanceof Error
+              ? `Apply failed: ${error.message}`
+              : `Apply failed: ${String(error)}`;
+          finalAdjustStatus.style.color = '#fca5a5';
+        } finally {
+          applyChangesBtn.disabled = false;
+        }
+      };
+      const facingArrow = el('div', {
+        text: facingDirection === 'left' ? '← facing left' : 'facing right →',
+        style: { fontSize: '11px', color: '#bae6fd', marginTop: '6px' },
+      });
+      controlPanel.append(topRow, anchorRow, facingArrow, actionRow);
+      imageWrap.append(img, anchorMarker);
+      card.append(title, imageWrap, controlPanel);
       return card;
     };
 
@@ -5559,7 +5850,8 @@ function render(): void {
 
         // ── Pipeline trace ─────────────────────────────────────────
         pipelineBody.replaceChildren();
-        const finalSrc = spriteUrl(briefId, runId, `${padded}.png`);
+        const finalSrcBase = spriteUrl(briefId, runId, `${padded}.png`);
+        const finalSrc = `${finalSrcBase}${finalSrcBase.includes('?') ? '&' : '?'}ts=${Date.now()}`;
 
         if (manifestResult.status === 'rejected') {
           pipelineBody.append(
@@ -5622,7 +5914,39 @@ function render(): void {
             : null;
         const briefPathStr =
           typeof briefPath === 'string' && briefPath.length > 0 ? briefPath : null;
+        facingDirection = 'right';
+        manualAnchorOverride = null;
+        pendingManualAnchorClear = false;
+        derivedAnchorForDebugVariant = null;
         if (summaryResult.status === 'fulfilled') {
+          const candidatesRaw = (summaryResult.value as { candidates?: unknown }).candidates;
+          if (Array.isArray(candidatesRaw)) {
+            const candidate = candidatesRaw.find(
+              (entry) =>
+                entry &&
+                typeof entry === 'object' &&
+                (entry as { index?: unknown }).index === variantIndex,
+            ) as
+              | {
+                  derivedAnchor?: unknown;
+                  derivedAnchors?: { hold?: unknown };
+                }
+              | undefined;
+            const hold = candidate?.derivedAnchors?.hold;
+            const base = hold ?? candidate?.derivedAnchor;
+            if (
+              base &&
+              typeof base === 'object' &&
+              typeof (base as { x?: unknown }).x === 'number' &&
+              typeof (base as { y?: unknown }).y === 'number'
+            ) {
+              derivedAnchorForDebugVariant = {
+                x: (base as { x: number }).x,
+                y: (base as { y: number }).y,
+                source: 'derived',
+              };
+            }
+          }
           const post = (summaryResult.value as { postprocessOverrides?: unknown })
             .postprocessOverrides;
           if (post && typeof post === 'object') {
@@ -5638,17 +5962,31 @@ function render(): void {
                 appliedBackgroundTweaks = { colorToleranceSq: color, fringeToleranceSq: fringe };
               }
             }
+            const facing = (post as { facing?: unknown }).facing;
+            if (facing && typeof facing === 'object') {
+              const direction = (facing as { direction?: unknown }).direction;
+              if (direction === 'left' || direction === 'right') {
+                facingDirection = direction;
+              }
+            }
             const manual = (post as { manualAnchor?: unknown }).manualAnchor;
             if (manual && typeof manual === 'object') {
               const variantIndex = (manual as { variantIndex?: unknown }).variantIndex;
               const x = (manual as { x?: unknown }).x;
               const y = (manual as { y?: unknown }).y;
+              const applyToAllVariants =
+                (manual as { applyToAllVariants?: unknown }).applyToAllVariants === true;
               if (
                 typeof variantIndex === 'number' &&
                 typeof x === 'number' &&
                 typeof y === 'number'
               ) {
-                manualAnchorOverride = { variantIndex, x, y };
+                manualAnchorOverride = {
+                  variantIndex,
+                  x,
+                  y,
+                  ...(applyToAllVariants ? { applyToAllVariants: true } : {}),
+                };
               }
             }
             syncTweakInputsFromState();
@@ -5706,7 +6044,8 @@ function render(): void {
             `${briefId}/${runId}/${variantIndex}|${getActiveSliceVersion()}|` +
             `${selectedRawCellDataUrl ? 'sheet' : 'raw'}|` +
             `c=${appliedBackgroundTweaks.colorToleranceSq}|` +
-            `f=${appliedBackgroundTweaks.fringeToleranceSq}`;
+            `f=${appliedBackgroundTweaks.fringeToleranceSq}|` +
+            `d=${facingDirection}`;
           let selectedOutputForNextStep: string | null = rawCellSource;
 
           // Renders the pre-baked pipeline (per-step PNGs from the run store),
@@ -6769,6 +7108,7 @@ function render(): void {
                       fringeToleranceSq: appliedBackgroundTweaks.fringeToleranceSq,
                     },
                   },
+                  facing: { direction: facingDirection },
                 }
               : {}),
             ...(manualAnchorOverride ? { manualAnchor: manualAnchorOverride } : {}),
