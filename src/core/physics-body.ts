@@ -13,7 +13,10 @@
  * a Size. It is a live-path assertion, not a static enumeration.
  */
 
+import { createLogger } from '../shared/logger.js';
 import type { GameWorld } from './world.js';
+
+const logger = createLogger('core:physics-body');
 
 const shimHitEids = new Set<number>();
 let shimHitCount = 0;
@@ -40,8 +43,8 @@ function recordMissingSize(system: string, eid: number): void {
   shimHitCount += 1;
   if (shimHitEids.has(eid)) return;
   shimHitEids.add(eid);
-  console.warn(
-    `[physics-body] Entity ${eid} in ${system} has no Size — spawner regression. ` +
+  logger.warn(
+    `Entity ${eid} in ${system} has no Size — spawner regression. ` +
       `Attach Size at spawn time (see src/core/physics-defs.ts).`,
   );
 }
@@ -83,10 +86,12 @@ export function getBodyHalfHeight(world: GameWorld, eid: number, system = 'unkno
  *
  * For BOX bodies this returns `max(halfWidth, halfHeight)` — the legacy
  * `Math.max(spriteW, spriteH) * 0.5` semantic that `weaponSystem` and other
- * targeting-radius consumers used before Slice 1. Slice-1 parity depends on
- * this. If a future slice needs the tighter *circumscribing* (diagonal)
- * radius or a per-axis extent, it should read `size.halfWidth`/`halfHeight`
- * directly rather than change this helper.
+ * targeting-radius consumers used before Slice 1. This is deliberately a
+ * *bounding* (larger-axis) radius, not the tighter *circumscribing*
+ * (diagonal) radius `hypot(hw, hh)`, because that is what parity requires.
+ * If a future slice needs the circumscribing radius or a per-axis extent,
+ * it should read `size.halfWidth`/`halfHeight` directly rather than change
+ * this helper — parity of consumers of this function depends on it.
  */
 export function getBodyRadius(world: GameWorld, eid: number, system = 'unknown'): number {
   const { size } = world.stores;
@@ -97,14 +102,4 @@ export function getBodyRadius(world: GameWorld, eid: number, system = 'unknown')
   if (hw > 0 || hh > 0) return Math.max(hw, hh);
   recordMissingSize(system, eid);
   return 0;
-}
-
-/**
- * True iff `eid` has a valid Size — radius > 0 OR (halfWidth > 0 AND
- * halfHeight > 0). Used by `check:size-coverage`.
- */
-export function hasValidSize(world: GameWorld, eid: number): boolean {
-  const { size } = world.stores;
-  if ((size.radius[eid] ?? 0) > 0) return true;
-  return (size.halfWidth[eid] ?? 0) > 0 && (size.halfHeight[eid] ?? 0) > 0;
 }

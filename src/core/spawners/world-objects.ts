@@ -12,7 +12,7 @@ import {
   Team,
   Trap,
 } from '../components.js';
-import { PHYSICS_BODIES, SHAPE_CIRCLE } from '../physics-defs.js';
+import { PHYSICS_BODIES, SHAPE_BOX, SHAPE_CIRCLE } from '../physics-defs.js';
 import type { GameWorld } from '../world.js';
 import { getNpcDef, type NpcInstance } from '../../shared/npc-types.js';
 import {
@@ -88,12 +88,15 @@ export function spawnNpc(world: GameWorld, x: number, y: number, defId: string):
     world.ecs,
     eid,
     set(Size, {
-      // NPCs use per-def dims for their body — round to the max half-extent
-      // as the circle radius so they broadly match today's sprite footprint.
-      radius: Math.max(def.widthFt, def.heightFt) * 0.5,
-      halfWidth: 0,
-      halfHeight: 0,
-      shape: SHAPE_CIRCLE,
+      // NPC defs are non-square (e.g. 2.5×3.5 ft), so we use a per-axis BOX
+      // that byte-matches the legacy `sprite.width/2 × sprite.height/2`
+      // collision footprint. A CIRCLE with `r = max(w,h)/2` would widen the
+      // horizontal extent by ~40% and is a Slice-1 spec violation ("do not
+      // change any numeric size value away from today's sprite half-extents").
+      radius: 0,
+      halfWidth: def.widthFt * 0.5,
+      halfHeight: def.heightFt * 0.5,
+      shape: SHAPE_BOX,
     }),
   );
   addComponent(world.ecs, eid, set(Npc, { defIdIndex: 0 }));

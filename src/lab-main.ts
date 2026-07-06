@@ -36,6 +36,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'mobile-controls-lab': '/src/labs/mobile-controls-lab/index.ts',
   'sprite-catalog': '/src/labs/sprite-catalog-lab/index.ts',
   'weight-lab': '/src/labs/weight-lab/index.ts',
+  'size-body': '/src/labs/physics-body-lab/index.ts',
   'drop-lab': '/src/labs/drop-lab/index.ts',
   'visual-snapshot-lab': '/src/labs/visual-snapshot-lab/index.ts',
   'gore-lab': '/src/labs/gore-lab/index.ts',

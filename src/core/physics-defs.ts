@@ -80,9 +80,15 @@ export const PHYSICS_BODIES = {
   player: circle(1.5, 180),
 
   /**
-   * Guideline rows for review (see entity-sizing.md). Not read by any
-   * spawner; mob defs own their own values today. They exist here so
-   * `check:physics-defs-sync` can catch drift in the sheet.
+   * Baseline / archetype rows kept in lock-step with entity-sizing.md by
+   * `check:physics-defs-sync`.
+   *
+   * `mob-baseline` IS live: `spawnEnemy` and `spawnBehaviorEnemy` in
+   * `src/core/spawners/combatants.ts` read `PHYSICS_BODIES['mob-baseline']`
+   * as the default when a MobTemplate doesn't specify its own body. The
+   * light/heavy/boss rows are archetype guidelines that individual mob defs
+   * can pattern-match against; they are not read by a spawner today, but
+   * the sync gate still keeps them from drifting from the doc.
    */
   'mob-baseline': circle(1.0, 120),
   'mob-light': circle(0.75, 60),

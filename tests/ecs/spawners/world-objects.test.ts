@@ -8,10 +8,13 @@ import {
   Position,
   Prop,
   PropLight,
+  Size,
   Sprite,
   Team,
   Trap,
 } from '../../../src/core/components.js';
+import { SHAPE_BOX } from '../../../src/core/physics-defs.js';
+import { getNpcDef } from '../../../src/shared/npc-types.js';
 import {
   spawnHarvestableNode,
   spawnNpc,
@@ -56,6 +59,23 @@ describe('spawnNpc', () => {
   it('returns -1 for an unknown defId', () => {
     const world = createTestWorld();
     expect(spawnNpc(world, 0, 0, 'does-not-exist')).toBe(-1);
+  });
+
+  it('attaches a per-axis BOX Size matching def.widthFt/heightFt (Slice-1 legacy parity)', () => {
+    // NPC defs are non-square (e.g. 2.5×3.5). The legacy pre-Size collision
+    // path read `sprite.width/2 × sprite.height/2` — a per-axis box. A
+    // CIRCLE `r = max(w,h)/2` would silently widen the horizontal footprint
+    // by ~40%. This test locks in the BOX shape so a future refactor cannot
+    // regress it without noise.
+    const world = createTestWorld();
+    const eid = spawnNpc(world, 0, 0, 'tutorial-goon');
+    const def = getNpcDef('tutorial-goon');
+    expect(def).toBeDefined();
+    expect(hasComponent(world.ecs, eid, Size)).toBe(true);
+    expect(world.stores.size.shape[eid]).toBe(SHAPE_BOX);
+    expect(world.stores.size.radius[eid]).toBe(0);
+    expect(world.stores.size.halfWidth[eid]).toBeCloseTo((def?.widthFt ?? 0) * 0.5);
+    expect(world.stores.size.halfHeight[eid]).toBeCloseTo((def?.heightFt ?? 0) * 0.5);
   });
 });
 

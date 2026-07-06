@@ -10,18 +10,23 @@
  * this deterministic slice attaches `Size`.
  *
  * ## What this guard PROVES
- * - Every collision-grid entity in a real Floor 1 seed-42 run has a valid
- *   Size. Regression = spawner forgot Size ⇒ CI failure at PR time.
+ * - For the ~800 frames of Floor 1 seed-42 exercised here, every entity that
+ *   any core/game system routed through the physics-body helpers had a
+ *   valid Size. Shim-counter == 0 ⇒ no spawner on that path forgot Size.
  *
- * ## What this guard does NOT prove (documented Slice-1 follow-up)
- * - Floor 2+ spawners fire (they are not reached in an 800-frame run). New
- *   spawners in `floor2Scenario.ts` etc. can regress silently until Slice 2
- *   or a later slice extends this check to a multi-floor sweep or a static
- *   per-archetype enumeration. Complementary defenses in place today:
- *   `check-physics-defs-sync.ts` (drift vs entity-sizing.md), the ESLint
- *   `no-restricted-syntax` rule blocking new `sprite.width|height` reads
- *   outside `src/engine/**`+`src/labs/**`, and unit tests
- *   `tests/ecs/spawners/*.test.ts` that assert Size at spawn time.
+ * ## What this guard does NOT prove
+ * - It is a live-path assertion, not a static enumeration. Entities in
+ *   spawners that never fire in this deterministic 800-frame slice (Floor
+ *   2+ scenarios, later mob waves, boss-only spawners, one-shot event
+ *   spawners) can still regress silently. Extending this to a multi-floor
+ *   sweep or a static per-spawner enumeration is a documented Slice-2+
+ *   follow-up.
+ * - The ESLint `no-restricted-syntax` rule blocks *new* `sprite.width|
+ *   height` reads outside `src/engine/**`+`src/labs/**`, but does not by
+ *   itself prove existing readers migrated correctly — this guard is what
+ *   makes that concrete for the covered live path.
+ * - `check-physics-defs-sync.ts` guards the registry ↔ doc table
+ *   alignment; it does not exercise spawners.
  *
  * Wired into `verify:fast` per the Slice-1 spec.
  */

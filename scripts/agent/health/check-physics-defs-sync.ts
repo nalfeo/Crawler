@@ -80,12 +80,17 @@ function parseTables(md: string): DocRow[] {
 }
 
 /**
- * Parse a size cell:
- *  - "r = 1.5"          → { radius: 1.5 }
- *  - "1 × 1"            → { halfWidth: 0.5, halfHeight: 0.5 } (spec: sprite w×h in ft, half-extents = /2)
- *  - "3 × 3" (mob-boss) → { halfWidth: 1.5, halfHeight: 1.5 }
+ * Parse a size cell from the doc table. The doc table lists **sprite**
+ * dimensions (w × h in ft); this function halves both sides so the return
+ * value can be compared field-by-field to the TypeScript registry.
+ *
+ *  - "r = 1.5"          → { radius: 1.5, halfWidth: 0, halfHeight: 0 }
+ *  - "1 × 1"            → { radius: 0, halfWidth: 0.5, halfHeight: 0.5 }
+ *  - "3 × 3" (mob-boss) → { radius: 0, halfWidth: 1.5, halfHeight: 1.5 }
  *  - "≈ 3 × 3"          → same
- *  - "length × 0.25"    → { halfWidth: 0, halfHeight: 0.25 } (beam)
+ *  - "length × 0.5"     → { radius: 0, halfWidth: 0, halfHeight: 0.25 }
+ *    (beam: length is dynamic per-cast so parses as NaN → 0; only the
+ *     halved h anchors)
  */
 function parseSize(cell: string): { radius: number; halfWidth: number; halfHeight: number } {
   const rMatch = cell.match(/r\s*[=≈]\s*([\d.]+)/i);
