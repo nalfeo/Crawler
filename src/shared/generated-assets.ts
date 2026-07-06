@@ -80,6 +80,7 @@ export const manifestEntrySchema = z
     effectivePipelineSnapshotPath: z.string().nullable().optional(),
     effectivePipelineSnapshotYamlPath: z.string().nullable().optional(),
     effectiveAnchorSource: z.enum(['manual', 'derived', 'brief']).nullable().optional(),
+    facingDirection: z.enum(['left', 'right']).optional(),
   })
   .passthrough();
 
@@ -122,6 +123,7 @@ export interface GeneratedSpriteEntry {
   readonly variantIndex: number;
   readonly sensorScore: string;
   readonly judgeScore: string | null;
+  readonly facingDirection: 'left' | 'right';
 }
 
 /**
@@ -236,6 +238,7 @@ function toRegistryEntry(entry: ManifestEntry, manifestKey: string): GeneratedSp
     variantIndex: entry.variantIndex,
     sensorScore: entry.sensorScore,
     judgeScore: entry.judgeScore,
+    facingDirection: entry.facingDirection ?? 'right',
   };
 }
 

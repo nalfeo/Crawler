@@ -201,6 +201,7 @@ describe('preloadGeneratedSprites', () => {
       variantIndex: 1,
       sensorScore: '7/7',
       judgeScore: null,
+      facingDirection: 'right',
     } as const;
     const registry = {
       version: GENERATED_MANIFEST_VERSION,
