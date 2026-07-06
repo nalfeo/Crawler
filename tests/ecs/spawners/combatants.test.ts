@@ -63,7 +63,9 @@ describe('spawnEnemy', () => {
     expect(sizeScale).toBeLessThanOrEqual(1.1);
     expect(world.stores.sprite.variantRoll[eid]).toBeGreaterThanOrEqual(0);
     expect(world.stores.sprite.variantRoll[eid]!).toBeLessThan(1);
-    expect(world.stores.weight.value[eid]).toBeCloseTo(120 * sizeScale, 4);
+    // Slice 2 (ADR 0044): weight is a first-class gameplay dial, no longer
+    // jittered by sizeScale. spawnEnemy defaults to 120 lb.
+    expect(world.stores.weight.value[eid]).toBe(120);
     expect(world.stores.bloodColor.r[eid]).toBe(0xcc);
     expect(world.stores.bloodColor.g[eid]).toBe(0);
     expect(world.stores.bloodColor.b[eid]).toBe(0);
@@ -95,7 +97,9 @@ describe('spawnBehaviorEnemy', () => {
     expect(world.stores.enemyBehavior.pathRefreshFrames[eid]).toBe(10);
     expect(sizeScale).toBeGreaterThanOrEqual(0.9);
     expect(sizeScale).toBeLessThanOrEqual(1.1);
-    expect(world.stores.weight.value[eid]).toBeCloseTo(120 * sizeScale, 4);
+    // Slice 2 (ADR 0044): weight is a first-class gameplay dial, no longer
+    // jittered by sizeScale. spawnBehaviorEnemy defaults to 120 lb.
+    expect(world.stores.weight.value[eid]).toBe(120);
   });
 
   it('adds the Flying tag for flying traversal and applies option overrides', () => {
@@ -111,7 +115,8 @@ describe('spawnBehaviorEnemy', () => {
     expect(world.stores.enemyBehavior.traversalMode[eid]).toBe(TRAVERSAL_MODE.FLYING);
     expect(world.stores.enemyBehavior.flankDistance[eid]).toBe(7);
     expect(world.stores.enemyBehavior.pathRefreshFrames[eid]).toBe(4);
-    expect(world.stores.weight.value[eid]).toBeCloseTo(90 * world.stores.sprite.sizeScale[eid]!, 4);
+    // Slice 2 (ADR 0044): weight is passed through unmodified — no sizeScale mult.
+    expect(world.stores.weight.value[eid]).toBe(90);
   });
 
   it('adds Flying when isFlying is set even on ground traversal', () => {

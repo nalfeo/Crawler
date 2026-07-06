@@ -11,6 +11,7 @@ import {
   Sprite,
   Team,
   Trap,
+  Weight,
 } from '../components.js';
 import { PHYSICS_BODIES, SHAPE_BOX, SHAPE_CIRCLE } from '../physics-defs.js';
 import type { GameWorld } from '../world.js';
@@ -157,6 +158,16 @@ export function spawnProp(world: GameWorld, x: number, y: number, defId: string)
       defIdIndex,
       isDestructible: decorationDef.isDestructible ? 1 : 0,
       isDestroyed: 0,
+    }),
+  );
+  addComponent(
+    world.ecs,
+    eid,
+    set(Weight, {
+      // Weight comes from the decoration def (default 100 lb via `def(...)`).
+      // Consumed by knockbackSystem to scale displacement per ADR 0044 /
+      // Slice 2; check:weight-coverage enforces value > 0 in CI.
+      value: decorationDef.weight ?? 100,
     }),
   );
 

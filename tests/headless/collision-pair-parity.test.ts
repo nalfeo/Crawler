@@ -24,7 +24,6 @@ import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import type { RunStats } from '../../src/game/ai/types.js';
 
-const PARITY_SEED = 42;
 const PARITY_MAX_FRAMES = 1500;
 
 interface CollisionFingerprint {
@@ -37,45 +36,72 @@ interface CollisionFingerprint {
 }
 
 /**
- * Fingerprint captured on Slice 1's rebased parent commit — current `main`
- * tip `4ab04365` (feat: distance-from-spawn mob level scaling, #781) — with
- * ZERO Slice-1 code applied. This is the "legacy sprite half-extent" path
- * on the branch's actual base, not the stale `feat/size-weight-design`
- * design branch this slice was originally drafted against.
+ * Golden fingerprints per seed, captured on the Slice-2 cap head after the
+ * design-mandated `KNOCKBACK_WEIGHT_SCALE_MAX = 2.5` refinement to
+ * ADR 0044. Each was proven stable across two back-to-back invocations
+ * before being pinned here.
  *
- * ## Neutrality proof
+ * ## Seed 42 (unchanged from Slice 1's B==H golden)
  *
- * The guard's purpose is to prove the Size migration is byte-identical to
- * the pre-migration sprite path. That was verified via a differential B vs
- * H measurement on this same fingerprint:
+ * Seed 42 continues to match the Slice-1 legacy-sprite fingerprint
+ * `{kills:7, damageDealt:261, damageTaken:25, finalScore:8}` even with
+ * weight-divided knockback + cap in place, because on this seed's Floor-1
+ * slice the AI's first 1500 frames engage almost exclusively via ranged
+ * hits and 120 lb median-mob targets, so the cap and divide-by-weight
+ * both resolve to ~1.0× displacement for the mobs that actually take
+ * knockback in that window.
  *
- *   B (parent 4ab04365, no Slice-1 code):
- *     kills=7 damageDealt=261 damageTaken=25 finalScore=8 outcome=timeout
- *   H (Slice-1 HEAD, all Slice-1 commits applied):
- *     kills=7 damageDealt=261 damageTaken=25 finalScore=8 outcome=timeout
+ * ## Seeds 7 / 13 / 137 (new, cap-head baselines)
  *
- * B == H → migration is inert. The prior golden values
- * `{kills:6, damageDealt:212.5, damageTaken:10, finalScore:5}` were
- * captured on `feat/size-weight-design@e8ae8adb` before three unrelated
- * PRs shifted Floor-1 seed-42 gameplay:
- *   - #764 spawnerArenaSystem (arena locks/fences/banked-XP)
- *   - #765 Floor-1 quest-NPC consolidation
- *   - #781 distance-from-spawn mob level scaling
- * None of that drift is Slice-1's doing. The guard still works — it now
- * detects regressions against the CURRENT base, which is what it's for.
+ * Added by Slice 2 (ADR 0044 refinement) as a coverage-hygiene expansion
+ * per Rule #9. These were NOT captured pre-cap — the cap is a designed,
+ * documented change, so this is an additive expansion of guard coverage
+ * on the Slice-2 baseline, not a "moved a value to make a test pass"
+ * (which would violate Rule #12).
  *
- * Regenerate this ONLY when the base branch has moved AND the run is
- * genuinely divergent for a documented reason, and record a fresh B==H
- * proof at that time.
+ * Regenerate ONLY when the base branch has moved AND the run is genuinely
+ * divergent for a documented reason. Follow Slice 1's B==H protocol
+ * (parent-run == HEAD-run byte-identical on the current base) or the
+ * Slice 2 design-authorized re-baseline protocol (2 runs/seed stable +
+ * design-owned change documented in ADR + spec + data-table).
  */
-const GOLDEN_FINGERPRINT: CollisionFingerprint = {
-  totalFrames: 1500,
-  outcome: 'timeout',
-  kills: 7,
-  damageDealt: 261,
-  damageTaken: 25,
-  finalScore: 8,
+const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
+  42: {
+    totalFrames: 1500,
+    outcome: 'timeout',
+    kills: 7,
+    damageDealt: 261,
+    damageTaken: 25,
+    finalScore: 8,
+  },
+  7: {
+    totalFrames: 1500,
+    outcome: 'timeout',
+    kills: 2,
+    damageDealt: 118,
+    damageTaken: 9,
+    finalScore: 0,
+  },
+  13: {
+    totalFrames: 1500,
+    outcome: 'timeout',
+    kills: 7,
+    damageDealt: 229,
+    damageTaken: 10,
+    finalScore: 0,
+  },
+  137: {
+    totalFrames: 1500,
+    outcome: 'timeout',
+    kills: 4,
+    damageDealt: 122,
+    damageTaken: 5,
+    finalScore: 0,
+  },
 };
+
+const PARITY_SEEDS = Object.keys(GOLDEN_FINGERPRINTS).map(Number);
+const PARITY_SEED = 42;
 
 async function runSlice(seed: number): Promise<RunStats> {
   const ai = new BehaviorTreeAI({ seed });
@@ -98,17 +124,19 @@ function fingerprint(stats: RunStats): CollisionFingerprint {
 }
 
 describe('collision-pair parity (Slice 1)', () => {
-  it(`seed ${PARITY_SEED} run matches the legacy-sprite golden fingerprint`, async () => {
-    const a = await runSlice(PARITY_SEED);
+  for (const seed of PARITY_SEEDS) {
+    it(`seed ${seed} run matches the golden fingerprint`, async () => {
+      const a = await runSlice(seed);
 
-    // Non-vacuity: the run must actually spawn enemies and land hits, otherwise
-    // the parity assertion would trivially hold with an empty collision grid.
-    expect(a.combat.damageDealt).toBeGreaterThan(0);
+      // Non-vacuity: the run must actually spawn enemies and land hits, otherwise
+      // the parity assertion would trivially hold with an empty collision grid.
+      expect(a.combat.damageDealt).toBeGreaterThan(0);
 
-    // Byte-identity vs the pre-migration base-branch fingerprint. Any drift
-    // means Size migration changed collision-driven behavior — root-cause it.
-    expect(fingerprint(a)).toEqual(GOLDEN_FINGERPRINT);
-  });
+      // Byte-identity vs the pinned per-seed fingerprint. Any drift means a
+      // change to collision-driven behavior — root-cause it, don't bump.
+      expect(fingerprint(a)).toEqual(GOLDEN_FINGERPRINTS[seed]);
+    });
+  }
 
   it('parity run is deterministic across two invocations', async () => {
     const a = await runSlice(PARITY_SEED);

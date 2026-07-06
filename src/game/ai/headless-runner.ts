@@ -107,10 +107,19 @@ export interface HeadlessRunnerConfig {
    * 60 FPS).
    */
   questStallFrames?: number;
+  /**
+   * Optional inspection hook invoked with the live `GameWorld` after the run
+   * completes (or crashes) but before `runHeadless` returns. Used by CI
+   * gates that need to statically enumerate entities/components at the end
+   * of a deterministic slice — e.g. `check:weight-coverage` walks every
+   * Enemy/Player/Prop and asserts `weight.value > 0`. The hook MUST NOT
+   * mutate the world; it is called after all simulation stops.
+   */
+  onFinish?: (world: GameWorld) => void;
 }
 
 const DEFAULT_CONFIG: Required<
-  Omit<HeadlessRunnerConfig, 'simulationOptions' | 'recordEvent' | 'forceWeaponId'>
+  Omit<HeadlessRunnerConfig, 'simulationOptions' | 'recordEvent' | 'forceWeaponId' | 'onFinish'>
 > = {
   seed: 12345,
   maxFrames: 100_000, // ~27 min at 60 FPS
@@ -667,7 +676,7 @@ export async function runHeadless(
     const playerHealth = world.stores.health.current[playerEid] ?? 0;
     const currentHealthPercent = playerHealth / playerMaxHealth;
 
-    return {
+    const crashStats: RunStats = {
       totalFrames: frameCount,
       wallTimeMs,
       gameTimeMs: world.elapsedMs,
@@ -708,6 +717,14 @@ export async function runHeadless(
       aiTelemetry: buildAiTelemetry(),
       spawnerArenas: computeSpawnerArenaMetrics(world),
     };
+    if (mergedConfig.onFinish) {
+      try {
+        mergedConfig.onFinish(world);
+      } catch (hookErr) {
+        logger.error('Headless runner onFinish hook threw', { error: hookErr });
+      }
+    }
+    return crashStats;
   }
 
   const wallTimeMs = Date.now() - startTime;
@@ -770,6 +787,14 @@ export async function runHeadless(
       fps: fps.toFixed(0),
       combatTimePercent: ((combatTimeMs / world.elapsedMs) * 100).toFixed(1),
     });
+  }
+
+  if (mergedConfig.onFinish) {
+    try {
+      mergedConfig.onFinish(world);
+    } catch (hookErr) {
+      logger.error('Headless runner onFinish hook threw', { error: hookErr });
+    }
   }
 
   return stats;

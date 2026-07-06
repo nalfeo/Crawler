@@ -11,6 +11,7 @@ import {
   Position,
   Health,
   Enemy,
+  FamilyMembership,
   Velocity,
   Stats,
   XpGem,
@@ -55,7 +56,14 @@ import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_TUTORIAL_QUEST_ID,
   SHOPKEEPER_FETCH_ITEM_ID,
+  type QuestState,
 } from '../../shared/quest-types.js';
+import { getItemById, getItemByIndex } from '../../shared/items.js';
+import {
+  getActiveQuests,
+  getQuestObjectiveViews,
+  getTrackedQuest,
+} from '../../core/systems/questSystem.js';
 import {
   AIState,
   AIPathingMode,
@@ -4102,6 +4110,390 @@ export class BehaviorTreeAI implements AIInputProvider {
     return null;
   }
 
+  private parseFloor2FamilyId(questId: string): string | null {
+    const match = /^floor2-den-(.+)-unlock$/.exec(questId);
+    return match ? (match[1] ?? null) : null;
+  }
+
+  private findNearestFloor2FamilyEnemy(
+    world: GameWorld,
+    familyId: string,
+    playerX: number,
+    playerY: number,
+    maxRadius: number = Number.POSITIVE_INFINITY,
+    requirePerception: boolean = true,
+  ): WorldTarget | null {
+    const floor2State = world.floorExtendedState?.familyState;
+    const familyIndex =
+      floor2State?.presentFamilies.findIndex((id: string) => id === familyId) ?? -1;
+    if (familyIndex < 0) {
+      return null;
+    }
+
+    const candidates: WorldTarget[] = [];
+    const familyField = world.stores.familyMembership.familyId;
+    const bossField = world.stores.familyMembership.isBoss;
+    for (const eid of query(world.ecs, [Enemy, Position, Health, FamilyMembership])) {
+      if (eid === undefined) continue;
+      if ((familyField[eid] ?? -1) !== familyIndex) continue;
+      if ((bossField[eid] ?? 0) !== 0) continue;
+      const health = world.stores.health.current[eid] ?? 0;
+      if (health <= 0) continue;
+      const x = world.stores.position.x[eid] ?? 0;
+      const y = world.stores.position.y[eid] ?? 0;
+      if (requirePerception && !this.canPerceiveWorldPosition(world, x, y)) continue;
+      const dist = Math.hypot(x - playerX, y - playerY);
+      if (dist <= maxRadius) {
+        candidates.push({ eid, x, y, distance: dist });
+      }
+    }
+
+    candidates.sort((a, b) => a.distance - b.distance);
+    const nearest = candidates[0] ?? null;
+    for (const candidate of candidates) {
+      if (candidate.distance <= DIRECT_MOVE_EPSILON_FT) {
+        return candidate;
+      }
+      if (this.isTargetReachable(world, playerX, playerY, candidate)) {
+        return candidate;
+      }
+    }
+    return nearest;
+  }
+
+  private findNearestFloor2Boss(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    familyId?: string,
+    maxRadius: number = Number.POSITIVE_INFINITY,
+    requirePerception: boolean = true,
+  ): WorldTarget | null {
+    const floor2State = world.floorExtendedState?.familyState;
+    const decapitated = floor2State?.decapitatedFamilies;
+    const familyIndex = familyId
+      ? (floor2State?.presentFamilies.findIndex((id: string) => id === familyId) ?? -1)
+      : -1;
+    const candidates: WorldTarget[] = [];
+    const familyField = world.stores.familyMembership.familyId;
+    const bossField = world.stores.familyMembership.isBoss;
+
+    for (const eid of query(world.ecs, [Enemy, Position, Health, FamilyMembership])) {
+      if (eid === undefined) continue;
+      if ((bossField[eid] ?? 0) !== 1) continue;
+      const bossFamilyIndex = familyField[eid] ?? -1;
+      if (familyId !== undefined && bossFamilyIndex !== familyIndex) continue;
+      const bossFamilyId = floor2State?.presentFamilies[bossFamilyIndex];
+      if (bossFamilyId !== undefined && decapitated?.has(bossFamilyId)) continue;
+      const health = world.stores.health.current[eid] ?? 0;
+      if (health <= 0) continue;
+      const x = world.stores.position.x[eid] ?? 0;
+      const y = world.stores.position.y[eid] ?? 0;
+      if (requirePerception && !this.canPerceiveWorldPosition(world, x, y)) continue;
+      const dist = Math.hypot(x - playerX, y - playerY);
+      if (dist <= maxRadius) {
+        candidates.push({ eid, x, y, distance: dist });
+      }
+    }
+
+    candidates.sort((a, b) => a.distance - b.distance);
+    const nearest = candidates[0] ?? null;
+    for (const candidate of candidates) {
+      if (candidate.distance <= DIRECT_MOVE_EPSILON_FT) {
+        return candidate;
+      }
+      if (this.isTargetReachable(world, playerX, playerY, candidate)) {
+        return candidate;
+      }
+    }
+    return nearest;
+  }
+
+  private findFloor2TerritoryTarget(
+    world: GameWorld,
+    familyId: string,
+    playerX: number,
+    playerY: number,
+    reason: string,
+  ): ProgressTarget | null {
+    const floorMap = world.floorMap;
+    const floor2State = world.floorExtendedState?.familyState;
+    const familyIndex =
+      floor2State?.presentFamilies.findIndex((id: string) => id === familyId) ?? -1;
+    if (!floorMap || familyIndex < 0) {
+      return null;
+    }
+    const room = floorMap.roomGraph
+      .getAll()
+      .find(
+        (candidate) =>
+          candidate.role === RoomRole.TERRITORY && candidate.familyIndex === familyIndex,
+      );
+    const normalRooms = floorMap.roomGraph
+      .getAll()
+      .filter((candidate) => candidate.role === RoomRole.NORMAL);
+    const fallbackRoom =
+      room ?? (normalRooms.length > 0 ? normalRooms[familyIndex % normalRooms.length] : undefined);
+    if (!fallbackRoom) {
+      return null;
+    }
+
+    const doorTile =
+      fallbackRoom.doors.length > 0
+        ? fallbackRoom.doors
+            .map((door) => {
+              const worldPos = floorMap.tileToWorld(door.x, door.y);
+              return {
+                x: door.x,
+                y: door.y,
+                distance: Math.hypot(worldPos.x - playerX, worldPos.y - playerY),
+              };
+            })
+            .sort((a, b) => a.distance - b.distance)[0]
+        : null;
+    const tile = doorTile ??
+      fallbackRoom.interiorCells?.[Math.floor(fallbackRoom.interiorCells.length / 2)] ?? {
+        x: fallbackRoom.bounds.x + Math.floor(fallbackRoom.bounds.width / 2),
+        y: fallbackRoom.bounds.y + Math.floor(fallbackRoom.bounds.height / 2),
+      };
+    const worldPos = floorMap.tileToWorld(tile.x, tile.y);
+    return this.createProgressTarget(worldPos.x, worldPos.y, playerX, playerY, reason);
+  }
+
+  private findNearestQuestItem(
+    world: GameWorld,
+    itemId: string,
+    playerX: number,
+    playerY: number,
+    maxRadius: number = this.config.scanRadius * 2,
+  ): LootTarget | null {
+    if (!getItemById(itemId)) {
+      return null;
+    }
+
+    const candidates: LootTarget[] = [];
+    for (const eid of query(world.ecs, [DroppedItem, Position])) {
+      if (eid === undefined) continue;
+      const droppedIndex = world.stores.droppedItem.itemIndex[eid];
+      if (droppedIndex === undefined) continue;
+      const droppedItem = getItemByIndex(droppedIndex);
+      if (!droppedItem || droppedItem.id !== itemId) continue;
+      const x = world.stores.position.x[eid] ?? 0;
+      const y = world.stores.position.y[eid] ?? 0;
+      const dist = Math.hypot(x - playerX, y - playerY);
+      if (dist < maxRadius) {
+        candidates.push({ eid, x, y, distance: dist, kind: 'item' });
+      }
+    }
+
+    candidates.sort((a, b) => a.distance - b.distance);
+    for (const candidate of candidates) {
+      if (this.isLootCollectable(world, playerX, playerY, candidate)) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  private findFloor2ProgressObjective(
+    world: GameWorld,
+    playerEid: number,
+    playerX: number,
+    playerY: number,
+  ): ProgressTarget | null {
+    const trackedQuestId = getTrackedQuest(world)?.questId ?? null;
+    const candidates: Array<{ questId: string; target: ProgressTarget }> = [];
+    for (const quest of getActiveQuests(world)) {
+      if (!quest.questId.startsWith('floor2-den-')) {
+        continue;
+      }
+      const target = this.findFloor2QuestProgressTarget(world, playerEid, playerX, playerY, quest);
+      if (target) {
+        candidates.push({ questId: quest.questId, target });
+      }
+    }
+
+    if (candidates.length === 0) {
+      const unlockedBoss =
+        this.findNearestFloor2Boss(world, playerX, playerY) ??
+        this.findNearestFloor2Boss(
+          world,
+          playerX,
+          playerY,
+          undefined,
+          Number.POSITIVE_INFINITY,
+          false,
+        );
+      if (unlockedBoss) {
+        return this.createProgressTarget(
+          unlockedBoss.x,
+          unlockedBoss.y,
+          playerX,
+          playerY,
+          'Hunting the Floor 2 boss',
+          unlockedBoss.eid,
+        );
+      }
+      return null;
+    }
+
+    candidates.sort((a, b) => {
+      const distanceDelta = a.target.distance - b.target.distance;
+      if (Math.abs(distanceDelta) > 0.001) {
+        return distanceDelta;
+      }
+      if (a.questId === trackedQuestId) {
+        return -1;
+      }
+      if (b.questId === trackedQuestId) {
+        return 1;
+      }
+      return a.questId.localeCompare(b.questId);
+    });
+    return candidates[0]?.target ?? null;
+  }
+
+  private findFloor2QuestProgressTarget(
+    world: GameWorld,
+    playerEid: number,
+    playerX: number,
+    playerY: number,
+    activeQuest: QuestState,
+  ): ProgressTarget | null {
+    const familyId = this.parseFloor2FamilyId(activeQuest.questId);
+    if (!familyId) {
+      return null;
+    }
+
+    const objectiveViews = getQuestObjectiveViews(world, activeQuest, playerEid);
+    const activeView =
+      objectiveViews.find((view) => !view.complete && !view.hidden) ??
+      objectiveViews.find((view) => !view.complete);
+    if (!activeView) {
+      const unlockedBoss = this.findNearestFloor2Boss(world, playerX, playerY, familyId);
+      if (unlockedBoss) {
+        return this.createProgressTarget(
+          unlockedBoss.x,
+          unlockedBoss.y,
+          playerX,
+          playerY,
+          `Hunting the ${familyId} boss`,
+          unlockedBoss.eid,
+        );
+      }
+      return null;
+    }
+
+    const objective = activeView.def;
+    const chaseDistanceLimitFt = 128;
+    const familyEnemy =
+      this.findNearestFloor2FamilyEnemy(world, familyId, playerX, playerY) ??
+      this.findNearestFloor2FamilyEnemy(
+        world,
+        familyId,
+        playerX,
+        playerY,
+        chaseDistanceLimitFt,
+        false,
+      );
+    const bossTarget =
+      this.findNearestFloor2Boss(world, playerX, playerY, familyId) ??
+      this.findNearestFloor2Boss(
+        world,
+        playerX,
+        playerY,
+        familyId,
+        Number.POSITIVE_INFINITY,
+        false,
+      );
+    const denUnlocked = world.goalFlags.get(`floor2-den-${familyId}-unlocked`) === true;
+    const territoryTarget = this.findFloor2TerritoryTarget(
+      world,
+      familyId,
+      playerX,
+      playerY,
+      `Sweeping the ${familyId} territory for den progress`,
+    );
+
+    switch (objective.kind) {
+      case 'counter':
+        if (familyEnemy) {
+          return this.createProgressTarget(
+            familyEnemy.x,
+            familyEnemy.y,
+            playerX,
+            playerY,
+            `Advancing ${familyId} den unlock (${activeView.current}/${activeView.target})`,
+            familyEnemy.eid,
+          );
+        }
+        if (!denUnlocked) {
+          return territoryTarget;
+        }
+        return bossTarget
+          ? this.createProgressTarget(
+              bossTarget.x,
+              bossTarget.y,
+              playerX,
+              playerY,
+              `Pressuring the ${familyId} den`,
+              bossTarget.eid,
+            )
+          : territoryTarget;
+      case 'collect':
+        if (objective.itemId) {
+          const itemTarget = this.findNearestQuestItem(world, objective.itemId, playerX, playerY);
+          if (itemTarget) {
+            return this.createProgressTarget(
+              itemTarget.x,
+              itemTarget.y,
+              playerX,
+              playerY,
+              `Collecting ${activeView.def.label}`,
+              itemTarget.eid,
+            );
+          }
+        }
+        return familyEnemy
+          ? this.createProgressTarget(
+              familyEnemy.x,
+              familyEnemy.y,
+              playerX,
+              playerY,
+              `Searching the ${familyId} territory for the unlock drop`,
+              familyEnemy.eid,
+            )
+          : null;
+      case 'goal':
+      case 'talk':
+      case 'haveEquippable':
+      case 'equip':
+        if (bossTarget) {
+          return this.createProgressTarget(
+            bossTarget.x,
+            bossTarget.y,
+            playerX,
+            playerY,
+            `Closing on the ${familyId} boss den`,
+            bossTarget.eid,
+          );
+        }
+        if (familyEnemy) {
+          return this.createProgressTarget(
+            familyEnemy.x,
+            familyEnemy.y,
+            playerX,
+            playerY,
+            `Working the ${familyId} den unlock`,
+            familyEnemy.eid,
+          );
+        }
+        return null;
+      default:
+        return null;
+    }
+  }
+
   /**
    * Nearest dropped Gold pile within {@link maxRadius} ft, ignoring loot we've
    * flagged unreachable. Unlike {@link findNearestLoot} this is gold-only and
@@ -4205,6 +4597,12 @@ export class BehaviorTreeAI implements AIInputProvider {
     const maybeDetourToQuestGiver = (target: ProgressTarget): ProgressTarget =>
       this.withQuestGiverDetour(world, playerEid, playerX, playerY, target, panicProfile);
     const floorScenario = world.floorScenario;
+    if (world.floorExtendedState?.familyState) {
+      const floor2Target = this.findFloor2ProgressObjective(world, playerEid, playerX, playerY);
+      if (floor2Target) {
+        return maybeDetourToQuestGiver(floor2Target);
+      }
+    }
     const objective = floorScenario?.objective;
     if (!floorScenario || !objective) {
       return null;

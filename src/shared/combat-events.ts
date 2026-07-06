@@ -24,6 +24,14 @@ export interface CombatEvent {
   timestamp: number;
   /** Target entity ID (may be invalid next frame — validate before use). */
   targetEid?: number;
+  /**
+   * Optional Floor 2 family index snapshot captured at death-event emission.
+   * Makes objective processing robust even if membership components are removed
+   * before the objective tick consumes the event.
+   */
+  familyIndex?: number;
+  /** Optional Floor 2 boss marker snapshot captured at death-event emission. */
+  isBoss?: 0 | 1;
   /** Excess damage beyond 0 HP (death events only). */
   overkill?: number;
   /** Direction of the killing blow — for directional gore (death events only). */

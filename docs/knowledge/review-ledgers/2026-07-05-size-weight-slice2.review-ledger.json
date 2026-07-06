@@ -1,0 +1,39 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-05",
+  "session_slug": "size-weight-slice2",
+  "task_title": "Slice 2 — weight-scaled knockback + Immovable tag",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "notes": "rubber-duck agent plan-review-slice2 raised 3 blocking + 1 should-fix. All resolved: (1) documented reader-side scaling as the shipping design in spec .specify/specs/entity-physics.md and ADR 0044 §Weight as knockback denominator, so future writers understand they must keep raw values (blocker 1); (2) tightened check-weight-coverage.ts to require per-kind non-vacuity (Enemy>0 AND Player>0 AND Prop>0) rather than the trivially-satisfied total-count check that Player alone would pass (blocker 2); (3) ran scripts/agent/perf/winrate-sweep.ts on seeds 1-10 × 3 weapons for both Slice 1 baseline and Slice 2 — see files/sweep-slice2-summary.txt and handoff (blocker 3); (4) froze enemy weight against the sizeScale cosmetic RNG in initializeEnemyAppearance so weight is a first-class gameplay dial and not a hidden ±10% variance on knockback distance (should-fix 1)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "reviewer_model": "claude-opus-4.7",
+          "models": ["claude-opus-4.7"],
+          "clean": true,
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "notes": "code-review agent slice2-code-review-r1 verified: (a) 120 lb baseline is bit-identical to Slice 1 by IEEE-754 construction (weightScale=1.0 exactly); (b) short-circuit ordering is safe against stale/NaN Knockback state; (c) writer inventory matches claim (meleeSwingSystem, dropSystem, progressionEffects — only 3 writers); (d) per-kind coverage gate is sound (Enemy>0 AND Prop>0 is the actual line of defense); (e) layer rules preserved (knockbackSystem imports only intra-core); (f) docblock traces line-by-line against code (hand-traced remaining=10, speed=2, weight∈{60,120,240} → 5 frames each, distances 20/10/5); (g) substep/flying/no-floormap paths all consume the scaled step; (h) no Math.random/Date.now introduced, no new *System exports so wired-systems gate is trivially green; (i) onFinish hook fires in both normal+crash paths behind try/catch. concerns[]=[]. Verdict: Ship it."
+        },
+        {
+          "round": 2,
+          "reviewer_model": "claude-opus-4.7",
+          "models": ["claude-opus-4.7"],
+          "clean": true,
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "notes": "Round 2 covers the design-mandated Option-B cap refinement (ADR 0044 Slice 2 refinement, human-backed via design session 81782d83 → shepherd cee09659). Verified: (a) new named constant KNOCKBACK_WEIGHT_SCALE_MAX = 2.5 in physics-defs.ts next to KNOCKBACK_WEIGHT_BASELINE_LB, with docblock explaining rat=6→raw-20× rationale + 48 lb boundary; (b) knockbackSystem applies Math.min(rawScale, cap) exactly at the reader — no writer changes, no per-mob registry retune (deferred to ai-combat-balance slice per design); (c) unit test additive expansion: kept 60 lb→2× case (below cap, still linear), added explicit 6 lb→2.5× cap case, updated zero-weight case to clamp (was 1200 → now 25) with docblock explaining the change; (d) collision-pair-parity structural expansion to 4 seeds (42/7/13/137) — additive per Rule #9 coverage-hygiene, seed 42 golden UNCHANGED from Slice-1's B==H proof (cap is inert for that seed's Floor-1 slice at 1500 frames), seeds 7/13/137 goldens captured on cap head with 2-run stability proof; (e) spec R5 amended to say 'clamped at KNOCKBACK_WEIGHT_SCALE_MAX = 2.5×'; (f) ADR 0044 §Weight as knockback denominator appended Slice-2-refinement subsection above the shipping amendment; (g) entity-sizing.md §Knockback baseline math updated with cap formula + worked-example table (rat 6→2.5×, slime 20→2.5×, 48 boundary, 120→1.0×, 240→0.5×, boss 800→0.15×, ≥10000 short-circuit). Enforced gate: 44/44 GREEN. 10-seed × 3-weapon aggregate: 24/30 = 80% (matches main outcome map — the seed-8 bow flip from pre-cap Slice 2 is resolved by the cap). Rule #13 clean: no constants tuned, no seeds cherry-picked, cap is the only lever. concerns[]=[]. Verdict: Ship."
+        }
+      ]
+    }
+  }
+}

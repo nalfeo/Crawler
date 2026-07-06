@@ -58,7 +58,6 @@ import {
   spawnerSystem,
   emergentEventSystem,
 } from '../index.js';
-import { floor2VictorySystem } from '../floor2Scenario.js';
 import type { InputState } from '../../shared/input.js';
 
 /**
@@ -156,8 +155,6 @@ export function runSimulationStep(
   // Drain queued faction-relation deltas. Always-safe (Floor 1 empties queue
   // to a near-noop); Floor-2-onwards this feeds band-driven AI (Slice 3).
   familyRelationshipSystem(world);
-  // Floor 2 Slice 5: run dynamic win evaluator every tick in headless too.
-  floor2VictorySystem(world);
   // Emergent event scheduler runs immediately after the drain — a threshold
   // event that flips a band this frame can queue its own follow-on deltas
   // for next frame's drain (Slice 6).
@@ -247,6 +244,8 @@ export function runSimulationStep(
     achievementSystem(world);
   } else if (world.floorObjectiveTick) {
     world.floorObjectiveTick(world);
+    questSystem(world);
+    achievementSystem(world);
   }
 
   for (const sys of options.postSystems ?? []) {
