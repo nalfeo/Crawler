@@ -28,8 +28,16 @@
           "concerns_count": 0,
           "resolved_count": 0,
           "clean": true
+        },
+        {
+          "round": 3,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
         }
-      ]
+      ],
+      "notes": "Round 3 reviewed the follow-up checkout-pin delta (commit 9edf8f09): the baseline-sweep actions/checkout ref is pinned to the same expression the Resolve-baseline-commit step uses, so the swept code matches the commit the baseline is recorded under. Verdict: no concerns -- expression consistency, workflow_dispatch fallback, fetch-depth:0 reachability, and publish-step independence all confirmed."
     }
   }
 }
