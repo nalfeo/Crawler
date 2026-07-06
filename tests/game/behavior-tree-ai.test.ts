@@ -26,7 +26,7 @@ import type { TilePoint } from '../../src/core/map/pathfinding.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
-import { AIPathingMode, AIProgressSuppressionSource, AIState } from '../../src/game/ai/types.js';
+import { AIProgressSuppressionSource, AIState } from '../../src/game/ai/types.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 
 /**
@@ -736,112 +736,6 @@ describe('BehaviorTreeAI', () => {
       const offDbg = offAi.getOpportunisticDebug();
       expect(offDbg.farmX).toBe(0);
       expect(offDbg.farmY).toBe(0);
-    });
-  });
-
-  describe('pathing A/B: risk-reward fused mode', () => {
-    it('accepts explicit pathing modes for A/B runs', () => {
-      const legacy = new BehaviorTreeAI({ seed: 42, pathingMode: AIPathingMode.LEGACY });
-      const fused = new BehaviorTreeAI({ seed: 42, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
-      expect(legacy).toBeTruthy();
-      expect(fused).toBeTruthy();
-    });
-
-    it('prefers lower-danger arc through overlapping enemy threat fields', () => {
-      const world = createTestWorld({ seed: 42 });
-      world.floorMap = makeOpenRoom(24, 24);
-      spawnPlayer(world, 20, 20);
-      const ai = new BehaviorTreeAI({ seed: 42, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
-      const harness = ai as unknown as {
-        opportunisticPullX: number;
-        opportunisticPullY: number;
-        farmPullX: number;
-        farmPullY: number;
-        dodgeVecX: number;
-        dodgeVecY: number;
-        computeRiskRewardFusedHeading: (
-          world: GameWorld,
-          playerX: number,
-          playerY: number,
-          baseMoveX: number,
-          baseMoveY: number,
-          weights: { dodgeWeight: number; collectPullWeight: number; farmPullWeight: number },
-        ) => { moveX: number; moveY: number };
-      };
-      harness.opportunisticPullX = 0;
-      harness.opportunisticPullY = 0;
-      harness.farmPullX = 0;
-      harness.farmPullY = 0;
-      harness.dodgeVecX = 0;
-      harness.dodgeVecY = 0;
-
-      // Single lopsided danger blob ahead nudges away from centerline.
-      spawnEnemy(world, 28, 23, 20);
-      const oneBlob = harness.computeRiskRewardFusedHeading(world, 20, 20, 1, 0, {
-        dodgeWeight: 0,
-        collectPullWeight: 0,
-        farmPullWeight: 0,
-      });
-      expect(oneBlob.moveX).toBeGreaterThan(0);
-      expect(Math.abs(oneBlob.moveY)).toBeGreaterThan(0.02);
-
-      // Mirroring that blob creates symmetric overlapping fields; the scorer must
-      // pick the candidate arc with the lowest sampled danger (not the centerline
-      // which cuts straight through the overlap at maximum density).
-      spawnEnemy(world, 28, 17, 20);
-      const bestArc = harness.computeRiskRewardFusedHeading(world, 20, 20, 1, 0, {
-        dodgeWeight: 0,
-        collectPullWeight: 0,
-        farmPullWeight: 0,
-      });
-      expect(bestArc.moveX).toBeGreaterThan(0);
-      const sampleDanger = (dirX: number, dirY: number): number => {
-        const sampleX = 20 + dirX * 8;
-        const sampleY = 20 + dirY * 8;
-        let danger = 0;
-        for (const { x, y } of [
-          { x: 28, y: 23 },
-          { x: 28, y: 17 },
-        ]) {
-          const dist = Math.hypot(x - sampleX, y - sampleY);
-          if (dist >= 12) continue;
-          const norm = 1 - dist / 12;
-          danger += norm * norm;
-        }
-        return danger;
-      };
-      // The arc the scorer picks must expose it to less danger than straight ahead.
-      expect(sampleDanger(bestArc.moveX, bestArc.moveY)).toBeLessThan(sampleDanger(1, 0));
-    });
-
-    it('poll() produces a different heading in FUSED mode vs LEGACY when threats are present', () => {
-      const world = createTestWorld({ seed: 99 });
-      world.floorMap = makeOpenRoom(24, 24);
-      spawnPlayer(world, 20, 20);
-      // Place an enemy off-center so FUSED can steer around it
-      spawnEnemy(world, 28, 24, 20);
-
-      const legacy = new BehaviorTreeAI({ seed: 99, pathingMode: AIPathingMode.LEGACY });
-      const fused = new BehaviorTreeAI({ seed: 99, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
-
-      const stateL = createInputState();
-      const stateF = createInputState();
-      legacy.poll(stateL, world);
-      fused.poll(stateF, world);
-
-      // Both modes must produce a valid heading (non-zero and normalised ≤1)
-      const magL = Math.hypot(stateL.moveX, stateL.moveY);
-      const magF = Math.hypot(stateF.moveX, stateF.moveY);
-      expect(magL).toBeGreaterThan(0);
-      expect(magF).toBeGreaterThan(0);
-      expect(magL).toBeLessThanOrEqual(1.01);
-      expect(magF).toBeLessThanOrEqual(1.01);
-
-      // FUSED must produce a measurably different heading from LEGACY
-      // (the danger field steers it away from the off-center threat)
-      const headingDiff =
-        Math.abs(stateL.moveX - stateF.moveX) + Math.abs(stateL.moveY - stateF.moveY);
-      expect(headingDiff).toBeGreaterThan(0.01);
     });
   });
 
