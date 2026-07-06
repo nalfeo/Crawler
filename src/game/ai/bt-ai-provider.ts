@@ -3659,11 +3659,6 @@ export class BehaviorTreeAI implements AIInputProvider {
       if ((bossField[eid] ?? 0) !== 0) continue;
       const health = world.stores.health.current[eid] ?? 0;
       if (health <= 0) continue;
-      const ignoredUntil = this.ignoredEnemyUntilFrame.get(eid);
-      if (ignoredUntil !== undefined) {
-        if (ignoredUntil > world.frameCount) continue;
-        this.ignoredEnemyUntilFrame.delete(eid);
-      }
       const x = world.stores.position.x[eid] ?? 0;
       const y = world.stores.position.y[eid] ?? 0;
       if (requirePerception && !this.canPerceiveWorldPosition(world, x, y)) continue;
