@@ -38,7 +38,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { variantCount } from './brief-schema.js';
 import type { Brief, PaletteColors } from './brief-schema.js';
-import { buildSheetPrompt, loadStyleGuide } from './build-prompt.js';
+import { buildPrompt, buildSheetPrompt, loadStyleGuide } from './build-prompt.js';
 import { expandVariations } from './expand-variations.js';
 import { loadBrief, type LoadedBrief } from './load-brief.js';
 import { sliceSheetFromBrief } from './slice-sheet.js';
@@ -148,8 +148,9 @@ export type RunSummaryIdentity = Pick<
   | 'attempts'
   | 'variantCount'
   | 'variations'
-  | 'referenceSprites'
->;
+> & {
+  readonly referenceSprites?: RunSummary['referenceSprites'];
+};
 
 /**
  * Everything `generateSheetCore` produces: a stored raw sheet, the
@@ -241,6 +242,7 @@ export async function generateSheetCore(
 
   const styleGuide = loadStyleGuide(repoRoot);
   const prompt = buildSheetPrompt(effectiveBrief, styleGuide);
+  const singleVariantPrompt = buildPrompt(effectiveBrief, styleGuide);
 
   // References are OUR own highest-quality approved sprites, chosen
   // deterministically per brief — Kenney placeholder spritesheets are retired.
@@ -249,6 +251,7 @@ export async function generateSheetCore(
   // to `selectReferences`, which favours the brief's own `type` (with injected,
   // seeded randomness) and broadens to other high-quality generated art when
   // the same-type pool is thin.
+  const supportsReferenceImages = options.provider.capabilities?.referenceImages !== false;
   const referenceCount = options.referenceCount ?? REFERENCE_COUNT;
   const publicAssetsRoot = path.resolve(repoRoot, 'public', 'assets');
   const resolveAssetPath = (assetPath: string) => path.resolve(publicAssetsRoot, assetPath);
@@ -267,39 +270,43 @@ export async function generateSheetCore(
       return Object.values(manifest.entries);
     });
 
-  const presentCandidates = loadReferenceCandidates().filter(
-    (entry) =>
-      isSafeGeneratedAssetPath(entry.assetPath) &&
-      referenceAssetExists(resolveAssetPath(entry.assetPath)),
-  );
-  const selection = selectReferences({
-    candidates: presentCandidates,
-    briefName: brief.name,
-    briefType: brief.type,
-    count: referenceCount,
-    seed: referenceSelectorSeed(brief.name),
-  });
-  if (selection.selected.length === 0) {
-    throw new Error(
-      `generateSheetCore: no eligible generated reference sprites for brief "${brief.name}" ` +
-        `(type="${brief.type}"). Generation now sends our own approved sprites as references ` +
-        `(Kenney placeholders are retired), but the generated manifest has none that clear the ` +
-        `quality floor with an on-disk PNG. Approve at least one high-quality sprite first.`,
+  let referencePngs: Buffer[] = [];
+  let referenceSprites: ReferenceSpriteSelection | undefined;
+  if (supportsReferenceImages) {
+    const presentCandidates = loadReferenceCandidates().filter(
+      (entry) =>
+        isSafeGeneratedAssetPath(entry.assetPath) &&
+        referenceAssetExists(resolveAssetPath(entry.assetPath)),
     );
+    const selection = selectReferences({
+      candidates: presentCandidates,
+      briefName: brief.name,
+      briefType: brief.type,
+      count: referenceCount,
+      seed: referenceSelectorSeed(brief.name),
+    });
+    if (selection.selected.length === 0) {
+      throw new Error(
+        `generateSheetCore: no eligible generated reference sprites for brief "${brief.name}" ` +
+          `(type="${brief.type}"). Generation now sends our own approved sprites as references ` +
+          `(Kenney placeholders are retired), but the generated manifest has none that clear the ` +
+          `quality floor with an on-disk PNG. Approve at least one high-quality sprite first.`,
+      );
+    }
+    referencePngs = selection.selected.map((entry) => {
+      const absolutePath = resolveAssetPath(entry.assetPath);
+      assertResolvedUnderGenerated(absolutePath, publicAssetsRoot, 'generateSheetCore');
+      return readReference(absolutePath);
+    });
+    referenceSprites = {
+      selectorVersion: SELECTOR_VERSION,
+      seed: selection.seed,
+      requestedCount: selection.requestedCount,
+      eligibleCount: selection.eligibleCount,
+      sameTypeCount: selection.sameTypeCount,
+      selected: selection.selected.map(toReferenceSpriteRef),
+    };
   }
-  const referencePngs = selection.selected.map((entry) => {
-    const absolutePath = resolveAssetPath(entry.assetPath);
-    assertResolvedUnderGenerated(absolutePath, publicAssetsRoot, 'generateSheetCore');
-    return readReference(absolutePath);
-  });
-  const referenceSprites: ReferenceSpriteSelection = {
-    selectorVersion: SELECTOR_VERSION,
-    seed: selection.seed,
-    requestedCount: selection.requestedCount,
-    eligibleCount: selection.eligibleCount,
-    sameTypeCount: selection.sameTypeCount,
-    selected: selection.selected.map(toReferenceSpriteRef),
-  };
 
   const runId = makeRunId(createdAt, `${brief.name}|${prompt}`);
   // Store-key helper: returns a key relative to the store root.
@@ -314,8 +321,9 @@ export async function generateSheetCore(
     attempts++;
     try {
       const sheet = await options.provider.generateSheet({
-        brief,
+        brief: effectiveBrief,
         prompt,
+        singleVariantPrompt,
         referencePngs,
         variants: expected,
       });
@@ -358,7 +366,7 @@ export async function generateSheetCore(
       minVariations: brief.minVariations,
       skippedReason: expansion.skippedReason,
     },
-    referenceSprites,
+    ...(referenceSprites ? { referenceSprites } : {}),
   };
 
   return {
