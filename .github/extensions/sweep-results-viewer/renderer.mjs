@@ -19,6 +19,8 @@ export function renderHtml(instanceId) {
       --win: #3fb950;
       --loss: #f85149;
       --timeout: #d29922;
+      --stalled: #a371f7;
+      --errored: #f778ba;
     }
     * { box-sizing: border-box; }
     body {
@@ -127,6 +129,8 @@ export function renderHtml(instanceId) {
     .cell.victory { background: var(--win); }
     .cell.death   { background: var(--loss); }
     .cell.timeout { background: var(--timeout); }
+    .cell.stalled { background: var(--stalled); }
+    .cell.errored { background: var(--errored); }
     .cell.empty   { background: var(--panel); border: 1px solid var(--border); color: var(--muted); }
 
     .legend { display: flex; gap: 1rem; font-size: 11px; color: var(--muted); margin-top: 0.5rem; }
@@ -159,6 +163,7 @@ export function renderHtml(instanceId) {
 
   const fmtPct = (n) => (n * 100).toFixed(1) + '%';
   const fmtNum = (n, d = 1) => Number(n).toFixed(d);
+  const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
   function winRateClass(r) {
     if (r >= 0.9) return 'high';
@@ -167,10 +172,31 @@ export function renderHtml(instanceId) {
   }
 
   function outcomeAbbrev(o) {
-    if (o === 'victory') return 'W';
-    if (o === 'death') return 'D';
-    if (o === 'timeout') return 'T';
-    return '?';
+    switch (o) {
+      case 'victory': return 'W';
+      case 'death': return 'D';
+      case 'timeout': return 'T';
+      case 'stalled': return 'S';
+      case 'error': return 'E';
+      default: return '?';
+    }
+  }
+
+  // Map a run outcome to its cell CSS modifier. 'error' maps to 'errored' so the
+  // cell never collides with the global .error banner class and inherits its
+  // padding/border/color.
+  function outcomeClass(o) {
+    switch (o) {
+      case 'victory':
+      case 'death':
+      case 'timeout':
+      case 'stalled':
+        return o;
+      case 'error':
+        return 'errored';
+      default:
+        return 'empty';
+    }
   }
 
   function render(state) {
@@ -205,7 +231,7 @@ export function renderHtml(instanceId) {
     html += '</tr></thead><tbody>';
     for (const s of summaries) {
       html += '<tr>';
-      html += '<td class="weapon-name">' + s.weapon + '</td>';
+      html += '<td class="weapon-name">' + esc(s.weapon) + '</td>';
       html += '<td>' + s.runs + '</td>';
       html += '<td>' + s.victories + '</td>';
       html += '<td><span class="winrate ' + winRateClass(s.winRate) + '">' + fmtPct(s.winRate) + '</span></td>';
@@ -229,25 +255,24 @@ export function renderHtml(instanceId) {
       }
 
       html += '<section><h2>Per-Seed Outcomes</h2><div class="grid-wrap">';
-      const cols = seeds.length + 1;
       html += '<div class="grid" style="grid-template-columns: auto repeat(' + seeds.length + ', minmax(28px, 1fr));">';
       html += '<div class="head"></div>';
-      for (const seed of seeds) html += '<div class="head">' + seed + '</div>';
+      for (const seed of seeds) html += '<div class="head">' + esc(seed) + '</div>';
       for (const weapon of weapons) {
-        html += '<div class="row-label">' + weapon + '</div>';
+        html += '<div class="row-label">' + esc(weapon) + '</div>';
         for (const seed of seeds) {
           const r = idx[weapon]?.[seed];
           if (!r) {
-            html += '<div class="cell empty" title="' + weapon + ' seed=' + seed + ': (no data)">—</div>';
+            html += '<div class="cell empty" title="' + esc(weapon) + ' seed=' + esc(seed) + ': (no data)">—</div>';
           } else {
-            const cls = 'cell ' + (r.outcome || 'empty');
-            const title = weapon + ' seed=' + seed + ' · ' + r.outcome
+            const cls = 'cell ' + outcomeClass(r.outcome);
+            const title = esc(weapon) + ' seed=' + esc(seed) + ' · ' + esc(r.outcome)
               + ' · t=' + fmtNum(r.gameTimeSec, 0) + 's'
               + ' · lv=' + r.finalLevel
               + ' · kills=' + r.totalKills
               + ' · score=' + fmtNum(r.score, 0)
               + ' · minHP=' + fmtPct(r.minHealthPct);
-            html += '<div class="' + cls + '" title="' + title.replace(/"/g, '&quot;') + '">' + outcomeAbbrev(r.outcome) + '</div>';
+            html += '<div class="' + cls + '" title="' + title + '">' + outcomeAbbrev(r.outcome) + '</div>';
           }
         }
       }
@@ -256,6 +281,8 @@ export function renderHtml(instanceId) {
         + '<span><span class="swatch" style="background:var(--win)"></span>victory</span>'
         + '<span><span class="swatch" style="background:var(--loss)"></span>death</span>'
         + '<span><span class="swatch" style="background:var(--timeout)"></span>timeout</span>'
+        + '<span><span class="swatch" style="background:var(--stalled)"></span>stalled</span>'
+        + '<span><span class="swatch" style="background:var(--errored)"></span>error</span>'
         + '</div>';
       html += '</section>';
     }

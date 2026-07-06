@@ -4,5 +4,18 @@
   "session_slug": "sweep-results-viewer-extension",
   "task_title": "Add sweep-results-viewer canvas extension",
   "estimated_apples": 1,
-  "stages": {}
+  "stages": {
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "clean": true,
+          "models": ["copilot-pull-request-reviewer", "claude-opus-4.8"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "notes": "Copilot code-review round on renderer.mjs raised 3 concerns (4 threads, one duplicated): dead `cols` variable, unhandled 'stalled'/'error' RunStats outcomes in the heatmap, and unescaped weapon/seed interpolated into innerHTML. All addressed in the shepherd fix commit — removed dead `cols`, added stalled/error colors+abbrevs+legend and an outcomeClass() that maps 'error'->'errored' to avoid the global .error banner class bleeding styles, and a shared esc() helper applied to all JSON-derived string interpolations. node --check + verify:fast green."
+        }
+      ]
+    }
+  }
 }
