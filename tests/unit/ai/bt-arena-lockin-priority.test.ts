@@ -88,7 +88,7 @@ describe('BT — arena lock-in priority (1.5)', () => {
     expect(decision.reason).toContain('Tutorial Goon');
   });
 
-  it('retreat (priority 1) still wins over arena lock-in at low HP with a nearby threat', () => {
+  it('spawner arena lock-in outranks retreat at low HP with a nearby threat', () => {
     const world = createTestWorld({ seed: 42 });
     const player = spawnPlayer(world, 0, 0);
     initializeFloor1Scenario(world, player);
@@ -99,7 +99,8 @@ describe('BT — arena lock-in priority (1.5)', () => {
 
     // Retreat needs a nearby Enemy-tagged threat within retreatDangerRadius
     // (20 ft). Spawn one AND set up the arena lock-in — both conditions hold
-    // simultaneously, and retreat must win.
+    // simultaneously, and lock-in must win so the AI kills the only exit
+    // objective instead of kiting forever inside the physical cage.
     const px = world.stores.position.x[player]!;
     const py = world.stores.position.y[player]!;
     spawnEnemy(world, px + 3, py, 20);
@@ -109,6 +110,7 @@ describe('BT — arena lock-in priority (1.5)', () => {
     ai.poll(createInputState(), world);
 
     const decision = ai.getDecision();
-    expect(decision.state).toBe(AIState.RETREAT);
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(decision.reason.toLowerCase()).toContain('arena');
   });
 });

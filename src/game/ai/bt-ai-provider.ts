@@ -769,6 +769,16 @@ export class BehaviorTreeAI implements AIInputProvider {
           this.endRetreat(ctx.world);
           return false;
         }
+        // Spawner arena lock-ins are physically caged states: retreat cannot
+        // create real safety because the spawned threat pack remains trapped in
+        // the same enclosure. Prioritizing retreat here creates a deadlock where
+        // the AI kites forever at low HP and never kills the exit objective.
+        // Boss lock-ins keep the normal retreat priority.
+        const lockinTarget = detectArenaLockin(ctx.world, ctx.playerX, ctx.playerY);
+        if (lockinTarget?.kind === 'spawner') {
+          this.endRetreat(ctx.world);
+          return false;
+        }
         const threat = this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY);
         // Hysteresis: an enemy must close to within retreatDangerRadius to START
         // a retreat, but the AI keeps retreating until the gap exceeds

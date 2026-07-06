@@ -9,15 +9,16 @@
  */
 import GUI from 'lil-gui';
 import Phaser from 'phaser';
-import { createFloorGameConfig } from '../../bootstrap/floor-game-config.js';
+import { createFloor1GameConfig } from '../../bootstrap/floor-game-config.js';
 import { query } from 'bitecs';
-import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
+import { createFloor1MainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { AIState, BehaviorTreeAI } from '../../game/ai/index.js';
+import { AIPathingMode, type AIPathingModeValue } from '../../game/ai/types.js';
 import {
   autoFloor1ProgressionSystem,
   computeAutoStatAllocation,
 } from '../../game/ai/auto-progression.js';
-import { getAvailableFloorIds } from '../../shared/floor-registry.js';
+import { applyStartPlayerLevel } from '../../game/ai/headless-runner.js';
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
 import {
   acceptQuest,
@@ -25,7 +26,16 @@ import {
   setTrackedQuest,
   startFloor1BossEncounter,
 } from '../../game/index.js';
-import { Player } from '../../core/index.js';
+import {
+  Player,
+  Enemy,
+  Position,
+  Health,
+  XpGem,
+  Gold,
+  DroppedItem,
+  Harvestable,
+} from '../../core/index.js';
 import type { GameWorld } from '../../core/world.js';
 import { setGoalFlag } from '../../core/door-lock.js';
 import { flowFieldStep, FLOW_UNREACHABLE } from '../../core/map/flow-field.js';
@@ -68,6 +78,12 @@ interface AiRunnerLabState {
   showFlowField: boolean;
   lighting: LightingConfig;
   fov: FovConfig;
+  aiConfig: {
+    pathingMode: AIPathingModeValue;
+    visualRiskRewardFields: boolean;
+    threatPreviewFrames: number;
+    autoPauseOnDamage: boolean;
+  };
 }
 
 /**
@@ -77,6 +93,7 @@ interface AiRunnerLabState {
  * of the same seed. Debug-only; lab scope, never shipped to the game build.
  */
 export interface AiRunnerDebugSnapshot {
+  frame: number | null;
   polls: number;
   paused: boolean;
   /** True when a human has taken over input from the AI runner. */
@@ -205,22 +222,35 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   const panelRoot = document.createElement('div');
   controls.append(panelRoot);
   let currentSeed = INITIAL_SEED;
+
+  // AI configuration state
+  const aiConfig = {
+    pathingMode: (persisted?.aiConfig?.pathingMode ??
+      AIPathingMode.RISK_REWARD_FUSED) as AIPathingModeValue,
+    visualRiskRewardFields: persisted?.aiConfig?.visualRiskRewardFields ?? false,
+    threatPreviewFrames: persisted?.aiConfig?.threatPreviewFrames ?? 0,
+    autoPauseOnDamage: persisted?.aiConfig?.autoPauseOnDamage ?? false,
+  };
+
   let ai = new BehaviorTreeAI({
     seed: currentSeed,
     aggression: 1,
     retreatThreshold: 0.15,
     debug: true,
+    pathingMode: aiConfig.pathingMode,
   });
   let selectedSpeed = 1;
   let isPaused = true;
   let manualControl = false;
   let hardwareInput: ReturnType<typeof createInputCapture> | null = null;
   let pollCount = 0;
+  let lastObservedPlayerHealth: number | null = null;
   let pendingGearPreviewTicks = 0;
   let pendingGearEquipPreview = false;
   const lastMove = { x: 0, y: 0, action: false };
   let pathGraphics: Phaser.GameObjects.Graphics | null = null;
   let flowFieldGraphics: Phaser.GameObjects.Graphics | null = null;
+  let riskRewardFieldsGraphics: Phaser.GameObjects.Graphics | null = null;
   let showFlowField = persisted?.showFlowField ?? false;
   let lastStepReason = '';
   const floorDebug = {
@@ -229,13 +259,25 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     questId: FLOOR1_TUTORIAL_QUEST_ID,
     questAction: 'accept' as 'accept' | 'complete',
   };
-  let currentFloor = 'floor1';
+  let startPlayerLevel = 1;
+  /** True after the level boost has been applied for the current run. Reset on reseed. */
+  let startLevelApplied = false;
+
+  /** One-shot postSystems hook: apply the requested start level once per run. */
+  const applyStartLevelSystem = (world: GameWorld): void => {
+    if (startLevelApplied || startPlayerLevel <= 1) {
+      return;
+    }
+    startLevelApplied = true;
+    applyStartPlayerLevel(world, startPlayerLevel);
+  };
 
   const persistLabState = (): void => {
     saveLabState(LAB_ID, {
       showFlowField,
       lighting: { ...lightingSettings },
       fov: { ...fovSettings },
+      aiConfig: { ...aiConfig },
     });
   };
 
@@ -251,6 +293,25 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       const scene = game.scene.getScene('MainGameScene') as unknown as RunnerSceneInternals | null;
       if (scene?.world) {
         const world = scene.world as GameWorld;
+        const playerEid = scene.playerEid;
+        const playerHealth =
+          typeof playerEid === 'number' && playerEid >= 0
+            ? (world.stores.health.current[playerEid] ?? null)
+            : null;
+        if (
+          aiConfig.autoPauseOnDamage &&
+          !manualControl &&
+          !isPaused &&
+          playerHealth !== null &&
+          lastObservedPlayerHealth !== null &&
+          playerHealth < lastObservedPlayerHealth
+        ) {
+          isPaused = true;
+          lastStepReason = 'damage taken';
+          syncSceneSimulationState();
+          renderControls();
+        }
+        lastObservedPlayerHealth = playerHealth;
         if (manualControl) {
           // Human has taken over: read real keyboard/mouse/touch instead of the
           // AI brain. The AI is intentionally NOT polled so its navigation state
@@ -270,6 +331,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         lastMove.y = state.moveY;
         lastMove.action = state.action;
       } else {
+        lastObservedPlayerHealth = null;
         state.moveX = 0;
         state.moveY = 0;
         state.action = false;
@@ -304,7 +366,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
     autoFloor1ProgressionSystem(world, playerEid);
   };
-  const baseSceneOptions = createFloorMainSceneOptions(currentFloor);
+  const baseSceneOptions = createFloor1MainSceneOptions();
   const recorderControls = createSessionRecorderControls({
     title: 'AI Session Recorder',
     initialController: 'AI',
@@ -313,12 +375,12 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     ...baseSceneOptions,
     inputCaptureOverride: aiInputProvider,
     worldSeed: currentSeed,
-    postSystems: [...baseSceneOptions.postSystems, aiAutoDriverSystem],
+    postSystems: [...baseSceneOptions.postSystems, applyStartLevelSystem, aiAutoDriverSystem],
     autoLevelUpAllocator: computeAutoStatAllocation,
     sessionRecorderFactory: recorderControls.factory,
   };
 
-  const config = createFloorGameConfig(canvas, sceneOptions, currentFloor);
+  const config = createFloor1GameConfig(canvas, sceneOptions);
 
   const game = new Phaser.Game(config);
 
@@ -357,7 +419,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     world: GameWorld,
     target: Exclude<JumpTarget, 'boss-encounter'>,
   ): { x: number; y: number } | null => {
-    const objective = world.floorScenario?.objective;
+    const objective = world.floor1?.objective;
     if (!objective) {
       return null;
     }
@@ -380,13 +442,13 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       case 'spell-quest-giver':
         return getNpcOrFallbackPosition(
           world,
-          world.floorScenario?.spellQuestGiverNpcEid,
+          world.floor1?.spellQuestGiverNpcEid,
           objective.spellQuestGiverPos,
         );
       case 'shopkeeper':
         return getNpcOrFallbackPosition(
           world,
-          world.floorScenario?.shopkeeperNpcEid,
+          world.floor1?.shopkeeperNpcEid,
           objective.shopRoomPos,
         );
       default: {
@@ -640,6 +702,61 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   fovPerfFolder.add(fovPerf, 'computeMsAvg').name('Compute ms').listen();
   fovPerfFolder.add(fovPerf, 'cellPx').name('Live cell px').listen();
   fovPerfFolder.add(fovPerf, 'subFactor').name('Live factor').listen();
+  fovFolder.close();
+
+  /**
+   * AI pathing and visualization configuration.
+   */
+  const updateAIPathingMode = (): void => {
+    // Recreate the AI with the new pathing mode
+    ai = new BehaviorTreeAI({
+      seed: currentSeed,
+      aggression: 1,
+      retreatThreshold: 0.15,
+      debug: true,
+      pathingMode: aiConfig.pathingMode,
+    });
+  };
+
+  const aiFolder = gui.addFolder('AI Configuration');
+  aiFolder
+    .add(aiConfig, 'pathingMode', [AIPathingMode.LEGACY, AIPathingMode.RISK_REWARD_FUSED])
+    .name('Pathing mode')
+    .onChange(() => {
+      updateAIPathingMode();
+      persistLabState();
+    });
+  aiFolder
+    .add(aiConfig, 'visualRiskRewardFields')
+    .name('Show risk/reward fields')
+    .onChange(() => {
+      persistLabState();
+    });
+  aiFolder
+    .add({ showFlowField }, 'showFlowField')
+    .name('Show enemy flow field')
+    .onChange((value: boolean) => {
+      showFlowField = value;
+      persistLabState();
+      if (showFlowField) {
+        drawFlowFieldOverlay();
+      } else {
+        flowFieldGraphics?.clear();
+      }
+    });
+  aiFolder
+    .add(aiConfig, 'threatPreviewFrames', 0, 60, 1)
+    .name('Threat preview (frames ahead)')
+    .onChange(() => {
+      persistLabState();
+    });
+  aiFolder
+    .add(aiConfig, 'autoPauseOnDamage')
+    .name('Auto pause on damage')
+    .onChange(() => {
+      persistLabState();
+    });
+  aiFolder.close();
 
   /**
    * Lazily build a real hardware input capture (keyboard/mouse/touch) bound to
@@ -727,9 +844,12 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       aggression: 1,
       retreatThreshold: 0.15,
       debug: true,
+      pathingMode: aiConfig.pathingMode,
     });
     pollCount = 0;
+    lastObservedPlayerHealth = null;
     lastStepReason = '';
+    startLevelApplied = false;
     isPaused = true;
     // A fresh floor always starts under AI control. Tear down the human input
     // capture bound to the old scene instance before it restarts.
@@ -741,6 +861,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     pathGraphics = null;
     flowFieldGraphics?.destroy();
     flowFieldGraphics = null;
+    riskRewardFieldsGraphics?.destroy();
+    riskRewardFieldsGraphics = null;
 
     const phaserScene = getPhaserScene();
     if (phaserScene) {
@@ -753,20 +875,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       });
       phaserScene.scene.restart();
     }
-  };
-
-  /**
-   * Switch to a different floor: rebuild scene options from the new floor's
-   * manifest and restart the scene so the new floor generates deterministically.
-   */
-  const changeFloor = (floorId: string): void => {
-    currentFloor = floorId;
-    const newBase = createFloorMainSceneOptions(floorId);
-    Object.assign(sceneOptions, newBase, {
-      postSystems: [...newBase.postSystems, aiAutoDriverSystem],
-    });
-    reseed(currentSeed);
-    renderControls();
   };
 
   const autoAdvanceSceneUi = (): void => {
@@ -783,7 +891,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
 
     const modalPicker = scene.modalPicker;
-    const objective = world.floorScenario?.objective;
+    const objective = world.floor1?.objective;
 
     if (world.state === 'loadout') {
       sceneOptions.selectLoadoutOption?.(world, 0);
@@ -959,6 +1067,20 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       graphics.strokePath();
     }
 
+    if (upcomingPoints.length > 0) {
+      graphics.lineStyle(1, 0x80deea, 0.55);
+      graphics.beginPath();
+      graphics.moveTo(ftToPx(playerX), ftToPx(playerY));
+      for (const point of upcomingPoints) {
+        graphics.lineTo(ftToPx(point.x), ftToPx(point.y));
+      }
+      graphics.strokePath();
+      graphics.fillStyle(0x80deea, 0.65);
+      for (const point of upcomingPoints) {
+        graphics.fillCircle(ftToPx(point.x), ftToPx(point.y), 3.5);
+      }
+    }
+
     const activeWaypoint =
       worldPoints[Math.min(nav.pathIndex, Math.max(0, worldPoints.length - 1))];
     if (activeWaypoint) {
@@ -1062,6 +1184,170 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     graphics.strokeCircle(ftToPx(goal.x), ftToPx(goal.y), tileSizePx * 0.4);
   };
 
+  const ensureRiskRewardFieldsGraphics = (): Phaser.GameObjects.Graphics | null => {
+    const scene = getPhaserScene();
+    if (!scene) {
+      return null;
+    }
+    if (!riskRewardFieldsGraphics || !riskRewardFieldsGraphics.scene) {
+      riskRewardFieldsGraphics = scene.add.graphics();
+      // World-space debug overlay: depth should be similar to flowFieldGraphics
+      riskRewardFieldsGraphics.setDepth(WORLD_VFX_DEPTH.debugFlowField + 1);
+      (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(
+        riskRewardFieldsGraphics,
+      );
+    }
+    return riskRewardFieldsGraphics;
+  };
+
+  /**
+   * Render the risk/reward fields around the player when in fused pathing mode.
+   * - Red:   danger from *live* enemies only (mirrors scorer's health > 0 filter)
+   * - Green: reward from nearby pickups (XP gems, gold, dropped items)
+   * - Cells with no risk AND no reward are skipped entirely (transparent)
+   */
+  const drawRiskRewardFieldsOverlay = (): void => {
+    if (
+      !aiConfig.visualRiskRewardFields ||
+      aiConfig.pathingMode !== AIPathingMode.RISK_REWARD_FUSED
+    ) {
+      riskRewardFieldsGraphics?.clear();
+      return;
+    }
+    const graphics = ensureRiskRewardFieldsGraphics();
+    const scene = getScene();
+    const world = scene?.world;
+    if (!graphics || !scene || !world || !world.floorMap) {
+      return;
+    }
+    graphics.clear();
+
+    const playerEid = scene.playerEid;
+    if (typeof playerEid !== 'number' || playerEid < 0) {
+      return;
+    }
+    const playerX = world.stores.position.x[playerEid] ?? 0;
+    const playerY = world.stores.position.y[playerEid] ?? 0;
+
+    const sampleRadius = 30; // feet
+    const gridSpacing = 2; // feet
+    const DANGER_RADIUS = 15; // ft — mirrors updated RISK_REWARD_DANGER_RADIUS_FT in scorer
+    const REWARD_RADIUS = 10; // ft — pickup pull radius
+    const FOG_DANGER = 0.35; // mirrors RISK_REWARD_FOG_DANGER
+    const DRAW_THRESHOLD = 0.05; // skip cells with no meaningful field value
+
+    // Live enemies — mirrors scorer: project by velocity * (lookahead + preview frames)
+    // Enemies always move toward the player (flow-map driven), so projected position
+    // is always closer — use it directly, not min(current, projected).
+    const VELOCITY_LOOKAHEAD = 10;
+    const WALL_PROXIMITY_FT = 2.0;
+    const WALL_AMPLIFICATION = 1.8;
+    const totalLookahead = VELOCITY_LOOKAHEAD + aiConfig.threatPreviewFrames;
+    const threatPoints: { x: number; y: number }[] = [];
+    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
+      if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
+      const ex = world.stores.position.x[eid] ?? 0;
+      const ey = world.stores.position.y[eid] ?? 0;
+      if (Math.hypot(ex - playerX, ey - playerY) < sampleRadius + DANGER_RADIUS) {
+        const vx = world.stores.velocity.x[eid] ?? 0;
+        const vy = world.stores.velocity.y[eid] ?? 0;
+        threatPoints.push({ x: ex + vx * totalLookahead, y: ey + vy * totalLookahead });
+      }
+    }
+
+    // Reward sources: XP gems, gold, dropped items
+    const rewardPoints: { x: number; y: number }[] = [];
+    for (const eid of query(world.ecs, [XpGem, Position])) {
+      const rx = world.stores.position.x[eid] ?? 0;
+      const ry = world.stores.position.y[eid] ?? 0;
+      if (Math.hypot(rx - playerX, ry - playerY) < sampleRadius + REWARD_RADIUS) {
+        rewardPoints.push({ x: rx, y: ry });
+      }
+    }
+    for (const eid of query(world.ecs, [Gold, Position])) {
+      const rx = world.stores.position.x[eid] ?? 0;
+      const ry = world.stores.position.y[eid] ?? 0;
+      if (Math.hypot(rx - playerX, ry - playerY) < sampleRadius + REWARD_RADIUS) {
+        rewardPoints.push({ x: rx, y: ry });
+      }
+    }
+    for (const eid of query(world.ecs, [DroppedItem, Position])) {
+      const rx = world.stores.position.x[eid] ?? 0;
+      const ry = world.stores.position.y[eid] ?? 0;
+      if (Math.hypot(rx - playerX, ry - playerY) < sampleRadius + REWARD_RADIUS) {
+        rewardPoints.push({ x: rx, y: ry });
+      }
+    }
+    for (const eid of query(world.ecs, [Harvestable, Position])) {
+      const rx = world.stores.position.x[eid] ?? 0;
+      const ry = world.stores.position.y[eid] ?? 0;
+      if (Math.hypot(rx - playerX, ry - playerY) < sampleRadius + REWARD_RADIUS) {
+        rewardPoints.push({ x: rx, y: ry });
+      }
+    }
+
+    // Sample grid and draw only cells that carry meaningful field signal
+    const cellSizePx = ftToPx(gridSpacing);
+    for (let x = playerX - sampleRadius; x <= playerX + sampleRadius; x += gridSpacing) {
+      for (let y = playerY - sampleRadius; y <= playerY + sampleRadius; y += gridSpacing) {
+        let danger = 0;
+        if (!world.floorMap!.isPassableAt(x, y)) {
+          // Wall cells have no independent danger — skip. The amplifier is
+          // applied to *adjacent* passable cells below.
+        } else {
+          // Enemy danger using projected positions.
+          for (const t of threatPoints) {
+            const dist = Math.hypot(x - t.x, y - t.y);
+            if (dist < DANGER_RADIUS) {
+              const norm = 1 - dist / DANGER_RADIUS;
+              danger += norm * norm;
+            }
+          }
+          // Wall proximity amplification — same 4-cardinal check as scorer.
+          const hasNearWall =
+            !world.floorMap!.isPassableAt(x + WALL_PROXIMITY_FT, y) ||
+            !world.floorMap!.isPassableAt(x - WALL_PROXIMITY_FT, y) ||
+            !world.floorMap!.isPassableAt(x, y + WALL_PROXIMITY_FT) ||
+            !world.floorMap!.isPassableAt(x, y - WALL_PROXIMITY_FT);
+          if (hasNearWall && danger > 0) danger *= WALL_AMPLIFICATION;
+          // Fog-of-war baseline danger
+          if (!world.floorMap!.isVisibleAt(x, y)) {
+            danger += FOG_DANGER;
+          }
+        }
+
+        let reward = 0;
+        for (const r of rewardPoints) {
+          const dist = Math.hypot(x - r.x, y - r.y);
+          if (dist < REWARD_RADIUS) {
+            const norm = 1 - dist / REWARD_RADIUS;
+            reward += norm * norm;
+          }
+        }
+
+        // Skip empty cells — don't color what has no field value
+        const dc = Math.min(danger, 2);
+        const rc = Math.min(reward, 2);
+        if (dc < DRAW_THRESHOLD && rc < DRAW_THRESHOLD) continue;
+
+        const cx = ftToPx(x);
+        const cy = ftToPx(y);
+        // Red = danger, green = reward, yellow = both
+        const rv = Math.round(255 * Math.min(1, dc / 1.5 + (rc / 2) * 0.3));
+        const gv = Math.round(220 * Math.min(1, rc / 1.5 + (dc / 2) * 0.05));
+        const bv = Math.round(40 * Math.max(0, rc / 2 - dc / 2));
+        const color = (rv << 16) | (gv << 8) | bv;
+        const alpha = Math.min(0.78, dc * 0.55 + rc * 0.35);
+        graphics.fillStyle(color, alpha);
+        graphics.fillRect(cx - cellSizePx / 2, cy - cellSizePx / 2, cellSizePx, cellSizePx);
+      }
+    }
+
+    // Draw player position marker
+    graphics.fillStyle(0xffffff, 0.8);
+    graphics.fillCircle(ftToPx(playerX), ftToPx(playerY), 6);
+  };
+
   const renderDecisionTree = (
     treeContainer: HTMLElement,
     tree: SerializedBTNode,
@@ -1120,9 +1406,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     const questOptions = Object.entries(QUEST_DEBUG_TARGETS)
       .map(([label, value]) => `<option value="${value}">${label}</option>`)
       .join('');
-    const floorOptions = getAvailableFloorIds()
-      .map((id) => `<option value="${id}"${id === currentFloor ? ' selected' : ''}>${id}</option>`)
-      .join('');
     panelRoot.innerHTML = `
       <div style="font-family: monospace; padding: 12px;">
         <h3 style="margin: 0 0 12px 0;">AI Runner Lab</h3>
@@ -1134,12 +1417,13 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
             <button id="ai-seed-random" type="button" style="padding:4px 8px; cursor:pointer;">🎲 Randomize</button>
           </div>
           <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:wrap;">
-            <label for="ai-floor-select"><strong>Floor:</strong></label>
-            <select id="ai-floor-select" style="padding:4px; background:#151530; color:#ddd; border:1px solid #333; border-radius:3px;">${floorOptions}</select>
-            <button id="ai-floor-apply" type="button" style="padding:4px 8px; cursor:pointer;">Apply + Restart</button>
+            <label for="ai-start-level"><strong>Start player level:</strong></label>
+            <input id="ai-start-level" type="number" min="1" max="20" value="${startPlayerLevel}" style="width:64px; padding:4px; background:#151530; color:#ddd; border:1px solid #333; border-radius:3px;" />
+            <button id="ai-start-level-apply" type="button" style="padding:4px 8px; cursor:pointer;">Apply + Restart</button>
+            <span style="font-size:11px; color:#6b7280;">(1 = normal start; takes effect on next run)</span>
           </div>
           <div id="ai-runner-status">Paused</div>
-          <div id="ai-runner-debug">polls: 0</div>
+          <div id="ai-runner-debug">frame: 0</div>
           <div style="display:flex; gap:8px; margin:12px 0; flex-wrap:wrap;">
             <button id="ai-toggle-run" type="button" style="padding:6px 10px; cursor:pointer;">Resume</button>
             <button id="ai-step-frame" type="button" style="padding:6px 10px; cursor:pointer;">Advance 1 frame (Space)</button>
@@ -1150,12 +1434,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
           <div style="display:flex; gap:8px; margin:0 0 12px 0; flex-wrap:wrap; align-items:center;">
             <button id="ai-manual-toggle" type="button" style="padding:6px 10px; cursor:pointer; font-weight:bold;">🎮 Take manual control</button>
             <span id="ai-control-mode" style="font-size:12px;"></span>
-          </div>
-          <div style="display:flex; gap:8px; margin:0 0 12px 0; flex-wrap:wrap; align-items:center;">
-            <label for="ai-flow-field-toggle" style="display:flex; gap:6px; align-items:center; cursor:pointer; font-size:12px;">
-              <input id="ai-flow-field-toggle" type="checkbox" style="cursor:pointer;" />
-              <span>Show enemy flow field</span>
-            </label>
           </div>
           <div id="ai-decision" style="margin-top: 8px; padding: 8px; background: #2a2a4e; border-radius: 4px;">
             <div><strong>State:</strong> <span id="ai-state">-</span></div>
@@ -1196,7 +1474,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
             <div>• Take manual control to play it yourself (WASD/arrows move, Space attacks, E interacts)</div>
             <div>• The recorder tags every event AI vs MANUAL so handovers are clear in the log</div>
             <div>• Cyan line shows the AI's smoothed diagonal path, orange circle shows current target</div>
-            <div>• Toggle "Show enemy flow field" to heatmap the shared chase gradient with flow arrows (hot = near player); off by default</div>
+            <div>• AI Configuration now holds the flow-field heatmap, future-threat scrubber, and auto-pause-on-damage toggles</div>
             <div>• Floor 1 Debug adds teleport, map reveal, and quest advancement helpers</div>
             <div>• Use the lil-gui Lighting folder to tune darkness quality, cadence, and falloff live</div>
             <div>• Use the lil-gui FOV folder to change fog granularity (32/16/8/4px) + discovered-terrain dimming live</div>
@@ -1222,7 +1500,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     const debugElem = document.getElementById('ai-runner-debug');
     if (debugElem) {
       const stepSuffix = lastStepReason ? ` | step: ${lastStepReason}` : '';
-      debugElem.textContent = `polls: ${pollCount}${stepSuffix}`;
+      const frame = getScene()?.world?.frameCount ?? 0;
+      debugElem.textContent = `frame: ${frame}${stepSuffix}`;
     }
 
     const toggleButton = document.getElementById('ai-toggle-run') as HTMLButtonElement | null;
@@ -1253,24 +1532,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       manualButton.textContent = manualControl ? '🤖 Return to AI' : '🎮 Take manual control';
       manualButton.onclick = () => {
         setManualControl(!manualControl);
-      };
-    }
-
-    const flowFieldToggle = document.getElementById(
-      'ai-flow-field-toggle',
-    ) as HTMLInputElement | null;
-    if (flowFieldToggle) {
-      // renderControls() rebuilds innerHTML on every call, so restore the live
-      // state onto the freshly created checkbox.
-      flowFieldToggle.checked = showFlowField;
-      flowFieldToggle.onchange = () => {
-        showFlowField = flowFieldToggle.checked;
-        persistLabState();
-        if (showFlowField) {
-          drawFlowFieldOverlay();
-        } else {
-          flowFieldGraphics?.clear();
-        }
       };
     }
 
@@ -1333,11 +1594,16 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       };
     }
 
-    const floorSelect = document.getElementById('ai-floor-select') as HTMLSelectElement | null;
-    const floorApplyButton = document.getElementById('ai-floor-apply') as HTMLButtonElement | null;
-    if (floorApplyButton && floorSelect) {
-      floorApplyButton.onclick = () => {
-        changeFloor(floorSelect.value);
+    const startLevelInput = document.getElementById('ai-start-level') as HTMLInputElement | null;
+    const startLevelApplyButton = document.getElementById(
+      'ai-start-level-apply',
+    ) as HTMLButtonElement | null;
+    if (startLevelApplyButton) {
+      startLevelApplyButton.onclick = () => {
+        const parsed = Number.parseInt(startLevelInput?.value ?? '', 10);
+        startPlayerLevel = Number.isFinite(parsed) && parsed >= 1 ? parsed : 1;
+        reseed(currentSeed);
+        renderControls();
       };
     }
 
@@ -1426,6 +1692,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       (reason) => typeof reason === 'string' && reason.length > 0,
     ).length;
     return {
+      frame: world?.frameCount ?? null,
       polls: pollCount,
       paused: isPaused,
       manualControl,
@@ -1460,7 +1727,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       },
       conversationNpcEid: scene?.conversationNpcEid ?? null,
       modalOpen: scene?.modalPicker?.isOpen?.() ?? false,
-      runOutcome: world?.floorScenario?.runSummary?.outcome ?? null,
+      runOutcome: world?.floor1?.runSummary?.outcome ?? null,
       quests,
     };
   };
@@ -1507,6 +1774,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     syncFovTelemetry();
     drawPathOverlay();
     drawFlowFieldOverlay();
+    drawRiskRewardFieldsOverlay();
     const debugElem = document.getElementById('ai-runner-debug');
     if (debugElem) {
       const scene = getScene();
@@ -1514,7 +1782,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       const neededCount = Object.values(npcMemory.neededInteractionReasons).filter(
         (reason) => typeof reason === 'string' && reason.length > 0,
       ).length;
-      debugElem.textContent = `polls: ${pollCount} | scenePaused: ${scene?.isSimulationPaused?.() ? 'yes' : 'no'} | npcMem: discovered=${npcMemory.discoveredNpcDefs.length}, talked=${npcMemory.talkedNpcDefs.length}, needed=${neededCount}`;
+      const frame = scene?.world?.frameCount ?? 0;
+      debugElem.textContent = `frame: ${frame} | scenePaused: ${scene?.isSimulationPaused?.() ? 'yes' : 'no'} | npcMem: discovered=${npcMemory.discoveredNpcDefs.length}, talked=${npcMemory.talkedNpcDefs.length}, needed=${neededCount}`;
     }
   }, 100);
 
