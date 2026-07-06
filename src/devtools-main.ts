@@ -1267,7 +1267,7 @@ function renderStorageLifecyclePage(shell: HTMLElement): void {
       'Run',
       'Timestamp',
       'Variants',
-      'Brief',
+      'Brief stored',
     ]) {
       const th = document.createElement('th');
       th.textContent = label;
