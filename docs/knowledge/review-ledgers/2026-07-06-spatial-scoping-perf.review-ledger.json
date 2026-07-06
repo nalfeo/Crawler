@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-06",
+  "session_slug": "spatial-scoping-perf",
+  "task_title": "Spatial-scoping perf: bounded clearVisibility (opt #1 only; windowed flow-field and Chebyshev pre-filter both reverted for byte-neutral determinism) + CI runner-slot cuts",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 1,
+      "resolved_count": 1,
+      "notes": "Plan (revert non-byte-neutral opts, keep bounded clearVisibility + CI cost cuts) judged sound, no blocking issues. One actionable suggestion: certify retained opts byte-neutral via a multi-seed differential sweep vs merge-base. Addressed - the sweep surfaced a seed-88 divergence from opt #2 (windowed flow-field), which was then reverted, leaving only the proven-neutral opt #1 (bounded clearVisibility)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Found: windowed flow-field BFS (opt #2) silently reroutes in-window enemies whose global shortest path exits the 44-tile window -> not byte-neutral. Resolved by fully reverting opt #2 to merge-base; confirmed by 10-seed differential sweep (seed-88 divergence disappears, all seeds == merge-base)."
+        },
+        {
+          "round": 2,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Reviewed final reverted+merged head. Reverts complete (flow-field/fovSystem/enemyAISystem/flow-field.test == merge-base, not in diff); no dangling opt#2/#3 symbols; opt #1 bounded clearVisibility byte-neutral by construction (setVisible bbox is exact union; clearVisibility zeros exactly that box) + runtime proof (seed-42 golden intact, 63/63 fov/floormap/enemy-ai tests pass); no scratch files; retained tests clean. 4 non-blocking CI-policy/doc notes (not defects): F1 coverage blocking->advisory (intentional, documented); F4 typecheck->typecheck:src blocking (intentional, src still gated); F5 security-review 6 jobs->1 (verified safe: required checks are only ci+commit-lint); stale ledger task_title (FIXED)."
+        }
+      ]
+    }
+  }
+}
