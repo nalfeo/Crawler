@@ -82,7 +82,7 @@ export interface ArenaLockinTarget {
  *      - sealed:     player is in the same room as the spawner.
  *
  * Rules — a Floor-1 boss room locks the player when ALL are true:
- *   1. `world.floor1?.objective?.bossBattles` has an entry with a valid
+ *   1. `world.floorScenario?.objective?.bossBattles` has an entry with a valid
  *      `bossEid` pointing at a living boss.
  *   2. `battle.started === true` (the doors were locked on that trigger).
  *   3. Player and boss are in the same room (`roomGraph.getRoomAt`).
@@ -198,7 +198,7 @@ function findBossLockin(
   playerX: number,
   playerY: number,
 ): ArenaLockinTarget | null {
-  const bossBattles = world.floor1?.objective?.bossBattles;
+  const bossBattles = world.floorScenario?.objective?.bossBattles;
   if (!bossBattles || bossBattles.size === 0) return null;
   const floorMap = world.floorMap;
   if (!floorMap) return null;

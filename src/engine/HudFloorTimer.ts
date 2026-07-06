@@ -2,7 +2,7 @@
  * HudFloorTimer — fixed-position floor number + countdown timer.
  *
  * Positioned top-center inside a beveled pixel-UI panel that auto-sizes to the
- * text. Reads from world.floor1 (Floor 1) with a generic FLOOR.MAX_DURATION_S
+ * text. Reads from world.floorScenario (Floor 1) with a generic FLOOR.MAX_DURATION_S
  * fallback. Visual states: neutral → amber (<60 s) → red+pulse (<30 s).
  */
 import Phaser from 'phaser';
@@ -87,8 +87,8 @@ export function createHudFloorTimer(
   function sync(world: GameWorld): void {
     let remainingMs: number;
 
-    if (world.floor1?.objective) {
-      remainingMs = Math.max(0, world.floor1.objective.deadlineMs - world.elapsedMs);
+    if (world.floorScenario?.objective) {
+      remainingMs = Math.max(0, world.floorScenario.objective.deadlineMs - world.elapsedMs);
     } else {
       const maxMs = FLOOR.MAX_DURATION_S * 1000;
       remainingMs = Math.max(0, maxMs - world.elapsedMs);

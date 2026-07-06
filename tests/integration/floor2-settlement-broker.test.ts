@@ -122,11 +122,13 @@ describe('Floor 2 emergent events · end-to-end propagation through the pipeline
     void player;
     world.floor = 2;
     world.state = 'playing';
-    world.floor2State = {
-      presentFamilies: FAMS,
-      contestedResource: 'gold-veins' as never,
-      betrayerFlag: false,
-    } as never;
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: FAMS,
+        contestedResource: 'gold-veins' as never,
+        betrayerFlag: false,
+      } as never,
+    };
     initializeFactionRelations(world, FAMS);
 
     // Baseline: all four families sit at DEFAULT_RELATION.
@@ -140,7 +142,7 @@ describe('Floor 2 emergent events · end-to-end propagation through the pipeline
 
     // The headless pipeline includes familyRelationshipSystem AND
     // emergentEventSystem — draining the queue observably.
-    runHeadlessStep(world, createInputState(), 16, { enableFloor1: false });
+    runHeadlessStep(world, createInputState(), 16, {});
     expect(world.factionRelationDeltas).toHaveLength(0);
 
     // Family index 0 got the tribute-delivered lever (+10 from tuning).

@@ -26,6 +26,7 @@
     "tileSizeFt": 4.0
   },
   "enemyPackId": "floor1-ambient",
+  "floorLootTableId": "floor_1",
   "player": {
     "hpBonus": 20,
     "moveSpeedBonus": 0.025,

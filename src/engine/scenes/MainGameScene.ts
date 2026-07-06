@@ -579,19 +579,19 @@ export class MainGameScene extends Phaser.Scene {
       window.__floor1Debug = {
         getState: () => ({
           worldState: this.world.state,
-          runOutcome: this.world.floor1?.runSummary?.outcome ?? null,
+          runOutcome: this.world.floorScenario?.runSummary?.outcome ?? null,
           floorCompletionMessagePending: this.floorCompletionMessagePending,
           floorCompletionMessageShown: this.floorCompletionMessageShown,
           modalOpen: this.modalPicker?.isOpen() ?? false,
         }),
         forceCompletionModal: () => {
-          if (this.world.floor1) {
-            this.world.floor1.runSummary ??= {
+          if (this.world.floorScenario) {
+            this.world.floorScenario.runSummary ??= {
               outcome: 'cleared_floor',
               viewsEarned: 0,
               fansEarned: 0,
             };
-            this.world.floor1.runSummary.outcome = 'cleared_floor';
+            this.world.floorScenario.runSummary.outcome = 'cleared_floor';
             this.floorCompletionMessagePending = true;
             this.showFloorCompletionScreenIfNeeded();
           }
@@ -1135,7 +1135,7 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private playBossSpawnIntro(): void {
-    const objective = this.world.floor1?.objective;
+    const objective = this.world.floorScenario?.objective;
     if (!objective) {
       return;
     }
@@ -1763,14 +1763,14 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private openLoadoutModal(): void {
-    if (!this.modalPicker || this.world.state !== 'loadout' || !this.world.floor1) {
+    if (!this.modalPicker || this.world.state !== 'loadout' || !this.world.floorScenario) {
       return;
     }
     if (this.modalPicker.isOpen() || !this.options.selectLoadoutOption) {
       return;
     }
 
-    const options = this.world.floor1.starterChoices.map((id, index) => {
+    const options = this.world.floorScenario.starterChoices.map((id, index) => {
       const weapon = getWeaponDef(id);
       return {
         id,
@@ -1778,21 +1778,21 @@ export class MainGameScene extends Phaser.Scene {
         description: weapon ? `Starter weapon: ${weapon.name}` : id,
       };
     });
-    const baseBonuses = this.world.floor1.baseStatBonuses;
+    const baseBonuses = this.world.floorScenario.baseStatBonuses;
     const baseBonusText = `Base bonuses: HP +${baseBonuses.maxHp}, Move +${baseBonuses.moveSpeed.toFixed(1)}, Pickup +${baseBonuses.pickupRange}`;
 
     this.modalPicker.open(
       {
         title: 'Choose your opening loadout',
-        subtitle: `${this.world.floor1.protagonistName} · Floor 1 is paused until you confirm a starter weapon.`,
+        subtitle: `${this.world.floorScenario.protagonistName} · Floor 1 is paused until you confirm a starter weapon.`,
         body: `${baseBonusText}\nPick the weapon you want to begin with.`,
         options,
         allowCancel: true,
-        initialSelectedId: this.world.floor1.starterChoices[0],
+        initialSelectedId: this.world.floorScenario.starterChoices[0],
       },
       {
         onConfirm: ({ option }) => {
-          const choiceIndex = this.world.floor1?.starterChoices.indexOf(option.id) ?? -1;
+          const choiceIndex = this.world.floorScenario?.starterChoices.indexOf(option.id) ?? -1;
           if (choiceIndex >= 0) {
             this.options.selectLoadoutOption?.(this.world, choiceIndex);
           }
@@ -2062,8 +2062,8 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private updateObjectiveMarkers(): void {
-    const floor2State = this.world.floor2State;
-    if (!this.world.floor1) {
+    const floor2State = this.world.floorExtendedState?.familyState;
+    if (!this.world.floorScenario) {
       // Floor 2: show exit staircase marker once victory fires and stairs pop
       if (
         floor2State?.staircaseSpawned &&
@@ -2109,7 +2109,7 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
-    const objective = this.world.floor1.objective;
+    const objective = this.world.floorScenario.objective;
     // Marker positions/radii are in feet; scale to pixels for world rendering.
     const staircaseX = ftToPx(objective.staircasePos.x);
     const staircaseY = ftToPx(objective.staircasePos.y);
@@ -2198,7 +2198,7 @@ export class MainGameScene extends Phaser.Scene {
     this.hudUi?.sync(this.world, this.playerEid);
     this.updateDirectorCommentary();
 
-    if (!this.world.floor1) {
+    if (!this.world.floorScenario) {
       this.loadoutText?.setVisible(false);
       return;
     }
@@ -2209,13 +2209,13 @@ export class MainGameScene extends Phaser.Scene {
       if (modalOpen) {
         return;
       }
-      const choices = this.world.floor1.starterChoices
+      const choices = this.world.floorScenario.starterChoices
         .map((id, idx) => `${idx + 1}. ${id}`)
         .join('\n');
       this.loadoutText?.setText(
         [
-          `${this.world.floor1.protagonistName}`,
-          `Base bonuses: HP +${this.world.floor1.baseStatBonuses.maxHp}, Move +${this.world.floor1.baseStatBonuses.moveSpeed.toFixed(1)}, Pickup +${this.world.floor1.baseStatBonuses.pickupRange}`,
+          `${this.world.floorScenario.protagonistName}`,
+          `Base bonuses: HP +${this.world.floorScenario.baseStatBonuses.maxHp}, Move +${this.world.floorScenario.baseStatBonuses.moveSpeed.toFixed(1)}, Pickup +${this.world.floorScenario.baseStatBonuses.pickupRange}`,
           `Choose your starter weapon:`,
           choices,
           `Press 1, 2, or 3`,
@@ -2242,9 +2242,9 @@ export class MainGameScene extends Phaser.Scene {
     if (!director) {
       return;
     }
-    const floor1 = this.world.floor1;
-    if (floor1 && this.world.floor === 1) {
-      const objective = floor1.objective;
+    const floorScenario = this.world.floorScenario;
+    if (floorScenario && this.world.floor === 1) {
+      const objective = floorScenario.objective;
       if (!this.commentaryMilestones.floorIntro) {
         this.commentaryMilestones.floorIntro = true;
         this.queueDirectorCommentary(director.intro ?? FLOOR_1_COMMENTARY.intro);
@@ -2276,7 +2276,7 @@ export class MainGameScene extends Phaser.Scene {
         this.queueDirectorCommentary(director.victory ?? FLOOR_1_COMMENTARY.staircaseDiscovered);
         return;
       }
-      if (floor1.failReason === 'stair_timeout' && !this.commentaryMilestones.timeout) {
+      if (floorScenario.failReason === 'stair_timeout' && !this.commentaryMilestones.timeout) {
         this.commentaryMilestones.timeout = true;
         this.queueDirectorCommentary(director.timeout ?? FLOOR_1_COMMENTARY.timeout);
       }
@@ -2317,7 +2317,7 @@ export class MainGameScene extends Phaser.Scene {
       this.floorCompletionBodyText?.setText(
         'You ran out of time before reaching the stairs.\nTry again and move faster through objectives.',
       );
-    } else if (this.world.floor2State?.staircaseDiscovered) {
+    } else if (this.world.floorExtendedState?.familyState?.staircaseDiscovered) {
       this.floorCompletionTitleText?.setText('Victory!');
       this.floorCompletionSubtitleText?.setText('Floor 2 complete!');
       this.floorCompletionBodyText?.setText(
@@ -2416,14 +2416,17 @@ export class MainGameScene extends Phaser.Scene {
     this.queuedInteraction = false;
     this.queuedConversationClose = false;
 
-    if ((!this.world.floor1 && !this.world.floor2State) || this.world.state !== 'playing') {
+    if (
+      (!this.world.floorScenario && !this.world.floorExtendedState?.familyState) ||
+      this.world.state !== 'playing'
+    ) {
       this.interactionHint?.setVisible(false);
       this.dialogueBox?.hide();
       return;
     }
 
-    const floor1Objective = this.world.floor1?.objective;
-    const floor2State = this.world.floor2State;
+    const floor1Objective = this.world.floorScenario?.objective;
+    const floor2State = this.world.floorExtendedState?.familyState;
     const playerX = this.world.stores.position.x[this.playerEid] ?? 0;
     const playerY = this.world.stores.position.y[this.playerEid] ?? 0;
 

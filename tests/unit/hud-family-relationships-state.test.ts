@@ -136,10 +136,12 @@ describe('displayNameForRow', () => {
 
 describe('resolveFamilyRows', () => {
   interface StubWorld {
-    floor2State: {
-      presentFamilies: FamilyId[];
-      contestedResource: string;
-      betrayerFlag: boolean;
+    floorExtendedState: {
+      familyState?: {
+        presentFamilies: FamilyId[];
+        contestedResource: string;
+        betrayerFlag: boolean;
+      };
     } | null;
     factionRelations: Map<FamilyId, number>;
     factionRelationEvents: never[];
@@ -153,7 +155,7 @@ describe('resolveFamilyRows', () => {
 
   it('returns an empty array on non-Floor-2 worlds', () => {
     const world: StubWorld = {
-      floor2State: null,
+      floorExtendedState: null,
       factionRelations: new Map(),
       factionRelationEvents: [],
       factionRelationDeltas: [],
@@ -164,10 +166,12 @@ describe('resolveFamilyRows', () => {
 
   it('produces one row per present family in roster order', () => {
     const world: StubWorld = {
-      floor2State: {
-        presentFamilies: [asFamilyId('goblins'), asFamilyId('kobolds'), asFamilyId('orcs')],
-        contestedResource: 'x' as never,
-        betrayerFlag: false,
+      floorExtendedState: {
+        familyState: {
+          presentFamilies: [asFamilyId('goblins'), asFamilyId('kobolds'), asFamilyId('orcs')],
+          contestedResource: 'x' as never,
+          betrayerFlag: false,
+        },
       },
       factionRelations: new Map<FamilyId, number>([
         [asFamilyId('goblins'), 80],
@@ -188,10 +192,12 @@ describe('resolveFamilyRows', () => {
 
   it('skips family ids that are not in the loaded roster', () => {
     const world: StubWorld = {
-      floor2State: {
-        presentFamilies: [asFamilyId('goblins'), asFamilyId('missing')],
-        contestedResource: 'x' as never,
-        betrayerFlag: false,
+      floorExtendedState: {
+        familyState: {
+          presentFamilies: [asFamilyId('goblins'), asFamilyId('missing')],
+          contestedResource: 'x' as never,
+          betrayerFlag: false,
+        },
       },
       factionRelations: new Map<FamilyId, number>([[asFamilyId('goblins'), 50]]),
       factionRelationEvents: [],

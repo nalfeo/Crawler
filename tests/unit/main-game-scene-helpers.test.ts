@@ -54,52 +54,58 @@ const rectArb = fc.record({
 describe('getFloorRunOutcome', () => {
   it('returns null when there is no Floor 1 scenario', () => {
     const world = createTestWorld();
-    expect(world.floor1).toBeNull();
+    expect(world.floorScenario).toBeNull();
     expect(getFloorRunOutcome(world)).toBeNull();
   });
 
   it('returns null while the run has no terminal summary', () => {
     const world = freshFloor1World();
-    expect(world.floor1?.runSummary).toBeNull();
+    expect(world.floorScenario?.runSummary).toBeNull();
     expect(getFloorRunOutcome(world)).toBeNull();
   });
 
   it('passes through the cleared_floor and failed_timeout outcomes', () => {
     for (const outcome of ['cleared_floor', 'failed_timeout'] as const) {
       const world = freshFloor1World();
-      world.floor1!.runSummary = { outcome, viewsEarned: 0, fansEarned: 0 };
+      world.floorScenario!.runSummary = { outcome, viewsEarned: 0, fansEarned: 0 };
       expect(getFloorRunOutcome(world)).toBe(outcome);
     }
   });
 
   it('returns cleared_floor for Floor 2 when staircaseDiscovered is true', () => {
     const world = createTestWorld();
-    world.floor2State = {
-      presentFamilies: [],
-      contestedResource: 'glimmercap' as import('../../src/core/faction-relations.js').ResourceId,
-      betrayerFlag: false,
-      staircaseDiscovered: true,
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [],
+        contestedResource: 'glimmercap' as import('../../src/core/faction-relations.js').ResourceId,
+        betrayerFlag: false,
+        staircaseDiscovered: true,
+      },
     };
     expect(getFloorRunOutcome(world)).toBe('cleared_floor');
   });
 
   it('returns null for Floor 2 when staircaseDiscovered is false', () => {
     const world = createTestWorld();
-    world.floor2State = {
-      presentFamilies: [],
-      contestedResource: 'glimmercap' as import('../../src/core/faction-relations.js').ResourceId,
-      betrayerFlag: false,
-      staircaseDiscovered: false,
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [],
+        contestedResource: 'glimmercap' as import('../../src/core/faction-relations.js').ResourceId,
+        betrayerFlag: false,
+        staircaseDiscovered: false,
+      },
     };
     expect(getFloorRunOutcome(world)).toBeNull();
   });
 
   it('returns null for Floor 2 when staircaseDiscovered is absent', () => {
     const world = createTestWorld();
-    world.floor2State = {
-      presentFamilies: [],
-      contestedResource: 'glimmercap' as import('../../src/core/faction-relations.js').ResourceId,
-      betrayerFlag: false,
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [],
+        contestedResource: 'glimmercap' as import('../../src/core/faction-relations.js').ResourceId,
+        betrayerFlag: false,
+      },
     };
     expect(getFloorRunOutcome(world)).toBeNull();
   });
@@ -240,7 +246,7 @@ describe('resolveDialogueLines', () => {
 
   it('mirrors selectTutorialGoonDialogue for the tutorial goon', () => {
     const world = freshFloor1World();
-    const objective = world.floor1!.objective;
+    const objective = world.floorScenario!.objective;
     const expected = selectTutorialGoonDialogue({
       bossDefeated: objective.bossBattles.get('staircase')?.defeated === true,
       leaveFloorAccepted: world.questLog.has(FLOOR1_LEAVE_FLOOR_QUEST_ID),

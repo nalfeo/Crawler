@@ -28,10 +28,12 @@ function makeFamily(id: string, hudColor = '#4ea8ff'): FamilyDef {
 }
 
 interface StubWorld {
-  floor2State: {
-    presentFamilies: FamilyId[];
-    contestedResource: string;
-    betrayerFlag: boolean;
+  floorExtendedState: {
+    familyState?: {
+      presentFamilies: FamilyId[];
+      contestedResource: string;
+      betrayerFlag: boolean;
+    };
   } | null;
   factionRelations: Map<FamilyId, number>;
   factionRelationEvents: never[];
@@ -41,10 +43,12 @@ interface StubWorld {
 
 function stubWorld(present: string[] = ['goblins'], defeated: string[] = []): StubWorld {
   return {
-    floor2State: {
-      presentFamilies: present.map(asFamilyId),
-      contestedResource: 'x' as never,
-      betrayerFlag: false,
+    floorExtendedState: {
+      familyState: {
+        presentFamilies: present.map(asFamilyId),
+        contestedResource: 'x' as never,
+        betrayerFlag: false,
+      },
     },
     factionRelations: new Map(),
     factionRelationEvents: [],
@@ -74,7 +78,7 @@ describe('resolveFamilyByIndex', () => {
 
   it('returns null for a non-Floor-2 world', () => {
     const world: StubWorld = {
-      floor2State: null,
+      floorExtendedState: null,
       factionRelations: new Map(),
       factionRelationEvents: [],
       factionRelationDeltas: [],
@@ -199,7 +203,7 @@ describe('familyColorForEnemy', () => {
 
   it('returns null when the world is not on Floor 2', () => {
     const world: StubWorld = {
-      floor2State: null,
+      floorExtendedState: null,
       factionRelations: new Map(),
       factionRelationEvents: [],
       factionRelationDeltas: [],

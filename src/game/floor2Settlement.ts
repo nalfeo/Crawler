@@ -39,15 +39,15 @@ export interface InitializeFloor2SettlementOptions {
 
 /**
  * Initialise the Floor 2 settlement. Returns the snapshot written to
- * `world.floor2Settlement`. Throws when there is no floor map or no
+ * `world.floorExtendedState.settlement`. Throws when there is no floor map or no
  * SETTLEMENT room (both are Slice-2 invariants).
  */
 export function initializeFloor2Settlement(
   world: GameWorld,
   options: InitializeFloor2SettlementOptions = {},
 ): Floor2SettlementSnapshot {
-  if (world.floor2Settlement !== null) {
-    return world.floor2Settlement;
+  if (world.floorExtendedState?.settlement != null) {
+    return world.floorExtendedState!.settlement!;
   }
   const floorMap = world.floorMap;
   if (!floorMap) {
@@ -111,7 +111,7 @@ export function initializeFloor2Settlement(
     brokerEid,
     shops,
   };
-  world.floor2Settlement = snapshot;
+  world.floorExtendedState = { ...(world.floorExtendedState ?? {}), settlement: snapshot };
   return snapshot;
 }
 

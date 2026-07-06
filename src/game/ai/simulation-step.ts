@@ -69,8 +69,6 @@ export interface SimulationOptions {
   preSystems?: ReadonlyArray<(world: GameWorld) => void>;
   /** Custom systems to run after core pipeline */
   postSystems?: ReadonlyArray<(world: GameWorld) => void>;
-  /** Enable Floor 1 scenario systems */
-  enableFloor1?: boolean;
   /**
    * Melee hit-detection broad-phase mode. Defaults to `true` (grid): melee uses
    * the frame's fresh spatial-hash grid as a superset broad-phase, preserving
@@ -164,7 +162,7 @@ export function runSimulationStep(
   // event that flips a band this frame can queue its own follow-on deltas
   // for next frame's drain (Slice 6).
   emergentEventSystem(world);
-  if (options.enableFloor1 && world.floor1) {
+  if (world.floorScenario) {
     floor1PlayerStatSystem(world);
   }
   // Floor 2 Slice 3: band-driven AI prepass. Runs AFTER familyRelationshipSystem
@@ -242,13 +240,12 @@ export function runSimulationStep(
   // fatally-hit enemy as alive one frame longer) yet only a rough proxy on the
   // movement-distance axis. Bounded to one-frame (~16ms) effects; tracked in
   // issue #663.
-  if (options.enableFloor1 && world.floor1) {
+  if (world.floorScenario) {
     floorObjectiveSystem(world);
     floor1EnemyDirectorSystem(world);
     questSystem(world);
     achievementSystem(world);
-  }
-  if (!options.enableFloor1 && world.floorObjectiveTick) {
+  } else if (world.floorObjectiveTick) {
     world.floorObjectiveTick(world);
   }
 

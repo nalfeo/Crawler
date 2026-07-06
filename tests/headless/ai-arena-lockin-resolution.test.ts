@@ -86,7 +86,7 @@ function runOneArena(seed: number): {
       const d = ai.getDecision();
       if (d.targetEid === spawnerEid) firstArenaFrame = f;
     }
-    runSimulationStep(world, input, GAME.DELTA_MS, { enableFloor1: false });
+    runSimulationStep(world, input, GAME.DELTA_MS, {});
     if (world.stores.spawner.arenaState[spawnerEid] === 2) {
       return { resolved: true, frames: f + 1, reason: 'ok' };
     }

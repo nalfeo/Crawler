@@ -548,7 +548,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
       drawSquareMarker(dotGraphics, centerX, centerY, color, size);
     }
 
-    const objective = world.floor1?.objective;
+    const objective = world.floorScenario?.objective;
     if (objective?.staircaseSpawned && objective.staircaseDiscovered) {
       const stairTile = floorMap.worldToTile(objective.staircasePos.x, objective.staircasePos.y);
       if (
@@ -722,7 +722,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
       radarScratch.fillRect(rx - half, ry - half, half * 2, half * 2);
     }
 
-    const objective = world.floor1?.objective;
+    const objective = world.floorScenario?.objective;
     if (objective?.staircaseSpawned && objective.staircaseDiscovered) {
       const stairTile = floorMap.worldToTile(objective.staircasePos.x, objective.staircasePos.y);
       if (
