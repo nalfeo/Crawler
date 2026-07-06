@@ -24,6 +24,11 @@ import {
 } from '../core/helpers.js';
 import { clearMeleeSwingHits } from '../core/systems/meleeSwingSystem.js';
 import { isEntityInSafeSpace } from '../core/safe-space.js';
+import {
+  beginWeaponActivation,
+  endWeaponActivation,
+  markWeaponAccuracyMiss,
+} from '../core/weapon-telemetry.js';
 import type { GameWorld } from '../core/world.js';
 import { getBodyRadius } from '../core/physics-body.js';
 import {
@@ -610,6 +615,23 @@ function dispatchAttack(
   def: WeaponDef,
   dir: { x: number; y: number },
 ): void {
+  // Count every committed activation as one telemetry "swing" and open an
+  // activation id that spawned attack entities tag to. begin/end are no-ops
+  // unless `world.weaponTelemetry` is enabled, so the shipping sim is unaffected.
+  beginWeaponActivation(world);
+  try {
+    dispatchAttackInner(world, player, def, dir);
+  } finally {
+    endWeaponActivation(world);
+  }
+}
+
+function dispatchAttackInner(
+  world: GameWorld,
+  player: number,
+  def: WeaponDef,
+  dir: { x: number; y: number },
+): void {
   // Accuracy roll: miss if roll > effectiveAccuracy.
   // rng.next() returns [0,1); roll exactly at the threshold counts as a hit.
   const effectiveAccuracy = computeEffectiveAccuracy(world, player, def);
@@ -628,6 +650,7 @@ function dispatchAttack(
       targetType: 'enemy',
       timestamp: world.elapsedMs,
     });
+    markWeaponAccuracyMiss(world);
 
     // Fire cosmetic animations even on a miss — no damage, no skill XP.
     const zeroDamageDef = { ...def, baseDamage: 0 };

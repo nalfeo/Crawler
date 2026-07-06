@@ -10,6 +10,7 @@
  * about the concrete implementation.
  */
 import type { InputState } from './input.js';
+import type { WeaponTelemetrySummary } from './weapon-telemetry-types.js';
 
 /**
  * Who is currently driving the recorded player.
@@ -29,6 +30,12 @@ export interface SessionRecorderStats {
   durationMs: number;
   /** Which controller is currently driving the recorded player. */
   controller: SessionController;
+  /**
+   * Per-run weapon accuracy rollup (swings, connecting hits, accuracy, multi-hit
+   * rate). Present only when the recorder was created with `recordWeaponTelemetry`
+   * and the world therefore has an active telemetry collector; omitted otherwise.
+   */
+  weaponTelemetry?: WeaponTelemetrySummary;
 }
 
 /**

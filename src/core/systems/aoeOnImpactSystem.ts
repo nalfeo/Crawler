@@ -3,6 +3,7 @@ import { AoeOnImpact, Owner, Position, Team } from '../components.js';
 import { spawnAreaAttack } from '../helpers.js';
 import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
+import { getActivationForEntity, withActivationId } from '../weapon-telemetry.js';
 
 interface AoeSnapshot {
   eid: number;
@@ -12,6 +13,13 @@ interface AoeSnapshot {
   damage: number;
   ownerEid: number;
   teamId: number;
+  /**
+   * Weapon-telemetry activation id of the source projectile, captured while it
+   * still exists so the explosion folds into the SAME cast (a fireball = one
+   * activation). `undefined` when telemetry is disabled or the projectile was
+   * untagged (e.g. an enemy AoE projectile).
+   */
+  activationId: number | undefined;
 }
 
 const trackedSnapshots = new WeakMap<GameWorld, AoeSnapshot[]>();
@@ -44,6 +52,7 @@ export function aoeOnImpactPreDamage(world: GameWorld): void {
       damage: aoeOnImpact.damage[eid] ?? 0,
       ownerEid: hasComponent(world.ecs, eid, Owner) ? (owner.eid[eid] ?? 0) : -1,
       teamId: hasComponent(world.ecs, eid, Team) ? (team.id[eid] ?? 0) : 0,
+      activationId: getActivationForEntity(world, eid),
     });
   }
 }
@@ -61,16 +70,20 @@ export function aoeOnImpactPostDamage(world: GameWorld): void {
     }
 
     if (snap.radius > 0) {
-      spawnAreaAttack(
-        world,
-        snap.x,
-        snap.y,
-        snap.ownerEid,
-        snap.damage,
-        snap.radius,
-        50,
-        snap.teamId,
-      );
+      // Fold the explosion into the source projectile's cast so a fireball stays
+      // a single weapon-telemetry activation (no-op wrapper when telemetry off).
+      withActivationId(world, snap.activationId, () => {
+        spawnAreaAttack(
+          world,
+          snap.x,
+          snap.y,
+          snap.ownerEid,
+          snap.damage,
+          snap.radius,
+          50,
+          snap.teamId,
+        );
+      });
     }
   }
 

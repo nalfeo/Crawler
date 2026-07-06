@@ -23,6 +23,7 @@ import { createLogger } from '../../shared/logger.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { FLOOR1_TUTORIAL_QUEST_ID } from '../../shared/quest-types.js';
 import { xpRequiredForLevel } from '../../shared/xpMath.js';
+import { createWeaponTelemetry, summarizeWeaponTelemetry } from '../../core/weapon-telemetry.js';
 import {
   AIDecisionDebugState,
   type AIInputProvider,
@@ -116,6 +117,14 @@ export interface HeadlessRunnerConfig {
    * mutate the world; it is called after all simulation stops.
    */
   onFinish?: (world: GameWorld) => void;
+  /**
+   * Opt-in: collect per-run weapon-accuracy telemetry (swings, connecting hits,
+   * accuracy, multi-hit rate) and expose it as `RunStats.weaponTelemetry`. OFF by
+   * default — when false the world's `weaponTelemetry` field stays undefined and
+   * the simulation pays zero cost, so the Floor-1 gate and determinism are
+   * unaffected.
+   */
+  recordWeaponTelemetry?: boolean;
 }
 
 const DEFAULT_CONFIG: Required<
@@ -131,6 +140,7 @@ const DEFAULT_CONFIG: Required<
   enemyDamageMultiplier: 1,
   floorId: 'floor1',
   startPlayerLevel: 1,
+  recordWeaponTelemetry: false,
 };
 
 function applyConfiguredHostileDamageMultiplier(
@@ -239,6 +249,9 @@ export async function runHeadless(
 
   // Create world and spawn player
   const world = createGameWorld({ seed: mergedConfig.seed });
+  if (mergedConfig.recordWeaponTelemetry) {
+    world.weaponTelemetry = createWeaponTelemetry();
+  }
   const playerEid = spawnPlayer(world, 400, 400);
   const hostileDamageMultiplier = normalizeHostileDamageMultiplier(
     mergedConfig.enemyDamageMultiplier,
@@ -716,6 +729,9 @@ export async function runHeadless(
       startingWeapon,
       aiTelemetry: buildAiTelemetry(),
       spawnerArenas: computeSpawnerArenaMetrics(world),
+      ...(world.weaponTelemetry
+        ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
+        : {}),
     };
     if (mergedConfig.onFinish) {
       try {
@@ -779,6 +795,9 @@ export async function runHeadless(
     startingWeapon,
     aiTelemetry: buildAiTelemetry(),
     spawnerArenas: computeSpawnerArenaMetrics(world),
+    ...(world.weaponTelemetry
+      ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
+      : {}),
   };
 
   if (mergedConfig.debug || mergedConfig.progressInterval > 0) {

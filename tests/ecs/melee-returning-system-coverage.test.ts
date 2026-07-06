@@ -20,6 +20,14 @@ import {
   meleeSwingSystem,
 } from '../../src/core/systems/meleeSwingSystem.js';
 import { returningProjectileSystem } from '../../src/core/systems/returningProjectileSystem.js';
+import {
+  beginWeaponActivation,
+  createWeaponTelemetry,
+  endWeaponActivation,
+  recordWeaponEnemyHit,
+  summarizeWeaponTelemetry,
+  tagAttackEntity,
+} from '../../src/core/weapon-telemetry.js';
 import { MeleeStyle } from '../../src/shared/constants.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { makeOpenFloorMap } from '../helpers/map-fixtures.js';
@@ -532,5 +540,67 @@ describe('returningProjectileSystem coverage edges', () => {
 
     returningProjectileSystem(world);
     expect(entityExists(world.ecs, projectile)).toBe(false);
+  });
+
+  // Regression for the invariant-#4 leak (opt-in weapon telemetry): the returning
+  // system despawns via clearEntityStores + removeEntity, bypassing
+  // damageSystem.destroyEntity, so it must prune the activation tag itself.
+  it('prunes the weapon-telemetry tag when despawning a returning projectile with a missing owner', () => {
+    const world = createTestWorld();
+    world.weaponTelemetry = createWeaponTelemetry();
+    const projectile = createEntity(world);
+    addComponent(world.ecs, projectile, set(Position, { x: 0, y: 0 }));
+    addComponent(world.ecs, projectile, set(Velocity, { x: 0, y: 0 }));
+    addComponent(
+      world.ecs,
+      projectile,
+      set(Returning, { isReturning: 1, returnSpeed: 1.25, maxRange: 12.5 }),
+    );
+    addComponent(world.ecs, projectile, set(Owner, { eid: 999 }));
+
+    beginWeaponActivation(world);
+    tagAttackEntity(world, projectile);
+    recordWeaponEnemyHit(world, projectile, 500);
+    endWeaponActivation(world);
+    expect(world.weaponTelemetry.entityActivation.has(projectile)).toBe(true);
+
+    returningProjectileSystem(world);
+
+    expect(entityExists(world.ecs, projectile)).toBe(false);
+    expect(world.weaponTelemetry.entityActivation.has(projectile)).toBe(false);
+    // The activation-keyed aggregate survives the entity prune.
+    expect(summarizeWeaponTelemetry(world.weaponTelemetry).connectingSwings).toBe(1);
+  });
+
+  it('prunes the weapon-telemetry tag when a returning projectile reaches the owner pickup radius', () => {
+    const world = createTestWorld();
+    world.weaponTelemetry = createWeaponTelemetry();
+    const owner = createEntity(world);
+    addComponent(world.ecs, owner, set(Position, { x: 1, y: 0 }));
+
+    const projectile = createEntity(world);
+    addComponent(world.ecs, projectile, set(Position, { x: 0, y: 0 }));
+    addComponent(world.ecs, projectile, set(Velocity, { x: 0, y: 0 }));
+    addComponent(
+      world.ecs,
+      projectile,
+      set(Returning, {
+        isReturning: 1,
+        returnSpeed: 2.5,
+        maxRange: 12.5,
+        originX: 0,
+        originY: 0,
+      }),
+    );
+    addComponent(world.ecs, projectile, set(Owner, { eid: owner }));
+
+    beginWeaponActivation(world);
+    tagAttackEntity(world, projectile);
+    endWeaponActivation(world);
+
+    returningProjectileSystem(world);
+
+    expect(entityExists(world.ecs, projectile)).toBe(false);
+    expect(world.weaponTelemetry.entityActivation.has(projectile)).toBe(false);
   });
 });

@@ -4,6 +4,7 @@
  * Traditional rule-based AI that plays through simulated InputState.
  */
 import type { GameWorld } from '../../core/world.js';
+import type { WeaponTelemetrySummary } from '../../core/weapon-telemetry.js';
 import type { InputState } from '../../shared/input.js';
 import type { RunPlanSegmentPhase } from './run-planner.js';
 
@@ -326,4 +327,10 @@ export interface RunStats {
    * always sets it.
    */
   spawnerArenas?: SpawnerArenaMetrics;
+  /**
+   * Opt-in per-run weapon-accuracy rollup (swings, connecting hits, accuracy,
+   * multi-hit rate). Present only when the run enabled `recordWeaponTelemetry`;
+   * `undefined` otherwise, so default runs and the Floor-1 gate are unaffected.
+   */
+  weaponTelemetry?: WeaponTelemetrySummary;
 }

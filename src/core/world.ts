@@ -15,6 +15,7 @@ import type { AnnouncementEvent } from '../shared/announcement-events.js';
 import type { AbilityState, AbilityTriggerEvent } from '../shared/abilities.js';
 import { createLogger } from '../shared/logger.js';
 import type { DoorLockConfig } from './door-lock.js';
+import type { WeaponTelemetry } from './weapon-telemetry.js';
 import type { FloorMap } from './map/FloorMap.js';
 import {
   Position,
@@ -157,6 +158,14 @@ export interface GameWorld {
    * consumers must re-validate the entity before targeting it.
    */
   lastPlayerHit?: { attackerEid: number; atMs: number };
+  /**
+   * Optional, OFF-by-default per-run weapon telemetry (player swings, connecting
+   * hits, accuracy, multi-hit rate). `undefined` = disabled → the shipping sim
+   * and Floor-1 gate see zero behavior/allocation cost. Opt-in surfaces (headless
+   * runner `recordWeaponTelemetry`, PlayerSessionRecorder `recordWeaponTelemetry`)
+   * assign a collector via `createWeaponTelemetry()`. See `weapon-telemetry.ts`.
+   */
+  weaponTelemetry?: WeaponTelemetry;
   /**
    * Max REALIZED knockback displacement (feet) applied to any entity this frame.
    * Reset to 0 at the top of `knockbackSystem` and accumulated (max) there after
