@@ -5,6 +5,11 @@ inputs:
   node-version:
     description: 'Node.js version to install'
     default: '22'
+  install-playwright:
+    description: >
+      Whether to install Playwright system dependencies and the Chromium browser.
+      Only the e2e job needs this; all other jobs skip it to reduce runner cost.
+    default: 'false'
 
 runs:
   using: composite
@@ -21,20 +26,27 @@ runs:
 
     - name: Install dependencies
       if: steps.nm-cache.outputs.cache-hit != 'true'
+      # Skip the postinstall browser download for jobs that don't need Playwright.
+      # The postinstall script runs `playwright install chromium`; when
+      # install-playwright is false we don't want that download.
+      env:
+        PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: ${{ inputs.install-playwright != 'true' && '1' || '' }}
       run: npm ci
       shell: bash
 
     - uses: actions/cache@v4
       id: pw-cache
+      if: ${{ inputs.install-playwright == 'true' }}
       with:
         path: ~/.cache/ms-playwright
         key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
     - name: Install Playwright system dependencies
+      if: ${{ inputs.install-playwright == 'true' }}
       run: npx playwright install-deps chromium
       shell: bash
 
     - name: Install Playwright browser
-      if: steps.pw-cache.outputs.cache-hit != 'true'
+      if: ${{ inputs.install-playwright == 'true' && steps.pw-cache.outputs.cache-hit != 'true' }}
       run: npx playwright install chromium
       shell: bash
