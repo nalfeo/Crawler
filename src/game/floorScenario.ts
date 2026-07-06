@@ -25,6 +25,7 @@ import {
   Player,
   Health,
   BroadcastScore,
+  Size,
   Sprite,
   DoorState,
   Enemy,
@@ -34,6 +35,7 @@ import {
   Npc,
 } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
+import { SHAPE_BOX, SHAPE_CIRCLE } from '../core/physics-defs.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
 import {
@@ -945,6 +947,16 @@ function placeWelcomeSigns(world: GameWorld, welcomeOfficePos: { x: number; y: n
         height: WELCOME_SIGN_HEIGHT,
       }),
     );
+    addComponent(
+      world.ecs,
+      eid,
+      set(Size, {
+        radius: 0,
+        halfWidth: WELCOME_SIGN_WIDTH * 0.5,
+        halfHeight: WELCOME_SIGN_HEIGHT * 0.5,
+        shape: SHAPE_BOX,
+      }),
+    );
   };
 
   // Directional breadcrumb trail: one sign per room on the path (excluding the
@@ -1673,6 +1685,16 @@ function spawnFloor1StairBoss(world: GameWorld): number {
     width: floor1Config.bossVariants!.ratSlime.spriteWidth,
     height: floor1Config.bossVariants!.ratSlime.spriteHeight,
   });
+  setComponent(world.ecs, eid, Size, {
+    radius:
+      Math.max(
+        floor1Config.bossVariants!.ratSlime.spriteWidth,
+        floor1Config.bossVariants!.ratSlime.spriteHeight,
+      ) * 0.5,
+    halfWidth: 0,
+    halfHeight: 0,
+    shape: SHAPE_CIRCLE,
+  });
   setEnemyAppearanceKey(world, eid, 'rat-slime');
 
   // ratSlime stair boss is primarily a slime creature.
@@ -1717,6 +1739,16 @@ function spawnFloor1SlimeRatBoss(world: GameWorld): number {
     textureId: floor1Config.enemies.slime.spriteTexture,
     width: floor1Config.bossVariants!.ratSlime.spriteWidth - 0.5,
     height: floor1Config.bossVariants!.ratSlime.spriteHeight - 0.5,
+  });
+  setComponent(world.ecs, eid, Size, {
+    radius:
+      Math.max(
+        floor1Config.bossVariants!.ratSlime.spriteWidth - 0.5,
+        floor1Config.bossVariants!.ratSlime.spriteHeight - 0.5,
+      ) * 0.5,
+    halfWidth: 0,
+    halfHeight: 0,
+    shape: SHAPE_CIRCLE,
   });
   // slimeRat quest boss is primarily a slime creature.
   setBloodColor(world, eid, BLOOD_COLOR_SLIME);
@@ -1990,6 +2022,12 @@ function spawnAmbientArchetype(world: GameWorld, x: number, y: number): number {
     textureId: archetype.spriteTexture,
     width: archetype.spriteWidth,
     height: archetype.spriteHeight,
+  });
+  setComponent(world.ecs, eid, Size, {
+    radius: Math.max(archetype.spriteWidth, archetype.spriteHeight) * 0.5,
+    halfWidth: 0,
+    halfHeight: 0,
+    shape: SHAPE_CIRCLE,
   });
   setEnemyAppearanceKey(world, eid, archetype.id);
   // Slimes bleed green, rats bleed red.

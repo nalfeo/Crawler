@@ -1,6 +1,7 @@
-import { addComponent } from 'bitecs';
+import { addComponent, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { SkillHolder, Stats } from '../../src/core/components.js';
+import { SkillHolder, Size, Stats } from '../../src/core/components.js';
+import { SHAPE_BOX } from '../../src/core/physics-defs.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { knockbackSystem } from '../../src/core/systems/knockbackSystem.js';
 import { makeWalledMap } from '../helpers/map-fixtures.js';
@@ -266,6 +267,11 @@ describe('abilitySystem', () => {
     const wallEnemy = spawnEnemy(world, 18, 12, 10);
     world.stores.sprite.width[wallEnemy] = 3.75;
     world.stores.sprite.height[wallEnemy] = 3.75;
+    addComponent(
+      world.ecs,
+      wallEnemy,
+      set(Size, { radius: 0, halfWidth: 1.875, halfHeight: 1.875, shape: SHAPE_BOX }),
+    );
 
     world.frameCount = 100;
     abilitySystem(world);

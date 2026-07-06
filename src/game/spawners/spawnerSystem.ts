@@ -28,9 +28,11 @@ import {
   Position,
   SpawnAnim,
   Spawner,
+  Size,
   Sprite,
 } from '../../core/components.js';
 import { setEnemyAppearanceKey, spawnBehaviorEnemy } from '../../core/helpers.js';
+import { SHAPE_CIRCLE } from '../../core/physics-defs.js';
 import type { GameWorld } from '../../core/world.js';
 import { createLogger } from '../../shared/logger.js';
 import { pushVfxEvent } from '../../shared/vfx-events.js';
@@ -114,6 +116,15 @@ function spawnChild(
     textureId: mob.textureId,
     width: mob.spriteWidth,
     height: mob.spriteHeight,
+  });
+  setComponent(world.ecs, eid, Size, {
+    // Slice-1 rule: body half-extent equals sprite half-extent for the mob
+    // template so `collision-pair-parity` stays green. Slice 2+ can bring in
+    // explicit body fields on `MobTemplate`.
+    radius: Math.max(mob.spriteWidth, mob.spriteHeight) * 0.5,
+    halfWidth: 0,
+    halfHeight: 0,
+    shape: SHAPE_CIRCLE,
   });
   setEnemyAppearanceKey(world, eid, mob.id);
   addComponent(

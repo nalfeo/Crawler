@@ -83,4 +83,8 @@ else
   npx vitest run --changed --project unit --reporter=dot --passWithNoTests
 fi
 
+echo "🔍 Step 4/4: Physics-defs sync + Size coverage checks..."
+npx tsx scripts/agent/health/check-physics-defs-sync.ts
+npx tsx scripts/agent/health/check-size-coverage.ts
+
 echo "✅ Fast verification passed."

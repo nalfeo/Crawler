@@ -49,6 +49,7 @@ import {
   Gold,
   Npc,
   Weight,
+  Size,
   BloodColor,
   Prop,
   PropLight,
@@ -361,6 +362,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Gold, stores.gold);
   wireStore(ecs, Npc, stores.npc);
   wireStore(ecs, Weight, stores.weight);
+  wireStore(ecs, Size, stores.size);
   wireStore(ecs, BloodColor, stores.bloodColor);
   wireStore(ecs, Prop, stores.prop);
   wireStore(ecs, PropLight, stores.propLight);
