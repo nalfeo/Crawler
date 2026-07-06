@@ -44,4 +44,4 @@ ai-behavior-tree, quests, combat-events, floor2-scenario, headless-runner
 
 ## Unresolved issues
 
-- No unresolved functional blockers on this branch at handoff time.
+- Floor 2 boss tuning is intentionally temporary for AI-completion stabilization (`FLOOR2_BOSS_HP_SCALE = 0.1`, `FLOOR2_BOSS_CONTACT_DAMAGE = 2` in `src/game/floor2Scenario.ts`); revisit for final gameplay balance after objective-flow hardening.

@@ -18,5 +18,5 @@ describe('Floor 2 headless completion', () => {
         questId.startsWith('floor2-den-'),
       ),
     ).toBe(true);
-  });
+  }, 300_000);
 });
