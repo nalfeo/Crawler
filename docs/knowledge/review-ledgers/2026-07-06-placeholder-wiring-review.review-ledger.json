@@ -1,0 +1,28 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-06",
+  "session_slug": "placeholder-wiring-review",
+  "task_title": "Wire generated Floor 1 prop art",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "notes": "Reviewer raised 3 concerns (prop cleanup, renderer regression coverage, decorations snapshot drift); all resolved with code updates and tests."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

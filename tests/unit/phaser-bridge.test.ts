@@ -7,6 +7,7 @@ import {
   Gold,
   Player,
   Position,
+  Prop,
   Rotation,
   Spawner,
   Sprite,
@@ -28,6 +29,7 @@ import {
 import { spawnMeleeSwing } from '../../src/core/spawners/melee.js';
 import { MeleeSpriteId } from '../../src/shared/constants.js';
 import { getSprite } from '../../src/engine/sprites/index.js';
+import { DECORATION_DEF_INDEX } from '../../src/shared/decorationDefs.js';
 
 /**
  * Faithful local stand-in for a Phaser weapon image on the melee-swing render
@@ -99,6 +101,47 @@ class SwingImage {
   setAlpha(a: number): this {
     this.alpha = a;
     return this;
+  }
+}
+
+class PropRect {
+  destroyed = false;
+  x = 0;
+  y = 0;
+  width = 0;
+  height = 0;
+  depth = 0;
+
+  constructor(x: number, y: number, width: number, height: number) {
+    this.x = x;
+    this.y = y;
+    this.width = width;
+    this.height = height;
+  }
+
+  setPosition(x: number, y: number): this {
+    this.x = x;
+    this.y = y;
+    return this;
+  }
+
+  setSize(width: number, height: number): this {
+    this.width = width;
+    this.height = height;
+    return this;
+  }
+
+  setFillStyle(_color: number, _alpha = 1): this {
+    return this;
+  }
+
+  setDepth(depth: number): this {
+    this.depth = depth;
+    return this;
+  }
+
+  destroy(): void {
+    this.destroyed = true;
   }
 }
 
@@ -217,6 +260,55 @@ describe('createPhaserBridge', () => {
     bridge.destroy();
 
     expect(images[1]?.destroyed).toBe(true);
+  });
+
+  it('renders props as sprites when texture exists and falls back to rectangles otherwise', () => {
+    const propImages: MockImage[] = [];
+    const propRects: PropRect[] = [];
+    const scene = {
+      add: {
+        image: vi.fn((x = 0, y = 0, textureKey = '', frame?: number) => {
+          const img = new MockImage(x, y, textureKey, frame);
+          (
+            img as unknown as { setDisplaySize: (w: number, h: number) => MockImage }
+          ).setDisplaySize = function setDisplaySize(_w: number, _h: number): MockImage {
+            return img;
+          };
+          propImages.push(img);
+          return img as unknown as Phaser.GameObjects.Image;
+        }),
+        rectangle: vi.fn((x = 0, y = 0, width = 0, height = 0) => {
+          const rect = new PropRect(x, y, width, height);
+          propRects.push(rect);
+          return rect as unknown as Phaser.GameObjects.Rectangle;
+        }),
+      },
+      textures: {
+        exists: (key: string) => key === 'prop-wall-sconce-v1-var-1',
+      },
+    } as unknown as Phaser.Scene;
+
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+
+    const renderedProp = addEntity(world.ecs);
+    addComponent(world.ecs, renderedProp, Prop);
+    addComponent(world.ecs, renderedProp, set(Position, { x: 1, y: 2 }));
+    world.stores.prop.defIdIndex[renderedProp] = DECORATION_DEF_INDEX['wall-sconce']!;
+
+    const placeholderProp = addEntity(world.ecs);
+    addComponent(world.ecs, placeholderProp, Prop);
+    addComponent(world.ecs, placeholderProp, set(Position, { x: 3, y: 4 }));
+    world.stores.prop.defIdIndex[placeholderProp] = DECORATION_DEF_INDEX['junk-pile']!;
+
+    bridge.sync(world);
+
+    expect(propImages.some((img) => img.textureKey === 'prop-wall-sconce-v1-var-1')).toBe(true);
+    expect(propRects.length).toBeGreaterThan(0);
+
+    bridge.destroy();
+    expect(propImages.every((img) => img.destroyed)).toBe(true);
+    expect(propRects.every((rect) => rect.destroyed)).toBe(true);
   });
 
   it('uses procedural texture key when no Kenney sheet is loaded', () => {
