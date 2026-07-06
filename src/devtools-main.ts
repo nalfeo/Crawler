@@ -1139,9 +1139,21 @@ function renderStorageLifecyclePage(shell: HTMLElement): void {
 
   const makeBadge = (text: string, kind: 'good' | 'warn' | 'muted'): HTMLElement => {
     const palette = {
-      good: { color: '#86efac', border: 'rgba(134,239,172,0.4)', background: 'rgba(22,101,52,0.35)' },
-      warn: { color: '#fcd34d', border: 'rgba(252,211,77,0.4)', background: 'rgba(120,53,15,0.35)' },
-      muted: { color: '#94a3b8', border: 'rgba(148,163,184,0.3)', background: 'rgba(30,41,59,0.6)' },
+      good: {
+        color: '#86efac',
+        border: 'rgba(134,239,172,0.4)',
+        background: 'rgba(22,101,52,0.35)',
+      },
+      warn: {
+        color: '#fcd34d',
+        border: 'rgba(252,211,77,0.4)',
+        background: 'rgba(120,53,15,0.35)',
+      },
+      muted: {
+        color: '#94a3b8',
+        border: 'rgba(148,163,184,0.3)',
+        background: 'rgba(30,41,59,0.6)',
+      },
     }[kind];
     return el('span', {
       text,
@@ -1236,8 +1248,7 @@ function renderStorageLifecyclePage(shell: HTMLElement): void {
     if (rows.length === 0) {
       listHost.replaceChildren(
         el('div', {
-          text:
-            currentRuns.length === 0 ? 'No runs in this scope.' : 'No runs match this filter.',
+          text: currentRuns.length === 0 ? 'No runs in this scope.' : 'No runs match this filter.',
           style: { color: '#94a3b8', fontSize: '13px', padding: '10px 2px' },
         }),
       );

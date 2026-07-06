@@ -2323,9 +2323,7 @@ interface ApprovedBriefInfo {
  * it was approved from. Defensive like readPromotedRunsFromManifest — a missing
  * or corrupt manifest yields an empty map rather than throwing.
  */
-function readApprovedVariantsByBrief(
-  manifestPath: string,
-): ReadonlyMap<string, ApprovedBriefInfo> {
+function readApprovedVariantsByBrief(manifestPath: string): ReadonlyMap<string, ApprovedBriefInfo> {
   const result = new Map<string, ApprovedBriefInfo>();
   if (!existsSync(manifestPath)) return result;
   try {

@@ -2019,7 +2019,11 @@ describe('storage run enrichment endpoint', () => {
     writeSummary(path.join(runsDir, 'mithril-axe', RUN2), 1, 'design/briefs/mithril-axe.yaml');
 
     // Archived copy of the iron-sword run (summary only — no sheets served).
-    writeSummary(path.join(runsDir, 'archive', 'iron-sword', RUN), 3, 'design/briefs/iron-sword.yaml');
+    writeSummary(
+      path.join(runsDir, 'archive', 'iron-sword', RUN),
+      3,
+      'design/briefs/iron-sword.yaml',
+    );
 
     // Manifest: two approved variants for iron-sword (indexes 0 and 2), both
     // sourced from RUN. firstApproved should be the lowest index (0).

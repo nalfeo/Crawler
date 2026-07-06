@@ -359,9 +359,11 @@ export interface StorageRunEnrichmentResponse {
  * variant, brief-stored flag) for a batch of storage runs. Kept separate from
  * `listStorageRuns` so the list renders instantly and enrichment fills in after.
  */
-export async function enrichStorageRuns(
+export async function enrichStorageRuns<
+  T extends { readonly briefId: string; readonly runId: string },
+>(
   scope: 'active' | 'archive',
-  runs: ReadonlyArray<{ readonly briefId: string; readonly runId: string }>,
+  runs: ReadonlyArray<T>,
   fetcher: typeof fetch = fetch,
 ): Promise<StorageRunEnrichmentResponse> {
   const response = await fetcher(`${SIDECAR_BASE}/api/storage/runs/enrich`, {
