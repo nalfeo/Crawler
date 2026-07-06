@@ -60,26 +60,14 @@ const FLOW_STEP_DIRECTIONS: ReadonlyArray<readonly [number, number]> = [
 ];
 
 export interface FlowField {
-  /** Field width in tiles (window width; may be smaller than the full map). */
   readonly width: number;
-  /** Field height in tiles (window height; may be smaller than the full map). */
   readonly height: number;
-  /** Goal tile in absolute tile coordinates. */
+  /** Goal tile the field flows toward (distance 0). */
   readonly goalX: number;
-  /** Goal tile in absolute tile coordinates. */
   readonly goalY: number;
   /**
-   * Absolute tile coordinate of the top-left corner of this field window.
-   * When the field covers the full map this is (0, 0).  {@link flowFieldStep}
-   * and {@link computeFlowField} use this to translate between absolute tile
-   * coords and field-local array indices.
-   */
-  readonly originX: number;
-  readonly originY: number;
-  /**
    * Shortest-path tile distance from each tile to the goal, indexed
-   * `(y - originY) * width + (x - originX)`.
-   * {@link FLOW_UNREACHABLE} for blocked, out-of-window, or unreachable tiles.
+   * `y * width + x`. {@link FLOW_UNREACHABLE} for blocked or unreachable tiles.
    */
   readonly distance: Int32Array;
 }
@@ -92,14 +80,6 @@ export interface FlowFieldOptions {
    * routes identically. Ignored for FLYING traversal.
    */
   isTilePassable?: (x: number, y: number) => boolean;
-  /**
-   * Restrict the BFS to this absolute-tile bounding box.  Tiles outside the
-   * window are treated as {@link FLOW_UNREACHABLE} — enemies there fall back
-   * to per-enemy A* pathfinding (same as today for unreachable tiles).
-   *
-   * Omit (or pass `undefined`) to cover the full map.
-   */
-  bounds?: { minX: number; minY: number; maxX: number; maxY: number };
 }
 
 /**
@@ -108,12 +88,6 @@ export interface FlowFieldOptions {
  * Cost is O(reachable tiles): a single breadth-first sweep. Rebuild it when the
  * goal tile moves or the traversable layout changes (e.g. doors) — once per
  * change, shared by every agent that frame.
- *
- * When `options.bounds` is provided the BFS is restricted to that bounding box
- * (clamped to map extents). Tiles outside the window have distance
- * {@link FLOW_UNREACHABLE} — consumers fall back to per-entity A* for those.
- * `field.originX/Y` records the top-left corner of the active window so that
- * {@link flowFieldStep} can translate absolute tile coords to field-local indices.
  */
 export function computeFlowField(
   floorMap: FloorMap,
@@ -122,67 +96,20 @@ export function computeFlowField(
 ): FlowField {
   const traversalMode = options.traversalMode ?? PATH_TRAVERSAL.GROUND;
   const isTilePassable = options.isTilePassable;
-  const mapWidth = floorMap.tileMap.width;
-  const mapHeight = floorMap.tileMap.height;
+  const width = floorMap.tileMap.width;
+  const height = floorMap.tileMap.height;
+  const distance = new Int32Array(width * height).fill(FLOW_UNREACHABLE);
 
-  // Determine window: clamp requested bounds (or default to full map).
-  let originX: number;
-  let originY: number;
-  let winWidth: number;
-  let winHeight: number;
-  if (options.bounds) {
-    originX = Math.max(0, options.bounds.minX);
-    originY = Math.max(0, options.bounds.minY);
-    const maxX = Math.min(mapWidth - 1, options.bounds.maxX);
-    const maxY = Math.min(mapHeight - 1, options.bounds.maxY);
-    winWidth = maxX - originX + 1;
-    winHeight = maxY - originY + 1;
-    // Guard: if the clamped window is empty (e.g. bounds entirely outside the
-    // map), return an all-UNREACHABLE field with a zero-size array.
-    if (winWidth <= 0 || winHeight <= 0) {
-      return {
-        width: 0,
-        height: 0,
-        goalX: goal.x,
-        goalY: goal.y,
-        originX,
-        originY,
-        distance: new Int32Array(0),
-      };
-    }
-  } else {
-    originX = 0;
-    originY = 0;
-    winWidth = mapWidth;
-    winHeight = mapHeight;
-  }
+  const field: FlowField = { width, height, goalX: goal.x, goalY: goal.y, distance };
 
-  const distance = new Int32Array(winWidth * winHeight).fill(FLOW_UNREACHABLE);
-  const field: FlowField = {
-    width: winWidth,
-    height: winHeight,
-    goalX: goal.x,
-    goalY: goal.y,
-    originX,
-    originY,
-    distance,
-  };
-
-  // Goal must be within the active window and traversable.
-  const localGoalX = goal.x - originX;
-  const localGoalY = goal.y - originY;
   if (
-    localGoalX < 0 ||
-    localGoalX >= winWidth ||
-    localGoalY < 0 ||
-    localGoalY >= winHeight ||
     !floorMap.tileMap.inBounds(goal.x, goal.y) ||
     !isTileTraversable(floorMap, goal.x, goal.y, traversalMode, isTilePassable)
   ) {
     return field;
   }
 
-  const goalIndex = localGoalY * winWidth + localGoalX;
+  const goalIndex = goal.y * width + goal.x;
   distance[goalIndex] = 0;
 
   // Plain array used as a FIFO queue with a moving head cursor — cheaper than
@@ -193,22 +120,16 @@ export function computeFlowField(
   while (head < queue.length) {
     const idx = queue[head]!;
     head += 1;
-    const [lcx, lcy] = indexToCoords(idx, winWidth);
-    const cx = lcx + originX;
-    const cy = lcy + originY;
+    const [cx, cy] = indexToCoords(idx, width);
     const nextDistance = distance[idx]! + 1;
 
     for (const [dx, dy] of FLOW_DIRECTIONS) {
       const nx = cx + dx;
       const ny = cy + dy;
-      // Clamp to window (not just map bounds) — tiles outside the window
-      // are left FLOW_UNREACHABLE regardless of traversability.
-      const lnx = nx - originX;
-      const lny = ny - originY;
-      if (lnx < 0 || lnx >= winWidth || lny < 0 || lny >= winHeight) {
+      if (!floorMap.tileMap.inBounds(nx, ny)) {
         continue;
       }
-      const nIdx = lny * winWidth + lnx;
+      const nIdx = ny * width + nx;
       if (distance[nIdx] !== FLOW_UNREACHABLE) {
         continue;
       }
@@ -224,10 +145,9 @@ export function computeFlowField(
 }
 
 /**
- * Unit step toward the goal from absolute tile `(x, y)` — one of the eight
+ * Unit step toward the goal from `(x, y)` — one of the eight
  * {@link FLOW_STEP_DIRECTIONS} — or `null` when the tile is the goal,
- * unreachable, outside the field window, or a local minimum with no downhill
- * neighbour.
+ * unreachable, or a local minimum with no downhill neighbour.
  *
  * The descent considers diagonals as well as cardinals and always takes the
  * strictly-most-downhill neighbour, so a chaser in open space glides along a
@@ -237,29 +157,21 @@ export function computeFlowField(
  * 4-connected BFS, every reachable non-goal tile has a cardinal neighbour one
  * step closer, so a downhill move always exists and ties break by neighbour
  * order for determinism.
- *
- * @param x - Absolute tile X coordinate.
- * @param y - Absolute tile Y coordinate.
  */
 export function flowFieldStep(field: FlowField, x: number, y: number): TilePoint | null {
-  // Translate absolute → field-local.
-  const lx = x - field.originX;
-  const ly = y - field.originY;
-  if (lx < 0 || ly < 0 || lx >= field.width || ly >= field.height) {
+  if (x < 0 || y < 0 || x >= field.width || y >= field.height) {
     return null;
   }
-  const here = field.distance[ly * field.width + lx]!;
+  const here = field.distance[y * field.width + x]!;
   if (here === FLOW_UNREACHABLE || here === 0) {
     return null;
   }
 
   const distAt = (nx: number, ny: number): number => {
-    const lnx = nx - field.originX;
-    const lny = ny - field.originY;
-    if (lnx < 0 || lny < 0 || lnx >= field.width || lny >= field.height) {
+    if (nx < 0 || ny < 0 || nx >= field.width || ny >= field.height) {
       return FLOW_UNREACHABLE;
     }
-    return field.distance[lny * field.width + lnx]!;
+    return field.distance[ny * field.width + nx]!;
   };
 
   let bestDistance = here;

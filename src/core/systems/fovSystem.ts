@@ -18,7 +18,7 @@ import { Player, Position } from '../components.js';
 import type { GameWorld } from '../world.js';
 
 /** Default FOV radius in tiles (~25 tiles ≈ 100ft at 4ft/tile). */
-export const DEFAULT_FOV_RADIUS = 25;
+const DEFAULT_FOV_RADIUS = 25;
 
 export function fovSystem(world: GameWorld): void {
   const floorMap = world.floorMap;

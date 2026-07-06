@@ -21,7 +21,6 @@ import { getWeaponDef } from '../shared/weaponDefs.js';
 import { SeededRandom } from '../shared/random.js';
 import { normalize } from '../shared/vec.js';
 import { getFamilyAIDecision, resolveHostileFallback } from './systems/familyFeudSystem.js';
-import { DEFAULT_FOV_RADIUS } from '../core/systems/fovSystem.js';
 
 export const AI_TYPE = { CHASE: 0, SWARM: 1, RANGED: 2, LEAPER: 3 } as const;
 export { PATH_PERSONA, TRAVERSAL_MODE };
@@ -48,21 +47,6 @@ const NAVIGATION_ANGLE_OFFSETS = [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Ma
 const STUCK_FRAMES_THRESHOLD = 15;
 const UNSTUCK_ANGLE_COUNT = 12;
 const MAX_PAIRWISE_SEPARATION_ENEMIES = 48;
-/**
- * Maximum enemy aggro range in the game, in tiles (70ft / 4ft = 17.5 tiles,
- * rounded up). Used to derive the flow-field window so the BFS always covers
- * any tile where an enemy could detect the player.
- */
-const MAX_AGGRO_RANGE_TILES = 18;
-/**
- * Half-side of the tile-window used for the ground flow-field BFS.  Enemies
- * outside the player±R tile box fall back to per-entity A* (same as today for
- * any FLOW_UNREACHABLE tile) because they are too far to matter this frame.
- *
- * Derived as FOV radius + max aggro range + a one-tile buffer to avoid
- * clipping enemies right at the edge on diagonal approaches.
- */
-const FLOW_FIELD_RADIUS_TILES = DEFAULT_FOV_RADIUS + MAX_AGGRO_RANGE_TILES + 1;
 // The slime is a leaper: it runs a telegraph → committed leap → frozen recovery
 // loop. Because the player should essentially never stop moving, a leap that
 // commits toward the player's *current* position generally whiffs — the player
@@ -178,8 +162,6 @@ interface GroundFlowCache {
   goalX: number;
   goalY: number;
   doorRevision: number;
-  /** Reference to the FloorMap the field was computed for (detects rebuilds). */
-  floorMap: import('../core/map/FloorMap.js').FloorMap;
   field: FlowField;
 }
 
@@ -900,11 +882,6 @@ function nextWaypointDirection(
  * it only when the goal tile or the traversable layout (doors) changes. One BFS
  * is shared by every ground chaser that frame, replacing a per-enemy A* storm.
  * Returns null when there is no floor map.
- *
- * The BFS is restricted to a `FLOW_FIELD_RADIUS_TILES`-tile window around the
- * player so it covers O((2R)²) tiles instead of the full map — a ~2× reduction.
- * Enemies outside the window get FLOW_UNREACHABLE and fall back to A* (same as
- * today for any unreachable tile).
  */
 function getGroundFlowField(
   world: GameWorld,
@@ -926,22 +903,14 @@ function getGroundFlowField(
     cached.goalX === goal.x &&
     cached.goalY === goal.y &&
     cached.doorRevision === doorRevision &&
-    cached.floorMap === floorMap
+    cached.field.width === floorMap.tileMap.width &&
+    cached.field.height === floorMap.tileMap.height
   ) {
     return cached;
   }
 
-  const bounds = {
-    minX: playerTile.x - FLOW_FIELD_RADIUS_TILES,
-    minY: playerTile.y - FLOW_FIELD_RADIUS_TILES,
-    maxX: playerTile.x + FLOW_FIELD_RADIUS_TILES,
-    maxY: playerTile.y + FLOW_FIELD_RADIUS_TILES,
-  };
-  const field = computeFlowField(floorMap, goal, {
-    traversalMode: PATH_TRAVERSAL.GROUND,
-    bounds,
-  });
-  const next: GroundFlowCache = { goalX: goal.x, goalY: goal.y, doorRevision, floorMap, field };
+  const field = computeFlowField(floorMap, goal, { traversalMode: PATH_TRAVERSAL.GROUND });
+  const next: GroundFlowCache = { goalX: goal.x, goalY: goal.y, doorRevision, field };
   groundFlowByWorld.set(world, next);
   return next;
 }
