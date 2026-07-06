@@ -546,7 +546,6 @@ export function floor2ObjectiveTick(world: GameWorld): void {
       setGoalFlag(world, denUnlockGoalId(familyId), true);
     }
   }
-
   respawnFamilyTerritoryTrash(world, floor2State);
   floor2VictorySystem(world);
 }
