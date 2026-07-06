@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-06",
+  "session_slug": "floor2-playability-territory-director",
+  "task_title": "Floor 2 playability: territory director and pacing fixes",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.3-codex",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "notes": "Plan review accepted: reuse Floor 1 ambient director shape for Floor 2 with seeded quadrant territory weighting and floor-aware spawn pack selection. Concerns addressed: (1) Floor 2 objective mode uses floorObjectiveTick with floorScenario=null, so guard must key on floor id; (2) shared spawn-point helper must select floor2EnemyPack on Floor 2 to preserve engage/despawn parameters."
+    }
+  }
+}
