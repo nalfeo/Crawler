@@ -79,6 +79,11 @@ export default defineConfig({
         test: {
           name: 'unit',
           include: ['tests/{unit,ecs,game,property,determinism,sensors}/**/*.{test,spec}.ts'],
+          // Worker threads start faster than forked processes (no process spawn
+          // overhead per worker). Unit tests are pure-logic with no DOM side
+          // effects; each thread gets its own module registry and globalSetup
+          // runs per-thread, so isolation is equivalent to forks for this suite.
+          pool: 'threads',
         },
       },
       {
