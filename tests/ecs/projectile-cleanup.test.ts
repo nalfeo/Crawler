@@ -10,6 +10,14 @@ import { FloorMap } from '../../src/core/map/FloorMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
 import { projectileCleanupSystem } from '../../src/core/systems/projectileCleanupSystem.js';
+import {
+  beginWeaponActivation,
+  createWeaponTelemetry,
+  endWeaponActivation,
+  recordWeaponEnemyHit,
+  summarizeWeaponTelemetry,
+  tagAttackEntity,
+} from '../../src/core/weapon-telemetry.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -209,5 +217,83 @@ describe('projectileCleanupSystem', () => {
     // Returning projectile should NOT be despawned (even though it's beyond max range)
     // It's managed by the Returning component, not the Projectile maxRange check
     expect(entityExists(world.ecs, returning)).toBe(true);
+  });
+});
+
+/**
+ * Regression for the invariant-#4 leak (opt-in weapon telemetry): every despawn
+ * path in projectileCleanupSystem must prune the projectile's activation tag.
+ * Previously only damageSystem.destroyEntity pruned, so wall/range/bounds/bounce
+ * despawns leaked `entityActivation` entries and risked misattributing a later
+ * recycled eid to a stale activation. Pruning is a no-op when telemetry is
+ * disabled, so this is zero-delta for the shipping sim.
+ */
+describe('projectileCleanupSystem weapon-telemetry tag pruning (regression)', () => {
+  function tagSpawnedProjectile(
+    world: ReturnType<typeof createTestWorld>,
+    eid: number,
+    enemyEid?: number,
+  ): void {
+    beginWeaponActivation(world);
+    tagAttackEntity(world, eid);
+    if (enemyEid !== undefined) {
+      recordWeaponEnemyHit(world, eid, enemyEid);
+    }
+    endWeaponActivation(world);
+  }
+
+  it('prunes the tag on a cull-bounds despawn but retains the recorded aggregate', () => {
+    const world = createTestWorld();
+    world.weaponTelemetry = createWeaponTelemetry();
+    const eid = spawnProjectile(world, 187.5, 45, 0.625, 0, 10); // beyond cull bounds
+    tagSpawnedProjectile(world, eid, 500);
+    expect(world.weaponTelemetry.entityActivation.has(eid)).toBe(true);
+
+    projectileCleanupSystem(world);
+
+    expect(entityExists(world.ecs, eid)).toBe(false);
+    expect(world.weaponTelemetry.entityActivation.has(eid)).toBe(false);
+    // The connecting hit is keyed by activation id, so it survives the prune.
+    expect(summarizeWeaponTelemetry(world.weaponTelemetry).connectingSwings).toBe(1);
+  });
+
+  it('prunes the tag on a max-range despawn', () => {
+    const world = createTestWorld();
+    world.weaponTelemetry = createWeaponTelemetry();
+    const eid = spawnProjectile(world, 62.5, 45, 0, 0, 10, 0, 12.5);
+    world.stores.position.x[eid] = 62.5 + 12.5125; // just beyond max range
+    tagSpawnedProjectile(world, eid, 500);
+
+    projectileCleanupSystem(world);
+
+    expect(entityExists(world.ecs, eid)).toBe(false);
+    expect(world.weaponTelemetry.entityActivation.has(eid)).toBe(false);
+  });
+
+  it('prunes the tag on a wall-hit despawn', () => {
+    const world = createTestWorld();
+    world.weaponTelemetry = createWeaponTelemetry();
+    const floorMap = makeOpenMap();
+    world.floorMap = floorMap;
+    floorMap.tileMap.setFlags(8, 8, TilePresets.WALL);
+    const eid = spawnProjectile(world, 8 * 4 + 2, 8 * 4 + 2, 0, 0, 10); // sitting in a wall tile
+    tagSpawnedProjectile(world, eid, 500);
+
+    projectileCleanupSystem(world);
+
+    expect(entityExists(world.ecs, eid)).toBe(false);
+    expect(world.weaponTelemetry.entityActivation.has(eid)).toBe(false);
+  });
+
+  it('prunes the tag when a bouncing projectile exhausts its bounces out of bounds', () => {
+    const world = createTestWorld();
+    world.weaponTelemetry = createWeaponTelemetry();
+    const eid = spawnBouncingProjectile(world, -0.125, 45, -0.5, 0, 10, 0); // 0 bounces left
+    tagSpawnedProjectile(world, eid, 500);
+
+    projectileCleanupSystem(world);
+
+    expect(entityExists(world.ecs, eid)).toBe(false);
+    expect(world.weaponTelemetry.entityActivation.has(eid)).toBe(false);
   });
 });

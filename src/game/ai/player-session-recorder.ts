@@ -118,11 +118,12 @@ export function createPlayerSessionRecorder(
   const sampleInterval = Math.max(1, options.sampleInterval ?? 15);
   const initialController: SessionController = options.initialController ?? 'MANUAL';
   const events: PlayerSessionEvent[] = [];
+  const recordWeaponTelemetry = options.recordWeaponTelemetry === true;
 
   // Opt-in weapon telemetry: install a collector on the world so the player's
   // attacks are measured. Reuse an existing collector if one is already present
   // (e.g. the lab enabled it) so we never clobber in-flight counts.
-  if (options.recordWeaponTelemetry === true && world.weaponTelemetry === undefined) {
+  if (recordWeaponTelemetry && world.weaponTelemetry === undefined) {
     world.weaponTelemetry = createWeaponTelemetry();
   }
 
@@ -314,7 +315,10 @@ export function createPlayerSessionRecorder(
       totalKills: kills.length,
       durationMs: Math.max(0, lastMs - firstMs),
       controller: currentController,
-      ...(world.weaponTelemetry
+      // Only surface telemetry when THIS recorder opted in — a recorder that did
+      // not request telemetry must not report a collector installed elsewhere
+      // (e.g. a lab or the headless runner sharing the world).
+      ...(recordWeaponTelemetry && world.weaponTelemetry
         ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
         : {}),
     };

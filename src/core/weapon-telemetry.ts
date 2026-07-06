@@ -23,6 +23,17 @@
  * per-entity finalize step — a connecting activation is simply one whose set is
  * non-empty, and a multi-hit activation is one whose set has >= 2 members.
  *
+ * ## Scope (known limitation)
+ * Attribution covers the attack-entity kinds tagged at their spawn choke points:
+ * melee swings and projectiles (including AoE-on-impact, returning, and bouncing
+ * variants, which all route through the projectile spawner). BEAM (e.g. laser) and
+ * TRAP (e.g. landmine) weapons are NOT yet attributed: their casts still increment
+ * `swings` via `dispatchAttack`, but their damage entities are untagged, so a run
+ * dominated by beam/trap weapons under-reports `connectingSwings`/accuracy. The
+ * Floor-1 weapon sweep — the primary consumer — uses only melee/ranged starting
+ * weapons, so this boundary does not affect it. Extending tagging to beam/trap is a
+ * follow-up (mirrors the attackerWeaponSkills limitation noted in weaponSystem.ts).
+ *
  * ## Determinism
  * Pure counting: no Phaser, no bitecs world mutation, no `world.rng`, no
  * wall-clock. Every mutator is a no-op when telemetry is disabled, and the
