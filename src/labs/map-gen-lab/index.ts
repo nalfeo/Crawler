@@ -427,6 +427,20 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   let pendingRegeneration = false;
   let generationQueued = false;
 
+  // ── per-map caches (invalidated on generateNow) ───────────────────────────
+  let cachedTerrainCanvas: HTMLCanvasElement | null = null;
+  interface DoorCacheEntry {
+    room: RoomData | undefined;
+    hasLock: boolean;
+    lines: string[];
+    x: number;
+    y: number;
+  }
+  let cachedDoorMap: Map<string, DoorCacheEntry> | null = null;
+  let cachedRoomAnnotations: Map<number, HoverTarget> | null = null;
+  // RAF handle for pan-drag throttling
+  let rafDragId: number | null = null;
+
   // zoom/pan state
   let zoom = 1.0;
   let fitZoom = 1.0; // minimum zoom = fit-to-frame; prevent zooming out further
@@ -506,8 +520,72 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     return mapConfig;
   }
 
-  function findRoomByDoor(map: FloorMap, x: number, y: number): RoomData | undefined {
-    return map.rooms.find((room) => room.doors.some((door) => door.x === x && door.y === y));
+  /** Build offscreen terrain canvas once per map — reused by every render(). */
+  function buildTerrainCanvas(map: FloorMap): HTMLCanvasElement {
+    const offscreen = document.createElement('canvas');
+    offscreen.width = map.width * CELL_SIZE;
+    offscreen.height = map.height * CELL_SIZE;
+    const octx = offscreen.getContext('2d')!;
+    for (let y = 0; y < map.height; y++) {
+      for (let x = 0; x < map.width; x++) {
+        const idx = y * map.width + x;
+        const terrainType = map.terrain[idx] as number;
+        octx.fillStyle = TERRAIN_COLORS[terrainType] ?? '#0a0a0f';
+        octx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+      }
+    }
+    return offscreen;
+  }
+
+  /** Pre-compute door metadata once per map — replaces O(rooms+doors) per-render scans. */
+  function buildDoorCacheForMap(map: FloorMap): Map<string, DoorCacheEntry> {
+    // Index doors → room in O(rooms)
+    const doorTileToRoom = new Map<string, RoomData>();
+    for (const room of map.rooms) {
+      for (const door of room.doors) {
+        doorTileToRoom.set(`${door.x},${door.y}`, room);
+      }
+    }
+    // Index ECS door entities → tile in O(door_entities)
+    const doorEidByTile = new Map<string, number>();
+    if (currentPreviewWorld) {
+      for (const doorEid of query(currentPreviewWorld.ecs, [DoorState])) {
+        const tx = currentPreviewWorld.stores.doorState.tileX[doorEid];
+        const ty = currentPreviewWorld.stores.doorState.tileY[doorEid];
+        if (tx !== undefined && ty !== undefined) {
+          doorEidByTile.set(`${tx},${ty}`, doorEid);
+        }
+      }
+    }
+    // Build final cache — one entry per door tile
+    const cache = new Map<string, DoorCacheEntry>();
+    for (let y = 0; y < map.height; y++) {
+      for (let x = 0; x < map.width; x++) {
+        const idx = y * map.width + x;
+        if ((map.flags[idx]! & TileFlags.DOOR) === 0) continue;
+        const key = `${x},${y}`;
+        const room = doorTileToRoom.get(key);
+        const doorEid = doorEidByTile.get(key);
+        let hasLock = false;
+        let lines: string[];
+        if (doorEid !== undefined && currentPreviewWorld) {
+          const config = currentPreviewWorld.doorLockConfigs.get(doorEid);
+          hasLock = config !== undefined;
+          lines = config
+            ? [
+                ...formatDoorConditionGroup('Unlock', config.unlock),
+                ...(config.relock ? formatDoorConditionGroup('Relock', config.relock) : []),
+              ]
+            : ['Unlock criteria: none (runtime ambient door)'];
+        } else {
+          lines = room
+            ? doorCriteriaForRoom(room, settings.floorConstraint)
+            : ['Unlock criteria: unknown'];
+        }
+        cache.set(key, { room, hasLock, lines, x, y });
+      }
+    }
+    return cache;
   }
 
   function familyNameForRoom(room: RoomData): string {
@@ -520,35 +598,6 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   function formatRoleLabel(room: RoomData): string {
     if (room.familyIndex === undefined) return room.role;
     return `${room.role} • ${familyNameForRoom(room)}`;
-  }
-
-  function resolveDoorTooltipLines(
-    room: RoomData | undefined,
-    tileX: number,
-    tileY: number,
-  ): string[] {
-    if (currentPreviewWorld) {
-      for (const doorEid of query(currentPreviewWorld.ecs, [DoorState])) {
-        if (
-          currentPreviewWorld.stores.doorState.tileX[doorEid] !== tileX ||
-          currentPreviewWorld.stores.doorState.tileY[doorEid] !== tileY
-        ) {
-          continue;
-        }
-        const config = currentPreviewWorld.doorLockConfigs.get(doorEid);
-        if (!config) {
-          return ['Unlock criteria: none (runtime ambient door)'];
-        }
-        const lines = [...formatDoorConditionGroup('Unlock', config.unlock)];
-        if (config.relock) {
-          lines.push(...formatDoorConditionGroup('Relock', config.relock));
-        }
-        return lines;
-      }
-    }
-    return room
-      ? doorCriteriaForRoom(room, settings.floorConstraint)
-      : ['Unlock criteria: unknown'];
   }
 
   function buildRoomAnnotations(map: FloorMap): Map<number, HoverTarget> {
@@ -774,23 +823,23 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     if (!currentMap) return;
     hoverTargets = [];
     const map = currentMap;
-    const roomAnnotations = buildRoomAnnotations(map);
-    const w = map.width;
-    const h = map.height;
+    const roomAnnotations = cachedRoomAnnotations ?? buildRoomAnnotations(map);
+    cachedRoomAnnotations ??= roomAnnotations;
+    const doorCache = cachedDoorMap ?? buildDoorCacheForMap(map);
+    cachedDoorMap ??= doorCache;
+    const terrainCanvas = cachedTerrainCanvas ?? buildTerrainCanvas(map);
+    cachedTerrainCanvas ??= terrainCanvas;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
     ctx.translate(panX, panY);
     ctx.scale(zoom, zoom);
 
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const idx = y * w + x;
-        const terrainType = map.terrain[idx] as number;
-        ctx.fillStyle = TERRAIN_COLORS[terrainType] ?? '#0a0a0f';
-        ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
-      }
-    }
+    // Terrain — single drawImage instead of O(w*h) fillRects
+    ctx.drawImage(terrainCanvas, 0, 0);
+
+    const w = map.width;
+    const h = map.height;
 
     if (settings.showTrashSpawnAreas) {
       for (const room of map.rooms) {
@@ -879,66 +928,43 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     }
 
     if (settings.showDoors) {
-      for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-          const idx = y * w + x;
-          if ((map.flags[idx]! & TileFlags.DOOR) === 0) continue;
-          // Bright orange fill to override the muted base terrain color
-          ctx.fillStyle = '#ed8936';
-          ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
-          // Small lock-dot indicator if the door has a real lock condition
-          const room = findRoomByDoor(map, x, y);
-          const hasLock = currentPreviewWorld
-            ? (() => {
-                for (const doorEid of query(currentPreviewWorld.ecs, [DoorState])) {
-                  if (
-                    currentPreviewWorld.stores.doorState.tileX[doorEid] === x &&
-                    currentPreviewWorld.stores.doorState.tileY[doorEid] === y
-                  ) {
-                    return currentPreviewWorld.doorLockConfigs.has(doorEid);
-                  }
-                }
-                return false;
-              })()
-            : false;
-          if (hasLock) {
-            // Red dot = locked door
-            ctx.fillStyle = '#e53e3e';
-            const r = Math.max(1.5, CELL_SIZE * 0.22);
-            const cx = x * CELL_SIZE + CELL_SIZE / 2;
-            const cy = y * CELL_SIZE + CELL_SIZE / 2;
-            ctx.beginPath();
-            ctx.arc(cx, cy, r, 0, Math.PI * 2);
-            ctx.fill();
-          }
-          hoverTargets.push({
-            kind: 'rect',
-            x: x * CELL_SIZE,
-            y: y * CELL_SIZE,
-            width: CELL_SIZE,
-            height: CELL_SIZE,
-            title: `Door (${x}, ${y})${hasLock ? ' 🔒' : ''}`,
-            lines: resolveDoorTooltipLines(room, x, y),
-          });
+      // Use pre-computed door cache — O(door_count) instead of O(w*h) tile scan
+      for (const entry of doorCache.values()) {
+        const { x, y, hasLock, lines } = entry;
+        ctx.fillStyle = '#ed8936';
+        ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+        if (hasLock) {
+          ctx.fillStyle = '#e53e3e';
+          const r = Math.max(1.5, CELL_SIZE * 0.22);
+          const cx = x * CELL_SIZE + CELL_SIZE / 2;
+          const cy = y * CELL_SIZE + CELL_SIZE / 2;
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, 0, Math.PI * 2);
+          ctx.fill();
         }
+        hoverTargets.push({
+          kind: 'rect',
+          x: x * CELL_SIZE,
+          y: y * CELL_SIZE,
+          width: CELL_SIZE,
+          height: CELL_SIZE,
+          title: `Door (${x}, ${y})${hasLock ? ' 🔒' : ''}`,
+          lines,
+        });
       }
     } else {
-      // Overlay off: still register hover targets so tooltips work on door tiles
-      for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-          const idx = y * w + x;
-          if ((map.flags[idx]! & TileFlags.DOOR) === 0) continue;
-          const room = findRoomByDoor(map, x, y);
-          hoverTargets.push({
-            kind: 'rect',
-            x: x * CELL_SIZE,
-            y: y * CELL_SIZE,
-            width: CELL_SIZE,
-            height: CELL_SIZE,
-            title: `Door (${x}, ${y})`,
-            lines: resolveDoorTooltipLines(room, x, y),
-          });
-        }
+      // Overlay off: register hover targets from cache, no tile scan needed
+      for (const entry of doorCache.values()) {
+        const { x, y, lines } = entry;
+        hoverTargets.push({
+          kind: 'rect',
+          x: x * CELL_SIZE,
+          y: y * CELL_SIZE,
+          width: CELL_SIZE,
+          height: CELL_SIZE,
+          title: `Door (${x}, ${y})`,
+          lines,
+        });
       }
     }
 
@@ -1141,6 +1167,11 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   }
 
   function generateNow(): void {
+    // Invalidate all render caches
+    cachedTerrainCanvas = null;
+    cachedDoorMap = null;
+    cachedRoomAnnotations = null;
+
     const start = performance.now();
     if (shouldUseRuntimeConstrainedPreview()) {
       currentPreviewWorld = buildConstrainedFloorPreview(
@@ -1265,6 +1296,11 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     if (isDragging) {
       isDragging = false;
       canvas.style.cursor = 'grab';
+      if (rafDragId !== null) {
+        cancelAnimationFrame(rafDragId);
+        rafDragId = null;
+        render();
+      }
     }
   }
 
@@ -1272,7 +1308,12 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     if (isDragging) {
       panX = dragStartPanX + (evt.clientX - dragStartX);
       panY = dragStartPanY + (evt.clientY - dragStartY);
-      render();
+      if (rafDragId === null) {
+        rafDragId = requestAnimationFrame(() => {
+          rafDragId = null;
+          render();
+        });
+      }
       return;
     }
     onCanvasMove(evt);
