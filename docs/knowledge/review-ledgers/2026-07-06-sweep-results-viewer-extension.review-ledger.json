@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-06",
+  "session_slug": "sweep-results-viewer-extension",
+  "task_title": "Add sweep-results-viewer canvas extension",
+  "estimated_apples": 1,
+  "stages": {}
+}
