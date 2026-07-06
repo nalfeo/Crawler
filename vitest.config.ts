@@ -81,8 +81,9 @@ export default defineConfig({
           include: ['tests/{unit,ecs,game,property,determinism,sensors}/**/*.{test,spec}.ts'],
           // Worker threads start faster than forked processes (no process spawn
           // overhead per worker). Unit tests are pure-logic with no DOM side
-          // effects; each thread gets its own module registry and globalSetup
-          // runs per-thread, so isolation is equivalent to forks for this suite.
+          // effects; with Vitest's default isolate:true each test file gets its
+          // own module registry, so thread isolation is equivalent to forks for
+          // this suite.
           pool: 'threads',
         },
       },
