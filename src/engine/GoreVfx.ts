@@ -458,10 +458,14 @@ export function createGoreVfx(
         // Gentle fade: start at 0.55 alpha, finish at 0
         const alpha = 0.55 * (1 - progress);
 
-        // Only redraw if progress or alpha changed enough to matter. Alpha
-        // drifts every frame so this effectively redraws every frame — but
-        // the check keeps the door open for future optimisations (skip
-        // full lobe re-eval if the eased scales haven't shifted).
+        // Only redraw if progress or alpha has drifted enough to matter. Over
+        // the ~30 s lifetime a 16 ms frame advances progress by only ~0.0005
+        // and alpha by ~0.0003, both under the 0.001 threshold, so neither
+        // crosses it in a single frame. Progress is the faster driver and its
+        // accumulation passes 0.001 after ~2 frames, so a pool redraws roughly
+        // every other frame. The guard skips those redundant redraws and keeps
+        // the door open for future optimisations (skip full lobe re-eval when
+        // the eased scales haven't shifted).
         if (
           Math.abs(progress - pool.lastProgress) > 0.001 ||
           Math.abs(alpha - pool.lastAlpha) > 0.001
