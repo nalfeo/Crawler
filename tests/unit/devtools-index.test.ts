@@ -8,6 +8,7 @@ describe('devtools home index', () => {
       'sprite-review',
       'postprocess',
       'achievements',
+      'storage',
     ]);
   });
 

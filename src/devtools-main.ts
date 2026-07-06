@@ -36,6 +36,10 @@ import {
   isSidecarRouteMissing,
   type CheckinPrepareResponse,
   type SidecarRunListEntry,
+  type SidecarStorageRunEntry,
+  archiveStorageRuns,
+  deleteStorageRunsBatch,
+  listStorageRuns,
 } from './devtools/sprite-approval-api.js';
 import {
   RUN_CACHE_STORAGE_KEY,
@@ -91,13 +95,15 @@ const DEVTOOLS_PAGE_FLOOR_ART_LEGACY = 'floor-art';
 const DEVTOOLS_PAGE_SPRITE_REVIEW = 'sprite-review';
 const DEVTOOLS_PAGE_POSTPROCESS = 'postprocess';
 const DEVTOOLS_PAGE_ACHIEVEMENTS = 'achievements';
+const DEVTOOLS_PAGE_STORAGE = 'storage';
 const QUEUED_RUN_POLL_MS = 2000;
 type DevtoolsPage =
   | typeof DEVTOOLS_PAGE_HOME
   | typeof DEVTOOLS_PAGE_SPRITE_WORKFLOW
   | typeof DEVTOOLS_PAGE_SPRITE_REVIEW
   | typeof DEVTOOLS_PAGE_POSTPROCESS
-  | typeof DEVTOOLS_PAGE_ACHIEVEMENTS;
+  | typeof DEVTOOLS_PAGE_ACHIEVEMENTS
+  | typeof DEVTOOLS_PAGE_STORAGE;
 const STATUS_COLORS: Readonly<Record<FloorArtStatus, string>> = {
   ready: '#16a34a',
   approved: '#0284c7',
@@ -466,6 +472,7 @@ function currentDevtoolsPage(): DevtoolsPage {
   }
   if (value === DEVTOOLS_PAGE_SPRITE_REVIEW) return DEVTOOLS_PAGE_SPRITE_REVIEW;
   if (value === DEVTOOLS_PAGE_ACHIEVEMENTS) return DEVTOOLS_PAGE_ACHIEVEMENTS;
+  if (value === DEVTOOLS_PAGE_STORAGE) return DEVTOOLS_PAGE_STORAGE;
   return value === DEVTOOLS_PAGE_POSTPROCESS ? DEVTOOLS_PAGE_POSTPROCESS : DEVTOOLS_PAGE_HOME;
 }
 
@@ -1022,6 +1029,177 @@ function renderAchievementsEditorPage(shell: HTMLElement): void {
   updateExport();
 }
 
+function keyForStorageRun(scope: 'active' | 'archive', run: SidecarStorageRunEntry): string {
+  return `${scope === 'archive' ? 'archive/' : ''}${run.briefId}/${run.runId}`;
+}
+
+function renderStorageLifecyclePage(shell: HTMLElement): void {
+  const panel = el('section', {
+    style: {
+      border: '1px solid rgba(229,231,235,0.2)',
+      borderRadius: '10px',
+      background: '#0b1220',
+      padding: '12px',
+      display: 'grid',
+      gap: '10px',
+    },
+  });
+  shell.append(panel);
+
+  const status = el('div', {
+    text: 'Loading…',
+    style: { color: '#93c5fd', fontSize: '13px' },
+  });
+
+  const fieldStyle: Partial<CSSStyleDeclaration> = {
+    padding: '8px 10px',
+    borderRadius: '8px',
+    border: '1px solid rgba(229,231,235,0.3)',
+    background: '#111827',
+    color: '#e5e7eb',
+  };
+  const buttonStyle: Partial<CSSStyleDeclaration> = {
+    padding: '8px 12px',
+    borderRadius: '8px',
+    border: '1px solid rgba(126,224,255,0.4)',
+    background: 'rgba(30,41,59,0.95)',
+    color: '#7ee0ff',
+    cursor: 'pointer',
+  };
+
+  const controls = el('div', {
+    style: { display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' },
+  });
+  const scopeSelect = el('select', { style: fieldStyle });
+  for (const [value, label] of [
+    ['active', 'Active runs'],
+    ['archive', 'Archive'],
+  ] as const) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    scopeSelect.append(option);
+  }
+  const searchInput = el('input', { style: { ...fieldStyle, flex: '1 1 220px' } });
+  searchInput.type = 'search';
+  searchInput.placeholder = 'Search brief or run id';
+  const refreshBtn = el('button', { text: 'Refresh', style: buttonStyle });
+  const archiveBtn = el('button', { text: 'Archive selected', style: buttonStyle });
+  const deleteBtn = el('button', { text: 'Delete selected', style: buttonStyle });
+  controls.append(scopeSelect, searchInput, refreshBtn, archiveBtn, deleteBtn);
+
+  const listHost = el('div', { style: { overflowX: 'auto' } });
+  panel.append(status, controls, listHost);
+
+  let selected = new Set<string>();
+  let currentRuns: readonly SidecarStorageRunEntry[] = [];
+
+  const renderRows = (scope: 'active' | 'archive'): void => {
+    const table = el('table', {
+      style: { width: '100%', borderCollapse: 'collapse', fontSize: '12px' },
+    });
+    const head = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    for (const label of ['', 'Brief', 'Run', 'Timestamp', 'Summary key']) {
+      const th = document.createElement('th');
+      th.textContent = label;
+      Object.assign(th.style, {
+        textAlign: 'left',
+        padding: '8px 10px',
+        borderBottom: '1px solid rgba(229,231,235,0.1)',
+      });
+      headRow.append(th);
+    }
+    head.append(headRow);
+    table.append(head);
+    const body = document.createElement('tbody');
+    for (const run of currentRuns) {
+      const row = document.createElement('tr');
+      const key = keyForStorageRun(scope, run);
+      const checkCell = document.createElement('td');
+      checkCell.style.padding = '8px 10px';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.dataset.key = key;
+      checkbox.checked = selected.has(key);
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) selected.add(key);
+        else selected.delete(key);
+      });
+      checkCell.append(checkbox);
+      row.append(checkCell);
+      for (const value of [run.briefId, run.runId, run.timestamp ?? '—', run.summaryKey]) {
+        const cell = document.createElement('td');
+        cell.textContent = value;
+        Object.assign(cell.style, {
+          padding: '8px 10px',
+          borderBottom: '1px solid rgba(229,231,235,0.1)',
+        });
+        row.append(cell);
+      }
+      body.append(row);
+    }
+    table.append(body);
+    listHost.replaceChildren(table);
+  };
+
+  const reload = async (): Promise<void> => {
+    const scope = scopeSelect.value === 'archive' ? 'archive' : 'active';
+    status.textContent = 'Loading runs…';
+    try {
+      const payload = await listStorageRuns(scope, searchInput.value);
+      currentRuns = payload.runs;
+      renderRows(scope);
+      status.textContent = `Loaded ${currentRuns.length} ${scope} run(s).`;
+    } catch (error) {
+      status.textContent = `Failed to load runs: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  };
+
+  refreshBtn.addEventListener('click', () => void reload());
+  scopeSelect.addEventListener('change', () => {
+    selected = new Set<string>();
+    void reload();
+  });
+  searchInput.addEventListener('change', () => void reload());
+
+  archiveBtn.addEventListener('click', async () => {
+    const keys = [...selected].filter((key) => !key.startsWith('archive/'));
+    if (keys.length === 0) {
+      status.textContent = 'Select at least one active run to archive.';
+      return;
+    }
+    if (!window.confirm(`Archive ${keys.length} run(s)?`)) return;
+    try {
+      const result = await archiveStorageRuns(keys);
+      status.textContent = `Archived ${result.archived.length}; skipped ${result.skipped.length}.`;
+      selected = new Set<string>();
+      await reload();
+    } catch (error) {
+      status.textContent = `Failed to archive runs: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  });
+
+  deleteBtn.addEventListener('click', async () => {
+    const keys = [...selected];
+    if (keys.length === 0) {
+      status.textContent = 'Select at least one run to delete.';
+      return;
+    }
+    if (!window.confirm(`Permanently delete ${keys.length} run(s)? This cannot be undone.`)) return;
+    try {
+      const result = await deleteStorageRunsBatch(keys);
+      status.textContent = `Deleted ${result.deleted.length} run(s).`;
+      selected = new Set<string>();
+      await reload();
+    } catch (error) {
+      status.textContent = `Failed to delete runs: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  });
+
+  void reload();
+}
+
 function render(): void {
   const root = document.getElementById('devtools-root');
   if (!(root instanceof HTMLElement)) {
@@ -1036,6 +1214,7 @@ function render(): void {
   const isSpriteWorkflowPage = currentPage === DEVTOOLS_PAGE_SPRITE_WORKFLOW;
   const isPostprocessPage = currentPage === DEVTOOLS_PAGE_POSTPROCESS;
   const isAchievementsPage = currentPage === DEVTOOLS_PAGE_ACHIEVEMENTS;
+  const isStoragePage = currentPage === DEVTOOLS_PAGE_STORAGE;
   const title = el('h1', { text: 'Crawler DevTools' });
   const subtitle = el('p', {
     text: LOCAL_HOSTS.has(window.location.hostname)
@@ -1047,7 +1226,9 @@ function render(): void {
             ? 'Sprite review — readonly viewer for approved sprite sheets.'
             : isAchievementsPage
               ? 'Achievements editor — review/edit Floor 1 achievement text + rewards and track placeholder art backlog.'
-              : 'Sprite Generation Workflow — track backlog, synthesis, generation, approvals, and integration.'
+              : isStoragePage
+                ? 'Azure storage lifecycle — list, search, archive, and delete sprite-run blobs.'
+                : 'Sprite Generation Workflow — track backlog, synthesis, generation, approvals, and integration.'
       : 'DevTools is disabled outside localhost.',
     style: { marginBottom: '16px' },
   });
@@ -1162,6 +1343,11 @@ function render(): void {
 
   if (isAchievementsPage) {
     renderAchievementsEditorPage(shell);
+    return;
+  }
+
+  if (isStoragePage) {
+    renderStorageLifecyclePage(shell);
     return;
   }
 
