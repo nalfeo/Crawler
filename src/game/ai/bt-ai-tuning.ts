@@ -105,6 +105,13 @@ export const ATTACK_GATE_MULTIPLIER = 1.5;
 // the single biggest fix for the melee "retreat death-spiral" (orbiting at the old
 // 2.75-3.875ft band meant standing INSIDE contact range, bleeding ~20 dmg/s for free).
 export const CONTACT_SAFE_ORBIT_FT = 4.5;
+// Extra surface gap beyond the exact player+enemy contact radius, expressed as a
+// fraction of weapon reach so short and long melee weapons scale the same way.
+export const MELEE_CONTACT_BUFFER_FRACTION = 0.15;
+// As a melee swing comes ready, allow a small extra inward commit so the AI
+// enters a confident hit window instead of hovering just outside range.
+export const MELEE_SWING_COMMIT_WINDOW_FRACTION = 0.25;
+export const MELEE_SWING_COMMIT_INSET_FRACTION = 0.15;
 // Micro-spacing dodge amplitude (ft) added beyond the contact-safe strike hold when
 // a swing is on cooldown. Modest by design: a gentle in/out poke that breaks body
 // contact between swings without backing so far the clear slows (prior large-
@@ -561,8 +568,10 @@ export const ARENA_LOCKIN_ADD_HYSTERESIS_FT = 3;
 // context-steering controller that fans out candidate headings around the
 // objective direction and picks the safest forward-progressing arc. This
 // generalizes the excellent ENGAGE kite's spacing philosophy to travel so the
-// runner *dances around* mobs instead of bulldozing through them. Damage-agnostic
-// (nothing here scales with hostile damage) — see the review ledger 2026-07-02.
+// runner *dances around* mobs instead of bulldozing through them. The pure
+// selector now stays deterministic while remaining threat-severity-aware via
+// caller-supplied per-enemy danger weights (real contact damage) — see the
+// review ledger 2026-07-02.
 //
 // Master switch: when false the wrapper is skipped and the legacy additive dodge
 // path runs unchanged (safe rollback without deleting code).
