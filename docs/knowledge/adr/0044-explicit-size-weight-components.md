@@ -89,6 +89,21 @@ class still missing Size and must be empty before Slice 2 lands.
 
 ### Weight as knockback denominator
 
+**Amended 2026-07-05 (Slice 2 refinement — cap on weight scale):** The
+reader-side `weightScale = 120 / max(1, weight)` factor in
+`knockbackSystem` is **clamped by `KNOCKBACK_WEIGHT_SCALE_MAX = 2.5`**
+(defined in `src/core/physics-defs.ts`). Without the cap, authored
+lightweights on the mob registry — rat @ 6 lb → raw 20×, slime @ 20 lb →
+raw 6× — would receive knockback displacements that visibly break game
+feel (a single sword swing punts a rat across a room). 2.5× puts the
+clamp boundary at 48 lb, below the 60 lb "light mob" data anchor: any
+authored weight ≥48 lb scales linearly (identity at 120, 2× at 60,
+0.5× at 240, …); only sub-48 lb entities clamp. Heavier-than-baseline
+scaling is unaffected (`weightScale ≤ 1.0` there). Authored per-mob
+weights in `src/game/spawners/registry.ts` are intentionally left
+as-shipped in Slice 2 — retuning the mob registry is a later
+`ai-combat-balance` slice ("revisit authored weights vs cap = 2.5").
+
 **Amended 2026-07-05 (Slice 2 shipping):** The final shipped design applies
 the weight divide **reader-side** in `knockbackSystem`, not per-writer as
 originally sketched below. Writers (`meleeSwingSystem`, `dropSystem`

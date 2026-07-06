@@ -5,6 +5,7 @@ import { Immovable, Knockback } from '../../../src/core/components.js';
 import {
   IMMOVABLE_THRESHOLD,
   KNOCKBACK_WEIGHT_BASELINE_LB,
+  KNOCKBACK_WEIGHT_SCALE_MAX,
 } from '../../../src/core/physics-defs.js';
 import { spawnEnemy } from '../../../src/core/spawners/combatants.js';
 import { createTestWorld } from '../../helpers/world-factory.js';
@@ -72,7 +73,10 @@ describe('knockbackSystem - weight scaling (Slice 2)', () => {
     expect(total).toBeCloseTo(10, 5);
   });
 
-  it('60 lb target: 2× total displacement vs baseline (spec R5)', () => {
+  it('60 lb target: 2× total displacement vs baseline (spec R5, uncapped)', () => {
+    // 60 lb → rawScale = 120/60 = 2.0 ≤ KNOCKBACK_WEIGHT_SCALE_MAX (2.5),
+    // so no cap. This is the boundary data anchor: any target ≥48 lb scales
+    // linearly; only sub-48 lb clamps to 2.5×.
     const total = runToCompletion(60, {
       dirX: 1,
       dirY: 0,
@@ -80,6 +84,21 @@ describe('knockbackSystem - weight scaling (Slice 2)', () => {
       speed: 2,
     });
     expect(total).toBeCloseTo(20, 5);
+  });
+
+  it('6 lb target: clamped to KNOCKBACK_WEIGHT_SCALE_MAX (2.5×), NOT 20× (ADR 0044 Slice 2 refinement)', () => {
+    // 6 lb (rat) → rawScale = 120/6 = 20 → clamped to 2.5.
+    // Without the cap, a rat would be punted 200ft on a 10ft base impulse,
+    // which visibly breaks game feel. Cap gives 25 ft = same distance as
+    // any sub-48 lb light mob (slimes @ 20 lb also clamp).
+    const total = runToCompletion(6, {
+      dirX: 1,
+      dirY: 0,
+      remaining: 10,
+      speed: 2,
+    });
+    expect(total).toBeCloseTo(10 * KNOCKBACK_WEIGHT_SCALE_MAX, 5);
+    expect(total).toBeCloseTo(25, 5);
   });
 
   it('240 lb target: 0.5× total displacement vs baseline (spec R5)', () => {
@@ -141,19 +160,19 @@ describe('knockbackSystem - weight scaling (Slice 2)', () => {
     expect(countFrames(240)).toBe(frames120);
   });
 
-  it('zero weight defaults to baseline (guard against divide-by-zero)', () => {
+  it('zero weight defaults to baseline (guard against divide-by-zero, and clamped)', () => {
     // A spawner regression that leaves weight = 0 must not divide-by-zero.
-    // The reader clamps with max(1, weight): a weight of 0 (or 1) behaves
-    // like an ultra-light target — still bounded, still finite. This is a
-    // safety net; check:weight-coverage is the actual line of defense.
+    // The reader clamps with max(1, weight): weight of 0 → rawScale = 120,
+    // then clamped by KNOCKBACK_WEIGHT_SCALE_MAX = 2.5. Same clamp as any
+    // sub-48 lb entity. Safety net; check:weight-coverage is the real
+    // line of defense.
     const total = runToCompletion(0, {
       dirX: 1,
       dirY: 0,
       remaining: 10,
       speed: 2,
     });
-    // max(1, 0) = 1 → scale = 120 → total = 10 * 120 = 1200 (bounded, finite).
     expect(Number.isFinite(total)).toBe(true);
-    expect(total).toBeCloseTo(1200, 3);
+    expect(total).toBeCloseTo(10 * KNOCKBACK_WEIGHT_SCALE_MAX, 5);
   });
 });

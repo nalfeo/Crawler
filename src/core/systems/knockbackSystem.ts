@@ -1,7 +1,11 @@
 import { hasComponent, query, removeComponent } from 'bitecs';
 import { Flying, Immovable, Knockback, Position } from '../components.js';
 import { getBodyHalfWidth, getBodyHalfHeight } from '../physics-body.js';
-import { IMMOVABLE_THRESHOLD, KNOCKBACK_WEIGHT_BASELINE_LB } from '../physics-defs.js';
+import {
+  IMMOVABLE_THRESHOLD,
+  KNOCKBACK_WEIGHT_BASELINE_LB,
+  KNOCKBACK_WEIGHT_SCALE_MAX,
+} from '../physics-defs.js';
 import type { GameWorld } from '../world.js';
 
 // Sample just inside an entity's footprint so exact tile-edge contact does not
@@ -56,7 +60,7 @@ function isFootprintPassable(world: GameWorld, eid: number, x: number, y: number
  * weight.
  *
  * Each frame, moves the entity by (dirX * step, dirY * step) where
- * `step = min(speed, remaining) * (KNOCKBACK_WEIGHT_BASELINE_LB / max(1, weight))`,
+ * `step = min(speed, remaining) * min(KNOCKBACK_WEIGHT_SCALE_MAX, KNOCKBACK_WEIGHT_BASELINE_LB / max(1, weight))`,
  * and decrements `remaining` by the UNSCALED base step (`min(speed, remaining)`).
  * When remaining <= 0, the Knockback component is removed. Consequences:
  *
@@ -65,6 +69,11 @@ function isFootprintPassable(world: GameWorld, eid: number, x: number, y: number
  * - Impulse TOTAL displacement scales with `weightScale`: a 60 lb target
  *   travels ~2× as far as a 120 lb target for the same writer-configured
  *   impulse; a 240 lb target travels ~0.5× as far. Matches spec R5.
+ * - `weightScale` is capped at `KNOCKBACK_WEIGHT_SCALE_MAX` (2.5×) so an
+ *   ultra-light authored mob (rat @ 6 lb → raw 20×; slime @ 20 lb → raw 6×)
+ *   clamps to 2.5× instead of getting punted across the room. Cap boundary
+ *   is 48 lb; targets ≥48 lb scale linearly. Design-owned via ADR 0044
+ *   (Slice 2 refinement).
  *
  * Weight is baseline-identity at `KNOCKBACK_WEIGHT_BASELINE_LB` (120 lb, the
  * median mob), so writers that were tuned pre-Slice-2 against a 120 lb
@@ -113,9 +122,16 @@ export function knockbackSystem(world: GameWorld): void {
     }
 
     // Weight scale: 120 lb median = 1.0×, 60 lb = 2×, 240 lb = 0.5×.
+    // Capped at KNOCKBACK_WEIGHT_SCALE_MAX (2.5×) so ultra-light authored
+    // mobs (rat 6 lb → 20×, slime 20 lb → 6×) don't get punted absurd
+    // distances and break game feel. Cap boundary is 48 lb — targets at or
+    // above that scale linearly; targets below clamp to 2.5×. Design-owned
+    // via ADR 0044 (Slice 2 refinement); authored per-mob weights are
+    // intentionally left as-shipped until a later `ai-combat-balance` slice.
+    //
     // max(1, ...) guards against a spawner shipping a 0 or missing weight;
     // that entity should have been caught by check:weight-coverage, but a
-    // zero-weight bug here would divide-by-zero instead of just moving fast.
+    // zero-weight bug here would divide-by-zero instead of just clamping.
     //
     // We scale the per-frame displacement (`step`) but decrement `remaining`
     // in *base* units (unscaled `min(speed, remaining)`). Because `remaining`
@@ -123,8 +139,10 @@ export function knockbackSystem(world: GameWorld): void {
     //   - The impulse's DURATION in frames is identical for any weight.
     //   - The TOTAL displacement over the impulse life scales with weightScale:
     //     60 lb travels 2× as far total as 120 lb, 240 lb travels 0.5× as far.
-    // Matches spec R5: "A 60 lb target moves 2× as far".
-    const weightScale = KNOCKBACK_WEIGHT_BASELINE_LB / Math.max(1, targetWeight);
+    //     Sub-48 lb targets all travel exactly 2.5× (capped).
+    // Matches spec R5.
+    const rawWeightScale = KNOCKBACK_WEIGHT_BASELINE_LB / Math.max(1, targetWeight);
+    const weightScale = Math.min(rawWeightScale, KNOCKBACK_WEIGHT_SCALE_MAX);
     const baseStep = Math.min(speed, remaining);
     const step = baseStep * weightScale;
     const dirX = knockback.dirX[eid] ?? 0;

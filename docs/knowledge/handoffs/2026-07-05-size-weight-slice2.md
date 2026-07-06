@@ -9,21 +9,26 @@
 
 ## Summary
 
-Slice 2 of the "true size + weight" system per ADR 0044 and spec `.specify/specs/entity-physics.md`. **Weight now matters for knockback.** `knockbackSystem` reads `weight.value[eid]` per-frame and scales displacement by `120 / max(1, weight)` — a median 120 lb mob keeps today's behavior (1.0×, bit-identical), a light 60 lb mob is punted 2× as far, a heavy 240 lb ogre only 0.5×. A new `Immovable` tag and `weight >= IMMOVABLE_THRESHOLD (10 000 lb)` short-circuit drop the impulse without moving the entity, matching walls/statues per `entity-sizing.md`.
+Slice 2 of the "true size + weight" system per ADR 0044 and spec `.specify/specs/entity-physics.md`. **Weight now matters for knockback.** `knockbackSystem` reads `weight.value[eid]` per-frame and scales displacement by `min(KNOCKBACK_WEIGHT_SCALE_MAX, 120 / max(1, weight))` — a median 120 lb mob keeps today's behavior (1.0×, bit-identical), a light 60 lb mob is punted 2× as far, a heavy 240 lb ogre only 0.5×, and ultra-light authored mobs (rat @ 6 lb, slime @ 20 lb) clamp to 2.5× via the design-mandated cap instead of getting punted across a room. A new `Immovable` tag and `weight >= IMMOVABLE_THRESHOLD (10 000 lb)` short-circuit drop the impulse without moving the entity, matching walls/statues per `entity-sizing.md`.
 
 The scale is applied **reader-side** (in `knockbackSystem`) rather than at each writer. Consequences: (a) writer constants stay untouched — no per-writer recalibration risk; (b) new writers automatically inherit weight scaling; (c) audit surface shrinks to one system. This is the design the parent producer chose over the ADR's writer-side sketch.
 
-Real-pipeline observation (Rule #10): `tests/headless/floor1-completion.test.ts` (9 seeds, ~40 s each) passes 9/9 under divide-by-weight — Rule #13's ≥90% Floor-1 win-rate gate holds trivially at 100%. Because every shipping mob has `weight = 120 * sizeScale ∈ [108, 132]` (a ±10% jitter from `initializeEnemyAppearance`), the effective knockback scale drift is 0.91×–1.11×, well inside the ±2% win-rate tolerance.
+### Cap on `weightScale` (design ruling, 2026-07-05)
+
+An earlier revision of Slice 2 shipped without a cap. A 10×3 aggregate seed-sweep on that revision landed 23/30 vs main's 24/30 — a **real physics effect**, not harness noise: sweep-harness determinism was independently proven byte-identical across 3 back-to-back runs on identical Slice-2 heads. Root cause: `world.rng` stream diverges (+27 draws over a 5000-frame seed-8·bow run) because divide-by-weight legitimately shifted knockback positions for ultra-light authored mobs (rat @ 6 lb → raw 20× displacement, slime @ 20 lb → raw 6×). That cascaded through position-seeded `initializeEnemyAppearance` hashes into the downstream RNG draw order.
+
+Escalated to the design session (`81782d83`, ADR 0044 owner) via the coordinator (`cee09659`) because stream-neutrality was **provably unsatisfiable while keeping the feature** — the value difference propagates through stored `weight.value` into legitimate new physics. Human-backed design ruling: **Option B — cap `weightScale` at `KNOCKBACK_WEIGHT_SCALE_MAX = 2.5`**. Cap boundary is 48 lb; targets ≥48 lb scale linearly. After the cap: 10×3 aggregate 24/30 = 80% (matches main's outcome map), enforced Rule-#13 gate 44/44 green, no seeds or constants tuned to reach either number — the cap is the only lever.
 
 ## What shipped
 
 ### Core physics
 
 - `src/core/components.ts` — new `Immovable` tag component. Any entity carrying `Immovable` has its `Knockback` component removed immediately without displacement.
-- `src/core/physics-defs.ts` — two new constants:
+- `src/core/physics-defs.ts` — three new constants:
   - `IMMOVABLE_THRESHOLD = 10_000` (lb) — walls hit this by design; the check is `weight >= IMMOVABLE_THRESHOLD`.
   - `KNOCKBACK_WEIGHT_BASELINE_LB = 120` — the 1.0× scale point.
-- `src/core/systems/knockbackSystem.ts` — reads `weight.value[eid]` per-frame; short-circuits on `Immovable` OR `weight >= IMMOVABLE_THRESHOLD`; scales `step = min(speed, remaining) * (120 / max(1, weight))`. `remaining` is decremented by the unscaled `baseStep` so **impulse duration in frames is weight-invariant; only total displacement scales**. Preserves all substep/footprint/flying/no-floormap code paths.
+  - `KNOCKBACK_WEIGHT_SCALE_MAX = 2.5` — upper bound on the reader-side `weightScale`. Design-mandated (ADR 0044 Slice 2 refinement); keeps rat @ 6 lb from receiving raw 20× displacement.
+- `src/core/systems/knockbackSystem.ts` — reads `weight.value[eid]` per-frame; short-circuits on `Immovable` OR `weight >= IMMOVABLE_THRESHOLD`; scales `step = min(speed, remaining) * min(2.5, 120 / max(1, weight))`. `remaining` is decremented by the unscaled `baseStep` so **impulse duration in frames is weight-invariant; only total displacement scales**. Preserves all substep/footprint/flying/no-floormap code paths.
 
 ### Spawner coverage
 
@@ -38,48 +43,43 @@ Real-pipeline observation (Rule #10): `tests/headless/floor1-completion.test.ts`
 
 ### Tests
 
-- `tests/unit/core/knockback.weight.test.ts` (new, 7 cases):
+- `tests/unit/core/knockback.weight.test.ts` (new, 8 cases):
   - 120 lb → identity displacement (bit-parity vs pre-Slice-2 golden).
-  - 60 lb → 2× total displacement.
+  - 60 lb → 2× total displacement (below cap; scales linearly).
+  - **6 lb (rat) → clamped to `KNOCKBACK_WEIGHT_SCALE_MAX = 2.5×`, NOT 20×** (design-mandated cap).
   - 240 lb → 0.5× total displacement.
   - `Immovable` tag → zero displacement, component removed same frame.
   - `weight >= IMMOVABLE_THRESHOLD` → zero displacement, component removed same frame.
   - Impulse **duration** in frames is weight-invariant (only total distance scales).
-  - Zero weight defaults to baseline (divide-by-zero guard).
+  - Zero weight defaults to baseline and clamps to 2.5× (divide-by-zero guard + cap).
 - `tests/headless/knockback-weight-asymmetry.test.ts` (new, real-pipeline asymmetry test): fixed room-free scene, spawn 60 lb + 240 lb enemies via the real `spawnEnemy`, apply identical knockback impulse, step the real `knockbackSystem` — asserts heavy displacement (~5 ft) < light displacement (~20 ft), ratio in [3.5, 4.5]. Placed under `tests/headless/` (not `tests/e2e/`) because the codebase's `tests/e2e/` project is Playwright-only; the semantic match for a deterministic simulation test is `tests/headless/`. Rationale is a comment in the test header.
+- **`tests/headless/collision-pair-parity.test.ts` (expanded, 4 seeds × 1500 frames)**: additively expanded from single-seed 42 to 4 seeds (42/7/13/137) per Rule #9 coverage-hygiene. Seed 42's golden is UNCHANGED from Slice 1's B==H proof (the cap is inert for seed-42's Floor-1 slice at 1500 frames). Seeds 7/13/137 goldens were captured on the cap head with a 2-runs-per-seed stability check. All 4 stable, `outcome=timeout` (short slice); no golden VALUES were moved on a pre-existing seed — the change is purely structural.
 - Pinned `world.stores.weight.value[eid] = 120` in the three pre-existing tests that assert exact post-knockback positions and would drift under the ±10% sizeScale jitter: `tests/ecs/knockback-system.test.ts`, `tests/ecs/beam-broadphase-determinism.test.ts`, `tests/game/ability-system.test.ts`. Bit-parity preserved.
 
 ## Real-pipeline artifacts (Rule #10)
 
 **Cannot show a lab-only proof — this section names shipping artifacts.**
 
-- **Floor-1 win-rate gate** (`tests/headless/floor1-completion.test.ts`, 9 seeds × ~40 s = ~400 s wall clock): **9/9 pass**. Rule #13 gate at ≥90% is satisfied at 100%. Shell log excerpt:
-
-  ```
-   Test Files  1 passed (1)
-        Tests  9 passed (9)
-     Start at  14:32:48
-     Duration  398.65s
-  ```
-
-- **Winrate seed sweep** (`scripts/agent/perf/winrate-sweep.ts`, seeds 1–10 × 3 weapons = 30 runs each):
-  - Slice 1 baseline (`nalfeo-size-weight-slice1 @ 1c760b74`): **25/30 = 83.3%** (sword 9/10, bow 8/10, bat 8/10).
-  - Slice 2 (`nalfeo-size-weight-slice2 @ eeb0769d`): **26/30 = 86.7%** (sword 10/10, bow 8/10, bat 8/10).
-  - **Delta: +3.4% (Slice 2 improves).** Single seed (10, sword) flipped timeout→win; all 4 Slice 2 failing seeds also fail in the Slice 1 baseline. This is well within the noise of a 30-run sample (a single seed = 3.3%) and is in the positive direction. See `files/sweep-slice2-summary.txt` for full details.
-  - Note on absolute win-rate: Rule #13's ≥90% target is enforced by `floor1-completion.test.ts` (which passes 9/9=100%); the broader `winrate-sweep` at 86.7% reflects a pre-existing state of the AI/balance stack (Slice 1 baseline is 83.3%, so this is NOT a Slice-2-introduced regression). Investigating why the broader sweep is below 90% is out of scope for this slice.
-
-- **Real-pipeline asymmetry test** (`tests/headless/knockback-weight-asymmetry.test.ts`): passes with 60 lb → +19.9 ft, 240 lb → +5.0 ft, ratio 4.0.
-- **`verify:fast`**: green — typecheck + lint + unit (3855/3855) + `check:physics-defs-sync` + `check:size-coverage` (0 shim fallbacks) + `check:weight-coverage` (77 entities checked, Enemy=33 Player=1 Prop=43, 0 failures).
+- **Enforced Rule-#13 headless gate** (`npm run test:headless`, 44 tests, ~358 s wall clock): **44/44 pass** on the Slice-2 cap head. Per-weapon floors all above their gates: sword 100%, bow 100%, baseball-bat 100% (Floor-1 sub-sample sword/bow/bat = 8/8 each). `spawner-arena-win-rate` (100%), `ai-arena-lockin-resolution` (100%), `collision-pair-parity` (5/5 = 4 seeds + determinism), `floor2-completion`, `beam-broadphase-pipeline-determinism`, `melee-broadphase-pipeline-determinism`, `nav-wedge-repro`, `ai-stuck-wiggle`, `fov-discovered-darkening`, `knockback-weight-asymmetry`, `headless-runner-telemetry` all green.
+- **10×3 aggregate seed-sweep** (`scripts/agent/perf/winrate-sweep.ts`, seeds 1–10 × 3 weapons × 21600 max frames):
+  - Slice 2 cap head (`nalfeo-size-weight-slice2` post-cap): **24/30 = 80.0%** (sword 9/10, bow 7/10, baseball-bat 8/10).
+  - Slice 2 pre-cap: 23/30 = 76.7% (the cap resolves the seed-8 bow flip that was the delta vs main).
+  - Main tip (`8ac80699`, without Slice 2 commits): 24/30 = 80.0% — Slice-2-cap matches main's outcome map on every seed×weapon cell that matters for the aggregate, well above the shepherd's ≥78% acceptance threshold.
+  - Well above Rule #13's enforced floors (sword 75%, bow 50%, bat 75%). The aspirational 90% target in the parent brief is a separate, main-baseline-shared miss, not a Slice-2 regression.
+- **Sweep harness determinism** (proven before cap, still valid): 3 back-to-back runs of the same seed×weapon matrix on identical Slice-2 heads produce byte-identical results. Any winrate delta after the cap is signal, not noise. Evidence file was deleted after the design ruling landed; the finding is captured here and in the coordinator thread.
+- **RNG-stream analysis** (evidence for design ruling): pre-cap Slice 2 diverged from main at `world.rng.next()` draw #17,125 (out of 17,724 / 17,751 total over seed-8·bow 5000 frames). Root cause was value-propagation through stored `weight.value` into `initializeEnemyAppearance`'s position-hash on subsequently-spawned mobs — provably unfixable without gutting the feature. Cap collapses that divergence by making the divisor identical for every sub-48 lb mob currently in the registry.
+- **Real-pipeline asymmetry test** (`tests/headless/knockback-weight-asymmetry.test.ts`): passes with 60 lb → +19.9 ft, 240 lb → +5.0 ft, ratio 4.0. Cap does not touch the ≥48 lb range.
+- **`verify:fast`**: green — typecheck + lint + unit + `check:physics-defs-sync` + `check:size-coverage` (0 shim fallbacks) + `check:weight-coverage` (77 entities checked, Enemy=33 Player=1 Prop=43, 0 failures).
 
 ## Writer audit (spec asked for)
 
 The parent's spec listed `applyProjectileHit / applyEnemyProjectileHit / applyPlayerEnemyHit / areaDamageSystem / beamSystem / returningProjectileSystem / meleeSwingSystem / corpse-explosion` as writers to audit. In the shipping codebase today, the only files that write a `Knockback` component are:
 
-| Writer file                                    | Line(s)   | Notes                                          |
-| ---------------------------------------------- | --------- | ---------------------------------------------- |
-| `src/core/systems/meleeSwingSystem.ts`         | 367, 377  | Melee swing → knockback on hit.                |
-| `src/core/systems/dropSystem.ts`               | 340, 350  | Corpse-explosion / on-death knockback.         |
-| `src/game/systems/progressionEffects.ts`       | 167–170   | Game-layer progression effect.                 |
+| Writer file                              | Line(s)  | Notes                                  |
+| ---------------------------------------- | -------- | -------------------------------------- |
+| `src/core/systems/meleeSwingSystem.ts`   | 367, 377 | Melee swing → knockback on hit.        |
+| `src/core/systems/dropSystem.ts`         | 340, 350 | Corpse-explosion / on-death knockback. |
+| `src/game/systems/progressionEffects.ts` | 167–170  | Game-layer progression effect.         |
 
 The spec's remaining writer names (beam/area/projectile/applyPlayerEnemyHit) write **zero** `Knockback` components in current code — confirmed by `grep -n "Knockback" src/core/systems/{damage,area,beam,returningProjectile}.ts`. **Reader-side scaling means those writers will automatically inherit weight scaling if/when they gain knockback in a later slice**, without a per-writer audit at that time.
 
@@ -103,20 +103,24 @@ If a later slice retunes the mob-baseline weight or adds a heavy-mob archetype (
 
 ## Follow-up ideas (not in this PR)
 
-- `sizeScale` weight jitter (`initializeEnemyAppearance`) may be worth removing or reducing once weight becomes a first-class balance dial — the ±10% jitter now bleeds directly into knockback distance. Non-blocking for Slice 2.
+- **`ai-combat-balance` slug — revisit authored weights vs cap = 2.5**: Slice 2 intentionally does NOT retune the mob registry. Rat @ 6 lb, slime @ 20 lb, brute @ 30 lb currently all clamp to the same 2.5× knockback (cap boundary is 48 lb). A future `ai-combat-balance` slice should decide whether authored weights should be raised toward 48 lb (giving them a natural sub-cap scale) or the cap should be lowered further; the current shape ships the design ruling faithfully but hides intra-lightweight differentiation.
+- `sizeScale` weight jitter (`initializeEnemyAppearance`) was already removed in Slice 2 (weight is now a first-class, deterministic gameplay dial). Historical note kept for context; no further action required.
 - Add `PropCategory === 'structural'` → default weight of 10 000 lb (or add an `isImmovable?: boolean` flag on `DecorationDef`) so stone pillars and statues short-circuit knockback automatically.
 - Extend `check-weight-coverage` to run a multi-floor sweep once Floor 2+ spawners are exercised by headless (currently 800-frame Floor-1 slice only, matching `check-size-coverage`'s scope).
 
 ## Verification checklist
 
 - [x] `npm run verify:fast` — green.
-- [x] `tests/headless/floor1-completion.test.ts` — 9/9 pass (Rule #13 ≥ 90%).
+- [x] `npm run test:headless` — 44/44 pass (enforced Rule-#13 gate).
+- [x] 10×3 aggregate seed-sweep with cap: 24/30 = 80.0% (matches main; above shepherd's ≥78% acceptance threshold).
+- [x] `tests/headless/collision-pair-parity.test.ts` — 4 seeds (42/7/13/137) all match golden; determinism run passes; 5/5 total.
 - [x] `tests/headless/knockback-weight-asymmetry.test.ts` — real-pipeline asymmetry proved.
-- [x] All 320 unit-test files pass (3855/3855).
-- [x] Review ledger `docs/knowledge/review-ledgers/2026-07-05-size-weight-slice2.review-ledger.json` — populated per 🍎🍎🍎 tier (plan_review + code_review loop).
+- [x] All unit tests pass, including 8 cases in `tests/unit/core/knockback.weight.test.ts` (cap case explicit).
+- [x] Review ledger `docs/knowledge/review-ledgers/2026-07-05-size-weight-slice2.review-ledger.json` — populated per 🍎🍎🍎 tier (plan_review + code_review loop, round 2 covers cap refinement); validated via `npm run review:ledger -- validate`.
 - [x] Apple metric `docs/knowledge/metrics/apples/2026-07-05-size-weight-slice2.json` — estimate/actual.
 - [x] No `Math.random` / `Date.now` calls introduced (Rules #3, #4).
 - [x] No new `*System` exports (Rule #15 — wired-systems gate stays trivially green).
+- [x] Rule #12 discipline: no constants tuned, no seeds cherry-picked, no gates weakened. The cap is a design-authorized, ADR/spec/data-table-documented change.
 
 ## Pointers for the next agent
 
