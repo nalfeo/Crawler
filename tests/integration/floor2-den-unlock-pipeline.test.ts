@@ -182,13 +182,14 @@ describe('Floor 2 Slice 4 — den-unlock pipeline', () => {
         betrayerFlag: false,
       },
     };
-    const floor2State = world.floorExtendedState.familyState;
-    const objectives = initializeFloor2Bosses(world, floorMap, floor2State);
+    const floor2State = world.floorExtendedState?.familyState;
+    expect(floor2State).toBeDefined();
+    const objectives = initializeFloor2Bosses(world, floorMap, floor2State!);
     const target = objectives[0]!;
 
     const bossField = world.stores.familyMembership.isBoss;
     const familyIdxField = world.stores.familyMembership.familyId;
-    const idx = floor2State.presentFamilies.indexOf(target.familyId);
+    const idx = floor2State!.presentFamilies.indexOf(target.familyId);
     let bossEid = -1;
     for (let eid = 0; eid < bossField.length; eid++) {
       if (bossField[eid] === 1 && familyIdxField[eid] === idx) {
@@ -231,14 +232,15 @@ describe('Floor 2 Slice 4 — den-unlock pipeline', () => {
         betrayerFlag: false,
       },
     };
-    const floor2State = world.floorExtendedState.familyState;
-    const objectives = initializeFloor2Bosses(world, floorMap, floor2State);
+    const floor2State = world.floorExtendedState?.familyState;
+    expect(floor2State).toBeDefined();
+    const objectives = initializeFloor2Bosses(world, floorMap, floor2State!);
     const target = objectives[0]!;
     expect(acceptQuest(world, target.questId)).toBeTruthy();
 
     const familyIdxField = world.stores.familyMembership.familyId;
     const bossField = world.stores.familyMembership.isBoss;
-    const presentIndex = floor2State.presentFamilies.indexOf(target.familyId);
+    const presentIndex = floor2State!.presentFamilies.indexOf(target.familyId);
     let trashEid = -1;
     for (let eid = 0; eid < bossField.length; eid++) {
       if (bossField[eid] === 0 && familyIdxField[eid] === presentIndex) {
@@ -283,8 +285,9 @@ describe('Floor 2 Slice 4 — den-unlock pipeline', () => {
         betrayerFlag: false,
       },
     };
-    const floor2State = world.floorExtendedState.familyState;
-    const objectives = initializeFloor2Bosses(world, floorMap, floor2State);
+    const floor2State = world.floorExtendedState?.familyState;
+    expect(floor2State).toBeDefined();
+    const objectives = initializeFloor2Bosses(world, floorMap, floor2State!);
     const target = objectives[0]!;
     expect(acceptQuest(world, target.questId)).toBeTruthy();
 
