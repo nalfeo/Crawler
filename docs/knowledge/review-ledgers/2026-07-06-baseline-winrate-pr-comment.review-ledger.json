@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-06",
+  "session_slug": "baseline-winrate-pr-comment",
+  "task_title": "ci: comment baseline win-rate on the released PR",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "notes": "approved_with_changes; all 5 adopted: (1) warn on gh-api failure vs notice on no-PR (2) continue-on-error (3) add issues+pull-requests write (4) finite/bounds numeric guards (5) comment step after artifact upload"
+    }
+  }
+}
