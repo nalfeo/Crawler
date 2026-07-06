@@ -684,12 +684,6 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
     });
   }
 
-  const settlementShopRange = floor2Config?.settlement?.shopCountRange;
-  const shopCount =
-    settlementShopRange !== undefined
-      ? world.rng.nextInt(settlementShopRange[0], settlementShopRange[1])
-      : undefined;
-
   const configuredShopArchetypes = floor2Config?.settlement?.shopArchetypes;
   let settlementArchetypes: ReturnType<typeof loadShopArchetypes> | undefined;
   if (configuredShopArchetypes && configuredShopArchetypes.length > 0) {
@@ -753,6 +747,12 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
       world.stores.doorState.isOpen[doorEid] = 1;
     }
   }
+
+  const settlementShopRange = floor2Config?.settlement?.shopCountRange;
+  const shopCount =
+    settlementShopRange !== undefined
+      ? world.rng.nextInt(settlementShopRange[0], settlementShopRange[1])
+      : undefined;
 
   initializeFloor2Settlement(world, {
     ...(shopCount === 1 || shopCount === 2 ? { shopCount } : {}),

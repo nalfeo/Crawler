@@ -4,6 +4,7 @@ import { SeededRandom } from '../../src/shared/random.js';
 import { BiomeType } from '../../src/shared/map-types.js';
 import type { MapConfig } from '../../src/shared/map-types.js';
 import { CaveSystemGenerator } from '../../src/core/map/generators/cave-system.js';
+import type { FloorMap } from '../../src/core/map/FloorMap.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../src/shared/constants.js';
 import { initializeFloor2Scenario } from '../../src/game/floor2Scenario.js';
 import { getFloorManifest, registerFloorManifest } from '../../src/shared/floor-registry.js';
@@ -29,6 +30,32 @@ function smallCaveConfig(seed: number): MapConfig {
     roomHeightRange: [5, 12],
     maxRooms: 20,
     floorDensity: 0.45,
+  };
+}
+
+function hashBytes(bytes: Uint8Array): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < bytes.length; i += 1) {
+    h ^= bytes[i]!;
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+
+function serializeFloor(floor: FloorMap): Record<string, unknown> {
+  return {
+    width: floor.width,
+    height: floor.height,
+    spawn: `${floor.playerSpawn.x},${floor.playerSpawn.y}`,
+    terrainHash: hashBytes(floor.terrain),
+    flagsHash: hashBytes(floor.tileMap.flags),
+    rooms: floor.rooms.map((room) => ({
+      id: room.id,
+      role: room.role,
+      familyIndex: room.familyIndex ?? null,
+      bounds: `${room.bounds.x},${room.bounds.y},${room.bounds.width},${room.bounds.height}`,
+      doors: room.doors.map((door) => `${door.x},${door.y}->${door.connectsTo}`),
+    })),
   };
 }
 
@@ -116,6 +143,32 @@ describe('initializeFloor2Scenario manifest validation', () => {
         getQuestDef(questId)?.objectives.every((objective) => objective.kind === 'counter'),
       ),
     ).toBe(true);
+  });
+
+  it('does not let settlement shop-count rolls perturb Floor 2 map generation', () => {
+    const makeManifest = (shopCountRange: [number, number]) => {
+      const manifest = structuredClone(originalFloor2Manifest);
+      manifest.floor2 = {
+        ...manifest.floor2!,
+        settlement: {
+          ...(manifest.floor2?.settlement ?? {}),
+          shopCountRange,
+        },
+      };
+      return manifest;
+    };
+
+    registerFloorManifest('floor2', makeManifest([1, 1]));
+    const first = createScenarioWorld();
+    initializeFloor2Scenario(first.world, first.playerEid);
+    const firstFloor = serializeFloor(first.world.floorMap!);
+
+    registerFloorManifest('floor2', makeManifest([2, 2]));
+    const second = createScenarioWorld();
+    initializeFloor2Scenario(second.world, second.playerEid);
+    const secondFloor = serializeFloor(second.world.floorMap!);
+
+    expect(secondFloor).toEqual(firstFloor);
   });
 });
 
