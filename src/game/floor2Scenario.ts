@@ -96,7 +96,7 @@ import { setEnemyAppearanceKey } from '../core/spawners/combatants.js';
 const FLOOR2_DEN_UNLOCK_KILL_TARGET = 3;
 const FLOOR2_TERRITORY_TRASH_PER_FAMILY = 4;
 const FLOOR2_TERRITORY_RESPAWN_MS = 2500;
-const FLOOR2_BOSS_HP_SCALE = 0.1;
+const FLOOR2_BOSS_HP_SCALE = 0.03;
 const FLOOR2_BOSS_CONTACT_DAMAGE = 2;
 const floor2TerritoryRespawnMs = new WeakMap<GameWorld, Map<FamilyId, number>>();
 const floor2ProcessedCombatEvents = new WeakMap<GameWorld, WeakSet<object>>();
@@ -513,21 +513,18 @@ export function floor2ObjectiveTick(world: GameWorld): void {
     processedEvents.add(event as object);
     const eid = event.targetEid;
     if (eid === undefined) continue;
+    const storeIsBoss = (isBossField[eid] ?? 0) as 0 | 1;
+    const isBoss =
+      event.isBoss !== undefined ? event.isBoss : storeIsBoss === 1 ? (1 as const) : (0 as const);
     const familyIndex =
       event.familyIndex !== undefined
         ? event.familyIndex
-        : hasComponent(world.ecs, eid, FamilyMembership)
+        : isBoss === 1 || hasComponent(world.ecs, eid, FamilyMembership)
           ? (familyIdField[eid] ?? -1)
           : -1;
     if (familyIndex < 0 || familyIndex >= floor2State.presentFamilies.length) continue;
     const familyId = floor2State.presentFamilies[familyIndex];
     if (!familyId) continue;
-    const isBoss =
-      event.isBoss !== undefined
-        ? event.isBoss
-        : hasComponent(world.ecs, eid, FamilyMembership)
-          ? (isBossField[eid] ?? 0)
-          : 0;
     if (isBoss === 0) {
       addQuestCounter(
         world,
@@ -541,6 +538,13 @@ export function floor2ObjectiveTick(world: GameWorld): void {
 
     decapitated.add(familyId);
     setGoalFlag(world, bossDefeatGoalId(familyId), true);
+  }
+
+  for (const familyId of floor2State.presentFamilies) {
+    const questId = `floor2-den-${familyId}-unlock`;
+    if (world.questLog.get(questId)?.status === 'complete') {
+      setGoalFlag(world, denUnlockGoalId(familyId), true);
+    }
   }
 
   respawnFamilyTerritoryTrash(world, floor2State);
@@ -566,11 +570,35 @@ export function floor2VictorySystem(world: GameWorld): void {
   const decapitated = ensureDecapitatedSet(world);
   const aliveFamilies = presentFamilies.filter((familyId) => !decapitated.has(familyId));
   const allBossesDead = aliveFamilies.length === 0;
+  const livingBossFamilies = new Set<FamilyId>();
+  const familyIdField = world.stores.familyMembership.familyId;
+  const isBossField = world.stores.familyMembership.isBoss;
+  for (const eid of query(world.ecs, [Enemy, Health, FamilyMembership])) {
+    if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
+    if ((isBossField[eid] ?? 0) !== 1) continue;
+    const familyIndex = familyIdField[eid] ?? -1;
+    if (familyIndex < 0 || familyIndex >= presentFamilies.length) continue;
+    const familyId = presentFamilies[familyIndex];
+    if (familyId) {
+      livingBossFamilies.add(familyId);
+    }
+  }
+  const allDensUnlocked = presentFamilies.every(
+    (familyId) => world.goalFlags.get(denUnlockGoalId(familyId)) === true,
+  );
+  const allBossEntitiesGone = livingBossFamilies.size === 0;
+  if (!allBossesDead && allDensUnlocked && allBossEntitiesGone) {
+    for (const familyId of presentFamilies) {
+      decapitated.add(familyId);
+      setGoalFlag(world, bossDefeatGoalId(familyId), true);
+    }
+  }
+  const allBossesResolved = allBossesDead || (allDensUnlocked && allBossEntitiesGone);
   const soleAliveFamily = aliveFamilies.length === 1 ? aliveFamilies[0]! : null;
   const soleAllyWin =
-    soleAliveFamily !== null && getRelation(world, soleAliveFamily) > 75 && !allBossesDead;
+    soleAliveFamily !== null && getRelation(world, soleAliveFamily) > 75 && !allBossesResolved;
 
-  if (!soleAllyWin && !allBossesDead) return;
+  if (!soleAllyWin && !allBossesResolved) return;
 
   setGoalFlag(world, FLOOR2_VICTORY_GOAL_ID, true);
   popFloor2ResourceHeartStairs(world);
@@ -731,7 +759,11 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
   const maxHp = (world.stores.health.max[playerEid] ?? 100) + manifest.player.hpBonus;
   setComponent(world.ecs, playerEid, Health, { current: maxHp, max: maxHp });
 
-  const objectives = initializeFloor2Bosses(world, floorMap, world.floor2State);
+  const objectives = initializeFloor2Bosses(
+    world,
+    floorMap,
+    world.floorExtendedState!.familyState!,
+  );
   for (const objective of objectives) {
     acceptQuest(world, objective.questId);
   }

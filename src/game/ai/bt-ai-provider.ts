@@ -3643,7 +3643,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     maxRadius: number = Number.POSITIVE_INFINITY,
     requirePerception: boolean = true,
   ): WorldTarget | null {
-    const familyIndex = world.floor2State?.presentFamilies.findIndex((id) => id === familyId) ?? -1;
+    const floor2State = world.floorExtendedState?.familyState;
+    const familyIndex =
+      floor2State?.presentFamilies.findIndex((id: string) => id === familyId) ?? -1;
     if (familyIndex < 0) {
       return null;
     }
@@ -3667,6 +3669,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     candidates.sort((a, b) => a.distance - b.distance);
+    const nearest = candidates[0] ?? null;
     for (const candidate of candidates) {
       if (candidate.distance <= DIRECT_MOVE_EPSILON_FT) {
         return candidate;
@@ -3675,7 +3678,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         return candidate;
       }
     }
-    return null;
+    return nearest;
   }
 
   private findNearestFloor2Boss(
@@ -3686,9 +3689,10 @@ export class BehaviorTreeAI implements AIInputProvider {
     maxRadius: number = Number.POSITIVE_INFINITY,
     requirePerception: boolean = true,
   ): WorldTarget | null {
-    const decapitated = world.floor2State?.decapitatedFamilies;
+    const floor2State = world.floorExtendedState?.familyState;
+    const decapitated = floor2State?.decapitatedFamilies;
     const familyIndex = familyId
-      ? (world.floor2State?.presentFamilies.findIndex((id) => id === familyId) ?? -1)
+      ? (floor2State?.presentFamilies.findIndex((id: string) => id === familyId) ?? -1)
       : -1;
     const candidates: WorldTarget[] = [];
     const familyField = world.stores.familyMembership.familyId;
@@ -3699,7 +3703,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       if ((bossField[eid] ?? 0) !== 1) continue;
       const bossFamilyIndex = familyField[eid] ?? -1;
       if (familyId !== undefined && bossFamilyIndex !== familyIndex) continue;
-      const bossFamilyId = world.floor2State?.presentFamilies[bossFamilyIndex];
+      const bossFamilyId = floor2State?.presentFamilies[bossFamilyIndex];
       if (bossFamilyId !== undefined && decapitated?.has(bossFamilyId)) continue;
       const health = world.stores.health.current[eid] ?? 0;
       if (health <= 0) continue;
@@ -3713,6 +3717,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     candidates.sort((a, b) => a.distance - b.distance);
+    const nearest = candidates[0] ?? null;
     for (const candidate of candidates) {
       if (candidate.distance <= DIRECT_MOVE_EPSILON_FT) {
         return candidate;
@@ -3721,7 +3726,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         return candidate;
       }
     }
-    return null;
+    return nearest;
   }
 
   private findFloor2TerritoryTarget(
@@ -3732,7 +3737,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     reason: string,
   ): ProgressTarget | null {
     const floorMap = world.floorMap;
-    const familyIndex = world.floor2State?.presentFamilies.findIndex((id) => id === familyId) ?? -1;
+    const floor2State = world.floorExtendedState?.familyState;
+    const familyIndex =
+      floor2State?.presentFamilies.findIndex((id: string) => id === familyId) ?? -1;
     if (!floorMap || familyIndex < 0) {
       return null;
     }
@@ -4109,15 +4116,15 @@ export class BehaviorTreeAI implements AIInputProvider {
     const panicProfile = this.getCollapsePanicProfile(world);
     const maybeDetourToQuestGiver = (target: ProgressTarget): ProgressTarget =>
       this.withQuestGiverDetour(world, playerEid, playerX, playerY, target, panicProfile);
-    if (world.floor2State) {
+    const floorScenario = world.floorScenario;
+    if (world.floorExtendedState?.familyState) {
       const floor2Target = this.findFloor2ProgressObjective(world, playerEid, playerX, playerY);
       if (floor2Target) {
         return maybeDetourToQuestGiver(floor2Target);
       }
     }
-    const floor1 = world.floor1;
-    const objective = floor1?.objective;
-    if (!floor1 || !objective) {
+    const objective = floorScenario?.objective;
+    if (!floorScenario || !objective) {
       return null;
     }
 
@@ -5397,9 +5404,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerEid: number,
     npcEid: number,
   ): string | null {
-    const floor1 = world.floor1;
-    if (!floor1) {
-      return null;
+    const floorScenario = world.floorScenario;
+    if (!floorScenario) {
+      return 'generic-interaction';
     }
 
     const instance = world.npcs.get(npcEid);
@@ -5407,7 +5414,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       return null;
     }
 
-    const objective = floor1.objective;
+    const objective = floorScenario.objective;
     const shopStage = getShopkeeperStage(world);
     const bag = world.inventories.get(playerEid);
     const hasFetchItem = bag ? hasItem(bag, SHOPKEEPER_FETCH_ITEM_ID) : false;
