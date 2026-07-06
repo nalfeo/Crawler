@@ -3,7 +3,7 @@
   "date": "2026-07-04",
   "session_slug": "local-sprite-provider",
   "task_title": "Local A1111 sprite provider for icons/props",
-  "estimated_apples": 2,
+  "estimated_apples": 3,
   "stages": {
     "plan_review": {
       "completed": true,
@@ -12,6 +12,33 @@
       "resolved_count": 8,
       "notes": "Adopted all review concerns: added singleVariantPrompt contract, provider capabilities for no-reference backends, local-a1111 type guard (weapon/item/tile/vfx only), deterministic guttered sheet assembly for slicer compatibility, model override_settings wiring, and integration coverage for reference-skip + sliceability.",
       "clean": false
+    },
+    "code_review": {
+      "clean": true,
+      "notes": "Shepherd code-review loop on PR #790 (bumped 2->3 apples: new ~330-LOC provider + factory wiring + two subtle correctness bugs). Round 1 = GitHub Copilot PR reviewer (7 concerns) all fixed in code: generation-loop grid iteration, multiple-of-8 cell dims, negativePrompt spelling, timeoutMs/steps docs, empty-cell test name, factory unit coverage. Round 2 = independent gpt-5.4 review found a real 'bad-grid' corruption bug (backend returning an oversized PNG bled across slots) - fixed with strict per-cell dimension validation + a defensive stitch clamp + a regression test. Round 3 = independent claude-sonnet-4.6 review: no substantive concerns. All 11 provider tests + 145 unit tests green.",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 7,
+          "resolved_count": 7,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 3,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     }
   }
 }
