@@ -824,8 +824,8 @@ describe('BehaviorTreeAI', () => {
       const legacy = new BehaviorTreeAI({ seed: 99, pathingMode: AIPathingMode.LEGACY });
       const fused = new BehaviorTreeAI({ seed: 99, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
 
-      const stateL = { moveX: 0, moveY: 0 };
-      const stateF = { moveX: 0, moveY: 0 };
+      const stateL = createInputState();
+      const stateF = createInputState();
       legacy.poll(stateL, world);
       fused.poll(stateF, world);
 

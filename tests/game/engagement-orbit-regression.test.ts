@@ -28,6 +28,6 @@ describe('engagement orbit regression', () => {
     expect(stats.outcome).toBe('victory');
     expect(stats.quests.questLogCompletions['floor1-shopkeeper-errand']).toBeLessThan(220_000);
     expect(summary.longestKillGapMs).toBeLessThan(30_000);
-    expect(stats.aiTelemetry.decisionStateMs.ENGAGE ?? 0).toBeLessThan(180_000);
+    expect(stats.aiTelemetry?.decisionStateMs.ENGAGE ?? 0).toBeLessThan(180_000);
   }, 120_000);
 });
