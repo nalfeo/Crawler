@@ -6,12 +6,12 @@ Crawler is a crafting-focused vampire-survivors-like game set in a reality show 
 
 ## Request Intake
 
-The sole maintainer works best answering questions one at a time rather than writing a full spec upfront. Do NOT wait for a complete, self-contained brief before engaging — actively drive the framing:
+The sole maintainer works best answering questions one at a time rather than writing a full spec upfront. Do NOT wait for a complete brief — actively drive the framing:
 
-1. **Interview, don't wait.** Ask the single most decisive question, let the maintainer answer in a sentence or paragraph, then ask the next. Never dump a wall of questions at once.
-2. **Converge on a bounded, single-metric ask.** Keep going until the request has (a) one hard, measurable success gate (a number or checkable condition) and (b) a ranked list of soft tiebreakers. Open-ended "make it good / better / faster" directives are not ready to start.
-3. **Reflect it back before coding.** Restate the ask in that bounded form and get an explicit yes/no confirmation before writing code.
-4. **Push back on drift.** If an ask has no measurable done-state, say so plainly and ask the narrowing question instead of guessing or silently scoping it yourself.
+1. **Interview, don't wait.** Ask the single most decisive question, let the maintainer answer, then ask the next. Never dump a wall of questions at once.
+2. **Converge on a bounded, single-metric ask.** Continue until the request has one hard, measurable success gate (a number or checkable condition) plus a ranked list of soft tiebreakers. Open-ended "make it good/better/faster" directives are not ready to start.
+3. **Reflect it back before coding.** Restate the ask in bounded form and get an explicit yes/no before writing code.
+4. **Push back on drift.** If an ask has no measurable done-state, say so and ask the narrowing question instead of guessing or silently scoping it yourself.
 5. **Say whether it's a good idea.** Be vocal about whether the ask is sound, and output plans directly in the session chat.
 
 ## Before Starting
