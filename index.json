@@ -22,6 +22,17 @@
     "path": "by-sha/b4fcf201c6f6f1e272ecd3f0ef6c0db7020dd6dc.json"
   },
   {
+    "commit": "d01c95e69f5ede88b7ba1817d54f16171e101e0e",
+    "commitDate": "2026-07-05T20:32:06-07:00",
+    "commitSubject": "refactor: floor-agnostic world-state rename + AI runner floor selector (#792)",
+    "capturedAt": "2026-07-06T04:32:23.886Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28766139730",
+    "winRate": 0.79,
+    "totalWins": 237,
+    "totalRuns": 300,
+    "path": "by-sha/d01c95e69f5ede88b7ba1817d54f16171e101e0e.json"
+  },
+  {
     "commit": "b333d0d461fbfb34339d40b9c14957dcad64033e",
     "commitDate": "2026-07-05T20:08:22-07:00",
     "commitSubject": "docs: require kickoff verdicts and in-chat plans for new sessions. (#793)",
