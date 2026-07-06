@@ -209,6 +209,11 @@ export function createGoreVfx(
     renderElapsedMs: number,
   ): void {
     if (cfg.intensity <= 0) return;
+    // Blood pools use `scene.add.graphics`, which GoreVfx's PhaserBridge
+    // enablement gate does not require (it only checks `add.rectangle`). Guard
+    // here so a partial Scene stub / headless scene that provides rectangles
+    // but no graphics still gets hit/death particle gore without throwing.
+    if (typeof scene.add.graphics !== 'function') return;
     const radius =
       BLOOD_POOL_BASE_RADIUS +
       Math.min(BLOOD_POOL_MAX_EXTRA_RADIUS, overkill * 0.5) * cfg.intensity;
