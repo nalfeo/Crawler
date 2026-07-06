@@ -1,5 +1,5 @@
 export interface DevtoolsIndexEntry {
-  id: 'sprite-generation-workflow' | 'sprite-review' | 'postprocess' | 'achievements';
+  id: 'sprite-generation-workflow' | 'sprite-review' | 'postprocess' | 'achievements' | 'storage';
   name: string;
   description: string;
 }
@@ -27,5 +27,11 @@ export const DEVTOOLS_INDEX_ENTRIES: readonly DevtoolsIndexEntry[] = [
     name: 'Achievements editor',
     description:
       'View all Floor 1 achievements, edit title/criteria/flavor/reward overrides, and review icon + loot-box art backlog.',
+  },
+  {
+    id: 'storage',
+    name: 'Azure storage lifecycle',
+    description:
+      'List, search, archive, and delete sprite-run blobs in Azure storage across active and archive scopes.',
   },
 ] as const;

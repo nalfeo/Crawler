@@ -36,6 +36,12 @@ import {
   isSidecarRouteMissing,
   type CheckinPrepareResponse,
   type SidecarRunListEntry,
+  type SidecarStorageRunEntry,
+  type StorageRunEnrichment,
+  archiveStorageRuns,
+  deleteStorageRunsBatch,
+  enrichStorageRuns,
+  listStorageRuns,
 } from './devtools/sprite-approval-api.js';
 import {
   RUN_CACHE_STORAGE_KEY,
@@ -91,13 +97,15 @@ const DEVTOOLS_PAGE_FLOOR_ART_LEGACY = 'floor-art';
 const DEVTOOLS_PAGE_SPRITE_REVIEW = 'sprite-review';
 const DEVTOOLS_PAGE_POSTPROCESS = 'postprocess';
 const DEVTOOLS_PAGE_ACHIEVEMENTS = 'achievements';
+const DEVTOOLS_PAGE_STORAGE = 'storage';
 const QUEUED_RUN_POLL_MS = 2000;
 type DevtoolsPage =
   | typeof DEVTOOLS_PAGE_HOME
   | typeof DEVTOOLS_PAGE_SPRITE_WORKFLOW
   | typeof DEVTOOLS_PAGE_SPRITE_REVIEW
   | typeof DEVTOOLS_PAGE_POSTPROCESS
-  | typeof DEVTOOLS_PAGE_ACHIEVEMENTS;
+  | typeof DEVTOOLS_PAGE_ACHIEVEMENTS
+  | typeof DEVTOOLS_PAGE_STORAGE;
 const STATUS_COLORS: Readonly<Record<FloorArtStatus, string>> = {
   ready: '#16a34a',
   approved: '#0284c7',
@@ -466,6 +474,7 @@ function currentDevtoolsPage(): DevtoolsPage {
   }
   if (value === DEVTOOLS_PAGE_SPRITE_REVIEW) return DEVTOOLS_PAGE_SPRITE_REVIEW;
   if (value === DEVTOOLS_PAGE_ACHIEVEMENTS) return DEVTOOLS_PAGE_ACHIEVEMENTS;
+  if (value === DEVTOOLS_PAGE_STORAGE) return DEVTOOLS_PAGE_STORAGE;
   return value === DEVTOOLS_PAGE_POSTPROCESS ? DEVTOOLS_PAGE_POSTPROCESS : DEVTOOLS_PAGE_HOME;
 }
 
@@ -1022,6 +1031,429 @@ function renderAchievementsEditorPage(shell: HTMLElement): void {
   updateExport();
 }
 
+function keyForStorageRun(scope: 'active' | 'archive', run: SidecarStorageRunEntry): string {
+  return `${scope === 'archive' ? 'archive/' : ''}${run.briefId}/${run.runId}`;
+}
+
+function renderStorageLifecyclePage(shell: HTMLElement): void {
+  const panel = el('section', {
+    style: {
+      border: '1px solid rgba(229,231,235,0.2)',
+      borderRadius: '10px',
+      background: '#0b1220',
+      padding: '12px',
+      display: 'grid',
+      gap: '10px',
+    },
+  });
+  shell.append(panel);
+
+  const status = el('div', {
+    text: 'Loading…',
+    style: { color: '#93c5fd', fontSize: '13px' },
+  });
+
+  const fieldStyle: Partial<CSSStyleDeclaration> = {
+    padding: '8px 10px',
+    borderRadius: '8px',
+    border: '1px solid rgba(229,231,235,0.3)',
+    background: '#111827',
+    color: '#e5e7eb',
+  };
+  const buttonStyle: Partial<CSSStyleDeclaration> = {
+    padding: '8px 12px',
+    borderRadius: '8px',
+    border: '1px solid rgba(126,224,255,0.4)',
+    background: 'rgba(30,41,59,0.95)',
+    color: '#7ee0ff',
+    cursor: 'pointer',
+  };
+
+  const controls = el('div', {
+    style: { display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' },
+  });
+  const scopeSelect = el('select', { style: fieldStyle });
+  for (const [value, label] of [
+    ['active', 'Active runs'],
+    ['archive', 'Archive'],
+  ] as const) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    scopeSelect.append(option);
+  }
+  const searchInput = el('input', { style: { ...fieldStyle, flex: '1 1 220px' } });
+  searchInput.type = 'search';
+  searchInput.placeholder = 'Search brief or run id';
+  const refreshBtn = el('button', { text: 'Refresh', style: buttonStyle });
+  const archiveBtn = el('button', { text: 'Archive selected', style: buttonStyle });
+  const deleteBtn = el('button', { text: 'Delete selected', style: buttonStyle });
+  controls.append(scopeSelect, searchInput, refreshBtn, archiveBtn, deleteBtn);
+
+  const sortSelect = el('select', { style: fieldStyle, title: 'Sort order' });
+  for (const [value, label] of [
+    ['newest', 'Sort: Newest first'],
+    ['oldest', 'Sort: Oldest first'],
+    ['brief', 'Sort: Brief (A–Z)'],
+    ['approved', 'Sort: Most approved'],
+  ] as const) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    sortSelect.append(option);
+  }
+  const filterSelect = el('select', { style: fieldStyle, title: 'Filter runs' });
+  for (const [value, label] of [
+    ['all', 'Show: All runs'],
+    ['approved', 'Show: Has approved'],
+    ['unapproved', 'Show: No approved'],
+    ['brief-stored', 'Show: Brief stored'],
+    ['brief-missing', 'Show: Brief missing'],
+  ] as const) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    filterSelect.append(option);
+  }
+  const controls2 = el('div', {
+    style: { display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' },
+  });
+  controls2.append(sortSelect, filterSelect);
+
+  const listHost = el('div', { style: { overflowX: 'auto' } });
+  panel.append(status, controls, controls2, listHost);
+
+  let selected = new Set<string>();
+  let currentRuns: readonly SidecarStorageRunEntry[] = [];
+  let enrichment = new Map<string, StorageRunEnrichment>();
+
+  const currentScope = (): 'active' | 'archive' =>
+    scopeSelect.value === 'archive' ? 'archive' : 'active';
+  const runKey = (run: SidecarStorageRunEntry): string => `${run.briefId}/${run.runId}`;
+
+  const cellStyle: Partial<CSSStyleDeclaration> = {
+    padding: '8px 10px',
+    borderBottom: '1px solid rgba(229,231,235,0.1)',
+    verticalAlign: 'middle',
+  };
+
+  const makeBadge = (text: string, kind: 'good' | 'warn' | 'muted'): HTMLElement => {
+    const palette = {
+      good: {
+        color: '#86efac',
+        border: 'rgba(134,239,172,0.4)',
+        background: 'rgba(22,101,52,0.35)',
+      },
+      warn: {
+        color: '#fcd34d',
+        border: 'rgba(252,211,77,0.4)',
+        background: 'rgba(120,53,15,0.35)',
+      },
+      muted: {
+        color: '#94a3b8',
+        border: 'rgba(148,163,184,0.3)',
+        background: 'rgba(30,41,59,0.6)',
+      },
+    }[kind];
+    return el('span', {
+      text,
+      style: {
+        display: 'inline-block',
+        padding: '2px 8px',
+        borderRadius: '999px',
+        fontSize: '11px',
+        whiteSpace: 'nowrap',
+        color: palette.color,
+        border: `1px solid ${palette.border}`,
+        background: palette.background,
+      },
+    });
+  };
+
+  const makeThumb = (src: string, size: number, title: string): HTMLElement => {
+    const wrap = el('span', {
+      title,
+      style: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minWidth: `${size}px`,
+        minHeight: `${size}px`,
+        color: '#64748b',
+      },
+    });
+    const img = document.createElement('img');
+    img.src = src;
+    img.alt = title;
+    Object.assign(img.style, {
+      width: `${size}px`,
+      height: `${size}px`,
+      objectFit: 'contain',
+      imageRendering: 'pixelated',
+      borderRadius: '6px',
+      border: '1px solid rgba(148,163,184,0.2)',
+      background: '#0f172a',
+    });
+    img.addEventListener('error', () => {
+      wrap.textContent = '—';
+    });
+    wrap.append(img);
+    return wrap;
+  };
+
+  const byRunIdDesc = (a: SidecarStorageRunEntry, b: SidecarStorageRunEntry): number =>
+    a.runId < b.runId ? 1 : a.runId > b.runId ? -1 : 0;
+
+  const displayRuns = (): SidecarStorageRunEntry[] => {
+    const filter = filterSelect.value;
+    const filtered = currentRuns.filter((run) => {
+      const enr = enrichment.get(runKey(run));
+      if (!enr) return true; // enrichment not loaded yet — never hide prematurely
+      switch (filter) {
+        case 'approved':
+          return enr.approvedCount > 0;
+        case 'unapproved':
+          return enr.approvedCount === 0;
+        case 'brief-stored':
+          return enr.briefStored;
+        case 'brief-missing':
+          return !enr.briefStored;
+        default:
+          return true;
+      }
+    });
+    const sorted = [...filtered];
+    switch (sortSelect.value) {
+      case 'oldest':
+        sorted.sort((a, b) => -byRunIdDesc(a, b));
+        break;
+      case 'brief':
+        sorted.sort((a, b) => a.briefId.localeCompare(b.briefId) || byRunIdDesc(a, b));
+        break;
+      case 'approved':
+        sorted.sort(
+          (a, b) =>
+            (enrichment.get(runKey(b))?.approvedCount ?? -1) -
+              (enrichment.get(runKey(a))?.approvedCount ?? -1) || byRunIdDesc(a, b),
+        );
+        break;
+      default:
+        sorted.sort(byRunIdDesc);
+    }
+    return sorted;
+  };
+
+  const renderRows = (scope: 'active' | 'archive'): void => {
+    const rows = displayRuns();
+    if (rows.length === 0) {
+      listHost.replaceChildren(
+        el('div', {
+          text: currentRuns.length === 0 ? 'No runs in this scope.' : 'No runs match this filter.',
+          style: { color: '#94a3b8', fontSize: '13px', padding: '10px 2px' },
+        }),
+      );
+      return;
+    }
+    const table = el('table', {
+      style: { width: '100%', borderCollapse: 'collapse', fontSize: '12px' },
+    });
+    const head = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    for (const label of [
+      '',
+      'Sheet',
+      'Approved art',
+      'Brief',
+      'Run',
+      'Timestamp',
+      'Variants',
+      'Brief stored',
+    ]) {
+      const th = document.createElement('th');
+      th.textContent = label;
+      Object.assign(th.style, {
+        textAlign: 'left',
+        padding: '8px 10px',
+        borderBottom: '1px solid rgba(229,231,235,0.1)',
+        color: '#cbd5e1',
+        whiteSpace: 'nowrap',
+      });
+      headRow.append(th);
+    }
+    head.append(headRow);
+    table.append(head);
+    const body = document.createElement('tbody');
+    for (const run of rows) {
+      const enr = enrichment.get(runKey(run));
+      const row = document.createElement('tr');
+      const key = keyForStorageRun(scope, run);
+
+      const checkCell = el('td', { style: cellStyle });
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.dataset.key = key;
+      checkbox.checked = selected.has(key);
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) selected.add(key);
+        else selected.delete(key);
+      });
+      checkCell.append(checkbox);
+      row.append(checkCell);
+
+      // Sprite-sheet thumbnail (active scope only — archived runs live under a
+      // different key prefix the image routes don't serve).
+      const sheetCell = el('td', { style: cellStyle });
+      if (!enr) {
+        sheetCell.append(el('span', { text: '…', style: { color: '#64748b' } }));
+      } else if (scope === 'active' && enr.sheetFile) {
+        sheetCell.append(
+          makeThumb(sheetUrl(run.briefId, run.runId, enr.sheetFile), 56, enr.sheetFile),
+        );
+      } else {
+        sheetCell.append(el('span', { text: '—', style: { color: '#64748b' } }));
+      }
+      row.append(sheetCell);
+
+      // First approved variant for the brief (from wherever it was approved).
+      const approvedCell = el('td', { style: cellStyle });
+      if (!enr) {
+        approvedCell.append(el('span', { text: '…', style: { color: '#64748b' } }));
+      } else if (enr.firstApproved) {
+        const padded = String(enr.firstApproved.variantIndex).padStart(2, '0');
+        approvedCell.append(
+          makeThumb(
+            spriteUrl(run.briefId, enr.firstApproved.runId, `${padded}.png`),
+            48,
+            `Approved variant #${enr.firstApproved.variantIndex} (from ${enr.firstApproved.runId})`,
+          ),
+        );
+      } else {
+        approvedCell.append(el('span', { text: '—', style: { color: '#64748b' } }));
+      }
+      row.append(approvedCell);
+
+      for (const value of [run.briefId, run.runId, run.timestamp ?? '—']) {
+        row.append(el('td', { text: value, style: cellStyle }));
+      }
+
+      // Variants / approved-count badge.
+      const variantsCell = el('td', { style: cellStyle });
+      if (!enr) {
+        variantsCell.append(el('span', { text: '…', style: { color: '#64748b' } }));
+      } else if (enr.approvedCount > 0) {
+        variantsCell.append(
+          makeBadge(
+            enr.variantCount !== null
+              ? `${enr.approvedCount} approved / ${enr.variantCount}`
+              : `${enr.approvedCount} approved`,
+            'good',
+          ),
+        );
+      } else {
+        variantsCell.append(
+          makeBadge(
+            enr.variantCount !== null ? `0 / ${enr.variantCount} approved` : 'none approved',
+            'muted',
+          ),
+        );
+      }
+      row.append(variantsCell);
+
+      // Brief-stored badge.
+      const briefCell = el('td', { style: cellStyle });
+      if (!enr) {
+        briefCell.append(el('span', { text: '…', style: { color: '#64748b' } }));
+      } else {
+        briefCell.append(
+          enr.briefStored ? makeBadge('✓ stored', 'good') : makeBadge('✗ missing', 'warn'),
+        );
+      }
+      row.append(briefCell);
+
+      body.append(row);
+    }
+    table.append(body);
+    listHost.replaceChildren(table);
+  };
+
+  const loadEnrichment = async (
+    scope: 'active' | 'archive',
+    runs: readonly SidecarStorageRunEntry[],
+  ): Promise<void> => {
+    if (runs.length === 0) return;
+    try {
+      const payload = await enrichStorageRuns(scope, runs);
+      if (currentScope() !== scope) return; // scope changed while in flight
+      enrichment = new Map(
+        payload.enriched.map((entry) => [`${entry.briefId}/${entry.runId}`, entry]),
+      );
+      renderRows(scope);
+    } catch (error) {
+      status.textContent = `${status.textContent} · enrichment unavailable: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  };
+
+  const reload = async (): Promise<void> => {
+    const scope = currentScope();
+    status.textContent = 'Loading runs…';
+    enrichment = new Map();
+    try {
+      const payload = await listStorageRuns(scope, searchInput.value);
+      currentRuns = payload.runs;
+      renderRows(scope);
+      status.textContent = `Loaded ${currentRuns.length} ${scope} run(s).`;
+      void loadEnrichment(scope, currentRuns);
+    } catch (error) {
+      status.textContent = `Failed to load runs: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  };
+
+  refreshBtn.addEventListener('click', () => void reload());
+  scopeSelect.addEventListener('change', () => {
+    selected = new Set<string>();
+    void reload();
+  });
+  searchInput.addEventListener('change', () => void reload());
+  sortSelect.addEventListener('change', () => renderRows(currentScope()));
+  filterSelect.addEventListener('change', () => renderRows(currentScope()));
+
+  archiveBtn.addEventListener('click', async () => {
+    const keys = [...selected].filter((key) => !key.startsWith('archive/'));
+    if (keys.length === 0) {
+      status.textContent = 'Select at least one active run to archive.';
+      return;
+    }
+    if (!window.confirm(`Archive ${keys.length} run(s)?`)) return;
+    try {
+      const result = await archiveStorageRuns(keys);
+      status.textContent = `Archived ${result.archived.length}; skipped ${result.skipped.length}.`;
+      selected = new Set<string>();
+      await reload();
+    } catch (error) {
+      status.textContent = `Failed to archive runs: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  });
+
+  deleteBtn.addEventListener('click', async () => {
+    const keys = [...selected];
+    if (keys.length === 0) {
+      status.textContent = 'Select at least one run to delete.';
+      return;
+    }
+    if (!window.confirm(`Permanently delete ${keys.length} run(s)? This cannot be undone.`)) return;
+    try {
+      const result = await deleteStorageRunsBatch(keys);
+      status.textContent = `Deleted ${result.deleted.length} run(s).`;
+      selected = new Set<string>();
+      await reload();
+    } catch (error) {
+      status.textContent = `Failed to delete runs: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  });
+
+  void reload();
+}
+
 function render(): void {
   const root = document.getElementById('devtools-root');
   if (!(root instanceof HTMLElement)) {
@@ -1036,6 +1468,7 @@ function render(): void {
   const isSpriteWorkflowPage = currentPage === DEVTOOLS_PAGE_SPRITE_WORKFLOW;
   const isPostprocessPage = currentPage === DEVTOOLS_PAGE_POSTPROCESS;
   const isAchievementsPage = currentPage === DEVTOOLS_PAGE_ACHIEVEMENTS;
+  const isStoragePage = currentPage === DEVTOOLS_PAGE_STORAGE;
   const title = el('h1', { text: 'Crawler DevTools' });
   const subtitle = el('p', {
     text: LOCAL_HOSTS.has(window.location.hostname)
@@ -1047,7 +1480,9 @@ function render(): void {
             ? 'Sprite review — readonly viewer for approved sprite sheets.'
             : isAchievementsPage
               ? 'Achievements editor — review/edit Floor 1 achievement text + rewards and track placeholder art backlog.'
-              : 'Sprite Generation Workflow — track backlog, synthesis, generation, approvals, and integration.'
+              : isStoragePage
+                ? 'Azure storage lifecycle — list, search, archive, and delete sprite-run blobs.'
+                : 'Sprite Generation Workflow — track backlog, synthesis, generation, approvals, and integration.'
       : 'DevTools is disabled outside localhost.',
     style: { marginBottom: '16px' },
   });
@@ -1162,6 +1597,11 @@ function render(): void {
 
   if (isAchievementsPage) {
     renderAchievementsEditorPage(shell);
+    return;
+  }
+
+  if (isStoragePage) {
+    renderStorageLifecyclePage(shell);
     return;
   }
 

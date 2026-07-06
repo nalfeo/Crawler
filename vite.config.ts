@@ -30,7 +30,6 @@ export default defineConfig(({ mode }) => {
 
   if (includeDevTools) {
     input.devtools = resolve(__dirname, 'devtools.html');
-    input.devtoolsStorage = resolve(__dirname, 'devtools-storage.html');
   }
 
   process.env.VITE_SPRITES_SIDECAR_BASE_URL = sessionPorts.sidecarBaseUrl;
