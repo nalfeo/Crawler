@@ -7,6 +7,7 @@
  * `tests/integration/family-relationship-wiring.test.ts` (rule #10): we run
  * the actual pipelines rather than call the systems by hand.
  */
+import { query } from 'bitecs';
 import { describe, expect, it, beforeEach } from 'vitest';
 import { SeededRandom } from '../../src/shared/random.js';
 import { BiomeType, RoomRole } from '../../src/shared/map-types.js';
@@ -20,6 +21,7 @@ import {
   type FamilyId,
 } from '../../src/core/faction-relations.js';
 import { initializeFloor2Settlement } from '../../src/game/floor2Settlement.js';
+import { DoorState } from '../../src/core/components.js';
 import {
   forceFireEmergentEvent,
   _resetEmergentEventScheduler,
@@ -82,6 +84,21 @@ describe('Floor 2 settlement · initialization', () => {
     // Settlement room is retagged SAFE.
     const room = world.floorMap!.roomGraph.get(snap.settlementRoomId);
     expect(room?.role).toBe(RoomRole.SAFE);
+
+    const settlementDoors = room?.doors ?? [];
+    const doorKey = (x: number, y: number) => `${x},${y}`;
+    const expectedDoorKeys = new Set(settlementDoors.map((door) => doorKey(door.x, door.y)));
+    const seenDoorKeys = new Set<string>();
+    for (const eid of query(world.ecs, [DoorState])) {
+      const tx = world.stores.doorState.tileX[eid] ?? -1;
+      const ty = world.stores.doorState.tileY[eid] ?? -1;
+      const key = doorKey(tx, ty);
+      if (!expectedDoorKeys.has(key)) continue;
+      expect(world.stores.doorState.isLocked[eid]).toBe(0);
+      expect(world.stores.doorState.isOpen[eid]).toBe(1);
+      seenDoorKeys.add(key);
+    }
+    expect(seenDoorKeys).toEqual(expectedDoorKeys);
   });
 
   it('is idempotent — a second call returns the same snapshot', () => {

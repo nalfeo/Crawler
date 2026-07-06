@@ -103,7 +103,6 @@ import {
   countEngagingEnemies,
   evictFurthestAmbient,
   resolveAmbientSpawnPoint,
-  prepopulateEnteredRoom,
   getSpawnerState,
 } from './floorScenario.js';
 
@@ -407,6 +406,12 @@ export function initializeFloor2Bosses(
  *   - Run the floor2 enemy director system for quadrant-based trash spawning.
  */
 export function floor2ObjectiveTick(world: GameWorld): void {
+  if (world.state !== 'playing') {
+    return;
+  }
+
+  unstickFloor2Bosses(world);
+
   // Run the enemy director for quadrant-based trash spawning
   floor2EnemyDirectorSystem(world);
 
@@ -462,13 +467,10 @@ export function floor2ObjectiveTick(world: GameWorld): void {
     }
   }
 
-  // Use quadrant-based ambient enemy director for trash spawning
-  floor2EnemyDirectorSystem(world);
-
   // Check collapse timer and end floor if expired
   const manifest = getFloorManifest('floor2');
   if (manifest?.timer && world.elapsedMs >= manifest.timer.durationMs) {
-    world.state = 'safe_room';
+    world.state = 'game_over';
   }
 
   floor2VictorySystem(world);
@@ -628,6 +630,7 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
       betrayerFlag: false,
     },
     trashTerritories: quadrantTrashMap,
+    ambientEnemyArchetypes: new Map<number, string>(),
   };
   world.floorScenario = null;
   setGoalFlag(world, FLOOR2_VICTORY_GOAL_ID, false);
@@ -865,7 +868,11 @@ function findResourceHeartStairTile(world: GameWorld): { x: number; y: number } 
  * Determine which quadrant contains a world position.
  * Returns 'N', 'S', 'E', or 'W'.
  */
-function getQuadrantForPosition(world: GameWorld, x: number, y: number): 'N' | 'S' | 'E' | 'W' {
+export function getQuadrantForPosition(
+  world: GameWorld,
+  x: number,
+  y: number,
+): 'N' | 'S' | 'E' | 'W' {
   const floorMap = world.floorMap;
   if (!floorMap) {
     return 'N';
@@ -879,7 +886,7 @@ function getQuadrantForPosition(world: GameWorld, x: number, y: number): 'N' | '
   if (isWest) {
     return isNorth ? 'N' : 'S';
   } else {
-    return isNorth ? 'N' : 'S';
+    return isNorth ? 'E' : 'W';
   }
 }
 
@@ -887,7 +894,7 @@ function getQuadrantForPosition(world: GameWorld, x: number, y: number): 'N' | '
  * Determine spawn weight for each quadrant based on player position.
  * Returns a map of quadrant ID to weight (0-1).
  */
-function getQuadrantSpawnWeights(playerQuadrant: string): Map<string, number> {
+export function getQuadrantSpawnWeights(playerQuadrant: string): Map<string, number> {
   const weights = new Map<string, number>();
   const neighbors = new Map<string, string[]>([
     ['N', ['E', 'W']],
@@ -943,6 +950,97 @@ function pickFloor2TrashArchetype(world: GameWorld, _playerX: number, _playerY: 
   // Pick a random entry from the weighted list
   const picked: string | undefined = weightedList[world.rng.nextInt(0, weightedList.length - 1)];
   return picked ?? 'cave-slime';
+}
+
+function resolveAmbientFamilyIndex(world: GameWorld, archetypeId: string): number {
+  const territories = world.floorExtendedState?.trashTerritories;
+  const familyState = world.floorExtendedState?.familyState;
+  const presentFamilies = familyState?.presentFamilies ?? [];
+  if (!territories || presentFamilies.length === 0) {
+    return -1;
+  }
+  let ownerQuadrant: string | null = null;
+  for (const [quadrant, territoryArchetype] of territories) {
+    if (territoryArchetype === archetypeId) {
+      ownerQuadrant = quadrant;
+      break;
+    }
+  }
+  if (!ownerQuadrant) {
+    return -1;
+  }
+  const quadrantOrder = ['N', 'S', 'E', 'W'];
+  const quadrantIndex = quadrantOrder.indexOf(ownerQuadrant);
+  if (quadrantIndex < 0) {
+    return -1;
+  }
+  return quadrantIndex % presentFamilies.length;
+}
+
+function isBossDenSpawn(world: GameWorld, x: number, y: number): boolean {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return false;
+  }
+  const tile = floorMap.worldToTile(x, y);
+  const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
+  if (roomId < 0) {
+    return false;
+  }
+  return floorMap.roomGraph.get(roomId)?.role === RoomRole.BOSS_DEN;
+}
+
+function findNearestPassableTile(
+  world: GameWorld,
+  startX: number,
+  startY: number,
+  maxRadius: number = 6,
+): { x: number; y: number } | null {
+  const floorMap = world.floorMap;
+  if (!floorMap) return null;
+  const tileMap = floorMap.tileMap;
+  if (tileMap.inBounds(startX, startY) && tileMap.isPassable(startX, startY)) {
+    return { x: startX, y: startY };
+  }
+  for (let radius = 1; radius <= maxRadius; radius += 1) {
+    for (let dy = -radius; dy <= radius; dy += 1) {
+      for (let dx = -radius; dx <= radius; dx += 1) {
+        if (Math.abs(dx) !== radius && Math.abs(dy) !== radius) {
+          continue;
+        }
+        const x = startX + dx;
+        const y = startY + dy;
+        if (!tileMap.inBounds(x, y) || !tileMap.isPassable(x, y)) {
+          continue;
+        }
+        return { x, y };
+      }
+    }
+  }
+  return null;
+}
+
+function unstickFloor2Bosses(world: GameWorld): void {
+  const floorMap = world.floorMap;
+  if (!floorMap) return;
+  for (const eid of query(world.ecs, [Enemy, Health, FamilyMembership, Position])) {
+    if ((world.stores.familyMembership.isBoss[eid] ?? 0) !== 1) {
+      continue;
+    }
+    const x = world.stores.position.x[eid] ?? 0;
+    const y = world.stores.position.y[eid] ?? 0;
+    const tile = floorMap.worldToTile(x, y);
+    if (floorMap.tileMap.inBounds(tile.x, tile.y) && floorMap.tileMap.isPassable(tile.x, tile.y)) {
+      continue;
+    }
+    const nearest = findNearestPassableTile(world, tile.x, tile.y);
+    if (!nearest) {
+      continue;
+    }
+    const worldPos = floorMap.tileToWorld(nearest.x, nearest.y);
+    world.stores.position.x[eid] = worldPos.x;
+    world.stores.position.y[eid] = worldPos.y;
+  }
 }
 
 /**
@@ -1001,10 +1099,12 @@ function spawnFloor2AmbientArchetype(world: GameWorld, x: number, y: number): nu
     shape: SHAPE_CIRCLE,
   });
   setEnemyAppearanceKey(world, eid, selectedArchetype.id);
-
-  if (world.floorScenario) {
-    world.floorScenario.enemyArchetypes.set(eid, selectedArchetype.id);
+  const familyIndex = resolveAmbientFamilyIndex(world, selectedArchetype.id);
+  if (familyIndex >= 0) {
+    addComponent(world.ecs, eid, set(FamilyMembership, { familyId: familyIndex, isBoss: 0 }));
   }
+
+  world.floorExtendedState?.ambientEnemyArchetypes?.set(eid, selectedArchetype.id);
   return eid;
 }
 
@@ -1048,9 +1148,6 @@ export function floor2EnemyDirectorSystem(world: GameWorld): void {
     pruneAmbientOverflow(world, playerX, playerY, overflow);
   }
 
-  // High chance a freshly entered combat room already contains a wave.
-  prepopulateEnteredRoom(world, playerX, playerY);
-
   // Engagement top-up, throttled to one burst per spawn interval.
   const state = getSpawnerState(world);
   if (world.elapsedMs - state.lastSpawnMs < pack.spawnIntervalMs) {
@@ -1071,7 +1168,18 @@ export function floor2EnemyDirectorSystem(world: GameWorld): void {
         break;
       }
     }
-    const spawnPoint = resolveAmbientSpawnPoint(world, playerX, playerY);
+    let spawnPoint: { x: number; y: number } | null = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const candidate = resolveAmbientSpawnPoint(world, playerX, playerY);
+      if (!candidate) {
+        break;
+      }
+      if (isBossDenSpawn(world, candidate.x, candidate.y)) {
+        continue;
+      }
+      spawnPoint = candidate;
+      break;
+    }
     if (!spawnPoint) {
       break;
     }

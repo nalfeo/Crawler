@@ -3,14 +3,35 @@
   "date": "2026-07-06",
   "session_slug": "floor2-playability-territory-director",
   "task_title": "Floor 2 playability: territory director and pacing fixes",
-  "estimated_apples": 2,
+  "estimated_apples": 3,
   "stages": {
     "plan_review": {
       "completed": true,
       "reviewer_model": "gpt-5.3-codex",
       "concerns_count": 2,
       "resolved_count": 2,
-      "notes": "Plan review accepted: reuse Floor 1 ambient director shape for Floor 2 with seeded quadrant territory weighting and floor-aware spawn pack selection. Concerns addressed: (1) Floor 2 objective mode uses floorObjectiveTick with floorScenario=null, so guard must key on floor id; (2) shared spawn-point helper must select floor2EnemyPack on Floor 2 to preserve engage/despawn parameters."
+      "notes": "Plan review accepted. Addressed floorObjectiveTick with floorScenario null and floor-aware spawn-point pack selection."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["code-review-agent"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Found high-severity regression: floor2 timer could overwrite safe_room to game_over; fixed by guarding floor2ObjectiveTick to playing state only."
+        },
+        {
+          "round": 2,
+          "models": ["code-review-agent"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "No significant issues found after fix."
+        }
+      ]
     }
   }
 }

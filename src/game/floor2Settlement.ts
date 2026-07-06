@@ -18,9 +18,12 @@
  * returned so tests can call the function twice without duplication.
  */
 import { RoomRole, TerrainType, type RoomData } from '../shared/map-types.js';
+import { addComponent, set } from 'bitecs';
+import { DoorState } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
 import { sealSpecialRooms } from '../core/map/special-rooms.js';
 import { spawnNpc } from '../core/spawners/world-objects.js';
+import { createEntity } from '../core/spawners/entity-core.js';
 import { generateShopInventory } from '../core/generateShopInventory.js';
 import { loadShopArchetypes, type ShopArchetypeDef } from '../shared/data/shop-archetypes.js';
 import type {
@@ -65,6 +68,7 @@ export function initializeFloor2Settlement(
 
   // 2. Seal the perimeter — mirrors Floor 1's shop / welcome-office pass.
   sealSpecialRooms(floorMap, { extraRoomIds: [settlement.id] });
+  installSettlementDoorEntities(world, settlement);
 
   // 3. Compute centroid + spawn positions (tile → world).
   const centreTile = roomCentroidTile(settlement);
@@ -113,6 +117,27 @@ export function initializeFloor2Settlement(
   };
   world.floorExtendedState = { ...(world.floorExtendedState ?? {}), settlement: snapshot };
   return snapshot;
+}
+
+/**
+ * Mirror Floor 1's special-room door plumbing so sealed settlement doors are
+ * represented in ECS and actively synced by doorSystem.
+ */
+function installSettlementDoorEntities(world: GameWorld, settlement: RoomData): void {
+  for (const door of settlement.doors) {
+    const doorEid = createEntity(world);
+    addComponent(
+      world.ecs,
+      doorEid,
+      set(DoorState, {
+        tileX: door.x,
+        tileY: door.y,
+        isOpen: 1,
+        isLocked: 0,
+        wasUnlocked: 1,
+      }),
+    );
+  }
 }
 
 /** Repaint any CAVE_FLOOR / STONE_FLOOR inside the room to SAFE_ROOM_FLOOR. */

@@ -140,16 +140,24 @@ interface Floor1SpawnerState {
   lastSpawnMs: number;
 }
 
+function getAmbientEnemyArchetypes(world: GameWorld): Map<number, string> | undefined {
+  if (world.floorScenario) {
+    return world.floorScenario.enemyArchetypes;
+  }
+  return world.floorExtendedState?.ambientEnemyArchetypes;
+}
+
 export function pruneAmbientOverflow(
   world: GameWorld,
   playerX: number,
   playerY: number,
   overflowCount: number,
 ): void {
-  if (!world.floorScenario || overflowCount <= 0) {
+  const trackedAmbient = getAmbientEnemyArchetypes(world);
+  if (!trackedAmbient || overflowCount <= 0) {
     return;
   }
-  const rankedAmbient = [...world.floorScenario.enemyArchetypes.keys()]
+  const rankedAmbient = [...trackedAmbient.keys()]
     .filter((eid) => entityExists(world.ecs, eid))
     .map((eid) => {
       const ex = world.stores.position.x[eid] ?? 0;
@@ -166,7 +174,7 @@ export function pruneAmbientOverflow(
     }
     clearEntityStores(world, victim);
     removeEntity(world.ecs, victim);
-    world.floorScenario.enemyArchetypes.delete(victim);
+    trackedAmbient.delete(victim);
   }
 }
 
@@ -193,14 +201,15 @@ export function sealRoomPerimeterOpenings(
 }
 
 export function pruneAmbientOutOfRange(world: GameWorld, playerX: number, playerY: number): void {
-  if (!world.floorScenario) {
+  const trackedAmbient = getAmbientEnemyArchetypes(world);
+  if (!trackedAmbient) {
     return;
   }
-  const pack = floor1EnemyPack;
+  const pack = world.floor === 2 ? floor2EnemyPack : floor1EnemyPack;
   const maxDistanceSq = pack.despawnDistanceFt * pack.despawnDistanceFt;
-  for (const eid of [...world.floorScenario.enemyArchetypes.keys()]) {
+  for (const eid of [...trackedAmbient.keys()]) {
     if (!entityExists(world.ecs, eid)) {
-      world.floorScenario.enemyArchetypes.delete(eid);
+      trackedAmbient.delete(eid);
       continue;
     }
     const ex = world.stores.position.x[eid] ?? 0;
@@ -212,7 +221,7 @@ export function pruneAmbientOutOfRange(world: GameWorld, playerX: number, player
     }
     clearEntityStores(world, eid);
     removeEntity(world.ecs, eid);
-    world.floorScenario.enemyArchetypes.delete(eid);
+    trackedAmbient.delete(eid);
   }
 }
 
@@ -1920,10 +1929,11 @@ export function evictFurthestAmbient(
   minDistSq: number,
   count: number,
 ): number {
-  if (!world.floorScenario || count <= 0) {
+  const trackedAmbient = getAmbientEnemyArchetypes(world);
+  if (!trackedAmbient || count <= 0) {
     return 0;
   }
-  const candidates = [...world.floorScenario.enemyArchetypes.keys()]
+  const candidates = [...trackedAmbient.keys()]
     .filter((eid) => entityExists(world.ecs, eid))
     .map((eid) => ({
       eid,
@@ -1941,7 +1951,7 @@ export function evictFurthestAmbient(
     const victim = candidates[i]!.eid;
     clearEntityStores(world, victim);
     removeEntity(world.ecs, victim);
-    world.floorScenario.enemyArchetypes.delete(victim);
+    trackedAmbient.delete(victim);
   }
   return evictCount;
 }

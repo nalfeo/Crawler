@@ -254,6 +254,7 @@ export function meleeSwingSystem(world: GameWorld, collisionResult?: CollisionRe
     const swingTeam = hasComponent(world.ecs, eid, Team) ? team.id[eid]! : -1;
     const ownerEid = hasComponent(world.ecs, eid, Owner) ? world.stores.owner.eid[eid]! : -1;
     if (
+      world.floor === 1 &&
       ownerEid >= 0 &&
       hasComponent(world.ecs, ownerEid, Player) &&
       isEntityInSafeSpace(world, ownerEid)

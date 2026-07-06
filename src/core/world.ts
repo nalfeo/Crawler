@@ -83,6 +83,8 @@ export interface FloorExtendedState {
   settlement?: Floor2SettlementSnapshot;
   /** Trash territory assignments for floors with territorial trash spawning (e.g. Floor 2). Maps quadrant ID ('N', 'S', 'E', 'W') to archetype ID. */
   trashTerritories?: Map<string, string>;
+  /** Ambient enemies tracked by the floor director when `world.floorScenario` is intentionally null (e.g. Floor 2). */
+  ambientEnemyArchetypes?: Map<number, string>;
 }
 
 export interface GameWorld {

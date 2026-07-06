@@ -1,7 +1,17 @@
 import { query } from 'bitecs';
 import type { GameWorld } from './world.js';
-import { RoomRole } from '../shared/map-types.js';
+import { RoomRole, type RoomData } from '../shared/map-types.js';
 import { Player } from './components.js';
+
+function roomContainsTile(room: RoomData, tx: number, ty: number): boolean {
+  if (room.interiorCells && room.interiorCells.length > 0) {
+    return room.interiorCells.some((cell) => cell.x === tx && cell.y === ty);
+  }
+  const {
+    bounds: { x, y, width, height },
+  } = room;
+  return tx >= x && tx < x + width && ty >= y && ty < y + height;
+}
 
 /**
  * Returns true when the given world position (feet) is inside any safe room on the current floor.
@@ -13,9 +23,7 @@ export function isPointInSafeSpace(world: GameWorld, x: number, y: number): bool
   const safeRooms = floorMap.roomGraph.getRoomsByRole(RoomRole.SAFE);
   if (safeRooms.length === 0) return false;
   const tile = floorMap.worldToTile(x, y);
-  return safeRooms.some(({ bounds: { x: rx, y: ry, width, height } }) => {
-    return tile.x >= rx && tile.x < rx + width && tile.y >= ry && tile.y < ry + height;
-  });
+  return safeRooms.some((room) => roomContainsTile(room, tile.x, tile.y));
 }
 
 /** Returns true when the entity's current position is inside a safe room. */
