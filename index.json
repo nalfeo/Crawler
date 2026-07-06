@@ -22,6 +22,17 @@
     "path": "by-sha/b4fcf201c6f6f1e272ecd3f0ef6c0db7020dd6dc.json"
   },
   {
+    "commit": "5bf3a6bbfd92ffea120d49d33d4dcfb53cfd1c42",
+    "commitDate": "2026-07-05T19:26:41-07:00",
+    "commitSubject": "fix(ci): drop copilot-swe-agent assignee from auto-rebase conflict issue (#801)",
+    "capturedAt": "2026-07-06T03:31:41.026Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28764206097",
+    "winRate": 0.79,
+    "totalWins": 237,
+    "totalRuns": 300,
+    "path": "by-sha/5bf3a6bbfd92ffea120d49d33d4dcfb53cfd1c42.json"
+  },
+  {
     "commit": "ae7c887749b7d9c332ba18a9c7424eaea3054457",
     "commitDate": "2026-07-05T19:19:32-07:00",
     "commitSubject": "docs: add Request Intake protocol to agent instructions (#796)",
