@@ -1,5 +1,16 @@
 [
   {
+    "commit": "8ac80699aa0e367db54fc9eb5945033f9d8b4a66",
+    "commitDate": "2026-07-06T01:45:35Z",
+    "commitSubject": "feat(physics): Slice 1 - Size component foundation (#785)",
+    "capturedAt": "2026-07-06T02:46:13.272Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28762785117",
+    "winRate": 0.79,
+    "totalWins": 237,
+    "totalRuns": 300,
+    "path": "by-sha/8ac80699aa0e367db54fc9eb5945033f9d8b4a66.json"
+  },
+  {
     "commit": "b4fcf201c6f6f1e272ecd3f0ef6c0db7020dd6dc",
     "commitDate": "2026-07-06T01:24:55Z",
     "commitSubject": "ci: capture 100-seed baseline sweep after each Pages release (#791)",
