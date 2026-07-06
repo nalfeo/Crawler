@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-05",
+  "session_slug": "session-plans-chat",
+  "task_title": "Add kickoff verdict guidance and in-chat plan enforcement",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "notes": "Post-implementation plan review raised six concerns; I added rendered-output coverage, completed docs/tooling validation, documented the baseline ADR-artifact repair, and confirmed the remaining concerns were already satisfied by the shipped change."
+    }
+  }
+}
