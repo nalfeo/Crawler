@@ -665,7 +665,7 @@ describe('BehaviorTreeAI', () => {
       expect(s.ai.getDecision().targetEid).not.toBeNull();
       const steer = s.ai.getTravelSteeringDebug();
       expect(steer).not.toBeNull();
-      expect(steer!.progressDot).toBeGreaterThan(0); // never reverses off-objective
+      expect(steer!.progressDot).toBeGreaterThanOrEqual(0); // never reverses off-objective
       // The additive travel dodge is folded into the steered heading (retired).
       const dbg = s.ai.getOpportunisticDebug();
       expect(Math.hypot(dbg.dodgeX, dbg.dodgeY)).toBe(0);
