@@ -105,16 +105,22 @@ export function generateTextures(scene: Phaser.Scene): void {
   g.strokePath();
   g.generateTexture(TEX_NPC, 16, 22);
 
-  // Rat — gray body with darker head/tail hint
+  // Rat — gray body with darker head/tail hint. Authored facing RIGHT to
+  // match the sprite pipeline contract (`data/sprite-types/enemy.json`
+  // enforces `sensors.enemy.facing: "right"` for enemy briefs) and the
+  // flip logic in PhaserBridge which assumes right-facing native art:
+  // head circle sits on the RIGHT half of the texture, tail whip on the
+  // LEFT. If you flip the head/tail here, revisit the enemy flip block in
+  // PhaserBridge.ts and the enemy sprite pipeline together.
   g.clear();
   g.fillStyle(0x8f959e, 1);
   g.fillEllipse(11, 12, 18, 12);
   g.fillStyle(0xb7bcc4, 1);
-  g.fillCircle(6, 9, 4);
+  g.fillCircle(18, 9, 4);
   g.lineStyle(2, 0x6f7782, 1);
   g.beginPath();
-  g.moveTo(18, 13);
-  g.lineTo(22, 15);
+  g.moveTo(6, 13);
+  g.lineTo(2, 15);
   g.strokePath();
   g.generateTexture(TEX_ENEMY_RAT, 24, 22);
 
@@ -128,7 +134,9 @@ export function generateTextures(scene: Phaser.Scene): void {
   g.fillCircle(11, 13, 5);
   g.generateTexture(TEX_ENEMY_SLIME, 22, 22);
 
-  // Boss — rat/slime hybrid, large and unmistakable.
+  // Boss — rat/slime hybrid, large and unmistakable. The slime tail hangs
+  // off the LEFT so the boss reads as facing RIGHT (matching the
+  // right-facing sprite pipeline contract — see the rat block above).
   g.clear();
   g.fillStyle(0x1d4ed8, 0.18);
   g.fillEllipse(22, 22, 40, 34);
@@ -145,7 +153,7 @@ export function generateTextures(scene: Phaser.Scene): void {
   g.fillStyle(0x157a2f, 0.75);
   g.fillCircle(24, 26, 7);
   g.fillStyle(0x0f4c1d, 0.75);
-  g.fillTriangle(30, 28, 40, 34, 34, 37);
+  g.fillTriangle(14, 28, 4, 34, 10, 37);
   g.lineStyle(3, 0x6f7782, 1);
   g.beginPath();
   g.moveTo(16, 35);

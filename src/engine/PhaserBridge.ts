@@ -20,7 +20,7 @@ import {
 import { ftToPx } from '../shared/units.js';
 import { DEFAULT_HANDHELD_SPRITE_ANCHOR } from '../shared/sprite-anchor.js';
 import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../shared/decorationDefs.js';
-import { PROP_DEPTH } from '../shared/render-depths.js';
+import { ENTITY_DEPTH, PROP_DEPTH, WORLD_VFX_DEPTH } from '../shared/render-depths.js';
 import { getHarvestableDefByIndex } from '../shared/harvestableDefs.js';
 import {
   generateTextures,
@@ -987,6 +987,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             img.setTint(corpseDecay.tint);
           }
           img.setAlpha(corpseDecay.corpseAlpha);
+          // Corpses render on the ground plane (below the player and living
+          // enemies at the default depth of 0) so the player is never buried
+          // under a fresh kill. Sits ABOVE `bloodPool` so the corpse still
+          // reads as lying inside the pool it bled into.
+          img.setDepth(WORLD_VFX_DEPTH.corpse);
         } else if (visual.deathTotalMs !== undefined) {
           // This visual previously backed a corpse but its EID has been
           // recycled for a living entity (bitecs reuses freed EIDs). Clear the
@@ -995,6 +1000,9 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           if (typeof img.clearTint === 'function') {
             img.clearTint();
           }
+          // Also reset the corpse depth we set during the dead phase so the
+          // recycled sprite renders at the default entity plane again.
+          img.setDepth(ENTITY_DEPTH);
           visual.deathTotalMs = undefined;
         }
 
