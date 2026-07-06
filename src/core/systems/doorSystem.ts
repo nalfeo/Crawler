@@ -69,7 +69,7 @@ export function doorSystem(world: GameWorld): void {
   for (const player of players) {
     const px = world.stores.position.x[player] ?? 0;
     const py = world.stores.position.y[player] ?? 0;
-    if (safeRoom && isPointInSafeSpace(world, px, py)) {
+    if (world.floor === 1 && safeRoom && isPointInSafeSpace(world, px, py)) {
       const playerTile = floorMap.worldToTile(px, py);
       let closeSafeDoors = true;
       for (const door of safeRoom.doors) {

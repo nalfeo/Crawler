@@ -38,6 +38,7 @@ import {
   Enemy,
   FamilyMembership,
   Health,
+  Player,
   Position,
   Size,
   Sprite,
@@ -67,8 +68,8 @@ import type { FloorMap } from '../core/map/FloorMap.js';
 import {
   floor2EnemyPack,
   getFloor2BossArchetype,
-  getFloor2FamilyTrash,
   pickEnemyArchetype,
+  type EnemyArchetypeDef,
 } from '../shared/enemy-packs.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
 import { getGenerator } from '../core/map/generators/registry.js';
@@ -91,14 +92,23 @@ import {
 } from '../shared/quest-types.js';
 import { acceptQuest, addQuestCounter } from '../core/systems/questSystem.js';
 import type { SeededRandom } from '../shared/random.js';
+import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
 import { setEnemyAppearanceKey } from '../core/spawners/combatants.js';
+import { getFloor2NeutralTrash } from '../shared/enemy-packs.js';
+import {
+  scaleAmbientSpawnStats,
+  pruneAmbientOutOfRange,
+  pruneAmbientOverflow,
+  countDirectorEnemies,
+  countEngagingEnemies,
+  evictFurthestAmbient,
+  resolveAmbientSpawnPoint,
+  getSpawnerState,
+} from './floorScenario.js';
 
 const FLOOR2_DEN_UNLOCK_KILL_TARGET = 3;
-const FLOOR2_TERRITORY_TRASH_PER_FAMILY = 4;
-const FLOOR2_TERRITORY_RESPAWN_MS = 2500;
 const FLOOR2_BOSS_HP_SCALE = 0.03;
 const FLOOR2_BOSS_CONTACT_DAMAGE = 2;
-const floor2TerritoryRespawnMs = new WeakMap<GameWorld, Map<FamilyId, number>>();
 const floor2ProcessedCombatEvents = new WeakMap<GameWorld, WeakSet<object>>();
 
 /**
@@ -204,47 +214,6 @@ export function buildDenUnlockQuestPack(
   };
 }
 
-function pickTerritorySpawnTiles(
-  room: RoomData,
-  count: number,
-): ReadonlyArray<{ x: number; y: number }> {
-  const interior = room.interiorCells ?? [];
-  if (interior.length > 0) {
-    const picks: Array<{ x: number; y: number }> = [];
-    const step = Math.max(1, Math.floor(interior.length / count));
-    for (let i = 0; i < count && i < interior.length; i += 1) {
-      const index = Math.min(interior.length - 1, i * step);
-      const tile = interior[index]!;
-      picks.push({ x: tile.x, y: tile.y });
-    }
-    return picks;
-  }
-
-  const picks: Array<{ x: number; y: number }> = [];
-  for (let i = 0; i < count; i += 1) {
-    picks.push({
-      x: room.bounds.x + 1 + (i % Math.max(1, room.bounds.width - 2)),
-      y:
-        room.bounds.y +
-        1 +
-        (Math.floor(i / Math.max(1, room.bounds.width - 2)) % Math.max(1, room.bounds.height - 2)),
-    });
-  }
-  return picks;
-}
-
-function pickTerritoryRespawnTile(room: RoomData, rng: SeededRandom): { x: number; y: number } {
-  const interior = room.interiorCells ?? [];
-  if (interior.length > 0) {
-    const tile = interior[rng.nextInt(0, interior.length - 1)]!;
-    return { x: tile.x, y: tile.y };
-  }
-  return {
-    x: room.bounds.x + Math.floor(room.bounds.width / 2),
-    y: room.bounds.y + Math.floor(room.bounds.height / 2),
-  };
-}
-
 /**
  * Find the BOSS_DEN room for a given family index on a Floor 2 map. Returns
  * `undefined` when no matching room exists (defensive — the generator is
@@ -257,24 +226,6 @@ export function findBossDenRoom(
   return floorMap.roomGraph
     .getAll()
     .find((r) => r.role === RoomRole.BOSS_DEN && r.familyIndex === familyIndex);
-}
-
-function findTerritoryRoom(
-  floorMap: Pick<FloorMap, 'roomGraph'>,
-  familyIndex: number,
-): RoomData | undefined {
-  const rooms = floorMap.roomGraph.getAll();
-  const familyTerritory = rooms.find(
-    (r) => r.role === RoomRole.TERRITORY && r.familyIndex === familyIndex,
-  );
-  if (familyTerritory) {
-    return familyTerritory;
-  }
-  const fallbackRooms = rooms.filter((room) => room.role === RoomRole.NORMAL);
-  if (fallbackRooms.length === 0) {
-    return undefined;
-  }
-  return fallbackRooms[familyIndex % fallbackRooms.length];
 }
 
 /** Interior spawn tile for a boss inside its den. */
@@ -335,38 +286,6 @@ export function spawnFamilyBoss(
   setComponent(world.ecs, eid, Damage, { amount: FLOOR2_BOSS_CONTACT_DAMAGE });
   // Keep bosses permanently aggressive inside their den.
   world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
-  return eid;
-}
-
-function spawnFamilyTerritoryMob(
-  world: GameWorld,
-  x: number,
-  y: number,
-  familyIndex: number,
-  familyId: FamilyId,
-): number | null {
-  const familyTrash = getFloor2FamilyTrash(familyId);
-  if (familyTrash.length === 0) {
-    return null;
-  }
-  const archetype = pickEnemyArchetype(familyTrash, () => world.rng.next());
-  const eid = spawnBehaviorEnemy(
-    world,
-    x,
-    y,
-    archetype.hp,
-    AI_TYPE.CHASE,
-    archetype.speed,
-    archetype.detectRange,
-    0,
-  );
-  setComponent(world.ecs, eid, Sprite, {
-    textureId: archetype.spriteTexture,
-    width: archetype.spriteWidth,
-    height: archetype.spriteHeight,
-  });
-  addComponent(world.ecs, eid, set(FamilyMembership, { familyId: familyIndex, isBoss: 0 }));
-  setEnemyAppearanceKey(world, eid, archetype.id);
   return eid;
 }
 
@@ -459,16 +378,6 @@ export function initializeFloor2Bosses(
     const spawnTile = pickBossSpawnTile(denRoom);
     const spawnWorld = floorMap.tileToWorld(spawnTile.x, spawnTile.y);
     spawnFamilyBoss(world, spawnWorld.x, spawnWorld.y, familyIndex, familyId);
-    const territoryRoom = findTerritoryRoom(floorMap, familyIndex);
-    if (territoryRoom) {
-      for (const tile of pickTerritorySpawnTiles(
-        territoryRoom,
-        FLOOR2_TERRITORY_TRASH_PER_FAMILY,
-      )) {
-        const spawnWorldPos = floorMap.tileToWorld(tile.x, tile.y);
-        spawnFamilyTerritoryMob(world, spawnWorldPos.x, spawnWorldPos.y, familyIndex, familyId);
-      }
-    }
 
     objectives.push({
       familyId,
@@ -494,10 +403,21 @@ export function initializeFloor2Bosses(
  *     spawner (Slice 8) can gate future spawns.
  *   - Run the per-tick Floor 2 win evaluator (Win A / Win B) and, on first
  *     trigger, latch `floor2-victory` + pop resource-heart stairs.
+ *   - Run the floor2 enemy director system for quadrant-based trash spawning.
  */
 export function floor2ObjectiveTick(world: GameWorld): void {
+  if (world.state !== 'playing') {
+    return;
+  }
+
+  unstickFloor2Bosses(world);
+
+  // Run the enemy director for quadrant-based trash spawning
+  floor2EnemyDirectorSystem(world);
+
   const floor2State = world.floorExtendedState?.familyState;
   if (!floor2State) return;
+
   const decapitated = ensureDecapitatedSet(world);
   let processedEvents = floor2ProcessedCombatEvents.get(world);
   if (!processedEvents) {
@@ -547,7 +467,12 @@ export function floor2ObjectiveTick(world: GameWorld): void {
     }
   }
 
-  respawnFamilyTerritoryTrash(world, floor2State);
+  // Check collapse timer and end floor if expired
+  const manifest = getFloorManifest('floor2');
+  if (manifest?.timer && world.elapsedMs >= manifest.timer.durationMs) {
+    world.state = 'game_over';
+  }
+
   floor2VictorySystem(world);
 }
 
@@ -681,12 +606,31 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
     presentCountFourProbability: presentCount === 4 ? 1 : presentCount === 3 ? 0 : undefined,
   });
   initializeFactionRelations(world, roster.presentFamilies);
+
+  // Initialize trash territories: randomly pick 4 of 8 neutral trash types
+  // and assign them to map quadrants (N, S, E, W)
+  const allNeutralTrash = getFloor2NeutralTrash();
+  const trashArchetypeIds = allNeutralTrash.map((a: EnemyArchetypeDef) => a.id);
+  const trashRng = new SeededRandomClass(
+    hashStringToSeed(`${world.seed}:floor2-trash-territories`),
+  );
+  trashRng.shuffle(trashArchetypeIds);
+  const selectedTrashTypes = trashArchetypeIds.slice(0, 4);
+  const quadrantTrashMap = new Map<string, string>([
+    ['N', selectedTrashTypes[0] ?? 'cave-slime'],
+    ['S', selectedTrashTypes[1] ?? 'giant-cave-rat'],
+    ['E', selectedTrashTypes[2] ?? 'cave-bat-swarm'],
+    ['W', selectedTrashTypes[3] ?? 'rock-lice'],
+  ]);
+
   world.floorExtendedState = {
     familyState: {
       presentFamilies: roster.presentFamilies.slice(),
       contestedResource: roster.contestedResource,
       betrayerFlag: false,
     },
+    trashTerritories: quadrantTrashMap,
+    ambientEnemyArchetypes: new Map<number, string>(),
   };
   world.floorScenario = null;
   setGoalFlag(world, FLOOR2_VICTORY_GOAL_ID, false);
@@ -791,11 +735,33 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
     ...(settlementArchetypes ? { archetypes: settlementArchetypes } : {}),
   });
 
-  const starterWeapon = manifest.starterWeapons[0];
-  if (starterWeapon) {
-    const weaponDef = getWeaponDef(starterWeapon);
-    if (weaponDef) {
-      setActiveWeapon(world, weaponDef);
+  // Use seeded RNG to pick starter weapon, matching Floor 1 pattern
+  // so player gets the same weapon on the same seed for consistency
+  const starterWeaponPool = manifest.starterWeapons;
+  let selectedWeaponId: string | null = null;
+  if (starterWeaponPool && starterWeaponPool.length > 0) {
+    const weaponRng = new SeededRandomClass(
+      hashStringToSeed(`${world.seed}:floor2-starter-weapon`),
+    );
+    // Pick from the pool deterministically
+    const picked = starterWeaponPool[weaponRng.nextInt(0, starterWeaponPool.length - 1)];
+    if (picked) {
+      const weaponDef = getWeaponDef(picked);
+      if (weaponDef) {
+        selectedWeaponId = weaponDef.id;
+        setActiveWeapon(world, weaponDef);
+      }
+    }
+  }
+
+  // Fallback if seeded pick failed
+  if (!selectedWeaponId && manifest.starterWeapons && manifest.starterWeapons.length > 0) {
+    const fallbackId = manifest.starterWeapons[0];
+    if (fallbackId) {
+      const fallbackDef = getWeaponDef(fallbackId);
+      if (fallbackDef) {
+        setActiveWeapon(world, fallbackDef);
+      }
     }
   }
 
@@ -856,83 +822,6 @@ function ensureDecapitatedSet(world: GameWorld): Set<FamilyId> {
   return floor2State.decapitatedFamilies;
 }
 
-function respawnFamilyTerritoryTrash(world: GameWorld, floor2State: Floor2State): void {
-  const floorMap = world.floorMap;
-  if (!floorMap) {
-    return;
-  }
-  let timers = floor2TerritoryRespawnMs.get(world);
-  if (!timers) {
-    timers = new Map<FamilyId, number>();
-    floor2TerritoryRespawnMs.set(world, timers);
-  }
-  const decapitated = ensureDecapitatedSet(world);
-  for (let familyIndex = 0; familyIndex < floor2State.presentFamilies.length; familyIndex += 1) {
-    const familyId = floor2State.presentFamilies[familyIndex]!;
-    if (decapitated.has(familyId)) {
-      continue;
-    }
-    if (world.goalFlags.get(denUnlockGoalId(familyId)) === true) {
-      continue;
-    }
-    const territoryRoom = findTerritoryRoom(floorMap, familyIndex);
-    if (!territoryRoom) {
-      continue;
-    }
-    const living = countLivingFamilyTrash(
-      world,
-      familyIndex,
-      territoryRoom,
-      floorMap.config.tileSizeFt,
-    );
-    if (living >= FLOOR2_TERRITORY_TRASH_PER_FAMILY) {
-      timers.set(familyId, world.elapsedMs + FLOOR2_TERRITORY_RESPAWN_MS);
-      continue;
-    }
-    const nextSpawnMs = timers.get(familyId) ?? 0;
-    if (world.elapsedMs < nextSpawnMs) {
-      continue;
-    }
-    const spawnTile = pickTerritoryRespawnTile(territoryRoom, world.rng);
-    const spawnWorld = floorMap.tileToWorld(spawnTile.x, spawnTile.y);
-    spawnFamilyTerritoryMob(world, spawnWorld.x, spawnWorld.y, familyIndex, familyId);
-    timers.set(familyId, world.elapsedMs + FLOOR2_TERRITORY_RESPAWN_MS);
-  }
-}
-
-function countLivingFamilyTrash(
-  world: GameWorld,
-  familyIndex: number,
-  territoryRoom: RoomData,
-  tileSizeFt: number,
-): number {
-  let living = 0;
-  const familyField = world.stores.familyMembership.familyId;
-  const bossField = world.stores.familyMembership.isBoss;
-  const minX = territoryRoom.bounds.x * tileSizeFt;
-  const minY = territoryRoom.bounds.y * tileSizeFt;
-  const maxX = (territoryRoom.bounds.x + territoryRoom.bounds.width) * tileSizeFt;
-  const maxY = (territoryRoom.bounds.y + territoryRoom.bounds.height) * tileSizeFt;
-  for (const eid of query(world.ecs, [Enemy, Health, FamilyMembership])) {
-    if ((familyField[eid] ?? -1) !== familyIndex) {
-      continue;
-    }
-    if ((bossField[eid] ?? 0) !== 0) {
-      continue;
-    }
-    if ((world.stores.health.current[eid] ?? 0) <= 0) {
-      continue;
-    }
-    const x = world.stores.position.x[eid] ?? 0;
-    const y = world.stores.position.y[eid] ?? 0;
-    if (x < minX || x > maxX || y < minY || y > maxY) {
-      continue;
-    }
-    living += 1;
-  }
-  return living;
-}
-
 function popFloor2ResourceHeartStairs(world: GameWorld): void {
   const floor2State = world.floorExtendedState?.familyState;
   if (!floor2State) return;
@@ -973,4 +862,328 @@ function findResourceHeartStairTile(world: GameWorld): { x: number; y: number } 
     }
   }
   return best ? { x: best.x, y: best.y } : null;
+}
+
+/**
+ * Determine which quadrant contains a world position.
+ * Returns 'N', 'S', 'E', or 'W'.
+ */
+export function getQuadrantForPosition(
+  world: GameWorld,
+  x: number,
+  y: number,
+): 'N' | 'S' | 'E' | 'W' {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return 'N';
+  }
+  const centerX = (floorMap.width * floorMap.config.tileSizeFt) / 2;
+  const centerY = (floorMap.height * floorMap.config.tileSizeFt) / 2;
+
+  const isWest = x < centerX;
+  const isNorth = y < centerY;
+
+  if (isWest) {
+    return isNorth ? 'N' : 'S';
+  } else {
+    return isNorth ? 'E' : 'W';
+  }
+}
+
+/**
+ * Determine spawn weight for each quadrant based on player position.
+ * Returns a map of quadrant ID to weight (0-1).
+ */
+export function getQuadrantSpawnWeights(playerQuadrant: string): Map<string, number> {
+  const weights = new Map<string, number>();
+  const neighbors = new Map<string, string[]>([
+    ['N', ['E', 'W']],
+    ['S', ['E', 'W']],
+    ['E', ['N', 'S']],
+    ['W', ['N', 'S']],
+  ]);
+  const opposite = new Map<string, string>([
+    ['N', 'S'],
+    ['S', 'N'],
+    ['E', 'W'],
+    ['W', 'E'],
+  ]);
+
+  weights.set(playerQuadrant, 0.5); // Main: 50%
+  for (const neighbor of neighbors.get(playerQuadrant) || []) {
+    weights.set(neighbor, 0.2); // Neighbors: 20% each
+  }
+  weights.set(opposite.get(playerQuadrant) || 'N', 0.1); // Opposite: 10%
+  return weights;
+}
+
+/**
+ * Pick a trash archetype respecting quadrant-based weights.
+ */
+function pickFloor2TrashArchetype(world: GameWorld, _playerX: number, _playerY: number): string {
+  const territoryMap = world.floorExtendedState?.trashTerritories;
+  if (!territoryMap || territoryMap.size === 0) {
+    // Fallback: neutral trash pool
+    const pack = floor2EnemyPack;
+    return pickEnemyArchetype(pack.archetypes, () => world.rng.next()).id;
+  }
+
+  const playerQuadrant = getQuadrantForPosition(world, _playerX, _playerY);
+  const weights = getQuadrantSpawnWeights(playerQuadrant);
+
+  // Build a weighted list of all archetypes
+  const weightedList: string[] = [];
+  for (const [quadrant, archetype] of territoryMap) {
+    const weight = weights.get(quadrant) || 0;
+    const count = Math.round(weight * 10); // Scale 0-1 to 0-10 for sampling
+    for (let i = 0; i < count; i += 1) {
+      weightedList.push(archetype);
+    }
+  }
+
+  if (weightedList.length === 0) {
+    // Fallback if something went wrong
+    const firstValue = territoryMap.values().next().value;
+    return typeof firstValue === 'string' ? firstValue : 'cave-slime';
+  }
+
+  // Pick a random entry from the weighted list
+  const picked: string | undefined = weightedList[world.rng.nextInt(0, weightedList.length - 1)];
+  return picked ?? 'cave-slime';
+}
+
+function resolveAmbientFamilyIndex(world: GameWorld, archetypeId: string): number {
+  const territories = world.floorExtendedState?.trashTerritories;
+  const familyState = world.floorExtendedState?.familyState;
+  const presentFamilies = familyState?.presentFamilies ?? [];
+  if (!territories || presentFamilies.length === 0) {
+    return -1;
+  }
+  let ownerQuadrant: string | null = null;
+  for (const [quadrant, territoryArchetype] of territories) {
+    if (territoryArchetype === archetypeId) {
+      ownerQuadrant = quadrant;
+      break;
+    }
+  }
+  if (!ownerQuadrant) {
+    return -1;
+  }
+  const quadrantOrder = ['N', 'S', 'E', 'W'];
+  const quadrantIndex = quadrantOrder.indexOf(ownerQuadrant);
+  if (quadrantIndex < 0) {
+    return -1;
+  }
+  return quadrantIndex % presentFamilies.length;
+}
+
+function isBossDenSpawn(world: GameWorld, x: number, y: number): boolean {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return false;
+  }
+  const tile = floorMap.worldToTile(x, y);
+  const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
+  if (roomId < 0) {
+    return false;
+  }
+  return floorMap.roomGraph.get(roomId)?.role === RoomRole.BOSS_DEN;
+}
+
+function findNearestPassableTile(
+  world: GameWorld,
+  startX: number,
+  startY: number,
+  maxRadius: number = 6,
+): { x: number; y: number } | null {
+  const floorMap = world.floorMap;
+  if (!floorMap) return null;
+  const tileMap = floorMap.tileMap;
+  if (tileMap.inBounds(startX, startY) && tileMap.isPassable(startX, startY)) {
+    return { x: startX, y: startY };
+  }
+  for (let radius = 1; radius <= maxRadius; radius += 1) {
+    for (let dy = -radius; dy <= radius; dy += 1) {
+      for (let dx = -radius; dx <= radius; dx += 1) {
+        if (Math.abs(dx) !== radius && Math.abs(dy) !== radius) {
+          continue;
+        }
+        const x = startX + dx;
+        const y = startY + dy;
+        if (!tileMap.inBounds(x, y) || !tileMap.isPassable(x, y)) {
+          continue;
+        }
+        return { x, y };
+      }
+    }
+  }
+  return null;
+}
+
+function unstickFloor2Bosses(world: GameWorld): void {
+  const floorMap = world.floorMap;
+  if (!floorMap) return;
+  for (const eid of query(world.ecs, [Enemy, Health, FamilyMembership, Position])) {
+    if ((world.stores.familyMembership.isBoss[eid] ?? 0) !== 1) {
+      continue;
+    }
+    const x = world.stores.position.x[eid] ?? 0;
+    const y = world.stores.position.y[eid] ?? 0;
+    const tile = floorMap.worldToTile(x, y);
+    if (floorMap.tileMap.inBounds(tile.x, tile.y) && floorMap.tileMap.isPassable(tile.x, tile.y)) {
+      continue;
+    }
+    const nearest = findNearestPassableTile(world, tile.x, tile.y);
+    if (!nearest) {
+      continue;
+    }
+    const worldPos = floorMap.tileToWorld(nearest.x, nearest.y);
+    world.stores.position.x[eid] = worldPos.x;
+    world.stores.position.y[eid] = worldPos.y;
+  }
+}
+
+/**
+ * Spawn one Floor 2 ambient archetype with quadrant-based trash weighting,
+ * scaling stats based on distance from spawn.
+ */
+function spawnFloor2AmbientArchetype(world: GameWorld, x: number, y: number): number {
+  const pack = floor2EnemyPack;
+  const archetypeId = pickFloor2TrashArchetype(world, x, y);
+  const archetype = pack.archetypes.find((a: EnemyArchetypeDef) => a.id === archetypeId);
+
+  if (!archetype) {
+    // Fallback to first available
+    const fallback = pack.archetypes[0];
+    if (!fallback) {
+      throw new Error('No archetypes available in floor2EnemyPack');
+    }
+  }
+
+  const selectedArchetype = archetype || pack.archetypes[0]!;
+  let hp = selectedArchetype.hp;
+  let speed = selectedArchetype.speed;
+  if (world.floorMap) {
+    const spawnWorld = world.floorMap.tileToWorld(
+      world.floorMap.playerSpawn.x,
+      world.floorMap.playerSpawn.y,
+    );
+    const scaled = scaleAmbientSpawnStats(
+      selectedArchetype.hp,
+      selectedArchetype.speed,
+      x,
+      y,
+      spawnWorld.x,
+      spawnWorld.y,
+    );
+    hp = scaled.hp;
+    speed = scaled.speed;
+  }
+
+  // Determine AI type based on archetype
+  let aiType: number = AI_TYPE.CHASE;
+  if (selectedArchetype.id.includes('slime')) {
+    aiType = AI_TYPE.LEAPER;
+  }
+
+  const eid = spawnBehaviorEnemy(world, x, y, hp, aiType, speed, selectedArchetype.detectRange, 0);
+  setComponent(world.ecs, eid, Sprite, {
+    textureId: selectedArchetype.spriteTexture,
+    width: selectedArchetype.spriteWidth,
+    height: selectedArchetype.spriteHeight,
+  });
+  setComponent(world.ecs, eid, Size, {
+    radius: Math.max(selectedArchetype.spriteWidth, selectedArchetype.spriteHeight) * 0.5,
+    halfWidth: 0,
+    halfHeight: 0,
+    shape: SHAPE_CIRCLE,
+  });
+  setEnemyAppearanceKey(world, eid, selectedArchetype.id);
+  const familyIndex = resolveAmbientFamilyIndex(world, selectedArchetype.id);
+  if (familyIndex >= 0) {
+    addComponent(world.ecs, eid, set(FamilyMembership, { familyId: familyIndex, isBoss: 0 }));
+  }
+
+  world.floorExtendedState?.ambientEnemyArchetypes?.set(eid, selectedArchetype.id);
+  return eid;
+}
+
+/**
+ * Floor 2 enemy director system — continuous ambient spawning with quadrant-based trash territories.
+ *
+ * Divides the map into 4 quadrants (N, S, E, W) and assigns one trash archetype per
+ * quadrant. When spawning, uses weighted probabilities based on player position:
+ *   - 50% chance: main archetype for the player's current quadrant
+ *   - 20% chance each: neighboring quadrants
+ *   - 10% chance: opposite quadrant
+ *
+ * Otherwise reuses Floor 1's continuous ambient director logic: maintains a global
+ * enemy cap, pre-populates rooms with waves, and burst-spawns near the player.
+ */
+export function floor2EnemyDirectorSystem(world: GameWorld): void {
+  if (world.state !== 'playing') {
+    return;
+  }
+
+  // For Floor 2, we don't have world.floorScenario (it's null).
+  // Check for Floor 2 state instead.
+  if (world.floor !== 2) {
+    return;
+  }
+
+  const players = query(world.ecs, [Player, Position]);
+  const player = players[0];
+  if (player === undefined) {
+    return;
+  }
+
+  const pack = floor2EnemyPack;
+  const playerX = world.stores.position.x[player] ?? 0;
+  const playerY = world.stores.position.y[player] ?? 0;
+
+  // Recycle mobs left far behind, then enforce the global ceiling.
+  pruneAmbientOutOfRange(world, playerX, playerY);
+  const overflow = countDirectorEnemies(world) - pack.enemyCap;
+  if (overflow > 0) {
+    pruneAmbientOverflow(world, playerX, playerY, overflow);
+  }
+
+  // Engagement top-up, throttled to one burst per spawn interval.
+  const state = getSpawnerState(world);
+  if (world.elapsedMs - state.lastSpawnMs < pack.spawnIntervalMs) {
+    return;
+  }
+
+  const engageRadiusSq = pack.engageRadiusFt * pack.engageRadiusFt;
+  const engaging = countEngagingEnemies(world, playerX, playerY, engageRadiusSq);
+  if (engaging >= pack.engageTarget) {
+    return;
+  }
+
+  const burst = Math.min(pack.engageTarget - engaging, pack.maxSpawnsPerTick);
+  for (let i = 0; i < burst; i += 1) {
+    // At the global cap, make room near the player by recycling the furthest straggler.
+    if (countDirectorEnemies(world) >= pack.enemyCap) {
+      if (evictFurthestAmbient(world, playerX, playerY, engageRadiusSq, 1) === 0) {
+        break;
+      }
+    }
+    let spawnPoint: { x: number; y: number } | null = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const candidate = resolveAmbientSpawnPoint(world, playerX, playerY);
+      if (!candidate) {
+        break;
+      }
+      if (isBossDenSpawn(world, candidate.x, candidate.y)) {
+        continue;
+      }
+      spawnPoint = candidate;
+      break;
+    }
+    if (!spawnPoint) {
+      break;
+    }
+    spawnFloor2AmbientArchetype(world, spawnPoint.x, spawnPoint.y);
+  }
+  state.lastSpawnMs = world.elapsedMs;
 }
