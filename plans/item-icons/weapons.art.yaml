@@ -8,7 +8,7 @@ assets:
     brief: 'Rusty Shiv — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Tetanus included at no extra charge.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: rusty-shiv
 
   - id: iron-sword
@@ -17,7 +17,7 @@ assets:
     brief: 'Sword — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Serviceable. Boring. Gets the job done.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: iron-sword
 
   - id: flame-dagger
@@ -26,7 +26,7 @@ assets:
     brief: 'Flame Dagger — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. The blade is warm. Always.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: flame-dagger
 
   - id: frost-bow
@@ -35,7 +35,7 @@ assets:
     brief: 'Bow — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Reliable and easy to carry.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: frost-bow
 
   - id: thunder-staff
@@ -44,7 +44,7 @@ assets:
     brief: 'Thunder Staff — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Crackles ominously during weather reports.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: thunder-staff
 
   - id: void-scythe
@@ -53,7 +53,7 @@ assets:
     brief: 'Void Scythe — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Cuts through matter and morale alike.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: void-scythe
 
   - id: star-lance
@@ -62,7 +62,7 @@ assets:
     brief: 'Star Lance — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Looks like a comet. Hits like one too.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: star-lance
 
   - id: bone-club
@@ -71,7 +71,7 @@ assets:
     brief: 'Baseball Bat — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Heavy swing, simple results.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: bone-club
 
   - id: plasma-pistol
@@ -80,7 +80,7 @@ assets:
     brief: 'Pistol — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. A standard sidearm with no sci-fi extras.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: plasma-pistol
 
   - id: crystal-wand
@@ -89,7 +89,7 @@ assets:
     brief: 'Flare Gun — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Short-range firepower in a familiar package.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: crystal-wand
 
   - id: toxic-blowgun
@@ -98,7 +98,7 @@ assets:
     brief: "Toxic Blowgun — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. One puff and they're napping."
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: toxic-blowgun
 
   - id: chain-whip
@@ -107,7 +107,7 @@ assets:
     brief: 'Chain Whip — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Satisfying crack included.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: chain-whip
 
   - id: obsidian-axe
@@ -116,7 +116,7 @@ assets:
     brief: 'Obsidian Axe — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. So sharp it cuts light.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: obsidian-axe
 
   - id: gravity-hammer
@@ -125,7 +125,7 @@ assets:
     brief: 'Gravity Hammer — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Weighs nothing until impact.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: gravity-hammer
 
   - id: spectral-blade
@@ -134,7 +134,7 @@ assets:
     brief: 'Spectral Blade — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Partially exists in another dimension.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: spectral-blade
 
   - id: director-mic
@@ -143,7 +143,7 @@ assets:
     brief: "Director's Microphone — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Weaponized broadcasting. Very meta."
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: director-mic
 
   - id: sling-of-shame
@@ -152,7 +152,7 @@ assets:
     brief: 'Sling of Shame — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Rated #1 by audience vote.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: sling-of-shame
 
   - id: anchor-mace
@@ -161,7 +161,7 @@ assets:
     brief: 'Anchor Mace — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. For when you need to make a point. Slowly.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: anchor-mace
 
   - id: twin-fangs
@@ -170,7 +170,7 @@ assets:
     brief: 'Twin Fangs — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. A pair of daggers that hum in harmony.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: twin-fangs
 
   - id: sponsor-sword
@@ -179,5 +179,5 @@ assets:
     brief: 'Sponsor Sword — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Brought to you by GalactiCorp™.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: sponsor-sword

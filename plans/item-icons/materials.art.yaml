@@ -8,7 +8,7 @@ assets:
     brief: 'Copper Ore — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Greenish and crumbly. Better than nothing.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: copper-ore
 
   - id: gold-nugget
@@ -17,7 +17,7 @@ assets:
     brief: 'Gold Nugget — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Shiny enough to distract the audience.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: gold-nugget
 
   - id: shadow-shard
@@ -26,7 +26,7 @@ assets:
     brief: 'Shadow Shard — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. A splinter of solidified darkness.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: shadow-shard
 
   - id: void-crystal
@@ -35,7 +35,7 @@ assets:
     brief: 'Void Crystal — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Hums with frequencies that hurt your teeth.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: void-crystal
 
   - id: star-fragment
@@ -44,7 +44,7 @@ assets:
     brief: 'Star Fragment — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Fell from somewhere impossibly far away.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: star-fragment
 
   - id: raw-wood
@@ -53,7 +53,7 @@ assets:
     brief: 'Raw Wood — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Splintery but sturdy.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: raw-wood
 
   - id: hardite-plank
@@ -62,7 +62,7 @@ assets:
     brief: 'Hardite Plank — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Wood that refuses to burn.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: hardite-plank
 
   - id: silk-thread
@@ -71,7 +71,7 @@ assets:
     brief: 'Silk Thread — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Harvested from something with too many legs.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: silk-thread
 
   - id: dragon-scale
@@ -80,7 +80,7 @@ assets:
     brief: 'Dragon Scale — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Iridescent and warm to the touch.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: dragon-scale
 
   - id: bone-dust
@@ -89,7 +89,7 @@ assets:
     brief: "Bone Dust — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Ground to a fine powder. Don't ask whose."
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: bone-dust
 
   - id: ectoplasm-glob
@@ -98,7 +98,7 @@ assets:
     brief: 'Ectoplasm Glob — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Gooey and faintly luminescent.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: ectoplasm-glob
 
   - id: mushroom-cap
@@ -107,7 +107,7 @@ assets:
     brief: 'Mushroom Cap — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Spotted and suspicious.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: mushroom-cap
 
   - id: lava-glass
@@ -116,7 +116,7 @@ assets:
     brief: 'Lava Glass — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Formed in volcanic vents. Fragile beauty.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: lava-glass
 
   - id: feathersteel
@@ -125,7 +125,7 @@ assets:
     brief: 'Feathersteel — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Light as a feather, tough as nails.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: feathersteel
 
   - id: crystal-fiber
@@ -134,7 +134,7 @@ assets:
     brief: 'Crystal Fiber — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Threads of pure resonance.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: crystal-fiber
 
   - id: living-stone
@@ -143,7 +143,7 @@ assets:
     brief: 'Living Stone — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Pulses gently. Possibly breathing.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: living-stone
 
   - id: aether-dust
@@ -152,7 +152,7 @@ assets:
     brief: "Aether Dust — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Sparkles in dimensions you can't see."
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: aether-dust
 
   - id: celestial-ingot
@@ -161,7 +161,7 @@ assets:
     brief: "Celestial Ingot — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Forged in a star that hasn't been born yet."
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: celestial-ingot
 
   - id: crimson-mushroom
@@ -170,7 +170,7 @@ assets:
     brief: 'Crimson Mushroom — a single centered mushroom icon with a plump red spotted cap and a short pale stem. Floor 1 harvestable material. Warm to the touch.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: crimson-mushroom
 
   - id: azure-mushroom
@@ -179,7 +179,7 @@ assets:
     brief: 'Azure Mushroom — a single centered mushroom icon with a deep blue cap and subtly glowing blue-grey gills beneath. Floor 1 harvestable material. Faintly bioluminescent.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: azure-mushroom
 
   - id: sunpetal-flower
@@ -188,7 +188,7 @@ assets:
     brief: 'Sunpetal Flower — a single centered flower icon with bright gold radiating petals and a small amber centre. Floor 1 harvestable material. Blooms without sunlight.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: sunpetal-flower
 
   - id: moonbloom-flower
@@ -197,7 +197,7 @@ assets:
     brief: 'Moonbloom — a single centered flower icon with pale violet petals that curl inward and a faintly glowing silver centre. Floor 1 harvestable material. Smells of cold stone.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: moonbloom-flower
 
   - id: frost-lichen
@@ -206,7 +206,7 @@ assets:
     brief: 'Frost Lichen — a single centered lichen icon as a flat silvery-white crusty patch with ice-crystal highlights. Floor 1 harvestable material. Clings to damp walls.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: frost-lichen
 
   - id: shadow-lichen
@@ -215,5 +215,5 @@ assets:
     brief: 'Shadow Lichen — a single centered lichen icon as a dark grey-blue spreading crust with a slightly velvety texture. Floor 1 harvestable material. Absorbs light.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: shadow-lichen

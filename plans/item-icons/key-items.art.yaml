@@ -8,7 +8,7 @@ assets:
     brief: 'Silver Floor Key — a single centered key item icon with a clear, readable silhouette on a transparent background. Favor a distinct keepsake, key, token, or document silhouette that signals story importance. A slightly fancier door opener.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: floor-key-silver
 
   - id: floor-key-gold
@@ -17,7 +17,7 @@ assets:
     brief: 'Gold Floor Key — a single centered key item icon with a clear, readable silhouette on a transparent background. Favor a distinct keepsake, key, token, or document silhouette that signals story importance. Opens doors and impresses audiences.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: floor-key-gold
 
   - id: floor-key-void
@@ -26,7 +26,7 @@ assets:
     brief: 'Void Floor Key — a single centered key item icon with a clear, readable silhouette on a transparent background. Favor a distinct keepsake, key, token, or document silhouette that signals story importance. The lock dissolves when this approaches.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: floor-key-void
 
   - id: directors-pass
@@ -35,7 +35,7 @@ assets:
     brief: "Director's Pass — a single centered key item icon with a clear, readable silhouette on a transparent background. Favor a distinct keepsake, key, token, or document silhouette that signals story importance. All-access backstage pass. Very exclusive."
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: directors-pass
 
   - id: map-fragment-a
@@ -44,7 +44,7 @@ assets:
     brief: 'Map Fragment A — a single centered key item icon with a clear, readable silhouette on a transparent background. Favor a distinct keepsake, key, token, or document silhouette that signals story importance. Shows part of the next floor.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: map-fragment-a
 
   - id: map-fragment-b
@@ -53,7 +53,7 @@ assets:
     brief: 'Map Fragment B — a single centered key item icon with a clear, readable silhouette on a transparent background. Favor a distinct keepsake, key, token, or document silhouette that signals story importance. Another piece of the puzzle.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: map-fragment-b
 
   - id: map-fragment-c
@@ -62,7 +62,7 @@ assets:
     brief: 'Map Fragment C — a single centered key item icon with a clear, readable silhouette on a transparent background. Favor a distinct keepsake, key, token, or document silhouette that signals story importance. Three fragments, one truth.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: map-fragment-c
 
   - id: sponsor-contract
@@ -71,7 +71,7 @@ assets:
     brief: 'Sponsor Contract — a single centered key item icon with a clear, readable silhouette on a transparent background. Favor a distinct keepsake, key, token, or document silhouette that signals story importance. Read the fine print. Always.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: sponsor-contract
 
   - id: audience-token
@@ -80,7 +80,7 @@ assets:
     brief: 'Audience Token — a single centered key item icon with a clear, readable silhouette on a transparent background. Favor a distinct keepsake, key, token, or document silhouette that signals story importance. Grants one audience vote override.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: audience-token
 
   - id: season-badge
@@ -89,7 +89,7 @@ assets:
     brief: 'Season Badge — a single centered key item icon with a clear, readable silhouette on a transparent background. Favor a distinct keepsake, key, token, or document silhouette that signals story importance. Proof you survived this far.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: season-badge
 
   - id: boss-trophy
@@ -98,7 +98,7 @@ assets:
     brief: 'Boss Trophy — a single centered key item icon with a clear, readable silhouette on a transparent background. Favor a distinct keepsake, key, token, or document silhouette that signals story importance. Taken from something that wanted to keep it.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: boss-trophy
 
   - id: ancient-cipher
@@ -107,7 +107,7 @@ assets:
     brief: 'Ancient Cipher — a single centered key item icon with a clear, readable silhouette on a transparent background. Favor a distinct keepsake, key, token, or document silhouette that signals story importance. The Gradient left this behind. Decrypt it.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: ancient-cipher
 
   - id: green-room-key
@@ -116,7 +116,7 @@ assets:
     brief: "Green Room Key — a single centered key item icon with a clear, readable silhouette on a transparent background. Favor a distinct keepsake, key, token, or document silhouette that signals story importance. Access to the safe room's VIP area."
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: green-room-key
 
   - id: producers-note
@@ -125,7 +125,7 @@ assets:
     brief: "Producer's Note — a single centered key item icon with a clear, readable silhouette on a transparent background. Favor a distinct keepsake, key, token, or document silhouette that signals story importance. Hints at what the next floor holds."
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: producers-note
 
   - id: broadcast-chip
@@ -134,7 +134,7 @@ assets:
     brief: 'Broadcast Chip — a single centered key item icon with a clear, readable silhouette on a transparent background. Favor a distinct keepsake, key, token, or document silhouette that signals story importance. Contains a recording. Of what?'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: broadcast-chip
 
   - id: elevator-fuse
@@ -143,7 +143,7 @@ assets:
     brief: "Elevator Fuse — a single centered key item icon with a clear, readable silhouette on a transparent background. Favor a distinct keepsake, key, token, or document silhouette that signals story importance. The elevator won't move without it."
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: elevator-fuse
 
   - id: vip-lanyard
@@ -152,7 +152,7 @@ assets:
     brief: 'VIP Lanyard — a single centered key item icon with a clear, readable silhouette on a transparent background. Favor a distinct keepsake, key, token, or document silhouette that signals story importance. Looks important. Feels important.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: vip-lanyard
 
   - id: classified-dossier
@@ -161,5 +161,5 @@ assets:
     brief: 'Classified Dossier — a single centered key item icon with a clear, readable silhouette on a transparent background. Favor a distinct keepsake, key, token, or document silhouette that signals story importance. Eyes only. (Everyone reads it anyway.)'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: classified-dossier

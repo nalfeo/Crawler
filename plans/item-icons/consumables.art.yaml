@@ -8,7 +8,7 @@ assets:
     brief: 'Health Vial — a single centered consumable item icon with a clear, readable silhouette on a transparent background. Favor a recognizable container, food, or charm form so the consumable reads instantly. Tastes like pennies and hope.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: health-vial
 
   - id: mana-flask
@@ -17,7 +17,7 @@ assets:
     brief: 'Mana Flask — a single centered consumable item icon with a clear, readable silhouette on a transparent background. Favor a recognizable container, food, or charm form so the consumable reads instantly. Blue, bubbly, and slightly radioactive.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: mana-flask
 
   - id: stim-shot
@@ -26,7 +26,7 @@ assets:
     brief: 'Stim Shot — a single centered consumable item icon with a clear, readable silhouette on a transparent background. Favor a recognizable container, food, or charm form so the consumable reads instantly. Speed boost. Side effects undisclosed.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: stim-shot
 
   - id: shield-scroll
@@ -35,7 +35,7 @@ assets:
     brief: 'Shield Scroll — a single centered consumable item icon with a clear, readable silhouette on a transparent background. Favor a recognizable container, food, or charm form so the consumable reads instantly. Unfurl for instant protection.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: shield-scroll
 
   - id: smoke-bomb
@@ -44,7 +44,7 @@ assets:
     brief: 'Smoke Bomb — a single centered consumable item icon with a clear, readable silhouette on a transparent background. Favor a recognizable container, food, or charm form so the consumable reads instantly. Vanish dramatically. Audience loves it.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: smoke-bomb
 
   - id: rage-elixir
@@ -53,7 +53,7 @@ assets:
     brief: "Rage Elixir — a single centered consumable item icon with a clear, readable silhouette on a transparent background. Favor a recognizable container, food, or charm form so the consumable reads instantly. Drink responsibly. (You won't.)"
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: rage-elixir
 
   - id: phoenix-tear
@@ -62,7 +62,7 @@ assets:
     brief: 'Phoenix Tear — a single centered consumable item icon with a clear, readable silhouette on a transparent background. Favor a recognizable container, food, or charm form so the consumable reads instantly. One free do-over. Use wisely.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: phoenix-tear
 
   - id: mystery-meat
@@ -71,7 +71,7 @@ assets:
     brief: 'Mystery Meat — a single centered consumable item icon with a clear, readable silhouette on a transparent background. Favor a recognizable container, food, or charm form so the consumable reads instantly. Could be healing. Could be poison. Exciting!'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: mystery-meat
 
   - id: broadcast-booster
@@ -80,7 +80,7 @@ assets:
     brief: 'Broadcast Booster — a single centered consumable item icon with a clear, readable silhouette on a transparent background. Favor a recognizable container, food, or charm form so the consumable reads instantly. Temporarily maxes out your Broadcast Score.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: broadcast-booster
 
   - id: floor-skip-pass
@@ -89,7 +89,7 @@ assets:
     brief: 'Floor Skip Pass — a single centered consumable item icon with a clear, readable silhouette on a transparent background. Favor a recognizable container, food, or charm form so the consumable reads instantly. Executive override. Skip one floor.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: floor-skip-pass
 
   - id: antidote-pill
@@ -98,7 +98,7 @@ assets:
     brief: 'Antidote Pill — a single centered consumable item icon with a clear, readable silhouette on a transparent background. Favor a recognizable container, food, or charm form so the consumable reads instantly. Cures most poisons. Most.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: antidote-pill
 
   - id: lucky-charm
@@ -107,7 +107,7 @@ assets:
     brief: 'Lucky Charm — a single centered consumable item icon with a clear, readable silhouette on a transparent background. Favor a recognizable container, food, or charm form so the consumable reads instantly. Statistically dubious. Emotionally reassuring.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: lucky-charm
 
   - id: exp-candy
@@ -116,7 +116,7 @@ assets:
     brief: 'EXP Candy — a single centered consumable item icon with a clear, readable silhouette on a transparent background. Favor a recognizable container, food, or charm form so the consumable reads instantly. Tastes like level-ups.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: exp-candy
 
   - id: recall-stone
@@ -125,7 +125,7 @@ assets:
     brief: 'Recall Stone — a single centered consumable item icon with a clear, readable silhouette on a transparent background. Favor a recognizable container, food, or charm form so the consumable reads instantly. Teleport to the last safe room.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: recall-stone
 
   - id: time-capsule
@@ -134,7 +134,7 @@ assets:
     brief: 'Time Capsule — a single centered consumable item icon with a clear, readable silhouette on a transparent background. Favor a recognizable container, food, or charm form so the consumable reads instantly. Freezes everything for 5 seconds.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: time-capsule
 
   - id: audience-snack
@@ -143,7 +143,7 @@ assets:
     brief: 'Audience Snack — a single centered consumable item icon with a clear, readable silhouette on a transparent background. Favor a recognizable container, food, or charm form so the consumable reads instantly. Throw to the crowd. They love it.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: audience-snack
 
   - id: healing-fungus
@@ -152,7 +152,7 @@ assets:
     brief: 'Healing Fungus — a single centered consumable item icon with a clear, readable silhouette on a transparent background. Favor a recognizable container, food, or charm form so the consumable reads instantly. Grows on dead things. Heals living ones.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: healing-fungus
 
   - id: berserker-brew
@@ -161,7 +161,7 @@ assets:
     brief: 'Berserker Brew — a single centered consumable item icon with a clear, readable silhouette on a transparent background. Favor a recognizable container, food, or charm form so the consumable reads instantly. Double damage, half defense. YOLO.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: berserker-brew
 
   - id: sponsor-energy-drink
@@ -170,7 +170,7 @@ assets:
     brief: 'Sponsor Energy Drink — a single centered consumable item icon with a clear, readable silhouette on a transparent background. Favor a recognizable container, food, or charm form so the consumable reads instantly. GalactiCorp™ keeps you going!'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: sponsor-energy-drink
 
   - id: revival-kit
@@ -179,5 +179,5 @@ assets:
     brief: 'Revival Kit — a single centered consumable item icon with a clear, readable silhouette on a transparent background. Favor a recognizable container, food, or charm form so the consumable reads instantly. Contains everything needed for a dramatic comeback.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: revival-kit

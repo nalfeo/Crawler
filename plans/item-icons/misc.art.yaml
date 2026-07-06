@@ -8,7 +8,7 @@ assets:
     brief: 'Broken Circuit — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. Sparks occasionally. Mostly useless.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: broken-circuit
 
   - id: alien-tooth
@@ -17,7 +17,7 @@ assets:
     brief: 'Alien Tooth — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. From a species with too many mouths.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: alien-tooth
 
   - id: camera-lens
@@ -26,7 +26,7 @@ assets:
     brief: 'Camera Lens — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. Cracked. Still records.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: camera-lens
 
   - id: audience-rating-card
@@ -35,7 +35,7 @@ assets:
     brief: 'Audience Rating Card — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. "7/10 — would watch die again."'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: audience-rating-card
 
   - id: directors-cue-card
@@ -44,7 +44,7 @@ assets:
     brief: 'Director''s Cue Card — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. "Look scared NOW."'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: directors-cue-card
 
   - id: glitch-marble
@@ -53,7 +53,7 @@ assets:
     brief: 'Glitch Marble — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. Flickers between existing and not.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: glitch-marble
 
   - id: contestant-badge
@@ -62,7 +62,7 @@ assets:
     brief: 'Contestant Badge — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. Your name is misspelled. Classic.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: contestant-badge
 
   - id: foam-finger
@@ -71,7 +71,7 @@ assets:
     brief: 'Foam Finger — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. #1 Fan (of watching you suffer).'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: foam-finger
 
   - id: confetti-popper
@@ -80,7 +80,7 @@ assets:
     brief: 'Confetti Popper — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. For celebrating micro-victories.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: confetti-popper
 
   - id: bootleg-dvd
@@ -89,7 +89,7 @@ assets:
     brief: 'Bootleg DVD — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. Previous season. Terrible quality.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: bootleg-dvd
 
   - id: stress-ball
@@ -98,7 +98,7 @@ assets:
     brief: 'Stress Ball — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. Shaped like The Director. Very squeezable.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: stress-ball
 
   - id: autograph-book
@@ -107,7 +107,7 @@ assets:
     brief: 'Autograph Book — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. Collect signatures from the dead.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: autograph-book
 
   - id: participation-trophy
@@ -116,7 +116,7 @@ assets:
     brief: 'Participation Trophy — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. "You tried!" — The Director'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: participation-trophy
 
   - id: shiny-button
@@ -125,7 +125,7 @@ assets:
     brief: 'Shiny Button — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. Do NOT press it. (You want to press it.)'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: shiny-button
 
   - id: ghost-photo
@@ -134,7 +134,7 @@ assets:
     brief: "Ghost Photo — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. Shows someone who isn't there anymore."
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: ghost-photo
 
   - id: laugh-track-tape
@@ -143,7 +143,7 @@ assets:
     brief: 'Laugh Track Tape — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. Plays canned laughter. Inappropriately.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: laugh-track-tape
 
   - id: lucky-dice
@@ -152,7 +152,7 @@ assets:
     brief: 'Lucky Dice — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. Loaded. In your favor. Maybe.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: lucky-dice
 
   - id: expired-coupon
@@ -161,5 +161,5 @@ assets:
     brief: 'Expired Coupon — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. 10% off at a store that no longer exists.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: expired-coupon

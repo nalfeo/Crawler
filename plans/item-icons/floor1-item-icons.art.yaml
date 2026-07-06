@@ -15,7 +15,7 @@ assets:
       craggy, oxidized surface. Drops from elite and boss enemies.
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: iron-ore
 
   - id: rusted-scrap
@@ -26,7 +26,7 @@ assets:
       torn edges. Drops from the Floor 1 loot table.
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: rusted-scrap
 
   - id: old-sock
@@ -37,7 +37,7 @@ assets:
       Drops from the Floor 1 loot table.
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: old-sock
 
   - id: bone-shard
@@ -48,7 +48,7 @@ assets:
       Drops from basic melee and ranged enemies.
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: bone-shard
 
   - id: pebble
@@ -59,7 +59,7 @@ assets:
       Drops from the Floor 1 loot table.
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: pebble
 
   - id: glistening-rat-tail
@@ -70,7 +70,7 @@ assets:
       its thick base. Required fetch item for the shopkeeper quest.
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: glistening-rat-tail
 
   - id: merchants-stained-charm
@@ -81,7 +81,7 @@ assets:
       mysterious stains, with a faint engraved sigil. Equippable neck slot.
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: merchants-stained-charm
 
   - id: floor-key-bronze
@@ -92,5 +92,5 @@ assets:
       chunky teeth. Opens the door to the next floor.
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: floor-key-bronze
