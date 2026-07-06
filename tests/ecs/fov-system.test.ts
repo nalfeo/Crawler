@@ -394,7 +394,8 @@ describe('FloorMap.clearVisibility — bounded bounding box', () => {
     const floorMap = new FloorMap(config, tileMap, roomGraph, terrain, { x: 10, y: 10 });
 
     // Manually set a sub-tile far from the FOV footprint (simulate a never-visited cell).
-    // With subFactor=1 (default), sub-tile (15,15) = tile (15,15).
+    // Indexed in sub-grid coordinates via `subWidth`, so this is independent of the FOV
+    // sub-factor; sub-tile (15,15) sits far outside the (5,5) footprint used below.
     // We'll set sub-tile (15,15) directly so it's non-zero before any FOV call.
     // Then run setVisible for only one small cell, then clearVisibility — that
     // far cell must NOT be cleared (because it was never in the FOV bounding box).

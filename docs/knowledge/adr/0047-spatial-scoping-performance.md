@@ -132,7 +132,7 @@ full-map — ~4× reduction; the active-enemy portion is smaller still.
 
 ### 3. Chebyshev pre-filter in `enemyAISystem` — **REMOVED 2026-07-06**
 
-> **Removed before merge** — see [Update](#update-2026-07-06-chebyshev-pre-filter-removed).
+> **Removed before merge** — see [Update](#update-2026-07-06-only-decision-1-ships).
 > This sub-optimization broke sim determinism (shared-`world.rng` desync via the
 > skipped `applyIdleWander` draws) and was reverted. The description below is
 > retained for historical context only; it is **not** in the shipped code.
