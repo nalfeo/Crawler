@@ -59,9 +59,8 @@ export interface CaveSystemOptions {
   /** Minimum run length to perturb straight hallways. Default: 10. */
   straightHallwayMinRun?: number;
   /**
-   * Territory spawn-zone radius as a fraction of map area per zone.
-   * r = sqrt(fraction × w × h / π). Default: 0.25 → each zone covers ~25% of map area.
-   * Increase for larger/overlapping zones; 1.0 = full-map equivalent radius.
+   * Territory spawn-zone radius as a fraction of sqrt(map area). Default: 0.5 (≈25% floor area).
+   * 1.0 = full-map radius; 0.5 = quarter-map area per zone.
    */
   territoryRadiusFraction?: number;
 }
@@ -76,8 +75,7 @@ const DEFAULT_OPTIONS: Required<CaveSystemOptions> = {
   maxRetries: 8,
   cavernWidenPasses: 2,
   straightHallwayMinRun: 10,
-  // 0.25 → r ≈ sqrt(0.25·w·h/π) ≈ 58 tiles on 270×156, covering ~25% map area per zone.
-  territoryRadiusFraction: 0.25,
+  territoryRadiusFraction: 0.5,
 };
 
 interface RegionInfo {
@@ -368,14 +366,7 @@ export class CaveSystemGenerator implements MapGenerator {
       spawnRoom.interiorCells,
     );
 
-    // --- 8a. Connectivity cull (before territory collection) -----------
-    // Cull disconnected passable islands NOW, before we collect territory
-    // blobs or carve boss dens, so that every room's interiorCells refers
-    // only to tiles that survive the cull.
-    const preCullReached = this.floodPassable(tileMap, w, h, playerSpawn.x, playerSpawn.y);
-    this.cullDisconnectedPassable(tileMap, terrain, preCullReached, w, h);
-
-    // --- 8b. Angular boss dens + circular TERRITORY rooms --------------
+    // --- 8. Angular boss dens + circular TERRITORY rooms ---------------
     const denTargets = this.placeAngularDenTargets(
       heart.centroidX,
       heart.centroidY,
@@ -385,28 +376,18 @@ export class CaveSystemGenerator implements MapGenerator {
       tileMap,
     );
 
-    // Territory zone spawn-influence radius: r = sqrt(fraction × w × h / π).
-    // fraction=0.25 → r ≈ 58 tiles on 270×156, meaning each zone covers ~25% of map area.
-    const territoryZoneRadius = Math.round(
-      Math.sqrt((options.territoryRadiusFraction * w * h) / Math.PI),
-    );
+    // Territory zone spawn-influence radius: fraction of sqrt(map area).
+    const territoryZoneRadius = Math.round(options.territoryRadiusFraction * Math.sqrt(w * h));
     // TERRITORY room radius (smaller — for AI/minimap semantic room).
     const territoryRoomRadius = Math.max(12, Math.round(Math.min(w * 0.1, h * 0.1)));
 
     const territoryRoomIds: number[] = [];
     const territoryZones: TerritoryZone[] = [];
 
-    // Claimed cells set: tiles already owned by previously placed territory rooms.
-    // Prevents territory interiorCells from overlapping each other.
-    const claimedCells = new Set<number>();
-
     for (let fi = 0; fi < presentCount; fi++) {
       const target = denTargets[fi]!;
 
-      // Circular blob of reachable passable tiles near the den target = TERRITORY semantic room.
-      // Exclude cells already claimed by a prior territory to keep each territory's
-      // interiorCells disjoint (later territories do NOT exclude the heart to avoid
-      // blocking den targets that overlap the heart's segmentation region).
+      // Circular blob of passable tiles near the den target = TERRITORY semantic room.
       const synthRegion = this.collectCircularRegion(
         tileMap,
         w,
@@ -415,14 +396,10 @@ export class CaveSystemGenerator implements MapGenerator {
         target.y,
         territoryRoomRadius,
         fi,
-        claimedCells,
       );
       if (synthRegion.cells.length === 0) {
         throw new Error(`no passable cells for territory[${fi}] near (${target.x},${target.y})`);
       }
-
-      // Mark these cells as claimed so subsequent territories don't overlap this one.
-      for (const c of synthRegion.cells) claimedCells.add(c);
 
       const terrRoomId = this.addRegionAsRoom(roomGraph, synthRegion, RoomRole.TERRITORY, w, fi);
       territoryRoomIds.push(terrRoomId);
@@ -467,9 +444,10 @@ export class CaveSystemGenerator implements MapGenerator {
     roomGraph.addNeighbor(spawnRoomId, heartRoomId);
     roomGraph.addNeighbor(heartRoomId, spawnRoomId);
 
-    // --- 9. Final reachability verification ---------------------------
-    // Boss dens add new passable tiles (DOOR_OPEN + interior); flood the final map.
-    const reached = this.floodPassable(tileMap, w, h, playerSpawn.x, playerSpawn.y);
+    // --- 9. Reachability guarantee ------------------------------------
+    let reached = this.floodPassable(tileMap, w, h, playerSpawn.x, playerSpawn.y);
+    this.cullDisconnectedPassable(tileMap, terrain, reached, w, h);
+    reached = this.floodPassable(tileMap, w, h, playerSpawn.x, playerSpawn.y);
     const required: Array<{ x: number; y: number; label: string }> = [
       { x: heart.centroidX, y: heart.centroidY, label: 'RESOURCE_HEART' },
       ...settlementRoomIds.map((roomId, idx) => {
@@ -1200,10 +1178,9 @@ export class CaveSystemGenerator implements MapGenerator {
           terrain[idx] = TerrainType.STONE_FLOOR;
         }
       }
-      // Stamp the door tile — DOOR_OPEN so the den is reachable and the connectivity
-      // invariant holds. The scenario can close the door on floor initialization.
+      // Stamp the door tile.
       const didx = doorY * w + doorX;
-      tileMap.flags[didx] = TilePresets.DOOR_OPEN;
+      tileMap.flags[didx] = TilePresets.DOOR_CLOSED;
       terrain[didx] = TerrainType.DOOR;
 
       const bounds: RoomBounds = { x: bx, y: by, width: size, height: size };
@@ -1359,10 +1336,7 @@ export class CaveSystemGenerator implements MapGenerator {
   }
 
   /**
-   * Place `count` boss-den target points around the heart.
-   * For count ≤ 4, uses canonical NSEW order matching floor2Scenario's quadrantOrder
-   * ['N','S','E','W'] so that familyIndex 0=N, 1=S, 2=E, 3=W.
-   * For count > 4, falls back to evenly-spaced angles starting from North.
+   * Place `count` boss-den target points at evenly-spaced angles around the heart.
    * Returns the nearest actual passable tile to each angular target.
    */
   private placeAngularDenTargets(
@@ -1374,21 +1348,10 @@ export class CaveSystemGenerator implements MapGenerator {
     tileMap: TileMap,
   ): Array<{ x: number; y: number }> {
     const R = Math.max(10, Math.round(Math.min(w * 0.22, h * 0.22)));
-    // Canonical NSEW angles (clockwise from North): 0=N, 1=S, 2=E, 3=W.
-    // Matches floor2Scenario.ts quadrantOrder = ['N','S','E','W'].
-    const NSEW_ANGLES: Record<number, number[]> = {
-      1: [0],
-      2: [0, Math.PI],
-      3: [0, Math.PI, Math.PI / 2],
-      4: [0, Math.PI, Math.PI / 2, (3 * Math.PI) / 2],
-    };
-    const angles: number[] =
-      NSEW_ANGLES[count] ?? Array.from({ length: count }, (_, i) => (i * 2 * Math.PI) / count);
-
     const targets: Array<{ x: number; y: number }> = [];
     for (let i = 0; i < count; i++) {
-      const angle = angles[i]!;
-      // angle measured clockwise from North: x = heartX + R·sin(angle), y = heartY - R·cos(angle)
+      const angle = (i * 2 * Math.PI) / count;
+      // angle=0 → North (negative-y in tile coords)
       const rawX = Math.round(heartX + R * Math.sin(angle));
       const rawY = Math.round(heartY - R * Math.cos(angle));
       const clampedX = Math.max(2, Math.min(w - 3, rawX));
@@ -1400,8 +1363,7 @@ export class CaveSystemGenerator implements MapGenerator {
   }
 
   /**
-   * Collect passable tiles within `radius` Euclidean distance of (cx,cy) into a RegionInfo.
-   * Excludes cells already in `claimedCells` to prevent overlap with heart or prior territories.
+   * Collect all passable tiles within `radius` Euclidean distance of (cx,cy) into a RegionInfo.
    * Used to build the synthetic TERRITORY room blobs around angular boss-den targets.
    */
   private collectCircularRegion(
@@ -1412,7 +1374,6 @@ export class CaveSystemGenerator implements MapGenerator {
     cy: number,
     radius: number,
     regionId: number,
-    claimedCells?: ReadonlySet<number>,
   ): RegionInfo {
     const r2 = radius * radius;
     const cells: number[] = [];
@@ -1430,9 +1391,7 @@ export class CaveSystemGenerator implements MapGenerator {
         const dy = y - cy;
         if (dx * dx + dy * dy > r2) continue;
         if (!tileMap.isPassable(x, y)) continue;
-        const idx = y * w + x;
-        if (claimedCells?.has(idx)) continue;
-        cells.push(idx);
+        cells.push(y * w + x);
         if (x < minX) minX = x;
         if (x > maxX) maxX = x;
         if (y < minY) minY = y;
