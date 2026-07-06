@@ -366,8 +366,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Full history so we can walk main to correlate baselines with
-          # branch-off commits later (see scripts/agent/perf/find-baseline.mjs).
+          # Pin to the released commit (the CI workflow_run head SHA), not the
+          # default github.sha -- on a workflow_run event that defaults to the
+          # current main tip, which may be a newer commit than the one CI ran on.
+          # This keeps the swept code identical to the commit the baseline is
+          # recorded under: the "Resolve baseline commit" step below derives $SHA
+          # from the same expression. Full history (fetch-depth: 0) so we can walk
+          # main to correlate baselines with branch-off commits later (see
+          # scripts/agent/perf/find-baseline.mjs).
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
