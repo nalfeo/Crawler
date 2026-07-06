@@ -11,6 +11,7 @@ import {
 } from '../components.js';
 import { SHAPE_CIRCLE } from '../physics-defs.js';
 import type { GameWorld } from '../world.js';
+import { tagAttackEntity } from '../weapon-telemetry.js';
 import { clearAreaDamageHits } from '../systems/areaDamageSystem.js';
 import { clearMeleeSwingHits } from '../systems/meleeSwingSystem.js';
 import { createEntity } from './entity-core.js';
@@ -64,6 +65,7 @@ export function spawnAreaAttack(
       shape: SHAPE_CIRCLE,
     }),
   );
+  tagAttackEntity(world, eid);
   return eid;
 }
 
@@ -127,5 +129,6 @@ export function spawnMeleeSwing(
       shape: SHAPE_CIRCLE,
     }),
   );
+  tagAttackEntity(world, eid);
   return eid;
 }

@@ -17,6 +17,7 @@ import { clearEntityStores } from '../helpers.js';
 import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
 import { emitWeaponHitSkillEvents } from '../weapon-skill-bridge.js';
+import { recordWeaponEnemyHit, pruneAttackEntity } from '../weapon-telemetry.js';
 
 const DEFAULT_PROJECTILE_DAMAGE = 10;
 const DEFAULT_CONTACT_DAMAGE = 5;
@@ -66,6 +67,7 @@ function destroyEntity(world: GameWorld, eid: number): void {
   clearEntityStores(world, eid);
   // Clean up pierce hit tracking
   clearProjectilePierceHits(world, eid);
+  pruneAttackEntity(world, eid);
   removeEntity(world.ecs, eid);
 }
 
@@ -136,6 +138,7 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
       if (ownerEid !== -1) {
         emitWeaponHitSkillEvents(world, ownerEid);
       }
+      recordWeaponEnemyHit(world, projectile, enemy);
     }
 
     // Permanently aggro this enemy so it chases regardless of detection range

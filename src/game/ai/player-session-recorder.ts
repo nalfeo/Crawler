@@ -16,6 +16,7 @@
 import { query } from 'bitecs';
 import { Enemy } from '../../core/components.js';
 import type { GameWorld } from '../../core/world.js';
+import { createWeaponTelemetry, summarizeWeaponTelemetry } from '../../core/weapon-telemetry.js';
 import type { InputState } from '../../shared/input.js';
 import type {
   SessionController,
@@ -68,6 +69,14 @@ export interface SessionRecorderOptions {
    * drives by default there; a human-only lab leaves the default.
    */
   initialController?: SessionController;
+  /**
+   * Opt in to per-run weapon telemetry (swings, connecting hits, accuracy,
+   * multi-hit rate) for this human session. When set, the recorder installs a
+   * collector on `world.weaponTelemetry` (if one is not already present) so the
+   * player's attacks are measured exactly like the headless runner's
+   * `recordWeaponTelemetry` path. Default `false` → zero behavior/allocation cost.
+   */
+  recordWeaponTelemetry?: boolean;
 }
 
 /**
@@ -109,6 +118,13 @@ export function createPlayerSessionRecorder(
   const sampleInterval = Math.max(1, options.sampleInterval ?? 15);
   const initialController: SessionController = options.initialController ?? 'MANUAL';
   const events: PlayerSessionEvent[] = [];
+
+  // Opt-in weapon telemetry: install a collector on the world so the player's
+  // attacks are measured. Reuse an existing collector if one is already present
+  // (e.g. the lab enabled it) so we never clobber in-flight counts.
+  if (options.recordWeaponTelemetry === true && world.weaponTelemetry === undefined) {
+    world.weaponTelemetry = createWeaponTelemetry();
+  }
 
   let frameCount = 0;
   let totalKills = 0;
@@ -298,6 +314,9 @@ export function createPlayerSessionRecorder(
       totalKills: kills.length,
       durationMs: Math.max(0, lastMs - firstMs),
       controller: currentController,
+      ...(world.weaponTelemetry
+        ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
+        : {}),
     };
   }
 
