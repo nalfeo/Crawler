@@ -5,6 +5,7 @@ import {
   Enemy,
   EnemyBehavior,
   EnemyProjectile,
+  FamilyMembership,
   Player,
   Position,
   Velocity,
@@ -47,6 +48,20 @@ const NAVIGATION_ANGLE_OFFSETS = [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Ma
 const STUCK_FRAMES_THRESHOLD = 15;
 const UNSTUCK_ANGLE_COUNT = 12;
 const MAX_PAIRWISE_SEPARATION_ENEMIES = 48;
+/**
+ * Half-side of the tile-window used for the ground flow-field BFS.  Enemies
+ * outside the player±R tile box fall back to per-entity A* (same as today for
+ * any FLOW_UNREACHABLE tile) because they are too far to matter this frame.
+ *
+ * Set to FOV_RADIUS (25) + max-aggro (18 tiles ≈ 70ft/4ft) + buffer → 50.
+ */
+const FLOW_FIELD_RADIUS_TILES = 50;
+/**
+ * Dead-zone padding added to aggroRange in the Chebyshev pre-filter (ft).
+ * Provides a small hysteresis gap so that an enemy just outside aggro range
+ * does not oscillate between culled and active every frame.
+ */
+const CULL_DEAD_ZONE_FT = 8;
 // The slime is a leaper: it runs a telegraph → committed leap → frozen recovery
 // loop. Because the player should essentially never stop moving, a leap that
 // commits toward the player's *current* position generally whiffs — the player
@@ -162,6 +177,8 @@ interface GroundFlowCache {
   goalX: number;
   goalY: number;
   doorRevision: number;
+  /** Reference to the FloorMap the field was computed for (detects rebuilds). */
+  floorMap: import('../core/map/FloorMap.js').FloorMap;
   field: FlowField;
 }
 
@@ -882,6 +899,11 @@ function nextWaypointDirection(
  * it only when the goal tile or the traversable layout (doors) changes. One BFS
  * is shared by every ground chaser that frame, replacing a per-enemy A* storm.
  * Returns null when there is no floor map.
+ *
+ * The BFS is restricted to a `FLOW_FIELD_RADIUS_TILES`-tile window around the
+ * player so it covers O((2R)²) tiles instead of the full map — a ~2× reduction.
+ * Enemies outside the window get FLOW_UNREACHABLE and fall back to A* (same as
+ * today for any unreachable tile).
  */
 function getGroundFlowField(
   world: GameWorld,
@@ -903,14 +925,22 @@ function getGroundFlowField(
     cached.goalX === goal.x &&
     cached.goalY === goal.y &&
     cached.doorRevision === doorRevision &&
-    cached.field.width === floorMap.tileMap.width &&
-    cached.field.height === floorMap.tileMap.height
+    cached.floorMap === floorMap
   ) {
     return cached;
   }
 
-  const field = computeFlowField(floorMap, goal, { traversalMode: PATH_TRAVERSAL.GROUND });
-  const next: GroundFlowCache = { goalX: goal.x, goalY: goal.y, doorRevision, field };
+  const bounds = {
+    minX: playerTile.x - FLOW_FIELD_RADIUS_TILES,
+    minY: playerTile.y - FLOW_FIELD_RADIUS_TILES,
+    maxX: playerTile.x + FLOW_FIELD_RADIUS_TILES,
+    maxY: playerTile.y + FLOW_FIELD_RADIUS_TILES,
+  };
+  const field = computeFlowField(floorMap, goal, {
+    traversalMode: PATH_TRAVERSAL.GROUND,
+    bounds,
+  });
+  const next: GroundFlowCache = { goalX: goal.x, goalY: goal.y, doorRevision, floorMap, field };
   groundFlowByWorld.set(world, next);
   return next;
 }
@@ -1679,6 +1709,29 @@ export function enemyAISystem(world: GameWorld): void {
       pathStates.delete(eid);
       getSlimeLeapStateMap(world).delete(eid);
       continue;
+    }
+
+    // Cheap Chebyshev pre-filter: skip enemies provably too far to matter.
+    // Conditions that bypass the filter:
+    //   • permanentAggro — already engaged regardless of distance
+    //   • aggroRange <= 0 — sentinel for "infinite" aggro
+    //   • FamilyMembership — may have a virtual (non-player) target
+    // The Chebyshev lower-bound is tight: if max(|dx|,|dy|) > R then
+    // Euclidean distance > R, so the enemy is definitively out of aggro range.
+    if (floorMap && !hasComponent(world.ecs, eid, FamilyMembership)) {
+      const earlyAggroRange = enemyBehavior.aggroRange[eid]!;
+      const earlyPermanentAggro = (enemyBehavior.aggroedPermanently?.[eid] ?? 0) === 1;
+      if (!earlyPermanentAggro && earlyAggroRange > 0) {
+        const ex = position.x[eid]!;
+        const ey = position.y[eid]!;
+        const threshold = earlyAggroRange + CULL_DEAD_ZONE_FT;
+        if (Math.abs(ex - playerX) > threshold || Math.abs(ey - playerY) > threshold) {
+          setVelocity(world, eid, 0, 0);
+          pathStates.delete(eid);
+          getSlimeLeapStateMap(world).delete(eid);
+          continue;
+        }
+      }
     }
 
     const enemyX = position.x[eid]!;

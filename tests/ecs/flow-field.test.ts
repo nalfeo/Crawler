@@ -224,3 +224,93 @@ describe('flowFieldStep', () => {
     expect(step!.x === 0 || step!.y === 0).toBe(true);
   });
 });
+
+describe('computeFlowField — windowed BFS', () => {
+  /** Helper: read distance at absolute tile (x,y) from a windowed field. */
+  function distAtAbs(field: ReturnType<typeof computeFlowField>, x: number, y: number): number {
+    const lx = x - field.originX;
+    const ly = y - field.originY;
+    return field.distance[ly * field.width + lx]!;
+  }
+
+  it('sets originX/Y to 0 for a full-map field (no bounds)', () => {
+    const floorMap = makeOpenMap();
+    const field = computeFlowField(floorMap, { x: 6, y: 4 });
+    expect(field.originX).toBe(0);
+    expect(field.originY).toBe(0);
+    expect(field.width).toBe(WIDTH);
+    expect(field.height).toBe(HEIGHT);
+  });
+
+  it('records the correct originX/Y for a bounded field', () => {
+    const floorMap = makeOpenMap();
+    // Restrict to tiles 2–8 horizontally, 2–6 vertically.
+    const field = computeFlowField(
+      floorMap,
+      { x: 5, y: 4 },
+      { bounds: { minX: 2, minY: 2, maxX: 8, maxY: 6 } },
+    );
+    expect(field.originX).toBe(2);
+    expect(field.originY).toBe(2);
+    expect(field.width).toBe(7); // 8 - 2 + 1
+    expect(field.height).toBe(5); // 6 - 2 + 1
+  });
+
+  it('goal tile has distance 0 and nearby tile is reachable inside window', () => {
+    const floorMap = makeOpenMap();
+    const field = computeFlowField(
+      floorMap,
+      { x: 5, y: 4 },
+      { bounds: { minX: 2, minY: 2, maxX: 8, maxY: 6 } },
+    );
+    expect(distAtAbs(field, 5, 4)).toBe(0);
+    expect(distAtAbs(field, 6, 4)).toBe(1);
+    expect(distAtAbs(field, 4, 4)).toBe(1);
+  });
+
+  it('tiles outside the window are FLOW_UNREACHABLE even when passable', () => {
+    const floorMap = makeOpenMap();
+    // Window covers only tiles 4–7 x 3–5 — tiles at (2,4) are outside.
+    const field = computeFlowField(
+      floorMap,
+      { x: 5, y: 4 },
+      { bounds: { minX: 4, minY: 3, maxX: 7, maxY: 5 } },
+    );
+    // (2,4) is outside the window — must be FLOW_UNREACHABLE regardless.
+    expect(flowFieldStep(field, 2, 4)).toBeNull();
+    expect(flowFieldStep(field, 9, 4)).toBeNull();
+  });
+
+  it('flowFieldStep uses absolute coords and descends correctly in windowed field', () => {
+    const floorMap = makeOpenMap();
+    const field = computeFlowField(
+      floorMap,
+      { x: 5, y: 4 },
+      { bounds: { minX: 2, minY: 2, maxX: 8, maxY: 6 } },
+    );
+    // Start at (3,4), goal at (5,4) — should step toward x=5.
+    let cur = { x: 3, y: 4 };
+    const path: { x: number; y: number }[] = [{ ...cur }];
+    for (let i = 0; i < 10; i++) {
+      const step = flowFieldStep(field, cur.x, cur.y);
+      if (!step) break;
+      cur = { x: cur.x + step.x, y: cur.y + step.y };
+      path.push({ ...cur });
+    }
+    expect(path[path.length - 1]).toEqual({ x: 5, y: 4 });
+  });
+
+  it('clamps requested bounds to map extents', () => {
+    const floorMap = makeOpenMap();
+    // Request bounds larger than the map — should clamp silently.
+    const field = computeFlowField(
+      floorMap,
+      { x: 5, y: 4 },
+      { bounds: { minX: -100, minY: -100, maxX: 999, maxY: 999 } },
+    );
+    expect(field.originX).toBe(0);
+    expect(field.originY).toBe(0);
+    expect(field.width).toBe(WIDTH);
+    expect(field.height).toBe(HEIGHT);
+  });
+});

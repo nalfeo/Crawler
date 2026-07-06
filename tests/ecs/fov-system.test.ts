@@ -368,3 +368,102 @@ describe('FOV System', () => {
     }
   });
 });
+
+describe('FloorMap.clearVisibility — bounded bounding box', () => {
+  it('only clears sub-tiles within the FOV footprint, not the full bitmap', () => {
+    const config: MapConfig = {
+      widthTiles: 20,
+      heightTiles: 20,
+      tileSizeFt: 32,
+      biome: BiomeType.ARENA,
+      seed: 42,
+      roomWidthRange: [4, 8],
+      roomHeightRange: [4, 8],
+      maxRooms: 1,
+      floorDensity: 0.5,
+    };
+    const tileMap = new TileMap(20, 20);
+    const terrain = new Uint8Array(400);
+    const roomGraph = new RoomGraph();
+    for (let y = 0; y < 20; y++) {
+      for (let x = 0; x < 20; x++) {
+        tileMap.flags[y * 20 + x] =
+          x === 0 || x === 19 || y === 0 || y === 19 ? TilePresets.WALL : TilePresets.FLOOR;
+      }
+    }
+    const floorMap = new FloorMap(config, tileMap, roomGraph, terrain, { x: 10, y: 10 });
+
+    // Manually set a sub-tile far from the FOV footprint (simulate a never-visited cell).
+    // With subFactor=1 (default), sub-tile (15,15) = tile (15,15).
+    // We'll set sub-tile (15,15) directly so it's non-zero before any FOV call.
+    // Then run setVisible for only one small cell, then clearVisibility — that
+    // far cell must NOT be cleared (because it was never in the FOV bounding box).
+    floorMap['visible'][15 * floorMap.subWidth + 15] = 1;
+
+    // Simulate FOV visiting only sub-tile (5,5).
+    floorMap.setVisible(5, 5);
+
+    // Now clear — should only zero (5,5); (15,15) was not in the bounding box.
+    floorMap.clearVisibility();
+
+    // (5,5) was in the bounding box → must be cleared.
+    expect(floorMap['visible'][5 * floorMap.subWidth + 5]).toBe(0);
+    // (15,15) was NOT in the bounding box → must be untouched.
+    expect(floorMap['visible'][15 * floorMap.subWidth + 15]).toBe(1);
+  });
+
+  it('clears nothing (empty bbox) when no setVisible was called after construction', () => {
+    const config: MapConfig = {
+      widthTiles: 10,
+      heightTiles: 10,
+      tileSizeFt: 4,
+      biome: BiomeType.ARENA,
+      seed: 1,
+      roomWidthRange: [4, 8],
+      roomHeightRange: [4, 8],
+      maxRooms: 1,
+      floorDensity: 0.5,
+    };
+    const tileMap = new TileMap(10, 10);
+    const terrain = new Uint8Array(100);
+    for (let y = 0; y < 10; y++) {
+      for (let x = 0; x < 10; x++) {
+        tileMap.flags[y * 10 + x] = TilePresets.FLOOR;
+      }
+    }
+    const floorMap = new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 5, y: 5 });
+
+    // Manually plant a visible cell — no setVisible called, so bounding box is empty.
+    floorMap['visible'][5 * floorMap.subWidth + 5] = 1;
+    floorMap.clearVisibility();
+    // Empty bounding box → no zeroing — cell should remain 1.
+    expect(floorMap['visible'][5 * floorMap.subWidth + 5]).toBe(1);
+  });
+
+  it('revealAll sets bounding box to full extent so clearVisibility zeros everything', () => {
+    const config: MapConfig = {
+      widthTiles: 8,
+      heightTiles: 8,
+      tileSizeFt: 4,
+      biome: BiomeType.ARENA,
+      seed: 2,
+      roomWidthRange: [4, 8],
+      roomHeightRange: [4, 8],
+      maxRooms: 1,
+      floorDensity: 0.5,
+    };
+    const tileMap = new TileMap(8, 8);
+    const terrain = new Uint8Array(64);
+    for (let i = 0; i < 64; i++) tileMap.flags[i] = TilePresets.FLOOR;
+    const floorMap = new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 4, y: 4 });
+    floorMap.revealAll();
+
+    // All sub-tiles visible before clear.
+    expect(floorMap['visible'].every((v) => v === 1)).toBe(true);
+
+    floorMap.clearVisibility();
+
+    // After clear via full bounding box, all sub-tiles must be zero.
+    expect(floorMap['visible'].every((v) => v === 0)).toBe(true);
+  });
+});
