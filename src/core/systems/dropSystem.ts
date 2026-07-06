@@ -119,11 +119,12 @@ function getEnemyLootTables(
     }
   }
 
+  const floorLootTableId = world.floorId
+    ? getFloorManifest(world.floorId)?.floorLootTableId
+    : undefined;
   return {
     typeTable: LOOT_TABLES.BASIC_MELEE,
-    floorTable: world.floorId
-      ? getLootTable(getFloorManifest(world.floorId)?.floorLootTableId ?? '')
-      : undefined,
+    floorTable: floorLootTableId ? getLootTable(floorLootTableId) : undefined,
   };
 }
 

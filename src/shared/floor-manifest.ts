@@ -86,7 +86,7 @@ export const floorManifestDefSchema = z
     enemyPackId: z.string().min(1),
     /**
      * Optional loot table ID to apply as a floor-bonus drop on every enemy kill.
-     * Matches a key in `LOOT_TABLES` by its `id` field (e.g. `"floor_1"`).
+     * Matched against the `id` field of each `LootTable` entry in `LOOT_TABLES` (e.g. `"floor_1"`).
      * When omitted no floor-level loot bonus is applied.
      */
     floorLootTableId: z.string().min(1).optional(),
