@@ -1,0 +1,10 @@
+{
+  "date": "2026-07-05",
+  "session": "corpse-step-effects-shepherd",
+  "estimated_apples": 3,
+  "actual_apples": 3,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.6,
+  "notes": "Shepherded PR #782 (corpse-step burst + player movement trail) to green. Two real blockers: (1) missing lab for corpseStepSystem -> created src/labs/corpsestep-lab/; (2) headless arena-lockin sweep 88% (7/8) below 95% floor -> root-caused as the corpse-step burst reaping a rats-nest spawner's lingering corpse early, orphaning the LOCKED->RESOLVED death handshake (seed 1). Fixed with a two-layer, determinism-neutral Spawner exclusion (corpseStepSystem boundary + applyDamage choke point); arena gate restored to 100% (8/8) legitimately, no threshold/seed/feature weakening (rules #12/#13). Ran the 3-apple review harness (plan_review gpt-5.4 -> 2 concerns adopted incl. the choke-point guard; code_review claude-sonnet-4.6 -> round 1 clean) and recorded a valid ledger. Added unit + ecs + integration coverage; wrote a cross-layer ADR (core+engine+game). Exact estimate: no unforeseen scope."
+}

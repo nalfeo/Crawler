@@ -1,5 +1,13 @@
 import { hasComponent, query } from 'bitecs';
-import { Player, Enemy, Invincible, EffectiveStats, DeathTimer, BloodColor } from './components.js';
+import {
+  Player,
+  Enemy,
+  Invincible,
+  EffectiveStats,
+  DeathTimer,
+  BloodColor,
+  Spawner,
+} from './components.js';
 import type { CombatEvent } from '../shared/combat-events.js';
 import type { GameWorld } from './world.js';
 import { resolveCrit, resolveDodge } from './combat-rolls.js';
@@ -7,9 +15,11 @@ import { DEFAULT_BLOOD_COLOR } from '../shared/constants.js';
 
 /**
  * Emit a `corpseExplode` combat event for a corpse struck during its
- * death-linger window. Render-only: the engine cuts the corpse sprite into
- * shards that spray along the blow's direction. Reads the dying enemy's blood
- * colour and sprite variant so the shards match the body that just burst.
+ * death-linger window. The event itself is consumed render-side (the engine
+ * cuts the corpse sprite into shards that spray along the blow's direction) —
+ * the *gameplay* state change (expiring the body early) lives in the caller,
+ * which zeros the death timer. Reads the dying enemy's blood colour and sprite
+ * variant so the shards match the body that just burst.
  */
 function emitCorpseExplosion(
   world: GameWorld,
@@ -100,10 +110,25 @@ export function applyDamage(
   // Corpse drama: a dead enemy still in its death-linger window bursts into
   // sprite shards when hit by any player attack rather than soaking the blow.
   // All offensive damage (projectile / melee / AoE / beam) funnels through here,
-  // so this single guard covers every weapon. The corpse is already at 0 HP, so
-  // we emit the VFX event once (guarded on a still-running timer) and zero the
-  // death timer — deathTimerSystem reaps the entity later this same frame.
+  // so this single guard covers every weapon. Bursting is a REAL gameplay state
+  // change — we zero the death timer so deathTimerSystem reaps the body early
+  // this same frame (relevant to corpse-consuming systems such as necromancy),
+  // not merely a render flourish.
+  //
+  // EXCEPTION — Spawner structures (rats-nest / slime-pit): a dying spawner
+  // lingers as an Enemy+DeathTimer "corpse" only so its scripted death handshake
+  // can finish. spawnerSystem fires the finale wave and sets `deathResolved` on
+  // the tick AFTER the kill, then spawnerArenaSystem reads that flag to move a
+  // LOCKED arena to RESOLVED (lowers the fence, unlocks doors, grants banked XP).
+  // Reaping the spawner early destroys the entity before that multi-tick
+  // handshake runs, permanently orphaning the locked arena and trapping the
+  // player. A spawner is a structure, not a burstable fleshy corpse, so it must
+  // never be step-burst or weapon-burst — skip it here (the choke point covering
+  // every damage source) as well as in corpseStepSystem. Determinism-neutral:
+  // the corpse branch already returns before any world.rng roll, so this early
+  // return consumes no RNG.
   if (hasComponent(world.ecs, target, Enemy) && hasComponent(world.ecs, target, DeathTimer)) {
+    if (hasComponent(world.ecs, target, Spawner)) return 0;
     const remainingMs = world.stores.deathTimer.remainingMs[target] ?? 0;
     if (remainingMs > 0) {
       emitCorpseExplosion(world, target, x, y, amount, sourceX, sourceY);

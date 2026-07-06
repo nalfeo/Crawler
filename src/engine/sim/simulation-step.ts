@@ -4,6 +4,7 @@ import {
   areaDamageSystem,
   beamSystem,
   collisionSystem,
+  corpseStepSystem,
   damageSystem,
   deathTimerSystem,
   doorSystem,
@@ -120,6 +121,13 @@ export function runSimulationStep(
   itemPickupSystem(world, collision);
   harvestSystem(world);
   dropSystem(world);
+  // Corpse step: the player brushing a still-lingering corpse has a small
+  // chance to burst it into shards. Runs AFTER dropSystem (which is what
+  // stamps freshly-killed enemies with DeathTimer this frame) so a kill and a
+  // simultaneous step both resolve this frame, and BEFORE deathTimerSystem so
+  // a triggered corpse (its DeathTimer.remainingMs zeroed by applyDamage) is
+  // reaped in the same frame instead of lingering one extra tick.
+  corpseStepSystem(world);
   deathTimerSystem(world);
   spawnAnimSystem(world);
   healthSystem(world);

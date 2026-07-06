@@ -5,9 +5,12 @@
 
 export interface CombatEvent {
   /**
-   * `corpseExplode` is a render-only flourish: a dead enemy struck during its
-   * death-linger window bursts into sprite shards instead of absorbing the hit.
-   * The core damage path emits it and immediately expires the corpse.
+   * `corpseExplode` is emitted when a dead enemy is struck (by a weapon or a
+   * player footstep) during its death-linger window: instead of soaking the
+   * hit it bursts into sprite shards. The event drives the shatter VFX, but the
+   * burst is also a real gameplay state change — the core damage path expires
+   * the corpse's DeathTimer so it is reaped early, removing the body from the
+   * world ahead of schedule (relevant to any system that consumes corpses).
    */
   type: 'hit' | 'blocked' | 'death' | 'miss' | 'dodge' | 'corpseExplode';
   /** Position where the VFX should appear (target position). */

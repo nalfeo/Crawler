@@ -14,6 +14,7 @@ import {
   movementSystem,
   returningProjectileSystem,
   collisionSystem,
+  corpseStepSystem,
   aoeOnImpactPreDamage,
   aoeOnImpactPostDamage,
   damageSystem,
@@ -195,6 +196,11 @@ export function runSimulationStep(
   itemPickupSystem(world, collision);
   harvestSystem(world);
   dropSystem(world);
+  // Corpse step: the player brushing a still-lingering corpse has a small
+  // chance to burst it into shards. See engine/sim/simulation-step.ts for the
+  // full ordering rationale — same seam here (after dropSystem, before
+  // deathTimerSystem) so a triggered corpse is reaped this frame.
+  corpseStepSystem(world);
   deathTimerSystem(world);
   spawnAnimSystem(world);
   healthSystem(world);
