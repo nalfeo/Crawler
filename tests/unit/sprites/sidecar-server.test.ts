@@ -1979,3 +1979,158 @@ describe('storage lifecycle + manual anchor endpoints', () => {
     expect(clearRes.json()).toEqual({ status: 'cleared' });
   });
 });
+
+describe('storage run enrichment endpoint', () => {
+  const RUN = '2026-07-04T00-00-00-abc';
+  const RUN2 = '2026-07-05T00-00-00-def';
+  let root: string;
+  let runsDir: string;
+  let app: FastifyInstance;
+
+  const writeSummary = (
+    dir: string,
+    candidateCount: number,
+    briefPath: string | undefined,
+  ): void => {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      path.join(dir, 'summary.json'),
+      JSON.stringify({
+        candidates: Array.from({ length: candidateCount }, (_unused, index) => ({ index })),
+        ...(briefPath ? { briefPath } : {}),
+      }),
+    );
+  };
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), 'sidecar-enrich-'));
+    runsDir = path.join(root, 'runs');
+
+    // Active run with an on-disk brief and two sprite sheets (enrichment should
+    // report the lowest-sorted one).
+    const ironDir = path.join(runsDir, 'iron-sword', RUN);
+    writeSummary(ironDir, 3, 'design/briefs/iron-sword.yaml');
+    writeFileSync(path.join(ironDir, 'sheet-01.png'), makeSolidPng(16, 16, [10, 20, 30]));
+    writeFileSync(path.join(ironDir, 'sheet-00.png'), makeSolidPng(16, 16, [30, 20, 10]));
+    mkdirSync(path.join(root, 'design', 'briefs'), { recursive: true });
+    writeFileSync(path.join(root, 'design', 'briefs', 'iron-sword.yaml'), 'id: iron-sword\n');
+
+    // Second active run: no manifest entry, brief file missing on disk.
+    writeSummary(path.join(runsDir, 'mithril-axe', RUN2), 1, 'design/briefs/mithril-axe.yaml');
+
+    // Archived copy of the iron-sword run (summary only — no sheets served).
+    writeSummary(path.join(runsDir, 'archive', 'iron-sword', RUN), 3, 'design/briefs/iron-sword.yaml');
+
+    // Manifest: two approved variants for iron-sword (indexes 0 and 2), both
+    // sourced from RUN. firstApproved should be the lowest index (0).
+    mkdirSync(path.join(root, 'public', 'assets', 'generated'), { recursive: true });
+    writeFileSync(
+      path.join(root, 'public', 'assets', 'generated', 'manifest.json'),
+      JSON.stringify({
+        version: 1,
+        entries: {
+          'iron-sword-var-2': {
+            briefId: 'iron-sword',
+            variantIndex: 2,
+            sourceRun: `runs/iron-sword/${RUN}`,
+          },
+          'iron-sword-var-0': {
+            briefId: 'iron-sword',
+            variantIndex: 0,
+            sourceRun: `runs/iron-sword/${RUN}`,
+          },
+        },
+      }),
+    );
+
+    app = buildServer({ repoRoot: root, runsDir, version: 'test' });
+  });
+
+  afterEach(async () => {
+    await app.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('enriches active runs with sheet thumbnail, approved counts, and brief presence', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/storage/runs/enrich',
+      payload: {
+        scope: 'active',
+        runs: [
+          { briefId: 'iron-sword', runId: RUN },
+          { briefId: 'mithril-axe', runId: RUN2 },
+        ],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      scope: string;
+      enriched: Array<Record<string, unknown>>;
+    };
+    expect(body.scope).toBe('active');
+    expect(body.enriched).toHaveLength(2);
+
+    const iron = body.enriched.find((entry) => entry.briefId === 'iron-sword');
+    expect(iron).toMatchObject({
+      briefId: 'iron-sword',
+      runId: RUN,
+      variantCount: 3,
+      sheetFile: 'sheet-00.png',
+      approvedCount: 2,
+      firstApproved: { runId: RUN, variantIndex: 0 },
+      briefStored: true,
+    });
+
+    const mithril = body.enriched.find((entry) => entry.briefId === 'mithril-axe');
+    expect(mithril).toMatchObject({
+      briefId: 'mithril-axe',
+      runId: RUN2,
+      variantCount: 1,
+      sheetFile: null,
+      approvedCount: 0,
+      firstApproved: null,
+      briefStored: false,
+    });
+  });
+
+  it('omits sheet thumbnails for archived runs but keeps approved + brief badges', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/storage/runs/enrich',
+      payload: { scope: 'archive', runs: [{ briefId: 'iron-sword', runId: RUN }] },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { scope: string; enriched: Array<Record<string, unknown>> };
+    expect(body.scope).toBe('archive');
+    expect(body.enriched[0]).toMatchObject({
+      briefId: 'iron-sword',
+      runId: RUN,
+      variantCount: 3,
+      sheetFile: null,
+      approvedCount: 2,
+      firstApproved: { runId: RUN, variantIndex: 0 },
+      briefStored: true,
+    });
+  });
+
+  it('rejects an invalid scope with 400', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/storage/runs/enrich',
+      payload: { scope: 'nonsense', runs: [] },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: 'bad-request' });
+  });
+
+  it('rejects a non-array runs payload with 400', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/storage/runs/enrich',
+      payload: { scope: 'active', runs: 'not-an-array' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: 'bad-request' });
+  });
+});
