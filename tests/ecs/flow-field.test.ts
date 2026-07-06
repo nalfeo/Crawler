@@ -313,4 +313,21 @@ describe('computeFlowField — windowed BFS', () => {
     expect(field.width).toBe(WIDTH);
     expect(field.height).toBe(HEIGHT);
   });
+
+  it('returns an empty all-UNREACHABLE field when bounds are entirely outside the map', () => {
+    const floorMap = makeOpenMap();
+    // Bounds far off-map (all tiles beyond WIDTH, HEIGHT).
+    const field = computeFlowField(
+      floorMap,
+      { x: 5, y: 4 },
+      {
+        bounds: { minX: 999, minY: 999, maxX: 1000, maxY: 1000 },
+      },
+    );
+    expect(field.width).toBe(0);
+    expect(field.height).toBe(0);
+    expect(field.distance.length).toBe(0);
+    // flowFieldStep on any tile should return null (outside empty window).
+    expect(flowFieldStep(field, 5, 4)).toBeNull();
+  });
 });

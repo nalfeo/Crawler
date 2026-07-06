@@ -580,3 +580,34 @@ describe('enemyAISystem — branch coverage hardening', () => {
 function spread(point: { x: number; y: number }): [number, number] {
   return [point.x, point.y];
 }
+
+describe('enemyAISystem — Chebyshev pre-filter: inside FOV but outside aggro', () => {
+  it('does not cull an enemy that is inside the FOV radius but outside its aggro range', () => {
+    // Enemy at ~12 tiles from player (48ft), aggroRange=2 (threshold=max(2,100)+8=108).
+    // The enemy is inside the FOV radius (25 tiles = 100ft at 4ft/tile), so it
+    // must still run idle/wander AI — not be silently frozen.
+    const world = createTestWorld();
+    world.floorMap = openArena(24, 18);
+
+    // Player at center, enemy 12 tiles away (48ft < 100ft FOV radius).
+    spawnPlayer(world, ...spread(tileCenter(2, 2)));
+    const enemy = spawnBehaviorEnemy(
+      world,
+      ...spread(tileCenter(14, 2)),
+      20,
+      AI_TYPE.CHASE,
+      0.25,
+      2, // aggroRange = 2ft — tiny, enemy can never detect player
+      0,
+    );
+
+    world.frameCount = 1;
+    enemyAISystem(world);
+
+    // Enemy is 48ft away, FOV radius is 100ft → must NOT be pre-filtered.
+    // After one tick the enemy should be executing idle/wander (non-zero velocity).
+    const vx = world.stores.velocity.x[enemy] ?? 0;
+    const vy = world.stores.velocity.y[enemy] ?? 0;
+    expect(Math.hypot(vx, vy)).toBeGreaterThan(0.05);
+  });
+});

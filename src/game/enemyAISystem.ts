@@ -22,6 +22,7 @@ import { getWeaponDef } from '../shared/weaponDefs.js';
 import { SeededRandom } from '../shared/random.js';
 import { normalize } from '../shared/vec.js';
 import { getFamilyAIDecision, resolveHostileFallback } from './systems/familyFeudSystem.js';
+import { DEFAULT_FOV_RADIUS } from '../core/systems/fovSystem.js';
 
 export const AI_TYPE = { CHASE: 0, SWARM: 1, RANGED: 2, LEAPER: 3 } as const;
 export { PATH_PERSONA, TRAVERSAL_MODE };
@@ -1716,15 +1717,19 @@ export function enemyAISystem(world: GameWorld): void {
     //   • permanentAggro — already engaged regardless of distance
     //   • aggroRange <= 0 — sentinel for "infinite" aggro
     //   • FamilyMembership — may have a virtual (non-player) target
-    // The Chebyshev lower-bound is tight: if max(|dx|,|dy|) > R then
-    // Euclidean distance > R, so the enemy is definitively out of aggro range.
+    // The base threshold is the larger of the enemy's aggro range and the FOV
+    // radius (in ft): enemies inside FOV are still visible, so their wander/idle
+    // behavior must keep running for visual correctness. Only enemies that are
+    // BOTH outside aggro range AND outside player FOV are safe to skip entirely.
+    // Chebyshev lower-bound: if max(|dx|,|dy|) > R then Euclidean > R.
     if (floorMap && !hasComponent(world.ecs, eid, FamilyMembership)) {
       const earlyAggroRange = enemyBehavior.aggroRange[eid]!;
       const earlyPermanentAggro = (enemyBehavior.aggroedPermanently?.[eid] ?? 0) === 1;
       if (!earlyPermanentAggro && earlyAggroRange > 0) {
         const ex = position.x[eid]!;
         const ey = position.y[eid]!;
-        const threshold = earlyAggroRange + CULL_DEAD_ZONE_FT;
+        const fovRadiusFt = DEFAULT_FOV_RADIUS * floorMap.config.tileSizeFt;
+        const threshold = Math.max(earlyAggroRange, fovRadiusFt) + CULL_DEAD_ZONE_FT;
         if (Math.abs(ex - playerX) > threshold || Math.abs(ey - playerY) > threshold) {
           setVelocity(world, eid, 0, 0);
           pathStates.delete(eid);

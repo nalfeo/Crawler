@@ -137,6 +137,19 @@ export function computeFlowField(
     const maxY = Math.min(mapHeight - 1, options.bounds.maxY);
     winWidth = maxX - originX + 1;
     winHeight = maxY - originY + 1;
+    // Guard: if the clamped window is empty (e.g. bounds entirely outside the
+    // map), return an all-UNREACHABLE field with a zero-size array.
+    if (winWidth <= 0 || winHeight <= 0) {
+      return {
+        width: 0,
+        height: 0,
+        goalX: goal.x,
+        goalY: goal.y,
+        originX,
+        originY,
+        distance: new Int32Array(0),
+      };
+    }
   } else {
     originX = 0;
     originY = 0;
