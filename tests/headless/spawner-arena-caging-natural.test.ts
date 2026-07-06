@@ -55,7 +55,7 @@ describe.each(SEEDS)('spawner-arena caging on natural Floor-1 (seed %i)', (seed)
     const playerEid = spawnPlayer(world, 400, 400);
     const scenario = getScenarioDefinition('floor1');
     scenario.configureWorld(world, playerEid);
-    if (world.state === 'loadout' && world.floor1) {
+    if (world.state === 'loadout' && world.floor === 1) {
       scenario.selectLoadoutOption?.(world, 0);
     }
     expect(world.floorMap).not.toBeNull();
