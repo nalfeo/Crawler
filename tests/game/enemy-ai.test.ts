@@ -1035,3 +1035,59 @@ describe('enemyAISystem', () => {
     expect(world.stores.position.x[navigator]).toBeGreaterThan(8 * 4);
   });
 });
+
+describe('enemyAISystem — Chebyshev distance pre-filter', () => {
+  it('zeroes velocity and skips AI for an enemy far outside its aggro range', () => {
+    const world = createTestWorld();
+    // Large open floor so pathfinding never fails.
+    const config: MapConfig = {
+      widthTiles: 60,
+      heightTiles: 60,
+      tileSizeFt: 4,
+      biome: BiomeType.ARENA,
+      seed: 99,
+      roomWidthRange: [4, 8],
+      roomHeightRange: [4, 8],
+      maxRooms: 1,
+      floorDensity: 0.5,
+    };
+    const tileMap = new TileMap(60, 60);
+    const terrain = new Uint8Array(3600);
+    for (let y = 0; y < 60; y++) {
+      for (let x = 0; x < 60; x++) {
+        tileMap.flags[y * 60 + x] =
+          x === 0 || x === 59 || y === 0 || y === 59 ? TilePresets.WALL : TilePresets.FLOOR;
+      }
+    }
+    world.floorMap = new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 30, y: 30 });
+
+    // Player at origin (0,0 ft).
+    spawnPlayer(world, 0, 0);
+
+    // Enemy with aggroRange=20ft, placed 200ft away — far beyond 20+8=28ft threshold.
+    const eid = spawnBehaviorEnemy(world, 200, 0, 20, AI_TYPE.CHASE, 0.25, 20, 0);
+    // Give it a non-zero velocity so we can check it gets zeroed.
+    world.stores.velocity.x[eid] = 5;
+    world.stores.velocity.y[eid] = 5;
+
+    enemyAISystem(world);
+
+    // Pre-filter must zero velocity and skip all AI for this enemy.
+    expect(world.stores.velocity.x[eid]).toBe(0);
+    expect(world.stores.velocity.y[eid]).toBe(0);
+  });
+
+  it('does NOT skip an enemy within its aggro range', () => {
+    const world = createTestWorld();
+    world.floorMap = makePathingFloorMap(true);
+    // Player near center, enemy within aggro range.
+    spawnPlayer(world, 11 * 4 + 2, 5 * 4 + 2);
+    const eid = spawnBehaviorEnemy(world, 9 * 4, 5 * 4, 20, AI_TYPE.CHASE, 0.25, 40, 0);
+    // Run a few ticks; the enemy should move (not be pre-filtered).
+    const startX = world.stores.position.x[eid]!;
+    runTicks(world, 5);
+    const endX = world.stores.position.x[eid]!;
+    // Enemy must have moved toward the player (x increased).
+    expect(endX).toBeGreaterThan(startX);
+  });
+});
