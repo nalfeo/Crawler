@@ -487,8 +487,7 @@ Expected output includes:
 
 ```text
 Type: FEATURE
-Verdict: RECOMMENDED — reasonable to plan, but scope needs clarification first
-# Output: FEATURE | Escalation: NONE | Status: PROCEED_TO_CLARIFY
+Verdict: RECOMMENDED — A feature request is reasonable to plan, but it still needs scope clarification first.
 ```
 
 ### `npm run producer -- --decompose <request>`
