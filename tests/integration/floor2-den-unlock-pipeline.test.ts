@@ -175,17 +175,20 @@ describe('Floor 2 Slice 4 — den-unlock pipeline', () => {
     const families = loadFamilies();
     const resources = loadResources();
     const roster = selectFloor2Roster(new SeededRandom(seed), families, resources);
-    world.floor2State = {
-      presentFamilies: [...roster.presentFamilies],
-      contestedResource: roster.contestedResource,
-      betrayerFlag: false,
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [...roster.presentFamilies],
+        contestedResource: roster.contestedResource,
+        betrayerFlag: false,
+      },
     };
-    const objectives = initializeFloor2Bosses(world, floorMap, world.floor2State);
+    const floor2State = world.floorExtendedState.familyState;
+    const objectives = initializeFloor2Bosses(world, floorMap, floor2State);
     const target = objectives[0]!;
 
     const bossField = world.stores.familyMembership.isBoss;
     const familyIdxField = world.stores.familyMembership.familyId;
-    const idx = world.floor2State.presentFamilies.indexOf(target.familyId);
+    const idx = floor2State.presentFamilies.indexOf(target.familyId);
     let bossEid = -1;
     for (let eid = 0; eid < bossField.length; eid++) {
       if (bossField[eid] === 1 && familyIdxField[eid] === idx) {
@@ -221,18 +224,21 @@ describe('Floor 2 Slice 4 — den-unlock pipeline', () => {
     const families = loadFamilies();
     const resources = loadResources();
     const roster = selectFloor2Roster(new SeededRandom(seed), families, resources);
-    world.floor2State = {
-      presentFamilies: [...roster.presentFamilies],
-      contestedResource: roster.contestedResource,
-      betrayerFlag: false,
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [...roster.presentFamilies],
+        contestedResource: roster.contestedResource,
+        betrayerFlag: false,
+      },
     };
-    const objectives = initializeFloor2Bosses(world, floorMap, world.floor2State);
+    const floor2State = world.floorExtendedState.familyState;
+    const objectives = initializeFloor2Bosses(world, floorMap, floor2State);
     const target = objectives[0]!;
     expect(acceptQuest(world, target.questId)).toBeTruthy();
 
     const familyIdxField = world.stores.familyMembership.familyId;
     const bossField = world.stores.familyMembership.isBoss;
-    const presentIndex = world.floor2State.presentFamilies.indexOf(target.familyId);
+    const presentIndex = floor2State.presentFamilies.indexOf(target.familyId);
     let trashEid = -1;
     for (let eid = 0; eid < bossField.length; eid++) {
       if (bossField[eid] === 0 && familyIdxField[eid] === presentIndex) {
@@ -270,12 +276,15 @@ describe('Floor 2 Slice 4 — den-unlock pipeline', () => {
     const families = loadFamilies();
     const resources = loadResources();
     const roster = selectFloor2Roster(new SeededRandom(seed), families, resources);
-    world.floor2State = {
-      presentFamilies: [...roster.presentFamilies],
-      contestedResource: roster.contestedResource,
-      betrayerFlag: false,
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [...roster.presentFamilies],
+        contestedResource: roster.contestedResource,
+        betrayerFlag: false,
+      },
     };
-    const objectives = initializeFloor2Bosses(world, floorMap, world.floor2State);
+    const floor2State = world.floorExtendedState.familyState;
+    const objectives = initializeFloor2Bosses(world, floorMap, floor2State);
     const target = objectives[0]!;
     expect(acceptQuest(world, target.questId)).toBeTruthy();
 
