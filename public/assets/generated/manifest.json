@@ -2572,6 +2572,105 @@
       "effectivePipelineSnapshotYamlPath": null,
       "effectiveAnchorSource": "derived"
     },
+    "rat-nest-v2-var-0": {
+      "briefId": "rat-nest-v2",
+      "spriteName": "rat-nest-v2-var-0",
+      "assetPath": "generated/rat-nest-v2-var-0.png",
+      "approvedAt": "2026-07-06T20:16:53.208Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-z0MILX/rat-nest-v2/2026-07-06T20-11-59-4ec0292a",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 64,
+        "y": 43,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 64,
+          "y": 43,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 64,
+          "y": 43,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": null,
+      "type": "enemy",
+      "contentHash": "f1e20151b634aa3f45407fc11fd615aa77c5bf4e952e0c8e97ca4205ca088bc9",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/rat-nest-v2/2026-07-06T20-11-59-4ec0292a/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rat-nest-v2/2026-07-06T20-11-59-4ec0292a/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rat-nest-v2/2026-07-06T20-11-59-4ec0292a/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived"
+    },
+    "rat-nest-v2-var-2": {
+      "briefId": "rat-nest-v2",
+      "spriteName": "rat-nest-v2-var-2",
+      "assetPath": "generated/rat-nest-v2-var-2.png",
+      "approvedAt": "2026-07-06T20:17:00.468Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-vSxL3t/rat-nest-v2/2026-07-06T20-11-59-4ec0292a",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 64,
+        "y": 43,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 64,
+          "y": 43,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 64,
+          "y": 43,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": null,
+      "type": "enemy",
+      "contentHash": "8142f6670b54b298a1223228a5eb741c030cb6382be315aebed58e37ab535c62",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/rat-nest-v2/2026-07-06T20-11-59-4ec0292a/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rat-nest-v2/2026-07-06T20-11-59-4ec0292a/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rat-nest-v2/2026-07-06T20-11-59-4ec0292a/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived"
+    },
+    "rat-nest-v2-var-3": {
+      "briefId": "rat-nest-v2",
+      "spriteName": "rat-nest-v2-var-3",
+      "assetPath": "generated/rat-nest-v2-var-3.png",
+      "approvedAt": "2026-07-06T20:16:57.511Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-hrGkIK/rat-nest-v2/2026-07-06T20-11-59-4ec0292a",
+      "variantIndex": 3,
+      "anchor": {
+        "x": 65,
+        "y": 41,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 65,
+          "y": 41,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 65,
+          "y": 41,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": null,
+      "type": "enemy",
+      "contentHash": "9e18aa426dde2ca4d157436b4ca49c898f7878a61e9aec6a33814012c23b3c3d",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/rat-nest-v2/2026-07-06T20-11-59-4ec0292a/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rat-nest-v2/2026-07-06T20-11-59-4ec0292a/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rat-nest-v2/2026-07-06T20-11-59-4ec0292a/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived"
+    },
     "rat-queen-v1-var-1": {
       "briefId": "rat-queen-v1",
       "spriteName": "rat-queen-v1-var-1",
@@ -3085,59 +3184,67 @@
       "briefId": "slime-pool-v1",
       "spriteName": "slime-pool-v1-var-0",
       "assetPath": "generated/slime-pool-v1-var-0.png",
-      "approvedAt": "2026-07-02T03:09:04.918Z",
-      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-C1BdTw/slime-pool-v1/2026-07-02T03-07-17-83cbf896",
+      "approvedAt": "2026-07-06T21:13:00.008Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-P0Cqon/slime-pool-v1/2026-07-06T20-26-40-713474c0",
       "variantIndex": 0,
       "anchor": {
-        "x": 242,
-        "y": 232,
+        "x": 61,
+        "y": 37,
         "source": "derived"
       },
       "anchors": {
         "hold": {
-          "x": 242,
-          "y": 232,
+          "x": 61,
+          "y": 37,
           "source": "derived"
         },
         "centerOfGravity": {
-          "x": 242,
-          "y": 116,
+          "x": 61,
+          "y": 37,
           "source": "derived"
         }
       },
-      "sensorScore": "5/7",
-      "judgeScore": null,
-      "type": "tile",
-      "contentHash": "9ca6b4b34de0ec92b94472be25c7574b847361d1a096e38c2f6d75105da3a570"
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "enemy",
+      "contentHash": "da0f6f4ddefd8c3c109d2eddaaf8f5e9c6097a049144011052641f0217638161",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/slime-pool-v1/2026-07-06T20-26-40-713474c0/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/slime-pool-v1/2026-07-06T20-26-40-713474c0/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/slime-pool-v1/2026-07-06T20-26-40-713474c0/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived"
     },
     "slime-pool-v1-var-3": {
       "briefId": "slime-pool-v1",
       "spriteName": "slime-pool-v1-var-3",
       "assetPath": "generated/slime-pool-v1-var-3.png",
-      "approvedAt": "2026-07-02T03:09:13.293Z",
-      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-QFZWmv/slime-pool-v1/2026-07-02T03-07-17-83cbf896",
+      "approvedAt": "2026-07-06T21:13:03.539Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-15Fm8k/slime-pool-v1/2026-07-06T20-26-40-713474c0",
       "variantIndex": 3,
       "anchor": {
-        "x": 242,
-        "y": 247,
+        "x": 64,
+        "y": 35,
         "source": "derived"
       },
       "anchors": {
         "hold": {
-          "x": 242,
-          "y": 247,
+          "x": 64,
+          "y": 35,
           "source": "derived"
         },
         "centerOfGravity": {
-          "x": 242,
-          "y": 123,
+          "x": 64,
+          "y": 35,
           "source": "derived"
         }
       },
-      "sensorScore": "5/7",
-      "judgeScore": null,
-      "type": "tile",
-      "contentHash": "1317ac9fdab9a30bf1cecbb1b13660b0d57061a3962f8c4e62d9a3b3a110f62e"
+      "sensorScore": "7/7",
+      "judgeScore": "3",
+      "type": "enemy",
+      "contentHash": "8a55dc35302adcb2d37dcc65d561e3eb881ac72333390d21c3402c03d43c62fd",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/slime-pool-v1/2026-07-06T20-26-40-713474c0/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/slime-pool-v1/2026-07-06T20-26-40-713474c0/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/slime-pool-v1/2026-07-06T20-26-40-713474c0/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived"
     },
     "slime-queen-v1-var-0": {
       "briefId": "slime-queen-v1",
