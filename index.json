@@ -1,5 +1,16 @@
 [
   {
+    "commit": "6251cf10266866e1b1af52f15d5c11bebcd719be",
+    "commitDate": "2026-07-06T03:39:11Z",
+    "commitSubject": "ci: switch copilot-setup-steps to reuse custom setup-node action (#803)",
+    "capturedAt": "2026-07-06T04:40:15.771Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28766366294",
+    "winRate": 0.79,
+    "totalWins": 237,
+    "totalRuns": 300,
+    "path": "by-sha/6251cf10266866e1b1af52f15d5c11bebcd719be.json"
+  },
+  {
     "commit": "8ac80699aa0e367db54fc9eb5945033f9d8b4a66",
     "commitDate": "2026-07-06T01:45:35Z",
     "commitSubject": "feat(physics): Slice 1 - Size component foundation (#785)",
