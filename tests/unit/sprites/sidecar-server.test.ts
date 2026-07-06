@@ -1847,6 +1847,17 @@ describe('worker control endpoints (/api/workflow/worker/*)', () => {
     expect(res.json()).toEqual({ entries: [entry] });
   });
 
+  it('GET /api/workflow/asset-requests accepts completed as a valid manifest state', async () => {
+    issueIngester.listRequests = vi.fn(async () => []);
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workflow/asset-requests?state=completed',
+    });
+    expect(res.statusCode).toBe(200);
+    expect(issueIngester.listRequests).toHaveBeenCalledWith('completed');
+    expect(res.json()).toEqual({ entries: [] });
+  });
+
   it('POST /api/workflow/asset-requests/reject persists a permanent rejection marker', async () => {
     issueIngester.rejectRequest = vi.fn(async () => ({
       key: '42:abc',

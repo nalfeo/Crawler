@@ -1607,6 +1607,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           : stateRaw === 'all' ||
               stateRaw === 'pending' ||
               stateRaw === 'claimed' ||
+              stateRaw === 'completed' ||
               stateRaw === 'rejected'
             ? stateRaw
             : null;
@@ -1614,7 +1615,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         reply.code(400);
         return {
           error: 'bad-request',
-          message: 'query.state must be all, pending, claimed, or rejected',
+          message: 'query.state must be all, pending, claimed, completed, or rejected',
         };
       }
       return { entries: await issueIngester.listRequests(state) };

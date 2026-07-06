@@ -111,7 +111,7 @@ export interface IssueIngesterController {
    */
   pollOnce(): Promise<IssueIngesterStatus>;
   listRequests(
-    state?: 'all' | 'pending' | 'claimed' | 'rejected',
+    state?: 'all' | 'pending' | 'claimed' | 'completed' | 'rejected',
   ): Promise<readonly AssetRequestManifestEntry[]>;
   rejectRequest(input: {
     issueNumber: number;
@@ -126,7 +126,7 @@ export interface AssetRequestManifestEntry {
   readonly fingerprint: string;
   readonly name: string;
   readonly briefSentence: string;
-  readonly state: 'pending' | 'claimed' | 'rejected';
+  readonly state: 'pending' | 'claimed' | 'completed' | 'rejected';
   readonly claimedAt: string | null;
   readonly rejectedAt: string | null;
   readonly rejectionReason: string | null;
@@ -327,8 +327,8 @@ export function createIssueIngesterController(
     issueNumber: number,
     fingerprint: string,
   ): Promise<{ readonly stage: string; readonly updatedAt: string | null } | null> {
-    if (!options.issueStatusPrefix) return null;
-    const key = `${options.issueStatusPrefix}/${issueNumber}-${fingerprint}.json`;
+    const statusPrefix = options.issueStatusPrefix ?? ISSUE_STATUS_KEY_PREFIX;
+    const key = `${statusPrefix}/${issueNumber}-${fingerprint}.json`;
     if (!(await options.store.has(key))) return null;
     try {
       const parsed = JSON.parse((await options.store.get(key)).toString('utf8')) as {
@@ -561,14 +561,29 @@ export function createIssueIngesterController(
           const key = claimKey(issue.number, payload.fingerprint);
           const claimed = ingestState.claims[key];
           const rejected = ingestState.rejected[key];
+          const completion =
+            claimed !== undefined
+              ? await readCompletionStage(issue.number, payload.fingerprint)
+              : null;
+          const completed = completion?.stage === 'completed';
+          const stateForEntry: AssetRequestManifestEntry['state'] = rejected
+            ? 'rejected'
+            : completed
+              ? 'completed'
+              : claimed
+                ? 'claimed'
+                : 'pending';
           out.set(key, {
             key,
             issueNumber: issue.number,
             fingerprint: payload.fingerprint,
             name: payload.name,
             briefSentence: payload.briefSentence,
-            state: rejected ? 'rejected' : claimed ? 'claimed' : 'pending',
-            claimedAt: claimed?.claimedAt ?? null,
+            state: stateForEntry,
+            claimedAt:
+              stateForEntry === 'completed'
+                ? (completion?.updatedAt ?? claimed?.claimedAt ?? null)
+                : (claimed?.claimedAt ?? null),
             rejectedAt: rejected?.rejectedAt ?? null,
             rejectionReason: rejected?.reason ?? null,
             isOpen: true,

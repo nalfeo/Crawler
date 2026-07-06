@@ -258,7 +258,7 @@ interface AssetRequestManifestEntry {
   fingerprint: string;
   name: string;
   briefSentence: string;
-  state: 'pending' | 'claimed' | 'rejected';
+  state: 'pending' | 'claimed' | 'completed' | 'rejected';
   claimedAt: string | null;
   rejectedAt: string | null;
   rejectionReason: string | null;
@@ -2088,6 +2088,7 @@ function render(): void {
     ['', 'Select manifest view…'],
     ['pending', 'Needs action'],
     ['claimed', 'Claimed / in progress'],
+    ['completed', 'Completed'],
     ['rejected', 'Rejected'],
     ['all', 'All requests'],
   ] as const) {
@@ -2164,7 +2165,7 @@ function render(): void {
         issueLink.target = '_blank';
         issueLink.rel = 'noopener noreferrer';
         const actionsCell = document.createElement('td');
-        if (entry.state !== 'rejected') {
+        if (entry.state === 'pending' || entry.state === 'claimed') {
           const rejectBtn = el('button', {
             text: 'Reject',
             style: {

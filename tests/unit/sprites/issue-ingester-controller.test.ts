@@ -106,6 +106,45 @@ describe('issue ingester controller', () => {
     expect(rejectedRows[0]?.rejectionReason).toBe('not in current scope');
   });
 
+  it('surfaces completed entries when a claim has a completed pipeline status doc', async () => {
+    const enqueued: AssetRequest[] = [];
+    const queue = {
+      backend: 'azure-queue' as const,
+      enqueue: async (request: AssetRequest) => void enqueued.push(request),
+      dequeue: async () => null,
+      peek: async () => [],
+    };
+    const body = `<!-- ${ASSET_REQUEST_MARKER}\n{"version":1,"name":"camera-lens","briefSentence":"A scratched camera lens with duct-tape repairs."}\n-->`;
+    const issues = issuesMock({ list: async () => [{ number: 88, body }] });
+    const store = memStore();
+    const controller = createIssueIngesterController({
+      queue,
+      store,
+      issues,
+      requestedBy: 'test',
+      pollIntervalMs: 5,
+      now: () => new Date('2026-07-06T00:00:00.000Z'),
+    });
+    controller.start();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await controller.stop();
+
+    const claimed = await controller.listRequests('claimed');
+    expect(claimed).toHaveLength(1);
+    const claim = claimed[0]!;
+    await store.put(
+      `${ISSUE_STATUS_KEY_PREFIX}/${claim.issueNumber}-${claim.fingerprint}.json`,
+      Buffer.from(
+        `${JSON.stringify({ issueNumber: claim.issueNumber, fingerprint: claim.fingerprint, stage: 'completed', updatedAt: '2026-07-06T00:01:00.000Z' })}\n`,
+      ),
+    );
+
+    const completed = await controller.listRequests('completed');
+    expect(completed).toHaveLength(1);
+    expect(completed[0]?.state).toBe('completed');
+    expect(completed[0]?.issueNumber).toBe(88);
+  });
+
   it('pollOnce awaits ingest completion (enqueue + state save) before resolving', async () => {
     const enqueued: AssetRequest[] = [];
     let resolveList: ((v: readonly { number: number; body: string }[]) => void) | null = null;
