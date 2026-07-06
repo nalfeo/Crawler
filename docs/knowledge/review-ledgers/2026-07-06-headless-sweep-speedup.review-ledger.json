@@ -28,9 +28,16 @@
           "concerns_count": 0,
           "resolved_count": 0,
           "clean": true
+        },
+        {
+          "round": 3,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
         }
       ],
-      "notes": "Round 1 surfaced two non-blocking concerns; fixes applied and re-reviewed clean in round 2."
+      "notes": "Round 1 surfaced two non-blocking concerns; fixes applied and re-reviewed clean in round 2. Round 3 re-reviewed the PR-shepherd review-fix commit 4c86173d (Thread 1: --workers/--max-frames NaN-hang guard via validated parseSweepArgs + 23 unit tests; Thread 2: byte-identical BFS extraction into floodReachabilityDepth) — automated code-review agent pass, no concerns; determinism confirmed via npm run test:headless (43/43, collision-pair-parity + beam/melee broadphase byte-identical)."
     }
   }
 }
