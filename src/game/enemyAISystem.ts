@@ -5,7 +5,6 @@ import {
   Enemy,
   EnemyBehavior,
   EnemyProjectile,
-  FamilyMembership,
   Player,
   Position,
   Velocity,
@@ -64,12 +63,6 @@ const MAX_AGGRO_RANGE_TILES = 18;
  * clipping enemies right at the edge on diagonal approaches.
  */
 const FLOW_FIELD_RADIUS_TILES = DEFAULT_FOV_RADIUS + MAX_AGGRO_RANGE_TILES + 1;
-/**
- * Dead-zone padding added to aggroRange in the Chebyshev pre-filter (ft).
- * Provides a small hysteresis gap so that an enemy just outside aggro range
- * does not oscillate between culled and active every frame.
- */
-const CULL_DEAD_ZONE_FT = 8;
 // The slime is a leaper: it runs a telegraph → committed leap → frozen recovery
 // loop. Because the player should essentially never stop moving, a leap that
 // commits toward the player's *current* position generally whiffs — the player
@@ -1717,33 +1710,6 @@ export function enemyAISystem(world: GameWorld): void {
       pathStates.delete(eid);
       getSlimeLeapStateMap(world).delete(eid);
       continue;
-    }
-
-    // Cheap Chebyshev pre-filter: skip enemies provably too far to matter.
-    // Conditions that bypass the filter:
-    //   • permanentAggro — already engaged regardless of distance
-    //   • aggroRange <= 0 — sentinel for "infinite" aggro
-    //   • FamilyMembership — may have a virtual (non-player) target
-    // The base threshold is the larger of the enemy's aggro range and the FOV
-    // radius (in ft): enemies inside FOV are still visible, so their wander/idle
-    // behavior must keep running for visual correctness. Only enemies that are
-    // BOTH outside aggro range AND outside player FOV are safe to skip entirely.
-    // Chebyshev lower-bound: if max(|dx|,|dy|) > R then Euclidean > R.
-    if (floorMap && !hasComponent(world.ecs, eid, FamilyMembership)) {
-      const earlyAggroRange = enemyBehavior.aggroRange[eid]!;
-      const earlyPermanentAggro = (enemyBehavior.aggroedPermanently?.[eid] ?? 0) === 1;
-      if (!earlyPermanentAggro && earlyAggroRange > 0) {
-        const ex = position.x[eid]!;
-        const ey = position.y[eid]!;
-        const fovRadiusFt = DEFAULT_FOV_RADIUS * floorMap.config.tileSizeFt;
-        const threshold = Math.max(earlyAggroRange, fovRadiusFt) + CULL_DEAD_ZONE_FT;
-        if (Math.abs(ex - playerX) > threshold || Math.abs(ey - playerY) > threshold) {
-          setVelocity(world, eid, 0, 0);
-          pathStates.delete(eid);
-          getSlimeLeapStateMap(world).delete(eid);
-          continue;
-        }
-      }
     }
 
     const enemyX = position.x[eid]!;

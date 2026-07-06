@@ -581,15 +581,15 @@ function spread(point: { x: number; y: number }): [number, number] {
   return [point.x, point.y];
 }
 
-describe('enemyAISystem — Chebyshev pre-filter: inside FOV but outside aggro', () => {
-  it('does not cull an enemy that is inside the FOV radius but outside its aggro range', () => {
-    // Enemy at ~12 tiles from player (48ft), aggroRange=2 (threshold=max(2,100)+8=108).
-    // The enemy is inside the FOV radius (25 tiles = 100ft at 4ft/tile), so it
-    // must still run idle/wander AI — not be silently frozen.
+describe('enemyAISystem — out-of-aggro enemy still wanders', () => {
+  it('runs idle/wander AI for an enemy outside its aggro range', () => {
+    // Enemy at ~12 tiles from player (48ft), aggroRange=2ft — it can never
+    // detect the player, so it must fall through to idle/wander AI and move,
+    // rather than sitting frozen. (This exercises the !canDetectPlayer path.)
     const world = createTestWorld();
     world.floorMap = openArena(24, 18);
 
-    // Player at center, enemy 12 tiles away (48ft < 100ft FOV radius).
+    // Player at center, enemy 12 tiles away.
     spawnPlayer(world, ...spread(tileCenter(2, 2)));
     const enemy = spawnBehaviorEnemy(
       world,
@@ -604,7 +604,6 @@ describe('enemyAISystem — Chebyshev pre-filter: inside FOV but outside aggro',
     world.frameCount = 1;
     enemyAISystem(world);
 
-    // Enemy is 48ft away, FOV radius is 100ft → must NOT be pre-filtered.
     // After one tick the enemy should be executing idle/wander (non-zero velocity).
     const vx = world.stores.velocity.x[enemy] ?? 0;
     const vy = world.stores.velocity.y[enemy] ?? 0;

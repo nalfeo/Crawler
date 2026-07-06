@@ -2,15 +2,19 @@
   "schema_version": "review-ledger/v1",
   "date": "2026-07-06",
   "session_slug": "spatial-scoping-perf",
-  "task_title": "Spatial-scoping performance: bounded clearVisibility, windowed flow-field BFS, Chebyshev enemy pre-filter",
-  "estimated_apples": 2,
+  "task_title": "Spatial-scoping perf: bounded clearVisibility + windowed flow-field (Chebyshev pre-filter reverted for determinism)",
+  "estimated_apples": 3,
   "stages": {
     "plan_review": {
-      "completed": true,
-      "reviewer_model": "gpt-5.4",
-      "concerns_count": 2,
-      "resolved_count": 2,
-      "notes": "(1) empty-window guard added to computeFlowField; (2) regression test for inside-FOV-but-outside-aggro added to enemy-ai-coverage.test.ts"
+      "completed": false,
+      "reviewer_model": "",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "notes": ""
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
     }
   }
 }
