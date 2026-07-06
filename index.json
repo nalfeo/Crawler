@@ -1,0 +1,13 @@
+[
+  {
+    "commit": "b4fcf201c6f6f1e272ecd3f0ef6c0db7020dd6dc",
+    "commitDate": "2026-07-06T01:24:55Z",
+    "commitSubject": "ci: capture 100-seed baseline sweep after each Pages release (#791)",
+    "capturedAt": "2026-07-06T02:27:10.330Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28762155747",
+    "winRate": 0.79,
+    "totalWins": 237,
+    "totalRuns": 300,
+    "path": "by-sha/b4fcf201c6f6f1e272ecd3f0ef6c0db7020dd6dc.json"
+  }
+]
