@@ -35,7 +35,7 @@ export const DEFAULT_CONFIG: Required<AIConfig> = {
   // OpportunisticFarm) so Track A's quest path stays dominant and the pull can
   // never drag the player off-objective into an off-path fight — the failure
   // mode that previously forced this to 0.0 and blew the floor-clear budget.
-  farmPullWeight: 0.07,
+  farmPullWeight: 0.1,
   pathingMode: AIPathingMode.RISK_REWARD_FUSED,
   debug: false,
 };
