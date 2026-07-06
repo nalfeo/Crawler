@@ -468,6 +468,7 @@ describe('pickSafeTravelHeading — properties', () => {
       vx: fc.double({ min: -2, max: 2, noNaN: true }),
       vy: fc.double({ min: -2, max: 2, noNaN: true }),
       bodyRadiusFt: fc.double({ min: 1, max: 4, noNaN: true }),
+      dangerWeight: fc.double({ min: 0.1, max: 4, noNaN: true }),
     });
     fc.assert(
       fc.property(fc.array(threatArb, { maxLength: 6 }), (threats) => {
@@ -499,6 +500,7 @@ describe('pickSafeTravelHeading — properties', () => {
       vx: fc.double({ min: -2, max: 2, noNaN: true }),
       vy: fc.double({ min: -2, max: 2, noNaN: true }),
       bodyRadiusFt: fc.constant(3),
+      dangerWeight: fc.double({ min: 0.1, max: 4, noNaN: true }),
     });
     fc.assert(
       fc.property(fc.array(threatArb, { maxLength: 5 }), objComp, objComp, (threats, ox, oy) => {
