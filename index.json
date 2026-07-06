@@ -1,5 +1,16 @@
 [
   {
+    "commit": "f4c75fe2e3f5471bfd8c26aea97b89da2465140b",
+    "commitDate": "2026-07-06T04:35:51Z",
+    "commitSubject": "ci: comment baseline win-rate on the released PR (#805)",
+    "capturedAt": "2026-07-06T05:36:12.866Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28768291270",
+    "winRate": 0.79,
+    "totalWins": 237,
+    "totalRuns": 300,
+    "path": "by-sha/f4c75fe2e3f5471bfd8c26aea97b89da2465140b.json"
+  },
+  {
     "commit": "6251cf10266866e1b1af52f15d5c11bebcd719be",
     "commitDate": "2026-07-06T03:39:11Z",
     "commitSubject": "ci: switch copilot-setup-steps to reuse custom setup-node action (#803)",
