@@ -232,6 +232,45 @@ describe('CaveSystemGenerator', () => {
     expect(territoryCount).toBe(4);
   });
 
+  it('accepts per-map cave-system knob overrides from MapConfig', () => {
+    const gen = new CaveSystemGenerator({ presentCount: 4, bossDenSize: 5 });
+    const config: MapConfig = {
+      ...smallConfig(4242, 160, 100),
+      caveSystem: {
+        presentCount: 3,
+        bossDenSize: 7,
+        initialFill: 0.42,
+        smoothingPasses: 4,
+      },
+    };
+    const floor = gen.generate(config, new SeededRandom(4242));
+    const rooms = floor.roomGraph.getAll();
+    const territories = rooms.filter((room) => room.role === RoomRole.TERRITORY);
+    const dens = rooms.filter((room) => room.role === RoomRole.BOSS_DEN);
+    expect(territories.length).toBe(3);
+    expect(dens.length).toBe(3);
+    for (const den of dens) {
+      expect(den.bounds.width).toBe(7);
+      expect(den.bounds.height).toBe(7);
+    }
+  });
+
+  it('respects caveSystem.maxRetries override from MapConfig', () => {
+    const gen = new CaveSystemGenerator({
+      presentCount: 4,
+      maxRetries: 8,
+      regionSeparationTiles: 100,
+    });
+    const config: MapConfig = {
+      ...smallConfig(1337, 20, 20),
+      caveSystem: {
+        maxRetries: 1,
+        regionSeparationTiles: 100,
+      },
+    };
+    expect(() => gen.generate(config, new SeededRandom(1337))).toThrowError(/exhausted 1 attempts/);
+  });
+
   it('BOSS_STAIR_FLOOR is stamped inside the RESOURCE_HEART region on every seed', () => {
     // Guards against the "centroid falls on a wall pocket -> stamps zero tiles" bug
     // that neither the reachability check nor the bounds-centered search would catch.
