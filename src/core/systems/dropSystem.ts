@@ -12,6 +12,7 @@ import {
   Damage,
   DeathTimer,
   Enemy,
+  FamilyMembership,
   Health,
   Knockback,
   Owner,
@@ -459,6 +460,12 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
         (world.stores.bloodColor.g[eid]! << 8) |
         world.stores.bloodColor.b[eid]!
       : DEFAULT_BLOOD_COLOR;
+    const familyIndex = hasComponent(world.ecs, eid, FamilyMembership)
+      ? (world.stores.familyMembership.familyId[eid] ?? -1)
+      : -1;
+    const isBoss = hasComponent(world.ecs, eid, FamilyMembership)
+      ? ((world.stores.familyMembership.isBoss[eid] ?? 0) as 0 | 1)
+      : 0;
     world.combatEvents.push({
       type: 'death',
       x,
@@ -473,6 +480,8 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
       sourceX: killDirX !== 0 || killDirY !== 0 ? x - killDirX * 2.5 : undefined,
       sourceY: killDirX !== 0 || killDirY !== 0 ? y - killDirY * 2.5 : undefined,
       bloodColor,
+      familyIndex: familyIndex >= 0 ? familyIndex : undefined,
+      isBoss: familyIndex >= 0 ? isBoss : undefined,
     });
 
     // Add death linger timer so entity persists for knockback/death animation
