@@ -16,15 +16,24 @@
  *   npm run ai:winrate-sweep -- --seeds 1-60       # range
  *   npm run ai:winrate-sweep -- --weapons sword    # one weapon
  *   npm run ai:winrate-sweep -- --max-frames 21600 --out files/sweep.json
+ *   npm run ai:winrate-sweep -- --workers 8 --skip-events
  *
  * A failing seed runs to the budget, so a sweep over many seeds with many
  * failures is slow; that is expected — correctness, not speed, is the point.
  */
 import { writeFileSync } from 'node:fs';
+import { availableParallelism } from 'node:os';
+import { isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../../src/game/ai/headless-runner.js';
 import { summarizeEvents, type SimEvent } from '../../../src/game/ai/event-log.js';
 import type { RunStats } from '../../../src/game/ai/types.js';
+import {
+  runWorkerPool,
+  type WorkerPoolTaskPayload,
+  type WorkerTaskFailure,
+  type WorkerTaskSuccess,
+} from './worker-pool.js';
 
 const FLOOR1_WEAPONS = ['sword', 'bow', 'baseball-bat'];
 /** Floor 1 design budget: 6 minutes of game time at 60 fps. */
@@ -37,6 +46,8 @@ interface CLIArgs {
   out: string | null;
   enemyDamageMultiplier: number;
   floorId: string;
+  workers: number;
+  skipEvents: boolean;
 }
 
 function parseSeeds(spec: string): number[] {
@@ -56,6 +67,7 @@ function parseSeeds(spec: string): number[] {
 
 function parseArgs(): CLIArgs {
   let weaponsProvided = false;
+  let workersProvided = false;
   const args: CLIArgs = {
     seeds: Array.from({ length: 40 }, (_, i) => i + 1),
     weapons: FLOOR1_WEAPONS,
@@ -63,6 +75,8 @@ function parseArgs(): CLIArgs {
     out: null,
     enemyDamageMultiplier: 1,
     floorId: 'floor1',
+    workers: 1,
+    skipEvents: false,
   };
   for (let i = 2; i < process.argv.length; i++) {
     const arg = process.argv[i];
@@ -86,6 +100,12 @@ function parseArgs(): CLIArgs {
     } else if (arg === '--floor' && next) {
       args.floorId = next;
       i++;
+    } else if (arg === '--workers' && next) {
+      args.workers = Math.max(1, parseInt(next, 10));
+      workersProvided = true;
+      i++;
+    } else if (arg === '--skip-events') {
+      args.skipEvents = true;
     }
   }
   if (
@@ -95,7 +115,74 @@ function parseArgs(): CLIArgs {
   ) {
     args.weapons = ['sword'];
   }
+  if (!workersProvided) {
+    args.workers = Math.max(
+      1,
+      Math.min(availableParallelism(), args.seeds.length * args.weapons.length),
+    );
+  }
   return args;
+}
+
+interface SweepTask {
+  weapon: string;
+  seed: number;
+}
+
+interface SweepSharedConfig {
+  maxFrames: number;
+  enemyDamageMultiplier: number;
+  floorId: string;
+  skipEvents: boolean;
+}
+
+interface SweepTaskResult {
+  task: SweepTask;
+  stats: RunStats;
+  failRecord: FailRecord | null;
+}
+
+async function runSweepTask(task: SweepTask, config: SweepSharedConfig): Promise<SweepTaskResult> {
+  const ai = new BehaviorTreeAI({ seed: task.seed });
+  const events: SimEvent[] = [];
+  const stats = await runHeadless(ai, {
+    seed: task.seed,
+    maxFrames: config.maxFrames,
+    forceWeaponId: task.weapon,
+    enemyDamageMultiplier: config.enemyDamageMultiplier,
+    eventSampleInterval: 60,
+    floorId: config.floorId,
+    ...(config.skipEvents
+      ? {}
+      : {
+          recordEvent: (event: SimEvent): void => {
+            events.push(event);
+          },
+        }),
+  });
+  let failRecord: FailRecord | null = null;
+  if (stats.outcome !== 'victory') {
+    const sum = config.skipEvents ? null : summarizeEvents(events);
+    const dom = sum ? Object.entries(sum.statePct).sort((a, b) => b[1] - a[1])[0] : null;
+    const wig = sum?.wiggleEpisodes[0];
+    failRecord = {
+      weapon: task.weapon,
+      seed: task.seed,
+      outcome: stats.outcome,
+      gameTimeSec: Math.round(stats.gameTimeMs / 1000),
+      level: stats.finalLevel,
+      kills: stats.combat.totalKills,
+      dominantState: dom ? `${dom[0]} ${dom[1]}%` : 'n/a',
+      worstWiggle:
+        wig !== undefined
+          ? `${(wig.durationMs / 1000).toFixed(0)}s@(${wig.px},${wig.py})`
+          : config.skipEvents
+            ? 'n/a'
+            : '—',
+      stall: stats.stallReason ?? '',
+    };
+  }
+  return { task, stats, failRecord };
 }
 
 interface FailRecord {
@@ -163,6 +250,12 @@ function summarizeMetrics(label: string, rows: RunMetric[]): void {
 
 async function sweep(args: CLIArgs): Promise<void> {
   const start = Date.now();
+  const tasks: SweepTask[] = [];
+  for (const weapon of args.weapons) {
+    for (const seed of args.seeds) {
+      tasks.push({ weapon, seed });
+    }
+  }
   console.log(`🎯 ${args.floorId} Win-Rate Sweep`);
   console.log('━'.repeat(70));
   console.log(
@@ -171,27 +264,53 @@ async function sweep(args: CLIArgs): Promise<void> {
   console.log(`Weapons: ${args.weapons.join(', ')}`);
   console.log(`Budget:  ${args.maxFrames} frames (~${(args.maxFrames / 60).toFixed(0)}s)`);
   console.log(`Damage:  ${args.enemyDamageMultiplier}x hostile damage`);
-  console.log(`Runs:    ${args.seeds.length * args.weapons.length}`);
+  console.log(`Runs:    ${tasks.length}`);
+  console.log(`Workers: ${Math.max(1, Math.min(args.workers, tasks.length))}`);
+  if (args.skipEvents) {
+    console.log('Events:  disabled (--skip-events)');
+  }
   console.log('');
 
   const fails: FailRecord[] = [];
   const metrics: RunMetric[] = [];
   const perWeapon: { weapon: string; wins: number; runs: number }[] = [];
+  const sharedConfig: SweepSharedConfig = {
+    maxFrames: args.maxFrames,
+    enemyDamageMultiplier: args.enemyDamageMultiplier,
+    floorId: args.floorId,
+    skipEvents: args.skipEvents,
+  };
+  const taskResults: SweepTaskResult[] = [];
+  if (Math.max(1, Math.min(args.workers, tasks.length)) === 1) {
+    for (const task of tasks) {
+      taskResults.push(await runSweepTask(task, sharedConfig));
+    }
+  } else {
+    taskResults.push(
+      ...(await runWorkerPool<SweepTask, SweepSharedConfig, SweepTaskResult>({
+        workerUrl: new URL(import.meta.url),
+        tasks,
+        shared: sharedConfig,
+        maxWorkers: args.workers,
+        workerOptions: {
+          execArgv: process.execArgv,
+        },
+      })),
+    );
+  }
+  let resultIndex = 0;
 
   for (const weapon of args.weapons) {
     let wins = 0;
     for (const seed of args.seeds) {
-      const ai = new BehaviorTreeAI({ seed });
-      const events: SimEvent[] = [];
-      const stats = await runHeadless(ai, {
-        seed,
-        maxFrames: args.maxFrames,
-        forceWeaponId: weapon,
-        enemyDamageMultiplier: args.enemyDamageMultiplier,
-        eventSampleInterval: 60,
-        floorId: args.floorId,
-        recordEvent: (e) => events.push(e),
-      });
+      const result = taskResults[resultIndex];
+      resultIndex += 1;
+      if (result === undefined || result.task.weapon !== weapon || result.task.seed !== seed) {
+        throw new Error(
+          `Sweep task ordering mismatch at ${weapon}/${seed}; got ${result?.task.weapon ?? 'n/a'}/${result?.task.seed ?? 'n/a'}`,
+        );
+      }
+      const { stats, failRecord } = result;
       const gameTimeSec = stats.gameTimeMs / 1000;
       metrics.push({
         weapon,
@@ -208,21 +327,8 @@ async function sweep(args: CLIArgs): Promise<void> {
       });
       if (stats.outcome === 'victory') {
         wins++;
-      } else {
-        const sum = summarizeEvents(events);
-        const dom = Object.entries(sum.statePct).sort((a, b) => b[1] - a[1])[0];
-        const wig = sum.wiggleEpisodes[0];
-        fails.push({
-          weapon,
-          seed,
-          outcome: stats.outcome,
-          gameTimeSec: Math.round(stats.gameTimeMs / 1000),
-          level: stats.finalLevel,
-          kills: stats.combat.totalKills,
-          dominantState: dom ? `${dom[0]} ${dom[1]}%` : 'n/a',
-          worstWiggle: wig ? `${(wig.durationMs / 1000).toFixed(0)}s@(${wig.px},${wig.py})` : '—',
-          stall: stats.stallReason ?? '',
-        });
+      } else if (failRecord) {
+        fails.push(failRecord);
       }
       process.stdout.write(stats.outcome === 'victory' ? '.' : 'F');
     }
@@ -328,7 +434,24 @@ async function sweep(args: CLIArgs): Promise<void> {
   }
 }
 
-sweep(parseArgs()).catch((err) => {
-  console.error('Fatal:', err);
-  process.exit(1);
-});
+if (!isMainThread) {
+  const payload = workerData as WorkerPoolTaskPayload<SweepTask, SweepSharedConfig>;
+  runSweepTask(payload.task, payload.shared)
+    .then((result) => {
+      parentPort?.postMessage({
+        taskIndex: payload.taskIndex,
+        result,
+      } satisfies WorkerTaskSuccess<SweepTaskResult>);
+    })
+    .catch((error) => {
+      parentPort?.postMessage({
+        taskIndex: payload.taskIndex,
+        error: error instanceof Error ? (error.stack ?? error.message) : String(error),
+      } satisfies WorkerTaskFailure);
+    });
+} else {
+  sweep(parseArgs()).catch((err) => {
+    console.error('Fatal:', err);
+    process.exit(1);
+  });
+}

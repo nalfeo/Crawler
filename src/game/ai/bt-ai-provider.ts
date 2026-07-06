@@ -565,6 +565,10 @@ export class BehaviorTreeAI implements AIInputProvider {
   private hasPerceptionData = false;
   /** Reused per-tile BFS visited scratch for {@link findNearestFrontier}; sized to the floor. */
   private frontierBfsVisited: Uint8Array | null = null;
+  /** Reused BFS depth scratch for {@link pickExploreTarget} reachability checks. */
+  private exploreReachabilityDepth: Int32Array | null = null;
+  /** Reused queue scratch for {@link pickExploreTarget} reachability flood. */
+  private exploreReachabilityQueue: Int32Array | null = null;
   private globalDwellActive: boolean = false;
   private globalDwellAnchorX: number = 0;
   private globalDwellAnchorY: number = 0;
@@ -4303,6 +4307,64 @@ export class BehaviorTreeAI implements AIInputProvider {
     return { x: wp.x, y: wp.y };
   }
 
+  private computeExploreReachabilityDepth(
+    floorMap: FloorMap,
+    startTile: TilePoint,
+    passable: (tx: number, ty: number) => boolean,
+  ): Int32Array {
+    const width = floorMap.width;
+    const height = floorMap.height;
+    const tileCount = width * height;
+    if (!this.exploreReachabilityDepth || this.exploreReachabilityDepth.length !== tileCount) {
+      this.exploreReachabilityDepth = new Int32Array(tileCount);
+    }
+    if (!this.exploreReachabilityQueue || this.exploreReachabilityQueue.length !== tileCount) {
+      this.exploreReachabilityQueue = new Int32Array(tileCount);
+    }
+    const depth = this.exploreReachabilityDepth;
+    const queue = this.exploreReachabilityQueue;
+    depth.fill(-1);
+
+    const startIndex = floorMap.tileMap.index(startTile.x, startTile.y);
+    if (startIndex === -1 || !passable(startTile.x, startTile.y)) {
+      return depth;
+    }
+
+    const maxDepth = NAVIGATION_MAX_PATH_LENGTH - 1;
+    let head = 0;
+    let tail = 0;
+    depth[startIndex] = 0;
+    queue[tail++] = startIndex;
+    while (head < tail) {
+      const index = queue[head++]!;
+      const currentDepth = depth[index]!;
+      if (currentDepth >= maxDepth) {
+        continue;
+      }
+      const cx = index % width;
+      const cy = (index - cx) / width;
+      // 4-connected expansion mirrors `findTilePath` topology.
+      if (cx + 1 < width && depth[index + 1] === -1 && passable(cx + 1, cy)) {
+        depth[index + 1] = currentDepth + 1;
+        queue[tail++] = index + 1;
+      }
+      if (cx - 1 >= 0 && depth[index - 1] === -1 && passable(cx - 1, cy)) {
+        depth[index - 1] = currentDepth + 1;
+        queue[tail++] = index - 1;
+      }
+      if (cy + 1 < height && depth[index + width] === -1 && passable(cx, cy + 1)) {
+        depth[index + width] = currentDepth + 1;
+        queue[tail++] = index + width;
+      }
+      if (cy - 1 >= 0 && depth[index - width] === -1 && passable(cx, cy - 1)) {
+        depth[index - width] = currentDepth + 1;
+        queue[tail++] = index - width;
+      }
+    }
+
+    return depth;
+  }
+
   private pickExploreTarget(
     world: GameWorld,
     playerX: number,
@@ -4328,6 +4390,10 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (frontier) {
       return frontier;
     }
+    const passable =
+      this.doorAwarePassable ??
+      ((tx: number, ty: number): boolean => floorMap.tileMap.isPassable(tx, ty));
+    const reachableDepth = this.computeExploreReachabilityDepth(floorMap, startTile, passable);
 
     const reachable: { x: number; y: number; dist: number }[] = [];
     const firstPassable: { x: number; y: number } | null = { x: playerX, y: playerY };
@@ -4345,8 +4411,8 @@ export class BehaviorTreeAI implements AIInputProvider {
         sawPassable = true;
       }
       const goalTile = floorMap.worldToTile(wx, wy);
-      const path = findTilePath(floorMap, startTile, goalTile, this.groundPathOptions());
-      if (path.length > 1) {
+      const goalIndex = floorMap.tileMap.index(goalTile.x, goalTile.y);
+      if (goalIndex !== -1 && (reachableDepth[goalIndex] ?? -1) >= 1) {
         reachable.push({ x: wx, y: wy, dist: Math.hypot(wx - playerX, wy - playerY) });
       }
       return reachable.length >= EXPLORE_REACHABLE_SAMPLE_TARGET;
