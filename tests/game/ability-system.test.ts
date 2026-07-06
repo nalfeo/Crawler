@@ -1,6 +1,6 @@
-import { addComponent, set } from 'bitecs';
+import { addComponent, query, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { SkillHolder, Size, Stats } from '../../src/core/components.js';
+import { SkillHolder, Size, Stats, Enemy } from '../../src/core/components.js';
 import { SHAPE_BOX } from '../../src/core/physics-defs.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { knockbackSystem } from '../../src/core/systems/knockbackSystem.js';
@@ -272,6 +272,14 @@ describe('abilitySystem', () => {
       wallEnemy,
       set(Size, { radius: 0, halfWidth: 1.875, halfHeight: 1.875, shape: SHAPE_BOX }),
     );
+    // Pin all three enemy weights to the 120 lb knockback baseline so the
+    // ±10% sizeScale jitter in `initializeEnemyAppearance` doesn't perturb
+    // this bit-parity assertion. Slice 2 / ADR 0044: knockbackSystem now
+    // scales displacement by 120/weight — a jittered 108–132 lb weight
+    // would push wallEnemy to 18.11–18.14 ft instead of the exact 18.125.
+    for (const e of query(world.ecs, [Enemy])) {
+      world.stores.weight.value[e] = 120;
+    }
 
     world.frameCount = 100;
     abilitySystem(world);

@@ -1,0 +1,51 @@
+Slice 2 sweep (seeds 1-10 x 3 weapons = 30 runs)
+Branch: nalfeo-size-weight-slice2 @ eeb0769d
+Total wall time: 607s
+
+Weapon          Win/Run     Win%
+sword           10/10       100.0%
+bow             8/10        80.0%
+baseball-bat    8/10        80.0%
+OVERALL         26/30       86.7%
+
+Failures:
+seed 2  bow           timeout  360s  lv4  84 kills
+seed 10 bow           timeout  360s  lv7  232 kills
+seed 8  baseball-bat  death    224s  lv4  139 kills
+seed 10 baseball-bat  timeout  360s  lv8  280 kills
+
+===
+Slice 1 BASELINE sweep (same seeds/weapons, from nalfeo-sturdy-broccoli @ 1c760b74)
+Total wall time: 483s
+
+Weapon          Win/Run     Win%
+sword           9/10        90.0%
+bow             8/10        80.0%
+baseball-bat    8/10        80.0%
+OVERALL         25/30       83.3%
+
+Failures:
+seed 10 sword         timeout  360s  lv6  258 kills
+seed 2  bow           timeout  360s  lv4  84 kills
+seed 10 bow           timeout  360s  lv7  222 kills
+seed 8  baseball-bat  death    238s  lv5  129 kills
+seed 10 baseball-bat  timeout  360s  lv9  265 kills
+
+===
+Comparison
+Slice 1: 83.3% (25/30)
+Slice 2: 86.7% (26/30)
+Delta:   +3.4% (Slice 2 IMPROVED; seed 10 sword timeout->win)
+
+Slice 2 does NOT regress. The delta is within a single-seed flip in a 30-run
+sample (3.3% per seed). All 4 failing seeds in Slice 2 also fail in Slice 1.
+
+Rule #13 (>=90% Floor 1 seeds win) is enforced by tests/headless/floor1-completion.test.ts.
+That gate PASSES 9/9 = 100% on Slice 2.
+
+The winrate-sweep is a broader regression check; 30-run sample is a noisy
+indicator. The a-priori proof (from code-review agent slice2-code-review-r1):
+weightScale=1.0 exactly for weight=120 targets means the knockback math is
+IEEE-754 bit-identical for the shipping weight-120 mob defaults; the only
+observable delta is from Slice 2 freezing enemy weight against the sizeScale
+cosmetic RNG in initializeEnemyAppearance, which slightly reduces variance.

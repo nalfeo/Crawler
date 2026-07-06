@@ -52,12 +52,15 @@ ESLint `no-restricted-syntax` rule.
 Same for `Enemy ↔ EnemyProjectile ↔ Player` and every other pair the
 `damageSystem` inspects.
 
-**R5.** Knockback displacement per frame ∝ 1 / target `Weight`. A 120 lb
-(median-mob) target sees the same visible knockback as today for the
-currently-shipping MELEE_KB / projectile / area-damage / corpse-explosion
-constants. A 60 lb target moves 2× as far; a 240 lb target moves 0.5× as
-far; a target with `Weight ≥ IMMOVABLE_THRESHOLD` or `Immovable` sees no
-displacement.
+**R5.** Knockback displacement per frame ∝ 1 / target `Weight`, clamped at
+`KNOCKBACK_WEIGHT_SCALE_MAX = 2.5×`. A 120 lb (median-mob) target sees the
+same visible knockback as today for the currently-shipping MELEE_KB /
+projectile / area-damage / corpse-explosion constants. A 60 lb target
+moves 2× as far; a 240 lb target moves 0.5× as far; ultra-light authored
+mobs (rat @ 6 lb, slime @ 20 lb) clamp to 2.5× instead of getting punted
+absurd distances. The cap boundary is 48 lb — targets ≥48 lb scale
+linearly. A target with `Weight ≥ IMMOVABLE_THRESHOLD` or `Immovable`
+sees no displacement.
 
 **R6.** Authored Size / Weight values live with the owning definition
 type. For mobs, default size, default weight, and allowed variance ranges
@@ -116,16 +119,34 @@ ranges, then have the composed runtime registry read from it.
 
 ### Slice 2 (Weight as knockback denominator)
 
-1. Update every knockback WRITER
-   (`meleeSwingSystem`, `applyProjectileHit`, `applyEnemyProjectileHit`,
-   `applyPlayerEnemyHit`, `areaDamageSystem`, `beamSystem`, corpse
-   explosion, `returningProjectileSystem`) to divide the configured
-   knockback scalar by target `weight.value` (with the 120 lb median as
-   the 1.0 baseline, i.e. `finalSpeed = writerKb * (120 / max(1, targetWeight))`).
+**Design note (2026-07-05, Slice 2 shipping):** Slice 2 applies the weight
+divide **reader-side** in `knockbackSystem`, not per-writer. This was chosen
+over the writer-side design originally sketched in ADR 0044 because it
+(a) keeps writer constants untouched — no per-writer recalibration risk,
+(b) automatically applies weight scaling to any future knockback writer,
+and (c) shrinks the audit surface to a single system. See ADR 0044
+§Weight as knockback denominator for the amended contract. Writers MUST
+keep their knockback speed/duration values in **raw, unscaled** units;
+the reader applies `speed * (120 / max(1, weight))` and decrements the
+remaining-distance budget by the unscaled base step so that impulse
+duration in frames is weight-invariant while only total displacement
+scales.
+
+1. Update `knockbackSystem` (single reader) to scale per-frame
+   displacement by `120 / max(1, targetWeight)`. Writers
+   (`meleeSwingSystem`, `dropSystem` corpse-explosion,
+   `progressionEffects`, and any future writer such as
+   `applyProjectileHit`, `applyEnemyProjectileHit`,
+   `applyPlayerEnemyHit`, `areaDamageSystem`, `beamSystem`,
+   `returningProjectileSystem`) keep writing raw knockback values.
 2. Add `Immovable` tag + `IMMOVABLE_THRESHOLD` short-circuit in
    `knockbackSystem` — drop the component without moving.
-3. Add `check:weight-coverage` gate + wire into `verify:fast`.
-4. Recalibrate any writer whose scalar looks wrong post-conversion.
+3. Add `check:weight-coverage` gate + wire into `verify:fast`. Gate
+   enforces per-kind non-vacuity (Enemy, Player, Prop each > 0) and
+   `weight.value > 0` for every knockback-eligible entity.
+4. Freeze enemy weight against the cosmetic `sizeScale` RNG in
+   `initializeEnemyAppearance` — weight is a first-class gameplay dial
+   now, not an appearance attribute.
 5. Real-pipeline validation:
    - `tests/headless/floor1-completion.test.ts` win-rate ≥ 90%
    - `scripts/agent/perf/winrate-sweep.ts` seed sweep matching pre-Slice-2
@@ -140,7 +161,8 @@ ranges, then have the composed runtime registry read from it.
 - `collision.size.test.ts` (new) — box vs circle vs circle-vs-box narrow
   phase; identity with legacy sprite dims when shim path taken.
 - `knockback.weight.test.ts` (new) — 120 lb baseline is identity; 60 lb
-  moves 2×; 240 lb moves 0.5×; Immovable stays put; walls (in the current
+  moves 2×; 6 lb (rat) clamps to `KNOCKBACK_WEIGHT_SCALE_MAX = 2.5×`;
+  240 lb moves 0.5×; Immovable stays put; walls (in the current
   no-Knockback path) unchanged.
 - `apply-damage.contact.test.ts` — mob-touch-player fires only when Size
   overlaps (not sprite bounds).

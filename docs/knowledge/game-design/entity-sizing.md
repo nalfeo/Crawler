@@ -78,9 +78,14 @@
 The **median mob** is 120 lb. Slice 2's rule is:
 
 ```
-knockback.speed[target]     = writerImpulse * (120 / max(1, targetWeight))
+weightScale                 = min(KNOCKBACK_WEIGHT_SCALE_MAX, 120 / max(1, targetWeight))
+knockback.speed[target]     = writerImpulse * weightScale
 knockback.remaining[target] = knockback.speed[target]  // same as today
 ```
+
+`KNOCKBACK_WEIGHT_SCALE_MAX = 2.5` (see `src/core/physics-defs.ts`).
+The cap keeps ultra-light authored mobs from getting punted absurd
+distances — without it a rat @ 6 lb would receive 20× displacement.
 
 so a 120 lb mob's knockback is unchanged from today. `writerImpulse` values
 (constants in `meleeSwingSystem`, `applyPlayerEnemyHit`, projectile impact,
@@ -88,6 +93,21 @@ area damage, corpse explosion) are the **same numeric literals** shipping
 today — no per-writer recalibration is needed as long as the median target
 matches, which is true for every enemy currently in the game (all default
 to 120 lb).
+
+Worked examples (see also `src/game/spawners/registry.ts` for authored
+weights per mob):
+
+| Target       | Weight (lb) | Raw scale | Clamped scale | Notes                                   |
+| ------------ | ----------- | --------- | ------------- | --------------------------------------- |
+| Rat          | 6           | 20.0×     | **2.5×**      | Clamped by KNOCKBACK_WEIGHT_SCALE_MAX   |
+| Slime        | 20          | 6.0×      | **2.5×**      | Clamped                                 |
+| Brute (mini) | 30          | 4.0×      | **2.5×**      | Clamped                                 |
+| 48 lb        | 48          | 2.5×      | 2.5×          | Cap boundary — linear at or above       |
+| Light mob    | 60          | 2.0×      | 2.0×          | Below cap                               |
+| Median mob   | 120         | 1.0×      | 1.0×          | Identity (bit-parity vs pre-Slice-2)    |
+| Ogre         | 240         | 0.5×      | 0.5×          |                                         |
+| Boss         | 800         | 0.15×     | 0.15×         |                                         |
+| Wall/statue  | ≥ 10 000    | —         | 0             | Short-circuited via IMMOVABLE_THRESHOLD |
 
 `IMMOVABLE_THRESHOLD = 10 000` lb. Any target at or above this drops the
 Knockback component immediately without moving. Also anything with the
