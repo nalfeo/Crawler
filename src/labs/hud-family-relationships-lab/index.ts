@@ -190,10 +190,12 @@ function createHudFamilyRelationshipsLab(
       w.state = 'playing';
       const presentIds: FamilyId[] = present.map((f) => asFamilyId(f.id));
       initializeFactionRelations(w, presentIds);
-      w.floor2State = {
-        presentFamilies: presentIds.slice(),
-        contestedResource: 'contested' as never,
-        betrayerFlag: false,
+      w.floorExtendedState = {
+        familyState: {
+          presentFamilies: presentIds.slice(),
+          contestedResource: 'contested' as never,
+          betrayerFlag: false,
+        },
       };
       w.floorMap = floorMap;
       playerEid = spawnPlayer(w, playerSpawn.x, playerSpawn.y);

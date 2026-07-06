@@ -73,7 +73,7 @@ describe('status-effect cross-pipeline parity (HoT, no combat)', () => {
     const run = woundedPlayerWorld();
     const input = createInputState();
     for (let i = 0; i < FRAMES; i++) {
-      runHeadlessStep(run.world, input, DELTA, { enableFloor1: false });
+      runHeadlessStep(run.world, input, DELTA, {});
     }
 
     expect(hp(run.world, run.player)).toBe(hp(base.world, base.player));

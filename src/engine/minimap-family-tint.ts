@@ -29,7 +29,7 @@ export type FamilyTintRole =
   | RoomRole.RESOURCE_HEART;
 
 /**
- * Look up a family by its index into `world.floor2State.presentFamilies`.
+ * Look up a family by its index into `world.floorExtendedState?.familyState?.presentFamilies`.
  * Returns `null` when the world isn't on Floor 2 or the index is out of bounds.
  */
 export function resolveFamilyByIndex(
@@ -37,8 +37,8 @@ export function resolveFamilyByIndex(
   families: readonly FamilyDef[],
   familyIndex: number | undefined,
 ): { id: FamilyId; def: FamilyDef } | null {
-  const floor2 = world.floor2State;
-  if (floor2 === null) return null;
+  const floor2 = world.floorExtendedState?.familyState;
+  if (!floor2) return null;
   if (typeof familyIndex !== 'number' || familyIndex < 0) return null;
   if (familyIndex >= floor2.presentFamilies.length) return null;
   const id = floor2.presentFamilies[familyIndex]!;

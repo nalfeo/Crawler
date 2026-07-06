@@ -78,7 +78,7 @@ export function autoNpcInteractionSystem(
 }
 
 export function autoFloor1ProgressionSystem(world: GameWorld, playerEid: number): void {
-  if (!world.floor1) {
+  if (!world.floorScenario) {
     return;
   }
 
@@ -111,7 +111,7 @@ export function autoFloor1ProgressionSystem(world: GameWorld, playerEid: number)
 
   equipPurchasedGear(world, playerEid);
 
-  const objective = world.floor1.objective;
+  const objective = world.floorScenario.objective;
   if (!objective.staircaseUnlocked || objective.staircaseDiscovered) {
     return;
   }

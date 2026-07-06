@@ -131,7 +131,7 @@ export interface Floor2ShopInstance {
 
 /**
  * Floor 2 · Slice 6 — the settlement snapshot written to
- * `world.floor2Settlement` by `initializeFloor2Settlement`. Consumed by the
+ * `world.floorExtendedState.settlement` by `initializeFloor2Settlement`. Consumed by the
  * lab, tests, and HUD (Slice 7).
  */
 export interface Floor2SettlementSnapshot {

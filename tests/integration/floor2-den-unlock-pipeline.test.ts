@@ -50,12 +50,18 @@ describe('Floor 2 Slice 4 — den-unlock pipeline', () => {
     const families = loadFamilies();
     const resources = loadResources();
     const roster = selectFloor2Roster(new SeededRandom(seed), families, resources);
-    world.floor2State = {
-      presentFamilies: [...roster.presentFamilies],
-      contestedResource: roster.contestedResource,
-      betrayerFlag: false,
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [...roster.presentFamilies],
+        contestedResource: roster.contestedResource,
+        betrayerFlag: false,
+      },
     };
-    const objectives = initializeFloor2Bosses(world, floorMap, world.floor2State);
+    const objectives = initializeFloor2Bosses(
+      world,
+      floorMap,
+      world.floorExtendedState!.familyState!,
+    );
     expect(objectives.length).toBe(3);
 
     const target = objectives[0]!;
@@ -73,7 +79,9 @@ describe('Floor 2 Slice 4 — den-unlock pipeline', () => {
     // Locate the boss entity and its familyIndex.
     const bossField = world.stores.familyMembership.isBoss;
     const familyIdxField = world.stores.familyMembership.familyId;
-    const presentIndex = world.floor2State.presentFamilies.indexOf(target.familyId);
+    const presentIndex = world.floorExtendedState!.familyState!.presentFamilies.indexOf(
+      target.familyId,
+    );
     expect(presentIndex).toBeGreaterThanOrEqual(0);
     let bossEid = -1;
     for (let eid = 0; eid < bossField.length; eid++) {
@@ -114,16 +122,22 @@ describe('Floor 2 Slice 4 — den-unlock pipeline', () => {
     const families = loadFamilies();
     const resources = loadResources();
     const roster = selectFloor2Roster(new SeededRandom(seed), families, resources);
-    world.floor2State = {
-      presentFamilies: [...roster.presentFamilies],
-      contestedResource: roster.contestedResource,
-      betrayerFlag: false,
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [...roster.presentFamilies],
+        contestedResource: roster.contestedResource,
+        betrayerFlag: false,
+      },
     };
-    const objectives = initializeFloor2Bosses(world, floorMap, world.floor2State);
+    const objectives = initializeFloor2Bosses(
+      world,
+      floorMap,
+      world.floorExtendedState!.familyState!,
+    );
     const target = objectives[0]!;
     const bossField = world.stores.familyMembership.isBoss;
     const familyIdxField = world.stores.familyMembership.familyId;
-    const idx = world.floor2State.presentFamilies.indexOf(target.familyId);
+    const idx = world.floorExtendedState!.familyState!.presentFamilies.indexOf(target.familyId);
     let bossEid = -1;
     for (let eid = 0; eid < bossField.length; eid++) {
       if (bossField[eid] === 1 && familyIdxField[eid] === idx) {

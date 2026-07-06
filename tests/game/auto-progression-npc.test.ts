@@ -237,14 +237,14 @@ describe('autoFloor1ProgressionSystem', () => {
   it('is a no-op when floor1 is null', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
-    world.floor1 = null;
+    world.floorScenario = null;
     expect(() => autoFloor1ProgressionSystem(world, player)).not.toThrow();
   });
 
   it('selects the heal spell when boss battle is complete and spells not unlocked', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
-    world.floor1 = makeFloor1();
+    world.floorScenario = makeFloor1();
     world.goalFlags.set('floor1-boss-battle-complete', true);
     world.featureUnlocks.spells = false;
     // selectSpellFromBossBattle should not throw
@@ -256,16 +256,16 @@ describe('autoFloor1ProgressionSystem', () => {
   it('does not attempt staircase descend when staircase is not unlocked', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
-    world.floor1 = makeFloor1({ staircaseUnlocked: false });
+    world.floorScenario = makeFloor1({ staircaseUnlocked: false });
     expect(() => autoFloor1ProgressionSystem(world, player)).not.toThrow();
     // No staircase action should have been taken (floor1 state unchanged)
-    expect(world.floor1.objective.staircaseDiscovered).toBe(false);
+    expect(world.floorScenario.objective.staircaseDiscovered).toBe(false);
   });
 
   it('does not descend when staircase is already discovered', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
-    world.floor1 = makeFloor1({ staircaseUnlocked: true, staircaseDiscovered: true });
+    world.floorScenario = makeFloor1({ staircaseUnlocked: true, staircaseDiscovered: true });
     expect(() => autoFloor1ProgressionSystem(world, player)).not.toThrow();
   });
 
@@ -276,7 +276,7 @@ describe('autoFloor1ProgressionSystem', () => {
     world.stores.position.x[player] = 100;
     world.stores.position.y[player] = 100;
     world.state = 'playing';
-    world.floor1 = makeFloor1({
+    world.floorScenario = makeFloor1({
       staircaseUnlocked: true,
       staircaseDiscovered: false,
       staircaseSpawned: true,
@@ -284,6 +284,6 @@ describe('autoFloor1ProgressionSystem', () => {
     });
     autoFloor1ProgressionSystem(world, player);
     // confirmFloor1StairDescend sets staircaseDiscovered
-    expect(world.floor1.objective.staircaseDiscovered).toBe(true);
+    expect(world.floorScenario.objective.staircaseDiscovered).toBe(true);
   });
 });

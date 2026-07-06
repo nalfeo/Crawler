@@ -77,7 +77,7 @@ function createFamilyBossDenLab(canvasHost: HTMLElement, controls: HTMLElement):
       return;
     }
     const rows: string[] = [];
-    const f2 = world.floor2State as {
+    const f2 = world.floorExtendedState?.familyState as {
       staircasePos?: { x: number; y: number };
       staircaseSpawned?: boolean;
       staircaseUnlocked?: boolean;
@@ -123,10 +123,12 @@ function createFamilyBossDenLab(canvasHost: HTMLElement, controls: HTMLElement):
       presentCountFourProbability: state.presentCount >= 4 ? 1 : 0,
     });
     initializeFactionRelations(w, roster.presentFamilies);
-    w.floor2State = {
-      presentFamilies: roster.presentFamilies.slice(),
-      contestedResource: roster.contestedResource,
-      betrayerFlag: false,
+    w.floorExtendedState = {
+      familyState: {
+        presentFamilies: roster.presentFamilies.slice(),
+        contestedResource: roster.contestedResource,
+        betrayerFlag: false,
+      },
     };
     const gen = new CaveSystemGenerator({ presentCount: roster.presentFamilies.length });
     const floorMap = gen.generate(smallCaveConfig(state.seed), new SeededRandom(state.seed));
@@ -135,7 +137,7 @@ function createFamilyBossDenLab(canvasHost: HTMLElement, controls: HTMLElement):
     // findResourceHeartStairTile reads world.floorMap (createGameWorld inits it
     // null, so without this the stairs never pop in the lab).
     w.floorMap = floorMap;
-    objectives = initializeFloor2Bosses(w, floorMap, w.floor2State);
+    objectives = initializeFloor2Bosses(w, floorMap, w.floorExtendedState.familyState!);
     world = w;
     render();
   }
@@ -149,7 +151,7 @@ function createFamilyBossDenLab(canvasHost: HTMLElement, controls: HTMLElement):
   function killFirstBoss(): void {
     if (!world || objectives.length === 0) return;
     const target = objectives[0]!;
-    const idx = world.floor2State!.presentFamilies.indexOf(target.familyId);
+    const idx = world.floorExtendedState!.familyState!.presentFamilies.indexOf(target.familyId);
     const bossEid = findBossEid(world, idx);
     if (bossEid < 0) return;
     world.combatEvents.push({
@@ -181,11 +183,12 @@ function createFamilyBossDenLab(canvasHost: HTMLElement, controls: HTMLElement):
       }
       world.factionRelations.set(obj.familyId, 25);
       world.goalFlags.set(bossDefeatGoalId(obj.familyId), true);
-      (world.floor2State as { decapitatedFamilies?: Set<string> }).decapitatedFamilies ??=
-        new Set<string>();
-      (world.floor2State as { decapitatedFamilies?: Set<string> }).decapitatedFamilies!.add(
-        obj.familyId,
-      );
+      (
+        world.floorExtendedState!.familyState as { decapitatedFamilies?: Set<string> }
+      ).decapitatedFamilies ??= new Set<string>();
+      (
+        world.floorExtendedState!.familyState as { decapitatedFamilies?: Set<string> }
+      ).decapitatedFamilies!.add(obj.familyId);
     }
     floor2VictorySystem(world);
     render();
@@ -193,13 +196,14 @@ function createFamilyBossDenLab(canvasHost: HTMLElement, controls: HTMLElement):
 
   function forceWinBAllBossesDead(): void {
     if (!world) return;
-    (world.floor2State as { decapitatedFamilies?: Set<string> }).decapitatedFamilies ??=
-      new Set<string>();
+    (
+      world.floorExtendedState!.familyState as { decapitatedFamilies?: Set<string> }
+    ).decapitatedFamilies ??= new Set<string>();
     for (const obj of objectives) {
       world.goalFlags.set(bossDefeatGoalId(obj.familyId), true);
-      (world.floor2State as { decapitatedFamilies?: Set<string> }).decapitatedFamilies!.add(
-        obj.familyId,
-      );
+      (
+        world.floorExtendedState!.familyState as { decapitatedFamilies?: Set<string> }
+      ).decapitatedFamilies!.add(obj.familyId);
     }
     floor2VictorySystem(world);
     render();

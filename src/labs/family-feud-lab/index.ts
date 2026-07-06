@@ -78,11 +78,13 @@ function createFamilyFeudLab(canvasHost: HTMLElement, controls: HTMLElement): ()
   function reseed(): void {
     world = createGameWorld({ seed: state.seed });
     world.state = 'playing';
-    world.floor2State = {
-      presentFamilies: FAMS.slice() as unknown as never,
-      contestedResource: asFamilyId('ore') as unknown as never,
-      betrayerFlag: false,
-    } as never;
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: FAMS.slice() as unknown as never,
+        contestedResource: asFamilyId('ore') as unknown as never,
+        betrayerFlag: false,
+      } as never,
+    };
     initializeFactionRelations(world, FAMS as unknown as never);
     // Set relations from sliders (they're stored as absolute, but the API is
     // delta-only — normalize to default first then adjust).

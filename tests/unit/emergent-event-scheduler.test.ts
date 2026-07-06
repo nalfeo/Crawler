@@ -46,11 +46,13 @@ function makeSettlementMap(): FloorMap {
 }
 
 function seedFloor2State(world: ReturnType<typeof createTestWorld>, families: FamilyId[]) {
-  world.floor2State = {
-    presentFamilies: families,
-    contestedResource: 'gold-veins' as ReturnType<typeof asFamilyId> as never,
-    betrayerFlag: false,
-  } as never;
+  world.floorExtendedState = {
+    familyState: {
+      presentFamilies: families,
+      contestedResource: 'gold-veins' as ReturnType<typeof asFamilyId> as never,
+      betrayerFlag: false,
+    } as never,
+  };
   initializeFactionRelations(world, families);
 }
 
