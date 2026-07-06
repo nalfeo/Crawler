@@ -39,7 +39,7 @@ describe('LocalA1111ImageProvider', () => {
   it('generates a sheet with N variants stitched into a grid', async () => {
     // Create a minimal mock A1111 response: 4 images in base64.
     const createMockImage = (color: number): string => {
-      const png = new PNG({ width: 128, height: 128 });
+      const png = new PNG({ width: 112, height: 112 });
       // Fill with a solid color (R, G, B, A).
       for (let i = 0; i < png.data.length; i += 4) {
         png.data[i] = color; // R
@@ -98,8 +98,8 @@ describe('LocalA1111ImageProvider', () => {
       expect(init.method).toBe('POST');
       const body = JSON.parse(init.body as string);
       expect(body.prompt).toContain('single variant prompt');
-      expect(body.width).toBe(118); // 256/2 slot with deterministic inset gutter.
-      expect(body.height).toBe(118);
+      expect(body.width).toBe(112); // 256/2 slot, rounded down to a multiple of 8.
+      expect(body.height).toBe(112);
       expect(body.override_settings.sd_model_checkpoint).toBe('sd_xl_turbo');
     }
   });
@@ -198,26 +198,25 @@ describe('LocalA1111ImageProvider', () => {
   });
 
   it('respects seed when provided', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => {
-        const png = new PNG({ width: 128, height: 128 });
-        for (let i = 0; i < png.data.length; i += 4) {
-          png.data[i + 3] = 255;
-        }
-        const chunks: Buffer[] = [];
-        return new Promise<{ images: string[] }>((resolve) => {
-          png
-            .pack()
-            .on('data', (chunk: Buffer) => chunks.push(chunk))
-            .on('end', () => {
-              resolve({
-                images: [Buffer.concat(chunks).toString('base64')],
-              });
-            });
-        });
-      },
-    } as Response);
+    mockFetch.mockImplementation(async (_url, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      const png = new PNG({ width: body.width, height: body.height });
+      for (let i = 0; i < png.data.length; i += 4) {
+        png.data[i + 3] = 255;
+      }
+      const chunks: Buffer[] = [];
+      return new Promise<Response>((resolve) => {
+        png
+          .pack()
+          .on('data', (chunk: Buffer) => chunks.push(chunk))
+          .on('end', () => {
+            resolve({
+              ok: true,
+              json: async () => ({ images: [Buffer.concat(chunks).toString('base64')] }),
+            } as Response);
+          });
+      });
+    });
 
     provider = new LocalA1111ImageProvider({
       endpoint: 'http://localhost:7860',
@@ -248,28 +247,27 @@ describe('LocalA1111ImageProvider', () => {
     expect(call1.seed).toBe(43);
   });
 
-  it('marks empty cells as transparent', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => {
-        const png = new PNG({ width: 128, height: 128 });
-        for (let i = 0; i < png.data.length; i += 4) {
-          png.data[i] = 255; // Red
-          png.data[i + 3] = 255; // Opaque
-        }
-        const chunks: Buffer[] = [];
-        return new Promise<{ images: string[] }>((resolve) => {
-          png
-            .pack()
-            .on('data', (chunk: Buffer) => chunks.push(chunk))
-            .on('end', () => {
-              resolve({
-                images: [Buffer.concat(chunks).toString('base64')],
-              });
-            });
-        });
-      },
-    } as Response);
+  it('fills empty cells with the magenta sheet background', async () => {
+    mockFetch.mockImplementation(async (_url, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      const png = new PNG({ width: body.width, height: body.height });
+      for (let i = 0; i < png.data.length; i += 4) {
+        png.data[i] = 255; // Red
+        png.data[i + 3] = 255; // Opaque
+      }
+      const chunks: Buffer[] = [];
+      return new Promise<Response>((resolve) => {
+        png
+          .pack()
+          .on('data', (chunk: Buffer) => chunks.push(chunk))
+          .on('end', () => {
+            resolve({
+              ok: true,
+              json: async () => ({ images: [Buffer.concat(chunks).toString('base64')] }),
+            } as Response);
+          });
+      });
+    });
 
     provider = new LocalA1111ImageProvider({
       endpoint: 'http://localhost:7860',
@@ -311,6 +309,112 @@ describe('LocalA1111ImageProvider', () => {
     // A non-empty cell should be opaque.
     const filledIdx = (10 * 256 + 10) * 4 + 3; // Inside the first rendered cell, alpha channel
     expect(sheet.data[filledIdx]).toBe(255); // Fully opaque
+  });
+
+  it('fully populates the grid when the empty cell is not in a trailing position', async () => {
+    // Regression: with a non-trailing empty cell the orchestrator passes
+    // `variants` = variantCount(brief) = rows*cols - emptyCells (3 here). The old
+    // loop iterated `variants` directly and stopped early, leaving the final cell
+    // (1,1) as un-generated magenta background. Iterating every grid cell fixes
+    // it: 3 content cells are generated and only (0,0) is a placeholder.
+    const createGreenImage = (): string => {
+      const png = new PNG({ width: 112, height: 112 });
+      for (let i = 0; i < png.data.length; i += 4) {
+        png.data[i] = 0; // R
+        png.data[i + 1] = 255; // G
+        png.data[i + 2] = 0; // B
+        png.data[i + 3] = 255; // A (opaque)
+      }
+      return PNG.sync.write(png).toString('base64');
+    };
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ images: [createGreenImage()] }),
+    } as Response);
+
+    provider = new LocalA1111ImageProvider({
+      endpoint: 'http://localhost:7860',
+      model: 'sd_xl_turbo',
+      fetch: mockFetch,
+    });
+
+    const request = makeRequest({
+      brief: {
+        type: 'item',
+        variations: [],
+        generation: {
+          sheet: {
+            rows: 2,
+            cols: 2,
+            emptyCells: [[0, 0]], // leading empty cell (non-trailing)
+            nativeCanvas: 256,
+          },
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+      variants: 3, // variantCount(brief) — the value the orchestrator actually passes
+    });
+
+    const sheetBuffer = await provider.generateSheet(request);
+    const sheet = PNG.sync.read(sheetBuffer);
+
+    // All 3 content cells generated (the old loop fetched only 2).
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+
+    // The leading empty cell (0,0) keeps the magenta sheet background.
+    const emptyIdx = (64 * 256 + 64) * 4;
+    expect(sheet.data[emptyIdx]).toBe(255); // R
+    expect(sheet.data[emptyIdx + 1]).toBe(0); // G
+    expect(sheet.data[emptyIdx + 2]).toBe(255); // B
+
+    // The trailing cell (1,1) must contain generated GREEN content, not the
+    // leftover magenta background — this is the exact pixel the old loop skipped.
+    const filledIdx = (192 * 256 + 192) * 4;
+    expect(sheet.data[filledIdx]).toBe(0); // R
+    expect(sheet.data[filledIdx + 1]).toBe(255); // G
+    expect(sheet.data[filledIdx + 2]).toBe(0); // B
+    expect(sheet.data[filledIdx + 3]).toBe(255); // A
+  });
+
+  it('rejects an image whose dimensions do not match the requested cell (bad-grid)', async () => {
+    // Regression: a backend that ignores the requested width/height and returns a
+    // larger image used to overwrite the gutter and bleed into the adjacent slot,
+    // collapsing multiple cells into one when the sheet was later sliced. The
+    // provider now fails fast with a `bad-grid` error instead of stitching a
+    // corrupt grid.
+    const oversized = (): string => {
+      const png = new PNG({ width: 256, height: 256 }); // requested cell is 112x112
+      for (let i = 0; i < png.data.length; i += 4) {
+        png.data[i + 3] = 255;
+      }
+      return PNG.sync.write(png).toString('base64');
+    };
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ images: [oversized()] }),
+    } as Response);
+
+    provider = new LocalA1111ImageProvider({
+      endpoint: 'http://localhost:7860',
+      model: 'sd_xl_turbo',
+      fetch: mockFetch,
+    });
+
+    const request = makeRequest({
+      brief: {
+        type: 'item',
+        variations: [],
+        generation: { sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 256 } },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+      variants: 4,
+    });
+
+    await expect(provider.generateSheet(request)).rejects.toMatchObject({
+      kind: 'bad-grid',
+    });
   });
 
   it('rejects unsupported brief types', async () => {
@@ -360,7 +464,7 @@ describe('LocalA1111ImageProvider', () => {
 
   it('produces sheets the brief slicer can recover at exact variant count', async () => {
     const createOpaqueImage = (rgba: readonly [number, number, number, number]): string => {
-      const png = new PNG({ width: 118, height: 118 });
+      const png = new PNG({ width: 112, height: 112 });
       for (let i = 0; i < png.data.length; i += 4) {
         png.data[i] = rgba[0];
         png.data[i + 1] = rgba[1];

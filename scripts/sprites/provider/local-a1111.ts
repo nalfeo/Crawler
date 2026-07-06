@@ -35,8 +35,9 @@ export interface LocalA1111ImageProviderOptions {
    */
   readonly fetch?: typeof fetch;
   /**
-   * Per-request timeout in ms. Defaults to {@link DEFAULT_PROVIDER_TIMEOUT_MS}.
-   * Local SDXL can be slow; 600_000 (10 min) is a reasonable default.
+   * Per-request timeout in ms. Defaults to {@link DEFAULT_PROVIDER_TIMEOUT_MS}
+   * (120_000 ms / 2 min). Local SDXL can be slow, so consider overriding this
+   * with a larger value (e.g. 600_000 / 10 min) for heavy models.
    */
   readonly timeoutMs?: number;
   /**
@@ -46,7 +47,7 @@ export interface LocalA1111ImageProviderOptions {
   readonly seed?: number;
   /**
    * Sampling steps for generation (higher = slower but higher quality).
-   * Default: 25 for SD1.5, 20 for SDXL (fast models).
+   * Defaults to 20.
    */
   readonly steps?: number;
   /**
@@ -61,7 +62,7 @@ export interface LocalA1111ImageProviderOptions {
    * Negative prompt to append to all generations. Useful for excluding
    * common artifacts (e.g., "blurry, distorted, low quality").
    */
-  readonly negativPrompt?: string;
+  readonly negativePrompt?: string;
 }
 
 interface A1111TxtToImgRequest {
@@ -98,7 +99,7 @@ export class LocalA1111ImageProvider implements ImageProvider {
   private readonly steps: number;
   private readonly cfgScale: number;
   private readonly sampler: string;
-  private readonly negativPrompt: string;
+  private readonly negativePrompt: string;
 
   constructor(opts: LocalA1111ImageProviderOptions) {
     this.endpoint = stripTrailingSlash(opts.endpoint);
@@ -109,7 +110,7 @@ export class LocalA1111ImageProvider implements ImageProvider {
     this.steps = opts.steps ?? 20;
     this.cfgScale = opts.cfgScale ?? 7;
     this.sampler = opts.sampler ?? 'Euler';
-    this.negativPrompt = opts.negativPrompt ?? '';
+    this.negativePrompt = opts.negativePrompt ?? '';
   }
 
   async generateSheet(request: GenerateSheetRequest): Promise<Buffer> {
@@ -139,18 +140,33 @@ export class LocalA1111ImageProvider implements ImageProvider {
     const slotW = Math.floor(sheetSize / sheet.cols);
     const slotH = Math.floor(sheetSize / sheet.rows);
     // Leave a deterministic background gutter so the content-aware slicer can
-    // reliably recover row/column boundaries from the stitched output.
-    const inset = Math.max(2, Math.floor(Math.min(slotW, slotH) * 0.04));
-    const cellW = Math.max(1, slotW - inset * 2);
-    const cellH = Math.max(1, slotH - inset * 2);
+    // reliably recover row/column boundaries from the stitched output. Stable
+    // Diffusion works in an 8x-downsampled latent space, so txt2img width/height
+    // must be multiples of 8 — a backend may otherwise reject the request or
+    // silently resize the output, which would misalign the grid. Round the
+    // content cell down to the nearest multiple of 8 and center it within the
+    // slot; the leftover pixels form the gutter.
+    const minGutter = Math.max(2, Math.floor(Math.min(slotW, slotH) * 0.04));
+    const cellW = Math.max(8, roundDownToMultiple(slotW - minGutter * 2, 8));
+    const cellH = Math.max(8, roundDownToMultiple(slotH - minGutter * 2, 8));
+    const offsetX = Math.floor((slotW - cellW) / 2);
+    const offsetY = Math.floor((slotH - cellH) / 2);
 
-    // Generate each variant image individually.
+    // Generate each grid cell individually. We iterate over *every* cell in the
+    // rows×cols grid (not `request.variants`) and let the empty-cell check
+    // decide whether to generate content or emit a background placeholder.
+    // `request.variants` equals `variantCount(brief)` = the number of *content*
+    // cells, so iterating it directly would under-fill (and misplace) any grid
+    // whose empty cells are not the trailing positions. A separate `contentIdx`
+    // counter keeps variation emphasis and seeds contiguous across content cells.
     const images: PNG[] = [];
     const emptyCellSet = new Set(sheet.emptyCells.map(([r, c]) => `${r},${c}`));
+    const totalCells = sheet.rows * sheet.cols;
+    let contentIdx = 0;
 
-    for (let variantIdx = 0; variantIdx < request.variants; variantIdx++) {
-      const row = Math.floor(variantIdx / sheet.cols);
-      const col = variantIdx % sheet.cols;
+    for (let cellIdx = 0; cellIdx < totalCells; cellIdx++) {
+      const row = Math.floor(cellIdx / sheet.cols);
+      const col = cellIdx % sheet.cols;
       const isEmpty = emptyCellSet.has(`${row},${col}`);
 
       let png: PNG;
@@ -165,9 +181,10 @@ export class LocalA1111ImageProvider implements ImageProvider {
           data[i + 3] = 255;
         }
       } else {
-        const variantPrompt = buildVariantPrompt(request, variantIdx);
-        const variantPng = await this.generateVariant(variantPrompt, cellW, cellH, variantIdx);
+        const variantPrompt = buildVariantPrompt(request, contentIdx);
+        const variantPng = await this.generateVariant(variantPrompt, cellW, cellH, contentIdx);
         png = variantPng;
+        contentIdx++;
       }
 
       images.push(png);
@@ -188,15 +205,20 @@ export class LocalA1111ImageProvider implements ImageProvider {
 
       const row = Math.floor(imageIdx / sheet.cols);
       const col = imageIdx % sheet.cols;
-      const dstX: number = col * slotW + inset;
-      const dstY: number = row * slotH + inset;
+      const dstX: number = col * slotW + offsetX;
+      const dstY: number = row * slotH + offsetY;
 
       // Copy srcImg into sheet_png at (dstX, dstY).
       // pngjs data is stored as [R, G, B, A, R, G, B, A, ...] in row-major order.
       const srcImgWidth: number = srcImg.width;
       const srcImgHeight: number = srcImg.height;
-      for (let y = 0; y < srcImgHeight && dstY + y < sheetSize; y++) {
-        for (let x = 0; x < srcImgWidth && dstX + x < sheetSize; x++) {
+      // Defensive backstop: clamp the copy to the content cell (cellW/cellH), not
+      // just the sheet edge, so an unexpectedly oversized source can never bleed
+      // across the gutter into the adjacent slot even if the dimension check above
+      // is bypassed. In the happy path srcImg is exactly cellW×cellH, so this is a
+      // no-op.
+      for (let y = 0; y < srcImgHeight && y < cellH && dstY + y < sheetSize; y++) {
+        for (let x = 0; x < srcImgWidth && x < cellW && dstX + x < sheetSize; x++) {
           const srcIdx: number = (y * srcImgWidth + x) * 4;
           const dstIdx: number = ((dstY + y) * sheetSize + (dstX + x)) * 4;
 
@@ -242,7 +264,7 @@ export class LocalA1111ImageProvider implements ImageProvider {
 
     const reqBody: A1111TxtToImgRequest = {
       prompt,
-      negative_prompt: this.negativPrompt,
+      negative_prompt: this.negativePrompt,
       width,
       height,
       steps: this.steps,
@@ -324,12 +346,28 @@ export class LocalA1111ImageProvider implements ImageProvider {
       );
     }
 
+    // The backend may ignore the requested width/height (some samplers/models
+    // silently snap to their own resolution). A wrong-sized cell would overflow
+    // its slot and corrupt neighbouring cells when stitched, so reject it here.
+    if (png.width !== width || png.height !== height) {
+      throw new ProviderError(
+        'bad-grid',
+        `A1111 returned a ${png.width}x${png.height} image but ${width}x${height} was requested ` +
+          `for variant ${variantIndex}; the backend ignored the requested dimensions.`,
+      );
+    }
+
     return png;
   }
 }
 
 function stripTrailingSlash(s: string): string {
   return s.endsWith('/') ? s.slice(0, -1) : s;
+}
+
+/** Round `value` down to the nearest multiple of `multiple` (>= 0). */
+function roundDownToMultiple(value: number, multiple: number): number {
+  return Math.floor(value / multiple) * multiple;
 }
 
 function httpStatusToKind(status: number): ProviderErrorKind {

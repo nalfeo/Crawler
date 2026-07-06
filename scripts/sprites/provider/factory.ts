@@ -253,7 +253,7 @@ function createLocalA1111ImageProvider(
   const cfgScale = env.LOCAL_A1111_CFG_SCALE ? parseFloat(env.LOCAL_A1111_CFG_SCALE) : undefined;
   const sampler = env.LOCAL_A1111_SAMPLER;
   const seed = env.LOCAL_A1111_SEED ? parseInt(env.LOCAL_A1111_SEED, 10) : undefined;
-  const negativPrompt = env.LOCAL_A1111_NEGATIVE_PROMPT;
+  const negativePrompt = env.LOCAL_A1111_NEGATIVE_PROMPT;
   return new LocalA1111ImageProvider({
     endpoint,
     model,
@@ -262,7 +262,7 @@ function createLocalA1111ImageProvider(
     cfgScale,
     sampler,
     seed,
-    negativPrompt,
+    negativePrompt,
     ...(fetchImpl ? { fetch: fetchImpl } : {}),
   });
 }
