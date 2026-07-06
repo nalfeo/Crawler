@@ -13,6 +13,10 @@ import { Report, fromRepo } from '../shared/report.js';
 
 const PATH_PREFIXES = ['src/', 'scripts/', 'tests/', 'docs/', '.github/', '.specify/', 'public/'];
 const PATH_EXTS = ['.ts', '.md', '.json', '.yml', '.yaml', '.sh'];
+const ALLOWLIST = new Set<string>([
+  // Runtime-generated coverage artifact produced by the Governor sweep.
+  'coverage/balance-metrics.json',
+]);
 
 function looksLikePath(s: string): boolean {
   if (s.includes(' ')) return false;
@@ -74,6 +78,7 @@ async function main(): Promise<void> {
         if (!raw) continue;
         const candidate = raw.replace(/[.,;)\]]+$/, '');
         if (!looksLikePath(candidate)) continue;
+        if (ALLOWLIST.has(candidate)) continue;
         const ok =
           candidate.includes('*') || candidate.includes('{')
             ? parentExists(candidate)

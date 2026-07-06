@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { decompose, triage } from '../../scripts/agent/producer';
+import { decompose, renderTriage, triage } from '../../scripts/agent/producer';
 
 // ---------------------------------------------------------------------------
 // triage() — six classification paths
@@ -10,6 +10,7 @@ describe('triage()', () => {
   it('classifies game-balancing requests with quantitative signals', () => {
     const result = triage('Reduce spawn rates for playtesting');
     expect(result.requestType).toBe('GAME_BALANCING');
+    expect(result.verdict).toBe('RISKY');
     expect(result.escalation).toBe('HUMAN_GATE');
   });
 
@@ -26,6 +27,7 @@ describe('triage()', () => {
   it('classifies debugging requests', () => {
     const result = triage('Player can walk through walls on Floor 2');
     expect(result.requestType).toBe('DEBUGGING');
+    expect(result.verdict).toBe('RECOMMENDED');
     expect(result.escalation).toBeUndefined();
   });
 
@@ -52,6 +54,7 @@ describe('triage()', () => {
   it('returns UNCLEAR for ambiguous input', () => {
     const result = triage('xyz123');
     expect(result.requestType).toBe('UNCLEAR');
+    expect(result.verdict).toBe('NOT_RECOMMENDED');
     expect(Array.isArray(result.questions)).toBe(true);
   });
 
@@ -65,6 +68,16 @@ describe('triage()', () => {
     const result = triage('There is a bug in the newly added loot system');
     // Falls through to FEATURE because feature keywords override the debug exclusion
     expect(result.requestType).toBe('FEATURE');
+  });
+});
+
+describe('renderTriage()', () => {
+  it('includes the user-visible verdict line for feature requests', () => {
+    const output = renderTriage('Add a bowling minigame');
+    expect(output).toContain('Type: FEATURE');
+    expect(output).toContain(
+      'Verdict: RECOMMENDED — A feature request is reasonable to plan, but it still needs scope clarification first.',
+    );
   });
 });
 
