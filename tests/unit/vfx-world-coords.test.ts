@@ -18,39 +18,82 @@ import type { CombatEvent } from '../../src/shared/combat-events.js';
 
 type GoreScene = Parameters<typeof createGoreVfx>[0];
 
-interface EllipseArgs {
+interface GraphicsArgs {
   x: number;
   y: number;
 }
 
-/** Minimal scene that records `add.ellipse` centres (the blood pool). */
-function createGoreSceneStub(): { scene: GoreScene; ellipses: EllipseArgs[] } {
-  const ellipses: EllipseArgs[] = [];
-  // Superset of the GameObject API the gore animation loop drives (particles
-  // read/write x/y; pools call setSize). Ellipse centres are captured at
-  // creation, so sharing one mutable shape is harmless for the assertions.
-  const shape = {
+interface GraphicsShape {
+  x: number;
+  y: number;
+  fillEllipses: Array<{ x: number; y: number; w: number; h: number }>;
+  clear: () => GraphicsShape;
+  fillStyle: () => GraphicsShape;
+  fillEllipse: (x: number, y: number, w: number, h: number) => GraphicsShape;
+  setDepth: () => GraphicsShape;
+  setAlpha: () => GraphicsShape;
+  destroy: () => void;
+}
+
+/** Minimal scene that records `add.graphics` centres (the blood pool). */
+function createGoreSceneStub(): {
+  scene: GoreScene;
+  graphicsCreated: GraphicsArgs[];
+  graphicsShapes: GraphicsShape[];
+} {
+  const graphicsCreated: GraphicsArgs[] = [];
+  const graphicsShapes: GraphicsShape[] = [];
+  // Particle rectangles; irrelevant for pool positioning, share one shape.
+  const rectShape = {
     x: 0,
     y: 0,
-    setX: vi.fn(() => shape),
-    setY: vi.fn(() => shape),
-    setDepth: vi.fn(() => shape),
-    setAlpha: vi.fn(() => shape),
-    setScale: vi.fn(() => shape),
-    setSize: vi.fn(() => shape),
+    setX: vi.fn(() => rectShape),
+    setY: vi.fn(() => rectShape),
+    setDepth: vi.fn(() => rectShape),
+    setAlpha: vi.fn(() => rectShape),
+    setScale: vi.fn(() => rectShape),
+    setSize: vi.fn(() => rectShape),
     destroy: vi.fn(),
   };
   const scene = {
     add: {
-      rectangle: vi.fn(() => shape),
-      ellipse: vi.fn((x: number, y: number) => {
-        ellipses.push({ x, y });
+      rectangle: vi.fn(() => rectShape),
+      graphics: vi.fn((config?: { x?: number; y?: number }) => {
+        const x = config?.x ?? 0;
+        const y = config?.y ?? 0;
+        graphicsCreated.push({ x, y });
+        const shape: GraphicsShape = {
+          x,
+          y,
+          fillEllipses: [],
+          clear() {
+            shape.fillEllipses = [];
+            return shape;
+          },
+          fillStyle() {
+            return shape;
+          },
+          fillEllipse(cx: number, cy: number, w: number, h: number) {
+            shape.fillEllipses.push({ x: cx, y: cy, w, h });
+            return shape;
+          },
+          setDepth() {
+            return shape;
+          },
+          setAlpha() {
+            return shape;
+          },
+          destroy() {
+            /* no-op */
+          },
+        };
+        graphicsShapes.push(shape);
         return shape;
       }),
     },
     cameras: { getCamera: vi.fn(() => null) },
   };
-  return { scene: scene as unknown as GoreScene, ellipses };
+  return { scene: scene as unknown as GoreScene, graphicsCreated, graphicsShapes };
 }
 
 function deathEvent(x: number, y: number): CombatEvent {
@@ -73,8 +116,8 @@ function corpseExplodeEvent(x: number, y: number): CombatEvent {
 }
 
 describe('death-VFX world→pixel coordinates', () => {
-  it('spawns the blood-pool ellipse at ftToPx(death position), not raw feet', () => {
-    const { scene, ellipses } = createGoreSceneStub();
+  it('spawns the blood-pool graphics at ftToPx(death position), not raw feet', () => {
+    const { scene, graphicsCreated } = createGoreSceneStub();
     const vfx = createGoreVfx(scene, { intensity: 1, hitGoreEnabled: false });
     const world = createTestWorld();
 
@@ -82,13 +125,13 @@ describe('death-VFX world→pixel coordinates', () => {
     world.combatEvents.push(deathEvent(100, 50));
     vfx.update(world, 1000, 16, 0);
 
-    expect(ellipses).toHaveLength(1);
+    expect(graphicsCreated).toHaveLength(1);
     // Only a small (<6px/<4px) organic jitter is added on top of the centre.
-    expect(Math.abs(ellipses[0]!.x - ftToPx(100))).toBeLessThan(4);
-    expect(Math.abs(ellipses[0]!.y - ftToPx(50))).toBeLessThan(3);
+    expect(Math.abs(graphicsCreated[0]!.x - ftToPx(100))).toBeLessThan(4);
+    expect(Math.abs(graphicsCreated[0]!.y - ftToPx(50))).toBeLessThan(3);
     // Guard against the regression: the centre must NOT be the raw feet value.
-    expect(ellipses[0]!.x).toBeGreaterThan(100);
-    expect(ellipses[0]!.y).toBeGreaterThan(50);
+    expect(graphicsCreated[0]!.x).toBeGreaterThan(100);
+    expect(graphicsCreated[0]!.y).toBeGreaterThan(50);
   });
 
   it('spawns corpse-shatter shards at ftToPx(corpse position), not raw feet', () => {
@@ -99,7 +142,7 @@ describe('death-VFX world→pixel coordinates', () => {
     const world = createTestWorld();
 
     world.combatEvents.push(corpseExplodeEvent(100, 50));
-    bridge.sync(world, 1000);
+    bridge.sync(world);
 
     expect(images).toHaveLength(SHATTER_COLS * SHATTER_ROWS);
     for (const shard of images) {
@@ -108,5 +151,58 @@ describe('death-VFX world→pixel coordinates', () => {
       expect(Math.abs(shard.x - ftToPx(100))).toBeLessThan(Math.abs(shard.x - 100));
       expect(Math.abs(shard.y - ftToPx(50))).toBeLessThan(Math.abs(shard.y - 50));
     }
+  });
+});
+
+describe('blood pool spread shape', () => {
+  it('draws multiple overlapping sub-lobes so the pool is not a smooth ellipse', () => {
+    const { scene, graphicsShapes } = createGoreSceneStub();
+    const vfx = createGoreVfx(scene, { intensity: 1, hitGoreEnabled: false });
+    const world = createTestWorld();
+
+    world.combatEvents.push(deathEvent(100, 50));
+    vfx.update(world, 1000, 16, 0);
+
+    expect(graphicsShapes).toHaveLength(1);
+    const pool = graphicsShapes[0]!;
+    // The pool must render as several stacked ellipses. A single ellipse
+    // would regress the "even/uniform" bug the user reported.
+    expect(pool.fillEllipses.length).toBeGreaterThanOrEqual(3);
+
+    // At least one lobe must have a non-zero offset from the pool origin so
+    // the outline is visibly asymmetric.
+    const offsetLobes = pool.fillEllipses.filter((lobe) => Math.hypot(lobe.x, lobe.y) > 0.1);
+    expect(offsetLobes.length).toBeGreaterThan(0);
+  });
+
+  it('keeps spreading past 5 seconds — pool is still growing well into its life', () => {
+    const { scene, graphicsShapes } = createGoreSceneStub();
+    const vfx = createGoreVfx(scene, { intensity: 1, hitGoreEnabled: false });
+    const world = createTestWorld();
+
+    world.combatEvents.push(deathEvent(100, 50));
+    vfx.update(world, 1000, 16, 0);
+
+    const pool = graphicsShapes[0]!;
+
+    // Sample the total ellipse footprint (sum of w*h across all lobes) at
+    // three points in the pool's 30 s life. A pool that expanded to full
+    // size in the first ~3.6 s (the old 0.12 expand phase) would have the
+    // same footprint at t=5 s and t=15 s, and this assertion would fail.
+    const sampleFootprint = (renderElapsedMs: number): number => {
+      // Empty the combatEvents so the update loop only animates the pool.
+      world.combatEvents.length = 0;
+      vfx.update(world, renderElapsedMs, 16, 0);
+      return pool.fillEllipses.reduce((total, lobe) => total + lobe.w * lobe.h, 0);
+    };
+
+    const footprintAtSpawn = pool.fillEllipses.reduce((total, lobe) => total + lobe.w * lobe.h, 0);
+    const footprintAt5s = sampleFootprint(1000 + 5_000);
+    const footprintAt15s = sampleFootprint(1000 + 15_000);
+
+    // Pool must be visibly bigger by 5 s (i.e. still spreading), and still
+    // strictly bigger by 15 s (spread continues into the second half).
+    expect(footprintAt5s).toBeGreaterThan(footprintAtSpawn * 1.5);
+    expect(footprintAt15s).toBeGreaterThan(footprintAt5s);
   });
 });

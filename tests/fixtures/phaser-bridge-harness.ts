@@ -147,19 +147,31 @@ export class MockGraphics {
   visible = true;
   alpha = 1;
   depth = 0;
+  x = 0;
+  y = 0;
   fillRects: Array<{ x: number; y: number; w: number; h: number }> = [];
+  fillEllipses: Array<{ x: number; y: number; w: number; h: number }> = [];
+  fillCalls: Array<{ color: number; alpha: number }> = [];
 
   clear(): this {
     this.fillRects = [];
+    this.fillEllipses = [];
+    this.fillCalls = [];
     return this;
   }
 
-  fillStyle(_color: number, _alpha = 1): this {
+  fillStyle(color: number, alpha = 1): this {
+    this.fillCalls.push({ color, alpha });
     return this;
   }
 
   fillRect(x: number, y: number, w: number, h: number): this {
     this.fillRects.push({ x, y, w, h });
+    return this;
+  }
+
+  fillEllipse(x: number, y: number, w: number, h: number): this {
+    this.fillEllipses.push({ x, y, w, h });
     return this;
   }
 
@@ -248,8 +260,12 @@ export function createSceneStub(
     images.push(mockImage);
     return mockImage as unknown as Phaser.GameObjects.Image;
   });
-  const addGraphics = vi.fn(() => {
+  const addGraphics = vi.fn((config?: { x?: number; y?: number }) => {
     const mockGraphics = new MockGraphics();
+    if (config && typeof config === 'object') {
+      mockGraphics.x = config.x ?? 0;
+      mockGraphics.y = config.y ?? 0;
+    }
     graphics.push(mockGraphics);
     return mockGraphics as unknown as Phaser.GameObjects.Graphics;
   });

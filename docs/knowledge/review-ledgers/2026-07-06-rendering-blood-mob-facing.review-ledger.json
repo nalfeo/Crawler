@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-06",
+  "session_slug": "rendering-blood-mob-facing",
+  "task_title": "Fix rendering depth, blood pool spread, and mob facing",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "notes": "Plan review by gpt-5.4 rubber-duck against the implemented diff. No blocking concerns. Two low-impact suggestions applied: (1) added ENTITY_DEPTH symbolic constant in src/shared/render-depths.ts so the corpse-EID-reuse depth reset in PhaserBridge no longer hardcodes 0 (future-proofs against entity-plane changes); (2) added per-lobe initialScale to BloodPoolLobe so outer lobes start at 0 and unfurl outward from the core lobe, rather than materialising already-spread on frame 0. Both changes covered by existing regression tests; full unit suite re-run clean (3919/3919 unit tests, verify:fast passing)."
+    }
+  }
+}

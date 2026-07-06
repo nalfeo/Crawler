@@ -15,6 +15,7 @@ import {
 } from '../../src/core/components.js';
 import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
 import { PLACEHOLDER_SPAWNER_TINT } from '../../src/engine/phaser-bridge/sprite-kind.js';
+import { ENTITY_DEPTH, WORLD_VFX_DEPTH } from '../../src/shared/render-depths.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { set } from '../../src/core/world.js';
 import { buildGeneratedSpriteRegistry } from '../../src/shared/generated-assets.js';
@@ -283,6 +284,10 @@ describe('createPhaserBridge', () => {
     expect(skull.alpha).toBeCloseTo(0.95);
     expect(corpse.alpha).toBe(1);
     expect(corpse.tint).toBe(0xffffff); // no desaturation yet
+    // A dead enemy renders on the ground plane (below the player at default
+    // depth 0) so the player is never buried under a fresh kill.
+    expect(corpse.depth).toBe(WORLD_VFX_DEPTH.corpse);
+    expect(corpse.depth).toBeLessThan(0);
 
     // Partway through the short skull window: skull dimmer and floating up.
     world.stores.deathTimer.remainingMs[eid] = 3000 - 450;
@@ -348,11 +353,14 @@ describe('createPhaserBridge', () => {
     bridge.sync(world);
 
     // The same sprite object was reused (not destroyed/recreated) and its
-    // leftover corpse styling is gone: full colour at full opacity.
+    // leftover corpse styling is gone: full colour at full opacity, and the
+    // corpse depth has been reset to the default entity plane so the recycled
+    // living enemy renders above blood pools and other corpses again.
     expect(corpse.destroyed).toBe(false);
     expect(corpse.tinted).toBe(false);
     expect(corpse.tint).toBe(0xffffff);
     expect(corpse.alpha).toBe(1);
+    expect(corpse.depth).toBe(ENTITY_DEPTH);
 
     // The stale linger was cleared too, so a shorter second death recalibrates
     // from full. With a stale 3000ms total, 1000ms remaining would read as a
