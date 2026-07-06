@@ -17,9 +17,8 @@ import { createTestWorld } from '../../helpers/world-factory.js';
  *   knockback distance ∝ (BASELINE / weight)
  *
  * Every test pins `weight.value[eid]` directly after spawn because
- * `spawnEnemy` → `initializeEnemyAppearance` jitters weight by sizeScale
- * [0.9, 1.1]. Pinning removes the jitter so the identity + ratio assertions
- * are exact.
+ * `spawnEnemy` defaults to the 120 lb baseline unless the case under test
+ * overrides it. Pinning keeps the identity + ratio assertions exact.
  */
 describe('knockbackSystem - weight scaling (Slice 2)', () => {
   /**

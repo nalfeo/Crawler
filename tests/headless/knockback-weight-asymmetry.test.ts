@@ -50,17 +50,10 @@ describe('knockback weight asymmetry (Slice 2, real pipeline)', () => {
 
     // Spawn a light mob (60 lb) and a heavy mob (240 lb) at (100, 100) and
     // (200, 100). Y-coord is arbitrary; distance in x measures displacement.
-    // `spawnEnemy` sets Weight to 120 by default and then
-    // `initializeEnemyAppearance` jitters it by a per-eid sizeScale — so we
-    // must pin the store *after* spawn to keep the impulse deterministic.
+    // `spawnEnemy` stores the exact authored weight passed in here, so no
+    // follow-up pinning is needed.
     const lightEid = spawnEnemy(world, 100, 100, /* hp */ 100, /* weight */ 60);
     const heavyEid = spawnEnemy(world, 200, 100, /* hp */ 100, /* weight */ 240);
-
-    // Pin weights (overwrite the jitter — `initializeEnemyAppearance` uses a
-    // seeded RNG but the exact result depends on eid ordering, so pinning is
-    // both cleaner and immune to future spawn-order refactors).
-    world.stores.weight.value[lightEid] = 60;
-    world.stores.weight.value[heavyEid] = 240;
 
     // Record starting positions.
     const lightStartX = world.stores.position.x[lightEid]!;

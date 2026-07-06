@@ -242,22 +242,14 @@ describe('dropSystem', () => {
     expect(slainSlime).toBeGreaterThan(0);
     expect(miniSlimes).toHaveLength(2);
     const expectedMiniDamage = Math.max(1, Math.round(7 * 0.5));
-    // Slice 2 (ADR 0044): weight on live entities is frozen (not jittered
-    // by sizeScale — first-class gameplay dial). dropSystem still derives
-    // mini weight from the *unjittered* parent base weight: it divides the
-    // parent's stored weight by the parent's sizeScale (a historical
-    // convention it hasn't been refactored out of), then halves. The mini
-    // spawner passes that value through unmodified.
     const slainSlimeWeight = world.stores.weight.value[slainSlime] ?? 120;
-    const slainSlimeSizeScale = world.stores.sprite.sizeScale[slainSlime] || 1;
-    const slainSlimeBaseWeight = slainSlimeWeight / slainSlimeSizeScale;
     for (const miniEid of miniSlimes) {
       expect(world.stores.health.max[miniEid]).toBe(15);
       expect(world.stores.health.current[miniEid]).toBe(15);
       expect(world.stores.damage.amount[miniEid]).toBe(expectedMiniDamage);
       expect(world.floorScenario?.enemyArchetypes.get(miniEid)).toBe('slime-mini');
       expect(world.enemyAppearanceKeys.get(miniEid)).toBe('slime-mini');
-      expect(world.stores.weight.value[miniEid]).toBeCloseTo(slainSlimeBaseWeight * 0.5, 4);
+      expect(world.stores.weight.value[miniEid]).toBeCloseTo(slainSlimeWeight * 0.5, 4);
       expect(world.stores.enemyBehavior.type[miniEid]).toBe(AI_TYPE.LEAPER);
       // Babies render smaller than their 2 ft parent, and the feet-scale size is
       // preserved exactly (0.65×) rather than rounded up to a whole foot.

@@ -83,13 +83,12 @@ The parent's spec listed `applyProjectileHit / applyEnemyProjectileHit / applyPl
 
 The spec's remaining writer names (beam/area/projectile/applyPlayerEnemyHit) write **zero** `Knockback` components in current code — confirmed by `grep -n "Knockback" src/core/systems/{damage,area,beam,returningProjectile}.ts`. **Reader-side scaling means those writers will automatically inherit weight scaling if/when they gain knockback in a later slice**, without a per-writer audit at that time.
 
-## Why the win-rate gate holds — ±2% risk derivation
+## Why the win-rate gate holds — capped inverse-weight scaling
 
-- `spawnEnemy` calls `initializeEnemyAppearance(world, eid)` which jitters `world.stores.weight.value[eid]` by a per-eid seeded `sizeScale ∈ [0.9, 1.1]` (`src/core/spawners/combatants.ts:36`).
-- Every shipping enemy uses the mob-baseline default weight of 120 lb, so effective post-jitter weight is `120 * sizeScale ∈ [108, 132]` lb.
-- Under divide-by-weight, that maps to a knockback scale of `120 / [108..132] = [0.91×, 1.11×]`.
+- `spawnEnemy` now stores the authored enemy weight exactly; the cosmetic `sizeScale` roll no longer perturbs knockback.
+- Every shipping enemy still uses the mob-baseline default weight of 120 lb, so the reader-side scale is still `120 / weight`.
+- The 2.5× cap keeps rats and other very light mobs from becoming comedic launchers while leaving the 120 lb baseline unchanged and 240 lb heavies at 0.5×.
 - Player is 180 lb → 0.67×, but Player almost never has a `Knockback` component in practice (`grep` for writers that target Player: only the game-layer progression effect and `dropSystem` corpse-explosion via `Immovable` bystander wave — none currently target the player in Floor 1). Player is effectively a non-participant in the query.
-- Median case is 1.0× ± ~11% — a change well within the ±2% Floor-1 win-rate tolerance.
 - Confirmed empirically: 9/9 seeds still pass Floor-1 completion after the divide-by-weight change.
 
 If a later slice retunes the mob-baseline weight or adds a heavy-mob archetype (Slice-3 territory per ADR 0044), that's the point at which a fresh Floor-1 win-rate sweep is warranted.
@@ -104,7 +103,7 @@ If a later slice retunes the mob-baseline weight or adds a heavy-mob archetype (
 ## Follow-up ideas (not in this PR)
 
 - **`ai-combat-balance` slug — revisit authored weights vs cap = 2.5**: Slice 2 intentionally does NOT retune the mob registry. Rat @ 6 lb, slime @ 20 lb, brute @ 30 lb currently all clamp to the same 2.5× knockback (cap boundary is 48 lb). A future `ai-combat-balance` slice should decide whether authored weights should be raised toward 48 lb (giving them a natural sub-cap scale) or the cap should be lowered further; the current shape ships the design ruling faithfully but hides intra-lightweight differentiation.
-- `sizeScale` weight jitter (`initializeEnemyAppearance`) was already removed in Slice 2 (weight is now a first-class, deterministic gameplay dial). Historical note kept for context; no further action required.
+- `sizeScale` weight jitter (`initializeEnemyAppearance`) was removed in Slice 2, so weight is now a first-class, deterministic gameplay dial. Historical note kept for context; no further action required.
 - Add `PropCategory === 'structural'` → default weight of 10 000 lb (or add an `isImmovable?: boolean` flag on `DecorationDef`) so stone pillars and statues short-circuit knockback automatically.
 - Extend `check-weight-coverage` to run a multi-floor sweep once Floor 2+ spawners are exercised by headless (currently 800-frame Floor-1 slice only, matching `check-size-coverage`'s scope).
 

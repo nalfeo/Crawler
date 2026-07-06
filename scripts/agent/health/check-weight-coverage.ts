@@ -67,15 +67,12 @@ function inspectWeights(world: GameWorld): WeightSnapshot {
   };
   let checked = 0;
   const weightStore = world.stores.weight;
-  // Walk the entire eid range using the presence of Position as the
-  // "live entity" proxy (every gameplay entity has Position). Enemies/
-  // Players/Props then filter down via component tags.
+  // Walk the entire eid range using the position store length as an upper
+  // bound. Enemies/Players/Props then filter down via component tags.
   const positionX = world.stores.position.x;
   const maxEid = positionX.length;
   for (let eid = 0; eid < maxEid; eid++) {
-    // bitecs stores are zero-initialized; a lack of position means either
-    // the eid was never allocated or it belonged to a non-positioned
-    // entity type we don't care about here.
+    // bitecs stores are zero-initialized; unallocated eids stay untagged.
     let kind: WeightFailure['kind'] | null = null;
     if (hasComponent(world.ecs, eid, Enemy)) {
       kind = 'Enemy';
