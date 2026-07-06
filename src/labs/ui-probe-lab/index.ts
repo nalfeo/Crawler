@@ -29,7 +29,9 @@ import { RoomGraph } from '../../core/map/RoomGraph.js';
 import { BiomeType, RoomRole, TerrainType, TilePresets } from '../../shared/map-types.js';
 import {
   equip,
+  equipFromBag,
   getEffectiveStats,
+  getEquipmentState,
   initializeBaseStats,
 } from '../../core/systems/equipmentSystem.js';
 import { createInventoryUI } from '../../engine/InventoryUI.js';
@@ -37,14 +39,22 @@ import { createEquipmentUI } from '../../engine/EquipmentUI.js';
 import { createHudMinimap } from '../../engine/HudMinimap.js';
 import { createLevelUpUI } from '../../engine/LevelUpUI.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
-import { GENERATED_SPRITE_REGISTRY_KEY } from '../../engine/generatedAssets/index.js';
+import {
+  GENERATED_SPRITE_REGISTRY_KEY,
+  fetchGeneratedSpriteRegistry,
+  preloadGeneratedSprites,
+} from '../../engine/generatedAssets/index.js';
 import { buildGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
-import { MERCHANTS_CHARM_DEF } from '../../shared/equipmentDefs.js';
+import {
+  getEquipmentDefForItem,
+  GEAR_ITEM_IDS,
+  MERCHANTS_CHARM_DEF,
+} from '../../shared/equipmentDefs.js';
 import { GAME } from '../../shared/constants.js';
 import { PIXELS_PER_FOOT, pxToFt } from '../../shared/units.js';
 import { addItem } from '../../shared/inventory.js';
 import { PRIMARY_STATS, type PrimaryStatId } from '../../shared/stats.js';
-import type { EquipmentSlotId } from '../../shared/equipment-slots.js';
+import { SLOT_REGISTRY, type EquipmentSlotId } from '../../shared/equipment-slots.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
@@ -60,6 +70,8 @@ const GH = Math.ceil(GAME.HEIGHT / TILE);
 
 /** Texture key for the synthetic inventory icon (guarantees a sprite renders). */
 const PROBE_ICON_TEXTURE = 'ui_probe_item_icon';
+const PROBE_THEMED_ICON_TEXTURE = 'ui_probe_item_icon_themed';
+const PROBE_BAT_TEXTURE = 'baseball-bat-v1-var-0';
 
 /** Bounds of a stat row's −/+ controls, in world/scene coordinates. */
 export interface StatControlBounds {
@@ -84,24 +96,59 @@ export interface UiProbeApi {
   closeOverlays(): void;
   isInventoryOpen(): boolean;
   getInventoryCellBounds(index: number): ScreenBounds | null;
+  /** Render-order index of the first visible cell holding `itemId`, or null. */
+  getInventoryCellIndexForItem(itemId: string): number | null;
   isTooltipVisible(): boolean;
   isTooltipPinned(): boolean;
 
   // Equipment ---------------------------------------------------------------
   openEquipment(): void;
+  openEquipmentOnly(): void;
+  useThemedEquipmentReviewSprites(): void;
+  /**
+   * Swap the synthetic probe registry for the REAL generated-sprite manifest,
+   * loading each entry's PNG through the shipped boot path
+   * ({@link fetchGeneratedSpriteRegistry} + {@link preloadGeneratedSprites}).
+   * Lets visual review observe real approved/placeholder art, not just the
+   * themed synthetic icon. Resolves once textures finish loading.
+   */
+  useRealGeneratedSprites(): Promise<void>;
   isEquipmentOpen(): boolean;
+  getEquipmentPanelBounds(): ScreenBounds;
+  getEquipmentSlotBounds(slotId: EquipmentSlotId): ScreenBounds | null;
+  getEquipmentSlotIconBounds(slotId: EquipmentSlotId): ScreenBounds | null;
+  getEquipmentTooltipBounds(): ScreenBounds | null;
+  isEquipmentTooltipVisible(): boolean;
+  isEquipmentTooltipTopmost(): boolean;
   selectEquipmentSlot(slotId: EquipmentSlotId): boolean;
   getEquipmentSlotFilter(): EquipmentSlotId | null;
   getInventorySlotFilter(): EquipmentSlotId | null;
+  // Integrated equippable-bag column (inside the equipment panel) -----------
+  /** Item ids currently listed in the equipment panel's bag column, in order. */
+  getEquipmentBagItemIds(): string[];
+  /** Screen bounds of the bag cell at `index` (aligned to getEquipmentBagItemIds). */
+  getEquipmentBagCellBounds(index: number): ScreenBounds | null;
+  /** Deterministically show/clear the equip-delta preview for a bag item. */
+  previewEquipmentBagItem(itemId: string | null): void;
+  /** Equip a bag item straight from the integrated bag column. */
+  equipFromEquipmentBag(itemId: string): boolean;
   /** Effective Charisma of the player (base + equipment bonuses). */
   getCharisma(): number;
   /** Equip the merchant's charm via the real equipment system (safe-room). */
   equipCharm(): boolean;
+  /** Equip a bag item by slug via the real equip-from-bag orchestration. */
+  equipInventoryItem(itemId: string): boolean;
+  /** Re-add one of every placeholder gear item to the bag. */
+  seedAllGear(): void;
+  /** Slot ids currently filled on the paper-doll (deduped, in registry order). */
+  getEquippedSlotIds(): EquipmentSlotId[];
 
   // Minimap -----------------------------------------------------------------
   openMinimapOverlay(): void;
   isMinimapOverlayOpen(): boolean;
   getMinimapCloseBounds(): ScreenBounds | null;
+  /** Docked radar bounds when visible, or null when hidden by an open panel. */
+  getMinimapDockedBounds(): ScreenBounds | null;
 
   // Level-up ----------------------------------------------------------------
   openLevelUp(points: number): void;
@@ -153,16 +200,29 @@ function buildProbeFloorMap(): FloorMap {
 }
 
 /** Synthetic generated-sprite registry mapping the charm to a baked texture. */
-function buildProbeSpriteRegistry(): ReturnType<typeof buildGeneratedSpriteRegistry> {
+function buildProbeSpriteRegistry(
+  textureKey: string = PROBE_ICON_TEXTURE,
+): ReturnType<typeof buildGeneratedSpriteRegistry> {
   return buildGeneratedSpriteRegistry({
     version: 1,
     entries: {
+      [PROBE_BAT_TEXTURE]: {
+        briefId: 'baseball-bat-v1',
+        spriteName: PROBE_BAT_TEXTURE,
+        assetPath: 'generated/baseball-bat-v1-var-0.png',
+        approvedAt: '2026-06-30T04:49:00.000Z',
+        sourceRun: 'ui-probe-lab',
+        variantIndex: 0,
+        anchor: null,
+        sensorScore: '1',
+        judgeScore: null,
+      },
       // The manifest map KEY becomes the registry `textureKey`, so it must be
       // the baked Phaser texture key. `briefId` stays the item id so the
       // InventoryUI lookup by `def.id` still resolves this entry.
-      [PROBE_ICON_TEXTURE]: {
+      [textureKey]: {
         briefId: MERCHANTS_CHARM_DEF.id,
-        spriteName: PROBE_ICON_TEXTURE,
+        spriteName: textureKey,
         assetPath: 'assets/generated/ui-probe-icon.png',
         approvedAt: '2026-01-01T00:00:00.000Z',
         sourceRun: 'ui-probe-lab',
@@ -224,12 +284,22 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
     private minimap?: ReturnType<typeof createHudMinimap>;
 
+    // Mirrors MainGameScene: hide the minimap while a full-screen character
+    // panel is open so it never punches through the wide equipment panel.
+    private hudHiddenForPanel = false;
+
     private levelUpUI?: ReturnType<typeof createLevelUpUI>;
 
     private built = false;
 
     constructor() {
       super({ key: SCENE_KEY });
+    }
+
+    preload(): void {
+      if (!this.textures.exists(PROBE_BAT_TEXTURE)) {
+        this.load.image(PROBE_BAT_TEXTURE, 'assets/generated/baseball-bat-v1-var-0.png');
+      }
     }
 
     create(): void {
@@ -249,6 +319,19 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         g.generateTexture(PROBE_ICON_TEXTURE, 64, 64);
         g.destroy();
       }
+      if (!this.textures.exists(PROBE_THEMED_ICON_TEXTURE)) {
+        const g = this.add.graphics();
+        g.fillStyle(0x3a2814, 1);
+        g.fillRect(0, 0, 64, 64);
+        g.fillStyle(0xc18f3a, 1);
+        g.fillRect(8, 8, 48, 48);
+        g.fillStyle(0x2a180b, 1);
+        g.fillRect(18, 14, 28, 36);
+        g.fillStyle(0xf4dfaa, 1);
+        g.fillRect(28, 18, 8, 16);
+        g.generateTexture(PROBE_THEMED_ICON_TEXTURE, 64, 64);
+        g.destroy();
+      }
       this.game.registry.set(GENERATED_SPRITE_REGISTRY_KEY, buildProbeSpriteRegistry());
 
       // Synthetic safe-room world: equipment changes require a safe context.
@@ -260,15 +343,31 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       // minimap dot lands mid-map; tileSizeFt = TILE/PIXELS_PER_FOOT.
       this.playerEid = spawnPlayer(this.world, pxToFt(GAME.WIDTH / 2), pxToFt(GAME.HEIGHT / 2));
       initializeBaseStats(this.world, this.playerEid);
+      const probeBatDef = getEquipmentDefForItem('bone-club');
+      if (!probeBatDef) {
+        throw new Error('ui-probe-lab expected bone-club equipment def to exist');
+      }
+      equip(this.world, this.playerEid, probeBatDef, { force: true });
 
       const bag = this.world.inventories.get(this.playerEid);
       if (bag) {
         addItem(bag, MERCHANTS_CHARM_DEF.id, 1);
+        // Seed placeholder gear for every non-weapon slot so the paper-doll is
+        // fully fillable and the double-click equip flow is exercisable across
+        // all 18 slots directly in the lab.
+        for (const gearId of GEAR_ITEM_IDS) {
+          addItem(bag, gearId, 1);
+        }
       }
 
-      this.inventoryUI = createInventoryUI(this);
+      this.inventoryUI = createInventoryUI(this, {
+        // Double-clicking an equippable inventory cell routes through the real
+        // core orchestration (swap + atomic rollback), then both panes refresh.
+        onEquipItem: (itemId) => this.equipInventoryItem(itemId),
+      });
       this.equipmentUI = createEquipmentUI(this, {
         onSlotFilterChange: (slotId) => this.inventoryUI?.setEquipmentSlotFilter(slotId),
+        onInventoryChanged: () => this.inventoryUI?.refresh(this.world),
       });
       this.minimap = createHudMinimap(this);
       this.levelUpUI = createLevelUpUI(this, { onConfirm: () => undefined });
@@ -297,13 +396,24 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
     update(): void {
       if (!this.built) return;
+      // Hide the docked minimap while a character panel is open (mirrors
+      // MainGameScene). Skip minimap.sync() while hidden, otherwise it re-shows
+      // the radar every frame.
+      const panelOpen =
+        (this.inventoryUI?.isOpen() ?? false) || (this.equipmentUI?.isOpen() ?? false);
+      if (panelOpen !== this.hudHiddenForPanel) {
+        this.hudHiddenForPanel = panelOpen;
+        this.minimap?.setHudVisible(!panelOpen);
+      }
       if (this.inventoryUI?.isOpen()) {
         this.inventoryUI.refresh(this.world);
       }
       if (this.equipmentUI?.isOpen()) {
         this.equipmentUI.refresh(this.world);
       }
-      this.minimap?.sync(this.world, this.playerEid);
+      if (!panelOpen) {
+        this.minimap?.sync(this.world, this.playerEid);
+      }
     }
 
     private closeOverlays(): void {
@@ -311,6 +421,26 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       if (this.equipmentUI?.isOpen()) this.equipmentUI.toggle(this.world);
       if (this.minimap?.isOverlayOpen()) this.minimap.toggle();
       if (this.levelUpUI?.isOpen()) this.levelUpUI.close();
+    }
+
+    /** Equip a bag item through the real core orchestration and refresh panes. */
+    private equipInventoryItem(itemId: string): boolean {
+      const result = equipFromBag(this.world, this.playerEid, itemId);
+      if (result.ok) {
+        this.inventoryUI?.refresh(this.world);
+        this.equipmentUI?.refresh(this.world);
+      }
+      return result.ok;
+    }
+
+    /** Re-add one of every placeholder gear item (top-up after equipping). */
+    private seedAllGear(): void {
+      const bag = this.world.inventories.get(this.playerEid);
+      if (!bag) return;
+      for (const gearId of GEAR_ITEM_IDS) {
+        addItem(bag, gearId, 1);
+      }
+      this.inventoryUI?.refresh(this.world);
     }
 
     private attachProbe(): void {
@@ -329,6 +459,8 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         isInventoryOpen: () => this.inventoryUI?.isOpen() ?? false,
         getInventoryCellBounds: (index: number) =>
           this.inventoryUI?.getCellScreenBounds(index) ?? null,
+        getInventoryCellIndexForItem: (itemId: string) =>
+          this.inventoryUI?.getCellIndexForItem(itemId) ?? null,
         isTooltipVisible: () => this.inventoryUI?.isTooltipVisible() ?? false,
         isTooltipPinned: () => this.inventoryUI?.isTooltipPinned() ?? false,
 
@@ -343,7 +475,46 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
           this.inventoryUI?.refresh(this.world);
           this.equipmentUI?.refresh(this.world);
         },
+        openEquipmentOnly: () => {
+          this.closeOverlays();
+          if (this.equipmentUI && !this.equipmentUI.isOpen()) {
+            this.equipmentUI.toggle(this.world);
+          }
+          this.equipmentUI?.refresh(this.world);
+        },
+        useThemedEquipmentReviewSprites: () => {
+          this.game.registry.set(
+            GENERATED_SPRITE_REGISTRY_KEY,
+            buildProbeSpriteRegistry(PROBE_THEMED_ICON_TEXTURE),
+          );
+          this.inventoryUI?.refresh(this.world);
+          this.equipmentUI?.refresh(this.world);
+        },
+        useRealGeneratedSprites: async () => {
+          const registry = await fetchGeneratedSpriteRegistry();
+          this.game.registry.set(GENERATED_SPRITE_REGISTRY_KEY, registry);
+          if (registry.size > 0 && this.load) {
+            const queued = preloadGeneratedSprites(this.load, registry);
+            if (queued.length > 0) {
+              await new Promise<void>((resolve) => {
+                this.load.once(Phaser.Loader.Events.COMPLETE, () => resolve());
+                this.load.start();
+              });
+            }
+          }
+          this.inventoryUI?.refresh(this.world);
+          this.equipmentUI?.refresh(this.world);
+        },
         isEquipmentOpen: () => this.equipmentUI?.isOpen() ?? false,
+        getEquipmentPanelBounds: () =>
+          this.equipmentUI?.getPanelScreenBounds() ?? { x: 0, y: 0, width: 0, height: 0 },
+        getEquipmentSlotBounds: (slotId: EquipmentSlotId) =>
+          this.equipmentUI?.getSlotScreenBounds(slotId) ?? null,
+        getEquipmentSlotIconBounds: (slotId: EquipmentSlotId) =>
+          this.equipmentUI?.getSlotIconScreenBounds(slotId) ?? null,
+        getEquipmentTooltipBounds: () => this.equipmentUI?.getTooltipScreenBounds() ?? null,
+        isEquipmentTooltipVisible: () => this.equipmentUI?.isTooltipVisible() ?? false,
+        isEquipmentTooltipTopmost: () => this.equipmentUI?.isTooltipTopmost() ?? false,
         selectEquipmentSlot: (slotId: EquipmentSlotId) => {
           if (!this.equipmentUI || !this.equipmentUI.isOpen()) {
             return false;
@@ -354,6 +525,12 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         },
         getEquipmentSlotFilter: () => this.equipmentUI?.getSelectedSlotFilter() ?? null,
         getInventorySlotFilter: () => this.inventoryUI?.getEquipmentSlotFilter() ?? null,
+        getEquipmentBagItemIds: () => this.equipmentUI?.getBagItemIds() ?? [],
+        getEquipmentBagCellBounds: (index: number) =>
+          this.equipmentUI?.getBagCellScreenBounds(index) ?? null,
+        previewEquipmentBagItem: (itemId: string | null) =>
+          this.equipmentUI?.previewBagItem(itemId),
+        equipFromEquipmentBag: (itemId: string) => this.equipmentUI?.equipBagItem(itemId) ?? false,
         getCharisma: () => getEffectiveStats(this.world, this.playerEid).charisma,
         equipCharm: () => {
           const result = equip(this.world, this.playerEid, MERCHANTS_CHARM_DEF);
@@ -361,6 +538,13 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
             this.equipmentUI?.refresh(this.world);
           }
           return result.ok;
+        },
+        equipInventoryItem: (itemId: string) => this.equipInventoryItem(itemId),
+        seedAllGear: () => this.seedAllGear(),
+        getEquippedSlotIds: () => {
+          const state = getEquipmentState(this.world, this.playerEid);
+          if (!state) return [];
+          return SLOT_REGISTRY.map((s) => s.id).filter((id) => state.equipped[id] !== null);
         },
 
         openMinimapOverlay: () => {
@@ -372,6 +556,7 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         },
         isMinimapOverlayOpen: () => this.minimap?.isOverlayOpen() ?? false,
         getMinimapCloseBounds: () => this.minimap?.getOverlayCloseBounds() ?? null,
+        getMinimapDockedBounds: () => this.minimap?.getDockedBounds() ?? null,
 
         openLevelUp: (points: number) => {
           this.closeOverlays();
@@ -394,17 +579,25 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       const actions = {
         openInventory: () => probeWindow.__uiProbe?.openInventory(),
         openEquipment: () => probeWindow.__uiProbe?.openEquipment(),
+        openEquipmentOnly: () => probeWindow.__uiProbe?.openEquipmentOnly(),
         openMinimap: () => probeWindow.__uiProbe?.openMinimapOverlay(),
         openLevelUp: () => probeWindow.__uiProbe?.openLevelUp(3),
         equipCharm: () => probeWindow.__uiProbe?.equipCharm(),
+        seedAllGear: () => probeWindow.__uiProbe?.seedAllGear(),
+        useRealSprites: () => {
+          void probeWindow.__uiProbe?.useRealGeneratedSprites();
+        },
         closeOverlays: () => probeWindow.__uiProbe?.closeOverlays(),
       };
       const folder = labGui.addFolder('UI Surfaces');
       folder.add(actions, 'openInventory').name('Open Inventory');
       folder.add(actions, 'openEquipment').name('Open Equipment (Gear)');
+      folder.add(actions, 'openEquipmentOnly').name('Open Equipment Only');
       folder.add(actions, 'openMinimap').name('Open Minimap Overlay');
       folder.add(actions, 'openLevelUp').name('Open Level-Up (3 pts)');
       folder.add(actions, 'equipCharm').name('Equip Charm');
+      folder.add(actions, 'seedAllGear').name('Seed All Gear');
+      folder.add(actions, 'useRealSprites').name('Use Real Sprites');
       folder.add(actions, 'closeOverlays').name('Close Overlays');
     }
   }

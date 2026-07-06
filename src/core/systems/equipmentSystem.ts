@@ -17,8 +17,13 @@ import {
   DEFAULT_BASE_STATS,
   PRIMARY_STATS,
 } from '../../shared/stats.js';
-import type { StatId } from '../../shared/stats.js';
-import { applyEffectiveStats } from '../effective-stats.js';
+import type { PrimaryStatId, StatId } from '../../shared/stats.js';
+import {
+  applyEffectiveStats,
+  computeEffectiveStatsFromLoadout,
+  uniqueEquippedDefs,
+} from '../effective-stats.js';
+import type { StatBonusSource } from '../effective-stats.js';
 import type {
   EquipmentItemDef,
   EquipmentInstanceId,
@@ -33,6 +38,8 @@ import { isInSafeContext } from '../safe-space.js';
 import { applyStatusEffect, clearStatusEffects, isValidSpec } from '../status-effects.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { setActiveWeaponDef, clearActiveWeaponDef } from '../active-weapon.js';
+import { getEquipmentDefForItem } from '../../shared/equipmentDefs.js';
+import { addItem, removeItem, hasItem } from '../../shared/inventory.js';
 
 // --- Side-map storage ---
 
@@ -420,6 +427,83 @@ export function unequip(
   return { ok: true, item: instance };
 }
 
+/** Result of `equipFromBag` — like `EquipResult` plus the ids swapped back to the bag. */
+export type EquipFromBagResult =
+  | { readonly ok: true; readonly instanceId: EquipmentInstanceId; readonly swappedOut: string[] }
+  | { readonly ok: false; readonly reasons: EquipFailureReason[] };
+
+/**
+ * Equip an item that currently sits in the entity's inventory bag, performing
+ * a Diablo-style swap: any item already occupying the target slot(s) is
+ * unequipped back into the bag first, then the new item is moved from the bag
+ * into the freed slot(s).
+ *
+ * Atomic: on any failure the bag and equipment are restored to their prior
+ * state (removed item re-added, swapped-out items re-equipped). Honors the
+ * same safe-context gate as `equip`/`unequip` unless `options.force` is set
+ * (labs/tests). Returns the swapped-out item ids so callers can surface UI
+ * feedback ("Unequipped X").
+ */
+export function equipFromBag(
+  world: GameWorld,
+  entity: number,
+  itemId: string,
+  options?: EquipOptions,
+): EquipFromBagResult {
+  if (!options?.force && !isInSafeContext(world)) {
+    return {
+      ok: false,
+      reasons: [{ type: 'invalidDef', message: 'Equipment changes only allowed in safe rooms' }],
+    };
+  }
+
+  const def = getEquipmentDefForItem(itemId);
+  if (def === undefined) {
+    return {
+      ok: false,
+      reasons: [{ type: 'invalidDef', message: `Item not equippable: ${itemId}` }],
+    };
+  }
+
+  const bag = world.inventories.get(entity);
+  if (!bag) {
+    return { ok: false, reasons: [{ type: 'invalidDef', message: 'Entity has no inventory' }] };
+  }
+  if (!hasItem(bag, itemId, 1)) {
+    return { ok: false, reasons: [{ type: 'invalidDef', message: `Item not in bag: ${itemId}` }] };
+  }
+
+  // Free every occupied target slot first (returning those items to the bag),
+  // so `equip` below never trips the occupiedSlot guard. Internal equip/unequip
+  // calls are forced because we already cleared the safe-context gate above.
+  const internal = { force: true } as const;
+  const state = getOrCreateState(world, entity);
+  const swappedDefs: EquipmentItemDef[] = [];
+  for (const slotId of def.slots) {
+    if (!isValidSlotId(slotId) || state.equipped[slotId] === null) continue;
+    const removed = unequip(world, entity, slotId, internal);
+    if (removed.ok) {
+      swappedDefs.push(removed.item.def);
+      addItem(bag, removed.item.def.id, 1);
+    }
+  }
+
+  removeItem(bag, itemId, 1);
+  const result = equip(world, entity, def, internal);
+
+  if (!result.ok) {
+    // Roll back: restore the removed item and re-equip everything we swapped out.
+    addItem(bag, itemId, 1);
+    for (const swappedDef of swappedDefs) {
+      removeItem(bag, swappedDef.id, 1);
+      equip(world, entity, swappedDef, internal);
+    }
+    return { ok: false, reasons: result.reasons };
+  }
+
+  return { ok: true, instanceId: result.instanceId, swappedOut: swappedDefs.map((d) => d.id) };
+}
+
 /** Get effective stats for an entity. */
 export function getEffectiveStats(world: GameWorld, entity: number): Record<StatId, number> {
   const result = {} as Record<StatId, number>;
@@ -427,6 +511,91 @@ export function getEffectiveStats(world: GameWorld, entity: number): Record<Stat
     result[statId] = world.stores.effectiveStats[statId][entity] ?? 0;
   }
   return result;
+}
+
+/**
+ * Read-only preview of the net stat change from equipping a bag item, computed
+ * as a Diablo-style swap: the delta accounts for the stats *gained* from the new
+ * item AND the stats *lost* by unequipping whatever currently occupies its
+ * slot(s). Performs no mutation — it evaluates the shared stat formula against a
+ * hypothetical loadout and diffs it against the live one.
+ */
+export interface EquipDeltaPreview {
+  /** Per-stat net change (hypothetical − current). Zero for unaffected stats. */
+  readonly deltas: Record<StatId, number>;
+  /** Item defs that would be unequipped (returned to the bag) to make room. */
+  readonly swappedOut: readonly EquipmentItemDef[];
+  /**
+   * True when the item is valid and its requirements are met, so a swap would
+   * be allowed (ignoring occupied slots, which the swap frees). The actual
+   * equip is still subject to the safe-context gate at `equipFromBag` time.
+   */
+  readonly canEquip: boolean;
+}
+
+/**
+ * Compute the {@link EquipDeltaPreview} for equipping `itemId` on `entity`.
+ * Returns `null` when the item is not an equippable def at all.
+ */
+export function previewEquipDelta(
+  world: GameWorld,
+  entity: number,
+  itemId: string,
+): EquipDeltaPreview | null {
+  const def = getEquipmentDefForItem(itemId);
+  if (def === undefined) return null;
+
+  const state = getEquipmentState(world, entity);
+
+  // Base + core points are constant across the swap; read them once.
+  const base = {} as Record<StatId, number>;
+  for (const statId of ALL_STAT_IDS) {
+    base[statId] = world.stores.baseStats[statId][entity] ?? 0;
+  }
+  const core = {} as Record<PrimaryStatId, number>;
+  for (const p of PRIMARY_STATS) {
+    core[p] = world.stores.coreStatPoints[p][entity] ?? 0;
+  }
+
+  const currentDefs = uniqueEquippedDefs(state);
+  const currentStats = computeEffectiveStatsFromLoadout(base, core, currentDefs);
+
+  // Identify the instances the new item would displace: any occupying one of
+  // its target slots.
+  const swappedInstanceIds = new Set<EquipmentInstanceId>();
+  if (state) {
+    for (const slotId of def.slots) {
+      if (!isValidSlotId(slotId)) continue;
+      const instId = state.equipped[slotId] ?? null;
+      if (instId !== null) swappedInstanceIds.add(instId);
+    }
+  }
+  const swappedOut: EquipmentItemDef[] = [];
+  if (state) {
+    for (const instId of swappedInstanceIds) {
+      const inst = state.instances.get(instId);
+      if (inst) swappedOut.push(inst.def);
+    }
+  }
+
+  // Hypothetical loadout: keep everything not displaced, add the new item.
+  const hypotheticalSources: StatBonusSource[] = currentDefs
+    .filter((d) => !swappedInstanceIds.has(d.instanceId))
+    .map((d) => ({ statBonuses: d.statBonuses }));
+  hypotheticalSources.push({ statBonuses: def.statBonuses });
+  const hypotheticalStats = computeEffectiveStatsFromLoadout(base, core, hypotheticalSources);
+
+  const deltas = {} as Record<StatId, number>;
+  for (const statId of ALL_STAT_IDS) {
+    deltas[statId] = hypotheticalStats[statId] - currentStats[statId];
+  }
+
+  // A swap is allowed if the only blockers are occupied slots (which the swap
+  // frees). Requirement/validity blockers still disqualify it.
+  const check = canEquip(world, entity, def);
+  const canEquipViaSwap = check.reasons.every((reason) => reason.type === 'occupiedSlot');
+
+  return { deltas, swappedOut, canEquip: canEquipViaSwap };
 }
 
 /** Get equipment state for an entity (read-only view). */
