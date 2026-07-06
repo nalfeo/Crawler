@@ -7,7 +7,7 @@
  * - Batch simulation runs
  * - CI regression tests
  */
-import { query } from 'bitecs';
+import { hasComponent, query } from 'bitecs';
 import {
   Player,
   Health,
@@ -299,6 +299,7 @@ export async function runHeadless(
   const questsFailed: string[] = [];
   let mainQuestAcceptedMs: number | null = null;
   let mainQuestCompletedMs: number | null = null;
+  let previousEnemyCount = query(world.ecs, [Enemy]).length;
   // General quest-log telemetry (floor-agnostic): tracks `world.questLog`, the
   // canonical quest system, independent of any floor-specific objective struct.
   // This is the source of truth for which quests were accepted/completed.
@@ -410,7 +411,6 @@ export async function runHeadless(
       }
 
       // Track state before frame
-      const previousEnemyCount = query(world.ecs, [Enemy]).length;
       const previousPlayerHealth = world.stores.health.current[playerEid] ?? 0;
 
       // AI decides input for this frame
@@ -439,8 +439,10 @@ export async function runHeadless(
       frameCount++;
 
       // Check win/loss conditions
-      const playerEntities = query(world.ecs, [Player, Health]);
-      if (playerEntities.length === 0 || playerEntities[0] === undefined) {
+      if (
+        !hasComponent(world.ecs, playerEid, Player) ||
+        !hasComponent(world.ecs, playerEid, Health)
+      ) {
         outcome = 'death';
         break;
       }
@@ -539,6 +541,7 @@ export async function runHeadless(
           }
         }
       }
+      previousEnemyCount = currentEnemyCount;
 
       // 4. Quest tracking (basic - would need event system for full tracking)
       if (world.floorScenario) {
