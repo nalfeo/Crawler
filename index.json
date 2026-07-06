@@ -22,6 +22,17 @@
     "path": "by-sha/b4fcf201c6f6f1e272ecd3f0ef6c0db7020dd6dc.json"
   },
   {
+    "commit": "ac0fc03b73583928638fb740449af5d3815e2fbb",
+    "commitDate": "2026-07-05T19:39:40-07:00",
+    "commitSubject": "docs(skills): add weapon-sweep-100 skill for 100x3 Floor 1 balance sweep (#794)",
+    "capturedAt": "2026-07-06T03:35:51.126Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28764285105",
+    "winRate": 0.79,
+    "totalWins": 237,
+    "totalRuns": 300,
+    "path": "by-sha/ac0fc03b73583928638fb740449af5d3815e2fbb.json"
+  },
+  {
     "commit": "5bf3a6bbfd92ffea120d49d33d4dcfb53cfd1c42",
     "commitDate": "2026-07-05T19:26:41-07:00",
     "commitSubject": "fix(ci): drop copilot-swe-agent assignee from auto-rebase conflict issue (#801)",
