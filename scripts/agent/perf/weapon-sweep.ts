@@ -17,7 +17,8 @@
  * A per-weapon summary table (win rate, mean game time, mean level, kills)
  * and a raw JSON file written to --out (default: /tmp/weapon-sweep.json).
  */
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../../src/game/ai/headless-runner.js';
 import { scoreRun, type ScoreBreakdown } from '../../../src/game/ai/scoring.js';
@@ -107,17 +108,65 @@ interface WeaponSummary {
 async function sweep(args: CLIArgs): Promise<void> {
   const startTime = Date.now();
   const maxGameTimeMs = args.maxFrames * (1000 / 60);
+  const totalRuns = args.seeds.length * args.weapons.length;
+  let completedRuns = 0;
 
   console.log('🗡️  Weapon Sweep Balance Check');
   console.log('━'.repeat(70));
   console.log(`Seeds:      ${args.seeds.join(', ')}`);
   console.log(`Weapons:    ${args.weapons.join(', ')}`);
   console.log(`Budget:     ${args.maxFrames} frames (~${(args.maxFrames / 60).toFixed(0)}s)`);
-  console.log(`Total runs: ${args.seeds.length * args.weapons.length}`);
+  console.log(`Total runs: ${totalRuns}`);
   console.log('');
 
   const allRecords: RunRecord[] = [];
-  const summaries: WeaponSummary[] = [];
+  const recordsByWeapon = new Map<string, RunRecord[]>();
+  for (const weapon of args.weapons) {
+    recordsByWeapon.set(weapon, []);
+  }
+
+  const mean = (vals: number[]): number =>
+    vals.length === 0 ? 0 : vals.reduce((a, b) => a + b, 0) / vals.length;
+  const summarizeWeapon = (weapon: string, records: RunRecord[]): WeaponSummary => {
+    const victories = records.filter((r) => r.outcome === 'victory').length;
+    return {
+      weapon,
+      runs: records.length,
+      victories,
+      winRate: records.length === 0 ? 0 : victories / records.length,
+      meanGameTimeSec: mean(records.map((r) => r.gameTimeSec)),
+      meanLevel: mean(records.map((r) => r.finalLevel)),
+      meanKills: mean(records.map((r) => r.totalKills)),
+      meanXp: mean(records.map((r) => r.totalXp)),
+      meanScore: mean(records.map((r) => r.score)),
+      meanMinHealthPct: mean(records.map((r) => r.minHealthPct)),
+      meanCloseCallCount: mean(records.map((r) => r.closeCallCount)),
+      meanQuestsCompleted: mean(records.map((r) => r.questsCompleted)),
+      records,
+    };
+  };
+  const buildSummaries = (): WeaponSummary[] =>
+    args.weapons.map((weapon) => summarizeWeapon(weapon, recordsByWeapon.get(weapon) ?? []));
+  const writeProgress = (status: 'running' | 'completed'): void => {
+    const summaries = buildSummaries();
+    const output = {
+      runAt: new Date(startTime).toISOString(),
+      updatedAt: new Date().toISOString(),
+      status,
+      seeds: args.seeds,
+      weapons: args.weapons,
+      maxFrames: args.maxFrames,
+      budgetSec: args.maxFrames / 60,
+      totalRuns,
+      completedRuns,
+      progressPct: totalRuns === 0 ? 100 : (completedRuns / totalRuns) * 100,
+      summaries,
+      allRecords,
+    };
+    writeFileSync(args.out, JSON.stringify(output, null, 2));
+  };
+  mkdirSync(dirname(args.out), { recursive: true });
+  writeProgress('running');
 
   for (const weapon of args.weapons) {
     console.log(`⚔️  ${weapon.toUpperCase()}`);
@@ -147,7 +196,10 @@ async function sweep(args: CLIArgs): Promise<void> {
         questsCompleted: stats.quests.questsCompleted,
       };
       records.push(rec);
+      recordsByWeapon.get(weapon)?.push(rec);
       allRecords.push(rec);
+      completedRuns++;
+      writeProgress('running');
 
       const marker = stats.outcome === 'victory' ? '✅' : stats.outcome === 'death' ? '💀' : '⏱️ ';
       console.log(
@@ -156,27 +208,9 @@ async function sweep(args: CLIArgs): Promise<void> {
       );
     }
 
-    const victories = records.filter((r) => r.outcome === 'victory').length;
-    const mean = (vals: number[]): number => vals.reduce((a, b) => a + b, 0) / vals.length;
-
-    const summary: WeaponSummary = {
-      weapon,
-      runs: records.length,
-      victories,
-      winRate: victories / records.length,
-      meanGameTimeSec: mean(records.map((r) => r.gameTimeSec)),
-      meanLevel: mean(records.map((r) => r.finalLevel)),
-      meanKills: mean(records.map((r) => r.totalKills)),
-      meanXp: mean(records.map((r) => r.totalXp)),
-      meanScore: mean(records.map((r) => r.score)),
-      meanMinHealthPct: mean(records.map((r) => r.minHealthPct)),
-      meanCloseCallCount: mean(records.map((r) => r.closeCallCount)),
-      meanQuestsCompleted: mean(records.map((r) => r.questsCompleted)),
-      records,
-    };
-    summaries.push(summary);
     console.log('');
   }
+  const summaries = buildSummaries();
 
   // ---------------------------------------------------------------------------
   // Print comparison table
@@ -231,16 +265,7 @@ async function sweep(args: CLIArgs): Promise<void> {
   // ---------------------------------------------------------------------------
   // Write JSON output
   // ---------------------------------------------------------------------------
-  const output = {
-    runAt: new Date().toISOString(),
-    seeds: args.seeds,
-    weapons: args.weapons,
-    maxFrames: args.maxFrames,
-    budgetSec: args.maxFrames / 60,
-    summaries,
-    allRecords,
-  };
-  writeFileSync(args.out, JSON.stringify(output, null, 2));
+  writeProgress('completed');
   console.log(`\n💾 Raw data written to: ${args.out}`);
 }
 
