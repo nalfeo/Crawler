@@ -41,7 +41,7 @@ Also removed `enableFloor1` from `SimulationOptions` — simulation step now che
 - `src/game/floorScenario.ts` — sets `world.floorId = 'floor1'`, clears `floorExtendedState = null`
 - `src/game/floor2Scenario.ts` — sets `world.floorId = 'floor2'`, writes `floorExtendedState`
 - `src/game/floor2Settlement.ts` — writes `floorExtendedState.settlement`
-- `src/game/ai/simulation-step.ts` — removed `enableFloorScenario` option
+- `src/game/ai/simulation-step.ts` — removed `enableFloor1` option
 - `src/game/ai/headless-runner.ts` — removed option passing
 - `src/game/systems/achievementSystem.ts`, `familyFeudSystem.ts`, `emergentEventSystem.ts` — read path updates
 
@@ -54,7 +54,7 @@ Also removed `enableFloor1` from `SimulationOptions` — simulation step now che
 - `src/engine/HudFamilyRelationships.ts` — comment + null check
 - `src/engine/phaser-bridge/sprite-kind.ts` — `EnemyScaleWorld.floor1` → `floorScenario`
 
-**Labs (4):**
+**Labs (7):**
 
 - `src/labs/family-territory-lab/index.ts`
 - `src/labs/family-feud-lab/index.ts`
