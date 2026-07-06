@@ -50,13 +50,20 @@ const STUCK_FRAMES_THRESHOLD = 15;
 const UNSTUCK_ANGLE_COUNT = 12;
 const MAX_PAIRWISE_SEPARATION_ENEMIES = 48;
 /**
+ * Maximum enemy aggro range in the game, in tiles (70ft / 4ft = 17.5 tiles,
+ * rounded up). Used to derive the flow-field window so the BFS always covers
+ * any tile where an enemy could detect the player.
+ */
+const MAX_AGGRO_RANGE_TILES = 18;
+/**
  * Half-side of the tile-window used for the ground flow-field BFS.  Enemies
  * outside the player±R tile box fall back to per-entity A* (same as today for
  * any FLOW_UNREACHABLE tile) because they are too far to matter this frame.
  *
- * Set to FOV_RADIUS (25) + max-aggro (18 tiles ≈ 70ft/4ft) + buffer → 50.
+ * Derived as FOV radius + max aggro range + a one-tile buffer to avoid
+ * clipping enemies right at the edge on diagonal approaches.
  */
-const FLOW_FIELD_RADIUS_TILES = 50;
+const FLOW_FIELD_RADIUS_TILES = DEFAULT_FOV_RADIUS + MAX_AGGRO_RANGE_TILES + 1;
 /**
  * Dead-zone padding added to aggroRange in the Chebyshev pre-filter (ft).
  * Provides a small hysteresis gap so that an enemy just outside aggro range
