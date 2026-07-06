@@ -106,6 +106,11 @@ export interface MapConfig {
     readonly cavernWidenPasses?: number;
     /** Minimum run length to perturb straight hallway segments. */
     readonly straightHallwayMinRun?: number;
+    /**
+     * Territory spawn-zone radius as a fraction of sqrt(map area). Default: 0.5 (≈25% of floor area).
+     * Larger = bigger family influence circles; 1.0 = full-map circles.
+     */
+    readonly territoryRadiusFraction?: number;
   };
 }
 
@@ -190,6 +195,24 @@ export interface RoomData {
   readonly interiorCells?: ReadonlyArray<{ readonly x: number; readonly y: number }>;
 }
 
+// --- Territory Zones (Floor 2 spawn-weighting metadata) ---
+
+/**
+ * A circular spawn-influence zone attached to a boss den. Used by spawn systems
+ * to weight mob placement toward a family's territory. NOT a room — this is purely
+ * metadata about where a family's influence extends on the map.
+ */
+export interface TerritoryZone {
+  /** Index into the present-families roster (matches TERRITORY / BOSS_DEN familyIndex). */
+  readonly familyIndex: number;
+  /** Center tile X of the zone (den target position). */
+  readonly centerX: number;
+  /** Center tile Y of the zone (den target position). */
+  readonly centerY: number;
+  /** Influence radius in tiles. Approximately covers 25% of the map floor area. */
+  readonly radius: number;
+}
+
 // --- Floor Map (composite output of generation) ---
 
 export interface FloorMapData {
@@ -205,4 +228,6 @@ export interface FloorMapData {
   readonly visible: Uint8Array;
   /** Player spawn tile position. */
   readonly playerSpawn: { readonly x: number; readonly y: number };
+  /** Floor 2 family spawn-influence zones (empty on other floors). */
+  readonly territoryZones?: ReadonlyArray<TerritoryZone>;
 }

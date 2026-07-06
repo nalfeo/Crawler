@@ -5,7 +5,7 @@
  * and FOV visibility bitmap into a single object attached to GameWorld.
  */
 
-import type { MapConfig, FloorMapData } from '../../shared/map-types';
+import type { MapConfig, FloorMapData, TerritoryZone } from '../../shared/map-types';
 import { RoomRole } from '../../shared/map-types';
 import { TileMap } from './TileMap';
 import { RoomGraph } from './RoomGraph';
@@ -63,6 +63,8 @@ export class FloorMap implements FloorMapData {
   private tileDiscovered: Uint8Array;
   private _subFactor: number;
   readonly playerSpawn: { readonly x: number; readonly y: number };
+  /** Floor 2 family spawn-influence zones (empty on other floors). */
+  readonly territoryZones: ReadonlyArray<TerritoryZone>;
 
   /**
    * Bounding box of sub-tile cells set by the most recent FOV pass (sub-tile
@@ -84,6 +86,7 @@ export class FloorMap implements FloorMapData {
     terrain: Uint8Array,
     playerSpawn: { x: number; y: number },
     subFactor: number = DEFAULT_FOV_SUB_FACTOR,
+    territoryZones: ReadonlyArray<TerritoryZone> = [],
   ) {
     this.config = config;
     this.tileMap = tileMap;
@@ -96,6 +99,7 @@ export class FloorMap implements FloorMapData {
     this.tileVisible = new Uint8Array(config.widthTiles * config.heightTiles);
     this.tileDiscovered = new Uint8Array(config.widthTiles * config.heightTiles);
     this.playerSpawn = playerSpawn;
+    this.territoryZones = territoryZones;
   }
 
   /** Delegate to TileMap for FloorMapData interface. */

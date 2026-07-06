@@ -194,6 +194,24 @@ describe('CaveSystemGenerator', () => {
     }
   });
 
+  it('keeps every passable tile connected to spawn after settlement/den carving', () => {
+    for (const seed of [1, 2, 3, 7, 11, 42, 99, 123, 777, 1024]) {
+      const floor = generateWithPresent(seed, 4);
+      const w = floor.config.widthTiles;
+      const h = floor.config.heightTiles;
+      const reached = bfsReachable(floor, floor.playerSpawn.x, floor.playerSpawn.y, w, h);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          if (!floor.tileMap.isPassable(x, y)) continue;
+          expect(
+            reached[y * w + x],
+            `seed=${seed} has disconnected passable tile at (${x},${y})`,
+          ).toBe(1);
+        }
+      }
+    }
+  });
+
   it('throws with a clear diagnostic when reachability cannot be satisfied', () => {
     // Force zero retries + tiny map + tight separation to make generation fail fast.
     const gen = new CaveSystemGenerator({
@@ -313,14 +331,22 @@ describe('CaveSystemGenerator', () => {
     }
   });
 
+  it('floor.territoryZones.length equals presentCount', () => {
+    for (const [seed, count] of [
+      [7, 4],
+      [11, 3],
+      [42, 4],
+    ] as const) {
+      const floor = generateWithPresent(seed, count);
+      expect(floor.territoryZones.length).toBe(count);
+      const indices = floor.territoryZones.map((z) => z.familyIndex).sort();
+      expect(indices).toEqual(Array.from({ length: count }, (_, i) => i));
+    }
+  });
+
   it('RoomGraph.getRoomAt reports -1 for a wall tile inside a cave region bbox', () => {
-    // Rectangular-bounds spatial cache used to falsely claim wall tiles as room
-    // members; irregular caves now supply `interiorCells` so wall tiles inside
-    // the bbox are not attributed to any room.
     const floor = generateWithPresent(1, 4);
-    const room = floor.roomGraph
-      .getAll()
-      .find((r) => r.role === RoomRole.SPAWN || r.role === RoomRole.TERRITORY)!;
+    const room = floor.roomGraph.getAll().find((r) => r.role === RoomRole.TERRITORY)!;
     let checked = 0;
     for (let ty = room.bounds.y; ty < room.bounds.y + room.bounds.height && checked < 5; ty++) {
       for (let tx = room.bounds.x; tx < room.bounds.x + room.bounds.width && checked < 5; tx++) {
