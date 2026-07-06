@@ -27,9 +27,9 @@
  * DESIGN CONSTRAINTS (enforced by tests + code review):
  * - **Pure & deterministic**: no `this`, no module state, no RNG, no wall clock.
  *   Output is fully determined by (input, params). Mirrors `bt-ai-geometry.ts`.
- * - **Damage-agnostic**: nothing here reads a hostile-damage multiplier. The
- *   AI behaves identically at 1x and 10x damage; the multiplier is only a
- *   measurement lens.
+ * - **Threat-severity aware, but pure**: the selector does not read live ECS
+ *   state itself. Instead, the caller precomputes per-threat severity
+ *   (`dangerWeight`) from gameplay facts such as real contact damage.
  * - **Progress-dominant**: safety only overrides progress when a real predicted
  *   contact is imminent, so detours stay small.
  * - **Never freezes**: even boxed in a hallway pincer it returns a non-zero,
@@ -52,6 +52,12 @@ export interface TravelThreat {
    * correctly sizing big slimes vs. small rats (review concern #5).
    */
   bodyRadiusFt: number;
+  /**
+   * Multiplicative severity weight for this threat's proximity penalty.
+   * `1` = baseline contact threat; larger values mean the same predicted gap
+   * should be treated as more dangerous (e.g. a heavier contact hit).
+   */
+  dangerWeight: number;
 }
 
 /** A pickup the steering may lightly bend toward — only when already safe. */
@@ -350,7 +356,7 @@ export function scoreTravelCandidate(
       params.relSpeedEpsilonSq,
     );
     if (gap < minGapFt) minGapFt = gap;
-    threatCost += gapPenalty(gap, params);
+    threatCost += gapPenalty(gap, params) * threat.dangerWeight;
     if (centreDist < nearestThreatCentre) {
       nearestThreatCentre = centreDist;
       nearestThreat = threat;

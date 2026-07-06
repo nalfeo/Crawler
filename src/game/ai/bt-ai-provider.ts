@@ -18,6 +18,7 @@ import {
   DroppedItem,
   Harvestable,
   Npc,
+  Damage,
   HARVEST_RANGE_FT,
   type GameWorld,
 } from '../../core/index.js';
@@ -29,6 +30,7 @@ import {
   type PathfindingOptions,
   type TilePoint,
 } from '../../core/map/pathfinding.js';
+import { getBodyRadius } from '../../core/physics-body.js';
 import { buildDoorAwarePassable, getNavigationBlockedDoors } from '../../core/door-navigation.js';
 import { isPointInSafeSpace } from '../../core/safe-space.js';
 import { RoomRole } from '../../shared/map-types.js';
@@ -56,6 +58,7 @@ import {
 } from '../../shared/quest-types.js';
 import {
   AIState,
+  AIPathingMode,
   AIDecisionDebugState,
   AIProgressSuppressionSource,
   type AIInputProvider,
@@ -96,6 +99,9 @@ import {
   MELEE_DEFENSIVE_HP_FRACTION,
   ATTACK_GATE_MULTIPLIER,
   CONTACT_SAFE_ORBIT_FT,
+  MELEE_CONTACT_BUFFER_FRACTION,
+  MELEE_SWING_COMMIT_WINDOW_FRACTION,
+  MELEE_SWING_COMMIT_INSET_FRACTION,
   MELEE_DODGE_AMPLITUDE_FT,
   KITE_DODGE_BUFFER_FT,
   KITE_STEP_FT,
@@ -197,11 +203,11 @@ import {
   QUEST_GIVER_DETOUR_MAX_EXTRA_FRACTION,
   QUEST_GIVER_DETOUR_COMMIT_HYSTERESIS,
   QUEST_GIVER_DETOUR_ABANDON_FRAMES,
+  QUEST_GIVER_DETOUR_BLOCKED_COOLDOWN_FRAMES,
   NPC_INTERACTION_RADIUS_FT,
   NPC_APPROACH_THREAT_RADIUS_FT,
   ARENA_LOCKIN_ADD_HYSTERESIS_FT,
   TRAVEL_STEERING_ENABLED,
-  TRAVEL_BODY_RADIUS_FT,
   TRAVEL_HARD_GAP_FT,
   TRAVEL_SAFE_GAP_FT,
   TRAVEL_COMFORT_GAP_FT,
@@ -261,6 +267,39 @@ const logger = createLogger('game:bt-ai-provider');
 // Below this magnitude a heading is treated as "no direction" (skip steering /
 // neutral continuity) — matches the pure module's own zero-vector epsilon.
 const TRAVEL_HEADING_EPSILON = 1e-6;
+// Mirrors damageSystem's fallback for enemies that do contact damage without an
+// explicit Damage component value.
+const DEFAULT_CONTACT_DAMAGE = 5;
+const RISK_REWARD_CANDIDATE_OFFSETS_DEG = [
+  0, -15, 15, -30, 30, -45, 45, -60, 60, -75, 75, -90, 90,
+] as const;
+const RISK_REWARD_DANGER_LOOKAHEAD_FT = 8;
+const RISK_REWARD_DANGER_RADIUS_FT = 15; // wider threat halo → earlier avoidance
+const RISK_REWARD_W_PROGRESS = 1.0; // baseline — danger must reliably beat this
+const RISK_REWARD_W_REWARD = 0.95;
+const RISK_REWARD_W_DANGER = 1.8; // danger significant but does not completely suppress engagement commitment
+// Continuity bonus: small nudge toward the previous frame's heading to dampen
+// oscillation when candidates score nearly equally (e.g. dense symmetric packs).
+const RISK_REWARD_W_CONTINUITY = 0.18;
+// Walls amplify danger from nearby enemies — being trapped against a wall with
+// an enemy is worse than facing that enemy in open space.  Walls alone (no enemies
+// nearby) produce NO danger, so open-but-adjacent-to-wall corridors are still safe.
+const RISK_REWARD_WALL_AMPLIFICATION = 2.4; // corridor/choke threats should feel much worse than open-room threats
+// Unseen-area baseline: moderate penalty for heading into fog-of-war.
+const RISK_REWARD_FOG_DANGER = 0.35; // reduced slightly so it doesn't swamp enemy danger
+// Door-crossing penalty: the AI doesn't know what is behind a closed door.
+const RISK_REWARD_DOOR_DANGER = 0.6;
+// How many frames ahead to project enemy positions via their current velocity.
+// Enemies always move toward the player (flow-map driven), so projected position
+// is always closer — use it directly rather than picking min(current, projected).
+const RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES = 14;
+// Wall proximity check: if a wall is within this many ft perpendicular to the
+// travel direction, the corridor is considered "wall-adjacent" and the amplifier
+// is applied even when the ray center stays passable.
+const RISK_REWARD_WALL_PROXIMITY_FT = 2.0;
+const RISK_REWARD_BLOCKED_CORRIDOR_THREAT_LOOKAHEAD_FT = 24;
+const RISK_REWARD_BLOCKED_CORRIDOR_THREAT_WIDTH_FT = 6;
+const RISK_REWARD_BLOCKED_CORRIDOR_STUCK_FRAMES = 10;
 
 // Assembled once from the TRAVEL_* tuning constants; the pure steering module
 // reads it by reference each frame and never mutates it.
@@ -591,6 +630,13 @@ export class BehaviorTreeAI implements AIInputProvider {
   private kiteSignFrame: number = 0;
   private readonly ignoredLootUntilFrame = new Map<number, number>();
   private readonly ignoredEnemyUntilFrame = new Map<number, number>();
+  /**
+   * Short-lived latch for a corridor-clearing threat selected by Progress.
+   * Holds the same enemy across brief blocked/unblocked flicker so the AI does
+   * not bounce EXPLORE↔ENGAGE every few frames at a chokepoint.
+   */
+  private committedCorridorThreatEid: number | null = null;
+  private committedCorridorThreatUntilFrame: number = 0;
   private engageTargetEid: number | null = null;
   private engageNoProgressFrames: number = 0;
   private engageBestDistance: number = Number.POSITIVE_INFINITY;
@@ -700,6 +746,9 @@ export class BehaviorTreeAI implements AIInputProvider {
    */
   private dodgeVecX: number = 0;
   private dodgeVecY: number = 0;
+  // Previous fused heading — used for the continuity bonus to reduce oscillation.
+  private prevFusedDirX: number = 0;
+  private prevFusedDirY: number = 0;
   private acceptedQuestCount: number = 0;
   /**
    * Quest-giver detour hysteresis. Once {@link withQuestGiverDetour} ACCEPTS a
@@ -717,12 +766,15 @@ export class BehaviorTreeAI implements AIInputProvider {
   private committedDetourBestDistance: number = Number.POSITIVE_INFINITY;
   /** Consecutive polls with no improvement toward the committed NPC. Once it
    * exceeds {@link QUEST_GIVER_DETOUR_ABANDON_FRAMES} the CURRENT commitment is
-   * released. Note this only drops the latch — it does not blacklist the NPC, so
-   * if that NPC is still the nearest on-path candidate under the strict base cap,
-   * Block D may re-select it on a later poll, exactly as the pre-hysteresis
-   * baseline did. The valve therefore bounds a single sticky commitment, not the
-   * runner's total time near an unreachable NPC. */
+   * released and the NPC is placed into {@link npcApproachCooldowns} for
+   * {@link QUEST_GIVER_DETOUR_BLOCKED_COOLDOWN_FRAMES} frames to prevent the
+   * EXPLORE→ENGAGE→EXPLORE loop where Block D immediately re-commits the same NPC. */
   private committedDetourNoProgressFrames: number = 0;
+  /** Per-NPC suppression after a no-progress abandon: maps entity-id → frame at
+   * which it becomes re-committable.  Block D skips any NPC whose cooldown has
+   * not yet expired.  Block B (same-safe-room) bypasses this — in the safe room
+   * the NPC is clearly reachable.  Cleared on {@link reset}. */
+  private npcApproachCooldowns: Map<number, number> = new Map();
 
   constructor(config: AIConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -1208,6 +1260,37 @@ export class BehaviorTreeAI implements AIInputProvider {
           this.decision.reason = `${target.reason} — ${plan.reason}`;
           return BTStatus.SUCCESS;
         }
+        const committedBlockingThreat = this.resolveCommittedCorridorThreat(
+          ctx.world,
+          ctx.playerX,
+          ctx.playerY,
+        );
+        const blockingThreat = this.findBlockingCorridorThreat(
+          ctx.world,
+          ctx.playerX,
+          ctx.playerY,
+          target.x,
+          target.y,
+        );
+        const corridorThreat =
+          committedBlockingThreat ??
+          (blockingThreat &&
+          (this.moveWedgeFrames >= RISK_REWARD_BLOCKED_CORRIDOR_STUCK_FRAMES ||
+            blockingThreat.distance <= this.getEngageRadius(ctx.world) * 1.75)
+            ? blockingThreat
+            : null);
+        if (corridorThreat) {
+          this.committedCorridorThreatEid = corridorThreat.eid;
+          this.committedCorridorThreatUntilFrame =
+            ctx.world.frameCount + RISK_REWARD_BLOCKED_CORRIDOR_STUCK_FRAMES;
+          const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, corridorThreat);
+          this.decision.state = AIState.ENGAGE;
+          this.decision.targetEid = corridorThreat.eid;
+          this.decision.targetX = plan.targetX;
+          this.decision.targetY = plan.targetY;
+          this.decision.reason = `${target.reason} — corridor blocked, clearing threat first (${plan.reason})`;
+          return BTStatus.SUCCESS;
+        }
         this.decision.state = AIState.EXPLORE;
         this.decision.targetEid = target.eid;
         this.decision.targetX = target.x;
@@ -1227,6 +1310,17 @@ export class BehaviorTreeAI implements AIInputProvider {
       condition('Loot Nearby', (ctx) => {
         if (this.getCollapsePanicProfile(ctx.world).beeline) {
           return false;
+        }
+        if (ctx.healthPercent < this.config.retreatThreshold) {
+          const nearbyThreat = this.findNearestEnemy(
+            ctx.world,
+            ctx.playerX,
+            ctx.playerY,
+            this.config.retreatDangerRadius * RETREAT_HYSTERESIS_MULT,
+          );
+          if (nearbyThreat) {
+            return false;
+          }
         }
         const nearest = this.findNearestLoot(ctx.world, ctx.playerX, ctx.playerY);
         if (nearest && nearest.distance < this.config.scanRadius) {
@@ -2360,10 +2454,29 @@ export class BehaviorTreeAI implements AIInputProvider {
       state.moveY = 0;
     }
 
-    // Predictive safe-gap travel steering: for travel states, replace the raw
-    // objective heading (Track A) with a safe, forward-progressing arc that
-    // *dances around* perceived mobs — generalizing the ENGAGE kite's spacing to
-    // travel. Damage-agnostic (nothing here reads a hostile-damage multiplier).
+    const weights = this.getDynamicOpportunisticWeights(world);
+    const useRiskRewardFusedPathing = this.config.pathingMode === AIPathingMode.RISK_REWARD_FUSED;
+    if (useRiskRewardFusedPathing) {
+      // A/B pathing mode B: fuse Track A + Track B first, then let travel
+      // steering handle local execution. The fused heading scores candidate
+      // directions by objective progress, reward pull, and sampled overlap-danger
+      // so it prefers low-risk seams when moving through enemy pressure fields.
+      const fused = this.computeRiskRewardFusedHeading(
+        world,
+        playerX,
+        playerY,
+        state.moveX,
+        state.moveY,
+        weights,
+      );
+      state.moveX = fused.moveX;
+      state.moveY = fused.moveY;
+    }
+
+    // Predictive safe-gap travel steering: for travel states, replace the
+    // objective heading with a safe, forward-progressing arc that dances around
+    // perceived mobs. In risk/reward-fused mode the "objective heading" entering
+    // this step is already the Track A+Track B fused intent.
     let travelEmergency = false;
     this.lastTravelSteering = null;
     if (TRAVEL_STEERING_ENABLED && this.shouldTravelSteer(playerX, playerY)) {
@@ -2396,28 +2509,11 @@ export class BehaviorTreeAI implements AIInputProvider {
       }
     }
 
-    // Blend Track B opportunistic vectors additively into the Track A direction.
-    // The result is re-normalized to unit length if it exceeds 1 so the player
-    // moves at full speed regardless of blend magnitudes. The loot-detour pull
-    // and the (default-dormant) enemy-farm pull ride independent weights.
-    const weights = this.getDynamicOpportunisticWeights(world);
-    const blendX =
-      state.moveX +
-      this.dodgeVecX * weights.dodgeWeight +
-      this.opportunisticPullX * weights.collectPullWeight +
-      this.farmPullX * weights.farmPullWeight;
-    const blendY =
-      state.moveY +
-      this.dodgeVecY * weights.dodgeWeight +
-      this.opportunisticPullY * weights.collectPullWeight +
-      this.farmPullY * weights.farmPullWeight;
-    const blendLen = Math.hypot(blendX, blendY);
-    if (blendLen > 1) {
-      state.moveX = blendX / blendLen;
-      state.moveY = blendY / blendLen;
-    } else {
-      state.moveX = blendX;
-      state.moveY = blendY;
+    if (!useRiskRewardFusedPathing) {
+      // Legacy mode A: Track B blends AFTER travel steering.
+      const blend = this.blendWithTrackB(state.moveX, state.moveY, weights);
+      state.moveX = blend.moveX;
+      state.moveY = blend.moveY;
     }
 
     // Smooth the output direction so waypoint transitions and kite reversals
@@ -2647,10 +2743,217 @@ export class BehaviorTreeAI implements AIInputProvider {
     };
   }
 
+  private blendWithTrackB(
+    baseMoveX: number,
+    baseMoveY: number,
+    weights: { dodgeWeight: number; collectPullWeight: number; farmPullWeight: number },
+  ): { moveX: number; moveY: number } {
+    const blendX =
+      baseMoveX +
+      this.dodgeVecX * weights.dodgeWeight +
+      this.opportunisticPullX * weights.collectPullWeight +
+      this.farmPullX * weights.farmPullWeight;
+    const blendY =
+      baseMoveY +
+      this.dodgeVecY * weights.dodgeWeight +
+      this.opportunisticPullY * weights.collectPullWeight +
+      this.farmPullY * weights.farmPullWeight;
+    const blendLen = Math.hypot(blendX, blendY);
+    if (blendLen <= 1) {
+      return { moveX: blendX, moveY: blendY };
+    }
+    return { moveX: blendX / blendLen, moveY: blendY / blendLen };
+  }
+
+  private computeRiskRewardFusedHeading(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    baseMoveX: number,
+    baseMoveY: number,
+    weights: { dodgeWeight: number; collectPullWeight: number; farmPullWeight: number },
+  ): { moveX: number; moveY: number } {
+    const baseLen = Math.hypot(baseMoveX, baseMoveY);
+    if (baseLen <= TRAVEL_HEADING_EPSILON) {
+      return { moveX: 0, moveY: 0 };
+    }
+
+    const blended = this.blendWithTrackB(baseMoveX, baseMoveY, weights);
+    const blendedLen = Math.hypot(blended.moveX, blended.moveY);
+    if (blendedLen <= TRAVEL_HEADING_EPSILON) {
+      return { moveX: baseMoveX / baseLen, moveY: baseMoveY / baseLen };
+    }
+
+    const objectiveX = baseMoveX / baseLen;
+    const objectiveY = baseMoveY / baseLen;
+    const rewardX =
+      this.opportunisticPullX * weights.collectPullWeight + this.farmPullX * weights.farmPullWeight;
+    const rewardY =
+      this.opportunisticPullY * weights.collectPullWeight + this.farmPullY * weights.farmPullWeight;
+    const rewardLen = Math.hypot(rewardX, rewardY);
+    const rewardDirX = rewardLen > TRAVEL_HEADING_EPSILON ? rewardX / rewardLen : 0;
+    const rewardDirY = rewardLen > TRAVEL_HEADING_EPSILON ? rewardY / rewardLen : 0;
+
+    const threatPoints: { x: number; y: number }[] = [];
+    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
+      if (eid === undefined) continue;
+      if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
+      const ex = world.stores.position.x[eid] ?? 0;
+      const ey = world.stores.position.y[eid] ?? 0;
+      if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
+      // Enemies always move toward the player (flow-map driven) so projected
+      // position is always at least as dangerous as current.  Use it directly.
+      const vx = world.stores.velocity.x[eid] ?? 0;
+      const vy = world.stores.velocity.y[eid] ?? 0;
+      threatPoints.push({
+        x: ex + vx * RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES,
+        y: ey + vy * RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES,
+      });
+    }
+
+    const desiredX = blended.moveX / blendedLen;
+    const desiredY = blended.moveY / blendedLen;
+    let bestX = desiredX;
+    let bestY = desiredY;
+    let bestScore = Number.NEGATIVE_INFINITY;
+    for (const deg of RISK_REWARD_CANDIDATE_OFFSETS_DEG) {
+      const rad = (deg * Math.PI) / 180;
+      const c = Math.cos(rad);
+      const s = Math.sin(rad);
+      const dirX = desiredX * c - desiredY * s;
+      const dirY = desiredX * s + desiredY * c;
+
+      const sampleX = playerX + dirX * RISK_REWARD_DANGER_LOOKAHEAD_FT;
+      const sampleY = playerY + dirY * RISK_REWARD_DANGER_LOOKAHEAD_FT;
+      const floorMap = world.floorMap;
+      let danger = 0;
+      let wallAdjacent = false;
+
+      if (floorMap) {
+        // Multi-step raycast: detect if any step along the candidate ray enters a
+        // wall.  Marks wall-adjacent but does NOT set danger directly — walls alone
+        // produce zero danger; only wall + enemy = amplified danger.
+        const steps = [0.25, 0.5, 0.75, 1.0] as const;
+        for (const t of steps) {
+          if (
+            !floorMap.isPassableAt(sampleX * t + playerX * (1 - t), sampleY * t + playerY * (1 - t))
+          ) {
+            wallAdjacent = true;
+            break;
+          }
+        }
+
+        // Enemy threat accumulation against projected positions.
+        for (const threat of threatPoints) {
+          const dist = Math.hypot(threat.x - sampleX, threat.y - sampleY);
+          if (dist >= RISK_REWARD_DANGER_RADIUS_FT) continue;
+          const norm = 1 - dist / RISK_REWARD_DANGER_RADIUS_FT;
+          danger += norm * norm;
+        }
+
+        // Perpendicular wall-proximity: if either corridor wall is within
+        // RISK_REWARD_WALL_PROXIMITY_FT at the midpoint, mark wall-adjacent.
+        if (!wallAdjacent) {
+          const midX = playerX + dirX * RISK_REWARD_DANGER_LOOKAHEAD_FT * 0.5;
+          const midY = playerY + dirY * RISK_REWARD_DANGER_LOOKAHEAD_FT * 0.5;
+          const perpX = -dirY;
+          const perpY = dirX;
+          if (
+            !floorMap.isPassableAt(
+              midX + perpX * RISK_REWARD_WALL_PROXIMITY_FT,
+              midY + perpY * RISK_REWARD_WALL_PROXIMITY_FT,
+            ) ||
+            !floorMap.isPassableAt(
+              midX - perpX * RISK_REWARD_WALL_PROXIMITY_FT,
+              midY - perpY * RISK_REWARD_WALL_PROXIMITY_FT,
+            )
+          ) {
+            wallAdjacent = true;
+          }
+        }
+
+        // Apply wall amplifier: being trapped against a wall with an enemy is
+        // more dangerous than the same enemy in open space.  Empty corridors are fine.
+        if (wallAdjacent && danger > 0) {
+          danger *= RISK_REWARD_WALL_AMPLIFICATION;
+        }
+
+        // Unseen-area penalty: heading into fog-of-war is risky.
+        if (!floorMap.isVisibleAt(sampleX, sampleY)) {
+          danger += RISK_REWARD_FOG_DANGER;
+        }
+
+        // Door-crossing penalty.
+        const midX = playerX + dirX * RISK_REWARD_DANGER_LOOKAHEAD_FT * 0.5;
+        const midY = playerY + dirY * RISK_REWARD_DANGER_LOOKAHEAD_FT * 0.5;
+        const midTile = floorMap.worldToTile(midX, midY);
+        if (
+          floorMap.tileMap.isDoor(midTile.x, midTile.y) &&
+          !floorMap.isVisibleAt(sampleX, sampleY)
+        ) {
+          danger += RISK_REWARD_DOOR_DANGER;
+        }
+      } else {
+        // No floor map: enemy-only danger.
+        for (const threat of threatPoints) {
+          const dist = Math.hypot(threat.x - sampleX, threat.y - sampleY);
+          if (dist >= RISK_REWARD_DANGER_RADIUS_FT) continue;
+          const norm = 1 - dist / RISK_REWARD_DANGER_RADIUS_FT;
+          danger += norm * norm;
+        }
+      }
+
+      const progress = Math.max(0, dirX * objectiveX + dirY * objectiveY);
+      const reward =
+        rewardLen > TRAVEL_HEADING_EPSILON ? Math.max(0, dirX * rewardDirX + dirY * rewardDirY) : 0;
+      // `reward * rewardLen` carries raw pull magnitude; pull vectors are always
+      // unit-normalised (rewardLen ≤ ~0.57) so the term stays [0, 1]-bounded and
+      // comparable to progress/danger. Distance-weighted pull sources would break
+      // this invariant and should re-normalise before passing in.
+      const continuity =
+        this.prevFusedDirX !== 0 || this.prevFusedDirY !== 0
+          ? dirX * this.prevFusedDirX + dirY * this.prevFusedDirY
+          : 0;
+      const score =
+        progress * RISK_REWARD_W_PROGRESS +
+        reward * rewardLen * RISK_REWARD_W_REWARD -
+        danger * RISK_REWARD_W_DANGER +
+        continuity * RISK_REWARD_W_CONTINUITY;
+      if (score > bestScore) {
+        bestScore = score;
+        bestX = dirX;
+        bestY = dirY;
+      }
+    }
+
+    this.prevFusedDirX = bestX;
+    this.prevFusedDirY = bestY;
+    return { moveX: bestX, moveY: bestY };
+  }
+
   private getPlayerSpeedFtPerFrame(world: GameWorld, playerEid: number): number {
     return hasComponent(world.ecs, playerEid, Stats)
       ? (world.stores.stats.moveSpeed[playerEid] ?? PLAYER_SPEED)
       : PLAYER_SPEED;
+  }
+
+  private getKiteStepTuning(
+    world: GameWorld,
+    playerEid: number | undefined,
+  ): { stepFt: number; radialStepFt: number; strafeFt: number } {
+    const playerSpeedFtPerFrame =
+      playerEid !== undefined ? this.getPlayerSpeedFtPerFrame(world, playerEid) : PLAYER_SPEED;
+    const speedScale = playerSpeedFtPerFrame / PLAYER_SPEED;
+    const maxStepFt = Math.max(
+      DIRECT_MOVE_EPSILON_FT,
+      CLOSE_APPROACH_DIRECT_FT - DIRECT_MOVE_EPSILON_FT,
+    );
+    const stepFt = Math.max(DIRECT_MOVE_EPSILON_FT, Math.min(maxStepFt, KITE_STEP_FT * speedScale));
+    return {
+      stepFt,
+      radialStepFt: stepFt * (KITE_RADIAL_STEP_FT / KITE_STEP_FT),
+      strafeFt: stepFt * (KITE_STRAFE_FT / KITE_STEP_FT),
+    };
   }
 
   private getRunPlannerParams(playerSpeedFtPerFrame: number): RunPlannerParams {
@@ -2986,6 +3289,17 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (this.withinInteractionRange(nearestRelevant.distance)) {
       return target;
     }
+    // Cooldown guard: this NPC was recently abandoned after repeated failed approaches.
+    const cooldownUntil = this.npcApproachCooldowns.get(nearestRelevant.eid) ?? 0;
+    if (cooldownUntil > world.frameCount) {
+      return target;
+    }
+    // Enemy proximity guard: don't commit to a detour when a visible enemy is
+    // within NPC_APPROACH_THREAT_RADIUS_FT of the NPC — the path is actively blocked
+    // and we'd loop into EXPLORE→ENGAGE indefinitely. Let ENGAGE resolve it first.
+    if (this.isEnemyBlockingNpc(world, nearestRelevant.x, nearestRelevant.y)) {
+      return target;
+    }
 
     const viaNpcDistance =
       nearestRelevant.distance +
@@ -3007,6 +3321,112 @@ export class BehaviorTreeAI implements AIInputProvider {
    * fire, with no 1-frame "drop the NPC" gap. */
   private withinInteractionRange(distance: number): boolean {
     return distance < NPC_INTERACTION_RADIUS_FT;
+  }
+
+  /** True when the current progress direction is wall-adjacent at the player or
+   * midpoint, meaning the player is effectively threading a corridor/choke. */
+  private isCorridorDirection(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    dirX: number,
+    dirY: number,
+  ): boolean {
+    const floorMap = world.floorMap;
+    if (!floorMap) {
+      return false;
+    }
+    const perpX = -dirY;
+    const perpY = dirX;
+    for (const t of [0, 0.5] as const) {
+      const probeX = playerX + dirX * RISK_REWARD_DANGER_LOOKAHEAD_FT * t;
+      const probeY = playerY + dirY * RISK_REWARD_DANGER_LOOKAHEAD_FT * t;
+      if (
+        !floorMap.isPassableAt(
+          probeX + perpX * RISK_REWARD_WALL_PROXIMITY_FT,
+          probeY + perpY * RISK_REWARD_WALL_PROXIMITY_FT,
+        ) ||
+        !floorMap.isPassableAt(
+          probeX - perpX * RISK_REWARD_WALL_PROXIMITY_FT,
+          probeY - perpY * RISK_REWARD_WALL_PROXIMITY_FT,
+        )
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Returns the nearest visible enemy projected into the player's forward corridor
+   * when travelling toward a progress target through a choke. This is the signal
+   * for "stop trying to squeeze past and clear/backtrack first". */
+  private findBlockingCorridorThreat(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    targetX: number,
+    targetY: number,
+  ): WorldTarget | null {
+    const deltaX = targetX - playerX;
+    const deltaY = targetY - playerY;
+    const targetDist = Math.hypot(deltaX, deltaY);
+    if (targetDist <= TRAVEL_HEADING_EPSILON) {
+      return null;
+    }
+    const dirX = deltaX / targetDist;
+    const dirY = deltaY / targetDist;
+    if (!this.isCorridorDirection(world, playerX, playerY, dirX, dirY)) {
+      return null;
+    }
+
+    let best: WorldTarget | null = null;
+    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
+      if (eid === undefined) continue;
+      if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
+      const ex = world.stores.position.x[eid] ?? 0;
+      const ey = world.stores.position.y[eid] ?? 0;
+      if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
+      const vx = world.stores.velocity.x[eid] ?? 0;
+      const vy = world.stores.velocity.y[eid] ?? 0;
+      const projX = ex + vx * RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES;
+      const projY = ey + vy * RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES;
+      const relX = projX - playerX;
+      const relY = projY - playerY;
+      const forward = relX * dirX + relY * dirY;
+      if (
+        forward <= 0 ||
+        forward > Math.min(targetDist, RISK_REWARD_BLOCKED_CORRIDOR_THREAT_LOOKAHEAD_FT)
+      ) {
+        continue;
+      }
+      const lateral = Math.abs(relX * dirY - relY * dirX);
+      if (lateral > RISK_REWARD_BLOCKED_CORRIDOR_THREAT_WIDTH_FT) {
+        continue;
+      }
+      const dist = Math.hypot(projX - playerX, projY - playerY);
+      if (!best || dist < best.distance) {
+        best = { eid, x: ex, y: ey, distance: dist };
+      }
+    }
+    return best;
+  }
+
+  /** True if any alive, visible enemy is within NPC_APPROACH_THREAT_RADIUS_FT of
+   * the given NPC world position — meaning the path to that NPC is actively blocked.
+   * Used to prevent committing to (or honoring) a quest-giver detour when an enemy
+   * is parked in front of the NPC, which would loop EXPLORE→ENGAGE indefinitely. */
+  private isEnemyBlockingNpc(world: GameWorld, npcX: number, npcY: number): boolean {
+    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
+      if (eid === undefined) continue;
+      if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
+      const ex = world.stores.position.x[eid] ?? 0;
+      const ey = world.stores.position.y[eid] ?? 0;
+      if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
+      if (Math.hypot(ex - npcX, ey - npcY) < NPC_APPROACH_THREAT_RADIUS_FT) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Whether an NPC at (npcX, npcY) is eligible for interaction this frame — i.e.
@@ -3125,6 +3545,19 @@ export class BehaviorTreeAI implements AIInputProvider {
       this.releaseDetourCommitment();
       return null;
     }
+    // Enemy proximity early-release: if a visible enemy is blocking the NPC, drop
+    // the commitment immediately and record a cooldown — don't wait for the slow
+    // no-progress valve.  This prevents the EXPLORE→ENGAGE→EXPLORE loop where the
+    // player keeps re-committing to an NPC that an unkillable enemy is parked in
+    // front of.  The cooldown prevents instant Block-D re-commitment.
+    if (this.isEnemyBlockingNpc(world, x, y)) {
+      this.npcApproachCooldowns.set(
+        eid,
+        world.frameCount + QUEST_GIVER_DETOUR_BLOCKED_COOLDOWN_FRAMES,
+      );
+      this.releaseDetourCommitment();
+      return null;
+    }
     // No-progress abandon valve: release an unreachable / body-blocked / locked-out
     // committed NPC well under the floor-collapse deadline.
     if (distance < this.committedDetourBestDistance - ENGAGE_PROGRESS_EPSILON_FT) {
@@ -3133,6 +3566,10 @@ export class BehaviorTreeAI implements AIInputProvider {
     } else {
       this.committedDetourNoProgressFrames += 1;
       if (this.committedDetourNoProgressFrames > QUEST_GIVER_DETOUR_ABANDON_FRAMES) {
+        this.npcApproachCooldowns.set(
+          eid,
+          world.frameCount + QUEST_GIVER_DETOUR_BLOCKED_COOLDOWN_FRAMES,
+        );
         this.releaseDetourCommitment();
         return null;
       }
@@ -3891,7 +4328,9 @@ export class BehaviorTreeAI implements AIInputProvider {
       // Prefer a *nearby* pile we can realistically walk onto. The stuck handler
       // blacklists piles we get wedged against, so a deadlocked coin eventually
       // drops out of this scan and we fall through to hunting.
-      if (goldPile && goldPile.distance <= GOLD_FARM_COLLECT_RADIUS_FT) {
+      const shouldPrioritizeGoldPile =
+        goldPile !== null && goldPile.distance <= GOLD_FARM_COLLECT_RADIUS_FT;
+      if (shouldPrioritizeGoldPile && goldPile) {
         return maybeDetourToQuestGiver(
           this.createProgressTarget(
             goldPile.x,
@@ -4090,6 +4529,47 @@ export class BehaviorTreeAI implements AIInputProvider {
       y: ey,
       distance: Math.hypot(ex - playerX, ey - playerY),
     };
+  }
+
+  private resolveCommittedCorridorThreat(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+  ): WorldTarget | null {
+    const eid = this.committedCorridorThreatEid;
+    if (eid === null) {
+      return null;
+    }
+    if (world.frameCount > this.committedCorridorThreatUntilFrame) {
+      this.committedCorridorThreatEid = null;
+      this.committedCorridorThreatUntilFrame = 0;
+      return null;
+    }
+    if (!entityExists(world.ecs, eid) || !hasComponent(world.ecs, eid, Enemy)) {
+      this.committedCorridorThreatEid = null;
+      this.committedCorridorThreatUntilFrame = 0;
+      return null;
+    }
+    const health = world.stores.health.current[eid];
+    const ex = world.stores.position.x[eid];
+    const ey = world.stores.position.y[eid];
+    if (health === undefined || health <= 0 || ex === undefined || ey === undefined) {
+      this.committedCorridorThreatEid = null;
+      this.committedCorridorThreatUntilFrame = 0;
+      return null;
+    }
+    if (!this.canPerceiveWorldPosition(world, ex, ey)) {
+      this.committedCorridorThreatEid = null;
+      this.committedCorridorThreatUntilFrame = 0;
+      return null;
+    }
+    const distance = Math.hypot(ex - playerX, ey - playerY);
+    if (distance > this.getEngageRadius(world) * 2) {
+      this.committedCorridorThreatEid = null;
+      this.committedCorridorThreatUntilFrame = 0;
+      return null;
+    }
+    return { eid, x: ex, y: ey, distance };
   }
 
   private getEngageRadius(world: GameWorld): number {
@@ -4481,6 +4961,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerX: number,
     playerY: number,
     target: WorldTarget,
+    goalBias?: { x: number; y: number },
   ): { targetX: number; targetY: number; reason: string } {
     const weapon = getActiveWeapon(world);
     if (!weapon) {
@@ -4502,7 +4983,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       weapon.weaponType === WeaponType.THROWN ||
       weapon.weaponType === WeaponType.BEAM
     ) {
-      return this.planRangedEngagement(world, playerX, playerY, target, reachFt);
+      return this.planRangedEngagement(world, playerX, playerY, target, reachFt, goalBias);
     }
 
     if (weapon.weaponType !== WeaponType.MELEE) {
@@ -4517,7 +4998,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     // player is moving). Once inside it we KITE instead of parking.
     const strikeGateFt = reachFt * ATTACK_GATE_MULTIPLIER;
     if (target.distance <= strikeGateFt) {
-      return this.computeMeleeKiteTarget(world, playerX, playerY, target, reachFt);
+      return this.computeMeleeKiteTarget(world, playerX, playerY, target, reachFt, goalBias);
     }
 
     // Out of strike range: close in toward the orbit band (just inside the gate) so
@@ -4560,7 +5041,8 @@ export class BehaviorTreeAI implements AIInputProvider {
       const dx = ex - playerX;
       const dy = ey - playerY;
       const dist = Math.hypot(dx, dy);
-      if (dist > KITE_BACK_THREAT_RADIUS_FT || dist < 0.125) continue;
+      const threatBodyRadius = getBodyRadius(world, eid, 'BehaviorTreeAI.hasThreatFromBehind');
+      if (dist > KITE_BACK_THREAT_RADIUS_FT + threatBodyRadius || dist < 0.125) continue;
       // Dot < 0 means the enemy is behind the player relative to primary target.
       const dot = (dx / dist) * fwdNx + (dy / dist) * fwdNy;
       if (dot < 0) return true;
@@ -4594,7 +5076,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   /**
    * Thin ECS→pure-input wrapper around {@link pickSafeTravelHeading}. Reads
    * perceived hostiles, the player's speed, and a door-aware passability probe,
-   * then delegates the heading choice to the pure, deterministic, damage-agnostic
+   * then delegates the heading choice to the pure, deterministic, severity-aware
    * travel-steering module. All game state is read-only here.
    */
   private computeTravelSteering(
@@ -4640,6 +5122,11 @@ export class BehaviorTreeAI implements AIInputProvider {
     // of the AI uses, so steering never reacts to enemies the player can't see).
     const threats: TravelThreat[] = [];
     const enemies = query(world.ecs, [Enemy, Position, Velocity, Health]);
+    const playerBodyRadius = getBodyRadius(
+      world,
+      playerEid,
+      'BehaviorTreeAI.computeTravelSteering:player',
+    );
     for (const eid of enemies) {
       if (eid === undefined) {
         continue;
@@ -4655,12 +5142,20 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (!this.canPerceiveWorldPosition(world, ex, ey)) {
         continue;
       }
+      const enemyBodyRadius = getBodyRadius(
+        world,
+        eid,
+        'BehaviorTreeAI.computeTravelSteering:enemy',
+      );
+      const contactDamage = this.getProjectedEnemyContactDamage(world, playerEid, eid);
+      const contactSeverity = Math.max(1, contactDamage / DEFAULT_CONTACT_DAMAGE);
       threats.push({
         x: ex,
         y: ey,
         vx: world.stores.velocity.x[eid] ?? 0,
         vy: world.stores.velocity.y[eid] ?? 0,
-        bodyRadiusFt: TRAVEL_BODY_RADIUS_FT,
+        bodyRadiusFt: playerBodyRadius + enemyBodyRadius,
+        dangerWeight: Math.sqrt(contactSeverity),
       });
     }
 
@@ -4688,7 +5183,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     // spacing target toward the hard (contact) gap so the runner stops spending
     // time on wide avoidance arcs it can no longer afford and beelines to finish.
     // It still clears actual contact (hard-gap floor); only the *comfort* spacing
-    // is surrendered. Damage-agnostic — driven by remaining time, not hostile damage.
+    // is surrendered. Threat severity still comes from the per-enemy danger
+    // weights above; the panic ramp only changes how much comfort spacing we
+    // can afford as the deadline closes.
     const panicProfile = this.getCollapsePanicProfile(world);
     const panic = panicProfile.panic;
     const baseParams: TravelSteeringParams =
@@ -4733,6 +5230,26 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   /**
+   * Mirrors the player-vs-enemy contact path in damageSystem so travel steering
+   * can scale danger by the actual hit the player would take from touching this
+   * enemy right now.
+   */
+  private getProjectedEnemyContactDamage(
+    world: GameWorld,
+    playerEid: number,
+    enemyEid: number,
+  ): number {
+    const raw = hasComponent(world.ecs, enemyEid, Damage)
+      ? (world.stores.damage.amount[enemyEid] ?? 0)
+      : DEFAULT_CONTACT_DAMAGE;
+    const hostileMult = world.hostileDamageMultiplier ?? 1;
+    const armor = hasComponent(world.ecs, playerEid, Stats)
+      ? (world.stores.stats.armor[playerEid] ?? 0)
+      : 0;
+    return Math.max(1, raw * hostileMult - armor);
+  }
+
+  /**
    * Melee kite: advance/retreat along the enemy axis so the weapon lands reliably,
    * while adding a small lateral juke to stay a moving target. Full lateral orbit
    * is used only when another enemy is approaching from behind.
@@ -4753,6 +5270,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
     target: WorldTarget,
     reachFt: number,
+    _goalBias?: { x: number; y: number },
   ): { targetX: number; targetY: number; reason: string } {
     const readiness = getActiveWeaponReadiness(world);
     const ready = readiness?.ready ?? true;
@@ -4766,16 +5284,31 @@ export class BehaviorTreeAI implements AIInputProvider {
         ? Math.max(0, Math.min(1, readiness.remainingMs / readiness.cooldownMs))
         : 0;
 
+    const playerEid = query(world.ecs, [Player])[0];
+    const kiteStep = this.getKiteStepTuning(world, playerEid);
     const innerOrbitFallback = Math.max(DIRECT_MOVE_EPSILON_FT, reachFt * MELEE_HOLD_FRACTION);
     const swingRadius = reachFt;
     const strikeGate = reachFt * ATTACK_GATE_MULTIPLIER;
+    const playerBodyRadius =
+      playerEid !== undefined
+        ? getBodyRadius(world, playerEid, 'BehaviorTreeAI.computeMeleeKiteTarget:player')
+        : 0;
+    const targetBodyRadius = getBodyRadius(
+      world,
+      target.eid,
+      'BehaviorTreeAI.computeMeleeKiteTarget:target',
+    );
+    const contactSafeOrbit = Math.max(
+      DIRECT_MOVE_EPSILON_FT,
+      playerBodyRadius + targetBodyRadius + reachFt * MELEE_CONTACT_BUFFER_FRACTION,
+    );
     let innerOrbit: number;
     let outerOrbit: number;
-    if (CONTACT_SAFE_ORBIT_FT <= swingRadius) {
+    if (contactSafeOrbit <= swingRadius) {
       // Weapon out-reaches swarm body contact: anchor the micro-spacing band JUST
       // outside contact (strike, hits still land within the swing radius) and poke a
       // modest amount further out on cooldown (dodge), capped at the strike gate.
-      innerOrbit = Math.min(swingRadius, CONTACT_SAFE_ORBIT_FT);
+      innerOrbit = Math.min(swingRadius, contactSafeOrbit);
       outerOrbit = Math.min(strikeGate, innerOrbit + MELEE_DODGE_AMPLITUDE_FT);
     } else {
       // Very short weapon (e.g. knife, reach < contact): cannot poke from outside
@@ -4785,6 +5318,13 @@ export class BehaviorTreeAI implements AIInputProvider {
       outerOrbit = Math.max(innerOrbit, reachFt * MELEE_RECOVER_HOLD_FRACTION);
     }
     let desiredOrbit = innerOrbit + (outerOrbit - innerOrbit) * cooldownFrac;
+    if (cooldownFrac <= MELEE_SWING_COMMIT_WINDOW_FRACTION) {
+      const commitT = 1 - cooldownFrac / Math.max(MELEE_SWING_COMMIT_WINDOW_FRACTION, 1e-6);
+      desiredOrbit = Math.max(
+        DIRECT_MOVE_EPSILON_FT,
+        desiredOrbit - reachFt * MELEE_SWING_COMMIT_INSET_FRACTION * commitT,
+      );
+    }
 
     const enemyAttackFt = world.stores.enemyBehavior.attackRange[target.eid] ?? 0;
     // When wounded, prioritise not being hit: allow the orbit to expand all the way
@@ -4824,15 +5364,22 @@ export class BehaviorTreeAI implements AIInputProvider {
     const uy = ry / dist;
     // Radial correction toward the desired orbit radius (+ux pushes outward).
     const radialMag = Math.max(
-      -KITE_RADIAL_STEP_FT,
-      Math.min(KITE_RADIAL_STEP_FT, desiredOrbit - dist),
+      -kiteStep.radialStepFt,
+      Math.min(kiteStep.radialStepFt, desiredOrbit - dist),
     );
 
     // Use full lateral orbit only when an enemy is closing from behind; otherwise
     // favour forward/backward motion (radial) with a small lateral juke so the
     // weapon stays on target instead of constantly circling past it.
     const backThreat = this.hasThreatFromBehind(world, playerX, playerY, target);
-    const strafeFt = backThreat ? KITE_STEP_FT : KITE_STRAFE_FT;
+    const strafeFt = backThreat ? kiteStep.stepFt : kiteStep.strafeFt;
+    const nearbyGold = this.findNearestGold(world, playerX, playerY, this.config.scanRadius);
+    const nearbyLoot =
+      nearbyGold ??
+      (() => {
+        const loot = this.findNearestLoot(world, playerX, playerY);
+        return loot && loot.kind !== 'harvest' ? loot : null;
+      })();
 
     const buildStep = (sign: 1 | -1): { x: number; y: number } => {
       const tx = -uy * sign;
@@ -4840,38 +5387,58 @@ export class BehaviorTreeAI implements AIInputProvider {
       let sx = ux * radialMag + tx * strafeFt;
       let sy = uy * radialMag + ty * strafeFt;
       const slen = Math.hypot(sx, sy) || 1;
-      sx = (sx / slen) * KITE_STEP_FT;
-      sy = (sy / slen) * KITE_STEP_FT;
+      sx = (sx / slen) * kiteStep.stepFt;
+      sy = (sy / slen) * kiteStep.stepFt;
       return { x: sx, y: sy };
     };
 
-    let step = buildStep(this.kiteOrbitSign);
-    // Wall-aware juking: if the strafe direction is blocked, reverse so the player
-    // dodges along open space instead of grinding the wall.
-    if (
-      !hasClearLineOfSight(world.floorMap, playerX, playerY, playerX + step.x, playerY + step.y)
-    ) {
-      const flipped: 1 | -1 = this.kiteOrbitSign === 1 ? -1 : 1;
-      const flippedStep = buildStep(flipped);
-      if (
-        hasClearLineOfSight(
-          world.floorMap,
-          playerX,
-          playerY,
-          playerX + flippedStep.x,
-          playerY + flippedStep.y,
-        )
-      ) {
-        this.kiteOrbitSign = flipped;
-        this.kiteSignFrame = world.frameCount;
+    const currentSign = this.kiteOrbitSign;
+    const flipped: 1 | -1 = currentSign === 1 ? -1 : 1;
+    const currentStep = buildStep(currentSign);
+    const flippedStep = buildStep(flipped);
+    const currentPassable = hasClearLineOfSight(
+      world.floorMap,
+      playerX,
+      playerY,
+      playerX + currentStep.x,
+      playerY + currentStep.y,
+    );
+    const flippedPassable = hasClearLineOfSight(
+      world.floorMap,
+      playerX,
+      playerY,
+      playerX + flippedStep.x,
+      playerY + flippedStep.y,
+    );
+
+    let chosenSign = currentSign;
+    let step = currentStep;
+    if (!currentPassable && flippedPassable) {
+      chosenSign = flipped;
+      step = flippedStep;
+    } else if (currentPassable && flippedPassable && nearbyLoot && !backThreat) {
+      const currentLootDist = Math.hypot(
+        nearbyLoot.x - (playerX + currentStep.x),
+        nearbyLoot.y - (playerY + currentStep.y),
+      );
+      const flippedLootDist = Math.hypot(
+        nearbyLoot.x - (playerX + flippedStep.x),
+        nearbyLoot.y - (playerY + flippedStep.y),
+      );
+      if (flippedLootDist + 0.25 < currentLootDist) {
+        chosenSign = flipped;
         step = flippedStep;
       }
+    }
+    if (chosenSign !== this.kiteOrbitSign) {
+      this.kiteOrbitSign = chosenSign;
+      this.kiteSignFrame = world.frameCount;
     }
 
     return {
       targetX: playerX + step.x,
       targetY: playerY + step.y,
-      reason: `Kiting enemy at ${target.distance.toFixed(1)}ft (${ready ? 'strike' : 'dodge'}, orbit ${desiredOrbit.toFixed(1)}ft)`,
+      reason: `Kiting enemy at ${target.distance.toFixed(1)}ft (${ready ? 'strike' : 'dodge'}, orbit ${desiredOrbit.toFixed(1)}ft${nearbyLoot && !backThreat ? `, drifting to ${nearbyLoot.kind}` : ''})`,
     };
   }
 
@@ -4887,6 +5454,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
     target: WorldTarget,
     reachFt: number,
+    _goalBias?: { x: number; y: number },
   ): { targetX: number; targetY: number; reason: string } {
     const desiredOrbit = Math.max(
       CONTACT_SAFE_ORBIT_FT,
@@ -4955,6 +5523,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
     const ux = rx / dist;
     const uy = ry / dist;
+    const playerEid = query(world.ecs, [Player])[0];
+    const kiteStep = this.getKiteStepTuning(world, playerEid);
     // Micro-spacing: ease farther out while the shot is on cooldown, then settle
     // back to the standoff radius as it readies — the same in/out stutter the
     // melee kite uses, so every weapon keeps moving instead of holding a static
@@ -4968,13 +5538,13 @@ export class BehaviorTreeAI implements AIInputProvider {
     // Positive radialMag = push away from enemy (when too close).
     // Negative radialMag = nudge toward enemy (when slightly too far).
     const radialMag = Math.max(
-      -KITE_RADIAL_STEP_FT,
-      Math.min(KITE_RADIAL_STEP_FT, spacedOrbit - dist),
+      -kiteStep.radialStepFt,
+      Math.min(kiteStep.radialStepFt, spacedOrbit - dist),
     );
 
     // Prefer radial (forward/backward) motion; orbit fully only when flanked.
     const backThreat = this.hasThreatFromBehind(world, playerX, playerY, target);
-    const strafeFt = backThreat ? KITE_STEP_FT : KITE_STRAFE_FT;
+    const strafeFt = backThreat ? kiteStep.stepFt : kiteStep.strafeFt;
 
     const buildStep = (sign: 1 | -1): { x: number; y: number } => {
       const tx = -uy * sign;
@@ -4982,8 +5552,8 @@ export class BehaviorTreeAI implements AIInputProvider {
       let sx = ux * radialMag + tx * strafeFt;
       let sy = uy * radialMag + ty * strafeFt;
       const slen = Math.hypot(sx, sy) || 1;
-      sx = (sx / slen) * KITE_STEP_FT;
-      sy = (sy / slen) * KITE_STEP_FT;
+      sx = (sx / slen) * kiteStep.stepFt;
+      sy = (sy / slen) * kiteStep.stepFt;
       return { x: sx, y: sy };
     };
 
@@ -5245,6 +5815,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.stuckFrames = 0;
     this.ignoredLootUntilFrame.clear();
     this.ignoredEnemyUntilFrame.clear();
+    this.committedCorridorThreatEid = null;
+    this.committedCorridorThreatUntilFrame = 0;
     this.targetReachableCache.clear();
     this.engageTargetEid = null;
     this.engageNoProgressFrames = 0;
@@ -5310,5 +5882,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.committedDetourNpcEid = null;
     this.committedDetourBestDistance = Number.POSITIVE_INFINITY;
     this.committedDetourNoProgressFrames = 0;
+    this.npcApproachCooldowns.clear();
   }
 }

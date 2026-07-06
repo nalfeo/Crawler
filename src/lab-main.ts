@@ -7,6 +7,7 @@ import type { LabCategory } from './labs/registry.js';
 
 const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'ai-runner': '/src/labs/ai-runner-lab/index.ts',
+  'engage-orbit-debug-lab': '/src/labs/engage-orbit-debug-lab/index.ts',
   'bt-viz': '/src/labs/bt-viz-lab/index.ts',
   'bt-exploration': '/src/labs/bt-exploration-lab/index.ts',
   'collision-lab': '/src/labs/collision-lab/index.ts',
