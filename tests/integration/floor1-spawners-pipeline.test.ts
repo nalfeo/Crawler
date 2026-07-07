@@ -1,9 +1,9 @@
 /**
  * Floor 1 spawner wiring — integration guard.
  *
- * Floor 1 temporary policy: keep static spawner structures in the map, but do not
- * run `spawnerSystem` while it is broken. This test guards both real pipelines so
- * Floor 1 does not regress back to active spawning before the system is fixed.
+ * Floor 1 policy: keep static spawner structures in the map, but do not run
+ * `spawnerSystem`. This test guards both real pipelines so Floor 1 does not
+ * regress back to active spawning.
  *
  * This test drives the EXACT headless pipeline (`runSimulationStep` from
  * `src/game/ai/simulation-step.ts`) on a real Floor 1 world and proves no spawner

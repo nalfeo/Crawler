@@ -32,7 +32,7 @@ describe('createFloor1MainSceneOptions', () => {
   });
 
   it('does not wire spawnerSystem for floor1', () => {
-    // Floor 1 temporarily disables spawnerSystem while it is broken.
+    // Floor 1 policy keeps spawnerSystem disabled in visual preSystems.
     const preSystems = createFloor1MainSceneOptions().preSystems ?? [];
     const aiIndex = preSystems.indexOf(enemyAISystem);
     const spawnerIndex = preSystems.indexOf(spawnerSystem);

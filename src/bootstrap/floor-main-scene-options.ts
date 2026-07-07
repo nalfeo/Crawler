@@ -135,8 +135,7 @@ export function createFloorMainSceneOptions(floorId: string = 'floor1') {
       // visible when spawnerSystem chooses child spawn positions in the same
       // tick.
       spawnerArenaSystem,
-      // Floor 1 explicitly disables spawner spawning while spawnerSystem is being
-      // stabilized. Keep spawnerSystem wired on floors 2+.
+      // Floor 1 policy: disable spawnerSystem-driven spawning; keep it wired on floors 2+.
       ...(floor1Callbacks ? [] : [spawnerSystem]),
       floor1EnemyDirectorSystem,
     ],
