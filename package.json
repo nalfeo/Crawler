@@ -38,6 +38,7 @@
     "ai:hill-climb": "tsx scripts/agent/perf/hill-climb.ts",
     "ai:weapon-sweep": "tsx scripts/agent/perf/weapon-sweep.ts",
     "ai:winrate-sweep": "tsx scripts/agent/perf/winrate-sweep.ts",
+    "ai:ab-decision-mode": "tsx scripts/agent/perf/ab-decision-mode.ts",
     "sprites:extract-palette": "tsx scripts/sprites/extract-palette.ts",
     "sprites:run": "tsx scripts/sprites/cli.ts",
     "sprites:gallery": "tsx scripts/sprites/sidecar/launcher.ts",

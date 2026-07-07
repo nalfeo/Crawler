@@ -133,6 +133,26 @@ export interface Floor1RunPlan {
   readonly segments: readonly RunPlanSegment[];
 }
 
+/**
+ * Pure predicate: is this run plan time-pressured enough to trip the
+ * SLACK_AWARE monotone Track A filters? True when the plan's normalized
+ * {@link Floor1RunPlan.urgency} is at/above `urgencyThreshold`, OR slack has
+ * already gone negative ({@link Floor1RunPlan.slackMs} `< 0`). A `null` plan
+ * (no floor scenario / decision mode not computing one) is never urgent.
+ *
+ * Extracted as a pure function so the gate can be unit-tested in isolation and
+ * shared by any consumer; keeps `bt-ai-provider` free of inline threshold math.
+ */
+export function isRunPlanUrgent(
+  plan: Pick<Floor1RunPlan, 'urgency' | 'slackMs'> | null,
+  urgencyThreshold: number,
+): boolean {
+  if (!plan) {
+    return false;
+  }
+  return plan.urgency >= urgencyThreshold || plan.slackMs < 0;
+}
+
 const EPSILON = 1e-6;
 
 function clamp01(value: number): number {

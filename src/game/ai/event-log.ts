@@ -79,6 +79,12 @@ export interface SimEvent {
   remainingMs?: number | null;
   /** Whether the player was inside a safe room this sample (deadline paused). */
   inSafe?: boolean;
+  /** Run-plan slack (ms) this sample, when travelling under a Floor-1 run plan. */
+  slackMs?: number | null;
+  /** Run-plan urgency (0..1) this sample, when travelling under a Floor-1 run plan. */
+  urgency?: number | null;
+  /** A/B decision-mode axis the AI ran under (e.g. 'legacy' | 'slackAware'). */
+  decisionMode?: string;
   /** Optional annotation for non-sample events. */
   note?: string;
 }
