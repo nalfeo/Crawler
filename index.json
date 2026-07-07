@@ -44,6 +44,17 @@
     "path": "by-sha/fd5bdd58f74c6d2af1d24fc0008af858b9b927c6.json"
   },
   {
+    "commit": "81b5f6b2c309d2aedd9bfecb0700b0d9d8473349",
+    "commitDate": "2026-07-06T23:40:59-07:00",
+    "commitSubject": "docs(handoff): add triage session compliance artifacts (#840)",
+    "capturedAt": "2026-07-07T07:18:48.352Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28847169834",
+    "winRate": 0.8433333333333334,
+    "totalWins": 253,
+    "totalRuns": 300,
+    "path": "by-sha/81b5f6b2c309d2aedd9bfecb0700b0d9d8473349.json"
+  },
+  {
     "commit": "739f9e75bf81c7764f5ec191a558d9c0b1d718cd",
     "commitDate": "2026-07-06T22:19:40-07:00",
     "commitSubject": "feat(sprites): ingest and wire rat nest and slime pool assets (#837)",
