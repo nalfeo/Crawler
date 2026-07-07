@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { addEntity } from 'bitecs';
 import { createTestWorld } from '../helpers/world-factory.js';
 import type { GameWorld } from '../../src/core/world.js';
@@ -11,7 +11,12 @@ import {
   equip,
   previewEquipDelta,
 } from '../../src/core/systems/equipmentSystem.js';
-import { getEquipmentDefForItem } from '../../src/shared/equipmentDefs.js';
+import {
+  getEquipmentDefForItem,
+  _registerEquipmentDefForTest,
+  _clearEquipmentDefsForTest,
+} from '../../src/shared/equipmentDefs.js';
+import type { EquipmentItemDef } from '../../src/shared/equipment-types.js';
 import {
   DEFAULT_BASE_STATS,
   CORE_STAT_TO_SECONDARY,
@@ -122,6 +127,10 @@ describe('previewEquipDelta', () => {
     initializeBaseStats(world, entity);
   });
 
+  afterEach(() => {
+    _clearEquipmentDefsForTest();
+  });
+
   it('returns null for a non-equippable item id', () => {
     expect(previewEquipDelta(world, entity, 'definitely-not-a-real-item')).toBeNull();
   });
@@ -165,5 +174,60 @@ describe('previewEquipDelta', () => {
     const before = { ...world.stores.effectiveStats.armor };
     previewEquipDelta(world, entity, 'iron-breastplate');
     expect({ ...world.stores.effectiveStats.armor }).toEqual(before);
+  });
+
+  it('reports canEquip=false when the requirement is met only by the item being swapped out', () => {
+    // A signet requiring STR>=10 targets the ringLeft slot, which currently holds
+    // a +5 STR band (base STR 8 → live 13, so the requirement LOOKS satisfiable).
+    // But the swap removes the band first, dropping STR to 8, so the real equip
+    // would fail. The preview must use the POST-UNEQUIP basis, not live stats.
+    initializeBaseStats(world, entity, { strength: 8 });
+    const band: EquipmentItemDef = {
+      id: 'str-band',
+      name: 'Band of Might',
+      slots: ['ringLeft'],
+      statBonuses: { strength: 5 },
+      rarity: 'common',
+    };
+    expect(equip(world, entity, band, { force: true }).ok).toBe(true);
+    _registerEquipmentDefForTest({
+      id: 'heavy-signet',
+      name: 'Heavy Signet',
+      slots: ['ringLeft'],
+      statBonuses: { armor: 3 },
+      rarity: 'rare',
+      requirements: [{ type: 'minStat', stat: 'strength', value: 10 }],
+    });
+
+    const preview = previewEquipDelta(world, entity, 'heavy-signet')!;
+    expect(preview).not.toBeNull();
+    expect(preview.swappedOut.map((d) => d.id)).toEqual(['str-band']);
+    // Old (live-stats) basis would wrongly report true (13 >= 10). Correct
+    // post-unequip basis is 8 < 10 → not equippable.
+    expect(preview.canEquip).toBe(false);
+  });
+
+  it('reports canEquip=true when the requirement still holds on the post-unequip basis', () => {
+    // Signet requires only STR>=8 (base), which survives removing the band.
+    initializeBaseStats(world, entity, { strength: 8 });
+    const band: EquipmentItemDef = {
+      id: 'str-band',
+      name: 'Band of Might',
+      slots: ['ringLeft'],
+      statBonuses: { strength: 5 },
+      rarity: 'common',
+    };
+    expect(equip(world, entity, band, { force: true }).ok).toBe(true);
+    _registerEquipmentDefForTest({
+      id: 'light-signet',
+      name: 'Light Signet',
+      slots: ['ringLeft'],
+      statBonuses: { armor: 1 },
+      rarity: 'common',
+      requirements: [{ type: 'minStat', stat: 'strength', value: 8 }],
+    });
+
+    const preview = previewEquipDelta(world, entity, 'light-signet')!;
+    expect(preview.canEquip).toBe(true);
   });
 });

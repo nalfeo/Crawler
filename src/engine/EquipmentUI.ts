@@ -14,6 +14,7 @@
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
 import { fitScaleForBox, fitUiScale, getTextResolution, type ScreenBounds } from './ui-scale.js';
+import { getRenderScale } from './render-scale.js';
 import { GAME } from '../shared/constants.js';
 import {
   unequip,
@@ -126,6 +127,10 @@ export function createEquipmentUI(
   isTooltipTopmost(): boolean;
   getBagItemIds(): string[];
   getBagCellScreenBounds(index: number): ScreenBounds | null;
+  getBagColumnScreenBounds(): ScreenBounds;
+  scrollBag(rows: number): boolean;
+  getBagScrollRow(): number;
+  getBagMaxScrollRow(): number;
   previewBagItem(itemId: string | null): void;
   equipBagItem(itemId: string): boolean;
   destroy(): void;
@@ -379,6 +384,7 @@ export function createEquipmentUI(
   let bagCellBounds: (ScreenBounds | null)[] = [];
   let bagItemIds: string[] = [];
   let bagScrollRow = 0;
+  let bagMaxScroll = 0;
   let previewItemId: string | null = null;
   let tooltipBounds: ScreenBounds | null = null;
   const getPanelScreenBounds = (): ScreenBounds => ({
@@ -1156,6 +1162,7 @@ export function createEquipmentUI(
     const maxScroll = Math.max(0, totalRows - rowsVisible);
     if (bagScrollRow > maxScroll) bagScrollRow = maxScroll;
     if (bagScrollRow < 0) bagScrollRow = 0;
+    bagMaxScroll = maxScroll;
 
     if (rawSlots.length === 0) {
       const empty = crispText(
@@ -1355,6 +1362,36 @@ export function createEquipmentUI(
     }
   }
 
+  // Scroll the integrated bag column by whole rows, clamped to the last render's
+  // range. The integrated bag can exceed its visible rows (BAG_COLS=4), so
+  // without this the overflow was unreachable and could trap items off-screen.
+  function scrollBag(rows: number): boolean {
+    if (rows === 0) return false;
+    const next = Math.min(bagMaxScroll, Math.max(0, bagScrollRow + rows));
+    if (next === bagScrollRow) return false;
+    bagScrollRow = next;
+    invalidate();
+    return true;
+  }
+
+  const handleWheel = (
+    pointer: Phaser.Input.Pointer,
+    _currentlyOver: Phaser.GameObjects.GameObject[],
+    _deltaX: number,
+    deltaY: number,
+  ): void => {
+    if (!visible || bagMaxScroll <= 0 || deltaY === 0) return;
+    // Phaser pointer coords live in backing-store space (`[0, design × S]` after
+    // the HiDPI supersample); bagBg.getBounds() is design space. Convert the
+    // pointer to design space before hit-testing, or on HiDPI displays (S >= 2 —
+    // the common case) the wheel misses the bag entirely and fires over an
+    // unrelated centre region. Identity at S=1. Mirrors HudMinimap.toDesignSpace.
+    const s = getRenderScale(scene);
+    if (!Phaser.Geom.Rectangle.Contains(bagBg.getBounds(), pointer.x / s, pointer.y / s)) return;
+    scrollBag(deltaY > 0 ? 1 : -1);
+  };
+  scene.input.on('wheel', handleWheel);
+
   scene.scale.on('resize', applyLayout);
 
   return {
@@ -1371,10 +1408,18 @@ export function createEquipmentUI(
     isTooltipTopmost,
     getBagItemIds: () => [...bagItemIds],
     getBagCellScreenBounds: (index: number) => bagCellBounds[index] ?? null,
+    getBagColumnScreenBounds: (): ScreenBounds => {
+      const b = bagBg.getBounds();
+      return { x: b.x, y: b.y, width: b.width, height: b.height };
+    },
+    scrollBag: (rows: number) => scrollBag(rows),
+    getBagScrollRow: () => bagScrollRow,
+    getBagMaxScrollRow: () => bagMaxScroll,
     previewBagItem: (itemId: string | null) => previewBagItem(itemId),
     equipBagItem: (itemId: string) => equipBagItem(itemId),
     destroy() {
       scene.scale.off('resize', applyLayout);
+      scene.input.off('wheel', handleWheel);
       clearPool(slotObjects);
       clearPool(statObjects);
       clearPool(bagObjects);

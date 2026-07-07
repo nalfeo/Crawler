@@ -474,6 +474,77 @@ describe('inventory flow (e2e)', () => {
     ).not.toContain('iron-breastplate');
   });
 
+  it('scrolls the integrated bag column when it overflows its visible rows', async () => {
+    await loadUiProbeLab(page);
+    await hideLabChrome(page);
+    await probe.openEquipmentOnly(page);
+    await page.waitForTimeout(250);
+
+    // Force the bag to overflow: 40 equippable cells at 4 columns = 10 rows,
+    // far more than the visible rows, so the tail is only reachable by scrolling.
+    const total = 40;
+    await probe.seedOverflowBag(page, total);
+    await page.waitForTimeout(200);
+
+    const maxScroll = await probe.getEquipmentBagMaxScrollRow(page);
+    expect(maxScroll, 'a 40-cell bag must overflow its visible rows').toBeGreaterThan(0);
+    expect(await probe.getEquipmentBagScrollRow(page), 'the bag starts at the top row').toBe(0);
+
+    // Before scrolling: the first cell is visible, the last cell is off-screen
+    // (off-screen cells report null bounds by design).
+    expect(
+      await probe.getEquipmentBagCellBounds(page, 0),
+      'the first cell should be visible before scrolling',
+    ).not.toBeNull();
+    expect(
+      await probe.getEquipmentBagCellBounds(page, total - 1),
+      'the last cell should be off-screen before scrolling',
+    ).toBeNull();
+
+    // A real wheel event over the bag column scrolls it — the exact affordance
+    // that was missing (the integrated bag was previously unscrollable, trapping
+    // any gear beyond the visible rows).
+    const col = await probe.getEquipmentBagColumnBounds(page);
+    expect(col, 'the bag column should report screen bounds').not.toBeNull();
+    if (col) {
+      const rect = await getCanvasRect(page);
+      const game = await getGameSize(page);
+      const domCenter = boundsCenterScreen(rect, game, col);
+      await page.mouse.move(domCenter.x, domCenter.y);
+      await page.mouse.wheel(0, 240);
+      await page.waitForTimeout(150);
+      expect(
+        await probe.getEquipmentBagScrollRow(page),
+        'a downward wheel over the bag should advance the scroll row',
+      ).toBeGreaterThan(0);
+    }
+
+    // Programmatic scroll to the bottom reveals the previously-hidden tail cell
+    // and hides the head cell — proving the whole overflow is reachable.
+    await probe.scrollEquipmentBag(page, maxScroll);
+    await page.waitForTimeout(150);
+    expect(
+      await probe.getEquipmentBagScrollRow(page),
+      'scrolling by maxScroll should reach the last row',
+    ).toBe(maxScroll);
+    expect(
+      await probe.getEquipmentBagCellBounds(page, total - 1),
+      'the last cell should be visible after scrolling to the bottom',
+    ).not.toBeNull();
+    expect(
+      await probe.getEquipmentBagCellBounds(page, 0),
+      'the first cell should scroll off-screen at the bottom',
+    ).toBeNull();
+
+    // Scrolling back up returns to the top and re-clamps at row 0.
+    await probe.scrollEquipmentBag(page, -(maxScroll + 5));
+    await page.waitForTimeout(150);
+    expect(
+      await probe.getEquipmentBagScrollRow(page),
+      'scrolling up past the top should clamp at row 0',
+    ).toBe(0);
+  });
+
   it('hides the docked minimap while the equipment panel is open so it cannot overlap the bag', async () => {
     await loadUiProbeLab(page);
     await hideLabChrome(page);

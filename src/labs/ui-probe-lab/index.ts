@@ -128,6 +128,16 @@ export interface UiProbeApi {
   getEquipmentBagItemIds(): string[];
   /** Screen bounds of the bag cell at `index` (aligned to getEquipmentBagItemIds). */
   getEquipmentBagCellBounds(index: number): ScreenBounds | null;
+  /** Screen bounds of the whole integrated bag column (for wheel targeting). */
+  getEquipmentBagColumnBounds(): ScreenBounds | null;
+  /** Scroll the integrated bag column by whole rows (programmatic seam for wheel). */
+  scrollEquipmentBag(rows: number): void;
+  /** Current top row of the integrated bag column. */
+  getEquipmentBagScrollRow(): number;
+  /** Maximum scrollable row of the integrated bag column (0 when it fits). */
+  getEquipmentBagMaxScrollRow(): number;
+  /** Replace the bag with `count` equippable slots to force the column to overflow. */
+  seedOverflowBag(count: number): void;
   /** Deterministically show/clear the equip-delta preview for a bag item. */
   previewEquipmentBagItem(itemId: string | null): void;
   /** Equip a bag item straight from the integrated bag column. */
@@ -443,6 +453,24 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       this.inventoryUI?.refresh(this.world);
     }
 
+    /**
+     * Replace the bag contents with exactly `count` equippable slots so the
+     * integrated bag column overflows its visible rows. Each pushed slot is a
+     * distinct cell (filterEquippable keeps one entry per slot), so this is a
+     * deterministic way to reach the scroll path.
+     */
+    private seedOverflowBag(count: number): void {
+      const bag = this.world.inventories.get(this.playerEid);
+      if (!bag) return;
+      bag.slots.length = 0;
+      const gearId = GEAR_ITEM_IDS[0]!;
+      for (let i = 0; i < count; i += 1) {
+        bag.slots.push({ itemId: gearId, quantity: 1 });
+      }
+      this.inventoryUI?.refresh(this.world);
+      this.equipmentUI?.refresh(this.world);
+    }
+
     private attachProbe(): void {
       const api: UiProbeApi = {
         ready: () => this.built,
@@ -529,6 +557,13 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         getEquipmentBagItemIds: () => this.equipmentUI?.getBagItemIds() ?? [],
         getEquipmentBagCellBounds: (index: number) =>
           this.equipmentUI?.getBagCellScreenBounds(index) ?? null,
+        getEquipmentBagColumnBounds: () => this.equipmentUI?.getBagColumnScreenBounds() ?? null,
+        scrollEquipmentBag: (rows: number) => {
+          this.equipmentUI?.scrollBag(rows);
+        },
+        getEquipmentBagScrollRow: () => this.equipmentUI?.getBagScrollRow() ?? 0,
+        getEquipmentBagMaxScrollRow: () => this.equipmentUI?.getBagMaxScrollRow() ?? 0,
+        seedOverflowBag: (count: number) => this.seedOverflowBag(count),
         previewEquipmentBagItem: (itemId: string | null) =>
           this.equipmentUI?.previewBagItem(itemId),
         equipFromEquipmentBag: (itemId: string) => this.equipmentUI?.equipBagItem(itemId) ?? false,

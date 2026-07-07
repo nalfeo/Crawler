@@ -318,9 +318,29 @@ const EQUIPMENT_BY_ITEM_ID: ReadonlyMap<string, EquipmentItemDef> = (() => {
   return map;
 })();
 
+/**
+ * Test-only overlay for {@link getEquipmentDefForItem}. Lets unit tests register
+ * ad-hoc equipment defs (e.g. requirement-gated items, which the shipped catalog
+ * has none of) so requirement/swap edge cases are exercisable through the
+ * registry-backed `equipFromBag` / `previewEquipDelta` seams without shipping
+ * fake catalog items. Never populated in production. Mirrors the repo's existing
+ * `_resetCorpseStepTrackingForTest` test-seam convention.
+ */
+const TEST_EQUIPMENT_OVERRIDES = new Map<string, EquipmentItemDef>();
+
+/** Test-only: register an ad-hoc equipment def resolvable by its item id. */
+export function _registerEquipmentDefForTest(def: EquipmentItemDef): void {
+  TEST_EQUIPMENT_OVERRIDES.set(def.id, def);
+}
+
+/** Test-only: clear every ad-hoc equipment def registered via the test overlay. */
+export function _clearEquipmentDefsForTest(): void {
+  TEST_EQUIPMENT_OVERRIDES.clear();
+}
+
 /** Equipment definition for an inventory item slug, or undefined if not equippable. */
 export function getEquipmentDefForItem(itemId: string): EquipmentItemDef | undefined {
-  return EQUIPMENT_BY_ITEM_ID.get(itemId);
+  return TEST_EQUIPMENT_OVERRIDES.get(itemId) ?? EQUIPMENT_BY_ITEM_ID.get(itemId);
 }
 
 /** True when the given inventory item slug maps to a piece of equipment. */

@@ -177,6 +177,7 @@ function evaluateRequirements(
   world: GameWorld,
   entity: number,
   itemDef: EquipmentItemDef,
+  statsOverride?: Readonly<Record<StatId, number>>,
 ): EquipFailureReason[] {
   if (!itemDef.requirements || itemDef.requirements.length === 0) return [];
   const reasons: EquipFailureReason[] = [];
@@ -194,7 +195,14 @@ function evaluateRequirements(
         break;
       }
       case 'minStat': {
-        const current = stores.effectiveStats[req.stat]?.[entity] ?? 0;
+        // When a statsOverride is supplied (a hypothetical post-swap loadout),
+        // evaluate the requirement against it instead of the live effective
+        // stats — this is what lets equipFromBag/previewEquipDelta check a new
+        // item's requirement on the basis that will actually exist once the
+        // items it displaces are unequipped.
+        const current = statsOverride
+          ? (statsOverride[req.stat] ?? 0)
+          : (stores.effectiveStats[req.stat]?.[entity] ?? 0);
         if (current < req.value) {
           reasons.push({
             type: 'requirementFailed',
@@ -239,6 +247,60 @@ function evaluateRequirements(
   }
 
   return reasons;
+}
+
+// --- Swap feasibility (shared by equipFromBag + previewEquipDelta) ---
+
+/**
+ * Feasibility of equipping `def` on `entity` as a Diablo-style SWAP — i.e. after
+ * the items currently occupying `def.slots` are unequipped. The new item's
+ * requirements are evaluated against the POST-UNEQUIP stat basis (base + core
+ * points + the *retained* equipped items, WITHOUT `def`'s own bonuses), which is
+ * exactly the basis `equip`'s `canEquip` will see once the target slots are
+ * freed. Occupied-slot blockers are intentionally excluded because the swap
+ * frees those slots. Returns the blocking reasons — empty ⇒ the swap's forward
+ * `equip` is guaranteed to succeed.
+ *
+ * Shared by two callers so they can never disagree:
+ *   - `equipFromBag` uses it as a PRE-MUTATION gate, making the swap atomic:
+ *     an infeasible swap is refused before the bag/equipment are touched, so no
+ *     item can be removed-then-lost in a failed rollback.
+ *   - `previewEquipDelta` uses it for `canEquip`, so the inspector's "can equip"
+ *     verdict matches what the real equip will do (a requirement met only by the
+ *     very item being displaced correctly reads as NOT equippable).
+ */
+function swapEquipFailureReasons(
+  world: GameWorld,
+  entity: number,
+  def: EquipmentItemDef,
+): EquipFailureReason[] {
+  const state = getEquipmentState(world, entity);
+
+  const base = {} as Record<StatId, number>;
+  for (const statId of ALL_STAT_IDS) {
+    base[statId] = world.stores.baseStats[statId][entity] ?? 0;
+  }
+  const core = {} as Record<PrimaryStatId, number>;
+  for (const p of PRIMARY_STATS) {
+    core[p] = world.stores.coreStatPoints[p][entity] ?? 0;
+  }
+
+  // Instances currently occupying the new item's slots — these get unequipped
+  // by the swap, so their stat bonuses must NOT count toward the requirement.
+  const swappedInstanceIds = new Set<EquipmentInstanceId>();
+  if (state) {
+    for (const slotId of def.slots) {
+      if (!isValidSlotId(slotId)) continue;
+      const instId = state.equipped[slotId] ?? null;
+      if (instId !== null) swappedInstanceIds.add(instId);
+    }
+  }
+  const postUnequipSources: StatBonusSource[] = uniqueEquippedDefs(state)
+    .filter((d) => !swappedInstanceIds.has(d.instanceId))
+    .map((d) => ({ statBonuses: d.statBonuses }));
+  const postUnequipStats = computeEffectiveStatsFromLoadout(base, core, postUnequipSources);
+
+  return [...validateItemDef(def), ...evaluateRequirements(world, entity, def, postUnequipStats)];
 }
 
 // --- Public API ---
@@ -473,6 +535,17 @@ export function equipFromBag(
     return { ok: false, reasons: [{ type: 'invalidDef', message: `Item not in bag: ${itemId}` }] };
   }
 
+  // Pre-mutation feasibility gate (this is what makes the swap ATOMIC): evaluate
+  // the new item's validity + requirements against the POST-UNEQUIP stat basis —
+  // the exact basis `equip` will see once the target slots are freed. If the swap
+  // is infeasible we bail with the reasons here, BEFORE removing anything from the
+  // bag or unequipping anything, so no item can be removed-then-lost in a failed
+  // rollback. It also guarantees the forward `equip` below succeeds.
+  const infeasible = swapEquipFailureReasons(world, entity, def);
+  if (infeasible.length > 0) {
+    return { ok: false, reasons: infeasible };
+  }
+
   // Free every occupied target slot first (returning those items to the bag),
   // so `equip` below never trips the occupiedSlot guard. Internal equip/unequip
   // calls are forced because we already cleared the safe-context gate above.
@@ -496,7 +569,12 @@ export function equipFromBag(
     addItem(bag, itemId, 1);
     for (const swappedDef of swappedDefs) {
       removeItem(bag, swappedDef.id, 1);
-      equip(world, entity, swappedDef, internal);
+      const restored = equip(world, entity, swappedDef, internal);
+      // Defense-in-depth: the pre-mutation feasibility gate above makes a
+      // forward-equip failure (and thus this rollback) unreachable today, but if
+      // a future change reintroduces one, never silently delete a swapped item —
+      // return it to the bag instead of dropping it on the floor.
+      if (!restored.ok) addItem(bag, swappedDef.id, 1);
     }
     return { ok: false, reasons: result.reasons };
   }
@@ -579,21 +657,26 @@ export function previewEquipDelta(
   }
 
   // Hypothetical loadout: keep everything not displaced, add the new item.
-  const hypotheticalSources: StatBonusSource[] = currentDefs
+  const retainedSources: StatBonusSource[] = currentDefs
     .filter((d) => !swappedInstanceIds.has(d.instanceId))
     .map((d) => ({ statBonuses: d.statBonuses }));
-  hypotheticalSources.push({ statBonuses: def.statBonuses });
-  const hypotheticalStats = computeEffectiveStatsFromLoadout(base, core, hypotheticalSources);
+  const hypotheticalStats = computeEffectiveStatsFromLoadout(base, core, [
+    ...retainedSources,
+    { statBonuses: def.statBonuses },
+  ]);
 
   const deltas = {} as Record<StatId, number>;
   for (const statId of ALL_STAT_IDS) {
     deltas[statId] = hypotheticalStats[statId] - currentStats[statId];
   }
 
-  // A swap is allowed if the only blockers are occupied slots (which the swap
-  // frees). Requirement/validity blockers still disqualify it.
-  const check = canEquip(world, entity, def);
-  const canEquipViaSwap = check.reasons.every((reason) => reason.type === 'occupiedSlot');
+  // "Can equip via swap" must be evaluated against the POST-UNEQUIP basis (the
+  // retained items, WITHOUT the new item's own bonuses) — the same basis the
+  // real `equip` sees after the target slots are freed. Evaluating against live
+  // stats here would wrongly pass an item whose requirement is only met by the
+  // very item it would displace. Shared with equipFromBag's gate so the preview
+  // verdict can never disagree with the actual equip result.
+  const canEquipViaSwap = swapEquipFailureReasons(world, entity, def).length === 0;
 
   return { deltas, swappedOut, canEquip: canEquipViaSwap };
 }
