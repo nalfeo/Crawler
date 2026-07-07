@@ -6,7 +6,7 @@ decisions that affect **2+ systems** require an ADR (see the constitution and
 `.github/copilot-instructions.md`).
 
 - **Template:** `docs/knowledge/adr/TEMPLATE.md`
-- **Count:** 75 ADR files — 70 numbered (0001–0045, with number reuse and gaps in this index — see below) + 5 date-prefixed
+- **Count:** 76 ADR files — 71 numbered (0001–0046, with number reuse and gaps in this index — see below) + 5 date-prefixed
 - **Status convention:** `## Status` heading with one of
   `Proposed | Accepted | Deprecated | Superseded by NNNN`
 
@@ -32,7 +32,7 @@ hundreds of inbound references.
 ### Adding a new ADR
 
 1. Copy `TEMPLATE.md` to `NNNN-your-slug.md`, where `NNNN` is **the next unused
-   number** (currently **0046**).
+   number** (currently **0047**).
 2. Fill in `## Status`, `## Date`, `## Estimated Complexity`, `## Context`,
    `## Decision`, `## Consequences`.
 3. Always **link by slug**, never by bare number, so collisions stay
@@ -87,6 +87,7 @@ hundreds of inbound references.
 - [Floor 1 room-reachability guarantee & gate-stall fast-fail](0021-floor1-room-reachability-and-gate-stall-fastfail.md)
 - [Generic special-room perimeter sealing with door-conversion](0023-generic-special-room-sealing.md)
 - [Set-piece themed rooms](0024-set-piece-themed-rooms.md)
+- [Set-piece map-gen integration, NPC placement & sprite layering](0046-set-piece-mapgen-integration-npc-placement-layering.md) — resolves 0024's deferred map-gen wiring; adds `npcs[]`, core stamping unit, depth-straddling layering, and auto objective-anchor follow.
 - [Door-pointing welcome-sign wayfinding](0026-welcome-sign-wayfinding.md)
 - [Parameterized floor configuration system](0005-parameterized-floor-configuration.md) — floor1→floor params via floor-registry; enables multi-floor progression.
 - [Floor 2 family-territory & relationship architecture](0040-floor2-family-territory-and-relationship-architecture.md) — open cave system of feuding mob families, per-family player relationships, and a two-shape (sole-ally / total-war) win condition.
@@ -196,3 +197,4 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0043 | [Floor 2 Scenario Definition & Governor Sweep Wiring](0043-floor2-scenario-definition-and-governor-sweep-wiring.md)             | Accepted | 2026-07-03 |
 | 0044 | [Spawner Battle Arena](0044-spawner-battle-arena.md)                                                                            | Accepted | 2026-07-04 |
 | 0045 | [AI Arena Lock-in Priority](0045-ai-arena-lockin-priority.md)                                                                   | Accepted | 2026-07-04 |
+| 0046 | [Set-Piece Map-Gen Integration, NPC Placement & Sprite Layering](0046-set-piece-mapgen-integration-npc-placement-layering.md)   | Accepted | 2026-07-06 |
