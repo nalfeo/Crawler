@@ -1,11 +1,12 @@
 ## Summary
 
-Implemented one clean, main-based triage-fixes slice with strict scope discipline across four requested buckets:
+This PR adds only the required session-compliance artifacts for the triage-fixes session:
 
-- check-in reliability hardening (`--no-verify` in throwaway worktree commit/push path),
-- resilient githook Prettier resolution for worktree/nested repo layouts,
-- status-correct placeholder filtering for approved-art parsing in plan/workflow surfaces,
-- wide-sprite preview rendering fix for run-candidate/run-detail previews (preserve natural aspect ratio).
+- handoff document,
+- review ledger,
+- guard-telemetry capture summary.
+
+The actual triage code fixes were merged separately in PR #830.
 
 ## Systems touched
 
@@ -13,17 +14,9 @@ sprite-pipeline, sprite-workflow, devtools, ci-policy
 
 ## Files touched
 
-- `.githooks/pre-commit`
-- `.githooks/pre-push`
-- `scripts/sprites/asset-plan.ts`
-- `scripts/sprites/checkin.ts`
-- `src/devtools-main.ts`
-- `src/devtools/art-plan-model.ts`
-- `tests/unit/devtools-art-plan-model.test.ts`
-- `tests/unit/devtools-main-wide-sprite-preview-guards.test.ts`
-- `tests/unit/sprites/asset-plan.test.ts`
-- `tests/unit/sprites/checkin.test.ts`
+- `docs/knowledge/handoffs/2026-07-07-clean-triage-fixes-pr.md`
 - `docs/knowledge/review-ledgers/2026-07-07-clean-triage-fixes-pr.review-ledger.json`
+- `docs/knowledge/metrics/guard-telemetry/2026-07-07-clean-triage-fixes-pr.json`
 
 ## Verification run
 
@@ -38,5 +31,4 @@ sprite-pipeline, sprite-workflow, devtools, ci-policy
 
 ## Recommended next steps
 
-- Merge this PR as a single coherent triage bundle.
-- Optionally run `npm run telemetry:capture -- clean-triage-fixes-pr` to commit non-blocking guard telemetry for this session.
+- Merge this docs/compliance follow-up PR.
