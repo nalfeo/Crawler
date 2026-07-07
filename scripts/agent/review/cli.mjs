@@ -128,7 +128,8 @@ function cmdInit(flags) {
     return 1;
   }
   writeJson(path, ledger);
-  console.log(`Created ${path} (apples=${apples}, required stages: ${required.join(', ')})`);
+  const stagesLabel = required.length > 0 ? required.join(', ') : '(none)';
+  console.log(`Created ${path} (apples=${apples}, required stages: ${stagesLabel})`);
   return 0;
 }
 

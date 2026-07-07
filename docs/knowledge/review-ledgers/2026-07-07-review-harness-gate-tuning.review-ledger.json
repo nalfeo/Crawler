@@ -1,0 +1,49 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-07",
+  "session_slug": "review-harness-gate-tuning",
+  "task_title": "Cap review loops with human escalation + raise plan-review floor to 3 apples",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "notes": "2 blocking + 2 non-blocking, all resolved by STRENGTHENING: (1) downward rescore requires pruning incomplete higher-tier scaffolds - documented + tested, present-stage validation kept; (2) escalation tightened: after_round===rounds.length, last round non-clean, resolved<concerns/valid; (3) per-round shape scoped to escalation path only so clean path stays backward-compatible; (4) orphaned rescore_reason rejected."
+    },
+    "dual_plan_synthesis": {
+      "completed": true,
+      "plan_models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+      "judge_model": "claude-opus-4.8",
+      "notes": "Two plans synthesized; per-round shape validation in both paths, after_round in [2,rounds.length], no rescore CLI cmd, mechanical persona propagation."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ],
+      "notes": "1 round, model claude-sonnet-4.6. Verdict: clean, no significant issues; reviewer executed the code + confirmed all 124 committed ledgers still validate (backward-compat) and all 8 checklist items (discriminator blocks null/{}/wrong-typed escalation; round-1 escalation rejected; clean path unchanged; downward-only rescore; adjudicator_model required on both paths). One sub-threshold observation (missing explicit tests for escalated_to_human:{} and wrong-typed after_round) resolved by adding 2 coverage tests."
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
