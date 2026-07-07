@@ -74,6 +74,7 @@ export type RerunErrorKind =
   | 'sheet-not-found'
   | 'unsupported-sheet-filename'
   | 'slice-failed'
+  | 'variant-index-out-of-range'
   | 'variant-count-mismatch'
   | 'processed-missing';
 
@@ -255,6 +256,17 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
 
   const selectedIndexSet =
     args.variantIndexes && args.variantIndexes.length > 0 ? new Set(args.variantIndexes) : null;
+  if (selectedIndexSet) {
+    const invalidIndex = Array.from(selectedIndexSet).find(
+      (index) => index < 0 || index >= sliced.length,
+    );
+    if (invalidIndex !== undefined) {
+      throw new RerunError(
+        'variant-index-out-of-range',
+        `variantIndexes contains out-of-range index ${invalidIndex}; expected 0..${sliced.length - 1}`,
+      );
+    }
+  }
   const priorEntriesByIndex = new Map<number, RunSummaryEntry>(
     summary.candidates.map((entry) => [entry.index, entry]),
   );
