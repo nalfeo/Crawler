@@ -13,7 +13,8 @@
   },
   "sensors": {
     "edge": { "allowMainTouch": true },
-    "anchor": { "derive": true, "bandRows": 8, "centerToleranceX": 8 }
+    "anchor": { "derive": true, "bandRows": 8, "centerToleranceX": 8 },
+    "opaqueRatio": { "disabled": true }
   },
   "minVariations": 2,
   "judge": { "enabled": true, "maxVariants": 16 }
