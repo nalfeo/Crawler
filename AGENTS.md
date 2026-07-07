@@ -56,9 +56,11 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Sprite ingest once      | `npm run sprites:ingest-once`      |
 | Sprite sync catalog     | `npm run sprites:sync-catalog`     |
 | Sprite metadata         | `npm run sprites:metadata`         |
+| Scope changed files     | `npm run scope`                    |
 | Fast verify             | `npm run verify:fast`              |
 | Full verify             | `npm run verify`                   |
 | Full verify + headless  | `VERIFY_FULL=1 npm run verify`     |
+| Full verify + knip      | `VERIFY_KNIP=1 npm run verify`     |
 | PR prereq check         | `npm run verify:pr-prereqs`        |
 | Guard telemetry capture | `npm run telemetry:capture`        |
 | Full verify + coverage  | `VERIFY_COVERAGE=1 npm run verify` |
@@ -70,6 +72,26 @@ The sole maintainer works best answering questions one at a time rather than wri
 
 For sprite workflow details and when to use sprite commands, see
 `scripts/sprites/` for implementation details or `docs/knowledge/game-design/art-style-guide.md` for art context.
+
+## Scoping heavy validation (local)
+
+Heavy discretionary runs are the biggest source of wasted local time. Run `npm run scope`
+(a working-tree-aware wrapper over the CI `detect-art-only.sh` classifier) and gate the
+expensive checks on its flags. It prints `art_only` / `docs_only` / `gameplay_safe` for the
+union of your committed branch changes **and** uncommitted work; it fails safe (all-false →
+run everything) when it can't resolve a merge base.
+
+| Heavy run                          | Run it locally only when…                                       |
+| ---------------------------------- | --------------------------------------------------------------- |
+| Headless Floor-1 (`VERIFY_FULL=1`) | `scope` shows `gameplay_safe=false` (else the sim can't change) |
+| Weapon sweeps (`ai:weapon-sweep`)  | touching `src/core`, `src/game/ai`, or balance data             |
+| Visual review (`review:visual`)    | a changed **UI surface** is in scope                            |
+| `npm run knip` / `VERIFY_KNIP=1`   | refactoring or removing exports/deps                            |
+
+CI still enforces the real gates on non-`gameplay_safe` PRs and on main-push, so scoping
+these **locally** never weakens a required check — it just skips work that provably can't
+fail. `verify:fast` already uses `scope` internally to skip the two headless-sim coverage
+checks on a `gameplay_safe` change set.
 
 ## Server Launch Diagnostics
 
@@ -163,6 +185,7 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
   2. Run `gh run list --branch <branch>` then `gh run view <run-id> --log-failed` to read actual error output.
   3. Fix the underlying CI failure, then re-run `gh pr merge --auto --squash`.
 - Only stop and report to the user if `gh pr merge` itself explicitly states a review is required.
+- **Batch review fixes into one push per round.** Each push re-triggers the full merge-gate CI (~4.7 runs/branch historically). Accumulate all fixes for a review round, run `verify:fast` once, then push once — don't push per-fix. Rely on the armed `--auto --squash` merge; do not add manual poll/wait loops.
 
 ### Resolving addressed review comments
 
@@ -180,14 +203,19 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 
 ## Known Environment Quirks
 
-- **`scripts/agent/lab-gate-check.sh` is pathologically slow (~50 s/system) on
-  Windows Git Bash.** The check forks a subprocess per system, and Windows
-  Git Bash's per-fork overhead dominates the total. Independently
-  rediscovered in ≥ 3 handoffs (`mana-and-abilities`,
-  `headless-runner-pathfinding-slowdown`, `ai-exploration-kernels`). Run it
-  on CI or in WSL locally; do not add "the lab gate is slow" to the handoff
-  again.
+- **`scripts/agent/lab-gate-check.sh` is slow on Windows Git Bash.** It was
+  refactored to O(systems + labs) (lab base-names are precomputed once via bash
+  parameter expansion instead of forking `basename`/`sed`/`tr` per system×lab
+  pair), which cuts the fork count sharply — but per-fork overhead on Windows
+  Git Bash still makes it the slowest local check. CI enforces it (blocking,
+  `check-format-and-labs`), so **do not run it locally on Windows** — run it on
+  CI or in WSL. Independently rediscovered in ≥ 3 handoffs (`mana-and-abilities`,
+  `headless-runner-pathfinding-slowdown`, `ai-exploration-kernels`); do not add
+  "the lab gate is slow" to the handoff again.
   <!-- Source handoff: 2026-06-17-headless-ai-runner.md -->
+
+- **`npm run knip` in full `verify` is opt-in** (`VERIFY_KNIP=1`). It's advisory
+  in CI regardless, so run it locally only when refactoring/removing exports.
 
 ## Tech Stack
 
