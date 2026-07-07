@@ -3136,6 +3136,7 @@ function render(): void {
   let pendingPostprocessMode: 'default' | 'replace' | 'reset' = 'default';
   let manualAnchorOverride: ManualAnchorState | null = null;
   let facingDirection: FacingDirection = 'right';
+  let applyScopeSelection: 'variant' | 'all' = 'variant';
   let pendingManualAnchorClear = false;
   let derivedAnchorForDebugVariant: AnchorMarkerState | null = null;
   let queueState: QueueState = createEmptyQueue();
@@ -3345,7 +3346,7 @@ function render(): void {
     manualAnchorXInput.value = manualAnchorOverride ? String(manualAnchorOverride.x) : '';
     manualAnchorYInput.value = manualAnchorOverride ? String(manualAnchorOverride.y) : '';
     facingDirectionSelect.value = facingDirection;
-    applyScopeSelect.value = manualAnchorOverride?.applyToAllVariants === true ? 'all' : 'variant';
+    applyScopeSelect.value = applyScopeSelection;
     resetAnchorBtn.disabled = manualAnchorOverride === null && !pendingManualAnchorClear;
     finalAdjustStatus.textContent = manualAnchorOverride
       ? `Anchor set at (${manualAnchorOverride.x}, ${manualAnchorOverride.y}).`
@@ -3414,7 +3415,7 @@ function render(): void {
       variantIndex: debugTarget.variantIndex,
       x,
       y,
-      ...(applyScopeSelect.value === 'all' ? { applyToAllVariants: true } : {}),
+      ...(applyScopeSelection === 'all' ? { applyToAllVariants: true } : {}),
     };
     syncTweakInputsFromState();
     finalAdjustStatus.textContent = `Anchor set to (${x}, ${y}). Click Apply changes to persist.`;
@@ -3424,16 +3425,17 @@ function render(): void {
   manualAnchorXInput.addEventListener('change', syncManualAnchorFromInputs);
   manualAnchorYInput.addEventListener('change', syncManualAnchorFromInputs);
   applyScopeSelect.addEventListener('change', () => {
+    applyScopeSelection = applyScopeSelect.value === 'all' ? 'all' : 'variant';
     if (manualAnchorOverride) {
       pendingPostprocessMode = 'replace';
       manualAnchorOverride = {
         variantIndex: manualAnchorOverride.variantIndex,
         x: manualAnchorOverride.x,
         y: manualAnchorOverride.y,
-        ...(applyScopeSelect.value === 'all' ? { applyToAllVariants: true } : {}),
+        ...(applyScopeSelection === 'all' ? { applyToAllVariants: true } : {}),
       };
       syncTweakInputsFromState();
-      finalAdjustStatus.textContent = `Anchor scope set to ${applyScopeSelect.value === 'all' ? 'all variants' : 'current variant'}. Click Apply changes to persist.`;
+      finalAdjustStatus.textContent = `Anchor scope set to ${applyScopeSelection === 'all' ? 'all variants' : 'current variant'}. Click Apply changes to persist.`;
       finalAdjustStatus.style.color = '#93c5fd';
       rerenderDebuggerAfterTweaks();
     }
@@ -5643,7 +5645,7 @@ function render(): void {
           variantIndex: debugTarget.variantIndex,
           x,
           y,
-          ...(applyScopeSelect.value === 'all' ? { applyToAllVariants: true } : {}),
+          ...(applyScopeSelection === 'all' ? { applyToAllVariants: true } : {}),
         };
         pendingManualAnchorClear = false;
         syncTweakInputsFromState();
@@ -5706,7 +5708,7 @@ function render(): void {
         }
         const hasManualAnchor = manualAnchorOverride !== null;
         const currentManualAnchor = manualAnchorOverride;
-        const applyToAll = applyScopeSelect.value === 'all';
+        const applyToAll = applyScopeSelection === 'all';
         finalAdjustStatus.textContent = 'Applying…';
         finalAdjustStatus.style.color = '#93c5fd';
         applyChangesBtn.disabled = true;
@@ -5934,6 +5936,7 @@ function render(): void {
         const briefPathStr =
           typeof briefPath === 'string' && briefPath.length > 0 ? briefPath : null;
         facingDirection = 'right';
+        applyScopeSelection = 'variant';
         manualAnchorOverride = null;
         pendingManualAnchorClear = false;
         derivedAnchorForDebugVariant = null;
@@ -5982,6 +5985,10 @@ function render(): void {
               }
             }
             const facing = (post as { facing?: unknown }).facing;
+            const facingApplyToAll =
+              facing &&
+              typeof facing === 'object' &&
+              (facing as { applyToAllVariants?: unknown }).applyToAllVariants === true;
             if (facing && typeof facing === 'object') {
               const direction = (facing as { direction?: unknown }).direction;
               if (direction === 'left' || direction === 'right') {
@@ -5989,12 +5996,14 @@ function render(): void {
               }
             }
             const manual = (post as { manualAnchor?: unknown }).manualAnchor;
+            let manualApplyToAll = false;
             if (manual && typeof manual === 'object') {
               const variantIndex = (manual as { variantIndex?: unknown }).variantIndex;
               const x = (manual as { x?: unknown }).x;
               const y = (manual as { y?: unknown }).y;
               const applyToAllVariants =
                 (manual as { applyToAllVariants?: unknown }).applyToAllVariants === true;
+              manualApplyToAll = applyToAllVariants;
               if (
                 typeof variantIndex === 'number' &&
                 typeof x === 'number' &&
@@ -6008,6 +6017,7 @@ function render(): void {
                 };
               }
             }
+            applyScopeSelection = manualApplyToAll || facingApplyToAll ? 'all' : 'variant';
             syncTweakInputsFromState();
           }
         }

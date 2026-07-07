@@ -172,6 +172,42 @@ describe('POST /api/runs/:briefId/:runId/postprocess', () => {
     });
     expect(body.summary.postprocessOverrides?.facing?.applyToAllVariants).toBeUndefined();
   });
+
+  it('clears persisted facing override when payload sets facing to null', async () => {
+    const seed = await setup();
+    const baseline = await app!.inject({
+      method: 'POST',
+      url: `/api/runs/${seed.briefId}/${seed.runId}/postprocess`,
+      headers: { 'content-type': 'application/json' },
+      payload: {},
+    });
+    const chosenIndex = baseline.json().summary?.chosen?.index ?? 0;
+    const setFacing = await app!.inject({
+      method: 'POST',
+      url: `/api/runs/${seed.briefId}/${seed.runId}/postprocess`,
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        mode: 'replace',
+        options: { background: { colorToleranceSq: 4200, fringeToleranceSq: 12345 } },
+        facing: { variantIndex: chosenIndex, direction: 'left' },
+      },
+    });
+    expect(setFacing.statusCode).toBe(200);
+    expect(setFacing.json().summary.postprocessOverrides?.facing?.direction).toBe('left');
+
+    const clearFacing = await app!.inject({
+      method: 'POST',
+      url: `/api/runs/${seed.briefId}/${seed.runId}/postprocess`,
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        mode: 'replace',
+        options: { background: { colorToleranceSq: 4200, fringeToleranceSq: 12345 } },
+        facing: null,
+      },
+    });
+    expect(clearFacing.statusCode).toBe(200);
+    expect(clearFacing.json().summary.postprocessOverrides?.facing).toBeNull();
+  });
 });
 
 describe('POST /api/runs/:briefId/:runId/judge', () => {
