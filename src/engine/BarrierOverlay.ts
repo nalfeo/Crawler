@@ -26,7 +26,12 @@ import { createLogger } from '../shared/logger.js';
 
 const logger = createLogger('engine:barrier-overlay');
 
-/** Depth: above terrain (-20), below doors (-19), well below entities. */
+/**
+ * Depth: above terrain (-20) AND above doors (-19) so a sealed-room doorway
+ * plug reads as an energy seal *over* the closed door, while still sitting
+ * well below entities (0+). The open-fence ring wall is drawn in open space
+ * where door depth is moot.
+ */
 const BARRIER_OVERLAY_DEPTH = -18;
 
 /** Fallback tint by barrier kind (used when the sprite frame is unavailable). */

@@ -96,7 +96,7 @@ export function attachBarriersToFloorMap(world): void;
 
 ### Rendering
 
-`src/engine/BarrierOverlay.ts` is a per-frame layer. On `update()` it compares `world.barriers.version` against its cached version and rebuilds a Phaser `Rectangle` per barrier tile (kind-tinted: cyan for `fence`, purple for `forcefield`, orange for `wall`) when the version changes. Depth `BARRIER_OVERLAY_DEPTH = -18` sits above terrain (-20) and below doors (-19). It hooks into `MainGameScene` alongside the other overlay batches. Because barriers are a data primitive rather than a system, the renderer only needs to subscribe to the registry — there is no per-frame system tick to schedule.
+`src/engine/BarrierOverlay.ts` is a per-frame layer. On `update()` it compares `world.barriers.version` against its cached version and, when it changed, rebuilds the barrier visuals: a kind-tinted Phaser `Rectangle` per barrier _tile_ (fence green, forcefield blue, wall tan), plus a smooth procedurally-stroked circle for each analytic ring-WALL `shape` (the open-fence cage — no blocky tiles). Depth `BARRIER_OVERLAY_DEPTH = -18` sits above terrain (-20) and above doors (-19), so a sealed-room doorway plug reads as an energy seal _over_ the closed door, while staying well below entities. The overlay **deliberately draws primitives (rectangles + stroked circles), not a tile sprite**: the barrier must render in tests / headless / early-boot scenes where the Kenney atlas isn't loaded, so it never couples to the terrain spritesheet. It hooks into `MainGameScene` alongside the other overlay batches. Because barriers are a data primitive rather than a system, the renderer only needs to subscribe to the registry — there is no per-frame system tick to schedule.
 
 ### Spawner arena refactor
 
