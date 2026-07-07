@@ -15,6 +15,7 @@ import {
   XpGem,
 } from '../../src/core/components.js';
 import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
+import { RAT_BRUTE_TINT } from '../../src/engine/phaser-bridge/sprite-kind.js';
 import { ENTITY_DEPTH, WORLD_VFX_DEPTH } from '../../src/shared/render-depths.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { set } from '../../src/core/world.js';
@@ -473,26 +474,37 @@ describe('createPhaserBridge', () => {
     addComponent(world.ecs, ratsNestSpawner, Spawner);
     addComponent(world.ecs, ratsNestSpawner, set(Sprite, { textureId: 1, width: 0, height: 0 }));
 
+    const bruteEid = addEntity(world.ecs);
+    addComponent(world.ecs, bruteEid, set(Position, { x: 40, y: 45 }));
+    addComponent(world.ecs, bruteEid, Enemy);
+    addComponent(world.ecs, bruteEid, set(Sprite, { textureId: 0, width: 0, height: 0 }));
+    world.enemyAppearanceKeys.set(bruteEid, 'rat-brute');
+
+    // A plain enemy (no Spawner, no special appearance key) sharing the same frame.
+    const mobEid = addEntity(world.ecs);
+    addComponent(world.ecs, mobEid, set(Position, { x: 55, y: 65 }));
+    addComponent(world.ecs, mobEid, Enemy);
+    addComponent(world.ecs, mobEid, set(Sprite, { textureId: 0, width: 0, height: 0 }));
     const slimePoolSpawner = addEntity(world.ecs);
     addComponent(world.ecs, slimePoolSpawner, set(Position, { x: 20, y: 25 }));
     addComponent(world.ecs, slimePoolSpawner, Enemy);
     addComponent(world.ecs, slimePoolSpawner, Spawner);
     addComponent(world.ecs, slimePoolSpawner, set(Sprite, { textureId: 2, width: 0, height: 0 }));
 
-    const plainEnemy = addEntity(world.ecs);
-    addComponent(world.ecs, plainEnemy, set(Position, { x: 30, y: 40 }));
-    addComponent(world.ecs, plainEnemy, Enemy);
-    addComponent(world.ecs, plainEnemy, set(Sprite, { textureId: 1, width: 0, height: 0 }));
-
     bridge.sync(world);
 
     const ratsNestImg = images[0]!;
-    const slimePoolImg = images[1]!;
+    const bruteImg = images[1]!;
     const mobImg = images[2]!;
+    const slimePoolImg = images[3]!;
     expect(ratsNestImg.textureKey).toBe('rat-nest-v2-var-3');
     expect(slimePoolImg.textureKey).toBe('slime-pool-v1-var-3');
     expect(ratsNestImg.tinted).toBe(false);
     expect(slimePoolImg.tinted).toBe(false);
+    expect(ratsNestImg.tint).toBe(0xffffff);
+    expect(slimePoolImg.tint).toBe(0xffffff);
+    expect(bruteImg.tinted).toBe(true);
+    expect(bruteImg.tint).toBe(RAT_BRUTE_TINT);
     expect(mobImg.tinted).toBe(false);
     expect(mobImg.tint).toBe(0xffffff);
 

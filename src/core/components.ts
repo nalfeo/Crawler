@@ -176,6 +176,8 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       type: new Uint8Array(maxEntities),
       speed: new Float32Array(maxEntities),
       aggroRange: new Float32Array(maxEntities),
+      /** Elapsed-ms timestamp when this enemy is allowed to begin chasing. */
+      aggroEnableAtMs: new Float32Array(maxEntities),
       attackRange: new Float32Array(maxEntities),
       fireCooldownMs: new Float32Array(maxEntities),
       lastFireMs: new Float32Array(maxEntities),

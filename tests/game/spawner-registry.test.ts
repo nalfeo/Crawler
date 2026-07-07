@@ -48,6 +48,10 @@ describe('spawner registry', () => {
     const brute = nest!.defensive.pool.find((e) => e.mob.id === 'rat-brute');
     const passiveBrute = nest!.passive.pool.find((e) => e.mob.id === 'rat-brute');
     expect(brute!.weight).toBeGreaterThan(passiveBrute!.weight);
+    const rat = nest!.passive.pool.find((e) => e.mob.id === 'rat')!.mob;
+    const ratBrute = passiveBrute!.mob;
+    expect(ratBrute.spriteWidth).toBeCloseTo(rat.spriteWidth * 1.25, 6);
+    expect(ratBrute.spriteHeight).toBeCloseTo(rat.spriteHeight * 1.25, 6);
     const deathIds = nest!.onDeath.flatMap((g) => poolIds(g.pool));
     expect(deathIds).toEqual(expect.arrayContaining(['rat-king', 'rat-queen']));
   });
