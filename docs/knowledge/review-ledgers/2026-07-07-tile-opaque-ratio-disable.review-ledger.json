@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-07",
+  "session_slug": "tile-opaque-ratio-disable",
+  "task_title": "Disable opaque-ratio sensor for tile sprites",
+  "estimated_apples": 1,
+  "stages": {}
+}
