@@ -7,8 +7,12 @@
  * floor. It is consumed by two callers:
  *
  * 1. `floorScenario.ts` — stamps the `welcome-room` set piece into Floor 1's
- *    spawn room, recording the props (via `addSetPieceProp`) and the three
- *    quest NPCs at fixed, spaced positions.
+ *    welcome-office hub (the `roomRole: "spawn"` room resolved via
+ *    `welcomeOfficePos`, 3–8 hops from the player start — NOT the literal
+ *    player-spawn room `floorMap.spawnRoom`; stamping there would collapse the
+ *    welcome-sign trail and pull the goon next to the player), recording the
+ *    props (via `addSetPieceProp`) and the three quest NPCs at fixed, spaced
+ *    positions.
  * 2. The map-gen lab overlay — draws the same stamped output on top of a
  *    generated floor so the placement can be inspected visually.
  *
