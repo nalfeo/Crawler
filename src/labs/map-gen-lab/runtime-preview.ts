@@ -90,13 +90,13 @@ export function getFloorConstraintDefaults(floorId: PreviewFloorId): FloorConstr
     roomHeightMin: manifest.map.roomHeightRange[0],
     roomHeightMax: manifest.map.roomHeightRange[1],
     cavePresentCount: manifest.floor2?.presentCount ?? DEFAULT_CAVE_SETTINGS.presentCount,
-    caveInitialFill: DEFAULT_CAVE_SETTINGS.initialFill,
-    caveSmoothingPasses: DEFAULT_CAVE_SETTINGS.smoothingPasses,
-    caveBossDenSize: DEFAULT_CAVE_SETTINGS.bossDenSize,
-    caveRegionSeparationTiles: DEFAULT_CAVE_SETTINGS.regionSeparationTiles,
-    caveMaxRetries: DEFAULT_CAVE_SETTINGS.maxRetries,
-    caveCavernWidenPasses: DEFAULT_CAVE_SETTINGS.cavernWidenPasses,
-    caveStraightHallwayMinRun: DEFAULT_CAVE_SETTINGS.straightHallwayMinRun,
+    caveInitialFill: 0.55,
+    caveSmoothingPasses: 8,
+    caveBossDenSize: 10,
+    caveRegionSeparationTiles: 80,
+    caveMaxRetries: 8,
+    caveCavernWidenPasses: 2,
+    caveStraightHallwayMinRun: 10,
   };
 }
 

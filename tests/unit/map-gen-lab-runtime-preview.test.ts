@@ -61,7 +61,7 @@ describe('map-gen lab runtime preview', () => {
     expect(defaults.caveStraightHallwayMinRun).toBe(10);
   });
 
-  it('mirrors Floor 2 manifest defaults for constrained preview controls', () => {
+  it('uses Floor 2 map-gen lab defaults for constrained preview controls', () => {
     const manifest = getFloorManifest('floor2')!;
     const defaults = getFloorConstraintDefaults('floor2');
     expect(defaults.biome).toBe((manifest.map.biome ?? BiomeType.CAVE_SYSTEM) as BiomeType);
@@ -74,10 +74,10 @@ describe('map-gen lab runtime preview', () => {
     expect(defaults.roomHeightMin).toBe(manifest.map.roomHeightRange[0]);
     expect(defaults.roomHeightMax).toBe(manifest.map.roomHeightRange[1]);
     expect(defaults.cavePresentCount).toBe(manifest.floor2?.presentCount ?? 4);
-    expect(defaults.caveInitialFill).toBe(0.5);
-    expect(defaults.caveSmoothingPasses).toBe(4);
-    expect(defaults.caveBossDenSize).toBe(5);
-    expect(defaults.caveRegionSeparationTiles).toBe(0);
+    expect(defaults.caveInitialFill).toBe(0.55);
+    expect(defaults.caveSmoothingPasses).toBe(8);
+    expect(defaults.caveBossDenSize).toBe(10);
+    expect(defaults.caveRegionSeparationTiles).toBe(80);
     expect(defaults.caveMaxRetries).toBe(8);
     expect(defaults.caveCavernWidenPasses).toBe(2);
     expect(defaults.caveStraightHallwayMinRun).toBe(10);
