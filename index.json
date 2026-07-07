@@ -1,5 +1,16 @@
 [
   {
+    "commit": "756fc81d63f11c655a1b9f965935c3532bcc0b38",
+    "commitDate": "2026-07-07T09:47:05Z",
+    "commitSubject": "feat(review): make visual-review UX judge surface-agnostic and actionable (#846)",
+    "capturedAt": "2026-07-07T10:24:34.520Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28857395551",
+    "winRate": 0.8433333333333334,
+    "totalWins": 253,
+    "totalRuns": 300,
+    "path": "by-sha/756fc81d63f11c655a1b9f965935c3532bcc0b38.json"
+  },
+  {
     "commit": "d724a98801bec9dca8ce5fa3d937b06c36589680",
     "commitDate": "2026-07-07T07:26:04Z",
     "commitSubject": "feat(sprites): consolidate 12 approved assets from 2 check-in(s) (#843)",
