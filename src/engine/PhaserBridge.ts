@@ -229,6 +229,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const playerTrailVfx = createPlayerTrailVfx(scene);
   const missingSpriteWarnings = new Set<string>();
   const missingTypeWarnings = new Set<string>();
+  let cachedGeneratedRegistry: GeneratedSpriteRegistry | null = null;
+  const generatedFacingByTexture = new Map<string, 'left' | 'right'>();
   let lastRenderMs: number | null = null;
 
   function logFallback(type: string): void {
@@ -259,12 +261,15 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       const entities = query(world.ecs, [Sprite, Position]);
       const activeEntities = new Set<number>();
       const preferredTextureCache = new Map<string, ResolvedTexture>();
-      const generatedFacingByTexture = new Map<string, 'left' | 'right'>();
       const generatedRegistry = getGeneratedSpriteRegistry(scene);
-      if (generatedRegistry) {
-        for (const entry of generatedRegistry.entries()) {
-          generatedFacingByTexture.set(entry.textureKey, entry.facingDirection);
+      if (generatedRegistry !== cachedGeneratedRegistry) {
+        generatedFacingByTexture.clear();
+        if (generatedRegistry) {
+          for (const entry of generatedRegistry.entries()) {
+            generatedFacingByTexture.set(entry.textureKey, entry.facingDirection);
+          }
         }
+        cachedGeneratedRegistry = generatedRegistry;
       }
       const resolvePreferredTexture = (
         type: string,
