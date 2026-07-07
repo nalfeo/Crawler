@@ -60,7 +60,8 @@ quest NPCs at spaced, themed positions and dressing the room with layered props.
   construction; pairwise Chebyshev ≥ 3 spacing; prop/depth). Map-gen lab overlay
   (`drawSetPieceOverlay` + toggle) draws the stamped set piece on a generated
   floor; set-piece lab renders `npcs[]`. Fixed a weight-coverage guard regression
-  (immovable-tier Weight on set-piece props) + doc fixes.
+  (immovable-tier Weight on set-piece props — since obsolete: props became
+  render-only non-entities, see "Follow-up" below) + doc fixes.
 
 ### Review harness (>3🍎, tier-4 ledger)
 
@@ -87,7 +88,8 @@ tests). Root-caused to two effects:
   for cosmetic props during floor setup shifted the ambient-mob ids that spawn
   after, reordering the global RNG draw sequence — a **seed-visible** change for
   content that must have none (Floor-1 arena seed 2 went ~1.2s over its 360s
-  budget; collision fingerprints drifted). `spawnSetPieceProp` drew no RNG itself;
+  budget; collision fingerprints drifted). The entity-spawn path (the former
+  `spawnSetPieceProp`, now `addSetPieceProp`) drew no RNG itself;
   the perturbation was purely entity-id allocation. **FIX:** moved props off the
   entity space onto a render-only `world.setPieceProps: SetPiecePropInstance[]`
   array (`addSetPieceProp` pushes `{x,y,render}`; a dedicated PhaserBridge pass
@@ -117,8 +119,11 @@ Validated in the **real Floor 1 scenario pipeline** (not just a lab):
 - PhaserBridge render tests + `tests/unit/render-depths.test.ts` — set-piece props
   render layered (rug over floor & under NPCs; banner over wall; desk/bookcase in
   front) via the real prop pass; door z=12 lands in the background band.
-- `tests/unit/stamp-set-piece.test.ts` (footprint-in-bounds, degenerate room) +
-  `tests/ecs/spawners/entity-core.test.ts` (sidecar clear-on-recycle).
+- `tests/unit/stamp-set-piece.test.ts` (footprint-in-bounds, degenerate room);
+  `tests/ecs/spawners/world-objects.test.ts` (`addSetPieceProp` appends a
+  render-only `{x,y,render}` instance and creates NO entity) +
+  `tests/ecs/spawners/entity-core.test.ts` (recycle leaves the render-only
+  `setPieceProps` list untouched).
 
 ## Key Files
 
