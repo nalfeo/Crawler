@@ -1,5 +1,16 @@
 [
   {
+    "commit": "3e54091b1c10d6cbae30499cb4fc26dcafc4a8ed",
+    "commitDate": "2026-07-07T05:40:32Z",
+    "commitSubject": "feat(sprites): disable opaque-ratio sensor for tile briefs (#838)",
+    "capturedAt": "2026-07-07T06:19:58.325Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28844543203",
+    "winRate": 0.78,
+    "totalWins": 234,
+    "totalRuns": 300,
+    "path": "by-sha/3e54091b1c10d6cbae30499cb4fc26dcafc4a8ed.json"
+  },
+  {
     "commit": "fd5bdd58f74c6d2af1d24fc0008af858b9b927c6",
     "commitDate": "2026-07-07T03:44:25Z",
     "commitSubject": "fix(perf): register tsx sync hooks in worker threads to fix .js→.ts import remapping (#834)",
