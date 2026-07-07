@@ -9,7 +9,8 @@ import {
   Spawner,
   Velocity,
 } from '../../src/core/components.js';
-import { spawnSpawner } from '../../src/core/helpers.js';
+import { spawnPlayer, spawnSpawner } from '../../src/core/helpers.js';
+import { enemyAISystem } from '../../src/game/enemyAISystem.js';
 import { getSpawnerArchetype, getSpawnerArchetypeIndex } from '../../src/game/spawners/registry.js';
 import { spawnerSystem } from '../../src/game/spawners/spawnerSystem.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -113,6 +114,50 @@ describe('spawnerSystem — passive mode', () => {
     expect(world.stores.damage.amount[child]).toBeGreaterThan(0);
     // Children are mobile (steered by enemyAISystem), unlike the nest.
     expect(hasComponent(world.ecs, child, EnemyBehavior)).toBe(true);
+  });
+
+  it('spawns children on the opposite half from the player', () => {
+    const world = createTestWorld();
+    makeNest(world, 100, 100);
+    spawnPlayer(world, 120, 100);
+
+    spawnerSystem(world);
+    const child = query(world.ecs, [Enemy, Owner])[0]!;
+    const childX = world.stores.position.x[child] ?? 0;
+    const childY = world.stores.position.y[child] ?? 0;
+    const spawnerX = 100;
+    const spawnerY = 100;
+    const playerDirX = 20;
+    const playerDirY = 0;
+    const spawnDirX = childX - spawnerX;
+    const spawnDirY = childY - spawnerY;
+    const spawnDirLen = Math.hypot(spawnDirX, spawnDirY);
+    const dot = (spawnDirX * playerDirX + spawnDirY * playerDirY) / (spawnDirLen * 20);
+
+    expect(dot).toBeLessThanOrEqual(-Math.SQRT1_2);
+  });
+
+  it('applies a deterministic chase-delay window and AI respects it', () => {
+    const world = createTestWorld();
+    makeNest(world, 100, 100);
+    spawnPlayer(world, 120, 100);
+
+    spawnerSystem(world);
+    const child = query(world.ecs, [Enemy, Owner])[0]!;
+    const unlockAt = world.stores.enemyBehavior.aggroEnableAtMs[child] ?? 0;
+    const delayMs = unlockAt - world.elapsedMs;
+    expect(delayMs).toBeGreaterThanOrEqual(250);
+    expect(delayMs).toBeLessThanOrEqual(500);
+
+    enemyAISystem(world);
+    expect(world.stores.velocity.x[child]).toBe(0);
+    expect(world.stores.velocity.y[child]).toBe(0);
+
+    world.elapsedMs = unlockAt + 1;
+    enemyAISystem(world);
+    expect(
+      Math.hypot(world.stores.velocity.x[child] ?? 0, world.stores.velocity.y[child] ?? 0),
+    ).toBeGreaterThan(0);
   });
 
   it('emits a spawnerPulse VFX event when a pulse spawns children', () => {

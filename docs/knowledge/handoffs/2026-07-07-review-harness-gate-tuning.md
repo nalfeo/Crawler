@@ -125,7 +125,7 @@ round index and be >= 2`); `escalated_to_human:null` → `ok:false` (no silent
   justified" stays honor-system (documented in both policies).
 - **Full 4🍎 harness run honestly, no stage weakened (rules #12/#14).**
   dual-plan synthesis (gpt-5.5 + gemini-3.1-pro-preview plans, claude-opus-4.8
-  judge) → plan_review (gpt-5.4, 4 concerns all resolved by _strengthening_) →
+  judge) → plan*review (gpt-5.4, 4 concerns all resolved by \_strengthening*) →
   code_review (claude-sonnet-4.6, 1 sub-threshold observation closed with 2
   added coverage tests, then clean) → multi_model_review (gpt-5.3-codex +
   gemini-3.1-pro-preview reviewers, both clean; gpt-5.4 adjudicator: CLEAN).
