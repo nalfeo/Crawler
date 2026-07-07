@@ -11,6 +11,17 @@
     "path": "by-sha/fd5bdd58f74c6d2af1d24fc0008af858b9b927c6.json"
   },
   {
+    "commit": "739f9e75bf81c7764f5ec191a558d9c0b1d718cd",
+    "commitDate": "2026-07-06T22:19:40-07:00",
+    "commitSubject": "feat(sprites): ingest and wire rat nest and slime pool assets (#837)",
+    "capturedAt": "2026-07-07T05:58:15.279Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28843716122",
+    "winRate": 0.78,
+    "totalWins": 234,
+    "totalRuns": 300,
+    "path": "by-sha/739f9e75bf81c7764f5ec191a558d9c0b1d718cd.json"
+  },
+  {
     "commit": "f4c75fe2e3f5471bfd8c26aea97b89da2465140b",
     "commitDate": "2026-07-06T04:35:51Z",
     "commitSubject": "ci: comment baseline win-rate on the released PR (#805)",
