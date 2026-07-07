@@ -8,6 +8,18 @@
  * exercise the real preSystems ordering (spawnerArenaSystem BEFORE
  * spawnerSystem) rather than a lab-only harness.
  *
+ * ## 2026-07-07 — Floor 1 is now spawner-free (ADR 0049)
+ *
+ * Floor 1's static-spawner spawn table is intentionally empty, so no Spawner
+ * entities (and therefore no battle-arenas) exist on Floor 1. This gate
+ * consequently narrows to: (a) the sword win-rate floor, (b) the AI time
+ * budget, and (c) a positive assertion that Floor 1 stays spawner-free (the
+ * inverse of the old `anyTriggered > 0` engagement check). The arena state
+ * machine + AI lock-in remain covered by
+ * `tests/integration/ai-arena-lockin.integration.test.ts`. Restore the
+ * engagement assertion here if a headless floor sampled by this gate regains
+ * spawners.
+ *
  * ## Scoping vs. `floor1-completion.test.ts`
  *
  * The canonical gate already sweeps three weapons × 8 seeds and asserts the
@@ -95,48 +107,47 @@ describe('spawner battle-arena · headless Floor-1 sweep', () => {
     ).toBeGreaterThanOrEqual(MIN_WIN_RATE);
   });
 
-  it('the arena feature actually engages in a real Floor-1 run', () => {
-    // A stricter "every triggered arena must resolve" check is tempting, but
-    // on Floor-1 the AI can legitimately clip a spawner's arena disc, fence
-    // up, and then reach the exit without killing the spawner — the BT AI
-    // treats spawners as optional targets, not floor-clear blockers. So the
-    // resolve rate observed in a natural win-rate sweep is bounded by AI
-    // targeting, not by the arena state machine.
-    //
-    // Requirement§2 is that doors *lock* / a fence *appears* when the player
-    // enters the zone — proven exhaustively by the unit + integration tests.
-    // Here we assert the weakest useful signal: the arena feature actually
-    // fires (`triggered > 0`) in a real Floor-1 clear. A wiring regression
-    // (arena system unwired, trigger predicate broken, floorScenario forgets
-    // to pass `arenaRadiusFt`) would sink this rollup, which is the whole
-    // point of a headless-pipeline gate over a lab test.
+  it('Floor 1 is spawner-free, so no battle-arena engages (feature dormant — ADR 0049)', () => {
+    // Floor 1's static-spawner spawn table is intentionally empty
+    // (`FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS = []`, see floorScenario.ts +
+    // ADR 0049), so no Spawner entities exist and no battle-arena can trigger
+    // on Floor 1. The arena state machine, barrier arming, and AI lock-in are
+    // still exercised end-to-end by
+    // `tests/integration/ai-arena-lockin.integration.test.ts`, which
+    // hand-builds a barrier-armed arena. This assertion is the deliberate
+    // inverse of the pre-ADR-0049 `anyTriggered > 0` engagement check: when
+    // Floor 1 (or another headless floor sampled here) regains spawners,
+    // restore the `> 0` assertion instead of this `=== 0` one.
     let anyTriggered = 0;
-    let totalBarrierArmed = 0;
-    let totalResolvedAmongArmed = 0;
+    let anyTotal = 0;
     const perSeed: string[] = [];
     for (const seed of SAMPLE_SEEDS) {
       const s = runs.get(seed)!;
       const arenas = s.spawnerArenas;
-      if (!arenas) continue;
-      anyTriggered += arenas.triggered;
-      totalBarrierArmed += arenas.barrierArmed;
-      // `resolvedArmed` counts arenas that both armed a real barrier AND
-      // resolved — the only ones that necessarily passed through the armed
-      // state (a bare `resolved` also includes IDLE→RESOLVED short-circuits).
-      totalResolvedAmongArmed += arenas.resolvedArmed;
-      perSeed.push(
-        `${seed}:t=${arenas.triggered}/armed=${arenas.barrierArmed}/ra=${arenas.resolvedArmed}/r=${arenas.resolved}/o=${s.outcome}`,
-      );
+      // Non-vacuity: `runHeadless` always populates this telemetry, so a missing
+      // rollup means a real regression (arena metrics unwired), not a legitimately
+      // spawner-free floor. Assert it is present before trusting the zero counts.
+      expect(
+        arenas,
+        `[seed ${seed}] runHeadless did not populate spawnerArenas telemetry`,
+      ).toBeDefined();
+      anyTotal += arenas!.total;
+      anyTriggered += arenas!.triggered;
+      perSeed.push(`${seed}:total=${arenas!.total}/t=${arenas!.triggered}/o=${s.outcome}`);
     }
     console.log(
-      `arena-lockin sweep: ${perSeed.join(' ')} — resolved/armed = ${totalResolvedAmongArmed}/${totalBarrierArmed}`,
+      `arena engagement sweep (expect total=0 & triggered=0 on spawner-free Floor 1): ${perSeed.join(' ')}`,
     );
+    // Assert Floor 1 has no Spawner entities at all (total === 0), which is
+    // strictly stronger than "none triggered" and would catch an accidental
+    // re-introduction of Floor-1 spawners that the AI simply never approached.
     expect(
-      anyTriggered,
-      `sample never triggered any spawner arena — either arena system is not ` +
-        `wired into the headless pipeline, or Floor-1 no longer generates any ` +
-        `Spawner entities (spawnerArenas telemetry may also be missing)`,
-    ).toBeGreaterThan(0);
+      anyTotal,
+      `Floor 1 should be spawner-free (ADR 0049) but ${anyTotal} Spawner entit(ies) exist — ` +
+        `if Floor 1 intentionally regained spawners, restore the ` +
+        `'anyTriggered > 0' engagement assertion here`,
+    ).toBe(0);
+    expect(anyTriggered, `Floor 1 arenas triggered despite being spawner-free`).toBe(0);
   });
 
   it('AI arena lock-in — resolves ≥95% of arenas that actually trapped it (ADR 0045)', () => {

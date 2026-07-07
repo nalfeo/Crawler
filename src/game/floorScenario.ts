@@ -121,8 +121,13 @@ const MAX_PASSABLE_NEIGHBORS_FOR_NARROW_SPAWN_TILE = 2;
  */
 const FLOOR_1_ROOM_WAVE_MIN_PLAYER_DISTANCE_FT = 12;
 const FLOOR_1_GOAL_PREFIX = 'floor1.objective';
+// Floor 1 is intentionally spawner-free: its static-spawner spawn table is empty,
+// so `spawnFloor1StaticSpawners` places no Spawner entities on Floor 1. The
+// placement machinery below is fully config-driven off this table — repopulate
+// this list (e.g. ['slime-pool', 'rats-nest']) to re-enable Floor 1 static
+// spawners without touching the runtime pipelines.
 const FLOOR_1_STATIC_SPAWNERS_PER_ARCHETYPE = 2;
-const FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS = ['slime-pool', 'rats-nest'] as const;
+const FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS: readonly string[] = [];
 const FLOOR_1_MAX_STARTER_CHOICES = 3;
 const FLOOR_1_FALLBACK_STARTER_WEAPON_IDS = ['sword', 'punch'] as const;
 
@@ -753,6 +758,12 @@ function tagRoomAsSafe(world: GameWorld, roomPos: { x: number; y: number }): voi
 }
 
 function spawnFloor1StaticSpawners(world: GameWorld): void {
+  // Config-driven no-op: with an empty static-spawner table Floor 1 places no
+  // Spawner entities (see FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS). Bail before
+  // deriving the room stream so we do no wasted work.
+  if (FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS.length === 0) {
+    return;
+  }
   const floorMap = world.floorMap;
   if (!floorMap) {
     return;
