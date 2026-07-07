@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { addEntity } from 'bitecs';
 import { createTestWorld } from '../helpers/world-factory.js';
 import type { GameWorld } from '../../src/core/world.js';
 import {
   initializeBaseStats,
   equip,
+  equipFromBag,
   unequip,
   canEquip,
   getEffectiveStats,
@@ -15,9 +16,34 @@ import {
 } from '../../src/core/systems/equipmentSystem.js';
 import { statSystem } from '../../src/core/systems/statSystem.js';
 import { SLOT_REGISTRY } from '../../src/shared/equipment-slots.js';
+import {
+  getEquipmentDefForItem,
+  getEquippableItemIds,
+  GEAR_ITEM_IDS,
+  _registerEquipmentDefForTest,
+  _clearEquipmentDefsForTest,
+} from '../../src/shared/equipmentDefs.js';
+import { addItem, hasItem, getItemCount, type InventoryBag } from '../../src/shared/inventory.js';
+import { ItemRarity, customTag, type ItemDef } from '../../src/shared/items.js';
 import type { EquipmentItemDef } from '../../src/shared/equipment-types.js';
 
 // --- Test helpers ---
+
+// Minimal inventory-catalog defs for the synthetic gear ids registered via the
+// equipment test overlay. `addItem` validates ids against the item catalog, so
+// bag-seeding for overlay-only ids must pass this explicit catalog.
+function makeCatalogItem(id: string): ItemDef {
+  return {
+    id,
+    name: id,
+    description: 'test item',
+    tags: [customTag('test')],
+    rarity: ItemRarity.Common,
+    maxStack: 1,
+    icon: 'placeholder',
+  };
+}
+const TEST_CATALOG: ItemDef[] = [makeCatalogItem('colossus-blade'), makeCatalogItem('warblade')];
 
 function makeItem(overrides: Partial<EquipmentItemDef> = {}): EquipmentItemDef {
   return {
@@ -156,8 +182,8 @@ describe('Equipment System', () => {
     expect(getEffectiveStats(world, entity).armor).toBe(before);
   });
 
-  // 11. All 16 slots can be equipped independently
-  it('equips all 16 slots independently', () => {
+  // 11. All registered slots can be equipped independently
+  it('equips all registered slots independently', () => {
     for (const slot of SLOT_REGISTRY) {
       const result = equip(
         world,
@@ -167,7 +193,7 @@ describe('Equipment System', () => {
       );
       expect(result.ok).toBe(true);
     }
-    expect(getEffectiveStats(world, entity).armor).toBe(16);
+    expect(getEffectiveStats(world, entity).armor).toBe(SLOT_REGISTRY.length);
   });
 
   // 12. Duplicate item definitions (same id, different instances)
@@ -288,7 +314,7 @@ describe('Equipment System', () => {
 
   // 22. New slot added to registry — tested indirectly via slot registry length
   it('supports all registered slots', () => {
-    expect(SLOT_REGISTRY.length).toBe(16);
+    expect(SLOT_REGISTRY.length).toBe(18);
   });
 
   // 23. Unknown slot rejected
@@ -372,5 +398,187 @@ describe('Equipment System', () => {
     if (!result.ok) {
       expect(result.reason).toContain('Unknown slot');
     }
+  });
+});
+
+// --- equipFromBag: Diablo-style equip-from-inventory swap ---
+
+describe('equipFromBag', () => {
+  let world: GameWorld;
+  let entity: number;
+  let bag: InventoryBag;
+
+  beforeEach(() => {
+    world = createTestWorld();
+    world.state = 'safe_room';
+    entity = setupEntity(world);
+    bag = { slots: [] };
+    world.inventories.set(entity, bag);
+  });
+
+  afterEach(() => {
+    _clearEquipmentDefsForTest();
+  });
+
+  it('equips an item from the bag into an empty slot and removes it from the bag', () => {
+    addItem(bag, 'iron-helm', 1);
+    const result = equipFromBag(world, entity, 'iron-helm');
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.swappedOut).toEqual([]);
+    expect(hasItem(bag, 'iron-helm')).toBe(false);
+    const state = getEquipmentState(world, entity)!;
+    expect(state.equipped['head']).not.toBeNull();
+    // iron-helm grants +2 armor, +1 constitution.
+    expect(getEffectiveStats(world, entity).armor).toBe(2);
+  });
+
+  it('swaps: returns the previously-equipped item to the bag', () => {
+    // Occupy the head slot first, then equip a second head item from the bag —
+    // the occupant must be swapped back into the bag.
+    equip(world, entity, getEquipmentDefForItem('iron-helm')!, { force: true });
+    addItem(bag, 'iron-helm', 1);
+
+    const result = equipFromBag(world, entity, 'iron-helm');
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.swappedOut).toEqual(['iron-helm']);
+    // The swapped-out helm is back in the bag; the freshly equipped one occupies head.
+    expect(getItemCount(bag, 'iron-helm')).toBe(1);
+    expect(getEquipmentState(world, entity)!.equipped['head']).not.toBeNull();
+  });
+
+  it('fails and mutates nothing when the item is not in the bag', () => {
+    const result = equipFromBag(world, entity, 'iron-helm');
+    expect(result.ok).toBe(false);
+    expect(getEquipmentState(world, entity)?.equipped['head'] ?? null).toBeNull();
+  });
+
+  it('fails when the item id is not equippable', () => {
+    addItem(bag, 'iron-ore', 1); // a material, no equipment def
+    const result = equipFromBag(world, entity, 'iron-ore');
+    expect(result.ok).toBe(false);
+    expect(hasItem(bag, 'iron-ore')).toBe(true); // untouched
+  });
+
+  it('fails when the entity has no inventory bag', () => {
+    world.inventories.delete(entity);
+    const result = equipFromBag(world, entity, 'iron-helm');
+    expect(result.ok).toBe(false);
+  });
+
+  it('honors the safe-context gate and leaves the bag untouched outside a safe room', () => {
+    world.state = 'playing';
+    world.playerInSafeRoom = false;
+    addItem(bag, 'iron-helm', 1);
+    const result = equipFromBag(world, entity, 'iron-helm');
+    expect(result.ok).toBe(false);
+    expect(hasItem(bag, 'iron-helm')).toBe(true); // early return, no removal
+    expect(getEquipmentState(world, entity)?.equipped['head'] ?? null).toBeNull();
+  });
+
+  it('force bypasses the safe-context gate', () => {
+    world.state = 'playing';
+    world.playerInSafeRoom = false;
+    addItem(bag, 'iron-helm', 1);
+    const result = equipFromBag(world, entity, 'iron-helm', { force: true });
+    expect(result.ok).toBe(true);
+    expect(hasItem(bag, 'iron-helm')).toBe(false);
+  });
+
+  // Regression: the swap must be ATOMIC. A 2H item that can never be equipped
+  // would need to unequip BOTH hand occupants first; a rollback that re-equips
+  // them one-by-one can permanently delete an item whose requirement is only met
+  // by another (not-yet-restored) occupant. The pre-mutation feasibility gate
+  // must refuse the whole swap up front, leaving every item exactly where it was.
+  it('is atomic: refuses an infeasible swap without losing the dependency-linked items it would displace', () => {
+    // Base STR 8. The blade (mainHand) requires STR>=10, satisfied ONLY by the
+    // girdle (offHand, +5 STR → live STR 13). A 2H item needing STR>=30 can never
+    // be equipped. The OLD rollback re-equipped the blade first (girdle not yet
+    // restored → STR 8 < 10 → blade silently dropped). The gate must reject it.
+    initializeBaseStats(world, entity, { strength: 8 });
+    _registerEquipmentDefForTest({
+      id: 'colossus-blade',
+      name: 'Colossus Blade',
+      slots: ['mainHand', 'offHand'],
+      statBonuses: {},
+      rarity: 'rare',
+      requirements: [{ type: 'minStat', stat: 'strength', value: 30 }],
+    });
+    const girdle = makeItem({
+      id: 'giant-girdle',
+      slots: ['offHand'],
+      statBonuses: { strength: 5 },
+    });
+    const blade = makeItem({
+      id: 'heavy-blade',
+      slots: ['mainHand'],
+      statBonuses: { damageBonus: 6 },
+      requirements: [{ type: 'minStat', stat: 'strength', value: 10 }],
+    });
+    // Girdle first so STR (8 + 5) meets the blade's requirement at equip time.
+    expect(equip(world, entity, girdle, { force: true }).ok).toBe(true);
+    expect(equip(world, entity, blade, { force: true }).ok).toBe(true);
+    const statsBefore = getEffectiveStats(world, entity);
+
+    addItem(bag, 'colossus-blade', 1, TEST_CATALOG);
+    const result = equipFromBag(world, entity, 'colossus-blade');
+
+    expect(result.ok).toBe(false);
+    // No item lost: the new item stays bagged; neither occupant was displaced.
+    expect(getItemCount(bag, 'colossus-blade')).toBe(1);
+    expect(hasItem(bag, 'heavy-blade')).toBe(false);
+    expect(hasItem(bag, 'giant-girdle')).toBe(false);
+    const state = getEquipmentState(world, entity)!;
+    expect(state.instances.get(state.equipped['mainHand']!)?.def.id).toBe('heavy-blade');
+    expect(state.instances.get(state.equipped['offHand']!)?.def.id).toBe('giant-girdle');
+    // Stats unchanged — no partial unequip left the entity weaker.
+    expect(getEffectiveStats(world, entity)).toEqual(statsBefore);
+  });
+
+  // Companion to the atomicity test: a requirement-gated swap that IS feasible on
+  // the post-unequip basis must still go through (the gate is not over-eager).
+  it('allows a requirement-gated swap that is feasible after the target slot is freed', () => {
+    initializeBaseStats(world, entity, { strength: 12 });
+    _registerEquipmentDefForTest({
+      id: 'warblade',
+      name: 'Warblade',
+      slots: ['mainHand'],
+      statBonuses: { damageBonus: 4 },
+      rarity: 'rare',
+      requirements: [{ type: 'minStat', stat: 'strength', value: 10 }],
+    });
+    addItem(bag, 'warblade', 1, TEST_CATALOG);
+    const result = equipFromBag(world, entity, 'warblade');
+    expect(result.ok).toBe(true);
+    expect(hasItem(bag, 'warblade')).toBe(false);
+    const state = getEquipmentState(world, entity)!;
+    expect(state.instances.get(state.equipped['mainHand']!)?.def.id).toBe('warblade');
+  });
+});
+
+// --- Equippable placeholder coverage across the paper-doll ---
+
+describe('equippable slot coverage', () => {
+  it('every paper-doll slot has at least one equippable item', () => {
+    const covered = new Set<string>();
+    for (const id of getEquippableItemIds()) {
+      const def = getEquipmentDefForItem(id);
+      if (def) for (const slotId of def.slots) covered.add(slotId);
+    }
+    for (const slot of SLOT_REGISTRY) {
+      expect(covered.has(slot.id), `slot ${slot.id} has no equippable item`).toBe(true);
+    }
+  });
+
+  it('GEAR_ITEM_IDS covers 15 armor/accessory slots and excludes hands + neck', () => {
+    const gearSlots = new Set<string>();
+    for (const id of GEAR_ITEM_IDS) {
+      const def = getEquipmentDefForItem(id);
+      expect(def, `gear id ${id} has no equipment def`).toBeDefined();
+      for (const slotId of def!.slots) gearSlots.add(slotId);
+    }
+    expect(GEAR_ITEM_IDS).toHaveLength(15);
+    expect(gearSlots.has('mainHand')).toBe(false);
+    expect(gearSlots.has('offHand')).toBe(false);
+    expect(gearSlots.has('neck')).toBe(false);
   });
 });

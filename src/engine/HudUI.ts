@@ -40,6 +40,7 @@ const ABILITY_BAR_MAX_SCALE = 1.2;
 export function createHudUI(scene: Phaser.Scene): {
   sync(world: GameWorld, playerEid: number): void;
   isMapOverlayOpen(): boolean;
+  setVisible(visible: boolean): void;
   destroy(): void;
 } {
   const depth = 1000;
@@ -100,7 +101,23 @@ export function createHudUI(scene: Phaser.Scene): {
   applyScale();
   const offUiScaleChange = onUiScaleChange(scene, applyScale);
 
+  // When true, a full-screen panel (character/equipment/inventory screen) is
+  // open, so the whole HUD is hidden and sync() is a no-op.
+  let hidden = false;
+
+  function setVisible(visible: boolean): void {
+    hidden = !visible;
+    for (const group of [bottomLeft, bottomCenter, topCenter, topRight, bottomRight]) {
+      group.setVisible(visible);
+    }
+    minimap.setHudVisible(visible);
+    directionArrows.setVisible(visible);
+  }
+
   function sync(world: GameWorld, playerEid: number): void {
+    if (hidden) {
+      return;
+    }
     healthBar.sync(world, playerEid);
     manaBar.sync(world);
     xpBar.sync(world);
@@ -138,5 +155,5 @@ export function createHudUI(scene: Phaser.Scene): {
     bottomRight.destroy();
   }
 
-  return { sync, isMapOverlayOpen: minimap.isOverlayOpen, destroy };
+  return { sync, isMapOverlayOpen: minimap.isOverlayOpen, setVisible, destroy };
 }

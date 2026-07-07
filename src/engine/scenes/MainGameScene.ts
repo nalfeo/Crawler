@@ -46,6 +46,7 @@ import {
 import { createHudUI } from '../HudUI.js';
 import { createInventoryUI } from '../InventoryUI.js';
 import { createEquipmentUI } from '../EquipmentUI.js';
+import { equipFromBag } from '../../core/systems/equipmentSystem.js';
 import { createAchievementsUI } from '../AchievementsUI.js';
 import { createGameOverUI } from '../GameOverUI.js';
 import { createLevelUpUI } from '../LevelUpUI.js';
@@ -298,6 +299,10 @@ export class MainGameScene extends Phaser.Scene {
 
   private hudUi?: ReturnType<typeof createHudUI>;
 
+  // Tracks whether the HUD is currently hidden because a full-screen character
+  // panel (equipment/inventory) is open, so we only toggle on change.
+  private hudHiddenForPanel = false;
+
   private keyOne?: Phaser.Input.Keyboard.Key;
 
   private keyTwo?: Phaser.Input.Keyboard.Key;
@@ -533,9 +538,28 @@ export class MainGameScene extends Phaser.Scene {
     if (typeof window !== 'undefined') {
       window.addEventListener('keydown', this.handleWindowKeyDown, true);
     }
-    this.inventoryUI = createInventoryUI(this);
+    this.inventoryUI = createInventoryUI(this, {
+      // Double-click an equippable item to equip it (safe-room gated by
+      // equipFromBag). Both panes refresh so the paper-doll and bag stay in
+      // sync after the swap.
+      onEquipItem: (itemId) => {
+        if (this.playerEid < 0) return;
+        const result = equipFromBag(this.world, this.playerEid, itemId);
+        if (result.ok) {
+          this.inventoryUI?.refresh(this.world);
+          this.equipmentUI?.refresh(this.world);
+        }
+      },
+    });
     this.equipmentUI = createEquipmentUI(this, {
       onSlotFilterChange: (slotId) => this.inventoryUI?.setEquipmentSlotFilter(slotId),
+      // Equipping/unequipping from the integrated bag mutates the shared world;
+      // refresh a separately-open standalone InventoryUI ([I]) so it stays in sync.
+      onInventoryChanged: () => {
+        if (this.inventoryUI?.isOpen()) {
+          this.inventoryUI.refresh(this.world);
+        }
+      },
     });
     this.achievementsUI = createAchievementsUI(this);
     this.gameOverUI = createGameOverUI(this, {
@@ -1045,6 +1069,9 @@ export class MainGameScene extends Phaser.Scene {
       this.queuedEquip || Boolean(this.keyEquip && Phaser.Input.Keyboard.JustDown(this.keyEquip));
     this.queuedEquip = false;
     if (unlocks.equipment && safeCtx && equipRequested) {
+      // [G] toggles the equipment panel only. The bag is now integrated into the
+      // panel itself (paper-doll | stats | equippable-bag), so we no longer
+      // auto-open the standalone InventoryUI — [I] still opens the full pack.
       this.equipmentUI?.toggle(this.world);
       if (
         this.equipmentUI?.isOpen() &&
@@ -2194,6 +2221,16 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private updateOverlayText(): void {
+    // Hide the whole HUD while a full-screen character panel is open so the
+    // docked minimap (top-right, HUD_DEPTH..+8) never punches through the
+    // wide equipment/inventory panel. Change-detected so it catches every
+    // open/close path (G/I toggles, ESC, click-away).
+    const panelOpen =
+      (this.equipmentUI?.isOpen() ?? false) || (this.inventoryUI?.isOpen() ?? false);
+    if (panelOpen !== this.hudHiddenForPanel) {
+      this.hudHiddenForPanel = panelOpen;
+      this.hudUi?.setVisible(!panelOpen);
+    }
     // HUD (health bar, floor timer, boss bar, minimap) updates every frame
     this.hudUi?.sync(this.world, this.playerEid);
     this.updateDirectorCommentary();
