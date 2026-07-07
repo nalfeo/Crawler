@@ -193,9 +193,16 @@ function sameEmptyCells(
   b: ReadonlyArray<readonly [number, number]>,
 ): boolean {
   if (a.length !== b.length) return false;
-  const key = (cell: readonly [number, number]): string => `${cell[0]},${cell[1]}`;
-  const seen = new Set(a.map(key));
-  return b.every((cell) => seen.has(key(cell)));
+  // Canonical order-independent comparison. A set-membership test would ignore
+  // multiplicity — two equal-length lists like [[0,0],[1,1]] and [[0,0],[0,0]]
+  // would compare equal — so sort both and compare element-wise instead. Briefs
+  // can no longer carry duplicate coordinates (brief-schema rejects them), but a
+  // legacy persisted `summary.grid` may, so the helper stays correct in isolation.
+  const order = (p: readonly [number, number], q: readonly [number, number]): number =>
+    p[0] - q[0] || p[1] - q[1];
+  const sa = [...a].sort(order);
+  const sb = [...b].sort(order);
+  return sa.every((cell, i) => cell[0] === sb[i]![0] && cell[1] === sb[i]![1]);
 }
 
 /**

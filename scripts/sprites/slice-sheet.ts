@@ -444,10 +444,21 @@ export function computeSliceMap(sheetPng: Buffer, options: SliceOptions = {}): S
   let index = 0;
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      const x0 = gridXCuts[c]!;
-      const y0 = gridYCuts[r]!;
-      const w = gridXCuts[c + 1]! - x0;
-      const h = gridYCuts[r + 1]! - y0;
+      // Clamp every cell to the sheet so extraction can never read out of
+      // bounds. For a well-formed sheet the cuts already lie within
+      // [0, width]/[0, height], so `x0`/`w` are unchanged and the debugger path
+      // stays byte-for-byte identical. This only bites the degenerate case where
+      // the commanded grid is larger than the sheet itself (`axisMax <
+      // targetCells`): `uniformCuts` then force-increments cuts past the axis,
+      // which cannot arise from a real brief (nativeCanvas ≥ 256, grid ≤ 8×8) but
+      // must still not throw — the bad sheet is carried through to human gallery
+      // review, per the slicer's product contract. See `reconcileAxisCuts`.
+      const rawX0 = gridXCuts[c]!;
+      const rawY0 = gridYCuts[r]!;
+      const x0 = Math.min(Math.max(0, rawX0), Math.max(0, sheet.width - 1));
+      const y0 = Math.min(Math.max(0, rawY0), Math.max(0, sheet.height - 1));
+      const w = Math.max(1, Math.min(gridXCuts[c + 1]! - rawX0, sheet.width - x0));
+      const h = Math.max(1, Math.min(gridYCuts[r + 1]! - rawY0, sheet.height - y0));
       const empty = emptyKeys.has(`${r},${c}`);
       cells.push({ index: empty ? -1 : index, row: r, col: c, x0, y0, w, h, empty });
       if (!empty) index++;

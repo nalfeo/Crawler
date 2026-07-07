@@ -139,6 +139,28 @@ describe('computeSliceMap under-segmentation fallback (degenerate content)', () 
       expect(PNG.sync.read(buf).width).toBeGreaterThanOrEqual(1);
     }
   });
+
+  it('carries a sheet smaller than the commanded grid through without crashing', () => {
+    // Pathological and unreachable from a real brief (nativeCanvas ≥ 256, grid
+    // ≤ 8×8), but the slicer is a public API: here the sheet axis (3px) is
+    // narrower than the commanded 8 columns, so no arrangement of positive-width
+    // cuts can fit and the uniform fallback force-increments cuts past the axis.
+    // Extraction must still never read out of bounds — cells are clamped to the
+    // sheet and the bad generation is carried through to human review, not thrown.
+    const tiny = encodeThinVerticalStroke(3, 1);
+    const map = computeSliceMap(tiny, { expectedGrid: { rows: 1, cols: 8 } });
+    expect(map.cells).toHaveLength(8);
+    for (const cell of map.cells) {
+      expect(cell.x0).toBeGreaterThanOrEqual(0);
+      expect(cell.y0).toBeGreaterThanOrEqual(0);
+      expect(cell.w).toBeGreaterThanOrEqual(1);
+      expect(cell.h).toBeGreaterThanOrEqual(1);
+      expect(cell.x0 + cell.w).toBeLessThanOrEqual(3);
+      expect(cell.y0 + cell.h).toBeLessThanOrEqual(3);
+    }
+    expect(() => sliceSheet(tiny, { expectedGrid: { rows: 1, cols: 8 } })).not.toThrow();
+    expect(sliceSheet(tiny, { expectedGrid: { rows: 1, cols: 8 } })).toHaveLength(8);
+  });
 });
 
 describe('computeSliceMap (content-aware)', () => {
