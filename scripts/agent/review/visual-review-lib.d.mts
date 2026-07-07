@@ -47,3 +47,5 @@ export function diffFindings(
   prevKeys: readonly string[] | undefined,
   current: readonly string[] | undefined,
 ): FindingDiff;
+
+export function lacksPixelGroundedGeometry(harvestSource: string, regionCount: number): boolean;

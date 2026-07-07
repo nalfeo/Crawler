@@ -296,3 +296,28 @@ export function diffFindings(prevKeys, current) {
   }
   return { new: newFindings, recurring };
 }
+
+/**
+ * Whether a run ended up WITHOUT pixel-grounded deterministic geometry, so the
+ * caller must emit a loud (non-gating) warning. This is true in two cases, both
+ * of which silently degrade to screenshot-only, subjective feedback — the exact
+ * failure mode this tool exists to prevent:
+ *
+ *  - `'none'` — the surface declared no `window.__visualReview` and is not the
+ *    legacy equipment probe, so no geometry was measured at all.
+ *  - `'declared'` with ZERO valid regions — the setup declared the contract but
+ *    every region was dropped (missing id, non-finite / zero-area box, etc.), a
+ *    misconfiguration that would otherwise pass silently.
+ *
+ * `'equipment-legacy'` always has geometry (from its own probe, not regions), so
+ * a zero `regionCount` there is expected and does NOT warrant a warning.
+ *
+ * @param {string} harvestSource
+ * @param {number} regionCount
+ * @returns {boolean}
+ */
+export function lacksPixelGroundedGeometry(harvestSource, regionCount) {
+  if (harvestSource === 'none') return true;
+  if (harvestSource === 'declared' && !(regionCount > 0)) return true;
+  return false;
+}

@@ -7,6 +7,7 @@ import {
   findingKeys,
   dedupeFindings,
   diffFindings,
+  lacksPixelGroundedGeometry,
 } from './visual-review-lib.mjs';
 
 /** @typedef {import('./visual-review-lib.d.mts').VisualReviewRegion} Region */
@@ -221,4 +222,33 @@ test('diffFindings: splits NEW vs RECURRING against prior keys and dedupes curre
 test('diffFindings: no prior keys means everything is NEW', () => {
   const out = diffFindings([], ['a finding', 'another finding']);
   assert.deepEqual(out, { new: ['a finding', 'another finding'], recurring: [] });
+});
+
+// ---------------------------------------------------------------------------
+// lacksPixelGroundedGeometry
+// ---------------------------------------------------------------------------
+
+test('lacksPixelGroundedGeometry: none source always warns', () => {
+  assert.equal(lacksPixelGroundedGeometry('none', 0), true);
+  assert.equal(lacksPixelGroundedGeometry('none', 5), true);
+});
+
+test('lacksPixelGroundedGeometry: declared with 0 valid regions warns (misconfigured setup)', () => {
+  // This is the exact hole reviewer PRRT_kwDOSvo2Ms6O2qUi flagged: a declared
+  // contract that yields no valid regions must not pass silently.
+  assert.equal(lacksPixelGroundedGeometry('declared', 0), true);
+});
+
+test('lacksPixelGroundedGeometry: declared with >=1 region does not warn', () => {
+  assert.equal(lacksPixelGroundedGeometry('declared', 1), false);
+  assert.equal(lacksPixelGroundedGeometry('declared', 17), false);
+});
+
+test('lacksPixelGroundedGeometry: equipment-legacy never warns (geometry comes from its probe, not regions)', () => {
+  assert.equal(lacksPixelGroundedGeometry('equipment-legacy', 0), false);
+});
+
+test('lacksPixelGroundedGeometry: non-positive / non-finite region counts count as empty for declared', () => {
+  assert.equal(lacksPixelGroundedGeometry('declared', -1), true);
+  assert.equal(lacksPixelGroundedGeometry('declared', Number.NaN), true);
 });

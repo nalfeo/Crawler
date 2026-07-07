@@ -9,6 +9,7 @@ import {
   computeGeometryBlockers,
   diffFindings,
   findingKeys,
+  lacksPixelGroundedGeometry,
   normalizeOverallScore,
 } from './visual-review-lib.mjs';
 import type { VisualReviewBox, VisualReviewRegion } from './visual-review-lib.mjs';
@@ -951,23 +952,32 @@ async function main(): Promise<number> {
   const reviewPath = resolve(opts.outputDir, `${opts.screenshotName}-${stamp}.review.json`);
 
   const capture = await captureScreenshot(opts, screenshotPath);
-  if (capture.harvestSource === 'equipment-legacy') {
+  if (lacksPixelGroundedGeometry(capture.harvestSource, capture.regions.length)) {
+    // Either no contract at all ('none') or a declared-but-empty (misconfigured)
+    // surface. Both silently degrade to screenshot-only, non-pixel-grounded
+    // feedback — the exact failure mode this tool exists to prevent — so warn
+    // loudly (but do NOT gate: the LLM pass still runs).
+    console.warn(
+      capture.harvestSource === 'declared'
+        ? '[visual-review-agent] WARNING: window.__visualReview was declared but produced 0 valid regions ' +
+            '(misconfigured setup — every region was dropped for a missing id or a non-finite / zero-area box). ' +
+            'No deterministic geometry checks ran; findings are screenshot-only and NOT pixel-grounded. Fix the ' +
+            'region boxes so each has a non-empty id and a positive-area box in the screenshot coordinate space.'
+        : '[visual-review-agent] WARNING: this surface declared no window.__visualReview and is not the legacy ' +
+            'equipment probe. No deterministic geometry checks ran; findings are screenshot-only and NOT pixel-grounded. ' +
+            'Declare window.__visualReview in your setup file to get deterministic, pixel-grounded checks.',
+    );
+  } else if (capture.harvestSource === 'equipment-legacy') {
     const geo = capture.geometry;
     console.log(
       `[visual-review-agent] geometry captured (equipment-legacy): panel=${geo.panel ? 'yes' : 'NULL'} ` +
         `tooltip=${geo.tooltip ? 'yes' : 'NULL'} ` +
         `slots=${geo.slots.filter((s) => s.box).length}/${geo.slots.length} with-box`,
     );
-  } else if (capture.harvestSource === 'declared') {
+  } else {
     console.log(
       `[visual-review-agent] geometry harvested (declared): surface=${capture.surface ?? '(unnamed)'} ` +
         `regions=${capture.regions.length} deterministic-blockers=${capture.deterministicBlockers.length}`,
-    );
-  } else {
-    console.warn(
-      '[visual-review-agent] WARNING: this surface declared no window.__visualReview and is not the legacy ' +
-        'equipment probe. No deterministic geometry checks ran; findings are screenshot-only and NOT pixel-grounded. ' +
-        'Declare window.__visualReview in your setup file to get deterministic, pixel-grounded checks.',
     );
   }
 

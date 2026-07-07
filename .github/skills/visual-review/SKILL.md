@@ -73,9 +73,12 @@ guessing) plus deterministic Node-side geometry checks.
 window.__visualReview = {
   surface: 'inventory panel', // optional label, shown in the geometry table
   regions: [
-    // Every meaningful element you want measured. `box` is in whatever space your
-    // probe reports (Crawler probes report DESIGN space, 1280x720). The judge only
-    // compares regions relative to each other, so any single consistent space works.
+    // Every meaningful element you want measured. `box` MUST be in the
+    // SCREENSHOT's coordinate space (Crawler probes report DESIGN space,
+    // 1280x720, which is the screenshot space here). The deterministic checks
+    // use ABSOLUTE pixel thresholds (gap <= 1px, shared edge >= 8px, icon
+    // escape > 1px) and the prompt tells the model the geometry shares the
+    // screenshot's pixels — so a mismatched/arbitrary space produces wrong deltas.
     { id: 'inventory-panel', box: { x, y, width, height }, kind: 'panel' },
     { id: 'cell:0', box: { x, y, width, height }, kind: 'slot', parentId: 'inventory-panel' },
     { id: 'cell:0.icon', box: { x, y, width, height }, kind: 'icon', parentId: 'cell:0' },
