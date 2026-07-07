@@ -42,9 +42,9 @@ import { renderItemTooltip } from './item-tooltip.js';
 const PANEL_PADDING = 16;
 const TAB_HEIGHT = 36;
 const TAB_GAP = 4;
-const SEARCH_HEIGHT = 36;
+const SEARCH_HEIGHT = 48;
 const CELL_SIZE = 64;
-const CELL_GAP = 4;
+const CELL_GAP = 10;
 const COLS = 5;
 const BORDER_WIDTH = 2;
 const FONT_FAMILY = '"Press Start 2P", "Courier New", monospace';
@@ -65,6 +65,8 @@ const COLORS = {
   searchBorder: 0x3f5f93,
   cellBg: 0x445c89,
   cellHover: 0x5472ab,
+  emptyCellBg: 0x37496f,
+  emptyCellBorder: 0x3f5f93,
   textPrimary: 0xd9e2ef,
   textSecondary: 0xaebdd5,
   accent: 0xc2d0e6,
@@ -264,12 +266,17 @@ export function createInventoryUI(
   container.add(slotFilterLabel);
 
   // Sort button
-  const sortBtn = scene.add
-    .text(snap(panelX + panelWidth - PANEL_PADDING), snap(panelY + PANEL_PADDING), '⇅ Rarity', {
+  const sortBtn = crispText(
+    panelX + panelWidth - PANEL_PADDING,
+    panelY + PANEL_PADDING + 2,
+    'Sort: Rarity',
+    {
       fontFamily: FONT_FAMILY,
-      fontSize: '11px',
+      fontSize: '12px',
       color: hex(COLORS.textSecondary),
-    })
+      padding: { top: 4, bottom: 2 },
+    },
+  )
     .setOrigin(1, 0)
     .setInteractive({ useHandCursor: true });
 
@@ -277,7 +284,7 @@ export function createInventoryUI(
     const sortFields: SortField[] = ['rarity', 'name', 'quantity'];
     const idx = sortFields.indexOf(currentSortBy);
     currentSortBy = sortFields[(idx + 1) % sortFields.length]!;
-    sortBtn.setText(`⇅ ${currentSortBy.charAt(0).toUpperCase() + currentSortBy.slice(1)}`);
+    sortBtn.setText(`Sort: ${currentSortBy.charAt(0).toUpperCase() + currentSortBy.slice(1)}`);
     renderItems();
   });
   container.add(sortBtn);
@@ -311,12 +318,12 @@ export function createInventoryUI(
   container.add(searchBg);
 
   const searchText = crispText(
-    panelX + PANEL_PADDING + 8,
-    searchY + SEARCH_HEIGHT / 2,
-    '🔍 Type to search...',
+    panelX + PANEL_PADDING + 10,
+    searchY + SEARCH_HEIGHT / 2 + 3,
+    'Type to search...',
     {
       fontFamily: FONT_FAMILY,
-      fontSize: '11px',
+      fontSize: '12px',
       color: hex(COLORS.textSecondary),
     },
   );
@@ -350,11 +357,11 @@ export function createInventoryUI(
       .setPosition(panelX + PANEL_PADDING + 138, panelY + PANEL_PADDING + 4)
       .setResolution(textResolution);
     sortBtn
-      .setPosition(panelX + panelWidth - PANEL_PADDING, panelY + PANEL_PADDING)
+      .setPosition(panelX + panelWidth - PANEL_PADDING, panelY + PANEL_PADDING + 2)
       .setResolution(textResolution);
     searchBg.setPosition(panelX + panelWidth / 2, searchY + SEARCH_HEIGHT / 2);
     searchText
-      .setPosition(panelX + PANEL_PADDING + 8, searchY + SEARCH_HEIGHT / 2)
+      .setPosition(panelX + PANEL_PADDING + 10, searchY + SEARCH_HEIGHT / 2 + 3)
       .setResolution(textResolution);
 
     if (visible) {
@@ -506,6 +513,12 @@ export function createInventoryUI(
     const slots = getFilteredSlots();
     const maxRows = Math.floor(gridHeight / (CELL_SIZE + CELL_GAP));
     const maxVisible = maxRows * COLS;
+    // Center the fixed-width grid within the panel so the left/right padding is
+    // symmetric. The panel is wider than the grid needs (its width is driven by
+    // the header row), so a left-anchored grid would dump all the slack on the
+    // right and read as broken.
+    const gridPixelWidth = COLS * CELL_SIZE + (COLS - 1) * CELL_GAP;
+    const gridLeft = snap(panelX + (panelWidth - gridPixelWidth) / 2);
 
     for (let i = 0; i < Math.min(slots.length, maxVisible); i++) {
       const slot = slots[i]!;
@@ -514,7 +527,7 @@ export function createInventoryUI(
 
       const col = i % COLS;
       const row = Math.floor(i / COLS);
-      const cellX = snap(panelX + PANEL_PADDING + col * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2);
+      const cellX = snap(gridLeft + col * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2);
       const cellY = snap(gridY + row * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2);
 
       const rarityColor = RARITY_COLORS[def.rarity] ?? 0x9e9e9e;
@@ -594,7 +607,7 @@ export function createInventoryUI(
         // sprites; the old hardcoded `/16` blew 64px art up 3× (192px) and
         // overflowed the 64px cell. fitScaleForBox keeps small pixel art crisp
         // (integer upscale) and shrinks higher-resolution art down to fit.
-        const iconScale = fitScaleForBox(iconImage.width, iconImage.height, CELL_SIZE * 0.75);
+        const iconScale = fitScaleForBox(iconImage.width, iconImage.height, CELL_SIZE * 0.72);
         iconImage.setScale(iconScale);
         iconObject = iconImage;
       } else {
@@ -632,14 +645,53 @@ export function createInventoryUI(
       cellItemIds.push(slot.itemId);
     }
 
-    // Item count footer
+    // Fill trailing cells of the final row with empty-slot backgrounds so the
+    // grid always reads as a complete rectangle (no ragged last row) and unused
+    // capacity has a clear affordance. Empty cells are decorative only — never
+    // pushed to cellBackgrounds/cellItemIds, so automation item indices stay
+    // stable.
+    const filledCells = Math.min(slots.length, maxVisible);
+    const rectCells = Math.min(Math.ceil(filledCells / COLS) * COLS, maxVisible);
+    for (let i = filledCells; i < rectCells; i++) {
+      const col = i % COLS;
+      const row = Math.floor(i / COLS);
+      const cellX = snap(gridLeft + col * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2);
+      const cellY = snap(gridY + row * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2);
+      const emptyCell = scene.add.rectangle(cellX, cellY, CELL_SIZE, CELL_SIZE, COLORS.emptyCellBg);
+      emptyCell.setStrokeStyle(BORDER_WIDTH, COLORS.emptyCellBorder);
+      container.add(emptyCell);
+      cellObjects.push(emptyCell);
+      // An inset inner frame gives the empty slot a clear "recessed well"
+      // identity that reads unambiguously as unused capacity — more explicit
+      // than a single flat placeholder mark.
+      const emptyInset = scene.add.rectangle(cellX, cellY, CELL_SIZE - 22, CELL_SIZE - 22);
+      emptyInset.setFillStyle(0, 0);
+      emptyInset.setStrokeStyle(1, COLORS.emptyCellBorder, 0.9);
+      container.add(emptyInset);
+      cellObjects.push(emptyInset);
+    }
+
+    // Thin divider anchoring the count footer to the grid above it, so the
+    // footer reads as part of the panel layout rather than floating loose.
+    const footerDivider = scene.add.rectangle(
+      gridLeft + gridPixelWidth / 2,
+      panelY + panelHeight - PANEL_PADDING - 30,
+      gridPixelWidth,
+      2,
+      COLORS.emptyCellBorder,
+      0.7,
+    );
+    container.add(footerDivider);
+    cellObjects.push(footerDivider);
+
+    // Item count footer, left-aligned under the centered grid.
     const countFooter = crispText(
-      panelX + PANEL_PADDING,
-      panelY + panelHeight - PANEL_PADDING,
+      gridLeft,
+      panelY + panelHeight - PANEL_PADDING - 10,
       `${slots.length} item${slots.length !== 1 ? 's' : ''}`,
       {
         fontFamily: FONT_FAMILY,
-        fontSize: '10px',
+        fontSize: '12px',
         color: hex(COLORS.textSecondary),
       },
     );
@@ -709,10 +761,10 @@ export function createInventoryUI(
 
   function updateSearchDisplay(): void {
     if (searchQuery) {
-      searchText.setText(`🔍 ${searchQuery}`);
+      searchText.setText(searchQuery);
       searchText.setColor(hex(COLORS.textPrimary));
     } else {
-      searchText.setText('🔍 Type to search...');
+      searchText.setText('Type to search...');
       searchText.setColor(hex(COLORS.textSecondary));
     }
   }

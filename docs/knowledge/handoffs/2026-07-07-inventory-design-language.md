@@ -42,14 +42,72 @@ into `InventoryUI.ts`, making both panels visually consistent.
 - **All hardcoded hex strings** replaced with `COLORS` + `hex()` throughout:
   slotFilterLabel, sortBtn, search bar placeholder/active, tab borders/text,
   stack counts, item count footer, `updateSearchDisplay`
-- **Sort button and search font sizes** reduced to match pixel-font legibility
-  (14px/13px Segoe → 11px/10px Press Start 2P)
+- **Sort button and search font sizes** reduced to match pixel-font legibility,
+  then re-tuned to 12px in the UX-judge polish pass (see section below)
+
+## PR-Shepherd UX-Judge Polish Pass (2026-07-07)
+
+During PR shepherding the maintainer required a 10-round `visual-review` LLM
+"UX judge" loop (dev-only, never CI-gating) and ruled that geometry changes
+count as cosmetic. Each round I ground-truthed every finding against the
+captured screenshot (the LLM oscillates/contradicts itself and emits two
+probe-noise findings about empty-slot tooltips — the empty cells are decorative
+and have no hover), and made only genuine, non-thrash fixes.
+
+**Additional `src/engine/InventoryUI.ts` changes from the polish pass:**
+
+- `SEARCH_HEIGHT` 36 → 48, `CELL_GAP` 4 → 10 (generous per-slot breathing room)
+- Removed non-pixel `🔍` emoji and `⇅` glyph (both rendered from a taller
+  fallback face, off-theme and clip-prone)
+- Search + footer text bumped to 12px with a `+3px` visual-center nudge
+- **Centered the fixed-width grid** (`gridLeft`/`gridPixelWidth`) so L/R padding
+  is symmetric — the panel width is header-driven and wider than the grid needs
+- **Empty-slot cells**: trailing cells of the final row filled with recessed
+  `emptyCell` backgrounds + inset inner frame so the grid always reads as a
+  complete rectangle. Decorative only — never pushed to
+  `cellBackgrounds`/`cellItemIds`, so automation item indices stay stable
+- **Footer divider** + count footer aligned to the centered grid
+- Icon fill `CELL_SIZE * 0.75` → `0.72`
+
+**User-reported "Rarity cut off at the top" clip — FIXED (rule #10 before/after):**
+
+- **Cause**: the sort button used a bare `scene.add.text(...)` with no top
+  padding; Press Start 2P glyphs sit high, so the text canvas cropped their tops
+  flat. The `⇅` fallback glyph made it worse. The **title** renders fine because
+  it uses `crispText` + `padding: { top: 4, bottom: 2 }`.
+- **Fix**: mirrored the title's proven recipe — `crispText` + `padding {top:4}`,
+  `Sort: Rarity` label (no `⇅`), 12px, `+2px` y-nudge; aligned the `applyLayout`
+  relayout to match.
+- **Observed (deterministic crop, 4× zoom)**:
+  - Before (round 9 attempt, `⇅` removed but no padding): reads **"Sort: Karity"**,
+    glyph tops flat-clipped — `files/visual-review/inventory-panel-2026-07-07T05-37-40-577Z-sortcrop.png`
+  - After (round 10, title-recipe padding): reads **"Sort: Rarity"**, full R bowl,
+    no clipping — `files/visual-review/inventory-panel-2026-07-07T05-41-32-005Z-sortcrop.png`
+
+**UX-judge trajectory** (verdict stayed "needs-work" — the judge plateaued at
+~3–3.4/5 with oscillating/contradictory findings; I did not chase it into worse
+UX per rule #12): baseline 7 blockers → rounds 1-10 hovered at 4-6 blockers,
+the recurring real signals (palette/font port, emoji/glyph removal, spacing,
+grid centering, and the Rarity clip) all addressed. Artifacts:
+`files/visual-review/inventory-panel-*.{png,review.json}`; setup at
+`scripts/agent/review/setup/ui-probe-inventory.js`.
 
 ## Observed
 
-- `npm run verify:fast` ✅ — 3991/3991 tests pass, typecheck + lint clean
-- Zero layout-geometry changes (CELL_SIZE, COLS, CELL_GAP, TAB_HEIGHT,
-  SEARCH_HEIGHT, PANEL_PADDING all unchanged); existing e2e probe positions stable
+- `npm run verify:fast` ✅ — typecheck + lint + guards + changed unit tests clean
+- Layout geometry WAS adjusted in the UX-judge polish pass (SEARCH_HEIGHT,
+  CELL_GAP, grid centering, empty cells, footer divider — see section above).
+  The e2e probe queries live cell bounds, so it adapts; **16/16 e2e still pass**
+  after the geometry changes.
+- **Deterministic before/after (rule #10, PR-shepherd pass):** added an e2e pixel
+  assertion in `tests/e2e/inventory-flow.test.ts`
+  (`renders the panel with the blue-steel equipment design language`). It renders
+  the real Phaser `InventoryUI` in headless chromium, samples the panel's left
+  `PANEL_PADDING` gutter (pure `panelBg`, left of column 0 — no cells/icons/rarity
+  borders/corner pixels), and asserts `regionContainsColor(..., 0x2f3f61, 30)`.
+  - **New palette → PASS**; **base `InventoryUI.ts` (old dark-navy `0x0d0d1a`) → FAIL**
+    with the exact assertion message → proves a genuine discriminator, not a tautology.
+  - Full `inventory-flow.test.ts` e2e file: **16/16 pass** (new test + 15 siblings).
 
 ## Key Decisions Made
 
