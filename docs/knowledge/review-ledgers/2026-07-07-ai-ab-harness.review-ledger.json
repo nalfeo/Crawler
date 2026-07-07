@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-07",
+  "session_slug": "ai-ab-harness",
+  "task_title": "Two-axis AI A/B toggle + visualization harness",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "notes": "Honest reframe adopted: DEFAULT byte-identity is provable (LEGACY dead stores + isSlackAwareUrgent mode-guard short-circuit); SLACK_AWARE-when-enabled safety is EMPIRICAL (A/B zero win->loss flips) + monotone-over-goal-set-by-construction, NOT a mathematical outcome-proof, so both modes stay LEGACY-default and SLACK_AWARE stays opt-in. Concern 4 (A/B inert on healthy Floor-1) resolved by adding a dedicated F1-effect unit test that proves activation is non-vacuous."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "note": "1 BLOCKING: the committed HEAD's F2 exit-commitment tail bypassed the progressGoalSuppressed wedge-recovery escape hatch under urgency (`if (progressSuppressed && !this.isSlackAwareUrgent())`), a monotonicity hazard that could livelock a wedged agent and flip win->loss. Resolved by dropping the bypass to plain `if (progressSuppressed)` (bt-ai-provider.ts:4514). Everything else clean."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "note": "Re-review of the full committed+working-tree diff vs origin/main. ROUND 2 CLEAN: verified LEGACY byte-identity end-to-end (isSlackAwareUrgent mode-guard hard-false 5706; decisionRunPlan never computed in LEGACY 2417; progressTargetAvailableThisPoll dead store; DEFAULT_CONFIG both LEGACY), F2 bypass fix present at 4514, monotonicity contract (Progress-wins coupling => discovery structurally guaranteed, no goal blackout), determinism (no Math.random/Date.now in decision path), non-vacuous F1 activation test, and correct A/B harness win/flip gate."
+        }
+      ]
+    }
+  }
+}
