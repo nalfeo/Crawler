@@ -1051,6 +1051,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       };
     }
     const facing = parseFacingPayload(body.facing);
+    const clearFacing = body.facing === null;
     if (body.facing !== undefined && body.facing !== null && facing === null) {
       reply.code(400);
       return {
@@ -1106,7 +1107,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         ...(options ? { options } : {}),
         ...(mode ? { optionsMode: mode } : {}),
         ...(persistedManualAnchor !== undefined ? { manualAnchor: persistedManualAnchor } : {}),
-        ...(facing ? { facing } : {}),
+        ...(clearFacing ? { facing: null } : facing ? { facing } : {}),
         ...(variantIndexes ? { variantIndexes } : {}),
         ...(sheet ? { sheetFile: sheet } : {}),
       });
