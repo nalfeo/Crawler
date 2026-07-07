@@ -139,6 +139,17 @@ export class CaveSystemGenerator implements MapGenerator {
       1,
       Math.floor(Math.hypot(config.widthTiles - 1, config.heightTiles - 1)),
     );
+    const resolvedBossDenSize = Math.max(
+      5,
+      Math.min(11, Math.floor(valueOr(cave?.bossDenSize, this.options.bossDenSize))),
+    );
+    const requestedRetries = Math.max(
+      1,
+      Math.min(64, Math.floor(valueOr(cave?.maxRetries, this.options.maxRetries))),
+    );
+    // Larger den footprints are materially harder to place in wall-only space.
+    // Raise retry budget deterministically so high-size sweeps don't fail prematurely.
+    const denRetryFloor = 16 + Math.max(0, resolvedBossDenSize - 8) * 12;
     return {
       presentCount: this.resolvePresentCount(config),
       initialFill: Math.max(
@@ -149,10 +160,7 @@ export class CaveSystemGenerator implements MapGenerator {
         1,
         Math.min(8, Math.floor(valueOr(cave?.smoothingPasses, this.options.smoothingPasses))),
       ),
-      bossDenSize: Math.max(
-        5,
-        Math.min(11, Math.floor(valueOr(cave?.bossDenSize, this.options.bossDenSize))),
-      ),
+      bossDenSize: resolvedBossDenSize,
       regionSeparationTiles: Math.max(
         0,
         Math.min(
@@ -160,10 +168,7 @@ export class CaveSystemGenerator implements MapGenerator {
           Math.floor(valueOr(cave?.regionSeparationTiles, this.options.regionSeparationTiles)),
         ),
       ),
-      maxRetries: Math.max(
-        1,
-        Math.min(16, Math.floor(valueOr(cave?.maxRetries, this.options.maxRetries))),
-      ),
+      maxRetries: Math.max(requestedRetries, denRetryFloor),
       cavernWidenPasses: Math.max(
         0,
         Math.min(4, Math.floor(valueOr(cave?.cavernWidenPasses, this.options.cavernWidenPasses))),
@@ -1121,14 +1126,14 @@ export class CaveSystemGenerator implements MapGenerator {
   }
 
   /**
-   * Carve a sealed BOSS_DEN sub-chamber adjacent to a territory. The chamber
-   * is a solid-walled bossDenSize × bossDenSize rectangle with a single
-   * closed door on the shared edge with the territory.
+   * Carve a sealed BOSS_DEN sub-chamber from surrounding stone.
    *
-   * Strategy: iterate over the territory's boundary tiles (passable cells
-   * whose neighbour is wall), and for each candidate direction try to fit
-   * a wall-only chamber immediately outside that boundary. This guarantees
-   * the door is adjacent to a tile that BELONGS to this territory.
+   * Strategy:
+   * 1) Pick a territory boundary tile + outward direction.
+   * 2) Search outward in that direction for an all-wall chamber footprint.
+   * 3) Stamp a stone-walled chamber + one door.
+   * 4) If the chamber is not directly adjacent, carve a short connector tunnel
+   *    back toward the territory to preserve global cave connectivity.
    *
    * Returns the chamber bounds + door location, or null on failure.
    */
@@ -1142,7 +1147,6 @@ export class CaveSystemGenerator implements MapGenerator {
     denSize: number,
   ): { bounds: RoomBounds; door: DoorLocation } | null {
     const size = denSize;
-    const territoryCells = new Set(territory.cells);
 
     // Collect (territoryCell, direction) candidate slots — the direction
     // is the offset from the territory tile through the door tile into
@@ -1175,63 +1179,71 @@ export class CaveSystemGenerator implements MapGenerator {
     }
     candidates.sort((a, b) => a.score - b.score);
 
+    const maxOutward = Math.max(size * 3, Math.floor(Math.min(w, h) / 3));
     for (const cand of candidates) {
-      // The door tile is (cand.tx + cand.dx, cand.ty + cand.dy). The chamber
-      // extends further in the same direction. Pick a chamber footprint that
-      // includes the door on its perimeter facing the territory.
-      const doorX = cand.tx + cand.dx;
-      const doorY = cand.ty + cand.dy;
+      for (let outward = 0; outward <= maxOutward; outward++) {
+        // The door tile is offset outward from the territory boundary cell.
+        const doorX = cand.tx + cand.dx * (outward + 1);
+        const doorY = cand.ty + cand.dy * (outward + 1);
+        if (doorX < 1 || doorX >= w - 1 || doorY < 1 || doorY >= h - 1) continue;
 
-      // The chamber's near edge is the door. Place the chamber so the door
-      // lies on that near edge, centred perpendicular to the door direction.
-      let bx: number;
-      let by: number;
-      if (cand.dx !== 0) {
-        // Door faces horizontally — chamber extends left or right.
-        bx = cand.dx > 0 ? doorX : doorX - size + 1;
-        by = doorY - Math.floor(size / 2);
-      } else {
-        // Door faces vertically.
-        bx = doorX - Math.floor(size / 2);
-        by = cand.dy > 0 ? doorY : doorY - size + 1;
-      }
-      if (bx < 1 || by < 1 || bx + size >= w - 1 || by + size >= h - 1) continue;
-
-      // Chamber footprint must currently be all wall.
-      let allWall = true;
-      for (let y = by; y < by + size && allWall; y++) {
-        for (let x = bx; x < bx + size && allWall; x++) {
-          if (tileMap.isPassable(x, y)) allWall = false;
+        // The chamber's near edge is the door. Place the chamber so the door
+        // lies on that near edge, centred perpendicular to the door direction.
+        let bx: number;
+        let by: number;
+        if (cand.dx !== 0) {
+          // Door faces horizontally — chamber extends left or right.
+          bx = cand.dx > 0 ? doorX : doorX - size + 1;
+          by = doorY - Math.floor(size / 2);
+        } else {
+          // Door faces vertically.
+          bx = doorX - Math.floor(size / 2);
+          by = cand.dy > 0 ? doorY : doorY - size + 1;
         }
-      }
-      if (!allWall) continue;
+        if (bx < 1 || by < 1 || bx + size >= w - 1 || by + size >= h - 1) continue;
 
-      // Sanity check: door must be on the chamber perimeter.
-      const doorOnPerim =
-        doorX === bx || doorX === bx + size - 1 || doorY === by || doorY === by + size - 1;
-      if (!doorOnPerim) continue;
-
-      // Verify the door's territory-side neighbour is a cell in THIS territory.
-      const outsideIdx = (doorY - cand.dy) * w + (doorX - cand.dx);
-      if (!territoryCells.has(outsideIdx)) continue;
-
-      // Carve interior floor.
-      for (let y = by + 1; y < by + size - 1; y++) {
-        for (let x = bx + 1; x < bx + size - 1; x++) {
-          const idx = y * w + x;
-          tileMap.flags[idx] = TilePresets.FLOOR;
-          terrain[idx] = TerrainType.STONE_FLOOR;
+        // Chamber footprint must currently be all wall so we don't sever passable flow.
+        let allWall = true;
+        for (let y = by; y < by + size && allWall; y++) {
+          for (let x = bx; x < bx + size && allWall; x++) {
+            if (tileMap.isPassable(x, y)) allWall = false;
+          }
         }
-      }
-      // Stamp the door tile — DOOR_OPEN so the den is reachable and the connectivity
-      // invariant holds. The scenario can close the door on floor initialization.
-      const didx = doorY * w + doorX;
-      tileMap.flags[didx] = TilePresets.DOOR_OPEN;
-      terrain[didx] = TerrainType.DOOR;
+        if (!allWall) continue;
 
-      const bounds: RoomBounds = { x: bx, y: by, width: size, height: size };
-      const doorLoc: DoorLocation = { x: doorX, y: doorY, connectsTo: -1 };
-      return { bounds, door: doorLoc };
+        // Sanity check: door must be on the chamber perimeter.
+        const doorOnPerim =
+          doorX === bx || doorX === bx + size - 1 || doorY === by || doorY === by + size - 1;
+        if (!doorOnPerim) continue;
+
+        // Carve interior floor.
+        for (let y = by + 1; y < by + size - 1; y++) {
+          for (let x = bx + 1; x < bx + size - 1; x++) {
+            const idx = y * w + x;
+            tileMap.flags[idx] = TilePresets.FLOOR;
+            terrain[idx] = TerrainType.STONE_FLOOR;
+          }
+        }
+        // Carve connector tunnel back toward territory when den is offset outward.
+        for (let step = 1; step <= outward; step++) {
+          const cx = cand.tx + cand.dx * step;
+          const cy = cand.ty + cand.dy * step;
+          if (cx < 1 || cx >= w - 1 || cy < 1 || cy >= h - 1) break;
+          const cidx = cy * w + cx;
+          tileMap.flags[cidx] = TilePresets.FLOOR;
+          terrain[cidx] = TerrainType.CAVE_FLOOR;
+        }
+
+        // Stamp the door tile — DOOR_OPEN so the den is reachable and the connectivity
+        // invariant holds. The scenario can close the door on floor initialization.
+        const didx = doorY * w + doorX;
+        tileMap.flags[didx] = TilePresets.DOOR_OPEN;
+        terrain[didx] = TerrainType.DOOR;
+
+        const bounds: RoomBounds = { x: bx, y: by, width: size, height: size };
+        const doorLoc: DoorLocation = { x: doorX, y: doorY, connectsTo: -1 };
+        return { bounds, door: doorLoc };
+      }
     }
 
     return null;

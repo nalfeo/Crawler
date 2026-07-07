@@ -412,6 +412,20 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   sweepEl.textContent = 'Seed sweep: not run yet.';
   canvasHost.appendChild(sweepEl);
 
+  const errorEl = document.createElement('pre');
+  errorEl.style.marginTop = '8px';
+  errorEl.style.padding = '12px';
+  errorEl.style.background = 'rgba(127, 29, 29, 0.35)';
+  errorEl.style.border = '1px solid rgba(248, 113, 113, 0.45)';
+  errorEl.style.borderRadius = '8px';
+  errorEl.style.color = '#fecaca';
+  errorEl.style.fontSize = '12px';
+  errorEl.style.fontFamily = 'monospace';
+  errorEl.style.lineHeight = '1.5';
+  errorEl.style.whiteSpace = 'pre-wrap';
+  errorEl.style.display = 'none';
+  canvasHost.appendChild(errorEl);
+
   const legendEl = document.createElement('pre');
   legendEl.style.marginTop = '8px';
   legendEl.style.padding = '12px';
@@ -433,6 +447,7 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   let isGenerating = false;
   let pendingRegeneration = false;
   let generationQueued = false;
+  let lastGenerationError: string | null = null;
 
   // ── per-map caches (invalidated on generateNow) ───────────────────────────
   let cachedTerrainCanvas: HTMLCanvasElement | null = null;
@@ -493,6 +508,10 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   function buildConfig(): MapConfig {
     const widthTiles = clampInt(settings.widthTiles, 20, 400);
     const heightTiles = clampInt(settings.heightTiles, 20, 300);
+    const maxRegionSeparationTiles = Math.max(
+      1,
+      Math.floor(Math.hypot(widthTiles - 1, heightTiles - 1)),
+    );
     const roomWidthMin = clampInt(Math.min(settings.roomWidthMin, settings.roomWidthMax), 3, 40);
     const roomWidthMax = clampInt(Math.max(settings.roomWidthMin, settings.roomWidthMax), 3, 50);
     const roomHeightMin = clampInt(Math.min(settings.roomHeightMin, settings.roomHeightMax), 3, 40);
@@ -505,7 +524,11 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
               initialFill: Math.max(0.05, Math.min(0.95, settings.caveInitialFill)),
               smoothingPasses: clampInt(settings.caveSmoothingPasses, 1, 12),
               bossDenSize: clampInt(settings.caveBossDenSize, 3, 13),
-              regionSeparationTiles: clampInt(settings.caveRegionSeparationTiles, 0, 80),
+              regionSeparationTiles: clampInt(
+                settings.caveRegionSeparationTiles,
+                0,
+                maxRegionSeparationTiles,
+              ),
               maxRetries: clampInt(settings.caveMaxRetries, 1, 24),
               cavernWidenPasses: clampInt(settings.caveCavernWidenPasses, 0, 8),
               straightHallwayMinRun: clampInt(settings.caveStraightHallwayMinRun, 0, 40),
@@ -1200,6 +1223,15 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     legendEl.textContent = lines.join('\n');
   }
 
+  function updateGenerationError(): void {
+    if (!lastGenerationError) {
+      errorEl.style.display = 'none';
+      return;
+    }
+    errorEl.style.display = 'block';
+    errorEl.textContent = `Generation failed:\n${lastGenerationError}`;
+  }
+
   function fitToFrame(): void {
     if (!currentMap) return;
     const mapPxW = currentMap.width * CELL_SIZE;
@@ -1301,6 +1333,8 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     render();
     updateStats();
     updateLegend();
+    lastGenerationError = null;
+    updateGenerationError();
     saveLabState(LAB_ID, settings);
   }
 
@@ -1318,6 +1352,9 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     window.setTimeout(() => {
       try {
         generateNow();
+      } catch (error) {
+        lastGenerationError = error instanceof Error ? error.message : String(error);
+        updateGenerationError();
       } finally {
         isGenerating = false;
         if (generationQueued) {
@@ -1632,7 +1669,7 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     .onChange(markMapSettingsDirty);
   setControllerTooltip(bossDenCtl, 'Boss-den carved radius/diameter scalar. Apply to rebuild map.');
   const separationCtl = floorTweaksFolder
-    .add(settings, 'caveRegionSeparationTiles', 0, 80, 1)
+    .add(settings, 'caveRegionSeparationTiles', 0, Math.floor(Math.hypot(400 - 1, 300 - 1)), 1)
     .name('Region separation')
     .onChange(markMapSettingsDirty);
   setControllerTooltip(
@@ -1754,6 +1791,7 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     statsEl.remove();
     sweepEl.remove();
     legendEl.remove();
+    errorEl.remove();
     hint.remove();
   };
 }

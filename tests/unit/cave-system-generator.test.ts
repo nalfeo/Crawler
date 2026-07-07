@@ -355,6 +355,19 @@ describe('CaveSystemGenerator', () => {
     }
   });
 
+  it('keeps floor2 den carving stable for larger bossDenSize values across seeds', () => {
+    const gen = new CaveSystemGenerator({ presentCount: 4 });
+    for (const seed of [1, 3, 5, 8, 13, 21]) {
+      for (let bossDenSize = 5; bossDenSize <= 11; bossDenSize++) {
+        const config: MapConfig = {
+          ...smallConfig(seed, 120, 90),
+          caveSystem: { bossDenSize },
+        };
+        expect(() => gen.generate(config, new SeededRandom(seed))).not.toThrow();
+      }
+    }
+  }, 90_000);
+
   it('RoomGraph.getRoomAt reports -1 for a wall tile inside a cave region bbox', () => {
     const floor = generateWithPresent(1, 4);
     const room = floor.roomGraph.getAll().find((r) => r.role === RoomRole.TERRITORY)!;
