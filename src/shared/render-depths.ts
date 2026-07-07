@@ -67,10 +67,13 @@ export const TERRAIN_DEPTH = -20;
  * Phaser render depth that deliberately STRADDLES the entity plane so layered
  * scene dressing reads correctly against the mobs/NPCs standing in the room:
  *
- * - `z <= 10` → a NEGATIVE "background" band in `(TERRAIN_DEPTH, ENTITY_DEPTH)`,
- *   i.e. above the baked terrain but below entities. A rug (`z=0`) lies on the
- *   floor under everyone; a wall banner (`z=6`) hangs on the wall behind the NPC;
- *   a bookcase (`z=9`) sits behind the broker who stands in front of it.
+ * - `z < 20` → a NEGATIVE "background" band in `(TERRAIN_DEPTH, ENTITY_DEPTH)`,
+ *   i.e. above the baked terrain but below entities. This covers the structural/
+ *   backdrop kinds — floor (`z=0`), wall (`z=10`) and door (`z=12`): a rug
+ *   (`z=0`) lies on the floor under everyone; a wall banner (`z=6`) hangs on the
+ *   wall behind the NPC; a bookcase (`z=9`) sits behind the broker who stands in
+ *   front of it. The `< 20` cutoff (not `<= 10`) deliberately keeps a door-kind
+ *   prop (`z=12`) in this band instead of leaking above the entity plane.
  * - `z >= 20` → a small POSITIVE "foreground" band (≥2), so a welcome desk
  *   (`z=30`) or clutter (`z=40`) reads as being in front of the NPC, occluding
  *   their lower half like real furniture.

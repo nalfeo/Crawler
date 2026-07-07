@@ -53,7 +53,7 @@ set-piece `z` onto Phaser depths that straddle the entity plane.
   placements. One reusable unit feeds **two** consumers: the real floor scenario
   and the map-gen lab overlay.
 - **Depth straddling for layering.** `setPieceZToDepth(z)` in
-  `render-depths.ts`: `z ≤ 10` (rug, banner) → a band in `(-20, 0)` (above
+  `render-depths.ts`: `z < 20` (rug, banner, door) → a band in `(-20, 0)` (above
   terrain, below NPCs); `z ≥ 20` (fixture/furniture/decoration) → a band `> 0`
   (in front of NPCs, below gore VFX). Monotonic; a per-layer epsilon keeps
   stacked layers ordered without crossing a band boundary.
