@@ -14,6 +14,8 @@ import type { FloorMap } from '../../core/map/FloorMap.js';
 import { SeededRandom } from '../../shared/random.js';
 import { registerLab } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
+import { stampSetPiece, type StampedSetPiece } from '../../core/map/stampSetPiece.js';
+import { getSetPieceDef, getSetPieceFootprint } from '../../shared/set-piece-types.js';
 
 const LAB_ID = 'map-gen-lab';
 
@@ -37,7 +39,18 @@ interface MapGenLabSettings {
   showDoors: boolean;
   showSpawn: boolean;
   showReachability: boolean;
+  showSetPiece: boolean;
 }
+
+// The set piece the overlay stamps into a generated room, and the anchor-role
+// tint used for its NPC markers (matches the set-piece lab).
+const OVERLAY_SET_PIECE_ID = 'welcome-room';
+const NPC_ANCHOR_COLOR: Record<string, string> = {
+  welcome: '#fbbf24',
+  shop: '#22c55e',
+  spell: '#a855f7',
+};
+const NPC_DEFAULT_COLOR = '#38bdf8';
 
 const TERRAIN_COLORS: Record<number, string> = {
   [TerrainType.VOID]: '#0a0a0f',
@@ -134,6 +147,38 @@ function findSealedRooms(map: FloorMap, reachable: Uint8Array): number[] {
   return sealed;
 }
 
+/**
+ * Pick the room to stamp the overlay set piece into: the largest-interior room
+ * that can hold the footprint, falling back to the largest room overall. Pure.
+ * Returns -1 when the floor has no rooms.
+ */
+function pickSetPieceRoomIndex(
+  map: FloorMap,
+  footprint: { width: number; height: number },
+): number {
+  const rooms = map.rooms;
+  let bestFit = -1;
+  let bestFitArea = -1;
+  let bestAny = -1;
+  let bestAnyArea = -1;
+  for (let i = 0; i < rooms.length; i++) {
+    const b = rooms[i]!.bounds;
+    // Interior = 1-tile inset (border tiles are walls).
+    const interiorW = b.width - 2;
+    const interiorH = b.height - 2;
+    const area = interiorW * interiorH;
+    if (area > bestAnyArea) {
+      bestAnyArea = area;
+      bestAny = i;
+    }
+    if (interiorW >= footprint.width && interiorH >= footprint.height && area > bestFitArea) {
+      bestFitArea = area;
+      bestFit = i;
+    }
+  }
+  return bestFit >= 0 ? bestFit : bestAny;
+}
+
 function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => void {
   const gui = (controls as HTMLElement & { __labGui?: GUI }).__labGui;
   if (!(gui instanceof GUI)) throw new Error('Lab runner did not initialize lil-gui.');
@@ -154,6 +199,7 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     showDoors: true,
     showSpawn: true,
     showReachability: true,
+    showSetPiece: false,
     ...savedState,
   };
 
@@ -331,6 +377,81 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
       );
       ctx.fill();
     }
+
+    // Overlay: stamp the welcome-room set piece into a real generated room and
+    // draw its props (footprint rects) + NPC markers. Uses the SAME pure
+    // stampSetPiece the floor scenario uses, so what you see here is what the
+    // real game places.
+    if (settings.showSetPiece) {
+      drawSetPieceOverlay(currentMap);
+    }
+  }
+
+  function drawSetPieceOverlay(map: FloorMap): void {
+    const def = getSetPieceDef(OVERLAY_SET_PIECE_ID);
+    if (!def) return;
+    const footprint = getSetPieceFootprint(def);
+    const roomIdx = pickSetPieceRoomIndex(map, footprint);
+    if (roomIdx < 0) return;
+    const room = map.rooms[roomIdx]!;
+    const tileSizeFt = map.config.tileSizeFt;
+    const stamp: StampedSetPiece = stampSetPiece(def, { roomBounds: room.bounds, tileSizeFt });
+
+    // Highlight the host room so it's clear which room was chosen.
+    ctx.save();
+    ctx.strokeStyle = '#7ee0ff';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.strokeRect(
+      room.bounds.x * CELL_SIZE + 1,
+      room.bounds.y * CELL_SIZE + 1,
+      room.bounds.width * CELL_SIZE - 2,
+      room.bounds.height * CELL_SIZE - 2,
+    );
+    ctx.setLineDash([]);
+
+    // Props: draw each footprint as a translucent rect (later = higher depth, so
+    // painting in stamp order gives the same front-to-back read as the game).
+    for (const prop of stamp.props) {
+      const wTiles = prop.render.widthFt / tileSizeFt;
+      const hTiles = prop.render.heightFt / tileSizeFt;
+      ctx.fillStyle = prop.render.tintHex ? `${prop.render.tintHex}66` : 'rgba(148, 163, 184, 0.4)';
+      ctx.fillRect(
+        prop.tileX * CELL_SIZE,
+        prop.tileY * CELL_SIZE,
+        Math.max(CELL_SIZE, wTiles * CELL_SIZE),
+        Math.max(CELL_SIZE, hTiles * CELL_SIZE),
+      );
+      ctx.strokeStyle = 'rgba(226, 232, 240, 0.5)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(
+        prop.tileX * CELL_SIZE + 0.5,
+        prop.tileY * CELL_SIZE + 0.5,
+        Math.max(CELL_SIZE, wTiles * CELL_SIZE) - 1,
+        Math.max(CELL_SIZE, hTiles * CELL_SIZE) - 1,
+      );
+    }
+
+    // NPC markers on top, tinted by objective anchor role.
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.font = `${Math.max(CELL_SIZE, 9)}px monospace`;
+    for (const npc of stamp.npcs) {
+      const cx = npc.tileX * CELL_SIZE + CELL_SIZE / 2;
+      const cy = npc.tileY * CELL_SIZE + CELL_SIZE / 2;
+      const color = (npc.anchorRole && NPC_ANCHOR_COLOR[npc.anchorRole]) ?? NPC_DEFAULT_COLOR;
+      ctx.beginPath();
+      ctx.arc(cx, cy, Math.max(CELL_SIZE / 2, 4), 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#0b0b12';
+      ctx.stroke();
+      const label = npc.anchorRole ?? npc.npcTypeId;
+      ctx.fillStyle = color;
+      ctx.fillText(label, cx, cy - Math.max(CELL_SIZE / 2, 4) - 1);
+    }
+    ctx.restore();
   }
 
   function updateStats(): void {
@@ -430,6 +551,10 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     .add(settings, 'showReachability')
     .name('Show Reachability')
     .onChange(() => render());
+  displayFolder
+    .add(settings, 'showSetPiece')
+    .name('Stamp Welcome Set Piece')
+    .onChange(() => render());
 
   gui
     .add(
@@ -483,7 +608,9 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     'Adjust biome, seed, and room params to explore procedural generation. ' +
     'Room overlays show bounds with indices. Green dot = player spawn. ' +
     'Red tiles/outlines mark interiors unreachable from spawn — the map-gen ' +
-    'reachability guarantee keeps this empty. Run Seed Sweep to verify across seeds.';
+    'reachability guarantee keeps this empty. Run Seed Sweep to verify across seeds. ' +
+    'Toggle "Stamp Welcome Set Piece" to overlay the real welcome-room stamp ' +
+    '(prop footprints + anchor-tinted NPC markers) into the largest fitting room.';
   hint.style.marginTop = '16px';
   hint.style.color = '#c9d4ff';
   hint.style.lineHeight = '1.6';

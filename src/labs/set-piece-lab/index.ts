@@ -106,8 +106,17 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
     zoom: 3,
     showGrid: true,
     showLabels: true,
+    showNpcs: true,
     highlightCustom: true,
   };
+
+  // Anchor-role tint so the welcome/shop/spell NPCs read at a glance.
+  const NPC_ANCHOR_COLOR: Record<string, string> = {
+    welcome: '#fbbf24',
+    shop: '#22c55e',
+    spell: '#a855f7',
+  };
+  const NPC_DEFAULT_COLOR = '#38bdf8';
 
   function getSheetImage(path: string): SheetImageCache {
     let cached = sheetImages.get(path);
@@ -244,7 +253,47 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
       ctx.restore();
     }
 
+    if (state.showNpcs) {
+      drawNpcs(ctx, def, tile);
+    }
+
     renderPanel(def);
+  }
+
+  /**
+   * Draw a marker for each authored NPC at its set-piece tile: a filled disc
+   * tinted by anchor role (welcome/shop/spell), the npc id, and — for anchored
+   * NPCs — the objective anchor it drives. This is the lab witness that the
+   * set-piece model carries NPC placements (not just props).
+   */
+  function drawNpcs(ctx: CanvasRenderingContext2D, def: SetPieceDef, tile: number): void {
+    ctx.save();
+    ctx.textBaseline = 'top';
+    ctx.font = '9px monospace';
+    for (const npc of def.npcs) {
+      const cx = (npc.x + 0.5) * tile;
+      const cy = (npc.y + 0.5) * tile;
+      const color = (npc.anchorRole && NPC_ANCHOR_COLOR[npc.anchorRole]) ?? NPC_DEFAULT_COLOR;
+      const r = Math.max(6, tile * 0.32);
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.85;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#0b0b12';
+      ctx.stroke();
+
+      const label = npc.anchorRole ? `${npc.id} ▸${npc.anchorRole}` : npc.id;
+      const lx = cx - ctx.measureText(label).width / 2;
+      const ly = cy + r + 2;
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillRect(lx - 2, ly - 1, ctx.measureText(label).width + 4, 11);
+      ctx.fillStyle = color;
+      ctx.fillText(label, lx, ly);
+    }
+    ctx.restore();
   }
 
   function renderPanel(def: SetPieceDef): void {
@@ -263,6 +312,16 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
       );
     }
     lines.push(`<b>Props:</b> ${def.props.length}`);
+    lines.push(`<b>NPCs:</b> ${def.npcs.length}`);
+    for (const npc of def.npcs) {
+      const color = (npc.anchorRole && NPC_ANCHOR_COLOR[npc.anchorRole]) ?? NPC_DEFAULT_COLOR;
+      const anchor = npc.anchorRole
+        ? ` <span style="color:${color}">▸ ${npc.anchorRole}</span>`
+        : '';
+      lines.push(
+        `<span style="color:${color}">●</span> <b>${npc.id}</b> <code>${npc.npcTypeId}</code> @(${npc.x},${npc.y})${anchor}`,
+      );
+    }
     lines.push(`<b>Tags:</b> ${def.tags.join(', ') || '—'}`);
     lines.push('');
     lines.push(`<b>Custom art requests (${requests.length}):</b>`);
@@ -289,6 +348,7 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
   gui.add(state, 'zoom', 1, 6, 1).name('Zoom').onChange(render);
   gui.add(state, 'showGrid').name('Show grid').onChange(render);
   gui.add(state, 'showLabels').name('Prop labels').onChange(render);
+  gui.add(state, 'showNpcs').name('Show NPCs').onChange(render);
   gui.add(state, 'highlightCustom').name('Mark custom art').onChange(render);
 
   const summary = {
