@@ -331,13 +331,16 @@ export function spawnerArenaSystem(world: GameWorld): void {
         radiusFt,
         arenaKind === 0 ? 0 : 1,
       );
-      // Only mark as "ever armed" if:
-      // - sealed-room path: doors were actually locked (doorCache.length > 0)
-      // - open-fence path: the ring wall exists (analytic shape or tiles)
-      const shouldArm =
-        arenaKind === 0
-          ? doorCache.length > 0
-          : (barrier?.tiles.length ?? 0) > 0 || barrier?.shape != null;
+      // Only mark as "ever armed" if a real barrier physically caged the
+      // player (matches the documented latch contract in world.ts):
+      // - open-fence path: the ring wall exists (analytic shape or tiles);
+      // - sealed-room path: the doorway barrier owns tiles OR at least one
+      //   door entity was locked. The doorway plug cages the player even when
+      //   the room graph has door tiles but no matching DoorState entities
+      //   (doorCache empty), so the barrier handle — not just doorCache — must
+      //   count.
+      const barrierRaised = (barrier?.tiles.length ?? 0) > 0 || barrier?.shape != null;
+      const shouldArm = arenaKind === 0 ? doorCache.length > 0 || barrierRaised : barrierRaised;
       if (shouldArm) {
         world.spawnerArenaEverArmed.add(eid);
       }

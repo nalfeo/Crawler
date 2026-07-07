@@ -405,30 +405,36 @@ describe('spawnerArenaSystem sealed-room door lifecycle', () => {
     expect(world.spawnerArenaEverArmed.has(spawnerEid)).toBe(true);
   });
 
-  it('does not arm when the sealed room has no matching door entity (empty-doors path)', () => {
+  it('arms via the doorway barrier even when no door entity is present', () => {
+    // The sealed room has a door TILE (8,6) but no matching DoorState entity.
+    // lockRoomDoorsImpl returns an empty cache (nothing to lock), but
+    // createRoomBarrier({ doorwaysOnly: true }) still plugs the door tile, so
+    // the player is physically caged by the barrier. Per the documented
+    // `spawnerArenaEverArmed` contract (world.ts) — "set when a non-empty
+    // barrier handle is stored" — this MUST latch as armed even though no door
+    // ENTITY was locked. A green regression here is what the reviewer flagged:
+    // the earlier `doorCache.length > 0` gate ignored the caging barrier.
     const world = createTestWorld();
     world.floorMap = makeSealedRoomMap();
     const spawnerEid = makeSpawner(world, 32, 32);
-    // No DoorState entity on the room's door tile → lockRoomDoorsImpl returns
-    // an empty cache: the sealed path runs but nothing is actually locked.
     spawnPlayer(world, 40, 40);
 
     spawnerArenaSystem(world);
-    // The state machine still advances to LOCKED (sealed branch taken)…
     expect(world.stores.spawner.arenaKind[spawnerEid]).toBe(0);
     expect(world.stores.spawner.arenaState[spawnerEid]).toBe(1);
-    // …but the cached door list is empty and the barrier never armed, so the
-    // player is not trapped and telemetry must not count this as armed.
+    // No door entity was locked → the door cache is empty…
     expect(world.spawnerArenaDoors.get(spawnerEid)).toEqual([]);
-    expect(world.spawnerArenaEverArmed.has(spawnerEid)).toBe(false);
+    // …but the doorway barrier owns the plugged door tile, so it cages + arms.
+    expect(world.spawnerArenaBarriers.get(spawnerEid)!.tiles.length).toBeGreaterThan(0);
+    expect(world.spawnerArenaEverArmed.has(spawnerEid)).toBe(true);
 
-    // Resolve still cleans up the empty cache without error and never arms.
+    // Resolve drops the barrier + cache; the latch persists (honest telemetry).
     world.stores.health.current[spawnerEid] = 0;
     world.stores.spawner.deathResolved[spawnerEid] = 1;
     spawnerArenaSystem(world);
     expect(world.stores.spawner.arenaState[spawnerEid]).toBe(2);
     expect(world.spawnerArenaDoors.has(spawnerEid)).toBe(false);
-    expect(world.spawnerArenaEverArmed.has(spawnerEid)).toBe(false);
+    expect(world.spawnerArenaEverArmed.has(spawnerEid)).toBe(true);
   });
 });
 
