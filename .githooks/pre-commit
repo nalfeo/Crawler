@@ -21,7 +21,12 @@ if ! git diff --quiet; then
 fi
 
 echo "Running Prettier on staged files..."
-prettier_entry="./node_modules/prettier/bin/prettier.cjs"
+repo_root="$(git rev-parse --show-toplevel)"
+common_git_dir="$(git rev-parse --git-common-dir)"
+prettier_entry="$repo_root/node_modules/prettier/bin/prettier.cjs"
+if [ ! -f "$prettier_entry" ]; then
+  prettier_entry="$common_git_dir/../node_modules/prettier/bin/prettier.cjs"
+fi
 if [ ! -f "$prettier_entry" ]; then
   echo "Prettier is not installed. Run npm install."
   exit 1

@@ -129,11 +129,39 @@ export const probe = {
   isInventoryOpen: (page: Page) => page.evaluate(() => window.__uiProbe!.isInventoryOpen()),
   getInventoryCellBounds: (page: Page, index: number) =>
     page.evaluate((i) => window.__uiProbe!.getInventoryCellBounds(i), index),
+  getInventoryCellIndexForItem: (page: Page, itemId: string) =>
+    page.evaluate((id) => window.__uiProbe!.getInventoryCellIndexForItem(id), itemId),
   isTooltipVisible: (page: Page) => page.evaluate(() => window.__uiProbe!.isTooltipVisible()),
   isTooltipPinned: (page: Page) => page.evaluate(() => window.__uiProbe!.isTooltipPinned()),
 
   openEquipment: (page: Page) => page.evaluate(() => window.__uiProbe!.openEquipment()),
+  openEquipmentOnly: (page: Page) => page.evaluate(() => window.__uiProbe!.openEquipmentOnly()),
   isEquipmentOpen: (page: Page) => page.evaluate(() => window.__uiProbe!.isEquipmentOpen()),
+  getEquipmentPanelBounds: (page: Page) =>
+    page.evaluate(() => window.__uiProbe!.getEquipmentPanelBounds()),
+  getEquipmentSlotBounds: (page: Page, slotId: EquipmentSlotId) =>
+    page.evaluate((slot) => window.__uiProbe!.getEquipmentSlotBounds(slot), slotId),
+  // Integrated equippable-bag column (inside the equipment panel).
+  getEquipmentBagItemIds: (page: Page) =>
+    page.evaluate(() => window.__uiProbe!.getEquipmentBagItemIds()),
+  getEquipmentBagCellBounds: (page: Page, index: number) =>
+    page.evaluate((i) => window.__uiProbe!.getEquipmentBagCellBounds(i), index),
+  getEquipmentBagColumnBounds: (page: Page) =>
+    page.evaluate(() => window.__uiProbe!.getEquipmentBagColumnBounds()),
+  scrollEquipmentBag: (page: Page, rows: number) =>
+    page.evaluate((r) => window.__uiProbe!.scrollEquipmentBag(r), rows),
+  getEquipmentBagScrollRow: (page: Page) =>
+    page.evaluate(() => window.__uiProbe!.getEquipmentBagScrollRow()),
+  getEquipmentBagMaxScrollRow: (page: Page) =>
+    page.evaluate(() => window.__uiProbe!.getEquipmentBagMaxScrollRow()),
+  seedOverflowBag: (page: Page, count: number) =>
+    page.evaluate((c) => window.__uiProbe!.seedOverflowBag(c), count),
+  previewEquipmentBagItem: (page: Page, itemId: string | null) =>
+    page.evaluate((id) => window.__uiProbe!.previewEquipmentBagItem(id), itemId),
+  equipFromEquipmentBag: (page: Page, itemId: string) =>
+    page.evaluate((id) => window.__uiProbe!.equipFromEquipmentBag(id), itemId),
+  isEquipmentTooltipVisible: (page: Page) =>
+    page.evaluate(() => window.__uiProbe!.isEquipmentTooltipVisible()),
   selectEquipmentSlot: (page: Page, slotId: EquipmentSlotId) =>
     page.evaluate((slot) => window.__uiProbe!.selectEquipmentSlot(slot), slotId),
   getEquipmentSlotFilter: (page: Page) =>
@@ -142,12 +170,18 @@ export const probe = {
     page.evaluate(() => window.__uiProbe!.getInventorySlotFilter()),
   getCharisma: (page: Page) => page.evaluate(() => window.__uiProbe!.getCharisma()),
   equipCharm: (page: Page) => page.evaluate(() => window.__uiProbe!.equipCharm()),
+  equipInventoryItem: (page: Page, itemId: string) =>
+    page.evaluate((id) => window.__uiProbe!.equipInventoryItem(id), itemId),
+  seedAllGear: (page: Page) => page.evaluate(() => window.__uiProbe!.seedAllGear()),
+  getEquippedSlotIds: (page: Page) => page.evaluate(() => window.__uiProbe!.getEquippedSlotIds()),
 
   openMinimapOverlay: (page: Page) => page.evaluate(() => window.__uiProbe!.openMinimapOverlay()),
   isMinimapOverlayOpen: (page: Page) =>
     page.evaluate(() => window.__uiProbe!.isMinimapOverlayOpen()),
   getMinimapCloseBounds: (page: Page) =>
     page.evaluate(() => window.__uiProbe!.getMinimapCloseBounds()),
+  getMinimapDockedBounds: (page: Page) =>
+    page.evaluate(() => window.__uiProbe!.getMinimapDockedBounds()),
 
   openLevelUp: (page: Page, points: number) =>
     page.evaluate((p) => window.__uiProbe!.openLevelUp(p), points),

@@ -50,11 +50,15 @@ import {
   EFFECTIVE_PIPELINE_JSON_KEY,
   EFFECTIVE_PIPELINE_YAML_KEY,
   POSTPROCESS_PROFILE_KEY,
+  readFacingOverride,
   readManualAnchor,
+  removeFacingOverride,
   readPostprocessProfile,
   removeManualAnchor,
   removePostprocessProfile,
+  type FacingOverride,
   type ManualAnchorOverride,
+  writeFacingOverride,
   writeEffectivePipelineSnapshot,
   writePostprocessProfile,
 } from './postprocess-overrides.js';
@@ -70,6 +74,7 @@ export type RerunErrorKind =
   | 'sheet-not-found'
   | 'unsupported-sheet-filename'
   | 'slice-failed'
+  | 'variant-index-out-of-range'
   | 'variant-count-mismatch'
   | 'processed-missing';
 
@@ -168,7 +173,14 @@ export interface RepostprocessArgs {
   readonly optionsMode?: 'default' | 'persisted' | 'replace' | 'reset';
   /** Explicit `sheet-NN.png`; defaults to the newest sheet. */
   readonly sheetFile?: string;
+  /** Restrict re-postprocess to these variant indexes; omit to process all. */
+  readonly variantIndexes?: ReadonlyArray<number>;
   readonly manualAnchor?: ManualAnchorOverride | null;
+  readonly facing?: {
+    variantIndex: number;
+    direction: 'left' | 'right';
+    applyToAllVariants?: boolean;
+  } | null;
 }
 
 /**
@@ -187,6 +199,7 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
   const nowIso = new Date().toISOString();
   const persistedProfile = await readPostprocessProfile(store, `${briefId}/${runId}`);
   const persistedManualAnchor = await readManualAnchor(store, `${briefId}/${runId}`);
+  const persistedFacingOverride = await readFacingOverride(store, `${briefId}/${runId}`);
   const optionsMode =
     args.optionsMode ??
     (args.options !== undefined ? 'replace' : persistedProfile ? 'persisted' : 'default');
@@ -202,6 +215,19 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
       : args.manualAnchor !== undefined
         ? args.manualAnchor
         : (persistedManualAnchor ?? null);
+  const effectiveFacingOverride: FacingOverride | null =
+    optionsMode === 'reset'
+      ? null
+      : args.facing !== undefined
+        ? args.facing
+          ? {
+              variantIndex: args.facing.variantIndex,
+              direction: args.facing.direction,
+              ...(args.facing.applyToAllVariants === true ? { applyToAllVariants: true } : {}),
+              updatedAt: nowIso,
+            }
+          : null
+        : (persistedFacingOverride ?? null);
 
   const { sheetFile, sheetPng } = await resolveRunSheet(store, briefId, runId, args.sheetFile);
 
@@ -228,9 +254,45 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
     );
   }
 
+  const selectedIndexSet =
+    args.variantIndexes && args.variantIndexes.length > 0 ? new Set(args.variantIndexes) : null;
+  if (selectedIndexSet) {
+    const invalidIndex = Array.from(selectedIndexSet).find(
+      (index) => index < 0 || index >= sliced.length,
+    );
+    if (invalidIndex !== undefined) {
+      throw new RerunError(
+        'variant-index-out-of-range',
+        `variantIndexes contains out-of-range index ${invalidIndex}; expected 0..${sliced.length - 1}`,
+      );
+    }
+  }
+  const priorEntriesByIndex = new Map<number, RunSummaryEntry>(
+    summary.candidates.map((entry) => [entry.index, entry]),
+  );
   const variants: ProcessedVariant[] = [];
   const processedBuffers: Buffer[] = [];
   for (let i = 0; i < sliced.length; i++) {
+    if (selectedIndexSet && !selectedIndexSet.has(i)) {
+      const priorEntry = priorEntriesByIndex.get(i);
+      if (!priorEntry) {
+        throw new RerunError(
+          'summary-invalid',
+          `summary.json missing candidate entry for variant ${i} in ${briefId}/${runId}`,
+        );
+      }
+      const processedKey = storeKey(`processed/${pad2(i)}.png`);
+      if (!(await store.has(processedKey))) {
+        throw new RerunError(
+          'processed-missing',
+          `processed/${pad2(i)}.png missing for ${briefId}/${runId}; re-run PostProcess first`,
+        );
+      }
+      const preserved = toProcessedVariant(priorEntry, await store.get(processedKey));
+      variants.push(preserved);
+      processedBuffers.push(preserved.processed);
+      continue;
+    }
     const variant = await postprocessScoreAndStoreVariant({
       store,
       storeKey,
@@ -251,15 +313,22 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
 
   if (optionsMode === 'reset') {
     await removeManualAnchor(store, `${briefId}/${runId}`);
+    await removeFacingOverride(store, `${briefId}/${runId}`);
     await removePostprocessProfile(store, `${briefId}/${runId}`);
   } else {
     await writePostprocessProfile(store, `${briefId}/${runId}`, effectiveOptions, nowIso);
+    if (effectiveFacingOverride) {
+      await writeFacingOverride(store, `${briefId}/${runId}`, effectiveFacingOverride, nowIso);
+    } else {
+      await removeFacingOverride(store, `${briefId}/${runId}`);
+    }
     await writeEffectivePipelineSnapshot({
       store,
       baseKey: `${briefId}/${runId}`,
       brief,
       options: effectiveOptions,
       manualAnchor: effectiveManualAnchor,
+      facing: effectiveFacingOverride,
       nowIso,
     });
   }
@@ -290,6 +359,7 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
         optionsMode === 'reset' ? null : store.resolve(storeKey(EFFECTIVE_PIPELINE_YAML_KEY)),
       options: optionsMode === 'reset' ? null : effectiveOptions,
       manualAnchor: effectiveManualAnchor,
+      facing: effectiveFacingOverride,
       appliedMode: optionsMode,
       updatedAt: nowIso,
     },

@@ -89,6 +89,7 @@ export async function runFull(options: RunFullOptions): Promise<RunFullResult> {
     brief,
     options: {},
     manualAnchor: null,
+    facing: null,
     nowIso,
   });
 
@@ -187,6 +188,7 @@ export async function runFull(options: RunFullOptions): Promise<RunFullResult> {
       snapshotYamlPath: store.resolve(storeKey(EFFECTIVE_PIPELINE_YAML_KEY)),
       options: {},
       manualAnchor: null,
+      facing: null,
       appliedMode: 'default',
       updatedAt: nowIso,
     },

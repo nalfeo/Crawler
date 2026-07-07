@@ -1,0 +1,59 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-07",
+  "session_slug": "equipment-paperdoll-overhaul",
+  "task_title": "Equipment paper-doll overhaul: integrated bag, equip-delta inspector, HUD-hide modal, placeholder gear icons",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "notes": "Separate-model review of the synthesized overhaul plan. Approved with changes; plan updated to (1) preserve single-click tooltip pinning and use a distinct non-conflicting equip gesture, (2) centralize equip/unequip mutation in one coordinator/orchestration path with intent-only panes, (3) define safe-room transition behavior explicitly, (4) enforce focus-aware search input in combined-screen mode, (5) add multi-slot (mainHand+offHand) coverage. All 5 concerns adopted; see plan.md."
+    },
+    "dual_plan_synthesis": {
+      "completed": true,
+      "plan_models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+      "judge_model": "claude-opus-4.8",
+      "notes": "Two independent plans generated with different models, then judged + synthesized into a single coordinator-based plan: unified equipment+inventory surface, slot-driven filtering, shared pure helpers (filterEquippable/filterByEquipmentSlot), deterministic lab + real-scene (MainGameScene) validation. Synthesized plan recorded in plan.md."
+    },
+    "code_review": {
+      "clean": true,
+      "notes": "Code-review loop on the implemented fixes, iterated until no concerns remained. Round 1 (post-fix review) confirmed the equipFromBag swap-atomicity fix correct and complete, but found one MAJOR concern in the integrated-bag wheel-scroll: the handler hit-tested design-space bounds (bagBg.getBounds()) against backing-store pointer coords, so on HiDPI (renderScale S>=2, the common case) the wheel missed the bag and spuriously scrolled an unrelated centre region. Resolved by converting the pointer to design space via getRenderScale(scene) before the containment test (mirrors HudMinimap.toDesignSpace; identity at S=1) plus a deterministic source-guard test (tests/unit/equipment-ui.test.ts). Round 2 (gpt-5.3-codex) re-reviewed the fix + guard against render-scale.ts and HudMinimap.ts and returned no blocking or major concerns.",
+      "rounds": [
+        {
+          "round": 1,
+          "models": [],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Post-fix code-review pass. equipFromBag atomicity fix confirmed correct/complete; found the HiDPI wheel coordinate-space MAJOR concern (resolved this round). Reviewer model not recorded."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.3-codex"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Re-review of the coordinate-space fix + tests/unit/equipment-ui.test.ts guard. Verdict: 'No blocking or major concerns — wheel-scroll fix is correct and complete.'"
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "notes": "Three-model code review of the equipment overhaul diff with adjudication by the session agent (claude-opus-4.8). Concerns: (1) equipFromBag swap non-atomicity could permanently delete an item when a displaced item's stat requirement was met only by another not-yet-restored displaced item — VALID, RESOLVED via a pre-mutation swapEquipFailureReasons gate that shares previewEquipDelta's post-unequip basis; (2) gemini: renderSlots pool leak on re-render — INVALID, already fixed (pool cleared before re-render at EquipmentUI.ts); (3) gemini: integrated bag column unscrollable (no wheel listener) — VALID, RESOLVED by adding a wheel listener + scrollBag. A subsequent code_review loop then found + fixed a HiDPI coordinate-space bug in that new listener (see code_review stage).",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "valid_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

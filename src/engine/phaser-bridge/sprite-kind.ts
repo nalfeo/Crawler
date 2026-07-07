@@ -130,6 +130,27 @@ export function enemyVariantFromTextureId(textureId: number | undefined): string
 }
 
 /**
+ * Refine a non-boss enemy entity's render kind: if the entity carries a
+ * {@link Spawner} component and its texture maps to a rat or slime variant,
+ * return the dedicated spawner visual kind (`'enemy_spawner_rats_nest'` /
+ * `'enemy_spawner_slime_pool'`) so the engine resolves dedicated nest/pool art
+ * instead of reusing the mob's own sprite. For all other enemies the broad
+ * variant from {@link enemyVariantFromTextureId} is returned unchanged.
+ *
+ * Pure — only reads ECS component presence and the `sprite.textureId` store —
+ * so it can be unit-tested directly with `createTestWorld()`, no Phaser scene
+ * required (mirrors the design of {@link resolveRenderKind}).
+ */
+export function refineEnemyVisualKind(world: RenderKindWorld, eid: number): string {
+  const enemyVariant = enemyVariantFromTextureId(world.stores.sprite.textureId[eid]);
+  if (hasComponent(world.ecs, eid, Spawner)) {
+    if (enemyVariant === 'enemy_rat') return 'enemy_spawner_rats_nest';
+    if (enemyVariant === 'enemy_slime') return 'enemy_spawner_slime_pool';
+  }
+  return enemyVariant;
+}
+
+/**
  * Bright-red multiply tint painted over placeholder spawner structures (Rats
  * Nest / Slime Pool). Spawners currently reuse their child mob's sprite
  * (`enemy_rat` / `enemy_slime`) because no dedicated nest/pool art exists yet,

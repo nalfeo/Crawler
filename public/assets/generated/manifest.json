@@ -576,6 +576,18 @@
       "type": "enemy",
       "contentHash": "bd51fd12d56c89376666aa5766e6dd929ac8b5a32f70a7f6c90a6c1a4f25cbd4"
     },
+    "band-of-fortune-placeholder": {
+      "briefId": "band-of-fortune",
+      "spriteName": "band-of-fortune",
+      "assetPath": "generated/band-of-fortune-placeholder.png",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "item"
+    },
     "baseball-bat-v1-var-0": {
       "briefId": "baseball-bat-v1",
       "spriteName": "baseball-bat-v1-var-0",
@@ -625,6 +637,18 @@
       "judgeScore": "2",
       "type": "weapon",
       "contentHash": "d266dc9661f90db29c6611c241bcf96cecdbde3e61df48f09071a6d5cb4db47a"
+    },
+    "beaded-bracelet-placeholder": {
+      "briefId": "beaded-bracelet",
+      "spriteName": "beaded-bracelet",
+      "assetPath": "generated/beaded-bracelet-placeholder.png",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "item"
     },
     "bent-pipe-v1-var-1": {
       "briefId": "bent-pipe-v1",
@@ -857,6 +881,18 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": null
+    },
+    "bronze-vambrace-placeholder": {
+      "briefId": "bronze-vambrace",
+      "spriteName": "bronze-vambrace",
+      "assetPath": "generated/bronze-vambrace-placeholder.png",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "item"
     },
     "camera-lens-placeholder": {
       "briefId": "camera-lens",
@@ -1623,6 +1659,54 @@
       "judgeScore": null,
       "type": null
     },
+    "iron-armguard-placeholder": {
+      "briefId": "iron-armguard",
+      "spriteName": "iron-armguard",
+      "assetPath": "generated/iron-armguard-placeholder.png",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "item"
+    },
+    "iron-breastplate-placeholder": {
+      "briefId": "iron-breastplate",
+      "spriteName": "iron-breastplate",
+      "assetPath": "generated/iron-breastplate-placeholder.png",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "item"
+    },
+    "iron-greaves-placeholder": {
+      "briefId": "iron-greaves",
+      "spriteName": "iron-greaves",
+      "assetPath": "generated/iron-greaves-placeholder.png",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "item"
+    },
+    "iron-helm-placeholder": {
+      "briefId": "iron-helm",
+      "spriteName": "iron-helm",
+      "assetPath": "generated/iron-helm-placeholder.png",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "item"
+    },
     "iron-ore-placeholder": {
       "briefId": "iron-ore",
       "spriteName": "iron-ore",
@@ -1647,6 +1731,18 @@
       "judgeScore": null,
       "type": "weapon"
     },
+    "iron-visor-placeholder": {
+      "briefId": "iron-visor",
+      "spriteName": "iron-visor",
+      "assetPath": "generated/iron-visor-placeholder.png",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "item"
+    },
     "laugh-track-tape-placeholder": {
       "briefId": "laugh-track-tape",
       "spriteName": "laugh-track-tape",
@@ -1670,6 +1766,42 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": null
+    },
+    "leather-boots-placeholder": {
+      "briefId": "leather-boots",
+      "spriteName": "leather-boots",
+      "assetPath": "generated/leather-boots-placeholder.png",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "item"
+    },
+    "leather-bracer-placeholder": {
+      "briefId": "leather-bracer",
+      "spriteName": "leather-bracer",
+      "assetPath": "generated/leather-bracer-placeholder.png",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "item"
+    },
+    "leather-gloves-placeholder": {
+      "briefId": "leather-gloves",
+      "spriteName": "leather-gloves",
+      "assetPath": "generated/leather-gloves-placeholder.png",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "item"
     },
     "living-stone-placeholder": {
       "briefId": "living-stone",
@@ -1825,7 +1957,7 @@
       "briefId": "merchants-stained-charm",
       "spriteName": "merchants-stained-charm",
       "assetPath": "generated/merchants-stained-charm-placeholder.png",
-      "approvedAt": "2026-06-23T00:55:52.049Z",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -3139,6 +3271,18 @@
       "judgeScore": null,
       "type": null
     },
+    "signet-of-focus-placeholder": {
+      "briefId": "signet-of-focus",
+      "spriteName": "signet-of-focus",
+      "assetPath": "generated/signet-of-focus-placeholder.png",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "item"
+    },
     "silk-thread-placeholder": {
       "briefId": "silk-thread",
       "spriteName": "silk-thread",
@@ -3557,6 +3701,18 @@
       "judgeScore": null,
       "type": null
     },
+    "steel-pauldrons-placeholder": {
+      "briefId": "steel-pauldrons",
+      "spriteName": "steel-pauldrons",
+      "assetPath": "generated/steel-pauldrons-placeholder.png",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "item"
+    },
     "stim-shot-placeholder": {
       "briefId": "stim-shot",
       "spriteName": "stim-shot",
@@ -3580,6 +3736,18 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": null
+    },
+    "sturdy-belt-placeholder": {
+      "briefId": "sturdy-belt",
+      "spriteName": "sturdy-belt",
+      "assetPath": "generated/sturdy-belt-placeholder.png",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "item"
     },
     "sweaty-merchant-v1-var-1": {
       "briefId": "sweaty-merchant-v1",
@@ -3880,6 +4048,18 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": null
+    },
+    "travelers-cloak-placeholder": {
+      "briefId": "travelers-cloak",
+      "spriteName": "travelers-cloak",
+      "assetPath": "generated/travelers-cloak-placeholder.png",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "item"
     },
     "twin-fangs-placeholder": {
       "briefId": "twin-fangs",
