@@ -102,7 +102,7 @@ export function attachBarriersToFloorMap(world): void;
 
 `spawnerArenaSystem.ts` now consumes the primitive:
 
-- **Open-fence arena** — `createRingBarrier(world, sx, sy, radiusFt, 'fence')` at arm; `dropBarrier` at resolve.
+- **Open-fence arena** — `createRingWallBarrier(world, sx, sy, outerRadiusFt, thicknessFt, 'fence')` at arm (an analytic 1 ft-thick ring wall with no tiles); `dropBarrier` at resolve.
 - **Sealed-room arena** — the existing door-lock config is **kept**, AND we ADDITIONALLY raise `createRoomBarrier(world, roomId, 'fence', { doorwaysOnly: true })` at arm. Belt-and-suspenders: even if a door-lock config bug lets a doorway open, the barrier tile plugs it. Both are dropped on resolve.
 
 Deleted from the old fence path: `raiseFence`, `lowerFence`, `FENCE_TILE_FLAGS`, `collectFenceRingTiles`, `assertFenceBlocks`, and the `spawnerArenaFence` snapshot map on `GameWorld`. The world instead carries a `spawnerArenaBarriers: Map<number, BarrierHandle>` mapping spawner eid → active barrier handle so the resolve path can find its own barrier to drop.
