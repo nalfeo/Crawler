@@ -39,11 +39,13 @@ quest NPCs at spaced, themed positions and dressing the room with layered props.
   entity plane**: structural kinds (`z < 20`: floor rug, wall banner, door) →
   a band in `(-20, 0)` (above baked terrain, below NPCs); `z ≥ 20`
   (fixture/furniture/decoration) → a band `> 0` (in front of NPCs, below gore).
-  Each flattened set-piece layer becomes **one visual-only Prop entity**
-  (`spawnSetPieceProp`: Position + Sprite + Prop + inert immovable-tier Weight,
-  **no Size**) recorded in a `world.setPieceProps` sidecar; the prop pass consults
-  the sidecar before the decoration-def path and honours per-layer depth.
+  Each flattened set-piece layer becomes **one render-only instance** appended
+  to a `world.setPieceProps: SetPiecePropInstance[]` sidecar via `addSetPieceProp`
+  (`{ x, y, render }` — **not** an ECS entity, consumes no entity id); a dedicated
+  PhaserBridge set-piece pass draws them honouring per-layer depth.
   Composites layer correctly **in the real game**, not just the lab.
+  (Originally shipped as visual-only Prop entities; refactored to render-only —
+  see "Follow-up: render-only props" below.)
 - **S4 — core stamp + scenario wiring.** New pure `src/core/map/stampSetPiece.ts`
   (shared-only imports, deterministic) centres a def in a room interior, clamps
   every tile (footprint-aware for multi-tile props), returns tile-space prop + NPC
@@ -76,6 +78,36 @@ quest NPCs at spaced, themed positions and dressing the room with layered props.
 - Ledger: `docs/knowledge/review-ledgers/2026-07-07-welcome-room-set-piece.review-ledger.json`
   (validates as a 4-apple ledger).
 
+## Follow-up: render-only props + collision-parity re-baseline (headless-gate fix)
+
+After the feature landed on PR #853, the **Headless Floor 1 Gate** failed (5
+tests). Root-caused to two effects:
+
+- **Set-piece props as ECS entities perturbed the sim.** Allocating entity ids
+  for cosmetic props during floor setup shifted the ambient-mob ids that spawn
+  after, reordering the global RNG draw sequence — a **seed-visible** change for
+  content that must have none (Floor-1 arena seed 2 went ~1.2s over its 360s
+  budget; collision fingerprints drifted). `spawnSetPieceProp` drew no RNG itself;
+  the perturbation was purely entity-id allocation. **FIX:** moved props off the
+  entity space onto a render-only `world.setPieceProps: SetPiecePropInstance[]`
+  array (`addSetPieceProp` pushes `{x,y,render}`; a dedicated PhaserBridge pass
+  draws them). A props-present run is now **byte-identical** to a props-skipped
+  run (headless == rendered). Mirrors the VFX-as-events precedent; also removes
+  the ADR 0044 Weight obligation entirely (no Prop entity ⇒ no coverage). Arena
+  now passes 4/4; weight-coverage counts only the 43 floor-manifest Prop entities.
+- **NPC repositioning legitimately drifts combat.** Spacing the three NPCs to
+  authored tiles changes their Size-backed collision footprints ⇒ collision-pair
+  set ⇒ RNG cascade. This is the **user-approved** spacing change, so the
+  collision-parity `GOLDEN_FINGERPRINTS` were **re-baselined** (seeds 7/13/42/137)
+  with a dated before→after note in the test doc-comment. Verified stable across
+  two back-to-back runs per seed (the determinism test is green). Re-verified
+  green after merging `main` (#851 AI A/B toggle, byte-identical on LEGACY default).
+
+Commits: `fix: make set-piece props render-only …`, `test: re-baseline
+collision-parity …`. ADR 0046 updated (render-only §, Weight § removed,
+alternatives + consequences). **No gate weakened, no seeds cherry-picked** — the
+360s budget is untouched and the fix makes props provably non-perturbing.
+
 ## Observe Before Done (deterministic, real pipeline)
 
 Validated in the **real Floor 1 scenario pipeline** (not just a lab):
@@ -94,7 +126,7 @@ Validated in the **real Floor 1 scenario pipeline** (not just a lab):
 - `src/shared/data/set-pieces.json` — authored `welcome-room`.
 - `src/shared/render-depths.ts` — `setPieceZToDepth` (entity-plane straddle).
 - `src/core/map/stampSetPiece.ts` — pure/deterministic stamping unit.
-- `src/core/spawners/entity-core.ts` — `world.setPieceProps` sidecar clear-on-recycle.
+- `src/core/spawners/world-objects.ts` — `addSetPieceProp` (render-only sidecar push).
 - `src/game/floorScenario.ts` — stamp wiring + objective-anchor auto-follow
   (data-driven path ~1375-1430; backward-compat fallback ~1431-1467).
 - Labs: map-gen lab overlay + set-piece lab `npcs[]` render.
@@ -111,7 +143,7 @@ Validated in the **real Floor 1 scenario pipeline** (not just a lab):
   center then tightened to each NPC's spawned tile post-spawn. Do NOT read the
   mutated objective field as a stable room center mid-spawn (that was the R2
   regression). Documented at the objective init site + ADR.
-- **Props are visual-only** (no Size, never in the collision grid), so a prop
+- **Props are render-only** (not entities, never in the collision grid), so a prop
   clamped onto a wall on a concave room is cosmetic-only — no gameplay/pathing
   effect. Full-footprint passable-interior validation was deferred as unnecessary.
 - **Both prop depth bands render below gore VFX** — transient blood can paint over
