@@ -93,6 +93,18 @@ describe('POST /api/runs/:briefId/:runId/postprocess', () => {
     expect(res.json().error).toBe('run-not-found');
   });
 
+  it('rejects out-of-range body.variantIndexes with 400', async () => {
+    const seed = await setup();
+    const res = await app!.inject({
+      method: 'POST',
+      url: `/api/runs/${seed.briefId}/${seed.runId}/postprocess`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndexes: [999] },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('variant-index-out-of-range');
+  });
+
   it('persists manual-anchor + override profile metadata for replay', async () => {
     const seed = await setup();
     const baseline = await app!.inject({

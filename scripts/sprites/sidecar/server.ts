@@ -2119,6 +2119,8 @@ function rerunErrorStatus(kind: RerunErrorKind): number {
       return 404;
     case 'unsupported-sheet-filename':
       return 415;
+    case 'variant-index-out-of-range':
+      return 400;
     case 'variant-count-mismatch':
       return 422;
     case 'summary-invalid':

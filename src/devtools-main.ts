@@ -5699,7 +5699,11 @@ function render(): void {
           finalAdjustStatus.style.color = '#fca5a5';
           return;
         }
-        syncManualAnchorFromInputs();
+        const applyMode: 'replace' | 'reset' =
+          pendingPostprocessMode === 'reset' ? 'reset' : 'replace';
+        if (applyMode === 'replace') {
+          syncManualAnchorFromInputs();
+        }
         const hasManualAnchor = manualAnchorOverride !== null;
         const currentManualAnchor = manualAnchorOverride;
         const applyToAll = applyScopeSelect.value === 'all';
@@ -5724,20 +5728,26 @@ function render(): void {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                mode: 'replace',
-                options: {
-                  background: {
-                    colorToleranceSq: appliedBackgroundTweaks.colorToleranceSq,
-                    fringeToleranceSq: appliedBackgroundTweaks.fringeToleranceSq,
-                  },
-                },
-                facing: {
-                  variantIndex: debugTarget.variantIndex,
-                  direction: facingDirection,
-                  ...(applyToAll ? { applyToAllVariants: true } : {}),
-                },
-                ...(manualAnchorPayload !== undefined ? { manualAnchor: manualAnchorPayload } : {}),
-                ...(!applyToAll ? { variantIndexes: [debugTarget.variantIndex] } : {}),
+                mode: applyMode,
+                ...(applyMode === 'replace'
+                  ? {
+                      options: {
+                        background: {
+                          colorToleranceSq: appliedBackgroundTweaks.colorToleranceSq,
+                          fringeToleranceSq: appliedBackgroundTweaks.fringeToleranceSq,
+                        },
+                      },
+                      facing: {
+                        variantIndex: debugTarget.variantIndex,
+                        direction: facingDirection,
+                        ...(applyToAll ? { applyToAllVariants: true } : {}),
+                      },
+                      ...(manualAnchorPayload !== undefined
+                        ? { manualAnchor: manualAnchorPayload }
+                        : {}),
+                      ...(!applyToAll ? { variantIndexes: [debugTarget.variantIndex] } : {}),
+                    }
+                  : {}),
               }),
             },
           );
