@@ -1,0 +1,86 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-07",
+  "session_slug": "welcome-room-set-piece",
+  "task_title": "Wire set pieces into Floor 1 welcome room (mapgen + NPC placement + sprite layering)",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "notes": "Independent separate-model (rubber-duck, gpt-5.4) review of the implemented plan. No blocking issue in the normal case. 5 tightening findings, all adjudicated + resolved: (1) full-room fit validated only for NPC tiles, not the whole prop footprint on concave rooms -> RESOLVED as accepted cosmetic-only limitation (props are visual-only, no Size/collision) documented in ADR 0046 Negative; (2) tile-identity reachability is geometric-only, not an end-to-end BT interaction-handoff proof -> RESOLVED as intentional scope boundary (maintainer's no-AI-edit/no-seed-sweep fence; the change only moves the marker onto the NPC, interaction logic in bt-ai-provider untouched, goon can only become more reachable) documented in ADR 0046 Risks; (3) objective-anchor fields now mean 'NPC target tile' not 'room center' -> RESOLVED by an explicit code comment at the objective init site + ADR note; (4) background/foreground props render below gore VFX depth -> RESOLVED as accepted cosmetic tradeoff pinned by render-depths tests + ADR note; (5) fallback path under-tested -> RESOLVED structurally (self-documenting stable-local fix + two clean review passes) with an ADR note explaining a manifest-mock test is disproportionate for a path the shipping manifest never takes."
+    },
+    "dual_plan_synthesis": {
+      "completed": true,
+      "plan_models": ["gpt-5.5", "claude-opus-4.7"],
+      "judge_model": "gemini-3.1-pro-preview",
+      "notes": "Two independent implementation plans generated with different models (gpt-5.5 plan A, claude-opus-4.7 plan B), then judged + synthesized by gemini-3.1-pro-preview. Both plans converged on the same design (data model -> pure core stamper -> depth-straddled Phaser rendering -> scenario hub-room wiring + uniform objective-anchor auto-follow). Judge verdict: the executed plan is the correct convergent best-of-both merge; all hard scope constraints (no AI/balance edits, no new *System, deterministic, fast-tests-only, layer rules, weight invariant) were honored. Only missing element flagged was the session handoff document (authored before PR)."
+    },
+    "code_review": {
+      "clean": true,
+      "notes": "Code-review loop iterated until no concerns remained (3 rounds). Round 1 (initial multi-model review of the feature diff) found 6 concerns, 5 valid + fixed (footprint-aware multi-tile clamp overflow, degenerate-interior guard, setPieceProps sidecar clear-on-recycle, door-band depth threshold z<20, fallback goon objective-anchor) committed as 7da801e7 with 4 regression tests. Round 2 (clean-up pass on 7da801e7) found 1 NEW valid HIGH regression introduced by the round-1 fallback-anchor fix: the goon's updateObjective mutated world.floorScenario.objective.welcomeOfficePos, so the spell/shop resolveNpcSpawnPosition calls reading that field clustered onto the goon's tile; fixed in 986e83cf by resolving all three NPCs against the stable local welcomeOfficePos (the original room center). Round 3 (clean-up pass on 986e83cf) returned no remaining concerns from two distinct models.",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 6,
+          "resolved_count": 6,
+          "clean": false,
+          "notes": "Initial review of the feature diff. 5 valid concerns fixed (clamp overflow, degenerate-interior guard, sidecar clear-on-recycle, door z<20 background band, fallback goon anchor) + 4 regression tests; 1 concern (set-piece spawns on player) adjudicated INVALID (stamp targets the welcome-OFFICE hub via welcomeOfficePos, 3-8 hops from player, not floorMap.spawnRoom). Committed 7da801e7."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Clean-up pass on 7da801e7. codex: no remaining concerns. gemini found 1 NEW valid HIGH regression: the round-1 fallback-anchor fix made the goon's updateObjective mutate objective.welcomeOfficePos, which the subsequent spell/shop resolveNpcSpawnPosition calls read as their room center -> clustering. Fixed in 986e83cf (resolve all three against the stable local welcomeOfficePos)."
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Clean-up pass on 986e83cf. Both distinct models (gpt-5.3-codex, gemini-3.1-pro-preview) returned 'No remaining concerns' — the room-center fix is correct and complete, no new issues."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "notes": "Multi-model code review with adjudication by the session agent (claude-opus-4.8), run as the same iterated loop as code_review. Round 1: three distinct models (claude-sonnet-4.6, gpt-5.3-codex, gemini-3.1-pro-preview) raised 6 concerns; adjudicated 5 VALID (clamp overflow, degenerate-interior, sidecar recycle, door-band depth, fallback anchor) all resolved, 1 INVALID (gemini: set-piece spawns on player — stamp targets the welcome-office hub, not the player spawn room). Round 2: two distinct models re-reviewed the fixes; gemini caught 1 VALID HIGH regression (read-after-mutate clustering in the fallback branch), resolved in 986e83cf. Round 3: two distinct models confirmed clean.",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 6,
+          "valid_count": 5,
+          "resolved_count": 5,
+          "clean": false,
+          "notes": "3-model review + adjudication. 5 valid/resolved, 1 invalid (spawns-on-player false positive; stamp targets welcomeOfficePos hub). Fixes committed 7da801e7."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Clean-up adjudication on 7da801e7. gemini's read-after-mutate clustering regression adjudicated VALID + resolved in 986e83cf; codex clean."
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Clean-up adjudication on 986e83cf. Both distinct models returned no remaining concerns."
+        }
+      ]
+    }
+  }
+}
