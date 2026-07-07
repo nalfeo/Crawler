@@ -305,7 +305,14 @@ export function createEquipmentUI(
   );
   divider.setLineWidth(1, 1);
   container.add(divider);
-  const statsBg = scene.add.rectangle(statsCenterX, dollY + dollH / 2, STATS_W, dollH, 0x31466f, 0.92);
+  const statsBg = scene.add.rectangle(
+    statsCenterX,
+    dollY + dollH / 2,
+    STATS_W,
+    dollH,
+    0x31466f,
+    0.92,
+  );
   statsBg.setStrokeStyle(1, COLORS.panelBorder);
   container.addAt(statsBg, 3);
   const statsInset = scene.add.rectangle(
@@ -709,7 +716,9 @@ export function createEquipmentUI(
       const netUp = changed.every((statId) => (preview.deltas[statId] ?? 0) >= 0);
       const netDown = changed.every((statId) => (preview.deltas[statId] ?? 0) <= 0);
       const deltaColor = netDown && !netUp ? COLORS.statNerf : COLORS.statBuff;
-      const parts = changed.map((statId) => formatSignedStatDelta(statId, preview.deltas[statId] ?? 0));
+      const parts = changed.map((statId) =>
+        formatSignedStatDelta(statId, preview.deltas[statId] ?? 0),
+      );
       lines.push({ text: truncateToWidth(parts.join('  '), 8), color: deltaColor, size: 8 });
     }
     if (preview.swappedOut.length > 0) {
@@ -1118,11 +1127,16 @@ export function createEquipmentUI(
     const filterLabel = selectedSlotFilter
       ? (SLOT_REGISTRY.find((entry) => entry.id === selectedSlotFilter)?.label ?? '').toUpperCase()
       : 'EQUIPPABLE';
-    const subHeading = crispText(bagX + bagW - 12, dollY + 26, `${filterLabel} · ${rawSlots.length}`, {
-      fontFamily: FONT_FAMILY,
-      fontSize: '8px',
-      color: hex(COLORS.textSecondary),
-    });
+    const subHeading = crispText(
+      bagX + bagW - 12,
+      dollY + 26,
+      `${filterLabel} · ${rawSlots.length}`,
+      {
+        fontFamily: FONT_FAMILY,
+        fontSize: '8px',
+        color: hex(COLORS.textSecondary),
+      },
+    );
     subHeading.setOrigin(1, 0.5);
     container.add(heading);
     container.add(subHeading);
@@ -1168,7 +1182,9 @@ export function createEquipmentUI(
       const row = Math.floor(local / cols);
       const cx = gridX + col * (cell + gap) + cell / 2;
       const cy = gridTop + row * (cell + gap) + cell / 2;
-      const rarityColor = def ? (RARITY_COLORS[def.rarity] ?? COLORS.panelBorder) : COLORS.panelBorder;
+      const rarityColor = def
+        ? (RARITY_COLORS[def.rarity] ?? COLORS.panelBorder)
+        : COLORS.panelBorder;
 
       const box = scene.add.rectangle(snap(cx), snap(cy), cell, cell, COLORS.slotBg, 0.95);
       box.setStrokeStyle(2, rarityColor);
@@ -1206,11 +1222,16 @@ export function createEquipmentUI(
       bagObjects.push(box, inset, icon);
 
       if (slot.quantity > 1) {
-        const qty = crispText(snap(cx + cell / 2 - 4), snap(cy + cell / 2 - 4), `x${slot.quantity}`, {
-          fontFamily: FONT_FAMILY,
-          fontSize: '8px',
-          color: hex(COLORS.textPrimary),
-        });
+        const qty = crispText(
+          snap(cx + cell / 2 - 4),
+          snap(cy + cell / 2 - 4),
+          `x${slot.quantity}`,
+          {
+            fontFamily: FONT_FAMILY,
+            fontSize: '8px',
+            color: hex(COLORS.textPrimary),
+          },
+        );
         qty.setOrigin(1, 1);
         container.add(qty);
         bagObjects.push(qty);

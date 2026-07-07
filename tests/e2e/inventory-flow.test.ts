@@ -418,10 +418,9 @@ describe('inventory flow (e2e)', () => {
       visibleCells += 1;
       expect(within(cell, panel), `bag cell ${i} should sit inside the equipment panel`).toBe(true);
       for (const slot of slotBounds) {
-        expect(
-          overlaps(cell, slot),
-          `bag cell ${i} must not overlap a paper-doll slot`,
-        ).toBe(false);
+        expect(overlaps(cell, slot), `bag cell ${i} must not overlap a paper-doll slot`).toBe(
+          false,
+        );
       }
     }
     expect(visibleCells, 'at least one bag cell should be visible in the panel').toBeGreaterThan(0);
@@ -482,7 +481,10 @@ describe('inventory flow (e2e)', () => {
 
     // With no panel open, the docked radar is visible in the top-right corner.
     const dockedBefore = await probe.getMinimapDockedBounds(page);
-    expect(dockedBefore, 'the minimap should be docked/visible before any panel opens').not.toBeNull();
+    expect(
+      dockedBefore,
+      'the minimap should be docked/visible before any panel opens',
+    ).not.toBeNull();
 
     await probe.openEquipmentOnly(page);
     await page.waitForTimeout(300);
