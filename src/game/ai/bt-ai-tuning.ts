@@ -9,7 +9,7 @@
  *
  * @see bt-ai-provider.ts
  */
-import type { AIConfig } from './types.js';
+import { AIDecisionMode, AIPathingMode, type AIConfig } from './types.js';
 
 export const DEFAULT_CONFIG: Required<AIConfig> = {
   seed: 12345,
@@ -35,6 +35,10 @@ export const DEFAULT_CONFIG: Required<AIConfig> = {
   // never drag the player off-objective into an off-path fight — the failure
   // mode that previously forced this to 0.0 and blew the floor-clear budget.
   farmPullWeight: 0.07,
+  // A/B axes default to LEGACY so the AI is byte-identical to main unless a
+  // caller explicitly opts into an experimental mode.
+  pathingMode: AIPathingMode.LEGACY,
+  decisionMode: AIDecisionMode.LEGACY,
   debug: false,
 };
 

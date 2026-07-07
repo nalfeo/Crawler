@@ -13,7 +13,14 @@ import { createFloorGameConfig } from '../../bootstrap/floor-game-config.js';
 import { query } from 'bitecs';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { getAvailableFloorIds } from '../../shared/floor-registry.js';
-import { AIState, BehaviorTreeAI } from '../../game/ai/index.js';
+import {
+  AIState,
+  AIDecisionMode,
+  AIPathingMode,
+  BehaviorTreeAI,
+  type AIDecisionModeValue,
+  type AIPathingModeValue,
+} from '../../game/ai/index.js';
 import {
   autoFloor1ProgressionSystem,
   computeAutoStatAllocation,
@@ -92,6 +99,10 @@ interface AiRunnerLabState {
   showFlowField: boolean;
   lighting: LightingConfig;
   fov: FovConfig;
+  /** A/B axis 1 — AI pathing mode (persisted across lab reloads). */
+  pathingMode?: AIPathingModeValue;
+  /** A/B axis 2 — AI decision mode (persisted across lab reloads). */
+  decisionMode?: AIDecisionModeValue;
   scenarioPresetId?: AiRunnerScenarioPresetId;
   aiConfig: {
     visualRiskRewardFields: boolean;
@@ -243,8 +254,19 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   currentSeed = getAiRunnerScenarioPreset(selectedScenarioPresetId)?.defaultSeed ?? currentSeed;
   let arenaEntryFrame: number | null = null;
 
-  // AI configuration state
-  const aiConfig = {
+  // AI configuration state. The A/B mode selection (pathingMode/decisionMode)
+  // both default LEGACY → byte-identical to main. All fields persist across lab
+  // reloads; pathingMode/decisionMode are passed into every BehaviorTreeAI the
+  // lab constructs.
+  const aiConfig: {
+    pathingMode: AIPathingModeValue;
+    decisionMode: AIDecisionModeValue;
+    visualRiskRewardFields: boolean;
+    threatPreviewFrames: number;
+    autoPauseOnDamage: boolean;
+  } = {
+    pathingMode: persisted?.pathingMode ?? AIPathingMode.LEGACY,
+    decisionMode: persisted?.decisionMode ?? AIDecisionMode.LEGACY,
     visualRiskRewardFields: persisted?.aiConfig?.visualRiskRewardFields ?? false,
     threatPreviewFrames: persisted?.aiConfig?.threatPreviewFrames ?? 0,
     autoPauseOnDamage: persisted?.aiConfig?.autoPauseOnDamage ?? false,
@@ -255,6 +277,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     aggression: 1,
     retreatThreshold: 0.15,
     debug: true,
+    pathingMode: aiConfig.pathingMode,
+    decisionMode: aiConfig.decisionMode,
   });
   let selectedSpeed = 1;
   let isPaused = true;
@@ -282,8 +306,14 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       showFlowField,
       lighting: { ...lightingSettings },
       fov: { ...fovSettings },
+      pathingMode: aiConfig.pathingMode,
+      decisionMode: aiConfig.decisionMode,
       scenarioPresetId: selectedScenarioPresetId,
-      aiConfig: { ...aiConfig },
+      aiConfig: {
+        visualRiskRewardFields: aiConfig.visualRiskRewardFields,
+        threatPreviewFrames: aiConfig.threatPreviewFrames,
+        autoPauseOnDamage: aiConfig.autoPauseOnDamage,
+      },
     });
   };
 
@@ -775,6 +805,35 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     });
   aiFolder.close();
 
+  // Rebuild the AI brain in place (preserving the current seed) so an A/B mode
+  // toggle takes effect immediately without restarting the scene/floor.
+  const rebuildAiBrain = (): void => {
+    ai = new BehaviorTreeAI({
+      seed: currentSeed,
+      aggression: 1,
+      retreatThreshold: 0.15,
+      debug: true,
+      pathingMode: aiConfig.pathingMode,
+      decisionMode: aiConfig.decisionMode,
+    });
+  };
+
+  const aiModesFolder = gui.addFolder('AI Modes (A/B)');
+  aiModesFolder
+    .add(aiConfig, 'pathingMode', [AIPathingMode.LEGACY, AIPathingMode.RISK_REWARD_FUSED])
+    .name('Pathing')
+    .onChange(() => {
+      rebuildAiBrain();
+      persistLabState();
+    });
+  aiModesFolder
+    .add(aiConfig, 'decisionMode', [AIDecisionMode.LEGACY, AIDecisionMode.SLACK_AWARE])
+    .name('Decision')
+    .onChange(() => {
+      rebuildAiBrain();
+      persistLabState();
+    });
+
   /**
    * Lazily build a real hardware input capture (keyboard/mouse/touch) bound to
    * the live scene. Used only while {@link manualControl} is active so the human
@@ -876,6 +935,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       aggression: 1,
       retreatThreshold: 0.15,
       debug: true,
+      pathingMode: aiConfig.pathingMode,
+      decisionMode: aiConfig.decisionMode,
     });
     pollCount = 0;
     arenaEntryFrame = null;
@@ -1496,6 +1557,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
             <div><strong>Reason:</strong> <span id="ai-reason">-</span></div>
             <div><strong>Target:</strong> <span id="ai-target">-</span></div>
             <div><strong>Path:</strong> <span id="ai-path">-</span></div>
+            <div><strong>Modes:</strong> <span id="ai-modes">-</span></div>
+            <div><strong>Slack:</strong> <span id="ai-slack">-</span></div>
           </div>
           <div id="ai-tree"></div>
           <div style="margin-top:12px; padding:8px; background:#111827; border-radius:4px;">
@@ -1855,6 +1918,29 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         nav.pathWaypoints.length > 0
           ? `${nav.pathIndex + 1}/${nav.pathWaypoints.length} waypoints`
           : 'No path';
+    }
+    const modesElem = document.getElementById('ai-modes');
+    if (modesElem) {
+      modesElem.textContent = `pathing=${ai.getPathingMode()} · decision=${ai.getDecisionMode()}`;
+    }
+    const slackElem = document.getElementById('ai-slack');
+    if (slackElem) {
+      // Reads the run-plan slack signal. Prefers the SLACK_AWARE decision-time
+      // plan (what the F1/F2 filters actually consulted this frame) and falls
+      // back to the post-tick travel plan. Only populated while travelling under
+      // a Floor-1 run plan; 'n/a' otherwise. In LEGACY decisionRunPlan is null so
+      // this shows the same travel run plan as before.
+      const debug = ai.getTacticalRunDebug();
+      const runPlan = debug.decisionRunPlan ?? debug.runPlan;
+      if (!runPlan) {
+        slackElem.textContent = 'n/a';
+        slackElem.style.color = '#888';
+      } else {
+        const slackMs = Math.round(runPlan.slackMs);
+        const urgency = runPlan.urgency;
+        slackElem.textContent = `slack=${slackMs}ms · urgency=${urgency.toFixed(2)}`;
+        slackElem.style.color = slackMs < 0 ? '#ff5555' : urgency > 0.66 ? '#ffbb33' : '#55dd55';
+      }
     }
     if (treeElem) {
       renderDecisionTree(treeElem, ai.getTree().serialize(), decision);
