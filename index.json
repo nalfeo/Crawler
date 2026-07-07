@@ -1,5 +1,16 @@
 [
   {
+    "commit": "766895d4f1392f685ec70d3624eea3de91cf588a",
+    "commitDate": "2026-07-07T22:17:31Z",
+    "commitSubject": "feat(ai): two-axis AI A/B toggle + visualization harness (LEGACY-default, byte-identical) (#851)",
+    "capturedAt": "2026-07-07T22:57:29.339Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28902840569",
+    "winRate": 0.8433333333333334,
+    "totalWins": 253,
+    "totalRuns": 300,
+    "path": "by-sha/766895d4f1392f685ec70d3624eea3de91cf588a.json"
+  },
+  {
     "commit": "1ffd32ca2575201e6720bac38c343bfaeed2c020",
     "commitDate": "2026-07-07T21:55:48Z",
     "commitSubject": "fix(enemies): wire rat monarch art and rat-brute visuals (#844)",
