@@ -246,6 +246,12 @@ function uniformCuts(start: number, end: number, n: number): number[] {
  *
  * Requires `candidates.length >= targetCells - 1`; callers handle the
  * under-segmented case (too few gutters) before calling.
+ *
+ * Deterministic: all inputs are integer pixel positions and every cost is an
+ * integer sum of squares, so there is no float tie-break ambiguity. When two
+ * subsets share the minimum cost, the strict `<` comparisons keep the first one
+ * reached in ascending candidate order (the leftmost subset), so the same sheet
+ * always slices identically across runs.
  */
 function selectEvenCuts(
   candidates: readonly number[],

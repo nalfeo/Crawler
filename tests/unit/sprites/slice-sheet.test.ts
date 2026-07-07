@@ -701,4 +701,69 @@ describe('computeSliceMap generation reconciliation (expectedGrid)', () => {
     expect(reconciled.rows).toBe(2);
     expect(reconciled.cells).toHaveLength(4);
   });
+
+  it('is deterministic and yields strictly positive-area cells', () => {
+    // Same sheet + same options must slice identically across runs (the pipeline
+    // is deterministic; the DP tie-break is fixed by integer cost + strict `<`).
+    const { sheet } = encodeGappyRow(4, [1, 3]);
+    const opts = { expectedGrid: { rows: 1, cols: 4 } } as const;
+    const a = computeSliceMap(sheet, opts);
+    const b = computeSliceMap(sheet, opts);
+    const box = (m: typeof a): number[][] => m.cells.map((c) => [c.x0, c.y0, c.w, c.h]);
+    expect(box(b)).toEqual(box(a));
+    for (const cell of a.cells) {
+      expect(cell.w).toBeGreaterThan(0);
+      expect(cell.h).toBeGreaterThan(0);
+    }
+  });
+
+  it('leaves the raw content-aware grid untouched when no expectedGrid is given (debugger path)', () => {
+    // The debugger / sidecar path passes no expectedGrid, so it must see the pure
+    // (even spurious) content-aware grid — never the reconciled one.
+    const { sheet } = encodeGappyRow(4, [1]); // over-segments to 5 columns
+    const noOpts = computeSliceMap(sheet);
+    const emptyOpts = computeSliceMap(sheet, {});
+    expect(emptyOpts.cols).toBe(noOpts.cols);
+    expect(emptyOpts.rows).toBe(noOpts.rows);
+    expect(noOpts.cols).toBe(5);
+    // Only the generation path (expectedGrid present) reconciles.
+    expect(computeSliceMap(sheet, { expectedGrid: { rows: 1, cols: 4 } }).cols).toBe(4);
+  });
+
+  it('preserves real gutters over a central phantom even when block widths are uneven', () => {
+    // Central phantom (splits the middle block) with mildly asymmetric widths
+    // (10,14,12). The two REAL gutters give the most-even 1×3 split, so the
+    // phantom is dropped and every block is recovered intact.
+    const { sheet, colors } = encodeUnevenRow([10, 14, 12], 1);
+    const reconciled = computeSliceMap(sheet, { expectedGrid: { rows: 1, cols: 3 } });
+    expect(reconciled.cols).toBe(3);
+    assertColorIsolation(sliceSheet(sheet, { expectedGrid: { rows: 1, cols: 3 } }), colors);
+  });
+
+  it('still emits the commanded count when extreme width-asymmetry defeats the heuristic (accepted)', () => {
+    // Documented limitation (plan-review): with a tiny end block (12,20,8) and a
+    // central phantom, the most-even subset keeps the phantom and drops a REAL
+    // gutter — so a cell straddles a boundary. We DO NOT try to out-clever this;
+    // it still emits the commanded 3 cells and human gallery review rejects the
+    // straddled cell (product decision: human review is the semantic gate).
+    const { sheet } = encodeUnevenRow([12, 20, 8], 1);
+    const reconciled = computeSliceMap(sheet, { expectedGrid: { rows: 1, cols: 3 } });
+    expect(reconciled.cols).toBe(3);
+    expect(reconciled.cells).toHaveLength(3);
+  });
+
+  it('reconciles a mixed sheet: one axis over-segmented, the other under-segmented', () => {
+    // 1 row of 3 blocks with block 1 split → cols over-segmented (4 detected) and
+    // rows under-segmented (1 detected) vs a commanded 2×3. Each axis reconciles
+    // independently: cols drop the phantom to 3, rows uniform-split up to 2.
+    const { sheet } = encodeGappyRow(3, [1]);
+    const map = computeSliceMap(sheet, { expectedGrid: { rows: 2, cols: 3 } });
+    expect(map.cols).toBe(3);
+    expect(map.rows).toBe(2);
+    expect(map.cells).toHaveLength(6);
+    for (const cell of map.cells) {
+      expect(cell.w).toBeGreaterThan(0);
+      expect(cell.h).toBeGreaterThan(0);
+    }
+  });
 });
