@@ -56,6 +56,12 @@ function readRunState(world: GameWorld): GameWorld['state'] {
   return world.state;
 }
 
+export function classifyGameOverOutcome(world: GameWorld): 'timeout' | 'death' {
+  const floor1Timeout = world.floorScenario?.failReason === 'stair_timeout';
+  const floor2Timeout = world.goalFlags.get('floor2-timeout') === true;
+  return floor1Timeout || floor2Timeout ? 'timeout' : 'death';
+}
+
 // Floor 1 AI-driver auto-actions (NPC talk, boss-reward spell pick, shop
 // prize/buy/equip, stair descend, stat allocation) live in ./auto-progression.ts
 // so the headless runner and the in-browser AI-runner lab share identical
@@ -619,7 +625,7 @@ export async function runHeadless(
       // the loop spins uselessly until maxFrames while the simulation is frozen,
       // misreporting the run and wasting thousands of frames.
       if (readRunState(world) === 'game_over') {
-        outcome = world.floorScenario?.failReason === 'stair_timeout' ? 'timeout' : 'death';
+        outcome = classifyGameOverOutcome(world);
         break;
       }
 

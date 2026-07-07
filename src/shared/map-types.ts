@@ -98,7 +98,7 @@ export interface MapConfig {
     readonly smoothingPasses?: number;
     /** Boss-den side length in tiles. */
     readonly bossDenSize?: number;
-    /** Minimum tile separation between region seeds. */
+    /** Minimum tile separation between region seeds (clamped to map diagonal). */
     readonly regionSeparationTiles?: number;
     /** Maximum retry attempts before generation fails. */
     readonly maxRetries?: number;
@@ -107,8 +107,8 @@ export interface MapConfig {
     /** Minimum run length to perturb straight hallway segments. */
     readonly straightHallwayMinRun?: number;
     /**
-     * Territory spawn-zone radius as a fraction of sqrt(map area). Default: 0.5 (≈25% of floor area).
-     * Larger = bigger family influence circles; 1.0 = full-map circles.
+     * Family territory diameter as a fraction of map size (min dimension).
+     * Default 0.3 = 30% diameter circles from boss den centers.
      */
     readonly territoryRadiusFraction?: number;
   };

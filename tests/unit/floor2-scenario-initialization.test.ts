@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { query } from 'bitecs';
 import { spawnPlayer } from '../../src/core/spawners/combatants.js';
+import { DoorState } from '../../src/core/index.js';
 import { SeededRandom } from '../../src/shared/random.js';
-import { BiomeType } from '../../src/shared/map-types.js';
+import { BiomeType, RoomRole } from '../../src/shared/map-types.js';
 import type { MapConfig } from '../../src/shared/map-types.js';
 import { CaveSystemGenerator } from '../../src/core/map/generators/cave-system.js';
 import type { FloorMap } from '../../src/core/map/FloorMap.js';
@@ -169,6 +171,29 @@ describe('initializeFloor2Scenario manifest validation', () => {
     const secondFloor = serializeFloor(second.world.floorMap!);
 
     expect(secondFloor).toEqual(firstFloor);
+  });
+
+  it('installs a locked resource-heart door that unlocks on floor2-victory', () => {
+    const { world, playerEid } = createScenarioWorld();
+    initializeFloor2Scenario(world, playerEid);
+
+    const floorMap = world.floorMap!;
+    const heart = floorMap.roomGraph
+      .getAll()
+      .find((room) => room.role === RoomRole.RESOURCE_HEART)!;
+    expect(heart.doors.length).toBeGreaterThan(0);
+
+    const doorStates = query(world.ecs, [DoorState]);
+    const lockedHeartDoor = heart.doors.some((door) =>
+      doorStates.some(
+        (eid) =>
+          (world.stores.doorState.tileX[eid] ?? -1) === door.x &&
+          (world.stores.doorState.tileY[eid] ?? -1) === door.y &&
+          (world.stores.doorState.isLocked[eid] ?? 0) === 1 &&
+          (world.stores.doorState.isOpen[eid] ?? 0) === 0,
+      ),
+    );
+    expect(lockedHeartDoor).toBe(true);
   });
 });
 

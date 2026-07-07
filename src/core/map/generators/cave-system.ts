@@ -50,7 +50,11 @@ export interface CaveSystemOptions {
   smoothingPasses?: number;
   /** Boss-den side length (square). Default: 5. */
   bossDenSize?: number;
-  /** Minimum tile separation between region seeds. Default: scaled from map size. */
+  /**
+   * Minimum tile separation between region seeds.
+   * Clamped to the map diagonal (corner-to-corner distance in tiles).
+   * Default: auto-scaled from map size.
+   */
   regionSeparationTiles?: number;
   /** Max retries with bumped sub-seed before throwing. Default: 8. */
   maxRetries?: number;
@@ -59,9 +63,8 @@ export interface CaveSystemOptions {
   /** Minimum run length to perturb straight hallways. Default: 10. */
   straightHallwayMinRun?: number;
   /**
-   * Territory spawn-zone radius as a fraction of map area per zone.
-   * r = sqrt(fraction × w × h / π). Default: 0.25 → each zone covers ~25% of map area.
-   * Increase for larger/overlapping zones; 1.0 = full-map equivalent radius.
+   * Family territory diameter as a fraction of map size (min dimension).
+   * radius = 0.5 × fraction × min(width,height). Default: 0.3 (30% diameter).
    */
   territoryRadiusFraction?: number;
 }
@@ -76,8 +79,8 @@ const DEFAULT_OPTIONS: Required<CaveSystemOptions> = {
   maxRetries: 8,
   cavernWidenPasses: 2,
   straightHallwayMinRun: 10,
-  // 0.25 → r ≈ sqrt(0.25·w·h/π) ≈ 58 tiles on 270×156, covering ~25% map area per zone.
-  territoryRadiusFraction: 0.25,
+  // 0.3 → territory diameter ≈ 30% of min(width,height).
+  territoryRadiusFraction: 0.3,
 };
 
 interface RegionInfo {
@@ -132,6 +135,10 @@ export class CaveSystemGenerator implements MapGenerator {
     const cave = config.caveSystem;
     const valueOr = (value: number | undefined, fallback: number) =>
       Number.isFinite(value) ? value! : fallback;
+    const maxRegionSeparationTiles = Math.max(
+      1,
+      Math.floor(Math.hypot(config.widthTiles - 1, config.heightTiles - 1)),
+    );
     return {
       presentCount: this.resolvePresentCount(config),
       initialFill: Math.max(
@@ -148,7 +155,10 @@ export class CaveSystemGenerator implements MapGenerator {
       ),
       regionSeparationTiles: Math.max(
         0,
-        Math.floor(valueOr(cave?.regionSeparationTiles, this.options.regionSeparationTiles)),
+        Math.min(
+          maxRegionSeparationTiles,
+          Math.floor(valueOr(cave?.regionSeparationTiles, this.options.regionSeparationTiles)),
+        ),
       ),
       maxRetries: Math.max(
         1,
@@ -253,7 +263,7 @@ export class CaveSystemGenerator implements MapGenerator {
     }
 
     // --- 4. Multi-source BFS segmentation ------------------------------
-    const { regions, adjacency } = this.segmentRegions(tileMap, w, h, seeds);
+    const { regions } = this.segmentRegions(tileMap, w, h, seeds);
     if (regions.length < 2) {
       throw new Error(`segmentation produced ${regions.length} regions, need >=2`);
     }
@@ -295,10 +305,17 @@ export class CaveSystemGenerator implements MapGenerator {
       subSeed,
     );
 
-    // --- 6. Register RESOURCE_HEART and SETTLEMENT rooms ---------------
-    const regionIdToRoomId = new Map<number, number>();
-    const heartRoomId = this.addRegionAsRoom(roomGraph, heart, RoomRole.RESOURCE_HEART, w);
-    regionIdToRoomId.set(heart.id, heartRoomId);
+    // --- 6. Register RESOURCE_HEART (sealed circular room) + SETTLEMENT -
+    const resourceHeart = this.carveSealedResourceHeartRoom(tileMap, terrain, w, h);
+    const heartRoomId = roomGraph.add(
+      resourceHeart.bounds,
+      resourceHeart.doors,
+      [],
+      RoomRole.RESOURCE_HEART,
+      'resource_heart',
+      undefined,
+      resourceHeart.interiorCells,
+    );
 
     const settlementRoomIds: number[] = [];
     for (const room of settlementCluster) {
@@ -318,36 +335,39 @@ export class CaveSystemGenerator implements MapGenerator {
     if (settlementBarRoomId === undefined) {
       throw new Error('settlement cluster did not produce a bar room');
     }
-    regionIdToRoomId.set(settlementRegion.id, settlementBarRoomId);
+    roomGraph.addNeighbor(settlementBarRoomId, heartRoomId);
+    roomGraph.addNeighbor(heartRoomId, settlementBarRoomId);
     for (let i = 1; i < settlementRoomIds.length; i++) {
       const annexRoomId = settlementRoomIds[i]!;
       roomGraph.addNeighbor(settlementBarRoomId, annexRoomId);
       roomGraph.addNeighbor(annexRoomId, settlementBarRoomId);
     }
 
-    // Wire segmentation adjacency for heart ↔ settlement (and any other region pairs).
-    for (const [regionA, neighbours] of adjacency) {
-      const roomA = regionIdToRoomId.get(regionA);
-      if (roomA === undefined) continue;
-      for (const regionB of neighbours) {
-        if (regionB <= regionA) continue; // dedupe
-        const roomB = regionIdToRoomId.get(regionB);
-        if (roomB === undefined) continue;
-        roomGraph.addNeighbor(roomA, roomB);
-        roomGraph.addNeighbor(roomB, roomA);
-      }
-    }
-
     // Stamp RESOURCE_HEART centre and immediate neighbours with BOSS_STAIR_FLOOR.
-    this.stampBossStairAtHeart(heart, terrain, tileMap, w, h);
+    this.stampBossStairAtHeart(
+      {
+        id: -1,
+        cells: resourceHeart.interiorCells.map((tile) => tile.y * w + tile.x),
+        centroidX: resourceHeart.centerX,
+        centroidY: resourceHeart.centerY,
+        minX: resourceHeart.bounds.x,
+        minY: resourceHeart.bounds.y,
+        maxX: resourceHeart.bounds.x + resourceHeart.bounds.width - 1,
+        maxY: resourceHeart.bounds.y + resourceHeart.bounds.height - 1,
+      },
+      terrain,
+      tileMap,
+      w,
+      h,
+    );
 
     // --- 7. Spawn room — carved safe room at farthest point from heart --
     const farthestFromHeart = this.findFarthestPassableFrom(
       tileMap,
       w,
       h,
-      heart.centroidX,
-      heart.centroidY,
+      resourceHeart.centerX,
+      resourceHeart.centerY,
     );
     const spawnRoom = this.carveSmallRoom(
       tileMap,
@@ -377,20 +397,23 @@ export class CaveSystemGenerator implements MapGenerator {
 
     // --- 8b. Angular boss dens + circular TERRITORY rooms --------------
     const denTargets = this.placeAngularDenTargets(
-      heart.centroidX,
-      heart.centroidY,
+      resourceHeart.centerX,
+      resourceHeart.centerY,
       w,
       h,
       presentCount,
       tileMap,
     );
 
-    // Territory zone spawn-influence radius: r = sqrt(fraction × w × h / π).
-    // fraction=0.25 → r ≈ 58 tiles on 270×156, meaning each zone covers ~25% of map area.
-    const territoryZoneRadius = Math.round(
-      Math.sqrt((options.territoryRadiusFraction * w * h) / Math.PI),
+    // Family territory circles: diameter = fraction × min(width,height).
+    const minDim = Math.min(w, h);
+    const territoryDiameterTiles = Math.max(
+      6,
+      Math.min(minDim - 4, Math.round(minDim * options.territoryRadiusFraction)),
     );
-    // TERRITORY room radius (smaller — for AI/minimap semantic room).
+    const territoryZoneRadius = Math.max(3, Math.floor(territoryDiameterTiles / 2));
+    // TERRITORY semantic rooms stay compact enough that boss-den carving has
+    // adjacent wall space, while territoryZones carry the larger spawn area.
     const territoryRoomRadius = Math.max(12, Math.round(Math.min(w * 0.1, h * 0.1)));
 
     const territoryRoomIds: number[] = [];
@@ -471,7 +494,7 @@ export class CaveSystemGenerator implements MapGenerator {
     // Boss dens add new passable tiles (DOOR_OPEN + interior); flood the final map.
     const reached = this.floodPassable(tileMap, w, h, playerSpawn.x, playerSpawn.y);
     const required: Array<{ x: number; y: number; label: string }> = [
-      { x: heart.centroidX, y: heart.centroidY, label: 'RESOURCE_HEART' },
+      { x: resourceHeart.centerX, y: resourceHeart.centerY, label: 'RESOURCE_HEART' },
       ...settlementRoomIds.map((roomId, idx) => {
         const room = roomGraph.get(roomId)!;
         return {
@@ -1449,6 +1472,85 @@ export class CaveSystemGenerator implements MapGenerator {
       minY: cells.length > 0 ? minY : cy,
       maxX: cells.length > 0 ? maxX : cx,
       maxY: cells.length > 0 ? maxY : cy,
+    };
+  }
+
+  /**
+   * Carve a sealed circular resource-heart chamber near map center.
+   * - diameter: 20 tiles (radius 10)
+   * - center: within 20% of map center (we anchor at center and clamp for bounds)
+   * - one perimeter door tile (left open at generation; runtime lock wiring seals it)
+   */
+  private carveSealedResourceHeartRoom(
+    tileMap: TileMap,
+    terrain: Uint8Array,
+    w: number,
+    h: number,
+  ): {
+    centerX: number;
+    centerY: number;
+    bounds: RoomBounds;
+    doors: DoorLocation[];
+    interiorCells: Array<{ x: number; y: number }>;
+  } {
+    const radius = 10;
+    const innerRadius = radius - 1;
+    const minCenterX = radius + 2;
+    const maxCenterX = w - radius - 3;
+    const minCenterY = radius + 2;
+    const maxCenterY = h - radius - 3;
+    if (minCenterX > maxCenterX || minCenterY > maxCenterY) {
+      throw new Error(
+        `map too small for resource-heart room (w=${w}, h=${h}, required diameter=${radius * 2})`,
+      );
+    }
+    const centerX = Math.max(minCenterX, Math.min(maxCenterX, Math.floor(w / 2)));
+    const centerY = Math.max(minCenterY, Math.min(maxCenterY, Math.floor(h / 2)));
+    const r2 = radius * radius;
+    const innerR2 = innerRadius * innerRadius;
+
+    const interiorCells: Array<{ x: number; y: number }> = [];
+    for (let y = centerY - radius; y <= centerY + radius; y++) {
+      for (let x = centerX - radius; x <= centerX + radius; x++) {
+        const dx = x - centerX;
+        const dy = y - centerY;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > r2) continue;
+        const idx = y * w + x;
+        if (d2 <= innerR2) {
+          tileMap.flags[idx] = TilePresets.FLOOR;
+          terrain[idx] = TerrainType.STONE_FLOOR;
+          interiorCells.push({ x, y });
+        } else {
+          tileMap.flags[idx] = TilePresets.WALL;
+          terrain[idx] = TerrainType.STONE_WALL;
+        }
+      }
+    }
+
+    // Door on south perimeter; kept open in generated map for connectivity.
+    const doorX = centerX;
+    const doorY = centerY + radius;
+    const doorIdx = doorY * w + doorX;
+    tileMap.flags[doorIdx] = TilePresets.DOOR_OPEN;
+    terrain[doorIdx] = TerrainType.DOOR;
+    if (doorY + 1 < h - 1 && !tileMap.isPassable(doorX, doorY + 1)) {
+      const outsideIdx = (doorY + 1) * w + doorX;
+      tileMap.flags[outsideIdx] = TilePresets.FLOOR;
+      terrain[outsideIdx] = TerrainType.CAVE_FLOOR;
+    }
+
+    return {
+      centerX,
+      centerY,
+      bounds: {
+        x: centerX - radius,
+        y: centerY - radius,
+        width: radius * 2 + 1,
+        height: radius * 2 + 1,
+      },
+      doors: [{ x: doorX, y: doorY, connectsTo: -1 }],
+      interiorCells,
     };
   }
 

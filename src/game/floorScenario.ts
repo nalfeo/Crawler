@@ -2158,8 +2158,9 @@ export function resolveAmbientSpawnPoint(
   playerY: number,
 ): { x: number; y: number } | null {
   const pack = world.floor === 2 ? floor2EnemyPack : floor1EnemyPack;
-  const minDistanceSq =
-    FLOOR_1_AMBIENT_MIN_PLAYER_DISTANCE_FT * FLOOR_1_AMBIENT_MIN_PLAYER_DISTANCE_FT;
+  const minDistanceFt =
+    world.floor === 2 ? pack.spawnRadiusMin : FLOOR_1_AMBIENT_MIN_PLAYER_DISTANCE_FT;
+  const minDistanceSq = minDistanceFt * minDistanceFt;
   const maxDistanceSq =
     FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_FT * FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_FT;
   const ringPoint = resolveSpawnPosition(world, playerX, playerY, pack.engageRadiusFt);

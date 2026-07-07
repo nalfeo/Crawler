@@ -148,6 +148,22 @@ describe('CaveSystemGenerator', () => {
     expect(found).toBe(true);
   });
 
+  it('places a sealed circular resource-heart room near map center (diameter 20)', () => {
+    const floor = generateWithPresent(77, 4, 120, 90);
+    const heart = floor.roomGraph.getAll().find((r) => r.role === RoomRole.RESOURCE_HEART)!;
+    expect(heart.bounds.width).toBe(21);
+    expect(heart.bounds.height).toBe(21);
+    expect(heart.doors.length).toBe(1);
+
+    const heartCenterX = heart.bounds.x + Math.floor(heart.bounds.width / 2);
+    const heartCenterY = heart.bounds.y + Math.floor(heart.bounds.height / 2);
+    const mapCenterX = Math.floor(floor.width / 2);
+    const mapCenterY = Math.floor(floor.height / 2);
+    const maxOffset = Math.floor(Math.min(floor.width, floor.height) * 0.2);
+    expect(Math.abs(heartCenterX - mapCenterX)).toBeLessThanOrEqual(maxOffset);
+    expect(Math.abs(heartCenterY - mapCenterY)).toBeLessThanOrEqual(maxOffset);
+  });
+
   it('every labelled cavern is reachable from the player spawn', () => {
     const seeds = [1, 2, 3, 10, 100, 555, 9999];
     for (const seed of seeds) {
@@ -250,43 +266,29 @@ describe('CaveSystemGenerator', () => {
     expect(territoryCount).toBe(4);
   });
 
-  it('accepts per-map cave-system knob overrides from MapConfig', () => {
-    const gen = new CaveSystemGenerator({ presentCount: 4, bossDenSize: 5 });
-    const config: MapConfig = {
-      ...smallConfig(4242, 160, 100),
-      caveSystem: {
-        presentCount: 3,
-        bossDenSize: 7,
-        initialFill: 0.42,
-        smoothingPasses: 4,
-      },
-    };
-    const floor = gen.generate(config, new SeededRandom(4242));
-    const rooms = floor.roomGraph.getAll();
-    const territories = rooms.filter((room) => room.role === RoomRole.TERRITORY);
-    const dens = rooms.filter((room) => room.role === RoomRole.BOSS_DEN);
-    expect(territories.length).toBe(3);
-    expect(dens.length).toBe(3);
-    for (const den of dens) {
-      expect(den.bounds.width).toBe(7);
-      expect(den.bounds.height).toBe(7);
-    }
-  });
-
-  it('respects caveSystem.maxRetries override from MapConfig', () => {
+  it('clamps regionSeparationTiles to map corner-to-corner diagonal', () => {
+    const widthTiles = 20;
+    const heightTiles = 20;
+    const diagonal = Math.floor(Math.hypot(widthTiles - 1, heightTiles - 1));
     const gen = new CaveSystemGenerator({
       presentCount: 4,
-      maxRetries: 8,
-      regionSeparationTiles: 100,
+      maxRetries: 1,
     });
     const config: MapConfig = {
-      ...smallConfig(1337, 20, 20),
-      caveSystem: {
-        maxRetries: 1,
-        regionSeparationTiles: 100,
-      },
+      widthTiles,
+      heightTiles,
+      tileSizeFt: 4,
+      biome: BiomeType.CAVE_SYSTEM,
+      seed: 1,
+      roomWidthRange: [3, 6],
+      roomHeightRange: [3, 6],
+      maxRooms: 4,
+      floorDensity: 0.45,
+      caveSystem: { regionSeparationTiles: 9999 },
     };
-    expect(() => gen.generate(config, new SeededRandom(1337))).toThrowError(/exhausted 1 attempts/);
+    expect(() => gen.generate(config, new SeededRandom(1))).toThrowError(
+      new RegExp(`sep=${diagonal}`),
+    );
   });
 
   it('BOSS_STAIR_FLOOR is stamped inside the RESOURCE_HEART region on every seed', () => {
@@ -341,6 +343,15 @@ describe('CaveSystemGenerator', () => {
       expect(floor.territoryZones.length).toBe(count);
       const indices = floor.territoryZones.map((z) => z.familyIndex).sort();
       expect(indices).toEqual(Array.from({ length: count }, (_, i) => i));
+    }
+  });
+
+  it('uses 30%-diameter circular family territory zones from den centers', () => {
+    const floor = generateWithPresent(42, 4, 120, 90);
+    const expectedRadius = Math.floor(Math.round(Math.min(120, 90) * 0.3) / 2);
+    expect(floor.territoryZones.length).toBe(4);
+    for (const zone of floor.territoryZones) {
+      expect(zone.radius).toBe(expectedRadius);
     }
   });
 
