@@ -3,6 +3,7 @@ import {
   PROP_KIND_Z,
   SET_PIECE_TILE_SIZE,
   collectCustomArtRequests,
+  findSetPieceNpcByAnchor,
   flattenSetPieceLayers,
   getAllSetPieceDefs,
   getSetPieceDef,
@@ -263,5 +264,288 @@ describe('setPiecePackSchema', () => {
         ],
       }),
     ).toThrow(/Duplicate prop id/);
+  });
+});
+
+describe('set piece NPC placement', () => {
+  afterEach(() => {
+    installDefaultSetPiecePacks();
+  });
+
+  const validNpcPack = {
+    version: 1 as const,
+    packId: 'npc-test',
+    setPieces: [
+      {
+        id: 'greeting-room',
+        name: 'Greeting Room',
+        theme: 'welcome',
+        sizing: 'exact' as const,
+        width: 6,
+        height: 5,
+        description: 'A room with three placed, spaced NPCs.',
+        props: [
+          {
+            id: 'rug',
+            kind: 'floor' as const,
+            x: 0,
+            y: 0,
+            layers: [{ sprite: { source: 'sheet' as const, sheetKey: 'k', col: 0, row: 0 } }],
+          },
+        ],
+        npcs: [
+          { id: 'goon', npcTypeId: 'tutorial-goon', x: 3, y: 0, anchorRole: 'welcome' as const },
+          { id: 'merchant', npcTypeId: 'shopkeeper', x: 1, y: 4, anchorRole: 'shop' as const },
+          {
+            id: 'broker',
+            npcTypeId: 'spell-quest-giver',
+            x: 5,
+            y: 4,
+            anchorRole: 'spell' as const,
+          },
+        ],
+      },
+    ],
+  };
+
+  it('defaults npcs to an empty array for prop-only set pieces', () => {
+    expect(getSetPieceDef('jimmys-pizza')?.npcs).toEqual([]);
+  });
+
+  it('compiles authored NPCs and preserves their tile coordinates', () => {
+    installSetPiecePacks([setPiecePackSchema.parse(validNpcPack)]);
+    const room = getSetPieceDef('greeting-room')!;
+    expect(room.npcs).toHaveLength(3);
+    const goon = room.npcs.find((npc) => npc.id === 'goon');
+    expect(goon).toMatchObject({ npcTypeId: 'tutorial-goon', x: 3, y: 0, anchorRole: 'welcome' });
+  });
+
+  it('resolves NPCs by objective anchor role', () => {
+    installSetPiecePacks([setPiecePackSchema.parse(validNpcPack)]);
+    const room = getSetPieceDef('greeting-room')!;
+    expect(findSetPieceNpcByAnchor(room, 'welcome')?.npcTypeId).toBe('tutorial-goon');
+    expect(findSetPieceNpcByAnchor(room, 'shop')?.npcTypeId).toBe('shopkeeper');
+    expect(findSetPieceNpcByAnchor(room, 'spell')?.npcTypeId).toBe('spell-quest-giver');
+  });
+
+  it('returns undefined for an anchor role no NPC drives', () => {
+    installSetPiecePacks([setPiecePackSchema.parse(validNpcPack)]);
+    const room = getSetPieceDef('jimmys-pizza');
+    // jimmys-pizza has no NPCs at all → no anchors resolve.
+    expect(room && findSetPieceNpcByAnchor(room, 'welcome')).toBeUndefined();
+  });
+
+  it('rejects NPCs placed outside the footprint', () => {
+    expect(() =>
+      setPiecePackSchema.parse({
+        version: 1,
+        packId: 'bad',
+        setPieces: [
+          {
+            id: 'npc-overflow',
+            name: 'NPC Overflow',
+            theme: 'test',
+            sizing: 'exact',
+            width: 3,
+            height: 3,
+            description: 'NPC falls off the edge.',
+            props: [
+              {
+                id: 'p',
+                kind: 'floor',
+                x: 0,
+                y: 0,
+                layers: [{ sprite: { source: 'sheet', sheetKey: 'k', col: 0, row: 0 } }],
+              },
+            ],
+            npcs: [{ id: 'lost', npcTypeId: 'tutorial-goon', x: 3, y: 0 }],
+          },
+        ],
+      }),
+    ).toThrow(/outside/);
+  });
+
+  it('rejects duplicate NPC ids', () => {
+    expect(() =>
+      setPiecePackSchema.parse({
+        version: 1,
+        packId: 'bad',
+        setPieces: [
+          {
+            id: 'npc-dupes',
+            name: 'NPC Dupes',
+            theme: 'test',
+            sizing: 'exact',
+            width: 4,
+            height: 4,
+            description: 'Two NPCs share an id.',
+            props: [
+              {
+                id: 'p',
+                kind: 'floor',
+                x: 0,
+                y: 0,
+                layers: [{ sprite: { source: 'sheet', sheetKey: 'k', col: 0, row: 0 } }],
+              },
+            ],
+            npcs: [
+              { id: 'n', npcTypeId: 'tutorial-goon', x: 0, y: 0 },
+              { id: 'n', npcTypeId: 'shopkeeper', x: 1, y: 1 },
+            ],
+          },
+        ],
+      }),
+    ).toThrow(/Duplicate NPC id/);
+  });
+
+  it('rejects unknown npcTypeId references', () => {
+    expect(() =>
+      setPiecePackSchema.parse({
+        version: 1,
+        packId: 'bad',
+        setPieces: [
+          {
+            id: 'npc-unknown',
+            name: 'NPC Unknown',
+            theme: 'test',
+            sizing: 'exact',
+            width: 4,
+            height: 4,
+            description: 'References an NPC type that does not exist.',
+            props: [
+              {
+                id: 'p',
+                kind: 'floor',
+                x: 0,
+                y: 0,
+                layers: [{ sprite: { source: 'sheet', sheetKey: 'k', col: 0, row: 0 } }],
+              },
+            ],
+            npcs: [{ id: 'ghost', npcTypeId: 'not-a-real-npc', x: 0, y: 0 }],
+          },
+        ],
+      }),
+    ).toThrow(/unknown npcTypeId/);
+  });
+
+  it('rejects two NPCs driving the same objective anchor', () => {
+    expect(() =>
+      setPiecePackSchema.parse({
+        version: 1,
+        packId: 'bad',
+        setPieces: [
+          {
+            id: 'npc-anchor-clash',
+            name: 'Anchor Clash',
+            theme: 'test',
+            sizing: 'exact',
+            width: 4,
+            height: 4,
+            description: 'Two NPCs both claim the welcome anchor.',
+            props: [
+              {
+                id: 'p',
+                kind: 'floor',
+                x: 0,
+                y: 0,
+                layers: [{ sprite: { source: 'sheet', sheetKey: 'k', col: 0, row: 0 } }],
+              },
+            ],
+            npcs: [
+              { id: 'a', npcTypeId: 'tutorial-goon', x: 0, y: 0, anchorRole: 'welcome' },
+              { id: 'b', npcTypeId: 'shopkeeper', x: 1, y: 1, anchorRole: 'welcome' },
+            ],
+          },
+        ],
+      }),
+    ).toThrow(/Duplicate anchorRole/);
+  });
+});
+
+describe('welcome-room authored set piece', () => {
+  afterEach(() => {
+    installDefaultSetPiecePacks();
+  });
+
+  const chebyshev = (a: { x: number; y: number }, b: { x: number; y: number }): number =>
+    Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+
+  it('is a fixed 8x7 reality-show room', () => {
+    const room = getSetPieceDef('welcome-room')!;
+    expect(room.sizing).toBe('exact');
+    expect(getSetPieceFootprint(room)).toEqual({ width: 8, height: 7 });
+    expect(room.theme).toBe('reality-show');
+  });
+
+  it('places the three floor-1 NPCs on the correct objective anchors', () => {
+    const room = getSetPieceDef('welcome-room')!;
+    expect(findSetPieceNpcByAnchor(room, 'welcome')?.npcTypeId).toBe('tutorial-goon');
+    expect(findSetPieceNpcByAnchor(room, 'shop')?.npcTypeId).toBe('shopkeeper');
+    expect(findSetPieceNpcByAnchor(room, 'spell')?.npcTypeId).toBe('spell-quest-giver');
+  });
+
+  it('spaces the three NPCs at least 3 tiles apart (Chebyshev)', () => {
+    const room = getSetPieceDef('welcome-room')!;
+    const goon = findSetPieceNpcByAnchor(room, 'welcome')!;
+    const merchant = findSetPieceNpcByAnchor(room, 'shop')!;
+    const broker = findSetPieceNpcByAnchor(room, 'spell')!;
+    expect(chebyshev(goon, merchant)).toBeGreaterThanOrEqual(3);
+    expect(chebyshev(goon, broker)).toBeGreaterThanOrEqual(3);
+    expect(chebyshev(merchant, broker)).toBeGreaterThanOrEqual(3);
+  });
+
+  it('seats the goon against the back wall with a desk in front and banner behind', () => {
+    const room = getSetPieceDef('welcome-room')!;
+    const goon = findSetPieceNpcByAnchor(room, 'welcome')!;
+    const desk = room.props.find((p) => p.id === 'welcome-desk')!;
+    const banner = room.props.find((p) => p.id === 'welcome-banner')!;
+    // Back wall is y=0; the goon hugs it.
+    expect(goon.y).toBeLessThanOrEqual(1);
+    // Desk is in front of the goon (higher row toward the entrance).
+    expect(desk.y).toBeGreaterThan(goon.y);
+    // Banner is behind the goon (on the back wall) and layers over it.
+    expect(banner.y).toBeLessThan(goon.y);
+    expect(banner.z).toBeLessThan(desk.z);
+  });
+
+  it('gives the merchant a shop table and the broker a bookcase', () => {
+    const room = getSetPieceDef('welcome-room')!;
+    const merchant = findSetPieceNpcByAnchor(room, 'shop')!;
+    const broker = findSetPieceNpcByAnchor(room, 'spell')!;
+    const shopTable = room.props.find((p) => p.id === 'shop-table')!;
+    const bookcase = room.props.find((p) => p.id === 'broker-bookcase')!;
+    // Shop table sits in front of the merchant.
+    expect(shopTable.y).toBeGreaterThan(merchant.y);
+    expect(Math.abs(shopTable.x - merchant.x)).toBeLessThanOrEqual(2);
+    // Bookcase is adjacent to the broker.
+    const bookcaseRight = bookcase.x + bookcase.width - 1;
+    const nearX = broker.x >= bookcase.x - 1 && broker.x <= bookcaseRight + 1;
+    const nearY = Math.abs(broker.y - bookcase.y) <= 1;
+    expect(nearX && nearY).toBe(true);
+  });
+
+  it('layers a rug over the floor beneath the NPCs and a banner over the wall', () => {
+    const room = getSetPieceDef('welcome-room')!;
+    const rug = room.props.find((p) => p.id === 'welcome-rug')!;
+    const banner = room.props.find((p) => p.id === 'welcome-banner')!;
+    // Rug draws first (floor band), banner above terrain but below front furniture.
+    expect(rug.z).toBe(PROP_KIND_Z.floor);
+    expect(rug.z).toBeLessThan(banner.z);
+    // Composite props keep their stacked layers (e.g. wares on the shop table).
+    const shopTable = room.props.find((p) => p.id === 'shop-table')!;
+    expect(shopTable.layers.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('records bespoke-art requests for the custom hero props', () => {
+    const room = getSetPieceDef('welcome-room')!;
+    const requestIds = collectCustomArtRequests([room]).map((req) => req.requestId);
+    expect(requestIds).toEqual(
+      expect.arrayContaining([
+        'welcome-room-rug',
+        'welcome-room-desk',
+        'welcome-room-shop-table',
+        'welcome-room-bookcase',
+      ]),
+    );
   });
 });

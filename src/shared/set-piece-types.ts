@@ -30,9 +30,17 @@
  * "a flower pot on a table" are a table layer with a flower-pot layer stacked on
  * top (offset within the tile). Props are ordered against each other by `z`
  * (defaulted from {@link SetPiecePropKind} when omitted).
+ *
+ * ## Actors / NPCs
+ *
+ * A set piece may also place NPCs via {@link SetPieceNpcDef}, positioned in the
+ * same tile grid as props. NPCs are not props — the stamping pass spawns them as
+ * living entities, and an optional `anchorRole` lets a placed NPC drive a
+ * Floor-scenario objective tile so the objective marker tracks where the NPC stands.
  */
 import { z } from 'zod';
 import setPiecesPack from './data/set-pieces.json';
+import { getNpcDef } from './npc-types.js';
 
 /** Edge length, in pixels, of a single set-piece grid tile (matches sprite frames). */
 export const SET_PIECE_TILE_SIZE = 16;
@@ -142,6 +150,30 @@ export interface SetPiecePropDef {
   readonly layers: readonly SpriteLayer[];
 }
 
+/**
+ * Which Floor-scenario objective anchor a set-piece NPC drives, if any. The
+ * stamping pass points the matching objective tile at the NPC's spawned tile so
+ * the objective marker always tracks where the NPC actually stands.
+ */
+export type SetPieceNpcAnchorRole = 'welcome' | 'shop' | 'spell';
+
+/**
+ * A placed NPC within a set piece, in set-piece tile coordinates (same origin as
+ * props). Spawned as a living entity by the stamping pass; `npcTypeId` is
+ * resolved against the NPC registry (see {@link getNpcDef}).
+ */
+export interface SetPieceNpcDef {
+  readonly id: string;
+  /** NPC type id resolved against the NPC registry, e.g. `tutorial-goon`. */
+  readonly npcTypeId: string;
+  /** Tile column within the set piece (0-based, left to right). */
+  readonly x: number;
+  /** Tile row within the set piece (0-based, top to bottom). */
+  readonly y: number;
+  /** If set, this NPC's spawn tile drives the named objective anchor. */
+  readonly anchorRole?: SetPieceNpcAnchorRole;
+}
+
 export interface SetPieceDef {
   readonly id: string;
   readonly name: string;
@@ -157,6 +189,8 @@ export interface SetPieceDef {
   readonly description: string;
   readonly tags: readonly string[];
   readonly props: readonly SetPiecePropDef[];
+  /** NPCs placed by this set piece (empty when none authored). */
+  readonly npcs: readonly SetPieceNpcDef[];
 }
 
 export interface SetPiecePackDef {
@@ -234,6 +268,18 @@ const propSourceSchema = z
   })
   .strict();
 
+const npcAnchorRoles = ['welcome', 'shop', 'spell'] as const;
+
+const npcSourceSchema = z
+  .object({
+    id: z.string().trim().min(1),
+    npcTypeId: z.string().trim().min(1),
+    x: z.number().int().min(0),
+    y: z.number().int().min(0),
+    anchorRole: z.enum(npcAnchorRoles).optional(),
+  })
+  .strict();
+
 const setPieceSourceSchema = z
   .object({
     id: z.string().trim().min(1),
@@ -247,6 +293,7 @@ const setPieceSourceSchema = z
     description: z.string().trim().min(1),
     tags: z.array(z.string().trim().min(1)).default([]),
     props: z.array(propSourceSchema).min(1),
+    npcs: z.array(npcSourceSchema).default([]),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -283,6 +330,38 @@ const setPieceSourceSchema = z
         });
       }
     }
+    const seenNpcIds = new Set<string>();
+    const seenAnchors = new Set<string>();
+    for (const npc of value.npcs) {
+      if (seenNpcIds.has(npc.id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Duplicate NPC id "${npc.id}".`,
+        });
+      }
+      seenNpcIds.add(npc.id);
+      if (npc.x >= boundW || npc.y >= boundH) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `NPC "${npc.id}" sits outside the ${boundW}×${boundH} footprint.`,
+        });
+      }
+      if (getNpcDef(npc.npcTypeId) === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `NPC "${npc.id}" references unknown npcTypeId "${npc.npcTypeId}".`,
+        });
+      }
+      if (npc.anchorRole !== undefined) {
+        if (seenAnchors.has(npc.anchorRole)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Duplicate anchorRole "${npc.anchorRole}" — each objective anchor may be driven by at most one NPC.`,
+          });
+        }
+        seenAnchors.add(npc.anchorRole);
+      }
+    }
   });
 
 type SetPieceSourceInput = z.input<typeof setPieceSourceSchema>;
@@ -314,6 +393,16 @@ function compileProp(source: SetPieceSource['props'][number]): SetPiecePropDef {
   };
 }
 
+function compileNpc(source: SetPieceSource['npcs'][number]): SetPieceNpcDef {
+  return {
+    id: source.id,
+    npcTypeId: source.npcTypeId,
+    x: source.x,
+    y: source.y,
+    anchorRole: source.anchorRole,
+  };
+}
+
 function compileSetPiece(source: SetPieceSource): SetPieceDef {
   return {
     id: source.id,
@@ -327,6 +416,7 @@ function compileSetPiece(source: SetPieceSource): SetPieceDef {
     description: source.description,
     tags: source.tags,
     props: source.props.map(compileProp),
+    npcs: source.npcs.map(compileNpc),
   };
 }
 
@@ -387,6 +477,14 @@ export function getSetPieceFootprint(def: SetPieceDef): { width: number; height:
     return { width: def.maxWidth ?? def.width, height: def.maxHeight ?? def.height };
   }
   return { width: def.width, height: def.height };
+}
+
+/** Find the NPC that drives a given objective anchor, if any. */
+export function findSetPieceNpcByAnchor(
+  def: SetPieceDef,
+  role: SetPieceNpcAnchorRole,
+): SetPieceNpcDef | undefined {
+  return def.npcs.find((npc) => npc.anchorRole === role);
 }
 
 /** A single resolved draw instruction, flattened across props and their layers. */
