@@ -47,22 +47,33 @@ const CELL_SIZE = 64;
 const CELL_GAP = 4;
 const COLS = 5;
 const BORDER_WIDTH = 2;
-const FONT_FAMILY = 'Segoe UI, Arial, sans-serif';
+const FONT_FAMILY = '"Press Start 2P", "Courier New", monospace';
+// Small pixel fonts need a higher supersample than the shared HUD default
+// or the tiny labels blur. Keep this floor consistent across construction
+// AND relayout — otherwise every resize silently drops text sharpness.
+const MIN_TEXT_RESOLUTION = 6;
 
 const COLORS = {
-  panelBg: 0x0d0d1a,
-  panelBorder: 0x2a2a4a,
-  tabBg: 0x1a1a30,
-  tabActive: 0x3a3a6a,
-  tabText: 0xc9d4ff,
-  tabTextActive: 0xffffff,
-  searchBg: 0x111122,
-  searchBorder: 0x333355,
-  cellBg: 0x15152a,
-  cellHover: 0x22224a,
-  textPrimary: 0xf8fafc,
-  textSecondary: 0x9ca3af,
+  panelBg: 0x2f3f61,
+  panelBorder: 0x3f5f93,
+  tabBg: 0x394c74,
+  tabActive: 0x4a6699,
+  tabActiveBorder: 0xf2c14e,
+  tabText: 0xaebdd5,
+  tabTextActive: 0xd9e2ef,
+  searchBg: 0x2b3c61,
+  searchBorder: 0x3f5f93,
+  cellBg: 0x445c89,
+  cellHover: 0x5472ab,
+  textPrimary: 0xd9e2ef,
+  textSecondary: 0xaebdd5,
+  accent: 0xc2d0e6,
+  sectionHeader: 0x355180,
 } as const;
+
+function hex(value: number): string {
+  return `#${value.toString(16).padStart(6, '0')}`;
+}
 
 // ---------------------------------------------------------------------------
 // InventoryUI
@@ -114,7 +125,7 @@ export function createInventoryUI(
   scene.cameras.main.roundPixels = true;
 
   const snap = (value: number): number => Math.round(value);
-  let textResolution = getTextResolution(scene);
+  let textResolution = Math.max(MIN_TEXT_RESOLUTION, getTextResolution(scene));
   const crispText = (
     x: number,
     y: number,
@@ -131,7 +142,7 @@ export function createInventoryUI(
   // uiScale) and scale the whole container up by uiScale so the inventory grid,
   // tabs and text grow on small screens while staying centred and on-canvas.
   let uiScale = fitUiScale(scene, panelWidth, panelHeight);
-  textResolution = getTextResolution(scene);
+  textResolution = Math.max(MIN_TEXT_RESOLUTION, getTextResolution(scene));
   const viewWidth = (): number => GAME.WIDTH / uiScale;
   const viewHeight = (): number => GAME.HEIGHT / uiScale;
 
@@ -206,23 +217,49 @@ export function createInventoryUI(
     panelWidth,
     panelHeight,
     COLORS.panelBg,
-    0.95,
+    1,
   );
   bg.setStrokeStyle(2, COLORS.panelBorder);
   container.add(bg);
 
+  // Corner pixel accent decorations (same idiom as EquipmentUI).
+  const cornerPixelPoints = [
+    [panelX + 6, panelY + 6],
+    [panelX + panelWidth - 6, panelY + 6],
+    [panelX + 6, panelY + panelHeight - 6],
+    [panelX + panelWidth - 6, panelY + panelHeight - 6],
+  ] as const;
+  const cornerPixels: Phaser.GameObjects.Rectangle[] = [];
+  for (const [x, y] of cornerPixelPoints) {
+    const pixel = scene.add.rectangle(x, y, 6, 6, COLORS.panelBorder, 1);
+    container.add(pixel);
+    cornerPixels.push(pixel);
+  }
+
   // Title
-  const title = crispText(panelX + PANEL_PADDING, panelY + PANEL_PADDING, 'INVENTORY', {
+  const title = crispText(panelX + PANEL_PADDING, panelY + PANEL_PADDING + 2, 'INVENTORY', {
     fontFamily: FONT_FAMILY,
-    fontSize: '20px',
-    color: '#f8fafc',
+    fontSize: '16px',
+    color: hex(COLORS.textPrimary),
+    padding: { top: 4, bottom: 2 },
   });
   container.add(title);
+  // Frame behind the title text (same pattern as EquipmentUI's titleFrame).
+  const titleFrame = scene.add.rectangle(
+    panelX + PANEL_PADDING + 146,
+    panelY + PANEL_PADDING + 10,
+    296,
+    28,
+    COLORS.sectionHeader,
+    0.95,
+  );
+  titleFrame.setStrokeStyle(1, COLORS.panelBorder);
+  container.addAt(titleFrame, 1);
 
   const slotFilterLabel = crispText(panelX + PANEL_PADDING + 138, panelY + PANEL_PADDING + 4, '', {
     fontFamily: FONT_FAMILY,
     fontSize: '12px',
-    color: '#7ee0ff',
+    color: hex(COLORS.accent),
   });
   container.add(slotFilterLabel);
 
@@ -230,8 +267,8 @@ export function createInventoryUI(
   const sortBtn = scene.add
     .text(snap(panelX + panelWidth - PANEL_PADDING), snap(panelY + PANEL_PADDING), '⇅ Rarity', {
       fontFamily: FONT_FAMILY,
-      fontSize: '14px',
-      color: '#9ca3af',
+      fontSize: '11px',
+      color: hex(COLORS.textSecondary),
     })
     .setOrigin(1, 0)
     .setInteractive({ useHandCursor: true });
@@ -279,8 +316,8 @@ export function createInventoryUI(
     '🔍 Type to search...',
     {
       fontFamily: FONT_FAMILY,
-      fontSize: '14px',
-      color: '#666688',
+      fontSize: '11px',
+      color: hex(COLORS.textSecondary),
     },
   );
   searchText.setOrigin(0, 0.5);
@@ -288,7 +325,7 @@ export function createInventoryUI(
 
   function applyLayout(): void {
     uiScale = fitUiScale(scene, panelWidth, panelHeight);
-    textResolution = getTextResolution(scene);
+    textResolution = Math.max(MIN_TEXT_RESOLUTION, getTextResolution(scene));
     container.setScale(uiScale);
     panelX = snap((viewWidth() - panelWidth) / 2);
     panelY = snap((viewHeight() - panelHeight) / 2);
@@ -298,7 +335,17 @@ export function createInventoryUI(
     gridHeight = panelY + panelHeight - gridY - PANEL_PADDING;
 
     bg.setPosition(panelX + panelWidth / 2, panelY + panelHeight / 2);
-    title.setPosition(panelX + PANEL_PADDING, panelY + PANEL_PADDING).setResolution(textResolution);
+    const nextCornerPoints = [
+      [panelX + 6, panelY + 6],
+      [panelX + panelWidth - 6, panelY + 6],
+      [panelX + 6, panelY + panelHeight - 6],
+      [panelX + panelWidth - 6, panelY + panelHeight - 6],
+    ] as const;
+    nextCornerPoints.forEach(([x, y], index) => cornerPixels[index]?.setPosition(x, y));
+    titleFrame.setPosition(panelX + PANEL_PADDING + 146, panelY + PANEL_PADDING + 10);
+    title
+      .setPosition(panelX + PANEL_PADDING, panelY + PANEL_PADDING + 2)
+      .setResolution(textResolution);
     slotFilterLabel
       .setPosition(panelX + PANEL_PADDING + 138, panelY + PANEL_PADDING + 4)
       .setResolution(textResolution);
@@ -406,7 +453,7 @@ export function createInventoryUI(
         isActive ? COLORS.tabActive : COLORS.tabBg,
         0.9,
       );
-      tabBg.setStrokeStyle(1, isActive ? 0x5555aa : COLORS.panelBorder);
+      tabBg.setStrokeStyle(1, isActive ? COLORS.tabActiveBorder : COLORS.panelBorder);
       tabBg.setInteractive({ useHandCursor: true });
       tabBg.on('pointerdown', () => {
         activeTag = tag;
@@ -416,8 +463,8 @@ export function createInventoryUI(
 
       const tabLabel = crispText(tabX + tabWidth / 2, tabY + TAB_HEIGHT / 2, displayLabel, {
         fontFamily: FONT_FAMILY,
-        fontSize: '13px',
-        color: isActive ? '#ffffff' : '#c9d4ff',
+        fontSize: '10px',
+        color: isActive ? hex(COLORS.tabTextActive) : hex(COLORS.tabText),
       });
       tabLabel.setOrigin(0.5, 0.5);
 
@@ -569,8 +616,8 @@ export function createInventoryUI(
           `${slot.quantity}`,
           {
             fontFamily: FONT_FAMILY,
-            fontSize: '12px',
-            color: '#ffffff',
+            fontSize: '10px',
+            color: hex(COLORS.textPrimary),
           },
         );
         countText.setOrigin(1, 1);
@@ -592,8 +639,8 @@ export function createInventoryUI(
       `${slots.length} item${slots.length !== 1 ? 's' : ''}`,
       {
         fontFamily: FONT_FAMILY,
-        fontSize: '12px',
-        color: '#666688',
+        fontSize: '10px',
+        color: hex(COLORS.textSecondary),
       },
     );
     countFooter.setOrigin(0, 1);
@@ -663,10 +710,10 @@ export function createInventoryUI(
   function updateSearchDisplay(): void {
     if (searchQuery) {
       searchText.setText(`🔍 ${searchQuery}`);
-      searchText.setColor('#c9d4ff');
+      searchText.setColor(hex(COLORS.textPrimary));
     } else {
       searchText.setText('🔍 Type to search...');
-      searchText.setColor('#666688');
+      searchText.setColor(hex(COLORS.textSecondary));
     }
   }
 
