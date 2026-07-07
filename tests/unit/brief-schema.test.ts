@@ -238,6 +238,31 @@ describe('briefSchema', () => {
     }
   });
 
+  it('rejects duplicate empty-cell coordinates', () => {
+    // A duplicate would make variantCount (rows*cols - emptyCells.length)
+    // under-count the real cells and let a same-count grid change slip past the
+    // rerun guard, so parsing must reject it at the source.
+    const result = briefSchema.safeParse({
+      ...validBrief,
+      generation: {
+        sheet: {
+          rows: 2,
+          cols: 2,
+          emptyCells: [
+            [0, 0],
+            [0, 0],
+          ],
+          nativeCanvas: 1024,
+        },
+      },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const messages = result.error.issues.map((i) => i.message);
+      expect(messages.some((m) => m.includes('duplicate empty cell [0, 0]'))).toBe(true);
+    }
+  });
+
   it('rejects sensors override with an out-of-range opaqueRatio', () => {
     const result = briefSchema.safeParse({
       ...validBrief,

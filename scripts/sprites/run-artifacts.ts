@@ -205,6 +205,20 @@ export interface RunSummary {
   readonly promptHash: string;
   readonly attempts: number;
   readonly variantCount: number;
+  /**
+   * Generation-time sheet grid structure: the commanded rows × cols and the
+   * empty-cell coordinates. Captured so re-postprocess can detect a brief grid
+   * change since generation even when the non-empty variant COUNT is unchanged
+   * — e.g. a 2×2 → 1×4 reshape, or an empty cell moved — which would re-slice
+   * the sheet into different crops and silently corrupt the row-major
+   * per-variant entries. Absent on legacy runs generated before this field
+   * existed; consumers fall back to `variantCount` then.
+   */
+  readonly grid?: {
+    readonly rows: number;
+    readonly cols: number;
+    readonly emptyCells: ReadonlyArray<readonly [number, number]>;
+  };
   /** Candidates ranked best-first: passed first, then by sensor score desc. */
   readonly candidates: ReadonlyArray<RunSummaryEntry>;
   /** Pairwise perceptual-hash diversity across processed variants; null when n < 2. */

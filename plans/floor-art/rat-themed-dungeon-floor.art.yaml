@@ -1,79 +1,40 @@
 id: rat-themed-dungeon-floor
 title: Rat Themed Dungeon Floor
 summary: >
-  Art breakdown for a sewer-like floor where all enemies, props, and terrain
-  cues are rat-themed. Use this plan to track which requirements are still on
-  placeholders versus represented with shipped sprite assets.
+  Art tracking for the rat/sewer theme that ACTUALLY appears on Floor 1. The
+  Floor 1 enemy roster that renders in-game is rat, slime, baby-slime, and the
+  rat-slime floor boss — all of which already ship real sprites and are tracked
+  in the bestiary plan. This plan tracks the two remaining Floor-1 rat-theme art
+  items: the sewer-grate accent floor tile (art already generated, needs wiring)
+  and the slime-rat mid-boss (the only Floor-1 enemy still on a placeholder
+  sprite). Removed as F1-impossible: fictional rat enemies (junk critters,
+  bruiser, man-mage, rat king) and speculative prop clusters (rat-nest,
+  slime-pool) — none of them appear in enemies.floor1.json or decorationDefs.ts.
 assets:
-  - id: rat-junk-critters
-    type: enemy
-    label: Rat Junk Critters
-    brief: >
-      Tiny trash-rummaging rat swarmlings that read as low-threat ambient mobs.
-      Silhouette should prioritize speed and numbers over detail.
-    placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: enemy.rat-junk-critters
-
-  - id: rat-bruiser
-    type: enemy
-    label: Rat Bruiser
-    brief: >
-      Mid-sized sewer enforcer rat with patchwork armor and a heavy rusted
-      improvised weapon. Should read as frontline melee pressure.
-    placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: enemy.rat-bruiser
-
-  - id: rat-man-mage
-    type: enemy
-    label: Rat Man Mage
-    brief: >
-      Upright rat cultist caster in tattered robes with a glowing scrap-focus.
-      Distinct silhouette from bruiser to improve threat readability.
-    placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: enemy.rat-man-mage
-
-  - id: rat-king
-    type: enemy
-    label: Rat King Boss
-    brief: >
-      Boss-scale rat monarch wrapped in cables, debris crown, and stitched
-      cloak. Should be readable as a floor boss at a glance.
-    placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: enemy.rat-king
-
   - id: sewer-grate-floor-tile
     type: tile
     label: Sewer Grate Floor Tile
     brief: >
-      Grimy floor tile variant with rusted grates and damp stains for the rat
-      biome. Keep contrast friendly for combat readability.
+      Grimy stone floor tile variant with a rusted iron grate inset and damp
+      stains for the sewer theme. Keep contrast combat-friendly. Accent tile
+      layered on the base stone floor. Generated art already exists (sewer-grate
+      brief) — needs wiring, not regeneration.
     placeholderInUse: true
     integration:
       kind: sprite-registry
       id: tile.sewer-grate-floor
 
-  - id: rat-nest-props
-    type: item
-    label: Rat Nest Prop Cluster
-    briefId: rat-nest-v2
+  - id: slime-rat
+    type: enemy
+    label: Slime Rat (mid-boss)
     brief: >
-      Prop cluster of bones, cloth scraps, and junk piles used as set dressing
-      around spawns and choke points.
-    placeholderInUse: false
-
-  - id: slime-pool-props
-    type: item
-    label: Slime Pool Prop Cluster
-    briefId: slime-pool-v1
-    brief: >
-      Toxic slime pool set-dressing used for sludge spawn pockets and hazard
-      telegraphing in sewer combat spaces.
-    placeholderInUse: false
+      Floor 1 mid-boss — a bloated rat fused with a translucent slime coat,
+      dripping ooze, oversized and sprawling. WIDE silhouette (2:1 aspect,
+      sizeVariant "wide"). The only Floor-1 enemy still on a placeholder: its
+      mobDef spriteId is "mob-placeholder", so it renders the generic
+      enemy_boss until dedicated wide art is generated and wired
+      (enemy_boss_slimerat renderKind).
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: enemy.slime-rat

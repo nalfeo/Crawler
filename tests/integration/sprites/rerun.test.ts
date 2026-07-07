@@ -167,10 +167,13 @@ describe('repostprocessRun', () => {
 
   it('rejects a variant-count mismatch when the brief grid changed since generation', async () => {
     // Generation stored a 2x2 (4-cell) sheet. If the brief's grid is later
-    // widened to 2x3 (variantCount 6), content-aware re-slicing of the SAME
-    // stored sheet still recovers 4 cells. Blindly carrying the stale
-    // variantCount would corrupt the summary, so the guard (ADR 0024, mirroring
-    // Generate's gate) rejects it with `variant-count-mismatch` (→ HTTP 422).
+    // widened to 2x3 (variantCount 6), the guard must reject rather than
+    // corrupt the summary's per-variant entries. The slicer now reconciles any
+    // stored sheet to the brief's commanded grid (human gallery review is the
+    // grid gate), so re-slicing yields 6 cells and no longer reveals the change
+    // on its own. The guard instead compares the stored generation-time
+    // variantCount (4) against the current brief's expected count (6) and
+    // rejects with `variant-count-mismatch` (ADR 0024 → HTTP 422).
     const seed = await seedRun({ repoRoot: freshRoot() });
     const before = await loadRunSummary(seed.store, seed.briefId, seed.runId);
     const widenedBrief = {
@@ -191,6 +194,37 @@ describe('repostprocessRun', () => {
         runId: seed.runId,
         summary: before,
         brief: widenedBrief,
+        palette: seed.palette,
+      }),
+    ).rejects.toMatchObject({ name: 'RerunError', kind: 'variant-count-mismatch' });
+  });
+
+  it('rejects a same-count grid reshape (2x2 → 1x4) even though the variant count is unchanged', async () => {
+    // Generation stored a 2x2 (4-cell) sheet. Reshaping the brief to 1x4 keeps
+    // the variant COUNT at 4 but re-slices the sheet into completely different
+    // crops, which would silently overwrite the wrong per-variant entries. A
+    // count-only guard misses this; comparing the stored generation-time grid
+    // STRUCTURE (rows/cols/emptyCells) against the current brief catches it.
+    const seed = await seedRun({ repoRoot: freshRoot() });
+    const before = await loadRunSummary(seed.store, seed.briefId, seed.runId);
+    const reshapedBrief = {
+      ...seed.brief,
+      generation: {
+        ...seed.brief.generation,
+        sheet: { ...seed.brief.generation.sheet, rows: 1, cols: 4 },
+      },
+    };
+    // Precondition: the count is unchanged (4) but the layout differs.
+    expect(variantCount(reshapedBrief)).toBe(variantCount(seed.brief));
+    expect(variantCount(reshapedBrief)).toBe(4);
+
+    await expect(
+      repostprocessRun({
+        store: seed.store,
+        briefId: seed.briefId,
+        runId: seed.runId,
+        summary: before,
+        brief: reshapedBrief,
         palette: seed.palette,
       }),
     ).rejects.toMatchObject({ name: 'RerunError', kind: 'variant-count-mismatch' });
