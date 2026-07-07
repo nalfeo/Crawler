@@ -206,6 +206,13 @@ function clampInt(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, Math.round(value)));
 }
 
+const QUADRANT_NEIGHBORS: Record<'N' | 'S' | 'E' | 'W', readonly [string, string, string]> = {
+  N: ['E', 'S', 'W'],
+  S: ['N', 'W', 'E'],
+  E: ['N', 'W', 'S'],
+  W: ['S', 'E', 'N'],
+};
+
 function roomCenter(room: RoomData): { tx: number; ty: number } {
   if (room.interiorCells && room.interiorCells.length > 0) {
     const mid = room.interiorCells[Math.floor(room.interiorCells.length / 2)]!;
@@ -588,11 +595,15 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     return cache;
   }
 
+  function familyNameForIndex(familyIndex: number): string {
+    const familyId =
+      currentPreviewWorld?.floorExtendedState?.familyState?.presentFamilies[familyIndex];
+    return (familyId && FAMILY_NAME_BY_ID.get(familyId)) ?? `Family ${familyIndex}`;
+  }
+
   function familyNameForRoom(room: RoomData): string {
     if (room.familyIndex === undefined) return '';
-    const familyId =
-      currentPreviewWorld?.floorExtendedState?.familyState?.presentFamilies[room.familyIndex];
-    return (familyId && FAMILY_NAME_BY_ID.get(familyId)) ?? `Family ${room.familyIndex}`;
+    return familyNameForIndex(room.familyIndex);
   }
 
   function formatRoleLabel(room: RoomData): string {
@@ -841,25 +852,82 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     const w = map.width;
     const h = map.height;
 
-    if (settings.showTrashSpawnAreas) {
-      for (const room of map.rooms) {
-        if (room.role !== RoomRole.NORMAL && room.role !== RoomRole.TERRITORY) continue;
-        const x = room.bounds.x * CELL_SIZE;
-        const y = room.bounds.y * CELL_SIZE;
-        const width = room.bounds.width * CELL_SIZE;
-        const height = room.bounds.height * CELL_SIZE;
-        ctx.fillStyle = 'rgba(120, 53, 15, 0.26)';
-        ctx.fillRect(x, y, width, height);
+    if (settings.showTrashSpawnAreas && map.config.biome === BiomeType.CAVE_SYSTEM) {
+      const midX = Math.floor(w / 2);
+      const midY = Math.floor(h / 2);
+      const quadrants = [
+        { id: 'N' as const, x0: 0, y0: 0, x1: midX, y1: midY, color: 'rgba(148, 163, 184, 0.08)' },
+        {
+          id: 'S' as const,
+          x0: 0,
+          y0: midY,
+          x1: midX,
+          y1: h,
+          color: 'rgba(148, 163, 184, 0.12)',
+        },
+        {
+          id: 'E' as const,
+          x0: midX,
+          y0: 0,
+          x1: w,
+          y1: midY,
+          color: 'rgba(148, 163, 184, 0.16)',
+        },
+        {
+          id: 'W' as const,
+          x0: midX,
+          y0: midY,
+          x1: w,
+          y1: h,
+          color: 'rgba(148, 163, 184, 0.1)',
+        },
+      ];
+      for (const quadrant of quadrants) {
+        const qx = quadrant.x0 * CELL_SIZE;
+        const qy = quadrant.y0 * CELL_SIZE;
+        const qWidth = (quadrant.x1 - quadrant.x0) * CELL_SIZE;
+        const qHeight = (quadrant.y1 - quadrant.y0) * CELL_SIZE;
+        const [nearA, nearB, far] = QUADRANT_NEIGHBORS[quadrant.id];
+        ctx.fillStyle = quadrant.color;
+        ctx.fillRect(qx, qy, qWidth, qHeight);
         hoverTargets.push({
           kind: 'rect',
-          x,
-          y,
-          width,
-          height,
-          title: 'Trash mob spawn area',
-          lines: [`room=${room.id}`, `role=${room.role}`],
+          x: qx,
+          y: qy,
+          width: qWidth,
+          height: qHeight,
+          title: `Trash spawn quadrant ${quadrant.id}`,
+          lines: [
+            `Spawn mix: ${quadrant.id}=50%`,
+            `Neighbor ${nearA}=20%`,
+            `Neighbor ${nearB}=20%`,
+            `Opposite ${far}=10%`,
+          ],
         });
       }
+      const midPxX = midX * CELL_SIZE;
+      const midPxY = midY * CELL_SIZE;
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(midPxX, 0);
+      ctx.lineTo(midPxX, h * CELL_SIZE);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, midPxY);
+      ctx.lineTo(w * CELL_SIZE, midPxY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = 'rgba(241, 245, 249, 0.88)';
+      ctx.font = 'bold 12px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('N', midPxX / 2, midPxY / 2);
+      ctx.fillText('S', midPxX / 2, midPxY + midPxY / 2);
+      ctx.fillText('E', midPxX + midPxX / 2, midPxY / 2);
+      ctx.fillText('W', midPxX + midPxX / 2, midPxY + midPxY / 2);
     }
 
     if (settings.showRooms) {
@@ -875,29 +943,64 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
       }
     }
 
-    if (settings.showFamilyTerritories) {
+    if (settings.showFamilyTerritories && map.config.biome === BiomeType.CAVE_SYSTEM) {
+      for (const zone of map.territoryZones ?? []) {
+        const familyIndex = zone.familyIndex ?? 0;
+        const familyName = familyNameForIndex(familyIndex);
+        const px = zone.centerX * CELL_SIZE + CELL_SIZE / 2;
+        const py = zone.centerY * CELL_SIZE + CELL_SIZE / 2;
+        const pr = zone.radius * CELL_SIZE;
+        const color = TERRITORY_COLORS[familyIndex % TERRITORY_COLORS.length]!;
+        ctx.beginPath();
+        ctx.arc(px, py, pr, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(px, py, pr, 0, Math.PI * 2);
+        ctx.strokeStyle = '#e2e8f0';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(px, py, Math.max(3, CELL_SIZE * 0.8), 0, Math.PI * 2);
+        ctx.fillStyle = '#f8fafc';
+        ctx.fill();
+        ctx.fillStyle = '#0f172a';
+        ctx.font = 'bold 10px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`T${familyIndex}`, px, py);
+        hoverTargets.push({
+          kind: 'point',
+          x: px,
+          y: py,
+          radius: pr,
+          title: `Family territory zone T${familyIndex}`,
+          lines: [
+            `family=${familyName}`,
+            `center=(${zone.centerX}, ${zone.centerY})`,
+            `radius=${zone.radius} tiles`,
+            `diameter=${zone.radius * 2} tiles`,
+          ],
+        });
+      }
       for (const room of map.rooms) {
-        if (room.role !== RoomRole.TERRITORY && room.role !== RoomRole.BOSS_DEN) continue;
+        if (room.role !== RoomRole.BOSS_DEN) continue;
+        const center = roomCenter(room);
         const familyIndex = room.familyIndex ?? 0;
         const familyName = familyNameForRoom(room);
-        const x = room.bounds.x * CELL_SIZE;
-        const y = room.bounds.y * CELL_SIZE;
-        const width = room.bounds.width * CELL_SIZE;
-        const height = room.bounds.height * CELL_SIZE;
-        ctx.fillStyle = TERRITORY_COLORS[familyIndex % TERRITORY_COLORS.length]!;
-        ctx.fillRect(x, y, width, height);
-        ctx.fillStyle = '#f8fafc';
-        ctx.font = `${Math.max(10, CELL_SIZE + 1)}px monospace`;
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        ctx.fillText(`F${familyIndex}: ${familyName}`, x + 3, y + 3);
+        const px = center.tx * CELL_SIZE + CELL_SIZE / 2;
+        const py = center.ty * CELL_SIZE + CELL_SIZE / 2;
+        ctx.fillStyle = '#fb7185';
+        ctx.font = 'bold 11px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`D${familyIndex}`, px, py);
         hoverTargets.push({
-          kind: 'rect',
-          x,
-          y,
-          width,
-          height,
-          title: room.role === RoomRole.BOSS_DEN ? 'Family boss den' : 'Family territory',
+          kind: 'point',
+          x: px,
+          y: py,
+          radius: Math.max(8, CELL_SIZE),
+          title: `Boss den D${familyIndex}`,
           lines: [`family=${familyName}`, `room=${room.id}`],
         });
       }
@@ -1085,8 +1188,10 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     if (settings.showDoors) lines.push('Orange tiles: door (dark = closed, 🔒 = locked)');
     if (settings.showRooms) lines.push('Blue/green/etc fill: room bounds');
     if (settings.showReachability) lines.push('Red fill/outline: unreachable or sealed room');
-    if (settings.showTrashSpawnAreas) lines.push('Brown tint: trash mob spawn area');
-    if (settings.showFamilyTerritories) lines.push('Family tint + label: territory / boss den');
+    if (settings.showTrashSpawnAreas)
+      lines.push('Quadrant overlay: N/S/E/W trash zones with 50/20/20/10 spawn mix');
+    if (settings.showFamilyTerritories)
+      lines.push('Circular family territories: T# zone + D# boss-den markers');
     if (settings.showNpcPositions) lines.push('Blue diamonds: NPC positions');
     if (settings.showQuestItems) lines.push('Gold diamonds: quest items / objective locations');
     if (settings.showSpecialMobs) lines.push('Red squares/dots: special mobs / spawners');
@@ -1388,7 +1493,7 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     .name('Apply floor constraints')
     .onChange(() => {
       applyFloorDefaultsIfEnabled();
-      updateCaveControlsVisibility();
+      updateControlVisibility();
       gui.controllersRecursive().forEach((controller) => controller.updateDisplay());
       markMapSettingsDirty();
     });
@@ -1401,7 +1506,7 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     .name('Floor')
     .onChange(() => {
       applyFloorDefaultsIfEnabled();
-      updateCaveControlsVisibility();
+      updateControlVisibility();
       gui.controllersRecursive().forEach((controller) => controller.updateDisplay());
       markMapSettingsDirty();
     });
@@ -1417,7 +1522,7 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     .add(settings, 'biome', biomeOptions)
     .name('Biome')
     .onChange(() => {
-      updateCaveControlsVisibility();
+      updateControlVisibility();
       markMapSettingsDirty();
     });
   setControllerTooltip(
@@ -1440,7 +1545,7 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     .onChange(markMapSettingsDirty);
   setControllerTooltip(heightCtl, 'Map height in tiles. Apply to rebuild map.');
 
-  const roomFolder = gui.addFolder('Room Layout');
+  const roomFolder = gui.addFolder('Biome-specific Tweaks (Rooms)');
   const maxRoomsCtl = roomFolder
     .add(settings, 'maxRooms', 3, 100, 1)
     .name('Max Rooms')
@@ -1475,8 +1580,42 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     .onChange(markMapSettingsDirty);
   setControllerTooltip(roomHMaxCtl, 'Maximum room height in tiles. Apply to rebuild map.');
 
-  const caveFolder = gui.addFolder('Cave System Tweaks');
-  const presentFamiliesCtl = caveFolder
+  const caveBiomeFolder = gui.addFolder('Biome-specific Tweaks (Cave System)');
+  const initialFillCtl = caveBiomeFolder
+    .add(settings, 'caveInitialFill', 0.1, 0.9, 0.01)
+    .name('Initial fill')
+    .onChange(markMapSettingsDirty);
+  setControllerTooltip(
+    initialFillCtl,
+    'Initial random wall percentage before cave smoothing. Apply to rebuild map.',
+  );
+  const smoothingCtl = caveBiomeFolder
+    .add(settings, 'caveSmoothingPasses', 1, 12, 1)
+    .name('Smoothing passes')
+    .onChange(markMapSettingsDirty);
+  setControllerTooltip(
+    smoothingCtl,
+    'Cellular automata smoothing iterations. Apply to rebuild map.',
+  );
+  const widenPassesCtl = caveBiomeFolder
+    .add(settings, 'caveCavernWidenPasses', 0, 8, 1)
+    .name('Cavern widen passes')
+    .onChange(markMapSettingsDirty);
+  setControllerTooltip(
+    widenPassesCtl,
+    'Post-connect widening passes to make caverns more spacious. Apply to rebuild map.',
+  );
+  const hallwayRunCtl = caveBiomeFolder
+    .add(settings, 'caveStraightHallwayMinRun', 0, 40, 1)
+    .name('Straight hall min run')
+    .onChange(markMapSettingsDirty);
+  setControllerTooltip(
+    hallwayRunCtl,
+    'Minimum straight hallway run before perturbation pass breaks long corridors. Apply to rebuild map.',
+  );
+
+  const floorTweaksFolder = gui.addFolder('Floor-specific Tweaks');
+  const presentFamiliesCtl = floorTweaksFolder
     .add(settings, 'cavePresentCount', [3, 4])
     .name('Present families')
     .onChange((value: number | string) => {
@@ -1487,28 +1626,12 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     presentFamiliesCtl,
     'Families present in cave-system floors. Apply to rebuild map.',
   );
-  const initialFillCtl = caveFolder
-    .add(settings, 'caveInitialFill', 0.1, 0.9, 0.01)
-    .name('Initial fill')
-    .onChange(markMapSettingsDirty);
-  setControllerTooltip(
-    initialFillCtl,
-    'Initial random wall percentage before cave smoothing. Apply to rebuild map.',
-  );
-  const smoothingCtl = caveFolder
-    .add(settings, 'caveSmoothingPasses', 1, 12, 1)
-    .name('Smoothing passes')
-    .onChange(markMapSettingsDirty);
-  setControllerTooltip(
-    smoothingCtl,
-    'Cellular automata smoothing iterations. Apply to rebuild map.',
-  );
-  const bossDenCtl = caveFolder
+  const bossDenCtl = floorTweaksFolder
     .add(settings, 'caveBossDenSize', 3, 13, 1)
     .name('Boss den size')
     .onChange(markMapSettingsDirty);
   setControllerTooltip(bossDenCtl, 'Boss-den carved radius/diameter scalar. Apply to rebuild map.');
-  const separationCtl = caveFolder
+  const separationCtl = floorTweaksFolder
     .add(settings, 'caveRegionSeparationTiles', 0, 80, 1)
     .name('Region separation')
     .onChange(markMapSettingsDirty);
@@ -1516,34 +1639,18 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     separationCtl,
     'Minimum tile separation between key regions. Apply to rebuild map.',
   );
-  const retriesCtl = caveFolder
+  const retriesCtl = floorTweaksFolder
     .add(settings, 'caveMaxRetries', 1, 24, 1)
     .name('Max retries')
     .onChange(markMapSettingsDirty);
   setControllerTooltip(retriesCtl, 'Generation retry cap before giving up. Apply to rebuild map.');
-  const widenPassesCtl = caveFolder
-    .add(settings, 'caveCavernWidenPasses', 0, 8, 1)
-    .name('Cavern widen passes')
-    .onChange(markMapSettingsDirty);
-  setControllerTooltip(
-    widenPassesCtl,
-    'Post-connect widening passes to make caverns more spacious. Apply to rebuild map.',
-  );
-  const hallwayRunCtl = caveFolder
-    .add(settings, 'caveStraightHallwayMinRun', 0, 40, 1)
-    .name('Straight hall min run')
-    .onChange(markMapSettingsDirty);
-  setControllerTooltip(
-    hallwayRunCtl,
-    'Minimum straight hallway run before perturbation pass breaks long corridors. Apply to rebuild map.',
-  );
 
   const overlayFolder = gui.addFolder('Overlays');
   overlayFolder.add(settings, 'showRooms').name('Room overlays').onChange(render);
   overlayFolder.add(settings, 'showDoors').name('Door markers').onChange(render);
   overlayFolder.add(settings, 'showSpawn').name('Spawn marker').onChange(render);
   overlayFolder.add(settings, 'showReachability').name('Reachability probe').onChange(render);
-  overlayFolder.add(settings, 'showTrashSpawnAreas').name('Trash spawn areas').onChange(render);
+  overlayFolder.add(settings, 'showTrashSpawnAreas').name('Trash spawn quadrants').onChange(render);
   overlayFolder
     .add(settings, 'showFamilyTerritories')
     .name('Territories + family names')
@@ -1615,8 +1722,12 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   hint.style.lineHeight = '1.6';
   controls.appendChild(hint);
 
-  function updateCaveControlsVisibility(): void {
-    caveFolder.domElement.style.display = settings.biome === BiomeType.CAVE_SYSTEM ? '' : 'none';
+  function updateControlVisibility(): void {
+    const isCaveBiome = settings.biome === BiomeType.CAVE_SYSTEM;
+    roomFolder.domElement.style.display = isCaveBiome ? 'none' : '';
+    caveBiomeFolder.domElement.style.display = isCaveBiome ? '' : 'none';
+    floorTweaksFolder.domElement.style.display =
+      isCaveBiome && settings.floorConstraint === 'floor2' ? '' : 'none';
   }
 
   const ro = new ResizeObserver(() => {
@@ -1628,7 +1739,7 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   setRegenerationStatus('ready');
   applyFloorDefaultsIfEnabled();
   gui.controllersRecursive().forEach((controller) => controller.updateDisplay());
-  updateCaveControlsVisibility();
+  updateControlVisibility();
   queueGenerate(true);
 
   return () => {
