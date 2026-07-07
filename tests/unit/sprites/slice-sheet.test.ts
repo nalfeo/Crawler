@@ -90,6 +90,57 @@ function containsColor(buf: Buffer, color: Rgb): boolean {
   return false;
 }
 
+/**
+ * Encode a mostly-background square sheet with a single 1px-wide vertical stroke
+ * at column `strokeX` (full height). Content trims to a ~3px span — narrower
+ * than a multi-column commanded grid — which exercises the under-segmentation
+ * uniform-split fallback in `computeSliceMap`.
+ */
+function encodeThinVerticalStroke(size: number, strokeX: number): Buffer {
+  const png = new PNG({ width: size, height: size });
+  for (let i = 0; i < png.data.length; i += 4) {
+    png.data[i] = BG.r;
+    png.data[i + 1] = BG.g;
+    png.data[i + 2] = BG.b;
+    png.data[i + 3] = 255;
+  }
+  for (let y = 0; y < size; y++) {
+    const i = (y * size + strokeX) * 4;
+    png.data[i] = 0;
+    png.data[i + 1] = 0;
+    png.data[i + 2] = 0;
+    png.data[i + 3] = 255;
+  }
+  return PNG.sync.write(png);
+}
+
+describe('computeSliceMap under-segmentation fallback (degenerate content)', () => {
+  it('emits the commanded count with no zero-size cells when content is too thin to cut', () => {
+    // A near-empty sheet: one 1px vertical stroke trims to a ~3px content span,
+    // narrower than the commanded 4 columns. The uniform fallback must widen to
+    // the full axis rather than collapse adjacent cuts onto the same pixel and
+    // produce a zero-width cell — which would crash extraction. Bad generations
+    // like this must carry through to human gallery review, not throw.
+    const sheet = encodeThinVerticalStroke(16, 8);
+
+    const map = computeSliceMap(sheet, { expectedGrid: { rows: 1, cols: 4 } });
+    expect(map.rows).toBe(1);
+    expect(map.cols).toBe(4);
+    expect(map.cells).toHaveLength(4);
+    for (const cell of map.cells) {
+      expect(cell.w).toBeGreaterThanOrEqual(1);
+      expect(cell.h).toBeGreaterThanOrEqual(1);
+    }
+
+    // Extraction must not throw, and must return the commanded number of cells.
+    const cells = sliceSheet(sheet, { expectedGrid: { rows: 1, cols: 4 } });
+    expect(cells).toHaveLength(4);
+    for (const buf of cells) {
+      expect(PNG.sync.read(buf).width).toBeGreaterThanOrEqual(1);
+    }
+  });
+});
+
 describe('computeSliceMap (content-aware)', () => {
   it('trims large outer margins down to a 1px border around content', () => {
     const width = 24;

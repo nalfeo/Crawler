@@ -198,6 +198,37 @@ describe('repostprocessRun', () => {
       }),
     ).rejects.toMatchObject({ name: 'RerunError', kind: 'variant-count-mismatch' });
   });
+
+  it('rejects a same-count grid reshape (2x2 → 1x4) even though the variant count is unchanged', async () => {
+    // Generation stored a 2x2 (4-cell) sheet. Reshaping the brief to 1x4 keeps
+    // the variant COUNT at 4 but re-slices the sheet into completely different
+    // crops, which would silently overwrite the wrong per-variant entries. A
+    // count-only guard misses this; comparing the stored generation-time grid
+    // STRUCTURE (rows/cols/emptyCells) against the current brief catches it.
+    const seed = await seedRun({ repoRoot: freshRoot() });
+    const before = await loadRunSummary(seed.store, seed.briefId, seed.runId);
+    const reshapedBrief = {
+      ...seed.brief,
+      generation: {
+        ...seed.brief.generation,
+        sheet: { ...seed.brief.generation.sheet, rows: 1, cols: 4 },
+      },
+    };
+    // Precondition: the count is unchanged (4) but the layout differs.
+    expect(variantCount(reshapedBrief)).toBe(variantCount(seed.brief));
+    expect(variantCount(reshapedBrief)).toBe(4);
+
+    await expect(
+      repostprocessRun({
+        store: seed.store,
+        briefId: seed.briefId,
+        runId: seed.runId,
+        summary: before,
+        brief: reshapedBrief,
+        palette: seed.palette,
+      }),
+    ).rejects.toMatchObject({ name: 'RerunError', kind: 'variant-count-mismatch' });
+  });
 });
 
 describe('rejudgeRun', () => {

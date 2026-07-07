@@ -217,14 +217,23 @@ function uniqueSorted(values: readonly number[]): number[] {
 /**
  * Evenly divide `[start, end]` into exactly `n` cells, returning the `n + 1`
  * integer cut positions. Used by the under-segmentation fallback in
- * `computeSliceMap` when there are too few real gutters to cut on. For real
- * sheets (span ≫ n) the positions are strictly increasing, so this always yields
- * exactly `n` cells.
+ * `computeSliceMap` when there are too few real gutters to cut on.
+ *
+ * Rounding evenly-spaced positions can collapse two adjacent cuts onto the same
+ * pixel when `end - start` is close to `n` (e.g. a near-empty sheet trimmed to a
+ * 3px content span split into 4 cells), which would yield a zero-width/height
+ * cell and crash extraction. Callers widen the span to the full axis before that
+ * happens (see `reconcileAxisCuts`); as a belt-and-braces guarantee we also clamp
+ * the positions to be strictly increasing here, so this always yields exactly `n`
+ * cells that are each ≥1px.
  */
 function uniformCuts(start: number, end: number, n: number): number[] {
   const cuts = new Array<number>(n + 1);
   for (let i = 0; i <= n; i++) {
     cuts[i] = Math.round(start + ((end - start) * i) / n);
+  }
+  for (let i = 1; i <= n; i++) {
+    if (cuts[i]! <= cuts[i - 1]!) cuts[i] = cuts[i - 1]! + 1;
   }
   return cuts;
 }
@@ -323,6 +332,7 @@ function reconcileAxisCuts(
   start: number,
   end: number,
   targetCells: number,
+  axisMax: number,
 ): number[] {
   const interior = axisCuts.slice(1, -1);
   const interiorNeeded = targetCells - 1;
@@ -330,7 +340,16 @@ function reconcileAxisCuts(
   if (interior.length > interiorNeeded) {
     return selectEvenCuts(interior, start, end, targetCells);
   }
-  return uniformCuts(start, end, targetCells);
+  // Under-segmented: the subjects drew merged, so there are no real gutters to
+  // cut on. Divide evenly to still emit the commanded count. Prefer the trimmed
+  // content span, but when it is too narrow to hold `targetCells` cells of ≥1px
+  // — a near-empty or degenerate generation — widen to the full axis so we still
+  // produce the commanded count for human review instead of collapsing adjacent
+  // cuts into a zero-width cell (which would crash extraction). This bad-grid
+  // case is exactly what reconciliation must carry through to the gallery, so it
+  // must not throw.
+  const [spanStart, spanEnd] = end - start >= targetCells ? [start, end] : [0, axisMax];
+  return uniformCuts(spanStart, spanEnd, targetCells);
 }
 
 /**
@@ -412,8 +431,8 @@ export function computeSliceMap(sheetPng: Buffer, options: SliceOptions = {}): S
   // debugger path passes no `expectedGrid` and is byte-for-byte unchanged.
   const expectedGrid = options.expectedGrid;
   if (expectedGrid) {
-    gridXCuts = reconcileAxisCuts(xCuts, xStart, xEnd, expectedGrid.cols);
-    gridYCuts = reconcileAxisCuts(yCuts, yStart, yEnd, expectedGrid.rows);
+    gridXCuts = reconcileAxisCuts(xCuts, xStart, xEnd, expectedGrid.cols, sheet.width);
+    gridYCuts = reconcileAxisCuts(yCuts, yStart, yEnd, expectedGrid.rows, sheet.height);
     cols = gridXCuts.length - 1;
     rows = gridYCuts.length - 1;
   }

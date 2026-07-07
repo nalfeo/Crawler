@@ -147,6 +147,7 @@ export type RunSummaryIdentity = Pick<
   | 'promptHash'
   | 'attempts'
   | 'variantCount'
+  | 'grid'
   | 'variations'
 > & {
   readonly referenceSprites?: RunSummary['referenceSprites'];
@@ -359,6 +360,11 @@ export async function generateSheetCore(
     promptHash: shortPromptHash(prompt),
     attempts,
     variantCount: expected,
+    grid: {
+      rows: brief.generation.sheet.rows,
+      cols: brief.generation.sheet.cols,
+      emptyCells: brief.generation.sheet.emptyCells,
+    },
     variations: {
       seed: expansion.seed,
       proposed: expansion.proposed,

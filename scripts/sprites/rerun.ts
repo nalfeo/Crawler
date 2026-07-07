@@ -184,6 +184,21 @@ export interface RepostprocessArgs {
 }
 
 /**
+ * True when two empty-cell coordinate lists describe the same set of cells,
+ * order-independently. Used by {@link repostprocessRun} to detect a brief grid
+ * change even when the non-empty variant count is unchanged.
+ */
+function sameEmptyCells(
+  a: ReadonlyArray<readonly [number, number]>,
+  b: ReadonlyArray<readonly [number, number]>,
+): boolean {
+  if (a.length !== b.length) return false;
+  const key = (cell: readonly [number, number]): string => `${cell[0]},${cell[1]}`;
+  const seen = new Set(a.map(key));
+  return b.every((cell) => seen.has(key(cell)));
+}
+
+/**
  * Re-run PostProcess over a stored run: re-slice the source sheet, then
  * re-post-process + re-score every variant through the shared pipeline and
  * overwrite the `processed/**` + `summary.json` artifacts.
@@ -238,22 +253,39 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
     throw new RerunError('slice-failed', err instanceof Error ? err.message : String(err));
   }
 
-  // Carry-forward guard (PR2a review, ADR 0024): reject if the brief's
-  // grid/variant config changed since generation. Such a change would corrupt
-  // the summary's per-variant entries (indexed 0..N-1) if we silently carried
-  // on. The slicer now reconciles any stored sheet to the brief's CURRENT
-  // commanded grid (detected over/under-segmentation is snapped to the
+  // Carry-forward guard (ADR 0024): reject if the brief's grid/variant config
+  // changed since the sheet was generated. Such a change would corrupt the
+  // summary's per-variant entries (assigned in row-major order 0..N-1) if we
+  // silently carried on. The slicer now reconciles any stored sheet to the
+  // brief's CURRENT commanded grid (over/under-segmentation is snapped to the
   // commanded cell count; human gallery review is the grid quality gate), so
-  // `sliced.length` always equals the current brief's count and can no longer
-  // flag a grid change. Compare the stored generation-time `summary.variantCount`
-  // against the current brief instead — they differ iff the brief grid was
-  // edited after the sheet was generated.
+  // re-slicing always returns the current count and can no longer flag a change
+  // on its own.
+  //
+  // Compare the stored generation-time grid STRUCTURE against the current brief.
+  // We compare the full structure — rows, cols AND the empty-cell set — not just
+  // the variant COUNT, because a same-count layout change (e.g. 2×2 → 1×4, or an
+  // empty cell moved) re-slices the sheet into different crops while N stays the
+  // same, which would silently overwrite the wrong variants. Legacy runs
+  // generated before `grid` was persisted fall back to the count comparison.
+  const briefSheet = brief.generation.sheet;
   const expected = variantCount(brief);
-  if (summary.variantCount !== expected) {
+  const priorGrid = summary.grid;
+  const gridChanged = priorGrid
+    ? priorGrid.rows !== briefSheet.rows ||
+      priorGrid.cols !== briefSheet.cols ||
+      !sameEmptyCells(priorGrid.emptyCells, briefSheet.emptyCells)
+    : summary.variantCount !== expected;
+  if (gridChanged) {
     throw new RerunError(
       'variant-count-mismatch',
-      `the stored run was generated for ${summary.variantCount} variants but the brief ` +
-        `now expects ${expected}; the brief's grid/variant config changed since generation`,
+      priorGrid
+        ? `the stored run was generated for a ${priorGrid.rows}×${priorGrid.cols} grid ` +
+            `(${summary.variantCount} variants) but the brief now commands ` +
+            `${briefSheet.rows}×${briefSheet.cols} (${expected} variants); the grid/variant ` +
+            `config changed since generation`
+        : `the stored run was generated for ${summary.variantCount} variants but the brief ` +
+            `now expects ${expected}; the grid/variant config changed since generation`,
     );
   }
 
