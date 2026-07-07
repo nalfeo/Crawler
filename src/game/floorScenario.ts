@@ -777,7 +777,7 @@ function spawnFloor1StaticSpawners(world: GameWorld): void {
       const room = candidateRooms[roomCursor]!;
       roomCursor += 1;
       const spawnPos = resolvePassableRoomCenter(floorMap, room);
-      spawnSpawner(world, spawnPos.x, spawnPos.y, archetype.hp, {
+      const spawnerEid = spawnSpawner(world, spawnPos.x, spawnPos.y, archetype.hp, {
         defIndex,
         contactDamage: archetype.contactDamage,
         weight: archetype.weight,
@@ -787,6 +787,9 @@ function spawnFloor1StaticSpawners(world: GameWorld): void {
         spriteHeight: archetype.spriteHeight,
         arenaRadiusFt: archetype.arenaRadiusFt,
       });
+      // Preserve stable visual identity so generated-art lookups can select
+      // spawner-specific briefs (e.g. slime-pool-v1, rats-nest-v1) when present.
+      setEnemyAppearanceKey(world, spawnerEid, archetypeId);
     }
   }
 }

@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-07",
+  "session_slug": "rat-spawner-appearance-hookup",
+  "task_title": "Hook up rat monarch/spawner art and brute visuals",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.3-codex-rubber-duck",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "notes": "Rubber-duck plan review found no blocking concerns; one non-blocking note about missing rats-nest-v1 asset entries."
+    }
+  }
+}

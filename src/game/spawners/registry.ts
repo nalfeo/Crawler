@@ -52,8 +52,9 @@ const RAT_BRUTE: MobTemplate = {
   weight: 30,
   bloodColor: BLOOD_RAT,
   textureId: RAT_TEXTURE_ID,
-  spriteWidth: 2.25,
-  spriteHeight: 2.25,
+  // Exactly 25% larger than the baseline rat (1.5ft * 1.25 = 1.875ft).
+  spriteWidth: 1.875,
+  spriteHeight: 1.875,
 };
 
 const RAT_KING: MobTemplate = {

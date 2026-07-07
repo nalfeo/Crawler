@@ -14,7 +14,10 @@ import {
   XpGem,
 } from '../../src/core/components.js';
 import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
-import { PLACEHOLDER_SPAWNER_TINT } from '../../src/engine/phaser-bridge/sprite-kind.js';
+import {
+  PLACEHOLDER_SPAWNER_TINT,
+  RAT_BRUTE_TINT,
+} from '../../src/engine/phaser-bridge/sprite-kind.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { set } from '../../src/core/world.js';
 import { buildGeneratedSpriteRegistry } from '../../src/shared/generated-assets.js';
@@ -363,7 +366,7 @@ describe('createPhaserBridge', () => {
     expect(corpse.alpha).toBe(1);
   });
 
-  it('washes placeholder spawner structures bright red, and clears the tint for non-spawner enemies', () => {
+  it('applies live enemy tint policy: spawner red, rat-brute dark-grey, plain mobs clear', () => {
     const { scene, images } = createSceneStub();
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
@@ -378,20 +381,29 @@ describe('createPhaserBridge', () => {
     addComponent(world.ecs, spawnerEid, Spawner);
     addComponent(world.ecs, spawnerEid, set(Sprite, { textureId: 0, width: 0, height: 0 }));
 
-    // A plain enemy (no Spawner) sharing the same frame.
+    const bruteEid = addEntity(world.ecs);
+    addComponent(world.ecs, bruteEid, set(Position, { x: 30, y: 40 }));
+    addComponent(world.ecs, bruteEid, Enemy);
+    addComponent(world.ecs, bruteEid, set(Sprite, { textureId: 0, width: 0, height: 0 }));
+    world.enemyAppearanceKeys.set(bruteEid, 'rat-brute');
+
+    // A plain enemy (no Spawner, no special appearance key) sharing the same frame.
     const mobEid = addEntity(world.ecs);
-    addComponent(world.ecs, mobEid, set(Position, { x: 30, y: 40 }));
+    addComponent(world.ecs, mobEid, set(Position, { x: 45, y: 55 }));
     addComponent(world.ecs, mobEid, Enemy);
     addComponent(world.ecs, mobEid, set(Sprite, { textureId: 0, width: 0, height: 0 }));
 
     bridge.sync(world);
 
     const spawnerImg = images[0]!;
-    const mobImg = images[1]!;
+    const bruteImg = images[1]!;
+    const mobImg = images[2]!;
     expect(spawnerImg.tinted).toBe(true);
     expect(spawnerImg.tint).toBe(PLACEHOLDER_SPAWNER_TINT);
-    // The neighbouring plain mob is untouched (tint actively cleared so a
-    // recycled former-spawner sprite can never keep a stale red wash).
+    expect(bruteImg.tinted).toBe(true);
+    expect(bruteImg.tint).toBe(RAT_BRUTE_TINT);
+    // The neighbouring plain mob is untouched (tint actively cleared so a recycled
+    // former-spawner sprite can never keep a stale red/dark tint wash).
     expect(mobImg.tinted).toBe(false);
     expect(mobImg.tint).toBe(0xffffff);
 

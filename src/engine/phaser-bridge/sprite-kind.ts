@@ -141,6 +141,8 @@ export function enemyVariantFromTextureId(textureId: number | undefined): string
  * Retire this once real spawner art lands (see {@link generatedBriefIdForEnemy}).
  */
 export const PLACEHOLDER_SPAWNER_TINT = 0xff3030;
+/** Multiply tint for Rat Brute variants (darker than baseline rats). */
+export const RAT_BRUTE_TINT = 0x666666;
 
 /**
  * Resolve the placeholder tint for an entity: {@link PLACEHOLDER_SPAWNER_TINT}
@@ -151,6 +153,24 @@ export const PLACEHOLDER_SPAWNER_TINT = 0xff3030;
  */
 export function placeholderSpawnerTint(ecs: GameWorld['ecs'], eid: number): number | null {
   return hasComponent(ecs, eid, Spawner) ? PLACEHOLDER_SPAWNER_TINT : null;
+}
+
+/**
+ * Resolve per-enemy tint from live state + appearance identity.
+ *
+ * Priority is load-bearing:
+ * 1) spawner placeholder red wins over everything else,
+ * 2) Rat Brute receives a darker-grey tint,
+ * 3) all other enemies are un-tinted (`null`).
+ */
+export function enemyAppearanceTint(
+  ecs: GameWorld['ecs'],
+  eid: number,
+  appearanceKey?: string,
+): number | null {
+  const spawnerTint = placeholderSpawnerTint(ecs, eid);
+  if (spawnerTint !== null) return spawnerTint;
+  return appearanceKey === 'rat-brute' ? RAT_BRUTE_TINT : null;
 }
 
 /** Result of {@link computeEnemyScale}: the live X/Y render scale for an enemy. */
@@ -229,7 +249,12 @@ const GENERATED_BRIEF_BY_TYPE: Readonly<Record<string, string>> = {
 
 const GENERATED_BRIEF_BY_APPEARANCE_KEY: Readonly<Record<string, string>> = {
   rat: 'rat-v1',
+  'rat-brute': 'rat-v1',
+  'rat-king': 'rat-king-v1',
+  'rat-queen': 'rat-queen-v1',
+  'rats-nest': 'rats-nest-v1',
   slime: 'slime-v1',
+  'slime-pool': 'slime-pool-v1',
   'slime-mini': 'baby-slime-v1',
   'rat-slime': 'rat-slime-v1',
 };
