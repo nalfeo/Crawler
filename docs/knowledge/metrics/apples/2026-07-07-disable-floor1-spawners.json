@@ -1,9 +1,9 @@
 {
   "date": "2026-07-07",
   "session": "disable-floor1-spawners",
-  "estimated_apples": 1,
-  "actual_apples": 1,
-  "delta": 0,
-  "verdict": "exact",
+  "estimated_apples": 2,
+  "actual_apples": 3,
+  "delta": 1,
+  "verdict": "under",
   "hello_kitties": 0.2
 }

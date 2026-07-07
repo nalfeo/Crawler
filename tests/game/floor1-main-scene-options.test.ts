@@ -8,6 +8,7 @@ import {
   enemyAISystem,
   floor1EnemyDirectorSystem,
   initializeFloor1Scenario,
+  spawnerArenaSystem,
   spawnerSystem,
 } from '../../src/game/index.js';
 import { FLOOR1_BOSS_BATTLE_QUEST_ID } from '../../src/shared/quest-types.js';
@@ -31,17 +32,24 @@ describe('createFloor1MainSceneOptions', () => {
     expect(options.lightingConfig?.ambient).toBe(0.2);
   });
 
-  it('does not wire spawnerSystem for floor1', () => {
-    // Floor 1 policy keeps spawnerSystem disabled in visual preSystems.
+  it('wires spawnerSystem for floor1 immediately after spawnerArenaSystem', () => {
+    // Floor 1 is spawner-free by config (empty static-spawner table in
+    // floorScenario.ts), so spawnerSystem is wired uniformly and runs as a
+    // harmless no-op rather than being stripped from the Floor 1 pipeline.
+    // Lock the spawnerArena → spawner adjacency the preSystems comment relies on.
     const preSystems = createFloor1MainSceneOptions().preSystems ?? [];
     const aiIndex = preSystems.indexOf(enemyAISystem);
+    const arenaIndex = preSystems.indexOf(spawnerArenaSystem);
     const spawnerIndex = preSystems.indexOf(spawnerSystem);
     const directorIndex = preSystems.indexOf(floor1EnemyDirectorSystem);
 
     expect(aiIndex).toBeGreaterThanOrEqual(0);
+    expect(arenaIndex).toBeGreaterThanOrEqual(0);
+    expect(spawnerIndex).toBeGreaterThanOrEqual(0);
     expect(directorIndex).toBeGreaterThanOrEqual(0);
-    expect(spawnerIndex).toBe(-1);
     expect(aiIndex).toBeLessThan(directorIndex);
+    // spawnerArenaSystem must run immediately before spawnerSystem in both pipelines.
+    expect(spawnerIndex).toBe(arenaIndex + 1);
   });
 
   it('keeps spawnerSystem wired for floor2+', () => {

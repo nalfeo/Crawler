@@ -64,44 +64,56 @@ interface CollisionFingerprint {
  * (parent-run == HEAD-run byte-identical on the current base) or the
  * Slice 2 design-authorized re-baseline protocol (2 runs/seed stable +
  * design-owned change documented in ADR + spec + data-table).
+ *
+ * ## 2026-07-07 re-baseline — Floor 1 spawner-free (ADR 0049)
+ *
+ * Floor 1's static-spawner spawn table is now intentionally empty
+ * (`FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS = []`, see floorScenario.ts +
+ * ADR 0049), so the four static spawners — and every mob they would have
+ * spawned within the 1500-frame slice — no longer exist. This is a
+ * design-owned behavior change, verified stable across two back-to-back
+ * runs per seed. Before → after (kills / damageDealt / damageTaken / score):
+ *   seed   7:  2/118/9/0   →  4/156/10/0
+ *   seed  13:  7/229/10/0  →  6/236/5/0
+ *   seed  42:  7/261/25/8  →  7/264/10/8   (kills & score unchanged)
+ *   seed 137:  4/122/5/0   →  6/230/0/0
  */
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
     outcome: 'timeout',
     kills: 7,
-    damageDealt: 261,
-    damageTaken: 25,
+    damageDealt: 264,
+    damageTaken: 10,
     finalScore: 8,
   },
   7: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 2,
-    damageDealt: 118,
-    damageTaken: 9,
+    kills: 4,
+    damageDealt: 156,
+    damageTaken: 10,
     finalScore: 0,
   },
   13: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 7,
-    damageDealt: 229,
-    damageTaken: 10,
+    kills: 6,
+    damageDealt: 236,
+    damageTaken: 5,
     finalScore: 0,
   },
   137: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 4,
-    damageDealt: 122,
-    damageTaken: 5,
+    kills: 6,
+    damageDealt: 230,
+    damageTaken: 0,
     finalScore: 0,
   },
 };
 
 const PARITY_SEEDS = Object.keys(GOLDEN_FINGERPRINTS).map(Number);
-const PARITY_SEED = 42;
 
 async function runSlice(seed: number): Promise<RunStats> {
   const ai = new BehaviorTreeAI({ seed });
@@ -138,9 +150,18 @@ describe('collision-pair parity (Slice 1)', () => {
     });
   }
 
-  it('parity run is deterministic across two invocations', async () => {
-    const a = await runSlice(PARITY_SEED);
-    const b = await runSlice(PARITY_SEED);
-    expect(fingerprint(b)).toEqual(fingerprint(a));
+  it('rebaselined seeds are deterministic across two invocations', async () => {
+    // Cover every rebaselined seed (not just one), since the ADR 0049
+    // re-baseline protocol requires each pinned fingerprint to be stable across
+    // two back-to-back runs — this is what makes the golden bump honest rather
+    // than a snapshot of a flaky run.
+    for (const seed of PARITY_SEEDS) {
+      const a = await runSlice(seed);
+      const b = await runSlice(seed);
+      expect(
+        fingerprint(b),
+        `seed ${seed} is non-deterministic across two back-to-back runs`,
+      ).toEqual(fingerprint(a));
+    }
   });
 });

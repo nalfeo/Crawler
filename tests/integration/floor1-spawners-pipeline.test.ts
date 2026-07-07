@@ -1,13 +1,17 @@
 /**
- * Floor 1 spawner wiring — integration guard.
+ * Floor 1 spawner-free config — integration guard.
  *
- * Floor 1 policy: keep static spawner structures in the map, but do not run
- * `spawnerSystem`. This test guards both real pipelines so Floor 1 does not
- * regress back to active spawning.
+ * Floor 1 policy (config-driven): its static-spawner spawn table is empty
+ * (`FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS` in floorScenario.ts), so scenario init
+ * places NO Spawner entities on Floor 1. With no spawners present, `spawnerSystem`
+ * — wired uniformly in both pipelines — is a natural no-op: no children are ever
+ * emitted. This test guards both real pipelines so Floor 1 does not regress back
+ * to placing or running spawners.
  *
  * This test drives the EXACT headless pipeline (`runSimulationStep` from
- * `src/game/ai/simulation-step.ts`) on a real Floor 1 world and proves no spawner
- * children are emitted in either shipped pipeline.
+ * `src/game/ai/simulation-step.ts`) and the visual engine pipeline on a real
+ * Floor 1 world and proves no Spawner entities exist and no spawner children are
+ * emitted in either shipped pipeline.
  *
  * Determinism: fixed seed, `SeededRandom`-backed world, fixed `GAME.DELTA_MS`
  * steps, empty input — no `Math.random` / `Date.now`.
@@ -25,8 +29,9 @@ import { GAME } from '../../src/shared/constants.js';
 /**
  * Stand up a real Floor 1 world exactly the way the headless runner does
  * (`runHeadless` in `src/game/ai/headless-runner.ts`): create a seeded world,
- * spawn the player, initialize the Floor 1 scenario (which places the static
- * spawners), then pick the first starter weapon to transition to `playing`.
+ * spawn the player, initialize the Floor 1 scenario (which places no static
+ * spawners on Floor 1), then pick the first starter weapon to transition to
+ * `playing`.
  */
 function createPlayingFloor1World(seed: number): GameWorld {
   const world = createGameWorld({ seed });
@@ -47,33 +52,33 @@ function totalSpawnedChildren(world: GameWorld): number {
   return total;
 }
 
-describe('Floor 1 spawners — disabled in the headless AI pipeline', () => {
-  it('places static spawner structures during Floor 1 scenario init', () => {
+describe('Floor 1 is spawner-free by config — headless AI pipeline', () => {
+  it('places no static spawner structures during Floor 1 scenario init', () => {
     const world = createPlayingFloor1World(7);
     const spawners = query(world.ecs, [Spawner]);
-    // Floor 1 seeds 2 archetypes × 2 each (see FLOOR_1_STATIC_SPAWNER_* in
-    // floorScenario.ts) — assert the structures exist before we simulate.
-    expect(spawners.length).toBeGreaterThanOrEqual(1);
-    // Nothing has run yet, so no children should have been emitted.
+    // Floor 1's static-spawner spawn table is empty (FLOOR_1_STATIC_SPAWNER_*
+    // in floorScenario.ts) — no Spawner entities should be placed at all.
+    expect(spawners.length).toBe(0);
     expect(totalSpawnedChildren(world)).toBe(0);
   });
 
-  it('does not emit spawner children when the simulation pipeline runs', () => {
+  it('keeps Floor 1 spawner-free (no children) when the simulation pipeline runs', () => {
     const world = createPlayingFloor1World(7);
     const input = createInputState();
 
-    // Run long enough that several passive pulses would have happened if
-    // spawnerSystem were enabled.
+    // Run long enough that several passive pulses would have happened if any
+    // spawner existed; with none present spawnerSystem is a no-op.
     for (let frame = 0; frame < 600; frame += 1) {
       runSimulationStep(world, input, GAME.DELTA_MS, {});
     }
 
+    expect(query(world.ecs, [Spawner]).length).toBe(0);
     expect(totalSpawnedChildren(world)).toBe(0);
   });
 });
 
-describe('Floor 1 spawners — disabled in the visual (engine) game pipeline', () => {
-  it('does not emit spawner children when real Floor 1 scene options drive the engine sim step', () => {
+describe('Floor 1 is spawner-free by config — visual (engine) game pipeline', () => {
+  it('keeps Floor 1 spawner-free (no children) when real Floor 1 scene options drive the engine sim step', () => {
     const world = createPlayingFloor1World(7);
     const input = createInputState();
     const options = createFloor1MainSceneOptions();
@@ -91,6 +96,7 @@ describe('Floor 1 spawners — disabled in the visual (engine) game pipeline', (
       });
     }
 
+    expect(query(world.ecs, [Spawner]).length).toBe(0);
     expect(totalSpawnedChildren(world)).toBe(0);
   });
 });
