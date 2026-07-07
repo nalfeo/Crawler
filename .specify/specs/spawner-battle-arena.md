@@ -190,7 +190,8 @@ tool for tension instead of a hole in the loot economy.
   `child.xpValue` to the drop system via the same
   `Owner`-linkage; no direct XP writes.
 - **Movement / pathfinding**: The open-fence arena calls
-  `createRingBarrier(world, sx, sy, radiusFt, 'fence')`; the sealed-room
+  `createRingWallBarrier(world, sx, sy, outerRadiusFt, thicknessFt, 'fence')`
+  (an analytic 1 ft-thick ring wall with no tiles); the sealed-room
   arena additionally calls
   `createRoomBarrier(world, roomId, 'fence', { doorwaysOnly: true })` as
   a belt-and-suspenders plug alongside the door-lock config. Both are
