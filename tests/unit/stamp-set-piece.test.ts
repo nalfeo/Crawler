@@ -129,6 +129,45 @@ describe('stampSetPiece — props and layering', () => {
     expect(rug?.render.widthFt).toBe(4 * TILE);
     expect(rug?.render.heightFt).toBe(2 * TILE);
   });
+
+  it('sizes non-base accent layers by their own extent, not the parent footprint', () => {
+    const def = welcomeRoom();
+    const draws = flattenSetPieceLayers(def);
+    const stamp = stampSetPiece(def, opts(ROOM_LARGE));
+    // stampSetPiece emits one prop per flattened draw layer, in the same order.
+    expect(stamp.props).toHaveLength(draws.length);
+
+    let sawBase = false;
+    let sawShrunkAccent = false;
+    draws.forEach((draw, i) => {
+      const { render } = stamp.props[i]!;
+      if (draw.layerIndex === 0) {
+        // Base layer fills the whole prop footprint.
+        expect(render.widthFt).toBe(draw.prop.width * TILE);
+        expect(render.heightFt).toBe(draw.prop.height * TILE);
+        sawBase = true;
+        return;
+      }
+      // Accent layer: sized by its own extent (custom tile footprint, else a
+      // single tile) — NEVER inflated to the parent footprint.
+      const sprite = draw.layer.sprite;
+      const expectedW = sprite.source === 'custom' ? (sprite.widthTiles ?? 1) * TILE : TILE;
+      const expectedH = sprite.source === 'custom' ? (sprite.heightTiles ?? 1) * TILE : TILE;
+      expect(render.widthFt).toBe(expectedW);
+      expect(render.heightFt).toBe(expectedH);
+      // On a multi-tile prop the accent MUST be strictly smaller than the
+      // footprint — this is the giant-bottle regression the fix guards against.
+      if (draw.prop.width > 1 || draw.prop.height > 1) {
+        expect(render.widthFt).toBeLessThan(draw.prop.width * TILE);
+        sawShrunkAccent = true;
+      }
+    });
+
+    // Guard the fixture: the welcome room must exercise both paths so this test
+    // can't silently pass if the content ever loses its layered props.
+    expect(sawBase).toBe(true);
+    expect(sawShrunkAccent).toBe(true);
+  });
 });
 
 describe('stampSetPiece — clamping and determinism', () => {

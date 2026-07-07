@@ -39,6 +39,7 @@ import {
   SET_PIECE_TILE_SIZE,
   type SetPieceDef,
   type SetPieceNpcAnchorRole,
+  type SpriteRef,
 } from '../../shared/set-piece-types.js';
 
 /**
@@ -48,6 +49,24 @@ import {
  * band gap (the tightest is 0.1 in the foreground band).
  */
 const LAYER_DEPTH_EPSILON = 0.001;
+
+/**
+ * Native tile footprint of a non-base (accent/overlay) layer's sprite.
+ *
+ * Only the BASE layer of a prop fills the prop's whole footprint (a table slab,
+ * a rug). Stacked accent layers are discrete items — a potion on the table, a
+ * gem, a welcome sign — and must keep their own extent instead of inheriting
+ * the parent footprint (which would render a `scale: 0.8` bottle at ~80% of a
+ * 3-tile table). Custom refs carry an explicit tile footprint (default 1×1);
+ * catalog/sheet refs have no core-visible sprite-frame size, so fall back to a
+ * single tile. The layer's `scale` is applied by the renderer on top of this.
+ */
+function nativeLayerTiles(sprite: SpriteRef): { width: number; height: number } {
+  if (sprite.source === 'custom') {
+    return { width: sprite.widthTiles ?? 1, height: sprite.heightTiles ?? 1 };
+  }
+  return { width: 1, height: 1 };
+}
 
 /** A single stamped prop layer: a world-space position plus its render sidecar. */
 export interface StampedSetPieceProp {
@@ -172,7 +191,7 @@ export function stampSetPiece(def: SetPieceDef, opts: StampSetPieceOptions): Sta
 
   const props: StampedSetPieceProp[] = [];
   flattenSetPieceLayers(def).forEach((draw, index) => {
-    const { prop, layer, z } = draw;
+    const { prop, layer, z, layerIndex } = draw;
     // Top-left tile of the prop footprint, clamped so the WHOLE footprint stays
     // inside the interior. Clamping only the top-left let a multi-tile prop's
     // right/bottom edge overflow onto wall tiles; bound the top-left by
@@ -189,11 +208,17 @@ export function stampSetPiece(def: SetPieceDef, opts: StampSetPieceOptions): Sta
     const footprintCentreY = tileY * tileSizeFt + (prop.height * tileSizeFt) / 2;
     const offsetXFt = ((layer.offsetX ?? 0) / SET_PIECE_TILE_SIZE) * tileSizeFt;
     const offsetYFt = ((layer.offsetY ?? 0) / SET_PIECE_TILE_SIZE) * tileSizeFt;
+    // The base layer fills the prop footprint; accent layers keep their own
+    // (smaller) extent so a scale-0.8 potion doesn't inflate to 80% of a table.
+    const layerTiles =
+      layerIndex === 0
+        ? { width: prop.width, height: prop.height }
+        : nativeLayerTiles(layer.sprite);
     const render: SetPiecePropRender = {
       sprite: layer.sprite,
       depth: setPieceZToDepth(z) + index * LAYER_DEPTH_EPSILON,
-      widthFt: prop.width * tileSizeFt,
-      heightFt: prop.height * tileSizeFt,
+      widthFt: layerTiles.width * tileSizeFt,
+      heightFt: layerTiles.height * tileSizeFt,
       ...(layer.scale !== undefined ? { scale: layer.scale } : {}),
       ...(layer.tintHex !== undefined ? { tintHex: layer.tintHex } : {}),
       label: prop.id,
