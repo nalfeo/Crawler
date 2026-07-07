@@ -1,5 +1,16 @@
 [
   {
+    "commit": "314880ff16972916e74010d318b31d56c586d522",
+    "commitDate": "2026-07-07T06:29:32Z",
+    "commitSubject": "feat(hud-ux): port equipment design language to inventory UI (#835)",
+    "capturedAt": "2026-07-07T07:07:24.226Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28846631722",
+    "winRate": 0.8433333333333334,
+    "totalWins": 253,
+    "totalRuns": 300,
+    "path": "by-sha/314880ff16972916e74010d318b31d56c586d522.json"
+  },
+  {
     "commit": "189ddc065c9614d4a9ed539937343a5147c77cf2",
     "commitDate": "2026-07-07T06:13:43Z",
     "commitSubject": "fix(floor1): make Floor 1 spawner-free via empty static-spawner table (#836)",
