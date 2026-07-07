@@ -1334,6 +1334,13 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   // spawn cadence rather than inheriting the previous floor's bookkeeping.
   populatedRoomsByWorld.delete(world);
   spawnerStateByWorld.delete(world);
+  // Render-only set-piece props are appended (never keyed by world), so a
+  // re-init on a reused world would otherwise accumulate duplicate instances
+  // that stack and grow unbounded. Clear unconditionally so each floor starts
+  // from an empty list — this also drops stale props when a later floor stamps
+  // no set piece. Mutate in place to preserve the array reference PhaserBridge
+  // reconciles by index.
+  world.setPieceProps.length = 0;
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.safeRoomDiscovered`, false);
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseUnlocked`, false);
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseDiscovered`, false);

@@ -289,6 +289,34 @@ describe('floor1Scenario', () => {
     }
   });
 
+  it('does not accumulate set-piece props when re-initialized on a reused world', () => {
+    // Regression: `world.setPieceProps` is a render-only list that is appended
+    // to during stamping and (before the fix) was never cleared. Re-running the
+    // scenario on a reused world — a supported path, mirroring the director/
+    // spawner per-world resets — must start from an empty list so props do not
+    // pile up and render stacked. Assert the count is identical after a second
+    // init, not doubled.
+    const def = getSetPieceDef('welcome-room');
+    if (!def) {
+      throw new Error('Expected the welcome-room set piece to be registered');
+    }
+    const expectedPropCount = flattenSetPieceLayers(def).length;
+    expect(expectedPropCount).toBeGreaterThan(0);
+
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+
+    initializeFloor1Scenario(world, player);
+    expect(world.setPieceProps.length).toBe(expectedPropCount);
+
+    // Second init on the SAME world must reset, not append.
+    initializeFloor1Scenario(world, player);
+    expect(
+      world.setPieceProps.length,
+      're-init must clear the render-only prop list rather than accumulate duplicates',
+    ).toBe(expectedPropCount);
+  });
+
   it('keeps every room interior reachable from spawn across seeds (no sealed rooms)', () => {
     // Regression: rot-js's Uniform generator occasionally emits a disconnected
     // room that cullIsolatedFloorTiles would wall off. On Floor 1 the affected
