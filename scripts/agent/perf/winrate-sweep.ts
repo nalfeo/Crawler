@@ -204,7 +204,14 @@ async function sweep(args: CLIArgs): Promise<void> {
         shared: sharedConfig,
         maxWorkers: args.workers,
         workerOptions: {
-          execArgv: process.execArgv,
+          // tsx's async --import hooks don't remap .js→.ts in worker threads;
+          // the bootstrap registers synchronous hooks (module.registerHooks)
+          // which do, so add it after the existing execArgv.
+          execArgv: [
+            ...process.execArgv,
+            '--import',
+            new URL('./tsx-worker-hooks.mjs', import.meta.url).href,
+          ],
         },
       })),
     );
