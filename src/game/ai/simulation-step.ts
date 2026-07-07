@@ -174,7 +174,9 @@ export function runSimulationStep(
   // mutations (open-fence arena) are visible when spawnerSystem picks child
   // spawn positions this same tick. See `src/game/spawners/spawnerArenaSystem.ts`.
   spawnerArenaSystem(world);
-  spawnerSystem(world);
+  if (world.floorId !== 'floor1') {
+    spawnerSystem(world);
+  }
 
   movementSystem(world);
   returningProjectileSystem(world);
