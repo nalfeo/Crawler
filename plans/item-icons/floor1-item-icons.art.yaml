@@ -83,3 +83,14 @@ assets:
     integration:
       kind: sprite-registry
       id: merchants-stained-charm
+
+  - id: floor-key-bronze
+    type: item
+    label: Bronze Floor Key
+    brief: >
+      A large, old-fashioned skeleton key in dull patinated bronze, with
+      chunky teeth. Opens the door to the next floor.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: floor-key-bronze
