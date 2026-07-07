@@ -238,19 +238,22 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
     throw new RerunError('slice-failed', err instanceof Error ? err.message : String(err));
   }
 
-  // Carry-forward guard (PR2a review): recompute the expected variant count
-  // from the brief rather than trusting `summary.variantCount`. If the brief's
-  // grid/variant config changed since generation, re-slicing yields a different
-  // cell count and silently carrying the stale number would corrupt the
-  // summary. Reject the mismatch instead. (Generate applies the same gate, ADR
-  // 0024, so a stored sheet that ever passed Generate matches at post-process
-  // time unless the brief itself was edited.)
+  // Carry-forward guard (PR2a review, ADR 0024): reject if the brief's
+  // grid/variant config changed since generation. Such a change would corrupt
+  // the summary's per-variant entries (indexed 0..N-1) if we silently carried
+  // on. The slicer now reconciles any stored sheet to the brief's CURRENT
+  // commanded grid (detected over/under-segmentation is snapped to the
+  // commanded cell count; human gallery review is the grid quality gate), so
+  // `sliced.length` always equals the current brief's count and can no longer
+  // flag a grid change. Compare the stored generation-time `summary.variantCount`
+  // against the current brief instead — they differ iff the brief grid was
+  // edited after the sheet was generated.
   const expected = variantCount(brief);
-  if (sliced.length !== expected) {
+  if (summary.variantCount !== expected) {
     throw new RerunError(
       'variant-count-mismatch',
-      `re-slicing the stored sheet produced ${sliced.length} cells but the brief ` +
-        `expects ${expected}; the brief's grid/variant config changed since generation`,
+      `the stored run was generated for ${summary.variantCount} variants but the brief ` +
+        `now expects ${expected}; the brief's grid/variant config changed since generation`,
     );
   }
 
