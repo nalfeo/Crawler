@@ -9,6 +9,7 @@ import {
   search,
   filterByTag,
   filterByEquipmentSlot,
+  filterEquippable,
   sortSlots,
   getActiveTags,
   getVisibleTabs,
@@ -253,6 +254,24 @@ describe('InventoryBag', () => {
       expect(filterByEquipmentSlot(bag, 'offHand').map((slot) => slot.itemId)).toEqual([
         'frost-bow',
       ]);
+    });
+  });
+
+  describe('filterEquippable', () => {
+    it('returns every equippable item regardless of slot, excluding non-gear', () => {
+      addItem(bag, 'merchants-stained-charm', 1); // neck
+      addItem(bag, 'iron-sword', 1); // mainHand
+      addItem(bag, 'iron-ore', 3); // material — not equippable
+
+      const equippable = filterEquippable(bag)
+        .map((slot) => slot.itemId)
+        .sort();
+      expect(equippable).toEqual(['iron-sword', 'merchants-stained-charm']);
+    });
+
+    it('returns an empty list when the bag has no equippable items', () => {
+      addItem(bag, 'iron-ore', 3);
+      expect(filterEquippable(bag)).toHaveLength(0);
     });
   });
 

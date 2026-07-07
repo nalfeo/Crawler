@@ -15,6 +15,7 @@ import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
 import { MeleeStyle } from '../../shared/constants.js';
 import { emitWeaponHitSkillEvents } from '../weapon-skill-bridge.js';
+import { recordWeaponEnemyHit, pruneAttackEntity } from '../weapon-telemetry.js';
 import type { CollisionResult } from './collisionSystem.js';
 
 /** Half-width of the blade hitbox in feet. */
@@ -172,6 +173,7 @@ export function clearMeleeSwingHits(world: GameWorld, eid: number): void {
   if (worldHits !== undefined) {
     worldHits.delete(eid);
   }
+  pruneAttackEntity(world, eid);
 }
 
 /**
@@ -254,6 +256,7 @@ export function meleeSwingSystem(world: GameWorld, collisionResult?: CollisionRe
     const swingTeam = hasComponent(world.ecs, eid, Team) ? team.id[eid]! : -1;
     const ownerEid = hasComponent(world.ecs, eid, Owner) ? world.stores.owner.eid[eid]! : -1;
     if (
+      world.floor === 1 &&
       ownerEid >= 0 &&
       hasComponent(world.ecs, ownerEid, Player) &&
       isEntityInSafeSpace(world, ownerEid)
@@ -350,6 +353,7 @@ export function meleeSwingSystem(world: GameWorld, collisionResult?: CollisionRe
         const dealt = applyDamage(world, target, hitDamage, tx, ty, undefined, px, py);
         if (dealt > 0 && ownerEid !== -1 && hasComponent(world.ecs, target, Enemy)) {
           emitWeaponHitSkillEvents(world, ownerEid);
+          recordWeaponEnemyHit(world, eid, target);
         }
         hitSet.add(target);
 

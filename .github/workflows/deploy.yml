@@ -13,8 +13,10 @@ on:
         default: false
 
 # Least-privilege default: only the baseline-sweep job pushes to the repo, and
-# it declares its own job-level `contents: write`. Keep the workflow default at
-# read so the deploy job's token is not needlessly broadened.
+# it declares its own job-level write scopes (`contents: write` for the
+# baselines-branch push, plus `pull-requests`/`issues: write` to comment the
+# win-rate on the released PR). Keep the workflow default at read so the deploy
+# job's token is not needlessly broadened.
 permissions:
   contents: read
   pages: write
@@ -361,8 +363,15 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
     timeout-minutes: 60
+    # A job-level permissions block replaces the workflow default entirely, so
+    # these are NOT inherited and must be listed explicitly. `gh pr comment` on
+    # the released PR (final step) posts via the issue-comments API, so grant
+    # both PR and issue write scopes; `contents: write` stays for the
+    # baselines-branch push.
     permissions:
       contents: write
+      pull-requests: write
+      issues: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -577,3 +586,74 @@ jobs:
           path: .cache/baseline/baseline.json
           if-no-files-found: warn
           retention-days: 90
+
+      # Runs last (after the guaranteed diagnostic artifact upload) so a stalled
+      # network call here can never delay that upload. `if: success()` gates it
+      # on the publish + upload steps having succeeded.
+      - name: Comment baseline win-rate on released PR
+        if: success()
+        # Best-effort by design: the explicit guards below skip gracefully, and
+        # continue-on-error is a final backstop so an unexpected failure can
+        # never turn this release-baseline job red.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ steps.sha.outputs.sha }}
+          BASELINE_JSON: ${{ github.workspace }}/.cache/baseline/baseline.json
+          FALLBACK_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BASELINE_BLOB_URL: ${{ github.server_url }}/${{ github.repository }}/blob/baselines/by-sha/${{ steps.sha.outputs.sha }}.json
+        run: |
+          # Post the freshly published baseline win-rate onto the PR whose
+          # squash-merge produced this released commit. Mirrors the deploy job's
+          # "Label and comment on released PRs" step.
+
+          # 1. Resolve the triggering PR from the released commit. Distinguish a
+          #    real API failure (warn) from a commit with genuinely no associated
+          #    PR -- e.g. a direct push to main or a dispatch on a PR-less commit
+          #    (notice). Either way, skip gracefully; never fail.
+          PR=$(gh api "repos/${{ github.repository }}/commits/$SHA/pulls" \
+            --jq '.[0].number // empty' 2>/dev/null) || {
+            echo "::warning::Failed to query PRs for released commit $SHA; skipping baseline comment."
+            exit 0
+          }
+          if [ -z "$PR" ]; then
+            echo "::notice::No PR associated with released commit $SHA; skipping baseline comment."
+            exit 0
+          fi
+
+          # 2. Build the comment body from the enriched baseline.json. Guard
+          #    against a missing/unreadable file or out-of-range win-rate fields.
+          BODY=$(node -e "
+            const fs = require('node:fs');
+            const p = process.env.BASELINE_JSON;
+            let d;
+            try { d = JSON.parse(fs.readFileSync(p, 'utf8')); }
+            catch (e) { console.error('baseline.json unreadable: ' + e.message); process.exit(2); }
+            const wr = d.winRate;
+            const runs = d.totalRuns;
+            if (!Number.isFinite(wr) || wr < 0 || wr > 1 || !Number.isFinite(runs) || runs <= 0) {
+              console.error('baseline.json missing or out-of-range winRate/totalRuns');
+              process.exit(2);
+            }
+            const pct = Math.round(wr * 100);
+            const wins = Number.isFinite(d.totalWins) ? d.totalWins : '?';
+            const runUrl = (d.meta && d.meta.runUrl) || process.env.FALLBACK_RUN_URL;
+            const lines = [
+              '📊 Baseline win-rate for this release: **' + pct + '%** (' + wins + '/' + runs + ')',
+              '',
+              '🏃 [Sweep run](' + runUrl + ') · 🗂️ [Recorded baseline](' + process.env.BASELINE_BLOB_URL + ')',
+            ];
+            process.stdout.write(lines.join('\n'));
+          ") || {
+            echo "::warning::Could not build baseline comment body; skipping."
+            exit 0
+          }
+          if [ -z "$BODY" ]; then
+            echo "::warning::Empty baseline comment body; skipping."
+            exit 0
+          fi
+
+          # 3. Post the comment. Best-effort: warn (do not fail) on error.
+          if ! gh pr comment "$PR" --repo "${{ github.repository }}" --body "$BODY"; then
+            echo "::warning::Failed to comment baseline win-rate on PR #$PR"
+          fi

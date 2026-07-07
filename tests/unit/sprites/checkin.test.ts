@@ -157,8 +157,10 @@ describe('runAssetCheckin', () => {
     // fetch base, diff, worktree add, add, commit, push, gh issue create, worktree remove.
     expect(commandLine.some((l) => l.startsWith('git fetch origin main'))).toBe(true);
     expect(commandLine.some((l) => l.includes('worktree add'))).toBe(true);
-    expect(commandLine.some((l) => l.startsWith('git commit -m'))).toBe(true);
-    expect(commandLine.some((l) => l.startsWith('git push -u origin assets/'))).toBe(true);
+    expect(commandLine.some((l) => l.startsWith('git commit --no-verify -m'))).toBe(true);
+    expect(commandLine.some((l) => l.startsWith('git push --no-verify -u origin assets/'))).toBe(
+      true,
+    );
     expect(commandLine.some((l) => l.startsWith('gh issue create'))).toBe(true);
     // The check-in label is ensured before filing so a fresh repo doesn't fail.
     expect(commandLine.some((l) => l.startsWith('gh label create asset-checkin'))).toBe(true);

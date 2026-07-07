@@ -58,16 +58,38 @@ must receive. This is enforced: the `pr-review-ledger` guard hard-denies
 `create_pull_request` for a code-touching change without a valid **review ledger**
 for its tier.
 
-| Apples | Required review stages (recorded in the ledger)                         |
-| ------ | ----------------------------------------------------------------------- |
-| 1🍎    | (none — the ledger records the tier only)                               |
-| 2🍎    | separate-model **plan review** before coding                            |
-| 3🍎    | + **code review** (loop until clean)                                    |
-| 4–5🍎  | + **dual-plan synthesis** (2 models + judge) and **multi-model review** |
+| Apples | Required review stages (recorded in the ledger)                                   |
+| ------ | --------------------------------------------------------------------------------- |
+| 1🍎    | (none — the ledger records the tier only)                                         |
+| 2🍎    | (none — the ledger records the tier only)                                         |
+| 3🍎    | separate-model **plan review** before coding + **code review** (loop until clean) |
+| 4–5🍎  | + **dual-plan synthesis** (2 models + judge) and **multi-model review**           |
+
+The plan-review floor was raised **2🍎 → 3🍎 on 2026-07-07** to match the
+code-review floor (moved to 3🍎 on 2026-07-02, ADR 0036). Both the `code_review`
+and `multi_model_review` loops are **bounded**: after **2 genuinely-attempted
+rounds** an intractable stage may terminate by recording an `escalated_to_human`
+state instead of looping forever (never on round 1, never a silent skip). See
+[`review-harness-policy.md`](review-harness-policy.md).
 
 Run the harness with the [`review-harness` skill](../../../.github/skills/review-harness/SKILL.md);
 the full rules, ledger format, and bypass live in
 [`review-harness-policy.md`](review-harness-policy.md).
+
+---
+
+## Re-scoring After Planning (downward only)
+
+Your declared estimate can be wrong once the diff exists. You may **re-score**,
+but only **strictly downward** and only when the **actual diff** justifies it —
+e.g. a 4🍎 plan that collapsed into a one-file tweak is genuinely a 2🍎 change.
+Record it in the review ledger with `apples_rescored_from` (the original higher
+estimate) + `rescore_reason`; the validator rejects upward or no-op re-scores. A
+downward re-score lowers the required review stages to the new tier, so prune any
+now-unrequired incomplete stages from the ledger. This is distinct from
+**calibration scoring** below (which records estimated-vs-actual for the apple
+log, and may go either direction). Never re-score down merely to dodge a review
+stage (project rule #12).
 
 ---
 

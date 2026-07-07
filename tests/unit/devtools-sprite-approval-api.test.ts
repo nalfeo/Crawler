@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   archiveStorageRuns,
   deleteStorageRunsBatch,
+  enrichStorageRuns,
   extractVariantIndices,
   listStorageRuns,
   listSidecarRuns,
@@ -228,6 +229,46 @@ describe('deleteSidecarRun', () => {
       const [url, init] = fetcher.mock.calls[0]!;
       expect(url).toBe('http://127.0.0.1:3010/api/storage/runs/delete');
       expect(init.method).toBe('POST');
+    });
+
+    it('posts brief/run pairs to the enrich endpoint and parses the response', async () => {
+      const fetcher = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            scope: 'active',
+            enriched: [
+              {
+                briefId: 'iron-sword',
+                runId: 'run-1',
+                variantCount: 3,
+                sheetFile: 'sheet-00.png',
+                approvedCount: 2,
+                firstApproved: { runId: 'run-1', variantIndex: 0 },
+                briefStored: true,
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+      const result = await enrichStorageRuns(
+        'active',
+        [{ briefId: 'iron-sword', runId: 'run-1', timestamp: null, summaryKey: 'k' }],
+        fetcher as unknown as typeof fetch,
+      );
+      expect(result.enriched[0]).toMatchObject({
+        briefId: 'iron-sword',
+        approvedCount: 2,
+        sheetFile: 'sheet-00.png',
+      });
+      const [url, init] = fetcher.mock.calls[0]!;
+      expect(url).toBe('http://127.0.0.1:3010/api/storage/runs/enrich');
+      expect(init.method).toBe('POST');
+      // Only briefId + runId are forwarded — extra list fields are stripped.
+      expect(JSON.parse(init.body as string)).toEqual({
+        scope: 'active',
+        runs: [{ briefId: 'iron-sword', runId: 'run-1' }],
+      });
     });
   });
 

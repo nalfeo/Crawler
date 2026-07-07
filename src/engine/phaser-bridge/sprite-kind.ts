@@ -130,15 +130,30 @@ export function enemyVariantFromTextureId(textureId: number | undefined): string
 }
 
 /**
- * Bright-red multiply tint painted over placeholder spawner structures (Rats
- * Nest / Slime Pool). Spawners currently reuse their child mob's sprite
- * (`enemy_rat` / `enemy_slime`) because no dedicated nest/pool art exists yet,
- * so without a wash they are indistinguishable from the very mobs they emit.
- * The red makes them read as obviously-different placeholders in-world. Kept
- * slightly off pure red (a little green/blue survives the multiply) so dark
- * source pixels still read as *bright* red rather than near-black.
+ * Refine a non-boss enemy entity's render kind: if the entity carries a
+ * {@link Spawner} component and its texture maps to a rat or slime variant,
+ * return the dedicated spawner visual kind (`'enemy_spawner_rats_nest'` /
+ * `'enemy_spawner_slime_pool'`) so the engine resolves dedicated nest/pool art
+ * instead of reusing the mob's own sprite. For all other enemies the broad
+ * variant from {@link enemyVariantFromTextureId} is returned unchanged.
  *
- * Retire this once real spawner art lands (see {@link generatedBriefIdForEnemy}).
+ * Pure — only reads ECS component presence and the `sprite.textureId` store —
+ * so it can be unit-tested directly with `createTestWorld()`, no Phaser scene
+ * required (mirrors the design of {@link resolveRenderKind}).
+ */
+export function refineEnemyVisualKind(world: RenderKindWorld, eid: number): string {
+  const enemyVariant = enemyVariantFromTextureId(world.stores.sprite.textureId[eid]);
+  if (hasComponent(world.ecs, eid, Spawner)) {
+    if (enemyVariant === 'enemy_rat') return 'enemy_spawner_rats_nest';
+    if (enemyVariant === 'enemy_slime') return 'enemy_spawner_slime_pool';
+  }
+  return enemyVariant;
+}
+
+/**
+ * Bright-red multiply tint painted over *placeholder* spawner structures.
+ * Spawners without dedicated nest/pool art reuse enemy sprites, so this red wash
+ * keeps them visually distinct from the mobs they emit.
  */
 export const PLACEHOLDER_SPAWNER_TINT = 0xff3030;
 /** Multiply tint for Rat Brute variants (darker than baseline rats). */
@@ -167,7 +182,13 @@ export function enemyAppearanceTint(
   ecs: GameWorld['ecs'],
   eid: number,
   appearanceKey?: string,
+  visualType?: string,
 ): number | null {
+  const hasDedicatedSpawnerArt =
+    visualType === 'enemy_spawner_rats_nest' || visualType === 'enemy_spawner_slime_pool';
+  if (hasDedicatedSpawnerArt) {
+    return appearanceKey === 'rat-brute' ? RAT_BRUTE_TINT : null;
+  }
   const spawnerTint = placeholderSpawnerTint(ecs, eid);
   if (spawnerTint !== null) return spawnerTint;
   return appearanceKey === 'rat-brute' ? RAT_BRUTE_TINT : null;
@@ -244,6 +265,8 @@ export function computeEnemyScale(
 const GENERATED_BRIEF_BY_TYPE: Readonly<Record<string, string>> = {
   enemy_rat: 'rat-v1',
   enemy_slime: 'slime-v1',
+  enemy_spawner_rats_nest: 'rat-nest-v2',
+  enemy_spawner_slime_pool: 'slime-pool-v1',
   enemy_boss_ratslime: 'rat-slime-v1',
 };
 

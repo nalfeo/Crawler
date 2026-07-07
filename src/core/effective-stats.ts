@@ -26,14 +26,107 @@ import {
   clampStat,
   isValidStatId,
 } from '../shared/stats.js';
-import type { SecondaryStatId } from '../shared/stats.js';
+import type { PrimaryStatId, SecondaryStatId, StatId } from '../shared/stats.js';
 import type { EquipmentInstanceId, EquipmentState } from '../shared/equipment-types.js';
 import type { GameWorld } from './world.js';
 
 /**
+ * Minimal structural shape of an equipped item for stat purposes: only its
+ * flat `statBonuses` are consumed by the effective-stat formula. Accepting this
+ * (rather than the full `EquipmentItemDef`) keeps the pure computation trivially
+ * testable and lets callers build hypothetical loadouts.
+ */
+export interface StatBonusSource {
+  readonly statBonuses: Partial<Readonly<Record<StatId, number>>>;
+}
+
+/**
+ * Pure, world-free core of the effective-stat formula. Given an entity's base
+ * stats, its allocated core-stat points, and the set of currently-equipped item
+ * defs (already deduped to unique instances), return the full derived
+ * EffectiveStats map. Performs no world reads/writes, so it is reusable for
+ * "what-if" previews (see `equipmentSystem.previewEquipDelta`) without mutating
+ * game state.
+ *
+ * Pipeline (order matters — mirrors the doc comment on `applyEffectiveStats`):
+ *   1. start from base stats
+ *   2. fold core-stat points into the effective PRIMARY stats
+ *   3. add equipment bonuses (caller must pass unique instances only)
+ *   4. derive SECONDARY stats from the effective primaries
+ *   5. clamp every stat to its configured range
+ */
+export function computeEffectiveStatsFromLoadout(
+  baseStats: Partial<Readonly<Record<StatId, number>>>,
+  coreStatPoints: Partial<Readonly<Record<PrimaryStatId, number>>>,
+  equippedDefs: Iterable<StatBonusSource>,
+): Record<StatId, number> {
+  const eff = {} as Record<StatId, number>;
+
+  // 1. Start from base stats.
+  for (const statId of ALL_STAT_IDS) {
+    eff[statId] = baseStats[statId] ?? 0;
+  }
+
+  // 2. Fold level-up core-stat points into the effective primaries.
+  for (const p of PRIMARY_STATS) {
+    eff[p] += coreStatPoints[p] ?? 0;
+  }
+
+  // 3. Add equipment bonuses. The caller is responsible for passing unique
+  //    instances so multi-slot items are not double-counted.
+  for (const def of equippedDefs) {
+    for (const [stat, bonus] of Object.entries(def.statBonuses)) {
+      if (typeof bonus === 'number' && isValidStatId(stat)) {
+        eff[stat] += bonus;
+      }
+    }
+  }
+
+  // 4. Derive secondaries from the (post-equipment) effective primaries.
+  for (const p of PRIMARY_STATS) {
+    const primaryValue = eff[p];
+    const derived = CORE_STAT_TO_SECONDARY[p];
+    for (const [secondary, rate] of Object.entries(derived) as [SecondaryStatId, number][]) {
+      eff[secondary] += primaryValue * rate;
+    }
+  }
+
+  // 5. Clamp every stat to its configured range.
+  for (const statId of ALL_STAT_IDS) {
+    eff[statId] = clampStat(statId, eff[statId]);
+  }
+
+  return eff;
+}
+
+/**
+ * Collect the unique equipped item defs from an equipment state, deduping the
+ * multi-slot items that occupy more than one slot. Shared by
+ * `applyEffectiveStats` (the live loadout) and `previewEquipDelta` (the
+ * hypothetical loadout) so the two can never drift.
+ */
+export function uniqueEquippedDefs(
+  equipmentState: EquipmentState | undefined,
+): Array<{ instanceId: EquipmentInstanceId } & StatBonusSource> {
+  const defs: Array<{ instanceId: EquipmentInstanceId } & StatBonusSource> = [];
+  if (!equipmentState) return defs;
+  const seen = new Set<EquipmentInstanceId>();
+  for (const slotId of Object.keys(equipmentState.equipped)) {
+    const instId = equipmentState.equipped[slotId] ?? null;
+    if (instId === null || seen.has(instId)) continue;
+    seen.add(instId);
+    const inst = equipmentState.instances.get(instId);
+    if (!inst) continue;
+    defs.push({ instanceId: instId, statBonuses: inst.def.statBonuses });
+  }
+  return defs;
+}
+
+/**
  * Recompute and write EffectiveStats for a single entity using the shared
  * formula. `equipmentState` is the entity's equipment side-map state (or
- * undefined if it has none).
+ * undefined if it has none). Delegates to `computeEffectiveStatsFromLoadout` so
+ * the live and preview paths share one formula.
  */
 export function applyEffectiveStats(
   world: GameWorld,
@@ -41,49 +134,18 @@ export function applyEffectiveStats(
   equipmentState: EquipmentState | undefined,
 ): void {
   const stores = world.stores;
-  const eff = stores.effectiveStats;
-  const base = stores.baseStats;
-  const core = stores.coreStatPoints;
-
-  // 1. Start from base stats.
+  const base = {} as Record<StatId, number>;
   for (const statId of ALL_STAT_IDS) {
-    eff[statId][entity] = base[statId][entity] ?? 0;
+    base[statId] = stores.baseStats[statId][entity] ?? 0;
   }
-
-  // 2. Fold level-up core-stat points into the effective primaries.
+  const core = {} as Record<PrimaryStatId, number>;
   for (const p of PRIMARY_STATS) {
-    eff[p][entity] = (eff[p][entity] ?? 0) + (core[p][entity] ?? 0);
+    core[p] = stores.coreStatPoints[p][entity] ?? 0;
   }
 
-  // 3. Add equipment bonuses (iterate unique instances to avoid double-counting
-  //    multi-slot items).
-  if (equipmentState) {
-    const seenInstances = new Set<EquipmentInstanceId>();
-    for (const slotId of Object.keys(equipmentState.equipped)) {
-      const instId = equipmentState.equipped[slotId] ?? null;
-      if (instId === null || seenInstances.has(instId)) continue;
-      seenInstances.add(instId);
-      const inst = equipmentState.instances.get(instId);
-      if (!inst) continue;
-      for (const [stat, bonus] of Object.entries(inst.def.statBonuses)) {
-        if (typeof bonus === 'number' && isValidStatId(stat)) {
-          eff[stat][entity] = (eff[stat][entity] ?? 0) + bonus;
-        }
-      }
-    }
-  }
+  const eff = computeEffectiveStatsFromLoadout(base, core, uniqueEquippedDefs(equipmentState));
 
-  // 4. Derive secondaries from the (post-equipment) effective primaries.
-  for (const p of PRIMARY_STATS) {
-    const primaryValue = eff[p][entity] ?? 0;
-    const derived = CORE_STAT_TO_SECONDARY[p];
-    for (const [secondary, rate] of Object.entries(derived) as [SecondaryStatId, number][]) {
-      eff[secondary][entity] = (eff[secondary][entity] ?? 0) + primaryValue * rate;
-    }
-  }
-
-  // 5. Clamp every stat to its configured range.
   for (const statId of ALL_STAT_IDS) {
-    eff[statId][entity] = clampStat(statId, eff[statId][entity] ?? 0);
+    stores.effectiveStats[statId][entity] = eff[statId];
   }
 }

@@ -62,6 +62,18 @@ export default tseslint.config(
     },
   },
   {
+    // Visual-review setup scripts are injected into the Playwright page context.
+    files: ['scripts/agent/review/setup/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: {
+        ...(globals.browser ?? {}),
+        ...(globals.node ?? {}),
+      },
+    },
+  },
+  {
     files: ['src/core/**/*.ts'],
     rules: {
       'no-restricted-imports': [

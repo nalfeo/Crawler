@@ -50,7 +50,6 @@ import { createTestWorld } from '../helpers/world-factory.js';
 import { DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID } from '../../src/shared/abilities.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import { floor1EnemyPack } from '../../src/shared/enemy-packs.js';
-import { getSpawnerArchetypeByIndex } from '../../src/game/spawners/registry.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 
 describe('floor1Scenario', () => {
@@ -285,44 +284,18 @@ describe('floor1Scenario', () => {
     }
   });
 
-  it('spawns 2 slime pools and 2 rat nests in distinct non-safe, non-boss rooms', () => {
+  it('places no static spawners on Floor 1 (spawner-free by config)', () => {
+    // Floor 1's static-spawner spawn table is intentionally empty
+    // (FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS in floorScenario.ts), so no Spawner
+    // entities are placed on any seed. Repopulating that table is the single
+    // config lever that re-enables Floor 1 static spawners.
     for (const seed of [42, 7, 99, 123, 2024]) {
       const world = createTestWorld({ seed });
       const player = spawnPlayer(world, 0, 0);
       initializeFloor1Scenario(world, player);
 
-      const map = world.floorMap!;
       const spawners = query(world.ecs, [Spawner, Position]);
-      expect(spawners).toHaveLength(4);
-
-      const roomIds = new Set<number>();
-      let slimePools = 0;
-      let ratNests = 0;
-
-      for (const eid of spawners) {
-        const archetype = getSpawnerArchetypeByIndex(world.stores.spawner.defIndex[eid] ?? 0);
-        expect(archetype).toBeDefined();
-        if (!archetype) continue;
-        if (archetype.id === 'slime-pool') slimePools += 1;
-        if (archetype.id === 'rats-nest') ratNests += 1;
-
-        const x = world.stores.position.x[eid] ?? 0;
-        const y = world.stores.position.y[eid] ?? 0;
-        const tile = map.worldToTile(x, y);
-        const roomId = map.roomGraph.getRoomAt(tile.x, tile.y);
-        expect(roomId).toBeGreaterThanOrEqual(0);
-        expect(roomIds.has(roomId)).toBe(false);
-        roomIds.add(roomId);
-
-        const room = map.roomGraph.get(roomId);
-        expect(room).toBeDefined();
-        expect(room?.role).not.toBe(RoomRole.SAFE);
-        expect(room?.role).not.toBe(RoomRole.BOSS_STAIR);
-      }
-
-      expect(slimePools).toBe(2);
-      expect(ratNests).toBe(2);
-      expect(roomIds.size).toBe(4);
+      expect(spawners).toHaveLength(0);
     }
   });
 

@@ -18,6 +18,7 @@ import {
 import type { FloorMap } from '../core/map/FloorMap.js';
 import { findTilePath, type TilePoint } from '../core/map/pathfinding.js';
 import { getGenerator } from '../core/map/generators/registry.js';
+import { attachBarriersToFloorMap } from '../core/barriers/index.js';
 import { sealRoomPerimeter, sealSpecialRooms } from '../core/map/special-rooms.js';
 import {
   Position,
@@ -95,7 +96,7 @@ import { evaluateAchievementUnlocksForPhase } from './systems/achievementSystem.
 import { getAllSkillDefinitions } from './skills/registry.js';
 import type { SkillState } from '../shared/skills.js';
 import { floor1Config } from '../shared/floor-config.js';
-import { floor1EnemyPack, pickEnemyArchetype } from '../shared/enemy-packs.js';
+import { floor1EnemyPack, floor2EnemyPack, pickEnemyArchetype } from '../shared/enemy-packs.js';
 import { floor1Manifest } from '../shared/floor-manifest.js';
 import type { NpcPlacementDef } from '../shared/npc-placements.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
@@ -121,8 +122,13 @@ const MAX_PASSABLE_NEIGHBORS_FOR_NARROW_SPAWN_TILE = 2;
  */
 const FLOOR_1_ROOM_WAVE_MIN_PLAYER_DISTANCE_FT = 12;
 const FLOOR_1_GOAL_PREFIX = 'floor1.objective';
+// Floor 1 is intentionally spawner-free: its static-spawner spawn table is empty,
+// so `spawnFloor1StaticSpawners` places no Spawner entities on Floor 1. The
+// placement machinery below is fully config-driven off this table — repopulate
+// this list (e.g. ['slime-pool', 'rats-nest']) to re-enable Floor 1 static
+// spawners without touching the runtime pipelines.
 const FLOOR_1_STATIC_SPAWNERS_PER_ARCHETYPE = 2;
-const FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS = ['slime-pool', 'rats-nest'] as const;
+const FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS: readonly string[] = [];
 const FLOOR_1_MAX_STARTER_CHOICES = 3;
 const FLOOR_1_FALLBACK_STARTER_WEAPON_IDS = ['sword', 'punch'] as const;
 
@@ -140,16 +146,24 @@ interface Floor1SpawnerState {
   lastSpawnMs: number;
 }
 
-function pruneAmbientOverflow(
+function getAmbientEnemyArchetypes(world: GameWorld): Map<number, string> | undefined {
+  if (world.floorScenario) {
+    return world.floorScenario.enemyArchetypes;
+  }
+  return world.floorExtendedState?.ambientEnemyArchetypes;
+}
+
+export function pruneAmbientOverflow(
   world: GameWorld,
   playerX: number,
   playerY: number,
   overflowCount: number,
 ): void {
-  if (!world.floorScenario || overflowCount <= 0) {
+  const trackedAmbient = getAmbientEnemyArchetypes(world);
+  if (!trackedAmbient || overflowCount <= 0) {
     return;
   }
-  const rankedAmbient = [...world.floorScenario.enemyArchetypes.keys()]
+  const rankedAmbient = [...trackedAmbient.keys()]
     .filter((eid) => entityExists(world.ecs, eid))
     .map((eid) => {
       const ex = world.stores.position.x[eid] ?? 0;
@@ -166,7 +180,7 @@ function pruneAmbientOverflow(
     }
     clearEntityStores(world, victim);
     removeEntity(world.ecs, victim);
-    world.floorScenario.enemyArchetypes.delete(victim);
+    trackedAmbient.delete(victim);
   }
 }
 
@@ -192,15 +206,16 @@ export function sealRoomPerimeterOpenings(
   sealRoomPerimeter(floorMap, room);
 }
 
-function pruneAmbientOutOfRange(world: GameWorld, playerX: number, playerY: number): void {
-  if (!world.floorScenario) {
+export function pruneAmbientOutOfRange(world: GameWorld, playerX: number, playerY: number): void {
+  const trackedAmbient = getAmbientEnemyArchetypes(world);
+  if (!trackedAmbient) {
     return;
   }
-  const pack = floor1EnemyPack;
+  const pack = world.floor === 2 ? floor2EnemyPack : floor1EnemyPack;
   const maxDistanceSq = pack.despawnDistanceFt * pack.despawnDistanceFt;
-  for (const eid of [...world.floorScenario.enemyArchetypes.keys()]) {
+  for (const eid of [...trackedAmbient.keys()]) {
     if (!entityExists(world.ecs, eid)) {
-      world.floorScenario.enemyArchetypes.delete(eid);
+      trackedAmbient.delete(eid);
       continue;
     }
     const ex = world.stores.position.x[eid] ?? 0;
@@ -212,7 +227,7 @@ function pruneAmbientOutOfRange(world: GameWorld, playerX: number, playerY: numb
     }
     clearEntityStores(world, eid);
     removeEntity(world.ecs, eid);
-    world.floorScenario.enemyArchetypes.delete(eid);
+    trackedAmbient.delete(eid);
   }
 }
 
@@ -228,7 +243,7 @@ const playerBonusApplied = new WeakSet<GameWorld>();
  */
 const populatedRoomsByWorld = new WeakMap<GameWorld, Set<number>>();
 
-function getSpawnerState(world: GameWorld): Floor1SpawnerState {
+export function getSpawnerState(world: GameWorld): Floor1SpawnerState {
   let state = spawnerStateByWorld.get(world);
   if (state === undefined) {
     state = { lastSpawnMs: Number.NEGATIVE_INFINITY };
@@ -744,6 +759,12 @@ function tagRoomAsSafe(world: GameWorld, roomPos: { x: number; y: number }): voi
 }
 
 function spawnFloor1StaticSpawners(world: GameWorld): void {
+  // Config-driven no-op: with an empty static-spawner table Floor 1 places no
+  // Spawner entities (see FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS). Bail before
+  // deriving the room stream so we do no wasted work.
+  if (FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS.length === 0) {
+    return;
+  }
   const floorMap = world.floorMap;
   if (!floorMap) {
     return;
@@ -1109,6 +1130,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   };
   const floorMap = getGenerator(config.biome).generate(config, world.rng);
   world.floorMap = floorMap;
+  attachBarriersToFloorMap(world);
 
   const spawn = floorMap.tileToWorld(floorMap.playerSpawn.x, floorMap.playerSpawn.y);
   if (hasComponent(world.ecs, playerEid, Position)) {
@@ -1876,7 +1898,7 @@ function distSq(ax: number, ay: number, bx: number, by: number): number {
  * director keeps topped up. Corpses in their death-linger window (health 0) are
  * excluded so a pile of fresh kills doesn't suppress replenishment.
  */
-function countEngagingEnemies(
+export function countEngagingEnemies(
   world: GameWorld,
   playerX: number,
   playerY: number,
@@ -1898,7 +1920,7 @@ function countEngagingEnemies(
   return count;
 }
 
-function countDirectorEnemies(world: GameWorld): number {
+export function countDirectorEnemies(world: GameWorld): number {
   let count = 0;
   for (const eid of query(world.ecs, [Enemy])) {
     if (hasComponent(world.ecs, eid, Spawner)) {
@@ -1916,17 +1938,18 @@ function countDirectorEnemies(world: GameWorld): number {
  * player is in) and only ever touches tracked ambient archetypes — bosses and
  * quest enemies are untouched. Returns the number actually evicted.
  */
-function evictFurthestAmbient(
+export function evictFurthestAmbient(
   world: GameWorld,
   playerX: number,
   playerY: number,
   minDistSq: number,
   count: number,
 ): number {
-  if (!world.floorScenario || count <= 0) {
+  const trackedAmbient = getAmbientEnemyArchetypes(world);
+  if (!trackedAmbient || count <= 0) {
     return 0;
   }
-  const candidates = [...world.floorScenario.enemyArchetypes.keys()]
+  const candidates = [...trackedAmbient.keys()]
     .filter((eid) => entityExists(world.ecs, eid))
     .map((eid) => ({
       eid,
@@ -1944,7 +1967,7 @@ function evictFurthestAmbient(
     const victim = candidates[i]!.eid;
     clearEntityStores(world, victim);
     removeEntity(world.ecs, victim);
-    world.floorScenario.enemyArchetypes.delete(victim);
+    trackedAmbient.delete(victim);
   }
   return evictCount;
 }
@@ -2145,12 +2168,12 @@ function isInvalidAmbientSpawn(
  * absolute validity ceiling stays at the ambient max distance, with a
  * whole-map passable-tile fallback. Returns null when no valid tile is found.
  */
-function resolveAmbientSpawnPoint(
+export function resolveAmbientSpawnPoint(
   world: GameWorld,
   playerX: number,
   playerY: number,
 ): { x: number; y: number } | null {
-  const pack = floor1EnemyPack;
+  const pack = world.floor === 2 ? floor2EnemyPack : floor1EnemyPack;
   const minDistanceSq =
     FLOOR_1_AMBIENT_MIN_PLAYER_DISTANCE_FT * FLOOR_1_AMBIENT_MIN_PLAYER_DISTANCE_FT;
   const maxDistanceSq =
@@ -2244,7 +2267,7 @@ function resolveRoomInteriorSpawn(
  * first visit regardless of the roll outcome, so leaving and re-entering never
  * re-rolls. SPAWN, SAFE, and BOSS_STAIR rooms are never seeded.
  */
-function prepopulateEnteredRoom(world: GameWorld, playerX: number, playerY: number): void {
+export function prepopulateEnteredRoom(world: GameWorld, playerX: number, playerY: number): void {
   const floorMap = world.floorMap;
   if (!floorMap || !world.floorScenario) {
     return;

@@ -191,6 +191,9 @@ function resolveOpaqueBboxFits(image: RgbaImage, brief: Brief): SensorResult {
 
 function resolveOpaqueRatio(image: RgbaImage, brief: Brief): SensorResult {
   const overrides = brief.sensors.opaqueRatio;
+  if (overrides?.disabled) {
+    return { ok: true, sensor: 'opaque-ratio' };
+  }
   const min = overrides?.min;
   const max = overrides?.max ?? (brief.postprocessing?.trimAndFit ? 0.92 : undefined);
   if (min === undefined && max === undefined) {

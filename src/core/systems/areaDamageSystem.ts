@@ -5,6 +5,7 @@ import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
 import type { CollisionResult } from './collisionSystem.js';
 import { emitWeaponHitSkillEvents } from '../weapon-skill-bridge.js';
+import { recordWeaponEnemyHit, pruneAttackEntity } from '../weapon-telemetry.js';
 
 const hitSets = new WeakMap<GameWorld, Map<number, Set<number>>>();
 
@@ -28,6 +29,7 @@ export function clearAreaDamageHits(world: GameWorld, eid: number): void {
   if (worldHits !== undefined) {
     worldHits.delete(eid);
   }
+  pruneAttackEntity(world, eid);
 }
 
 /** Deals damage to enemies within AreaDamage radius. Uses spatial grid for broad-phase. */
@@ -48,6 +50,7 @@ export function areaDamageSystem(world: GameWorld, collisionResult: CollisionRes
     const areaTeam = hasComponent(world.ecs, eid, Team) ? (team.id[eid] ?? 0) : -1;
     const ownerEid = hasComponent(world.ecs, eid, Owner) ? (world.stores.owner.eid[eid] ?? -1) : -1;
     if (
+      world.floor === 1 &&
       ownerEid >= 0 &&
       hasComponent(world.ecs, ownerEid, Player) &&
       isEntityInSafeSpace(world, ownerEid)
@@ -121,6 +124,7 @@ export function areaDamageSystem(world: GameWorld, collisionResult: CollisionRes
 
       if (dealt > 0 && ownerEid !== -1 && hasComponent(world.ecs, target, Enemy)) {
         emitWeaponHitSkillEvents(world, ownerEid);
+        recordWeaponEnemyHit(world, eid, target);
       }
 
       if (hitSet !== undefined) {

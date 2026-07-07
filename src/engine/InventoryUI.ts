@@ -10,8 +10,7 @@
  */
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
-import { fitScaleForBox, fitUiScale, type ScreenBounds } from './ui-scale.js';
-import { getRenderScale } from './render-scale.js';
+import { fitScaleForBox, fitUiScale, getTextResolution, type ScreenBounds } from './ui-scale.js';
 import { GAME } from '../shared/constants.js';
 import type { InventoryBag, InventorySlot, TabPreferences } from '../shared/inventory.js';
 import {
@@ -24,6 +23,7 @@ import {
   type SortField,
 } from '../shared/inventory.js';
 import { getSlotLabel, type EquipmentSlotId } from '../shared/equipment-slots.js';
+import { isEquippableItem } from '../shared/equipmentDefs.js';
 import { type ItemDef, type ItemTag, RARITY_COLORS, getItemById } from '../shared/items.js';
 import {
   emptyGeneratedSpriteRegistry,
@@ -33,6 +33,8 @@ import {
 } from '../shared/generated-assets.js';
 import { hashStringToSeed } from '../shared/random.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
+import { renderItemTooltip } from './item-tooltip.js';
+import { BLUE_STEEL, hex, MIN_TEXT_RESOLUTION } from './ui-theme.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -41,28 +43,26 @@ import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
 const PANEL_PADDING = 16;
 const TAB_HEIGHT = 36;
 const TAB_GAP = 4;
-const SEARCH_HEIGHT = 36;
+const SEARCH_HEIGHT = 48;
 const CELL_SIZE = 64;
-const CELL_GAP = 4;
+const CELL_GAP = 10;
 const COLS = 5;
 const BORDER_WIDTH = 2;
-const FONT_FAMILY = 'Segoe UI, Arial, sans-serif';
+const FONT_FAMILY = '"Press Start 2P", "Courier New", monospace';
 
 const COLORS = {
-  panelBg: 0x0d0d1a,
-  panelBorder: 0x2a2a4a,
-  tabBg: 0x1a1a30,
-  tabActive: 0x3a3a6a,
-  tabText: 0xc9d4ff,
-  tabTextActive: 0xffffff,
-  searchBg: 0x111122,
-  searchBorder: 0x333355,
-  cellBg: 0x15152a,
-  cellHover: 0x22224a,
-  textPrimary: 0xf8fafc,
-  textSecondary: 0x9ca3af,
-  tooltipBg: 0x0a0a16,
-  tooltipBorder: 0x444466,
+  ...BLUE_STEEL,
+  tabBg: 0x394c74,
+  tabActive: 0x4a6699,
+  tabActiveBorder: 0xf2c14e,
+  tabText: 0xaebdd5,
+  tabTextActive: 0xd9e2ef,
+  searchBg: 0x2b3c61,
+  searchBorder: 0x3f5f93,
+  cellBg: 0x445c89,
+  cellHover: 0x5472ab,
+  emptyCellBg: 0x37496f,
+  emptyCellBorder: 0x3f5f93,
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -74,7 +74,16 @@ export interface InventoryUIConfig {
   width?: number;
   /** Height of the panel. Default: 480. */
   height?: number;
+  /**
+   * Equip intent. Fired when the user double-clicks an equippable inventory
+   * cell (ARPG idiom; single click/tap still pins the tooltip). The coordinator
+   * decides whether the equip is allowed (safe-room gate) and refreshes panes.
+   */
+  onEquipItem?: (itemId: string) => void;
 }
+
+/** Max ms between two clicks on the same cell to count as an equip double-click. */
+const DOUBLE_CLICK_MS = 220;
 
 export function createInventoryUI(
   scene: Phaser.Scene,
@@ -89,6 +98,12 @@ export function createInventoryUI(
    * Lets e2e harnesses hover/click a specific canvas cell.
    */
   getCellScreenBounds(index: number): ScreenBounds | null;
+  /**
+   * Test/automation affordance: render-order index of the first visible cell
+   * holding `itemId`, or null when absent. Lets e2e find a specific item's cell
+   * without assuming a fixed sort position.
+   */
+  getCellIndexForItem(itemId: string): number | null;
   /** Test/automation affordance: true while a hover/pin tooltip is rendered. */
   isTooltipVisible(): boolean;
   /** Test/automation affordance: true while a tooltip is pinned (click/tap). */
@@ -100,8 +115,7 @@ export function createInventoryUI(
   scene.cameras.main.roundPixels = true;
 
   const snap = (value: number): number => Math.round(value);
-  const baseResolution = getRenderScale(scene);
-  let textResolution = baseResolution;
+  let textResolution = Math.max(MIN_TEXT_RESOLUTION, getTextResolution(scene));
   const crispText = (
     x: number,
     y: number,
@@ -118,7 +132,7 @@ export function createInventoryUI(
   // uiScale) and scale the whole container up by uiScale so the inventory grid,
   // tabs and text grow on small screens while staying centred and on-canvas.
   let uiScale = fitUiScale(scene, panelWidth, panelHeight);
-  textResolution = Math.max(1, Math.round(baseResolution * uiScale));
+  textResolution = Math.max(MIN_TEXT_RESOLUTION, getTextResolution(scene));
   const viewWidth = (): number => GAME.WIDTH / uiScale;
   const viewHeight = (): number => GAME.HEIGHT / uiScale;
 
@@ -130,6 +144,12 @@ export function createInventoryUI(
   let currentSortBy: SortField = 'rarity';
   const tabPrefs: TabPreferences = createTabPreferences();
   let playerEid = -1;
+
+  // Double-click equip detection: remember the last cell click so a quick
+  // second click on the same equippable item fires the equip intent while a
+  // slow second click still just toggles the pinned tooltip.
+  let lastClickItemId: string | null = null;
+  let lastClickTime = Number.NEGATIVE_INFINITY;
 
   // Signature of the last rendered grid state. The scene calls refresh() every
   // frame while the panel is open; re-running renderItems() each frame would
@@ -187,33 +207,73 @@ export function createInventoryUI(
     panelWidth,
     panelHeight,
     COLORS.panelBg,
-    0.95,
+    1,
   );
   bg.setStrokeStyle(2, COLORS.panelBorder);
   container.add(bg);
 
+  // Corner pixel accent decorations (same idiom as EquipmentUI).
+  const cornerPixelPoints = [
+    [panelX + 6, panelY + 6],
+    [panelX + panelWidth - 6, panelY + 6],
+    [panelX + 6, panelY + panelHeight - 6],
+    [panelX + panelWidth - 6, panelY + panelHeight - 6],
+  ] as const;
+  const cornerPixels: Phaser.GameObjects.Rectangle[] = [];
+  for (const [x, y] of cornerPixelPoints) {
+    const pixel = scene.add.rectangle(x, y, 6, 6, COLORS.panelBorder, 1);
+    container.add(pixel);
+    cornerPixels.push(pixel);
+  }
+
   // Title
-  const title = crispText(panelX + PANEL_PADDING, panelY + PANEL_PADDING, 'INVENTORY', {
+  const TITLE_TEXT = 'INVENTORY';
+  const title = crispText(panelX + PANEL_PADDING, panelY + PANEL_PADDING + 2, TITLE_TEXT, {
     fontFamily: FONT_FAMILY,
-    fontSize: '20px',
-    color: '#f8fafc',
+    fontSize: '16px',
+    color: hex(COLORS.textPrimary),
+    padding: { top: 4, bottom: 2 },
   });
   container.add(title);
+  // Header chip behind the title. Sized to hug the title text rather than
+  // reusing EquipmentUI's absolute 296px frame: that value was tuned for
+  // Equipment's 1240px panel and spans ~57% of this 520px panel, leaving a large
+  // dead gap to the right of "INVENTORY". Derived from the fixed title string at
+  // 16px (Press Start 2P advance ~16.5px/char) so the chip stays correctly
+  // proportioned regardless of async pixel-font load timing — a runtime
+  // title.width read can measure the narrower fallback font before Press Start
+  // 2P finishes loading.
+  const titleChipTextW = Math.round(TITLE_TEXT.length * 16.5);
+  const titleFrame = scene.add.rectangle(
+    snap(panelX + PANEL_PADDING + titleChipTextW / 2),
+    panelY + PANEL_PADDING + 10,
+    titleChipTextW + 24,
+    28,
+    COLORS.sectionHeader,
+    0.95,
+  );
+  titleFrame.setStrokeStyle(1, COLORS.panelBorder);
+  container.addAt(titleFrame, 1);
 
   const slotFilterLabel = crispText(panelX + PANEL_PADDING + 138, panelY + PANEL_PADDING + 4, '', {
     fontFamily: FONT_FAMILY,
     fontSize: '12px',
-    color: '#7ee0ff',
+    color: hex(COLORS.accent),
   });
   container.add(slotFilterLabel);
 
   // Sort button
-  const sortBtn = scene.add
-    .text(snap(panelX + panelWidth - PANEL_PADDING), snap(panelY + PANEL_PADDING), '⇅ Rarity', {
+  const sortBtn = crispText(
+    panelX + panelWidth - PANEL_PADDING,
+    panelY + PANEL_PADDING + 2,
+    'Sort: Rarity',
+    {
       fontFamily: FONT_FAMILY,
-      fontSize: '14px',
-      color: '#9ca3af',
-    })
+      fontSize: '12px',
+      color: hex(COLORS.textSecondary),
+      padding: { top: 4, bottom: 2 },
+    },
+  )
     .setOrigin(1, 0)
     .setInteractive({ useHandCursor: true });
 
@@ -221,7 +281,7 @@ export function createInventoryUI(
     const sortFields: SortField[] = ['rarity', 'name', 'quantity'];
     const idx = sortFields.indexOf(currentSortBy);
     currentSortBy = sortFields[(idx + 1) % sortFields.length]!;
-    sortBtn.setText(`⇅ ${currentSortBy.charAt(0).toUpperCase() + currentSortBy.slice(1)}`);
+    sortBtn.setText(`Sort: ${currentSortBy.charAt(0).toUpperCase() + currentSortBy.slice(1)}`);
     renderItems();
   });
   container.add(sortBtn);
@@ -238,6 +298,8 @@ export function createInventoryUI(
   const cellObjects: Phaser.GameObjects.GameObject[] = [];
   // Cell background rectangles, in render order (test/automation hit-targets).
   const cellBackgrounds: Phaser.GameObjects.Rectangle[] = [];
+  // Item id per render-order cell, parallel to cellBackgrounds (automation).
+  const cellItemIds: string[] = [];
   // Tooltip objects
   const tooltipObjects: Phaser.GameObjects.GameObject[] = [];
 
@@ -253,13 +315,13 @@ export function createInventoryUI(
   container.add(searchBg);
 
   const searchText = crispText(
-    panelX + PANEL_PADDING + 8,
-    searchY + SEARCH_HEIGHT / 2,
-    '🔍 Type to search...',
+    panelX + PANEL_PADDING + 10,
+    searchY + SEARCH_HEIGHT / 2 + 3,
+    'Type to search...',
     {
       fontFamily: FONT_FAMILY,
-      fontSize: '14px',
-      color: '#666688',
+      fontSize: '12px',
+      color: hex(COLORS.textSecondary),
     },
   );
   searchText.setOrigin(0, 0.5);
@@ -267,7 +329,7 @@ export function createInventoryUI(
 
   function applyLayout(): void {
     uiScale = fitUiScale(scene, panelWidth, panelHeight);
-    textResolution = Math.max(1, Math.round(baseResolution * uiScale));
+    textResolution = Math.max(MIN_TEXT_RESOLUTION, getTextResolution(scene));
     container.setScale(uiScale);
     panelX = snap((viewWidth() - panelWidth) / 2);
     panelY = snap((viewHeight() - panelHeight) / 2);
@@ -277,16 +339,29 @@ export function createInventoryUI(
     gridHeight = panelY + panelHeight - gridY - PANEL_PADDING;
 
     bg.setPosition(panelX + panelWidth / 2, panelY + panelHeight / 2);
-    title.setPosition(panelX + PANEL_PADDING, panelY + PANEL_PADDING).setResolution(textResolution);
+    const nextCornerPoints = [
+      [panelX + 6, panelY + 6],
+      [panelX + panelWidth - 6, panelY + 6],
+      [panelX + 6, panelY + panelHeight - 6],
+      [panelX + panelWidth - 6, panelY + panelHeight - 6],
+    ] as const;
+    nextCornerPoints.forEach(([x, y], index) => cornerPixels[index]?.setPosition(x, y));
+    titleFrame.setPosition(
+      snap(panelX + PANEL_PADDING + titleChipTextW / 2),
+      panelY + PANEL_PADDING + 10,
+    );
+    title
+      .setPosition(panelX + PANEL_PADDING, panelY + PANEL_PADDING + 2)
+      .setResolution(textResolution);
     slotFilterLabel
       .setPosition(panelX + PANEL_PADDING + 138, panelY + PANEL_PADDING + 4)
       .setResolution(textResolution);
     sortBtn
-      .setPosition(panelX + panelWidth - PANEL_PADDING, panelY + PANEL_PADDING)
+      .setPosition(panelX + panelWidth - PANEL_PADDING, panelY + PANEL_PADDING + 2)
       .setResolution(textResolution);
     searchBg.setPosition(panelX + panelWidth / 2, searchY + SEARCH_HEIGHT / 2);
     searchText
-      .setPosition(panelX + PANEL_PADDING + 8, searchY + SEARCH_HEIGHT / 2)
+      .setPosition(panelX + PANEL_PADDING + 10, searchY + SEARCH_HEIGHT / 2 + 3)
       .setResolution(textResolution);
 
     if (visible) {
@@ -312,6 +387,7 @@ export function createInventoryUI(
     }
     cellObjects.length = 0;
     cellBackgrounds.length = 0;
+    cellItemIds.length = 0;
   }
 
   function clearTooltip(): void {
@@ -384,7 +460,7 @@ export function createInventoryUI(
         isActive ? COLORS.tabActive : COLORS.tabBg,
         0.9,
       );
-      tabBg.setStrokeStyle(1, isActive ? 0x5555aa : COLORS.panelBorder);
+      tabBg.setStrokeStyle(1, isActive ? COLORS.tabActiveBorder : COLORS.panelBorder);
       tabBg.setInteractive({ useHandCursor: true });
       tabBg.on('pointerdown', () => {
         activeTag = tag;
@@ -394,8 +470,8 @@ export function createInventoryUI(
 
       const tabLabel = crispText(tabX + tabWidth / 2, tabY + TAB_HEIGHT / 2, displayLabel, {
         fontFamily: FONT_FAMILY,
-        fontSize: '13px',
-        color: isActive ? '#ffffff' : '#c9d4ff',
+        fontSize: '10px',
+        color: isActive ? hex(COLORS.tabTextActive) : hex(COLORS.tabText),
       });
       tabLabel.setOrigin(0.5, 0.5);
 
@@ -437,6 +513,12 @@ export function createInventoryUI(
     const slots = getFilteredSlots();
     const maxRows = Math.floor(gridHeight / (CELL_SIZE + CELL_GAP));
     const maxVisible = maxRows * COLS;
+    // Center the fixed-width grid within the panel so the left/right padding is
+    // symmetric. The panel is wider than the grid needs (its width is driven by
+    // the header row), so a left-anchored grid would dump all the slack on the
+    // right and read as broken.
+    const gridPixelWidth = COLS * CELL_SIZE + (COLS - 1) * CELL_GAP;
+    const gridLeft = snap(panelX + (panelWidth - gridPixelWidth) / 2);
 
     for (let i = 0; i < Math.min(slots.length, maxVisible); i++) {
       const slot = slots[i]!;
@@ -445,7 +527,7 @@ export function createInventoryUI(
 
       const col = i % COLS;
       const row = Math.floor(i / COLS);
-      const cellX = snap(panelX + PANEL_PADDING + col * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2);
+      const cellX = snap(gridLeft + col * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2);
       const cellY = snap(gridY + row * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2);
 
       const rarityColor = RARITY_COLORS[def.rarity] ?? 0x9e9e9e;
@@ -475,8 +557,27 @@ export function createInventoryUI(
           showTooltip(pinned.def, pinned.slot, pinned.x, pinned.y);
         }
       });
-      // Click/tap toggles a pinned tooltip so touch users (no hover) can read it.
+      // Click/tap toggles a pinned tooltip so touch users (no hover) can read
+      // it. A quick second click on the same equippable cell instead fires the
+      // equip intent (ARPG double-click idiom).
       cellBg.on('pointerdown', () => {
+        const now = scene.time.now;
+        const isDoubleClick =
+          lastClickItemId === slot.itemId && now - lastClickTime <= DOUBLE_CLICK_MS;
+        lastClickTime = now;
+        lastClickItemId = slot.itemId;
+
+        if (isDoubleClick && config.onEquipItem && isEquippableItem(slot.itemId)) {
+          // Equipping moves the item out of this cell; drop the pin/tooltip and
+          // reset the click tracker so a follow-up click starts fresh.
+          pinned = null;
+          clearTooltip();
+          lastClickItemId = null;
+          lastClickTime = Number.NEGATIVE_INFINITY;
+          config.onEquipItem(slot.itemId);
+          return;
+        }
+
         if (pinned !== null && pinned.slot.itemId === slot.itemId) {
           pinned = null;
         } else {
@@ -506,7 +607,7 @@ export function createInventoryUI(
         // sprites; the old hardcoded `/16` blew 64px art up 3× (192px) and
         // overflowed the 64px cell. fitScaleForBox keeps small pixel art crisp
         // (integer upscale) and shrinks higher-resolution art down to fit.
-        const iconScale = fitScaleForBox(iconImage.width, iconImage.height, CELL_SIZE * 0.75);
+        const iconScale = fitScaleForBox(iconImage.width, iconImage.height, CELL_SIZE * 0.72);
         iconImage.setScale(iconScale);
         iconObject = iconImage;
       } else {
@@ -514,7 +615,7 @@ export function createInventoryUI(
         const iconText = crispText(cellX, cellY - 6, def.name.substring(0, 2).toUpperCase(), {
           fontFamily: FONT_FAMILY,
           fontSize: '16px',
-          color: `#${rarityColor.toString(16).padStart(6, '0')}`,
+          color: hex(rarityColor),
         });
         iconText.setOrigin(0.5, 0.5);
         iconObject = iconText;
@@ -528,8 +629,8 @@ export function createInventoryUI(
           `${slot.quantity}`,
           {
             fontFamily: FONT_FAMILY,
-            fontSize: '12px',
-            color: '#ffffff',
+            fontSize: '10px',
+            color: hex(COLORS.textPrimary),
           },
         );
         countText.setOrigin(1, 1);
@@ -541,17 +642,57 @@ export function createInventoryUI(
       container.add(iconObject);
       cellObjects.push(cellBg, iconObject);
       cellBackgrounds.push(cellBg);
+      cellItemIds.push(slot.itemId);
     }
 
-    // Item count footer
+    // Fill trailing cells of the final row with empty-slot backgrounds so the
+    // grid always reads as a complete rectangle (no ragged last row) and unused
+    // capacity has a clear affordance. Empty cells are decorative only — never
+    // pushed to cellBackgrounds/cellItemIds, so automation item indices stay
+    // stable.
+    const filledCells = Math.min(slots.length, maxVisible);
+    const rectCells = Math.min(Math.ceil(filledCells / COLS) * COLS, maxVisible);
+    for (let i = filledCells; i < rectCells; i++) {
+      const col = i % COLS;
+      const row = Math.floor(i / COLS);
+      const cellX = snap(gridLeft + col * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2);
+      const cellY = snap(gridY + row * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2);
+      const emptyCell = scene.add.rectangle(cellX, cellY, CELL_SIZE, CELL_SIZE, COLORS.emptyCellBg);
+      emptyCell.setStrokeStyle(BORDER_WIDTH, COLORS.emptyCellBorder);
+      container.add(emptyCell);
+      cellObjects.push(emptyCell);
+      // An inset inner frame gives the empty slot a clear "recessed well"
+      // identity that reads unambiguously as unused capacity — more explicit
+      // than a single flat placeholder mark.
+      const emptyInset = scene.add.rectangle(cellX, cellY, CELL_SIZE - 22, CELL_SIZE - 22);
+      emptyInset.setFillStyle(0, 0);
+      emptyInset.setStrokeStyle(1, COLORS.emptyCellBorder, 0.9);
+      container.add(emptyInset);
+      cellObjects.push(emptyInset);
+    }
+
+    // Thin divider anchoring the count footer to the grid above it, so the
+    // footer reads as part of the panel layout rather than floating loose.
+    const footerDivider = scene.add.rectangle(
+      gridLeft + gridPixelWidth / 2,
+      panelY + panelHeight - PANEL_PADDING - 30,
+      gridPixelWidth,
+      2,
+      COLORS.emptyCellBorder,
+      0.7,
+    );
+    container.add(footerDivider);
+    cellObjects.push(footerDivider);
+
+    // Item count footer, left-aligned under the centered grid.
     const countFooter = crispText(
-      panelX + PANEL_PADDING,
-      panelY + panelHeight - PANEL_PADDING,
+      gridLeft,
+      panelY + panelHeight - PANEL_PADDING - 10,
       `${slots.length} item${slots.length !== 1 ? 's' : ''}`,
       {
         fontFamily: FONT_FAMILY,
         fontSize: '12px',
-        color: '#666688',
+        color: hex(COLORS.textSecondary),
       },
     );
     countFooter.setOrigin(0, 1);
@@ -571,53 +712,30 @@ export function createInventoryUI(
 
   function showTooltip(def: ItemDef, slot: InventorySlot, cellX: number, cellY: number): void {
     clearTooltip();
-
-    const tooltipWidth = 200;
-    const tooltipHeight = 110;
-    const tx = snap(Math.min(cellX + CELL_SIZE / 2 + 8, panelX + panelWidth - tooltipWidth - 8));
-    const ty = snap(Math.max(cellY - tooltipHeight / 2, panelY + 8));
-
-    const tooltipBg = scene.add.rectangle(
-      tx + tooltipWidth / 2,
-      ty + tooltipHeight / 2,
-      tooltipWidth,
-      tooltipHeight,
-      COLORS.tooltipBg,
-      0.95,
-    );
-    tooltipBg.setStrokeStyle(1, COLORS.tooltipBorder);
-
-    const rarityColor = RARITY_COLORS[def.rarity] ?? 0x9e9e9e;
-    const nameText = crispText(tx + 8, ty + 8, def.name, {
-      fontFamily: FONT_FAMILY,
-      fontSize: '15px',
-      color: `#${rarityColor.toString(16).padStart(6, '0')}`,
-      wordWrap: { width: tooltipWidth - 16 },
-    });
-
-    const descText = crispText(tx + 8, ty + 26, def.description, {
-      fontFamily: FONT_FAMILY,
-      fontSize: '12px',
-      color: '#9ca3af',
-      wordWrap: { width: tooltipWidth - 16 },
-    });
-
-    const metaText = crispText(
-      tx + 8,
-      ty + tooltipHeight - 16,
-      `${def.rarity} · x${slot.quantity} · [${def.tags.join(', ')}]`,
-      {
+    // Surface the equip affordance only when a coordinator is listening and the
+    // item can actually be equipped.
+    const footerHint =
+      config.onEquipItem !== undefined && isEquippableItem(slot.itemId)
+        ? 'DOUBLE-CLICK TO EQUIP'
+        : undefined;
+    tooltipObjects.push(
+      ...renderItemTooltip({
+        scene,
+        container,
+        panelX,
+        panelY,
+        panelWidth,
+        panelHeight,
+        anchorX: cellX,
+        anchorY: cellY,
+        anchorSize: CELL_SIZE,
+        def,
+        quantity: slot.quantity,
         fontFamily: FONT_FAMILY,
-        fontSize: '11px',
-        color: '#666688',
-      },
+        footerHint,
+        crispText,
+      }),
     );
-
-    container.add(tooltipBg);
-    container.add(nameText);
-    container.add(descText);
-    container.add(metaText);
-    tooltipObjects.push(tooltipBg, nameText, descText, metaText);
   }
 
   // ---------------------------------------------------------------------------
@@ -643,11 +761,11 @@ export function createInventoryUI(
 
   function updateSearchDisplay(): void {
     if (searchQuery) {
-      searchText.setText(`🔍 ${searchQuery}`);
-      searchText.setColor('#c9d4ff');
+      searchText.setText(searchQuery);
+      searchText.setColor(hex(COLORS.textPrimary));
     } else {
-      searchText.setText('🔍 Type to search...');
-      searchText.setColor('#666688');
+      searchText.setText('Type to search...');
+      searchText.setColor(hex(COLORS.textSecondary));
     }
   }
 
@@ -734,6 +852,10 @@ export function createInventoryUI(
       if (!cell) return null;
       const b = cell.getBounds();
       return { x: b.x, y: b.y, width: b.width, height: b.height };
+    },
+    getCellIndexForItem: (itemId: string): number | null => {
+      const i = cellItemIds.indexOf(itemId);
+      return i >= 0 ? i : null;
     },
     isTooltipVisible: () => tooltipObjects.length > 0,
     isTooltipPinned: () => pinned !== null,

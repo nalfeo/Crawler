@@ -7,7 +7,7 @@
  * - Batch simulation runs
  * - CI regression tests
  */
-import { query } from 'bitecs';
+import { hasComponent, query } from 'bitecs';
 import {
   Player,
   Health,
@@ -23,6 +23,7 @@ import { createLogger } from '../../shared/logger.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { FLOOR1_TUTORIAL_QUEST_ID } from '../../shared/quest-types.js';
 import { xpRequiredForLevel } from '../../shared/xpMath.js';
+import { createWeaponTelemetry, summarizeWeaponTelemetry } from '../../core/weapon-telemetry.js';
 import {
   AIDecisionDebugState,
   type AIInputProvider,
@@ -107,10 +108,27 @@ export interface HeadlessRunnerConfig {
    * 60 FPS).
    */
   questStallFrames?: number;
+  /**
+   * Optional inspection hook invoked with the live `GameWorld` after the run
+   * completes (or crashes) but before `runHeadless` returns. Used by CI
+   * gates that need to statically enumerate entities/components at the end
+   * of a deterministic slice — e.g. `check:weight-coverage` walks every
+   * Enemy/Player/Prop and asserts `weight.value > 0`. The hook MUST NOT
+   * mutate the world; it is called after all simulation stops.
+   */
+  onFinish?: (world: GameWorld) => void;
+  /**
+   * Opt-in: collect per-run weapon-accuracy telemetry (swings, connecting hits,
+   * accuracy, multi-hit rate) and expose it as `RunStats.weaponTelemetry`. OFF by
+   * default — when false the world's `weaponTelemetry` field stays undefined and
+   * the simulation pays zero cost, so the Floor-1 gate and determinism are
+   * unaffected.
+   */
+  recordWeaponTelemetry?: boolean;
 }
 
 const DEFAULT_CONFIG: Required<
-  Omit<HeadlessRunnerConfig, 'simulationOptions' | 'recordEvent' | 'forceWeaponId'>
+  Omit<HeadlessRunnerConfig, 'simulationOptions' | 'recordEvent' | 'forceWeaponId' | 'onFinish'>
 > = {
   seed: 12345,
   maxFrames: 100_000, // ~27 min at 60 FPS
@@ -122,6 +140,7 @@ const DEFAULT_CONFIG: Required<
   enemyDamageMultiplier: 1,
   floorId: 'floor1',
   startPlayerLevel: 1,
+  recordWeaponTelemetry: false,
 };
 
 function applyConfiguredHostileDamageMultiplier(
@@ -178,7 +197,7 @@ function computeSpawnerArenaMetrics(world: GameWorld): {
     if (state === 2) resolved += 1;
     // Count spawners that raised a *real* barrier at some point in the run via
     // the persistent `spawnerArenaEverArmed` latch. It is set only when a
-    // non-empty fence snapshot / locked-door list is actually stored, and is
+    // non-empty barrier handle is actually stored, and is
     // NOT cleared on resolve — so a killed arena still counts, while an
     // IDLE→RESOLVED short-circuit (spawner died before it ever armed) does not
     // inflate the count. `resolvedArmed` is the subset that also resolved — the
@@ -230,6 +249,9 @@ export async function runHeadless(
 
   // Create world and spawn player
   const world = createGameWorld({ seed: mergedConfig.seed });
+  if (mergedConfig.recordWeaponTelemetry) {
+    world.weaponTelemetry = createWeaponTelemetry();
+  }
   const playerEid = spawnPlayer(world, 400, 400);
   const hostileDamageMultiplier = normalizeHostileDamageMultiplier(
     mergedConfig.enemyDamageMultiplier,
@@ -299,6 +321,7 @@ export async function runHeadless(
   const questsFailed: string[] = [];
   let mainQuestAcceptedMs: number | null = null;
   let mainQuestCompletedMs: number | null = null;
+  let previousEnemyCount = query(world.ecs, [Enemy]).length;
   // General quest-log telemetry (floor-agnostic): tracks `world.questLog`, the
   // canonical quest system, independent of any floor-specific objective struct.
   // This is the source of truth for which quests were accepted/completed.
@@ -410,7 +433,6 @@ export async function runHeadless(
       }
 
       // Track state before frame
-      const previousEnemyCount = query(world.ecs, [Enemy]).length;
       const previousPlayerHealth = world.stores.health.current[playerEid] ?? 0;
 
       // AI decides input for this frame
@@ -439,8 +461,10 @@ export async function runHeadless(
       frameCount++;
 
       // Check win/loss conditions
-      const playerEntities = query(world.ecs, [Player, Health]);
-      if (playerEntities.length === 0 || playerEntities[0] === undefined) {
+      if (
+        !hasComponent(world.ecs, playerEid, Player) ||
+        !hasComponent(world.ecs, playerEid, Health)
+      ) {
         outcome = 'death';
         break;
       }
@@ -539,6 +563,7 @@ export async function runHeadless(
           }
         }
       }
+      previousEnemyCount = currentEnemyCount;
 
       // 4. Quest tracking (basic - would need event system for full tracking)
       if (world.floorScenario) {
@@ -664,7 +689,7 @@ export async function runHeadless(
     const playerHealth = world.stores.health.current[playerEid] ?? 0;
     const currentHealthPercent = playerHealth / playerMaxHealth;
 
-    return {
+    const crashStats: RunStats = {
       totalFrames: frameCount,
       wallTimeMs,
       gameTimeMs: world.elapsedMs,
@@ -704,7 +729,18 @@ export async function runHeadless(
       startingWeapon,
       aiTelemetry: buildAiTelemetry(),
       spawnerArenas: computeSpawnerArenaMetrics(world),
+      ...(world.weaponTelemetry
+        ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
+        : {}),
     };
+    if (mergedConfig.onFinish) {
+      try {
+        mergedConfig.onFinish(world);
+      } catch (hookErr) {
+        logger.error('Headless runner onFinish hook threw', { error: hookErr });
+      }
+    }
+    return crashStats;
   }
 
   const wallTimeMs = Date.now() - startTime;
@@ -759,6 +795,9 @@ export async function runHeadless(
     startingWeapon,
     aiTelemetry: buildAiTelemetry(),
     spawnerArenas: computeSpawnerArenaMetrics(world),
+    ...(world.weaponTelemetry
+      ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
+      : {}),
   };
 
   if (mergedConfig.debug || mergedConfig.progressInterval > 0) {
@@ -767,6 +806,14 @@ export async function runHeadless(
       fps: fps.toFixed(0),
       combatTimePercent: ((combatTimeMs / world.elapsedMs) * 100).toFixed(1),
     });
+  }
+
+  if (mergedConfig.onFinish) {
+    try {
+      mergedConfig.onFinish(world);
+    } catch (hookErr) {
+      logger.error('Headless runner onFinish hook threw', { error: hookErr });
+    }
   }
 
   return stats;

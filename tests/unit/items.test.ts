@@ -15,7 +15,7 @@ describe('Item Catalog', () => {
   });
 
   it('snapshot: current catalog size (update when intentionally adding items)', () => {
-    expect(ITEM_CATALOG).toHaveLength(108);
+    expect(ITEM_CATALOG).toHaveLength(123);
   });
 
   it('has unique IDs', () => {

@@ -18,6 +18,7 @@ import {
 } from '../components.js';
 import { PHYSICS_BODIES, SHAPE_BOX, SHAPE_CIRCLE } from '../physics-defs.js';
 import type { GameWorld } from '../world.js';
+import { tagAttackEntity } from '../weapon-telemetry.js';
 import { createEntity } from './entity-core.js';
 
 export function spawnProjectile(
@@ -58,6 +59,7 @@ export function spawnProjectile(
     addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
   }
 
+  tagAttackEntity(world, eid);
   return eid;
 }
 

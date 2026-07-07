@@ -64,6 +64,19 @@ export class FloorMap implements FloorMapData {
   private _subFactor: number;
   readonly playerSpawn: { readonly x: number; readonly y: number };
 
+  /**
+   * Bounding box of sub-tile cells set by the most recent FOV pass (sub-tile
+   * coords, inclusive). Used by {@link clearVisibility} to zero only the
+   * previously-visible window instead of the full bitmap.
+   *
+   * Invariant: maxX < minX (or maxY < minY) means the box is empty — no
+   * cells have been set since the last clear.  Initialised to empty state.
+   */
+  private lastFovMinX = 0;
+  private lastFovMinY = 0;
+  private lastFovMaxX = -1;
+  private lastFovMaxY = -1;
+
   constructor(
     config: MapConfig,
     tileMap: TileMap,
@@ -176,10 +189,79 @@ export class FloorMap implements FloorMapData {
     };
   }
 
+  /**
+   * Optional barrier lookup — installed by the ECS wiring so
+   * `isPassableAt` also refuses tiles occupied by a dynamic barrier
+   * (see `src/core/barriers/`). Returns `true` iff the tile at `tileX,tileY`
+   * has ANY live barrier on it. Kept as a callback rather than a direct
+   * `BarrierRegistry` reference so FloorMap has zero import dependency on
+   * the barrier module — the registry can grow without churning the map
+   * layer.
+   */
+  private barrierLookup: ((tileX: number, tileY: number) => boolean) | null = null;
+
+  /**
+   * Attach the barrier-tile predicate. Called once by the world wiring at
+   * floor-load; passing `null` detaches. `isPassableAt` and
+   * `isTilePassableWithBarriers` consult it.
+   */
+  setBarrierLookup(fn: ((tileX: number, tileY: number) => boolean) | null): void {
+    this.barrierLookup = fn;
+  }
+
+  /**
+   * Optional feet-precision barrier lookup — installed alongside
+   * {@link barrierLookup} by the ECS wiring. Returns `true` iff the world
+   * point `(xFt, yFt)` sits inside an ANALYTIC barrier shape (e.g. a 1 ft-thick
+   * ring wall). This is the sub-tile chokepoint: tile-granular barriers are too
+   * coarse for a thin circular wall, so `isPassableAt` consults this in
+   * addition to the tile lookup. Kept as a callback for the same zero-import
+   * reason as {@link barrierLookup}.
+   */
+  private barrierPointLookup: ((xFt: number, yFt: number) => boolean) | null = null;
+
+  /**
+   * Attach the feet-precision barrier predicate. Called once by the world
+   * wiring at floor-load; passing `null` detaches.
+   */
+  setBarrierPointLookup(fn: ((xFt: number, yFt: number) => boolean) | null): void {
+    this.barrierPointLookup = fn;
+  }
+
+  /**
+   * True iff the world point `(xFt, yFt)` sits inside an analytic barrier
+   * shape. Returns `false` when no lookup is attached (the no-overlay happy
+   * path). Movement collision is point-based, so this is the only surface that
+   * needs feet precision — pathfinding stays tile-granular (an analytic ring
+   * owns no tiles, which is acceptable: everyone is inside the arena and
+   * movement collision enforces the wall).
+   */
+  hasBarrierAtPoint(xFt: number, yFt: number): boolean {
+    return this.barrierPointLookup ? this.barrierPointLookup(xFt, yFt) : false;
+  }
+
+  /**
+   * Public accessor primarily for pathfinding — check whether a tile is
+   * blocked by a barrier without going through the world-position wrapper.
+   * Returns `false` when no lookup has been attached (i.e. no barriers on
+   * this floor), which is the "no overlay" happy path.
+   */
+  hasBarrierAtTile(tileX: number, tileY: number): boolean {
+    return this.barrierLookup ? this.barrierLookup(tileX, tileY) : false;
+  }
+
   /** Check if a feet world position is on a passable tile. */
   isPassableAt(x: number, y: number): boolean {
     const t = this.worldToTile(x, y);
-    return this.tileMap.isPassable(t.x, t.y);
+    if (!this.tileMap.isPassable(t.x, t.y)) return false;
+    // Barriers overlay tile passability: even on a normally-walkable tile,
+    // a live barrier blocks movement. Underlying flags are untouched — see
+    // ADR 0050 for why we don't mutate them.
+    if (this.hasBarrierAtTile(t.x, t.y)) return false;
+    // Analytic (sub-tile) barriers — e.g. a 1 ft-thick ring wall — are queried
+    // at feet precision so a thin wall blocks exactly instead of snapping to
+    // a 4 ft tile. No-op fast path when no analytic barrier is installed.
+    return !this.hasBarrierAtPoint(x, y);
   }
 
   /**
@@ -230,16 +312,49 @@ export class FloorMap implements FloorMapData {
   /**
    * Clear the per-frame visibility bitmap (called before each FOV recompute).
    * Does NOT clear `discovered` — explored terrain persists for the floor.
+   *
+   * Performance: instead of zeroing the entire sub-tile bitmap (up to 134 K
+   * cells for a 240×140 map at subFactor=2), only the bounding box of cells
+   * set during the previous FOV pass is zeroed.  The FOV radius is 25 tiles
+   * → the active window is at most (2×25+1)²×subFactor² ≈ 10 K sub-cells,
+   * compared to ~134 K without bounding, a ~13× reduction.
    */
   clearVisibility(): void {
-    this.visible.fill(0);
-    this.tileVisible.fill(0);
+    const minX = this.lastFovMinX;
+    const minY = this.lastFovMinY;
+    const maxX = this.lastFovMaxX;
+    const maxY = this.lastFovMaxY;
+    if (maxX >= minX && maxY >= minY) {
+      // Zero only the previously-visible sub-tile rows.
+      const sw = this.subWidth;
+      for (let hy = minY; hy <= maxY; hy++) {
+        const rowBase = hy * sw;
+        this.visible.fill(0, rowBase + minX, rowBase + maxX + 1);
+      }
+      // Zero the corresponding tile-level cache entries (inclusive tile range).
+      const sf = this._subFactor;
+      const tMinX = Math.floor(minX / sf);
+      const tMinY = Math.floor(minY / sf);
+      const tMaxX = Math.floor(maxX / sf);
+      const tMaxY = Math.floor(maxY / sf);
+      const tw = this.config.widthTiles;
+      for (let ty = tMinY; ty <= tMaxY; ty++) {
+        const rowBase = ty * tw;
+        this.tileVisible.fill(0, rowBase + tMinX, rowBase + tMaxX + 1);
+      }
+    }
+    // Reset bounds so the next FOV pass builds a fresh bounding box.
+    this.lastFovMinX = this.subWidth;
+    this.lastFovMinY = this.subHeight;
+    this.lastFovMaxX = -1;
+    this.lastFovMaxY = -1;
   }
 
   /**
    * Mark a sub-tile as visible (called by the FOV system). Takes sub-tile
    * coordinates `(hx, hy)` in the current `subFactor`× grid. Also updates the
-   * O(1) tile-level cache read by `isVisible`.
+   * O(1) tile-level cache read by `isVisible`, and expands the per-frame
+   * bounding box used by {@link clearVisibility}.
    */
   setVisible(hx: number, hy: number): void {
     if (hx < 0 || hx >= this.subWidth || hy < 0 || hy >= this.subHeight) return;
@@ -247,6 +362,11 @@ export class FloorMap implements FloorMapData {
     const tx = Math.floor(hx / this._subFactor);
     const ty = Math.floor(hy / this._subFactor);
     this.tileVisible[ty * this.config.widthTiles + tx] = 1;
+    // Expand the bounding box that clearVisibility() will zero next frame.
+    if (hx < this.lastFovMinX) this.lastFovMinX = hx;
+    if (hy < this.lastFovMinY) this.lastFovMinY = hy;
+    if (hx > this.lastFovMaxX) this.lastFovMaxX = hx;
+    if (hy > this.lastFovMaxY) this.lastFovMaxY = hy;
   }
 
   /**
@@ -293,10 +413,17 @@ export class FloorMap implements FloorMapData {
   /**
    * Reveal the entire map (mark every tile visible). Convenience for labs /
    * snapshots that render without fog; keeps the O(1) tile cache in sync.
+   * Also sets the FOV bounding box to the full map so a subsequent
+   * {@link clearVisibility} call correctly zeroes the whole bitmap.
    */
   revealAll(): void {
     this.visible.fill(1);
     this.tileVisible.fill(1);
+    // Full map is now "visible", so the clear bounding box must cover it all.
+    this.lastFovMinX = 0;
+    this.lastFovMinY = 0;
+    this.lastFovMaxX = this.subWidth - 1;
+    this.lastFovMaxY = this.subHeight - 1;
   }
 
   /**
@@ -316,6 +443,11 @@ export class FloorMap implements FloorMapData {
     this.discovered = new Uint8Array(subCells);
     this.tileVisible.fill(0);
     this.tileDiscovered.fill(0);
+    // Reset the FOV bounding box — old coords no longer map to the new resolution.
+    this.lastFovMinX = this.subWidth;
+    this.lastFovMinY = this.subHeight;
+    this.lastFovMaxX = -1;
+    this.lastFovMaxY = -1;
     return next;
   }
 }

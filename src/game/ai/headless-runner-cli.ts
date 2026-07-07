@@ -28,6 +28,7 @@ interface CLIArgs {
   enemyDamageMultiplier: number;
   floorId: string;
   startPlayerLevel: number;
+  weaponTelemetry: boolean;
 }
 
 function parseArgs(): CLIArgs {
@@ -46,6 +47,7 @@ function parseArgs(): CLIArgs {
     enemyDamageMultiplier: 1,
     floorId: 'floor1',
     startPlayerLevel: 1,
+    weaponTelemetry: false,
   };
 
   for (let i = 2; i < process.argv.length; i++) {
@@ -98,6 +100,8 @@ function parseArgs(): CLIArgs {
       }
       args.startPlayerLevel = parsed;
       i++;
+    } else if (arg === '--weapon-telemetry') {
+      args.weaponTelemetry = true;
     } else if (arg === '--debug') {
       args.debug = true;
     }
@@ -128,6 +132,7 @@ Options:
                            Multiply hostile Damage values (default: 1)
   --floor <id>            Scenario floor id (default: floor1)
   --start-level <n>       Start at player character level N (default: 1, no boost)
+  --weapon-telemetry      Collect + print per-run weapon accuracy (swings, hits, multi-hit)
   --help, -h              Show this help message
 
 Examples:
@@ -185,6 +190,7 @@ async function main(): Promise<void> {
     enemyDamageMultiplier: args.enemyDamageMultiplier,
     floorId: args.floorId,
     startPlayerLevel: args.startPlayerLevel,
+    recordWeaponTelemetry: args.weaponTelemetry,
     ...(recording
       ? {
           recordEvent: (event: SimEvent): void => {
@@ -225,6 +231,22 @@ async function main(): Promise<void> {
   console.log(
     `  Damage Taken: ${stats.combat.damageTaken.toFixed(0)} (${(stats.combat.damageTaken / (stats.gameTimeMs / 1000)).toFixed(1)}/s)`,
   );
+  if (stats.weaponTelemetry) {
+    const wt = stats.weaponTelemetry;
+    console.log('');
+    console.log('🎯 Weapon Accuracy');
+    console.log(`  Swings:       ${wt.swings}`);
+    console.log(
+      `  Connecting:   ${wt.connectingSwings} (${(wt.accuracy * 100).toFixed(1)}% accuracy)`,
+    );
+    console.log(`  Acc. Misses:  ${wt.accuracyMisses}`);
+    console.log(
+      `  Multi-hit:    ${wt.multiHitSwings} (${(wt.multiHitRate * 100).toFixed(1)}% of connecting)`,
+    );
+    console.log(
+      `  Enemies Hit:  ${wt.totalEnemyHits} (${wt.avgEnemiesPerConnectingSwing.toFixed(2)}/connecting swing)`,
+    );
+  }
   console.log('');
   console.log('❤️  Health Metrics');
   console.log(`  Min HP:       ${(stats.health.minHealthPercent * 100).toFixed(1)}%`);

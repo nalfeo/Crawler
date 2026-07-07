@@ -254,6 +254,15 @@ test('missingLedgerReason truncates long code lists', () => {
   assert.match(msg, /\+8 more/);
 });
 
+test('missingLedgerReason states the current tier matrix (plan-review floor raised to 3🍎)', () => {
+  const msg = missingLedgerReason(['src/core/a.ts']);
+  assert.match(msg, /1–2 → \(none/);
+  assert.match(msg, /3 → plan_review \+ code_review/);
+  assert.match(msg, /4–5 → \+ dual_plan_synthesis \+ multi_model_review/);
+  // The pre-2026-07-07 "2 → plan_review" phrasing must be gone.
+  assert.doesNotMatch(msg, /2 → plan_review/);
+});
+
 // ---------------------------------------------------------------------------
 // guard metadata
 // ---------------------------------------------------------------------------

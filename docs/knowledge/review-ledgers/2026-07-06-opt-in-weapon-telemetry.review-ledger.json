@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-06",
+  "session_slug": "opt-in-weapon-telemetry",
+  "task_title": "opt-in per-run weapon telemetry (accuracy + multi-hit)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "notes": "Separate-model plan review of the cherry-pick + invariant-preservation plan. 4 concerns raised: (1) beam/trap attacks counted as swings but never tagged -> under-reported accuracy; (2) projectile activation tags not pruned on projectileCleanupSystem/returningProjectileSystem despawn paths (leak + recycled-eid misattribution); (3) recorder exposed telemetry based on world presence rather than its own opt-in flag; (4) missing regression coverage for the prune paths. All 4 adopted: #2 and #3 fixed in code, #4 added as 6 regression tests, #1 accepted as a documented known-limitation (preserves invariant 2; Floor-1 sweep uses melee/ranged only, so unaffected)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Confirmed the pruning-leak bug (concern #2): projectile despawn via clearEntityStores+removeEntity did not prune the activation tag. Fixed at 6 sites."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Re-review after fixes. Verified all 6 despawn paths prune before removeEntity, recorder scoping gates both install and getStats() exposure, and all 6 regression tests are genuine guards. No concerns."
+        }
+      ]
+    }
+  }
+}

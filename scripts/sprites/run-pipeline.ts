@@ -88,10 +88,15 @@ export async function postprocessScoreAndStoreVariant(
 ): Promise<ProcessedVariant> {
   const { store, storeKey, index, raw, brief, palette } = args;
   const traced = postprocessWithTrace(raw, brief, palette, args.options ?? {});
+  const manualAnchorForVariant =
+    args.manualAnchor &&
+    (args.manualAnchor.applyToAllVariants === true || args.manualAnchor.variantIndex === index)
+      ? args.manualAnchor
+      : null;
   const processed = traced.finalPng;
   const scorecard = applyManualAnchorToScorecard(
     scoreCandidate(processed, brief, palette),
-    args.manualAnchor?.variantIndex === index ? args.manualAnchor : null,
+    manualAnchorForVariant,
   );
   const id = pad2(index);
 
@@ -145,17 +150,20 @@ export async function postprocessScoreAndStoreVariant(
   } else {
     await store.remove(storeKey(`processed/${id}.anchor.json`));
   }
-  if (args.manualAnchor?.variantIndex === index) {
+  if (manualAnchorForVariant) {
     await store.put(
       storeKey(`processed/${id}.manual-anchor.json`),
       Buffer.from(
         `${JSON.stringify(
           {
-            x: args.manualAnchor.x,
-            y: args.manualAnchor.y,
-            variantIndex: args.manualAnchor.variantIndex,
+            x: manualAnchorForVariant.x,
+            y: manualAnchorForVariant.y,
+            variantIndex: manualAnchorForVariant.variantIndex,
+            ...(manualAnchorForVariant.applyToAllVariants === true
+              ? { applyToAllVariants: true }
+              : {}),
             source: 'manual' as const,
-            updatedAt: args.manualAnchor.updatedAt,
+            updatedAt: manualAnchorForVariant.updatedAt,
           },
           null,
           2,

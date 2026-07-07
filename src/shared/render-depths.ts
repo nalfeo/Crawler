@@ -21,6 +21,15 @@
 export const UI_DEPTH_CUTOFF = 900;
 
 /**
+ * Default depth for living entities (player, enemies, NPCs, projectiles).
+ * Phaser's built-in default already sits at `0`, but the corpse-depth logic
+ * in `PhaserBridge` needs a symbolic constant to restore when a formerly-
+ * dead EID is recycled for a living entity — hardcoding `0` there would
+ * silently regress if the entity plane ever moves.
+ */
+export const ENTITY_DEPTH = 0;
+
+/**
  * Depth of the dynamic darkness/light overlay. It must sit ABOVE every
  * world-space gameplay object — terrain, props, entities (mobs/NPCs/player) and
  * VFX/objective markers — so the torch falloff dims sprites in shadow, not just
@@ -47,14 +56,28 @@ export const PROP_DEPTH = {
  * Depths for world-space VFX layers. All values are well below `UI_DEPTH_CUTOFF`
  * so `refreshCameraMasks()` keeps them on the world camera. Relative ordering
  * controls which VFX draws on top (gore < combat text < debug path).
+ *
+ * Ground-plane VFX (bloodPool, corpse, playerTrail) live in NEGATIVE depths so
+ * they render BELOW the default Phaser display depth (0) that living entities
+ * inherit. This keeps the player from being buried under blood or corpses.
+ * Relative ordering between them (pool < corpse < trail) is preserved so a
+ * corpse still lies on top of the pool it bled into and the walking dust
+ * doesn't hide either.
  */
 export const WORLD_VFX_DEPTH = {
-  /** Persistent blood/ichor pools left on the ground after an enemy dies. */
-  bloodPool: 5,
+  /** Persistent blood/ichor pools left on the ground after an enemy dies.
+   * Sits below every entity so the player/enemies always draw ON TOP of a
+   * pool they stand in, and below `corpse` so a corpse still reads as
+   * lying inside the pool it bled into. */
+  bloodPool: -18,
+  /** A dead enemy's decaying sprite. Sits above the blood pool so the corpse
+   * reads as lying IN the pool, and below the default entity depth (0) so
+   * the living player never renders under a corpse. */
+  corpse: -17,
   /** Small dust puffs kicked up behind the player as they move. Sits above
-   * the blood pool but below gore so a puff kicked up on a corpse doesn't
-   * hide the pool underneath. */
-  playerTrail: 6,
+   * the blood pool + corpse but still below entities so the puff is a
+   * ground-plane effect, not something floating in front of the player. */
+  playerTrail: -16,
   /** Blood/gore splatter particles. */
   gore: 10,
   /** Enemy death "pop" ring + scatter (EffectsVfx). */

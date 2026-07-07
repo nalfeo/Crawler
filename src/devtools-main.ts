@@ -36,6 +36,12 @@ import {
   isSidecarRouteMissing,
   type CheckinPrepareResponse,
   type SidecarRunListEntry,
+  type SidecarStorageRunEntry,
+  type StorageRunEnrichment,
+  archiveStorageRuns,
+  deleteStorageRunsBatch,
+  enrichStorageRuns,
+  listStorageRuns,
 } from './devtools/sprite-approval-api.js';
 import {
   RUN_CACHE_STORAGE_KEY,
@@ -91,13 +97,15 @@ const DEVTOOLS_PAGE_FLOOR_ART_LEGACY = 'floor-art';
 const DEVTOOLS_PAGE_SPRITE_REVIEW = 'sprite-review';
 const DEVTOOLS_PAGE_POSTPROCESS = 'postprocess';
 const DEVTOOLS_PAGE_ACHIEVEMENTS = 'achievements';
+const DEVTOOLS_PAGE_STORAGE = 'storage';
 const QUEUED_RUN_POLL_MS = 2000;
 type DevtoolsPage =
   | typeof DEVTOOLS_PAGE_HOME
   | typeof DEVTOOLS_PAGE_SPRITE_WORKFLOW
   | typeof DEVTOOLS_PAGE_SPRITE_REVIEW
   | typeof DEVTOOLS_PAGE_POSTPROCESS
-  | typeof DEVTOOLS_PAGE_ACHIEVEMENTS;
+  | typeof DEVTOOLS_PAGE_ACHIEVEMENTS
+  | typeof DEVTOOLS_PAGE_STORAGE;
 const STATUS_COLORS: Readonly<Record<FloorArtStatus, string>> = {
   ready: '#16a34a',
   approved: '#0284c7',
@@ -388,6 +396,8 @@ interface LivePostprocessOptions {
   };
 }
 
+type FacingDirection = 'left' | 'right';
+
 // NOTE: These defaults MUST stay identical to the generation-side post-process
 // constants BACKGROUND_B_COLOR_TOLERANCE_SQ / BACKGROUND_B_FRINGE_TOLERANCE_SQ
 // in scripts/sprites/postprocess.ts. If they drift, the workflow grid
@@ -410,6 +420,13 @@ interface ManualAnchorState {
   variantIndex: number;
   x: number;
   y: number;
+  applyToAllVariants?: boolean;
+}
+
+interface AnchorMarkerState {
+  x: number;
+  y: number;
+  source: 'manual' | 'derived' | 'brief';
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -466,6 +483,7 @@ function currentDevtoolsPage(): DevtoolsPage {
   }
   if (value === DEVTOOLS_PAGE_SPRITE_REVIEW) return DEVTOOLS_PAGE_SPRITE_REVIEW;
   if (value === DEVTOOLS_PAGE_ACHIEVEMENTS) return DEVTOOLS_PAGE_ACHIEVEMENTS;
+  if (value === DEVTOOLS_PAGE_STORAGE) return DEVTOOLS_PAGE_STORAGE;
   return value === DEVTOOLS_PAGE_POSTPROCESS ? DEVTOOLS_PAGE_POSTPROCESS : DEVTOOLS_PAGE_HOME;
 }
 
@@ -1022,6 +1040,429 @@ function renderAchievementsEditorPage(shell: HTMLElement): void {
   updateExport();
 }
 
+function keyForStorageRun(scope: 'active' | 'archive', run: SidecarStorageRunEntry): string {
+  return `${scope === 'archive' ? 'archive/' : ''}${run.briefId}/${run.runId}`;
+}
+
+function renderStorageLifecyclePage(shell: HTMLElement): void {
+  const panel = el('section', {
+    style: {
+      border: '1px solid rgba(229,231,235,0.2)',
+      borderRadius: '10px',
+      background: '#0b1220',
+      padding: '12px',
+      display: 'grid',
+      gap: '10px',
+    },
+  });
+  shell.append(panel);
+
+  const status = el('div', {
+    text: 'Loading…',
+    style: { color: '#93c5fd', fontSize: '13px' },
+  });
+
+  const fieldStyle: Partial<CSSStyleDeclaration> = {
+    padding: '8px 10px',
+    borderRadius: '8px',
+    border: '1px solid rgba(229,231,235,0.3)',
+    background: '#111827',
+    color: '#e5e7eb',
+  };
+  const buttonStyle: Partial<CSSStyleDeclaration> = {
+    padding: '8px 12px',
+    borderRadius: '8px',
+    border: '1px solid rgba(126,224,255,0.4)',
+    background: 'rgba(30,41,59,0.95)',
+    color: '#7ee0ff',
+    cursor: 'pointer',
+  };
+
+  const controls = el('div', {
+    style: { display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' },
+  });
+  const scopeSelect = el('select', { style: fieldStyle });
+  for (const [value, label] of [
+    ['active', 'Active runs'],
+    ['archive', 'Archive'],
+  ] as const) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    scopeSelect.append(option);
+  }
+  const searchInput = el('input', { style: { ...fieldStyle, flex: '1 1 220px' } });
+  searchInput.type = 'search';
+  searchInput.placeholder = 'Search brief or run id';
+  const refreshBtn = el('button', { text: 'Refresh', style: buttonStyle });
+  const archiveBtn = el('button', { text: 'Archive selected', style: buttonStyle });
+  const deleteBtn = el('button', { text: 'Delete selected', style: buttonStyle });
+  controls.append(scopeSelect, searchInput, refreshBtn, archiveBtn, deleteBtn);
+
+  const sortSelect = el('select', { style: fieldStyle, title: 'Sort order' });
+  for (const [value, label] of [
+    ['newest', 'Sort: Newest first'],
+    ['oldest', 'Sort: Oldest first'],
+    ['brief', 'Sort: Brief (A–Z)'],
+    ['approved', 'Sort: Most approved'],
+  ] as const) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    sortSelect.append(option);
+  }
+  const filterSelect = el('select', { style: fieldStyle, title: 'Filter runs' });
+  for (const [value, label] of [
+    ['all', 'Show: All runs'],
+    ['approved', 'Show: Has approved'],
+    ['unapproved', 'Show: No approved'],
+    ['brief-stored', 'Show: Brief stored'],
+    ['brief-missing', 'Show: Brief missing'],
+  ] as const) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    filterSelect.append(option);
+  }
+  const controls2 = el('div', {
+    style: { display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' },
+  });
+  controls2.append(sortSelect, filterSelect);
+
+  const listHost = el('div', { style: { overflowX: 'auto' } });
+  panel.append(status, controls, controls2, listHost);
+
+  let selected = new Set<string>();
+  let currentRuns: readonly SidecarStorageRunEntry[] = [];
+  let enrichment = new Map<string, StorageRunEnrichment>();
+
+  const currentScope = (): 'active' | 'archive' =>
+    scopeSelect.value === 'archive' ? 'archive' : 'active';
+  const runKey = (run: SidecarStorageRunEntry): string => `${run.briefId}/${run.runId}`;
+
+  const cellStyle: Partial<CSSStyleDeclaration> = {
+    padding: '8px 10px',
+    borderBottom: '1px solid rgba(229,231,235,0.1)',
+    verticalAlign: 'middle',
+  };
+
+  const makeBadge = (text: string, kind: 'good' | 'warn' | 'muted'): HTMLElement => {
+    const palette = {
+      good: {
+        color: '#86efac',
+        border: 'rgba(134,239,172,0.4)',
+        background: 'rgba(22,101,52,0.35)',
+      },
+      warn: {
+        color: '#fcd34d',
+        border: 'rgba(252,211,77,0.4)',
+        background: 'rgba(120,53,15,0.35)',
+      },
+      muted: {
+        color: '#94a3b8',
+        border: 'rgba(148,163,184,0.3)',
+        background: 'rgba(30,41,59,0.6)',
+      },
+    }[kind];
+    return el('span', {
+      text,
+      style: {
+        display: 'inline-block',
+        padding: '2px 8px',
+        borderRadius: '999px',
+        fontSize: '11px',
+        whiteSpace: 'nowrap',
+        color: palette.color,
+        border: `1px solid ${palette.border}`,
+        background: palette.background,
+      },
+    });
+  };
+
+  const makeThumb = (src: string, size: number, title: string): HTMLElement => {
+    const wrap = el('span', {
+      title,
+      style: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minWidth: `${size}px`,
+        minHeight: `${size}px`,
+        color: '#64748b',
+      },
+    });
+    const img = document.createElement('img');
+    img.src = src;
+    img.alt = title;
+    Object.assign(img.style, {
+      width: `${size}px`,
+      height: `${size}px`,
+      objectFit: 'contain',
+      imageRendering: 'pixelated',
+      borderRadius: '6px',
+      border: '1px solid rgba(148,163,184,0.2)',
+      background: '#0f172a',
+    });
+    img.addEventListener('error', () => {
+      wrap.textContent = '—';
+    });
+    wrap.append(img);
+    return wrap;
+  };
+
+  const byRunIdDesc = (a: SidecarStorageRunEntry, b: SidecarStorageRunEntry): number =>
+    a.runId < b.runId ? 1 : a.runId > b.runId ? -1 : 0;
+
+  const displayRuns = (): SidecarStorageRunEntry[] => {
+    const filter = filterSelect.value;
+    const filtered = currentRuns.filter((run) => {
+      const enr = enrichment.get(runKey(run));
+      if (!enr) return true; // enrichment not loaded yet — never hide prematurely
+      switch (filter) {
+        case 'approved':
+          return enr.approvedCount > 0;
+        case 'unapproved':
+          return enr.approvedCount === 0;
+        case 'brief-stored':
+          return enr.briefStored;
+        case 'brief-missing':
+          return !enr.briefStored;
+        default:
+          return true;
+      }
+    });
+    const sorted = [...filtered];
+    switch (sortSelect.value) {
+      case 'oldest':
+        sorted.sort((a, b) => -byRunIdDesc(a, b));
+        break;
+      case 'brief':
+        sorted.sort((a, b) => a.briefId.localeCompare(b.briefId) || byRunIdDesc(a, b));
+        break;
+      case 'approved':
+        sorted.sort(
+          (a, b) =>
+            (enrichment.get(runKey(b))?.approvedCount ?? -1) -
+              (enrichment.get(runKey(a))?.approvedCount ?? -1) || byRunIdDesc(a, b),
+        );
+        break;
+      default:
+        sorted.sort(byRunIdDesc);
+    }
+    return sorted;
+  };
+
+  const renderRows = (scope: 'active' | 'archive'): void => {
+    const rows = displayRuns();
+    if (rows.length === 0) {
+      listHost.replaceChildren(
+        el('div', {
+          text: currentRuns.length === 0 ? 'No runs in this scope.' : 'No runs match this filter.',
+          style: { color: '#94a3b8', fontSize: '13px', padding: '10px 2px' },
+        }),
+      );
+      return;
+    }
+    const table = el('table', {
+      style: { width: '100%', borderCollapse: 'collapse', fontSize: '12px' },
+    });
+    const head = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    for (const label of [
+      '',
+      'Sheet',
+      'Approved art',
+      'Brief',
+      'Run',
+      'Timestamp',
+      'Variants',
+      'Brief stored',
+    ]) {
+      const th = document.createElement('th');
+      th.textContent = label;
+      Object.assign(th.style, {
+        textAlign: 'left',
+        padding: '8px 10px',
+        borderBottom: '1px solid rgba(229,231,235,0.1)',
+        color: '#cbd5e1',
+        whiteSpace: 'nowrap',
+      });
+      headRow.append(th);
+    }
+    head.append(headRow);
+    table.append(head);
+    const body = document.createElement('tbody');
+    for (const run of rows) {
+      const enr = enrichment.get(runKey(run));
+      const row = document.createElement('tr');
+      const key = keyForStorageRun(scope, run);
+
+      const checkCell = el('td', { style: cellStyle });
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.dataset.key = key;
+      checkbox.checked = selected.has(key);
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) selected.add(key);
+        else selected.delete(key);
+      });
+      checkCell.append(checkbox);
+      row.append(checkCell);
+
+      // Sprite-sheet thumbnail (active scope only — archived runs live under a
+      // different key prefix the image routes don't serve).
+      const sheetCell = el('td', { style: cellStyle });
+      if (!enr) {
+        sheetCell.append(el('span', { text: '…', style: { color: '#64748b' } }));
+      } else if (scope === 'active' && enr.sheetFile) {
+        sheetCell.append(
+          makeThumb(sheetUrl(run.briefId, run.runId, enr.sheetFile), 56, enr.sheetFile),
+        );
+      } else {
+        sheetCell.append(el('span', { text: '—', style: { color: '#64748b' } }));
+      }
+      row.append(sheetCell);
+
+      // First approved variant for the brief (from wherever it was approved).
+      const approvedCell = el('td', { style: cellStyle });
+      if (!enr) {
+        approvedCell.append(el('span', { text: '…', style: { color: '#64748b' } }));
+      } else if (enr.firstApproved) {
+        const padded = String(enr.firstApproved.variantIndex).padStart(2, '0');
+        approvedCell.append(
+          makeThumb(
+            spriteUrl(run.briefId, enr.firstApproved.runId, `${padded}.png`),
+            48,
+            `Approved variant #${enr.firstApproved.variantIndex} (from ${enr.firstApproved.runId})`,
+          ),
+        );
+      } else {
+        approvedCell.append(el('span', { text: '—', style: { color: '#64748b' } }));
+      }
+      row.append(approvedCell);
+
+      for (const value of [run.briefId, run.runId, run.timestamp ?? '—']) {
+        row.append(el('td', { text: value, style: cellStyle }));
+      }
+
+      // Variants / approved-count badge.
+      const variantsCell = el('td', { style: cellStyle });
+      if (!enr) {
+        variantsCell.append(el('span', { text: '…', style: { color: '#64748b' } }));
+      } else if (enr.approvedCount > 0) {
+        variantsCell.append(
+          makeBadge(
+            enr.variantCount !== null
+              ? `${enr.approvedCount} approved / ${enr.variantCount}`
+              : `${enr.approvedCount} approved`,
+            'good',
+          ),
+        );
+      } else {
+        variantsCell.append(
+          makeBadge(
+            enr.variantCount !== null ? `0 / ${enr.variantCount} approved` : 'none approved',
+            'muted',
+          ),
+        );
+      }
+      row.append(variantsCell);
+
+      // Brief-stored badge.
+      const briefCell = el('td', { style: cellStyle });
+      if (!enr) {
+        briefCell.append(el('span', { text: '…', style: { color: '#64748b' } }));
+      } else {
+        briefCell.append(
+          enr.briefStored ? makeBadge('✓ stored', 'good') : makeBadge('✗ missing', 'warn'),
+        );
+      }
+      row.append(briefCell);
+
+      body.append(row);
+    }
+    table.append(body);
+    listHost.replaceChildren(table);
+  };
+
+  const loadEnrichment = async (
+    scope: 'active' | 'archive',
+    runs: readonly SidecarStorageRunEntry[],
+  ): Promise<void> => {
+    if (runs.length === 0) return;
+    try {
+      const payload = await enrichStorageRuns(scope, runs);
+      if (currentScope() !== scope) return; // scope changed while in flight
+      enrichment = new Map(
+        payload.enriched.map((entry) => [`${entry.briefId}/${entry.runId}`, entry]),
+      );
+      renderRows(scope);
+    } catch (error) {
+      status.textContent = `${status.textContent} · enrichment unavailable: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  };
+
+  const reload = async (): Promise<void> => {
+    const scope = currentScope();
+    status.textContent = 'Loading runs…';
+    enrichment = new Map();
+    try {
+      const payload = await listStorageRuns(scope, searchInput.value);
+      currentRuns = payload.runs;
+      renderRows(scope);
+      status.textContent = `Loaded ${currentRuns.length} ${scope} run(s).`;
+      void loadEnrichment(scope, currentRuns);
+    } catch (error) {
+      status.textContent = `Failed to load runs: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  };
+
+  refreshBtn.addEventListener('click', () => void reload());
+  scopeSelect.addEventListener('change', () => {
+    selected = new Set<string>();
+    void reload();
+  });
+  searchInput.addEventListener('change', () => void reload());
+  sortSelect.addEventListener('change', () => renderRows(currentScope()));
+  filterSelect.addEventListener('change', () => renderRows(currentScope()));
+
+  archiveBtn.addEventListener('click', async () => {
+    const keys = [...selected].filter((key) => !key.startsWith('archive/'));
+    if (keys.length === 0) {
+      status.textContent = 'Select at least one active run to archive.';
+      return;
+    }
+    if (!window.confirm(`Archive ${keys.length} run(s)?`)) return;
+    try {
+      const result = await archiveStorageRuns(keys);
+      status.textContent = `Archived ${result.archived.length}; skipped ${result.skipped.length}.`;
+      selected = new Set<string>();
+      await reload();
+    } catch (error) {
+      status.textContent = `Failed to archive runs: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  });
+
+  deleteBtn.addEventListener('click', async () => {
+    const keys = [...selected];
+    if (keys.length === 0) {
+      status.textContent = 'Select at least one run to delete.';
+      return;
+    }
+    if (!window.confirm(`Permanently delete ${keys.length} run(s)? This cannot be undone.`)) return;
+    try {
+      const result = await deleteStorageRunsBatch(keys);
+      status.textContent = `Deleted ${result.deleted.length} run(s).`;
+      selected = new Set<string>();
+      await reload();
+    } catch (error) {
+      status.textContent = `Failed to delete runs: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  });
+
+  void reload();
+}
+
 function render(): void {
   const root = document.getElementById('devtools-root');
   if (!(root instanceof HTMLElement)) {
@@ -1036,6 +1477,7 @@ function render(): void {
   const isSpriteWorkflowPage = currentPage === DEVTOOLS_PAGE_SPRITE_WORKFLOW;
   const isPostprocessPage = currentPage === DEVTOOLS_PAGE_POSTPROCESS;
   const isAchievementsPage = currentPage === DEVTOOLS_PAGE_ACHIEVEMENTS;
+  const isStoragePage = currentPage === DEVTOOLS_PAGE_STORAGE;
   const title = el('h1', { text: 'Crawler DevTools' });
   const subtitle = el('p', {
     text: LOCAL_HOSTS.has(window.location.hostname)
@@ -1047,7 +1489,9 @@ function render(): void {
             ? 'Sprite review — readonly viewer for approved sprite sheets.'
             : isAchievementsPage
               ? 'Achievements editor — review/edit Floor 1 achievement text + rewards and track placeholder art backlog.'
-              : 'Sprite Generation Workflow — track backlog, synthesis, generation, approvals, and integration.'
+              : isStoragePage
+                ? 'Azure storage lifecycle — list, search, archive, and delete sprite-run blobs.'
+                : 'Sprite Generation Workflow — track backlog, synthesis, generation, approvals, and integration.'
       : 'DevTools is disabled outside localhost.',
     style: { marginBottom: '16px' },
   });
@@ -1162,6 +1606,11 @@ function render(): void {
 
   if (isAchievementsPage) {
     renderAchievementsEditorPage(shell);
+    return;
+  }
+
+  if (isStoragePage) {
+    renderStorageLifecyclePage(shell);
     return;
   }
 
@@ -2562,32 +3011,90 @@ function render(): void {
     text: 'Using default background-removal parameters.',
     style: { fontSize: '10px', color: '#64748b' },
   });
+  tweakButtonRow.append(applyTweaksBtn, resetTweaksBtn, tweakStatus);
+  tweakPanel.append(tweakTitle, tweakIntro, tweakGrid, tweakButtonRow);
+  const finalAdjustStatus = el('span', {
+    text: 'Click a pixel in the final image to set the anchor.',
+    style: { fontSize: '10px', color: '#94a3b8' },
+  });
   const manualAnchorXInput = document.createElement('input');
   manualAnchorXInput.type = 'number';
   manualAnchorXInput.step = '1';
   manualAnchorXInput.style.width = '72px';
+  manualAnchorXInput.style.background = '#020617';
+  manualAnchorXInput.style.color = '#e2e8f0';
+  manualAnchorXInput.style.border = '1px solid rgba(148,163,184,0.4)';
+  manualAnchorXInput.style.borderRadius = '6px';
   const manualAnchorYInput = document.createElement('input');
   manualAnchorYInput.type = 'number';
   manualAnchorYInput.step = '1';
   manualAnchorYInput.style.width = '72px';
-  const setManualAnchorBtn = el('button', { text: 'Set manual anchor' }) as HTMLButtonElement;
-  const clearManualAnchorBtn = el('button', { text: 'Clear manual anchor' }) as HTMLButtonElement;
-  const manualAnchorStatus = el('span', {
-    text: 'No manual anchor override.',
-    style: { fontSize: '10px', color: '#94a3b8' },
-  });
-  tweakButtonRow.append(
-    applyTweaksBtn,
-    resetTweaksBtn,
-    el('span', { text: 'Anchor x/y:' }),
-    manualAnchorXInput,
-    manualAnchorYInput,
-    setManualAnchorBtn,
-    clearManualAnchorBtn,
-    tweakStatus,
-    manualAnchorStatus,
-  );
-  tweakPanel.append(tweakTitle, tweakIntro, tweakGrid, tweakButtonRow);
+  manualAnchorYInput.style.background = '#020617';
+  manualAnchorYInput.style.color = '#e2e8f0';
+  manualAnchorYInput.style.border = '1px solid rgba(148,163,184,0.4)';
+  manualAnchorYInput.style.borderRadius = '6px';
+  const applyScopeSelect = document.createElement('select');
+  applyScopeSelect.style.background = '#020617';
+  applyScopeSelect.style.color = '#e2e8f0';
+  applyScopeSelect.style.border = '1px solid rgba(148,163,184,0.4)';
+  applyScopeSelect.style.borderRadius = '6px';
+  applyScopeSelect.style.fontSize = '11px';
+  const scopeThisOption = document.createElement('option');
+  scopeThisOption.value = 'variant';
+  scopeThisOption.textContent = 'Apply to this variant';
+  const scopeAllOption = document.createElement('option');
+  scopeAllOption.value = 'all';
+  scopeAllOption.textContent = 'Apply to all variants';
+  applyScopeSelect.append(scopeThisOption, scopeAllOption);
+  const facingDirectionSelect = document.createElement('select');
+  facingDirectionSelect.style.background = '#020617';
+  facingDirectionSelect.style.color = '#e2e8f0';
+  facingDirectionSelect.style.border = '1px solid rgba(148,163,184,0.4)';
+  facingDirectionSelect.style.borderRadius = '6px';
+  facingDirectionSelect.style.fontSize = '11px';
+  const facingRightOption = document.createElement('option');
+  facingRightOption.value = 'right';
+  facingRightOption.textContent = 'Facing right →';
+  const facingLeftOption = document.createElement('option');
+  facingLeftOption.value = 'left';
+  facingLeftOption.textContent = 'Facing left ←';
+  facingDirectionSelect.append(facingRightOption, facingLeftOption);
+  const applyChangesBtn = el('button', {
+    text: 'Apply changes',
+    style: {
+      padding: '4px 10px',
+      borderRadius: '6px',
+      border: '1px solid rgba(56,189,248,0.5)',
+      background: '#082f49',
+      color: '#e0f2fe',
+      cursor: 'pointer',
+      fontSize: '11px',
+    },
+  }) as HTMLButtonElement;
+  const resetAnchorBtn = el('button', {
+    text: 'Reset anchor',
+    style: {
+      padding: '4px 10px',
+      borderRadius: '6px',
+      border: '1px solid rgba(148,163,184,0.4)',
+      background: '#1e293b',
+      color: '#e2e8f0',
+      cursor: 'pointer',
+      fontSize: '11px',
+    },
+  }) as HTMLButtonElement;
+  const returnToWorkflowBtn = el('button', {
+    text: 'Return to workflow',
+    style: {
+      padding: '4px 10px',
+      borderRadius: '6px',
+      border: '1px solid rgba(148,163,184,0.4)',
+      background: '#1e293b',
+      color: '#e2e8f0',
+      cursor: 'pointer',
+      fontSize: '11px',
+    },
+  }) as HTMLButtonElement;
   const debuggerTraceHost = el('div', { style: { marginTop: '8px' } });
   debuggerPanel.append(
     debuggerTitle,
@@ -2628,6 +3135,10 @@ function render(): void {
   };
   let pendingPostprocessMode: 'default' | 'replace' | 'reset' = 'default';
   let manualAnchorOverride: ManualAnchorState | null = null;
+  let facingDirection: FacingDirection = 'right';
+  let applyScopeSelection: 'variant' | 'all' = 'variant';
+  let pendingManualAnchorClear = false;
+  let derivedAnchorForDebugVariant: AnchorMarkerState | null = null;
   let queueState: QueueState = createEmptyQueue();
   const pendingGenerationPolls = new Set<string>();
   // In-flight AbortControllers for the synchronous generate POST, keyed by
@@ -2834,9 +3345,14 @@ function render(): void {
     fringeTolField.input.value = String(appliedBackgroundTweaks.fringeToleranceSq);
     manualAnchorXInput.value = manualAnchorOverride ? String(manualAnchorOverride.x) : '';
     manualAnchorYInput.value = manualAnchorOverride ? String(manualAnchorOverride.y) : '';
-    manualAnchorStatus.textContent = manualAnchorOverride
-      ? `Manual anchor active for #${manualAnchorOverride.variantIndex} at (${manualAnchorOverride.x}, ${manualAnchorOverride.y}).`
-      : 'No manual anchor override.';
+    facingDirectionSelect.value = facingDirection;
+    applyScopeSelect.value = applyScopeSelection;
+    resetAnchorBtn.disabled = manualAnchorOverride === null && !pendingManualAnchorClear;
+    finalAdjustStatus.textContent = manualAnchorOverride
+      ? `Anchor set at (${manualAnchorOverride.x}, ${manualAnchorOverride.y}).`
+      : derivedAnchorForDebugVariant
+        ? `Current derived anchor at (${derivedAnchorForDebugVariant.x}, ${derivedAnchorForDebugVariant.y}).`
+        : 'Click a pixel in the final image to set the anchor.';
   };
   const rerenderDebuggerAfterTweaks = (): void => {
     if (rerenderPostprocessPipeline) {
@@ -2878,6 +3394,8 @@ function render(): void {
       colorToleranceSq: DEFAULT_BACKGROUND_TWEAKS.colorToleranceSq,
       fringeToleranceSq: DEFAULT_BACKGROUND_TWEAKS.fringeToleranceSq,
     };
+    manualAnchorOverride = null;
+    facingDirection = 'right';
     pendingPostprocessMode = 'reset';
     syncTweakInputsFromState();
     tweakStatus.textContent = 'Reset to defaults.';
@@ -2886,46 +3404,65 @@ function render(): void {
       rerenderDebuggerAfterTweaks();
     }
   });
-  setManualAnchorBtn.addEventListener('click', async () => {
-    if (!debugTarget) {
-      manualAnchorStatus.textContent = 'Select a debug target first.';
-      return;
-    }
+  const syncManualAnchorFromInputs = (): void => {
+    if (!debugTarget) return;
     const x = Number.parseInt(manualAnchorXInput.value, 10);
     const y = Number.parseInt(manualAnchorYInput.value, 10);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) {
-      manualAnchorStatus.textContent = 'Manual anchor x/y must be integers.';
-      return;
-    }
-    await fetchJson(
-      `${SIDECAR_BASE}/api/runs/${encodeURIComponent(debugTarget.briefId)}/${encodeURIComponent(debugTarget.runId)}/manual-anchor`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ variantIndex: debugTarget.variantIndex, x, y }),
-      },
-    );
-    manualAnchorOverride = { variantIndex: debugTarget.variantIndex, x, y };
-    syncTweakInputsFromState();
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    pendingManualAnchorClear = false;
     pendingPostprocessMode = 'replace';
-    manualAnchorStatus.textContent = `Manual anchor saved for #${debugTarget.variantIndex}.`;
+    manualAnchorOverride = {
+      variantIndex: debugTarget.variantIndex,
+      x,
+      y,
+      ...(applyScopeSelection === 'all' ? { applyToAllVariants: true } : {}),
+    };
+    syncTweakInputsFromState();
+    finalAdjustStatus.textContent = `Anchor set to (${x}, ${y}). Click Apply changes to persist.`;
+    finalAdjustStatus.style.color = '#93c5fd';
+    rerenderDebuggerAfterTweaks();
+  };
+  manualAnchorXInput.addEventListener('change', syncManualAnchorFromInputs);
+  manualAnchorYInput.addEventListener('change', syncManualAnchorFromInputs);
+  applyScopeSelect.addEventListener('change', () => {
+    applyScopeSelection = applyScopeSelect.value === 'all' ? 'all' : 'variant';
+    if (manualAnchorOverride) {
+      pendingPostprocessMode = 'replace';
+      manualAnchorOverride = {
+        variantIndex: manualAnchorOverride.variantIndex,
+        x: manualAnchorOverride.x,
+        y: manualAnchorOverride.y,
+        ...(applyScopeSelection === 'all' ? { applyToAllVariants: true } : {}),
+      };
+      syncTweakInputsFromState();
+      finalAdjustStatus.textContent = `Anchor scope set to ${applyScopeSelection === 'all' ? 'all variants' : 'current variant'}. Click Apply changes to persist.`;
+      finalAdjustStatus.style.color = '#93c5fd';
+      rerenderDebuggerAfterTweaks();
+    }
   });
-  clearManualAnchorBtn.addEventListener('click', async () => {
+  facingDirectionSelect.addEventListener('change', () => {
+    facingDirection = facingDirectionSelect.value === 'left' ? 'left' : 'right';
+    pendingPostprocessMode = 'replace';
+    rerenderDebuggerAfterTweaks();
+  });
+  resetAnchorBtn.addEventListener('click', () => {
+    manualAnchorOverride = null;
+    pendingManualAnchorClear = true;
+    pendingPostprocessMode = 'replace';
+    syncTweakInputsFromState();
+    finalAdjustStatus.textContent = 'Manual anchor reset. Click Apply changes to persist.';
+    finalAdjustStatus.style.color = '#93c5fd';
+    rerenderDebuggerAfterTweaks();
+  });
+  returnToWorkflowBtn.addEventListener('click', () => {
     if (!debugTarget) {
-      manualAnchorStatus.textContent = 'Select a debug target first.';
+      window.location.href = devtoolsPageHref(DEVTOOLS_PAGE_SPRITE_WORKFLOW);
       return;
     }
-    await fetchJson(
-      `${SIDECAR_BASE}/api/runs/${encodeURIComponent(debugTarget.briefId)}/${encodeURIComponent(debugTarget.runId)}/manual-anchor`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clear: true }),
-      },
-    );
-    manualAnchorOverride = null;
-    syncTweakInputsFromState();
-    manualAnchorStatus.textContent = 'Manual anchor cleared.';
+    window.location.href = devtoolsPageHref(DEVTOOLS_PAGE_SPRITE_WORKFLOW, {
+      briefId: debugTarget.briefId,
+      runId: debugTarget.runId,
+    });
   });
   syncTweakInputsFromState();
   let debuggerRuns: SidecarRunListEntry[] = [];
@@ -4452,9 +4989,10 @@ function render(): void {
     const makeImgEl = (size: number): HTMLImageElement => {
       const img = document.createElement('img');
       Object.assign(img.style, {
-        width: `${size}px`,
-        height: `${size}px`,
-        objectFit: 'contain',
+        maxWidth: `${size}px`,
+        maxHeight: `${size}px`,
+        width: 'auto',
+        height: 'auto',
         imageRendering: 'pixelated',
         display: 'block',
         border: '1px solid rgba(148,163,184,0.2)',
@@ -5025,9 +5563,225 @@ function render(): void {
           letterSpacing: '0.02em',
         },
       });
+      const resolvedAnchor: AnchorMarkerState | null =
+        manualAnchorOverride &&
+        (manualAnchorOverride.applyToAllVariants === true ||
+          manualAnchorOverride.variantIndex === variantIndex)
+          ? { x: manualAnchorOverride.x, y: manualAnchorOverride.y, source: 'manual' }
+          : derivedAnchorForDebugVariant;
       const img = makeImgEl(128);
       img.src = src;
-      card.append(title, img);
+      img.style.cursor = 'crosshair';
+      img.title = 'Click a pixel to set the anchor.';
+      const imageWrap = el('div', {
+        style: { position: 'relative', display: 'inline-block', width: '128px', height: '128px' },
+      });
+      const anchorMarker = el('div', {
+        text: '+',
+        style: {
+          position: 'absolute',
+          left: '50%',
+          top: '50%',
+          transform: 'translate(-50%, -50%)',
+          color: '#facc15',
+          fontWeight: '700',
+          fontSize: '22px',
+          lineHeight: '1',
+          textShadow: '0 0 2px #000, 0 0 6px rgba(0,0,0,0.8)',
+          pointerEvents: 'none',
+          display: resolvedAnchor ? 'block' : 'none',
+        },
+      });
+      const updateAnchorMarker = (anchor: AnchorMarkerState | null): void => {
+        if (!anchor || img.naturalWidth <= 0 || img.naturalHeight <= 0) {
+          anchorMarker.style.display = 'none';
+          return;
+        }
+        const leftPct = ((anchor.x + 0.5) / img.naturalWidth) * 100;
+        const topPct = ((anchor.y + 0.5) / img.naturalHeight) * 100;
+        anchorMarker.style.left = `${Math.max(0, Math.min(100, leftPct))}%`;
+        anchorMarker.style.top = `${Math.max(0, Math.min(100, topPct))}%`;
+        anchorMarker.style.color = anchor.source === 'manual' ? '#facc15' : '#22d3ee';
+        anchorMarker.style.display = 'block';
+      };
+      img.onload = () => {
+        updateAnchorMarker(
+          manualAnchorOverride &&
+            (manualAnchorOverride.applyToAllVariants === true ||
+              manualAnchorOverride.variantIndex === variantIndex)
+            ? { x: manualAnchorOverride.x, y: manualAnchorOverride.y, source: 'manual' }
+            : derivedAnchorForDebugVariant,
+        );
+      };
+      img.onclick = (event) => {
+        if (!debugTarget) {
+          finalAdjustStatus.textContent = 'Select a debug target first.';
+          finalAdjustStatus.style.color = '#fca5a5';
+          return;
+        }
+        const rect = img.getBoundingClientRect();
+        if (
+          rect.width <= 0 ||
+          rect.height <= 0 ||
+          img.naturalWidth <= 0 ||
+          img.naturalHeight <= 0
+        ) {
+          return;
+        }
+        const x = Math.max(
+          0,
+          Math.min(
+            img.naturalWidth - 1,
+            Math.floor(((event.clientX - rect.left) / rect.width) * img.naturalWidth),
+          ),
+        );
+        const y = Math.max(
+          0,
+          Math.min(
+            img.naturalHeight - 1,
+            Math.floor(((event.clientY - rect.top) / rect.height) * img.naturalHeight),
+          ),
+        );
+        manualAnchorOverride = {
+          variantIndex: debugTarget.variantIndex,
+          x,
+          y,
+          ...(applyScopeSelection === 'all' ? { applyToAllVariants: true } : {}),
+        };
+        pendingManualAnchorClear = false;
+        syncTweakInputsFromState();
+        pendingPostprocessMode = 'replace';
+        finalAdjustStatus.textContent = `Anchor picked at (${x}, ${y}). Click Apply changes to persist.`;
+        finalAdjustStatus.style.color = '#93c5fd';
+        rerenderDebuggerAfterTweaks();
+      };
+      const controlPanel = el('div', {
+        style: {
+          marginTop: '10px',
+          padding: '10px',
+          borderRadius: '6px',
+          border: '1px solid rgba(56,189,248,0.25)',
+          background: 'rgba(8,47,73,0.35)',
+          display: 'grid',
+          gap: '8px',
+        },
+      });
+      const topRow = el('div', {
+        style: { display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' },
+      });
+      const facingLabel = el('label', {
+        style: {
+          display: 'inline-flex',
+          gap: '6px',
+          alignItems: 'center',
+          fontSize: '11px',
+          color: '#bae6fd',
+        },
+      });
+      facingLabel.append(el('span', { text: 'Facing' }), facingDirectionSelect);
+      topRow.append(
+        facingLabel,
+        el('span', { text: 'Scope', style: { fontSize: '11px', color: '#bae6fd' } }),
+        applyScopeSelect,
+      );
+      const anchorRow = el('div', {
+        style: { display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' },
+      });
+      anchorRow.append(
+        el('span', { text: 'Anchor x/y', style: { fontSize: '11px', color: '#bae6fd' } }),
+        manualAnchorXInput,
+        manualAnchorYInput,
+      );
+      const actionRow = el('div', {
+        style: { display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' },
+      });
+      actionRow.append(applyChangesBtn, resetAnchorBtn, returnToWorkflowBtn, finalAdjustStatus);
+      applyChangesBtn.onclick = async () => {
+        if (!debugTarget) {
+          finalAdjustStatus.textContent = 'Select a debug target first.';
+          finalAdjustStatus.style.color = '#fca5a5';
+          return;
+        }
+        const applyMode: 'replace' | 'reset' =
+          pendingPostprocessMode === 'reset' ? 'reset' : 'replace';
+        if (applyMode === 'replace') {
+          syncManualAnchorFromInputs();
+        }
+        const hasManualAnchor = manualAnchorOverride !== null;
+        const currentManualAnchor = manualAnchorOverride;
+        const applyToAll = applyScopeSelection === 'all';
+        finalAdjustStatus.textContent = 'Applying…';
+        finalAdjustStatus.style.color = '#93c5fd';
+        applyChangesBtn.disabled = true;
+        try {
+          const manualAnchorPayload =
+            pendingManualAnchorClear || !hasManualAnchor
+              ? pendingManualAnchorClear
+                ? null
+                : undefined
+              : {
+                  variantIndex: debugTarget.variantIndex,
+                  x: currentManualAnchor!.x,
+                  y: currentManualAnchor!.y,
+                  ...(applyToAll ? { applyToAllVariants: true } : {}),
+                };
+          await fetchJson(
+            `${SIDECAR_BASE}/api/runs/${encodeURIComponent(debugTarget.briefId)}/${encodeURIComponent(debugTarget.runId)}/postprocess`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                mode: applyMode,
+                ...(applyMode === 'replace'
+                  ? {
+                      options: {
+                        background: {
+                          colorToleranceSq: appliedBackgroundTweaks.colorToleranceSq,
+                          fringeToleranceSq: appliedBackgroundTweaks.fringeToleranceSq,
+                        },
+                      },
+                      facing: {
+                        variantIndex: debugTarget.variantIndex,
+                        direction: facingDirection,
+                        ...(applyToAll ? { applyToAllVariants: true } : {}),
+                      },
+                      ...(manualAnchorPayload !== undefined
+                        ? { manualAnchor: manualAnchorPayload }
+                        : {}),
+                      ...(!applyToAll ? { variantIndexes: [debugTarget.variantIndex] } : {}),
+                    }
+                  : {}),
+              }),
+            },
+          );
+          if (pendingManualAnchorClear) {
+            manualAnchorOverride = null;
+          }
+          pendingManualAnchorClear = false;
+          pendingPostprocessMode = 'default';
+          finalAdjustStatus.textContent = applyToAll
+            ? 'Applied to all variants.'
+            : `Applied to variant #${debugTarget.variantIndex}.`;
+          finalAdjustStatus.style.color = '#86efac';
+          rerenderDebuggerAfterTweaks();
+          void refreshDebuggerRuns();
+        } catch (error) {
+          finalAdjustStatus.textContent =
+            error instanceof Error
+              ? `Apply failed: ${error.message}`
+              : `Apply failed: ${String(error)}`;
+          finalAdjustStatus.style.color = '#fca5a5';
+        } finally {
+          applyChangesBtn.disabled = false;
+        }
+      };
+      const facingArrow = el('div', {
+        text: facingDirection === 'left' ? '← facing left' : 'facing right →',
+        style: { fontSize: '11px', color: '#bae6fd', marginTop: '6px' },
+      });
+      controlPanel.append(topRow, anchorRow, facingArrow, actionRow);
+      imageWrap.append(img, anchorMarker);
+      card.append(title, imageWrap, controlPanel);
       return card;
     };
 
@@ -5118,7 +5872,8 @@ function render(): void {
 
         // ── Pipeline trace ─────────────────────────────────────────
         pipelineBody.replaceChildren();
-        const finalSrc = spriteUrl(briefId, runId, `${padded}.png`);
+        const finalSrcBase = spriteUrl(briefId, runId, `${padded}.png`);
+        const finalSrc = `${finalSrcBase}${finalSrcBase.includes('?') ? '&' : '?'}ts=${Date.now()}`;
 
         if (manifestResult.status === 'rejected') {
           pipelineBody.append(
@@ -5181,7 +5936,40 @@ function render(): void {
             : null;
         const briefPathStr =
           typeof briefPath === 'string' && briefPath.length > 0 ? briefPath : null;
+        facingDirection = 'right';
+        applyScopeSelection = 'variant';
+        manualAnchorOverride = null;
+        pendingManualAnchorClear = false;
+        derivedAnchorForDebugVariant = null;
         if (summaryResult.status === 'fulfilled') {
+          const candidatesRaw = (summaryResult.value as { candidates?: unknown }).candidates;
+          if (Array.isArray(candidatesRaw)) {
+            const candidate = candidatesRaw.find(
+              (entry) =>
+                entry &&
+                typeof entry === 'object' &&
+                (entry as { index?: unknown }).index === variantIndex,
+            ) as
+              | {
+                  derivedAnchor?: unknown;
+                  derivedAnchors?: { hold?: unknown };
+                }
+              | undefined;
+            const hold = candidate?.derivedAnchors?.hold;
+            const base = hold ?? candidate?.derivedAnchor;
+            if (
+              base &&
+              typeof base === 'object' &&
+              typeof (base as { x?: unknown }).x === 'number' &&
+              typeof (base as { y?: unknown }).y === 'number'
+            ) {
+              derivedAnchorForDebugVariant = {
+                x: (base as { x: number }).x,
+                y: (base as { y: number }).y,
+                source: 'derived',
+              };
+            }
+          }
           const post = (summaryResult.value as { postprocessOverrides?: unknown })
             .postprocessOverrides;
           if (post && typeof post === 'object') {
@@ -5197,19 +5985,40 @@ function render(): void {
                 appliedBackgroundTweaks = { colorToleranceSq: color, fringeToleranceSq: fringe };
               }
             }
+            const facing = (post as { facing?: unknown }).facing;
+            const facingApplyToAll =
+              facing &&
+              typeof facing === 'object' &&
+              (facing as { applyToAllVariants?: unknown }).applyToAllVariants === true;
+            if (facing && typeof facing === 'object') {
+              const direction = (facing as { direction?: unknown }).direction;
+              if (direction === 'left' || direction === 'right') {
+                facingDirection = direction;
+              }
+            }
             const manual = (post as { manualAnchor?: unknown }).manualAnchor;
+            let manualApplyToAll = false;
             if (manual && typeof manual === 'object') {
               const variantIndex = (manual as { variantIndex?: unknown }).variantIndex;
               const x = (manual as { x?: unknown }).x;
               const y = (manual as { y?: unknown }).y;
+              const applyToAllVariants =
+                (manual as { applyToAllVariants?: unknown }).applyToAllVariants === true;
+              manualApplyToAll = applyToAllVariants;
               if (
                 typeof variantIndex === 'number' &&
                 typeof x === 'number' &&
                 typeof y === 'number'
               ) {
-                manualAnchorOverride = { variantIndex, x, y };
+                manualAnchorOverride = {
+                  variantIndex,
+                  x,
+                  y,
+                  ...(applyToAllVariants ? { applyToAllVariants: true } : {}),
+                };
               }
             }
+            applyScopeSelection = manualApplyToAll || facingApplyToAll ? 'all' : 'variant';
             syncTweakInputsFromState();
           }
         }
@@ -5265,7 +6074,8 @@ function render(): void {
             `${briefId}/${runId}/${variantIndex}|${getActiveSliceVersion()}|` +
             `${selectedRawCellDataUrl ? 'sheet' : 'raw'}|` +
             `c=${appliedBackgroundTweaks.colorToleranceSq}|` +
-            `f=${appliedBackgroundTweaks.fringeToleranceSq}`;
+            `f=${appliedBackgroundTweaks.fringeToleranceSq}|` +
+            `d=${facingDirection}`;
           let selectedOutputForNextStep: string | null = rawCellSource;
 
           // Renders the pre-baked pipeline (per-step PNGs from the run store),

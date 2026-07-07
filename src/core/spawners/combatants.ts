@@ -35,7 +35,12 @@ function initializeEnemyAppearance(world: GameWorld, eid: number): void {
     ENEMY_SIZE_SCALE_MIN + appearanceRng.next() * (ENEMY_SIZE_SCALE_MAX - ENEMY_SIZE_SCALE_MIN);
   world.stores.sprite.variantRoll[eid] = appearanceRng.next();
   world.stores.sprite.sizeScale[eid] = sizeScale;
-  world.stores.weight.value[eid] = Math.max(1, (world.stores.weight.value[eid] ?? 120) * sizeScale);
+  // NOTE(size-weight-slice2): Weight intentionally does NOT scale with the
+  // cosmetic sizeScale RNG. Weight is a first-class gameplay dial (knockback
+  // denominator) and must reflect the authored value so mob-baseline weights
+  // stay predictable. Do not restore the sizeScale multiplier here without
+  // updating the win-rate baseline and unit-test pins in
+  // tests/unit/core/knockback.weight.test.ts.
 }
 
 export function setEnemyAppearanceKey(world: GameWorld, eid: number, key: string): void {

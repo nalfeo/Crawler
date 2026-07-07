@@ -21,5 +21,15 @@ if ! git diff --quiet; then
 fi
 
 echo "Running Prettier on staged files..."
-git diff --cached --name-only --diff-filter=ACMR -z | xargs -0 npx prettier --ignore-unknown --write --
+repo_root="$(git rev-parse --show-toplevel)"
+common_git_dir="$(git rev-parse --git-common-dir)"
+prettier_entry="$repo_root/node_modules/prettier/bin/prettier.cjs"
+if [ ! -f "$prettier_entry" ]; then
+  prettier_entry="$common_git_dir/../node_modules/prettier/bin/prettier.cjs"
+fi
+if [ ! -f "$prettier_entry" ]; then
+  echo "Prettier is not installed. Run npm install."
+  exit 1
+fi
+git diff --cached --name-only --diff-filter=ACMR -z | xargs -0 node "$prettier_entry" --ignore-unknown --write --
 git diff --cached --name-only --diff-filter=ACMR -z | xargs -0 git add --

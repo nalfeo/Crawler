@@ -27,7 +27,16 @@ echo "🔍 Step 3/10: Format checking..."
 npx prettier --check --log-level warn "src/**/*.ts" "tests/**/*.ts" "scripts/**/*.ts"
 
 echo "🔍 Step 4/10: Dead code detection..."
-npx knip || echo "⚠️  Knip found unused exports (non-blocking for now)"
+# Knip scans the whole project for unused exports/deps (~5-10s). It is ADVISORY
+# in CI (its job is non-blocking) and advisory here too, so gate it behind an
+# opt-in flag to keep the default full-verify inner loop lean. Run it — e.g. when
+# refactoring or removing exports — with VERIFY_KNIP=1. CI's advisory knip job is
+# unaffected either way. (Mirrors the VERIFY_COVERAGE / VERIFY_FULL opt-ins below.)
+if [ "${VERIFY_KNIP:-}" = "1" ]; then
+  npx knip || echo "⚠️  Knip found unused exports (non-blocking)"
+else
+  echo "   ⏭️  Skipped (advisory in CI). Set VERIFY_KNIP=1 to run locally — do so when refactoring exports."
+fi
 
 echo "🔍 Step 5/10: Guard + review-ledger tests..."
 npm run test:guards
