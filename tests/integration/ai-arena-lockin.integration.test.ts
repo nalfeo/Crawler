@@ -51,9 +51,15 @@ describe('AI arena lock-in — integration', () => {
     });
     world.stores.spawner.arenaState[spawnerEid] = 1; // locked
     world.stores.spawner.arenaKind[spawnerEid] = 1; // open-fence
-    // Simulate raiseFence's snapshot so the detector treats this as a real
-    // barrier the AI cannot walk out of (see arena-lockin.ts).
-    world.spawnerArenaFence.set(spawnerEid, [{ tileIdx: 0, originalFlags: 0 }]);
+    // Mirror createRingWallBarrier's ANALYTIC ring-WALL handle (tiles:[] + a
+    // BarrierRingShape) so the detector treats this as a real barrier the AI
+    // cannot walk out of (see arena-lockin.ts) — matches the open-fence runtime.
+    world.spawnerArenaBarriers.set(spawnerEid, {
+      id: 1,
+      kind: 'fence',
+      tiles: [],
+      shape: { type: 'ring', cxFt: 4, cyFt: 0, innerRadiusFt: 7, outerRadiusFt: 8 },
+    });
     // Transition the world past 'menu' so runSimulationStep executes. The
     // integration harness uses the exact state values createGameWorld emits
     // before `selectFloor1StarterWeapon` flips them to `'playing'`.

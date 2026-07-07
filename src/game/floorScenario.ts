@@ -18,6 +18,7 @@ import {
 import type { FloorMap } from '../core/map/FloorMap.js';
 import { findTilePath, type TilePoint } from '../core/map/pathfinding.js';
 import { getGenerator } from '../core/map/generators/registry.js';
+import { attachBarriersToFloorMap } from '../core/barriers/index.js';
 import { sealRoomPerimeter, sealSpecialRooms } from '../core/map/special-rooms.js';
 import {
   stampSetPiece,
@@ -826,7 +827,7 @@ function spawnFloor1StaticSpawners(world: GameWorld): void {
       const room = candidateRooms[roomCursor]!;
       roomCursor += 1;
       const spawnPos = resolvePassableRoomCenter(floorMap, room);
-      spawnSpawner(world, spawnPos.x, spawnPos.y, archetype.hp, {
+      const spawnerEid = spawnSpawner(world, spawnPos.x, spawnPos.y, archetype.hp, {
         defIndex,
         contactDamage: archetype.contactDamage,
         weight: archetype.weight,
@@ -836,6 +837,9 @@ function spawnFloor1StaticSpawners(world: GameWorld): void {
         spriteHeight: archetype.spriteHeight,
         arenaRadiusFt: archetype.arenaRadiusFt,
       });
+      // Preserve stable visual identity so generated-art lookups can select
+      // spawner-specific briefs (e.g. slime-pool-v1, rats-nest-v1) when present.
+      setEnemyAppearanceKey(world, spawnerEid, archetypeId);
     }
   }
 }
@@ -1194,6 +1198,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   };
   const floorMap = getGenerator(config.biome).generate(config, world.rng);
   world.floorMap = floorMap;
+  attachBarriersToFloorMap(world);
 
   const spawn = floorMap.tileToWorld(floorMap.playerSpawn.x, floorMap.playerSpawn.y);
   if (hasComponent(world.ecs, playerEid, Position)) {

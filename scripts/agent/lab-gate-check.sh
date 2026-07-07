@@ -32,19 +32,38 @@ if [ ! -d "$SYSTEMS_DIR" ]; then
   exit 0
 fi
 
+# Precompute the set of lab base-names ONCE. This used to be an inner loop over
+# every lab for every system (O(systems × labs)), and each iteration forked
+# basename + sed + tr — pathologically slow on Windows Git Bash, where process
+# creation dominates the wall time. Bash parameter expansion (${x##*/}, ${x%-lab},
+# ${x,,}) does the same string work with NO subprocesses, and an associative-array
+# membership test replaces the inner loop, bringing the whole check to
+# O(systems + labs) with a small constant.
+declare -A LAB_NAMES=()
+for lab_dir in "$LABS_DIR"/*/; do
+  [ -d "$lab_dir" ] || continue
+  lab_name="${lab_dir%/}"       # strip trailing slash
+  lab_name="${lab_name##*/}"    # basename (strip leading path)
+  lab_name="${lab_name%-lab}"   # strip "-lab" suffix (matches sed 's/-lab$//')
+  lab_name="${lab_name,,}"      # lowercase (matches tr '[:upper:]' '[:lower:]')
+  LAB_NAMES["$lab_name"]=1
+done
+
 # Find all system files (excluding index.ts)
 for system_file in "$SYSTEMS_DIR"/*.ts; do
   [ -f "$system_file" ] || continue
-  
+
   # Skip index files
-  basename=$(basename "$system_file" .ts)
+  basename="${system_file##*/}"   # basename (strip leading path)
+  basename="${basename%.ts}"      # strip .ts extension
   if [ "$basename" = "index" ]; then
     continue
   fi
-  
+
   # Extract system name (e.g., "movement" from "movementSystem.ts" or "movement.ts")
-  system_name=$(echo "$basename" | sed 's/System$//' | tr '[:upper:]' '[:lower:]')
-  
+  system_name="${basename%System}"      # strip trailing "System" (matches sed 's/System$//')
+  system_name="${system_name,,}"        # lowercase (matches tr '[:upper:]' '[:lower:]')
+
   # Check if covered by a shared lab
   if [ -n "${SHARED_LAB_MAP[$system_name]:-}" ]; then
     shared_lab="${SHARED_LAB_MAP[$system_name]}"
@@ -54,22 +73,12 @@ for system_file in "$SYSTEMS_DIR"/*.ts; do
     fi
   fi
 
-  # Check for a corresponding lab directory
-  lab_found=false
-  for lab_dir in "$LABS_DIR"/*/; do
-    [ -d "$lab_dir" ] || continue
-    lab_name=$(basename "$lab_dir" | sed 's/-lab$//' | tr '[:upper:]' '[:lower:]')
-    if [ "$lab_name" = "$system_name" ]; then
-      lab_found=true
-      break
-    fi
-  done
-  
-  if [ "$lab_found" = false ]; then
+  # Check for a corresponding lab via O(1) associative-array lookup.
+  if [ -n "${LAB_NAMES[$system_name]:-}" ]; then
+    echo "✅ System '$basename' → lab found"
+  else
     echo "❌ System '$basename' has no lab! Expected: $LABS_DIR/${system_name}-lab/"
     FAILED=1
-  else
-    echo "✅ System '$basename' → lab found"
   fi
 done
 

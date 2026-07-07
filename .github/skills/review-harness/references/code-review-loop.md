@@ -33,7 +33,9 @@ remain**.
 
 3. If the round surfaced concerns, run **another round** until a round comes back
    with none. The validator requires the **last** round to be `clean:true` with
-   `resolved_count >= concerns_count`.
+   `resolved_count >= concerns_count`. The loop is **bounded at 2 rounds** — if a
+   concern is still intractable after round 2, escalate (see "Bounded loop" below)
+   instead of looping forever.
 
 4. Record the stage (one entry per round; last round clean):
 
@@ -87,7 +89,9 @@ final reasoning model decides which concerns are valid and the remedy, you
    ```
 
 4. Re-run the fan-out. **Loop** until a round has no valid concerns. The validator
-   requires the **last** round to be `clean:true` with **≥2 distinct models**.
+   requires the **last** round to be `clean:true` with **≥2 distinct models**. Like
+   the code-review loop this is **bounded at 2 rounds** — escalate after round 2 if a
+   valid concern is intractable (see "Bounded loop" below).
 
 5. Record the stage:
 
@@ -105,9 +109,41 @@ final reasoning model decides which concerns are valid and the remedy, you
 
 ---
 
+## Bounded loop — cap at 2 rounds, then escalate to a human
+
+Both loops are **bounded**. If after **≥2 genuinely-attempted rounds** a concern is
+intractable (needs a product/architecture call the agents can't make), record a
+terminal `escalated_to_human` state instead of looping forever. This is the
+sanctioned alternative to the clean terminal — a **recorded terminal state a human
+must act on**, never a silent skip.
+
+Rules the validator enforces on an escalated `code_review` / `multi_model_review`:
+
+- `clean` is **`false`** (escalation is NOT clean; `clean:true` + escalation fails).
+- **≥2 rounds** (never escalate on round 1); **every** round records `models`
+  (≥1 for code_review; ≥2 distinct for multi_model_review) + non-negative-int counts.
+- final round is **non-clean** with genuine unresolved concerns
+  (`resolved_count < concerns_count` for code_review; `< valid_count` for
+  multi_model_review).
+- `escalated_to_human` = `{ after_round, reason, unresolved_concerns }`:
+  `after_round` int **equal to the final round index** (≥2, nothing follows it),
+  `reason` non-empty, `unresolved_concerns` int ≥1.
+
+```
+npm run review:ledger -- stage <path> code_review --json \
+  '{"clean":false,"rounds":[
+     {"round":1,"models":["claude-sonnet-4.6"],"concerns_count":4,"resolved_count":2,"clean":false},
+     {"round":2,"models":["gpt-5.3-codex"],"concerns_count":2,"resolved_count":0,"clean":false}
+   ],
+   "escalated_to_human":{"after_round":2,"reason":"Two concerns require a human architecture decision.","unresolved_concerns":2}}'
+```
+
+---
+
 ## Honesty
 
-If a round keeps surfacing the same valid concern you cannot resolve, **stop and
-ask the human** — do not flip `clean` to true or drop the count to escape the
-loop (project rule #12). The guard validates structure, not honesty; you own the
-honesty.
+Prefer looping until genuinely clean. If after 2 rounds a valid concern remains
+intractable, **escalate to the human** via the `escalated_to_human` terminal state
+above — do **not** flip `clean` to true or drop the count to escape the loop
+(project rule #12). The guard validates structure, not honesty; you own the
+honesty. Escalating is always the correct move over weakening a gate.

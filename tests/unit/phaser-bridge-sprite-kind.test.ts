@@ -26,10 +26,13 @@ import { buildGeneratedSpriteRegistry } from '../../src/shared/generated-assets.
 import { computeSpawnPopScale, spawnAnimProgress } from '../../src/shared/spawn-anim.js';
 import {
   computeEnemyScale,
+  enemyAppearanceTint,
   enemyVariantFromTextureId,
+  generatedBriefIdForEnemy,
   pickGeneratedEnemyTextureKey,
   placeholderSpawnerTint,
   PLACEHOLDER_SPAWNER_TINT,
+  RAT_BRUTE_TINT,
   refineEnemyVisualKind,
   resolveRenderKind,
 } from '../../src/engine/phaser-bridge/sprite-kind.js';
@@ -293,6 +296,28 @@ describe('pickGeneratedEnemyTextureKey', () => {
         sensorScore: '7/8',
         judgeScore: '2',
       },
+      'rat-king-v1-var-7': {
+        briefId: 'rat-king-v1',
+        spriteName: 'rat-king-v1-var-7',
+        assetPath: 'generated/rat-king-v1-var-7.png',
+        approvedAt: '2026-07-02T00:00:00.000Z',
+        sourceRun: 'test',
+        variantIndex: 7,
+        anchor: null,
+        sensorScore: '7/8',
+        judgeScore: '2',
+      },
+      'rat-queen-v1-var-7': {
+        briefId: 'rat-queen-v1',
+        spriteName: 'rat-queen-v1-var-7',
+        assetPath: 'generated/rat-queen-v1-var-7.png',
+        approvedAt: '2026-07-02T00:00:00.000Z',
+        sourceRun: 'test',
+        variantIndex: 7,
+        anchor: null,
+        sensorScore: '7/8',
+        judgeScore: '2',
+      },
       'rat-nest-v2-var-3': {
         briefId: 'rat-nest-v2',
         spriteName: 'rat-nest-v2-var-3',
@@ -348,6 +373,18 @@ describe('pickGeneratedEnemyTextureKey', () => {
     expect(pickGeneratedEnemyTextureKey(registry, 'enemy_boss', 0.2, 'slime-rat')).toBeNull();
   });
 
+  it('resolves rat monarch and slime-pool appearance keys to their generated briefs', () => {
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_rat', 0.5, 'rat-king')).toBe(
+      'rat-king-v1-var-7',
+    );
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_rat', 0.5, 'rat-queen')).toBe(
+      'rat-queen-v1-var-7',
+    );
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', 0.5, 'slime-pool')).toBe(
+      'slime-pool-v1-var-3',
+    );
+  });
+
   it('supports dedicated spawner generated families', () => {
     expect(pickGeneratedEnemyTextureKey(registry, 'enemy_spawner_rats_nest', 0.1)).toBe(
       'rat-nest-v2-var-0',
@@ -361,6 +398,17 @@ describe('pickGeneratedEnemyTextureKey', () => {
     expect(pickGeneratedEnemyTextureKey(registry, 'enemy_spawner_slime_pool', 0.95)).toBe(
       'slime-pool-v1-var-3',
     );
+  });
+});
+
+describe('generatedBriefIdForEnemy', () => {
+  it('maps rat monarch and spawner appearance keys to explicit briefs', () => {
+    expect(generatedBriefIdForEnemy('enemy_rat', 'rat-king')).toBe('rat-king-v1');
+    expect(generatedBriefIdForEnemy('enemy_rat', 'rat-queen')).toBe('rat-queen-v1');
+    expect(generatedBriefIdForEnemy('enemy_slime', 'slime-pool')).toBe('slime-pool-v1');
+    expect(generatedBriefIdForEnemy('enemy_rat', 'rats-nest')).toBe('rats-nest-v1');
+    expect(generatedBriefIdForEnemy('enemy_spawner_rats_nest')).toBe('rat-nest-v2');
+    expect(generatedBriefIdForEnemy('enemy_spawner_slime_pool')).toBe('slime-pool-v1');
   });
 });
 
@@ -479,6 +527,22 @@ describe('placeholderSpawnerTint — bright-red wash for art-less spawner struct
     const eid = addEntity(world.ecs);
     addComponent(world.ecs, eid, Spawner);
     expect(placeholderSpawnerTint(world.ecs, eid)).toBe(PLACEHOLDER_SPAWNER_TINT);
+  });
+
+  describe('enemyAppearanceTint', () => {
+    it('tints rat-brute darker grey when it is a normal enemy', () => {
+      const world = createTestWorld();
+      const eid = addEntity(world.ecs);
+      addComponent(world.ecs, eid, Enemy);
+      expect(enemyAppearanceTint(world.ecs, eid, 'rat-brute')).toBe(RAT_BRUTE_TINT);
+    });
+
+    it('keeps spawner red as top priority even if appearance key is rat-brute', () => {
+      const world = createTestWorld();
+      const eid = addEntity(world.ecs);
+      addComponent(world.ecs, eid, Spawner);
+      expect(enemyAppearanceTint(world.ecs, eid, 'rat-brute')).toBe(PLACEHOLDER_SPAWNER_TINT);
+    });
   });
 
   it('returns null for a plain enemy (no Spawner) so real mobs keep their sprite colour', () => {

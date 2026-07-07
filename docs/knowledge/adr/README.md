@@ -6,7 +6,7 @@ decisions that affect **2+ systems** require an ADR (see the constitution and
 `.github/copilot-instructions.md`).
 
 - **Template:** `docs/knowledge/adr/TEMPLATE.md`
-- **Count:** 76 ADR files — 71 numbered (0001–0046, with number reuse and gaps in this index — see below) + 5 date-prefixed
+- **Count:** 77 ADR files — 72 numbered (0001–0050, with number reuse and gaps in this index — see below) + 5 date-prefixed
 - **Status convention:** `## Status` heading with one of
   `Proposed | Accepted | Deprecated | Superseded by NNNN`
 
@@ -32,7 +32,7 @@ hundreds of inbound references.
 ### Adding a new ADR
 
 1. Copy `TEMPLATE.md` to `NNNN-your-slug.md`, where `NNNN` is **the next unused
-   number** (currently **0047**).
+   number** (currently **0051**).
 2. Fill in `## Status`, `## Date`, `## Estimated Complexity`, `## Context`,
    `## Decision`, `## Consequences`.
 3. Always **link by slug**, never by bare number, so collisions stay
@@ -197,4 +197,10 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0043 | [Floor 2 Scenario Definition & Governor Sweep Wiring](0043-floor2-scenario-definition-and-governor-sweep-wiring.md)             | Accepted | 2026-07-03 |
 | 0044 | [Spawner Battle Arena](0044-spawner-battle-arena.md)                                                                            | Accepted | 2026-07-04 |
 | 0045 | [AI Arena Lock-in Priority](0045-ai-arena-lockin-priority.md)                                                                   | Accepted | 2026-07-04 |
+| 0046 | [Spawner-Arena "Ever Armed" Latch & `resolvedArmed` Telemetry](0046-spawner-arena-armed-telemetry.md)                           | Accepted | 2026-07-05 |
+| 0046 | [Floor 2 Ambient Director with Territory-Weighted Trash Selection](0046-floor2-ambient-director-territory-weights.md)           | Accepted | 2026-07-06 |
 | 0046 | [Set-Piece Map-Gen Integration, NPC Placement & Sprite Layering](0046-set-piece-mapgen-integration-npc-placement-layering.md)   | Accepted | 2026-07-06 |
+| 0047 | [Spatial-Scoping Performance Optimizations](0047-spatial-scoping-performance.md)                                                | Accepted | 2026-07-06 |
+| 0048 | [Opt-in Per-Run Weapon Telemetry (accuracy + multi-hit)](0048-opt-in-weapon-telemetry.md)                                       | Accepted | 2026-07-06 |
+| 0049 | [Floor 1 is Spawner-Free by Empty Spawn Table](0049-floor1-spawner-free-by-config.md)                                           | Accepted | 2026-07-07 |
+| 0050 | [Dynamic Barrier Primitive](0050-dynamic-barrier-primitive.md)                                                                  | Accepted | 2026-07-04 |

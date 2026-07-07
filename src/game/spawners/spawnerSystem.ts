@@ -25,6 +25,7 @@ import {
   Enemy,
   Health,
   Owner,
+  Player,
   Position,
   SpawnAnim,
   Spawner,
@@ -45,6 +46,9 @@ const logger = createLogger('game:spawner');
 const CHILD_SPAWN_RADIUS_MIN = 2;
 const CHILD_SPAWN_RADIUS_MAX = 5;
 const SPAWNER_CHILD_SPAWN_ANIM_MS = 240;
+const SPAWNER_CHILD_CHASE_DELAY_MIN_MS = 250;
+const SPAWNER_CHILD_CHASE_DELAY_MAX_MS = 500;
+const SPAWNER_OPPOSITE_SPAWN_HALF_ANGLE_RAD = Math.PI / 4;
 const SPAWNER_PULSE_COLOR = 0x9be15d;
 
 const SPAWN_MODE = { PASSIVE: 0, DEFENSIVE: 1 } as const;
@@ -87,8 +91,18 @@ function spawnChild(
   originY: number,
   mob: MobTemplate,
   link: boolean,
+  playerX?: number,
+  playerY?: number,
 ): number {
-  const angle = world.rng.next() * Math.PI * 2;
+  const angle =
+    playerX !== undefined && playerY !== undefined
+      ? (() => {
+          const towardPlayer = Math.atan2(playerY - originY, playerX - originX);
+          const opposite = towardPlayer + Math.PI;
+          const jitter = (world.rng.next() * 2 - 1) * SPAWNER_OPPOSITE_SPAWN_HALF_ANGLE_RAD;
+          return opposite + jitter;
+        })()
+      : world.rng.next() * Math.PI * 2;
   const distance =
     CHILD_SPAWN_RADIUS_MIN + world.rng.next() * (CHILD_SPAWN_RADIUS_MAX - CHILD_SPAWN_RADIUS_MIN);
   const x = originX + Math.cos(angle) * distance;
@@ -109,6 +123,10 @@ function spawnChild(
       weight: mob.weight,
       bloodColor: mob.bloodColor,
       persona: mob.persona,
+      aggroEnableAtMs:
+        world.elapsedMs +
+        (SPAWNER_CHILD_CHASE_DELAY_MIN_MS +
+          world.rng.next() * (SPAWNER_CHILD_CHASE_DELAY_MAX_MS - SPAWNER_CHILD_CHASE_DELAY_MIN_MS)),
     },
   );
 
@@ -158,6 +176,8 @@ function resolveDeathFinale(
   x: number,
   y: number,
   defIndex: number,
+  playerX?: number,
+  playerY?: number,
 ): void {
   const def = getSpawnerArchetypeByIndex(defIndex);
   if (def === undefined) return;
@@ -167,7 +187,7 @@ function resolveDeathFinale(
     for (let i = 0; i < group.count; i += 1) {
       const mob = pickFromPool(group.pool, world.rng.next());
       if (mob !== undefined) {
-        spawnChild(world, spawnerEid, x, y, mob, false);
+        spawnChild(world, spawnerEid, x, y, mob, false, playerX, playerY);
         spawned += 1;
       }
     }
@@ -182,7 +202,11 @@ function resolveDeathFinale(
 
 export function spawnerSystem(world: GameWorld): void {
   const spawners = query(world.ecs, [Spawner, Position, Health]);
+  const players = query(world.ecs, [Player, Position]);
   const { spawner, position, health } = world.stores;
+  const playerEid = players[0];
+  const playerX = playerEid !== undefined ? position.x[playerEid] : undefined;
+  const playerY = playerEid !== undefined ? position.y[playerEid] : undefined;
 
   for (const eid of spawners) {
     if (eid === undefined) continue;
@@ -199,7 +223,7 @@ export function spawnerSystem(world: GameWorld): void {
     // (1) On-death finale — fire exactly once while the corpse lingers.
     if (hp <= 0) {
       if ((spawner.deathResolved[eid] ?? 0) === 0) {
-        resolveDeathFinale(world, eid, x, y, defIndex);
+        resolveDeathFinale(world, eid, x, y, defIndex, playerX, playerY);
         spawner.deathResolved[eid] = 1;
       }
       continue;
@@ -225,7 +249,7 @@ export function spawnerSystem(world: GameWorld): void {
       for (let i = 0; i < pulse; i += 1) {
         const mob = pickFromPool(mode.pool, world.rng.next());
         if (mob !== undefined) {
-          spawnChild(world, eid, x, y, mob, true);
+          spawnChild(world, eid, x, y, mob, true, playerX, playerY);
           spawner.spawnedTotal[eid] = (spawner.spawnedTotal[eid] ?? 0) + 1;
           spawned += 1;
         }

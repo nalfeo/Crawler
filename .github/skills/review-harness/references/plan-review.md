@@ -1,4 +1,4 @@
-# Plan review (>1🍎) and dual-plan synthesis (>3🍎)
+# Plan review (≥3🍎) and dual-plan synthesis (>3🍎)
 
 These stages happen **before** you write code.
 
@@ -58,9 +58,11 @@ review (the plan review reviews the synthesized result).
 
 ---
 
-## Plan review (>1🍎)
+## Plan review (≥3🍎)
 
 A _separate model_ reviews your plan and you address every concern before coding.
+(The plan-review floor was raised 2🍎 → 3🍎 on 2026-07-07; a 2🍎 change requires no
+review stages.)
 
 1. Run the review (the `rubber-duck` agent is purpose-built for plan/impl
    critique):

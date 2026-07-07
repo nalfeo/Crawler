@@ -32,10 +32,10 @@ import {
 } from './phaser-bridge/textures.js';
 import {
   computeEnemyScale,
+  enemyAppearanceTint,
   enemyVariantFromTextureId,
   generatedBriefIdForEnemy,
   pickGeneratedEnemyTextureKey,
-  placeholderSpawnerTint,
   refineEnemyVisualKind,
   resolveRenderKind,
   SLIME_FULL_SPRITE_WIDTH,
@@ -1056,17 +1056,13 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           visual.deathTotalMs = undefined;
         }
 
-        // Unwired spawner structures keep a bright-red placeholder wash. Dedicated
-        // spawner visual kinds (rats-nest/slime-pool art) opt out.
+        // Enemy tint policy from live identity: unwired spawners stay red,
+        // then Rat Brute dark-grey. Dedicated spawner art opts out of the red wash.
         if (entityType === 'enemy' && !corpseDecay) {
-          const hasDedicatedSpawnerArt =
-            visualType === 'enemy_spawner_rats_nest' || visualType === 'enemy_spawner_slime_pool';
-          const spawnerTint = hasDedicatedSpawnerArt
-            ? null
-            : placeholderSpawnerTint(world.ecs, eid);
-          if (spawnerTint !== null) {
+          const tint = enemyAppearanceTint(world.ecs, eid, appearanceKey, visualType);
+          if (tint !== null) {
             if (typeof img.setTint === 'function') {
-              img.setTint(spawnerTint);
+              img.setTint(tint);
             }
           } else if (typeof img.clearTint === 'function') {
             img.clearTint();
