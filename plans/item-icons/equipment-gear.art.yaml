@@ -1,0 +1,138 @@
+id: item-icons-equipment-gear
+title: 'Item Icons — Equipment Gear'
+summary: 'Placeholder wearable-gear icons covering every non-weapon, non-neck paper-doll slot (head, face, shoulders, chest, back, belt, legs, feet, gloves, arms, wrists, rings). These render the InventoryUI/EquipmentUI text fallback today; each needs real authored pixel art generated via the sprite pipeline when provider access is available.'
+assets:
+  - id: iron-helm
+    type: item
+    label: 'Iron Helm'
+    brief: 'Iron Helm — a single centered small object icon with a clear, readable silhouette on a transparent background. A dented pot-like helm with eyeholes. Surprisingly reassuring.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: iron-helm
+
+  - id: iron-visor
+    type: item
+    label: 'Iron Visor'
+    brief: 'Iron Visor — a single centered small object icon with a clear, readable silhouette on a transparent background. A slitted iron faceplate. You see less, you flinch less.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: iron-visor
+
+  - id: steel-pauldrons
+    type: item
+    label: 'Steel Pauldrons'
+    brief: 'Steel Pauldrons — a single centered small object icon with a clear, readable silhouette on a transparent background. Broad layered shoulder plates. Makes doorways a gamble.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: steel-pauldrons
+
+  - id: iron-breastplate
+    type: item
+    label: 'Iron Breastplate'
+    brief: 'Iron Breastplate — a single centered small object icon with a clear, readable silhouette on a transparent background. A heavy, honest chest plate protecting the vitals.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: iron-breastplate
+
+  - id: travelers-cloak
+    type: item
+    label: "Traveler's Cloak"
+    brief: "Traveler's Cloak — a single centered small object icon with a clear, readable silhouette on a transparent background. A frayed hooded cloak, quick on the feet."
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: travelers-cloak
+
+  - id: sturdy-belt
+    type: item
+    label: 'Sturdy Belt'
+    brief: 'Sturdy Belt — a single centered small object icon with a clear, readable silhouette on a transparent background. A thick leather belt with a heavy buckle that steadies the nerves.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: sturdy-belt
+
+  - id: iron-greaves
+    type: item
+    label: 'Iron Greaves'
+    brief: 'Iron Greaves — a single centered small object icon with a clear, readable silhouette on a transparent background. A pair of iron shin plates that have met many shins.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: iron-greaves
+
+  - id: leather-boots
+    type: item
+    label: 'Leather Boots'
+    brief: 'Leather Boots — a single centered small object icon with a clear, readable silhouette on a transparent background. Well-worn quiet boots. Good for sprinting away.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: leather-boots
+
+  - id: leather-gloves
+    type: item
+    label: 'Leather Gloves'
+    brief: 'Leather Gloves — a single centered small object icon with a clear, readable silhouette on a transparent background. A pair of supple leather gloves for a faster swing.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: leather-gloves
+
+  - id: bronze-vambrace
+    type: item
+    label: 'Bronze Vambrace'
+    brief: 'Bronze Vambrace — a single centered small object icon with a clear, readable silhouette on a transparent background. A single left-arm bronze guard, green with age.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: bronze-vambrace
+
+  - id: iron-armguard
+    type: item
+    label: 'Iron Armguard'
+    brief: 'Iron Armguard — a single centered small object icon with a clear, readable silhouette on a transparent background. A single right-arm iron plate that adds bite to a blow.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: iron-armguard
+
+  - id: leather-bracer
+    type: item
+    label: 'Leather Bracer'
+    brief: 'Leather Bracer — a single centered small object icon with a clear, readable silhouette on a transparent background. A snug wrist wrap that helps you slip a hit.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: leather-bracer
+
+  - id: beaded-bracelet
+    type: item
+    label: 'Beaded Bracelet'
+    brief: 'Beaded Bracelet — a single centered small object icon with a clear, readable silhouette on a transparent background. A string of lucky beads that rattle before a crit.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: beaded-bracelet
+
+  - id: band-of-fortune
+    type: item
+    label: 'Band of Fortune'
+    brief: 'Band of Fortune — a single centered small object icon with a clear, readable silhouette on a transparent background. A left-hand ring humming with dumb luck.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: band-of-fortune
+
+  - id: signet-of-focus
+    type: item
+    label: 'Signet of Focus'
+    brief: 'Signet of Focus — a single centered small object icon with a clear, readable silhouette on a transparent background. A right-hand signet ring that sharpens the mind.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: signet-of-focus

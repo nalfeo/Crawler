@@ -35,6 +35,7 @@ const KIND_COLORS: Readonly<Record<QuestWaypointKind, number>> = {
 
 export function createHudDirectionArrows(scene: Phaser.Scene): {
   sync(world: GameWorld, playerEid: number): void;
+  setVisible(visible: boolean): void;
   destroy(): void;
 } {
   // Isosceles triangle pointing up (+x apex after we rotate by angle+90°).
@@ -124,6 +125,18 @@ export function createHudDirectionArrows(scene: Phaser.Scene): {
     pulse.resume();
   }
 
+  /**
+   * Master visibility gate used when a full-screen panel (character/equipment
+   * screen) is open. Hiding just calls hide(); showing is a no-op because the
+   * next sync() re-derives arrow visibility from world state (and HudUI stops
+   * calling sync() while the HUD is hidden).
+   */
+  function setVisible(visible: boolean): void {
+    if (!visible) {
+      hide();
+    }
+  }
+
   function destroy(): void {
     detachCrispText();
     pulse.stop();
@@ -131,5 +144,5 @@ export function createHudDirectionArrows(scene: Phaser.Scene): {
     label.destroy();
   }
 
-  return { sync, destroy };
+  return { sync, setVisible, destroy };
 }

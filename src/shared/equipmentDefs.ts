@@ -132,6 +132,136 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
   }),
 ];
 
+// ---------------------------------------------------------------------------
+// Wearable gear equipment defs (non-weapon armor / accessories)
+// ---------------------------------------------------------------------------
+
+/**
+ * Placeholder wearable gear covering every non-weapon, non-neck body slot so
+ * the paper-doll is fully fillable and the equip-from-inventory flow is
+ * testable across all 18 slots. Each `id` matches a `gear(...)` item slug in
+ * `items.ts`. Primary-stat bonuses are integers (the equipment validator
+ * rejects fractional primaries); secondary stats (armor, moveSpeed, crit,
+ * etc.) may be fractional. Rings are split into two distinct items because a
+ * def's `slots` are occupied together (AND semantics), so a single ring can
+ * fill only one ring slot.
+ */
+const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
+  {
+    id: 'iron-helm',
+    name: 'Iron Helm',
+    slots: ['head'],
+    statBonuses: { armor: 2, constitution: 1 },
+    rarity: 'common',
+  },
+  {
+    id: 'iron-visor',
+    name: 'Iron Visor',
+    slots: ['face'],
+    statBonuses: { armor: 1, critChance: 0.03 },
+    rarity: 'common',
+  },
+  {
+    id: 'steel-pauldrons',
+    name: 'Steel Pauldrons',
+    slots: ['shoulders'],
+    statBonuses: { armor: 2, strength: 1 },
+    rarity: 'uncommon',
+  },
+  {
+    id: 'iron-breastplate',
+    name: 'Iron Breastplate',
+    slots: ['chest'],
+    statBonuses: { armor: 4, constitution: 1 },
+    rarity: 'uncommon',
+  },
+  {
+    id: 'travelers-cloak',
+    name: "Traveler's Cloak",
+    slots: ['back'],
+    statBonuses: { moveSpeed: 0.05, dodgeChance: 0.03 },
+    rarity: 'uncommon',
+  },
+  {
+    id: 'sturdy-belt',
+    name: 'Sturdy Belt',
+    slots: ['belt'],
+    statBonuses: { hpRegen: 0.5, constitution: 1 },
+    rarity: 'common',
+  },
+  {
+    id: 'iron-greaves',
+    name: 'Iron Greaves',
+    slots: ['legs'],
+    statBonuses: { armor: 3, dexterity: 1 },
+    rarity: 'uncommon',
+  },
+  {
+    id: 'leather-boots',
+    name: 'Leather Boots',
+    slots: ['feet'],
+    statBonuses: { moveSpeed: 0.06, armor: 1 },
+    rarity: 'common',
+  },
+  {
+    id: 'leather-gloves',
+    name: 'Leather Gloves',
+    slots: ['gloves'],
+    statBonuses: { attackSpeed: 0.05, dexterity: 1 },
+    rarity: 'common',
+  },
+  {
+    id: 'bronze-vambrace',
+    name: 'Bronze Vambrace',
+    slots: ['leftArm'],
+    statBonuses: { armor: 1, strength: 1 },
+    rarity: 'common',
+  },
+  {
+    id: 'iron-armguard',
+    name: 'Iron Armguard',
+    slots: ['rightArm'],
+    statBonuses: { armor: 1, damageBonus: 2 },
+    rarity: 'common',
+  },
+  {
+    id: 'leather-bracer',
+    name: 'Leather Bracer',
+    slots: ['leftWrist'],
+    statBonuses: { dexterity: 1, dodgeChance: 0.02 },
+    rarity: 'common',
+  },
+  {
+    id: 'beaded-bracelet',
+    name: 'Beaded Bracelet',
+    slots: ['rightWrist'],
+    statBonuses: { critChance: 0.02, luck: 1 },
+    rarity: 'uncommon',
+  },
+  {
+    id: 'band-of-fortune',
+    name: 'Band of Fortune',
+    slots: ['ringLeft'],
+    statBonuses: { luck: 1, xpBonus: 0.05 },
+    rarity: 'rare',
+  },
+  {
+    id: 'signet-of-focus',
+    name: 'Signet of Focus',
+    slots: ['ringRight'],
+    statBonuses: { intelligence: 1, cooldownReduction: 0.03 },
+    rarity: 'rare',
+  },
+];
+
+/**
+ * Item slugs of every placeholder wearable gear def, in slot-registry-ish
+ * order. Exported so labs/tests can seed a bag with gear for every non-weapon
+ * slot without re-deriving the list. Weapons and the charm are intentionally
+ * excluded (weapons occupy hand slots the paper-doll fills separately).
+ */
+export const GEAR_ITEM_IDS: readonly string[] = GEAR_EQUIPMENT_DEFS.map((d) => d.id);
+
 /**
  * Starter weapon id (from `WEAPON_DEFS`) → inventory item slug used by the
  * Floor 1 shop. Exported so `floorScenario.ts` (post-quest merchant stock)
@@ -166,6 +296,14 @@ const EQUIPMENT_BY_ITEM_ID: ReadonlyMap<string, EquipmentItemDef> = (() => {
     }
     map.set(def.id, def);
   }
+  // Non-weapon wearable gear (armor / accessories). Same dup-id guard; no
+  // WeaponDef linkage to validate.
+  for (const def of GEAR_EQUIPMENT_DEFS) {
+    if (map.has(def.id)) {
+      throw new Error(`Duplicate equipment def id: ${def.id}`);
+    }
+    map.set(def.id, def);
+  }
   // Validate the starter-weapon mapping resolves to real weapon-equipment defs
   // AND to real WeaponDefs. A silent divergence here would ship a starter
   // weapon that can't be equipped.
@@ -180,9 +318,29 @@ const EQUIPMENT_BY_ITEM_ID: ReadonlyMap<string, EquipmentItemDef> = (() => {
   return map;
 })();
 
+/**
+ * Test-only overlay for {@link getEquipmentDefForItem}. Lets unit tests register
+ * ad-hoc equipment defs (e.g. requirement-gated items, which the shipped catalog
+ * has none of) so requirement/swap edge cases are exercisable through the
+ * registry-backed `equipFromBag` / `previewEquipDelta` seams without shipping
+ * fake catalog items. Never populated in production. Mirrors the repo's existing
+ * `_resetCorpseStepTrackingForTest` test-seam convention.
+ */
+const TEST_EQUIPMENT_OVERRIDES = new Map<string, EquipmentItemDef>();
+
+/** Test-only: register an ad-hoc equipment def resolvable by its item id. */
+export function _registerEquipmentDefForTest(def: EquipmentItemDef): void {
+  TEST_EQUIPMENT_OVERRIDES.set(def.id, def);
+}
+
+/** Test-only: clear every ad-hoc equipment def registered via the test overlay. */
+export function _clearEquipmentDefsForTest(): void {
+  TEST_EQUIPMENT_OVERRIDES.clear();
+}
+
 /** Equipment definition for an inventory item slug, or undefined if not equippable. */
 export function getEquipmentDefForItem(itemId: string): EquipmentItemDef | undefined {
-  return EQUIPMENT_BY_ITEM_ID.get(itemId);
+  return TEST_EQUIPMENT_OVERRIDES.get(itemId) ?? EQUIPMENT_BY_ITEM_ID.get(itemId);
 }
 
 /** True when the given inventory item slug maps to a piece of equipment. */

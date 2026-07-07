@@ -132,4 +132,30 @@ describe('devtools art-plan model', () => {
     );
     expect(approved.get('rat-bruiser')?.exists).toBe(true);
   });
+
+  it('ignores placeholder manifest entries when parsing approved sprites', () => {
+    const approved = parseApprovedSprites(
+      {
+        version: 1,
+        entries: {
+          'rat-placeholder': {
+            briefId: 'rat-placeholder',
+            assetPath: 'generated/rat-placeholder.png',
+            sourceRun: 'placeholder',
+            variantIndex: 0,
+          },
+          'rat-real': {
+            briefId: 'rat-real',
+            assetPath: 'generated/rat-real.png',
+            sourceRun: 'runs/rat-real/run-1',
+            variantIndex: 1,
+          },
+        },
+      },
+      { existingAssets: new Set(['generated/rat-real.png']) },
+    );
+
+    expect(approved.has('rat-placeholder')).toBe(false);
+    expect(approved.get('rat-real')?.exists).toBe(true);
+  });
 });

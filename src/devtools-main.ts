@@ -4989,9 +4989,10 @@ function render(): void {
     const makeImgEl = (size: number): HTMLImageElement => {
       const img = document.createElement('img');
       Object.assign(img.style, {
-        width: `${size}px`,
-        height: `${size}px`,
-        objectFit: 'contain',
+        maxWidth: `${size}px`,
+        maxHeight: `${size}px`,
+        width: 'auto',
+        height: 'auto',
         imageRendering: 'pixelated',
         display: 'block',
         border: '1px solid rgba(148,163,184,0.2)',
