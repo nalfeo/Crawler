@@ -92,6 +92,18 @@ grid centering, and the Rarity clip) all addressed. Artifacts:
 `files/visual-review/inventory-panel-*.{png,review.json}`; setup at
 `scripts/agent/review/setup/ui-probe-inventory.js`.
 
+**Title chip proportion fix (Copilot review follow-up):** the header chip
+originally reused EquipmentUI's absolute `296px` width / `+146` center verbatim.
+That was tuned for Equipment's 1240px panel; on the inventory's 520px panel it
+spanned ~57% and left a ~150px dead gap right of "INVENTORY". Replaced with a
+deterministic chip sized from the fixed title string
+(`titleChipTextW = round('INVENTORY'.length * 16.5) ≈ 149`, width `+24`, centered
+on `titleChipTextW / 2`), applied at both construction and in `applyLayout`. Kept
+deterministic (not a runtime `title.width` read) because no `fonts.ready` await
+exists in `src/`, so a width read can measure the fallback font before Press
+Start 2P loads. Observed after fix: chip now hugs the title with a small even
+margin, no dead gap — `files/visual-review/inventory-panel-2026-07-07T05-56-20-476Z-titlecrop.png`.
+
 ## Observed
 
 - `npm run verify:fast` ✅ — typecheck + lint + guards + changed unit tests clean

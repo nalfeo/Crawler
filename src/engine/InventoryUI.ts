@@ -239,18 +239,27 @@ export function createInventoryUI(
   }
 
   // Title
-  const title = crispText(panelX + PANEL_PADDING, panelY + PANEL_PADDING + 2, 'INVENTORY', {
+  const TITLE_TEXT = 'INVENTORY';
+  const title = crispText(panelX + PANEL_PADDING, panelY + PANEL_PADDING + 2, TITLE_TEXT, {
     fontFamily: FONT_FAMILY,
     fontSize: '16px',
     color: hex(COLORS.textPrimary),
     padding: { top: 4, bottom: 2 },
   });
   container.add(title);
-  // Frame behind the title text (same pattern as EquipmentUI's titleFrame).
+  // Header chip behind the title. Sized to hug the title text rather than
+  // reusing EquipmentUI's absolute 296px frame: that value was tuned for
+  // Equipment's 1240px panel and spans ~57% of this 520px panel, leaving a large
+  // dead gap to the right of "INVENTORY". Derived from the fixed title string at
+  // 16px (Press Start 2P advance ~16.5px/char) so the chip stays correctly
+  // proportioned regardless of async pixel-font load timing — a runtime
+  // title.width read can measure the narrower fallback font before Press Start
+  // 2P finishes loading.
+  const titleChipTextW = Math.round(TITLE_TEXT.length * 16.5);
   const titleFrame = scene.add.rectangle(
-    panelX + PANEL_PADDING + 146,
+    snap(panelX + PANEL_PADDING + titleChipTextW / 2),
     panelY + PANEL_PADDING + 10,
-    296,
+    titleChipTextW + 24,
     28,
     COLORS.sectionHeader,
     0.95,
@@ -349,7 +358,10 @@ export function createInventoryUI(
       [panelX + panelWidth - 6, panelY + panelHeight - 6],
     ] as const;
     nextCornerPoints.forEach(([x, y], index) => cornerPixels[index]?.setPosition(x, y));
-    titleFrame.setPosition(panelX + PANEL_PADDING + 146, panelY + PANEL_PADDING + 10);
+    titleFrame.setPosition(
+      snap(panelX + PANEL_PADDING + titleChipTextW / 2),
+      panelY + PANEL_PADDING + 10,
+    );
     title
       .setPosition(panelX + PANEL_PADDING, panelY + PANEL_PADDING + 2)
       .setResolution(textResolution);
