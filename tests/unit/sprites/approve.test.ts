@@ -35,6 +35,11 @@ interface FakeRunOptions {
   readonly centerOfGravityFor?: ReadonlyArray<number>;
   /** Attach a judge scorecard with this minScore to the listed indices. */
   readonly judgeFor?: ReadonlyArray<{ index: number; minScore: number }>;
+  readonly facingOverride?: {
+    variantIndex: number;
+    direction: 'left' | 'right';
+    applyToAllVariants?: boolean;
+  } | null;
 }
 
 function writeFakeRun(
@@ -125,6 +130,13 @@ function writeFakeRun(
         },
         judgeScorecard: null,
       },
+      ...(options.facingOverride === undefined
+        ? {}
+        : {
+            postprocessOverrides: {
+              facing: options.facingOverride,
+            },
+          }),
     }),
   );
 
@@ -300,6 +312,50 @@ describe('approveVariant', () => {
     const assetAbs3 = path.join(publicAssetsDir, 'generated', 'iron-sword-var-3.png');
     expect(readFileSync(assetAbs0).toString()).toBe('PNG-0');
     expect(readFileSync(assetAbs3).toString()).toBe('PNG-3');
+  });
+
+  it('writes facingDirection from postprocess facing override and defaults to right otherwise', () => {
+    const targeted = writeFakeRun(repoRoot, {
+      runId: '2026-06-08T16-00-00-faceleft',
+      variantIndices: [0, 1],
+      facingOverride: { variantIndex: 1, direction: 'left' },
+    });
+    const targetedVariant = approveVariant({
+      runDir: targeted.runDir,
+      variantIndex: 1,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: fixedNow,
+    });
+    const untargetedVariant = approveVariant({
+      runDir: targeted.runDir,
+      variantIndex: 0,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: fixedNow,
+    });
+    expect(targetedVariant.facingDirection).toBe('left');
+    expect(untargetedVariant.facingDirection).toBe('right');
+
+    const allVariants = writeFakeRun(repoRoot, {
+      runId: '2026-06-08T17-00-00-faceall',
+      variantIndices: [2],
+      facingOverride: { variantIndex: 0, direction: 'left', applyToAllVariants: true },
+    });
+    const allVariantsEntry = approveVariant({
+      runDir: allVariants.runDir,
+      variantIndex: 2,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: fixedNow,
+    });
+    expect(allVariantsEntry.facingDirection).toBe('left');
   });
 
   it('throws already-approved when the exact same variant (identical content) is approved twice', () => {

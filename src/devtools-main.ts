@@ -7107,7 +7107,6 @@ function render(): void {
                       fringeToleranceSq: appliedBackgroundTweaks.fringeToleranceSq,
                     },
                   },
-                  facing: { direction: facingDirection },
                 }
               : {}),
             ...(manualAnchorOverride ? { manualAnchor: manualAnchorOverride } : {}),
