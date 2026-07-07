@@ -41,10 +41,14 @@ export { SLUG_RE };
 
 /**
  * Required review stages for a given apple estimate.
- *   1     -> (none; the ledger records the tier, no stages required)
- *   2     -> plan_review
+ *   1-2   -> (none; the ledger records the tier, no stages required)
  *   3     -> plan_review, code_review
  *   4-5   -> plan_review, dual_plan_synthesis, code_review, multi_model_review
+ *
+ * The plan-review floor was raised 2🍎 -> 3🍎 (2026-07-07) to match the
+ * code-review floor, which already moved to 3🍎 on 2026-07-02 (ADR 0036 /
+ * handoff docs/knowledge/handoffs/2026-07-02-streamline-verify-ci-gates.md).
+ * A 2-apple change now records its tier but requires no review stages.
  * @param {number} apples
  * @returns {string[]}
  */
@@ -54,9 +58,6 @@ export function requiredStagesForApples(apples) {
   }
   if (apples >= 3) {
     return ['plan_review', 'code_review'];
-  }
-  if (apples >= 2) {
-    return ['plan_review'];
   }
   return [];
 }
@@ -151,12 +152,152 @@ function validateLastRoundCommon(stage, errors, tag) {
   return last;
 }
 
+/**
+ * Validate the shape of a SINGLE round (models + non-negative-int counts). Used
+ * per-round on the escalation path, where every attempted round must record its
+ * provenance. The clean-terminal path keeps its historical last-round-only
+ * checks (see validateCodeReview / validateMultiModelReview) so existing
+ * single- and multi-round ledgers are unaffected.
+ * @param {unknown} round
+ * @param {string[]} errors
+ * @param {string} tag
+ * @param {number} idx
+ * @param {{minModels:number, requireDistinct:boolean, countKeys:string[]}} opts
+ */
+function validateRoundShape(round, errors, tag, idx, { minModels, requireDistinct, countKeys }) {
+  const where = `${tag}: round[${idx}]`;
+  if (!isPlainObject(round)) {
+    errors.push(`${where} must be an object`);
+    return;
+  }
+  if (
+    !Array.isArray(round.models) ||
+    round.models.length < minModels ||
+    !round.models.every(isNonEmptyString)
+  ) {
+    errors.push(`${where}.models must list >= ${minModels} non-empty model id(s)`);
+  } else if (requireDistinct && !hasDistinct(round.models)) {
+    errors.push(`${where}.models must be DISTINCT models`);
+  }
+  for (const k of countKeys) {
+    if (!isNonNegInt(round[k])) errors.push(`${where}.${k} must be an integer >= 0`);
+  }
+  if (
+    countKeys.includes('valid_count') &&
+    countKeys.includes('concerns_count') &&
+    isNonNegInt(round.valid_count) &&
+    isNonNegInt(round.concerns_count) &&
+    round.valid_count > round.concerns_count
+  ) {
+    errors.push(`${where}: valid_count must be <= concerns_count`);
+  }
+}
+
+/**
+ * Validate the terminal `escalated_to_human` state shared by code_review and
+ * multi_model_review. This is the bounded-loop escape hatch: after >= 2
+ * genuinely-attempted rounds still leave concerns, the stage may terminate by
+ * escalating to a human instead of looping forever. It is NOT clean — it is a
+ * recorded terminal state a human must act on.
+ *
+ * Requirements (all strengthening, none a silent skip):
+ *   - stage.clean must be `false` (clean:true + escalation is a contradiction).
+ *   - at least 2 attempted rounds (never escalate on round 1).
+ *   - after_round is an integer that EQUALS the final round index (escalation
+ *     is terminal — no rounds may follow it) and is >= 2.
+ *   - reason is a non-empty string; unresolved_concerns is an integer >= 1.
+ *   - the final round must be genuinely unresolved (not clean, and
+ *     resolved_count below the relevant concern count) so the escalation is
+ *     consistent with the recorded rounds.
+ * @param {object} stage
+ * @param {string[]} errors
+ * @param {string} tag
+ * @param {(last:object, errors:string[], tag:string)=>void} unresolvedCheck
+ */
+function validateEscalationTerminal(stage, errors, tag, unresolvedCheck) {
+  if (stage.clean === true) {
+    errors.push(
+      `${tag}: escalated_to_human is incompatible with clean:true (escalation is NOT clean)`,
+    );
+  } else if (stage.clean !== false) {
+    errors.push(`${tag}.clean must be false when escalated_to_human is present`);
+  }
+
+  const rounds = stage.rounds;
+  const roundCount = Array.isArray(rounds) ? rounds.length : 0;
+  if (roundCount < 2) {
+    errors.push(
+      `${tag}: escalated_to_human requires at least 2 attempted review rounds (never escalate on round 1)`,
+    );
+  }
+
+  const esc = stage.escalated_to_human;
+  if (!isPlainObject(esc)) {
+    errors.push(`${tag}.escalated_to_human must be an object`);
+    return;
+  }
+  if (
+    !Number.isInteger(esc.after_round) ||
+    esc.after_round < 2 ||
+    (roundCount > 0 && esc.after_round !== roundCount)
+  ) {
+    errors.push(
+      `${tag}.escalated_to_human.after_round (${JSON.stringify(esc.after_round)}) must equal the final round index (${roundCount}) and be >= 2 — escalation is terminal`,
+    );
+  }
+  if (!isNonEmptyString(esc.reason)) {
+    errors.push(`${tag}.escalated_to_human.reason must be a non-empty string`);
+  }
+  if (!Number.isInteger(esc.unresolved_concerns) || esc.unresolved_concerns < 1) {
+    errors.push(`${tag}.escalated_to_human.unresolved_concerns must be an integer >= 1`);
+  }
+
+  if (roundCount >= 1) {
+    const last = rounds[roundCount - 1];
+    if (isPlainObject(last)) {
+      if (last.clean === true) {
+        errors.push(
+          `${tag}: final round.clean must not be true when escalating (a clean round should resolve, not escalate)`,
+        );
+      }
+      unresolvedCheck(last, errors, tag);
+    }
+  }
+}
+
 function validateCodeReview(stage, errors) {
   const tag = 'code_review';
   if (!isPlainObject(stage)) {
     errors.push(`${tag}: must be an object`);
     return;
   }
+  // Escalation terminal state: bounded loop -> forced human attention.
+  if (stage.escalated_to_human !== undefined) {
+    if (!Array.isArray(stage.rounds) || stage.rounds.length < 1) {
+      errors.push(`${tag}.rounds must be a non-empty array`);
+    } else {
+      stage.rounds.forEach((r, i) =>
+        validateRoundShape(r, errors, tag, i, {
+          minModels: 1,
+          requireDistinct: false,
+          countKeys: ['concerns_count', 'resolved_count'],
+        }),
+      );
+    }
+    validateEscalationTerminal(stage, errors, tag, (last, errs, t) => {
+      if (
+        isNonNegInt(last.concerns_count) &&
+        isNonNegInt(last.resolved_count) &&
+        last.resolved_count >= last.concerns_count
+      ) {
+        errs.push(
+          `${t}: escalated_to_human requires unresolved concerns in the final round (resolved_count < concerns_count)`,
+        );
+      }
+    });
+    return;
+  }
+  // Clean terminal state (loop until no concerns remain).
   if (stage.clean !== true) errors.push(`${tag}.clean must be true`);
   const last = validateLastRoundCommon(stage, errors, tag);
   if (!last) return;
@@ -186,10 +327,37 @@ function validateMultiModelReview(stage, errors) {
     errors.push(`${tag}: must be an object`);
     return;
   }
-  if (stage.clean !== true) errors.push(`${tag}.clean must be true`);
   if (!isNonEmptyString(stage.adjudicator_model)) {
     errors.push(`${tag}.adjudicator_model must be a non-empty string`);
   }
+  // Escalation terminal state: bounded loop -> forced human attention.
+  if (stage.escalated_to_human !== undefined) {
+    if (!Array.isArray(stage.rounds) || stage.rounds.length < 1) {
+      errors.push(`${tag}.rounds must be a non-empty array`);
+    } else {
+      stage.rounds.forEach((r, i) =>
+        validateRoundShape(r, errors, tag, i, {
+          minModels: 2,
+          requireDistinct: true,
+          countKeys: ['concerns_count', 'valid_count', 'resolved_count'],
+        }),
+      );
+    }
+    validateEscalationTerminal(stage, errors, tag, (last, errs, t) => {
+      if (
+        isNonNegInt(last.valid_count) &&
+        isNonNegInt(last.resolved_count) &&
+        last.resolved_count >= last.valid_count
+      ) {
+        errs.push(
+          `${t}: escalated_to_human requires unresolved valid concerns in the final round (resolved_count < valid_count)`,
+        );
+      }
+    });
+    return;
+  }
+  // Clean terminal state (loop until no concerns remain).
+  if (stage.clean !== true) errors.push(`${tag}.clean must be true`);
   const last = validateLastRoundCommon(stage, errors, tag);
   if (!last) return;
   if (
@@ -270,6 +438,27 @@ export function validateLedger(obj) {
   } else {
     estimatedApples = obj.estimated_apples;
     requiredStages = requiredStagesForApples(estimatedApples);
+  }
+
+  // Downward-only, diff-justified re-scoring. An apple estimate may be revised
+  // AFTER planning, but ONLY strictly downward and ONLY when the actual diff
+  // justifies it (honor-system + policy text — not mechanically provable). A
+  // downward re-score makes required stages follow the NEW lower tier. Upward
+  // or no-op re-scores are rejected outright.
+  if (obj.apples_rescored_from !== undefined) {
+    const from = obj.apples_rescored_from;
+    if (!Number.isInteger(from) || from < 1 || from > 5) {
+      errors.push('apples_rescored_from must be an integer 1..5 when present');
+    } else if (estimatedApples != null && from <= estimatedApples) {
+      errors.push(
+        `apples_rescored_from (${from}) must be strictly greater than estimated_apples (${estimatedApples}) — re-scoring is downward-only`,
+      );
+    }
+    if (!isNonEmptyString(obj.rescore_reason)) {
+      errors.push('rescore_reason must be a non-empty string when apples_rescored_from is present');
+    }
+  } else if (obj.rescore_reason !== undefined) {
+    errors.push('rescore_reason is only valid alongside apples_rescored_from');
   }
 
   const stages = obj.stages;

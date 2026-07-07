@@ -37,12 +37,17 @@ npm run review:ledger -- validate <path>
 | apples | stages the validator requires                                             |
 | ------ | ------------------------------------------------------------------------- |
 | 1      | (none)                                                                    |
-| 2      | `plan_review`                                                             |
+| 2      | (none)                                                                    |
 | 3      | `plan_review`, `code_review`                                              |
 | 4–5    | `plan_review`, `dual_plan_synthesis`, `code_review`, `multi_model_review` |
 
-A stage that is _present but not required_ is still validated — don't add a
-half-filled stage you didn't actually do.
+The plan-review floor moved 2🍎 → 3🍎 on 2026-07-07 (matching the code-review
+floor, which moved on 2026-07-02 / ADR 0036). A 2🍎 change requires **no** stages.
+
+A stage that is _present but not required_ is **still validated** — don't add a
+half-filled stage you didn't actually do. This matters when you **re-score
+downward** (below): remove any now-unrequired incomplete scaffolds, or validation
+will fail on them.
 
 ## Full tier-4 example
 
@@ -106,11 +111,69 @@ half-filled stage you didn't actually do.
   `concerns_count`/`resolved_count` ints ≥0; `resolved_count >= concerns_count`.
 - **dual_plan_synthesis**: `completed===true`; `plan_models` = exactly 2 distinct
   non-empty ids; `judge_model` non-empty and not in `plan_models`.
-- **code_review**: `clean===true`; `rounds` non-empty; last round `clean===true`,
-  `models` ≥1 non-empty, `resolved_count >= concerns_count`.
-- **multi_model_review**: `clean===true`; `adjudicator_model` non-empty; `rounds`
-  non-empty; last round `clean===true`, `models` ≥2 distinct, counts ints ≥0,
-  `valid_count <= concerns_count`, `resolved_count >= valid_count`.
+- **code_review**: EITHER a clean terminal — `clean===true`; `rounds` non-empty;
+  last round `clean===true`, `models` ≥1 non-empty, `resolved_count >= concerns_count`
+  — OR an escalation terminal (see below).
+- **multi_model_review**: EITHER a clean terminal — `clean===true`;
+  `adjudicator_model` non-empty; `rounds` non-empty; last round `clean===true`,
+  `models` ≥2 distinct, counts ints ≥0, `valid_count <= concerns_count`,
+  `resolved_count >= valid_count` — OR an escalation terminal (see below).
+  (`adjudicator_model` is required on both paths.)
+- **top-level re-score (optional)**: if `apples_rescored_from` is present it must be
+  an int 1..5 **strictly greater** than `estimated_apples` (downward-only; upward /
+  no-op rejected) and `rescore_reason` must be a non-empty string. A lone
+  `rescore_reason` (without `apples_rescored_from`) is rejected.
+
+## Escalation terminal state (`escalated_to_human`)
+
+When a `code_review` or `multi_model_review` loop hits a genuinely intractable
+concern, cap it at **2 rounds** and record a terminal escalation instead of
+looping forever. The validator accepts an escalated stage when:
+
+- `clean` is **`false`** (escalation is NOT clean; `clean:true` + escalation fails).
+- there are **≥2 attempted rounds** (never escalate on round 1), and **every** round
+  records `models` (≥1 for code_review; ≥2 distinct for multi_model_review) + its
+  non-negative-int counts.
+- the final round is **non-clean** with genuine unresolved concerns
+  (`resolved_count < concerns_count` for code_review; `< valid_count` for
+  multi_model_review).
+- `escalated_to_human` is `{ after_round, reason, unresolved_concerns }` where
+  `after_round` is an int **equal to the final round index** (≥2; nothing follows
+  the escalation), `reason` is non-empty, and `unresolved_concerns` is an int ≥1.
+
+```json
+"code_review": {
+  "clean": false,
+  "rounds": [
+    { "round": 1, "models": ["claude-sonnet-4.6"], "concerns_count": 4, "resolved_count": 2, "clean": false },
+    { "round": 2, "models": ["gpt-5.3-codex"], "concerns_count": 2, "resolved_count": 0, "clean": false }
+  ],
+  "escalated_to_human": {
+    "after_round": 2,
+    "reason": "Two remaining concerns require a product/architecture decision the agents cannot make.",
+    "unresolved_concerns": 2
+  }
+}
+```
+
+## Downward-only re-score example
+
+```json
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-07",
+  "session_slug": "trim-thing",
+  "task_title": "Trim thing",
+  "estimated_apples": 2,
+  "apples_rescored_from": 4,
+  "rescore_reason": "Planned as a 4🍎 multi-file refactor; the diff collapsed to a one-line guard.",
+  "stages": {}
+}
+```
+
+Note `stages` is `{}` — after re-scoring down to 2🍎 (which requires no stages), the
+original 4🍎 scaffolds were **pruned**. Leaving an incomplete `code_review`/
+`multi_model_review` behind would fail validation.
 
 If `validate` exits 1 it prints the exact failing rule(s) — fix the underlying
 review, then the ledger, and re-run.
