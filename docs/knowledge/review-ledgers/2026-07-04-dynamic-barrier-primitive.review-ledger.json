@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-04",
+  "session_slug": "dynamic-barrier-primitive",
+  "task_title": "Dynamic barrier primitive; spawner arena physically cages player (rule-12 fix on PR #764)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-4.8",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "notes": "Reviewer flagged: (1) BLOCKING — passability-agnostic ring must include wall tiles, otherwise the seam-leak class the ADR describes still happens on rings crossing walls (fix: collectRingTiles skips ONLY door tiles, includes walls; double-covering walls is safe and eliminates the class). (2) BLOCKING — dropBarrier must handle overlapping barriers (two barriers sharing a tile: dropping one must NOT free the tile). Fix: dropBarrier rebuilds blockedTiles from the remaining barriers rather than doing set-subtract. (3) SHOULD-FIX — sealed-room path relies on door-locking alone today, so any door-lock config bug leaves the arena open. Fix: the plan adds createRoomBarrier(...,{doorwaysOnly:true}) alongside the existing door-lock config for belt-and-suspenders redundancy. All three folded into the synthesized plan and reflected in the geometry / registry / spawnerArenaSystem changes."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "MEDIUM (spawner-arena-caging-natural.test.ts:104): initial version set Velocity directly before runSimulationStep, but playerInputSystem runs FIRST in the pipeline and overwrites Velocity from InputState — the player never actually moved outward, so the containment test would pass vacuously. Fix: drive via inputState.moveX / moveY, which is the natural pipeline path. MEDIUM (movementSystem barrier honoring): initial code passed the barrier check through TileMap.isPassable, missing FloorMap.isPassableAt (the real per-frame call-site for slide collision). Fix: barrier lookup installed on FloorMap.isPassableAt with a closure that reads world.barriers.blockedTiles; both slide axes now honor barriers. Both fixes verified by re-running the natural Floor-1 headless caging test on seeds 1–8 (all pass)."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Re-verified: (a) inputState-driven natural Floor-1 caging test passes on seeds 1–8, containment holds throughout the outbound drive, primitive-release assertion holds on kill. (b) All 17 unit barrier tests pass. (c) Synthetic integration spawner-arena-caging test passes. (d) Prior spawner-arena unit tests updated for the removed collectFenceRingTiles export and pass. (e) Grep sweep confirmed zero remaining references to raiseFence / lowerFence / FENCE_TILE_FLAGS / assertFenceBlocks / spawnerArenaFence / collectFenceRingTiles outside historical ADR / handoff prose (which explicitly marks them superseded). No dead code."
+        }
+      ]
+    }
+  }
+}

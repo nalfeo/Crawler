@@ -44,6 +44,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'fov-lab': '/src/labs/fov-lab/index.ts',
   'door-lab': '/src/labs/door-lab/index.ts',
   'door-lock-lab': '/src/labs/door-lock-lab/index.ts',
+  'barrier-lab': '/src/labs/barrier-lab/index.ts',
   'map-gen-lab': '/src/labs/map-gen-lab/index.ts',
   'cave-system-lab': '/src/labs/cave-system-lab/index.ts',
   'pathfinding-lab': '/src/labs/pathfinding-lab/index.ts',
