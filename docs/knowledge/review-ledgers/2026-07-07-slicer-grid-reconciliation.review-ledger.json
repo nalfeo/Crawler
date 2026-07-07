@@ -21,9 +21,30 @@
           "concerns_count": 0,
           "resolved_count": 0,
           "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.4"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 4,
+          "models": ["gpt-5.4"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
         }
       ],
-      "note": "Logic final at c77f0153; 7853a46d added only tests + a determinism doc-comment (no logic change). code-review agent (claude-sonnet-4.6) found no correctness bugs."
+      "note": "Round 1 (claude-sonnet-4.6, at c77f0153): no concerns. Round 2 (gpt-5.4): 2 blocking bugs the first pass missed - uniformCuts could emit a zero-width cell (crash) when an under-segmented axis was reconciled on a near-empty content span, and the rerun grid-change guard compared only variant COUNT so a same-count reshape (2x2->1x4) slipped through; both fixed in 5698b13c (strict-monotonic cuts + full grid-STRUCTURE guard via persisted summary.grid). Round 3 (gpt-5.4): 2 more - those fixes were incomplete: uniformCuts still forced cuts past the axis when the commanded grid was larger than the sheet itself (axisMax < targetCells) crashing extractCell, and sameEmptyCells used set membership so it was blind to multiplicity; both fixed in cb76dd5f (per-cell bounds clamp in computeSliceMap makes the slicer total; brief-schema rejects duplicate emptyCells; sameEmptyCells now canonical/multiset compare). Round 4 (gpt-5.4): confirmed both round-3 issues resolved and found no new bugs or regressions -> clean. Loop closed. Regression tests added for the degenerate sheet-smaller-than-grid slice and duplicate-emptyCells rejection."
     }
   }
 }
