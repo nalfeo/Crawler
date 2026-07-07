@@ -45,6 +45,17 @@ const DEFAULT_CAVE_SETTINGS = {
   cavernWidenPasses: 2,
   straightHallwayMinRun: 10,
 } as const;
+const FLOOR2_MAP_GEN_LAB_DEFAULTS = {
+  widthTiles: 200,
+  heightTiles: 200,
+  caveInitialFill: 0.55,
+  caveSmoothingPasses: 8,
+  caveBossDenSize: 10,
+  caveRegionSeparationTiles: 80,
+  caveMaxRetries: 8,
+  caveCavernWidenPasses: 2,
+  caveStraightHallwayMinRun: 10,
+} as const;
 
 function defaultScenarioWorldFactory(seed: number, floor: number): ScenarioWorldFactoryResult {
   const world = createGameWorld({ seed, floor });
@@ -81,8 +92,8 @@ export function getFloorConstraintDefaults(floorId: PreviewFloorId): FloorConstr
   }
   return {
     biome: (manifest.map.biome ?? BiomeType.CAVE_SYSTEM) as BiomeType,
-    widthTiles: manifest.map.widthTiles,
-    heightTiles: manifest.map.heightTiles,
+    widthTiles: FLOOR2_MAP_GEN_LAB_DEFAULTS.widthTiles,
+    heightTiles: FLOOR2_MAP_GEN_LAB_DEFAULTS.heightTiles,
     maxRooms: manifest.map.maxRooms,
     floorDensity: manifest.map.floorDensity,
     roomWidthMin: manifest.map.roomWidthRange[0],
@@ -90,13 +101,13 @@ export function getFloorConstraintDefaults(floorId: PreviewFloorId): FloorConstr
     roomHeightMin: manifest.map.roomHeightRange[0],
     roomHeightMax: manifest.map.roomHeightRange[1],
     cavePresentCount: manifest.floor2?.presentCount ?? DEFAULT_CAVE_SETTINGS.presentCount,
-    caveInitialFill: 0.55,
-    caveSmoothingPasses: 8,
-    caveBossDenSize: 10,
-    caveRegionSeparationTiles: 80,
-    caveMaxRetries: 8,
-    caveCavernWidenPasses: 2,
-    caveStraightHallwayMinRun: 10,
+    caveInitialFill: FLOOR2_MAP_GEN_LAB_DEFAULTS.caveInitialFill,
+    caveSmoothingPasses: FLOOR2_MAP_GEN_LAB_DEFAULTS.caveSmoothingPasses,
+    caveBossDenSize: FLOOR2_MAP_GEN_LAB_DEFAULTS.caveBossDenSize,
+    caveRegionSeparationTiles: FLOOR2_MAP_GEN_LAB_DEFAULTS.caveRegionSeparationTiles,
+    caveMaxRetries: FLOOR2_MAP_GEN_LAB_DEFAULTS.caveMaxRetries,
+    caveCavernWidenPasses: FLOOR2_MAP_GEN_LAB_DEFAULTS.caveCavernWidenPasses,
+    caveStraightHallwayMinRun: FLOOR2_MAP_GEN_LAB_DEFAULTS.caveStraightHallwayMinRun,
   };
 }
 

@@ -65,8 +65,8 @@ describe('map-gen lab runtime preview', () => {
     const manifest = getFloorManifest('floor2')!;
     const defaults = getFloorConstraintDefaults('floor2');
     expect(defaults.biome).toBe((manifest.map.biome ?? BiomeType.CAVE_SYSTEM) as BiomeType);
-    expect(defaults.widthTiles).toBe(manifest.map.widthTiles);
-    expect(defaults.heightTiles).toBe(manifest.map.heightTiles);
+    expect(defaults.widthTiles).toBe(200);
+    expect(defaults.heightTiles).toBe(200);
     expect(defaults.maxRooms).toBe(manifest.map.maxRooms);
     expect(defaults.floorDensity).toBe(manifest.map.floorDensity);
     expect(defaults.roomWidthMin).toBe(manifest.map.roomWidthRange[0]);
