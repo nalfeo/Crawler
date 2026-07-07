@@ -14,7 +14,12 @@ inventory, hud-ux
 
 ## Apples
 
-1🍎 exact — single-file cosmetic token swap, no new logic or tests needed.
+1🍎 exact — the core work is a cosmetic design-language port. The PR-shepherd
+visual-polish pass then added layout/clip fixes (sort-label padding, title-chip
+proportion, grid centering), a shared `src/engine/ui-theme.ts` extraction (also
+touches `EquipmentUI.ts`), and an e2e blue-steel discriminator. Still scored 1🍎:
+no gameplay/sim logic, and the geometry tweaks are visual-only (per maintainer
+ruling that geometry changes here are cosmetic).
 
 ## What Was Done
 

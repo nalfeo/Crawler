@@ -615,7 +615,7 @@ export function createInventoryUI(
         const iconText = crispText(cellX, cellY - 6, def.name.substring(0, 2).toUpperCase(), {
           fontFamily: FONT_FAMILY,
           fontSize: '16px',
-          color: `#${rarityColor.toString(16).padStart(6, '0')}`,
+          color: hex(rarityColor),
         });
         iconText.setOrigin(0.5, 0.5);
         iconObject = iconText;
