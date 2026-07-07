@@ -329,10 +329,13 @@ describe('set piece NPC placement', () => {
   });
 
   it('returns undefined for an anchor role no NPC drives', () => {
-    installSetPiecePacks([setPiecePackSchema.parse(validNpcPack)]);
-    const room = getSetPieceDef('jimmys-pizza');
-    // jimmys-pizza has no NPCs at all → no anchors resolve.
-    expect(room && findSetPieceNpcByAnchor(room, 'welcome')).toBeUndefined();
+    // jimmys-pizza is a prop-only set piece in the DEFAULT registry (no npcs),
+    // so no anchor role resolves. Use the default registry (do NOT install a
+    // replacement pack) so `room` is defined and findSetPieceNpcByAnchor is
+    // genuinely called on the miss path rather than short-circuiting on undefined.
+    const room = getSetPieceDef('jimmys-pizza')!;
+    expect(room.npcs).toHaveLength(0);
+    expect(findSetPieceNpcByAnchor(room, 'welcome')).toBeUndefined();
   });
 
   it('rejects NPCs placed outside the footprint', () => {
