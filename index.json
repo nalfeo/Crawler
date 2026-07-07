@@ -22,6 +22,17 @@
     "path": "by-sha/15cdb56a33c1c89cf831c3f37746a5e3a36314b1.json"
   },
   {
+    "commit": "9a25e206083f503b82e9b3a28926c086cfc077f6",
+    "commitDate": "2026-07-07T14:05:02-07:00",
+    "commitSubject": "feat(core): dynamic barrier primitive; spawner arena physically cages player (#778)",
+    "capturedAt": "2026-07-07T21:43:46.840Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28899008746",
+    "winRate": 0.8433333333333334,
+    "totalWins": 253,
+    "totalRuns": 300,
+    "path": "by-sha/9a25e206083f503b82e9b3a28926c086cfc077f6.json"
+  },
+  {
     "commit": "756fc81d63f11c655a1b9f965935c3532bcc0b38",
     "commitDate": "2026-07-07T09:47:05Z",
     "commitSubject": "feat(review): make visual-review UX judge surface-agnostic and actionable (#846)",
