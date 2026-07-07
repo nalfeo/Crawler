@@ -1430,9 +1430,14 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     }
   } else {
     // Fallback to hardcoded NPC spawning (backward compatibility)
+    // Resolve all three NPCs against the ORIGINAL room center (the stable local
+    // `welcomeOfficePos`), never `world.floorScenario.objective.welcomeOfficePos`:
+    // the goon's `updateObjective` below mutates that field, so reading it for the
+    // spell/shop resolvers would cluster them onto the goon's tile instead of
+    // spreading them across the room.
     const guidePos = resolveNpcSpawnPosition(
       world,
-      world.floorScenario.objective.welcomeOfficePos,
+      welcomeOfficePos,
       occupiedNpcTiles,
       npcPlacementRng,
     );
@@ -1440,7 +1445,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     updateObjective({ welcomeOfficePos: guidePos });
     const spellPos = resolveNpcSpawnPosition(
       world,
-      world.floorScenario.objective.welcomeOfficePos,
+      welcomeOfficePos,
       occupiedNpcTiles,
       npcPlacementRng,
     );
@@ -1453,7 +1458,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     updateObjective({ spellQuestGiverPos: spellPos });
     const shopPos = resolveNpcSpawnPosition(
       world,
-      world.floorScenario.objective.welcomeOfficePos,
+      welcomeOfficePos,
       occupiedNpcTiles,
       npcPlacementRng,
     );
