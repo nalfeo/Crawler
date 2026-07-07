@@ -42,6 +42,15 @@ import type { ScreenBounds } from '../../src/engine/ui-scale.js';
 // resize-to-fit path, so an over-scaled icon can't silently overflow its cell.
 const PROBE_ICON_MAGENTA = { r: 0xff, g: 0x2f, b: 0xd0 };
 
+// InventoryUI's panel background after the equipment design-language port
+// (COLORS.panelBg = 0x2f3f61, "blue-steel"). Before the port the panel filled
+// with dark-navy 0x0d0d1a, so asserting this colour renders in the panel's
+// left padding gutter is a genuine before/after discriminator for the palette
+// swap: the old panel/cell fills are >70 away in RGB space and the new cellBg
+// (0x445c89) is ~54 away, so a match at threshold 30 specifically indicates the
+// blue-steel panel background.
+const PANEL_BLUE_STEEL = { r: 0x2f, g: 0x3f, b: 0x61 };
+
 function overlaps(a: ScreenBounds, b: ScreenBounds): boolean {
   const left = Math.max(a.x, b.x);
   const right = Math.min(a.x + a.width, b.x + b.width);
@@ -145,6 +154,49 @@ describe('inventory flow (e2e)', () => {
         'InventoryUI must scale generated icons from their real texture size ' +
         '(fitScaleForBox), never assuming a 16px source.',
     ).toBe(false);
+  });
+
+  it('renders the panel with the blue-steel equipment design language', async () => {
+    await loadUiProbeLab(page);
+    await hideLabChrome(page);
+
+    await probe.openInventory(page);
+    await page.waitForTimeout(300);
+    expect(await probe.isInventoryOpen(page)).toBe(true);
+
+    // Sample the panel background in the gutter just left of column 0. The grid
+    // is centered within the panel, so column 0's left edge sits well inside the
+    // panel border; the strip immediately left of it, at the grid's vertical
+    // level, is pure panel background — no cells, item icons, rarity borders, or
+    // corner pixels — which makes "contains blue-steel" a true palette test.
+    // Sampling over the cells themselves is NOT a discriminator: item art can
+    // contain incidental blue-steel-ish pixels regardless of the panel palette.
+    const cell = await probe.getInventoryCellBounds(page, 0);
+    expect(cell, 'first inventory cell should be rendered').not.toBeNull();
+    if (!cell) return;
+
+    const rect = await getCanvasRect(page);
+    const game = await getGameSize(page);
+    const sx = rect.width / game.width;
+    const sy = rect.height / game.height;
+    const topLeft = designToScreen(rect, game, cell.x - 14, cell.y + 4);
+    const region = {
+      x: Math.round(topLeft.x),
+      y: Math.round(topLeft.y),
+      w: Math.max(2, Math.round(11 * sx)),
+      h: Math.max(2, Math.round((cell.height - 8) * sy)),
+    };
+
+    const buf = await page.screenshot({ type: 'png' });
+    saveDebugShot(buf, 'inventory-blue-steel.png');
+    const png = parsePng(buf);
+
+    expect(
+      regionContainsColor(png, region, PANEL_BLUE_STEEL, 30),
+      'Expected the inventory panel to render the blue-steel background ' +
+        '(COLORS.panelBg = 0x2f3f61) ported from EquipmentUI. If this fails, the ' +
+        'panel is still using the old dark-navy palette.',
+    ).toBe(true);
   });
 
   it('shows a tooltip on hover and clears it on hover-out (unpinned)', async () => {
