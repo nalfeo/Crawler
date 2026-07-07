@@ -12,13 +12,15 @@ import {
   Sprite,
   Team,
   Trap,
+  Weight,
 } from '../../../src/core/components.js';
-import { SHAPE_BOX } from '../../../src/core/physics-defs.js';
+import { IMMOVABLE_THRESHOLD, SHAPE_BOX } from '../../../src/core/physics-defs.js';
 import { getNpcDef } from '../../../src/shared/npc-types.js';
 import {
   spawnHarvestableNode,
   spawnNpc,
   spawnProp,
+  spawnSetPieceProp,
   spawnTrap,
 } from '../../../src/core/spawners/world-objects.js';
 import { HARVESTABLE_DEFS } from '../../../src/shared/harvestableDefs.js';
@@ -104,6 +106,48 @@ describe('spawnProp', () => {
   it('returns -1 for an unknown defId', () => {
     const world = createTestWorld();
     expect(spawnProp(world, 0, 0, 'no-such-prop')).toBe(-1);
+  });
+});
+
+describe('spawnSetPieceProp', () => {
+  const RENDER = {
+    widthFt: 16,
+    heightFt: 8,
+    depth: -19,
+    sprite: { source: 'custom', requestId: 'welcome-room-rug', label: 'rug', prompt: 'a rug' },
+  } as const;
+
+  it('creates a visual-only prop: Position + Sprite + Prop, but NO Size (never in collision grid)', () => {
+    const world = createTestWorld();
+    const eid = spawnSetPieceProp(world, 12, 34, RENDER);
+
+    expect(eid).toBeGreaterThanOrEqual(0);
+    expect(hasComponent(world.ecs, eid, Position)).toBe(true);
+    expect(hasComponent(world.ecs, eid, Sprite)).toBe(true);
+    expect(hasComponent(world.ecs, eid, Prop)).toBe(true);
+    // No Size ⇒ excluded from the collision grid ⇒ cannot collide, be hit,
+    // knocked back, or block pathing. This is the visual-only guarantee.
+    expect(hasComponent(world.ecs, eid, Size)).toBe(false);
+    expect(world.stores.sprite.width[eid]).toBe(RENDER.widthFt);
+    expect(world.stores.sprite.height[eid]).toBe(RENDER.heightFt);
+  });
+
+  it('carries an immovable-tier Weight so it satisfies the universal Prop weight invariant (ADR 0044)', () => {
+    const world = createTestWorld();
+    const eid = spawnSetPieceProp(world, 0, 0, RENDER);
+
+    expect(hasComponent(world.ecs, eid, Weight)).toBe(true);
+    // Positive weight is required for every Prop (check:weight-coverage); the
+    // immovable tier keeps it inert should Size ever be added later.
+    expect(world.stores.weight.value[eid]).toBeGreaterThan(0);
+    expect(world.stores.weight.value[eid]).toBeGreaterThanOrEqual(IMMOVABLE_THRESHOLD);
+  });
+
+  it('registers the render instructions in the world.setPieceProps sidecar keyed by eid', () => {
+    const world = createTestWorld();
+    const eid = spawnSetPieceProp(world, 1, 2, RENDER);
+
+    expect(world.setPieceProps.get(eid)).toBe(RENDER);
   });
 });
 

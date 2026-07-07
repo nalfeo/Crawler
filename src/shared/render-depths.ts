@@ -53,6 +53,43 @@ export const PROP_DEPTH = {
 } as const;
 
 /**
+ * Terrain (baked floor + wall tiles) renders at this depth — the floor of the
+ * world-space stack. Set-piece "background" props (rugs, wall banners, sconces)
+ * must sit ABOVE this and BELOW {@link ENTITY_DEPTH} so they dress the terrain
+ * without covering the mobs/NPCs standing on it. Mirrors the RenderTexture depth
+ * used by `MainGameScene`'s baked terrain layer.
+ */
+export const TERRAIN_DEPTH = -20;
+
+/**
+ * Map a set-piece prop's authored `z` (the `PROP_KIND_Z` ladder: floor=0,
+ * wall=10, door=12, fixture=20, furniture=30, decoration=40, actor=50) to a
+ * Phaser render depth that deliberately STRADDLES the entity plane so layered
+ * scene dressing reads correctly against the mobs/NPCs standing in the room:
+ *
+ * - `z <= 10` → a NEGATIVE "background" band in `(TERRAIN_DEPTH, ENTITY_DEPTH)`,
+ *   i.e. above the baked terrain but below entities. A rug (`z=0`) lies on the
+ *   floor under everyone; a wall banner (`z=6`) hangs on the wall behind the NPC;
+ *   a bookcase (`z=9`) sits behind the broker who stands in front of it.
+ * - `z >= 20` → a small POSITIVE "foreground" band (≥2), so a welcome desk
+ *   (`z=30`) or clutter (`z=40`) reads as being in front of the NPC, occluding
+ *   their lower half like real furniture.
+ *
+ * The function is monotonic non-decreasing across the whole ladder and stays
+ * strictly between `TERRAIN_DEPTH` and the low world-VFX foreground band, so
+ * per-layer epsilon offsets (added by the stamping pass) never cross a band
+ * boundary. Deterministic and pure.
+ */
+export function setPieceZToDepth(z: number): number {
+  if (z <= 10) {
+    // Background band: z 0..10 → -19..-11 (above terrain -20, below entities 0).
+    return -19 + z * 0.8;
+  }
+  // Foreground band: z 20→2, 30→3, 40→4, 50→5 (in front of entities, below gore=10).
+  return 2 + (z - 20) * 0.1;
+}
+
+/**
  * Depths for world-space VFX layers. All values are well below `UI_DEPTH_CUTOFF`
  * so `refreshCameraMasks()` keeps them on the world camera. Relative ordering
  * controls which VFX draws on top (gore < combat text < debug path).

@@ -1,0 +1,55 @@
+import { describe, expect, it } from 'vitest';
+import {
+  ENTITY_DEPTH,
+  TERRAIN_DEPTH,
+  WORLD_VFX_DEPTH,
+  setPieceZToDepth,
+} from '../../src/shared/render-depths.js';
+import { PROP_KIND_Z } from '../../src/shared/set-piece-types.js';
+
+describe('setPieceZToDepth', () => {
+  it('keeps low-z background props above terrain but below entities', () => {
+    for (const z of [PROP_KIND_Z.floor, 6, 8, 9, PROP_KIND_Z.wall]) {
+      const depth = setPieceZToDepth(z);
+      expect(depth).toBeGreaterThan(TERRAIN_DEPTH);
+      expect(depth).toBeLessThan(ENTITY_DEPTH);
+    }
+  });
+
+  it('places high-z foreground props in front of entities but below gore VFX', () => {
+    for (const z of [
+      PROP_KIND_Z.fixture,
+      PROP_KIND_Z.furniture,
+      PROP_KIND_Z.decoration,
+      PROP_KIND_Z.actor,
+    ]) {
+      const depth = setPieceZToDepth(z);
+      expect(depth).toBeGreaterThan(ENTITY_DEPTH);
+      expect(depth).toBeLessThan(WORLD_VFX_DEPTH.gore);
+    }
+  });
+
+  it('renders a floor rug beneath a wall banner (both background)', () => {
+    // rug z=0, banner z=6 in the authored welcome room.
+    expect(setPieceZToDepth(0)).toBeLessThan(setPieceZToDepth(6));
+  });
+
+  it('renders a bookcase (z=9) behind an NPC standing on the entity plane', () => {
+    expect(setPieceZToDepth(9)).toBeLessThan(ENTITY_DEPTH);
+  });
+
+  it('renders a welcome desk (z=30) in front of the NPC it fronts', () => {
+    expect(setPieceZToDepth(30)).toBeGreaterThan(ENTITY_DEPTH);
+  });
+
+  it('is monotonic non-decreasing across the prop-kind z ladder', () => {
+    const ladder = [0, 6, 8, 9, 10, 20, 30, 40, 50];
+    for (let i = 1; i < ladder.length; i += 1) {
+      expect(setPieceZToDepth(ladder[i]!)).toBeGreaterThanOrEqual(setPieceZToDepth(ladder[i - 1]!));
+    }
+  });
+
+  it('is deterministic (pure)', () => {
+    expect(setPieceZToDepth(30)).toBe(setPieceZToDepth(30));
+  });
+});

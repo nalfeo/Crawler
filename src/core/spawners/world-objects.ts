@@ -13,7 +13,7 @@ import {
   Trap,
   Weight,
 } from '../components.js';
-import { PHYSICS_BODIES, SHAPE_BOX, SHAPE_CIRCLE } from '../physics-defs.js';
+import { PHYSICS_BODIES, IMMOVABLE_THRESHOLD, SHAPE_BOX, SHAPE_CIRCLE } from '../physics-defs.js';
 import type { GameWorld } from '../world.js';
 import { getNpcDef, type NpcInstance } from '../../shared/npc-types.js';
 import {
@@ -22,6 +22,7 @@ import {
   type DecorationDef,
 } from '../../shared/decorationDefs.js';
 import { ftToPx } from '../../shared/units.js';
+import type { SetPiecePropRender } from '../../shared/set-piece-render.js';
 import { type HarvestableDef, HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import { createEntity } from './entity-core.js';
 
@@ -186,6 +187,53 @@ export function spawnProp(world: GameWorld, x: number, y: number, defId: string)
     );
   }
 
+  return eid;
+}
+
+/**
+ * Spawn a VISUAL-ONLY set-piece prop layer entity at a world-space position (feet).
+ *
+ * Unlike {@link spawnProp}, this creates Position + Sprite + Prop + Weight but NO
+ * Size — so the entity is picked up by the engine's prop render pass yet never
+ * enters the collision grid, meaning it can never collide, be hit, be knocked
+ * back, or block pathing. Set-piece dressing (rugs, banners, desks, bookcases,
+ * clutter) is purely cosmetic and must not affect gameplay or balance.
+ *
+ * Weight is attached at an immovable tier (`IMMOVABLE_THRESHOLD`) because ADR 0044
+ * / `entity-physics.md` R2 make positive Weight a universal invariant for EVERY
+ * `Prop`-tagged entity (weight presence is universal; `knockbackSystem` divides by
+ * it — a 0/unset weight is nonsense and trips `check:weight-coverage`). Since these
+ * props carry no Size they are never knockback targets in practice, so the value is
+ * inert for gameplay; the immovable tier simply makes the "fixed furniture" intent
+ * explicit should Size ever be added.
+ *
+ * The `render` instructions (resolved sprite, straddling depth, footprint, tint)
+ * are stored in the `world.setPieceProps` sidecar keyed by the new entity id;
+ * the PhaserBridge prop pass consults that sidecar before the decoration-def
+ * path. One entity is spawned per flattened set-piece draw layer, so composites
+ * (e.g. rug + banner, or a table with an item on top) render correctly layered.
+ *
+ * @returns The new entity id.
+ */
+export function spawnSetPieceProp(
+  world: GameWorld,
+  x: number,
+  y: number,
+  render: SetPiecePropRender,
+): number {
+  const eid = createEntity(world);
+  addComponent(world.ecs, eid, set(Position, { x, y }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Sprite, { textureId: 0, width: render.widthFt, height: render.heightFt }),
+  );
+  addComponent(world.ecs, eid, set(Prop, { defIdIndex: 0, isDestructible: 0, isDestroyed: 0 }));
+  // Immovable-tier weight: satisfies the universal "every Prop carries positive
+  // weight" invariant (ADR 0044) without giving the cosmetic prop any collision
+  // footprint (no Size ⇒ never in the collision grid ⇒ never knocked back).
+  addComponent(world.ecs, eid, set(Weight, { value: IMMOVABLE_THRESHOLD }));
+  world.setPieceProps.set(eid, render);
   return eid;
 }
 
