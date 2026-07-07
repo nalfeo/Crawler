@@ -125,7 +125,7 @@ margin, no dead gap — `files/visual-review/inventory-panel-2026-07-07T05-56-20
 
 - Kept panel width/height auto-calculation unchanged to avoid breaking e2e test
   probe coordinates.
-- Font sizes slightly reduced (e.g. title 20 → 16, sortBtn 14 → 11, tab labels
+- Font sizes slightly reduced (e.g. title 20 → 16, sortBtn 14 → 12, tab labels
   13 → 10) because Press Start 2P is wider per em than Segoe UI; the pixel count
   stays visually balanced.
 - Active tab border uses gold (`0xf2c14e`, same as `slotSelectedBorder` in

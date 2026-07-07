@@ -37,6 +37,7 @@ import {
 } from '../shared/generated-assets.js';
 import { hashStringToSeed } from '../shared/random.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
+import { BLUE_STEEL, hex, MIN_TEXT_RESOLUTION } from './ui-theme.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -61,8 +62,7 @@ const BAG_GAP = 12;
 const BAG_COLS = 4;
 
 const COLORS = {
-  panelBg: 0x2f3f61,
-  panelBorder: 0x3f5f93,
+  ...BLUE_STEEL,
   dollBg: 0x394c74,
   panelInset: 0x2b3c61,
   slotBg: 0x445c89,
@@ -70,17 +70,9 @@ const COLORS = {
   slotSelected: 0x4a6699,
   slotSelectedBorder: 0xf2c14e,
   slotEmptyBorder: 0x90a7ca,
-  textPrimary: 0xd9e2ef,
-  textSecondary: 0xaebdd5,
   statBuff: 0x49d06f,
   statNerf: 0xe8695b,
-  sectionHeader: 0x355180,
-  accent: 0xc2d0e6,
 } as const;
-
-function hex(value: number): string {
-  return `#${value.toString(16).padStart(6, '0')}`;
-}
 
 function formatStatValue(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(2);
@@ -138,11 +130,6 @@ export function createEquipmentUI(
   scene.cameras.main.roundPixels = true;
 
   const snap = (value: number): number => Math.round(value);
-  // Small pixel fonts need a higher supersample than the shared HUD default
-  // (MAX_TEXT_RESOLUTION=4) or the tiny labels blur. Keep this floor consistent
-  // across construction AND relayout — otherwise every resize silently drops the
-  // panel's text from 6 back to 4, which reads as blurry section labels.
-  const MIN_TEXT_RESOLUTION = 6;
   let textResolution = Math.max(MIN_TEXT_RESOLUTION, getTextResolution(scene));
   const crispText = (
     x: number,

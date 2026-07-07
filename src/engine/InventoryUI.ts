@@ -34,6 +34,7 @@ import {
 import { hashStringToSeed } from '../shared/random.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
 import { renderItemTooltip } from './item-tooltip.js';
+import { BLUE_STEEL, hex, MIN_TEXT_RESOLUTION } from './ui-theme.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -48,14 +49,9 @@ const CELL_GAP = 10;
 const COLS = 5;
 const BORDER_WIDTH = 2;
 const FONT_FAMILY = '"Press Start 2P", "Courier New", monospace';
-// Small pixel fonts need a higher supersample than the shared HUD default
-// or the tiny labels blur. Keep this floor consistent across construction
-// AND relayout — otherwise every resize silently drops text sharpness.
-const MIN_TEXT_RESOLUTION = 6;
 
 const COLORS = {
-  panelBg: 0x2f3f61,
-  panelBorder: 0x3f5f93,
+  ...BLUE_STEEL,
   tabBg: 0x394c74,
   tabActive: 0x4a6699,
   tabActiveBorder: 0xf2c14e,
@@ -67,15 +63,7 @@ const COLORS = {
   cellHover: 0x5472ab,
   emptyCellBg: 0x37496f,
   emptyCellBorder: 0x3f5f93,
-  textPrimary: 0xd9e2ef,
-  textSecondary: 0xaebdd5,
-  accent: 0xc2d0e6,
-  sectionHeader: 0x355180,
 } as const;
-
-function hex(value: number): string {
-  return `#${value.toString(16).padStart(6, '0')}`;
-}
 
 // ---------------------------------------------------------------------------
 // InventoryUI
