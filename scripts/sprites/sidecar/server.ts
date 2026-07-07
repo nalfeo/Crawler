@@ -232,6 +232,8 @@ interface RunPostprocessBody {
   readonly sheet?: unknown;
   readonly mode?: unknown;
   readonly manualAnchor?: unknown;
+  readonly facing?: unknown;
+  readonly variantIndexes?: unknown;
 }
 
 interface RunManualAnchorBody {
@@ -969,13 +971,20 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
 
   const parseManualAnchorPayload = (
     value: unknown,
-  ): { variantIndex: number; x: number; y: number } | null => {
+  ): { variantIndex: number; x: number; y: number; applyToAllVariants?: boolean } | null => {
     if (!value || typeof value !== 'object') return null;
-    const candidate = value as { variantIndex?: unknown; x?: unknown; y?: unknown };
+    const candidate = value as {
+      variantIndex?: unknown;
+      x?: unknown;
+      y?: unknown;
+      applyToAllVariants?: unknown;
+    };
     if (
       !Number.isInteger(candidate.variantIndex) ||
       typeof candidate.x !== 'number' ||
-      typeof candidate.y !== 'number'
+      typeof candidate.y !== 'number' ||
+      (candidate.applyToAllVariants !== undefined &&
+        typeof candidate.applyToAllVariants !== 'boolean')
     ) {
       return null;
     }
@@ -983,6 +992,31 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       variantIndex: candidate.variantIndex as number,
       x: candidate.x,
       y: candidate.y,
+      ...(candidate.applyToAllVariants === true ? { applyToAllVariants: true } : {}),
+    };
+  };
+
+  const parseFacingPayload = (
+    value: unknown,
+  ): { variantIndex: number; direction: 'left' | 'right'; applyToAllVariants?: boolean } | null => {
+    if (!value || typeof value !== 'object') return null;
+    const candidate = value as {
+      variantIndex?: unknown;
+      direction?: unknown;
+      applyToAllVariants?: unknown;
+    };
+    if (
+      !Number.isInteger(candidate.variantIndex) ||
+      (candidate.direction !== 'left' && candidate.direction !== 'right') ||
+      (candidate.applyToAllVariants !== undefined &&
+        typeof candidate.applyToAllVariants !== 'boolean')
+    ) {
+      return null;
+    }
+    return {
+      variantIndex: candidate.variantIndex as number,
+      direction: candidate.direction,
+      ...(candidate.applyToAllVariants === true ? { applyToAllVariants: true } : {}),
     };
   };
 
@@ -1013,8 +1047,31 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       reply.code(400);
       return {
         error: 'bad-request',
-        message: 'body.manualAnchor must be { variantIndex, x, y }',
+        message: 'body.manualAnchor must be { variantIndex, x, y, applyToAllVariants? }',
       };
+    }
+    const facing = parseFacingPayload(body.facing);
+    const clearFacing = body.facing === null;
+    if (body.facing !== undefined && body.facing !== null && facing === null) {
+      reply.code(400);
+      return {
+        error: 'bad-request',
+        message: 'body.facing must be { variantIndex, direction: left|right, applyToAllVariants? }',
+      };
+    }
+    let variantIndexes: number[] | undefined;
+    if (body.variantIndexes !== undefined) {
+      if (
+        !Array.isArray(body.variantIndexes) ||
+        body.variantIndexes.some((n) => typeof n !== 'number' || !Number.isInteger(n) || n < 0)
+      ) {
+        reply.code(400);
+        return {
+          error: 'bad-request',
+          message: 'body.variantIndexes must be an array of non-negative integers',
+        };
+      }
+      variantIndexes = body.variantIndexes as number[];
     }
     if (body.sheet !== undefined && typeof body.sheet !== 'string') {
       reply.code(400);
@@ -1050,6 +1107,8 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         ...(options ? { options } : {}),
         ...(mode ? { optionsMode: mode } : {}),
         ...(persistedManualAnchor !== undefined ? { manualAnchor: persistedManualAnchor } : {}),
+        ...(clearFacing ? { facing: null } : facing ? { facing } : {}),
+        ...(variantIndexes ? { variantIndexes } : {}),
         ...(sheet ? { sheetFile: sheet } : {}),
       });
       return {
@@ -2061,6 +2120,8 @@ function rerunErrorStatus(kind: RerunErrorKind): number {
       return 404;
     case 'unsupported-sheet-filename':
       return 415;
+    case 'variant-index-out-of-range':
+      return 400;
     case 'variant-count-mismatch':
       return 422;
     case 'summary-invalid':

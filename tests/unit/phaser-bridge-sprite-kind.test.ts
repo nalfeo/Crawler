@@ -30,6 +30,7 @@ import {
   pickGeneratedEnemyTextureKey,
   placeholderSpawnerTint,
   PLACEHOLDER_SPAWNER_TINT,
+  refineEnemyVisualKind,
   resolveRenderKind,
 } from '../../src/engine/phaser-bridge/sprite-kind.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -191,6 +192,48 @@ describe('enemyVariantFromTextureId', () => {
   });
 });
 
+describe('refineEnemyVisualKind — spawner art dispatch', () => {
+  it('returns "enemy_spawner_rats_nest" for a Spawner entity with rat texture', () => {
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 1, width: 0, height: 0 })); // enemy_rat
+    addComponent(world.ecs, eid, Spawner);
+    expect(refineEnemyVisualKind(world, eid)).toBe('enemy_spawner_rats_nest');
+  });
+
+  it('returns "enemy_spawner_slime_pool" for a Spawner entity with slime texture', () => {
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 2, width: 0, height: 0 })); // enemy_slime
+    addComponent(world.ecs, eid, Spawner);
+    expect(refineEnemyVisualKind(world, eid)).toBe('enemy_spawner_slime_pool');
+  });
+
+  it('falls back to the mob variant for a Spawner with an unrecognised texture', () => {
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 99, width: 0, height: 0 }));
+    addComponent(world.ecs, eid, Spawner);
+    // textureId 99 has no registered variant → "enemy" fallback
+    expect(refineEnemyVisualKind(world, eid)).toBe('enemy');
+  });
+
+  it('returns the plain mob variant for a non-Spawner rat enemy', () => {
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 1, width: 0, height: 0 })); // enemy_rat
+    // No Spawner component → plain mob, not a nest
+    expect(refineEnemyVisualKind(world, eid)).toBe('enemy_rat');
+  });
+
+  it('returns the plain mob variant for a non-Spawner slime enemy', () => {
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 2, width: 0, height: 0 })); // enemy_slime
+    expect(refineEnemyVisualKind(world, eid)).toBe('enemy_slime');
+  });
+});
+
 describe('pickGeneratedEnemyTextureKey', () => {
   const registry = buildGeneratedSpriteRegistry({
     version: 1,
@@ -239,6 +282,50 @@ describe('pickGeneratedEnemyTextureKey', () => {
         sensorScore: '7/8',
         judgeScore: '2',
       },
+      'rat-nest-v2-var-0': {
+        briefId: 'rat-nest-v2',
+        spriteName: 'rat-nest-v2-var-0',
+        assetPath: 'generated/rat-nest-v2-var-0.png',
+        approvedAt: '2026-07-06T00:00:00.000Z',
+        sourceRun: 'test',
+        variantIndex: 0,
+        anchor: null,
+        sensorScore: '7/8',
+        judgeScore: '2',
+      },
+      'rat-nest-v2-var-3': {
+        briefId: 'rat-nest-v2',
+        spriteName: 'rat-nest-v2-var-3',
+        assetPath: 'generated/rat-nest-v2-var-3.png',
+        approvedAt: '2026-07-06T00:00:00.000Z',
+        sourceRun: 'test',
+        variantIndex: 3,
+        anchor: null,
+        sensorScore: '7/8',
+        judgeScore: '2',
+      },
+      'slime-pool-v1-var-0': {
+        briefId: 'slime-pool-v1',
+        spriteName: 'slime-pool-v1-var-0',
+        assetPath: 'generated/slime-pool-v1-var-0.png',
+        approvedAt: '2026-07-06T00:00:00.000Z',
+        sourceRun: 'test',
+        variantIndex: 0,
+        anchor: null,
+        sensorScore: '7/8',
+        judgeScore: '2',
+      },
+      'slime-pool-v1-var-3': {
+        briefId: 'slime-pool-v1',
+        spriteName: 'slime-pool-v1-var-3',
+        assetPath: 'generated/slime-pool-v1-var-3.png',
+        approvedAt: '2026-07-06T00:00:00.000Z',
+        sourceRun: 'test',
+        variantIndex: 3,
+        anchor: null,
+        sensorScore: '7/8',
+        judgeScore: '2',
+      },
     },
   });
 
@@ -259,6 +346,21 @@ describe('pickGeneratedEnemyTextureKey', () => {
   it('returns null when the registry or mapping is missing', () => {
     expect(pickGeneratedEnemyTextureKey(null, 'enemy_slime', 0.2)).toBeNull();
     expect(pickGeneratedEnemyTextureKey(registry, 'enemy_boss', 0.2, 'slime-rat')).toBeNull();
+  });
+
+  it('supports dedicated spawner generated families', () => {
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_spawner_rats_nest', 0.1)).toBe(
+      'rat-nest-v2-var-0',
+    );
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_spawner_rats_nest', 0.95)).toBe(
+      'rat-nest-v2-var-3',
+    );
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_spawner_slime_pool', 0.1)).toBe(
+      'slime-pool-v1-var-0',
+    );
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_spawner_slime_pool', 0.95)).toBe(
+      'slime-pool-v1-var-3',
+    );
   });
 });
 

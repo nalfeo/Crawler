@@ -10,8 +10,7 @@
  */
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
-import { fitScaleForBox, fitUiScale, type ScreenBounds } from './ui-scale.js';
-import { getRenderScale } from './render-scale.js';
+import { fitScaleForBox, fitUiScale, getTextResolution, type ScreenBounds } from './ui-scale.js';
 import { GAME } from '../shared/constants.js';
 import type { InventoryBag, InventorySlot, TabPreferences } from '../shared/inventory.js';
 import {
@@ -24,6 +23,7 @@ import {
   type SortField,
 } from '../shared/inventory.js';
 import { getSlotLabel, type EquipmentSlotId } from '../shared/equipment-slots.js';
+import { isEquippableItem } from '../shared/equipmentDefs.js';
 import { type ItemDef, type ItemTag, RARITY_COLORS, getItemById } from '../shared/items.js';
 import {
   emptyGeneratedSpriteRegistry,
@@ -33,6 +33,7 @@ import {
 } from '../shared/generated-assets.js';
 import { hashStringToSeed } from '../shared/random.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
+import { renderItemTooltip } from './item-tooltip.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -61,8 +62,6 @@ const COLORS = {
   cellHover: 0x22224a,
   textPrimary: 0xf8fafc,
   textSecondary: 0x9ca3af,
-  tooltipBg: 0x0a0a16,
-  tooltipBorder: 0x444466,
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -74,7 +73,16 @@ export interface InventoryUIConfig {
   width?: number;
   /** Height of the panel. Default: 480. */
   height?: number;
+  /**
+   * Equip intent. Fired when the user double-clicks an equippable inventory
+   * cell (ARPG idiom; single click/tap still pins the tooltip). The coordinator
+   * decides whether the equip is allowed (safe-room gate) and refreshes panes.
+   */
+  onEquipItem?: (itemId: string) => void;
 }
+
+/** Max ms between two clicks on the same cell to count as an equip double-click. */
+const DOUBLE_CLICK_MS = 220;
 
 export function createInventoryUI(
   scene: Phaser.Scene,
@@ -89,6 +97,12 @@ export function createInventoryUI(
    * Lets e2e harnesses hover/click a specific canvas cell.
    */
   getCellScreenBounds(index: number): ScreenBounds | null;
+  /**
+   * Test/automation affordance: render-order index of the first visible cell
+   * holding `itemId`, or null when absent. Lets e2e find a specific item's cell
+   * without assuming a fixed sort position.
+   */
+  getCellIndexForItem(itemId: string): number | null;
   /** Test/automation affordance: true while a hover/pin tooltip is rendered. */
   isTooltipVisible(): boolean;
   /** Test/automation affordance: true while a tooltip is pinned (click/tap). */
@@ -100,8 +114,7 @@ export function createInventoryUI(
   scene.cameras.main.roundPixels = true;
 
   const snap = (value: number): number => Math.round(value);
-  const baseResolution = getRenderScale(scene);
-  let textResolution = baseResolution;
+  let textResolution = getTextResolution(scene);
   const crispText = (
     x: number,
     y: number,
@@ -118,7 +131,7 @@ export function createInventoryUI(
   // uiScale) and scale the whole container up by uiScale so the inventory grid,
   // tabs and text grow on small screens while staying centred and on-canvas.
   let uiScale = fitUiScale(scene, panelWidth, panelHeight);
-  textResolution = Math.max(1, Math.round(baseResolution * uiScale));
+  textResolution = getTextResolution(scene);
   const viewWidth = (): number => GAME.WIDTH / uiScale;
   const viewHeight = (): number => GAME.HEIGHT / uiScale;
 
@@ -130,6 +143,12 @@ export function createInventoryUI(
   let currentSortBy: SortField = 'rarity';
   const tabPrefs: TabPreferences = createTabPreferences();
   let playerEid = -1;
+
+  // Double-click equip detection: remember the last cell click so a quick
+  // second click on the same equippable item fires the equip intent while a
+  // slow second click still just toggles the pinned tooltip.
+  let lastClickItemId: string | null = null;
+  let lastClickTime = Number.NEGATIVE_INFINITY;
 
   // Signature of the last rendered grid state. The scene calls refresh() every
   // frame while the panel is open; re-running renderItems() each frame would
@@ -238,6 +257,8 @@ export function createInventoryUI(
   const cellObjects: Phaser.GameObjects.GameObject[] = [];
   // Cell background rectangles, in render order (test/automation hit-targets).
   const cellBackgrounds: Phaser.GameObjects.Rectangle[] = [];
+  // Item id per render-order cell, parallel to cellBackgrounds (automation).
+  const cellItemIds: string[] = [];
   // Tooltip objects
   const tooltipObjects: Phaser.GameObjects.GameObject[] = [];
 
@@ -267,7 +288,7 @@ export function createInventoryUI(
 
   function applyLayout(): void {
     uiScale = fitUiScale(scene, panelWidth, panelHeight);
-    textResolution = Math.max(1, Math.round(baseResolution * uiScale));
+    textResolution = getTextResolution(scene);
     container.setScale(uiScale);
     panelX = snap((viewWidth() - panelWidth) / 2);
     panelY = snap((viewHeight() - panelHeight) / 2);
@@ -312,6 +333,7 @@ export function createInventoryUI(
     }
     cellObjects.length = 0;
     cellBackgrounds.length = 0;
+    cellItemIds.length = 0;
   }
 
   function clearTooltip(): void {
@@ -475,8 +497,27 @@ export function createInventoryUI(
           showTooltip(pinned.def, pinned.slot, pinned.x, pinned.y);
         }
       });
-      // Click/tap toggles a pinned tooltip so touch users (no hover) can read it.
+      // Click/tap toggles a pinned tooltip so touch users (no hover) can read
+      // it. A quick second click on the same equippable cell instead fires the
+      // equip intent (ARPG double-click idiom).
       cellBg.on('pointerdown', () => {
+        const now = scene.time.now;
+        const isDoubleClick =
+          lastClickItemId === slot.itemId && now - lastClickTime <= DOUBLE_CLICK_MS;
+        lastClickTime = now;
+        lastClickItemId = slot.itemId;
+
+        if (isDoubleClick && config.onEquipItem && isEquippableItem(slot.itemId)) {
+          // Equipping moves the item out of this cell; drop the pin/tooltip and
+          // reset the click tracker so a follow-up click starts fresh.
+          pinned = null;
+          clearTooltip();
+          lastClickItemId = null;
+          lastClickTime = Number.NEGATIVE_INFINITY;
+          config.onEquipItem(slot.itemId);
+          return;
+        }
+
         if (pinned !== null && pinned.slot.itemId === slot.itemId) {
           pinned = null;
         } else {
@@ -541,6 +582,7 @@ export function createInventoryUI(
       container.add(iconObject);
       cellObjects.push(cellBg, iconObject);
       cellBackgrounds.push(cellBg);
+      cellItemIds.push(slot.itemId);
     }
 
     // Item count footer
@@ -571,53 +613,30 @@ export function createInventoryUI(
 
   function showTooltip(def: ItemDef, slot: InventorySlot, cellX: number, cellY: number): void {
     clearTooltip();
-
-    const tooltipWidth = 200;
-    const tooltipHeight = 110;
-    const tx = snap(Math.min(cellX + CELL_SIZE / 2 + 8, panelX + panelWidth - tooltipWidth - 8));
-    const ty = snap(Math.max(cellY - tooltipHeight / 2, panelY + 8));
-
-    const tooltipBg = scene.add.rectangle(
-      tx + tooltipWidth / 2,
-      ty + tooltipHeight / 2,
-      tooltipWidth,
-      tooltipHeight,
-      COLORS.tooltipBg,
-      0.95,
-    );
-    tooltipBg.setStrokeStyle(1, COLORS.tooltipBorder);
-
-    const rarityColor = RARITY_COLORS[def.rarity] ?? 0x9e9e9e;
-    const nameText = crispText(tx + 8, ty + 8, def.name, {
-      fontFamily: FONT_FAMILY,
-      fontSize: '15px',
-      color: `#${rarityColor.toString(16).padStart(6, '0')}`,
-      wordWrap: { width: tooltipWidth - 16 },
-    });
-
-    const descText = crispText(tx + 8, ty + 26, def.description, {
-      fontFamily: FONT_FAMILY,
-      fontSize: '12px',
-      color: '#9ca3af',
-      wordWrap: { width: tooltipWidth - 16 },
-    });
-
-    const metaText = crispText(
-      tx + 8,
-      ty + tooltipHeight - 16,
-      `${def.rarity} · x${slot.quantity} · [${def.tags.join(', ')}]`,
-      {
+    // Surface the equip affordance only when a coordinator is listening and the
+    // item can actually be equipped.
+    const footerHint =
+      config.onEquipItem !== undefined && isEquippableItem(slot.itemId)
+        ? 'DOUBLE-CLICK TO EQUIP'
+        : undefined;
+    tooltipObjects.push(
+      ...renderItemTooltip({
+        scene,
+        container,
+        panelX,
+        panelY,
+        panelWidth,
+        panelHeight,
+        anchorX: cellX,
+        anchorY: cellY,
+        anchorSize: CELL_SIZE,
+        def,
+        quantity: slot.quantity,
         fontFamily: FONT_FAMILY,
-        fontSize: '11px',
-        color: '#666688',
-      },
+        footerHint,
+        crispText,
+      }),
     );
-
-    container.add(tooltipBg);
-    container.add(nameText);
-    container.add(descText);
-    container.add(metaText);
-    tooltipObjects.push(tooltipBg, nameText, descText, metaText);
   }
 
   // ---------------------------------------------------------------------------
@@ -734,6 +753,10 @@ export function createInventoryUI(
       if (!cell) return null;
       const b = cell.getBounds();
       return { x: b.x, y: b.y, width: b.width, height: b.height };
+    },
+    getCellIndexForItem: (itemId: string): number | null => {
+      const i = cellItemIds.indexOf(itemId);
+      return i >= 0 ? i : null;
     },
     isTooltipVisible: () => tooltipObjects.length > 0,
     isTooltipPinned: () => pinned !== null,

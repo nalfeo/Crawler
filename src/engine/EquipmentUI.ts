@@ -3,9 +3,8 @@
  *
  * Features:
  * - 16-slot paper doll laid out from SLOT_REGISTRY uiPositions
- * - Each slot shows the equipped item (rarity-coloured) or its slot label
+ * - Each slot shows the equipped item (rarity-coloured) or an empty-slot icon
  * - Click an occupied slot to unequip (item returns to the bag)
- * - "Available gear" row lists equippable items held in the bag; click to equip
  * - Live effective-stats readout with buffed stats highlighted
  * - Toggle handled by caller (scene keybind / on-screen Gear button)
  *
@@ -14,54 +13,70 @@
  */
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
-import { fitUiScale } from './ui-scale.js';
+import { fitScaleForBox, fitUiScale, getTextResolution, type ScreenBounds } from './ui-scale.js';
 import { getRenderScale } from './render-scale.js';
 import { GAME } from '../shared/constants.js';
 import {
-  equip,
   unequip,
+  equipFromBag,
   getEffectiveStats,
   getEquipmentState,
+  previewEquipDelta,
+  type EquipDeltaPreview,
 } from '../core/systems/equipmentSystem.js';
-import { SLOT_REGISTRY, getSlotLabel, type EquipmentSlotId } from '../shared/equipment-slots.js';
-import { getEquipmentDefForItem, isEquippableItem } from '../shared/equipmentDefs.js';
-import type { EquipmentItemDef, ItemRarity } from '../shared/equipment-types.js';
-import { PRIMARY_STATS, SECONDARY_STATS, type StatId } from '../shared/stats.js';
-import { addItem, removeItem } from '../shared/inventory.js';
-import type { InventoryBag } from '../shared/inventory.js';
-import { filterByEquipmentSlot } from '../shared/inventory.js';
-import { getItemById } from '../shared/items.js';
+import { SLOT_REGISTRY, type EquipmentSlotId } from '../shared/equipment-slots.js';
+import { PRIMARY_STATS, SECONDARY_STATS, ALL_STAT_IDS, type StatId } from '../shared/stats.js';
+import { addItem, filterByEquipmentSlot, filterEquippable } from '../shared/inventory.js';
+import type { InventoryBag, InventorySlot } from '../shared/inventory.js';
+import { getItemById, RARITY_COLORS, type ItemDef } from '../shared/items.js';
+import {
+  emptyGeneratedSpriteRegistry,
+  pickGeneratedVariant,
+  type GeneratedSpriteEntry,
+  type GeneratedSpriteRegistry,
+} from '../shared/generated-assets.js';
+import { hashStringToSeed } from '../shared/random.js';
+import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const PANEL_PADDING = 16;
-const FONT_FAMILY = 'Segoe UI, Arial, sans-serif';
-const SLOT_W = 90;
-const SLOT_H = 46;
+const PANEL_PADDING = 22;
+const FONT_FAMILY = '"Press Start 2P", "Courier New", monospace';
+const SLOT_W = 64;
+const SLOT_H = 64;
+const SLOT_SPREAD_X = 1;
+const SLOT_SPREAD_Y = 1;
+
+// Fixed sub-region widths. The paper-doll and stats column keep their proven
+// (heavily-iterated) geometry regardless of the wider panel; the leftover space
+// on the right becomes the integrated equippable-bag column. Decoupling these
+// from panelWidth is what lets us add the bag without disturbing slot layout.
+const DOLL_W = 570;
+const STATS_W = 250;
+// Bag grid cells (mirrors InventoryUI's cell metrics for visual consistency).
+const BAG_CELL = 60;
+const BAG_GAP = 12;
+const BAG_COLS = 4;
 
 const COLORS = {
-  panelBg: 0x0d0d1a,
-  panelBorder: 0x2a2a4a,
-  dollBg: 0x111126,
-  slotBg: 0x15152a,
-  slotHover: 0x22224a,
-  slotEmptyBorder: 0x333355,
-  textPrimary: 0xf8fafc,
-  textSecondary: 0x9ca3af,
-  statBuff: 0x22c55e,
-  chipBg: 0x1a1a30,
-  chipHover: 0x3a3a6a,
+  panelBg: 0x2f3f61,
+  panelBorder: 0x3f5f93,
+  dollBg: 0x394c74,
+  panelInset: 0x2b3c61,
+  slotBg: 0x445c89,
+  slotHover: 0x5472ab,
+  slotSelected: 0x4a6699,
+  slotSelectedBorder: 0xf2c14e,
+  slotEmptyBorder: 0x90a7ca,
+  textPrimary: 0xd9e2ef,
+  textSecondary: 0xaebdd5,
+  statBuff: 0x49d06f,
+  statNerf: 0xe8695b,
+  sectionHeader: 0x355180,
+  accent: 0xc2d0e6,
 } as const;
-
-const RARITY_HEX: Record<ItemRarity, number> = {
-  common: 0x9ca3af,
-  uncommon: 0x22c55e,
-  rare: 0x3b82f6,
-  epic: 0xa855f7,
-  legendary: 0xf59e0b,
-};
 
 function hex(value: number): string {
   return `#${value.toString(16).padStart(6, '0')}`;
@@ -69,6 +84,14 @@ function hex(value: number): string {
 
 function formatStatValue(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
+function formatStatLabel(statId: StatId): string {
+  return statId
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
 }
 
 // ---------------------------------------------------------------------------
@@ -79,6 +102,12 @@ export interface EquipmentUIConfig {
   width?: number;
   height?: number;
   onSlotFilterChange?: (slotId: EquipmentSlotId | null) => void;
+  /**
+   * Notification fired after the panel mutates the bag/equipment (equip from the
+   * integrated bag, or unequip a slot), so the scene can refresh a separately
+   * open full-inventory panel. The panel refreshes itself regardless.
+   */
+  onInventoryChanged?: () => void;
 }
 
 export function createEquipmentUI(
@@ -90,13 +119,31 @@ export function createEquipmentUI(
   isOpen(): boolean;
   getSelectedSlotFilter(): EquipmentSlotId | null;
   selectSlot(slotId: EquipmentSlotId | null): void;
+  getPanelScreenBounds(): ScreenBounds;
+  getSlotScreenBounds(slotId: EquipmentSlotId): ScreenBounds | null;
+  getSlotIconScreenBounds(slotId: EquipmentSlotId): ScreenBounds | null;
+  getTooltipScreenBounds(): ScreenBounds | null;
+  isTooltipVisible(): boolean;
+  isTooltipTopmost(): boolean;
+  getBagItemIds(): string[];
+  getBagCellScreenBounds(index: number): ScreenBounds | null;
+  getBagColumnScreenBounds(): ScreenBounds;
+  scrollBag(rows: number): boolean;
+  getBagScrollRow(): number;
+  getBagMaxScrollRow(): number;
+  previewBagItem(itemId: string | null): void;
+  equipBagItem(itemId: string): boolean;
   destroy(): void;
 } {
   scene.cameras.main.roundPixels = true;
 
   const snap = (value: number): number => Math.round(value);
-  const baseResolution = getRenderScale(scene);
-  let textResolution = baseResolution;
+  // Small pixel fonts need a higher supersample than the shared HUD default
+  // (MAX_TEXT_RESOLUTION=4) or the tiny labels blur. Keep this floor consistent
+  // across construction AND relayout — otherwise every resize silently drops the
+  // panel's text from 6 back to 4, which reads as blurry section labels.
+  const MIN_TEXT_RESOLUTION = 6;
+  let textResolution = Math.max(MIN_TEXT_RESOLUTION, getTextResolution(scene));
   const crispText = (
     x: number,
     y: number,
@@ -105,17 +152,18 @@ export function createEquipmentUI(
   ): Phaser.GameObjects.Text =>
     scene.add.text(snap(x), snap(y), text, style).setResolution(textResolution);
 
-  const panelWidth = config.width ?? 760;
-  const panelHeight = config.height ?? 560;
+  const panelWidth = config.width ?? 1240;
+  const panelHeight = config.height ?? 680;
 
   let uiScale = fitUiScale(scene, panelWidth, panelHeight);
-  textResolution = Math.max(1, Math.round(baseResolution * uiScale));
+  textResolution = Math.max(MIN_TEXT_RESOLUTION, getTextResolution(scene));
   const viewWidth = (): number => GAME.WIDTH / uiScale;
   const viewHeight = (): number => GAME.HEIGHT / uiScale;
 
   let visible = false;
   let currentBag: InventoryBag | null = null;
   let playerEid = -1;
+  let currentWorldSeed = 0;
   let selectedSlotFilter: EquipmentSlotId | null = null;
   let lastSignature: string | null = null;
   let lastWorld: GameWorld | null = null;
@@ -133,50 +181,218 @@ export function createEquipmentUI(
     panelWidth,
     panelHeight,
     COLORS.panelBg,
-    0.96,
+    1,
   );
   bg.setStrokeStyle(2, COLORS.panelBorder);
   container.add(bg);
+  const cornerPixelPoints = [
+    [panelX + 6, panelY + 6],
+    [panelX + panelWidth - 6, panelY + 6],
+    [panelX + 6, panelY + panelHeight - 6],
+    [panelX + panelWidth - 6, panelY + panelHeight - 6],
+  ] as const;
+  const cornerPixels: Phaser.GameObjects.Rectangle[] = [];
+  for (const [x, y] of cornerPixelPoints) {
+    const pixel = scene.add.rectangle(x, y, 6, 6, COLORS.panelBorder, 1);
+    container.add(pixel);
+    cornerPixels.push(pixel);
+  }
 
-  const title = crispText(panelX + PANEL_PADDING, panelY + PANEL_PADDING, 'EQUIPMENT', {
+  const title = crispText(panelX + PANEL_PADDING, panelY + PANEL_PADDING + 2, 'EQUIPMENT', {
     fontFamily: FONT_FAMILY,
-    fontSize: '20px',
+    fontSize: '16px',
     color: hex(COLORS.textPrimary),
+    padding: { top: 4, bottom: 2 },
   });
   container.add(title);
+  const titleFrame = scene.add.rectangle(
+    panelX + PANEL_PADDING + 146,
+    panelY + PANEL_PADDING + 10,
+    296,
+    28,
+    0x355180,
+    0.95,
+  );
+  titleFrame.setStrokeStyle(1, COLORS.panelBorder);
+  container.addAt(titleFrame, 1);
 
   const hint = crispText(
-    panelX + panelWidth - PANEL_PADDING,
-    panelY + PANEL_PADDING + 2,
-    'Click a slot to focus/filter · click focused occupied slot to unequip',
-    { fontFamily: FONT_FAMILY, fontSize: '12px', color: hex(COLORS.textSecondary) },
+    panelX + PANEL_PADDING,
+    panelY + PANEL_PADDING + 28,
+    'CLICK SLOT TO FILTER OR UNEQUIP',
+    {
+      fontFamily: FONT_FAMILY,
+      fontSize: '8px',
+      color: hex(COLORS.textSecondary),
+      padding: { top: 3 },
+    },
   );
-  hint.setOrigin(1, 0);
+  hint.setOrigin(0, 0);
   container.add(hint);
 
-  // Paper-doll background panel (left ~58% of the panel).
+  // Paper-doll background panel — fixed width (proven geometry), left of stats.
   const dollX = panelX + PANEL_PADDING;
-  const dollY = panelY + PANEL_PADDING + 34;
-  const dollW = Math.round(panelWidth * 0.6);
-  const dollH = panelHeight - (PANEL_PADDING + 34) - PANEL_PADDING - 96;
+  const dollY = panelY + PANEL_PADDING + 58;
+  const dollW = DOLL_W;
+  const dollH = panelHeight - (PANEL_PADDING + 34) - PANEL_PADDING - 82;
   const dollBg = scene.add.rectangle(
     dollX + dollW / 2,
     dollY + dollH / 2,
     dollW,
     dollH,
     COLORS.dollBg,
-    0.6,
+    0.92,
   );
   dollBg.setStrokeStyle(1, COLORS.panelBorder);
   container.add(dollBg);
-
-  // Stats column (right side).
+  const dollInset = scene.add.rectangle(
+    dollX + dollW / 2,
+    dollY + dollH / 2,
+    dollW - 16,
+    dollH - 16,
+    COLORS.panelInset,
+    0.92,
+  );
+  dollInset.setStrokeStyle(1, 0x4f6998, 0.9);
+  container.add(dollInset);
+  const dollPattern = scene.add.graphics();
+  dollPattern.lineStyle(1, 0x2f4369, 0.45);
+  for (let y = Math.floor(dollY + 34); y < dollY + dollH - 20; y += 18) {
+    const offset = Math.floor((y / 18) % 2) * 12;
+    for (let x = Math.floor(dollX + 18 - offset); x < dollX + dollW - 18; x += 24) {
+      dollPattern.strokeRect(x, y, 24, 12);
+      if (x + 20 < dollX + dollW - 18) {
+        dollPattern.strokeRect(x + 6, y + 4, 12, 4);
+      }
+    }
+  }
+  container.add(dollPattern);
+  // Fixed inspector strip pinned to the bottom of the paper-doll. Hovering a
+  // slot populates it (empty → affordance, occupied → item detail). Because it
+  // lives in a reserved region below the grid, its content can never overlap a
+  // slot — this replaces the old floating tooltip, which had no collision-free
+  // placement once the 3-column grid was full.
+  const INSPECTOR_H = 72;
+  const INSPECTOR_GAP = 12;
+  const inspectorX = dollX + 10;
+  const inspectorW = dollW - 20;
+  const inspectorY = dollY + dollH - INSPECTOR_H - 10;
+  const inspectorBg = scene.add.rectangle(
+    inspectorX + inspectorW / 2,
+    inspectorY + INSPECTOR_H / 2,
+    inspectorW,
+    INSPECTOR_H,
+    0x1f2c47,
+    0.98,
+  );
+  inspectorBg.setStrokeStyle(2, COLORS.slotEmptyBorder);
+  container.add(inspectorBg);
+  const inspectorPlaceholder = crispText(
+    inspectorX + 14,
+    inspectorY + INSPECTOR_H / 2,
+    'HOVER A SLOT FOR DETAILS',
+    { fontFamily: FONT_FAMILY, fontSize: '8px', color: hex(COLORS.textSecondary) },
+  );
+  inspectorPlaceholder.setOrigin(0, 0.5);
+  container.add(inspectorPlaceholder);
+  // Stats column (middle) — fixed compact width so the bag column has room.
   const statsX = dollX + dollW + PANEL_PADDING;
+  const statsCenterX = statsX + STATS_W / 2;
+  const divider = scene.add.line(
+    0,
+    0,
+    dollX + dollW + PANEL_PADDING / 2,
+    dollY,
+    dollX + dollW + PANEL_PADDING / 2,
+    dollY + dollH,
+    COLORS.panelBorder,
+    0.8,
+  );
+  divider.setLineWidth(1, 1);
+  container.add(divider);
+  const statsBg = scene.add.rectangle(
+    statsCenterX,
+    dollY + dollH / 2,
+    STATS_W,
+    dollH,
+    0x31466f,
+    0.92,
+  );
+  statsBg.setStrokeStyle(1, COLORS.panelBorder);
+  container.addAt(statsBg, 3);
+  const statsInset = scene.add.rectangle(
+    statsCenterX,
+    dollY + dollH / 2,
+    STATS_W - 12,
+    dollH - 16,
+    COLORS.panelInset,
+    0.92,
+  );
+  statsInset.setStrokeStyle(1, 0x4f6998, 0.9);
+  container.addAt(statsInset, 4);
+  const statsPattern = scene.add.graphics();
+  statsPattern.fillStyle(0x2f4369, 0.28);
+  for (let y = Math.floor(dollY + 18); y < dollY + dollH - 8; y += 16) {
+    for (let x = Math.floor(statsX + 10); x < statsX + STATS_W - 8; x += 16) {
+      if (((x + y) / 16) % 2 === 0) {
+        statsPattern.fillRect(x, y, 4, 4);
+      }
+    }
+  }
+  container.addAt(statsPattern, 4);
+
+  // Bag column (right) — the integrated equippable-inventory grid. Fills the
+  // space left of the panel's right edge; decoupled from the doll/stats so it
+  // never disturbs their proven layout.
+  const bagX = statsX + STATS_W + PANEL_PADDING;
+  const bagW = panelX + panelWidth - PANEL_PADDING - bagX;
+  const bagY = dollY;
+  const bagH = dollH;
+  const bagDivider = scene.add.line(
+    0,
+    0,
+    bagX - PANEL_PADDING / 2,
+    dollY,
+    bagX - PANEL_PADDING / 2,
+    dollY + dollH,
+    COLORS.panelBorder,
+    0.8,
+  );
+  bagDivider.setLineWidth(1, 1);
+  container.add(bagDivider);
+  const bagBg = scene.add.rectangle(bagX + bagW / 2, bagY + bagH / 2, bagW, bagH, 0x31466f, 0.92);
+  bagBg.setStrokeStyle(1, COLORS.panelBorder);
+  container.addAt(bagBg, 3);
+  const bagInset = scene.add.rectangle(
+    bagX + bagW / 2,
+    bagY + bagH / 2,
+    bagW - 12,
+    bagH - 16,
+    COLORS.panelInset,
+    0.92,
+  );
+  bagInset.setStrokeStyle(1, 0x4f6998, 0.9);
+  container.addAt(bagInset, 4);
 
   // Object pools.
   const slotObjects: Phaser.GameObjects.GameObject[] = [];
   const statObjects: Phaser.GameObjects.GameObject[] = [];
-  const gearObjects: Phaser.GameObjects.GameObject[] = [];
+  const tooltipObjects: Phaser.GameObjects.GameObject[] = [];
+  const slotBounds = new Map<EquipmentSlotId, ScreenBounds>();
+  const slotIconBounds = new Map<EquipmentSlotId, ScreenBounds>();
+  const bagObjects: Phaser.GameObjects.GameObject[] = [];
+  let bagCellBounds: (ScreenBounds | null)[] = [];
+  let bagItemIds: string[] = [];
+  let bagScrollRow = 0;
+  let bagMaxScroll = 0;
+  let previewItemId: string | null = null;
+  let tooltipBounds: ScreenBounds | null = null;
+  const getPanelScreenBounds = (): ScreenBounds => ({
+    x: panelX,
+    y: panelY,
+    width: panelWidth,
+    height: panelHeight,
+  });
 
   function clearPool(pool: Phaser.GameObjects.GameObject[]): void {
     for (const obj of pool) {
@@ -185,24 +401,353 @@ export function createEquipmentUI(
     pool.length = 0;
   }
 
+  function clearTooltip(): void {
+    clearPool(tooltipObjects);
+    tooltipBounds = null;
+    refreshInspectorIdleText();
+    inspectorPlaceholder.setVisible(true);
+  }
+
+  // Idle inspector text (shown when nothing is hovered). Lives in the persistent
+  // placeholder, NOT the tooltip pool, so isTooltipVisible stays false when idle
+  // (deterministic e2e contract). When a slot filter is active it surfaces the
+  // filter state so the context isn't lost the moment the pointer leaves a slot.
+  function refreshInspectorIdleText(): void {
+    if (selectedSlotFilter) {
+      const slot = SLOT_REGISTRY.find((entry) => entry.id === selectedSlotFilter);
+      const label = (slot?.label ?? 'slot').toUpperCase();
+      inspectorPlaceholder.setText(truncateToWidth(`FILTERING: ${label}`, 8));
+      inspectorPlaceholder.setColor(hex(COLORS.accent));
+    } else {
+      inspectorPlaceholder.setText('HOVER A SLOT FOR DETAILS');
+      inspectorPlaceholder.setColor(hex(COLORS.textSecondary));
+    }
+  }
+
+  function measureTooltipBounds(
+    objects: readonly Phaser.GameObjects.GameObject[],
+  ): ScreenBounds | null {
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    for (const obj of objects) {
+      const candidate = obj as unknown as {
+        getBounds?: () => { x: number; y: number; width: number; height: number };
+      };
+      if (typeof candidate.getBounds !== 'function') continue;
+      const bounds = candidate.getBounds();
+      if (!bounds || bounds.width <= 0 || bounds.height <= 0) continue;
+      minX = Math.min(minX, bounds.x);
+      minY = Math.min(minY, bounds.y);
+      maxX = Math.max(maxX, bounds.x + bounds.width);
+      maxY = Math.max(maxY, bounds.y + bounds.height);
+    }
+    if (
+      !Number.isFinite(minX) ||
+      !Number.isFinite(minY) ||
+      !Number.isFinite(maxX) ||
+      !Number.isFinite(maxY)
+    ) {
+      return null;
+    }
+    return {
+      x: snap(minX),
+      y: snap(minY),
+      width: snap(maxX - minX),
+      height: snap(maxY - minY),
+    };
+  }
+
+  function isTooltipTopmost(): boolean {
+    if (tooltipObjects.length === 0) return false;
+    const list = container.list;
+    const tooltipSet = new Set(tooltipObjects);
+    let minTooltipIndex = Number.POSITIVE_INFINITY;
+    let maxOtherIndex = -1;
+    for (let i = 0; i < list.length; i += 1) {
+      const obj = list[i];
+      if (!obj) continue;
+      if (tooltipSet.has(obj)) {
+        minTooltipIndex = Math.min(minTooltipIndex, i);
+      } else {
+        maxOtherIndex = i;
+      }
+    }
+    return Number.isFinite(minTooltipIndex) && minTooltipIndex > maxOtherIndex;
+  }
+
+  function getGeneratedRegistry(): GeneratedSpriteRegistry {
+    const registry = scene.game?.registry?.get(GENERATED_SPRITE_REGISTRY_KEY) as
+      | GeneratedSpriteRegistry
+      | undefined;
+    return registry ?? emptyGeneratedSpriteRegistry();
+  }
+
+  function selectGeneratedEntry(itemId: string): GeneratedSpriteEntry | null {
+    return pickGeneratedVariant(
+      getGeneratedRegistry(),
+      itemId,
+      (hashStringToSeed(itemId) ^ currentWorldSeed) | 0,
+    );
+  }
+
+  function createItemIcon(
+    itemId: string,
+    itemDef: ItemDef,
+    x: number,
+    y: number,
+    boxSize: number,
+  ): Phaser.GameObjects.GameObject {
+    const iconBriefId = itemDef.icon ?? itemId;
+    const generatedEntry = selectGeneratedEntry(iconBriefId);
+    const textureLoaded =
+      generatedEntry !== null && scene.textures?.exists(generatedEntry.textureKey) === true;
+    if (generatedEntry && textureLoaded) {
+      const image = scene.add.image(snap(x), snap(y), generatedEntry.textureKey);
+      image.setOrigin(0.5, 0.5);
+      image.setScale(fitScaleForBox(image.width, image.height, boxSize));
+      return image;
+    }
+    const fallback = crispText(snap(x), snap(y), itemDef.name.substring(0, 2).toUpperCase(), {
+      fontFamily: FONT_FAMILY,
+      fontSize: '12px',
+      color: '#9ca3af',
+    });
+    fallback.setOrigin(0.5, 0.5);
+    return fallback;
+  }
+
+  function createSlotPlaceholder(
+    slotId: EquipmentSlotId,
+    x: number,
+    y: number,
+  ): Phaser.GameObjects.Graphics {
+    const icon = scene.add.graphics();
+    // Drawn at absolute slot-centre coords (Phaser Graphics.getBounds only
+    // reports a correct AABB for absolute geometry, not scaled transforms), and
+    // kept within ±22px of centre so the AABB stays inside the 64px slot box
+    // (the icon-containment probe enforces this). Each glyph is a recognizable
+    // "ghost" equipment silhouette — light body + dark detail cuts — so an
+    // empty slot reads as "put a <part> here", Diablo/Brotato style.
+    const light = COLORS.slotEmptyBorder;
+    const dark = 0x223350;
+    const sx = snap(x);
+    const sy = snap(y);
+    const useLight = (): void => {
+      icon.fillStyle(light, 0.9);
+    };
+    const useDark = (): void => {
+      icon.fillStyle(dark, 1);
+    };
+    icon.lineStyle(2, light, 0.9);
+    useLight();
+    switch (slotId) {
+      case 'head': // helm
+        icon.fillRect(sx - 15, sy - 15, 30, 20);
+        icon.fillRect(sx - 13, sy + 5, 26, 7);
+        useDark();
+        icon.fillRect(sx - 12, sy - 3, 24, 5);
+        break;
+      case 'face': // mask
+        icon.fillRect(sx - 15, sy - 11, 30, 22);
+        useDark();
+        icon.fillRect(sx - 9, sy - 4, 6, 6);
+        icon.fillRect(sx + 3, sy - 4, 6, 6);
+        icon.fillRect(sx - 6, sy + 5, 12, 3);
+        break;
+      case 'neck': // amulet
+        icon.lineStyle(3, light, 0.9);
+        icon.beginPath();
+        icon.moveTo(sx - 14, sy - 14);
+        icon.lineTo(sx, sy + 2);
+        icon.lineTo(sx + 14, sy - 14);
+        icon.strokePath();
+        useLight();
+        icon.fillCircle(sx, sy + 8, 8);
+        useDark();
+        icon.fillCircle(sx, sy + 8, 3);
+        break;
+      case 'shoulders': // pauldrons
+        icon.fillRect(sx - 18, sy - 4, 12, 12);
+        icon.fillRect(sx + 6, sy - 4, 12, 12);
+        icon.fillRect(sx - 16, sy - 8, 8, 5);
+        icon.fillRect(sx + 8, sy - 8, 8, 5);
+        break;
+      case 'back': // cloak
+        icon.fillRect(sx - 7, sy - 15, 14, 6);
+        icon.fillTriangle(sx - 8, sy - 10, sx + 8, sy - 10, sx + 12, sy + 14);
+        icon.fillTriangle(sx - 8, sy - 10, sx + 12, sy + 14, sx - 12, sy + 14);
+        break;
+      case 'chest': // breastplate
+        icon.fillTriangle(sx - 13, sy - 12, sx + 13, sy - 12, sx + 13, sy + 4);
+        icon.fillTriangle(sx - 13, sy - 12, sx + 13, sy + 4, sx, sy + 14);
+        icon.fillTriangle(sx - 13, sy - 12, sx, sy + 14, sx - 13, sy + 4);
+        useDark();
+        icon.fillRect(sx - 1, sy - 10, 2, 20);
+        break;
+      case 'leftArm':
+      case 'rightArm': // vambrace
+        icon.fillTriangle(sx - 8, sy - 14, sx + 8, sy - 14, sx + 6, sy + 13);
+        icon.fillTriangle(sx - 8, sy - 14, sx + 6, sy + 13, sx - 6, sy + 13);
+        useDark();
+        icon.fillRect(sx - 7, sy - 2, 14, 3);
+        break;
+      case 'leftWrist':
+      case 'rightWrist': // bracelet
+        icon.lineStyle(4, light, 0.9);
+        icon.strokeCircle(sx, sy, 12);
+        break;
+      case 'mainHand':
+      case 'offHand': // sword
+        icon.fillRect(sx - 3, sy - 16, 6, 24);
+        icon.fillRect(sx - 11, sy + 6, 22, 4);
+        icon.fillRect(sx - 2, sy + 10, 4, 6);
+        useDark();
+        icon.fillRect(sx - 1, sy - 14, 2, 18);
+        break;
+      case 'belt':
+        icon.fillRect(sx - 17, sy - 5, 34, 10);
+        useDark();
+        icon.fillRect(sx - 5, sy - 5, 10, 10);
+        break;
+      case 'gloves': // gauntlet
+        icon.fillRect(sx - 10, sy - 5, 20, 15);
+        icon.fillRect(sx - 9, sy - 13, 14, 9);
+        icon.fillRect(sx + 6, sy - 8, 5, 9);
+        break;
+      case 'ringLeft':
+      case 'ringRight': // ring + gem
+        icon.lineStyle(4, light, 0.9);
+        icon.strokeCircle(sx, sy + 4, 11);
+        useLight();
+        icon.fillTriangle(sx, sy - 16, sx + 7, sy - 9, sx, sy - 2);
+        icon.fillTriangle(sx, sy - 16, sx, sy - 2, sx - 7, sy - 9);
+        break;
+      case 'legs': // greaves
+        icon.fillRect(sx - 11, sy - 14, 22, 7);
+        icon.fillRect(sx - 11, sy - 7, 9, 21);
+        icon.fillRect(sx + 2, sy - 7, 9, 21);
+        break;
+      case 'feet': // boot
+        icon.fillRect(sx - 6, sy - 14, 11, 20);
+        icon.fillRect(sx - 14, sy + 4, 22, 8);
+        break;
+      default:
+        icon.strokeCircle(sx, sy, 12);
+        icon.fillCircle(sx, sy, 4);
+        break;
+    }
+    return icon;
+  }
+
+  interface InspectorLine {
+    text: string;
+    color: number;
+    size: number;
+  }
+
+  function truncateToWidth(text: string, fontPx: number): string {
+    const budget = Math.max(4, Math.floor((inspectorW - 24) / (fontPx * 0.92)));
+    if (text.length <= budget) return text;
+    return `${text.slice(0, Math.max(1, budget - 1))}…`;
+  }
+
+  // Populate the fixed inspector strip. Content lives in the reserved region
+  // below the grid, so it can never overlap a slot (unlike the old floating
+  // tooltip). Text goes into the tooltip pool so isTooltipVisible/topmost and
+  // the deterministic probes keep their existing contract.
+  function renderInspector(lines: InspectorLine[]): void {
+    clearTooltip();
+    inspectorPlaceholder.setVisible(false);
+    const lineH = 20;
+    const blockH = (lines.length - 1) * lineH + 10;
+    const yStart = inspectorY + Math.max(8, Math.round((INSPECTOR_H - blockH) / 2));
+    lines.forEach((line, index) => {
+      const text = crispText(inspectorX + 14, snap(yStart + index * lineH), line.text, {
+        fontFamily: FONT_FAMILY,
+        fontSize: `${line.size}px`,
+        color: hex(line.color),
+      });
+      text.setOrigin(0, 0);
+      container.add(text);
+      container.bringToTop(text);
+      tooltipObjects.push(text);
+    });
+    tooltipBounds = measureTooltipBounds(tooltipObjects);
+  }
+
+  function showTooltip(def: ItemDef, quantity: number): void {
+    const rarityColor = RARITY_COLORS[def.rarity] ?? 0x9e9e9e;
+    renderInspector([
+      { text: truncateToWidth(def.name, 9), color: rarityColor, size: 9 },
+      { text: truncateToWidth(def.description, 8), color: 0x9ca3af, size: 8 },
+      {
+        text: truncateToWidth(
+          `${def.rarity.toUpperCase()} · x${quantity} · [${def.tags.join(', ')}]`,
+          8,
+        ),
+        color: 0x8792ad,
+        size: 8,
+      },
+    ]);
+  }
+
+  function showEmptySlotTooltip(slotLabel: string): void {
+    renderInspector([
+      { text: slotLabel.toUpperCase(), color: COLORS.textPrimary, size: 9 },
+      { text: 'EMPTY SLOT', color: COLORS.textSecondary, size: 8 },
+      { text: 'CLICK TO FILTER INVENTORY', color: COLORS.accent, size: 8 },
+    ]);
+  }
+
+  function formatSignedStatDelta(statId: StatId, delta: number): string {
+    const magnitude = formatStatValue(Math.abs(delta));
+    const sign = delta > 0 ? '+' : '-';
+    return `${formatStatLabel(statId)} ${sign}${magnitude}`;
+  }
+
+  // Diablo-style equip preview: shows the item plus the NET stat change from
+  // equipping it (including stats lost by unequipping the item(s) it replaces).
+  function showEquipPreview(def: ItemDef, preview: EquipDeltaPreview): void {
+    const rarityColor = RARITY_COLORS[def.rarity] ?? 0x9e9e9e;
+    const changed = ALL_STAT_IDS.filter((statId) => Math.abs(preview.deltas[statId] ?? 0) > 1e-9);
+    const lines: InspectorLine[] = [
+      { text: truncateToWidth(def.name, 9), color: rarityColor, size: 9 },
+    ];
+    if (changed.length === 0) {
+      lines.push({ text: 'NO STAT CHANGE', color: COLORS.textSecondary, size: 8 });
+    } else {
+      // Pack the deltas onto one compact line, colour-coded by net direction.
+      const netUp = changed.every((statId) => (preview.deltas[statId] ?? 0) >= 0);
+      const netDown = changed.every((statId) => (preview.deltas[statId] ?? 0) <= 0);
+      const deltaColor = netDown && !netUp ? COLORS.statNerf : COLORS.statBuff;
+      const parts = changed.map((statId) =>
+        formatSignedStatDelta(statId, preview.deltas[statId] ?? 0),
+      );
+      lines.push({ text: truncateToWidth(parts.join('  '), 8), color: deltaColor, size: 8 });
+    }
+    if (preview.swappedOut.length > 0) {
+      const names = preview.swappedOut
+        .map((swapped) => getItemById(swapped.id)?.name ?? swapped.id)
+        .join(', ');
+      lines.push({ text: truncateToWidth(`REPLACES: ${names}`, 8), color: 0x8792ad, size: 8 });
+    } else if (!preview.canEquip) {
+      lines.push({ text: 'CANNOT EQUIP', color: COLORS.statNerf, size: 8 });
+    } else {
+      lines.push({ text: 'CLICK TO EQUIP', color: COLORS.accent, size: 8 });
+    }
+    renderInspector(lines);
+  }
+
   // ---------------------------------------------------------------------------
   // Equip / unequip actions
   // ---------------------------------------------------------------------------
 
-  function equipFromBag(itemId: string): void {
-    if (!currentBag || playerEid < 0 || !lastWorld) return;
-    const def: EquipmentItemDef | undefined = getEquipmentDefForItem(itemId);
-    if (!def) return;
-    const result = equip(lastWorld, playerEid, def);
-    if (result.ok) {
-      removeItem(currentBag, itemId, 1);
-      invalidate();
-    }
-  }
-
   function setSelectedSlotFilter(slotId: EquipmentSlotId | null): void {
     if (selectedSlotFilter === slotId) return;
     selectedSlotFilter = slotId;
+    refreshInspectorIdleText();
     config.onSlotFilterChange?.(slotId);
     invalidate();
   }
@@ -213,7 +758,40 @@ export function createEquipmentUI(
     if (result.ok) {
       addItem(currentBag, result.item.def.id, 1);
       invalidate();
+      config.onInventoryChanged?.();
     }
+  }
+
+  // Deterministic hover surface for the bag grid (also driven by probes/e2e):
+  // renders the equip-delta preview for a bag item, or clears it when null.
+  function previewBagItem(itemId: string | null): void {
+    previewItemId = itemId;
+    if (itemId === null || !lastWorld || playerEid < 0) {
+      clearTooltip();
+      return;
+    }
+    const def = getItemById(itemId);
+    const preview = previewEquipDelta(lastWorld, playerEid, itemId);
+    if (!def || !preview) {
+      clearTooltip();
+      return;
+    }
+    showEquipPreview(def, preview);
+  }
+
+  // Equip an item straight from the integrated bag (atomic Diablo-style swap in
+  // the core). Real play is safe-context-gated by equipFromBag; the lab/e2e
+  // force it. Refreshes this panel and notifies the scene to sync any separate
+  // inventory panel.
+  function equipBagItem(itemId: string): boolean {
+    if (!currentBag || playerEid < 0 || !lastWorld) return false;
+    const result = equipFromBag(lastWorld, playerEid, itemId);
+    if (result.ok) {
+      previewItemId = null;
+      invalidate();
+      config.onInventoryChanged?.();
+    }
+    return result.ok;
   }
 
   // ---------------------------------------------------------------------------
@@ -222,46 +800,150 @@ export function createEquipmentUI(
 
   function renderSlots(): void {
     clearPool(slotObjects);
+    clearTooltip();
+    slotBounds.clear();
+    slotIconBounds.clear();
     if (!lastWorld || playerEid < 0) return;
     const state = getEquipmentState(lastWorld, playerEid);
-
-    const innerPadX = 8;
-    const innerPadY = 6;
+    const innerPadX = 22;
+    const innerPadY = 10;
     const usableW = dollW - SLOT_W - innerPadX * 2;
-    const usableH = dollH - SLOT_H - innerPadY * 2;
+    // Reserve the bottom strip for the fixed inspector so slots never extend
+    // into (or overlap) the detail panel below the grid.
+    const usableH = dollH - SLOT_H - innerPadY * 2 - (INSPECTOR_H + INSPECTOR_GAP);
+    const spreadNorm = (value: number, spread: number): number =>
+      Math.max(0, Math.min(1, 0.5 + (value - 0.5) * spread));
 
     for (const slot of SLOT_REGISTRY) {
-      const cx = dollX + innerPadX + SLOT_W / 2 + slot.uiPosition.x * usableW;
-      const cy = dollY + innerPadY + SLOT_H / 2 + slot.uiPosition.y * usableH;
+      const px = spreadNorm(slot.uiPosition.x, SLOT_SPREAD_X);
+      const py = spreadNorm(slot.uiPosition.y, SLOT_SPREAD_Y);
+      const cx = dollX + innerPadX + SLOT_W / 2 + px * usableW;
+      const cy = dollY + innerPadY + SLOT_H / 2 + py * usableH;
 
       const instId = state?.equipped[slot.id] ?? null;
       const instance = instId !== null ? (state?.instances.get(instId) ?? null) : null;
-      const rarityColor = instance ? RARITY_HEX[instance.def.rarity] : COLORS.slotEmptyBorder;
+      const slotBorderColor = instance ? COLORS.panelBorder : COLORS.slotEmptyBorder;
+      const itemDef = instance ? getItemById(instance.def.id) : undefined;
 
       const isSelected = selectedSlotFilter === slot.id;
-      const box = scene.add.rectangle(snap(cx), snap(cy), SLOT_W, SLOT_H, COLORS.slotBg, 0.95);
-      box.setStrokeStyle(isSelected ? 3 : 2, isSelected ? 0x67e8f9 : rarityColor);
+      const boxW = SLOT_W;
+      const boxH = SLOT_H;
+      const baseFill = isSelected ? COLORS.slotSelected : COLORS.slotBg;
+      const box = scene.add.rectangle(snap(cx), snap(cy), boxW, boxH, baseFill, 0.95);
+      box.setStrokeStyle(
+        isSelected ? 3 : 2,
+        isSelected ? COLORS.slotSelectedBorder : slotBorderColor,
+      );
       box.setInteractive({ useHandCursor: true });
+      const b = box.getBounds();
+      slotBounds.set(slot.id, { x: b.x, y: b.y, width: b.width, height: b.height });
+      const pipColor = isSelected ? COLORS.slotSelectedBorder : COLORS.panelBorder;
+      const cornerPips = [
+        scene.add.rectangle(
+          snap(cx - SLOT_W / 2 + 4),
+          snap(cy - SLOT_H / 2 + 4),
+          4,
+          4,
+          pipColor,
+          1,
+        ),
+        scene.add.rectangle(
+          snap(cx + SLOT_W / 2 - 4),
+          snap(cy - SLOT_H / 2 + 4),
+          4,
+          4,
+          pipColor,
+          1,
+        ),
+        scene.add.rectangle(
+          snap(cx - SLOT_W / 2 + 4),
+          snap(cy + SLOT_H / 2 - 4),
+          4,
+          4,
+          pipColor,
+          1,
+        ),
+        scene.add.rectangle(
+          snap(cx + SLOT_W / 2 - 4),
+          snap(cy + SLOT_H / 2 - 4),
+          4,
+          4,
+          pipColor,
+          1,
+        ),
+      ];
 
-      const label = crispText(snap(cx), snap(cy - SLOT_H / 2 + 8), slot.label.toUpperCase(), {
-        fontFamily: FONT_FAMILY,
-        fontSize: '9px',
-        color: hex(0x7ee0ff),
+      const slotInnerW = boxW - 4;
+      const slotInnerH = boxH - 6;
+      const inset = scene.add.rectangle(
+        snap(cx),
+        snap(cy + 1),
+        slotInnerW,
+        slotInnerH,
+        0x2e4167,
+        0.98,
+      );
+      inset.setStrokeStyle(1, 0x5b76aa, 0.8);
+      const bevelLeft = scene.add.rectangle(
+        snap(cx - slotInnerW / 2 + 1),
+        snap(cy + 1),
+        2,
+        slotInnerH,
+        0x8ca8d2,
+        0.9,
+      );
+      const bevelTop = scene.add.rectangle(
+        snap(cx),
+        snap(cy + 1 - slotInnerH / 2 + 1),
+        slotInnerW,
+        2,
+        0xb9cae5,
+        0.92,
+      );
+      const bevelRight = scene.add.rectangle(
+        snap(cx + slotInnerW / 2 - 1),
+        snap(cy + 1),
+        2,
+        slotInnerH,
+        0x1f2d48,
+        0.95,
+      );
+      const bevelBottom = scene.add.rectangle(
+        snap(cx),
+        snap(cy + 1 + slotInnerH / 2 - 1),
+        slotInnerW,
+        2,
+        0x1f2d48,
+        0.95,
+      );
+      const iconObject =
+        instance && itemDef
+          ? createItemIcon(instance.def.id, itemDef, cx, cy, boxH - 4)
+          : createSlotPlaceholder(slot.id, cx, cy + 2);
+      const occupiedFill =
+        instance !== null
+          ? scene.add.rectangle(
+              snap(cx),
+              snap(cy + 2),
+              slotInnerW - 10,
+              slotInnerH - 10,
+              0x5d7fb7,
+              0.24,
+            )
+          : null;
+
+      box.on('pointerover', () => {
+        box.setFillStyle(COLORS.slotHover);
+        if (itemDef) {
+          showTooltip(itemDef, 1);
+        } else {
+          showEmptySlotTooltip(slot.label);
+        }
       });
-      label.setOrigin(0.5, 0.5);
-
-      const valueText = instance ? instance.def.name : '—';
-      const value = crispText(snap(cx), snap(cy + 5), valueText, {
-        fontFamily: FONT_FAMILY,
-        fontSize: '11px',
-        color: instance ? hex(rarityColor) : hex(0x555577),
-        align: 'center',
-        wordWrap: { width: SLOT_W - 8 },
+      box.on('pointerout', () => {
+        box.setFillStyle(baseFill);
+        clearTooltip();
       });
-      value.setOrigin(0.5, 0.5);
-
-      box.on('pointerover', () => box.setFillStyle(COLORS.slotHover));
-      box.on('pointerout', () => box.setFillStyle(COLORS.slotBg));
       box.on('pointerdown', () => {
         if (selectedSlotFilter !== slot.id) {
           setSelectedSlotFilter(slot.id);
@@ -275,9 +957,26 @@ export function createEquipmentUI(
       });
 
       container.add(box);
-      container.add(label);
-      container.add(value);
-      slotObjects.push(box, label, value);
+      container.add(inset);
+      container.add(bevelLeft);
+      container.add(bevelTop);
+      container.add(bevelRight);
+      container.add(bevelBottom);
+      for (const pip of cornerPips) {
+        container.add(pip);
+        slotObjects.push(pip);
+      }
+      if (occupiedFill) {
+        container.add(occupiedFill);
+        slotObjects.push(occupiedFill);
+      }
+      container.add(iconObject);
+      slotObjects.push(iconObject);
+      if ('getBounds' in iconObject && typeof iconObject.getBounds === 'function') {
+        const ib = iconObject.getBounds();
+        slotIconBounds.set(slot.id, { x: ib.x, y: ib.y, width: ib.width, height: ib.height });
+      }
+      slotObjects.push(box, inset, bevelLeft, bevelTop, bevelRight, bevelBottom);
     }
   }
 
@@ -288,139 +987,263 @@ export function createEquipmentUI(
     const effective = getEffectiveStats(lastWorld, playerEid);
     const baseStore = lastWorld.stores.baseStats;
 
-    const heading = crispText(statsX, dollY, 'STATS', {
+    const heading = crispText(statsX + 10, dollY + 26, 'STATS', {
       fontFamily: FONT_FAMILY,
-      fontSize: '14px',
-      color: hex(0x7ee0ff),
+      fontSize: '16px',
+      color: hex(COLORS.accent),
     });
     container.add(heading);
     statObjects.push(heading);
+    const headingFrame = scene.add.rectangle(
+      statsX + 96,
+      dollY + 26,
+      172,
+      30,
+      COLORS.sectionHeader,
+      0.95,
+    );
+    headingFrame.setStrokeStyle(1, COLORS.panelBorder);
+    container.addAt(headingFrame, 5);
+    statObjects.push(headingFrame);
 
-    let rowY = dollY + 22;
-    const colW = panelWidth - (statsX - panelX) - PANEL_PADDING;
+    let rowY = dollY + 68;
+    const colW = STATS_W - 14;
+    const totalStatRows = PRIMARY_STATS.length + SECONDARY_STATS.length;
+    const reservedSectionSpace = 18 * 2 + 4;
+    const rowsEndY = dollY + dollH - 12;
+    const rowStep = Math.max(
+      20,
+      Math.floor((rowsEndY - rowY - reservedSectionSpace) / totalStatRows),
+    );
+    const drawSection = (titleText: string): void => {
+      const sectionTitle = crispText(statsX + 10, rowY + 1, titleText, {
+        fontFamily: FONT_FAMILY,
+        fontSize: '8px',
+        color: hex(COLORS.accent),
+      });
+      sectionTitle.setOrigin(0, 0);
+      const sectionRule = scene.add.line(
+        0,
+        0,
+        statsX + 112,
+        rowY + 14,
+        statsX + colW,
+        rowY + 14,
+        COLORS.panelBorder,
+        0.9,
+      );
+      sectionRule.setLineWidth(1, 1);
+      container.add(sectionTitle);
+      container.add(sectionRule);
+      statObjects.push(sectionTitle, sectionRule);
+      rowY += 20;
+    };
 
     const drawStat = (statId: StatId): void => {
       const value = effective[statId] ?? 0;
       const base = baseStore[statId]?.[playerEid] ?? 0;
       const buffed = value > base;
-      const name = crispText(statsX, rowY, statId, {
+      const rowBg = scene.add.rectangle(
+        statsX + colW / 2 + 6,
+        rowY + Math.floor(rowStep / 2),
+        colW - 8,
+        Math.max(20, rowStep - 2),
+        rowY % 48 === 0 ? 0x2f4369 : 0x38507d,
+        0.92,
+      );
+      rowBg.setStrokeStyle(1, 0x5f7db0, 0.7);
+      const name = crispText(statsX + 10, rowY + 6, formatStatLabel(statId), {
         fontFamily: FONT_FAMILY,
-        fontSize: '12px',
-        color: hex(COLORS.textSecondary),
+        fontSize: '8px',
+        color: hex(COLORS.textPrimary),
       });
       name.setOrigin(0, 0);
-      const val = crispText(statsX + colW, rowY, formatStatValue(value), {
+      const val = crispText(statsX + colW, rowY + 6, formatStatValue(value), {
         fontFamily: FONT_FAMILY,
-        fontSize: '12px',
+        fontSize: '8px',
         color: buffed ? hex(COLORS.statBuff) : hex(COLORS.textPrimary),
         fontStyle: buffed ? 'bold' : 'normal',
       });
       val.setOrigin(1, 0);
+      container.add(rowBg);
       container.add(name);
       container.add(val);
-      statObjects.push(name, val);
-      rowY += 17;
+      statObjects.push(rowBg, name, val);
+      rowY += rowStep;
     };
 
+    drawSection('PRIMARY');
     for (const statId of PRIMARY_STATS) {
       drawStat(statId);
     }
-    rowY += 6;
+    rowY += 4;
+    drawSection('SECONDARY');
     for (const statId of SECONDARY_STATS) {
       drawStat(statId);
-    }
-  }
-
-  function renderGear(): void {
-    clearPool(gearObjects);
-    if (!currentBag) return;
-
-    const gearY = dollY + dollH + 12;
-    const headingLabel =
-      selectedSlotFilter === null
-        ? 'AVAILABLE GEAR'
-        : `MATCHING ${getSlotLabel(selectedSlotFilter).toUpperCase()} GEAR`;
-    const heading = crispText(dollX, gearY, headingLabel, {
-      fontFamily: FONT_FAMILY,
-      fontSize: '13px',
-      color: hex(0x7ee0ff),
-    });
-    container.add(heading);
-    gearObjects.push(heading);
-
-    const equippable =
-      selectedSlotFilter === null
-        ? currentBag.slots.filter((slot) => isEquippableItem(slot.itemId))
-        : filterByEquipmentSlot(currentBag, selectedSlotFilter);
-
-    if (equippable.length === 0) {
-      const none = crispText(
-        dollX,
-        gearY + 22,
-        selectedSlotFilter === null
-          ? 'No equippable gear in your bag.'
-          : `No gear in bag fits ${getSlotLabel(selectedSlotFilter)}.`,
-        {
-          fontFamily: FONT_FAMILY,
-          fontSize: '12px',
-          color: hex(0x555577),
-        },
-      );
-      container.add(none);
-      gearObjects.push(none);
-      return;
-    }
-
-    let chipX = dollX;
-    const chipY = gearY + 22;
-    const chipH = 30;
-    const maxX = panelX + panelWidth - PANEL_PADDING;
-
-    for (const slot of equippable) {
-      const def = getItemById(slot.itemId);
-      const equipDef = getEquipmentDefForItem(slot.itemId);
-      if (!def || !equipDef) continue;
-
-      const labelText = slot.quantity > 1 ? `${def.name} ×${slot.quantity}` : def.name;
-      const chipW = Math.min(220, labelText.length * 7 + 24);
-      if (chipX + chipW > maxX) {
-        chipX = dollX; // simple single-extra-row wrap is unlikely; reset just in case
-      }
-
-      const rarityColor = RARITY_HEX[equipDef.rarity];
-      const chip = scene.add.rectangle(
-        snap(chipX + chipW / 2),
-        snap(chipY + chipH / 2),
-        chipW,
-        chipH,
-        COLORS.chipBg,
-        0.95,
-      );
-      chip.setStrokeStyle(1, rarityColor);
-      chip.setInteractive({ useHandCursor: true });
-      chip.on('pointerover', () => chip.setFillStyle(COLORS.chipHover));
-      chip.on('pointerout', () => chip.setFillStyle(COLORS.chipBg));
-      chip.on('pointerdown', () => equipFromBag(slot.itemId));
-
-      const chipLabel = crispText(snap(chipX + chipW / 2), snap(chipY + chipH / 2), labelText, {
-        fontFamily: FONT_FAMILY,
-        fontSize: '12px',
-        color: hex(rarityColor),
-      });
-      chipLabel.setOrigin(0.5, 0.5);
-
-      container.add(chip);
-      container.add(chipLabel);
-      gearObjects.push(chip, chipLabel);
-
-      chipX += chipW + 8;
     }
   }
 
   function render(): void {
     renderSlots();
     renderStats();
-    renderGear();
+    renderBag();
+    const forcedTooltipSlot = (globalThis as { __forceEquipmentTooltipSlot?: string })
+      .__forceEquipmentTooltipSlot;
+    if (forcedTooltipSlot) {
+      const bounds = slotBounds.get(forcedTooltipSlot);
+      const slot = SLOT_REGISTRY.find((entry) => entry.id === forcedTooltipSlot);
+      if (bounds && slot) {
+        showEmptySlotTooltip(slot.label);
+      }
+    }
+  }
+
+  // Integrated equippable-bag grid (right column). Lists the bag's equippable
+  // items — filtered to the selected paper-doll slot when a filter is active —
+  // as a scroll-sliced grid. Hover previews the equip delta; click equips.
+  function renderBag(): void {
+    clearPool(bagObjects);
+    bagCellBounds = [];
+    bagItemIds = [];
+    if (!currentBag) return;
+
+    const rawSlots: InventorySlot[] = selectedSlotFilter
+      ? filterByEquipmentSlot(currentBag, selectedSlotFilter)
+      : filterEquippable(currentBag);
+    bagItemIds = rawSlots.map((slot) => slot.itemId);
+    bagCellBounds = new Array(rawSlots.length).fill(null);
+
+    // Header row.
+    const heading = crispText(bagX + 12, dollY + 26, 'BAG', {
+      fontFamily: FONT_FAMILY,
+      fontSize: '16px',
+      color: hex(COLORS.accent),
+    });
+    heading.setOrigin(0, 0.5);
+    const headingFrame = scene.add.rectangle(
+      bagX + bagW / 2,
+      dollY + 26,
+      bagW - 20,
+      30,
+      COLORS.sectionHeader,
+      0.95,
+    );
+    headingFrame.setStrokeStyle(1, COLORS.panelBorder);
+    container.addAt(headingFrame, 5);
+    const filterLabel = selectedSlotFilter
+      ? (SLOT_REGISTRY.find((entry) => entry.id === selectedSlotFilter)?.label ?? '').toUpperCase()
+      : 'EQUIPPABLE';
+    const subHeading = crispText(
+      bagX + bagW - 12,
+      dollY + 26,
+      `${filterLabel} · ${rawSlots.length}`,
+      {
+        fontFamily: FONT_FAMILY,
+        fontSize: '8px',
+        color: hex(COLORS.textSecondary),
+      },
+    );
+    subHeading.setOrigin(1, 0.5);
+    container.add(heading);
+    container.add(subHeading);
+    bagObjects.push(heading, headingFrame, subHeading);
+
+    // Grid geometry.
+    const cell = BAG_CELL;
+    const gap = BAG_GAP;
+    const cols = BAG_COLS;
+    const headerH = 48;
+    const gridW = cols * cell + (cols - 1) * gap;
+    const gridX = bagX + Math.round((bagW - gridW) / 2);
+    const gridTop = bagY + headerH;
+    const availH = bagH - headerH - 10;
+    const rowsVisible = Math.max(1, Math.floor((availH + gap) / (cell + gap)));
+    const totalRows = Math.ceil(rawSlots.length / cols);
+    const maxScroll = Math.max(0, totalRows - rowsVisible);
+    if (bagScrollRow > maxScroll) bagScrollRow = maxScroll;
+    if (bagScrollRow < 0) bagScrollRow = 0;
+    bagMaxScroll = maxScroll;
+
+    if (rawSlots.length === 0) {
+      const empty = crispText(
+        bagX + bagW / 2,
+        gridTop + 40,
+        selectedSlotFilter ? 'NO MATCHING GEAR' : 'NO EQUIPPABLE ITEMS',
+        { fontFamily: FONT_FAMILY, fontSize: '8px', color: hex(COLORS.textSecondary) },
+      );
+      empty.setOrigin(0.5, 0.5);
+      container.add(empty);
+      bagObjects.push(empty);
+      return;
+    }
+
+    const startIndex = bagScrollRow * cols;
+    const endIndex = Math.min(rawSlots.length, startIndex + rowsVisible * cols);
+    for (let index = startIndex; index < endIndex; index += 1) {
+      const slot = rawSlots[index];
+      if (!slot) continue;
+      const itemId = slot.itemId;
+      const def = getItemById(itemId);
+      const local = index - startIndex;
+      const col = local % cols;
+      const row = Math.floor(local / cols);
+      const cx = gridX + col * (cell + gap) + cell / 2;
+      const cy = gridTop + row * (cell + gap) + cell / 2;
+      const rarityColor = def
+        ? (RARITY_COLORS[def.rarity] ?? COLORS.panelBorder)
+        : COLORS.panelBorder;
+
+      const box = scene.add.rectangle(snap(cx), snap(cy), cell, cell, COLORS.slotBg, 0.95);
+      box.setStrokeStyle(2, rarityColor);
+      box.setInteractive({ useHandCursor: true });
+      const b = box.getBounds();
+      bagCellBounds[index] = { x: b.x, y: b.y, width: b.width, height: b.height };
+      const inset = scene.add.rectangle(snap(cx), snap(cy + 1), cell - 6, cell - 8, 0x2e4167, 0.98);
+      inset.setStrokeStyle(1, 0x5b76aa, 0.8);
+      const icon = def
+        ? createItemIcon(itemId, def, cx, cy, cell - 12)
+        : crispText(snap(cx), snap(cy), '?', {
+            fontFamily: FONT_FAMILY,
+            fontSize: '12px',
+            color: '#9ca3af',
+          });
+      if (!def && 'setOrigin' in icon) {
+        (icon as Phaser.GameObjects.Text).setOrigin(0.5, 0.5);
+      }
+
+      box.on('pointerover', () => {
+        box.setFillStyle(COLORS.slotHover);
+        previewBagItem(itemId);
+      });
+      box.on('pointerout', () => {
+        box.setFillStyle(COLORS.slotBg);
+        if (previewItemId === itemId) previewBagItem(null);
+      });
+      box.on('pointerdown', () => {
+        equipBagItem(itemId);
+      });
+
+      container.add(box);
+      container.add(inset);
+      container.add(icon);
+      bagObjects.push(box, inset, icon);
+
+      if (slot.quantity > 1) {
+        const qty = crispText(
+          snap(cx + cell / 2 - 4),
+          snap(cy + cell / 2 - 4),
+          `x${slot.quantity}`,
+          {
+            fontFamily: FONT_FAMILY,
+            fontSize: '8px',
+            color: hex(COLORS.textPrimary),
+          },
+        );
+        qty.setOrigin(1, 1);
+        container.add(qty);
+        bagObjects.push(qty);
+      }
+    }
   }
 
   function computeSignature(): string {
@@ -431,15 +1254,21 @@ export function createEquipmentUI(
       for (const slot of SLOT_REGISTRY) {
         const instId = state.equipped[slot.id] ?? null;
         const inst = instId !== null ? state.instances.get(instId) : null;
-        signature += `${slot.id}:${inst ? inst.def.id : '-'}|`;
+        const itemDef = inst ? getItemById(inst.def.id) : undefined;
+        const iconBriefId = itemDef?.icon ?? inst?.def.id ?? '';
+        const entry = iconBriefId ? selectGeneratedEntry(iconBriefId) : null;
+        const iconReady = entry !== null && scene.textures?.exists(entry.textureKey) === true;
+        signature += `${slot.id}:${inst ? inst.def.id : '-'}:${entry?.textureKey ?? ''}:${iconReady ? 1 : 0}|`;
       }
     }
-    const bagSlots = currentBag?.slots ?? [];
     signature += `slot:${selectedSlotFilter ?? '-'}|`;
-    for (const slot of bagSlots) {
-      if (isEquippableItem(slot.itemId)) {
-        signature += `${slot.itemId}x${slot.quantity};`;
-      }
+    const bag = currentBag;
+    if (bag) {
+      const equippable = selectedSlotFilter
+        ? filterByEquipmentSlot(bag, selectedSlotFilter)
+        : filterEquippable(bag);
+      signature += `bag:${equippable.map((slot) => `${slot.itemId}x${slot.quantity}`).join(',')}|`;
+      signature += `scroll:${bagScrollRow}|`;
     }
     return signature;
   }
@@ -458,15 +1287,32 @@ export function createEquipmentUI(
 
   function applyLayout(): void {
     uiScale = fitUiScale(scene, panelWidth, panelHeight);
-    textResolution = Math.max(1, Math.round(baseResolution * uiScale));
+    textResolution = Math.max(MIN_TEXT_RESOLUTION, getTextResolution(scene));
     container.setScale(uiScale);
     panelX = snap((viewWidth() - panelWidth) / 2);
     panelY = snap((viewHeight() - panelHeight) / 2);
 
     bg.setPosition(panelX + panelWidth / 2, panelY + panelHeight / 2);
-    title.setPosition(panelX + PANEL_PADDING, panelY + PANEL_PADDING).setResolution(textResolution);
+    const nextCornerPoints = [
+      [panelX + 6, panelY + 6],
+      [panelX + panelWidth - 6, panelY + 6],
+      [panelX + 6, panelY + panelHeight - 6],
+      [panelX + panelWidth - 6, panelY + panelHeight - 6],
+    ] as const;
+    nextCornerPoints.forEach(([x, y], index) => cornerPixels[index]?.setPosition(x, y));
+    titleFrame.setPosition(panelX + PANEL_PADDING + 146, panelY + PANEL_PADDING + 10);
+    divider.setTo(
+      dollX + dollW + PANEL_PADDING / 2,
+      dollY,
+      dollX + dollW + PANEL_PADDING / 2,
+      dollY + dollH,
+    );
+    bagDivider.setTo(bagX - PANEL_PADDING / 2, dollY, bagX - PANEL_PADDING / 2, dollY + dollH);
+    title
+      .setPosition(panelX + PANEL_PADDING, panelY + PANEL_PADDING + 2)
+      .setResolution(textResolution);
     hint
-      .setPosition(panelX + panelWidth - PANEL_PADDING, panelY + PANEL_PADDING + 2)
+      .setPosition(panelX + PANEL_PADDING, panelY + PANEL_PADDING + 28)
       .setResolution(textResolution);
     // dollBg/statsX are derived from panelX/panelY captured at construction; for
     // simplicity we re-render against the originals, which stay valid because the
@@ -489,6 +1335,7 @@ export function createEquipmentUI(
 
   function refresh(world: GameWorld): void {
     lastWorld = world;
+    currentWorldSeed = world.seed | 0;
     playerEid = findPlayerEid(world);
     currentBag = playerEid >= 0 ? (world.inventories.get(playerEid) ?? null) : null;
     if (!visible) {
@@ -511,8 +1358,39 @@ export function createEquipmentUI(
       refresh(world);
     } else {
       setSelectedSlotFilter(null);
+      clearTooltip();
     }
   }
+
+  // Scroll the integrated bag column by whole rows, clamped to the last render's
+  // range. The integrated bag can exceed its visible rows (BAG_COLS=4), so
+  // without this the overflow was unreachable and could trap items off-screen.
+  function scrollBag(rows: number): boolean {
+    if (rows === 0) return false;
+    const next = Math.min(bagMaxScroll, Math.max(0, bagScrollRow + rows));
+    if (next === bagScrollRow) return false;
+    bagScrollRow = next;
+    invalidate();
+    return true;
+  }
+
+  const handleWheel = (
+    pointer: Phaser.Input.Pointer,
+    _currentlyOver: Phaser.GameObjects.GameObject[],
+    _deltaX: number,
+    deltaY: number,
+  ): void => {
+    if (!visible || bagMaxScroll <= 0 || deltaY === 0) return;
+    // Phaser pointer coords live in backing-store space (`[0, design × S]` after
+    // the HiDPI supersample); bagBg.getBounds() is design space. Convert the
+    // pointer to design space before hit-testing, or on HiDPI displays (S >= 2 —
+    // the common case) the wheel misses the bag entirely and fires over an
+    // unrelated centre region. Identity at S=1. Mirrors HudMinimap.toDesignSpace.
+    const s = getRenderScale(scene);
+    if (!Phaser.Geom.Rectangle.Contains(bagBg.getBounds(), pointer.x / s, pointer.y / s)) return;
+    scrollBag(deltaY > 0 ? 1 : -1);
+  };
+  scene.input.on('wheel', handleWheel);
 
   scene.scale.on('resize', applyLayout);
 
@@ -522,11 +1400,34 @@ export function createEquipmentUI(
     isOpen: () => visible,
     getSelectedSlotFilter: () => selectedSlotFilter,
     selectSlot: (slotId: EquipmentSlotId | null) => setSelectedSlotFilter(slotId),
+    getPanelScreenBounds,
+    getSlotScreenBounds: (slotId: EquipmentSlotId) => slotBounds.get(slotId) ?? null,
+    getSlotIconScreenBounds: (slotId: EquipmentSlotId) => slotIconBounds.get(slotId) ?? null,
+    getTooltipScreenBounds: () => tooltipBounds,
+    isTooltipVisible: () => tooltipObjects.length > 0,
+    isTooltipTopmost,
+    getBagItemIds: () => [...bagItemIds],
+    getBagCellScreenBounds: (index: number) => bagCellBounds[index] ?? null,
+    getBagColumnScreenBounds: (): ScreenBounds => {
+      const b = bagBg.getBounds();
+      return { x: b.x, y: b.y, width: b.width, height: b.height };
+    },
+    scrollBag: (rows: number) => scrollBag(rows),
+    getBagScrollRow: () => bagScrollRow,
+    getBagMaxScrollRow: () => bagMaxScroll,
+    previewBagItem: (itemId: string | null) => previewBagItem(itemId),
+    equipBagItem: (itemId: string) => equipBagItem(itemId),
     destroy() {
       scene.scale.off('resize', applyLayout);
+      scene.input.off('wheel', handleWheel);
       clearPool(slotObjects);
       clearPool(statObjects);
-      clearPool(gearObjects);
+      clearPool(bagObjects);
+      clearTooltip();
+      slotBounds.clear();
+      slotIconBounds.clear();
+      bagCellBounds = [];
+      bagItemIds = [];
       container.destroy();
     },
   };

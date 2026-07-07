@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-07",
+  "session_slug": "asset-ingestion-wiring",
+  "task_title": "Ingest and wire rat nest and slime pool assets",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-5",
+      "concerns_count": 1,
+      "resolved_count": 1,
+      "notes": "Separate-model plan review completed after implementation hardening. Concern raised: art-plan metadata should avoid invalid/mismatched integration linkage and should track both rat-nest and slime-pool concepts. Resolved by setting rat-nest-props briefId to rat-nest-v2, removing invalid integration mapping, and adding slime-pool-props with briefId slime-pool-v1; runtime wiring/test scope unchanged."
+    }
+  }
+}
