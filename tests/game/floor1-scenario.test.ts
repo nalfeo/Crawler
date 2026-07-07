@@ -48,6 +48,7 @@ import {
 } from '../../src/shared/quest-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID } from '../../src/shared/abilities.js';
+import { flattenSetPieceLayers, getSetPieceDef } from '../../src/shared/set-piece-types.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import { floor1EnemyPack } from '../../src/shared/enemy-packs.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
@@ -196,6 +197,22 @@ describe('floor1Scenario', () => {
       ]);
       expect(uniqueNpcTiles.size, `seed ${seed}: welcome-bar NPCs should not stack`).toBe(3);
 
+      // NPCs should scatter around the welcome bar, not huddle: every pair must
+      // be at least MIN_NPC_SPACING_TILES (3) apart in Chebyshev distance, i.e.
+      // two empty tiles between any two NPCs.
+      const npcTiles = [tutorialTile, shopTile, spellTile];
+      const chebyshev = (a: { x: number; y: number }, b: { x: number; y: number }): number =>
+        Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+      for (let i = 0; i < npcTiles.length; i += 1) {
+        for (let j = i + 1; j < npcTiles.length; j += 1) {
+          const dist = chebyshev(npcTiles[i]!, npcTiles[j]!);
+          expect(
+            dist,
+            `seed ${seed}: welcome-bar NPCs ${i} and ${j} too close (Chebyshev ${dist}, want >= 3)`,
+          ).toBeGreaterThanOrEqual(3);
+        }
+      }
+
       expect(objective.shopRoomPos).toEqual({
         x: world.stores.position.x[floor1.shopkeeperNpcEid!]!,
         y: world.stores.position.y[floor1.shopkeeperNpcEid!]!,
@@ -203,6 +220,14 @@ describe('floor1Scenario', () => {
       expect(objective.spellQuestGiverPos).toEqual({
         x: world.stores.position.x[floor1.spellQuestGiverNpcEid!]!,
         y: world.stores.position.y[floor1.spellQuestGiverNpcEid!]!,
+      });
+      // The goon's welcome anchor also auto-follows his spawned tile (the S4 fix
+      // that closed the goon-objective-follow gap): the quest marker points where
+      // the goon actually stands, so he is reachable by construction even though
+      // the set piece pins him against the back wall.
+      expect(objective.welcomeOfficePos).toEqual({
+        x: world.stores.position.x[floor1.guideNpcEid!]!,
+        y: world.stores.position.y[floor1.guideNpcEid!]!,
       });
 
       // Quest item (rat tail) must still be in a distinct room from welcome.
@@ -213,6 +238,83 @@ describe('floor1Scenario', () => {
         `seed ${seed}: quest item must be in a different room from welcome`,
       ).not.toBe(welcomeRoomId);
     }
+  });
+
+  it('stamps the welcome-room set-piece props into the welcome bar (visual dressing)', () => {
+    const def = getSetPieceDef('welcome-room');
+    if (!def) {
+      throw new Error('Expected the welcome-room set piece to be registered');
+    }
+    // One render instance is recorded per flattened draw layer (composites like
+    // the rug + banner each contribute their own layers), so the list length must
+    // match exactly — proving every authored layer actually reached the world.
+    const expectedPropCount = flattenSetPieceLayers(def).length;
+    expect(expectedPropCount).toBeGreaterThan(0);
+
+    const seeds = [42, 7, 2024];
+    for (const seed of seeds) {
+      const world = createTestWorld({ seed });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+
+      expect(
+        world.setPieceProps.length,
+        `seed ${seed}: every set-piece draw layer should record a render instance`,
+      ).toBe(expectedPropCount);
+
+      const map = world.floorMap!;
+      const objective = world.floorScenario!.objective;
+      const welcomeTile = map.worldToTile(
+        objective.welcomeOfficePos.x,
+        objective.welcomeOfficePos.y,
+      );
+      const welcomeRoomId = map.roomGraph.getRoomAt(welcomeTile.x, welcomeTile.y);
+      const room = welcomeRoomId >= 0 ? map.roomGraph.get(welcomeRoomId) : undefined;
+      if (!room) {
+        throw new Error(`seed ${seed}: expected a welcome room at the welcome-office tile`);
+      }
+      const { x: bx, y: by, width: bw, height: bh } = room.bounds;
+
+      // Every prop lands inside the welcome room's bounds — props layer over the
+      // room's own floor/walls, never spilling into a neighbouring room.
+      for (const [index, prop] of world.setPieceProps.entries()) {
+        const tile = map.worldToTile(prop.x, prop.y);
+        const inBounds =
+          tile.x >= bx && tile.x <= bx + bw - 1 && tile.y >= by && tile.y <= by + bh - 1;
+        expect(
+          inBounds,
+          `seed ${seed}: prop ${index} at tile (${tile.x},${tile.y}) outside welcome room bounds`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('does not accumulate set-piece props when re-initialized on a reused world', () => {
+    // Regression: `world.setPieceProps` is a render-only list that is appended
+    // to during stamping and (before the fix) was never cleared. Re-running the
+    // scenario on a reused world — a supported path, mirroring the director/
+    // spawner per-world resets — must start from an empty list so props do not
+    // pile up and render stacked. Assert the count is identical after a second
+    // init, not doubled.
+    const def = getSetPieceDef('welcome-room');
+    if (!def) {
+      throw new Error('Expected the welcome-room set piece to be registered');
+    }
+    const expectedPropCount = flattenSetPieceLayers(def).length;
+    expect(expectedPropCount).toBeGreaterThan(0);
+
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+
+    initializeFloor1Scenario(world, player);
+    expect(world.setPieceProps.length).toBe(expectedPropCount);
+
+    // Second init on the SAME world must reset, not append.
+    initializeFloor1Scenario(world, player);
+    expect(
+      world.setPieceProps.length,
+      're-init must clear the render-only prop list rather than accumulate duplicates',
+    ).toBe(expectedPropCount);
   });
 
   it('keeps every room interior reachable from spawn across seeds (no sealed rooms)', () => {

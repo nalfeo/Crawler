@@ -77,39 +77,59 @@ interface CollisionFingerprint {
  *   seed  13:  7/229/10/0  →  6/236/5/0
  *   seed  42:  7/261/25/8  →  7/264/10/8   (kills & score unchanged)
  *   seed 137:  4/122/5/0   →  6/230/0/0
+ *
+ * ## 2026-07-07 re-baseline — welcome-room set piece: spaced NPCs (ADR 0046)
+ *
+ * The Floor 1 welcome-room set piece now stamps the three quest NPCs (goon,
+ * merchant, spell broker) at fixed, SPACED tiles instead of the old clustered
+ * spawn, and auto-anchors each NPC's objective tile to where it actually
+ * stands (a deliberate, user-approved change — same room, trivially pathable,
+ * so no reachability/balance impact). Moving the NPCs shifts their Size-backed
+ * collision footprints, which changes the per-frame collision-pair set,
+ * cascades through `applyDamage`'s RNG draws, and so drifts these fingerprints.
+ * This is NPC-repositioning ONLY: the set piece's cosmetic PROPS are render-only
+ * instances on `world.setPieceProps` (NOT entities — see set-piece-render.ts),
+ * so they consume no entity ids and are provably non-perturbing (a props-present
+ * vs props-skipped run yields byte-identical fingerprints). Verified stable
+ * across two back-to-back runs per seed (see the determinism test below).
+ * Before → after (kills / damageDealt / damageTaken / score):
+ *   seed   7:  4/156/10/0  →  3/125/15/0
+ *   seed  13:  6/236/5/0   →  7/211/5/0
+ *   seed  42:  7/264/10/8  →  7/279/5/8    (kills & score unchanged)
+ *   seed 137:  6/230/0/0   →  5/206/0/2
  */
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
     outcome: 'timeout',
     kills: 7,
-    damageDealt: 264,
-    damageTaken: 10,
+    damageDealt: 279,
+    damageTaken: 5,
     finalScore: 8,
   },
   7: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 4,
-    damageDealt: 156,
-    damageTaken: 10,
+    kills: 3,
+    damageDealt: 125,
+    damageTaken: 15,
     finalScore: 0,
   },
   13: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 6,
-    damageDealt: 236,
+    kills: 7,
+    damageDealt: 211,
     damageTaken: 5,
     finalScore: 0,
   },
   137: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 6,
-    damageDealt: 230,
+    kills: 5,
+    damageDealt: 206,
     damageTaken: 0,
-    finalScore: 0,
+    finalScore: 2,
   },
 };
 

@@ -27,6 +27,8 @@ import {
   MockGraphics,
 } from '../fixtures/phaser-bridge-harness.js';
 import { spawnMeleeSwing } from '../../src/core/spawners/melee.js';
+import { addSetPieceProp } from '../../src/core/spawners/world-objects.js';
+import { setPieceZToDepth } from '../../src/shared/render-depths.js';
 import { MeleeSpriteId } from '../../src/shared/constants.js';
 import { getSprite } from '../../src/engine/sprites/index.js';
 import { DECORATION_DEF_INDEX } from '../../src/shared/decorationDefs.js';
@@ -309,6 +311,90 @@ describe('createPhaserBridge', () => {
     bridge.destroy();
     expect(propImages.every((img) => img.destroyed)).toBe(true);
     expect(propRects.every((rect) => rect.destroyed)).toBe(true);
+  });
+
+  it('renders set-piece prop layers with straddling depth, footprint and tint', () => {
+    const propImages: (MockImage & { displayW?: number; displayH?: number })[] = [];
+    const propRects: PropRect[] = [];
+    const scene = {
+      add: {
+        image: vi.fn((x = 0, y = 0, textureKey = '', frame?: number) => {
+          const img = new MockImage(x, y, textureKey, frame) as MockImage & {
+            displayW?: number;
+            displayH?: number;
+          };
+          (
+            img as unknown as { setDisplaySize: (w: number, h: number) => MockImage }
+          ).setDisplaySize = function setDisplaySize(w: number, h: number): MockImage {
+            img.displayW = w;
+            img.displayH = h;
+            return img;
+          };
+          propImages.push(img);
+          return img as unknown as Phaser.GameObjects.Image;
+        }),
+        rectangle: vi.fn((x = 0, y = 0, width = 0, height = 0) => {
+          const rect = new PropRect(x, y, width, height);
+          propRects.push(rect);
+          return rect as unknown as Phaser.GameObjects.Rectangle;
+        }),
+      },
+      textures: {
+        // Only the Kenney tiny-town sheet is "loaded" here.
+        exists: (key: string) => key === 'kenney-tiny-town',
+      },
+    } as unknown as Phaser.Scene;
+
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+
+    // A furniture layer (z=30 → foreground) resolved from a loaded Kenney sheet frame.
+    const deskDepth = setPieceZToDepth(30);
+    addSetPieceProp(world, 3, 2, {
+      sprite: { source: 'sheet', sheetKey: 'kenney-tiny-town', col: 2, row: 5 },
+      depth: deskDepth,
+      widthFt: 12,
+      heightFt: 4,
+      tintHex: '#7f1d1d',
+      label: 'welcome-desk',
+    });
+
+    // A background rug layer (z=0) whose custom art is not yet generated → placeholder rect.
+    const rugDepth = setPieceZToDepth(0);
+    addSetPieceProp(world, 5, 6, {
+      sprite: {
+        source: 'custom',
+        requestId: 'welcome-room-rug',
+        label: 'welcome rug',
+        prompt: 'a threadbare red rug',
+      },
+      depth: rugDepth,
+      widthFt: 16,
+      heightFt: 8,
+    });
+
+    bridge.sync(world);
+
+    // Desk: rendered as a sprite (frame = row*cols+col = 5*12+2 = 62) at foreground depth,
+    // sized to its footprint (feet → px at 8 px/ft) and tinted.
+    const desk = propImages.find((img) => img.textureKey === 'kenney-tiny-town');
+    expect(desk).toBeDefined();
+    expect(desk?.frame).toBe(62);
+    expect(desk?.depth).toBe(deskDepth);
+    expect(desk?.depth).toBeGreaterThan(ENTITY_DEPTH);
+    expect(desk?.displayW).toBe(96);
+    expect(desk?.displayH).toBe(32);
+    expect(desk?.tinted).toBe(true);
+    expect(desk?.tint).toBe(0x7f1d1d);
+
+    // Rug: no loaded art → placeholder rect in the background band (below entities).
+    expect(propRects).toHaveLength(1);
+    expect(propRects[0]?.depth).toBe(rugDepth);
+    expect(propRects[0]?.depth).toBeLessThan(ENTITY_DEPTH);
+
+    bridge.destroy();
+    expect(desk?.destroyed).toBe(true);
+    expect(propRects[0]?.destroyed).toBe(true);
   });
 
   it('uses procedural texture key when no Kenney sheet is loaded', () => {

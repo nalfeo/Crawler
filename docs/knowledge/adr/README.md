@@ -6,7 +6,7 @@ decisions that affect **2+ systems** require an ADR (see the constitution and
 `.github/copilot-instructions.md`).
 
 - **Template:** `docs/knowledge/adr/TEMPLATE.md`
-- **Count:** 76 ADR files — 71 numbered (0001–0050, with number reuse and gaps in this index — see below) + 5 date-prefixed
+- **Count:** 77 ADR files — 72 numbered (0001–0050, with number reuse and gaps in this index — see below) + 5 date-prefixed
 - **Status convention:** `## Status` heading with one of
   `Proposed | Accepted | Deprecated | Superseded by NNNN`
 
@@ -87,6 +87,7 @@ hundreds of inbound references.
 - [Floor 1 room-reachability guarantee & gate-stall fast-fail](0021-floor1-room-reachability-and-gate-stall-fastfail.md)
 - [Generic special-room perimeter sealing with door-conversion](0023-generic-special-room-sealing.md)
 - [Set-piece themed rooms](0024-set-piece-themed-rooms.md)
+- [Set-piece map-gen integration, NPC placement & sprite layering](0046-set-piece-mapgen-integration-npc-placement-layering.md) — resolves 0024's deferred map-gen wiring; adds `npcs[]`, core stamping unit, depth-straddling layering, and auto objective-anchor follow.
 - [Door-pointing welcome-sign wayfinding](0026-welcome-sign-wayfinding.md)
 - [Parameterized floor configuration system](0005-parameterized-floor-configuration.md) — floor1→floor params via floor-registry; enables multi-floor progression.
 - [Floor 2 family-territory & relationship architecture](0040-floor2-family-territory-and-relationship-architecture.md) — open cave system of feuding mob families, per-family player relationships, and a two-shape (sole-ally / total-war) win condition.
@@ -198,6 +199,7 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0045 | [AI Arena Lock-in Priority](0045-ai-arena-lockin-priority.md)                                                                   | Accepted | 2026-07-04 |
 | 0046 | [Spawner-Arena "Ever Armed" Latch & `resolvedArmed` Telemetry](0046-spawner-arena-armed-telemetry.md)                           | Accepted | 2026-07-05 |
 | 0046 | [Floor 2 Ambient Director with Territory-Weighted Trash Selection](0046-floor2-ambient-director-territory-weights.md)           | Accepted | 2026-07-06 |
+| 0046 | [Set-Piece Map-Gen Integration, NPC Placement & Sprite Layering](0046-set-piece-mapgen-integration-npc-placement-layering.md)   | Accepted | 2026-07-06 |
 | 0047 | [Spatial-Scoping Performance Optimizations](0047-spatial-scoping-performance.md)                                                | Accepted | 2026-07-06 |
 | 0048 | [Opt-in Per-Run Weapon Telemetry (accuracy + multi-hit)](0048-opt-in-weapon-telemetry.md)                                       | Accepted | 2026-07-06 |
 | 0049 | [Floor 1 is Spawner-Free by Empty Spawn Table](0049-floor1-spawner-free-by-config.md)                                           | Accepted | 2026-07-07 |
