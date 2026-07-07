@@ -1,5 +1,16 @@
 [
   {
+    "commit": "189ddc065c9614d4a9ed539937343a5147c77cf2",
+    "commitDate": "2026-07-07T06:13:43Z",
+    "commitSubject": "fix(floor1): make Floor 1 spawner-free via empty static-spawner table (#836)",
+    "capturedAt": "2026-07-07T06:51:32.797Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28845923527",
+    "winRate": 0.8433333333333334,
+    "totalWins": 253,
+    "totalRuns": 300,
+    "path": "by-sha/189ddc065c9614d4a9ed539937343a5147c77cf2.json"
+  },
+  {
     "commit": "3e54091b1c10d6cbae30499cb4fc26dcafc4a8ed",
     "commitDate": "2026-07-07T05:40:32Z",
     "commitSubject": "feat(sprites): disable opaque-ratio sensor for tile briefs (#838)",
