@@ -189,10 +189,79 @@ export class FloorMap implements FloorMapData {
     };
   }
 
+  /**
+   * Optional barrier lookup — installed by the ECS wiring so
+   * `isPassableAt` also refuses tiles occupied by a dynamic barrier
+   * (see `src/core/barriers/`). Returns `true` iff the tile at `tileX,tileY`
+   * has ANY live barrier on it. Kept as a callback rather than a direct
+   * `BarrierRegistry` reference so FloorMap has zero import dependency on
+   * the barrier module — the registry can grow without churning the map
+   * layer.
+   */
+  private barrierLookup: ((tileX: number, tileY: number) => boolean) | null = null;
+
+  /**
+   * Attach the barrier-tile predicate. Called once by the world wiring at
+   * floor-load; passing `null` detaches. `isPassableAt` and
+   * `isTilePassableWithBarriers` consult it.
+   */
+  setBarrierLookup(fn: ((tileX: number, tileY: number) => boolean) | null): void {
+    this.barrierLookup = fn;
+  }
+
+  /**
+   * Optional feet-precision barrier lookup — installed alongside
+   * {@link barrierLookup} by the ECS wiring. Returns `true` iff the world
+   * point `(xFt, yFt)` sits inside an ANALYTIC barrier shape (e.g. a 1 ft-thick
+   * ring wall). This is the sub-tile chokepoint: tile-granular barriers are too
+   * coarse for a thin circular wall, so `isPassableAt` consults this in
+   * addition to the tile lookup. Kept as a callback for the same zero-import
+   * reason as {@link barrierLookup}.
+   */
+  private barrierPointLookup: ((xFt: number, yFt: number) => boolean) | null = null;
+
+  /**
+   * Attach the feet-precision barrier predicate. Called once by the world
+   * wiring at floor-load; passing `null` detaches.
+   */
+  setBarrierPointLookup(fn: ((xFt: number, yFt: number) => boolean) | null): void {
+    this.barrierPointLookup = fn;
+  }
+
+  /**
+   * True iff the world point `(xFt, yFt)` sits inside an analytic barrier
+   * shape. Returns `false` when no lookup is attached (the no-overlay happy
+   * path). Movement collision is point-based, so this is the only surface that
+   * needs feet precision — pathfinding stays tile-granular (an analytic ring
+   * owns no tiles, which is acceptable: everyone is inside the arena and
+   * movement collision enforces the wall).
+   */
+  hasBarrierAtPoint(xFt: number, yFt: number): boolean {
+    return this.barrierPointLookup ? this.barrierPointLookup(xFt, yFt) : false;
+  }
+
+  /**
+   * Public accessor primarily for pathfinding — check whether a tile is
+   * blocked by a barrier without going through the world-position wrapper.
+   * Returns `false` when no lookup has been attached (i.e. no barriers on
+   * this floor), which is the "no overlay" happy path.
+   */
+  hasBarrierAtTile(tileX: number, tileY: number): boolean {
+    return this.barrierLookup ? this.barrierLookup(tileX, tileY) : false;
+  }
+
   /** Check if a feet world position is on a passable tile. */
   isPassableAt(x: number, y: number): boolean {
     const t = this.worldToTile(x, y);
-    return this.tileMap.isPassable(t.x, t.y);
+    if (!this.tileMap.isPassable(t.x, t.y)) return false;
+    // Barriers overlay tile passability: even on a normally-walkable tile,
+    // a live barrier blocks movement. Underlying flags are untouched — see
+    // ADR 0046 for why we don't mutate them.
+    if (this.hasBarrierAtTile(t.x, t.y)) return false;
+    // Analytic (sub-tile) barriers — e.g. a 1 ft-thick ring wall — are queried
+    // at feet precision so a thin wall blocks exactly instead of snapping to
+    // a 4 ft tile. No-op fast path when no analytic barrier is installed.
+    return !this.hasBarrierAtPoint(x, y);
   }
 
   /**

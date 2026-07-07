@@ -237,13 +237,6 @@ export interface AIDecisionTelemetryMetrics {
   suppressedProgressNavMs: number;
 }
 
-/**
- * Spawner Battle-Arena rollup — captured once at the end of a headless run so
- * the win-rate gate can assert every reachable spawner reached the resolved
- * terminal state (`arenaState === 2`). Populated by `runHeadless`; if a run
- * generates no spawners the counts are all zero. See ADR "Spawner Battle
- * Arena" and `spawnerArenaSystem`.
- */
 export interface SpawnerArenaMetrics {
   /** Total spawner entities present at run end (includes resolved/dead ones). */
   total: number;

@@ -1,5 +1,5 @@
 /**
- * Spawner Battle Arena System — per-tick state machine that fences the player
+ * Spawner Battle Arena System — per-tick state machine that cages the player
  * in with a spawner and grants a banked XP reward on kill.
  *
  * Runs IMMEDIATELY BEFORE {@link spawnerSystem} in both pipelines (visual
@@ -8,10 +8,10 @@
  *     `spawnerSystem` is *immediately adjacent* to `floor1EnemyDirectorSystem`
  *     (`tests/game/floor1-main-scene-options.test.ts`). Anything inserted
  *     between them breaks the invariant, so we run before them instead.
- *   - Running before the spawner system means fence tile mutations are
- *     visible to `spawnerSystem` when it computes child spawn positions in
- *     the same tick — no half-frame windows where a child spawns onto a
- *     just-mutated fence tile.
+ *   - Running before the spawner system means barrier tiles raised this tick
+ *     are already visible to `spawnerSystem` when it computes child spawn
+ *     positions — no half-frame windows where a child spawns onto a
+ *     just-raised barrier.
  *
  * Per spawner entity we track a 3-value state machine (`spawner.arenaState`):
  *   0 = idle          → check trigger predicate each tick
@@ -20,24 +20,26 @@
  *
  * On the transition idle → locked, we:
  *   - Emit a `spawnerArenaStart` VFX event (radial burst, archetype-tinted).
- *   - Push a HUD announcement carrying the display name (resolved here in the
- *     game layer so `src/core` stays free of registry imports).
- *   - Either lock all doors of the containing room (sealed-room path) via
- *     `setDoorLockConfig` + a goal-flag door predicate, OR mutate a ring of
- *     tile flags to non-passable and snapshot the originals for exact restore
- *     (open-fence path).
+ *   - Push a HUD announcement carrying the display name.
+ *   - Raise dynamic barriers (`src/core/barriers/`) to physically cage the
+ *     player. Sealed rooms ALSO lock their doors via `setDoorLockConfig` — the
+ *     door lock and the doorway barrier are belt-and-suspenders redundant so
+ *     an unlock-predicate bug can never let the player escape.
  *
  * On the transition locked → resolved, we:
- *   - Reverse the geometry: set the goal flag (so `doorSystem` unlocks the
- *     cached doors on its next tick) OR restore the snapshotted fence flags.
+ *   - Drop the barriers so movement + projectiles flow freely again.
+ *   - Set the goal flag (so `doorSystem` unlocks the cached doors on its
+ *     next tick) for the sealed-room path.
  *   - Emit a `spawnerArenaEnd` VFX event + a matching HUD announcement.
  *   - Grant the accumulated `bankedXp` as a single XP gem at the spawner's
- *     death position — this is the sole XP payout for spawner-owned enemies
- *     (see `dropSystem`'s XP intercept for the intercept side of the ledger).
+ *     death position — the sole XP payout for spawner-owned enemies.
  *
  * All randomness reaches the tick through `world.rng` and `world.elapsedMs`;
  * this system introduces no additional sources — replays with the same seed
  * produce byte-identical arena events + banked totals.
+ *
+ * @see docs/knowledge/adr/0046-dynamic-barrier-primitive.md for why the
+ * pre-PR-#767 `TileMap.flags` snapshot approach was replaced.
  */
 import { query } from 'bitecs';
 import { DoorState, Player, Position, Health, Spawner } from '../../core/components.js';
@@ -48,13 +50,22 @@ import {
   setGoalFlag,
 } from '../../core/door-lock.js';
 import { spawnXpGem } from '../../core/helpers.js';
+import { PHYSICS_BODIES } from '../../core/physics-defs.js';
 import { SPAWNER_ARENA_KIND_UNRESOLVED } from '../../core/spawners/combatants.js';
 import type { GameWorld } from '../../core/world.js';
 import {
-  FENCE_TILE_FLAGS,
-  collectFenceRingTiles,
+  createRingWallBarrier,
+  createRoomBarrier,
+  dropBarrier,
+  type BarrierHandle,
+} from '../../core/barriers/index.js';
+import {
+  ARENA_WALL_THICKNESS_FT,
+  arenaRingWallRadii,
+  bumpInsideRing,
   decideArenaKind,
   isArenaTriggered,
+  isPlayerFullyInsideRing,
 } from '../../core/spawner-arena.js';
 import { createLogger } from '../../shared/logger.js';
 import { pushAnnouncement } from '../../shared/announcement-events.js';
@@ -115,10 +126,6 @@ function findPlayer(world: GameWorld): { eid: number; x: number; y: number } | u
  * Cache which door entities cover the tiles listed by a room and lock each
  * of them behind the arena's goal flag. Returns the door entity IDs so the
  * arena system can clear the lock config on resolve.
- *
- * Doors already carrying a lock config are left alone (rare — the room might
- * already be a locked objective room). The arena is a temporary overlay: we
- * only touch doors that were unlocked/unconfigured.
  */
 function lockRoomDoorsImpl(
   world: GameWorld,
@@ -129,19 +136,11 @@ function lockRoomDoorsImpl(
   cachedEids: number[],
 ): number[] {
   const goalId = arenaGoalId(spawnerEid);
-  // `goalFlags` defaults to unset (undefined) which the door predicate treats
-  // as "not complete". Explicitly write `false` up front so the door reads a
-  // deterministic value even if some earlier code touched the flag.
   setGoalFlag(world, goalId, false);
   for (const tile of doorTiles) {
     for (const doorEid of doorEids) {
       if ((doorState.tileX[doorEid] ?? -1) !== tile.x) continue;
       if ((doorState.tileY[doorEid] ?? -1) !== tile.y) continue;
-      // Honor pre-existing lock configs — a quest/boss/puzzle door might
-      // already carry its own unlock predicate; overwriting would silently
-      // strip that gating and clearing on resolve would permanently unlock
-      // a door that was never meant to open. See ADR 0044§"Door-lock
-      // interop" for the rationale.
       if (getDoorLockConfig(world, doorEid)) break;
       setDoorLockConfig(world, doorEid, {
         unlock: { operator: 'all', conditions: [{ type: 'goal', goalId }] },
@@ -160,57 +159,8 @@ function unlockRoomDoors(world: GameWorld, spawnerEid: number, doorEids: number[
   setGoalFlag(world, arenaGoalId(spawnerEid), true);
   const { doorState } = world.stores;
   for (const doorEid of doorEids) {
-    // doorSystem observes the goal flag and clears isLocked itself; we still
-    // wipe the config so the flag key never lingers as a hidden dependency.
-    // Only doors we actually locked are in `doorEids` (lockRoomDoorsImpl
-    // skips pre-locked doors), so clearing is safe.
     clearDoorLockConfig(world, doorEid);
     doorState.isLocked[doorEid] = 0;
-  }
-}
-
-/**
- * Take a snapshot of currently-passable ring tiles and overwrite them with
- * {@link FENCE_TILE_FLAGS}. Returns the snapshot so the caller can restore
- * exact byte values on arena resolve.
- */
-function raiseFence(
-  world: GameWorld,
-  spawnerXFt: number,
-  spawnerYFt: number,
-  radiusFt: number,
-): Array<{ tileIdx: number; originalFlags: number }> | undefined {
-  const floorMap = world.floorMap;
-  if (!floorMap) return undefined;
-  const tileIdxs = collectFenceRingTiles({
-    floorMap,
-    cxFt: spawnerXFt,
-    cyFt: spawnerYFt,
-    radiusFt,
-  });
-  const snapshot: Array<{ tileIdx: number; originalFlags: number }> = [];
-  const flags = floorMap.tileMap.flags;
-  for (const tileIdx of tileIdxs) {
-    const originalFlags = flags[tileIdx] ?? 0;
-    snapshot.push({ tileIdx, originalFlags });
-    flags[tileIdx] = FENCE_TILE_FLAGS;
-  }
-  return snapshot;
-}
-
-/**
- * Restore the tile-flag bytes captured by {@link raiseFence}. Idempotent — a
- * second call is a no-op because the snapshot is drained by the caller.
- */
-function lowerFence(
-  world: GameWorld,
-  snapshot: Array<{ tileIdx: number; originalFlags: number }>,
-): void {
-  const floorMap = world.floorMap;
-  if (!floorMap) return;
-  const flags = floorMap.tileMap.flags;
-  for (const entry of snapshot) {
-    flags[entry.tileIdx] = entry.originalFlags;
   }
 }
 
@@ -225,6 +175,59 @@ function findRoomIdAt(world: GameWorld, xFt: number, yFt: number): number {
   return floorMap.roomGraph.getRoomAt(tile.x, tile.y);
 }
 
+/**
+ * Raise the physical barrier(s) that cage the player. For sealed-room arenas
+ * we lay down BOTH a locked-door config (existing behaviour) AND a barrier
+ * plugging every doorway — belt-and-suspenders redundant so any door-lock
+ * bug still leaves the barrier in the way. For open-fence arenas we raise an
+ * ANALYTIC ring WALL (a 1 ft-thick circle, {@link createRingWallBarrier})
+ * around the disc — a smooth, sub-tile boundary the player + mobs cannot cross,
+ * NOT the old blocky tile ring. The returned handles are stored on
+ * `world.spawnerArenaBarriers` and dropped on resolve.
+ */
+function raiseArenaBarriers(
+  world: GameWorld,
+  spawnerEid: number,
+  spawnerRoomId: number,
+  spawnerXFt: number,
+  spawnerYFt: number,
+  radiusFt: number,
+  arenaKind: 0 | 1,
+): BarrierHandle | null {
+  if (arenaKind === 0 && spawnerRoomId >= 0) {
+    // Sealed-room path: barrier ONLY the doorways. The room's walls already
+    // provide the physical cage; the doorway plugs make the door-lock
+    // impossible to bypass.
+    const handle = createRoomBarrier(world, spawnerRoomId, 'fence', { doorwaysOnly: true });
+    world.spawnerArenaBarriers.set(spawnerEid, handle);
+    return handle;
+  }
+  // Open-fence path: a procedural circular WALL. The wall is stored as an
+  // analytic ring shape (no tiles), so collision is queried at feet precision
+  // (a thin 1 ft wall blocks exactly) and it renders as a smooth circle rather
+  // than the blocky 4 ft tile ring. `arenaRingWallRadii` floors the radius so
+  // the interior always fits the fight (see MIN_ARENA_WALL_OUTER_FT).
+  const { outerRadiusFt } = arenaRingWallRadii(radiusFt);
+  const handle = createRingWallBarrier(
+    world,
+    spawnerXFt,
+    spawnerYFt,
+    outerRadiusFt,
+    ARENA_WALL_THICKNESS_FT,
+    'fence',
+  );
+  world.spawnerArenaBarriers.set(spawnerEid, handle);
+  return handle;
+}
+
+/** Drop the barrier raised for `spawnerEid` (if any). Idempotent. */
+function dropArenaBarrier(world: GameWorld, spawnerEid: number): void {
+  const handle = world.spawnerArenaBarriers.get(spawnerEid);
+  if (!handle) return;
+  dropBarrier(world, handle);
+  world.spawnerArenaBarriers.delete(spawnerEid);
+}
+
 export function spawnerArenaSystem(world: GameWorld): void {
   const spawners = query(world.ecs, [Spawner, Position, Health]);
   if (spawners.length === 0) return;
@@ -233,8 +236,7 @@ export function spawnerArenaSystem(world: GameWorld): void {
   const floorMap = world.floorMap;
   const player = findPlayer(world);
 
-  // Cache the player's tile-room lookup so we do it once per tick, not per
-  // spawner. The room graph is O(1) but the allocation is worth avoiding.
+  // Cache the player's tile-room lookup so we do it once per tick.
   const playerRoomId = floorMap && player ? findRoomIdAt(world, player.x, player.y) : -1;
 
   for (const eid of spawners) {
@@ -247,8 +249,7 @@ export function spawnerArenaSystem(world: GameWorld): void {
     const sx = position.x[eid] ?? 0;
     const sy = position.y[eid] ?? 0;
 
-    // Resolve the arena kind once we can (floorMap present). Until resolved,
-    // fall back to distance-only triggering with an open-fence style.
+    // Resolve the arena kind once we can (floorMap present).
     if ((spawner.arenaKind[eid] ?? ARENA_KIND_UNRESOLVED) === ARENA_KIND_UNRESOLVED && floorMap) {
       const kind = decideArenaKind({
         floorMap,
@@ -261,12 +262,8 @@ export function spawnerArenaSystem(world: GameWorld): void {
     const arenaKind = spawner.arenaKind[eid] ?? ARENA_KIND_UNRESOLVED;
 
     if (arenaState === ARENA_STATE.IDLE) {
-      // If the spawner dies before the arena ever triggers (player kills it
-      // from outside the disc, e.g. with a ranged weapon after killing a few
-      // spawned children off-screen), the banked XP would otherwise be
-      // orphaned because Requirement 4 already stripped per-child XP. Grant
-      // the banked pool here and transition straight to RESOLVED so the
-      // player still gets the reward Requirements 5/7 promised.
+      // If the spawner dies before the arena triggers, still grant the
+      // banked XP so Requirement 5/7's reward isn't orphaned.
       if ((spawner.deathResolved[eid] ?? 0) === 1) {
         const bankedXp = spawner.bankedXp[eid] ?? 0;
         if (bankedXp > 0) {
@@ -282,49 +279,67 @@ export function spawnerArenaSystem(world: GameWorld): void {
         continue;
       }
       if (!player) continue;
-      // Sealed-room trigger uses same-room match. Open-fence + unresolved fall
-      // back to distance-only. See spec `Requirements§3`.
+
       const spawnerRoomId = arenaKind === 0 ? findRoomIdAt(world, sx, sy) : -1;
       const sameSealedRoom =
         arenaKind === 0 && spawnerRoomId >= 0 && spawnerRoomId === playerRoomId;
-      const triggered = isArenaTriggered({
-        playerX: player.x,
-        playerY: player.y,
-        spawnerX: sx,
-        spawnerY: sy,
-        arenaRadiusFt: radiusFt,
-        sameSealedRoom,
-      });
+      let triggered: boolean;
+      if (arenaKind === 0) {
+        triggered = isArenaTriggered({
+          playerX: player.x,
+          playerY: player.y,
+          spawnerX: sx,
+          spawnerY: sy,
+          arenaRadiusFt: radiusFt,
+          sameSealedRoom,
+        });
+      } else {
+        // Open-fence ring wall: arm ONLY once the player is FULLY inside the
+        // future interior disc (body clear of the wall band), so the wall never
+        // materialises on top of the player. Uses the same floored radii the
+        // barrier itself will use.
+        const { innerRadiusFt } = arenaRingWallRadii(radiusFt);
+        triggered = isPlayerFullyInsideRing({
+          playerX: player.x,
+          playerY: player.y,
+          centerX: sx,
+          centerY: sy,
+          innerRadiusFt,
+          playerBodyRadiusFt: PHYSICS_BODIES.player.radius,
+        });
+      }
       if (!triggered) continue;
 
       // ── Idle → Locked transition ─────────────────────────────────────────
+      // Sealed-room path: lock the doors (existing behaviour) + raise a
+      // doorway barrier (belt-and-suspenders). Open-fence path: raise the
+      // ring barrier.
+      let doorCache: number[] = [];
       if (arenaKind === 0 && floorMap && spawnerRoomId >= 0) {
         const room = floorMap.roomGraph.get(spawnerRoomId);
         const doorTiles = room?.doors ?? [];
         const doorEids = query(world.ecs, [DoorState]);
-        const cached = lockRoomDoorsImpl(
-          world,
-          eid,
-          doorTiles,
-          doorEids,
-          world.stores.doorState,
-          [],
-        );
-        world.spawnerArenaDoors.set(eid, cached);
-        // Latch "a real barrier was raised" ONLY when at least one door was
-        // actually locked. An empty list means the sealed path was a no-op
-        // (no matching door entity, or every candidate already carried its own
-        // lock config) — the player is not actually trapped, so it must not
-        // count as an armed arena in headless telemetry.
-        if (cached.length > 0) {
-          world.spawnerArenaEverArmed.add(eid);
-        }
-      } else {
-        const snapshot = raiseFence(world, sx, sy, radiusFt);
-        if (snapshot && snapshot.length > 0) {
-          world.spawnerArenaFence.set(eid, snapshot);
-          world.spawnerArenaEverArmed.add(eid);
-        }
+        doorCache = lockRoomDoorsImpl(world, eid, doorTiles, doorEids, world.stores.doorState, []);
+        world.spawnerArenaDoors.set(eid, doorCache);
+      }
+      const barrier = raiseArenaBarriers(
+        world,
+        eid,
+        arenaKind === 0 ? findRoomIdAt(world, sx, sy) : -1,
+        sx,
+        sy,
+        radiusFt,
+        arenaKind === 0 ? 0 : 1,
+      );
+      // Only mark as "ever armed" if:
+      // - sealed-room path: doors were actually locked (doorCache.length > 0)
+      // - open-fence path: the ring wall exists (analytic shape or tiles)
+      const shouldArm =
+        arenaKind === 0
+          ? doorCache.length > 0
+          : (barrier?.tiles.length ?? 0) > 0 || barrier?.shape != null;
+      if (shouldArm) {
+        world.spawnerArenaEverArmed.add(eid);
       }
       spawner.arenaState[eid] = ARENA_STATE.LOCKED;
 
@@ -368,11 +383,7 @@ export function spawnerArenaSystem(world: GameWorld): void {
         unlockRoomDoors(world, eid, cachedDoors);
         world.spawnerArenaDoors.delete(eid);
       }
-      const cachedFence = world.spawnerArenaFence.get(eid);
-      if (cachedFence) {
-        lowerFence(world, cachedFence);
-        world.spawnerArenaFence.delete(eid);
-      }
+      dropArenaBarrier(world, eid);
       const bankedXp = spawner.bankedXp[eid] ?? 0;
       if (bankedXp > 0) {
         spawnXpGem(world, sx, sy, bankedXp);
@@ -403,10 +414,36 @@ export function spawnerArenaSystem(world: GameWorld): void {
       continue;
     }
 
-    // Still locked, no death yet — periodically refresh the fence VFX so a
-    // late-mounted renderer can pick up the persistent ring. At the 60 Hz fixed
-    // step (`GAME.DELTA_MS = 1000/60` ≈ 16.67 ms) the `< 40` window below is
-    // satisfied on ~3 consecutive ticks each FENCE_VFX_REFRESH_MS (400 ms)
+    // Still locked, no death yet. Keep the player physically inside the ring
+    // wall: movement collision normally stops the center from entering the wall
+    // band, but a large knockback impulse can tunnel it across the thin (1 ft)
+    // wall in a single step. Re-clamp radially so the body sits back inside the
+    // interior. Runs before movementSystem, so an escape is corrected within
+    // one frame (movement then re-blocks re-entry). Deterministic — no RNG.
+    if (arenaKind === 1 && player) {
+      const shape = world.spawnerArenaBarriers.get(eid)?.shape;
+      if (shape && shape.type === 'ring') {
+        const px = position.x[player.eid] ?? 0;
+        const py = position.y[player.eid] ?? 0;
+        const result = bumpInsideRing({
+          x: px,
+          y: py,
+          centerX: shape.cxFt,
+          centerY: shape.cyFt,
+          innerRadiusFt: shape.innerRadiusFt,
+          playerBodyRadiusFt: PHYSICS_BODIES.player.radius,
+        });
+        if (result.bumped) {
+          position.x[player.eid] = result.x;
+          position.y[player.eid] = result.y;
+        }
+      }
+    }
+
+    // Periodically refresh the fence VFX so a late-mounted renderer can pick up
+    // the persistent ring. At the 60 Hz fixed step (`GAME.DELTA_MS = 1000/60` ≈
+    // 16.67 ms) the `< 40` window below is satisfied on ~3 consecutive ticks
+    // each FENCE_VFX_REFRESH_MS (400 ms)
     // cycle — a small burst, not a steady stream. In headless there is no
     // renderer to drain `world.vfxEvents`; unbounded growth is instead bounded
     // by `pushVfxEvent`'s VFX_EVENT_CAP, which evicts the oldest events.

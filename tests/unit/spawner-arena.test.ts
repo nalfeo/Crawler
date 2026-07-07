@@ -16,12 +16,14 @@ import { DoorState, Health, Spawner, XpGem } from '../../src/core/components.js'
 import { spawnPlayer, spawnSpawner } from '../../src/core/helpers.js';
 import {
   SPAWNER_MAX_BANKED_CHILDREN,
-  FENCE_TILE_FLAGS,
-  assertFenceBlocks,
   isArenaTriggered,
   discFitsInRoom,
-  collectFenceRingTiles,
   decideArenaKind,
+  ARENA_WALL_THICKNESS_FT,
+  MIN_ARENA_WALL_OUTER_FT,
+  arenaRingWallRadii,
+  isPlayerFullyInsideRing,
+  bumpInsideRing,
 } from '../../src/core/spawner-arena.js';
 import { spawnerArenaSystem } from '../../src/game/spawners/spawnerArenaSystem.js';
 import { getSpawnerArchetype, getSpawnerArchetypeIndex } from '../../src/game/spawners/registry.js';
@@ -30,13 +32,7 @@ import { makeMapWithSafeRoom } from '../helpers/map-fixtures.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
-import {
-  BiomeType,
-  RoomRole,
-  TilePresets,
-  TileFlags,
-  type MapConfig,
-} from '../../src/shared/map-types.js';
+import { BiomeType, RoomRole, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 
 const RATS_NEST_INDEX = getSpawnerArchetypeIndex('rats-nest');
 const RATS_NEST = getSpawnerArchetype('rats-nest')!;
@@ -165,28 +161,98 @@ describe('discFitsInRoom', () => {
   });
 });
 
-describe('collectFenceRingTiles', () => {
-  it('returns a symmetric ring of tile indices around the centre', () => {
-    const world = createTestWorld();
-    world.floorMap = makeSealedRoomMap();
-    // Centre well inside the walled interior.
-    const tiles = collectFenceRingTiles({
-      floorMap: world.floorMap,
-      cxFt: 30,
-      cyFt: 30,
-      radiusFt: 6,
-    });
-    expect(tiles.length).toBeGreaterThan(0);
-    // Deterministic ordering — repeat call returns identical output.
-    const tiles2 = collectFenceRingTiles({
-      floorMap: world.floorMap,
-      cxFt: 30,
-      cyFt: 30,
-      radiusFt: 6,
-    });
-    expect(tiles2).toEqual(tiles);
+// ---------------------------------------------------------------------------
+// Ring-wall geometry helpers (open-fence arena boundary)
+// ---------------------------------------------------------------------------
+
+describe('arenaRingWallRadii', () => {
+  it('floors the outer radius to MIN_ARENA_WALL_OUTER_FT for small archetypes', () => {
+    // slime (6) and rats-nest (7) both request < 8 → floored to 8.
+    expect(arenaRingWallRadii(6).outerRadiusFt).toBe(MIN_ARENA_WALL_OUTER_FT);
+    expect(arenaRingWallRadii(7).outerRadiusFt).toBe(MIN_ARENA_WALL_OUTER_FT);
+  });
+
+  it('passes larger requested radii through unchanged (cave = 10)', () => {
+    expect(arenaRingWallRadii(10).outerRadiusFt).toBe(10);
+  });
+
+  it('carves an ARENA_WALL_THICKNESS_FT-thick band (inner = outer − thickness)', () => {
+    const { outerRadiusFt, innerRadiusFt } = arenaRingWallRadii(10);
+    expect(outerRadiusFt - innerRadiusFt).toBe(ARENA_WALL_THICKNESS_FT);
+    expect(innerRadiusFt).toBe(10 - ARENA_WALL_THICKNESS_FT);
+  });
+
+  it('never returns a negative inner radius', () => {
+    // Even a degenerate 0 request floors to the minimum, so inner stays ≥ 0.
+    expect(arenaRingWallRadii(0).innerRadiusFt).toBeGreaterThanOrEqual(0);
   });
 });
+
+describe('isPlayerFullyInsideRing', () => {
+  const base = { centerX: 100, centerY: 100, innerRadiusFt: 9, playerBodyRadiusFt: 1.5 };
+
+  it('is true when the whole body clears the inner wall face', () => {
+    // limit = 9 − 1.5 = 7.5; player 5 ft from centre is fully inside.
+    expect(isPlayerFullyInsideRing({ ...base, playerX: 105, playerY: 100 })).toBe(true);
+  });
+
+  it('is false while any part of the body still pokes into the wall band', () => {
+    // limit = 7.5; player 8 ft out → body edge (9.5) crosses the inner face.
+    expect(isPlayerFullyInsideRing({ ...base, playerX: 108, playerY: 100 })).toBe(false);
+  });
+
+  it('is exactly true at the boundary (dist == inner − bodyRadius)', () => {
+    expect(isPlayerFullyInsideRing({ ...base, playerX: 107.5, playerY: 100 })).toBe(true);
+  });
+
+  it('never arms when the interior cannot contain the body (degenerate ring)', () => {
+    // inner 1 ft, body 1.5 ft → limit ≤ 0 → false regardless of position.
+    expect(isPlayerFullyInsideRing({ ...base, innerRadiusFt: 1, playerX: 100, playerY: 100 })).toBe(
+      false,
+    );
+  });
+});
+
+describe('bumpInsideRing', () => {
+  const base = { centerX: 100, centerY: 100, innerRadiusFt: 9, playerBodyRadiusFt: 1.5 };
+
+  it('leaves a point that is still inside the inner edge untouched', () => {
+    const r = bumpInsideRing({ ...base, x: 104, y: 100 });
+    expect(r.bumped).toBe(false);
+    expect(r.x).toBe(104);
+    expect(r.y).toBe(100);
+  });
+
+  it('pulls a breached point radially back flush against the inner wall face', () => {
+    // Player at 12 ft out (breached inner 9) → clamp to inner − body = 7.5.
+    const r = bumpInsideRing({ ...base, x: 112, y: 100 });
+    expect(r.bumped).toBe(true);
+    expect(Math.hypot(r.x - 100, r.y - 100)).toBeCloseTo(7.5, 6);
+    // Radial direction preserved (straight along +x).
+    expect(r.y).toBeCloseTo(100, 6);
+    expect(r.x).toBeGreaterThan(100);
+  });
+
+  it('preserves the radial angle when bumping a diagonal breach', () => {
+    const r = bumpInsideRing({ ...base, x: 100 + 20, y: 100 + 20 });
+    expect(r.bumped).toBe(true);
+    // Same 45° heading, magnitude clamped to 7.5.
+    expect(r.x - 100).toBeCloseTo(r.y - 100, 6);
+    expect(Math.hypot(r.x - 100, r.y - 100)).toBeCloseTo(7.5, 6);
+  });
+
+  it('is a no-op at the exact centre (no radial direction to project along)', () => {
+    const r = bumpInsideRing({ ...base, x: 100, y: 100 });
+    expect(r.bumped).toBe(false);
+    expect(r.x).toBe(100);
+    expect(r.y).toBe(100);
+  });
+});
+
+// NOTE: the pre-PR-#767 `collectFenceRingTiles` geometry helper was removed
+// along with the tile-mutation fence path. Ring geometry now lives in
+// `src/core/barriers/geometry.ts::collectRingTiles` (passability-agnostic),
+// and coverage moved to `tests/unit/barriers/registry.test.ts`.
 
 // ---------------------------------------------------------------------------
 // State machine
@@ -375,22 +441,6 @@ describe('banked XP cap', () => {
     // The dropSystem test covers real intercept flow; here we assert the cap
     // constant is exported and matches the spec ("up to 10 children").
     expect(SPAWNER_MAX_BANKED_CHILDREN).toBe(10);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Fence tile-flag invariant
-// ---------------------------------------------------------------------------
-
-describe('FENCE_TILE_FLAGS invariant', () => {
-  it('assertFenceBlocks passes because PASSABLE is cleared', () => {
-    // Wires the otherwise-orphan runtime guard into a deterministic CI check:
-    // if a future edit re-adds PASSABLE to FENCE_TILE_FLAGS the fence would no
-    // longer block movement/projectiles, and this assertion fails loudly.
-    expect(() => assertFenceBlocks()).not.toThrow();
-    expect(FENCE_TILE_FLAGS & TileFlags.PASSABLE).toBe(0);
-    // TRANSPARENT stays set so FOV rays still pass through the shimmer.
-    expect(FENCE_TILE_FLAGS & TileFlags.TRANSPARENT).toBe(TileFlags.TRANSPARENT);
   });
 });
 

@@ -3,25 +3,24 @@
  *
  * Lives in `src/core/` so both the game-layer system (`spawnerArenaSystem`)
  * and any headless test can import them without touching game-specific state.
- * No side effects, no ECS mutation, no imports from `src/game/` — everything
- * here is a `(inputs) => outputs` function on plain data.
+ * No side effects, no ECS mutation — everything here is a `(inputs) => outputs`
+ * function on plain data.
  *
- * The arena state machine, VFX-event pushing, and door/tile mutation live in
- * `src/game/spawners/spawnerArenaSystem.ts` (where they can resolve archetype
- * data). This module intentionally has zero policy — only geometry and
- * membership tests — so it can be reused by the labs (`spawner-lab`) and unit
- * tests without spinning up a full world.
+ * NOTE (ADR 0046): the pre-PR-#767 module also owned fence-ring tile
+ * mutation (`FENCE_TILE_FLAGS`, `raiseFence`, `lowerFence`,
+ * `collectFenceRingTiles`, `assertFenceBlocks`). Those helpers are gone —
+ * dynamic barriers replaced the whole tile-mutation approach. Ring geometry
+ * now lives in `src/core/barriers/geometry.ts` (`collectRingTiles`), which
+ * is agnostic of underlying tile passability and therefore never produces
+ * the "ring landed on walls, cage leaked" bug the fence path used to hit.
  */
 
 import type { FloorMap } from './map/FloorMap.js';
 import type { RoomData } from '../shared/map-types.js';
-import { TileFlags } from '../shared/map-types.js';
 
 /**
  * Cap on how many child-XP intercepts a single spawner banks. Matches the
- * user's original wording ("up to 10") and spec `Requirements§7`. Making the
- * cap a constant keeps unit tests and the HUD in lockstep without a magic
- * number floating around.
+ * user's original wording ("up to 10") and spec `Requirements§7`.
  */
 export const SPAWNER_MAX_BANKED_CHILDREN = 10;
 
@@ -44,16 +43,105 @@ export function isPlayerInArenaRadius(
 ): boolean {
   const dx = playerX - spawnerX;
   const dy = playerY - spawnerY;
-  // Squared-distance comparison keeps this a pure integer/float multiply — no
-  // sqrt, no allocation, safe from denormal-float subtractions.
   return dx * dx + dy * dy <= arenaRadiusFt * arenaRadiusFt;
+}
+
+/**
+ * Wall thickness (ft) of an open-fence arena's procedural ring wall. The user
+ * spec is a 1 ft-thick circular wall; kept as a named constant so the trigger
+ * math, the barrier factory, and the renderer all agree on one value.
+ */
+export const ARENA_WALL_THICKNESS_FT = 1;
+
+/**
+ * Minimum OUTER radius (ft) of an open-fence ring-wall arena. An arena must be
+ * big enough that its "fully inside" trigger radius (`outer − thickness −
+ * playerBodyRadius`) still exceeds the AI's melee standoff to the spawner
+ * (`CONTACT_SAFE_ORBIT_FT` = 4.5 ft), or the AI parks at its standoff OUTSIDE
+ * the trigger and the arena never arms. With thickness 1 + player body 1.5,
+ * `outer = 8` ⇒ trigger radius 5.5 ft = 4.5 standoff + 1 ft margin. Archetypes
+ * that request a smaller radius (slime 6, rats-nest 7) are floored to this so
+ * the cage reliably forms; larger requests (cave 10) pass through unchanged.
+ */
+export const MIN_ARENA_WALL_OUTER_FT = 8;
+
+/**
+ * Resolve the outer/inner radii of an open-fence arena's ring wall from a
+ * requested arena radius. Applies {@link MIN_ARENA_WALL_OUTER_FT} and carves
+ * the {@link ARENA_WALL_THICKNESS_FT}-thick band. `innerRadiusFt` is the
+ * boundary of the passable interior disc; `outerRadiusFt` is the outer wall
+ * face. Pure — same inputs, same radii.
+ */
+export function arenaRingWallRadii(arenaRadiusFt: number): {
+  readonly outerRadiusFt: number;
+  readonly innerRadiusFt: number;
+} {
+  const outerRadiusFt = Math.max(arenaRadiusFt, MIN_ARENA_WALL_OUTER_FT);
+  const innerRadiusFt = Math.max(0, outerRadiusFt - ARENA_WALL_THICKNESS_FT);
+  return { outerRadiusFt, innerRadiusFt };
+}
+
+/**
+ * True iff the player's whole BODY sits inside the interior disc of a ring wall
+ * — i.e. the player has committed FULLY inside the circle and no part of the
+ * body pokes into the wall band. This is the open-fence arm gate (user spec:
+ * "don't trigger until the user is FULLY inside the circle"), which guarantees
+ * that when the wall materialises the player is never spawned inside it.
+ *
+ * Squared-distance comparison (no `sqrt`). Returns `false` when the interior is
+ * too small to contain the body (`innerRadiusFt ≤ playerBodyRadiusFt`), so a
+ * degenerate ring simply never arms rather than arming with the player stuck.
+ */
+export function isPlayerFullyInsideRing(params: {
+  readonly playerX: number;
+  readonly playerY: number;
+  readonly centerX: number;
+  readonly centerY: number;
+  readonly innerRadiusFt: number;
+  readonly playerBodyRadiusFt: number;
+}): boolean {
+  const limit = params.innerRadiusFt - params.playerBodyRadiusFt;
+  if (limit <= 0) return false;
+  const dx = params.playerX - params.centerX;
+  const dy = params.playerY - params.centerY;
+  return dx * dx + dy * dy <= limit * limit;
+}
+
+/**
+ * If `(x, y)` has BREACHED a ring wall — center distance ≥ `innerRadiusFt`,
+ * only reachable via knockback tunneling since movement collision otherwise
+ * keeps the center inside — pull it radially back so the whole body sits inside
+ * the interior, touching the inner wall face (`innerRadiusFt − playerBodyRadiusFt`).
+ * Otherwise the point is returned unchanged. Deterministic; no RNG — a plain
+ * radial projection. This is the "bump him back in" safety net.
+ */
+export function bumpInsideRing(params: {
+  readonly x: number;
+  readonly y: number;
+  readonly centerX: number;
+  readonly centerY: number;
+  readonly innerRadiusFt: number;
+  readonly playerBodyRadiusFt: number;
+}): { readonly x: number; readonly y: number; readonly bumped: boolean } {
+  const { x, y, centerX, centerY, innerRadiusFt, playerBodyRadiusFt } = params;
+  const dx = x - centerX;
+  const dy = y - centerY;
+  const distSq = dx * dx + dy * dy;
+  // Not breached: the center is still inside the inner edge — nothing to do.
+  if (distSq < innerRadiusFt * innerRadiusFt) return { x, y, bumped: false };
+  const dist = Math.sqrt(distSq);
+  // Degenerate: exactly at the center (dist 0) can't be "outside"; and a ring
+  // whose interior can't hold the body has nowhere valid to bump to.
+  if (dist === 0) return { x, y, bumped: false };
+  const target = Math.max(0, innerRadiusFt - playerBodyRadiusFt);
+  const scale = target / dist;
+  return { x: centerX + dx * scale, y: centerY + dy * scale, bumped: true };
 }
 
 /**
  * Combined trigger predicate (spec `Requirements§3`): player must be either
  * within the arena disc OR standing in the same room as the spawner when the
- * arena is sealed. The `sameRoom` half handles a huge room where the player
- * legitimately walked past the disc without stepping in it.
+ * arena is sealed.
  */
 export function isArenaTriggered(params: {
   readonly playerX: number;
@@ -75,12 +163,7 @@ export function isArenaTriggered(params: {
 
 /**
  * True iff the arena disc (centred at `(x,y)` in feet, radius `r` in feet)
- * lies entirely inside `bounds` (tile-space rectangle). Required for the
- * sealed-room decision (`Requirements§2`) so we never lock a room whose
- * walls the arena disc would poke through.
- *
- * Bounds are treated as inclusive of the axis-aligned rectangle; a 1-tile
- * inset is applied because room walls occupy the outermost row/column.
+ * lies entirely inside `bounds` (tile-space rectangle).
  */
 export function discFitsInRoom(params: {
   readonly cxFt: number;
@@ -90,7 +173,6 @@ export function discFitsInRoom(params: {
   readonly tileSizeFt: number;
 }): boolean {
   const { cxFt, cyFt, radiusFt, bounds, tileSizeFt } = params;
-  // Interior = the 1-tile inset of the bounds (walls sit on the perimeter).
   const minXFt = (bounds.x + 1) * tileSizeFt;
   const minYFt = (bounds.y + 1) * tileSizeFt;
   const maxXFt = (bounds.x + bounds.width - 1) * tileSizeFt;
@@ -112,9 +194,6 @@ export function discFitsInRoom(params: {
  *   - the arena disc fits fully inside the room's bounding rectangle.
  *
  * Otherwise the arena materialises as an open-fence ring around the spawner.
- * When no floor map is present (e.g. labs, unit tests), the caller should
- * skip the sealed path and fall through to open-fence, so this helper
- * requires an explicit map.
  */
 export function decideArenaKind(params: {
   readonly floorMap: FloorMap;
@@ -136,71 +215,4 @@ export function decideArenaKind(params: {
     tileSizeFt: floorMap.config.tileSizeFt,
   });
   return fits ? 'sealed-room' : 'open-fence';
-}
-
-/**
- * Enumerate the tile indices on the fence ring surrounding a spawner.
- *
- * A tile counts as "on the ring" when its centre is within one half-tile of
- * the arena radius (distance ∈ (r - halfTile, r + halfTile]). The result is
- * always in deterministic row-major order so state written to
- * `world.spawnerArenaFence[eid]` replays byte-identically across runs with
- * the same seed.
- *
- * Only currently-passable tiles are returned — walls and already-blocked
- * tiles have nothing to convert, and door tiles are excluded (they are the
- * sealed-room path's responsibility).
- */
-export function collectFenceRingTiles(params: {
-  readonly floorMap: FloorMap;
-  readonly cxFt: number;
-  readonly cyFt: number;
-  readonly radiusFt: number;
-}): number[] {
-  const { floorMap, cxFt, cyFt, radiusFt } = params;
-  const { tileMap } = floorMap;
-  const tileSizeFt = floorMap.config.tileSizeFt;
-  const halfTile = tileSizeFt / 2;
-  const outer = radiusFt + halfTile;
-  const inner = Math.max(0, radiusFt - halfTile);
-  const outerSq = outer * outer;
-  const innerSq = inner * inner;
-  const cTile = floorMap.worldToTile(cxFt, cyFt);
-  const tilesReach = Math.ceil(outer / tileSizeFt) + 1;
-  const tiles: number[] = [];
-  for (let ty = cTile.y - tilesReach; ty <= cTile.y + tilesReach; ty += 1) {
-    for (let tx = cTile.x - tilesReach; tx <= cTile.x + tilesReach; tx += 1) {
-      if (!tileMap.inBounds(tx, ty)) continue;
-      // Door tiles belong to the sealed-room path; never overwrite them.
-      if (tileMap.isDoor(tx, ty)) continue;
-      // Only convert currently-passable floor: converting a wall does nothing
-      // and inflates the snapshot needlessly. LOS-blockers are also OK to
-      // leave alone (they already prevent traversal).
-      if (!tileMap.isPassable(tx, ty)) continue;
-      const centreX = tx * tileSizeFt + halfTile;
-      const centreY = ty * tileSizeFt + halfTile;
-      const dx = centreX - cxFt;
-      const dy = centreY - cyFt;
-      const distSq = dx * dx + dy * dy;
-      if (distSq > outerSq) continue;
-      if (distSq <= innerSq) continue;
-      tiles.push(tileMap.index(tx, ty));
-    }
-  }
-  return tiles;
-}
-
-/**
- * Fence tile flag preset. Clears PASSABLE (so movement + projectiles are
- * blocked by the tileMap) but keeps TRANSPARENT (so FOV rays still pass —
- * the fence should feel like a shimmering barrier, not a black hole).
- * Callers snapshot the original byte before overwriting so restore is exact.
- */
-export const FENCE_TILE_FLAGS = TileFlags.TRANSPARENT as number;
-
-/** Sanity: `FENCE_TILE_FLAGS` MUST clear at least the PASSABLE bit. */
-export function assertFenceBlocks(): void {
-  if ((FENCE_TILE_FLAGS & TileFlags.PASSABLE) !== 0) {
-    throw new Error('FENCE_TILE_FLAGS must have PASSABLE cleared.');
-  }
 }

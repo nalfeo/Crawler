@@ -41,14 +41,22 @@ export function isTileTraversable(
   }
 
   if (traversalMode === PATH_TRAVERSAL.FLYING) {
-    return true;
+    // Flying paths ignore the tile-flag layer, but barriers are a physical
+    // energy overlay that fills the tile top-to-bottom — grounded and flying
+    // entities alike bounce off. Skipping the barrier check here would let
+    // A* plan flying routes straight through a spawner's arena fence, which
+    // is exactly the class of leak this primitive exists to eliminate.
+    return !floorMap.hasBarrierAtTile(x, y);
   }
 
   if (isTilePassable) {
-    return isTilePassable(x, y);
+    // Callers that provide a custom passability override (e.g. door-aware
+    // routing) still need barriers layered on top — a locked door predicate
+    // doesn't imply the tile is safe if a live barrier occupies it.
+    return isTilePassable(x, y) && !floorMap.hasBarrierAtTile(x, y);
   }
 
-  return floorMap.tileMap.isPassable(x, y);
+  return floorMap.tileMap.isPassable(x, y) && !floorMap.hasBarrierAtTile(x, y);
 }
 
 export function findTilePath(

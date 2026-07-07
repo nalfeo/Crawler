@@ -26,7 +26,8 @@ against `main`, per the user's explicit "one giant PR" constraint.
 - `src/core/components.ts` — extended `spawner` SoA with `arenaRadiusFt`,
   `arenaKind`, `arenaState`, `bankedXp`, `bankedChildren`.
 - `src/core/world.ts` — added `announcements`, `spawnerArenaDoors`,
-  `spawnerArenaFence` side-cars.
+  `spawnerArenaBarriers` side-cars. (ADR 0046 replaced the original
+  `spawnerArenaFence` snapshot with a barrier-handle map.)
 - `src/core/spawners/combatants.ts` — new `arenaRadiusFt` option;
   `SPAWNER_MIN/DEFAULT/UNRESOLVED` exports; initializes the 5 new fields.
 - `src/game/spawners/types.ts` + `registry.ts` — archetype now carries
@@ -42,8 +43,10 @@ against `main`, per the user's explicit "one giant PR" constraint.
 ### Systems
 
 - `src/core/spawner-arena.ts` (new) — pure geometry helpers (trigger
-  predicate, disc-fits-in-room check, fence-ring enumeration, `FENCE_TILE_FLAGS`,
-  `SPAWNER_MAX_BANKED_CHILDREN = 10`).
+  predicate, disc-fits-in-room check, `SPAWNER_MAX_BANKED_CHILDREN = 10`).
+  **ADR 0046 update:** the fence-ring enumeration and `FENCE_TILE_FLAGS`
+  helpers were removed; ring construction now lives in the barrier
+  primitive at `src/core/barriers/geometry.ts`.
 - `src/game/spawners/spawnerArenaSystem.ts` (new) — the state machine
   (`idle → locked → resolved`), door lock / fence raise / VFX + announcement
   push, XP grant on resolve.
