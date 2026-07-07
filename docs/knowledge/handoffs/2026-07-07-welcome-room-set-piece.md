@@ -26,7 +26,7 @@ stamped into the welcome-office hub during Floor 1 generation, fixing the three
 quest NPCs at spaced, themed positions and dressing the room with layered props.
 
 - **S1 — model (`src/shared/set-piece-types.ts`).** `SetPieceDef` gains an
-  optional `npcs[]` (`{ id, npcTypeId, x, y, facing?, anchorRole? }`), Zod-strict:
+  optional `npcs[]` (`{ id, npcTypeId, x, y, anchorRole? }`), Zod-strict:
   in-bounds vs width/height, unique ids, registered `npcTypeId`, `anchorRole ∈
 {welcome, shop, spell}`. Lookup helper + unit tests.
 - **S2 — content (`src/shared/data/set-pieces.json`).** Authored `welcome-room`

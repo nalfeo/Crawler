@@ -44,7 +44,7 @@ Wire set pieces into real map generation, extend the model to place NPCs, and ma
 set-piece `z` onto Phaser depths that straddle the entity plane.
 
 - **NPC placement in the model.** `SetPieceDef` gains an optional `npcs[]`
-  (`{ id, npcTypeId, x, y, facing?, anchorRole? }`), Zod-validated for in-bounds
+  (`{ id, npcTypeId, x, y, anchorRole? }`), Zod-validated for in-bounds
   tiles, unique ids, and a registered `npcTypeId`. `anchorRole ∈
 {welcome, shop, spell}` ties an authored NPC to a Floor-1 objective anchor.
 - **Core stamping unit.** New pure, deterministic `src/core/map/stampSetPiece.ts`
