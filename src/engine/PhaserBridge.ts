@@ -1,6 +1,6 @@
 import { hasComponent, query } from 'bitecs';
 import type Phaser from 'phaser';
-import { DeathTimer, Position, Prop, Rotation, Spawner, Sprite } from '../core/components.js';
+import { DeathTimer, Position, Prop, Rotation, Sprite } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
 import { getSprite } from './sprites/index.js';
 import { createCombatVfx } from './CombatVfx.js';
@@ -35,6 +35,7 @@ import {
   generatedBriefIdForEnemy,
   pickGeneratedEnemyTextureKey,
   placeholderSpawnerTint,
+  refineEnemyVisualKind,
   resolveRenderKind,
   SLIME_FULL_SPRITE_WIDTH,
 } from './phaser-bridge/sprite-kind.js';
@@ -377,16 +378,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               ? bossKey === 'staircase'
                 ? 'enemy_boss_ratslime'
                 : 'enemy_boss'
-              : (() => {
-                  const enemyVariant = enemyVariantFromTextureId(
-                    world.stores.sprite.textureId[eid],
-                  );
-                  if (hasComponent(world.ecs, eid, Spawner)) {
-                    if (enemyVariant === 'enemy_rat') return 'enemy_spawner_rats_nest';
-                    if (enemyVariant === 'enemy_slime') return 'enemy_spawner_slime_pool';
-                  }
-                  return enemyVariant;
-                })()
+              : refineEnemyVisualKind(world, eid)
             : entityType;
         const appearanceKey =
           entityType === 'enemy' ? world.enemyAppearanceKeys.get(eid) : undefined;
