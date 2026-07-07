@@ -34,7 +34,7 @@ import type { DiversitySummary } from './diversity.js';
 import type { ExpansionSkipReason } from './expand-variations.js';
 import type { JudgeScorecard } from './judge.js';
 import type { PostprocessOptions } from './postprocess.js';
-import type { ManualAnchorOverride } from './postprocess-overrides.js';
+import type { FacingOverride, ManualAnchorOverride } from './postprocess-overrides.js';
 import type { Scorecard } from './score-candidate.js';
 import type { DerivedAnchor } from './sensors/derive-anchor.js';
 import type { SpriteType } from '../../src/shared/sprite-types.js';
@@ -260,6 +260,7 @@ export interface RunSummary {
     readonly snapshotYamlPath: string | null;
     readonly options: PostprocessOptions | null;
     readonly manualAnchor: ManualAnchorOverride | null;
+    readonly facing: FacingOverride | null;
     readonly appliedMode: 'default' | 'persisted' | 'replace' | 'reset';
     readonly updatedAt: string | null;
   };
@@ -481,7 +482,8 @@ export function pickChosen(
   const deriveMode = brief.sensors.anchor?.derive === true;
   const resolvedHold = top.derivedAnchors.hold ?? top.derivedAnchor;
   const holdAnchor: ChosenAnchor | null =
-    manualAnchor && manualAnchor.variantIndex === top.index
+    manualAnchor &&
+    (manualAnchor.applyToAllVariants === true || manualAnchor.variantIndex === top.index)
       ? { x: manualAnchor.x, y: manualAnchor.y, source: 'manual' }
       : resolvedHold
         ? { x: resolvedHold.x, y: resolvedHold.y, source: 'derived' }

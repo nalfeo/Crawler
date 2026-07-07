@@ -229,6 +229,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const playerTrailVfx = createPlayerTrailVfx(scene);
   const missingSpriteWarnings = new Set<string>();
   const missingTypeWarnings = new Set<string>();
+  let cachedGeneratedRegistry: GeneratedSpriteRegistry | null = null;
+  const generatedFacingByTexture = new Map<string, 'left' | 'right'>();
   let lastRenderMs: number | null = null;
 
   function logFallback(type: string): void {
@@ -259,14 +261,25 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       const entities = query(world.ecs, [Sprite, Position]);
       const activeEntities = new Set<number>();
       const preferredTextureCache = new Map<string, ResolvedTexture>();
+      const generatedRegistry = getGeneratedSpriteRegistry(scene);
+      if (generatedRegistry !== cachedGeneratedRegistry) {
+        generatedFacingByTexture.clear();
+        if (generatedRegistry) {
+          for (const entry of generatedRegistry.entries()) {
+            generatedFacingByTexture.set(entry.textureKey, entry.facingDirection);
+          }
+        }
+        cachedGeneratedRegistry = generatedRegistry;
+      }
       const resolvePreferredTexture = (
         type: string,
         options?: { appearanceKey?: string; variantRoll?: number },
       ): ResolvedTexture => {
-        const registry = getGeneratedSpriteRegistry(scene);
         const briefId = generatedBriefIdForEnemy(type, options?.appearanceKey);
         const hasGeneratedVariants =
-          briefId !== undefined && registry !== null && registry.variants(briefId).length > 0;
+          briefId !== undefined &&
+          generatedRegistry !== null &&
+          generatedRegistry.variants(briefId).length > 0;
         const cacheKey = `${type}:${options?.appearanceKey ?? ''}:${
           hasGeneratedVariants ? (options?.variantRoll ?? '') : ''
         }`;
@@ -961,22 +974,12 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             img.setRotation(0);
             if (entityType === 'enemy') {
               const { scaleX, scaleY } = computeEnemyScale(world, eid, visual.baseScale);
-              // All generated enemy art is authored facing RIGHT by engine-wide
-              // convention (the sprite pipeline enforces `sensors.enemy.facing:
-              // 'right'` for enemy briefs — see data/sprite-types/enemy.json).
-              // Phaser's `flipX` MIRRORS the source texture, so the unflipped
-              // texture already faces right. We therefore flip it to face LEFT at
-              // rest and while moving left, and leave it unflipped (native
-              // right-facing) only once horizontal velocity is meaningfully
-              // positive. Net behaviour: enemies default to facing left and turn
-              // right only while moving right. This relies on every enemy texture
-              // sharing that right-facing orientation; if that convention ever
-              // changes, revisit this flip together with the pipeline contract
-              // rather than assuming a blind one-line inversion.
               const movingRight = (velocity.x[eid] ?? 0) > ENEMY_RIGHTWARD_FLIP_EPSILON;
+              const baseFacing = generatedFacingByTexture.get(img.texture.key) ?? 'right';
               img.setScale(scaleX, scaleY);
               if (typeof img.setFlipX === 'function') {
-                img.setFlipX(!movingRight);
+                const shouldMirror = baseFacing === 'right' ? !movingRight : movingRight;
+                img.setFlipX(shouldMirror);
               }
             } else {
               img.setScale(visual.baseScale);

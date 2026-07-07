@@ -93,6 +93,18 @@ describe('POST /api/runs/:briefId/:runId/postprocess', () => {
     expect(res.json().error).toBe('run-not-found');
   });
 
+  it('rejects out-of-range body.variantIndexes with 400', async () => {
+    const seed = await setup();
+    const res = await app!.inject({
+      method: 'POST',
+      url: `/api/runs/${seed.briefId}/${seed.runId}/postprocess`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndexes: [999] },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('variant-index-out-of-range');
+  });
+
   it('persists manual-anchor + override profile metadata for replay', async () => {
     const seed = await setup();
     const baseline = await app!.inject({
@@ -123,6 +135,78 @@ describe('POST /api/runs/:briefId/:runId/postprocess', () => {
       source: 'manual',
     });
     expect(body.summary.chosen?.anchor?.source).toBe('manual');
+  });
+
+  it('accepts explicit false applyToAllVariants flags for manual anchor and facing payloads', async () => {
+    const seed = await setup();
+    const baseline = await app!.inject({
+      method: 'POST',
+      url: `/api/runs/${seed.briefId}/${seed.runId}/postprocess`,
+      headers: { 'content-type': 'application/json' },
+      payload: {},
+    });
+    const chosenIndex = baseline.json().summary?.chosen?.index ?? 0;
+    const res = await app!.inject({
+      method: 'POST',
+      url: `/api/runs/${seed.briefId}/${seed.runId}/postprocess`,
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        mode: 'replace',
+        options: { background: { colorToleranceSq: 4200, fringeToleranceSq: 12345 } },
+        manualAnchor: { variantIndex: chosenIndex, x: 9, y: 14, applyToAllVariants: false },
+        facing: { variantIndex: chosenIndex, direction: 'left', applyToAllVariants: false },
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.summary.postprocessOverrides?.manualAnchor).toMatchObject({
+      variantIndex: chosenIndex,
+      x: 9,
+      y: 14,
+      source: 'manual',
+    });
+    expect(body.summary.postprocessOverrides?.manualAnchor?.applyToAllVariants).toBeUndefined();
+    expect(body.summary.postprocessOverrides?.facing).toMatchObject({
+      variantIndex: chosenIndex,
+      direction: 'left',
+    });
+    expect(body.summary.postprocessOverrides?.facing?.applyToAllVariants).toBeUndefined();
+  });
+
+  it('clears persisted facing override when payload sets facing to null', async () => {
+    const seed = await setup();
+    const baseline = await app!.inject({
+      method: 'POST',
+      url: `/api/runs/${seed.briefId}/${seed.runId}/postprocess`,
+      headers: { 'content-type': 'application/json' },
+      payload: {},
+    });
+    const chosenIndex = baseline.json().summary?.chosen?.index ?? 0;
+    const setFacing = await app!.inject({
+      method: 'POST',
+      url: `/api/runs/${seed.briefId}/${seed.runId}/postprocess`,
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        mode: 'replace',
+        options: { background: { colorToleranceSq: 4200, fringeToleranceSq: 12345 } },
+        facing: { variantIndex: chosenIndex, direction: 'left' },
+      },
+    });
+    expect(setFacing.statusCode).toBe(200);
+    expect(setFacing.json().summary.postprocessOverrides?.facing?.direction).toBe('left');
+
+    const clearFacing = await app!.inject({
+      method: 'POST',
+      url: `/api/runs/${seed.briefId}/${seed.runId}/postprocess`,
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        mode: 'replace',
+        options: { background: { colorToleranceSq: 4200, fringeToleranceSq: 12345 } },
+        facing: null,
+      },
+    });
+    expect(clearFacing.statusCode).toBe(200);
+    expect(clearFacing.json().summary.postprocessOverrides?.facing).toBeNull();
   });
 });
 

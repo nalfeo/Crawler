@@ -117,6 +117,7 @@ export interface ManifestEntry {
   readonly effectivePipelineSnapshotPath?: string | null;
   readonly effectivePipelineSnapshotYamlPath?: string | null;
   readonly effectiveAnchorSource?: ManifestAnchor['source'] | null;
+  readonly facingDirection?: 'left' | 'right';
 }
 
 export interface Manifest {
@@ -173,6 +174,11 @@ interface RunSummaryShape {
     readonly profilePath?: string | null;
     readonly snapshotJsonPath?: string | null;
     readonly snapshotYamlPath?: string | null;
+    readonly facing?: {
+      readonly variantIndex?: number;
+      readonly direction?: 'left' | 'right';
+      readonly applyToAllVariants?: boolean;
+    } | null;
   } | null;
 }
 
@@ -334,11 +340,24 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
     effectivePipelineSnapshotPath: summary.postprocessOverrides?.snapshotJsonPath ?? null,
     effectivePipelineSnapshotYamlPath: summary.postprocessOverrides?.snapshotYamlPath ?? null,
     effectiveAnchorSource: anchors.hold?.source ?? null,
+    facingDirection: resolveFacingDirection(summary, options.variantIndex),
   };
 
   upsertManifest(fs, options.manifestPath, entry, variantId);
   upsertCatalog(fs, options.catalogPath, entry, variantId, entry.type);
   return entry;
+}
+
+function resolveFacingDirection(summary: RunSummaryShape, variantIndex: number): 'left' | 'right' {
+  const facing = summary.postprocessOverrides?.facing;
+  if (
+    facing &&
+    (facing.applyToAllVariants === true || facing.variantIndex === variantIndex) &&
+    (facing.direction === 'left' || facing.direction === 'right')
+  ) {
+    return facing.direction;
+  }
+  return 'right';
 }
 
 /**
