@@ -49,7 +49,7 @@ import {
   clearEntityStores,
   spawnBehaviorEnemy,
   spawnNpc,
-  spawnSetPieceProp,
+  addSetPieceProp,
   createEntity,
   spawnDroppedItem,
   spawnHarvestableNode,
@@ -1475,13 +1475,14 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   }
 
   // Dress the welcome room with the authored set-piece props (rug, banner,
-  // desk, bookcase, clutter). These are visual-only entities (Position + Sprite
-  // + Prop + inert immovable-tier Weight, but no Size) so they layer over the
-  // baked terrain and around the NPCs without ever entering the collision grid —
-  // no effect on collision, pathing, or balance.
+  // welcome desk, shop table, bookcase, clutter). These are render-only
+  // instances on `world.setPieceProps` — NOT ECS entities — so they layer over
+  // the baked terrain and around the NPCs without consuming entity ids or
+  // entering the collision grid: no effect on collision, pathing, RNG, or
+  // balance.
   if (welcomeStamp) {
     for (const stampedProp of welcomeStamp.props) {
-      spawnSetPieceProp(world, stampedProp.x, stampedProp.y, stampedProp.render);
+      addSetPieceProp(world, stampedProp.x, stampedProp.y, stampedProp.render);
     }
   }
 

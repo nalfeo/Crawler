@@ -27,7 +27,7 @@ import {
   MockGraphics,
 } from '../fixtures/phaser-bridge-harness.js';
 import { spawnMeleeSwing } from '../../src/core/spawners/melee.js';
-import { spawnSetPieceProp } from '../../src/core/spawners/world-objects.js';
+import { addSetPieceProp } from '../../src/core/spawners/world-objects.js';
 import { setPieceZToDepth } from '../../src/shared/render-depths.js';
 import { MeleeSpriteId } from '../../src/shared/constants.js';
 import { getSprite } from '../../src/engine/sprites/index.js';
@@ -350,7 +350,7 @@ describe('createPhaserBridge', () => {
 
     // A furniture layer (z=30 → foreground) resolved from a loaded Kenney sheet frame.
     const deskDepth = setPieceZToDepth(30);
-    spawnSetPieceProp(world, 3, 2, {
+    addSetPieceProp(world, 3, 2, {
       sprite: { source: 'sheet', sheetKey: 'kenney-tiny-town', col: 2, row: 5 },
       depth: deskDepth,
       widthFt: 12,
@@ -361,7 +361,7 @@ describe('createPhaserBridge', () => {
 
     // A background rug layer (z=0) whose custom art is not yet generated → placeholder rect.
     const rugDepth = setPieceZToDepth(0);
-    spawnSetPieceProp(world, 5, 6, {
+    addSetPieceProp(world, 5, 6, {
       sprite: {
         source: 'custom',
         requestId: 'welcome-room-rug',

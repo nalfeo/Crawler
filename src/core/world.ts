@@ -67,7 +67,7 @@ import {
 import type { StatModifier, SkillState, SkillUsageEvent, PlayerLevel } from '../shared/skills.js';
 import type { FloorScenarioState, Floor2SettlementSnapshot } from '../shared/floor-types.js';
 import type { NpcInstance } from '../shared/npc-types.js';
-import type { SetPiecePropRender } from '../shared/set-piece-render.js';
+import type { SetPiecePropInstance } from '../shared/set-piece-render.js';
 import type { QuestState } from '../shared/quest-types.js';
 import type { QuestEvent } from '../shared/quest-events.js';
 import type {
@@ -281,15 +281,15 @@ export interface GameWorld {
   /** Per-entity NPC instance state (eid → NpcInstance). Side-car for variable-length NPC data. */
   npcs: Map<number, NpcInstance>;
   /**
-   * Per-entity render instructions for stamped set-piece prop layers
-   * (eid → {@link SetPiecePropRender}). Populated by the set-piece stamping pass
-   * and consumed by the engine's prop render pass BEFORE the decoration-def path,
-   * so authored set-piece dressing renders with its own sprite/depth/footprint.
-   * Visual-only: these entities carry no Size (never in the collision grid) so
-   * they never affect gameplay; their Weight is an inert immovable-tier value
-   * present only to satisfy the universal Prop weight invariant (ADR 0044).
+   * Render-only set-piece prop layers, in draw order, produced by the set-piece
+   * stamping pass ({@link SetPiecePropInstance}). The engine renders this list in
+   * a dedicated pass so authored set-piece dressing shows its own
+   * sprite/depth/footprint/tint. These are deliberately NOT ECS entities: they
+   * consume no entity ids, so ambient mobs and drops keep their ids and the
+   * cosmetic dressing never perturbs collision order, RNG, or balance (see
+   * `set-piece-render.ts` for the full rationale).
    */
-  setPieceProps: Map<number, SetPiecePropRender>;
+  setPieceProps: SetPiecePropInstance[];
   /**
    * Stable per-enemy appearance identity (eid → archetype/mob key). The engine
    * uses this to resolve generated-art families more precisely than textureId
@@ -464,7 +464,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     factionRelationDecayLastMs: null,
     floorObjectiveTick: null,
     npcs: new Map(),
-    setPieceProps: new Map(),
+    setPieceProps: [],
     enemyAppearanceKeys: new Map(),
     questLog: new Map(),
     questEvents: [],

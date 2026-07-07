@@ -258,6 +258,13 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const goldShadows = new Map<number, Phaser.GameObjects.Ellipse>();
   /** Rendered visuals for Prop entities (sprite when wired, rectangle placeholder otherwise). */
   const propVisuals = new Map<number, PropVisual>();
+  /**
+   * Rendered visuals for render-only set-piece prop layers, keyed by their index
+   * in `world.setPieceProps` (these are NOT entities, so there is no eid to key
+   * on). The list is append-only and rebuilt on floor reset, so the index is a
+   * stable key for the floor's lifetime.
+   */
+  const setPiecePropVisuals = new Map<number, PropVisual>();
   const combatVfx = createCombatVfx(scene);
   const goreVfx =
     typeof scene.add.rectangle === 'function'
@@ -1130,68 +1137,6 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         const propX = ftToPx(position.x[propEid] ?? 0);
         const propY = ftToPx(position.y[propEid] ?? 0);
 
-        // Set-piece prop layers resolve their own sprite/depth/footprint from the
-        // sidecar and STRADDLE the entity plane (rug under NPC, desk in front).
-        const setPieceRender = world.setPieceProps.get(propEid);
-        if (setPieceRender !== undefined) {
-          const spScale = setPieceRender.scale ?? 1;
-          const spWidthPx = ftToPx(setPieceRender.widthFt * spScale);
-          const spHeightPx = ftToPx(setPieceRender.heightFt * spScale);
-          const spDepth = setPieceRender.depth;
-          const spTint = hexToTintInt(setPieceRender.tintHex);
-          const resolved = resolveSetPieceSprite(scene, setPieceRender.sprite);
-          let visual = propVisuals.get(propEid);
-          if (resolved !== null && typeof scene.add.image === 'function') {
-            const { textureKey, frame } = resolved;
-            if (visual === undefined || visual.mode !== 'sprite') {
-              visual?.obj.destroy();
-              const img =
-                frame !== undefined
-                  ? scene.add.image(propX, propY, textureKey, frame)
-                  : scene.add.image(propX, propY, textureKey);
-              img.setOrigin(0.5, 0.5);
-              visual = { obj: img, mode: 'sprite', textureKey, frame };
-              propVisuals.set(propEid, visual);
-            }
-            const img = visual.obj as Phaser.GameObjects.Image;
-            const keyChanged = visual.textureKey !== textureKey;
-            const frameChanged =
-              !keyChanged && frame !== undefined && String(img.frame?.name) !== String(frame);
-            if (keyChanged || frameChanged) {
-              if (frame !== undefined) {
-                img.setTexture(textureKey, frame);
-              } else {
-                img.setTexture(textureKey);
-              }
-            }
-            img.setPosition(propX, propY);
-            img.setDisplaySize(spWidthPx, spHeightPx);
-            img.setDepth(spDepth);
-            if (spTint !== undefined) {
-              img.setTint(spTint);
-            } else {
-              img.clearTint();
-            }
-            visual.textureKey = textureKey;
-            visual.frame = frame;
-          } else if (typeof scene.add.rectangle === 'function') {
-            // No loaded art yet: draw a tinted placeholder box so the prop is visible.
-            const fill = spTint ?? 0x6b7280;
-            if (visual === undefined || visual.mode !== 'placeholder') {
-              visual?.obj.destroy();
-              const rect = scene.add.rectangle(propX, propY, spWidthPx, spHeightPx, fill, 0.6);
-              visual = { obj: rect, mode: 'placeholder' };
-              propVisuals.set(propEid, visual);
-            }
-            const rect = visual.obj as Phaser.GameObjects.Rectangle;
-            rect.setPosition(propX, propY);
-            rect.setSize(spWidthPx, spHeightPx);
-            rect.setFillStyle(fill, 0.6);
-            rect.setDepth(spDepth);
-          }
-          continue;
-        }
-
         const defIdIndex = world.stores.prop.defIdIndex[propEid] ?? 0;
         const defId = DECORATION_INDEX_TO_ID[defIdIndex];
         const decorationDef = defId !== undefined ? getDecorationDef(defId) : undefined;
@@ -1272,6 +1217,86 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         if (!activePropEids.has(propEid)) {
           visual.obj.destroy();
           propVisuals.delete(propEid);
+        }
+      }
+
+      // --- Set-piece prop render pass ---
+      // Render-only set-piece prop layers (rugs, banners, desks, bookcases) live
+      // on `world.setPieceProps` as plain instances — NOT entities — so they
+      // consume no entity ids and never perturb gameplay. Keyed here by list
+      // index. Each resolves its own sprite/depth/footprint and STRADDLES the
+      // entity plane via its precomputed depth (rug under the NPC, desk in front).
+      const setPieceProps = world.setPieceProps;
+      for (let i = 0; i < setPieceProps.length; i++) {
+        const instance = setPieceProps[i];
+        if (instance === undefined) {
+          continue;
+        }
+        const sp = instance.render;
+        const propX = ftToPx(instance.x);
+        const propY = ftToPx(instance.y);
+        const spScale = sp.scale ?? 1;
+        const spWidthPx = ftToPx(sp.widthFt * spScale);
+        const spHeightPx = ftToPx(sp.heightFt * spScale);
+        const spDepth = sp.depth;
+        const spTint = hexToTintInt(sp.tintHex);
+        const resolved = resolveSetPieceSprite(scene, sp.sprite);
+        let visual = setPiecePropVisuals.get(i);
+        if (resolved !== null && typeof scene.add.image === 'function') {
+          const { textureKey, frame } = resolved;
+          if (visual === undefined || visual.mode !== 'sprite') {
+            visual?.obj.destroy();
+            const img =
+              frame !== undefined
+                ? scene.add.image(propX, propY, textureKey, frame)
+                : scene.add.image(propX, propY, textureKey);
+            img.setOrigin(0.5, 0.5);
+            visual = { obj: img, mode: 'sprite', textureKey, frame };
+            setPiecePropVisuals.set(i, visual);
+          }
+          const img = visual.obj as Phaser.GameObjects.Image;
+          const keyChanged = visual.textureKey !== textureKey;
+          const frameChanged =
+            !keyChanged && frame !== undefined && String(img.frame?.name) !== String(frame);
+          if (keyChanged || frameChanged) {
+            if (frame !== undefined) {
+              img.setTexture(textureKey, frame);
+            } else {
+              img.setTexture(textureKey);
+            }
+          }
+          img.setPosition(propX, propY);
+          img.setDisplaySize(spWidthPx, spHeightPx);
+          img.setDepth(spDepth);
+          if (spTint !== undefined) {
+            img.setTint(spTint);
+          } else {
+            img.clearTint();
+          }
+          visual.textureKey = textureKey;
+          visual.frame = frame;
+        } else if (typeof scene.add.rectangle === 'function') {
+          // No loaded art yet: draw a tinted placeholder box so the prop is visible.
+          const fill = spTint ?? 0x6b7280;
+          if (visual === undefined || visual.mode !== 'placeholder') {
+            visual?.obj.destroy();
+            const rect = scene.add.rectangle(propX, propY, spWidthPx, spHeightPx, fill, 0.6);
+            visual = { obj: rect, mode: 'placeholder' };
+            setPiecePropVisuals.set(i, visual);
+          }
+          const rect = visual.obj as Phaser.GameObjects.Rectangle;
+          rect.setPosition(propX, propY);
+          rect.setSize(spWidthPx, spHeightPx);
+          rect.setFillStyle(fill, 0.6);
+          rect.setDepth(spDepth);
+        }
+      }
+      // Evict set-piece visuals whose index no longer exists (a floor reset
+      // rebuilt `world.setPieceProps` with fewer layers).
+      for (const [index, visual] of setPiecePropVisuals) {
+        if (index >= setPieceProps.length) {
+          visual.obj.destroy();
+          setPiecePropVisuals.delete(index);
         }
       }
 
@@ -1406,6 +1431,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         visual.obj.destroy();
       }
       propVisuals.clear();
+
+      for (const visual of setPiecePropVisuals.values()) {
+        visual.obj.destroy();
+      }
+      setPiecePropVisuals.clear();
 
       for (const shadow of gemShadows.values()) {
         shadow.destroy();

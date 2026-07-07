@@ -57,13 +57,15 @@ set-piece `z` onto Phaser depths that straddle the entity plane.
   terrain, below NPCs); `z ≥ 20` (fixture/furniture/decoration) → a band `> 0`
   (in front of NPCs, below gore VFX). Monotonic; a per-layer epsilon keeps
   stacked layers ordered without crossing a band boundary.
-- **Per-layer render units.** The scenario spawns **one visual-only prop entity
-  per flattened set-piece layer** via `spawnSetPieceProp` (Position + Sprite +
-  Prop + inert immovable-tier Weight, **no Size**), recording resolved
-  sprite/depth/footprint/tint in a `world.setPieceProps` sidecar. The PhaserBridge
-  prop pass consults the sidecar before the decoration-def path and honours the
-  per-layer depth, rendering composites correctly layered in the real game (not
-  just the lab). Missing/custom art falls back to a labelled placeholder rect.
+- **Per-layer render-only instances.** The scenario appends **one render-only
+  instance per flattened set-piece layer** via `addSetPieceProp`, pushing
+  `{ x, y, render }` (resolved sprite/depth/footprint/tint) onto a
+  `world.setPieceProps` sidecar **array**. These are **not** ECS entities — they
+  consume no entity ids. The PhaserBridge has a dedicated set-piece render pass
+  (after the ECS prop pass) that iterates the sidecar array, keying visuals by
+  list index and honouring the per-layer depth, rendering composites correctly
+  layered in the real game (not just the lab). Missing/custom art falls back to a
+  labelled placeholder rect. See the render-only rationale below.
 - **Objective anchors auto-follow NPCs (all three).** In `floorScenario.ts`, each
   welcome-room NPC's objective tile is derived from its **actual stamped tile**
   (`welcomeOfficePos`/`shopRoomPos`/`spellQuestGiverPos`). This is a uniform
@@ -79,15 +81,31 @@ table, and the spell broker beside a bookcase, plus cozy decor (rug, sconces,
 crates, stools, clutter). Missing bespoke props ship as labelled placeholders;
 real art is a fast-follow.
 
-### Weight invariant compliance
+### Render-only props (no entity ids) — sim purity
 
-Set-piece props carry an **immovable-tier `Weight`** (`IMMOVABLE_THRESHOLD`)
-even though they are visual-only. Per [ADR 0044](0044-explicit-size-weight-components.md)
-/ `entity-physics.md` R2, positive `Weight` is a **universal** invariant for every
-`Prop`-tagged entity (`knockbackSystem` divides by it; `check:weight-coverage`
-enforces it). The value is inert here — with no `Size`, the prop never enters the
-collision grid and can never be a knockback target — but keeping the invariant
-avoids a special case and makes the "fixed furniture" intent explicit.
+Set-piece props are **render-only instances**, not ECS entities. They live on a
+`world.setPieceProps: SetPiecePropInstance[]` sidecar and are drawn by a dedicated
+PhaserBridge pass; nothing in `src/core`/`src/game` queries them.
+
+This is deliberate and load-bearing for **determinism**. When props were ECS
+entities (the original design), spawning them during floor setup allocated entity
+ids **ahead of** the ambient-mob spawns that follow. That shifted every later
+entity's id, which reordered the global RNG draw sequence and produced a
+**seed-visible gameplay change** for content that must have none — it pushed the
+Floor-1 arena seed 2 ~1.2 s over its 360 s budget and drifted the collision-pair
+fingerprints. `spawnSetPieceProp` itself drew no RNG; the perturbation was purely
+entity-id allocation. Moving props off the entity space (this ADR's render-only
+model) makes a props-present run **byte-identical** to a props-skipped run, so the
+headless sim and the rendered game agree exactly. This mirrors the codebase's
+existing VFX-as-events precedent: cosmetic, render-only concerns never consume
+gameplay entity ids. It also sidesteps the ADR 0044 `Weight` invariant entirely —
+with no `Prop`-tagged entity, there is no Weight-coverage obligation to satisfy.
+
+The **collision-pair-parity goldens were re-baselined** (2026-07-07) as a result:
+props are now provably non-perturbing, so the residual fingerprint delta vs. the
+pre-feature goldens is **entirely** the user-approved NPC repositioning (spacing
+the three NPCs to authored tiles changes their collision footprints). Verified
+stable across two back-to-back runs per seed.
 
 ## Consequences
 
@@ -107,14 +125,15 @@ avoids a special case and makes the "fixed furniture" intent explicit.
 - The stamper centres + clamps to a room interior; a pathologically small or
   concave (hub-shaped) target room can clamp a tile onto a wall. Mitigated for
   **NPCs** by a per-NPC passability guard that falls back to the scatter spawner
-  for that NPC. **Props** have no such guard, but they are visual-only (no `Size`,
-  never in the collision grid), so a prop clamped onto a wall is a **cosmetic-only**
-  artifact with zero gameplay/pathing effect. Full-footprint passable-interior
-  validation (vs. rectangular bounds) was considered and deferred as unnecessary
-  for non-colliding dressing on Floor 1's rectangular welcome-office hub.
-- One entity per flattened layer increases prop-entity count for dense set pieces
-  (visual-only, no Size, so no collision/physics cost — only render + a sidecar
-  Map entry).
+  for that NPC. **Props** have no such guard, but they are render-only (not
+  entities, never in the collision grid), so a prop clamped onto a wall is a
+  **cosmetic-only** artifact with zero gameplay/pathing effect. Full-footprint
+  passable-interior validation (vs. rectangular bounds) was considered and
+  deferred as unnecessary for non-colliding dressing on Floor 1's rectangular
+  welcome-office hub.
+- One render-only instance per flattened layer increases the sidecar array size
+  for dense set pieces — a per-frame render cost plus one array entry per layer,
+  but **no** entity/collision/physics cost and no entity-id consumption.
 
 ### Risks
 
@@ -155,5 +174,11 @@ avoids a special case and makes the "fixed furniture" intent explicit.
   existing prop render pass avoids an orphaned `*System` (ADR 0039) and needless
   per-frame work.
 - **One sprite per prop (no per-layer entities).** Rejected: the real game would
-  lose the layering the model already expresses; per-layer entities make
+  lose the layering the model already expresses; per-layer render units make
   composites render identically in-game and in-lab.
+- **Set-piece props as ECS entities (the original design).** Rejected after it
+  shipped: allocating entity ids for cosmetic props during setup shifted
+  ambient-mob ids, perturbed the global RNG order, and caused a seed-visible
+  headless-gate regression (arena seed 2 over budget; drifted collision
+  fingerprints). Render-only instances consume no entity ids and make the sim
+  byte-identical with or without props — the correct model for cosmetic dressing.

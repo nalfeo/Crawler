@@ -245,8 +245,8 @@ describe('floor1Scenario', () => {
     if (!def) {
       throw new Error('Expected the welcome-room set piece to be registered');
     }
-    // One prop entity is spawned per flattened draw layer (composites like the
-    // rug + banner each contribute their own layers), so the sidecar count must
+    // One render instance is recorded per flattened draw layer (composites like
+    // the rug + banner each contribute their own layers), so the list length must
     // match exactly — proving every authored layer actually reached the world.
     const expectedPropCount = flattenSetPieceLayers(def).length;
     expect(expectedPropCount).toBeGreaterThan(0);
@@ -258,8 +258,8 @@ describe('floor1Scenario', () => {
       initializeFloor1Scenario(world, player);
 
       expect(
-        world.setPieceProps.size,
-        `seed ${seed}: every set-piece draw layer should spawn a prop entity`,
+        world.setPieceProps.length,
+        `seed ${seed}: every set-piece draw layer should record a render instance`,
       ).toBe(expectedPropCount);
 
       const map = world.floorMap!;
@@ -277,13 +277,13 @@ describe('floor1Scenario', () => {
 
       // Every prop lands inside the welcome room's bounds — props layer over the
       // room's own floor/walls, never spilling into a neighbouring room.
-      for (const eid of world.setPieceProps.keys()) {
-        const tile = map.worldToTile(world.stores.position.x[eid]!, world.stores.position.y[eid]!);
+      for (const [index, prop] of world.setPieceProps.entries()) {
+        const tile = map.worldToTile(prop.x, prop.y);
         const inBounds =
           tile.x >= bx && tile.x <= bx + bw - 1 && tile.y >= by && tile.y <= by + bh - 1;
         expect(
           inBounds,
-          `seed ${seed}: prop ${eid} at tile (${tile.x},${tile.y}) outside welcome room bounds`,
+          `seed ${seed}: prop ${index} at tile (${tile.x},${tile.y}) outside welcome room bounds`,
         ).toBe(true);
       }
     }
