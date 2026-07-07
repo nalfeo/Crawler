@@ -20,13 +20,21 @@ import { describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
 import { isRunPlanUrgent } from '../../../src/game/ai/run-planner.js';
 import { spawnPlayer } from '../../../src/core/spawners/combatants.js';
+import { spawnGold } from '../../../src/core/helpers.js';
+import { acceptQuest } from '../../../src/core/systems/questSystem.js';
+import { FLOOR1_TUTORIAL_QUEST_ID } from '../../../src/shared/quest-types.js';
 import { createInputState } from '../../../src/shared/input.js';
 import {
   initializeFloor1Scenario,
   selectFloor1StarterWeapon,
 } from '../../../src/game/floorScenario.js';
 import { createTestWorld } from '../../helpers/world-factory.js';
-import { AIDecisionMode, AIPathingMode, type AIDecision } from '../../../src/game/ai/types.js';
+import {
+  AIDecisionMode,
+  AIPathingMode,
+  AIState,
+  type AIDecision,
+} from '../../../src/game/ai/types.js';
 
 function freshFloor1World(seed: number): ReturnType<typeof createTestWorld> {
   const world = createTestWorld({ seed });
@@ -164,5 +172,79 @@ describe('SLACK_AWARE — urgency detection + monotone high-priority ladder', ()
     // guards only suppress those lower-priority optional goals. So the opening
     // Progress decision is byte-identical between LEGACY and urgent SLACK_AWARE.
     expect(decisionShape(urgentAi.getDecision())).toEqual(decisionShape(legacyAi.getDecision()));
+  });
+});
+
+describe('SLACK_AWARE — F1 observable suppression of an optional goal', () => {
+  // The parity tests above prove F1 is inert when the winning goal is Progress.
+  // This test proves F1 actually DOES something when the opening goal IS optional:
+  // it constructs a world whose LEGACY opening decision is COLLECT, then shows
+  // SLACK_AWARE suppresses it under urgency — and, critically, falls back to
+  // EXPLORE rather than stranding the agent (discovery is never lost). This is
+  // the "activation evidence" the plan review asked for; the win-rate A/B on
+  // healthy Floor-1 is inert precisely because urgency rarely fires there.
+  function collectOpeningWorld(seed: number): ReturnType<typeof createTestWorld> {
+    const world = createTestWorld({ seed });
+    const player = spawnPlayer(world, 0, 0);
+    // Real Floor-1 scenario/objective so the run-plan estimator has a deadline to
+    // blow. Urgency requires floorScenario + a fully-shaped objective (bossBattles,
+    // positions, kill counts) — a hand-built objective would be brittle, so we use
+    // the real initializer and only override what we need below.
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    // Accept the tutorial so findProgressObjective takes the level-1 grind branch,
+    // which returns NO explicit Progress target — leaving the opportunistic Collect
+    // goal as the winning (lower-priority) Track A goal in LEGACY.
+    acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
+    // Gold placed directly under the player so it is collectable without any A*
+    // reachability (isLootCollectable short-circuits within DIRECT_MOVE_EPSILON_FT).
+    // This makes the COLLECT precondition robust to whatever procedural map the
+    // scenario generated (initializeFloor1Scenario also relocated the player to the
+    // map spawn, so read the post-move position rather than assuming (0,0)).
+    const px = world.stores.position.x[player] ?? 0;
+    const py = world.stores.position.y[player] ?? 0;
+    spawnGold(world, px, py, 3);
+    return world;
+  }
+
+  it('LEGACY collects the nearby gold; urgent SLACK_AWARE suppresses Collect and explores instead', () => {
+    const seed = 42;
+    const legacyWorld = collectOpeningWorld(seed);
+    const urgentWorld = collectOpeningWorld(seed);
+    // Blow the deadline in BOTH worlds so the ONLY difference is the decision
+    // mode, not the world state (frame-based, deterministic). Mark the staircase
+    // DISCOVERED so LEGACY's collapse-panic beeline self-disables (its gate is
+    // `!staircaseDiscovered`, bt-ai-provider.ts:427) — otherwise the LEGACY beeline
+    // would ALSO suppress Collect and the two modes would be indistinguishable.
+    // This is exactly the "farms forever after discovering the stairs" gap that F1
+    // is designed to close: LEGACY stops beelining once stairs are seen, F1 does
+    // not stop suppressing optional goals under urgency.
+    for (const w of [legacyWorld, urgentWorld]) {
+      w.floorScenario!.objective.deadlineMs = w.elapsedMs + 1;
+      w.floorScenario!.objective.staircaseDiscovered = true;
+    }
+
+    const legacyAi = new BehaviorTreeAI({ seed, decisionMode: AIDecisionMode.LEGACY });
+    const urgentAi = new BehaviorTreeAI({ seed, decisionMode: AIDecisionMode.SLACK_AWARE });
+
+    legacyAi.poll(createInputState(), legacyWorld);
+    urgentAi.poll(createInputState(), urgentWorld);
+
+    // Precondition: LEGACY (deadline-blind for optional goals) still collects the
+    // gold — proving the opening goal is genuinely the optional Collect goal.
+    expect(legacyAi.getDecision().state).toBe(AIState.COLLECT);
+
+    // The urgency the F1 filters actually read this frame is genuinely urgent.
+    const plan = urgentAi.getTacticalRunDebug().decisionRunPlan;
+    expect(plan).not.toBeNull();
+    if (plan) {
+      expect(isRunPlanUrgent(plan, 0.66)).toBe(true);
+    }
+
+    // F1 monotone suppression: the optional Collect goal is removed under urgency,
+    // and the agent falls back to Explore (discovery is NOT stranded — no
+    // dead-end, no loss-inducing stall).
+    expect(urgentAi.getDecision().state).not.toBe(AIState.COLLECT);
+    expect(urgentAi.getDecision().state).toBe(AIState.EXPLORE);
   });
 });

@@ -1560,9 +1560,13 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
     const slackElem = document.getElementById('ai-slack');
     if (slackElem) {
-      // Reads the same run-plan slack signal the headless telemetry emits. Only
-      // populated while travelling under a Floor-1 run plan; 'n/a' otherwise.
-      const runPlan = ai.getTacticalRunDebug().runPlan;
+      // Reads the run-plan slack signal. Prefers the SLACK_AWARE decision-time
+      // plan (what the F1/F2 filters actually consulted this frame) and falls
+      // back to the post-tick travel plan. Only populated while travelling under
+      // a Floor-1 run plan; 'n/a' otherwise. In LEGACY decisionRunPlan is null so
+      // this shows the same travel run plan as before.
+      const debug = ai.getTacticalRunDebug();
+      const runPlan = debug.decisionRunPlan ?? debug.runPlan;
       if (!runPlan) {
         slackElem.textContent = 'n/a';
         slackElem.style.color = '#888';

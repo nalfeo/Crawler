@@ -343,6 +343,7 @@ export async function runHeadless(
     getNavigationDebug?: () => { stuckFrames: number; pathWaypoints: readonly unknown[] };
     getTacticalRunDebug?: () => {
       runPlan: { slackMs: number; urgency: number } | null;
+      decisionRunPlan?: { slackMs: number; urgency: number } | null;
     };
     getDecisionMode?: () => string;
   };
@@ -399,7 +400,12 @@ export async function runHeadless(
     // A/B telemetry (axis 2): emit run-plan slack/urgency and the decision mode
     // when the provider exposes them. Optional-chained + present-only so LEGACY
     // providers (and non-travelling samples with no run plan) emit nothing new.
-    const runPlan = navProvider.getTacticalRunDebug?.().runPlan ?? null;
+    // Prefer `decisionRunPlan` — the plan the SLACK_AWARE F1/F2 filters actually
+    // consulted this frame — falling back to the post-tick `runPlan`. In LEGACY
+    // `decisionRunPlan` is always null, so this falls back to `runPlan` exactly as
+    // before and the emitted telemetry stays byte-identical to main.
+    const tacticalDebug = navProvider.getTacticalRunDebug?.();
+    const runPlan = tacticalDebug?.decisionRunPlan ?? tacticalDebug?.runPlan ?? null;
     const decisionMode = navProvider.getDecisionMode?.();
     return {
       type,

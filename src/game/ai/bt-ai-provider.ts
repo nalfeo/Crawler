@@ -461,7 +461,20 @@ export interface AINpcMemoryDebug {
 export type { AILockedDoorMemory };
 
 export interface TacticalRunDebug {
+  /**
+   * Post-tick travel-steering run plan (`lastRunPlan`), estimated from the
+   * decision the tree just committed. Drives predictive steering, not decisions.
+   */
   runPlan: Floor1RunPlan | null;
+  /**
+   * SLACK_AWARE decision-time run plan (`decisionRunPlan`), estimated at
+   * poll-start from the PREVIOUS frame's target. This is the plan the F1/F2
+   * monotone filters actually consult, so HUD/telemetry should prefer it when
+   * present to show the slack/urgency that drove suppression this frame. Always
+   * null in LEGACY (never computed), so LEGACY telemetry falls back to `runPlan`
+   * and stays byte-identical to main.
+   */
+  decisionRunPlan: Floor1RunPlan | null;
   opportunities: TacticalOpportunityEvaluation | null;
 }
 
@@ -4485,14 +4498,20 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     if (objective.staircaseUnlocked && !objective.staircaseDiscovered) {
       const reason = 'Heading to the stairs to clear the floor';
-      // F2 (SLACK_AWARE exit-commitment tail): once the required quest chain is
-      // exhausted (only leave-floor remains) and the run is time-pressured, force
-      // the staircase as the Progress target by bypassing the suppression window.
-      // Monotone — forces the WINNING target in the final leg. No-op in LEGACY
-      // (isSlackAwareUrgent() is always false there). The `!staircaseDiscovered`
-      // branch gate above is kept (more conservative than the brief's "regardless
-      // of staircaseDiscovered": once discovered, downstream beeline logic owns it).
-      if (progressSuppressed && !this.isSlackAwareUrgent())
+      // F2 (SLACK_AWARE exit-commitment tail) — NARROWED after plan review.
+      // The original design forced the staircase Progress target under urgency by
+      // BYPASSING `progressGoalSuppressed`. Review flagged that as a monotonicity
+      // hazard: the quest-progress dwell watchdog sets that suppression window
+      // precisely to unstick a wedge (swarm pinning the player against an
+      // unreachable fixed goal) by letting Hunt/Explore relocate. Bypassing it
+      // while F1 simultaneously suppresses Collect/Hunt/Explore could livelock the
+      // agent on a wedged target and flip a previously-winning run into a loss.
+      // So F2's suppression override is DROPPED — the exit-commitment is delivered
+      // entirely by F1 (optional-goal suppression makes the agent commit to
+      // whatever Progress returns, which in this final leg is the staircase when
+      // not suppressed). This honors the legacy wedge-recovery escape hatch and is
+      // strictly more conservative, guaranteeing monotonicity. No-op in LEGACY.
+      if (progressSuppressed)
         return this.recordSuppressedProgressNavigation(world, reason, 'post-stairs');
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
@@ -5661,6 +5680,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   getTacticalRunDebug(): TacticalRunDebug {
     return {
       runPlan: this.lastRunPlan,
+      decisionRunPlan: this.decisionRunPlan,
       opportunities: this.lastTacticalOpportunityEvaluation,
     };
   }
