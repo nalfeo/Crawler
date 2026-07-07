@@ -4,6 +4,7 @@
  * Traditional rule-based AI that plays through simulated InputState.
  */
 import type { GameWorld } from '../../core/world.js';
+import type { WeaponTelemetrySummary } from '../../core/weapon-telemetry.js';
 import type { InputState } from '../../shared/input.js';
 import type { RunPlanSegmentPhase } from './run-planner.js';
 
@@ -237,6 +238,46 @@ export interface AIDecisionTelemetryMetrics {
 }
 
 /**
+ * Spawner Battle-Arena rollup — captured once at the end of a headless run so
+ * the win-rate gate can assert every reachable spawner reached the resolved
+ * terminal state (`arenaState === 2`). Populated by `runHeadless`; if a run
+ * generates no spawners the counts are all zero. See ADR "Spawner Battle
+ * Arena" and `spawnerArenaSystem`.
+ */
+export interface SpawnerArenaMetrics {
+  /** Total spawner entities present at run end (includes resolved/dead ones). */
+  total: number;
+  /** Count that were triggered by the player (arenaState ≥ 1). */
+  triggered: number;
+  /** Count that reached the terminal resolved state (arenaState === 2). */
+  resolved: number;
+  /**
+   * Count of spawners that raised a *real* barrier at some point in the run —
+   * either a fence snapshot (open-fence arenas) or one or more locked doors
+   * (sealed-room arenas). Derived from the persistent `spawnerArenaEverArmed`
+   * latch, which is set ONLY when a non-empty barrier is stored and is never
+   * cleared on resolve. An IDLE→RESOLVED short-circuit (spawner killed before
+   * it ever armed) is deliberately excluded — it never trapped the player.
+   *
+   * This is the correct denominator for "did the AI resolve arenas that
+   * actually trapped it?" — a triggered arena whose barrier code path was a
+   * no-op (empty fence ring, roomless spawner, no matching door entity) never
+   * traps the AI, so asking the AI to resolve it would be a false requirement.
+   */
+  barrierArmed: number;
+  /**
+   * Count of arenas that both armed a real barrier AND reached the terminal
+   * resolved state (`arenaState === 2`). This — not `resolved` — is the correct
+   * numerator for the ADR-0045 resolved/armed gate: `resolved` also includes
+   * IDLE→RESOLVED short-circuits that never armed, which would push the ratio
+   * above 1.0 and mask a genuine "AI walked past an armed barrier" miss.
+   */
+  resolvedArmed: number;
+  /** Sum of `bankedXp` across all spawners at run end. */
+  bankedXpTotal: number;
+}
+
+/**
  * Run statistics for performance tracking.
  */
 export interface RunStats {
@@ -279,4 +320,17 @@ export interface RunStats {
   startingWeapon: string;
   /** Optional telemetry rollups for AI decision-state accounting. */
   aiTelemetry?: AIDecisionTelemetryMetrics;
+  /**
+   * Spawner battle-arena rollup captured once at run end. Optional because
+   * pre-existing test fixtures for other metrics (e.g. fun-score, ai-scoring)
+   * construct `RunStats` shapes manually and don't populate it; runHeadless
+   * always sets it.
+   */
+  spawnerArenas?: SpawnerArenaMetrics;
+  /**
+   * Opt-in per-run weapon-accuracy rollup (swings, connecting hits, accuracy,
+   * multi-hit rate). Present only when the run enabled `recordWeaponTelemetry`;
+   * `undefined` otherwise, so default runs and the Floor-1 gate are unaffected.
+   */
+  weaponTelemetry?: WeaponTelemetrySummary;
 }

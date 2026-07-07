@@ -11,9 +11,11 @@ import type { InventoryBag } from '../shared/inventory.js';
 import type { StatusEffect } from '../shared/status-effect-types.js';
 import type { CombatEvent } from '../shared/combat-events.js';
 import type { VfxEvent } from '../shared/vfx-events.js';
+import type { AnnouncementEvent } from '../shared/announcement-events.js';
 import type { AbilityState, AbilityTriggerEvent } from '../shared/abilities.js';
 import { createLogger } from '../shared/logger.js';
 import type { DoorLockConfig } from './door-lock.js';
+import type { WeaponTelemetry } from './weapon-telemetry.js';
 import type { FloorMap } from './map/FloorMap.js';
 import {
   Position,
@@ -48,6 +50,7 @@ import {
   Gold,
   Npc,
   Weight,
+  Size,
   BloodColor,
   Prop,
   PropLight,
@@ -57,7 +60,7 @@ import {
   type ComponentStores,
 } from './components.js';
 import type { StatModifier, SkillState, SkillUsageEvent, PlayerLevel } from '../shared/skills.js';
-import type { Floor1ScenarioState, Floor2SettlementSnapshot } from '../shared/floor-types.js';
+import type { FloorScenarioState, Floor2SettlementSnapshot } from '../shared/floor-types.js';
 import type { NpcInstance } from '../shared/npc-types.js';
 import type { QuestState } from '../shared/quest-types.js';
 import type { QuestEvent } from '../shared/quest-events.js';
@@ -69,6 +72,21 @@ import type {
 } from './faction-relations.js';
 
 const logger = createLogger('core:world');
+
+/**
+ * Floor-specific extended state that varies by scenario type. Populated by the
+ * floor initializer; `null` on floors that don't use these mechanics.
+ */
+export interface FloorExtendedState {
+  /** Family faction state for floors with a families mechanic (e.g. Floor 2). */
+  familyState?: Floor2State;
+  /** Settlement snapshot for floors with a settlement mechanic (e.g. Floor 2). */
+  settlement?: Floor2SettlementSnapshot;
+  /** Trash territory assignments for floors with territorial trash spawning (e.g. Floor 2). Maps quadrant ID ('N', 'S', 'E', 'W') to archetype ID. */
+  trashTerritories?: Map<string, string>;
+  /** Ambient enemies tracked by the floor director when `world.floorScenario` is intentionally null (e.g. Floor 2). */
+  ambientEnemyArchetypes?: Map<number, string>;
+}
 
 export interface GameWorld {
   /** The bitecs ECS world instance */
@@ -141,6 +159,14 @@ export interface GameWorld {
    */
   lastPlayerHit?: { attackerEid: number; atMs: number };
   /**
+   * Optional, OFF-by-default per-run weapon telemetry (player swings, connecting
+   * hits, accuracy, multi-hit rate). `undefined` = disabled → the shipping sim
+   * and Floor-1 gate see zero behavior/allocation cost. Opt-in surfaces (headless
+   * runner `recordWeaponTelemetry`, PlayerSessionRecorder `recordWeaponTelemetry`)
+   * assign a collector via `createWeaponTelemetry()`. See `weapon-telemetry.ts`.
+   */
+  weaponTelemetry?: WeaponTelemetry;
+  /**
    * Max REALIZED knockback displacement (feet) applied to any entity this frame.
    * Reset to 0 at the top of `knockbackSystem` and accumulated (max) there after
    * each entity's final post-clamp position is written. Read by `beamSystem` to
@@ -157,24 +183,55 @@ export interface GameWorld {
    * engine-layer EffectsVfx renderer. Cosmetic-only; never read by game logic.
    */
   vfxEvents: VfxEvent[];
+  /**
+   * HUD announcement banner events pushed by systems (arena start/end today,
+   * extensible). Drained by the engine-layer `HudAnnouncementBanner`. Data-only
+   * so `src/core` stays portable. Capped defensively by `pushAnnouncement`.
+   */
+  announcements: AnnouncementEvent[];
+  /**
+   * Per-spawner cached door entity IDs for a sealed-room arena. Populated at
+   * arena trigger, cleared once the arena resolves. Side-car (not SoA) because
+   * bitecs typed arrays cannot store variable-length door lists.
+   */
+  spawnerArenaDoors: Map<number, number[]>;
+  /**
+   * Per-spawner snapshot of fence tiles for an open-fence arena. Each entry
+   * captures the pre-battle tile-flag byte so the ring can be restored bit-for-
+   * bit on resolve. Also keyed on spawner eid.
+   */
+  spawnerArenaFence: Map<number, Array<{ tileIdx: number; originalFlags: number }>>;
+  /**
+   * Per-spawner "ever raised a *real* barrier" latch. Set to the spawner eid at
+   * the idle → locked transition ONLY when a non-empty barrier is actually
+   * stored (a locked door list or a fence snapshot), and — unlike
+   * {@link spawnerArenaDoors}/{@link spawnerArenaFence} — deliberately NOT
+   * cleared on resolve. This gives headless telemetry an honest count of
+   * arenas that genuinely trapped the player, without the IDLE→RESOLVED
+   * short-circuit (spawner killed before it ever armed) inflating it.
+   *
+   * Shares the per-world lifetime of the two snapshot maps above (likewise
+   * never bulk-cleared); the sole consumer, `runHeadless`, builds a fresh world
+   * per run, so there is no cross-run contamination.
+   */
+  spawnerArenaEverArmed: Set<number>;
   /** Player's gold (currency) — separate from BroadcastScore (reality show rating). */
   playerGold: number;
   /** Procedurally generated floor map — null until floor is loaded. */
   floorMap: FloorMap | null;
-  /** Floor 1 tutorial scenario state. */
-  floor1: Floor1ScenarioState | null;
   /**
-   * Floor 2 scenario state (present families, contested resource, betrayer
-   * latch). Populated by the Floor 2 scenario initializer (Slice 8); `null`
-   * on every other floor.
+   * String identifier for the current floor (e.g. `'floor1'`, `'floor2'`).
+   * Set by each floor's scenario initializer. Empty string when no floor is loaded.
    */
-  floor2State: Floor2State | null;
+  floorId: string;
+  /** Current floor scenario state — populated when a floor run is active, null otherwise. */
+  floorScenario: FloorScenarioState | null;
   /**
-   * Floor 2 · Slice 6 — settlement snapshot (safe room, seeded shops, The
-   * Broker quest-giver). Populated by `initializeFloor2Settlement`; `null`
-   * on every other floor and before Floor 2's init runs.
+   * Floor-specific extended state for floors that use families / settlement
+   * mechanics. Populated by the floor initializer; `null` on floors that don't
+   * use these mechanics (e.g. Floor 1).
    */
-  floor2Settlement: Floor2SettlementSnapshot | null;
+  floorExtendedState: FloorExtendedState | null;
   /**
    * Floor 2 per-family relationship values, clamped `[0, 100]`. Single source
    * of truth (ADR 0040 · D1) — mobs read this at decision time via the
@@ -328,6 +385,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Gold, stores.gold);
   wireStore(ecs, Npc, stores.npc);
   wireStore(ecs, Weight, stores.weight);
+  wireStore(ecs, Size, stores.size);
   wireStore(ecs, BloodColor, stores.bloodColor);
   wireStore(ecs, Prop, stores.prop);
   wireStore(ecs, PropLight, stores.propLight);
@@ -364,11 +422,15 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     combatEvents: [],
     maxKnockbackStepThisFrame: 0,
     vfxEvents: [],
+    announcements: [],
+    spawnerArenaDoors: new Map(),
+    spawnerArenaFence: new Map(),
+    spawnerArenaEverArmed: new Set(),
     playerGold: 0,
     floorMap: null,
-    floor1: null,
-    floor2State: null,
-    floor2Settlement: null,
+    floorId: '',
+    floorScenario: null,
+    floorExtendedState: null,
     factionRelations: new Map(),
     factionRelationEvents: [],
     factionRelationDeltas: [],

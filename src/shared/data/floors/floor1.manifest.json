@@ -26,6 +26,7 @@
     "tileSizeFt": 4.0
   },
   "enemyPackId": "floor1-ambient",
+  "floorLootTableId": "floor_1",
   "player": {
     "hpBonus": 20,
     "moveSpeedBonus": 0.025,
@@ -72,7 +73,7 @@
       "id": "floor1-spell-quest-giver",
       "npcTypeId": "spell-quest-giver",
       "name": "Spell Broker",
-      "roomRole": "any",
+      "roomRole": "spawn",
       "isQuestGiver": true,
       "isMerchant": false,
       "questId": "floor1-boss-battle"
@@ -81,7 +82,7 @@
       "id": "floor1-shopkeeper",
       "npcTypeId": "shopkeeper",
       "name": "Sweaty Merchant",
-      "roomRole": "shop",
+      "roomRole": "spawn",
       "isQuestGiver": true,
       "isMerchant": true,
       "questId": "floor1-shopkeeper-errand"

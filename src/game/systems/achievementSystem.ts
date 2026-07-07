@@ -53,7 +53,7 @@ function evaluateUnlockRule(rule: AchievementUnlockRule, facts: AchievementFacts
 }
 
 function collectAchievementFacts(world: GameWorld): AchievementFacts {
-  const floor1Objective = world.floor1!.objective;
+  const floor1Objective = world.floorScenario!.objective;
   const totalKills = floor1Objective.ratsKilled + floor1Objective.slimesKilled;
   const completedQuestIds = new Set(
     [...world.questLog.values()]
@@ -79,7 +79,7 @@ function collectAchievementFacts(world: GameWorld): AchievementFacts {
       safeRoomDiscovered: floor1Objective.safeRoomDiscovered,
       equipmentUnlocked: world.featureUnlocks.equipment,
       staircaseDiscovered: floor1Objective.staircaseDiscovered,
-      runClearedFloor: world.floor1?.runSummary?.outcome === 'cleared_floor',
+      runClearedFloor: world.floorScenario?.runSummary?.outcome === 'cleared_floor',
     },
     completedQuestIds,
   };
@@ -110,8 +110,8 @@ export function evaluateAchievementUnlocksForPhase(
   world: GameWorld,
   phase: AchievementRulePhase,
 ): void {
-  const floor1 = world.floor1;
-  if (!floor1 || world.floor !== 1) {
+  const floorScenario = world.floorScenario;
+  if (!floorScenario || world.floor !== 1) {
     return;
   }
 

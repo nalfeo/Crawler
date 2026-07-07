@@ -11,6 +11,7 @@ import {
   Position,
   Health,
   Enemy,
+  FamilyMembership,
   Velocity,
   Stats,
   XpGem,
@@ -42,6 +43,7 @@ import {
   pickNearestPoi,
   updateLockedDoorMemory,
 } from './exploration.js';
+import { detectArenaLockin, type ArenaLockinTarget } from './arena-lockin.js';
 import { normalizeInputDirection } from '../../shared/input.js';
 import { hasItem } from '../../shared/inventory.js';
 import { SeededRandom } from '../../shared/random.js';
@@ -52,7 +54,14 @@ import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_TUTORIAL_QUEST_ID,
   SHOPKEEPER_FETCH_ITEM_ID,
+  type QuestState,
 } from '../../shared/quest-types.js';
+import { getItemById, getItemByIndex } from '../../shared/items.js';
+import {
+  getActiveQuests,
+  getQuestObjectiveViews,
+  getTrackedQuest,
+} from '../../core/systems/questSystem.js';
 import {
   AIState,
   AIDecisionDebugState,
@@ -198,6 +207,7 @@ import {
   QUEST_GIVER_DETOUR_ABANDON_FRAMES,
   NPC_INTERACTION_RADIUS_FT,
   NPC_APPROACH_THREAT_RADIUS_FT,
+  ARENA_LOCKIN_ADD_HYSTERESIS_FT,
   TRAVEL_STEERING_ENABLED,
   TRAVEL_BODY_RADIUS_FT,
   TRAVEL_HARD_GAP_FT,
@@ -444,6 +454,64 @@ export interface TacticalRunDebug {
 }
 
 /**
+ * Breadth-first reachability flood over a 4-connected passable grid.
+ *
+ * Fills `depth[i]` with the BFS distance (in tiles) from `startIndex` to every
+ * reachable tile, bounded at `maxDepth`; unreachable tiles keep the caller's
+ * pre-filled sentinel (`-1`). `queue` is caller-owned scratch of length ≥ the
+ * tile count. `startIndex` must be in-bounds and passable — every caller guards
+ * that before calling, and this seeds `depth[startIndex] = 0`.
+ *
+ * Extracted verbatim from the two reachability paths — goal resolution in
+ * {@link BehaviorTreeAI.computeReachableGoalTile} and explore-target sampling in
+ * {@link BehaviorTreeAI.computeExploreReachabilityDepth} — so the shared
+ * 4-connected expansion and `NAVIGATION_MAX_PATH_LENGTH` depth bound cannot
+ * drift apart. The expansion order (+x, −x, +y, −y) is load-bearing for
+ * determinism: it fixes the BFS distances, and downstream candidate ranking
+ * (hence RNG consumption) depends on them, so it must not change.
+ */
+function floodReachabilityDepth(
+  depth: Int32Array,
+  queue: Int32Array,
+  width: number,
+  height: number,
+  startIndex: number,
+  maxDepth: number,
+  passable: (tx: number, ty: number) => boolean,
+): void {
+  let head = 0;
+  let tail = 0;
+  depth[startIndex] = 0;
+  queue[tail++] = startIndex;
+  while (head < tail) {
+    const index = queue[head++]!;
+    const currentDepth = depth[index]!;
+    if (currentDepth >= maxDepth) {
+      continue;
+    }
+    const cx = index % width;
+    const cy = (index - cx) / width;
+    // 4-connected expansion mirrors findTilePath's topology-4 A*.
+    if (cx + 1 < width && depth[index + 1] === -1 && passable(cx + 1, cy)) {
+      depth[index + 1] = currentDepth + 1;
+      queue[tail++] = index + 1;
+    }
+    if (cx - 1 >= 0 && depth[index - 1] === -1 && passable(cx - 1, cy)) {
+      depth[index - 1] = currentDepth + 1;
+      queue[tail++] = index - 1;
+    }
+    if (cy + 1 < height && depth[index + width] === -1 && passable(cx, cy + 1)) {
+      depth[index + width] = currentDepth + 1;
+      queue[tail++] = index + width;
+    }
+    if (cy - 1 >= 0 && depth[index - width] === -1 && passable(cx, cy - 1)) {
+      depth[index - width] = currentDepth + 1;
+      queue[tail++] = index - width;
+    }
+  }
+}
+
+/**
  * Behavior Tree AI that simulates human input.
  * Uses composable behavior tree nodes for decision-making.
  */
@@ -497,6 +565,18 @@ export class BehaviorTreeAI implements AIInputProvider {
    * condition can apply hysteresis (see {@link RETREAT_HYSTERESIS_MULT}) instead
    * of re-deciding every frame at the danger-radius boundary.
    */
+  /**
+   * Track the previous frame's arena lock-in so the AI emits a single-shot
+   * log line on enter/exit (avoids per-frame spam while locked) and the
+   * blackboard payload stays stable across ticks.
+   *
+   * `null` = not in an arena lock-in last frame. When set, it holds the
+   * source spawner eid or the boss eid so the "still locked in on X" state
+   * can be recognized cheaply.
+   */
+  private lastArenaLockinEid: number | null = null;
+  private lastArenaLockinKind: 'spawner' | 'boss' | null = null;
+
   private retreating: boolean = false;
   /**
    * Cached kite-retreat destination (world center of a reachable open tile) plus
@@ -508,6 +588,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   private retreatTargetX: number | null = null;
   private retreatTargetY: number | null = null;
   private retreatRepickFrame: number = 0;
+  private retreatThreatEid: number | null = null;
   /**
    * Persistent melee-kite orbit direction (+1 / -1) and the frame it was last
    * flipped. Held across polls so the player circles the enemy steadily instead
@@ -550,6 +631,10 @@ export class BehaviorTreeAI implements AIInputProvider {
   private hasPerceptionData = false;
   /** Reused per-tile BFS visited scratch for {@link findNearestFrontier}; sized to the floor. */
   private frontierBfsVisited: Uint8Array | null = null;
+  /** Reused BFS depth scratch for {@link pickExploreTarget} reachability checks. */
+  private exploreReachabilityDepth: Int32Array | null = null;
+  /** Reused queue scratch for {@link pickExploreTarget} reachability flood. */
+  private exploreReachabilityQueue: Int32Array | null = null;
   private globalDwellActive: boolean = false;
   private globalDwellAnchorX: number = 0;
   private globalDwellAnchorY: number = 0;
@@ -670,9 +755,10 @@ export class BehaviorTreeAI implements AIInputProvider {
    * every frame:
    *
    * - **Track A** (Movement Goal): the exclusive priority Selector that picks
-   *   one movement target per frame. Logic is identical to the original flat
-   *   selector — Retreat > Interact > Progress > LeaveSafeRoom > Engage >
-   *   Collect > Hunt > Explore. Owns `this.decision` and `state.moveX/moveY`.
+   *   one movement target per frame. Retreat > ArenaLockin > Interact >
+   *   Progress > LeaveSafeRoom > Engage > Collect > Hunt > Explore. Owns
+   *   `this.decision` and `state.moveX/moveY`. See ADR 0045 for the
+   *   arena-lockin priority-slot decision.
    *
    * - **Track B** (Opportunistic): a side-effectful parallel that runs every
    *   frame regardless of Track A's outcome and writes into
@@ -691,6 +777,9 @@ export class BehaviorTreeAI implements AIInputProvider {
         'Track A: Movement Goal',
         // Priority 1: Retreat when low health
         this.buildRetreatBehavior(),
+        // Priority 1.5: Prioritize objective when locked inside a spawner
+        // arena or boss room — see `arena-lockin.ts` + ADR 0045.
+        this.buildArenaLockinBehavior(),
         // Priority 2: Interact with nearby NPCs
         this.buildInteractBehavior(),
         // Priority 3: Seek progression objectives.
@@ -724,10 +813,22 @@ export class BehaviorTreeAI implements AIInputProvider {
    * behaviors (interact / collect / explore) and keeps clearing the floor.
    */
   /** Clear the retreat latch and discard any cached kite target. */
-  private endRetreat(): void {
+  private endRetreat(world?: GameWorld): void {
+    if (
+      world &&
+      this.retreating &&
+      this.retreatThreatEid !== null &&
+      this.getPlayerHealthFraction(world) < this.config.retreatThreshold
+    ) {
+      this.ignoredEnemyUntilFrame.set(
+        this.retreatThreatEid,
+        world.frameCount + Math.max(RETREAT_REPICK_INTERVAL_FRAMES * 4, 60),
+      );
+    }
     this.retreating = false;
     this.retreatTargetX = null;
     this.retreatTargetY = null;
+    this.retreatThreatEid = null;
   }
 
   private buildRetreatBehavior(): BTNode {
@@ -735,7 +836,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       'Retreat',
       condition('Low Health Under Threat', (ctx) => {
         if (ctx.healthPercent >= this.config.retreatThreshold) {
-          this.endRetreat();
+          this.endRetreat(ctx.world);
           return false;
         }
         const threat = this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY);
@@ -747,10 +848,11 @@ export class BehaviorTreeAI implements AIInputProvider {
           ? this.config.retreatDangerRadius * RETREAT_HYSTERESIS_MULT
           : this.config.retreatDangerRadius;
         if (!threat || threat.distance > radius) {
-          this.endRetreat();
+          this.endRetreat(ctx.world);
           return false;
         }
         this.retreating = true;
+        this.retreatThreatEid = threat.eid;
         ctx.blackboard['retreatThreat'] = threat;
         return true;
       }),
@@ -895,6 +997,125 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   /**
+   * Arena lock-in behavior (Priority 1.5): when the player is trapped in a
+   * spawner arena (fence ring or sealed room) or a Floor-1 boss room, force
+   * the AI to target the spawner / boss instead of falling through to
+   * Interact / Progress / Explore — otherwise the AI wanders toward stale
+   * chain-plan targets (e.g. the far-away staircase) while sealed inside a
+   * room it cannot leave.
+   *
+   * Retreat (Priority 1) still takes precedence: low-HP-under-threat is
+   * life-critical and drops out of arena lock-in only long enough to kite
+   * to a safe tile. Because the arena also traps the threats, the kite is
+   * bounded and returns to lock-in as soon as HP recovers.
+   *
+   * Detection lives in `arena-lockin.ts`; the BT node here is purely a
+   * priority + blackboard/logging shim so the state machine stays inspect-
+   * able.
+   */
+  private buildArenaLockinBehavior(): BTNode {
+    return sequence(
+      'ArenaLockin',
+      condition('Player Locked In Arena', (ctx) => {
+        const target = detectArenaLockin(ctx.world, ctx.playerX, ctx.playerY);
+        // Always publish the blackboard snapshot so labs/tests can inspect
+        // the transition from a locked -> unlocked frame without the node
+        // having to fire.
+        ctx.blackboard['arenaLockin'] = {
+          active: target !== null,
+          kind: target?.kind ?? null,
+          targetEid: target?.eid ?? null,
+        };
+        if (target === null) {
+          if (this.lastArenaLockinEid !== null) {
+            logger.debug(
+              `AI arena lock-in cleared (${this.lastArenaLockinKind ?? 'unknown'} ${String(
+                this.lastArenaLockinEid,
+              )})`,
+            );
+          }
+          this.lastArenaLockinEid = null;
+          this.lastArenaLockinKind = null;
+          return false;
+        }
+        if (this.lastArenaLockinEid !== target.eid || this.lastArenaLockinKind !== target.kind) {
+          logger.debug(
+            `AI arena lock-in engaged: ${target.kind} eid=${String(target.eid)} at ` +
+              `(${target.x.toFixed(1)}, ${target.y.toFixed(1)})`,
+          );
+        }
+        this.lastArenaLockinEid = target.eid;
+        this.lastArenaLockinKind = target.kind;
+        ctx.blackboard['arenaLockinTarget'] = target;
+        return true;
+      }),
+      action('Set Arena Lock-In State', (ctx) => {
+        const target = ctx.blackboard['arenaLockinTarget'] as ArenaLockinTarget;
+        const dxTarget = target.x - ctx.playerX;
+        const dyTarget = target.y - ctx.playerY;
+        const targetDistance = Math.hypot(dxTarget, dyTarget) || 0;
+
+        // Add-clearing: for a *boss* lock-in (bosses have finite adds and
+        // move), interrupt to engage a nearby add first — this mirrors
+        // Progress's "clear-nearby-threat before NPC interaction" pattern
+        // (~line 1042). For a *spawner* lock-in the adds are Sisyphean —
+        // the spawner keeps producing them at ~2s intervals in defensive
+        // mode, so time spent on adds is time the spawner spends adding
+        // more. The safest strategy is to burn the spawner to zero first;
+        // its death queues an on-death monarch pool anyway (registry.ts
+        // rats-nest.onDeath), which the surviving adds get killed
+        // alongside once the fence lowers and normal Engage resumes.
+        const engageRadius = this.getEngageRadius(ctx.world);
+        const nearestEnemy = this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY);
+        if (
+          target.kind === 'boss' &&
+          nearestEnemy &&
+          nearestEnemy.eid !== target.eid &&
+          nearestEnemy.distance <= engageRadius &&
+          nearestEnemy.distance + ARENA_LOCKIN_ADD_HYSTERESIS_FT < targetDistance
+        ) {
+          const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, nearestEnemy);
+          this.decision.state = AIState.ENGAGE;
+          this.decision.targetEid = nearestEnemy.eid;
+          this.decision.targetX = plan.targetX;
+          this.decision.targetY = plan.targetY;
+          this.decision.reason = `Boss-room lock-in — clearing add ${String(nearestEnemy.eid)} before boss`;
+          return BTStatus.SUCCESS;
+        }
+
+        // Route the objective through the appropriate movement plan:
+        //   - Spawners are stationary structures, so orbit/kite is wasted
+        //     motion — walk straight in and let the weapon auto-fire once
+        //     the strike gate is reached. This is critical for melee: the
+        //     spawner's `defensive` mode floods the arena with adds every
+        //     2s, so any second spent orbiting a stationary target is a
+        //     second the swarm grows.
+        //   - Bosses move, so run `planEngagement` (kite/strafe) exactly
+        //     like normal Engage would.
+        this.decision.state = AIState.ENGAGE;
+        this.decision.targetEid = target.eid;
+        if (target.kind === 'boss') {
+          const bossWt: WorldTarget = {
+            eid: target.eid,
+            x: target.x,
+            y: target.y,
+            distance: targetDistance,
+          };
+          const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, bossWt);
+          this.decision.targetX = plan.targetX;
+          this.decision.targetY = plan.targetY;
+          this.decision.reason = `Boss-room lock-in — ${plan.reason} (boss ${String(target.eid)})`;
+        } else {
+          this.decision.targetX = target.x;
+          this.decision.targetY = target.y;
+          this.decision.reason = `Arena lock-in — attacking spawner ${String(target.eid)} at ${targetDistance.toFixed(1)}ft`;
+        }
+        return BTStatus.SUCCESS;
+      }),
+    );
+  }
+
+  /**
    * Interact behavior: talk to nearby NPCs.
    */
   private buildInteractBehavior(): BTNode {
@@ -1031,7 +1252,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     return sequence(
       'Hunt',
       condition('Enemy In Scan Range', (ctx) => {
-        const objective = ctx.world.floor1?.objective;
+        const objective = ctx.world.floorScenario?.objective;
         if (
           !ctx.world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID) ||
           objective?.questCompleted === true
@@ -2345,7 +2566,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
     playerSpeedFtPerFrame: number,
   ): void {
-    const objective = world.floor1?.objective;
+    const objective = world.floorScenario?.objective;
     const floorMap = world.floorMap;
     if (!objective || !floorMap) {
       this.lastPlayerToStairsTravelMs = null;
@@ -2392,7 +2613,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   private getCollapsePanicProfile(world: GameWorld): CollapsePanicProfile {
-    const objective = world.floor1?.objective;
+    const objective = world.floorScenario?.objective;
     if (!objective) {
       return computeCollapsePanicProfile(null);
     }
@@ -2442,11 +2663,11 @@ export class BehaviorTreeAI implements AIInputProvider {
     shopStage: ReturnType<typeof getShopkeeperStage>,
   ): RunPlannerCurrentTargetKind {
     const targetEid = this.decision.targetEid;
-    const objective = world.floor1?.objective;
+    const objective = world.floorScenario?.objective;
     if (!objective || targetEid === null || targetEid < 0) {
       return 'other';
     }
-    if (!objective.questCompleted && world.floor1?.enemyArchetypes.has(targetEid)) {
+    if (!objective.questCompleted && world.floorScenario?.enemyArchetypes.has(targetEid)) {
       return 'quest-kills';
     }
     if (shopStage === 'ready-to-buy' && world.playerGold < SHOPKEEPER_EQUIPMENT_COST) {
@@ -2464,16 +2685,16 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
     playerSpeedFtPerFrame: number,
   ): Floor1RunPlan | null {
-    const floor1 = world.floor1;
-    const objective = floor1?.objective;
-    if (!floor1 || !objective) {
+    const floorScenario = world.floorScenario;
+    const objective = floorScenario?.objective;
+    if (!floorScenario || !objective) {
       return null;
     }
 
     const hasWorldFetchItem =
-      floor1.questItemEid !== null &&
-      entityExists(world.ecs, floor1.questItemEid) &&
-      hasComponent(world.ecs, floor1.questItemEid, DroppedItem);
+      floorScenario.questItemEid !== null &&
+      entityExists(world.ecs, floorScenario.questItemEid) &&
+      hasComponent(world.ecs, floorScenario.questItemEid, DroppedItem);
     const bag = world.inventories.get(playerEid);
     const hasFetchItem = bag ? hasItem(bag, SHOPKEEPER_FETCH_ITEM_ID) : false;
     const slimeRat = objective.bossBattles.get('slime-rat')!;
@@ -2693,6 +2914,15 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (target.eid >= 0 && world.npcs.has(target.eid)) {
       // The main objective is itself an NPC; don't stack a detour on top.
       this.releaseDetourCommitment();
+      return target;
+    }
+    if (world.playerInSafeRoom && target.eid >= 0 && this.committedDetourNpcEid === null) {
+      // Shared-room hubs make same-safe-room NPCs visible while the player is
+      // retreating through the welcome room from a dynamic objective (enemy/loot).
+      // Do not start a fresh pinball detour in that state; once the dynamic
+      // objective is resumed outside the safe room, the normal detour rules can
+      // evaluate again. Existing detour commitments still fall through to the
+      // hysteresis/no-progress path below so safe-room mouth flicker stays stable.
       return target;
     }
     if (world.frameCount < this.progressGoalSuppressedUntilFrame) {
@@ -3192,37 +3422,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     const dist = new Int32Array(width * height).fill(-1);
     const queue = new Int32Array(width * height);
     const maxDepth = NAVIGATION_MAX_PATH_LENGTH - 1;
-    let head = 0;
-    let tail = 0;
     const startIndex = startTile.y * width + startTile.x;
-    dist[startIndex] = 0;
-    queue[tail++] = startIndex;
-    while (head < tail) {
-      const index = queue[head++]!;
-      const depth = dist[index]!;
-      if (depth >= maxDepth) {
-        continue;
-      }
-      const cx = index % width;
-      const cy = (index - cx) / width;
-      // 4-connected expansion mirrors findTilePath's topology-4 A*.
-      if (cx + 1 < width && dist[index + 1] === -1 && passable(cx + 1, cy)) {
-        dist[index + 1] = depth + 1;
-        queue[tail++] = index + 1;
-      }
-      if (cx - 1 >= 0 && dist[index - 1] === -1 && passable(cx - 1, cy)) {
-        dist[index - 1] = depth + 1;
-        queue[tail++] = index - 1;
-      }
-      if (cy + 1 < height && dist[index + width] === -1 && passable(cx, cy + 1)) {
-        dist[index + width] = depth + 1;
-        queue[tail++] = index + width;
-      }
-      if (cy - 1 >= 0 && dist[index - width] === -1 && passable(cx, cy - 1)) {
-        dist[index - width] = depth + 1;
-        queue[tail++] = index - width;
-      }
-    }
+    floodReachabilityDepth(dist, queue, width, height, startIndex, maxDepth, passable);
 
     // path length to a tile == findTilePath(start, tile).length, or 0 if the tile
     // is unreachable within NAVIGATION_MAX_PATH_LENGTH.
@@ -3406,7 +3607,7 @@ export class BehaviorTreeAI implements AIInputProvider {
 
   /**
    * Nearest *living, reachable* boss-unlock quest enemy — an ambient-swarm
-   * rat/slime registered in {@link GameWorld.floor1}'s `enemyArchetypes`. Only
+   * rat/slime registered in {@link GameWorld.floorScenario}'s `enemyArchetypes`. Only
    * these registered enemies advance the 6-rat/4-slime kill quota; a kill counts
    * only when one dies in combat (out-of-range despawns are pruned without
    * counting). Mirrors {@link findNearestEnemy}'s reachability filtering so a
@@ -3421,13 +3622,13 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
     maxRadius: number = Number.POSITIVE_INFINITY,
   ): WorldTarget | null {
-    const floor1 = world.floor1;
-    if (!floor1) {
+    const floorScenario = world.floorScenario;
+    if (!floorScenario) {
       return null;
     }
 
     const candidates: WorldTarget[] = [];
-    for (const eid of floor1.enemyArchetypes.keys()) {
+    for (const eid of floorScenario.enemyArchetypes.keys()) {
       if (!entityExists(world.ecs, eid)) continue;
 
       const ignoredUntil = this.ignoredEnemyUntilFrame.get(eid);
@@ -3460,6 +3661,390 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     return null;
+  }
+
+  private parseFloor2FamilyId(questId: string): string | null {
+    const match = /^floor2-den-(.+)-unlock$/.exec(questId);
+    return match ? (match[1] ?? null) : null;
+  }
+
+  private findNearestFloor2FamilyEnemy(
+    world: GameWorld,
+    familyId: string,
+    playerX: number,
+    playerY: number,
+    maxRadius: number = Number.POSITIVE_INFINITY,
+    requirePerception: boolean = true,
+  ): WorldTarget | null {
+    const floor2State = world.floorExtendedState?.familyState;
+    const familyIndex =
+      floor2State?.presentFamilies.findIndex((id: string) => id === familyId) ?? -1;
+    if (familyIndex < 0) {
+      return null;
+    }
+
+    const candidates: WorldTarget[] = [];
+    const familyField = world.stores.familyMembership.familyId;
+    const bossField = world.stores.familyMembership.isBoss;
+    for (const eid of query(world.ecs, [Enemy, Position, Health, FamilyMembership])) {
+      if (eid === undefined) continue;
+      if ((familyField[eid] ?? -1) !== familyIndex) continue;
+      if ((bossField[eid] ?? 0) !== 0) continue;
+      const health = world.stores.health.current[eid] ?? 0;
+      if (health <= 0) continue;
+      const x = world.stores.position.x[eid] ?? 0;
+      const y = world.stores.position.y[eid] ?? 0;
+      if (requirePerception && !this.canPerceiveWorldPosition(world, x, y)) continue;
+      const dist = Math.hypot(x - playerX, y - playerY);
+      if (dist <= maxRadius) {
+        candidates.push({ eid, x, y, distance: dist });
+      }
+    }
+
+    candidates.sort((a, b) => a.distance - b.distance);
+    const nearest = candidates[0] ?? null;
+    for (const candidate of candidates) {
+      if (candidate.distance <= DIRECT_MOVE_EPSILON_FT) {
+        return candidate;
+      }
+      if (this.isTargetReachable(world, playerX, playerY, candidate)) {
+        return candidate;
+      }
+    }
+    return nearest;
+  }
+
+  private findNearestFloor2Boss(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    familyId?: string,
+    maxRadius: number = Number.POSITIVE_INFINITY,
+    requirePerception: boolean = true,
+  ): WorldTarget | null {
+    const floor2State = world.floorExtendedState?.familyState;
+    const decapitated = floor2State?.decapitatedFamilies;
+    const familyIndex = familyId
+      ? (floor2State?.presentFamilies.findIndex((id: string) => id === familyId) ?? -1)
+      : -1;
+    const candidates: WorldTarget[] = [];
+    const familyField = world.stores.familyMembership.familyId;
+    const bossField = world.stores.familyMembership.isBoss;
+
+    for (const eid of query(world.ecs, [Enemy, Position, Health, FamilyMembership])) {
+      if (eid === undefined) continue;
+      if ((bossField[eid] ?? 0) !== 1) continue;
+      const bossFamilyIndex = familyField[eid] ?? -1;
+      if (familyId !== undefined && bossFamilyIndex !== familyIndex) continue;
+      const bossFamilyId = floor2State?.presentFamilies[bossFamilyIndex];
+      if (bossFamilyId !== undefined && decapitated?.has(bossFamilyId)) continue;
+      const health = world.stores.health.current[eid] ?? 0;
+      if (health <= 0) continue;
+      const x = world.stores.position.x[eid] ?? 0;
+      const y = world.stores.position.y[eid] ?? 0;
+      if (requirePerception && !this.canPerceiveWorldPosition(world, x, y)) continue;
+      const dist = Math.hypot(x - playerX, y - playerY);
+      if (dist <= maxRadius) {
+        candidates.push({ eid, x, y, distance: dist });
+      }
+    }
+
+    candidates.sort((a, b) => a.distance - b.distance);
+    const nearest = candidates[0] ?? null;
+    for (const candidate of candidates) {
+      if (candidate.distance <= DIRECT_MOVE_EPSILON_FT) {
+        return candidate;
+      }
+      if (this.isTargetReachable(world, playerX, playerY, candidate)) {
+        return candidate;
+      }
+    }
+    return nearest;
+  }
+
+  private findFloor2TerritoryTarget(
+    world: GameWorld,
+    familyId: string,
+    playerX: number,
+    playerY: number,
+    reason: string,
+  ): ProgressTarget | null {
+    const floorMap = world.floorMap;
+    const floor2State = world.floorExtendedState?.familyState;
+    const familyIndex =
+      floor2State?.presentFamilies.findIndex((id: string) => id === familyId) ?? -1;
+    if (!floorMap || familyIndex < 0) {
+      return null;
+    }
+    const room = floorMap.roomGraph
+      .getAll()
+      .find(
+        (candidate) =>
+          candidate.role === RoomRole.TERRITORY && candidate.familyIndex === familyIndex,
+      );
+    const normalRooms = floorMap.roomGraph
+      .getAll()
+      .filter((candidate) => candidate.role === RoomRole.NORMAL);
+    const fallbackRoom =
+      room ?? (normalRooms.length > 0 ? normalRooms[familyIndex % normalRooms.length] : undefined);
+    if (!fallbackRoom) {
+      return null;
+    }
+
+    const doorTile =
+      fallbackRoom.doors.length > 0
+        ? fallbackRoom.doors
+            .map((door) => {
+              const worldPos = floorMap.tileToWorld(door.x, door.y);
+              return {
+                x: door.x,
+                y: door.y,
+                distance: Math.hypot(worldPos.x - playerX, worldPos.y - playerY),
+              };
+            })
+            .sort((a, b) => a.distance - b.distance)[0]
+        : null;
+    const tile = doorTile ??
+      fallbackRoom.interiorCells?.[Math.floor(fallbackRoom.interiorCells.length / 2)] ?? {
+        x: fallbackRoom.bounds.x + Math.floor(fallbackRoom.bounds.width / 2),
+        y: fallbackRoom.bounds.y + Math.floor(fallbackRoom.bounds.height / 2),
+      };
+    const worldPos = floorMap.tileToWorld(tile.x, tile.y);
+    return this.createProgressTarget(worldPos.x, worldPos.y, playerX, playerY, reason);
+  }
+
+  private findNearestQuestItem(
+    world: GameWorld,
+    itemId: string,
+    playerX: number,
+    playerY: number,
+    maxRadius: number = this.config.scanRadius * 2,
+  ): LootTarget | null {
+    if (!getItemById(itemId)) {
+      return null;
+    }
+
+    const candidates: LootTarget[] = [];
+    for (const eid of query(world.ecs, [DroppedItem, Position])) {
+      if (eid === undefined) continue;
+      const droppedIndex = world.stores.droppedItem.itemIndex[eid];
+      if (droppedIndex === undefined) continue;
+      const droppedItem = getItemByIndex(droppedIndex);
+      if (!droppedItem || droppedItem.id !== itemId) continue;
+      const x = world.stores.position.x[eid] ?? 0;
+      const y = world.stores.position.y[eid] ?? 0;
+      const dist = Math.hypot(x - playerX, y - playerY);
+      if (dist < maxRadius) {
+        candidates.push({ eid, x, y, distance: dist, kind: 'item' });
+      }
+    }
+
+    candidates.sort((a, b) => a.distance - b.distance);
+    for (const candidate of candidates) {
+      if (this.isLootCollectable(world, playerX, playerY, candidate)) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  private findFloor2ProgressObjective(
+    world: GameWorld,
+    playerEid: number,
+    playerX: number,
+    playerY: number,
+  ): ProgressTarget | null {
+    const trackedQuestId = getTrackedQuest(world)?.questId ?? null;
+    const candidates: Array<{ questId: string; target: ProgressTarget }> = [];
+    for (const quest of getActiveQuests(world)) {
+      if (!quest.questId.startsWith('floor2-den-')) {
+        continue;
+      }
+      const target = this.findFloor2QuestProgressTarget(world, playerEid, playerX, playerY, quest);
+      if (target) {
+        candidates.push({ questId: quest.questId, target });
+      }
+    }
+
+    if (candidates.length === 0) {
+      const unlockedBoss =
+        this.findNearestFloor2Boss(world, playerX, playerY) ??
+        this.findNearestFloor2Boss(
+          world,
+          playerX,
+          playerY,
+          undefined,
+          Number.POSITIVE_INFINITY,
+          false,
+        );
+      if (unlockedBoss) {
+        return this.createProgressTarget(
+          unlockedBoss.x,
+          unlockedBoss.y,
+          playerX,
+          playerY,
+          'Hunting the Floor 2 boss',
+          unlockedBoss.eid,
+        );
+      }
+      return null;
+    }
+
+    candidates.sort((a, b) => {
+      const distanceDelta = a.target.distance - b.target.distance;
+      if (Math.abs(distanceDelta) > 0.001) {
+        return distanceDelta;
+      }
+      if (a.questId === trackedQuestId) {
+        return -1;
+      }
+      if (b.questId === trackedQuestId) {
+        return 1;
+      }
+      return a.questId.localeCompare(b.questId);
+    });
+    return candidates[0]?.target ?? null;
+  }
+
+  private findFloor2QuestProgressTarget(
+    world: GameWorld,
+    playerEid: number,
+    playerX: number,
+    playerY: number,
+    activeQuest: QuestState,
+  ): ProgressTarget | null {
+    const familyId = this.parseFloor2FamilyId(activeQuest.questId);
+    if (!familyId) {
+      return null;
+    }
+
+    const objectiveViews = getQuestObjectiveViews(world, activeQuest, playerEid);
+    const activeView =
+      objectiveViews.find((view) => !view.complete && !view.hidden) ??
+      objectiveViews.find((view) => !view.complete);
+    if (!activeView) {
+      const unlockedBoss = this.findNearestFloor2Boss(world, playerX, playerY, familyId);
+      if (unlockedBoss) {
+        return this.createProgressTarget(
+          unlockedBoss.x,
+          unlockedBoss.y,
+          playerX,
+          playerY,
+          `Hunting the ${familyId} boss`,
+          unlockedBoss.eid,
+        );
+      }
+      return null;
+    }
+
+    const objective = activeView.def;
+    const chaseDistanceLimitFt = 128;
+    const familyEnemy =
+      this.findNearestFloor2FamilyEnemy(world, familyId, playerX, playerY) ??
+      this.findNearestFloor2FamilyEnemy(
+        world,
+        familyId,
+        playerX,
+        playerY,
+        chaseDistanceLimitFt,
+        false,
+      );
+    const bossTarget =
+      this.findNearestFloor2Boss(world, playerX, playerY, familyId) ??
+      this.findNearestFloor2Boss(
+        world,
+        playerX,
+        playerY,
+        familyId,
+        Number.POSITIVE_INFINITY,
+        false,
+      );
+    const denUnlocked = world.goalFlags.get(`floor2-den-${familyId}-unlocked`) === true;
+    const territoryTarget = this.findFloor2TerritoryTarget(
+      world,
+      familyId,
+      playerX,
+      playerY,
+      `Sweeping the ${familyId} territory for den progress`,
+    );
+
+    switch (objective.kind) {
+      case 'counter':
+        if (familyEnemy) {
+          return this.createProgressTarget(
+            familyEnemy.x,
+            familyEnemy.y,
+            playerX,
+            playerY,
+            `Advancing ${familyId} den unlock (${activeView.current}/${activeView.target})`,
+            familyEnemy.eid,
+          );
+        }
+        if (!denUnlocked) {
+          return territoryTarget;
+        }
+        return bossTarget
+          ? this.createProgressTarget(
+              bossTarget.x,
+              bossTarget.y,
+              playerX,
+              playerY,
+              `Pressuring the ${familyId} den`,
+              bossTarget.eid,
+            )
+          : territoryTarget;
+      case 'collect':
+        if (objective.itemId) {
+          const itemTarget = this.findNearestQuestItem(world, objective.itemId, playerX, playerY);
+          if (itemTarget) {
+            return this.createProgressTarget(
+              itemTarget.x,
+              itemTarget.y,
+              playerX,
+              playerY,
+              `Collecting ${activeView.def.label}`,
+              itemTarget.eid,
+            );
+          }
+        }
+        return familyEnemy
+          ? this.createProgressTarget(
+              familyEnemy.x,
+              familyEnemy.y,
+              playerX,
+              playerY,
+              `Searching the ${familyId} territory for the unlock drop`,
+              familyEnemy.eid,
+            )
+          : null;
+      case 'goal':
+      case 'talk':
+      case 'haveEquippable':
+      case 'equip':
+        if (bossTarget) {
+          return this.createProgressTarget(
+            bossTarget.x,
+            bossTarget.y,
+            playerX,
+            playerY,
+            `Closing on the ${familyId} boss den`,
+            bossTarget.eid,
+          );
+        }
+        if (familyEnemy) {
+          return this.createProgressTarget(
+            familyEnemy.x,
+            familyEnemy.y,
+            playerX,
+            playerY,
+            `Working the ${familyId} den unlock`,
+            familyEnemy.eid,
+          );
+        }
+        return null;
+      default:
+        return null;
+    }
   }
 
   /**
@@ -3564,9 +4149,15 @@ export class BehaviorTreeAI implements AIInputProvider {
     const panicProfile = this.getCollapsePanicProfile(world);
     const maybeDetourToQuestGiver = (target: ProgressTarget): ProgressTarget =>
       this.withQuestGiverDetour(world, playerEid, playerX, playerY, target, panicProfile);
-    const floor1 = world.floor1;
-    const objective = floor1?.objective;
-    if (!floor1 || !objective) {
+    const floorScenario = world.floorScenario;
+    if (world.floorExtendedState?.familyState) {
+      const floor2Target = this.findFloor2ProgressObjective(world, playerEid, playerX, playerY);
+      if (floor2Target) {
+        return maybeDetourToQuestGiver(floor2Target);
+      }
+    }
+    const objective = floorScenario?.objective;
+    if (!floorScenario || !objective) {
       return null;
     }
 
@@ -3641,6 +4232,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           playerX,
           playerY,
           reason,
+          floorScenario.shopkeeperNpcEid ?? -1,
         ),
       );
     }
@@ -3668,6 +4260,7 @@ export class BehaviorTreeAI implements AIInputProvider {
             playerX,
             playerY,
             reason,
+            floorScenario.shopkeeperNpcEid ?? -1,
           ),
         );
       }
@@ -3747,6 +4340,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           playerX,
           playerY,
           reason,
+          floorScenario.spellQuestGiverNpcEid ?? -1,
         ),
       );
     }
@@ -3777,6 +4371,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           playerX,
           playerY,
           reason,
+          floorScenario.spellQuestGiverNpcEid ?? -1,
         ),
       );
     }
@@ -4139,6 +4734,35 @@ export class BehaviorTreeAI implements AIInputProvider {
     return { x: wp.x, y: wp.y };
   }
 
+  private computeExploreReachabilityDepth(
+    floorMap: FloorMap,
+    startTile: TilePoint,
+    passable: (tx: number, ty: number) => boolean,
+  ): Int32Array {
+    const width = floorMap.width;
+    const height = floorMap.height;
+    const tileCount = width * height;
+    if (!this.exploreReachabilityDepth || this.exploreReachabilityDepth.length !== tileCount) {
+      this.exploreReachabilityDepth = new Int32Array(tileCount);
+    }
+    if (!this.exploreReachabilityQueue || this.exploreReachabilityQueue.length !== tileCount) {
+      this.exploreReachabilityQueue = new Int32Array(tileCount);
+    }
+    const depth = this.exploreReachabilityDepth;
+    const queue = this.exploreReachabilityQueue;
+    depth.fill(-1);
+
+    const startIndex = floorMap.tileMap.index(startTile.x, startTile.y);
+    if (startIndex === -1 || !passable(startTile.x, startTile.y)) {
+      return depth;
+    }
+
+    const maxDepth = NAVIGATION_MAX_PATH_LENGTH - 1;
+    floodReachabilityDepth(depth, queue, width, height, startIndex, maxDepth, passable);
+
+    return depth;
+  }
+
   private pickExploreTarget(
     world: GameWorld,
     playerX: number,
@@ -4164,6 +4788,10 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (frontier) {
       return frontier;
     }
+    const passable =
+      this.doorAwarePassable ??
+      ((tx: number, ty: number): boolean => floorMap.tileMap.isPassable(tx, ty));
+    const reachableDepth = this.computeExploreReachabilityDepth(floorMap, startTile, passable);
 
     const reachable: { x: number; y: number; dist: number }[] = [];
     const firstPassable: { x: number; y: number } | null = { x: playerX, y: playerY };
@@ -4181,8 +4809,8 @@ export class BehaviorTreeAI implements AIInputProvider {
         sawPassable = true;
       }
       const goalTile = floorMap.worldToTile(wx, wy);
-      const path = findTilePath(floorMap, startTile, goalTile, this.groundPathOptions());
-      if (path.length > 1) {
+      const goalIndex = floorMap.tileMap.index(goalTile.x, goalTile.y);
+      if (goalIndex !== -1 && (reachableDepth[goalIndex] ?? -1) >= 1) {
         reachable.push({ x: wx, y: wy, dist: Math.hypot(wx - playerX, wy - playerY) });
       }
       return reachable.length >= EXPLORE_REACHABLE_SAMPLE_TARGET;
@@ -4652,24 +5280,36 @@ export class BehaviorTreeAI implements AIInputProvider {
       CONTACT_SAFE_ORBIT_FT,
       Math.min(reachFt * RANGED_STANDOFF_FRACTION, RANGED_STANDOFF_ABS_FT),
     );
+    const contactThreatRadius = desiredOrbit + RANGED_APPROACH_BUFFER_FT;
+    let activeTarget = target;
 
-    if (target.distance > desiredOrbit + RANGED_APPROACH_BUFFER_FT) {
+    // If a different enemy has already pushed into the standoff/contact bubble,
+    // kite that immediate threat first instead of continuing to "close" on a
+    // farther target and tanking free body-contact hits on the way in.
+    if (target.distance > contactThreatRadius) {
+      const nearbyThreat = this.findNearestEnemy(world, playerX, playerY, contactThreatRadius);
+      if (nearbyThreat && nearbyThreat.eid !== target.eid) {
+        activeTarget = nearbyThreat;
+      }
+    }
+
+    if (activeTarget.distance > contactThreatRadius) {
       // Too far to orbit: navigate toward a point at the desired standoff distance
       // from the enemy so A* can plan the full route.
-      const dx = target.x - playerX;
-      const dy = target.y - playerY;
-      const scale = (target.distance - desiredOrbit) / target.distance;
+      const dx = activeTarget.x - playerX;
+      const dy = activeTarget.y - playerY;
+      const scale = (activeTarget.distance - desiredOrbit) / activeTarget.distance;
       return {
         targetX: playerX + dx * scale,
         targetY: playerY + dy * scale,
-        reason: `Closing to ranged standoff (${desiredOrbit.toFixed(1)}ft) from ${target.distance.toFixed(1)}ft`,
+        reason: `Closing to ranged standoff (${desiredOrbit.toFixed(1)}ft) from ${activeTarget.distance.toFixed(1)}ft`,
       };
     }
 
     // At or inside the standoff band: orbit laterally while the radial correction
     // keeps the distance near desiredOrbit (pushing away if too close, nudging in
     // if slightly too far).
-    return this.computeRangedKiteTarget(world, playerX, playerY, target, desiredOrbit);
+    return this.computeRangedKiteTarget(world, playerX, playerY, activeTarget, desiredOrbit);
   }
 
   /**
@@ -4830,8 +5470,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerEid: number,
     npcEid: number,
   ): string | null {
-    const floor1 = world.floor1;
-    if (!floor1) {
+    const floorScenario = world.floorScenario;
+    if (!floorScenario) {
       return 'generic-interaction';
     }
 
@@ -4840,7 +5480,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       return null;
     }
 
-    const objective = floor1.objective;
+    const objective = floorScenario.objective;
     const shopStage = getShopkeeperStage(world);
     const bag = world.inventories.get(playerEid);
     const hasFetchItem = bag ? hasItem(bag, SHOPKEEPER_FETCH_ITEM_ID) : false;
@@ -5037,6 +5677,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.retreatTargetX = null;
     this.retreatTargetY = null;
     this.retreatRepickFrame = 0;
+    this.retreatThreatEid = null;
+    this.lastArenaLockinEid = null;
+    this.lastArenaLockinKind = null;
     this.opportunisticPullX = 0;
     this.opportunisticPullY = 0;
     this.farmPullX = 0;

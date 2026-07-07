@@ -3,7 +3,7 @@
  *
  * Renders one row per present family (color swatch, name, 0–100 band-colored
  * bar, boss-alive/dead icon, status tag). Hidden on floors where
- * `world.floor2State === null`.
+ * `world.floorExtendedState?.familyState == null`.
  *
  * Reactive: uses a snapshot fingerprint (per-family relation + band + boss
  * flag) as a dirty flag, so a full row re-render only happens when something
@@ -199,7 +199,7 @@ export function createHudFamilyRelationships(
   }
 
   function sync(world: GameWorld): void {
-    const shouldShow = world.floor2State !== null;
+    const shouldShow = world.floorExtendedState?.familyState != null;
     if (shouldShow !== lastVisible) {
       setPanelVisible(shouldShow);
       lastVisible = shouldShow;

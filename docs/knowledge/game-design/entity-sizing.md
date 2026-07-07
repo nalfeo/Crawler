@@ -47,40 +47,45 @@
 
 ## Projectiles
 
-| Entity              | Spawner                                     | Shape  | Size (ft)         | Weight (lb) | Notes                                                                           |
-| ------------------- | ------------------------------------------- | ------ | ----------------- | ----------- | ------------------------------------------------------------------------------- |
-| Bullet / arrow      | `spawners/projectiles.ts` `spawnProjectile` | circle | r = 0.375         | 1           | Sprite 0.75×0.75. Weight doesn't matter — projectiles aren't knockback targets. |
-| Beam segment        | `spawners/projectiles.ts` `spawnBeam`       | box    | length × 0.25     | 1           | Length is set per-cast; only h fixed here.                                      |
-| Melee swing (blade) | `spawners/melee.ts` `spawnMeleeSwing`       | circle | r ≈ `bladeLength` | 1           | Not a knockback target either; size drives the AABB the hash-grid inserts.      |
-| Melee swing (head)  | `spawners/melee.ts`                         | circle | r = `radius`      | 1           | Bat head.                                                                       |
+| Entity              | Spawner                                     | Shape  | Size (ft)         | Weight (lb) | Notes                                                                                  |
+| ------------------- | ------------------------------------------- | ------ | ----------------- | ----------- | -------------------------------------------------------------------------------------- |
+| Bullet / arrow      | `spawners/projectiles.ts` `spawnProjectile` | circle | r = 0.375         | 1           | Sprite 0.75×0.75. Weight doesn't matter — projectiles aren't knockback targets.        |
+| Beam segment        | `spawners/projectiles.ts` `spawnBeam`       | box    | length × 0.5      | 1           | Length is set per-cast; only h fixed here (sprite height 0.5 ft, half-extent 0.25 ft). |
+| Melee swing (blade) | `spawners/melee.ts` `spawnMeleeSwing`       | circle | r ≈ `bladeLength` | 1           | Not a knockback target either; size drives the AABB the hash-grid inserts.             |
+| Melee swing (head)  | `spawners/melee.ts`                         | circle | r = `radius`      | 1           | Bat head.                                                                              |
 
 ## Pickups & drops
 
-| Entity       | Spawner                                  | Shape  | Size (ft) | Weight (lb) | Notes             |
-| ------------ | ---------------------------------------- | ------ | --------- | ----------- | ----------------- |
-| XP gem       | `spawners/pickups.ts` `spawnXpGem`       | circle | r = 0.5   | 1           |                   |
-| Dropped item | `spawners/pickups.ts` `spawnDroppedItem` | circle | r = 0.5   | 1           |                   |
-| Gold pile    | `spawners/pickups.ts` `spawnGold`        | circle | r = 0.625 | 5           | Sprite 1.25×1.25. |
+| Entity       | Spawner                                  | Shape  | Size (ft) | Weight (lb) | Notes                                                                                         |
+| ------------ | ---------------------------------------- | ------ | --------- | ----------- | --------------------------------------------------------------------------------------------- |
+| XP gem       | `spawners/pickups.ts` `spawnXpGem`       | circle | r = 0.5   | 1           |                                                                                               |
+| Dropped item | `spawners/pickups.ts` `spawnDroppedItem` | circle | r = 0.625 | 5           | Sprite 1.25×1.25.                                                                             |
+| Gold pile    | `spawners/pickups.ts` `spawnGold`        | circle | r = 0.5   | 1           | Sprite 1×1 today; larger sprite (1.25×1.25 → r=0.625) is a candidate retune in a later slice. |
 
 ## World objects
 
-| Entity               | Spawner                                  | Shape  | Size (ft) | Weight (lb) | Immovable | Notes                                       |
-| -------------------- | ---------------------------------------- | ------ | --------- | ----------- | :-------: | ------------------------------------------- |
-| Wall segment         | `spawners/world-objects.ts` (varies)     | box    | 1 × 1     | 10 000      |    yes    | Match tile.                                 |
-| Door                 | `spawners/world-objects.ts`              | box    | 1 × 1     | 500         |    yes    | Not in Knockback query today.               |
-| Prop — small (torch) | `spawners/world-objects.ts` (decoration) | circle | r = 0.375 | 30          |    yes    | Uses `decorationDef.scale`.                 |
-| Prop — barrel        | `spawners/world-objects.ts`              | circle | r = 0.75  | 60          |    no     | Optional Slice-2 goal: barrels punt on hit. |
-| Trap                 | `spawners/world-objects.ts`              | circle | r = 0.5   | 100         |    yes    |                                             |
-| Harvestable node     | `spawners/world-objects.ts`              | circle | r = 0.5   | 50          |    yes    |                                             |
+| Entity               | Spawner                                  | Shape  | Size (ft) | Weight (lb) | Immovable | Notes                                                                                 |
+| -------------------- | ---------------------------------------- | ------ | --------- | ----------- | :-------: | ------------------------------------------------------------------------------------- |
+| Wall segment         | `spawners/world-objects.ts` (varies)     | box    | 1 × 1     | 10 000      |    yes    | Match tile.                                                                           |
+| Door                 | `spawners/world-objects.ts`              | box    | 1 × 1     | 500         |    yes    | Not in Knockback query today.                                                         |
+| Prop — small (torch) | `spawners/world-objects.ts` (decoration) | circle | r = 0.375 | 30          |    yes    | Uses `decorationDef.scale`.                                                           |
+| Prop — barrel        | `spawners/world-objects.ts`              | circle | r = 0.75  | 60          |    no     | Optional Slice-2 goal: barrels punt on hit.                                           |
+| Trap                 | `spawners/world-objects.ts`              | circle | r = 0.75  | 100         |    yes    | Sprite 1.5×1.5 today; not a knockback target, `weight` is nominal for the sync sheet. |
+| Harvestable node     | `spawners/world-objects.ts`              | circle | r = 0.5   | 50          |    yes    |                                                                                       |
 
 ## Knockback baseline math
 
 The **median mob** is 120 lb. Slice 2's rule is:
 
 ```
-knockback.speed[target]     = writerImpulse * (120 / max(1, targetWeight))
+weightScale                 = min(KNOCKBACK_WEIGHT_SCALE_MAX, 120 / max(1, targetWeight))
+knockback.speed[target]     = writerImpulse * weightScale
 knockback.remaining[target] = knockback.speed[target]  // same as today
 ```
+
+`KNOCKBACK_WEIGHT_SCALE_MAX = 2.5` (see `src/core/physics-defs.ts`).
+The cap keeps ultra-light authored mobs from getting punted absurd
+distances — without it a rat @ 6 lb would receive 20× displacement.
 
 so a 120 lb mob's knockback is unchanged from today. `writerImpulse` values
 (constants in `meleeSwingSystem`, `applyPlayerEnemyHit`, projectile impact,
@@ -88,6 +93,21 @@ area damage, corpse explosion) are the **same numeric literals** shipping
 today — no per-writer recalibration is needed as long as the median target
 matches, which is true for every enemy currently in the game (all default
 to 120 lb).
+
+Worked examples (see also `src/game/spawners/registry.ts` for authored
+weights per mob):
+
+| Target       | Weight (lb) | Raw scale | Clamped scale | Notes                                   |
+| ------------ | ----------- | --------- | ------------- | --------------------------------------- |
+| Rat          | 6           | 20.0×     | **2.5×**      | Clamped by KNOCKBACK_WEIGHT_SCALE_MAX   |
+| Slime        | 20          | 6.0×      | **2.5×**      | Clamped                                 |
+| Brute (mini) | 30          | 4.0×      | **2.5×**      | Clamped                                 |
+| 48 lb        | 48          | 2.5×      | 2.5×          | Cap boundary — linear at or above       |
+| Light mob    | 60          | 2.0×      | 2.0×          | Below cap                               |
+| Median mob   | 120         | 1.0×      | 1.0×          | Identity (bit-parity vs pre-Slice-2)    |
+| Ogre         | 240         | 0.5×      | 0.5×          |                                         |
+| Boss         | 800         | 0.15×     | 0.15×         |                                         |
+| Wall/statue  | ≥ 10 000    | —         | 0             | Short-circuited via IMMOVABLE_THRESHOLD |
 
 `IMMOVABLE_THRESHOLD = 10 000` lb. Any target at or above this drops the
 Knockback component immediately without moving. Also anything with the

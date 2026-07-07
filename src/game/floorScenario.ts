@@ -25,6 +25,7 @@ import {
   Player,
   Health,
   BroadcastScore,
+  Size,
   Sprite,
   DoorState,
   Enemy,
@@ -34,6 +35,7 @@ import {
   Npc,
 } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
+import { SHAPE_BOX, SHAPE_CIRCLE } from '../core/physics-defs.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
 import {
@@ -93,12 +95,13 @@ import { evaluateAchievementUnlocksForPhase } from './systems/achievementSystem.
 import { getAllSkillDefinitions } from './skills/registry.js';
 import type { SkillState } from '../shared/skills.js';
 import { floor1Config } from '../shared/floor-config.js';
-import { floor1EnemyPack, pickEnemyArchetype } from '../shared/enemy-packs.js';
+import { floor1EnemyPack, floor2EnemyPack, pickEnemyArchetype } from '../shared/enemy-packs.js';
 import { floor1Manifest } from '../shared/floor-manifest.js';
 import type { NpcPlacementDef } from '../shared/npc-placements.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
 import { getSpawnerArchetype, getSpawnerArchetypeIndex } from './spawners/registry.js';
 import { hashStringToSeed, SeededRandom } from '../shared/random.js';
+import { computeMobLevelScale } from '../shared/mob-scaling.js';
 
 // Derived constants computed from config at module initialization.
 // The camera/viewport is a render-pixel concept, so convert it to feet at this
@@ -137,16 +140,24 @@ interface Floor1SpawnerState {
   lastSpawnMs: number;
 }
 
-function pruneAmbientOverflow(
+function getAmbientEnemyArchetypes(world: GameWorld): Map<number, string> | undefined {
+  if (world.floorScenario) {
+    return world.floorScenario.enemyArchetypes;
+  }
+  return world.floorExtendedState?.ambientEnemyArchetypes;
+}
+
+export function pruneAmbientOverflow(
   world: GameWorld,
   playerX: number,
   playerY: number,
   overflowCount: number,
 ): void {
-  if (!world.floor1 || overflowCount <= 0) {
+  const trackedAmbient = getAmbientEnemyArchetypes(world);
+  if (!trackedAmbient || overflowCount <= 0) {
     return;
   }
-  const rankedAmbient = [...world.floor1.enemyArchetypes.keys()]
+  const rankedAmbient = [...trackedAmbient.keys()]
     .filter((eid) => entityExists(world.ecs, eid))
     .map((eid) => {
       const ex = world.stores.position.x[eid] ?? 0;
@@ -163,7 +174,7 @@ function pruneAmbientOverflow(
     }
     clearEntityStores(world, victim);
     removeEntity(world.ecs, victim);
-    world.floor1.enemyArchetypes.delete(victim);
+    trackedAmbient.delete(victim);
   }
 }
 
@@ -189,15 +200,16 @@ export function sealRoomPerimeterOpenings(
   sealRoomPerimeter(floorMap, room);
 }
 
-function pruneAmbientOutOfRange(world: GameWorld, playerX: number, playerY: number): void {
-  if (!world.floor1) {
+export function pruneAmbientOutOfRange(world: GameWorld, playerX: number, playerY: number): void {
+  const trackedAmbient = getAmbientEnemyArchetypes(world);
+  if (!trackedAmbient) {
     return;
   }
-  const pack = floor1EnemyPack;
+  const pack = world.floor === 2 ? floor2EnemyPack : floor1EnemyPack;
   const maxDistanceSq = pack.despawnDistanceFt * pack.despawnDistanceFt;
-  for (const eid of [...world.floor1.enemyArchetypes.keys()]) {
+  for (const eid of [...trackedAmbient.keys()]) {
     if (!entityExists(world.ecs, eid)) {
-      world.floor1.enemyArchetypes.delete(eid);
+      trackedAmbient.delete(eid);
       continue;
     }
     const ex = world.stores.position.x[eid] ?? 0;
@@ -209,7 +221,7 @@ function pruneAmbientOutOfRange(world: GameWorld, playerX: number, playerY: numb
     }
     clearEntityStores(world, eid);
     removeEntity(world.ecs, eid);
-    world.floor1.enemyArchetypes.delete(eid);
+    trackedAmbient.delete(eid);
   }
 }
 
@@ -225,7 +237,7 @@ const playerBonusApplied = new WeakSet<GameWorld>();
  */
 const populatedRoomsByWorld = new WeakMap<GameWorld, Set<number>>();
 
-function getSpawnerState(world: GameWorld): Floor1SpawnerState {
+export function getSpawnerState(world: GameWorld): Floor1SpawnerState {
   let state = spawnerStateByWorld.get(world);
   if (state === undefined) {
     state = { lastSpawnMs: Number.NEGATIVE_INFINITY };
@@ -343,6 +355,115 @@ function resolvePassableRoomCenter(
 
   // Absolute fallback: return the bounding-box center point even if it's a wall.
   return floorMap.tileToWorld(center.x, center.y);
+}
+
+function tileKey(x: number, y: number): string {
+  return `${x},${y}`;
+}
+
+function resolveFreeNpcTileInRoom(
+  floorMap: FloorMap,
+  room: RoomData,
+  preferredTile: TilePoint,
+  occupiedTiles: ReadonlySet<string>,
+): TilePoint | null {
+  const isFree = (tx: number, ty: number): boolean =>
+    floorMap.tileMap.isPassable(tx, ty) && !occupiedTiles.has(tileKey(tx, ty));
+
+  if (room.interiorCells && room.interiorCells.length > 0) {
+    const sortedTiles = [...room.interiorCells]
+      .filter((cell) => isFree(cell.x, cell.y))
+      .sort((a, b) => {
+        const aDist =
+          (a.x - preferredTile.x) * (a.x - preferredTile.x) +
+          (a.y - preferredTile.y) * (a.y - preferredTile.y);
+        const bDist =
+          (b.x - preferredTile.x) * (b.x - preferredTile.x) +
+          (b.y - preferredTile.y) * (b.y - preferredTile.y);
+        if (aDist !== bDist) {
+          return aDist - bDist;
+        }
+        if (a.y !== b.y) {
+          return a.y - b.y;
+        }
+        return a.x - b.x;
+      });
+    const bestInteriorTile = sortedTiles[0];
+    if (bestInteriorTile) {
+      return bestInteriorTile;
+    }
+    // Every interior cell is blocked or already claimed. Fall through to the
+    // bounds/radius scan below rather than returning null here: giving up early
+    // forces the caller onto its preferred-tile fallback, which could hand back
+    // an already-occupied tile and reintroduce NPC stacking in small/degenerate
+    // rooms. The bounds scan may still find a passable, unclaimed tile the
+    // interiorCells list didn't enumerate.
+  }
+
+  const { x: bx, y: by, width: bw, height: bh } = room.bounds;
+  const minX = bx + 1;
+  const minY = by + 1;
+  const maxX = bx + bw - 2;
+  const maxY = by + bh - 2;
+  if (
+    preferredTile.x >= minX &&
+    preferredTile.x <= maxX &&
+    preferredTile.y >= minY &&
+    preferredTile.y <= maxY &&
+    isFree(preferredTile.x, preferredTile.y)
+  ) {
+    return preferredTile;
+  }
+
+  const maxRadius = Math.max(bw, bh);
+  for (let r = 0; r <= maxRadius; r += 1) {
+    for (let dy = -r; dy <= r; dy += 1) {
+      for (let dx = -r; dx <= r; dx += 1) {
+        if (r > 0 && Math.abs(dx) !== r && Math.abs(dy) !== r) {
+          continue;
+        }
+        const tx = preferredTile.x + dx;
+        const ty = preferredTile.y + dy;
+        if (tx >= minX && tx <= maxX && ty >= minY && ty <= maxY && isFree(tx, ty)) {
+          return { x: tx, y: ty };
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+function resolveNpcSpawnPosition(
+  world: GameWorld,
+  preferredPos: { x: number; y: number },
+  occupiedTiles: Set<string>,
+): { x: number; y: number } {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return preferredPos;
+  }
+
+  const preferredTile = floorMap.worldToTile(preferredPos.x, preferredPos.y);
+  const roomId = floorMap.roomGraph.getRoomAt(preferredTile.x, preferredTile.y);
+  const room = roomId >= 0 ? floorMap.roomGraph.get(roomId) : undefined;
+  if (room) {
+    const freeTile = resolveFreeNpcTileInRoom(floorMap, room, preferredTile, occupiedTiles);
+    if (freeTile) {
+      occupiedTiles.add(tileKey(freeTile.x, freeTile.y));
+      return floorMap.tileToWorld(freeTile.x, freeTile.y);
+    }
+  }
+
+  if (
+    floorMap.tileMap.isPassable(preferredTile.x, preferredTile.y) &&
+    !occupiedTiles.has(tileKey(preferredTile.x, preferredTile.y))
+  ) {
+    occupiedTiles.add(tileKey(preferredTile.x, preferredTile.y));
+    return floorMap.tileToWorld(preferredTile.x, preferredTile.y);
+  }
+
+  return preferredPos;
 }
 
 /**
@@ -673,6 +794,7 @@ function spawnFloor1StaticSpawners(world: GameWorld): void {
         textureId: archetype.textureId,
         spriteWidth: archetype.spriteWidth,
         spriteHeight: archetype.spriteHeight,
+        arenaRadiusFt: archetype.arenaRadiusFt,
       });
     }
   }
@@ -834,6 +956,16 @@ function placeWelcomeSigns(world: GameWorld, welcomeOfficePos: { x: number; y: n
         height: WELCOME_SIGN_HEIGHT,
       }),
     );
+    addComponent(
+      world.ecs,
+      eid,
+      set(Size, {
+        radius: 0,
+        halfWidth: WELCOME_SIGN_WIDTH * 0.5,
+        halfHeight: WELCOME_SIGN_HEIGHT * 0.5,
+        shape: SHAPE_BOX,
+      }),
+    );
   };
 
   // Directional breadcrumb trail: one sign per room on the path (excluding the
@@ -867,6 +999,7 @@ function spawnNpcFromPlacement(
     shopRoomPos: { x: number; y: number };
     questItemPos: { x: number; y: number };
   },
+  occupiedTiles: Set<string>,
 ): number {
   // Resolve position from room role or explicit position
   let x: number;
@@ -911,8 +1044,8 @@ function spawnNpcFromPlacement(
     y = objectiveTiles.welcomeOfficePos.y;
   }
 
-  // Spawn the NPC entity
-  return spawnNpc(world, x, y, placement.npcTypeId);
+  const spawnPos = resolveNpcSpawnPosition(world, { x, y }, occupiedTiles);
+  return spawnNpc(world, spawnPos.x, spawnPos.y, placement.npcTypeId);
 }
 
 /**
@@ -929,8 +1062,8 @@ export function meetTutorialGoon(world: GameWorld): void {
   acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
   setTrackedQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
   setGoalFlag(world, 'floor1-drops-unlocked', true);
-  if (world.floor1) {
-    world.floor1.objective.questAccepted = true;
+  if (world.floorScenario) {
+    world.floorScenario.objective.questAccepted = true;
   }
 }
 
@@ -1003,9 +1136,9 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     shopRoomPos,
     questItemPos,
   } = chooseObjectiveTiles(world);
+  // The welcome room is the only safe room on Floor 1 — the bar/hub where all
+  // three quest NPCs live. The shop and spell-broker rooms are regular rooms.
   tagRoomAsSafe(world, welcomeOfficePos);
-  tagRoomAsSafe(world, shopRoomPos);
-  tagRoomAsSafe(world, spellQuestGiverPos);
 
   // Door-gate every special room. Corridors carved between room centres regularly
   // clip a room's bounding-box perimeter at non-door tiles, letting enemies tunnel
@@ -1028,7 +1161,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     placePropsForFloor(world, floorMap, floor1Manifest.props, world.rng);
   }
 
-  world.floor1 = {
+  world.floorScenario = {
     protagonistName: floor1Config.protagonist,
     starterWeaponPool: floor1Config.starterWeapons,
     starterChoices: pickStarterChoices(world),
@@ -1059,8 +1192,11 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       staircasePos,
       welcomeOfficePos,
       slimeRatRoomPos,
-      spellQuestGiverPos,
-      shopRoomPos,
+      // Seed these to the welcome bar; after NPC spawn we tighten them to the
+      // exact spawned NPC positions so shared-room hubs stay selectable and AI
+      // navigation targets the actual quest giver/merchant tile.
+      spellQuestGiverPos: welcomeOfficePos,
+      shopRoomPos: welcomeOfficePos,
       questItemPos,
       markerRadiusFt: floor1Config.objectives.markerRadiusFt,
       questAccepted: false,
@@ -1132,44 +1268,77 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   setGoalFlag(world, 'floor1-leave-floor-complete', false);
 
   // Spawn NPCs from placement definitions (if available in manifest)
+  const floor1State = world.floorScenario;
   const npcPlacements = floor1Manifest.npcPlacements;
+  const occupiedNpcTiles = new Set<string>();
+  const updateObjective = (patch: Partial<typeof floor1State.objective>): void => {
+    floor1State.objective = {
+      ...floor1State.objective,
+      ...patch,
+    };
+  };
   if (npcPlacements && npcPlacements.length > 0) {
     // Data-driven NPC spawning
     for (const placement of npcPlacements) {
-      const eid = spawnNpcFromPlacement(world, placement, {
-        welcomeOfficePos,
-        safeRoomPos,
-        staircasePos,
-        slimeRatRoomPos,
-        spellQuestGiverPos,
-        shopRoomPos,
-        questItemPos,
-      });
+      const eid = spawnNpcFromPlacement(
+        world,
+        placement,
+        {
+          welcomeOfficePos,
+          safeRoomPos,
+          staircasePos,
+          slimeRatRoomPos,
+          spellQuestGiverPos,
+          shopRoomPos,
+          questItemPos,
+        },
+        occupiedNpcTiles,
+      );
 
       // Store EIDs based on NPC type for backward compatibility
+      const npcX = world.stores.position.x[eid];
+      const npcY = world.stores.position.y[eid];
       if (placement.npcTypeId === 'tutorial-goon') {
-        world.floor1.guideNpcEid = eid;
+        world.floorScenario.guideNpcEid = eid;
       } else if (placement.npcTypeId === 'spell-quest-giver') {
-        world.floor1.spellQuestGiverNpcEid = eid;
+        world.floorScenario.spellQuestGiverNpcEid = eid;
+        if (npcX !== undefined && npcY !== undefined) {
+          updateObjective({ spellQuestGiverPos: { x: npcX, y: npcY } });
+        }
       } else if (placement.npcTypeId === 'shopkeeper') {
-        world.floor1.shopkeeperNpcEid = eid;
+        world.floorScenario.shopkeeperNpcEid = eid;
+        if (npcX !== undefined && npcY !== undefined) {
+          updateObjective({ shopRoomPos: { x: npcX, y: npcY } });
+        }
       }
     }
   } else {
     // Fallback to hardcoded NPC spawning (backward compatibility)
-    world.floor1.guideNpcEid = spawnNpc(
+    const guidePos = resolveNpcSpawnPosition(
       world,
-      world.floor1.objective.welcomeOfficePos.x,
-      world.floor1.objective.welcomeOfficePos.y,
-      'tutorial-goon',
+      world.floorScenario.objective.welcomeOfficePos,
+      occupiedNpcTiles,
     );
-    world.floor1.spellQuestGiverNpcEid = spawnNpc(
+    world.floorScenario.guideNpcEid = spawnNpc(world, guidePos.x, guidePos.y, 'tutorial-goon');
+    const spellPos = resolveNpcSpawnPosition(
       world,
-      world.floor1.objective.spellQuestGiverPos.x,
-      world.floor1.objective.spellQuestGiverPos.y,
+      world.floorScenario.objective.welcomeOfficePos,
+      occupiedNpcTiles,
+    );
+    world.floorScenario.spellQuestGiverNpcEid = spawnNpc(
+      world,
+      spellPos.x,
+      spellPos.y,
       'spell-quest-giver',
     );
-    world.floor1.shopkeeperNpcEid = spawnNpc(world, shopRoomPos.x, shopRoomPos.y, 'shopkeeper');
+    updateObjective({ spellQuestGiverPos: spellPos });
+    const shopPos = resolveNpcSpawnPosition(
+      world,
+      world.floorScenario.objective.welcomeOfficePos,
+      occupiedNpcTiles,
+    );
+    world.floorScenario.shopkeeperNpcEid = spawnNpc(world, shopPos.x, shopPos.y, 'shopkeeper');
+    updateObjective({ shopRoomPos: shopPos });
   }
 
   // Plant the welcome wayfinding signs now that NPCs exist, so a sign never
@@ -1177,7 +1346,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   placeWelcomeSigns(world, welcomeOfficePos);
 
   // Spawn the merchant's fetch quest item
-  world.floor1.questItemEid = spawnDroppedItem(
+  world.floorScenario.questItemEid = spawnDroppedItem(
     world,
     questItemPos.x,
     questItemPos.y,
@@ -1221,7 +1390,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
           ],
         },
       });
-      world.floor1.bossRoomDoorEids.get('staircase')!.push(doorEid);
+      world.floorScenario.bossRoomDoorEids.get('staircase')!.push(doorEid);
     }
   }
   const slimeRatRoom = roomAtPosition(world, slimeRatRoomPos);
@@ -1248,23 +1417,27 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
           conditions: [{ type: 'goal', goalId: 'floor1-boss-battle-active' }],
         },
       });
-      world.floor1.bossRoomDoorEids.get('slime-rat')!.push(doorEid);
+      world.floorScenario.bossRoomDoorEids.get('slime-rat')!.push(doorEid);
     }
   }
 
   world.state = 'loadout';
+  world.floorId = 'floor1';
   world.floorObjectiveTick = floor1ObjectiveTick;
+
+  // Ensure Floor 2 extended state is cleared so Floor 1 and Floor 2 are mutually exclusive
+  world.floorExtendedState = null;
 
   // Spawn harvestable resource nodes after the map and all rooms are fully set up.
   spawnFloor1HarvestableNodes(world);
 }
 
 export function selectFloor1StarterWeapon(world: GameWorld, optionIndex: number): void {
-  if (!world.floor1 || world.state !== 'loadout') {
+  if (!world.floorScenario || world.state !== 'loadout') {
     return;
   }
 
-  const weaponId = world.floor1.starterChoices[optionIndex];
+  const weaponId = world.floorScenario.starterChoices[optionIndex];
   if (weaponId === undefined) {
     return;
   }
@@ -1274,8 +1447,8 @@ export function selectFloor1StarterWeapon(world: GameWorld, optionIndex: number)
     return;
   }
 
-  world.floor1.selectedWeaponId = weaponId;
-  world.floor1.selectedChoiceIndex = optionIndex;
+  world.floorScenario.selectedWeaponId = weaponId;
+  world.floorScenario.selectedChoiceIndex = optionIndex;
 
   // Route the starter through the shared equip helper so the weapon lands in
   // the hand slot(s) — one-handed → mainHand, two-handed → mainHand + offHand —
@@ -1495,7 +1668,7 @@ function isFullyInsideObjectiveRoom(
 }
 
 function spawnFloor1StairBoss(world: GameWorld): number {
-  const objective = world.floor1?.objective;
+  const objective = world.floorScenario?.objective;
   if (!objective) {
     throw new Error('Cannot spawn stair boss without floor1 objective state.');
   }
@@ -1522,6 +1695,16 @@ function spawnFloor1StairBoss(world: GameWorld): number {
     width: floor1Config.bossVariants!.ratSlime.spriteWidth,
     height: floor1Config.bossVariants!.ratSlime.spriteHeight,
   });
+  setComponent(world.ecs, eid, Size, {
+    radius:
+      Math.max(
+        floor1Config.bossVariants!.ratSlime.spriteWidth,
+        floor1Config.bossVariants!.ratSlime.spriteHeight,
+      ) * 0.5,
+    halfWidth: 0,
+    halfHeight: 0,
+    shape: SHAPE_CIRCLE,
+  });
   setEnemyAppearanceKey(world, eid, 'rat-slime');
 
   // ratSlime stair boss is primarily a slime creature.
@@ -1541,7 +1724,7 @@ function spawnFloor1StairBoss(world: GameWorld): number {
 }
 
 function spawnFloor1SlimeRatBoss(world: GameWorld): number {
-  const objective = world.floor1?.objective;
+  const objective = world.floorScenario?.objective;
   if (!objective) {
     throw new Error('Cannot spawn Slime Rat without floor1 objective state.');
   }
@@ -1567,6 +1750,16 @@ function spawnFloor1SlimeRatBoss(world: GameWorld): number {
     width: floor1Config.bossVariants!.ratSlime.spriteWidth - 0.5,
     height: floor1Config.bossVariants!.ratSlime.spriteHeight - 0.5,
   });
+  setComponent(world.ecs, eid, Size, {
+    radius:
+      Math.max(
+        floor1Config.bossVariants!.ratSlime.spriteWidth - 0.5,
+        floor1Config.bossVariants!.ratSlime.spriteHeight - 0.5,
+      ) * 0.5,
+    halfWidth: 0,
+    halfHeight: 0,
+    shape: SHAPE_CIRCLE,
+  });
   // slimeRat quest boss is primarily a slime creature.
   setBloodColor(world, eid, BLOOD_COLOR_SLIME);
   setComponent(world.ecs, eid, Damage, { amount: 8 });
@@ -1577,8 +1770,8 @@ function spawnFloor1SlimeRatBoss(world: GameWorld): number {
 }
 
 function beginFloor1SlimeRatBattle(world: GameWorld): void {
-  const floor1 = world.floor1;
-  const objective = floor1?.objective;
+  const floorScenario = world.floorScenario;
+  const objective = floorScenario?.objective;
   const slimeRatBattle = objective?.bossBattles.get('slime-rat');
   if (
     !objective ||
@@ -1596,8 +1789,8 @@ function beginFloor1SlimeRatBattle(world: GameWorld): void {
       world.floorMap?.tileMap.closeDoor(door.x, door.y);
     }
   }
-  if (floor1) {
-    for (const doorEid of floor1.bossRoomDoorEids.get('slime-rat') ?? []) {
+  if (floorScenario) {
+    for (const doorEid of floorScenario.bossRoomDoorEids.get('slime-rat') ?? []) {
       world.stores.doorState.isLocked[doorEid] = 1;
       world.stores.doorState.isOpen[doorEid] = 0;
       setDoorLockConfig(world, doorEid, {
@@ -1616,10 +1809,10 @@ function beginFloor1SlimeRatBattle(world: GameWorld): void {
 }
 
 function beginFloor1BossBattle(world: GameWorld): void {
-  const floor1 = world.floor1;
-  const objective = floor1?.objective;
+  const floorScenario = world.floorScenario;
+  const objective = floorScenario?.objective;
   const staircaseBattle = objective?.bossBattles.get('staircase');
-  if (!floor1 || !objective || !staircaseBattle || staircaseBattle.started) {
+  if (!floorScenario || !objective || !staircaseBattle || staircaseBattle.started) {
     return;
   }
 
@@ -1637,7 +1830,7 @@ function beginFloor1BossBattle(world: GameWorld): void {
     }
   }
   // Replace lock config: doors stay locked while boss is active, open once boss defeated.
-  for (const doorEid of floor1.bossRoomDoorEids.get('staircase') ?? []) {
+  for (const doorEid of floorScenario.bossRoomDoorEids.get('staircase') ?? []) {
     world.stores.doorState.isLocked[doorEid] = 1;
     world.stores.doorState.isOpen[doorEid] = 0;
     setDoorLockConfig(world, doorEid, {
@@ -1654,7 +1847,7 @@ function beginFloor1BossBattle(world: GameWorld): void {
 }
 
 export function floor1PlayerStatSystem(world: GameWorld): void {
-  if (!world.floor1) {
+  if (!world.floorScenario) {
     return;
   }
   const players = query(world.ecs, [Player, Position, Health]);
@@ -1666,13 +1859,13 @@ export function floor1PlayerStatSystem(world: GameWorld): void {
   if (!playerBonusApplied.has(world)) {
     const maxHp = Math.max(
       world.stores.health.max[player] ?? 100,
-      100 + world.floor1.baseStatBonuses.maxHp,
+      100 + world.floorScenario.baseStatBonuses.maxHp,
     );
     setComponent(world.ecs, player, Health, { current: maxHp, max: maxHp });
     playerBonusApplied.add(world);
   }
 
-  const speedScale = (PLAYER_SPEED + world.floor1.baseStatBonuses.moveSpeed) / PLAYER_SPEED;
+  const speedScale = (PLAYER_SPEED + world.floorScenario.baseStatBonuses.moveSpeed) / PLAYER_SPEED;
   world.stores.velocity.x[player] = (world.stores.velocity.x[player] ?? 0) * speedScale;
   world.stores.velocity.y[player] = (world.stores.velocity.y[player] ?? 0) * speedScale;
 }
@@ -1689,7 +1882,7 @@ function distSq(ax: number, ay: number, bx: number, by: number): number {
  * director keeps topped up. Corpses in their death-linger window (health 0) are
  * excluded so a pile of fresh kills doesn't suppress replenishment.
  */
-function countEngagingEnemies(
+export function countEngagingEnemies(
   world: GameWorld,
   playerX: number,
   playerY: number,
@@ -1711,7 +1904,7 @@ function countEngagingEnemies(
   return count;
 }
 
-function countDirectorEnemies(world: GameWorld): number {
+export function countDirectorEnemies(world: GameWorld): number {
   let count = 0;
   for (const eid of query(world.ecs, [Enemy])) {
     if (hasComponent(world.ecs, eid, Spawner)) {
@@ -1729,17 +1922,18 @@ function countDirectorEnemies(world: GameWorld): number {
  * player is in) and only ever touches tracked ambient archetypes — bosses and
  * quest enemies are untouched. Returns the number actually evicted.
  */
-function evictFurthestAmbient(
+export function evictFurthestAmbient(
   world: GameWorld,
   playerX: number,
   playerY: number,
   minDistSq: number,
   count: number,
 ): number {
-  if (!world.floor1 || count <= 0) {
+  const trackedAmbient = getAmbientEnemyArchetypes(world);
+  if (!trackedAmbient || count <= 0) {
     return 0;
   }
-  const candidates = [...world.floor1.enemyArchetypes.keys()]
+  const candidates = [...trackedAmbient.keys()]
     .filter((eid) => entityExists(world.ecs, eid))
     .map((eid) => ({
       eid,
@@ -1757,9 +1951,43 @@ function evictFurthestAmbient(
     const victim = candidates[i]!.eid;
     clearEntityStores(world, victim);
     removeEntity(world.ecs, victim);
-    world.floor1.enemyArchetypes.delete(victim);
+    trackedAmbient.delete(victim);
   }
   return evictCount;
+}
+
+/**
+ * Apply distance-from-spawn level scaling to an ambient archetype's base stats.
+ *
+ * Extracted and exported so the spawn wiring — that a mob spawned far from the
+ * floor spawn tile actually receives boosted HP/speed — has assertion-level
+ * coverage ({@link computeMobLevelScale} itself is unit-tested in
+ * `tests/unit/mob-scaling.test.ts`). Pure given the spawn-tile world position.
+ *
+ * @param baseHp - Archetype base HP before scaling.
+ * @param baseSpeed - Archetype base speed before scaling.
+ * @param spawnX - Mob spawn X in world feet.
+ * @param spawnY - Mob spawn Y in world feet.
+ * @param spawnTileWorldX - Player spawn tile X in world feet.
+ * @param spawnTileWorldY - Player spawn tile Y in world feet.
+ * @returns Integer HP (clamped to ≥ 1) and scaled speed for the spawn.
+ */
+export function scaleAmbientSpawnStats(
+  baseHp: number,
+  baseSpeed: number,
+  spawnX: number,
+  spawnY: number,
+  spawnTileWorldX: number,
+  spawnTileWorldY: number,
+): { hp: number; speed: number } {
+  const dx = spawnX - spawnTileWorldX;
+  const dy = spawnY - spawnTileWorldY;
+  const distFt = Math.sqrt(dx * dx + dy * dy);
+  const scale = computeMobLevelScale(distFt);
+  return {
+    hp: Math.max(1, Math.round(baseHp * scale.hpMult)),
+    speed: baseSpeed * scale.speedMult,
+  };
 }
 
 /**
@@ -1769,13 +1997,35 @@ function evictFurthestAmbient(
 function spawnAmbientArchetype(world: GameWorld, x: number, y: number): number {
   const pack = floor1EnemyPack;
   const archetype = pickEnemyArchetype(pack.archetypes, () => world.rng.next());
+
+  // Scale HP and speed based on distance from the player's starting tile so
+  // enemies deeper in the dungeon feel progressively more dangerous.
+  let hp = archetype.hp;
+  let speed = archetype.speed;
+  if (world.floorMap) {
+    const spawnWorld = world.floorMap.tileToWorld(
+      world.floorMap.playerSpawn.x,
+      world.floorMap.playerSpawn.y,
+    );
+    const scaled = scaleAmbientSpawnStats(
+      archetype.hp,
+      archetype.speed,
+      x,
+      y,
+      spawnWorld.x,
+      spawnWorld.y,
+    );
+    hp = scaled.hp;
+    speed = scaled.speed;
+  }
+
   const eid = spawnBehaviorEnemy(
     world,
     x,
     y,
-    archetype.hp,
+    hp,
     archetype.id === 'slime' ? AI_TYPE.LEAPER : AI_TYPE.CHASE,
-    archetype.speed,
+    speed,
     archetype.detectRange,
     0,
   );
@@ -1784,10 +2034,16 @@ function spawnAmbientArchetype(world: GameWorld, x: number, y: number): number {
     width: archetype.spriteWidth,
     height: archetype.spriteHeight,
   });
+  setComponent(world.ecs, eid, Size, {
+    radius: Math.max(archetype.spriteWidth, archetype.spriteHeight) * 0.5,
+    halfWidth: 0,
+    halfHeight: 0,
+    shape: SHAPE_CIRCLE,
+  });
   setEnemyAppearanceKey(world, eid, archetype.id);
   // Slimes bleed green, rats bleed red.
   setBloodColor(world, eid, archetype.id === 'slime' ? BLOOD_COLOR_SLIME : BLOOD_COLOR_RAT);
-  world.floor1!.enemyArchetypes.set(eid, archetype.id);
+  world.floorScenario!.enemyArchetypes.set(eid, archetype.id);
   return eid;
 }
 
@@ -1896,12 +2152,12 @@ function isInvalidAmbientSpawn(
  * absolute validity ceiling stays at the ambient max distance, with a
  * whole-map passable-tile fallback. Returns null when no valid tile is found.
  */
-function resolveAmbientSpawnPoint(
+export function resolveAmbientSpawnPoint(
   world: GameWorld,
   playerX: number,
   playerY: number,
 ): { x: number; y: number } | null {
-  const pack = floor1EnemyPack;
+  const pack = world.floor === 2 ? floor2EnemyPack : floor1EnemyPack;
   const minDistanceSq =
     FLOOR_1_AMBIENT_MIN_PLAYER_DISTANCE_FT * FLOOR_1_AMBIENT_MIN_PLAYER_DISTANCE_FT;
   const maxDistanceSq =
@@ -1995,9 +2251,9 @@ function resolveRoomInteriorSpawn(
  * first visit regardless of the roll outcome, so leaving and re-entering never
  * re-rolls. SPAWN, SAFE, and BOSS_STAIR rooms are never seeded.
  */
-function prepopulateEnteredRoom(world: GameWorld, playerX: number, playerY: number): void {
+export function prepopulateEnteredRoom(world: GameWorld, playerX: number, playerY: number): void {
   const floorMap = world.floorMap;
-  if (!floorMap || !world.floor1) {
+  if (!floorMap || !world.floorScenario) {
     return;
   }
   const tile = floorMap.worldToTile(playerX, playerY);
@@ -2045,7 +2301,7 @@ function prepopulateEnteredRoom(world: GameWorld, playerX: number, playerY: numb
  * room for closer spawns.
  */
 export function floor1EnemyDirectorSystem(world: GameWorld): void {
-  if (!world.floor1 || world.state !== 'playing') {
+  if (!world.floorScenario || world.state !== 'playing') {
     return;
   }
 
@@ -2130,7 +2386,7 @@ function countJunkInInventory(world: GameWorld): number {
 }
 
 function finalizeRunSummary(world: GameWorld, outcome: 'failed_timeout' | 'cleared_floor'): void {
-  if (!world.floor1 || world.floor1.runSummary) {
+  if (!world.floorScenario || world.floorScenario.runSummary) {
     return;
   }
   const players = query(world.ecs, [Player]);
@@ -2139,7 +2395,7 @@ function finalizeRunSummary(world: GameWorld, outcome: 'failed_timeout' | 'clear
     player === undefined
       ? 0
       : Math.max(0, Math.floor(world.stores.broadcastScore.current[player] ?? 0));
-  world.floor1.runSummary = {
+  world.floorScenario.runSummary = {
     outcome,
     viewsEarned: broadcastScore * 10 + world.playerGold,
     fansEarned: Math.floor(broadcastScore / 4),
@@ -2147,7 +2403,7 @@ function finalizeRunSummary(world: GameWorld, outcome: 'failed_timeout' | 'clear
 }
 
 function floor1ObjectiveTick(world: GameWorld): void {
-  if (!world.floor1 || world.state !== 'playing') {
+  if (!world.floorScenario || world.state !== 'playing') {
     return;
   }
 
@@ -2157,20 +2413,20 @@ function floor1ObjectiveTick(world: GameWorld): void {
     return;
   }
 
-  for (const [eid, archetype] of [...world.floor1.enemyArchetypes.entries()]) {
+  for (const [eid, archetype] of [...world.floorScenario.enemyArchetypes.entries()]) {
     if (entityExists(world.ecs, eid)) {
       continue;
     }
     if (archetype === 'rat') {
-      world.floor1.objective.ratsKilled += 1;
+      world.floorScenario.objective.ratsKilled += 1;
     } else {
-      world.floor1.objective.slimesKilled += 1;
+      world.floorScenario.objective.slimesKilled += 1;
     }
-    world.floor1.enemyArchetypes.delete(eid);
+    world.floorScenario.enemyArchetypes.delete(eid);
   }
 
-  world.floor1.objective.goldCollected = world.playerGold;
-  world.floor1.objective.junkCollected = countJunkInInventory(world);
+  world.floorScenario.objective.goldCollected = world.playerGold;
+  world.floorScenario.objective.junkCollected = countJunkInInventory(world);
 
   const reachedLevel2 = world.playerLevel.level >= 2;
   setGoalFlag(world, 'floor1-reach-level-2', reachedLevel2);
@@ -2186,24 +2442,24 @@ function floor1ObjectiveTick(world: GameWorld): void {
     world,
     FLOOR1_BOSS_UNLOCK_QUEST_ID,
     'kill-rats',
-    world.floor1.objective.ratsKilled,
+    world.floorScenario.objective.ratsKilled,
   );
   setQuestCounter(
     world,
     FLOOR1_BOSS_UNLOCK_QUEST_ID,
     'kill-slimes',
-    world.floor1.objective.slimesKilled,
+    world.floorScenario.objective.slimesKilled,
   );
 
   const playerX = world.stores.position.x[player] ?? 0;
   const playerY = world.stores.position.y[player] ?? 0;
-  const safeDx = playerX - world.floor1.objective.safeRoomPos.x;
-  const safeDy = playerY - world.floor1.objective.safeRoomPos.y;
-  if (Math.hypot(safeDx, safeDy) <= world.floor1.objective.markerRadiusFt) {
-    world.floor1.objective.safeRoomDiscovered = true;
+  const safeDx = playerX - world.floorScenario.objective.safeRoomPos.x;
+  const safeDy = playerY - world.floorScenario.objective.safeRoomPos.y;
+  if (Math.hypot(safeDx, safeDy) <= world.floorScenario.objective.markerRadiusFt) {
+    world.floorScenario.objective.safeRoomDiscovered = true;
   }
 
-  const objective = world.floor1.objective;
+  const objective = world.floorScenario.objective;
   const totalKills = objective.ratsKilled + objective.slimesKilled;
   const bossUnlockQuestAccepted = world.questLog.has(FLOOR1_BOSS_UNLOCK_QUEST_ID);
   const meetsCombat =
@@ -2271,7 +2527,7 @@ function floor1ObjectiveTick(world: GameWorld): void {
         world.floorMap?.tileMap.openDoor(door.x, door.y);
       }
     }
-    for (const doorEid of world.floor1.bossRoomDoorEids.get('slime-rat') ?? []) {
+    for (const doorEid of world.floorScenario.bossRoomDoorEids.get('slime-rat') ?? []) {
       world.stores.doorState.isLocked[doorEid] = 0;
       world.stores.doorState.isOpen[doorEid] = 1;
     }
@@ -2309,7 +2565,7 @@ function floor1ObjectiveTick(world: GameWorld): void {
         floorMap.tileMap.openDoor(door.x, door.y);
       }
     }
-    for (const doorEid of world.floor1.bossRoomDoorEids.get('staircase') ?? []) {
+    for (const doorEid of world.floorScenario.bossRoomDoorEids.get('staircase') ?? []) {
       world.stores.doorState.isLocked[doorEid] = 0;
       world.stores.doorState.isOpen[doorEid] = 1;
     }
@@ -2324,7 +2580,7 @@ function floor1ObjectiveTick(world: GameWorld): void {
   }
 
   if (world.elapsedMs >= objective.deadlineMs && !objective.staircaseDiscovered) {
-    world.floor1.failReason = 'stair_timeout';
+    world.floorScenario.failReason = 'stair_timeout';
     world.state = 'game_over';
     finalizeRunSummary(world, 'failed_timeout');
     return;
@@ -2344,7 +2600,7 @@ export function floorObjectiveSystem(world: GameWorld): void {
 }
 
 export function startFloor1BossEncounter(world: GameWorld, playerEid: number): boolean {
-  const objective = world.floor1?.objective;
+  const objective = world.floorScenario?.objective;
   const floorMap = world.floorMap;
   const bossRoom = floorMap?.bossStairRoom;
   if (!objective || !floorMap || !bossRoom || !entityExists(world.ecs, playerEid)) {
@@ -2395,10 +2651,10 @@ export function startFloor1BossEncounter(world: GameWorld, playerEid: number): b
 }
 
 export function confirmFloor1StairDescend(world: GameWorld, playerEid: number): boolean {
-  if (!world.floor1 || world.state !== 'playing') {
+  if (!world.floorScenario || world.state !== 'playing') {
     return false;
   }
-  const objective = world.floor1.objective;
+  const objective = world.floorScenario.objective;
   if (
     !objective.staircaseSpawned ||
     !objective.staircaseUnlocked ||
@@ -2485,7 +2741,7 @@ export function getShopkeeperPostQuestStock(world: GameWorld): ShopkeeperStockIt
     seen.add(weaponId);
     starterPool.push(weaponId);
   }
-  const selectedAtStart = new Set(world.floor1?.starterChoices ?? []);
+  const selectedAtStart = new Set(world.floorScenario?.starterChoices ?? []);
   const remainingWeaponIds = starterPool.filter((weaponId) => !selectedAtStart.has(weaponId));
   const stockRng = new SeededRandom(
     hashStringToSeed(`${world.seed}:floor1-shopkeeper-post-quest-stock`),
@@ -2591,7 +2847,8 @@ export function getNpcQuestIndicatorState(world: GameWorld, npcId: string): NpcQ
       if (quest.status !== 'active') {
         return 'none';
       }
-      const bossDefeated = world.floor1?.objective.bossBattles.get('slime-rat')?.defeated === true;
+      const bossDefeated =
+        world.floorScenario?.objective.bossBattles.get('slime-rat')?.defeated === true;
       if (bossDefeated && world.goalFlags.get('floor1-boss-spellbook-claimed') !== true) {
         return 'actionable';
       }
@@ -2633,7 +2890,7 @@ export function meetSpellQuestGiver(world: GameWorld): void {
     // Unlock the Slime Rat boss room so the player can enter.
     setGoalFlag(world, 'floor1-slime-rat-quest-accepted', true);
   }
-  if (world.floor1?.objective.bossBattles.get('slime-rat')?.defeated === true) {
+  if (world.floorScenario?.objective.bossBattles.get('slime-rat')?.defeated === true) {
     setGoalFlag(world, 'floor1-boss-spellbook-claimed', true);
   }
   notifyQuestTalk(world, 'spell-quest-giver');

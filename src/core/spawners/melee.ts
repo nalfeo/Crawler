@@ -1,6 +1,17 @@
 import { addComponent, set } from 'bitecs';
-import { AreaDamage, Lifetime, MeleeSwing, Owner, Position, Sprite, Team } from '../components.js';
+import {
+  AreaDamage,
+  Lifetime,
+  MeleeSwing,
+  Owner,
+  Position,
+  Size,
+  Sprite,
+  Team,
+} from '../components.js';
+import { SHAPE_CIRCLE } from '../physics-defs.js';
 import type { GameWorld } from '../world.js';
+import { tagAttackEntity } from '../weapon-telemetry.js';
 import { clearAreaDamageHits } from '../systems/areaDamageSystem.js';
 import { clearMeleeSwingHits } from '../systems/meleeSwingSystem.js';
 import { createEntity } from './entity-core.js';
@@ -44,6 +55,17 @@ export function spawnAreaAttack(
     eid,
     set(Sprite, { textureId: 0, width: radius * 2, height: radius * 2 }),
   );
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      radius,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    }),
+  );
+  tagAttackEntity(world, eid);
   return eid;
 }
 
@@ -97,5 +119,16 @@ export function spawnMeleeSwing(
     eid,
     set(Sprite, { textureId: 0, width: bladeLength * 2, height: bladeLength * 2 }),
   );
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      radius: bladeLength,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    }),
+  );
+  tagAttackEntity(world, eid);
   return eid;
 }

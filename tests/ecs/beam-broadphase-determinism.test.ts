@@ -375,6 +375,11 @@ describe('beamSystem broad-phase — knockback stale-grid witness', () => {
       // Enemy starts at (10,13): 13ft above the midpoint, OUTSIDE the ~11ft bare
       // radius, so a non-inflated grid query would never return it.
       const enemy = spawnEnemy(world, ORIGIN_X + 10, ORIGIN_Y + 13, 100);
+      // Pin weight to the 120 lb knockback baseline so the sizeScale
+      // jitter in `initializeEnemyAppearance` doesn't perturb this
+      // bit-parity assertion (Slice 2 / ADR 0044: knockbackSystem now
+      // scales displacement by 120/weight).
+      world.stores.weight.value[enemy] = 120;
       // Knock it straight down 13ft → lands at (10,0) ON the beam this frame.
       addComponent(
         world.ecs,

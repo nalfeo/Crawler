@@ -40,18 +40,26 @@ describe('Floor 2 Slice 5 — victory pipeline', () => {
     const roster = selectFloor2Roster(new SeededRandom(seed), families, resources, {
       presentCountFourProbability: 0,
     });
-    world.floor2State = {
-      presentFamilies: [...roster.presentFamilies],
-      contestedResource: roster.contestedResource,
-      betrayerFlag: false,
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [...roster.presentFamilies],
+        contestedResource: roster.contestedResource,
+        betrayerFlag: false,
+      },
     };
-    const objectives = initializeFloor2Bosses(world, floorMap, world.floor2State);
+    const objectives = initializeFloor2Bosses(
+      world,
+      floorMap,
+      world.floorExtendedState!.familyState!,
+    );
     expect(objectives.length).toBeGreaterThan(0);
 
     const bossField = world.stores.familyMembership.isBoss;
     const familyIdxField = world.stores.familyMembership.familyId;
     for (const objective of objectives) {
-      const presentIndex = world.floor2State.presentFamilies.indexOf(objective.familyId);
+      const presentIndex = world.floorExtendedState!.familyState!.presentFamilies.indexOf(
+        objective.familyId,
+      );
       let bossEid = -1;
       for (let eid = 0; eid < bossField.length; eid++) {
         if (bossField[eid] === 1 && familyIdxField[eid] === presentIndex) {
@@ -75,7 +83,7 @@ describe('Floor 2 Slice 5 — victory pipeline', () => {
 
     expect(world.goalFlags.get(FLOOR2_VICTORY_GOAL_ID)).toBe(true);
     expect(world.goalFlags.get(FLOOR2_STAIRS_POPPED_GOAL_ID)).toBe(true);
-    const floor2 = world.floor2State as {
+    const floor2 = world.floorExtendedState?.familyState as {
       staircaseSpawned?: boolean;
       staircasePos?: { x: number; y: number };
     };

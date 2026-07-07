@@ -5,9 +5,12 @@
 
 export interface CombatEvent {
   /**
-   * `corpseExplode` is a render-only flourish: a dead enemy struck during its
-   * death-linger window bursts into sprite shards instead of absorbing the hit.
-   * The core damage path emits it and immediately expires the corpse.
+   * `corpseExplode` is emitted when a dead enemy is struck (by a weapon or a
+   * player footstep) during its death-linger window: instead of soaking the
+   * hit it bursts into sprite shards. The event drives the shatter VFX, but the
+   * burst is also a real gameplay state change — the core damage path expires
+   * the corpse's DeathTimer so it is reaped early, removing the body from the
+   * world ahead of schedule (relevant to any system that consumes corpses).
    */
   type: 'hit' | 'blocked' | 'death' | 'miss' | 'dodge' | 'corpseExplode';
   /** Position where the VFX should appear (target position). */
@@ -21,6 +24,14 @@ export interface CombatEvent {
   timestamp: number;
   /** Target entity ID (may be invalid next frame — validate before use). */
   targetEid?: number;
+  /**
+   * Optional Floor 2 family index snapshot captured at death-event emission.
+   * Makes objective processing robust even if membership components are removed
+   * before the objective tick consumes the event.
+   */
+  familyIndex?: number;
+  /** Optional Floor 2 boss marker snapshot captured at death-event emission. */
+  isBoss?: 0 | 1;
   /** Excess damage beyond 0 HP (death events only). */
   overkill?: number;
   /** Direction of the killing blow — for directional gore (death events only). */

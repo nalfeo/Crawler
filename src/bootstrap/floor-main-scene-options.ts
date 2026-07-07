@@ -16,6 +16,7 @@ import {
   getScenarioDefinition,
   meetTutorialGoon,
   questSystem,
+  spawnerArenaSystem,
   spawnerSystem,
   weaponSystem,
 } from '../game/index.js';
@@ -34,7 +35,7 @@ import {
   selectSpellFromBossBattle,
   SHOPKEEPER_EQUIPMENT_COST,
 } from '../game/floorScenario.js';
-import { floor2VictorySystem } from '../game/floor2Scenario.js';
+import { floor2VictorySystem, confirmFloor2StairDescend } from '../game/floor2Scenario.js';
 import {
   statSystem,
   manaSystem,
@@ -62,7 +63,7 @@ export function createFloorMainSceneOptions(floorId: string = 'floor1') {
     configureWorld: scenario.configureWorld,
     selectLoadoutOption: scenario.selectLoadoutOption,
     director: scenario.director,
-    onStairDescend: floor1Callbacks ? confirmFloor1StairDescend : undefined,
+    onStairDescend: floor1Callbacks ? confirmFloor1StairDescend : confirmFloor2StairDescend,
     selectSpellFromBossBattle: (world: GameWorld, playerEid: number, spellId: string) => {
       selectSpellFromBossBattle(world, playerEid, spellId as Floor1BossRewardSpellId);
     },
@@ -127,6 +128,13 @@ export function createFloorMainSceneOptions(floorId: string = 'floor1') {
       // runs before all preSystems) so player + enemy speed folds see the same
       // pre-expiry effect set — expiry/HoT then apply before movement/damage/health.
       statusEffectSystem,
+      // spawnerArenaSystem runs IMMEDIATELY BEFORE spawnerSystem so the
+      // spawner ↔ director adjacency (locked by the preSystems contract test
+      // in `tests/game/floor1-main-scene-options.test.ts`) stays intact.
+      // Runs before spawnerSystem so any fence-tile mutation this frame is
+      // visible when spawnerSystem chooses child spawn positions in the same
+      // tick.
+      spawnerArenaSystem,
       // spawnerSystem MUST run before floor1EnemyDirectorSystem in the same frame:
       // the director's countDirectorEnemies/countEngagingEnemies count Spawner-owned
       // children (Enemy without Spawner), so spawning first lets the director cap

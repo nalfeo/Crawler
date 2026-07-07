@@ -37,10 +37,9 @@ describe('Weight component', () => {
       const eid = spawnEnemy(world, 0, 0, 50);
 
       expect(hasComponent(world.ecs, eid, Weight)).toBe(true);
-      expect(world.stores.weight.value[eid]).toBeCloseTo(
-        120 * world.stores.sprite.sizeScale[eid]!,
-        4,
-      );
+      // Slice 2 (ADR 0044): weight is a first-class gameplay dial, no longer
+      // jittered by sizeScale. Default 120 lb is passed through as-is.
+      expect(world.stores.weight.value[eid]).toBe(120);
     });
 
     it('accepts a custom weight', () => {
@@ -48,10 +47,8 @@ describe('Weight component', () => {
       const eid = spawnEnemy(world, 0, 0, 50, 300);
 
       expect(hasComponent(world.ecs, eid, Weight)).toBe(true);
-      expect(world.stores.weight.value[eid]).toBeCloseTo(
-        300 * world.stores.sprite.sizeScale[eid]!,
-        4,
-      );
+      // Slice 2: custom weight passes through unmodified.
+      expect(world.stores.weight.value[eid]).toBe(300);
     });
   });
 
@@ -61,10 +58,8 @@ describe('Weight component', () => {
       const eid = spawnBehaviorEnemy(world, 0, 0, 50, 0, 2, 100, 50);
 
       expect(hasComponent(world.ecs, eid, Weight)).toBe(true);
-      expect(world.stores.weight.value[eid]).toBeCloseTo(
-        120 * world.stores.sprite.sizeScale[eid]!,
-        4,
-      );
+      // Slice 2: default 120 lb is passed through unmodified.
+      expect(world.stores.weight.value[eid]).toBe(120);
     });
 
     it('accepts weight via options', () => {
@@ -72,10 +67,8 @@ describe('Weight component', () => {
       const eid = spawnBehaviorEnemy(world, 0, 0, 50, 0, 2, 100, 50, { weight: 400 });
 
       expect(hasComponent(world.ecs, eid, Weight)).toBe(true);
-      expect(world.stores.weight.value[eid]).toBeCloseTo(
-        400 * world.stores.sprite.sizeScale[eid]!,
-        4,
-      );
+      // Slice 2: custom weight passes through unmodified.
+      expect(world.stores.weight.value[eid]).toBe(400);
     });
   });
 

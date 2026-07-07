@@ -196,6 +196,21 @@ describe('foundry backend (ADR 0033)', () => {
   });
 });
 
+describe('local-a1111 backend', () => {
+  it('createImageProvider builds when SPRITES_PROVIDER=local-a1111 and LOCAL_A1111_MODEL is set', () => {
+    const p = createImageProvider({
+      env: { SPRITES_PROVIDER: 'local-a1111', LOCAL_A1111_MODEL: 'sd_xl_turbo' },
+    });
+    expect(p).not.toBeNull();
+  });
+
+  it('createImageProvider throws when LOCAL_A1111_MODEL is missing', () => {
+    expect(() => createImageProvider({ env: { SPRITES_PROVIDER: 'local-a1111' } })).toThrow(
+      /LOCAL_A1111_MODEL/,
+    );
+  });
+});
+
 describe('foundry starter catalog (setup-azure-env.ps1 contract)', () => {
   // Uses the FOUNDRY_* aliases that scripts/azure-foundry-plan.ps1 emits and
   // setup-azure-env.ps1 writes to .env.local for the provisioned starter

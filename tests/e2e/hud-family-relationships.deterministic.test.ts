@@ -1,13 +1,62 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
-import { parsePng, readPixel, colorDist } from './helpers/pixels.js';
+import { parsePng, readPixel, regionContainsColor, colorDist } from './helpers/pixels.js';
 import { closeQuietly } from './helpers/ui-probe.js';
 import { E2E_LAB_BASE_URL, GAME_H, GAME_W } from './e2e-constants.js';
+import { loadFamilies } from '../../src/shared/data/families.js';
+import { parseHexColor } from '../../src/engine/family-relationships-state.js';
+import { toGrayscale } from '../../src/engine/minimap-family-tint.js';
 import type { FamilyRelProbeApi } from '../../src/labs/hud-family-relationships-lab/index.js';
 
 /** Panel background — see HudFamilyRelationships PANEL / lab bg (0x05070f). */
 const BG = { r: 0x05, g: 0x07, b: 0x0f };
 const LAB_URL = `${E2E_LAB_BASE_URL}/lab.html?lab=hud-family-relationships-lab`;
+const RADAR_CX = GAME_W - 12 - 76;
+const RADAR_CY = 12 + 76;
+const RADAR_TILE_PX = 6;
+const PLAYER_TILE_CENTER = { x: 12.5, y: 8.5 };
+const TERRITORY_ROOM_SIZE = { width: 12, height: 8 };
+
+const PRESENT_FAMILIES = loadFamilies().slice(0, 4);
+
+function rgbFromHex(color: number): { r: number; g: number; b: number } {
+  return {
+    r: (color >> 16) & 0xff,
+    g: (color >> 8) & 0xff,
+    b: color & 0xff,
+  };
+}
+
+function territoryRoomCenter(index: number): { x: number; y: number } {
+  const col = index % 2;
+  const row = Math.floor(index / 2);
+  return {
+    x: col === 0 ? TERRITORY_ROOM_SIZE.width / 2 + 0.5 : 12 + TERRITORY_ROOM_SIZE.width / 2 + 0.5,
+    y: row === 0 ? TERRITORY_ROOM_SIZE.height / 2 + 0.5 : 8 + TERRITORY_ROOM_SIZE.height / 2 + 0.5,
+  };
+}
+
+const TERRITORY_SAMPLE = (() => {
+  let best: {
+    index: number;
+    family: (typeof PRESENT_FAMILIES)[number];
+    baseColor: { r: number; g: number; b: number };
+    grayscaleColor: { r: number; g: number; b: number };
+    contrast: number;
+  } | null = null;
+  for (const [index, family] of PRESENT_FAMILIES.entries()) {
+    const base = rgbFromHex(parseHexColor(family.hudColor));
+    const gray = rgbFromHex(toGrayscale(parseHexColor(family.hudColor)));
+    const contrast = colorDist(base, gray);
+    if (!best || contrast > best.contrast) {
+      best = { index, family, baseColor: base, grayscaleColor: gray, contrast };
+    }
+  }
+  if (!best) {
+    throw new Error('Expected at least one present family for the territory tint test');
+  }
+  return best;
+})();
 
 interface CanvasRect {
   x: number;
@@ -30,6 +79,15 @@ function gameToScreen(rect: CanvasRect, gx: number, gy: number): { x: number; y:
     x: Math.round(rect.x + gx * (rect.width / GAME_W)),
     y: Math.round(rect.y + gy * (rect.height / GAME_H)),
   };
+}
+
+function territoryMarkerPoint(rect: CanvasRect, roomIndex: number): { x: number; y: number } {
+  const center = territoryRoomCenter(roomIndex);
+  return gameToScreen(
+    rect,
+    RADAR_CX + (center.x - PLAYER_TILE_CENTER.x) * RADAR_TILE_PX,
+    RADAR_CY + (center.y - PLAYER_TILE_CENTER.y) * RADAR_TILE_PX,
+  );
 }
 
 function nonBackgroundRatio(
@@ -196,5 +254,44 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
       delta,
       `dirty-flag re-render must change a meaningful fraction of panel pixels (changed=${delta.toFixed(3)})`,
     ).toBeGreaterThan(0.03);
+  });
+
+  it('paints a family-colored territory marker and grays it out after boss defeat', async () => {
+    const canvas = await getCanvasRect(page);
+    const marker = territoryMarkerPoint(canvas, TERRITORY_SAMPLE.index);
+    const sampleRect = { x: marker.x - 10, y: marker.y - 10, w: 20, h: 20 };
+
+    await page.evaluate((familyIndex) => {
+      const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
+      if (!probe) throw new Error('__familyRelProbe missing');
+      probe.setBossDefeated(familyIndex, false);
+    }, TERRITORY_SAMPLE.index);
+    await page.waitForTimeout(300);
+
+    const beforePng = parsePng(await page.screenshot({ type: 'png' }));
+    expect(
+      regionContainsColor(beforePng, sampleRect, TERRITORY_SAMPLE.baseColor, 24),
+      `expected territory marker for ${TERRITORY_SAMPLE.family.name} to use its HUD color`,
+    ).toBe(true);
+
+    await page.evaluate((familyIndex) => {
+      const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
+      if (!probe) throw new Error('__familyRelProbe missing');
+      probe.setBossDefeated(familyIndex, true);
+    }, TERRITORY_SAMPLE.index);
+    await page.waitForTimeout(300);
+
+    const afterPng = parsePng(await page.screenshot({ type: 'png' }));
+    expect(
+      regionContainsColor(afterPng, sampleRect, TERRITORY_SAMPLE.grayscaleColor, 24),
+      `expected territory marker for ${TERRITORY_SAMPLE.family.name} to gray out after boss defeat`,
+    ).toBe(true);
+
+    const beforePx = readPixel(beforePng, marker.x, marker.y);
+    const afterPx = readPixel(afterPng, marker.x, marker.y);
+    expect(
+      colorDist(beforePx, afterPx),
+      `territory marker should visibly change after boss defeat (family=${TERRITORY_SAMPLE.family.name})`,
+    ).toBeGreaterThan(20);
   });
 });

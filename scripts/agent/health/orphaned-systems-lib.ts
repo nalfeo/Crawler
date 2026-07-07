@@ -152,6 +152,18 @@ export const ALLOWLIST: Readonly<Record<string, AllowlistEntry>> = {
     removeWhen:
       'the labs stop using it, or it is refactored into a lab-only helper module outside src/game.',
   },
+  // Floor 2 ambient director is intentionally invoked via `floor2ObjectiveTick`
+  // (world.floorObjectiveTick), not as a standalone pipeline stage. The objective
+  // tick is wired in real runtime/headless pipelines for Floor 2, and owns
+  // ordering relative to victory/timer evaluation.
+  floor2EnemyDirectorSystem: {
+    reason:
+      'Intentionally called from floor2ObjectiveTick (world.floorObjectiveTick) so Floor 2 objective progression and ambient pressure stay in one deterministic tick path; not wired as a standalone pipeline stage.',
+    trackedIssue: '#816',
+    owner: 'enemies/floor2',
+    removeWhen:
+      'Floor 2 objective/director ordering is refactored into explicit pipeline stages in both visual and headless runners.',
+  },
   // Latent, never-wired multi-weapon feature (same failure class as
   // spawnerSystem, not yet fixed). weaponEntitySystem processes [Weapon, Owner]
   // entities, but spawnWeapon (the only producer) and the system itself are

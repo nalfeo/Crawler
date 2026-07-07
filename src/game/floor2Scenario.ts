@@ -20,7 +20,7 @@
  *      frame it watches `world.combatEvents` for boss deaths (`type: 'death'`
  *      on an entity carrying `FamilyMembership.isBoss = 1`) and latches
  *      `floor2-family-<familyId>-boss-defeated`. Latched families are added to
- *      `world.floor2State.decapitatedFamilies` so the spawner can gate them
+ *      `world.floorExtendedState?.familyState?.decapitatedFamilies` so the spawner can gate them
  *      off (`isFamilySpawnGated`).
  *
  *   3. **`isFamilySpawnGated`** — the read-side of §2 exposed for Slice 8's
@@ -35,14 +35,18 @@ import {
   BroadcastScore,
   Damage,
   DoorState,
+  Enemy,
   FamilyMembership,
   Health,
+  Player,
   Position,
+  Size,
   Sprite,
   type GameWorld,
 } from '../core/index.js';
 import { createEntity } from '../core/spawners/entity-core.js';
 import { setDoorLockConfig, setGoalFlag } from '../core/door-lock.js';
+import { SHAPE_CIRCLE } from '../core/physics-defs.js';
 import {
   asFamilyId,
   getRelation,
@@ -61,7 +65,12 @@ import {
   type RoomData,
 } from '../shared/map-types.js';
 import type { FloorMap } from '../core/map/FloorMap.js';
-import { floor2EnemyPack, getFloor2BossArchetype } from '../shared/enemy-packs.js';
+import {
+  floor2EnemyPack,
+  getFloor2BossArchetype,
+  pickEnemyArchetype,
+  type EnemyArchetypeDef,
+} from '../shared/enemy-packs.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
 import { getGenerator } from '../core/map/generators/registry.js';
 import { loadResources } from '../shared/data/resources.js';
@@ -81,11 +90,30 @@ import {
   type QuestPackQuestSource,
   getQuestPacks,
 } from '../shared/quest-types.js';
+import { acceptQuest, addQuestCounter } from '../core/systems/questSystem.js';
 import type { SeededRandom } from '../shared/random.js';
+import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
+import { setEnemyAppearanceKey } from '../core/spawners/combatants.js';
+import { getFloor2NeutralTrash } from '../shared/enemy-packs.js';
+import {
+  scaleAmbientSpawnStats,
+  pruneAmbientOutOfRange,
+  pruneAmbientOverflow,
+  countDirectorEnemies,
+  countEngagingEnemies,
+  evictFurthestAmbient,
+  resolveAmbientSpawnPoint,
+  getSpawnerState,
+} from './floorScenario.js';
+
+const FLOOR2_DEN_UNLOCK_KILL_TARGET = 3;
+const FLOOR2_BOSS_HP_SCALE = 0.03;
+const FLOOR2_BOSS_CONTACT_DAMAGE = 2;
+const floor2ProcessedCombatEvents = new WeakMap<GameWorld, WeakSet<object>>();
 
 /**
  * Concrete result of picking a den-unlock archetype for one family. Stored on
- * `world.floor2State` for Slice 5's win evaluator + Slice 7's HUD.
+ * `world.floorExtendedState?.familyState` for Slice 5's win evaluator + Slice 7's HUD.
  */
 export interface Floor2DenObjective {
   readonly familyId: FamilyId;
@@ -124,13 +152,14 @@ export function selectDenUnlockObjectives(
   presentFamilies: readonly FamilyId[],
   archetypes: readonly DenUnlockArchetype[] = loadDenUnlockArchetypes(),
 ): Map<FamilyId, string> {
-  if (archetypes.length === 0) {
-    throw new Error('selectDenUnlockObjectives requires at least one archetype');
+  const supportedArchetypes = archetypes.filter((archetype) => archetype.kind === 'killTargets');
+  if (supportedArchetypes.length === 0) {
+    throw new Error('selectDenUnlockObjectives requires at least one killTargets archetype');
   }
   const out = new Map<FamilyId, string>();
   for (const familyId of presentFamilies) {
-    const idx = rng.nextInt(0, archetypes.length - 1);
-    out.set(familyId, archetypes[idx]!.id);
+    const idx = rng.nextInt(0, supportedArchetypes.length - 1);
+    out.set(familyId, supportedArchetypes[idx]!.id);
   }
   return out;
 }
@@ -152,77 +181,31 @@ export function buildDenUnlockQuestPack(
     if (!archetype) {
       throw new Error(`Unknown den-unlock archetype: ${archetypeId}`);
     }
+    if (archetype.kind !== 'killTargets') {
+      throw new Error(`Unsupported den-unlock archetype kind: ${archetype.kind}`);
+    }
     const family = families.get(familyId);
     const familyName = family?.name ?? familyId;
     const questId = `floor2-den-${familyId}-unlock`;
     const goalId = denUnlockGoalId(familyId);
     const label = archetype.objectiveLabel.replace('{familyName}', familyName);
 
-    switch (archetype.kind) {
-      case 'killTargets':
-        quests.push({
-          id: questId,
-          title: `${archetype.title} — ${familyName}`,
-          summary: archetype.summary,
-          onCompleteGoalFlag: goalId,
-          template: {
-            kind: 'killTargets',
-            targets: [
-              {
-                objectiveId: `${questId}-kills`,
-                label,
-                target: archetype.killTarget,
-              },
-            ],
-          },
-        });
-        break;
-      case 'collect':
-        quests.push({
-          id: questId,
-          title: `${archetype.title} — ${familyName}`,
-          summary: archetype.summary,
-          onCompleteGoalFlag: goalId,
-          objectives: [
-            {
-              id: `${questId}-collect`,
-              label,
-              kind: 'collect',
-              itemId: `floor2-${familyId}-${archetype.itemIdSuffix}`,
-              target: archetype.collectTarget,
-            },
-          ],
-        });
-        break;
-      case 'friendly':
-        quests.push({
-          id: questId,
-          title: `${archetype.title} — ${familyName}`,
-          summary: archetype.summary,
-          onCompleteGoalFlag: goalId,
-          template: {
-            kind: 'goalFlag',
-            objectiveId: `${questId}-friendly`,
+    quests.push({
+      id: questId,
+      title: `${archetype.title} — ${familyName}`,
+      summary: archetype.summary,
+      onCompleteGoalFlag: goalId,
+      template: {
+        kind: 'killTargets',
+        targets: [
+          {
+            objectiveId: `${questId}-kills`,
             label,
-            goalId: `floor2-family-${familyId}-friendly-reached`,
+            target: FLOOR2_DEN_UNLOCK_KILL_TARGET,
           },
-        });
-        break;
-      case 'goalFlag':
-        quests.push({
-          id: questId,
-          title: `${archetype.title} — ${familyName}`,
-          summary: archetype.summary,
-          onCompleteGoalFlag: goalId,
-          template: {
-            kind: 'goalFlag',
-            objectiveId: `${questId}-flag`,
-            label,
-            goalId: `floor2-family-${familyId}-${archetype.goalIdSuffix}`,
-          },
-        });
-        break;
-    }
+        ],
+      },
+    });
   }
   return {
     version: 1,
@@ -281,7 +264,7 @@ export function spawnFamilyBoss(
     world,
     x,
     y,
-    archetype.hp,
+    Math.max(1, Math.round(archetype.hp * FLOOR2_BOSS_HP_SCALE)),
     behaviorType,
     archetype.speed,
     archetype.detectRange,
@@ -292,9 +275,15 @@ export function spawnFamilyBoss(
     width: archetype.spriteWidth,
     height: archetype.spriteHeight,
   });
+  setComponent(world.ecs, eid, Size, {
+    radius: Math.max(archetype.spriteWidth, archetype.spriteHeight) * 0.5,
+    halfWidth: 0,
+    halfHeight: 0,
+    shape: SHAPE_CIRCLE,
+  });
   addComponent(world.ecs, eid, set(FamilyMembership, { familyId: familyIdIndex, isBoss: 1 }));
   // Bosses hit hard on contact; ranged behaviour is layered later.
-  setComponent(world.ecs, eid, Damage, { amount: 10 });
+  setComponent(world.ecs, eid, Damage, { amount: FLOOR2_BOSS_CONTACT_DAMAGE });
   // Keep bosses permanently aggressive inside their den.
   world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
   return eid;
@@ -386,8 +375,9 @@ export function initializeFloor2Bosses(
       continue;
     }
     installBossDenDoorLocks(world, denRoom, unlockGoalId);
-    const spawn = pickBossSpawnTile(denRoom);
-    spawnFamilyBoss(world, spawn.x, spawn.y, familyIndex, familyId);
+    const spawnTile = pickBossSpawnTile(denRoom);
+    const spawnWorld = floorMap.tileToWorld(spawnTile.x, spawnTile.y);
+    spawnFamilyBoss(world, spawnWorld.x, spawnWorld.y, familyIndex, familyId);
 
     objectives.push({
       familyId,
@@ -409,31 +399,78 @@ export function initializeFloor2Bosses(
  * Responsibilities in Slice 5:
  *   - Detect boss deaths from `world.combatEvents` and latch
  *     `floor2-family-<id>-boss-defeated`.
- *   - Track defeated families in `world.floor2State.decapitatedFamilies` so the
+ *   - Track defeated families in `world.floorExtendedState?.familyState?.decapitatedFamilies` so the
  *     spawner (Slice 8) can gate future spawns.
  *   - Run the per-tick Floor 2 win evaluator (Win A / Win B) and, on first
  *     trigger, latch `floor2-victory` + pop resource-heart stairs.
+ *   - Run the floor2 enemy director system for quadrant-based trash spawning.
  */
 export function floor2ObjectiveTick(world: GameWorld): void {
-  const floor2State = world.floor2State;
+  if (world.state !== 'playing') {
+    return;
+  }
+
+  unstickFloor2Bosses(world);
+
+  // Run the enemy director for quadrant-based trash spawning
+  floor2EnemyDirectorSystem(world);
+
+  const floor2State = world.floorExtendedState?.familyState;
   if (!floor2State) return;
+
   const decapitated = ensureDecapitatedSet(world);
+  let processedEvents = floor2ProcessedCombatEvents.get(world);
+  if (!processedEvents) {
+    processedEvents = new WeakSet<object>();
+    floor2ProcessedCombatEvents.set(world, processedEvents);
+  }
   const familyIdField = world.stores.familyMembership.familyId;
   const isBossField = world.stores.familyMembership.isBoss;
 
   for (const event of world.combatEvents) {
     if (event.type !== 'death') continue;
+    if (processedEvents.has(event as object)) continue;
+    processedEvents.add(event as object);
     const eid = event.targetEid;
     if (eid === undefined) continue;
-    if (!hasComponent(world.ecs, eid, FamilyMembership)) continue;
-    if ((isBossField[eid] ?? 0) !== 1) continue;
-    const familyIndex = familyIdField[eid] ?? 0;
+    const storeIsBoss = (isBossField[eid] ?? 0) as 0 | 1;
+    const isBoss =
+      event.isBoss !== undefined ? event.isBoss : storeIsBoss === 1 ? (1 as const) : (0 as const);
+    const familyIndex =
+      event.familyIndex !== undefined
+        ? event.familyIndex
+        : isBoss === 1 || hasComponent(world.ecs, eid, FamilyMembership)
+          ? (familyIdField[eid] ?? -1)
+          : -1;
+    if (familyIndex < 0 || familyIndex >= floor2State.presentFamilies.length) continue;
     const familyId = floor2State.presentFamilies[familyIndex];
     if (!familyId) continue;
+    if (isBoss === 0) {
+      addQuestCounter(
+        world,
+        `floor2-den-${familyId}-unlock`,
+        `floor2-den-${familyId}-unlock-kills`,
+        1,
+      );
+      continue;
+    }
     if (decapitated.has(familyId)) continue;
 
     decapitated.add(familyId);
     setGoalFlag(world, bossDefeatGoalId(familyId), true);
+  }
+
+  for (const familyId of floor2State.presentFamilies) {
+    const questId = `floor2-den-${familyId}-unlock`;
+    if (world.questLog.get(questId)?.status === 'complete') {
+      setGoalFlag(world, denUnlockGoalId(familyId), true);
+    }
+  }
+
+  // Check collapse timer and end floor if expired
+  const manifest = getFloorManifest('floor2');
+  if (manifest?.timer && world.elapsedMs >= manifest.timer.durationMs) {
+    world.state = 'game_over';
   }
 
   floor2VictorySystem(world);
@@ -449,7 +486,7 @@ export function floor2ObjectiveTick(world: GameWorld): void {
  * `BOSS_STAIR_FLOOR` tile in the resource-heart room.
  */
 export function floor2VictorySystem(world: GameWorld): void {
-  const floor2State = world.floor2State;
+  const floor2State = world.floorExtendedState?.familyState;
   if (!floor2State) return;
   if (world.goalFlags.get(FLOOR2_VICTORY_GOAL_ID) === true) return;
 
@@ -458,14 +495,53 @@ export function floor2VictorySystem(world: GameWorld): void {
   const decapitated = ensureDecapitatedSet(world);
   const aliveFamilies = presentFamilies.filter((familyId) => !decapitated.has(familyId));
   const allBossesDead = aliveFamilies.length === 0;
+  const livingBossFamilies = new Set<FamilyId>();
+  const familyIdField = world.stores.familyMembership.familyId;
+  const isBossField = world.stores.familyMembership.isBoss;
+  for (const eid of query(world.ecs, [Enemy, Health, FamilyMembership])) {
+    if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
+    if ((isBossField[eid] ?? 0) !== 1) continue;
+    const familyIndex = familyIdField[eid] ?? -1;
+    if (familyIndex < 0 || familyIndex >= presentFamilies.length) continue;
+    const familyId = presentFamilies[familyIndex];
+    if (familyId) {
+      livingBossFamilies.add(familyId);
+    }
+  }
+  const allDensUnlocked = presentFamilies.every(
+    (familyId) => world.goalFlags.get(denUnlockGoalId(familyId)) === true,
+  );
+  const allBossEntitiesGone = livingBossFamilies.size === 0;
+  if (!allBossesDead && allDensUnlocked && allBossEntitiesGone) {
+    for (const familyId of presentFamilies) {
+      decapitated.add(familyId);
+      setGoalFlag(world, bossDefeatGoalId(familyId), true);
+    }
+  }
+  const allBossesResolved = allBossesDead || (allDensUnlocked && allBossEntitiesGone);
   const soleAliveFamily = aliveFamilies.length === 1 ? aliveFamilies[0]! : null;
   const soleAllyWin =
-    soleAliveFamily !== null && getRelation(world, soleAliveFamily) > 75 && !allBossesDead;
+    soleAliveFamily !== null && getRelation(world, soleAliveFamily) > 75 && !allBossesResolved;
 
-  if (!soleAllyWin && !allBossesDead) return;
+  if (!soleAllyWin && !allBossesResolved) return;
 
   setGoalFlag(world, FLOOR2_VICTORY_GOAL_ID, true);
   popFloor2ResourceHeartStairs(world);
+}
+
+/**
+ * Called when the player confirms exit descent on Floor 2.
+ * Sets `staircaseDiscovered` and transitions `world.state` to `'safe_room'`.
+ * Returns `true` on success, `false` if preconditions not met.
+ */
+export function confirmFloor2StairDescend(world: GameWorld, _playerEid: number): boolean {
+  const floor2State = world.floorExtendedState?.familyState;
+  if (!floor2State || world.state !== 'playing') return false;
+  if (!floor2State.staircaseSpawned || !floor2State.staircaseUnlocked) return false;
+  if (floor2State.staircaseDiscovered) return false;
+  floor2State.staircaseDiscovered = true;
+  world.state = 'safe_room';
+  return true;
 }
 
 /**
@@ -530,13 +606,33 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
     presentCountFourProbability: presentCount === 4 ? 1 : presentCount === 3 ? 0 : undefined,
   });
   initializeFactionRelations(world, roster.presentFamilies);
-  world.floor2State = {
-    presentFamilies: roster.presentFamilies.slice(),
-    contestedResource: roster.contestedResource,
-    betrayerFlag: false,
+
+  // Initialize trash territories: randomly pick 4 of 8 neutral trash types
+  // and assign them to map quadrants (N, S, E, W)
+  const allNeutralTrash = getFloor2NeutralTrash();
+  const trashArchetypeIds = allNeutralTrash.map((a: EnemyArchetypeDef) => a.id);
+  const trashRng = new SeededRandomClass(
+    hashStringToSeed(`${world.seed}:floor2-trash-territories`),
+  );
+  trashRng.shuffle(trashArchetypeIds);
+  const selectedTrashTypes = trashArchetypeIds.slice(0, 4);
+  const quadrantTrashMap = new Map<string, string>([
+    ['N', selectedTrashTypes[0] ?? 'cave-slime'],
+    ['S', selectedTrashTypes[1] ?? 'giant-cave-rat'],
+    ['E', selectedTrashTypes[2] ?? 'cave-bat-swarm'],
+    ['W', selectedTrashTypes[3] ?? 'rock-lice'],
+  ]);
+
+  world.floorExtendedState = {
+    familyState: {
+      presentFamilies: roster.presentFamilies.slice(),
+      contestedResource: roster.contestedResource,
+      betrayerFlag: false,
+    },
+    trashTerritories: quadrantTrashMap,
+    ambientEnemyArchetypes: new Map<number, string>(),
   };
-  world.floor2Settlement = null;
-  world.floor1 = null;
+  world.floorScenario = null;
   setGoalFlag(world, FLOOR2_VICTORY_GOAL_ID, false);
   setGoalFlag(world, FLOOR2_STAIRS_POPPED_GOAL_ID, false);
 
@@ -560,48 +656,6 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
     });
   }
 
-  const mapConfig: MapConfig = {
-    widthTiles: manifest.map.widthTiles,
-    heightTiles: manifest.map.heightTiles,
-    tileSizeFt: manifest.map.tileSizeFt,
-    biome: manifest.map.biome ?? BiomeType.CAVE_SYSTEM,
-    seed: world.rng.nextInt(1, 2_000_000),
-    roomWidthRange: manifest.map.roomWidthRange,
-    roomHeightRange: manifest.map.roomHeightRange,
-    maxRooms: manifest.map.maxRooms,
-    floorDensity: manifest.map.floorDensity,
-    caveSystem: { presentCount: roster.presentFamilies.length },
-  };
-  const floorMap = getGenerator(mapConfig.biome).generate(mapConfig, world.rng);
-  world.floorMap = floorMap;
-  world.floor = 2;
-  const spawn = floorMap.tileToWorld(floorMap.playerSpawn.x, floorMap.playerSpawn.y);
-  if (hasComponent(world.ecs, playerEid, Position)) {
-    setComponent(world.ecs, playerEid, Position, { x: spawn.x, y: spawn.y });
-  }
-  if (!hasComponent(world.ecs, playerEid, BroadcastScore)) {
-    addComponent(world.ecs, playerEid, set(BroadcastScore, { current: 0 }));
-  }
-  const maxHp = (world.stores.health.max[playerEid] ?? 100) + manifest.player.hpBonus;
-  setComponent(world.ecs, playerEid, Health, { current: maxHp, max: maxHp });
-
-  const objectives = initializeFloor2Bosses(world, floorMap, world.floor2State);
-  if (floor2Config?.governor?.autoUnlockDens === true) {
-    for (const objective of objectives) {
-      setGoalFlag(world, objective.unlockGoalId, true);
-    }
-    for (const doorEid of query(world.ecs, [DoorState])) {
-      world.stores.doorState.isLocked[doorEid] = 0;
-      world.stores.doorState.isOpen[doorEid] = 1;
-    }
-  }
-
-  const settlementShopRange = floor2Config?.settlement?.shopCountRange;
-  const shopCount =
-    settlementShopRange !== undefined
-      ? world.rng.nextInt(settlementShopRange[0], settlementShopRange[1])
-      : undefined;
-
   const configuredShopArchetypes = floor2Config?.settlement?.shopArchetypes;
   let settlementArchetypes: ReturnType<typeof loadShopArchetypes> | undefined;
   if (configuredShopArchetypes && configuredShopArchetypes.length > 0) {
@@ -623,16 +677,91 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
     }
   }
 
+  const mapConfig: MapConfig = {
+    widthTiles: manifest.map.widthTiles,
+    heightTiles: manifest.map.heightTiles,
+    tileSizeFt: manifest.map.tileSizeFt,
+    biome: manifest.map.biome ?? BiomeType.CAVE_SYSTEM,
+    seed: world.rng.nextInt(1, 2_000_000),
+    roomWidthRange: manifest.map.roomWidthRange,
+    roomHeightRange: manifest.map.roomHeightRange,
+    maxRooms: manifest.map.maxRooms,
+    floorDensity: manifest.map.floorDensity,
+    caveSystem: { presentCount: roster.presentFamilies.length },
+  };
+  const floorMap = getGenerator(mapConfig.biome).generate(mapConfig, world.rng);
+  world.floorMap = floorMap;
+  world.floor = 2;
+  world.floorId = 'floor2';
+  const spawn = floorMap.tileToWorld(floorMap.playerSpawn.x, floorMap.playerSpawn.y);
+  if (hasComponent(world.ecs, playerEid, Position)) {
+    setComponent(world.ecs, playerEid, Position, { x: spawn.x, y: spawn.y });
+  }
+  if (!hasComponent(world.ecs, playerEid, BroadcastScore)) {
+    addComponent(world.ecs, playerEid, set(BroadcastScore, { current: 0 }));
+  }
+  const maxHp = (world.stores.health.max[playerEid] ?? 100) + manifest.player.hpBonus;
+  setComponent(world.ecs, playerEid, Health, { current: maxHp, max: maxHp });
+
+  const objectives = initializeFloor2Bosses(
+    world,
+    floorMap,
+    world.floorExtendedState!.familyState!,
+  );
+  for (const objective of objectives) {
+    acceptQuest(world, objective.questId);
+  }
+  if (objectives.length > 0) {
+    world.questLog.get(objectives[0]!.questId)!.tracked = true;
+  }
+  if (floor2Config?.governor?.autoUnlockDens === true) {
+    for (const objective of objectives) {
+      setGoalFlag(world, objective.unlockGoalId, true);
+    }
+    for (const doorEid of query(world.ecs, [DoorState])) {
+      world.stores.doorState.isLocked[doorEid] = 0;
+      world.stores.doorState.isOpen[doorEid] = 1;
+    }
+  }
+
+  const settlementShopRange = floor2Config?.settlement?.shopCountRange;
+  const shopCount =
+    settlementShopRange !== undefined
+      ? world.rng.nextInt(settlementShopRange[0], settlementShopRange[1])
+      : undefined;
+
   initializeFloor2Settlement(world, {
     ...(shopCount === 1 || shopCount === 2 ? { shopCount } : {}),
     ...(settlementArchetypes ? { archetypes: settlementArchetypes } : {}),
   });
 
-  const starterWeapon = manifest.starterWeapons[0];
-  if (starterWeapon) {
-    const weaponDef = getWeaponDef(starterWeapon);
-    if (weaponDef) {
-      setActiveWeapon(world, weaponDef);
+  // Use seeded RNG to pick starter weapon, matching Floor 1 pattern
+  // so player gets the same weapon on the same seed for consistency
+  const starterWeaponPool = manifest.starterWeapons;
+  let selectedWeaponId: string | null = null;
+  if (starterWeaponPool && starterWeaponPool.length > 0) {
+    const weaponRng = new SeededRandomClass(
+      hashStringToSeed(`${world.seed}:floor2-starter-weapon`),
+    );
+    // Pick from the pool deterministically
+    const picked = starterWeaponPool[weaponRng.nextInt(0, starterWeaponPool.length - 1)];
+    if (picked) {
+      const weaponDef = getWeaponDef(picked);
+      if (weaponDef) {
+        selectedWeaponId = weaponDef.id;
+        setActiveWeapon(world, weaponDef);
+      }
+    }
+  }
+
+  // Fallback if seeded pick failed
+  if (!selectedWeaponId && manifest.starterWeapons && manifest.starterWeapons.length > 0) {
+    const fallbackId = manifest.starterWeapons[0];
+    if (fallbackId) {
+      const fallbackDef = getWeaponDef(fallbackId);
+      if (fallbackDef) {
+        setActiveWeapon(world, fallbackDef);
+      }
     }
   }
 
@@ -680,15 +809,8 @@ export function countFloor2BossArchetypes(): number {
 
 // Internal helpers ---------------------------------------------------------
 
-interface Floor2ExtendedState {
-  decapitatedFamilies?: Set<FamilyId>;
-  staircasePos?: { x: number; y: number };
-  staircaseSpawned?: boolean;
-  staircaseUnlocked?: boolean;
-}
-
 function ensureDecapitatedSet(world: GameWorld): Set<FamilyId> {
-  const floor2State = world.floor2State as (Floor2State & Floor2ExtendedState) | null;
+  const floor2State = world.floorExtendedState?.familyState;
   if (!floor2State) {
     // No Floor-2 state on non-Floor-2 worlds; return a throwaway set so
     // callers can no-op through this helper safely.
@@ -701,7 +823,7 @@ function ensureDecapitatedSet(world: GameWorld): Set<FamilyId> {
 }
 
 function popFloor2ResourceHeartStairs(world: GameWorld): void {
-  const floor2State = world.floor2State as (Floor2State & Floor2ExtendedState) | null;
+  const floor2State = world.floorExtendedState?.familyState;
   if (!floor2State) return;
   if (world.goalFlags.get(FLOOR2_STAIRS_POPPED_GOAL_ID) === true) return;
 
@@ -740,4 +862,328 @@ function findResourceHeartStairTile(world: GameWorld): { x: number; y: number } 
     }
   }
   return best ? { x: best.x, y: best.y } : null;
+}
+
+/**
+ * Determine which quadrant contains a world position.
+ * Returns 'N', 'S', 'E', or 'W'.
+ */
+export function getQuadrantForPosition(
+  world: GameWorld,
+  x: number,
+  y: number,
+): 'N' | 'S' | 'E' | 'W' {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return 'N';
+  }
+  const centerX = (floorMap.width * floorMap.config.tileSizeFt) / 2;
+  const centerY = (floorMap.height * floorMap.config.tileSizeFt) / 2;
+
+  const isWest = x < centerX;
+  const isNorth = y < centerY;
+
+  if (isWest) {
+    return isNorth ? 'N' : 'S';
+  } else {
+    return isNorth ? 'E' : 'W';
+  }
+}
+
+/**
+ * Determine spawn weight for each quadrant based on player position.
+ * Returns a map of quadrant ID to weight (0-1).
+ */
+export function getQuadrantSpawnWeights(playerQuadrant: string): Map<string, number> {
+  const weights = new Map<string, number>();
+  const neighbors = new Map<string, string[]>([
+    ['N', ['E', 'W']],
+    ['S', ['E', 'W']],
+    ['E', ['N', 'S']],
+    ['W', ['N', 'S']],
+  ]);
+  const opposite = new Map<string, string>([
+    ['N', 'S'],
+    ['S', 'N'],
+    ['E', 'W'],
+    ['W', 'E'],
+  ]);
+
+  weights.set(playerQuadrant, 0.5); // Main: 50%
+  for (const neighbor of neighbors.get(playerQuadrant) || []) {
+    weights.set(neighbor, 0.2); // Neighbors: 20% each
+  }
+  weights.set(opposite.get(playerQuadrant) || 'N', 0.1); // Opposite: 10%
+  return weights;
+}
+
+/**
+ * Pick a trash archetype respecting quadrant-based weights.
+ */
+function pickFloor2TrashArchetype(world: GameWorld, _playerX: number, _playerY: number): string {
+  const territoryMap = world.floorExtendedState?.trashTerritories;
+  if (!territoryMap || territoryMap.size === 0) {
+    // Fallback: neutral trash pool
+    const pack = floor2EnemyPack;
+    return pickEnemyArchetype(pack.archetypes, () => world.rng.next()).id;
+  }
+
+  const playerQuadrant = getQuadrantForPosition(world, _playerX, _playerY);
+  const weights = getQuadrantSpawnWeights(playerQuadrant);
+
+  // Build a weighted list of all archetypes
+  const weightedList: string[] = [];
+  for (const [quadrant, archetype] of territoryMap) {
+    const weight = weights.get(quadrant) || 0;
+    const count = Math.round(weight * 10); // Scale 0-1 to 0-10 for sampling
+    for (let i = 0; i < count; i += 1) {
+      weightedList.push(archetype);
+    }
+  }
+
+  if (weightedList.length === 0) {
+    // Fallback if something went wrong
+    const firstValue = territoryMap.values().next().value;
+    return typeof firstValue === 'string' ? firstValue : 'cave-slime';
+  }
+
+  // Pick a random entry from the weighted list
+  const picked: string | undefined = weightedList[world.rng.nextInt(0, weightedList.length - 1)];
+  return picked ?? 'cave-slime';
+}
+
+function resolveAmbientFamilyIndex(world: GameWorld, archetypeId: string): number {
+  const territories = world.floorExtendedState?.trashTerritories;
+  const familyState = world.floorExtendedState?.familyState;
+  const presentFamilies = familyState?.presentFamilies ?? [];
+  if (!territories || presentFamilies.length === 0) {
+    return -1;
+  }
+  let ownerQuadrant: string | null = null;
+  for (const [quadrant, territoryArchetype] of territories) {
+    if (territoryArchetype === archetypeId) {
+      ownerQuadrant = quadrant;
+      break;
+    }
+  }
+  if (!ownerQuadrant) {
+    return -1;
+  }
+  const quadrantOrder = ['N', 'S', 'E', 'W'];
+  const quadrantIndex = quadrantOrder.indexOf(ownerQuadrant);
+  if (quadrantIndex < 0) {
+    return -1;
+  }
+  return quadrantIndex % presentFamilies.length;
+}
+
+function isBossDenSpawn(world: GameWorld, x: number, y: number): boolean {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return false;
+  }
+  const tile = floorMap.worldToTile(x, y);
+  const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
+  if (roomId < 0) {
+    return false;
+  }
+  return floorMap.roomGraph.get(roomId)?.role === RoomRole.BOSS_DEN;
+}
+
+function findNearestPassableTile(
+  world: GameWorld,
+  startX: number,
+  startY: number,
+  maxRadius: number = 6,
+): { x: number; y: number } | null {
+  const floorMap = world.floorMap;
+  if (!floorMap) return null;
+  const tileMap = floorMap.tileMap;
+  if (tileMap.inBounds(startX, startY) && tileMap.isPassable(startX, startY)) {
+    return { x: startX, y: startY };
+  }
+  for (let radius = 1; radius <= maxRadius; radius += 1) {
+    for (let dy = -radius; dy <= radius; dy += 1) {
+      for (let dx = -radius; dx <= radius; dx += 1) {
+        if (Math.abs(dx) !== radius && Math.abs(dy) !== radius) {
+          continue;
+        }
+        const x = startX + dx;
+        const y = startY + dy;
+        if (!tileMap.inBounds(x, y) || !tileMap.isPassable(x, y)) {
+          continue;
+        }
+        return { x, y };
+      }
+    }
+  }
+  return null;
+}
+
+function unstickFloor2Bosses(world: GameWorld): void {
+  const floorMap = world.floorMap;
+  if (!floorMap) return;
+  for (const eid of query(world.ecs, [Enemy, Health, FamilyMembership, Position])) {
+    if ((world.stores.familyMembership.isBoss[eid] ?? 0) !== 1) {
+      continue;
+    }
+    const x = world.stores.position.x[eid] ?? 0;
+    const y = world.stores.position.y[eid] ?? 0;
+    const tile = floorMap.worldToTile(x, y);
+    if (floorMap.tileMap.inBounds(tile.x, tile.y) && floorMap.tileMap.isPassable(tile.x, tile.y)) {
+      continue;
+    }
+    const nearest = findNearestPassableTile(world, tile.x, tile.y);
+    if (!nearest) {
+      continue;
+    }
+    const worldPos = floorMap.tileToWorld(nearest.x, nearest.y);
+    world.stores.position.x[eid] = worldPos.x;
+    world.stores.position.y[eid] = worldPos.y;
+  }
+}
+
+/**
+ * Spawn one Floor 2 ambient archetype with quadrant-based trash weighting,
+ * scaling stats based on distance from spawn.
+ */
+function spawnFloor2AmbientArchetype(world: GameWorld, x: number, y: number): number {
+  const pack = floor2EnemyPack;
+  const archetypeId = pickFloor2TrashArchetype(world, x, y);
+  const archetype = pack.archetypes.find((a: EnemyArchetypeDef) => a.id === archetypeId);
+
+  if (!archetype) {
+    // Fallback to first available
+    const fallback = pack.archetypes[0];
+    if (!fallback) {
+      throw new Error('No archetypes available in floor2EnemyPack');
+    }
+  }
+
+  const selectedArchetype = archetype || pack.archetypes[0]!;
+  let hp = selectedArchetype.hp;
+  let speed = selectedArchetype.speed;
+  if (world.floorMap) {
+    const spawnWorld = world.floorMap.tileToWorld(
+      world.floorMap.playerSpawn.x,
+      world.floorMap.playerSpawn.y,
+    );
+    const scaled = scaleAmbientSpawnStats(
+      selectedArchetype.hp,
+      selectedArchetype.speed,
+      x,
+      y,
+      spawnWorld.x,
+      spawnWorld.y,
+    );
+    hp = scaled.hp;
+    speed = scaled.speed;
+  }
+
+  // Determine AI type based on archetype
+  let aiType: number = AI_TYPE.CHASE;
+  if (selectedArchetype.id.includes('slime')) {
+    aiType = AI_TYPE.LEAPER;
+  }
+
+  const eid = spawnBehaviorEnemy(world, x, y, hp, aiType, speed, selectedArchetype.detectRange, 0);
+  setComponent(world.ecs, eid, Sprite, {
+    textureId: selectedArchetype.spriteTexture,
+    width: selectedArchetype.spriteWidth,
+    height: selectedArchetype.spriteHeight,
+  });
+  setComponent(world.ecs, eid, Size, {
+    radius: Math.max(selectedArchetype.spriteWidth, selectedArchetype.spriteHeight) * 0.5,
+    halfWidth: 0,
+    halfHeight: 0,
+    shape: SHAPE_CIRCLE,
+  });
+  setEnemyAppearanceKey(world, eid, selectedArchetype.id);
+  const familyIndex = resolveAmbientFamilyIndex(world, selectedArchetype.id);
+  if (familyIndex >= 0) {
+    addComponent(world.ecs, eid, set(FamilyMembership, { familyId: familyIndex, isBoss: 0 }));
+  }
+
+  world.floorExtendedState?.ambientEnemyArchetypes?.set(eid, selectedArchetype.id);
+  return eid;
+}
+
+/**
+ * Floor 2 enemy director system — continuous ambient spawning with quadrant-based trash territories.
+ *
+ * Divides the map into 4 quadrants (N, S, E, W) and assigns one trash archetype per
+ * quadrant. When spawning, uses weighted probabilities based on player position:
+ *   - 50% chance: main archetype for the player's current quadrant
+ *   - 20% chance each: neighboring quadrants
+ *   - 10% chance: opposite quadrant
+ *
+ * Otherwise reuses Floor 1's continuous ambient director logic: maintains a global
+ * enemy cap, pre-populates rooms with waves, and burst-spawns near the player.
+ */
+export function floor2EnemyDirectorSystem(world: GameWorld): void {
+  if (world.state !== 'playing') {
+    return;
+  }
+
+  // For Floor 2, we don't have world.floorScenario (it's null).
+  // Check for Floor 2 state instead.
+  if (world.floor !== 2) {
+    return;
+  }
+
+  const players = query(world.ecs, [Player, Position]);
+  const player = players[0];
+  if (player === undefined) {
+    return;
+  }
+
+  const pack = floor2EnemyPack;
+  const playerX = world.stores.position.x[player] ?? 0;
+  const playerY = world.stores.position.y[player] ?? 0;
+
+  // Recycle mobs left far behind, then enforce the global ceiling.
+  pruneAmbientOutOfRange(world, playerX, playerY);
+  const overflow = countDirectorEnemies(world) - pack.enemyCap;
+  if (overflow > 0) {
+    pruneAmbientOverflow(world, playerX, playerY, overflow);
+  }
+
+  // Engagement top-up, throttled to one burst per spawn interval.
+  const state = getSpawnerState(world);
+  if (world.elapsedMs - state.lastSpawnMs < pack.spawnIntervalMs) {
+    return;
+  }
+
+  const engageRadiusSq = pack.engageRadiusFt * pack.engageRadiusFt;
+  const engaging = countEngagingEnemies(world, playerX, playerY, engageRadiusSq);
+  if (engaging >= pack.engageTarget) {
+    return;
+  }
+
+  const burst = Math.min(pack.engageTarget - engaging, pack.maxSpawnsPerTick);
+  for (let i = 0; i < burst; i += 1) {
+    // At the global cap, make room near the player by recycling the furthest straggler.
+    if (countDirectorEnemies(world) >= pack.enemyCap) {
+      if (evictFurthestAmbient(world, playerX, playerY, engageRadiusSq, 1) === 0) {
+        break;
+      }
+    }
+    let spawnPoint: { x: number; y: number } | null = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const candidate = resolveAmbientSpawnPoint(world, playerX, playerY);
+      if (!candidate) {
+        break;
+      }
+      if (isBossDenSpawn(world, candidate.x, candidate.y)) {
+        continue;
+      }
+      spawnPoint = candidate;
+      break;
+    }
+    if (!spawnPoint) {
+      break;
+    }
+    spawnFloor2AmbientArchetype(world, spawnPoint.x, spawnPoint.y);
+  }
+  state.lastSpawnMs = world.elapsedMs;
 }

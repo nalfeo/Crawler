@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-05",
+  "session_slug": "spawner-arena-review-followups",
+  "task_title": "fix(spawner-arena): correct barrierArmed telemetry + cover sealed-room door lifecycle",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "notes": "approved_with_changes; adopted resolvedArmed metric (blocking), empty-doors regression test, grounded per-world lifetime, door isLocked:0"
+    }
+  }
+}

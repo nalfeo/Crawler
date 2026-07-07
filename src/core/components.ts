@@ -90,6 +90,26 @@ export const SpawnAnim = {};
 /** Physical weight of an entity (lbs). Used for knockback, strength interactions, etc. */
 export const Weight = {};
 /**
+ * Marks an entity as immovable by knockback. `knockbackSystem` short-circuits
+ * targets carrying this tag: it removes the Knockback component immediately
+ * without applying any displacement. Independent of the numeric
+ * `IMMOVABLE_THRESHOLD` (see `physics-defs.ts`) — an entity may qualify for
+ * short-circuit via *either* rule.
+ *
+ * Use `Immovable` for entities whose immobility is a design invariant
+ * (statues, bosses that must stay in an arena, quest NPCs) even if their
+ * weight happens to be below the threshold. See ADR 0044.
+ */
+export const Immovable = {};
+/**
+ * Physical body of an entity. Read by collisionSystem (broad + narrow phase),
+ * knockbackSystem (footprint passability), and every radius query
+ * (areaDamageSystem, beamSystem, meleeSwingSystem, trapSystem, etc.).
+ * Independent of Sprite, which is render-only. See ADR 0044 and
+ * `src/core/physics-defs.ts` for the canonical per-entity-class values.
+ */
+export const Size = {};
+/**
  * Blood/ichor colour for this entity (0xRRGGBB stored as r, g, b channels).
  * Used by GoreVfx to tint hit splatter and death pools. Defaults to red (0xcc0000).
  */
@@ -108,7 +128,7 @@ export const Harvestable = {};
 
 /**
  * Floor 2 tag: marks a mob as belonging to a specific family (`familyId` is
- * a `ui8` index into `world.floor2State.presentFamilies`). `isBoss=1` marks
+ * a `ui8` index into `world.floorExtendedState?.familyState?.presentFamilies`). `isBoss=1` marks
  * the single boss per family. Introduced by Floor 2 Slice 1 (ADR 0040 · D1).
  */
 export const FamilyMembership = {};
@@ -179,6 +199,38 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       spawnedTotal: new Uint16Array(maxEntities),
       /** Set to 1 once the on-death finale wave has been emitted. */
       deathResolved: new Uint8Array(maxEntities),
+      /**
+       * Battle-arena radius in feet. Minimum 4 ft, defaulted to the archetype's
+       * `arenaRadiusFt` at spawn time. Drives the trigger predicate and the
+       * fence/sealed-room geometry (see `spawnerArenaSystem`).
+       */
+      arenaRadiusFt: new Float32Array(maxEntities),
+      /**
+       * Cached arena topology decision:
+       * `0` = sealed-room (lock cached doors on trigger),
+       * `1` = open-fence (materialise a circular tile-blocking ring),
+       * `255` = unresolved (system decides on first tick when floorMap present).
+       */
+      arenaKind: new Uint8Array(maxEntities),
+      /**
+       * Arena lifecycle state:
+       * `0` = idle (waiting for trigger),
+       * `1` = locked (battle in progress),
+       * `2` = resolved (spawner dead + banked XP granted, terminal).
+       */
+      arenaState: new Uint8Array(maxEntities),
+      /**
+       * XP banked from up to `SPAWNER_MAX_BANKED_CHILDREN` intercepted child
+       * deaths. Awarded as a single XP gem at the arena-end tick — see
+       * requirement 5 (spawner drops what the pool would have dropped, capped).
+       */
+      bankedXp: new Float32Array(maxEntities),
+      /**
+       * How many spawner-owned child kills have been intercepted so far, capped
+       * at `SPAWNER_MAX_BANKED_CHILDREN` (10). Determines when the intercept
+       * counter saturates so late-fight kites can't inflate the reward.
+       */
+      bankedChildren: new Uint16Array(maxEntities),
     },
     broadcastScore: { current: new Float32Array(maxEntities) },
     droppedItem: { itemIndex: new Uint16Array(maxEntities) },
@@ -279,6 +331,16 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
     },
     weight: {
       value: new Float32Array(maxEntities),
+    },
+    size: {
+      /** Bounding radius in feet (canonical spatial unit — ADR 0007/0023). */
+      radius: new Float32Array(maxEntities),
+      /** Optional box override half-width in ft. 0 ⇒ use `radius`. */
+      halfWidth: new Float32Array(maxEntities),
+      /** Optional box override half-height in ft. 0 ⇒ use `radius`. */
+      halfHeight: new Float32Array(maxEntities),
+      /** 0 = circle (default), 1 = axis-aligned box using halfWidth/halfHeight. */
+      shape: new Uint8Array(maxEntities),
     },
     bloodColor: {
       /** Red channel 0–255. */
@@ -382,7 +444,7 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       colorB: new Uint8Array(maxEntities),
     },
     familyMembership: {
-      /** Index into `world.floor2State.presentFamilies` (see faction-relations). */
+      /** Index into `world.floorExtendedState?.familyState?.presentFamilies` (see faction-relations). */
       familyId: new Uint8Array(maxEntities),
       /** 1 for the family boss, 0 for regular members. */
       isBoss: new Uint8Array(maxEntities),

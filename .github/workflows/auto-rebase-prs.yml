@@ -143,8 +143,7 @@ jobs:
                   --repo "$GITHUB_REPOSITORY" \
                   --title "$conflict_title" \
                   --body "$conflict_body" \
-                  --label "merge-conflict" \
-                  --assignee "copilot-swe-agent"
+                  --label "merge-conflict"
                 echo "  🤖 Filed conflict issue for PR #$number and assigned to Copilot."
               else
                 echo "  ℹ️ Conflict issue #$existing_conflict_issue already open for PR #$number."

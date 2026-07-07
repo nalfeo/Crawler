@@ -25,7 +25,7 @@ interface Settings {
   angleDeg: number;
 }
 
-function makeFloor1(): NonNullable<GameWorld['floor1']> {
+function makeFloorScenario(): NonNullable<GameWorld['floorScenario']> {
   const pos = { x: PLAYER_FT.x, y: PLAYER_FT.y };
   return {
     protagonistName: 'Waypoint Lab',
@@ -108,7 +108,7 @@ function createQuestWaypointLab(canvasHost: HTMLElement, controls: HTMLElement):
       world = createGameWorld({ seed: 7 });
       world.floor = 1;
       playerEid = spawnPlayer(world, PLAYER_FT.x, PLAYER_FT.y);
-      world.floor1 = makeFloor1();
+      world.floorScenario = makeFloorScenario();
       acceptQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
 
       this.add.rectangle(0, 0, GAME.WIDTH, GAME.HEIGHT, 0x05070f).setOrigin(0, 0);
@@ -126,7 +126,7 @@ function createQuestWaypointLab(canvasHost: HTMLElement, controls: HTMLElement):
     update(): void {
       if (!world || !hudUi) return;
       const t = targetFeet();
-      const pos = world.floor1!.objective.welcomeOfficePos as { x: number; y: number };
+      const pos = world.floorScenario!.objective.welcomeOfficePos as { x: number; y: number };
       pos.x = t.x;
       pos.y = t.y;
       this.marker?.setPosition(ftToPx(t.x), ftToPx(t.y));

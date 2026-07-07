@@ -112,7 +112,7 @@ export function peekFriendlyRetaliation(
 
 /**
  * Read the mob's `FamilyMembership.familyId` and resolve it to the actual
- * branded `FamilyId` via `world.floor2State.presentFamilies`. Returns
+ * branded `FamilyId` via `world.floorExtendedState?.familyState?.presentFamilies`. Returns
  * `undefined` for trash mobs (no `FamilyMembership`) or when the floor state
  * hasn't been initialised — trash always falls through to the default
  * player-only targeting.
@@ -120,7 +120,7 @@ export function peekFriendlyRetaliation(
 export function getMobFamilyId(world: GameWorld, eid: number): FamilyId | undefined {
   if (!hasComponent(world.ecs, eid, FamilyMembership)) return undefined;
   const idx = world.stores.familyMembership.familyId[eid] ?? 0;
-  const present = world.floor2State?.presentFamilies;
+  const present = world.floorExtendedState?.familyState?.presentFamilies;
   if (present !== undefined && idx < present.length) {
     return present[idx];
   }

@@ -12,6 +12,11 @@ on:
         type: boolean
         default: false
 
+# Least-privilege default: only the baseline-sweep job pushes to the repo, and
+# it declares its own job-level write scopes (`contents: write` for the
+# baselines-branch push, plus `pull-requests`/`issues: write` to comment the
+# win-rate on the released PR). Keep the workflow default at read so the deploy
+# job's token is not needlessly broadened.
 permissions:
   contents: read
   pages: write
@@ -19,13 +24,14 @@ permissions:
   issues: write
   pull-requests: write
 
-concurrency:
-  group: pages
-  cancel-in-progress: true
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Serialize Pages deploys only. The baseline-sweep job below runs
+    # per-release and must not be cancelled if a newer release lands mid-sweep.
+    concurrency:
+      group: pages
+      cancel-in-progress: true
     if: >
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
@@ -345,3 +351,309 @@ jobs:
             }
 
             core.info(`Created issue #${issue.data.number}`);
+
+  baseline-sweep:
+    name: Baseline win-rate sweep (100 seeds)
+    runs-on: ubuntu-latest
+    needs: deploy
+    # Only baseline what we actually released to Pages. On manual dispatches
+    # this always runs post-deploy; on the CI workflow_run trigger, deploy only
+    # runs when CI succeeded, so `needs: deploy` is sufficient.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    timeout-minutes: 60
+    # A job-level permissions block replaces the workflow default entirely, so
+    # these are NOT inherited and must be listed explicitly. `gh pr comment` on
+    # the released PR (final step) posts via the issue-comments API, so grant
+    # both PR and issue write scopes; `contents: write` stays for the
+    # baselines-branch push.
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Pin to the released commit (the CI workflow_run head SHA), not the
+          # default github.sha -- on a workflow_run event that defaults to the
+          # current main tip, which may be a newer commit than the one CI ran on.
+          # This keeps the swept code identical to the commit the baseline is
+          # recorded under: the "Resolve baseline commit" step below derives $SHA
+          # from the same expression. Full history (fetch-depth: 0) so we can walk
+          # main to correlate baselines with branch-off commits later (see
+          # scripts/agent/perf/find-baseline.mjs).
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Resolve baseline commit
+        id: sha
+        run: |
+          # For workflow_run events, github.sha points at the *deploy* workflow
+          # commit, not the CI commit that was actually released. Prefer the
+          # triggering workflow_run head SHA when present.
+          SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "short=$(echo "$SHA" | cut -c1-12)" >> "$GITHUB_OUTPUT"
+          echo "Baseline will be tagged with SHA: $SHA"
+
+      - name: Run 100-seed win-rate sweep
+        id: sweep
+        run: |
+          mkdir -p .cache/baseline
+          npm run ai:winrate-sweep -- \
+            --seeds 1-100 \
+            --out .cache/baseline/baseline.json
+
+      - name: Enrich baseline with commit metadata
+        env:
+          SHA: ${{ steps.sha.outputs.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+        run: |
+          COMMIT_DATE=$(git show -s --format=%cI "$SHA")
+          COMMIT_SUBJECT=$(git show -s --format=%s "$SHA")
+          RUN_URL="$SERVER_URL/$REPO/actions/runs/$RUN_ID"
+          COMMIT_DATE="$COMMIT_DATE" \
+          COMMIT_SUBJECT="$COMMIT_SUBJECT" \
+          RUN_URL="$RUN_URL" \
+          node -e "
+            const fs = require('node:fs');
+            const data = JSON.parse(fs.readFileSync('.cache/baseline/baseline.json','utf8'));
+            const meta = {
+              commit: process.env.SHA,
+              commitDate: process.env.COMMIT_DATE,
+              commitSubject: process.env.COMMIT_SUBJECT,
+              capturedAt: new Date().toISOString(),
+              runId: process.env.RUN_ID,
+              runNumber: Number(process.env.RUN_NUMBER),
+              runUrl: process.env.RUN_URL,
+              sweep: { seeds: '1-100', kind: 'winrate' },
+            };
+            fs.writeFileSync('.cache/baseline/baseline.json', JSON.stringify({ meta, ...data }, null, 2));
+          "
+
+      - name: Publish to baselines branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ steps.sha.outputs.sha }}
+          SHORT: ${{ steps.sha.outputs.short }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Publish this release's baseline to the persistent `baselines`
+          # branch. index.json is regenerated from every by-sha/*.json file on
+          # each publish (never a textual edit of the shared array), and the
+          # whole publish is retried against the latest remote tip. Together
+          # these make concurrent baseline jobs conflict-free: each job owns a
+          # uniquely-named by-sha/<sha>.json and the index is a pure function of
+          # those files, so a retry simply re-derives state on top of whatever
+          # other jobs pushed. This also resolves the first-run orphan race:
+          # a retry resets onto origin/baselines instead of trying to rebase
+          # two unrelated orphan histories.
+          WORKTREE="$RUNNER_TEMP/baselines-wt"
+          SRC="$GITHUB_WORKSPACE/.cache/baseline/baseline.json"
+          export WORKTREE
+
+          write_readme() {
+            node -e "
+              const fs = require('node:fs');
+              const path = require('node:path');
+              const wt = process.env.WORKTREE;
+              fs.writeFileSync(path.join(wt, 'README.md'), [
+                '# Baselines branch',
+                '',
+                'This branch stores baseline win-rate sweeps captured after every',
+                'successful GitHub Pages deploy from main. Each release commit gets',
+                'one file under by-sha/<commit-sha>.json, and index.json is a',
+                'chronological log sorted by commit date (newest first).',
+                '',
+                'index.json is regenerated from by-sha/*.json on every publish, so',
+                'concurrent baseline jobs never conflict on it.',
+                '',
+                'Use npm run perf:find-baseline to resolve the baseline that was in',
+                'effect when a feature branch forked from main. Do not merge this',
+                'branch into main; it is history storage only.',
+                '',
+              ].join('\n'));
+            "
+          }
+
+          # Build the baselines worktree, add this run's by-sha file, regenerate
+          # index.json, commit, and push. Returns non-zero on any failure so the
+          # retry loop below can re-run it against the latest remote tip.
+          publish() {
+            git worktree remove --force "$WORKTREE" 2>/dev/null || true
+            rm -rf "$WORKTREE"
+            git worktree prune || true
+
+            # Probe for the remote branch, distinguishing "branch absent"
+            # (ls-remote rc=2 -> take the first-run orphan path) from a transient
+            # ls-remote failure (rc=1/128, e.g. network/auth). The latter must NOT
+            # masquerade as absence, or a retry could fork a second orphan history
+            # instead of resetting onto the branch a concurrent job just created.
+            remote_rc=0
+            git ls-remote --exit-code --heads origin baselines >/dev/null 2>&1 || remote_rc=$?
+            if [ "$remote_rc" -eq 0 ]; then
+              git fetch --force origin '+refs/heads/baselines:refs/remotes/origin/baselines' || return 1
+              git worktree add --force -B baselines "$WORKTREE" origin/baselines || return 1
+            elif [ "$remote_rc" -eq 2 ]; then
+              git worktree add --detach "$WORKTREE" || return 1
+              git -C "$WORKTREE" checkout --orphan baselines || return 1
+              git -C "$WORKTREE" rm -rf . >/dev/null 2>&1 || true
+              write_readme || return 1
+            else
+              echo "git ls-remote for baselines failed (rc=$remote_rc); retrying."
+              return 1
+            fi
+
+            # Storage is keyed by commit SHA, so a re-run for the same commit
+            # overwrites its by-sha file: this branch holds the latest baseline
+            # per release commit (the sweep is deterministic for a given commit).
+            mkdir -p "$WORKTREE/by-sha"
+            cp "$SRC" "$WORKTREE/by-sha/$SHA.json" || return 1
+            [ -f "$WORKTREE/README.md" ] || write_readme || return 1
+
+            # Rebuild index.json from every by-sha/*.json (sorted newest-first by
+            # commit date). Because the index is a deterministic derivation of the
+            # by-sha files, concurrent jobs never textually merge the shared array.
+            node -e "
+              const fs = require('node:fs');
+              const path = require('node:path');
+              const wt = process.env.WORKTREE;
+              const dir = path.join(wt, 'by-sha');
+              const entries = fs
+                .readdirSync(dir)
+                .filter((f) => f.endsWith('.json'))
+                .map((f) => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')))
+                .filter((b) => b && b.meta && b.meta.commit)
+                .map((b) => ({
+                  commit: b.meta.commit,
+                  commitDate: b.meta.commitDate,
+                  commitSubject: b.meta.commitSubject,
+                  capturedAt: b.meta.capturedAt,
+                  runUrl: b.meta.runUrl,
+                  winRate: b.winRate,
+                  totalWins: b.totalWins,
+                  totalRuns: b.totalRuns,
+                  path: 'by-sha/' + b.meta.commit + '.json',
+                }));
+              entries.sort((a, b) => (b.commitDate || '').localeCompare(a.commitDate || ''));
+              fs.writeFileSync(path.join(wt, 'index.json'), JSON.stringify(entries, null, 2) + '\n');
+            " || return 1
+
+            git -C "$WORKTREE" add -A || return 1
+            if git -C "$WORKTREE" diff --cached --quiet; then
+              echo "No baseline changes to commit."
+              return 0
+            fi
+            git -C "$WORKTREE" commit \
+              -m "baseline: $SHORT (run #${{ github.run_number }})" \
+              -m "Commit: $SHA" \
+              -m "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" || return 1
+            git -C "$WORKTREE" push origin baselines
+          }
+
+          attempt=1
+          max_attempts=5
+          while true; do
+            publish && break
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "::error::Failed to publish baseline after $attempt attempts"
+              exit 1
+            fi
+            echo "Publish attempt $attempt failed (likely a concurrent baseline push); retrying..."
+            attempt=$((attempt + 1))
+            sleep $((RANDOM % 5 + 2))
+          done
+
+      - name: Upload baseline as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-${{ steps.sha.outputs.short }}
+          path: .cache/baseline/baseline.json
+          if-no-files-found: warn
+          retention-days: 90
+
+      # Runs last (after the guaranteed diagnostic artifact upload) so a stalled
+      # network call here can never delay that upload. `if: success()` gates it
+      # on the publish + upload steps having succeeded.
+      - name: Comment baseline win-rate on released PR
+        if: success()
+        # Best-effort by design: the explicit guards below skip gracefully, and
+        # continue-on-error is a final backstop so an unexpected failure can
+        # never turn this release-baseline job red.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ steps.sha.outputs.sha }}
+          BASELINE_JSON: ${{ github.workspace }}/.cache/baseline/baseline.json
+          FALLBACK_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BASELINE_BLOB_URL: ${{ github.server_url }}/${{ github.repository }}/blob/baselines/by-sha/${{ steps.sha.outputs.sha }}.json
+        run: |
+          # Post the freshly published baseline win-rate onto the PR whose
+          # squash-merge produced this released commit. Mirrors the deploy job's
+          # "Label and comment on released PRs" step.
+
+          # 1. Resolve the triggering PR from the released commit. Distinguish a
+          #    real API failure (warn) from a commit with genuinely no associated
+          #    PR -- e.g. a direct push to main or a dispatch on a PR-less commit
+          #    (notice). Either way, skip gracefully; never fail.
+          PR=$(gh api "repos/${{ github.repository }}/commits/$SHA/pulls" \
+            --jq '.[0].number // empty' 2>/dev/null) || {
+            echo "::warning::Failed to query PRs for released commit $SHA; skipping baseline comment."
+            exit 0
+          }
+          if [ -z "$PR" ]; then
+            echo "::notice::No PR associated with released commit $SHA; skipping baseline comment."
+            exit 0
+          fi
+
+          # 2. Build the comment body from the enriched baseline.json. Guard
+          #    against a missing/unreadable file or out-of-range win-rate fields.
+          BODY=$(node -e "
+            const fs = require('node:fs');
+            const p = process.env.BASELINE_JSON;
+            let d;
+            try { d = JSON.parse(fs.readFileSync(p, 'utf8')); }
+            catch (e) { console.error('baseline.json unreadable: ' + e.message); process.exit(2); }
+            const wr = d.winRate;
+            const runs = d.totalRuns;
+            if (!Number.isFinite(wr) || wr < 0 || wr > 1 || !Number.isFinite(runs) || runs <= 0) {
+              console.error('baseline.json missing or out-of-range winRate/totalRuns');
+              process.exit(2);
+            }
+            const pct = Math.round(wr * 100);
+            const wins = Number.isFinite(d.totalWins) ? d.totalWins : '?';
+            const runUrl = (d.meta && d.meta.runUrl) || process.env.FALLBACK_RUN_URL;
+            const lines = [
+              '📊 Baseline win-rate for this release: **' + pct + '%** (' + wins + '/' + runs + ')',
+              '',
+              '🏃 [Sweep run](' + runUrl + ') · 🗂️ [Recorded baseline](' + process.env.BASELINE_BLOB_URL + ')',
+            ];
+            process.stdout.write(lines.join('\n'));
+          ") || {
+            echo "::warning::Could not build baseline comment body; skipping."
+            exit 0
+          }
+          if [ -z "$BODY" ]; then
+            echo "::warning::Empty baseline comment body; skipping."
+            exit 0
+          fi
+
+          # 3. Post the comment. Best-effort: warn (do not fail) on error.
+          if ! gh pr comment "$PR" --repo "${{ github.repository }}" --body "$BODY"; then
+            echo "::warning::Failed to comment baseline win-rate on PR #$PR"
+          fi

@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-05",
+  "session_slug": "floor-agnostic-world-state",
+  "task_title": "Floor-agnostic world state refactor",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "notes": "Plan reviewed against codebase. Three changes: (1) world.floor1→floorScenario rename (type was already FloorScenarioState, purely mechanical); (2) floorLootTableId in manifest + getFloorManifest in dropSystem (clean config-driven pattern); (3) FloorExtendedState container for floor2State/floor2Settlement (avoids sprawl, structural inline type in FactionRelationsWorldFacet avoids circular import). Removing enableFloor1 from SimulationOptions simplifies the API. No concerns — approved."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "All ~200 rename sites consistent. dropSystem imports getFloorManifest, falls back gracefully when floorId empty or manifest missing floorLootTableId. FloorExtendedState fields optional (incremental population). world.floorId set in both scenario initializers. All test stubs updated. Typecheck clean, 3844/3844 tests pass."
+        }
+      ]
+    }
+  }
+}

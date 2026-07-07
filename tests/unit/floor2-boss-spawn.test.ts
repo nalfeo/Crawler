@@ -42,13 +42,19 @@ describe('spawnFamilyBoss / initializeFloor2Bosses', () => {
     const families = loadFamilies();
     const resources = loadResources();
     const roster = selectFloor2Roster(new SeededRandom(seed), families, resources);
-    world.floor2State = {
-      presentFamilies: [...roster.presentFamilies],
-      contestedResource: roster.contestedResource,
-      betrayerFlag: false,
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [...roster.presentFamilies],
+        contestedResource: roster.contestedResource,
+        betrayerFlag: false,
+      },
     };
 
-    const objectives = initializeFloor2Bosses(world, floorMap, world.floor2State);
+    const objectives = initializeFloor2Bosses(
+      world,
+      floorMap,
+      world.floorExtendedState!.familyState!,
+    );
     expect(objectives.length).toBe(roster.presentFamilies.length);
 
     const bossField = world.stores.familyMembership.isBoss;
@@ -80,12 +86,14 @@ describe('spawnFamilyBoss / initializeFloor2Bosses', () => {
     const families = loadFamilies();
     const resources = loadResources();
     const roster = selectFloor2Roster(new SeededRandom(seed), families, resources);
-    world.floor2State = {
-      presentFamilies: [...roster.presentFamilies],
-      contestedResource: roster.contestedResource,
-      betrayerFlag: false,
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [...roster.presentFamilies],
+        contestedResource: roster.contestedResource,
+        betrayerFlag: false,
+      },
     };
-    initializeFloor2Bosses(world, floorMap, world.floor2State);
+    initializeFloor2Bosses(world, floorMap, world.floorExtendedState!.familyState!);
     for (const familyId of roster.presentFamilies) {
       expect(world.goalFlags.get(denUnlockGoalId(familyId))).toBe(false);
       expect(world.goalFlags.get(bossDefeatGoalId(familyId))).toBe(false);

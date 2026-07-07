@@ -52,7 +52,7 @@ function makeOpenRoom(widthTiles: number, heightTiles: number): FloorMap {
 function enterKillGrindStage(world: GameWorld): void {
   meetTutorialGoon(world);
   world.playerLevel.level = 2;
-  world.floor1!.objective.questCompleted = false;
+  world.floorScenario!.objective.questCompleted = false;
 }
 
 /**
@@ -78,8 +78,8 @@ function setUpAcceptedDetour(seed: number): {
   world.stores.position.y[player] = 14;
 
   const questEnemy = spawnEnemy(world, 50, 14, 20);
-  world.floor1!.enemyArchetypes.set(questEnemy, 'rat');
-  const spellNpcEid = world.floor1!.spellQuestGiverNpcEid;
+  world.floorScenario!.enemyArchetypes.set(questEnemy, 'rat');
+  const spellNpcEid = world.floorScenario!.spellQuestGiverNpcEid;
   expect(spellNpcEid).toEqual(expect.any(Number));
   world.stores.position.x[spellNpcEid!] = 30;
   world.stores.position.y[spellNpcEid!] = 14;

@@ -10,12 +10,15 @@ import {
   Position,
   Projectile,
   Returning,
+  Size,
   Sprite,
   Team,
   Velocity,
   Weight,
 } from '../components.js';
+import { PHYSICS_BODIES, SHAPE_BOX, SHAPE_CIRCLE } from '../physics-defs.js';
 import type { GameWorld } from '../world.js';
+import { tagAttackEntity } from '../weapon-telemetry.js';
 import { createEntity } from './entity-core.js';
 
 export function spawnProjectile(
@@ -39,6 +42,16 @@ export function spawnProjectile(
   addComponent(
     world.ecs,
     eid,
+    set(Size, {
+      radius: PHYSICS_BODIES['projectile-bullet'].radius,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    }),
+  );
+  addComponent(
+    world.ecs,
+    eid,
     set(Projectile, { pierce, hitCount: 0, maxRange, originX: x, originY: y }),
   );
   addComponent(world.ecs, eid, set(Weight, { value: weight }));
@@ -46,6 +59,7 @@ export function spawnProjectile(
     addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
   }
 
+  tagAttackEntity(world, eid);
   return eid;
 }
 
@@ -161,5 +175,15 @@ export function spawnBeam(
   addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
   addComponent(world.ecs, eid, set(Team, { id: teamId }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: length, height: 0.5 }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      radius: 0,
+      halfWidth: length * 0.5,
+      halfHeight: PHYSICS_BODIES['beam-segment'].halfHeight,
+      shape: SHAPE_BOX,
+    }),
+  );
   return eid;
 }

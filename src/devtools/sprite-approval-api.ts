@@ -333,6 +333,53 @@ export async function deleteStorageRunsBatch(
   return (await response.json()) as { deleted: string[] };
 }
 
+/** Per-run enrichment for the storage lifecycle page (thumbnails + badges). */
+export interface StorageRunEnrichment {
+  readonly briefId: string;
+  readonly runId: string;
+  /** Candidate count from the run summary, or null when unavailable. */
+  readonly variantCount: number | null;
+  /** First `sheet-NN.png` filename for the run (active scope only), else null. */
+  readonly sheetFile: string | null;
+  /** Number of approved variants recorded for the brief. */
+  readonly approvedCount: number;
+  /** Lowest-index approved variant for the brief, with its source run. */
+  readonly firstApproved: { readonly runId: string; readonly variantIndex: number } | null;
+  /** Whether the brief YAML is still stored (on disk or mirrored in the store). */
+  readonly briefStored: boolean;
+}
+
+export interface StorageRunEnrichmentResponse {
+  readonly scope: 'active' | 'archive';
+  readonly enriched: StorageRunEnrichment[];
+}
+
+/**
+ * Fetches enrichment (sheet thumbnail, approved-variant count + first approved
+ * variant, brief-stored flag) for a batch of storage runs. Kept separate from
+ * `listStorageRuns` so the list renders instantly and enrichment fills in after.
+ */
+export async function enrichStorageRuns<
+  T extends { readonly briefId: string; readonly runId: string },
+>(
+  scope: 'active' | 'archive',
+  runs: ReadonlyArray<T>,
+  fetcher: typeof fetch = fetch,
+): Promise<StorageRunEnrichmentResponse> {
+  const response = await fetcher(`${SIDECAR_BASE}/api/storage/runs/enrich`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      scope,
+      runs: runs.map((run) => ({ briefId: run.briefId, runId: run.runId })),
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`storage enrich failed (${response.status}): ${response.statusText}`);
+  }
+  return (await response.json()) as StorageRunEnrichmentResponse;
+}
+
 /**
  * Triggers the sidecar check-in: publishes every locally-approved asset that
  * differs from `origin/main` as a dedicated `assets/<slug>` branch + an

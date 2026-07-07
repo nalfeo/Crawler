@@ -1,4 +1,5 @@
 export { spawnerSystem } from './spawnerSystem.js';
+export { spawnerArenaSystem } from './spawnerArenaSystem.js';
 export {
   SPAWNER_ARCHETYPES,
   getSpawnerArchetype,

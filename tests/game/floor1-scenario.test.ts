@@ -62,11 +62,11 @@ describe('floor1Scenario', () => {
 
     expect(world.state).toBe('loadout');
     expect(world.floorMap).not.toBeNull();
-    expect(world.floor1).not.toBeNull();
-    expect(world.floor1?.protagonistName).toBe('Rhea Vale');
-    expect(world.floor1?.starterChoices).toHaveLength(3);
-    expect(new Set(world.floor1?.starterChoices ?? []).size).toBe(3);
-    for (const weaponId of world.floor1?.starterChoices ?? []) {
+    expect(world.floorScenario).not.toBeNull();
+    expect(world.floorScenario?.protagonistName).toBe('Rhea Vale');
+    expect(world.floorScenario?.starterChoices).toHaveLength(3);
+    expect(new Set(world.floorScenario?.starterChoices ?? []).size).toBe(3);
+    for (const weaponId of world.floorScenario?.starterChoices ?? []) {
       expect(getWeaponDef(weaponId)).toBeDefined();
     }
   });
@@ -92,7 +92,7 @@ describe('floor1Scenario', () => {
       const world = createTestWorld({ seed });
       const player = spawnPlayer(world, 0, 0);
       initializeFloor1Scenario(world, player);
-      const objective = world.floor1!.objective;
+      const objective = world.floorScenario!.objective;
       const spellPos = objective.spellQuestGiverPos;
       const itemPos = objective.questItemPos;
       // Positions must differ outright...
@@ -111,7 +111,7 @@ describe('floor1Scenario', () => {
     // neighbors (same traversal used by the placement algorithm).
     const hopCount = (world: ReturnType<typeof createTestWorld>): number => {
       const map = world.floorMap!;
-      const objective = world.floor1!.objective;
+      const objective = world.floorScenario!.objective;
       const tile = map.worldToTile(objective.welcomeOfficePos.x, objective.welcomeOfficePos.y);
       const welcomeRoomId = map.roomGraph.getRoomAt(tile.x, tile.y);
       const startRoomId = map.spawnRoom?.id;
@@ -150,43 +150,7 @@ describe('floor1Scenario', () => {
     expect(avg).toBeLessThanOrEqual(6);
   });
 
-  it('places the shop ≥ 3 hops from welcome and further from spawn than welcome', () => {
-    // BFS hop count between two room ids on the room graph.
-    const roomHopsBetween = (
-      map: ReturnType<typeof createTestWorld>['floorMap'],
-      fromId: number,
-      toId: number,
-    ): number => {
-      if (!map || fromId === toId) return 0;
-      const queue: number[] = [fromId];
-      let head = 0;
-      const dist = new Map<number, number>([[fromId, 0]]);
-      while (head < queue.length) {
-        const curr = queue[head++]!;
-        const room = map.roomGraph.get(curr);
-        for (const n of room?.neighbors ?? []) {
-          if (!dist.has(n)) {
-            dist.set(n, dist.get(curr)! + 1);
-            if (n === toId) return dist.get(n)!;
-            queue.push(n);
-          }
-        }
-      }
-      return -1;
-    };
-
-    const centerDistSq = (
-      map: ReturnType<typeof createTestWorld>['floorMap'],
-      pos: { x: number; y: number },
-    ) => {
-      if (!map) return 0;
-      const spawnTile = map.playerSpawn;
-      const tile = map.worldToTile(pos.x, pos.y);
-      const dx = tile.x - spawnTile.x;
-      const dy = tile.y - spawnTile.y;
-      return dx * dx + dy * dy;
-    };
-
+  it('keeps welcome-bar quest NPCs in one room but on distinct tiles', () => {
     const seeds = [42, 7, 99, 123, 2024, 1, 14, 321, 999, 500];
     for (const seed of seeds) {
       const world = createTestWorld({ seed });
@@ -194,38 +158,61 @@ describe('floor1Scenario', () => {
       initializeFloor1Scenario(world, player);
 
       const map = world.floorMap!;
-      const objective = world.floor1!.objective;
+      const floor1 = world.floorScenario!;
+      const objective = floor1.objective;
 
       const welcomeTile = map.worldToTile(
         objective.welcomeOfficePos.x,
         objective.welcomeOfficePos.y,
       );
-      const shopTile = map.worldToTile(objective.shopRoomPos.x, objective.shopRoomPos.y);
       const welcomeRoomId = map.roomGraph.getRoomAt(welcomeTile.x, welcomeTile.y);
-      const shopRoomId = map.roomGraph.getRoomAt(shopTile.x, shopTile.y);
 
-      // Shop must be in a different room from welcome.
-      expect(shopRoomId, `seed ${seed}: shop must be in a different room from welcome`).not.toBe(
+      const tutorialTile = map.worldToTile(
+        world.stores.position.x[floor1.guideNpcEid!]!,
+        world.stores.position.y[floor1.guideNpcEid!]!,
+      );
+      const shopTile = map.worldToTile(
+        world.stores.position.x[floor1.shopkeeperNpcEid!]!,
+        world.stores.position.y[floor1.shopkeeperNpcEid!]!,
+      );
+      const spellTile = map.worldToTile(
+        world.stores.position.x[floor1.spellQuestGiverNpcEid!]!,
+        world.stores.position.y[floor1.spellQuestGiverNpcEid!]!,
+      );
+
+      expect(map.roomGraph.getRoomAt(tutorialTile.x, tutorialTile.y)).toBe(welcomeRoomId);
+
+      const shopRoomId = map.roomGraph.getRoomAt(shopTile.x, shopTile.y);
+      expect(shopRoomId, `seed ${seed}: shopkeeper must be in the welcome bar`).toBe(welcomeRoomId);
+
+      const spellRoomId = map.roomGraph.getRoomAt(spellTile.x, spellTile.y);
+      expect(spellRoomId, `seed ${seed}: spell broker must be in the welcome bar`).toBe(
         welcomeRoomId,
       );
 
-      // Shop must be ≥ 3 hops from welcome room (or the map is too small to enforce it).
-      const hopsShopFromWelcome = roomHopsBetween(map, welcomeRoomId, shopRoomId);
-      if (hopsShopFromWelcome >= 0) {
-        expect(
-          hopsShopFromWelcome,
-          `seed ${seed}: shop must be ≥ 3 hops from welcome, got ${hopsShopFromWelcome}`,
-        ).toBeGreaterThanOrEqual(3);
-      }
+      const uniqueNpcTiles = new Set([
+        `${tutorialTile.x},${tutorialTile.y}`,
+        `${shopTile.x},${shopTile.y}`,
+        `${spellTile.x},${spellTile.y}`,
+      ]);
+      expect(uniqueNpcTiles.size, `seed ${seed}: welcome-bar NPCs should not stack`).toBe(3);
 
-      // Shop must be further from spawn than welcome (or equal distance is acceptable
-      // only when no farther room exists — i.e., the map is too small).
-      const shopDist = centerDistSq(map, objective.shopRoomPos);
-      const welcomeDist = centerDistSq(map, objective.welcomeOfficePos);
+      expect(objective.shopRoomPos).toEqual({
+        x: world.stores.position.x[floor1.shopkeeperNpcEid!]!,
+        y: world.stores.position.y[floor1.shopkeeperNpcEid!]!,
+      });
+      expect(objective.spellQuestGiverPos).toEqual({
+        x: world.stores.position.x[floor1.spellQuestGiverNpcEid!]!,
+        y: world.stores.position.y[floor1.spellQuestGiverNpcEid!]!,
+      });
+
+      // Quest item (rat tail) must still be in a distinct room from welcome.
+      const itemTile = map.worldToTile(objective.questItemPos.x, objective.questItemPos.y);
+      const itemRoomId = map.roomGraph.getRoomAt(itemTile.x, itemTile.y);
       expect(
-        shopDist,
-        `seed ${seed}: shop must be further from spawn than welcome`,
-      ).toBeGreaterThanOrEqual(welcomeDist);
+        itemRoomId,
+        `seed ${seed}: quest item must be in a different room from welcome`,
+      ).not.toBe(welcomeRoomId);
     }
   });
 
@@ -365,11 +352,11 @@ describe('floor1Scenario', () => {
     const player = spawnPlayer(world, 0, 0);
     initializeFloor1Scenario(world, player);
 
-    const chosenId = world.floor1?.starterChoices[1];
+    const chosenId = world.floorScenario?.starterChoices[1];
     selectFloor1StarterWeapon(world, 1);
 
     expect(world.state).toBe('playing');
-    expect(world.floor1?.selectedWeaponId).toBe(chosenId);
+    expect(world.floorScenario?.selectedWeaponId).toBe(chosenId);
     expect(getActiveWeapon(world)?.id).toBe(chosenId);
   });
 
@@ -379,13 +366,13 @@ describe('floor1Scenario', () => {
     initializeFloor1Scenario(world, player);
     selectFloor1StarterWeapon(world, 0);
 
-    const deadlineMs = world.floor1?.objective.deadlineMs ?? 0;
+    const deadlineMs = world.floorScenario?.objective.deadlineMs ?? 0;
     world.elapsedMs = deadlineMs + 1;
     floorObjectiveSystem(world);
 
     expect(world.state).toBe('game_over');
-    expect(world.floor1?.failReason).toBe('stair_timeout');
-    expect(world.floor1?.runSummary?.outcome).toBe('failed_timeout');
+    expect(world.floorScenario?.failReason).toBe('stair_timeout');
+    expect(world.floorScenario?.runSummary?.outcome).toBe('failed_timeout');
   });
 
   it('spawns deterministic rat/slime encounters from the floor director', () => {
@@ -403,8 +390,8 @@ describe('floor1Scenario', () => {
     floor1EnemyDirectorSystem(worldA);
     floor1EnemyDirectorSystem(worldB);
 
-    const spawnedA = [...(worldA.floor1?.enemyArchetypes.entries() ?? [])][0];
-    const spawnedB = [...(worldB.floor1?.enemyArchetypes.entries() ?? [])][0];
+    const spawnedA = [...(worldA.floorScenario?.enemyArchetypes.entries() ?? [])][0];
+    const spawnedB = [...(worldB.floorScenario?.enemyArchetypes.entries() ?? [])][0];
 
     expect(spawnedA).toBeDefined();
     expect(spawnedB).toBeDefined();
@@ -426,7 +413,7 @@ describe('floor1Scenario', () => {
     initializeFloor1Scenario(world, player);
     selectFloor1StarterWeapon(world, 0);
 
-    const objective = world.floor1?.objective;
+    const objective = world.floorScenario?.objective;
     if (!objective) {
       throw new Error('Expected floor1 objective to exist');
     }
@@ -462,8 +449,11 @@ describe('floor1Scenario', () => {
     world.stores.position.y[player] = objective.slimeRatRoomPos.y;
     floorObjectiveSystem(world);
     expect(objective.bossBattles.get('slime-rat')!.started).toBe(true);
-    if (world.floor1 && (world.floor1.bossRoomDoorEids.get('slime-rat') ?? []).length > 0) {
-      for (const doorEid of world.floor1.bossRoomDoorEids.get('slime-rat')!) {
+    if (
+      world.floorScenario &&
+      (world.floorScenario.bossRoomDoorEids.get('slime-rat') ?? []).length > 0
+    ) {
+      for (const doorEid of world.floorScenario.bossRoomDoorEids.get('slime-rat')!) {
         expect(world.stores.doorState.isLocked[doorEid]).toBe(1);
       }
     }
@@ -474,8 +464,11 @@ describe('floor1Scenario', () => {
     removeEntity(world.ecs, slimeRatBossEid);
     floorObjectiveSystem(world);
     expect(objective.bossBattles.get('slime-rat')!.defeated).toBe(true);
-    if (world.floor1 && (world.floor1.bossRoomDoorEids.get('slime-rat') ?? []).length > 0) {
-      for (const doorEid of world.floor1.bossRoomDoorEids.get('slime-rat')!) {
+    if (
+      world.floorScenario &&
+      (world.floorScenario.bossRoomDoorEids.get('slime-rat') ?? []).length > 0
+    ) {
+      for (const doorEid of world.floorScenario.bossRoomDoorEids.get('slime-rat')!) {
         expect(world.stores.doorState.isLocked[doorEid]).toBe(0);
       }
     }
@@ -506,7 +499,7 @@ describe('floor1Scenario', () => {
     expect(descended).toBe(true);
     expect(objective.staircaseDiscovered).toBe(true);
     expect(world.state).toBe('safe_room');
-    expect(world.floor1?.runSummary?.outcome).toBe('cleared_floor');
+    expect(world.floorScenario?.runSummary?.outcome).toBe('cleared_floor');
   });
 
   it('unlocks staircase at killing blow (DeathTimer attached) before entity despawns', () => {
@@ -519,7 +512,7 @@ describe('floor1Scenario', () => {
     initializeFloor1Scenario(world, player);
     selectFloor1StarterWeapon(world, 0);
 
-    const objective = world.floor1?.objective;
+    const objective = world.floorScenario?.objective;
     if (!objective) {
       throw new Error('Expected floor1 objective to exist');
     }
@@ -584,7 +577,7 @@ describe('floor1Scenario', () => {
     initializeFloor1Scenario(world, player);
     selectFloor1StarterWeapon(world, 0);
 
-    const objective = world.floor1?.objective;
+    const objective = world.floorScenario?.objective;
     if (!objective) {
       throw new Error('Expected floor1 objective to exist');
     }
@@ -599,8 +592,11 @@ describe('floor1Scenario', () => {
 
     expect(objective.bossBattles.get('slime-rat')!.started).toBe(true);
     expect(objective.bossBattles.get('slime-rat')!.bossEid).not.toBeNull();
-    if (world.floor1 && (world.floor1.bossRoomDoorEids.get('slime-rat') ?? []).length > 0) {
-      for (const doorEid of world.floor1.bossRoomDoorEids.get('slime-rat')!) {
+    if (
+      world.floorScenario &&
+      (world.floorScenario.bossRoomDoorEids.get('slime-rat') ?? []).length > 0
+    ) {
+      for (const doorEid of world.floorScenario.bossRoomDoorEids.get('slime-rat')!) {
         expect(world.stores.doorState.isLocked[doorEid]).toBe(1);
       }
     }
@@ -612,7 +608,7 @@ describe('floor1Scenario', () => {
     initializeFloor1Scenario(world, player);
     selectFloor1StarterWeapon(world, 0);
 
-    const floor1 = world.floor1;
+    const floor1 = world.floorScenario;
     const slimeRatDoorEids = floor1?.bossRoomDoorEids.get('slime-rat') ?? [];
     if (!floor1 || slimeRatDoorEids.length === 0) {
       // No doors generated for this seed — nothing to assert.
@@ -675,7 +671,7 @@ describe('floor1Scenario', () => {
     world.playerLevel.level = 2;
     world.goalFlags.set('floor1-leveling-quest-complete', true);
 
-    const objective = world.floor1?.objective;
+    const objective = world.floorScenario?.objective;
     if (!objective) {
       throw new Error('Expected floor1 objective to exist');
     }
@@ -786,7 +782,7 @@ describe('floor1Scenario', () => {
       world.playerLevel.level = 2;
       world.goalFlags.set('floor1-leveling-quest-complete', true);
 
-      const objective = world.floor1?.objective;
+      const objective = world.floorScenario?.objective;
       if (!objective) {
         throw new Error('Expected floor1 objective to exist');
       }
@@ -1003,9 +999,9 @@ describe('floor1Scenario', () => {
         'throwing-knife': 'rusty-shiv',
         fireball: 'crystal-wand',
       };
-      const starterChoices = new Set(worldA.floor1?.starterChoices ?? []);
+      const starterChoices = new Set(worldA.floorScenario?.starterChoices ?? []);
       const expectedItemIds = new Set(
-        (worldA.floor1?.starterWeaponPool ?? [])
+        (worldA.floorScenario?.starterWeaponPool ?? [])
           .filter((weaponId) => !starterChoices.has(weaponId))
           .map((weaponId) => starterToItem[weaponId])
           .filter((itemId): itemId is string => Boolean(itemId)),
@@ -1055,7 +1051,7 @@ describe('floor1Scenario', () => {
       initializeFloor1Scenario(world, player);
       selectFloor1StarterWeapon(world, 0);
 
-      const objective = world.floor1?.objective;
+      const objective = world.floorScenario?.objective;
       if (!objective) {
         throw new Error('Expected floor1 objective to exist');
       }
@@ -1087,7 +1083,7 @@ describe('floor1Scenario', () => {
       initializeFloor1Scenario(world, player);
       selectFloor1StarterWeapon(world, 0);
 
-      const bossDoorEids = world.floor1?.bossRoomDoorEids.get('staircase') ?? [];
+      const bossDoorEids = world.floorScenario?.bossRoomDoorEids.get('staircase') ?? [];
       expect(bossDoorEids.length).toBeGreaterThan(0);
 
       const allLocked = (): boolean =>
@@ -1122,7 +1118,7 @@ describe('floor1Scenario', () => {
       selectFloor1StarterWeapon(world, 0);
 
       const floorMap = world.floorMap!;
-      const objective = world.floor1!.objective;
+      const objective = world.floorScenario!.objective;
 
       // Every special room must be enterable only through doors: all SAFE rooms
       // (welcome office, shop, spell broker, and any generator-tagged safe room),
@@ -1143,8 +1139,8 @@ describe('floor1Scenario', () => {
       expect(slimeRoomId).toBeGreaterThanOrEqual(0);
       targetRoomIds.add(slimeRoomId);
 
-      // At least the four SAFE rooms + one boss-stair + slime-rat must be present.
-      expect(targetRoomIds.size).toBeGreaterThanOrEqual(5);
+      // At least the one SAFE room (welcome bar) + one boss-stair + slime-rat must be present.
+      expect(targetRoomIds.size).toBeGreaterThanOrEqual(3);
 
       for (const roomId of targetRoomIds) {
         const room = floorMap.roomGraph.get(roomId);
@@ -1191,7 +1187,7 @@ describe('floor1Scenario', () => {
       const result = startFloor1BossEncounter(world, player);
       expect(result).toBe(true);
 
-      const bossEid = world.floor1?.objective?.bossBattles.get('staircase')?.bossEid;
+      const bossEid = world.floorScenario?.objective?.bossBattles.get('staircase')?.bossEid;
       expect(bossEid).not.toBeNull();
       expect(bossEid).toBeDefined();
 
@@ -1216,7 +1212,7 @@ describe('floor1Scenario', () => {
       expect(bossRoom).toBeDefined();
       if (!bossRoom) return;
 
-      const questItemPos = world.floor1!.objective.questItemPos;
+      const questItemPos = world.floorScenario!.objective.questItemPos;
       const questTile = floorMap.worldToTile(questItemPos.x, questItemPos.y);
       const questRoomId = floorMap.roomGraph.getRoomAt(questTile.x, questTile.y);
 
@@ -1309,7 +1305,7 @@ describe('floor1Scenario', () => {
       questSystem(world);
       expect(getNpcQuestIndicatorState(world, 'spell-quest-giver')).toBe('accepted');
 
-      const battle = world.floor1?.objective.bossBattles.get('slime-rat');
+      const battle = world.floorScenario?.objective.bossBattles.get('slime-rat');
       if (!battle) {
         throw new Error('Expected slime-rat boss battle state');
       }
@@ -1458,7 +1454,7 @@ describe('floor1Scenario', () => {
       const existing = countDirectorEnemies(world);
       for (let i = existing; i < pack.enemyCap; i += 1) {
         const eid = spawnBehaviorEnemy(world, farX, py, 20, AI_TYPE.CHASE, 0.5, 100, 0);
-        world.floor1!.enemyArchetypes.set(eid, 'rat');
+        world.floorScenario!.enemyArchetypes.set(eid, 'rat');
       }
       expect(countDirectorEnemies(world)).toBe(pack.enemyCap);
       const engagingBefore = countWithin(world, px, py, pack.engageRadiusFt);

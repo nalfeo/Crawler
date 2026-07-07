@@ -12,9 +12,13 @@ import {
   Damage,
   DeathTimer,
   Enemy,
+  FamilyMembership,
   Health,
   Knockback,
+  Owner,
+  Size,
   SpawnAnim,
+  Spawner,
   Sprite,
 } from '../components.js';
 import {
@@ -41,6 +45,10 @@ import { MINI_SLIME_SPAWN_ANIM_MS } from '../../shared/spawn-anim.js';
 import type { EntitySpriteMappings } from '../../shared/data/entity-sprite-mappings.js';
 import ENTITY_SPRITE_MAPPINGS from '../../shared/data/entity-sprite-mappings.json';
 import { markImmuneToActiveMeleeSwings } from './meleeSwingSystem.js';
+import { getFloorManifest } from '../../shared/floor-registry.js';
+import { SPAWNER_MAX_BANKED_CHILDREN } from '../spawner-arena.js';
+import { getBodyHalfWidth, getBodyHalfHeight } from '../physics-body.js';
+import { SHAPE_CIRCLE } from '../physics-defs.js';
 
 const logger = createLogger('core:drop-system');
 
@@ -101,8 +109,8 @@ function getEnemyLootTables(
   // Detect boss entities by checking the floor 1 boss battle registry.
   // dropSystem runs before floorObjectiveSystem each frame, so bossEid is still
   // set when we process the death; it gets nulled out later that same tick.
-  if (world.floor1?.objective?.bossBattles) {
-    for (const battle of world.floor1.objective.bossBattles.values()) {
+  if (world.floorScenario?.objective?.bossBattles) {
+    for (const battle of world.floorScenario.objective.bossBattles.values()) {
       if (battle.bossEid === eid) {
         // Use the loot table ID stored on the encounter config; fall back to BOSS.
         const bossTable =
@@ -112,9 +120,12 @@ function getEnemyLootTables(
     }
   }
 
+  const floorLootTableId = world.floorId
+    ? getFloorManifest(world.floorId)?.floorLootTableId
+    : undefined;
   return {
     typeTable: LOOT_TABLES.BASIC_MELEE,
-    floorTable: world.floor === 1 ? LOOT_TABLES.FLOOR_1 : undefined,
+    floorTable: floorLootTableId ? getLootTable(floorLootTableId) : undefined,
   };
 }
 
@@ -140,6 +151,7 @@ function spawnDrops(
   y: number,
   drops: LootDrop[],
   allowDrops: boolean,
+  interceptSpawnerOwnedXp: boolean,
 ): void {
   logger.debug('Spawning drops', {
     dropCount: drops.length,
@@ -170,10 +182,13 @@ function spawnDrops(
       case 'xp':
         for (let i = 0; i < drop.quantity; i++) {
           // Always consume RNG to keep the seeded sequence stable regardless
-          // of whether drops are currently gated.
+          // of whether drops are currently gated. `interceptSpawnerOwnedXp`
+          // skips the actual gem spawn (the caller banked the value into the
+          // owning spawner) but still consumes the two scatter RNG rolls so
+          // seed order matches the un-owned kill path exactly.
           const ex = dx + (world.rng.next() - 0.5) * 1;
           const ey = dy + (world.rng.next() - 0.5) * 1;
-          if (allowDrops) {
+          if (allowDrops && !interceptSpawnerOwnedXp) {
             spawnXpGem(world, ex, ey, drop.value);
           }
         }
@@ -194,7 +209,7 @@ function spawnDrops(
 }
 
 function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): void {
-  if (world.floor1?.enemyArchetypes.get(eid) !== 'slime') {
+  if (world.floorScenario?.enemyArchetypes.get(eid) !== 'slime') {
     return;
   }
   if (world.rng.next() >= SLIME_SPLIT_CHANCE) {
@@ -211,10 +226,9 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
   const parentAggroRange = world.stores.enemyBehavior.aggroRange[eid] ?? 40;
   const hasSprite = hasComponent(world.ecs, eid, Sprite);
   const parentSpriteTexture = hasSprite ? (world.stores.sprite.textureId[eid] ?? 0) : 0;
-  const parentSpriteWidth = hasSprite ? (world.stores.sprite.width[eid] ?? 2) : 2;
-  const parentSpriteHeight = hasSprite ? (world.stores.sprite.height[eid] ?? 2) : 2;
-  const parentSizeScale = hasSprite ? world.stores.sprite.sizeScale[eid] || 1 : 1;
-  const parentBaseWeight = (world.stores.weight.value[eid] ?? 120) / parentSizeScale;
+  const parentSpriteWidth = getBodyHalfWidth(world, eid, 'dropSystem') * 2 || 2;
+  const parentSpriteHeight = getBodyHalfHeight(world, eid, 'dropSystem') * 2 || 2;
+  const parentBaseWeight = world.stores.weight.value[eid] ?? 120;
   const miniWidth = Math.max(MINI_SLIME_MIN_SIZE_FT, parentSpriteWidth * MINI_SLIME_SIZE_SCALE);
   const miniHeight = Math.max(MINI_SLIME_MIN_SIZE_FT, parentSpriteHeight * MINI_SLIME_SIZE_SCALE);
   // Inherit blood colour from the parent slime
@@ -253,6 +267,12 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
       width: miniWidth,
       height: miniHeight,
     });
+    setComponent(world.ecs, miniEid, Size, {
+      radius: Math.max(miniWidth, miniHeight) * 0.5,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    });
     setEnemyAppearanceKey(world, miniEid, 'slime-mini');
     addComponent(world.ecs, miniEid, set(Damage, { amount: miniDamage }));
     // Babies pop out smaller and wiggle into existence; spawnAnimSystem ticks the
@@ -265,7 +285,7 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
         totalMs: MINI_SLIME_SPAWN_ANIM_MS,
       }),
     );
-    world.floor1?.enemyArchetypes.set(miniEid, 'slime-mini');
+    world.floorScenario?.enemyArchetypes.set(miniEid, 'slime-mini');
     // Survive the swing that killed the parent: register this baby in every
     // active melee swing's hit set so the player must swing again to kill it.
     markImmuneToActiveMeleeSwings(world, miniEid);
@@ -281,7 +301,8 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
   // Floor 1 onboarding pacing: gold, XP, and junk only start dropping after the
   // player finds the Welcome Office and the Tutorial Goon explains the rules.
   // Off-floor (e.g. labs) drops are always enabled.
-  const allowFloorDrops = !world.floor1 || world.goalFlags.get('floor1-drops-unlocked') === true;
+  const allowFloorDrops =
+    !world.floorScenario || world.goalFlags.get('floor1-drops-unlocked') === true;
 
   for (const eid of Array.from(entities)) {
     if (eid === undefined) continue;
@@ -302,7 +323,7 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
 
     const x = position.x[eid] ?? 0;
     const y = position.y[eid] ?? 0;
-    const archetypeId = world.floor1?.enemyArchetypes.get(eid);
+    const archetypeId = world.floorScenario?.enemyArchetypes.get(eid);
     const allowEnemyDrops = getEnemyDropConfig(archetypeId)?.dropsEnabled ?? true;
     maybeSplitSlime(world, eid, x, y);
     const maxHp = health.max[eid] ?? 0;
@@ -367,7 +388,61 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
         tables.floorTable,
       );
       const drops = rollLootTable(entries, world.rng);
-      spawnDrops(world, x, y, drops, allowFloorDrops && allowEnemyDrops);
+      // Spawner-arena XP intercept (spec `Requirements§4,5,7`): a spawner-owned
+      // child NEVER drops an on-map XP gem (requirement 4 — "mobs spawned by
+      // spawners do NOT drop experience"). Its XP portion is instead banked on
+      // the owning spawner and awarded once when the arena resolves. The
+      // banking is capped at SPAWNER_MAX_BANKED_CHILDREN kills (anti-farm), but
+      // that cap ONLY limits how much XP is banked — it does NOT re-enable
+      // on-map XP drops for the 11th+ kill. We do the intercept AFTER
+      // `rollLootTable` so the RNG stream stays exactly the same as it would in
+      // the un-owned case — only the destination of the XP entries changes.
+      const ownerEid = hasComponent(world.ecs, eid, Owner)
+        ? (world.stores.owner.eid[eid] ?? -1)
+        : -1;
+      if (ownerEid >= 0 && hasComponent(world.ecs, ownerEid, Spawner)) {
+        const bankedChildren = world.stores.spawner.bankedChildren[ownerEid] ?? 0;
+        // Only bank when the un-intercepted path would actually have spawned
+        // XP gems. Otherwise the spawner would grant XP that its children
+        // couldn't — violating the user's verbatim spec ("equal to the amount
+        // that would have dropped from killing the number of spawned mobs")
+        // and bypassing Floor-1 onboarding drop gates. This gate controls only
+        // the banked reward; the on-map XP gem is suppressed unconditionally
+        // below so requirement 4 holds for every owned kill.
+        const dropsAllowed = allowFloorDrops && allowEnemyDrops;
+        if (dropsAllowed && bankedChildren < SPAWNER_MAX_BANKED_CHILDREN) {
+          let intercepted = 0;
+          for (const drop of drops) {
+            if (drop.type !== 'xp') continue;
+            // Bank total value = value × quantity. spawnDrops still consumes
+            // its per-gem scatter RNG below because we leave the drop entry
+            // in the list with its original quantity — we just tell spawnDrops
+            // to skip spawning the XP gem for this specific enemy (via the
+            // `interceptSpawnerOwnedXp` flag). Preserves seed order.
+            intercepted += drop.value * drop.quantity;
+          }
+          if (intercepted > 0) {
+            world.stores.spawner.bankedXp[ownerEid] =
+              (world.stores.spawner.bankedXp[ownerEid] ?? 0) + intercepted;
+            world.stores.spawner.bankedChildren[ownerEid] = bankedChildren + 1;
+            logger.info('Spawner arena banked XP from child kill', {
+              childEid: eid,
+              spawnerEid: ownerEid,
+              intercepted,
+              bankedTotal: world.stores.spawner.bankedXp[ownerEid],
+              bankedChildren: world.stores.spawner.bankedChildren[ownerEid],
+            });
+          }
+        }
+        // Requirement 4: suppress the on-map XP gem for EVERY spawner-owned
+        // child, whether or not it was banked (beyond the cap or drop-gated).
+        // Gold/items still drop normally inside spawnDrops when drops are
+        // allowed; only the XP gem is intercepted. RNG-neutral: spawnDrops
+        // always consumes its scatter rolls regardless of the intercept flag.
+        spawnDrops(world, x, y, drops, allowFloorDrops && allowEnemyDrops, true);
+      } else {
+        spawnDrops(world, x, y, drops, allowFloorDrops && allowEnemyDrops, false);
+      }
       logger.info('Processed enemy death drops', {
         eid,
         archetypeId,
@@ -384,6 +459,12 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
         (world.stores.bloodColor.g[eid]! << 8) |
         world.stores.bloodColor.b[eid]!
       : DEFAULT_BLOOD_COLOR;
+    const familyIndex = hasComponent(world.ecs, eid, FamilyMembership)
+      ? (world.stores.familyMembership.familyId[eid] ?? -1)
+      : -1;
+    const isBoss = hasComponent(world.ecs, eid, FamilyMembership)
+      ? ((world.stores.familyMembership.isBoss[eid] ?? 0) as 0 | 1)
+      : 0;
     world.combatEvents.push({
       type: 'death',
       x,
@@ -398,6 +479,8 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
       sourceX: killDirX !== 0 || killDirY !== 0 ? x - killDirX * 2.5 : undefined,
       sourceY: killDirX !== 0 || killDirY !== 0 ? y - killDirY * 2.5 : undefined,
       bloodColor,
+      familyIndex: familyIndex >= 0 ? familyIndex : undefined,
+      isBoss: familyIndex >= 0 ? isBoss : undefined,
     });
 
     // Add death linger timer so entity persists for knockback/death animation

@@ -9,11 +9,13 @@ import {
   Inventory,
   Player,
   Position,
+  Size,
   Sprite,
   Spawner,
   Velocity,
   Weight,
 } from '../components.js';
+import { PHYSICS_BODIES, SHAPE_CIRCLE } from '../physics-defs.js';
 import type { GameWorld } from '../world.js';
 import { DEFAULT_BLOOD_COLOR } from '../../shared/constants.js';
 import { PATH_PERSONA, TRAVERSAL_MODE } from '../../shared/enemy-behavior.js';
@@ -33,7 +35,12 @@ function initializeEnemyAppearance(world: GameWorld, eid: number): void {
     ENEMY_SIZE_SCALE_MIN + appearanceRng.next() * (ENEMY_SIZE_SCALE_MAX - ENEMY_SIZE_SCALE_MIN);
   world.stores.sprite.variantRoll[eid] = appearanceRng.next();
   world.stores.sprite.sizeScale[eid] = sizeScale;
-  world.stores.weight.value[eid] = Math.max(1, (world.stores.weight.value[eid] ?? 120) * sizeScale);
+  // NOTE(size-weight-slice2): Weight intentionally does NOT scale with the
+  // cosmetic sizeScale RNG. Weight is a first-class gameplay dial (knockback
+  // denominator) and must reflect the authored value so mob-baseline weights
+  // stay predictable. Do not restore the sizeScale multiplier here without
+  // updating the win-rate baseline and unit-test pins in
+  // tests/unit/core/knockback.weight.test.ts.
 }
 
 export function setEnemyAppearanceKey(world: GameWorld, eid: number, key: string): void {
@@ -51,6 +58,16 @@ export function spawnPlayer(world: GameWorld, x: number, y: number, weight = 180
   addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
   addComponent(world.ecs, eid, set(Health, { current: 100, max: 100 }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 3, height: 3 }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      radius: PHYSICS_BODIES.player.radius,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    }),
+  );
   addComponent(world.ecs, eid, set(Weight, { value: weight }));
   addComponent(world.ecs, eid, Player);
   addComponent(world.ecs, eid, Inventory);
@@ -73,6 +90,16 @@ export function spawnEnemy(
   addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
   addComponent(world.ecs, eid, set(Health, { current: hp, max: hp }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 2, height: 2 }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      radius: PHYSICS_BODIES['mob-baseline'].radius,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    }),
+  );
   addComponent(world.ecs, eid, set(Weight, { value: weight }));
   addComponent(world.ecs, eid, Enemy);
   setBloodColor(world, eid, bloodColorHex);
@@ -108,6 +135,16 @@ export function spawnBehaviorEnemy(
   addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
   addComponent(world.ecs, eid, set(Health, { current: hp, max: hp }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 2, height: 2 }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      radius: PHYSICS_BODIES['mob-baseline'].radius,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    }),
+  );
   addComponent(world.ecs, eid, set(Weight, { value: options?.weight ?? 120 }));
   addComponent(world.ecs, eid, Enemy);
   addComponent(
@@ -151,7 +188,29 @@ export interface SpawnSpawnerOptions {
   spriteHeight?: number;
   /** Extra delay (ms) before the first spawn pulse is allowed. Default 0. */
   initialDelayMs?: number;
+  /**
+   * Battle-arena radius in feet. Defaults to the archetype's `arenaRadiusFt`;
+   * clamped at construction to the {@link SPAWNER_MIN_ARENA_RADIUS_FT} floor.
+   * Callers only need to override for tests/labs — production placement uses
+   * the archetype default so registry data stays the source of truth.
+   */
+  arenaRadiusFt?: number;
 }
+
+/**
+ * Absolute minimum arena radius in feet (spec `Requirements§1`). Any smaller
+ * radius could allow melee-range spawners to skip the fence-materialise
+ * geometry entirely.
+ */
+export const SPAWNER_MIN_ARENA_RADIUS_FT = 4;
+/** Fallback arena radius (spec `Requirements§1`) used when no archetype value. */
+export const SPAWNER_DEFAULT_ARENA_RADIUS_FT = 6;
+/**
+ * Sentinel written into `spawner.arenaKind` at construction. Resolved to
+ * `0` (sealed-room) or `1` (open-fence) by `spawnerArenaSystem` on the first
+ * tick that observes a `floorMap`.
+ */
+export const SPAWNER_ARENA_KIND_UNRESOLVED = 255;
 
 /**
  * Spawn an immobile Spawner enemy — a structure that periodically spits out
@@ -183,6 +242,19 @@ export function spawnSpawner(
       height: options.spriteHeight ?? 3,
     }),
   );
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      // Structural spawners aren't scaled through initializeEnemyAppearance,
+      // so we mirror the sprite's half-extents here rather than the registry's
+      // default 1.5 — a caller may pass a non-default spriteWidth/Height.
+      radius: Math.max(options.spriteWidth ?? 3, options.spriteHeight ?? 3) * 0.5,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    }),
+  );
   addComponent(world.ecs, eid, set(Weight, { value: options.weight ?? 200 }));
   addComponent(world.ecs, eid, Enemy);
   addComponent(
@@ -194,6 +266,14 @@ export function spawnSpawner(
       nextSpawnMs: world.elapsedMs + Math.max(0, options.initialDelayMs ?? 0),
       spawnedTotal: 0,
       deathResolved: 0,
+      arenaRadiusFt: Math.max(
+        SPAWNER_MIN_ARENA_RADIUS_FT,
+        options.arenaRadiusFt ?? SPAWNER_DEFAULT_ARENA_RADIUS_FT,
+      ),
+      arenaKind: SPAWNER_ARENA_KIND_UNRESOLVED,
+      arenaState: 0,
+      bankedXp: 0,
+      bankedChildren: 0,
     }),
   );
   if (contactDamage > 0) {

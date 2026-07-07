@@ -63,6 +63,15 @@ export interface DecorationDef {
   readonly lootTableId?: string;
   /** Optional light emission — present on props that emit a secondary light source. */
   readonly lightEmission?: LightEmission;
+  /**
+   * Prop weight in lb. Consumed by `knockbackSystem` (see ADR 0044 / Slice 2)
+   * to scale knockback displacement. Every entity with `Prop` MUST have a
+   * positive weight — `scripts/agent/health/check-weight-coverage.ts` fails CI
+   * if a spawner regresses. Defaults to 100 lb (a medium crate/table) via the
+   * `def(...)` factory; individual entries may override for stone/statue-class
+   * props that should shrug off knockback.
+   */
+  readonly weight?: number;
 }
 
 function def(
@@ -77,6 +86,7 @@ function def(
     depthLayer: 'mid',
     density: 0.05,
     isDestructible: false,
+    weight: 100,
     ...partial,
   };
 }
@@ -88,7 +98,7 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
     def({
       id: 'torch',
       name: 'Torch',
-      spriteId: 'deco-torch',
+      spriteId: 'prop-torch-v1-var-10',
       biomeTag: 'dungeon',
       category: 'light-source',
       placementZone: 'wall-adjacent',
@@ -392,7 +402,7 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
     def({
       id: 'junk-pile',
       name: 'Junk Pile',
-      spriteId: 'prop-junk-pile-a',
+      spriteId: 'prop-junk-pile-v1-var-0',
       biomeTag: 'dungeon',
       category: 'rubbish',
       placementZone: 'anywhere',
@@ -407,7 +417,7 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
     def({
       id: 'wall-sconce',
       name: 'Wall Sconce',
-      spriteId: 'prop-wall-sconce',
+      spriteId: 'prop-wall-sconce-v1-var-1',
       biomeTag: 'dungeon',
       category: 'light-source',
       placementZone: 'wall-adjacent',

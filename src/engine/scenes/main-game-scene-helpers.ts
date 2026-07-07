@@ -33,12 +33,18 @@ import {
 export const LIGHTING_VIEW_BUFFER_PX = 64;
 
 /**
- * The floor-run terminal outcome, if the run has reached one. Mirrors the
- * former `MainGameScene.getFloorRunOutcome()` — only `cleared_floor` and
- * `failed_timeout` are treated as terminal; anything else is `null`.
+ * The floor-run terminal outcome, if the run has reached one. Handles both
+ * Floor 1 (runSummary) and Floor 2 (staircaseDiscovered) terminal states.
+ * Only `cleared_floor` and `failed_timeout` are treated as terminal; anything
+ * else is `null`.
  */
 export function getFloorRunOutcome(world: GameWorld): 'cleared_floor' | 'failed_timeout' | null {
-  const outcome = world.floor1?.runSummary?.outcome;
+  // Floor 2: player confirmed exit descent → victory
+  if (world.floorExtendedState?.familyState?.staircaseDiscovered === true) {
+    return 'cleared_floor';
+  }
+  // Floor 1
+  const outcome = world.floorScenario?.runSummary?.outcome;
   if (outcome === 'cleared_floor' || outcome === 'failed_timeout') {
     return outcome;
   }
@@ -124,6 +130,45 @@ export function formatAbilityTrigger(abilityId: string): string {
   return triggerText.get(abilityId) ?? 'Auto trigger';
 }
 
+/** Minimal NPC-instance shape the interaction picker reads. */
+export interface NearbyNpcLike {
+  readonly nearbyPlayer: boolean;
+}
+
+/**
+ * Pick the nearest NPC whose `nearbyPlayer` flag is set, or -1 when none qualify.
+ *
+ * Iterates the npc map directly and reads positions from the entity-store
+ * arrays, so the per-frame call in the interaction update allocates nothing
+ * beyond the map's key iterator — no intermediate candidate array and no
+ * per-NPC objects. This runs every tick in a hot path, so the previous
+ * `Array.from(npcs.entries(), mapFn)` materialization was pure garbage churn.
+ */
+export function findNearestNearbyNpc(
+  playerX: number,
+  playerY: number,
+  npcs: ReadonlyMap<number, NearbyNpcLike>,
+  positionX: ArrayLike<number>,
+  positionY: ArrayLike<number>,
+): number {
+  let nearNpcEid = -1;
+  let nearNpcDistanceSq = Number.POSITIVE_INFINITY;
+  for (const eid of npcs.keys()) {
+    const instance = npcs.get(eid);
+    if (!instance?.nearbyPlayer) {
+      continue;
+    }
+    const dx = playerX - (positionX[eid] ?? 0);
+    const dy = playerY - (positionY[eid] ?? 0);
+    const distanceSq = dx * dx + dy * dy;
+    if (distanceSq < nearNpcDistanceSq) {
+      nearNpcDistanceSq = distanceSq;
+      nearNpcEid = eid;
+    }
+  }
+  return nearNpcEid;
+}
+
 /** Shopkeeper controller fields the dialogue resolver reads (subset of scene options). */
 interface DialogueShopkeeperController {
   isLocked?: (world: GameWorld) => boolean;
@@ -154,7 +199,7 @@ export function resolveDialogueLines(
   world: GameWorld,
   deps: DialogueResolutionDeps,
 ): string[] {
-  const objective = world.floor1?.objective;
+  const objective = world.floorScenario?.objective;
   if (defId === 'tutorial-goon') {
     const goonLines = selectTutorialGoonDialogue({
       bossDefeated: objective?.bossBattles.get('staircase')?.defeated === true,

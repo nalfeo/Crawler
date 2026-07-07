@@ -1,6 +1,39 @@
 {
   "version": 1,
   "entries": {
+    "ability-icon-fireball-v1-var-0": {
+      "briefId": "ability-icon-fireball-v1",
+      "spriteName": "ability-icon-fireball-v1-var-0",
+      "assetPath": "generated/ability-icon-fireball-v1-var-0.png",
+      "approvedAt": "2026-07-06T17:37:10.695Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-LgymqJ/ability-icon-fireball-v1/2026-07-02T21-45-32-1de0721b",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 24,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 24,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "2",
+      "type": null,
+      "contentHash": "5d03399ba3abd3b95d243e6b1405091c462d369cbe559a98d68352f2bd11d728",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "derived"
+    },
     "ability-icon-fireball-v1-var-11": {
       "briefId": "ability-icon-fireball-v1",
       "spriteName": "ability-icon-fireball-v1-var-11",
@@ -135,6 +168,237 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": null
+    },
+    "angry-roomba-v1-var-10": {
+      "briefId": "angry-roomba-v1",
+      "spriteName": "angry-roomba-v1-var-10",
+      "assetPath": "generated/angry-roomba-v1-var-10.png",
+      "approvedAt": "2026-07-06T17:33:02.737Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-H62iYl/angry-roomba-v1/2026-07-03T21-18-15-e5a2673f",
+      "variantIndex": 10,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 31,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "5",
+      "type": null,
+      "contentHash": "cf2d79bad0e6c570760dd22e083a9846671c6dfe5a6d026d71170044d5c5bfea",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "brief"
+    },
+    "angry-roomba-v1-var-14": {
+      "briefId": "angry-roomba-v1",
+      "spriteName": "angry-roomba-v1-var-14",
+      "assetPath": "generated/angry-roomba-v1-var-14.png",
+      "approvedAt": "2026-07-06T17:33:13.081Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-m8H0VD/angry-roomba-v1/2026-07-03T21-18-15-e5a2673f",
+      "variantIndex": 14,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 31,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "a37282f607811a2a918cd183c3f6090964f9890c93abe5a3c6573cee16035627",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "brief"
+    },
+    "angry-roomba-v1-var-4": {
+      "briefId": "angry-roomba-v1",
+      "spriteName": "angry-roomba-v1-var-4",
+      "assetPath": "generated/angry-roomba-v1-var-4.png",
+      "approvedAt": "2026-07-06T17:33:28.458Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-fxuyhh/angry-roomba-v1/2026-07-03T20-26-42-73b147bb",
+      "variantIndex": 4,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 30,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "5",
+      "type": null,
+      "contentHash": "4b177b43ad8be8601110fb76ad0b9a7b78f5042b3907012a2c13449f5bb07710",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "brief"
+    },
+    "angry-roomba-v1-var-7": {
+      "briefId": "angry-roomba-v1",
+      "spriteName": "angry-roomba-v1-var-7",
+      "assetPath": "generated/angry-roomba-v1-var-7.png",
+      "approvedAt": "2026-07-06T17:33:08.458Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-L84vV8/angry-roomba-v1/2026-07-03T21-18-15-e5a2673f",
+      "variantIndex": 7,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 31,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "b6fe0d8bca98f8a0c04b855effd0aab157260cd924658e42768239399f2fdae0",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "brief"
+    },
+    "angry-roomba-v2-v1-var-0": {
+      "briefId": "angry-roomba-v2-v1",
+      "spriteName": "angry-roomba-v2-v1-var-0",
+      "assetPath": "generated/angry-roomba-v2-v1-var-0.png",
+      "approvedAt": "2026-07-06T17:29:51.722Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-spk2D2/angry-roomba-v2-v1/2026-07-04T01-47-58-0a1d7dd2",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "5",
+      "type": null,
+      "contentHash": "78b0c8a0675f46cedddbc98e13a0ef274c799d1146f19f99fc9e8ec7864ab2c2",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "brief"
+    },
+    "angry-roomba-v2-v1-var-11": {
+      "briefId": "angry-roomba-v2-v1",
+      "spriteName": "angry-roomba-v2-v1-var-11",
+      "assetPath": "generated/angry-roomba-v2-v1-var-11.png",
+      "approvedAt": "2026-07-06T17:29:58.527Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-Scnvwt/angry-roomba-v2-v1/2026-07-04T01-47-58-0a1d7dd2",
+      "variantIndex": 11,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "5/8",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "c4dae9d5d610ba81c3ccd1ade0a0a90a04bb6ef07e42cbee0b7bdb78605a25fe",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "brief"
+    },
+    "angry-roomba-v2-v1-var-7": {
+      "briefId": "angry-roomba-v2-v1",
+      "spriteName": "angry-roomba-v2-v1-var-7",
+      "assetPath": "generated/angry-roomba-v2-v1-var-7.png",
+      "approvedAt": "2026-07-06T17:29:53.677Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-K4YPTl/angry-roomba-v2-v1/2026-07-04T01-47-58-0a1d7dd2",
+      "variantIndex": 7,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "5f566b49a8817e98ef6633f05833ee079c97427642321e7a4c731d7645b934f1",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "brief"
     },
     "antidote-pill-placeholder": {
       "briefId": "antidote-pill",
@@ -1575,6 +1839,72 @@
       "judgeScore": null,
       "type": null
     },
+    "mama-slime-v1-var-0": {
+      "briefId": "mama-slime-v1",
+      "spriteName": "mama-slime-v1-var-0",
+      "assetPath": "generated/mama-slime-v1-var-0.png",
+      "approvedAt": "2026-07-06T17:34:22.880Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-odsINc/mama-slime-v1/2026-07-03T03-54-47-77c4014d",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "2",
+      "type": null,
+      "contentHash": "f5aebcc7912826dded06962b91eb1076d868e28913584b687ef2fe129e3d52c4",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "brief"
+    },
+    "mama-slime-v1-var-4": {
+      "briefId": "mama-slime-v1",
+      "spriteName": "mama-slime-v1-var-4",
+      "assetPath": "generated/mama-slime-v1-var-4.png",
+      "approvedAt": "2026-07-06T17:34:14.781Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-pOtnXw/mama-slime-v1/2026-07-03T03-54-47-77c4014d",
+      "variantIndex": 4,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "3",
+      "type": null,
+      "contentHash": "3551cc579a849b830a19b35666f6dc70942686b59b6f1bf9eec17bed5a569f39",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "brief"
+    },
     "mana-flask-placeholder": {
       "briefId": "mana-flask",
       "spriteName": "mana-flask",
@@ -1682,6 +2012,72 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": "item"
+    },
+    "papa-slime-v1-var-0": {
+      "briefId": "papa-slime-v1",
+      "spriteName": "papa-slime-v1-var-0",
+      "assetPath": "generated/papa-slime-v1-var-0.png",
+      "approvedAt": "2026-07-06T17:34:35.036Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-WhhWQI/papa-slime-v1/2026-07-03T03-50-55-0ba32d02",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "a7cadf14137b206b107ad478618f0e3b27a5ee7d9a4c9f328ec3bd7741854236",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "brief"
+    },
+    "papa-slime-v1-var-10": {
+      "briefId": "papa-slime-v1",
+      "spriteName": "papa-slime-v1-var-10",
+      "assetPath": "generated/papa-slime-v1-var-10.png",
+      "approvedAt": "2026-07-06T17:34:39.130Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-uvCxKP/papa-slime-v1/2026-07-03T03-50-55-0ba32d02",
+      "variantIndex": 10,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "becf3bda074b692a98cf452f47a1c00cdb0dac98cc3194bb2cfefaba739fe572",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "brief"
     },
     "participation-trophy-placeholder": {
       "briefId": "participation-trophy",
@@ -1917,6 +2313,229 @@
       "type": "tile",
       "contentHash": "8821a076e8deee9750f8b01d599a9941440e9a8adb3635323635d13fff88c311"
     },
+    "prop-wall-sconce-v1-var-1": {
+      "briefId": "prop-wall-sconce-v1",
+      "spriteName": "prop-wall-sconce-v1-var-1",
+      "assetPath": "generated/prop-wall-sconce-v1-var-1.png",
+      "approvedAt": "2026-07-06T17:36:26.274Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-jVZfwn/prop-wall-sconce-v1/2026-07-02T21-49-42-6419720f",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 34,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 34,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "2",
+      "type": null,
+      "contentHash": "e5337d1a8453a013df712fb341b0e5215e2ae86f35da0918e226908dc34adc53",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "derived"
+    },
+    "prop-wall-sconce-v1-var-2": {
+      "briefId": "prop-wall-sconce-v1",
+      "spriteName": "prop-wall-sconce-v1-var-2",
+      "assetPath": "generated/prop-wall-sconce-v1-var-2.png",
+      "approvedAt": "2026-07-06T17:36:23.643Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-TBxRo7/prop-wall-sconce-v1/2026-07-02T21-49-42-6419720f",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 33,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 33,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "2",
+      "type": null,
+      "contentHash": "72bf5ad51981c25d496513a55eb326ba5e213f000696d838ac9f9d4ac246ed2d",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "derived"
+    },
+    "prop-wall-sconce-v1-var-4": {
+      "briefId": "prop-wall-sconce-v1",
+      "spriteName": "prop-wall-sconce-v1-var-4",
+      "assetPath": "generated/prop-wall-sconce-v1-var-4.png",
+      "approvedAt": "2026-07-06T17:36:33.240Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-yTogbn/prop-wall-sconce-v1/2026-07-02T21-49-42-6419720f",
+      "variantIndex": 4,
+      "anchor": null,
+      "anchors": {
+        "hold": null,
+        "centerOfGravity": {
+          "x": 33,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "2",
+      "type": null,
+      "contentHash": "42e69d2332f9b15a016e0e9b22ce25d5794c5d5c6d4d1bff4ad44340e08f7814",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": null
+    },
+    "prop-wall-sconce-v1-var-6": {
+      "briefId": "prop-wall-sconce-v1",
+      "spriteName": "prop-wall-sconce-v1-var-6",
+      "assetPath": "generated/prop-wall-sconce-v1-var-6.png",
+      "approvedAt": "2026-07-06T17:36:37.419Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-VAy1FP/prop-wall-sconce-v1/2026-07-02T21-49-42-6419720f",
+      "variantIndex": 6,
+      "anchor": {
+        "x": 32,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "2",
+      "type": null,
+      "contentHash": "c3094b7bf28f907dfdce750eba21621f07f75b9e194b6908eddf3b7a181fbb98",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "derived"
+    },
+    "prop-wall-sconce-v1-var-7": {
+      "briefId": "prop-wall-sconce-v1",
+      "spriteName": "prop-wall-sconce-v1-var-7",
+      "assetPath": "generated/prop-wall-sconce-v1-var-7.png",
+      "approvedAt": "2026-07-06T17:36:23.010Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-T1RYNp/prop-wall-sconce-v1/2026-07-02T21-49-42-6419720f",
+      "variantIndex": 7,
+      "anchor": {
+        "x": 34,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 34,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 33,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "d67d0c4efcf46086d10534dcc05d5dcb8a67b73ffed959e402aa52bbf8097c74",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "derived"
+    },
+    "prop-wall-sconce-v1-var-8": {
+      "briefId": "prop-wall-sconce-v1",
+      "spriteName": "prop-wall-sconce-v1-var-8",
+      "assetPath": "generated/prop-wall-sconce-v1-var-8.png",
+      "approvedAt": "2026-07-06T17:36:29.805Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-KPvCN7/prop-wall-sconce-v1/2026-07-02T21-49-42-6419720f",
+      "variantIndex": 8,
+      "anchor": {
+        "x": 35,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 35,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 34,
+          "y": 31,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "3",
+      "type": null,
+      "contentHash": "3893bda1c05f406601813f700ea8cb28001e51aab1a173b1807473b95e97cecd",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "derived"
+    },
+    "prop-wall-sconce-v1-var-9": {
+      "briefId": "prop-wall-sconce-v1",
+      "spriteName": "prop-wall-sconce-v1-var-9",
+      "assetPath": "generated/prop-wall-sconce-v1-var-9.png",
+      "approvedAt": "2026-07-06T17:36:23.818Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-qasET3/prop-wall-sconce-v1/2026-07-02T21-49-42-6419720f",
+      "variantIndex": 9,
+      "anchor": {
+        "x": 33,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 33,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 33,
+          "y": 31,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "3",
+      "type": null,
+      "contentHash": "98e5a968aa3d346e5b20c85a991e90d92b89d2d7d31ef78c37175054acb9c488",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "derived"
+    },
     "purple-potion-bottle-v1-var-4": {
       "briefId": "purple-potion-bottle-v1",
       "spriteName": "purple-potion-bottle-v1-var-4",
@@ -1957,6 +2576,72 @@
       "judgeScore": null,
       "type": null
     },
+    "rat-king-v1-var-0": {
+      "briefId": "rat-king-v1",
+      "spriteName": "rat-king-v1-var-0",
+      "assetPath": "generated/rat-king-v1-var-0.png",
+      "approvedAt": "2026-07-06T17:32:31.147Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-VF1HzT/rat-king-v1/2026-07-03T21-41-59-74b768fa",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 35,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/8",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "2575c5eea24a7c5f974d4071defcc545ddcb8f09b2dda55c3dfde5f8dc53ac80",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "brief"
+    },
+    "rat-king-v1-var-14": {
+      "briefId": "rat-king-v1",
+      "spriteName": "rat-king-v1-var-14",
+      "assetPath": "generated/rat-king-v1-var-14.png",
+      "approvedAt": "2026-07-06T17:32:37.822Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-Xgy6Nf/rat-king-v1/2026-07-03T21-41-59-74b768fa",
+      "variantIndex": 14,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 34,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/8",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "16238688399ae30741a1baf537f164c6fe358a0527fa8c5acd376f97732735da",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "brief"
+    },
     "rat-king-v1-var-7": {
       "briefId": "rat-king-v1",
       "spriteName": "rat-king-v1-var-7",
@@ -1985,6 +2670,105 @@
       "judgeScore": "4",
       "type": "enemy",
       "contentHash": "6219063caaf2343774fdc0416b8111685c0e4dcdc7c8eb897174c145117bfd94"
+    },
+    "rat-king-v1-var-8": {
+      "briefId": "rat-king-v1",
+      "spriteName": "rat-king-v1-var-8",
+      "assetPath": "generated/rat-king-v1-var-8.png",
+      "approvedAt": "2026-07-06T17:32:48.639Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-JLZq1d/rat-king-v1/2026-07-03T21-41-59-74b768fa",
+      "variantIndex": 8,
+      "anchor": {
+        "x": 29,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 29,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 35,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "83a2205a528cf0b883e5966122b480872a7cf2ce6d659412922c0752cad106d1",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "derived"
+    },
+    "rat-queen-v1-var-1": {
+      "briefId": "rat-queen-v1",
+      "spriteName": "rat-queen-v1-var-1",
+      "assetPath": "generated/rat-queen-v1-var-1.png",
+      "approvedAt": "2026-07-06T17:33:57.851Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-m8bmRf/rat-queen-v1/2026-07-03T04-03-22-feafa903",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 32,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 36,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "45949dc003fa0c0ea3be23c95405c5deb6c74b8c981fc752fbe40ccd930e4cef",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "derived"
+    },
+    "rat-queen-v1-var-2": {
+      "briefId": "rat-queen-v1",
+      "spriteName": "rat-queen-v1-var-2",
+      "assetPath": "generated/rat-queen-v1-var-2.png",
+      "approvedAt": "2026-07-06T17:33:53.554Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-kZrngg/rat-queen-v1/2026-07-03T04-03-22-feafa903",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 31,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "043f59e0e9b42f1e6f775567f4c14cebcdbf628c2bfdeda50b2ea3b2b60a6ec2",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "derived"
     },
     "rat-queen-v1-var-7": {
       "briefId": "rat-queen-v1",
@@ -2166,6 +2950,39 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": null
+    },
+    "rhea-vale-v1-var-0": {
+      "briefId": "rhea-vale-v1",
+      "spriteName": "rhea-vale-v1-var-0",
+      "assetPath": "generated/rhea-vale-v1-var-0.png",
+      "approvedAt": "2026-07-06T17:31:35.492Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-clrpLI/rhea-vale-v1/2026-07-03T21-57-17-1b80a5c5",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "0e94d10e31531a4d4d2ae93efb5a02ec379b647275d1723427d0c613e43b06ae",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "brief"
     },
     "rusted-scrap-placeholder": {
       "briefId": "rusted-scrap",
@@ -2618,6 +3435,105 @@
       "judgeScore": null,
       "type": null
     },
+    "spell-broker-v2-var-2": {
+      "briefId": "spell-broker-v2",
+      "spriteName": "spell-broker-v2-var-2",
+      "assetPath": "generated/spell-broker-v2-var-2.png",
+      "approvedAt": "2026-07-06T17:32:17.678Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-zsIhSp/spell-broker-v2/2026-07-03T21-48-49-f858f61a",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/8",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "7b3b5e22238c47b31e81dbe3f2a3c72e8028134fd90a0267f8f779fb2489a3c2",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "brief"
+    },
+    "spell-broker-v2-var-3": {
+      "briefId": "spell-broker-v2",
+      "spriteName": "spell-broker-v2-var-3",
+      "assetPath": "generated/spell-broker-v2-var-3.png",
+      "approvedAt": "2026-07-06T17:32:12.026Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-CHC0u8/spell-broker-v2/2026-07-03T21-48-49-f858f61a",
+      "variantIndex": 3,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/8",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "e0ee931781dc928850a51d5fa4382813d0d2cfeaf1beb13c909868d0a2f61869",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "brief"
+    },
+    "spell-broker-v2-var-8": {
+      "briefId": "spell-broker-v2",
+      "spriteName": "spell-broker-v2-var-8",
+      "assetPath": "generated/spell-broker-v2-var-8.png",
+      "approvedAt": "2026-07-06T17:32:20.371Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-bzhzL9/spell-broker-v2/2026-07-03T21-48-49-f858f61a",
+      "variantIndex": 8,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/8",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "86b77ebea8f209014228918719ebb2a853b0b2abeb01c7634b9bdb51f7821962",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "brief"
+    },
     "sponsor-contract-placeholder": {
       "briefId": "sponsor-contract",
       "spriteName": "sponsor-contract",
@@ -2726,6 +3642,72 @@
       "judgeScore": null,
       "type": "item"
     },
+    "sweaty-merchant-v1-var-1": {
+      "briefId": "sweaty-merchant-v1",
+      "spriteName": "sweaty-merchant-v1-var-1",
+      "assetPath": "generated/sweaty-merchant-v1-var-1.png",
+      "approvedAt": "2026-07-06T17:31:50.263Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-JG4OEe/sweaty-merchant-v1/2026-07-03T21-53-19-9abe74c3",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/8",
+      "judgeScore": "5",
+      "type": null,
+      "contentHash": "39d798ea8466b5781a0e92eca2c9468d6d330d53ddf18b73258789127e46e6da",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "brief"
+    },
+    "sweaty-merchant-v1-var-11": {
+      "briefId": "sweaty-merchant-v1",
+      "spriteName": "sweaty-merchant-v1-var-11",
+      "assetPath": "generated/sweaty-merchant-v1-var-11.png",
+      "approvedAt": "2026-07-06T17:32:00.467Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-UPh1oc/sweaty-merchant-v1/2026-07-03T21-53-19-9abe74c3",
+      "variantIndex": 11,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/8",
+      "judgeScore": "5",
+      "type": null,
+      "contentHash": "6e7c92abdaeffd0620101c7687c57df40f6c7c66d7f8aded9d146a2846de9da6",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "brief"
+    },
     "thunder-staff-placeholder": {
       "briefId": "thunder-staff",
       "spriteName": "thunder-staff",
@@ -2737,6 +3719,204 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": null
+    },
+    "tile-corridor-v1-var-10": {
+      "briefId": "tile-corridor-v1",
+      "spriteName": "tile-corridor-v1-var-10",
+      "assetPath": "generated/tile-corridor-v1-var-10.png",
+      "approvedAt": "2026-07-06T17:30:45.947Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-kWcYTN/tile-corridor-v1/2026-07-03T22-55-56-f7c13af2",
+      "variantIndex": 10,
+      "anchor": {
+        "x": 127,
+        "y": 255,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 127,
+          "y": 255,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 127,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "2",
+      "type": null,
+      "contentHash": "9bd1d1f0909e5bc84f37c301753a62d0ce199b033e93731768e20f16d03ec623",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "derived"
+    },
+    "tile-corridor-v1-var-12": {
+      "briefId": "tile-corridor-v1",
+      "spriteName": "tile-corridor-v1-var-12",
+      "assetPath": "generated/tile-corridor-v1-var-12.png",
+      "approvedAt": "2026-07-06T17:30:51.715Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-ZDGcO1/tile-corridor-v1/2026-07-03T22-55-56-f7c13af2",
+      "variantIndex": 12,
+      "anchor": {
+        "x": 127,
+        "y": 255,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 127,
+          "y": 255,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 127,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "2",
+      "type": null,
+      "contentHash": "bd5d1b3b25664ebf5542e8baa1c561cb8e75e227148077cbffb3104905028060",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "derived"
+    },
+    "tile-corridor-v1-var-14": {
+      "briefId": "tile-corridor-v1",
+      "spriteName": "tile-corridor-v1-var-14",
+      "assetPath": "generated/tile-corridor-v1-var-14.png",
+      "approvedAt": "2026-07-06T17:30:25.717Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-GzVSK7/tile-corridor-v1/2026-07-03T22-55-56-f7c13af2",
+      "variantIndex": 14,
+      "anchor": {
+        "x": 127,
+        "y": 255,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 127,
+          "y": 255,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 127,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "1458105489b4153e50d18e8d09ae8eaeca88b99bf8895046c542fdc77b461607",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "derived"
+    },
+    "tile-corridor-v1-var-2": {
+      "briefId": "tile-corridor-v1",
+      "spriteName": "tile-corridor-v1-var-2",
+      "assetPath": "generated/tile-corridor-v1-var-2.png",
+      "approvedAt": "2026-07-06T17:30:33.359Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-wCUIqF/tile-corridor-v1/2026-07-03T22-55-56-f7c13af2",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 127,
+        "y": 255,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 127,
+          "y": 255,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 127,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "3",
+      "type": null,
+      "contentHash": "ad2cb92c77089d5315c989fa079a45d85ad41a22bccfc584c6ee415c54f3259c",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "derived"
+    },
+    "tile-corridor-v1-var-4": {
+      "briefId": "tile-corridor-v1",
+      "spriteName": "tile-corridor-v1-var-4",
+      "assetPath": "generated/tile-corridor-v1-var-4.png",
+      "approvedAt": "2026-07-06T17:30:37.620Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-2Rfd5T/tile-corridor-v1/2026-07-03T22-55-56-f7c13af2",
+      "variantIndex": 4,
+      "anchor": {
+        "x": 127,
+        "y": 255,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 127,
+          "y": 255,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 127,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "2",
+      "type": null,
+      "contentHash": "e8745b122d0c300ba224cd4384a296b6f43733a397c3bb372ca68d9ccbabe14f",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "derived"
+    },
+    "tile-corridor-v1-var-8": {
+      "briefId": "tile-corridor-v1",
+      "spriteName": "tile-corridor-v1-var-8",
+      "assetPath": "generated/tile-corridor-v1-var-8.png",
+      "approvedAt": "2026-07-06T17:30:41.207Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-9NqpaX/tile-corridor-v1/2026-07-03T22-55-56-f7c13af2",
+      "variantIndex": 8,
+      "anchor": {
+        "x": 127,
+        "y": 255,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 127,
+          "y": 255,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 127,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "2",
+      "type": null,
+      "contentHash": "caa759188686b98e34ba87a8fbaa9cce1f23dca7add2a3525d34385075e7fb07",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "derived"
     },
     "time-capsule-placeholder": {
       "briefId": "time-capsule",
@@ -2929,6 +4109,138 @@
       "judgeScore": "2",
       "type": "tile",
       "contentHash": "768fff7a602616a5b4bfc8f61ab9cc52a9a562f0d03c447f5d7f7966b3cd8450"
+    },
+    "welcome-sign-left-v2-var-2": {
+      "briefId": "welcome-sign-left-v2",
+      "spriteName": "welcome-sign-left-v2-var-2",
+      "assetPath": "generated/welcome-sign-left-v2-var-2.png",
+      "approvedAt": "2026-07-06T17:35:26.168Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-bJ161L/welcome-sign-left-v2/2026-07-03T03-35-02-df64992f",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 28,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "3",
+      "type": null,
+      "contentHash": "f605f52898105ab707a5637716de625977fd1951db4bced88f1aadc28130f0db",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "brief"
+    },
+    "welcome-sign-left-v2-var-4": {
+      "briefId": "welcome-sign-left-v2",
+      "spriteName": "welcome-sign-left-v2-var-4",
+      "assetPath": "generated/welcome-sign-left-v2-var-4.png",
+      "approvedAt": "2026-07-06T17:35:33.650Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-N1vIG3/welcome-sign-left-v2/2026-07-03T03-35-02-df64992f",
+      "variantIndex": 4,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 28,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "3",
+      "type": null,
+      "contentHash": "e113aee6b83020b318988de66006296d2617a56ace6ae73c4836ae3f65c635c4",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "brief"
+    },
+    "welcome-sign-left-v2-var-6": {
+      "briefId": "welcome-sign-left-v2",
+      "spriteName": "welcome-sign-left-v2-var-6",
+      "assetPath": "generated/welcome-sign-left-v2-var-6.png",
+      "approvedAt": "2026-07-06T17:35:42.218Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-Rxw8X3/welcome-sign-left-v2/2026-07-03T03-35-02-df64992f",
+      "variantIndex": 6,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 28,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "d5b437407f71e72a9568ddf317bd604c3dd733169aa1ff67e4f162a39510e7ff",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "brief"
+    },
+    "welcome-sign-left-v2-var-7": {
+      "briefId": "welcome-sign-left-v2",
+      "spriteName": "welcome-sign-left-v2-var-7",
+      "assetPath": "generated/welcome-sign-left-v2-var-7.png",
+      "approvedAt": "2026-07-06T17:35:31.021Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-rigqUd/welcome-sign-left-v2/2026-07-03T03-35-02-df64992f",
+      "variantIndex": 7,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 28,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/8",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "9e4fecff0767a0dbc5a402a886ddaa4bc3dd542665a6e2e6fbaaab7c28a6ab51",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "brief"
     }
   }
 }

@@ -480,6 +480,7 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
           if (this.equipmentUI && !this.equipmentUI.isOpen()) {
             this.equipmentUI.toggle(this.world);
           }
+          this.inventoryUI?.refresh(this.world);
           this.equipmentUI?.refresh(this.world);
         },
         useThemedEquipmentReviewSprites: () => {

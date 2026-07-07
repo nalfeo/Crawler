@@ -7,7 +7,10 @@
  *
  * Hit gore: small directional splatter, probability controlled by weaponGoreFactor.
  * Death gore: large particle burst, intensity scaled by overkill damage.
- * Blood pools: persistent ellipses on the ground that fade over ~30 seconds.
+ * Blood pools: persistent irregular puddles on the ground that spread across
+ * most of their ~30-second lifetime. Each pool is a Phaser `Graphics` with
+ * several overlapping sub-lobes so the outline reads as an organic blob rather
+ * than a smooth ellipse (see `spawnBloodPool` and `redrawBloodPool`).
  */
 import type Phaser from 'phaser';
 import type { CombatEvent } from '../shared/combat-events.js';
@@ -31,10 +34,16 @@ const BLOOD_POOL_BASE_RADIUS = 8;
 const BLOOD_POOL_MAX_EXTRA_RADIUS = 18;
 /** Pool starts at this fraction of its final size and expands to 1.0. */
 const BLOOD_POOL_INITIAL_SCALE = 0.25;
-/** Fraction of pool lifetime spent expanding to full size. */
-const BLOOD_POOL_EXPAND_PHASE = 0.12;
+/**
+ * Fraction of pool lifetime spent expanding to full size. A slow spread makes
+ * a fresh kill read as an ongoing wound: the pool keeps growing across most
+ * of its 30 s life instead of snapping to full width in the first frame.
+ */
+const BLOOD_POOL_EXPAND_PHASE = 0.7;
 /** Maximum simultaneous blood pools before oldest is evicted. */
 const MAX_BLOOD_POOLS = 150;
+/** Number of overlapping sub-lobes drawn per pool for irregular spread. */
+const BLOOD_POOL_LOBE_COUNT = 5;
 
 interface GoreParticle {
   obj: Phaser.GameObjects.Rectangle;
@@ -43,13 +52,37 @@ interface GoreParticle {
   startMs: number;
 }
 
+interface BloodPoolLobe {
+  /** Offset from the pool centre (px). */
+  offsetX: number;
+  offsetY: number;
+  /** Final half-width of this lobe (px). */
+  targetRx: number;
+  /** Final half-height of this lobe (px). */
+  targetRy: number;
+  /** Per-lobe fraction of the pool's expand phase that this lobe reaches full size at.
+   * A value near 0 means the lobe pops in early; near 1 means it keeps spreading for
+   * almost the entire expand phase. Values are staggered so the outline visibly
+   * grows over time rather than all lobes pulsing in lockstep. */
+  growAt: number;
+  /** Scale this lobe starts at (0-1). The "core" lobe starts at
+   * `BLOOD_POOL_INITIAL_SCALE` so the pool has a visible anchor from the
+   * first frame; outer lobes start at 0 and unfurl outward, so the pool
+   * reads as spreading from a tight core rather than materialising already
+   * spread. */
+  initialScale: number;
+}
+
 interface BloodPool {
-  obj: Phaser.GameObjects.Ellipse;
+  obj: Phaser.GameObjects.Graphics;
+  color: number;
+  lobes: BloodPoolLobe[];
   startMs: number;
-  /** Final (fully-expanded) width. */
-  targetW: number;
-  /** Final (fully-expanded) height. */
-  targetH: number;
+  /** Cached last-frame progress (0-1 across lifetime) so we only redraw
+   * when it changes meaningfully. */
+  lastProgress: number;
+  /** Cached last-frame alpha so we only redraw when it changes meaningfully. */
+  lastAlpha: number;
 }
 
 export interface GoreVfxConfig {
@@ -137,6 +170,37 @@ export function createGoreVfx(
     }
   }
 
+  /** Redraw a pool at the given progress (0-1 over its full lifetime) and
+   * alpha. Cheap — a few filled ellipses per pool. Called from
+   * `spawnBloodPool` (initial draw) and every frame from the animation loop
+   * once its progress or alpha changes meaningfully.
+   */
+  function redrawBloodPool(pool: BloodPool, progress: number, alpha: number): void {
+    pool.obj.clear();
+    pool.obj.fillStyle(pool.color, 1);
+    const expandProgress = Math.min(1, progress / BLOOD_POOL_EXPAND_PHASE);
+    for (const lobe of pool.lobes) {
+      // Each lobe uses its own `growAt` (fraction of the pool's expand phase)
+      // as its personal timeline: earlier lobes hit full size while
+      // expandProgress is still low, outer lobes take longer to unfurl. This
+      // is what makes the pool "keep spreading" — the outline grows as
+      // successive lobes reach their targets.
+      const lobeProgress = Math.min(1, expandProgress / Math.max(lobe.growAt, 0.001));
+      // Cubic ease-out so lobes settle into their final shape rather than
+      // snapping to it — reads like blood soaking outward, not popping in.
+      const eased = lobe.initialScale + (1 - lobe.initialScale) * (1 - (1 - lobeProgress) ** 3);
+      pool.obj.fillEllipse(
+        lobe.offsetX,
+        lobe.offsetY,
+        lobe.targetRx * 2 * eased,
+        lobe.targetRy * 2 * eased,
+      );
+    }
+    pool.obj.setAlpha(alpha);
+    pool.lastProgress = progress;
+    pool.lastAlpha = alpha;
+  }
+
   function spawnBloodPool(
     x: number,
     y: number,
@@ -145,6 +209,11 @@ export function createGoreVfx(
     renderElapsedMs: number,
   ): void {
     if (cfg.intensity <= 0) return;
+    // Blood pools use `scene.add.graphics`, which GoreVfx's PhaserBridge
+    // enablement gate does not require (it only checks `add.rectangle`). Guard
+    // here so a partial Scene stub / headless scene that provides rectangles
+    // but no graphics still gets hit/death particle gore without throwing.
+    if (typeof scene.add.graphics !== 'function') return;
     const radius =
       BLOOD_POOL_BASE_RADIUS +
       Math.min(BLOOD_POOL_MAX_EXTRA_RADIUS, overkill * 0.5) * cfg.intensity;
@@ -155,23 +224,44 @@ export function createGoreVfx(
     const scaleY = (0.6 + vfxRandom() * 0.4) * sizeVariance;
     const poolColor = makeColorVariants(baseColor)[POOL_COLOR_VARIANT_INDEX]!; // dark variant for pooled blood
 
-    const targetW = radius * 2 * scaleX;
-    const targetH = radius * 2 * scaleY;
-    const initialW = targetW * BLOOD_POOL_INITIAL_SCALE;
-    const initialH = targetH * BLOOD_POOL_INITIAL_SCALE;
+    const baseRx = radius * scaleX;
+    const baseRy = radius * scaleY;
 
-    // x/y are world feet; scale to pixels for the rendering layer. The size and
-    // jitter constants below are already pixel-space, so only the centre converts.
-    const ellipse = scene.add.ellipse(
-      ftToPx(x) + (vfxRandom() - 0.5) * 6,
-      ftToPx(y) + (vfxRandom() - 0.5) * 4,
-      initialW,
-      initialH,
-      poolColor,
-    );
-    ellipse.setDepth(WORLD_VFX_DEPTH.bloodPool);
-    ellipse.setAlpha(0.55);
-    (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(ellipse);
+    // Build sub-lobes. Each lobe is a smaller ellipse offset from the pool
+    // centre; when they overlap and grow at different rates the outline reads
+    // as an organic, irregular puddle rather than a smooth mathematical
+    // ellipse. The first lobe stays close to the centre so pools always have
+    // a well-defined core.
+    const lobes: BloodPoolLobe[] = [];
+    for (let i = 0; i < BLOOD_POOL_LOBE_COUNT; i++) {
+      const isCore = i === 0;
+      const lobeAngle = vfxRandom() * Math.PI * 2;
+      const lobeRadius = isCore ? 0 : (0.25 + vfxRandom() * 0.55) * Math.min(baseRx, baseRy);
+      const rxJitter = 0.55 + vfxRandom() * 0.5;
+      const ryJitter = 0.55 + vfxRandom() * 0.5;
+      lobes.push({
+        offsetX: Math.cos(lobeAngle) * lobeRadius,
+        offsetY: Math.sin(lobeAngle) * lobeRadius,
+        targetRx: baseRx * (isCore ? 1.0 : rxJitter),
+        targetRy: baseRy * (isCore ? 1.0 : ryJitter),
+        // Stagger growth: the core lobe grows fastest (growAt low) so the
+        // pool has an anchor early; outer lobes finish later so the pool
+        // visibly continues to spread through most of the expand phase.
+        growAt: isCore ? 0.35 : 0.55 + vfxRandom() * 0.45,
+        // The core lobe is the anchor visible on the very first frame at
+        // its `INITIAL_SCALE`. Outer lobes start at 0 and grow outward so
+        // the pool doesn't materialise already-spread on frame 0.
+        initialScale: isCore ? BLOOD_POOL_INITIAL_SCALE : 0,
+      });
+    }
+
+    // x/y are world feet; scale to pixels for the rendering layer.
+    const graphics = scene.add.graphics({
+      x: ftToPx(x) + (vfxRandom() - 0.5) * 6,
+      y: ftToPx(y) + (vfxRandom() - 0.5) * 4,
+    });
+    graphics.setDepth(WORLD_VFX_DEPTH.bloodPool);
+    (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(graphics);
 
     // Evict oldest pool if cap is exceeded
     if (pools.length >= MAX_BLOOD_POOLS) {
@@ -179,7 +269,17 @@ export function createGoreVfx(
       evicted.obj.destroy();
     }
 
-    pools.push({ obj: ellipse, startMs: renderElapsedMs, targetW, targetH });
+    const pool: BloodPool = {
+      obj: graphics,
+      color: poolColor,
+      lobes,
+      startMs: renderElapsedMs,
+      lastProgress: -1,
+      lastAlpha: -1,
+    };
+    // Draw the initial (small) pool so it appears immediately.
+    redrawBloodPool(pool, 0, 0.55);
+    pools.push(pool);
   }
 
   /**
@@ -347,7 +447,8 @@ export function createGoreVfx(
         p.obj.setScale(1 - progress * 0.5);
       }
 
-      // Animate blood pools: expand quickly then fade slowly
+      // Animate blood pools: expand irregularly across `BLOOD_POOL_EXPAND_PHASE`
+      // and fade slowly over the remainder of the lifetime.
       for (let i = pools.length - 1; i >= 0; i--) {
         const pool = pools[i]!;
         const age = renderElapsedMs - pool.startMs;
@@ -359,14 +460,23 @@ export function createGoreVfx(
           continue;
         }
 
-        // Ease-out expansion: grow from BLOOD_POOL_INITIAL_SCALE → 1.0 over the expand phase
-        const expandT = Math.min(1, progress / BLOOD_POOL_EXPAND_PHASE);
-        const sizeScale =
-          BLOOD_POOL_INITIAL_SCALE + (1 - BLOOD_POOL_INITIAL_SCALE) * (1 - (1 - expandT) ** 2);
-        pool.obj.setSize(pool.targetW * sizeScale, pool.targetH * sizeScale);
-
         // Gentle fade: start at 0.55 alpha, finish at 0
-        pool.obj.setAlpha(0.55 * (1 - progress));
+        const alpha = 0.55 * (1 - progress);
+
+        // Only redraw if progress or alpha has drifted enough to matter. Over
+        // the ~30 s lifetime a 16 ms frame advances progress by only ~0.0005
+        // and alpha by ~0.0003, both under the 0.001 threshold, so neither
+        // crosses it in a single frame. Progress is the faster driver and its
+        // accumulation passes 0.001 after ~2 frames, so a pool redraws roughly
+        // every other frame. The guard skips those redundant redraws and keeps
+        // the door open for future optimisations (skip full lobe re-eval when
+        // the eased scales haven't shifted).
+        if (
+          Math.abs(progress - pool.lastProgress) > 0.001 ||
+          Math.abs(alpha - pool.lastAlpha) > 0.001
+        ) {
+          redrawBloodPool(pool, progress, alpha);
+        }
       }
     },
 

@@ -7,6 +7,7 @@ import {
   Gold,
   Player,
   Position,
+  Prop,
   Rotation,
   Spawner,
   Sprite,
@@ -15,6 +16,7 @@ import {
 } from '../../src/core/components.js';
 import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
 import { PLACEHOLDER_SPAWNER_TINT } from '../../src/engine/phaser-bridge/sprite-kind.js';
+import { ENTITY_DEPTH, WORLD_VFX_DEPTH } from '../../src/shared/render-depths.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { set } from '../../src/core/world.js';
 import { buildGeneratedSpriteRegistry } from '../../src/shared/generated-assets.js';
@@ -27,6 +29,7 @@ import {
 import { spawnMeleeSwing } from '../../src/core/spawners/melee.js';
 import { MeleeSpriteId } from '../../src/shared/constants.js';
 import { getSprite } from '../../src/engine/sprites/index.js';
+import { DECORATION_DEF_INDEX } from '../../src/shared/decorationDefs.js';
 
 /**
  * Faithful local stand-in for a Phaser weapon image on the melee-swing render
@@ -98,6 +101,47 @@ class SwingImage {
   setAlpha(a: number): this {
     this.alpha = a;
     return this;
+  }
+}
+
+class PropRect {
+  destroyed = false;
+  x = 0;
+  y = 0;
+  width = 0;
+  height = 0;
+  depth = 0;
+
+  constructor(x: number, y: number, width: number, height: number) {
+    this.x = x;
+    this.y = y;
+    this.width = width;
+    this.height = height;
+  }
+
+  setPosition(x: number, y: number): this {
+    this.x = x;
+    this.y = y;
+    return this;
+  }
+
+  setSize(width: number, height: number): this {
+    this.width = width;
+    this.height = height;
+    return this;
+  }
+
+  setFillStyle(_color: number, _alpha = 1): this {
+    return this;
+  }
+
+  setDepth(depth: number): this {
+    this.depth = depth;
+    return this;
+  }
+
+  destroy(): void {
+    this.destroyed = true;
   }
 }
 
@@ -218,6 +262,55 @@ describe('createPhaserBridge', () => {
     expect(images[1]?.destroyed).toBe(true);
   });
 
+  it('renders props as sprites when texture exists and falls back to rectangles otherwise', () => {
+    const propImages: MockImage[] = [];
+    const propRects: PropRect[] = [];
+    const scene = {
+      add: {
+        image: vi.fn((x = 0, y = 0, textureKey = '', frame?: number) => {
+          const img = new MockImage(x, y, textureKey, frame);
+          (
+            img as unknown as { setDisplaySize: (w: number, h: number) => MockImage }
+          ).setDisplaySize = function setDisplaySize(_w: number, _h: number): MockImage {
+            return img;
+          };
+          propImages.push(img);
+          return img as unknown as Phaser.GameObjects.Image;
+        }),
+        rectangle: vi.fn((x = 0, y = 0, width = 0, height = 0) => {
+          const rect = new PropRect(x, y, width, height);
+          propRects.push(rect);
+          return rect as unknown as Phaser.GameObjects.Rectangle;
+        }),
+      },
+      textures: {
+        exists: (key: string) => key === 'prop-wall-sconce-v1-var-1',
+      },
+    } as unknown as Phaser.Scene;
+
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+
+    const renderedProp = addEntity(world.ecs);
+    addComponent(world.ecs, renderedProp, Prop);
+    addComponent(world.ecs, renderedProp, set(Position, { x: 1, y: 2 }));
+    world.stores.prop.defIdIndex[renderedProp] = DECORATION_DEF_INDEX['wall-sconce']!;
+
+    const placeholderProp = addEntity(world.ecs);
+    addComponent(world.ecs, placeholderProp, Prop);
+    addComponent(world.ecs, placeholderProp, set(Position, { x: 3, y: 4 }));
+    world.stores.prop.defIdIndex[placeholderProp] = DECORATION_DEF_INDEX['junk-pile']!;
+
+    bridge.sync(world);
+
+    expect(propImages.some((img) => img.textureKey === 'prop-wall-sconce-v1-var-1')).toBe(true);
+    expect(propRects.length).toBeGreaterThan(0);
+
+    bridge.destroy();
+    expect(propImages.every((img) => img.destroyed)).toBe(true);
+    expect(propRects.every((rect) => rect.destroyed)).toBe(true);
+  });
+
   it('uses procedural texture key when no Kenney sheet is loaded', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: false });
     const bridge = createPhaserBridge(scene);
@@ -283,6 +376,10 @@ describe('createPhaserBridge', () => {
     expect(skull.alpha).toBeCloseTo(0.95);
     expect(corpse.alpha).toBe(1);
     expect(corpse.tint).toBe(0xffffff); // no desaturation yet
+    // A dead enemy renders on the ground plane (below the player at default
+    // depth 0) so the player is never buried under a fresh kill.
+    expect(corpse.depth).toBe(WORLD_VFX_DEPTH.corpse);
+    expect(corpse.depth).toBeLessThan(0);
 
     // Partway through the short skull window: skull dimmer and floating up.
     world.stores.deathTimer.remainingMs[eid] = 3000 - 450;
@@ -348,11 +445,14 @@ describe('createPhaserBridge', () => {
     bridge.sync(world);
 
     // The same sprite object was reused (not destroyed/recreated) and its
-    // leftover corpse styling is gone: full colour at full opacity.
+    // leftover corpse styling is gone: full colour at full opacity, and the
+    // corpse depth has been reset to the default entity plane so the recycled
+    // living enemy renders above blood pools and other corpses again.
     expect(corpse.destroyed).toBe(false);
     expect(corpse.tinted).toBe(false);
     expect(corpse.tint).toBe(0xffffff);
     expect(corpse.alpha).toBe(1);
+    expect(corpse.depth).toBe(ENTITY_DEPTH);
 
     // The stale linger was cleared too, so a shorter second death recalibrates
     // from full. With a stale 3000ms total, 1000ms remaining would read as a
@@ -452,15 +552,15 @@ describe('createPhaserBridge', () => {
     expect(area).toBe(16 * 16);
   });
 
-  it('shatters a right-facing baby-slime corpse at its shrunken on-screen scale', () => {
+  it('shatters a baby-slime corpse at its shrunken on-screen scale', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: false });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
     // Floor1 sidecar so the renderer can read the 'slime-mini' archetype.
-    world.floor1 = {
+    world.floorScenario = {
       enemyArchetypes: new Map<number, string>(),
       objective: { bossBattles: new Map() },
-    } as unknown as NonNullable<typeof world.floor1>;
+    } as unknown as NonNullable<typeof world.floorScenario>;
 
     // A baby-slime corpse: shrunken Sprite.width + 'slime-mini' archetype, so it
     // renders at 0.65 of a full slime (1.95 ft / 3.0 ft, the real split scale) —
@@ -471,11 +571,13 @@ describe('createPhaserBridge', () => {
     addComponent(world.ecs, eid, Enemy);
     addComponent(world.ecs, eid, set(Sprite, { textureId: 2, width: 1.95, height: 1.95 }));
     addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: 500 }));
-    world.floor1!.enemyArchetypes.set(eid, 'slime-mini');
+    world.floorScenario!.enemyArchetypes.set(eid, 'slime-mini');
 
     bridge.sync(world);
     const corpseImg = images[0]!;
-    expect(corpseImg.flipX).toBe(true);
+    // NOTE: enemy facing (flipX) is exercised by the dedicated facing test below;
+    // this test deliberately asserts only shard SCALE so it doesn't become brittle
+    // to future facing-policy tweaks.
     const renderedScale = corpseImg.scaleX; // baseScale * 0.65, the on-screen size
     const baseline = images.length;
 
@@ -675,7 +777,7 @@ describe('createPhaserBridge', () => {
     addComponent(world.ecs, slimeRatBoss, Enemy);
     addComponent(world.ecs, slimeRatBoss, set(Sprite, { textureId: 2, width: 4, height: 4 }));
 
-    world.floor1 = {
+    world.floorScenario = {
       enemyArchetypes: new Map<number, string>(),
       objective: {
         bossBattles: new Map([
@@ -683,7 +785,7 @@ describe('createPhaserBridge', () => {
           ['staircase', { bossEid: staircaseBoss }],
         ]),
       },
-    } as unknown as NonNullable<typeof world.floor1>;
+    } as unknown as NonNullable<typeof world.floorScenario>;
 
     bridge.sync(world);
 
@@ -781,12 +883,12 @@ describe('createPhaserBridge', () => {
     world.stores.health.current[bossEnemy] = 90;
     world.stores.health.max[bossEnemy] = 100;
 
-    world.floor1 = {
+    world.floorScenario = {
       enemyArchetypes: new Map<number, string>(),
       objective: {
         bossBattles: new Map([['slime-rat', { bossEid: bossEnemy }]]),
       },
-    } as unknown as NonNullable<typeof world.floor1>;
+    } as unknown as NonNullable<typeof world.floorScenario>;
 
     bridge.sync(world);
 
@@ -812,10 +914,10 @@ describe('createPhaserBridge', () => {
     const world = createTestWorld();
     // Minimal floor1 sidecar so the renderer can read the 'slime-mini' archetype
     // and iterate boss battles (both accessed during enemy sync).
-    world.floor1 = {
+    world.floorScenario = {
       enemyArchetypes: new Map<number, string>(),
       objective: { bossBattles: new Map() },
-    } as unknown as NonNullable<typeof world.floor1>;
+    } as unknown as NonNullable<typeof world.floorScenario>;
 
     const fullSlime = addEntity(world.ecs);
     const miniSlime = addEntity(world.ecs);
@@ -832,7 +934,7 @@ describe('createPhaserBridge', () => {
     addComponent(world.ecs, miniSlime, set(Position, { x: 30, y: 10 }));
     addComponent(world.ecs, miniSlime, Enemy);
     addComponent(world.ecs, miniSlime, set(Sprite, { textureId: 2, width: 1.95, height: 1.95 }));
-    world.floor1!.enemyArchetypes.set(miniSlime, 'slime-mini');
+    world.floorScenario!.enemyArchetypes.set(miniSlime, 'slime-mini');
 
     bridge.sync(world);
 
@@ -852,7 +954,7 @@ describe('createPhaserBridge', () => {
     expect(miniImg.scaleX).toBeCloseTo(fullImg.scaleX * 0.65, 5);
   });
 
-  it('faces enemies left by default and flips them only while moving right', () => {
+  it('faces enemies left at rest and turns them to face right only while moving right', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: false });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
@@ -867,26 +969,44 @@ describe('createPhaserBridge', () => {
 
     expect(images).toHaveLength(1);
     const enemyImg = images[0]!;
-    const leftFacingScale = enemyImg.scaleX;
-    expect(leftFacingScale).toBeGreaterThan(0);
+    // Generated enemy art is authored facing RIGHT, and flipX mirrors the texture,
+    // so flipX=true renders LEFT-facing and flipX=false renders (native) RIGHT-facing.
+    // scaleX magnitude is flip-independent, so it stays constant across every state.
+    const baselineScaleX = enemyImg.scaleX;
+    expect(baselineScaleX).toBeGreaterThan(0);
     expect(enemyImg.scaleY).toBeGreaterThan(0);
-    expect(enemyImg.flipX).toBe(false);
-
-    world.stores.velocity.x[enemy] = 0.0005;
-    bridge.sync(world);
-    expect(enemyImg.scaleX).toBeCloseTo(leftFacingScale, 6);
-    expect(enemyImg.scaleY).toBeGreaterThan(0);
-    expect(enemyImg.flipX).toBe(false);
-
-    world.stores.velocity.x[enemy] = 0.002;
-    bridge.sync(world);
-    expect(enemyImg.scaleX).toBeCloseTo(leftFacingScale, 6);
+    // At rest the enemy faces left (mirrored).
     expect(enemyImg.flipX).toBe(true);
 
+    // Sub-epsilon rightward jitter must not flip it to face right.
+    world.stores.velocity.x[enemy] = 0.0005;
+    bridge.sync(world);
+    expect(enemyImg.scaleX).toBeCloseTo(baselineScaleX, 6);
+    expect(enemyImg.scaleY).toBeGreaterThan(0);
+    expect(enemyImg.flipX).toBe(true);
+
+    // Exactly at the epsilon magnitude (vx = 0.001): Velocity is stored as
+    // Float32, so 0.001 rounds to ~0.00100000004 on read — just ABOVE the f64
+    // epsilon (0.001) — and the enemy DOES cross the threshold and unflips to
+    // face right. (No Float32 value equals the f64 epsilon exactly, so `>` and
+    // `>=` are equivalent here; this pins the effective threshold, so bumping the
+    // epsilon or changing the store width would break this assertion.)
+    world.stores.velocity.x[enemy] = 0.001;
+    bridge.sync(world);
+    expect(enemyImg.scaleX).toBeCloseTo(baselineScaleX, 6);
+    expect(enemyImg.flipX).toBe(false);
+
+    // Moving right past the epsilon: unflip to show the native right-facing art.
+    world.stores.velocity.x[enemy] = 0.002;
+    bridge.sync(world);
+    expect(enemyImg.scaleX).toBeCloseTo(baselineScaleX, 6);
+    expect(enemyImg.flipX).toBe(false);
+
+    // Moving left: back to the mirrored, left-facing pose.
     world.stores.velocity.x[enemy] = -1.5;
     bridge.sync(world);
-    expect(enemyImg.scaleX).toBeCloseTo(leftFacingScale, 6);
-    expect(enemyImg.flipX).toBe(false);
+    expect(enemyImg.scaleX).toBeCloseTo(baselineScaleX, 6);
+    expect(enemyImg.flipX).toBe(true);
   });
 
   // A welcome sign is a Sprite+Position entity whose textureId is the welcome

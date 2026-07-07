@@ -25,7 +25,7 @@ const POS = {
 
 function withFloor1(world: GameWorld): GameWorld {
   world.floor = 1;
-  world.floor1 = {
+  world.floorScenario = {
     protagonistName: 'Test',
     starterWeaponPool: [],
     starterChoices: [],
@@ -147,7 +147,7 @@ describe('getQuestWaypoints', () => {
     const world = withFloor1(createTestWorld());
     spawnPlayer(world, 0, 0);
     const npc = spawnPlayer(world, 64, 48);
-    world.floor1!.guideNpcEid = npc;
+    world.floorScenario!.guideNpcEid = npc;
     acceptQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
 
     const wps = getQuestWaypoints(world);

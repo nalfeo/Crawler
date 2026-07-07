@@ -2,11 +2,11 @@
 set -eu
 
 echo "Running Prettier check before push..."
-# Delegate to the npm script instead of expanding the globs in this shell.
-# Git for Windows runs hooks under its bundled MinGW sh, which expands the
-# "src/**/*.ts" globs into the full (hundreds-of-files) argument list before
-# invoking prettier, blowing past cmd.exe's command-line length limit
-# ("The command line is too long."). `npm run` executes the script via the
-# platform script-shell (cmd.exe on Windows) where the globs are passed through
-# literally and prettier does its own globbing.
-npm run format:check
+# Avoid npm/npx path resolution issues in Git Bash on Windows by invoking the
+# local Prettier entrypoint directly with Node.
+prettier_entry="./node_modules/prettier/bin/prettier.cjs"
+if [ ! -f "$prettier_entry" ]; then
+  echo "Prettier is not installed. Run npm install."
+  exit 1
+fi
+node "$prettier_entry" --check "src/**/*.ts" "tests/**/*.ts" "scripts/**/*.ts"

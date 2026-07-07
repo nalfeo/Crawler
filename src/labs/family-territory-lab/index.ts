@@ -71,10 +71,12 @@ function createFamilyTerritoryLab(canvasHost: HTMLElement, controls: HTMLElement
     world.factionRelationDeltas.length = 0;
     world.factionRelationEvents.length = 0;
     initializeFactionRelations(world, roster.presentFamilies);
-    world.floor2State = {
-      presentFamilies: roster.presentFamilies.slice(),
-      contestedResource: roster.contestedResource,
-      betrayerFlag: false,
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: roster.presentFamilies.slice(),
+        contestedResource: roster.contestedResource,
+        betrayerFlag: false,
+      },
     };
     render();
   }
@@ -102,7 +104,7 @@ function createFamilyTerritoryLab(canvasHost: HTMLElement, controls: HTMLElement
     }
     lines.push('');
     lines.push(
-      `<span style="color:#888">Betrayer flag: ${world.floor2State?.betrayerFlag ? 'YES' : 'no'} · Queued deltas: ${world.factionRelationDeltas.length} · Emitted events (session): ${world.factionRelationEvents.length}</span>`,
+      `<span style="color:#888">Betrayer flag: ${world.floorExtendedState?.familyState?.betrayerFlag ? 'YES' : 'no'} · Queued deltas: ${world.factionRelationDeltas.length} · Emitted events (session): ${world.factionRelationEvents.length}</span>`,
     );
     lines.push('');
     lines.push('<b>Recent events</b>');
@@ -154,14 +156,16 @@ function createFamilyTerritoryLab(canvasHost: HTMLElement, controls: HTMLElement
       if (!id) return;
       adjustFactionRelation(world, id, 100 - getRelation(world, id));
       adjustFactionRelation(world, id, -60);
-      if (world.floor2State) world.floor2State.betrayerFlag = true;
+      if (world.floorExtendedState?.familyState)
+        world.floorExtendedState.familyState.betrayerFlag = true;
       render();
     },
     resetRelations: () => {
       for (const id of familyIndex.keys()) {
         adjustFactionRelation(world, id, DEFAULT_RELATION - getRelation(world, id));
       }
-      if (world.floor2State) world.floor2State.betrayerFlag = false;
+      if (world.floorExtendedState?.familyState)
+        world.floorExtendedState.familyState.betrayerFlag = false;
       render();
     },
   };

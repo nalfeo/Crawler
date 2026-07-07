@@ -38,7 +38,7 @@ describe('achievementSystem', () => {
     const player = spawnPlayer(world, 0, 0);
     initializeFloor1Scenario(world, player);
 
-    const objective = world.floor1!.objective;
+    const objective = world.floorScenario!.objective;
     objective.ratsKilled = 20;
     objective.slimesKilled = 15;
     objective.goldCollected = 260;
@@ -96,7 +96,7 @@ describe('achievementSystem', () => {
     const player = spawnPlayer(world, 0, 0);
     initializeFloor1Scenario(world, player);
 
-    const objective = world.floor1!.objective;
+    const objective = world.floorScenario!.objective;
     objective.staircaseSpawned = true;
     objective.staircaseUnlocked = true;
     objective.staircaseLocked = false;
@@ -108,7 +108,7 @@ describe('achievementSystem', () => {
     expect(world.achievements.unlockedIds.has('stairs-discovered')).toBe(true);
     expect(world.achievements.unlockedIds.has('floor1-clear')).toBe(true);
     expect(world.achievements.unlockedIds.has('broke-speedrun')).toBe(true);
-    expect(world.floor1?.runSummary?.outcome).toBe('cleared_floor');
+    expect(world.floorScenario?.runSummary?.outcome).toBe('cleared_floor');
   });
 });
 

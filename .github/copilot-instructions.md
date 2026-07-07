@@ -4,12 +4,25 @@
 
 Crawler is a crafting-focused vampire-survivors-like game set in a reality show dungeon. It uses Phaser 4 for rendering and bitecs 0.4 for ECS game logic. This project is entirely agent-driven.
 
+## Request Intake
+
+The sole maintainer works best answering questions one at a time rather than writing a full spec upfront. Do NOT wait for a complete brief — actively drive the framing:
+
+1. **Interview, don't wait.** Ask the single most decisive question, let the maintainer answer, then ask the next. Never dump a wall of questions at once.
+2. **Converge on a bounded, single-metric ask.** Continue until the request has one hard, measurable success gate (a number or checkable condition) plus a ranked list of soft tiebreakers. Open-ended "make it good/better/faster" directives are not ready to start.
+3. **Reflect it back before coding.** Restate the ask in bounded form and get an explicit yes/no before writing code.
+4. **Push back on drift.** If an ask has no measurable done-state, say so and ask the narrowing question instead of guessing or silently scoping it yourself.
+5. **Say whether it's a good idea.** Be vocal about whether the ask is sound, and output plans directly in the session chat.
+
 ## Before Starting
 
 1. Run `bash scripts/agent/preflight.sh`
 2. Select your persona from the routing matrix in `docs/agent-os/personas/README.md` (default to **Producer** for multi-layer or ambiguous tasks), then read that persona doc
 3. Before planning work in a system, read the relevant section of `docs/knowledge/handoffs/INDEX.md` and skim the top 3-5 listed handoffs for that system. Fall back to a broader scan of `docs/knowledge/handoffs/` only if the index has no coverage for your target system. New handoffs must declare `## Systems touched` (comma-separated slugs from `docs/systems/README.md`) — required once the handoff-tooling lint wires it in, advisory until then.
 4. **Declare your apple estimate** — read `docs/agent-os/policies/complexity-policy.md`, pick 🍎–🍎🍎🍎🍎🍎, and state it in your first turn before writing any code
+
+- **Kickoff verdict is mandatory:** At session kickoff, explicitly say whether the ask is **recommended**, **risky**, or **not recommended**, with a short reason.
+- **Plans stay in session chat:** When giving a plan, write the full plan in session chat. Do **not** hide plans in repo files unless the human explicitly asks for a file artifact.
 
 ## Validation
 

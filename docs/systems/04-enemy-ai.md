@@ -8,10 +8,16 @@
 
 ## Systems in this group
 
-| System               | File                             | Pipeline position |
-| -------------------- | -------------------------------- | ----------------- |
-| `enemyAISystem`      | `src/game/enemyAISystem.ts`      | preSystems        |
-| `enemySpawnerSystem` | `src/game/enemySpawnerSystem.ts` | preSystems        |
+| System               | File                                      | Pipeline position                               |
+| -------------------- | ----------------------------------------- | ----------------------------------------------- |
+| `enemyAISystem`      | `src/game/enemyAISystem.ts`               | preSystems                                      |
+| `enemySpawnerSystem` | `src/game/enemySpawnerSystem.ts`          | preSystems                                      |
+| `spawnerArenaSystem` | `src/game/spawners/spawnerArenaSystem.ts` | preSystems (immediately BEFORE `spawnerSystem`) |
+| `spawnerSystem`      | `src/game/spawners/spawnerSystem.ts`      | preSystems                                      |
+
+> **Spawner Battle Arena.** The `spawnerArenaSystem` runs immediately before `spawnerSystem` and turns each spawner mob into a mini-boss encounter: entering the spawn zone locks the containing room's doors (or raises an impassable tile-flag fence when the room isn't sealable), banks up to 10 child-XP drops onto the spawner, and grants them as a single XP gem when the spawner dies. Start/end fire dedicated VFX events and push HUD announcements onto `world.announcements`. See [ADR 0044](../knowledge/adr/0044-spawner-battle-arena.md) and [`.specify/specs/spawner-battle-arena.md`](../../.specify/specs/spawner-battle-arena.md).
+>
+> **BT AI arena lock-in priority.** When the player is physically trapped inside a spawner arena (fence raised or doors locked) or a Floor-1 boss room, the BT AI's Track A selector inserts a new priority slot — **1.5, between Retreat and Interact** — that pins the objective (spawner or boss) as the current target so the AI can't wander into progression/explore behaviors it will never satisfy until the cage lowers. Retreat still trumps it (life-critical). Detector: `src/game/ai/arena-lockin.ts` (pure). Rationale + acceptance metric: [ADR 0045](../knowledge/adr/0045-ai-arena-lockin-priority.md).
 
 ---
 

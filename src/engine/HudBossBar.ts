@@ -79,7 +79,7 @@ export function createHudBossBar(
 
   function sync(world: GameWorld): void {
     const state = resolveBossHealthBar(
-      world.floor1?.objective.bossBattles,
+      world.floorScenario?.objective.bossBattles,
       world.ecs,
       world.stores.health,
     );

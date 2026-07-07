@@ -1,0 +1,145 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  BUDGET_FRAMES,
+  FLOOR1_WEAPONS,
+  parseNonNegativeNumber,
+  parsePositiveInt,
+  parseSeeds,
+  parseSweepArgs,
+} from '../../scripts/agent/perf/winrate-sweep-args.js';
+
+/** Build a process-style argv (`[node, script, ...flags]`) for the parser. */
+function argv(...flags: string[]): string[] {
+  return ['node', 'winrate-sweep.ts', ...flags];
+}
+
+describe('parseSweepArgs — --workers validation (regression: NaN hang)', () => {
+  it('throws an actionable error on non-numeric --workers (e.g. foo)', () => {
+    expect(() => parseSweepArgs(argv('--workers', 'foo'), 8)).toThrowError(
+      /Invalid --workers value "foo": expected a positive integer\./,
+    );
+  });
+
+  it('throws on partially-numeric --workers (e.g. 4abc) instead of truncating to 4', () => {
+    expect(() => parseSweepArgs(argv('--workers', '4abc'), 8)).toThrowError(/Invalid --workers/);
+  });
+
+  it('throws on --workers 0', () => {
+    expect(() => parseSweepArgs(argv('--workers', '0'), 8)).toThrowError(
+      /Invalid --workers value "0": expected a positive integer\./,
+    );
+  });
+
+  it('throws on negative --workers', () => {
+    expect(() => parseSweepArgs(argv('--workers', '-3'), 8)).toThrowError(/Invalid --workers/);
+  });
+
+  it('throws on fractional --workers', () => {
+    expect(() => parseSweepArgs(argv('--workers', '2.5'), 8)).toThrowError(/Invalid --workers/);
+  });
+
+  it('accepts a valid positive integer --workers', () => {
+    expect(parseSweepArgs(argv('--workers', '4'), 8).workers).toBe(4);
+  });
+});
+
+describe('parseSweepArgs — default worker count', () => {
+  it('defaults to min(parallelism, seeds*weapons) when --workers is omitted', () => {
+    // 2 seeds x 3 default weapons = 6 tasks; parallelism 8 -> capped at 6.
+    const args = parseSweepArgs(argv('--seeds', '1-2'), 8);
+    expect(args.workers).toBe(6);
+  });
+
+  it('caps the default at the injected parallelism when tasks exceed cores', () => {
+    // 40 default seeds x 3 weapons = 120 tasks; parallelism 4 -> 4.
+    expect(parseSweepArgs(argv(), 4).workers).toBe(4);
+  });
+
+  it('never returns fewer than 1 default worker', () => {
+    expect(parseSweepArgs(argv('--seeds', '1-1', '--weapons', 'sword'), 0).workers).toBe(1);
+  });
+});
+
+describe('parseSweepArgs — other numeric flags', () => {
+  it('throws on non-numeric --max-frames', () => {
+    expect(() => parseSweepArgs(argv('--max-frames', 'foo'), 8)).toThrowError(
+      /Invalid --max-frames/,
+    );
+  });
+
+  it('throws on --max-frames 0', () => {
+    expect(() => parseSweepArgs(argv('--max-frames', '0'), 8)).toThrowError(/Invalid --max-frames/);
+  });
+
+  it('accepts a valid --max-frames', () => {
+    expect(parseSweepArgs(argv('--max-frames', '600'), 8).maxFrames).toBe(600);
+  });
+
+  it('throws on negative --enemy-damage-multiplier but allows 0', () => {
+    expect(() => parseSweepArgs(argv('--enemy-damage-multiplier', '-1'), 8)).toThrowError(
+      /Invalid --enemy-damage-multiplier/,
+    );
+    expect(parseSweepArgs(argv('--enemy-damage-multiplier', '0'), 8).enemyDamageMultiplier).toBe(0);
+    expect(parseSweepArgs(argv('--enemy-damage-multiplier', '1.5'), 8).enemyDamageMultiplier).toBe(
+      1.5,
+    );
+  });
+});
+
+describe('parseSweepArgs — defaults and flags', () => {
+  it('applies documented defaults when no flags are given', () => {
+    const args = parseSweepArgs(argv(), 1);
+    expect(args.seeds).toEqual(Array.from({ length: 40 }, (_, i) => i + 1));
+    expect(args.weapons).toEqual(FLOOR1_WEAPONS);
+    expect(args.maxFrames).toBe(BUDGET_FRAMES);
+    expect(args.out).toBeNull();
+    expect(args.floorId).toBe('floor1');
+    expect(args.skipEvents).toBe(false);
+  });
+
+  it('parses --skip-events as a boolean flag', () => {
+    expect(parseSweepArgs(argv('--skip-events'), 8).skipEvents).toBe(true);
+  });
+
+  it('splits --weapons on commas', () => {
+    expect(parseSweepArgs(argv('--weapons', 'sword,bow'), 8).weapons).toEqual(['sword', 'bow']);
+  });
+
+  it('defaults floor2 to a single weapon when weapons are not overridden', () => {
+    expect(parseSweepArgs(argv('--floor', 'floor2'), 8).weapons).toEqual(['sword']);
+  });
+});
+
+describe('parseSeeds', () => {
+  it('expands inclusive ranges', () => {
+    expect(parseSeeds('1-3')).toEqual([1, 2, 3]);
+  });
+
+  it('parses comma lists and mixed ranges', () => {
+    expect(parseSeeds('1,5,7-9')).toEqual([1, 5, 7, 8, 9]);
+  });
+
+  it('allows seed 0', () => {
+    expect(parseSeeds('0-2')).toEqual([0, 1, 2]);
+  });
+
+  it('throws on non-numeric seed tokens', () => {
+    expect(() => parseSeeds('1,foo,3')).toThrowError(/Invalid --seeds/);
+  });
+});
+
+describe('numeric validators', () => {
+  it('parsePositiveInt rejects NaN / <=0 and accepts positive integers', () => {
+    expect(() => parsePositiveInt('--x', 'foo')).toThrow();
+    expect(() => parsePositiveInt('--x', '0')).toThrow();
+    expect(parsePositiveInt('--x', '12')).toBe(12);
+  });
+
+  it('parseNonNegativeNumber rejects negative / infinite and accepts 0 and fractions', () => {
+    expect(() => parseNonNegativeNumber('--x', 'Infinity')).toThrow();
+    expect(() => parseNonNegativeNumber('--x', '-0.5')).toThrow();
+    expect(parseNonNegativeNumber('--x', '0')).toBe(0);
+    expect(parseNonNegativeNumber('--x', '2.25')).toBe(2.25);
+  });
+});

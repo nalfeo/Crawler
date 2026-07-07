@@ -4,6 +4,7 @@ import { GAME } from '../../src/shared/constants.js';
 import type { InputState } from '../../src/shared/input.js';
 import { xpRequiredForLevel } from '../../src/shared/xpMath.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
+import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import {
   AIDecisionDebugState,
   AIProgressSuppressionSource,
@@ -112,5 +113,56 @@ describe('headless runner AI telemetry', () => {
 
     // No boost applied — player XP/level should not be inflated above a normal start.
     expect(stats.finalLevel).toBeLessThan(2);
+  });
+});
+
+describe('headless runner weapon telemetry (opt-in)', () => {
+  it('is omitted from run stats by default (zero-cost, disabled channel)', async () => {
+    const stats = await runHeadless(new BehaviorTreeAI({ seed: 42 }), {
+      seed: 42,
+      maxFrames: 300,
+      maxWallTimeMs: 30_000,
+      forceWeaponId: 'sword',
+    });
+
+    expect(stats.weaponTelemetry).toBeUndefined();
+  });
+
+  it('collects deterministic, self-consistent weapon accuracy when enabled', async () => {
+    const run = () =>
+      runHeadless(new BehaviorTreeAI({ seed: 42 }), {
+        seed: 42,
+        maxFrames: 3000,
+        maxWallTimeMs: 60_000,
+        forceWeaponId: 'sword',
+        recordWeaponTelemetry: true,
+      });
+
+    const stats = await run();
+    const wt = stats.weaponTelemetry;
+    expect(wt).toBeDefined();
+    if (!wt) return; // narrow for TS; the assertion above already failed otherwise
+
+    // The AI engages on seed 42, so the player must have swung at least once.
+    expect(wt.swings).toBeGreaterThan(0);
+    expect(wt.connectingSwings).toBeGreaterThan(0);
+
+    // Internal consistency of the rollup.
+    expect(wt.accuracyMisses).toBeLessThanOrEqual(wt.swings);
+    expect(wt.connectingSwings).toBeLessThanOrEqual(wt.swings);
+    expect(wt.multiHitSwings).toBeLessThanOrEqual(wt.connectingSwings);
+    expect(wt.totalEnemyHits).toBeGreaterThanOrEqual(wt.connectingSwings);
+    expect(wt.accuracy).toBeCloseTo(wt.connectingSwings / wt.swings, 10);
+    expect(wt.multiHitRate).toBeCloseTo(wt.multiHitSwings / wt.connectingSwings, 10);
+    expect(wt.avgEnemiesPerConnectingSwing).toBeCloseTo(
+      wt.totalEnemyHits / wt.connectingSwings,
+      10,
+    );
+    expect(wt.accuracy).toBeGreaterThan(0);
+    expect(wt.accuracy).toBeLessThanOrEqual(1);
+
+    // Same seed → identical telemetry (pure counting over a deterministic sim).
+    const again = await run();
+    expect(again.weaponTelemetry).toEqual(wt);
   });
 });

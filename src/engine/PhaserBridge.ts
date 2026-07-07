@@ -7,6 +7,7 @@ import { createCombatVfx } from './CombatVfx.js';
 import { createGoreVfx } from './GoreVfx.js';
 import { createCorpseShatterVfx, type CorpseExplodeOptions } from './CorpseShatterVfx.js';
 import { createEffectsVfx } from './EffectsVfx.js';
+import { createPlayerTrailVfx } from './PlayerTrailVfx.js';
 import { computeCorpseDecay, type CorpseDecay } from './corpse-decay.js';
 import { createLogger } from '../shared/logger.js';
 import { MeleeSpriteId } from '../shared/constants.js';
@@ -19,7 +20,7 @@ import {
 import { ftToPx } from '../shared/units.js';
 import { DEFAULT_HANDHELD_SPRITE_ANCHOR } from '../shared/sprite-anchor.js';
 import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../shared/decorationDefs.js';
-import { PROP_DEPTH } from '../shared/render-depths.js';
+import { ENTITY_DEPTH, PROP_DEPTH, WORLD_VFX_DEPTH } from '../shared/render-depths.js';
 import { getHarvestableDefByIndex } from '../shared/harvestableDefs.js';
 import {
   generateTextures,
@@ -67,6 +68,13 @@ interface EntityVisual {
    * Used to normalise the corpse fade/desaturation curve. Undefined while alive.
    */
   deathTotalMs?: number;
+}
+
+interface PropVisual {
+  obj: Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle;
+  mode: 'sprite' | 'placeholder';
+  textureKey?: string;
+  frame?: number;
 }
 
 const RENDER_KIND_CONFIGS = (ENTITY_SPRITE_MAPPINGS as EntitySpriteMappings).renderKinds;
@@ -208,8 +216,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const goldSpawnMs = new Map<number, number>();
   /** Ground shadow ellipses for each gold entity. */
   const goldShadows = new Map<number, Phaser.GameObjects.Ellipse>();
-  /** Placeholder rectangles for Prop entities (coloured by depth layer). */
-  const propVisuals = new Map<number, Phaser.GameObjects.Rectangle>();
+  /** Rendered visuals for Prop entities (sprite when wired, rectangle placeholder otherwise). */
+  const propVisuals = new Map<number, PropVisual>();
   const combatVfx = createCombatVfx(scene);
   const goreVfx =
     typeof scene.add.rectangle === 'function'
@@ -218,6 +226,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const corpseShatterVfx =
     typeof scene.add.image === 'function' ? createCorpseShatterVfx(scene) : null;
   const effectsVfx = createEffectsVfx(scene);
+  const playerTrailVfx = createPlayerTrailVfx(scene);
   const missingSpriteWarnings = new Set<string>();
   const missingTypeWarnings = new Set<string>();
   let lastRenderMs: number | null = null;
@@ -340,8 +349,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         const entityType = resolveRenderKind(world, eid);
         let isBoss = false;
         let bossKey: string | null = null;
-        if (entityType === 'enemy' && world.floor1 != null) {
-          for (const [key, battle] of world.floor1.objective.bossBattles.entries()) {
+        if (entityType === 'enemy' && world.floorScenario != null) {
+          for (const [key, battle] of world.floorScenario.objective.bossBattles.entries()) {
             if (battle.bossEid === eid) {
               isBoss = true;
               bossKey = key;
@@ -952,10 +961,22 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             img.setRotation(0);
             if (entityType === 'enemy') {
               const { scaleX, scaleY } = computeEnemyScale(world, eid, visual.baseScale);
+              // All generated enemy art is authored facing RIGHT by engine-wide
+              // convention (the sprite pipeline enforces `sensors.enemy.facing:
+              // 'right'` for enemy briefs — see data/sprite-types/enemy.json).
+              // Phaser's `flipX` MIRRORS the source texture, so the unflipped
+              // texture already faces right. We therefore flip it to face LEFT at
+              // rest and while moving left, and leave it unflipped (native
+              // right-facing) only once horizontal velocity is meaningfully
+              // positive. Net behaviour: enemies default to facing left and turn
+              // right only while moving right. This relies on every enemy texture
+              // sharing that right-facing orientation; if that convention ever
+              // changes, revisit this flip together with the pipeline contract
+              // rather than assuming a blind one-line inversion.
               const movingRight = (velocity.x[eid] ?? 0) > ENEMY_RIGHTWARD_FLIP_EPSILON;
               img.setScale(scaleX, scaleY);
               if (typeof img.setFlipX === 'function') {
-                img.setFlipX(movingRight);
+                img.setFlipX(!movingRight);
               }
             } else {
               img.setScale(visual.baseScale);
@@ -973,6 +994,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             img.setTint(corpseDecay.tint);
           }
           img.setAlpha(corpseDecay.corpseAlpha);
+          // Corpses render on the ground plane (below the player and living
+          // enemies at the default depth of 0) so the player is never buried
+          // under a fresh kill. Sits ABOVE `bloodPool` so the corpse still
+          // reads as lying inside the pool it bled into.
+          img.setDepth(WORLD_VFX_DEPTH.corpse);
         } else if (visual.deathTotalMs !== undefined) {
           // This visual previously backed a corpse but its EID has been
           // recycled for a living entity (bitecs reuses freed EIDs). Clear the
@@ -981,6 +1007,9 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           if (typeof img.clearTint === 'function') {
             img.clearTint();
           }
+          // Also reset the corpse depth we set during the dead phase so the
+          // recycled sprite renders at the default entity plane again.
+          img.setDepth(ENTITY_DEPTH);
           visual.deathTotalMs = undefined;
         }
 
@@ -1054,8 +1083,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       }
 
       // --- Prop render pass ---
-      // Render Prop entities as coloured placeholder rectangles until real
-      // sprites are available. Props render at PROP_DEPTH below all entities.
+      // Render Prop entities as real sprites when a wired spriteId resolves;
+      // otherwise fall back to coloured placeholders so unknown props remain visible.
       const activePropEids = new Set<number>();
       for (const propEid of query(world.ecs, [Prop, Position])) {
         activePropEids.add(propEid);
@@ -1078,20 +1107,68 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             : decorationDef?.category === 'rubbish'
               ? 0x8b7355
               : 0x6b7280;
+        const spriteId = decorationDef?.spriteId;
+        const spriteDef = spriteId !== undefined ? getSprite(spriteId) : undefined;
+        const hasKenneySprite =
+          spriteDef !== undefined && scene.textures?.exists(spriteDef.sheetKey) === true;
+        const hasGeneratedSprite =
+          spriteId !== undefined && scene.textures?.exists(spriteId) === true;
+        const shouldRenderSprite =
+          typeof scene.add.image === 'function' && (hasKenneySprite || hasGeneratedSprite);
 
-        let rect = propVisuals.get(propEid);
-        if (!rect && typeof scene.add.rectangle === 'function') {
-          rect = scene.add.rectangle(propX, propY, scalePx, scalePx, fillColor, 0.6);
-          rect.setDepth(depth);
-          propVisuals.set(propEid, rect);
-        } else if (rect) {
-          rect.setPosition(propX, propY);
+        let visual = propVisuals.get(propEid);
+        if (shouldRenderSprite) {
+          const textureKey = hasKenneySprite ? spriteDef!.sheetKey : spriteId!;
+          const frame = hasKenneySprite ? spriteDef!.frame : undefined;
+          if (visual === undefined || visual.mode !== 'sprite') {
+            visual?.obj.destroy();
+            const img =
+              frame !== undefined
+                ? scene.add.image(propX, propY, textureKey, frame)
+                : scene.add.image(propX, propY, textureKey);
+            img.setOrigin(0.5, 0.5);
+            img.setDisplaySize(scalePx, scalePx);
+            img.setDepth(depth);
+            visual = { obj: img, mode: 'sprite', textureKey, frame };
+            propVisuals.set(propEid, visual);
+          } else {
+            const img = visual.obj as Phaser.GameObjects.Image;
+            img.setPosition(propX, propY);
+            img.setDisplaySize(scalePx, scalePx);
+            img.setDepth(depth);
+            const keyChanged = visual.textureKey !== textureKey;
+            const frameChanged =
+              !keyChanged && frame !== undefined && String(img.frame?.name) !== String(frame);
+            if (keyChanged || frameChanged) {
+              if (frame !== undefined) {
+                img.setTexture(textureKey, frame);
+              } else {
+                img.setTexture(textureKey);
+              }
+            }
+            visual.textureKey = textureKey;
+            visual.frame = frame;
+          }
+        } else if (typeof scene.add.rectangle === 'function') {
+          if (visual === undefined || visual.mode !== 'placeholder') {
+            visual?.obj.destroy();
+            const rect = scene.add.rectangle(propX, propY, scalePx, scalePx, fillColor, 0.6);
+            rect.setDepth(depth);
+            visual = { obj: rect, mode: 'placeholder' };
+            propVisuals.set(propEid, visual);
+          } else {
+            const rect = visual.obj as Phaser.GameObjects.Rectangle;
+            rect.setPosition(propX, propY);
+            rect.setSize(scalePx, scalePx);
+            rect.setFillStyle(fillColor, 0.6);
+            rect.setDepth(depth);
+          }
         }
       }
       // Clean up removed prop visuals.
-      for (const [propEid, rect] of propVisuals) {
+      for (const [propEid, visual] of propVisuals) {
         if (!activePropEids.has(propEid)) {
-          rect.destroy();
+          visual.obj.destroy();
           propVisuals.delete(propEid);
         }
       }
@@ -1185,6 +1262,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       // Juice effects (hit sparks, crit bursts, death pops, pickups, level-up).
       // Reads combatEvents BEFORE CombatVfx drains them; drains world.vfxEvents.
       effectsVfx.update(world, renderElapsedMs);
+      // Small dust puffs behind the player — cosmetic only.
+      playerTrailVfx.update(world, renderElapsedMs);
       // Process combat VFX (floating damage numbers)
       combatVfx.update(world, renderElapsedMs);
     },
@@ -1221,6 +1300,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       }
       mobHealthBars.clear();
 
+      for (const visual of propVisuals.values()) {
+        visual.obj.destroy();
+      }
+      propVisuals.clear();
+
       for (const shadow of gemShadows.values()) {
         shadow.destroy();
       }
@@ -1236,6 +1320,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       goreVfx?.destroy();
       corpseShatterVfx?.destroy();
       effectsVfx.destroy();
+      playerTrailVfx.destroy();
       combatVfx.destroy();
     },
   };

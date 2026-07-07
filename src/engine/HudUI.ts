@@ -12,6 +12,7 @@ import { createHudManaBar } from './HudManaBar.js';
 import { createHudExperienceBar } from './HudExperienceBar.js';
 import { createHudFloorTimer } from './HudFloorTimer.js';
 import { createHudBossBar } from './HudBossBar.js';
+import { createHudAnnouncementBanner } from './HudAnnouncementBanner.js';
 import { createHudLootCounter } from './HudLootCounter.js';
 import { createHudMinimap } from './HudMinimap.js';
 import { createHudQuestTracker } from './HudQuestTracker.js';
@@ -62,6 +63,7 @@ export function createHudUI(scene: Phaser.Scene): {
   const abilityBar = createHudAbilityBar(scene, { parent: bottomCenter });
   const floorTimer = createHudFloorTimer(scene, { parent: topCenter });
   const bossBar = createHudBossBar(scene, { parent: topCenter });
+  const announcementBanner = createHudAnnouncementBanner(scene, { parent: topCenter });
   const questTracker = createHudQuestTracker(scene, { parent: topRight });
   const familyRelationships = createHudFamilyRelationships(scene, { parent: bottomRight });
 
@@ -121,6 +123,7 @@ export function createHudUI(scene: Phaser.Scene): {
     xpBar.sync(world);
     floorTimer.sync(world);
     bossBar.sync(world);
+    announcementBanner.sync(world);
     lootCounter.sync(world);
     skillTracker.sync(world, playerEid);
     minimap.sync(world, playerEid);
@@ -137,6 +140,7 @@ export function createHudUI(scene: Phaser.Scene): {
     xpBar.destroy();
     floorTimer.destroy();
     bossBar.destroy();
+    announcementBanner.destroy();
     lootCounter.destroy();
     skillTracker.destroy();
     minimap.destroy();
