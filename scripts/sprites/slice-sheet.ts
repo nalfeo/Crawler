@@ -19,6 +19,14 @@ import type { Brief } from './brief-schema.js';
  * variants the debugger previews are byte-for-byte what generation produces and
  * what `approve` ships to the catalog.
  *
+ * One exception, for the generation path only: callers may pass `expectedGrid`
+ * (the brief's commanded rows×cols). When band detection over-segments a single
+ * axis by a small margin — the other axis still matches, as happens for gappy
+ * subjects whose interior negative space reads as one spurious gutter — the
+ * slicer reconciles to the commanded grid via a uniform even split. Genuinely
+ * different layouts and gross mismatches are left alone so the count gate still
+ * rejects them. The debugger passes no `expectedGrid` and is unchanged.
+ *
  * Why slice before postprocessing rather than passing the whole sheet through
  * the existing postprocessor: the sheet's background-removal floodfill would
  * leak across cells if a cell happens to share a corner colour with another
@@ -72,6 +80,13 @@ export interface SliceOptions {
   readonly minBandPx?: number;
   /** Cells to mark as empty by (row, col). */
   readonly emptyCells?: ReadonlyArray<readonly [number, number]>;
+  /**
+   * The grid the sheet was *commanded* to use (from the brief). When supplied
+   * AND content-aware band detection disagrees with it, the slicer falls back
+   * to a uniform even split into exactly this grid. Omit it (as the debugger
+   * does) to keep pure content-aware behaviour. See `computeSliceMap`.
+   */
+  readonly expectedGrid?: { readonly rows: number; readonly cols: number };
 }
 
 interface Band {
@@ -197,6 +212,20 @@ function uniqueSorted(values: readonly number[]): number[] {
 }
 
 /**
+ * Evenly divide `[start, end]` into exactly `n` cells, returning the `n + 1`
+ * integer cut positions. Used by the generation reconciliation fallback in
+ * `computeSliceMap`. For real sheets (span ≫ n) the positions are strictly
+ * increasing, so this always yields exactly `n` cells.
+ */
+function uniformCuts(start: number, end: number, n: number): number[] {
+  const cuts = new Array<number>(n + 1);
+  for (let i = 0; i <= n; i++) {
+    cuts[i] = Math.round(start + ((end - start) * i) / n);
+  }
+  return cuts;
+}
+
+/**
  * Content-aware slicer that finds background bands and cuts at their centres.
  * Does not require a pre-specified grid — cut positions are inferred entirely
  * from pixel data. This is the canonical map used by both generation
@@ -239,8 +268,48 @@ export function computeSliceMap(sheetPng: Buffer, options: SliceOptions = {}): S
     yEnd,
   ]);
 
-  const cols = xCuts.length - 1;
-  const rows = yCuts.length - 1;
+  // Cut arrays and grid shape default to the pure content-aware result.
+  let gridXCuts = xCuts;
+  let gridYCuts = yCuts;
+  let cols = xCuts.length - 1;
+  let rows = yCuts.length - 1;
+
+  // Generation reconciliation (surgical, over-segmentation only).
+  //
+  // `build-prompt` commands a *regular* rows×cols grid with same-size cells
+  // (see sheetLayoutBlock), so a brief's declared grid is the authoritative
+  // contract. Gappy subjects (e.g. a rubble pile) leave interior negative space
+  // that reads as a spurious full-length background band, so a commanded 4×4
+  // sheet is detected as 5×4 and the `cells === variantCount(brief)` gate
+  // rejects a sheet that actually holds the right number of subjects.
+  //
+  // We reconcile ONLY when the artifact is a small over-segmentation on a single
+  // axis: the OTHER axis matches the commanded grid exactly, and the
+  // over-segmented axis exceeds it by no more than `MAX_SPURIOUS_BANDS`. Then we
+  // uniform-split to the commanded grid, yielding exactly `rows*cols` cells so
+  // the gate passes *honestly*. We deliberately do NOT reconcile when both axes
+  // differ (a genuinely different layout, e.g. 1×3 vs 2×2), when an axis is
+  // UNDER-segmented (merged cells — a real miss), or when over-segmentation is
+  // gross (> tolerance): those are real failures the count gate must still
+  // reject so generation retries. The debugger path passes no `expectedGrid`.
+  const expectedGrid = options.expectedGrid;
+  if (expectedGrid) {
+    const MAX_SPURIOUS_BANDS = 2;
+    const colsOverOnly =
+      rows === expectedGrid.rows &&
+      cols > expectedGrid.cols &&
+      cols <= expectedGrid.cols + MAX_SPURIOUS_BANDS;
+    const rowsOverOnly =
+      cols === expectedGrid.cols &&
+      rows > expectedGrid.rows &&
+      rows <= expectedGrid.rows + MAX_SPURIOUS_BANDS;
+    if (colsOverOnly || rowsOverOnly) {
+      gridXCuts = uniformCuts(xStart, xEnd, expectedGrid.cols);
+      gridYCuts = uniformCuts(yStart, yEnd, expectedGrid.rows);
+      cols = expectedGrid.cols;
+      rows = expectedGrid.rows;
+    }
+  }
 
   const emptyCells = options.emptyCells ?? [];
   const emptyKeys = new Set(emptyCells.map(([r, c]) => `${r},${c}`));
@@ -249,10 +318,10 @@ export function computeSliceMap(sheetPng: Buffer, options: SliceOptions = {}): S
   let index = 0;
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      const x0 = xCuts[c]!;
-      const y0 = yCuts[r]!;
-      const w = xCuts[c + 1]! - x0;
-      const h = yCuts[r + 1]! - y0;
+      const x0 = gridXCuts[c]!;
+      const y0 = gridYCuts[r]!;
+      const w = gridXCuts[c + 1]! - x0;
+      const h = gridYCuts[r + 1]! - y0;
       const empty = emptyKeys.has(`${r},${c}`);
       cells.push({ index: empty ? -1 : index, row: r, col: c, x0, y0, w, h, empty });
       if (!empty) index++;
@@ -294,14 +363,18 @@ export function sliceSheet(sheetPng: Buffer, options: SliceOptions = {}): Buffer
 }
 
 /**
- * Convenience wrapper that pulls empty cells from a brief. The grid shape is
- * inferred from pixel data (content-aware), so only `emptyCells` is forwarded —
- * `rows`/`cols` from the brief are used elsewhere (prompt + variant count) but
- * are deliberately NOT used to drive slicing.
+ * Convenience wrapper that pulls the grid contract from a brief. `emptyCells`
+ * are forwarded as before, and the brief's declared `rows`/`cols` are passed as
+ * `expectedGrid`: for a well-formed sheet the content-aware map already matches
+ * and is used unchanged, but when a gappy subject over-segments a single axis by
+ * a small margin the slicer reconciles to the brief's commanded grid (uniform
+ * even split) instead of emitting the wrong cell count. Genuinely different
+ * layouts are left content-aware so the count gate still rejects them. See
+ * `computeSliceMap`.
  */
 export function sliceSheetFromBrief(sheetPng: Buffer, brief: Brief): Buffer[] {
-  const { emptyCells } = brief.generation.sheet;
-  return sliceSheet(sheetPng, { emptyCells });
+  const { rows, cols, emptyCells } = brief.generation.sheet;
+  return sliceSheet(sheetPng, { emptyCells, expectedGrid: { rows, cols } });
 }
 
 function extractCell(sheet: PNG, x0: number, y0: number, width: number, height: number): Buffer {

@@ -377,3 +377,137 @@ describe('Bug B regression: inter-cell gutters govern the recovered grid', () =>
     expect(map.cells).toHaveLength(8);
   });
 });
+
+describe('computeSliceMap generation reconciliation (expectedGrid)', () => {
+  // Encode one row of `logical` solid blocks, but split block index `splitAt`
+  // into two half-blocks separated by a full-height background gap. Content-aware
+  // detection then sees `logical + 1` columns — exactly the spurious-band artifact
+  // a gappy subject (rubble) produces on a real sheet.
+  function encodeGappyRow(logical: number, splitAt: number): { sheet: Buffer; colors: Rgb[] } {
+    const margin = 4;
+    const block = 10;
+    const gutter = 6;
+    const width = margin * 2 + logical * block + (logical - 1) * gutter;
+    const height = margin * 2 + block;
+    const png = new PNG({ width, height });
+    for (let i = 0; i < png.data.length; i += 4) {
+      png.data[i] = BG.r;
+      png.data[i + 1] = BG.g;
+      png.data[i + 2] = BG.b;
+      png.data[i + 3] = 255;
+    }
+    const palette: Rgb[] = [
+      { r: 200, g: 20, b: 20 },
+      { r: 20, g: 200, b: 20 },
+      { r: 20, g: 20, b: 200 },
+      { r: 200, g: 200, b: 20 },
+      { r: 200, g: 20, b: 200 },
+    ];
+    const colors: Rgb[] = [];
+    const y0 = margin;
+    for (let c = 0; c < logical; c++) {
+      const color = palette[c % palette.length]!;
+      colors.push(color);
+      const x0 = margin + c * (block + gutter);
+      for (let y = y0; y < y0 + block; y++) {
+        for (let x = x0; x < x0 + block; x++) {
+          // Punch a 2px full-height background gap down the middle of `splitAt`.
+          if (c === splitAt && x >= x0 + block / 2 - 1 && x < x0 + block / 2 + 1) continue;
+          const i = (y * width + x) * 4;
+          png.data[i] = color.r;
+          png.data[i + 1] = color.g;
+          png.data[i + 2] = color.b;
+        }
+      }
+    }
+    return { sheet: PNG.sync.write(png), colors };
+  }
+
+  it('reconciles a single spurious over-segmented column to the commanded grid, cleanly', () => {
+    // 4 logical blocks, block 1 split by an internal gap → content-aware sees 5.
+    const { sheet, colors } = encodeGappyRow(4, 1);
+
+    // Without the hint, the spurious band over-segments to 5 columns (the bug).
+    const bare = computeSliceMap(sheet);
+    expect(bare.rows).toBe(1);
+    expect(bare.cols).toBe(5);
+
+    // With the commanded grid, the slicer reconciles to exactly 1×4.
+    const reconciled = computeSliceMap(sheet, { expectedGrid: { rows: 1, cols: 4 } });
+    expect(reconciled.rows).toBe(1);
+    expect(reconciled.cols).toBe(4);
+    expect(reconciled.cells).toHaveLength(4);
+
+    // And the 4 recovered cells align with the 4 logical blocks (clean recovery,
+    // not misaligned garbage): each cell holds only its own colour.
+    const cells = sliceSheet(sheet, { expectedGrid: { rows: 1, cols: 4 } });
+    expect(cells).toHaveLength(4);
+    cells.forEach((cell, i) => {
+      expect(containsColor(cell, colors[i]!)).toBe(true);
+      for (let j = 0; j < colors.length; j++) {
+        if (j === i) continue;
+        expect(containsColor(cell, colors[j]!)).toBe(false);
+      }
+    });
+  });
+
+  it('is a no-op for a well-formed sheet whose content matches the commanded grid', () => {
+    const sheet = encodeContentGrid(2, 2, {
+      block: 8,
+      gutter: 4,
+      margin: 4,
+      color: (r, c) => ({ r: 10 + r * 80, g: 10 + c * 80, b: 90 }),
+    });
+    const bare = computeSliceMap(sheet);
+    const hinted = computeSliceMap(sheet, { expectedGrid: { rows: 2, cols: 2 } });
+    expect(hinted.rows).toBe(bare.rows);
+    expect(hinted.cols).toBe(bare.cols);
+    expect(hinted.cells).toHaveLength(4);
+    // Cells are still the clean content-aware cells.
+    expect(sliceSheet(sheet, { expectedGrid: { rows: 2, cols: 2 } })).toHaveLength(4);
+  });
+
+  it('does NOT reconcile a genuinely different layout (1×3 detected vs 2×2 commanded)', () => {
+    const sheet = encodeContentGrid(1, 3, {
+      block: 8,
+      gutter: 4,
+      margin: 4,
+      color: (_r, c) => ({ r: 200, g: 20 + c * 60, b: 40 }),
+    });
+    // Neither axis matches the commanded grid → left content-aware so the count
+    // gate downstream still rejects (3 ≠ 4) and generation retries.
+    const map = computeSliceMap(sheet, { expectedGrid: { rows: 2, cols: 2 } });
+    expect(map.rows).toBe(1);
+    expect(map.cols).toBe(3);
+    expect(map.cells).toHaveLength(3);
+  });
+
+  it('does NOT reconcile gross over-segmentation beyond the tolerance', () => {
+    // 7 detected columns vs 4 commanded (over by 3 > MAX_SPURIOUS_BANDS) is a real
+    // layout failure, not a spurious band — leave it for the count gate to reject.
+    const sheet = encodeContentGrid(1, 7, {
+      block: 6,
+      gutter: 4,
+      margin: 4,
+      color: (_r, c) => ({ r: 30 + c * 25, g: 40, b: 200 }),
+    });
+    const map = computeSliceMap(sheet, { expectedGrid: { rows: 1, cols: 4 } });
+    expect(map.cols).toBe(7);
+    expect(map.cells).toHaveLength(7);
+  });
+
+  it('does NOT reconcile under-segmentation (merged cells are a real miss)', () => {
+    // 3 detected columns vs 4 commanded: the model merged/omitted a gutter.
+    // Force-fitting would slice through a merged blob, so we leave it for the
+    // count gate to reject (3 ≠ 4) and retry.
+    const sheet = encodeContentGrid(1, 3, {
+      block: 8,
+      gutter: 4,
+      margin: 4,
+      color: (_r, c) => ({ r: 200, g: 20 + c * 60, b: 40 }),
+    });
+    const map = computeSliceMap(sheet, { expectedGrid: { rows: 1, cols: 4 } });
+    expect(map.cols).toBe(3);
+    expect(map.cells).toHaveLength(3);
+  });
+});
