@@ -63,7 +63,17 @@ assets:
   - id: rat-nest-props
     type: item
     label: Rat Nest Prop Cluster
+    briefId: rat-nest-v2
     brief: >
       Prop cluster of bones, cloth scraps, and junk piles used as set dressing
       around spawns and choke points.
-    placeholderInUse: true
+    placeholderInUse: false
+
+  - id: slime-pool-props
+    type: item
+    label: Slime Pool Prop Cluster
+    briefId: slime-pool-v1
+    brief: >
+      Toxic slime pool set-dressing used for sludge spawn pockets and hazard
+      telegraphing in sewer combat spaces.
+    placeholderInUse: false
