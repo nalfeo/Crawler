@@ -19,6 +19,16 @@ import type { Brief } from './brief-schema.js';
  * variants the debugger previews are byte-for-byte what generation produces and
  * what `approve` ships to the catalog.
  *
+ * One exception, for the generation path only: callers may pass `expectedGrid`
+ * (the brief's commanded rows×cols). The brief contractually commands a regular
+ * grid, so it is the authoritative cell COUNT. When band detection over-segments
+ * an axis — as happens for gappy subjects whose interior negative space reads as
+ * a spurious gutter — the slicer keeps cutting at the REAL detected gutters but
+ * drops the spurious one(s), choosing the subset that splits the axis most evenly;
+ * when it under-segments, it falls back to a uniform split. Either way it emits
+ * exactly the commanded count and every sheet reaches human gallery review (the
+ * intended quality gate). The debugger passes no `expectedGrid` and is unchanged.
+ *
  * Why slice before postprocessing rather than passing the whole sheet through
  * the existing postprocessor: the sheet's background-removal floodfill would
  * leak across cells if a cell happens to share a corner colour with another
@@ -72,6 +82,14 @@ export interface SliceOptions {
   readonly minBandPx?: number;
   /** Cells to mark as empty by (row, col). */
   readonly emptyCells?: ReadonlyArray<readonly [number, number]>;
+  /**
+   * The grid the sheet was *commanded* to use (from the brief). When supplied,
+   * the slicer reconciles each axis to this cell count: an over-segmented axis
+   * drops spurious gutters (cutting only at real detected gutters, most-even
+   * subset), an under-segmented axis falls back to a uniform split. Omit it (as
+   * the debugger does) to keep pure content-aware behaviour. See `computeSliceMap`.
+   */
+  readonly expectedGrid?: { readonly rows: number; readonly cols: number };
 }
 
 interface Band {
@@ -197,6 +215,144 @@ function uniqueSorted(values: readonly number[]): number[] {
 }
 
 /**
+ * Evenly divide `[start, end]` into exactly `n` cells, returning the `n + 1`
+ * integer cut positions. Used by the under-segmentation fallback in
+ * `computeSliceMap` when there are too few real gutters to cut on.
+ *
+ * Rounding evenly-spaced positions can collapse two adjacent cuts onto the same
+ * pixel when `end - start` is close to `n` (e.g. a near-empty sheet trimmed to a
+ * 3px content span split into 4 cells), which would yield a zero-width/height
+ * cell and crash extraction. Callers widen the span to the full axis before that
+ * happens (see `reconcileAxisCuts`); as a belt-and-braces guarantee we also clamp
+ * the positions to be strictly increasing here, so this always yields exactly `n`
+ * cells that are each ≥1px.
+ */
+function uniformCuts(start: number, end: number, n: number): number[] {
+  const cuts = new Array<number>(n + 1);
+  for (let i = 0; i <= n; i++) {
+    cuts[i] = Math.round(start + ((end - start) * i) / n);
+  }
+  for (let i = 1; i <= n; i++) {
+    if (cuts[i]! <= cuts[i - 1]!) cuts[i] = cuts[i - 1]! + 1;
+  }
+  return cuts;
+}
+
+/**
+ * From `candidates` (interior cut positions, strictly sorted and inside
+ * `(start, end)`), choose the `targetCells - 1` cuts that partition `[start, end]`
+ * into `targetCells` cells with the most-even widths, and return the full
+ * `targetCells + 1` cut array with the fixed outer edges `start`/`end` included.
+ *
+ * "Most even" = minimum variance of cell widths. Because the widths always sum to
+ * `end - start`, minimising their variance is equivalent to minimising the sum of
+ * their squares, which a small dynamic program (O(k² · targetCells), k =
+ * candidate count) solves exactly. Crucially we only ever cut at REAL detected
+ * gutters, so no alignment test is needed: a sheet whose gutters sit slightly
+ * off-centre still slices cleanly, and a spurious interior gutter (a gappy
+ * subject's internal negative space) is dropped for free because keeping it would
+ * make the widths less even.
+ *
+ * Requires `candidates.length >= targetCells - 1`; callers handle the
+ * under-segmented case (too few gutters) before calling.
+ *
+ * Deterministic: all inputs are integer pixel positions and every cost is an
+ * integer sum of squares, so there is no float tie-break ambiguity. When two
+ * subsets share the minimum cost, the strict `<` comparisons keep the first one
+ * reached in ascending candidate order (the leftmost subset), so the same sheet
+ * always slices identically across runs.
+ */
+function selectEvenCuts(
+  candidates: readonly number[],
+  start: number,
+  end: number,
+  targetCells: number,
+): number[] {
+  const interiorNeeded = targetCells - 1;
+  if (interiorNeeded <= 0) return [start, end];
+  const k = candidates.length;
+  const INF = Number.POSITIVE_INFINITY;
+  // dp[t][c] = min sum of squared widths for the first t cells when the t-th
+  // interior cut is candidates[c]. prev[t][c] reconstructs the chosen cuts.
+  const dp: number[][] = Array.from({ length: interiorNeeded + 1 }, () =>
+    new Array<number>(k).fill(INF),
+  );
+  const prev: number[][] = Array.from({ length: interiorNeeded + 1 }, () =>
+    new Array<number>(k).fill(-1),
+  );
+  for (let c = 0; c < k; c++) {
+    const w = candidates[c]! - start;
+    dp[1]![c] = w * w;
+  }
+  for (let t = 2; t <= interiorNeeded; t++) {
+    for (let c = t - 1; c < k; c++) {
+      for (let c2 = t - 2; c2 < c; c2++) {
+        const base = dp[t - 1]![c2]!;
+        if (base === INF) continue;
+        const w = candidates[c]! - candidates[c2]!;
+        const cost = base + w * w;
+        if (cost < dp[t]![c]!) {
+          dp[t]![c] = cost;
+          prev[t]![c] = c2;
+        }
+      }
+    }
+  }
+  // Close the final cell (last interior cut → end) and pick the best endpoint.
+  let bestC = -1;
+  let bestCost = INF;
+  for (let c = interiorNeeded - 1; c < k; c++) {
+    const base = dp[interiorNeeded]![c]!;
+    if (base === INF) continue;
+    const w = end - candidates[c]!;
+    const cost = base + w * w;
+    if (cost < bestCost) {
+      bestCost = cost;
+      bestC = c;
+    }
+  }
+  const chosen: number[] = [];
+  for (let t = interiorNeeded, c = bestC; t >= 1 && c >= 0; t--) {
+    chosen.push(candidates[c]!);
+    c = prev[t]![c]!;
+  }
+  chosen.reverse();
+  return [start, ...chosen, end];
+}
+
+/**
+ * Reconcile one axis's content-aware cut array (`[start, ...interior, end]`) to
+ * the brief's commanded cell count. An over-segmented axis drops spurious gutters
+ * via `selectEvenCuts` (cutting only at real detected gutters); an under-segmented
+ * axis falls back to a uniform split. Returns the reconciled `targetCells + 1`
+ * cut positions.
+ */
+function reconcileAxisCuts(
+  axisCuts: readonly number[],
+  start: number,
+  end: number,
+  targetCells: number,
+  axisMax: number,
+): number[] {
+  const interior = axisCuts.slice(1, -1);
+  const interiorNeeded = targetCells - 1;
+  if (interior.length === interiorNeeded) return [...axisCuts];
+  if (interior.length > interiorNeeded) {
+    return selectEvenCuts(interior, start, end, targetCells);
+  }
+  // Under-segmented: the subjects drew merged, so there are no real gutters to
+  // cut on. Divide evenly to still emit the commanded count. Prefer the trimmed
+  // content span, but when it is too narrow to hold `targetCells` cells of ≥1px
+  // — a near-empty or degenerate generation — widen to the full axis so we still
+  // produce the commanded count for human review instead of collapsing adjacent
+  // cuts into a zero-width cell (which would crash extraction). This bad-grid
+  // case is exactly what reconciliation must carry through to the gallery, so it
+  // must not throw.
+  const [spanStart, spanEnd] = end - start >= targetCells ? [start, end] : [0, axisMax];
+  return uniformCuts(spanStart, spanEnd, targetCells);
+}
+
+/**
  * Content-aware slicer that finds background bands and cuts at their centres.
  * Does not require a pre-specified grid — cut positions are inferred entirely
  * from pixel data. This is the canonical map used by both generation
@@ -239,8 +395,47 @@ export function computeSliceMap(sheetPng: Buffer, options: SliceOptions = {}): S
     yEnd,
   ]);
 
-  const cols = xCuts.length - 1;
-  const rows = yCuts.length - 1;
+  // Cut arrays and grid shape default to the pure content-aware result.
+  let gridXCuts = xCuts;
+  let gridYCuts = yCuts;
+  let cols = xCuts.length - 1;
+  let rows = yCuts.length - 1;
+
+  // Generation reconciliation: reconcile the detected grid to the brief's
+  // commanded rows×cols.
+  //
+  // `build-prompt` commands a *regular* rows×cols grid of same-size cells (see
+  // sheetLayoutBlock), so the brief's declared grid is the authoritative cell
+  // COUNT. Content-aware detection can still disagree with that count: a gappy
+  // subject (e.g. a rubble pile) leaves interior negative space that reads as a
+  // spurious full-length background band, so a commanded 4×4 sheet is detected as
+  // 5×4 and the `cells === variantCount(brief)` gate would reject a sheet that
+  // actually holds the right number of subjects.
+  //
+  // Per axis, independently (see `reconcileAxisCuts`):
+  //   • detected interior cuts == commanded − 1  → already correct, keep as-is.
+  //   • detected interior cuts >  commanded − 1  → over-segmented. Keep cutting at
+  //     REAL detected gutters but drop the spurious one(s): pick the subset that
+  //     splits the axis most evenly (`selectEvenCuts`). No theoretical/uniform
+  //     positions are used, so slightly off-centre gutters never clip art, and a
+  //     phantom interior gutter falls out because keeping it is less even.
+  //   • detected interior cuts <  commanded − 1  → under-segmented (subjects drew
+  //     merged, no real gutter between them). There are no true boundaries to cut
+  //     on, so fall back to a uniform even split to still emit the commanded count.
+  //
+  // Either reconcile path always yields exactly the commanded count, so the
+  // generation count gate passes and every sheet reaches human gallery review —
+  // the intended quality gate (product decision 2026-07-07): occasional
+  // half-sprite edge artifacts from a genuinely-off layout are cheap for a human
+  // to reject, and are preferable to auto-rejecting honest-but-gappy sheets. The
+  // debugger path passes no `expectedGrid` and is byte-for-byte unchanged.
+  const expectedGrid = options.expectedGrid;
+  if (expectedGrid) {
+    gridXCuts = reconcileAxisCuts(xCuts, xStart, xEnd, expectedGrid.cols, sheet.width);
+    gridYCuts = reconcileAxisCuts(yCuts, yStart, yEnd, expectedGrid.rows, sheet.height);
+    cols = gridXCuts.length - 1;
+    rows = gridYCuts.length - 1;
+  }
 
   const emptyCells = options.emptyCells ?? [];
   const emptyKeys = new Set(emptyCells.map(([r, c]) => `${r},${c}`));
@@ -249,10 +444,21 @@ export function computeSliceMap(sheetPng: Buffer, options: SliceOptions = {}): S
   let index = 0;
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      const x0 = xCuts[c]!;
-      const y0 = yCuts[r]!;
-      const w = xCuts[c + 1]! - x0;
-      const h = yCuts[r + 1]! - y0;
+      // Clamp every cell to the sheet so extraction can never read out of
+      // bounds. For a well-formed sheet the cuts already lie within
+      // [0, width]/[0, height], so `x0`/`w` are unchanged and the debugger path
+      // stays byte-for-byte identical. This only bites the degenerate case where
+      // the commanded grid is larger than the sheet itself (`axisMax <
+      // targetCells`): `uniformCuts` then force-increments cuts past the axis,
+      // which cannot arise from a real brief (nativeCanvas ≥ 256, grid ≤ 8×8) but
+      // must still not throw — the bad sheet is carried through to human gallery
+      // review, per the slicer's product contract. See `reconcileAxisCuts`.
+      const rawX0 = gridXCuts[c]!;
+      const rawY0 = gridYCuts[r]!;
+      const x0 = Math.min(Math.max(0, rawX0), Math.max(0, sheet.width - 1));
+      const y0 = Math.min(Math.max(0, rawY0), Math.max(0, sheet.height - 1));
+      const w = Math.max(1, Math.min(gridXCuts[c + 1]! - rawX0, sheet.width - x0));
+      const h = Math.max(1, Math.min(gridYCuts[r + 1]! - rawY0, sheet.height - y0));
       const empty = emptyKeys.has(`${r},${c}`);
       cells.push({ index: empty ? -1 : index, row: r, col: c, x0, y0, w, h, empty });
       if (!empty) index++;
@@ -294,14 +500,17 @@ export function sliceSheet(sheetPng: Buffer, options: SliceOptions = {}): Buffer
 }
 
 /**
- * Convenience wrapper that pulls empty cells from a brief. The grid shape is
- * inferred from pixel data (content-aware), so only `emptyCells` is forwarded —
- * `rows`/`cols` from the brief are used elsewhere (prompt + variant count) but
- * are deliberately NOT used to drive slicing.
+ * Convenience wrapper that pulls the grid contract from a brief. `emptyCells`
+ * are forwarded as before, and the brief's declared `rows`/`cols` are passed as
+ * `expectedGrid`: for a well-formed sheet the content-aware map already matches
+ * and is used unchanged, but when a gappy subject over-segments an axis the
+ * slicer drops the spurious gutter(s) — cutting at the most-even subset of REAL
+ * detected gutters — so it emits the commanded cell count and the sheet reaches
+ * human gallery review. See `computeSliceMap`.
  */
 export function sliceSheetFromBrief(sheetPng: Buffer, brief: Brief): Buffer[] {
-  const { emptyCells } = brief.generation.sheet;
-  return sliceSheet(sheetPng, { emptyCells });
+  const { rows, cols, emptyCells } = brief.generation.sheet;
+  return sliceSheet(sheetPng, { emptyCells, expectedGrid: { rows, cols } });
 }
 
 function extractCell(sheet: PNG, x0: number, y0: number, width: number, height: number): Buffer {

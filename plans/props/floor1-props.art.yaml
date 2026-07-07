@@ -1,75 +1,63 @@
 id: floor1-props
 title: Floor 1 Props & Decorations
 summary: >
-  Art breakdown for ambient scene-dressing props placed by placePropsForFloor
-  across Floor 1 (BASIC_UNDERGROUND biome). These are non-interactive objects
-  that add visual richness: litter, bracket lamps, and cave vines. All props
-  use biomeTag "dungeon" and are filtered by the floor manifest allowedCategories.
+  Art tracking for the ambient scene-dressing props that ACTUALLY spawn on
+  Floor 1. Ground truth: src/shared/data/floors/floor1.manifest.json declares
+  props.biomeTag "dungeon" with allowedCategories ["rubbish", "light-source"],
+  so propPlacer only ever spawns the four dungeon props below. Ids and the real
+  spriteIds mirror src/shared/decorationDefs.ts so this plan stays in sync with
+  runtime. Structural props (stone-pillar, barrel, chain) and every cave/organic/
+  tech/void prop are filtered out on Floor 1 and were removed from this plan.
 assets:
-  - id: prop-junk-pile-a
+  - id: torch
     type: item
-    label: Junk Pile A
+    label: Torch
     brief: >
-      Paper cups, food wrappers, and scattered trash — reality-show dungeon
-      litter that reads as rubbish at a glance. 16×16 px. Fits anywhere on
-      stone or cave floors. Warm desaturated tones (beige/brown).
-    placeholderInUse: true
+      Wall-mounted flaming torch on a black iron bracket, 4-frame flicker,
+      warm amber glow. Placed on wall-adjacent tiles. category: light-source.
+      Shipped sprite: prop-torch-v1-var-10.
+    placeholderInUse: false
     integration:
       kind: sprite-registry
-      id: prop.junk-pile-a
+      id: prop.torch
 
-  - id: prop-junk-pile-b
-    type: item
-    label: Junk Pile B
-    brief: >
-      Broken glass, crushed cans, and torn packaging — a denser trash heap
-      variant. 16×16 px. Warm desaturated palette with a glint on the glass.
-    placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: prop.junk-pile-b
-
-  - id: prop-empty-can
-    type: item
-    label: Empty Can
-    brief: >
-      Crushed aluminium can — small footprint scatter prop. 8×8 px.
-      Silvery grey with a hint of a coloured label band.
-    placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: prop.empty-can
-
-  - id: prop-wall-sconce
+  - id: wall-sconce
     type: item
     label: Wall Sconce
     brief: >
-      Iron bracket lamp mounted on a dungeon wall, holding a small flickering
-      flame or chemical light. 16×24 px, 3-frame flicker animation.
-      Warm amber/orange glow. Designed for wall-adjacent tiles.
-    placeholderInUse: true
+      Iron bracket lamp mounted on a dungeon wall holding a small flickering
+      flame, 3-frame flicker, warm amber light emission. Wall-adjacent tiles.
+      category: light-source. Shipped sprite: prop-wall-sconce-v1-var-1.
+    placeholderInUse: false
     integration:
       kind: sprite-registry
       id: prop.wall-sconce
 
-  - id: prop-cave-vine
+  - id: junk-pile
     type: item
-    label: Cave Vine
+    label: Junk Pile
     brief: >
-      Drooping cave vine with small bioluminescent nodules. 16×24 px.
-      Dark olive-green with pale blue-green glow dots. Cave-only placement.
-    placeholderInUse: true
+      Reality-show dungeon litter — cups, wrappers, and scattered trash that
+      reads as rubbish at a glance. Warm desaturated beige/brown. Placed
+      anywhere. category: rubbish. Shipped sprite: prop-junk-pile-v1-var-0.
+    placeholderInUse: false
     integration:
       kind: sprite-registry
-      id: prop.cave-vine
+      id: prop.junk-pile
 
-  - id: prop-floor-lantern
+  - id: rubble
     type: item
-    label: Floor Lantern
+    label: Rubble Pile
     brief: >
-      Standing lantern — a small caged flame on a short metal post. 12×16 px,
-      2-frame flicker. Warm amber light. Placed near walls (wall-adjacent zone).
+      A low heap of broken stone chunks, grit, and dust — collapsed-masonry
+      debris that reads as rubble at a glance. Warm desaturated grey/brown,
+      combat-readable low silhouette. Placed anywhere. category: rubbish.
+      GAP: the only Floor 1 prop still on a placeholder — decorationDefs maps
+      it to spriteId "deco-rubble", which is NOT in the sprite manifest, so it
+      renders a colored fallback rectangle. Canary generation target
+      (asset-request "prop-rubble-pile"); wire the generated sprite over
+      deco-rubble once approved.
     placeholderInUse: true
     integration:
       kind: sprite-registry
-      id: prop.floor-lantern
+      id: prop.rubble
