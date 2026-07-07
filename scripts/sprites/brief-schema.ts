@@ -113,6 +113,7 @@ const sensorOverridesSchema = z
   .object({
     opaqueRatio: z
       .object({
+        disabled: z.boolean().optional(),
         min: z.number().min(0).max(1).optional(),
         max: z.number().min(0).max(1).optional(),
       })
