@@ -27,6 +27,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 ## Validation
 
 - After every change: `npm run verify:fast` (typecheck + lint + changed unit tests, ~30s)
+- Before running heavy discretionary checks (headless `VERIFY_FULL=1`, weapon sweeps, visual review), run `npm run scope` and only run them when its flags say they can be affected (`gameplay_safe=false`, UI surface changed, etc.). CI still enforces the real gates, so scoping locally never weakens a required check. See the "Scoping heavy validation" table in `AGENTS.md`.
 - Before committing: `npm run verify` (typecheck, lint, format, guards, unit + integration tests, **early PR prerequisites**, build). The ~306s headless Floor-1 gate is **deferred to its required CI job** by default — run it locally with `VERIFY_FULL=1 npm run verify` (do this when touching `src/core`, `src/game/ai`, or balance). Coverage is **not** run locally by default (it ~5x's unit-test time and is enforced in CI); add `VERIFY_COVERAGE=1` or run `npm run verify:coverage` for a local coverage gate.
 - When execution is complete (before asking for PR creation): `npm run verify:pr-prereqs` so review-harness and preflight blockers are surfaced immediately instead of at `create_pull_request`.
 - Before creating PR: Ensure `scripts/agent/lab-gate-check.sh` passes

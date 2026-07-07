@@ -84,8 +84,38 @@ else
 fi
 
 echo "🔍 Step 4/4: Physics-defs sync + Size + Weight coverage checks..."
+# physics-defs-sync is cheap and checks data drift (a docs-only entity-sizing.md
+# edit is gameplay_safe yet must still be validated against the code), so it always
+# runs.
 npx tsx scripts/agent/health/check-physics-defs-sync.ts
-npx tsx scripts/agent/health/check-size-coverage.ts
-npx tsx scripts/agent/health/check-weight-coverage.ts
+
+# size + weight coverage each replay an 800-frame headless Floor-1 sim. That sim
+# imports only src/core, src/shared and src/game/ai, so a change set classified
+# gameplay_safe (the same allowlist ci.yml uses to skip the 306s headless gate)
+# provably cannot alter it — the checks would recompute an identical result. Skip
+# them locally in that case to keep the most frequently-run command fast.
+#
+# IMPORTANT: these two checks are LOCAL-ONLY (not wired into any CI workflow — a
+# pre-existing gap, tracked as a follow-up), so CI is NOT a backstop. We therefore
+# skip ONLY on a proven-safe classification and FAIL SAFE (run both) on any doubt:
+# a parse error, a missing base, or a non-`true` value all leave run_size_weight=1.
+# Never skipped under CI=1 (CI runs verify-fast unscoped), mirroring the eslint
+# changed-files gate above.
+run_size_weight=1
+if [ -z "${CI:-}" ]; then
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  gameplay_safe="$(bash "$script_dir/ci/local-scope.sh" 2>/dev/null | grep -E '^gameplay_safe=' | tail -n1 || true)"
+  if [ "$gameplay_safe" = "gameplay_safe=true" ]; then
+    run_size_weight=0
+  fi
+fi
+
+if [ "$run_size_weight" -eq 1 ]; then
+  npx tsx scripts/agent/health/check-size-coverage.ts
+  npx tsx scripts/agent/health/check-weight-coverage.ts
+else
+  echo "   ⏭️  Skipping size + weight coverage: change set is gameplay_safe (headless-sim inputs unchanged)."
+  echo "      Force them with 'npm run check:size-coverage' / 'npm run check:weight-coverage'."
+fi
 
 echo "✅ Fast verification passed."
