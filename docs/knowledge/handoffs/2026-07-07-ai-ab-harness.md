@@ -34,11 +34,11 @@ Key correctness work this session (on top of the child's scaffold):
 
 - Early sweep (seeds 1–8 × sword/bow/baseball-bat, 24 pairs): 0 flips, 0 loss→win. Per-weapon win rate byte-identical: sword 7/8, bow 8/8, bat 6/8. 4 benign same-outcome divergences (bow s3 −35s improvement).
 - **Final representative re-validation after the F2 revert (seeds 42,101,202,303,404,505,606,707,808,909,1056,1234 × 3 weapons = 36 pairs, `files/ab-sweep-result-v2.txt`): `WIN→LOSS FLIPS: 0`, HARD GATE PASS.** legacy 31/36 (86.1%), slackAware 32/36 (88.9%); **1 loss→win recovery (sword seed 909)**, no regressions. Pre-existing MAIN losses (sword 808, bat 808/909, bow 303) unchanged in both modes — those are main balance, not this change (defaults are LEGACY = proven ==main).
-- LEGACY telemetry byte-identity self-verified line-by-line: `isSlackAwareUrgent()` short-circuits on the mode guard, so all F1 filters are dead `if(false)` and `decisionRunPlan` is never computed. See `files/byte-identity-proof.txt` + Floor-1 gate `files/verify-full.log`.
+- LEGACY **sim determinism** byte-identity self-verified line-by-line: `isSlackAwareUrgent()` short-circuits on the mode guard, so all F1 filters are dead `if(false)` and `decisionRunPlan` is never computed. (Note: a LEGACY `BehaviorTreeAI` still _emits_ the present-only telemetry fields `decisionMode='legacy'` + travelling `slackMs`/`urgency` — an observability superset, not a sim change; only game behavior/determinism is byte-identical.) See `files/byte-identity-proof.txt` + Floor-1 gate `files/verify-full.log`.
 
 **Lab observe (brief step 5, `files/lab-observe.txt`):** `/lab.html?lab=ai-runner` — both FRESH dropdowns present (`pathingMode`=[legacy,riskRewardFused], `decisionMode`=[legacy,slackAware], default legacy); `Modes:` HUD and `Slack:` HUD render. Toggling decision→slackAware and pathing→riskRewardFused updates the Modes HUD live. (Lab is NOT the behavior proof per rule #10 — the headless A/B above is.)
 
-**Review harness (3🍎):** plan_review (gpt-5.4, 3 concerns / 3 resolved) + code_review loop to clean (round 1 claude-sonnet-4.6: 2 concerns resolved; **round 2 claude-sonnet-4.6: CLEAN, all four hard contracts confirmed**). Ledger `docs/knowledge/review-ledgers/2026-07-07-ai-ab-harness.review-ledger.json` validates (exit 0).
+**Review harness (3🍎):** plan_review (gpt-5.4, 6 concerns / 6 resolved) + code_review loop to clean (round 1 claude-sonnet-4.6: 1 blocking concern resolved — the F2 exit-commitment bypass; **round 2 claude-sonnet-4.6: CLEAN, all four hard contracts confirmed**). Ledger `docs/knowledge/review-ledgers/2026-07-07-ai-ab-harness.review-ledger.json` validates (exit 0). (Counts here mirror the ledger, the guard-enforced audit artifact.)
 
 ## Key Decisions Made
 

@@ -398,12 +398,17 @@ export async function runHeadless(
     const nav = navProvider.getNavigationDebug?.();
     const netDisp = Math.hypot(px - lastSampleX, py - lastSampleY);
     // A/B telemetry (axis 2): emit run-plan slack/urgency and the decision mode
-    // when the provider exposes them. Optional-chained + present-only so LEGACY
-    // providers (and non-travelling samples with no run plan) emit nothing new.
-    // Prefer `decisionRunPlan` — the plan the SLACK_AWARE F1/F2 filters actually
-    // consulted this frame — falling back to the post-tick `runPlan`. In LEGACY
-    // `decisionRunPlan` is always null, so this falls back to `runPlan` exactly as
-    // before and the emitted telemetry stays byte-identical to main.
+    // when the provider exposes them. Optional-chained + present-only, so a
+    // provider WITHOUT these getters (e.g. a scripted/bare provider) emits
+    // nothing new. A BehaviorTreeAI DOES expose them, so even in LEGACY mode it
+    // emits `decisionMode: 'legacy'` and — on travelling samples — `slackMs`/
+    // `urgency` (from the post-tick `runPlan`). That is an observability
+    // superset, NOT part of the deterministic sim: game behavior/determinism
+    // stays byte-identical to main; only the emitted telemetry field set is
+    // broader. Prefer `decisionRunPlan` — the plan the SLACK_AWARE F1/F2 filters
+    // actually consulted this frame — falling back to the post-tick `runPlan`.
+    // In LEGACY `decisionRunPlan` is always null, so this falls back to
+    // `runPlan`, selecting the same plan a legacy-aware provider would.
     const tacticalDebug = navProvider.getTacticalRunDebug?.();
     const runPlan = tacticalDebug?.decisionRunPlan ?? tacticalDebug?.runPlan ?? null;
     const decisionMode = navProvider.getDecisionMode?.();
