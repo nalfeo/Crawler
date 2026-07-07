@@ -83,7 +83,7 @@ honest 5🍎 review ledger and opening the PR.
 
 - **Pre-gate infeasible swaps rather than "best-effort rollback".** The only
   correct fix for the item-loss bug is to refuse a swap that cannot succeed
-  *before* removing anything from the bag, using the same stat basis the
+  _before_ removing anything from the bag, using the same stat basis the
   forward equip will see. Sharing that basis with `previewEquipDelta` guarantees
   preview and execution never disagree.
 - **Real wheel event in the e2e, not just programmatic scroll.** Asserting

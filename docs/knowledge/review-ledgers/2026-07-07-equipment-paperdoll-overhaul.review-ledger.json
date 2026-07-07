@@ -14,10 +14,7 @@
     },
     "dual_plan_synthesis": {
       "completed": true,
-      "plan_models": [
-        "gpt-5.5",
-        "gemini-3.1-pro-preview"
-      ],
+      "plan_models": ["gpt-5.5", "gemini-3.1-pro-preview"],
       "judge_model": "claude-opus-4.8",
       "notes": "Two independent plans generated with different models, then judged + synthesized into a single coordinator-based plan: unified equipment+inventory surface, slot-driven filtering, shared pure helpers (filterEquippable/filterByEquipmentSlot), deterministic lab + real-scene (MainGameScene) validation. Synthesized plan recorded in plan.md."
     },

@@ -3,7 +3,7 @@
 // equip-from-bag path plus the merchant charm, opens the equipment-only view,
 // and pins a tooltip on a filled slot so the judge sees a populated doll +
 // populated tooltip together. Injected into the Playwright page context.
-;(async () => {
+(async () => {
   if (document.fonts?.ready) {
     await document.fonts.ready;
   }

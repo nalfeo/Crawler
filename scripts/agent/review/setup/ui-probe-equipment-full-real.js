@@ -4,7 +4,7 @@
 // real boot preload path instead of the themed synthetic review icon, so the
 // judge evaluates the icons players actually see. Injected into the Playwright
 // page context.
-;(async () => {
+(async () => {
   if (document.fonts?.ready) {
     await document.fonts.ready;
   }

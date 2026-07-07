@@ -1,4 +1,4 @@
-;(async () => {
+(async () => {
   if (document.fonts?.ready) {
     await document.fonts.ready;
   }
