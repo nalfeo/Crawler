@@ -1957,7 +1957,7 @@
       "briefId": "merchants-stained-charm",
       "spriteName": "merchants-stained-charm",
       "assetPath": "generated/merchants-stained-charm-placeholder.png",
-      "approvedAt": "2026-07-06T00:00:00.000Z",
+      "approvedAt": "2026-06-23T00:55:52.049Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -4348,6 +4348,196 @@
       "effectivePipelineSnapshotPath": null,
       "effectivePipelineSnapshotYamlPath": null,
       "effectiveAnchorSource": "brief"
+    },
+    "angry-roomba-v2-v1-var-13": {
+      "briefId": "angry-roomba-v2-v1",
+      "spriteName": "angry-roomba-v2-v1-var-13",
+      "assetPath": "generated/angry-roomba-v2-v1-var-13.png",
+      "approvedAt": "2026-07-04T03:00:00.760Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-2DSFiv/angry-roomba-v2-v1/2026-07-04T01-47-58-0a1d7dd2",
+      "variantIndex": 13,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "5",
+      "type": "character",
+      "contentHash": "e27a714e1b4ae05c90a8bf22444ad0bd18d71805975a6c7a765ac055491d39dd"
+    },
+    "papa-slime-v1-var-9": {
+      "briefId": "papa-slime-v1",
+      "spriteName": "papa-slime-v1-var-9",
+      "assetPath": "generated/papa-slime-v1-var-9.png",
+      "approvedAt": "2026-07-04T03:05:23.011Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-AptYm8/papa-slime-v1/2026-07-03T03-50-55-0ba32d02",
+      "variantIndex": 9,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "fb2c370ab6bb45ea2ed81875fa78a7e44e4f0f3b62cb94a0904b222ff7b887fa"
+    },
+    "the-stairs-v2-var-0": {
+      "briefId": "the-stairs-v2",
+      "spriteName": "the-stairs-v2-var-0",
+      "assetPath": "generated/the-stairs-v2-var-0.png",
+      "approvedAt": "2026-07-07T00:20:47.108Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-543XR0/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 64,
+        "y": 32,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 64,
+          "y": 32,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 255,
+          "y": 255,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "4",
+      "type": "tile",
+      "contentHash": "dcc6e42b2f21cf07a3fb83f1795ef489499d17666b80f43852b45ba10952626c",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived"
+    },
+    "the-stairs-v2-var-1": {
+      "briefId": "the-stairs-v2",
+      "spriteName": "the-stairs-v2-var-1",
+      "assetPath": "generated/the-stairs-v2-var-1.png",
+      "approvedAt": "2026-07-07T00:20:51.428Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-2VJZiE/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 255,
+        "y": 511,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 255,
+          "y": 511,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 255,
+          "y": 255,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "4",
+      "type": "tile",
+      "contentHash": "cecede3067a39d4041dbad4b048398502c4eaef9e4ae7663dd25cccf3e837a98",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived"
+    },
+    "the-stairs-v2-var-2": {
+      "briefId": "the-stairs-v2",
+      "spriteName": "the-stairs-v2-var-2",
+      "assetPath": "generated/the-stairs-v2-var-2.png",
+      "approvedAt": "2026-07-07T00:20:55.266Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-Gwhgqc/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 255,
+        "y": 511,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 255,
+          "y": 511,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 255,
+          "y": 255,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "4",
+      "type": "tile",
+      "contentHash": "4091f871dab669c14f46060a90e359745ecce63d263635a5c7d17a786546afa5",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived"
+    },
+    "the-stairs-v2-var-3": {
+      "briefId": "the-stairs-v2",
+      "spriteName": "the-stairs-v2-var-3",
+      "assetPath": "generated/the-stairs-v2-var-3.png",
+      "approvedAt": "2026-07-07T00:20:58.947Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-quqSYp/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a",
+      "variantIndex": 3,
+      "anchor": {
+        "x": 255,
+        "y": 511,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 255,
+          "y": 511,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 255,
+          "y": 255,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "4",
+      "type": "tile",
+      "contentHash": "3396533fe0687408a3ed9cf59dfcd05bacaa3b1114da937e5b2495c0f258c562",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived"
     }
   }
 }
