@@ -1269,11 +1269,14 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       staircaseSpawnCountdownMs: floor1Config.timer.stairSpawnCountdownMs,
       safeRoomPos,
       staircasePos,
+      // NOTE: welcomeOfficePos/spellQuestGiverPos/shopRoomPos are SEEDED here to
+      // the welcome-bar room center, but after NPC spawn all three are TIGHTENED
+      // to each NPC's actual spawned tile (see the npc-placement loop below). Treat
+      // them as "current NPC objective/target tiles", NOT stable room-center
+      // anchors — shared-room hubs stay selectable and AI navigation targets the
+      // real quest giver / merchant / goon tile.
       welcomeOfficePos,
       slimeRatRoomPos,
-      // Seed these to the welcome bar; after NPC spawn we tighten them to the
-      // exact spawned NPC positions so shared-room hubs stay selectable and AI
-      // navigation targets the actual quest giver/merchant tile.
       spellQuestGiverPos: welcomeOfficePos,
       shopRoomPos: welcomeOfficePos,
       questItemPos,

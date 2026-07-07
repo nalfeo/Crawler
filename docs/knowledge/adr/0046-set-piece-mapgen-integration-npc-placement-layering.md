@@ -105,8 +105,13 @@ avoids a special case and makes the "fixed furniture" intent explicit.
 ### Negative
 
 - The stamper centres + clamps to a room interior; a pathologically small or
-  concave (hub-shaped) target room can clamp a tile onto a wall. Mitigated by a
-  per-NPC passability guard that falls back to the scatter spawner for that NPC.
+  concave (hub-shaped) target room can clamp a tile onto a wall. Mitigated for
+  **NPCs** by a per-NPC passability guard that falls back to the scatter spawner
+  for that NPC. **Props** have no such guard, but they are visual-only (no `Size`,
+  never in the collision grid), so a prop clamped onto a wall is a **cosmetic-only**
+  artifact with zero gameplay/pathing effect. Full-footprint passable-interior
+  validation (vs. rectangular bounds) was considered and deferred as unnecessary
+  for non-colliding dressing on Floor 1's rectangular welcome-office hub.
 - One entity per flattened layer increases prop-entity count for dense set pieces
   (visual-only, no Size, so no collision/physics cost — only render + a sidecar
   Map entry).
@@ -120,6 +125,24 @@ avoids a special case and makes the "fixed furniture" intent explicit.
   future floors reusing this path must respect that indirection.
 - Depth bands are fixed constants; a future prop kind wanting to sit _between_
   two NPCs on the same plane is not expressible without extending the mapping.
+- Both set-piece prop bands render **below** `WORLD_VFX_DEPTH.gore` (+10): a
+  background banner (negative depth) and a foreground bookcase/desk (`z ≥ 20` →
+  ~+3) both sit under blood/corpse VFX, so transient gore can paint over dressing.
+  Accepted as a minor, intentional cosmetic tradeoff (gore is short-lived and the
+  dressing is static); pinned by the `render-depths` unit tests.
+- The objective-anchor auto-follow is validated **geometrically** — a fast unit
+  test asserts each anchor equals its NPC's spawned tile (reachable by construction,
+  distance 0 ≤ `NPC_INTERACT_RANGE_FT`) plus pairwise Chebyshev spacing. Deeper
+  end-to-end BT interaction-handoff validation is intentionally **out of scope**
+  per the maintainer's no-AI-edit / no-seed-sweep fence; the change only moves a
+  marker onto the NPC (interaction logic in `bt-ai-provider` is untouched and the
+  goon can only become _more_ reachable, never less).
+- The non-set-piece **fallback** NPC-spawn path (empty `npcPlacements`) is
+  backward-compat and now resolves all three NPCs against the stable room-center
+  local rather than the mutated objective field. It is covered structurally (the
+  self-documenting local + two clean review passes) rather than by a manifest-mock
+  test; forcing it would require module-level mocking of `floor1Manifest` for a
+  path the shipping manifest never takes.
 
 ## Alternatives Considered
 
