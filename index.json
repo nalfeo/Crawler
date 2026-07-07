@@ -1,5 +1,16 @@
 [
   {
+    "commit": "fd5bdd58f74c6d2af1d24fc0008af858b9b927c6",
+    "commitDate": "2026-07-07T03:44:25Z",
+    "commitSubject": "fix(perf): register tsx sync hooks in worker threads to fix .js→.ts import remapping (#834)",
+    "capturedAt": "2026-07-07T04:23:04.340Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28840161199",
+    "winRate": 0.78,
+    "totalWins": 234,
+    "totalRuns": 300,
+    "path": "by-sha/fd5bdd58f74c6d2af1d24fc0008af858b9b927c6.json"
+  },
+  {
     "commit": "f4c75fe2e3f5471bfd8c26aea97b89da2465140b",
     "commitDate": "2026-07-06T04:35:51Z",
     "commitSubject": "ci: comment baseline win-rate on the released PR (#805)",
