@@ -1437,6 +1437,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       npcPlacementRng,
     );
     world.floorScenario.guideNpcEid = spawnNpc(world, guidePos.x, guidePos.y, 'tutorial-goon');
+    updateObjective({ welcomeOfficePos: guidePos });
     const spellPos = resolveNpcSpawnPosition(
       world,
       world.floorScenario.objective.welcomeOfficePos,

@@ -8,6 +8,7 @@ import {
   setBloodColor,
 } from '../../../src/core/spawners/entity-core.js';
 import { spawnEnemy } from '../../../src/core/spawners/combatants.js';
+import { spawnSetPieceProp } from '../../../src/core/spawners/world-objects.js';
 import { createTestWorld } from '../../helpers/world-factory.js';
 
 describe('createEntity', () => {
@@ -42,6 +43,24 @@ describe('clearEntityStores', () => {
     expect(world.stores.sprite.width[eid]).toBe(0);
     expect(world.stores.enemyBehavior.type[eid]).toBe(0);
     expect(world.stores.enemyBehavior.speed[eid]).toBe(0);
+  });
+
+  it('clears the setPieceProps render sidecar so a recycled eid never renders stale set-piece art', () => {
+    const world = createTestWorld();
+    const render = {
+      widthFt: 16,
+      heightFt: 8,
+      depth: -19,
+      sprite: { source: 'custom', requestId: 'welcome-room-rug', label: 'rug', prompt: 'a rug' },
+    } as const;
+    const eid = spawnSetPieceProp(world, 1, 2, render);
+    expect(world.setPieceProps.get(eid)).toBe(render);
+
+    clearEntityStores(world, eid);
+
+    // Without this the recycled entity would inherit the previous occupant's
+    // set-piece render instructions and draw stale art in the prop pass.
+    expect(world.setPieceProps.has(eid)).toBe(false);
   });
 });
 

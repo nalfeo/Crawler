@@ -159,14 +159,30 @@ export function stampSetPiece(def: SetPieceDef, opts: StampSetPieceOptions): Sta
   const { roomBounds, tileSizeFt } = opts;
   const interior = interiorOf(roomBounds);
   const { originTileX, originTileY } = computeStampOrigin(def, roomBounds);
+
+  // A room with no passable interior (width/height ≤ 0 after the 1-tile wall
+  // inset) cannot host the set piece. Bail with the origin but no placements —
+  // clamping into a degenerate interior (lo > hi) would otherwise pin props and
+  // NPCs onto the wall/border tiles instead of leaving the room untouched.
+  if (interior.width <= 0 || interior.height <= 0) {
+    return { originTileX, originTileY, props: [], npcs: [] };
+  }
+
   const half = tileSizeFt / 2;
 
   const props: StampedSetPieceProp[] = [];
   flattenSetPieceLayers(def).forEach((draw, index) => {
     const { prop, layer, z } = draw;
-    // Top-left tile of the prop footprint, clamped so it can never sit on a wall.
-    const tileX = clamp(originTileX + prop.x, interior.minX, interior.maxX);
-    const tileY = clamp(originTileY + prop.y, interior.minY, interior.maxY);
+    // Top-left tile of the prop footprint, clamped so the WHOLE footprint stays
+    // inside the interior. Clamping only the top-left let a multi-tile prop's
+    // right/bottom edge overflow onto wall tiles; bound the top-left by
+    // `maxX - (width - 1)` / `maxY - (height - 1)` instead. A prop bigger than
+    // the interior pins to the top-left (the `Math.max` floor); the degenerate
+    // interior is handled above.
+    const maxTileX = Math.max(interior.minX, interior.maxX - (prop.width - 1));
+    const maxTileY = Math.max(interior.minY, interior.maxY - (prop.height - 1));
+    const tileX = clamp(originTileX + prop.x, interior.minX, maxTileX);
+    const tileY = clamp(originTileY + prop.y, interior.minY, maxTileY);
     // Centre the sprite over the whole footprint (feet), then apply the layer's
     // sub-tile pixel offset (lab pixels → feet).
     const footprintCentreX = tileX * tileSizeFt + (prop.width * tileSizeFt) / 2;

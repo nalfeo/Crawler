@@ -81,11 +81,15 @@ export const TERRAIN_DEPTH = -20;
  * boundary. Deterministic and pure.
  */
 export function setPieceZToDepth(z: number): number {
-  if (z <= 10) {
-    // Background band: z 0..10 → -19..-11 (above terrain -20, below entities 0).
+  if (z < 20) {
+    // Background band: structural/backdrop kinds render BEHIND entities —
+    // floor (z0), wall (z10) and door (z12). z 0..19 → -19..-3.8 (above
+    // terrain -20, below entities 0). The `< 20` cutoff keeps a door-kind prop
+    // (z12) in this band instead of leaking above the entity plane.
     return -19 + z * 0.8;
   }
-  // Foreground band: z 20→2, 30→3, 40→4, 50→5 (in front of entities, below gore=10).
+  // Foreground band: fixture 20→2, furniture 30→3, decoration 40→4, actor 50→5
+  // (in front of entities, below gore=10).
   return 2 + (z - 20) * 0.1;
 }
 

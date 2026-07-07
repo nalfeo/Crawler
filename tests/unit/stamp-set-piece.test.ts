@@ -167,6 +167,45 @@ describe('stampSetPiece — clamping and determinism', () => {
     }
   });
 
+  it('keeps every multi-tile prop footprint fully inside a tight interior', () => {
+    // Interior [1..6]×[1..5] (6×5) — narrower than the 8×7 def, so props that
+    // sit near the def's right/bottom edge would overflow onto walls if only the
+    // top-left tile were clamped. Assert the WHOLE footprint stays interior.
+    const bounds: RoomBounds = { x: 0, y: 0, width: 8, height: 7 };
+    const interiorMinX = 1;
+    const interiorMaxX = 6;
+    const interiorMinY = 1;
+    const interiorMaxY = 5;
+    const stamp = stampSetPiece(welcomeRoom(), opts(bounds));
+    for (const prop of stamp.props) {
+      const widthTiles = prop.render.widthFt / TILE;
+      const heightTiles = prop.render.heightFt / TILE;
+      expect(prop.tileX).toBeGreaterThanOrEqual(interiorMinX);
+      expect(prop.tileY).toBeGreaterThanOrEqual(interiorMinY);
+      // A prop no wider/taller than the interior must fit entirely; a prop
+      // bigger than the interior pins to the top-left (best effort).
+      if (widthTiles <= interiorMaxX - interiorMinX + 1) {
+        expect(prop.tileX + widthTiles - 1).toBeLessThanOrEqual(interiorMaxX);
+      } else {
+        expect(prop.tileX).toBe(interiorMinX);
+      }
+      if (heightTiles <= interiorMaxY - interiorMinY + 1) {
+        expect(prop.tileY + heightTiles - 1).toBeLessThanOrEqual(interiorMaxY);
+      } else {
+        expect(prop.tileY).toBe(interiorMinY);
+      }
+    }
+  });
+
+  it('returns no placements for a room with no passable interior', () => {
+    // 2×2 room → interior width/height 0 after the 1-tile wall inset. Nothing
+    // can be placed without landing on a wall, so the stamp is empty.
+    const bounds: RoomBounds = { x: 5, y: 5, width: 2, height: 2 };
+    const stamp = stampSetPiece(welcomeRoom(), opts(bounds));
+    expect(stamp.props).toHaveLength(0);
+    expect(stamp.npcs).toHaveLength(0);
+  });
+
   it('is deterministic — identical inputs yield identical output', () => {
     const a = stampSetPiece(welcomeRoom(), opts(ROOM_LARGE));
     const b = stampSetPiece(welcomeRoom(), opts(ROOM_LARGE));

@@ -38,6 +38,13 @@ describe('setPieceZToDepth', () => {
     expect(setPieceZToDepth(9)).toBeLessThan(ENTITY_DEPTH);
   });
 
+  it('renders a door-kind prop (z=12) behind entities like other structural props', () => {
+    // door sits in the structural/backdrop band with floor + wall, so an NPC in
+    // the doorway draws in front of it rather than being buried behind.
+    expect(setPieceZToDepth(PROP_KIND_Z.door)).toBeLessThan(ENTITY_DEPTH);
+    expect(setPieceZToDepth(PROP_KIND_Z.door)).toBeGreaterThan(TERRAIN_DEPTH);
+  });
+
   it('renders a welcome desk (z=30) in front of the NPC it fronts', () => {
     expect(setPieceZToDepth(30)).toBeGreaterThan(ENTITY_DEPTH);
   });
