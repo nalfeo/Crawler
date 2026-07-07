@@ -56,13 +56,13 @@ A room is considered "sealable" only when all three of these hold:
 
 Any failure falls back to open-fence, which raises a dynamic barrier ring around the arena disc.
 
-> **Superseded by ADR 0046 (2026-07-04).** The original implementation
+> **Superseded by ADR 0050 (2026-07-04).** The original implementation
 > enumerated the ring of currently-passable tiles at `radius ± halfTile`
 > and cleared their `PASSABLE` flag with a byte-exact snapshot on
 > `world.spawnerArenaFence` for restore. This leaked at the seam where
 > the ring crossed a wall: only currently-passable tiles were promoted,
 > so half of the ring band was still passable through the wall's other
-> side. ADR 0046 replaced this with a passability-agnostic barrier
+> side. ADR 0050 replaced this with a passability-agnostic barrier
 > overlay under `src/core/barriers/`, called via
 > `createRingBarrier(world, sx, sy, radiusFt, 'fence')`. The sealed-room
 > path also gained a belt-and-suspenders doorway barrier

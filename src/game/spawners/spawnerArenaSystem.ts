@@ -38,7 +38,7 @@
  * this system introduces no additional sources — replays with the same seed
  * produce byte-identical arena events + banked totals.
  *
- * @see docs/knowledge/adr/0046-dynamic-barrier-primitive.md for why the
+ * @see docs/knowledge/adr/0050-dynamic-barrier-primitive.md for why the
  * pre-PR-#767 `TileMap.flags` snapshot approach was replaced.
  */
 import { query } from 'bitecs';

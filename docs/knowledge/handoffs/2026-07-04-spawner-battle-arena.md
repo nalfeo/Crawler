@@ -26,7 +26,7 @@ against `main`, per the user's explicit "one giant PR" constraint.
 - `src/core/components.ts` — extended `spawner` SoA with `arenaRadiusFt`,
   `arenaKind`, `arenaState`, `bankedXp`, `bankedChildren`.
 - `src/core/world.ts` — added `announcements`, `spawnerArenaDoors`,
-  `spawnerArenaBarriers` side-cars. (ADR 0046 replaced the original
+  `spawnerArenaBarriers` side-cars. (ADR 0050 replaced the original
   `spawnerArenaFence` snapshot with a barrier-handle map.)
 - `src/core/spawners/combatants.ts` — new `arenaRadiusFt` option;
   `SPAWNER_MIN/DEFAULT/UNRESOLVED` exports; initializes the 5 new fields.
@@ -44,7 +44,7 @@ against `main`, per the user's explicit "one giant PR" constraint.
 
 - `src/core/spawner-arena.ts` (new) — pure geometry helpers (trigger
   predicate, disc-fits-in-room check, `SPAWNER_MAX_BANKED_CHILDREN = 10`).
-  **ADR 0046 update:** the fence-ring enumeration and `FENCE_TILE_FLAGS`
+  **ADR 0050 update:** the fence-ring enumeration and `FENCE_TILE_FLAGS`
   helpers were removed; ring construction now lives in the barrier
   primitive at `src/core/barriers/geometry.ts`.
 - `src/game/spawners/spawnerArenaSystem.ts` (new) — the state machine

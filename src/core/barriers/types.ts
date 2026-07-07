@@ -18,7 +18,7 @@
  * cleanup, pathfinder `isTileTraversable`) consult the set directly; the set
  * is the single source of truth for "is there a barrier on this tile?".
  *
- * See ADR 0046 for the design rationale (overlay vs. flag mutation vs.
+ * See ADR 0050 for the design rationale (overlay vs. flag mutation vs.
  * per-entity Barrier component).
  */
 
@@ -46,7 +46,7 @@ export type BarrierKind =
  * centred on `(cxFt, cyFt)`; a point is "on the wall" iff its distance from the
  * centre falls inside that inclusive band.
  *
- * See ADR 0046 for why the primitive carries BOTH a tile set (coarse
+ * See ADR 0050 for why the primitive carries BOTH a tile set (coarse
  * pathfinding / doorway plugs) and an optional analytic shape (fine collision
  * + smooth rendering).
  */

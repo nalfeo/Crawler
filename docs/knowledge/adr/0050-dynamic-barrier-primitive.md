@@ -1,4 +1,4 @@
-# ADR 0046: Dynamic Barrier Primitive
+# ADR 0050: Dynamic Barrier Primitive
 
 ## Status
 

@@ -6,7 +6,7 @@
  * No side effects, no ECS mutation — everything here is a `(inputs) => outputs`
  * function on plain data.
  *
- * NOTE (ADR 0046): the pre-PR-#767 module also owned fence-ring tile
+ * NOTE (ADR 0050): the pre-PR-#767 module also owned fence-ring tile
  * mutation (`FENCE_TILE_FLAGS`, `raiseFence`, `lowerFence`,
  * `collectFenceRingTiles`, `assertFenceBlocks`). Those helpers are gone —
  * dynamic barriers replaced the whole tile-mutation approach. Ring geometry

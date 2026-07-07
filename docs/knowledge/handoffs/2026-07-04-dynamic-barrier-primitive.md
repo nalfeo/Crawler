@@ -21,7 +21,7 @@ tile flags, so a ring landing on walls, floor, or corridors always
 forms a closed cage. `spawnerArenaSystem` is refactored to consume the
 primitive; the sealed-room path additionally raises a doorway barrier
 alongside the existing door-lock config for belt-and-suspenders
-redundancy. See ADR 0046 for the design rationale.
+redundancy. See ADR 0050 for the design rationale.
 
 ## Files touched
 
@@ -37,7 +37,7 @@ redundancy. See ADR 0046 for the design rationale.
 - `src/labs/barrier-lab/index.ts` — interactive playground (ring /
   doorway / poly barriers, "Drop all", poly-draft click-to-select).
   Registered in `src/lab-main.ts`.
-- `docs/knowledge/adr/0046-dynamic-barrier-primitive.md` — ADR.
+- `docs/knowledge/adr/0050-dynamic-barrier-primitive.md` — ADR.
 - `docs/knowledge/review-ledgers/2026-07-04-dynamic-barrier-primitive.review-ledger.json` — 3🍎 ledger with plan_review + code_review, both clean.
 - `tests/unit/barriers/registry.test.ts` — 14 tests (lifecycle,
   overlap-safe drop, ring geometry passability-agnostic, doorwaysOnly
@@ -82,10 +82,10 @@ redundancy. See ADR 0046 for the design rationale.
 - `src/lab-main.ts` — registered `barrier-lab` in the module map.
 - `tests/unit/spawner-arena.test.ts` — removed the
   `collectFenceRingTiles` import + geometry test block.
-- `docs/knowledge/adr/README.md` — added ADR 0046 entry, bumped
+- `docs/knowledge/adr/README.md` — added ADR 0050 entry, bumped
   count/next-number.
 - `docs/knowledge/adr/0044-spawner-battle-arena.md` — marked the
-  fence section superseded by ADR 0046.
+  fence section superseded by ADR 0050.
 - `docs/knowledge/handoffs/2026-07-04-spawner-battle-arena.md` —
   notes for the fence-snapshot removal.
 - `.specify/specs/spawner-battle-arena.md` — struck out the fence

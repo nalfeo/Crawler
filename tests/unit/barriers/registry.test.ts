@@ -5,7 +5,7 @@
  *   - create/drop lifecycle (id monotonicity, version bumping)
  *   - `blockedTiles` is an exact union of live-barrier tile sets
  *   - `createRingBarrier` produces a symmetric ring INDEPENDENT of tile
- *     passability — the class of leak that motivated ADR 0046
+ *     passability — the class of leak that motivated ADR 0050
  *   - `createRoomBarrier({ doorwaysOnly: true })` paints only doorway tiles
  *   - overlapping barriers keep tiles blocked while any handle references them
  *

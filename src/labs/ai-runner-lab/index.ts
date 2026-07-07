@@ -11,7 +11,8 @@ import GUI from 'lil-gui';
 import Phaser from 'phaser';
 import { createFloorGameConfig } from '../../bootstrap/floor-game-config.js';
 import { query } from 'bitecs';
-import { createFloor1MainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
+import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
+import { getAvailableFloorIds } from '../../shared/floor-registry.js';
 import { AIState, BehaviorTreeAI } from '../../game/ai/index.js';
 import {
   autoFloor1ProgressionSystem,
@@ -388,27 +389,32 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
     autoFloor1ProgressionSystem(world, playerEid);
   };
-  const baseSceneOptions = createFloor1MainSceneOptions();
+  let currentFloor = 'floor1';
   const recorderControls = createSessionRecorderControls({
     title: 'AI Session Recorder',
     initialController: 'AI',
   });
 
-  const sceneOptions = {
-    ...baseSceneOptions,
+  // Build scene options from a floor's base options, layering the selected
+  // scenario preset's world tweaks on top of the floor's own configureWorld.
+  // Shared by the initial build and changeFloor so switching floors preserves
+  // the active scenario preset instead of clobbering it.
+  const composeSceneOptions = (base: ReturnType<typeof createFloorMainSceneOptions>) => ({
+    ...base,
     configureWorld: (world: GameWorld, playerEid: number) => {
-      baseSceneOptions.configureWorld(world, playerEid);
+      base.configureWorld(world, playerEid);
       const scenarioPreset = getAiRunnerScenarioPreset(selectedScenarioPresetId);
       scenarioPreset?.configureWorld?.(world, playerEid);
     },
     inputCaptureOverride: aiInputProvider,
     worldSeed: currentSeed,
-    postSystems: [...baseSceneOptions.postSystems, aiAutoDriverSystem],
+    postSystems: [...base.postSystems, aiAutoDriverSystem],
     autoLevelUpAllocator: computeAutoStatAllocation,
     sessionRecorderFactory: recorderControls.factory,
-  };
+  });
 
-  const currentFloor = 'floor1';
+  const sceneOptions = composeSceneOptions(createFloorMainSceneOptions(currentFloor));
+
   const config = createFloorGameConfig(canvas, sceneOptions, currentFloor);
 
   const game = new Phaser.Game(config);
@@ -900,6 +906,18 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       });
       phaserScene.scene.restart();
     }
+  };
+
+  /**
+   * Switch to a different floor: rebuild scene options from the new floor's
+   * manifest (re-layering the active scenario preset) and restart the scene so
+   * the new floor generates deterministically.
+   */
+  const changeFloor = (floorId: string): void => {
+    currentFloor = floorId;
+    Object.assign(sceneOptions, composeSceneOptions(createFloorMainSceneOptions(floorId)));
+    reseed(currentSeed);
+    renderControls();
   };
 
   const autoAdvanceSceneUi = (): void => {
@@ -1434,6 +1452,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     const questOptions = Object.entries(QUEST_DEBUG_TARGETS)
       .map(([label, value]) => `<option value="${value}">${label}</option>`)
       .join('');
+    const floorOptions = getAvailableFloorIds()
+      .map((id) => `<option value="${id}"${id === currentFloor ? ' selected' : ''}>${id}</option>`)
+      .join('');
     panelRoot.innerHTML = `
       <div style="font-family: monospace; padding: 12px;">
         <h3 style="margin: 0 0 12px 0;">AI Runner Lab</h3>
@@ -1443,6 +1464,11 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
             <input id="ai-seed-input" type="number" value="${currentSeed}" style="width:96px; padding:4px; background:#151530; color:#ddd; border:1px solid #333; border-radius:3px;" />
             <button id="ai-seed-apply" type="button" style="padding:4px 8px; cursor:pointer;">Apply</button>
             <button id="ai-seed-random" type="button" style="padding:4px 8px; cursor:pointer;">🎲 Randomize</button>
+          </div>
+          <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:wrap;">
+            <label for="ai-floor-select"><strong>Floor:</strong></label>
+            <select id="ai-floor-select" style="padding:4px; background:#151530; color:#ddd; border:1px solid #333; border-radius:3px;">${floorOptions}</select>
+            <button id="ai-floor-apply" type="button" style="padding:4px 8px; cursor:pointer;">Apply + Restart</button>
           </div>
           <div style="display:flex; gap:6px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
             <label for="ai-scenario-select"><strong>Scenario:</strong></label>
@@ -1562,6 +1588,14 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     if (scenarioApply) {
       scenarioApply.onclick = () => {
         applyScenarioPreset(selectedScenarioPresetId);
+      };
+    }
+
+    const floorSelect = document.getElementById('ai-floor-select') as HTMLSelectElement | null;
+    const floorApplyButton = document.getElementById('ai-floor-apply') as HTMLButtonElement | null;
+    if (floorApplyButton && floorSelect) {
+      floorApplyButton.onclick = () => {
+        changeFloor(floorSelect.value);
       };
     }
 

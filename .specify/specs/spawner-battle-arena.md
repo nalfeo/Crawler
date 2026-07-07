@@ -40,7 +40,7 @@
 >   in ADR 0044.)
 > - ~~Fence tiles are only impenetrable where the ring landed on
 >   passable tiles at trigger time — rings crossing walls leaked at the
->   seam.~~ (Resolved in ADR 0046 by moving to the dynamic barrier
+>   seam.~~ (Resolved in ADR 0050 by moving to the dynamic barrier
 >   primitive at `src/core/barriers/`. Barriers are a passability-agnostic
 >   overlay; the seam-leak class is impossible by construction.)
 
@@ -196,7 +196,7 @@ tool for tension instead of a hole in the loot economy.
   a belt-and-suspenders plug alongside the door-lock config. Both are
   dropped on resolve. Physics reads
   `world.barriers.blockedTiles` via `FloorMap.isPassableAt` and
-  `isTileTraversable`; no tile flags are mutated. See ADR 0046.
+  `isTileTraversable`; no tile flags are mutated. See ADR 0050.
 
 ### VFX / HUD
 

@@ -256,7 +256,7 @@ export class FloorMap implements FloorMapData {
     if (!this.tileMap.isPassable(t.x, t.y)) return false;
     // Barriers overlay tile passability: even on a normally-walkable tile,
     // a live barrier blocks movement. Underlying flags are untouched — see
-    // ADR 0046 for why we don't mutate them.
+    // ADR 0050 for why we don't mutate them.
     if (this.hasBarrierAtTile(t.x, t.y)) return false;
     // Analytic (sub-tile) barriers — e.g. a 1 ft-thick ring wall — are queried
     // at feet precision so a thin wall blocks exactly instead of snapping to

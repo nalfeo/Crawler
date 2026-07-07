@@ -7,7 +7,7 @@
  * mutate `TileMap.flags`, so a ring that lands on walls still forms a valid
  * closed cage without leaks.
  *
- * See ADR 0046 (`docs/knowledge/adr/0046-dynamic-barrier-primitive.md`) for
+ * See ADR 0050 (`docs/knowledge/adr/0050-dynamic-barrier-primitive.md`) for
  * the design rationale and the physics-integration surface (movement,
  * projectile cleanup, pathfinder, LOS/FOV).
  *

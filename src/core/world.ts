@@ -203,16 +203,16 @@ export interface GameWorld {
   /**
    * Per-spawner barrier handles raised while the arena is armed. One entry
    * per spawner for the ring (open-fence) or doorway plug (sealed-room);
-   * both are dropped on resolve. Replaces the pre-PR-#766 `spawnerArenaFence`
+   * both are dropped on resolve. Replaces the pre-PR-#767 `spawnerArenaFence`
    * side-car (which mutated `TileMap.flags` and produced leaky cages when the
-   * ring landed on walls — see ADR 0046).
+   * ring landed on walls — see ADR 0050).
    */
   spawnerArenaBarriers: Map<number, BarrierHandle>;
   /**
    * First-class barrier registry — the single source of truth for dynamic,
    * tile-granular impassable overlays. Movement, projectile cleanup, and
    * pathfinding consult this instead of mutating `TileMap.flags`. See
-   * `src/core/barriers/` and ADR 0046.
+   * `src/core/barriers/` and ADR 0050.
    */
   barriers: BarrierRegistry;
   /**

@@ -51,9 +51,13 @@ export function pointInRingBand(
  * Unlike the old `collectFenceRingTiles`, this helper is INDEPENDENT of
  * `TileMap.isPassable` — barriers overlay tiles regardless of underlying
  * passability, so a ring tile that happens to sit on a wall is still added.
- * Door tiles are excluded because doors have their own lock semantics; the
- * caller (e.g. spawnerArenaSystem) uses {@link collectRoomDoorwayTiles} for
- * those.
+ * Door tiles are excluded because doors have their own lock semantics.
+ *
+ * NOTE: this tile-based ring is used only by `createRingBarrier` (the blocky
+ * tile-ring utility exercised by the barrier lab). The spawner arena's
+ * open-fence cage does NOT use it — that path raises the analytic
+ * {@link createRingWallBarrier}, a gapless 1 ft-thick circle queried at feet
+ * precision, so no doorway seam can open regardless of this door-skip.
  */
 export function collectRingTiles(params: {
   readonly floorMap: FloorMap;
@@ -116,11 +120,18 @@ export function collectRoomDoorwayTiles(params: {
 }
 
 /**
- * Enumerate every interior tile of a room. Used by
- * `createRoomBarrier(..., { doorwaysOnly: false })` to encase the whole room
- * in a barrier — e.g. a boss forcefield that seals both walls AND doorways.
- * Currently unused inside the spawner arena, but exposed because rule 12
- * requires the primitive to support any system's future needs.
+ * Enumerate the interior tiles of a room — every tile inside `room.bounds`.
+ * Used by `createRoomBarrier(..., { doorwaysOnly: false })` to flood-fill a
+ * room's interior with a barrier (e.g. a boss forcefield that makes the whole
+ * room floor solid).
+ *
+ * NOTE: this returns interior tiles ONLY. `room.bounds` excludes the perimeter
+ * wall row/column, so the returned set does NOT include the perimeter walls or
+ * the doorway tiles that sit on that perimeter. A caller that needs to seal a
+ * room's exits must also plug those explicitly (see
+ * {@link collectRoomDoorwayTiles}). Currently unused inside the spawner arena,
+ * but exposed because rule 12 requires the primitive to support any system's
+ * future needs.
  */
 export function collectRoomInteriorTiles(params: {
   readonly floorMap: FloorMap;
