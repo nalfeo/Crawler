@@ -118,6 +118,7 @@ export function spawnBehaviorEnemy(
     flankDistance?: number;
     pathRefreshFrames?: number;
     isFlying?: boolean;
+    aggroEnableAtMs?: number;
     weight?: number;
     bloodColor?: number;
   },
@@ -149,6 +150,7 @@ export function spawnBehaviorEnemy(
       type: behaviorType,
       speed,
       aggroRange,
+      aggroEnableAtMs: options?.aggroEnableAtMs ?? 0,
       attackRange,
       persona: options?.persona ?? PATH_PERSONA.NAVIGATOR,
       traversalMode,

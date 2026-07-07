@@ -1702,6 +1702,7 @@ export function enemyAISystem(world: GameWorld): void {
     let distanceToPlayer = Math.hypot(playerDx, playerDy);
     const behaviorType = enemyBehavior.type[eid]!;
     const aggroRange = enemyBehavior.aggroRange[eid]!;
+    const aggroEnableAtMs = enemyBehavior.aggroEnableAtMs[eid] ?? 0;
     const attackRange = enemyBehavior.attackRange[eid]!;
     const speed = getEnemySpeed(world, eid);
     const persona = enemyBehavior.persona[eid] ?? PATH_PERSONA.NAVIGATOR;
@@ -1719,6 +1720,14 @@ export function enemyAISystem(world: GameWorld): void {
       (!playerHiddenInSafeRoom &&
         (hasOpenRoomDoor || playerSharesRoom || permanentAggro) &&
         inAggroRange);
+
+    if (world.elapsedMs < aggroEnableAtMs) {
+      setVelocity(world, eid, 0, 0);
+      enemyBehavior.stuckFrames[eid] = 0;
+      pathStates.delete(eid);
+      getSlimeLeapStateMap(world).delete(eid);
+      continue;
+    }
 
     // Hate/hostile mobs fall back to a rival target when the player is genuinely
     // unreachable this frame. The prepass couldn't do this itself because it
