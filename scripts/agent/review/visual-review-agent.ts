@@ -1,9 +1,17 @@
 #!/usr/bin/env tsx
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import process from 'node:process';
 import { chromium } from 'playwright';
+import type { Page } from 'playwright';
 import { AzureOpenAIVisionProvider } from '../../sprites/provider/azure-vision.js';
+import {
+  computeGeometryBlockers,
+  diffFindings,
+  findingKeys,
+  normalizeOverallScore,
+} from './visual-review-lib.mjs';
+import type { VisualReviewBox, VisualReviewRegion } from './visual-review-lib.mjs';
 
 interface CliOptions {
   labUrl: string;
@@ -44,6 +52,8 @@ interface PreciseFix {
 interface VisualReviewResult {
   overall?: {
     score?: number;
+    /** Raw model-returned score, preserved when `score` was normalized (defect #4). */
+    raw_score?: unknown;
     verdict?: string;
     summary?: string;
   };
@@ -53,6 +63,14 @@ interface VisualReviewResult {
   precise_fixes?: PreciseFix[];
   deterministic_blocking_findings?: string[];
   geometry?: GeometrySnapshot;
+  /** Which harvest path produced the geometry: declared surface, legacy equipment, or none. */
+  harvest_source?: HarvestSource;
+  /** Optional surface label declared via `window.__visualReview.surface`. */
+  surface?: string;
+  /** Declared region ids (declared path only) so consumers can map fixes to elements. */
+  regions_declared?: string[];
+  /** NEW vs RECURRING split of blocking findings against the most recent prior review. */
+  finding_trajectory?: { new: string[]; recurring: string[] };
 }
 
 interface ElementBox {
@@ -74,9 +92,31 @@ interface GeometrySnapshot {
   slots: SlotGeometry[];
 }
 
+type HarvestSource = 'declared' | 'equipment-legacy' | 'none';
+
+/**
+ * Which conditional (surface-specific) hard requirements the prompt should assert.
+ * Legacy equipment sets all three true so its prompt matches today's byte-for-byte;
+ * generic surfaces opt in only to what they actually have.
+ */
+interface SurfaceExpectations {
+  tooltipAfterHover: boolean;
+  statLabelsHumanReadable: boolean;
+  sectionDividers: boolean;
+}
+
 interface CaptureResult {
+  /** Deterministic blockers to merge with the LLM findings (never gated by the LLM). */
   deterministicBlockers: string[];
+  /** Legacy equipment geometry snapshot; an empty snapshot for other paths. */
   geometry: GeometrySnapshot;
+  /** The text injected into the prompt as MEASURED LAYOUT GEOMETRY. */
+  geometryText: string;
+  harvestSource: HarvestSource;
+  surface: string | null;
+  /** Declared regions (declared path only); empty otherwise. */
+  regions: VisualReviewRegion[];
+  expect: SurfaceExpectations;
 }
 
 function parseArgs(argv: string[]): CliOptions {
@@ -217,6 +257,7 @@ function nowStamp(): string {
 function buildPrompt(
   opts: Pick<CliOptions, 'uxName' | 'uxGoal' | 'rebuttals'>,
   geometryText: string,
+  context: { expect: SurfaceExpectations; regionIds: string[] },
 ): { system: string; user: string } {
   const rebuttalBlock =
     opts.rebuttals.length > 0
@@ -232,6 +273,65 @@ How to handle each rebuttal (do this rigorously, it is the point of this pass):
 - Do NOT introduce brand-new positional nitpicks below a 3px threshold; sub-3px "misalignment" on 60px-in-64px icons is intended centering inset, not a defect.
 - End "overall.summary" with an explicit sentence: "FINAL VERDICT: <pass|needs-work|fail> — <count> findings withdrawn, <count> upheld with pixel evidence."`
       : '';
+  // UNIVERSAL readability/affordance rules are always asserted; three CONDITIONAL
+  // rules are injected only when the surface opts in via `expect.*`. Legacy equipment
+  // sets all three true, so this reproduces today's prompt byte-for-byte.
+  const readabilityLines = [
+    'Readability and affordance standards are strict:',
+    '- Pixel-font text must look crisp (no blurry/soft downscaled look).',
+    ...(context.expect.statLabelsHumanReadable
+      ? [
+          '- Stat labels must be human-readable words (e.g., "CRIT CHANCE"), not raw camelCase/PascalCase identifiers.',
+        ]
+      : []),
+    ...(context.expect.tooltipAfterHover
+      ? [
+          '- Empty slots must expose slot identity/help affordance (in this capture an empty-slot tooltip should be visible).',
+        ]
+      : []),
+    '- Slot tiles should be roughly square or portrait; very short/wide slot boxes are a defect.',
+    '- Slot tiles must have visible breathing room; touching box edges between neighbors is a defect.',
+    '- Sprites should occupy most of slot interior; large dead padding around icons is a defect.',
+    '- Empty-state cues must be explicit and readable; punctuation placeholders like "?" or "_" are not acceptable primary indicators.',
+    ...(context.expect.sectionDividers
+      ? [
+          '- Section labels (e.g., PRIMARY/SECONDARY) must not have decorative lines crossing through glyphs.',
+        ]
+      : []),
+    '- Tooltip surfaces must render above nearby elements and remain fully readable.',
+  ].join('\n');
+  const hardRequirementLines = [
+    'Hard requirements:',
+    '- Name specific concrete defects (exact panel/slot/area) in issues.',
+    '- If any overlap, clipping, misalignment, or unreadable text exists, include it in blocking_findings.',
+    '- If text appears cramped (insufficient top padding/line breathing room), include it in blocking_findings.',
+    ...(context.expect.statLabelsHumanReadable
+      ? [
+          '- If stat labels appear as code-style camelCase/PascalCase, include it in blocking_findings.',
+        ]
+      : []),
+    '- If text appears blurry/soft rather than crisp pixel text, include it in blocking_findings.',
+    ...(context.expect.tooltipAfterHover
+      ? [
+          '- If empty-slot tooltip affordance is missing/unclear in the capture, include it in blocking_findings.',
+        ]
+      : []),
+    '- If slot aspect ratio or icon occupancy harms item readability, include it in blocking_findings.',
+    '- If slot boxes touch each other with no breathing room, include it in blocking_findings.',
+    ...(context.expect.sectionDividers
+      ? [
+          '- If any section label has line-through/intersecting divider artifacts, include it in blocking_findings.',
+        ]
+      : []),
+    '- If placeholder punctuation is used as the primary empty-slot indicator, include it in blocking_findings.',
+    '- If tooltip layering/clipping makes tooltip text hard to read, include it in blocking_findings.',
+    '- If visual theming feels generic and not like a pixel dungeon crawler, include it in blocking_findings.',
+    '- recommended_fixes must be actionable and ordered by impact.',
+  ].join('\n');
+  const regionIdsBlock =
+    context.regionIds.length > 0
+      ? `\n\nDECLARED REGION IDS (reference these EXACT ids in precise_fixes.element and when citing elements): ${context.regionIds.join(', ')}.`
+      : '';
   return {
     system: `You are a brutally honest senior game UI art director.
 Evaluate ONLY what is visible in the screenshot and output strict JSON.
@@ -242,7 +342,7 @@ The measured geometry is AUTHORITATIVE: when a claim about a pixel gap, overlap,
 Design intent for this surface: ${opts.uxGoal}.
 
 MEASURED LAYOUT GEOMETRY (layout pixels, origin top-left; this is the SAME layout shown in the screenshot, so relative positions and pixel deltas are exact and directly actionable):
-${geometryText}${rebuttalBlock}
+${geometryText}${rebuttalBlock}${regionIdsBlock}
 
 Score each axis 1-5 (1 = unacceptable, 5 = shippable quality):
 - layout_consistency
@@ -253,39 +353,19 @@ Score each axis 1-5 (1 = unacceptable, 5 = shippable quality):
 - typography_clarity
 - thematic_fidelity
 
+"overall.score" is a single 1-5 rating for the whole surface — never the sum of the per-axis scores.
+
 Typography spacing standard is strict:
 - Every text block must have visible top/bottom breathing room inside its container.
 - Flag cramped text when cap-height/ascenders sit too close to borders, dividers, or neighboring rows.
 
-Readability and affordance standards are strict:
-- Pixel-font text must look crisp (no blurry/soft downscaled look).
-- Stat labels must be human-readable words (e.g., "CRIT CHANCE"), not raw camelCase/PascalCase identifiers.
-- Empty slots must expose slot identity/help affordance (in this capture an empty-slot tooltip should be visible).
-- Slot tiles should be roughly square or portrait; very short/wide slot boxes are a defect.
-- Slot tiles must have visible breathing room; touching box edges between neighbors is a defect.
-- Sprites should occupy most of slot interior; large dead padding around icons is a defect.
-- Empty-state cues must be explicit and readable; punctuation placeholders like "?" or "_" are not acceptable primary indicators.
-- Section labels (e.g., PRIMARY/SECONDARY) must not have decorative lines crossing through glyphs.
-- Tooltip surfaces must render above nearby elements and remain fully readable.
+${readabilityLines}
 
 Thematic standard is strict: this is a **pixel dungeon crawler** UX.
 If the UI reads as generic modern app chrome (flat/sterile panels, non-dungeon mood, weak pixel-art identity),
 score thematic_fidelity <= 2 and include it as a blocking finding.
 
-Hard requirements:
-- Name specific concrete defects (exact panel/slot/area) in issues.
-- If any overlap, clipping, misalignment, or unreadable text exists, include it in blocking_findings.
-- If text appears cramped (insufficient top padding/line breathing room), include it in blocking_findings.
-- If stat labels appear as code-style camelCase/PascalCase, include it in blocking_findings.
-- If text appears blurry/soft rather than crisp pixel text, include it in blocking_findings.
-- If empty-slot tooltip affordance is missing/unclear in the capture, include it in blocking_findings.
-- If slot aspect ratio or icon occupancy harms item readability, include it in blocking_findings.
-- If slot boxes touch each other with no breathing room, include it in blocking_findings.
-- If any section label has line-through/intersecting divider artifacts, include it in blocking_findings.
-- If placeholder punctuation is used as the primary empty-slot indicator, include it in blocking_findings.
-- If tooltip layering/clipping makes tooltip text hard to read, include it in blocking_findings.
-- If visual theming feels generic and not like a pixel dungeon crawler, include it in blocking_findings.
-- recommended_fixes must be actionable and ordered by impact.
+${hardRequirementLines}
 
 PRECISE, COORDINATE-LEVEL FIXES (REQUIRED wherever a defect is positional or sizing-related):
 - For EVERY positional/spacing/sizing defect, emit an entry in "precise_fixes" as a concrete pixel delta on a NAMED element from the geometry table above.
@@ -385,6 +465,246 @@ async function captureScreenshot(
     await page.mouse.move(hoverPoint.x + 1, hoverPoint.y + 1);
     await page.waitForTimeout(120);
   }
+
+  const harvest = await harvestSurface(page);
+  let captured: CaptureResult;
+  if (harvest.source === 'declared') {
+    const regions = normalizeHarvestedRegions(harvest.regions);
+    const computed = computeGeometryBlockers(regions);
+    // Author-declared `flags` are treated as deterministic blockers alongside the
+    // geometry the lib computes from the regions.
+    const deterministicBlockers = [...new Set<string>([...computed, ...harvest.flags])];
+    captured = {
+      deterministicBlockers,
+      geometry: emptyGeometry(),
+      geometryText: formatRegions(harvest.surface, regions),
+      harvestSource: 'declared',
+      surface: harvest.surface,
+      regions,
+      expect: harvest.expect,
+    };
+  } else if (harvest.source === 'equipment-legacy') {
+    // Legacy EquipmentUI path: the two in-browser probes run VERBATIM so the
+    // equipment review output stays byte-for-byte identical to before.
+    const { deterministicBlockers, geometry } = await harvestEquipment(page);
+    captured = {
+      deterministicBlockers,
+      geometry,
+      geometryText: formatGeometry(geometry),
+      harvestSource: 'equipment-legacy',
+      surface: null,
+      regions: [],
+      expect: {
+        tooltipAfterHover: true,
+        statLabelsHumanReadable: true,
+        sectionDividers: true,
+      },
+    };
+  } else {
+    // No declared contract and no equipment probe: no deterministic checks, no
+    // false blockers. main() prints a loud non-gating warning for this case.
+    captured = {
+      deterministicBlockers: [],
+      geometry: emptyGeometry(),
+      geometryText: NONE_GEOMETRY_NOTE,
+      harvestSource: 'none',
+      surface: null,
+      regions: [],
+      expect: {
+        tooltipAfterHover: false,
+        statLabelsHumanReadable: false,
+        sectionDividers: false,
+      },
+    };
+  }
+  const setupClip = normalizeClip(
+    await page.evaluate(() => {
+      const globalWithClip = window as unknown as { __visualReviewClip?: unknown };
+      return globalWithClip.__visualReviewClip ?? null;
+    }),
+  );
+  const screenshotClip = opts.clip ?? setupClip;
+  await page.screenshot({
+    path: outPath,
+    fullPage: false,
+    ...(screenshotClip ? { clip: screenshotClip } : {}),
+  });
+
+  await context.close();
+  await browser.close();
+  return captured;
+}
+
+function formatGeometry(geo: GeometrySnapshot): string {
+  const fmt = (b: ElementBox | null): string =>
+    b
+      ? `x=${b.x} y=${b.y} w=${b.width} h=${b.height} (right=${b.x + b.width} bottom=${b.y + b.height})`
+      : 'not-present';
+  const lines: string[] = [];
+  lines.push(`panel              ${fmt(geo.panel)}`);
+  lines.push(`tooltip            ${fmt(geo.tooltip)}`);
+  for (const s of geo.slots) {
+    if (!s.box) continue;
+    lines.push(`slot:${s.id.padEnd(12)} ${fmt(s.box)}`);
+    if (s.icon) lines.push(`slot:${`${s.id}.icon`.padEnd(12)} ${fmt(s.icon)}`);
+  }
+  return lines.join('\n');
+}
+
+function emptyGeometry(): GeometrySnapshot {
+  return { panel: null, tooltip: null, slots: [] };
+}
+
+const NONE_GEOMETRY_NOTE =
+  '(no measured geometry: this surface did not declare window.__visualReview and is not the legacy equipment probe. ' +
+  'Findings below are from the screenshot ONLY and are NOT pixel-verified — declare window.__visualReview in the ' +
+  'setup file to enable deterministic, pixel-grounded checks.)';
+
+/** Render the declared-region table for the prompt (rounds coords for display only). */
+function formatRegions(surface: string | null, regions: VisualReviewRegion[]): string {
+  if (regions.length === 0) return '(no regions declared)';
+  const fmt = (b: VisualReviewBox): string => {
+    const x = Math.round(b.x);
+    const y = Math.round(b.y);
+    const w = Math.round(b.width);
+    const h = Math.round(b.height);
+    return `x=${x} y=${y} w=${w} h=${h} (right=${x + w} bottom=${y + h})`;
+  };
+  const lines: string[] = [];
+  if (surface) lines.push(`surface: ${surface}`);
+  for (const r of regions) {
+    const kind = `[${r.kind ?? 'other'}]`;
+    const parent = r.parentId ? ` parent=${r.parentId}` : '';
+    lines.push(`${r.id.padEnd(20)} ${fmt(r.box)} ${kind}${parent}`);
+  }
+  return lines.join('\n');
+}
+
+const ALLOWED_REGION_KINDS = new Set(['slot', 'icon', 'panel', 'tooltip', 'text', 'other']);
+
+/** Coerce the raw harvested regions into valid `VisualReviewRegion`s (drops invalid boxes). */
+function normalizeHarvestedRegions(raw: unknown): VisualReviewRegion[] {
+  if (!Array.isArray(raw)) return [];
+  const out: VisualReviewRegion[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const r = item as { id?: unknown; box?: unknown; kind?: unknown; parentId?: unknown };
+    const id = typeof r.id === 'string' ? r.id.trim() : '';
+    if (!id) continue;
+    if (!r.box || typeof r.box !== 'object') continue;
+    const b = r.box as { x?: unknown; y?: unknown; width?: unknown; height?: unknown };
+    const x = Number(b.x);
+    const y = Number(b.y);
+    const width = Number(b.width);
+    const height = Number(b.height);
+    if (![x, y, width, height].every((n) => Number.isFinite(n))) continue;
+    if (width <= 0 || height <= 0) continue;
+    const kind =
+      typeof r.kind === 'string' && ALLOWED_REGION_KINDS.has(r.kind)
+        ? (r.kind as VisualReviewRegion['kind'])
+        : 'other';
+    const parentId =
+      typeof r.parentId === 'string' && r.parentId.trim().length > 0
+        ? r.parentId.trim()
+        : undefined;
+    out.push({ id, box: { x, y, width, height }, kind, parentId });
+  }
+  return out;
+}
+
+type HarvestData =
+  | {
+      source: 'declared';
+      surface: string | null;
+      regions: unknown;
+      flags: string[];
+      expect: SurfaceExpectations;
+    }
+  | { source: 'equipment-legacy' }
+  | { source: 'none' };
+
+/**
+ * Decide which harvest path applies and, for a declared surface, return ONLY the
+ * raw harvested data (regions/flags/expect/surface). All geometry math happens in
+ * Node so the browser side stays a dumb data source.
+ */
+async function harvestSurface(page: Page): Promise<HarvestData> {
+  const declared = (await page.evaluate(() => {
+    const g = window as unknown as {
+      __visualReview?: {
+        surface?: unknown;
+        regions?: unknown;
+        flags?: unknown;
+        expect?: {
+          tooltipAfterHover?: unknown;
+          statLabelsHumanReadable?: unknown;
+          sectionDividers?: unknown;
+        };
+      };
+    };
+    const decl = g.__visualReview;
+    if (!decl || typeof decl !== 'object') return null;
+    const regionsIn = Array.isArray(decl.regions) ? decl.regions : [];
+    const regions = regionsIn.map((entry) => {
+      const rr = (entry ?? {}) as {
+        id?: unknown;
+        box?: { x?: unknown; y?: unknown; width?: unknown; height?: unknown } | null;
+        kind?: unknown;
+        parentId?: unknown;
+      };
+      const b = rr.box ?? {};
+      return {
+        id: rr.id,
+        box: { x: Number(b.x), y: Number(b.y), width: Number(b.width), height: Number(b.height) },
+        kind: rr.kind,
+        parentId: rr.parentId,
+      };
+    });
+    const flags = Array.isArray(decl.flags)
+      ? decl.flags.filter((f): f is string => typeof f === 'string')
+      : [];
+    const e = decl.expect && typeof decl.expect === 'object' ? decl.expect : {};
+    return {
+      surface: typeof decl.surface === 'string' ? decl.surface : null,
+      regions,
+      flags,
+      expect: {
+        tooltipAfterHover: e.tooltipAfterHover === true,
+        statLabelsHumanReadable: e.statLabelsHumanReadable === true,
+        sectionDividers: e.sectionDividers === true,
+      },
+    };
+  })) as {
+    surface: string | null;
+    regions: unknown;
+    flags: string[];
+    expect: SurfaceExpectations;
+  } | null;
+  if (declared) {
+    return {
+      source: 'declared',
+      surface: declared.surface,
+      regions: declared.regions,
+      flags: declared.flags,
+      expect: declared.expect,
+    };
+  }
+
+  const isEquipment = await page.evaluate(() => {
+    const probe = (window as unknown as { __uiProbe?: Record<string, unknown> }).__uiProbe;
+    return !!probe && typeof probe.getEquipmentSlotBounds === 'function';
+  });
+  return isEquipment ? { source: 'equipment-legacy' } : { source: 'none' };
+}
+
+/**
+ * Legacy EquipmentUI harvest. These two `page.evaluate` blocks are the ORIGINAL
+ * equipment probes moved here VERBATIM (byte-for-byte) — do not modify them; the
+ * equipment review output must stay identical.
+ */
+async function harvestEquipment(
+  page: Page,
+): Promise<{ deterministicBlockers: string[]; geometry: GeometrySnapshot }> {
   const deterministicBlockers = (await page.evaluate(`
     (() => {
       const slotIds = [
@@ -517,52 +837,46 @@ async function captureScreenshot(
       };
     })();
   `)) as GeometrySnapshot;
-  const setupClip = normalizeClip(
-    await page.evaluate(() => {
-      const globalWithClip = window as unknown as { __visualReviewClip?: unknown };
-      return globalWithClip.__visualReviewClip ?? null;
-    }),
-  );
-  const screenshotClip = opts.clip ?? setupClip;
-  await page.screenshot({
-    path: outPath,
-    fullPage: false,
-    ...(screenshotClip ? { clip: screenshotClip } : {}),
-  });
-
-  await context.close();
-  await browser.close();
   return { deterministicBlockers, geometry };
-}
-
-function formatGeometry(geo: GeometrySnapshot): string {
-  const fmt = (b: ElementBox | null): string =>
-    b
-      ? `x=${b.x} y=${b.y} w=${b.width} h=${b.height} (right=${b.x + b.width} bottom=${b.y + b.height})`
-      : 'not-present';
-  const lines: string[] = [];
-  lines.push(`panel              ${fmt(geo.panel)}`);
-  lines.push(`tooltip            ${fmt(geo.tooltip)}`);
-  for (const s of geo.slots) {
-    if (!s.box) continue;
-    lines.push(`slot:${s.id.padEnd(12)} ${fmt(s.box)}`);
-    if (s.icon) lines.push(`slot:${`${s.id}.icon`.padEnd(12)} ${fmt(s.icon)}`);
-  }
-  return lines.join('\n');
 }
 
 function printResult(result: VisualReviewResult, screenshotPath: string, reviewPath: string): void {
   const score = result.overall?.score ?? 0;
+  const rawScore = result.overall?.raw_score;
+  const normalizedNote =
+    rawScore !== undefined && rawScore !== score
+      ? ` (normalized from raw ${JSON.stringify(rawScore)})`
+      : '';
   const verdict = result.overall?.verdict ?? 'fail';
   const summary = result.overall?.summary ?? 'no summary returned';
   const blockers = result.blocking_findings ?? [];
+  const deterministic = new Set(result.deterministic_blocking_findings ?? []);
+  const trajectory = result.finding_trajectory;
 
-  console.log(`\n[visual-review-agent] verdict=${verdict} score=${score}/5`);
+  console.log(
+    `\n[visual-review-agent] harvest=${result.harvest_source ?? 'unknown'}` +
+      `${result.surface ? ` surface=${result.surface}` : ''}`,
+  );
+  console.log(
+    `[visual-review-agent] verdict=${verdict} score=${score.toFixed(1)}/5${normalizedNote}`,
+  );
   console.log(`[visual-review-agent] summary: ${summary}`);
   if (blockers.length > 0) {
     console.log('[visual-review-agent] blocking findings:');
     for (const finding of blockers) {
-      console.log(`  - ${finding}`);
+      const tag = deterministic.has(finding) ? '[deterministic]' : '[llm]';
+      console.log(`  - ${tag} ${finding}`);
+    }
+  }
+  if (trajectory) {
+    console.log(
+      `[visual-review-agent] finding trajectory vs prior run: ${trajectory.new.length} NEW, ${trajectory.recurring.length} RECURRING`,
+    );
+    for (const finding of trajectory.new) {
+      console.log(`  - [NEW] ${finding}`);
+    }
+    for (const finding of trajectory.recurring) {
+      console.log(`  - [RECURRING] ${finding}`);
     }
   }
   const preciseFixes = result.precise_fixes ?? [];
@@ -591,6 +905,39 @@ function printResult(result: VisualReviewResult, screenshotPath: string, reviewP
   console.log(`[visual-review-agent] report: ${reviewPath}`);
 }
 
+/**
+ * Load blocking-finding keys from the most recent prior review artifact for this
+ * surface (same screenshot-name prefix), so we can label current findings NEW vs
+ * RECURRING. Timestamp suffixes sort lexicographically in chronological order.
+ */
+function loadPriorFindingKeys(
+  outputDir: string,
+  screenshotName: string,
+  currentReviewFile: string,
+): string[] | null {
+  let entries: string[];
+  try {
+    entries = readdirSync(outputDir);
+  } catch {
+    return null;
+  }
+  const prefix = `${screenshotName}-`;
+  const candidates = entries
+    .filter(
+      (name) =>
+        name.startsWith(prefix) && name.endsWith('.review.json') && name !== currentReviewFile,
+    )
+    .sort();
+  const latest = candidates.at(-1);
+  if (!latest) return null;
+  try {
+    const raw = JSON.parse(readFileSync(resolve(outputDir, latest), 'utf-8')) as VisualReviewResult;
+    return findingKeys(raw.blocking_findings ?? []);
+  } catch {
+    return null;
+  }
+}
+
 async function main(): Promise<number> {
   if (process.env.CI) {
     console.error('[visual-review-agent] Refusing to run in CI (dev-session tool only).');
@@ -604,12 +951,25 @@ async function main(): Promise<number> {
   const reviewPath = resolve(opts.outputDir, `${opts.screenshotName}-${stamp}.review.json`);
 
   const capture = await captureScreenshot(opts, screenshotPath);
-  const geo = capture.geometry;
-  console.log(
-    `[visual-review-agent] geometry captured: panel=${geo.panel ? 'yes' : 'NULL'} ` +
-      `tooltip=${geo.tooltip ? 'yes' : 'NULL'} ` +
-      `slots=${geo.slots.filter((s) => s.box).length}/${geo.slots.length} with-box`,
-  );
+  if (capture.harvestSource === 'equipment-legacy') {
+    const geo = capture.geometry;
+    console.log(
+      `[visual-review-agent] geometry captured (equipment-legacy): panel=${geo.panel ? 'yes' : 'NULL'} ` +
+        `tooltip=${geo.tooltip ? 'yes' : 'NULL'} ` +
+        `slots=${geo.slots.filter((s) => s.box).length}/${geo.slots.length} with-box`,
+    );
+  } else if (capture.harvestSource === 'declared') {
+    console.log(
+      `[visual-review-agent] geometry harvested (declared): surface=${capture.surface ?? '(unnamed)'} ` +
+        `regions=${capture.regions.length} deterministic-blockers=${capture.deterministicBlockers.length}`,
+    );
+  } else {
+    console.warn(
+      '[visual-review-agent] WARNING: this surface declared no window.__visualReview and is not the legacy ' +
+        'equipment probe. No deterministic geometry checks ran; findings are screenshot-only and NOT pixel-grounded. ' +
+        'Declare window.__visualReview in your setup file to get deterministic, pixel-grounded checks.',
+    );
+  }
 
   const endpoint = readEnvVar('AZURE_OPENAI_ENDPOINT');
   const apiKey = readEnvVar('AZURE_OPENAI_API_KEY');
@@ -631,12 +991,15 @@ async function main(): Promise<number> {
     deployment,
     apiVersion,
   });
-  const prompt = buildPrompt(opts, formatGeometry(capture.geometry));
+  const prompt = buildPrompt(opts, capture.geometryText, {
+    expect: capture.expect,
+    regionIds: capture.regions.map((r) => r.id),
+  });
   const png = readFileSync(screenshotPath);
   const evaluation = await provider.evaluate({
     systemInstructions: prompt.system,
     userPrompt: prompt.user,
-    images: [{ label: 'equipment-ui', png }],
+    images: [{ label: opts.uxName, png }],
     temperature: 0,
     maxTokens: 1800,
   });
@@ -649,14 +1012,35 @@ async function main(): Promise<number> {
   result.blocking_findings = [...mergedBlockers];
   result.deterministic_blocking_findings = capture.deterministicBlockers;
   result.geometry = capture.geometry;
+  result.harvest_source = capture.harvestSource;
+  if (capture.surface) result.surface = capture.surface;
+  if (capture.regions.length > 0) result.regions_declared = capture.regions.map((r) => r.id);
+
+  // Repair a non-1..5 overall.score (e.g. the model returned the SUM of the axes).
+  const normalized = normalizeOverallScore(result);
+  result.overall = { ...result.overall, score: normalized.score };
+  if (normalized.normalized) {
+    result.overall.raw_score = normalized.raw;
+  }
+
+  // NEW vs RECURRING trajectory against the most recent prior review for this surface.
+  const priorKeys = loadPriorFindingKeys(
+    opts.outputDir,
+    opts.screenshotName,
+    `${opts.screenshotName}-${stamp}.review.json`,
+  );
+  if (priorKeys) {
+    result.finding_trajectory = diffFindings(priorKeys, result.blocking_findings);
+  }
+
   writeFileSync(reviewPath, `${JSON.stringify(result, null, 2)}\n`, 'utf-8');
   printResult(result, screenshotPath, reviewPath);
 
-  const score = result.overall?.score ?? 0;
+  const score = normalized.score;
   const blockers = result.blocking_findings ?? [];
   if (score < opts.minScore || blockers.length > 0) {
     console.error(
-      `[visual-review-agent] FAILED quality gate (score ${score} < ${opts.minScore} or blockers=${blockers.length}).`,
+      `[visual-review-agent] FAILED quality gate (score ${score.toFixed(1)} < ${opts.minScore} or blockers=${blockers.length}).`,
     );
     return 1;
   }
