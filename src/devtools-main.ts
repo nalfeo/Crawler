@@ -3409,23 +3409,33 @@ function render(): void {
     const y = Number.parseInt(manualAnchorYInput.value, 10);
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     pendingManualAnchorClear = false;
+    pendingPostprocessMode = 'replace';
     manualAnchorOverride = {
       variantIndex: debugTarget.variantIndex,
       x,
       y,
       ...(applyScopeSelect.value === 'all' ? { applyToAllVariants: true } : {}),
     };
+    syncTweakInputsFromState();
+    finalAdjustStatus.textContent = `Anchor set to (${x}, ${y}). Click Apply changes to persist.`;
+    finalAdjustStatus.style.color = '#93c5fd';
+    rerenderDebuggerAfterTweaks();
   };
   manualAnchorXInput.addEventListener('change', syncManualAnchorFromInputs);
   manualAnchorYInput.addEventListener('change', syncManualAnchorFromInputs);
   applyScopeSelect.addEventListener('change', () => {
     if (manualAnchorOverride) {
+      pendingPostprocessMode = 'replace';
       manualAnchorOverride = {
         variantIndex: manualAnchorOverride.variantIndex,
         x: manualAnchorOverride.x,
         y: manualAnchorOverride.y,
         ...(applyScopeSelect.value === 'all' ? { applyToAllVariants: true } : {}),
       };
+      syncTweakInputsFromState();
+      finalAdjustStatus.textContent = `Anchor scope set to ${applyScopeSelect.value === 'all' ? 'all variants' : 'current variant'}. Click Apply changes to persist.`;
+      finalAdjustStatus.style.color = '#93c5fd';
+      rerenderDebuggerAfterTweaks();
     }
   });
   facingDirectionSelect.addEventListener('change', () => {

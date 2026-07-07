@@ -983,7 +983,8 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       !Number.isInteger(candidate.variantIndex) ||
       typeof candidate.x !== 'number' ||
       typeof candidate.y !== 'number' ||
-      (candidate.applyToAllVariants !== undefined && candidate.applyToAllVariants !== true)
+      (candidate.applyToAllVariants !== undefined &&
+        typeof candidate.applyToAllVariants !== 'boolean')
     ) {
       return null;
     }
@@ -1007,7 +1008,8 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     if (
       !Number.isInteger(candidate.variantIndex) ||
       (candidate.direction !== 'left' && candidate.direction !== 'right') ||
-      (candidate.applyToAllVariants !== undefined && candidate.applyToAllVariants !== true)
+      (candidate.applyToAllVariants !== undefined &&
+        typeof candidate.applyToAllVariants !== 'boolean')
     ) {
       return null;
     }
