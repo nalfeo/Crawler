@@ -197,7 +197,7 @@ function computeSpawnerArenaMetrics(world: GameWorld): {
     if (state === 2) resolved += 1;
     // Count spawners that raised a *real* barrier at some point in the run via
     // the persistent `spawnerArenaEverArmed` latch. It is set only when a
-    // non-empty fence snapshot / locked-door list is actually stored, and is
+    // non-empty barrier handle is actually stored, and is
     // NOT cleared on resolve — so a killed arena still counts, while an
     // IDLE→RESOLVED short-circuit (spawner died before it ever armed) does not
     // inflate the count. `resolvedArmed` is the subset that also resolved — the

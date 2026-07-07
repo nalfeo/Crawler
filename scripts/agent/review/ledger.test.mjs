@@ -26,6 +26,23 @@ function mmRound(extra = {}) {
   };
 }
 
+// A non-clean code_review round with genuine unresolved concerns (for escalation fixtures).
+function crUnresolvedRound(extra = {}) {
+  return { round: 1, models: ['m1'], concerns_count: 3, resolved_count: 1, clean: false, ...extra };
+}
+// A non-clean multi_model round with unresolved valid concerns (for escalation fixtures).
+function mmUnresolvedRound(extra = {}) {
+  return {
+    round: 1,
+    models: ['m1', 'm2'],
+    concerns_count: 3,
+    valid_count: 2,
+    resolved_count: 0,
+    clean: false,
+    ...extra,
+  };
+}
+
 function tier4(overrides = {}) {
   return {
     schema_version: SCHEMA_VERSION,
@@ -87,7 +104,7 @@ function tier2() {
 
 test('requiredStagesForApples maps tiers correctly', () => {
   assert.deepEqual(requiredStagesForApples(1), []);
-  assert.deepEqual(requiredStagesForApples(2), ['plan_review']);
+  assert.deepEqual(requiredStagesForApples(2), []);
   assert.deepEqual(requiredStagesForApples(3), ['plan_review', 'code_review']);
   assert.deepEqual(requiredStagesForApples(4), [
     'plan_review',
@@ -115,10 +132,18 @@ test('a tier-1 ledger requires no stages (empty stages object is valid)', () => 
   assert.deepEqual(r.requiredStages, []);
 });
 
-test('a tier-2 ledger needs only plan_review (no code_review)', () => {
+test('a tier-2 ledger requires no stages (plan-review floor raised to 3🍎)', () => {
+  const led = tier2();
+  led.stages = {};
+  const r = validateLedger(led);
+  assert.equal(r.ok, true, r.errors.join('; '));
+  assert.deepEqual(r.requiredStages, []);
+});
+
+test('a tier-2 ledger may still carry a valid (non-required) plan_review stage', () => {
   const r = validateLedger(tier2());
   assert.equal(r.ok, true, r.errors.join('; '));
-  assert.deepEqual(r.requiredStages, ['plan_review']);
+  assert.deepEqual(r.requiredStages, []);
 });
 
 test('code_review becomes required at 3🍎 (was not required at 2🍎)', () => {
@@ -253,6 +278,262 @@ test('multi_model_review resolved_count must be >= valid_count', () => {
   const r = validateLedger(led);
   assert.equal(r.ok, false);
   assert.match(r.errors.join('\n'), /resolved_count.*valid_count/);
+});
+
+// --- #2a: escalated_to_human terminal state (bounded loop -> human) ---
+
+test('code_review accepts escalated_to_human after >= 2 rounds (clean:false)', () => {
+  const led = tier4();
+  led.stages.code_review = {
+    clean: false,
+    rounds: [crUnresolvedRound({ round: 1 }), crUnresolvedRound({ round: 2 })],
+    escalated_to_human: {
+      after_round: 2,
+      reason: 'Intractable architecture conflict; needs a human call.',
+      unresolved_concerns: 2,
+    },
+  };
+  const r = validateLedger(led);
+  assert.equal(r.ok, true, r.errors.join('; '));
+});
+
+test('multi_model_review accepts escalated_to_human after >= 2 rounds', () => {
+  const led = tier4();
+  led.stages.multi_model_review = {
+    clean: false,
+    adjudicator_model: 'gpt-5.4',
+    rounds: [mmUnresolvedRound({ round: 1 }), mmUnresolvedRound({ round: 2 })],
+    escalated_to_human: {
+      after_round: 2,
+      reason: 'Models disagree on a security trade-off.',
+      unresolved_concerns: 1,
+    },
+  };
+  const r = validateLedger(led);
+  assert.equal(r.ok, true, r.errors.join('; '));
+});
+
+test('escalation on round 1 is rejected (never escalate before 2 rounds)', () => {
+  const led = tier4();
+  led.stages.code_review = {
+    clean: false,
+    rounds: [crUnresolvedRound({ round: 1 })],
+    escalated_to_human: { after_round: 1, reason: 'giving up early', unresolved_concerns: 1 },
+  };
+  const r = validateLedger(led);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('\n'), /at least 2 attempted review rounds/);
+});
+
+test('escalation with clean:true is rejected (contradiction)', () => {
+  const led = tier4();
+  led.stages.code_review = {
+    clean: true,
+    rounds: [crUnresolvedRound({ round: 1 }), crUnresolvedRound({ round: 2 })],
+    escalated_to_human: { after_round: 2, reason: 'contradictory', unresolved_concerns: 1 },
+  };
+  const r = validateLedger(led);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('\n'), /incompatible with clean:true/);
+});
+
+test('escalation after_round must equal the final round index (no rounds after escalation)', () => {
+  const led = tier4();
+  led.stages.code_review = {
+    clean: false,
+    rounds: [crUnresolvedRound({ round: 1 }), crUnresolvedRound({ round: 2 })],
+    escalated_to_human: { after_round: 3, reason: 'off-by-one terminal', unresolved_concerns: 1 },
+  };
+  const r = validateLedger(led);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('\n'), /after_round.*must equal the final round index/);
+});
+
+test('escalation with a clean final round is rejected', () => {
+  const led = tier4();
+  led.stages.code_review = {
+    clean: false,
+    rounds: [crUnresolvedRound({ round: 1 }), crUnresolvedRound({ round: 2, clean: true })],
+    escalated_to_human: { after_round: 2, reason: 'final round was clean', unresolved_concerns: 1 },
+  };
+  const r = validateLedger(led);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('\n'), /final round\.clean must not be true/);
+});
+
+test('escalation requires genuine unresolved concerns in the final round', () => {
+  const led = tier4();
+  led.stages.code_review = {
+    clean: false,
+    rounds: [
+      crUnresolvedRound({ round: 1 }),
+      crUnresolvedRound({ round: 2, concerns_count: 2, resolved_count: 2 }),
+    ],
+    escalated_to_human: {
+      after_round: 2,
+      reason: 'but everything resolved',
+      unresolved_concerns: 1,
+    },
+  };
+  const r = validateLedger(led);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('\n'), /resolved_count < concerns_count/);
+});
+
+test('escalation requires a non-empty reason and unresolved_concerns >= 1', () => {
+  const led = tier4();
+  led.stages.code_review = {
+    clean: false,
+    rounds: [crUnresolvedRound({ round: 1 }), crUnresolvedRound({ round: 2 })],
+    escalated_to_human: { after_round: 2, reason: '', unresolved_concerns: 0 },
+  };
+  const r = validateLedger(led);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('\n'), /reason must be a non-empty string/);
+  assert.match(r.errors.join('\n'), /unresolved_concerns must be an integer >= 1/);
+});
+
+test('a malformed escalated_to_human cannot silently fall back to the clean path', () => {
+  const led = tier4();
+  led.stages.code_review = {
+    clean: false,
+    rounds: [crUnresolvedRound({ round: 1 }), crUnresolvedRound({ round: 2 })],
+    escalated_to_human: null,
+  };
+  const r = validateLedger(led);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('\n'), /escalated_to_human must be an object/);
+});
+
+test('an empty escalated_to_human object is rejected on every required field (no silent pass)', () => {
+  const led = tier4();
+  led.stages.code_review = {
+    clean: false,
+    rounds: [crUnresolvedRound({ round: 1 }), crUnresolvedRound({ round: 2 })],
+    escalated_to_human: {},
+  };
+  const r = validateLedger(led);
+  assert.equal(r.ok, false);
+  const joined = r.errors.join('\n');
+  assert.match(joined, /after_round .* must equal the final round index/);
+  assert.match(joined, /reason must be a non-empty string/);
+  assert.match(joined, /unresolved_concerns must be an integer >= 1/);
+});
+
+test('a wrong-typed after_round (string) is rejected (not silently coerced)', () => {
+  const led = tier4();
+  led.stages.code_review = {
+    clean: false,
+    rounds: [crUnresolvedRound({ round: 1 }), crUnresolvedRound({ round: 2 })],
+    escalated_to_human: { after_round: '2', reason: 'valid escalation', unresolved_concerns: 2 },
+  };
+  const r = validateLedger(led);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('\n'), /after_round .* must equal the final round index/);
+});
+
+test('escalation validates EVERY round shape (intermediate round missing models fails)', () => {
+  const led = tier4();
+  led.stages.code_review = {
+    clean: false,
+    rounds: [crUnresolvedRound({ round: 1, models: [] }), crUnresolvedRound({ round: 2 })],
+    escalated_to_human: { after_round: 2, reason: 'valid escalation', unresolved_concerns: 2 },
+  };
+  const r = validateLedger(led);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('\n'), /round\[0\]\.models/);
+});
+
+test('multi_model escalation enforces distinct models per round', () => {
+  const led = tier4();
+  led.stages.multi_model_review = {
+    clean: false,
+    adjudicator_model: 'gpt-5.4',
+    rounds: [
+      mmUnresolvedRound({ round: 1, models: ['dup', 'dup'] }),
+      mmUnresolvedRound({ round: 2 }),
+    ],
+    escalated_to_human: { after_round: 2, reason: 'valid escalation', unresolved_concerns: 1 },
+  };
+  const r = validateLedger(led);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('\n'), /round\[0\]\.models must be DISTINCT/);
+});
+
+// --- #2b: downward-only, diff-justified apple re-scoring ---
+
+test('downward apples_rescored_from is accepted with a reason', () => {
+  const led = tier4();
+  led.apples_rescored_from = 5;
+  led.rescore_reason = 'Diff turned out smaller than the initial 5🍎 estimate.';
+  const r = validateLedger(led);
+  assert.equal(r.ok, true, r.errors.join('; '));
+});
+
+test('upward apples_rescored_from is rejected (re-scoring is downward-only)', () => {
+  const led = tier4();
+  led.apples_rescored_from = 3;
+  led.rescore_reason = 'trying to sneak upward';
+  const r = validateLedger(led);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('\n'), /must be strictly greater than estimated_apples/);
+});
+
+test('no-op apples_rescored_from (equal to estimate) is rejected', () => {
+  const led = tier4();
+  led.apples_rescored_from = 4;
+  led.rescore_reason = 'no actual change';
+  const r = validateLedger(led);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('\n'), /must be strictly greater than estimated_apples/);
+});
+
+test('apples_rescored_from without a rescore_reason is rejected', () => {
+  const led = tier4();
+  led.apples_rescored_from = 5;
+  const r = validateLedger(led);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('\n'), /rescore_reason must be a non-empty string/);
+});
+
+test('apples_rescored_from must be an integer 1..5', () => {
+  const led = tier4();
+  led.apples_rescored_from = 7;
+  led.rescore_reason = 'bad value';
+  const r = validateLedger(led);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('\n'), /apples_rescored_from must be an integer 1\.\.5/);
+});
+
+test('orphaned rescore_reason (no apples_rescored_from) is rejected', () => {
+  const led = tier4();
+  led.rescore_reason = 'left behind after an edit';
+  const r = validateLedger(led);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('\n'), /rescore_reason is only valid alongside apples_rescored_from/);
+});
+
+test('a downward re-score to 2🍎 still validates its remaining COMPLETE stages; incomplete scaffolds must be pruned', () => {
+  // Scaffolded at 4🍎, rescored down to 2🍎, but a stale INCOMPLETE code_review
+  // scaffold was left present -> present stages are always validated -> fails.
+  const stale = tier4();
+  stale.estimated_apples = 2;
+  stale.apples_rescored_from = 4;
+  stale.rescore_reason = 'Diff was a one-line tweak; genuinely a 2🍎 change.';
+  stale.stages.code_review = { clean: false, rounds: [] };
+  const rStale = validateLedger(stale);
+  assert.equal(rStale.ok, false, 'stale incomplete scaffold should fail');
+  assert.deepEqual(rStale.requiredStages, []);
+
+  // Prune the now-unrequired incomplete stages -> downward re-score validates.
+  const pruned = tier4();
+  pruned.estimated_apples = 2;
+  pruned.apples_rescored_from = 4;
+  pruned.rescore_reason = 'Diff was a one-line tweak; genuinely a 2🍎 change.';
+  pruned.stages = {};
+  const rPruned = validateLedger(pruned);
+  assert.equal(rPruned.ok, true, rPruned.errors.join('; '));
+  assert.deepEqual(rPruned.requiredStages, []);
 });
 
 test('non-object ledger is rejected', () => {

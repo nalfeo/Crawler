@@ -39,19 +39,66 @@ The required stages scale with the apple estimate you declare per
 | Apples | plan review | dual-plan synthesis | code review (loop) | multi-model review |
 | ------ | ----------- | ------------------- | ------------------ | ------------------ |
 | 1🍎    | —           | —                   | —                  | —                  |
-| 2🍎    | ✅          | —                   | —                  | —                  |
+| 2🍎    | —           | —                   | —                  | —                  |
 | 3🍎    | ✅          | —                   | ✅                 | —                  |
 | 4–5🍎  | ✅          | ✅                  | ✅                 | ✅                 |
 
-- **plan review** (>1🍎) — a _separate model_ reviews the plan before any code is
-  written; every concern is resolved.
+- **plan review** (≥3🍎) — a _separate model_ reviews the plan before any code is
+  written; every concern is resolved. The plan-review floor was raised **2🍎 → 3🍎
+  on 2026-07-07** to match the code-review floor, which already moved to 3🍎 on
+  **2026-07-02** (ADR 0036 / handoff
+  `docs/knowledge/handoffs/2026-07-02-streamline-verify-ci-gates.md`). A 2🍎 change
+  now records its tier in a ledger but requires **no** review stages.
 - **dual-plan synthesis** (>3🍎) — two plans authored by two _different_ models, a
   _third_ reasoning model judges + synthesizes the final plan.
 - **code review** (≥3🍎) — run the appropriate review agent(s), address feedback,
-  **loop until no concerns remain**.
+  **loop until no concerns remain _or_ escalate to a human** (see below).
 - **multi-model review** (>3🍎) — run each appropriate review agent across
   _multiple distinct models_; a final reasoning model adjudicates validity +
-  remedy; fixes are **delegated**; **loop until clean**.
+  remedy; fixes are **delegated**; **loop until clean _or_ escalate to a human**.
+
+## Bounded review loop — cap at 2 rounds, then escalate to a human
+
+The `code_review` and `multi_model_review` loops are **not** unbounded. Looping
+"until clean" with no terminal state means an agent that hits a genuinely
+intractable concern spins forever (or, worse, is tempted to weaken the ledger to
+escape). Both stages therefore support an explicit **terminal `escalated_to_human`
+state**:
+
+- A stage is **complete** when EITHER (a) the last round is `clean:true` (the
+  normal path), OR (b) it records a valid `escalated_to_human` **after at least 2
+  genuinely-attempted rounds**.
+- Escalation is **never** allowed on round 1, and is **never** a silent skip or
+  short-circuit. It is a recorded terminal state a human must act on.
+- Escalation is **not clean**: an escalated stage must set `clean:false`, its final
+  round must be non-clean with genuine unresolved concerns, and it records
+  `{ after_round, reason, unresolved_concerns }` (with `after_round` equal to the
+  final round index, so no rounds may follow the escalation). See
+  [`references/ledger-recipes.md`](../../../.github/skills/review-harness/references/ledger-recipes.md)
+  for the exact schema.
+
+This is a **safety win**: a bounded loop plus forced human attention replaces an
+unbounded silent loop. Escalating is always preferable to weakening a gate
+(project rule #12).
+
+## Downward-only, diff-justified apple re-scoring
+
+You may revise your apple estimate **after** planning, but only **strictly
+downward** and only when the **actual diff** justifies it (e.g. a change you sized
+at 4🍎 collapsed into a one-file tweak). Record it with two optional top-level
+ledger fields:
+
+- `apples_rescored_from` — the original, higher estimate (must be an integer 1..5
+  and **strictly greater** than `estimated_apples`; upward or no-op re-scores are
+  rejected by the validator).
+- `rescore_reason` — a non-empty justification (required whenever
+  `apples_rescored_from` is present; a lone `rescore_reason` is rejected).
+
+A downward re-score makes the required stages follow the **new lower tier**.
+Because the validator checks **every present stage**, you must **prune** (remove)
+any now-unrequired stages that are still incomplete scaffolds — otherwise they
+fail validation. "Justified by the diff" is **honor-system + policy** (rule #12),
+not mechanically provable: never re-score down merely to dodge a stage.
 
 ## The review ledger
 

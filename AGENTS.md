@@ -56,9 +56,11 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Sprite ingest once      | `npm run sprites:ingest-once`      |
 | Sprite sync catalog     | `npm run sprites:sync-catalog`     |
 | Sprite metadata         | `npm run sprites:metadata`         |
+| Scope changed files     | `npm run scope`                    |
 | Fast verify             | `npm run verify:fast`              |
 | Full verify             | `npm run verify`                   |
 | Full verify + headless  | `VERIFY_FULL=1 npm run verify`     |
+| Full verify + knip      | `VERIFY_KNIP=1 npm run verify`     |
 | PR prereq check         | `npm run verify:pr-prereqs`        |
 | Guard telemetry capture | `npm run telemetry:capture`        |
 | Full verify + coverage  | `VERIFY_COVERAGE=1 npm run verify` |
@@ -70,6 +72,26 @@ The sole maintainer works best answering questions one at a time rather than wri
 
 For sprite workflow details and when to use sprite commands, see
 `scripts/sprites/` for implementation details or `docs/knowledge/game-design/art-style-guide.md` for art context.
+
+## Scoping heavy validation (local)
+
+Heavy discretionary runs are the biggest source of wasted local time. Run `npm run scope`
+(a working-tree-aware wrapper over the CI `detect-art-only.sh` classifier) and gate the
+expensive checks on its flags. It prints `art_only` / `docs_only` / `gameplay_safe` for the
+union of your committed branch changes **and** uncommitted work; it fails safe (all-false →
+run everything) when it can't resolve a merge base.
+
+| Heavy run                          | Run it locally only when…                                       |
+| ---------------------------------- | --------------------------------------------------------------- |
+| Headless Floor-1 (`VERIFY_FULL=1`) | `scope` shows `gameplay_safe=false` (else the sim can't change) |
+| Weapon sweeps (`ai:weapon-sweep`)  | touching `src/core`, `src/game/ai`, or balance data             |
+| Visual review (`review:visual`)    | a changed **UI surface** is in scope                            |
+| `npm run knip` / `VERIFY_KNIP=1`   | refactoring or removing exports/deps                            |
+
+CI still enforces the real gates on non-`gameplay_safe` PRs and on main-push, so scoping
+these **locally** never weakens a required check — it just skips work that provably can't
+fail. `verify:fast` already uses `scope` internally to skip the two headless-sim coverage
+checks on a `gameplay_safe` change set.
 
 ## Server Launch Diagnostics
 
@@ -145,7 +167,7 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 11. **PR title/description synthesis**: When creating or updating a PR title/description — including after any feedback turns — always synthesize the _entire_ session's work. Read the existing PR title/description first (via `gh pr view`), then write a holistic title and description that covers every change on the branch, not just the most recent task. Never replace the primary purpose of the PR with a secondary or follow-up concern. The title must reflect the dominant feature/fix; secondary changes belong as bullet points in the description.
 12. **Never weaken explicit human requirements without asking**: Do NOT cut corners by quietly relaxing, disabling, or disregarding an explicit, user-stated requirement for a session — including the feature's own defining parameter — just to make a gate/test pass. This holds in every mode, **including autopilot**. If the only way you can see to get green is to weaken the requirement, STOP and ask the human first (state the trade-off and options); fix the test/gate around the requirement, not the requirement around the test.
 13. **Never bend gameplay to pass seeds; gate on win-RATE, not cherry-picked seeds**: Do not tune game balance to rescue specific pre-existing seed runs, and do not add shortcuts/cheats that hold map structure fixed just to avoid recomputing success/failure rates. **Target: 90%+ of Floor 1 seeds should easily reach a win condition.** If a broad seed sweep shows materially less, treat it as a likely **AI-runner bug or extreme gameplay regression** and fix the root cause — never hand-pick a handful of comfortable seeds to make the gate green.
-14. **Apple-scaled review harness before PR**: Every code-touching change runs the review harness scaled to its apple estimate and records it in a **review ledger** (`docs/knowledge/review-ledgers/<date>-<slug>.review-ledger.json`). >1🍎 → separate-model **plan review**; >3🍎 → **dual-plan synthesis** (2 models + judge) **and** **multi-model review** with adjudication; **≥3🍎** → a **code-review loop until no concerns**. The `pr-review-ledger` guard hard-denies `create_pull_request` without a valid ledger for the tier (docs/art/deps-only diffs are exempt). Author it with the [`review-harness` skill](.github/skills/review-harness/SKILL.md); never weaken a stage to go green (see rule #12). Canonical: [`docs/agent-os/policies/review-harness-policy.md`](docs/agent-os/policies/review-harness-policy.md).
+14. **Apple-scaled review harness before PR**: Every code-touching change runs the review harness scaled to its apple estimate and records it in a **review ledger** (`docs/knowledge/review-ledgers/<date>-<slug>.review-ledger.json`). **≥3🍎** → separate-model **plan review** **and** a **code-review loop until no concerns _or_ a 2-round cap then human escalation**; >3🍎 → **dual-plan synthesis** (2 models + judge) **and** **multi-model review** with adjudication (same 2-round-cap/escalation rule). 1–2🍎 require no review stages (plan-review floor raised 2🍎→3🍎 on 2026-07-07 to match the code-review floor; ADR 0036). The `pr-review-ledger` guard hard-denies `create_pull_request` without a valid ledger for the tier (docs/art/deps-only diffs are exempt). Author it with the [`review-harness` skill](.github/skills/review-harness/SKILL.md); never weaken a stage to go green (see rule #12) — escalate to a human instead. Canonical: [`docs/agent-os/policies/review-harness-policy.md`](docs/agent-os/policies/review-harness-policy.md).
 15. **Every game system must be wired or explicitly allowlisted**: Any `*System` exported from `src/core/**` or `src/game/**` MUST be referenced by a real runtime wiring site (`src/bootstrap/floor-main-scene-options.ts`, `src/engine/sim/simulation-step.ts`, `src/game/ai/simulation-step.ts`, `src/game/ai/headless-runner.ts`, `src/engine/scenes/MainGameScene.ts`) or added to the documented allowlist in `scripts/agent/health/orphaned-systems-lib.ts` with a reason. Lab/test references do NOT count. Enforced by `npm run check:wired-systems` (ADR 0039), run in `verify` and the `check-format-and-labs` CI job. Never allowlist a system just to go green (see rule #12) — allowlisting is only for systems intentionally not-yet-wired, and the reason must say so.
 
 > Several of these rules are now **hard-enforced** at the tool-call boundary by
@@ -163,6 +185,7 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
   2. Run `gh run list --branch <branch>` then `gh run view <run-id> --log-failed` to read actual error output.
   3. Fix the underlying CI failure, then re-run `gh pr merge --auto --squash`.
 - Only stop and report to the user if `gh pr merge` itself explicitly states a review is required.
+- **Batch review fixes into one push per round.** Each push re-triggers the full merge-gate CI (~4.7 runs/branch historically). Accumulate all fixes for a review round, run `verify:fast` once, then push once — don't push per-fix. Rely on the armed `--auto --squash` merge; do not add manual poll/wait loops.
 
 ### Resolving addressed review comments
 
@@ -180,14 +203,19 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 
 ## Known Environment Quirks
 
-- **`scripts/agent/lab-gate-check.sh` is pathologically slow (~50 s/system) on
-  Windows Git Bash.** The check forks a subprocess per system, and Windows
-  Git Bash's per-fork overhead dominates the total. Independently
-  rediscovered in ≥ 3 handoffs (`mana-and-abilities`,
-  `headless-runner-pathfinding-slowdown`, `ai-exploration-kernels`). Run it
-  on CI or in WSL locally; do not add "the lab gate is slow" to the handoff
-  again.
+- **`scripts/agent/lab-gate-check.sh` is slow on Windows Git Bash.** It was
+  refactored to O(systems + labs) (lab base-names are precomputed once via bash
+  parameter expansion instead of forking `basename`/`sed`/`tr` per system×lab
+  pair), which cuts the fork count sharply — but per-fork overhead on Windows
+  Git Bash still makes it the slowest local check. CI enforces it (blocking,
+  `check-format-and-labs`), so **do not run it locally on Windows** — run it on
+  CI or in WSL. Independently rediscovered in ≥ 3 handoffs (`mana-and-abilities`,
+  `headless-runner-pathfinding-slowdown`, `ai-exploration-kernels`); do not add
+  "the lab gate is slow" to the handoff again.
   <!-- Source handoff: 2026-06-17-headless-ai-runner.md -->
+
+- **`npm run knip` in full `verify` is opt-in** (`VERIFY_KNIP=1`). It's advisory
+  in CI regardless, so run it locally only when refactoring/removing exports.
 
 ## Tech Stack
 

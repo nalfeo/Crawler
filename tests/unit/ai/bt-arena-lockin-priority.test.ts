@@ -12,6 +12,7 @@
 import { describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
 import { spawnEnemy, spawnPlayer, spawnSpawner } from '../../../src/core/spawners/combatants.js';
+import { spawnGold } from '../../../src/core/helpers.js';
 import {
   getSpawnerArchetype,
   getSpawnerArchetypeIndex,
@@ -43,9 +44,16 @@ function makeLockedSpawnerNearPlayer(
   });
   world.stores.spawner.arenaState[spawnerEid] = 1; // locked
   world.stores.spawner.arenaKind[spawnerEid] = 1; // open-fence
-  // Simulate raiseFence's real barrier snapshot so the detector's barrier-
-  // presence check (see arena-lockin.ts) treats the AI as actually stuck.
-  world.spawnerArenaFence.set(spawnerEid, [{ tileIdx: 0, originalFlags: 0 }]);
+  // Mirror createRingWallBarrier's ANALYTIC ring-WALL handle (tiles:[] + a
+  // BarrierRingShape) so the detector's barrier-presence check (see
+  // arena-lockin.ts) treats the AI as actually stuck — matches the real
+  // open-fence runtime snapshot.
+  world.spawnerArenaBarriers.set(spawnerEid, {
+    id: 1,
+    kind: 'fence',
+    tiles: [],
+    shape: { type: 'ring', cxFt: px + 2, cyFt: py, innerRadiusFt: 5, outerRadiusFt: 6 },
+  });
   return spawnerEid;
 }
 
@@ -110,5 +118,28 @@ describe('BT — arena lock-in priority (1.5)', () => {
 
     const decision = ai.getDecision();
     expect(decision.state).toBe(AIState.RETREAT);
+  });
+
+  it('ignores loot outside the arena while locked in (arena objective wins)', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    const px = world.stores.position.x[player]!;
+    const py = world.stores.position.y[player]!;
+    const spawnerEid = makeLockedSpawnerNearPlayer(world, px, py);
+    // A juicy gold pile just outside the arena disc (radius 6). While locked,
+    // the AI must NOT break lock-in to Collect it — the spawner (the only exit)
+    // outranks every outside goal (Collect is priority 5, lock-in is 1.5).
+    spawnGold(world, px + 40, py, 100);
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(decision.targetEid).toBe(spawnerEid);
+    expect(decision.reason.toLowerCase()).toContain('arena');
+    expect(decision.state).not.toBe(AIState.COLLECT);
   });
 });

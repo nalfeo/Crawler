@@ -1,0 +1,201 @@
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+
+/**
+ * Deterministic coverage for the LOCAL change-scope helper
+ * (`scripts/agent/ci/local-scope.sh`). Unlike detect-art-only.sh (driven by the
+ * SCOPE_FILES_OVERRIDE hook), local-scope.sh computes the changed-file set from
+ * the real working tree — the union of committed branch changes AND uncommitted
+ * work — then delegates classification to detect-art-only.sh. `npm run scope`
+ * and verify-fast.sh gate expensive work on its `gameplay_safe` flag, so a wrong
+ * "safe" here would silently skip a check. We exercise the actual git logic in a
+ * throwaway repo and assert the safety-critical invariants:
+ *   - no resolvable merge base ⇒ ALWAYS all-false (never grant a safe skip from
+ *     working-tree data alone — committed branch history could hide a src change)
+ *   - deletions/renames are included (no --diff-filter) ⇒ a deleted src/core file
+ *     forces gameplay_safe=false
+ *   - staged / unstaged / untracked work is unioned with committed branch changes
+ *   - a clean tree fails safe to all-false (run everything)
+ */
+
+const SCRIPT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../scripts/agent/ci/local-scope.sh',
+);
+
+const hasBash = spawnSync('bash', ['-c', 'exit 0']).status === 0;
+
+interface Scope {
+  art_only: boolean;
+  docs_only: boolean;
+  gameplay_safe: boolean;
+}
+
+const F = (art_only: boolean, docs_only: boolean, gameplay_safe: boolean): Scope => ({
+  art_only,
+  docs_only,
+  gameplay_safe,
+});
+
+const tempDirs: string[] = [];
+
+afterEach(() => {
+  while (tempDirs.length > 0) {
+    const dir = tempDirs.pop();
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+interface Repo {
+  dir: string;
+  git: (...args: string[]) => string;
+  write: (relPath: string, content: string) => void;
+  del: (relPath: string) => void;
+  scope: () => Scope;
+}
+
+function makeRepo(): Repo {
+  const dir = mkdtempSync(path.join(tmpdir(), 'local-scope-'));
+  tempDirs.push(dir);
+  const git = (...args: string[]): string => {
+    const res = spawnSync('git', args, { cwd: dir, encoding: 'utf8' });
+    if (res.status !== 0) {
+      throw new Error(`git ${args.join(' ')} failed (${res.status}): ${res.stderr}`);
+    }
+    return res.stdout;
+  };
+  const write = (relPath: string, content: string): void => {
+    const abs = path.join(dir, relPath);
+    mkdirSync(path.dirname(abs), { recursive: true });
+    writeFileSync(abs, content);
+  };
+  const del = (relPath: string): void => {
+    git('rm', '-q', relPath);
+  };
+  const scope = (): Scope => {
+    const res = spawnSync('bash', [SCRIPT], {
+      cwd: dir,
+      encoding: 'utf8',
+      // Neutralize inherited CI/override env so the helper reads the temp repo.
+      env: {
+        ...process.env,
+        SCOPE_FILES_OVERRIDE: undefined,
+        GITHUB_BASE_REF: undefined,
+        GITHUB_OUTPUT: '',
+      } as NodeJS.ProcessEnv,
+    });
+    if (res.status !== 0) {
+      throw new Error(`local-scope.sh exited ${res.status}\n${res.stdout}\n${res.stderr}`);
+    }
+    const read = (key: keyof Scope): boolean => {
+      const m = res.stdout.match(new RegExp(`^${key}=(true|false)$`, 'm'));
+      if (!m) throw new Error(`missing '${key}' in output:\n${res.stdout}`);
+      return m[1] === 'true';
+    };
+    return {
+      art_only: read('art_only'),
+      docs_only: read('docs_only'),
+      gameplay_safe: read('gameplay_safe'),
+    };
+  };
+  // Deterministic identity + no signing so commits work on any runner.
+  git('init', '-q');
+  git('config', 'user.email', 'test@example.com');
+  git('config', 'user.name', 'Local Scope Test');
+  git('config', 'commit.gpgsign', 'false');
+  return { dir, git, write, del, scope };
+}
+
+/** main branch with one commit, then a feature branch checked out. */
+function mainWithFeature(repo: Repo): void {
+  repo.write('README.md', '# seed\n');
+  repo.git('add', '.');
+  repo.git('commit', '-q', '-m', 'seed');
+  repo.git('branch', '-M', 'main');
+  repo.git('checkout', '-q', '-b', 'feature');
+}
+
+describe('local-scope.sh working-tree change-scope helper', () => {
+  it('resolves bash (required by the verify:fast harness)', () => {
+    expect(hasBash).toBe(true);
+  });
+
+  it.skipIf(!hasBash)('CRIT-1: no merge base ⇒ all-false even for a docs-only working tree', () => {
+    const repo = makeRepo();
+    repo.write('README.md', '# seed\n');
+    repo.git('add', '.');
+    repo.git('commit', '-q', '-m', 'seed');
+    // Rename the only branch away from main so neither origin/main nor main resolves.
+    repo.git('branch', '-M', 'feature');
+    // A docs-only edit would look "safe" if classified from the working tree alone —
+    // but with no base we must refuse and force the full suite.
+    repo.write('docs/notes.md', 'notes\n');
+    expect(repo.scope()).toEqual(F(false, false, false));
+  });
+
+  it.skipIf(!hasBash)('clean tree with a resolved base fails safe to all-false', () => {
+    const repo = makeRepo();
+    mainWithFeature(repo);
+    // feature == main, nothing changed → empty set → detect-art-only fail-safe.
+    expect(repo.scope()).toEqual(F(false, false, false));
+  });
+
+  it.skipIf(!hasBash)('committed docs-only branch change ⇒ gameplay_safe', () => {
+    const repo = makeRepo();
+    mainWithFeature(repo);
+    repo.write('docs/architecture.md', '# arch\n');
+    repo.git('add', '.');
+    repo.git('commit', '-q', '-m', 'docs');
+    expect(repo.scope()).toEqual(F(false, true, true));
+  });
+
+  it.skipIf(!hasBash)('committed src/core branch change ⇒ not safe', () => {
+    const repo = makeRepo();
+    mainWithFeature(repo);
+    repo.write('src/core/systems/movementSystem.ts', 'export const x = 1;\n');
+    repo.git('add', '.');
+    repo.git('commit', '-q', '-m', 'core');
+    expect(repo.scope()).toEqual(F(false, false, false));
+  });
+
+  it.skipIf(!hasBash)('untracked src/core file is unioned in ⇒ not safe', () => {
+    const repo = makeRepo();
+    mainWithFeature(repo);
+    // No commit on feature; the change exists only as an untracked working file.
+    repo.write('src/core/world.ts', 'export const w = 1;\n');
+    expect(repo.scope()).toEqual(F(false, false, false));
+  });
+
+  it.skipIf(!hasBash)('unstaged docs-only edit ⇒ gameplay_safe', () => {
+    const repo = makeRepo();
+    mainWithFeature(repo);
+    // README.md is tracked; edit it without staging.
+    repo.write('README.md', '# seed edited\n');
+    expect(repo.scope()).toEqual(F(false, true, true));
+  });
+
+  it.skipIf(!hasBash)(
+    'CRIT-2: a committed src/core deletion (no diff-filter) forces not safe',
+    () => {
+      const repo = makeRepo();
+      repo.write('README.md', '# seed\n');
+      repo.write('src/core/doomed.ts', 'export const d = 1;\n');
+      repo.git('add', '.');
+      repo.git('commit', '-q', '-m', 'seed');
+      repo.git('branch', '-M', 'main');
+      repo.git('checkout', '-q', '-b', 'feature');
+      // Delete the src/core file and also touch a docs file, then commit both.
+      repo.del('src/core/doomed.ts');
+      repo.write('docs/readme.md', 'x\n');
+      repo.git('add', '.');
+      repo.git('commit', '-q', '-m', 'delete core + docs');
+      // With --diff-filter=ACMR the deletion would vanish and only docs would remain
+      // → a spurious gameplay_safe=true. The helper uses no filter, so it stays false.
+      expect(repo.scope()).toEqual(F(false, false, false));
+    },
+  );
+});

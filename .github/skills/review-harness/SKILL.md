@@ -6,9 +6,10 @@ description: >-
   Use when asked to "run the review harness", do a "plan review", "multi-model
   review", "review loop", "review ledger", or whenever a change is ">1 apple" /
   ">3 apples" and needs pre-PR review. Covers: deciding required stages from the
-  apple estimate, reviewing the plan with a separate model (>1🍎), generating two
+  apple estimate, reviewing the plan with a separate model (≥3🍎), generating two
   plans + synthesizing with a judge model (>3🍎), looping code-review agents until
-  no concerns (≥3🍎), multi-model code-review with adjudication (>3🍎), and
+  no concerns or a 2-round cap then human escalation (≥3🍎), multi-model
+  code-review with adjudication (>3🍎), and
   writing/validating the review ledger that the `pr-review-ledger` guard enforces
   before `create_pull_request`.
 ---
@@ -41,19 +42,46 @@ start of the session (see `docs/agent-os/policies/complexity-policy.md`).
 | apples | plan review | dual-plan synthesis | code review (loop) | multi-model review |
 | ------ | ----------- | ------------------- | ------------------ | ------------------ |
 | 1🍎    | —           | —                   | —                  | —                  |
-| 2🍎    | ✅          | —                   | —                  | —                  |
+| 2🍎    | —           | —                   | —                  | —                  |
 | 3🍎    | ✅          | —                   | ✅                 | —                  |
 | 4–5🍎  | ✅          | ✅                  | ✅                 | ✅                 |
 
-- **plan review** (>1🍎): before writing code, have a _separate model_ review the
-  plan; address every concern.
+- **plan review** (≥3🍎): before writing code, have a _separate model_ review the
+  plan; address every concern. (Floor raised 2🍎 → 3🍎 on 2026-07-07 to match the
+  code-review floor, which moved to 3🍎 on 2026-07-02 / ADR 0036. A 2🍎 change now
+  requires **no** review stages — the ledger just records the tier.)
 - **dual-plan synthesis** (>3🍎): generate **2** plans with **different** models,
   then a **3rd** reasoning model judges + synthesizes the final plan.
 - **code review** (≥3🍎): run the appropriate code-review agent(s); address
-  feedback; **loop until no concerns remain**.
+  feedback; **loop until no concerns remain _or_ escalate to a human** (2-round
+  cap, below).
 - **multi-model review** (>3🍎): run each appropriate code-review agent with
   **multiple models**; a final reasoning model adjudicates which concerns are
-  valid and the right remedy; **delegate** the fixes; **loop until clean**.
+  valid and the right remedy; **delegate** the fixes; **loop until clean _or_
+  escalate to a human**.
+
+### Bounded loop: cap at 2 rounds, then escalate
+
+The `code_review` and `multi_model_review` loops are **not** unbounded. If after
+**≥2 genuinely-attempted rounds** a concern is intractable, record a terminal
+`escalated_to_human` state instead of looping forever:
+
+- Valid **only after 2+ rounds** — never on round 1.
+- **Not clean**: keep `clean:false`; the final round stays non-clean with genuine
+  unresolved concerns; record `{ after_round, reason, unresolved_concerns }` with
+  `after_round` = the final round index (nothing may follow the escalation).
+- It is an explicit **recorded terminal state a human must act on** — never a
+  silent skip. Escalating beats weakening a gate (rule #12). Exact schema:
+  [`references/ledger-recipes.md`](references/ledger-recipes.md).
+
+### Downward-only apple re-scoring
+
+You may re-score your estimate **after** planning, but only **strictly downward**
+and only when the **actual diff** justifies it. Record `apples_rescored_from` (the
+original higher estimate) + `rescore_reason` at the ledger top level; the validator
+rejects upward/no-op re-scores. A downward re-score lowers the required tier — so
+**prune** any now-unrequired incomplete stages (the validator checks every present
+stage). Never re-score down just to dodge a stage (rule #12).
 
 ## Workflow
 
@@ -67,7 +95,7 @@ start of the session (see `docs/agent-os/policies/complexity-policy.md`).
 3. **Dual-plan synthesis** (>3🍎): generate two plans with different models and
    synthesize with a judge → record `dual_plan_synthesis`. Do this before the
    plan review (the review reviews the synthesized plan).
-4. **Plan review** (>1🍎): a separate model reviews the (final) plan; address every
+4. **Plan review** (≥3🍎): a separate model reviews the (final) plan; address every
    concern → record `plan_review`. See
    [`references/plan-review.md`](references/plan-review.md).
 5. **Implement**, then `npm run verify:fast`.
@@ -106,7 +134,8 @@ npm run review:ledger -- stage <path> code_review --json '{"clean":true,"rounds"
 
 - It validates **completeness for the declared tier** — required stages present,
   `completed`/`clean` true, models named, `resolved_count >= concerns_count`,
-  last review round clean, etc. The exact rules live in
+  last review round clean (**or** a valid `escalated_to_human` terminal state after
+  ≥2 rounds), downward-only `apples_rescored_from`, etc. The exact rules live in
   `scripts/agent/review/ledger.mjs` (the single source of truth).
 - It does **not** verify truthfulness. Like the handoff requirement, the ledger
   is an honor-system artifact — its value is the forcing function + audit trail,

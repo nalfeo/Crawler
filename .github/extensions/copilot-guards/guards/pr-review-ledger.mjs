@@ -39,7 +39,7 @@ function missingLedgerReason(files) {
     "  npm run review:ledger -- stage <path> <stage> --json '{...}'   # per review stage",
     '  npm run review:ledger -- validate <path>',
     '',
-    'Required stages by apple tier: 1 → (none, ledger only); 2 → plan_review; 3 → + code_review; 4–5 → + dual_plan_synthesis + multi_model_review.',
+    'Required stages by apple tier: 1–2 → (none, ledger only); 3 → plan_review + code_review; 4–5 → + dual_plan_synthesis + multi_model_review.',
   ].join('\n');
 }
 
