@@ -20,6 +20,12 @@ import { findTilePath, type TilePoint } from '../core/map/pathfinding.js';
 import { getGenerator } from '../core/map/generators/registry.js';
 import { sealRoomPerimeter, sealSpecialRooms } from '../core/map/special-rooms.js';
 import {
+  stampSetPiece,
+  type StampedSetPiece,
+  type StampedSetPieceNpc,
+} from '../core/map/stampSetPiece.js';
+import { getSetPieceDef } from '../shared/set-piece-types.js';
+import {
   Position,
   Rotation,
   Player,
@@ -42,6 +48,7 @@ import {
   clearEntityStores,
   spawnBehaviorEnemy,
   spawnNpc,
+  spawnSetPieceProp,
   createEntity,
   spawnDroppedItem,
   spawnHarvestableNode,
@@ -366,41 +373,76 @@ function tileKey(x: number, y: number): string {
   return `${x},${y}`;
 }
 
+/**
+ * Minimum Chebyshev tile distance between two NPCs placed in the same room. A
+ * value of 3 leaves at least two empty tiles between any pair, so shared-room
+ * hubs (e.g. the Floor 1 welcome bar) read as a scattered crowd instead of a
+ * huddle. Relaxed automatically when a room is too small to honour it.
+ */
+const MIN_NPC_SPACING_TILES = 3;
+
+/** Chebyshev distance from (tx,ty) to the nearest already-occupied tile. */
+function minChebyshevDistanceToOccupied(
+  tx: number,
+  ty: number,
+  occupiedTiles: ReadonlySet<string>,
+): number {
+  let best = Number.POSITIVE_INFINITY;
+  for (const key of occupiedTiles) {
+    const comma = key.indexOf(',');
+    const ox = Number(key.slice(0, comma));
+    const oy = Number(key.slice(comma + 1));
+    const dist = Math.max(Math.abs(tx - ox), Math.abs(ty - oy));
+    if (dist < best) {
+      best = dist;
+    }
+  }
+  return best;
+}
+
+/**
+ * Pick a tile from `freeTiles` at random (seeded), preferring tiles that sit at
+ * least `MIN_NPC_SPACING_TILES` from every occupied tile so co-located NPCs
+ * scatter around their room. The spacing threshold relaxes one tile at a time
+ * so a cramped room still yields a non-stacked tile instead of failing.
+ * `freeTiles` must be non-empty and already exclude occupied tiles.
+ */
+function pickSpacedTile(
+  freeTiles: readonly TilePoint[],
+  occupiedTiles: ReadonlySet<string>,
+  rng: SeededRandom,
+): TilePoint {
+  for (let spacing = MIN_NPC_SPACING_TILES; spacing >= 2; spacing -= 1) {
+    const candidates = freeTiles.filter(
+      (tile) => minChebyshevDistanceToOccupied(tile.x, tile.y, occupiedTiles) >= spacing,
+    );
+    if (candidates.length > 0) {
+      return rng.pick(candidates);
+    }
+  }
+  // No tile honours even a one-gap spacing (tiny or crowded room): fall back to
+  // a random free tile so NPCs still never stack, even if they end up adjacent.
+  return rng.pick(freeTiles);
+}
+
 function resolveFreeNpcTileInRoom(
   floorMap: FloorMap,
   room: RoomData,
-  preferredTile: TilePoint,
   occupiedTiles: ReadonlySet<string>,
+  rng: SeededRandom,
 ): TilePoint | null {
   const isFree = (tx: number, ty: number): boolean =>
     floorMap.tileMap.isPassable(tx, ty) && !occupiedTiles.has(tileKey(tx, ty));
 
   if (room.interiorCells && room.interiorCells.length > 0) {
-    const sortedTiles = [...room.interiorCells]
-      .filter((cell) => isFree(cell.x, cell.y))
-      .sort((a, b) => {
-        const aDist =
-          (a.x - preferredTile.x) * (a.x - preferredTile.x) +
-          (a.y - preferredTile.y) * (a.y - preferredTile.y);
-        const bDist =
-          (b.x - preferredTile.x) * (b.x - preferredTile.x) +
-          (b.y - preferredTile.y) * (b.y - preferredTile.y);
-        if (aDist !== bDist) {
-          return aDist - bDist;
-        }
-        if (a.y !== b.y) {
-          return a.y - b.y;
-        }
-        return a.x - b.x;
-      });
-    const bestInteriorTile = sortedTiles[0];
-    if (bestInteriorTile) {
-      return bestInteriorTile;
+    const freeCells = room.interiorCells.filter((cell) => isFree(cell.x, cell.y));
+    if (freeCells.length > 0) {
+      return pickSpacedTile(freeCells, occupiedTiles, rng);
     }
     // Every interior cell is blocked or already claimed. Fall through to the
-    // bounds/radius scan below rather than returning null here: giving up early
-    // forces the caller onto its preferred-tile fallback, which could hand back
-    // an already-occupied tile and reintroduce NPC stacking in small/degenerate
+    // bounds scan below rather than returning null here: giving up early forces
+    // the caller onto its preferred-tile fallback, which could hand back an
+    // already-occupied tile and reintroduce NPC stacking in small/degenerate
     // rooms. The bounds scan may still find a passable, unclaimed tile the
     // interiorCells list didn't enumerate.
   }
@@ -410,30 +452,16 @@ function resolveFreeNpcTileInRoom(
   const minY = by + 1;
   const maxX = bx + bw - 2;
   const maxY = by + bh - 2;
-  if (
-    preferredTile.x >= minX &&
-    preferredTile.x <= maxX &&
-    preferredTile.y >= minY &&
-    preferredTile.y <= maxY &&
-    isFree(preferredTile.x, preferredTile.y)
-  ) {
-    return preferredTile;
-  }
-
-  const maxRadius = Math.max(bw, bh);
-  for (let r = 0; r <= maxRadius; r += 1) {
-    for (let dy = -r; dy <= r; dy += 1) {
-      for (let dx = -r; dx <= r; dx += 1) {
-        if (r > 0 && Math.abs(dx) !== r && Math.abs(dy) !== r) {
-          continue;
-        }
-        const tx = preferredTile.x + dx;
-        const ty = preferredTile.y + dy;
-        if (tx >= minX && tx <= maxX && ty >= minY && ty <= maxY && isFree(tx, ty)) {
-          return { x: tx, y: ty };
-        }
+  const freeBoundsTiles: TilePoint[] = [];
+  for (let ty = minY; ty <= maxY; ty += 1) {
+    for (let tx = minX; tx <= maxX; tx += 1) {
+      if (isFree(tx, ty)) {
+        freeBoundsTiles.push({ x: tx, y: ty });
       }
     }
+  }
+  if (freeBoundsTiles.length > 0) {
+    return pickSpacedTile(freeBoundsTiles, occupiedTiles, rng);
   }
 
   return null;
@@ -443,6 +471,7 @@ function resolveNpcSpawnPosition(
   world: GameWorld,
   preferredPos: { x: number; y: number },
   occupiedTiles: Set<string>,
+  rng: SeededRandom,
 ): { x: number; y: number } {
   const floorMap = world.floorMap;
   if (!floorMap) {
@@ -453,7 +482,7 @@ function resolveNpcSpawnPosition(
   const roomId = floorMap.roomGraph.getRoomAt(preferredTile.x, preferredTile.y);
   const room = roomId >= 0 ? floorMap.roomGraph.get(roomId) : undefined;
   if (room) {
-    const freeTile = resolveFreeNpcTileInRoom(floorMap, room, preferredTile, occupiedTiles);
+    const freeTile = resolveFreeNpcTileInRoom(floorMap, room, occupiedTiles, rng);
     if (freeTile) {
       occupiedTiles.add(tileKey(freeTile.x, freeTile.y));
       return floorMap.tileToWorld(freeTile.x, freeTile.y);
@@ -1011,6 +1040,7 @@ function spawnNpcFromPlacement(
     questItemPos: { x: number; y: number };
   },
   occupiedTiles: Set<string>,
+  rng: SeededRandom,
 ): number {
   // Resolve position from room role or explicit position
   let x: number;
@@ -1055,8 +1085,46 @@ function spawnNpcFromPlacement(
     y = objectiveTiles.welcomeOfficePos.y;
   }
 
-  const spawnPos = resolveNpcSpawnPosition(world, { x, y }, occupiedTiles);
+  const spawnPos = resolveNpcSpawnPosition(world, { x, y }, occupiedTiles, rng);
   return spawnNpc(world, spawnPos.x, spawnPos.y, placement.npcTypeId);
+}
+
+/** Id of the authored set piece stamped into Floor 1's welcome-office hub room. */
+const WELCOME_ROOM_SET_PIECE_ID = 'welcome-room';
+
+/**
+ * Stamp the authored `welcome-room` set piece into Floor 1's welcome-office hub
+ * so the three quest NPCs land at fixed, spaced positions dressed with themed
+ * props. The hub is the safe room 3–8 hops from the player's start where every
+ * `roomRole: "spawn"` NPC lives (NOT the literal player-spawn room) — it is
+ * resolved from the `welcomeOfficePos` objective tile so the stamp lands where
+ * the NPCs actually spawn and the wayfinding-sign trail still runs deep into the
+ * floor. Returns `null` (falling back to the scatter path) when the set piece or
+ * hub room is unavailable. Read-only: computes placements without mutating
+ * `world`.
+ */
+function computeWelcomeRoomStamp(
+  world: GameWorld,
+  welcomeOfficePos: { x: number; y: number },
+): StampedSetPiece | null {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return null;
+  }
+  const def = getSetPieceDef(WELCOME_ROOM_SET_PIECE_ID);
+  if (!def) {
+    return null;
+  }
+  const officeTile = floorMap.worldToTile(welcomeOfficePos.x, welcomeOfficePos.y);
+  const roomId = floorMap.roomGraph.getRoomAt(officeTile.x, officeTile.y);
+  const room = roomId >= 0 ? floorMap.roomGraph.get(roomId) : undefined;
+  if (!room) {
+    return null;
+  }
+  return stampSetPiece(def, {
+    roomBounds: room.bounds,
+    tileSizeFt: floorMap.config.tileSizeFt,
+  });
 }
 
 /**
@@ -1282,35 +1350,72 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   const floor1State = world.floorScenario;
   const npcPlacements = floor1Manifest.npcPlacements;
   const occupiedNpcTiles = new Set<string>();
+  // Dedicated deterministic stream for NPC tile scatter so shared-room hubs (the
+  // welcome bar) spread out per seed without consuming — or being perturbed by —
+  // the shared gameplay RNG that drives enemies, loot, and props.
+  const npcPlacementRng = new SeededRandom(hashStringToSeed(`${world.seed}:floor1-npc-placement`));
   const updateObjective = (patch: Partial<typeof floor1State.objective>): void => {
     floor1State.objective = {
       ...floor1State.objective,
       ...patch,
     };
   };
+  // Stamp the authored welcome-room set piece into the welcome-office hub room:
+  // it fixes the three quest NPCs at spaced positions and dresses the room with
+  // themed props. When present it drives NPC placement (replacing the scatter
+  // fallback); the objective anchors below then auto-follow each NPC's actual
+  // spawned tile.
+  const welcomeStamp = computeWelcomeRoomStamp(world, welcomeOfficePos);
+  const stampedNpcByType = new Map<string, StampedSetPieceNpc>();
+  if (welcomeStamp) {
+    for (const npc of welcomeStamp.npcs) {
+      stampedNpcByType.set(npc.npcTypeId, npc);
+    }
+  }
   if (npcPlacements && npcPlacements.length > 0) {
     // Data-driven NPC spawning
     for (const placement of npcPlacements) {
-      const eid = spawnNpcFromPlacement(
-        world,
-        placement,
-        {
-          welcomeOfficePos,
-          safeRoomPos,
-          staircasePos,
-          slimeRatRoomPos,
-          spellQuestGiverPos,
-          shopRoomPos,
-          questItemPos,
-        },
-        occupiedNpcTiles,
-      );
+      const stamped = stampedNpcByType.get(placement.npcTypeId);
+      // Only honour the authored tile when it is actually passable. Most Floor 1
+      // rooms are rectangular so the centred stamp always lands on floor, but a
+      // hub-shaped room could clamp a far tile onto an interior wall — fall back
+      // to the scatter resolver for that NPC so it never spawns unreachable.
+      const stampedPassable =
+        stamped !== undefined &&
+        (world.floorMap?.tileMap.isPassable(stamped.tileX, stamped.tileY) ?? false);
+      let eid: number;
+      if (stamped && stampedPassable) {
+        // Fixed authored position from the set piece — no scatter.
+        eid = spawnNpc(world, stamped.x, stamped.y, placement.npcTypeId);
+        occupiedNpcTiles.add(tileKey(stamped.tileX, stamped.tileY));
+      } else {
+        eid = spawnNpcFromPlacement(
+          world,
+          placement,
+          {
+            welcomeOfficePos,
+            safeRoomPos,
+            staircasePos,
+            slimeRatRoomPos,
+            spellQuestGiverPos,
+            shopRoomPos,
+            questItemPos,
+          },
+          occupiedNpcTiles,
+          npcPlacementRng,
+        );
+      }
 
-      // Store EIDs based on NPC type for backward compatibility
+      // Store EIDs by NPC type and point each objective anchor at the NPC's
+      // actual spawned tile. All three (including the goon's welcome anchor)
+      // auto-follow the NPC so quest markers track where the NPC really stands.
       const npcX = world.stores.position.x[eid];
       const npcY = world.stores.position.y[eid];
       if (placement.npcTypeId === 'tutorial-goon') {
         world.floorScenario.guideNpcEid = eid;
+        if (npcX !== undefined && npcY !== undefined) {
+          updateObjective({ welcomeOfficePos: { x: npcX, y: npcY } });
+        }
       } else if (placement.npcTypeId === 'spell-quest-giver') {
         world.floorScenario.spellQuestGiverNpcEid = eid;
         if (npcX !== undefined && npcY !== undefined) {
@@ -1329,12 +1434,14 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       world,
       world.floorScenario.objective.welcomeOfficePos,
       occupiedNpcTiles,
+      npcPlacementRng,
     );
     world.floorScenario.guideNpcEid = spawnNpc(world, guidePos.x, guidePos.y, 'tutorial-goon');
     const spellPos = resolveNpcSpawnPosition(
       world,
       world.floorScenario.objective.welcomeOfficePos,
       occupiedNpcTiles,
+      npcPlacementRng,
     );
     world.floorScenario.spellQuestGiverNpcEid = spawnNpc(
       world,
@@ -1347,9 +1454,21 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       world,
       world.floorScenario.objective.welcomeOfficePos,
       occupiedNpcTiles,
+      npcPlacementRng,
     );
     world.floorScenario.shopkeeperNpcEid = spawnNpc(world, shopPos.x, shopPos.y, 'shopkeeper');
     updateObjective({ shopRoomPos: shopPos });
+  }
+
+  // Dress the welcome room with the authored set-piece props (rug, banner,
+  // desk, bookcase, clutter). These are visual-only entities (Position + Sprite
+  // + Prop + inert immovable-tier Weight, but no Size) so they layer over the
+  // baked terrain and around the NPCs without ever entering the collision grid —
+  // no effect on collision, pathing, or balance.
+  if (welcomeStamp) {
+    for (const stampedProp of welcomeStamp.props) {
+      spawnSetPieceProp(world, stampedProp.x, stampedProp.y, stampedProp.render);
+    }
   }
 
   // Plant the welcome wayfinding signs now that NPCs exist, so a sign never
