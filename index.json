@@ -1,5 +1,16 @@
 [
   {
+    "commit": "8821df81e57e2004c26782741fd6b584db4ea0f1",
+    "commitDate": "2026-07-07T18:42:33Z",
+    "commitSubject": "chore(verify): scope and speed up local validation (#847)",
+    "capturedAt": "2026-07-07T19:19:45.207Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28890491267",
+    "winRate": 0.8433333333333334,
+    "totalWins": 253,
+    "totalRuns": 300,
+    "path": "by-sha/8821df81e57e2004c26782741fd6b584db4ea0f1.json"
+  },
+  {
     "commit": "756fc81d63f11c655a1b9f965935c3532bcc0b38",
     "commitDate": "2026-07-07T09:47:05Z",
     "commitSubject": "feat(review): make visual-review UX judge surface-agnostic and actionable (#846)",
