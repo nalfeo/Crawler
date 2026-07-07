@@ -1,5 +1,16 @@
 [
   {
+    "commit": "bf507de8f677c3ef7996609418f455f859e9554a",
+    "commitDate": "2026-07-07T21:20:47Z",
+    "commitSubject": "feat(review): cap review loops with human escalation + raise plan-review floor to 3 apples (#849)",
+    "capturedAt": "2026-07-07T22:00:46.554Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28899883560",
+    "winRate": 0.8433333333333334,
+    "totalWins": 253,
+    "totalRuns": 300,
+    "path": "by-sha/bf507de8f677c3ef7996609418f455f859e9554a.json"
+  },
+  {
     "commit": "8821df81e57e2004c26782741fd6b584db4ea0f1",
     "commitDate": "2026-07-07T18:42:33Z",
     "commitSubject": "chore(verify): scope and speed up local validation (#847)",
