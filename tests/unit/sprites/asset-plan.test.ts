@@ -256,6 +256,47 @@ describe('asset-plan discovery', () => {
     expect(approvedAfterFile.get('iron-sword')?.assetExists).toBe(true);
   });
 
+  it('ignores placeholder manifest entries when loading approved sprites', () => {
+    writeFileSync(
+      path.join(root, 'public', 'assets', 'generated', 'manifest.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          entries: {
+            'rat-placeholder': {
+              briefId: 'rat-placeholder',
+              spriteName: 'rat-placeholder',
+              assetPath: 'generated/rat-placeholder.png',
+              approvedAt: '2026-07-06T00:00:00.000Z',
+              sourceRun: 'placeholder',
+              variantIndex: 0,
+              anchor: null,
+              sensorScore: '7/7',
+              judgeScore: '4',
+            },
+            'rat-real': {
+              briefId: 'rat-real',
+              spriteName: 'rat-real',
+              assetPath: 'generated/rat-real.png',
+              approvedAt: '2026-07-06T00:00:00.000Z',
+              sourceRun: 'generated/runs/rat-real/run',
+              variantIndex: 0,
+              anchor: null,
+              sensorScore: '7/7',
+              judgeScore: '4',
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const approved = loadApprovedSprites(root);
+    expect(approved.has('rat-placeholder')).toBe(false);
+    expect(approved.has('rat-real')).toBe(true);
+  });
+
   afterEach(() => {
     if (root) {
       rmSync(root, { recursive: true, force: true });

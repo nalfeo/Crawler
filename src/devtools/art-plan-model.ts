@@ -162,6 +162,9 @@ export function parseApprovedSprites(
     return out;
   }
   for (const [mapKey, entry] of Object.entries(parsed.data.entries)) {
+    if (entry.sourceRun === 'placeholder') {
+      continue;
+    }
     const briefId = entry.briefId || mapKey;
     out.set(briefId, {
       briefId,
