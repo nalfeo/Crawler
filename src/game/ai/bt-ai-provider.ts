@@ -64,11 +64,15 @@ import {
 } from '../../core/systems/questSystem.js';
 import {
   AIState,
+  AIDecisionMode,
+  AIPathingMode,
   AIDecisionDebugState,
   AIProgressSuppressionSource,
   type AIInputProvider,
   type AIDecision,
   type AIConfig,
+  type AIDecisionModeValue,
+  type AIPathingModeValue,
   type AIProgressSuppressionSourceValue,
   type AISuppressedProgressNavDebug,
 } from './types.js';
@@ -245,6 +249,7 @@ import {
 } from './travel-steering.js';
 import {
   estimateFloor1RunPlan,
+  isRunPlanUrgent,
   type Floor1RunPlan,
   type Floor1RunPlannerSnapshot,
   type RunPlanSegmentPhase,
@@ -265,6 +270,13 @@ import {
 } from './tactical-opportunity-evaluator.js';
 
 const logger = createLogger('game:bt-ai-provider');
+
+/**
+ * Urgency (0..1) at/above which {@link AIDecisionMode.SLACK_AWARE} treats the
+ * run as time-pressured and applies its monotone Track A filters. Matches the
+ * amber threshold used by the lab Slack HUD row.
+ */
+const SLACK_AWARE_URGENCY_THRESHOLD = 0.66;
 
 // Below this magnitude a heading is treated as "no direction" (skip steering /
 // neutral continuity) — matches the pure module's own zero-vector epsilon.
@@ -539,6 +551,23 @@ export class BehaviorTreeAI implements AIInputProvider {
    * recent poll). Exposed via {@link getTravelSteeringDebug} for tests/telemetry. */
   private lastTravelSteering: TravelSteeringResult | null = null;
   private lastRunPlan: Floor1RunPlan | null = null;
+  /**
+   * SLACK_AWARE only: this frame's run-plan estimate, computed at poll start so
+   * the Track A goal-eligibility filters (F1/F2) can consult slack/urgency
+   * during the tree tick. {@link lastRunPlan} is reset to null before the tick
+   * and only repopulated later inside travel steering, so it is unusable during
+   * the tick — this field fills that gap. Null in LEGACY (never computed) and
+   * whenever no Floor-1 run plan is available, so LEGACY stays byte-identical.
+   */
+  private decisionRunPlan: Floor1RunPlan | null = null;
+  /**
+   * Set each poll by the Progress condition: whether findProgressObjective
+   * returned a target this frame. Read only by the SLACK_AWARE Explore guard so
+   * Explore is suppressed solely when a real Progress objective exists to fall
+   * back on — which, given Progress outranks Explore in the selector, never
+   * happens when Explore is actually reached, so discovery is never stranded.
+   */
+  private progressTargetAvailableThisPoll = false;
   /**
    * Cached deterministic player→stairs travel-time estimate (ms), refreshed
    * every {@link OBJECTIVE_TRAVEL_ASTAR_REFRESH_TICKS} BT polls (or when the
@@ -1160,6 +1189,9 @@ export class BehaviorTreeAI implements AIInputProvider {
           ctx.playerX,
           ctx.playerY,
         );
+        // Record for the SLACK_AWARE Explore guard (F1). Written every poll; read
+        // only in SLACK_AWARE, so this is a strict no-op in LEGACY.
+        this.progressTargetAvailableThisPoll = target !== null;
         if (target) {
           ctx.blackboard['progressTarget'] = target;
           return true;
@@ -1223,6 +1255,13 @@ export class BehaviorTreeAI implements AIInputProvider {
     return sequence(
       'Collect',
       condition('Loot Nearby', (ctx) => {
+        // F1 (SLACK_AWARE monotone filter): under time pressure the opportunistic
+        // loot-collect goal becomes ineligible so the run stops dawdling. No-op in
+        // LEGACY. Removing an OPTIONAL goal only — quest-critical gold is routed
+        // through Progress, which outranks Collect.
+        if (this.isSlackAwareUrgent()) {
+          return false;
+        }
         if (this.getCollapsePanicProfile(ctx.world).beeline) {
           return false;
         }
@@ -1252,6 +1291,12 @@ export class BehaviorTreeAI implements AIInputProvider {
     return sequence(
       'Hunt',
       condition('Enemy In Scan Range', (ctx) => {
+        // F1 (SLACK_AWARE monotone filter): under time pressure the opportunistic
+        // hunt goal becomes ineligible. No-op in LEGACY. Removing an OPTIONAL goal
+        // only — quest-required kills are routed through Progress (higher priority).
+        if (this.isSlackAwareUrgent()) {
+          return false;
+        }
         const objective = ctx.world.floorScenario?.objective;
         if (
           !ctx.world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID) ||
@@ -1358,6 +1403,20 @@ export class BehaviorTreeAI implements AIInputProvider {
   private buildExploreBehavior(): BTNode {
     return sequence(
       'Explore',
+      // F1 (SLACK_AWARE monotone filter): suppress Explore ONLY when a valid
+      // Progress target exists this poll, so undiscovered-objective discovery is
+      // never stranded. Because Progress (priority 4) outranks Explore (priority
+      // 9) in the Track A selector, whenever a Progress target exists Progress
+      // already wins and Explore never ticks — so in practice this guard passes
+      // whenever Explore is reached (conservative-by-construction). No-op in
+      // LEGACY. Reading the pre-computed flag avoids re-invoking
+      // findProgressObjective (which has detour side effects).
+      condition('SlackAware Explore Guard', () => {
+        if (!this.isSlackAwareUrgent()) {
+          return true;
+        }
+        return !this.progressTargetAvailableThisPoll;
+      }),
       action('Set Explore State', (ctx) => {
         this.decision.state = AIState.EXPLORE;
         this.decision.targetEid = null;
@@ -2335,6 +2394,24 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.lastTacticalOpportunityEvaluation = null;
     this.tacticalTravelOwnsLoot = false;
 
+    // SLACK_AWARE only: compute this frame's run-plan estimate up front so the
+    // Track A goal-eligibility filters (F1/F2) can consult slack/urgency during
+    // the tree tick below. `lastRunPlan` is null at this point and only refills
+    // later inside travel steering, so it cannot be read during the tick — this
+    // dedicated field fills that gap. estimateCurrentRunPlan is a pure, RNG-free
+    // read; in LEGACY it is never computed, so behavior stays byte-identical.
+    this.progressTargetAvailableThisPoll = false;
+    this.decisionRunPlan =
+      this.config.decisionMode === AIDecisionMode.SLACK_AWARE
+        ? this.estimateCurrentRunPlan(
+            world,
+            playerEid,
+            playerX,
+            playerY,
+            this.getPlayerSpeedFtPerFrame(world, playerEid),
+          )
+        : null;
+
     // Build context for behavior tree
     const context: BTContext = {
       world,
@@ -2356,6 +2433,18 @@ export class BehaviorTreeAI implements AIInputProvider {
     } else {
       state.moveX = 0;
       state.moveY = 0;
+    }
+
+    // Pathing A/B seam (axis 1). LEGACY uses the movement finalized above. The
+    // RISK_REWARD_FUSED mode is SELECTABLE but IMPL-PENDING: it deliberately
+    // delegates to the legacy movement here (a documented no-op) so LEGACY stays
+    // byte-identical and fused pathing is wired for future work. Do NOT port
+    // computeRiskRewardFusedHeading / Track B fused blending here — that logic is
+    // out of scope for this harness.
+    const useFused = this.config.pathingMode === AIPathingMode.RISK_REWARD_FUSED;
+    if (useFused) {
+      // IMPL-PENDING: fused pathing intentionally delegates to the legacy
+      // heading computed above; no behavior change until the fused planner lands.
     }
 
     // Predictive safe-gap travel steering: for travel states, replace the raw
@@ -4396,7 +4485,14 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     if (objective.staircaseUnlocked && !objective.staircaseDiscovered) {
       const reason = 'Heading to the stairs to clear the floor';
-      if (progressSuppressed)
+      // F2 (SLACK_AWARE exit-commitment tail): once the required quest chain is
+      // exhausted (only leave-floor remains) and the run is time-pressured, force
+      // the staircase as the Progress target by bypassing the suppression window.
+      // Monotone — forces the WINNING target in the final leg. No-op in LEGACY
+      // (isSlackAwareUrgent() is always false there). The `!staircaseDiscovered`
+      // branch gate above is kept (more conservative than the brief's "regardless
+      // of staircaseDiscovered": once discovered, downstream beeline logic owns it).
+      if (progressSuppressed && !this.isSlackAwareUrgent())
         return this.recordSuppressedProgressNavigation(world, reason, 'post-stairs');
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
@@ -5569,6 +5665,30 @@ export class BehaviorTreeAI implements AIInputProvider {
     };
   }
 
+  /** A/B axis 1: the pathing mode this AI was constructed with. */
+  getPathingMode(): AIPathingModeValue {
+    return this.config.pathingMode;
+  }
+
+  /** A/B axis 2: the decision mode this AI was constructed with. */
+  getDecisionMode(): AIDecisionModeValue {
+    return this.config.decisionMode;
+  }
+
+  /**
+   * SLACK_AWARE gate for the monotone Track A filters (F1/F2). True only when
+   * the AI is in {@link AIDecisionMode.SLACK_AWARE} AND this frame's run plan is
+   * time-pressured (urgency at/above {@link SLACK_AWARE_URGENCY_THRESHOLD}, or
+   * slack already gone negative). Always false in LEGACY, so every filter that
+   * consults it is a strict no-op there and behavior is byte-identical to main.
+   */
+  private isSlackAwareUrgent(): boolean {
+    if (this.config.decisionMode !== AIDecisionMode.SLACK_AWARE) {
+      return false;
+    }
+    return isRunPlanUrgent(this.decisionRunPlan, SLACK_AWARE_URGENCY_THRESHOLD);
+  }
+
   getNavigationDebug(): AINavigationDebug {
     return {
       pathWaypoints: this.pathWaypoints.map((waypoint) => ({ ...waypoint })),
@@ -5688,6 +5808,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.dodgeVecY = 0;
     this.lastTravelSteering = null;
     this.lastRunPlan = null;
+    this.decisionRunPlan = null;
+    this.progressTargetAvailableThisPoll = false;
     this.lastPlayerToStairsTravelMs = null;
     this.lastPlayerToStairsRefreshFrame = -Infinity;
     this.lastPlayerToStairsTileX = null;

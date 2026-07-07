@@ -1,0 +1,168 @@
+/**
+ * SLACK_AWARE decision-mode (A/B axis 2) tests.
+ *
+ * Contract under test (the ONLY real behavior change in the harness):
+ *   - Defaults are LEGACY for both A/B axes, so a default-constructed AI is
+ *     byte-identical to main.
+ *   - The SLACK_AWARE monotone filters (F1 optional-goal suppression, F2
+ *     exit-commitment) are STRICT no-ops unless the AI is in SLACK_AWARE mode
+ *     AND this frame's run plan is time-pressured. In LEGACY, or in SLACK_AWARE
+ *     while not urgent, the opening decision is identical to LEGACY.
+ *   - The urgency gate (`isRunPlanUrgent`) is pure and boundary-correct.
+ *   - MONOTONICITY: forcing urgency must NOT reshuffle the high-priority Track A
+ *     ladder (Retreat > ArenaLockin > Interact > Progress); the opening Progress
+ *     decision on a fresh Floor-1 world is unchanged even when urgent. (The full
+ *     win-rate monotonicity gate is the headless legacy-vs-slackAware A/B; a lab
+ *     alone is insufficient for behavior claims — see repo rule #10.)
+ */
+
+import { describe, expect, it } from 'vitest';
+import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
+import { isRunPlanUrgent } from '../../../src/game/ai/run-planner.js';
+import { spawnPlayer } from '../../../src/core/spawners/combatants.js';
+import { createInputState } from '../../../src/shared/input.js';
+import {
+  initializeFloor1Scenario,
+  selectFloor1StarterWeapon,
+} from '../../../src/game/floorScenario.js';
+import { createTestWorld } from '../../helpers/world-factory.js';
+import { AIDecisionMode, AIPathingMode, type AIDecision } from '../../../src/game/ai/types.js';
+
+function freshFloor1World(seed: number): ReturnType<typeof createTestWorld> {
+  const world = createTestWorld({ seed });
+  const player = spawnPlayer(world, 0, 0);
+  initializeFloor1Scenario(world, player);
+  selectFloor1StarterWeapon(world, 0);
+  return world;
+}
+
+function decisionShape(d: AIDecision): {
+  state: AIDecision['state'];
+  targetEid: number | null;
+  targetX: number | null;
+  targetY: number | null;
+  reason: string;
+} {
+  return {
+    state: d.state,
+    targetEid: d.targetEid,
+    targetX: d.targetX,
+    targetY: d.targetY,
+    reason: d.reason,
+  };
+}
+
+describe('isRunPlanUrgent — pure gate math', () => {
+  it('a null plan is never urgent', () => {
+    expect(isRunPlanUrgent(null, 0.66)).toBe(false);
+  });
+
+  it('negative slack is urgent regardless of urgency value', () => {
+    expect(isRunPlanUrgent({ urgency: 0, slackMs: -1 }, 0.66)).toBe(true);
+    expect(isRunPlanUrgent({ urgency: 0.1, slackMs: -0.0001 }, 0.66)).toBe(true);
+  });
+
+  it('urgency at/above the threshold is urgent even with positive slack', () => {
+    expect(isRunPlanUrgent({ urgency: 0.66, slackMs: 100_000 }, 0.66)).toBe(true);
+    expect(isRunPlanUrgent({ urgency: 0.9, slackMs: 100_000 }, 0.66)).toBe(true);
+  });
+
+  it('urgency just below the threshold with positive slack is NOT urgent', () => {
+    expect(isRunPlanUrgent({ urgency: 0.65, slackMs: 100_000 }, 0.66)).toBe(false);
+    expect(isRunPlanUrgent({ urgency: 0, slackMs: 100_000 }, 0.66)).toBe(false);
+  });
+});
+
+describe('AI A/B axes — getters + defaults', () => {
+  it('defaults to LEGACY on both axes (byte-identity guarantee)', () => {
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    expect(ai.getPathingMode()).toBe(AIPathingMode.LEGACY);
+    expect(ai.getDecisionMode()).toBe(AIDecisionMode.LEGACY);
+  });
+
+  it('echoes explicitly-configured modes', () => {
+    const ai = new BehaviorTreeAI({
+      seed: 42,
+      pathingMode: AIPathingMode.RISK_REWARD_FUSED,
+      decisionMode: AIDecisionMode.SLACK_AWARE,
+    });
+    expect(ai.getPathingMode()).toBe(AIPathingMode.RISK_REWARD_FUSED);
+    expect(ai.getDecisionMode()).toBe(AIDecisionMode.SLACK_AWARE);
+  });
+});
+
+describe('SLACK_AWARE — inert unless urgent (LEGACY parity)', () => {
+  for (const seed of [42, 7, 123]) {
+    it(`opening decision matches LEGACY when the run plan is not urgent (seed ${seed})`, () => {
+      // Fresh Floor-1 world: the generous default deadline keeps the opening
+      // run plan well inside its slack window, so SLACK_AWARE must not diverge.
+      const legacyWorld = freshFloor1World(seed);
+      const slackWorld = freshFloor1World(seed);
+
+      const legacyAi = new BehaviorTreeAI({ seed, decisionMode: AIDecisionMode.LEGACY });
+      const slackAi = new BehaviorTreeAI({ seed, decisionMode: AIDecisionMode.SLACK_AWARE });
+
+      legacyAi.poll(createInputState(), legacyWorld);
+      slackAi.poll(createInputState(), slackWorld);
+
+      // Sanity: the opening plan is genuinely non-urgent so this is a real
+      // "inert filter" assertion, not a vacuous one.
+      const slackPlan = slackAi.getTacticalRunDebug().runPlan;
+      if (slackPlan) {
+        expect(isRunPlanUrgent(slackPlan, 0.66)).toBe(false);
+      }
+
+      expect(decisionShape(slackAi.getDecision())).toEqual(decisionShape(legacyAi.getDecision()));
+    });
+  }
+
+  it('pathing RISK_REWARD_FUSED is an IMPL-PENDING no-op (delegates to legacy)', () => {
+    const seed = 42;
+    const legacyWorld = freshFloor1World(seed);
+    const fusedWorld = freshFloor1World(seed);
+
+    const legacyAi = new BehaviorTreeAI({ seed, pathingMode: AIPathingMode.LEGACY });
+    const fusedAi = new BehaviorTreeAI({ seed, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
+
+    legacyAi.poll(createInputState(), legacyWorld);
+    fusedAi.poll(createInputState(), fusedWorld);
+
+    expect(decisionShape(fusedAi.getDecision())).toEqual(decisionShape(legacyAi.getDecision()));
+  });
+});
+
+describe('SLACK_AWARE — urgency detection + monotone high-priority ladder', () => {
+  it('detects a blown deadline as urgent, yet leaves the opening Progress decision unchanged', () => {
+    const seed = 42;
+
+    // LEGACY reference on a world with the SAME blown deadline: proves the
+    // high-priority ladder (Progress) is deadline-blind and that SLACK_AWARE's
+    // urgency does not reshuffle it (monotone — no win→loss reshuffle risk).
+    const legacyWorld = freshFloor1World(seed);
+    const urgentWorld = freshFloor1World(seed);
+    for (const w of [legacyWorld, urgentWorld]) {
+      // Collapse the remaining budget below the estimated required time so
+      // slackMs goes strongly negative → urgent. Frame-based, deterministic.
+      w.floorScenario!.objective.deadlineMs = w.elapsedMs + 1;
+    }
+
+    const legacyAi = new BehaviorTreeAI({ seed, decisionMode: AIDecisionMode.LEGACY });
+    const urgentAi = new BehaviorTreeAI({ seed, decisionMode: AIDecisionMode.SLACK_AWARE });
+
+    legacyAi.poll(createInputState(), legacyWorld);
+    urgentAi.poll(createInputState(), urgentWorld);
+
+    // The travel run plan the AI is reading is genuinely urgent this frame.
+    const plan = urgentAi.getTacticalRunDebug().runPlan;
+    expect(plan).not.toBeNull();
+    if (plan) {
+      expect(plan.slackMs).toBeLessThan(0);
+      expect(isRunPlanUrgent(plan, 0.66)).toBe(true);
+    }
+
+    // Monotone: Progress (priority 4) outranks Collect/Hunt/Explore, and the F1
+    // guards only suppress those lower-priority optional goals. So the opening
+    // Progress decision is byte-identical between LEGACY and urgent SLACK_AWARE.
+    expect(decisionShape(urgentAi.getDecision())).toEqual(decisionShape(legacyAi.getDecision()));
+  });
+});

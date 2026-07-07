@@ -341,6 +341,10 @@ export async function runHeadless(
   const sampleInterval = Math.max(1, mergedConfig.eventSampleInterval);
   const navProvider = aiProvider as AIInputProvider & {
     getNavigationDebug?: () => { stuckFrames: number; pathWaypoints: readonly unknown[] };
+    getTacticalRunDebug?: () => {
+      runPlan: { slackMs: number; urgency: number } | null;
+    };
+    getDecisionMode?: () => string;
   };
   let lastFrameX = world.stores.position.x[playerEid] ?? 0;
   let lastFrameY = world.stores.position.y[playerEid] ?? 0;
@@ -392,6 +396,11 @@ export async function runHeadless(
     }
     const nav = navProvider.getNavigationDebug?.();
     const netDisp = Math.hypot(px - lastSampleX, py - lastSampleY);
+    // A/B telemetry (axis 2): emit run-plan slack/urgency and the decision mode
+    // when the provider exposes them. Optional-chained + present-only so LEGACY
+    // providers (and non-travelling samples with no run plan) emit nothing new.
+    const runPlan = navProvider.getTacticalRunDebug?.().runPlan ?? null;
+    const decisionMode = navProvider.getDecisionMode?.();
     return {
       type,
       frame: frameCount,
@@ -418,6 +427,8 @@ export async function runHeadless(
           ? Math.round(world.floorScenario.objective.deadlineMs - world.elapsedMs)
           : null,
       inSafe: world.playerInSafeRoom === true,
+      ...(runPlan ? { slackMs: Math.round(runPlan.slackMs), urgency: runPlan.urgency } : {}),
+      ...(decisionMode ? { decisionMode } : {}),
       ...(note ? { note } : {}),
     };
   };

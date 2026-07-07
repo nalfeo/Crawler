@@ -1,0 +1,181 @@
+/**
+ * Pure argument parsing + help text for {@link ./headless-runner-cli.ts}.
+ *
+ * Extracted into a side-effect-free module so the parser can be unit-tested
+ * without importing the CLI entrypoint (which runs `main()` at module load and
+ * would kick off a full headless simulation on import).
+ */
+import { AIDecisionMode, AIPathingMode } from './types.js';
+import type { AIDecisionModeValue, AIPathingModeValue } from './types.js';
+
+export interface CLIArgs {
+  seed: number;
+  maxFrames: number;
+  maxTimeMs: number;
+  progress: number;
+  aggression: number;
+  debug: boolean;
+  help: boolean;
+  eventLog: string | null;
+  eventSummary: string | null;
+  sampleInterval: number;
+  weapon: string | null;
+  enemyDamageMultiplier: number;
+  floorId: string;
+  startPlayerLevel: number;
+  weaponTelemetry: boolean;
+  pathingMode: AIPathingModeValue;
+  decisionMode: AIDecisionModeValue;
+}
+
+export const PATHING_MODE_VALUES = Object.values(AIPathingMode) as AIPathingModeValue[];
+export const DECISION_MODE_VALUES = Object.values(AIDecisionMode) as AIDecisionModeValue[];
+
+export function defaultCLIArgs(): CLIArgs {
+  return {
+    seed: 12345,
+    maxFrames: 100_000,
+    maxTimeMs: 5 * 60 * 1000,
+    progress: 3600, // Report every minute of game time
+    aggression: 1,
+    debug: false,
+    help: false,
+    eventLog: null,
+    eventSummary: null,
+    sampleInterval: 15,
+    weapon: null,
+    enemyDamageMultiplier: 1,
+    floorId: 'floor1',
+    startPlayerLevel: 1,
+    weaponTelemetry: false,
+    pathingMode: AIPathingMode.LEGACY,
+    decisionMode: AIDecisionMode.LEGACY,
+  };
+}
+
+/**
+ * Parse CLI flags into a fully-defaulted {@link CLIArgs}. Accepts the raw
+ * process argv (defaults to `process.argv`); tokens 0/1 (node + script) are
+ * skipped so callers can pass a real `process.argv` array unchanged.
+ */
+export function parseArgs(argv: readonly string[] = process.argv): CLIArgs {
+  const args = defaultCLIArgs();
+
+  for (let i = 2; i < argv.length; i++) {
+    const arg = argv[i];
+    const next = argv[i + 1];
+
+    if (arg === '--help' || arg === '-h') {
+      args.help = true;
+    } else if (arg === '--seed' && next) {
+      args.seed = parseInt(next, 10);
+      i++;
+    } else if (arg === '--max-frames' && next) {
+      args.maxFrames = parseInt(next, 10);
+      i++;
+    } else if (arg === '--max-time-ms' && next) {
+      args.maxTimeMs = parseInt(next, 10);
+      i++;
+    } else if (arg === '--progress' && next) {
+      args.progress = parseInt(next, 10);
+      i++;
+    } else if (arg === '--aggression' && next) {
+      args.aggression = parseFloat(next);
+      i++;
+    } else if (arg === '--event-log' && next) {
+      args.eventLog = next;
+      i++;
+    } else if (arg === '--event-summary' && next) {
+      args.eventSummary = next;
+      i++;
+    } else if (arg === '--sample-interval' && next) {
+      args.sampleInterval = Math.max(1, parseInt(next, 10));
+      i++;
+    } else if (arg === '--weapon' && next) {
+      args.weapon = next;
+      i++;
+    } else if (arg === '--enemy-damage-multiplier' && next) {
+      const parsed = Number.parseFloat(next);
+      if (!Number.isFinite(parsed)) {
+        throw new Error(`Invalid --enemy-damage-multiplier "${next}" (must be a finite number)`);
+      }
+      args.enemyDamageMultiplier = parsed;
+      i++;
+    } else if (arg === '--floor' && next) {
+      args.floorId = next;
+      i++;
+    } else if (arg === '--start-level' && next) {
+      const parsed = parseInt(next, 10);
+      if (!Number.isFinite(parsed) || parsed < 1) {
+        throw new Error(`Invalid --start-level "${next}" (must be a positive integer)`);
+      }
+      args.startPlayerLevel = parsed;
+      i++;
+    } else if (arg === '--weapon-telemetry') {
+      args.weaponTelemetry = true;
+    } else if (arg === '--pathing-mode' && next) {
+      if (!(PATHING_MODE_VALUES as string[]).includes(next)) {
+        throw new Error(
+          `Invalid --pathing-mode "${next}" (must be one of: ${PATHING_MODE_VALUES.join(', ')})`,
+        );
+      }
+      args.pathingMode = next as AIPathingModeValue;
+      i++;
+    } else if (arg === '--decision-mode' && next) {
+      if (!(DECISION_MODE_VALUES as string[]).includes(next)) {
+        throw new Error(
+          `Invalid --decision-mode "${next}" (must be one of: ${DECISION_MODE_VALUES.join(', ')})`,
+        );
+      }
+      args.decisionMode = next as AIDecisionModeValue;
+      i++;
+    } else if (arg === '--debug') {
+      args.debug = true;
+    }
+  }
+
+  return args;
+}
+
+export function helpText(): string {
+  return `
+Headless AI Runner CLI
+
+Usage:
+  node src/game/ai/headless-runner-cli.js [options]
+
+Options:
+  --seed <number>         Random seed (default: 12345)
+  --max-frames <number>   Maximum frames to simulate (default: 100000)
+  --max-time-ms <number>  Maximum wall-clock time in ms (default: 300000)
+  --progress <number>     Report progress every N frames (default: 3600)
+  --aggression <number>   AI aggression level 0-2 (default: 1)
+  --weapon <id>           Force a specific starting weapon (e.g. sword, bow, baseball-bat)
+  --event-log <path>      Write per-frame telemetry as JSONL to <path>
+  --event-summary <path>  Write wasted-time summary JSON to <path>
+  --sample-interval <n>   Frames between telemetry samples (default: 15)
+  --debug                 Enable verbose logging
+  --enemy-damage-multiplier <n>
+                           Multiply hostile Damage values (default: 1)
+  --floor <id>            Scenario floor id (default: floor1)
+  --start-level <n>       Start at player character level N (default: 1, no boost)
+  --weapon-telemetry      Collect + print per-run weapon accuracy (swings, hits, multi-hit)
+  --pathing-mode <mode>   AI pathing A/B axis: legacy | riskRewardFused (default: legacy)
+  --decision-mode <mode>  AI decision A/B axis: legacy | slackAware (default: legacy)
+  --help, -h              Show this help message
+
+Examples:
+  # Quick test run
+  node src/game/ai/headless-runner-cli.js --seed 42 --max-frames 10000
+
+  # Long aggressive run with progress updates
+  node src/game/ai/headless-runner-cli.js --seed 99 --aggression 2 --progress 1800
+
+  # Capture an event log + wasted-time summary for analysis
+  node src/game/ai/headless-runner-cli.js --seed 42 --max-frames 7200 \\
+    --event-log run.jsonl --event-summary run-summary.json
+
+  # A/B: legacy vs slack-aware decision mode
+  node src/game/ai/headless-runner-cli.js --seed 42 --decision-mode slackAware
+`;
+}
