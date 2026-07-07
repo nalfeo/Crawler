@@ -11,6 +11,17 @@
     "path": "by-sha/8821df81e57e2004c26782741fd6b584db4ea0f1.json"
   },
   {
+    "commit": "15cdb56a33c1c89cf831c3f37746a5e3a36314b1",
+    "commitDate": "2026-07-07T14:14:12-07:00",
+    "commitSubject": "docs(barriers): correct open-fence arena barrier ref to createRingWallBarrier (#850)",
+    "capturedAt": "2026-07-07T21:41:38.388Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28899196903",
+    "winRate": 0.8433333333333334,
+    "totalWins": 253,
+    "totalRuns": 300,
+    "path": "by-sha/15cdb56a33c1c89cf831c3f37746a5e3a36314b1.json"
+  },
+  {
     "commit": "756fc81d63f11c655a1b9f965935c3532bcc0b38",
     "commitDate": "2026-07-07T09:47:05Z",
     "commitSubject": "feat(review): make visual-review UX judge surface-agnostic and actionable (#846)",
