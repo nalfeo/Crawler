@@ -72,9 +72,11 @@ export interface ArenaLockinTarget {
  * Rules — a spawner arena locks the player when ALL are true:
  *   1. `arenaState[spawnerEid] === 1` (locked).
  *   2. Spawner is alive: `health.current > 0` and `deathResolved === 0`.
- *   3. A real barrier is present: either `world.spawnerArenaBarriers` has a
- *      barrier handle for this spawner with a non-empty tile set OR
- *      `world.spawnerArenaDoors` has one or more actually-locked doors.
+ *   3. A real barrier is present: `world.spawnerArenaBarriers` has a barrier
+ *      handle for this spawner that actually blocks — either a non-empty tile
+ *      set (sealed-room doorway plugs) OR an analytic `shape` (the open-fence
+ *      ring WALL, which carries `tiles: []` and only a `BarrierRingShape`) —
+ *      OR `world.spawnerArenaDoors` has one or more actually-locked doors.
  *      Without a real barrier the AI can
  *      walk out of the arena on its own — the "priority the objective"
  *      rule only applies when leaving requires killing it.
@@ -142,14 +144,18 @@ function findSpawnerLockin(
     if ((spawner.deathResolved[eid] ?? 0) !== 0) continue;
 
     // Only treat the arena as a lock-in if it actually *blocks* the player
-    // out — i.e. a fence snapshot was captured or the room's doors were
-    // successfully locked. Without this check we would force the AI to
-    // fight even for arenas that trigger the state machine but have no
-    // physical barrier (e.g. a spawner in an open corridor where the fence
-    // snapshot came up empty), regressing the natural walk-past behaviour
-    // there. The AI is only "stuck" when leaving requires killing the
-    // objective.
-    const hasFence = (world.spawnerArenaBarriers?.get(eid)?.tiles.length ?? 0) > 0;
+    // out — i.e. a real barrier was raised or the room's doors were
+    // successfully locked. A raised barrier blocks in one of two shapes:
+    //   - sealed-room: a handle with doorway-plug TILES (`tiles.length > 0`);
+    //   - open-fence:  a handle with an analytic ring-WALL `shape` and zero
+    //     tiles (`createRingWallBarrier`).
+    // Without this check we would force the AI to fight even for arenas that
+    // trigger the state machine but have no physical barrier (e.g. a spawner
+    // in an open corridor where the barrier came up empty), regressing the
+    // natural walk-past behaviour there. The AI is only "stuck" when leaving
+    // requires killing the objective.
+    const barrier = world.spawnerArenaBarriers?.get(eid);
+    const hasFence = barrier != null && ((barrier.tiles?.length ?? 0) > 0 || barrier.shape != null);
     const hasLockedDoors = (world.spawnerArenaDoors?.get(eid)?.length ?? 0) > 0;
     if (!hasFence && !hasLockedDoors) continue;
 

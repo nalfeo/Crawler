@@ -44,9 +44,16 @@ function makeLockedSpawnerNearPlayer(
   });
   world.stores.spawner.arenaState[spawnerEid] = 1; // locked
   world.stores.spawner.arenaKind[spawnerEid] = 1; // open-fence
-  // Simulate raiseFence's real barrier snapshot so the detector's barrier-
-  // presence check (see arena-lockin.ts) treats the AI as actually stuck.
-  world.spawnerArenaBarriers.set(spawnerEid, { id: 1, kind: 'fence', tiles: [0] });
+  // Mirror createRingWallBarrier's ANALYTIC ring-WALL handle (tiles:[] + a
+  // BarrierRingShape) so the detector's barrier-presence check (see
+  // arena-lockin.ts) treats the AI as actually stuck — matches the real
+  // open-fence runtime snapshot.
+  world.spawnerArenaBarriers.set(spawnerEid, {
+    id: 1,
+    kind: 'fence',
+    tiles: [],
+    shape: { type: 'ring', cxFt: px + 2, cyFt: py, innerRadiusFt: 5, outerRadiusFt: 6 },
+  });
   return spawnerEid;
 }
 

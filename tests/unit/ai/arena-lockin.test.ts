@@ -95,16 +95,33 @@ function makeSpawner(
 /**
  * Flip a spawner into the "locked with a real barrier" state that the
  * detector treats as a genuine lock-in. Sets `arenaState=1`, `arenaKind`
- * (defaulting to open-fence), and populates the world's fence/doors
+ * (defaulting to open-fence), and populates the world's barrier/doors
  * snapshot maps so the detector sees a barrier that actually prevents
- * escape. Tests that want the "state machine locked but no barrier" edge
- * case set arenaState directly and skip this helper.
+ * escape. Open-fence arenas mirror `createRingWallBarrier` — an ANALYTIC
+ * ring-WALL handle that owns NO tiles, only a `BarrierRingShape` — so these
+ * fixtures exercise the real shape-only detection path. Tests that want the
+ * "state machine locked but no barrier" edge case set arenaState directly
+ * and skip this helper.
  */
 function lockArena(world: ReturnType<typeof createTestWorld>, eid: number, kind: 0 | 1 = 1): void {
   world.stores.spawner.arenaState[eid] = 1;
   world.stores.spawner.arenaKind[eid] = kind;
   if (kind === 1) {
-    world.spawnerArenaBarriers.set(eid, { id: 1, kind: 'fence', tiles: [0] });
+    const cxFt = world.stores.position.x[eid] ?? 0;
+    const cyFt = world.stores.position.y[eid] ?? 0;
+    const outerRadiusFt = world.stores.spawner.arenaRadiusFt[eid] ?? 6;
+    world.spawnerArenaBarriers.set(eid, {
+      id: 1,
+      kind: 'fence',
+      tiles: [],
+      shape: {
+        type: 'ring',
+        cxFt,
+        cyFt,
+        innerRadiusFt: Math.max(0, outerRadiusFt - 1),
+        outerRadiusFt,
+      },
+    });
   } else {
     world.spawnerArenaDoors.set(eid, [0]);
   }
@@ -193,6 +210,39 @@ describe('detectArenaLockin — spawner arena', () => {
     expect(detectArenaLockin(world, 103, 100)).toBeNull();
   });
 
+  it('open-fence: an analytic ring-WALL handle (tiles:[] + shape) still triggers lock-in', () => {
+    // Regression guard for the shape-only barrier path. Real open-fence
+    // arenas raise `createRingWallBarrier`, whose handle owns NO tiles and
+    // only a `BarrierRingShape`. A detector that inspected only `tiles.length`
+    // would read hasFence=false and silently skip EVERY open-fence lock-in
+    // (the AI would never prioritise the caged objective). See arena-lockin.ts.
+    const world = createTestWorld();
+    const spawnerEid = makeSpawner(world, 100, 100, 6);
+    world.stores.spawner.arenaState[spawnerEid] = 1;
+    world.stores.spawner.arenaKind[spawnerEid] = 1;
+    world.spawnerArenaBarriers.set(spawnerEid, {
+      id: 1,
+      kind: 'fence',
+      tiles: [],
+      shape: { type: 'ring', cxFt: 100, cyFt: 100, innerRadiusFt: 5, outerRadiusFt: 6 },
+    });
+    const target = detectArenaLockin(world, 103, 100);
+    expect(target).not.toBeNull();
+    expect(target!.kind).toBe('spawner');
+    expect(target!.eid).toBe(spawnerEid);
+  });
+
+  it('open-fence: a handle with neither tiles nor shape does NOT trigger lock-in', () => {
+    // A handle that owns no tiles and no shape is not a real barrier, so the
+    // AI must stay free to walk away (mirrors the "no snapshot" guard above).
+    const world = createTestWorld();
+    const spawnerEid = makeSpawner(world, 100, 100, 6);
+    world.stores.spawner.arenaState[spawnerEid] = 1;
+    world.stores.spawner.arenaKind[spawnerEid] = 1;
+    world.spawnerArenaBarriers.set(spawnerEid, { id: 1, kind: 'fence', tiles: [] });
+    expect(detectArenaLockin(world, 103, 100)).toBeNull();
+  });
+
   it('sealed-room: returns spawner target when player is in the same room', () => {
     const world = createTestWorld();
     world.floorMap = makeTwoRoomMap();
@@ -221,9 +271,14 @@ describe('detectArenaLockin — spawner arena', () => {
     const spawnerEid = makeSpawner(world, 100, 100, 6);
     world.stores.spawner.arenaState[spawnerEid] = 2; // resolved
     world.stores.spawner.arenaKind[spawnerEid] = 1;
-    // Even with a stale fence snapshot the detector must ignore a
+    // Even with a stale barrier handle the detector must ignore a
     // RESOLVED state — the barrier is on its way down.
-    world.spawnerArenaBarriers.set(spawnerEid, { id: 1, kind: 'fence', tiles: [0] });
+    world.spawnerArenaBarriers.set(spawnerEid, {
+      id: 1,
+      kind: 'fence',
+      tiles: [],
+      shape: { type: 'ring', cxFt: 100, cyFt: 100, innerRadiusFt: 5, outerRadiusFt: 6 },
+    });
     expect(detectArenaLockin(world, 100, 100)).toBeNull();
   });
 

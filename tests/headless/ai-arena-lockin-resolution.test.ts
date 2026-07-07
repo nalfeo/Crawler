@@ -71,9 +71,15 @@ function runOneArena(seed: number): {
   });
   world.stores.spawner.arenaState[spawnerEid] = 1; // locked
   world.stores.spawner.arenaKind[spawnerEid] = 1; // open-fence
-  // Simulate raiseFence's non-empty snapshot so the detector treats the
-  // arena as a real barrier — matches spawnerArenaSystem's post-lock state.
-  world.spawnerArenaBarriers.set(spawnerEid, { id: 1, kind: 'fence', tiles: [0] });
+  // Mirror createRingWallBarrier's ANALYTIC ring-WALL handle (tiles:[] + a
+  // BarrierRingShape) so the detector treats the arena as a real barrier —
+  // matches spawnerArenaSystem's post-lock open-fence state.
+  world.spawnerArenaBarriers.set(spawnerEid, {
+    id: 1,
+    kind: 'fence',
+    tiles: [],
+    shape: { type: 'ring', cxFt: 5, cyFt: 0, innerRadiusFt: 7, outerRadiusFt: 8 },
+  });
   world.state = 'playing';
 
   const ai = new BehaviorTreeAI({ seed });
