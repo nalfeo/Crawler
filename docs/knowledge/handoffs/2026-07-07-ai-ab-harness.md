@@ -14,7 +14,7 @@ ai-behavior-tree, ai-combat-balance, ai-pathfinding
 
 ## Apples
 
-3🍎 estimated, 3🍎 actual (🎯 exact) — multi-file monotonicity-critical AI change with full 3🍎 review harness + 24-run A/B validation.
+3🍎 estimated, 3🍎 actual (🎯 exact) — multi-file monotonicity-critical AI change with full 3🍎 review harness (plan review + 2-round code-review loop to clean) + 36-pair headless A/B validation (0 win→loss flips).
 
 ## What Was Done
 
@@ -30,11 +30,15 @@ Key correctness work this session (on top of the child's scaffold):
 - **Added a durable, wired A/B harness** `scripts/agent/perf/ab-decision-mode.ts` + `npm run ai:ab-decision-mode` (mirrors `ai:weapon-sweep`). It runs each (seed,weapon) in BOTH decision modes and exits non-zero on any win→loss flip.
 - **Added an F1-effect unit test** proving activation is not a tautology: a constructed world where LEGACY opens with COLLECT, and urgent SLACK_AWARE suppresses it → EXPLORE (discovery preserved).
 
-**Observed in the real headless pipeline (`npm run ai:ab-decision-mode`, seeds 1–8 × sword/bow/baseball-bat, 24 pairs):**
+**Observed in the real headless pipeline (`npm run ai:ab-decision-mode` / `scripts/agent/perf/ab-decision-mode.ts`).** Two independent A/B sweeps, both **0 win→loss flips**:
 
-- **0 win→loss flips**, 0 loss→win. Per-weapon win rate byte-identical between modes: sword 7/8, bow 8/8, baseball-bat 6/8.
-- 4 benign same-outcome divergences: sword s5 +4s, **bow s3 −35s (improvement)**, bat s1 +3s, bat s8 both death (+4s). Pre-existing losses (sword s2, bat s2 timeouts) unchanged in both modes.
-- LEGACY telemetry byte-identity self-verified line-by-line: `isSlackAwareUrgent()` short-circuits on the mode guard (bt-ai-provider.ts:5706), so all F1 filters are dead `if(false)` and `decisionRunPlan` is never computed (2417 ternary).
+- Early sweep (seeds 1–8 × sword/bow/baseball-bat, 24 pairs): 0 flips, 0 loss→win. Per-weapon win rate byte-identical: sword 7/8, bow 8/8, bat 6/8. 4 benign same-outcome divergences (bow s3 −35s improvement).
+- **Final representative re-validation after the F2 revert (seeds 42,101,202,303,404,505,606,707,808,909,1056,1234 × 3 weapons = 36 pairs, `files/ab-sweep-result-v2.txt`): `WIN→LOSS FLIPS: 0`, HARD GATE PASS.** legacy 31/36 (86.1%), slackAware 32/36 (88.9%); **1 loss→win recovery (sword seed 909)**, no regressions. Pre-existing MAIN losses (sword 808, bat 808/909, bow 303) unchanged in both modes — those are main balance, not this change (defaults are LEGACY = proven ==main).
+- LEGACY telemetry byte-identity self-verified line-by-line: `isSlackAwareUrgent()` short-circuits on the mode guard, so all F1 filters are dead `if(false)` and `decisionRunPlan` is never computed. See `files/byte-identity-proof.txt` + Floor-1 gate `files/verify-full.log`.
+
+**Lab observe (brief step 5, `files/lab-observe.txt`):** `/lab.html?lab=ai-runner` — both FRESH dropdowns present (`pathingMode`=[legacy,riskRewardFused], `decisionMode`=[legacy,slackAware], default legacy); `Modes:` HUD and `Slack:` HUD render. Toggling decision→slackAware and pathing→riskRewardFused updates the Modes HUD live. (Lab is NOT the behavior proof per rule #10 — the headless A/B above is.)
+
+**Review harness (3🍎):** plan_review (gpt-5.4, 3 concerns / 3 resolved) + code_review loop to clean (round 1 claude-sonnet-4.6: 2 concerns resolved; **round 2 claude-sonnet-4.6: CLEAN, all four hard contracts confirmed**). Ledger `docs/knowledge/review-ledgers/2026-07-07-ai-ab-harness.review-ledger.json` validates (exit 0).
 
 ## Key Decisions Made
 
