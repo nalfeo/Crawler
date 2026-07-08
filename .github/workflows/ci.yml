@@ -23,6 +23,7 @@ jobs:
       docs_only: ${{ steps.detect.outputs.docs_only }}
       gameplay_safe: ${{ steps.detect.outputs.gameplay_safe }}
       sprites_only: ${{ steps.detect.outputs.sprites_only }}
+      sprites_touched: ${{ steps.detect.outputs.sprites_touched }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -186,14 +187,15 @@ jobs:
   # from game tests. Runs the sprites vitest project which includes all of
   # tests/unit/sprites/**, tests/integration/sprites/**, and the pipeline
   # integration tests that were previously in the integration project.
-  # Skipped for art_only (no code changed) and docs_only.
+  # Skipped when no sprite pipeline file changed (sprites_touched=false) — a pure
+  # game code change cannot break pipeline tests since game code never imports
+  # scripts/sprites/**. Also skipped for art_only and docs_only (no code changed).
   # For sprites_only changes this is the only test job that runs.
-  # For game-only changes this still runs (sprite tests must stay green regardless).
   test-sprites:
     name: Sprite Pipeline Tests
     runs-on: ubuntu-latest
     needs: [changes]
-    if: needs.changes.outputs.art_only != 'true' && needs.changes.outputs.docs_only != 'true'
+    if: needs.changes.outputs.art_only != 'true' && needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.sprites_touched == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -342,7 +344,7 @@ jobs:
     name: E2E Visual Regression
     runs-on: ubuntu-latest
     needs: [changes]
-    if: needs.changes.outputs.art_only != 'true' && needs.changes.outputs.docs_only != 'true'
+    if: needs.changes.outputs.art_only != 'true' && needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.sprites_only != 'true'
     permissions:
       contents: read
     steps:

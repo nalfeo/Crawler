@@ -5,7 +5,7 @@ import {
   BACKGROUND_B_COLOR_TOLERANCE_SQ,
   BACKGROUND_B_FRINGE_TOLERANCE_SQ,
   type RgbaImage,
-} from '../../scripts/sprites/postprocess.js';
+} from '../../../scripts/sprites/postprocess.js';
 
 function blank(width: number, height: number, color: readonly [number, number, number]): RgbaImage {
   const data = new Uint8Array(width * height * 4);

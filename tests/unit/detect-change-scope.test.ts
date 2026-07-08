@@ -26,6 +26,7 @@ interface Scope {
   docs_only: boolean;
   gameplay_safe: boolean;
   sprites_only: boolean;
+  sprites_touched: boolean;
 }
 
 function run(override: string): Scope {
@@ -51,6 +52,7 @@ function run(override: string): Scope {
     docs_only: read('docs_only'),
     gameplay_safe: read('gameplay_safe'),
     sprites_only: read('sprites_only'),
+    sprites_touched: read('sprites_touched'),
   };
 }
 
@@ -67,11 +69,13 @@ const F = (
   docs_only: boolean,
   gameplay_safe: boolean,
   sprites_only: boolean,
+  sprites_touched: boolean,
 ): Scope => ({
   art_only,
   docs_only,
   gameplay_safe,
   sprites_only,
+  sprites_touched,
 });
 
 const cases: Case[] = [
@@ -79,95 +83,124 @@ const cases: Case[] = [
   {
     name: 'generated sprites + manifest',
     files: ['public/assets/generated/manifest.json'],
-    expected: F(true, false, true, false),
+    expected: F(true, false, true, false, false),
   },
   {
     name: 'sprite catalog data',
     files: ['src/shared/data/sprite-catalog.json'],
-    expected: F(true, false, false, false),
+    expected: F(true, false, false, false, false),
   },
   // Docs / text.
-  { name: 'docs markdown', files: ['docs/architecture.md'], expected: F(false, true, true, false) },
-  { name: 'root readme', files: ['README.md'], expected: F(false, true, true, false) },
+  {
+    name: 'docs markdown',
+    files: ['docs/architecture.md'],
+    expected: F(false, true, true, false, false),
+  },
+  { name: 'root readme', files: ['README.md'], expected: F(false, true, true, false, false) },
   // Gameplay-safe surfaces the headless runner never imports.
   {
     name: 'engine-only (rendering)',
     files: ['src/engine/render/floorRenderer.ts'],
-    expected: F(false, false, true, false),
+    expected: F(false, false, true, false, false),
   },
-  { name: 'labs-only', files: ['src/labs/combatLab.ts'], expected: F(false, false, true, false) },
+  {
+    name: 'labs-only',
+    files: ['src/labs/combatLab.ts'],
+    expected: F(false, false, true, false, false),
+  },
   {
     name: 'e2e tests',
     files: ['tests/e2e/hud-overlap-visual.test.ts'],
-    expected: F(false, false, true, false),
+    expected: F(false, false, true, false, false),
   },
   {
     name: 'docs + engine mixed',
     files: ['docs/x.md', 'src/engine/foo.ts'],
-    expected: F(false, false, true, false),
+    expected: F(false, false, true, false, false),
   },
   // Anything that CAN change the sim must force the gate to run.
   {
     name: 'core system',
     files: ['src/core/systems/movementSystem.ts'],
-    expected: F(false, false, false, false),
+    expected: F(false, false, false, false, false),
   },
-  { name: 'game system', files: ['src/game/combat.ts'], expected: F(false, false, false, false) },
+  {
+    name: 'game system',
+    files: ['src/game/combat.ts'],
+    expected: F(false, false, false, false, false),
+  },
   {
     name: 'shared (non-catalog)',
     files: ['src/shared/random.ts'],
-    expected: F(false, false, false, false),
+    expected: F(false, false, false, false, false),
   },
   {
     name: 'headless test itself',
     files: ['tests/headless/floor1-completion.test.ts'],
-    expected: F(false, false, false, false),
+    expected: F(false, false, false, false, false),
   },
   {
     name: 'engine + game mixed',
     files: ['src/engine/render/foo.ts', 'src/game/combat.ts'],
-    expected: F(false, false, false, false),
+    expected: F(false, false, false, false, false),
   },
   {
     name: 'ci script change',
     files: ['scripts/agent/ci/detect-art-only.sh'],
-    expected: F(false, false, false, false),
+    expected: F(false, false, false, false, false),
   },
   {
     name: 'workflow change',
     files: ['.github/workflows/ci.yml'],
-    expected: F(false, false, false, false),
+    expected: F(false, false, false, false, false),
   },
-  // Sprite pipeline paths: gameplay_safe=true, sprites_only=true.
+  // Sprite pipeline paths: gameplay_safe=true, sprites_only=true, sprites_touched=true.
   {
     name: 'sprites pipeline script',
     files: ['scripts/sprites/run-full.ts'],
-    expected: F(false, false, true, true),
+    expected: F(false, false, true, true, true),
   },
   {
     name: 'sprites pipeline unit test',
     files: ['tests/unit/sprites/run-pipeline.test.ts'],
-    expected: F(false, false, true, true),
+    expected: F(false, false, true, true, true),
   },
   {
     name: 'sprites integration test',
     files: ['tests/integration/sprites/rerun.test.ts'],
-    expected: F(false, false, true, true),
+    expected: F(false, false, true, true, true),
   },
   {
     name: 'sprites pipeline + unit test (pure sprites change)',
     files: ['scripts/sprites/batch.ts', 'tests/unit/sprites/batch.test.ts'],
-    expected: F(false, false, true, true),
+    expected: F(false, false, true, true, true),
   },
   {
-    name: 'sprites pipeline + game code (mixed) → sprites_only=false',
+    name: 'sprites pipeline + game code (mixed) → sprites_only=false, sprites_touched=true',
     files: ['scripts/sprites/batch.ts', 'src/game/combat.ts'],
-    expected: F(false, false, false, false),
+    expected: F(false, false, false, false, true),
   },
   {
-    name: 'sprites pipeline + engine code → sprites_only=false, gameplay_safe=true (both are safe)',
+    name: 'sprites pipeline + engine code → sprites_only=false, gameplay_safe=true, sprites_touched=true',
     files: ['scripts/sprites/run-full.ts', 'src/engine/renderer.ts'],
-    expected: F(false, false, true, false),
+    expected: F(false, false, true, false, true),
+  },
+  // Root pipeline integration tests: in sprites surface, so sprites_only=true, sprites_touched=true.
+  {
+    name: 'root pipeline integration test (batch-cli)',
+    files: ['tests/integration/batch-cli.test.ts'],
+    expected: F(false, false, true, true, true),
+  },
+  {
+    name: 'root pipeline integration test (sidecar-lifecycle)',
+    files: ['tests/integration/sidecar-lifecycle.test.ts'],
+    expected: F(false, false, true, true, true),
+  },
+  // Game-only change → sprites_touched=false.
+  {
+    name: 'game-only change → sprites_touched=false',
+    files: ['src/game/combat.ts', 'src/core/systems/movementSystem.ts'],
+    expected: F(false, false, false, false, false),
   },
 ];
 
@@ -178,14 +211,14 @@ describe('detect-art-only.sh change-scope classifier', () => {
 
   it.skipIf(!hasBash)('fail-safe: a blank/whitespace change set runs the full suite', () => {
     // A lone newline enters the override branch but strips to empty → all-false.
-    expect(run('\n')).toEqual(F(false, false, false, false));
+    expect(run('\n')).toEqual(F(false, false, false, false, false));
   });
 
   it.skipIf(!hasBash)(
     'fail-safe: an explicitly empty override is honored as an empty change set',
     () => {
       // Presence-detected (${VAR+x}), so set-but-empty must NOT fall back to git.
-      expect(run('')).toEqual(F(false, false, false, false));
+      expect(run('')).toEqual(F(false, false, false, false, false));
     },
   );
 

@@ -80,6 +80,9 @@ else
   echo "ℹ️  No integration tests found; skipping."
 fi
 
+echo "🔍 Step 7b/10: Sprite pipeline tests..."
+npx vitest run --project sprites --reporter=dot
+
 # The Headless Floor 1 gate replays a full ~20k-frame deterministic sim per
 # losing (seed, weapon) and is the single slowest step (~300s in CI, the CI
 # long-pole). It is authoritatively enforced by the REQUIRED `test-headless`

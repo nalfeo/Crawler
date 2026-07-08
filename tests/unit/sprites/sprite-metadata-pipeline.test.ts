@@ -3,8 +3,8 @@ import {
   createHeuristicProvider,
   runMetadataPipeline,
   type MetadataProvider,
-} from '../../scripts/sprites/metadata-pipeline.js';
-import { parseSpriteCatalog } from '../../src/shared/sprite-catalog.js';
+} from '../../../scripts/sprites/metadata-pipeline.js';
+import { parseSpriteCatalog } from '../../../src/shared/sprite-catalog.js';
 
 describe('sprite metadata pipeline', () => {
   it('heuristic provider generates sentence descriptions and tags', async () => {

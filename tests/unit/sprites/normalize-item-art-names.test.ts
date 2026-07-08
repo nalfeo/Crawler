@@ -10,7 +10,7 @@ import {
   type CatalogRecordRaw,
   type GeneratedManifest,
   type ManifestEntry,
-} from '../../scripts/sprites/normalize-item-art-names.js';
+} from '../../../scripts/sprites/normalize-item-art-names.js';
 
 // --- fixture factories -----------------------------------------------------
 
