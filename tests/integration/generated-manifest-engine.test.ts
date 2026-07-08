@@ -25,6 +25,11 @@ import {
 import { getItemById } from '../../src/shared/items.js';
 import { getSetPieceDef, installDefaultSetPiecePacks } from '../../src/shared/set-piece-types.js';
 import { GENERATED_KEY_BY_NPC_DEF } from '../../src/engine/phaser-bridge/sprite-kind.js';
+import { HARVESTABLE_DEFS } from '../../src/shared/harvestableDefs.js';
+import {
+  generatedBriefIdForHarvestable,
+  pickGeneratedHarvestableTextureKey,
+} from '../../src/engine/phaser-bridge/sprite-kind.js';
 
 const REPO_MANIFEST = path.resolve(__dirname, '../../public/assets/generated/manifest.json');
 
@@ -363,5 +368,46 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     // 3) The engine wiring map pins exactly those def→key mappings, so the guard
     //    above cannot drift out of sync with GENERATED_KEY_BY_NPC_DEF.
     expect(GENERATED_KEY_BY_NPC_DEF).toEqual(expectedByDef);
+  });
+
+  it('wires all Floor-1 harvestable nodes to real approved art, not placeholders', async () => {
+    if (!existsSync(REPO_MANIFEST)) {
+      // Fresh checkout without generated art on disk — nothing to observe.
+      return;
+    }
+    const raw = readFileSync(REPO_MANIFEST, 'utf8');
+    const fetcher = (async () =>
+      new Response(raw, {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })) as unknown as typeof fetch;
+    const registry = await fetchGeneratedSpriteRegistry({
+      url: '/assets/generated/manifest.json',
+      fetcher,
+    });
+
+    // Success gate: every registered harvestable node type must resolve to a
+    // real, non-placeholder generated sprite (else it renders the procedural
+    // fallback circle in-game). This is the manifest-coverage half of the gate;
+    // the pure resolver mapping is unit-tested in phaser-bridge-sprite-kind.
+    for (const def of HARVESTABLE_DEFS) {
+      const briefId = generatedBriefIdForHarvestable(def.id);
+      expect(briefId, `harvestable "${def.id}" has no wired briefId`).toBeDefined();
+
+      const variants = registry.variants(briefId!);
+      expect(
+        variants.length,
+        `no approved art for harvestable "${def.id}" (brief ${briefId})`,
+      ).toBeGreaterThan(0);
+      for (const entry of variants) {
+        expect(entry.assetPath).toContain(briefId!);
+        expect(entry.assetPath).not.toContain('placeholder');
+      }
+
+      // Deterministic pick mirrors the runtime PhaserBridge resolution path.
+      const textureKey = pickGeneratedHarvestableTextureKey(registry, def.id, 0);
+      expect(textureKey, `harvestable "${def.id}" resolved no texture key`).not.toBeNull();
+      expect(textureKey).toContain(briefId!);
+    }
   });
 });

@@ -2638,5 +2638,70 @@
     "frame": 0,
     "col": 0,
     "row": 0
+  },
+  {
+    "id": "generated:crimson-mushroom-v1-var-3",
+    "kind": "sprite",
+    "label": "crimson-mushroom-v1-var-3",
+    "description": "Generated sprite from brief: crimson-mushroom-v1.",
+    "tags": ["item", "generated", "pipeline-approved"],
+    "spriteId": "crimson-mushroom-v1-var-3",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/crimson-mushroom-v1-var-3.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:frost-lichen-v1-var-12",
+    "kind": "sprite",
+    "label": "frost-lichen-v1-var-12",
+    "description": "Generated sprite from brief: frost-lichen-v1.",
+    "tags": ["item", "generated", "pipeline-approved"],
+    "spriteId": "frost-lichen-v1-var-12",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/frost-lichen-v1-var-12.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:moonbloom-flower-v1-var-0",
+    "kind": "sprite",
+    "label": "moonbloom-flower-v1-var-0",
+    "description": "Generated sprite from brief: moonbloom-flower-v1.",
+    "tags": ["item", "generated", "pipeline-approved"],
+    "spriteId": "moonbloom-flower-v1-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/moonbloom-flower-v1-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:shadow-lichen-v1-var-12",
+    "kind": "sprite",
+    "label": "shadow-lichen-v1-var-12",
+    "description": "Generated sprite from brief: shadow-lichen-v1.",
+    "tags": ["item", "generated", "pipeline-approved"],
+    "spriteId": "shadow-lichen-v1-var-12",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/shadow-lichen-v1-var-12.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:sunpetal-flower-v1-var-0",
+    "kind": "sprite",
+    "label": "sunpetal-flower-v1-var-0",
+    "description": "Generated sprite from brief: sunpetal-flower-v1.",
+    "tags": ["item", "generated", "pipeline-approved"],
+    "spriteId": "sunpetal-flower-v1-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/sunpetal-flower-v1-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
   }
 ]

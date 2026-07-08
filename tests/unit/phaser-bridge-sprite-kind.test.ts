@@ -30,8 +30,10 @@ import {
   enemyVariantFromTextureId,
   GENERATED_KEY_BY_NPC_DEF,
   generatedBriefIdForEnemy,
+  generatedBriefIdForHarvestable,
   pickGeneratedEnemyTextureKey,
   pickGeneratedNpcTextureKey,
+  pickGeneratedHarvestableTextureKey,
   placeholderSpawnerTint,
   PLACEHOLDER_SPAWNER_TINT,
   RAT_BRUTE_TINT,
@@ -40,6 +42,7 @@ import {
 } from '../../src/engine/phaser-bridge/sprite-kind.js';
 import { getNpcDef } from '../../src/shared/npc-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { HARVESTABLE_DEFS } from '../../src/shared/harvestableDefs.js';
 
 /**
  * Unit coverage for the pure render-kind helpers extracted from
@@ -451,6 +454,97 @@ describe('pickGeneratedNpcTextureKey — def-aware welcome-room NPC art', () => 
       'spell-quest-giver',
       'tutorial-goon',
     ]);
+  });
+});
+
+describe('generatedBriefIdForHarvestable', () => {
+  it('maps every Floor-1 harvestable def id to its versioned brief', () => {
+    expect(generatedBriefIdForHarvestable('crimson-mushroom')).toBe('crimson-mushroom-v1');
+    expect(generatedBriefIdForHarvestable('azure-mushroom')).toBe('azure-mushroom-v1');
+    expect(generatedBriefIdForHarvestable('sunpetal-flower')).toBe('sunpetal-flower-v1');
+    expect(generatedBriefIdForHarvestable('moonbloom-flower')).toBe('moonbloom-flower-v1');
+    expect(generatedBriefIdForHarvestable('frost-lichen')).toBe('frost-lichen-v1');
+    expect(generatedBriefIdForHarvestable('shadow-lichen')).toBe('shadow-lichen-v1');
+  });
+
+  it('resolves a briefId for EVERY registered harvestable def (no node left on a circle)', () => {
+    // Success-gate guard: a newly-added node type that ships without a brief
+    // fails here instead of silently falling back to the procedural circle.
+    for (const def of HARVESTABLE_DEFS) {
+      const briefId = generatedBriefIdForHarvestable(def.id);
+      expect(briefId, `harvestable "${def.id}" has no wired briefId`).toBeDefined();
+      expect(briefId).toBe(`${def.id}-v1`);
+    }
+  });
+
+  it('returns undefined for an unknown node id (renderer falls back to the circle)', () => {
+    expect(generatedBriefIdForHarvestable('not-a-node')).toBeUndefined();
+    expect(generatedBriefIdForHarvestable('')).toBeUndefined();
+  });
+});
+
+describe('pickGeneratedHarvestableTextureKey', () => {
+  const registry = buildGeneratedSpriteRegistry({
+    version: 1,
+    entries: {
+      'crimson-mushroom-v1-var-0': {
+        briefId: 'crimson-mushroom-v1',
+        spriteName: 'crimson-mushroom-v1-var-0',
+        assetPath: 'generated/crimson-mushroom-v1-var-0.png',
+        approvedAt: '2026-07-08T00:00:00.000Z',
+        sourceRun: 'test',
+        variantIndex: 0,
+        anchor: null,
+        sensorScore: '7/7',
+        judgeScore: '4',
+      },
+      'crimson-mushroom-v1-var-3': {
+        briefId: 'crimson-mushroom-v1',
+        spriteName: 'crimson-mushroom-v1-var-3',
+        assetPath: 'generated/crimson-mushroom-v1-var-3.png',
+        approvedAt: '2026-07-08T00:00:00.000Z',
+        sourceRun: 'test',
+        variantIndex: 3,
+        anchor: null,
+        sensorScore: '7/7',
+        judgeScore: '4',
+      },
+      'frost-lichen-v1-var-12': {
+        briefId: 'frost-lichen-v1',
+        spriteName: 'frost-lichen-v1-var-12',
+        assetPath: 'generated/frost-lichen-v1-var-12.png',
+        approvedAt: '2026-07-08T00:00:00.000Z',
+        sourceRun: 'test',
+        variantIndex: 12,
+        anchor: null,
+        sensorScore: '7/7',
+        judgeScore: '4',
+      },
+    },
+  });
+
+  it('resolves a node def id to the texture key of its single wired variant', () => {
+    expect(pickGeneratedHarvestableTextureKey(registry, 'frost-lichen', 0)).toBe(
+      'frost-lichen-v1-var-12',
+    );
+  });
+
+  it('uses the stored roll deterministically across multiple variants', () => {
+    expect(pickGeneratedHarvestableTextureKey(registry, 'crimson-mushroom', 0.1)).toBe(
+      'crimson-mushroom-v1-var-0',
+    );
+    expect(pickGeneratedHarvestableTextureKey(registry, 'crimson-mushroom', 0.95)).toBe(
+      'crimson-mushroom-v1-var-3',
+    );
+  });
+
+  it('returns null when the registry, def id, or approved art is missing', () => {
+    expect(pickGeneratedHarvestableTextureKey(null, 'frost-lichen', 0)).toBeNull();
+    expect(pickGeneratedHarvestableTextureKey(undefined, 'frost-lichen', 0)).toBeNull();
+    expect(pickGeneratedHarvestableTextureKey(registry, undefined, 0)).toBeNull();
+    expect(pickGeneratedHarvestableTextureKey(registry, 'not-a-node', 0)).toBeNull();
+    // Wired brief but no variant in this registry → null (renderer draws the circle).
+    expect(pickGeneratedHarvestableTextureKey(registry, 'shadow-lichen', 0)).toBeNull();
   });
 });
 

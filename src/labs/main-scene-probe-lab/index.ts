@@ -25,11 +25,15 @@
  * a known player feet-position and reading the world camera center is a stable,
  * wall-clock-free probe of the `centerOn(ftToPx(px), ftToPx(py))` invariant.
  */
+import { query } from 'bitecs';
 import Phaser from 'phaser';
 import { createFloor1GameConfig } from '../../bootstrap/floor-game-config.js';
 import { createFloor1MainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
+import { Harvestable } from '../../core/components.js';
 import type { GameWorld } from '../../core/index.js';
 import { PIXELS_PER_FOOT } from '../../shared/units.js';
+import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
+import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 const LAB_ID = 'main-scene-probe-lab';
@@ -37,6 +41,17 @@ const SCENE_KEY = 'MainGameScene';
 
 /** Fixed world seed so every boot is byte-for-byte deterministic. */
 const PROBE_SEED = 4242;
+
+/**
+ * Generated-sprite brief ids the render layer maps the Floor-1 harvestable node
+ * types to (e.g. `crimson-mushroom-v1`). A harvestable node's on-floor Image is
+ * created with one of these as the texture-key prefix, so the probe counts live
+ * display-list Images by matching this set — the deterministic real-scene signal
+ * that a node rendered its generated sprite instead of the procedural circle.
+ */
+const HARVESTABLE_BRIEF_IDS: readonly string[] = HARVESTABLE_DEFS.map((def) =>
+  generatedBriefIdForHarvestable(def.id),
+).filter((briefId): briefId is string => typeof briefId === 'string');
 
 /**
  * Parse an optional `?ambient=<0..1>` query param used only by the
@@ -118,6 +133,18 @@ export interface MainSceneState {
 }
 
 /**
+ * Live count of Floor-1 harvestable resource nodes and how many of them render a
+ * generated sprite (vs. the procedural tinted-circle fallback). Used by the
+ * harvestable-node-sprite e2e to observe the real render path.
+ */
+export interface HarvestableRenderSummary {
+  /** Number of live harvestable node entities in the world. */
+  readonly nodeEntities: number;
+  /** Number of display-list Images whose texture matches a harvestable brief. */
+  readonly spriteImages: number;
+}
+
+/**
  * Automation surface attached to `window.__mainSceneProbe`. The e2e suite polls
  * {@link MainSceneProbeApi.ready} then drives loadout/camera through these.
  */
@@ -144,6 +171,8 @@ export interface MainSceneProbeApi {
    * observation to prove three distinct generated textures in the real scene.
    */
   getNpcRenderInfo(): NpcRenderInfo[];
+  /** Live harvestable node count + how many render a generated sprite. */
+  getHarvestableRenderSummary(): HarvestableRenderSummary;
 }
 
 function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): () => void {
@@ -322,6 +351,26 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         });
       }
       return infos;
+    },
+
+    getHarvestableRenderSummary: (): HarvestableRenderSummary => {
+      const world = getScene()?.world;
+      const phaserScene = getPhaserScene();
+      if (!world || !phaserScene) {
+        return { nodeEntities: 0, spriteImages: 0 };
+      }
+      const nodeEntities = query(world.ecs, [Harvestable]).length;
+      let spriteImages = 0;
+      for (const obj of phaserScene.children.list) {
+        const key = (obj as { texture?: { key?: string } }).texture?.key;
+        if (
+          typeof key === 'string' &&
+          HARVESTABLE_BRIEF_IDS.some((briefId) => key.startsWith(briefId))
+        ) {
+          spriteImages += 1;
+        }
+      }
+      return { nodeEntities, spriteImages };
     },
   };
   probeWindow.__mainSceneProbe = api;

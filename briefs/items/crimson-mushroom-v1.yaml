@@ -1,0 +1,19 @@
+type: item
+name: crimson-mushroom-v1
+description: |
+  A single centered cluster of two or three crimson mushrooms, a Floor 1
+  harvestable resource node seen from a slight top-down angle. Plump, domed
+  caps in deep crimson red dotted with a few paler cream spots, sitting on
+  short, thick ivory-cream stems. The caps have soft rounded shading that reads
+  as fleshy and alive. A faint warm red inner glow lifts it off a dark dungeon
+  floor so it reads as something worth harvesting. Chunky, iconic silhouette,
+  clearly a red mushroom cluster at a glance. Transparent background, no ground
+  tile, no shadow blob, no container.
+sensors:
+  edge:
+    allowMainTouch: true
+variations:
+  - a taller central cap flanked by two shorter buds, dew glistening on the caps
+  - caps tilted at playful angles with a scatter of tiny cream spots
+  - one cap with a curled edge revealing pale gills, faint ember-red glow beneath
+minVariations: 5

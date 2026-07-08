@@ -1,0 +1,21 @@
+type: item
+name: frost-lichen-v1
+description: |
+  A single centered patch of frost lichen, a Floor 1 harvestable resource node
+  seen from a slight top-down angle. A low, SOLID, rounded crust of growth in
+  silvery-white and pale cyan — one connected, fully filled mass with no
+  see-through gaps or holes in its interior. Small ice crystals grow from and
+  stay fused to the solid body rather than sticking out as thin detached
+  spikes. The surface reads as a frosted, rimed crust with a faint icy-blue
+  shimmer that lifts it off a dark dungeon floor. Compact, chunky, gap-free
+  silhouette that reads as a frozen lichen patch at a glance. Transparent
+  background only around the outside, no ground tile, no shadow blob, no
+  container.
+sensors:
+  edge:
+    allowMainTouch: true
+variations:
+  - a rounded frosted mound with a smooth rimed crust and a pale-cyan crown
+  - a solid crusty patch with short ice nubs fused across its filled top
+  - a compact silvery growth with a bright frost sheen and a pale-cyan core
+minVariations: 5

@@ -12,6 +12,7 @@ import type { Page } from 'playwright';
 import { E2E_LAB_BASE_URL } from '../e2e-constants.js';
 // Type-only import (erased at runtime — does NOT execute the lab's registerLab).
 import type {
+  HarvestableRenderSummary,
   MainSceneProbeApi,
   MainSceneState,
   ProbePoint,
@@ -74,6 +75,8 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getMapSizeFeet()),
   getCameraViewSize: (page: Page): Promise<ProbePoint | null> =>
     page.evaluate(() => window.__mainSceneProbe!.getCameraViewSize()),
+  getHarvestableRenderSummary: (page: Page): Promise<HarvestableRenderSummary> =>
+    page.evaluate(() => window.__mainSceneProbe!.getHarvestableRenderSummary()),
 };
 
 /**
