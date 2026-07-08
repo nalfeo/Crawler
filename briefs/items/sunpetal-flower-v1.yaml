@@ -1,0 +1,19 @@
+type: item
+name: sunpetal-flower-v1
+description: |
+  A single centered sunpetal flower, a Floor 1 harvestable resource node seen
+  from a slight top-down angle. Bright golden-yellow petals radiate evenly
+  around a warm glowing amber centre, sitting atop a short green stem with one
+  or two small leaves. The petals are crisp and readable with gentle shading;
+  the centre gives off a soft golden bloom-glow so it stands out on a dark
+  dungeon floor. Cheerful, iconic silhouette that reads clearly as a bright
+  gold flower at a glance. Transparent background, no ground tile, no shadow
+  blob, no pot or container.
+sensors:
+  edge:
+    allowMainTouch: true
+variations:
+  - broad sunflower-like petals with a densely speckled amber seed centre
+  - narrower pointed petals with a bright glowing core and a curling leaf
+  - slightly nodding bloom with a couple of unopened golden buds on the stem
+minVariations: 5

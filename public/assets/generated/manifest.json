@@ -6808,6 +6808,176 @@
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-welcome-goon\\2026-07-08T07-12-20-9e177903\\postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
+    },
+    "crimson-mushroom-v1-var-3": {
+      "briefId": "crimson-mushroom-v1",
+      "spriteName": "crimson-mushroom-v1-var-3",
+      "assetPath": "generated/crimson-mushroom-v1-var-3.png",
+      "approvedAt": "2026-07-08T07:38:25.394Z",
+      "sourceRun": "generated/runs/crimson-mushroom-v1/2026-07-08T07-14-02-929810b5",
+      "variantIndex": 3,
+      "anchor": {
+        "x": 33,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 33,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "item",
+      "contentHash": "f2115d53a2c353871fe51bfc46d0dc53215e739b4408855343562c9ac123a508",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\crimson-mushroom-v1\\2026-07-08T07-14-02-929810b5\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\crimson-mushroom-v1\\2026-07-08T07-14-02-929810b5\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\crimson-mushroom-v1\\2026-07-08T07-14-02-929810b5\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "frost-lichen-v1-var-12": {
+      "briefId": "frost-lichen-v1",
+      "spriteName": "frost-lichen-v1-var-12",
+      "assetPath": "generated/frost-lichen-v1-var-12.png",
+      "approvedAt": "2026-07-08T07:38:33.424Z",
+      "sourceRun": "generated/runs/frost-lichen-v1/2026-07-08T07-33-36-da4ad214",
+      "variantIndex": 12,
+      "anchor": {
+        "x": 32,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 30,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "item",
+      "contentHash": "53063e03fed4358baf70bc5c83a42ff369f5d0d4764f8fa446012a9b69d15403",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\frost-lichen-v1\\2026-07-08T07-33-36-da4ad214\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\frost-lichen-v1\\2026-07-08T07-33-36-da4ad214\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\frost-lichen-v1\\2026-07-08T07-33-36-da4ad214\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "moonbloom-flower-v1-var-0": {
+      "briefId": "moonbloom-flower-v1",
+      "spriteName": "moonbloom-flower-v1-var-0",
+      "assetPath": "generated/moonbloom-flower-v1-var-0.png",
+      "approvedAt": "2026-07-08T07:38:29.423Z",
+      "sourceRun": "generated/runs/moonbloom-flower-v1/2026-07-08T07-20-58-040c45b3",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 30,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 30,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 28,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "3",
+      "type": "item",
+      "contentHash": "1e50573b282ee414f15f226f79bc6f9f6f3bc444145b55a4b8fab55fde849a48",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\moonbloom-flower-v1\\2026-07-08T07-20-58-040c45b3\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\moonbloom-flower-v1\\2026-07-08T07-20-58-040c45b3\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\moonbloom-flower-v1\\2026-07-08T07-20-58-040c45b3\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "shadow-lichen-v1-var-12": {
+      "briefId": "shadow-lichen-v1",
+      "spriteName": "shadow-lichen-v1-var-12",
+      "assetPath": "generated/shadow-lichen-v1-var-12.png",
+      "approvedAt": "2026-07-08T07:38:32.321Z",
+      "sourceRun": "generated/runs/shadow-lichen-v1/2026-07-08T07-27-01-5824617f",
+      "variantIndex": 12,
+      "anchor": {
+        "x": 31,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 29,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "3",
+      "type": "item",
+      "contentHash": "88e75a9903e9c57fb944d93725f4ad3a5056dd130a6f78e53442de6a8f27f5f4",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\shadow-lichen-v1\\2026-07-08T07-27-01-5824617f\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\shadow-lichen-v1\\2026-07-08T07-27-01-5824617f\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\shadow-lichen-v1\\2026-07-08T07-27-01-5824617f\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "sunpetal-flower-v1-var-0": {
+      "briefId": "sunpetal-flower-v1",
+      "spriteName": "sunpetal-flower-v1-var-0",
+      "assetPath": "generated/sunpetal-flower-v1-var-0.png",
+      "approvedAt": "2026-07-08T07:38:26.399Z",
+      "sourceRun": "generated/runs/sunpetal-flower-v1/2026-07-08T07-17-38-10ba1350",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 30,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 30,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 30,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "item",
+      "contentHash": "218f1ce6f60682fcc2221a8029a54fa590564ebc2764d7cf6ed3b9ef39947a40",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\sunpetal-flower-v1\\2026-07-08T07-17-38-10ba1350\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\sunpetal-flower-v1\\2026-07-08T07-17-38-10ba1350\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\sunpetal-flower-v1\\2026-07-08T07-17-38-10ba1350\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     }
   }
 }

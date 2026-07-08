@@ -5,6 +5,7 @@ import {
   DeathTimer,
   Enemy,
   Gold,
+  Harvestable,
   Player,
   Position,
   Prop,
@@ -14,6 +15,7 @@ import {
   Velocity,
   XpGem,
 } from '../../src/core/components.js';
+import { HARVESTABLE_DEFS } from '../../src/shared/harvestableDefs.js';
 import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
 import { RAT_BRUTE_TINT } from '../../src/engine/phaser-bridge/sprite-kind.js';
 import { ENTITY_DEPTH, WORLD_VFX_DEPTH } from '../../src/shared/render-depths.js';
@@ -1418,5 +1420,143 @@ describe('createPhaserBridge', () => {
     removeEntity(world.ecs, eid);
     bridge.sync(world, 100);
     expect(images[0]!.destroyed).toBe(true);
+  });
+
+  describe('harvestable node rendering', () => {
+    // A harvestable node carries the Harvestable tag (→ 'harvestable' render kind),
+    // a Position, and a Sprite whose stored `variantRoll` picks the art variant.
+    // defIndex 0 === crimson-mushroom, which maps to brief `crimson-mushroom-v1`.
+    function spawnNode(
+      world: ReturnType<typeof createTestWorld>,
+      xFt: number,
+      yFt: number,
+      defIndex: number,
+    ): number {
+      const node = addEntity(world.ecs);
+      addComponent(world.ecs, node, set(Position, { x: xFt, y: yFt }));
+      addComponent(
+        world.ecs,
+        node,
+        set(Harvestable, { defIndex, durationMs: 3_000, progressMs: 0 }),
+      );
+      addComponent(
+        world.ecs,
+        node,
+        set(Sprite, { textureId: 0, width: 16, height: 16, variantRoll: 0, sizeScale: 1 }),
+      );
+      return node;
+    }
+
+    function spawnCrimsonNode(
+      world: ReturnType<typeof createTestWorld>,
+      xFt: number,
+      yFt: number,
+    ): number {
+      return spawnNode(world, xFt, yFt, 0);
+    }
+
+    function crimsonMushroomRegistry(): ReturnType<typeof buildGeneratedSpriteRegistry> {
+      return buildGeneratedSpriteRegistry({
+        version: 1,
+        entries: {
+          'crimson-mushroom-v1-var-3': {
+            briefId: 'crimson-mushroom-v1',
+            spriteName: 'crimson-mushroom-v1-var-3',
+            assetPath: 'generated/crimson-mushroom-v1-var-3.png',
+            approvedAt: '2026-07-01T00:00:00.000Z',
+            sourceRun: 'test',
+            variantIndex: 3,
+            anchor: null,
+            sensorScore: '8/8',
+            judgeScore: '3',
+          },
+        },
+      });
+    }
+
+    it('renders a harvestable node as its generated sprite Image when the art is wired and loaded', () => {
+      const { scene, images, graphics } = createSceneStub({
+        kenneyLoaded: true,
+        withGraphics: true,
+      });
+      (scene.game as unknown) = { registry: { get: () => crimsonMushroomRegistry() } };
+      const bridge = createPhaserBridge(scene);
+      const world = createTestWorld();
+      spawnCrimsonNode(world, 10, 10); // 10 ft → 80 px via ftToPx (×8).
+
+      bridge.sync(world);
+
+      // Sprite path: exactly one node Image using the resolved manifest key,
+      // scaled + depth-sorted to sit on the floor just below the entity plane.
+      expect(images).toHaveLength(1);
+      expect(images[0]?.textureKey).toBe('crimson-mushroom-v1-var-3');
+      expect(images[0]?.x).toBe(80);
+      expect(images[0]?.y).toBe(80);
+      expect(images[0]?.scaleX).toBe(0.4);
+      expect(images[0]?.depth).toBe(ENTITY_DEPTH - 0.2);
+      expect(images[0]?.originX).toBe(0.5);
+      expect(images[0]?.originY).toBe(0.5);
+      // With a real sprite and no harvest in progress, the procedural tinted
+      // circle body is NOT drawn (no fillStyle with the node tint anywhere).
+      expect(
+        graphics.some((g) => g.fillCalls.some((c) => c.color === HARVESTABLE_DEFS[0]!.tint)),
+      ).toBe(false);
+    });
+
+    it('falls back to the procedural tinted circle when no generated art is available (pre-wiring behavior)', () => {
+      const { scene, images, graphics } = createSceneStub({
+        kenneyLoaded: false,
+        withGraphics: true,
+      });
+      // No generated-sprite registry on the game → the resolver returns null, so
+      // the bridge draws the legacy circle. This pins the OLD behavior as the
+      // safe fallback for any unwired/not-yet-loaded node.
+      const bridge = createPhaserBridge(scene);
+      const world = createTestWorld();
+      spawnCrimsonNode(world, 10, 10);
+
+      bridge.sync(world);
+
+      // Fallback path: NO node Image; the tinted circle body is drawn instead
+      // (crimson-mushroom tint 0xcc3333) on the node Graphics.
+      expect(images).toHaveLength(0);
+      expect(
+        graphics.some((g) => g.fillCalls.some((c) => c.color === HARVESTABLE_DEFS[0]!.tint)),
+      ).toBe(true);
+    });
+
+    it('mixes sprite + circle in one sync: wired node → Image, unwired node → circle fallback', () => {
+      // Registry only has crimson-mushroom art, so a crimson node (defIndex 0)
+      // is wired but an azure node (defIndex 1) is not. A single sync() pass must
+      // route each independently — the wired node draws its Image and NO circle,
+      // the unwired node draws its circle and NO Image. This pins the per-node
+      // fallback contract (a partially-wired floor renders correctly).
+      const { scene, images, graphics } = createSceneStub({
+        kenneyLoaded: true,
+        withGraphics: true,
+      });
+      (scene.game as unknown) = { registry: { get: () => crimsonMushroomRegistry() } };
+      const bridge = createPhaserBridge(scene);
+      const world = createTestWorld();
+      spawnCrimsonNode(world, 10, 10); // wired → crimson-mushroom-v1 art exists.
+      spawnNode(world, 20, 20, 1); // azure-mushroom → no art in registry → circle.
+
+      bridge.sync(world);
+
+      // Exactly one Image, for the wired crimson node only.
+      expect(images).toHaveLength(1);
+      expect(images[0]?.textureKey).toBe('crimson-mushroom-v1-var-3');
+
+      // The unwired azure node drew its tinted circle (azure tint 0x3377cc)...
+      expect(
+        graphics.some((g) => g.fillCalls.some((c) => c.color === HARVESTABLE_DEFS[1]!.tint)),
+        'unwired azure node should draw its procedural circle',
+      ).toBe(true);
+      // ...while the wired crimson node did NOT draw a circle (crimson tint absent).
+      expect(
+        graphics.some((g) => g.fillCalls.some((c) => c.color === HARVESTABLE_DEFS[0]!.tint)),
+        'wired crimson node should render a sprite, not a circle',
+      ).toBe(false);
+    });
   });
 });

@@ -37,6 +37,7 @@ import {
   generatedBriefIdForEnemy,
   pickGeneratedEnemyTextureKey,
   pickGeneratedNpcTextureKey,
+  pickGeneratedHarvestableTextureKey,
   refineEnemyVisualKind,
   resolveRenderKind,
   SLIME_FULL_SPRITE_WIDTH,
@@ -102,6 +103,48 @@ function getGeneratedSpriteRegistry(scene: Phaser.Scene): GeneratedSpriteRegistr
     return registry as GeneratedSpriteRegistry;
   }
   return null;
+}
+
+/**
+ * On-floor render scale for a harvestable node's generated sprite. The art is
+ * authored at 64px; `0.4` (~26px) matches the enemy node footprint so a
+ * harvestable reads at the same visual weight as a small creature and stays
+ * framed by the harvest progress ring (radius 9 → 18px).
+ */
+const HARVEST_NODE_SPRITE_SCALE = 0.4;
+
+/**
+ * Depth for a harvestable node's generated sprite: just BELOW the entity plane
+ * ({@link ENTITY_DEPTH} = 0) so the player/enemies walk in front of a node, and
+ * above terrain/background props so it reads as sitting on the floor. The
+ * progress ring is drawn in the node's Graphics at the default depth (0), so it
+ * renders on TOP of this sprite.
+ */
+const HARVEST_NODE_SPRITE_DEPTH = ENTITY_DEPTH - 0.2;
+
+/**
+ * Create the generated-sprite Image for a harvestable node, or return `null`
+ * when there is no wired/loaded texture (the caller then draws the procedural
+ * tinted circle instead). Guards for headless/stub scenes where `scene.add` or
+ * the texture cache is unavailable, and never throws on a missing texture.
+ */
+function createHarvestNodeImage(
+  scene: Phaser.Scene,
+  textureKey: string | null,
+  x: number,
+  y: number,
+): Phaser.GameObjects.Image | null {
+  if (textureKey === null) {
+    return null;
+  }
+  if (typeof scene.add?.image !== 'function' || scene.textures?.exists(textureKey) !== true) {
+    return null;
+  }
+  const img = scene.add.image(x, y, textureKey);
+  img.setOrigin(0.5, 0.5);
+  img.setScale(HARVEST_NODE_SPRITE_SCALE);
+  img.setDepth(HARVEST_NODE_SPRITE_DEPTH);
+  return img;
 }
 
 /**
@@ -273,8 +316,10 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const mobHealthBars = new Map<number, Phaser.GameObjects.Graphics>();
   /** Tracks spawn time for arc entities so we can animate the sweep. */
   const arcSpawnMs = new Map<number, number>();
-  /** Per-harvestable node Graphics (body circle + progress ring redrawn each frame). */
+  /** Per-harvestable node Graphics (fallback body circle + progress ring redrawn each frame). */
   const harvestNodeGraphics = new Map<number, Phaser.GameObjects.Graphics>();
+  /** Per-harvestable node generated-sprite Image (created lazily once its texture is loaded). */
+  const harvestNodeImages = new Map<number, Phaser.GameObjects.Image>();
   /** Tracks first-seen render time for XP gems so the bob phase is per-gem. */
   const gemSpawnMs = new Map<number, number>();
   /** Ground shadow ellipses for each XP gem entity. */
@@ -461,7 +506,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         const x = ftToPx((position.x[eid] ?? 0) + (velocity.x[eid] ?? 0) * interpAlpha);
         const y = ftToPx((position.y[eid] ?? 0) + (velocity.y[eid] ?? 0) * interpAlpha);
 
-        // --- Harvestable node rendering (body circle + progress ring) ---
+        // --- Harvestable node rendering (generated sprite when wired, else a
+        // procedural tinted circle) + harvest progress ring ---
         if (entityType === 'harvestable') {
           let hg = harvestNodeGraphics.get(eid);
           if (!hg) {
@@ -479,13 +525,35 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           const RING_RADIUS = 9;
           const RING_WIDTH = 3;
 
-          // Node body: filled circle with outline.
-          hg.lineStyle(1, 0x000000, 0.7);
-          hg.fillStyle(nodeColor, 1.0);
-          hg.fillCircle(x, y, BODY_RADIUS);
-          hg.strokeCircle(x, y, BODY_RADIUS);
+          // Prefer a wired generated sprite. Resolve lazily and DO NOT cache a
+          // null result, so a late-loading texture is still picked up on a later
+          // frame (unwired node types simply keep hitting the cheap circle path).
+          let nodeImg = harvestNodeImages.get(eid) ?? null;
+          if (!nodeImg) {
+            const textureKey = pickGeneratedHarvestableTextureKey(
+              generatedRegistry,
+              def?.id,
+              world.stores.sprite.variantRoll[eid],
+            );
+            nodeImg = createHarvestNodeImage(scene, textureKey, x, y);
+            if (nodeImg) {
+              harvestNodeImages.set(eid, nodeImg);
+            }
+          }
 
-          // Progress ring: visible only while being harvested.
+          // Node body: generated sprite when available, else the filled circle.
+          if (nodeImg) {
+            nodeImg.setPosition(x, y);
+          } else {
+            hg.lineStyle(1, 0x000000, 0.7);
+            hg.fillStyle(nodeColor, 1.0);
+            hg.fillCircle(x, y, BODY_RADIUS);
+            hg.strokeCircle(x, y, BODY_RADIUS);
+          }
+
+          // Progress ring: visible only while being harvested. Drawn in `hg`
+          // (default depth 0) so it reads on top of the node sprite (which sits
+          // just below the entity plane).
           if (progressMs > 0) {
             const progress = Math.min(1, progressMs / durationMs);
             // Background track ring.
@@ -501,7 +569,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             hg.strokePath();
           }
 
-          // Harvestable nodes manage their own Graphics — skip the image path.
+          // Harvestable nodes manage their own Graphics/Image — skip the shared image path.
           continue;
         }
 
@@ -1383,6 +1451,14 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         harvestNodeGraphics.delete(eid);
       }
 
+      for (const [eid, img] of harvestNodeImages) {
+        if (activeEntities.has(eid)) {
+          continue;
+        }
+        img.destroy();
+        harvestNodeImages.delete(eid);
+      }
+
       for (const [eid, bar] of mobHealthBars) {
         if (activeEntities.has(eid)) {
           continue;
@@ -1462,6 +1538,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         hg.destroy();
       }
       harvestNodeGraphics.clear();
+
+      for (const img of harvestNodeImages.values()) {
+        img.destroy();
+      }
+      harvestNodeImages.clear();
 
       for (const bar of mobHealthBars.values()) {
         bar.destroy();

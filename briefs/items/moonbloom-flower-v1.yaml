@@ -1,0 +1,18 @@
+type: item
+name: moonbloom-flower-v1
+description: |
+  A single centered moonbloom flower, a Floor 1 harvestable resource node seen
+  from a slight top-down angle. Pale violet petals curl gently inward around a
+  softly glowing silver-white centre, atop a slender stem with a small leaf.
+  The petals are cool-toned and delicate with subtle shading; a faint lilac
+  glow surrounds it so it reads clearly on a dark dungeon floor. Graceful,
+  iconic silhouette that reads as a pale violet night-flower at a glance.
+  Transparent background, no ground tile, no shadow blob, no pot or container.
+sensors:
+  edge:
+    allowMainTouch: true
+variations:
+  - petals half-closed like a night bloom, silver centre glowing brightest
+  - wider star-shaped violet petals with faint silver vein highlights
+  - a slender bud beside the open bloom, cool moonlit rim-light on the edges
+minVariations: 5
