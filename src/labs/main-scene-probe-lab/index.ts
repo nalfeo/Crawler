@@ -29,6 +29,7 @@ import Phaser from 'phaser';
 import { createFloor1GameConfig } from '../../bootstrap/floor-game-config.js';
 import { createFloor1MainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import type { GameWorld } from '../../core/index.js';
+import { PIXELS_PER_FOOT } from '../../shared/units.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 const LAB_ID = 'main-scene-probe-lab';
@@ -75,6 +76,25 @@ export interface ProbePoint {
   readonly y: number;
 }
 
+/**
+ * The generated (or fallback) texture actually bound to a spawned NPC's live
+ * sprite, tied back to its {@link NpcInstance.defId}. Lets an e2e / observation
+ * script prove — in the REAL booted MainGameScene — that each welcome-room NPC
+ * renders its own distinct generated sprite rather than the shared villager.
+ */
+export interface NpcRenderInfo {
+  /** NPC definition id (e.g. 'tutorial-goon'). */
+  readonly defId: string;
+  /** ECS entity id of the NPC. */
+  readonly eid: number;
+  /** NPC feet position in FEET (sim space). */
+  readonly feet: ProbePoint;
+  /** Texture key on the rendered sprite nearest the NPC's feet, or null. */
+  readonly textureKey: string | null;
+  /** Pixel distance from the NPC feet to the matched sprite (0 ≈ exact). */
+  readonly distancePx: number;
+}
+
 /** Boot-time facts + live readings exposed for characterization assertions. */
 export interface MainSceneState {
   /** ECS world state machine value (e.g. 'loadout' | 'playing'). */
@@ -118,6 +138,12 @@ export interface MainSceneProbeApi {
   getMapSizeFeet(): ProbePoint | null;
   /** Live world-camera viewport size in PIXELS (worldView), or null. */
   getCameraViewSize(): ProbePoint | null;
+  /**
+   * Per-NPC render info: each spawned NPC's def id tied to the texture key on
+   * its nearest live sprite. Used by the welcome-room NPC sprite-wiring
+   * observation to prove three distinct generated textures in the real scene.
+   */
+  getNpcRenderInfo(): NpcRenderInfo[];
 }
 
 function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): () => void {
@@ -261,6 +287,42 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     getMapSizeFeet: () => mapSizeFeet(),
 
     getCameraViewSize: () => cameraViewSize(),
+
+    getNpcRenderInfo: (): NpcRenderInfo[] => {
+      const scene = getScene();
+      const phaserScene = getPhaserScene();
+      const world = scene?.world;
+      if (!world || !phaserScene) {
+        return [];
+      }
+      const images = phaserScene.children.list.filter(
+        (obj): obj is Phaser.GameObjects.Image => obj instanceof Phaser.GameObjects.Image,
+      );
+      const infos: NpcRenderInfo[] = [];
+      for (const [eid, instance] of world.npcs.entries()) {
+        const feetX = world.stores.position.x[eid] ?? 0;
+        const feetY = world.stores.position.y[eid] ?? 0;
+        const px = feetX * PIXELS_PER_FOOT;
+        const py = feetY * PIXELS_PER_FOOT;
+        let bestKey: string | null = null;
+        let bestDist = Number.POSITIVE_INFINITY;
+        for (const img of images) {
+          const dist = Math.hypot(img.x - px, img.y - py);
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestKey = img.texture.key;
+          }
+        }
+        infos.push({
+          defId: instance.defId,
+          eid,
+          feet: { x: feetX, y: feetY },
+          textureKey: bestKey,
+          distancePx: Number.isFinite(bestDist) ? Math.round(bestDist) : -1,
+        });
+      }
+      return infos;
+    },
   };
   probeWindow.__mainSceneProbe = api;
 
