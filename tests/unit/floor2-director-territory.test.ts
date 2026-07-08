@@ -7,6 +7,7 @@ import type { MapConfig } from '../../src/shared/map-types.js';
 import { SeededRandom } from '../../src/shared/random.js';
 import { CaveSystemGenerator } from '../../src/core/map/generators/cave-system.js';
 import {
+  FLOOR2_TIMEOUT_GOAL_ID,
   floor2EnemyDirectorSystem,
   floor2ObjectiveTick,
   getQuadrantForPosition,
@@ -76,8 +77,8 @@ describe('Floor 2 quadrant helpers', () => {
     const east = getQuadrantSpawnWeights('E');
     expect(east.get('E')).toBe(0.5);
     expect(east.get('N')).toBe(0.2);
-    expect(east.get('S')).toBe(0.2);
-    expect(east.get('W')).toBe(0.1);
+    expect(east.get('W')).toBe(0.2);
+    expect(east.get('S')).toBe(0.1);
   });
 });
 
@@ -111,6 +112,7 @@ describe('Floor 2 director/runtime behavior', () => {
     floor2ObjectiveTick(world);
 
     expect(world.state).toBe('game_over');
+    expect(world.goalFlags.get(FLOOR2_TIMEOUT_GOAL_ID)).toBe(true);
   });
 
   it('nudges a boss off non-passable tiles before evaluating victory state', () => {

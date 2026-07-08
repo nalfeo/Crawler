@@ -24,6 +24,7 @@ import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { FLOOR1_TUTORIAL_QUEST_ID } from '../../shared/quest-types.js';
 import { xpRequiredForLevel } from '../../shared/xpMath.js';
 import { createWeaponTelemetry, summarizeWeaponTelemetry } from '../../core/weapon-telemetry.js';
+import { FLOOR2_TIMEOUT_GOAL_ID } from '../floor2Scenario.js';
 import {
   AIDecisionDebugState,
   type AIInputProvider,
@@ -55,6 +56,12 @@ const logger = createLogger('game:headless-runner');
  */
 function readRunState(world: GameWorld): GameWorld['state'] {
   return world.state;
+}
+
+export function classifyGameOverOutcome(world: GameWorld): 'timeout' | 'death' {
+  const floor1Timeout = world.floorScenario?.failReason === 'stair_timeout';
+  const floor2Timeout = world.goalFlags.get(FLOOR2_TIMEOUT_GOAL_ID) === true;
+  return floor1Timeout || floor2Timeout ? 'timeout' : 'death';
 }
 
 // Floor 1 AI-driver auto-actions (NPC talk, boss-reward spell pick, shop
@@ -654,7 +661,7 @@ export async function runHeadless(
       // the loop spins uselessly until maxFrames while the simulation is frozen,
       // misreporting the run and wasting thousands of frames.
       if (readRunState(world) === 'game_over') {
-        outcome = world.floorScenario?.failReason === 'stair_timeout' ? 'timeout' : 'death';
+        outcome = classifyGameOverOutcome(world);
         break;
       }
 

@@ -112,6 +112,28 @@ const FLOOR2_BOSS_HP_SCALE = 0.03;
 const FLOOR2_BOSS_CONTACT_DAMAGE = 2;
 const floor2ProcessedCombatEvents = new WeakMap<GameWorld, WeakSet<object>>();
 
+export const FLOOR2_CAVE_SYSTEM_DEFAULTS = {
+  initialFill: 0.55,
+  smoothingPasses: 8,
+  cavernWidenPasses: 2,
+  straightHallwayMinRun: 10,
+  bossDenSize: 10,
+  resourceHeartDiameterTiles: 30,
+  territoryRadiusFraction: 0.5,
+  denTargetRadiusMinFraction: 0.5,
+  denTargetRadiusMaxFraction: 0.66,
+  denTargetMinSeparationTiles: 50,
+  denStartAngleJitterFraction: 1,
+  denDistanceJitterFraction: 1,
+  spawnMinDistanceFromDenTiles: 24,
+  spawnMinDistanceFromResourceHeartTiles: 24,
+  spawnMinDistanceFromSettlementTiles: 24,
+  settlementMinDistanceFromDenTiles: 30,
+  settlementMinDistanceFromResourceHeartTiles: 20,
+  regionSeparationTiles: 50,
+  maxRetries: 8,
+} as const;
+
 /**
  * Concrete result of picking a den-unlock archetype for one family. Stored on
  * `world.floorExtendedState?.familyState` for Slice 5's win evaluator + Slice 7's HUD.
@@ -131,6 +153,8 @@ export interface Floor2DenObjective {
 export const FLOOR2_VICTORY_GOAL_ID = 'floor2-victory';
 /** Latched once stairs are popped on the resource-heart tile (FR16). */
 export const FLOOR2_STAIRS_POPPED_GOAL_ID = 'floor2-stairs-popped';
+/** Latched when Floor 2 collapse timer expires (for headless outcome classification). */
+export const FLOOR2_TIMEOUT_GOAL_ID = 'floor2-timeout';
 
 /** Goal-flag name for a family's den-unlock latch. */
 export function denUnlockGoalId(familyId: FamilyId): string {
@@ -330,6 +354,38 @@ export function installBossDenDoorLocks(
 }
 
 /**
+ * Wire RESOURCE_HEART doors to the floor2-victory latch.
+ * Doors start closed+locked and unlock once the floor victory condition is met.
+ */
+export function installResourceHeartDoorLocks(world: GameWorld, floorMap: FloorMap): number[] {
+  const created: number[] = [];
+  const room = floorMap.roomGraph.getFirstRoomByRole(RoomRole.RESOURCE_HEART);
+  if (!room) return created;
+  for (const door of room.doors) {
+    const doorEid = createEntity(world);
+    addComponent(
+      world.ecs,
+      doorEid,
+      set(DoorState, {
+        tileX: door.x,
+        tileY: door.y,
+        isOpen: 0,
+        isLocked: 1,
+        wasUnlocked: 0,
+      }),
+    );
+    setDoorLockConfig(world, doorEid, {
+      unlock: {
+        operator: 'all',
+        conditions: [{ type: 'goal', goalId: FLOOR2_VICTORY_GOAL_ID }],
+      },
+    });
+    created.push(doorEid);
+  }
+  return created;
+}
+
+/**
  * Full floor-init pipeline for Slice 4. Idempotent under a same-seed rerun
  * because both the roster and the archetype pick derive from `world.rng` /
  * static data.
@@ -471,6 +527,7 @@ export function floor2ObjectiveTick(world: GameWorld): void {
   // Check collapse timer and end floor if expired
   const manifest = getFloorManifest('floor2');
   if (manifest?.timer && world.elapsedMs >= manifest.timer.durationMs) {
+    setGoalFlag(world, FLOOR2_TIMEOUT_GOAL_ID, true);
     world.state = 'game_over';
   }
 
@@ -636,6 +693,7 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
   world.floorScenario = null;
   setGoalFlag(world, FLOOR2_VICTORY_GOAL_ID, false);
   setGoalFlag(world, FLOOR2_STAIRS_POPPED_GOAL_ID, false);
+  setGoalFlag(world, FLOOR2_TIMEOUT_GOAL_ID, false);
 
   removeStatModifiers(world, 'floor', 'floor2-manifest-player');
   if (manifest.player.moveSpeedBonus > 0) {
@@ -688,11 +746,15 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
     roomHeightRange: manifest.map.roomHeightRange,
     maxRooms: manifest.map.maxRooms,
     floorDensity: manifest.map.floorDensity,
-    caveSystem: { presentCount: roster.presentFamilies.length },
+    caveSystem: {
+      ...FLOOR2_CAVE_SYSTEM_DEFAULTS,
+      presentCount: roster.presentFamilies.length,
+    },
   };
   const floorMap = getGenerator(mapConfig.biome).generate(mapConfig, world.rng);
   world.floorMap = floorMap;
   attachBarriersToFloorMap(world);
+  installResourceHeartDoorLocks(world, floorMap);
   world.floor = 2;
   world.floorId = 'floor2';
   const spawn = floorMap.tileToWorld(floorMap.playerSpawn.x, floorMap.playerSpawn.y);
@@ -899,16 +961,16 @@ export function getQuadrantForPosition(
 export function getQuadrantSpawnWeights(playerQuadrant: string): Map<string, number> {
   const weights = new Map<string, number>();
   const neighbors = new Map<string, string[]>([
-    ['N', ['E', 'W']],
-    ['S', ['E', 'W']],
-    ['E', ['N', 'S']],
-    ['W', ['N', 'S']],
+    ['N', ['E', 'S']],
+    ['S', ['N', 'W']],
+    ['E', ['N', 'W']],
+    ['W', ['S', 'E']],
   ]);
   const opposite = new Map<string, string>([
-    ['N', 'S'],
-    ['S', 'N'],
-    ['E', 'W'],
-    ['W', 'E'],
+    ['N', 'W'],
+    ['S', 'E'],
+    ['E', 'S'],
+    ['W', 'N'],
   ]);
 
   weights.set(playerQuadrant, 0.5); // Main: 50%

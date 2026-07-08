@@ -135,8 +135,10 @@ export interface Floor2ShopInstance {
  * lab, tests, and HUD (Slice 7).
  */
 export interface Floor2SettlementSnapshot {
-  /** Room id in `world.floorMap.roomGraph` for the settlement (now retagged SAFE). */
+  /** Anchor room id (the settlement bar) in `world.floorMap.roomGraph` for the SAFE settlement cluster. */
   readonly settlementRoomId: number;
+  /** All room ids that compose the settlement cluster (bar + annex rooms). */
+  readonly settlementRoomIds: readonly number[];
   /** EID of the spawned Broker NPC, or -1 if the def was not registered. */
   readonly brokerEid: number;
   /** 1–2 seeded shop instances. */
