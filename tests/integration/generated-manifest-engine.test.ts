@@ -10,7 +10,7 @@
  * Grounds the loader in real filesystem behaviour without booting Phaser.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -18,11 +18,7 @@ import {
   fetchGeneratedSpriteRegistry,
   preloadGeneratedSprites,
 } from '../../src/engine/generatedAssets/index.js';
-import {
-  GENERATED_MANIFEST_VERSION,
-  pickGeneratedVariant,
-} from '../../src/shared/generated-assets.js';
-import { getItemById } from '../../src/shared/items.js';
+import { GENERATED_MANIFEST_VERSION } from '../../src/shared/generated-assets.js';
 import { getSetPieceDef, installDefaultSetPiecePacks } from '../../src/shared/set-piece-types.js';
 import {
   GENERATED_KEY_BY_NPC_DEF,
@@ -30,6 +26,7 @@ import {
   pickGeneratedHarvestableTextureKey,
 } from '../../src/engine/phaser-bridge/sprite-kind.js';
 import { HARVESTABLE_DEFS } from '../../src/shared/harvestableDefs.js';
+import { isPlaceholderEntry, resolveItemSprite } from '../../src/shared/item-sprites.js';
 
 const REPO_MANIFEST = path.resolve(__dirname, '../../public/assets/generated/manifest.json');
 
@@ -205,6 +202,25 @@ describe('generated manifest -> engine chain (fixture)', () => {
 });
 
 describe('generated manifest -> engine chain (real repo manifest)', () => {
+  // Build the real-manifest registry ONCE for the table-driven item cases below,
+  // rather than re-reading + re-parsing the on-disk manifest for every row.
+  let sharedRealRegistry: Awaited<ReturnType<typeof fetchGeneratedSpriteRegistry>> | null = null;
+  beforeAll(async () => {
+    if (!existsSync(REPO_MANIFEST)) {
+      return;
+    }
+    const raw = readFileSync(REPO_MANIFEST, 'utf8');
+    const fetcher = (async () =>
+      new Response(raw, {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })) as unknown as typeof fetch;
+    sharedRealRegistry = await fetchGeneratedSpriteRegistry({
+      url: '/assets/generated/manifest.json',
+      fetcher,
+    });
+  });
+
   it('parses the checked-in manifest without throwing', async () => {
     if (!existsSync(REPO_MANIFEST)) {
       // First boot in a fresh checkout. The loader must still soft-fail.
@@ -225,47 +241,71 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     expect(typeof registry.size).toBe('number');
   });
 
-  it('wires the classified-dossier item to real approved art, not the placeholder', async () => {
-    if (!existsSync(REPO_MANIFEST)) {
-      // Fresh checkout without generated art on disk — nothing to observe.
-      return;
-    }
-    const raw = readFileSync(REPO_MANIFEST, 'utf8');
-    const fetcher = (async () =>
-      new Response(raw, {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      })) as unknown as typeof fetch;
-    const registry = await fetchGeneratedSpriteRegistry({
-      url: '/assets/generated/manifest.json',
-      fetcher,
-    });
+  // Every migratable Floor-1 item must resolve — BY ITEM ID — to its real,
+  // approved generated art, never the 2×2 placeholder. This is the deterministic
+  // real-artifact gate for the "one item sprite, no separate icon" change
+  // (ADR 0051): it loads the SHIPPED manifest and exercises `resolveItemSprite`,
+  // the exact resolution path the inventory + equipment panels use. It is
+  // migration-state agnostic — it holds BEFORE the on-disk rename (resolver
+  // returns the real `<concept>-vN` key) and AFTER (resolver returns the bare
+  // `<concept>` key), because `resolveItemSprite` de-prioritizes placeholders and
+  // is version-tolerant. `bone-club` deliberately has no item-id art of its own;
+  // it must resolve through its weapon alias (`baseball-bat`).
+  const ITEM_ART_EXPECTATIONS: ReadonlyArray<{ itemId: string; concept: string }> = [
+    { itemId: 'bone-shard', concept: 'bone-shard' },
+    { itemId: 'camera-lens', concept: 'camera-lens' },
+    { itemId: 'classified-dossier', concept: 'classified-dossier' },
+    { itemId: 'copper-ore', concept: 'copper-ore' },
+    { itemId: 'crystal-fiber', concept: 'crystal-fiber' },
+    { itemId: 'crystal-wand', concept: 'crystal-wand' },
+    { itemId: 'directors-cue-card', concept: 'directors-cue-card' },
+    { itemId: 'dragon-scale', concept: 'dragon-scale' },
+    { itemId: 'flame-dagger', concept: 'flame-dagger' },
+    { itemId: 'glistening-rat-tail', concept: 'glistening-rat-tail' },
+    { itemId: 'iron-ore', concept: 'iron-ore' },
+    { itemId: 'merchants-stained-charm', concept: 'merchants-stained-charm' },
+    { itemId: 'old-sock', concept: 'old-sock' },
+    { itemId: 'pebble', concept: 'pebble' },
+    { itemId: 'rusted-scrap', concept: 'rusted-scrap' },
+    // The baseball bat's item id is `bone-club`; its art is keyed `baseball-bat-*`
+    // and it resolves via the weaponId alias, not a bare `bone-club` texture.
+    { itemId: 'bone-club', concept: 'baseball-bat' },
+  ];
 
-    // The item must point its icon at the versioned brief that carries real art.
-    const item = getItemById('classified-dossier');
-    expect(item?.icon).toBe('classified-dossier-v1');
+  it.each(ITEM_ART_EXPECTATIONS)(
+    'resolves item "$itemId" to real approved art, never a placeholder',
+    ({ itemId, concept }) => {
+      if (!sharedRealRegistry) {
+        // Fresh checkout without generated art on disk — nothing to observe.
+        return;
+      }
+      const registry = sharedRealRegistry;
 
-    // AFTER (wired): the versioned brief resolves to real, approved variants —
-    // every resolved asset path is checked-in art, never a placeholder.
-    const wired = registry.variants('classified-dossier-v1');
-    expect(wired.length).toBeGreaterThan(0);
-    for (const entry of wired) {
-      expect(entry.assetPath).toContain('classified-dossier-v1');
-      expect(entry.assetPath).not.toContain('placeholder');
-    }
-    // Deterministic pick (mirrors the runtime InventoryUI resolution) is real.
-    const picked = pickGeneratedVariant(registry, item!.icon, 0);
-    expect(picked?.assetPath).toContain('classified-dossier-v1');
-    expect(picked?.assetPath).not.toContain('placeholder');
+      // Resolution is deterministic per (itemId, seed); across seeds it must stay
+      // on real art (placeholders are fallback-only).
+      for (const seed of [0, 1, 7, 42]) {
+        const entry = resolveItemSprite(registry, itemId, seed);
+        expect(entry, `no generated art resolved for "${itemId}" (seed ${seed})`).not.toBeNull();
+        expect(
+          isPlaceholderEntry(entry!),
+          `"${itemId}" resolved to a placeholder (${entry!.textureKey}) at seed ${seed}`,
+        ).toBe(false);
+        expect(entry!.assetPath).not.toContain('placeholder');
 
-    // Historical context (deliberately NOT asserted — scoped to today's manifest
-    // shape): before this fix the item resolved via its bare id
-    // `classified-dossier`, whose only manifest entry is the 16×16 placeholder,
-    // so the inventory rendered a placeholder. The durable guards are the ones
-    // above (icon override → versioned brief → real, non-placeholder art); we
-    // avoid asserting the bare concept's manifest internals so a future pipeline
-    // change (alias generation, concept-collapsing) can't false-fail this test.
-  });
+        // briefId is the bare concept (post-migration) or `<concept>-vN` (pre-migration).
+        const bareMatch = entry!.briefId === concept;
+        const versionedMatch = new RegExp(`^${concept}-v\\d+$`).test(entry!.briefId);
+        expect(
+          bareMatch || versionedMatch,
+          `"${itemId}" resolved to briefId "${entry!.briefId}", not a "${concept}" lineage`,
+        ).toBe(true);
+
+        // The resolved art's PNG is checked-in on disk (assetPath is relative to public/assets/).
+        const pngPath = path.resolve(path.dirname(REPO_MANIFEST), '..', entry!.assetPath);
+        expect(existsSync(pngPath), `missing PNG on disk: ${pngPath}`).toBe(true);
+      }
+    },
+  );
 
   it('wires the welcome-room set-piece props to shipped generated art (no placeholders)', async () => {
     if (!existsSync(REPO_MANIFEST)) {

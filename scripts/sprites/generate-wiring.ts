@@ -7,7 +7,12 @@
  *   1. src/shared/mobDefs.ts (spriteId replacements)
  *   2. src/shared/data/entity-sprite-mappings.json (renderKinds generated pins)
  *
- * Manifest items (resolved by itemId === briefId) require no code changes.
+ * Manifest-only item placeholders are NOT wired here. Item icons resolve via
+ * `resolveItemSprite(itemId)` (version-tolerant, placeholder-deprioritized;
+ * ADR 0051), so a manifest-only placeholder whose real art is versioned
+ * (`iron-ore-v1-var-N`) is a DATA-MIGRATION candidate for
+ * `npm run sprites:normalize-item-art` (re-key the real art to the bare item id
+ * and retire the placeholder) — it is NOT auto-resolved by `itemId === briefId`.
  *
  * The CLI wrapper (generate-wiring-cli.ts) does file IO and applies the patches.
  */
@@ -36,7 +41,13 @@ export interface WiringPlan {
   readonly summary: string;
   /** Total replaceable placeholders that can be wired. */
   readonly replaceableCount: number;
-  /** Placeholders in manifest entries (auto-resolved, no code needed). */
+  /**
+   * Manifest-only placeholders (no mob-def / sprite-registry reference). For an
+   * ITEM whose real art is versioned, this is a data-migration candidate
+   * (`sprites:normalize-item-art`), NOT an auto-resolved no-op: the bare item id
+   * matches only the placeholder briefId until the real art is re-keyed bare.
+   * Runtime resolution is handled separately by `resolveItemSprite` (ADR 0051).
+   */
   readonly manifestOnly: readonly ConceptAudit[];
   /** Placeholders in sprite registry or mob defs (require wiring). */
   readonly needsWiring: readonly ConceptAudit[];
@@ -53,7 +64,10 @@ interface ConceptMapping {
  * Generate wiring patches from a placeholder-audit report. Pure.
  *
  * Only processes replaceable placeholders (exact concept match, no suggestions).
- * Skips manifest-only entries (they auto-resolve by itemId === briefId).
+ * Skips manifest-only entries: they carry no mob-def / sprite-registry code
+ * reference to patch. Item icons resolve at runtime via `resolveItemSprite`
+ * (ADR 0051); a manifest-only item placeholder with versioned real art is a
+ * `sprites:normalize-item-art` data-migration candidate, not a code patch.
  */
 export function generateWiringPlan(report: PlaceholderAuditReport): WiringPlan {
   const patches: CodePatch[] = [];
@@ -199,7 +213,7 @@ function renderWiringSummary(
   lines.push('');
 
   lines.push(`Replaceable placeholders found: ${replaceable.length}`);
-  lines.push(`  - Manifest-only (auto-resolved): ${manifestOnly.length}`);
+  lines.push(`  - Manifest-only (migrate via sprites:normalize-item-art): ${manifestOnly.length}`);
   lines.push(`  - Need wiring (code changes): ${needsWiring.length}`);
   lines.push('');
 
@@ -209,7 +223,10 @@ function renderWiringSummary(
       lines.push(`  [${patch.filePath}] ${patch.description}`);
     }
   } else {
-    lines.push('No code patches needed (all placeholders are manifest-only).');
+    lines.push(
+      'No code patches needed. Any manifest-only item placeholders are ' +
+        'data-migration candidates (sprites:normalize-item-art), not code wiring.',
+    );
   }
 
   lines.push('');

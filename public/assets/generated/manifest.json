@@ -747,22 +747,10 @@
       "judgeScore": null,
       "type": null
     },
-    "bone-shard-placeholder": {
+    "bone-shard-var-1": {
       "briefId": "bone-shard",
-      "spriteName": "bone-shard",
-      "assetPath": "generated/bone-shard-placeholder.png",
-      "approvedAt": "2026-06-23T00:55:52.047Z",
-      "sourceRun": "placeholder",
-      "variantIndex": 0,
-      "anchor": null,
-      "sensorScore": "placeholder",
-      "judgeScore": null,
-      "type": "item"
-    },
-    "bone-shard-v1-var-1": {
-      "briefId": "bone-shard-v1",
-      "spriteName": "bone-shard-v1-var-1",
-      "assetPath": "generated/bone-shard-v1-var-1.png",
+      "spriteName": "bone-shard-var-1",
+      "assetPath": "generated/bone-shard-var-1.png",
       "approvedAt": "2026-07-01T23:57:24.944Z",
       "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-EZxWIo/bone-shard-v1/2026-07-01T22-43-18-d7d3dcba",
       "variantIndex": 1,
@@ -780,10 +768,10 @@
       "type": "item",
       "contentHash": "408f3d3f9a37b4d16c0af30bcc7250c1ac1d755ae9a41b0168a1533a54d45de4"
     },
-    "bone-shard-v1-var-3": {
-      "briefId": "bone-shard-v1",
-      "spriteName": "bone-shard-v1-var-3",
-      "assetPath": "generated/bone-shard-v1-var-3.png",
+    "bone-shard-var-3": {
+      "briefId": "bone-shard",
+      "spriteName": "bone-shard-var-3",
+      "assetPath": "generated/bone-shard-var-3.png",
       "approvedAt": "2026-07-01T23:57:19.120Z",
       "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-191jRm/bone-shard-v1/2026-07-01T22-43-18-d7d3dcba",
       "variantIndex": 3,
@@ -801,10 +789,10 @@
       "type": "item",
       "contentHash": "c35d08db740d34afee830dfcb7f560080272fcccda7c770e8cdb7f116a9b00a0"
     },
-    "bone-shard-v1-var-6": {
-      "briefId": "bone-shard-v1",
-      "spriteName": "bone-shard-v1-var-6",
-      "assetPath": "generated/bone-shard-v1-var-6.png",
+    "bone-shard-var-6": {
+      "briefId": "bone-shard",
+      "spriteName": "bone-shard-var-6",
+      "assetPath": "generated/bone-shard-var-6.png",
       "approvedAt": "2026-07-01T23:57:27.537Z",
       "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-dmeXcS/bone-shard-v1/2026-07-01T22-43-18-d7d3dcba",
       "variantIndex": 6,
@@ -894,22 +882,10 @@
       "judgeScore": null,
       "type": "item"
     },
-    "camera-lens-placeholder": {
+    "camera-lens-var-0": {
       "briefId": "camera-lens",
-      "spriteName": "camera-lens",
-      "assetPath": "generated/camera-lens-placeholder.png",
-      "approvedAt": "2026-06-24T03:52:54.420Z",
-      "sourceRun": "placeholder",
-      "variantIndex": 0,
-      "anchor": null,
-      "sensorScore": "placeholder",
-      "judgeScore": null,
-      "type": "item"
-    },
-    "camera-lens-v1-var-0": {
-      "briefId": "camera-lens-v1",
-      "spriteName": "camera-lens-v1-var-0",
-      "assetPath": "generated/camera-lens-v1-var-0.png",
+      "spriteName": "camera-lens-var-0",
+      "assetPath": "generated/camera-lens-var-0.png",
       "approvedAt": "2026-07-02T03:01:49.053Z",
       "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-UTQS7o/camera-lens-v1/2026-07-02T00-15-27-88f5a172",
       "variantIndex": 0,
@@ -959,22 +935,10 @@
       "judgeScore": null,
       "type": null
     },
-    "classified-dossier-placeholder": {
+    "classified-dossier-var-1": {
       "briefId": "classified-dossier",
-      "spriteName": "classified-dossier",
-      "assetPath": "generated/classified-dossier-placeholder.png",
-      "approvedAt": "2026-06-24T03:52:54.418Z",
-      "sourceRun": "placeholder",
-      "variantIndex": 0,
-      "anchor": null,
-      "sensorScore": "placeholder",
-      "judgeScore": null,
-      "type": "character"
-    },
-    "classified-dossier-v1-var-1": {
-      "briefId": "classified-dossier-v1",
-      "spriteName": "classified-dossier-v1-var-1",
-      "assetPath": "generated/classified-dossier-v1-var-1.png",
+      "spriteName": "classified-dossier-var-1",
+      "assetPath": "generated/classified-dossier-var-1.png",
       "approvedAt": "2026-07-02T17:09:45.354Z",
       "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-43fp4Q/classified-dossier-v1/2026-07-02T06-18-39-8a4f737b",
       "variantIndex": 1,
@@ -1000,10 +964,10 @@
       "type": "character",
       "contentHash": "f88d72535b4d9e8609b048200b982adcc21fc2bb2a567a24a993c980b9ef92de"
     },
-    "classified-dossier-v1-var-2": {
-      "briefId": "classified-dossier-v1",
-      "spriteName": "classified-dossier-v1-var-2",
-      "assetPath": "generated/classified-dossier-v1-var-2.png",
+    "classified-dossier-var-2": {
+      "briefId": "classified-dossier",
+      "spriteName": "classified-dossier-var-2",
+      "assetPath": "generated/classified-dossier-var-2.png",
       "approvedAt": "2026-07-02T17:09:51.403Z",
       "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-D435Fh/classified-dossier-v1/2026-07-02T06-18-39-8a4f737b",
       "variantIndex": 2,
@@ -1029,10 +993,10 @@
       "type": "character",
       "contentHash": "0c9c7d748c4510f3fe2693a97601a47b4aa4a1a2d1077f3403e60c335e807881"
     },
-    "classified-dossier-v1-var-5": {
-      "briefId": "classified-dossier-v1",
-      "spriteName": "classified-dossier-v1-var-5",
-      "assetPath": "generated/classified-dossier-v1-var-5.png",
+    "classified-dossier-var-5": {
+      "briefId": "classified-dossier",
+      "spriteName": "classified-dossier-var-5",
+      "assetPath": "generated/classified-dossier-var-5.png",
       "approvedAt": "2026-07-02T17:10:01.342Z",
       "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-J5tygC/classified-dossier-v1/2026-07-02T06-18-39-8a4f737b",
       "variantIndex": 5,
@@ -1082,22 +1046,10 @@
       "judgeScore": null,
       "type": null
     },
-    "copper-ore-placeholder": {
+    "copper-ore-var-6": {
       "briefId": "copper-ore",
-      "spriteName": "copper-ore",
-      "assetPath": "generated/copper-ore-placeholder.png",
-      "approvedAt": "2026-06-24T03:52:54.321Z",
-      "sourceRun": "placeholder",
-      "variantIndex": 0,
-      "anchor": null,
-      "sensorScore": "placeholder",
-      "judgeScore": null,
-      "type": "item"
-    },
-    "copper-ore-v1-var-6": {
-      "briefId": "copper-ore-v1",
-      "spriteName": "copper-ore-v1-var-6",
-      "assetPath": "generated/copper-ore-v1-var-6.png",
+      "spriteName": "copper-ore-var-6",
+      "assetPath": "generated/copper-ore-var-6.png",
       "approvedAt": "2026-07-01T23:54:38.697Z",
       "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-NHu75H/copper-ore-v1/2026-07-01T23-34-30-182a81f1",
       "variantIndex": 6,
@@ -1115,22 +1067,10 @@
       "type": "item",
       "contentHash": "879cbaa25b1bc411f754fa6a8d9fe98617cdfd804156ba96c1e42994308383a4"
     },
-    "crystal-fiber-placeholder": {
+    "crystal-fiber-var-4": {
       "briefId": "crystal-fiber",
-      "spriteName": "crystal-fiber",
-      "assetPath": "generated/crystal-fiber-placeholder.png",
-      "approvedAt": "2026-06-24T03:52:54.359Z",
-      "sourceRun": "placeholder",
-      "variantIndex": 0,
-      "anchor": null,
-      "sensorScore": "placeholder",
-      "judgeScore": null,
-      "type": "item"
-    },
-    "crystal-fiber-v1-var-4": {
-      "briefId": "crystal-fiber-v1",
-      "spriteName": "crystal-fiber-v1-var-4",
-      "assetPath": "generated/crystal-fiber-v1-var-4.png",
+      "spriteName": "crystal-fiber-var-4",
+      "assetPath": "generated/crystal-fiber-var-4.png",
       "approvedAt": "2026-07-01T23:56:11.584Z",
       "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-XbFpQF/crystal-fiber-v1/2026-07-01T23-29-24-37fe9732",
       "variantIndex": 4,
@@ -1156,22 +1096,10 @@
       "type": "item",
       "contentHash": "ef0d972a8cc160aff1920c7de405c89d190f3c7ca4a6b28571591ffb0f2d7fea"
     },
-    "crystal-wand-placeholder": {
+    "crystal-wand-var-1": {
       "briefId": "crystal-wand",
-      "spriteName": "crystal-wand",
-      "assetPath": "generated/crystal-wand-placeholder.png",
-      "approvedAt": "2026-06-24T03:52:54.371Z",
-      "sourceRun": "placeholder",
-      "variantIndex": 0,
-      "anchor": null,
-      "sensorScore": "placeholder",
-      "judgeScore": null,
-      "type": "weapon"
-    },
-    "crystal-wand-v2-var-1": {
-      "briefId": "crystal-wand-v2",
-      "spriteName": "crystal-wand-v2-var-1",
-      "assetPath": "generated/crystal-wand-v2-var-1.png",
+      "spriteName": "crystal-wand-var-1",
+      "assetPath": "generated/crystal-wand-var-1.png",
       "approvedAt": "2026-07-02T03:03:33.298Z",
       "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-z5CePE/crystal-wand-v2/2026-07-01T23-23-40-adcf0b5a",
       "variantIndex": 1,
@@ -1189,10 +1117,10 @@
       "type": "weapon",
       "contentHash": "ad890d8f05abdae278f3d56292726bbdf83c68c7dc4eb8aff89e0e0d06d4144f"
     },
-    "crystal-wand-v2-var-10": {
-      "briefId": "crystal-wand-v2",
-      "spriteName": "crystal-wand-v2-var-10",
-      "assetPath": "generated/crystal-wand-v2-var-10.png",
+    "crystal-wand-var-10": {
+      "briefId": "crystal-wand",
+      "spriteName": "crystal-wand-var-10",
+      "assetPath": "generated/crystal-wand-var-10.png",
       "approvedAt": "2026-07-02T03:03:42.310Z",
       "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-O5zYAG/crystal-wand-v2/2026-07-01T23-23-40-adcf0b5a",
       "variantIndex": 10,
@@ -1210,10 +1138,10 @@
       "type": "weapon",
       "contentHash": "15050745902be375b291fe70c7f6db6048972ae319067b53e9a81f5f2daf95a9"
     },
-    "crystal-wand-v2-var-3": {
-      "briefId": "crystal-wand-v2",
-      "spriteName": "crystal-wand-v2-var-3",
-      "assetPath": "generated/crystal-wand-v2-var-3.png",
+    "crystal-wand-var-3": {
+      "briefId": "crystal-wand",
+      "spriteName": "crystal-wand-var-3",
+      "assetPath": "generated/crystal-wand-var-3.png",
       "approvedAt": "2026-07-02T03:03:39.040Z",
       "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-zSO3oR/crystal-wand-v2/2026-07-01T23-23-40-adcf0b5a",
       "variantIndex": 3,
@@ -1243,22 +1171,10 @@
       "judgeScore": null,
       "type": null
     },
-    "directors-cue-card-placeholder": {
+    "directors-cue-card-var-0": {
       "briefId": "directors-cue-card",
-      "spriteName": "directors-cue-card",
-      "assetPath": "generated/directors-cue-card-placeholder.png",
-      "approvedAt": "2026-06-24T03:52:54.422Z",
-      "sourceRun": "placeholder",
-      "variantIndex": 0,
-      "anchor": null,
-      "sensorScore": "placeholder",
-      "judgeScore": null,
-      "type": "item"
-    },
-    "directors-cue-card-v1-var-0": {
-      "briefId": "directors-cue-card-v1",
-      "spriteName": "directors-cue-card-v1-var-0",
-      "assetPath": "generated/directors-cue-card-v1-var-0.png",
+      "spriteName": "directors-cue-card-var-0",
+      "assetPath": "generated/directors-cue-card-var-0.png",
       "approvedAt": "2026-07-02T03:03:54.687Z",
       "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-uPtLq7/directors-cue-card-v1/2026-07-01T23-19-06-10018060",
       "variantIndex": 0,
@@ -1296,22 +1212,10 @@
       "judgeScore": null,
       "type": null
     },
-    "dragon-scale-placeholder": {
+    "dragon-scale-var-2": {
       "briefId": "dragon-scale",
-      "spriteName": "dragon-scale",
-      "assetPath": "generated/dragon-scale-placeholder.png",
-      "approvedAt": "2026-06-24T03:52:54.353Z",
-      "sourceRun": "placeholder",
-      "variantIndex": 0,
-      "anchor": null,
-      "sensorScore": "placeholder",
-      "judgeScore": null,
-      "type": "item"
-    },
-    "dragon-scale-v3-var-2": {
-      "briefId": "dragon-scale-v3",
-      "spriteName": "dragon-scale-v3-var-2",
-      "assetPath": "generated/dragon-scale-v3-var-2.png",
+      "spriteName": "dragon-scale-var-2",
+      "assetPath": "generated/dragon-scale-var-2.png",
       "approvedAt": "2026-07-01T23:57:00.694Z",
       "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-T1qiNe/dragon-scale-v3/2026-07-01T23-13-49-35c69f47",
       "variantIndex": 2,
@@ -1397,22 +1301,10 @@
       "judgeScore": null,
       "type": null
     },
-    "flame-dagger-placeholder": {
+    "flame-dagger-var-3": {
       "briefId": "flame-dagger",
-      "spriteName": "flame-dagger",
-      "assetPath": "generated/flame-dagger-placeholder.png",
-      "approvedAt": "2026-06-24T03:52:54.364Z",
-      "sourceRun": "placeholder",
-      "variantIndex": 0,
-      "anchor": null,
-      "sensorScore": "placeholder",
-      "judgeScore": null,
-      "type": "weapon"
-    },
-    "flame-dagger-v2-var-3": {
-      "briefId": "flame-dagger-v2",
-      "spriteName": "flame-dagger-v2-var-3",
-      "assetPath": "generated/flame-dagger-v2-var-3.png",
+      "spriteName": "flame-dagger-var-3",
+      "assetPath": "generated/flame-dagger-var-3.png",
       "approvedAt": "2026-07-02T03:02:53.052Z",
       "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-Ot8mWB/flame-dagger-v2/2026-07-01T23-42-47-e5841d6b",
       "variantIndex": 3,
@@ -1533,18 +1425,6 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": null
-    },
-    "glistening-rat-tail-placeholder": {
-      "briefId": "glistening-rat-tail",
-      "spriteName": "glistening-rat-tail",
-      "assetPath": "generated/glistening-rat-tail-placeholder.png",
-      "approvedAt": "2026-06-23T00:55:52.049Z",
-      "sourceRun": "placeholder",
-      "variantIndex": 0,
-      "anchor": null,
-      "sensorScore": "placeholder",
-      "judgeScore": null,
-      "type": "item"
     },
     "glitch-marble-placeholder": {
       "briefId": "glitch-marble",
@@ -1700,18 +1580,6 @@
       "spriteName": "iron-helm",
       "assetPath": "generated/iron-helm-placeholder.png",
       "approvedAt": "2026-07-06T00:00:00.000Z",
-      "sourceRun": "placeholder",
-      "variantIndex": 0,
-      "anchor": null,
-      "sensorScore": "placeholder",
-      "judgeScore": null,
-      "type": "item"
-    },
-    "iron-ore-placeholder": {
-      "briefId": "iron-ore",
-      "spriteName": "iron-ore",
-      "assetPath": "generated/iron-ore-placeholder.png",
-      "approvedAt": "2026-06-23T00:55:52.043Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -1953,18 +1821,6 @@
       "judgeScore": null,
       "type": null
     },
-    "merchants-stained-charm-placeholder": {
-      "briefId": "merchants-stained-charm",
-      "spriteName": "merchants-stained-charm",
-      "assetPath": "generated/merchants-stained-charm-placeholder.png",
-      "approvedAt": "2026-06-23T00:55:52.049Z",
-      "sourceRun": "placeholder",
-      "variantIndex": 0,
-      "anchor": null,
-      "sensorScore": "placeholder",
-      "judgeScore": null,
-      "type": "item"
-    },
     "mushroom-cap-placeholder": {
       "briefId": "mushroom-cap",
       "spriteName": "mushroom-cap",
@@ -2000,18 +1856,6 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": null
-    },
-    "old-sock-placeholder": {
-      "briefId": "old-sock",
-      "spriteName": "old-sock",
-      "assetPath": "generated/old-sock-placeholder.png",
-      "approvedAt": "2026-06-23T00:55:52.045Z",
-      "sourceRun": "placeholder",
-      "variantIndex": 0,
-      "anchor": null,
-      "sensorScore": "placeholder",
-      "judgeScore": null,
-      "type": "item"
     },
     "papa-slime-v1-var-0": {
       "briefId": "papa-slime-v1",
@@ -2090,18 +1934,6 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": null
-    },
-    "pebble-placeholder": {
-      "briefId": "pebble",
-      "spriteName": "pebble",
-      "assetPath": "generated/pebble-placeholder.png",
-      "approvedAt": "2026-06-23T00:55:52.048Z",
-      "sourceRun": "placeholder",
-      "variantIndex": 0,
-      "anchor": null,
-      "sensorScore": "placeholder",
-      "judgeScore": null,
-      "type": "item"
     },
     "phoenix-tear-placeholder": {
       "briefId": "phoenix-tear",
@@ -3082,18 +2914,6 @@
       "effectivePipelineSnapshotPath": null,
       "effectivePipelineSnapshotYamlPath": null,
       "effectiveAnchorSource": "brief"
-    },
-    "rusted-scrap-placeholder": {
-      "briefId": "rusted-scrap",
-      "spriteName": "rusted-scrap",
-      "assetPath": "generated/rusted-scrap-placeholder.png",
-      "approvedAt": "2026-06-23T00:55:52.044Z",
-      "sourceRun": "placeholder",
-      "variantIndex": 0,
-      "anchor": null,
-      "sensorScore": "placeholder",
-      "judgeScore": null,
-      "type": "item"
     },
     "rusty-shiv-placeholder": {
       "briefId": "rusty-shiv",
@@ -4539,10 +4359,10 @@
       "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived"
     },
-    "glistening-rat-tail-v1-var-2": {
-      "briefId": "glistening-rat-tail-v1",
-      "spriteName": "glistening-rat-tail-v1-var-2",
-      "assetPath": "generated/glistening-rat-tail-v1-var-2.png",
+    "glistening-rat-tail-var-2": {
+      "briefId": "glistening-rat-tail",
+      "spriteName": "glistening-rat-tail-var-2",
+      "assetPath": "generated/glistening-rat-tail-var-2.png",
       "approvedAt": "2026-07-08T00:17:15.703Z",
       "sourceRun": "generated/runs/glistening-rat-tail-v1/2026-07-07T23-51-12-30098a40",
       "variantIndex": 2,
@@ -4573,10 +4393,10 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
-    "iron-ore-v1-var-0": {
-      "briefId": "iron-ore-v1",
-      "spriteName": "iron-ore-v1-var-0",
-      "assetPath": "generated/iron-ore-v1-var-0.png",
+    "iron-ore-var-0": {
+      "briefId": "iron-ore",
+      "spriteName": "iron-ore-var-0",
+      "assetPath": "generated/iron-ore-var-0.png",
       "approvedAt": "2026-07-08T00:17:14.721Z",
       "sourceRun": "generated/runs/iron-ore-v1/2026-07-07T23-54-29-5c27396d",
       "variantIndex": 0,
@@ -4607,10 +4427,10 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
-    "merchants-stained-charm-v1-var-0": {
-      "briefId": "merchants-stained-charm-v1",
-      "spriteName": "merchants-stained-charm-v1-var-0",
-      "assetPath": "generated/merchants-stained-charm-v1-var-0.png",
+    "merchants-stained-charm-var-0": {
+      "briefId": "merchants-stained-charm",
+      "spriteName": "merchants-stained-charm-var-0",
+      "assetPath": "generated/merchants-stained-charm-var-0.png",
       "approvedAt": "2026-07-08T00:17:16.680Z",
       "sourceRun": "generated/runs/merchants-stained-charm-v1/2026-07-08T00-04-17-5583442f",
       "variantIndex": 0,
@@ -4641,10 +4461,10 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
-    "old-sock-v1-var-4": {
-      "briefId": "old-sock-v1",
-      "spriteName": "old-sock-v1-var-4",
-      "assetPath": "generated/old-sock-v1-var-4.png",
+    "old-sock-var-4": {
+      "briefId": "old-sock",
+      "spriteName": "old-sock-var-4",
+      "assetPath": "generated/old-sock-var-4.png",
       "approvedAt": "2026-07-08T00:17:17.652Z",
       "sourceRun": "generated/runs/old-sock-v1/2026-07-07T23-57-53-f6268e31",
       "variantIndex": 4,
@@ -4675,10 +4495,10 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
-    "pebble-v1-var-1": {
-      "briefId": "pebble-v1",
-      "spriteName": "pebble-v1-var-1",
-      "assetPath": "generated/pebble-v1-var-1.png",
+    "pebble-var-1": {
+      "briefId": "pebble",
+      "spriteName": "pebble-var-1",
+      "assetPath": "generated/pebble-var-1.png",
       "approvedAt": "2026-07-08T00:17:13.724Z",
       "sourceRun": "generated/runs/pebble-v1/2026-07-08T00-07-14-e9891db2",
       "variantIndex": 1,
@@ -4735,10 +4555,10 @@
       "effectiveAnchorSource": null,
       "facingDirection": "right"
     },
-    "rusted-scrap-v1-var-0": {
-      "briefId": "rusted-scrap-v1",
-      "spriteName": "rusted-scrap-v1-var-0",
-      "assetPath": "generated/rusted-scrap-v1-var-0.png",
+    "rusted-scrap-var-0": {
+      "briefId": "rusted-scrap",
+      "spriteName": "rusted-scrap-var-0",
+      "assetPath": "generated/rusted-scrap-var-0.png",
       "approvedAt": "2026-07-08T00:17:18.648Z",
       "sourceRun": "generated/runs/rusted-scrap-v1/2026-07-08T00-01-17-ca094eed",
       "variantIndex": 0,

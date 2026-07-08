@@ -23,7 +23,6 @@ const CATALOG: ItemDef[] = [
     tags: ['Weapons'],
     rarity: ItemRarity.Rare,
     maxStack: 1,
-    icon: 'stack-1',
   },
   {
     id: 'stack-5',
@@ -32,7 +31,6 @@ const CATALOG: ItemDef[] = [
     tags: ['Consumables'],
     rarity: ItemRarity.Uncommon,
     maxStack: 5,
-    icon: 'stack-5',
   },
   {
     id: 'stack-20',
@@ -41,7 +39,6 @@ const CATALOG: ItemDef[] = [
     tags: ['Materials'],
     rarity: ItemRarity.Common,
     maxStack: 20,
-    icon: 'stack-20',
   },
 ];
 
