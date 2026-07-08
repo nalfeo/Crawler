@@ -6502,6 +6502,108 @@
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\ratfolk-plague\\2026-07-08T04-37-38-9ce6303d\\postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
+    },
+    "geese-honker-var-13": {
+      "briefId": "geese-honker",
+      "spriteName": "geese-honker-var-13",
+      "assetPath": "generated/geese-honker-var-13.png",
+      "approvedAt": "2026-07-08T05:17:25.997Z",
+      "sourceRun": "generated/runs/geese-honker/2026-07-08T05-12-25-5b1d7a49",
+      "variantIndex": 13,
+      "anchor": {
+        "x": 30,
+        "y": 32,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 30,
+          "y": 32,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "7924f1f30687cb883eb521c5e9f3cc862080c4293abe51754e3d7492875d9af8",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\geese-honker\\2026-07-08T05-12-25-5b1d7a49\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\geese-honker\\2026-07-08T05-12-25-5b1d7a49\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\geese-honker\\2026-07-08T05-12-25-5b1d7a49\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "molefolk-burrower-var-1": {
+      "briefId": "molefolk-burrower",
+      "spriteName": "molefolk-burrower-var-1",
+      "assetPath": "generated/molefolk-burrower-var-1.png",
+      "approvedAt": "2026-07-08T05:11:39.690Z",
+      "sourceRun": "generated/runs/molefolk-burrower/2026-07-08T05-05-46-350b03d1",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 33,
+        "y": 33,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 33,
+          "y": 33,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 33,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "381f80638416fdf91eddc8ba051a2d6d0d3432171b8671c92a47d85ca969f89f",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\molefolk-burrower\\2026-07-08T05-05-46-350b03d1\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\molefolk-burrower\\2026-07-08T05-05-46-350b03d1\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\molefolk-burrower\\2026-07-08T05-05-46-350b03d1\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "raccoon-thief-var-0": {
+      "briefId": "raccoon-thief",
+      "spriteName": "raccoon-thief-var-0",
+      "assetPath": "generated/raccoon-thief-var-0.png",
+      "approvedAt": "2026-07-08T05:15:53.555Z",
+      "sourceRun": "generated/runs/raccoon-thief/2026-07-08T05-09-05-00c19274",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 33,
+        "y": 34,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 33,
+          "y": 34,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 33,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "d336e0c1b3ac578cfe35f52f0ee57d0260ba24a9a0a8a8d92ee74b2bb5d12be1",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\raccoon-thief\\2026-07-08T05-09-05-00c19274\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\raccoon-thief\\2026-07-08T05-09-05-00c19274\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\raccoon-thief\\2026-07-08T05-09-05-00c19274\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     }
   }
 }
