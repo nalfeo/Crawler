@@ -1,5 +1,16 @@
 [
   {
+    "commit": "4edfa56013ffc0ea7c6cf92f1ba327f3641820d0",
+    "commitDate": "2026-07-08T08:11:58Z",
+    "commitSubject": "fix(devtools): make agent-perf-panel Waterfall a real shared-axis waterfall + add context-window pressure strip (#842)",
+    "capturedAt": "2026-07-08T08:52:30.408Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28928219176",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/4edfa56013ffc0ea7c6cf92f1ba327f3641820d0.json"
+  },
+  {
     "commit": "fce56dfdb386be24626c730e77adea0b363cc173",
     "commitDate": "2026-07-08T07:41:44Z",
     "commitSubject": "feat: render welcome-room set-piece with real generated art + engine-backed lab (#905)",
