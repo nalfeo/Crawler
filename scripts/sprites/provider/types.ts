@@ -29,10 +29,11 @@ export interface GenerateSheetRequest {
   readonly singleVariantPrompt?: string;
   readonly referencePngs: ReadonlyArray<Buffer>;
   /**
-   * Number of variants the model is asked to produce on the sheet.
-   * Always matches `variantCount(brief)` in normal operation; exposed
-   * separately so callers can override during retries (e.g., bump from
-   * 8 to 9 if the model keeps drawing 9 cells when asked for 8).
+   * Number of variants the model is ASKED to produce on the sheet (the brief's
+   * commanded count, `variantCount(brief)`). This is a generation hint only —
+   * the slicer is data-driven and accepts whatever grid the model actually draws
+   * (see ADR "slicer-data-driven-grid-salvage"), so a mismatch no longer forces a
+   * count-based retry. Exposed separately so callers can still override the hint.
    */
   readonly variants: number;
   /**

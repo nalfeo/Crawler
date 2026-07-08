@@ -10,10 +10,19 @@
  * - cells come back in row-major reading order with non-overlapping bounds;
  * - the *bare* map (no `expectedGrid`) is pure content-aware — the brief's
  *   rows/cols do NOT drive it (this is the debugger path);
- * - on the generation path `sliceSheetFromBrief` passes the brief's rows/cols as
- *   `expectedGrid`, which reconciles the detected grid to the commanded cell
- *   count (drop spurious gutters, or uniform-split when under-segmented), so
- *   every sheet reaches human gallery review;
+ * - on the generation path the brief's rows/cols are a SOFT anchor only. The
+ *   slicer NEVER invents a cut: it cuts only at real detected gutters, picks the
+ *   detected-cut subset that yields the most same-sized cells, and trims a runt
+ *   leading/trailing edge cell (an incomplete partial sprite the model tacked
+ *   on). It therefore carries the HONEST, data-driven grid/count to human
+ *   gallery review — it never forces the commanded count by slicing through
+ *   foreground art. That was the "chopping the right side" bug: a wide
+ *   `welcome-room-shop-table` sheet drawn 3-wide but commanded 4-wide had a
+ *   uniform 4-col split driven straight through every table. See ADR
+ *   2026-07-08-slicer-never-cut-art.
+ * - `sliceSheetFromBrief`/`sliceSheetWithGrid` return the ACTUAL grid + count
+ *   (a `BriefSliceResult`) so the caller persists the real grid, not the
+ *   commanded one;
  * - a fast-check property asserts the universal invariant over arbitrary grids.
  */
 
@@ -24,6 +33,7 @@ import {
   computeSliceMap,
   sliceSheet,
   sliceSheetFromBrief,
+  sliceSheetWithGrid,
 } from '../../../scripts/sprites/slice-sheet.js';
 import type { Brief } from '../../../scripts/sprites/brief-schema.js';
 
@@ -80,6 +90,42 @@ function encodeContentGrid(
   return PNG.sync.write(png);
 }
 
+/**
+ * One row of solid-colour blocks with the given (possibly uneven) widths,
+ * separated by `gutter`, on a white sheet with `margin`. No internal splits —
+ * this exercises the runt-edge trim + same-size selection over honest detected
+ * columns (the "chopping the right side" salvage path).
+ */
+function encodeRowWidths(widths: readonly number[], gutter: number, margin: number): Buffer {
+  const total = widths.reduce((a, b) => a + b, 0);
+  const width = margin * 2 + total + (widths.length - 1) * gutter;
+  const block = 10;
+  const height = margin * 2 + block;
+  const png = new PNG({ width, height });
+  for (let i = 0; i < png.data.length; i += 4) {
+    png.data[i] = BG.r;
+    png.data[i + 1] = BG.g;
+    png.data[i + 2] = BG.b;
+    png.data[i + 3] = 255;
+  }
+  let x0 = margin;
+  const y0 = margin;
+  for (let c = 0; c < widths.length; c++) {
+    const w = widths[c]!;
+    const col: Rgb = { r: 40 + c * 30, g: 60, b: 200 - c * 20 };
+    for (let y = y0; y < y0 + block; y++) {
+      for (let x = x0; x < x0 + w; x++) {
+        const i = (y * width + x) * 4;
+        png.data[i] = col.r;
+        png.data[i + 1] = col.g;
+        png.data[i + 2] = col.b;
+      }
+    }
+    x0 += w + gutter;
+  }
+  return PNG.sync.write(png);
+}
+
 function containsColor(buf: Buffer, color: Rgb): boolean {
   const png = PNG.sync.read(buf);
   for (let i = 0; i < png.data.length; i += 4) {
@@ -91,10 +137,39 @@ function containsColor(buf: Buffer, color: Rgb): boolean {
 }
 
 /**
+ * Count foreground (non-background) pixels sitting exactly on any of the given
+ * vertical cut columns. Background is sampled from the top-left corner, so this
+ * works for both white and chroma-key (magenta) sheets. Used to prove the
+ * generation path never drives a cut line through foreground art.
+ */
+function fgPixelsOnColumns(sheet: Buffer, cutXs: readonly number[]): number {
+  const png = PNG.sync.read(sheet);
+  const bg = { r: png.data[0], g: png.data[1], b: png.data[2] };
+  let count = 0;
+  for (const cx of cutXs) {
+    if (cx <= 0 || cx >= png.width) continue;
+    for (let y = 0; y < png.height; y++) {
+      const i = (y * png.width + cx) * 4;
+      const isBg = png.data[i] === bg.r && png.data[i + 1] === bg.g && png.data[i + 2] === bg.b;
+      if (!isBg) count++;
+    }
+  }
+  return count;
+}
+
+/** Interior cut columns (the gutter pixel just left of each col>0 cell). */
+function interiorCutXs(map: ReturnType<typeof computeSliceMap>): number[] {
+  return [...new Set(map.cells.filter((c) => c.col > 0).map((c) => c.x0 - 1))].sort(
+    (a, b) => a - b,
+  );
+}
+
+/**
  * Encode a mostly-background square sheet with a single 1px-wide vertical stroke
- * at column `strokeX` (full height). Content trims to a ~3px span — narrower
- * than a multi-column commanded grid — which exercises the under-segmentation
- * uniform-split fallback in `computeSliceMap`.
+ * at column `strokeX` (full height). Content trims to a ~3px span — a single
+ * detected column, narrower than a multi-column commanded grid — which exercises
+ * the degenerate-content path: the slicer emits the HONEST 1-cell count rather
+ * than inventing cuts to reach the commanded columns.
  */
 function encodeThinVerticalStroke(size: number, strokeX: number): Buffer {
   const png = new PNG({ width: size, height: size });
@@ -114,27 +189,27 @@ function encodeThinVerticalStroke(size: number, strokeX: number): Buffer {
   return PNG.sync.write(png);
 }
 
-describe('computeSliceMap under-segmentation fallback (degenerate content)', () => {
-  it('emits the commanded count with no zero-size cells when content is too thin to cut', () => {
+describe('computeSliceMap degenerate content (honest count, never invents cuts)', () => {
+  it('emits the honest single-cell count when content is too thin to cut', () => {
     // A near-empty sheet: one 1px vertical stroke trims to a ~3px content span,
-    // narrower than the commanded 4 columns. The uniform fallback must widen to
-    // the full axis rather than collapse adjacent cuts onto the same pixel and
-    // produce a zero-width cell — which would crash extraction. Bad generations
-    // like this must carry through to human gallery review, not throw.
+    // so only ONE column is detected. The commanded 4 columns are a soft anchor
+    // only — the slicer must NOT invent 3 extra cuts through the (near-empty)
+    // sheet just to hit 4. It emits the honest 1 cell and carries the bad
+    // generation through to human gallery review, without crashing.
     const sheet = encodeThinVerticalStroke(16, 8);
 
     const map = computeSliceMap(sheet, { expectedGrid: { rows: 1, cols: 4 } });
     expect(map.rows).toBe(1);
-    expect(map.cols).toBe(4);
-    expect(map.cells).toHaveLength(4);
+    expect(map.cols).toBe(1);
+    expect(map.cells).toHaveLength(1);
     for (const cell of map.cells) {
       expect(cell.w).toBeGreaterThanOrEqual(1);
       expect(cell.h).toBeGreaterThanOrEqual(1);
     }
 
-    // Extraction must not throw, and must return the commanded number of cells.
+    // Extraction must not throw, and returns the honest single cell.
     const cells = sliceSheet(sheet, { expectedGrid: { rows: 1, cols: 4 } });
-    expect(cells).toHaveLength(4);
+    expect(cells).toHaveLength(1);
     for (const buf of cells) {
       expect(PNG.sync.read(buf).width).toBeGreaterThanOrEqual(1);
     }
@@ -143,13 +218,14 @@ describe('computeSliceMap under-segmentation fallback (degenerate content)', () 
   it('carries a sheet smaller than the commanded grid through without crashing', () => {
     // Pathological and unreachable from a real brief (nativeCanvas ≥ 256, grid
     // ≤ 8×8), but the slicer is a public API: here the sheet axis (3px) is
-    // narrower than the commanded 8 columns, so no arrangement of positive-width
-    // cuts can fit and the uniform fallback force-increments cuts past the axis.
-    // Extraction must still never read out of bounds — cells are clamped to the
-    // sheet and the bad generation is carried through to human review, not thrown.
+    // narrower than the commanded 8 columns. The slicer detects a single column
+    // and emits the honest 1 cell — it never force-increments cuts past the
+    // axis (the old under-segmentation uniform-split, now removed). Extraction
+    // must never read out of bounds; the cell is clamped to the sheet and the
+    // bad generation is carried through to human review, not thrown.
     const tiny = encodeThinVerticalStroke(3, 1);
     const map = computeSliceMap(tiny, { expectedGrid: { rows: 1, cols: 8 } });
-    expect(map.cells).toHaveLength(8);
+    expect(map.cells).toHaveLength(1);
     for (const cell of map.cells) {
       expect(cell.x0).toBeGreaterThanOrEqual(0);
       expect(cell.y0).toBeGreaterThanOrEqual(0);
@@ -159,7 +235,7 @@ describe('computeSliceMap under-segmentation fallback (degenerate content)', () 
       expect(cell.y0 + cell.h).toBeLessThanOrEqual(3);
     }
     expect(() => sliceSheet(tiny, { expectedGrid: { rows: 1, cols: 8 } })).not.toThrow();
-    expect(sliceSheet(tiny, { expectedGrid: { rows: 1, cols: 8 } })).toHaveLength(8);
+    expect(sliceSheet(tiny, { expectedGrid: { rows: 1, cols: 8 } })).toHaveLength(1);
   });
 });
 
@@ -334,7 +410,24 @@ describe('sliceSheetFromBrief', () => {
     });
   }
 
-  it('skips brief-declared empty cells and preserves reading order', () => {
+  it('returns the actual data-driven grid and count (a BriefSliceResult)', () => {
+    // A clean 2×2 whose content matches the commanded grid: the result carries
+    // the extracted cells PLUS the actual grid/count the slicer landed on, so
+    // the caller persists the real grid (not the commanded one).
+    const sheet = encode2x2();
+    const brief = {
+      generation: {
+        sheet: { rows: 2, cols: 2, emptyCells: [] as ReadonlyArray<readonly [number, number]> },
+      },
+    } as unknown as Brief;
+
+    const result = sliceSheetFromBrief(sheet, brief);
+    expect(result.cells).toHaveLength(4);
+    expect(result.variantCount).toBe(4);
+    expect(result.grid).toEqual({ rows: 2, cols: 2, emptyCells: [] });
+  });
+
+  it('skips brief-declared empty cells when the detected grid matches the commanded one', () => {
     const sheet = encode2x2();
     const brief = {
       generation: {
@@ -346,29 +439,32 @@ describe('sliceSheetFromBrief', () => {
       },
     } as unknown as Brief;
 
-    const cells = sliceSheetFromBrief(sheet, brief);
-    expect(cells).toHaveLength(3);
+    const result = sliceSheetFromBrief(sheet, brief);
+    expect(result.cells).toHaveLength(3);
+    expect(result.variantCount).toBe(3);
+    // The declared empty cell is honoured because the detected grid IS 2×2.
+    expect(result.grid).toEqual({ rows: 2, cols: 2, emptyCells: [[0, 0]] });
 
     // (0,0) is skipped; the rest stay in reading order.
     const expectedOrder: Rgb[] = [BLOCK_COLORS[0]![1]!, BLOCK_COLORS[1]![0]!, BLOCK_COLORS[1]![1]!];
-    cells.forEach((cell, i) => {
+    result.cells.forEach((cell, i) => {
       expect(containsColor(cell, expectedOrder[i]!)).toBe(true);
     });
     // The skipped cell's color must not appear in any extracted cell.
     const skipped = BLOCK_COLORS[0]![0]!;
-    for (const cell of cells) {
+    for (const cell of result.cells) {
       expect(containsColor(cell, skipped)).toBe(false);
     }
   });
 
-  it('reconciles a content/brief mismatch to the commanded cell count for human review', () => {
+  it('carries the honest detected grid when content contradicts the commanded grid', () => {
     // Brief commands a 2×2 grid, but the sheet drew a single row of three
-    // sprites — a genuine generation error. The slicer no longer silently
-    // follows the pixels on the generation path: it reconciles to the commanded
-    // 2×2 = 4 cells (cols over-segmented 3→2 by dropping the least-even gutter;
-    // rows under-segmented 1→2 via uniform fallback) so the sheet reaches human
-    // gallery review, which rejects it. Human review — not the cell count — is
-    // the semantic gate (product decision 2026-07-07).
+    // sprites — a genuine generation error. The slicer follows the pixels: it
+    // detects a clean 1×3 (every cut in a real gutter) and returns that HONEST
+    // grid rather than forcing 2×2 = 4 cells by inventing cuts/rows through the
+    // art. The declared empty cells are dropped because the grid no longer
+    // matches. Human gallery review — not a forced count — rejects the bad
+    // sheet (product decision reversed 2026-07-08; ADR slicer-never-cut-art).
     const sheet = encodeContentGrid(1, 3, {
       block: 6,
       gutter: 4,
@@ -385,16 +481,18 @@ describe('sliceSheetFromBrief', () => {
       },
     } as unknown as Brief;
 
-    const cells = sliceSheetFromBrief(sheet, brief);
-    expect(cells).toHaveLength(4);
+    const result = sliceSheetFromBrief(sheet, brief);
+    expect(result.cells).toHaveLength(3);
+    expect(result.variantCount).toBe(3);
+    expect(result.grid).toEqual({ rows: 1, cols: 3, emptyCells: [] });
   });
 });
 
 describe('Bug B regression: inter-cell gutters govern the recovered grid', () => {
   // A correctly-gutted 4×4 sheet slices into exactly 16 cells — the honest
-  // target the generate-one gate requires. This is what the strengthened sheet
-  // prompt (mandatory background gutter between every row AND column) is meant
-  // to make gpt-image-1 draw.
+  // target a well-formed generation produces. This is what the strengthened
+  // sheet prompt (mandatory background gutter between every row AND column) is
+  // meant to make gpt-image-1 draw.
   it('recovers exactly 16 cells from a 4×4 sheet with gutters on both axes', () => {
     const sheet = encodeContentGrid(4, 4, {
       block: 8,
@@ -457,6 +555,130 @@ describe('Bug B regression: inter-cell gutters govern the recovered grid', () =>
     expect(map.rows).toBe(4);
     expect(map.cols).toBe(2);
     expect(map.cells).toHaveLength(8);
+  });
+});
+
+describe('salvage policy: never cut through foreground art', () => {
+  const MAGENTA: Rgb = { r: 255, g: 0, b: 255 };
+
+  /**
+   * The real bug, in 2D: a wide sheet drawn as 3 full 40px columns + a narrow
+   * 12px runt column (5 rows), commanded 4×4. This mirrors the real
+   * `welcome-room-shop-table-v2` sheet the model drew 3-wide. The generation
+   * path must (a) detect the honest columns, (b) DROP the runt right column
+   * (an incomplete partial sprite), and (c) never drive a cut line through
+   * foreground — vs the old forced 4-col uniform split that severed every row.
+   */
+  function encodeShopTableSheet(): Buffer {
+    const colW = [40, 40, 40, 12];
+    const rows = 5;
+    const rowH = 20;
+    const gutter = 6;
+    const margin = 4;
+    const totalW = colW.reduce((a, b) => a + b, 0);
+    const width = margin * 2 + totalW + (colW.length - 1) * gutter;
+    const height = margin * 2 + rows * rowH + (rows - 1) * gutter;
+    const png = new PNG({ width, height });
+    for (let i = 0; i < png.data.length; i += 4) {
+      png.data[i] = MAGENTA.r;
+      png.data[i + 1] = MAGENTA.g;
+      png.data[i + 2] = MAGENTA.b;
+      png.data[i + 3] = 255;
+    }
+    let x = margin;
+    const colX: number[] = [];
+    for (const w of colW) {
+      colX.push(x);
+      x += w + gutter;
+    }
+    for (let r = 0; r < rows; r++) {
+      const y0 = margin + r * (rowH + gutter);
+      for (let c = 0; c < colW.length; c++) {
+        const cx = colX[c]!;
+        const w = colW[c]!;
+        const color = { r: 20 + c * 40, g: 40 + r * 30, b: 120 };
+        for (let y = y0; y < y0 + rowH; y++) {
+          for (let px = cx; px < cx + w; px++) {
+            const i = (y * width + px) * 4;
+            png.data[i] = color.r;
+            png.data[i + 1] = color.g;
+            png.data[i + 2] = color.b;
+          }
+        }
+      }
+    }
+    return PNG.sync.write(png);
+  }
+
+  it('drops the runt right column and never cuts through a sprite (the shop-table bug)', () => {
+    const sheet = encodeShopTableSheet();
+
+    // Bare content-aware detection sees all four columns (incl. the runt).
+    const bare = computeSliceMap(sheet);
+    expect(bare.rows).toBe(5);
+    expect(bare.cols).toBe(4);
+
+    // Commanded 4×4 (the brief default that caused the bug). The slicer keeps
+    // the 5 honest rows, DROPS the 12px runt right column → 5×3 = 15 cells.
+    const gen = computeSliceMap(sheet, { expectedGrid: { rows: 4, cols: 4 } });
+    expect(gen.rows).toBe(5);
+    expect(gen.cols).toBe(3);
+    expect(gen.cells).toHaveLength(15);
+
+    // The core guarantee: ZERO foreground pixels on any interior cut line.
+    expect(fgPixelsOnColumns(sheet, interiorCutXs(gen))).toBe(0);
+
+    // And the old failure mode is real on this fixture: a forced 4-col uniform
+    // split would slice straight through every row (proves we fixed a live bug,
+    // not a hypothetical one).
+    const png = PNG.sync.read(sheet);
+    const forcedXs = [1, 2, 3].map((k) => Math.round((png.width * k) / 4));
+    expect(fgPixelsOnColumns(sheet, forcedXs)).toBeGreaterThan(0);
+  });
+
+  it('trims a trailing runt column when the rest are uniform ([44,46,46,16] → 3)', () => {
+    const sheet = encodeRowWidths([44, 46, 46, 16], 6, 4);
+    const gen = computeSliceMap(sheet, { expectedGrid: { rows: 1, cols: 4 } });
+    expect(gen.cols).toBe(3);
+    expect(gen.cells).toHaveLength(3);
+    expect(fgPixelsOnColumns(sheet, interiorCutXs(gen))).toBe(0);
+  });
+
+  it('trims a leading runt column ([20,40,40] → 2)', () => {
+    const sheet = encodeRowWidths([20, 40, 40], 6, 4);
+    const gen = computeSliceMap(sheet, { expectedGrid: { rows: 1, cols: 3 } });
+    expect(gen.cols).toBe(2);
+    expect(gen.cells).toHaveLength(2);
+    expect(fgPixelsOnColumns(sheet, interiorCutXs(gen))).toBe(0);
+  });
+
+  it('trims a runt from a 2-cell pair when it is under half the neighbour ([46,16] → 1)', () => {
+    const sheet = encodeRowWidths([46, 16], 6, 4);
+    const gen = computeSliceMap(sheet, { expectedGrid: { rows: 1, cols: 2 } });
+    expect(gen.cols).toBe(1);
+    expect(gen.cells).toHaveLength(1);
+  });
+
+  it('keeps a legit uneven 2-cell pair rather than collapsing to one ([40,60] → 2)', () => {
+    // The runt trim must not swallow a real second sprite: 40 is more than half
+    // of 60, so both cells are kept (no k=1 collapse of a legitimate pair).
+    const sheet = encodeRowWidths([40, 60], 6, 4);
+    const gen = computeSliceMap(sheet, { expectedGrid: { rows: 1, cols: 2 } });
+    expect(gen.cols).toBe(2);
+    expect(gen.cells).toHaveLength(2);
+    expect(fgPixelsOnColumns(sheet, interiorCutXs(gen))).toBe(0);
+  });
+
+  it('does not trim a small leading cell that is half of a split sprite (phantom-half guard)', () => {
+    // [10,30,40,40]: the leading 10 + its 30 neighbour together (~1 median
+    // sprite) look like a subject split by a phantom gutter, NOT a runt edge —
+    // so the phantom-half guard keeps all four cells rather than discarding the
+    // 10 as a partial sprite. (Human review still adjudicates the true count.)
+    const sheet = encodeRowWidths([10, 30, 40, 40], 6, 4);
+    const gen = computeSliceMap(sheet, { expectedGrid: { rows: 1, cols: 4 } });
+    expect(gen.cols).toBe(4);
+    expect(gen.cells).toHaveLength(4);
+    expect(fgPixelsOnColumns(sheet, interiorCutXs(gen))).toBe(0);
   });
 });
 
@@ -597,7 +819,7 @@ describe('computeSliceMap generation reconciliation (expectedGrid)', () => {
     });
   }
 
-  it('reconciles a single spurious over-segmented column to the commanded grid, cleanly', () => {
+  it('drops a single spurious over-segmented column to the commanded grid, cleanly', () => {
     // 4 logical blocks, block 1 split by an internal gap → content-aware sees 5.
     const { sheet, colors } = encodeGappyRow(4, [1]);
 
@@ -606,7 +828,8 @@ describe('computeSliceMap generation reconciliation (expectedGrid)', () => {
     expect(bare.rows).toBe(1);
     expect(bare.cols).toBe(5);
 
-    // With the commanded grid, the slicer reconciles to exactly 1×4.
+    // With the commanded grid, dropping the phantom gutter yields 4 uniform
+    // cells (more same-sized than keeping 5), so the slicer reconciles to 1×4.
     const reconciled = computeSliceMap(sheet, { expectedGrid: { rows: 1, cols: 4 } });
     expect(reconciled.rows).toBe(1);
     expect(reconciled.cols).toBe(4);
@@ -661,7 +884,7 @@ describe('computeSliceMap generation reconciliation (expectedGrid)', () => {
 
   it('drops MULTIPLE spurious columns to the commanded grid, cleanly', () => {
     // 4 logical blocks, blocks 1 AND 3 split → content-aware sees 6 columns. The
-    // variance-minimising subset must drop BOTH phantom gutters and recover 1×4.
+    // same-size-maximising subset must drop BOTH phantom gutters and recover 1×4.
     const { sheet, colors } = encodeGappyRow(4, [1, 3]);
 
     const bare = computeSliceMap(sheet);
@@ -675,12 +898,11 @@ describe('computeSliceMap generation reconciliation (expectedGrid)', () => {
   });
 
   it('cuts at real (uneven) gutters rather than snapping to a uniform grid', () => {
-    // Three blocks of very different widths (10, 16, 10) with block 1 split →
+    // Three blocks of very different widths (10, 14, 12) with block 1 split →
     // content-aware sees 4 columns whose real gutters sit at NON-uniform x
-    // positions. A uniform 1×3 snap would slice through the wide middle block;
-    // selecting the most-even subset of the DETECTED gutters keeps every block
-    // intact (the phantom, being the least-even cut, is the one dropped).
-    const { sheet, colors } = encodeUnevenRow([10, 16, 10], 1);
+    // positions. Dropping the phantom recovers a cleaner 1×3 (the three uneven
+    // blocks) than keeping the split, so every block stays intact.
+    const { sheet, colors } = encodeUnevenRow([10, 14, 12], 1);
 
     const bare = computeSliceMap(sheet);
     expect(bare.cols).toBe(4);
@@ -692,10 +914,10 @@ describe('computeSliceMap generation reconciliation (expectedGrid)', () => {
     assertColorIsolation(sliceSheet(sheet, { expectedGrid: { rows: 1, cols: 3 } }), colors);
   });
 
-  it('uniform-splits an under-segmented sheet up to the commanded count', () => {
+  it('leaves an under-segmented sheet at its honest count (never invents cuts)', () => {
     // Only 3 columns detected but 4 commanded, and no further gutters exist to
-    // recover — fall back to a uniform split so the sheet still yields 4 cells
-    // for human review (which rejects the sliced-through blocks).
+    // recover. The slicer must NOT invent a 4th cut through the art — it emits
+    // the honest 1×3 and carries the count-short sheet to human gallery review.
     const sheet = encodeContentGrid(1, 3, {
       block: 8,
       gutter: 4,
@@ -706,16 +928,17 @@ describe('computeSliceMap generation reconciliation (expectedGrid)', () => {
     expect(bare.cols).toBe(3);
 
     const reconciled = computeSliceMap(sheet, { expectedGrid: { rows: 1, cols: 4 } });
-    expect(reconciled.cols).toBe(4);
-    expect(reconciled.cells).toHaveLength(4);
+    expect(reconciled.cols).toBe(3);
+    expect(reconciled.cells).toHaveLength(3);
+    // No cut was invented: every cut is a real gutter, so no foreground severed.
+    expect(fgPixelsOnColumns(sheet, interiorCutXs(reconciled))).toBe(0);
   });
 
-  it('emits the commanded count even for a genuinely wrong even layout (masking accepted)', () => {
+  it('never masks a real content error by dropping a real gutter (keeps honest count)', () => {
     // 5 evenly-spaced blocks vs 4 commanded. There is no phantom to drop — this
-    // is a real content error — but variance-select still returns the 4 most-even
-    // cuts. We DO NOT gate on this: the sheet goes to human gallery review, which
-    // rejects it. This test documents the accepted masking (product decision
-    // 2026-07-07: human review, not the cell count, is the semantic gate).
+    // is a real content error. The slicer must NOT drop a real gutter to force
+    // the commanded 4 (the old masking behaviour); it keeps the honest 1×5 and
+    // human gallery review rejects it. Every cut stays in a real gutter.
     const sheet = encodeContentGrid(1, 5, {
       block: 8,
       gutter: 4,
@@ -726,8 +949,9 @@ describe('computeSliceMap generation reconciliation (expectedGrid)', () => {
     expect(bare.cols).toBe(5);
 
     const reconciled = computeSliceMap(sheet, { expectedGrid: { rows: 1, cols: 4 } });
-    expect(reconciled.cols).toBe(4);
-    expect(reconciled.cells).toHaveLength(4);
+    expect(reconciled.cols).toBe(5);
+    expect(reconciled.cells).toHaveLength(5);
+    expect(fgPixelsOnColumns(sheet, interiorCutXs(reconciled))).toBe(0);
   });
 
   it('reconciles BOTH axes independently when each is over-segmented', () => {
@@ -777,7 +1001,7 @@ describe('computeSliceMap generation reconciliation (expectedGrid)', () => {
 
   it('is deterministic and yields strictly positive-area cells', () => {
     // Same sheet + same options must slice identically across runs (the pipeline
-    // is deterministic; the DP tie-break is fixed by integer cost + strict `<`).
+    // is deterministic; selection is fixed by integer scores + a strict order).
     const { sheet } = encodeGappyRow(4, [1, 3]);
     const opts = { expectedGrid: { rows: 1, cols: 4 } } as const;
     const a = computeSliceMap(sheet, opts);
@@ -803,40 +1027,74 @@ describe('computeSliceMap generation reconciliation (expectedGrid)', () => {
     expect(computeSliceMap(sheet, { expectedGrid: { rows: 1, cols: 4 } }).cols).toBe(4);
   });
 
-  it('preserves real gutters over a central phantom even when block widths are uneven', () => {
-    // Central phantom (splits the middle block) with mildly asymmetric widths
-    // (10,14,12). The two REAL gutters give the most-even 1×3 split, so the
-    // phantom is dropped and every block is recovered intact.
-    const { sheet, colors } = encodeUnevenRow([10, 14, 12], 1);
+  it('keeps a symmetric split when it yields the most same-sized cells (human review adjudicates)', () => {
+    // [10,16,10] with the wide middle block split by a phantom gutter → 4
+    // detected columns whose (gutter-expanded) cells are all near-uniform. The
+    // "most same-sized cells" rule keeps all 4 rather than merging back to 3 —
+    // a documented consequence of preferring uniformity. This is NOT the
+    // dangerous case: every cut still lands in a real background band (0
+    // foreground severed); human gallery review adjudicates the true count.
+    const { sheet } = encodeUnevenRow([10, 16, 10], 1);
     const reconciled = computeSliceMap(sheet, { expectedGrid: { rows: 1, cols: 3 } });
-    expect(reconciled.cols).toBe(3);
-    assertColorIsolation(sliceSheet(sheet, { expectedGrid: { rows: 1, cols: 3 } }), colors);
+    expect(reconciled.cols).toBe(4);
+    expect(reconciled.cells).toHaveLength(4);
+    expect(fgPixelsOnColumns(sheet, interiorCutXs(reconciled))).toBe(0);
   });
 
-  it('still emits the commanded count when extreme width-asymmetry defeats the heuristic (accepted)', () => {
-    // Documented limitation (plan-review): with a tiny end block (12,20,8) and a
-    // central phantom, the most-even subset keeps the phantom and drops a REAL
-    // gutter — so a cell straddles a boundary. We DO NOT try to out-clever this;
-    // it still emits the commanded 3 cells and human gallery review rejects the
-    // straddled cell (product decision: human review is the semantic gate).
+  it('keeps the honest count when extreme width-asymmetry yields uneven cells', () => {
+    // Documented limitation: with a tiny end block (12,20,8) and a central
+    // phantom, no smaller subset is strictly more uniform than the 4 detected
+    // cells, so the slicer keeps the honest 1×4 (it never invents cuts; every
+    // cut stays in a real gutter). Human gallery review adjudicates the count.
     const { sheet } = encodeUnevenRow([12, 20, 8], 1);
     const reconciled = computeSliceMap(sheet, { expectedGrid: { rows: 1, cols: 3 } });
-    expect(reconciled.cols).toBe(3);
-    expect(reconciled.cells).toHaveLength(3);
+    expect(reconciled.cols).toBe(4);
+    expect(reconciled.cells).toHaveLength(4);
+    expect(fgPixelsOnColumns(sheet, interiorCutXs(reconciled))).toBe(0);
   });
 
-  it('reconciles a mixed sheet: one axis over-segmented, the other under-segmented', () => {
-    // 1 row of 3 blocks with block 1 split → cols over-segmented (4 detected) and
-    // rows under-segmented (1 detected) vs a commanded 2×3. Each axis reconciles
-    // independently: cols drop the phantom to 3, rows uniform-split up to 2.
+  it('reconciles a mixed sheet: cols over-segmented, rows under-segmented (honest rows)', () => {
+    // 1 row of 3 blocks with block 1 split → cols over-segmented (4 detected)
+    // and rows under-segmented (1 detected) vs a commanded 2×3. Cols drop the
+    // phantom to 3; rows stay at the honest 1 (never invent a 2nd row through
+    // the art) → 3 cells, not the commanded 6.
     const { sheet } = encodeGappyRow(3, [1]);
     const map = computeSliceMap(sheet, { expectedGrid: { rows: 2, cols: 3 } });
     expect(map.cols).toBe(3);
-    expect(map.rows).toBe(2);
-    expect(map.cells).toHaveLength(6);
+    expect(map.rows).toBe(1);
+    expect(map.cells).toHaveLength(3);
     for (const cell of map.cells) {
       expect(cell.w).toBeGreaterThan(0);
       expect(cell.h).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('sliceSheetWithGrid (rerun re-slice determinism)', () => {
+  it('reproduces the persisted grid and count from the same stored sheet', () => {
+    // A 1×3 sheet commanded 2×2 lands on the honest 1×3 at generation time. The
+    // rerun path re-slices the SAME stored sheet anchored on that persisted grid
+    // and must deterministically reproduce it (identical crops), so
+    // re-postprocess re-derives the same per-variant entries.
+    const sheet = encodeContentGrid(1, 3, {
+      block: 6,
+      gutter: 4,
+      margin: 4,
+      color: (_r, c) => ({ r: 200, g: 20 + c * 60, b: 40 }),
+    });
+    const brief = {
+      generation: {
+        sheet: { rows: 2, cols: 2, emptyCells: [] as ReadonlyArray<readonly [number, number]> },
+      },
+    } as unknown as Brief;
+
+    const generated = sliceSheetFromBrief(sheet, brief);
+    expect(generated.grid).toEqual({ rows: 1, cols: 3, emptyCells: [] });
+
+    const rerun = sliceSheetWithGrid(sheet, generated.grid);
+    expect(rerun.grid).toEqual(generated.grid);
+    expect(rerun.variantCount).toBe(generated.variantCount);
+    // Byte-identical crops across the re-slice (deterministic).
+    expect(rerun.cells.map((c) => c.length)).toEqual(generated.cells.map((c) => c.length));
   });
 });

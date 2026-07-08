@@ -26,7 +26,6 @@
  * and the CI refusal; this module owns the artifact math.
  */
 
-import { variantCount } from './brief-schema.js';
 import type { Brief, PaletteColors } from './brief-schema.js';
 import type { JudgeBudget } from './cost-tracker.js';
 import { computeDiversity } from './diversity.js';
@@ -63,7 +62,7 @@ import {
   writePostprocessProfile,
 } from './postprocess-overrides.js';
 import type { VisionProvider } from './provider/vision-types.js';
-import { sliceSheetFromBrief } from './slice-sheet.js';
+import { sliceSheetFromBrief, sliceSheetWithGrid, type BriefSliceResult } from './slice-sheet.js';
 import type { RunStore } from './store/types.js';
 
 const pad2 = (n: number): string => String(n).padStart(2, '0');
@@ -185,8 +184,9 @@ export interface RepostprocessArgs {
 
 /**
  * True when two empty-cell coordinate lists describe the same set of cells,
- * order-independently. Used by {@link repostprocessRun} to detect a brief grid
- * change even when the non-empty variant count is unchanged.
+ * order-independently. Used by {@link repostprocessRun} to confirm re-slicing the
+ * stored sheet reproduces the run's PERSISTED grid, even when the non-empty
+ * variant count is unchanged.
  */
 function sameEmptyCells(
   a: ReadonlyArray<readonly [number, number]>,
@@ -253,46 +253,51 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
 
   const { sheetFile, sheetPng } = await resolveRunSheet(store, briefId, runId, args.sheetFile);
 
-  let sliced: Buffer[];
+  // Carry-forward guard (ADR 0024, revised by "slicer-data-driven-grid-salvage"):
+  // reject if re-slicing the stored sheet no longer reproduces the grid the
+  // summary's per-variant entries were assigned against (row-major 0..N-1). A
+  // mismatch would silently overwrite the wrong variants.
+  //
+  // The slicer is now DATA-DRIVEN — it emits the sheet's HONEST grid (cutting
+  // only at real gutters, trimming runt edges), not the brief's commanded grid.
+  // So we anchor the re-slice on the run's PERSISTED actual grid and require it
+  // to reproduce that grid exactly: rows, cols AND the empty-cell set. Legacy
+  // runs generated before `grid` was persisted have no stored grid to anchor on
+  // — fall back to a brief-anchored re-slice + a variant-COUNT check against the
+  // stored `summary.variantCount`, then backfill `summary.grid` on success so the
+  // next re-run takes the modern (structure-exact) path.
+  const priorGrid = summary.grid;
+  let sliceResult: BriefSliceResult;
   try {
-    sliced = sliceSheetFromBrief(sheetPng, brief);
+    sliceResult = priorGrid
+      ? sliceSheetWithGrid(sheetPng, priorGrid)
+      : sliceSheetFromBrief(sheetPng, brief);
   } catch (err) {
     throw new RerunError('slice-failed', err instanceof Error ? err.message : String(err));
   }
+  const sliced = sliceResult.cells;
 
-  // Carry-forward guard (ADR 0024): reject if the brief's grid/variant config
-  // changed since the sheet was generated. Such a change would corrupt the
-  // summary's per-variant entries (assigned in row-major order 0..N-1) if we
-  // silently carried on. The slicer now reconciles any stored sheet to the
-  // brief's CURRENT commanded grid (over/under-segmentation is snapped to the
-  // commanded cell count; human gallery review is the grid quality gate), so
-  // re-slicing always returns the current count and can no longer flag a change
-  // on its own.
-  //
-  // Compare the stored generation-time grid STRUCTURE against the current brief.
-  // We compare the full structure — rows, cols AND the empty-cell set — not just
-  // the variant COUNT, because a same-count layout change (e.g. 2×2 → 1×4, or an
-  // empty cell moved) re-slices the sheet into different crops while N stays the
-  // same, which would silently overwrite the wrong variants. Legacy runs
-  // generated before `grid` was persisted fall back to the count comparison.
-  const briefSheet = brief.generation.sheet;
-  const expected = variantCount(brief);
-  const priorGrid = summary.grid;
-  const gridChanged = priorGrid
-    ? priorGrid.rows !== briefSheet.rows ||
-      priorGrid.cols !== briefSheet.cols ||
-      !sameEmptyCells(priorGrid.emptyCells, briefSheet.emptyCells)
-    : summary.variantCount !== expected;
-  if (gridChanged) {
+  if (priorGrid) {
+    const resliced = sliceResult.grid;
+    const gridChanged =
+      resliced.rows !== priorGrid.rows ||
+      resliced.cols !== priorGrid.cols ||
+      !sameEmptyCells(resliced.emptyCells, priorGrid.emptyCells);
+    if (gridChanged) {
+      throw new RerunError(
+        'variant-count-mismatch',
+        `the stored run's persisted ${priorGrid.rows}×${priorGrid.cols} grid ` +
+          `(${summary.variantCount} variants) no longer re-slices from the stored sheet ` +
+          `(now ${resliced.rows}×${resliced.cols}, ${sliceResult.variantCount} variants); ` +
+          `the persisted grid is corrupt or the slicer changed since generation`,
+      );
+    }
+  } else if (sliceResult.variantCount !== summary.variantCount) {
     throw new RerunError(
       'variant-count-mismatch',
-      priorGrid
-        ? `the stored run was generated for a ${priorGrid.rows}×${priorGrid.cols} grid ` +
-            `(${summary.variantCount} variants) but the brief now commands ` +
-            `${briefSheet.rows}×${briefSheet.cols} (${expected} variants); the grid/variant ` +
-            `config changed since generation`
-        : `the stored run was generated for ${summary.variantCount} variants but the brief ` +
-            `now expects ${expected}; the grid/variant config changed since generation`,
+      `the stored run recorded ${summary.variantCount} variants but the stored sheet now ` +
+        `re-slices to ${sliceResult.variantCount}; the slicer changed since generation ` +
+        `(this legacy run predates persisted grids — regenerate it to adopt the current slicer)`,
     );
   }
 
@@ -391,7 +396,8 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
     chosen: pickChosen(ranked, brief, effectiveManualAnchor),
     judgeBudget: null,
     judgeCache: null,
-    variantCount: expected,
+    variantCount: sliceResult.variantCount,
+    grid: sliceResult.grid,
     postprocessOverrides: {
       profilePath:
         optionsMode === 'reset' ? null : store.resolve(storeKey(POSTPROCESS_PROFILE_KEY)),
@@ -555,6 +561,12 @@ async function writeRunSummary(
     postprocessOverrides?: RunSummary['postprocessOverrides'];
     /** Recomputed variant count. Omit to carry the prior summary's value. */
     variantCount?: number;
+    /**
+     * Recomputed data-driven grid. Omit to carry the prior summary's value. On a
+     * legacy run (no prior `grid`) this backfills it so the next re-run takes the
+     * modern structure-exact carry-forward path.
+     */
+    grid?: RunSummary['grid'];
     extra?: { sheetFile?: string };
   },
 ): Promise<RerunResult> {
@@ -579,6 +591,7 @@ async function writeRunSummary(
       },
     },
     variantCount: patch.variantCount ?? prior.variantCount,
+    ...(patch.grid ? { grid: patch.grid } : {}),
   };
   const summaryKey = storeKey('summary.json');
   await store.put(summaryKey, Buffer.from(`${JSON.stringify(summary, null, 2)}\n`));
