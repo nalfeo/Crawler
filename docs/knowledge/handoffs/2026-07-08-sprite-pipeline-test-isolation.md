@@ -18,32 +18,43 @@ and locally; a game-only change skips sprite tests entirely.
 
 - **`package.json`**: Added `test:sprites` script.
 
-- **`scripts/agent/ci/detect-art-only.sh`**: Added `sprites_only` output flag
-  (true when all changed files are in `scripts/sprites/**`,
-  `tests/unit/sprites/**`, or `tests/integration/sprites/**`). Also extended
-  the `gameplay_safe` allowlist to include those same paths (the headless runner
-  never imports `scripts/sprites/`).
+- **`scripts/agent/ci/detect-art-only.sh`**: Added two new output flags:
+  - `sprites_only`: true when ALL changed files are in the sprites surface
+    (`scripts/sprites/**`, `tests/unit/sprites/**`, `tests/integration/sprites/**`,
+    plus the 9 root pipeline integration test files)
+  - `sprites_touched`: true when ANY file in the sprites surface changed —
+    used to gate `test-sprites` so pure game changes skip the sprite test suite
+    Extended `gameplay_safe` allowlist to include the same sprite surface paths.
 
 - **`scripts/agent/ci/local-scope.sh`**: Updated `emit_all_false` to include
-  `sprites_only=false`.
+  both `sprites_only=false` and `sprites_touched=false`.
 
-- **`.github/workflows/ci.yml`**: Added `sprites_only` to `changes` job
-  outputs. Added `test-sprites` job. Added `sprites_only != true` skip
-  condition to `test-unit`, `test-integration`, and `test-unit-coverage`. Updated
-  merge-gate to include `test-sprites` and to allow `test-unit`/`test-integration`
-  to be skipped (allow_skipped=true) when `sprites_only=true`.
+- **`.github/workflows/ci.yml`**: Added `sprites_only` and `sprites_touched` to
+  `changes` job outputs. Added `test-sprites` job (gated on `sprites_touched`).
+  Added `sprites_only != true` skip condition to `test-unit`, `test-integration`,
+  `test-unit-coverage`, and `test-e2e`. Updated merge-gate to include
+  `test-sprites` with `allow_skipped=true`.
 
-- **`scripts/agent/verify.sh`**: Added note that sprite pipeline tests are now
-  in a separate project and won't run in the game verify loop.
+- **`scripts/agent/verify.sh`**: Added `npx vitest run --project sprites` so
+  the full local pre-commit loop runs sprite pipeline tests.
 
 - **`scripts/agent/verify-fast.sh`**: Added `--project sprites` to the
   changed-file test run so that editing `scripts/sprites/**` also runs the
   relevant sprite tests locally.
 
+- **13 test files moved** from `tests/unit/` root (and `tests/sensors/`) into
+  `tests/unit/sprites/`: bg-remove, brief-schema, normalize-item-art-names,
+  palette-quantize, postprocess-modules-speckle, postprocess-rekey,
+  postprocess-resize-fit, postprocess-tile, postprocess-trim-fit,
+  sprite-catalog-sync, sprite-metadata-pipeline, template-pipeline,
+  weapons-sensor (was tests/sensors/weapons.test.ts). Relative imports updated
+  from `../../` to `../../../`.
+
 - **`tests/unit/detect-change-scope.test.ts`**: Updated `Scope` interface,
-  `run()` parser, `F()` helper, and all existing test cases to include
-  `sprites_only`. Added 6 new test cases covering sprites_only=true and
-  mixed-change scenarios.
+  `run()` parser, `F()` helper, and all existing test cases to include both
+  `sprites_only` and `sprites_touched`. Added 9 new test cases covering
+  sprites_only, sprites_touched, root integration files, and mixed-change
+  scenarios.
 
 - **`AGENTS.md`**: Added `test:sprites` to commands table.
 
@@ -53,24 +64,20 @@ ci, test-infra
 
 ## Verification
 
-- `npm run verify:fast` — all 24 detect-change-scope tests pass
-- `npx vitest run --project sprites` — 71 test files, 1019 tests pass
+- `npm run verify:fast` — all 27 detect-change-scope tests pass
+- `npx vitest run --project sprites` — 84 test files, 1124+ tests pass
+- Review ledger: plan review (gpt-5.4, 4 concerns → all resolved) +
+  code review (claude-opus-4.8, 1 concern → resolved)
 
 ## Apples
 
-🍎🍎🍎 (Medium) — 9 files, CI infrastructure + test config + detection script.
+🍎🍎🍎 (Medium)
 
 ## Unresolved issues
 
-- Tests in `tests/unit/` that directly import `scripts/sprites/` but live
-  outside `tests/unit/sprites/` (e.g. `bg-remove.test.ts`, `postprocess-*.test.ts`,
-  `template-pipeline.test.ts`) still run in the `unit` project. They are
-  lightweight and safe there, but a future pass could move them to `tests/unit/sprites/`
-  for complete isolation. Tracked as a follow-up only.
+None — all stray sprite-importing test files have been moved into the sprites project.
 
 ## Recommended next steps
 
-- Monitor CI on the first sprites-only PR to confirm `test-unit` and
-  `test-integration` are correctly skipped.
-- If the mixed `tests/unit/` sprite tests (postprocess-\*, bg-remove, etc.)
-  cause friction, move them to `tests/unit/sprites/` in a follow-up.
+- Monitor CI on the first sprites-only PR to confirm `test-unit`, `test-integration`,
+  and `test-e2e` are correctly skipped while `test-sprites` runs.
