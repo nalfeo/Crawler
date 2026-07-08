@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-08",
+  "session_slug": "navmesh-follower-tests",
+  "task_title": "NAVMESH follower unit tests (dormancy + functional + partial-path guard)",
+  "estimated_apples": 1,
+  "stages": {}
+}
