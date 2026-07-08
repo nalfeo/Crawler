@@ -1,0 +1,34 @@
+type: character
+name: npc-welcome-goon
+description: |
+  A bored, beefy dungeon bouncer who works the welcome desk season after
+  season. A big, broad-shouldered security goon stuffed into a cheap,
+  ill-fitting host/security blazer that is a size too small for his thick
+  arms. A crooked "STAFF" lanyard hangs around his thick neck and a clipboard
+  is tucked under one arm. His face wears a dead-eyed, going-through-the-motions
+  reality-TV-host grin — the smile of a man who has greeted a thousand doomed
+  contestants. Standing upright in a relaxed idle stance facing straight toward
+  camera (frontal pose, both eyes visible, shoulders squared to viewer). The
+  silhouette must read clearly as HEAVY and BROAD at small scale: wide
+  shoulders, thick arms, a solid blocky torso. Muted blue-collar palette —
+  navy or charcoal blazer, dull tan skin, faded-red lanyard as the one warm
+  accent, so he never competes with combat VFX. Single solid connected mass,
+  no gaps or floating pieces, clean readable pixel shapes, crisp dark outline.
+  Keep at least a 1-pixel transparent border around the figure to avoid clipping.
+# NPC (welcome-room "lifer"). Default character anchor (32,63) applies.
+# Judge ON so pose quality + the bored-beefy-bouncer read stay strong.
+judge:
+  enabled: true
+sensors:
+  enemy:
+    toleranceDeg: 20
+  edge:
+    allowMainTouch: true
+variations:
+  - beefy bald bouncer, too-tight navy security blazer, crooked STAFF lanyard, clipboard under one arm, dead-eyed grin, frontal idle
+  - beefy buzz-cut bouncer, charcoal blazer with rolled sleeves straining over thick arms, faded-red lanyard, arms crossed, bored frontal stare
+  - beefy bouncer with slicked-back hair, ill-fitting host jacket and clip-on tie, STAFF lanyard, one thumb hooked on belt, frontal host grin
+  - heavyset bouncer with a goatee, dull-blue blazer, lanyard plus a coiled earpiece wire, clipboard held to chest, frontal deadpan
+  - broad bald bouncer in a slightly-too-small charcoal blazer, STAFF lanyard, hands clasped in front, tired reality-host smile, frontal idle
+  - stocky bouncer with a flat-top haircut, navy security jacket, faded-red lanyard, one hand raised in a half-hearted "welcome" gesture, frontal pose
+minVariations: 6
