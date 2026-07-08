@@ -80,6 +80,17 @@ beforeAll(async () => {
   ).queryWorldPath;
 });
 
+// Track the NAVMESH-mode AI under test so its cached recast handle is ALWAYS
+// freed after each test — even if an assertion throws — otherwise the built
+// WASM objects leak across the unit-test process as more navmesh tests land.
+// disposeNavmesh() frees only this AI's per-floor handle, not the initNavmesh()
+// runtime, so a later NAVMESH test rebuilds cleanly.
+let activeNavAi: BehaviorTreeAI | undefined;
+afterEach(() => {
+  activeNavAi?.disposeNavmesh();
+  activeNavAi = undefined;
+});
+
 describe('AIPathingMode.NAVMESH — dormancy + byte-identity guard', () => {
   it('LEGACY never touches navmesh state (counter 0, no recast waypoints)', () => {
     const world = freshFloor1World(42);
@@ -109,7 +120,9 @@ describe('AIPathingMode.NAVMESH — dormancy + byte-identity guard', () => {
       aiA.poll(stateA, worldA);
       aiB.poll(stateB, worldB);
       // Full InputState (moveX/moveY + every action flag) must match every poll.
-      expect(JSON.stringify(stateA)).toBe(JSON.stringify(stateB));
+      // Strict deep equality (not JSON.stringify, which is lossy for NaN/-0 and
+      // drops undefined) so a real InputState divergence can never slip through.
+      expect(stateA).toStrictEqual(stateB);
     }
     // And the navmesh state stayed dormant on both.
     expect(aiA.navPartialPathFallbacks).toBe(0);
@@ -121,6 +134,7 @@ describe('AIPathingMode.NAVMESH — functional recast routing through the real p
   it('computes a recast route (navWaypoints populate) and produces motion on Floor 1', () => {
     const world = freshFloor1World(42);
     const ai = new BehaviorTreeAI({ seed: 42, pathingMode: AIPathingMode.NAVMESH });
+    activeNavAi = ai; // freed in afterEach so the built recast handle never leaks
 
     let sawNavRoute = false;
     let sawMotion = false;
@@ -158,6 +172,7 @@ describe('AIPathingMode.NAVMESH — partial-path guard falls back to grid-A* (no
 
     const world = freshFloor1World(42);
     const ai = new BehaviorTreeAI({ seed: 42, pathingMode: AIPathingMode.NAVMESH });
+    activeNavAi = ai; // freed in afterEach so the built recast handle never leaks
 
     let sawMotion = false;
     for (let i = 0; i < POLL_BUDGET; i++) {
