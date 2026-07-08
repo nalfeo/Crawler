@@ -4,6 +4,10 @@
 
 Accepted
 
+> Current sprite-workflow operations belong to
+> [`.specify/specs/sprite-generation-pipeline.md`](../../../.specify/specs/sprite-generation-pipeline.md).
+> This ADR is kept as the rationale for why the default moved to 900 seconds.
+
 ## Date
 
 2026-07-02

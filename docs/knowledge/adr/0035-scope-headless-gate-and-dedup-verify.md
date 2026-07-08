@@ -7,6 +7,10 @@
 
 Accepted (2026-07-02).
 
+> The live CI / verify policy now lives in
+> [`docs/agent-os/policies/ci-policy.md`](../../agent-os/policies/ci-policy.md).
+> This ADR is the rationale and audit trail for the 2026-07-02 threshold shift.
+
 ## Context
 
 A guard/CI-infrastructure audit (sessions + PRs, 3-day window) found the same

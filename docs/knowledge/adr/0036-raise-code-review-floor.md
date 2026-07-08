@@ -7,6 +7,11 @@
 
 Accepted (2026-07-02).
 
+> The live review-harness rules now live in
+> [`docs/agent-os/policies/review-harness-policy.md`](../../agent-os/policies/review-harness-policy.md)
+> and [`complexity-policy.md`](../../agent-os/policies/complexity-policy.md).
+> This ADR is the change record for the original floor adjustment.
+
 ## Estimated Complexity
 
 🍎 × 3 — one source-of-truth function plus its tests and guard help text, and a

@@ -89,7 +89,7 @@ state**:
   round must be non-clean with genuine unresolved concerns, and it records
   `{ after_round, reason, unresolved_concerns }` (with `after_round` equal to the
   final round index, so no rounds may follow the escalation). See
-  [`references/ledger-recipes.md`](../../../.github/skills/review-harness/references/ledger-recipes.md)
+  [the ledger-recipes reference](../../../.github/skills/review-harness/references/ledger-recipes.md)
   for the exact schema.
 
 This is a **safety win**: a bounded loop plus forced human attention replaces an

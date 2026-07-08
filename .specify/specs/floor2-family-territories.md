@@ -16,6 +16,8 @@
 > (families roster, resources, emergent events, tone).
 > **Architecture:**
 > [ADR 0040](../../docs/knowledge/adr/0040-floor2-family-territory-and-relationship-architecture.md).
+> **Canonical home:** this spec is the living Floor 2 contract; ADR 0040 is the
+> architecture rationale and slice-history.
 > **Reused ADRs:** 0005 (parameterized floor config), 0010 (boss door-lock), 0011
 > (data-driven quests), 0021 (reachability), 0023 (generic special-room sealing), 0024
 > (engagement budget / themed set-pieces).

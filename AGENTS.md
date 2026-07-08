@@ -86,7 +86,7 @@ run everything) when it can't resolve a merge base.
 | Headless Floor-1 (`VERIFY_FULL=1`) | `scope` shows `gameplay_safe=false` (else the sim can't change) |
 | Weapon sweeps (`ai:weapon-sweep`)  | touching `src/core`, `src/game/ai`, or balance data             |
 | Visual review (`review:visual`)    | a changed **UI surface** is in scope                            |
-| `npm run knip` / `VERIFY_KNIP=1`   | refactoring or removing exports/deps                            |
+| `VERIFY_KNIP=1 npm run verify`     | refactoring or removing exports/deps                            |
 
 CI still enforces the real gates on non-`gameplay_safe` PRs and on main-push, so scoping
 these **locally** never weakens a required check — it just skips work that provably can't
@@ -214,7 +214,7 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
   "the lab gate is slow" to the handoff again.
   <!-- Source handoff: 2026-06-17-headless-ai-runner.md -->
 
-- **`npm run knip` in full `verify` is opt-in** (`VERIFY_KNIP=1`). It's advisory
+- **Knip in full `verify` is opt-in** (`VERIFY_KNIP=1 npm run verify`). It's advisory
   in CI regardless, so run it locally only when refactoring/removing exports.
 
 ## Tech Stack

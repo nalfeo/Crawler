@@ -4,6 +4,11 @@
 
 Accepted
 
+> The canonical current-state contract for this feature family lives in
+> [`.specify/specs/spawner-battle-arena.md`](../../../.specify/specs/spawner-battle-arena.md).
+> Follow-on ADRs 0045, 0046, 0049, and 0050 amend the same feature family; read
+> the spec first for present behavior.
+
 ## Date
 
 2026-07-04

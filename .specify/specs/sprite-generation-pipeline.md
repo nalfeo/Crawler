@@ -1,5 +1,9 @@
 # Spec: Sprite Generation Pipeline
 
+> **Canonical home:** this spec is the living current-state contract for the
+> sprite pipeline and sidecar workflow. The numbered sprite ADRs are amendment
+> history and rationale, not the primary source of present behavior.
+
 ## Context
 
 Crawler currently sources all sprites from third-party CC0 packs (Kenney roguelike, tiny-dungeon, tiny-town, etc.). This is fine for a prototype but caps the project at the union of what those packs already provide. As we add weapons, items, enemies, and biome variants, we will repeatedly need on-style sprites that don't exist in any pack.

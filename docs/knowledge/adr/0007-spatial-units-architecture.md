@@ -2,11 +2,16 @@
 
 ## Status
 
-Accepted
+Superseded by 0023
 
 ## Date
 
 2026-06-08
+
+> Historical intermediate decision. The current canonical spatial-unit contract
+> is [ADR 0023](0023-feet-as-single-internal-spatial-unit.md); this ADR is kept
+> to explain how the project moved from pixel-internal stores to feet-only
+> simulation units.
 
 **Scope:** src/core, src/game, src/shared  
 **Affects:** ECS stores, game systems, design tuning

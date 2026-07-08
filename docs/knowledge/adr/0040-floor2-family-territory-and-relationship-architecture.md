@@ -4,6 +4,11 @@
 
 Proposed
 
+> The living Floor 2 contract is tracked in
+> [`.specify/specs/floor2-family-territories.md`](../../../.specify/specs/floor2-family-territories.md).
+> This ADR records the architecture choices and slice boundaries behind that
+> spec; read the spec first for current behavior.
+
 ## Date
 
 2026-07-01

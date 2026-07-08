@@ -1,48 +1,37 @@
 # Spec: Spawner Battle Arena
 
-> **Status:** Proposed
-> **Last reconciled:** 2026-07-04
+> **Status:** Shipped — this is the canonical current-state contract for the
+> spawner-arena feature family.
+> **Last reconciled:** 2026-07-08
 > **Estimated complexity:** 🍎🍎🍎🍎 (touches core spawner AI, room graph, XP
 > economy, VFX, and HUD announcements; multi-system by definition — see
 > `docs/agent-os/policies/complexity-policy.md`)
-> **Related ADRs (existing):** 0012 (multi-safe-room / role pattern),
-> 0013 (safe-room runtime system), 0022 (BT kernels), 0025 (spawner
-> archetype + on-death finale), 0027 (corpse shatter VFX), 0039 (orphaned
-> systems), 0042 (durable player-hit signal). **New ADR to author:**
-> `NNNN-spawner-battle-arena.md` covering the arena-lifecycle state machine
-> and the sealable-vs-fence fallback decision.
-> **Code source-of-truth (planned):**
+> **Related ADRs:** 0012 (multi-safe-room / role pattern), 0013 (safe-room
+> runtime system), 0022 (BT kernels), 0025 (spawner archetype + on-death
+> finale), 0027 (corpse shatter VFX), 0039 (orphaned systems), 0042
+> (durable player-hit signal), 0044 (core arena mechanic), 0045 (AI lock-in
+> priority), 0046 (armed-telemetry fix), 0049 (Floor 1 spawner-free-by-config),
+> 0050 (dynamic barrier primitive).
+> **Code source-of-truth:**
 > `src/game/spawners/spawnerSystem.ts`,
 > `src/game/spawners/registry.ts`,
-> `src/core/spawner-arena.ts` **(new)** — arena geometry + lifecycle,
-> `src/core/systems/spawnerArenaSystem.ts` **(new)** — per-tick trigger &
-> resolution, `src/core/systems/dropSystem.ts` (XP redirect),
+> `src/core/systems/dropSystem.ts` (XP redirect),
 > `src/core/systems/doorSystem.ts` (arena lock hook),
-> `src/engine/EffectsVfx.ts` (new VFX kinds), `src/engine/hud/*`
-> (announcement banner), `src/shared/vfx-events.ts` (new `kind`s).
-> **Labs:** `src/labs/spawner-lab/` (extend), new
-> `src/labs/spawner-arena-lab/` covering both sealable-room and
-> open-arena fallbacks.
+> `src/engine/EffectsVfx.ts`, `src/engine/hud/*` (announcement banner),
+> `src/shared/vfx-events.ts`.
+> **Labs:** `src/labs/spawner-lab/` and `src/labs/spawner-arena-lab/`.
 > **Test suites:** `tests/unit/spawner-arena.test.ts`,
 > `tests/unit/dropSystem.spawner-xp.test.ts`,
 > `tests/integration/spawner-arena.integration.test.ts`,
 > `tests/headless/spawner-arena-win-rate.test.ts` (must remain within the
 > global ≥90% Floor 1 win-rate target — Constitution rule 13).
-> **Known implementation gaps:**
+> **Known implementation notes:**
 >
-> - ~~No arena/lock concept for spawners today; spawners can be
->   kited outside their spawn zone and cheesed with ranged.~~ (Resolved
->   in ADR 0044.)
-> - ~~Spawned children drop XP the same as normal mobs, so a spawner
->   effectively grants unbounded XP.~~ (Resolved in ADR 0044.)
-> - ~~No "encounter start" banner or dedicated VFX; VFX today is only the
->   per-pulse ripple in `spawnerSystem.ts:emitSpawnerPulse`.~~ (Resolved
->   in ADR 0044.)
-> - ~~Fence tiles are only impenetrable where the ring landed on
->   passable tiles at trigger time — rings crossing walls leaked at the
->   seam.~~ (Resolved in ADR 0050 by moving to the dynamic barrier
->   primitive at `src/core/barriers/`. Barriers are a passability-agnostic
->   overlay; the seam-leak class is impossible by construction.)
+> - Floor 1 is intentionally **spawner-free by config** today (ADR 0049), so
+>   this feature is primarily exercised via labs, synthetic tests, and any floor
+>   whose spawn table contains spawners.
+> - The dynamic barrier primitive (ADR 0050) is part of the shipped contract; the
+>   old tile-flag ring implementation is historical only.
 
 ## Context
 

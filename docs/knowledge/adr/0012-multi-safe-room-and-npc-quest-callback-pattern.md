@@ -2,10 +2,15 @@
 
 ## Status
 
-Accepted
+Deprecated
 
 **Date:** 2026-06-11  
 **Deciders:** Agent session (floor1-lab-ux-fixes)
+
+> Historical precursor. The current safe-room runtime contract lives in
+> [ADR 0013](0013-safe-room-runtime-system.md); future NPC / quest-acceptance
+> behavior should be captured in the quest or safe-room specs rather than a
+> standalone ADR.
 
 ## Context
 

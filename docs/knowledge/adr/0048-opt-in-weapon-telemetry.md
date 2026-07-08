@@ -4,6 +4,11 @@
 
 Accepted
 
+> Grandfathered tactical instrumentation ADR. If run telemetry grows beyond the
+> current accumulator and recorder surfaces, promote it into a dedicated spec;
+> until then, treat the code and tests as the current contract and this ADR as
+> rationale.
+
 ## Date
 
 2026-07-06

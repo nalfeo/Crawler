@@ -4,6 +4,10 @@
 
 Accepted
 
+> The live rule is now canonical in Constitution §2 plus the matching AGENTS /
+> instructions text; this ADR is the rationale and implementation record for the
+> guard itself.
+
 ## Date
 
 2026-07-02

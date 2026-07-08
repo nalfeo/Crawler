@@ -1,14 +1,49 @@
 # Architecture Decision Records (ADR) Index
 
 This directory holds Crawler's Architecture Decision Records — short documents
-capturing a single significant decision, its context, and its consequences. New
-decisions that affect **2+ systems** require an ADR (see the constitution and
-`.github/copilot-instructions.md`).
+capturing a single **durable architectural decision**, its context, and its
+consequences. New decisions that affect **2+ systems** require an ADR (see the
+constitution and `.github/copilot-instructions.md`).
 
 - **Template:** `docs/knowledge/adr/TEMPLATE.md`
 - **Count:** 78 ADR files — 73 numbered (0001–0051, with number reuse and gaps in this index — see below) + 5 date-prefixed
 - **Status convention:** `## Status` heading with one of
   `Proposed | Accepted | Deprecated | Superseded by NNNN`
+
+### What belongs here vs. elsewhere
+
+- **ADR** — one durable cross-system decision and its rationale.
+- **Spec** (`.specify/specs/`) — the living current-state contract for a system.
+- **Policy / constitution / instructions** — the live normative rule.
+- **Handoff** — implementation notes, postmortems, and one-off cleanup history.
+
+Some older ADRs predate this sharper split. They are retained as historical
+provenance, but they are **not** the template for new ADRs.
+
+### Canonical homes after the 2026-07-08 cleanup
+
+| Topic                                  | Canonical current-state home                                                                      | ADRs retained mainly for rationale / history                   |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Review-harness thresholds              | `docs/agent-os/policies/review-harness-policy.md` + `docs/agent-os/policies/complexity-policy.md` | `0036`, `0051`                                                 |
+| CI / verify / scoped heavy gates       | `docs/agent-os/policies/ci-policy.md`                                                             | `0035`                                                         |
+| Wired-systems rule                     | `.specify/memory/constitution.md` + `AGENTS.md`                                                   | `0039`                                                         |
+| Sprite workflow and sidecar operations | `.specify/specs/sprite-generation-pipeline.md`                                                    | `0003`, `0017`, `0018`, `0023`, `0024`, `0025`, `0037`, `0041` |
+| Spawner arena feature family           | `.specify/specs/spawner-battle-arena.md`                                                          | `0044`, `0045`, `0046`, `0049`, `0050`                         |
+| Floor 2 systemic contract              | `.specify/specs/floor2-family-territories.md`                                                     | `0040`                                                         |
+| Size / weight / physics contract       | `.specify/specs/entity-physics.md`                                                                | `0044-explicit-size-weight-components`                         |
+
+### Grandfathered historical ADRs
+
+These remain in the archive for provenance but should not be copied as new ADR
+style:
+
+- [`0014-pr150-post-merge-review-followups.md`](0014-pr150-post-merge-review-followups.md) —
+  one-off cleanup scope; future equivalents belong in handoffs or PR notes.
+- Tactical operational / instrumentation deltas such as
+  [`0041-raise-queue-visibility-timeout-default.md`](0041-raise-queue-visibility-timeout-default.md)
+  and [`0048-opt-in-weapon-telemetry.md`](0048-opt-in-weapon-telemetry.md).
+- Date-prefixed render/data hookup ADRs, which are kept because renumbering old
+  references would be noisier than retaining the historical record.
 
 > This index is generated/maintained by hand. When you add an ADR, add a row to
 > the [by-number table](#all-adrs-by-number) and a line to the relevant
@@ -48,7 +83,7 @@ hundreds of inbound references.
 
 - [ECS Architecture with bitecs](0001-ecs-architecture.md) — entity-component-system substrate.
 - [Lab-Gated Development](0002-lab-gated-development.md) — no system ships without a lab.
-- [Spatial Units Architecture (Pixels vs Feet)](0007-spatial-units-architecture.md) — the original units split.
+- [Spatial Units Architecture (Pixels vs Feet)](0007-spatial-units-architecture.md) — the original units split; superseded by ADR 0023.
 - [Feet as the single internal spatial unit](0023-feet-as-single-internal-spatial-unit.md) — sim is feet-only; pixels live in `src/engine`.
 
 ### Combat & damage
@@ -105,6 +140,7 @@ hundreds of inbound references.
 
 ### Sprites & art-generation pipeline
 
+- Current behavior is canonical in [`.specify/specs/sprite-generation-pipeline.md`](../../../.specify/specs/sprite-generation-pipeline.md); the ADRs below are the decision history.
 - [Sprite generation pipeline](0003-sprite-generation-pipeline.md)
 - [Azure-backed sprite workflow-state persistence](0017-azure-workflow-state-persistence.md)
 - [Sidecar owns an in-process sprite-generation worker](0018-sidecar-owned-sprite-worker.md)
@@ -128,7 +164,7 @@ hundreds of inbound references.
 
 - [Chronicle as Agent-OS telemetry backend](0004-chronicle-telemetry.md)
 - [Looping automation workflows](0007-automation-loops.md)
-- [PR150 post-merge review follow-up scope](0014-pr150-post-merge-review-followups.md)
+- [PR150 post-merge review follow-up scope](0014-pr150-post-merge-review-followups.md) — grandfathered historical cleanup record; not precedent for new ADRs.
 - [Deterministic orphaned-system wiring guard](0039-orphaned-system-wiring-guard.md) — every exported `*System` must be wired into a real pipeline or explicitly allowlisted.
 - [Asset-request CI worker bypass for Constitutional §3](0043-ci-asset-request-worker-bypass.md) — a gated bypass flag lets the asset-request worker run its Azure paths outside CI without violating §3 determinism.
 - [Raise the review-harness code-review floor to 3🍎](0036-raise-code-review-floor.md) — code-review loop required at 3🍎+ (plan review then also raised to 3🍎).
@@ -140,71 +176,71 @@ hundreds of inbound references.
 
 Rows sharing a number are distinct decisions (see the [identity policy](#numbering--identity-policy)).
 
-| #    | Title                                                                                                                           | Status   | Date       |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------- | -------- | ---------- |
-| 0001 | [ECS Architecture with bitecs](0001-ecs-architecture.md)                                                                        | Accepted | 2024-12-01 |
-| 0002 | [Lab-Gated Development](0002-lab-gated-development.md)                                                                          | Accepted | 2024-12-01 |
-| 0003 | [Sprite Generation Pipeline](0003-sprite-generation-pipeline.md)                                                                | Accepted | 2026-06-04 |
-| 0004 | [Chronicle as Agent-OS Telemetry Backend](0004-chronicle-telemetry.md)                                                          | Accepted | 2026-06-05 |
-| 0005 | [Parameterized Floor Configuration System](0005-parameterized-floor-configuration.md)                                           | Accepted | 2026-06-26 |
-| 0006 | [Drops System Architecture](0006-drops-system-architecture.md)                                                                  | Accepted | 2026-06-05 |
-| 0007 | [Looping Automation Workflows](0007-automation-loops.md)                                                                        | Accepted | 2026-06-07 |
-| 0007 | [Spatial Units Architecture (Pixels vs Feet)](0007-spatial-units-architecture.md)                                               | Accepted | 2026-06-08 |
-| 0008 | [Run Bootstrap Pattern with Modal-Paused Game Flow](0008-floor1-run-bootstrap-modal-pattern.md)                                 | Accepted | 2026-06-08 |
-| 0009 | [Floor 1 Boss/Stair Room Architecture](0009-floor1-boss-stair-room-architecture.md)                                             | Accepted | 2026-06-09 |
-| 0009 | [Projectile Max Range Despawn Rules](0009-projectile-max-range-despawn.md)                                                      | Accepted | 2026-06-09 |
-| 0010 | [Flexible Door Lock Conditions with Optional Relock](0010-door-lock-conditions.md)                                              | Accepted | 2026-06-09 |
-| 0011 | [Data-driven quest system and quest tracker](0011-data-driven-quest-system.md)                                                  | Accepted | 2026-06-12 |
-| 0012 | [Multi-Safe-Room Support and NPC Quest Callback Pattern](0012-multi-safe-room-and-npc-quest-callback-pattern.md)                | Accepted | 2026-06-11 |
-| 0013 | [Safe Room Runtime System](0013-safe-room-runtime-system.md)                                                                    | Accepted | 2026-06-14 |
-| 0014 | [PR150 Post-Merge Review Follow-up Scope](0014-pr150-post-merge-review-followups.md)                                            | Accepted | 2026-06-19 |
-| 0015 | [Floor 1 Drops Unlock & Quest-Giver Room Separation](0015-floor1-drops-unlock-and-questgiver-room-separation.md)                | Accepted | 2026-06-21 |
-| 0016 | [Floor 1 Quest-Chain Re-Sequencing](0016-floor1-quest-chain-resequencing.md)                                                    | Accepted | 2026-06-21 |
-| 0017 | [Azure-backed Sprite Workflow-State Persistence](0017-azure-workflow-state-persistence.md)                                      | Accepted | 2026-06-24 |
-| 0017 | [Boss Health Bar as a Scaled HUD Component](0017-boss-health-bar-hud-component.md)                                              | Accepted | 2026-06-25 |
-| 0017 | [Guard Enemy AI & Contact Damage Against Death-Linger Corpses](0017-dead-enemy-corpse-collision-guard.md)                       | Accepted | 2026-06-25 |
-| 0018 | [Fireball Spell Targeting (Any Enemy, Cluster-Preferring)](0018-fireball-targeting.md)                                          | Accepted | 2026-06-25 |
-| 0018 | [Wire Secondary Stats (crit/dodge) Into the Combat Damage Path](0018-secondary-stats-into-combat.md)                            | Accepted | 2026-06-25 |
-| 0018 | [Sidecar Owns an In-Process Sprite-Generation Worker](0018-sidecar-owned-sprite-worker.md)                                      | Accepted | 2026-06-25 |
-| 0018 | [Unify Sprite Sheet Slicing on the Content-Aware Path](0018-unify-sheet-slicing-content-aware.md)                               | Accepted | 2026-06-25 |
-| 0018 | [Line-of-Sight Gate for Weapon Auto-Targeting](0018-weapon-line-of-sight-targeting.md)                                          | Accepted | 2026-06-25 |
-| 0019 | [Wisdom → Mana Pool (`manaSystem`) + Boss Spell-Reward Hardening](0019-wisdom-mana-pool.md)                                     | Accepted | 2026-06-25 |
-| 0020 | [Projectile Target-Leading & Quest-Progress Stall Watchdog](0020-projectile-leading-and-quest-progress-watchdog.md)             | Accepted | 2026-06-25 |
-| 0021 | [Floor 1 Room-Reachability Guarantee & Headless Gate-Stall Fast-Fail](0021-floor1-room-reachability-and-gate-stall-fastfail.md) | Accepted | 2026-06-26 |
-| 0022 | [Extract Pure BT Exploration Decision Kernels (C1–C4)](0022-bt-exploration-pure-kernels.md)                                     | Accepted | 2026-06-26 |
-| 0023 | [Feet as the Single Internal Spatial Unit](0023-feet-as-single-internal-spatial-unit.md)                                        | Accepted | 2026-06-26 |
-| 0023 | [Generic Special-Room Perimeter Sealing with Door-Conversion](0023-generic-special-room-sealing.md)                             | Accepted | 2026-06-26 |
-| 0023 | [Line-of-Sight Melee Hits and AI Loot-Reachability Gating](0023-line-of-sight-melee-and-loot-reachability.md)                   | Accepted | 2026-06-27 |
-| 0023 | [Re-runnable PostProcess & Judge Over Stored Sprite Sheets](0023-rerunnable-postprocess-judge.md)                               | Accepted | 2026-06-26 |
-| 0024 | [Floor 1 Spawn Density via a Director Engagement Budget](0024-floor1-spawn-density-engagement-budget.md)                        | Accepted | 2026-06-25 |
-| 0024 | [Generate Stores the Raw Sheet Only (Option B)](0024-generate-stores-raw-sheet-only.md)                                         | Accepted | 2026-06-26 |
-| 0024 | [Set Piece Themed Rooms](0024-set-piece-themed-rooms.md)                                                                        | Accepted | 2026-06-25 |
-| 0025 | [HiDPI Supersampling Render Scale for Crisp Text](0025-hidpi-supersampling-render-scale.md)                                     | Accepted | 2026-06-26 |
-| 0025 | [Generic Spawner Mob-Type](0025-spawner-mob-type.md)                                                                            | Accepted | 2026-06-27 |
-| 0025 | [Generic VFX Effects Pipeline](0025-vfx-effects-pipeline.md)                                                                    | Accepted | 2026-06-26 |
-| 0025 | [Devtools Sprite Workflow — 7-Stage Restructure](0025-workflow-7-stage-restructure.md)                                          | Accepted | 2026-06-26 |
-| 0026 | [Baby Slime Spawn Animation and Swing-Immunity](0026-baby-slime-spawn-animation-and-swing-immunity.md)                          | Accepted | 2026-06-26 |
-| 0026 | [Door-Pointing Welcome-Sign Wayfinding](0026-welcome-sign-wayfinding.md)                                                        | Accepted | 2026-06-27 |
-| 0027 | [Explode Corpses Into Sprite Shards When Hit During Death-Linger](0027-corpse-explosion-on-hit.md)                              | Accepted | 2026-06-27 |
-| 0028 | [Multi-Variant Generated Sprites](0028-generated-sprite-variants.md)                                                            | Accepted | 2026-06-26 |
-| 0033 | [Migrate Content Generation to Azure AI Foundry](0033-azure-foundry-content-generation.md)                                      | Proposed | 2026-06-29 |
-| 0036 | [Raise the Review-Harness Code-Review Floor to 3🍎](0036-raise-code-review-floor.md)                                            | Accepted | 2026-07-02 |
-| 0037 | [Sprite Worker Poison-Message Handling (bounded failures, comment-once)](0037-sprite-worker-poison-message-handling.md)         | Accepted | 2026-07-02 |
-| 0038 | [Asset-Request Briefs Accept Rich Multi-Sentence Text](0038-asset-request-multi-sentence-brief.md)                              | Accepted | 2026-07-01 |
-| 0039 | [Deterministic Orphaned-System Wiring Guard](0039-orphaned-system-wiring-guard.md)                                              | Accepted | 2026-07-02 |
-| 0040 | [Floor 2 Family-Territory & Relationship Architecture](0040-floor2-family-territory-and-relationship-architecture.md)           | Proposed | 2026-07-01 |
-| 0041 | [Raise Azure Storage Queue Default Visibility Timeout to 900s](0041-raise-queue-visibility-timeout-default.md)                  | Accepted | 2026-07-02 |
-| 0042 | [Durable Player-Hit Signal for Ally-Defend Retaliation](0042-durable-player-hit-signal-for-ally-defend.md)                      | Accepted | 2026-07-03 |
-| 0043 | [Behavior Tree — Build vs. Buy](0043-behavior-tree-build-vs-buy.md)                                                             | Accepted | 2026-06-26 |
-| 0043 | [Asset-request CI Worker Bypass for Constitutional §3](0043-ci-asset-request-worker-bypass.md)                                  | Accepted | 2026-07-03 |
-| 0043 | [Floor 2 Scenario Definition & Governor Sweep Wiring](0043-floor2-scenario-definition-and-governor-sweep-wiring.md)             | Accepted | 2026-07-03 |
-| 0044 | [Spawner Battle Arena](0044-spawner-battle-arena.md)                                                                            | Accepted | 2026-07-04 |
-| 0045 | [AI Arena Lock-in Priority](0045-ai-arena-lockin-priority.md)                                                                   | Accepted | 2026-07-04 |
-| 0046 | [Spawner-Arena "Ever Armed" Latch & `resolvedArmed` Telemetry](0046-spawner-arena-armed-telemetry.md)                           | Accepted | 2026-07-05 |
-| 0046 | [Floor 2 Ambient Director with Territory-Weighted Trash Selection](0046-floor2-ambient-director-territory-weights.md)           | Accepted | 2026-07-06 |
-| 0046 | [Set-Piece Map-Gen Integration, NPC Placement & Sprite Layering](0046-set-piece-mapgen-integration-npc-placement-layering.md)   | Accepted | 2026-07-06 |
-| 0047 | [Spatial-Scoping Performance Optimizations](0047-spatial-scoping-performance.md)                                                | Accepted | 2026-07-06 |
-| 0048 | [Opt-in Per-Run Weapon Telemetry (accuracy + multi-hit)](0048-opt-in-weapon-telemetry.md)                                       | Accepted | 2026-07-06 |
-| 0049 | [Floor 1 is Spawner-Free by Empty Spawn Table](0049-floor1-spawner-free-by-config.md)                                           | Accepted | 2026-07-07 |
-| 0050 | [Dynamic Barrier Primitive](0050-dynamic-barrier-primitive.md)                                                                  | Accepted | 2026-07-04 |
-| 0051 | [Replace Dual-Plan Synthesis with an Adversarial Plan Review](0051-adversarial-plan-review-fold.md)                             | Accepted | 2026-07-08 |
+| #    | Title                                                                                                                           | Status             | Date       |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ---------- |
+| 0001 | [ECS Architecture with bitecs](0001-ecs-architecture.md)                                                                        | Accepted           | 2024-12-01 |
+| 0002 | [Lab-Gated Development](0002-lab-gated-development.md)                                                                          | Accepted           | 2024-12-01 |
+| 0003 | [Sprite Generation Pipeline](0003-sprite-generation-pipeline.md)                                                                | Accepted           | 2026-06-04 |
+| 0004 | [Chronicle as Agent-OS Telemetry Backend](0004-chronicle-telemetry.md)                                                          | Accepted           | 2026-06-05 |
+| 0005 | [Parameterized Floor Configuration System](0005-parameterized-floor-configuration.md)                                           | Accepted           | 2026-06-26 |
+| 0006 | [Drops System Architecture](0006-drops-system-architecture.md)                                                                  | Accepted           | 2026-06-05 |
+| 0007 | [Looping Automation Workflows](0007-automation-loops.md)                                                                        | Accepted           | 2026-06-07 |
+| 0007 | [Spatial Units Architecture (Pixels vs Feet)](0007-spatial-units-architecture.md)                                               | Superseded by 0023 | 2026-06-08 |
+| 0008 | [Run Bootstrap Pattern with Modal-Paused Game Flow](0008-floor1-run-bootstrap-modal-pattern.md)                                 | Accepted           | 2026-06-08 |
+| 0009 | [Floor 1 Boss/Stair Room Architecture](0009-floor1-boss-stair-room-architecture.md)                                             | Accepted           | 2026-06-09 |
+| 0009 | [Projectile Max Range Despawn Rules](0009-projectile-max-range-despawn.md)                                                      | Accepted           | 2026-06-09 |
+| 0010 | [Flexible Door Lock Conditions with Optional Relock](0010-door-lock-conditions.md)                                              | Accepted           | 2026-06-09 |
+| 0011 | [Data-driven quest system and quest tracker](0011-data-driven-quest-system.md)                                                  | Accepted           | 2026-06-12 |
+| 0012 | [Multi-Safe-Room Support and NPC Quest Callback Pattern](0012-multi-safe-room-and-npc-quest-callback-pattern.md)                | Deprecated         | 2026-06-11 |
+| 0013 | [Safe Room Runtime System](0013-safe-room-runtime-system.md)                                                                    | Accepted           | 2026-06-14 |
+| 0014 | [PR150 Post-Merge Review Follow-up Scope](0014-pr150-post-merge-review-followups.md)                                            | Deprecated         | 2026-06-19 |
+| 0015 | [Floor 1 Drops Unlock & Quest-Giver Room Separation](0015-floor1-drops-unlock-and-questgiver-room-separation.md)                | Accepted           | 2026-06-21 |
+| 0016 | [Floor 1 Quest-Chain Re-Sequencing](0016-floor1-quest-chain-resequencing.md)                                                    | Accepted           | 2026-06-21 |
+| 0017 | [Azure-backed Sprite Workflow-State Persistence](0017-azure-workflow-state-persistence.md)                                      | Accepted           | 2026-06-24 |
+| 0017 | [Boss Health Bar as a Scaled HUD Component](0017-boss-health-bar-hud-component.md)                                              | Accepted           | 2026-06-25 |
+| 0017 | [Guard Enemy AI & Contact Damage Against Death-Linger Corpses](0017-dead-enemy-corpse-collision-guard.md)                       | Accepted           | 2026-06-25 |
+| 0018 | [Fireball Spell Targeting (Any Enemy, Cluster-Preferring)](0018-fireball-targeting.md)                                          | Accepted           | 2026-06-25 |
+| 0018 | [Wire Secondary Stats (crit/dodge) Into the Combat Damage Path](0018-secondary-stats-into-combat.md)                            | Accepted           | 2026-06-25 |
+| 0018 | [Sidecar Owns an In-Process Sprite-Generation Worker](0018-sidecar-owned-sprite-worker.md)                                      | Accepted           | 2026-06-25 |
+| 0018 | [Unify Sprite Sheet Slicing on the Content-Aware Path](0018-unify-sheet-slicing-content-aware.md)                               | Accepted           | 2026-06-25 |
+| 0018 | [Line-of-Sight Gate for Weapon Auto-Targeting](0018-weapon-line-of-sight-targeting.md)                                          | Accepted           | 2026-06-25 |
+| 0019 | [Wisdom → Mana Pool (`manaSystem`) + Boss Spell-Reward Hardening](0019-wisdom-mana-pool.md)                                     | Accepted           | 2026-06-25 |
+| 0020 | [Projectile Target-Leading & Quest-Progress Stall Watchdog](0020-projectile-leading-and-quest-progress-watchdog.md)             | Accepted           | 2026-06-25 |
+| 0021 | [Floor 1 Room-Reachability Guarantee & Headless Gate-Stall Fast-Fail](0021-floor1-room-reachability-and-gate-stall-fastfail.md) | Accepted           | 2026-06-26 |
+| 0022 | [Extract Pure BT Exploration Decision Kernels (C1–C4)](0022-bt-exploration-pure-kernels.md)                                     | Accepted           | 2026-06-26 |
+| 0023 | [Feet as the Single Internal Spatial Unit](0023-feet-as-single-internal-spatial-unit.md)                                        | Accepted           | 2026-06-26 |
+| 0023 | [Generic Special-Room Perimeter Sealing with Door-Conversion](0023-generic-special-room-sealing.md)                             | Accepted           | 2026-06-26 |
+| 0023 | [Line-of-Sight Melee Hits and AI Loot-Reachability Gating](0023-line-of-sight-melee-and-loot-reachability.md)                   | Accepted           | 2026-06-27 |
+| 0023 | [Re-runnable PostProcess & Judge Over Stored Sprite Sheets](0023-rerunnable-postprocess-judge.md)                               | Accepted           | 2026-06-26 |
+| 0024 | [Floor 1 Spawn Density via a Director Engagement Budget](0024-floor1-spawn-density-engagement-budget.md)                        | Accepted           | 2026-06-25 |
+| 0024 | [Generate Stores the Raw Sheet Only (Option B)](0024-generate-stores-raw-sheet-only.md)                                         | Accepted           | 2026-06-26 |
+| 0024 | [Set Piece Themed Rooms](0024-set-piece-themed-rooms.md)                                                                        | Accepted           | 2026-06-25 |
+| 0025 | [HiDPI Supersampling Render Scale for Crisp Text](0025-hidpi-supersampling-render-scale.md)                                     | Accepted           | 2026-06-26 |
+| 0025 | [Generic Spawner Mob-Type](0025-spawner-mob-type.md)                                                                            | Accepted           | 2026-06-27 |
+| 0025 | [Generic VFX Effects Pipeline](0025-vfx-effects-pipeline.md)                                                                    | Accepted           | 2026-06-26 |
+| 0025 | [Devtools Sprite Workflow — 7-Stage Restructure](0025-workflow-7-stage-restructure.md)                                          | Accepted           | 2026-06-26 |
+| 0026 | [Baby Slime Spawn Animation and Swing-Immunity](0026-baby-slime-spawn-animation-and-swing-immunity.md)                          | Accepted           | 2026-06-26 |
+| 0026 | [Door-Pointing Welcome-Sign Wayfinding](0026-welcome-sign-wayfinding.md)                                                        | Accepted           | 2026-06-27 |
+| 0027 | [Explode Corpses Into Sprite Shards When Hit During Death-Linger](0027-corpse-explosion-on-hit.md)                              | Accepted           | 2026-06-27 |
+| 0028 | [Multi-Variant Generated Sprites](0028-generated-sprite-variants.md)                                                            | Accepted           | 2026-06-26 |
+| 0033 | [Migrate Content Generation to Azure AI Foundry](0033-azure-foundry-content-generation.md)                                      | Proposed           | 2026-06-29 |
+| 0036 | [Raise the Review-Harness Code-Review Floor to 3🍎](0036-raise-code-review-floor.md)                                            | Accepted           | 2026-07-02 |
+| 0037 | [Sprite Worker Poison-Message Handling (bounded failures, comment-once)](0037-sprite-worker-poison-message-handling.md)         | Accepted           | 2026-07-02 |
+| 0038 | [Asset-Request Briefs Accept Rich Multi-Sentence Text](0038-asset-request-multi-sentence-brief.md)                              | Accepted           | 2026-07-01 |
+| 0039 | [Deterministic Orphaned-System Wiring Guard](0039-orphaned-system-wiring-guard.md)                                              | Accepted           | 2026-07-02 |
+| 0040 | [Floor 2 Family-Territory & Relationship Architecture](0040-floor2-family-territory-and-relationship-architecture.md)           | Proposed           | 2026-07-01 |
+| 0041 | [Raise Azure Storage Queue Default Visibility Timeout to 900s](0041-raise-queue-visibility-timeout-default.md)                  | Accepted           | 2026-07-02 |
+| 0042 | [Durable Player-Hit Signal for Ally-Defend Retaliation](0042-durable-player-hit-signal-for-ally-defend.md)                      | Accepted           | 2026-07-03 |
+| 0043 | [Behavior Tree — Build vs. Buy](0043-behavior-tree-build-vs-buy.md)                                                             | Accepted           | 2026-06-26 |
+| 0043 | [Asset-request CI Worker Bypass for Constitutional §3](0043-ci-asset-request-worker-bypass.md)                                  | Accepted           | 2026-07-03 |
+| 0043 | [Floor 2 Scenario Definition & Governor Sweep Wiring](0043-floor2-scenario-definition-and-governor-sweep-wiring.md)             | Accepted           | 2026-07-03 |
+| 0044 | [Spawner Battle Arena](0044-spawner-battle-arena.md)                                                                            | Accepted           | 2026-07-04 |
+| 0045 | [AI Arena Lock-in Priority](0045-ai-arena-lockin-priority.md)                                                                   | Accepted           | 2026-07-04 |
+| 0046 | [Spawner-Arena "Ever Armed" Latch & `resolvedArmed` Telemetry](0046-spawner-arena-armed-telemetry.md)                           | Accepted           | 2026-07-05 |
+| 0046 | [Floor 2 Ambient Director with Territory-Weighted Trash Selection](0046-floor2-ambient-director-territory-weights.md)           | Accepted           | 2026-07-06 |
+| 0046 | [Set-Piece Map-Gen Integration, NPC Placement & Sprite Layering](0046-set-piece-mapgen-integration-npc-placement-layering.md)   | Accepted           | 2026-07-06 |
+| 0047 | [Spatial-Scoping Performance Optimizations](0047-spatial-scoping-performance.md)                                                | Accepted           | 2026-07-06 |
+| 0048 | [Opt-in Per-Run Weapon Telemetry (accuracy + multi-hit)](0048-opt-in-weapon-telemetry.md)                                       | Accepted           | 2026-07-06 |
+| 0049 | [Floor 1 is Spawner-Free by Empty Spawn Table](0049-floor1-spawner-free-by-config.md)                                           | Accepted           | 2026-07-07 |
+| 0050 | [Dynamic Barrier Primitive](0050-dynamic-barrier-primitive.md)                                                                  | Accepted           | 2026-07-04 |
+| 0051 | [Replace Dual-Plan Synthesis with an Adversarial Plan Review](0051-adversarial-plan-review-fold.md)                             | Accepted           | 2026-07-08 |
