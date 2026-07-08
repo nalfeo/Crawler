@@ -99,12 +99,12 @@ force-calls the scorer and can't prove wiring):
   proof**: default LEGACY `BehaviorTreeAI` matches #853's baked golden
   fingerprints on the _new_ code ⇒ main's shipped default path is byte-for-byte
   unchanged.
-- `tests/headless/risk-reward-fused-determinism.test.ts` (3/3) — FUSED is
+- `tests/headless/fused-pathing-determinism.test.ts` (3/3) — FUSED is
   byte-identical across two runs (seeds 42/101) **and** diverges from LEGACY
   (non-inert; proves the mode is actually wired and active).
 - `npm run ai:ab-pathing-mode` — the real-artifact A/B win-rate sweep that
   surfaced the melee-favoring wash (files/ab-pathing-newfloor1.{log,json}).
-- `npm run verify:fast` (93 unit incl. `tests/unit/ai/risk-reward-fused-pathing.test.ts`).
+- `npm run verify:fast` (93 unit incl. `tests/unit/ai/fused-pathing.test.ts`).
 
 ## Navmesh spike (Slice 1) — GO, queued as Slice 3
 
@@ -131,8 +131,8 @@ behind the same A/B pathing-mode seam.
 - `src/labs/ai-runner-lab/index.ts` — candidate-fan + field-heatmap overlays,
   Modes HUD.
 - `scripts/agent/perf/ab-pathing-mode.ts` — manual A/B win-rate sweep + gate.
-- `tests/headless/risk-reward-fused-determinism.test.ts`,
-  `tests/unit/ai/risk-reward-fused-pathing.test.ts`.
+- `tests/headless/fused-pathing-determinism.test.ts`,
+  `tests/unit/ai/fused-pathing.test.ts`.
 - `docs/knowledge/review-ledgers/2026-07-08-fused-seam-pathing.review-ledger.json`,
   `docs/knowledge/metrics/apples/2026-07-08-fused-seam-pathing.json`.
 
