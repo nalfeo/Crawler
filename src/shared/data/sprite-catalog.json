@@ -2417,5 +2417,57 @@
     "frame": 0,
     "col": 0,
     "row": 0
+  },
+  {
+    "id": "generated:gnome-tinker-var-0",
+    "kind": "sprite",
+    "label": "gnome-tinker-var-0",
+    "description": "Generated sprite from brief: gnome-tinker.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "gnome-tinker-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/gnome-tinker-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:kobold-torch-var-3",
+    "kind": "sprite",
+    "label": "kobold-torch-var-3",
+    "description": "Generated sprite from brief: kobold-torch.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "kobold-torch-var-3",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/kobold-torch-var-3.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:myconid-spore-var-8",
+    "kind": "sprite",
+    "label": "myconid-spore-var-8",
+    "description": "Generated sprite from brief: myconid-spore.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "myconid-spore-var-8",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/myconid-spore-var-8.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:toadkin-tongue-var-10",
+    "kind": "sprite",
+    "label": "toadkin-tongue-var-10",
+    "description": "Generated sprite from brief: toadkin-tongue.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "toadkin-tongue-var-10",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/toadkin-tongue-var-10.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
   }
 ]

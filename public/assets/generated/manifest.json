@@ -6230,6 +6230,142 @@
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-velvet-rope\\2026-07-08T03-38-52-1c707f76\\postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
+    },
+    "gnome-tinker-var-0": {
+      "briefId": "gnome-tinker",
+      "spriteName": "gnome-tinker-var-0",
+      "assetPath": "generated/gnome-tinker-var-0.png",
+      "approvedAt": "2026-07-08T04:36:04.174Z",
+      "sourceRun": "generated/runs/gnome-tinker/2026-07-08T04-32-16-a7c7bc33",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 31,
+        "y": 34,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 34,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "d9d8330417da754b0aa72c71ec043892c21f44aa2e3ace4cad46b90cfff482fe",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\gnome-tinker\\2026-07-08T04-32-16-a7c7bc33\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\gnome-tinker\\2026-07-08T04-32-16-a7c7bc33\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\gnome-tinker\\2026-07-08T04-32-16-a7c7bc33\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "kobold-torch-var-3": {
+      "briefId": "kobold-torch",
+      "spriteName": "kobold-torch-var-3",
+      "assetPath": "generated/kobold-torch-var-3.png",
+      "approvedAt": "2026-07-08T04:36:01.156Z",
+      "sourceRun": "generated/runs/kobold-torch/2026-07-08T04-22-21-2fbcb5d3",
+      "variantIndex": 3,
+      "anchor": {
+        "x": 32,
+        "y": 33,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 33,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "aed3bfa776fc27e454901d22c3731e4e0e4ecf23d73ee751ac668db10124f193",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\kobold-torch\\2026-07-08T04-22-21-2fbcb5d3\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\kobold-torch\\2026-07-08T04-22-21-2fbcb5d3\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\kobold-torch\\2026-07-08T04-22-21-2fbcb5d3\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "myconid-spore-var-8": {
+      "briefId": "myconid-spore",
+      "spriteName": "myconid-spore-var-8",
+      "assetPath": "generated/myconid-spore-var-8.png",
+      "approvedAt": "2026-07-08T04:36:02.107Z",
+      "sourceRun": "generated/runs/myconid-spore/2026-07-08T04-26-06-c1fd05f7",
+      "variantIndex": 8,
+      "anchor": {
+        "x": 33,
+        "y": 31,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 33,
+          "y": 31,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 33,
+          "y": 31,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "dc20f1332645c50d74010e754a7dbbdd71fdff9d161db07cff8e6758389f5a0b",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\myconid-spore\\2026-07-08T04-26-06-c1fd05f7\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\myconid-spore\\2026-07-08T04-26-06-c1fd05f7\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\myconid-spore\\2026-07-08T04-26-06-c1fd05f7\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "toadkin-tongue-var-10": {
+      "briefId": "toadkin-tongue",
+      "spriteName": "toadkin-tongue-var-10",
+      "assetPath": "generated/toadkin-tongue-var-10.png",
+      "approvedAt": "2026-07-08T04:36:03.103Z",
+      "sourceRun": "generated/runs/toadkin-tongue/2026-07-08T04-29-19-ff424f4c",
+      "variantIndex": 10,
+      "anchor": {
+        "x": 31,
+        "y": 32,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 32,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "317f702fa0fdb95608c61d9610f852aaf50cfd03b7d35707b19944c8913cffbe",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\toadkin-tongue\\2026-07-08T04-29-19-ff424f4c\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\toadkin-tongue\\2026-07-08T04-29-19-ff424f4c\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\toadkin-tongue\\2026-07-08T04-29-19-ff424f4c\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     }
   }
 }
