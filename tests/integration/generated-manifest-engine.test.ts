@@ -10,7 +10,7 @@
  * Grounds the loader in real filesystem behaviour without booting Phaser.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -202,6 +202,25 @@ describe('generated manifest -> engine chain (fixture)', () => {
 });
 
 describe('generated manifest -> engine chain (real repo manifest)', () => {
+  // Build the real-manifest registry ONCE for the table-driven item cases below,
+  // rather than re-reading + re-parsing the on-disk manifest for every row.
+  let sharedRealRegistry: Awaited<ReturnType<typeof fetchGeneratedSpriteRegistry>> | null = null;
+  beforeAll(async () => {
+    if (!existsSync(REPO_MANIFEST)) {
+      return;
+    }
+    const raw = readFileSync(REPO_MANIFEST, 'utf8');
+    const fetcher = (async () =>
+      new Response(raw, {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })) as unknown as typeof fetch;
+    sharedRealRegistry = await fetchGeneratedSpriteRegistry({
+      url: '/assets/generated/manifest.json',
+      fetcher,
+    });
+  });
+
   it('parses the checked-in manifest without throwing', async () => {
     if (!existsSync(REPO_MANIFEST)) {
       // First boot in a fresh checkout. The loader must still soft-fail.
@@ -255,21 +274,12 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
 
   it.each(ITEM_ART_EXPECTATIONS)(
     'resolves item "$itemId" to real approved art, never a placeholder',
-    async ({ itemId, concept }) => {
-      if (!existsSync(REPO_MANIFEST)) {
+    ({ itemId, concept }) => {
+      if (!sharedRealRegistry) {
         // Fresh checkout without generated art on disk — nothing to observe.
         return;
       }
-      const raw = readFileSync(REPO_MANIFEST, 'utf8');
-      const fetcher = (async () =>
-        new Response(raw, {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        })) as unknown as typeof fetch;
-      const registry = await fetchGeneratedSpriteRegistry({
-        url: '/assets/generated/manifest.json',
-        fetcher,
-      });
+      const registry = sharedRealRegistry;
 
       // Resolution is deterministic per (itemId, seed); across seeds it must stay
       // on real art (placeholders are fallback-only).

@@ -63,6 +63,14 @@ function escapeRegExp(value: string): string {
 }
 
 /**
+ * Per-concept cache of the `^<concept>-v(N)$` matcher. `matchConcept` runs inside
+ * `resolveItemSprite`'s nested (entry × concept) loop, so compiling the RegExp
+ * once per concept (instead of once per check) avoids repeated allocations. The
+ * matcher is non-global, so `.exec` keeps no state and is safe to reuse.
+ */
+const conceptVersionMatchers = new Map<string, RegExp>();
+
+/**
  * If `briefId` names `concept` — either bare (`concept`) or versioned
  * (`concept-vN`) — return the match with its parsed version; otherwise null.
  */
@@ -73,7 +81,12 @@ function matchConcept(
   if (briefId === concept) {
     return { bare: true, version: 0 };
   }
-  const match = new RegExp(`^${escapeRegExp(concept)}-v(\\d+)$`).exec(briefId);
+  let matcher = conceptVersionMatchers.get(concept);
+  if (matcher === undefined) {
+    matcher = new RegExp(`^${escapeRegExp(concept)}-v(\\d+)$`);
+    conceptVersionMatchers.set(concept, matcher);
+  }
+  const match = matcher.exec(briefId);
   if (match) {
     return { bare: false, version: Number(match[1]) };
   }
@@ -103,7 +116,12 @@ export function itemSpriteConcepts(itemId: string): readonly string[] {
  * (`classified-dossier`), so a `type === 'item'` gate would miss exactly the
  * concepts being normalized.
  */
+let cachedItemArtIdentitySet: ReadonlySet<string> | null = null;
+
 export function itemArtIdentitySet(): ReadonlySet<string> {
+  if (cachedItemArtIdentitySet !== null) {
+    return cachedItemArtIdentitySet;
+  }
   const identity = new Set<string>();
   for (const item of ITEM_CATALOG) {
     identity.add(item.id);
@@ -114,6 +132,7 @@ export function itemArtIdentitySet(): ReadonlySet<string> {
       identity.add(weaponId);
     }
   }
+  cachedItemArtIdentitySet = identity;
   return identity;
 }
 
