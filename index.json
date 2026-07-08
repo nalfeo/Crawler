@@ -1,5 +1,16 @@
 [
   {
+    "commit": "b6c4ee57715da5735396d836621ada13d0b1ea8f",
+    "commitDate": "2026-07-08T22:31:03Z",
+    "commitSubject": "feat(engine): stamp approved generated Floor-1 tile textures in terrain-renderer (#927)",
+    "capturedAt": "2026-07-08T23:11:55.910Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28980607996",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/b6c4ee57715da5735396d836621ada13d0b1ea8f.json"
+  },
+  {
     "commit": "aabff536aba4496f9d4b1e7d06c3a6e2d2d02c7c",
     "commitDate": "2026-07-08T21:38:24Z",
     "commitSubject": "feat: isolate sprite pipeline tests into dedicated vitest project (#925)",
