@@ -6026,6 +6026,210 @@
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\llama-spitter\\2026-07-08T03-11-10-7b6e670c\\postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
+    },
+    "panda-bruiser-var-1": {
+      "briefId": "panda-bruiser",
+      "spriteName": "panda-bruiser-var-1",
+      "assetPath": "generated/panda-bruiser-var-1.png",
+      "approvedAt": "2026-07-08T03:53:58.074Z",
+      "sourceRun": "generated/runs/panda-bruiser/2026-07-08T03-42-51-9ac1a99c",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 32,
+        "y": 33,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 33,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "621cdef9d7ac91184f359ba85274c449a63523dd01157b16c4fb29ee59be5a84",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\panda-bruiser\\2026-07-08T03-42-51-9ac1a99c\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\panda-bruiser\\2026-07-08T03-42-51-9ac1a99c\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\panda-bruiser\\2026-07-08T03-42-51-9ac1a99c\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "welcome-room-bookcase-var-0": {
+      "briefId": "welcome-room-bookcase",
+      "spriteName": "welcome-room-bookcase-var-0",
+      "assetPath": "generated/welcome-room-bookcase-var-0.png",
+      "approvedAt": "2026-07-08T04:08:31.716Z",
+      "sourceRun": "generated/runs/welcome-room-bookcase/2026-07-08T04-03-36-d2c79b0f",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 47,
+        "y": 99,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 47,
+          "y": 99,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 48,
+          "y": 58,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "item",
+      "contentHash": "7d3126ccbdb95702915b350864b031750b2781c66a8c6d30c7d1aa8e10ae852e",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-bookcase\\2026-07-08T04-03-36-d2c79b0f\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-bookcase\\2026-07-08T04-03-36-d2c79b0f\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-bookcase\\2026-07-08T04-03-36-d2c79b0f\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "welcome-room-desk-var-0": {
+      "briefId": "welcome-room-desk",
+      "spriteName": "welcome-room-desk-var-0",
+      "assetPath": "generated/welcome-room-desk-var-0.png",
+      "approvedAt": "2026-07-08T04:13:57.983Z",
+      "sourceRun": "generated/runs/welcome-room-desk/2026-07-08T04-10-13-f8ac9632",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 73,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 73,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 73,
+          "y": 60,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "item",
+      "contentHash": "cc87a96e9b2f516828bd72ae1e7a49a75838de9509607f571f4381b8e5691f41",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-desk\\2026-07-08T04-10-13-f8ac9632\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-desk\\2026-07-08T04-10-13-f8ac9632\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-desk\\2026-07-08T04-10-13-f8ac9632\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "welcome-room-rug-var-0": {
+      "briefId": "welcome-room-rug",
+      "spriteName": "welcome-room-rug-var-0",
+      "assetPath": "generated/welcome-room-rug-var-0.png",
+      "approvedAt": "2026-07-08T04:08:29.800Z",
+      "sourceRun": "generated/runs/welcome-room-rug/2026-07-08T03-53-58-1d62f27a",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 61,
+        "y": 65,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 61,
+          "y": 65,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 64,
+          "y": 36,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "item",
+      "contentHash": "acd4a21f6d6d77441eb50ef1bcbcf422602d5518a8c37d120663956ae0159cb4",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-rug\\2026-07-08T03-53-58-1d62f27a\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-rug\\2026-07-08T03-53-58-1d62f27a\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-rug\\2026-07-08T03-53-58-1d62f27a\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "welcome-room-shop-table-var-0": {
+      "briefId": "welcome-room-shop-table",
+      "spriteName": "welcome-room-shop-table-var-0",
+      "assetPath": "generated/welcome-room-shop-table-var-0.png",
+      "approvedAt": "2026-07-08T04:08:30.727Z",
+      "sourceRun": "generated/runs/welcome-room-shop-table/2026-07-08T04-00-23-d83d5284",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 73,
+        "y": 48,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 73,
+          "y": 48,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 73,
+          "y": 48,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "3",
+      "type": "item",
+      "contentHash": "f2f6fdeadecebb249faa9e5e8abd521edd108a1b3838b80987e01481e167d175",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-shop-table\\2026-07-08T04-00-23-d83d5284\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-shop-table\\2026-07-08T04-00-23-d83d5284\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-shop-table\\2026-07-08T04-00-23-d83d5284\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "welcome-room-velvet-rope-var-2": {
+      "briefId": "welcome-room-velvet-rope",
+      "spriteName": "welcome-room-velvet-rope-var-2",
+      "assetPath": "generated/welcome-room-velvet-rope-var-2.png",
+      "approvedAt": "2026-07-08T03:54:23.443Z",
+      "sourceRun": "generated/runs/welcome-room-velvet-rope/2026-07-08T03-38-52-1c707f76",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 41,
+        "y": 72,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 41,
+          "y": 72,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 46,
+          "y": 41,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "item",
+      "contentHash": "17f48a8bbc8718061b2d62ad668465fa52fc896217a9be5d08746a295dce0469",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-velvet-rope\\2026-07-08T03-38-52-1c707f76\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-velvet-rope\\2026-07-08T03-38-52-1c707f76\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-velvet-rope\\2026-07-08T03-38-52-1c707f76\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     }
   }
 }

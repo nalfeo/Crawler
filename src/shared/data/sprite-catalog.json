@@ -2339,5 +2339,83 @@
     "frame": 0,
     "col": 0,
     "row": 0
+  },
+  {
+    "id": "generated:panda-bruiser-var-1",
+    "kind": "sprite",
+    "label": "panda-bruiser-var-1",
+    "description": "Generated sprite from brief: panda-bruiser.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "panda-bruiser-var-1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/panda-bruiser-var-1.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:welcome-room-bookcase-var-0",
+    "kind": "sprite",
+    "label": "welcome-room-bookcase-var-0",
+    "description": "Generated sprite from brief: welcome-room-bookcase.",
+    "tags": ["item", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-bookcase-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-bookcase-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:welcome-room-desk-var-0",
+    "kind": "sprite",
+    "label": "welcome-room-desk-var-0",
+    "description": "Generated sprite from brief: welcome-room-desk.",
+    "tags": ["item", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-desk-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-desk-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:welcome-room-rug-var-0",
+    "kind": "sprite",
+    "label": "welcome-room-rug-var-0",
+    "description": "Generated sprite from brief: welcome-room-rug.",
+    "tags": ["item", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-rug-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-rug-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:welcome-room-shop-table-var-0",
+    "kind": "sprite",
+    "label": "welcome-room-shop-table-var-0",
+    "description": "Generated sprite from brief: welcome-room-shop-table.",
+    "tags": ["item", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-shop-table-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-shop-table-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:welcome-room-velvet-rope-var-2",
+    "kind": "sprite",
+    "label": "welcome-room-velvet-rope-var-2",
+    "description": "Generated sprite from brief: welcome-room-velvet-rope.",
+    "tags": ["item", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-velvet-rope-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-velvet-rope-var-2.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
   }
 ]
