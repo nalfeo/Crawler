@@ -2209,5 +2209,57 @@
     "frame": 0,
     "col": 0,
     "row": 0
+  },
+  {
+    "id": "generated:beetlefolk-boss-var-0",
+    "kind": "sprite",
+    "label": "beetlefolk-boss-var-0",
+    "description": "Generated sprite from brief: beetlefolk-boss.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "beetlefolk-boss-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/beetlefolk-boss-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:crabfolk-boss-var-10",
+    "kind": "sprite",
+    "label": "crabfolk-boss-var-10",
+    "description": "Generated sprite from brief: crabfolk-boss.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "crabfolk-boss-var-10",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/crabfolk-boss-var-10.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:geese-boss-var-0",
+    "kind": "sprite",
+    "label": "geese-boss-var-0",
+    "description": "Generated sprite from brief: geese-boss.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "geese-boss-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/geese-boss-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:molefolk-boss-var-0",
+    "kind": "sprite",
+    "label": "molefolk-boss-var-0",
+    "description": "Generated sprite from brief: molefolk-boss.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "molefolk-boss-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/molefolk-boss-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
   }
 ]
