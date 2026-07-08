@@ -71,10 +71,17 @@ if [ ! -d tests/integration ]; then
   echo "ℹ️  No integration tests directory found; skipping."
 # `find -print -quit` emits only the first match; grep confirms at least one file exists.
 elif find tests/integration -type f -name '*.test.ts' -print -quit | grep -q .; then
+  # NOTE: sprite pipeline integration tests (batch-cli, generate-one, judge-*, run-full,
+  # sidecar-lifecycle, synth-to-generate, weapons-pipeline, tests/integration/sprites/)
+  # live in the `sprites` project now and are NOT included here. Run them with:
+  #   npm run test:sprites
   npx vitest run --project integration --reporter=dot
 else
   echo "ℹ️  No integration tests found; skipping."
 fi
+
+echo "🔍 Step 7b/10: Sprite pipeline tests..."
+npx vitest run --project sprites --reporter=dot
 
 # The Headless Floor 1 gate replays a full ~20k-frame deterministic sim per
 # losing (seed, weapon) and is the single slowest step (~300s in CI, the CI

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { syncCatalog } from '../../scripts/sprites/sync-catalog.js';
-import { parseSpriteCatalog } from '../../src/shared/sprite-catalog.js';
+import { syncCatalog } from '../../../scripts/sprites/sync-catalog.js';
+import { parseSpriteCatalog } from '../../../src/shared/sprite-catalog.js';
 
 describe('sprite catalog sync', () => {
   const sheets = [

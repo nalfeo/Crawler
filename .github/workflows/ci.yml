@@ -22,6 +22,8 @@ jobs:
       art_only: ${{ steps.detect.outputs.art_only }}
       docs_only: ${{ steps.detect.outputs.docs_only }}
       gameplay_safe: ${{ steps.detect.outputs.gameplay_safe }}
+      sprites_only: ${{ steps.detect.outputs.sprites_only }}
+      sprites_touched: ${{ steps.detect.outputs.sprites_touched }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -109,11 +111,12 @@ jobs:
   # Runs WITHOUT coverage instrumentation so the gate stays fast (~27 s).
   # v8 coverage adds ~5× overhead (~140 s); it runs separately in the advisory
   # test-unit-coverage job which posts the PR comment but does not block merge.
+  # Skipped for sprites_only changes — only the sprites test project is relevant.
   test-unit:
     name: Unit Tests
     runs-on: ubuntu-latest
     needs: [changes]
-    if: needs.changes.outputs.docs_only != 'true'
+    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.sprites_only != 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -125,11 +128,12 @@ jobs:
   # Advisory: runs with coverage in parallel with test-unit.
   # Posts a PR comment but is NOT in the merge-gate — a coverage regression
   # surfaces as a visible comment without blocking the branch.
+  # Skipped for sprites_only changes (game coverage not relevant).
   test-unit-coverage:
     name: Unit Tests (coverage)
     runs-on: ubuntu-latest
     needs: [changes]
-    if: needs.changes.outputs.docs_only != 'true'
+    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.sprites_only != 'true'
     continue-on-error: true
     permissions:
       contents: read
@@ -162,11 +166,14 @@ jobs:
   # deterministic — they use mock image/vision providers and temp fixtures, with
   # no external VLM/image services — so they must stay green for `npm run verify`
   # to be honestly green (AGENTS.md rule #8).
+  # NOTE: sprite pipeline integration tests have been moved to the sprites project
+  # (test-sprites job below). This job covers game integration tests only.
+  # Skipped for sprites_only changes.
   test-integration:
     name: Integration Tests
     runs-on: ubuntu-latest
     needs: [changes]
-    if: needs.changes.outputs.art_only != 'true' && needs.changes.outputs.docs_only != 'true'
+    if: needs.changes.outputs.art_only != 'true' && needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.sprites_only != 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -174,6 +181,28 @@ jobs:
 
       - name: Integration tests
         run: npx vitest run --project integration --reporter=verbose
+
+  # Job 4b: Sprite pipeline tests (critical path, must pass)
+  # Covers the sprite generation/editing pipeline (scripts/sprites/**) in isolation
+  # from game tests. Runs the sprites vitest project which includes all of
+  # tests/unit/sprites/**, tests/integration/sprites/**, and the pipeline
+  # integration tests that were previously in the integration project.
+  # Skipped when no sprite pipeline file changed (sprites_touched=false) — a pure
+  # game code change cannot break pipeline tests since game code never imports
+  # scripts/sprites/**. Also skipped for art_only and docs_only (no code changed).
+  # For sprites_only changes this is the only test job that runs.
+  test-sprites:
+    name: Sprite Pipeline Tests
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.art_only != 'true' && needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.sprites_touched == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Sprite pipeline tests
+        run: npx vitest run --project sprites --reporter=verbose
 
   # Job 5: Headless Floor 1 completion gate (critical path, must pass)
   # Deterministically proves the behavior-tree AI can still clear Floor 1
@@ -247,6 +276,7 @@ jobs:
         check-format-and-labs,
         test-unit,
         test-integration,
+        test-sprites,
         test-headless,
         test-e2e,
       ]
@@ -280,15 +310,19 @@ jobs:
           # skippable check, a `changes`/detect-art-only failure on a code PR
           # would skip every heavy gate and be silently counted as PASS.
           check "Change scope detection"        "${{ needs.changes.result }}"
-          # Heavy gameplay gates are allowed to be skipped on art-only changes
-          # (see the `changes` job). They still BLOCK on any code change.
-          # docs-only changes (docs_only=true) also skip all heavy gates.
+          # Heavy gameplay gates are allowed to be skipped on art-only or
+          # sprites-only changes (see the `changes` job). They still BLOCK on any
+          # game code change. docs-only changes skip all heavy gates.
           check "Types & Lint"                  "${{ needs.check-types-and-lint.result }}"
           check "Format & Labs"                 "${{ needs.check-format-and-labs.result }}"
-          check "Unit tests"                    "${{ needs.test-unit.result }}"
-          check "Integration tests"             "${{ needs.test-integration.result }}"   "true"
-          check "Headless Floor 1 completion"   "${{ needs.test-headless.result }}"      "true"
-          check "E2E Visual Regression"         "${{ needs.test-e2e.result }}"           "true"
+          # Unit tests: skipped for sprites_only (allow_skipped=true).
+          check "Unit tests"                    "${{ needs.test-unit.result }}"        "true"
+          # Integration tests: skipped for art_only or sprites_only (allow_skipped=true).
+          check "Integration tests"             "${{ needs.test-integration.result }}" "true"
+          # Sprite pipeline tests: skipped for art_only or docs_only (allow_skipped=true).
+          check "Sprite pipeline tests"         "${{ needs.test-sprites.result }}"    "true"
+          check "Headless Floor 1 completion"   "${{ needs.test-headless.result }}"   "true"
+          check "E2E Visual Regression"         "${{ needs.test-e2e.result }}"        "true"
           echo "✅ All required checks passed"
 
   ci:
@@ -310,7 +344,7 @@ jobs:
     name: E2E Visual Regression
     runs-on: ubuntu-latest
     needs: [changes]
-    if: needs.changes.outputs.art_only != 'true' && needs.changes.outputs.docs_only != 'true'
+    if: needs.changes.outputs.art_only != 'true' && needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.sprites_only != 'true'
     permissions:
       contents: read
     steps:

@@ -10,12 +10,12 @@ import {
   gatherOpaquePixels,
   type Pixel,
   type RgbaImage,
-} from '../../scripts/sprites/sensors/common.js';
+} from '../../../scripts/sprites/sensors/common.js';
 import {
   silhouetteDiagonalAxis,
   silhouetteOrientationAxis,
   RAD_PER_DEG,
-} from '../../scripts/sprites/sensors/weapons.js';
+} from '../../../scripts/sprites/sensors/weapons.js';
 import { PNG } from 'pngjs';
 
 function makeImage(

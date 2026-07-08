@@ -6,8 +6,8 @@ import {
   hardThresholdAlpha,
   removeIsolatedNearWhiteSpeckles,
   type RgbaImage,
-} from '../../scripts/sprites/postprocess.js';
-import type { PaletteColors, RgbTriple } from '../../scripts/sprites/brief-schema.js';
+} from '../../../scripts/sprites/postprocess.js';
+import type { PaletteColors, RgbTriple } from '../../../scripts/sprites/brief-schema.js';
 
 function imageFromRgba(
   width: number,

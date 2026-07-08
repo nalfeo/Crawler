@@ -1,0 +1,33 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-08",
+  "session_slug": "sprite-pipeline-test-isolation",
+  "task_title": "Isolate sprite pipeline tests into dedicated vitest project",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "major_fork",
+      "notes": "",
+      "model": "gpt-5.4",
+      "clean": true,
+      "summary": "Reviewer (gpt-5.4) identified 4 blocking concerns: (1) test-sprites ran unconditionally for all code changes; (2) test-e2e lacked sprites_only guard; (3) 12 stray sprite unit tests outside tests/unit/sprites/ were still in unit project causing coverage gap on sprites_only skips; (4) verify.sh did not run sprite tests. All 4 were addressed: added sprites_touched flag, gated test-sprites on sprites_touched, added e2e guard, moved 12 tests, added sprites project to verify.sh. The sprites_only surface was also extended to include the 9 root pipeline integration test files."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "summary": "Reviewer (claude-opus-4.8) found one genuine coverage gap: tests/sensors/weapons.test.ts imports from scripts/sprites/sensors/ but was only in the unit project, so sprites_only CI skips would silently drop its coverage. Fixed by moving to tests/unit/sprites/weapons-sensor.test.ts. All other focus areas (emit_all arg counts, sprites_touched detection, CI gating conditions, vitest overlap/gaps, moved file imports) checked out clean."
+        }
+      ]
+    }
+  }
+}

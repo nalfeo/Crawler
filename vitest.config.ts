@@ -79,6 +79,9 @@ export default defineConfig({
         test: {
           name: 'unit',
           include: ['tests/{unit,ecs,game,property,determinism,sensors}/**/*.{test,spec}.ts'],
+          // Sprite pipeline tests live in their own project — exclude them here
+          // so game test runs stay fast and focused on game code.
+          exclude: ['tests/unit/sprites/**'],
           // Worker threads start faster than forked processes (no process spawn
           // overhead per worker). Unit tests are pure-logic with no DOM side
           // effects; with Vitest's default isolate:true each test file gets its
@@ -92,7 +95,44 @@ export default defineConfig({
         test: {
           name: 'integration',
           include: ['tests/{integration,balance}/**/*.{test,spec}.ts'],
+          // Sprite pipeline integration tests live in their own project.
+          exclude: [
+            'tests/integration/sprites/**',
+            'tests/integration/batch-cli.test.ts',
+            'tests/integration/generate-one.test.ts',
+            'tests/integration/judge-budget-cache.test.ts',
+            'tests/integration/judge-pipeline.test.ts',
+            'tests/integration/run-full.test.ts',
+            'tests/integration/sidecar-lifecycle.test.ts',
+            'tests/integration/synth-to-generate.test.ts',
+            'tests/integration/weapons-pipeline.test.ts',
+          ],
           testTimeout: 120_000,
+          passWithNoTests: true,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          // Sprite generation/editing pipeline tests — isolated from game tests
+          // so that a pure sprite-pipeline change never triggers the game suite
+          // and vice versa. Includes unit tests for scripts/sprites/** and the
+          // integration tests that drive the full pipeline end-to-end.
+          name: 'sprites',
+          include: [
+            'tests/unit/sprites/**/*.{test,spec}.ts',
+            'tests/integration/sprites/**/*.{test,spec}.ts',
+            'tests/integration/batch-cli.test.ts',
+            'tests/integration/generate-one.test.ts',
+            'tests/integration/judge-budget-cache.test.ts',
+            'tests/integration/judge-pipeline.test.ts',
+            'tests/integration/run-full.test.ts',
+            'tests/integration/sidecar-lifecycle.test.ts',
+            'tests/integration/synth-to-generate.test.ts',
+            'tests/integration/weapons-pipeline.test.ts',
+          ],
+          testTimeout: 120_000,
+          hookTimeout: 120_000,
           passWithNoTests: true,
         },
       },

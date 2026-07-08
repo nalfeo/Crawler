@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { PNG } from 'pngjs';
-import { briefSchema, type Brief, type PaletteColors } from '../../scripts/sprites/brief-schema.js';
-import { postprocess } from '../../scripts/sprites/postprocess.js';
-import { decodeSprite, dimensionsExact } from '../../scripts/sprites/sensors/common.js';
-import { scoreCandidate } from '../../scripts/sprites/score-candidate.js';
+import {
+  briefSchema,
+  type Brief,
+  type PaletteColors,
+} from '../../../scripts/sprites/brief-schema.js';
+import { postprocess } from '../../../scripts/sprites/postprocess.js';
+import { decodeSprite, dimensionsExact } from '../../../scripts/sprites/sensors/common.js';
+import { scoreCandidate } from '../../../scripts/sprites/score-candidate.js';
 
 const PALETTE: PaletteColors = [
   [0, 0, 0],

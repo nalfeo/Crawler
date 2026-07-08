@@ -5,7 +5,7 @@ import {
   type Brief,
   SPRITE_TYPES,
   variantCount,
-} from '../../scripts/sprites/brief-schema.js';
+} from '../../../scripts/sprites/brief-schema.js';
 
 const validBrief: Brief = {
   type: 'weapon',
