@@ -158,10 +158,15 @@ describe('RISK_REWARD_FUSED — danger-aware deflection', () => {
     expect(straight.danger).toBe(maxDanger);
     expect(maxDanger).toBeGreaterThan(1);
 
-    // The scorer must NOT walk into the cluster: it deflects substantially and the
-    // chosen heading is far safer than straight ahead.
+    // The scorer must NOT walk into the cluster. The straight-ahead candidate is
+    // strictly dominated here (progress 1 − danger≫1, vs a deflected candidate's
+    // positive score), so the argmax is GUARANTEED to deflect off 0° to a
+    // strictly-safer heading. We assert those guaranteed invariants — deflects at
+    // all + strictly lower danger than straight ahead — rather than a specific
+    // angle magnitude, which is fixture/weight-dependent and would be brittle
+    // across a legitimate future retune (plan review 2026-07-08, concern #7).
     const chosen = debug.candidates.find((c) => c.chosen)!;
-    expect(Math.abs(chosen.angleDeg)).toBeGreaterThanOrEqual(30);
+    expect(chosen.angleDeg).not.toBe(0);
     expect(chosen.danger).toBeLessThan(straight.danger);
 
     // The returned move is the chosen (deflected) heading, not the raw objective.

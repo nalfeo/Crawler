@@ -2911,6 +2911,12 @@ export class BehaviorTreeAI implements AIInputProvider {
   ): { moveX: number; moveY: number } {
     const baseLen = Math.hypot(baseMoveX, baseMoveY);
     if (baseLen <= TRAVEL_HEADING_EPSILON) {
+      // Continuity is only valid across CONSECUTIVE travel polls. A no-heading poll
+      // (stopped, target lost, or between goals) breaks that chain, so clear it —
+      // otherwise the next travel poll would be biased toward a stale heading,
+      // creating hysteresis the win/loss gate cannot see (plan review 2026-07-08).
+      this.prevFusedDirX = 0;
+      this.prevFusedDirY = 0;
       if (this.fusedDebugCapture) this.fusedDebug = null;
       return { moveX: 0, moveY: 0 };
     }
