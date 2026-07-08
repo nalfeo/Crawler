@@ -1962,5 +1962,44 @@
     "frame": 0,
     "col": 0,
     "row": 0
+  },
+  {
+    "id": "generated:cave-bat-swarm-var-2",
+    "kind": "sprite",
+    "label": "cave-bat-swarm-var-2",
+    "description": "Generated sprite from brief: cave-bat-swarm.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "cave-bat-swarm-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/cave-bat-swarm-var-2.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:cave-slime-var-0",
+    "kind": "sprite",
+    "label": "cave-slime-var-0",
+    "description": "Generated sprite from brief: cave-slime.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "cave-slime-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/cave-slime-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:giant-cave-rat-var-2",
+    "kind": "sprite",
+    "label": "giant-cave-rat-var-2",
+    "description": "Generated sprite from brief: giant-cave-rat.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "giant-cave-rat-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/giant-cave-rat-var-2.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
   }
 ]
