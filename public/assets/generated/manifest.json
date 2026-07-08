@@ -5312,6 +5312,142 @@
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\rock-lice\\2026-07-08T01-24-37-b8a95a30\\postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
+    },
+    "faerie-boss-var-1": {
+      "briefId": "faerie-boss",
+      "spriteName": "faerie-boss-var-1",
+      "assetPath": "generated/faerie-boss-var-1.png",
+      "approvedAt": "2026-07-08T01:43:59.339Z",
+      "sourceRun": "generated/runs/faerie-boss/2026-07-08T01-39-33-5bfe280b",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 32,
+        "y": 34,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 34,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "enemy",
+      "contentHash": "10e76cef88b22552f0fe6f1c7d241985f6ca92217eac8248e1224544320d0133",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\faerie-boss\\2026-07-08T01-39-33-5bfe280b\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\faerie-boss\\2026-07-08T01-39-33-5bfe280b\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\faerie-boss\\2026-07-08T01-39-33-5bfe280b\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "goblin-boss-var-0": {
+      "briefId": "goblin-boss",
+      "spriteName": "goblin-boss-var-0",
+      "assetPath": "generated/goblin-boss-var-0.png",
+      "approvedAt": "2026-07-08T01:54:28.983Z",
+      "sourceRun": "generated/runs/goblin-boss/2026-07-08T01-44-14-cc6e849a",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 30,
+        "y": 33,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 30,
+          "y": 33,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "c4ea9816e6bf355395a61ded4cd904d6c18864a0c33af70f8cb7a2f559b08d5c",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-boss\\2026-07-08T01-44-14-cc6e849a\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-boss\\2026-07-08T01-44-14-cc6e849a\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-boss\\2026-07-08T01-44-14-cc6e849a\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "llama-boss-var-8": {
+      "briefId": "llama-boss",
+      "spriteName": "llama-boss-var-8",
+      "assetPath": "generated/llama-boss-var-8.png",
+      "approvedAt": "2026-07-08T01:54:29.948Z",
+      "sourceRun": "generated/runs/llama-boss/2026-07-08T01-47-26-a621a96d",
+      "variantIndex": 8,
+      "anchor": {
+        "x": 33,
+        "y": 28,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 33,
+          "y": 28,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 33,
+          "y": 28,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "enemy",
+      "contentHash": "01d0a9c25a6a6ad8d8af09725b8336600f41380b46a18cd1f639a5602c8ecd97",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\llama-boss\\2026-07-08T01-47-26-a621a96d\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\llama-boss\\2026-07-08T01-47-26-a621a96d\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\llama-boss\\2026-07-08T01-47-26-a621a96d\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "panda-boss-var-0": {
+      "briefId": "panda-boss",
+      "spriteName": "panda-boss-var-0",
+      "assetPath": "generated/panda-boss-var-0.png",
+      "approvedAt": "2026-07-08T01:54:30.974Z",
+      "sourceRun": "generated/runs/panda-boss/2026-07-08T01-50-26-26a0182f",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 33,
+        "y": 35,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 33,
+          "y": 35,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 33,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "7fe1cea2486bf5b996ccc6c56dc27637e1595a62dca8e4e7d2756c0b6c16c0b9",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\panda-boss\\2026-07-08T01-50-26-26a0182f\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\panda-boss\\2026-07-08T01-50-26-26a0182f\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\panda-boss\\2026-07-08T01-50-26-26a0182f\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     }
   }
 }
