@@ -50,6 +50,14 @@ New required-stage matrix:
 | 3🍎    | ✅          | —                   | ✅          | —                  |
 | 4–5🍎  | ✅          | ✅                  | ✅          | ✅                 |
 
+> **Update (ADR 0051, 2026-07-08):** `dual_plan_synthesis` was later **removed
+> from the required 4–5🍎 set** and replaced by an **adversarial** `plan_review`
+> (one reviewer red-teams ≥2 alternatives and argues against the chosen design),
+> plus a new `plan_divergence` instrumentation enum required at ≥3🍎. This ADR
+> stays **Accepted** — its code-review-floor decision is unchanged; only the
+> 4–5🍎 dual-plan-synthesis requirement recorded in the matrix above is
+> superseded. See [ADR 0051](0051-adversarial-plan-review-fold.md).
+
 A **1🍎 or 2🍎 change still commits a review ledger** — the guard reads the declared
 tier from it. It just needs zero (1🍎) or one (2🍎) stages. An empty `stages: {}`
 object validates fine for 1🍎. Because `validateLedger` still validates any stage

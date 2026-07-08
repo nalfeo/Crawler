@@ -56,17 +56,33 @@ function parseFlags(argv) {
   return { flags, positional };
 }
 
-function scaffoldStage(name) {
+function scaffoldStage(name, apples = null) {
   switch (name) {
-    case 'plan_review':
-      return {
+    case 'plan_review': {
+      // Base fields (every plan_review). At 3🍎+ `plan_divergence` is required;
+      // at 4-5🍎 the review must be ADVERSARIAL (ADR 0051), so scaffold those
+      // fields with invalid placeholders to force the author to fill them in
+      // (same convention as reviewer_model: '').
+      const stage = {
         completed: false,
         reviewer_model: '',
         concerns_count: 0,
         resolved_count: 0,
-        notes: '',
       };
+      if (Number.isInteger(apples) && apples >= 4) {
+        stage.adversarial = false;
+        stage.alternatives_considered = 0;
+      }
+      if (Number.isInteger(apples) && apples >= 3) {
+        stage.plan_divergence = '';
+      }
+      stage.notes = '';
+      return stage;
+    }
     case 'dual_plan_synthesis':
+      // Legacy/optional stage (ADR 0051): no longer scaffolded by `init` (it is
+      // not required at any tier), but still supported via `stage` for anyone
+      // intentionally recording it on a ledger.
       return { completed: false, plan_models: ['', ''], judge_model: '', notes: '' };
     case 'code_review':
       return { clean: false, rounds: [] };
@@ -113,7 +129,7 @@ function cmdInit(flags) {
   }
   const required = requiredStagesForApples(apples);
   const stages = {};
-  for (const s of required) stages[s] = scaffoldStage(s);
+  for (const s of required) stages[s] = scaffoldStage(s, apples);
   const ledger = {
     schema_version: SCHEMA_VERSION,
     date,

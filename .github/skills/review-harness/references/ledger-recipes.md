@@ -14,9 +14,9 @@ npm run review:ledger -- init --apples 4 --slug improve-local-harness --title "E
 
 # 2. Fill in each stage as you complete it (shallow-merged into stages[name])
 npm run review:ledger -- stage <path> plan_review        --json '{...}'
-npm run review:ledger -- stage <path> dual_plan_synthesis --json '{...}'
 npm run review:ledger -- stage <path> code_review        --json '{...}'
 npm run review:ledger -- stage <path> multi_model_review --json '{...}'
+# dual_plan_synthesis is LEGACY-ONLY (retired by ADR 0051) — not scaffolded/required
 
 # 3. Validate (exit 0 = guard will allow your PR). `validate` with no path
 #    picks the newest ledger in the directory.
@@ -34,15 +34,18 @@ npm run review:ledger -- validate <path>
 
 ## Tier → required stages
 
-| apples | stages the validator requires                                             |
-| ------ | ------------------------------------------------------------------------- |
-| 1      | (none)                                                                    |
-| 2      | (none)                                                                    |
-| 3      | `plan_review`, `code_review`                                              |
-| 4–5    | `plan_review`, `dual_plan_synthesis`, `code_review`, `multi_model_review` |
+| apples | stages the validator requires                                    |
+| ------ | ---------------------------------------------------------------- |
+| 1      | (none)                                                           |
+| 2      | (none)                                                           |
+| 3      | `plan_review`, `code_review`                                     |
+| 4–5    | `plan_review` (adversarial), `code_review`, `multi_model_review` |
 
 The plan-review floor moved 2🍎 → 3🍎 on 2026-07-07 (matching the code-review
 floor, which moved on 2026-07-02 / ADR 0036). A 2🍎 change requires **no** stages.
+`dual_plan_synthesis` was **retired as a required 4–5🍎 stage by ADR 0051**
+(2026-07-08) — the 4–5🍎 `plan_review` is now **adversarial** instead; the legacy
+stage is still validated if present but is no longer scaffolded or required.
 
 A stage that is _present but not required_ is **still validated** — don't add a
 half-filled stage you didn't actually do. This matters when you **re-score
@@ -62,15 +65,12 @@ will fail on them.
     "plan_review": {
       "completed": true,
       "reviewer_model": "gpt-5.4",
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "convergent",
       "concerns_count": 6,
       "resolved_count": 6,
-      "notes": "all adopted"
-    },
-    "dual_plan_synthesis": {
-      "completed": true,
-      "plan_models": ["gpt-5.5", "gemini-3.1-pro-preview"],
-      "judge_model": "claude-opus-4.8",
-      "notes": "synthesized into plan.md"
+      "notes": "Alt A/B enumerated + argued against; none beat the chosen design"
     },
     "code_review": {
       "clean": true,
@@ -109,8 +109,16 @@ will fail on them.
   `stages` object.
 - **plan_review**: `completed===true`; `reviewer_model` non-empty;
   `concerns_count`/`resolved_count` ints ≥0; `resolved_count >= concerns_count`.
-- **dual_plan_synthesis**: `completed===true`; `plan_models` = exactly 2 distinct
-  non-empty ids; `judge_model` non-empty and not in `plan_models`.
+  **Tier-conditional (ADR 0051):** at **≥3🍎** `plan_divergence ∈ {convergent,
+minor, major_fork}` is **required** (instrumentation — the design fork-rate
+  signal); at **4–5🍎** `adversarial===true` **and** `alternatives_considered`
+  int ≥2 are also required. Below their required tier these fields are optional
+  but validated-if-present (`adversarial` boolean, `alternatives_considered`
+  int ≥0, `plan_divergence` in the enum).
+- **dual_plan_synthesis** _(LEGACY-ONLY — retired as a required stage by ADR
+  0051; still validated if present so historical ledgers stay parseable)_:
+  `completed===true`; `plan_models` = exactly 2 distinct non-empty ids;
+  `judge_model` non-empty and not in `plan_models`.
 - **code_review**: EITHER a clean terminal — `clean===true`; `rounds` non-empty;
   last round `clean===true`, `models` ≥1 non-empty, `resolved_count >= concerns_count`
   — OR an escalation terminal (see below).

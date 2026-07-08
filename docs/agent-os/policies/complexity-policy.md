@@ -58,12 +58,18 @@ must receive. This is enforced: the `pr-review-ledger` guard hard-denies
 `create_pull_request` for a code-touching change without a valid **review ledger**
 for its tier.
 
-| Apples | Required review stages (recorded in the ledger)                                   |
-| ------ | --------------------------------------------------------------------------------- |
-| 1🍎    | (none — the ledger records the tier only)                                         |
-| 2🍎    | (none — the ledger records the tier only)                                         |
-| 3🍎    | separate-model **plan review** before coding + **code review** (loop until clean) |
-| 4–5🍎  | + **dual-plan synthesis** (2 models + judge) and **multi-model review**           |
+| Apples | Required review stages (recorded in the ledger)                                                                                   |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| 1🍎    | (none — the ledger records the tier only)                                                                                         |
+| 2🍎    | (none — the ledger records the tier only)                                                                                         |
+| 3🍎    | separate-model **plan review** before coding + **code review** (loop until clean)                                                 |
+| 4–5🍎  | plan review must be **adversarial** (≥2 alternatives, argue against the design) + **code review** (loop) + **multi-model review** |
+
+`dual-plan synthesis` was **retired as a required 4–5🍎 stage on 2026-07-08 (ADR 0051)** — reading all past ledgers showed two independent plan authors produced a
+decisive design fork on only 2/17 (12%) of firings, so the 4–5🍎 `plan_review` is
+now **adversarial** (one critic enumerates ≥2 alternatives and argues against the
+chosen design) instead, at ⅓ the cost. Every plan review at ≥3🍎 also records a
+`plan_divergence` signal so we can measure the real fork rate going forward.
 
 The plan-review floor was raised **2🍎 → 3🍎 on 2026-07-07** to match the
 code-review floor (moved to 3🍎 on 2026-07-02, ADR 0036). Both the `code_review`
