@@ -189,6 +189,7 @@ describe('enemyVariantFromTextureId', () => {
     [1, 'enemy_rat'],
     [2, 'enemy_slime'],
     [4, 'enemy_baby_slime'],
+    [5, 'enemy_family_boss'],
     [0, 'enemy'],
     [3, 'enemy'],
     [99, 'enemy'],
@@ -415,6 +416,32 @@ describe('generatedBriefIdForEnemy', () => {
     expect(generatedBriefIdForEnemy('enemy_rat', 'rats-nest')).toBe('rats-nest-v1');
     expect(generatedBriefIdForEnemy('enemy_spawner_rats_nest')).toBe('rat-nest-v2');
     expect(generatedBriefIdForEnemy('enemy_spawner_slime_pool')).toBe('slime-pool-v1');
+  });
+
+  it('resolves Floor-2 family bosses and grunts by identity appearance key', () => {
+    // Bosses render via textureId 5 → enemy_family_boss; grunts/ambient render
+    // via textureId 1 → enemy_rat. Both resolve by the archetype-id appearance
+    // key first, so the numeric type is irrelevant when the key is present.
+    expect(generatedBriefIdForEnemy('enemy_family_boss', 'goblin-boss')).toBe('goblin-boss');
+    expect(generatedBriefIdForEnemy('enemy_family_boss', 'batfolk-boss')).toBe('batfolk-boss');
+    expect(generatedBriefIdForEnemy('enemy_rat', 'goblin-grunt')).toBe('goblin-grunt');
+    expect(generatedBriefIdForEnemy('enemy_rat', 'geese-honker')).toBe('geese-honker');
+    expect(generatedBriefIdForEnemy('enemy_slime', 'cave-slime')).toBe('cave-slime');
+    expect(generatedBriefIdForEnemy('enemy_rat', 'crystal-scuttler')).toBe('crystal-scuttler');
+  });
+
+  it('reconciles the two singular→plural boss id mismatches', () => {
+    // Briefs shipped plural but the archetype ids are singular — the appearance
+    // map remaps them so the keys resolve to the real shipped art.
+    expect(generatedBriefIdForEnemy('enemy_family_boss', 'raccoon-boss')).toBe('raccoons-boss');
+    expect(generatedBriefIdForEnemy('enemy_family_boss', 'imp-boss')).toBe('imps-boss');
+  });
+
+  it('falls back to the goblin-boss type default when a boss has no appearance key', () => {
+    // Type-level safety net: a family boss with a missing/unknown appearance key
+    // still resolves to a real boss brief rather than the rat default.
+    expect(generatedBriefIdForEnemy('enemy_family_boss')).toBe('goblin-boss');
+    expect(generatedBriefIdForEnemy('enemy_family_boss', 'unknown-key')).toBe('goblin-boss');
   });
 });
 
