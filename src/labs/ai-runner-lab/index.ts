@@ -118,6 +118,8 @@ interface AiRunnerLabState {
   pathingMode?: AIPathingModeValue;
   /** A/B axis 2 — AI decision mode (persisted across lab reloads). */
   decisionMode?: AIDecisionModeValue;
+  seed?: number;
+  floorId?: string;
   scenarioPresetId?: AiRunnerScenarioPresetId;
   aiConfig: {
     visualRiskRewardFields: boolean;
@@ -126,6 +128,8 @@ interface AiRunnerLabState {
     autoPauseOnDamage: boolean;
   };
 }
+
+type AiRunnerRunTargetKey = `floor:${string}` | `scenario:${AiRunnerScenarioPresetId}`;
 
 /**
  * Live telemetry snapshot exposed on `window.__aiRunnerDebug()` for headless
@@ -167,6 +171,7 @@ export interface AiRunnerDebugSnapshot {
   conversationNpcEid: number | null;
   modalOpen: boolean;
   runOutcome: string | null;
+  effectiveFloor: 'floor1' | 'floor2' | 'unknown';
   scenarioPreset: AiRunnerScenarioPresetId;
   arenaEntryFrame: number | null;
   quests: Record<string, { status: string; done: number; total: number }>;
@@ -264,10 +269,10 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   };
   const panelRoot = document.createElement('div');
   controls.append(panelRoot);
-  let currentSeed = INITIAL_SEED;
+  let currentSeed = persisted?.seed ?? INITIAL_SEED;
   let selectedScenarioPresetId =
     persisted?.scenarioPresetId ?? DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID;
-  currentSeed = getAiRunnerScenarioPreset(selectedScenarioPresetId)?.defaultSeed ?? currentSeed;
+  let pendingRunSettingsNote: string | null = null;
   let arenaEntryFrame: number | null = null;
 
   // AI configuration state. The A/B mode selection (pathingMode/decisionMode)
@@ -341,6 +346,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       fov: { ...fovSettings },
       pathingMode: aiConfig.pathingMode,
       decisionMode: aiConfig.decisionMode,
+      seed: currentSeed,
+      floorId: currentFloor,
       scenarioPresetId: selectedScenarioPresetId,
       aiConfig: {
         visualRiskRewardFields: aiConfig.visualRiskRewardFields,
@@ -466,7 +473,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
     autoFloor1ProgressionSystem(world, playerEid);
   };
-  let currentFloor = 'floor1';
+  let currentFloor = persisted?.floorId ?? 'floor1';
   const recorderControls = createSessionRecorderControls({
     title: 'AI Session Recorder',
     initialController: 'AI',
@@ -967,19 +974,14 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     scene.setSimulationPaused(isPaused);
   };
 
-  const applyScenarioPreset = (nextPresetId: AiRunnerScenarioPresetId): void => {
-    const preset =
-      getAiRunnerScenarioPreset(nextPresetId) ??
-      getAiRunnerScenarioPreset(DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID);
-    if (!preset) {
-      return;
+  const resolveScenarioPresetForFloor = (
+    floorId: string,
+    scenarioPresetId: AiRunnerScenarioPresetId,
+  ): { presetId: AiRunnerScenarioPresetId; forcedDefault: boolean } => {
+    if (floorId === 'floor1') {
+      return { presetId: scenarioPresetId, forcedDefault: false };
     }
-    selectedScenarioPresetId = preset.id;
-    applyScenarioVisualProfile(selectedScenarioPresetId);
-    arenaEntryFrame = null;
-    persistLabState();
-    reseed(preset.defaultSeed);
-    renderControls();
+    return { presetId: DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID, forcedDefault: true };
   };
 
   /**
@@ -1034,16 +1036,46 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
   };
 
-  /**
-   * Switch to a different floor: rebuild scene options from the new floor's
-   * manifest (re-layering the active scenario preset) and restart the scene so
-   * the new floor generates deterministically.
-   */
-  const changeFloor = (floorId: string): void => {
-    currentFloor = floorId;
-    Object.assign(sceneOptions, composeSceneOptions(createFloorMainSceneOptions(floorId)));
-    reseed(currentSeed);
-    renderControls();
+  const applyRunSettings = (next: {
+    seed: number;
+    floorId: string;
+    scenarioPresetId: AiRunnerScenarioPresetId;
+  }): { forcedDefault: boolean } => {
+    const scenarioResolution = resolveScenarioPresetForFloor(next.floorId, next.scenarioPresetId);
+    currentFloor = next.floorId;
+    selectedScenarioPresetId = scenarioResolution.presetId;
+    applyScenarioVisualProfile(selectedScenarioPresetId);
+    Object.assign(sceneOptions, composeSceneOptions(createFloorMainSceneOptions(currentFloor)));
+    persistLabState();
+    reseed(next.seed);
+    return { forcedDefault: scenarioResolution.forcedDefault };
+  };
+
+  const encodeFloorRunTarget = (floorId: string): AiRunnerRunTargetKey => `floor:${floorId}`;
+
+  const encodeScenarioRunTarget = (
+    scenarioPresetId: AiRunnerScenarioPresetId,
+  ): AiRunnerRunTargetKey => `scenario:${scenarioPresetId}`;
+
+  const decodeRunTarget = (
+    runTarget: string,
+  ):
+    | { kind: 'floor'; floorId: string }
+    | { kind: 'scenario'; scenarioPresetId: AiRunnerScenarioPresetId } => {
+    if (runTarget.startsWith('scenario:')) {
+      const maybeScenario = runTarget.slice('scenario:'.length) as AiRunnerScenarioPresetId;
+      const scenarioPreset =
+        getAiRunnerScenarioPreset(maybeScenario) ??
+        getAiRunnerScenarioPreset(DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID);
+      return {
+        kind: 'scenario',
+        scenarioPresetId: scenarioPreset?.id ?? DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID,
+      };
+    }
+    if (runTarget.startsWith('floor:')) {
+      return { kind: 'floor', floorId: runTarget.slice('floor:'.length) };
+    }
+    return { kind: 'floor', floorId: 'floor1' };
   };
 
   const autoAdvanceSceneUi = (): void => {
@@ -1753,9 +1785,23 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   };
 
   const renderControls = (): void => {
-    const scenarioOptions = AI_RUNNER_SCENARIO_PRESETS.map(
-      (preset) => `<option value="${preset.id}">${preset.label}</option>`,
-    ).join('');
+    const floorOptions = getAvailableFloorIds();
+    const selectedRunTarget: AiRunnerRunTargetKey =
+      currentFloor === 'floor1' && selectedScenarioPresetId !== DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID
+        ? encodeScenarioRunTarget(selectedScenarioPresetId)
+        : encodeFloorRunTarget(currentFloor);
+    const runTargetOptions = [
+      ...floorOptions.map(
+        (id) =>
+          `<option value="${encodeFloorRunTarget(id)}"${selectedRunTarget === encodeFloorRunTarget(id) ? ' selected' : ''}>Floor: ${id}</option>`,
+      ),
+      ...AI_RUNNER_SCENARIO_PRESETS.filter(
+        (preset) => preset.id !== DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID,
+      ).map(
+        (preset) =>
+          `<option value="${encodeScenarioRunTarget(preset.id)}"${selectedRunTarget === encodeScenarioRunTarget(preset.id) ? ' selected' : ''}>Scenario: ${preset.label}</option>`,
+      ),
+    ].join('');
     const selectedScenarioPreset =
       getAiRunnerScenarioPreset(selectedScenarioPresetId) ??
       getAiRunnerScenarioPreset(DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID);
@@ -1765,45 +1811,39 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     const questOptions = Object.entries(QUEST_DEBUG_TARGETS)
       .map(([label, value]) => `<option value="${value}">${label}</option>`)
       .join('');
-    const floorOptions = getAvailableFloorIds()
-      .map((id) => `<option value="${id}"${id === currentFloor ? ' selected' : ''}>${id}</option>`)
-      .join('');
     panelRoot.innerHTML = `
       <div style="font-family: monospace; padding: 12px;">
         <h3 style="margin: 0 0 12px 0;">AI Runner Lab</h3>
         <div id="ai-info" style="font-size: 12px; line-height: 1.6;">
+          <div id="ai-playback-dock" style="position:sticky; top:8px; z-index:8; margin:0 0 12px 0; padding:10px; border:1px solid #334155; border-radius:8px; background:linear-gradient(180deg,#10172a,#0b1222); box-shadow:0 6px 16px rgba(2,6,23,0.45);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin:0 0 8px 0; gap:10px; flex-wrap:wrap;">
+              <strong style="color:#dbeafe;">Playback controls</strong>
+              <span id="ai-control-mode" style="font-size:12px;"></span>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button id="ai-toggle-run" type="button" style="padding:6px 10px; cursor:pointer; border:1px solid #2563eb; background:#1d4ed8; color:#eff6ff; border-radius:6px;">Resume</button>
+              <button id="ai-step-frame" type="button" style="padding:6px 10px; cursor:pointer; border:1px solid #475569; background:#1e293b; color:#e2e8f0; border-radius:6px;">Step 1 frame (Space)</button>
+              <button id="ai-speed-1" type="button" style="padding:6px 10px; cursor:pointer; border:1px solid #475569; background:#0f172a; color:#e2e8f0; border-radius:6px;">1x</button>
+              <button id="ai-speed-4" type="button" style="padding:6px 10px; cursor:pointer; border:1px solid #475569; background:#0f172a; color:#e2e8f0; border-radius:6px;">4x</button>
+              <button id="ai-speed-16" type="button" style="padding:6px 10px; cursor:pointer; border:1px solid #475569; background:#0f172a; color:#e2e8f0; border-radius:6px;">16x</button>
+              <button id="ai-manual-toggle" type="button" style="padding:6px 10px; cursor:pointer; font-weight:bold; border:1px solid #f59e0b; background:#78350f; color:#fef3c7; border-radius:6px;">🎮 Take manual control</button>
+            </div>
+          </div>
           <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:wrap;">
             <label for="ai-seed-input"><strong>Seed:</strong></label>
             <input id="ai-seed-input" type="number" value="${currentSeed}" style="width:96px; padding:4px; background:#151530; color:#ddd; border:1px solid #333; border-radius:3px;" />
-            <button id="ai-seed-apply" type="button" style="padding:4px 8px; cursor:pointer;">Apply</button>
-            <button id="ai-seed-random" type="button" style="padding:4px 8px; cursor:pointer;">🎲 Randomize</button>
-          </div>
-          <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:wrap;">
-            <label for="ai-floor-select"><strong>Floor:</strong></label>
-            <select id="ai-floor-select" style="padding:4px; background:#151530; color:#ddd; border:1px solid #333; border-radius:3px;">${floorOptions}</select>
-            <button id="ai-floor-apply" type="button" style="padding:4px 8px; cursor:pointer;">Apply + Restart</button>
+            <button id="ai-seed-random" type="button" style="padding:4px 8px; cursor:pointer;">🎲 Randomize seed</button>
           </div>
           <div style="display:flex; gap:6px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
-            <label for="ai-scenario-select"><strong>Scenario:</strong></label>
-            <select id="ai-scenario-select" style="padding:4px; min-width:220px; background:#151530; color:#ddd; border:1px solid #333; border-radius:3px;">${scenarioOptions}</select>
-            <button id="ai-scenario-apply" type="button" style="padding:4px 8px; cursor:pointer;">Apply preset (reload)</button>
+            <label for="ai-run-target-select"><strong>Run target:</strong></label>
+            <select id="ai-run-target-select" style="padding:4px; min-width:260px; background:#151530; color:#ddd; border:1px solid #333; border-radius:3px;">${runTargetOptions}</select>
+            <button id="ai-run-apply" type="button" style="padding:4px 8px; cursor:pointer;">Apply run settings + restart</button>
           </div>
-          <div style="margin:0 0 6px 0; font-size:11px; color:#9ca3af;">Choose a scenario, then apply to reload the run with that preset seed and world slice.</div>
-          <div id="ai-scenario-description" style="margin:0 0 6px 0; font-size:11px; color:#cfd8ff;">${selectedScenarioPreset?.description ?? ''}</div>
+          <div id="ai-run-settings-note" style="margin:0 0 6px 0; font-size:11px; color:#9ca3af;">${pendingRunSettingsNote ?? 'Pick either a Floor target or a Scenario target, then apply once to restart.'}</div>
+          <div id="ai-scenario-description" style="margin:0 0 6px 0; font-size:11px; color:#cfd8ff;">${selectedRunTarget.startsWith('scenario:') ? (selectedScenarioPreset?.description ?? '') : 'Floor target selected — scenario overrides are disabled for this run.'}</div>
           <div id="ai-runner-status">Paused</div>
           <div id="ai-runner-debug">frame: 0</div>
           <div id="ai-arena-entry-frame" style="font-size:11px; color:#fcd34d;">AI lock-in frame: pending</div>
-          <div style="display:flex; gap:8px; margin:12px 0; flex-wrap:wrap;">
-            <button id="ai-toggle-run" type="button" style="padding:6px 10px; cursor:pointer;">Resume</button>
-            <button id="ai-step-frame" type="button" style="padding:6px 10px; cursor:pointer;">Advance 1 frame (Space)</button>
-            <button id="ai-speed-1" type="button" style="padding:6px 10px; cursor:pointer;">1x</button>
-            <button id="ai-speed-4" type="button" style="padding:6px 10px; cursor:pointer;">4x</button>
-            <button id="ai-speed-16" type="button" style="padding:6px 10px; cursor:pointer;">16x</button>
-          </div>
-          <div style="display:flex; gap:8px; margin:0 0 12px 0; flex-wrap:wrap; align-items:center;">
-            <button id="ai-manual-toggle" type="button" style="padding:6px 10px; cursor:pointer; font-weight:bold;">🎮 Take manual control</button>
-            <span id="ai-control-mode" style="font-size:12px;"></span>
-          </div>
           <div id="ai-decision" style="margin-top: 8px; padding: 8px; background: #2a2a4e; border-radius: 4px;">
             <div><strong>State:</strong> <span id="ai-state">-</span></div>
             <div><strong>Reason:</strong> <span id="ai-reason">-</span></div>
@@ -1882,41 +1922,67 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
           : `AI lock-in frame: ${arenaEntryFrame}`;
     }
 
-    const scenarioSelect = document.getElementById(
-      'ai-scenario-select',
+    const runTargetSelect = document.getElementById(
+      'ai-run-target-select',
     ) as HTMLSelectElement | null;
-    if (scenarioSelect) {
-      scenarioSelect.value = selectedScenarioPresetId;
-      scenarioSelect.onchange = () => {
-        selectedScenarioPresetId = scenarioSelect.value as AiRunnerScenarioPresetId;
-        persistLabState();
-        const preset =
-          getAiRunnerScenarioPreset(selectedScenarioPresetId) ??
-          getAiRunnerScenarioPreset(DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID);
-        const description = document.getElementById('ai-scenario-description');
-        if (description) {
-          description.textContent = preset?.description ?? '';
+    const seedInput = document.getElementById('ai-seed-input') as HTMLInputElement | null;
+    const runSettingsNote = document.getElementById('ai-run-settings-note');
+    const setScenarioDescription = (presetId: AiRunnerScenarioPresetId): void => {
+      const preset =
+        getAiRunnerScenarioPreset(presetId) ??
+        getAiRunnerScenarioPreset(DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID);
+      const description = document.getElementById('ai-scenario-description');
+      if (description) {
+        description.textContent = preset?.description ?? '';
+      }
+    };
+    if (runTargetSelect) {
+      runTargetSelect.onchange = () => {
+        const decoded = decodeRunTarget(runTargetSelect.value);
+        if (decoded.kind === 'scenario') {
+          setScenarioDescription(decoded.scenarioPresetId);
+        } else {
+          const description = document.getElementById('ai-scenario-description');
+          if (description) {
+            description.textContent =
+              'Floor target selected — scenario overrides are disabled for this run.';
+          }
+        }
+        pendingRunSettingsNote =
+          'Pick either a Floor target or a Scenario target, then apply once to restart.';
+        if (runSettingsNote) {
+          runSettingsNote.textContent = pendingRunSettingsNote;
         }
       };
     }
-    const scenarioApply = document.getElementById('ai-scenario-apply') as HTMLButtonElement | null;
-    if (scenarioApply) {
-      scenarioApply.onclick = () => {
-        applyScenarioPreset(selectedScenarioPresetId);
-      };
-    }
-
-    const floorSelect = document.getElementById('ai-floor-select') as HTMLSelectElement | null;
-    const floorApplyButton = document.getElementById('ai-floor-apply') as HTMLButtonElement | null;
-    if (floorApplyButton && floorSelect) {
-      floorApplyButton.onclick = () => {
-        changeFloor(floorSelect.value);
+    const runApplyButton = document.getElementById('ai-run-apply') as HTMLButtonElement | null;
+    if (runApplyButton && runTargetSelect) {
+      runApplyButton.onclick = () => {
+        const parsed = Number.parseInt(seedInput?.value ?? '', 10);
+        const nextSeed = Number.isFinite(parsed) ? parsed : currentSeed;
+        const runTarget = decodeRunTarget(runTargetSelect.value);
+        const nextFloorId = runTarget.kind === 'scenario' ? 'floor1' : runTarget.floorId;
+        const requestedPresetId =
+          runTarget.kind === 'scenario'
+            ? runTarget.scenarioPresetId
+            : DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID;
+        const result = applyRunSettings({
+          seed: nextSeed,
+          floorId: nextFloorId,
+          scenarioPresetId: requestedPresetId,
+        });
+        pendingRunSettingsNote = result.forcedDefault
+          ? 'Applied. Non-floor1 runs use the Default Floor 1 scenario preset automatically.'
+          : 'Applied. Restarted with the staged Seed/Floor/Scenario.';
+        renderControls();
       };
     }
 
     const toggleButton = document.getElementById('ai-toggle-run') as HTMLButtonElement | null;
     if (toggleButton) {
       toggleButton.textContent = isPaused ? 'Resume' : 'Pause';
+      toggleButton.style.background = isPaused ? '#1d4ed8' : '#0f766e';
+      toggleButton.style.borderColor = isPaused ? '#2563eb' : '#0d9488';
       toggleButton.onclick = () => {
         isPaused = !isPaused;
         syncSceneSimulationState();
@@ -1940,6 +2006,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     const manualButton = document.getElementById('ai-manual-toggle') as HTMLButtonElement | null;
     if (manualButton) {
       manualButton.textContent = manualControl ? '🤖 Return to AI' : '🎮 Take manual control';
+      manualButton.style.background = manualControl ? '#1e3a8a' : '#78350f';
+      manualButton.style.borderColor = manualControl ? '#3b82f6' : '#f59e0b';
+      manualButton.style.color = manualControl ? '#dbeafe' : '#fef3c7';
       manualButton.onclick = () => {
         setManualControl(!manualControl);
       };
@@ -1997,6 +2066,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         continue;
       }
       button.disabled = selectedSpeed === speed;
+      button.style.background = selectedSpeed === speed ? '#2563eb' : '#0f172a';
+      button.style.borderColor = selectedSpeed === speed ? '#60a5fa' : '#475569';
+      button.style.color = '#e2e8f0';
       button.onclick = () => {
         selectedSpeed = speed;
         syncSceneSimulationState();
@@ -2004,18 +2076,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       };
     }
 
-    const seedInput = document.getElementById('ai-seed-input') as HTMLInputElement | null;
-    const applySeed = (nextSeed: number): void => {
-      reseed(nextSeed);
-      renderControls();
-    };
-    const applyButton = document.getElementById('ai-seed-apply') as HTMLButtonElement | null;
-    if (applyButton) {
-      applyButton.onclick = () => {
-        const parsed = Number.parseInt(seedInput?.value ?? '', 10);
-        applySeed(Number.isFinite(parsed) ? parsed : currentSeed);
-      };
-    }
     const randomButton = document.getElementById('ai-seed-random') as HTMLButtonElement | null;
     if (randomButton) {
       randomButton.onclick = () => {
@@ -2023,7 +2083,11 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         if (seedInput) {
           seedInput.value = String(nextSeed);
         }
-        applySeed(nextSeed);
+        pendingRunSettingsNote =
+          'Random seed staged. Click "Apply run settings + restart" to run it.';
+        if (runSettingsNote) {
+          runSettingsNote.textContent = pendingRunSettingsNote;
+        }
       };
     }
 
@@ -2088,6 +2152,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     const neededCount = Object.values(npcMemory.neededInteractionReasons).filter(
       (reason) => typeof reason === 'string' && reason.length > 0,
     ).length;
+    const effectiveFloor =
+      world?.floorId === 'floor1' || world?.floorId === 'floor2' ? world.floorId : 'unknown';
     return {
       frame: world?.frameCount ?? null,
       polls: pollCount,
@@ -2125,6 +2191,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       conversationNpcEid: scene?.conversationNpcEid ?? null,
       modalOpen: scene?.modalPicker?.isOpen?.() ?? false,
       runOutcome: world?.floorScenario?.runSummary?.outcome ?? null,
+      effectiveFloor,
       scenarioPreset: selectedScenarioPresetId,
       arenaEntryFrame,
       quests,

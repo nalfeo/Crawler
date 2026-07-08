@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-08",
+  "session_slug": "ai-runner-floor-seed-fix",
+  "task_title": "Fix AI runner run-target apply and restart behavior",
+  "estimated_apples": 2,
+  "stages": {}
+}
