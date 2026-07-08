@@ -29,7 +29,7 @@
           "clean": true
         }
       ],
-      "notes": "3 parallel code-review agents over resolver + retire-icon reroute + migration. Only concern: migration delete-old path keyed on briefId/existence not bytes, weakening the both-exist-different-bytes fail invariant. Resolved via byte-compare guards in apply loops + planConcept contentHash guard + exported filesByteEqual; +3 unit tests (14 pass)."
+      "notes": "3 parallel code-review agents over resolver + retire-icon reroute + migration. Only concern: migration delete-old path keyed on briefId/existence not bytes, weakening the both-exist-different-bytes fail invariant. Resolved via byte-compare guards in apply loops + planConcept contentHash guard + exported filesByteEqual; +3 unit tests (14 pass). Observe-before-done (rule #10) REAL-artifact evidence: committed real-InventoryUI headless observation tests/integration/inventory-ui-item-art.test.ts drives the production createInventoryUI factory over the real shipped manifest = 16 real-art images and 0 placeholders (positive), 0 images on empty registry (negative control); plus generated-manifest-engine.test.ts resolveItemSprite assertions over the real manifest for all 15 items + bone-club->baseball-bat."
     },
     "multi_model_review": {
       "clean": true,
