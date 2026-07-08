@@ -7,10 +7,12 @@
 // boots DIRECTLY into the welcome room (resolveInitialSetPieceId reads the
 // param) — a single scene, a single generated-sprite warm, no dropdown-driven
 // scene.restart(). The honest readiness gate below (window.__uiProbe.ready())
-// only reports true once the CURRENT piece is rendering real art: zero prop
-// placeholder Rectangles AND every pinned NPC texture resident. That defeats the
-// cold-cache race where the harness screenshots the grey-placeholder / villager-
-// fallback state (~199KB PNG) instead of the real room (~376-460KB PNG).
+// only reports true once the CURRENT piece is rendering real art: every TRANSIENT
+// prop placeholder Rectangle resolved (a piece's INTENTIONAL queued-art stand-ins
+// — custom sprites with no placeholder fallback — may remain) AND every pinned NPC
+// texture resident. That defeats the cold-cache race where the harness screenshots
+// the grey-placeholder / villager-fallback state (~199KB PNG) instead of the real
+// room (~376-460KB PNG).
 //
 // This surface declares NO window.__visualReview* clip: the room is a single
 // Phaser <canvas> with no measurable DOM element bounds, so the review correctly
@@ -94,26 +96,26 @@
 
   // 6. Confirm the welcome-room scene is actually rendering real art before the
   //    screenshot: the honest readiness probe is true AND the live display list
-  //    shows real-art Images with zero placeholder Rectangles. ready() alone is a
-  //    complete guarantee (imageCount > 0, 0 rects, all pinned NPC keys resident);
-  //    the display-list re-check is redundant insurance against a probe that never
-  //    installed. It deliberately uses only `0 rects + at least one Image` (no
-  //    hardcoded image-count floor) so a change in room composition can never
-  //    cause a false timeout while ready() is already honest.
+  //    shows at least one real-art Image. ready() alone is the authoritative,
+  //    complete guarantee (imageCount > 0, every TRANSIENT placeholder Rectangle
+  //    resolved down to the piece's intentional queued-art stand-ins, all pinned
+  //    NPC keys resident); the display-list re-check is redundant insurance against
+  //    a probe that never installed. It deliberately checks only `at least one
+  //    Image` and must NOT re-require zero Rectangles — welcome-room's honest
+  //    custom-placeholder props (Kenney art retired to the art queue) render as
+  //    permanent Rectangles, so a zero-rect re-check would spin to the deadline
+  //    even though ready() is already honestly true.
   const allLoaded = () => {
     if (!readyProbe()) return false;
     const scene = window.__setPieceScene;
     const kids = (scene && scene.children && scene.children.list) || [];
-    let placeholderRects = 0;
     let realImages = 0;
     for (const o of kids) {
-      if (o.type === 'Rectangle') {
-        placeholderRects += 1;
-      } else if (o.type === 'Image') {
+      if (o.type === 'Image') {
         realImages += 1;
       }
     }
-    return placeholderRects === 0 && realImages > 0;
+    return realImages > 0;
   };
 
   const deadline = Date.now() + DEADLINE_MS;

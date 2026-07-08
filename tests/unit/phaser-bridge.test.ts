@@ -409,6 +409,68 @@ describe('createPhaserBridge', () => {
     expect(propRects[0]?.destroyed).toBe(true);
   });
 
+  it('contain-fits real art to a uniform scale so no set-piece sprite is ever stretched', () => {
+    // Native art is 100×50 (aspect 2.0). The authored feet box is 10×10 ft →
+    // 80×80 px (aspect 1.0) — a DIFFERENT aspect. A naive setDisplaySize(80,80)
+    // would stretch the art to 1:1; contain-fit must instead pick ONE uniform
+    // scale = min(80/100, 80/50) = 0.8 so the art keeps its 2:1 aspect (letterboxed
+    // inside the box), never distorted. "No tile in this game is designed to stretch."
+    let displaySizeCalls = 0;
+    const propImages: (MockImage & { width: number; height: number })[] = [];
+    const scene = {
+      add: {
+        image: vi.fn((x = 0, y = 0, textureKey = '', frame?: number) => {
+          const img = new MockImage(x, y, textureKey, frame) as MockImage & {
+            width: number;
+            height: number;
+          };
+          // A resident texture reports its native pixel size.
+          img.width = 100;
+          img.height = 50;
+          (
+            img as unknown as { setDisplaySize: (w: number, h: number) => MockImage }
+          ).setDisplaySize = function setDisplaySize(): MockImage {
+            displaySizeCalls += 1;
+            return img;
+          };
+          propImages.push(img);
+          return img as unknown as Phaser.GameObjects.Image;
+        }),
+        rectangle: vi.fn((x = 0, y = 0, width = 0, height = 0) => {
+          const rect = new PropRect(x, y, width, height);
+          return rect as unknown as Phaser.GameObjects.Rectangle;
+        }),
+      },
+      textures: {
+        exists: (key: string) => key === 'kenney-tiny-town',
+      },
+    } as unknown as Phaser.Scene;
+
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+
+    addSetPieceProp(world, 3, 2, {
+      sprite: { source: 'sheet', sheetKey: 'kenney-tiny-town', col: 2, row: 5 },
+      depth: setPieceZToDepth(30),
+      widthFt: 10,
+      heightFt: 10,
+      label: 'aspect-probe',
+    });
+
+    bridge.sync(world);
+
+    const img = propImages[0];
+    expect(img).toBeDefined();
+    // Contain-fit engaged (native size known) → NO setDisplaySize distortion.
+    expect(displaySizeCalls).toBe(0);
+    // Uniform scale: scaleX === scaleY (the anti-stretch invariant).
+    expect(img?.scaleX).toBe(0.8);
+    expect(img?.scaleY).toBe(0.8);
+    expect(img?.scaleX).toBe(img?.scaleY);
+
+    bridge.destroy();
+  });
+
   it('resolves shipped welcome-room generated props to real catalog art (bare key, rug untinted)', () => {
     // The exact generated manifest keys shipped for the welcome room. The rug is
     // var-0; the velvet rope is var-2 (the others are var-0).

@@ -541,10 +541,35 @@ describe('welcome-room authored set piece', () => {
 
   it('wires the hero props to their shipped generated catalog art', () => {
     const room = getSetPieceDef('welcome-room')!;
-    // Every bespoke welcome-room asset has shipped, so the piece has no
-    // outstanding custom art requests left to generate.
-    expect(collectCustomArtRequests([room])).toHaveLength(0);
-    expect(room.props.some((p) => p.layers.some((l) => isCustomSpriteRef(l.sprite)))).toBe(false);
+    // The three Kenney-sourced cozy decor props (plant, side table, stool) are
+    // placeholders: they render as honest labeled boxes and sit in the custom
+    // art-request queue until bespoke art is generated — never as arbitrary
+    // Kenney tile frames masquerading as furniture.
+    const requestIds = collectCustomArtRequests([room])
+      .map((req) => req.requestId)
+      .sort();
+    expect(requestIds).toEqual([
+      'welcome-room-lounge-stool',
+      'welcome-room-potted-plant',
+      'welcome-room-side-table',
+    ]);
+    // Those three queued decor props must NOT resolve to raw Kenney sheet
+    // frames anymore — each base layer is now an honest custom request.
+    for (const id of ['potted-plant', 'broker-side-table', 'lounge-stool']) {
+      const base = room.props.find((p) => p.id === id)!.layers[0]!.sprite;
+      expect(base.source).toBe('custom');
+    }
+    // No hero prop is a placeholder — the reception/hero furniture is all shipped.
+    for (const id of [
+      'welcome-rug',
+      'welcome-desk',
+      'shop-table',
+      'broker-bookcase',
+      'velvet-rope',
+    ]) {
+      const prop = room.props.find((p) => p.id === id)!;
+      expect(prop.layers.some((l) => isCustomSpriteRef(l.sprite))).toBe(false);
+    }
 
     // Each hero prop's base layer pins the exact approved generated variant
     // (the velvet rope shipped as var-2, the rest as var-0).
@@ -561,5 +586,154 @@ describe('welcome-room authored set piece', () => {
     expect(baseSpriteId('shop-table')).toBe('welcome-room-shop-table-var-0');
     expect(baseSpriteId('broker-bookcase')).toBe('welcome-room-bookcase-var-0');
     expect(baseSpriteId('velvet-rope')).toBe('welcome-room-velvet-rope-var-2');
+  });
+
+  it('anchors the reception against the back wall via a top placement', () => {
+    const room = getSetPieceDef('welcome-room')!;
+    expect(room.placement?.verticalAlign).toBe('top');
+  });
+
+  it('mounts wall sconces on the back-wall row and lifts them onto the wall', () => {
+    const room = getSetPieceDef('welcome-room')!;
+    const sconces = room.props.filter((p) => p.id.startsWith('sconce-'));
+    // The two diagonal handheld torches were replaced with four proper wall
+    // sconces (a symmetric outer/inner pair on each side).
+    expect(sconces).toHaveLength(4);
+    expect(room.props.some((p) => p.id.startsWith('torch-'))).toBe(false);
+    for (const sconce of sconces) {
+      // Authored on the back-wall row...
+      expect(sconce.y).toBe(0);
+      // ...and lifted up off the floor onto the wall with a negative feet nudge.
+      expect(sconce.layers[0]?.offsetYFt).toBeLessThan(0);
+    }
+    // Right-side sconces mirror the single approved variant via flipX so the
+    // pair reads symmetric without a second sprite.
+    const right = sconces.filter((p) => p.id.includes('right'));
+    expect(right).toHaveLength(2);
+    expect(right.every((p) => p.layers[0]?.flipX === true)).toBe(true);
+  });
+
+  it('gives every hero furniture prop an explicit feet box so nothing stretches', () => {
+    const room = getSetPieceDef('welcome-room')!;
+    for (const id of [
+      'welcome-rug',
+      'welcome-desk',
+      'shop-table',
+      'broker-bookcase',
+      'velvet-rope',
+    ]) {
+      const layer = room.props.find((p) => p.id === id)!.layers[0]!;
+      expect(layer.widthFt).toBeGreaterThan(0);
+      expect(layer.heightFt).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('sprite layer feet + flip schema', () => {
+  afterEach(() => {
+    installDefaultSetPiecePacks();
+  });
+
+  const packWithLayer = (layer: Record<string, unknown>) => ({
+    version: 1,
+    packId: 'feet-test',
+    setPieces: [
+      {
+        id: 'feet-room',
+        name: 'Feet Room',
+        theme: 'test',
+        sizing: 'exact',
+        width: 2,
+        height: 2,
+        description: 'Exercises the per-layer feet + flip fields.',
+        props: [
+          {
+            id: 'p',
+            kind: 'decoration',
+            x: 0,
+            y: 0,
+            layers: [{ sprite: { source: 'sheet', sheetKey: 'k', col: 0, row: 0 }, ...layer }],
+          },
+        ],
+      },
+    ],
+  });
+
+  it('accepts a widthFt/heightFt pair plus flip + feet offsets', () => {
+    const pack = setPiecePackSchema.parse(
+      packWithLayer({ widthFt: 1.5, heightFt: 1.5, offsetXFt: 1, offsetYFt: -4, flipX: true }),
+    );
+    installSetPiecePacks([pack]);
+    const layer = getSetPieceDef('feet-room')!.props[0]!.layers[0]!;
+    expect(layer.widthFt).toBe(1.5);
+    expect(layer.heightFt).toBe(1.5);
+    expect(layer.offsetYFt).toBe(-4);
+    expect(layer.flipX).toBe(true);
+  });
+
+  it('rejects a widthFt without a matching heightFt (both-or-neither)', () => {
+    expect(() => setPiecePackSchema.parse(packWithLayer({ widthFt: 3 }))).toThrow(
+      /widthFt and heightFt must be supplied together/,
+    );
+    expect(() => setPiecePackSchema.parse(packWithLayer({ heightFt: 3 }))).toThrow(
+      /widthFt and heightFt must be supplied together/,
+    );
+  });
+
+  it('rejects a non-positive feet box', () => {
+    expect(() => setPiecePackSchema.parse(packWithLayer({ widthFt: 0, heightFt: 2 }))).toThrow();
+  });
+});
+
+describe('set-piece placement schema', () => {
+  afterEach(() => {
+    installDefaultSetPiecePacks();
+  });
+
+  const packWithPlacement = (placement: unknown) => ({
+    version: 1,
+    packId: 'placement-test',
+    setPieces: [
+      {
+        id: 'placed-room',
+        name: 'Placed Room',
+        theme: 'test',
+        sizing: 'exact',
+        width: 2,
+        height: 2,
+        description: 'Exercises the set-piece placement anchor.',
+        ...(placement !== undefined ? { placement } : {}),
+        props: [
+          {
+            id: 'p',
+            kind: 'floor',
+            x: 0,
+            y: 0,
+            layers: [{ sprite: { source: 'sheet', sheetKey: 'k', col: 0, row: 0 } }],
+          },
+        ],
+      },
+    ],
+  });
+
+  it('defaults placement to undefined (centre/centre behaviour)', () => {
+    installSetPiecePacks([setPiecePackSchema.parse(packWithPlacement(undefined))]);
+    expect(getSetPieceDef('placed-room')!.placement).toBeUndefined();
+  });
+
+  it('carries an authored vertical + horizontal alignment through compile', () => {
+    installSetPiecePacks([
+      setPiecePackSchema.parse(
+        packWithPlacement({ verticalAlign: 'top', horizontalAlign: 'right' }),
+      ),
+    ]);
+    const def = getSetPieceDef('placed-room')!;
+    expect(def.placement).toEqual({ verticalAlign: 'top', horizontalAlign: 'right' });
+  });
+
+  it('rejects an unknown alignment value', () => {
+    expect(() =>
+      setPiecePackSchema.parse(packWithPlacement({ verticalAlign: 'middle' })),
+    ).toThrow();
   });
 });
