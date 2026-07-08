@@ -2521,5 +2521,44 @@
     "frame": 0,
     "col": 0,
     "row": 0
+  },
+  {
+    "id": "generated:geese-honker-var-13",
+    "kind": "sprite",
+    "label": "geese-honker-var-13",
+    "description": "Generated sprite from brief: geese-honker.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "geese-honker-var-13",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/geese-honker-var-13.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:molefolk-burrower-var-1",
+    "kind": "sprite",
+    "label": "molefolk-burrower-var-1",
+    "description": "Generated sprite from brief: molefolk-burrower.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "molefolk-burrower-var-1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/molefolk-burrower-var-1.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:raccoon-thief-var-0",
+    "kind": "sprite",
+    "label": "raccoon-thief-var-0",
+    "description": "Generated sprite from brief: raccoon-thief.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "raccoon-thief-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/raccoon-thief-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
   }
 ]
