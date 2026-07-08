@@ -1,5 +1,16 @@
 [
   {
+    "commit": "1bd51b65262ea81aa74870dee8efef862e6d34f1",
+    "commitDate": "2026-07-08T00:28:53Z",
+    "commitSubject": "feat(sprites): consolidate 13 approved assets from 1 check-in(s) (#869)",
+    "capturedAt": "2026-07-08T01:04:14.261Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28908534747",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/1bd51b65262ea81aa74870dee8efef862e6d34f1.json"
+  },
+  {
     "commit": "8c48646de2a7a2394fd01d6f39ed8cd01c86a224",
     "commitDate": "2026-07-07T23:56:37Z",
     "commitSubject": "feat(floor1): wire welcome-room set piece into Floor 1 mapgen (spaced NPCs, sprite layering, auto objective anchors) (#853)",
