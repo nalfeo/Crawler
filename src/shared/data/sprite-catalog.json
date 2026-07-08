@@ -1936,5 +1936,31 @@
     "frame": 0,
     "col": 0,
     "row": 0
+  },
+  {
+    "id": "generated:cave-floor-var-8",
+    "kind": "sprite",
+    "label": "cave-floor-var-8",
+    "description": "Generated sprite from brief: cave-floor.",
+    "tags": ["tile", "generated", "pipeline-approved"],
+    "spriteId": "cave-floor-var-8",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/cave-floor-var-8.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:cave-wall-var-5",
+    "kind": "sprite",
+    "label": "cave-wall-var-5",
+    "description": "Generated sprite from brief: cave-wall.",
+    "tags": ["tile", "generated", "pipeline-approved"],
+    "spriteId": "cave-wall-var-5",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/cave-wall-var-5.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
   }
 ]
