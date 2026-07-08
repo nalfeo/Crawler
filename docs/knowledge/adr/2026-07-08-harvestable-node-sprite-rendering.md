@@ -46,8 +46,8 @@ out-of-scope render surface) and would collide with the existing
    not the bare item id.
 2. **Deterministic variant pick.** Add
    `pickGeneratedHarvestableTextureKey(registry, defId, roll)` that maps a def id
-   - a stored `[0,1)` roll to a concrete approved texture key, mirroring the
-     enemy path.
+   and a stored `[0,1)` roll to a concrete approved texture key, mirroring the
+   enemy path.
 3. **Render path (engine).** In the `PhaserBridge` harvestable branch, resolve
    the texture; if it exists, draw a `Phaser.GameObjects.Image` (tracked in a new
    `harvestNodeImages` map with despawn/reset cleanup mirroring

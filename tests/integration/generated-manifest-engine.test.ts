@@ -24,12 +24,12 @@ import {
 } from '../../src/shared/generated-assets.js';
 import { getItemById } from '../../src/shared/items.js';
 import { getSetPieceDef, installDefaultSetPiecePacks } from '../../src/shared/set-piece-types.js';
-import { GENERATED_KEY_BY_NPC_DEF } from '../../src/engine/phaser-bridge/sprite-kind.js';
-import { HARVESTABLE_DEFS } from '../../src/shared/harvestableDefs.js';
 import {
+  GENERATED_KEY_BY_NPC_DEF,
   generatedBriefIdForHarvestable,
   pickGeneratedHarvestableTextureKey,
 } from '../../src/engine/phaser-bridge/sprite-kind.js';
+import { HARVESTABLE_DEFS } from '../../src/shared/harvestableDefs.js';
 
 const REPO_MANIFEST = path.resolve(__dirname, '../../public/assets/generated/manifest.json');
 
