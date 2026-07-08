@@ -97,7 +97,7 @@ export interface CaveSystemOptions {
   settlementMinDistanceFromResourceHeartTiles?: number;
 }
 
-const DEFAULT_OPTIONS: Required<CaveSystemOptions> = {
+export const DEFAULT_OPTIONS: Required<CaveSystemOptions> = {
   presentCount: 4,
   initialFill: 0.5,
   smoothingPasses: 4,

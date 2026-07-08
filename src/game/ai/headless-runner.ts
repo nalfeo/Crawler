@@ -24,6 +24,7 @@ import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { FLOOR1_TUTORIAL_QUEST_ID } from '../../shared/quest-types.js';
 import { xpRequiredForLevel } from '../../shared/xpMath.js';
 import { createWeaponTelemetry, summarizeWeaponTelemetry } from '../../core/weapon-telemetry.js';
+import { FLOOR2_TIMEOUT_GOAL_ID } from '../floor2Scenario.js';
 import {
   AIDecisionDebugState,
   type AIInputProvider,
@@ -59,7 +60,7 @@ function readRunState(world: GameWorld): GameWorld['state'] {
 
 export function classifyGameOverOutcome(world: GameWorld): 'timeout' | 'death' {
   const floor1Timeout = world.floorScenario?.failReason === 'stair_timeout';
-  const floor2Timeout = world.goalFlags.get('floor2-timeout') === true;
+  const floor2Timeout = world.goalFlags.get(FLOOR2_TIMEOUT_GOAL_ID) === true;
   return floor1Timeout || floor2Timeout ? 'timeout' : 'death';
 }
 

@@ -1,5 +1,6 @@
 import { spawnPlayer } from '../../core/spawners/combatants.js';
 import { createGameWorld, type GameWorld } from '../../core/world.js';
+import { DEFAULT_OPTIONS as CAVE_SYSTEM_DEFAULT_OPTIONS } from '../../core/map/generators/cave-system.js';
 import {
   FLOOR2_CAVE_SYSTEM_DEFAULTS,
   initializeFloor2Scenario,
@@ -50,28 +51,7 @@ export interface ScenarioWorldFactoryResult {
 
 export type ScenarioWorldFactory = (seed: number, floor: number) => ScenarioWorldFactoryResult;
 
-const DEFAULT_CAVE_SETTINGS = {
-  presentCount: 4,
-  initialFill: 0.5,
-  smoothingPasses: 4,
-  bossDenSize: 5,
-  resourceHeartDiameterTiles: 20,
-  territoryRadiusFraction: 0.3,
-  denStartAngleJitterFraction: 1.0,
-  denDistanceJitterFraction: 1.0,
-  denTargetRadiusMinFraction: 0.6,
-  denTargetRadiusMaxFraction: 0.8,
-  denTargetMinSeparationTiles: 12,
-  spawnMinDistanceFromDenTiles: 24,
-  spawnMinDistanceFromResourceHeartTiles: 24,
-  spawnMinDistanceFromSettlementTiles: 24,
-  settlementMinDistanceFromDenTiles: 20,
-  settlementMinDistanceFromResourceHeartTiles: 16,
-  regionSeparationTiles: 0,
-  maxRetries: 8,
-  cavernWidenPasses: 2,
-  straightHallwayMinRun: 10,
-} as const;
+const DEFAULT_CAVE_SETTINGS = CAVE_SYSTEM_DEFAULT_OPTIONS;
 function defaultScenarioWorldFactory(seed: number, floor: number): ScenarioWorldFactoryResult {
   const world = createGameWorld({ seed, floor });
   const playerEid = spawnPlayer(world, 0, 0);
