@@ -2602,19 +2602,32 @@ export class BehaviorTreeAI implements AIInputProvider {
     // opportunisticPullX/Y and dodgeVecX/Y as side-effects)
     this.tree.tick(context);
 
+    // Pathing A/B seam (axis 1) — three non-overlapping mode booleans (poll-invariant):
+    //  • usesNavmeshRoute — route via the deterministic recast waypoint route to the
+    //    BT-chosen goal (NAVMESH and NAVMESH_FUSED) instead of grid-A* moveToward.
+    //  • usePureNavmesh — PURE navmesh locomotion (NAVMESH only): skips the danger/
+    //    reward follow layers (predictive travel steering + additive Track B blend).
+    //  • useFused — run the danger/reward-fused candidate-heading scorer on top of the
+    //    base heading (RISK_REWARD_FUSED and NAVMESH_FUSED).
+    // NAVMESH_FUSED = usesNavmeshRoute + useFused (navmesh route FIRST, THEN the fused
+    // follow layer deflects it) — the recast query stays pure; danger/reward is a
+    // FOLLOW-time layer only. For LEGACY/RISK_REWARD_FUSED/NAVMESH, usePureNavmesh ===
+    // the old `useNavmesh` and useFused is unchanged, so those three stay byte-identical.
+    // DEFAULT is LEGACY.
+    const usesNavmeshRoute =
+      this.config.pathingMode === AIPathingMode.NAVMESH ||
+      this.config.pathingMode === AIPathingMode.NAVMESH_FUSED;
+    const usePureNavmesh = this.config.pathingMode === AIPathingMode.NAVMESH;
+    const useFused =
+      this.config.pathingMode === AIPathingMode.RISK_REWARD_FUSED ||
+      this.config.pathingMode === AIPathingMode.NAVMESH_FUSED;
+
     // Execute decision: move toward target (Track A direction)
     if (this.decision.targetX !== null && this.decision.targetY !== null) {
-      // Pathing A/B seam (axis 1). NAVMESH swaps grid-A* for a deterministic recast
-      // waypoint route to the SAME BT-chosen goal AND, per the Slice-3 "refined B"
-      // seam decision, drops the danger/reward layers LEGACY runs downstream: it
-      // skips predictive travel steering (mob-dancing) and the additive Track B
-      // blend (dodgeVec danger-dodge + opportunistic/farm reward pull) via the
-      // `useNavmesh` gates below. What remains is pure locomotion — waypoint
-      // following with corner-safe geometry rounding + smoothing — so NAVMESH
-      // reaches BT goals with NO danger/reward awareness (that is Slice 4). LEGACY
-      // and FUSED are untouched, so this branch is never taken unless NAVMESH is
-      // explicitly selected and DEFAULT stays byte-identical. Plain shortest-path.
-      if (this.config.pathingMode === AIPathingMode.NAVMESH) {
+      // NAVMESH-routed modes swap grid-A* for the deterministic recast waypoint route
+      // to the SAME BT-chosen goal; the fused follow layer (NAVMESH_FUSED) then
+      // deflects that route below, while pure NAVMESH follows it as plain locomotion.
+      if (usesNavmeshRoute) {
         this.moveTowardViaNavmesh(
           state,
           world,
@@ -2638,18 +2651,14 @@ export class BehaviorTreeAI implements AIInputProvider {
       state.moveY = 0;
     }
 
-    // Pathing A/B seam (axis 1). Track B (reward pull) is blended differently per
-    // mode: LEGACY blends it additively AFTER travel steering (below); FUSED folds
-    // Track A + Track B into a single danger-aware heading HERE, before travel
-    // steering. `weights` is poll-invariant (getCollapsePanicProfile + static
-    // config, independent of anything travel steering mutates) so hoisting it
-    // above travel steering keeps LEGACY byte-identical.
+    // Track B (reward pull) is blended differently per mode: LEGACY blends it
+    // additively AFTER travel steering (below); the fused scorer folds Track A +
+    // Track B into a single danger-aware heading HERE, before travel steering.
+    // `weights` is poll-invariant (getCollapsePanicProfile + static config,
+    // independent of anything travel steering mutates) so hoisting it above travel
+    // steering keeps LEGACY byte-identical. useFused / usePureNavmesh were computed
+    // alongside usesNavmeshRoute at the top of the decision block.
     const weights = this.getDynamicOpportunisticWeights(world);
-    const useFused = this.config.pathingMode === AIPathingMode.RISK_REWARD_FUSED;
-    // Refined-B seam (Slice 3): NAVMESH follows the recast route with pure
-    // locomotion only — it skips the danger-dodge / reward-pull layers below.
-    // useFused stays false for NAVMESH, so the fused scorer is skipped too.
-    const useNavmesh = this.config.pathingMode === AIPathingMode.NAVMESH;
     let fusedYieldedZero = false;
     if (useFused) {
       // A/B pathing mode B: score candidate headings by objective progress,
@@ -2680,7 +2689,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     // travel. Damage-agnostic (nothing here reads a hostile-damage multiplier).
     let travelEmergency = false;
     this.lastTravelSteering = null;
-    if (TRAVEL_STEERING_ENABLED && !useNavmesh && this.shouldTravelSteer(playerX, playerY)) {
+    if (TRAVEL_STEERING_ENABLED && !usePureNavmesh && this.shouldTravelSteer(playerX, playerY)) {
       const objMag = Math.hypot(state.moveX, state.moveY);
       if (objMag > TRAVEL_HEADING_EPSILON) {
         const steer = this.computeTravelSteering(
@@ -2722,10 +2731,12 @@ export class BehaviorTreeAI implements AIInputProvider {
     // folded nothing in that poll, so the blend runs to pass dodge/pull through.
     // fusedYieldedZero can only be true in fused mode, so LEGACY stays byte-identical.
     //
-    // NAVMESH (refined-B seam) skips the additive Track B blend entirely: it carries
-    // NO danger dodge and NO reward pull — pure locomotion to the recast waypoints.
-    // The gate is `&& !useNavmesh`, so LEGACY/FUSED are byte-identical.
-    if ((!useFused || fusedYieldedZero) && !useNavmesh) {
+    // PURE NAVMESH skips the additive Track B blend entirely: it carries NO danger
+    // dodge and NO reward pull — pure locomotion to the recast waypoints. NAVMESH_FUSED
+    // does NOT skip it (useFused is true there, so the fused scorer already folded
+    // Track B in, exactly like grid RISK_REWARD_FUSED). The gate is `&& !usePureNavmesh`,
+    // so LEGACY / RISK_REWARD_FUSED / NAVMESH are byte-identical.
+    if ((!useFused || fusedYieldedZero) && !usePureNavmesh) {
       const blend = this.blendWithTrackB(state.moveX, state.moveY, weights);
       state.moveX = blend.moveX;
       state.moveY = blend.moveY;
@@ -4207,7 +4218,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (this.navHandleFloor === floorMap && this.navHandle) return this.navHandle;
     if (!isNavmeshReady()) {
       throw new Error(
-        'AIPathingMode.NAVMESH selected but initNavmesh() was not awaited before the simulation ran',
+        'A navmesh-routed AIPathingMode (NAVMESH / NAVMESH_FUSED) was selected but initNavmesh() was not awaited before the simulation ran',
       );
     }
     if (this.navHandle) {

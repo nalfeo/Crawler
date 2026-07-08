@@ -1,5 +1,6 @@
 /**
- * Deterministic navmesh path source for Crawler AI ({@link AIPathingMode.NAVMESH}).
+ * Deterministic navmesh path source for Crawler AI ({@link AIPathingMode.NAVMESH}
+ * and {@link AIPathingMode.NAVMESH_FUSED}, which share this exact query layer).
  * See `./navmesh-pather.ts` for the API and `./navmesh-config.ts` for the pinned,
  * load-bearing determinism config.
  */

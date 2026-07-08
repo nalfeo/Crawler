@@ -1,0 +1,50 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-08",
+  "session_slug": "navmesh-fused-pathing",
+  "task_title": "AIPathingMode.NAVMESH_FUSED — danger/reward fan on navmesh follow (default-OFF)",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.5",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "notes": "Separate uninvolved model (gpt-5.5, high effort) reviewed the synthesized plan against the real code. NO blocking flaws; core no-op truth table (LEGACY/RISK_REWARD_FUSED/NAVMESH byte-identical) confirmed sound. 3 concerns, all resolved: (1) [SHOULD-FIX] brittle non-inertness assertion — the headless 'fingerprint differs from pure NAVMESH on >=1 seed' could false-fail (coincidental match on seeds 42/101) or false-pass (coarse diff != proof the fan ran on the navmesh base). RESOLVED: headless test now asserts same-seed byte-identity ONLY; wiring/non-inertness proof moved to the deterministic unit assertion (getFusedDebug() non-null + navWaypoints populated in NAVMESH_FUSED) + the sweep navmeshFusedCompletions>0 tripwire. (2) [SHOULD-FIX] 'hard gate' navmeshFusedCompletions>=navmeshCompletions risks baking a balance comparison into the report-only sweep tool (rule #13). RECONCILED: sweep SCRIPT stays report-only + inertness-only exit; the creator's completion>=pure-NAVMESH bar is kept as an explicit SHIP criterion I evaluate from the JSON (not weakened — rule #12), and a RED gate escalates via the mandatory creator PING (ship posture 'PING on any gate red'), never a 4a retune. (3) [NICE-TO-HAVE] boolean clarity — adopted three explicit non-overlapping booleans usesNavmeshRoute / usePureNavmesh / useFused; only usePureNavmesh drives the two downstream skip gates. Plan artifact updated with all three resolutions."
+    },
+    "dual_plan_synthesis": {
+      "completed": true,
+      "plan_models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+      "judge_model": "claude-opus-4.8",
+      "notes": "Two independent plans (gpt-5.4 high effort, gemini-3.1-pro high effort) generated against the real bt-ai-provider poll() seam; judge (opus) synthesized. Strong agreement on the 5-edit poll rewiring (useNavmeshRoute/usePureNavmesh/useFused). Both independently caught a load-bearing site initial recon missed: headless-runner.ts:465 gates initNavmesh() on ===NAVMESH only, so NAVMESH_FUSED headless runs would throw at ensureFloorNavmesh():4209 — must broaden. Judge adopted gpt's separate NEW determinism-test file (keep the RISK_REWARD_FUSED sibling UNTOUCHED as the FUSED-unchanged proof) over gemini's in-place refactor; adopted gpt's sweep before/after baseline-freeze, a partial-path-guard-under-NAVMESH_FUSED test, and a CLI parse test."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "Ran 3 code-review agents with distinct models against the staged 11-file diff immediately after implementation. gpt-5.3-codex + gemini-3.1-pro-preview: NO CONCERNS; both independently re-derived the LEGACY / RISK_REWARD_FUSED / NAVMESH byte-identity truth table and confirmed the route-then-fused-fan composition (moveTowardViaNavmesh first, then computeRiskRewardFusedHeading on that heading). claude-sonnet-4.6: byte-identity independently verified + 2 minor console-output-only issues in scripts/agent/perf/navmesh-sweep.ts — (1) the LEGACY<->NAVMESH regression flag (flipWinToLoss/flipLossToWin) was printed in the F: (NAVMESH_FUSED) column instead of the N: column, misreading a NAVMESH loss as a FUSED loss; (2) the inertness-tripwire diagnostic named only NAVMESH when BOTH modes complete 0 floors. Both real, both JSON/gate-unaffected (so the in-flight after-sweep JSON stays valid). Applied the reviewer's exact mechanical remedies: moved ${flag} back to the N: column; expanded the `dead` ternary to a 3-way naming both modes. All concerns resolved; zero functional/behavioral concerns from any model."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 2,
+          "valid_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "Adjudicated the 3 distinct-model reviews. codex + gemini found nothing; sonnet's 2 findings both judged VALID but console-output-only (report/gate JSON untouched) and both fixed with the suggested mechanical remedies. No cross-model disagreement on the load-bearing invariant: all three agree LEGACY / RISK_REWARD_FUSED / NAVMESH poll output is byte-identical and only NAVMESH_FUSED adds behavior. No concern needed delegation beyond the 2 trivial console-string fixes. Clean after round 1; no second round needed (no functional concerns; fixes are mechanical reorders verifiable by inspection + typecheck/lint)."
+        }
+      ]
+    }
+  }
+}

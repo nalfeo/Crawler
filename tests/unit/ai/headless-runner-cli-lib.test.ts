@@ -32,6 +32,8 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
     expect(cli('--pathing-mode', 'riskRewardFused').pathingMode).toBe(
       AIPathingMode.RISK_REWARD_FUSED,
     );
+    expect(cli('--pathing-mode', 'navmesh').pathingMode).toBe(AIPathingMode.NAVMESH);
+    expect(cli('--pathing-mode', 'navmeshFused').pathingMode).toBe(AIPathingMode.NAVMESH_FUSED);
     expect(cli('--pathing-mode', 'legacy').pathingMode).toBe(AIPathingMode.LEGACY);
   });
 

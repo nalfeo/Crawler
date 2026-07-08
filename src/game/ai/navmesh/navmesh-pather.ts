@@ -2,7 +2,8 @@
  * Deterministic navmesh path source for Crawler AI (game layer).
  *
  * Wraps `recast-navigation` (a WASM port of Recast & Detour) behind a small,
- * fully-deterministic API used by {@link AIPathingMode.NAVMESH}: build one solo
+ * fully-deterministic API used by {@link AIPathingMode.NAVMESH} and
+ * {@link AIPathingMode.NAVMESH_FUSED}: build one solo
  * navmesh per floor from tile passability, then answer shortest-path waypoint
  * queries. The Slice-1 spike proved these queries are CROSS-PLATFORM
  * byte-identical under the pinned config in `./navmesh-config.ts` (Windows local

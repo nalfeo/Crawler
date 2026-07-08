@@ -457,12 +457,14 @@ export async function runHeadless(
   };
 
   try {
-    // NAVMESH pathing needs the recast WASM runtime initialized before the
-    // synchronous sim loop runs (the provider's poll() is sync and throws if the
-    // navmesh is not ready). Centralizing the await here means every headless
-    // caller — CLI, ai:ab-pathing-mode, and the determinism/functional tests —
-    // is covered without each remembering to init. LEGACY/FUSED never touch it.
-    if (navProvider.getPathingMode?.() === AIPathingMode.NAVMESH) {
+    // Navmesh-routed pathing (NAVMESH and NAVMESH_FUSED) needs the recast WASM
+    // runtime initialized before the synchronous sim loop runs (the provider's
+    // poll() is sync and throws if the navmesh is not ready). Centralizing the
+    // await here means every headless caller — CLI, ai:ab-pathing-mode,
+    // ai:navmesh-sweep, and the determinism/functional tests — is covered without
+    // each remembering to init. LEGACY/RISK_REWARD_FUSED never touch it.
+    const pathingMode = navProvider.getPathingMode?.();
+    if (pathingMode === AIPathingMode.NAVMESH || pathingMode === AIPathingMode.NAVMESH_FUSED) {
       await initNavmesh();
     }
 
@@ -786,8 +788,9 @@ export async function runHeadless(
     return crashStats;
   } finally {
     // Free the per-floor recast navmesh + query WASM allocations (outside the JS
-    // GC). No-op for LEGACY/FUSED (no handle was ever built). Without this, the
-    // navmesh-sweep's 300 sequential NAVMESH runs would leak one handle each.
+    // GC). No-op for LEGACY/RISK_REWARD_FUSED (no handle was ever built). Without
+    // this, the navmesh-sweep's sequential navmesh-routed runs would leak one
+    // handle each.
     navProvider.disposeNavmesh?.();
   }
 
