@@ -44,9 +44,9 @@ import type { MapGenerator } from './types';
 export interface CaveSystemOptions {
   /** Number of families present on this floor (3 or 4). Default: 4. */
   presentCount?: number;
-  /** Cellular initial fill ratio. Default: 0.45. */
+  /** Cellular initial fill ratio. Default: 0.5. */
   initialFill?: number;
-  /** Cellular smoothing passes. Default: 5. */
+  /** Cellular smoothing passes. Default: 4. */
   smoothingPasses?: number;
   /** Boss-den side length (square). Default: 5. */
   bossDenSize?: number;
