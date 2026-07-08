@@ -2118,5 +2118,57 @@
     "frame": 0,
     "col": 0,
     "row": 0
+  },
+  {
+    "id": "generated:gnome-boss-var-7",
+    "kind": "sprite",
+    "label": "gnome-boss-var-7",
+    "description": "Generated sprite from brief: gnome-boss.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "gnome-boss-var-7",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/gnome-boss-var-7.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:kobold-boss-var-0",
+    "kind": "sprite",
+    "label": "kobold-boss-var-0",
+    "description": "Generated sprite from brief: kobold-boss.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "kobold-boss-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/kobold-boss-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:myconid-boss-var-0",
+    "kind": "sprite",
+    "label": "myconid-boss-var-0",
+    "description": "Generated sprite from brief: myconid-boss.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "myconid-boss-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/myconid-boss-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:toadkin-boss-var-0",
+    "kind": "sprite",
+    "label": "toadkin-boss-var-0",
+    "description": "Generated sprite from brief: toadkin-boss.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "toadkin-boss-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/toadkin-boss-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
   }
 ]
