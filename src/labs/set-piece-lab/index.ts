@@ -59,6 +59,7 @@ import {
 } from '../../shared/set-piece-types.js';
 import { ftToPx } from '../../shared/units.js';
 import { registerLab, type LabCategory } from '../registry.js';
+import { isSetPieceRenderReady } from './readiness.js';
 
 const LAB_ID = 'set-piece-lab';
 const SCENE_KEY = 'SetPieceLabScene';
@@ -74,6 +75,47 @@ const CRITICAL_SHEET_KEYS = new Set([
   'kenney-roguelike-rpg-pack',
   'custom-pixel-sprites',
 ]);
+
+/**
+ * Honest render-readiness flag (see {@link isSetPieceRenderReady}). Only `true`
+ * while the CURRENTLY selected set piece is rendering REAL art — zero prop
+ * placeholder Rectangles and every pinned NPC key resident. Read by the headless
+ * visual-review harness through `window.__uiProbe.ready()` so it never captures
+ * cold-cache placeholders. Module-scoped so it survives scene restarts (the
+ * dropdown restarts the scene, which re-enters `create()` but not the lab
+ * factory) and so the probe closure below reflects the latest recompute.
+ */
+let labReady = false;
+
+/** Globals this lab installs on `window` for the visual-review harness + setup. */
+interface SetPieceLabWindow {
+  __uiProbe?: { ready: () => boolean };
+  __setPieceScene?: Phaser.Scene;
+}
+
+function setPieceLabWindow(): SetPieceLabWindow {
+  return window as unknown as SetPieceLabWindow;
+}
+
+/**
+ * Pick which set piece to boot. Honors `?piece=<id>` / `?setPiece=<id>` in the
+ * page URL (the headless visual-review harness deep-links `welcome-room`),
+ * falling back to the first registered def when the param is absent or unknown.
+ * Guarded so a malformed query string can never throw during lab boot.
+ */
+function resolveInitialSetPieceId(defs: readonly SetPieceDef[]): string {
+  const fallback = defs[0]?.id ?? '';
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const requested = params.get('piece') ?? params.get('setPiece');
+    if (requested && defs.some((def) => def.id === requested)) {
+      return requested;
+    }
+  } catch {
+    // Malformed search string — fall back to the first registered def.
+  }
+  return fallback;
+}
 
 /** NPC anchor-role → label colour, mirroring the objective-marker palette. */
 const NPC_ANCHOR_COLOR: Record<SetPieceNpcAnchorRole, string> = {
@@ -325,7 +367,14 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
   }
 
   const defs = getAllSetPieceDefs();
-  const state = { selectedId: defs[0]?.id ?? '' };
+  const state = { selectedId: resolveInitialSetPieceId(defs) };
+
+  // Install the honest-ready probe the headless visual-review harness waits on
+  // (`waitForFunction(() => __uiProbe.ready() === true)` in visual-review-agent),
+  // and reset the flag — remounting the lab must start from "not ready" until the
+  // scene recomputes it against the live display list.
+  labReady = false;
+  setPieceLabWindow().__uiProbe = { ready: () => labReady };
 
   const root = document.createElement('div');
   root.style.position = 'relative';
@@ -427,6 +476,12 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
   class SetPieceLabScene extends Phaser.Scene {
     private bridge?: ReturnType<typeof createPhaserBridge>;
     private world!: GameWorld;
+    /**
+     * Pinned generated NPC texture keys the current piece must resolve before it
+     * counts as "real art" — until each is resident the NPC still shows its
+     * villager fallback sprite. Computed once in create() from the stamped NPCs.
+     */
+    private requiredNpcKeys = new Set<string>();
 
     constructor() {
       super({ key: SCENE_KEY });
@@ -459,6 +514,10 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
 
     create(): void {
       this.cameras.main.setBackgroundColor('#05060b');
+      // A restart (dropdown change) re-enters create(): drop readiness until the
+      // freshly stamped piece re-resolves its art on the next recompute.
+      labReady = false;
+      this.requiredNpcKeys = new Set<string>();
 
       const def = getSetPieceDef(state.selectedId) ?? defs[0];
       if (!def) {
@@ -483,10 +542,17 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
       }
       for (const npc of stamp.npcs) {
         spawnNpc(this.world, npc.x, npc.y, npc.npcTypeId);
+        const npcKey = pickGeneratedNpcTextureKey(npc.npcTypeId);
+        if (npcKey) {
+          this.requiredNpcKeys.add(npcKey);
+        }
       }
 
       this.bridge = createPhaserBridge(this);
       this.bridge.sync(this.world);
+      this.recomputeReady();
+      // Expose the live scene so the review setup file can poll the display list.
+      setPieceLabWindow().__setPieceScene = this;
       void this.warmGeneratedSprites();
 
       this.fitCamera();
@@ -553,6 +619,11 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
         tooltip.style.display = 'none';
         this.bridge?.destroy();
         this.bridge = undefined;
+        labReady = false;
+        this.requiredNpcKeys.clear();
+        if (setPieceLabWindow().__setPieceScene === this) {
+          setPieceLabWindow().__setPieceScene = undefined;
+        }
         restartScene = () => undefined;
         resetCamera = () => undefined;
       });
@@ -564,6 +635,9 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
       // set-piece render pass is idempotent + keyed by list index, so a
       // per-frame re-sync reuses visuals and never leaks GameObjects.
       this.bridge?.sync(this.world);
+      // Re-evaluate honest readiness AFTER the sync so a sync that just upgraded
+      // the last placeholder to real art can flip __uiProbe.ready() true.
+      this.recomputeReady();
     }
 
     /** Fit and centre the camera on the whole synthesized room. */
@@ -582,6 +656,44 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
         Number.isFinite(zoom) && zoom > 0 ? Phaser.Math.Clamp(zoom, MIN_ZOOM, MAX_ZOOM) : 1,
       );
       cam.centerOn(mapWpx / 2, mapHpx / 2);
+    }
+
+    /**
+     * Walk the live display list and update {@link labReady} via the pure
+     * {@link isSetPieceRenderReady} gate. Real art is on screen iff at least one
+     * Image has rendered, zero prop placeholder Rectangles remain, and every
+     * required pinned NPC key is resident. The only Rectangles this scene creates
+     * are set-piece prop placeholders (terrain bakes to a RenderTexture and no
+     * health bars/markers are added here), so counting them by type is an exact
+     * "unresolved prop" signal.
+     */
+    private recomputeReady(): void {
+      let placeholderRectCount = 0;
+      let imageCount = 0;
+      const presentKeys = new Set<string>();
+      for (const obj of this.children.list) {
+        if (obj.type === 'Rectangle') {
+          placeholderRectCount += 1;
+        } else if (obj.type === 'Image') {
+          imageCount += 1;
+          const key = (obj as Phaser.GameObjects.Image).texture?.key;
+          if (key) {
+            presentKeys.add(key);
+          }
+        }
+      }
+      let resolvedNpcKeyCount = 0;
+      for (const key of this.requiredNpcKeys) {
+        if (presentKeys.has(key)) {
+          resolvedNpcKeyCount += 1;
+        }
+      }
+      labReady = isSetPieceRenderReady({
+        placeholderRectCount,
+        imageCount,
+        requiredNpcKeyCount: this.requiredNpcKeys.size,
+        resolvedNpcKeyCount,
+      });
     }
 
     private async warmGeneratedSprites(): Promise<void> {
@@ -658,6 +770,12 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
     game.destroy(true);
     hint.remove();
     root.remove();
+    // Tear down the harness-facing globals so a later lab never reads a stale
+    // probe / scene from this one.
+    labReady = false;
+    const labWindow = setPieceLabWindow();
+    labWindow.__uiProbe = undefined;
+    labWindow.__setPieceScene = undefined;
   };
 }
 

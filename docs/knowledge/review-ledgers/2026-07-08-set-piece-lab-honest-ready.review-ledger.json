@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-08",
+  "session_slug": "set-piece-lab-honest-ready",
+  "task_title": "Honest set-piece lab readiness gate for reliable visual-review capture",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Separate-model (gpt-5.4) plan review of the honest-ready design: approved_with_changes, no blocking issues, no architecture fork (reviewer explicitly rejected a different architecture for this fix). 3 concerns: (1) Rectangle/Image type-count gate is not truly generic - a custom-art prop rendering an unresolved ref.placeholder Image would not be caught; ADDRESSED by scoping+documenting the caveat in readiness.ts (welcome-room uses the Rectangle path, verified by cold-cache 14->0 rect capture). (2) MIN_REAL_IMAGES=8 magic threshold in the setup script is brittle; ADDRESSED by dropping it to ready()+0-rects+liveness. (3) full-registry warm acceptable now - no-action suggestion, acknowledged. plan_divergence=minor (non-blocking refinements folded in, core design unchanged)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Code-review agent (claude-sonnet-4.6) round 1: no significant issues. Verified 4 invariants - no false-positive ready (recomputeReady runs synchronously after bridge.sync, imageCount>0 guard blocks pre-sync empty scene), no false-negative stuck-false (requiredNpcKeys built with the same pickGeneratedNpcTextureKey the bridge uses, no off-by-one frame), scene lifecycle resets in all 3 sites (shutdown handler, teardown closure, create() defensive reset), safe empty-defs early-return, and a non-tautological unit-test truth table. Post-review edits were doc-comment (readiness.ts) + dev-only setup-script threshold relaxation (strictly safer, no logic change) folded in from plan review - they do not alter any reviewed invariant; verify:fast re-run clean."
+        }
+      ]
+    }
+  }
+}
