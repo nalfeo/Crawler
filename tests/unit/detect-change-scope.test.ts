@@ -80,6 +80,17 @@ const cases: Case[] = [
   },
   // Docs / text.
   { name: 'docs markdown', files: ['docs/architecture.md'], expected: F(false, true, true) },
+  {
+    name: 'docs knowledge metric json',
+    files: ['docs/knowledge/metrics/apples/2026-07-08-adr-cleanup.json'],
+    expected: F(false, true, true),
+  },
+  {
+    name: 'spec markdown',
+    files: ['.specify/specs/spawner-battle-arena.md'],
+    expected: F(false, true, true),
+  },
+  { name: 'agents governance doc', files: ['AGENTS.md'], expected: F(false, true, true) },
   { name: 'root readme', files: ['README.md'], expected: F(false, true, true) },
   // Gameplay-safe surfaces the headless runner never imports.
   {

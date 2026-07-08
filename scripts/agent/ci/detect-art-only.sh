@@ -9,9 +9,11 @@
 # When art-only, CI skips heavy gameplay gates (integration, headless, e2e, build)
 # but still runs typecheck/lint/format/unit.
 #
-# docs_only=true — every changed file is a markdown or plain-text file (*.md,
-# *.txt) outside of src/. When docs-only, CI skips ALL heavy gates (including
-# typecheck/lint/unit) because markdown cannot contain game logic.
+# docs_only=true — every changed file is under the documentation/governance
+# surface (`docs/**`, `.specify/specs/**`, `AGENTS.md`) or is a markdown/plain-
+# text file (*.md, *.txt) outside of src/. When docs-only, CI skips ALL heavy
+# gates (including typecheck/lint/unit) because these surfaces do not contain
+# shipped game logic.
 #
 # gameplay_safe=true — every changed file provably cannot change the deterministic
 # Floor-1 simulation the headless gate runs (src/engine rendering, src/labs,
@@ -105,14 +107,17 @@ while IFS= read -r file; do
   esac
 done <<<"$changed"
 
-# docs_only: every changed file is a markdown or plain-text file outside src/.
-# src/** is never docs (game logic can live there), so we break immediately if
-# a src/ path appears.
+# docs_only: every changed file is under the documentation/governance surface or
+# is a markdown/plain-text file outside src/. src/** is never docs (game logic
+# can live there), so we break immediately if a src/ path appears.
 docs_only=true
 while IFS= read -r file; do
   [ -z "$file" ] && continue
   case "$file" in
     src/*) docs_only=false; break ;;
+    docs/*) ;;
+    .specify/specs/*) ;;
+    AGENTS.md) ;;
     *.md) ;;
     *.txt) ;;
     *) docs_only=false; break ;;
