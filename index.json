@@ -1,5 +1,16 @@
 [
   {
+    "commit": "d7337301798624321bade28874adfa3f10c0510a",
+    "commitDate": "2026-07-08T08:20:44Z",
+    "commitSubject": "feat(sprites): add 3 welcome-room NPC character sprites (#906)",
+    "capturedAt": "2026-07-08T08:59:15.394Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28928687956",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/d7337301798624321bade28874adfa3f10c0510a.json"
+  },
+  {
     "commit": "4edfa56013ffc0ea7c6cf92f1ba327f3641820d0",
     "commitDate": "2026-07-08T08:11:58Z",
     "commitSubject": "fix(devtools): make agent-perf-panel Waterfall a real shared-axis waterfall + add context-window pressure strip (#842)",
