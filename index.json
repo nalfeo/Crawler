@@ -1,5 +1,16 @@
 [
   {
+    "commit": "83051cd4edda70f46b848cb4fcfb5ba50f7b9984",
+    "commitDate": "2026-07-08T20:56:08Z",
+    "commitSubject": "docs: capture guard-telemetry summary for enemy-render-path-wiring session (#923)",
+    "capturedAt": "2026-07-08T21:36:36.810Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28975526519",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/83051cd4edda70f46b848cb4fcfb5ba50f7b9984.json"
+  },
+  {
     "commit": "fa24ead8f0c4f8f5b7ca2164900c8faf6687fd56",
     "commitDate": "2026-07-08T20:51:59Z",
     "commitSubject": "docs: add AI pathing rework live slice-map (source-of-truth) (#924)",
