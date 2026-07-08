@@ -268,6 +268,7 @@ const GENERATED_BRIEF_BY_TYPE: Readonly<Record<string, string>> = {
   enemy_spawner_rats_nest: 'rat-nest-v2',
   enemy_spawner_slime_pool: 'slime-pool-v1',
   enemy_boss_ratslime: 'rat-slime-v1',
+  enemy_boss_slimerat: 'slime-rat-boss',
 };
 
 const GENERATED_BRIEF_BY_APPEARANCE_KEY: Readonly<Record<string, string>> = {
