@@ -1,5 +1,16 @@
 [
   {
+    "commit": "5a11f3590bdcfb0e6c2d3740b7e979f652b48974",
+    "commitDate": "2026-07-08T17:58:00Z",
+    "commitSubject": "feat: fold dual-plan synthesis into adversarial plan review + plan_divergence instrumentation (ADR 0051) (#915)",
+    "capturedAt": "2026-07-08T18:36:19.002Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28964763736",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/5a11f3590bdcfb0e6c2d3740b7e979f652b48974.json"
+  },
+  {
     "commit": "771f0e26a51a8a34be1f0f9c572e79731083532d",
     "commitDate": "2026-07-08T11:45:58Z",
     "commitSubject": "feat(engine): wire Floor-1 rubble prop and slime-rat mid-boss to generated art (#912)",
