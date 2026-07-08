@@ -35,7 +35,7 @@
 
 ## Tools & Workflows
 
-- **Plan-first + review harness:** Before writing any code, output your **full plan** in the session (for a **>3🍎** change, the _synthesized final_ plan). Then run the apple-scaled review harness — separate-model **plan review** (≥3🍎), **dual-plan synthesis** (>3🍎), **code-review loop** until no concerns _or_ a 2-round cap then human escalation (≥3🍎), and **multi-model review + adjudication** (>3🍎) — recording each required stage in the review ledger the `pr-review-ledger` guard checks before PR. See [`.github/skills/review-harness/`](../../../.github/skills/review-harness/SKILL.md).
+- **Plan-first + review harness:** Before writing any code, output your **full plan** in the session. Then run the apple-scaled review harness — separate-model **plan review** (≥3🍎; **adversarial** at >3🍎: enumerate ≥2 alternatives and argue against the chosen design, and record `plan_divergence`), **code-review loop** until no concerns _or_ a 2-round cap then human escalation (≥3🍎), and **multi-model review + adjudication** (>3🍎) — recording each required stage in the review ledger the `pr-review-ledger` guard checks before PR. See [`.github/skills/review-harness/`](../../../.github/skills/review-harness/SKILL.md).
 - Start from the routing matrix; write the slice → persona → path plan before
   touching code, and record it in the handoff.
 - Use `report_progress` checklists that mirror the slice plan so progress is

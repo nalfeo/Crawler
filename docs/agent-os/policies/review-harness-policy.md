@@ -4,10 +4,10 @@
 
 Scale the amount of **review** a change receives to its **apple complexity**, and
 make that review _provable_ before a PR is opened. The harness encodes a simple
-rule: bigger changes get more eyes — a separate-model plan review, two competing
-plans judged into one, and multi-model code review with adjudication — and every
-required stage is recorded in an auditable **review ledger** that a deterministic
-guard checks at the `create_pull_request` boundary.
+rule: bigger changes get more eyes — a separate-model plan review (an
+**adversarial** red-team at the top tier) and multi-model code review with
+adjudication — and every required stage is recorded in an auditable **review
+ledger** that a deterministic guard checks at the `create_pull_request` boundary.
 
 This is the canonical definition. `AGENTS.md` and
 `.github/copilot-instructions.md` restate it; the
@@ -36,12 +36,12 @@ config (`eslint.config.js`, `vite`/`vitest`/`tsconfig`/`commitlint`, and
 The required stages scale with the apple estimate you declare per
 [`complexity-policy.md`](complexity-policy.md):
 
-| Apples | plan review | dual-plan synthesis | code review (loop) | multi-model review |
-| ------ | ----------- | ------------------- | ------------------ | ------------------ |
-| 1🍎    | —           | —                   | —                  | —                  |
-| 2🍎    | —           | —                   | —                  | —                  |
-| 3🍎    | ✅          | —                   | ✅                 | —                  |
-| 4–5🍎  | ✅          | ✅                  | ✅                 | ✅                 |
+| Apples | plan review        | code review (loop) | multi-model review |
+| ------ | ------------------ | ------------------ | ------------------ |
+| 1🍎    | —                  | —                  | —                  |
+| 2🍎    | —                  | —                  | —                  |
+| 3🍎    | ✅                 | ✅                 | —                  |
+| 4–5🍎  | ✅ **adversarial** | ✅                 | ✅                 |
 
 - **plan review** (≥3🍎) — a _separate model_ reviews the plan before any code is
   written; every concern is resolved. The plan-review floor was raised **2🍎 → 3🍎
@@ -49,8 +49,23 @@ The required stages scale with the apple estimate you declare per
   **2026-07-02** (ADR 0036 / handoff
   `docs/knowledge/handoffs/2026-07-02-streamline-verify-ci-gates.md`). A 2🍎 change
   now records its tier in a ledger but requires **no** review stages.
-- **dual-plan synthesis** (>3🍎) — two plans authored by two _different_ models, a
-  _third_ reasoning model judges + synthesizes the final plan.
+- **adversarial plan review** (4–5🍎) — at the top tier the plan review must
+  **red-team** the design: the reviewer enumerates **≥2 alternative approaches** and
+  argues _against_ the chosen design, then records `adversarial: true` and
+  `alternatives_considered ≥ 2`. This **replaced the former `dual_plan_synthesis`
+  stage** (ADR 0051, 2026-07-08): reading all historical ledgers showed the two
+  independent plan authors produced a genuine "decisive fork" on only **2/17 (12%)**
+  of firings — elsewhere the value was _critic_ value, which one strong adversarial
+  reviewer delivers at ⅓ the cost (one pre-code invocation instead of three).
+  `dual_plan_synthesis` remains a **legacy/optional** stage (still validated if
+  present) so historical ledgers stay parseable, but is **no longer required** and
+  should not be added to a new ledger.
+- **`plan_divergence` instrumentation** — every _required_ plan review (≥3🍎)
+  records `plan_divergence: convergent | minor | major_fork`, the reviewer's
+  classification of whether exploring the alternatives revealed a real design fork.
+  This accumulates fork-rate data across all tiers so the 2/17 baseline can be
+  re-measured going forward (ADR 0051). Optional (validated if present) on a
+  voluntary sub-3🍎 plan review.
 - **code review** (≥3🍎) — run the appropriate review agent(s), address feedback,
   **loop until no concerns remain _or_ escalate to a human** (see below).
 - **multi-model review** (>3🍎) — run each appropriate review agent across
@@ -162,3 +177,4 @@ See [`.github/extensions/copilot-guards/README.md`](../../../.github/extensions/
 - Apple scale: [`complexity-policy.md`](complexity-policy.md)
 - Guard catalogue: [`.github/extensions/copilot-guards/README.md`](../../../.github/extensions/copilot-guards/README.md)
 - Validator (source of truth): `scripts/agent/review/ledger.mjs`
+- Adversarial-fold rationale + backward-compat: [ADR 0051](../../knowledge/adr/0051-adversarial-plan-review-fold.md) (supersedes the `dual_plan_synthesis` requirement in [ADR 0036](../../knowledge/adr/0036-raise-code-review-floor.md))

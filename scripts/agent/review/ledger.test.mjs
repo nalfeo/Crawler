@@ -56,11 +56,9 @@ function tier4(overrides = {}) {
         reviewer_model: 'gpt-5.4',
         concerns_count: 6,
         resolved_count: 6,
-      },
-      dual_plan_synthesis: {
-        completed: true,
-        plan_models: ['gpt-5.5', 'gemini-3.1-pro-preview'],
-        judge_model: 'claude-opus-4.8',
+        adversarial: true,
+        alternatives_considered: 2,
+        plan_divergence: 'convergent',
       },
       code_review: { clean: true, rounds: [cleanRound({ concerns_count: 2, resolved_count: 2 })] },
       multi_model_review: {
@@ -102,19 +100,52 @@ function tier2() {
   };
 }
 
+// A valid LEGACY dual_plan_synthesis stage (ADR 0051): no longer required at any
+// tier, but still ACCEPTED when present so historical ledgers that recorded it
+// remain parseable + validated.
+function legacyDualPlanSynthesis(extra = {}) {
+  return {
+    completed: true,
+    plan_models: ['gpt-5.5', 'gemini-3.1-pro-preview'],
+    judge_model: 'claude-opus-4.8',
+    ...extra,
+  };
+}
+
+// A canonical valid 3🍎 ledger (plan_review + code_review). plan_divergence is
+// REQUIRED at 3🍎; adversarial/alternatives_considered are NOT.
+function tier3(overrides = {}) {
+  return {
+    schema_version: SCHEMA_VERSION,
+    date: '2026-07-08',
+    session_slug: 'three-apple',
+    task_title: 'Three apple change',
+    estimated_apples: 3,
+    stages: {
+      plan_review: {
+        completed: true,
+        reviewer_model: 'gpt-5.4',
+        concerns_count: 1,
+        resolved_count: 1,
+        plan_divergence: 'minor',
+      },
+      code_review: { clean: true, rounds: [cleanRound({ concerns_count: 1, resolved_count: 1 })] },
+    },
+    ...overrides,
+  };
+}
+
 test('requiredStagesForApples maps tiers correctly', () => {
   assert.deepEqual(requiredStagesForApples(1), []);
   assert.deepEqual(requiredStagesForApples(2), []);
   assert.deepEqual(requiredStagesForApples(3), ['plan_review', 'code_review']);
   assert.deepEqual(requiredStagesForApples(4), [
     'plan_review',
-    'dual_plan_synthesis',
     'code_review',
     'multi_model_review',
   ]);
   assert.deepEqual(requiredStagesForApples(5), [
     'plan_review',
-    'dual_plan_synthesis',
     'code_review',
     'multi_model_review',
   ]);
@@ -202,26 +233,185 @@ test('plan_review requires reviewer_model', () => {
   assert.equal(validateLedger(led).ok, false);
 });
 
-test('dual_plan_synthesis requires 2 distinct plan models', () => {
+test('dual_plan_synthesis (legacy-optional) requires 2 distinct plan models when present', () => {
   const led = tier4();
-  led.stages.dual_plan_synthesis.plan_models = ['gpt-5.5', 'gpt-5.5'];
+  led.stages.dual_plan_synthesis = legacyDualPlanSynthesis({ plan_models: ['gpt-5.5', 'gpt-5.5'] });
   const r = validateLedger(led);
   assert.equal(r.ok, false);
   assert.match(r.errors.join('\n'), /DISTINCT/);
 });
 
-test('dual_plan_synthesis judge must differ from plan models', () => {
+test('dual_plan_synthesis (legacy-optional) judge must differ from plan models', () => {
   const led = tier4();
-  led.stages.dual_plan_synthesis.judge_model = 'gpt-5.5';
+  led.stages.dual_plan_synthesis = legacyDualPlanSynthesis({ judge_model: 'gpt-5.5' });
   const r = validateLedger(led);
   assert.equal(r.ok, false);
   assert.match(r.errors.join('\n'), /judge_model.*differ/);
 });
 
-test('dual_plan_synthesis rejects !=2 plan models', () => {
+test('dual_plan_synthesis (legacy-optional) rejects !=2 plan models', () => {
   const led = tier4();
-  led.stages.dual_plan_synthesis.plan_models = ['only-one'];
+  led.stages.dual_plan_synthesis = legacyDualPlanSynthesis({ plan_models: ['only-one'] });
   assert.equal(validateLedger(led).ok, false);
+});
+
+// --- ADR 0051: adversarial plan review + plan_divergence instrumentation ---
+
+test('4🍎 no longer requires dual_plan_synthesis (adversarial plan_review replaces it)', () => {
+  const led = tier4(); // canonical fixture omits dual_plan_synthesis
+  assert.equal('dual_plan_synthesis' in led.stages, false);
+  const r = validateLedger(led);
+  assert.equal(r.ok, true, r.errors.join('; '));
+  assert.deepEqual(r.requiredStages, ['plan_review', 'code_review', 'multi_model_review']);
+});
+
+test('4🍎 may still carry a valid legacy dual_plan_synthesis stage (validated-if-present)', () => {
+  const led = tier4();
+  led.stages.dual_plan_synthesis = legacyDualPlanSynthesis();
+  const r = validateLedger(led);
+  assert.equal(r.ok, true, r.errors.join('; '));
+});
+
+test('4🍎 requires plan_review.adversarial === true', () => {
+  const missing = tier4();
+  delete missing.stages.plan_review.adversarial;
+  const rMissing = validateLedger(missing);
+  assert.equal(rMissing.ok, false);
+  assert.match(rMissing.errors.join('\n'), /adversarial must be true/);
+
+  const falseAdv = tier4();
+  falseAdv.stages.plan_review.adversarial = false;
+  assert.equal(validateLedger(falseAdv).ok, false);
+});
+
+test('4🍎 requires plan_review.alternatives_considered integer >= 2', () => {
+  const one = tier4();
+  one.stages.plan_review.alternatives_considered = 1;
+  const rOne = validateLedger(one);
+  assert.equal(rOne.ok, false);
+  assert.match(rOne.errors.join('\n'), /alternatives_considered must be an integer >= 2/);
+
+  const missing = tier4();
+  delete missing.stages.plan_review.alternatives_considered;
+  assert.equal(validateLedger(missing).ok, false);
+});
+
+test('plan_divergence is required at 4🍎 and must be a valid enum', () => {
+  const missing = tier4();
+  delete missing.stages.plan_review.plan_divergence;
+  const rMissing = validateLedger(missing);
+  assert.equal(rMissing.ok, false);
+  assert.match(rMissing.errors.join('\n'), /plan_divergence must be one of/);
+
+  const bad = tier4();
+  bad.stages.plan_review.plan_divergence = 'huge';
+  assert.equal(validateLedger(bad).ok, false);
+
+  for (const v of ['convergent', 'minor', 'major_fork']) {
+    const good = tier4();
+    good.stages.plan_review.plan_divergence = v;
+    assert.equal(validateLedger(good).ok, true, `${v} should be accepted`);
+  }
+});
+
+test('plan_divergence is required at 3🍎, but adversarial/alternatives are NOT', () => {
+  const led = tier3();
+  assert.equal(validateLedger(led).ok, true, validateLedger(led).errors.join('; '));
+
+  const missing = tier3();
+  delete missing.stages.plan_review.plan_divergence;
+  const r = validateLedger(missing);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('\n'), /plan_divergence must be one of/);
+});
+
+test('a 3🍎 plan_review MAY carry adversarial fields (validated-if-present)', () => {
+  const led = tier3();
+  led.stages.plan_review.adversarial = true;
+  led.stages.plan_review.alternatives_considered = 3;
+  assert.equal(validateLedger(led).ok, true, validateLedger(led).errors.join('; '));
+
+  const badAdv = tier3();
+  badAdv.stages.plan_review.adversarial = 'yes';
+  assert.equal(validateLedger(badAdv).ok, false);
+
+  const badAlt = tier3();
+  badAlt.stages.plan_review.alternatives_considered = -1;
+  assert.equal(validateLedger(badAlt).ok, false);
+});
+
+test('a voluntary sub-3🍎 plan_review does NOT require plan_divergence, but validates it if present', () => {
+  // tier2() carries a plan_review with no plan_divergence -> still valid.
+  assert.equal(validateLedger(tier2()).ok, true, validateLedger(tier2()).errors.join('; '));
+
+  const bad = tier2();
+  bad.stages.plan_review.plan_divergence = 'nope';
+  const r = validateLedger(bad);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('\n'), /plan_divergence must be one of/);
+});
+
+test('an invalid estimated_apples does not crash tier-conditional plan_review checks', () => {
+  // tier=null guard: an out-of-range estimate errors at the top level and the
+  // plan_review tier-conditional REQUIRES are skipped (no throw).
+  const led = tier4({ estimated_apples: 9 });
+  const r = validateLedger(led);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('\n'), /estimated_apples/);
+});
+
+test('historical-style 4🍎 plan_review lacking the ADR-0051 fields fails explicit re-validation (by design)', () => {
+  // ADR 0051 backward-compat: the ~17 pre-0051 4🍎 ledgers are NEVER
+  // re-validated by any production path — the guard checks only branch-ADDED
+  // ledgers (pr-review-ledger.mjs) and `validate` checks only the newest/given
+  // path. So a pre-0051 ledger that lacks adversarial/alternatives_considered/
+  // plan_divergence is harmless on main. If one IS explicitly re-validated by
+  // hand it is rejected under the new rules — and that is the intended, SAFE
+  // behavior: the presence of a legacy dual_plan_synthesis stage must NOT
+  // exempt a ledger from the new HARD requirements (that exemption is the
+  // rule-#12 bypass ADR 0051 explicitly rejects; validation keys ONLY on
+  // estimated_apples, never on which stages happen to be present).
+  const historical = {
+    schema_version: SCHEMA_VERSION,
+    date: '2026-06-01',
+    session_slug: 'pre-adr-0051-change',
+    task_title: 'A pre-ADR-0051 4-apple change',
+    estimated_apples: 4,
+    stages: {
+      plan_review: {
+        completed: true,
+        reviewer_model: 'gpt-5.4',
+        concerns_count: 6,
+        resolved_count: 6,
+      },
+      dual_plan_synthesis: legacyDualPlanSynthesis(),
+      code_review: { clean: true, rounds: [cleanRound()] },
+      multi_model_review: {
+        clean: true,
+        adjudicator_model: 'gpt-5.4',
+        rounds: [mmRound()],
+      },
+    },
+  };
+  const r = validateLedger(historical);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('\n'), /adversarial must be true/);
+  assert.match(r.errors.join('\n'), /plan_divergence must be one of/);
+});
+
+test('a dual_plan_synthesis stage does NOT exempt a new 4🍎 ledger from the adversarial requirement (no rule-#12 bypass)', () => {
+  // Regression for the footgun ADR 0051 rejects (Alternative 3 / "no
+  // schema_version v2 axis"): bolting a legacy dual block onto a NEW 4🍎 ledger
+  // must NOT let its author skip the adversarial red-team + plan_divergence
+  // instrumentation. Validation is a pure function of estimated_apples.
+  const led = tier4({ date: '2026-07-08', session_slug: 'new-era-with-dual-block' });
+  led.stages.dual_plan_synthesis = legacyDualPlanSynthesis();
+  led.stages.plan_review.adversarial = false;
+  delete led.stages.plan_review.alternatives_considered;
+  delete led.stages.plan_review.plan_divergence;
+  const r = validateLedger(led);
+  assert.equal(r.ok, false, 'a dual block must not waive the adversarial requirement');
+  assert.match(r.errors.join('\n'), /adversarial must be true/);
 });
 
 test('code_review last round must be clean', () => {

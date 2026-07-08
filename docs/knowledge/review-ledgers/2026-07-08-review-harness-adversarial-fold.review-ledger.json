@@ -1,0 +1,68 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-08",
+  "session_slug": "review-harness-adversarial-fold",
+  "task_title": "Replace dual-plan synthesis with adversarial plan review + plan_divergence instrumentation (ADR 0051)",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Adversarial red-team of the chosen design (reviewer gpt-5.4). Alt A (CHOSEN): fold required dual-plan synthesis into an adversarial plan_review + add a plan_divergence instrumentation enum; keep dual_plan_synthesis legacy-optional so historical ledgers still parse. Alt B: keep dual-plan synthesis but make it opt-out when the reviewer declares convergence -- REJECTED: still pays the 3x author cost upfront before convergence is known. Alt C: add a schema_version v2 gate so new field-requirements apply only to v2 ledgers -- REJECTED (concern C1): no re-validation path exists for the ~17 historical ledgers (the guard re-checks only branch-added ledgers; validate touches only the newest; no bulk consumer), so a version axis only adds a rule-#12 footgun (a hand-written v1 ledger could dodge new hard requirements) for zero benefit; eras already partition by plan_divergence field-presence + dual_plan_synthesis presence. Arguments against CHOSEN design and resolutions: enum is subjective (C3) -> added an operational rubric keyed to adjudication OUTCOME, not rhetoric; '' placeholder is poor UX (C4) -> validator error now lists the valid enum values; legacy stage still user-visible (C2) -> labelled LEGACY-ONLY in STAGE_NAMES comment + all docs; tier-boundary risk (C5) -> explicit null/2/3/4/5 tests; synthetic compat (C6) -> literal historical-style fixture asserted valid; doc drift (C7) -> manual sync + grep audit; honesty (C8) -> notes template added. 8 concerns raised, 8 resolved. plan_divergence=minor for THIS change: adjudication pruned an over-engineered DETAIL (the v2 gate) that a single critic catches -- it dogfoods the thesis that the second author rarely earns its cost."
+    },
+    "dual_plan_synthesis": {
+      "completed": true,
+      "plan_models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+      "judge_model": "gpt-5.5",
+      "notes": "LEGACY stage, recorded as an honest final send-off: this 4-apple change ran one last dual-plan synthesis under the CURRENT (pre-merge) 4-5 rules that it is itself removing. Plan authors gpt-5.3-codex + gemini-3.1-pro-preview; judge/synthesizer gpt-5.5. The two independent plans CONVERGED on: uniform-3rd-arg tier threading, keeping dual_plan_synthesis as a validated legacy-optional stage, scaffolding plan_divergence as an invalid '' placeholder, and the test/doc/ADR shape. One genuine FORK: Plan B proposed a schema_version v2 gate; the judge ruled for Plan A (no version axis) after confirming no historical re-validation path exists. Divergence classified minor -- exactly the outcome ADR 0051 predicts for ~85% of >3-apple changes."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8", "gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "notes": "Post-code review ran ONE 3-model pass (claude-opus-4.8, gpt-5.4, gemini-3.1-pro-preview) against the working-tree diff; it satisfies both the >=3-apple code-review loop and (see multi_model_review) the >3-apple multi-model requirement. Round 1 surfaced 2 concerns: (1) a historical pre-0051 4-apple ledger would fail if explicitly re-validated -- adjudicated RESOLVED-BY-DESIGN (empirically verified that NO production path re-validates historical ledgers: the guard checks only branch-added ledgers, `validate` checks only the newest/given path), documented in ADR 0051 Risks + a dedicated by-design-rejection test; (2) HIGH: a reviewer had APPLIED a `hasLegacyDual` exemption to ledger.mjs so any 4-apple ledger carrying a dual_plan_synthesis block would skip the adversarial + plan_divergence requirements -- the exact rule-#12 footgun ADR 0051 explicitly rejects, contradicting the ADR/AGENTS/policy shipping in this same PR. Remedy: REVERTED ledger.mjs + ledger.test.mjs to the approved unconditional-adversarial design and ADDED an anti-bypass regression test proving a dual block does not waive the requirement. Round 2 re-review: no hasLegacyDual/allStages residue (grep-confirmed), test:guards 299/299 pass, code matches ADR 0051 + AGENTS rule #14 + review-harness-policy. Clean."
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8", "gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 2,
+          "valid_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-opus-4.8", "gpt-5.4"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "notes": "Same 3-model pass viewed under the multi-model + adjudication lens (adjudicator claude-opus-4.8). Two models (gpt-5.4, gemini-3.1-pro-preview) framed the historical backward-compat concern; opus adjudicated it RESOLVED-BY-DESIGN. Critically, opus caught that another reviewer had APPLIED a hasLegacyDual exemption to the source under review -- adjudication: the finding is VALID but the applied fix is INVALID (it is the rule-#12 bypass ADR 0051 rejects). Adjudicated remedy: revert to the approved design + add a regression test. This is a genuine multi-model-review win: the adjudicated loop surfaced and removed a real HIGH-severity gate-bypass that a single reviewer had introduced into the working tree. valid_count(2) <= concerns_count(2); resolved_count(2) >= valid_count(2). Round 2 confirmation pass clean."
+    }
+  }
+}
