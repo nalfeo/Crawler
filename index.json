@@ -44,6 +44,17 @@
     "path": "by-sha/2e876b54a74ef50d3562e8b1f6d30aa8fc264b6d.json"
   },
   {
+    "commit": "b7d80d1927a98a9ad9979d330420fd55afcaac39",
+    "commitDate": "2026-07-08T10:21:26-07:00",
+    "commitSubject": "test(ai): lock NAVMESH follower invariants before Slice 4 (#914)",
+    "capturedAt": "2026-07-08T18:01:44.799Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28962522720",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/b7d80d1927a98a9ad9979d330420fd55afcaac39.json"
+  },
+  {
     "commit": "ff73b679bb5c3a0b1e54b0485dbc469b263ced37",
     "commitDate": "2026-07-08T10:07:17Z",
     "commitSubject": "feat(engine): render welcome-room NPCs as distinct generated sprites (#907)",
