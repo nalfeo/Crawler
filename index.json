@@ -1,5 +1,16 @@
 [
   {
+    "commit": "533465f0a93c7a69df9a5a5e0c1edaee34739f9a",
+    "commitDate": "2026-07-08T05:31:31Z",
+    "commitSubject": "feat(ai): implement RISK_REWARD_FUSED opt-in pathing mode (danger/reward field scorer) (#897)",
+    "capturedAt": "2026-07-08T06:09:44.199Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28920223883",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/533465f0a93c7a69df9a5a5e0c1edaee34739f9a.json"
+  },
+  {
     "commit": "b282b61685f0a6801b4934de33f310f1e1495a92",
     "commitDate": "2026-07-08T05:22:38Z",
     "commitSubject": "feat(sprites): consolidate 61 approved assets from 1 check-in(s) (#895)",
