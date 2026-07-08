@@ -918,6 +918,7 @@
       "height": 7,
       "description": "The dungeon's threadbare reception, dressed up for the cameras season after season: a moth-eaten red carpet, a sagging WELCOME banner, and three lifers who never got voted off — the Goon behind his welcome desk, the merchant hawking his table of wares, and the spell broker cornered by his overstuffed bookcase.",
       "tags": ["reality-show", "welcome", "floor1", "named"],
+      "placement": { "verticalAlign": "top" },
       "props": [
         {
           "id": "welcome-rug",
@@ -929,7 +930,9 @@
           "z": 0,
           "layers": [
             {
-              "sprite": { "source": "catalog", "spriteId": "welcome-room-rug-var-0" }
+              "sprite": { "source": "catalog", "spriteId": "welcome-room-rug-var-0" },
+              "widthFt": 14,
+              "heightFt": 8
             }
           ]
         },
@@ -944,41 +947,73 @@
           "layers": [
             {
               "sprite": { "source": "catalog", "spriteId": "welcome-sign-left-v1-var-0" },
-              "offsetY": -6
+              "widthFt": 4,
+              "heightFt": 4,
+              "offsetYFt": -4
             }
           ]
         },
         {
-          "id": "sconce-left",
+          "id": "sconce-left-outer",
           "kind": "decoration",
           "x": 0,
           "y": 0,
           "z": 8,
-          "layers": [{ "sprite": { "source": "catalog", "spriteId": "prop-wall-sconce-v1-var-1" } }]
+          "layers": [
+            {
+              "sprite": { "source": "catalog", "spriteId": "prop-wall-sconce-v1-var-1" },
+              "widthFt": 1.5,
+              "heightFt": 1.5,
+              "offsetYFt": -4
+            }
+          ]
         },
         {
-          "id": "sconce-right",
-          "kind": "decoration",
-          "x": 7,
-          "y": 0,
-          "z": 8,
-          "layers": [{ "sprite": { "source": "catalog", "spriteId": "prop-wall-sconce-v1-var-2" } }]
-        },
-        {
-          "id": "torch-left",
+          "id": "sconce-left-inner",
           "kind": "decoration",
           "x": 1,
           "y": 0,
           "z": 8,
-          "layers": [{ "sprite": { "source": "catalog", "spriteId": "prop-torch-v1-var-10" } }]
+          "layers": [
+            {
+              "sprite": { "source": "catalog", "spriteId": "prop-wall-sconce-v1-var-1" },
+              "widthFt": 1.5,
+              "heightFt": 1.5,
+              "offsetYFt": -4
+            }
+          ]
         },
         {
-          "id": "torch-right",
+          "id": "sconce-right-inner",
           "kind": "decoration",
           "x": 6,
           "y": 0,
           "z": 8,
-          "layers": [{ "sprite": { "source": "catalog", "spriteId": "prop-torch-v1-var-8" } }]
+          "layers": [
+            {
+              "sprite": { "source": "catalog", "spriteId": "prop-wall-sconce-v1-var-1" },
+              "widthFt": 1.5,
+              "heightFt": 1.5,
+              "offsetYFt": -4,
+              "flipX": true
+            }
+          ]
+        },
+        {
+          "id": "sconce-right-outer",
+          "kind": "decoration",
+          "x": 7,
+          "y": 0,
+          "z": 8,
+          "layers": [
+            {
+              "sprite": { "source": "catalog", "spriteId": "prop-wall-sconce-v1-var-1" },
+              "widthFt": 1.5,
+              "heightFt": 1.5,
+              "offsetYFt": -4,
+              "flipX": true
+            }
+          ]
         },
         {
           "id": "broker-bookcase",
@@ -990,7 +1025,9 @@
           "z": 9,
           "layers": [
             {
-              "sprite": { "source": "catalog", "spriteId": "welcome-room-bookcase-var-0" }
+              "sprite": { "source": "catalog", "spriteId": "welcome-room-bookcase-var-0" },
+              "widthFt": 4,
+              "heightFt": 4.42
             }
           ]
         },
@@ -1004,7 +1041,9 @@
           "z": 30,
           "layers": [
             {
-              "sprite": { "source": "catalog", "spriteId": "welcome-room-desk-var-0" }
+              "sprite": { "source": "catalog", "spriteId": "welcome-room-desk-var-0" },
+              "widthFt": 5.05,
+              "heightFt": 4
             }
           ]
         },
@@ -1018,13 +1057,16 @@
           "z": 30,
           "layers": [
             {
-              "sprite": { "source": "catalog", "spriteId": "welcome-room-shop-table-var-0" }
+              "sprite": { "source": "catalog", "spriteId": "welcome-room-shop-table-var-0" },
+              "widthFt": 5.15,
+              "heightFt": 3.5
             },
             {
               "sprite": { "source": "catalog", "spriteId": "purple-potion-bottle-v1-var-4" },
-              "offsetX": 4,
-              "offsetY": -5,
-              "scale": 0.8
+              "widthFt": 1,
+              "heightFt": 1,
+              "offsetXFt": 1,
+              "offsetYFt": -1.25
             }
           ]
         },
@@ -1035,7 +1077,19 @@
           "y": 3,
           "z": 30,
           "layers": [
-            { "sprite": { "source": "sheet", "sheetKey": "kenney-tiny-town", "col": 8, "row": 4 } }
+            {
+              "sprite": {
+                "source": "custom",
+                "requestId": "welcome-room-potted-plant",
+                "label": "Potted Plant",
+                "prompt": "A small potted houseplant in a chipped terracotta pot — a few broad, slightly wilted green leaves gone dusty from seasons in a windowless dungeon reception. Warm desaturated pixel-art palette, clear low silhouette readable at about 2.5 feet tall. Cozy scene-dressing decoration for the reality-show welcome room.",
+                "widthTiles": 1,
+                "heightTiles": 1,
+                "tags": ["decoration", "plant", "welcome-room", "cozy", "pixel-dungeon"]
+              },
+              "widthFt": 2.5,
+              "heightFt": 2.5
+            }
           ]
         },
         {
@@ -1047,16 +1101,22 @@
           "layers": [
             {
               "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 7,
-                "row": 3
-              }
+                "source": "custom",
+                "requestId": "welcome-room-side-table",
+                "label": "Broker Side Table",
+                "prompt": "A small weathered dark-wood side table, waist-high — the kind a spell broker keeps a potion and a guttering candle on. Warm desaturated dungeon palette, pixel-art, about a 2.5-foot footprint with a clean readable silhouette. Cozy scene-dressing furniture for the reality-show welcome room.",
+                "widthTiles": 1,
+                "heightTiles": 1,
+                "tags": ["furniture", "table", "welcome-room", "cozy", "pixel-dungeon"]
+              },
+              "widthFt": 2.5,
+              "heightFt": 2.5
             },
             {
               "sprite": { "source": "catalog", "spriteId": "purple-potion-bottle-v1-var-4" },
-              "offsetY": -5,
-              "scale": 0.7
+              "widthFt": 1,
+              "heightFt": 1,
+              "offsetYFt": -1.25
             }
           ]
         },
@@ -1067,7 +1127,19 @@
           "y": 5,
           "z": 30,
           "layers": [
-            { "sprite": { "source": "sheet", "sheetKey": "kenney-tiny-town", "col": 6, "row": 7 } }
+            {
+              "sprite": {
+                "source": "custom",
+                "requestId": "welcome-room-lounge-stool",
+                "label": "Lounge Stool",
+                "prompt": "A short round wooden stool with a faded, sat-flat cushion — a contestant's waiting-room stool worn down season after season. Warm desaturated dungeon palette, pixel-art, about 2.5 feet tall with a clear silhouette. Cozy scene-dressing furniture for the reality-show welcome room.",
+                "widthTiles": 1,
+                "heightTiles": 1,
+                "tags": ["furniture", "stool", "welcome-room", "cozy", "pixel-dungeon"]
+              },
+              "widthFt": 2.5,
+              "heightFt": 2.5
+            }
           ]
         },
         {
@@ -1076,7 +1148,13 @@
           "x": 0,
           "y": 6,
           "z": 40,
-          "layers": [{ "sprite": { "source": "catalog", "spriteId": "prop-junk-pile-v1-var-0" } }]
+          "layers": [
+            {
+              "sprite": { "source": "catalog", "spriteId": "prop-junk-pile-v1-var-0" },
+              "widthFt": 2.5,
+              "heightFt": 2.5
+            }
+          ]
         },
         {
           "id": "junk-pile-right",
@@ -1084,7 +1162,13 @@
           "x": 7,
           "y": 6,
           "z": 40,
-          "layers": [{ "sprite": { "source": "catalog", "spriteId": "prop-junk-pile-v1-var-3" } }]
+          "layers": [
+            {
+              "sprite": { "source": "catalog", "spriteId": "prop-junk-pile-v1-var-3" },
+              "widthFt": 2.5,
+              "heightFt": 2.5
+            }
+          ]
         },
         {
           "id": "velvet-rope",
@@ -1096,7 +1180,9 @@
           "z": 40,
           "layers": [
             {
-              "sprite": { "source": "catalog", "spriteId": "welcome-room-velvet-rope-var-2" }
+              "sprite": { "source": "catalog", "spriteId": "welcome-room-velvet-rope-var-2" },
+              "widthFt": 5,
+              "heightFt": 4.06
             }
           ]
         }
