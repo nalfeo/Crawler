@@ -79,8 +79,13 @@ fi
 echo "🔍 Step 3/3: Unit tests..."
 if [ -n "${CI:-}" ]; then
   npx vitest run --project unit --reporter=dot
+  npx vitest run --project sprites --reporter=dot
 else
   npx vitest run --changed --project unit --reporter=dot --passWithNoTests
+  # Also run changed sprite pipeline tests (scripts/sprites/** maps to tests/unit/sprites/**
+  # and tests/integration/sprites/**). The --changed filter handles the case where no
+  # sprite files changed (passWithNoTests suppresses the "no tests found" error).
+  npx vitest run --changed --project sprites --reporter=dot --passWithNoTests
 fi
 
 echo "🔍 Step 4/4: Physics-defs sync + Size + Weight coverage checks..."

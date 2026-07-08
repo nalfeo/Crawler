@@ -42,6 +42,7 @@ emit_all() {
   emit_output art_only "$1"
   emit_output docs_only "$2"
   emit_output gameplay_safe "$3"
+  emit_output sprites_only "$4"
 }
 
 # Resolve the set of changed files. Normally derived from git; the
@@ -69,7 +70,7 @@ else
 
   if [ -z "$base_ref" ]; then
     echo "No comparison base available — running full CI." >&2
-    emit_all false false false
+    emit_all false false false false
     exit 0
   fi
 
@@ -87,7 +88,7 @@ echo "${changed:-<none>}" >&2
 
 # Fail-safe: no changed files (or an all-whitespace override) runs the full suite.
 if [ -z "$(printf '%s' "$changed" | tr -d '[:space:]')" ]; then
-  emit_all false false false
+  emit_all false false false false
   exit 0
 fi
 
@@ -125,6 +126,9 @@ done <<<"$changed"
 # src/core, src/game, src/shared, tests/headless, tests/unit, tests/integration,
 # scripts, .github, root config — forces the gate to run. Consumed by ci.yml to
 # skip the headless job on pull_requests only.
+# The sprite pipeline (scripts/sprites/, tests/unit/sprites/, tests/integration/sprites/)
+# is also safe: the headless runner imports only src/core, src/shared, src/game/ai
+# and never touches scripts/sprites/.
 gameplay_safe=true
 while IFS= read -r file; do
   [ -z "$file" ] && continue
@@ -134,6 +138,9 @@ while IFS= read -r file; do
     tests/e2e/*) ;;
     docs/*) ;;
     public/*) ;;
+    scripts/sprites/*) ;;
+    tests/unit/sprites/*) ;;
+    tests/integration/sprites/*) ;;
     *.md) ;;
     *.txt) ;;
     *)
@@ -143,4 +150,21 @@ while IFS= read -r file; do
   esac
 done <<<"$changed"
 
-emit_all "$art_only" "$docs_only" "$gameplay_safe"
+# sprites_only: every changed file is in the sprite generation/editing pipeline.
+# When true, CI skips game tests (unit, integration, headless, e2e) and runs only
+# the dedicated sprites test project. The inverse (game-only change) skips sprites.
+sprites_only=true
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  case "$file" in
+    scripts/sprites/*) ;;
+    tests/unit/sprites/*) ;;
+    tests/integration/sprites/*) ;;
+    *)
+      sprites_only=false
+      break
+      ;;
+  esac
+done <<<"$changed"
+
+emit_all "$art_only" "$docs_only" "$gameplay_safe" "$sprites_only"
