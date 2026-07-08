@@ -1,5 +1,16 @@
 [
   {
+    "commit": "aabff536aba4496f9d4b1e7d06c3a6e2d2d02c7c",
+    "commitDate": "2026-07-08T21:38:24Z",
+    "commitSubject": "feat: isolate sprite pipeline tests into dedicated vitest project (#925)",
+    "capturedAt": "2026-07-08T22:10:55.310Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28977928525",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/aabff536aba4496f9d4b1e7d06c3a6e2d2d02c7c.json"
+  },
+  {
     "commit": "dbc84a204d578e511eb777f2243f598458305819",
     "commitDate": "2026-07-08T21:04:59Z",
     "commitSubject": "fix(sprites): slicer cuts only at real gutters — never chop foreground art (data-driven salvage, ADR 0052) (#919)",
