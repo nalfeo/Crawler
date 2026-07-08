@@ -27,7 +27,9 @@ import { createWeaponTelemetry, summarizeWeaponTelemetry } from '../../core/weap
 import { FLOOR2_TIMEOUT_GOAL_ID } from '../floor2Scenario.js';
 import {
   AIDecisionDebugState,
+  AIPathingMode,
   type AIInputProvider,
+  type AIPathingModeValue,
   type RunStats,
   type LevelUpEvent,
 } from './types.js';
@@ -40,6 +42,7 @@ import {
   autoNpcInteractionSystem,
 } from './auto-progression.js';
 import { computeFloorProgressScore } from './bt-ai-provider.js';
+import { initNavmesh } from './navmesh/index.js';
 import { QuestProgressStallTracker, formatQuestStallReason } from './quest-stall.js';
 
 const logger = createLogger('game:headless-runner');
@@ -353,6 +356,8 @@ export async function runHeadless(
       decisionRunPlan?: { slackMs: number; urgency: number } | null;
     };
     getDecisionMode?: () => string;
+    getPathingMode?: () => AIPathingModeValue;
+    disposeNavmesh?: () => void;
   };
   let lastFrameX = world.stores.position.x[playerEid] ?? 0;
   let lastFrameY = world.stores.position.y[playerEid] ?? 0;
@@ -452,6 +457,15 @@ export async function runHeadless(
   };
 
   try {
+    // NAVMESH pathing needs the recast WASM runtime initialized before the
+    // synchronous sim loop runs (the provider's poll() is sync and throws if the
+    // navmesh is not ready). Centralizing the await here means every headless
+    // caller — CLI, ai:ab-pathing-mode, and the determinism/functional tests —
+    // is covered without each remembering to init. LEGACY/FUSED never touch it.
+    if (navProvider.getPathingMode?.() === AIPathingMode.NAVMESH) {
+      await initNavmesh();
+    }
+
     // Main simulation loop
     while (frameCount < mergedConfig.maxFrames) {
       // Check wall-clock timeout
@@ -770,6 +784,11 @@ export async function runHeadless(
       }
     }
     return crashStats;
+  } finally {
+    // Free the per-floor recast navmesh + query WASM allocations (outside the JS
+    // GC). No-op for LEGACY/FUSED (no handle was ever built). Without this, the
+    // navmesh-sweep's 300 sequential NAVMESH runs would leak one handle each.
+    navProvider.disposeNavmesh?.();
   }
 
   const wallTimeMs = Date.now() - startTime;

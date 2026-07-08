@@ -158,6 +158,21 @@ export const LINE_OF_SIGHT_SAMPLE_FT = 1;
 // wedge against the wall it was routing around (observed as a multi-second
 // EXPLORE oscillation that collapses travel efficiency).
 export const WAYPOINT_ARRIVE_FT = 1;
+// Distance (ft) within which a navmesh route's FINAL waypoint must land of the
+// resolved goal for the route to count as goal-REACHING (2 tiles at 4ft/tile).
+// recast's computePath returns success=true with a nearest-reachable PARTIAL
+// route — final waypoint hundreds of feet short — when the goal lies in a
+// navmesh polygon component disconnected from the start. Under the pinned
+// deterministic config recast polygon connectivity is a strict SUBSET of the
+// 4-connected grid at thin/door connectors, so a goal the grid BFS calls
+// reachable can still be navmesh-unreachable. A genuinely connected goal
+// reliably lands the final waypoint on the goal tile (the Gate-2 determinism
+// test asserts <1.5 tiles); this 2-tile threshold clears that proven tolerance
+// with margin yet is ~50x tighter than any observed stub (≈457ft in the seed-1
+// trace), so it flags severed-connector partials without false-positiving on
+// good routes. See moveTowardViaNavmesh's partial-path guard + the 2026-07-08
+// navmesh-pathing-mode handoff lesson.
+export const NAV_GOAL_REACHED_FT = 8;
 // Wedge recovery for path-following: if the player is aiming at a waypoint but
 // collision keeps it from advancing more than MOVE_WEDGE_PROGRESS_FT per frame
 // for MOVE_WEDGE_FRAMES straight frames, it is wedged on a choke/corner (e.g. a

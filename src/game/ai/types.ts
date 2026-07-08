@@ -37,6 +37,15 @@ export const AIPathingMode = {
   LEGACY: 'legacy',
   /** Experimental danger/reward-fused pathing. IMPL-PENDING: currently delegates to LEGACY. */
   RISK_REWARD_FUSED: 'riskRewardFused',
+  /**
+   * Deterministic recast-navigation navmesh pathing (default-OFF). The behavior
+   * tree still picks the goal; a solo navmesh computes a plain shortest-path
+   * waypoint route to it (NO danger/reward weighting — deferred to a later
+   * slice). Cross-platform byte-identical under the pinned config in
+   * `src/game/ai/navmesh/`. Requires `initNavmesh()` to be awaited before the
+   * simulation runs.
+   */
+  NAVMESH: 'navmesh',
 } as const;
 export type AIPathingModeValue = (typeof AIPathingMode)[keyof typeof AIPathingMode];
 

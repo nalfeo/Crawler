@@ -1,0 +1,118 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-08",
+  "session_slug": "navmesh-pathing-mode",
+  "task_title": "AIPathingMode.NAVMESH deterministic path-query foundation (Slice 3)",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.5",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "notes": "gpt-5.5 reviewed the synthesized plan: 6 concerns (2 blocking), verdict RISKY. All 6 resolved against the actual implementation: (1) G3 report-only — reconciled with creator brief + rule #13: ON-mode win-rate is EXPLICITLY documented-not-gated; the enforced floors are non-inertness (navmesh-sweep tripwire), the committed determinism test, and the collision-pair-parity byte-identity gate. (2) async readiness race [blocking] — resolved: headless-runner awaits initNavmesh() BEFORE the synchronous sim loop, only in NAVMESH mode (L458-460); moveTowardViaNavmesh + buildFloorNavmesh + queryWorldPath are all synchronous (no per-tick await => no race); poll() throws if not ready (fail-fast, deterministic, never silent-inert). (3) bundling guard — the golden-hash determinism test IS the asm.js guard (asm.js's different float path => different waypoints => different hash => RED); browser bundle exclusion verified empirically via npm run build (no .wasm/recast chunk). (4) serialization/order — fixed row-major tile iteration + float64 big-endian hex + fixed query order; locked by the same-process+cross-process byte-identical test (golden 75917f12). (5) corner fallback stall — wedge recovery (bt-ai-provider L4039-4071) + corner-safe LOS fallback (L4085-4090) advance blocked segments; seed-42 reached VICTORY, not stall. (6) geometry extraction — door-inclusive navigable tiles, integer bounds, fixed +Y winding [0,2,1,0,3,2], doors snapshot at build time; determinism test locks the ordering."
+    },
+    "dual_plan_synthesis": {
+      "completed": true,
+      "plan_models": ["gpt-5.4", "claude-sonnet-5"],
+      "judge_model": "claude-opus-4.8",
+      "notes": "Two independent plans (plan-a gpt-5.4, plan-b2 claude-sonnet-5); judge claude-opus-4.8 verdict RECOMMENDED. Both plans converged on all 4 load-bearing risks: WASM handle leak, force the real .wasm build (not asm.js compat), LEGACY byte-identity isolation, and connectivity/pinned-config. Saved: files/review/plan-a-gpt-5.4.md, files/review/plan-b2-claude-sonnet-5.md."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 5,
+          "resolved_count": 5,
+          "clean": false,
+          "notes": "5 deduped findings across 3 reviewers: (1) WASM handle leak in runHeadless, (2) NAVMESH_PINNED_CONFIG mutable, (3) reset() did not dispose NAVMESH state, (4) lab rebuild/reseed leaked handles, (5) NAVMESH skipped LEGACY reachable-goal snapping parity. All 5 fixed. Saved: files/review/code-review-1-claude-sonnet-4.6.md, code-review-2-gpt-5.3-codex.md, code-review-3-gemini.md."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Re-review of the FIXED code by 2 distinct independent models. Both confirmed all 5 round-1 fixes genuine and found no remaining/new high-confidence issues. claude-sonnet-4.6 additionally verified ensureFloorNavmesh build-throw path, initNavmesh concurrent-error recovery, and headless-runner control flow."
+        },
+        {
+          "round": 3,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "REFINED-B re-review round. The creator's 2026-07-08 seam decision changed the FOLLOWER: NAVMESH now DROPS predictive travel steering (computeTravelSteering) AND the additive Track B blend (blendWithTrackB = danger-dodge + reward-pull) via two `&& !useNavmesh` gates, instead of Option-A's inherit-LEGACY-steering. Rounds 1-2 reviewed the Option-A follower; this round re-reviews the refined-B follower diff (dispatch comment rewrite, `useNavmesh` const, both gating conditionals) on the same option-invariant foundation. 2 distinct independent models re-reviewed against LEGACY/FUSED byte-identity, no danger/reward leak in KEPT-for-NAVMESH code, no locomotion loss, and determinism. BOTH returned ZERO high-confidence concerns. claude-sonnet-4.6 gave per-branch boolean proofs (LEGACY: `TRAVEL_STEERING_ENABLED && !false && shouldTravelSteer` ≡ original; blend `(!false||fz) && !false` = `true` ≡ original; NAVMESH: travel gate short-circuits before shouldTravelSteer, blend `(true||…) && !true` = false) and confirmed the KEPT layers (moveWithLocalNavigation reads only floorMap.isPassableAt; ENGAGE anti-stall + pointer/aim read only the single BT-chosen target; FUSED scorer stays useFused-gated) carry no residual mob-scan danger/reward. Gates re-validated GREEN under refined B: Gate 1 collision-pair-parity 5/5 (LEGACY byte-identical), Gate 2 navmesh-determinism 3/3 golden 75917f12 UNCHANGED, Gate 3 seed-42 sword real-runner VICTORY score 87 (Option-A was 90 — numbers shifted, proving the gates engaged; non-inert vs LEGACY 92)."
+        },
+        {
+          "round": 4,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Option-A door-aware geometry-REBUILD diff (reuse the existing seed-derived, canonical-sorted, order-independent navEpoch as the rebuild trigger, ~10 LOC; + a Gate-2 rebuild-determinism test case). 2 distinct independent models reviewed the rebuild wiring; both returned ZERO high-confidence concerns. SUPERSEDED / REVERTED — NOT in the shipped diff: the subsequent Gate-3 sweep showed NAVMESH 3/36 (vs B's 30/36), root-caused (airtight seed-1 sword trace) to recast polygon-mesh SEVERANCE — a re-locked door removing one tile (passableTiles 9551->9550) severs the recast poly mesh though NOT the 4-connected grid, because recast connectivity is a strict SUBSET of grid connectivity at thin/door connectors under the pinned deterministic config. computePath then returns success=true with a nearest-reachable PARTIAL stub (final wp 457ft short) that the follower consumed and re-queried every poll -> freeze -> timeout. This is a FALSIFIED PREMISE (door-aware geometry rebuild is impossible with recast), not a review-catchable bug, so the creator reversed A->B. This round's clean verdict is therefore moot."
+        },
+        {
+          "round": 5,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "FINAL shipped diff (post A->B reversal): revert to static all-doors Option-B navmesh + a PERMANENT partial-path guard in moveTowardViaNavmesh (detect a non-reaching recast route — final waypoint > NAV_GOAL_REACHED_FT=8ft/2 tiles from the resolved goal — and defer that poll to pure grid-A* moveToward instead of consuming the stub and re-querying every poll) + report-only sweep fire-instrumentation (navPartialPathFallbacks counter + env-gated NAVGUARD_STATS log). 2 distinct independent models reviewed the 4 load-bearing axes: (A) DETERMINISM — counter is write-only from the sim's view (only the post-run harness reads it); NAVGUARD_STATS_ENABLED read once at module load and gates ONLY logger.warn; Math.hypot + moveToward pure over map+positions; no env/clock/Math.random path into the sim. (B) DORMANCY/PRESERVATION — reachesGoal is true exactly when the old (success && length>0) held for connected Floor-1 goals (Gate-2 asserts last-wp <1.5 tiles < 8ft); accept-branch body unchanged; seed-1 sword victory@207s byte-identical to pre-guard B. (C) FALLBACK SAFETY — moveToward is pure grid-A* with INDEPENDENT path* state, resolveGoalMemo shared-but-pure-on-hit, NO computeTravelSteering/blendWithTrackB (Slice-4 layers, gated && !useNavmesh), and shared moveWedge* fields are written only AFTER the guard's early return so exactly one method updates wedge state per poll. (D) EXHAUSTIVENESS — 3-way partition reachesGoal / partial->moveToward+return / no-route->COLLECT give-up; return prevents fall-through; ft-space units consistent. BOTH models returned ZERO high-confidence concerns — trivially clean terminal state (as round 3), no adjudication needed. Gates re-validated GREEN: Gate 1 collision-pair-parity 5/5 + fused-pathing-determinism 3/3 (LEGACY/FUSED byte-identical), Gate 2 navmesh-determinism 3/3 golden 75917f12 UNCHANGED, Gate 3 sweep 30/36 (0 outcome/win/time changes vs the pre-guard B baseline). Guard NEAR-DORMANT: 8 fires across 1/36 pairs (baseball-bat s8 only — a death in LEGACY too; proves recast severs a thin connector even in the STATIC all-doors mesh, so the guard is proven-necessary yet proven-non-destructive)."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 5,
+          "valid_count": 5,
+          "resolved_count": 5,
+          "clean": false,
+          "notes": "Adjudicator gpt-5.4 reviewed all round-1 findings: all 5 VALID and RESOLVED. Note: finding (5) goal-snapping parity (raised by gemini only) had somewhat overstated severity — recast findNearestPoly snapping + single connected component mitigate real failures — but the pre-fix behavior still violated exact LEGACY goal-resolution parity, so the fix was applied for clean parity."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Round-2 re-review by 2 distinct independent models on the fixed code; adjudicator gpt-5.4 independently re-ran typecheck:src + the navmesh determinism test (both passed) and confirmed no new concerns. Clean terminal state (no escalation needed)."
+        },
+        {
+          "round": 3,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Refined-B follower re-review, adjudicated by gpt-5.4. Both independent models returned ZERO high-confidence concerns on the refined-B seam diff, so there was no finding to adjudicate — trivially clean terminal state. The seam-decision pivot only touches the follower (path source + the two danger/reward gating conditionals), NOT the option-invariant foundation (navmesh module, pinned config, determinism test, enum/CLI, lab viz) already cleared in rounds 1-2, so no re-adjudication of those was needed. No escalation."
+        },
+        {
+          "round": 4,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Option-A rebuild diff, multi-model — both distinct models returned zero high-confidence concerns, so nothing to adjudicate. SUPERSEDED: Option A was reverted after the Gate-3 sweep exposed recast polygon-mesh severance at a re-locked-door tile (recast connectivity strict-subset of grid; see code_review round 4). Not in the shipped diff."
+        },
+        {
+          "round": 5,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "FINAL B+guard diff (static all-doors Option-B + partial-path grid-A* guard + report-only sweep instrumentation), multi-model + adjudication. Both independent distinct models (claude-sonnet-4.6, gpt-5.3-codex) returned ZERO high-confidence concerns across determinism-safety / dormancy-preservation / moveToward-fallback-safety / branch-exhaustiveness, so there was no valid finding to adjudicate — trivially clean terminal state (as round 3). No escalation. sonnet-4.6 gave explicit proofs incl. the shared moveWedge* single-writer-per-poll analysis (guard returns before the wedge-write section) and resolveGoalMemo shared-but-pure-on-hit."
+        }
+      ]
+    }
+  }
+}
