@@ -58,12 +58,12 @@ must receive. This is enforced: the `pr-review-ledger` guard hard-denies
 `create_pull_request` for a code-touching change without a valid **review ledger**
 for its tier.
 
-| Apples | Required review stages (recorded in the ledger)                                                          |
-| ------ | -------------------------------------------------------------------------------------------------------- |
-| 1🍎    | (none — the ledger records the tier only)                                                                |
-| 2🍎    | (none — the ledger records the tier only)                                                                |
-| 3🍎    | separate-model **plan review** before coding + **code review** (loop until clean)                        |
-| 4–5🍎  | plan review must be **adversarial** (≥2 alternatives, argue against the design) + **multi-model review** |
+| Apples | Required review stages (recorded in the ledger)                                                                                   |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| 1🍎    | (none — the ledger records the tier only)                                                                                         |
+| 2🍎    | (none — the ledger records the tier only)                                                                                         |
+| 3🍎    | separate-model **plan review** before coding + **code review** (loop until clean)                                                 |
+| 4–5🍎  | plan review must be **adversarial** (≥2 alternatives, argue against the design) + **code review** (loop) + **multi-model review** |
 
 `dual-plan synthesis` was **retired as a required 4–5🍎 stage on 2026-07-08 (ADR 0051)** — reading all past ledgers showed two independent plan authors produced a
 decisive design fork on only 2/17 (12%) of firings, so the 4–5🍎 `plan_review` is
