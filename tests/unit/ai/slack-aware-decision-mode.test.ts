@@ -124,7 +124,14 @@ describe('SLACK_AWARE — inert unless urgent (LEGACY parity)', () => {
     });
   }
 
-  it('pathing RISK_REWARD_FUSED is an IMPL-PENDING no-op (delegates to legacy)', () => {
+  it('pathing RISK_REWARD_FUSED does not change the opening goal-level decision (pathing is below the decision ladder)', () => {
+    // RISK_REWARD_FUSED is IMPLEMENTED (not a no-op): it re-scores the FINAL
+    // movement heading against sampled danger/reward AFTER the BT decision is
+    // made. So the goal-level decision shape (state/target/reason) on the opening
+    // poll is pathing-invariant, even though the emitted heading may differ. The
+    // real behavioral divergence is proven by the headless legacy-vs-fused A/B
+    // (npm run ai:ab-pathing-mode) — a lab/unit poll alone is insufficient for
+    // behavior claims (repo rule #10).
     const seed = 42;
     const legacyWorld = freshFloor1World(seed);
     const fusedWorld = freshFloor1World(seed);

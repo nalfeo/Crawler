@@ -18,8 +18,10 @@ import {
   AIDecisionMode,
   AIPathingMode,
   BehaviorTreeAI,
+  RISK_REWARD_FIELD_CONSTANTS,
   type AIDecisionModeValue,
   type AIPathingModeValue,
+  type FusedHeadingDebug,
 } from '../../game/ai/index.js';
 import {
   autoFloor1ProgressionSystem,
@@ -292,6 +294,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   let pathGraphics: Phaser.GameObjects.Graphics | null = null;
   let flowFieldGraphics: Phaser.GameObjects.Graphics | null = null;
   let riskRewardFieldsGraphics: Phaser.GameObjects.Graphics | null = null;
+  let fusedCandidatesGraphics: Phaser.GameObjects.Graphics | null = null;
   let showFlowField = persisted?.showFlowField ?? false;
   let lastStepReason = '';
   const floorDebug = {
@@ -378,6 +381,12 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
             state.action = false;
           }
         } else {
+          // Capture the fused scorer's candidate fan only when the viz is on AND
+          // fused pathing is active. Set on the current `ai` each poll so it stays
+          // correct across rebuild/reseed. Default-off elsewhere → zero overhead.
+          ai.fusedDebugCapture =
+            aiConfig.visualRiskRewardFields &&
+            aiConfig.pathingMode === AIPathingMode.RISK_REWARD_FUSED;
           ai.poll(state, world);
         }
         lastMove.x = state.moveX;
@@ -955,6 +964,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     flowFieldGraphics = null;
     riskRewardFieldsGraphics?.destroy();
     riskRewardFieldsGraphics = null;
+    fusedCandidatesGraphics?.destroy();
+    fusedCandidatesGraphics = null;
 
     const phaserScene = getPhaserScene();
     if (phaserScene) {
@@ -1332,17 +1343,19 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
 
     const sampleRadius = 30; // feet
     const gridSpacing = 2; // feet
-    const DANGER_RADIUS = 15; // ft — mirrors updated RISK_REWARD_DANGER_RADIUS_FT in scorer
-    const REWARD_RADIUS = 10; // ft — pickup pull radius
-    const FOG_DANGER = 0.35; // mirrors RISK_REWARD_FOG_DANGER
+    // Single source of truth: read the scorer's real field constants so this
+    // heatmap can never drift from computeRiskRewardFusedHeading again.
+    const DANGER_RADIUS = RISK_REWARD_FIELD_CONSTANTS.dangerRadiusFt;
+    const REWARD_RADIUS = 10; // ft — pickup pull radius (heatmap-only radius model)
+    const FOG_DANGER = RISK_REWARD_FIELD_CONSTANTS.fogDanger;
     const DRAW_THRESHOLD = 0.05; // skip cells with no meaningful field value
 
     // Live enemies — mirrors scorer: project by velocity * (lookahead + preview frames)
     // Enemies always move toward the player (flow-map driven), so projected position
     // is always closer — use it directly, not min(current, projected).
-    const VELOCITY_LOOKAHEAD = 10;
-    const WALL_PROXIMITY_FT = 2.0;
-    const WALL_AMPLIFICATION = 1.8;
+    const VELOCITY_LOOKAHEAD = RISK_REWARD_FIELD_CONSTANTS.velocityLookaheadFrames;
+    const WALL_PROXIMITY_FT = RISK_REWARD_FIELD_CONSTANTS.wallProximityFt;
+    const WALL_AMPLIFICATION = RISK_REWARD_FIELD_CONSTANTS.wallAmplification;
     const totalLookahead = VELOCITY_LOOKAHEAD + aiConfig.threatPreviewFrames;
     const threatPoints: { x: number; y: number }[] = [];
     for (const eid of query(world.ecs, [Enemy, Position, Health])) {
@@ -1447,6 +1460,98 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     // Draw player position marker
     graphics.fillStyle(0xffffff, 0.8);
     graphics.fillCircle(ftToPx(playerX), ftToPx(playerY), 6);
+  };
+
+  const ensureFusedCandidatesGraphics = (): Phaser.GameObjects.Graphics | null => {
+    const scene = getPhaserScene();
+    if (!scene) {
+      return null;
+    }
+    if (!fusedCandidatesGraphics || !fusedCandidatesGraphics.scene) {
+      fusedCandidatesGraphics = scene.add.graphics();
+      // Draw above the field heatmap so the chosen ray reads clearly on top of it.
+      fusedCandidatesGraphics.setDepth(WORLD_VFX_DEPTH.debugFlowField + 2);
+      (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(
+        fusedCandidatesGraphics,
+      );
+    }
+    return fusedCandidatesGraphics;
+  };
+
+  /**
+   * Faithful decision view for RISK_REWARD_FUSED: draws the exact 13-candidate
+   * heading fan the scorer evaluated this poll (colored worst→best by score),
+   * the chosen heading (bright cyan), and the projected threat points the scorer
+   * actually used. Sourced from `ai.getFusedDebug()` — the real scorer output,
+   * never a re-derivation — so it can never drift from the decision.
+   */
+  const drawFusedCandidateOverlay = (): void => {
+    const debug: FusedHeadingDebug | null = ai.getFusedDebug();
+    if (
+      !aiConfig.visualRiskRewardFields ||
+      aiConfig.pathingMode !== AIPathingMode.RISK_REWARD_FUSED ||
+      !debug ||
+      debug.candidates.length === 0
+    ) {
+      fusedCandidatesGraphics?.clear();
+      return;
+    }
+    const graphics = ensureFusedCandidatesGraphics();
+    if (!graphics) {
+      return;
+    }
+    graphics.clear();
+
+    const px = ftToPx(debug.playerX);
+    const py = ftToPx(debug.playerY);
+    const rayLenPx = ftToPx(debug.dangerRadiusFt); // rays span the danger horizon
+
+    // Normalize score across the fan so color encodes relative rank (red→green).
+    let minScore = Number.POSITIVE_INFINITY;
+    let maxScore = Number.NEGATIVE_INFINITY;
+    for (const c of debug.candidates) {
+      if (c.score < minScore) minScore = c.score;
+      if (c.score > maxScore) maxScore = c.score;
+    }
+    const span = maxScore - minScore || 1;
+
+    // Projected threat points the scorer used (enemy pos + velocity * lookahead).
+    for (const t of debug.threats) {
+      graphics.fillStyle(0xff3030, 0.5);
+      graphics.fillCircle(ftToPx(t.x), ftToPx(t.y), 4);
+    }
+
+    // Candidate rays (skip the chosen one — drawn last, on top).
+    for (const c of debug.candidates) {
+      if (c.chosen) {
+        continue;
+      }
+      const ex = px + c.dirX * rayLenPx;
+      const ey = py + c.dirY * rayLenPx;
+      const norm = (c.score - minScore) / span; // 0 = worst, 1 = best
+      const rv = Math.round(255 * (1 - norm));
+      const gv = Math.round(220 * norm);
+      const color = (rv << 16) | (gv << 8) | 0x30;
+      graphics.lineStyle(2, color, 0.7);
+      graphics.beginPath();
+      graphics.moveTo(px, py);
+      graphics.lineTo(ex, ey);
+      graphics.strokePath();
+    }
+
+    // Chosen heading — bright cyan, thick, on top.
+    const chosen = debug.candidates.find((c) => c.chosen);
+    if (chosen) {
+      const ex = px + chosen.dirX * rayLenPx;
+      const ey = py + chosen.dirY * rayLenPx;
+      graphics.lineStyle(4, 0x33ffff, 0.95);
+      graphics.beginPath();
+      graphics.moveTo(px, py);
+      graphics.lineTo(ex, ey);
+      graphics.strokePath();
+      graphics.fillStyle(0x33ffff, 0.95);
+      graphics.fillCircle(ex, ey, 5);
+    }
   };
 
   const renderDecisionTree = (
@@ -1921,7 +2026,14 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
     const modesElem = document.getElementById('ai-modes');
     if (modesElem) {
-      modesElem.textContent = `pathing=${ai.getPathingMode()} · decision=${ai.getDecisionMode()}`;
+      let modesText = `pathing=${ai.getPathingMode()} · decision=${ai.getDecisionMode()}`;
+      const fused = ai.getFusedDebug();
+      if (aiConfig.pathingMode === AIPathingMode.RISK_REWARD_FUSED && fused) {
+        const chosen = fused.candidates.find((c) => c.chosen);
+        const angle = chosen ? `${chosen.angleDeg.toFixed(0)}°` : '?';
+        modesText += ` · fused[chosen ${angle} · best ${fused.bestScore.toFixed(2)} · ${fused.candidates.length} cand]`;
+      }
+      modesElem.textContent = modesText;
     }
     const slackElem = document.getElementById('ai-slack');
     if (slackElem) {
@@ -1950,6 +2062,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     drawPathOverlay();
     drawFlowFieldOverlay();
     drawRiskRewardFieldsOverlay();
+    drawFusedCandidateOverlay();
     const debugElem = document.getElementById('ai-runner-debug');
     if (debugElem) {
       const scene = getScene();
@@ -1975,6 +2088,10 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     pathGraphics = null;
     flowFieldGraphics?.destroy();
     flowFieldGraphics = null;
+    riskRewardFieldsGraphics?.destroy();
+    riskRewardFieldsGraphics = null;
+    fusedCandidatesGraphics?.destroy();
+    fusedCandidatesGraphics = null;
     panelRoot.remove();
     game.destroy(true);
   };
