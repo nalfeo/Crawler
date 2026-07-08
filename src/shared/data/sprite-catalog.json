@@ -2001,5 +2001,70 @@
     "frame": 0,
     "col": 0,
     "row": 0
+  },
+  {
+    "id": "generated:blind-cave-newt-var-11",
+    "kind": "sprite",
+    "label": "blind-cave-newt-var-11",
+    "description": "Generated sprite from brief: blind-cave-newt.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "blind-cave-newt-var-11",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/blind-cave-newt-var-11.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:crystal-scuttler-var-1",
+    "kind": "sprite",
+    "label": "crystal-scuttler-var-1",
+    "description": "Generated sprite from brief: crystal-scuttler.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "crystal-scuttler-var-1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/crystal-scuttler-var-1.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:fungal-husk-var-1",
+    "kind": "sprite",
+    "label": "fungal-husk-var-1",
+    "description": "Generated sprite from brief: fungal-husk.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "fungal-husk-var-1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/fungal-husk-var-1.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:glow-worm-var-6",
+    "kind": "sprite",
+    "label": "glow-worm-var-6",
+    "description": "Generated sprite from brief: glow-worm.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "glow-worm-var-6",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/glow-worm-var-6.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:rock-lice-var-1",
+    "kind": "sprite",
+    "label": "rock-lice-var-1",
+    "description": "Generated sprite from brief: rock-lice.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "rock-lice-var-1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/rock-lice-var-1.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
   }
 ]
