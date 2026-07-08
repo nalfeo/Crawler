@@ -674,7 +674,12 @@ describe('CaveSystemGenerator', () => {
     const bCenters = b.territoryZones.map((zone) => [zone.centerX, zone.centerY]);
     expect(aCenters).toEqual(bCenters);
     expect(aCenters).not.toEqual(baseCenters);
-  }, 120_000);
+    // Heavy: three 200×200 cave-gen determinism runs. Generous timeout so the
+    // full parallel verify suite's CPU/memory contention on constrained machines
+    // can't flake it (isolated ~all-file 92s; this run alone can exceed 120s under
+    // load). A genuine hang still fails at the higher bound — correctness assertions
+    // above are unchanged.
+  }, 240_000);
 
   it('keeps special rooms and structures from overlapping each other', () => {
     const floor = new CaveSystemGenerator({ presentCount: 4 }).generate(

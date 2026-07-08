@@ -211,9 +211,29 @@ describe('buildTerrainLayer — generated tile wiring (w2)', () => {
     expect(rt.stamps[0]!.frame).toBeUndefined();
   });
 
-  it('renders a Kenney sheet frame for a type without a generated textureKey', () => {
+  it('stamps the generated corridor texture (F1 terrain follow-up, 5/6 wired)', () => {
+    // CORRIDOR was Kenney-only through w2; this follow-up wires its generated
+    // single-PNG (var-10) via the same textureKey seam, so the generated branch
+    // must win over the RPG cobblestone frame when the texture is loaded.
     const corridor = getTileVisual(TerrainType.CORRIDOR)!;
-    expect(corridor.textureKey).toBeUndefined();
+    expect(corridor.textureKey).toBe('tile-corridor-v1-var-10');
+    const { scene, rt } = createTerrainScene({
+      loadedTextures: new Set([corridor.textureKey!, corridor.sheetKey]),
+    });
+
+    const result = buildTerrainLayer(scene, makeFloorMap([TerrainType.CORRIDOR], 1, 1));
+
+    expect(result.generatedCount).toBe(1);
+    expect(result.spriteCount).toBe(0);
+    expect(rt.stamps).toHaveLength(1);
+    expect(rt.stamps[0]!.key).toBe(corridor.textureKey);
+    expect(rt.stamps[0]!.frame).toBeUndefined();
+    expect(rt.stamps[0]!.config.scaleX).toBe(GENERATED_SCALE);
+  });
+
+  it('falls back to the Kenney corridor frame when the generated texture is not loaded', () => {
+    const corridor = getTileVisual(TerrainType.CORRIDOR)!;
+    // textureKey present but not loaded → RPG cobblestone frame (safe fallback).
     const { scene, rt } = createTerrainScene({
       loadedTextures: new Set([corridor.sheetKey]),
     });
@@ -222,8 +242,23 @@ describe('buildTerrainLayer — generated tile wiring (w2)', () => {
 
     expect(result.generatedCount).toBe(0);
     expect(result.spriteCount).toBe(1);
-    expect(rt.stamps).toHaveLength(1);
     expect(rt.stamps[0]!.key).toBe(corridor.sheetKey);
+    expect(typeof rt.stamps[0]!.frame).toBe('number');
+  });
+
+  it('renders a Kenney sheet frame for a type without a generated textureKey', () => {
+    const cave = getTileVisual(TerrainType.CAVE_FLOOR)!;
+    expect(cave.textureKey).toBeUndefined();
+    const { scene, rt } = createTerrainScene({
+      loadedTextures: new Set([cave.sheetKey]),
+    });
+
+    const result = buildTerrainLayer(scene, makeFloorMap([TerrainType.CAVE_FLOOR], 1, 1));
+
+    expect(result.generatedCount).toBe(0);
+    expect(result.spriteCount).toBe(1);
+    expect(rt.stamps).toHaveLength(1);
+    expect(rt.stamps[0]!.key).toBe(cave.sheetKey);
     expect(typeof rt.stamps[0]!.frame).toBe('number');
   });
 
@@ -293,13 +328,13 @@ describe('buildTerrainLayer — generated tile wiring (w2)', () => {
   it('reports diagnostic counts that sum to the tile total across a mixed map', () => {
     const generatedKeys = GENERATED_TYPES.map(textureKeyOf);
     const sheetKeys = GENERATED_TYPES.map((t) => getTileVisual(t)!.sheetKey);
-    const corridorSheet = getTileVisual(TerrainType.CORRIDOR)!.sheetKey;
+    const caveSheet = getTileVisual(TerrainType.CAVE_FLOOR)!.sheetKey;
     const { scene } = createTerrainScene({
-      loadedTextures: new Set([...generatedKeys, ...sheetKeys, corridorSheet]),
+      loadedTextures: new Set([...generatedKeys, ...sheetKeys, caveSheet]),
     });
 
-    // 4 generated + 1 Kenney (corridor) + 1 color (void) = 6 tiles.
-    const terrain = [...GENERATED_TYPES, TerrainType.CORRIDOR, TerrainType.VOID];
+    // 4 generated + 1 Kenney (cave floor) + 1 color (void) = 6 tiles.
+    const terrain = [...GENERATED_TYPES, TerrainType.CAVE_FLOOR, TerrainType.VOID];
     const result = buildTerrainLayer(scene, makeFloorMap(terrain, 6, 1));
 
     expect(result.generatedCount).toBe(4);
