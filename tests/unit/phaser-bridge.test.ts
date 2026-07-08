@@ -32,6 +32,7 @@ import { setPieceZToDepth } from '../../src/shared/render-depths.js';
 import { MeleeSpriteId } from '../../src/shared/constants.js';
 import { getSprite } from '../../src/engine/sprites/index.js';
 import { DECORATION_DEF_INDEX } from '../../src/shared/decorationDefs.js';
+import { flattenSetPieceLayers, getSetPieceDef } from '../../src/shared/set-piece-types.js';
 
 /**
  * Faithful local stand-in for a Phaser weapon image on the melee-swing render
@@ -395,6 +396,123 @@ describe('createPhaserBridge', () => {
     bridge.destroy();
     expect(desk?.destroyed).toBe(true);
     expect(propRects[0]?.destroyed).toBe(true);
+  });
+
+  it('resolves shipped welcome-room generated props to real catalog art (bare key, rug untinted)', () => {
+    // The exact generated manifest keys shipped for the welcome room. The rug is
+    // var-0; the velvet rope is var-2 (the others are var-0).
+    const GENERATED_KEYS = {
+      rug: 'welcome-room-rug-var-0',
+      desk: 'welcome-room-desk-var-0',
+      shopTable: 'welcome-room-shop-table-var-0',
+      bookcase: 'welcome-room-bookcase-var-0',
+      velvetRope: 'welcome-room-velvet-rope-var-2',
+    } as const;
+    const expectedKeys = new Set<string>(Object.values(GENERATED_KEYS));
+
+    // Guard the shipped JSON wiring: the welcome-room def must reference each
+    // generated prop as a `catalog` ref pinned to its exact bare manifest key.
+    const def = getSetPieceDef('welcome-room');
+    expect(def).toBeDefined();
+    const layers = flattenSetPieceLayers(def!);
+    const catalogSpriteIds = new Set(
+      layers
+        .map((draw) => draw.layer.sprite)
+        .filter((sprite) => sprite.source === 'catalog')
+        .map((sprite) => (sprite as { spriteId: string }).spriteId),
+    );
+    for (const key of expectedKeys) {
+      expect(catalogSpriteIds.has(key)).toBe(true);
+    }
+
+    // The rug layer must NOT carry a tint: the generated art is already a worn
+    // red velvet runner, so a `#7f1d1d` tint would double-darken it. This guards
+    // the tint drop that landed with the custom→catalog ref swap.
+    const rugLayers = layers.filter((draw) => {
+      const sprite = draw.layer.sprite;
+      return (
+        sprite.source === 'catalog' &&
+        (sprite as { spriteId: string }).spriteId === GENERATED_KEYS.rug
+      );
+    });
+    expect(rugLayers.length).toBeGreaterThan(0);
+    for (const draw of rugLayers) {
+      expect(draw.layer.tintHex).toBeUndefined();
+    }
+
+    // Render path: a `catalog` ref whose generated texture is loaded under its
+    // bare manifest key resolves to a real image (no spritesheet frame), never a
+    // placeholder rect — even when no Kenney catalog sheet is loaded.
+    const propImages: (MockImage & { displayW?: number; displayH?: number })[] = [];
+    const propRects: PropRect[] = [];
+    const scene = {
+      add: {
+        image: vi.fn((x = 0, y = 0, textureKey = '', frame?: number) => {
+          const img = new MockImage(x, y, textureKey, frame) as MockImage & {
+            displayW?: number;
+            displayH?: number;
+          };
+          (
+            img as unknown as { setDisplaySize: (w: number, h: number) => MockImage }
+          ).setDisplaySize = function setDisplaySize(w: number, h: number): MockImage {
+            img.displayW = w;
+            img.displayH = h;
+            return img;
+          };
+          propImages.push(img);
+          return img as unknown as Phaser.GameObjects.Image;
+        }),
+        rectangle: vi.fn((x = 0, y = 0, width = 0, height = 0) => {
+          const rect = new PropRect(x, y, width, height);
+          propRects.push(rect);
+          return rect as unknown as Phaser.GameObjects.Rectangle;
+        }),
+      },
+      textures: {
+        // Only the generated welcome-room textures are loaded (bare keys); no
+        // Kenney catalog sheet, so resolution must fall through to the bare key.
+        exists: (key: string) => expectedKeys.has(key),
+      },
+    } as unknown as Phaser.Scene;
+
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+
+    // Rug (background band, z=0, untinted) + desk (foreground band, z=30).
+    addSetPieceProp(world, 5, 6, {
+      sprite: { source: 'catalog', spriteId: GENERATED_KEYS.rug },
+      depth: setPieceZToDepth(0),
+      widthFt: 16,
+      heightFt: 8,
+      label: 'welcome-room-rug',
+    });
+    addSetPieceProp(world, 3, 2, {
+      sprite: { source: 'catalog', spriteId: GENERATED_KEYS.desk },
+      depth: setPieceZToDepth(30),
+      widthFt: 12,
+      heightFt: 4,
+      label: 'welcome-desk',
+    });
+
+    bridge.sync(world);
+
+    const rug = propImages.find((img) => img.textureKey === GENERATED_KEYS.rug);
+    const desk = propImages.find((img) => img.textureKey === GENERATED_KEYS.desk);
+    expect(rug).toBeDefined();
+    expect(desk).toBeDefined();
+    // Bare generated key → individual texture, no spritesheet frame.
+    expect(rug?.frame).toBeUndefined();
+    expect(desk?.frame).toBeUndefined();
+    // Both resolved to real art: no labeled-placeholder rects were drawn.
+    expect(propRects).toHaveLength(0);
+    // Rug renders untinted; desk sits above the entity plane, rug below it.
+    expect(rug?.tinted).toBe(false);
+    expect(rug?.depth).toBeLessThan(ENTITY_DEPTH);
+    expect(desk?.depth).toBeGreaterThan(ENTITY_DEPTH);
+
+    bridge.destroy();
+    expect(rug?.destroyed).toBe(true);
+    expect(desk?.destroyed).toBe(true);
   });
 
   it('uses procedural texture key when no Kenney sheet is loaded', () => {

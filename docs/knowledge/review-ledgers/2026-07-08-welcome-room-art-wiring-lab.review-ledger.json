@@ -1,0 +1,31 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-08",
+  "session_slug": "welcome-room-art-wiring-lab",
+  "task_title": "Welcome-room art-wiring (custom->catalog + tint drop) + engine-backed set-piece lab",
+  "estimated_apples": 3,
+  "apples_rescored_from": 4,
+  "rescore_reason": "Session kickoff declared 4🍎 for the overarching welcome-room set-piece feature, but that engine render path, stampSetPiece, floorScenario wiring, objective anchors, and ADR 0046 already merged in PR #853. This follow-up PR's diff vs origin/main is only: a render-only sprite-ref data swap in set-pieces.json (5 custom→catalog refs + drop the rug's #7f1d1d tint), a dev-only lab rewrite (engine-backed diorama + info pane + hover tooltips), and test updates — no new ECS system, no ADR, no multi-system coordination, no gameplay/sim change. Honest tier for this diff is 3🍎 (medium).",
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "notes": "gpt-5.4 (rubber-duck) reviewed the APPROACH: verdict PROCEED, no blocking issues. 4 non-blocking/nit concerns, all dispositioned. #2 RESOLVED via fix: added a tests/integration guard asserting the 5 welcome-room generated keys resolve to real non-placeholder manifest entries + cross-check vs set-pieces.json (rename on either side now fails loudly). #1 accepted/deferred: describeAsset mirrors resolveSetPieceSprite and could drift, but the lab is dev-only (zero player impact); extracting a shared resolver is a good follow-up, out of scope for this render-only+dev-only PR. #3 accepted (nit): hover tie-break is approximate for equal-depth AABBs; welcome-room geometry has no ambiguous overlaps. #4 accepted (intentional): option-(a) drops the custom->placeholder fallback; all 5 assets are shipped+approved on main and a louder failure surfaces asset regressions instead of masking them."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "claude-sonnet-4.6 (code-review) reviewed the committed diff (set-pieces.json + set-piece-lab/index.ts + phaser-bridge/set-piece-types/stamp-set-piece tests) against PhaserBridge.resolveSetPieceSprite, stampSetPiece, flattenSetPieceLayers, npc-types. Verdict: no significant issues. Confirmed all 5 catalog spriteIds are correct bare keys; tint dropped only on rug; .strict() schema rejects stale fields; buildHoverItems zip alignment sound; NPC/prop tooltip depth mirrors visual stacking; describeAsset matches engine resolution in all cases; all pointer/wheel listeners cleaned up + bridge destroyed on restart (no leak); tests assert intended guarantees. NOTE: the tests/integration manifest-key guard was added AFTER this review as the remedy for plan-review concern #2 (test-only additive change) and independently passes typecheck+lint+test."
+        }
+      ]
+    }
+  }
+}
