@@ -17,8 +17,8 @@ generated-texture pattern.
 
 ## Context
 
-`enemies.floor2.json` declares 46 Floor-2 enemies (18 crime-family bosses + their
-grunts + cave-ambient). ~43 of them already had real generated art merged on
+`enemies.floor2.json` declares 44 Floor-2 enemy archetypes (18 crime-family
+bosses + 26 grunts/cave-ambient). ~43 of them already had real generated art merged on
 `main`, but **all three sprite-resolution surfaces were Floor-1-only**, so every
 Floor-2 enemy rendered a family-tinted Kenney/rat **placeholder** in-game and the
 ~43 shipped sprites were inert — a violation of project rule #10 / ADR 0039 (every

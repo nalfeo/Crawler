@@ -1,10 +1,12 @@
 {
   "date": "2026-07-08",
-  "slug": "enemy-render-path-wiring",
+  "session": "enemy-render-path-wiring",
+  "estimated_apples": 3,
+  "actual_apples": 3,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.6,
   "persona": "Producer",
   "task": "Wire generated ENEMY art into the real render path so Floor-2 crime-family enemies stop rendering Kenney/rat placeholders (F1 audit + F2 extend of the 3 sprite-resolution surfaces; ~43 shipped sprites were inert per rule #10 / ADR 0039)",
-  "estimate": 3,
-  "actual": 3,
-  "verdict": "accurate",
   "notes": "Data-driven B2b wiring with zero engine-logic change: new enemy_family_boss render kind (textureId 5) with a generated block at LARGE scale 1.0, all 44 F2 archetype->brief appearance-key mappings (2 plural remaps), and setEnemyAppearanceKey on boss spawn — mirrors the existing enemy_rat generated path. Two guard tests (data-surface completeness + real-bridge render proof) plus an extended resolver test. F1 wiring was already complete (audited, no change needed). No scope creep; suspected imp-boss gen-gap was just the plural gotcha (handled by remap), no new art generated."
 }
