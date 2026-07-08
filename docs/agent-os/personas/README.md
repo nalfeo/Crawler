@@ -17,8 +17,8 @@ you. Read it _before_ you start, then read the persona doc you select.
 >
 > **Plan-first requirement (all personas):** Before writing any code, output your
 > **full plan** in the session — the complete, ordered implementation plan, not a
-> one-line summary. For a change estimated **>3🍎**, output the _synthesized final_
-> plan (after dual-plan generation + judging). Then run the apple-scaled
+> one-line summary. At **>3🍎** the plan review is **adversarial** (a separate
+> model enumerates ≥2 alternatives and argues against the chosen design). Then run the apple-scaled
 > **[review harness](../../../.github/skills/review-harness/SKILL.md)** and record
 > each required stage in a **review ledger**; the `pr-review-ledger` guard
 > hard-denies `create_pull_request` without a valid one for a code-touching change.

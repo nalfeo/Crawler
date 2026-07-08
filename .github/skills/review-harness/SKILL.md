@@ -6,10 +6,10 @@ description: >-
   Use when asked to "run the review harness", do a "plan review", "multi-model
   review", "review loop", "review ledger", or whenever a change is ">1 apple" /
   ">3 apples" and needs pre-PR review. Covers: deciding required stages from the
-  apple estimate, reviewing the plan with a separate model (≥3🍎), generating two
-  plans + synthesizing with a judge model (>3🍎), looping code-review agents until
-  no concerns or a 2-round cap then human escalation (≥3🍎), multi-model
-  code-review with adjudication (>3🍎), and
+  apple estimate, reviewing the plan with a separate model (≥3🍎), an ADVERSARIAL
+  plan review that red-teams the design with ≥2 alternatives (>3🍎), looping
+  code-review agents until no concerns or a 2-round cap then human escalation
+  (≥3🍎), multi-model code-review with adjudication (>3🍎), and
   writing/validating the review ledger that the `pr-review-ledger` guard enforces
   before `create_pull_request`.
 ---
@@ -39,19 +39,27 @@ start of the session (see `docs/agent-os/policies/complexity-policy.md`).
 
 ## Tier matrix (estimated apples → required ledger stages)
 
-| apples | plan review | dual-plan synthesis | code review (loop) | multi-model review |
-| ------ | ----------- | ------------------- | ------------------ | ------------------ |
-| 1🍎    | —           | —                   | —                  | —                  |
-| 2🍎    | —           | —                   | —                  | —                  |
-| 3🍎    | ✅          | —                   | ✅                 | —                  |
-| 4–5🍎  | ✅          | ✅                  | ✅                 | ✅                 |
+| apples | plan review        | code review (loop) | multi-model review |
+| ------ | ------------------ | ------------------ | ------------------ |
+| 1🍎    | —                  | —                  | —                  |
+| 2🍎    | —                  | —                  | —                  |
+| 3🍎    | ✅                 | ✅                 | —                  |
+| 4–5🍎  | ✅ **adversarial** | ✅                 | ✅                 |
 
 - **plan review** (≥3🍎): before writing code, have a _separate model_ review the
-  plan; address every concern. (Floor raised 2🍎 → 3🍎 on 2026-07-07 to match the
+  plan; address every concern. Every required plan review records
+  `plan_divergence: convergent | minor | major_fork` (the fork-rate instrumentation
+  signal — ADR 0051). (Floor raised 2🍎 → 3🍎 on 2026-07-07 to match the
   code-review floor, which moved to 3🍎 on 2026-07-02 / ADR 0036. A 2🍎 change now
   requires **no** review stages — the ledger just records the tier.)
-- **dual-plan synthesis** (>3🍎): generate **2** plans with **different** models,
-  then a **3rd** reasoning model judges + synthesizes the final plan.
+- **adversarial plan review** (4–5🍎): the top-tier plan review must **red-team**
+  the design — enumerate **≥2 alternative approaches** and argue against the chosen
+  one — recording `adversarial: true` and `alternatives_considered ≥ 2`. This
+  **replaced** the old dual-plan-synthesis stage (ADR 0051): two independent plan
+  authors produced a decisive fork on only 2/17 historical firings, so the
+  redundant second author was folded into one stronger critic at ⅓ the cost.
+  `dual_plan_synthesis` is now **legacy/optional** (validated if present, never
+  required) — do **not** add it to a new ledger.
 - **code review** (≥3🍎): run the appropriate code-review agent(s); address
   feedback; **loop until no concerns remain _or_ escalate to a human** (2-round
   cap, below).
@@ -92,33 +100,32 @@ stage). Never re-score down just to dodge a stage (rule #12).
    ```
    It writes `docs/knowledge/review-ledgers/<YYYY-MM-DD>-<slug>.review-ledger.json`
    scaffolding only the stages your tier requires.
-3. **Dual-plan synthesis** (>3🍎): generate two plans with different models and
-   synthesize with a judge → record `dual_plan_synthesis`. Do this before the
-   plan review (the review reviews the synthesized plan).
-4. **Plan review** (≥3🍎): a separate model reviews the (final) plan; address every
-   concern → record `plan_review`. See
-   [`references/plan-review.md`](references/plan-review.md).
-5. **Implement**, then `npm run verify:fast`.
-6. **As soon as implementation is done, run the review stages immediately**
+3. **Plan review** (≥3🍎): a separate model reviews the plan; address every
+   concern → record `plan_review` (including `plan_divergence`). At **4–5🍎 this
+   review must be ADVERSARIAL** — the reviewer enumerates ≥2 alternatives and argues
+   against the chosen design (`adversarial:true`, `alternatives_considered ≥ 2`).
+   See [`references/plan-review.md`](references/plan-review.md).
+4. **Implement**, then `npm run verify:fast`.
+5. **As soon as implementation is done, run the review stages immediately**
    (do **not** wait for `create_pull_request`):
    **Code-review loop** (≥3🍎) → record `code_review`. See
    [`references/code-review-loop.md`](references/code-review-loop.md).
-7. **Multi-model review + adjudication loop** (>3🍎) → record
+6. **Multi-model review + adjudication loop** (>3🍎) → record
    `multi_model_review`. See
    [`references/code-review-loop.md`](references/code-review-loop.md).
-8. **Validate the ledger** and make sure it is committed on your branch:
+7. **Validate the ledger** and make sure it is committed on your branch:
    ```
    npm run review:ledger -- validate <path>
    ```
    Exit 0 = the guard will allow your PR. Exit 1 = it prints exactly which stage
    is incomplete.
-9. Run full verify, which now includes an early PR-prereq pass:
+8. Run full verify, which now includes an early PR-prereq pass:
    ```
    npm run verify
    ```
    (`verify` runs `verify:pr-prereqs`, surfacing review-ledger/preflight blockers before PR creation.)
-10. Write the dated handoff (pr-preflight still requires it), then
-    `create_pull_request`.
+9. Write the dated handoff (pr-preflight still requires it), then
+   `create_pull_request`.
 
 ## Recording stages
 

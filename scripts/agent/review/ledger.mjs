@@ -25,13 +25,25 @@ export const LEDGER_PATH_RE =
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
 
-/** Canonical review-stage names, in tier order. */
+/**
+ * Canonical review-stage names, in tier order.
+ *
+ * NOTE: `dual_plan_synthesis` is a LEGACY / OPTIONAL stage as of ADR 0051
+ * (2026-07-08). It is no longer REQUIRED at any tier (see
+ * `requiredStagesForApples`), but it stays in this list so the ~17 historical
+ * ledgers that recorded it remain parseable + validated if present. New 4-5🍎
+ * changes use an ADVERSARIAL `plan_review` instead — do NOT add
+ * `dual_plan_synthesis` to a new ledger.
+ */
 export const STAGE_NAMES = [
   'plan_review',
   'dual_plan_synthesis',
   'code_review',
   'multi_model_review',
 ];
+
+/** Allowed values for `plan_review.plan_divergence` — the fork-rate instrumentation signal (ADR 0051). */
+export const PLAN_DIVERGENCE_VALUES = ['convergent', 'minor', 'major_fork'];
 
 /** YYYY-MM-DD matcher for ledger dates (shared with the CLI). */
 export { DATE_RE };
@@ -43,18 +55,26 @@ export { SLUG_RE };
  * Required review stages for a given apple estimate.
  *   1-2   -> (none; the ledger records the tier, no stages required)
  *   3     -> plan_review, code_review
- *   4-5   -> plan_review, dual_plan_synthesis, code_review, multi_model_review
+ *   4-5   -> plan_review (adversarial), code_review, multi_model_review
  *
  * The plan-review floor was raised 2🍎 -> 3🍎 (2026-07-07) to match the
  * code-review floor, which already moved to 3🍎 on 2026-07-02 (ADR 0036 /
  * handoff docs/knowledge/handoffs/2026-07-02-streamline-verify-ci-gates.md).
  * A 2-apple change now records its tier but requires no review stages.
+ *
+ * `dual_plan_synthesis` was REMOVED from the required 4-5🍎 set (ADR 0051,
+ * 2026-07-08): the 4-5🍎 `plan_review` is now ADVERSARIAL instead (one reviewer
+ * enumerates >=2 alternatives + argues against the chosen design). The two
+ * independent plan authors earned their 3x cost on only 2/17 historical
+ * firings, so the redundant second author was folded into a stronger critic.
+ * `dual_plan_synthesis` stays a validated LEGACY-OPTIONAL stage (see
+ * STAGE_NAMES / validateDualPlanSynthesis) so historical ledgers stay parseable.
  * @param {number} apples
  * @returns {string[]}
  */
 export function requiredStagesForApples(apples) {
   if (apples >= 4) {
-    return ['plan_review', 'dual_plan_synthesis', 'code_review', 'multi_model_review'];
+    return ['plan_review', 'code_review', 'multi_model_review'];
   }
   if (apples >= 3) {
     return ['plan_review', 'code_review'];
@@ -94,7 +114,7 @@ function hasDistinct(arr) {
   return new Set(arr).size === arr.length;
 }
 
-function validatePlanReview(stage, errors) {
+function validatePlanReview(stage, errors, apples) {
   const tag = 'plan_review';
   if (!isPlainObject(stage)) {
     errors.push(`${tag}: must be an object`);
@@ -114,6 +134,54 @@ function validatePlanReview(stage, errors) {
         `${tag}: resolved_count (${stage.resolved_count}) must be >= concerns_count (${stage.concerns_count})`,
       );
     }
+  }
+
+  // Tier-conditional adversarial + instrumentation fields (ADR 0051).
+  // `apples` is null/undefined when the estimate is invalid; the top-level
+  // estimate error already fired, so we skip tier-conditional REQUIRES but
+  // still type/enum-check any field that is present.
+  const tier = Number.isInteger(apples) ? apples : null;
+  const adversarialRequired = tier != null && tier >= 4;
+  const divergenceRequired = tier != null && tier >= 3;
+
+  // adversarial: required `true` at 4-5🍎 (the reviewer must red-team); boolean-if-present below.
+  if (adversarialRequired) {
+    if (stage.adversarial !== true) {
+      errors.push(
+        `${tag}.adversarial must be true at 4-5🍎 (reviewer must red-team: enumerate alternatives + argue against the chosen design)`,
+      );
+    }
+  } else if (stage.adversarial !== undefined && typeof stage.adversarial !== 'boolean') {
+    errors.push(`${tag}.adversarial must be a boolean if present`);
+  }
+
+  // alternatives_considered: required integer >= 2 at 4-5🍎; int>=0-if-present below.
+  if (adversarialRequired) {
+    if (!isNonNegInt(stage.alternatives_considered) || stage.alternatives_considered < 2) {
+      errors.push(`${tag}.alternatives_considered must be an integer >= 2 at 4-5🍎`);
+    }
+  } else if (
+    stage.alternatives_considered !== undefined &&
+    !isNonNegInt(stage.alternatives_considered)
+  ) {
+    errors.push(`${tag}.alternatives_considered must be an integer >= 0 if present`);
+  }
+
+  // plan_divergence: required enum at 3🍎+ (whenever plan_review is a required
+  // stage); enum-if-present below. The fork-rate instrumentation signal.
+  if (divergenceRequired) {
+    if (!PLAN_DIVERGENCE_VALUES.includes(stage.plan_divergence)) {
+      errors.push(
+        `${tag}.plan_divergence must be one of: ${PLAN_DIVERGENCE_VALUES.join(', ')} at 3🍎+`,
+      );
+    }
+  } else if (
+    stage.plan_divergence !== undefined &&
+    !PLAN_DIVERGENCE_VALUES.includes(stage.plan_divergence)
+  ) {
+    errors.push(
+      `${tag}.plan_divergence must be one of: ${PLAN_DIVERGENCE_VALUES.join(', ')} if present`,
+    );
   }
 }
 
@@ -473,7 +541,10 @@ export function validateLedger(obj) {
         continue;
       }
       if (present) {
-        STAGE_VALIDATORS[name](stages[name], errors);
+        // Thread the declared tier so tier-conditional validators
+        // (validatePlanReview) can enforce per-tier field rules. Other
+        // validators ignore the 3rd arg.
+        STAGE_VALIDATORS[name](stages[name], errors, estimatedApples);
       }
     }
   }
