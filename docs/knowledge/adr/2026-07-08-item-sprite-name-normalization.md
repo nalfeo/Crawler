@@ -1,4 +1,4 @@
-# ADR 0051: Item sprites resolve by item id (retire the `ItemDef.icon` indirection)
+# ADR: Item sprites resolve by item id (retire the `ItemDef.icon` indirection)
 
 ## Status
 

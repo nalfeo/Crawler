@@ -1,8 +1,19 @@
-# ADR-0047: Spatial-Scoping Performance Optimizations
+# ADR 0047: Spatial-Scoping Performance Optimizations
 
-**Date**: 2026-07-06  
-**Status**: Accepted — **decisions 2 (windowed flow-field) and 3 (Chebyshev pre-filter) removed 2026-07-06**; only decision 1 (bounded `clearVisibility`) ships. (see [Update](#update-2026-07-06-only-decision-1-ships))  
-**Systems touched**: fov, flow-field, enemy-ai
+## Status
+
+Accepted
+
+## Date
+
+2026-07-06
+
+## Systems touched
+
+fov, flow-field, enemy-ai
+
+> Only decision 1 (bounded `clearVisibility`) shipped. Decisions 2 and 3 were
+> reverted before merge; the historical detail remains below as provenance.
 
 ---
 

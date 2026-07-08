@@ -2,11 +2,15 @@
 
 ## Status
 
-Accepted
+Deprecated
 
 ## Date
 
 2026-06-19
+
+> Grandfathered historical cleanup record. This is retained for provenance, but
+> future "post-merge follow-up scope" work belongs in a handoff, PR
+> description, or issue — not as a new ADR.
 
 ## Estimated Complexity
 

@@ -1,7 +1,12 @@
-# ADR 0047: Floor-Agnostic World State
+# ADR: Floor-Agnostic World State
 
-**Date:** 2026-07-05  
-**Status:** Accepted
+## Status
+
+Accepted
+
+## Date
+
+2026-07-05
 
 ## Context
 

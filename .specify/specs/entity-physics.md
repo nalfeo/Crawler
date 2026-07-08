@@ -4,6 +4,8 @@
 > **Last reconciled:** 2026-07-04
 > **Estimated complexity:** 🍎🍎🍎 — cross-system (collision, knockback, damage, every spawner, every broad-phase consumer); data-table refactor
 > **Related ADRs:** 0044-explicit-size-weight-components, 0007-spatial-units-architecture, 0023-feet-as-single-internal-spatial-unit
+> **Canonical home:** this spec is the living size/weight contract; ADR
+> 0044-explicit-size-weight-components is the decision log behind it.
 > **Code source-of-truth:** `src/core/components.ts` (Size + Weight defs + stores), `src/core/physics-defs.ts` (canonical registry, new), `src/core/collision.ts`, `src/core/systems/collisionSystem.ts`, `src/core/systems/knockbackSystem.ts`, `src/core/systems/damageSystem.ts` (`applyPlayerEnemyHit`), `src/core/systems/{meleeSwingSystem,areaDamageSystem,beamSystem,returningProjectileSystem,trapSystem}.ts`, `src/core/spawners/*`
 > **Labs:** `src/labs/physics-body-lab/` (new — Slice 1)
 > **Test suites:** `tests/unit/core/{collision,knockback,damage}.test.ts`, `tests/headless/floor1-completion.test.ts` (win-rate gate, unchanged), new `tests/unit/core/physics-defs.test.ts`, new `tests/headless/collision-pair-parity.test.ts` (Slice 1 regression gate)

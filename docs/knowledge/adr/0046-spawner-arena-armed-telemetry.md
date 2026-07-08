@@ -4,6 +4,10 @@
 
 Accepted
 
+> Follow-on delta to the spawner-arena feature family. The canonical current
+> contract lives in
+> [`.specify/specs/spawner-battle-arena.md`](../../../.specify/specs/spawner-battle-arena.md).
+
 ## Date
 
 2026-07-05

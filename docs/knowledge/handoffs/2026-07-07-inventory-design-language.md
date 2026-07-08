@@ -148,3 +148,18 @@ None. Change is cosmetic-only; the full verify gate is deferred to CI as usual.
   construction time (cornerPixels, titleFrame) — otherwise a resize call silently
   leaves the decorations at their original positions. EquipmentUI's applyLayout
   is the canonical reference for this pattern.
+
+### Mistakes Made
+
+- I initially trusted the visual-review loop too literally and spent several
+  rounds chasing oscillating cosmetic feedback before re-grounding every claim
+  against the deterministic screenshots. The early signal was contradictory
+  advice across adjacent rounds (for example, simultaneously asking for tighter
+  density and larger breathing room).
+
+### Opportunities for Future Improvement
+
+- The inventory and equipment panels now share a design language but still carry
+  duplicated layout / crisp-text / chip-sizing patterns. A small shared HUD
+  theming helper layer would reduce future polish diffs and make visual reviews
+  less sensitive to drift between the two panels.

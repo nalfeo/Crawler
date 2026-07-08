@@ -7,6 +7,11 @@
 
 Accepted (2026-07-08).
 
+> The live review-harness rules now live in
+> [`docs/agent-os/policies/review-harness-policy.md`](../../agent-os/policies/review-harness-policy.md)
+> and [`complexity-policy.md`](../../agent-os/policies/complexity-policy.md).
+> This ADR is the rationale and migration record for the adversarial fold.
+
 ## Estimated Complexity
 
 🍎 × 4 — tier-conditional validator logic (a new axis threaded into the
