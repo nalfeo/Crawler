@@ -1,0 +1,33 @@
+type: character
+name: npc-sweaty-merchant
+description: |
+  A greasy, shifty traveling merchant working the welcome room. Sleeves rolled
+  up over forearms, a damp shining brow (a couple of small sweat highlights),
+  a bulging coin pouch on his belt and a grubby wares satchel slung across his
+  chest. He rubs his hands together with an unsettling little "have I got a
+  deal for you" smile. Standing upright in an idle stance facing straight
+  toward camera (frontal pose, both eyes visible, shoulders squared to viewer).
+  Wiry, slightly hunched, opportunistic posture — reads clearly as a shifty
+  peddler at small scale. Muted merchant palette — mustard or olive tunic,
+  brown satchel and belt, a dull-gold coin-pouch as the one metallic accent,
+  clammy pale skin. Nothing bright enough to compete with combat VFX. Single
+  solid connected mass, no gaps or floating pieces, clean readable pixel
+  shapes, crisp dark outline.
+  Keep at least a 1-pixel transparent border around the figure to avoid clipping.
+# NPC (welcome-room "lifer"). Default character anchor (32,63) applies.
+# Judge ON so pose quality + the sweaty-shifty-merchant read stay strong.
+judge:
+  enabled: true
+sensors:
+  enemy:
+    toleranceDeg: 20
+  edge:
+    allowMainTouch: true
+variations:
+  - shifty merchant with rolled sleeves, mustard tunic, chest satchel, bulging coin pouch, rubbing hands, sweaty grin, frontal idle
+  - balding merchant with a comb-over, olive tunic and apron, wares satchel, coins in one raised palm, oily smile, frontal pose
+  - merchant in a floppy brown cap, patched mustard vest, satchel and belt pouch, wiping sweaty brow with a rag, sly frontal look
+  - lean merchant with rolled sleeves and a money-belt, dull-green tunic, satchel of trinkets, hands spread in a "great price" gesture, frontal idle
+  - hunched merchant with a scruffy chin, olive tunic, overstuffed satchel and jingling coin pouch, unsettling little smile, frontal stare
+  - merchant with slicked sweaty hair, mustard-and-brown outfit, satchel across chest, one hand clutching the coin pouch, frontal idle
+minVariations: 6

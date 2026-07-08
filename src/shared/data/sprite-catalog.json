@@ -2599,5 +2599,44 @@
     "frame": 0,
     "col": 0,
     "row": 0
+  },
+  {
+    "id": "generated:npc-spell-broker-var-1",
+    "kind": "sprite",
+    "label": "npc-spell-broker-var-1",
+    "description": "Generated sprite from brief: npc-spell-broker.",
+    "tags": ["character", "generated", "pipeline-approved"],
+    "spriteId": "npc-spell-broker-var-1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/npc-spell-broker-var-1.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:npc-sweaty-merchant-var-0",
+    "kind": "sprite",
+    "label": "npc-sweaty-merchant-var-0",
+    "description": "Generated sprite from brief: npc-sweaty-merchant.",
+    "tags": ["character", "generated", "pipeline-approved"],
+    "spriteId": "npc-sweaty-merchant-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/npc-sweaty-merchant-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:npc-welcome-goon-var-0",
+    "kind": "sprite",
+    "label": "npc-welcome-goon-var-0",
+    "description": "Generated sprite from brief: npc-welcome-goon.",
+    "tags": ["character", "generated", "pipeline-approved"],
+    "spriteId": "npc-welcome-goon-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/npc-welcome-goon-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
   }
 ]

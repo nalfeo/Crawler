@@ -6706,6 +6706,108 @@
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\snailfolk-slimer\\2026-07-08T05-24-26-93658899\\postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
+    },
+    "npc-spell-broker-var-1": {
+      "briefId": "npc-spell-broker",
+      "spriteName": "npc-spell-broker-var-1",
+      "assetPath": "generated/npc-spell-broker-var-1.png",
+      "approvedAt": "2026-07-08T07:32:30.854Z",
+      "sourceRun": "generated/runs/npc-spell-broker/2026-07-08T07-16-56-63af926a",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 36,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "type": "character",
+      "contentHash": "a1407dccce469b348c83c644f42ec7df7b0cfde21ad64022425b02713a1b5662",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-spell-broker\\2026-07-08T07-16-56-63af926a\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-spell-broker\\2026-07-08T07-16-56-63af926a\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-spell-broker\\2026-07-08T07-16-56-63af926a\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "brief",
+      "facingDirection": "right"
+    },
+    "npc-sweaty-merchant-var-0": {
+      "briefId": "npc-sweaty-merchant",
+      "spriteName": "npc-sweaty-merchant-var-0",
+      "assetPath": "generated/npc-sweaty-merchant-var-0.png",
+      "approvedAt": "2026-07-08T07:32:29.621Z",
+      "sourceRun": "generated/runs/npc-sweaty-merchant/2026-07-08T07-22-13-938e6e34",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/8",
+      "judgeScore": "5",
+      "type": "character",
+      "contentHash": "66cf20bc2992be8839475381f6695cecb417ec57d6e89a73988737c8d4d42c08",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-sweaty-merchant\\2026-07-08T07-22-13-938e6e34\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-sweaty-merchant\\2026-07-08T07-22-13-938e6e34\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-sweaty-merchant\\2026-07-08T07-22-13-938e6e34\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "brief",
+      "facingDirection": "right"
+    },
+    "npc-welcome-goon-var-0": {
+      "briefId": "npc-welcome-goon",
+      "spriteName": "npc-welcome-goon-var-0",
+      "assetPath": "generated/npc-welcome-goon-var-0.png",
+      "approvedAt": "2026-07-08T07:32:28.699Z",
+      "sourceRun": "generated/runs/npc-welcome-goon/2026-07-08T07-12-20-9e177903",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 32,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "5",
+      "type": "character",
+      "contentHash": "71d9f409e25e0e1777bafb3928d0ac4fde5355647676e5af5140a0aef7b822fd",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-welcome-goon\\2026-07-08T07-12-20-9e177903\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-welcome-goon\\2026-07-08T07-12-20-9e177903\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-welcome-goon\\2026-07-08T07-12-20-9e177903\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     }
   }
 }
