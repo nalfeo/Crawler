@@ -32,7 +32,7 @@ export interface GenerateSheetRequest {
    * Number of variants the model is ASKED to produce on the sheet (the brief's
    * commanded count, `variantCount(brief)`). This is a generation hint only —
    * the slicer is data-driven and accepts whatever grid the model actually draws
-   * (see ADR "slicer-data-driven-grid-salvage"), so a mismatch no longer forces a
+   * (see ADR 0052), so a mismatch no longer forces a
    * count-based retry. Exposed separately so callers can still override the hint.
    */
   readonly variants: number;

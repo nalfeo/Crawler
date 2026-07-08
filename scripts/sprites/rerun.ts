@@ -253,7 +253,7 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
 
   const { sheetFile, sheetPng } = await resolveRunSheet(store, briefId, runId, args.sheetFile);
 
-  // Carry-forward guard (ADR 0024, revised by "slicer-data-driven-grid-salvage"):
+  // Carry-forward guard (ADR 0024, revised by ADR 0052):
   // reject if re-slicing the stored sheet no longer reproduces the grid the
   // summary's per-variant entries were assigned against (row-major 0..N-1). A
   // mismatch would silently overwrite the wrong variants.

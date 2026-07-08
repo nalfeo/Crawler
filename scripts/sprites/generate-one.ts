@@ -14,7 +14,7 @@
  *      the sheet's HONEST grid at its real count. The gate rejects only a
  *      structural failure (zero cells), retrying generation; a count that differs
  *      from the brief's commanded count is accepted and carried to human gallery
- *      review (ADR "slicer-data-driven-grid-salvage"). The sliced cells are NOT
+ *      review (ADR 0052). The sliced cells are NOT
  *      post-processed here — slicing is cheap and a single content-aware path
  *      (ADR 0018), so the gate stays in Generate while the heavy per-variant work
  *      moves to PostProcess.
@@ -189,7 +189,7 @@ export interface GenerateSheetCoreResult {
    * `variantCount(brief)` — the brief's COMMANDED cell count. Retained for
    * telemetry/logging and as the provider `variants` hint; it is NO LONGER a hard
    * gate (the slicer emits the sheet's honest count instead). See
-   * ADR "slicer-data-driven-grid-salvage".
+   * ADR 0052.
    */
   readonly expected: number;
   readonly identity: RunSummaryIdentity;
@@ -341,7 +341,7 @@ export async function generateSheetCore(
       });
       await store.put(storeKey(`sheet-${pad2(attempt)}.png`), sheet);
       const slice = sliceSheetFromBrief(sheet, brief);
-      // Structural-only gate (ADR "slicer-data-driven-grid-salvage"): the slicer
+      // Structural-only gate (ADR 0052): the slicer
       // is data-driven and never invents cuts, so it emits the sheet's HONEST
       // grid at its real count — which may differ from the brief's commanded
       // count when the model drew a runt edge or a gappy subject. We therefore

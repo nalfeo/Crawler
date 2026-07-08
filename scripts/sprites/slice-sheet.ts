@@ -29,7 +29,7 @@ import type { Brief } from './brief-schema.js';
  * DATA-DRIVEN from the sheet, at its HONEST count, which is carried to human
  * gallery review — the intended quality gate — rather than force-fitting the
  * commanded count by cutting through art. The debugger passes no `expectedGrid`
- * and is byte-for-byte unchanged. See ADR "slicer-data-driven-grid-salvage".
+ * and is byte-for-byte unchanged. See ADR 0052.
  *
  * Why slice before postprocessing rather than passing the whole sheet through
  * the existing postprocessor: the sheet's background-removal floodfill would
@@ -247,7 +247,7 @@ function uniqueSorted(values: readonly number[]): number[] {
 // right side" symptom — and (b) picks the cut subset yielding the most same-size
 // sprites, using the commanded count only as a tiebreak anchor. All math is
 // integer / cross-multiplied (no floats, no Math.random, no Date.now) so a given
-// sheet always slices identically. See ADR "slicer-data-driven-grid-salvage".
+// sheet always slices identically. See ADR 0052.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Cell sizes (px) between consecutive cut positions: `cuts[i+1] - cuts[i]`. */
@@ -592,7 +592,7 @@ export function computeSliceMap(sheetPng: Buffer, options: SliceOptions = {}): S
   // The emitted grid is the HONEST data-driven grid at its real count; the
   // generation gate (see generate-one.ts) accepts it and carries it to human
   // gallery review — the intended quality gate (product decision 2026-07-08,
-  // ADR "slicer-data-driven-grid-salvage", reversing the 2026-07-07 force-count
+  // ADR 0052, reversing the 2026-07-07 force-count
   // decision). The debugger path passes no `expectedGrid` and is byte-for-byte
   // unchanged.
   const expectedGrid = options.expectedGrid;
