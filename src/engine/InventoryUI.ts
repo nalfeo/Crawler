@@ -27,10 +27,10 @@ import { isEquippableItem } from '../shared/equipmentDefs.js';
 import { type ItemDef, type ItemTag, RARITY_COLORS, getItemById } from '../shared/items.js';
 import {
   emptyGeneratedSpriteRegistry,
-  pickGeneratedVariant,
   type GeneratedSpriteEntry,
   type GeneratedSpriteRegistry,
 } from '../shared/generated-assets.js';
+import { resolveItemSprite } from '../shared/item-sprites.js';
 import { hashStringToSeed } from '../shared/random.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
 import { renderItemTooltip } from './item-tooltip.js';
@@ -180,13 +180,15 @@ export function createInventoryUI(
   let currentWorldSeed = 0;
 
   /**
-   * Choose which approved generated-sprite variant to render for an item.
+   * Resolve which approved generated-sprite variant to render for an item.
+   * Resolves by item id (crossing to the equipment `weaponId` when needed) and
+   * prefers real approved art over the placeholder — see `resolveItemSprite`.
    * Deterministic per (itemId, run): the same item keeps the same variant for
    * the whole run (no per-frame flicker) but may differ across runs/items.
-   * Returns null when the item has no approved generated sprite.
+   * Returns null when the item has no generated sprite at all.
    */
   const selectGeneratedEntry = (itemId: string): GeneratedSpriteEntry | null =>
-    pickGeneratedVariant(
+    resolveItemSprite(
       getGeneratedRegistry(),
       itemId,
       (hashStringToSeed(itemId) ^ currentWorldSeed) | 0,
@@ -588,12 +590,12 @@ export function createInventoryUI(
         cellBg.setFillStyle(COLORS.cellHover);
       });
 
-      // Item icon: prefer the approved generated sprite when the item's
-      // icon (or id when no override) matches a manifest entry's briefId and
-      // Phaser has loaded the texture. When a brief has multiple approved
-      // variants, one is chosen deterministically per (item, run). Falls back
-      // to the 2-character placeholder otherwise.
-      const generatedEntry = selectGeneratedEntry(def.icon);
+      // Item icon: prefer the item's real approved generated sprite (resolved
+      // by item id, placeholder-only as a last resort) when Phaser has loaded
+      // the texture. When a concept has multiple approved variants, one is
+      // chosen deterministically per (item, run). Falls back to the
+      // 2-character placeholder text otherwise.
+      const generatedEntry = selectGeneratedEntry(def.id);
       const generatedTextureLoaded =
         generatedEntry !== null && scene.textures?.exists(generatedEntry.textureKey) === true;
 
@@ -819,8 +821,7 @@ export function createInventoryUI(
       // finishes (the slot contents alone are unchanged, so without this the
       // cells would stay on their text fallback until the next inventory
       // mutation). Selecting via the same path as the icon keeps them in sync.
-      const iconBriefId = getItemById(slot.itemId)?.icon ?? slot.itemId;
-      const entry = selectGeneratedEntry(iconBriefId);
+      const entry = selectGeneratedEntry(slot.itemId);
       const iconReady = entry !== null && scene.textures?.exists(entry.textureKey) === true;
       signature += `;${slot.itemId}:${slot.quantity}:${entry?.textureKey ?? ''}:${iconReady ? 1 : 0}`;
     }

@@ -64,8 +64,6 @@ export interface ItemDef {
   rarity: ItemRarity;
   /** Use `Infinity` for unlimited stacking, `1` for non-stackable. */
   maxStack: number;
-  /** Texture key (placeholder string for now). */
-  icon: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -92,7 +90,6 @@ function mat(
     tags: ['Materials', ...extraTags],
     rarity,
     maxStack: 99,
-    icon: id,
   };
 }
 
@@ -110,7 +107,6 @@ function wpn(
     tags: ['Weapons', ...extraTags],
     rarity,
     maxStack: 1,
-    icon: id,
   };
 }
 
@@ -128,7 +124,6 @@ function con(
     tags: ['Consumables', ...extraTags],
     rarity,
     maxStack: 20,
-    icon: id,
   };
 }
 
@@ -146,7 +141,6 @@ function key(
     tags: ['Key Items', ...extraTags],
     rarity,
     maxStack: 1,
-    icon: id,
   };
 }
 
@@ -164,7 +158,6 @@ function misc(
     tags: ['Misc', ...extraTags],
     rarity,
     maxStack: 99,
-    icon: id,
   };
 }
 
@@ -183,7 +176,6 @@ function gear(id: string, name: string, desc: string, rarity: ItemRarity): ItemD
     tags: [customTag('Gear')],
     rarity,
     maxStack: 1,
-    icon: id,
   };
 }
 
@@ -222,12 +214,7 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   wpn('thunder-staff', 'Thunder Staff', 'Crackles ominously during weather reports.', R),
   wpn('void-scythe', 'Void Scythe', 'Cuts through matter and morale alike.', E),
   wpn('star-lance', 'Star Lance', 'Looks like a comet. Hits like one too.', L),
-  {
-    ...wpn('bone-club', 'Baseball Bat', 'Heavy swing, simple results.', C, [
-      customTag('Smelly Stuff'),
-    ]),
-    icon: 'baseball-bat-v1',
-  },
+  wpn('bone-club', 'Baseball Bat', 'Heavy swing, simple results.', C, [customTag('Smelly Stuff')]),
   wpn('plasma-pistol', 'Pistol', 'A standard sidearm with no sci-fi extras.', R),
   wpn('crystal-wand', 'Flare Gun', 'Short-range firepower in a familiar package.', U),
   wpn('toxic-blowgun', 'Toxic Blowgun', "One puff and they're napping.", U),
@@ -286,10 +273,7 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   key('broadcast-chip', 'Broadcast Chip', 'Contains a recording. Of what?', U),
   key('elevator-fuse', 'Elevator Fuse', "The elevator won't move without it.", R),
   key('vip-lanyard', 'VIP Lanyard', 'Looks important. Feels important.', U),
-  {
-    ...key('classified-dossier', 'Classified Dossier', 'Eyes only. (Everyone reads it anyway.)', E),
-    icon: 'classified-dossier-v1',
-  },
+  key('classified-dossier', 'Classified Dossier', 'Eyes only. (Everyone reads it anyway.)', E),
   key(
     'glistening-rat-tail',
     'Glistening Rat Tail',

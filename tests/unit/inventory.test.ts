@@ -30,7 +30,6 @@ const testCatalog: ItemDef[] = [
     tags: ['Materials'],
     rarity: ItemRarity.Common,
     maxStack: 10,
-    icon: 'test-ore',
   },
   {
     id: 'test-sword',
@@ -39,7 +38,6 @@ const testCatalog: ItemDef[] = [
     tags: ['Weapons'],
     rarity: ItemRarity.Rare,
     maxStack: 1,
-    icon: 'test-sword',
   },
   {
     id: 'test-potion',
@@ -48,7 +46,6 @@ const testCatalog: ItemDef[] = [
     tags: ['Consumables'],
     rarity: ItemRarity.Uncommon,
     maxStack: 5,
-    icon: 'test-potion',
   },
   {
     id: 'stinky-bone',
@@ -57,7 +54,6 @@ const testCatalog: ItemDef[] = [
     tags: ['Materials', customTag('Smelly Stuff')],
     rarity: ItemRarity.Common,
     maxStack: 20,
-    icon: 'stinky-bone',
   },
 ];
 
@@ -116,7 +112,6 @@ describe('InventoryBag', () => {
           tags: [],
           rarity: ItemRarity.Common,
           maxStack: 0,
-          icon: 'bad-item',
         },
       ];
       expect(() => addItem(bag, 'bad-item', 1, badCatalog)).toThrow('Invalid maxStack');

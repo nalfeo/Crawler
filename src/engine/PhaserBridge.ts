@@ -695,11 +695,13 @@ export function createPhaserBridge(scene: Phaser.Scene): {
 
           const swingSprite = meleeSwing.spriteId[eid] ?? 0;
 
-          // Prefer the approved generated art (see InventoryUI.ts and
-          // items.ts icon: 'baseball-bat-v1'). Only the bat has approved
-          // generated melee art today — the sword branch still resolves to
-          // the Kenney placeholder. When a `sword-v1` (or hammer variant)
-          // gets approved, add its briefId here.
+          // Prefer the approved generated art for the in-world swing. Only the
+          // bat has approved generated melee art today — the sword branch still
+          // resolves to the Kenney placeholder. The inventory/equipment panels
+          // resolve item art via `resolveItemSprite` (ADR 0051); this swing path
+          // stays a direct briefId lookup until the bat art is migrated to a
+          // single bare `baseball-bat` lineage. When a `sword-v1` (or hammer
+          // variant) gets approved, add its briefId here.
           const generatedBriefId = swingSprite === MeleeSpriteId.BAT ? 'baseball-bat-v1' : null;
           const generatedRegistry = generatedBriefId ? getGeneratedSpriteRegistry(scene) : null;
           const generatedEntry: GeneratedSpriteEntry | null =

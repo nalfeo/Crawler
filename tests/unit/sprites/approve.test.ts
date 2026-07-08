@@ -666,4 +666,102 @@ describe('approveVariant', () => {
     // No resolvable brief ⇒ the manifest entry's type is null.
     expect(entry.type).toBeNull();
   });
+
+  describe('item art recurrence guard (ADR 0051)', () => {
+    it('ships a versioned weapon-typed item brief BARE (flame-dagger-v2 → flame-dagger)', () => {
+      const { runDir } = writeFakeRun(repoRoot, {
+        briefId: 'flame-dagger-v2',
+        variantIndices: [0, 1],
+        chosenIndex: 1,
+      });
+      const entry = approveVariant({
+        runDir,
+        variantIndex: 1,
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+        repoRoot,
+        now: fixedNow,
+      });
+
+      // The -v2 lineage tag is stripped: the manifest key, briefId, spriteName,
+      // and assetPath are all the bare item id so the icon resolves by item id.
+      expect(entry.briefId).toBe('flame-dagger');
+      expect(entry.spriteName).toBe('flame-dagger-var-1');
+      expect(entry.assetPath).toBe('generated/flame-dagger-var-1.png');
+
+      const manifest = readManifest(manifestPath);
+      expect(manifest.entries).toHaveProperty('flame-dagger-var-1');
+      expect(manifest.entries).not.toHaveProperty('flame-dagger-v2-var-1');
+
+      const catalog = JSON.parse(readFileSync(catalogPath, 'utf8')) as Array<
+        Record<string, unknown>
+      >;
+      expect(catalog.find((e) => e.id === 'generated:flame-dagger-var-1')).toBeDefined();
+      expect(catalog.find((e) => e.id === 'generated:flame-dagger-v2-var-1')).toBeUndefined();
+    });
+
+    it('ships character-typed item art BARE (classified-dossier-v1 → classified-dossier)', () => {
+      const { runDir } = writeFakeRun(repoRoot, {
+        briefId: 'classified-dossier-v1',
+        variantIndices: [0],
+        chosenIndex: 0,
+      });
+      const entry = approveVariant({
+        runDir,
+        variantIndex: 0,
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+        repoRoot,
+        now: fixedNow,
+      });
+
+      expect(entry.briefId).toBe('classified-dossier');
+      expect(entry.spriteName).toBe('classified-dossier-var-0');
+      expect(entry.assetPath).toBe('generated/classified-dossier-var-0.png');
+    });
+
+    it('ships a weaponId-alias brief BARE (baseball-bat-v3 → baseball-bat)', () => {
+      const { runDir } = writeFakeRun(repoRoot, {
+        briefId: 'baseball-bat-v3',
+        variantIndices: [0],
+        chosenIndex: 0,
+      });
+      const entry = approveVariant({
+        runDir,
+        variantIndex: 0,
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+        repoRoot,
+        now: fixedNow,
+      });
+
+      expect(entry.briefId).toBe('baseball-bat');
+      expect(entry.spriteName).toBe('baseball-bat-var-0');
+    });
+
+    it('leaves a genuine non-item versioned brief VERSIONED (angry-roomba-v2)', () => {
+      const { runDir } = writeFakeRun(repoRoot, {
+        briefId: 'angry-roomba-v2',
+        variantIndices: [0],
+        chosenIndex: 0,
+      });
+      const entry = approveVariant({
+        runDir,
+        variantIndex: 0,
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+        repoRoot,
+        now: fixedNow,
+      });
+
+      // Enemy art is not an item identity → the -v2 lineage is preserved.
+      expect(entry.briefId).toBe('angry-roomba-v2');
+      expect(entry.spriteName).toBe('angry-roomba-v2-var-0');
+      expect(entry.assetPath).toBe('generated/angry-roomba-v2-var-0.png');
+    });
+  });
 });

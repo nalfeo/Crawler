@@ -40,7 +40,6 @@ function makeCatalogItem(id: string): ItemDef {
     tags: [customTag('test')],
     rarity: ItemRarity.Common,
     maxStack: 1,
-    icon: 'placeholder',
   };
 }
 const TEST_CATALOG: ItemDef[] = [makeCatalogItem('colossus-blade'), makeCatalogItem('warblade')];
