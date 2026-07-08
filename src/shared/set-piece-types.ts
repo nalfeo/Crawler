@@ -124,11 +124,29 @@ export type SpriteRef = CatalogSpriteRef | SheetSpriteRef | CustomSpriteRef;
 /** A single drawable layer within a prop. Layers stack to form composites. */
 export interface SpriteLayer {
   readonly sprite: SpriteRef;
-  /** Sub-tile pixel offset from the prop's top-left tile. */
+  /** Sub-tile pixel offset from the prop's top-left tile (lab pixels). */
   readonly offsetX?: number;
   readonly offsetY?: number;
-  /** Uniform scale multiplier (1 = native). */
+  /**
+   * Sub-tile position nudge in FEET, added on top of any pixel offset. Prefer
+   * this over `offsetX`/`offsetY` for real-world placement (e.g. lifting a
+   * sconce up onto the wall with `offsetYFt: -3.5`).
+   */
+  readonly offsetXFt?: number;
+  readonly offsetYFt?: number;
+  /**
+   * Explicit render box in FEET for this layer, overriding the tile-derived
+   * size. The sprite is contain-fit inside this box (aspect preserved, never
+   * stretched), so authoring a realistic footprint (a 1.5 ft sconce, a 5 ft
+   * desk) no longer distorts the art. Both must be supplied together.
+   */
+  readonly widthFt?: number;
+  readonly heightFt?: number;
+  /** Uniform scale multiplier (1 = native), applied on top of the render box. */
   readonly scale?: number;
+  /** Mirror the sprite horizontally / vertically (e.g. mirror a paired sconce). */
+  readonly flipX?: boolean;
+  readonly flipY?: boolean;
   /** Optional tint as `#rrggbb`. */
   readonly tintHex?: string;
 }
@@ -174,6 +192,29 @@ export interface SetPieceNpcDef {
   readonly anchorRole?: SetPieceNpcAnchorRole;
 }
 
+/**
+ * How the set piece's footprint is positioned within the target room's interior
+ * when it is smaller than the room. Floor-1 rooms are usually much larger than
+ * an authored set piece, so the default (centre/centre) strands "back wall"
+ * decor in open floor. Setting `verticalAlign: "top"` slides the whole block up
+ * against the room's top wall, keeping every authored intra-block relationship
+ * (wall decor above the goon, desk in front of him) while letting the wall props
+ * actually reach the wall (paired with a small negative `offsetYFt` lift).
+ *
+ * Alignment is applied per axis over the SLACK (interior extent − footprint
+ * extent); when the footprint meets or exceeds the interior on an axis the
+ * origin pins to that interior edge and per-tile clamping keeps tiles passable.
+ */
+export type SetPieceVerticalAlign = 'top' | 'center' | 'bottom';
+export type SetPieceHorizontalAlign = 'left' | 'center' | 'right';
+
+export interface SetPiecePlacement {
+  /** Vertical anchoring within the room interior. Defaults to `center`. */
+  readonly verticalAlign?: SetPieceVerticalAlign;
+  /** Horizontal anchoring within the room interior. Defaults to `center`. */
+  readonly horizontalAlign?: SetPieceHorizontalAlign;
+}
+
 export interface SetPieceDef {
   readonly id: string;
   readonly name: string;
@@ -188,6 +229,8 @@ export interface SetPieceDef {
   readonly maxHeight?: number;
   readonly description: string;
   readonly tags: readonly string[];
+  /** How the block anchors within an oversized room. Defaults to centre/centre. */
+  readonly placement?: SetPiecePlacement;
   readonly props: readonly SetPiecePropDef[];
   /** NPCs placed by this set piece (empty when none authored). */
   readonly npcs: readonly SetPieceNpcDef[];
@@ -245,13 +288,27 @@ const spriteLayerSchema = z
     sprite: spriteRefSchema,
     offsetX: z.number().optional(),
     offsetY: z.number().optional(),
+    offsetXFt: z.number().optional(),
+    offsetYFt: z.number().optional(),
+    widthFt: z.number().positive().optional(),
+    heightFt: z.number().positive().optional(),
     scale: z.number().positive().optional(),
+    flipX: z.boolean().optional(),
+    flipY: z.boolean().optional(),
     tintHex: z
       .string()
       .regex(/^#[0-9a-fA-F]{6}$/, 'tintHex must be #rrggbb')
       .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    if ((value.widthFt === undefined) !== (value.heightFt === undefined)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'widthFt and heightFt must be supplied together.',
+      });
+    }
+  });
 
 const propKinds = ['floor', 'wall', 'door', 'fixture', 'furniture', 'decoration', 'actor'] as const;
 
@@ -280,6 +337,13 @@ const npcSourceSchema = z
   })
   .strict();
 
+const placementSchema = z
+  .object({
+    verticalAlign: z.enum(['top', 'center', 'bottom']).optional(),
+    horizontalAlign: z.enum(['left', 'center', 'right']).optional(),
+  })
+  .strict();
+
 const setPieceSourceSchema = z
   .object({
     id: z.string().trim().min(1),
@@ -292,6 +356,7 @@ const setPieceSourceSchema = z
     maxHeight: z.number().int().positive().optional(),
     description: z.string().trim().min(1),
     tags: z.array(z.string().trim().min(1)).default([]),
+    placement: placementSchema.optional(),
     props: z.array(propSourceSchema).min(1),
     npcs: z.array(npcSourceSchema).default([]),
   })
@@ -415,6 +480,7 @@ function compileSetPiece(source: SetPieceSource): SetPieceDef {
     maxHeight: source.maxHeight,
     description: source.description,
     tags: source.tags,
+    ...(source.placement !== undefined ? { placement: source.placement } : {}),
     props: source.props.map(compileProp),
     npcs: source.npcs.map(compileNpc),
   };
