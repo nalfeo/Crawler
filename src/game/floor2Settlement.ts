@@ -57,18 +57,24 @@ export function initializeFloor2Settlement(
     throw new Error('initializeFloor2Settlement: world.floorMap is null');
   }
   const settlements = floorMap.roomGraph.getRoomsByRole(RoomRole.SETTLEMENT);
-  const settlement = settlements[0];
-  if (!settlement) {
-    throw new Error('initializeFloor2Settlement: no SETTLEMENT room in floor map');
+  const settlement = settlements.find((room) => room.label === 'settlement_bar') ?? settlements[0];
+  if (!settlement || settlements.length < 2 || settlements.length > 3) {
+    throw new Error(
+      `initializeFloor2Settlement: expected 2-3 settlement rooms, found ${settlements.length}`,
+    );
   }
 
-  // 1. Retag as SAFE + repaint floor tiles.
-  floorMap.roomGraph.setRole(settlement.id, RoomRole.SAFE);
-  repaintSafeRoomFloor(world, settlement);
+  // 1. Retag all settlement-cluster rooms as SAFE + repaint floor tiles.
+  for (const room of settlements) {
+    floorMap.roomGraph.setRole(room.id, RoomRole.SAFE);
+    repaintSafeRoomFloor(world, room);
+  }
 
-  // 2. Seal the perimeter — mirrors Floor 1's shop / welcome-office pass.
-  sealSpecialRooms(floorMap, { extraRoomIds: [settlement.id] });
-  installSettlementDoorEntities(world, settlement);
+  // 2. Seal perimeters — mirrors Floor 1's shop / welcome-office pass.
+  sealSpecialRooms(floorMap, { extraRoomIds: settlements.map((room) => room.id) });
+  for (const room of settlements) {
+    installSettlementDoorEntities(world, room);
+  }
 
   // 3. Compute centroid + spawn positions (tile → world).
   const centreTile = roomCentroidTile(settlement);
@@ -84,17 +90,27 @@ export function initializeFloor2Settlement(
   world.rng.shuffle(shuffled);
   const picked = shuffled.slice(0, Math.min(shopCount, shuffled.length));
 
-  const shopOffsetTiles = 3;
+  const shopRooms = settlements.filter((room) => room.id !== settlement.id);
+  const fallbackShopRoom = shopRooms[0] ?? settlement;
+  const assignedRooms = picked.map(
+    (_archetype, idx) => shopRooms[idx % Math.max(1, shopRooms.length)] ?? fallbackShopRoom,
+  );
+  const roomShopTotals = new Map<number, number>();
+  for (const room of assignedRooms) {
+    roomShopTotals.set(room.id, (roomShopTotals.get(room.id) ?? 0) + 1);
+  }
+  const roomShopSlots = new Map<number, number>();
   const shops: Floor2ShopInstance[] = [];
   picked.forEach((archetype, idx) => {
-    // Fan shops out along the room's x axis relative to the centroid.
-    const offsetSign = idx === 0 ? -1 : 1;
-    const desiredTx = centreTile.x + offsetSign * shopOffsetTiles;
-    const clampedTx = Math.min(
-      settlement.bounds.x + settlement.bounds.width - 2,
-      Math.max(settlement.bounds.x + 1, desiredTx),
+    const spawnRoom = assignedRooms[idx]!;
+    const slot = roomShopSlots.get(spawnRoom.id) ?? 0;
+    roomShopSlots.set(spawnRoom.id, slot + 1);
+    const spawnTile = settlementRoomShopTile(
+      spawnRoom,
+      slot,
+      roomShopTotals.get(spawnRoom.id) ?? 1,
     );
-    const worldPos = floorMap.tileToWorld(clampedTx, centreTile.y);
+    const worldPos = floorMap.tileToWorld(spawnTile.x, spawnTile.y);
     const npcEid = spawnNpc(world, worldPos.x, worldPos.y, archetype.npcId);
     const rolled = generateShopInventory(world.rng, archetype);
     const inventory: Floor2ShopInventoryItem[] = rolled.items.map((item) => ({
@@ -112,6 +128,7 @@ export function initializeFloor2Settlement(
 
   const snapshot: Floor2SettlementSnapshot = {
     settlementRoomId: settlement.id,
+    settlementRoomIds: settlements.map((room) => room.id),
     brokerEid,
     shops,
   };
@@ -178,4 +195,40 @@ function roomCentroidTile(room: RoomData): { x: number; y: number } {
     x: room.bounds.x + Math.floor(room.bounds.width / 2),
     y: room.bounds.y + Math.floor(room.bounds.height / 2),
   };
+}
+
+/**
+ * Pick deterministic, distinct-ish tiles for multiple shopkeepers in the same
+ * settlement room so they do not stack on one centroid tile.
+ */
+function settlementRoomShopTile(
+  room: RoomData,
+  slotIndex: number,
+  totalShopsInRoom: number,
+): { x: number; y: number } {
+  const total = Math.max(1, totalShopsInRoom);
+  const slot = Math.max(0, Math.min(slotIndex, total - 1));
+  if (room.interiorCells && room.interiorCells.length > 0) {
+    const sorted = [...room.interiorCells].sort((a, b) => a.y - b.y || a.x - b.x);
+    if (total === 1 || sorted.length === 1) {
+      const mid = sorted[Math.floor(sorted.length / 2)]!;
+      return { x: mid.x, y: mid.y };
+    }
+    const fraction = total === 1 ? 0.5 : slot / (total - 1);
+    const index = Math.max(
+      0,
+      Math.min(sorted.length - 1, Math.round(fraction * (sorted.length - 1))),
+    );
+    const chosen = sorted[index]!;
+    return { x: chosen.x, y: chosen.y };
+  }
+  const base = roomCentroidTile(room);
+  if (total === 1) return base;
+  const left = room.bounds.x + 1;
+  const right = room.bounds.x + room.bounds.width - 2;
+  const minX = Math.min(left, right);
+  const maxX = Math.max(left, right);
+  const fraction = total === 1 ? 0.5 : slot / (total - 1);
+  const x = Math.round(minX + (maxX - minX) * fraction);
+  return { x, y: base.y };
 }
