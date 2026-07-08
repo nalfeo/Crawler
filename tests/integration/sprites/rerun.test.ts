@@ -166,7 +166,7 @@ describe('repostprocessRun', () => {
   });
 
   it('rejects when the stored sheet no longer re-slices to the persisted grid (modern path)', async () => {
-    // The rerun guard is DATA-DRIVEN (ADR 2026-07-08 slicer-never-cut-art): it
+    // The rerun guard is DATA-DRIVEN (ADR 0052): it
     // re-slices the stored sheet anchored on the run's PERSISTED actual grid —
     // NOT the brief — and rejects if the crops no longer reproduce that grid.
     // That is the real corruption signal: the persisted grid is wrong or the
@@ -221,7 +221,7 @@ describe('repostprocessRun', () => {
   });
 
   it('treats a post-generation brief grid change as a no-op (persisted-grid-anchored reversal)', async () => {
-    // REVERSAL (2026-07-08, ADR slicer-never-cut-art): the rerun re-slice no
+    // REVERSAL (2026-07-08, ADR 0052): the rerun re-slice no
     // longer follows the brief — it anchors on the run's persisted actual grid.
     // So widening the brief to 2×3 AFTER generation does NOT reshape the crops;
     // re-post-process succeeds and reproduces the stored 2×2 (4 variants),

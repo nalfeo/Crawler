@@ -18,8 +18,7 @@
  *   gallery review — it never forces the commanded count by slicing through
  *   foreground art. That was the "chopping the right side" bug: a wide
  *   `welcome-room-shop-table` sheet drawn 3-wide but commanded 4-wide had a
- *   uniform 4-col split driven straight through every table. See ADR
- *   2026-07-08-slicer-never-cut-art.
+ *   uniform 4-col split driven straight through every table. See ADR 0052.
  * - `sliceSheetFromBrief`/`sliceSheetWithGrid` return the ACTUAL grid + count
  *   (a `BriefSliceResult`) so the caller persists the real grid, not the
  *   commanded one;
@@ -464,7 +463,7 @@ describe('sliceSheetFromBrief', () => {
     // grid rather than forcing 2×2 = 4 cells by inventing cuts/rows through the
     // art. The declared empty cells are dropped because the grid no longer
     // matches. Human gallery review — not a forced count — rejects the bad
-    // sheet (product decision reversed 2026-07-08; ADR slicer-never-cut-art).
+    // sheet (product decision reversed 2026-07-08; ADR 0052).
     const sheet = encodeContentGrid(1, 3, {
       block: 6,
       gutter: 4,
