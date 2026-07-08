@@ -1,5 +1,16 @@
 [
   {
+    "commit": "771f0e26a51a8a34be1f0f9c572e79731083532d",
+    "commitDate": "2026-07-08T11:45:58Z",
+    "commitSubject": "feat(engine): wire Floor-1 rubble prop and slime-rat mid-boss to generated art (#912)",
+    "capturedAt": "2026-07-08T12:24:36.075Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28940479626",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/771f0e26a51a8a34be1f0f9c572e79731083532d.json"
+  },
+  {
     "commit": "aef066ce1b19ac72835b333b029afe8abe9157db",
     "commitDate": "2026-07-08T11:32:51Z",
     "commitSubject": "feat(sprites): normalize item art naming + retire ItemDef.icon indirection (#909)",
