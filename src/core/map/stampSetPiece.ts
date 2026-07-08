@@ -156,9 +156,15 @@ function interiorOf(bounds: RoomBounds): InteriorBounds {
 }
 
 /**
- * Choose the interior tile the def's (0,0) maps to, centring the def within the
- * room interior. When the def is larger than the interior the origin pins to the
- * interior's top-left and per-tile clamping keeps everything on passable tiles.
+ * Choose the interior tile the def's (0,0) maps to. The def is anchored within
+ * the room interior per its `placement` (defaulting to centre/centre), applied
+ * over the SLACK on each axis (interior extent − footprint extent). When the def
+ * is larger than the interior the slack is 0, so the origin pins to the interior
+ * top-left and per-tile clamping keeps everything on passable tiles.
+ *
+ * `verticalAlign: "top"` (slack applied as 0) hugs the room's top wall so
+ * wall-mounted decor can reach the wall; `center` reproduces the historical
+ * `floor(slack / 2)` centring exactly; `bottom`/`right` push to the far edge.
  */
 export function computeStampOrigin(
   def: SetPieceDef,
@@ -166,8 +172,14 @@ export function computeStampOrigin(
 ): { originTileX: number; originTileY: number } {
   const interior = interiorOf(roomBounds);
   const footprint = getSetPieceFootprint(def);
-  const offsetX = Math.max(0, Math.floor((interior.width - footprint.width) / 2));
-  const offsetY = Math.max(0, Math.floor((interior.height - footprint.height) / 2));
+  const slackX = Math.max(0, interior.width - footprint.width);
+  const slackY = Math.max(0, interior.height - footprint.height);
+  const horizontalAlign = def.placement?.horizontalAlign ?? 'center';
+  const verticalAlign = def.placement?.verticalAlign ?? 'center';
+  const offsetX =
+    horizontalAlign === 'left' ? 0 : horizontalAlign === 'right' ? slackX : Math.floor(slackX / 2);
+  const offsetY =
+    verticalAlign === 'top' ? 0 : verticalAlign === 'bottom' ? slackY : Math.floor(slackY / 2);
   return {
     originTileX: interior.minX + offsetX,
     originTileY: interior.minY + offsetY,
@@ -210,20 +222,37 @@ export function stampSetPiece(def: SetPieceDef, opts: StampSetPieceOptions): Sta
     // sub-tile pixel offset (lab pixels → feet).
     const footprintCentreX = tileX * tileSizeFt + (prop.width * tileSizeFt) / 2;
     const footprintCentreY = tileY * tileSizeFt + (prop.height * tileSizeFt) / 2;
-    const offsetXFt = ((layer.offsetX ?? 0) / SET_PIECE_TILE_SIZE) * tileSizeFt;
-    const offsetYFt = ((layer.offsetY ?? 0) / SET_PIECE_TILE_SIZE) * tileSizeFt;
-    // The base layer fills the prop footprint; accent layers keep their own
-    // (smaller) extent so a scale-0.8 potion doesn't inflate to 80% of a table.
-    const layerTiles =
-      layerIndex === 0
-        ? { width: prop.width, height: prop.height }
-        : nativeLayerTiles(layer.sprite);
+    // Position nudge: legacy lab-pixel offset (offsetX/offsetY) plus an explicit
+    // feet nudge (offsetXFt/offsetYFt), so a sconce can be lifted onto the wall.
+    const offsetXFt =
+      ((layer.offsetX ?? 0) / SET_PIECE_TILE_SIZE) * tileSizeFt + (layer.offsetXFt ?? 0);
+    const offsetYFt =
+      ((layer.offsetY ?? 0) / SET_PIECE_TILE_SIZE) * tileSizeFt + (layer.offsetYFt ?? 0);
+    // Render box in feet. An explicit `widthFt`/`heightFt` (validated as a pair)
+    // wins — the sprite is contain-fit inside it, so realistic sizing never
+    // stretches the art. Otherwise the base layer fills the prop footprint and
+    // accent layers keep their own (smaller) extent.
+    let boxWidthFt: number;
+    let boxHeightFt: number;
+    if (layer.widthFt !== undefined && layer.heightFt !== undefined) {
+      boxWidthFt = layer.widthFt;
+      boxHeightFt = layer.heightFt;
+    } else {
+      const layerTiles =
+        layerIndex === 0
+          ? { width: prop.width, height: prop.height }
+          : nativeLayerTiles(layer.sprite);
+      boxWidthFt = layerTiles.width * tileSizeFt;
+      boxHeightFt = layerTiles.height * tileSizeFt;
+    }
     const render: SetPiecePropRender = {
       sprite: layer.sprite,
       depth: setPieceZToDepth(z) + index * LAYER_DEPTH_EPSILON,
-      widthFt: layerTiles.width * tileSizeFt,
-      heightFt: layerTiles.height * tileSizeFt,
+      widthFt: boxWidthFt,
+      heightFt: boxHeightFt,
       ...(layer.scale !== undefined ? { scale: layer.scale } : {}),
+      ...(layer.flipX !== undefined ? { flipX: layer.flipX } : {}),
+      ...(layer.flipY !== undefined ? { flipY: layer.flipY } : {}),
       ...(layer.tintHex !== undefined ? { tintHex: layer.tintHex } : {}),
       label: prop.id,
     };
