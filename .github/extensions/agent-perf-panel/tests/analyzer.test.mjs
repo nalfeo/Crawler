@@ -751,3 +751,23 @@ test('context tooltip rides the visible knob + stem, not the zero-width .pt wrap
   assert.match(html, /"stem"'\s*\+\s*tipAttr/);
   assert.match(html, /"knob"'\s*\+\s*tipAttr/);
 });
+
+test('waterfall still renders the context strip for sessions with compactions but no tool calls (PR #842)', () => {
+  const html = renderHtml('inst-1');
+  // Regression guard: a session with real context high-water marks but zero tool
+  // calls must NOT collapse to the whole-panel "No tool calls recorded." bail.
+  // viewWaterfall renders when there are tool lanes OR context.hasData.
+  assert.ok(html.includes('const hasContext = !!(wf && wf.context && wf.context.hasData);'));
+  assert.ok(html.includes('if (!wf || (!hasRows && !hasContext)) return'));
+  // ...and it shows an honest empty-plot note in that case.
+  assert.ok(html.includes('No tool calls in this session'));
+});
+
+test('waterfall bars floor rendered width at 1px so the true axis position is not distorted (PR #842)', () => {
+  const html = renderHtml('inst-1');
+  // Regression guard: only the rendered WIDTH is floored (anti-vanish for 0ms
+  // spans); a 1px floor is below the visual-overlap threshold, so it cannot
+  // manufacture a false "parallel" look. Bar POSITION always uses true leftPct.
+  assert.ok(html.includes('.wf-plot .wf-row .track .seg { min-width: 1px; }'));
+  assert.ok(!html.includes('min-width: 2px'));
+});

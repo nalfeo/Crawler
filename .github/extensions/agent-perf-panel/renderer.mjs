@@ -137,7 +137,10 @@ svg .axis text { fill: var(--muted); }
 .wf-plot .wf-grid .wf-gl { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(139,148,158,.16); }
 .wf-plot .wf-row { position: relative; z-index: 1; padding: 1px 0; }
 .wf-plot .wf-row .track { background: transparent; }
-.wf-plot .wf-row .track .seg { min-width: 2px; }
+/* Bar POSITION is always the true leftPct; only rendered WIDTH has a 1px floor so
+   sub-pixel/0ms spans stay visible + hoverable. 1px is below the visual-overlap
+   threshold, so it can't manufacture a false "parallel" look between adjacent bars. */
+.wf-plot .wf-row .track .seg { min-width: 1px; }
 .wf-dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
 .wf-turn { display: flex; gap: 10px; align-items: baseline; padding: 8px 0 3px; margin-top: 2px; border-top: 1px dashed var(--border); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; position: relative; z-index: 1; }
 .wf-turn .idx { color: var(--text); font-weight: 600; }
@@ -403,7 +406,13 @@ const CLIENT_SCRIPT = `
 
   function viewWaterfall(s) {
     const wf = s.waterfall;
-    if (!wf || !wf.rows || !wf.rows.length) return '<div class="empty">No tool calls recorded.</div>';
+    // Render the panel when there are tool lanes OR real context samples on the
+    // session axis. A session with compactions but no tool calls still has a
+    // meaningful context strip + ruler, so we only bail out entirely when there
+    // is genuinely nothing to show.
+    const hasRows = !!(wf && wf.rows && wf.rows.length);
+    const hasContext = !!(wf && wf.context && wf.context.hasData);
+    if (!wf || (!hasRows && !hasContext)) return '<div class="empty">No tool calls recorded.</div>';
 
     // A TRUE waterfall: one shared wall-clock time axis spanning the whole
     // session, one lane per tool call ordered by real start time. Each bar is
@@ -447,6 +456,13 @@ const CLIENT_SCRIPT = `
           '<div class="dur">' + fmtMs(r.durationMs) + '</div>' +
         '</div>',
       );
+    }
+
+    // No tool lanes but real context samples: keep the context strip + ruler
+    // (both meaningful on the session axis) and show an honest empty-plot note
+    // instead of hiding the whole panel.
+    if (!wf.rows.length) {
+      body.push('<div class="muted" style="padding:8px 0;font-size:11px;">No tool calls in this session — context high-water marks are shown above.</div>');
     }
 
     const truncNote = wf.truncated
