@@ -1460,7 +1460,6 @@ export class CaveSystemGenerator implements MapGenerator {
     terrain: Uint8Array,
     bounds: RoomBounds,
     w: number,
-    enforcePerimeterWalls = true,
   ): void {
     for (let y = bounds.y; y < bounds.y + bounds.height; y++) {
       for (let x = bounds.x; x < bounds.x + bounds.width; x++) {
@@ -1471,16 +1470,8 @@ export class CaveSystemGenerator implements MapGenerator {
           x === bounds.x + bounds.width - 1 ||
           y === bounds.y + bounds.height - 1;
         if (perimeter) {
-          if (enforcePerimeterWalls) {
-            tileMap.flags[idx] = TilePresets.WALL;
-            terrain[idx] = TerrainType.STONE_WALL;
-          } else if (tileMap.isPassable(x, y)) {
-            tileMap.flags[idx] = TilePresets.FLOOR;
-            terrain[idx] = TerrainType.CAVE_FLOOR;
-          } else {
-            tileMap.flags[idx] = TilePresets.WALL;
-            terrain[idx] = TerrainType.STONE_WALL;
-          }
+          tileMap.flags[idx] = TilePresets.WALL;
+          terrain[idx] = TerrainType.STONE_WALL;
         } else {
           tileMap.flags[idx] = TilePresets.FLOOR;
           terrain[idx] = TerrainType.STONE_FLOOR;
