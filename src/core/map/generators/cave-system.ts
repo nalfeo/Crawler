@@ -946,7 +946,7 @@ export class CaveSystemGenerator implements MapGenerator {
     w: number,
     h: number,
     seeds: Array<{ x: number; y: number }>,
-  ): { regions: RegionInfo[]; adjacency: Map<number, Set<number>> } {
+  ): { regions: RegionInfo[] } {
     const owner = new Int32Array(w * h).fill(-1);
     const queue: number[] = [];
     for (let i = 0; i < seeds.length; i++) {
@@ -1013,47 +1013,9 @@ export class CaveSystemGenerator implements MapGenerator {
         r.centroidY = Math.round(r.centroidY / r.cells.length);
       }
     }
-    // Compute inter-region adjacency by walking every passable cell and comparing
-    // its 4-neighbours' owner. This is the semantic-graph counterpart to the
-    // tile-level `.connect()` flood, so that Slice 3+ AI systems that navigate by
-    // `RoomGraph.getConnectedRooms` see the same topology the tile map already has.
-    const adjacency = new Map<number, Set<number>>();
-    for (let i = 0; i < seeds.length; i++) adjacency.set(i, new Set<number>());
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const idx = y * w + x;
-        const a = owner[idx]!;
-        if (a < 0) continue;
-        const rightIdx = x + 1 < w ? idx + 1 : -1;
-        const downIdx = y + 1 < h ? idx + w : -1;
-        if (rightIdx >= 0) {
-          const b = owner[rightIdx]!;
-          if (b >= 0 && b !== a) {
-            adjacency.get(a)!.add(b);
-            adjacency.get(b)!.add(a);
-          }
-        }
-        if (downIdx >= 0) {
-          const b = owner[downIdx]!;
-          if (b >= 0 && b !== a) {
-            adjacency.get(a)!.add(b);
-            adjacency.get(b)!.add(a);
-          }
-        }
-      }
-    }
     // Filter tiny regions (<25 tiles) — they'd make lousy caverns.
     const kept = regions.filter((r) => r.cells.length >= 25);
-    const keptIds = new Set(kept.map((r) => r.id));
-    // Drop adjacency entries pointing to filtered-out regions.
-    for (const [id, set] of adjacency) {
-      if (!keptIds.has(id)) {
-        adjacency.delete(id);
-        continue;
-      }
-      for (const n of Array.from(set)) if (!keptIds.has(n)) set.delete(n);
-    }
-    return { regions: kept, adjacency };
+    return { regions: kept };
   }
 
   private addRegionAsRoom(
