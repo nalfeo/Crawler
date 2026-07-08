@@ -274,12 +274,20 @@ export const TILE_SPRITES: Readonly<Partial<Record<TerrainType, TileVisualDef>>>
   },
 
   /**
-   * Corridor floor — clean cool-gray cobblestone (RPG pack row 0, col 8;
-   * frame 8). Full-bleed with no transparent gaps, so 1-tile-wide passages no
-   * longer render as vertical "bars". The cool gray distinguishes cut-stone
-   * passages from the warm tan room floor at a glance.
+   * Corridor floor — clean cool-gray cobblestone. Generated single-texture art
+   * (`tile-corridor-v1-var-10`) stamps via the generated branch in
+   * buildTerrainLayer; the RPG pack cobblestone frame (row 0, col 8) stays as
+   * the fallback if the texture fails to load. var-10 was chosen from six
+   * variants as the cleanest, most uniformly-tileable sheet — the others carry
+   * strong asymmetric cracks (var-4/-8) or a discolouration blob (var-12) that
+   * would read as an obvious repeat across a passage. The cool gray still
+   * distinguishes cut-stone passages from the warm tan room floor at a glance.
    */
-  [TerrainType.CORRIDOR]: { sheetKey: RPG, frame: rpg(8, 0) },
+  [TerrainType.CORRIDOR]: {
+    sheetKey: RPG,
+    frame: rpg(8, 0),
+    textureKey: 'tile-corridor-v1-var-10',
+  },
 
   /**
    * Door tile — base floor sprite so the passable path reads as walkable;
