@@ -1,5 +1,16 @@
 [
   {
+    "commit": "e8a1dc90d8d03161c7585586de382c0ad8361752",
+    "commitDate": "2026-07-08T11:07:19Z",
+    "commitSubject": "chore: address Copilot review nits on harvestable node sprites (#911)",
+    "capturedAt": "2026-07-08T11:46:56.410Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28938305695",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/e8a1dc90d8d03161c7585586de382c0ad8361752.json"
+  },
+  {
     "commit": "2e876b54a74ef50d3562e8b1f6d30aa8fc264b6d",
     "commitDate": "2026-07-08T10:49:52Z",
     "commitSubject": "feat: render Floor-1 harvestable nodes as generated sprites (#908)",
