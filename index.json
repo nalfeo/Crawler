@@ -11,6 +11,17 @@
     "path": "by-sha/fa24ead8f0c4f8f5b7ca2164900c8faf6687fd56.json"
   },
   {
+    "commit": "dfa02e01630685d64928f5b58087274c43148768",
+    "commitDate": "2026-07-08T20:41:36Z",
+    "commitSubject": "feat: wire Floor-2 enemy generated art into the render path (#917)",
+    "capturedAt": "2026-07-08T21:21:34.284Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28974655271",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/dfa02e01630685d64928f5b58087274c43148768.json"
+  },
+  {
     "commit": "761f09cbc8ad86a19a03ce9e48b069c14a9d5e44",
     "commitDate": "2026-07-08T20:27:49Z",
     "commitSubject": "docs: streamline ADR governance docs (#920)",
