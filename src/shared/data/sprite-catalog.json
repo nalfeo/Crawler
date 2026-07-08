@@ -2560,5 +2560,44 @@
     "frame": 0,
     "col": 0,
     "row": 0
+  },
+  {
+    "id": "generated:beetlefolk-charger-var-0",
+    "kind": "sprite",
+    "label": "beetlefolk-charger-var-0",
+    "description": "Generated sprite from brief: beetlefolk-charger.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "beetlefolk-charger-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/beetlefolk-charger-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:imp-flinger-var-2",
+    "kind": "sprite",
+    "label": "imp-flinger-var-2",
+    "description": "Generated sprite from brief: imp-flinger.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "imp-flinger-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/imp-flinger-var-2.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:snailfolk-slimer-var-0",
+    "kind": "sprite",
+    "label": "snailfolk-slimer-var-0",
+    "description": "Generated sprite from brief: snailfolk-slimer.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "snailfolk-slimer-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/snailfolk-slimer-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
   }
 ]

@@ -6604,6 +6604,108 @@
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\raccoon-thief\\2026-07-08T05-09-05-00c19274\\postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
+    },
+    "beetlefolk-charger-var-0": {
+      "briefId": "beetlefolk-charger",
+      "spriteName": "beetlefolk-charger-var-0",
+      "assetPath": "generated/beetlefolk-charger-var-0.png",
+      "approvedAt": "2026-07-08T05:37:20.687Z",
+      "sourceRun": "generated/runs/beetlefolk-charger/2026-07-08T05-33-20-0a59528e",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 33,
+        "y": 33,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 33,
+          "y": 33,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 33,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "8e1e31a29faf935b4031016f3c379807f508684d353e6f579459ebfb64f1ea64",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\beetlefolk-charger\\2026-07-08T05-33-20-0a59528e\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\beetlefolk-charger\\2026-07-08T05-33-20-0a59528e\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\beetlefolk-charger\\2026-07-08T05-33-20-0a59528e\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "imp-flinger-var-2": {
+      "briefId": "imp-flinger",
+      "spriteName": "imp-flinger-var-2",
+      "assetPath": "generated/imp-flinger-var-2.png",
+      "approvedAt": "2026-07-08T05:28:40.326Z",
+      "sourceRun": "generated/runs/imp-flinger/2026-07-08T05-21-18-9a9eeb90",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 35,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 35,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 27,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "c28d873b8fe0376b8ce296660d5ef38ad4095fa502cba7ced2d03e47a206da87",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\imp-flinger\\2026-07-08T05-21-18-9a9eeb90\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\imp-flinger\\2026-07-08T05-21-18-9a9eeb90\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\imp-flinger\\2026-07-08T05-21-18-9a9eeb90\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "snailfolk-slimer-var-0": {
+      "briefId": "snailfolk-slimer",
+      "spriteName": "snailfolk-slimer-var-0",
+      "assetPath": "generated/snailfolk-slimer-var-0.png",
+      "approvedAt": "2026-07-08T05:28:41.384Z",
+      "sourceRun": "generated/runs/snailfolk-slimer/2026-07-08T05-24-26-93658899",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 34,
+        "y": 34,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 34,
+          "y": 34,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 34,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "006210d1a964fe188ea0822df7616daf68aa1d2738d2e00ce82899dea749634d",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\snailfolk-slimer\\2026-07-08T05-24-26-93658899\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\snailfolk-slimer\\2026-07-08T05-24-26-93658899\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\snailfolk-slimer\\2026-07-08T05-24-26-93658899\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     }
   }
 }
