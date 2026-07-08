@@ -1,6 +1,7 @@
 import type { EnemyArchetypeDef, EnemyPackDef } from '../../shared/enemy-packs.js';
 import { BiomeType } from '../../shared/map-types.js';
 import type { SpawnerArchetype } from '../../game/spawners/types.js';
+import { getQuadrantSpawnWeights } from '../../game/floor2Scenario.js';
 
 export interface SpawnTableRow {
   readonly region: string;
@@ -105,15 +106,7 @@ function buildQuadrantRows(context: SpawnTableContext): SpawnTableRow[] {
     context.quadrants.map((entry) => [entry.quadrant, entry]),
   );
   const order: readonly SpawnQuadrantId[] = ['N', 'S', 'E', 'W'];
-  const neighbors: Record<
-    SpawnQuadrantId,
-    readonly [SpawnQuadrantId, SpawnQuadrantId, SpawnQuadrantId]
-  > = {
-    N: ['E', 'S', 'W'],
-    S: ['N', 'W', 'E'],
-    E: ['N', 'W', 'S'],
-    W: ['S', 'E', 'N'],
-  };
+  const orderIndex = new Map<SpawnQuadrantId, number>(order.map((id, index) => [id, index]));
   const cadence = context.ambientPack
     ? `every ${context.ambientPack.spawnIntervalMs}ms`
     : 'ambient cadence';
@@ -121,13 +114,23 @@ function buildQuadrantRows(context: SpawnTableContext): SpawnTableRow[] {
     .map((quadrantId) => {
       const primary = quadrants.get(quadrantId);
       if (!primary) return null;
-      const [nearA, nearB, far] = neighbors[quadrantId];
-      const nearAName = quadrants.get(nearA)?.archetypeName ?? nearA;
-      const nearBName = quadrants.get(nearB)?.archetypeName ?? nearB;
-      const farName = quadrants.get(far)?.archetypeName ?? far;
+      const weightedArchetypes = [...getQuadrantSpawnWeights(quadrantId).entries()]
+        .map((entry) => ({
+          quadrant: entry[0] as SpawnQuadrantId,
+          weight: Math.round(entry[1] * 100),
+        }))
+        .filter((weighted) => weighted.weight > 0 && quadrants.has(weighted.quadrant))
+        .sort(
+          (a, b) =>
+            b.weight - a.weight ||
+            (orderIndex.get(a.quadrant) ?? 0) - (orderIndex.get(b.quadrant) ?? 0),
+        );
+      const mobs = weightedArchetypes
+        .map((weighted) => `${quadrants.get(weighted.quadrant)!.archetypeName} ${weighted.weight}%`)
+        .join(', ');
       return {
         region: `Quadrant ${quadrantId}`,
-        mobs: `${primary.archetypeName} 50%, ${nearAName} 20%, ${nearBName} 20%, ${farName} 10%`,
+        mobs,
         quantity: context.ambientPack
           ? `shares cap ${context.ambientPack.enemyCap}`
           : 'shared ambient pool',
