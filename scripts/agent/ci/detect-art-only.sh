@@ -128,7 +128,7 @@ done <<<"$changed"
 # scripts, .github, root config — forces the gate to run. Consumed by ci.yml to
 # skip the headless job on pull_requests only.
 # The sprite pipeline (scripts/sprites/, tests/unit/sprites/, tests/integration/sprites/,
-# and the 9 root pipeline integration tests) is also safe: the headless runner imports
+# and the 8 root pipeline integration tests) is also safe: the headless runner imports
 # only src/core, src/shared, src/game/ai and never touches scripts/sprites/.
 gameplay_safe=true
 while IFS= read -r file; do
@@ -163,7 +163,7 @@ done <<<"$changed"
 # When true, CI skips game tests (unit, integration, headless, e2e) and runs only
 # the dedicated sprites test project.
 # Sprite surface: scripts/sprites/, tests/unit/sprites/, tests/integration/sprites/,
-# plus the 9 root pipeline integration tests that exercise the full pipeline E2E.
+# plus the 8 root pipeline integration tests that exercise the full pipeline E2E.
 sprites_only=true
 while IFS= read -r file; do
   [ -z "$file" ] && continue
