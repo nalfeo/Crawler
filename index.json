@@ -1,5 +1,16 @@
 [
   {
+    "commit": "e1a9dd4ae7b19703c0701b649390de279abd83ca",
+    "commitDate": "2026-07-08T07:06:30Z",
+    "commitSubject": "docs: add asset-forge content-generation agent + sprite-judge skill (#902)",
+    "capturedAt": "2026-07-08T07:46:03.686Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28924610992",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/e1a9dd4ae7b19703c0701b649390de279abd83ca.json"
+  },
+  {
     "commit": "51b0ec878534ffd2eaaac820ab2b51d96e2766f9",
     "commitDate": "2026-07-08T06:36:28Z",
     "commitSubject": "lab: wire real slime/rat art into UX Snapshot lab (#901)",
