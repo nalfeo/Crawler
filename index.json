@@ -1,5 +1,16 @@
 [
   {
+    "commit": "94bf9f6220256bdfdc5ec9135151e448a3535f3f",
+    "commitDate": "2026-07-08T05:48:13Z",
+    "commitSubject": "fix(security): rename fused test files to avoid secret-scanner false positive (#899)",
+    "capturedAt": "2026-07-08T06:19:42.654Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28920911551",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/94bf9f6220256bdfdc5ec9135151e448a3535f3f.json"
+  },
+  {
     "commit": "cb5680f4eec201a2c53a2298a4960a018280a7ee",
     "commitDate": "2026-07-08T05:41:02Z",
     "commitSubject": "feat(sprites): consolidate 64 approved assets from 1 check-in(s) (#900)",
