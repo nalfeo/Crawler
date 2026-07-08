@@ -2236,6 +2236,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     riskRewardFieldsGraphics = null;
     fusedCandidatesGraphics?.destroy();
     fusedCandidatesGraphics = null;
+    navmeshGraphics?.destroy();
+    navmeshGraphics = null;
     panelRoot.remove();
     game.destroy(true);
   };

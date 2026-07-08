@@ -45,7 +45,13 @@ function parseSeeds(spec: string): number[] {
       const b = Number(m[2]);
       for (let i = a; i <= b; i++) out.push(i);
     } else if (part.trim()) {
-      out.push(Number(part));
+      const n = Number(part);
+      if (!Number.isInteger(n) || n < 0) {
+        throw new Error(
+          `Invalid seed "${part}" in --seeds: expected a non-negative integer or an "A-B" range.`,
+        );
+      }
+      out.push(n);
     }
   }
   return out;

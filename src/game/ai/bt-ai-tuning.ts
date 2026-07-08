@@ -158,8 +158,8 @@ export const LINE_OF_SIGHT_SAMPLE_FT = 1;
 // wedge against the wall it was routing around (observed as a multi-second
 // EXPLORE oscillation that collapses travel efficiency).
 export const WAYPOINT_ARRIVE_FT = 1;
-// Distance (ft) within which a navmesh route's FINAL waypoint must land of the
-// resolved goal for the route to count as goal-REACHING (2 tiles at 4ft/tile).
+// Distance (ft) within which a navmesh route's FINAL waypoint must land within
+// the resolved goal for the route to count as goal-REACHING (2 tiles at 4ft/tile).
 // recast's computePath returns success=true with a nearest-reachable PARTIAL
 // route — final waypoint hundreds of feet short — when the goal lies in a
 // navmesh polygon component disconnected from the start. Under the pinned

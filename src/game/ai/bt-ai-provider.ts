@@ -299,8 +299,11 @@ const TRAVEL_HEADING_EPSILON = 1e-6;
 // BEHAVIOR (grid-A* fallback) and its `navPartialPathFallbacks` counter are
 // UNCONDITIONAL — only the verbose per-fire logging is gated — so toggling this
 // env var can never change the simulation or the determinism hash. Read once at
-// module load (constant for the process).
-const NAVGUARD_STATS_ENABLED = process.env.NAVGUARD_STATS === '1';
+// module load (constant for the process). The `typeof process` guard keeps
+// browser/lab builds (where the `process` global is undefined) from throwing on
+// import — matching the codebase's guarded env pattern (see src/shared/logger.ts).
+const NAVGUARD_STATS_ENABLED =
+  typeof process !== 'undefined' && process.env?.NAVGUARD_STATS === '1';
 
 // --- RISK_REWARD_FUSED pathing (AIPathingMode.RISK_REWARD_FUSED) -------------
 // The fused heading scorer samples candidate directions fanned around the
