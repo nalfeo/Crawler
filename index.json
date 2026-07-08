@@ -66,6 +66,17 @@
     "path": "by-sha/cb0bbc561d9167fe03b9a667e5c0de93d6e97b04.json"
   },
   {
+    "commit": "a6a7987f1db5911c54fe700e173aa9df44262311",
+    "commitDate": "2026-07-08T09:06:47-07:00",
+    "commitSubject": "feat(ai): AIPathingMode.NAVMESH — deterministic recast waypoint pathing (default-OFF) (#913)",
+    "capturedAt": "2026-07-08T16:46:52.162Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28957782583",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/a6a7987f1db5911c54fe700e173aa9df44262311.json"
+  },
+  {
     "commit": "d7337301798624321bade28874adfa3f10c0510a",
     "commitDate": "2026-07-08T08:20:44Z",
     "commitSubject": "feat(sprites): add 3 welcome-room NPC character sprites (#906)",
