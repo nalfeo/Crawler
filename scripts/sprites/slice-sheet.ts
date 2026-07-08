@@ -406,9 +406,20 @@ function pickRuntEdge(sizes: readonly number[]): 'lead' | 'tail' | null {
 }
 
 /**
- * True when `size` is a tacked-on partial edge cell: too small (< 60% median),
- * its inward `neighbour` is full (>= 60% median), and the two are NOT a single
- * sprite split in half by a spurious interior gutter (phantom-merge guard).
+ * True when `size` is a tacked-on partial edge cell that should be dropped: too
+ * small (< 60% median), its inward `neighbour` is full (>= 60% median), and the
+ * two are NOT plausibly one median-sized sprite split by a spurious interior
+ * gutter (`phantomHalf`).
+ *
+ * `phantomHalf` is a deliberately BROAD, conservative KEEP guard — not a precise
+ * 0.5/0.5 half-detector. Whenever `size + neighbour` lands within 40% of ONE
+ * median cell, the pair is treated as possibly-real art and KEPT for human
+ * review rather than trimmed. This intentionally errs toward keeping an ambiguous
+ * edge cell: dropping it would risk chopping real art off the edge — the exact
+ * failure this salvage path exists to prevent (ADR 0052). Trimming only ever
+ * drops a cell bounded by real DETECTED gutters, so it never cuts THROUGH
+ * foreground; the only question here is keep-vs-drop of an ambiguous edge, and
+ * the bias is deliberately KEEP.
  */
 function isEdgeRunt(size: number, neighbour: number, median: number): boolean {
   const tooSmall = size * RUNT_SMALL_DEN < median * RUNT_SMALL_NUM;
