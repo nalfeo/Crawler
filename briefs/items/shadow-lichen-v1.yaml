@@ -1,0 +1,19 @@
+type: item
+name: shadow-lichen-v1
+description: |
+  A single centered patch of shadow lichen, a Floor 1 harvestable resource
+  node seen from a slight top-down angle. A low, spreading, velvety crust in
+  dark grey-blue with deep indigo shadow pockets and only faint muted
+  highlights, as if it quietly drinks in the light around it. The texture
+  reads as soft and matte rather than shiny. A subtle darker aura at its edges
+  helps the shape stay readable against a dark dungeon floor without glowing.
+  Compact, creeping silhouette that reads as a dark lichen patch at a glance.
+  Transparent background, no ground tile, no shadow blob, no container.
+sensors:
+  edge:
+    allowMainTouch: true
+variations:
+  - a branching crust with a few faint violet-grey highlights at the tips
+  - a rounded velvety mound with deep indigo cracks running through it
+  - a sprawling patch with wispy dark tendrils reaching outward
+minVariations: 5

@@ -1,0 +1,50 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-08",
+  "session_slug": "asset-name-normalization",
+  "task_title": "Normalize item sprite naming + retire ItemDef.icon indirection",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "notes": "5 blocking: (1) resolver must rank globally across itemId+weaponId not per-concept; (2) approve guard key on ItemDef.id union weaponId aliases not type; (3) observe-before-done must use real manifest via useRealGeneratedSprites not synthetic PROBE registry; (4) pre-apply repo-wide reference sweep + enumerate bat fixtures; (5) bat migration is atomic-or-deferred, icon override removal safe via resolver. All verified in code and folded into plan.md Plan Review Resolutions section."
+    },
+    "dual_plan_synthesis": {
+      "completed": true,
+      "plan_models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+      "judge_model": "claude-opus-4.8",
+      "notes": "Two independent plans; judge reconciled: containment inside resolveItemSprite (Plan B) + bone-club weaponId fallthrough & preserve-type & resolver-first ordering (Plan A). Synthesized into plan.md."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview", "claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ],
+      "notes": "3 parallel code-review agents over resolver + retire-icon reroute + migration. Only concern: migration delete-old path keyed on briefId/existence not bytes, weakening the both-exist-different-bytes fail invariant. Resolved via byte-compare guards in apply loops + planConcept contentHash guard + exported filesByteEqual; +3 unit tests (14 pass). Observe-before-done (rule #10) REAL-artifact evidence: committed real-InventoryUI headless observation tests/integration/inventory-ui-item-art.test.ts drives the production createInventoryUI factory over the real shipped manifest = 16 real-art images and 0 placeholders (positive), 0 images on empty registry (negative control); plus generated-manifest-engine.test.ts resolveItemSprite assertions over the real manifest for all 15 items + bone-club->baseball-bat."
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview", "claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ],
+      "notes": "Same 3 distinct-model reviews adjudicated by claude-opus-4.8. 2/3 convergence on one valid concern (migration byte-safety on interrupted-re-run collision paths); other flags judged non-issues (resolver/type handling correct). Fix applied + re-verified (typecheck clean, 14 migration unit tests pass). No new concerns."
+    }
+  }
+}

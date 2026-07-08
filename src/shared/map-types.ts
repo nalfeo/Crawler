@@ -92,6 +92,59 @@ export interface MapConfig {
   readonly caveSystem?: {
     /** Number of family territories to stamp (3–4). */
     readonly presentCount?: number;
+    /** Cellular initial fill ratio (higher = more open caverns). */
+    readonly initialFill?: number;
+    /** Cellular smoothing passes. */
+    readonly smoothingPasses?: number;
+    /** Boss-den side length in tiles. */
+    readonly bossDenSize?: number;
+    /** Resource-heart chamber target diameter in tiles. */
+    readonly resourceHeartDiameterTiles?: number;
+    /** Minimum tile separation between region seeds (clamped to map diagonal). */
+    readonly regionSeparationTiles?: number;
+    /** Maximum retry attempts before generation fails. */
+    readonly maxRetries?: number;
+    /** Number of post-connect cavern widening passes. */
+    readonly cavernWidenPasses?: number;
+    /** Minimum run length to perturb straight hallway segments. */
+    readonly straightHallwayMinRun?: number;
+    /**
+     * Family territory diameter as a fraction of map size (min dimension).
+     * Default 0.3 = 30% diameter circles from boss den centers.
+     */
+    readonly territoryRadiusFraction?: number;
+    /**
+     * Random angular offset for the first den, as a fraction of one den step.
+     * 1.0 allows a full step-width random rotation.
+     */
+    readonly denStartAngleJitterFraction?: number;
+    /**
+     * Per-den radial jitter inside the configured den min/max radius band.
+     * 0 = no radial jitter, 1 = full band jitter.
+     */
+    readonly denDistanceJitterFraction?: number;
+    /**
+     * Boss-den target radial band minimum as fraction of center→edge distance.
+     * Default 0.6 (60% toward map edge).
+     */
+    readonly denTargetRadiusMinFraction?: number;
+    /**
+     * Boss-den target radial band maximum as fraction of center→edge distance.
+     * Default 0.8 (80% toward map edge).
+     */
+    readonly denTargetRadiusMaxFraction?: number;
+    /** Minimum Euclidean separation between den targets in tiles. */
+    readonly denTargetMinSeparationTiles?: number;
+    /** Minimum spawn distance from any den center, in tiles. */
+    readonly spawnMinDistanceFromDenTiles?: number;
+    /** Minimum spawn distance from the resource-heart center, in tiles. */
+    readonly spawnMinDistanceFromResourceHeartTiles?: number;
+    /** Minimum spawn distance from the settlement center, in tiles. */
+    readonly spawnMinDistanceFromSettlementTiles?: number;
+    /** Minimum settlement distance from any den center, in tiles. */
+    readonly settlementMinDistanceFromDenTiles?: number;
+    /** Minimum settlement distance from the resource-heart center, in tiles. */
+    readonly settlementMinDistanceFromResourceHeartTiles?: number;
   };
 }
 
@@ -176,6 +229,24 @@ export interface RoomData {
   readonly interiorCells?: ReadonlyArray<{ readonly x: number; readonly y: number }>;
 }
 
+// --- Territory Zones (Floor 2 spawn-weighting metadata) ---
+
+/**
+ * A circular spawn-influence zone attached to a boss den. Used by spawn systems
+ * to weight mob placement toward a family's territory. NOT a room — this is purely
+ * metadata about where a family's influence extends on the map.
+ */
+export interface TerritoryZone {
+  /** Index into the present-families roster (matches TERRITORY / BOSS_DEN familyIndex). */
+  readonly familyIndex: number;
+  /** Center tile X of the zone (boss den center). */
+  readonly centerX: number;
+  /** Center tile Y of the zone (boss den center). */
+  readonly centerY: number;
+  /** Influence radius in tiles. */
+  readonly radius: number;
+}
+
 // --- Floor Map (composite output of generation) ---
 
 export interface FloorMapData {
@@ -191,4 +262,6 @@ export interface FloorMapData {
   readonly visible: Uint8Array;
   /** Player spawn tile position. */
   readonly playerSpawn: { readonly x: number; readonly y: number };
+  /** Floor 2 family spawn-influence zones (empty on other floors). */
+  readonly territoryZones?: ReadonlyArray<TerritoryZone>;
 }

@@ -268,6 +268,7 @@ const GENERATED_BRIEF_BY_TYPE: Readonly<Record<string, string>> = {
   enemy_spawner_rats_nest: 'rat-nest-v2',
   enemy_spawner_slime_pool: 'slime-pool-v1',
   enemy_boss_ratslime: 'rat-slime-v1',
+  enemy_boss_slimerat: 'slime-rat-boss',
 };
 
 const GENERATED_BRIEF_BY_APPEARANCE_KEY: Readonly<Record<string, string>> = {
@@ -299,6 +300,37 @@ export function generatedBriefIdForEnemy(type: string, appearanceKey?: string): 
   return GENERATED_BRIEF_BY_TYPE[type];
 }
 
+/**
+ * Generated-sprite briefId for each Floor 1 harvestable node def id.
+ *
+ * On-floor harvestable *world nodes* resolve their art through this explicit
+ * map — mirroring {@link GENERATED_BRIEF_BY_TYPE} for enemies — rather than by
+ * the bare item id. The `-v1` namespace deliberately keeps node art in its own
+ * lane, separate from the inventory *item icon* surface (which resolves by bare
+ * `itemId === briefId`): the two surfaces are authored and wired independently,
+ * and a bare-id key here would additionally collide with the reusable
+ * `azure-mushroom-v1` brief. Keys are `HarvestableDef.id` values from
+ * `src/shared/harvestableDefs.ts`.
+ */
+const GENERATED_BRIEF_BY_HARVESTABLE: Readonly<Record<string, string>> = {
+  'crimson-mushroom': 'crimson-mushroom-v1',
+  'azure-mushroom': 'azure-mushroom-v1',
+  'sunpetal-flower': 'sunpetal-flower-v1',
+  'moonbloom-flower': 'moonbloom-flower-v1',
+  'frost-lichen': 'frost-lichen-v1',
+  'shadow-lichen': 'shadow-lichen-v1',
+};
+
+/**
+ * Resolve the generated-sprite briefId for a harvestable node def id, or
+ * `undefined` when the node type has no wired art (the renderer then falls back
+ * to the procedural tinted circle). Pure — reads only the static map — so it is
+ * unit-testable without a Phaser scene, mirroring {@link generatedBriefIdForEnemy}.
+ */
+export function generatedBriefIdForHarvestable(defId: string): string | undefined {
+  return GENERATED_BRIEF_BY_HARVESTABLE[defId];
+}
+
 export function pickGeneratedEnemyTextureKey(
   registry: GeneratedSpriteRegistry | null | undefined,
   type: string,
@@ -309,6 +341,63 @@ export function pickGeneratedEnemyTextureKey(
     return null;
   }
   const briefId = generatedBriefIdForEnemy(type, appearanceKey);
+  if (briefId === undefined) {
+    return null;
+  }
+  const variants = registry.variants(briefId);
+  if (variants.length === 0) {
+    return null;
+  }
+  const index = Math.floor(normalizeVariantRoll(variantRoll) * variants.length);
+  return variants[index]?.textureKey ?? null;
+}
+
+/**
+ * Pinned generated texture key per welcome-room NPC def id ({@link NpcDef.id}).
+ *
+ * NPCs resolve their generated art def-aware — by NPC def id — rather than via
+ * a variant roll like enemies, because the shipped variants differ per NPC: the
+ * Spell Broker's approved variant is `var-1` while the Goon and Merchant shipped
+ * as `var-0`. Computing a variant index from a roll would therefore mis-pick the
+ * broker. Values are the BARE manifest keys, which preload as individual Phaser
+ * textures (verified for the welcome-room set-piece props in PR #905) — so a
+ * caller only needs `scene.textures.exists(key)` to gate on availability.
+ */
+export const GENERATED_KEY_BY_NPC_DEF: Readonly<Record<string, string>> = {
+  'tutorial-goon': 'npc-welcome-goon-var-0',
+  shopkeeper: 'npc-sweaty-merchant-var-0',
+  'spell-quest-giver': 'npc-spell-broker-var-1',
+};
+
+/**
+ * Resolve the pinned generated texture key for an NPC def id, or `null` when
+ * the def has no dedicated generated art (the caller then falls back to the
+ * shared Kenney villager). Pure — no Phaser scene, no registry — so it is
+ * unit-testable in isolation (mirrors {@link enemyVariantFromTextureId}).
+ */
+export function pickGeneratedNpcTextureKey(defId: string | undefined): string | null {
+  if (defId === undefined) {
+    return null;
+  }
+  return GENERATED_KEY_BY_NPC_DEF[defId] ?? null;
+}
+
+/**
+ * Resolve the generated-sprite `textureKey` for a harvestable node def id, or
+ * `null` when there is no registry, no wired briefId, or no approved variant
+ * (the renderer then falls back to the procedural tinted circle). Deterministic
+ * for a given `variantRoll` and pure (no Phaser scene) — mirrors
+ * {@link pickGeneratedEnemyTextureKey} so it is unit-testable in isolation.
+ */
+export function pickGeneratedHarvestableTextureKey(
+  registry: GeneratedSpriteRegistry | null | undefined,
+  defId: string | undefined,
+  variantRoll: number | undefined,
+): string | null {
+  if (registry === null || registry === undefined || defId === undefined) {
+    return null;
+  }
+  const briefId = generatedBriefIdForHarvestable(defId);
   if (briefId === undefined) {
     return null;
   }

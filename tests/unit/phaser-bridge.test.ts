@@ -5,6 +5,7 @@ import {
   DeathTimer,
   Enemy,
   Gold,
+  Harvestable,
   Player,
   Position,
   Prop,
@@ -14,6 +15,7 @@ import {
   Velocity,
   XpGem,
 } from '../../src/core/components.js';
+import { HARVESTABLE_DEFS } from '../../src/shared/harvestableDefs.js';
 import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
 import { RAT_BRUTE_TINT } from '../../src/engine/phaser-bridge/sprite-kind.js';
 import { ENTITY_DEPTH, WORLD_VFX_DEPTH } from '../../src/shared/render-depths.js';
@@ -32,6 +34,7 @@ import { setPieceZToDepth } from '../../src/shared/render-depths.js';
 import { MeleeSpriteId } from '../../src/shared/constants.js';
 import { getSprite } from '../../src/engine/sprites/index.js';
 import { DECORATION_DEF_INDEX } from '../../src/shared/decorationDefs.js';
+import { flattenSetPieceLayers, getSetPieceDef } from '../../src/shared/set-piece-types.js';
 
 /**
  * Faithful local stand-in for a Phaser weapon image on the melee-swing render
@@ -286,7 +289,8 @@ describe('createPhaserBridge', () => {
         }),
       },
       textures: {
-        exists: (key: string) => key === 'prop-wall-sconce-v1-var-1',
+        exists: (key: string) =>
+          key === 'prop-wall-sconce-v1-var-1' || key === 'prop-rubble-pile-var-1',
       },
     } as unknown as Phaser.Scene;
 
@@ -303,9 +307,17 @@ describe('createPhaserBridge', () => {
     addComponent(world.ecs, placeholderProp, set(Position, { x: 3, y: 4 }));
     world.stores.prop.defIdIndex[placeholderProp] = DECORATION_DEF_INDEX['junk-pile']!;
 
+    // Rubble is wired to real generated art (prop-rubble-pile-var-1); it must
+    // render as a sprite, not the placeholder rectangle it used to fall back to.
+    const rubbleProp = addEntity(world.ecs);
+    addComponent(world.ecs, rubbleProp, Prop);
+    addComponent(world.ecs, rubbleProp, set(Position, { x: 5, y: 6 }));
+    world.stores.prop.defIdIndex[rubbleProp] = DECORATION_DEF_INDEX['rubble']!;
+
     bridge.sync(world);
 
     expect(propImages.some((img) => img.textureKey === 'prop-wall-sconce-v1-var-1')).toBe(true);
+    expect(propImages.some((img) => img.textureKey === 'prop-rubble-pile-var-1')).toBe(true);
     expect(propRects.length).toBeGreaterThan(0);
 
     bridge.destroy();
@@ -395,6 +407,123 @@ describe('createPhaserBridge', () => {
     bridge.destroy();
     expect(desk?.destroyed).toBe(true);
     expect(propRects[0]?.destroyed).toBe(true);
+  });
+
+  it('resolves shipped welcome-room generated props to real catalog art (bare key, rug untinted)', () => {
+    // The exact generated manifest keys shipped for the welcome room. The rug is
+    // var-0; the velvet rope is var-2 (the others are var-0).
+    const GENERATED_KEYS = {
+      rug: 'welcome-room-rug-var-0',
+      desk: 'welcome-room-desk-var-0',
+      shopTable: 'welcome-room-shop-table-var-0',
+      bookcase: 'welcome-room-bookcase-var-0',
+      velvetRope: 'welcome-room-velvet-rope-var-2',
+    } as const;
+    const expectedKeys = new Set<string>(Object.values(GENERATED_KEYS));
+
+    // Guard the shipped JSON wiring: the welcome-room def must reference each
+    // generated prop as a `catalog` ref pinned to its exact bare manifest key.
+    const def = getSetPieceDef('welcome-room');
+    expect(def).toBeDefined();
+    const layers = flattenSetPieceLayers(def!);
+    const catalogSpriteIds = new Set(
+      layers
+        .map((draw) => draw.layer.sprite)
+        .filter((sprite) => sprite.source === 'catalog')
+        .map((sprite) => (sprite as { spriteId: string }).spriteId),
+    );
+    for (const key of expectedKeys) {
+      expect(catalogSpriteIds.has(key)).toBe(true);
+    }
+
+    // The rug layer must NOT carry a tint: the generated art is already a worn
+    // red velvet runner, so a `#7f1d1d` tint would double-darken it. This guards
+    // the tint drop that landed with the custom→catalog ref swap.
+    const rugLayers = layers.filter((draw) => {
+      const sprite = draw.layer.sprite;
+      return (
+        sprite.source === 'catalog' &&
+        (sprite as { spriteId: string }).spriteId === GENERATED_KEYS.rug
+      );
+    });
+    expect(rugLayers.length).toBeGreaterThan(0);
+    for (const draw of rugLayers) {
+      expect(draw.layer.tintHex).toBeUndefined();
+    }
+
+    // Render path: a `catalog` ref whose generated texture is loaded under its
+    // bare manifest key resolves to a real image (no spritesheet frame), never a
+    // placeholder rect — even when no Kenney catalog sheet is loaded.
+    const propImages: (MockImage & { displayW?: number; displayH?: number })[] = [];
+    const propRects: PropRect[] = [];
+    const scene = {
+      add: {
+        image: vi.fn((x = 0, y = 0, textureKey = '', frame?: number) => {
+          const img = new MockImage(x, y, textureKey, frame) as MockImage & {
+            displayW?: number;
+            displayH?: number;
+          };
+          (
+            img as unknown as { setDisplaySize: (w: number, h: number) => MockImage }
+          ).setDisplaySize = function setDisplaySize(w: number, h: number): MockImage {
+            img.displayW = w;
+            img.displayH = h;
+            return img;
+          };
+          propImages.push(img);
+          return img as unknown as Phaser.GameObjects.Image;
+        }),
+        rectangle: vi.fn((x = 0, y = 0, width = 0, height = 0) => {
+          const rect = new PropRect(x, y, width, height);
+          propRects.push(rect);
+          return rect as unknown as Phaser.GameObjects.Rectangle;
+        }),
+      },
+      textures: {
+        // Only the generated welcome-room textures are loaded (bare keys); no
+        // Kenney catalog sheet, so resolution must fall through to the bare key.
+        exists: (key: string) => expectedKeys.has(key),
+      },
+    } as unknown as Phaser.Scene;
+
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+
+    // Rug (background band, z=0, untinted) + desk (foreground band, z=30).
+    addSetPieceProp(world, 5, 6, {
+      sprite: { source: 'catalog', spriteId: GENERATED_KEYS.rug },
+      depth: setPieceZToDepth(0),
+      widthFt: 16,
+      heightFt: 8,
+      label: 'welcome-room-rug',
+    });
+    addSetPieceProp(world, 3, 2, {
+      sprite: { source: 'catalog', spriteId: GENERATED_KEYS.desk },
+      depth: setPieceZToDepth(30),
+      widthFt: 12,
+      heightFt: 4,
+      label: 'welcome-desk',
+    });
+
+    bridge.sync(world);
+
+    const rug = propImages.find((img) => img.textureKey === GENERATED_KEYS.rug);
+    const desk = propImages.find((img) => img.textureKey === GENERATED_KEYS.desk);
+    expect(rug).toBeDefined();
+    expect(desk).toBeDefined();
+    // Bare generated key → individual texture, no spritesheet frame.
+    expect(rug?.frame).toBeUndefined();
+    expect(desk?.frame).toBeUndefined();
+    // Both resolved to real art: no labeled-placeholder rects were drawn.
+    expect(propRects).toHaveLength(0);
+    // Rug renders untinted; desk sits above the entity plane, rug below it.
+    expect(rug?.tinted).toBe(false);
+    expect(rug?.depth).toBeLessThan(ENTITY_DEPTH);
+    expect(desk?.depth).toBeGreaterThan(ENTITY_DEPTH);
+
+    bridge.destroy();
+    expect(rug?.destroyed).toBe(true);
+    expect(desk?.destroyed).toBe(true);
   });
 
   it('uses procedural texture key when no Kenney sheet is loaded', () => {
@@ -859,7 +988,7 @@ describe('createPhaserBridge', () => {
     expect(images[0]?.textureKey).toBe('slime-v1-var-9');
   });
 
-  it('uses the generated rat-slime art for the staircase boss, not the slime-rat', () => {
+  it('uses distinct generated boss art for the staircase and slime-rat mid-boss', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: true });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
@@ -886,9 +1015,10 @@ describe('createPhaserBridge', () => {
     bridge.sync(world);
 
     expect(images).toHaveLength(2);
-    // Staircase Rat Slime gets the generated art; the slime-rat tutorial boss stays generic.
+    // Each boss resolves its own dedicated generated art via the bossBattles
+    // key: 'staircase' → rat-slime-v1, 'slime-rat' (mid-boss) → slime-rat-boss.
     expect(images[0]?.textureKey).toBe('rat-slime-v1-var-1');
-    expect(images[1]?.textureKey).toBe('kenney-tiny-dungeon');
+    expect(images[1]?.textureKey).toBe('slime-rat-boss-var-1');
   });
 
   it('renders the approved baseball-bat-v1 generated art on a bat swing once its texture is ready', () => {
@@ -1300,5 +1430,143 @@ describe('createPhaserBridge', () => {
     removeEntity(world.ecs, eid);
     bridge.sync(world, 100);
     expect(images[0]!.destroyed).toBe(true);
+  });
+
+  describe('harvestable node rendering', () => {
+    // A harvestable node carries the Harvestable tag (→ 'harvestable' render kind),
+    // a Position, and a Sprite whose stored `variantRoll` picks the art variant.
+    // defIndex 0 === crimson-mushroom, which maps to brief `crimson-mushroom-v1`.
+    function spawnNode(
+      world: ReturnType<typeof createTestWorld>,
+      xFt: number,
+      yFt: number,
+      defIndex: number,
+    ): number {
+      const node = addEntity(world.ecs);
+      addComponent(world.ecs, node, set(Position, { x: xFt, y: yFt }));
+      addComponent(
+        world.ecs,
+        node,
+        set(Harvestable, { defIndex, durationMs: 3_000, progressMs: 0 }),
+      );
+      addComponent(
+        world.ecs,
+        node,
+        set(Sprite, { textureId: 0, width: 16, height: 16, variantRoll: 0, sizeScale: 1 }),
+      );
+      return node;
+    }
+
+    function spawnCrimsonNode(
+      world: ReturnType<typeof createTestWorld>,
+      xFt: number,
+      yFt: number,
+    ): number {
+      return spawnNode(world, xFt, yFt, 0);
+    }
+
+    function crimsonMushroomRegistry(): ReturnType<typeof buildGeneratedSpriteRegistry> {
+      return buildGeneratedSpriteRegistry({
+        version: 1,
+        entries: {
+          'crimson-mushroom-v1-var-3': {
+            briefId: 'crimson-mushroom-v1',
+            spriteName: 'crimson-mushroom-v1-var-3',
+            assetPath: 'generated/crimson-mushroom-v1-var-3.png',
+            approvedAt: '2026-07-01T00:00:00.000Z',
+            sourceRun: 'test',
+            variantIndex: 3,
+            anchor: null,
+            sensorScore: '8/8',
+            judgeScore: '3',
+          },
+        },
+      });
+    }
+
+    it('renders a harvestable node as its generated sprite Image when the art is wired and loaded', () => {
+      const { scene, images, graphics } = createSceneStub({
+        kenneyLoaded: true,
+        withGraphics: true,
+      });
+      (scene.game as unknown) = { registry: { get: () => crimsonMushroomRegistry() } };
+      const bridge = createPhaserBridge(scene);
+      const world = createTestWorld();
+      spawnCrimsonNode(world, 10, 10); // 10 ft → 80 px via ftToPx (×8).
+
+      bridge.sync(world);
+
+      // Sprite path: exactly one node Image using the resolved manifest key,
+      // scaled + depth-sorted to sit on the floor just below the entity plane.
+      expect(images).toHaveLength(1);
+      expect(images[0]?.textureKey).toBe('crimson-mushroom-v1-var-3');
+      expect(images[0]?.x).toBe(80);
+      expect(images[0]?.y).toBe(80);
+      expect(images[0]?.scaleX).toBe(0.4);
+      expect(images[0]?.depth).toBe(ENTITY_DEPTH - 0.2);
+      expect(images[0]?.originX).toBe(0.5);
+      expect(images[0]?.originY).toBe(0.5);
+      // With a real sprite and no harvest in progress, the procedural tinted
+      // circle body is NOT drawn (no fillStyle with the node tint anywhere).
+      expect(
+        graphics.some((g) => g.fillCalls.some((c) => c.color === HARVESTABLE_DEFS[0]!.tint)),
+      ).toBe(false);
+    });
+
+    it('falls back to the procedural tinted circle when no generated art is available (pre-wiring behavior)', () => {
+      const { scene, images, graphics } = createSceneStub({
+        kenneyLoaded: false,
+        withGraphics: true,
+      });
+      // No generated-sprite registry on the game → the resolver returns null, so
+      // the bridge draws the legacy circle. This pins the OLD behavior as the
+      // safe fallback for any unwired/not-yet-loaded node.
+      const bridge = createPhaserBridge(scene);
+      const world = createTestWorld();
+      spawnCrimsonNode(world, 10, 10);
+
+      bridge.sync(world);
+
+      // Fallback path: NO node Image; the tinted circle body is drawn instead
+      // (crimson-mushroom tint 0xcc3333) on the node Graphics.
+      expect(images).toHaveLength(0);
+      expect(
+        graphics.some((g) => g.fillCalls.some((c) => c.color === HARVESTABLE_DEFS[0]!.tint)),
+      ).toBe(true);
+    });
+
+    it('mixes sprite + circle in one sync: wired node → Image, unwired node → circle fallback', () => {
+      // Registry only has crimson-mushroom art, so a crimson node (defIndex 0)
+      // is wired but an azure node (defIndex 1) is not. A single sync() pass must
+      // route each independently — the wired node draws its Image and NO circle,
+      // the unwired node draws its circle and NO Image. This pins the per-node
+      // fallback contract (a partially-wired floor renders correctly).
+      const { scene, images, graphics } = createSceneStub({
+        kenneyLoaded: true,
+        withGraphics: true,
+      });
+      (scene.game as unknown) = { registry: { get: () => crimsonMushroomRegistry() } };
+      const bridge = createPhaserBridge(scene);
+      const world = createTestWorld();
+      spawnCrimsonNode(world, 10, 10); // wired → crimson-mushroom-v1 art exists.
+      spawnNode(world, 20, 20, 1); // azure-mushroom → no art in registry → circle.
+
+      bridge.sync(world);
+
+      // Exactly one Image, for the wired crimson node only.
+      expect(images).toHaveLength(1);
+      expect(images[0]?.textureKey).toBe('crimson-mushroom-v1-var-3');
+
+      // The unwired azure node drew its tinted circle (azure tint 0x3377cc)...
+      expect(
+        graphics.some((g) => g.fillCalls.some((c) => c.color === HARVESTABLE_DEFS[1]!.tint)),
+        'unwired azure node should draw its procedural circle',
+      ).toBe(true);
+      // ...while the wired crimson node did NOT draw a circle (crimson tint absent).
+      expect(
+        graphics.some((g) => g.fillCalls.some((c) => c.color === HARVESTABLE_DEFS[0]!.tint)),
+        'wired crimson node should render a sprite, not a circle',
+      ).toBe(false);
+    });
   });
 });

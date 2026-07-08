@@ -164,6 +164,27 @@ describe('spawnHarvestableNode', () => {
     expect(world.stores.sprite.width[eid]).toBe(1);
   });
 
+  it('seeds a deterministic cosmetic variantRoll so multi-variant art is reachable', () => {
+    const world = createTestWorld();
+    const a = spawnHarvestableNode(world, 8, 9, 0);
+    const b = spawnHarvestableNode(world, 3, 4, 0);
+    const rollA = world.stores.sprite.variantRoll[a] ?? -1;
+    const rollB = world.stores.sprite.variantRoll[b] ?? -1;
+
+    // In range [0, 1) — a real roll, not the Float32Array 0 default that would
+    // permanently pin every node to art variant index 0.
+    expect(rollA).toBeGreaterThanOrEqual(0);
+    expect(rollA).toBeLessThan(1);
+    // Distinct entities/positions → distinct rolls (the roll is actually seeded).
+    expect(rollA).not.toBe(rollB);
+
+    // Deterministic: a fresh world with the same fixed seed reproduces the roll
+    // (the seed is a local hash of world.seed+eid+context, never the shared RNG).
+    const world2 = createTestWorld();
+    const a2 = spawnHarvestableNode(world2, 8, 9, 0);
+    expect(world2.stores.sprite.variantRoll[a2]).toBe(rollA);
+  });
+
   it('throws on an unknown defIndex', () => {
     const world = createTestWorld();
     expect(() => spawnHarvestableNode(world, 0, 0, 9999)).toThrow(/unknown defIndex/);

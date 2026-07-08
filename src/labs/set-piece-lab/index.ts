@@ -1,342 +1,603 @@
-import type GUI from 'lil-gui';
-import catalogJson from '../../shared/data/sprite-catalog.json';
-import { parseSpriteCatalog } from '../../shared/sprite-catalog.js';
+/**
+ * Set-Piece Lab — renders authored set pieces through the REAL engine.
+ *
+ * This lab used to draw set pieces with a bespoke 2D-canvas renderer. That
+ * renderer could not load standalone generated PNGs and resolved catalog keys
+ * differently from the game, so the preview never matched what actually shipped.
+ *
+ * It now boots Phaser + {@link createPhaserBridge} and stamps the selected set
+ * piece into a synthesized, room-sized floor (Design A: one focused diorama per
+ * set piece). That means the preview is byte-faithful to the game:
+ *   - terrain (floor + walls) is baked by {@link buildTerrainLayer} at depth -20,
+ *   - props are spawned via {@link addSetPieceProp} and rendered by the bridge's
+ *     real set-piece pass (generated-art resolution, tint, per-layer depth),
+ *   - NPCs are spawned via {@link spawnNpc} and render as their real sprites.
+ *
+ * The floor is sized to the set-piece footprint plus a 1-tile wall border, so a
+ * back-wall prop (set-piece y = 0) sits flush under the top wall — this makes
+ * the depth straddling visible: rugs render over the baked floor and under NPCs,
+ * while a banner renders over the wall. This lab is the deterministic
+ * "observe before done" surface for set-piece art wiring and layout tuning.
+ */
+import GUI from 'lil-gui';
+import Phaser from 'phaser';
+import { createGameWorld, type GameWorld } from '../../core/index.js';
+import { FloorMap } from '../../core/map/FloorMap.js';
+import { RoomGraph } from '../../core/map/RoomGraph.js';
+import { TileMap } from '../../core/map/TileMap.js';
+import { stampSetPiece, type StampedSetPiece } from '../../core/map/stampSetPiece.js';
+import { addSetPieceProp, spawnNpc } from '../../core/spawners/world-objects.js';
+import { createPhaserBridge } from '../../engine/PhaserBridge.js';
+import { pickGeneratedNpcTextureKey } from '../../engine/phaser-bridge/sprite-kind.js';
 import {
-  SET_PIECE_TILE_SIZE,
+  fetchGeneratedSpriteRegistry,
+  GENERATED_SPRITE_REGISTRY_KEY,
+  preloadGeneratedSprites,
+} from '../../engine/generatedAssets/index.js';
+import { getSheet, getSprite, SHEETS } from '../../engine/sprites/index.js';
+import { buildTerrainLayer } from '../../engine/terrain-renderer.js';
+import { GAME } from '../../shared/constants.js';
+import { emptyGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
+import { createLogger } from '../../shared/logger.js';
+import {
+  BiomeType,
+  TerrainType,
+  TilePresets,
+  type MapConfig,
+  type RoomBounds,
+} from '../../shared/map-types.js';
+import { getNpcDef } from '../../shared/npc-types.js';
+import {
   collectCustomArtRequests,
   flattenSetPieceLayers,
   getAllSetPieceDefs,
   getSetPieceDef,
   getSetPieceFootprint,
-  isCustomSpriteRef,
   type SetPieceDef,
+  type SetPieceNpcAnchorRole,
   type SpriteRef,
 } from '../../shared/set-piece-types.js';
+import { ftToPx } from '../../shared/units.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
-type ControlsWithGui = HTMLElement & { __labGui?: GUI };
+const LAB_ID = 'set-piece-lab';
+const SCENE_KEY = 'SetPieceLabScene';
+const TILE_SIZE_FT = 4;
+/** Fraction of the viewport the map should occupy after fit (leaves a margin). */
+const CAMERA_PADDING = 1.12;
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 8;
+const logger = createLogger('labs:set-piece-lab');
+const CRITICAL_SHEET_KEYS = new Set([
+  'kenney-tiny-dungeon',
+  'kenney-tiny-town',
+  'kenney-roguelike-rpg-pack',
+  'custom-pixel-sprites',
+]);
 
-interface SheetMeta {
-  path: string;
-  frameWidth: number;
-  frameHeight: number;
-  margin: number;
-  spacing: number;
+/** NPC anchor-role → label colour, mirroring the objective-marker palette. */
+const NPC_ANCHOR_COLOR: Record<SetPieceNpcAnchorRole, string> = {
+  welcome: '#f6c453',
+  shop: '#5ad19b',
+  spell: '#c48cff',
+};
+
+/** Escape a string for safe innerHTML injection in tooltips / info pane. */
+function esc(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-/** A concrete sheet frame resolved from any sprite reference (or null for a pure placeholder). */
-interface ResolvedFrame {
-  sheetKey: string;
-  col: number;
-  row: number;
+/** A small inline colour swatch + hex label for a tint transform. */
+function tintSwatch(hex: string): string {
+  return `<span style="display:inline-block;width:9px;height:9px;border:1px solid rgba(0,0,0,0.5);background:${esc(hex)};vertical-align:middle;margin-right:4px"></span>${esc(hex)}`;
 }
 
-interface SheetImageCache {
-  image: HTMLImageElement;
-  loaded: boolean;
-  error: boolean;
-}
-
-const PLACEHOLDER_COLOR = '#ff4fd8';
-
-function buildSheetIndex(): {
-  sheets: Map<string, SheetMeta>;
-  sprites: Map<string, ResolvedFrame>;
-} {
-  const sheets = new Map<string, SheetMeta>();
-  const sprites = new Map<string, ResolvedFrame>();
-  for (const entry of parseSpriteCatalog(catalogJson)) {
-    if (entry.kind === 'sheet') {
-      sheets.set(entry.sheetKey, {
-        path: entry.path,
-        frameWidth: entry.frameWidth,
-        frameHeight: entry.frameHeight,
-        margin: entry.margin,
-        spacing: entry.spacing,
-      });
-    } else {
-      sprites.set(entry.id, { sheetKey: entry.sheetKey, col: entry.col, row: entry.row });
-    }
+/** Human label for where a set-piece depth sits relative to the entity plane. */
+function depthBandLabel(depth: number): string {
+  if (depth < 0) {
+    return 'under NPCs · over floor/wall';
   }
-  return { sheets, sprites };
+  if (depth >= 2) {
+    return 'in front of NPCs';
+  }
+  return 'entity plane';
 }
 
-/** Resolve a sprite reference to a drawable sheet frame, or null when only a placeholder exists. */
-function resolveFrame(ref: SpriteRef, sprites: Map<string, ResolvedFrame>): ResolvedFrame | null {
+/**
+ * Describe how a set-piece sprite ref resolves, mirroring the SAME logic the
+ * engine's set-piece pass uses (resolveSetPieceSprite in PhaserBridge), plus
+ * whether it lands on real art or the labeled placeholder box. Resolved live
+ * against the scene's texture cache so it reflects late-loading generated art.
+ */
+function describeAsset(scene: Phaser.Scene, ref: SpriteRef): { text: string; real: boolean } {
   if (ref.source === 'sheet') {
-    return { sheetKey: ref.sheetKey, col: ref.col, row: ref.row };
+    const sheet = getSheet(ref.sheetKey);
+    const real = sheet !== undefined && scene.textures?.exists(ref.sheetKey) === true;
+    return {
+      text: `sheet <code>${esc(ref.sheetKey)}</code> · row ${ref.row}, col ${ref.col}`,
+      real,
+    };
   }
   if (ref.source === 'catalog') {
-    return sprites.get(ref.spriteId) ?? null;
+    const def = getSprite(ref.spriteId);
+    if (def !== undefined && scene.textures?.exists(def.sheetKey) === true) {
+      return {
+        text: `catalog <code>${esc(ref.spriteId)}</code> → Kenney <code>${esc(def.sheetKey)}</code> #${def.frame}`,
+        real: true,
+      };
+    }
+    // Generated sprites load as individual textures keyed by the bare manifest key.
+    if (scene.textures?.exists(ref.spriteId) === true) {
+      return { text: `generated <code>${esc(ref.spriteId)}</code>`, real: true };
+    }
+    return { text: `catalog <code>${esc(ref.spriteId)}</code> · not loaded`, real: false };
   }
-  // custom: fall back to its placeholder, if any.
-  if (ref.placeholder) {
-    return resolveFrame(ref.placeholder, sprites);
+  const placeholder =
+    ref.placeholder !== undefined
+      ? describeAsset(scene, ref.placeholder)
+      : { text: 'labeled box', real: false };
+  return {
+    text: `custom <code>${esc(ref.requestId)}</code> → ${placeholder.text}`,
+    real: placeholder.real,
+  };
+}
+
+/** One hover-testable rectangle (a prop layer or an NPC), in world pixels. */
+interface HoverItem {
+  readonly centreXpx: number;
+  readonly centreYpx: number;
+  readonly halfWpx: number;
+  readonly halfHpx: number;
+  readonly depth: number;
+  readonly header: string;
+  /** Prop layers carry their sprite ref for live asset resolution; NPCs don't. */
+  readonly ref?: SpriteRef;
+  /**
+   * NPC entries carry their def id so the tooltip can resolve the pinned
+   * generated sprite key live against the running scene (mirrors {@link ref}
+   * for props). Undefined for prop layers.
+   */
+  readonly npcDefId?: string;
+  /** Pre-rendered transform/metadata lines (asset resolution happens live). */
+  readonly bodyHtml: string;
+}
+
+/**
+ * Build the hover index for a stamped set piece: one entry per flattened prop
+ * layer (zipped with {@link flattenSetPieceLayers} for authored kind/z/layer/
+ * offset metadata) plus one per NPC. Rects are in world pixels matching the
+ * bridge's `ftToPx` prop pass, so a pointer world-point hit-test lines up with
+ * exactly what is drawn.
+ */
+function buildHoverItems(def: SetPieceDef, stamp: StampedSetPiece): HoverItem[] {
+  const items: HoverItem[] = [];
+  const draws = flattenSetPieceLayers(def);
+  stamp.props.forEach((sp, index) => {
+    const r = sp.render;
+    const draw = draws[index];
+    const scale = r.scale ?? 1;
+    const lines: string[] = [];
+    if (draw !== undefined) {
+      lines.push(
+        `<span style="color:#94a3b8">kind</span> ${esc(draw.prop.kind)} · <span style="color:#94a3b8">z</span> ${draw.z} · <span style="color:#94a3b8">layer</span> ${draw.layerIndex + 1}/${draw.prop.layers.length}`,
+      );
+    }
+    lines.push(
+      `<span style="color:#94a3b8">depth</span> ${r.depth.toFixed(3)} <span style="color:#64748b">(${depthBandLabel(r.depth)})</span>`,
+    );
+    lines.push(
+      `<span style="color:#94a3b8">size</span> ${r.widthFt}×${r.heightFt} ft · <span style="color:#94a3b8">scale</span> ${scale}`,
+    );
+    lines.push(
+      `<span style="color:#94a3b8">tint</span> ${r.tintHex !== undefined ? tintSwatch(r.tintHex) : 'none'}`,
+    );
+    const offX = draw?.layer.offsetX ?? 0;
+    const offY = draw?.layer.offsetY ?? 0;
+    if (offX !== 0 || offY !== 0) {
+      lines.push(`<span style="color:#94a3b8">layer offset</span> ${offX}, ${offY} px`);
+    }
+    items.push({
+      centreXpx: ftToPx(sp.x),
+      centreYpx: ftToPx(sp.y),
+      halfWpx: ftToPx(r.widthFt * scale) / 2,
+      halfHpx: ftToPx(r.heightFt * scale) / 2,
+      depth: r.depth,
+      header: draw?.prop.id ?? r.label ?? 'prop',
+      ref: r.sprite,
+      bodyHtml: lines.join('<br/>'),
+    });
+  });
+  for (const npc of stamp.npcs) {
+    const ndef = getNpcDef(npc.npcTypeId);
+    const wFt = ndef?.widthFt ?? TILE_SIZE_FT;
+    const hFt = ndef?.heightFt ?? TILE_SIZE_FT;
+    const lines: string[] = [];
+    if (npc.anchorRole !== undefined) {
+      const color = NPC_ANCHOR_COLOR[npc.anchorRole];
+      lines.push(
+        `<span style="color:#94a3b8">objective anchor</span> <span style="color:${color}">${npc.anchorRole}</span>`,
+      );
+    }
+    lines.push(
+      `<span style="color:#94a3b8">tile</span> (${npc.tileX}, ${npc.tileY}) · <span style="color:#94a3b8">size</span> ${wFt}×${hFt} ft`,
+    );
+    items.push({
+      centreXpx: ftToPx(npc.x),
+      centreYpx: ftToPx(npc.y),
+      halfWpx: ftToPx(wFt) / 2,
+      halfHpx: ftToPx(hFt) / 2,
+      depth: 0,
+      header: `NPC · ${esc(ndef?.name ?? npc.npcTypeId)}`,
+      npcDefId: npc.npcTypeId,
+      bodyHtml: lines.join('<br/>'),
+    });
   }
-  return null;
+  return items;
+}
+
+/** Render the tooltip HTML for a hovered item, resolving prop art live. */
+function renderTooltip(scene: Phaser.Scene, item: HoverItem): string {
+  const parts: string[] = [`<b style="font-size:12px">${esc(item.header)}</b>`];
+  if (item.ref !== undefined) {
+    const asset = describeAsset(scene, item.ref);
+    parts.push(`<span style="color:#94a3b8">asset</span> ${asset.text}`);
+    parts.push(
+      asset.real
+        ? '<span style="color:#5ad19b">✔ real art</span>'
+        : '<span style="color:#f6c453">▢ placeholder box</span>',
+    );
+  } else if (item.npcDefId !== undefined) {
+    // NPCs resolve their pinned generated sprite key def-aware (mirrors the
+    // bridge's resolveNpcTexture). A loaded key = distinct real art; otherwise
+    // the bridge falls back to the shared Kenney villager placeholder.
+    const key = pickGeneratedNpcTextureKey(item.npcDefId);
+    if (key !== null && scene.textures?.exists(key) === true) {
+      parts.push(`<span style="color:#94a3b8">asset</span> generated <code>${esc(key)}</code>`);
+      parts.push('<span style="color:#5ad19b">✔ real art</span>');
+    } else if (key !== null) {
+      parts.push(
+        `<span style="color:#94a3b8">asset</span> generated <code>${esc(key)}</code> · not loaded → Kenney villager`,
+      );
+      parts.push('<span style="color:#f6c453">▢ villager fallback</span>');
+    } else {
+      parts.push(`<span style="color:#94a3b8">asset</span> Kenney villager (no generated art)`);
+      parts.push('<span style="color:#f6c453">▢ villager fallback</span>');
+    }
+  }
+  parts.push(item.bodyHtml);
+  return parts.join('<br/>');
+}
+
+interface LabRoom {
+  floorMap: FloorMap;
+  roomBounds: RoomBounds;
+}
+
+/**
+ * Build a single-room {@link FloorMap} sized exactly to the set piece's
+ * footprint plus a 1-tile wall border. The interior therefore equals the
+ * footprint, so a set-piece prop authored at row 0 lands flush against the top
+ * wall (demonstrating banner-over-wall + rug-over-floor layering).
+ */
+function buildRoomForDef(def: SetPieceDef): LabRoom {
+  const footprint = getSetPieceFootprint(def);
+  const widthTiles = footprint.width + 2;
+  const heightTiles = footprint.height + 2;
+
+  const config: MapConfig = {
+    widthTiles,
+    heightTiles,
+    tileSizeFt: TILE_SIZE_FT,
+    biome: BiomeType.DUNGEON,
+    seed: 1,
+    roomWidthRange: [Math.max(3, footprint.width), Math.max(3, footprint.width)],
+    roomHeightRange: [Math.max(3, footprint.height), Math.max(3, footprint.height)],
+    maxRooms: 1,
+    floorDensity: 1,
+  };
+
+  const tileMap = new TileMap(widthTiles, heightTiles);
+  const terrain = new Uint8Array(widthTiles * heightTiles);
+  for (let ty = 0; ty < heightTiles; ty += 1) {
+    for (let tx = 0; tx < widthTiles; tx += 1) {
+      const idx = ty * widthTiles + tx;
+      const isBorder = tx === 0 || ty === 0 || tx === widthTiles - 1 || ty === heightTiles - 1;
+      tileMap.flags[idx] = isBorder ? TilePresets.WALL : TilePresets.FLOOR;
+      terrain[idx] = isBorder ? TerrainType.STONE_WALL : TerrainType.STONE_FLOOR;
+    }
+  }
+
+  const playerSpawn = {
+    x: (widthTiles / 2) * TILE_SIZE_FT,
+    y: (heightTiles / 2) * TILE_SIZE_FT,
+  };
+  const floorMap = new FloorMap(config, tileMap, new RoomGraph(), terrain, playerSpawn);
+  // Interior room (1-tile wall inset). stampSetPiece further insets to the
+  // interior, so the footprint lands exactly on the floor tiles.
+  const roomBounds: RoomBounds = { x: 0, y: 0, width: widthTiles, height: heightTiles };
+  return { floorMap, roomBounds };
 }
 
 function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () => void {
-  const gui = (controls as ControlsWithGui).__labGui;
-  if (!gui) {
+  const gui = (controls as HTMLElement & { __labGui?: GUI }).__labGui;
+  if (!(gui instanceof GUI)) {
     throw new Error('Lab runner did not initialize lil-gui.');
   }
 
-  const { sheets, sprites } = buildSheetIndex();
-  const sheetImages = new Map<string, SheetImageCache>();
   const defs = getAllSetPieceDefs();
+  const state = { selectedId: defs[0]?.id ?? '' };
 
-  const layout = document.createElement('div');
-  layout.style.cssText =
-    'display:flex;gap:16px;align-items:flex-start;padding:16px;flex-wrap:wrap;background:#0d0d14;';
+  const root = document.createElement('div');
+  root.style.position = 'relative';
+  root.style.display = 'flex';
+  root.style.flexDirection = 'column';
+  root.style.width = '100%';
+  root.style.height = '100%';
+  root.style.overflow = 'hidden';
+  root.style.background = 'radial-gradient(circle at top, #141018 0%, #0a0810 60%, #05060b 100%)';
 
-  const canvas = document.createElement('canvas');
-  canvas.style.cssText =
-    'background:repeating-conic-gradient(#1f2937 0 25%, #111827 0 50%) 50% / 32px 32px;border:1px solid rgba(255,255,255,0.15);border-radius:8px;image-rendering:pixelated;';
+  // Top: the engine-rendered room fills the remaining height. `position:relative`
+  // anchors the hover tooltip; `minHeight:0` lets it shrink so the info pane
+  // below is never clipped.
+  const gameHost = document.createElement('div');
+  gameHost.style.position = 'relative';
+  gameHost.style.flex = '1 1 auto';
+  gameHost.style.minHeight = '0';
+  gameHost.style.width = '100%';
 
-  const panel = document.createElement('div');
-  panel.style.cssText =
-    'min-width:280px;max-width:360px;color:#e2e8f0;font-family:monospace;font-size:12px;line-height:1.5;';
+  // Bottom: the info pane (was a floating top-left overlay). A full-width,
+  // scrollable pane UNDER the rendered room.
+  const info = document.createElement('div');
+  info.style.flex = '0 0 auto';
+  info.style.width = '100%';
+  info.style.boxSizing = 'border-box';
+  info.style.maxHeight = '38%';
+  info.style.overflowY = 'auto';
+  info.style.padding = '10px 14px';
+  info.style.background = 'rgba(12, 10, 20, 0.92)';
+  info.style.borderTop = '1px solid rgba(255, 255, 255, 0.14)';
+  info.style.color = '#f8fafc';
+  info.style.fontSize = '12px';
+  info.style.lineHeight = '1.5';
 
-  layout.append(canvas, panel);
-  canvasHost.append(layout);
+  // Floating tooltip shown while hovering a prop layer or NPC in the room.
+  const tooltip = document.createElement('div');
+  tooltip.style.position = 'absolute';
+  tooltip.style.display = 'none';
+  tooltip.style.pointerEvents = 'none';
+  tooltip.style.zIndex = '20';
+  tooltip.style.maxWidth = '300px';
+  tooltip.style.padding = '8px 10px';
+  tooltip.style.borderRadius = '8px';
+  tooltip.style.background = 'rgba(8, 6, 14, 0.96)';
+  tooltip.style.border = '1px solid rgba(255, 255, 255, 0.18)';
+  tooltip.style.boxShadow = '0 6px 18px rgba(0, 0, 0, 0.5)';
+  tooltip.style.color = '#f8fafc';
+  tooltip.style.fontSize = '11px';
+  tooltip.style.lineHeight = '1.5';
 
-  const state = {
-    setPieceId: defs[0]?.id ?? '',
-    zoom: 3,
-    showGrid: true,
-    showLabels: true,
-    showNpcs: true,
-    highlightCustom: true,
-  };
+  const hint = document.createElement('p');
+  hint.textContent =
+    'Rendered through the real engine (PhaserBridge): terrain is baked, generated art is resolved exactly as in-game, and props are depth-layered (rug over floor + under NPCs, banner over the wall). Hover any prop or NPC to inspect its source asset + applied transforms. Scroll to zoom; use "Reset camera" to re-fit. Pick a set piece from the dropdown to preview it.';
+  hint.style.marginTop = '16px';
+  hint.style.color = '#e7d2ff';
+  hint.style.lineHeight = '1.6';
 
-  // Anchor-role tint so the welcome/shop/spell NPCs read at a glance.
-  const NPC_ANCHOR_COLOR: Record<string, string> = {
-    welcome: '#fbbf24',
-    shop: '#22c55e',
-    spell: '#a855f7',
-  };
-  const NPC_DEFAULT_COLOR = '#38bdf8';
+  controls.append(hint);
+  gameHost.append(tooltip);
+  root.append(gameHost, info);
+  canvasHost.append(root);
 
-  function getSheetImage(path: string): SheetImageCache {
-    let cached = sheetImages.get(path);
-    if (!cached) {
-      const image = new Image();
-      const next: SheetImageCache = { image, loaded: false, error: false };
-      image.addEventListener('load', () => {
-        next.loaded = true;
-        render();
-      });
-      image.addEventListener('error', () => {
-        next.error = true;
-      });
-      image.src = path;
-      sheetImages.set(path, next);
-      cached = next;
-    }
-    return cached;
-  }
+  let hoverItems: HoverItem[] = [];
 
-  function drawPlaceholder(
-    ctx: CanvasRenderingContext2D,
-    px: number,
-    py: number,
-    w: number,
-    h: number,
-    label: string,
-  ): void {
-    ctx.save();
-    ctx.fillStyle = 'rgba(255, 79, 216, 0.18)';
-    ctx.fillRect(px, py, w, h);
-    ctx.strokeStyle = PLACEHOLDER_COLOR;
-    ctx.lineWidth = 1;
-    ctx.setLineDash([4, 3]);
-    ctx.strokeRect(px + 0.5, py + 0.5, w - 1, h - 1);
-    ctx.setLineDash([]);
-    ctx.fillStyle = PLACEHOLDER_COLOR;
-    ctx.font = '9px monospace';
-    ctx.textBaseline = 'top';
-    ctx.fillText(label, px + 2, py + 2, w - 4);
-    ctx.restore();
-  }
+  let restartScene = () => undefined as void;
+  let resetCamera = () => undefined as void;
 
-  function render(): void {
-    const def = getSetPieceDef(state.setPieceId);
-    if (!def) return;
-
-    const tile = SET_PIECE_TILE_SIZE * state.zoom;
+  function updateInfoPanel(def: SetPieceDef, npcCount: number, propCount: number): void {
     const footprint = getSetPieceFootprint(def);
-    canvas.width = footprint.width * tile;
-    canvas.height = footprint.height * tile;
-    canvas.style.width = `${canvas.width}px`;
-    canvas.style.height = `${canvas.height}px`;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.imageSmoothingEnabled = false;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    for (const draw of flattenSetPieceLayers(def)) {
-      const { prop, layer } = draw;
-      const baseX = prop.x * tile + (layer.offsetX ?? 0) * state.zoom;
-      const baseY = prop.y * tile + (layer.offsetY ?? 0) * state.zoom;
-      const scale = layer.scale ?? 1;
-      const frame = resolveFrame(layer.sprite, sprites);
-      const isCustom = isCustomSpriteRef(layer.sprite);
-
-      if (frame) {
-        const sheet = sheets.get(frame.sheetKey);
-        if (sheet) {
-          const img = getSheetImage(sheet.path);
-          const drawW = sheet.frameWidth * state.zoom * scale;
-          const drawH = sheet.frameHeight * state.zoom * scale;
-          if (img.loaded) {
-            const sx = sheet.margin + frame.col * (sheet.frameWidth + sheet.spacing);
-            const sy = sheet.margin + frame.row * (sheet.frameHeight + sheet.spacing);
-            ctx.drawImage(
-              img.image,
-              sx,
-              sy,
-              sheet.frameWidth,
-              sheet.frameHeight,
-              baseX,
-              baseY,
-              drawW,
-              drawH,
-            );
-          }
-          if (isCustom && state.highlightCustom) {
-            drawPlaceholder(ctx, baseX, baseY, drawW, drawH, '◴');
-          }
-          continue;
-        }
-      }
-
-      // No drawable frame — render a labeled placeholder sized to the request.
-      const custom = layer.sprite.source === 'custom' ? layer.sprite : undefined;
-      const w = (custom?.widthTiles ?? prop.width) * tile * scale;
-      const h = (custom?.heightTiles ?? prop.height) * tile * scale;
-      drawPlaceholder(ctx, baseX, baseY, w, h, custom?.label ?? prop.id);
-    }
-
-    if (state.showGrid) {
-      ctx.save();
-      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-      ctx.lineWidth = 1;
-      for (let gx = 0; gx <= footprint.width; gx++) {
-        ctx.beginPath();
-        ctx.moveTo(gx * tile + 0.5, 0);
-        ctx.lineTo(gx * tile + 0.5, canvas.height);
-        ctx.stroke();
-      }
-      for (let gy = 0; gy <= footprint.height; gy++) {
-        ctx.beginPath();
-        ctx.moveTo(0, gy * tile + 0.5);
-        ctx.lineTo(canvas.width, gy * tile + 0.5);
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
-
-    if (state.showLabels) {
-      ctx.save();
-      ctx.font = '10px monospace';
-      ctx.textBaseline = 'top';
-      for (const prop of def.props) {
-        const lx = prop.x * tile + 2;
-        const ly = prop.y * tile + 2;
-        ctx.fillStyle = 'rgba(0,0,0,0.55)';
-        ctx.fillRect(lx - 1, ly - 1, ctx.measureText(prop.id).width + 4, 12);
-        ctx.fillStyle = '#cbd5f5';
-        ctx.fillText(prop.id, lx + 1, ly);
-      }
-      ctx.restore();
-    }
-
-    if (state.showNpcs) {
-      drawNpcs(ctx, def, tile);
-    }
-
-    renderPanel(def);
-  }
-
-  /**
-   * Draw a marker for each authored NPC at its set-piece tile: a filled disc
-   * tinted by anchor role (welcome/shop/spell), the npc id, and — for anchored
-   * NPCs — the objective anchor it drives. This is the lab witness that the
-   * set-piece model carries NPC placements (not just props).
-   */
-  function drawNpcs(ctx: CanvasRenderingContext2D, def: SetPieceDef, tile: number): void {
-    ctx.save();
-    ctx.textBaseline = 'top';
-    ctx.font = '9px monospace';
-    for (const npc of def.npcs) {
-      const cx = (npc.x + 0.5) * tile;
-      const cy = (npc.y + 0.5) * tile;
-      const color = (npc.anchorRole && NPC_ANCHOR_COLOR[npc.anchorRole]) ?? NPC_DEFAULT_COLOR;
-      const r = Math.max(6, tile * 0.32);
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fillStyle = color;
-      ctx.globalAlpha = 0.85;
-      ctx.fill();
-      ctx.globalAlpha = 1;
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = '#0b0b12';
-      ctx.stroke();
-
-      const label = npc.anchorRole ? `${npc.id} ▸${npc.anchorRole}` : npc.id;
-      const lx = cx - ctx.measureText(label).width / 2;
-      const ly = cy + r + 2;
-      ctx.fillStyle = 'rgba(0,0,0,0.65)';
-      ctx.fillRect(lx - 2, ly - 1, ctx.measureText(label).width + 4, 11);
-      ctx.fillStyle = color;
-      ctx.fillText(label, lx, ly);
-    }
-    ctx.restore();
-  }
-
-  function renderPanel(def: SetPieceDef): void {
-    const footprint = getSetPieceFootprint(def);
-    const requests = collectCustomArtRequests(def);
+    const requests = collectCustomArtRequests([def]);
     const lines: string[] = [];
-    lines.push(`<b style="font-size:14px;color:#fff">${def.name}</b>`);
-    lines.push(`<span style="color:#7ee0ff">${def.theme} · ${def.sizing}</span>`);
-    lines.push('');
-    lines.push(def.description);
-    lines.push('');
-    lines.push(`<b>Footprint:</b> ${footprint.width}×${footprint.height} tiles`);
-    if (def.sizing === 'themed') {
-      lines.push(
-        `<span style="color:#94a3b8">themed kit: ${def.width}×${def.height} → ${footprint.width}×${footprint.height}</span>`,
-      );
+    lines.push(`<b style="font-size:13px">${def.name}</b>`);
+    lines.push(
+      `<span style="color:#94a3b8">${def.theme} · footprint ${footprint.width}×${footprint.height} tiles</span>`,
+    );
+    if (def.description) {
+      lines.push(`<span style="color:#cbd5e1">${def.description}</span>`);
     }
-    lines.push(`<b>Props:</b> ${def.props.length}`);
-    lines.push(`<b>NPCs:</b> ${def.npcs.length}`);
-    for (const npc of def.npcs) {
-      const color = (npc.anchorRole && NPC_ANCHOR_COLOR[npc.anchorRole]) ?? NPC_DEFAULT_COLOR;
+    lines.push('');
+    lines.push(`<b>Props:</b> ${propCount} · <b>NPCs:</b> ${npcCount}`);
+    for (const npc of def.npcs ?? []) {
+      const color = npc.anchorRole ? NPC_ANCHOR_COLOR[npc.anchorRole] : '#e2e8f0';
       const anchor = npc.anchorRole
-        ? ` <span style="color:${color}">▸ ${npc.anchorRole}</span>`
+        ? ` <span style="color:${color}">[${npc.anchorRole}]</span>`
         : '';
       lines.push(
-        `<span style="color:${color}">●</span> <b>${npc.id}</b> <code>${npc.npcTypeId}</code> @(${npc.x},${npc.y})${anchor}`,
+        `<span style="color:${color}">●</span> <code>${npc.npcTypeId}</code> @(${npc.x},${npc.y})${anchor}`,
       );
     }
-    lines.push(`<b>Tags:</b> ${def.tags.join(', ') || '—'}`);
-    lines.push('');
-    lines.push(`<b>Custom art requests (${requests.length}):</b>`);
-    if (requests.length === 0) {
-      lines.push('<span style="color:#94a3b8">none — all reused/recorded sprites</span>');
-    }
-    for (const req of requests) {
-      const ph = req.placeholder ? ' <span style="color:#22c55e">[placeholder]</span>' : '';
+    if (requests.length > 0) {
+      lines.push('');
       lines.push(
-        `<span style="color:${PLACEHOLDER_COLOR}">◴</span> <b>${req.label}</b> <code>${req.requestId}</code>${ph}`,
+        `<span style="color:#facc15">◴ ${requests.length} custom-art request(s) still pending generation.</span>`,
       );
     }
-    lines.push('');
-    lines.push('<span style="color:#64748b">◴ = custom art pending generation</span>');
-    panel.innerHTML = lines.join('<br/>');
+    info.innerHTML = lines.join('<br/>');
+  }
+
+  class SetPieceLabScene extends Phaser.Scene {
+    private bridge?: ReturnType<typeof createPhaserBridge>;
+    private world!: GameWorld;
+
+    constructor() {
+      super({ key: SCENE_KEY });
+    }
+
+    preload(): void {
+      if (!this.load) return;
+
+      // Failures are non-fatal: PhaserBridge falls back to procedural textures.
+      this.load.on('loaderror', (file: Phaser.Loader.File) => {
+        logger.warn('Sprite asset failed to load; falling back to procedural texture', {
+          key: file.key,
+          url: file.url,
+        });
+      });
+
+      for (const sheet of SHEETS) {
+        if (!CRITICAL_SHEET_KEYS.has(sheet.key)) continue;
+        this.load.spritesheet(sheet.key, sheet.path, {
+          frameWidth: sheet.frameWidth,
+          frameHeight: sheet.frameHeight,
+          margin: sheet.margin,
+          spacing: sheet.spacing,
+        });
+      }
+
+      // Seed a non-null registry immediately, then warm generated textures.
+      this.game.registry.set(GENERATED_SPRITE_REGISTRY_KEY, emptyGeneratedSpriteRegistry());
+    }
+
+    create(): void {
+      this.cameras.main.setBackgroundColor('#05060b');
+
+      const def = getSetPieceDef(state.selectedId) ?? defs[0];
+      if (!def) {
+        this.add
+          .text(16, 16, 'No set pieces registered.', { color: '#f87171', fontSize: '16px' })
+          .setScrollFactor(0);
+        return;
+      }
+
+      const { floorMap, roomBounds } = buildRoomForDef(def);
+      this.world = createGameWorld({ seed: 1 });
+      this.world.floorMap = floorMap;
+
+      // Bake terrain to a single flat RenderTexture beneath the entity plane.
+      const terrain = buildTerrainLayer(this, floorMap);
+      terrain.rt.setDepth(-20);
+
+      // Stamp the set piece: pure, deterministic tile → world-feet placement.
+      const stamp = stampSetPiece(def, { roomBounds, tileSizeFt: TILE_SIZE_FT });
+      for (const prop of stamp.props) {
+        addSetPieceProp(this.world, prop.x, prop.y, prop.render);
+      }
+      for (const npc of stamp.npcs) {
+        spawnNpc(this.world, npc.x, npc.y, npc.npcTypeId);
+      }
+
+      this.bridge = createPhaserBridge(this);
+      this.bridge.sync(this.world);
+      void this.warmGeneratedSprites();
+
+      this.fitCamera();
+      this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => {
+        const cam = this.cameras.main;
+        const factor = dy > 0 ? 0.9 : 1.1;
+        cam.setZoom(Phaser.Math.Clamp(cam.zoom * factor, MIN_ZOOM, MAX_ZOOM));
+      });
+
+      // --- Hover inspection ---
+      // Build a world-pixel hit-index for every prop layer + NPC, then show an
+      // HTML tooltip (asset + transforms) for the topmost item under the pointer.
+      hoverItems = buildHoverItems(def, stamp);
+      const camera = this.cameras.main;
+      const onPointerMove = (pointer: Phaser.Input.Pointer): void => {
+        const point = camera.getWorldPoint(pointer.x, pointer.y);
+        let hovered: HoverItem | undefined;
+        let hoveredDepth = Number.NEGATIVE_INFINITY;
+        for (const item of hoverItems) {
+          const withinX = Math.abs(point.x - item.centreXpx) <= item.halfWpx;
+          const withinY = Math.abs(point.y - item.centreYpx) <= item.halfHpx;
+          if (withinX && withinY && item.depth >= hoveredDepth) {
+            hovered = item;
+            hoveredDepth = item.depth;
+          }
+        }
+        if (hovered === undefined) {
+          tooltip.style.display = 'none';
+          return;
+        }
+        tooltip.innerHTML = renderTooltip(this, hovered);
+        tooltip.style.display = 'block';
+        const pad = 14;
+        const tipW = tooltip.offsetWidth;
+        const tipH = tooltip.offsetHeight;
+        let left = pointer.x + pad;
+        let top = pointer.y + pad;
+        if (left + tipW > gameHost.clientWidth) {
+          left = pointer.x - tipW - pad;
+        }
+        if (top + tipH > gameHost.clientHeight) {
+          top = pointer.y - tipH - pad;
+        }
+        tooltip.style.left = `${Math.max(0, left)}px`;
+        tooltip.style.top = `${Math.max(0, top)}px`;
+      };
+      const hideTooltip = (): void => {
+        tooltip.style.display = 'none';
+      };
+      this.input.on('pointermove', onPointerMove);
+      this.input.on('pointerout', hideTooltip);
+      this.input.on('gameout', hideTooltip);
+
+      restartScene = () => this.scene.restart();
+      resetCamera = () => this.fitCamera();
+      updateInfoPanel(def, stamp.npcs.length, stamp.props.length);
+
+      this.events.once('shutdown', () => {
+        this.input.off('wheel');
+        this.input.off('pointermove', onPointerMove);
+        this.input.off('pointerout', hideTooltip);
+        this.input.off('gameout', hideTooltip);
+        hoverItems = [];
+        tooltip.style.display = 'none';
+        this.bridge?.destroy();
+        this.bridge = undefined;
+        restartScene = () => undefined;
+        resetCamera = () => undefined;
+      });
+    }
+
+    update(): void {
+      // Static diorama: no system stepping. Re-sync each frame so late-loading
+      // generated textures upgrade the placeholder rects to real art. The
+      // set-piece render pass is idempotent + keyed by list index, so a
+      // per-frame re-sync reuses visuals and never leaks GameObjects.
+      this.bridge?.sync(this.world);
+    }
+
+    /** Fit and centre the camera on the whole synthesized room. */
+    fitCamera(): void {
+      const floorMap = this.world?.floorMap;
+      if (!floorMap) return;
+      const cam = this.cameras.main;
+      const mapWpx = ftToPx(floorMap.widthFt);
+      const mapHpx = ftToPx(floorMap.heightFt);
+      if (mapWpx <= 0 || mapHpx <= 0) return;
+      const zoom = Math.min(
+        cam.width / (mapWpx * CAMERA_PADDING),
+        cam.height / (mapHpx * CAMERA_PADDING),
+      );
+      cam.setZoom(
+        Number.isFinite(zoom) && zoom > 0 ? Phaser.Math.Clamp(zoom, MIN_ZOOM, MAX_ZOOM) : 1,
+      );
+      cam.centerOn(mapWpx / 2, mapHpx / 2);
+    }
+
+    private async warmGeneratedSprites(): Promise<void> {
+      try {
+        const registry = await fetchGeneratedSpriteRegistry();
+        this.game.registry.set(GENERATED_SPRITE_REGISTRY_KEY, registry);
+        if (registry.size === 0 || !this.load) return;
+        const queued = preloadGeneratedSprites(this.load, registry);
+        if (queued.length === 0) return;
+        this.load.start();
+      } catch (error) {
+        logger.warn('Generated sprite load failed; continuing with built-in sprites', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
   }
 
   const setPieceOptions: Record<string, string> = {};
@@ -344,12 +605,18 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
     setPieceOptions[`${def.name} (${def.theme})`] = def.id;
   }
 
-  gui.add(state, 'setPieceId', setPieceOptions).name('Set piece').onChange(render);
-  gui.add(state, 'zoom', 1, 6, 1).name('Zoom').onChange(render);
-  gui.add(state, 'showGrid').name('Show grid').onChange(render);
-  gui.add(state, 'showLabels').name('Prop labels').onChange(render);
-  gui.add(state, 'showNpcs').name('Show NPCs').onChange(render);
-  gui.add(state, 'highlightCustom').name('Mark custom art').onChange(render);
+  const api = {
+    setPieceId: state.selectedId,
+    resetCamera: () => resetCamera(),
+  };
+  gui
+    .add(api, 'setPieceId', setPieceOptions)
+    .name('Set piece')
+    .onChange((id: string) => {
+      state.selectedId = id;
+      restartScene();
+    });
+  gui.add(api, 'resetCamera').name('Reset camera');
 
   const summary = {
     totalSetPieces: defs.length,
@@ -359,17 +626,45 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
   meta.add(summary, 'totalSetPieces').name('Set pieces').disable();
   meta.add(summary, 'totalCustomRequests').name('Custom art requests').disable();
 
-  render();
+  const getSize = () => ({
+    width: Math.max(1, Math.round(gameHost.clientWidth || GAME.WIDTH)),
+    height: Math.max(1, Math.round(gameHost.clientHeight || GAME.HEIGHT)),
+  });
+
+  const initialSize = getSize();
+  const config: Phaser.Types.Core.GameConfig = {
+    type: Phaser.AUTO,
+    parent: gameHost,
+    width: initialSize.width,
+    height: initialSize.height,
+    backgroundColor: '#05060b',
+    scene: [SetPieceLabScene],
+    scale: {
+      mode: Phaser.Scale.RESIZE,
+      autoCenter: Phaser.Scale.CENTER_BOTH,
+    },
+  };
+
+  const game = new Phaser.Game(config);
+  const resizeObserver = new ResizeObserver(() => {
+    const nextSize = getSize();
+    game.scale.resize(nextSize.width, nextSize.height);
+    resetCamera();
+  });
+  resizeObserver.observe(gameHost);
 
   return () => {
-    layout.remove();
+    resizeObserver.disconnect();
+    game.destroy(true);
+    hint.remove();
+    root.remove();
   };
 }
 
-registerLab('set-piece-lab', {
+registerLab(LAB_ID, {
   category: 'Meta' as LabCategory,
   name: 'Set Piece Viewer',
   description:
-    'Inspect Earth-themed set-piece rooms: layered sprites, reused/recorded art, and pending custom-art placeholders.',
+    'Preview authored set pieces rendered through the real engine (baked terrain, resolved generated art, depth-layered props over floors and walls) with their NPCs stamped in place. Hover props/NPCs to inspect source asset + transforms; details show in a pane beneath the room.',
   create: createSetPieceLab,
 });

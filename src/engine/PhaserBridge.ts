@@ -36,6 +36,8 @@ import {
   enemyVariantFromTextureId,
   generatedBriefIdForEnemy,
   pickGeneratedEnemyTextureKey,
+  pickGeneratedNpcTextureKey,
+  pickGeneratedHarvestableTextureKey,
   refineEnemyVisualKind,
   resolveRenderKind,
   SLIME_FULL_SPRITE_WIDTH,
@@ -101,6 +103,48 @@ function getGeneratedSpriteRegistry(scene: Phaser.Scene): GeneratedSpriteRegistr
     return registry as GeneratedSpriteRegistry;
   }
   return null;
+}
+
+/**
+ * On-floor render scale for a harvestable node's generated sprite. The art is
+ * authored at 64px; `0.4` (~26px) matches the enemy node footprint so a
+ * harvestable reads at the same visual weight as a small creature and stays
+ * framed by the harvest progress ring (radius 9 → 18px).
+ */
+const HARVEST_NODE_SPRITE_SCALE = 0.4;
+
+/**
+ * Depth for a harvestable node's generated sprite: just BELOW the entity plane
+ * ({@link ENTITY_DEPTH} = 0) so the player/enemies walk in front of a node, and
+ * above terrain/background props so it reads as sitting on the floor. The
+ * progress ring is drawn in the node's Graphics at the default depth (0), so it
+ * renders on TOP of this sprite.
+ */
+const HARVEST_NODE_SPRITE_DEPTH = ENTITY_DEPTH - 0.2;
+
+/**
+ * Create the generated-sprite Image for a harvestable node, or return `null`
+ * when there is no wired/loaded texture (the caller then draws the procedural
+ * tinted circle instead). Guards for headless/stub scenes where `scene.add` or
+ * the texture cache is unavailable, and never throws on a missing texture.
+ */
+function createHarvestNodeImage(
+  scene: Phaser.Scene,
+  textureKey: string | null,
+  x: number,
+  y: number,
+): Phaser.GameObjects.Image | null {
+  if (textureKey === null) {
+    return null;
+  }
+  if (typeof scene.add?.image !== 'function' || scene.textures?.exists(textureKey) !== true) {
+    return null;
+  }
+  const img = scene.add.image(x, y, textureKey);
+  img.setOrigin(0.5, 0.5);
+  img.setScale(HARVEST_NODE_SPRITE_SCALE);
+  img.setDepth(HARVEST_NODE_SPRITE_DEPTH);
+  return img;
 }
 
 /**
@@ -176,6 +220,32 @@ function resolveTexture(
   return { key: getProceduralTextureForType(type), scale: 1, fallback: true };
 }
 
+/**
+ * Render scale for a generated NPC sprite. The three welcome-room NPC sprites
+ * ship as 64×64 character PNGs (like the generated enemies), so they use the
+ * same 0.4 down-scale the enemy generated art uses — landing a humanoid NPC at
+ * ~26px on screen, matching the player's on-screen footprint. Kept a named
+ * constant so it reads as an intentional match to the enemy `generated.scale`
+ * in `entity-sprite-mappings.json` rather than a magic number.
+ */
+const GENERATED_NPC_SPRITE_SCALE = 0.4;
+
+/**
+ * Resolve an NPC's texture def-aware: prefer its pinned generated sprite (keyed
+ * by NPC def id via {@link pickGeneratedNpcTextureKey}) when that texture is
+ * loaded, otherwise fall back to the shared Kenney villager through the normal
+ * `npc` render-kind path. This keeps the placeholder-free graceful fallback the
+ * feature requires whenever a generated NPC texture is ever missing, while
+ * giving each welcome-room NPC its own distinct sprite when the art is present.
+ */
+function resolveNpcTexture(scene: Phaser.Scene, defId: string | undefined): ResolvedTexture {
+  const generatedKey = pickGeneratedNpcTextureKey(defId);
+  if (generatedKey !== null && scene.textures?.exists(generatedKey) === true) {
+    return { key: generatedKey, scale: GENERATED_NPC_SPRITE_SCALE, fallback: false };
+  }
+  return resolveTexture(scene, 'npc');
+}
+
 function resolveGeneratedTexture(
   scene: Phaser.Scene,
   type: string,
@@ -246,8 +316,10 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const mobHealthBars = new Map<number, Phaser.GameObjects.Graphics>();
   /** Tracks spawn time for arc entities so we can animate the sweep. */
   const arcSpawnMs = new Map<number, number>();
-  /** Per-harvestable node Graphics (body circle + progress ring redrawn each frame). */
+  /** Per-harvestable node Graphics (fallback body circle + progress ring redrawn each frame). */
   const harvestNodeGraphics = new Map<number, Phaser.GameObjects.Graphics>();
+  /** Per-harvestable node generated-sprite Image (created lazily once its texture is loaded). */
+  const harvestNodeImages = new Map<number, Phaser.GameObjects.Image>();
   /** Tracks first-seen render time for XP gems so the bob phase is per-gem. */
   const gemSpawnMs = new Map<number, number>();
   /** Ground shadow ellipses for each XP gem entity. */
@@ -423,7 +495,9 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             ? isBoss
               ? bossKey === 'staircase'
                 ? 'enemy_boss_ratslime'
-                : 'enemy_boss'
+                : bossKey === 'slime-rat'
+                  ? 'enemy_boss_slimerat'
+                  : 'enemy_boss'
               : refineEnemyVisualKind(world, eid)
             : entityType;
         const appearanceKey =
@@ -434,7 +508,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         const x = ftToPx((position.x[eid] ?? 0) + (velocity.x[eid] ?? 0) * interpAlpha);
         const y = ftToPx((position.y[eid] ?? 0) + (velocity.y[eid] ?? 0) * interpAlpha);
 
-        // --- Harvestable node rendering (body circle + progress ring) ---
+        // --- Harvestable node rendering (generated sprite when wired, else a
+        // procedural tinted circle) + harvest progress ring ---
         if (entityType === 'harvestable') {
           let hg = harvestNodeGraphics.get(eid);
           if (!hg) {
@@ -452,13 +527,35 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           const RING_RADIUS = 9;
           const RING_WIDTH = 3;
 
-          // Node body: filled circle with outline.
-          hg.lineStyle(1, 0x000000, 0.7);
-          hg.fillStyle(nodeColor, 1.0);
-          hg.fillCircle(x, y, BODY_RADIUS);
-          hg.strokeCircle(x, y, BODY_RADIUS);
+          // Prefer a wired generated sprite. Resolve lazily and DO NOT cache a
+          // null result, so a late-loading texture is still picked up on a later
+          // frame (unwired node types simply keep hitting the cheap circle path).
+          let nodeImg = harvestNodeImages.get(eid) ?? null;
+          if (!nodeImg) {
+            const textureKey = pickGeneratedHarvestableTextureKey(
+              generatedRegistry,
+              def?.id,
+              world.stores.sprite.variantRoll[eid],
+            );
+            nodeImg = createHarvestNodeImage(scene, textureKey, x, y);
+            if (nodeImg) {
+              harvestNodeImages.set(eid, nodeImg);
+            }
+          }
 
-          // Progress ring: visible only while being harvested.
+          // Node body: generated sprite when available, else the filled circle.
+          if (nodeImg) {
+            nodeImg.setPosition(x, y);
+          } else {
+            hg.lineStyle(1, 0x000000, 0.7);
+            hg.fillStyle(nodeColor, 1.0);
+            hg.fillCircle(x, y, BODY_RADIUS);
+            hg.strokeCircle(x, y, BODY_RADIUS);
+          }
+
+          // Progress ring: visible only while being harvested. Drawn in `hg`
+          // (default depth 0) so it reads on top of the node sprite (which sits
+          // just below the entity plane).
           if (progressMs > 0) {
             const progress = Math.min(1, progressMs / durationMs);
             // Background track ring.
@@ -474,7 +571,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             hg.strokePath();
           }
 
-          // Harvestable nodes manage their own Graphics — skip the image path.
+          // Harvestable nodes manage their own Graphics/Image — skip the shared image path.
           continue;
         }
 
@@ -600,11 +697,13 @@ export function createPhaserBridge(scene: Phaser.Scene): {
 
           const swingSprite = meleeSwing.spriteId[eid] ?? 0;
 
-          // Prefer the approved generated art (see InventoryUI.ts and
-          // items.ts icon: 'baseball-bat-v1'). Only the bat has approved
-          // generated melee art today — the sword branch still resolves to
-          // the Kenney placeholder. When a `sword-v1` (or hammer variant)
-          // gets approved, add its briefId here.
+          // Prefer the approved generated art for the in-world swing. Only the
+          // bat has approved generated melee art today — the sword branch still
+          // resolves to the Kenney placeholder. The inventory/equipment panels
+          // resolve item art via `resolveItemSprite` (ADR 0051); this swing path
+          // stays a direct briefId lookup until the bat art is migrated to a
+          // single bare `baseball-bat` lineage. When a `sword-v1` (or hammer
+          // variant) gets approved, add its briefId here.
           const generatedBriefId = swingSprite === MeleeSpriteId.BAT ? 'baseball-bat-v1' : null;
           const generatedRegistry = generatedBriefId ? getGeneratedSpriteRegistry(scene) : null;
           const generatedEntry: GeneratedSpriteEntry | null =
@@ -729,10 +828,13 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           if (visual) {
             visual.obj.destroy();
           }
-          const resolved = resolveTexture(scene, visualType, {
-            appearanceKey,
-            variantRoll: world.stores.sprite.variantRoll[eid],
-          });
+          const resolved =
+            entityType === 'npc'
+              ? resolveNpcTexture(scene, world.npcs.get(eid)?.defId)
+              : resolveTexture(scene, visualType, {
+                  appearanceKey,
+                  variantRoll: world.stores.sprite.variantRoll[eid],
+                });
           const img =
             resolved.frame !== undefined
               ? scene.add.image(x, y, resolved.key, resolved.frame)
@@ -756,6 +858,17 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           // Enemy visuals may be created before generated textures are ready
           // (e.g. timeout/late load). Reconcile to the preferred texture key when
           // it becomes available so slimes/rats upgrade off placeholder art.
+          if (img.texture.key !== preferred.key) {
+            img.setTexture(preferred.key, preferred.frame);
+            visual.baseScale = preferred.scale;
+          }
+        }
+        if (entityType === 'npc') {
+          // NPC visuals may be created before their pinned generated texture has
+          // finished loading. Reconcile to the def-aware generated sprite once it
+          // is available so each welcome-room NPC upgrades off the shared Kenney
+          // villager placeholder (mirrors the enemy late-load reconcile above).
+          const preferred = resolveNpcTexture(scene, world.npcs.get(eid)?.defId);
           if (img.texture.key !== preferred.key) {
             img.setTexture(preferred.key, preferred.frame);
             visual.baseScale = preferred.scale;
@@ -1342,6 +1455,14 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         harvestNodeGraphics.delete(eid);
       }
 
+      for (const [eid, img] of harvestNodeImages) {
+        if (activeEntities.has(eid)) {
+          continue;
+        }
+        img.destroy();
+        harvestNodeImages.delete(eid);
+      }
+
       for (const [eid, bar] of mobHealthBars) {
         if (activeEntities.has(eid)) {
           continue;
@@ -1421,6 +1542,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         hg.destroy();
       }
       harvestNodeGraphics.clear();
+
+      for (const img of harvestNodeImages.values()) {
+        img.destroy();
+      }
+      harvestNodeImages.clear();
 
       for (const bar of mobHealthBars.values()) {
         bar.destroy();

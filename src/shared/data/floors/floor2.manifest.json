@@ -16,8 +16,8 @@
     "markerRadiusFt": 8.0
   },
   "map": {
-    "widthTiles": 270,
-    "heightTiles": 156,
+    "widthTiles": 200,
+    "heightTiles": 200,
     "biome": "cave_system",
     "seed": 84,
     "roomWidthRange": [12, 24],

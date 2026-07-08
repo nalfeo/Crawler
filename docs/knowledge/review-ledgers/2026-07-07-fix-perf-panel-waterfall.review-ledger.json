@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-07",
+  "session_slug": "fix-perf-panel-waterfall",
+  "task_title": "Fix Agent Perf Panel waterfall to a true shared-axis waterfall + add context-window pressure strip",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 11,
+      "resolved_count": 11,
+      "notes": "3 rounds w/ gpt-5.4. (1) Waterfall plan: approved_with_changes, 3 concerns (0ms span split, non-finite sanitization, thin renderer coverage) all resolved. (2) Context-chart plan: REJECTED, 3 blocking (no fabricated polyline, unsafe breakdown pairing, x-alignment across containers) + 3 non-blocking (off-axis clamp/flag, budget wording, dot edge clipping) all addressed via stems-only + FIFO pairing + single sticky .wf-head in shared .wf-scroll. (3) Re-review of revised design: approved_with_changes, 2 follow-ups (purely-observational empty-state wording, duplicate-compaction_start test) both resolved."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Built-in code-review agent (background, high effort) on the uncommitted extension diff. Found 1 Medium bug: in buildContextPoints the FIFO breakdown-pairing loop let ANY compaction consume a compaction_start, so a truncation (by!='auto') interleaved between a start and its owning auto-compaction could steal the breakdown and leave the real auto null. Everything else (no interpolation/stems-only, axis alignment, NaN/Infinity guards, esc() escaping, honest empty-state) checked out."
+        },
+        {
+          "round": 2,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Fix: gated the compaction_start consumption on u.by==='auto' so truncations never consume/advance the FIFO pointer or receive a breakdown. Added regression test 'does not let an interleaved truncation steal the auto-compaction breakdown' (start@100 / truncation@150 by:'unknown' / auto@200 by:'auto' -> truncation breakdown null, auto gets start@100). Re-review verified the gate correct+complete (real autos are pushed with literal by:'auto', so a legitimate auto can never be mislabeled null; FIFO monotonicity + last-start-wins preserved; broader diff clean). Explicit verdict: no concerns. 44/44 tests pass."
+        }
+      ]
+    }
+  }
+}

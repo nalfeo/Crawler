@@ -23,6 +23,7 @@ import {
   type AIPathingModeValue,
   type FusedHeadingDebug,
 } from '../../game/ai/index.js';
+import { initNavmesh, isNavmeshReady } from '../../game/ai/navmesh/index.js';
 import {
   autoFloor1ProgressionSystem,
   computeAutoStatAllocation,
@@ -108,6 +109,7 @@ interface AiRunnerLabState {
   scenarioPresetId?: AiRunnerScenarioPresetId;
   aiConfig: {
     visualRiskRewardFields: boolean;
+    visualNavmesh: boolean;
     threatPreviewFrames: number;
     autoPauseOnDamage: boolean;
   };
@@ -264,12 +266,14 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     pathingMode: AIPathingModeValue;
     decisionMode: AIDecisionModeValue;
     visualRiskRewardFields: boolean;
+    visualNavmesh: boolean;
     threatPreviewFrames: number;
     autoPauseOnDamage: boolean;
   } = {
     pathingMode: persisted?.pathingMode ?? AIPathingMode.LEGACY,
     decisionMode: persisted?.decisionMode ?? AIDecisionMode.LEGACY,
     visualRiskRewardFields: persisted?.aiConfig?.visualRiskRewardFields ?? false,
+    visualNavmesh: persisted?.aiConfig?.visualNavmesh ?? false,
     threatPreviewFrames: persisted?.aiConfig?.threatPreviewFrames ?? 0,
     autoPauseOnDamage: persisted?.aiConfig?.autoPauseOnDamage ?? false,
   };
@@ -295,6 +299,20 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   let flowFieldGraphics: Phaser.GameObjects.Graphics | null = null;
   let riskRewardFieldsGraphics: Phaser.GameObjects.Graphics | null = null;
   let fusedCandidatesGraphics: Phaser.GameObjects.Graphics | null = null;
+  let navmeshGraphics: Phaser.GameObjects.Graphics | null = null;
+  // NAVMESH-mode WASM readiness. recast init is async (~40ms) but the lab's
+  // create() hook is synchronous, so we kick it off at bootstrap and gate the AI
+  // tick until it resolves — otherwise a persisted NAVMESH default could poll the
+  // provider before the navmesh is ready (ensureFloorNavmesh throws then). This is
+  // also the browser proof that the real `.wasm` asset resolves under Vite.
+  let navmeshReady = isNavmeshReady();
+  void initNavmesh()
+    .then(() => {
+      navmeshReady = true;
+    })
+    .catch((err: unknown) => {
+      console.error('AI Runner lab: navmesh init failed', err);
+    });
   let showFlowField = persisted?.showFlowField ?? false;
   let lastStepReason = '';
   const floorDebug = {
@@ -314,6 +332,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       scenarioPresetId: selectedScenarioPresetId,
       aiConfig: {
         visualRiskRewardFields: aiConfig.visualRiskRewardFields,
+        visualNavmesh: aiConfig.visualNavmesh,
         threatPreviewFrames: aiConfig.threatPreviewFrames,
         autoPauseOnDamage: aiConfig.autoPauseOnDamage,
       },
@@ -380,6 +399,13 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
             state.moveY = 0;
             state.action = false;
           }
+        } else if (aiConfig.pathingMode === AIPathingMode.NAVMESH && !navmeshReady) {
+          // NAVMESH selected but the recast WASM is still loading. Hold still this
+          // frame rather than polling the provider (moveTowardViaNavmesh →
+          // ensureFloorNavmesh throws until initNavmesh() resolves).
+          state.moveX = 0;
+          state.moveY = 0;
+          state.action = false;
         } else {
           // Capture the fused scorer's candidate fan only when the viz is on AND
           // fused pathing is active. Set on the current `ai` each poll so it stays
@@ -789,6 +815,12 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       persistLabState();
     });
   aiFolder
+    .add(aiConfig, 'visualNavmesh')
+    .name('Show navmesh walkable area')
+    .onChange(() => {
+      persistLabState();
+    });
+  aiFolder
     .add({ showFlowField }, 'showFlowField')
     .name('Show enemy flow field')
     .onChange((value: boolean) => {
@@ -817,6 +849,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   // Rebuild the AI brain in place (preserving the current seed) so an A/B mode
   // toggle takes effect immediately without restarting the scene/floor.
   const rebuildAiBrain = (): void => {
+    // Free the outgoing brain's per-floor navmesh handle before dropping the
+    // reference (no-op unless NAVMESH built one), so mode toggles don't leak WASM.
+    ai.disposeNavmesh();
     ai = new BehaviorTreeAI({
       seed: currentSeed,
       aggression: 1,
@@ -829,7 +864,11 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
 
   const aiModesFolder = gui.addFolder('AI Modes (A/B)');
   aiModesFolder
-    .add(aiConfig, 'pathingMode', [AIPathingMode.LEGACY, AIPathingMode.RISK_REWARD_FUSED])
+    .add(aiConfig, 'pathingMode', [
+      AIPathingMode.LEGACY,
+      AIPathingMode.RISK_REWARD_FUSED,
+      AIPathingMode.NAVMESH,
+    ])
     .name('Pathing')
     .onChange(() => {
       rebuildAiBrain();
@@ -939,6 +978,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   const reseed = (nextSeed: number): void => {
     currentSeed = nextSeed;
     sceneOptions.worldSeed = currentSeed;
+    // Free the outgoing brain's navmesh handle before dropping the reference.
+    ai.disposeNavmesh();
     ai = new BehaviorTreeAI({
       seed: currentSeed,
       aggression: 1,
@@ -1297,6 +1338,99 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     const goal = floorMap.tileToWorld(field.goalX, field.goalY);
     graphics.lineStyle(2, 0x9cff57, 0.95);
     graphics.strokeCircle(ftToPx(goal.x), ftToPx(goal.y), tileSizePx * 0.4);
+  };
+
+  const ensureNavmeshGraphics = (): Phaser.GameObjects.Graphics | null => {
+    const scene = getPhaserScene();
+    if (!scene) {
+      return null;
+    }
+    if (!navmeshGraphics || !navmeshGraphics.scene) {
+      navmeshGraphics = scene.add.graphics();
+      // World-space debug overlay: sit just above the cyan A* path overlay so the
+      // navmesh route reads on top, but still below UI_DEPTH_CUTOFF (render-depths.ts).
+      navmeshGraphics.setDepth(WORLD_VFX_DEPTH.debugPath + 1);
+      (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(
+        navmeshGraphics,
+      );
+    }
+    return navmeshGraphics;
+  };
+
+  /**
+   * Visualise the recast navmesh (standing human requirement for this arc — the
+   * human must be able to see the path the AI will take):
+   *   1. A translucent purple fill over every tile the navmesh geometry treats as
+   *      walkable (`isPassable || isDoor` — the exact door-inclusive footprint the
+   *      pather builds). Shown only when the "Show navmesh walkable area" toggle is
+   *      on; iterating the whole map per-frame mirrors the flow-field overlay and is
+   *      acceptable behind an off-by-default toggle.
+   *   2. The deterministic waypoint route the navmesh computed to the BT-chosen
+   *      goal (world feet, straight from the provider's nav debug). Drawn whenever
+   *      NAVMESH pathing is active so the intended path is always visible.
+   */
+  const drawNavmeshOverlay = (): void => {
+    const graphics = ensureNavmeshGraphics();
+    const scene = getScene();
+    const world = scene?.world;
+    if (!graphics || !scene || !world || !world.floorMap) {
+      return;
+    }
+    graphics.clear();
+
+    const showFootprint = aiConfig.visualNavmesh;
+    const showRoute = aiConfig.pathingMode === AIPathingMode.NAVMESH && !manualControl;
+    if (!showFootprint && !showRoute) {
+      return;
+    }
+
+    const floorMap = world.floorMap;
+    const tileSizePx = ftToPx(floorMap.config.tileSizeFt);
+
+    if (showFootprint) {
+      // Fill + thin per-cell outline so the door-inclusive walkable footprint reads
+      // as a mesh grid (stand-in for the recast polys). Full-map iteration mirrors
+      // the flow-field overlay and is acceptable behind this off-by-default toggle.
+      graphics.fillStyle(0xba68c8, 0.24);
+      graphics.lineStyle(1, 0xce93d8, 0.35);
+      for (let ty = 0; ty < floorMap.height; ty++) {
+        for (let tx = 0; tx < floorMap.width; tx++) {
+          if (!floorMap.tileMap.isPassable(tx, ty) && !floorMap.tileMap.isDoor(tx, ty)) {
+            continue;
+          }
+          const center = floorMap.tileToWorld(tx, ty);
+          const left = ftToPx(center.x) - tileSizePx / 2;
+          const top = ftToPx(center.y) - tileSizePx / 2;
+          graphics.fillRect(left, top, tileSizePx, tileSizePx);
+          graphics.strokeRect(left, top, tileSizePx, tileSizePx);
+        }
+      }
+    }
+
+    if (showRoute) {
+      const nav = ai.getNavigationDebug();
+      const waypoints = nav.navWaypoints;
+      if (waypoints.length > 0) {
+        const playerEid = scene.playerEid;
+        const hasPlayer = typeof playerEid === 'number' && playerEid >= 0;
+        const playerX = hasPlayer ? (world.stores.position.x[playerEid] ?? 0) : waypoints[0]!.x;
+        const playerY = hasPlayer ? (world.stores.position.y[playerEid] ?? 0) : waypoints[0]!.y;
+        const upcoming = waypoints.slice(nav.navPathIndex);
+        if (upcoming.length > 0) {
+          graphics.lineStyle(2.5, 0xba68c8, 0.95);
+          graphics.beginPath();
+          graphics.moveTo(ftToPx(playerX), ftToPx(playerY));
+          for (const wp of upcoming) {
+            graphics.lineTo(ftToPx(wp.x), ftToPx(wp.y));
+          }
+          graphics.strokePath();
+          graphics.fillStyle(0xce93d8, 0.9);
+          for (const wp of upcoming) {
+            graphics.fillCircle(ftToPx(wp.x), ftToPx(wp.y), 4);
+          }
+        }
+      }
+    }
   };
 
   const ensureRiskRewardFieldsGraphics = (): Phaser.GameObjects.Graphics | null => {
@@ -2019,10 +2153,18 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
     if (pathElem) {
       const nav = ai.getNavigationDebug();
-      pathElem.textContent =
-        nav.pathWaypoints.length > 0
-          ? `${nav.pathIndex + 1}/${nav.pathWaypoints.length} waypoints`
-          : 'No path';
+      if (aiConfig.pathingMode === AIPathingMode.NAVMESH) {
+        pathElem.textContent = !navmeshReady
+          ? 'navmesh loading…'
+          : nav.navWaypoints.length > 0
+            ? `${nav.navPathIndex + 1}/${nav.navWaypoints.length} navmesh waypoints`
+            : 'No navmesh path';
+      } else {
+        pathElem.textContent =
+          nav.pathWaypoints.length > 0
+            ? `${nav.pathIndex + 1}/${nav.pathWaypoints.length} waypoints`
+            : 'No path';
+      }
     }
     const modesElem = document.getElementById('ai-modes');
     if (modesElem) {
@@ -2063,6 +2205,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     drawFlowFieldOverlay();
     drawRiskRewardFieldsOverlay();
     drawFusedCandidateOverlay();
+    drawNavmeshOverlay();
     const debugElem = document.getElementById('ai-runner-debug');
     if (debugElem) {
       const scene = getScene();
@@ -2083,6 +2226,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
     recorderControls.destroy();
     disposeHardwareInput();
+    ai.disposeNavmesh();
     persistLabState();
     pathGraphics?.destroy();
     pathGraphics = null;
@@ -2092,6 +2236,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     riskRewardFieldsGraphics = null;
     fusedCandidatesGraphics?.destroy();
     fusedCandidatesGraphics = null;
+    navmeshGraphics?.destroy();
+    navmeshGraphics = null;
     panelRoot.remove();
     game.destroy(true);
   };

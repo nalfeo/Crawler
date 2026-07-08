@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-08",
+  "session_slug": "harvestable-review-nits",
+  "task_title": "Address Copilot review nits: consolidate duplicate import + fix ADR markdown",
+  "estimated_apples": 1,
+  "stages": {}
+}

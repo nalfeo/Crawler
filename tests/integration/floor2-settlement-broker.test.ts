@@ -64,7 +64,7 @@ describe('Floor 2 settlement · initialization', () => {
     _resetEmergentEventCache();
   });
 
-  it('spawns The Broker + 1–2 shops inside the SETTLEMENT room', () => {
+  it('spawns The Broker + 1-2 shops inside the settlement cluster', () => {
     const world = createTestWorld({ seed: 999 });
     world.floorMap = buildFloor2Map();
     spawnPlayer(world, 0, 0);
@@ -72,6 +72,8 @@ describe('Floor 2 settlement · initialization', () => {
 
     const snap = initializeFloor2Settlement(world, { shopCount: 2 });
     expect(snap.brokerEid).toBeGreaterThan(0);
+    expect(snap.settlementRoomIds.length).toBeGreaterThanOrEqual(2);
+    expect(snap.settlementRoomIds.length).toBeLessThanOrEqual(3);
     expect(snap.shops.length).toBe(2);
     for (const shop of snap.shops) {
       expect(shop.npcEid).toBeGreaterThan(0);
@@ -81,11 +83,16 @@ describe('Floor 2 settlement · initialization', () => {
       }
     }
 
-    // Settlement room is retagged SAFE.
-    const room = world.floorMap!.roomGraph.get(snap.settlementRoomId);
-    expect(room?.role).toBe(RoomRole.SAFE);
+    // Settlement cluster rooms are retagged SAFE.
+    const settlementRooms = snap.settlementRoomIds
+      .map((id) => world.floorMap!.roomGraph.get(id))
+      .filter((room): room is NonNullable<typeof room> => room != null);
+    expect(settlementRooms.length).toBe(snap.settlementRoomIds.length);
+    for (const room of settlementRooms) {
+      expect(room.role).toBe(RoomRole.SAFE);
+    }
 
-    const settlementDoors = room?.doors ?? [];
+    const settlementDoors = settlementRooms.flatMap((room) => room.doors);
     const doorKey = (x: number, y: number) => `${x},${y}`;
     const expectedDoorKeys = new Set(settlementDoors.map((door) => doorKey(door.x, door.y)));
     const seenDoorKeys = new Set<string>();

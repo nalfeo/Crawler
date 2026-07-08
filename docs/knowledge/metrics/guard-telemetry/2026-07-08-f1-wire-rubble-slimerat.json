@@ -1,0 +1,23 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "f1-wire-rubble-slimerat",
+  "date": "2026-07-08",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 10,
+  "guards": {
+    "pr-preflight": {
+      "allow": 5
+    },
+    "pr-review-ledger": {
+      "allow": 2,
+      "skip": 3
+    }
+  },
+  "tools": {
+    "create_pull_request": 10
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

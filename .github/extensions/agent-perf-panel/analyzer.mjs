@@ -750,6 +750,15 @@ export function buildSummary(raw) {
     skillInvocations: raw.skillInvocations,
     errors: raw.errors,
     turns: turnRollup,
+    waterfall: buildWaterfall({
+      tools: raw.tools,
+      turns: turnRollup,
+      startedAt: raw.startedAt,
+      endedAt: raw.endedAt,
+      compactions: raw.compactions,
+      contextEvents: raw.contextEvents,
+      budgetTokens: modelBudget,
+    }),
   };
 }
 
@@ -801,5 +810,240 @@ export function computeParallelStats(tools) {
     serialToolTimeMs: serialMs,
     parallelismRatio: denom > 0 ? parallelMs / denom : 0,
     maxParallelism: peak,
+  };
+}
+
+function clampNum(v, lo, hi) {
+  // Non-finite inputs (NaN/Infinity/undefined) fall back to the low bound so a
+  // single bad timestamp can never poison layout math into NaN%.
+  const n = Number.isFinite(v) ? v : lo;
+  return n < lo ? lo : n > hi ? hi : n;
+}
+
+/**
+ * Build a TRUE waterfall layout: a single shared wall-clock time axis spanning
+ * [startedAt, endedAt], with ONE lane per tool call ordered by real start time.
+ * Each lane is positioned by its actual start / duration on that axis, so serial
+ * calls step down-and-right and parallel calls stack as overlapping bars — the
+ * classic cascade. This is deliberately axis-shared (unlike the old per-turn
+ * re-normalized strips, which had no common time scale and were not a waterfall).
+ *
+ * Positions are returned as percentages of the total span so the client can lay
+ * them out with plain CSS and stay pixel-accurate at any panel width.
+ *
+ * @param {{tools:Array, turns?:Array, startedAt:number, endedAt:number}} input
+ * @param {{maxRows?:number}} [opts]
+ */
+export function buildWaterfall(input, opts = {}) {
+  const tools = Array.isArray(input?.tools) ? input.tools : [];
+  const turns = Array.isArray(input?.turns) ? input.turns : [];
+  const maxRows = opts.maxRows ?? 2000;
+
+  const t0 = Number.isFinite(input?.startedAt) ? input.startedAt : 0;
+  const rawT1 = Number.isFinite(input?.endedAt) ? input.endedAt : t0;
+
+  // Canonicalize each tool's start/end up front. A single NaN/Infinity/undefined
+  // timestamp would otherwise poison the sort comparator and the pct math, so we
+  // resolve every interval to finite numbers with end >= start before using them.
+  const canon = tools.map((x) => {
+    const start = Number.isFinite(x?.start) ? x.start : t0;
+    const endRaw = Number.isFinite(x?.end) ? x.end : start;
+    return { tool: x, start, end: Math.max(start, endRaw) };
+  });
+
+  // Guard against clock skew / open intervals so the axis always covers every bar.
+  // Only finite ends may extend the axis (canon already guaranteed finiteness).
+  let t1 = Math.max(rawT1, t0);
+  for (const c of canon) t1 = Math.max(t1, c.end);
+
+  // actualSpanMs is the real elapsed time (may be 0 for an instant session) and is
+  // what we return/display. layoutSpanMs is only ever used as the pct denominator,
+  // clamped to >=1 so we never divide by zero.
+  const actualSpanMs = Math.max(0, t1 - t0);
+  const layoutSpanMs = Math.max(1, actualSpanMs);
+
+  const sorted = [...canon].sort((a, b) => a.start - b.start || a.end - b.end);
+  const totalRows = sorted.length;
+  const shown = sorted.slice(0, maxRows);
+  const rows = shown.map((c) => {
+    const x = c.tool;
+    const start = clampNum(c.start, t0, t1);
+    const end = clampNum(c.end, start, t1);
+    return {
+      callId: x.callId,
+      name: x.name,
+      turnIndex: x.turnIndex ?? 0,
+      success: x.success === false ? false : x.success === true ? true : null,
+      durationMs: Number.isFinite(x.durationMs) ? x.durationMs : Math.max(0, end - start),
+      startOffsetMs: Math.max(0, start - t0),
+      leftPct: clampNum(((start - t0) / layoutSpanMs) * 100, 0, 100),
+      widthPct: clampNum((Math.max(0, end - start) / layoutSpanMs) * 100, 0, 100),
+    };
+  });
+
+  const turnBands = turns.map((t) => {
+    const start = clampNum(t.start ?? t0, t0, t1);
+    const end = clampNum(t.end ?? t1, start, t1);
+    return {
+      turnIndex: t.turnIndex ?? 0,
+      leftPct: clampNum(((start - t0) / layoutSpanMs) * 100, 0, 100),
+      widthPct: clampNum((Math.max(0, end - start) / layoutSpanMs) * 100, 0, 100),
+      startOffsetMs: Math.max(0, start - t0),
+      durationMs: Number.isFinite(t.durationMs) ? t.durationMs : Math.max(0, end - start),
+      userPromptChars: t.userPromptChars ?? 0,
+      toolCount: t.toolCount ?? 0,
+    };
+  });
+
+  const TICK_COUNT = 6;
+  const ticks = [];
+  for (let i = 0; i <= TICK_COUNT; i++) {
+    ticks.push({ pct: (i / TICK_COUNT) * 100, ms: (i / TICK_COUNT) * actualSpanMs });
+  }
+
+  // Context-window pressure, resolved on the SAME axis (t0/t1/layoutSpanMs) so its
+  // markers line up horizontally with the tool lanes below.
+  const context = buildContextPoints(
+    {
+      compactions: input?.compactions,
+      contextEvents: input?.contextEvents,
+      budgetTokens: input?.budgetTokens,
+    },
+    { t0, t1, layoutSpanMs },
+  );
+
+  return {
+    axis: 'wallclock',
+    startedAt: t0,
+    endedAt: t1,
+    spanMs: actualSpanMs,
+    totalRows,
+    truncated: totalRows > shown.length,
+    rows,
+    turnBands,
+    ticks,
+    context,
+  };
+}
+
+/**
+ * Build the context-window "pressure" series for the waterfall's context strip.
+ *
+ * HONESTY NOTE: the Copilot CLI event log does NOT record a running context size.
+ * Per-call input/cache token counts are 0 in the logs; the only real samples of
+ * how full the context window got are the pre-compaction totals captured when a
+ * compaction fires (`compactions[].preTokens`). This function therefore returns
+ * DISCRETE high-water-mark points (one per compaction) plus the configured budget
+ * — never an interpolated/continuous line. The renderer draws stems+dots, not a
+ * connecting trend line, so nothing implies measurement between samples.
+ *
+ * Alignment: points are positioned on the caller-supplied axis (t0/t1/layoutSpanMs),
+ * which is the exact axis the waterfall lanes use, so a compaction dot sits above
+ * the lane that was running when it happened.
+ *
+ * @param {{compactions?:Array, contextEvents?:Array, budgetTokens?:number}} input
+ * @param {{t0:number, t1:number, layoutSpanMs:number}} axis
+ */
+export function buildContextPoints(input, axis) {
+  const compactions = Array.isArray(input?.compactions) ? input.compactions : [];
+  const contextEvents = Array.isArray(input?.contextEvents) ? input.contextEvents : [];
+  const t0 = Number.isFinite(axis?.t0) ? axis.t0 : 0;
+  const t1 = Number.isFinite(axis?.t1) ? axis.t1 : t0;
+  const layoutSpanMs =
+    Number.isFinite(axis?.layoutSpanMs) && axis.layoutSpanMs > 0 ? axis.layoutSpanMs : 1;
+  const budgetTokens =
+    Number.isFinite(input?.budgetTokens) && input.budgetTokens > 0 ? input.budgetTokens : null;
+
+  // Breakdown pairing (per plan review). contextEvents is a MIXED stream
+  // (compaction_start / compaction_end / warning) and compactions mixes
+  // auto-compactions with truncations, so the two arrays are NOT index-aligned.
+  // Only `session.compaction_complete` (by:'auto') is preceded by a
+  // compaction_start carrying the {system/conversation/toolDefinitions} breakdown;
+  // truncations (`session.usage_info`, by:!'auto') never emit one. So ONLY auto-
+  // compactions may consume a start (FIFO: each start consumed at most once; the
+  // last start at-or-before an auto-compaction is that compaction's cycle start).
+  // Truncations — and any auto-compaction with no preceding unconsumed start — get
+  // no breakdown. Gating consumption on by==='auto' is essential: otherwise a
+  // truncation interleaved between a start and its owning auto-compaction would
+  // greedily steal that start's breakdown and leave the real auto-compaction null.
+  const starts = contextEvents
+    .filter((e) => e && e.type === 'compaction_start' && Number.isFinite(e.ts))
+    .sort((a, b) => a.ts - b.ts);
+
+  const usable = [];
+  for (const c of compactions) {
+    const tokens = Number.isFinite(c?.preTokens) ? c.preTokens : null;
+    const ts = Number.isFinite(c?.ts) ? c.ts : null;
+    if (tokens == null || tokens <= 0 || ts == null) continue; // no usable sample
+    usable.push({ ts, tokens, by: typeof c?.by === 'string' ? c.by : null });
+  }
+  usable.sort((a, b) => a.ts - b.ts);
+
+  let sp = 0; // FIFO pointer into starts
+  let peakTokens = 0;
+  let breakdownCount = 0;
+  const points = [];
+  for (const u of usable) {
+    let cand = null;
+    // Only auto-compactions consume/pair with a compaction_start. Truncations are
+    // skipped entirely (no consumption) so they can neither steal nor be assigned
+    // a breakdown that structurally isn't theirs.
+    if (u.by === 'auto') {
+      while (sp < starts.length && starts[sp].ts <= u.ts) {
+        cand = starts[sp];
+        sp++;
+      }
+    }
+    const breakdown = cand
+      ? {
+          systemTokens: Number.isFinite(cand.systemTokens) ? cand.systemTokens : null,
+          conversationTokens: Number.isFinite(cand.conversationTokens)
+            ? cand.conversationTokens
+            : null,
+          toolDefinitionsTokens: Number.isFinite(cand.toolDefinitionsTokens)
+            ? cand.toolDefinitionsTokens
+            : null,
+        }
+      : null;
+    if (breakdown) breakdownCount++;
+    peakTokens = Math.max(peakTokens, u.tokens);
+    points.push({
+      ts: u.ts,
+      tMs: Math.max(0, u.ts - t0),
+      tokens: u.tokens,
+      by: u.by,
+      _rawXPct: ((u.ts - t0) / layoutSpanMs) * 100,
+      breakdown,
+    });
+  }
+
+  // Vertical scale: the taller of the observed peak or the budget, so both the
+  // budget line and an over-budget peak remain visible. Falls back to 1 to avoid
+  // divide-by-zero when there is neither.
+  const maxTokens = Math.max(peakTokens, budgetTokens || 0) || 1;
+
+  const finalized = points.map((p) => {
+    const offAxis = p._rawXPct < 0 || p._rawXPct > 100;
+    return {
+      tMs: p.tMs,
+      xPct: clampNum(p._rawXPct, 0, 100),
+      offAxis,
+      tokens: p.tokens,
+      tokensPct: clampNum((p.tokens / maxTokens) * 100, 0, 100),
+      budgetPct: budgetTokens ? (p.tokens / budgetTokens) * 100 : null,
+      overBudget: budgetTokens ? p.tokens > budgetTokens : false,
+      by: p.by,
+      breakdown: p.breakdown,
+    };
+  });
+
+  return {
+    hasData: finalized.length > 0,
+    budgetTokens,
+    peakTokens,
+    maxTokens,
+    breakdownCount,
+    offAxisCount: finalized.filter((p) => p.offAxis).length,
+    points: finalized,
   };
 }

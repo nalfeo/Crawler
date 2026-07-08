@@ -56,6 +56,14 @@ const TRUSTED_PACKAGES = new Set<string>([
   'zod',
   'fastify',
   'playwright',
+  // Navmesh AI pathing (Slice 3) — recast-navigation-js, the standard WASM
+  // binding for the Recast/Detour navmesh library. MIT-licensed, maintainer
+  // isaacmason, pinned 0.43.1 (== latest, published 2026-02). Deterministic
+  // path queries proven cross-platform byte-identical (Slice-1 spike + golden
+  // 75917f12 re-proven on Linux CI). Exact packages listed (not the scope) so
+  // future @recast-navigation/* packages stay unvetted-by-default.
+  'recast-navigation',
+  '@recast-navigation/wasm',
 ]);
 
 function isTrusted(name: string): boolean {

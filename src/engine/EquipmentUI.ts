@@ -31,10 +31,10 @@ import type { InventoryBag, InventorySlot } from '../shared/inventory.js';
 import { getItemById, RARITY_COLORS, type ItemDef } from '../shared/items.js';
 import {
   emptyGeneratedSpriteRegistry,
-  pickGeneratedVariant,
   type GeneratedSpriteEntry,
   type GeneratedSpriteRegistry,
 } from '../shared/generated-assets.js';
+import { resolveItemSprite } from '../shared/item-sprites.js';
 import { hashStringToSeed } from '../shared/random.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
 import { BLUE_STEEL, hex, MIN_TEXT_RESOLUTION } from './ui-theme.js';
@@ -472,7 +472,7 @@ export function createEquipmentUI(
   }
 
   function selectGeneratedEntry(itemId: string): GeneratedSpriteEntry | null {
-    return pickGeneratedVariant(
+    return resolveItemSprite(
       getGeneratedRegistry(),
       itemId,
       (hashStringToSeed(itemId) ^ currentWorldSeed) | 0,
@@ -486,8 +486,7 @@ export function createEquipmentUI(
     y: number,
     boxSize: number,
   ): Phaser.GameObjects.GameObject {
-    const iconBriefId = itemDef.icon ?? itemId;
-    const generatedEntry = selectGeneratedEntry(iconBriefId);
+    const generatedEntry = selectGeneratedEntry(itemId);
     const textureLoaded =
       generatedEntry !== null && scene.textures?.exists(generatedEntry.textureKey) === true;
     if (generatedEntry && textureLoaded) {
@@ -1241,9 +1240,8 @@ export function createEquipmentUI(
       for (const slot of SLOT_REGISTRY) {
         const instId = state.equipped[slot.id] ?? null;
         const inst = instId !== null ? state.instances.get(instId) : null;
-        const itemDef = inst ? getItemById(inst.def.id) : undefined;
-        const iconBriefId = itemDef?.icon ?? inst?.def.id ?? '';
-        const entry = iconBriefId ? selectGeneratedEntry(iconBriefId) : null;
+        const itemId = inst?.def.id ?? '';
+        const entry = itemId ? selectGeneratedEntry(itemId) : null;
         const iconReady = entry !== null && scene.textures?.exists(entry.textureKey) === true;
         signature += `${slot.id}:${inst ? inst.def.id : '-'}:${entry?.textureKey ?? ''}:${iconReady ? 1 : 0}|`;
       }

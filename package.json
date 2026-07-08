@@ -40,6 +40,7 @@
     "ai:winrate-sweep": "tsx scripts/agent/perf/winrate-sweep.ts",
     "ai:ab-decision-mode": "tsx scripts/agent/perf/ab-decision-mode.ts",
     "ai:ab-pathing-mode": "tsx scripts/agent/perf/ab-pathing-mode.ts",
+    "ai:navmesh-sweep": "tsx scripts/agent/perf/navmesh-sweep.ts",
     "sprites:extract-palette": "tsx scripts/sprites/extract-palette.ts",
     "sprites:run": "tsx scripts/sprites/cli.ts",
     "sprites:gallery": "tsx scripts/sprites/sidecar/launcher.ts",
@@ -54,6 +55,7 @@
     "sprites:worker": "tsx scripts/sprites/worker-cli.ts",
     "sprites:ingest-once": "tsx scripts/sprites/ingest-once-cli.ts",
     "sprites:sync-catalog": "tsx scripts/sprites/sync-catalog.ts",
+    "sprites:normalize-item-art": "tsx scripts/sprites/normalize-item-art-names.ts",
     "sprites:metadata": "tsx scripts/sprites/metadata-pipeline.ts",
     "sprites:gen-placeholders": "tsx scripts/sprites/gen-placeholders.ts",
     "sprites:fetch-gear-icons": "tsx scripts/sprites/fetch-gear-icons.ts",
@@ -105,9 +107,11 @@
   ],
   "license": "UNLICENSED",
   "dependencies": {
+    "@recast-navigation/wasm": "0.43.1",
     "bitecs": "^0.4.0",
     "loglevel": "^1.9.2",
     "phaser": "^4.1.0",
+    "recast-navigation": "0.43.1",
     "rot-js": "^2.2.1"
   },
   "devDependencies": {

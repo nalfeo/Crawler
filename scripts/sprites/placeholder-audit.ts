@@ -8,7 +8,8 @@
  * The project carries placeholders in three places:
  *   1. The generated manifest — entries whose `sourceRun`/`sensorScore` is
  *      `"placeholder"` or whose asset path ends in `-placeholder.png`. These
- *      back item icons (an item resolves its sprite by `itemId === briefId`).
+ *      back item icons (an item resolves its sprite via `resolveItemSprite`,
+ *      which is version-tolerant and de-prioritizes these placeholders; ADR 0051).
  *   2. The engine sprite registry (`SPRITES`) — temp CC0 Kenney frames whose
  *      `note` says "temp CC0 art" (e.g. `enemy.slime`, `enemy.rat`, `player`).
  *   3. Mob defs — any mob whose `spriteId` is the shared `mob-placeholder`.

@@ -49,6 +49,7 @@
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { canonicalItemBriefId, itemArtIdentitySet } from '../../src/shared/item-sprites.js';
 import { toSpriteType, type SpriteType } from '../../src/shared/sprite-types.js';
 
 /** Subset of `node:fs` calls approveVariant needs. Exposed for tests. */
@@ -237,10 +238,16 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
   }
 
   const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
-  const briefId = summary.brief;
-  if (!briefId) {
+  const rawBriefId = summary.brief;
+  if (!rawBriefId) {
     throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
   }
+  // Recurrence guard (ADR 0051): art for a gameplay item ships BARE. If the brief
+  // is `<item>-vN` and `<item>` is a known item identity (an ItemDef.id or a
+  // weaponId alias), strip the `-vN` so the manifest key / spriteName / assetPath
+  // / briefId are all the bare item id and the icon resolves by item id. Genuine
+  // non-item briefs (enemies, tiles, props) keep their `-vN` lineage untouched.
+  const briefId = canonicalItemBriefId(rawBriefId, itemArtIdentitySet());
 
   const candidate = (summary.candidates ?? []).find((c) => c.index === options.variantIndex);
   if (!candidate) {

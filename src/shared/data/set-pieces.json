@@ -929,22 +929,7 @@
           "z": 0,
           "layers": [
             {
-              "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-rug",
-                "label": "Faded red welcome carpet",
-                "prompt": "A long, worn red-velvet runner rug with frayed gold-tasseled edges and a faint dungeon-grime stain down the middle, top-down 16x16 pixel art, tileable along its length.",
-                "widthTiles": 4,
-                "heightTiles": 2,
-                "tags": ["reality-show", "floor", "cozy"],
-                "placeholder": {
-                  "source": "sheet",
-                  "sheetKey": "kenney-roguelike-rpg-pack",
-                  "col": 3,
-                  "row": 8
-                }
-              },
-              "tintHex": "#7f1d1d"
+              "sprite": { "source": "catalog", "spriteId": "welcome-room-rug-var-0" }
             }
           ]
         },
@@ -1005,21 +990,7 @@
           "z": 9,
           "layers": [
             {
-              "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-bookcase",
-                "label": "Overstuffed spell bookcase",
-                "prompt": "A tall dark-wood bookcase crammed with battered spellbooks, loose scrolls, and a dribbling candle stub, top-down 16x16 pixel art, faintly glowing arcane spines.",
-                "widthTiles": 2,
-                "heightTiles": 1,
-                "tags": ["reality-show", "arcane", "furniture"],
-                "placeholder": {
-                  "source": "sheet",
-                  "sheetKey": "kenney-roguelike-rpg-pack",
-                  "col": 10,
-                  "row": 2
-                }
-              }
+              "sprite": { "source": "catalog", "spriteId": "welcome-room-bookcase-var-0" }
             }
           ]
         },
@@ -1033,21 +1004,7 @@
           "z": 30,
           "layers": [
             {
-              "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-desk",
-                "label": "Goon's welcome desk",
-                "prompt": "A battered reception desk with a dented brass bell, a clipboard of waivers, and a chipped WELCOME nameplate, top-down 16x16 pixel art, blue-collar dungeon bureaucracy.",
-                "widthTiles": 3,
-                "heightTiles": 1,
-                "tags": ["reality-show", "reception", "furniture"],
-                "placeholder": {
-                  "source": "sheet",
-                  "sheetKey": "kenney-tiny-town",
-                  "col": 2,
-                  "row": 5
-                }
-              }
+              "sprite": { "source": "catalog", "spriteId": "welcome-room-desk-var-0" }
             }
           ]
         },
@@ -1061,21 +1018,7 @@
           "z": 30,
           "layers": [
             {
-              "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-shop-table",
-                "label": "Merchant's wares table",
-                "prompt": "A cluttered market table draped in patched cloth, piled with vials, trinkets, and a hand-lettered SALE sign, top-down 16x16 pixel art, sweaty-merchant flair.",
-                "widthTiles": 3,
-                "heightTiles": 1,
-                "tags": ["reality-show", "shop", "furniture"],
-                "placeholder": {
-                  "source": "sheet",
-                  "sheetKey": "kenney-tiny-town",
-                  "col": 2,
-                  "row": 5
-                }
-              }
+              "sprite": { "source": "catalog", "spriteId": "welcome-room-shop-table-var-0" }
             },
             {
               "sprite": { "source": "catalog", "spriteId": "purple-potion-bottle-v1-var-4" },
@@ -1153,21 +1096,7 @@
           "z": 40,
           "layers": [
             {
-              "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-velvet-rope",
-                "label": "Queue velvet rope",
-                "prompt": "A pair of tarnished brass stanchions strung with a sagging red velvet rope, top-down 16x16 pixel art, faded reality-show red-carpet queue.",
-                "widthTiles": 2,
-                "heightTiles": 1,
-                "tags": ["reality-show", "queue", "decoration"],
-                "placeholder": {
-                  "source": "sheet",
-                  "sheetKey": "kenney-tiny-town",
-                  "col": 6,
-                  "row": 7
-                }
-              }
+              "sprite": { "source": "catalog", "spriteId": "welcome-room-velvet-rope-var-2" }
             }
           ]
         }
