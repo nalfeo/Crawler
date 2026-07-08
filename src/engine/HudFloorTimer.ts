@@ -85,6 +85,15 @@ export function createHudFloorTimer(
   }
 
   function sync(world: GameWorld): void {
+    if (world.hideFloorTimer) {
+      panel.setVisible(false);
+      timerText.setVisible(false);
+      stopPulse();
+      return;
+    }
+    panel.setVisible(true);
+    timerText.setVisible(true);
+
     let remainingMs: number;
 
     if (world.floorScenario?.objective) {

@@ -1,4 +1,4 @@
-import { hasComponent } from 'bitecs';
+import { hasComponent, query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import {
   Harvestable,
@@ -19,6 +19,7 @@ import {
   spawnHarvestableNode,
   spawnNpc,
   spawnProp,
+  addSetPieceProp,
   spawnTrap,
 } from '../../../src/core/spawners/world-objects.js';
 import { HARVESTABLE_DEFS } from '../../../src/shared/harvestableDefs.js';
@@ -104,6 +105,49 @@ describe('spawnProp', () => {
   it('returns -1 for an unknown defId', () => {
     const world = createTestWorld();
     expect(spawnProp(world, 0, 0, 'no-such-prop')).toBe(-1);
+  });
+});
+
+describe('addSetPieceProp', () => {
+  const RENDER = {
+    widthFt: 16,
+    heightFt: 8,
+    depth: -19,
+    sprite: { source: 'custom', requestId: 'welcome-room-rug', label: 'rug', prompt: 'a rug' },
+  } as const;
+
+  it('appends a render-only instance (x, y, render) to world.setPieceProps', () => {
+    const world = createTestWorld();
+    addSetPieceProp(world, 12, 34, RENDER);
+
+    expect(world.setPieceProps).toHaveLength(1);
+    expect(world.setPieceProps[0]).toEqual({ x: 12, y: 34, render: RENDER });
+    expect(world.setPieceProps[0]?.render).toBe(RENDER);
+  });
+
+  it('creates NO ECS entity, so cosmetic dressing never consumes an entity id or perturbs the sim', () => {
+    const world = createTestWorld();
+    const propsBefore = query(world.ecs, [Prop]).length;
+    const positionsBefore = query(world.ecs, [Position]).length;
+
+    addSetPieceProp(world, 1, 2, RENDER);
+
+    // No entity is created — the instance lives only on the render sidecar list,
+    // so ambient mobs/drops keep their ids and the global RNG draw order is
+    // unperturbed by cosmetic dressing.
+    expect(query(world.ecs, [Prop]).length).toBe(propsBefore);
+    expect(query(world.ecs, [Position]).length).toBe(positionsBefore);
+  });
+
+  it('preserves draw order across appended layers', () => {
+    const world = createTestWorld();
+    const rug = { ...RENDER, label: 'rug' } as const;
+    const banner = { ...RENDER, depth: 5, label: 'banner' } as const;
+
+    addSetPieceProp(world, 1, 1, rug);
+    addSetPieceProp(world, 2, 2, banner);
+
+    expect(world.setPieceProps.map((p) => p.render.label)).toEqual(['rug', 'banner']);
   });
 });
 

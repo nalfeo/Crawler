@@ -2,7 +2,7 @@ import { hasComponent, query } from 'bitecs';
 import type Phaser from 'phaser';
 import { DeathTimer, Position, Prop, Rotation, Sprite } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
-import { getSprite } from './sprites/index.js';
+import { getSprite, getSheet } from './sprites/index.js';
 import { createCombatVfx } from './CombatVfx.js';
 import { createGoreVfx } from './GoreVfx.js';
 import { createCorpseShatterVfx, type CorpseExplodeOptions } from './CorpseShatterVfx.js';
@@ -21,6 +21,7 @@ import { ftToPx } from '../shared/units.js';
 import { DEFAULT_HANDHELD_SPRITE_ANCHOR } from '../shared/sprite-anchor.js';
 import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../shared/decorationDefs.js';
 import { ENTITY_DEPTH, PROP_DEPTH, WORLD_VFX_DEPTH } from '../shared/render-depths.js';
+import type { SpriteRef } from '../shared/set-piece-types.js';
 import { getHarvestableDefByIndex } from '../shared/harvestableDefs.js';
 import {
   generateTextures,
@@ -31,10 +32,11 @@ import {
 } from './phaser-bridge/textures.js';
 import {
   computeEnemyScale,
+  enemyAppearanceTint,
   enemyVariantFromTextureId,
   generatedBriefIdForEnemy,
   pickGeneratedEnemyTextureKey,
-  placeholderSpawnerTint,
+  refineEnemyVisualKind,
   resolveRenderKind,
   SLIME_FULL_SPRITE_WIDTH,
 } from './phaser-bridge/sprite-kind.js';
@@ -70,6 +72,13 @@ interface EntityVisual {
   deathTotalMs?: number;
 }
 
+interface PropVisual {
+  obj: Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle;
+  mode: 'sprite' | 'placeholder';
+  textureKey?: string;
+  frame?: number;
+}
+
 const RENDER_KIND_CONFIGS = (ENTITY_SPRITE_MAPPINGS as EntitySpriteMappings).renderKinds;
 
 interface ResolvedTexture {
@@ -95,11 +104,49 @@ function getGeneratedSpriteRegistry(scene: Phaser.Scene): GeneratedSpriteRegistr
 }
 
 /**
- * Resolve the texture (and frame) to use for the given entity type.
- * Prefers an approved generated sprite, then a Kenney sprite when both
- * the registry mapping and the loaded texture exist; otherwise falls
- * back to the procedural `__cw_*` texture.
+ * Resolve a set-piece {@link SpriteRef} to a loaded Phaser texture (and frame),
+ * or `null` when nothing usable is loaded (caller draws a placeholder rect).
+ *
+ * - `sheet`   → a Kenney spritesheet frame (`row * cols + col`).
+ * - `catalog` → a catalog (Kenney) sprite when its sheet is loaded, else a
+ *   generated sprite loaded under its BARE manifest key (e.g. `welcome-sign-…`).
+ * - `custom`  → recurse into the ref's `placeholder` (a catalog/sheet ref) until
+ *   the bespoke asset exists; `null` when there is no placeholder.
  */
+function resolveSetPieceSprite(
+  scene: Phaser.Scene,
+  ref: SpriteRef,
+): { textureKey: string; frame?: number } | null {
+  if (ref.source === 'sheet') {
+    const sheet = getSheet(ref.sheetKey);
+    if (sheet === undefined || scene.textures?.exists(ref.sheetKey) !== true) {
+      return null;
+    }
+    return { textureKey: ref.sheetKey, frame: ref.row * sheet.cols + ref.col };
+  }
+  if (ref.source === 'catalog') {
+    const spriteDef = getSprite(ref.spriteId);
+    if (spriteDef !== undefined && scene.textures?.exists(spriteDef.sheetKey) === true) {
+      return { textureKey: spriteDef.sheetKey, frame: spriteDef.frame };
+    }
+    // Generated sprites are loaded as individual textures keyed by the bare manifest key.
+    if (scene.textures?.exists(ref.spriteId) === true) {
+      return { textureKey: ref.spriteId };
+    }
+    return null;
+  }
+  // custom: fall back to the placeholder art until the bespoke asset lands.
+  return ref.placeholder !== undefined ? resolveSetPieceSprite(scene, ref.placeholder) : null;
+}
+
+/** Parse a `#rrggbb` tint to an integer, or `undefined` when absent/invalid. */
+function hexToTintInt(hex: string | undefined): number | undefined {
+  if (hex === undefined) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(hex.replace('#', ''), 16);
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
 function resolveTexture(
   scene: Phaser.Scene,
   type: string,
@@ -209,8 +256,15 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const goldSpawnMs = new Map<number, number>();
   /** Ground shadow ellipses for each gold entity. */
   const goldShadows = new Map<number, Phaser.GameObjects.Ellipse>();
-  /** Placeholder rectangles for Prop entities (coloured by depth layer). */
-  const propVisuals = new Map<number, Phaser.GameObjects.Rectangle>();
+  /** Rendered visuals for Prop entities (sprite when wired, rectangle placeholder otherwise). */
+  const propVisuals = new Map<number, PropVisual>();
+  /**
+   * Rendered visuals for render-only set-piece prop layers, keyed by their index
+   * in `world.setPieceProps` (these are NOT entities, so there is no eid to key
+   * on). The list is append-only and rebuilt on floor reset, so the index is a
+   * stable key for the floor's lifetime.
+   */
+  const setPiecePropVisuals = new Map<number, PropVisual>();
   const combatVfx = createCombatVfx(scene);
   const goreVfx =
     typeof scene.add.rectangle === 'function'
@@ -222,6 +276,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const playerTrailVfx = createPlayerTrailVfx(scene);
   const missingSpriteWarnings = new Set<string>();
   const missingTypeWarnings = new Set<string>();
+  let cachedGeneratedRegistry: GeneratedSpriteRegistry | null = null;
+  const generatedFacingByTexture = new Map<string, 'left' | 'right'>();
   let lastRenderMs: number | null = null;
 
   function logFallback(type: string): void {
@@ -252,14 +308,25 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       const entities = query(world.ecs, [Sprite, Position]);
       const activeEntities = new Set<number>();
       const preferredTextureCache = new Map<string, ResolvedTexture>();
+      const generatedRegistry = getGeneratedSpriteRegistry(scene);
+      if (generatedRegistry !== cachedGeneratedRegistry) {
+        generatedFacingByTexture.clear();
+        if (generatedRegistry) {
+          for (const entry of generatedRegistry.entries()) {
+            generatedFacingByTexture.set(entry.textureKey, entry.facingDirection);
+          }
+        }
+        cachedGeneratedRegistry = generatedRegistry;
+      }
       const resolvePreferredTexture = (
         type: string,
         options?: { appearanceKey?: string; variantRoll?: number },
       ): ResolvedTexture => {
-        const registry = getGeneratedSpriteRegistry(scene);
         const briefId = generatedBriefIdForEnemy(type, options?.appearanceKey);
         const hasGeneratedVariants =
-          briefId !== undefined && registry !== null && registry.variants(briefId).length > 0;
+          briefId !== undefined &&
+          generatedRegistry !== null &&
+          generatedRegistry.variants(briefId).length > 0;
         const cacheKey = `${type}:${options?.appearanceKey ?? ''}:${
           hasGeneratedVariants ? (options?.variantRoll ?? '') : ''
         }`;
@@ -357,7 +424,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               ? bossKey === 'staircase'
                 ? 'enemy_boss_ratslime'
                 : 'enemy_boss'
-              : enemyVariantFromTextureId(world.stores.sprite.textureId[eid])
+              : refineEnemyVisualKind(world, eid)
             : entityType;
         const appearanceKey =
           entityType === 'enemy' ? world.enemyAppearanceKeys.get(eid) : undefined;
@@ -954,22 +1021,12 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             img.setRotation(0);
             if (entityType === 'enemy') {
               const { scaleX, scaleY } = computeEnemyScale(world, eid, visual.baseScale);
-              // All generated enemy art is authored facing RIGHT by engine-wide
-              // convention (the sprite pipeline enforces `sensors.enemy.facing:
-              // 'right'` for enemy briefs — see data/sprite-types/enemy.json).
-              // Phaser's `flipX` MIRRORS the source texture, so the unflipped
-              // texture already faces right. We therefore flip it to face LEFT at
-              // rest and while moving left, and leave it unflipped (native
-              // right-facing) only once horizontal velocity is meaningfully
-              // positive. Net behaviour: enemies default to facing left and turn
-              // right only while moving right. This relies on every enemy texture
-              // sharing that right-facing orientation; if that convention ever
-              // changes, revisit this flip together with the pipeline contract
-              // rather than assuming a blind one-line inversion.
               const movingRight = (velocity.x[eid] ?? 0) > ENEMY_RIGHTWARD_FLIP_EPSILON;
+              const baseFacing = generatedFacingByTexture.get(img.texture.key) ?? 'right';
               img.setScale(scaleX, scaleY);
               if (typeof img.setFlipX === 'function') {
-                img.setFlipX(!movingRight);
+                const shouldMirror = baseFacing === 'right' ? !movingRight : movingRight;
+                img.setFlipX(shouldMirror);
               }
             } else {
               img.setScale(visual.baseScale);
@@ -1006,17 +1063,13 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           visual.deathTotalMs = undefined;
         }
 
-        // Placeholder spawner structures (Rats Nest / Slime Pool) reuse their
-        // child mob's sprite, so wash them bright red to read as obviously-
-        // different placeholders — not the rats/slimes they emit. Applied from
-        // live component state every frame; skipped while a corpse (its grey
-        // decay tint above wins). Non-spawner living enemies clear any tint so a
-        // recycled former-spawner image never keeps a stale red wash.
+        // Enemy tint policy from live identity: unwired spawners stay red,
+        // then Rat Brute dark-grey. Dedicated spawner art opts out of the red wash.
         if (entityType === 'enemy' && !corpseDecay) {
-          const spawnerTint = placeholderSpawnerTint(world.ecs, eid);
-          if (spawnerTint !== null) {
+          const tint = enemyAppearanceTint(world.ecs, eid, appearanceKey, visualType);
+          if (tint !== null) {
             if (typeof img.setTint === 'function') {
-              img.setTint(spawnerTint);
+              img.setTint(tint);
             }
           } else if (typeof img.clearTint === 'function') {
             img.clearTint();
@@ -1076,13 +1129,14 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       }
 
       // --- Prop render pass ---
-      // Render Prop entities as coloured placeholder rectangles until real
-      // sprites are available. Props render at PROP_DEPTH below all entities.
+      // Render Prop entities as real sprites when a wired spriteId resolves;
+      // otherwise fall back to coloured placeholders so unknown props remain visible.
       const activePropEids = new Set<number>();
       for (const propEid of query(world.ecs, [Prop, Position])) {
         activePropEids.add(propEid);
         const propX = ftToPx(position.x[propEid] ?? 0);
         const propY = ftToPx(position.y[propEid] ?? 0);
+
         const defIdIndex = world.stores.prop.defIdIndex[propEid] ?? 0;
         const defId = DECORATION_INDEX_TO_ID[defIdIndex];
         const decorationDef = defId !== undefined ? getDecorationDef(defId) : undefined;
@@ -1100,21 +1154,149 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             : decorationDef?.category === 'rubbish'
               ? 0x8b7355
               : 0x6b7280;
+        const spriteId = decorationDef?.spriteId;
+        const spriteDef = spriteId !== undefined ? getSprite(spriteId) : undefined;
+        const hasKenneySprite =
+          spriteDef !== undefined && scene.textures?.exists(spriteDef.sheetKey) === true;
+        const hasGeneratedSprite =
+          spriteId !== undefined && scene.textures?.exists(spriteId) === true;
+        const shouldRenderSprite =
+          typeof scene.add.image === 'function' && (hasKenneySprite || hasGeneratedSprite);
 
-        let rect = propVisuals.get(propEid);
-        if (!rect && typeof scene.add.rectangle === 'function') {
-          rect = scene.add.rectangle(propX, propY, scalePx, scalePx, fillColor, 0.6);
-          rect.setDepth(depth);
-          propVisuals.set(propEid, rect);
-        } else if (rect) {
-          rect.setPosition(propX, propY);
+        let visual = propVisuals.get(propEid);
+        if (shouldRenderSprite) {
+          const textureKey = hasKenneySprite ? spriteDef!.sheetKey : spriteId!;
+          const frame = hasKenneySprite ? spriteDef!.frame : undefined;
+          if (visual === undefined || visual.mode !== 'sprite') {
+            visual?.obj.destroy();
+            const img =
+              frame !== undefined
+                ? scene.add.image(propX, propY, textureKey, frame)
+                : scene.add.image(propX, propY, textureKey);
+            img.setOrigin(0.5, 0.5);
+            img.setDisplaySize(scalePx, scalePx);
+            img.setDepth(depth);
+            visual = { obj: img, mode: 'sprite', textureKey, frame };
+            propVisuals.set(propEid, visual);
+          } else {
+            const img = visual.obj as Phaser.GameObjects.Image;
+            img.setPosition(propX, propY);
+            img.setDisplaySize(scalePx, scalePx);
+            img.setDepth(depth);
+            const keyChanged = visual.textureKey !== textureKey;
+            const frameChanged =
+              !keyChanged && frame !== undefined && String(img.frame?.name) !== String(frame);
+            if (keyChanged || frameChanged) {
+              if (frame !== undefined) {
+                img.setTexture(textureKey, frame);
+              } else {
+                img.setTexture(textureKey);
+              }
+            }
+            visual.textureKey = textureKey;
+            visual.frame = frame;
+          }
+        } else if (typeof scene.add.rectangle === 'function') {
+          if (visual === undefined || visual.mode !== 'placeholder') {
+            visual?.obj.destroy();
+            const rect = scene.add.rectangle(propX, propY, scalePx, scalePx, fillColor, 0.6);
+            rect.setDepth(depth);
+            visual = { obj: rect, mode: 'placeholder' };
+            propVisuals.set(propEid, visual);
+          } else {
+            const rect = visual.obj as Phaser.GameObjects.Rectangle;
+            rect.setPosition(propX, propY);
+            rect.setSize(scalePx, scalePx);
+            rect.setFillStyle(fillColor, 0.6);
+            rect.setDepth(depth);
+          }
         }
       }
       // Clean up removed prop visuals.
-      for (const [propEid, rect] of propVisuals) {
+      for (const [propEid, visual] of propVisuals) {
         if (!activePropEids.has(propEid)) {
-          rect.destroy();
+          visual.obj.destroy();
           propVisuals.delete(propEid);
+        }
+      }
+
+      // --- Set-piece prop render pass ---
+      // Render-only set-piece prop layers (rugs, banners, desks, bookcases) live
+      // on `world.setPieceProps` as plain instances — NOT entities — so they
+      // consume no entity ids and never perturb gameplay. Keyed here by list
+      // index. Each resolves its own sprite/depth/footprint and STRADDLES the
+      // entity plane via its precomputed depth (rug under the NPC, desk in front).
+      const setPieceProps = world.setPieceProps;
+      for (let i = 0; i < setPieceProps.length; i++) {
+        const instance = setPieceProps[i];
+        if (instance === undefined) {
+          continue;
+        }
+        const sp = instance.render;
+        const propX = ftToPx(instance.x);
+        const propY = ftToPx(instance.y);
+        const spScale = sp.scale ?? 1;
+        const spWidthPx = ftToPx(sp.widthFt * spScale);
+        const spHeightPx = ftToPx(sp.heightFt * spScale);
+        const spDepth = sp.depth;
+        const spTint = hexToTintInt(sp.tintHex);
+        const resolved = resolveSetPieceSprite(scene, sp.sprite);
+        let visual = setPiecePropVisuals.get(i);
+        if (resolved !== null && typeof scene.add.image === 'function') {
+          const { textureKey, frame } = resolved;
+          if (visual === undefined || visual.mode !== 'sprite') {
+            visual?.obj.destroy();
+            const img =
+              frame !== undefined
+                ? scene.add.image(propX, propY, textureKey, frame)
+                : scene.add.image(propX, propY, textureKey);
+            img.setOrigin(0.5, 0.5);
+            visual = { obj: img, mode: 'sprite', textureKey, frame };
+            setPiecePropVisuals.set(i, visual);
+          }
+          const img = visual.obj as Phaser.GameObjects.Image;
+          const keyChanged = visual.textureKey !== textureKey;
+          const frameChanged =
+            !keyChanged && frame !== undefined && String(img.frame?.name) !== String(frame);
+          if (keyChanged || frameChanged) {
+            if (frame !== undefined) {
+              img.setTexture(textureKey, frame);
+            } else {
+              img.setTexture(textureKey);
+            }
+          }
+          img.setPosition(propX, propY);
+          img.setDisplaySize(spWidthPx, spHeightPx);
+          img.setDepth(spDepth);
+          if (spTint !== undefined) {
+            img.setTint(spTint);
+          } else {
+            img.clearTint();
+          }
+          visual.textureKey = textureKey;
+          visual.frame = frame;
+        } else if (typeof scene.add.rectangle === 'function') {
+          // No loaded art yet: draw a tinted placeholder box so the prop is visible.
+          const fill = spTint ?? 0x6b7280;
+          if (visual === undefined || visual.mode !== 'placeholder') {
+            visual?.obj.destroy();
+            const rect = scene.add.rectangle(propX, propY, spWidthPx, spHeightPx, fill, 0.6);
+            visual = { obj: rect, mode: 'placeholder' };
+            setPiecePropVisuals.set(i, visual);
+          }
+          const rect = visual.obj as Phaser.GameObjects.Rectangle;
+          rect.setPosition(propX, propY);
+          rect.setSize(spWidthPx, spHeightPx);
+          rect.setFillStyle(fill, 0.6);
+          rect.setDepth(spDepth);
+        }
+      }
+      // Evict set-piece visuals whose index no longer exists (a floor reset
+      // rebuilt `world.setPieceProps` with fewer layers).
+      for (const [index, visual] of setPiecePropVisuals) {
+        if (index >= setPieceProps.length) {
+          visual.obj.destroy();
+          setPiecePropVisuals.delete(index);
         }
       }
 
@@ -1244,6 +1426,16 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         bar.destroy();
       }
       mobHealthBars.clear();
+
+      for (const visual of propVisuals.values()) {
+        visual.obj.destroy();
+      }
+      propVisuals.clear();
+
+      for (const visual of setPiecePropVisuals.values()) {
+        visual.obj.destroy();
+      }
+      setPiecePropVisuals.clear();
 
       for (const shadow of gemShadows.values()) {
         shadow.destroy();

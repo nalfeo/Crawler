@@ -15,7 +15,13 @@ import type { AnnouncementEvent } from '../shared/announcement-events.js';
 import type { AbilityState, AbilityTriggerEvent } from '../shared/abilities.js';
 import { createLogger } from '../shared/logger.js';
 import type { DoorLockConfig } from './door-lock.js';
+import type { WeaponTelemetry } from './weapon-telemetry.js';
 import type { FloorMap } from './map/FloorMap.js';
+import {
+  createBarrierRegistry,
+  type BarrierHandle,
+  type BarrierRegistry,
+} from './barriers/index.js';
 import {
   Position,
   Velocity,
@@ -61,6 +67,7 @@ import {
 import type { StatModifier, SkillState, SkillUsageEvent, PlayerLevel } from '../shared/skills.js';
 import type { FloorScenarioState, Floor2SettlementSnapshot } from '../shared/floor-types.js';
 import type { NpcInstance } from '../shared/npc-types.js';
+import type { SetPiecePropInstance } from '../shared/set-piece-render.js';
 import type { QuestState } from '../shared/quest-types.js';
 import type { QuestEvent } from '../shared/quest-events.js';
 import type {
@@ -158,6 +165,14 @@ export interface GameWorld {
    */
   lastPlayerHit?: { attackerEid: number; atMs: number };
   /**
+   * Optional, OFF-by-default per-run weapon telemetry (player swings, connecting
+   * hits, accuracy, multi-hit rate). `undefined` = disabled → the shipping sim
+   * and Floor-1 gate see zero behavior/allocation cost. Opt-in surfaces (headless
+   * runner `recordWeaponTelemetry`, PlayerSessionRecorder `recordWeaponTelemetry`)
+   * assign a collector via `createWeaponTelemetry()`. See `weapon-telemetry.ts`.
+   */
+  weaponTelemetry?: WeaponTelemetry;
+  /**
    * Max REALIZED knockback displacement (feet) applied to any entity this frame.
    * Reset to 0 at the top of `knockbackSystem` and accumulated (max) there after
    * each entity's final post-clamp position is written. Read by `beamSystem` to
@@ -187,23 +202,26 @@ export interface GameWorld {
    */
   spawnerArenaDoors: Map<number, number[]>;
   /**
-   * Per-spawner snapshot of fence tiles for an open-fence arena. Each entry
-   * captures the pre-battle tile-flag byte so the ring can be restored bit-for-
-   * bit on resolve. Also keyed on spawner eid.
+   * Per-spawner barrier handles raised while the arena is armed. One entry
+   * per spawner for the ring (open-fence) or doorway plug (sealed-room);
+   * both are dropped on resolve. Replaces the pre-PR-#767 `spawnerArenaFence`
+   * side-car (which mutated `TileMap.flags` and produced leaky cages when the
+   * ring landed on walls — see ADR 0050).
    */
-  spawnerArenaFence: Map<number, Array<{ tileIdx: number; originalFlags: number }>>;
+  spawnerArenaBarriers: Map<number, BarrierHandle>;
   /**
-   * Per-spawner "ever raised a *real* barrier" latch. Set to the spawner eid at
-   * the idle → locked transition ONLY when a non-empty barrier is actually
-   * stored (a locked door list or a fence snapshot), and — unlike
-   * {@link spawnerArenaDoors}/{@link spawnerArenaFence} — deliberately NOT
-   * cleared on resolve. This gives headless telemetry an honest count of
-   * arenas that genuinely trapped the player, without the IDLE→RESOLVED
-   * short-circuit (spawner killed before it ever armed) inflating it.
-   *
-   * Shares the per-world lifetime of the two snapshot maps above (likewise
-   * never bulk-cleared); the sole consumer, `runHeadless`, builds a fresh world
-   * per run, so there is no cross-run contamination.
+   * First-class barrier registry — the single source of truth for dynamic,
+   * tile-granular impassable overlays. Movement, projectile cleanup, and
+   * pathfinding consult this instead of mutating `TileMap.flags`. See
+   * `src/core/barriers/` and ADR 0050.
+   */
+  barriers: BarrierRegistry;
+  /**
+   * Per-spawner "ever raised a *real* barrier" latch. Set at idle → locked
+   * only when a non-empty barrier handle is stored, and not cleared on resolve.
+   * This keeps headless telemetry honest by excluding IDLE→RESOLVED
+   * short-circuits where the spawner died before it ever physically caged the
+   * player.
    */
   spawnerArenaEverArmed: Set<number>;
   /** Player's gold (currency) — separate from BroadcastScore (reality show rating). */
@@ -217,6 +235,12 @@ export interface GameWorld {
   floorId: string;
   /** Current floor scenario state — populated when a floor run is active, null otherwise. */
   floorScenario: FloorScenarioState | null;
+  /**
+   * Lab-only display hint: when true, the HUD floor countdown timer is hidden.
+   * Real floor runs leave this false; lab spawner-arena presets set it so the
+   * `FLOOR.MAX_DURATION_S` fallback countdown doesn't show a spurious 5:00.
+   */
+  hideFloorTimer: boolean;
   /**
    * Floor-specific extended state for floors that use families / settlement
    * mechanics. Populated by the floor initializer; `null` on floors that don't
@@ -256,6 +280,16 @@ export interface GameWorld {
   floorObjectiveTick: ((world: GameWorld) => void) | null;
   /** Per-entity NPC instance state (eid → NpcInstance). Side-car for variable-length NPC data. */
   npcs: Map<number, NpcInstance>;
+  /**
+   * Render-only set-piece prop layers, in draw order, produced by the set-piece
+   * stamping pass ({@link SetPiecePropInstance}). The engine renders this list in
+   * a dedicated pass so authored set-piece dressing shows its own
+   * sprite/depth/footprint/tint. These are deliberately NOT ECS entities: they
+   * consume no entity ids, so ambient mobs and drops keep their ids and the
+   * cosmetic dressing never perturbs collision order, RNG, or balance (see
+   * `set-piece-render.ts` for the full rationale).
+   */
+  setPieceProps: SetPiecePropInstance[];
   /**
    * Stable per-enemy appearance identity (eid → archetype/mob key). The engine
    * uses this to resolve generated-art families more precisely than textureId
@@ -415,12 +449,14 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     vfxEvents: [],
     announcements: [],
     spawnerArenaDoors: new Map(),
-    spawnerArenaFence: new Map(),
+    spawnerArenaBarriers: new Map(),
+    barriers: createBarrierRegistry(),
     spawnerArenaEverArmed: new Set(),
     playerGold: 0,
     floorMap: null,
     floorId: '',
     floorScenario: null,
+    hideFloorTimer: false,
     floorExtendedState: null,
     factionRelations: new Map(),
     factionRelationEvents: [],
@@ -428,6 +464,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     factionRelationDecayLastMs: null,
     floorObjectiveTick: null,
     npcs: new Map(),
+    setPieceProps: [],
     enemyAppearanceKeys: new Map(),
     questLog: new Map(),
     questEvents: [],

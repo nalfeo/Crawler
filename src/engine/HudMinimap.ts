@@ -150,11 +150,24 @@ export function createHudMinimap(scene: Phaser.Scene): {
   toggle(): void;
   isOverlayOpen(): boolean;
   /**
+   * Master visibility gate. Hides/shows the entire minimap (docked radar and
+   * fullscreen overlay) as a unit so a full-screen panel (character/equipment
+   * screen) can suppress it. The docked radar sits at HUD_DEPTH..+8 in the
+   * top-right corner, so without this it punches through wide panels.
+   */
+  setHudVisible(visible: boolean): void;
+  /**
    * Test/automation affordance: world-space bounds of the fullscreen-overlay
    * close button while the overlay is open, or null when it is closed. Lets e2e
    * harnesses tap the close button at its real (responsive) position.
    */
   getOverlayCloseBounds(): ScreenBounds | null;
+  /**
+   * Screen-space bounds of the docked radar dial when visible, or null when it
+   * is hidden (e.g. suppressed by an open character panel). Lets deterministic
+   * e2e assert the minimap does not punch through a full-screen panel.
+   */
+  getDockedBounds(): ScreenBounds | null;
   destroy(): void;
 } {
   // --- Round radar minimap chrome (top-right corner) ------------------------
@@ -430,6 +443,11 @@ export function createHudMinimap(scene: Phaser.Scene): {
     }
   }
 
+  // Set by setHudVisible() when a full-screen panel suppresses the whole HUD.
+  // Guards the overlay toggle so a stray 'M' press can't re-show the map
+  // behind the panel.
+  let masterHidden = false;
+
   function setOverlayVisible(visible: boolean): void {
     overlayDimmer.setVisible(visible);
     panelBg.setVisible(visible);
@@ -458,6 +476,36 @@ export function createHudMinimap(scene: Phaser.Scene): {
       dotGraphics.setVisible(false);
       radarRt.setVisible(Boolean(lastFloorMap));
       applyHudTransform();
+    }
+  }
+
+  function setHudVisible(visible: boolean): void {
+    masterHidden = !visible;
+    if (masterHidden) {
+      for (const obj of [
+        hudMapBg,
+        hudRingOuter,
+        hudRingGold,
+        hudRingInner,
+        hudCompass,
+        hudMapLabel,
+        radarRt,
+        overlayDimmer,
+        panelBg,
+        panelTitle,
+        panelHint,
+        viewportFrame,
+        closeButtonBg,
+        closeLabel,
+        viewportHitArea,
+      ]) {
+        obj.setVisible(false);
+      }
+      terrainRt?.setVisible(false);
+      dotGraphics.setVisible(false);
+    } else {
+      // Restore the correct docked/overlay state; the next sync() redraws.
+      setOverlayVisible(overlayOpen);
     }
   }
 
@@ -860,6 +908,9 @@ export function createHudMinimap(scene: Phaser.Scene): {
   }
 
   function toggle(): void {
+    if (masterHidden) {
+      return;
+    }
     if (overlayOpen) {
       closeOverlay();
     } else {
@@ -1082,9 +1133,15 @@ export function createHudMinimap(scene: Phaser.Scene): {
     sync,
     toggle,
     isOverlayOpen: () => overlayOpen,
+    setHudVisible,
     getOverlayCloseBounds: (): ScreenBounds | null => {
       if (!overlayOpen) return null;
       const b = closeButtonBg.getBounds();
+      return { x: b.x, y: b.y, width: b.width, height: b.height };
+    },
+    getDockedBounds: (): ScreenBounds | null => {
+      if (masterHidden || !hudMapBg.visible) return null;
+      const b = hudMapBg.getBounds();
       return { x: b.x, y: b.y, width: b.width, height: b.height };
     },
     destroy,

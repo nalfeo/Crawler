@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-07",
+  "session_slug": "review-harness-efficiency",
+  "task_title": "Streamline local validation: working-tree scope gate + verify:fast sim-check scoping + opt-in knip",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.3-codex",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "notes": "APPROVE-WITH-CHANGES. 8 concerns resolved in design: base-unresolved forces gameplay_safe=false; no diff-filter so deletions count; anchor detect-art-only via BASH_SOURCE; defensive parse; mirror non-CI eslint gate; accurate skip message + CI-orphan follow-up; knip-before-PR guidance; deterministic local-scope test."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "code-review agent (gpt-5.3-codex), 428s / 17+ tool calls over the full branch diff. No significant issues. Verified CRIT-1 base-missing->all-false, CRIT-2 no diff-filter includes deletions, defensive gameplay_safe parse + [-z CI] gate, BASH_SOURCE anchor, lab-gate byte-identical name-normalization."
+        }
+      ]
+    }
+  }
+}

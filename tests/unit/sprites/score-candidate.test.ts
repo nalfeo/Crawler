@@ -220,6 +220,18 @@ describe('scoreCandidate', () => {
     expect(opaqueResult?.ok).toBe(true);
   });
 
+  it('honors a brief override that disables opaque-ratio entirely', () => {
+    // The solid-block fixture normally fails opaque-ratio; disabling it should
+    // force this sensor to pass for the brief.
+    const brief = makeBrief({
+      sensors: { opaqueRatio: { disabled: true } } as Brief['sensors'],
+    });
+    const processed = postprocess(buildSolidBlockFixture(), brief, PALETTE);
+    const card = scoreCandidate(processed, brief, PALETTE);
+    const opaqueResult = card.breakdown.find((r) => r.sensor === 'opaque-ratio');
+    expect(opaqueResult?.ok).toBe(true);
+  });
+
   it('honors a brief override that tightens the weapon diagonal tolerance', () => {
     // Default tolerance is 2°. With a 30° tolerance, even a near-horizontal
     // bar should fail because the cone around horizontal grows.

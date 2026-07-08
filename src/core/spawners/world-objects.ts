@@ -22,6 +22,7 @@ import {
   type DecorationDef,
 } from '../../shared/decorationDefs.js';
 import { ftToPx } from '../../shared/units.js';
+import type { SetPiecePropRender } from '../../shared/set-piece-render.js';
 import { type HarvestableDef, HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import { createEntity } from './entity-core.js';
 
@@ -187,6 +188,35 @@ export function spawnProp(world: GameWorld, x: number, y: number, defId: string)
   }
 
   return eid;
+}
+
+/**
+ * Append a render-only set-piece prop layer to `world.setPieceProps` at a
+ * world-space position (feet).
+ *
+ * Unlike {@link spawnProp}, this creates NO ECS entity — it records a plain
+ * {@link SetPiecePropInstance} the engine renders in its dedicated set-piece
+ * pass. Set-piece dressing (rugs, banners, desks, bookcases, clutter) is purely
+ * cosmetic and must not affect gameplay or balance, and creating an entity per
+ * layer would allocate entity ids ahead of the run's gameplay spawns — shifting
+ * ambient-mob/drop ids and thereby perturbing collision-pair enumeration order
+ * and the global RNG. Keeping props off the entity space guarantees the headless
+ * simulation and the rendered game stay byte-for-byte identical no matter how
+ * much dressing a floor carries (see `set-piece-render.ts` for the rationale).
+ *
+ * The `render` instructions (resolved sprite, straddling depth, footprint, tint)
+ * are stored alongside the position; the PhaserBridge set-piece pass consults
+ * this list. One instance is appended per flattened set-piece draw layer, in
+ * draw order, so composites (e.g. rug + banner, or a table with an item on top)
+ * render correctly layered.
+ */
+export function addSetPieceProp(
+  world: GameWorld,
+  x: number,
+  y: number,
+  render: SetPiecePropRender,
+): void {
+  world.setPieceProps.push({ x, y, render });
 }
 
 /**

@@ -50,11 +50,15 @@ import {
   EFFECTIVE_PIPELINE_JSON_KEY,
   EFFECTIVE_PIPELINE_YAML_KEY,
   POSTPROCESS_PROFILE_KEY,
+  readFacingOverride,
   readManualAnchor,
+  removeFacingOverride,
   readPostprocessProfile,
   removeManualAnchor,
   removePostprocessProfile,
+  type FacingOverride,
   type ManualAnchorOverride,
+  writeFacingOverride,
   writeEffectivePipelineSnapshot,
   writePostprocessProfile,
 } from './postprocess-overrides.js';
@@ -70,6 +74,7 @@ export type RerunErrorKind =
   | 'sheet-not-found'
   | 'unsupported-sheet-filename'
   | 'slice-failed'
+  | 'variant-index-out-of-range'
   | 'variant-count-mismatch'
   | 'processed-missing';
 
@@ -168,7 +173,36 @@ export interface RepostprocessArgs {
   readonly optionsMode?: 'default' | 'persisted' | 'replace' | 'reset';
   /** Explicit `sheet-NN.png`; defaults to the newest sheet. */
   readonly sheetFile?: string;
+  /** Restrict re-postprocess to these variant indexes; omit to process all. */
+  readonly variantIndexes?: ReadonlyArray<number>;
   readonly manualAnchor?: ManualAnchorOverride | null;
+  readonly facing?: {
+    variantIndex: number;
+    direction: 'left' | 'right';
+    applyToAllVariants?: boolean;
+  } | null;
+}
+
+/**
+ * True when two empty-cell coordinate lists describe the same set of cells,
+ * order-independently. Used by {@link repostprocessRun} to detect a brief grid
+ * change even when the non-empty variant count is unchanged.
+ */
+function sameEmptyCells(
+  a: ReadonlyArray<readonly [number, number]>,
+  b: ReadonlyArray<readonly [number, number]>,
+): boolean {
+  if (a.length !== b.length) return false;
+  // Canonical order-independent comparison. A set-membership test would ignore
+  // multiplicity — two equal-length lists like [[0,0],[1,1]] and [[0,0],[0,0]]
+  // would compare equal — so sort both and compare element-wise instead. Briefs
+  // can no longer carry duplicate coordinates (brief-schema rejects them), but a
+  // legacy persisted `summary.grid` may, so the helper stays correct in isolation.
+  const order = (p: readonly [number, number], q: readonly [number, number]): number =>
+    p[0] - q[0] || p[1] - q[1];
+  const sa = [...a].sort(order);
+  const sb = [...b].sort(order);
+  return sa.every((cell, i) => cell[0] === sb[i]![0] && cell[1] === sb[i]![1]);
 }
 
 /**
@@ -187,6 +221,7 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
   const nowIso = new Date().toISOString();
   const persistedProfile = await readPostprocessProfile(store, `${briefId}/${runId}`);
   const persistedManualAnchor = await readManualAnchor(store, `${briefId}/${runId}`);
+  const persistedFacingOverride = await readFacingOverride(store, `${briefId}/${runId}`);
   const optionsMode =
     args.optionsMode ??
     (args.options !== undefined ? 'replace' : persistedProfile ? 'persisted' : 'default');
@@ -202,6 +237,19 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
       : args.manualAnchor !== undefined
         ? args.manualAnchor
         : (persistedManualAnchor ?? null);
+  const effectiveFacingOverride: FacingOverride | null =
+    optionsMode === 'reset'
+      ? null
+      : args.facing !== undefined
+        ? args.facing
+          ? {
+              variantIndex: args.facing.variantIndex,
+              direction: args.facing.direction,
+              ...(args.facing.applyToAllVariants === true ? { applyToAllVariants: true } : {}),
+              updatedAt: nowIso,
+            }
+          : null
+        : (persistedFacingOverride ?? null);
 
   const { sheetFile, sheetPng } = await resolveRunSheet(store, briefId, runId, args.sheetFile);
 
@@ -212,25 +260,81 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
     throw new RerunError('slice-failed', err instanceof Error ? err.message : String(err));
   }
 
-  // Carry-forward guard (PR2a review): recompute the expected variant count
-  // from the brief rather than trusting `summary.variantCount`. If the brief's
-  // grid/variant config changed since generation, re-slicing yields a different
-  // cell count and silently carrying the stale number would corrupt the
-  // summary. Reject the mismatch instead. (Generate applies the same gate, ADR
-  // 0024, so a stored sheet that ever passed Generate matches at post-process
-  // time unless the brief itself was edited.)
+  // Carry-forward guard (ADR 0024): reject if the brief's grid/variant config
+  // changed since the sheet was generated. Such a change would corrupt the
+  // summary's per-variant entries (assigned in row-major order 0..N-1) if we
+  // silently carried on. The slicer now reconciles any stored sheet to the
+  // brief's CURRENT commanded grid (over/under-segmentation is snapped to the
+  // commanded cell count; human gallery review is the grid quality gate), so
+  // re-slicing always returns the current count and can no longer flag a change
+  // on its own.
+  //
+  // Compare the stored generation-time grid STRUCTURE against the current brief.
+  // We compare the full structure — rows, cols AND the empty-cell set — not just
+  // the variant COUNT, because a same-count layout change (e.g. 2×2 → 1×4, or an
+  // empty cell moved) re-slices the sheet into different crops while N stays the
+  // same, which would silently overwrite the wrong variants. Legacy runs
+  // generated before `grid` was persisted fall back to the count comparison.
+  const briefSheet = brief.generation.sheet;
   const expected = variantCount(brief);
-  if (sliced.length !== expected) {
+  const priorGrid = summary.grid;
+  const gridChanged = priorGrid
+    ? priorGrid.rows !== briefSheet.rows ||
+      priorGrid.cols !== briefSheet.cols ||
+      !sameEmptyCells(priorGrid.emptyCells, briefSheet.emptyCells)
+    : summary.variantCount !== expected;
+  if (gridChanged) {
     throw new RerunError(
       'variant-count-mismatch',
-      `re-slicing the stored sheet produced ${sliced.length} cells but the brief ` +
-        `expects ${expected}; the brief's grid/variant config changed since generation`,
+      priorGrid
+        ? `the stored run was generated for a ${priorGrid.rows}×${priorGrid.cols} grid ` +
+            `(${summary.variantCount} variants) but the brief now commands ` +
+            `${briefSheet.rows}×${briefSheet.cols} (${expected} variants); the grid/variant ` +
+            `config changed since generation`
+        : `the stored run was generated for ${summary.variantCount} variants but the brief ` +
+            `now expects ${expected}; the grid/variant config changed since generation`,
     );
   }
 
+  const selectedIndexSet =
+    args.variantIndexes && args.variantIndexes.length > 0 ? new Set(args.variantIndexes) : null;
+  if (selectedIndexSet) {
+    const invalidIndex = Array.from(selectedIndexSet).find(
+      (index) => index < 0 || index >= sliced.length,
+    );
+    if (invalidIndex !== undefined) {
+      throw new RerunError(
+        'variant-index-out-of-range',
+        `variantIndexes contains out-of-range index ${invalidIndex}; expected 0..${sliced.length - 1}`,
+      );
+    }
+  }
+  const priorEntriesByIndex = new Map<number, RunSummaryEntry>(
+    summary.candidates.map((entry) => [entry.index, entry]),
+  );
   const variants: ProcessedVariant[] = [];
   const processedBuffers: Buffer[] = [];
   for (let i = 0; i < sliced.length; i++) {
+    if (selectedIndexSet && !selectedIndexSet.has(i)) {
+      const priorEntry = priorEntriesByIndex.get(i);
+      if (!priorEntry) {
+        throw new RerunError(
+          'summary-invalid',
+          `summary.json missing candidate entry for variant ${i} in ${briefId}/${runId}`,
+        );
+      }
+      const processedKey = storeKey(`processed/${pad2(i)}.png`);
+      if (!(await store.has(processedKey))) {
+        throw new RerunError(
+          'processed-missing',
+          `processed/${pad2(i)}.png missing for ${briefId}/${runId}; re-run PostProcess first`,
+        );
+      }
+      const preserved = toProcessedVariant(priorEntry, await store.get(processedKey));
+      variants.push(preserved);
+      processedBuffers.push(preserved.processed);
+      continue;
+    }
     const variant = await postprocessScoreAndStoreVariant({
       store,
       storeKey,
@@ -251,15 +355,22 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
 
   if (optionsMode === 'reset') {
     await removeManualAnchor(store, `${briefId}/${runId}`);
+    await removeFacingOverride(store, `${briefId}/${runId}`);
     await removePostprocessProfile(store, `${briefId}/${runId}`);
   } else {
     await writePostprocessProfile(store, `${briefId}/${runId}`, effectiveOptions, nowIso);
+    if (effectiveFacingOverride) {
+      await writeFacingOverride(store, `${briefId}/${runId}`, effectiveFacingOverride, nowIso);
+    } else {
+      await removeFacingOverride(store, `${briefId}/${runId}`);
+    }
     await writeEffectivePipelineSnapshot({
       store,
       baseKey: `${briefId}/${runId}`,
       brief,
       options: effectiveOptions,
       manualAnchor: effectiveManualAnchor,
+      facing: effectiveFacingOverride,
       nowIso,
     });
   }
@@ -290,6 +401,7 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
         optionsMode === 'reset' ? null : store.resolve(storeKey(EFFECTIVE_PIPELINE_YAML_KEY)),
       options: optionsMode === 'reset' ? null : effectiveOptions,
       manualAnchor: effectiveManualAnchor,
+      facing: effectiveFacingOverride,
       appliedMode: optionsMode,
       updatedAt: nowIso,
     },

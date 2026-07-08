@@ -23,6 +23,7 @@ import { createLogger } from '../../shared/logger.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { FLOOR1_TUTORIAL_QUEST_ID } from '../../shared/quest-types.js';
 import { xpRequiredForLevel } from '../../shared/xpMath.js';
+import { createWeaponTelemetry, summarizeWeaponTelemetry } from '../../core/weapon-telemetry.js';
 import {
   AIDecisionDebugState,
   type AIInputProvider,
@@ -122,6 +123,14 @@ export interface HeadlessRunnerConfig {
    * mutate the world; it is called after all simulation stops.
    */
   onFinish?: (world: GameWorld) => void;
+  /**
+   * Opt-in: collect per-run weapon-accuracy telemetry (swings, connecting hits,
+   * accuracy, multi-hit rate) and expose it as `RunStats.weaponTelemetry`. OFF by
+   * default — when false the world's `weaponTelemetry` field stays undefined and
+   * the simulation pays zero cost, so the Floor-1 gate and determinism are
+   * unaffected.
+   */
+  recordWeaponTelemetry?: boolean;
 }
 
 const DEFAULT_CONFIG: Required<
@@ -137,6 +146,7 @@ const DEFAULT_CONFIG: Required<
   enemyDamageMultiplier: 1,
   floorId: 'floor1',
   startPlayerLevel: 1,
+  recordWeaponTelemetry: false,
 };
 
 function applyConfiguredHostileDamageMultiplier(
@@ -193,7 +203,7 @@ function computeSpawnerArenaMetrics(world: GameWorld): {
     if (state === 2) resolved += 1;
     // Count spawners that raised a *real* barrier at some point in the run via
     // the persistent `spawnerArenaEverArmed` latch. It is set only when a
-    // non-empty fence snapshot / locked-door list is actually stored, and is
+    // non-empty barrier handle is actually stored, and is
     // NOT cleared on resolve — so a killed arena still counts, while an
     // IDLE→RESOLVED short-circuit (spawner died before it ever armed) does not
     // inflate the count. `resolvedArmed` is the subset that also resolved — the
@@ -245,6 +255,9 @@ export async function runHeadless(
 
   // Create world and spawn player
   const world = createGameWorld({ seed: mergedConfig.seed });
+  if (mergedConfig.recordWeaponTelemetry) {
+    world.weaponTelemetry = createWeaponTelemetry();
+  }
   const playerEid = spawnPlayer(world, 400, 400);
   const hostileDamageMultiplier = normalizeHostileDamageMultiplier(
     mergedConfig.enemyDamageMultiplier,
@@ -334,6 +347,11 @@ export async function runHeadless(
   const sampleInterval = Math.max(1, mergedConfig.eventSampleInterval);
   const navProvider = aiProvider as AIInputProvider & {
     getNavigationDebug?: () => { stuckFrames: number; pathWaypoints: readonly unknown[] };
+    getTacticalRunDebug?: () => {
+      runPlan: { slackMs: number; urgency: number } | null;
+      decisionRunPlan?: { slackMs: number; urgency: number } | null;
+    };
+    getDecisionMode?: () => string;
   };
   let lastFrameX = world.stores.position.x[playerEid] ?? 0;
   let lastFrameY = world.stores.position.y[playerEid] ?? 0;
@@ -385,6 +403,21 @@ export async function runHeadless(
     }
     const nav = navProvider.getNavigationDebug?.();
     const netDisp = Math.hypot(px - lastSampleX, py - lastSampleY);
+    // A/B telemetry (axis 2): emit run-plan slack/urgency and the decision mode
+    // when the provider exposes them. Optional-chained + present-only, so a
+    // provider WITHOUT these getters (e.g. a scripted/bare provider) emits
+    // nothing new. A BehaviorTreeAI DOES expose them, so even in LEGACY mode it
+    // emits `decisionMode: 'legacy'` and — on travelling samples — `slackMs`/
+    // `urgency` (from the post-tick `runPlan`). That is an observability
+    // superset, NOT part of the deterministic sim: game behavior/determinism
+    // stays byte-identical to main; only the emitted telemetry field set is
+    // broader. Prefer `decisionRunPlan` — the plan the SLACK_AWARE F1/F2 filters
+    // actually consulted this frame — falling back to the post-tick `runPlan`.
+    // In LEGACY `decisionRunPlan` is always null, so this falls back to
+    // `runPlan`, selecting the same plan a legacy-aware provider would.
+    const tacticalDebug = navProvider.getTacticalRunDebug?.();
+    const runPlan = tacticalDebug?.decisionRunPlan ?? tacticalDebug?.runPlan ?? null;
+    const decisionMode = navProvider.getDecisionMode?.();
     return {
       type,
       frame: frameCount,
@@ -411,6 +444,8 @@ export async function runHeadless(
           ? Math.round(world.floorScenario.objective.deadlineMs - world.elapsedMs)
           : null,
       inSafe: world.playerInSafeRoom === true,
+      ...(runPlan ? { slackMs: Math.round(runPlan.slackMs), urgency: runPlan.urgency } : {}),
+      ...(decisionMode ? { decisionMode } : {}),
       ...(note ? { note } : {}),
     };
   };
@@ -722,6 +757,9 @@ export async function runHeadless(
       startingWeapon,
       aiTelemetry: buildAiTelemetry(),
       spawnerArenas: computeSpawnerArenaMetrics(world),
+      ...(world.weaponTelemetry
+        ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
+        : {}),
     };
     if (mergedConfig.onFinish) {
       try {
@@ -785,6 +823,9 @@ export async function runHeadless(
     startingWeapon,
     aiTelemetry: buildAiTelemetry(),
     spawnerArenas: computeSpawnerArenaMetrics(world),
+    ...(world.weaponTelemetry
+      ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
+      : {}),
   };
 
   if (mergedConfig.debug || mergedConfig.progressInterval > 0) {

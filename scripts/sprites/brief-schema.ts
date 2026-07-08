@@ -113,6 +113,7 @@ const sensorOverridesSchema = z
   .object({
     opaqueRatio: z
       .object({
+        disabled: z.boolean().optional(),
         min: z.number().min(0).max(1).optional(),
         max: z.number().min(0).max(1).optional(),
       })
@@ -320,8 +321,13 @@ export const briefSchema = z
         message: `anchor.y (${brief.anchor.y}) must be < size.height (${brief.size.height})`,
       });
     }
-    // Validate empty-cell coordinates fit inside the declared grid.
+    // Validate empty-cell coordinates fit inside the declared grid and are
+    // unique. Duplicates would inflate `emptyCells.length`, making
+    // `variantCount` (rows*cols - emptyCells.length) under-count the real cells
+    // — corrupting the row-major variant indexing and the rerun grid-change
+    // guard (see rerun.ts `sameEmptyCells`), which trusts `emptyCells` as a set.
     const { rows, cols, emptyCells } = brief.generation.sheet;
+    const seenEmpty = new Set<string>();
     for (const [r, c] of emptyCells) {
       if (r >= rows || c >= cols) {
         ctx.addIssue({
@@ -330,6 +336,15 @@ export const briefSchema = z
           message: `empty cell [${r}, ${c}] is outside the ${rows}x${cols} grid`,
         });
       }
+      const key = `${r},${c}`;
+      if (seenEmpty.has(key)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['generation', 'sheet', 'emptyCells'],
+          message: `duplicate empty cell [${r}, ${c}]`,
+        });
+      }
+      seenEmpty.add(key);
     }
     const variantCount = rows * cols - emptyCells.length;
     if (variantCount < 1) {

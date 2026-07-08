@@ -3,9 +3,17 @@
  *
  * Exports AI input providers and types for headless/visual runners.
  */
-export { BehaviorTreeAI } from './bt-ai-provider.js';
-export type { AIInputProvider, AIDecision, AIConfig, RunStats } from './types.js';
-export { AIState } from './types.js';
+export { BehaviorTreeAI, RISK_REWARD_FIELD_CONSTANTS } from './bt-ai-provider.js';
+export type { FusedHeadingDebug, FusedCandidateDebug } from './bt-ai-provider.js';
+export type {
+  AIInputProvider,
+  AIDecision,
+  AIConfig,
+  RunStats,
+  AIPathingModeValue,
+  AIDecisionModeValue,
+} from './types.js';
+export { AIState, AIPathingMode, AIDecisionMode } from './types.js';
 export { runHeadless } from './headless-runner.js';
 export { scoreRun, aggregateScores } from './scoring.js';
 export type { ScoreBreakdown } from './scoring.js';

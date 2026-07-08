@@ -64,11 +64,15 @@ import {
 } from '../../core/systems/questSystem.js';
 import {
   AIState,
+  AIDecisionMode,
+  AIPathingMode,
   AIDecisionDebugState,
   AIProgressSuppressionSource,
   type AIInputProvider,
   type AIDecision,
   type AIConfig,
+  type AIDecisionModeValue,
+  type AIPathingModeValue,
   type AIProgressSuppressionSourceValue,
   type AISuppressedProgressNavDebug,
 } from './types.js';
@@ -245,6 +249,7 @@ import {
 } from './travel-steering.js';
 import {
   estimateFloor1RunPlan,
+  isRunPlanUrgent,
   type Floor1RunPlan,
   type Floor1RunPlannerSnapshot,
   type RunPlanSegmentPhase,
@@ -266,9 +271,113 @@ import {
 
 const logger = createLogger('game:bt-ai-provider');
 
+/**
+ * Urgency (0..1) at/above which {@link AIDecisionMode.SLACK_AWARE} treats the
+ * run as time-pressured and applies its monotone Track A filters. Matches the
+ * amber threshold used by the lab Slack HUD row.
+ */
+const SLACK_AWARE_URGENCY_THRESHOLD = 0.66;
+
 // Below this magnitude a heading is treated as "no direction" (skip steering /
 // neutral continuity) — matches the pure module's own zero-vector epsilon.
 const TRAVEL_HEADING_EPSILON = 1e-6;
+
+// --- RISK_REWARD_FUSED pathing (AIPathingMode.RISK_REWARD_FUSED) -------------
+// The fused heading scorer samples candidate directions fanned around the
+// desired (Track A + Track B) heading and picks the one that best trades
+// objective progress + reward pull against sampled overlap-danger, so the AI
+// prefers low-risk "seams" when moving through enemy pressure fields. All
+// constants are dormant unless pathingMode === RISK_REWARD_FUSED.
+const RISK_REWARD_CANDIDATE_OFFSETS_DEG = [
+  0, -15, 15, -30, 30, -45, 45, -60, 60, -75, 75, -90, 90,
+] as const;
+const RISK_REWARD_DANGER_LOOKAHEAD_FT = 8;
+const RISK_REWARD_DANGER_RADIUS_FT = 9; // retuned for spawner-free Floor 1: a following near-player danger bubble means a wide halo is high in EVERY forward direction → progress paralysis; tighten to genuinely-imminent overlap only
+const RISK_REWARD_W_PROGRESS = 1.0; // baseline — danger must reliably beat this
+const RISK_REWARD_W_REWARD = 0.95;
+const RISK_REWARD_W_DANGER = 1.0; // retuned 1.8→1.0: on a director map danger is a local deflection nudge, not a progress-dominating force (was tuned for a static swarm)
+// Continuity bonus: small nudge toward the previous frame's heading to dampen
+// oscillation when candidates score nearly equally (e.g. dense symmetric packs).
+const RISK_REWARD_W_CONTINUITY = 0.18;
+// Walls amplify danger from nearby enemies — being trapped against a wall with
+// an enemy is worse than facing that enemy in open space. Walls alone (no enemies
+// nearby) produce NO danger, so open-but-adjacent-to-wall corridors are still safe.
+const RISK_REWARD_WALL_AMPLIFICATION = 2.4;
+// Unseen-area baseline: on spawner-free Floor 1 the exit is ALWAYS reached by
+// pushing through fog, and enemies spawn near the player (not hidden in fog), so a
+// fog penalty just taxes the only path to victory. Retuned 0.35→0.0.
+const RISK_REWARD_FOG_DANGER = 0.0;
+// Door-crossing penalty: progress requires crossing doors and nothing ambushes from
+// behind them on a near-player director. Retuned 0.6→0.0.
+const RISK_REWARD_DOOR_DANGER = 0.0;
+// How many frames ahead to project enemy positions via their current velocity.
+// Enemies always move toward the player (flow-map driven), so the projected
+// position is always at least as close — use it directly.
+const RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES = 14;
+// Wall proximity check: if a wall is within this many ft perpendicular to the
+// travel direction, the corridor is considered "wall-adjacent" and the amplifier
+// is applied even when the ray centre stays passable.
+const RISK_REWARD_WALL_PROXIMITY_FT = 2.0;
+
+/**
+ * Read-only snapshot of the RISK_REWARD_FUSED field constants, exported so debug
+ * visualizers (the ai-runner lab heatmap) can mirror the scorer WITHOUT
+ * re-declaring the numbers. Re-declaring them is how the lab overlay silently
+ * drifted from the scorer (wall-amp / lookahead / radius mismatches); importing
+ * this bundle keeps the danger side of the heatmap faithful to the real weights.
+ */
+export const RISK_REWARD_FIELD_CONSTANTS = Object.freeze({
+  dangerLookaheadFt: RISK_REWARD_DANGER_LOOKAHEAD_FT,
+  dangerRadiusFt: RISK_REWARD_DANGER_RADIUS_FT,
+  wallAmplification: RISK_REWARD_WALL_AMPLIFICATION,
+  wallProximityFt: RISK_REWARD_WALL_PROXIMITY_FT,
+  fogDanger: RISK_REWARD_FOG_DANGER,
+  doorDanger: RISK_REWARD_DOOR_DANGER,
+  velocityLookaheadFrames: RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES,
+});
+
+/** One scored candidate heading from a single fused-scorer poll (debug only). */
+export interface FusedCandidateDebug {
+  /** Offset from the desired (Track A+B) heading, degrees. 0 = straight ahead. */
+  angleDeg: number;
+  /** Unit heading of this candidate. */
+  dirX: number;
+  dirY: number;
+  /** Pre-weight component terms (so the viz can show WHY a candidate scored). */
+  progress: number;
+  reward: number;
+  danger: number;
+  continuity: number;
+  /** Final weighted score actually compared by the scorer. */
+  score: number;
+  /** True for the single candidate the scorer selected this poll. */
+  chosen: boolean;
+}
+
+/**
+ * Snapshot of one RISK_REWARD_FUSED scoring poll, captured ONLY when
+ * {@link BehaviorTreeAI.fusedDebugCapture} is enabled (lab/debug). Default-off so
+ * the headless runner / A/B sweep path allocates nothing and stays byte-identical
+ * to the validated gate. Pure data (no rendering types) — never read back into
+ * any decision, so it cannot perturb determinism.
+ */
+export interface FusedHeadingDebug {
+  playerX: number;
+  playerY: number;
+  /** The desired heading (Track A objective blended with Track B pull) = 0° candidate. */
+  desiredX: number;
+  desiredY: number;
+  /** The chosen heading (== the `chosen` candidate's dir). */
+  bestX: number;
+  bestY: number;
+  bestScore: number;
+  /** Ray length the scorer samples danger at, feet (for drawing candidate rays). */
+  lookaheadFt: number;
+  dangerRadiusFt: number;
+  /** Velocity-projected enemy threat points the scorer actually scored against. */
+  threats: { x: number; y: number }[];
+  candidates: FusedCandidateDebug[];
+}
 
 // Assembled once from the TRAVEL_* tuning constants; the pure steering module
 // reads it by reference each frame and never mutates it.
@@ -449,7 +558,20 @@ export interface AINpcMemoryDebug {
 export type { AILockedDoorMemory };
 
 export interface TacticalRunDebug {
+  /**
+   * Post-tick travel-steering run plan (`lastRunPlan`), estimated from the
+   * decision the tree just committed. Drives predictive steering, not decisions.
+   */
   runPlan: Floor1RunPlan | null;
+  /**
+   * SLACK_AWARE decision-time run plan (`decisionRunPlan`), estimated at
+   * poll-start from the PREVIOUS frame's target. This is the plan the F1/F2
+   * monotone filters actually consult, so HUD/telemetry should prefer it when
+   * present to show the slack/urgency that drove suppression this frame. Always
+   * null in LEGACY (never computed), so LEGACY telemetry falls back to `runPlan`
+   * and stays byte-identical to main.
+   */
+  decisionRunPlan: Floor1RunPlan | null;
   opportunities: TacticalOpportunityEvaluation | null;
 }
 
@@ -539,6 +661,23 @@ export class BehaviorTreeAI implements AIInputProvider {
    * recent poll). Exposed via {@link getTravelSteeringDebug} for tests/telemetry. */
   private lastTravelSteering: TravelSteeringResult | null = null;
   private lastRunPlan: Floor1RunPlan | null = null;
+  /**
+   * SLACK_AWARE only: this frame's run-plan estimate, computed at poll start so
+   * the Track A goal-eligibility filters (F1/F2) can consult slack/urgency
+   * during the tree tick. {@link lastRunPlan} is reset to null before the tick
+   * and only repopulated later inside travel steering, so it is unusable during
+   * the tick — this field fills that gap. Null in LEGACY (never computed) and
+   * whenever no Floor-1 run plan is available, so LEGACY stays byte-identical.
+   */
+  private decisionRunPlan: Floor1RunPlan | null = null;
+  /**
+   * Set each poll by the Progress condition: whether findProgressObjective
+   * returned a target this frame. Read only by the SLACK_AWARE Explore guard so
+   * Explore is suppressed solely when a real Progress objective exists to fall
+   * back on — which, given Progress outranks Explore in the selector, never
+   * happens when Explore is actually reached, so discovery is never stranded.
+   */
+  private progressTargetAvailableThisPoll = false;
   /**
    * Cached deterministic player→stairs travel-time estimate (ms), refreshed
    * every {@link OBJECTIVE_TRAVEL_ASTAR_REFRESH_TICKS} BT polls (or when the
@@ -708,6 +847,21 @@ export class BehaviorTreeAI implements AIInputProvider {
    */
   private dodgeVecX: number = 0;
   private dodgeVecY: number = 0;
+  // Previous fused heading (unit vector) — read by the RISK_REWARD_FUSED scorer
+  // for its continuity bonus to reduce oscillation, and written at the end of
+  // each fused poll. Dormant in LEGACY pathing. Reset per run in {@link reset}.
+  private prevFusedDirX: number = 0;
+  private prevFusedDirY: number = 0;
+  /**
+   * When true, {@link computeRiskRewardFusedHeading} records a per-poll
+   * {@link FusedHeadingDebug} snapshot of every scored candidate for the lab
+   * visualizer. Default OFF: the headless runner / A/B sweep never sets it, so
+   * that path allocates nothing extra and stays byte-identical to the validated
+   * gate. Only ever populated in RISK_REWARD_FUSED mode (the method is dead in
+   * LEGACY), and the snapshot is never read back into any decision.
+   */
+  public fusedDebugCapture: boolean = false;
+  private fusedDebug: FusedHeadingDebug | null = null;
   private acceptedQuestCount: number = 0;
   /**
    * Quest-giver detour hysteresis. Once {@link withQuestGiverDetour} ACCEPTS a
@@ -1160,6 +1314,9 @@ export class BehaviorTreeAI implements AIInputProvider {
           ctx.playerX,
           ctx.playerY,
         );
+        // Record for the SLACK_AWARE Explore guard (F1). Written every poll; read
+        // only in SLACK_AWARE, so this is a strict no-op in LEGACY.
+        this.progressTargetAvailableThisPoll = target !== null;
         if (target) {
           ctx.blackboard['progressTarget'] = target;
           return true;
@@ -1223,6 +1380,13 @@ export class BehaviorTreeAI implements AIInputProvider {
     return sequence(
       'Collect',
       condition('Loot Nearby', (ctx) => {
+        // F1 (SLACK_AWARE monotone filter): under time pressure the opportunistic
+        // loot-collect goal becomes ineligible so the run stops dawdling. No-op in
+        // LEGACY. Removing an OPTIONAL goal only — quest-critical gold is routed
+        // through Progress, which outranks Collect.
+        if (this.isSlackAwareUrgent()) {
+          return false;
+        }
         if (this.getCollapsePanicProfile(ctx.world).beeline) {
           return false;
         }
@@ -1252,6 +1416,12 @@ export class BehaviorTreeAI implements AIInputProvider {
     return sequence(
       'Hunt',
       condition('Enemy In Scan Range', (ctx) => {
+        // F1 (SLACK_AWARE monotone filter): under time pressure the opportunistic
+        // hunt goal becomes ineligible. No-op in LEGACY. Removing an OPTIONAL goal
+        // only — quest-required kills are routed through Progress (higher priority).
+        if (this.isSlackAwareUrgent()) {
+          return false;
+        }
         const objective = ctx.world.floorScenario?.objective;
         if (
           !ctx.world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID) ||
@@ -1358,6 +1528,20 @@ export class BehaviorTreeAI implements AIInputProvider {
   private buildExploreBehavior(): BTNode {
     return sequence(
       'Explore',
+      // F1 (SLACK_AWARE monotone filter): suppress Explore ONLY when a valid
+      // Progress target exists this poll, so undiscovered-objective discovery is
+      // never stranded. Because Progress (priority 4) outranks Explore (priority
+      // 9) in the Track A selector, whenever a Progress target exists Progress
+      // already wins and Explore never ticks — so in practice this guard passes
+      // whenever Explore is reached (conservative-by-construction). No-op in
+      // LEGACY. Reading the pre-computed flag avoids re-invoking
+      // findProgressObjective (which has detour side effects).
+      condition('SlackAware Explore Guard', () => {
+        if (!this.isSlackAwareUrgent()) {
+          return true;
+        }
+        return !this.progressTargetAvailableThisPoll;
+      }),
       action('Set Explore State', (ctx) => {
         this.decision.state = AIState.EXPLORE;
         this.decision.targetEid = null;
@@ -2335,6 +2519,24 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.lastTacticalOpportunityEvaluation = null;
     this.tacticalTravelOwnsLoot = false;
 
+    // SLACK_AWARE only: compute this frame's run-plan estimate up front so the
+    // Track A goal-eligibility filters (F1/F2) can consult slack/urgency during
+    // the tree tick below. `lastRunPlan` is null at this point and only refills
+    // later inside travel steering, so it cannot be read during the tick — this
+    // dedicated field fills that gap. estimateCurrentRunPlan is a pure, RNG-free
+    // read; in LEGACY it is never computed, so behavior stays byte-identical.
+    this.progressTargetAvailableThisPoll = false;
+    this.decisionRunPlan =
+      this.config.decisionMode === AIDecisionMode.SLACK_AWARE
+        ? this.estimateCurrentRunPlan(
+            world,
+            playerEid,
+            playerX,
+            playerY,
+            this.getPlayerSpeedFtPerFrame(world, playerEid),
+          )
+        : null;
+
     // Build context for behavior tree
     const context: BTContext = {
       world,
@@ -2356,6 +2558,38 @@ export class BehaviorTreeAI implements AIInputProvider {
     } else {
       state.moveX = 0;
       state.moveY = 0;
+    }
+
+    // Pathing A/B seam (axis 1). Track B (reward pull) is blended differently per
+    // mode: LEGACY blends it additively AFTER travel steering (below); FUSED folds
+    // Track A + Track B into a single danger-aware heading HERE, before travel
+    // steering. `weights` is poll-invariant (getCollapsePanicProfile + static
+    // config, independent of anything travel steering mutates) so hoisting it
+    // above travel steering keeps LEGACY byte-identical.
+    const weights = this.getDynamicOpportunisticWeights(world);
+    const useFused = this.config.pathingMode === AIPathingMode.RISK_REWARD_FUSED;
+    let fusedYieldedZero = false;
+    if (useFused) {
+      // A/B pathing mode B: score candidate headings by objective progress,
+      // reward pull, and sampled overlap-danger so the AI prefers low-risk seams
+      // when moving through enemy pressure fields. The local safe-gap travel
+      // controller below then executes on this fused intent.
+      const fused = this.computeRiskRewardFusedHeading(
+        world,
+        playerX,
+        playerY,
+        state.moveX,
+        state.moveY,
+        weights,
+      );
+      state.moveX = fused.moveX;
+      state.moveY = fused.moveY;
+      // The fused scorer only folds Track B (reward pull) into a REAL heading. When
+      // it yields {0,0} (no travel target this poll — e.g. a ranged AI between
+      // shots) it folded nothing in, so the additive Track B blend below must still
+      // run to pass dodge/pull through; otherwise the player freezes for the frame
+      // instead of sidestepping threats the way LEGACY does (code review 2026-07-08).
+      fusedYieldedZero = fused.moveX === 0 && fused.moveY === 0;
     }
 
     // Predictive safe-gap travel steering: for travel states, replace the raw
@@ -2398,24 +2632,17 @@ export class BehaviorTreeAI implements AIInputProvider {
     // The result is re-normalized to unit length if it exceeds 1 so the player
     // moves at full speed regardless of blend magnitudes. The loot-detour pull
     // and the (default-dormant) enemy-farm pull ride independent weights.
-    const weights = this.getDynamicOpportunisticWeights(world);
-    const blendX =
-      state.moveX +
-      this.dodgeVecX * weights.dodgeWeight +
-      this.opportunisticPullX * weights.collectPullWeight +
-      this.farmPullX * weights.farmPullWeight;
-    const blendY =
-      state.moveY +
-      this.dodgeVecY * weights.dodgeWeight +
-      this.opportunisticPullY * weights.collectPullWeight +
-      this.farmPullY * weights.farmPullWeight;
-    const blendLen = Math.hypot(blendX, blendY);
-    if (blendLen > 1) {
-      state.moveX = blendX / blendLen;
-      state.moveY = blendY / blendLen;
-    } else {
-      state.moveX = blendX;
-      state.moveY = blendY;
+    //
+    // LEGACY blends AFTER travel steering. In RISK_REWARD_FUSED mode the fused
+    // scorer above already folded Track B (reward pull) into the heading, so
+    // re-blending here would double-count it — skip the additive blend when fused,
+    // EXCEPT when the fused scorer produced no heading (fusedYieldedZero): it
+    // folded nothing in that poll, so the blend runs to pass dodge/pull through.
+    // fusedYieldedZero can only be true in fused mode, so LEGACY stays byte-identical.
+    if (!useFused || fusedYieldedZero) {
+      const blend = this.blendWithTrackB(state.moveX, state.moveY, weights);
+      state.moveX = blend.moveX;
+      state.moveY = blend.moveY;
     }
 
     // Smooth the output direction so waypoint transitions and kite reversals
@@ -2643,6 +2870,274 @@ export class BehaviorTreeAI implements AIInputProvider {
       collectPullWeight: this.config.collectPullWeight * collectScale,
       farmPullWeight: this.config.farmPullWeight * farmScale,
     };
+  }
+
+  /**
+   * Additively blend the Track B opportunistic vectors (dodge, loot-collect pull,
+   * enemy-farm pull) into a base heading and renormalise to unit length if the
+   * combined magnitude exceeds 1. Pure arithmetic — extracted verbatim from the
+   * legacy inline poll() blend so LEGACY pathing stays byte-identical, and reused
+   * by {@link computeRiskRewardFusedHeading} to fold reward pull into the fused
+   * desired direction.
+   */
+  private blendWithTrackB(
+    baseMoveX: number,
+    baseMoveY: number,
+    weights: { dodgeWeight: number; collectPullWeight: number; farmPullWeight: number },
+  ): { moveX: number; moveY: number } {
+    const blendX =
+      baseMoveX +
+      this.dodgeVecX * weights.dodgeWeight +
+      this.opportunisticPullX * weights.collectPullWeight +
+      this.farmPullX * weights.farmPullWeight;
+    const blendY =
+      baseMoveY +
+      this.dodgeVecY * weights.dodgeWeight +
+      this.opportunisticPullY * weights.collectPullWeight +
+      this.farmPullY * weights.farmPullWeight;
+    const blendLen = Math.hypot(blendX, blendY);
+    if (blendLen <= 1) {
+      return { moveX: blendX, moveY: blendY };
+    }
+    return { moveX: blendX / blendLen, moveY: blendY / blendLen };
+  }
+
+  /**
+   * RISK_REWARD_FUSED heading scorer (AIPathingMode.RISK_REWARD_FUSED). Fans a set
+   * of candidate headings around the desired (Track A + Track B) direction and
+   * picks the one that best trades objective progress and reward pull against
+   * sampled overlap-danger (enemy proximity at a projected lookahead point,
+   * amplified near walls, plus fog/door penalties) with a small continuity bonus
+   * to damp oscillation. Returns a unit heading (or {0,0} when idle). Dormant
+   * unless pathingMode === RISK_REWARD_FUSED.
+   */
+  private computeRiskRewardFusedHeading(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    baseMoveX: number,
+    baseMoveY: number,
+    weights: { dodgeWeight: number; collectPullWeight: number; farmPullWeight: number },
+  ): { moveX: number; moveY: number } {
+    const baseLen = Math.hypot(baseMoveX, baseMoveY);
+    if (baseLen <= TRAVEL_HEADING_EPSILON) {
+      // Continuity is only valid across CONSECUTIVE travel polls. A no-heading poll
+      // (stopped, target lost, or between goals) breaks that chain, so clear it —
+      // otherwise the next travel poll would be biased toward a stale heading,
+      // creating hysteresis the win/loss gate cannot see (plan review 2026-07-08).
+      this.prevFusedDirX = 0;
+      this.prevFusedDirY = 0;
+      if (this.fusedDebugCapture) this.fusedDebug = null;
+      return { moveX: 0, moveY: 0 };
+    }
+
+    const blended = this.blendWithTrackB(baseMoveX, baseMoveY, weights);
+    const blendedLen = Math.hypot(blended.moveX, blended.moveY);
+    if (blendedLen <= TRAVEL_HEADING_EPSILON) {
+      // Track A + Track B cancelled to ~zero: fall back to the raw objective
+      // heading, but the danger-scored fan did NOT run this poll, so break the
+      // continuity chain the same way the baseLen early-return above does.
+      // Leaving prevFusedDir stale would bias the next full poll toward a heading
+      // from an older, non-consecutive fan (code review 2026-07-08, non-blocking).
+      this.prevFusedDirX = 0;
+      this.prevFusedDirY = 0;
+      if (this.fusedDebugCapture) this.fusedDebug = null;
+      return { moveX: baseMoveX / baseLen, moveY: baseMoveY / baseLen };
+    }
+
+    const objectiveX = baseMoveX / baseLen;
+    const objectiveY = baseMoveY / baseLen;
+    const rewardX =
+      this.opportunisticPullX * weights.collectPullWeight + this.farmPullX * weights.farmPullWeight;
+    const rewardY =
+      this.opportunisticPullY * weights.collectPullWeight + this.farmPullY * weights.farmPullWeight;
+    const rewardLen = Math.hypot(rewardX, rewardY);
+    const rewardDirX = rewardLen > TRAVEL_HEADING_EPSILON ? rewardX / rewardLen : 0;
+    const rewardDirY = rewardLen > TRAVEL_HEADING_EPSILON ? rewardY / rewardLen : 0;
+
+    const threatPoints: { x: number; y: number }[] = [];
+    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
+      if (eid === undefined) continue;
+      if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
+      const ex = world.stores.position.x[eid] ?? 0;
+      const ey = world.stores.position.y[eid] ?? 0;
+      if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
+      // Enemies always move toward the player (flow-map driven) so projected
+      // position is always at least as dangerous as current. Use it directly.
+      const vx = world.stores.velocity.x[eid] ?? 0;
+      const vy = world.stores.velocity.y[eid] ?? 0;
+      threatPoints.push({
+        x: ex + vx * RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES,
+        y: ey + vy * RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES,
+      });
+    }
+
+    const desiredX = blended.moveX / blendedLen;
+    const desiredY = blended.moveY / blendedLen;
+    let bestX = desiredX;
+    let bestY = desiredY;
+    let bestScore = Number.NEGATIVE_INFINITY;
+    let bestIndex = 0;
+    let candidateIndex = 0;
+    const captured: FusedCandidateDebug[] | null = this.fusedDebugCapture ? [] : null;
+    for (const deg of RISK_REWARD_CANDIDATE_OFFSETS_DEG) {
+      const rad = (deg * Math.PI) / 180;
+      const c = Math.cos(rad);
+      const s = Math.sin(rad);
+      const dirX = desiredX * c - desiredY * s;
+      const dirY = desiredX * s + desiredY * c;
+
+      const sampleX = playerX + dirX * RISK_REWARD_DANGER_LOOKAHEAD_FT;
+      const sampleY = playerY + dirY * RISK_REWARD_DANGER_LOOKAHEAD_FT;
+      const floorMap = world.floorMap;
+      let danger = 0;
+      let wallAdjacent = false;
+
+      if (floorMap) {
+        // Multi-step raycast: detect if any step along the candidate ray enters a
+        // wall. Marks wall-adjacent but does NOT set danger directly — walls alone
+        // produce zero danger; only wall + enemy = amplified danger.
+        const steps = [0.25, 0.5, 0.75, 1.0] as const;
+        for (const t of steps) {
+          if (
+            !floorMap.isPassableAt(sampleX * t + playerX * (1 - t), sampleY * t + playerY * (1 - t))
+          ) {
+            wallAdjacent = true;
+            break;
+          }
+        }
+
+        // Enemy threat accumulation against projected positions.
+        for (const threat of threatPoints) {
+          const dist = Math.hypot(threat.x - sampleX, threat.y - sampleY);
+          if (dist >= RISK_REWARD_DANGER_RADIUS_FT) continue;
+          const norm = 1 - dist / RISK_REWARD_DANGER_RADIUS_FT;
+          danger += norm * norm;
+        }
+
+        // Perpendicular wall-proximity: if either corridor wall is within
+        // RISK_REWARD_WALL_PROXIMITY_FT at the midpoint, mark wall-adjacent.
+        if (!wallAdjacent) {
+          const midX = playerX + dirX * RISK_REWARD_DANGER_LOOKAHEAD_FT * 0.5;
+          const midY = playerY + dirY * RISK_REWARD_DANGER_LOOKAHEAD_FT * 0.5;
+          const perpX = -dirY;
+          const perpY = dirX;
+          if (
+            !floorMap.isPassableAt(
+              midX + perpX * RISK_REWARD_WALL_PROXIMITY_FT,
+              midY + perpY * RISK_REWARD_WALL_PROXIMITY_FT,
+            ) ||
+            !floorMap.isPassableAt(
+              midX - perpX * RISK_REWARD_WALL_PROXIMITY_FT,
+              midY - perpY * RISK_REWARD_WALL_PROXIMITY_FT,
+            )
+          ) {
+            wallAdjacent = true;
+          }
+        }
+
+        // Apply wall amplifier: being trapped against a wall with an enemy is
+        // more dangerous than the same enemy in open space. Empty corridors are fine.
+        if (wallAdjacent && danger > 0) {
+          danger *= RISK_REWARD_WALL_AMPLIFICATION;
+        }
+
+        // Unseen-area penalty: heading into fog-of-war is risky.
+        if (!floorMap.isVisibleAt(sampleX, sampleY)) {
+          danger += RISK_REWARD_FOG_DANGER;
+        }
+
+        // Door-crossing penalty.
+        const midX = playerX + dirX * RISK_REWARD_DANGER_LOOKAHEAD_FT * 0.5;
+        const midY = playerY + dirY * RISK_REWARD_DANGER_LOOKAHEAD_FT * 0.5;
+        const midTile = floorMap.worldToTile(midX, midY);
+        if (
+          floorMap.tileMap.isDoor(midTile.x, midTile.y) &&
+          !floorMap.isVisibleAt(sampleX, sampleY)
+        ) {
+          danger += RISK_REWARD_DOOR_DANGER;
+        }
+      } else {
+        // No floor map: enemy-only danger.
+        for (const threat of threatPoints) {
+          const dist = Math.hypot(threat.x - sampleX, threat.y - sampleY);
+          if (dist >= RISK_REWARD_DANGER_RADIUS_FT) continue;
+          const norm = 1 - dist / RISK_REWARD_DANGER_RADIUS_FT;
+          danger += norm * norm;
+        }
+      }
+
+      const progress = Math.max(0, dirX * objectiveX + dirY * objectiveY);
+      const reward =
+        rewardLen > TRAVEL_HEADING_EPSILON ? Math.max(0, dirX * rewardDirX + dirY * rewardDirY) : 0;
+      // `reward * rewardLen` carries raw pull magnitude; pull vectors are always
+      // unit-normalised (rewardLen ≤ ~0.57) so the term stays [0, 1]-bounded and
+      // comparable to progress/danger. Distance-weighted pull sources would break
+      // this invariant and should re-normalise before passing in.
+      const continuity =
+        this.prevFusedDirX !== 0 || this.prevFusedDirY !== 0
+          ? dirX * this.prevFusedDirX + dirY * this.prevFusedDirY
+          : 0;
+      const score =
+        progress * RISK_REWARD_W_PROGRESS +
+        reward * rewardLen * RISK_REWARD_W_REWARD -
+        danger * RISK_REWARD_W_DANGER +
+        continuity * RISK_REWARD_W_CONTINUITY;
+      if (score > bestScore) {
+        bestScore = score;
+        bestX = dirX;
+        bestY = dirY;
+        bestIndex = candidateIndex;
+      }
+      if (captured) {
+        // Record the pre-weight component terms so the visualizer can show WHY a
+        // candidate scored (progress/reward/danger/continuity) alongside the final
+        // weighted score. `reward * rewardLen` is the reward term as it enters the
+        // score (pre-W_REWARD); danger/continuity/progress are raw (pre-weight).
+        captured.push({
+          angleDeg: deg,
+          dirX,
+          dirY,
+          progress,
+          reward: reward * rewardLen,
+          danger,
+          continuity,
+          score,
+          chosen: false,
+        });
+      }
+      candidateIndex++;
+    }
+
+    this.prevFusedDirX = bestX;
+    this.prevFusedDirY = bestY;
+    if (captured) {
+      const chosen = captured[bestIndex];
+      if (chosen) chosen.chosen = true;
+      this.fusedDebug = {
+        playerX,
+        playerY,
+        desiredX,
+        desiredY,
+        bestX,
+        bestY,
+        bestScore,
+        lookaheadFt: RISK_REWARD_DANGER_LOOKAHEAD_FT,
+        dangerRadiusFt: RISK_REWARD_DANGER_RADIUS_FT,
+        threats: threatPoints.map((t) => ({ x: t.x, y: t.y })),
+        candidates: captured,
+      };
+    }
+    return { moveX: bestX, moveY: bestY };
+  }
+
+  /**
+   * Debug-only: the last {@link FusedHeadingDebug} snapshot captured by the
+   * RISK_REWARD_FUSED scorer, or `null` when capture is off, the AI is idle, or
+   * pathing is LEGACY. Enable capture via {@link fusedDebugCapture}.
+   */
+  getFusedDebug(): FusedHeadingDebug | null {
+    return this.fusedDebug;
   }
 
   private getPlayerSpeedFtPerFrame(world: GameWorld, playerEid: number): number {
@@ -4396,6 +4891,19 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     if (objective.staircaseUnlocked && !objective.staircaseDiscovered) {
       const reason = 'Heading to the stairs to clear the floor';
+      // F2 (SLACK_AWARE exit-commitment tail) — NARROWED after plan review.
+      // The original design forced the staircase Progress target under urgency by
+      // BYPASSING `progressGoalSuppressed`. Review flagged that as a monotonicity
+      // hazard: the quest-progress dwell watchdog sets that suppression window
+      // precisely to unstick a wedge (swarm pinning the player against an
+      // unreachable fixed goal) by letting Hunt/Explore relocate. Bypassing it
+      // while F1 simultaneously suppresses Collect/Hunt/Explore could livelock the
+      // agent on a wedged target and flip a previously-winning run into a loss.
+      // So F2's suppression override is DROPPED — the exit-commitment is delivered
+      // entirely by F1 (optional-goal suppression makes the agent commit to
+      // whatever Progress returns, which in this final leg is the staircase when
+      // not suppressed). This honors the legacy wedge-recovery escape hatch and is
+      // strictly more conservative, guaranteeing monotonicity. No-op in LEGACY.
       if (progressSuppressed)
         return this.recordSuppressedProgressNavigation(world, reason, 'post-stairs');
       return maybeDetourToQuestGiver(
@@ -5565,8 +6073,33 @@ export class BehaviorTreeAI implements AIInputProvider {
   getTacticalRunDebug(): TacticalRunDebug {
     return {
       runPlan: this.lastRunPlan,
+      decisionRunPlan: this.decisionRunPlan,
       opportunities: this.lastTacticalOpportunityEvaluation,
     };
+  }
+
+  /** A/B axis 1: the pathing mode this AI was constructed with. */
+  getPathingMode(): AIPathingModeValue {
+    return this.config.pathingMode;
+  }
+
+  /** A/B axis 2: the decision mode this AI was constructed with. */
+  getDecisionMode(): AIDecisionModeValue {
+    return this.config.decisionMode;
+  }
+
+  /**
+   * SLACK_AWARE gate for the monotone Track A filters (F1/F2). True only when
+   * the AI is in {@link AIDecisionMode.SLACK_AWARE} AND this frame's run plan is
+   * time-pressured (urgency at/above {@link SLACK_AWARE_URGENCY_THRESHOLD}, or
+   * slack already gone negative). Always false in LEGACY, so every filter that
+   * consults it is a strict no-op there and behavior is byte-identical to main.
+   */
+  private isSlackAwareUrgent(): boolean {
+    if (this.config.decisionMode !== AIDecisionMode.SLACK_AWARE) {
+      return false;
+    }
+    return isRunPlanUrgent(this.decisionRunPlan, SLACK_AWARE_URGENCY_THRESHOLD);
   }
 
   getNavigationDebug(): AINavigationDebug {
@@ -5686,8 +6219,13 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.farmPullY = 0;
     this.dodgeVecX = 0;
     this.dodgeVecY = 0;
+    this.prevFusedDirX = 0;
+    this.prevFusedDirY = 0;
+    this.fusedDebug = null;
     this.lastTravelSteering = null;
     this.lastRunPlan = null;
+    this.decisionRunPlan = null;
+    this.progressTargetAvailableThisPoll = false;
     this.lastPlayerToStairsTravelMs = null;
     this.lastPlayerToStairsRefreshFrame = -Infinity;
     this.lastPlayerToStairsTileX = null;

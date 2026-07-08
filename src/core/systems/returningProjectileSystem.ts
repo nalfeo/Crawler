@@ -1,6 +1,7 @@
 import { entityExists, hasComponent, query, removeEntity, setComponent } from 'bitecs';
 import { Owner, Position, Projectile, Returning, Velocity } from '../components.js';
 import { clearEntityStores } from '../helpers.js';
+import { pruneAttackEntity } from '../weapon-telemetry.js';
 import { clearProjectilePierceHits } from './damageSystem.js';
 import type { GameWorld } from '../world.js';
 
@@ -51,6 +52,7 @@ export function returningProjectileSystem(world: GameWorld): void {
         !hasComponent(world.ecs, ownerEid, Position)
       ) {
         clearEntityStores(world, eid);
+        pruneAttackEntity(world, eid);
         removeEntity(world.ecs, eid);
         continue;
       }
@@ -66,6 +68,7 @@ export function returningProjectileSystem(world: GameWorld): void {
       // Arrived back at owner
       if (distSq <= PICKUP_RADIUS_SQ) {
         clearEntityStores(world, eid);
+        pruneAttackEntity(world, eid);
         removeEntity(world.ecs, eid);
         continue;
       }

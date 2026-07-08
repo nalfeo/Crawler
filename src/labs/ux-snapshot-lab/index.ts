@@ -35,8 +35,23 @@ import { registerLab, type LabCategory } from '../registry.js';
 import { equipActiveAbility, getOrCreateAbilityState } from '../../game/systems/abilitySystem.js';
 import { addItem } from '../../shared/inventory.js';
 import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from '../../shared/quest-types.js';
+import type { EntitySpriteMappings } from '../../shared/data/entity-sprite-mappings.js';
+import ENTITY_SPRITE_MAPPINGS from '../../shared/data/entity-sprite-mappings.json';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
+
+/**
+ * Resolve the loader path for the generated art the REAL game pins to a render
+ * kind (via `entity-sprite-mappings.json`), so this snapshot shows the same
+ * slime/rat sprites players actually see. Falls back to the supplied `temp_*`
+ * placeholder when a kind has no pinned generated sprite yet, and tracks the
+ * pinned key automatically if the game re-pins a different variant.
+ */
+function pinnedGeneratedAssetPath(renderKind: string, tempFallback: string): string {
+  const pinned = (ENTITY_SPRITE_MAPPINGS as EntitySpriteMappings).renderKinds[renderKind]?.generated
+    ?.pinnedTextureKey;
+  return `assets/generated/${pinned ?? tempFallback}.png`;
+}
 
 interface UxLabSettings {
   hpPercent: number;
@@ -266,8 +281,8 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
       this.load.image('ux_door_closed', 'assets/generated/temp_door_closed.png');
       this.load.image('ux_hero', 'assets/generated/temp_hero.png');
       this.load.image('ux_npc', 'assets/generated/temp_npc.png');
-      this.load.image('ux_slime', 'assets/generated/temp_slime.png');
-      this.load.image('ux_rat', 'assets/generated/temp_rat.png');
+      this.load.image('ux_slime', pinnedGeneratedAssetPath('enemy_slime', 'temp_slime'));
+      this.load.image('ux_rat', pinnedGeneratedAssetPath('enemy_rat', 'temp_rat'));
     }
 
     private tile(col: number, row: number, key: string, depth: number): void {

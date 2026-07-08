@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-06",
+  "session_slug": "postprocess-facing-anchor-workflow",
+  "task_title": "Replace mirror with facing-direction anchor workflow",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.3-codex",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "notes": "Reviewed end-to-end migration from mirror transform to facing metadata. Confirmed sidecar payload parsing, rerun persistence, manifest propagation, runtime consumption defaults, and debugger final-output UX consistency (anchor marker/click/reset + facing selector). Addressed integration concerns by removing residual mirror codepaths and fixing compile mismatches around facing override typing and parsing scope."
+    }
+  }
+}

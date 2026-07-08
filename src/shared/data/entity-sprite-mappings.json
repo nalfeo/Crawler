@@ -47,6 +47,26 @@
         "scale": 0.4
       }
     },
+    "enemy_spawner_rats_nest": {
+      "proceduralTexture": "enemy_rat",
+      "kenneySpriteId": "enemy.rat",
+      "kenneyScale": 1.4,
+      "generated": {
+        "briefId": "rat-nest-v2",
+        "pinnedTextureKey": "rat-nest-v2-var-3",
+        "scale": 0.4
+      }
+    },
+    "enemy_spawner_slime_pool": {
+      "proceduralTexture": "enemy_slime",
+      "kenneySpriteId": "enemy.slime",
+      "kenneyScale": 1.4,
+      "generated": {
+        "briefId": "slime-pool-v1",
+        "pinnedTextureKey": "slime-pool-v1-var-3",
+        "scale": 0.4
+      }
+    },
     "enemy_baby_slime": {
       "proceduralTexture": "enemy_slime",
       "kenneySpriteId": "enemy.slime",

@@ -4,6 +4,7 @@
  * Traditional rule-based AI that plays through simulated InputState.
  */
 import type { GameWorld } from '../../core/world.js';
+import type { WeaponTelemetrySummary } from '../../core/weapon-telemetry.js';
 import type { InputState } from '../../shared/input.js';
 import type { RunPlanSegmentPhase } from './run-planner.js';
 
@@ -24,6 +25,31 @@ export const AIState = {
 } as const;
 
 export type AIStateValue = (typeof AIState)[keyof typeof AIState];
+
+/**
+ * A/B axis 1 — how the AI turns a Track A movement goal into a heading.
+ *
+ * Both axes default to LEGACY so, unless explicitly overridden, the AI is
+ * byte-for-byte identical to main.
+ */
+export const AIPathingMode = {
+  /** Existing behavior: main's movement path, unchanged. */
+  LEGACY: 'legacy',
+  /** Experimental danger/reward-fused pathing. IMPL-PENDING: currently delegates to LEGACY. */
+  RISK_REWARD_FUSED: 'riskRewardFused',
+} as const;
+export type AIPathingModeValue = (typeof AIPathingMode)[keyof typeof AIPathingMode];
+
+/**
+ * A/B axis 2 — how the AI decides which Track A goal is eligible.
+ */
+export const AIDecisionMode = {
+  /** Existing behavior: fixed-priority Track A ladder, time-blind. */
+  LEGACY: 'legacy',
+  /** Experimental: Track A goal eligibility gated by run-plan slack/urgency, as MONOTONE filters only (removes optional goals / forces the exit target) so a winning seed can never be reshuffled into a loss. */
+  SLACK_AWARE: 'slackAware',
+} as const;
+export type AIDecisionModeValue = (typeof AIDecisionMode)[keyof typeof AIDecisionMode];
 
 /** Telemetry-only state labels that refine the coarse gameplay state. */
 export const AIDecisionDebugState = {
@@ -125,6 +151,21 @@ export interface AIConfig {
    * setting > 0.
    */
   farmPullWeight?: number;
+  /**
+   * A/B axis 1: how a Track A goal becomes a heading. Defaults to
+   * {@link AIPathingMode.LEGACY} — with the default the movement path is
+   * byte-identical to main. {@link AIPathingMode.RISK_REWARD_FUSED} is
+   * selectable but currently IMPL-PENDING (delegates to legacy).
+   */
+  pathingMode?: AIPathingModeValue;
+  /**
+   * A/B axis 2: how Track A goal eligibility is decided. Defaults to
+   * {@link AIDecisionMode.LEGACY} — with the default the Track A ladder is
+   * byte-identical to main. {@link AIDecisionMode.SLACK_AWARE} applies monotone
+   * run-plan slack/urgency filters that only remove optional goals or force the
+   * exit target (never reshuffle scores).
+   */
+  decisionMode?: AIDecisionModeValue;
   /** Enable debug logging */
   debug?: boolean;
 }
@@ -326,4 +367,10 @@ export interface RunStats {
    * always sets it.
    */
   spawnerArenas?: SpawnerArenaMetrics;
+  /**
+   * Opt-in per-run weapon-accuracy rollup (swings, connecting hits, accuracy,
+   * multi-hit rate). Present only when the run enabled `recordWeaponTelemetry`;
+   * `undefined` otherwise, so default runs and the Floor-1 gate are unaffected.
+   */
+  weaponTelemetry?: WeaponTelemetrySummary;
 }

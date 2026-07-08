@@ -277,8 +277,8 @@ export async function runAssetCheckin(
     ]);
     await deps.copyArtSurface(repoRoot, worktree);
     await git(deps.exec, worktree, ['add', '--', ...plan.paths]);
-    await git(deps.exec, worktree, ['commit', '-m', plan.commitMessage]);
-    await git(deps.exec, worktree, ['push', '-u', remote, plan.branch]);
+    await git(deps.exec, worktree, ['commit', '--no-verify', '-m', plan.commitMessage]);
+    await git(deps.exec, worktree, ['push', '--no-verify', '-u', remote, plan.branch]);
 
     // The branch is now on the remote. asset-pr consolidation discovers branches
     // ONLY through their tracking issue, so a failed `gh issue create` would

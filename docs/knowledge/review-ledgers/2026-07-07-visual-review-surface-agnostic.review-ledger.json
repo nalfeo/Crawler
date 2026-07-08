@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-07",
+  "session_slug": "visual-review-surface-agnostic",
+  "task_title": "Make visual-review UX judge surface-agnostic and actionable",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 9,
+      "resolved_count": 9,
+      "notes": "Separate-model (gpt-5.4, rubber-duck) plan review BLOCKED the original 'adapter reshapes equipment -> Node computeGeometryBlockers' approach as byte-for-byte-unsafe. Redesigned to keep the equipment path's two page.evaluate blocks 100% UNTOUCHED and add a separate generic declared-surface path; Node math runs only for declared surfaces. 4 blocking + 5 non-blocking concerns, all resolved: (1) no Node rewrite of equipment blocker math; (2) raw coords for blocker math, rounded only for the table; (3) equipment legacy path kept sticky by not declaring __visualReview on the equipment setup, documented; (4) source='none' emits a loud non-gating warning + artifact field instead of silently passing; (5) findingKey keeps semantic indices, strips only pixel/coord measurements; (6) preserve raw_overall_score, normalize only when all axes finite, gate on blockers independently; (7) coordinate-space (design-space 1280x720) invariant documented in the contract; (8) inventory demo declares a synthetic panel (union of cells) + cell regions and logs harvest source + region count; plus adopted the simpler two-path decomposition."
+    }
+  }
+}

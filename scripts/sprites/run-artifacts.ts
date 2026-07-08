@@ -34,7 +34,7 @@ import type { DiversitySummary } from './diversity.js';
 import type { ExpansionSkipReason } from './expand-variations.js';
 import type { JudgeScorecard } from './judge.js';
 import type { PostprocessOptions } from './postprocess.js';
-import type { ManualAnchorOverride } from './postprocess-overrides.js';
+import type { FacingOverride, ManualAnchorOverride } from './postprocess-overrides.js';
 import type { Scorecard } from './score-candidate.js';
 import type { DerivedAnchor } from './sensors/derive-anchor.js';
 import type { SpriteType } from '../../src/shared/sprite-types.js';
@@ -205,6 +205,20 @@ export interface RunSummary {
   readonly promptHash: string;
   readonly attempts: number;
   readonly variantCount: number;
+  /**
+   * Generation-time sheet grid structure: the commanded rows × cols and the
+   * empty-cell coordinates. Captured so re-postprocess can detect a brief grid
+   * change since generation even when the non-empty variant COUNT is unchanged
+   * — e.g. a 2×2 → 1×4 reshape, or an empty cell moved — which would re-slice
+   * the sheet into different crops and silently corrupt the row-major
+   * per-variant entries. Absent on legacy runs generated before this field
+   * existed; consumers fall back to `variantCount` then.
+   */
+  readonly grid?: {
+    readonly rows: number;
+    readonly cols: number;
+    readonly emptyCells: ReadonlyArray<readonly [number, number]>;
+  };
   /** Candidates ranked best-first: passed first, then by sensor score desc. */
   readonly candidates: ReadonlyArray<RunSummaryEntry>;
   /** Pairwise perceptual-hash diversity across processed variants; null when n < 2. */
@@ -260,6 +274,7 @@ export interface RunSummary {
     readonly snapshotYamlPath: string | null;
     readonly options: PostprocessOptions | null;
     readonly manualAnchor: ManualAnchorOverride | null;
+    readonly facing: FacingOverride | null;
     readonly appliedMode: 'default' | 'persisted' | 'replace' | 'reset';
     readonly updatedAt: string | null;
   };
@@ -481,7 +496,8 @@ export function pickChosen(
   const deriveMode = brief.sensors.anchor?.derive === true;
   const resolvedHold = top.derivedAnchors.hold ?? top.derivedAnchor;
   const holdAnchor: ChosenAnchor | null =
-    manualAnchor && manualAnchor.variantIndex === top.index
+    manualAnchor &&
+    (manualAnchor.applyToAllVariants === true || manualAnchor.variantIndex === top.index)
       ? { x: manualAnchor.x, y: manualAnchor.y, source: 'manual' }
       : resolvedHold
         ? { x: resolvedHold.x, y: resolvedHold.y, source: 'derived' }

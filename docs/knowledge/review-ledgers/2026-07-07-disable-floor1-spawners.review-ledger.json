@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-07",
+  "session_slug": "disable-floor1-spawners",
+  "task_title": "Make Floor 1 spawner-free via empty static-spawner table (config-driven)",
+  "estimated_apples": 3,
+  "notes": "Kickoff estimate was 2 apples; revised up to 3 once the config change forced a collision-pair-parity golden rebaseline (ADR 0049) plus retiring the arena-engagement assertion. Reviewed at the higher actual tier.",
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "notes": "Separate-model plan review of the config-driven approach + gate updates. 3 non-blocking hardening concerns raised, all 3 adopted: (1) correct ADR RNG wording to note the runtime shared world.rng cascade (not just isolated placement rng); (2) make the retired arena assertion non-vacuous (assert spawnerArenas defined + total===0 + triggered===0 rather than deleting it); (3) extend the collision-parity determinism test to loop ALL PARITY_SEEDS x2 instead of a single seed."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Reviewed the config-driven removal diff (empty spawn table + early-return, uniform pipeline wiring, rewritten behavior tests, rebaselined goldens). No code-level concerns."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Re-review after the 3 plan-review hardening edits landed. Verified: no lingering PARITY_SEED ref (only PARITY_SEEDS), async loop compiles, all 4 goldens match the ADR 0049 table, arena non-vacuous assertions are safe (toBeDefined precedes the ! deref), the other 3 arena it-blocks are byte-identical, and the ADR RNG wording is accurate. No significant issues found."
+        }
+      ]
+    }
+  }
+}

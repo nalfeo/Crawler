@@ -8,6 +8,7 @@ import {
   setBloodColor,
 } from '../../../src/core/spawners/entity-core.js';
 import { spawnEnemy } from '../../../src/core/spawners/combatants.js';
+import { addSetPieceProp } from '../../../src/core/spawners/world-objects.js';
 import { createTestWorld } from '../../helpers/world-factory.js';
 
 describe('createEntity', () => {
@@ -42,6 +43,25 @@ describe('clearEntityStores', () => {
     expect(world.stores.sprite.width[eid]).toBe(0);
     expect(world.stores.enemyBehavior.type[eid]).toBe(0);
     expect(world.stores.enemyBehavior.speed[eid]).toBe(0);
+  });
+
+  it('leaves the render-only setPieceProps list untouched (set-piece props are not entities)', () => {
+    const world = createTestWorld();
+    const render = {
+      widthFt: 16,
+      heightFt: 8,
+      depth: -19,
+      sprite: { source: 'custom', requestId: 'welcome-room-rug', label: 'rug', prompt: 'a rug' },
+    } as const;
+    addSetPieceProp(world, 1, 2, render);
+    const eid = spawnEnemy(world, 5, 5, 10);
+
+    clearEntityStores(world, eid);
+
+    // Set-piece props live on a render-only list, not the entity space, so
+    // recycling an entity id must never disturb them (they consume no eid).
+    expect(world.setPieceProps).toHaveLength(1);
+    expect(world.setPieceProps[0]?.render).toBe(render);
   });
 });
 

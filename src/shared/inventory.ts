@@ -183,6 +183,14 @@ export function filterByEquipmentSlot(bag: InventoryBag, slotId: EquipmentSlotId
   });
 }
 
+/**
+ * Filter slots to every equippable item in the bag, regardless of slot. Used by
+ * the integrated equipment-panel bag column when no slot filter is active.
+ */
+export function filterEquippable(bag: InventoryBag): InventorySlot[] {
+  return bag.slots.filter((slot) => getEquipmentDefForItem(slot.itemId) !== undefined);
+}
+
 // ---------------------------------------------------------------------------
 // Sorting
 // ---------------------------------------------------------------------------

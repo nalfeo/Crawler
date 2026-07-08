@@ -1,6 +1,7 @@
 import { hasComponent, query, removeEntity } from 'bitecs';
 import { Bouncing, Position, Projectile, Returning, Velocity } from '../components.js';
 import { clearEntityStores } from '../helpers.js';
+import { pruneAttackEntity } from '../weapon-telemetry.js';
 import type { GameWorld } from '../world.js';
 import { ARENA } from '../../shared/constants.js';
 
@@ -97,6 +98,7 @@ export function projectileCleanupSystem(world: GameWorld): void {
         }
       } else {
         clearEntityStores(world, eid);
+        pruneAttackEntity(world, eid);
         removeEntity(world.ecs, eid);
         continue;
       }
@@ -113,6 +115,7 @@ export function projectileCleanupSystem(world: GameWorld): void {
       const nextY = y + vy;
       if (!floorMap.isPassableAt(nextX, nextY)) {
         clearEntityStores(world, eid);
+        pruneAttackEntity(world, eid);
         removeEntity(world.ecs, eid);
         continue;
       }
@@ -130,6 +133,7 @@ export function projectileCleanupSystem(world: GameWorld): void {
         const distSq = dx * dx + dy * dy;
         if (distSq > maxRange * maxRange) {
           clearEntityStores(world, eid);
+          pruneAttackEntity(world, eid);
           removeEntity(world.ecs, eid);
           continue;
         }
@@ -138,6 +142,7 @@ export function projectileCleanupSystem(world: GameWorld): void {
 
     if (x < cullBounds.minX || x > cullBounds.maxX || y < cullBounds.minY || y > cullBounds.maxY) {
       clearEntityStores(world, eid);
+      pruneAttackEntity(world, eid);
       removeEntity(world.ecs, eid);
     }
   }

@@ -85,6 +85,7 @@ import { synthesizeBrief } from '../synthesize-brief.js';
 import { isSizeVariant, SIZE_VARIANTS, type SizeVariant } from '../size-variants.js';
 import { loadBrief, type LoadedBrief } from '../load-brief.js';
 import {
+  isRepoConfined,
   materializeBriefFromStore,
   mirrorBriefToStore,
   toRepoRelativePath,
@@ -104,6 +105,7 @@ import {
   etagPreconditionFails,
   parseWorkflowState,
   serializeWorkflowState,
+  workflowBriefKey,
 } from './workflow-state.js';
 
 export interface SidecarDeps {
@@ -230,6 +232,8 @@ interface RunPostprocessBody {
   readonly sheet?: unknown;
   readonly mode?: unknown;
   readonly manualAnchor?: unknown;
+  readonly facing?: unknown;
+  readonly variantIndexes?: unknown;
 }
 
 interface RunManualAnchorBody {
@@ -250,6 +254,27 @@ interface StorageRunsQuery {
 
 interface StorageBatchBody {
   readonly keys?: unknown;
+}
+
+interface StorageEnrichBody {
+  readonly scope?: unknown;
+  readonly runs?: unknown;
+}
+
+/** One run's enrichment, as returned by POST /api/storage/runs/enrich. */
+interface StorageRunEnrichmentEntry {
+  readonly briefId: string;
+  readonly runId: string;
+  /** Candidate count from summary.json, or null when the summary is missing. */
+  readonly variantCount: number | null;
+  /** First `sheet-NN.png` for the run (active scope only); null otherwise. */
+  readonly sheetFile: string | null;
+  /** Number of approved variants recorded for this brief in the manifest. */
+  readonly approvedCount: number;
+  /** Lowest-index approved variant for the brief, with the run it came from. */
+  readonly firstApproved: { readonly runId: string; readonly variantIndex: number } | null;
+  /** Whether the run's brief YAML is still on disk or mirrored in the store. */
+  readonly briefStored: boolean;
 }
 
 interface WorkflowStoreClearBody {
@@ -509,6 +534,88 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       deleted.push(raw);
     }
     return { ok: true, deleted };
+  });
+
+  app.post<{ Body: StorageEnrichBody }>('/api/storage/runs/enrich', async (req, reply) => {
+    const body = (req.body ?? {}) as StorageEnrichBody;
+    const scope =
+      body.scope === 'archive'
+        ? 'archive'
+        : body.scope === 'active' || body.scope === undefined
+          ? 'active'
+          : null;
+    if (scope === null) {
+      reply.code(400);
+      return { error: 'bad-request', message: 'body.scope must be active or archive' };
+    }
+    if (!Array.isArray(body.runs)) {
+      reply.code(400);
+      return { error: 'bad-request', message: 'body.runs must be an array' };
+    }
+    const publicAssetsDir = deps.publicAssetsDir ?? path.join(deps.repoRoot, 'public', 'assets');
+    const manifestPath =
+      deps.manifestPath ?? path.join(publicAssetsDir, 'generated', 'manifest.json');
+    const approvedByBrief = readApprovedVariantsByBrief(manifestPath);
+    const prefixRoot = scope === 'archive' ? 'archive/' : '';
+    // A single listing serves the whole batch, so per-run sheet lookup adds no
+    // extra store IO. Only the active scope shows thumbnails, so skip it for archive.
+    const allKeys = scope === 'active' ? await store.list('') : [];
+    const briefStoredCache = new Map<string, boolean>();
+    const enriched: StorageRunEnrichmentEntry[] = [];
+    for (const entry of body.runs) {
+      if (!entry || typeof entry !== 'object') continue;
+      const briefId = (entry as { briefId?: unknown }).briefId;
+      const runId = (entry as { runId?: unknown }).runId;
+      if (typeof briefId !== 'string' || typeof runId !== 'string') continue;
+      // safeJoin doubles as a segment validator — rejects '/', '..' and escapes.
+      if (safeJoin(deps.runsDir, [briefId, runId, 'summary.json']) === null) continue;
+      const runPrefix = `${prefixRoot}${briefId}/${runId}/`;
+
+      let variantCount: number | null = null;
+      let briefStored = false;
+      try {
+        const summary = JSON.parse(
+          (await store.get(`${runPrefix}summary.json`)).toString('utf8'),
+        ) as { briefPath?: unknown; candidates?: ReadonlyArray<unknown> };
+        if (Array.isArray(summary.candidates)) variantCount = summary.candidates.length;
+        if (typeof summary.briefPath === 'string' && summary.briefPath !== '') {
+          const cached = briefStoredCache.get(summary.briefPath);
+          if (cached !== undefined) {
+            briefStored = cached;
+          } else {
+            briefStored = await isBriefStored(store, deps.repoRoot, summary.briefPath);
+            briefStoredCache.set(summary.briefPath, briefStored);
+          }
+        }
+      } catch {
+        // Missing/unparseable summary — leave variantCount null, briefStored false.
+      }
+
+      let sheetFile: string | null = null;
+      if (scope === 'active') {
+        sheetFile =
+          allKeys
+            .filter((key) => key.startsWith(runPrefix))
+            .map((key) => key.slice(runPrefix.length))
+            .filter((name) => /^sheet-\d+\.png$/i.test(name))
+            .sort((a, b) => a.localeCompare(b))[0] ?? null;
+      }
+
+      const approved = approvedByBrief.get(briefId);
+      enriched.push({
+        briefId,
+        runId,
+        variantCount,
+        sheetFile,
+        approvedCount: approved?.count ?? 0,
+        firstApproved:
+          approved && approved.firstVariantIndex !== null && approved.firstRunId !== null
+            ? { runId: approved.firstRunId, variantIndex: approved.firstVariantIndex }
+            : null,
+        briefStored,
+      });
+    }
+    return { scope, enriched };
   });
 
   app.get<{ Params: { briefId: string; runId: string } }>(
@@ -864,13 +971,20 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
 
   const parseManualAnchorPayload = (
     value: unknown,
-  ): { variantIndex: number; x: number; y: number } | null => {
+  ): { variantIndex: number; x: number; y: number; applyToAllVariants?: boolean } | null => {
     if (!value || typeof value !== 'object') return null;
-    const candidate = value as { variantIndex?: unknown; x?: unknown; y?: unknown };
+    const candidate = value as {
+      variantIndex?: unknown;
+      x?: unknown;
+      y?: unknown;
+      applyToAllVariants?: unknown;
+    };
     if (
       !Number.isInteger(candidate.variantIndex) ||
       typeof candidate.x !== 'number' ||
-      typeof candidate.y !== 'number'
+      typeof candidate.y !== 'number' ||
+      (candidate.applyToAllVariants !== undefined &&
+        typeof candidate.applyToAllVariants !== 'boolean')
     ) {
       return null;
     }
@@ -878,6 +992,31 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       variantIndex: candidate.variantIndex as number,
       x: candidate.x,
       y: candidate.y,
+      ...(candidate.applyToAllVariants === true ? { applyToAllVariants: true } : {}),
+    };
+  };
+
+  const parseFacingPayload = (
+    value: unknown,
+  ): { variantIndex: number; direction: 'left' | 'right'; applyToAllVariants?: boolean } | null => {
+    if (!value || typeof value !== 'object') return null;
+    const candidate = value as {
+      variantIndex?: unknown;
+      direction?: unknown;
+      applyToAllVariants?: unknown;
+    };
+    if (
+      !Number.isInteger(candidate.variantIndex) ||
+      (candidate.direction !== 'left' && candidate.direction !== 'right') ||
+      (candidate.applyToAllVariants !== undefined &&
+        typeof candidate.applyToAllVariants !== 'boolean')
+    ) {
+      return null;
+    }
+    return {
+      variantIndex: candidate.variantIndex as number,
+      direction: candidate.direction,
+      ...(candidate.applyToAllVariants === true ? { applyToAllVariants: true } : {}),
     };
   };
 
@@ -908,8 +1047,31 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       reply.code(400);
       return {
         error: 'bad-request',
-        message: 'body.manualAnchor must be { variantIndex, x, y }',
+        message: 'body.manualAnchor must be { variantIndex, x, y, applyToAllVariants? }',
       };
+    }
+    const facing = parseFacingPayload(body.facing);
+    const clearFacing = body.facing === null;
+    if (body.facing !== undefined && body.facing !== null && facing === null) {
+      reply.code(400);
+      return {
+        error: 'bad-request',
+        message: 'body.facing must be { variantIndex, direction: left|right, applyToAllVariants? }',
+      };
+    }
+    let variantIndexes: number[] | undefined;
+    if (body.variantIndexes !== undefined) {
+      if (
+        !Array.isArray(body.variantIndexes) ||
+        body.variantIndexes.some((n) => typeof n !== 'number' || !Number.isInteger(n) || n < 0)
+      ) {
+        reply.code(400);
+        return {
+          error: 'bad-request',
+          message: 'body.variantIndexes must be an array of non-negative integers',
+        };
+      }
+      variantIndexes = body.variantIndexes as number[];
     }
     if (body.sheet !== undefined && typeof body.sheet !== 'string') {
       reply.code(400);
@@ -945,6 +1107,8 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         ...(options ? { options } : {}),
         ...(mode ? { optionsMode: mode } : {}),
         ...(persistedManualAnchor !== undefined ? { manualAnchor: persistedManualAnchor } : {}),
+        ...(clearFacing ? { facing: null } : facing ? { facing } : {}),
+        ...(variantIndexes ? { variantIndexes } : {}),
         ...(sheet ? { sheetFile: sheet } : {}),
       });
       return {
@@ -1956,6 +2120,8 @@ function rerunErrorStatus(kind: RerunErrorKind): number {
       return 404;
     case 'unsupported-sheet-filename':
       return 415;
+    case 'variant-index-out-of-range':
+      return 400;
     case 'variant-count-mismatch':
       return 422;
     case 'summary-invalid':
@@ -2204,6 +2370,79 @@ export function listRuns(runsDir: string): RunListEntry[] {
   // string sort is the right order.
   entries.sort((a, b) => (a.runId < b.runId ? 1 : a.runId > b.runId ? -1 : 0));
   return entries;
+}
+
+interface ApprovedBriefInfo {
+  count: number;
+  firstRunId: string | null;
+  firstVariantIndex: number | null;
+}
+
+/**
+ * Reads the approval manifest and returns, per briefId, the number of approved
+ * variants and the first-approved variant (lowest variantIndex) with the runId
+ * it was approved from. Defensive like readPromotedRunsFromManifest — a missing
+ * or corrupt manifest yields an empty map rather than throwing.
+ */
+function readApprovedVariantsByBrief(manifestPath: string): ReadonlyMap<string, ApprovedBriefInfo> {
+  const result = new Map<string, ApprovedBriefInfo>();
+  if (!existsSync(manifestPath)) return result;
+  try {
+    const parsed = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      entries?: Record<string, { briefId?: unknown; variantIndex?: unknown; sourceRun?: unknown }>;
+    };
+    const entries = parsed?.entries ?? {};
+    for (const entry of Object.values(entries)) {
+      if (!entry || typeof entry.briefId !== 'string') continue;
+      const variantIndex = typeof entry.variantIndex === 'number' ? entry.variantIndex : null;
+      let runId: string | null = null;
+      if (typeof entry.sourceRun === 'string') {
+        const parts = entry.sourceRun
+          .replace(/\\/g, '/')
+          .split('/')
+          .filter((segment) => segment !== '');
+        runId = parts.length >= 1 ? (parts[parts.length - 1] ?? null) : null;
+      }
+      const current = result.get(entry.briefId) ?? {
+        count: 0,
+        firstRunId: null,
+        firstVariantIndex: null,
+      };
+      current.count += 1;
+      if (
+        variantIndex !== null &&
+        (current.firstVariantIndex === null || variantIndex < current.firstVariantIndex)
+      ) {
+        current.firstVariantIndex = variantIndex;
+        current.firstRunId = runId;
+      }
+      result.set(entry.briefId, current);
+    }
+  } catch {
+    return result;
+  }
+  return result;
+}
+
+/**
+ * Read-only presence check for a run's brief: true when the YAML still exists on
+ * disk OR remains mirrored in the run store under its workflow-state key. Unlike
+ * materializeBriefFromStore it NEVER writes to disk — it only reports presence.
+ */
+async function isBriefStored(
+  store: RunStore,
+  repoRoot: string,
+  briefPath: string,
+): Promise<boolean> {
+  const absPath = path.isAbsolute(briefPath) ? briefPath : path.resolve(repoRoot, briefPath);
+  if (existsSync(absPath)) return true;
+  const rel = toRepoRelativePath(repoRoot, absPath);
+  if (!isRepoConfined(rel)) return false;
+  try {
+    return await store.has(workflowBriefKey(rel));
+  } catch {
+    return false;
+  }
 }
 
 function readPromotedRunsFromManifest(manifestPath: string): ReadonlySet<string> {

@@ -1,0 +1,28 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-07",
+  "session_slug": "clean-triage-fixes-pr",
+  "task_title": "Clean triage fixes PR",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "notes": "Addressed process concerns by generating required ledger and handoff; validated targeted preview path coverage for run-candidate/run-detail; retained scoped test guard for makeImgEl consumers."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

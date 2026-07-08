@@ -12,135 +12,10 @@ import { writeFileSync } from 'node:fs';
 import { BehaviorTreeAI } from './bt-ai-provider.js';
 import { runHeadless } from './headless-runner.js';
 import { eventsToJsonl, summarizeEvents, type SimEvent } from './event-log.js';
-
-interface CLIArgs {
-  seed: number;
-  maxFrames: number;
-  maxTimeMs: number;
-  progress: number;
-  aggression: number;
-  debug: boolean;
-  help: boolean;
-  eventLog: string | null;
-  eventSummary: string | null;
-  sampleInterval: number;
-  weapon: string | null;
-  enemyDamageMultiplier: number;
-  floorId: string;
-  startPlayerLevel: number;
-}
-
-function parseArgs(): CLIArgs {
-  const args: CLIArgs = {
-    seed: 12345,
-    maxFrames: 100_000,
-    maxTimeMs: 5 * 60 * 1000,
-    progress: 3600, // Report every minute of game time
-    aggression: 1,
-    debug: false,
-    help: false,
-    eventLog: null,
-    eventSummary: null,
-    sampleInterval: 15,
-    weapon: null,
-    enemyDamageMultiplier: 1,
-    floorId: 'floor1',
-    startPlayerLevel: 1,
-  };
-
-  for (let i = 2; i < process.argv.length; i++) {
-    const arg = process.argv[i];
-    const next = process.argv[i + 1];
-
-    if (arg === '--help' || arg === '-h') {
-      args.help = true;
-    } else if (arg === '--seed' && next) {
-      args.seed = parseInt(next, 10);
-      i++;
-    } else if (arg === '--max-frames' && next) {
-      args.maxFrames = parseInt(next, 10);
-      i++;
-    } else if (arg === '--max-time-ms' && next) {
-      args.maxTimeMs = parseInt(next, 10);
-      i++;
-    } else if (arg === '--progress' && next) {
-      args.progress = parseInt(next, 10);
-      i++;
-    } else if (arg === '--aggression' && next) {
-      args.aggression = parseFloat(next);
-      i++;
-    } else if (arg === '--event-log' && next) {
-      args.eventLog = next;
-      i++;
-    } else if (arg === '--event-summary' && next) {
-      args.eventSummary = next;
-      i++;
-    } else if (arg === '--sample-interval' && next) {
-      args.sampleInterval = Math.max(1, parseInt(next, 10));
-      i++;
-    } else if (arg === '--weapon' && next) {
-      args.weapon = next;
-      i++;
-    } else if (arg === '--enemy-damage-multiplier' && next) {
-      const parsed = Number.parseFloat(next);
-      if (!Number.isFinite(parsed)) {
-        throw new Error(`Invalid --enemy-damage-multiplier "${next}" (must be a finite number)`);
-      }
-      args.enemyDamageMultiplier = parsed;
-      i++;
-    } else if (arg === '--floor' && next) {
-      args.floorId = next;
-      i++;
-    } else if (arg === '--start-level' && next) {
-      const parsed = parseInt(next, 10);
-      if (!Number.isFinite(parsed) || parsed < 1) {
-        throw new Error(`Invalid --start-level "${next}" (must be a positive integer)`);
-      }
-      args.startPlayerLevel = parsed;
-      i++;
-    } else if (arg === '--debug') {
-      args.debug = true;
-    }
-  }
-
-  return args;
-}
+import { helpText, parseArgs } from './headless-runner-cli-lib.js';
 
 function printHelp(): void {
-  console.log(`
-Headless AI Runner CLI
-
-Usage:
-  node src/game/ai/headless-runner-cli.js [options]
-
-Options:
-  --seed <number>         Random seed (default: 12345)
-  --max-frames <number>   Maximum frames to simulate (default: 100000)
-  --max-time-ms <number>  Maximum wall-clock time in ms (default: 300000)
-  --progress <number>     Report progress every N frames (default: 3600)
-  --aggression <number>   AI aggression level 0-2 (default: 1)
-  --weapon <id>           Force a specific starting weapon (e.g. sword, bow, baseball-bat)
-  --event-log <path>      Write per-frame telemetry as JSONL to <path>
-  --event-summary <path>  Write wasted-time summary JSON to <path>
-  --sample-interval <n>   Frames between telemetry samples (default: 15)
-  --debug                 Enable verbose logging
-  --enemy-damage-multiplier <n>
-                           Multiply hostile Damage values (default: 1)
-  --floor <id>            Scenario floor id (default: floor1)
-  --start-level <n>       Start at player character level N (default: 1, no boost)
-  --help, -h              Show this help message
-
-Examples:
-  # Quick test run
-  node src/game/ai/headless-runner-cli.js --seed 42 --max-frames 10000
-
-  # Long aggressive run with progress updates
-  node src/game/ai/headless-runner-cli.js --seed 99 --aggression 2 --progress 1800
-
-  # Capture an event log + wasted-time summary for analysis
-  node src/game/ai/headless-runner-cli.js --seed 42 --max-frames 7200 \\
-    --event-log run.jsonl --event-summary run-summary.json
-`);
+  console.log(helpText());
 }
 
 async function main(): Promise<void> {
@@ -163,12 +38,16 @@ async function main(): Promise<void> {
   if (args.startPlayerLevel > 1) {
     console.log(`Start player level: ${args.startPlayerLevel}`);
   }
+  console.log(`Pathing mode:  ${args.pathingMode}`);
+  console.log(`Decision mode: ${args.decisionMode}`);
   console.log('');
 
   const ai = new BehaviorTreeAI({
     seed: args.seed,
     aggression: args.aggression,
     debug: args.debug,
+    pathingMode: args.pathingMode,
+    decisionMode: args.decisionMode,
   });
 
   const recording = args.eventLog !== null || args.eventSummary !== null;
@@ -185,6 +64,7 @@ async function main(): Promise<void> {
     enemyDamageMultiplier: args.enemyDamageMultiplier,
     floorId: args.floorId,
     startPlayerLevel: args.startPlayerLevel,
+    recordWeaponTelemetry: args.weaponTelemetry,
     ...(recording
       ? {
           recordEvent: (event: SimEvent): void => {
@@ -225,6 +105,22 @@ async function main(): Promise<void> {
   console.log(
     `  Damage Taken: ${stats.combat.damageTaken.toFixed(0)} (${(stats.combat.damageTaken / (stats.gameTimeMs / 1000)).toFixed(1)}/s)`,
   );
+  if (stats.weaponTelemetry) {
+    const wt = stats.weaponTelemetry;
+    console.log('');
+    console.log('🎯 Weapon Accuracy');
+    console.log(`  Swings:       ${wt.swings}`);
+    console.log(
+      `  Connecting:   ${wt.connectingSwings} (${(wt.accuracy * 100).toFixed(1)}% accuracy)`,
+    );
+    console.log(`  Acc. Misses:  ${wt.accuracyMisses}`);
+    console.log(
+      `  Multi-hit:    ${wt.multiHitSwings} (${(wt.multiHitRate * 100).toFixed(1)}% of connecting)`,
+    );
+    console.log(
+      `  Enemies Hit:  ${wt.totalEnemyHits} (${wt.avgEnemiesPerConnectingSwing.toFixed(2)}/connecting swing)`,
+    );
+  }
   console.log('');
   console.log('❤️  Health Metrics');
   console.log(`  Min HP:       ${(stats.health.minHealthPercent * 100).toFixed(1)}%`);
