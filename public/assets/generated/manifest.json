@@ -367,6 +367,35 @@
       "effectivePipelineSnapshotYamlPath": null,
       "effectiveAnchorSource": "brief"
     },
+    "angry-roomba-v2-v1-var-13": {
+      "briefId": "angry-roomba-v2-v1",
+      "spriteName": "angry-roomba-v2-v1-var-13",
+      "assetPath": "generated/angry-roomba-v2-v1-var-13.png",
+      "approvedAt": "2026-07-04T03:00:00.760Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-2DSFiv/angry-roomba-v2-v1/2026-07-04T01-47-58-0a1d7dd2",
+      "variantIndex": 13,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "5",
+      "type": "character",
+      "contentHash": "e27a714e1b4ae05c90a8bf22444ad0bd18d71805975a6c7a765ac055491d39dd"
+    },
     "angry-roomba-v2-v1-var-7": {
       "briefId": "angry-roomba-v2-v1",
       "spriteName": "angry-roomba-v2-v1-var-7",
@@ -638,6 +667,40 @@
       "type": "weapon",
       "contentHash": "d266dc9661f90db29c6611c241bcf96cecdbde3e61df48f09071a6d5cb4db47a"
     },
+    "batfolk-boss-var-3": {
+      "briefId": "batfolk-boss",
+      "spriteName": "batfolk-boss-var-3",
+      "assetPath": "generated/batfolk-boss-var-3.png",
+      "approvedAt": "2026-07-08T02:26:21.357Z",
+      "sourceRun": "generated/runs/batfolk-boss/2026-07-08T02-18-01-208c1100",
+      "variantIndex": 3,
+      "anchor": {
+        "x": 32,
+        "y": 34,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 34,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "7abfadff90cc335e50ba8c100334d917db989da8da97db7cb1b739b72e8aebaa",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\batfolk-boss\\2026-07-08T02-18-01-208c1100\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\batfolk-boss\\2026-07-08T02-18-01-208c1100\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\batfolk-boss\\2026-07-08T02-18-01-208c1100\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
     "beaded-bracelet-placeholder": {
       "briefId": "beaded-bracelet",
       "spriteName": "beaded-bracelet",
@@ -649,6 +712,40 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": "item"
+    },
+    "beetlefolk-boss-var-0": {
+      "briefId": "beetlefolk-boss",
+      "spriteName": "beetlefolk-boss-var-0",
+      "assetPath": "generated/beetlefolk-boss-var-0.png",
+      "approvedAt": "2026-07-08T02:46:19.687Z",
+      "sourceRun": "generated/runs/beetlefolk-boss/2026-07-08T02-32-57-379ab14a",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 32,
+        "y": 31,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 31,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 31,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "5d825899d524d4ec83fd599b148983e65723efbc9c6881959db0e44f63d75e2b",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\beetlefolk-boss\\2026-07-08T02-32-57-379ab14a\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\beetlefolk-boss\\2026-07-08T02-32-57-379ab14a\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\beetlefolk-boss\\2026-07-08T02-32-57-379ab14a\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     },
     "bent-pipe-v1-var-1": {
       "briefId": "bent-pipe-v1",
@@ -722,6 +819,40 @@
       "judgeScore": "4",
       "type": "item",
       "contentHash": "cc182b05f1feb6f1a9902cfa98952db9fd9603fa84e36c4dab00199cc8e9c6e3"
+    },
+    "blind-cave-newt-var-11": {
+      "briefId": "blind-cave-newt",
+      "spriteName": "blind-cave-newt-var-11",
+      "assetPath": "generated/blind-cave-newt-var-11.png",
+      "approvedAt": "2026-07-08T01:15:45.871Z",
+      "sourceRun": "generated/runs/blind-cave-newt/2026-07-08T00-59-07-35bb45f3",
+      "variantIndex": 11,
+      "anchor": {
+        "x": 31,
+        "y": 31,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 31,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 31,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "3",
+      "type": "enemy",
+      "contentHash": "ce7de98797ee2f7b7540c6854160d2a40c9da31dbdf7748b56feb1591b5fa52c",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\blind-cave-newt\\2026-07-08T00-59-07-35bb45f3\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\blind-cave-newt\\2026-07-08T00-59-07-35bb45f3\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\blind-cave-newt\\2026-07-08T00-59-07-35bb45f3\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     },
     "bone-club-placeholder": {
       "briefId": "bone-club",
@@ -894,6 +1025,40 @@
       "judgeScore": null,
       "type": "item"
     },
+    "cactusfolk-boss-var-1": {
+      "briefId": "cactusfolk-boss",
+      "spriteName": "cactusfolk-boss-var-1",
+      "assetPath": "generated/cactusfolk-boss-var-1.png",
+      "approvedAt": "2026-07-08T02:26:20.424Z",
+      "sourceRun": "generated/runs/cactusfolk-boss/2026-07-08T02-14-48-5fde1528",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 32,
+        "y": 36,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 36,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 36,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "e988df7b49e5903e479f1c4c129265c473b6387a4c96a8d16f915d3b1c7b6c64",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cactusfolk-boss\\2026-07-08T02-14-48-5fde1528\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cactusfolk-boss\\2026-07-08T02-14-48-5fde1528\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cactusfolk-boss\\2026-07-08T02-14-48-5fde1528\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
     "camera-lens-placeholder": {
       "briefId": "camera-lens",
       "spriteName": "camera-lens",
@@ -934,6 +1099,142 @@
       "judgeScore": "2",
       "type": "item",
       "contentHash": "d0ee6e94ebcca556d2f3d05888ca3b20dffe5c13b853d8fee0fc31b1c5e84cc9"
+    },
+    "cave-bat-swarm-var-2": {
+      "briefId": "cave-bat-swarm",
+      "spriteName": "cave-bat-swarm-var-2",
+      "assetPath": "generated/cave-bat-swarm-var-2.png",
+      "approvedAt": "2026-07-08T00:52:25.536Z",
+      "sourceRun": "generated/runs/cave-bat-swarm/2026-07-08T00-48-12-70a0add0",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 31,
+        "y": 33,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 33,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "3",
+      "type": "enemy",
+      "contentHash": "49a9d4daa74b30054e1755dd77b90ee84f25a900af33e3f76cffa220acaa012e",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-bat-swarm\\2026-07-08T00-48-12-70a0add0\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-bat-swarm\\2026-07-08T00-48-12-70a0add0\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-bat-swarm\\2026-07-08T00-48-12-70a0add0\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "cave-floor-var-8": {
+      "briefId": "cave-floor",
+      "spriteName": "cave-floor-var-8",
+      "assetPath": "generated/cave-floor-var-8.png",
+      "approvedAt": "2026-07-08T00:38:58.988Z",
+      "sourceRun": "generated/runs/cave-floor/2026-07-08T00-30-37-269bdc53",
+      "variantIndex": 8,
+      "anchor": {
+        "x": 127,
+        "y": 255,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 127,
+          "y": 255,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 127,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "tile",
+      "contentHash": "9e51e29cbeff90445781295bc54aae7aceeb9d0275ee3a396fa832172ef2a79a",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-floor\\2026-07-08T00-30-37-269bdc53\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-floor\\2026-07-08T00-30-37-269bdc53\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-floor\\2026-07-08T00-30-37-269bdc53\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "cave-slime-var-0": {
+      "briefId": "cave-slime",
+      "spriteName": "cave-slime-var-0",
+      "assetPath": "generated/cave-slime-var-0.png",
+      "approvedAt": "2026-07-08T00:52:23.250Z",
+      "sourceRun": "generated/runs/cave-slime/2026-07-08T00-42-00-a96f1cdb",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 33,
+        "y": 35,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 33,
+          "y": 35,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 33,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "enemy",
+      "contentHash": "a6e2e17528812cb0fe39d452e170d4ba250f534ab69a156bb60201a5a4effd28",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-slime\\2026-07-08T00-42-00-a96f1cdb\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-slime\\2026-07-08T00-42-00-a96f1cdb\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-slime\\2026-07-08T00-42-00-a96f1cdb\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "cave-wall-var-5": {
+      "briefId": "cave-wall",
+      "spriteName": "cave-wall-var-5",
+      "assetPath": "generated/cave-wall-var-5.png",
+      "approvedAt": "2026-07-08T00:39:00.044Z",
+      "sourceRun": "generated/runs/cave-wall/2026-07-08T00-34-06-cb8a2d11",
+      "variantIndex": 5,
+      "anchor": {
+        "x": 127,
+        "y": 255,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 127,
+          "y": 255,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 127,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "tile",
+      "contentHash": "976c2501f79a5cfaa794811a7bb26abe36cd907fad7db886de07704a9f0547df",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-wall\\2026-07-08T00-34-06-cb8a2d11\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-wall\\2026-07-08T00-34-06-cb8a2d11\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-wall\\2026-07-08T00-34-06-cb8a2d11\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     },
     "celestial-ingot-placeholder": {
       "briefId": "celestial-ingot",
@@ -1115,6 +1416,40 @@
       "type": "item",
       "contentHash": "879cbaa25b1bc411f754fa6a8d9fe98617cdfd804156ba96c1e42994308383a4"
     },
+    "crabfolk-boss-var-10": {
+      "briefId": "crabfolk-boss",
+      "spriteName": "crabfolk-boss-var-10",
+      "assetPath": "generated/crabfolk-boss-var-10.png",
+      "approvedAt": "2026-07-08T02:31:29.347Z",
+      "sourceRun": "generated/runs/crabfolk-boss/2026-07-08T02-27-51-931d271c",
+      "variantIndex": 10,
+      "anchor": {
+        "x": 30,
+        "y": 35,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 30,
+          "y": 35,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "enemy",
+      "contentHash": "0e8892e263b6654623be9cfe339a86b22fdd136bf40d06bafa4c427479a97d01",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crabfolk-boss\\2026-07-08T02-27-51-931d271c\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crabfolk-boss\\2026-07-08T02-27-51-931d271c\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crabfolk-boss\\2026-07-08T02-27-51-931d271c\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
     "crystal-fiber-placeholder": {
       "briefId": "crystal-fiber",
       "spriteName": "crystal-fiber",
@@ -1155,6 +1490,40 @@
       "judgeScore": "2",
       "type": "item",
       "contentHash": "ef0d972a8cc160aff1920c7de405c89d190f3c7ca4a6b28571591ffb0f2d7fea"
+    },
+    "crystal-scuttler-var-1": {
+      "briefId": "crystal-scuttler",
+      "spriteName": "crystal-scuttler-var-1",
+      "assetPath": "generated/crystal-scuttler-var-1.png",
+      "approvedAt": "2026-07-08T01:15:48.168Z",
+      "sourceRun": "generated/runs/crystal-scuttler/2026-07-08T01-07-50-f90c26a1",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 33,
+        "y": 33,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 33,
+          "y": 33,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 33,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "enemy",
+      "contentHash": "c51b7224ca3fd26c15c9b871a98904f0d872793514023c2cb86c7b3585453c1d",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crystal-scuttler\\2026-07-08T01-07-50-f90c26a1\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crystal-scuttler\\2026-07-08T01-07-50-f90c26a1\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crystal-scuttler\\2026-07-08T01-07-50-f90c26a1\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     },
     "crystal-wand-placeholder": {
       "briefId": "crystal-wand",
@@ -1385,6 +1754,74 @@
       "judgeScore": null,
       "type": null
     },
+    "faerie-blink-var-0": {
+      "briefId": "faerie-blink",
+      "spriteName": "faerie-blink-var-0",
+      "assetPath": "generated/faerie-blink-var-0.png",
+      "approvedAt": "2026-07-08T03:27:56.364Z",
+      "sourceRun": "generated/runs/faerie-blink/2026-07-08T03-17-19-8857b01b",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 31,
+        "y": 31,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 31,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 31,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "enemy",
+      "contentHash": "9cfdf025e596e8b6125b7842fe14527f7f5ea42032caa3f043bcc11570c3fc5f",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\faerie-blink\\2026-07-08T03-17-19-8857b01b\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\faerie-blink\\2026-07-08T03-17-19-8857b01b\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\faerie-blink\\2026-07-08T03-17-19-8857b01b\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "faerie-boss-var-1": {
+      "briefId": "faerie-boss",
+      "spriteName": "faerie-boss-var-1",
+      "assetPath": "generated/faerie-boss-var-1.png",
+      "approvedAt": "2026-07-08T01:43:59.339Z",
+      "sourceRun": "generated/runs/faerie-boss/2026-07-08T01-39-33-5bfe280b",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 32,
+        "y": 34,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 34,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "enemy",
+      "contentHash": "10e76cef88b22552f0fe6f1c7d241985f6ca92217eac8248e1224544320d0133",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\faerie-boss\\2026-07-08T01-39-33-5bfe280b\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\faerie-boss\\2026-07-08T01-39-33-5bfe280b\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\faerie-boss\\2026-07-08T01-39-33-5bfe280b\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
     "feathersteel-placeholder": {
       "briefId": "feathersteel",
       "spriteName": "feathersteel",
@@ -1522,6 +1959,74 @@
       "judgeScore": null,
       "type": null
     },
+    "fungal-husk-var-1": {
+      "briefId": "fungal-husk",
+      "spriteName": "fungal-husk-var-1",
+      "assetPath": "generated/fungal-husk-var-1.png",
+      "approvedAt": "2026-07-08T01:32:32.058Z",
+      "sourceRun": "generated/runs/fungal-husk/2026-07-08T01-28-28-7bbe0b07",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 32,
+        "y": 34,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 34,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "enemy",
+      "contentHash": "3119152bd454c1bd8a7420a135b8af77a2327c2bd0013dd2b159d68095626d75",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\fungal-husk\\2026-07-08T01-28-28-7bbe0b07\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\fungal-husk\\2026-07-08T01-28-28-7bbe0b07\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\fungal-husk\\2026-07-08T01-28-28-7bbe0b07\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "geese-boss-var-0": {
+      "briefId": "geese-boss",
+      "spriteName": "geese-boss-var-0",
+      "assetPath": "generated/geese-boss-var-0.png",
+      "approvedAt": "2026-07-08T02:46:21.682Z",
+      "sourceRun": "generated/runs/geese-boss/2026-07-08T02-42-19-28e76d2b",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 32,
+        "y": 35,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 35,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "0d6fa4939a1f530172f7c57a6ed933d97185b40b36b22c71bf772043dfbc7619",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\geese-boss\\2026-07-08T02-42-19-28e76d2b\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\geese-boss\\2026-07-08T02-42-19-28e76d2b\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\geese-boss\\2026-07-08T02-42-19-28e76d2b\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
     "ghost-photo-placeholder": {
       "briefId": "ghost-photo",
       "spriteName": "ghost-photo",
@@ -1533,6 +2038,40 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": null
+    },
+    "giant-cave-rat-var-2": {
+      "briefId": "giant-cave-rat",
+      "spriteName": "giant-cave-rat-var-2",
+      "assetPath": "generated/giant-cave-rat-var-2.png",
+      "approvedAt": "2026-07-08T00:52:24.446Z",
+      "sourceRun": "generated/runs/giant-cave-rat/2026-07-08T00-45-06-757a18ec",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 30,
+        "y": 33,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 30,
+          "y": 33,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "enemy",
+      "contentHash": "4aacd0cf27f0f59dc222383d19c07ed5fe9d7415734a9e4b9da3b885a1a62f29",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\giant-cave-rat\\2026-07-08T00-45-06-757a18ec\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\giant-cave-rat\\2026-07-08T00-45-06-757a18ec\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\giant-cave-rat\\2026-07-08T00-45-06-757a18ec\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     },
     "glistening-rat-tail-placeholder": {
       "briefId": "glistening-rat-tail",
@@ -1546,6 +2085,40 @@
       "judgeScore": null,
       "type": "item"
     },
+    "glistening-rat-tail-v1-var-2": {
+      "briefId": "glistening-rat-tail-v1",
+      "spriteName": "glistening-rat-tail-v1-var-2",
+      "assetPath": "generated/glistening-rat-tail-v1-var-2.png",
+      "approvedAt": "2026-07-08T00:17:15.703Z",
+      "sourceRun": "generated/runs/glistening-rat-tail-v1/2026-07-07T23-51-12-30098a40",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 33,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 33,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 33,
+          "y": 29,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "09c5a1627d4ab4f91fafc25cad3999134db6399b1dcbf64e37d39223e4eef45f",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/glistening-rat-tail-v1/2026-07-07T23-51-12-30098a40/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/glistening-rat-tail-v1/2026-07-07T23-51-12-30098a40/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/glistening-rat-tail-v1/2026-07-07T23-51-12-30098a40/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
     "glitch-marble-placeholder": {
       "briefId": "glitch-marble",
       "spriteName": "glitch-marble",
@@ -1557,6 +2130,142 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": null
+    },
+    "glow-worm-var-6": {
+      "briefId": "glow-worm",
+      "spriteName": "glow-worm-var-6",
+      "assetPath": "generated/glow-worm-var-6.png",
+      "approvedAt": "2026-07-08T01:15:47.082Z",
+      "sourceRun": "generated/runs/glow-worm/2026-07-08T01-02-04-36775a47",
+      "variantIndex": 6,
+      "anchor": {
+        "x": 31,
+        "y": 32,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 32,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "enemy",
+      "contentHash": "e92f8e50db15bf3d7ed923b38f26a2abfeb10792facc03641ba499c7a80e4923",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\glow-worm\\2026-07-08T01-02-04-36775a47\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\glow-worm\\2026-07-08T01-02-04-36775a47\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\glow-worm\\2026-07-08T01-02-04-36775a47\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "gnome-boss-var-7": {
+      "briefId": "gnome-boss",
+      "spriteName": "gnome-boss-var-7",
+      "assetPath": "generated/gnome-boss-var-7.png",
+      "approvedAt": "2026-07-08T02:09:00.826Z",
+      "sourceRun": "generated/runs/gnome-boss/2026-07-08T02-04-07-24c663e7",
+      "variantIndex": 7,
+      "anchor": {
+        "x": 31,
+        "y": 33,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 33,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "e3498a4c58b6d45824d90aaa57f22dd2bbb9488b560d32b7e120d7d3c6808823",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\gnome-boss\\2026-07-08T02-04-07-24c663e7\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\gnome-boss\\2026-07-08T02-04-07-24c663e7\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\gnome-boss\\2026-07-08T02-04-07-24c663e7\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "goblin-boss-var-0": {
+      "briefId": "goblin-boss",
+      "spriteName": "goblin-boss-var-0",
+      "assetPath": "generated/goblin-boss-var-0.png",
+      "approvedAt": "2026-07-08T01:54:28.983Z",
+      "sourceRun": "generated/runs/goblin-boss/2026-07-08T01-44-14-cc6e849a",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 30,
+        "y": 33,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 30,
+          "y": 33,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "c4ea9816e6bf355395a61ded4cd904d6c18864a0c33af70f8cb7a2f559b08d5c",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-boss\\2026-07-08T01-44-14-cc6e849a\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-boss\\2026-07-08T01-44-14-cc6e849a\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-boss\\2026-07-08T01-44-14-cc6e849a\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "goblin-grunt-var-6": {
+      "briefId": "goblin-grunt",
+      "spriteName": "goblin-grunt-var-6",
+      "assetPath": "generated/goblin-grunt-var-6.png",
+      "approvedAt": "2026-07-08T03:27:54.398Z",
+      "sourceRun": "generated/runs/goblin-grunt/2026-07-08T03-07-44-38236e80",
+      "variantIndex": 6,
+      "anchor": {
+        "x": 31,
+        "y": 32,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 32,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "8b9bbf8a5f3d78bafc41fcab807148a877c9f9f07711336007e824972d09b3db",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-grunt\\2026-07-08T03-07-44-38236e80\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-grunt\\2026-07-08T03-07-44-38236e80\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-grunt\\2026-07-08T03-07-44-38236e80\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     },
     "gold-nugget-placeholder": {
       "briefId": "gold-nugget",
@@ -1659,6 +2368,40 @@
       "judgeScore": null,
       "type": null
     },
+    "imps-boss-var-5": {
+      "briefId": "imps-boss",
+      "spriteName": "imps-boss-var-5",
+      "assetPath": "generated/imps-boss-var-5.png",
+      "approvedAt": "2026-07-08T03:01:06.679Z",
+      "sourceRun": "generated/runs/imps-boss/2026-07-08T02-57-23-ad439923",
+      "variantIndex": 5,
+      "anchor": {
+        "x": 32,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 36,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "enemy",
+      "contentHash": "2821bbf307fe231841f709ebecf1c3c1d9e836e60e53191da7a5c11442897d88",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\imps-boss\\2026-07-08T02-57-23-ad439923\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\imps-boss\\2026-07-08T02-57-23-ad439923\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\imps-boss\\2026-07-08T02-57-23-ad439923\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
     "iron-armguard-placeholder": {
       "briefId": "iron-armguard",
       "spriteName": "iron-armguard",
@@ -1719,6 +2462,40 @@
       "judgeScore": null,
       "type": "item"
     },
+    "iron-ore-v1-var-0": {
+      "briefId": "iron-ore-v1",
+      "spriteName": "iron-ore-v1-var-0",
+      "assetPath": "generated/iron-ore-v1-var-0.png",
+      "approvedAt": "2026-07-08T00:17:14.721Z",
+      "sourceRun": "generated/runs/iron-ore-v1/2026-07-07T23-54-29-5c27396d",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 25,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 25,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "ea97f1b5420730c7372472f8310a67f3c71a5f8bfb78ef6069c5a664bf7596fa",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-ore-v1/2026-07-07T23-54-29-5c27396d/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-ore-v1/2026-07-07T23-54-29-5c27396d/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-ore-v1/2026-07-07T23-54-29-5c27396d/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
     "iron-sword-placeholder": {
       "briefId": "iron-sword",
       "spriteName": "iron-sword",
@@ -1742,6 +2519,40 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": "item"
+    },
+    "kobold-boss-var-0": {
+      "briefId": "kobold-boss",
+      "spriteName": "kobold-boss-var-0",
+      "assetPath": "generated/kobold-boss-var-0.png",
+      "approvedAt": "2026-07-08T02:08:57.780Z",
+      "sourceRun": "generated/runs/kobold-boss/2026-07-08T01-55-03-caed3cb8",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 35,
+        "y": 35,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 35,
+          "y": 35,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 35,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "836296da4b0ccce999c83967123fccaf0844a3fbab9d3469f79d36f40d407c8a",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\kobold-boss\\2026-07-08T01-55-03-caed3cb8\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\kobold-boss\\2026-07-08T01-55-03-caed3cb8\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\kobold-boss\\2026-07-08T01-55-03-caed3cb8\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     },
     "laugh-track-tape-placeholder": {
       "briefId": "laugh-track-tape",
@@ -1814,6 +2625,74 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": null
+    },
+    "llama-boss-var-8": {
+      "briefId": "llama-boss",
+      "spriteName": "llama-boss-var-8",
+      "assetPath": "generated/llama-boss-var-8.png",
+      "approvedAt": "2026-07-08T01:54:29.948Z",
+      "sourceRun": "generated/runs/llama-boss/2026-07-08T01-47-26-a621a96d",
+      "variantIndex": 8,
+      "anchor": {
+        "x": 33,
+        "y": 28,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 33,
+          "y": 28,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 33,
+          "y": 28,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "enemy",
+      "contentHash": "01d0a9c25a6a6ad8d8af09725b8336600f41380b46a18cd1f639a5602c8ecd97",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\llama-boss\\2026-07-08T01-47-26-a621a96d\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\llama-boss\\2026-07-08T01-47-26-a621a96d\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\llama-boss\\2026-07-08T01-47-26-a621a96d\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "llama-spitter-var-0": {
+      "briefId": "llama-spitter",
+      "spriteName": "llama-spitter-var-0",
+      "assetPath": "generated/llama-spitter-var-0.png",
+      "approvedAt": "2026-07-08T03:27:55.350Z",
+      "sourceRun": "generated/runs/llama-spitter/2026-07-08T03-11-10-7b6e670c",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 35,
+        "y": 36,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 35,
+          "y": 36,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 35,
+          "y": 36,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "enemy",
+      "contentHash": "b1d7454be4b5d79e876759b641ad2ce2c0bca005e8625a2c74494d5ab894f044",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\llama-spitter\\2026-07-08T03-11-10-7b6e670c\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\llama-spitter\\2026-07-08T03-11-10-7b6e670c\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\llama-spitter\\2026-07-08T03-11-10-7b6e670c\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     },
     "lucky-charm-placeholder": {
       "briefId": "lucky-charm",
@@ -1965,6 +2844,74 @@
       "judgeScore": null,
       "type": "item"
     },
+    "merchants-stained-charm-v1-var-0": {
+      "briefId": "merchants-stained-charm-v1",
+      "spriteName": "merchants-stained-charm-v1-var-0",
+      "assetPath": "generated/merchants-stained-charm-v1-var-0.png",
+      "approvedAt": "2026-07-08T00:17:16.680Z",
+      "sourceRun": "generated/runs/merchants-stained-charm-v1/2026-07-08T00-04-17-5583442f",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 31,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": null,
+      "contentHash": "36c58f2f94b5c589488718c0f6f2bba3f0de0f695fb0dbf2e8a0660c0bfa821c",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/merchants-stained-charm-v1/2026-07-08T00-04-17-5583442f/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/merchants-stained-charm-v1/2026-07-08T00-04-17-5583442f/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/merchants-stained-charm-v1/2026-07-08T00-04-17-5583442f/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "molefolk-boss-var-0": {
+      "briefId": "molefolk-boss",
+      "spriteName": "molefolk-boss-var-0",
+      "assetPath": "generated/molefolk-boss-var-0.png",
+      "approvedAt": "2026-07-08T02:46:20.675Z",
+      "sourceRun": "generated/runs/molefolk-boss/2026-07-08T02-36-04-4d62866e",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 32,
+        "y": 35,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 35,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "56be1a169af9f2450c1a36a155603a9cc8c17eabf0dae2d562aa2c3e5b3d3af2",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\molefolk-boss\\2026-07-08T02-36-04-4d62866e\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\molefolk-boss\\2026-07-08T02-36-04-4d62866e\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\molefolk-boss\\2026-07-08T02-36-04-4d62866e\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
     "mushroom-cap-placeholder": {
       "briefId": "mushroom-cap",
       "spriteName": "mushroom-cap",
@@ -1976,6 +2923,40 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": null
+    },
+    "myconid-boss-var-0": {
+      "briefId": "myconid-boss",
+      "spriteName": "myconid-boss-var-0",
+      "assetPath": "generated/myconid-boss-var-0.png",
+      "approvedAt": "2026-07-08T02:08:58.780Z",
+      "sourceRun": "generated/runs/myconid-boss/2026-07-08T01-57-57-256336a3",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 31,
+        "y": 32,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 32,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "672f0f29940a7d83af0348d1b2243487fb96475819f3b34f59d5358a6b28b8e7",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\myconid-boss\\2026-07-08T01-57-57-256336a3\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\myconid-boss\\2026-07-08T01-57-57-256336a3\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\myconid-boss\\2026-07-08T01-57-57-256336a3\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     },
     "mystery-meat-placeholder": {
       "briefId": "mystery-meat",
@@ -2012,6 +2993,108 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": "item"
+    },
+    "old-sock-v1-var-4": {
+      "briefId": "old-sock-v1",
+      "spriteName": "old-sock-v1-var-4",
+      "assetPath": "generated/old-sock-v1-var-4.png",
+      "approvedAt": "2026-07-08T00:17:17.652Z",
+      "sourceRun": "generated/runs/old-sock-v1/2026-07-07T23-57-53-f6268e31",
+      "variantIndex": 4,
+      "anchor": {
+        "x": 25,
+        "y": 59,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 25,
+          "y": 59,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 35,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "b7c323021ed567eca97240cf22b27506d017eb506321d8eff9fef4c7aa49ee2f",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/old-sock-v1/2026-07-07T23-57-53-f6268e31/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/old-sock-v1/2026-07-07T23-57-53-f6268e31/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/old-sock-v1/2026-07-07T23-57-53-f6268e31/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "panda-boss-var-0": {
+      "briefId": "panda-boss",
+      "spriteName": "panda-boss-var-0",
+      "assetPath": "generated/panda-boss-var-0.png",
+      "approvedAt": "2026-07-08T01:54:30.974Z",
+      "sourceRun": "generated/runs/panda-boss/2026-07-08T01-50-26-26a0182f",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 33,
+        "y": 35,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 33,
+          "y": 35,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 33,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "7fe1cea2486bf5b996ccc6c56dc27637e1595a62dca8e4e7d2756c0b6c16c0b9",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\panda-boss\\2026-07-08T01-50-26-26a0182f\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\panda-boss\\2026-07-08T01-50-26-26a0182f\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\panda-boss\\2026-07-08T01-50-26-26a0182f\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "panda-bruiser-var-1": {
+      "briefId": "panda-bruiser",
+      "spriteName": "panda-bruiser-var-1",
+      "assetPath": "generated/panda-bruiser-var-1.png",
+      "approvedAt": "2026-07-08T03:53:58.074Z",
+      "sourceRun": "generated/runs/panda-bruiser/2026-07-08T03-42-51-9ac1a99c",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 32,
+        "y": 33,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 33,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "621cdef9d7ac91184f359ba85274c449a63523dd01157b16c4fb29ee59be5a84",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\panda-bruiser\\2026-07-08T03-42-51-9ac1a99c\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\panda-bruiser\\2026-07-08T03-42-51-9ac1a99c\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\panda-bruiser\\2026-07-08T03-42-51-9ac1a99c\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     },
     "papa-slime-v1-var-0": {
       "briefId": "papa-slime-v1",
@@ -2079,6 +3162,35 @@
       "effectivePipelineSnapshotYamlPath": null,
       "effectiveAnchorSource": "brief"
     },
+    "papa-slime-v1-var-9": {
+      "briefId": "papa-slime-v1",
+      "spriteName": "papa-slime-v1-var-9",
+      "assetPath": "generated/papa-slime-v1-var-9.png",
+      "approvedAt": "2026-07-04T03:05:23.011Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-AptYm8/papa-slime-v1/2026-07-03T03-50-55-0ba32d02",
+      "variantIndex": 9,
+      "anchor": {
+        "x": 32,
+        "y": 63,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 63,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "fb2c370ab6bb45ea2ed81875fa78a7e44e4f0f3b62cb94a0904b222ff7b887fa"
+    },
     "participation-trophy-placeholder": {
       "briefId": "participation-trophy",
       "spriteName": "participation-trophy",
@@ -2102,6 +3214,40 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": "item"
+    },
+    "pebble-v1-var-1": {
+      "briefId": "pebble-v1",
+      "spriteName": "pebble-v1-var-1",
+      "assetPath": "generated/pebble-v1-var-1.png",
+      "approvedAt": "2026-07-08T00:17:13.724Z",
+      "sourceRun": "generated/runs/pebble-v1/2026-07-08T00-07-14-e9891db2",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 28,
+        "y": 56,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 28,
+          "y": 56,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "78144d2dc652fd411178750c8bb7aa2f625fa2994e14d149221482b5a6bb6f1c",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/pebble-v1/2026-07-08T00-07-14-e9891db2/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/pebble-v1/2026-07-08T00-07-14-e9891db2/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/pebble-v1/2026-07-08T00-07-14-e9891db2/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     },
     "phoenix-tear-placeholder": {
       "briefId": "phoenix-tear",
@@ -2196,6 +3342,32 @@
       "judgeScore": "2",
       "type": "tile",
       "contentHash": "4034085ecd9ec122152fb34133867abdc65907fe631c734716947ac228959871"
+    },
+    "prop-rubble-pile-var-1": {
+      "briefId": "prop-rubble-pile",
+      "spriteName": "prop-rubble-pile-var-1",
+      "assetPath": "generated/prop-rubble-pile-var-1.png",
+      "approvedAt": "2026-07-08T00:25:29.616Z",
+      "sourceRun": "generated/runs/prop-rubble-pile/2026-07-08T00-21-17-9228c900",
+      "variantIndex": 1,
+      "anchor": null,
+      "anchors": {
+        "hold": null,
+        "centerOfGravity": {
+          "x": 32,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "4",
+      "type": "item",
+      "contentHash": "c05d93108e3272f949a7024129e44c4b15a898e478d0dd0d6d348bdad383deb8",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\prop-rubble-pile\\2026-07-08T00-21-17-9228c900\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\prop-rubble-pile\\2026-07-08T00-21-17-9228c900\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\prop-rubble-pile\\2026-07-08T00-21-17-9228c900\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": null,
+      "facingDirection": "right"
     },
     "prop-torch-v1-var-10": {
       "briefId": "prop-torch-v1",
@@ -2563,6 +3735,40 @@
       "sensorScore": "6/6",
       "judgeScore": "2",
       "type": "item"
+    },
+    "raccoons-boss-var-0": {
+      "briefId": "raccoons-boss",
+      "spriteName": "raccoons-boss-var-0",
+      "assetPath": "generated/raccoons-boss-var-0.png",
+      "approvedAt": "2026-07-08T02:58:02.672Z",
+      "sourceRun": "generated/runs/raccoons-boss/2026-07-08T02-47-01-09a78ec7",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 32,
+        "y": 34,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 34,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "93269f0d383453ee6a9b2897566baef39dafc566116c7667652bf615730eb276",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\raccoons-boss\\2026-07-08T02-47-01-09a78ec7\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\raccoons-boss\\2026-07-08T02-47-01-09a78ec7\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\raccoons-boss\\2026-07-08T02-47-01-09a78ec7\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     },
     "rage-elixir-placeholder": {
       "briefId": "rage-elixir",
@@ -3014,6 +4220,40 @@
       "type": "enemy",
       "contentHash": "390dee2ea1a072093f5d7b5dd6be13c024673c0fe95df98ba1f1a214360c0abb"
     },
+    "ratfolk-boss-var-0": {
+      "briefId": "ratfolk-boss",
+      "spriteName": "ratfolk-boss-var-0",
+      "assetPath": "generated/ratfolk-boss-var-0.png",
+      "approvedAt": "2026-07-08T02:26:19.371Z",
+      "sourceRun": "generated/runs/ratfolk-boss/2026-07-08T02-11-30-a6991641",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 33,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 33,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "d0414ac3eb1f9023c2d64e10156ed68cd7f350ecb0251a5ec7ead6cfd458c86b",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\ratfolk-boss\\2026-07-08T02-11-30-a6991641\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\ratfolk-boss\\2026-07-08T02-11-30-a6991641\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\ratfolk-boss\\2026-07-08T02-11-30-a6991641\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
     "raw-wood-placeholder": {
       "briefId": "raw-wood",
       "spriteName": "raw-wood",
@@ -3083,6 +4323,40 @@
       "effectivePipelineSnapshotYamlPath": null,
       "effectiveAnchorSource": "brief"
     },
+    "rock-lice-var-1": {
+      "briefId": "rock-lice",
+      "spriteName": "rock-lice-var-1",
+      "assetPath": "generated/rock-lice-var-1.png",
+      "approvedAt": "2026-07-08T01:29:38.345Z",
+      "sourceRun": "generated/runs/rock-lice/2026-07-08T01-24-37-b8a95a30",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 33,
+        "y": 31,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 33,
+          "y": 31,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 33,
+          "y": 31,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "3",
+      "type": "enemy",
+      "contentHash": "45119ce53a5deed2f4409f080cb14d3ef414a4b13233477f4bc6d231999ad4b9",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\rock-lice\\2026-07-08T01-24-37-b8a95a30\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\rock-lice\\2026-07-08T01-24-37-b8a95a30\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\rock-lice\\2026-07-08T01-24-37-b8a95a30\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
     "rusted-scrap-placeholder": {
       "briefId": "rusted-scrap",
       "spriteName": "rusted-scrap",
@@ -3094,6 +4368,40 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": "item"
+    },
+    "rusted-scrap-v1-var-0": {
+      "briefId": "rusted-scrap-v1",
+      "spriteName": "rusted-scrap-v1-var-0",
+      "assetPath": "generated/rusted-scrap-v1-var-0.png",
+      "approvedAt": "2026-07-08T00:17:18.648Z",
+      "sourceRun": "generated/runs/rusted-scrap-v1/2026-07-08T00-01-17-ca094eed",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 38,
+        "y": 59,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 38,
+          "y": 59,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 34,
+          "y": 31,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "5f73950a69a990f37b9baa781c86913fc770cf76d72025a206a030057746a17d",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/rusted-scrap-v1/2026-07-08T00-01-17-ca094eed/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rusted-scrap-v1/2026-07-08T00-01-17-ca094eed/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rusted-scrap-v1/2026-07-08T00-01-17-ca094eed/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     },
     "rusty-shiv-placeholder": {
       "briefId": "rusty-shiv",
@@ -3419,6 +4727,40 @@
       "type": "enemy",
       "contentHash": "15c2b665285ffb7e7f9c91329f14b66a5643a65271f9b32e6e74200074430404"
     },
+    "slime-rat-boss-var-1": {
+      "briefId": "slime-rat-boss",
+      "spriteName": "slime-rat-boss-var-1",
+      "assetPath": "generated/slime-rat-boss-var-1.png",
+      "approvedAt": "2026-07-08T00:01:39.242Z",
+      "sourceRun": "generated/runs/slime-rat-boss/2026-07-07T23-58-08-2a147cd7",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 70,
+        "y": 35,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 70,
+          "y": 35,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 70,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "3",
+      "type": "enemy",
+      "contentHash": "d4e9dfe52c4ea43046a63dfb86ab4df73ee3226723518fc1e2115faea685b3bd",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\slime-rat-boss\\2026-07-07T23-58-08-2a147cd7\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\slime-rat-boss\\2026-07-07T23-58-08-2a147cd7\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\slime-rat-boss\\2026-07-07T23-58-08-2a147cd7\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
     "slime-v1-var-2": {
       "briefId": "slime-v1",
       "spriteName": "slime-v1-var-2",
@@ -3529,6 +4871,40 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": null
+    },
+    "snailfolk-boss-var-0": {
+      "briefId": "snailfolk-boss",
+      "spriteName": "snailfolk-boss-var-0",
+      "assetPath": "generated/snailfolk-boss-var-0.png",
+      "approvedAt": "2026-07-08T02:58:03.742Z",
+      "sourceRun": "generated/runs/snailfolk-boss/2026-07-08T02-52-51-2c9a72c5",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 33,
+        "y": 33,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 33,
+          "y": 33,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 33,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "5a5fc3582f9e22c0e769e6370003342a0025e55d2f20606c7988c61bc55d9548",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\snailfolk-boss\\2026-07-08T02-52-51-2c9a72c5\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\snailfolk-boss\\2026-07-08T02-52-51-2c9a72c5\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\snailfolk-boss\\2026-07-08T02-52-51-2c9a72c5\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     },
     "spectral-blade-placeholder": {
       "briefId": "spectral-blade",
@@ -3815,6 +5191,138 @@
       "effectivePipelineSnapshotYamlPath": null,
       "effectiveAnchorSource": "brief"
     },
+    "the-stairs-v2-var-0": {
+      "briefId": "the-stairs-v2",
+      "spriteName": "the-stairs-v2-var-0",
+      "assetPath": "generated/the-stairs-v2-var-0.png",
+      "approvedAt": "2026-07-07T00:20:47.108Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-543XR0/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 64,
+        "y": 32,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 64,
+          "y": 32,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 255,
+          "y": 255,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "4",
+      "type": "tile",
+      "contentHash": "dcc6e42b2f21cf07a3fb83f1795ef489499d17666b80f43852b45ba10952626c",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived"
+    },
+    "the-stairs-v2-var-1": {
+      "briefId": "the-stairs-v2",
+      "spriteName": "the-stairs-v2-var-1",
+      "assetPath": "generated/the-stairs-v2-var-1.png",
+      "approvedAt": "2026-07-07T00:20:51.428Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-2VJZiE/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 255,
+        "y": 511,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 255,
+          "y": 511,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 255,
+          "y": 255,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "4",
+      "type": "tile",
+      "contentHash": "cecede3067a39d4041dbad4b048398502c4eaef9e4ae7663dd25cccf3e837a98",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived"
+    },
+    "the-stairs-v2-var-2": {
+      "briefId": "the-stairs-v2",
+      "spriteName": "the-stairs-v2-var-2",
+      "assetPath": "generated/the-stairs-v2-var-2.png",
+      "approvedAt": "2026-07-07T00:20:55.266Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-Gwhgqc/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 255,
+        "y": 511,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 255,
+          "y": 511,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 255,
+          "y": 255,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "4",
+      "type": "tile",
+      "contentHash": "4091f871dab669c14f46060a90e359745ecce63d263635a5c7d17a786546afa5",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived"
+    },
+    "the-stairs-v2-var-3": {
+      "briefId": "the-stairs-v2",
+      "spriteName": "the-stairs-v2-var-3",
+      "assetPath": "generated/the-stairs-v2-var-3.png",
+      "approvedAt": "2026-07-07T00:20:58.947Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-quqSYp/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a",
+      "variantIndex": 3,
+      "anchor": {
+        "x": 255,
+        "y": 511,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 255,
+          "y": 511,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 255,
+          "y": 255,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "4",
+      "type": "tile",
+      "contentHash": "3396533fe0687408a3ed9cf59dfcd05bacaa3b1114da937e5b2495c0f258c562",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived"
+    },
     "thunder-staff-placeholder": {
       "briefId": "thunder-staff",
       "spriteName": "thunder-staff",
@@ -3826,6 +5334,40 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": null
+    },
+    "tile-boss-staircase-floor-v2-var-10": {
+      "briefId": "tile-boss-staircase-floor-v2",
+      "spriteName": "tile-boss-staircase-floor-v2-var-10",
+      "assetPath": "generated/tile-boss-staircase-floor-v2-var-10.png",
+      "approvedAt": "2026-07-08T00:10:12.387Z",
+      "sourceRun": "generated/runs/tile-boss-staircase-floor-v2/2026-07-07T22-12-08-94a50229",
+      "variantIndex": 10,
+      "anchor": {
+        "x": 127,
+        "y": 255,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 127,
+          "y": 255,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 127,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": null,
+      "contentHash": "15d48c49478029ed48cb7724134e201fa2ccade21b29ff0da94aaa5d86bdb966",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-boss-staircase-floor-v2/2026-07-07T22-12-08-94a50229/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-boss-staircase-floor-v2/2026-07-07T22-12-08-94a50229/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-boss-staircase-floor-v2/2026-07-07T22-12-08-94a50229/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     },
     "tile-corridor-v1-var-10": {
       "briefId": "tile-corridor-v1",
@@ -4025,6 +5567,142 @@
       "effectivePipelineSnapshotYamlPath": null,
       "effectiveAnchorSource": "derived"
     },
+    "tile-door-v1-var-0": {
+      "briefId": "tile-door-v1",
+      "spriteName": "tile-door-v1-var-0",
+      "assetPath": "generated/tile-door-v1-var-0.png",
+      "approvedAt": "2026-07-08T00:10:13.492Z",
+      "sourceRun": "generated/runs/tile-door-v1/2026-07-07T22-23-11-e6aaed05",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 127,
+        "y": 255,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 127,
+          "y": 255,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 127,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": null,
+      "contentHash": "6754586514ec029463932f028e9f784476a14e618a25b7d90215011bc80184df",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-door-v1/2026-07-07T22-23-11-e6aaed05/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-door-v1/2026-07-07T22-23-11-e6aaed05/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-door-v1/2026-07-07T22-23-11-e6aaed05/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "tile-safe-room-floor-v1-var-0": {
+      "briefId": "tile-safe-room-floor-v1",
+      "spriteName": "tile-safe-room-floor-v1-var-0",
+      "assetPath": "generated/tile-safe-room-floor-v1-var-0.png",
+      "approvedAt": "2026-07-08T00:10:11.316Z",
+      "sourceRun": "generated/runs/tile-safe-room-floor-v1/2026-07-07T22-19-35-65fb0ca2",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 127,
+        "y": 255,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 127,
+          "y": 255,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 127,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "2e8719cbe952a5995d13fa7495b746d6ab0cbce64e3bf92b0c52d7ae2153704f",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-safe-room-floor-v1/2026-07-07T22-19-35-65fb0ca2/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-safe-room-floor-v1/2026-07-07T22-19-35-65fb0ca2/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-safe-room-floor-v1/2026-07-07T22-19-35-65fb0ca2/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "tile-stone-floor-v1-var-2": {
+      "briefId": "tile-stone-floor-v1",
+      "spriteName": "tile-stone-floor-v1-var-2",
+      "assetPath": "generated/tile-stone-floor-v1-var-2.png",
+      "approvedAt": "2026-07-08T00:10:10.380Z",
+      "sourceRun": "generated/runs/tile-stone-floor-v1/2026-07-07T22-15-45-46223ed8",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 127,
+        "y": 255,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 127,
+          "y": 255,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 127,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "0fb8f9490a30fc1c560e1e7e820513663c1fdc0025742cd311e3d029fcd0d00c",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-stone-floor-v1/2026-07-07T22-15-45-46223ed8/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-stone-floor-v1/2026-07-07T22-15-45-46223ed8/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-stone-floor-v1/2026-07-07T22-15-45-46223ed8/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "tile-stone-wall-v1-var-5": {
+      "briefId": "tile-stone-wall-v1",
+      "spriteName": "tile-stone-wall-v1-var-5",
+      "assetPath": "generated/tile-stone-wall-v1-var-5.png",
+      "approvedAt": "2026-07-08T00:06:55.840Z",
+      "sourceRun": "generated/runs/tile-stone-wall-v1/2026-07-07T23-47-10-accab032",
+      "variantIndex": 5,
+      "anchor": {
+        "x": 127,
+        "y": 255,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 127,
+          "y": 255,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 127,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "3",
+      "type": null,
+      "contentHash": "d2ce2ac9c779091c22feafa465de121113cf2ab2c65f8e53f9836ecff68d817c",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-stone-wall-v1/2026-07-07T23-47-10-accab032/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-stone-wall-v1/2026-07-07T23-47-10-accab032/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-stone-wall-v1/2026-07-07T23-47-10-accab032/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
     "time-capsule-placeholder": {
       "briefId": "time-capsule",
       "spriteName": "time-capsule",
@@ -4036,6 +5714,40 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": null
+    },
+    "toadkin-boss-var-0": {
+      "briefId": "toadkin-boss",
+      "spriteName": "toadkin-boss-var-0",
+      "assetPath": "generated/toadkin-boss-var-0.png",
+      "approvedAt": "2026-07-08T02:08:59.849Z",
+      "sourceRun": "generated/runs/toadkin-boss/2026-07-08T02-00-58-57400d81",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 32,
+        "y": 32,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 32,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "fc008b70cffaa319c5bc28d3fb789b87362d1b20d2186a3bea2d225991c9862a",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\toadkin-boss\\2026-07-08T02-00-58-57400d81\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\toadkin-boss\\2026-07-08T02-00-58-57400d81\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\toadkin-boss\\2026-07-08T02-00-58-57400d81\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     },
     "toxic-blowgun-placeholder": {
       "briefId": "toxic-blowgun",
@@ -4108,6 +5820,176 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": null
+    },
+    "welcome-room-bookcase-var-0": {
+      "briefId": "welcome-room-bookcase",
+      "spriteName": "welcome-room-bookcase-var-0",
+      "assetPath": "generated/welcome-room-bookcase-var-0.png",
+      "approvedAt": "2026-07-08T04:08:31.716Z",
+      "sourceRun": "generated/runs/welcome-room-bookcase/2026-07-08T04-03-36-d2c79b0f",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 47,
+        "y": 99,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 47,
+          "y": 99,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 48,
+          "y": 58,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "item",
+      "contentHash": "7d3126ccbdb95702915b350864b031750b2781c66a8c6d30c7d1aa8e10ae852e",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-bookcase\\2026-07-08T04-03-36-d2c79b0f\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-bookcase\\2026-07-08T04-03-36-d2c79b0f\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-bookcase\\2026-07-08T04-03-36-d2c79b0f\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "welcome-room-desk-var-0": {
+      "briefId": "welcome-room-desk",
+      "spriteName": "welcome-room-desk-var-0",
+      "assetPath": "generated/welcome-room-desk-var-0.png",
+      "approvedAt": "2026-07-08T04:13:57.983Z",
+      "sourceRun": "generated/runs/welcome-room-desk/2026-07-08T04-10-13-f8ac9632",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 73,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 73,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 73,
+          "y": 60,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "item",
+      "contentHash": "cc87a96e9b2f516828bd72ae1e7a49a75838de9509607f571f4381b8e5691f41",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-desk\\2026-07-08T04-10-13-f8ac9632\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-desk\\2026-07-08T04-10-13-f8ac9632\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-desk\\2026-07-08T04-10-13-f8ac9632\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "welcome-room-rug-var-0": {
+      "briefId": "welcome-room-rug",
+      "spriteName": "welcome-room-rug-var-0",
+      "assetPath": "generated/welcome-room-rug-var-0.png",
+      "approvedAt": "2026-07-08T04:08:29.800Z",
+      "sourceRun": "generated/runs/welcome-room-rug/2026-07-08T03-53-58-1d62f27a",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 61,
+        "y": 65,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 61,
+          "y": 65,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 64,
+          "y": 36,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "item",
+      "contentHash": "acd4a21f6d6d77441eb50ef1bcbcf422602d5518a8c37d120663956ae0159cb4",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-rug\\2026-07-08T03-53-58-1d62f27a\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-rug\\2026-07-08T03-53-58-1d62f27a\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-rug\\2026-07-08T03-53-58-1d62f27a\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "welcome-room-shop-table-var-0": {
+      "briefId": "welcome-room-shop-table",
+      "spriteName": "welcome-room-shop-table-var-0",
+      "assetPath": "generated/welcome-room-shop-table-var-0.png",
+      "approvedAt": "2026-07-08T04:08:30.727Z",
+      "sourceRun": "generated/runs/welcome-room-shop-table/2026-07-08T04-00-23-d83d5284",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 73,
+        "y": 48,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 73,
+          "y": 48,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 73,
+          "y": 48,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "3",
+      "type": "item",
+      "contentHash": "f2f6fdeadecebb249faa9e5e8abd521edd108a1b3838b80987e01481e167d175",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-shop-table\\2026-07-08T04-00-23-d83d5284\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-shop-table\\2026-07-08T04-00-23-d83d5284\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-shop-table\\2026-07-08T04-00-23-d83d5284\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "welcome-room-velvet-rope-var-2": {
+      "briefId": "welcome-room-velvet-rope",
+      "spriteName": "welcome-room-velvet-rope-var-2",
+      "assetPath": "generated/welcome-room-velvet-rope-var-2.png",
+      "approvedAt": "2026-07-08T03:54:23.443Z",
+      "sourceRun": "generated/runs/welcome-room-velvet-rope/2026-07-08T03-38-52-1c707f76",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 41,
+        "y": 72,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 41,
+          "y": 72,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 46,
+          "y": 41,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "item",
+      "contentHash": "17f48a8bbc8718061b2d62ad668465fa52fc896217a9be5d08746a295dce0469",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-velvet-rope\\2026-07-08T03-38-52-1c707f76\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-velvet-rope\\2026-07-08T03-38-52-1c707f76\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-velvet-rope\\2026-07-08T03-38-52-1c707f76\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     },
     "welcome-sign-left-v1-var-0": {
       "briefId": "welcome-sign-left-v1",
@@ -4348,1684 +6230,6 @@
       "effectivePipelineSnapshotPath": null,
       "effectivePipelineSnapshotYamlPath": null,
       "effectiveAnchorSource": "brief"
-    },
-    "angry-roomba-v2-v1-var-13": {
-      "briefId": "angry-roomba-v2-v1",
-      "spriteName": "angry-roomba-v2-v1-var-13",
-      "assetPath": "generated/angry-roomba-v2-v1-var-13.png",
-      "approvedAt": "2026-07-04T03:00:00.760Z",
-      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-2DSFiv/angry-roomba-v2-v1/2026-07-04T01-47-58-0a1d7dd2",
-      "variantIndex": 13,
-      "anchor": {
-        "x": 32,
-        "y": 63,
-        "source": "brief"
-      },
-      "anchors": {
-        "hold": {
-          "x": 32,
-          "y": 63,
-          "source": "brief"
-        },
-        "centerOfGravity": {
-          "x": 31,
-          "y": 35,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "6/8",
-      "judgeScore": "5",
-      "type": "character",
-      "contentHash": "e27a714e1b4ae05c90a8bf22444ad0bd18d71805975a6c7a765ac055491d39dd"
-    },
-    "papa-slime-v1-var-9": {
-      "briefId": "papa-slime-v1",
-      "spriteName": "papa-slime-v1-var-9",
-      "assetPath": "generated/papa-slime-v1-var-9.png",
-      "approvedAt": "2026-07-04T03:05:23.011Z",
-      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-AptYm8/papa-slime-v1/2026-07-03T03-50-55-0ba32d02",
-      "variantIndex": 9,
-      "anchor": {
-        "x": 32,
-        "y": 63,
-        "source": "brief"
-      },
-      "anchors": {
-        "hold": {
-          "x": 32,
-          "y": 63,
-          "source": "brief"
-        },
-        "centerOfGravity": {
-          "x": 32,
-          "y": 33,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "6/8",
-      "judgeScore": "4",
-      "type": null,
-      "contentHash": "fb2c370ab6bb45ea2ed81875fa78a7e44e4f0f3b62cb94a0904b222ff7b887fa"
-    },
-    "the-stairs-v2-var-0": {
-      "briefId": "the-stairs-v2",
-      "spriteName": "the-stairs-v2-var-0",
-      "assetPath": "generated/the-stairs-v2-var-0.png",
-      "approvedAt": "2026-07-07T00:20:47.108Z",
-      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-543XR0/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a",
-      "variantIndex": 0,
-      "anchor": {
-        "x": 64,
-        "y": 32,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 64,
-          "y": 32,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 255,
-          "y": 255,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "6/7",
-      "judgeScore": "4",
-      "type": "tile",
-      "contentHash": "dcc6e42b2f21cf07a3fb83f1795ef489499d17666b80f43852b45ba10952626c",
-      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived"
-    },
-    "the-stairs-v2-var-1": {
-      "briefId": "the-stairs-v2",
-      "spriteName": "the-stairs-v2-var-1",
-      "assetPath": "generated/the-stairs-v2-var-1.png",
-      "approvedAt": "2026-07-07T00:20:51.428Z",
-      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-2VJZiE/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a",
-      "variantIndex": 1,
-      "anchor": {
-        "x": 255,
-        "y": 511,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 255,
-          "y": 511,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 255,
-          "y": 255,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "6/7",
-      "judgeScore": "4",
-      "type": "tile",
-      "contentHash": "cecede3067a39d4041dbad4b048398502c4eaef9e4ae7663dd25cccf3e837a98",
-      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived"
-    },
-    "the-stairs-v2-var-2": {
-      "briefId": "the-stairs-v2",
-      "spriteName": "the-stairs-v2-var-2",
-      "assetPath": "generated/the-stairs-v2-var-2.png",
-      "approvedAt": "2026-07-07T00:20:55.266Z",
-      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-Gwhgqc/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a",
-      "variantIndex": 2,
-      "anchor": {
-        "x": 255,
-        "y": 511,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 255,
-          "y": 511,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 255,
-          "y": 255,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "6/7",
-      "judgeScore": "4",
-      "type": "tile",
-      "contentHash": "4091f871dab669c14f46060a90e359745ecce63d263635a5c7d17a786546afa5",
-      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived"
-    },
-    "the-stairs-v2-var-3": {
-      "briefId": "the-stairs-v2",
-      "spriteName": "the-stairs-v2-var-3",
-      "assetPath": "generated/the-stairs-v2-var-3.png",
-      "approvedAt": "2026-07-07T00:20:58.947Z",
-      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-quqSYp/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a",
-      "variantIndex": 3,
-      "anchor": {
-        "x": 255,
-        "y": 511,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 255,
-          "y": 511,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 255,
-          "y": 255,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "6/7",
-      "judgeScore": "4",
-      "type": "tile",
-      "contentHash": "3396533fe0687408a3ed9cf59dfcd05bacaa3b1114da937e5b2495c0f258c562",
-      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived"
-    },
-    "glistening-rat-tail-v1-var-2": {
-      "briefId": "glistening-rat-tail-v1",
-      "spriteName": "glistening-rat-tail-v1-var-2",
-      "assetPath": "generated/glistening-rat-tail-v1-var-2.png",
-      "approvedAt": "2026-07-08T00:17:15.703Z",
-      "sourceRun": "generated/runs/glistening-rat-tail-v1/2026-07-07T23-51-12-30098a40",
-      "variantIndex": 2,
-      "anchor": {
-        "x": 33,
-        "y": 60,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 33,
-          "y": 60,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 33,
-          "y": 29,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "4",
-      "type": null,
-      "contentHash": "09c5a1627d4ab4f91fafc25cad3999134db6399b1dcbf64e37d39223e4eef45f",
-      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/glistening-rat-tail-v1/2026-07-07T23-51-12-30098a40/postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/glistening-rat-tail-v1/2026-07-07T23-51-12-30098a40/postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/glistening-rat-tail-v1/2026-07-07T23-51-12-30098a40/postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "iron-ore-v1-var-0": {
-      "briefId": "iron-ore-v1",
-      "spriteName": "iron-ore-v1-var-0",
-      "assetPath": "generated/iron-ore-v1-var-0.png",
-      "approvedAt": "2026-07-08T00:17:14.721Z",
-      "sourceRun": "generated/runs/iron-ore-v1/2026-07-07T23-54-29-5c27396d",
-      "variantIndex": 0,
-      "anchor": {
-        "x": 25,
-        "y": 60,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 25,
-          "y": 60,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 32,
-          "y": 35,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "4",
-      "type": null,
-      "contentHash": "ea97f1b5420730c7372472f8310a67f3c71a5f8bfb78ef6069c5a664bf7596fa",
-      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-ore-v1/2026-07-07T23-54-29-5c27396d/postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-ore-v1/2026-07-07T23-54-29-5c27396d/postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-ore-v1/2026-07-07T23-54-29-5c27396d/postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "merchants-stained-charm-v1-var-0": {
-      "briefId": "merchants-stained-charm-v1",
-      "spriteName": "merchants-stained-charm-v1-var-0",
-      "assetPath": "generated/merchants-stained-charm-v1-var-0.png",
-      "approvedAt": "2026-07-08T00:17:16.680Z",
-      "sourceRun": "generated/runs/merchants-stained-charm-v1/2026-07-08T00-04-17-5583442f",
-      "variantIndex": 0,
-      "anchor": {
-        "x": 31,
-        "y": 60,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 31,
-          "y": 60,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 32,
-          "y": 35,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "5",
-      "type": null,
-      "contentHash": "36c58f2f94b5c589488718c0f6f2bba3f0de0f695fb0dbf2e8a0660c0bfa821c",
-      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/merchants-stained-charm-v1/2026-07-08T00-04-17-5583442f/postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/merchants-stained-charm-v1/2026-07-08T00-04-17-5583442f/postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/merchants-stained-charm-v1/2026-07-08T00-04-17-5583442f/postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "old-sock-v1-var-4": {
-      "briefId": "old-sock-v1",
-      "spriteName": "old-sock-v1-var-4",
-      "assetPath": "generated/old-sock-v1-var-4.png",
-      "approvedAt": "2026-07-08T00:17:17.652Z",
-      "sourceRun": "generated/runs/old-sock-v1/2026-07-07T23-57-53-f6268e31",
-      "variantIndex": 4,
-      "anchor": {
-        "x": 25,
-        "y": 59,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 25,
-          "y": 59,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 35,
-          "y": 35,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "4",
-      "type": null,
-      "contentHash": "b7c323021ed567eca97240cf22b27506d017eb506321d8eff9fef4c7aa49ee2f",
-      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/old-sock-v1/2026-07-07T23-57-53-f6268e31/postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/old-sock-v1/2026-07-07T23-57-53-f6268e31/postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/old-sock-v1/2026-07-07T23-57-53-f6268e31/postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "pebble-v1-var-1": {
-      "briefId": "pebble-v1",
-      "spriteName": "pebble-v1-var-1",
-      "assetPath": "generated/pebble-v1-var-1.png",
-      "approvedAt": "2026-07-08T00:17:13.724Z",
-      "sourceRun": "generated/runs/pebble-v1/2026-07-08T00-07-14-e9891db2",
-      "variantIndex": 1,
-      "anchor": {
-        "x": 28,
-        "y": 56,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 28,
-          "y": 56,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 32,
-          "y": 32,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "6/7",
-      "judgeScore": "4",
-      "type": null,
-      "contentHash": "78144d2dc652fd411178750c8bb7aa2f625fa2994e14d149221482b5a6bb6f1c",
-      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/pebble-v1/2026-07-08T00-07-14-e9891db2/postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/pebble-v1/2026-07-08T00-07-14-e9891db2/postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/pebble-v1/2026-07-08T00-07-14-e9891db2/postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "prop-rubble-pile-var-1": {
-      "briefId": "prop-rubble-pile",
-      "spriteName": "prop-rubble-pile-var-1",
-      "assetPath": "generated/prop-rubble-pile-var-1.png",
-      "approvedAt": "2026-07-08T00:25:29.616Z",
-      "sourceRun": "generated/runs/prop-rubble-pile/2026-07-08T00-21-17-9228c900",
-      "variantIndex": 1,
-      "anchor": null,
-      "anchors": {
-        "hold": null,
-        "centerOfGravity": {
-          "x": 32,
-          "y": 33,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "6/7",
-      "judgeScore": "4",
-      "type": "item",
-      "contentHash": "c05d93108e3272f949a7024129e44c4b15a898e478d0dd0d6d348bdad383deb8",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\prop-rubble-pile\\2026-07-08T00-21-17-9228c900\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\prop-rubble-pile\\2026-07-08T00-21-17-9228c900\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\prop-rubble-pile\\2026-07-08T00-21-17-9228c900\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": null,
-      "facingDirection": "right"
-    },
-    "rusted-scrap-v1-var-0": {
-      "briefId": "rusted-scrap-v1",
-      "spriteName": "rusted-scrap-v1-var-0",
-      "assetPath": "generated/rusted-scrap-v1-var-0.png",
-      "approvedAt": "2026-07-08T00:17:18.648Z",
-      "sourceRun": "generated/runs/rusted-scrap-v1/2026-07-08T00-01-17-ca094eed",
-      "variantIndex": 0,
-      "anchor": {
-        "x": 38,
-        "y": 59,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 38,
-          "y": 59,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 34,
-          "y": 31,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "4",
-      "type": null,
-      "contentHash": "5f73950a69a990f37b9baa781c86913fc770cf76d72025a206a030057746a17d",
-      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/rusted-scrap-v1/2026-07-08T00-01-17-ca094eed/postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rusted-scrap-v1/2026-07-08T00-01-17-ca094eed/postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rusted-scrap-v1/2026-07-08T00-01-17-ca094eed/postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "slime-rat-boss-var-1": {
-      "briefId": "slime-rat-boss",
-      "spriteName": "slime-rat-boss-var-1",
-      "assetPath": "generated/slime-rat-boss-var-1.png",
-      "approvedAt": "2026-07-08T00:01:39.242Z",
-      "sourceRun": "generated/runs/slime-rat-boss/2026-07-07T23-58-08-2a147cd7",
-      "variantIndex": 1,
-      "anchor": {
-        "x": 70,
-        "y": 35,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 70,
-          "y": 35,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 70,
-          "y": 35,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "3",
-      "type": "enemy",
-      "contentHash": "d4e9dfe52c4ea43046a63dfb86ab4df73ee3226723518fc1e2115faea685b3bd",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\slime-rat-boss\\2026-07-07T23-58-08-2a147cd7\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\slime-rat-boss\\2026-07-07T23-58-08-2a147cd7\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\slime-rat-boss\\2026-07-07T23-58-08-2a147cd7\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "tile-boss-staircase-floor-v2-var-10": {
-      "briefId": "tile-boss-staircase-floor-v2",
-      "spriteName": "tile-boss-staircase-floor-v2-var-10",
-      "assetPath": "generated/tile-boss-staircase-floor-v2-var-10.png",
-      "approvedAt": "2026-07-08T00:10:12.387Z",
-      "sourceRun": "generated/runs/tile-boss-staircase-floor-v2/2026-07-07T22-12-08-94a50229",
-      "variantIndex": 10,
-      "anchor": {
-        "x": 127,
-        "y": 255,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 127,
-          "y": 255,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 127,
-          "y": 127,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "5",
-      "type": null,
-      "contentHash": "15d48c49478029ed48cb7724134e201fa2ccade21b29ff0da94aaa5d86bdb966",
-      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-boss-staircase-floor-v2/2026-07-07T22-12-08-94a50229/postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-boss-staircase-floor-v2/2026-07-07T22-12-08-94a50229/postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-boss-staircase-floor-v2/2026-07-07T22-12-08-94a50229/postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "tile-door-v1-var-0": {
-      "briefId": "tile-door-v1",
-      "spriteName": "tile-door-v1-var-0",
-      "assetPath": "generated/tile-door-v1-var-0.png",
-      "approvedAt": "2026-07-08T00:10:13.492Z",
-      "sourceRun": "generated/runs/tile-door-v1/2026-07-07T22-23-11-e6aaed05",
-      "variantIndex": 0,
-      "anchor": {
-        "x": 127,
-        "y": 255,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 127,
-          "y": 255,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 127,
-          "y": 127,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "5",
-      "type": null,
-      "contentHash": "6754586514ec029463932f028e9f784476a14e618a25b7d90215011bc80184df",
-      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-door-v1/2026-07-07T22-23-11-e6aaed05/postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-door-v1/2026-07-07T22-23-11-e6aaed05/postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-door-v1/2026-07-07T22-23-11-e6aaed05/postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "tile-safe-room-floor-v1-var-0": {
-      "briefId": "tile-safe-room-floor-v1",
-      "spriteName": "tile-safe-room-floor-v1-var-0",
-      "assetPath": "generated/tile-safe-room-floor-v1-var-0.png",
-      "approvedAt": "2026-07-08T00:10:11.316Z",
-      "sourceRun": "generated/runs/tile-safe-room-floor-v1/2026-07-07T22-19-35-65fb0ca2",
-      "variantIndex": 0,
-      "anchor": {
-        "x": 127,
-        "y": 255,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 127,
-          "y": 255,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 127,
-          "y": 127,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "4",
-      "type": null,
-      "contentHash": "2e8719cbe952a5995d13fa7495b746d6ab0cbce64e3bf92b0c52d7ae2153704f",
-      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-safe-room-floor-v1/2026-07-07T22-19-35-65fb0ca2/postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-safe-room-floor-v1/2026-07-07T22-19-35-65fb0ca2/postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-safe-room-floor-v1/2026-07-07T22-19-35-65fb0ca2/postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "tile-stone-floor-v1-var-2": {
-      "briefId": "tile-stone-floor-v1",
-      "spriteName": "tile-stone-floor-v1-var-2",
-      "assetPath": "generated/tile-stone-floor-v1-var-2.png",
-      "approvedAt": "2026-07-08T00:10:10.380Z",
-      "sourceRun": "generated/runs/tile-stone-floor-v1/2026-07-07T22-15-45-46223ed8",
-      "variantIndex": 2,
-      "anchor": {
-        "x": 127,
-        "y": 255,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 127,
-          "y": 255,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 127,
-          "y": 127,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "4",
-      "type": null,
-      "contentHash": "0fb8f9490a30fc1c560e1e7e820513663c1fdc0025742cd311e3d029fcd0d00c",
-      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-stone-floor-v1/2026-07-07T22-15-45-46223ed8/postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-stone-floor-v1/2026-07-07T22-15-45-46223ed8/postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-stone-floor-v1/2026-07-07T22-15-45-46223ed8/postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "tile-stone-wall-v1-var-5": {
-      "briefId": "tile-stone-wall-v1",
-      "spriteName": "tile-stone-wall-v1-var-5",
-      "assetPath": "generated/tile-stone-wall-v1-var-5.png",
-      "approvedAt": "2026-07-08T00:06:55.840Z",
-      "sourceRun": "generated/runs/tile-stone-wall-v1/2026-07-07T23-47-10-accab032",
-      "variantIndex": 5,
-      "anchor": {
-        "x": 127,
-        "y": 255,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 127,
-          "y": 255,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 127,
-          "y": 127,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "3",
-      "type": null,
-      "contentHash": "d2ce2ac9c779091c22feafa465de121113cf2ab2c65f8e53f9836ecff68d817c",
-      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-stone-wall-v1/2026-07-07T23-47-10-accab032/postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-stone-wall-v1/2026-07-07T23-47-10-accab032/postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-stone-wall-v1/2026-07-07T23-47-10-accab032/postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "cave-floor-var-8": {
-      "briefId": "cave-floor",
-      "spriteName": "cave-floor-var-8",
-      "assetPath": "generated/cave-floor-var-8.png",
-      "approvedAt": "2026-07-08T00:38:58.988Z",
-      "sourceRun": "generated/runs/cave-floor/2026-07-08T00-30-37-269bdc53",
-      "variantIndex": 8,
-      "anchor": {
-        "x": 127,
-        "y": 255,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 127,
-          "y": 255,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 127,
-          "y": 127,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "4",
-      "type": "tile",
-      "contentHash": "9e51e29cbeff90445781295bc54aae7aceeb9d0275ee3a396fa832172ef2a79a",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-floor\\2026-07-08T00-30-37-269bdc53\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-floor\\2026-07-08T00-30-37-269bdc53\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-floor\\2026-07-08T00-30-37-269bdc53\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "cave-wall-var-5": {
-      "briefId": "cave-wall",
-      "spriteName": "cave-wall-var-5",
-      "assetPath": "generated/cave-wall-var-5.png",
-      "approvedAt": "2026-07-08T00:39:00.044Z",
-      "sourceRun": "generated/runs/cave-wall/2026-07-08T00-34-06-cb8a2d11",
-      "variantIndex": 5,
-      "anchor": {
-        "x": 127,
-        "y": 255,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 127,
-          "y": 255,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 127,
-          "y": 127,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "4",
-      "type": "tile",
-      "contentHash": "976c2501f79a5cfaa794811a7bb26abe36cd907fad7db886de07704a9f0547df",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-wall\\2026-07-08T00-34-06-cb8a2d11\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-wall\\2026-07-08T00-34-06-cb8a2d11\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-wall\\2026-07-08T00-34-06-cb8a2d11\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "cave-bat-swarm-var-2": {
-      "briefId": "cave-bat-swarm",
-      "spriteName": "cave-bat-swarm-var-2",
-      "assetPath": "generated/cave-bat-swarm-var-2.png",
-      "approvedAt": "2026-07-08T00:52:25.536Z",
-      "sourceRun": "generated/runs/cave-bat-swarm/2026-07-08T00-48-12-70a0add0",
-      "variantIndex": 2,
-      "anchor": {
-        "x": 31,
-        "y": 33,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 31,
-          "y": 33,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 31,
-          "y": 33,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "3",
-      "type": "enemy",
-      "contentHash": "49a9d4daa74b30054e1755dd77b90ee84f25a900af33e3f76cffa220acaa012e",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-bat-swarm\\2026-07-08T00-48-12-70a0add0\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-bat-swarm\\2026-07-08T00-48-12-70a0add0\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-bat-swarm\\2026-07-08T00-48-12-70a0add0\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "cave-slime-var-0": {
-      "briefId": "cave-slime",
-      "spriteName": "cave-slime-var-0",
-      "assetPath": "generated/cave-slime-var-0.png",
-      "approvedAt": "2026-07-08T00:52:23.250Z",
-      "sourceRun": "generated/runs/cave-slime/2026-07-08T00-42-00-a96f1cdb",
-      "variantIndex": 0,
-      "anchor": {
-        "x": 33,
-        "y": 35,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 33,
-          "y": 35,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 33,
-          "y": 35,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "4",
-      "type": "enemy",
-      "contentHash": "a6e2e17528812cb0fe39d452e170d4ba250f534ab69a156bb60201a5a4effd28",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-slime\\2026-07-08T00-42-00-a96f1cdb\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-slime\\2026-07-08T00-42-00-a96f1cdb\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-slime\\2026-07-08T00-42-00-a96f1cdb\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "giant-cave-rat-var-2": {
-      "briefId": "giant-cave-rat",
-      "spriteName": "giant-cave-rat-var-2",
-      "assetPath": "generated/giant-cave-rat-var-2.png",
-      "approvedAt": "2026-07-08T00:52:24.446Z",
-      "sourceRun": "generated/runs/giant-cave-rat/2026-07-08T00-45-06-757a18ec",
-      "variantIndex": 2,
-      "anchor": {
-        "x": 30,
-        "y": 33,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 30,
-          "y": 33,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 30,
-          "y": 33,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "4",
-      "type": "enemy",
-      "contentHash": "4aacd0cf27f0f59dc222383d19c07ed5fe9d7415734a9e4b9da3b885a1a62f29",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\giant-cave-rat\\2026-07-08T00-45-06-757a18ec\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\giant-cave-rat\\2026-07-08T00-45-06-757a18ec\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\giant-cave-rat\\2026-07-08T00-45-06-757a18ec\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "blind-cave-newt-var-11": {
-      "briefId": "blind-cave-newt",
-      "spriteName": "blind-cave-newt-var-11",
-      "assetPath": "generated/blind-cave-newt-var-11.png",
-      "approvedAt": "2026-07-08T01:15:45.871Z",
-      "sourceRun": "generated/runs/blind-cave-newt/2026-07-08T00-59-07-35bb45f3",
-      "variantIndex": 11,
-      "anchor": {
-        "x": 31,
-        "y": 31,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 31,
-          "y": 31,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 31,
-          "y": 31,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "3",
-      "type": "enemy",
-      "contentHash": "ce7de98797ee2f7b7540c6854160d2a40c9da31dbdf7748b56feb1591b5fa52c",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\blind-cave-newt\\2026-07-08T00-59-07-35bb45f3\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\blind-cave-newt\\2026-07-08T00-59-07-35bb45f3\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\blind-cave-newt\\2026-07-08T00-59-07-35bb45f3\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "crystal-scuttler-var-1": {
-      "briefId": "crystal-scuttler",
-      "spriteName": "crystal-scuttler-var-1",
-      "assetPath": "generated/crystal-scuttler-var-1.png",
-      "approvedAt": "2026-07-08T01:15:48.168Z",
-      "sourceRun": "generated/runs/crystal-scuttler/2026-07-08T01-07-50-f90c26a1",
-      "variantIndex": 1,
-      "anchor": {
-        "x": 33,
-        "y": 33,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 33,
-          "y": 33,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 33,
-          "y": 33,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "4",
-      "type": "enemy",
-      "contentHash": "c51b7224ca3fd26c15c9b871a98904f0d872793514023c2cb86c7b3585453c1d",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crystal-scuttler\\2026-07-08T01-07-50-f90c26a1\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crystal-scuttler\\2026-07-08T01-07-50-f90c26a1\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crystal-scuttler\\2026-07-08T01-07-50-f90c26a1\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "fungal-husk-var-1": {
-      "briefId": "fungal-husk",
-      "spriteName": "fungal-husk-var-1",
-      "assetPath": "generated/fungal-husk-var-1.png",
-      "approvedAt": "2026-07-08T01:32:32.058Z",
-      "sourceRun": "generated/runs/fungal-husk/2026-07-08T01-28-28-7bbe0b07",
-      "variantIndex": 1,
-      "anchor": {
-        "x": 32,
-        "y": 34,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 32,
-          "y": 34,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 32,
-          "y": 34,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "4",
-      "type": "enemy",
-      "contentHash": "3119152bd454c1bd8a7420a135b8af77a2327c2bd0013dd2b159d68095626d75",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\fungal-husk\\2026-07-08T01-28-28-7bbe0b07\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\fungal-husk\\2026-07-08T01-28-28-7bbe0b07\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\fungal-husk\\2026-07-08T01-28-28-7bbe0b07\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "glow-worm-var-6": {
-      "briefId": "glow-worm",
-      "spriteName": "glow-worm-var-6",
-      "assetPath": "generated/glow-worm-var-6.png",
-      "approvedAt": "2026-07-08T01:15:47.082Z",
-      "sourceRun": "generated/runs/glow-worm/2026-07-08T01-02-04-36775a47",
-      "variantIndex": 6,
-      "anchor": {
-        "x": 31,
-        "y": 32,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 31,
-          "y": 32,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 31,
-          "y": 32,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "4",
-      "type": "enemy",
-      "contentHash": "e92f8e50db15bf3d7ed923b38f26a2abfeb10792facc03641ba499c7a80e4923",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\glow-worm\\2026-07-08T01-02-04-36775a47\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\glow-worm\\2026-07-08T01-02-04-36775a47\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\glow-worm\\2026-07-08T01-02-04-36775a47\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "rock-lice-var-1": {
-      "briefId": "rock-lice",
-      "spriteName": "rock-lice-var-1",
-      "assetPath": "generated/rock-lice-var-1.png",
-      "approvedAt": "2026-07-08T01:29:38.345Z",
-      "sourceRun": "generated/runs/rock-lice/2026-07-08T01-24-37-b8a95a30",
-      "variantIndex": 1,
-      "anchor": {
-        "x": 33,
-        "y": 31,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 33,
-          "y": 31,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 33,
-          "y": 31,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "6/7",
-      "judgeScore": "3",
-      "type": "enemy",
-      "contentHash": "45119ce53a5deed2f4409f080cb14d3ef414a4b13233477f4bc6d231999ad4b9",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\rock-lice\\2026-07-08T01-24-37-b8a95a30\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\rock-lice\\2026-07-08T01-24-37-b8a95a30\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\rock-lice\\2026-07-08T01-24-37-b8a95a30\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "faerie-boss-var-1": {
-      "briefId": "faerie-boss",
-      "spriteName": "faerie-boss-var-1",
-      "assetPath": "generated/faerie-boss-var-1.png",
-      "approvedAt": "2026-07-08T01:43:59.339Z",
-      "sourceRun": "generated/runs/faerie-boss/2026-07-08T01-39-33-5bfe280b",
-      "variantIndex": 1,
-      "anchor": {
-        "x": 32,
-        "y": 34,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 32,
-          "y": 34,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 32,
-          "y": 34,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "4",
-      "type": "enemy",
-      "contentHash": "10e76cef88b22552f0fe6f1c7d241985f6ca92217eac8248e1224544320d0133",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\faerie-boss\\2026-07-08T01-39-33-5bfe280b\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\faerie-boss\\2026-07-08T01-39-33-5bfe280b\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\faerie-boss\\2026-07-08T01-39-33-5bfe280b\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "goblin-boss-var-0": {
-      "briefId": "goblin-boss",
-      "spriteName": "goblin-boss-var-0",
-      "assetPath": "generated/goblin-boss-var-0.png",
-      "approvedAt": "2026-07-08T01:54:28.983Z",
-      "sourceRun": "generated/runs/goblin-boss/2026-07-08T01-44-14-cc6e849a",
-      "variantIndex": 0,
-      "anchor": {
-        "x": 30,
-        "y": 33,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 30,
-          "y": 33,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 30,
-          "y": 33,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "5",
-      "type": "enemy",
-      "contentHash": "c4ea9816e6bf355395a61ded4cd904d6c18864a0c33af70f8cb7a2f559b08d5c",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-boss\\2026-07-08T01-44-14-cc6e849a\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-boss\\2026-07-08T01-44-14-cc6e849a\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-boss\\2026-07-08T01-44-14-cc6e849a\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "llama-boss-var-8": {
-      "briefId": "llama-boss",
-      "spriteName": "llama-boss-var-8",
-      "assetPath": "generated/llama-boss-var-8.png",
-      "approvedAt": "2026-07-08T01:54:29.948Z",
-      "sourceRun": "generated/runs/llama-boss/2026-07-08T01-47-26-a621a96d",
-      "variantIndex": 8,
-      "anchor": {
-        "x": 33,
-        "y": 28,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 33,
-          "y": 28,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 33,
-          "y": 28,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "4",
-      "type": "enemy",
-      "contentHash": "01d0a9c25a6a6ad8d8af09725b8336600f41380b46a18cd1f639a5602c8ecd97",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\llama-boss\\2026-07-08T01-47-26-a621a96d\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\llama-boss\\2026-07-08T01-47-26-a621a96d\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\llama-boss\\2026-07-08T01-47-26-a621a96d\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "panda-boss-var-0": {
-      "briefId": "panda-boss",
-      "spriteName": "panda-boss-var-0",
-      "assetPath": "generated/panda-boss-var-0.png",
-      "approvedAt": "2026-07-08T01:54:30.974Z",
-      "sourceRun": "generated/runs/panda-boss/2026-07-08T01-50-26-26a0182f",
-      "variantIndex": 0,
-      "anchor": {
-        "x": 33,
-        "y": 35,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 33,
-          "y": 35,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 33,
-          "y": 35,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "5",
-      "type": "enemy",
-      "contentHash": "7fe1cea2486bf5b996ccc6c56dc27637e1595a62dca8e4e7d2756c0b6c16c0b9",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\panda-boss\\2026-07-08T01-50-26-26a0182f\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\panda-boss\\2026-07-08T01-50-26-26a0182f\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\panda-boss\\2026-07-08T01-50-26-26a0182f\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "gnome-boss-var-7": {
-      "briefId": "gnome-boss",
-      "spriteName": "gnome-boss-var-7",
-      "assetPath": "generated/gnome-boss-var-7.png",
-      "approvedAt": "2026-07-08T02:09:00.826Z",
-      "sourceRun": "generated/runs/gnome-boss/2026-07-08T02-04-07-24c663e7",
-      "variantIndex": 7,
-      "anchor": {
-        "x": 31,
-        "y": 33,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 31,
-          "y": 33,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 31,
-          "y": 33,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "5",
-      "type": "enemy",
-      "contentHash": "e3498a4c58b6d45824d90aaa57f22dd2bbb9488b560d32b7e120d7d3c6808823",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\gnome-boss\\2026-07-08T02-04-07-24c663e7\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\gnome-boss\\2026-07-08T02-04-07-24c663e7\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\gnome-boss\\2026-07-08T02-04-07-24c663e7\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "kobold-boss-var-0": {
-      "briefId": "kobold-boss",
-      "spriteName": "kobold-boss-var-0",
-      "assetPath": "generated/kobold-boss-var-0.png",
-      "approvedAt": "2026-07-08T02:08:57.780Z",
-      "sourceRun": "generated/runs/kobold-boss/2026-07-08T01-55-03-caed3cb8",
-      "variantIndex": 0,
-      "anchor": {
-        "x": 35,
-        "y": 35,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 35,
-          "y": 35,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 35,
-          "y": 35,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "5",
-      "type": "enemy",
-      "contentHash": "836296da4b0ccce999c83967123fccaf0844a3fbab9d3469f79d36f40d407c8a",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\kobold-boss\\2026-07-08T01-55-03-caed3cb8\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\kobold-boss\\2026-07-08T01-55-03-caed3cb8\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\kobold-boss\\2026-07-08T01-55-03-caed3cb8\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "myconid-boss-var-0": {
-      "briefId": "myconid-boss",
-      "spriteName": "myconid-boss-var-0",
-      "assetPath": "generated/myconid-boss-var-0.png",
-      "approvedAt": "2026-07-08T02:08:58.780Z",
-      "sourceRun": "generated/runs/myconid-boss/2026-07-08T01-57-57-256336a3",
-      "variantIndex": 0,
-      "anchor": {
-        "x": 31,
-        "y": 32,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 31,
-          "y": 32,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 31,
-          "y": 32,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "5",
-      "type": "enemy",
-      "contentHash": "672f0f29940a7d83af0348d1b2243487fb96475819f3b34f59d5358a6b28b8e7",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\myconid-boss\\2026-07-08T01-57-57-256336a3\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\myconid-boss\\2026-07-08T01-57-57-256336a3\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\myconid-boss\\2026-07-08T01-57-57-256336a3\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "toadkin-boss-var-0": {
-      "briefId": "toadkin-boss",
-      "spriteName": "toadkin-boss-var-0",
-      "assetPath": "generated/toadkin-boss-var-0.png",
-      "approvedAt": "2026-07-08T02:08:59.849Z",
-      "sourceRun": "generated/runs/toadkin-boss/2026-07-08T02-00-58-57400d81",
-      "variantIndex": 0,
-      "anchor": {
-        "x": 32,
-        "y": 32,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 32,
-          "y": 32,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 32,
-          "y": 32,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "5",
-      "type": "enemy",
-      "contentHash": "fc008b70cffaa319c5bc28d3fb789b87362d1b20d2186a3bea2d225991c9862a",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\toadkin-boss\\2026-07-08T02-00-58-57400d81\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\toadkin-boss\\2026-07-08T02-00-58-57400d81\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\toadkin-boss\\2026-07-08T02-00-58-57400d81\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "batfolk-boss-var-3": {
-      "briefId": "batfolk-boss",
-      "spriteName": "batfolk-boss-var-3",
-      "assetPath": "generated/batfolk-boss-var-3.png",
-      "approvedAt": "2026-07-08T02:26:21.357Z",
-      "sourceRun": "generated/runs/batfolk-boss/2026-07-08T02-18-01-208c1100",
-      "variantIndex": 3,
-      "anchor": {
-        "x": 32,
-        "y": 34,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 32,
-          "y": 34,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 32,
-          "y": 34,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "5",
-      "type": "enemy",
-      "contentHash": "7abfadff90cc335e50ba8c100334d917db989da8da97db7cb1b739b72e8aebaa",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\batfolk-boss\\2026-07-08T02-18-01-208c1100\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\batfolk-boss\\2026-07-08T02-18-01-208c1100\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\batfolk-boss\\2026-07-08T02-18-01-208c1100\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "cactusfolk-boss-var-1": {
-      "briefId": "cactusfolk-boss",
-      "spriteName": "cactusfolk-boss-var-1",
-      "assetPath": "generated/cactusfolk-boss-var-1.png",
-      "approvedAt": "2026-07-08T02:26:20.424Z",
-      "sourceRun": "generated/runs/cactusfolk-boss/2026-07-08T02-14-48-5fde1528",
-      "variantIndex": 1,
-      "anchor": {
-        "x": 32,
-        "y": 36,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 32,
-          "y": 36,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 32,
-          "y": 36,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "5",
-      "type": "enemy",
-      "contentHash": "e988df7b49e5903e479f1c4c129265c473b6387a4c96a8d16f915d3b1c7b6c64",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cactusfolk-boss\\2026-07-08T02-14-48-5fde1528\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cactusfolk-boss\\2026-07-08T02-14-48-5fde1528\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cactusfolk-boss\\2026-07-08T02-14-48-5fde1528\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "ratfolk-boss-var-0": {
-      "briefId": "ratfolk-boss",
-      "spriteName": "ratfolk-boss-var-0",
-      "assetPath": "generated/ratfolk-boss-var-0.png",
-      "approvedAt": "2026-07-08T02:26:19.371Z",
-      "sourceRun": "generated/runs/ratfolk-boss/2026-07-08T02-11-30-a6991641",
-      "variantIndex": 0,
-      "anchor": {
-        "x": 33,
-        "y": 60,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 33,
-          "y": 60,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 31,
-          "y": 34,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "5",
-      "type": "enemy",
-      "contentHash": "d0414ac3eb1f9023c2d64e10156ed68cd7f350ecb0251a5ec7ead6cfd458c86b",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\ratfolk-boss\\2026-07-08T02-11-30-a6991641\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\ratfolk-boss\\2026-07-08T02-11-30-a6991641\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\ratfolk-boss\\2026-07-08T02-11-30-a6991641\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "beetlefolk-boss-var-0": {
-      "briefId": "beetlefolk-boss",
-      "spriteName": "beetlefolk-boss-var-0",
-      "assetPath": "generated/beetlefolk-boss-var-0.png",
-      "approvedAt": "2026-07-08T02:46:19.687Z",
-      "sourceRun": "generated/runs/beetlefolk-boss/2026-07-08T02-32-57-379ab14a",
-      "variantIndex": 0,
-      "anchor": {
-        "x": 32,
-        "y": 31,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 32,
-          "y": 31,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 32,
-          "y": 31,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "5",
-      "type": "enemy",
-      "contentHash": "5d825899d524d4ec83fd599b148983e65723efbc9c6881959db0e44f63d75e2b",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\beetlefolk-boss\\2026-07-08T02-32-57-379ab14a\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\beetlefolk-boss\\2026-07-08T02-32-57-379ab14a\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\beetlefolk-boss\\2026-07-08T02-32-57-379ab14a\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "crabfolk-boss-var-10": {
-      "briefId": "crabfolk-boss",
-      "spriteName": "crabfolk-boss-var-10",
-      "assetPath": "generated/crabfolk-boss-var-10.png",
-      "approvedAt": "2026-07-08T02:31:29.347Z",
-      "sourceRun": "generated/runs/crabfolk-boss/2026-07-08T02-27-51-931d271c",
-      "variantIndex": 10,
-      "anchor": {
-        "x": 30,
-        "y": 35,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 30,
-          "y": 35,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 30,
-          "y": 35,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "4",
-      "type": "enemy",
-      "contentHash": "0e8892e263b6654623be9cfe339a86b22fdd136bf40d06bafa4c427479a97d01",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crabfolk-boss\\2026-07-08T02-27-51-931d271c\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crabfolk-boss\\2026-07-08T02-27-51-931d271c\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crabfolk-boss\\2026-07-08T02-27-51-931d271c\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "geese-boss-var-0": {
-      "briefId": "geese-boss",
-      "spriteName": "geese-boss-var-0",
-      "assetPath": "generated/geese-boss-var-0.png",
-      "approvedAt": "2026-07-08T02:46:21.682Z",
-      "sourceRun": "generated/runs/geese-boss/2026-07-08T02-42-19-28e76d2b",
-      "variantIndex": 0,
-      "anchor": {
-        "x": 32,
-        "y": 35,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 32,
-          "y": 35,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 32,
-          "y": 35,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "5",
-      "type": "enemy",
-      "contentHash": "0d6fa4939a1f530172f7c57a6ed933d97185b40b36b22c71bf772043dfbc7619",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\geese-boss\\2026-07-08T02-42-19-28e76d2b\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\geese-boss\\2026-07-08T02-42-19-28e76d2b\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\geese-boss\\2026-07-08T02-42-19-28e76d2b\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "molefolk-boss-var-0": {
-      "briefId": "molefolk-boss",
-      "spriteName": "molefolk-boss-var-0",
-      "assetPath": "generated/molefolk-boss-var-0.png",
-      "approvedAt": "2026-07-08T02:46:20.675Z",
-      "sourceRun": "generated/runs/molefolk-boss/2026-07-08T02-36-04-4d62866e",
-      "variantIndex": 0,
-      "anchor": {
-        "x": 32,
-        "y": 35,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 32,
-          "y": 35,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 32,
-          "y": 35,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "5",
-      "type": "enemy",
-      "contentHash": "56be1a169af9f2450c1a36a155603a9cc8c17eabf0dae2d562aa2c3e5b3d3af2",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\molefolk-boss\\2026-07-08T02-36-04-4d62866e\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\molefolk-boss\\2026-07-08T02-36-04-4d62866e\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\molefolk-boss\\2026-07-08T02-36-04-4d62866e\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "imps-boss-var-5": {
-      "briefId": "imps-boss",
-      "spriteName": "imps-boss-var-5",
-      "assetPath": "generated/imps-boss-var-5.png",
-      "approvedAt": "2026-07-08T03:01:06.679Z",
-      "sourceRun": "generated/runs/imps-boss/2026-07-08T02-57-23-ad439923",
-      "variantIndex": 5,
-      "anchor": {
-        "x": 32,
-        "y": 60,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 32,
-          "y": 60,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 30,
-          "y": 36,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "4",
-      "type": "enemy",
-      "contentHash": "2821bbf307fe231841f709ebecf1c3c1d9e836e60e53191da7a5c11442897d88",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\imps-boss\\2026-07-08T02-57-23-ad439923\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\imps-boss\\2026-07-08T02-57-23-ad439923\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\imps-boss\\2026-07-08T02-57-23-ad439923\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "raccoons-boss-var-0": {
-      "briefId": "raccoons-boss",
-      "spriteName": "raccoons-boss-var-0",
-      "assetPath": "generated/raccoons-boss-var-0.png",
-      "approvedAt": "2026-07-08T02:58:02.672Z",
-      "sourceRun": "generated/runs/raccoons-boss/2026-07-08T02-47-01-09a78ec7",
-      "variantIndex": 0,
-      "anchor": {
-        "x": 32,
-        "y": 34,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 32,
-          "y": 34,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 32,
-          "y": 34,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "5",
-      "type": "enemy",
-      "contentHash": "93269f0d383453ee6a9b2897566baef39dafc566116c7667652bf615730eb276",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\raccoons-boss\\2026-07-08T02-47-01-09a78ec7\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\raccoons-boss\\2026-07-08T02-47-01-09a78ec7\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\raccoons-boss\\2026-07-08T02-47-01-09a78ec7\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "snailfolk-boss-var-0": {
-      "briefId": "snailfolk-boss",
-      "spriteName": "snailfolk-boss-var-0",
-      "assetPath": "generated/snailfolk-boss-var-0.png",
-      "approvedAt": "2026-07-08T02:58:03.742Z",
-      "sourceRun": "generated/runs/snailfolk-boss/2026-07-08T02-52-51-2c9a72c5",
-      "variantIndex": 0,
-      "anchor": {
-        "x": 33,
-        "y": 33,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 33,
-          "y": 33,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 33,
-          "y": 33,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "5",
-      "type": "enemy",
-      "contentHash": "5a5fc3582f9e22c0e769e6370003342a0025e55d2f20606c7988c61bc55d9548",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\snailfolk-boss\\2026-07-08T02-52-51-2c9a72c5\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\snailfolk-boss\\2026-07-08T02-52-51-2c9a72c5\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\snailfolk-boss\\2026-07-08T02-52-51-2c9a72c5\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "faerie-blink-var-0": {
-      "briefId": "faerie-blink",
-      "spriteName": "faerie-blink-var-0",
-      "assetPath": "generated/faerie-blink-var-0.png",
-      "approvedAt": "2026-07-08T03:27:56.364Z",
-      "sourceRun": "generated/runs/faerie-blink/2026-07-08T03-17-19-8857b01b",
-      "variantIndex": 0,
-      "anchor": {
-        "x": 31,
-        "y": 31,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 31,
-          "y": 31,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 31,
-          "y": 31,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "4",
-      "type": "enemy",
-      "contentHash": "9cfdf025e596e8b6125b7842fe14527f7f5ea42032caa3f043bcc11570c3fc5f",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\faerie-blink\\2026-07-08T03-17-19-8857b01b\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\faerie-blink\\2026-07-08T03-17-19-8857b01b\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\faerie-blink\\2026-07-08T03-17-19-8857b01b\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "goblin-grunt-var-6": {
-      "briefId": "goblin-grunt",
-      "spriteName": "goblin-grunt-var-6",
-      "assetPath": "generated/goblin-grunt-var-6.png",
-      "approvedAt": "2026-07-08T03:27:54.398Z",
-      "sourceRun": "generated/runs/goblin-grunt/2026-07-08T03-07-44-38236e80",
-      "variantIndex": 6,
-      "anchor": {
-        "x": 31,
-        "y": 32,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 31,
-          "y": 32,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 31,
-          "y": 32,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "5",
-      "type": "enemy",
-      "contentHash": "8b9bbf8a5f3d78bafc41fcab807148a877c9f9f07711336007e824972d09b3db",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-grunt\\2026-07-08T03-07-44-38236e80\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-grunt\\2026-07-08T03-07-44-38236e80\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-grunt\\2026-07-08T03-07-44-38236e80\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
-    "llama-spitter-var-0": {
-      "briefId": "llama-spitter",
-      "spriteName": "llama-spitter-var-0",
-      "assetPath": "generated/llama-spitter-var-0.png",
-      "approvedAt": "2026-07-08T03:27:55.350Z",
-      "sourceRun": "generated/runs/llama-spitter/2026-07-08T03-11-10-7b6e670c",
-      "variantIndex": 0,
-      "anchor": {
-        "x": 35,
-        "y": 36,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 35,
-          "y": 36,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 35,
-          "y": 36,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "4",
-      "type": "enemy",
-      "contentHash": "b1d7454be4b5d79e876759b641ad2ce2c0bca005e8625a2c74494d5ab894f044",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\llama-spitter\\2026-07-08T03-11-10-7b6e670c\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\llama-spitter\\2026-07-08T03-11-10-7b6e670c\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\llama-spitter\\2026-07-08T03-11-10-7b6e670c\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
     }
   }
 }
