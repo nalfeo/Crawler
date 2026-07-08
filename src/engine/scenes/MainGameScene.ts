@@ -284,6 +284,19 @@ export class MainGameScene extends Phaser.Scene {
   /** Terrain tile layer — baked once per floor as a RenderTexture. */
   private mapRt?: Phaser.GameObjects.RenderTexture;
 
+  /**
+   * Diagnostic tile counts from the last `buildTerrainLayer` bake. Read by the
+   * main-scene-probe-lab observe seam (`getTerrainRenderSummary`) to prove — in
+   * a REAL booted scene — that approved generated tile textures actually stamp
+   * (`generatedCount > 0`). Terrain bakes into ONE RenderTexture, so display-list
+   * counting cannot see per-tile provenance; these counts are the only seam.
+   */
+  private terrainRenderSummary: {
+    generatedCount: number;
+    spriteCount: number;
+    colorCount: number;
+  } = { generatedCount: 0, spriteCount: 0, colorCount: 0 };
+
   /** Dynamic darkness overlay rendered from a configurable light field. */
   private lightOverlayRt?: Phaser.GameObjects.RenderTexture;
 
@@ -1237,6 +1250,20 @@ export class MainGameScene extends Phaser.Scene {
     return this.simulationPaused;
   }
 
+  /**
+   * Observe seam (probe/e2e): tile-provenance counts from the last terrain bake.
+   * Terrain bakes into one RenderTexture, so per-tile provenance is invisible to
+   * display-list counting — this accessor lets the main-scene-probe-lab prove
+   * that approved generated tile textures actually stamp (`generatedCount > 0`).
+   */
+  getTerrainRenderSummary(): {
+    generatedCount: number;
+    spriteCount: number;
+    colorCount: number;
+  } {
+    return this.terrainRenderSummary;
+  }
+
   setSimulationSpeed(speed: number): void {
     this.simulationSpeed = Math.max(1, speed);
   }
@@ -1471,9 +1498,10 @@ export class MainGameScene extends Phaser.Scene {
       this.fovSubFactor = floorMap.setSubFactor(this.fovSubFactor);
     }
 
-    const { rt, colorCount } = buildTerrainLayer(this, floorMap);
+    const { rt, generatedCount, spriteCount, colorCount } = buildTerrainLayer(this, floorMap);
     rt.setDepth(-20);
     this.mapRt = rt;
+    this.terrainRenderSummary = { generatedCount, spriteCount, colorCount };
 
     if (colorCount > 0) {
       logger.debug('Terrain layer: tiles using color fallback', {

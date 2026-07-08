@@ -83,6 +83,11 @@ interface MainSceneInternals {
   modalPicker?: { isOpen(): boolean; close(): void };
   setSimulationPaused(paused: boolean): void;
   isSimulationPaused(): boolean;
+  getTerrainRenderSummary(): {
+    generatedCount: number;
+    spriteCount: number;
+    colorCount: number;
+  };
 }
 
 /** A 2-D point in some coordinate space (feet for world, pixels for camera). */
@@ -164,6 +169,22 @@ export interface HarvestableRenderSummary {
 }
 
 /**
+ * Tile-provenance counts from the last terrain bake in the REAL booted scene.
+ * Terrain bakes into a single RenderTexture, so per-tile provenance is invisible
+ * to display-list counting — this summary (read from the scene's stored counts)
+ * is the observe seam proving approved generated tile textures actually stamp
+ * (`generatedCount > 0`), rather than falling back to Kenney frames or color.
+ */
+export interface TerrainRenderSummary {
+  /** Tiles stamped from a GENERATED single-texture (approved art wired). */
+  readonly generatedCount: number;
+  /** Tiles stamped from a Kenney spritesheet frame (placeholder fallback). */
+  readonly spriteCount: number;
+  /** Tiles drawn as a solid-color fill (no texture at all). */
+  readonly colorCount: number;
+}
+
+/**
  * Automation surface attached to `window.__mainSceneProbe`. The e2e suite polls
  * {@link MainSceneProbeApi.ready} then drives loadout/camera through these.
  */
@@ -192,6 +213,12 @@ export interface MainSceneProbeApi {
   getNpcRenderInfo(): NpcRenderInfo[];
   /** Live harvestable node count + how many render a generated sprite. */
   getHarvestableRenderSummary(): HarvestableRenderSummary;
+  /**
+   * Tile-provenance counts from the last terrain bake. Used by the
+   * terrain-generated-tiles e2e to prove — in the REAL booted scene — that
+   * approved generated tile textures stamp (`generatedCount > 0`).
+   */
+  getTerrainRenderSummary(): TerrainRenderSummary;
 }
 
 function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): () => void {
@@ -419,6 +446,15 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       }).filter((d) => d.nodeEntities > 0 || d.spriteImages > 0);
 
       return { nodeEntities, spriteImages, byDef };
+    },
+
+    getTerrainRenderSummary: (): TerrainRenderSummary => {
+      const summary = getScene()?.getTerrainRenderSummary();
+      return {
+        generatedCount: summary?.generatedCount ?? 0,
+        spriteCount: summary?.spriteCount ?? 0,
+        colorCount: summary?.colorCount ?? 0,
+      };
     },
   };
   probeWindow.__mainSceneProbe = api;
