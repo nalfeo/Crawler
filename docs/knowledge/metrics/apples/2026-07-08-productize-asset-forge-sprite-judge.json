@@ -1,0 +1,10 @@
+{
+  "date": "2026-07-08",
+  "session": "productize-asset-forge-sprite-judge",
+  "estimated_apples": 2,
+  "actual_apples": 2,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.4,
+  "notes": "Productized the by-hand asset workflow into the selectable `asset-forge` content-generation agent (.github/agents/asset-forge.agent.md) and the `sprite-judge` review skill (.github/skills/sprite-judge/SKILL.md + references/rubric.md), plus a README row. Deliberately wrapped existing infra (score-candidate.ts sensors + judge.ts VLM judge + slice-sheet.ts) rather than reinventing scoring. No executable code; three markdown artifacts + one README edit. Confirmed .github/**/*.md is docs (review-ledger exempt) via lib/pr-scope.mjs classifyPath."
+}
