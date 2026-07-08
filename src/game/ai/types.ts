@@ -35,17 +35,32 @@ export type AIStateValue = (typeof AIState)[keyof typeof AIState];
 export const AIPathingMode = {
   /** Existing behavior: main's movement path, unchanged. */
   LEGACY: 'legacy',
-  /** Experimental danger/reward-fused pathing. IMPL-PENDING: currently delegates to LEGACY. */
+  /**
+   * Danger/reward-fused grid pathing (default-OFF). Scores candidate headings by
+   * objective progress, reward pull, and sampled overlap-danger so the AI prefers
+   * low-risk seams under enemy pressure, then executes through the same grid
+   * travel steering + additive Track-B blend as LEGACY.
+   */
   RISK_REWARD_FUSED: 'riskRewardFused',
   /**
    * Deterministic recast-navigation navmesh pathing (default-OFF). The behavior
    * tree still picks the goal; a solo navmesh computes a plain shortest-path
-   * waypoint route to it (NO danger/reward weighting — deferred to a later
-   * slice). Cross-platform byte-identical under the pinned config in
+   * waypoint route to it (NO danger/reward weighting — pure locomotion).
+   * Cross-platform byte-identical under the pinned config in
    * `src/game/ai/navmesh/`. Requires `initNavmesh()` to be awaited before the
    * simulation runs.
    */
   NAVMESH: 'navmesh',
+  /**
+   * Navmesh route + fused follow layer (default-OFF). Combines NAVMESH's
+   * deterministic recast waypoint route to the BT-chosen goal with
+   * RISK_REWARD_FUSED's danger/reward follow layer (fused candidate-heading
+   * scorer → predictive travel steering → conditional additive Track-B blend)
+   * applied on TOP of that route. The recast query stays pure — danger/reward is
+   * a FOLLOW-time layer only, never a geometry or query-cost change. Same
+   * `initNavmesh()` requirement as NAVMESH.
+   */
+  NAVMESH_FUSED: 'navmeshFused',
 } as const;
 export type AIPathingModeValue = (typeof AIPathingMode)[keyof typeof AIPathingMode];
 

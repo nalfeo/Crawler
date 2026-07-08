@@ -98,6 +98,18 @@ const SCENARIO_VISUAL_BRIGHTENING: Record<
 };
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
+/**
+ * Mode predicates mirroring the provider seam (bt-ai-provider `poll()`): both
+ * NAVMESH and NAVMESH_FUSED route via the recast navmesh; both RISK_REWARD_FUSED
+ * and NAVMESH_FUSED run the fused candidate-heading scorer. The lab's overlays +
+ * HUD gate on these so NAVMESH_FUSED shows BOTH the navmesh route AND the fused
+ * fan — missing a site would make the new mode "run but look blank".
+ */
+const usesNavmeshRoute = (m: AIPathingModeValue): boolean =>
+  m === AIPathingMode.NAVMESH || m === AIPathingMode.NAVMESH_FUSED;
+const usesFusedFan = (m: AIPathingModeValue): boolean =>
+  m === AIPathingMode.RISK_REWARD_FUSED || m === AIPathingMode.NAVMESH_FUSED;
+
 interface AiRunnerLabState {
   showFlowField: boolean;
   lighting: LightingConfig;
@@ -399,20 +411,20 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
             state.moveY = 0;
             state.action = false;
           }
-        } else if (aiConfig.pathingMode === AIPathingMode.NAVMESH && !navmeshReady) {
-          // NAVMESH selected but the recast WASM is still loading. Hold still this
-          // frame rather than polling the provider (moveTowardViaNavmesh →
-          // ensureFloorNavmesh throws until initNavmesh() resolves).
+        } else if (usesNavmeshRoute(aiConfig.pathingMode) && !navmeshReady) {
+          // A navmesh-routed mode (NAVMESH / NAVMESH_FUSED) is selected but the
+          // recast WASM is still loading. Hold still this frame rather than polling
+          // the provider (moveTowardViaNavmesh → ensureFloorNavmesh throws until
+          // initNavmesh() resolves).
           state.moveX = 0;
           state.moveY = 0;
           state.action = false;
         } else {
           // Capture the fused scorer's candidate fan only when the viz is on AND
-          // fused pathing is active. Set on the current `ai` each poll so it stays
+          // a fused mode is active. Set on the current `ai` each poll so it stays
           // correct across rebuild/reseed. Default-off elsewhere → zero overhead.
           ai.fusedDebugCapture =
-            aiConfig.visualRiskRewardFields &&
-            aiConfig.pathingMode === AIPathingMode.RISK_REWARD_FUSED;
+            aiConfig.visualRiskRewardFields && usesFusedFan(aiConfig.pathingMode);
           ai.poll(state, world);
         }
         lastMove.x = state.moveX;
@@ -868,6 +880,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       AIPathingMode.LEGACY,
       AIPathingMode.RISK_REWARD_FUSED,
       AIPathingMode.NAVMESH,
+      AIPathingMode.NAVMESH_FUSED,
     ])
     .name('Pathing')
     .onChange(() => {
@@ -1379,7 +1392,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     graphics.clear();
 
     const showFootprint = aiConfig.visualNavmesh;
-    const showRoute = aiConfig.pathingMode === AIPathingMode.NAVMESH && !manualControl;
+    const showRoute = usesNavmeshRoute(aiConfig.pathingMode) && !manualControl;
     if (!showFootprint && !showRoute) {
       return;
     }
@@ -1623,7 +1636,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     const debug: FusedHeadingDebug | null = ai.getFusedDebug();
     if (
       !aiConfig.visualRiskRewardFields ||
-      aiConfig.pathingMode !== AIPathingMode.RISK_REWARD_FUSED ||
+      !usesFusedFan(aiConfig.pathingMode) ||
       !debug ||
       debug.candidates.length === 0
     ) {
@@ -2153,7 +2166,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
     if (pathElem) {
       const nav = ai.getNavigationDebug();
-      if (aiConfig.pathingMode === AIPathingMode.NAVMESH) {
+      if (usesNavmeshRoute(aiConfig.pathingMode)) {
         pathElem.textContent = !navmeshReady
           ? 'navmesh loading…'
           : nav.navWaypoints.length > 0
@@ -2170,7 +2183,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     if (modesElem) {
       let modesText = `pathing=${ai.getPathingMode()} · decision=${ai.getDecisionMode()}`;
       const fused = ai.getFusedDebug();
-      if (aiConfig.pathingMode === AIPathingMode.RISK_REWARD_FUSED && fused) {
+      if (usesFusedFan(aiConfig.pathingMode) && fused) {
         const chosen = fused.candidates.find((c) => c.chosen);
         const angle = chosen ? `${chosen.angleDeg.toFixed(0)}°` : '?';
         modesText += ` · fused[chosen ${angle} · best ${fused.bestScore.toFixed(2)} · ${fused.candidates.length} cand]`;
