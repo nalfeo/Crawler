@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-08",
+  "session_slug": "fused-seam-pathing",
+  "task_title": "Implement RISK_REWARD_FUSED danger/reward pathing (opt-in, default-OFF) + retune + viz + A/B harness",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "notes": "Separate-model (gpt-5.4) review of the fused-pathing plan. 3 concerns, all resolved: (1) BLOCKING - fused determinism was unproven, and the whole shipping claim rests on the fused path being deterministic AND non-inert; resolved by adding tests/headless/risk-reward-fused-determinism.test.ts (byte-identical across two runs for seeds 42/101 + a divergence check proving fused != legacy), which runs in the test:headless suite (3/3 green). (2) Continuity-lifecycle: computeRiskRewardFusedHeading did not clear prevFusedDir on the no-target (baseLen<=eps) early return, so a stale heading could bias the next travel poll via the W_CONTINUITY term - fixed in commit fb70592d. (3) Brittle unit assertion (chosen candidate angle >= 30 deg) - softened to guaranteed invariants (angleDeg !== 0 AND chosen.danger < straight.danger). Accepted known limitation documented in the handoff: fused is a melee-favoring WASH on the new welcome-room Floor-1 (A/B sweep tied 32/36 vs 32/36 with 2 win->loss flips); it ships opt-in/default-OFF as documented experimental, the A/B win-rate gate is RETAINED as a truthful guard (never weakened - rules #12/#13), and navmesh is the real pathing path (Slice 3)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "claude-sonnet-4.6 full review of the fused diff vs origin/main. All four hard contracts VERIFIED (LEGACY byte-identity, determinism, NaN/zero-vector safety, A/B harness win/flip gate). 2 NON-BLOCKING issues found, both fixed in commit 7317b828: (#1) the blendedLen<=eps early return in computeRiskRewardFusedHeading did not clear prevFusedDir like the baseLen return above it (continuity consistency); (#2) ROOT CAUSE of the observed bow regression - FUSED mode skipped the additive Track B blend entirely, so when the scorer yields {0,0} (no travel target, e.g. a ranged AI between shots) the player froze for the frame instead of sidestepping the way LEGACY does. Fixed by passing dodge/pull through when the fused scorer yields {0,0}, gated on a fusedYieldedZero flag that can only be true in fused mode so LEGACY stays byte-identical."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "claude-sonnet-4.6 re-review of the fix diff (fb70592d..7317b828). All four hard contracts re-verified with file:line evidence: (1) byte-identity - fusedYieldedZero is declared false and written only inside if(useFused); in LEGACY the final guard `!useFused || fusedYieldedZero` short-circuits on `true` before reading the flag, identical to the old `if(!useFused)`; (2) no double-count - the fused scorer returns {0,0} only on the baseLen<=eps path (folds nothing in), and its two non-zero returns are always unit vectors, so fusedYieldedZero cannot false-trigger and the passthrough blend is the first/only dodge application; (3) dodge availability - travel-steering's dodge/pull zeroing is gated on objMag>eps which is 0 in the fused-zero case, so the tree-tick dodge/pull vectors survive for blendWithTrackB (which is side-effect-free); (4) determinism - no Math.random/Date.now/performance.now, fusedYieldedZero is a pure boolean of deterministic inputs. Validated green: verify:fast (93 unit), fused determinism headless (3/3, byte-identical seeds 42/101), collision-pair-parity (5/5 = LEGACY byte-identity on the new code). LOOP CLOSED - no BLOCKING or NON-BLOCKING concerns."
+        }
+      ]
+    }
+  }
+}
