@@ -4538,6 +4538,440 @@
       "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived"
+    },
+    "glistening-rat-tail-v1-var-2": {
+      "briefId": "glistening-rat-tail-v1",
+      "spriteName": "glistening-rat-tail-v1-var-2",
+      "assetPath": "generated/glistening-rat-tail-v1-var-2.png",
+      "approvedAt": "2026-07-08T00:17:15.703Z",
+      "sourceRun": "generated/runs/glistening-rat-tail-v1/2026-07-07T23-51-12-30098a40",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 33,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 33,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 33,
+          "y": 29,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "09c5a1627d4ab4f91fafc25cad3999134db6399b1dcbf64e37d39223e4eef45f",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/glistening-rat-tail-v1/2026-07-07T23-51-12-30098a40/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/glistening-rat-tail-v1/2026-07-07T23-51-12-30098a40/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/glistening-rat-tail-v1/2026-07-07T23-51-12-30098a40/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "iron-ore-v1-var-0": {
+      "briefId": "iron-ore-v1",
+      "spriteName": "iron-ore-v1-var-0",
+      "assetPath": "generated/iron-ore-v1-var-0.png",
+      "approvedAt": "2026-07-08T00:17:14.721Z",
+      "sourceRun": "generated/runs/iron-ore-v1/2026-07-07T23-54-29-5c27396d",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 25,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 25,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "ea97f1b5420730c7372472f8310a67f3c71a5f8bfb78ef6069c5a664bf7596fa",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-ore-v1/2026-07-07T23-54-29-5c27396d/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-ore-v1/2026-07-07T23-54-29-5c27396d/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-ore-v1/2026-07-07T23-54-29-5c27396d/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "merchants-stained-charm-v1-var-0": {
+      "briefId": "merchants-stained-charm-v1",
+      "spriteName": "merchants-stained-charm-v1-var-0",
+      "assetPath": "generated/merchants-stained-charm-v1-var-0.png",
+      "approvedAt": "2026-07-08T00:17:16.680Z",
+      "sourceRun": "generated/runs/merchants-stained-charm-v1/2026-07-08T00-04-17-5583442f",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 31,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": null,
+      "contentHash": "36c58f2f94b5c589488718c0f6f2bba3f0de0f695fb0dbf2e8a0660c0bfa821c",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/merchants-stained-charm-v1/2026-07-08T00-04-17-5583442f/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/merchants-stained-charm-v1/2026-07-08T00-04-17-5583442f/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/merchants-stained-charm-v1/2026-07-08T00-04-17-5583442f/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "old-sock-v1-var-4": {
+      "briefId": "old-sock-v1",
+      "spriteName": "old-sock-v1-var-4",
+      "assetPath": "generated/old-sock-v1-var-4.png",
+      "approvedAt": "2026-07-08T00:17:17.652Z",
+      "sourceRun": "generated/runs/old-sock-v1/2026-07-07T23-57-53-f6268e31",
+      "variantIndex": 4,
+      "anchor": {
+        "x": 25,
+        "y": 59,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 25,
+          "y": 59,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 35,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "b7c323021ed567eca97240cf22b27506d017eb506321d8eff9fef4c7aa49ee2f",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/old-sock-v1/2026-07-07T23-57-53-f6268e31/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/old-sock-v1/2026-07-07T23-57-53-f6268e31/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/old-sock-v1/2026-07-07T23-57-53-f6268e31/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "pebble-v1-var-1": {
+      "briefId": "pebble-v1",
+      "spriteName": "pebble-v1-var-1",
+      "assetPath": "generated/pebble-v1-var-1.png",
+      "approvedAt": "2026-07-08T00:17:13.724Z",
+      "sourceRun": "generated/runs/pebble-v1/2026-07-08T00-07-14-e9891db2",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 28,
+        "y": 56,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 28,
+          "y": 56,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "78144d2dc652fd411178750c8bb7aa2f625fa2994e14d149221482b5a6bb6f1c",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/pebble-v1/2026-07-08T00-07-14-e9891db2/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/pebble-v1/2026-07-08T00-07-14-e9891db2/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/pebble-v1/2026-07-08T00-07-14-e9891db2/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "prop-rubble-pile-var-1": {
+      "briefId": "prop-rubble-pile",
+      "spriteName": "prop-rubble-pile-var-1",
+      "assetPath": "generated/prop-rubble-pile-var-1.png",
+      "approvedAt": "2026-07-08T00:25:29.616Z",
+      "sourceRun": "generated/runs/prop-rubble-pile/2026-07-08T00-21-17-9228c900",
+      "variantIndex": 1,
+      "anchor": null,
+      "anchors": {
+        "hold": null,
+        "centerOfGravity": {
+          "x": 32,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "4",
+      "type": "item",
+      "contentHash": "c05d93108e3272f949a7024129e44c4b15a898e478d0dd0d6d348bdad383deb8",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\prop-rubble-pile\\2026-07-08T00-21-17-9228c900\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\prop-rubble-pile\\2026-07-08T00-21-17-9228c900\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\prop-rubble-pile\\2026-07-08T00-21-17-9228c900\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": null,
+      "facingDirection": "right"
+    },
+    "rusted-scrap-v1-var-0": {
+      "briefId": "rusted-scrap-v1",
+      "spriteName": "rusted-scrap-v1-var-0",
+      "assetPath": "generated/rusted-scrap-v1-var-0.png",
+      "approvedAt": "2026-07-08T00:17:18.648Z",
+      "sourceRun": "generated/runs/rusted-scrap-v1/2026-07-08T00-01-17-ca094eed",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 38,
+        "y": 59,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 38,
+          "y": 59,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 34,
+          "y": 31,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "5f73950a69a990f37b9baa781c86913fc770cf76d72025a206a030057746a17d",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/rusted-scrap-v1/2026-07-08T00-01-17-ca094eed/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rusted-scrap-v1/2026-07-08T00-01-17-ca094eed/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rusted-scrap-v1/2026-07-08T00-01-17-ca094eed/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "slime-rat-boss-var-1": {
+      "briefId": "slime-rat-boss",
+      "spriteName": "slime-rat-boss-var-1",
+      "assetPath": "generated/slime-rat-boss-var-1.png",
+      "approvedAt": "2026-07-08T00:01:39.242Z",
+      "sourceRun": "generated/runs/slime-rat-boss/2026-07-07T23-58-08-2a147cd7",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 70,
+        "y": 35,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 70,
+          "y": 35,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 70,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "3",
+      "type": "enemy",
+      "contentHash": "d4e9dfe52c4ea43046a63dfb86ab4df73ee3226723518fc1e2115faea685b3bd",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\slime-rat-boss\\2026-07-07T23-58-08-2a147cd7\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\slime-rat-boss\\2026-07-07T23-58-08-2a147cd7\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\slime-rat-boss\\2026-07-07T23-58-08-2a147cd7\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "tile-boss-staircase-floor-v2-var-10": {
+      "briefId": "tile-boss-staircase-floor-v2",
+      "spriteName": "tile-boss-staircase-floor-v2-var-10",
+      "assetPath": "generated/tile-boss-staircase-floor-v2-var-10.png",
+      "approvedAt": "2026-07-08T00:10:12.387Z",
+      "sourceRun": "generated/runs/tile-boss-staircase-floor-v2/2026-07-07T22-12-08-94a50229",
+      "variantIndex": 10,
+      "anchor": {
+        "x": 127,
+        "y": 255,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 127,
+          "y": 255,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 127,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": null,
+      "contentHash": "15d48c49478029ed48cb7724134e201fa2ccade21b29ff0da94aaa5d86bdb966",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-boss-staircase-floor-v2/2026-07-07T22-12-08-94a50229/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-boss-staircase-floor-v2/2026-07-07T22-12-08-94a50229/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-boss-staircase-floor-v2/2026-07-07T22-12-08-94a50229/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "tile-door-v1-var-0": {
+      "briefId": "tile-door-v1",
+      "spriteName": "tile-door-v1-var-0",
+      "assetPath": "generated/tile-door-v1-var-0.png",
+      "approvedAt": "2026-07-08T00:10:13.492Z",
+      "sourceRun": "generated/runs/tile-door-v1/2026-07-07T22-23-11-e6aaed05",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 127,
+        "y": 255,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 127,
+          "y": 255,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 127,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": null,
+      "contentHash": "6754586514ec029463932f028e9f784476a14e618a25b7d90215011bc80184df",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-door-v1/2026-07-07T22-23-11-e6aaed05/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-door-v1/2026-07-07T22-23-11-e6aaed05/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-door-v1/2026-07-07T22-23-11-e6aaed05/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "tile-safe-room-floor-v1-var-0": {
+      "briefId": "tile-safe-room-floor-v1",
+      "spriteName": "tile-safe-room-floor-v1-var-0",
+      "assetPath": "generated/tile-safe-room-floor-v1-var-0.png",
+      "approvedAt": "2026-07-08T00:10:11.316Z",
+      "sourceRun": "generated/runs/tile-safe-room-floor-v1/2026-07-07T22-19-35-65fb0ca2",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 127,
+        "y": 255,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 127,
+          "y": 255,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 127,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "2e8719cbe952a5995d13fa7495b746d6ab0cbce64e3bf92b0c52d7ae2153704f",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-safe-room-floor-v1/2026-07-07T22-19-35-65fb0ca2/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-safe-room-floor-v1/2026-07-07T22-19-35-65fb0ca2/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-safe-room-floor-v1/2026-07-07T22-19-35-65fb0ca2/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "tile-stone-floor-v1-var-2": {
+      "briefId": "tile-stone-floor-v1",
+      "spriteName": "tile-stone-floor-v1-var-2",
+      "assetPath": "generated/tile-stone-floor-v1-var-2.png",
+      "approvedAt": "2026-07-08T00:10:10.380Z",
+      "sourceRun": "generated/runs/tile-stone-floor-v1/2026-07-07T22-15-45-46223ed8",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 127,
+        "y": 255,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 127,
+          "y": 255,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 127,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "0fb8f9490a30fc1c560e1e7e820513663c1fdc0025742cd311e3d029fcd0d00c",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-stone-floor-v1/2026-07-07T22-15-45-46223ed8/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-stone-floor-v1/2026-07-07T22-15-45-46223ed8/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-stone-floor-v1/2026-07-07T22-15-45-46223ed8/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "tile-stone-wall-v1-var-5": {
+      "briefId": "tile-stone-wall-v1",
+      "spriteName": "tile-stone-wall-v1-var-5",
+      "assetPath": "generated/tile-stone-wall-v1-var-5.png",
+      "approvedAt": "2026-07-08T00:06:55.840Z",
+      "sourceRun": "generated/runs/tile-stone-wall-v1/2026-07-07T23-47-10-accab032",
+      "variantIndex": 5,
+      "anchor": {
+        "x": 127,
+        "y": 255,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 127,
+          "y": 255,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 127,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "3",
+      "type": null,
+      "contentHash": "d2ce2ac9c779091c22feafa465de121113cf2ab2c65f8e53f9836ecff68d817c",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-stone-wall-v1/2026-07-07T23-47-10-accab032/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-stone-wall-v1/2026-07-07T23-47-10-accab032/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-stone-wall-v1/2026-07-07T23-47-10-accab032/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     }
   }
 }
