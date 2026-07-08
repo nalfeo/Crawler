@@ -116,10 +116,46 @@ describe('stampSetPiece — props and layering', () => {
     expect(rug!.render.depth).toBeLessThan(desk!.render.depth);
   });
 
-  it('carries the rug tint through to the render sidecar', () => {
+  it('drops the rug tint so the shipped red-velvet art is not double-darkened', () => {
     const stamp = stampSetPiece(welcomeRoom(), opts(ROOM_LARGE));
     const rug = stamp.props.find((p) => p.render.label === 'welcome-rug');
-    expect(rug?.render.tintHex).toBe('#7f1d1d');
+    expect(rug).toBeDefined();
+    // The rug now resolves to real red-velvet art; a leftover #7f1d1d tint would
+    // multiply onto it and double-darken it, so the authored tint was removed.
+    expect(rug?.render.tintHex).toBeUndefined();
+  });
+
+  it('propagates an authored layer tint through to the render sidecar', () => {
+    // Synthetic fixture preserves coverage of the tint pass-through now that no
+    // real welcome-room prop is tinted (see the rug de-tint above).
+    const def: SetPieceDef = {
+      id: 'tint-fixture',
+      name: 'Tint Fixture',
+      theme: 'test',
+      sizing: 'exact',
+      width: 1,
+      height: 1,
+      description: 'synthetic single tinted prop',
+      tags: [],
+      props: [
+        {
+          id: 'tinted',
+          kind: 'floor',
+          x: 0,
+          y: 0,
+          width: 1,
+          height: 1,
+          z: 0,
+          layers: [
+            { sprite: { source: 'catalog', spriteId: 'sprite:item.gem' }, tintHex: '#3fae5a' },
+          ],
+        },
+      ],
+      npcs: [],
+    };
+    const stamp = stampSetPiece(def, opts(ROOM_LARGE));
+    const tinted = stamp.props.find((p) => p.render.label === 'tinted');
+    expect(tinted?.render.tintHex).toBe('#3fae5a');
   });
 
   it('sizes a multi-tile prop footprint in feet', () => {

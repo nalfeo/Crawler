@@ -539,16 +539,27 @@ describe('welcome-room authored set piece', () => {
     expect(shopTable.layers.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('records bespoke-art requests for the custom hero props', () => {
+  it('wires the hero props to their shipped generated catalog art', () => {
     const room = getSetPieceDef('welcome-room')!;
-    const requestIds = collectCustomArtRequests([room]).map((req) => req.requestId);
-    expect(requestIds).toEqual(
-      expect.arrayContaining([
-        'welcome-room-rug',
-        'welcome-room-desk',
-        'welcome-room-shop-table',
-        'welcome-room-bookcase',
-      ]),
-    );
+    // Every bespoke welcome-room asset has shipped, so the piece has no
+    // outstanding custom art requests left to generate.
+    expect(collectCustomArtRequests([room])).toHaveLength(0);
+    expect(room.props.some((p) => p.layers.some((l) => isCustomSpriteRef(l.sprite)))).toBe(false);
+
+    // Each hero prop's base layer pins the exact approved generated variant
+    // (the velvet rope shipped as var-2, the rest as var-0).
+    const baseSpriteId = (propId: string): string => {
+      const prop = room.props.find((p) => p.id === propId)!;
+      const { sprite } = prop.layers[0]!;
+      if (sprite.source !== 'catalog') {
+        throw new Error(`${propId} base layer is not a catalog ref`);
+      }
+      return sprite.spriteId;
+    };
+    expect(baseSpriteId('welcome-rug')).toBe('welcome-room-rug-var-0');
+    expect(baseSpriteId('welcome-desk')).toBe('welcome-room-desk-var-0');
+    expect(baseSpriteId('shop-table')).toBe('welcome-room-shop-table-var-0');
+    expect(baseSpriteId('broker-bookcase')).toBe('welcome-room-bookcase-var-0');
+    expect(baseSpriteId('velvet-rope')).toBe('welcome-room-velvet-rope-var-2');
   });
 });
