@@ -1,5 +1,16 @@
 [
   {
+    "commit": "fce56dfdb386be24626c730e77adea0b363cc173",
+    "commitDate": "2026-07-08T07:41:44Z",
+    "commitSubject": "feat: render welcome-room set-piece with real generated art + engine-backed lab (#905)",
+    "capturedAt": "2026-07-08T08:21:09.783Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28926494119",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/fce56dfdb386be24626c730e77adea0b363cc173.json"
+  },
+  {
     "commit": "e1a9dd4ae7b19703c0701b649390de279abd83ca",
     "commitDate": "2026-07-08T07:06:30Z",
     "commitSubject": "docs: add asset-forge content-generation agent + sprite-judge skill (#902)",
