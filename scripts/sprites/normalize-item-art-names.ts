@@ -536,10 +536,19 @@ function main(): void {
     if (!existsSync(png)) continue;
     if (r.verifyAgainstPath) {
       // Collision-origin retire we could not prove identical via contentHash:
-      // byte-verify against the surviving bare PNG before deleting the old one
-      // (both-exist-different-bytes -> fail).
+      // byte-verify against the surviving bare PNG before deleting the old one.
       const keepPng = path.join(assetsDir, r.verifyAgainstPath);
-      if (existsSync(keepPng) && !filesByteEqual(png, keepPng)) {
+      if (!existsSync(keepPng)) {
+        // The surviving art is missing — deleting `png` would drop the last copy
+        // and leave the item with no art. Fail loudly instead of silently
+        // discarding it (do NOT fall through to `rmSync`).
+        throw new Error(
+          `Refusing to retire "${png}": expected surviving art "${keepPng}" is missing; ` +
+            `manual resolution required.`,
+        );
+      }
+      if (!filesByteEqual(png, keepPng)) {
+        // Both exist but differ in bytes — never discard divergent original art.
         throw new Error(
           `Refusing to retire "${png}": surviving art "${keepPng}" differs in bytes; ` +
             `manual resolution required.`,

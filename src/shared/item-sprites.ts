@@ -30,6 +30,7 @@
  */
 import { getEquipmentDefForItem, getEquippableItemIds } from './equipmentDefs.js';
 import type { GeneratedSpriteEntry, GeneratedSpriteRegistry } from './generated-assets.js';
+import { HARVESTABLE_DEFS } from './harvestableDefs.js';
 import { ITEM_CATALOG } from './items.js';
 import { SeededRandom } from './random.js';
 
@@ -57,22 +58,14 @@ export function isPlaceholderEntry(entry: GeneratedSpriteEntry): boolean {
   return entry.sourceRun === 'placeholder' || entry.assetPath.endsWith('-placeholder.png');
 }
 
-/** Escape a concept for safe use inside a RegExp (item ids are kebab-case, but be safe). */
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * Per-concept cache of the `^<concept>-v(N)$` matcher. `matchConcept` runs inside
- * `resolveItemSprite`'s nested (entry × concept) loop, so compiling the RegExp
- * once per concept (instead of once per check) avoids repeated allocations. The
- * matcher is non-global, so `.exec` keeps no state and is safe to reuse.
- */
-const conceptVersionMatchers = new Map<string, RegExp>();
-
 /**
  * If `briefId` names `concept` — either bare (`concept`) or versioned
  * (`concept-vN`) — return the match with its parsed version; otherwise null.
+ *
+ * Uses a `startsWith` + digit scan rather than a compiled RegExp: this runs
+ * inside `resolveItemSprite`'s per-entry loop (invoked per inventory slot on the
+ * open-panel refresh), so avoiding RegExp allocation/execution keeps the hot
+ * path allocation-free. Semantics are exactly `^<concept>-v(\d+)$`.
  */
 function matchConcept(
   briefId: string,
@@ -81,16 +74,21 @@ function matchConcept(
   if (briefId === concept) {
     return { bare: true, version: 0 };
   }
-  let matcher = conceptVersionMatchers.get(concept);
-  if (matcher === undefined) {
-    matcher = new RegExp(`^${escapeRegExp(concept)}-v(\\d+)$`);
-    conceptVersionMatchers.set(concept, matcher);
+  const prefix = `${concept}-v`;
+  if (!briefId.startsWith(prefix)) {
+    return null;
   }
-  const match = matcher.exec(briefId);
-  if (match) {
-    return { bare: false, version: Number(match[1]) };
+  const digits = briefId.slice(prefix.length);
+  if (digits.length === 0) {
+    return null;
   }
-  return null;
+  for (let i = 0; i < digits.length; i++) {
+    const code = digits.charCodeAt(i);
+    if (code < 48 || code > 57) {
+      return null;
+    }
+  }
+  return { bare: false, version: Number(digits) };
 }
 
 /**
@@ -131,6 +129,17 @@ export function itemArtIdentitySet(): ReadonlySet<string> {
     if (weaponId !== undefined) {
       identity.add(weaponId);
     }
+  }
+  // Harvestable world-node ids (e.g. `azure-mushroom`) also register as Materials
+  // ItemDefs, but their generated art ships as a VERSIONED world-node key
+  // (`<id>-vN`) owned by the harvestable render path — the same pinned-key
+  // contract enemies use, NOT the bare item-icon contract (ADR 0051). Excluding
+  // them here keeps the approve-time recurrence guard from bare-keying (and thus
+  // colliding with / breaking) that live world-node art. The inventory Materials
+  // icon still resolves fine: `resolveItemSprite` is version-tolerant and matches
+  // the versioned key at runtime regardless of this set.
+  for (const harvestable of HARVESTABLE_DEFS) {
+    identity.delete(harvestable.itemId);
   }
   cachedItemArtIdentitySet = identity;
   return identity;
@@ -179,14 +188,50 @@ function compareCandidates(a: ScoredCandidate, b: ScoredCandidate): number {
 }
 
 /**
+ * Per-registry memo of resolved item art. Resolution is deterministic per
+ * `(itemId, seed)` and `seed` is fixed for a whole run, but the open inventory /
+ * equipment panels call this once per slot on their every-frame refresh — so
+ * without a cache each frame re-scans all manifest entries for every slot. The
+ * registry is a boot-set singleton (stable object identity per run), so a WeakMap
+ * keyed on it memoizes cleanly and is GC'd with the registry; test registries key
+ * their own caches. `null` is a real (no-art) result, so membership uses `has`.
+ */
+const resolvedItemSpriteCache = new WeakMap<
+  GeneratedSpriteRegistry,
+  Map<string, GeneratedSpriteEntry | null>
+>();
+
+/**
  * Resolve the generated sprite for an inventory item, preferring its REAL
  * approved art over any placeholder, deterministically for a given `seed`.
  *
- * Returns null when neither the item id nor its weaponId has any generated art.
- * Pass a stable per-(item, run) seed — e.g. `hashStringToSeed(itemId) ^
- * worldSeed` — so the item keeps one variant for a whole run.
+ * Returns null only when neither the item id nor its weaponId matches any
+ * generated entry at all; when the sole match is a placeholder, that placeholder
+ * is returned (real art is merely preferred). Pass a stable per-(item, run) seed
+ * — e.g. `hashStringToSeed(itemId) ^ worldSeed` — so the item keeps one variant
+ * for a whole run.
  */
 export function resolveItemSprite(
+  registry: GeneratedSpriteRegistry,
+  itemId: string,
+  seed: number,
+): GeneratedSpriteEntry | null {
+  let perRegistry = resolvedItemSpriteCache.get(registry);
+  if (perRegistry === undefined) {
+    perRegistry = new Map();
+    resolvedItemSpriteCache.set(registry, perRegistry);
+  }
+  const cacheKey = `${itemId}\u0000${seed}`;
+  if (perRegistry.has(cacheKey)) {
+    return perRegistry.get(cacheKey) ?? null;
+  }
+  const resolved = computeItemSprite(registry, itemId, seed);
+  perRegistry.set(cacheKey, resolved);
+  return resolved;
+}
+
+/** Uncached resolution — see `resolveItemSprite`. */
+function computeItemSprite(
   registry: GeneratedSpriteRegistry,
   itemId: string,
   seed: number,

@@ -240,6 +240,18 @@ describe('itemArtIdentitySet', () => {
     expect(identity.has('rat')).toBe(false);
     expect(identity.has('welcome-sign-left')).toBe(false);
   });
+
+  it('excludes harvestable world-node ids (they ship VERSIONED, not bare) — guardrail', () => {
+    // Harvestable materials (azure-mushroom, etc.) ARE Materials ItemDefs, but
+    // their art is a versioned world-node key owned by the harvestable render
+    // path (mirrors the enemy pinned-key contract). They must NOT be item
+    // art-naming identities, or the approve-time recurrence guard would bare-key
+    // `azure-mushroom-v1` and break that live lane.
+    expect(identity.has('azure-mushroom')).toBe(false);
+    expect(identity.has('crimson-mushroom')).toBe(false);
+    expect(identity.has('sunpetal-flower')).toBe(false);
+    expect(identity.has('frost-lichen')).toBe(false);
+  });
 });
 
 describe('canonicalItemBriefId', () => {
@@ -263,6 +275,14 @@ describe('canonicalItemBriefId', () => {
     expect(canonicalItemBriefId('angry-roomba-v2', identity)).toBe('angry-roomba-v2');
     expect(canonicalItemBriefId('rat-v1', identity)).toBe('rat-v1');
     expect(canonicalItemBriefId('welcome-sign-left-v2', identity)).toBe('welcome-sign-left-v2');
+  });
+
+  it('leaves harvestable world-node -vN briefs versioned (guardrail)', () => {
+    // The approve recurrence guard must never canonicalize a harvestable
+    // world-node brief to bare — `azure-mushroom-v1` stays `azure-mushroom-v1`
+    // so the harvestable render path keeps its versioned key.
+    expect(canonicalItemBriefId('azure-mushroom-v1', identity)).toBe('azure-mushroom-v1');
+    expect(canonicalItemBriefId('crimson-mushroom-v2', identity)).toBe('crimson-mushroom-v2');
   });
 
   it('is a no-op for an already-bare item id', () => {
