@@ -23,6 +23,7 @@ import {
   pickGeneratedVariant,
 } from '../../src/shared/generated-assets.js';
 import { getItemById } from '../../src/shared/items.js';
+import { getSetPieceDef, installDefaultSetPiecePacks } from '../../src/shared/set-piece-types.js';
 
 const REPO_MANIFEST = path.resolve(__dirname, '../../public/assets/generated/manifest.json');
 
@@ -258,5 +259,61 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     // above (icon override → versioned brief → real, non-placeholder art); we
     // avoid asserting the bare concept's manifest internals so a future pipeline
     // change (alias generation, concept-collapsing) can't false-fail this test.
+  });
+
+  it('wires the welcome-room set-piece props to shipped generated art (no placeholders)', async () => {
+    if (!existsSync(REPO_MANIFEST)) {
+      // Fresh checkout without generated art on disk — nothing to observe.
+      return;
+    }
+    const raw = readFileSync(REPO_MANIFEST, 'utf8');
+    const fetcher = (async () =>
+      new Response(raw, {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })) as unknown as typeof fetch;
+    const registry = await fetchGeneratedSpriteRegistry({
+      url: '/assets/generated/manifest.json',
+      fetcher,
+    });
+
+    // The exact approved variant keys the welcome-room base layers pin (the
+    // velvet rope shipped as var-2, the rest as var-0). Kept in lockstep with
+    // `set-pieces.json` (cross-checked below) so a rename on EITHER side — the
+    // wiring or the shipped manifest — fails loudly here instead of silently
+    // degrading to a labeled placeholder box in-engine.
+    const expectedKeys = [
+      'welcome-room-rug-var-0',
+      'welcome-room-desk-var-0',
+      'welcome-room-shop-table-var-0',
+      'welcome-room-bookcase-var-0',
+      'welcome-room-velvet-rope-var-2',
+    ];
+
+    // 1) The shipped manifest carries each key as its own texture, resolving to
+    //    real (non-placeholder) art. Mirrors the engine's catalog-resolution
+    //    path: `scene.textures.exists(spriteId)` against the bare manifest key.
+    const byTextureKey = new Map(registry.entries().map((entry) => [entry.textureKey, entry]));
+    for (const key of expectedKeys) {
+      const entry = byTextureKey.get(key);
+      expect(entry, `shipped manifest is missing generated key "${key}"`).toBeDefined();
+      expect(entry!.assetPath).toContain(key);
+      expect(entry!.assetPath).not.toContain('placeholder');
+    }
+
+    // 2) The welcome-room wiring still pins exactly those generated keys, so the
+    //    guard above cannot drift out of sync with `set-pieces.json`.
+    installDefaultSetPiecePacks();
+    const room = getSetPieceDef('welcome-room')!;
+    const wiredGeneratedKeys: string[] = [];
+    for (const prop of room.props) {
+      for (const layer of prop.layers) {
+        const sprite = layer.sprite;
+        if (sprite.source === 'catalog' && sprite.spriteId.startsWith('welcome-room-')) {
+          wiredGeneratedKeys.push(sprite.spriteId);
+        }
+      }
+    }
+    expect(new Set(wiredGeneratedKeys)).toEqual(new Set(expectedKeys));
   });
 });
