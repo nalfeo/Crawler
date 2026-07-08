@@ -28,14 +28,17 @@ import {
   computeEnemyScale,
   enemyAppearanceTint,
   enemyVariantFromTextureId,
+  GENERATED_KEY_BY_NPC_DEF,
   generatedBriefIdForEnemy,
   pickGeneratedEnemyTextureKey,
+  pickGeneratedNpcTextureKey,
   placeholderSpawnerTint,
   PLACEHOLDER_SPAWNER_TINT,
   RAT_BRUTE_TINT,
   refineEnemyVisualKind,
   resolveRenderKind,
 } from '../../src/engine/phaser-bridge/sprite-kind.js';
+import { getNpcDef } from '../../src/shared/npc-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 /**
@@ -409,6 +412,45 @@ describe('generatedBriefIdForEnemy', () => {
     expect(generatedBriefIdForEnemy('enemy_rat', 'rats-nest')).toBe('rats-nest-v1');
     expect(generatedBriefIdForEnemy('enemy_spawner_rats_nest')).toBe('rat-nest-v2');
     expect(generatedBriefIdForEnemy('enemy_spawner_slime_pool')).toBe('slime-pool-v1');
+  });
+});
+
+describe('pickGeneratedNpcTextureKey — def-aware welcome-room NPC art', () => {
+  it('pins each welcome-room NPC to its distinct generated texture key', () => {
+    // Three DISTINCT keys — the whole point of the feature (no shared villager).
+    expect(pickGeneratedNpcTextureKey('tutorial-goon')).toBe('npc-welcome-goon-var-0');
+    expect(pickGeneratedNpcTextureKey('shopkeeper')).toBe('npc-sweaty-merchant-var-0');
+    expect(pickGeneratedNpcTextureKey('spell-quest-giver')).toBe('npc-spell-broker-var-1');
+    const keys = [
+      pickGeneratedNpcTextureKey('tutorial-goon'),
+      pickGeneratedNpcTextureKey('shopkeeper'),
+      pickGeneratedNpcTextureKey('spell-quest-giver'),
+    ];
+    expect(new Set(keys).size).toBe(3);
+  });
+
+  it('pins the Spell Broker to var-1, NOT var-0 (a variant-index roll would mis-pick)', () => {
+    // Hard requirement: the broker shipped as var-1 while goon/merchant are
+    // var-0, so keys are pinned per def id rather than computed from a roll.
+    expect(pickGeneratedNpcTextureKey('spell-quest-giver')).toBe('npc-spell-broker-var-1');
+    expect(pickGeneratedNpcTextureKey('spell-quest-giver')).not.toBe('npc-spell-broker-var-0');
+  });
+
+  it('returns null for unknown or undefined def ids (bridge falls back to villager)', () => {
+    expect(pickGeneratedNpcTextureKey('the-broker')).toBeNull();
+    expect(pickGeneratedNpcTextureKey('not-a-real-npc')).toBeNull();
+    expect(pickGeneratedNpcTextureKey(undefined)).toBeNull();
+  });
+
+  it('keys the map only on real NPC def ids (guards against def-id drift)', () => {
+    for (const defId of Object.keys(GENERATED_KEY_BY_NPC_DEF)) {
+      expect(getNpcDef(defId), `${defId} must be a real NpcDef id`).toBeDefined();
+    }
+    expect(Object.keys(GENERATED_KEY_BY_NPC_DEF).sort()).toEqual([
+      'shopkeeper',
+      'spell-quest-giver',
+      'tutorial-goon',
+    ]);
   });
 });
 

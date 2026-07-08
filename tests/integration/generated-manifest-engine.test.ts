@@ -24,6 +24,7 @@ import {
 } from '../../src/shared/generated-assets.js';
 import { getItemById } from '../../src/shared/items.js';
 import { getSetPieceDef, installDefaultSetPiecePacks } from '../../src/shared/set-piece-types.js';
+import { GENERATED_KEY_BY_NPC_DEF } from '../../src/engine/phaser-bridge/sprite-kind.js';
 
 const REPO_MANIFEST = path.resolve(__dirname, '../../public/assets/generated/manifest.json');
 
@@ -315,5 +316,52 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
       }
     }
     expect(new Set(wiredGeneratedKeys)).toEqual(new Set(expectedKeys));
+  });
+
+  it('wires each welcome-room NPC to its own shipped generated sprite (no placeholders)', async () => {
+    if (!existsSync(REPO_MANIFEST)) {
+      // Fresh checkout without generated art on disk — nothing to observe.
+      return;
+    }
+    const raw = readFileSync(REPO_MANIFEST, 'utf8');
+    const fetcher = (async () =>
+      new Response(raw, {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })) as unknown as typeof fetch;
+    const registry = await fetchGeneratedSpriteRegistry({
+      url: '/assets/generated/manifest.json',
+      fetcher,
+    });
+
+    // The exact pinned generated keys each welcome-room NPC resolves to. The
+    // Spell Broker shipped as var-1 while the Goon/Merchant are var-0 — pinned
+    // per def id (not a variant roll) so this stays deterministic. Cross-checked
+    // against GENERATED_KEY_BY_NPC_DEF below so a rename on EITHER side — the
+    // wiring map or the shipped manifest — fails loudly here.
+    const expectedByDef: Record<string, string> = {
+      'tutorial-goon': 'npc-welcome-goon-var-0',
+      shopkeeper: 'npc-sweaty-merchant-var-0',
+      'spell-quest-giver': 'npc-spell-broker-var-1',
+    };
+
+    // 1) Each pinned key exists in the shipped manifest as its own texture and
+    //    resolves to real (non-placeholder) art. Mirrors the engine's
+    //    resolveNpcTexture gate: `scene.textures.exists(key)` on the bare key.
+    const byTextureKey = new Map(registry.entries().map((entry) => [entry.textureKey, entry]));
+    for (const key of Object.values(expectedByDef)) {
+      const entry = byTextureKey.get(key);
+      expect(entry, `shipped manifest is missing generated NPC key "${key}"`).toBeDefined();
+      expect(entry!.assetPath).toContain(key);
+      expect(entry!.assetPath).not.toContain('placeholder');
+    }
+
+    // 2) The three keys are distinct (the feature's core requirement: three
+    //    distinct sprites, not one shared villager).
+    expect(new Set(Object.values(expectedByDef)).size).toBe(3);
+
+    // 3) The engine wiring map pins exactly those def→key mappings, so the guard
+    //    above cannot drift out of sync with GENERATED_KEY_BY_NPC_DEF.
+    expect(GENERATED_KEY_BY_NPC_DEF).toEqual(expectedByDef);
   });
 });

@@ -36,6 +36,7 @@ import {
   enemyVariantFromTextureId,
   generatedBriefIdForEnemy,
   pickGeneratedEnemyTextureKey,
+  pickGeneratedNpcTextureKey,
   refineEnemyVisualKind,
   resolveRenderKind,
   SLIME_FULL_SPRITE_WIDTH,
@@ -174,6 +175,32 @@ function resolveTexture(
     }
   }
   return { key: getProceduralTextureForType(type), scale: 1, fallback: true };
+}
+
+/**
+ * Render scale for a generated NPC sprite. The three welcome-room NPC sprites
+ * ship as 64×64 character PNGs (like the generated enemies), so they use the
+ * same 0.4 down-scale the enemy generated art uses — landing a humanoid NPC at
+ * ~26px on screen, matching the player's on-screen footprint. Kept a named
+ * constant so it reads as an intentional match to the enemy `generated.scale`
+ * in `entity-sprite-mappings.json` rather than a magic number.
+ */
+const GENERATED_NPC_SPRITE_SCALE = 0.4;
+
+/**
+ * Resolve an NPC's texture def-aware: prefer its pinned generated sprite (keyed
+ * by NPC def id via {@link pickGeneratedNpcTextureKey}) when that texture is
+ * loaded, otherwise fall back to the shared Kenney villager through the normal
+ * `npc` render-kind path. This keeps the placeholder-free graceful fallback the
+ * feature requires whenever a generated NPC texture is ever missing, while
+ * giving each welcome-room NPC its own distinct sprite when the art is present.
+ */
+function resolveNpcTexture(scene: Phaser.Scene, defId: string | undefined): ResolvedTexture {
+  const generatedKey = pickGeneratedNpcTextureKey(defId);
+  if (generatedKey !== null && scene.textures?.exists(generatedKey) === true) {
+    return { key: generatedKey, scale: GENERATED_NPC_SPRITE_SCALE, fallback: false };
+  }
+  return resolveTexture(scene, 'npc');
 }
 
 function resolveGeneratedTexture(
@@ -729,10 +756,13 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           if (visual) {
             visual.obj.destroy();
           }
-          const resolved = resolveTexture(scene, visualType, {
-            appearanceKey,
-            variantRoll: world.stores.sprite.variantRoll[eid],
-          });
+          const resolved =
+            entityType === 'npc'
+              ? resolveNpcTexture(scene, world.npcs.get(eid)?.defId)
+              : resolveTexture(scene, visualType, {
+                  appearanceKey,
+                  variantRoll: world.stores.sprite.variantRoll[eid],
+                });
           const img =
             resolved.frame !== undefined
               ? scene.add.image(x, y, resolved.key, resolved.frame)
@@ -756,6 +786,17 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           // Enemy visuals may be created before generated textures are ready
           // (e.g. timeout/late load). Reconcile to the preferred texture key when
           // it becomes available so slimes/rats upgrade off placeholder art.
+          if (img.texture.key !== preferred.key) {
+            img.setTexture(preferred.key, preferred.frame);
+            visual.baseScale = preferred.scale;
+          }
+        }
+        if (entityType === 'npc') {
+          // NPC visuals may be created before their pinned generated texture has
+          // finished loading. Reconcile to the def-aware generated sprite once it
+          // is available so each welcome-room NPC upgrades off the shared Kenney
+          // villager placeholder (mirrors the enemy late-load reconcile above).
+          const preferred = resolveNpcTexture(scene, world.npcs.get(eid)?.defId);
           if (img.texture.key !== preferred.key) {
             img.setTexture(preferred.key, preferred.frame);
             visual.baseScale = preferred.scale;

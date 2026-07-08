@@ -145,6 +145,11 @@ describe('initializeFloor2Scenario manifest validation', () => {
     ).toBe(true);
   });
 
+  // This determinism guard generates two full Floor 2 scenario worlds (cave-system
+  // map gen + serialization run twice), which alone is ~15-25s and tips past the
+  // 30s unit default under full-`verify` parallel CPU contention (340 test files).
+  // Give it the heavier-project 120s budget so it doesn't flake under load; the
+  // assertion below is unchanged — this only accounts for real wall-clock cost.
   it('does not let settlement shop-count rolls perturb Floor 2 map generation', () => {
     const makeManifest = (shopCountRange: [number, number]) => {
       const manifest = structuredClone(originalFloor2Manifest);
@@ -169,7 +174,7 @@ describe('initializeFloor2Scenario manifest validation', () => {
     const secondFloor = serializeFloor(second.world.floorMap!);
 
     expect(secondFloor).toEqual(firstFloor);
-  });
+  }, 120_000);
 });
 
 describe('Floor 2 stair marker radius', () => {

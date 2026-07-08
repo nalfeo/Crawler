@@ -28,6 +28,7 @@ import { TileMap } from '../../core/map/TileMap.js';
 import { stampSetPiece, type StampedSetPiece } from '../../core/map/stampSetPiece.js';
 import { addSetPieceProp, spawnNpc } from '../../core/spawners/world-objects.js';
 import { createPhaserBridge } from '../../engine/PhaserBridge.js';
+import { pickGeneratedNpcTextureKey } from '../../engine/phaser-bridge/sprite-kind.js';
 import {
   fetchGeneratedSpriteRegistry,
   GENERATED_SPRITE_REGISTRY_KEY,
@@ -151,7 +152,13 @@ interface HoverItem {
   readonly header: string;
   /** Prop layers carry their sprite ref for live asset resolution; NPCs don't. */
   readonly ref?: SpriteRef;
-  /** Pre-rendered transform lines (and, for NPCs, the asset line). */
+  /**
+   * NPC entries carry their def id so the tooltip can resolve the pinned
+   * generated sprite key live against the running scene (mirrors {@link ref}
+   * for props). Undefined for prop layers.
+   */
+  readonly npcDefId?: string;
+  /** Pre-rendered transform/metadata lines (asset resolution happens live). */
   readonly bodyHtml: string;
 }
 
@@ -204,9 +211,7 @@ function buildHoverItems(def: SetPieceDef, stamp: StampedSetPiece): HoverItem[] 
     const ndef = getNpcDef(npc.npcTypeId);
     const wFt = ndef?.widthFt ?? TILE_SIZE_FT;
     const hFt = ndef?.heightFt ?? TILE_SIZE_FT;
-    const lines: string[] = [
-      `<span style="color:#94a3b8">asset</span> Kenney character · frame #${ndef?.textureId ?? '?'}`,
-    ];
+    const lines: string[] = [];
     if (npc.anchorRole !== undefined) {
       const color = NPC_ANCHOR_COLOR[npc.anchorRole];
       lines.push(
@@ -223,6 +228,7 @@ function buildHoverItems(def: SetPieceDef, stamp: StampedSetPiece): HoverItem[] 
       halfHpx: ftToPx(hFt) / 2,
       depth: 0,
       header: `NPC · ${esc(ndef?.name ?? npc.npcTypeId)}`,
+      npcDefId: npc.npcTypeId,
       bodyHtml: lines.join('<br/>'),
     });
   }
@@ -240,6 +246,23 @@ function renderTooltip(scene: Phaser.Scene, item: HoverItem): string {
         ? '<span style="color:#5ad19b">✔ real art</span>'
         : '<span style="color:#f6c453">▢ placeholder box</span>',
     );
+  } else if (item.npcDefId !== undefined) {
+    // NPCs resolve their pinned generated sprite key def-aware (mirrors the
+    // bridge's resolveNpcTexture). A loaded key = distinct real art; otherwise
+    // the bridge falls back to the shared Kenney villager placeholder.
+    const key = pickGeneratedNpcTextureKey(item.npcDefId);
+    if (key !== null && scene.textures?.exists(key) === true) {
+      parts.push(`<span style="color:#94a3b8">asset</span> generated <code>${esc(key)}</code>`);
+      parts.push('<span style="color:#5ad19b">✔ real art</span>');
+    } else if (key !== null) {
+      parts.push(
+        `<span style="color:#94a3b8">asset</span> generated <code>${esc(key)}</code> · not loaded → Kenney villager`,
+      );
+      parts.push('<span style="color:#f6c453">▢ villager fallback</span>');
+    } else {
+      parts.push(`<span style="color:#94a3b8">asset</span> Kenney villager (no generated art)`);
+      parts.push('<span style="color:#f6c453">▢ villager fallback</span>');
+    }
   }
   parts.push(item.bodyHtml);
   return parts.join('<br/>');
