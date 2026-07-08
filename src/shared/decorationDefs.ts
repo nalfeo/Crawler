@@ -149,7 +149,7 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
     def({
       id: 'rubble',
       name: 'Rubble Pile',
-      spriteId: 'deco-rubble',
+      spriteId: 'prop-rubble-pile-var-1',
       biomeTag: 'dungeon',
       category: 'rubbish',
       placementZone: 'anywhere',

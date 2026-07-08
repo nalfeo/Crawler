@@ -495,7 +495,9 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             ? isBoss
               ? bossKey === 'staircase'
                 ? 'enemy_boss_ratslime'
-                : 'enemy_boss'
+                : bossKey === 'slime-rat'
+                  ? 'enemy_boss_slimerat'
+                  : 'enemy_boss'
               : refineEnemyVisualKind(world, eid)
             : entityType;
         const appearanceKey =

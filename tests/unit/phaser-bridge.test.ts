@@ -289,7 +289,8 @@ describe('createPhaserBridge', () => {
         }),
       },
       textures: {
-        exists: (key: string) => key === 'prop-wall-sconce-v1-var-1',
+        exists: (key: string) =>
+          key === 'prop-wall-sconce-v1-var-1' || key === 'prop-rubble-pile-var-1',
       },
     } as unknown as Phaser.Scene;
 
@@ -306,9 +307,17 @@ describe('createPhaserBridge', () => {
     addComponent(world.ecs, placeholderProp, set(Position, { x: 3, y: 4 }));
     world.stores.prop.defIdIndex[placeholderProp] = DECORATION_DEF_INDEX['junk-pile']!;
 
+    // Rubble is wired to real generated art (prop-rubble-pile-var-1); it must
+    // render as a sprite, not the placeholder rectangle it used to fall back to.
+    const rubbleProp = addEntity(world.ecs);
+    addComponent(world.ecs, rubbleProp, Prop);
+    addComponent(world.ecs, rubbleProp, set(Position, { x: 5, y: 6 }));
+    world.stores.prop.defIdIndex[rubbleProp] = DECORATION_DEF_INDEX['rubble']!;
+
     bridge.sync(world);
 
     expect(propImages.some((img) => img.textureKey === 'prop-wall-sconce-v1-var-1')).toBe(true);
+    expect(propImages.some((img) => img.textureKey === 'prop-rubble-pile-var-1')).toBe(true);
     expect(propRects.length).toBeGreaterThan(0);
 
     bridge.destroy();
@@ -979,7 +988,7 @@ describe('createPhaserBridge', () => {
     expect(images[0]?.textureKey).toBe('slime-v1-var-9');
   });
 
-  it('uses the generated rat-slime art for the staircase boss, not the slime-rat', () => {
+  it('uses distinct generated boss art for the staircase and slime-rat mid-boss', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: true });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
@@ -1006,9 +1015,10 @@ describe('createPhaserBridge', () => {
     bridge.sync(world);
 
     expect(images).toHaveLength(2);
-    // Staircase Rat Slime gets the generated art; the slime-rat tutorial boss stays generic.
+    // Each boss resolves its own dedicated generated art via the bossBattles
+    // key: 'staircase' → rat-slime-v1, 'slime-rat' (mid-boss) → slime-rat-boss.
     expect(images[0]?.textureKey).toBe('rat-slime-v1-var-1');
-    expect(images[1]?.textureKey).toBe('kenney-tiny-dungeon');
+    expect(images[1]?.textureKey).toBe('slime-rat-boss-var-1');
   });
 
   it('renders the approved baseball-bat-v1 generated art on a bat swing once its texture is ready', () => {

@@ -92,6 +92,16 @@
         "scale": 0.6
       }
     },
+    "enemy_boss_slimerat": {
+      "proceduralTexture": "enemy_boss",
+      "kenneySpriteId": "enemy.boss",
+      "kenneyScale": 2.5,
+      "generated": {
+        "briefId": "slime-rat-boss",
+        "pinnedTextureKey": "slime-rat-boss-var-1",
+        "scale": 0.6
+      }
+    },
     "npc": {
       "proceduralTexture": "npc",
       "kenneySpriteId": "npc.guide",
