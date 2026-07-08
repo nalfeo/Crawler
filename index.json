@@ -1,5 +1,16 @@
 [
   {
+    "commit": "8c48646de2a7a2394fd01d6f39ed8cd01c86a224",
+    "commitDate": "2026-07-07T23:56:37Z",
+    "commitSubject": "feat(floor1): wire welcome-room set piece into Floor 1 mapgen (spaced NPCs, sprite layering, auto objective anchors) (#853)",
+    "capturedAt": "2026-07-08T00:35:32.350Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28907354125",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/8c48646de2a7a2394fd01d6f39ed8cd01c86a224.json"
+  },
+  {
     "commit": "3cfaeb6e34e54cd9372ee716c9a955d994e9f39c",
     "commitDate": "2026-07-07T23:31:57Z",
     "commitSubject": "fix(sprites): reconcile content-aware slicer to the brief grid and make slicing crash-proof (#860)",
