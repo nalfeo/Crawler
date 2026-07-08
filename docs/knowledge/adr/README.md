@@ -6,7 +6,7 @@ consequences. New decisions that affect **2+ systems** require an ADR (see the
 constitution and `.github/copilot-instructions.md`).
 
 - **Template:** `docs/knowledge/adr/TEMPLATE.md`
-- **Count:** 78 ADR files — 73 numbered (0001–0051, with number reuse and gaps in this index — see below) + 5 date-prefixed
+- **Count:** 79 ADR files — 74 numbered (0001–0052, with number reuse and gaps in this index — see below) + 5 date-prefixed
 - **Status convention:** `## Status` heading with one of
   `Proposed | Accepted | Deprecated | Superseded by NNNN`
 
@@ -67,7 +67,7 @@ hundreds of inbound references.
 ### Adding a new ADR
 
 1. Copy `TEMPLATE.md` to `NNNN-your-slug.md`, where `NNNN` is **the next unused
-   number** (currently **0052**).
+   number** (currently **0053**).
 2. Fill in `## Status`, `## Date`, `## Estimated Complexity`, `## Context`,
    `## Decision`, `## Consequences`.
 3. Always **link by slug**, never by bare number, so collisions stay
@@ -169,6 +169,7 @@ hundreds of inbound references.
 - [Asset-request CI worker bypass for Constitutional §3](0043-ci-asset-request-worker-bypass.md) — a gated bypass flag lets the asset-request worker run its Azure paths outside CI without violating §3 determinism.
 - [Raise the review-harness code-review floor to 3🍎](0036-raise-code-review-floor.md) — code-review loop required at 3🍎+ (plan review then also raised to 3🍎).
 - [Replace dual-plan synthesis with an adversarial plan review](0051-adversarial-plan-review-fold.md) — retires the 4–5🍎 second-author stage (2/17 decisive-fork rate) for one red-teaming reviewer; adds a `plan_divergence` instrumentation enum at ≥3🍎.
+- [Slicer cuts only at real gutters — data-driven grid salvage](0052-slicer-never-cut-through-art.md) — the slicer never invents a cut; grid/count are read from the sheet (brief is a soft anchor), runt edge cells are trimmed, and the generation count gate is relaxed. Reverses the 2026-07-07 force-count reconciliation that chopped art on the right edge.
 
 ---
 
@@ -244,3 +245,4 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0049 | [Floor 1 is Spawner-Free by Empty Spawn Table](0049-floor1-spawner-free-by-config.md)                                           | Accepted           | 2026-07-07 |
 | 0050 | [Dynamic Barrier Primitive](0050-dynamic-barrier-primitive.md)                                                                  | Accepted           | 2026-07-04 |
 | 0051 | [Replace Dual-Plan Synthesis with an Adversarial Plan Review](0051-adversarial-plan-review-fold.md)                             | Accepted           | 2026-07-08 |
+| 0052 | [Slicer Cuts Only at Real Gutters — Data-Driven Grid Salvage](0052-slicer-never-cut-through-art.md)                             | Accepted           | 2026-07-08 |

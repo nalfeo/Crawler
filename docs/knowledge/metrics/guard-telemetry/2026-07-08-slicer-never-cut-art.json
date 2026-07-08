@@ -1,0 +1,23 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "slicer-never-cut-art",
+  "date": "2026-07-08",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 12,
+  "guards": {
+    "pr-preflight": {
+      "allow": 6
+    },
+    "pr-review-ledger": {
+      "allow": 3,
+      "skip": 3
+    }
+  },
+  "tools": {
+    "create_pull_request": 12
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

@@ -206,13 +206,16 @@ export interface RunSummary {
   readonly attempts: number;
   readonly variantCount: number;
   /**
-   * Generation-time sheet grid structure: the commanded rows × cols and the
-   * empty-cell coordinates. Captured so re-postprocess can detect a brief grid
-   * change since generation even when the non-empty variant COUNT is unchanged
-   * — e.g. a 2×2 → 1×4 reshape, or an empty cell moved — which would re-slice
-   * the sheet into different crops and silently corrupt the row-major
+   * The ACTUAL data-driven sheet grid the slicer landed on at generation time:
+   * rows × cols and the empty-cell coordinates. The slicer cuts only at real
+   * gutters and trims runt edges, so this reflects what the model actually drew,
+   * NOT the brief's commanded grid. Captured so re-postprocess can re-slice the
+   * stored sheet anchored on this grid and confirm it reproduces the same
+   * structure (rows, cols AND empty-cell set) — a mismatch means the persisted
+   * grid no longer matches the sheet and would silently corrupt the row-major
    * per-variant entries. Absent on legacy runs generated before this field
-   * existed; consumers fall back to `variantCount` then.
+   * existed; consumers fall back to `variantCount` then (and backfill it on the
+   * next successful re-run).
    */
   readonly grid?: {
     readonly rows: number;

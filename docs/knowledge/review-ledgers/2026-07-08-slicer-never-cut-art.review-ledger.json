@@ -1,0 +1,53 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-08",
+  "session_slug": "slicer-never-cut-art",
+  "task_title": "Slicer: cut only at real gutters, salvage clean grids, drop runt edge cells",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.5",
+      "adversarial": true,
+      "alternatives_considered": 4,
+      "plan_divergence": "minor",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "notes": "gpt-5.5 high adversarial/red-team review of files/slice-plan-final.md. Alternatives argued against (>=2): (A) Option-B force-regenerate / keep the 2026-07-07 hard count gate -> rejected (it IS the chopping cause; human directive supersedes); (B) Plan-B 'add grid to SliceMap' -> rejected (breaks byte-identical /api/slice-map debugger contract, sidecar/server.ts:831-839); (C) Plan-B rows*cols>expected*4 noise guard -> rejected (arbitrary, drops honest dense sheets); (D) judge's original tiebreak order dispersion-before-anchorDelta -> rejected (collapses to k=1 on irregular grids, a correctness bug). 8 concerns: 3 blocking (variantCount SIBLING-not-nested in BriefSliceResult; tiebreak REORDER anchorDelta-before-dispersion to kill k=1 collapse; phantom-split guard in trimEdgeRunts), 3 important (2-segment runt <50%-of-max special-case; aggressive edge-trim documented+tested as intentional per human directive, rule #12; rerun modern guard compares emptyCells sets), 2 minor (stale comment updates; test plan ADDs not replaces). All 8 adopted in files/slice-plan-review-fixes.md; algorithm fixes verified by integer-math probe (shop-table cols->3 rows->5; [0,10,110] exp2->k=2 no collapse; [10,30,40,40] phantom kept; [44,46,46,16] runt trimmed). plan_divergence=minor: the review fixed load-bearing DETAILS (metric ordering, guards) but the chosen architecture (content-aware gutters + trim-first + uniformity-max count search, Option-A salvage) stood; no re-architecture."
+    },
+    "dual_plan_synthesis": {
+      "completed": true,
+      "plan_models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+      "judge_model": "claude-opus-4.8",
+      "notes": "Two independent plans (gpt-5.4 + gemini-3.1-pro-preview, high reasoning) synthesized by claude-opus-4.8 judge into files/slice-plan-final.md. Judge resolved 3 disagreements: (1) edge-runt trim FIRST + phantom-neighbour guard; (2) Plan A lexicographic metric regularCount>dispersion>anchorDelta>k>leftmost; (3) rerun anchored on persisted summary.grid + legacy fallback. Rejected 2 Plan-B regressions: adding grid to SliceMap (breaks byte-identical /api/slice-map debugger contract) and the rows*cols>expected*4 noise guard (arbitrary; drops honest dense sheets)."
+    },
+    "code_review": {
+      "clean": true,
+      "notes": "Single round, clean terminal. 3 code-review agents ran against the committed diff `git diff HEAD~1 HEAD` (d136b79a, 8 files). 2 of 3 (claude-sonnet-4.6, gpt-5.3-codex) found no significant issues; sonnet explicitly validated the phantom-half boundary handling. gemini-3.1-pro-preview raised ONE concern (phantomHalf parameterization). A separate reasoning adjudicator (gpt-5.4, xhigh) empirically replayed every runt fixture and ruled the concern INVALID / low-severity (details in multi_model_review). Concern closed: adjudicated-invalid + a non-behavioral clarity comment added to isEdgeRunt documenting the deliberate conservative KEEP bias (addresses the reviewer's confusion; zero logic change; verify:fast still green). No valid unresolved concerns → clean.",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "notes": "3 distinct models reviewed `git diff HEAD~1 HEAD` (d136b79a): claude-sonnet-4.6 (clean, explicitly validated phantom-half + all 8 invariants), gpt-5.3-codex (clean), gemini-3.1-pro-preview (1 concern: isEdgeRunt's `phantomHalf` term fires when a tiny runt sits next to a full neighbour, so it protects small runts — filed High). Adjudicator gpt-5.4 (xhigh) read the code/tests/ADR, replayed chooseAxisCuts on every runt fixture under BOTH the current predicate and gemini's proposed `|size+neighbour-median| < |neighbour-median|`, and ruled: VALID? INVALID; severity LOW (not High). Rationale: (1) trimEdgeRunts only drops a cell bounded by real DETECTED gutters — it never cuts THROUGH foreground, so this is NOT the headline right-edge chopping bug; (2) blast radius = ONLY L672 [10,30,40,40] flips (keep 4 -> trim 3, dropping the leading edge region); the shop-table headline fix (L613, 5x3) and every other runt test are unchanged; (3) adopting gemini's fix would DROP ambiguous edge art, directly contradicting the governing never-drop-art / when-ambiguous-KEEP directive (rule #12/#13, ADR 0052). Remedy: REJECT the code change; apply the optional clarity comment only. valid_count=0 (concern adjudicated invalid), so resolved_count=0; round clean. A clarity comment was still added to isEdgeRunt to prevent future re-raises (non-behavioral).",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

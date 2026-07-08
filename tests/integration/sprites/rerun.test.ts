@@ -165,17 +165,72 @@ describe('repostprocessRun', () => {
     expect(await processedBytes(seed, 0)).not.toEqual(baseline);
   });
 
-  it('rejects a variant-count mismatch when the brief grid changed since generation', async () => {
-    // Generation stored a 2x2 (4-cell) sheet. If the brief's grid is later
-    // widened to 2x3 (variantCount 6), the guard must reject rather than
-    // corrupt the summary's per-variant entries. The slicer now reconciles any
-    // stored sheet to the brief's commanded grid (human gallery review is the
-    // grid gate), so re-slicing yields 6 cells and no longer reveals the change
-    // on its own. The guard instead compares the stored generation-time
-    // variantCount (4) against the current brief's expected count (6) and
-    // rejects with `variant-count-mismatch` (ADR 0024 → HTTP 422).
+  it('rejects when the stored sheet no longer re-slices to the persisted grid (modern path)', async () => {
+    // The rerun guard is DATA-DRIVEN (ADR 0052): it
+    // re-slices the stored sheet anchored on the run's PERSISTED actual grid —
+    // NOT the brief — and rejects if the crops no longer reproduce that grid.
+    // That is the real corruption signal: the persisted grid is wrong or the
+    // slicer changed since generation. Here we corrupt the persisted grid to a
+    // 2×3 (6 variants) the stored 2×2 sheet cannot reproduce (the soft anchor
+    // never invents a 3rd column through the art), so the re-slice lands on the
+    // honest 2×2 and the guard fires (ADR 0024 → HTTP 422).
     const seed = await seedRun({ repoRoot: freshRoot() });
     const before = await loadRunSummary(seed.store, seed.briefId, seed.runId);
+    expect(before.grid).toEqual({ rows: 2, cols: 2, emptyCells: [] });
+    const corruptGrid = {
+      ...before,
+      grid: { rows: 2, cols: 3, emptyCells: [] as ReadonlyArray<readonly [number, number]> },
+      variantCount: 6,
+    };
+
+    await expect(
+      repostprocessRun({
+        store: seed.store,
+        briefId: seed.briefId,
+        runId: seed.runId,
+        summary: corruptGrid,
+        brief: seed.brief,
+        palette: seed.palette,
+      }),
+    ).rejects.toMatchObject({ name: 'RerunError', kind: 'variant-count-mismatch' });
+  });
+
+  it('rejects a legacy run (no persisted grid) whose stored sheet re-slices to a different count', async () => {
+    // Legacy runs generated before `grid` was persisted have no anchor, so the
+    // guard falls back to a brief-anchored re-slice + a variant-COUNT check
+    // against the stored `summary.variantCount`. Simulate a legacy run whose
+    // recorded count (6) no longer matches what the stored 2×2 sheet actually
+    // slices to (4) — e.g. the slicer changed since generation — and assert it
+    // is rejected rather than silently overwriting the wrong per-variant
+    // entries (backfilling `summary.grid` is reserved for the success path).
+    const seed = await seedRun({ repoRoot: freshRoot() });
+    const before = await loadRunSummary(seed.store, seed.briefId, seed.runId);
+    const { grid: _omitGrid, ...legacyBase } = before;
+    const legacy = { ...legacyBase, variantCount: 6 };
+
+    await expect(
+      repostprocessRun({
+        store: seed.store,
+        briefId: seed.briefId,
+        runId: seed.runId,
+        summary: legacy,
+        brief: seed.brief,
+        palette: seed.palette,
+      }),
+    ).rejects.toMatchObject({ name: 'RerunError', kind: 'variant-count-mismatch' });
+  });
+
+  it('treats a post-generation brief grid change as a no-op (persisted-grid-anchored reversal)', async () => {
+    // REVERSAL (2026-07-08, ADR 0052): the rerun re-slice no
+    // longer follows the brief — it anchors on the run's persisted actual grid.
+    // So widening the brief to 2×3 AFTER generation does NOT reshape the crops;
+    // re-post-process succeeds and reproduces the stored 2×2 (4 variants),
+    // byte-identical to generation. Human gallery review — not the rerun guard —
+    // is the grid gate. (Under the old force-count guard this reshape was
+    // rejected; that behaviour is intentionally gone.)
+    const seed = await seedRun({ repoRoot: freshRoot() });
+    const before = await loadRunSummary(seed.store, seed.briefId, seed.runId);
+    const originalProcessed = await processedBytes(seed, 0);
     const widenedBrief = {
       ...seed.brief,
       generation: {
@@ -183,51 +238,23 @@ describe('repostprocessRun', () => {
         sheet: { ...seed.brief.generation.sheet, cols: 3 },
       },
     };
-    // Precondition: the brief now expects 6 variants while the stored sheet
-    // still slices to 4.
     expect(variantCount(widenedBrief)).toBe(6);
 
-    await expect(
-      repostprocessRun({
-        store: seed.store,
-        briefId: seed.briefId,
-        runId: seed.runId,
-        summary: before,
-        brief: widenedBrief,
-        palette: seed.palette,
-      }),
-    ).rejects.toMatchObject({ name: 'RerunError', kind: 'variant-count-mismatch' });
-  });
+    const result = await repostprocessRun({
+      store: seed.store,
+      briefId: seed.briefId,
+      runId: seed.runId,
+      summary: before,
+      brief: widenedBrief,
+      palette: seed.palette,
+    });
 
-  it('rejects a same-count grid reshape (2x2 → 1x4) even though the variant count is unchanged', async () => {
-    // Generation stored a 2x2 (4-cell) sheet. Reshaping the brief to 1x4 keeps
-    // the variant COUNT at 4 but re-slices the sheet into completely different
-    // crops, which would silently overwrite the wrong per-variant entries. A
-    // count-only guard misses this; comparing the stored generation-time grid
-    // STRUCTURE (rows/cols/emptyCells) against the current brief catches it.
-    const seed = await seedRun({ repoRoot: freshRoot() });
-    const before = await loadRunSummary(seed.store, seed.briefId, seed.runId);
-    const reshapedBrief = {
-      ...seed.brief,
-      generation: {
-        ...seed.brief.generation,
-        sheet: { ...seed.brief.generation.sheet, rows: 1, cols: 4 },
-      },
-    };
-    // Precondition: the count is unchanged (4) but the layout differs.
-    expect(variantCount(reshapedBrief)).toBe(variantCount(seed.brief));
-    expect(variantCount(reshapedBrief)).toBe(4);
-
-    await expect(
-      repostprocessRun({
-        store: seed.store,
-        briefId: seed.briefId,
-        runId: seed.runId,
-        summary: before,
-        brief: reshapedBrief,
-        palette: seed.palette,
-      }),
-    ).rejects.toMatchObject({ name: 'RerunError', kind: 'variant-count-mismatch' });
+    // The re-slice reproduced the persisted 2×2 (4 variants), unaffected by the
+    // brief widening; the processed bytes are byte-identical to generation.
+    expect(result.summary.variantCount).toBe(4);
+    expect(result.summary.grid).toEqual({ rows: 2, cols: 2, emptyCells: [] });
+    expect(result.summary.candidates).toHaveLength(4);
+    expect(await processedBytes(seed, 0)).toEqual(originalProcessed);
   });
 });
 

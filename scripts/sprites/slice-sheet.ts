@@ -20,14 +20,16 @@ import type { Brief } from './brief-schema.js';
  * what `approve` ships to the catalog.
  *
  * One exception, for the generation path only: callers may pass `expectedGrid`
- * (the brief's commanded rows×cols). The brief contractually commands a regular
- * grid, so it is the authoritative cell COUNT. When band detection over-segments
- * an axis — as happens for gappy subjects whose interior negative space reads as
- * a spurious gutter — the slicer keeps cutting at the REAL detected gutters but
- * drops the spurious one(s), choosing the subset that splits the axis most evenly;
- * when it under-segments, it falls back to a uniform split. Either way it emits
- * exactly the commanded count and every sheet reaches human gallery review (the
- * intended quality gate). The debugger passes no `expectedGrid` and is unchanged.
+ * (the brief's commanded rows×cols). It is used ONLY as a soft tiebreak anchor —
+ * NEVER a hard constraint. The slicer never invents a cut: it cuts only at REAL
+ * detected gutters, trims runt edge cells (a partial sprite the model tacked on
+ * past the last full gutter — the "chopped right side" symptom), then picks the
+ * cut subset that yields the most same-sized sprites (interior spurious gutters
+ * fall out because dropping them is more even). The emitted grid is therefore
+ * DATA-DRIVEN from the sheet, at its HONEST count, which is carried to human
+ * gallery review — the intended quality gate — rather than force-fitting the
+ * commanded count by cutting through art. The debugger passes no `expectedGrid`
+ * and is byte-for-byte unchanged. See ADR 0052.
  *
  * Why slice before postprocessing rather than passing the whole sheet through
  * the existing postprocessor: the sheet's background-removal floodfill would
@@ -66,6 +68,27 @@ export interface SliceMap {
   readonly cells: readonly SliceBbox[];
 }
 
+/**
+ * Result of slicing a sheet against a brief (generation / rerun paths). Carries
+ * the extracted cell buffers PLUS the DATA-DRIVEN grid the slicer actually landed
+ * on (which may differ from the brief's commanded grid — a runt edge trimmed or a
+ * spurious gutter merged) so callers persist the ACTUAL grid/count, not the
+ * commanded one. `variantCount` is a sibling of `grid` (not nested) so a
+ * persisted `RunSummary.grid` keeps its `{ rows, cols, emptyCells }` shape.
+ */
+export interface BriefSliceResult {
+  /** One PNG buffer per non-empty cell, in reading order. */
+  readonly cells: Buffer[];
+  /** The grid the slicer actually landed on — from the sheet, not the brief. */
+  readonly grid: {
+    readonly rows: number;
+    readonly cols: number;
+    readonly emptyCells: ReadonlyArray<readonly [number, number]>;
+  };
+  /** Number of non-empty cells (`= cells.length`) — the ACTUAL variant count. */
+  readonly variantCount: number;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Content-aware band slicer
 //
@@ -84,10 +107,11 @@ export interface SliceOptions {
   readonly emptyCells?: ReadonlyArray<readonly [number, number]>;
   /**
    * The grid the sheet was *commanded* to use (from the brief). When supplied,
-   * the slicer reconciles each axis to this cell count: an over-segmented axis
-   * drops spurious gutters (cutting only at real detected gutters, most-even
-   * subset), an under-segmented axis falls back to a uniform split. Omit it (as
-   * the debugger does) to keep pure content-aware behaviour. See `computeSliceMap`.
+   * it is a SOFT anchor only: the slicer still cuts exclusively at real detected
+   * gutters, trims runt edge cells, and picks the most-uniform cut subset, using
+   * this count solely to break ties between equally-uniform candidates. Omit it
+   * (as the debugger does) to keep pure content-aware behaviour. See
+   * `computeSliceMap` and `chooseAxisCuts`.
    */
   readonly expectedGrid?: { readonly rows: number; readonly cols: number };
 }
@@ -214,29 +238,60 @@ function uniqueSorted(values: readonly number[]): number[] {
   return [...new Set(values)].sort((a, b) => a - b);
 }
 
-/**
- * Evenly divide `[start, end]` into exactly `n` cells, returning the `n + 1`
- * integer cut positions. Used by the under-segmentation fallback in
- * `computeSliceMap` when there are too few real gutters to cut on.
- *
- * Rounding evenly-spaced positions can collapse two adjacent cuts onto the same
- * pixel when `end - start` is close to `n` (e.g. a near-empty sheet trimmed to a
- * 3px content span split into 4 cells), which would yield a zero-width/height
- * cell and crash extraction. Callers widen the span to the full axis before that
- * happens (see `reconcileAxisCuts`); as a belt-and-braces guarantee we also clamp
- * the positions to be strictly increasing here, so this always yields exactly `n`
- * cells that are each ≥1px.
- */
-function uniformCuts(start: number, end: number, n: number): number[] {
-  const cuts = new Array<number>(n + 1);
-  for (let i = 0; i <= n; i++) {
-    cuts[i] = Math.round(start + ((end - start) * i) / n);
-  }
-  for (let i = 1; i <= n; i++) {
-    if (cuts[i]! <= cuts[i - 1]!) cuts[i] = cuts[i - 1]! + 1;
-  }
-  return cuts;
+// ─────────────────────────────────────────────────────────────────────────────
+// Data-driven grid selection (generation path only)
+//
+// The slicer NEVER invents a cut. With a soft `expectedGrid` anchor it cuts only
+// at REAL detected gutters, then (a) trims runt edge cells — an incomplete
+// partial sprite the model tacked on past the last full gutter, the "chopped
+// right side" symptom — and (b) picks the cut subset yielding the most same-size
+// sprites, using the commanded count only as a tiebreak anchor. All math is
+// integer / cross-multiplied (no floats, no Math.random, no Date.now) so a given
+// sheet always slices identically. See ADR 0052.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Cell sizes (px) between consecutive cut positions: `cuts[i+1] - cuts[i]`. */
+function consecutiveDiffs(cuts: readonly number[]): number[] {
+  const out: number[] = [];
+  for (let i = 1; i < cuts.length; i++) out.push(cuts[i]! - cuts[i - 1]!);
+  return out;
 }
+
+/**
+ * Lower median of `sizes` — the element at `floor((n-1)/2)` of the ascending
+ * sort. Using the LOWER median (not the mean of the two middles) keeps the
+ * reference an integer and biased toward the smaller-but-regular cell, so a
+ * single oversized merged blob can't drag the "regular" reference up past the
+ * true cell size. `sizes` must be non-empty.
+ */
+function lowerMedian(sizes: readonly number[]): number {
+  const sorted = [...sizes].sort((a, b) => a - b);
+  return sorted[Math.floor((sorted.length - 1) / 2)]!;
+}
+
+// Edge-runt trim + regularity thresholds, as integer ratios (cross-multiplied at
+// the call sites so there is no float division). Named so a human can retune the
+// policy without hunting magic numbers.
+//
+//   RUNT_SMALL:  a runt edge cell is "too small" when size < 3/5 (60%) of the
+//     lower median; its inward neighbour must itself be "full" (>= 60% of median)
+//     so we never trim when BOTH edge cells are small (a genuinely tiny grid).
+//   RUNT_MERGE:  phantom-merge guard — if runt + neighbour together fall within
+//     2/5 (40%) of ONE median cell they are the two halves of a single sprite
+//     split by a spurious interior gutter; keep the CELL (the count search drops
+//     the false CUT instead).
+//   RUNT_PAIR:   a two-cell axis has no reliable median, so trim the smaller cell
+//     only when it is < 1/2 (50%) of the larger.
+//   REGULAR_TOL: a cell counts as "regular" (same-size) for the uniformity score
+//     when |size - median| <= 2/5 (40%) of the median.
+const RUNT_SMALL_NUM = 3;
+const RUNT_SMALL_DEN = 5;
+const RUNT_MERGE_NUM = 2;
+const RUNT_MERGE_DEN = 5;
+const RUNT_PAIR_NUM = 1;
+const RUNT_PAIR_DEN = 2;
+const REGULAR_TOL_NUM = 2;
+const REGULAR_TOL_DEN = 5;
 
 /**
  * From `candidates` (interior cut positions, strictly sorted and inside
@@ -321,35 +376,151 @@ function selectEvenCuts(
 }
 
 /**
- * Reconcile one axis's content-aware cut array (`[start, ...interior, end]`) to
- * the brief's commanded cell count. An over-segmented axis drops spurious gutters
- * via `selectEvenCuts` (cutting only at real detected gutters); an under-segmented
- * axis falls back to a uniform split. Returns the reconciled `targetCells + 1`
- * cut positions.
+ * Decide whether the leading or trailing cell of `sizes` is a runt edge cell to
+ * drop (a partial sprite tacked on past the last full gutter), or `null` to keep
+ * both edges. See the RUNT_* constants for the exact policy.
  */
-function reconcileAxisCuts(
-  axisCuts: readonly number[],
-  start: number,
-  end: number,
-  targetCells: number,
-  axisMax: number,
-): number[] {
-  const interior = axisCuts.slice(1, -1);
-  const interiorNeeded = targetCells - 1;
-  if (interior.length === interiorNeeded) return [...axisCuts];
-  if (interior.length > interiorNeeded) {
-    return selectEvenCuts(interior, start, end, targetCells);
+function pickRuntEdge(sizes: readonly number[]): 'lead' | 'tail' | null {
+  const n = sizes.length;
+  if (n <= 1) return null;
+  if (n === 2) {
+    // No reliable median for two cells: trim the smaller only if it is < 50% of
+    // the larger. Tie (equal sizes) → keep both.
+    const a = sizes[0]!;
+    const b = sizes[1]!;
+    const min = Math.min(a, b);
+    const max = Math.max(a, b);
+    if (min * RUNT_PAIR_DEN >= max * RUNT_PAIR_NUM) return null;
+    return a <= b ? 'lead' : 'tail';
   }
-  // Under-segmented: the subjects drew merged, so there are no real gutters to
-  // cut on. Divide evenly to still emit the commanded count. Prefer the trimmed
-  // content span, but when it is too narrow to hold `targetCells` cells of ≥1px
-  // — a near-empty or degenerate generation — widen to the full axis so we still
-  // produce the commanded count for human review instead of collapsing adjacent
-  // cuts into a zero-width cell (which would crash extraction). This bad-grid
-  // case is exactly what reconciliation must carry through to the gallery, so it
-  // must not throw.
-  const [spanStart, spanEnd] = end - start >= targetCells ? [start, end] : [0, axisMax];
-  return uniformCuts(spanStart, spanEnd, targetCells);
+  const median = lowerMedian(sizes);
+  const leadRunt = isEdgeRunt(sizes[0]!, sizes[1]!, median);
+  const tailRunt = isEdgeRunt(sizes[n - 1]!, sizes[n - 2]!, median);
+  if (leadRunt && tailRunt) {
+    // Drop the smaller runt first; tie → the leading edge (deterministic).
+    return sizes[0]! <= sizes[n - 1]! ? 'lead' : 'tail';
+  }
+  if (leadRunt) return 'lead';
+  if (tailRunt) return 'tail';
+  return null;
+}
+
+/**
+ * True when `size` is a tacked-on partial edge cell that should be dropped: too
+ * small (< 60% median), its inward `neighbour` is full (>= 60% median), and the
+ * two are NOT plausibly one median-sized sprite split by a spurious interior
+ * gutter (`phantomHalf`).
+ *
+ * `phantomHalf` is a deliberately BROAD, conservative KEEP guard — not a precise
+ * 0.5/0.5 half-detector. Whenever `size + neighbour` lands within 40% of ONE
+ * median cell, the pair is treated as possibly-real art and KEPT for human
+ * review rather than trimmed. This intentionally errs toward keeping an ambiguous
+ * edge cell: dropping it would risk chopping real art off the edge — the exact
+ * failure this salvage path exists to prevent (ADR 0052). Trimming only ever
+ * drops a cell bounded by real DETECTED gutters, so it never cuts THROUGH
+ * foreground; the only question here is keep-vs-drop of an ambiguous edge, and
+ * the bias is deliberately KEEP.
+ */
+function isEdgeRunt(size: number, neighbour: number, median: number): boolean {
+  const tooSmall = size * RUNT_SMALL_DEN < median * RUNT_SMALL_NUM;
+  const neighbourFull = neighbour * RUNT_SMALL_DEN >= median * RUNT_SMALL_NUM;
+  const phantomHalf =
+    Math.abs(size + neighbour - median) * RUNT_MERGE_DEN <= median * RUNT_MERGE_NUM;
+  return tooSmall && neighbourFull && !phantomHalf;
+}
+
+/**
+ * Trim runt edge cells from a cut array by dropping the outermost cut position,
+ * iteratively, until neither edge is a runt or only one cell remains. Operates
+ * on cut POSITIONS so every surviving cut stays at a real detected gutter.
+ */
+function trimEdgeRunts(cuts: readonly number[]): number[] {
+  let arr = [...cuts];
+  for (;;) {
+    if (arr.length - 1 <= 1) break; // 1 cell (2 cuts) left → nothing to trim
+    const edge = pickRuntEdge(consecutiveDiffs(arr));
+    if (edge === null) break;
+    arr = edge === 'lead' ? arr.slice(1) : arr.slice(0, -1);
+  }
+  return arr;
+}
+
+interface AxisScore {
+  readonly regularCount: number;
+  readonly anchorDelta: number;
+  readonly dispersion: number;
+  readonly cells: number;
+}
+
+/**
+ * Score a candidate `k`-cell partition: how many cells are "regular" (within
+ * ±40% of the lower median), how far the count is from the commanded anchor, and
+ * the total squared size deviation. Pure integer math.
+ */
+function scoreAxisCuts(cuts: readonly number[], expectedCells: number): AxisScore {
+  const sizes = consecutiveDiffs(cuts);
+  const median = lowerMedian(sizes);
+  let regularCount = 0;
+  let dispersion = 0;
+  for (const s of sizes) {
+    if (Math.abs(s - median) * REGULAR_TOL_DEN <= median * REGULAR_TOL_NUM) regularCount++;
+    const d = s - median;
+    dispersion += d * d;
+  }
+  return {
+    regularCount,
+    anchorDelta: Math.abs(sizes.length - expectedCells),
+    dispersion,
+    cells: sizes.length,
+  };
+}
+
+/**
+ * Strict "is `a` a better partition than `b`" total order:
+ *   1. more regular (same-size) cells                         [PRIMARY]
+ *   2. closer to the commanded count (soft anchor) — BEFORE dispersion, so a
+ *      legitimately uneven 2-cell axis (e.g. a 40/60 split) is not collapsed to
+ *      a single big cell just because one cell scores dispersion 0
+ *   3. lower size dispersion (tighter cell sizes)
+ *   4. more cells (prefer keeping real sprites over merging)
+ * A full tie keeps the incumbent; the caller seeds with the max-cell (untrimmed)
+ * candidate and the leftmost `selectEvenCuts` subset within each `k`, so slicing
+ * is deterministic.
+ */
+function betterAxisScore(a: AxisScore, b: AxisScore): boolean {
+  if (a.regularCount !== b.regularCount) return a.regularCount > b.regularCount;
+  if (a.anchorDelta !== b.anchorDelta) return a.anchorDelta < b.anchorDelta;
+  if (a.dispersion !== b.dispersion) return a.dispersion < b.dispersion;
+  return a.cells > b.cells;
+}
+
+/**
+ * Choose one axis's cut positions from the REAL detected gutters. Never invents a
+ * cut. First trims runt edge cells (`trimEdgeRunts`), then over the trimmed cuts
+ * picks the cell count `k ∈ [1, detected]` maximising size-uniformity, using
+ * `expectedCells` (the brief's commanded count) only as a soft tiebreak anchor.
+ * For `k < detected` the most-even `k`-subset comes from `selectEvenCuts` (which
+ * merges spurious interior gutters for free). Returns `k + 1` cut positions.
+ */
+function chooseAxisCuts(axisCuts: readonly number[], expectedCells: number): number[] {
+  const trimmed = trimEdgeRunts(axisCuts);
+  const start = trimmed[0]!;
+  const end = trimmed[trimmed.length - 1]!;
+  const interior = trimmed.slice(1, -1);
+  const detected = trimmed.length - 1; // cell count after trim (>= 1)
+  // Seed with the full trimmed grid (k = detected, the most cells); a smaller k
+  // must be STRICTLY better to win, so ties prefer keeping real sprites.
+  let bestCuts = trimmed;
+  let bestScore = scoreAxisCuts(trimmed, expectedCells);
+  for (let k = 1; k < detected; k++) {
+    const cuts = selectEvenCuts(interior, start, end, k);
+    const score = scoreAxisCuts(cuts, expectedCells);
+    if (betterAxisScore(score, bestScore)) {
+      bestScore = score;
+      bestCuts = cuts;
+    }
+  }
+  return bestCuts;
 }
 
 /**
@@ -401,43 +572,45 @@ export function computeSliceMap(sheetPng: Buffer, options: SliceOptions = {}): S
   let cols = xCuts.length - 1;
   let rows = yCuts.length - 1;
 
-  // Generation reconciliation: reconcile the detected grid to the brief's
-  // commanded rows×cols.
+  // Generation grid selection: when the brief supplies its commanded rows×cols
+  // via `expectedGrid`, choose each axis's cuts DATA-DRIVEN from the sheet, using
+  // the commanded count only as a soft tiebreak anchor.
   //
-  // `build-prompt` commands a *regular* rows×cols grid of same-size cells (see
-  // sheetLayoutBlock), so the brief's declared grid is the authoritative cell
-  // COUNT. Content-aware detection can still disagree with that count: a gappy
-  // subject (e.g. a rubble pile) leaves interior negative space that reads as a
-  // spurious full-length background band, so a commanded 4×4 sheet is detected as
-  // 5×4 and the `cells === variantCount(brief)` gate would reject a sheet that
-  // actually holds the right number of subjects.
+  // `build-prompt` commands a *regular* rows×cols grid (see sheetLayoutBlock), but
+  // the model does not always draw exactly that: a gappy subject leaves interior
+  // negative space that reads as a spurious gutter (over-segmentation), and a
+  // wide 3:1 sheet whose subjects don't fill the last column leaves a runt partial
+  // sprite on the right edge (the "chopped right side" symptom). The OLD policy
+  // force-fit the commanded count — inventing uniform cuts straight through art
+  // when detection under-segmented. We now NEVER invent a cut:
+  //   • `trimEdgeRunts` drops a runt leading/trailing partial CELL.
+  //   • `chooseAxisCuts` keeps only REAL detected gutters and picks the subset
+  //     giving the most same-size cells (a spurious interior gutter falls out
+  //     because dropping it is more uniform), anchored softly to the commanded
+  //     count for ties.
   //
-  // Per axis, independently (see `reconcileAxisCuts`):
-  //   • detected interior cuts == commanded − 1  → already correct, keep as-is.
-  //   • detected interior cuts >  commanded − 1  → over-segmented. Keep cutting at
-  //     REAL detected gutters but drop the spurious one(s): pick the subset that
-  //     splits the axis most evenly (`selectEvenCuts`). No theoretical/uniform
-  //     positions are used, so slightly off-centre gutters never clip art, and a
-  //     phantom interior gutter falls out because keeping it is less even.
-  //   • detected interior cuts <  commanded − 1  → under-segmented (subjects drew
-  //     merged, no real gutter between them). There are no true boundaries to cut
-  //     on, so fall back to a uniform even split to still emit the commanded count.
-  //
-  // Either reconcile path always yields exactly the commanded count, so the
-  // generation count gate passes and every sheet reaches human gallery review —
-  // the intended quality gate (product decision 2026-07-07): occasional
-  // half-sprite edge artifacts from a genuinely-off layout are cheap for a human
-  // to reject, and are preferable to auto-rejecting honest-but-gappy sheets. The
-  // debugger path passes no `expectedGrid` and is byte-for-byte unchanged.
+  // The emitted grid is the HONEST data-driven grid at its real count; the
+  // generation gate (see generate-one.ts) accepts it and carries it to human
+  // gallery review — the intended quality gate (product decision 2026-07-08,
+  // ADR 0052, reversing the 2026-07-07 force-count
+  // decision). The debugger path passes no `expectedGrid` and is byte-for-byte
+  // unchanged.
   const expectedGrid = options.expectedGrid;
   if (expectedGrid) {
-    gridXCuts = reconcileAxisCuts(xCuts, xStart, xEnd, expectedGrid.cols, sheet.width);
-    gridYCuts = reconcileAxisCuts(yCuts, yStart, yEnd, expectedGrid.rows, sheet.height);
+    gridXCuts = chooseAxisCuts(xCuts, expectedGrid.cols);
+    gridYCuts = chooseAxisCuts(yCuts, expectedGrid.rows);
     cols = gridXCuts.length - 1;
     rows = gridYCuts.length - 1;
   }
 
-  const emptyCells = options.emptyCells ?? [];
+  // Honour the brief's `emptyCells` only when the data-driven grid still matches
+  // the commanded grid. When the slicer lands on a different grid (a runt edge
+  // trimmed or a spurious gutter merged), the brief's empty-cell (row,col)
+  // coordinates reference the OLD commanded grid and would blank the wrong cells,
+  // so they are dropped. The debugger path (no `expectedGrid`) always honours them.
+  const gridMatchesCommanded =
+    !expectedGrid || (rows === expectedGrid.rows && cols === expectedGrid.cols);
+  const emptyCells = gridMatchesCommanded ? (options.emptyCells ?? []) : [];
   const emptyKeys = new Set(emptyCells.map(([r, c]) => `${r},${c}`));
 
   const cells: SliceBbox[] = [];
@@ -445,14 +618,11 @@ export function computeSliceMap(sheetPng: Buffer, options: SliceOptions = {}): S
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       // Clamp every cell to the sheet so extraction can never read out of
-      // bounds. For a well-formed sheet the cuts already lie within
-      // [0, width]/[0, height], so `x0`/`w` are unchanged and the debugger path
-      // stays byte-for-byte identical. This only bites the degenerate case where
-      // the commanded grid is larger than the sheet itself (`axisMax <
-      // targetCells`): `uniformCuts` then force-increments cuts past the axis,
-      // which cannot arise from a real brief (nativeCanvas ≥ 256, grid ≤ 8×8) but
-      // must still not throw — the bad sheet is carried through to human gallery
-      // review, per the slicer's product contract. See `reconcileAxisCuts`.
+      // bounds. Cut positions come exclusively from real detected gutters within
+      // [0, width]/[0, height], so `x0`/`w` are unchanged for every well-formed
+      // sheet and the debugger path stays byte-for-byte identical. This clamp is
+      // a pure belt-and-braces guard against a degenerate sheet (e.g. zero
+      // content span) and never fires on real generation output.
       const rawX0 = gridXCuts[c]!;
       const rawY0 = gridYCuts[r]!;
       const x0 = Math.min(Math.max(0, rawX0), Math.max(0, sheet.width - 1));
@@ -489,28 +659,66 @@ export function computeSliceMap(sheetPng: Buffer, options: SliceOptions = {}): S
  * order.
  */
 export function sliceSheet(sheetPng: Buffer, options: SliceOptions = {}): Buffer[] {
-  const sheet = PNG.sync.read(sheetPng);
-  const sliceMap = computeSliceMap(sheetPng, options);
-  const out: Buffer[] = [];
-  for (const cell of sliceMap.cells) {
-    if (cell.empty) continue;
-    out.push(extractCell(sheet, cell.x0, cell.y0, cell.w, cell.h));
-  }
-  return out;
+  return sliceWithMap(sheetPng, options).cells;
 }
 
 /**
- * Convenience wrapper that pulls the grid contract from a brief. `emptyCells`
- * are forwarded as before, and the brief's declared `rows`/`cols` are passed as
- * `expectedGrid`: for a well-formed sheet the content-aware map already matches
- * and is used unchanged, but when a gappy subject over-segments an axis the
- * slicer drops the spurious gutter(s) — cutting at the most-even subset of REAL
- * detected gutters — so it emits the commanded cell count and the sheet reaches
- * human gallery review. See `computeSliceMap`.
+ * Slice a sheet and return the extracted cells PLUS the data-driven grid the
+ * slicer landed on. Shared by the brief-anchored (`sliceSheetFromBrief`) and
+ * persisted-grid-anchored (`sliceSheetWithGrid`) paths so both persist the
+ * ACTUAL grid/count.
  */
-export function sliceSheetFromBrief(sheetPng: Buffer, brief: Brief): Buffer[] {
+function sliceWithMap(sheetPng: Buffer, options: SliceOptions): BriefSliceResult {
+  const sheet = PNG.sync.read(sheetPng);
+  const map = computeSliceMap(sheetPng, options);
+  const cells: Buffer[] = [];
+  const emptyCells: (readonly [number, number])[] = [];
+  for (const cell of map.cells) {
+    if (cell.empty) {
+      emptyCells.push([cell.row, cell.col]);
+      continue;
+    }
+    cells.push(extractCell(sheet, cell.x0, cell.y0, cell.w, cell.h));
+  }
+  return {
+    cells,
+    grid: { rows: map.rows, cols: map.cols, emptyCells },
+    variantCount: cells.length,
+  };
+}
+
+/**
+ * Convenience wrapper that pulls the grid contract from a brief. `emptyCells` are
+ * forwarded, and the brief's declared `rows`/`cols` are passed as the soft
+ * `expectedGrid` anchor. Returns the ACTUAL data-driven grid the slicer landed on
+ * (which may differ from the commanded grid — a runt edge trimmed or a spurious
+ * gutter merged) so the caller persists the real grid/count. See `computeSliceMap`.
+ */
+export function sliceSheetFromBrief(sheetPng: Buffer, brief: Brief): BriefSliceResult {
   const { rows, cols, emptyCells } = brief.generation.sheet;
-  return sliceSheet(sheetPng, { emptyCells, expectedGrid: { rows, cols } });
+  return sliceWithMap(sheetPng, { emptyCells, expectedGrid: { rows, cols } });
+}
+
+/**
+ * Re-slice a stored sheet anchored on a PERSISTED actual grid (rerun path). Uses
+ * the persisted grid's rows/cols as the soft anchor and its `emptyCells`. For a
+ * healthy modern run the deterministic slicer reproduces the persisted grid
+ * exactly (identical crops), so re-postprocess re-derives the same row-major
+ * per-variant entries; a mismatch signals a corrupt stored grid and is caught by
+ * the rerun guard. See `rerun.ts`.
+ */
+export function sliceSheetWithGrid(
+  sheetPng: Buffer,
+  grid: {
+    readonly rows: number;
+    readonly cols: number;
+    readonly emptyCells: ReadonlyArray<readonly [number, number]>;
+  },
+): BriefSliceResult {
+  return sliceWithMap(sheetPng, {
+    emptyCells: grid.emptyCells,
+    expectedGrid: { rows: grid.rows, cols: grid.cols },
+  });
 }
 
 function extractCell(sheet: PNG, x0: number, y0: number, width: number, height: number): Buffer {

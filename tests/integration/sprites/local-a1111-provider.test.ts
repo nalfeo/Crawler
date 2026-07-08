@@ -500,7 +500,7 @@ describe('LocalA1111ImageProvider', () => {
 
     const request = makeRequest();
     const sheet = await provider.generateSheet(request);
-    const cells = sliceSheetFromBrief(sheet, request.brief);
+    const { cells } = sliceSheetFromBrief(sheet, request.brief);
     expect(cells).toHaveLength(4);
   });
 });

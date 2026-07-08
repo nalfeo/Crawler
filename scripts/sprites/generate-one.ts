@@ -9,11 +9,15 @@
  *   1. Load + validate brief, resolve palette, load reference PNGs
  *   2. Expand variations + build the sheet prompt
  *   3. Call provider -> raw multi-variant sheet PNG (bounded retries)
- *   4. Slice the sheet PURELY as a quality gate: assert it yields exactly
- *      `variantCount(brief)` cells, retrying generation on a bad grid. The
- *      sliced cells are NOT post-processed here — slicing is cheap and a
- *      single content-aware path (ADR 0018), so the gate stays in Generate
- *      while the heavy per-variant work moves to PostProcess.
+ *   4. Slice the sheet DATA-DRIVEN as a structural gate: it cuts only at real
+ *      detected gutters (never inventing cuts), trims runt edge cells, and emits
+ *      the sheet's HONEST grid at its real count. The gate rejects only a
+ *      structural failure (zero cells), retrying generation; a count that differs
+ *      from the brief's commanded count is accepted and carried to human gallery
+ *      review (ADR 0052). The sliced cells are NOT
+ *      post-processed here — slicing is cheap and a single content-aware path
+ *      (ADR 0018), so the gate stays in Generate while the heavy per-variant work
+ *      moves to PostProcess.
  *   5. Store the raw sheet(s) + a minimal sheet-only `summary.json`
  *      (no candidates / diversity / chosen / judge fields).
  *
@@ -41,7 +45,7 @@ import type { Brief, PaletteColors } from './brief-schema.js';
 import { buildPrompt, buildSheetPrompt, loadStyleGuide } from './build-prompt.js';
 import { expandVariations } from './expand-variations.js';
 import { loadBrief, type LoadedBrief } from './load-brief.js';
-import { sliceSheetFromBrief } from './slice-sheet.js';
+import { sliceSheetFromBrief, type BriefSliceResult } from './slice-sheet.js';
 import type { ImageProvider, ProviderErrorKind } from './provider/types.js';
 import { ProviderError } from './provider/types.js';
 import type { TextProvider } from './provider/text-types.js';
@@ -173,13 +177,20 @@ export interface GenerateSheetCoreResult {
   readonly referencePngs: Buffer[];
   readonly styleGuide: string;
   /**
-   * The gate-validated variant cells from the stored sheet. Generate slices
-   * PURELY to assert `cells.length === expected`; `runFull` reuses these
-   * buffers so the full pipeline never re-reads the sheet from the store.
+   * The variant cells extracted from the stored sheet, in reading order. Generate
+   * slices the sheet DATA-DRIVEN (never inventing cuts) and gates only on a
+   * structural failure (zero cells); `runFull` reuses these buffers so the full
+   * pipeline never re-reads the sheet from the store. Count is the ACTUAL sliced
+   * count (`identity.variantCount`), which may differ from the commanded count.
    */
   readonly sliced: Buffer[];
   readonly attempts: number;
-  /** `variantCount(brief)` — the gate's expected cell count. */
+  /**
+   * `variantCount(brief)` — the brief's COMMANDED cell count. Retained for
+   * telemetry/logging and as the provider `variants` hint; it is NO LONGER a hard
+   * gate (the slicer emits the sheet's honest count instead). See
+   * ADR 0052.
+   */
   readonly expected: number;
   readonly identity: RunSummaryIdentity;
 }
@@ -317,7 +328,7 @@ export async function generateSheetCore(
   // --- Generate the sheet, with bounded retries on transient grid issues. ---
   let attempts = 0;
   let lastError: ProviderError | undefined;
-  let sliced: Buffer[] | undefined;
+  let sliceResult: BriefSliceResult | undefined;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     attempts++;
     try {
@@ -329,14 +340,21 @@ export async function generateSheetCore(
         variants: expected,
       });
       await store.put(storeKey(`sheet-${pad2(attempt)}.png`), sheet);
-      const cells = sliceSheetFromBrief(sheet, brief);
-      if (cells.length !== expected) {
+      const slice = sliceSheetFromBrief(sheet, brief);
+      // Structural-only gate (ADR 0052): the slicer
+      // is data-driven and never invents cuts, so it emits the sheet's HONEST
+      // grid at its real count — which may differ from the brief's commanded
+      // count when the model drew a runt edge or a gappy subject. We therefore
+      // NO LONGER reject on a count mismatch (that reversed 2026-07-07 decision
+      // force-fit the count by cutting through art). We reject only a structural
+      // failure — zero cells — and carry the honest grid to human gallery review.
+      if (slice.cells.length === 0) {
         throw new ProviderError(
           'bad-grid',
-          `expected ${expected} cells, slicer produced ${cells.length}`,
+          `slicer produced 0 cells from the generated sheet (structural failure)`,
         );
       }
-      sliced = cells;
+      sliceResult = slice;
       break;
     } catch (err) {
       const provErr = asProviderError(err);
@@ -345,7 +363,7 @@ export async function generateSheetCore(
       if (attempt + 1 >= maxAttempts) throw provErr;
     }
   }
-  if (!sliced) {
+  if (!sliceResult) {
     throw lastError ?? new Error('generateSheetCore: no sheet produced and no error captured');
   }
 
@@ -359,11 +377,16 @@ export async function generateSheetCore(
     createdAt: createdAt.toISOString(),
     promptHash: shortPromptHash(prompt),
     attempts,
-    variantCount: expected,
+    // ACTUAL non-empty cell count the slicer produced (data-driven), not the
+    // brief's commanded count. Carried to the gallery + downstream indexing.
+    variantCount: sliceResult.variantCount,
+    // ACTUAL data-driven grid the slicer landed on (see slice-sheet.ts). Persisted
+    // so re-postprocess re-slices the stored sheet the same way; may differ from
+    // brief.generation.sheet when a runt edge was trimmed / a spurious gutter merged.
     grid: {
-      rows: brief.generation.sheet.rows,
-      cols: brief.generation.sheet.cols,
-      emptyCells: brief.generation.sheet.emptyCells,
+      rows: sliceResult.grid.rows,
+      cols: sliceResult.grid.cols,
+      emptyCells: sliceResult.grid.emptyCells,
     },
     variations: {
       seed: expansion.seed,
@@ -384,7 +407,7 @@ export async function generateSheetCore(
     palette,
     referencePngs,
     styleGuide,
-    sliced,
+    sliced: sliceResult.cells,
     attempts,
     expected,
     identity,

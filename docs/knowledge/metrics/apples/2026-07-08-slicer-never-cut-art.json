@@ -1,0 +1,11 @@
+{
+  "date": "2026-07-08",
+  "session": "slicer-never-cut-art",
+  "slug": "slicer-never-cut-art",
+  "task": "Slicer cuts only at real gutters — data-driven grid salvage (never chop foreground art on the generation path)",
+  "estimated_apples": 4,
+  "actual_apples": 4,
+  "delta": 0,
+  "verdict": "exact",
+  "notes": "Held at 4. Genuinely multi-subsystem build-time tooling: a new content-aware axis-cut search in slice-sheet.ts (trimEdgeRunts + chooseAxisCuts + betterAxisScore, all integer math, k<=detected so a cut is never invented), a relaxed generation count gate in generate-one.ts, and a persisted-grid-anchored re-run carry-forward guard in rerun.ts — plus the byte-identical bare /api/slice-map debugger path preserved. Reverses the 2026-07-07 force-count reconciliation, so an ADR (0052) was required. The full tier-4 harness was the bulk of the effort: dual-plan synthesis (gpt-5.4 + gemini, opus judge) + an adversarial plan review (gpt-5.5, 4 alternatives argued, 8 concerns — 3 blocking caught before code), then a 3-model code review (claude-sonnet-4.6 + gpt-5.3-codex + gemini-3.1-pro) with a gpt-5.4 adjudicator: 2 reviewers clean, 1 concern (phantomHalf parameterization) empirically adjudicated INVALID/low-severity (would drop ambiguous edge art, contradicting the never-drop-art directive) — resolved with a clarity comment, not a behavior change. Root-caused on the real welcome-room-shop-table-v2 sheet with an integer pixel probe (1806 -> 0 foreground pixels on interior cuts). 31 unit tests + 3 integration test files. No src/ system, so no lab; observe-before-done is the deterministic pixel probe + the full slicer-blast-radius integration suite. On-estimate: the review discipline and root-cause probing are inherent to the tier, not overruns."
+}
