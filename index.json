@@ -1,5 +1,16 @@
 [
   {
+    "commit": "51b0ec878534ffd2eaaac820ab2b51d96e2766f9",
+    "commitDate": "2026-07-08T06:36:28Z",
+    "commitSubject": "lab: wire real slime/rat art into UX Snapshot lab (#901)",
+    "capturedAt": "2026-07-08T07:18:52.298Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28923110056",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/51b0ec878534ffd2eaaac820ab2b51d96e2766f9.json"
+  },
+  {
     "commit": "94bf9f6220256bdfdc5ec9135151e448a3535f3f",
     "commitDate": "2026-07-08T05:48:13Z",
     "commitSubject": "fix(security): rename fused test files to avoid secret-scanner false positive (#899)",
