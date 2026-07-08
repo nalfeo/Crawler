@@ -2170,5 +2170,44 @@
     "frame": 0,
     "col": 0,
     "row": 0
+  },
+  {
+    "id": "generated:batfolk-boss-var-3",
+    "kind": "sprite",
+    "label": "batfolk-boss-var-3",
+    "description": "Generated sprite from brief: batfolk-boss.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "batfolk-boss-var-3",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/batfolk-boss-var-3.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:cactusfolk-boss-var-1",
+    "kind": "sprite",
+    "label": "cactusfolk-boss-var-1",
+    "description": "Generated sprite from brief: cactusfolk-boss.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "cactusfolk-boss-var-1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/cactusfolk-boss-var-1.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:ratfolk-boss-var-0",
+    "kind": "sprite",
+    "label": "ratfolk-boss-var-0",
+    "description": "Generated sprite from brief: ratfolk-boss.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "ratfolk-boss-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/ratfolk-boss-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
   }
 ]
