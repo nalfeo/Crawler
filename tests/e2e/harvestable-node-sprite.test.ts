@@ -76,5 +76,20 @@ describe('Harvestable node-sprite render guard', () => {
       `all ${summary.nodeEntities} harvestable nodes should render a generated sprite (no circle fallback); ` +
         `saw ${summary.spriteImages} sprite Images`,
     ).toBe(summary.nodeEntities);
+
+    // Per-def: every harvestable TYPE that spawned nodes must render all of them
+    // as sprites. A type-specific texture miss (one brief unresolved) could pass
+    // the aggregate count above if another type over-counted, so pin each def.
+    expect(
+      summary.byDef.length,
+      'at least one harvestable def should have live nodes on Floor 1',
+    ).toBeGreaterThan(0);
+    for (const def of summary.byDef) {
+      expect(
+        def.spriteImages,
+        `harvestable '${def.defId}' (brief ${def.briefId}) should render all ${def.nodeEntities} ` +
+          `of its live nodes as sprites; saw ${def.spriteImages}`,
+      ).toBe(def.nodeEntities);
+    }
   });
 });

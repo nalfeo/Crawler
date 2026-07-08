@@ -1426,17 +1426,18 @@ describe('createPhaserBridge', () => {
     // A harvestable node carries the Harvestable tag (→ 'harvestable' render kind),
     // a Position, and a Sprite whose stored `variantRoll` picks the art variant.
     // defIndex 0 === crimson-mushroom, which maps to brief `crimson-mushroom-v1`.
-    function spawnCrimsonNode(
+    function spawnNode(
       world: ReturnType<typeof createTestWorld>,
       xFt: number,
       yFt: number,
+      defIndex: number,
     ): number {
       const node = addEntity(world.ecs);
       addComponent(world.ecs, node, set(Position, { x: xFt, y: yFt }));
       addComponent(
         world.ecs,
         node,
-        set(Harvestable, { defIndex: 0, durationMs: 3_000, progressMs: 0 }),
+        set(Harvestable, { defIndex, durationMs: 3_000, progressMs: 0 }),
       );
       addComponent(
         world.ecs,
@@ -1444,6 +1445,14 @@ describe('createPhaserBridge', () => {
         set(Sprite, { textureId: 0, width: 16, height: 16, variantRoll: 0, sizeScale: 1 }),
       );
       return node;
+    }
+
+    function spawnCrimsonNode(
+      world: ReturnType<typeof createTestWorld>,
+      xFt: number,
+      yFt: number,
+    ): number {
+      return spawnNode(world, xFt, yFt, 0);
     }
 
     function crimsonMushroomRegistry(): ReturnType<typeof buildGeneratedSpriteRegistry> {
@@ -1514,6 +1523,40 @@ describe('createPhaserBridge', () => {
       expect(
         graphics.some((g) => g.fillCalls.some((c) => c.color === HARVESTABLE_DEFS[0]!.tint)),
       ).toBe(true);
+    });
+
+    it('mixes sprite + circle in one sync: wired node → Image, unwired node → circle fallback', () => {
+      // Registry only has crimson-mushroom art, so a crimson node (defIndex 0)
+      // is wired but an azure node (defIndex 1) is not. A single sync() pass must
+      // route each independently — the wired node draws its Image and NO circle,
+      // the unwired node draws its circle and NO Image. This pins the per-node
+      // fallback contract (a partially-wired floor renders correctly).
+      const { scene, images, graphics } = createSceneStub({
+        kenneyLoaded: true,
+        withGraphics: true,
+      });
+      (scene.game as unknown) = { registry: { get: () => crimsonMushroomRegistry() } };
+      const bridge = createPhaserBridge(scene);
+      const world = createTestWorld();
+      spawnCrimsonNode(world, 10, 10); // wired → crimson-mushroom-v1 art exists.
+      spawnNode(world, 20, 20, 1); // azure-mushroom → no art in registry → circle.
+
+      bridge.sync(world);
+
+      // Exactly one Image, for the wired crimson node only.
+      expect(images).toHaveLength(1);
+      expect(images[0]?.textureKey).toBe('crimson-mushroom-v1-var-3');
+
+      // The unwired azure node drew its tinted circle (azure tint 0x3377cc)...
+      expect(
+        graphics.some((g) => g.fillCalls.some((c) => c.color === HARVESTABLE_DEFS[1]!.tint)),
+        'unwired azure node should draw its procedural circle',
+      ).toBe(true);
+      // ...while the wired crimson node did NOT draw a circle (crimson tint absent).
+      expect(
+        graphics.some((g) => g.fillCalls.some((c) => c.color === HARVESTABLE_DEFS[0]!.tint)),
+        'wired crimson node should render a sprite, not a circle',
+      ).toBe(false);
     });
   });
 });

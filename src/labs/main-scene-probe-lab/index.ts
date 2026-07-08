@@ -133,6 +133,23 @@ export interface MainSceneState {
 }
 
 /**
+ * Per-def render tally for a single harvestable node type. Lets the e2e assert
+ * that *each* type with live nodes renders all of them as sprites — a
+ * type-specific texture miss (e.g. one brief unresolved) that the aggregate
+ * `spriteImages === nodeEntities` count could otherwise mask.
+ */
+export interface HarvestableDefRenderSummary {
+  /** Harvestable def id (e.g. `crimson-mushroom`). */
+  readonly defId: string;
+  /** Generated briefId the render layer maps this def to, or null if unmapped. */
+  readonly briefId: string | null;
+  /** Live node entities of this def. */
+  readonly nodeEntities: number;
+  /** Display-list Images whose texture matches this def's brief. */
+  readonly spriteImages: number;
+}
+
+/**
  * Live count of Floor-1 harvestable resource nodes and how many of them render a
  * generated sprite (vs. the procedural tinted-circle fallback). Used by the
  * harvestable-node-sprite e2e to observe the real render path.
@@ -142,6 +159,8 @@ export interface HarvestableRenderSummary {
   readonly nodeEntities: number;
   /** Number of display-list Images whose texture matches a harvestable brief. */
   readonly spriteImages: number;
+  /** Per-def breakdown (only defs with live nodes and/or matching sprites). */
+  readonly byDef: readonly HarvestableDefRenderSummary[];
 }
 
 /**
@@ -357,20 +376,49 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       const world = getScene()?.world;
       const phaserScene = getPhaserScene();
       if (!world || !phaserScene) {
-        return { nodeEntities: 0, spriteImages: 0 };
+        return { nodeEntities: 0, spriteImages: 0, byDef: [] };
       }
-      const nodeEntities = query(world.ecs, [Harvestable]).length;
+      const nodes = query(world.ecs, [Harvestable]);
+      const nodeEntities = nodes.length;
+
+      // Node entities tallied per def id (via the stored defIndex → HARVESTABLE_DEFS).
+      const nodeCountByDef = new Map<string, number>();
+      for (const eid of nodes) {
+        const defIndex = world.stores.harvestable.defIndex[eid] ?? -1;
+        const def = HARVESTABLE_DEFS[defIndex];
+        if (def) {
+          nodeCountByDef.set(def.id, (nodeCountByDef.get(def.id) ?? 0) + 1);
+        }
+      }
+
+      // Display-list Images tallied per matching brief id (and in aggregate).
+      // Brief ids are distinct and none is a prefix of another, so the first
+      // startsWith match is unambiguous.
+      const spriteCountByBrief = new Map<string, number>();
       let spriteImages = 0;
       for (const obj of phaserScene.children.list) {
         const key = (obj as { texture?: { key?: string } }).texture?.key;
-        if (
-          typeof key === 'string' &&
-          HARVESTABLE_BRIEF_IDS.some((briefId) => key.startsWith(briefId))
-        ) {
+        if (typeof key !== 'string') {
+          continue;
+        }
+        const briefId = HARVESTABLE_BRIEF_IDS.find((b) => key.startsWith(b));
+        if (briefId !== undefined) {
           spriteImages += 1;
+          spriteCountByBrief.set(briefId, (spriteCountByBrief.get(briefId) ?? 0) + 1);
         }
       }
-      return { nodeEntities, spriteImages };
+
+      const byDef: HarvestableDefRenderSummary[] = HARVESTABLE_DEFS.map((def) => {
+        const briefId = generatedBriefIdForHarvestable(def.id);
+        return {
+          defId: def.id,
+          briefId: briefId ?? null,
+          nodeEntities: nodeCountByDef.get(def.id) ?? 0,
+          spriteImages: briefId !== undefined ? (spriteCountByBrief.get(briefId) ?? 0) : 0,
+        };
+      }).filter((d) => d.nodeEntities > 0 || d.spriteImages > 0);
+
+      return { nodeEntities, spriteImages, byDef };
     },
   };
   probeWindow.__mainSceneProbe = api;

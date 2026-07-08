@@ -24,6 +24,7 @@ import {
 import { ftToPx } from '../../shared/units.js';
 import type { SetPiecePropRender } from '../../shared/set-piece-render.js';
 import { type HarvestableDef, HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
+import { hashStringToSeed, SeededRandom } from '../../shared/random.js';
 import { createEntity } from './entity-core.js';
 
 /** Spawn a trap entity at a position. */
@@ -263,6 +264,19 @@ export function spawnHarvestableNode(
       harvesterEid: 0,
     }),
   );
+
+  // Cosmetic-only: seed a deterministic per-node appearance roll so node types
+  // with multiple approved art variants (e.g. azure-mushroom) spread across
+  // them instead of every node picking variant 0. Mirrors
+  // initializeEnemyAppearance (combatants.ts): a LOCAL SeededRandom hashed from
+  // the world seed + entity + spawn context — it never draws from the shared
+  // gameplay RNG stream, so it cannot perturb simulation determinism or
+  // win-rate. `variantRoll` is read render-side only (texture-variant pick;
+  // corpse-shard VFX is enemy-only and never reached by harvestable nodes).
+  const appearanceSeed = hashStringToSeed(
+    `harvestable-appearance:${world.seed}:${eid}:${world.frameCount}:${world.elapsedMs}:${x}:${y}`,
+  );
+  world.stores.sprite.variantRoll[eid] = new SeededRandom(appearanceSeed).next();
 
   return eid;
 }

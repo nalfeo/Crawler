@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-08",
+  "session_slug": "harvestable-node-sprites",
+  "task_title": "Render Floor-1 harvestable nodes as generated sprites",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "notes": "C1 (origin 0.5 vs manifest anchor) resolved-by-reasoning: mirrors enemy/prop setOrigin(0.5); manifest anchor only used by the handheld-weapon grip path. C2 (e2e aggregate could mask a per-type texture miss) ADOPTED: added byDef per-def breakdown to the probe + per-def e2e assertions (each def with nodes>0 must render spriteImages===nodeEntities). C3 (variantRoll not seeded) ADOPTED: now seeded via a dedicated LOCAL appearance RNG (overlapped code-review r1's bug; fixed properly, mirrors initializeEnemyAppearance, gameplay-neutral). C4 (sprite<->circle cleanup) ADOPTED: added a mixed-state unit test (one wired + one unwired node in a single sync pass). C5 (ring layering) resolved-by-reasoning: ring depth unchanged from the pre-existing circle rendering."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Found 1 valid Medium bug: spawnHarvestableNode added the Sprite component without seeding variantRoll (defaulted 0.0), so pickGeneratedHarvestableTextureKey always chose variant index 0 -> azure-mushroom-v1-var-8 (an approved variant) was permanently unreachable. (Round 1 also mis-claimed the Size component was PR-added; it is already on main - not a real concern.) Resolved by seeding variantRoll from a dedicated LOCAL SeededRandom mirroring initializeEnemyAppearance."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Verified the variantRoll fix + C2/C4 test additions. Confirmed determinism-safe: the fix uses new SeededRandom (never world.rng); the only gameplay reader of variantRoll (emitCorpseExplosion) is guarded by Enemy && DeathTimer and hardcodes targetType 'enemy', so harvestable nodes can never reach it (variantRoll is render-only for them). Entity layout/spawn order unchanged. C2 briefId startsWith matching unambiguous (no briefId is a prefix of another) and per-def loop is non-vacuous. C4 tint indices correct. src/core diff is precisely the import + variantRoll block. No concerns."
+        }
+      ]
+    }
+  }
+}
