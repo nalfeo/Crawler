@@ -2261,5 +2261,44 @@
     "frame": 0,
     "col": 0,
     "row": 0
+  },
+  {
+    "id": "generated:imps-boss-var-5",
+    "kind": "sprite",
+    "label": "imps-boss-var-5",
+    "description": "Generated sprite from brief: imps-boss.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "imps-boss-var-5",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/imps-boss-var-5.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:raccoons-boss-var-0",
+    "kind": "sprite",
+    "label": "raccoons-boss-var-0",
+    "description": "Generated sprite from brief: raccoons-boss.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "raccoons-boss-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/raccoons-boss-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:snailfolk-boss-var-0",
+    "kind": "sprite",
+    "label": "snailfolk-boss-var-0",
+    "description": "Generated sprite from brief: snailfolk-boss.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "snailfolk-boss-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/snailfolk-boss-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
   }
 ]

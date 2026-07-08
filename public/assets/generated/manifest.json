@@ -5822,6 +5822,108 @@
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\molefolk-boss\\2026-07-08T02-36-04-4d62866e\\postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
+    },
+    "imps-boss-var-5": {
+      "briefId": "imps-boss",
+      "spriteName": "imps-boss-var-5",
+      "assetPath": "generated/imps-boss-var-5.png",
+      "approvedAt": "2026-07-08T03:01:06.679Z",
+      "sourceRun": "generated/runs/imps-boss/2026-07-08T02-57-23-ad439923",
+      "variantIndex": 5,
+      "anchor": {
+        "x": 32,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 36,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "enemy",
+      "contentHash": "2821bbf307fe231841f709ebecf1c3c1d9e836e60e53191da7a5c11442897d88",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\imps-boss\\2026-07-08T02-57-23-ad439923\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\imps-boss\\2026-07-08T02-57-23-ad439923\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\imps-boss\\2026-07-08T02-57-23-ad439923\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "raccoons-boss-var-0": {
+      "briefId": "raccoons-boss",
+      "spriteName": "raccoons-boss-var-0",
+      "assetPath": "generated/raccoons-boss-var-0.png",
+      "approvedAt": "2026-07-08T02:58:02.672Z",
+      "sourceRun": "generated/runs/raccoons-boss/2026-07-08T02-47-01-09a78ec7",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 32,
+        "y": 34,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 34,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "93269f0d383453ee6a9b2897566baef39dafc566116c7667652bf615730eb276",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\raccoons-boss\\2026-07-08T02-47-01-09a78ec7\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\raccoons-boss\\2026-07-08T02-47-01-09a78ec7\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\raccoons-boss\\2026-07-08T02-47-01-09a78ec7\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "snailfolk-boss-var-0": {
+      "briefId": "snailfolk-boss",
+      "spriteName": "snailfolk-boss-var-0",
+      "assetPath": "generated/snailfolk-boss-var-0.png",
+      "approvedAt": "2026-07-08T02:58:03.742Z",
+      "sourceRun": "generated/runs/snailfolk-boss/2026-07-08T02-52-51-2c9a72c5",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 33,
+        "y": 33,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 33,
+          "y": 33,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 33,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "5a5fc3582f9e22c0e769e6370003342a0025e55d2f20606c7988c61bc55d9548",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\snailfolk-boss\\2026-07-08T02-52-51-2c9a72c5\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\snailfolk-boss\\2026-07-08T02-52-51-2c9a72c5\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\snailfolk-boss\\2026-07-08T02-52-51-2c9a72c5\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     }
   }
 }
