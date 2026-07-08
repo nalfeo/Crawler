@@ -6366,6 +6366,142 @@
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\toadkin-tongue\\2026-07-08T04-29-19-ff424f4c\\postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
+    },
+    "batfolk-diver-var-3": {
+      "briefId": "batfolk-diver",
+      "spriteName": "batfolk-diver-var-3",
+      "assetPath": "generated/batfolk-diver-var-3.png",
+      "approvedAt": "2026-07-08T05:03:21.849Z",
+      "sourceRun": "generated/runs/batfolk-diver/2026-07-08T04-43-49-39b09bdb",
+      "variantIndex": 3,
+      "anchor": {
+        "x": 31,
+        "y": 35,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 35,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "69b288b96ca12251eb17ac1dd2bf7e27022f0d9b7fb8cb57f7e15e301d730ad2",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\batfolk-diver\\2026-07-08T04-43-49-39b09bdb\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\batfolk-diver\\2026-07-08T04-43-49-39b09bdb\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\batfolk-diver\\2026-07-08T04-43-49-39b09bdb\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "cactusfolk-spiny-var-2": {
+      "briefId": "cactusfolk-spiny",
+      "spriteName": "cactusfolk-spiny-var-2",
+      "assetPath": "generated/cactusfolk-spiny-var-2.png",
+      "approvedAt": "2026-07-08T04:56:45.853Z",
+      "sourceRun": "generated/runs/cactusfolk-spiny/2026-07-08T04-52-36-bb38bad6",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 32,
+        "y": 35,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 35,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "eb1d92d52448775f4babc5919772c7c10499498136590f30d09ecf885758a32a",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cactusfolk-spiny\\2026-07-08T04-52-36-bb38bad6\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cactusfolk-spiny\\2026-07-08T04-52-36-bb38bad6\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cactusfolk-spiny\\2026-07-08T04-52-36-bb38bad6\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "crabfolk-armored-var-0": {
+      "briefId": "crabfolk-armored",
+      "spriteName": "crabfolk-armored-var-0",
+      "assetPath": "generated/crabfolk-armored-var-0.png",
+      "approvedAt": "2026-07-08T05:00:48.462Z",
+      "sourceRun": "generated/runs/crabfolk-armored/2026-07-08T04-55-43-4e9d5e48",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 29,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 29,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 28,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": "enemy",
+      "contentHash": "857c5ca1cfde8e3b963a82e0ea21d8ba2592bb951f6addaf25b29c629e965331",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crabfolk-armored\\2026-07-08T04-55-43-4e9d5e48\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crabfolk-armored\\2026-07-08T04-55-43-4e9d5e48\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crabfolk-armored\\2026-07-08T04-55-43-4e9d5e48\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "ratfolk-plague-var-4": {
+      "briefId": "ratfolk-plague",
+      "spriteName": "ratfolk-plague-var-4",
+      "assetPath": "generated/ratfolk-plague-var-4.png",
+      "approvedAt": "2026-07-08T04:52:42.426Z",
+      "sourceRun": "generated/runs/ratfolk-plague/2026-07-08T04-37-38-9ce6303d",
+      "variantIndex": 4,
+      "anchor": {
+        "x": 32,
+        "y": 32,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 32,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "6c3ae3a75360a068fe68681d411f1a528643c0a750c2c7bb69db2998fd9cfe6f",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\ratfolk-plague\\2026-07-08T04-37-38-9ce6303d\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\ratfolk-plague\\2026-07-08T04-37-38-9ce6303d\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\ratfolk-plague\\2026-07-08T04-37-38-9ce6303d\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     }
   }
 }

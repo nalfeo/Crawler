@@ -2469,5 +2469,57 @@
     "frame": 0,
     "col": 0,
     "row": 0
+  },
+  {
+    "id": "generated:batfolk-diver-var-3",
+    "kind": "sprite",
+    "label": "batfolk-diver-var-3",
+    "description": "Generated sprite from brief: batfolk-diver.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "batfolk-diver-var-3",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/batfolk-diver-var-3.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:cactusfolk-spiny-var-2",
+    "kind": "sprite",
+    "label": "cactusfolk-spiny-var-2",
+    "description": "Generated sprite from brief: cactusfolk-spiny.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "cactusfolk-spiny-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/cactusfolk-spiny-var-2.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:crabfolk-armored-var-0",
+    "kind": "sprite",
+    "label": "crabfolk-armored-var-0",
+    "description": "Generated sprite from brief: crabfolk-armored.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "crabfolk-armored-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/crabfolk-armored-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:ratfolk-plague-var-4",
+    "kind": "sprite",
+    "label": "ratfolk-plague-var-4",
+    "description": "Generated sprite from brief: ratfolk-plague.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "ratfolk-plague-var-4",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/ratfolk-plague-var-4.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
   }
 ]
