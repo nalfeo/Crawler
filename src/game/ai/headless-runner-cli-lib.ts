@@ -160,7 +160,7 @@ Options:
   --floor <id>            Scenario floor id (default: floor1)
   --start-level <n>       Start at player character level N (default: 1, no boost)
   --weapon-telemetry      Collect + print per-run weapon accuracy (swings, hits, multi-hit)
-  --pathing-mode <mode>   AI pathing A/B axis: legacy | riskRewardFused (default: legacy)
+  --pathing-mode <mode>   AI pathing A/B axis: legacy | riskRewardFused | navmesh (default: legacy)
   --decision-mode <mode>  AI decision A/B axis: legacy | slackAware (default: legacy)
   --help, -h              Show this help message
 

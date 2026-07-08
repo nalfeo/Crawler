@@ -119,6 +119,7 @@ import {
   MOVE_SMOOTH_FACTOR,
   CLOSE_APPROACH_DIRECT_FT,
   WAYPOINT_ARRIVE_FT,
+  NAV_GOAL_REACHED_FT,
   MOVE_WEDGE_PROGRESS_FT,
   MOVE_WEDGE_FRAMES,
   PATH_GOAL_SEARCH_RADIUS_TILES,
@@ -238,6 +239,17 @@ import {
 import { computeFloorProgressScore } from './scoring.js';
 // Pure line-of-sight sampling lives in ./bt-ai-geometry.ts (unit-tested).
 import { hasClearLineOfSight } from './bt-ai-geometry.js';
+// Deterministic navmesh path source (AIPathingMode.NAVMESH, default-OFF). Imports
+// recast/WASM in the game layer only — never leaks into src/core/. The pinned,
+// cross-platform-byte-identical config lives in ./navmesh/navmesh-config.ts.
+import {
+  buildFloorNavmesh,
+  destroyNavmesh,
+  queryWorldPath,
+  isNavmeshReady,
+  type NavmeshHandle,
+  type WorldWaypoint,
+} from './navmesh/index.js';
 // Pure predictive safe-gap travel steering (unit-tested; damage-agnostic).
 import {
   pickSafeTravelHeading,
@@ -281,6 +293,17 @@ const SLACK_AWARE_URGENCY_THRESHOLD = 0.66;
 // Below this magnitude a heading is treated as "no direction" (skip steering /
 // neutral continuity) — matches the pure module's own zero-vector epsilon.
 const TRAVEL_HEADING_EPSILON = 1e-6;
+
+// Diagnostic-only gate for the NAVMESH partial-path guard's per-fire log
+// (`NAVGUARD_STATS=1`). OFF by default so gate/sweep runs stay quiet; the guard's
+// BEHAVIOR (grid-A* fallback) and its `navPartialPathFallbacks` counter are
+// UNCONDITIONAL — only the verbose per-fire logging is gated — so toggling this
+// env var can never change the simulation or the determinism hash. Read once at
+// module load (constant for the process). The `typeof process` guard keeps
+// browser/lab builds (where the `process` global is undefined) from throwing on
+// import — matching the codebase's guarded env pattern (see src/shared/logger.ts).
+const NAVGUARD_STATS_ENABLED =
+  typeof process !== 'undefined' && process.env?.NAVGUARD_STATS === '1';
 
 // --- RISK_REWARD_FUSED pathing (AIPathingMode.RISK_REWARD_FUSED) -------------
 // The fused heading scorer samples candidate directions fanned around the
@@ -547,6 +570,14 @@ export interface AINavigationDebug {
   pathIndex: number;
   pathGoalKey: string | null;
   stuckFrames: number;
+  /**
+   * NAVMESH-mode waypoint route in WORLD FEET (empty in LEGACY/RISK_REWARD_FUSED).
+   * Populated only while {@link AIPathingMode.NAVMESH} is active; lets debug
+   * overlays draw the recast route the agent actually follows. `navPathIndex` is
+   * the index of the next waypoint being steered toward.
+   */
+  navWaypoints: { x: number; y: number }[];
+  navPathIndex: number;
 }
 
 export interface AINpcMemoryDebug {
@@ -645,6 +676,25 @@ export class BehaviorTreeAI implements AIInputProvider {
   private pathWaypoints: TilePoint[] = [];
   private pathIndex: number = 0;
   private pathGoalKey: string | null = null;
+  // --- AIPathingMode.NAVMESH parallel path state (default-OFF; untouched in
+  // LEGACY/FUSED). Continuous world-space (feet) waypoints from the recast
+  // navmesh, plus the per-floor navmesh handle cache. `navHandleFloor` is a
+  // reference-identity guard: a new FloorMap object means a floor change, so the
+  // old handle is freed and a fresh navmesh is built.
+  private navWaypoints: WorldWaypoint[] = [];
+  private navPathIndex: number = 0;
+  private navGoalKey: string | null = null;
+  /**
+   * Diagnostic counter: number of polls in which the NAVMESH partial-path guard
+   * (see {@link moveTowardViaNavmesh}) rejected a non-reaching recast route and
+   * deferred to grid-A* {@link moveToward}. UNCONDITIONAL (never read by the sim,
+   * so it cannot perturb determinism); the Gate-3 sweep harness reads it per
+   * (seed, weapon) to measure whether the guard is DORMANT under the static
+   * all-doors (Option-B) navmesh. Expected 0 on Floor 1.
+   */
+  public navPartialPathFallbacks: number = 0;
+  private navHandle: NavmeshHandle | null = null;
+  private navHandleFloor: FloorMap | null = null;
   private moveWedgeFrames: number = 0;
   private moveWedgeLastX: number = Number.NaN;
   private moveWedgeLastY: number = Number.NaN;
@@ -2554,7 +2604,35 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     // Execute decision: move toward target (Track A direction)
     if (this.decision.targetX !== null && this.decision.targetY !== null) {
-      this.moveToward(state, world, playerX, playerY, this.decision.targetX, this.decision.targetY);
+      // Pathing A/B seam (axis 1). NAVMESH swaps grid-A* for a deterministic recast
+      // waypoint route to the SAME BT-chosen goal AND, per the Slice-3 "refined B"
+      // seam decision, drops the danger/reward layers LEGACY runs downstream: it
+      // skips predictive travel steering (mob-dancing) and the additive Track B
+      // blend (dodgeVec danger-dodge + opportunistic/farm reward pull) via the
+      // `useNavmesh` gates below. What remains is pure locomotion — waypoint
+      // following with corner-safe geometry rounding + smoothing — so NAVMESH
+      // reaches BT goals with NO danger/reward awareness (that is Slice 4). LEGACY
+      // and FUSED are untouched, so this branch is never taken unless NAVMESH is
+      // explicitly selected and DEFAULT stays byte-identical. Plain shortest-path.
+      if (this.config.pathingMode === AIPathingMode.NAVMESH) {
+        this.moveTowardViaNavmesh(
+          state,
+          world,
+          playerX,
+          playerY,
+          this.decision.targetX,
+          this.decision.targetY,
+        );
+      } else {
+        this.moveToward(
+          state,
+          world,
+          playerX,
+          playerY,
+          this.decision.targetX,
+          this.decision.targetY,
+        );
+      }
     } else {
       state.moveX = 0;
       state.moveY = 0;
@@ -2568,6 +2646,10 @@ export class BehaviorTreeAI implements AIInputProvider {
     // above travel steering keeps LEGACY byte-identical.
     const weights = this.getDynamicOpportunisticWeights(world);
     const useFused = this.config.pathingMode === AIPathingMode.RISK_REWARD_FUSED;
+    // Refined-B seam (Slice 3): NAVMESH follows the recast route with pure
+    // locomotion only — it skips the danger-dodge / reward-pull layers below.
+    // useFused stays false for NAVMESH, so the fused scorer is skipped too.
+    const useNavmesh = this.config.pathingMode === AIPathingMode.NAVMESH;
     let fusedYieldedZero = false;
     if (useFused) {
       // A/B pathing mode B: score candidate headings by objective progress,
@@ -2598,7 +2680,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     // travel. Damage-agnostic (nothing here reads a hostile-damage multiplier).
     let travelEmergency = false;
     this.lastTravelSteering = null;
-    if (TRAVEL_STEERING_ENABLED && this.shouldTravelSteer(playerX, playerY)) {
+    if (TRAVEL_STEERING_ENABLED && !useNavmesh && this.shouldTravelSteer(playerX, playerY)) {
       const objMag = Math.hypot(state.moveX, state.moveY);
       if (objMag > TRAVEL_HEADING_EPSILON) {
         const steer = this.computeTravelSteering(
@@ -2639,7 +2721,11 @@ export class BehaviorTreeAI implements AIInputProvider {
     // EXCEPT when the fused scorer produced no heading (fusedYieldedZero): it
     // folded nothing in that poll, so the blend runs to pass dodge/pull through.
     // fusedYieldedZero can only be true in fused mode, so LEGACY stays byte-identical.
-    if (!useFused || fusedYieldedZero) {
+    //
+    // NAVMESH (refined-B seam) skips the additive Track B blend entirely: it carries
+    // NO danger dodge and NO reward pull — pure locomotion to the recast waypoints.
+    // The gate is `&& !useNavmesh`, so LEGACY/FUSED are byte-identical.
+    if ((!useFused || fusedYieldedZero) && !useNavmesh) {
       const blend = this.blendWithTrackB(state.moveX, state.moveY, weights);
       state.moveX = blend.moveX;
       state.moveY = blend.moveY;
@@ -3857,6 +3943,295 @@ export class BehaviorTreeAI implements AIInputProvider {
       deltaX / distance,
       deltaY / distance,
     );
+  }
+
+  /**
+   * NAVMESH counterpart to {@link moveToward}: same output contract (sets
+   * `state.moveX/moveY`, same close-range/close-approach/wedge/fallback
+   * structure) but the mid/long-range path SOURCE is a deterministic recast
+   * navmesh waypoint route instead of the grid-A* {@link findTilePath}. The route
+   * is plain shortest-path — NO danger/reward weighting (deferred to a later
+   * slice) — so the downstream travel-steering + Track B blend still provide the
+   * local danger avoidance. Waypoints are continuous world-space (feet), so no
+   * tile→world conversion or full {@link smoothPathIndex} string-pull is needed
+   * (recast already returns corner-simplified paths). The per-waypoint steer is
+   * still gated on {@link hasClearLineOfSight} so it never commands an illegal
+   * diagonal *through* a blocked corner — Crawler forbids that — falling back to
+   * obstacle-aware local navigation exactly as LEGACY does. Uses the parallel
+   * `nav*`-prefixed state so it never perturbs LEGACY's `path*` fields.
+   */
+  private moveTowardViaNavmesh(
+    state: InputState,
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    targetX: number,
+    targetY: number,
+  ): void {
+    const deltaX = targetX - playerX;
+    const deltaY = targetY - playerY;
+    const distance = Math.hypot(deltaX, deltaY);
+
+    if (distance < DIRECT_MOVE_EPSILON_FT) {
+      state.moveX = 0;
+      state.moveY = 0;
+      return;
+    }
+
+    // Close-range direct approach (identical policy to moveToward): within ~1.5
+    // tiles with a clear straight corridor, skip the navmesh and slide straight at
+    // the exact world point so the body physically overlaps pickups.
+    if (
+      distance <= CLOSE_APPROACH_DIRECT_FT &&
+      hasClearLineOfSight(world.floorMap, playerX, playerY, targetX, targetY)
+    ) {
+      this.navWaypoints = [];
+      this.navPathIndex = 0;
+      this.navGoalKey = null;
+      this.moveWithLocalNavigation(
+        state,
+        world,
+        playerX,
+        playerY,
+        deltaX / distance,
+        deltaY / distance,
+      );
+      return;
+    }
+
+    const floorMap = world.floorMap;
+    const handle = this.ensureFloorNavmesh(floorMap);
+    if (handle && floorMap) {
+      // Snap the BT goal to a reachable tile on the door-aware passable graph —
+      // the SAME resolution LEGACY's moveToward uses — so NAVMESH pursues the
+      // identical resolved goal instead of throwing a raw coordinate at recast
+      // that may have landed inside a wall (which would leave the agent grinding
+      // the direct fallback). Deterministic: resolveReachableGoalTile is pure
+      // over the map and memoized per navEpoch. Query the resolved tile CENTER
+      // (tileToWorld → tile+0.5 in recast units) so the point lands on a poly.
+      const startTile = floorMap.worldToTile(playerX, playerY);
+      const goalTile = floorMap.worldToTile(targetX, targetY);
+      const resolvedGoal = this.resolveReachableGoalTile(floorMap, startTile, goalTile);
+      const goalKey = `${resolvedGoal.x},${resolvedGoal.y}`;
+      // Recompute only when the resolved goal tile changes or the route is spent.
+      if (this.navGoalKey !== goalKey || this.navWaypoints.length === 0) {
+        const goalWorld = floorMap.tileToWorld(resolvedGoal.x, resolvedGoal.y);
+        const result = queryWorldPath(handle, playerX, playerY, goalWorld.x, goalWorld.y);
+        // Partial-path guard. recast's computePath returns success=true with a
+        // nearest-reachable PARTIAL route when start and goal fall in disconnected
+        // navmesh polygon components — recast connectivity is a strict SUBSET of
+        // the 4-connected grid at thin/door connectors under the pinned
+        // deterministic config (see the 2026-07-08 navmesh handoff lesson).
+        // resolveReachableGoalTile (grid BFS) can therefore hand us a goal the
+        // navmesh cannot actually reach, yielding a 1-2 waypoint stub ending far
+        // short. The naive `success && length>0` acceptance consumed that stub,
+        // emptied navWaypoints, and re-queried EVERY poll → the agent froze short
+        // of the goal (the Gate-3 timeout this guard fixes). Detect a non-reaching
+        // route (final waypoint beyond NAV_GOAL_REACHED_FT of the resolved goal)
+        // and DEFER this poll to grid-A* moveToward — pure locomotion over the
+        // door-aware graph (independent path* state, NO danger/reward, so refined-B
+        // stays intact) that threads the connector the navmesh severed.
+        // Deterministic: the distance test and moveToward are pure over the map +
+        // positions.
+        const lastWp =
+          result.success && result.waypoints.length > 0
+            ? result.waypoints[result.waypoints.length - 1]
+            : undefined;
+        const reachesGoal =
+          lastWp !== undefined &&
+          Math.hypot(lastWp.x - goalWorld.x, lastWp.y - goalWorld.y) <= NAV_GOAL_REACHED_FT;
+        if (reachesGoal) {
+          this.navWaypoints = result.waypoints;
+          // Skip any leading waypoint(s) coincident with the start position so the
+          // first heading points genuinely forward (mirrors moveToward's start-tile
+          // skip).
+          const nextIndex = result.waypoints.findIndex(
+            (wp) => Math.hypot(wp.x - playerX, wp.y - playerY) >= WAYPOINT_ARRIVE_FT,
+          );
+          this.navPathIndex = nextIndex === -1 ? result.waypoints.length - 1 : nextIndex;
+          this.navGoalKey = goalKey;
+          this.moveWedgeFrames = 0;
+          if (this.config.debug) {
+            logger.debug('AI computed navmesh path', {
+              length: result.waypoints.length,
+              goalKey,
+            });
+          }
+        } else {
+          this.navWaypoints = [];
+          this.navPathIndex = 0;
+          this.navGoalKey = null;
+          if (lastWp !== undefined) {
+            // Non-reaching PARTIAL route (severed connector): drive THIS poll with
+            // grid-A* instead of consuming the stub. moveToward re-snaps to the
+            // door-aware reachable goal tile and routes around the severance using
+            // its own independent path* state. Counter is unconditional (sim never
+            // reads it → determinism-safe); the per-fire log is env-gated.
+            this.navPartialPathFallbacks++;
+            if (NAVGUARD_STATS_ENABLED) {
+              logger.warn('[NAVGUARD] partial-path grid-A* fallback', {
+                fires: this.navPartialPathFallbacks,
+                frame: world.frameCount,
+                lastWpToGoalFt: Math.hypot(lastWp.x - goalWorld.x, lastWp.y - goalWorld.y),
+              });
+            }
+            this.moveToward(state, world, playerX, playerY, targetX, targetY);
+            return;
+          }
+          // recast found NO route at all — genuinely unreachable. Mirror
+          // moveToward's COLLECT give-up so the AI does not freeze fixated on an
+          // unroutable pickup.
+          if (this.decision.state === AIState.COLLECT && this.decision.targetEid !== null) {
+            this.ignoredLootUntilFrame.set(this.decision.targetEid, world.frameCount + 300);
+            this.decision.targetEid = null;
+            this.decision.targetX = null;
+            this.decision.targetY = null;
+            state.moveX = 0;
+            state.moveY = 0;
+            return;
+          }
+        }
+      }
+    }
+
+    // Follow the navmesh route (continuous world space).
+    if (this.navWaypoints.length > 0 && this.navPathIndex < this.navWaypoints.length) {
+      const waypoint = this.navWaypoints[this.navPathIndex];
+      if (!waypoint) {
+        this.navWaypoints = [];
+        this.navPathIndex = 0;
+        this.navGoalKey = null;
+      } else {
+        const waypointDist = Math.hypot(playerX - waypoint.x, playerY - waypoint.y);
+        if (waypointDist < WAYPOINT_ARRIVE_FT) {
+          this.navPathIndex++;
+          if (this.navPathIndex >= this.navWaypoints.length) {
+            this.navWaypoints = [];
+            this.navPathIndex = 0;
+            this.navGoalKey = null;
+          }
+        } else {
+          // Wedge recovery: identical mechanism to moveToward — if collision pins
+          // real positional progress below MOVE_WEDGE_PROGRESS_FT for
+          // MOVE_WEDGE_FRAMES, skip the stuck waypoint and slide with local
+          // avoidance so it threads doorway/corner chokes instead of vibrating.
+          const movedSinceLast = Number.isNaN(this.moveWedgeLastX)
+            ? Number.POSITIVE_INFINITY
+            : Math.hypot(playerX - this.moveWedgeLastX, playerY - this.moveWedgeLastY);
+          this.moveWedgeLastX = playerX;
+          this.moveWedgeLastY = playerY;
+          if (movedSinceLast < MOVE_WEDGE_PROGRESS_FT) {
+            this.moveWedgeFrames++;
+          } else {
+            this.moveWedgeFrames = 0;
+          }
+
+          if (this.moveWedgeFrames >= MOVE_WEDGE_FRAMES) {
+            this.moveWedgeFrames = 0;
+            this.navPathIndex++;
+            if (this.navPathIndex >= this.navWaypoints.length) {
+              this.navWaypoints = [];
+              this.navPathIndex = 0;
+              this.navGoalKey = null;
+            }
+            this.moveWithLocalNavigation(
+              state,
+              world,
+              playerX,
+              playerY,
+              deltaX / distance,
+              deltaY / distance,
+            );
+            return;
+          }
+
+          // Steer toward the navmesh waypoint. Crawler forbids moving diagonally
+          // *through a corner* — see hasClearLineOfSight's crossesBlockedCorner
+          // rule. Recast's funnel can pull a segment taut across an inside corner,
+          // and the raw continuous waypoints have no cardinal stair-steps to keep
+          // the heading wall-safe, so a naive straight steer would command exactly
+          // that illegal diagonal. Gate the direct diagonal on the same
+          // line-of-sight check LEGACY's smoothPathIndex uses; when the straight
+          // line would clip a blocked corner or wall, defer to obstacle-aware local
+          // navigation (which rounds the corner). Deterministic: hasClearLineOfSight
+          // and moveWithLocalNavigation are pure over the map + positions.
+          const navDirX = (waypoint.x - playerX) / waypointDist;
+          const navDirY = (waypoint.y - playerY) / waypointDist;
+          if (hasClearLineOfSight(world.floorMap, playerX, playerY, waypoint.x, waypoint.y)) {
+            const normalized = normalizeInputDirection(navDirX, navDirY);
+            state.moveX = normalized.moveX;
+            state.moveY = normalized.moveY;
+          } else {
+            this.moveWithLocalNavigation(state, world, playerX, playerY, navDirX, navDirY);
+          }
+          return;
+        }
+      }
+    }
+
+    // Fallback: direct movement toward target (mirrors moveToward, including the
+    // ENGAGE precise-pursuit special-case).
+    if (this.decision.state === AIState.ENGAGE && this.decision.targetEid !== null) {
+      const pursuit = this.enemyPursuitDirection(world, playerX, playerY, this.decision.targetEid);
+      if (pursuit !== null) {
+        this.moveWithLocalNavigation(
+          state,
+          world,
+          playerX,
+          playerY,
+          pursuit.dx / pursuit.dist,
+          pursuit.dy / pursuit.dist,
+        );
+        return;
+      }
+    }
+    this.moveWithLocalNavigation(
+      state,
+      world,
+      playerX,
+      playerY,
+      deltaX / distance,
+      deltaY / distance,
+    );
+  }
+
+  /**
+   * Return the cached navmesh handle for the current floor, (re)building it on a
+   * floor change (reference-identity guard on the FloorMap object). Throws — never
+   * silently falls back to LEGACY — if {@link initNavmesh} was not awaited, because
+   * a silent fallback would let the headless gate pass while navmesh was never
+   * exercised (the spawnerSystem-inert trap, ADR 0034→0036).
+   */
+  private ensureFloorNavmesh(floorMap: FloorMap | null): NavmeshHandle | null {
+    if (!floorMap) return null;
+    if (this.navHandleFloor === floorMap && this.navHandle) return this.navHandle;
+    if (!isNavmeshReady()) {
+      throw new Error(
+        'AIPathingMode.NAVMESH selected but initNavmesh() was not awaited before the simulation ran',
+      );
+    }
+    if (this.navHandle) {
+      destroyNavmesh(this.navHandle);
+      this.navHandle = null;
+    }
+    this.navWaypoints = [];
+    this.navPathIndex = 0;
+    this.navGoalKey = null;
+    this.navHandle = buildFloorNavmesh(floorMap);
+    this.navHandleFloor = floorMap;
+    return this.navHandle;
+  }
+
+  /** Free the cached navmesh WASM objects (call on provider teardown). */
+  disposeNavmesh(): void {
+    if (this.navHandle) {
+      destroyNavmesh(this.navHandle);
+      this.navHandle = null;
+    }
+    this.navHandleFloor = null;
+    this.navWaypoints = [];
+    this.navPathIndex = 0;
+    this.navGoalKey = null;
   }
 
   private resolveReachableGoalTile(
@@ -6108,6 +6483,8 @@ export class BehaviorTreeAI implements AIInputProvider {
       pathIndex: this.pathIndex,
       pathGoalKey: this.pathGoalKey,
       stuckFrames: this.stuckFrames,
+      navWaypoints: this.navWaypoints.map((waypoint) => ({ x: waypoint.x, y: waypoint.y })),
+      navPathIndex: this.navPathIndex,
     };
   }
 
@@ -6160,6 +6537,13 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.pathWaypoints = [];
     this.pathIndex = 0;
     this.pathGoalKey = null;
+    // NAVMESH state: clear the followed route + free the per-floor navmesh handle
+    // (disposeNavmesh is a no-op when no handle exists, i.e. LEGACY/FUSED), so a
+    // reused provider never serves a stale route or leaks WASM across floors/restarts.
+    this.navWaypoints = [];
+    this.navPathIndex = 0;
+    this.navGoalKey = null;
+    this.disposeNavmesh();
     this.moveWedgeFrames = 0;
     this.moveWedgeLastX = Number.NaN;
     this.moveWedgeLastY = Number.NaN;
