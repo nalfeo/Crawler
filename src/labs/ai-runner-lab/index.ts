@@ -1046,8 +1046,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     selectedScenarioPresetId = scenarioResolution.presetId;
     applyScenarioVisualProfile(selectedScenarioPresetId);
     Object.assign(sceneOptions, composeSceneOptions(createFloorMainSceneOptions(currentFloor)));
-    persistLabState();
     reseed(next.seed);
+    persistLabState();
     return { forcedDefault: scenarioResolution.forcedDefault };
   };
 
