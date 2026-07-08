@@ -9,7 +9,7 @@
 // scene.restart(). The honest readiness gate below (window.__uiProbe.ready())
 // only reports true once the CURRENT piece is rendering real art: zero prop
 // placeholder Rectangles AND every pinned NPC texture resident. That defeats the
-// cold-cache race where the harness screenshot the grey-placeholder / villager-
+// cold-cache race where the harness screenshots the grey-placeholder / villager-
 // fallback state (~199KB PNG) instead of the real room (~376-460KB PNG).
 //
 // This surface declares NO window.__visualReview* clip: the room is a single
