@@ -13,7 +13,7 @@ function containsPoint(target: HoverTooltipTarget, x: number, y: number): boolea
   if (target.kind === 'rect') {
     const width = target.width ?? 0;
     const height = target.height ?? 0;
-    return x >= target.x && x <= target.x + width && y >= target.y && y <= target.y + height;
+    return x >= target.x && x < target.x + width && y >= target.y && y < target.y + height;
   }
   const radius = target.radius ?? 0;
   const dx = x - target.x;

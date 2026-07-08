@@ -2173,7 +2173,7 @@ export class CaveSystemGenerator implements MapGenerator {
     const maxCenterY = h - radius - 3;
     if (minCenterX > maxCenterX || minCenterY > maxCenterY) {
       throw new Error(
-        `map too small for resource-heart room (w=${w}, h=${h}, required diameter=${radius * 2})`,
+        `map too small for resource-heart room (w=${w}, h=${h}, required diameter=${radius * 2 + 1})`,
       );
     }
     const centerX = Math.max(minCenterX, Math.min(maxCenterX, Math.floor(w / 2)));
