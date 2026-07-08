@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-08",
+  "session_slug": "enemy-render-path-wiring",
+  "task_title": "Wire generated enemy art into the real render path (F1 audit + F2 extend)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "plan_divergence": "minor",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "notes": "APPROVE-WITH-CHANGES. 2 blocking (guards must prove bridge render surface + LARGE scale, not just resolver) + 2 should-fix (briefId/pinnedTextureKey are live fallbacks; reuse enemy_boss procedural token) + 1 nit (boot initializeFloor2Scenario). All adopted into plan: Guard B is now bridge-level via createPhaserBridge asserting generated boss key + baseScale 1.0; Guard A asserts data surfaces; renderKind mirrors F1 boss kinds. plan_divergence=minor: the load-bearing design (B2b data-driven enemy_family_boss render kind + appearance-key resolution, one PR) stood as-is; the critic only sharpened test rigor and corrected fallback-field semantics — no re-architecture. Alternatives weighed and rejected: per-family render kinds (18x data surface, no benefit); renaming archetype ids to match plural briefs (rule #12, touches shipped ids/art); routing bosses through objective.bossBattles (that path is for scripted encounters, not the 18 family bosses)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "gpt-5.4 code-review agent found no high-confidence issues; owner independently cross-checked all 44 F2 archetype->brief mappings (zero missing/dead/bad), verified the enemies.floor2.json diff is exactly 18 spriteTexture 1->5 boss edits, and confirmed both gameplay textureId consumers (apply-damage corpseExplode pass-through, dropSystem slime-only split gate) are safe for textureId 5."
+        }
+      ]
+    }
+  }
+}

@@ -11,6 +11,10 @@
     "enemy_baby_slime": {
       "textureId": 4,
       "description": "Baby slime split variant"
+    },
+    "enemy_family_boss": {
+      "textureId": 5,
+      "description": "Floor 2 crime-family boss (large generated art)"
     }
   },
   "renderKinds": {
@@ -100,6 +104,16 @@
         "briefId": "slime-rat-boss",
         "pinnedTextureKey": "slime-rat-boss-var-1",
         "scale": 0.6
+      }
+    },
+    "enemy_family_boss": {
+      "proceduralTexture": "enemy_boss",
+      "kenneySpriteId": "enemy.boss",
+      "kenneyScale": 2.5,
+      "generated": {
+        "briefId": "goblin-boss",
+        "pinnedTextureKey": "goblin-boss-var-0",
+        "scale": 1.0
       }
     },
     "npc": {

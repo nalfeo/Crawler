@@ -300,6 +300,10 @@ export function spawnFamilyBoss(
     width: archetype.spriteWidth,
     height: archetype.spriteHeight,
   });
+  // Resolve the boss's dedicated generated art (keyed by archetype id, e.g.
+  // "goblin-boss") through the same appearance-key path the grunts/ambient use.
+  // Without this the boss falls through to rat-v1 and renders as a rat.
+  setEnemyAppearanceKey(world, eid, archetype.id);
   setComponent(world.ecs, eid, Size, {
     radius: Math.max(archetype.spriteWidth, archetype.spriteHeight) * 0.5,
     halfWidth: 0,
