@@ -1,5 +1,16 @@
 [
   {
+    "commit": "2969daf9ee734fe8025e1c1aee8c59fa50563823",
+    "commitDate": "2026-07-08T20:16:39Z",
+    "commitSubject": "feat(ai): add AIPathingMode.NAVMESH_FUSED (danger/reward fan on navmesh follow, default-OFF) (#918)",
+    "capturedAt": "2026-07-08T20:57:03.723Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28973136135",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/2969daf9ee734fe8025e1c1aee8c59fa50563823.json"
+  },
+  {
     "commit": "a425d0e4c386e087b3d052e88e14cd9e80bb6930",
     "commitDate": "2026-07-08T20:08:31Z",
     "commitSubject": "fix(labs): honest set-piece-lab readiness for reliable cold-cache visual-review capture (#916)",
