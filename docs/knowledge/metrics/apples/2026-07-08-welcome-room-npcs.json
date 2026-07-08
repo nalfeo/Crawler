@@ -4,6 +4,6 @@
   "estimated_apples": 4,
   "actual_apples": 2,
   "delta": -2,
-  "verdict": "under",
-  "hello_kitties": 0.3
+  "verdict": "miss",
+  "hello_kitties": 0.4
 }

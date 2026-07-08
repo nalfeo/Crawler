@@ -15,8 +15,9 @@ sprite-workflow, sprite-pipeline
 ## Apples
 
 4🍎 estimated (declared for the full F1-burndown program), 2🍎 actual for the
-shipped slice (📉 under — the broad program was delegated/deferred; this session
-realized just the 3-NPC art slice + a non-trivial manifest/catalog churn fix).
+shipped slice (💥 miss — `|delta| ≥ 2`; the session declared 4🍎 for the full
+program but realized only the 3-NPC art slice + a non-trivial manifest/catalog
+churn fix; the broad program was delegated/deferred).
 Art-only PR → review-ledger-exempt (no review stages).
 
 ## What Was Done
