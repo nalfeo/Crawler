@@ -375,11 +375,15 @@ const CLIENT_SCRIPT = `
       if (p.offAxis) parts.push('(timestamp outside session span — clamped to edge)');
       const tip = parts.join(' — ');
       const cls = 'pt' + (p.overBudget ? ' over' : '') + (p.offAxis ? ' off' : '');
-      // A stem (baseline → dot) makes each compaction a discrete sample; we do NOT
-      // draw a line BETWEEN compactions because nothing measures context there.
+      // The tooltip must ride the visible stem + knob, not the .pt wrapper:
+      // .wf-ctx .track .pt is width:0, so a title on the wrapper has no
+      // hittable area and never shows on hover. A stem (baseline to dot) makes
+      // each compaction a discrete sample; we do NOT draw a line BETWEEN
+      // compactions because nothing measures context there.
+      const tipAttr = ' title="' + esc(tip) + '"';
       return (
-        '<div class="' + cls + '" style="left:' + p.xPct.toFixed(3) + '%;--h:' + p.tokensPct.toFixed(3) + '%" title="' + esc(tip) + '">' +
-          '<i class="stem"></i><i class="knob"></i>' +
+        '<div class="' + cls + '" style="left:' + p.xPct.toFixed(3) + '%;--h:' + p.tokensPct.toFixed(3) + '%">' +
+          '<i class="stem"' + tipAttr + '></i><i class="knob"' + tipAttr + '></i>' +
         '</div>'
       );
     }).join('');

@@ -740,3 +740,14 @@ test('renderHtml escapes context tooltips and states the honest data limitation'
   // The empty state must be honest: context size is only sampled at compactions.
   assert.match(html, /only sampled when a compaction fires/);
 });
+
+test('context tooltip rides the visible knob + stem, not the zero-width .pt wrapper (PR #842)', () => {
+  const html = renderHtml('inst-1');
+  // Regression guard: `.wf-ctx .track .pt` is `width:0`, so a `title` on the
+  // wrapper has no hittable area and never shows on hover. The tooltip must be
+  // attached to the visible <i class="stem"> and <i class="knob"> instead, and
+  // stay escaped.
+  assert.match(html, /const tipAttr = ' title="' \+ esc\(tip\)/);
+  assert.match(html, /"stem"'\s*\+\s*tipAttr/);
+  assert.match(html, /"knob"'\s*\+\s*tipAttr/);
+});
