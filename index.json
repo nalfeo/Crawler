@@ -1,5 +1,16 @@
 [
   {
+    "commit": "fa24ead8f0c4f8f5b7ca2164900c8faf6687fd56",
+    "commitDate": "2026-07-08T20:51:59Z",
+    "commitSubject": "docs: add AI pathing rework live slice-map (source-of-truth) (#924)",
+    "capturedAt": "2026-07-08T21:18:02.448Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28974900205",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/fa24ead8f0c4f8f5b7ca2164900c8faf6687fd56.json"
+  },
+  {
     "commit": "761f09cbc8ad86a19a03ce9e48b069c14a9d5e44",
     "commitDate": "2026-07-08T20:27:49Z",
     "commitSubject": "docs: streamline ADR governance docs (#920)",
