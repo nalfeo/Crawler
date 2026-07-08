@@ -57,6 +57,54 @@ function bfsReachable(
   return seen;
 }
 
+function expectRoomPerimeterSealed(
+  floor: {
+    width: number;
+    terrain: Uint8Array;
+    tileMap: { isPassable: (x: number, y: number) => boolean };
+  },
+  room: {
+    id: number;
+    role: RoomRole;
+    bounds: { x: number; y: number; width: number; height: number };
+    doors: ReadonlyArray<{ x: number; y: number }>;
+  },
+  seed: number,
+): void {
+  const x0 = room.bounds.x;
+  const y0 = room.bounds.y;
+  const x1 = room.bounds.x + room.bounds.width - 1;
+  const y1 = room.bounds.y + room.bounds.height - 1;
+  const doorSet = new Set(room.doors.map((door) => `${door.x},${door.y}`));
+  for (let y = y0; y <= y1; y += 1) {
+    for (let x = x0; x <= x1; x += 1) {
+      const perimeter = x === x0 || x === x1 || y === y0 || y === y1;
+      if (!perimeter) continue;
+      const idx = y * floor.width + x;
+      if (doorSet.has(`${x},${y}`)) {
+        expect(
+          floor.tileMap.isPassable(x, y),
+          `seed=${seed} room=${room.id} door blocked at (${x},${y})`,
+        ).toBe(true);
+        expect(
+          floor.terrain[idx],
+          `seed=${seed} room=${room.id} unexpected door terrain at (${x},${y})`,
+        ).not.toBe(TerrainType.STONE_WALL);
+        expect(
+          floor.terrain[idx],
+          `seed=${seed} room=${room.id} unexpected door terrain at (${x},${y})`,
+        ).not.toBe(TerrainType.CAVE_WALL);
+      } else {
+        expect(
+          floor.terrain[idx],
+          `seed=${seed} room=${room.id} (${room.role}) has open perimeter at (${x},${y})`,
+        ).toBe(TerrainType.STONE_WALL);
+        expect(floor.tileMap.isPassable(x, y)).toBe(false);
+      }
+    }
+  }
+}
+
 describe('CaveSystemGenerator', () => {
   it('registers under BiomeType.CAVE_SYSTEM', () => {
     const g = getGenerator(BiomeType.CAVE_SYSTEM);
@@ -535,6 +583,16 @@ describe('CaveSystemGenerator', () => {
           expect(floor.tileMap.isPassable(x, sideY)).toBe(false);
         }
       }
+    }
+  });
+
+  it('keeps SPAWN room perimeter sealed across representative seeds', () => {
+    for (const seed of [7, 11, 23, 42, 89, 123]) {
+      const floor = generateWithPresent(seed, 4, 120, 90);
+      const rooms = floor.roomGraph.getAll();
+      const spawnRoom = rooms.find((room) => room.role === RoomRole.SPAWN);
+      expect(spawnRoom).toBeDefined();
+      expectRoomPerimeterSealed(floor, spawnRoom!, seed);
     }
   });
 

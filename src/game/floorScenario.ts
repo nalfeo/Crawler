@@ -1616,9 +1616,9 @@ function resolveSpawnPosition(
   playerX: number,
   playerY: number,
   maxRadius: number = FLOOR_1_SPAWN_RADIUS_MAX,
+  pack = floor1EnemyPack,
 ): { x: number; y: number } {
   const floorMap = world.floorMap;
-  const pack = floor1EnemyPack;
   if (!floorMap) {
     return { x: playerX + pack.spawnRadiusMin, y: playerY };
   }
@@ -2315,7 +2315,7 @@ export function resolveAmbientSpawnPoint(
   const minDistanceSq = minDistanceFt * minDistanceFt;
   const maxDistanceSq =
     FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_FT * FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_FT;
-  const ringPoint = resolveSpawnPosition(world, playerX, playerY, pack.engageRadiusFt);
+  const ringPoint = resolveSpawnPosition(world, playerX, playerY, pack.engageRadiusFt, pack);
   if (
     !isInvalidAmbientSpawn(
       world,

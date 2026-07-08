@@ -658,14 +658,14 @@ export class CaveSystemGenerator implements MapGenerator {
     if (!settlementBarClusterRoom) {
       throw new Error('settlement cluster did not include settlement_bar room');
     }
-    const settlementBarCenter = this.roomCenter({ bounds: settlementBarClusterRoom.bounds });
+    const settlementAnchor = this.pickConnectivityAnchor(settlementBarClusterRoom, tileMap, w, h);
     this.ensureConnectedToHeartComponent(
       tileMap,
       terrain,
       w,
       h,
-      settlementBarCenter.x,
-      settlementBarCenter.y,
+      settlementAnchor.x,
+      settlementAnchor.y,
       resourceHeart.centerX,
       resourceHeart.centerY,
     );
@@ -783,13 +783,14 @@ export class CaveSystemGenerator implements MapGenerator {
       undefined,
       spawnRoom.interiorCells,
     );
+    const spawnAnchor = this.pickConnectivityAnchor(spawnRoom, tileMap, w, h);
     this.ensureConnectedToHeartComponent(
       tileMap,
       terrain,
       w,
       h,
-      playerSpawn.x,
-      playerSpawn.y,
+      spawnAnchor.x,
+      spawnAnchor.y,
       resourceHeart.centerX,
       resourceHeart.centerY,
     );
@@ -2068,6 +2069,45 @@ export class CaveSystemGenerator implements MapGenerator {
       x: room.bounds.x + Math.floor(room.bounds.width / 2),
       y: room.bounds.y + Math.floor(room.bounds.height / 2),
     };
+  }
+
+  private pickConnectivityAnchor(
+    room: {
+      bounds: RoomBounds;
+      doors: ReadonlyArray<{ x: number; y: number; connectsTo?: number }>;
+    },
+    tileMap: TileMap,
+    w: number,
+    h: number,
+  ): { x: number; y: number } {
+    const exteriorDoor =
+      room.doors.find((door) => door.connectsTo === -1) ??
+      room.doors.find(
+        (door) =>
+          door.x === room.bounds.x ||
+          door.x === room.bounds.x + room.bounds.width - 1 ||
+          door.y === room.bounds.y ||
+          door.y === room.bounds.y + room.bounds.height - 1,
+      ) ??
+      room.doors[0];
+    if (exteriorDoor) {
+      let outsideX = exteriorDoor.x;
+      let outsideY = exteriorDoor.y;
+      if (exteriorDoor.x === room.bounds.x) outsideX -= 1;
+      else if (exteriorDoor.x === room.bounds.x + room.bounds.width - 1) outsideX += 1;
+      else if (exteriorDoor.y === room.bounds.y) outsideY -= 1;
+      else if (exteriorDoor.y === room.bounds.y + room.bounds.height - 1) outsideY += 1;
+      if (outsideX >= 1 && outsideX < w - 1 && outsideY >= 1 && outsideY < h - 1) {
+        // Prefer anchoring just outside the sealed room so connector carving cannot
+        // cut new breaches through room perimeters.
+        if (tileMap.isPassable(outsideX, outsideY)) {
+          return { x: outsideX, y: outsideY };
+        }
+        return { x: outsideX, y: outsideY };
+      }
+      return { x: exteriorDoor.x, y: exteriorDoor.y };
+    }
+    return this.roomCenter(room);
   }
 
   private boundsOverlap(a: RoomBounds, b: RoomBounds): boolean {
