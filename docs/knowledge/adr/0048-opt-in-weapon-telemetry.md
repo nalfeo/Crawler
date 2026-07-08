@@ -45,8 +45,8 @@ Add a **data-only, off-by-default** telemetry accumulator:
 - **One cast = one monotonic activation id.** `beginWeaponActivation` (called in
   `weaponSystem.dispatchAttack` for every weapon type) increments `swings` and
   opens a fresh activation id. Attack entities spawned during that activation are
-  tagged at their spawn choke points (`spawners/melee.ts`,
-  `spawners/projectiles.ts`). Tagging is a no-op when no activation is open, so
+  tagged at their spawn choke points (`src/core/spawners/melee.ts`,
+  `src/core/spawners/projectiles.ts`). Tagging is a no-op when no activation is open, so
   enemy-spawned attacks (which never run inside a player dispatch) stay untagged.
 - **Enemy hits union into a per-activation set**, so pierce / repeated arc
   contact counts an enemy at most once per activation. `connectingSwings` =
