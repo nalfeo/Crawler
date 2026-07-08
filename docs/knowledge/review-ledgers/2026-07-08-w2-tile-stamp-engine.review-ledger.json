@@ -1,0 +1,32 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-08",
+  "session_slug": "w2-tile-stamp-engine",
+  "task_title": "F1 tiles: single-texture generated tile stamp in buildTerrainLayer",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Separate-model (GPT-5.4 rubber-duck) plan review. Findings: 2 blocking + 2 non-blocking + 2 suggestions. Blocking-1: DOOR double-render vs the door-overlay system -> descoped DOOR to a follow-up. Blocking-2: probe stored only 1 count but exposed a 3-field summary and the e2e helper wrapper was missing -> store all 3 counts (generated/sprite/color) on the scene + add the getTerrainRenderSummary e2e helper. Non-blocking-1: plan overclaimed that existing labs observe generated terrain (set-piece-lab builds terrain BEFORE warming sprites; tile-render-lab only knows Kenney) -> the REAL proof is the main-scene-probe-lab e2e (real BootScene preloads generated). Non-blocking-2: scale=1 fallback unsafe -> invalid width falls through to sheet/color. Suggestions adopted: memo scale per textureKey (perf); logger coverage includes generatedCount + spriteCount. All 6 addressed.",
+      "plan_divergence_notes": "Design diverged from the reviewed plan on three points, all narrowing/hardening rather than re-architecting: (1) DOOR removed from terrain-layer textureKey wiring — the door-overlay system (updateDoorOverlay in MainGameScene) already renders doors dynamically, so a terrain stamp would double-render and lose the open/closed animation; DOOR deferred to a separate door-overlay follow-up. Wired set drops 5->4 (stone-floor, stone-wall, boss-staircase-floor, safe-room-floor). (2) generated-texture scale fallback changed from scale=1 to fall-through to the Kenney sheet/color path when getSourceImage width is invalid. (3) added a per-textureKey scale memo to avoid per-tile getSourceImage() on ~455k-tile maps."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "completed": true,
+      "notes": "Single-model code-review agent (claude-sonnet-4.6) on the working-tree diff. Verified all flagged questions and found NO significant issues on round 1: (1) rt.stamp(key, undefined, ...) reliably stamps the whole texture — Phaser Texture.get() coerces falsy frame to firstFrame='__BASE', which stays __BASE for a single-PNG loader.image() texture (Texture.js:254-258). (2) scale memo Map<string,number|null> correctly encodes absent/bad(null)/valid(number); the !==undefined guard is right; per-key source width is constant (loader.image textures immutable until destroy). (3) the three render branches are exhaustive + mutually exclusive so generated+sprite+color always sum to total tiles. (4) drawFloorTerrain() runs at create() L609 before world/playerEid are set, and ready() requires both — so terrainRenderSummary is always populated before any ready() poll returns true (e2e poll is belt-and-suspenders). (5) no new cross-layer imports in src/engine; probe reads via structural MainSceneInternals cast. (6) e2e generatedCount>spriteCount dominance is grounded (fixed PROBE_SEED; stone-floor/-wall dominate a room-heavy floor). Clean on round 1 — no fixes required, loop terminates."
+    }
+  }
+}

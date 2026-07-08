@@ -10,17 +10,22 @@
  *
  * How it works:
  *   1. Allocate a RenderTexture sized to the floor in pixels.
- *   2. Iterate every tile. If a TileVisualDef exists, stamp that spritesheet
- *      frame at the tile's pixel position via rt.drawFrame().
- *   3. Tiles with no mapped sprite fall back to a solid-color fill drawn onto a
- *      temporary Graphics object that is then stamped and destroyed.
- *   4. Return the finished RenderTexture for the scene to position and manage.
+ *   2. Iterate every tile. Resolve its TileVisualDef, then stamp by precedence:
+ *      a. GENERATED single-texture tile — if the def has a `textureKey` whose
+ *         texture is loaded with a usable width, stamp the whole PNG scaled to
+ *         the tile size (approved generated art beats the Kenney placeholder).
+ *      b. KENNEY spritesheet frame — else, if the sheet is loaded, stamp that
+ *         frame at the tile's pixel position via rt.stamp().
+ *      c. SOLID COLOR — else fall back to a color fill.
+ *   3. Return the finished RenderTexture for the scene to position and manage.
  *
  * The returned RenderTexture is positioned at (0, 0) in world-space by default.
  * Callers should .setDepth(-20) to render beneath game entities.
  *
- * Fallback: if the Kenney sheet for a tile is not loaded (e.g. test environments
- * or load errors), the color-only path is used for that tile automatically.
+ * Fallbacks are ordered generated → sheet → color. If a generated tile texture
+ * is missing or has an invalid width (e.g. test environments or load errors),
+ * that tile falls through to the Kenney sheet frame; if the Kenney sheet is
+ * also absent, the color-only path is used for that tile automatically.
  *
  * No runtime imports from src/core/, src/game/, or src/labs/. Type-only imports
  * from core are acceptable in the engine layer and are erased at build time.
@@ -39,11 +44,14 @@ const logger = createLogger('engine:terrain-renderer');
 
 /**
  * Result of `buildTerrainLayer`.
- * `spriteCount` / `colorCount` are diagnostic values for the lab / logging.
+ * `generatedCount` / `spriteCount` / `colorCount` are diagnostic values for the
+ * lab / logging and the observe-before-done probe (they sum to the tile total).
  */
 export interface TerrainLayerResult {
   rt: Phaser.GameObjects.RenderTexture;
-  /** Number of tiles rendered via spritesheet frame. */
+  /** Number of tiles rendered via a GENERATED single-texture stamp. */
+  generatedCount: number;
+  /** Number of tiles rendered via a Kenney spritesheet frame. */
   spriteCount: number;
   /** Number of tiles rendered via solid-color fallback. */
   colorCount: number;
@@ -71,8 +79,28 @@ export function buildTerrainLayer(scene: Phaser.Scene, floorMap: FloorMap): Terr
   // dimensions, misaligning every tile with the rest of the scene.
   const rt = scene.add.renderTexture(0, 0, width * tileSize, height * tileSize).setOrigin(0, 0);
 
+  let generatedCount = 0;
   let spriteCount = 0;
   let colorCount = 0;
+
+  // Per-textureKey scale memo. Generated tiles are single PNGs whose pixel width
+  // is constant per key, so resolve the tileSize/width scale ONCE per key rather
+  // than calling getSourceImage() for each of the ~455k tiles. A cached `null`
+  // marks a key whose texture is missing or has an unusable width, so that tile
+  // deterministically falls through to the Kenney sheet path below.
+  const generatedScaleCache = new Map<string, number | null>();
+  const resolveGeneratedScale = (textureKey: string): number | null => {
+    const cached = generatedScaleCache.get(textureKey);
+    if (cached !== undefined) return cached;
+    let scale: number | null = null;
+    if (scene.textures.exists(textureKey)) {
+      const source = scene.textures.get(textureKey).getSourceImage() as { width?: number };
+      const srcWidth = typeof source?.width === 'number' ? source.width : 0;
+      if (srcWidth > 0) scale = tileSize / srcWidth;
+    }
+    generatedScaleCache.set(textureKey, scale);
+    return scale;
+  };
 
   for (let ty = 0; ty < height; ty++) {
     for (let tx = 0; tx < width; tx++) {
@@ -80,7 +108,20 @@ export function buildTerrainLayer(scene: Phaser.Scene, floorMap: FloorMap): Terr
       const terrain: TerrainType = floorMap.terrain[idx] ?? TerrainType.VOID;
       const visual = getTileVisual(terrain);
 
-      if (visual && scene.textures.exists(visual.sheetKey)) {
+      const generatedScale = visual?.textureKey ? resolveGeneratedScale(visual.textureKey) : null;
+
+      if (visual?.textureKey && generatedScale !== null) {
+        // Generated single-texture tile: stamp the whole PNG scaled to tileSize.
+        // Passing `undefined` for the frame uses the texture's default `__BASE`
+        // frame — a single generated PNG has no sub-frames to select.
+        rt.stamp(visual.textureKey, undefined, tx * tileSize, ty * tileSize, {
+          originX: 0,
+          originY: 0,
+          scaleX: generatedScale,
+          scaleY: generatedScale,
+        });
+        generatedCount++;
+      } else if (visual && scene.textures.exists(visual.sheetKey)) {
         const sheet = getSheet(visual.sheetKey);
         const frameSize = sheet?.frameWidth ?? tileSize;
         const scale = tileSize / frameSize;
@@ -112,12 +153,17 @@ export function buildTerrainLayer(scene: Phaser.Scene, floorMap: FloorMap): Terr
     rtOrigin: `(${rt.originX}, ${rt.originY})`,
     rtSize: `${rt.width}x${rt.height}`,
     rtDepth: rt.depth,
+    generatedCount,
     spriteCount,
     colorCount,
     totalTiles: width * height,
+    // Coverage = any non-color tile (generated OR Kenney sheet). A tile only
+    // counts as uncovered when it fell all the way through to the color fill.
     spriteCoverage:
-      width * height > 0 ? `${Math.round((spriteCount / (width * height)) * 100)}%` : '0%',
+      width * height > 0
+        ? `${Math.round(((generatedCount + spriteCount) / (width * height)) * 100)}%`
+        : '0%',
   });
 
-  return { rt, spriteCount, colorCount };
+  return { rt, generatedCount, spriteCount, colorCount };
 }

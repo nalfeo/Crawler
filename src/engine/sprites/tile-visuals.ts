@@ -109,6 +109,19 @@ export interface TileVisualDef {
    * then populate/verify the array before shipping a floor that relies on it.
    */
   readonly frames?: BlobFrames16;
+  /**
+   * Optional key of a GENERATED single-PNG tile texture (a bare manifest key,
+   * e.g. `tile-stone-floor-v1-var-2`, loaded by `preloadGeneratedSprites`).
+   *
+   * When present AND the texture is loaded with a usable source width,
+   * `buildTerrainLayer` stamps the whole texture scaled to `tileSize`,
+   * taking precedence over the Kenney `sheetKey`/`frame`/`frames` path — a
+   * single generated tile has no sub-frames, so autotiling does not apply.
+   * If the texture is missing or has an invalid width at build time, the
+   * renderer falls through to the Kenney sheet frame (then solid color), so
+   * `sheetKey`/`frame` must remain a valid placeholder fallback.
+   */
+  readonly textureKey?: string;
 }
 
 /**
@@ -222,7 +235,11 @@ export const TILE_SPRITES: Readonly<Partial<Record<TerrainType, TileVisualDef>>>
    * Stone floor — warm sandy tan (row 4, col 0; ~rgb 234,165,108).
    * Classic cut-stone dungeon room floor.
    */
-  [TerrainType.STONE_FLOOR]: { sheetKey: TD, frame: td(0, 4) },
+  [TerrainType.STONE_FLOOR]: {
+    sheetKey: TD,
+    frame: td(0, 4),
+    textureKey: 'tile-stone-floor-v1-var-2',
+  },
 
   /**
    * Stone wall block — mid blue-gray (row 3, col 4; ~rgb 123,138,163) with
@@ -231,6 +248,11 @@ export const TILE_SPRITES: Readonly<Partial<Record<TerrainType, TileVisualDef>>>
   [TerrainType.STONE_WALL]: {
     sheetKey: TD,
     frame: td(4, 3),
+    // Generated single-texture wall art. Present intentionally alongside
+    // `frames`: the generated branch in buildTerrainLayer takes precedence and
+    // bypasses autotiling (a single PNG has no per-mask sub-frames). `frames`
+    // stays as the Kenney fallback if the generated texture fails to load.
+    textureKey: 'tile-stone-wall-v1-var-5',
     frames: [
       td(4, 3), //  0: isolated          (no neighbours)
       td(4, 3), //  1: N
@@ -362,7 +384,11 @@ export const TILE_SPRITES: Readonly<Partial<Record<TerrainType, TileVisualDef>>>
    * ~rgb 219,146,95). A subtle step darker than the standard stone floor so
    * the boss room reads as distinct without jarring contrast.
    */
-  [TerrainType.BOSS_STAIR_FLOOR]: { sheetKey: TD, frame: td(4, 4) },
+  [TerrainType.BOSS_STAIR_FLOOR]: {
+    sheetKey: TD,
+    frame: td(4, 4),
+    textureKey: 'tile-boss-staircase-floor-v2-var-10',
+  },
 
   /**
    * Safe room floor — clean light-gray flagstone (RPG pack row 0, col 9;
@@ -371,7 +397,11 @@ export const TILE_SPRITES: Readonly<Partial<Record<TerrainType, TileVisualDef>>>
    * pale stone distinguishes safe rooms from the warm room floor and the darker
    * corridor cobblestone.
    */
-  [TerrainType.SAFE_ROOM_FLOOR]: { sheetKey: RPG, frame: rpg(9, 0) },
+  [TerrainType.SAFE_ROOM_FLOOR]: {
+    sheetKey: RPG,
+    frame: rpg(9, 0),
+    textureKey: 'tile-safe-room-floor-v1-var-0',
+  },
 } as const;
 
 /**
