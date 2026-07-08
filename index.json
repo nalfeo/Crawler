@@ -1,5 +1,16 @@
 [
   {
+    "commit": "a425d0e4c386e087b3d052e88e14cd9e80bb6930",
+    "commitDate": "2026-07-08T20:08:31Z",
+    "commitSubject": "fix(labs): honest set-piece-lab readiness for reliable cold-cache visual-review capture (#916)",
+    "capturedAt": "2026-07-08T20:48:45.291Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28972654848",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/a425d0e4c386e087b3d052e88e14cd9e80bb6930.json"
+  },
+  {
     "commit": "5a11f3590bdcfb0e6c2d3740b7e979f652b48974",
     "commitDate": "2026-07-08T17:58:00Z",
     "commitSubject": "feat: fold dual-plan synthesis into adversarial plan review + plan_divergence instrumentation (ADR 0051) (#915)",
