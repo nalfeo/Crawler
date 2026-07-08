@@ -2568,6 +2568,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     // above travel steering keeps LEGACY byte-identical.
     const weights = this.getDynamicOpportunisticWeights(world);
     const useFused = this.config.pathingMode === AIPathingMode.RISK_REWARD_FUSED;
+    let fusedYieldedZero = false;
     if (useFused) {
       // A/B pathing mode B: score candidate headings by objective progress,
       // reward pull, and sampled overlap-danger so the AI prefers low-risk seams
@@ -2583,6 +2584,12 @@ export class BehaviorTreeAI implements AIInputProvider {
       );
       state.moveX = fused.moveX;
       state.moveY = fused.moveY;
+      // The fused scorer only folds Track B (reward pull) into a REAL heading. When
+      // it yields {0,0} (no travel target this poll — e.g. a ranged AI between
+      // shots) it folded nothing in, so the additive Track B blend below must still
+      // run to pass dodge/pull through; otherwise the player freezes for the frame
+      // instead of sidestepping threats the way LEGACY does (code review 2026-07-08).
+      fusedYieldedZero = fused.moveX === 0 && fused.moveY === 0;
     }
 
     // Predictive safe-gap travel steering: for travel states, replace the raw
@@ -2628,8 +2635,11 @@ export class BehaviorTreeAI implements AIInputProvider {
     //
     // LEGACY blends AFTER travel steering. In RISK_REWARD_FUSED mode the fused
     // scorer above already folded Track B (reward pull) into the heading, so
-    // re-blending here would double-count it — skip the additive blend when fused.
-    if (!useFused) {
+    // re-blending here would double-count it — skip the additive blend when fused,
+    // EXCEPT when the fused scorer produced no heading (fusedYieldedZero): it
+    // folded nothing in that poll, so the blend runs to pass dodge/pull through.
+    // fusedYieldedZero can only be true in fused mode, so LEGACY stays byte-identical.
+    if (!useFused || fusedYieldedZero) {
       const blend = this.blendWithTrackB(state.moveX, state.moveY, weights);
       state.moveX = blend.moveX;
       state.moveY = blend.moveY;
@@ -2924,6 +2934,13 @@ export class BehaviorTreeAI implements AIInputProvider {
     const blended = this.blendWithTrackB(baseMoveX, baseMoveY, weights);
     const blendedLen = Math.hypot(blended.moveX, blended.moveY);
     if (blendedLen <= TRAVEL_HEADING_EPSILON) {
+      // Track A + Track B cancelled to ~zero: fall back to the raw objective
+      // heading, but the danger-scored fan did NOT run this poll, so break the
+      // continuity chain the same way the baseLen early-return above does.
+      // Leaving prevFusedDir stale would bias the next full poll toward a heading
+      // from an older, non-consecutive fan (code review 2026-07-08, non-blocking).
+      this.prevFusedDirX = 0;
+      this.prevFusedDirY = 0;
       if (this.fusedDebugCapture) this.fusedDebug = null;
       return { moveX: baseMoveX / baseLen, moveY: baseMoveY / baseLen };
     }
