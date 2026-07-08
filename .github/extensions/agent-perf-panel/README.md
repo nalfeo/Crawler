@@ -34,8 +34,17 @@ so no native dependencies are required.
 - **Overview** — headline KPIs: wall time, tool time, serial vs parallel,
   API calls, output tokens, peak context vs budget, hook time, sub-agent /
   skill counts, error counts.
-- **Waterfall** — per-turn tool waterfall with color-per-tool, plus a tool
-  concurrency curve over time.
+- **Waterfall** — a true tool waterfall on a single shared **wall-clock** time
+  axis: one lane per tool call, ordered by real start time and positioned by its
+  actual start + duration, so serial calls cascade down-and-right and overlapping
+  (parallel) calls stack as bars sharing an x-range. Idle gaps show as real empty
+  stretches. Faint vertical turn boundaries + inline turn separators group the
+  lanes, and a tool-concurrency curve over time sits below. Directly above the
+  lanes, a **context-pressure strip** shares the exact same axis: one marker per
+  compaction at its recorded pre-compaction token high-water-mark, with a dashed
+  configured-budget line. These are honest **discrete samples** — the CLI log only
+  records context size when a compaction fires, so no continuous line is drawn or
+  interpolated (sessions with no compactions show an explicit note).
 - **Long poles** — top-20 individual tool calls + aggregate by tool name
   (count / total / avg / p50 / p95 / max / failures).
 - **Tokens & context** — cumulative output-token curve with compaction

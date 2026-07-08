@@ -122,8 +122,49 @@ svg .axis text { fill: var(--muted); }
 .wf-row .track .seg.hook { background: var(--hook); }
 .wf-row .track .seg.err { background: var(--err); }
 .wf-row .dur { min-width: 60px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.wf-scroll { max-height: 560px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
+.wf-axis { display: flex; align-items: center; gap: 8px; padding: 6px 0; background: var(--bg-alt); border-bottom: 1px solid var(--border); }
+.wf-axis .label { min-width: 200px; max-width: 200px; }
+.wf-axis .dur { min-width: 60px; }
+.wf-axis .ruler { flex: 1; position: relative; height: 16px; }
+.wf-axis .ruler .tick { position: absolute; top: 0; bottom: 0; }
+.wf-axis .ruler .tick i { position: absolute; top: 0; bottom: 0; left: 0; width: 1px; background: var(--border); }
+.wf-axis .ruler .tick b { position: absolute; top: 2px; left: 0; transform: translateX(-50%); color: var(--muted); font-weight: 500; font-size: 10px; white-space: nowrap; }
+.wf-axis .ruler .tick.start b { transform: translateX(0); }
+.wf-axis .ruler .tick.end b { transform: translateX(-100%); }
+.wf-plot { position: relative; padding: 4px 0; }
+.wf-plot .wf-grid { position: absolute; top: 0; bottom: 0; left: 208px; right: 68px; pointer-events: none; z-index: 0; }
+.wf-plot .wf-grid .wf-gl { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(139,148,158,.16); }
+.wf-plot .wf-row { position: relative; z-index: 1; padding: 1px 0; }
+.wf-plot .wf-row .track { background: transparent; }
+/* Bar POSITION is always the true leftPct; only rendered WIDTH has a 1px floor so
+   sub-pixel/0ms spans stay visible + hoverable. 1px is below the visual-overlap
+   threshold, so it can't manufacture a false "parallel" look between adjacent bars. */
+.wf-plot .wf-row .track .seg { min-width: 1px; }
+.wf-dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.wf-turn { display: flex; gap: 10px; align-items: baseline; padding: 8px 0 3px; margin-top: 2px; border-top: 1px dashed var(--border); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; position: relative; z-index: 1; }
+.wf-turn .idx { color: var(--text); font-weight: 600; }
+/* Sticky header holding the context strip + axis ruler. Both live INSIDE .wf-scroll
+   with the lanes, so they share the same scrollbar gutter and flex columns —
+   guaranteeing the context markers line up over the tool lanes. */
+.wf-head { position: sticky; top: 0; z-index: 3; background: var(--bg-alt); }
+.wf-ctx { display: flex; align-items: flex-end; gap: 8px; padding: 8px 0 2px; }
+.wf-ctx .label { min-width: 200px; max-width: 200px; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; align-self: center; }
+.wf-ctx .dur { min-width: 60px; text-align: right; color: var(--accent); font-size: 11px; font-variant-numeric: tabular-nums; align-self: center; }
+.wf-ctx .track { flex: 1; position: relative; height: 54px; background: linear-gradient(to top, rgba(88,166,255,.05), transparent); border-bottom: 1px solid var(--border); }
+.wf-ctx.empty { align-items: center; }
+.wf-ctx.empty .track { height: auto; background: none; border-bottom: 0; font-size: 11px; padding: 2px 0; }
+.wf-ctx .track .budget { position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed var(--warn); opacity: .75; }
+.wf-ctx .track .budget::after { content: 'budget'; position: absolute; right: 0; top: -11px; font-size: 9px; color: var(--warn); letter-spacing: .03em; }
+.wf-ctx .track .pt { position: absolute; top: 0; bottom: 0; width: 0; }
+.wf-ctx .track .pt .stem { position: absolute; left: 0; bottom: 0; height: var(--h); border-left: 1px solid rgba(88,166,255,.45); }
+.wf-ctx .track .pt .knob { position: absolute; left: 0; bottom: var(--h); width: 8px; height: 8px; border-radius: 50%; background: var(--accent); transform: translate(-50%, 50%); box-shadow: 0 0 0 2px var(--bg-alt); }
+.wf-ctx .track .pt.over .knob { background: var(--err); }
+.wf-ctx .track .pt.over .stem { border-left-color: rgba(248,81,73,.5); }
+.wf-ctx .track .pt.off .knob { background: transparent; border: 1px dashed var(--muted); box-shadow: none; }
 .legend { display: flex; gap: 12px; align-items: center; margin: 8px 0 14px; font-size: 11px; color: var(--muted); }
 .legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+.legend .swatch.ctxk { background: var(--accent); border-radius: 50%; width: 8px; height: 8px; }
 .summary-block { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .summary-block > .panel { margin: 0; }
 .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--bg); border: 1px solid var(--border); font-size: 10px; color: var(--muted); }
@@ -144,7 +185,9 @@ const CLIENT_SCRIPT = `
   }
 
   function fmtMs(ms) {
-    if (!ms || ms < 0) return '—';
+    // Reserve the em-dash for genuinely missing/invalid values; a real 0ms
+    // duration must render as "0ms", not look like missing data.
+    if (ms == null || !Number.isFinite(ms) || ms < 0) return '—';
     if (ms < 1000) return ms + 'ms';
     if (ms < 60_000) return (ms / 1000).toFixed(1) + 's';
     const m = Math.floor(ms / 60_000);
@@ -152,6 +195,12 @@ const CLIENT_SCRIPT = `
     return m + 'm' + (s ? s + 's' : '');
   }
   function fmtInt(n) { return n == null ? '—' : n.toLocaleString('en-US'); }
+  function fmtK(n) {
+    if (n == null || !Number.isFinite(n)) return '—';
+    if (n < 1000) return String(Math.round(n));
+    if (n < 1_000_000) return (n / 1000).toFixed(n < 10_000 ? 1 : 0) + 'K';
+    return (n / 1_000_000).toFixed(1) + 'M';
+  }
   function fmtPct(x) { return (x * 100).toFixed(1) + '%'; }
   function fmtBytes(n) {
     if (!n) return '—';
@@ -298,44 +347,151 @@ const CLIENT_SCRIPT = `
     \`;
   }
 
-  function viewWaterfall(s) {
-    // Show a compact per-turn waterfall: for each turn, show tool bars laid
-    // out on the turn's timeline. Also show model API calls & hooks.
-    if (!s.turns.length) return '<div class="empty">No turns recorded.</div>';
-    const turns = s.turns;
-    const rows = [];
-    // Global time axis using cumulative turn time so idle gaps compress.
-    for (const t of turns) {
-      const totalDur = Math.max(1, t.durationMs);
-      const inTurnTools = s.tools.filter((x) => x.turnIndex === t.turnIndex).sort((a,b)=>a.start-b.start);
-      const trackW = 100; // percent
-      const toolBars = inTurnTools.map((x) => {
-        const offset = ((x.start - t.start) / totalDur) * trackW;
-        const width = Math.max(0.5, (x.durationMs / totalDur) * trackW);
-        const failed = x.success === false;
-        // Failed calls keep the .err class with NO inline background so the
-        // \`.seg.err { background: var(--err) }\` rule wins; successful calls get
-        // the deterministic per-tool hash color inline.
-        const bg = failed ? '' : ';background:' + colorForTool(x.name);
-        return '<div class="seg ' + (failed ? 'err' : '') + '" title="' + esc(x.name) + ' — ' + fmtMs(x.durationMs) + (failed ? ' (failed)' : '') + '" style="left:' + offset + '%;width:' + width + '%' + bg + '"></div>';
-      }).join('');
-      rows.push(\`
-        <div class="wf-row">
-          <div class="label" title="turn \${t.turnIndex}">turn \${t.turnIndex}: \${esc((t.userPromptChars ? 'user ' + fmtBytes(t.userPromptChars) : 'assistant')) }</div>
-          <div class="track">\${toolBars}</div>
-          <div class="dur">\${fmtMs(t.durationMs)}</div>
-        </div>
-      \`);
+  function contextPressureChart(wf) {
+    const ctx = wf && wf.context;
+    // Column layout mirrors .wf-row / .wf-axis so the track lines up with the lanes.
+    if (!ctx || !ctx.hasData) {
+      const note = ctx && ctx.budgetTokens
+        ? 'No compactions in range — no context high-water mark was recorded (size is only sampled when a compaction fires; configured budget ' + fmtK(ctx.budgetTokens) + ' tokens).'
+        : 'No compactions in range — context-window size is only sampled when a compaction fires.';
+      return '<div class="wf-ctx empty"><div class="label">context</div><div class="track"><span class="muted">' + esc(note) + '</span></div><div class="dur"></div></div>';
     }
+
+    const budgetPct = ctx.budgetTokens ? Math.min(100, Math.max(0, (ctx.budgetTokens / ctx.maxTokens) * 100)) : null;
+    const budgetLine = budgetPct != null
+      ? '<div class="budget" style="top:' + (100 - budgetPct).toFixed(2) + '%" title="configured budget — ' + fmtInt(ctx.budgetTokens) + ' tokens (approximate; can be exceeded before compaction)"></div>'
+      : '';
+
+    const dots = ctx.points.map((p) => {
+      const bd = p.breakdown;
+      const parts = [];
+      parts.push(fmtInt(p.tokens) + ' tokens at compaction');
+      if (p.budgetPct != null) parts.push((p.budgetPct).toFixed(0) + '% of budget' + (p.overBudget ? ' (over budget)' : ''));
+      if (p.by) parts.push('by ' + p.by);
+      if (bd) {
+        const seg = [];
+        if (bd.systemTokens != null) seg.push('system ' + fmtK(bd.systemTokens));
+        if (bd.conversationTokens != null) seg.push('conversation ' + fmtK(bd.conversationTokens));
+        if (bd.toolDefinitionsTokens != null) seg.push('tools ' + fmtK(bd.toolDefinitionsTokens));
+        if (seg.length) parts.push(seg.join(' · '));
+      }
+      if (p.offAxis) parts.push('(timestamp outside session span — clamped to edge)');
+      const tip = parts.join(' — ');
+      const cls = 'pt' + (p.overBudget ? ' over' : '') + (p.offAxis ? ' off' : '');
+      // The tooltip must ride the visible stem + knob, not the .pt wrapper:
+      // .wf-ctx .track .pt is width:0, so a title on the wrapper has no
+      // hittable area and never shows on hover. A stem (baseline to dot) makes
+      // each compaction a discrete sample; we do NOT draw a line BETWEEN
+      // compactions because nothing measures context there.
+      const tipAttr = ' title="' + esc(tip) + '"';
+      return (
+        '<div class="' + cls + '" style="left:' + p.xPct.toFixed(3) + '%;--h:' + p.tokensPct.toFixed(3) + '%">' +
+          '<i class="stem"' + tipAttr + '></i><i class="knob"' + tipAttr + '></i>' +
+        '</div>'
+      );
+    }).join('');
+
+    const offNote = ctx.offAxisCount
+      ? '<span class="muted" title="clamped to the axis edge">· ' + ctx.offAxisCount + ' off-axis</span>'
+      : '';
+    const peakLabel = fmtK(ctx.peakTokens);
+    return (
+      '<div class="wf-ctx">' +
+        '<div class="label" title="Context-window high-water marks. Only sampled at compactions; not a continuous measurement.">context <span class="muted">peak</span> ' + offNote + '</div>' +
+        '<div class="track">' + budgetLine + dots + '</div>' +
+        '<div class="dur" title="peak recorded context (pre-compaction)">' + peakLabel + '</div>' +
+      '</div>'
+    );
+  }
+
+  function viewWaterfall(s) {
+    const wf = s.waterfall;
+    // Render the panel when there are tool lanes OR real context samples on the
+    // session axis. A session with compactions but no tool calls still has a
+    // meaningful context strip + ruler, so we only bail out entirely when there
+    // is genuinely nothing to show.
+    const hasRows = !!(wf && wf.rows && wf.rows.length);
+    const hasContext = !!(wf && wf.context && wf.context.hasData);
+    if (!wf || (!hasRows && !hasContext)) return '<div class="empty">No tool calls recorded.</div>';
+
+    // A TRUE waterfall: one shared wall-clock time axis spanning the whole
+    // session, one lane per tool call ordered by real start time. Each bar is
+    // positioned by its actual start + duration, so serial calls cascade
+    // down-and-right and parallel calls stack as overlapping bars.
+    const ruler = wf.ticks.map((tk, i) => {
+      const edge = i === 0 ? 'start' : i === wf.ticks.length - 1 ? 'end' : 'mid';
+      return '<span class="tick ' + edge + '" style="left:' + tk.pct.toFixed(3) + '%"><i></i><b>' + fmtMs(Math.round(tk.ms)) + '</b></span>';
+    }).join('');
+
+    // Faint vertical turn boundaries across the plot (skipped when too crowded).
+    const gridlines = wf.turnBands.length && wf.turnBands.length <= 200
+      ? wf.turnBands.map((b) => '<div class="wf-gl" style="left:' + b.leftPct.toFixed(3) + '%" title="turn ' + b.turnIndex + ' — starts +' + fmtMs(Math.round(b.startOffsetMs)) + ', ' + fmtMs(b.durationMs) + '"></div>').join('')
+      : '';
+
+    // Lanes, with a compact turn separator whenever the turn changes.
+    const bandByTurn = new Map(wf.turnBands.map((b) => [b.turnIndex, b]));
+    let prevTurn = null;
+    const body = [];
+    for (const r of wf.rows) {
+      if (r.turnIndex !== prevTurn) {
+        prevTurn = r.turnIndex;
+        const b = bandByTurn.get(r.turnIndex);
+        const meta = b
+          ? '+' + fmtMs(Math.round(b.startOffsetMs)) + ' · ' + fmtMs(b.durationMs) +
+            (b.userPromptChars ? ' · user ' + fmtBytes(b.userPromptChars) : '') +
+            ' · ' + fmtInt(b.toolCount) + ' tools'
+          : '';
+        body.push('<div class="wf-turn"><span class="idx">turn ' + r.turnIndex + '</span><span class="muted">' + esc(meta) + '</span></div>');
+      }
+      const failed = r.success === false;
+      const color = failed ? 'var(--err)' : colorForTool(r.name);
+      // Failed calls use the .err class (no inline bg) so the stylesheet's
+      // \`.seg.err\` rule wins; successful calls get the per-tool hash color.
+      const bg = failed ? '' : ';background:' + colorForTool(r.name);
+      const tip = esc(r.name) + ' — ' + fmtMs(r.durationMs) + ' (starts +' + fmtMs(Math.round(r.startOffsetMs)) + ')' + (failed ? ' — failed' : '');
+      body.push(
+        '<div class="wf-row">' +
+          '<div class="label" title="' + tip + '"><span class="wf-dot" style="background:' + color + '"></span>' + esc(r.name) + '</div>' +
+          '<div class="track"><div class="seg ' + (failed ? 'err' : '') + '" title="' + tip + '" style="left:' + r.leftPct.toFixed(3) + '%;width:' + r.widthPct.toFixed(3) + '%' + bg + '"></div></div>' +
+          '<div class="dur">' + fmtMs(r.durationMs) + '</div>' +
+        '</div>',
+      );
+    }
+
+    // No tool lanes but real context samples: keep the context strip + ruler
+    // (both meaningful on the session axis) and show an honest empty-plot note
+    // instead of hiding the whole panel.
+    if (!wf.rows.length) {
+      body.push('<div class="muted" style="padding:8px 0;font-size:11px;">No tool calls in this session — context high-water marks are shown above.</div>');
+    }
+
+    const truncNote = wf.truncated
+      ? '<div class="muted" style="font-size:11px;margin-top:6px;">Showing the first ' + fmtInt(wf.rows.length) + ' of ' + fmtInt(wf.totalRows) + ' tool calls (earliest by start time).</div>'
+      : '';
+
+    // The context strip + axis ruler share ONE sticky header inside .wf-scroll, so
+    // they sit in the exact same horizontal sizing context as the lanes (same
+    // scrollbar gutter, same flex columns) — guaranteeing x-alignment.
     return \`
       <div class="panel">
-        <h2>Per-turn tool waterfall</h2>
+        <h2>Tool waterfall — wall-clock timeline (\${fmtMs(wf.spanMs)} total)</h2>
         <div class="legend">
           <span><span class="swatch" style="background:var(--serial)"></span>tool call (color = tool type)</span>
           <span><span class="swatch" style="background:var(--err)"></span>failed</span>
-          <span class="muted">bars are scaled to their turn's duration; hover for details</span>
+          <span><span class="swatch ctxk"></span>context peak at compaction</span>
+          <span class="muted">one lane per call on a shared time axis; overlapping bars ran in parallel — hover for details</span>
         </div>
-        \${rows.join('')}
+        <div class="wf-scroll">
+          <div class="wf-head">
+            \${contextPressureChart(wf)}
+            <div class="wf-axis"><div class="label"></div><div class="ruler">\${ruler}</div><div class="dur"></div></div>
+          </div>
+          <div class="wf-plot">
+            <div class="wf-grid">\${gridlines}</div>
+            \${body.join('')}
+          </div>
+        </div>
+        \${truncNote}
       </div>
       \${parallelismChart(s)}
     \`;
