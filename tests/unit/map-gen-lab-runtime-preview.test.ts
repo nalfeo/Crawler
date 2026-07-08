@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { spawnPlayer } from '../../src/core/spawners/combatants.js';
 import type { GameWorld } from '../../src/core/world.js';
+import { FLOOR2_CAVE_SYSTEM_DEFAULTS } from '../../src/game/floor2Scenario.js';
 import { floor1Config } from '../../src/shared/floor-config.js';
 import { getFloorManifest } from '../../src/shared/floor-registry.js';
 import { BiomeType } from '../../src/shared/map-types.js';
@@ -55,18 +56,30 @@ describe('map-gen lab runtime preview', () => {
     expect(defaults.caveInitialFill).toBe(0.5);
     expect(defaults.caveSmoothingPasses).toBe(4);
     expect(defaults.caveBossDenSize).toBe(5);
+    expect(defaults.caveResourceHeartDiameterTiles).toBe(20);
+    expect(defaults.caveTerritoryRadiusFraction).toBe(0.3);
+    expect(defaults.caveDenStartAngleJitterFraction).toBe(1.0);
+    expect(defaults.caveDenDistanceJitterFraction).toBe(1.0);
+    expect(defaults.caveDenTargetRadiusMinFraction).toBe(0.6);
+    expect(defaults.caveDenTargetRadiusMaxFraction).toBe(0.8);
+    expect(defaults.caveDenTargetMinSeparationTiles).toBe(12);
+    expect(defaults.caveSpawnMinDistanceFromDenTiles).toBe(24);
+    expect(defaults.caveSpawnMinDistanceFromResourceHeartTiles).toBe(24);
+    expect(defaults.caveSpawnMinDistanceFromSettlementTiles).toBe(24);
+    expect(defaults.caveSettlementMinDistanceFromDenTiles).toBe(20);
+    expect(defaults.caveSettlementMinDistanceFromResourceHeartTiles).toBe(16);
     expect(defaults.caveRegionSeparationTiles).toBe(0);
     expect(defaults.caveMaxRetries).toBe(8);
     expect(defaults.caveCavernWidenPasses).toBe(2);
     expect(defaults.caveStraightHallwayMinRun).toBe(10);
   });
 
-  it('uses Floor 2 map-gen lab defaults for constrained preview controls', () => {
+  it('uses Floor 2 runtime defaults for constrained preview controls', () => {
     const manifest = getFloorManifest('floor2')!;
     const defaults = getFloorConstraintDefaults('floor2');
     expect(defaults.biome).toBe((manifest.map.biome ?? BiomeType.CAVE_SYSTEM) as BiomeType);
-    expect(defaults.widthTiles).toBe(200);
-    expect(defaults.heightTiles).toBe(200);
+    expect(defaults.widthTiles).toBe(manifest.map.widthTiles);
+    expect(defaults.heightTiles).toBe(manifest.map.heightTiles);
     expect(defaults.maxRooms).toBe(manifest.map.maxRooms);
     expect(defaults.floorDensity).toBe(manifest.map.floorDensity);
     expect(defaults.roomWidthMin).toBe(manifest.map.roomWidthRange[0]);
@@ -74,11 +87,49 @@ describe('map-gen lab runtime preview', () => {
     expect(defaults.roomHeightMin).toBe(manifest.map.roomHeightRange[0]);
     expect(defaults.roomHeightMax).toBe(manifest.map.roomHeightRange[1]);
     expect(defaults.cavePresentCount).toBe(manifest.floor2?.presentCount ?? 4);
-    expect(defaults.caveInitialFill).toBe(0.55);
-    expect(defaults.caveSmoothingPasses).toBe(8);
-    expect(defaults.caveBossDenSize).toBe(10);
-    expect(defaults.caveRegionSeparationTiles).toBe(80);
-    expect(defaults.caveMaxRetries).toBe(8);
+    expect(defaults.caveInitialFill).toBe(FLOOR2_CAVE_SYSTEM_DEFAULTS.initialFill);
+    expect(defaults.caveSmoothingPasses).toBe(FLOOR2_CAVE_SYSTEM_DEFAULTS.smoothingPasses);
+    expect(defaults.caveBossDenSize).toBe(FLOOR2_CAVE_SYSTEM_DEFAULTS.bossDenSize);
+    expect(defaults.caveResourceHeartDiameterTiles).toBe(
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.resourceHeartDiameterTiles,
+    );
+    expect(defaults.caveTerritoryRadiusFraction).toBe(
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.territoryRadiusFraction,
+    );
+    expect(defaults.caveDenStartAngleJitterFraction).toBe(
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.denStartAngleJitterFraction,
+    );
+    expect(defaults.caveDenDistanceJitterFraction).toBe(
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.denDistanceJitterFraction,
+    );
+    expect(defaults.caveDenTargetRadiusMinFraction).toBe(
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.denTargetRadiusMinFraction,
+    );
+    expect(defaults.caveDenTargetRadiusMaxFraction).toBe(
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.denTargetRadiusMaxFraction,
+    );
+    expect(defaults.caveDenTargetMinSeparationTiles).toBe(
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.denTargetMinSeparationTiles,
+    );
+    expect(defaults.caveSpawnMinDistanceFromDenTiles).toBe(
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.spawnMinDistanceFromDenTiles,
+    );
+    expect(defaults.caveSpawnMinDistanceFromResourceHeartTiles).toBe(
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.spawnMinDistanceFromResourceHeartTiles,
+    );
+    expect(defaults.caveSpawnMinDistanceFromSettlementTiles).toBe(
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.spawnMinDistanceFromSettlementTiles,
+    );
+    expect(defaults.caveSettlementMinDistanceFromDenTiles).toBe(
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.settlementMinDistanceFromDenTiles,
+    );
+    expect(defaults.caveSettlementMinDistanceFromResourceHeartTiles).toBe(
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.settlementMinDistanceFromResourceHeartTiles,
+    );
+    expect(defaults.caveRegionSeparationTiles).toBe(
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.regionSeparationTiles,
+    );
+    expect(defaults.caveMaxRetries).toBe(FLOOR2_CAVE_SYSTEM_DEFAULTS.maxRetries);
     expect(defaults.caveCavernWidenPasses).toBe(2);
     expect(defaults.caveStraightHallwayMinRun).toBe(10);
   });

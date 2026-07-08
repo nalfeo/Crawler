@@ -98,6 +98,8 @@ export interface MapConfig {
     readonly smoothingPasses?: number;
     /** Boss-den side length in tiles. */
     readonly bossDenSize?: number;
+    /** Resource-heart chamber target diameter in tiles. */
+    readonly resourceHeartDiameterTiles?: number;
     /** Minimum tile separation between region seeds (clamped to map diagonal). */
     readonly regionSeparationTiles?: number;
     /** Maximum retry attempts before generation fails. */
@@ -111,6 +113,38 @@ export interface MapConfig {
      * Default 0.3 = 30% diameter circles from boss den centers.
      */
     readonly territoryRadiusFraction?: number;
+    /**
+     * Random angular offset for the first den, as a fraction of one den step.
+     * 1.0 allows a full step-width random rotation.
+     */
+    readonly denStartAngleJitterFraction?: number;
+    /**
+     * Per-den radial jitter inside the configured den min/max radius band.
+     * 0 = no radial jitter, 1 = full band jitter.
+     */
+    readonly denDistanceJitterFraction?: number;
+    /**
+     * Boss-den target radial band minimum as fraction of center→edge distance.
+     * Default 0.6 (60% toward map edge).
+     */
+    readonly denTargetRadiusMinFraction?: number;
+    /**
+     * Boss-den target radial band maximum as fraction of center→edge distance.
+     * Default 0.8 (80% toward map edge).
+     */
+    readonly denTargetRadiusMaxFraction?: number;
+    /** Minimum Euclidean separation between den targets in tiles. */
+    readonly denTargetMinSeparationTiles?: number;
+    /** Minimum spawn distance from any den center, in tiles. */
+    readonly spawnMinDistanceFromDenTiles?: number;
+    /** Minimum spawn distance from the resource-heart center, in tiles. */
+    readonly spawnMinDistanceFromResourceHeartTiles?: number;
+    /** Minimum spawn distance from the settlement center, in tiles. */
+    readonly spawnMinDistanceFromSettlementTiles?: number;
+    /** Minimum settlement distance from any den center, in tiles. */
+    readonly settlementMinDistanceFromDenTiles?: number;
+    /** Minimum settlement distance from the resource-heart center, in tiles. */
+    readonly settlementMinDistanceFromResourceHeartTiles?: number;
   };
 }
 
@@ -205,11 +239,11 @@ export interface RoomData {
 export interface TerritoryZone {
   /** Index into the present-families roster (matches TERRITORY / BOSS_DEN familyIndex). */
   readonly familyIndex: number;
-  /** Center tile X of the zone (den target position). */
+  /** Center tile X of the zone (boss den center). */
   readonly centerX: number;
-  /** Center tile Y of the zone (den target position). */
+  /** Center tile Y of the zone (boss den center). */
   readonly centerY: number;
-  /** Influence radius in tiles. Approximately covers 25% of the map floor area. */
+  /** Influence radius in tiles. */
   readonly radius: number;
 }
 

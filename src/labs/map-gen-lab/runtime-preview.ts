@@ -1,6 +1,9 @@
 import { spawnPlayer } from '../../core/spawners/combatants.js';
 import { createGameWorld, type GameWorld } from '../../core/world.js';
-import { initializeFloor2Scenario } from '../../game/floor2Scenario.js';
+import {
+  FLOOR2_CAVE_SYSTEM_DEFAULTS,
+  initializeFloor2Scenario,
+} from '../../game/floor2Scenario.js';
 import { initializeFloor1Scenario } from '../../game/floorScenario.js';
 import { floor1Config } from '../../shared/floor-config.js';
 import { getFloorManifest } from '../../shared/floor-registry.js';
@@ -22,6 +25,18 @@ export interface FloorConstraintDefaults {
   readonly caveInitialFill: number;
   readonly caveSmoothingPasses: number;
   readonly caveBossDenSize: number;
+  readonly caveResourceHeartDiameterTiles: number;
+  readonly caveTerritoryRadiusFraction: number;
+  readonly caveDenStartAngleJitterFraction: number;
+  readonly caveDenDistanceJitterFraction: number;
+  readonly caveDenTargetRadiusMinFraction: number;
+  readonly caveDenTargetRadiusMaxFraction: number;
+  readonly caveDenTargetMinSeparationTiles: number;
+  readonly caveSpawnMinDistanceFromDenTiles: number;
+  readonly caveSpawnMinDistanceFromResourceHeartTiles: number;
+  readonly caveSpawnMinDistanceFromSettlementTiles: number;
+  readonly caveSettlementMinDistanceFromDenTiles: number;
+  readonly caveSettlementMinDistanceFromResourceHeartTiles: number;
   readonly caveRegionSeparationTiles: number;
   readonly caveMaxRetries: number;
   readonly caveCavernWidenPasses: number;
@@ -40,23 +55,23 @@ const DEFAULT_CAVE_SETTINGS = {
   initialFill: 0.5,
   smoothingPasses: 4,
   bossDenSize: 5,
+  resourceHeartDiameterTiles: 20,
+  territoryRadiusFraction: 0.3,
+  denStartAngleJitterFraction: 1.0,
+  denDistanceJitterFraction: 1.0,
+  denTargetRadiusMinFraction: 0.6,
+  denTargetRadiusMaxFraction: 0.8,
+  denTargetMinSeparationTiles: 12,
+  spawnMinDistanceFromDenTiles: 24,
+  spawnMinDistanceFromResourceHeartTiles: 24,
+  spawnMinDistanceFromSettlementTiles: 24,
+  settlementMinDistanceFromDenTiles: 20,
+  settlementMinDistanceFromResourceHeartTiles: 16,
   regionSeparationTiles: 0,
   maxRetries: 8,
   cavernWidenPasses: 2,
   straightHallwayMinRun: 10,
 } as const;
-const FLOOR2_MAP_GEN_LAB_DEFAULTS = {
-  widthTiles: 200,
-  heightTiles: 200,
-  caveInitialFill: 0.55,
-  caveSmoothingPasses: 8,
-  caveBossDenSize: 10,
-  caveRegionSeparationTiles: 80,
-  caveMaxRetries: 8,
-  caveCavernWidenPasses: 2,
-  caveStraightHallwayMinRun: 10,
-} as const;
-
 function defaultScenarioWorldFactory(seed: number, floor: number): ScenarioWorldFactoryResult {
   const world = createGameWorld({ seed, floor });
   const playerEid = spawnPlayer(world, 0, 0);
@@ -79,6 +94,22 @@ export function getFloorConstraintDefaults(floorId: PreviewFloorId): FloorConstr
       caveInitialFill: DEFAULT_CAVE_SETTINGS.initialFill,
       caveSmoothingPasses: DEFAULT_CAVE_SETTINGS.smoothingPasses,
       caveBossDenSize: DEFAULT_CAVE_SETTINGS.bossDenSize,
+      caveResourceHeartDiameterTiles: DEFAULT_CAVE_SETTINGS.resourceHeartDiameterTiles,
+      caveTerritoryRadiusFraction: DEFAULT_CAVE_SETTINGS.territoryRadiusFraction,
+      caveDenStartAngleJitterFraction: DEFAULT_CAVE_SETTINGS.denStartAngleJitterFraction,
+      caveDenDistanceJitterFraction: DEFAULT_CAVE_SETTINGS.denDistanceJitterFraction,
+      caveDenTargetRadiusMinFraction: DEFAULT_CAVE_SETTINGS.denTargetRadiusMinFraction,
+      caveDenTargetRadiusMaxFraction: DEFAULT_CAVE_SETTINGS.denTargetRadiusMaxFraction,
+      caveDenTargetMinSeparationTiles: DEFAULT_CAVE_SETTINGS.denTargetMinSeparationTiles,
+      caveSpawnMinDistanceFromDenTiles: DEFAULT_CAVE_SETTINGS.spawnMinDistanceFromDenTiles,
+      caveSpawnMinDistanceFromResourceHeartTiles:
+        DEFAULT_CAVE_SETTINGS.spawnMinDistanceFromResourceHeartTiles,
+      caveSpawnMinDistanceFromSettlementTiles:
+        DEFAULT_CAVE_SETTINGS.spawnMinDistanceFromSettlementTiles,
+      caveSettlementMinDistanceFromDenTiles:
+        DEFAULT_CAVE_SETTINGS.settlementMinDistanceFromDenTiles,
+      caveSettlementMinDistanceFromResourceHeartTiles:
+        DEFAULT_CAVE_SETTINGS.settlementMinDistanceFromResourceHeartTiles,
       caveRegionSeparationTiles: DEFAULT_CAVE_SETTINGS.regionSeparationTiles,
       caveMaxRetries: DEFAULT_CAVE_SETTINGS.maxRetries,
       caveCavernWidenPasses: DEFAULT_CAVE_SETTINGS.cavernWidenPasses,
@@ -92,8 +123,8 @@ export function getFloorConstraintDefaults(floorId: PreviewFloorId): FloorConstr
   }
   return {
     biome: (manifest.map.biome ?? BiomeType.CAVE_SYSTEM) as BiomeType,
-    widthTiles: FLOOR2_MAP_GEN_LAB_DEFAULTS.widthTiles,
-    heightTiles: FLOOR2_MAP_GEN_LAB_DEFAULTS.heightTiles,
+    widthTiles: manifest.map.widthTiles,
+    heightTiles: manifest.map.heightTiles,
     maxRooms: manifest.map.maxRooms,
     floorDensity: manifest.map.floorDensity,
     roomWidthMin: manifest.map.roomWidthRange[0],
@@ -101,13 +132,29 @@ export function getFloorConstraintDefaults(floorId: PreviewFloorId): FloorConstr
     roomHeightMin: manifest.map.roomHeightRange[0],
     roomHeightMax: manifest.map.roomHeightRange[1],
     cavePresentCount: manifest.floor2?.presentCount ?? DEFAULT_CAVE_SETTINGS.presentCount,
-    caveInitialFill: FLOOR2_MAP_GEN_LAB_DEFAULTS.caveInitialFill,
-    caveSmoothingPasses: FLOOR2_MAP_GEN_LAB_DEFAULTS.caveSmoothingPasses,
-    caveBossDenSize: FLOOR2_MAP_GEN_LAB_DEFAULTS.caveBossDenSize,
-    caveRegionSeparationTiles: FLOOR2_MAP_GEN_LAB_DEFAULTS.caveRegionSeparationTiles,
-    caveMaxRetries: FLOOR2_MAP_GEN_LAB_DEFAULTS.caveMaxRetries,
-    caveCavernWidenPasses: FLOOR2_MAP_GEN_LAB_DEFAULTS.caveCavernWidenPasses,
-    caveStraightHallwayMinRun: FLOOR2_MAP_GEN_LAB_DEFAULTS.caveStraightHallwayMinRun,
+    caveInitialFill: FLOOR2_CAVE_SYSTEM_DEFAULTS.initialFill,
+    caveSmoothingPasses: FLOOR2_CAVE_SYSTEM_DEFAULTS.smoothingPasses,
+    caveBossDenSize: FLOOR2_CAVE_SYSTEM_DEFAULTS.bossDenSize,
+    caveResourceHeartDiameterTiles: FLOOR2_CAVE_SYSTEM_DEFAULTS.resourceHeartDiameterTiles,
+    caveTerritoryRadiusFraction: FLOOR2_CAVE_SYSTEM_DEFAULTS.territoryRadiusFraction,
+    caveDenStartAngleJitterFraction: FLOOR2_CAVE_SYSTEM_DEFAULTS.denStartAngleJitterFraction,
+    caveDenDistanceJitterFraction: FLOOR2_CAVE_SYSTEM_DEFAULTS.denDistanceJitterFraction,
+    caveDenTargetRadiusMinFraction: FLOOR2_CAVE_SYSTEM_DEFAULTS.denTargetRadiusMinFraction,
+    caveDenTargetRadiusMaxFraction: FLOOR2_CAVE_SYSTEM_DEFAULTS.denTargetRadiusMaxFraction,
+    caveDenTargetMinSeparationTiles: FLOOR2_CAVE_SYSTEM_DEFAULTS.denTargetMinSeparationTiles,
+    caveSpawnMinDistanceFromDenTiles: FLOOR2_CAVE_SYSTEM_DEFAULTS.spawnMinDistanceFromDenTiles,
+    caveSpawnMinDistanceFromResourceHeartTiles:
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.spawnMinDistanceFromResourceHeartTiles,
+    caveSpawnMinDistanceFromSettlementTiles:
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.spawnMinDistanceFromSettlementTiles,
+    caveSettlementMinDistanceFromDenTiles:
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.settlementMinDistanceFromDenTiles,
+    caveSettlementMinDistanceFromResourceHeartTiles:
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.settlementMinDistanceFromResourceHeartTiles,
+    caveRegionSeparationTiles: FLOOR2_CAVE_SYSTEM_DEFAULTS.regionSeparationTiles,
+    caveMaxRetries: FLOOR2_CAVE_SYSTEM_DEFAULTS.maxRetries,
+    caveCavernWidenPasses: FLOOR2_CAVE_SYSTEM_DEFAULTS.cavernWidenPasses,
+    caveStraightHallwayMinRun: FLOOR2_CAVE_SYSTEM_DEFAULTS.straightHallwayMinRun,
   };
 }
 

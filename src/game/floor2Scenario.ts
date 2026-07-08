@@ -111,6 +111,28 @@ const FLOOR2_BOSS_HP_SCALE = 0.03;
 const FLOOR2_BOSS_CONTACT_DAMAGE = 2;
 const floor2ProcessedCombatEvents = new WeakMap<GameWorld, WeakSet<object>>();
 
+export const FLOOR2_CAVE_SYSTEM_DEFAULTS = {
+  initialFill: 0.55,
+  smoothingPasses: 8,
+  cavernWidenPasses: 2,
+  straightHallwayMinRun: 10,
+  bossDenSize: 10,
+  resourceHeartDiameterTiles: 30,
+  territoryRadiusFraction: 0.5,
+  denTargetRadiusMinFraction: 0.5,
+  denTargetRadiusMaxFraction: 0.66,
+  denTargetMinSeparationTiles: 50,
+  denStartAngleJitterFraction: 1,
+  denDistanceJitterFraction: 1,
+  spawnMinDistanceFromDenTiles: 24,
+  spawnMinDistanceFromResourceHeartTiles: 24,
+  spawnMinDistanceFromSettlementTiles: 24,
+  settlementMinDistanceFromDenTiles: 30,
+  settlementMinDistanceFromResourceHeartTiles: 20,
+  regionSeparationTiles: 50,
+  maxRetries: 8,
+} as const;
+
 /**
  * Concrete result of picking a den-unlock archetype for one family. Stored on
  * `world.floorExtendedState?.familyState` for Slice 5's win evaluator + Slice 7's HUD.
@@ -723,7 +745,10 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
     roomHeightRange: manifest.map.roomHeightRange,
     maxRooms: manifest.map.maxRooms,
     floorDensity: manifest.map.floorDensity,
-    caveSystem: { presentCount: roster.presentFamilies.length },
+    caveSystem: {
+      ...FLOOR2_CAVE_SYSTEM_DEFAULTS,
+      presentCount: roster.presentFamilies.length,
+    },
   };
   const floorMap = getGenerator(mapConfig.biome).generate(mapConfig, world.rng);
   world.floorMap = floorMap;

@@ -10,10 +10,11 @@ import type { DoorLockCondition, DoorConditionGroup } from '../../core/door-lock
 import type { GameWorld } from '../../core/world.js';
 import { registerLab } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
-import { getAvailableFloorIds } from '../../shared/floor-registry.js';
+import { getAvailableFloorIds, getFloorManifest } from '../../shared/floor-registry.js';
 import { loadFamilies } from '../../shared/data/families.js';
 import { getNpcDef } from '../../shared/npc-types.js';
 import { SeededRandom } from '../../shared/random.js';
+import { getFloorEnemyPack } from '../../shared/enemy-packs.js';
 import {
   BiomeType,
   RoomRole,
@@ -24,11 +25,23 @@ import {
 } from '../../shared/map-types.js';
 import type { FloorMap } from '../../core/map/FloorMap.js';
 import { getSpawnerArchetypeByIndex } from '../../game/spawners/registry.js';
+import type { SpawnerArchetype } from '../../game/spawners/types.js';
 import {
   buildConstrainedFloorPreview,
   getFloorConstraintDefaults,
   type PreviewFloorId,
 } from './runtime-preview.js';
+import {
+  buildHoverTooltipContent,
+  collectHoverTargetsAtPoint,
+  type HoverTooltipTarget,
+} from './hover-utils.js';
+import {
+  buildSpawnTableRows,
+  type SpawnQuadrantId,
+  type SpawnTableQuadrantEntry,
+  type SpawnTableRow,
+} from './spawn-table-model.js';
 
 const LAB_ID = 'map-gen-lab';
 const CELL_SIZE = 8;
@@ -36,16 +49,7 @@ const DEFAULT_WIDTH = 80;
 const DEFAULT_HEIGHT = 60;
 type FloorConstraintId = 'none' | 'floor1' | 'floor2';
 
-interface HoverTarget {
-  readonly kind: 'rect' | 'point';
-  readonly x: number;
-  readonly y: number;
-  readonly width?: number;
-  readonly height?: number;
-  readonly radius?: number;
-  readonly title: string;
-  readonly lines: readonly string[];
-}
+type HoverTarget = HoverTooltipTarget;
 
 interface Marker {
   readonly tx: number;
@@ -73,6 +77,18 @@ interface MapGenLabSettings {
   caveInitialFill: number;
   caveSmoothingPasses: number;
   caveBossDenSize: number;
+  caveResourceHeartDiameterTiles: number;
+  caveTerritoryRadiusFraction: number;
+  caveDenStartAngleJitterFraction: number;
+  caveDenDistanceJitterFraction: number;
+  caveDenTargetRadiusMinFraction: number;
+  caveDenTargetRadiusMaxFraction: number;
+  caveDenTargetMinSeparationTiles: number;
+  caveSpawnMinDistanceFromDenTiles: number;
+  caveSpawnMinDistanceFromResourceHeartTiles: number;
+  caveSpawnMinDistanceFromSettlementTiles: number;
+  caveSettlementMinDistanceFromDenTiles: number;
+  caveSettlementMinDistanceFromResourceHeartTiles: number;
   caveRegionSeparationTiles: number;
   caveMaxRetries: number;
   caveCavernWidenPasses: number;
@@ -81,7 +97,7 @@ interface MapGenLabSettings {
   showDoors: boolean;
   showSpawn: boolean;
   showReachability: boolean;
-  showTrashSpawnAreas: boolean;
+  showSpawnZones: boolean;
   showFamilyTerritories: boolean;
   showNpcPositions: boolean;
   showQuestItems: boolean;
@@ -213,6 +229,18 @@ const QUADRANT_NEIGHBORS: Record<'N' | 'S' | 'E' | 'W', readonly [string, string
   W: ['S', 'E', 'N'],
 };
 
+interface SpawnZoneContext {
+  readonly ambientPack?: ReturnType<typeof getFloorEnemyPack>;
+  readonly includeGlobalAmbient: boolean;
+  readonly quadrants: readonly SpawnTableQuadrantEntry[];
+}
+
+function normalizeQuadrantId(quadrant: string): SpawnQuadrantId | null {
+  return quadrant === 'N' || quadrant === 'S' || quadrant === 'E' || quadrant === 'W'
+    ? quadrant
+    : null;
+}
+
 function roomCenter(room: RoomData): { tx: number; ty: number } {
   if (room.interiorCells && room.interiorCells.length > 0) {
     const mid = room.interiorCells[Math.floor(room.interiorCells.length / 2)]!;
@@ -279,7 +307,11 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   const initialFloor = (
     getAvailableFloorIds().includes('floor1') ? 'floor1' : 'none'
   ) as FloorConstraintId;
-  const savedState = loadLabState<MapGenLabSettings>(LAB_ID);
+  type SavedMapGenLabState = Partial<MapGenLabSettings> & {
+    showGlobalSpawnZone?: boolean;
+    showTrashSpawnAreas?: boolean;
+  };
+  const savedState = loadLabState<SavedMapGenLabState>(LAB_ID);
   const settings: MapGenLabSettings = {
     floorConstraint: initialFloor,
     applyFloorConstraints: true,
@@ -297,6 +329,18 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     caveInitialFill: 0.45,
     caveSmoothingPasses: 5,
     caveBossDenSize: 5,
+    caveResourceHeartDiameterTiles: 20,
+    caveTerritoryRadiusFraction: 0.3,
+    caveDenStartAngleJitterFraction: 1.0,
+    caveDenDistanceJitterFraction: 1.0,
+    caveDenTargetRadiusMinFraction: 0.6,
+    caveDenTargetRadiusMaxFraction: 0.8,
+    caveDenTargetMinSeparationTiles: 12,
+    caveSpawnMinDistanceFromDenTiles: 24,
+    caveSpawnMinDistanceFromResourceHeartTiles: 24,
+    caveSpawnMinDistanceFromSettlementTiles: 24,
+    caveSettlementMinDistanceFromDenTiles: 20,
+    caveSettlementMinDistanceFromResourceHeartTiles: 16,
     caveRegionSeparationTiles: 0,
     caveMaxRetries: 8,
     caveCavernWidenPasses: 2,
@@ -305,7 +349,7 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     showDoors: true,
     showSpawn: true,
     showReachability: true,
-    showTrashSpawnAreas: false,
+    showSpawnZones: true,
     showFamilyTerritories: true,
     showNpcPositions: true,
     showQuestItems: true,
@@ -314,6 +358,15 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     showLegend: true,
     ...savedState,
   };
+  if (
+    savedState &&
+    savedState.showSpawnZones === undefined &&
+    (savedState.showGlobalSpawnZone !== undefined || savedState.showTrashSpawnAreas !== undefined)
+  ) {
+    settings.showSpawnZones = Boolean(
+      savedState.showGlobalSpawnZone || savedState.showTrashSpawnAreas,
+    );
+  }
 
   const VIEWPORT_HEIGHT = 620;
 
@@ -438,6 +491,30 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   legendEl.style.whiteSpace = 'pre-wrap';
   canvasHost.appendChild(legendEl);
 
+  const spawnTableHost = document.createElement('div');
+  spawnTableHost.style.marginTop = '8px';
+  spawnTableHost.style.padding = '12px';
+  spawnTableHost.style.background = 'rgba(8, 12, 24, 0.6)';
+  spawnTableHost.style.borderRadius = '8px';
+  spawnTableHost.style.color = '#d1defd';
+  spawnTableHost.style.fontSize = '12px';
+  spawnTableHost.style.fontFamily = 'monospace';
+  spawnTableHost.style.lineHeight = '1.55';
+  canvasHost.appendChild(spawnTableHost);
+
+  const spawnTableTitle = document.createElement('div');
+  spawnTableTitle.textContent = 'Spawn Regions';
+  spawnTableTitle.style.fontWeight = '700';
+  spawnTableTitle.style.marginBottom = '8px';
+  spawnTableHost.appendChild(spawnTableTitle);
+
+  const spawnTableEl = document.createElement('table');
+  spawnTableEl.style.width = '100%';
+  spawnTableEl.style.borderCollapse = 'collapse';
+  spawnTableEl.style.fontSize = '12px';
+  spawnTableEl.style.tableLayout = 'fixed';
+  spawnTableHost.appendChild(spawnTableEl);
+
   let currentMap: FloorMap | null = null;
   let currentPreviewWorld: GameWorld | null = null;
   let currentReachable: Uint8Array | null = null;
@@ -448,6 +525,7 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   let pendingRegeneration = false;
   let generationQueued = false;
   let lastGenerationError: string | null = null;
+  let currentSpawnRows: SpawnTableRow[] = [];
 
   // ── per-map caches (invalidated on generateNow) ───────────────────────────
   let cachedTerrainCanvas: HTMLCanvasElement | null = null;
@@ -499,6 +577,21 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     settings.caveInitialFill = defaults.caveInitialFill;
     settings.caveSmoothingPasses = defaults.caveSmoothingPasses;
     settings.caveBossDenSize = defaults.caveBossDenSize;
+    settings.caveResourceHeartDiameterTiles = defaults.caveResourceHeartDiameterTiles;
+    settings.caveTerritoryRadiusFraction = defaults.caveTerritoryRadiusFraction;
+    settings.caveDenStartAngleJitterFraction = defaults.caveDenStartAngleJitterFraction;
+    settings.caveDenDistanceJitterFraction = defaults.caveDenDistanceJitterFraction;
+    settings.caveDenTargetRadiusMinFraction = defaults.caveDenTargetRadiusMinFraction;
+    settings.caveDenTargetRadiusMaxFraction = defaults.caveDenTargetRadiusMaxFraction;
+    settings.caveDenTargetMinSeparationTiles = defaults.caveDenTargetMinSeparationTiles;
+    settings.caveSpawnMinDistanceFromDenTiles = defaults.caveSpawnMinDistanceFromDenTiles;
+    settings.caveSpawnMinDistanceFromResourceHeartTiles =
+      defaults.caveSpawnMinDistanceFromResourceHeartTiles;
+    settings.caveSpawnMinDistanceFromSettlementTiles =
+      defaults.caveSpawnMinDistanceFromSettlementTiles;
+    settings.caveSettlementMinDistanceFromDenTiles = defaults.caveSettlementMinDistanceFromDenTiles;
+    settings.caveSettlementMinDistanceFromResourceHeartTiles =
+      defaults.caveSettlementMinDistanceFromResourceHeartTiles;
     settings.caveRegionSeparationTiles = defaults.caveRegionSeparationTiles;
     settings.caveMaxRetries = defaults.caveMaxRetries;
     settings.caveCavernWidenPasses = defaults.caveCavernWidenPasses;
@@ -524,6 +617,57 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
               initialFill: Math.max(0.05, Math.min(0.95, settings.caveInitialFill)),
               smoothingPasses: clampInt(settings.caveSmoothingPasses, 1, 12),
               bossDenSize: clampInt(settings.caveBossDenSize, 3, 13),
+              resourceHeartDiameterTiles: clampInt(settings.caveResourceHeartDiameterTiles, 10, 48),
+              territoryRadiusFraction: Math.max(
+                0.1,
+                Math.min(1.6, settings.caveTerritoryRadiusFraction),
+              ),
+              denStartAngleJitterFraction: Math.max(
+                0,
+                Math.min(1.0, settings.caveDenStartAngleJitterFraction),
+              ),
+              denDistanceJitterFraction: Math.max(
+                0,
+                Math.min(1.0, settings.caveDenDistanceJitterFraction),
+              ),
+              denTargetRadiusMinFraction: Math.max(
+                0.2,
+                Math.min(0.95, settings.caveDenTargetRadiusMinFraction),
+              ),
+              denTargetRadiusMaxFraction: Math.max(
+                Math.max(0.2, Math.min(0.95, settings.caveDenTargetRadiusMinFraction)),
+                Math.min(0.98, settings.caveDenTargetRadiusMaxFraction),
+              ),
+              denTargetMinSeparationTiles: clampInt(
+                settings.caveDenTargetMinSeparationTiles,
+                6,
+                Math.max(widthTiles, heightTiles),
+              ),
+              spawnMinDistanceFromDenTiles: clampInt(
+                settings.caveSpawnMinDistanceFromDenTiles,
+                0,
+                Math.max(widthTiles, heightTiles),
+              ),
+              spawnMinDistanceFromResourceHeartTiles: clampInt(
+                settings.caveSpawnMinDistanceFromResourceHeartTiles,
+                0,
+                Math.max(widthTiles, heightTiles),
+              ),
+              spawnMinDistanceFromSettlementTiles: clampInt(
+                settings.caveSpawnMinDistanceFromSettlementTiles,
+                0,
+                Math.max(widthTiles, heightTiles),
+              ),
+              settlementMinDistanceFromDenTiles: clampInt(
+                settings.caveSettlementMinDistanceFromDenTiles,
+                0,
+                Math.max(widthTiles, heightTiles),
+              ),
+              settlementMinDistanceFromResourceHeartTiles: clampInt(
+                settings.caveSettlementMinDistanceFromResourceHeartTiles,
+                0,
+                Math.max(widthTiles, heightTiles),
+              ),
               regionSeparationTiles: clampInt(
                 settings.caveRegionSeparationTiles,
                 0,
@@ -853,10 +997,63 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     });
   }
 
+  function drawCircularRoomOverlay(room: RoomData, fillStyle: string): void {
+    const interior = room.interiorCells ?? [];
+    if (interior.length === 0) {
+      ctx.fillStyle = fillStyle;
+      ctx.fillRect(
+        room.bounds.x * CELL_SIZE,
+        room.bounds.y * CELL_SIZE,
+        room.bounds.width * CELL_SIZE,
+        room.bounds.height * CELL_SIZE,
+      );
+      return;
+    }
+    ctx.fillStyle = fillStyle;
+    for (const tile of interior) {
+      ctx.fillRect(tile.x * CELL_SIZE, tile.y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+    }
+  }
+
+  function drawResourceHeartStroke(room: RoomData, strokeStyle: string): HoverTarget {
+    const center = roomCenter(room);
+    const cx = center.tx * CELL_SIZE + CELL_SIZE / 2;
+    const cy = center.ty * CELL_SIZE + CELL_SIZE / 2;
+    const interior = room.interiorCells ?? [];
+    let radiusPx = Math.max(
+      CELL_SIZE,
+      Math.min(room.bounds.width, room.bounds.height) * CELL_SIZE * 0.45,
+    );
+    if (interior.length > 0) {
+      let farthest = 0;
+      for (const tile of interior) {
+        const tx = tile.x * CELL_SIZE + CELL_SIZE / 2;
+        const ty = tile.y * CELL_SIZE + CELL_SIZE / 2;
+        farthest = Math.max(farthest, Math.hypot(tx - cx, ty - cy));
+      }
+      radiusPx = Math.max(CELL_SIZE, farthest + CELL_SIZE * 0.5);
+    }
+    ctx.strokeStyle = strokeStyle;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radiusPx, 0, Math.PI * 2);
+    ctx.stroke();
+    return {
+      kind: 'point',
+      x: cx,
+      y: cy,
+      radius: radiusPx,
+      title: roomDisplayName(room, settings.floorConstraint),
+      lines: [formatRoleLabel(room), `room=${room.id}`],
+    };
+  }
+
   function render(): void {
     if (!currentMap) return;
     hoverTargets = [];
     const map = currentMap;
+    const floorAttached = settings.applyFloorConstraints && settings.floorConstraint !== 'none';
+    const spawnZoneContext = buildSpawnZoneContext();
     const roomAnnotations = cachedRoomAnnotations ?? buildRoomAnnotations(map);
     cachedRoomAnnotations ??= roomAnnotations;
     const doorCache = cachedDoorMap ?? buildDoorCacheForMap(map);
@@ -874,8 +1071,40 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
 
     const w = map.width;
     const h = map.height;
+    const mapPixelW = w * CELL_SIZE;
+    const mapPixelH = h * CELL_SIZE;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, mapPixelW, mapPixelH);
+    ctx.clip();
 
-    if (settings.showTrashSpawnAreas && map.config.biome === BiomeType.CAVE_SYSTEM) {
+    if (floorAttached && settings.showSpawnZones && spawnZoneContext.includeGlobalAmbient) {
+      const globalLine =
+        spawnZoneContext.ambientPack !== undefined
+          ? `Ambient cadence ${spawnZoneContext.ambientPack.spawnIntervalMs}ms (shared cap ${spawnZoneContext.ambientPack.enemyCap})`
+          : 'Ambient/global spawn coverage';
+      ctx.fillStyle = 'rgba(129, 140, 248, 0.05)';
+      ctx.fillRect(0, 0, w * CELL_SIZE, h * CELL_SIZE);
+      hoverTargets.push({
+        kind: 'rect',
+        x: 0,
+        y: 0,
+        width: w * CELL_SIZE,
+        height: h * CELL_SIZE,
+        title: 'Global spawn zone',
+        lines: [globalLine],
+      });
+    }
+
+    if (
+      floorAttached &&
+      settings.showSpawnZones &&
+      map.config.biome === BiomeType.CAVE_SYSTEM &&
+      spawnZoneContext.quadrants.length > 0
+    ) {
+      const quadrantAssignments = new Map(
+        spawnZoneContext.quadrants.map((entry) => [entry.quadrant, entry.archetypeName] as const),
+      );
       const midX = Math.floor(w / 2);
       const midY = Math.floor(h / 2);
       const quadrants = [
@@ -911,6 +1140,10 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
         const qWidth = (quadrant.x1 - quadrant.x0) * CELL_SIZE;
         const qHeight = (quadrant.y1 - quadrant.y0) * CELL_SIZE;
         const [nearA, nearB, far] = QUADRANT_NEIGHBORS[quadrant.id];
+        const primaryName = quadrantAssignments.get(quadrant.id) ?? quadrant.id;
+        const nearAName = quadrantAssignments.get(nearA as SpawnQuadrantId) ?? nearA;
+        const nearBName = quadrantAssignments.get(nearB as SpawnQuadrantId) ?? nearB;
+        const farName = quadrantAssignments.get(far as SpawnQuadrantId) ?? far;
         ctx.fillStyle = quadrant.color;
         ctx.fillRect(qx, qy, qWidth, qHeight);
         hoverTargets.push({
@@ -921,10 +1154,10 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
           height: qHeight,
           title: `Trash spawn quadrant ${quadrant.id}`,
           lines: [
-            `Spawn mix: ${quadrant.id}=50%`,
-            `Neighbor ${nearA}=20%`,
-            `Neighbor ${nearB}=20%`,
-            `Opposite ${far}=10%`,
+            `Primary: ${primaryName} (50%)`,
+            `Neighbor: ${nearAName} (20%)`,
+            `Neighbor: ${nearBName} (20%)`,
+            `Opposite: ${farName} (10%)`,
           ],
         });
       }
@@ -956,6 +1189,11 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     if (settings.showRooms) {
       for (let i = 0; i < map.rooms.length; i++) {
         const room = map.rooms[i]!;
+        if (room.role === RoomRole.TERRITORY) continue;
+        if (room.role === RoomRole.RESOURCE_HEART) {
+          drawCircularRoomOverlay(room, ROOM_COLORS[i % ROOM_COLORS.length]!);
+          continue;
+        }
         ctx.fillStyle = ROOM_COLORS[i % ROOM_COLORS.length]!;
         ctx.fillRect(
           room.bounds.x * CELL_SIZE,
@@ -1039,17 +1277,26 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
         const width = room.bounds.width * CELL_SIZE;
         const height = room.bounds.height * CELL_SIZE;
         const annotation = roomAnnotations.get(room.id);
-        ctx.strokeStyle = stroke;
-        ctx.strokeRect(x + 1, y + 1, width - 2, height - 2);
-        hoverTargets.push({
-          kind: 'rect',
-          x,
-          y,
-          width,
-          height,
-          title: annotation?.title ?? roomDisplayName(room, settings.floorConstraint),
-          lines: [...(annotation?.lines ?? []), formatRoleLabel(room), `room=${room.id}`],
-        });
+        if (room.role === RoomRole.RESOURCE_HEART) {
+          const hover = drawResourceHeartStroke(room, stroke);
+          hoverTargets.push({
+            ...hover,
+            title: annotation?.title ?? hover.title,
+            lines: [...(annotation?.lines ?? []), formatRoleLabel(room), `room=${room.id}`],
+          });
+        } else {
+          ctx.strokeStyle = stroke;
+          ctx.strokeRect(x + 1, y + 1, width - 2, height - 2);
+          hoverTargets.push({
+            kind: 'rect',
+            x,
+            y,
+            width,
+            height,
+            title: annotation?.title ?? roomDisplayName(room, settings.floorConstraint),
+            lines: [...(annotation?.lines ?? []), formatRoleLabel(room), `room=${room.id}`],
+          });
+        }
       }
     }
 
@@ -1152,6 +1399,8 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
 
     ctx.restore();
 
+    ctx.restore();
+
     // Screen-space room labels (drawn after restore so they're viewport-fixed size)
     if (settings.showSpecialRooms) {
       ctx.save();
@@ -1207,20 +1456,166 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
       return;
     }
     legendEl.style.display = 'block';
+    const floorAttached = settings.applyFloorConstraints && settings.floorConstraint !== 'none';
+    const isFloor1Attached = floorAttached && settings.floorConstraint === 'floor1';
+    const isFloor2Attached = floorAttached && settings.floorConstraint === 'floor2';
     const lines = ['Legend', '======', 'White ring: player spawn', 'Orange square: door tile'];
     if (settings.showDoors) lines.push('Orange tiles: door (dark = closed, 🔒 = locked)');
     if (settings.showRooms) lines.push('Blue/green/etc fill: room bounds');
     if (settings.showReachability) lines.push('Red fill/outline: unreachable or sealed room');
-    if (settings.showTrashSpawnAreas)
-      lines.push('Quadrant overlay: N/S/E/W trash zones with 50/20/20/10 spawn mix');
-    if (settings.showFamilyTerritories)
+    const spawnZoneContext = buildSpawnZoneContext();
+    if (floorAttached && settings.showSpawnZones && spawnZoneContext.includeGlobalAmbient)
+      lines.push('Full-map spawn zone: ambient/global director coverage');
+    if (floorAttached && settings.showSpawnZones && spawnZoneContext.quadrants.length > 0)
+      lines.push('Quadrant overlays: N/S/E/W trash zones with 50/20/20/10 weighting');
+    if (isFloor2Attached && settings.showFamilyTerritories)
       lines.push('Circular family territories: T# zone + D# boss-den markers');
-    if (settings.showNpcPositions) lines.push('Blue diamonds: NPC positions');
-    if (settings.showQuestItems) lines.push('Gold diamonds: quest items / objective locations');
+    if (floorAttached && settings.showNpcPositions) lines.push('Blue diamonds: NPC positions');
+    if (isFloor1Attached && settings.showQuestItems)
+      lines.push('Gold diamonds: quest items / objective locations');
     if (settings.showSpecialMobs) lines.push('Red squares/dots: special mobs / spawners');
     if (settings.showSpecialRooms) lines.push('Colored room outlines: special rooms');
     lines.push('Hover map markers/areas to inspect details.');
     legendEl.textContent = lines.join('\n');
+  }
+
+  function buildSpawnZoneContext(): SpawnZoneContext {
+    const manifest =
+      settings.floorConstraint !== 'none' ? getFloorManifest(settings.floorConstraint) : undefined;
+    const ambientPack =
+      manifest?.enemyPackId !== undefined ? getFloorEnemyPack(manifest.enemyPackId) : undefined;
+    const territories = currentPreviewWorld?.floorExtendedState?.trashTerritories;
+    const quadrants: SpawnTableQuadrantEntry[] = [];
+    if (territories && territories.size > 0 && ambientPack) {
+      for (const [rawQuadrant, archetypeId] of territories.entries()) {
+        const quadrant = normalizeQuadrantId(rawQuadrant);
+        if (!quadrant) continue;
+        const archetypeName =
+          ambientPack.archetypes.find((entry) => entry.id === archetypeId)?.name ?? archetypeId;
+        quadrants.push({
+          quadrant,
+          archetypeId,
+          archetypeName,
+        });
+      }
+      const quadrantOrder: Record<SpawnQuadrantId, number> = { N: 0, S: 1, E: 2, W: 3 };
+      quadrants.sort((a, b) => quadrantOrder[a.quadrant] - quadrantOrder[b.quadrant]);
+    }
+    const includeGlobalAmbient = settings.floorConstraint !== 'floor2';
+    return {
+      ambientPack,
+      includeGlobalAmbient,
+      quadrants,
+    };
+  }
+
+  function collectSpawnRows(map: FloorMap): SpawnTableRow[] {
+    const spawnZoneContext = buildSpawnZoneContext();
+    const floorFamilies =
+      currentPreviewWorld?.floorExtendedState?.familyState?.presentFamilies ?? [];
+    const territories = map.territoryZones.map((zone, index) => {
+      const familyId = floorFamilies[zone.familyIndex];
+      const familyName = familyId
+        ? (FAMILY_NAME_BY_ID.get(familyId) ?? `Family ${zone.familyIndex}`)
+        : `Family ${zone.familyIndex}`;
+      return {
+        region: `Territory T${zone.familyIndex} (#${index})`,
+        familyId,
+        familyName,
+      };
+    });
+    const bossDens = map.rooms
+      .filter((room) => room.role === RoomRole.BOSS_DEN)
+      .map((room) => {
+        const familyIndex = room.familyIndex ?? -1;
+        const familyId = familyIndex >= 0 ? floorFamilies[familyIndex] : undefined;
+        return {
+          region: `Boss den D${familyIndex >= 0 ? familyIndex : '?'} (room ${room.id})`,
+          familyId,
+          familyName: familyIndex >= 0 ? familyNameForIndex(familyIndex) : 'Unknown family',
+        };
+      });
+    const spawners: Array<{ region: string; archetype: SpawnerArchetype }> = [];
+    if (currentPreviewWorld !== null) {
+      for (const eid of query(currentPreviewWorld.ecs, [Spawner])) {
+        const archetype = getSpawnerArchetypeByIndex(
+          currentPreviewWorld.stores.spawner.defIndex[eid] ?? -1,
+        );
+        if (!archetype) continue;
+        const x = currentPreviewWorld.stores.position.x[eid] ?? Number.NaN;
+        const y = currentPreviewWorld.stores.position.y[eid] ?? Number.NaN;
+        if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+        const tile = map.worldToTile(x, y);
+        const roomId = map.roomGraph.getRoomAt(tile.x, tile.y);
+        const region =
+          roomId >= 0
+            ? `${roomDisplayName(map.rooms[roomId]!, settings.floorConstraint)} (room ${roomId})`
+            : `Open cavern (${tile.x}, ${tile.y})`;
+        spawners.push({ region, archetype });
+      }
+    }
+
+    return buildSpawnTableRows({
+      biome: map.config.biome,
+      ambientPack: spawnZoneContext.ambientPack,
+      includeGlobalAmbient: spawnZoneContext.includeGlobalAmbient,
+      quadrants: spawnZoneContext.quadrants,
+      spawners,
+      territories,
+      bossDens,
+    });
+  }
+
+  function updateSpawnTable(): void {
+    const floorAttached = settings.applyFloorConstraints && settings.floorConstraint !== 'none';
+    spawnTableHost.style.display = floorAttached ? 'block' : 'none';
+    if (!floorAttached) {
+      return;
+    }
+    spawnTableEl.textContent = '';
+    if (currentSpawnRows.length === 0) {
+      const emptyRow = document.createElement('tr');
+      const emptyCell = document.createElement('td');
+      emptyCell.colSpan = 5;
+      emptyCell.textContent = 'No spawn-region metadata available for the current map.';
+      emptyCell.style.padding = '6px 8px';
+      emptyCell.style.borderBottom = '1px solid rgba(51, 65, 85, 0.6)';
+      emptyRow.appendChild(emptyCell);
+      spawnTableEl.appendChild(emptyRow);
+      return;
+    }
+    const header = document.createElement('tr');
+    for (const [label, width] of [
+      ['Region', '20%'],
+      ['Mobs', '32%'],
+      ['How many', '16%'],
+      ['How often', '14%'],
+      ['Trigger', '18%'],
+    ] as const) {
+      const th = document.createElement('th');
+      th.textContent = label;
+      th.style.textAlign = 'left';
+      th.style.verticalAlign = 'top';
+      th.style.borderBottom = '1px solid rgba(148, 163, 184, 0.5)';
+      th.style.padding = '6px 8px';
+      th.style.width = width;
+      header.appendChild(th);
+    }
+    spawnTableEl.appendChild(header);
+
+    for (const row of currentSpawnRows) {
+      const tr = document.createElement('tr');
+      for (const value of [row.region, row.mobs, row.quantity, row.cadence, row.trigger]) {
+        const td = document.createElement('td');
+        td.textContent = value;
+        td.style.padding = '6px 8px';
+        td.style.verticalAlign = 'top';
+        td.style.borderBottom = '1px solid rgba(51, 65, 85, 0.6)';
+        td.style.wordBreak = 'break-word';
+        tr.appendChild(td);
+      }
+      spawnTableEl.appendChild(tr);
+    }
   }
 
   function updateGenerationError(): void {
@@ -1296,6 +1691,22 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
       eq(settings.caveInitialFill, defaults.caveInitialFill) &&
       settings.caveSmoothingPasses === defaults.caveSmoothingPasses &&
       settings.caveBossDenSize === defaults.caveBossDenSize &&
+      settings.caveResourceHeartDiameterTiles === defaults.caveResourceHeartDiameterTiles &&
+      eq(settings.caveTerritoryRadiusFraction, defaults.caveTerritoryRadiusFraction) &&
+      eq(settings.caveDenStartAngleJitterFraction, defaults.caveDenStartAngleJitterFraction) &&
+      eq(settings.caveDenDistanceJitterFraction, defaults.caveDenDistanceJitterFraction) &&
+      eq(settings.caveDenTargetRadiusMinFraction, defaults.caveDenTargetRadiusMinFraction) &&
+      eq(settings.caveDenTargetRadiusMaxFraction, defaults.caveDenTargetRadiusMaxFraction) &&
+      settings.caveDenTargetMinSeparationTiles === defaults.caveDenTargetMinSeparationTiles &&
+      settings.caveSpawnMinDistanceFromDenTiles === defaults.caveSpawnMinDistanceFromDenTiles &&
+      settings.caveSpawnMinDistanceFromResourceHeartTiles ===
+        defaults.caveSpawnMinDistanceFromResourceHeartTiles &&
+      settings.caveSpawnMinDistanceFromSettlementTiles ===
+        defaults.caveSpawnMinDistanceFromSettlementTiles &&
+      settings.caveSettlementMinDistanceFromDenTiles ===
+        defaults.caveSettlementMinDistanceFromDenTiles &&
+      settings.caveSettlementMinDistanceFromResourceHeartTiles ===
+        defaults.caveSettlementMinDistanceFromResourceHeartTiles &&
       settings.caveRegionSeparationTiles === defaults.caveRegionSeparationTiles &&
       settings.caveMaxRetries === defaults.caveMaxRetries &&
       settings.caveCavernWidenPasses === defaults.caveCavernWidenPasses &&
@@ -1329,10 +1740,12 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     }
     currentReachable = floodFromSpawn(currentMap);
     currentSealed = findSealedRooms(currentMap, currentReachable);
+    currentSpawnRows = collectSpawnRows(currentMap);
     fitToFrame();
     render();
     updateStats();
     updateLegend();
+    updateSpawnTable();
     lastGenerationError = null;
     updateGenerationError();
     saveLabState(LAB_ID, settings);
@@ -1371,28 +1784,14 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     tooltipEl.style.display = 'none';
   }
 
-  function hitTestHoverTarget(x: number, y: number): HoverTarget | undefined {
-    for (let i = hoverTargets.length - 1; i >= 0; i--) {
-      const target = hoverTargets[i]!;
-      if (target.kind === 'rect') {
-        const width = target.width ?? 0;
-        const height = target.height ?? 0;
-        if (x >= target.x && x <= target.x + width && y >= target.y && y <= target.y + height) {
-          return target;
-        }
-      } else {
-        const radius = target.radius ?? 0;
-        const dx = x - target.x;
-        const dy = y - target.y;
-        if (dx * dx + dy * dy <= radius * radius) return target;
-      }
-    }
-    return undefined;
+  function hitTestHoverTargets(x: number, y: number): HoverTarget[] {
+    return collectHoverTargetsAtPoint(hoverTargets, x, y);
   }
 
-  function showTooltip(target: HoverTarget, screenX: number, screenY: number): void {
+  function showTooltip(targets: readonly HoverTarget[], screenX: number, screenY: number): void {
+    const tooltip = buildHoverTooltipContent(targets);
     tooltipEl.style.display = 'block';
-    tooltipEl.textContent = [target.title, ...target.lines].join('\n');
+    tooltipEl.textContent = [tooltip.title, ...tooltip.lines].join('\n');
     const parentRect = canvasHost.getBoundingClientRect();
     tooltipEl.style.left = `${screenX - parentRect.left + 12}px`;
     tooltipEl.style.top = `${screenY - parentRect.top + 12}px`;
@@ -1414,12 +1813,12 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     const localY = (evt.clientY - rect.top) * pixelRatio;
     const mapX = (localX - panX) / zoom;
     const mapY = (localY - panY) / zoom;
-    const target = hitTestHoverTarget(mapX, mapY);
-    if (!target) {
+    const targets = hitTestHoverTargets(mapX, mapY);
+    if (targets.length === 0) {
       hideTooltip();
       return;
     }
-    showTooltip(target, evt.clientX, evt.clientY);
+    showTooltip(targets, evt.clientX, evt.clientY);
   }
 
   function onMouseDown(evt: MouseEvent): void {
@@ -1668,6 +2067,96 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     .name('Boss den size')
     .onChange(markMapSettingsDirty);
   setControllerTooltip(bossDenCtl, 'Boss-den carved radius/diameter scalar. Apply to rebuild map.');
+  const heartSizeCtl = floorTweaksFolder
+    .add(settings, 'caveResourceHeartDiameterTiles', 10, 48, 1)
+    .name('Resource room diameter')
+    .onChange(markMapSettingsDirty);
+  setControllerTooltip(
+    heartSizeCtl,
+    'Center resource-room diameter in tiles. Apply to rebuild map.',
+  );
+  const territoryRadiusCtl = floorTweaksFolder
+    .add(settings, 'caveTerritoryRadiusFraction', 0.1, 1.6, 0.01)
+    .name('Territory radius %')
+    .onChange(markMapSettingsDirty);
+  setControllerTooltip(
+    territoryRadiusCtl,
+    'Family territory-zone diameter as % of map min dimension (0.3 = 30%).',
+  );
+  const denBandMinCtl = floorTweaksFolder
+    .add(settings, 'caveDenTargetRadiusMinFraction', 0.2, 0.95, 0.01)
+    .name('Den radial min')
+    .onChange(markMapSettingsDirty);
+  setControllerTooltip(
+    denBandMinCtl,
+    'Minimum den distance from center as fraction toward map edge (e.g., 0.6 = 60%).',
+  );
+  const denBandMaxCtl = floorTweaksFolder
+    .add(settings, 'caveDenTargetRadiusMaxFraction', 0.2, 0.98, 0.01)
+    .name('Den radial max')
+    .onChange(markMapSettingsDirty);
+  setControllerTooltip(
+    denBandMaxCtl,
+    'Maximum den distance from center as fraction toward map edge (e.g., 0.8 = 80%).',
+  );
+  const denSepCtl = floorTweaksFolder
+    .add(settings, 'caveDenTargetMinSeparationTiles', 6, 220, 1)
+    .name('Den min separation')
+    .onChange(markMapSettingsDirty);
+  setControllerTooltip(denSepCtl, 'Minimum Euclidean separation between den targets (tiles).');
+  const denAngleJitterCtl = floorTweaksFolder
+    .add(settings, 'caveDenStartAngleJitterFraction', 0, 1, 0.01)
+    .name('Den angle randomness')
+    .onChange(markMapSettingsDirty);
+  setControllerTooltip(
+    denAngleJitterCtl,
+    'Randomized first-den rotation around perimeter (0..1 of one den-step).',
+  );
+  const denDistanceJitterCtl = floorTweaksFolder
+    .add(settings, 'caveDenDistanceJitterFraction', 0, 1, 0.01)
+    .name('Den distance randomness')
+    .onChange(markMapSettingsDirty);
+  setControllerTooltip(
+    denDistanceJitterCtl,
+    'Randomized per-den distance inside radial band (0 = fixed, 1 = full jitter).',
+  );
+  const spawnFromDenCtl = floorTweaksFolder
+    .add(settings, 'caveSpawnMinDistanceFromDenTiles', 0, 260, 1)
+    .name('Spawn min from dens')
+    .onChange(markMapSettingsDirty);
+  setControllerTooltip(spawnFromDenCtl, 'Minimum spawn distance from den centers (tiles).');
+  const spawnFromHeartCtl = floorTweaksFolder
+    .add(settings, 'caveSpawnMinDistanceFromResourceHeartTiles', 0, 260, 1)
+    .name('Spawn min from heart')
+    .onChange(markMapSettingsDirty);
+  setControllerTooltip(
+    spawnFromHeartCtl,
+    'Minimum spawn distance from resource heart center (tiles).',
+  );
+  const spawnFromSettlementCtl = floorTweaksFolder
+    .add(settings, 'caveSpawnMinDistanceFromSettlementTiles', 0, 260, 1)
+    .name('Spawn min from settlement')
+    .onChange(markMapSettingsDirty);
+  setControllerTooltip(
+    spawnFromSettlementCtl,
+    'Minimum spawn distance from settlement center (tiles).',
+  );
+  const settlementFromDenCtl = floorTweaksFolder
+    .add(settings, 'caveSettlementMinDistanceFromDenTiles', 0, 260, 1)
+    .name('Settlement min from dens')
+    .onChange(markMapSettingsDirty);
+  setControllerTooltip(
+    settlementFromDenCtl,
+    'Minimum settlement distance from den centers (tiles).',
+  );
+  const settlementFromHeartCtl = floorTweaksFolder
+    .add(settings, 'caveSettlementMinDistanceFromResourceHeartTiles', 0, 260, 1)
+    .name('Settlement min from heart')
+    .onChange(markMapSettingsDirty);
+  setControllerTooltip(
+    settlementFromHeartCtl,
+    'Minimum settlement distance from resource heart center (tiles).',
+  );
   const separationCtl = floorTweaksFolder
     .add(settings, 'caveRegionSeparationTiles', 0, Math.floor(Math.hypot(400 - 1, 300 - 1)), 1)
     .name('Region separation')
@@ -1687,13 +2176,22 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   overlayFolder.add(settings, 'showDoors').name('Door markers').onChange(render);
   overlayFolder.add(settings, 'showSpawn').name('Spawn marker').onChange(render);
   overlayFolder.add(settings, 'showReachability').name('Reachability probe').onChange(render);
-  overlayFolder.add(settings, 'showTrashSpawnAreas').name('Trash spawn quadrants').onChange(render);
-  overlayFolder
+  const spawnZonesCtl = overlayFolder
+    .add(settings, 'showSpawnZones')
+    .name('Spawn Zones')
+    .onChange(render);
+  const familyTerritoriesCtl = overlayFolder
     .add(settings, 'showFamilyTerritories')
     .name('Territories + family names')
     .onChange(render);
-  overlayFolder.add(settings, 'showNpcPositions').name('NPC positions').onChange(render);
-  overlayFolder.add(settings, 'showQuestItems').name('Quest items / objectives').onChange(render);
+  const npcPositionsCtl = overlayFolder
+    .add(settings, 'showNpcPositions')
+    .name('NPC positions')
+    .onChange(render);
+  const questItemsCtl = overlayFolder
+    .add(settings, 'showQuestItems')
+    .name('Quest items / objectives')
+    .onChange(render);
   overlayFolder.add(settings, 'showSpecialMobs').name('Special mobs/spawners').onChange(render);
   overlayFolder.add(settings, 'showSpecialRooms').name('Special room labels').onChange(render);
   overlayFolder.add(settings, 'showLegend').name('Legend panel').onChange(updateLegend);
@@ -1753,7 +2251,7 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   const hint = document.createElement('p');
   hint.textContent =
     'Unified map-gen lab: floor constraints, biome knobs, and composable overlays. ' +
-    'Hover map markers for tooltips (areas, NPCs, special mobs/rooms, door criteria).';
+    'Hover map markers for tooltips (areas, NPCs, special mobs/rooms, door criteria), and inspect spawn regions below the map.';
   hint.style.marginTop = '16px';
   hint.style.color = '#c9d4ff';
   hint.style.lineHeight = '1.6';
@@ -1761,10 +2259,18 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
 
   function updateControlVisibility(): void {
     const isCaveBiome = settings.biome === BiomeType.CAVE_SYSTEM;
+    const floorAttached = settings.applyFloorConstraints && settings.floorConstraint !== 'none';
+    const isFloor1Attached = floorAttached && settings.floorConstraint === 'floor1';
+    const isFloor2Attached = floorAttached && settings.floorConstraint === 'floor2';
     roomFolder.domElement.style.display = isCaveBiome ? 'none' : '';
     caveBiomeFolder.domElement.style.display = isCaveBiome ? '' : 'none';
     floorTweaksFolder.domElement.style.display =
       isCaveBiome && settings.floorConstraint === 'floor2' ? '' : 'none';
+    spawnZonesCtl.domElement.style.display = floorAttached ? '' : 'none';
+    familyTerritoriesCtl.domElement.style.display = isFloor2Attached ? '' : 'none';
+    npcPositionsCtl.domElement.style.display = floorAttached ? '' : 'none';
+    questItemsCtl.domElement.style.display = isFloor1Attached ? '' : 'none';
+    spawnTableHost.style.display = floorAttached ? 'block' : 'none';
   }
 
   const ro = new ResizeObserver(() => {
@@ -1791,6 +2297,7 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     statsEl.remove();
     sweepEl.remove();
     legendEl.remove();
+    spawnTableHost.remove();
     errorEl.remove();
     hint.remove();
   };

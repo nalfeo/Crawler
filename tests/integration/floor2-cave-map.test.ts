@@ -1,8 +1,6 @@
 /**
- * Integration: full-size (270×156) Floor 2 cave-system generation across a
- * spread of seeds. Every labelled cavern must be reachable from the spawn.
- *
- * Slower than the unit tests — runs at manifest-target dimensions.
+ * Integration: full-size Floor 2 cave-system generation at manifest dimensions
+ * across a spread of seeds. Every labelled cavern must be reachable from spawn.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -10,9 +8,14 @@ import { SeededRandom } from '../../src/shared/random';
 import { BiomeType, RoomRole } from '../../src/shared/map-types';
 import type { MapConfig } from '../../src/shared/map-types';
 import { getGenerator } from '../../src/core/map/generators/registry';
+import { getFloorManifest } from '../../src/shared/floor-registry';
 
-const WIDTH = 270;
-const HEIGHT = 156;
+const floor2Manifest = getFloorManifest('floor2');
+if (!floor2Manifest) {
+  throw new Error('floor2 manifest must be registered for floor2-cave-map integration test');
+}
+const WIDTH = floor2Manifest.map.widthTiles;
+const HEIGHT = floor2Manifest.map.heightTiles;
 
 function bfsFromSpawn(floor: {
   tileMap: { isPassable: (x: number, y: number) => boolean };

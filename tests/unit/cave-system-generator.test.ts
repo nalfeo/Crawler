@@ -164,6 +164,18 @@ describe('CaveSystemGenerator', () => {
     expect(Math.abs(heartCenterY - mapCenterY)).toBeLessThanOrEqual(maxOffset);
   });
 
+  it('applies configurable resource-heart diameter', () => {
+    const gen = new CaveSystemGenerator({ presentCount: 4 });
+    const config: MapConfig = {
+      ...smallConfig(33, 140, 110),
+      caveSystem: { resourceHeartDiameterTiles: 28 },
+    };
+    const floor = gen.generate(config, new SeededRandom(33));
+    const heart = floor.roomGraph.getAll().find((r) => r.role === RoomRole.RESOURCE_HEART)!;
+    expect(heart.bounds.width).toBe(29);
+    expect(heart.bounds.height).toBe(29);
+  });
+
   it('every labelled cavern is reachable from the player spawn', () => {
     const seeds = [1, 2, 3, 10, 100, 555, 9999];
     for (const seed of seeds) {
@@ -191,21 +203,25 @@ describe('CaveSystemGenerator', () => {
         }
         expect(ok, `seed=${seed} role=${room.role} unreachable`).toBe(true);
       }
-      // Boss-den doors reachable too (via an adjacent floor tile — the door
-      // itself is DOOR_CLOSED and not "passable" until the player opens it).
+      // Boss-den doors reachable too (via an adjacent floor tile — runtime can
+      // close these doors later).
       const dens = floor.roomGraph.getAll().filter((r) => r.role === RoomRole.BOSS_DEN);
       for (const den of dens) {
-        const door = den.doors[0]!;
-        let doorOk = false;
-        for (let dy = -1; dy <= 1 && !doorOk; dy++) {
-          for (let dx = -1; dx <= 1 && !doorOk; dx++) {
-            const nx = door.x + dx;
-            const ny = door.y + dy;
-            if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
-            if (reached[ny * w + nx]) doorOk = true;
+        for (let doorIndex = 0; doorIndex < den.doors.length; doorIndex++) {
+          const door = den.doors[doorIndex]!;
+          let doorOk = false;
+          for (let dy = -1; dy <= 1 && !doorOk; dy++) {
+            for (let dx = -1; dx <= 1 && !doorOk; dx++) {
+              const nx = door.x + dx;
+              const ny = door.y + dy;
+              if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+              if (reached[ny * w + nx]) doorOk = true;
+            }
           }
+          expect(doorOk, `seed=${seed} boss-den door[${doorIndex}] has no reached neighbour`).toBe(
+            true,
+          );
         }
-        expect(doorOk, `seed=${seed} boss-den door has no reached neighbour`).toBe(true);
       }
     }
   });
@@ -352,21 +368,298 @@ describe('CaveSystemGenerator', () => {
     expect(floor.territoryZones.length).toBe(4);
     for (const zone of floor.territoryZones) {
       expect(zone.radius).toBe(expectedRadius);
+      const den = floor.roomGraph
+        .getAll()
+        .find((room) => room.role === RoomRole.BOSS_DEN && room.familyIndex === zone.familyIndex)!;
+      const denCx = den.bounds.x + Math.floor(den.bounds.width / 2);
+      const denCy = den.bounds.y + Math.floor(den.bounds.height / 2);
+      expect(zone.centerX).toBe(denCx);
+      expect(zone.centerY).toBe(denCy);
     }
   });
 
-  it('keeps floor2 den carving stable for larger bossDenSize values across seeds', () => {
-    const gen = new CaveSystemGenerator({ presentCount: 4 });
-    for (const seed of [1, 3, 5, 8, 13, 21]) {
-      for (let bossDenSize = 5; bossDenSize <= 11; bossDenSize++) {
-        const config: MapConfig = {
-          ...smallConfig(seed, 120, 90),
-          caveSystem: { bossDenSize },
-        };
-        expect(() => gen.generate(config, new SeededRandom(seed))).not.toThrow();
+  it('keeps den centers within configured radial band and minimum separation', () => {
+    const minFrac = 0.6;
+    const maxFrac = 0.8;
+    const minSeparation = 28;
+    const floor = new CaveSystemGenerator({ presentCount: 4 }).generate(
+      {
+        ...smallConfig(44, 200, 160),
+        caveSystem: {
+          denTargetRadiusMinFraction: minFrac,
+          denTargetRadiusMaxFraction: maxFrac,
+          denTargetMinSeparationTiles: minSeparation,
+        },
+      },
+      new SeededRandom(44),
+    );
+    const heart = floor.roomGraph.getAll().find((room) => room.role === RoomRole.RESOURCE_HEART)!;
+    const heartCx = heart.bounds.x + Math.floor(heart.bounds.width / 2);
+    const heartCy = heart.bounds.y + Math.floor(heart.bounds.height / 2);
+    const maxEdgeDistance = Math.min(
+      heartCx - 2,
+      floor.width - 3 - heartCx,
+      heartCy - 2,
+      floor.height - 3 - heartCy,
+    );
+    const minExpected = Math.floor(maxEdgeDistance * minFrac);
+    const maxExpected = Math.floor(maxEdgeDistance * maxFrac);
+    const zones = floor.territoryZones;
+    for (const zone of zones) {
+      const distance = Math.hypot(zone.centerX - heartCx, zone.centerY - heartCy);
+      expect(distance).toBeGreaterThanOrEqual(minExpected - 1);
+      expect(distance).toBeLessThanOrEqual(maxExpected + 3);
+    }
+    for (let i = 0; i < zones.length; i++) {
+      for (let j = i + 1; j < zones.length; j++) {
+        const distance = Math.hypot(
+          zones[i]!.centerX - zones[j]!.centerX,
+          zones[i]!.centerY - zones[j]!.centerY,
+        );
+        expect(distance).toBeGreaterThanOrEqual(minSeparation);
       }
     }
-  }, 90_000);
+  });
+
+  it('applies configurable territory radius fraction', () => {
+    const floor = new CaveSystemGenerator({ presentCount: 4 }).generate(
+      {
+        ...smallConfig(63, 200, 200),
+        caveSystem: {
+          territoryRadiusFraction: 0.5,
+        },
+      },
+      new SeededRandom(63),
+    );
+    const expectedRadius = Math.floor(Math.round(Math.min(200, 200) * 0.5) / 2);
+    expect(floor.territoryZones.length).toBe(4);
+    for (const zone of floor.territoryZones) {
+      expect(zone.radius).toBe(expectedRadius);
+    }
+  });
+
+  it('carves boss dens with full wall perimeters and exactly two adjacent doors', () => {
+    const floor = generateWithPresent(77, 4, 120, 90);
+    const dens = floor.roomGraph.getAll().filter((room) => room.role === RoomRole.BOSS_DEN);
+    expect(dens.length).toBe(4);
+    for (const den of dens) {
+      expect(den.doors.length).toBe(2);
+      const [doorA, doorB] = den.doors;
+      expect(Math.abs(doorA!.x - doorB!.x) + Math.abs(doorA!.y - doorB!.y)).toBe(1);
+      const doorSet = new Set(den.doors.map((door) => `${door.x},${door.y}`));
+      const bx0 = den.bounds.x;
+      const by0 = den.bounds.y;
+      const bx1 = den.bounds.x + den.bounds.width - 1;
+      const by1 = den.bounds.y + den.bounds.height - 1;
+      for (let y = by0; y <= by1; y++) {
+        for (let x = bx0; x <= bx1; x++) {
+          const perimeter = x === bx0 || x === bx1 || y === by0 || y === by1;
+          if (!perimeter) continue;
+          const idx = y * floor.width + x;
+          const isDoor = doorSet.has(`${x},${y}`);
+          if (isDoor) {
+            expect(floor.terrain[idx]).toBe(TerrainType.DOOR);
+          } else {
+            expect(floor.terrain[idx]).toBe(TerrainType.STONE_WALL);
+            expect(floor.tileMap.isPassable(x, y)).toBe(false);
+          }
+        }
+      }
+    }
+  });
+
+  it('carves settlement rooms and inter-room hallways with wall perimeters', () => {
+    const floor = generateWithPresent(77, 4, 120, 90);
+    const settlements = floor.roomGraph
+      .getAll()
+      .filter((room) => room.role === RoomRole.SETTLEMENT);
+    expect(settlements.length).toBeGreaterThanOrEqual(2);
+
+    const roomByLabel = new Map(settlements.map((room) => [room.label, room] as const));
+    const bar = roomByLabel.get('settlement_bar');
+    expect(bar).toBeDefined();
+
+    for (const room of settlements) {
+      const doorSet = new Set(room.doors.map((door) => `${door.x},${door.y}`));
+      const x0 = room.bounds.x;
+      const y0 = room.bounds.y;
+      const x1 = room.bounds.x + room.bounds.width - 1;
+      const y1 = room.bounds.y + room.bounds.height - 1;
+      for (let y = y0; y <= y1; y++) {
+        for (let x = x0; x <= x1; x++) {
+          const perimeter = x === x0 || x === x1 || y === y0 || y === y1;
+          if (!perimeter) continue;
+          const idx = y * floor.width + x;
+          const isDoor = doorSet.has(`${x},${y}`);
+          if (isDoor) {
+            expect(floor.terrain[idx]).toBe(TerrainType.DOOR);
+          } else {
+            expect(floor.terrain[idx]).toBe(TerrainType.STONE_WALL);
+            expect(floor.tileMap.isPassable(x, y)).toBe(false);
+          }
+        }
+      }
+    }
+
+    const barRoom = bar!;
+    const annexRooms = settlements.filter((room) => room.id !== barRoom.id);
+    for (const annex of annexRooms) {
+      const annexDoorX =
+        annex.bounds.x < barRoom.bounds.x
+          ? annex.bounds.x + annex.bounds.width - 1
+          : annex.bounds.x;
+      const barDoorX =
+        annex.bounds.x < barRoom.bounds.x
+          ? barRoom.bounds.x
+          : barRoom.bounds.x + barRoom.bounds.width - 1;
+      const annexDoor = annex.doors.find((door) => door.x === annexDoorX);
+      const barDoor = barRoom.doors.find((door) => door.x === barDoorX && door.y === annexDoor?.y);
+      expect(annexDoor, `${annex.label} missing hallway-facing door`).toBeDefined();
+      expect(barDoor, `settlement_bar missing door to ${annex.label}`).toBeDefined();
+      const y = annexDoor!.y;
+      const startX = Math.min(annexDoor!.x, barDoor!.x);
+      const endX = Math.max(annexDoor!.x, barDoor!.x);
+      for (let x = startX; x <= endX; x++) {
+        const idx = y * floor.width + x;
+        expect(floor.tileMap.isPassable(x, y), `hallway floor blocked at (${x},${y})`).toBe(true);
+        if (floor.terrain[idx] !== TerrainType.DOOR) {
+          expect(floor.terrain[idx]).toBe(TerrainType.STONE_FLOOR);
+        }
+        for (const sideY of [y - 1, y + 1]) {
+          const sideIdx = sideY * floor.width + x;
+          const isSideDoor = settlements.some((room) =>
+            room.doors.some((door) => door.x === x && door.y === sideY),
+          );
+          if (isSideDoor) continue;
+          expect(floor.terrain[sideIdx]).toBe(TerrainType.STONE_WALL);
+          expect(floor.tileMap.isPassable(x, sideY)).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('enforces configurable spawn and settlement minimum distances from key rooms', () => {
+    const floor = new CaveSystemGenerator({ presentCount: 4 }).generate(
+      {
+        ...smallConfig(91, 200, 200),
+        caveSystem: {
+          spawnMinDistanceFromDenTiles: 28,
+          spawnMinDistanceFromResourceHeartTiles: 30,
+          spawnMinDistanceFromSettlementTiles: 26,
+          settlementMinDistanceFromDenTiles: 24,
+          settlementMinDistanceFromResourceHeartTiles: 18,
+        },
+      },
+      new SeededRandom(91),
+    );
+    const rooms = floor.roomGraph.getAll();
+    const spawn = rooms.find((room) => room.role === RoomRole.SPAWN)!;
+    const settlementBar = rooms.find(
+      (room) => room.role === RoomRole.SETTLEMENT && room.label === 'settlement_bar',
+    )!;
+    const heart = rooms.find((room) => room.role === RoomRole.RESOURCE_HEART)!;
+    const denCenters = rooms
+      .filter((room) => room.role === RoomRole.BOSS_DEN)
+      .map((room) => ({
+        x: room.bounds.x + Math.floor(room.bounds.width / 2),
+        y: room.bounds.y + Math.floor(room.bounds.height / 2),
+      }));
+
+    const spawnCenterX = spawn.bounds.x + Math.floor(spawn.bounds.width / 2);
+    const spawnCenterY = spawn.bounds.y + Math.floor(spawn.bounds.height / 2);
+    const settlementCenterX = settlementBar.bounds.x + Math.floor(settlementBar.bounds.width / 2);
+    const settlementCenterY = settlementBar.bounds.y + Math.floor(settlementBar.bounds.height / 2);
+    const heartCenterX = heart.bounds.x + Math.floor(heart.bounds.width / 2);
+    const heartCenterY = heart.bounds.y + Math.floor(heart.bounds.height / 2);
+
+    const closestSpawnToDen = Math.min(
+      ...denCenters.map((den) => Math.hypot(spawnCenterX - den.x, spawnCenterY - den.y)),
+    );
+    expect(closestSpawnToDen).toBeGreaterThanOrEqual(28);
+    expect(
+      Math.hypot(spawnCenterX - heartCenterX, spawnCenterY - heartCenterY),
+    ).toBeGreaterThanOrEqual(30);
+    expect(
+      Math.hypot(spawnCenterX - settlementCenterX, spawnCenterY - settlementCenterY),
+    ).toBeGreaterThanOrEqual(26);
+
+    const closestSettlementToDen = Math.min(
+      ...denCenters.map((den) => Math.hypot(settlementCenterX - den.x, settlementCenterY - den.y)),
+    );
+    expect(closestSettlementToDen).toBeGreaterThanOrEqual(24);
+    expect(
+      Math.hypot(settlementCenterX - heartCenterX, settlementCenterY - heartCenterY),
+    ).toBeGreaterThanOrEqual(18);
+  });
+
+  it('supports den placement jitter while staying deterministic', () => {
+    const baseConfig: MapConfig = {
+      ...smallConfig(112, 200, 200),
+      caveSystem: {
+        denStartAngleJitterFraction: 0,
+        denDistanceJitterFraction: 0,
+      },
+    };
+    const jitterConfig: MapConfig = {
+      ...smallConfig(112, 200, 200),
+      caveSystem: {
+        denStartAngleJitterFraction: 0.75,
+        denDistanceJitterFraction: 0.65,
+      },
+    };
+    const generator = new CaveSystemGenerator({ presentCount: 4 });
+    const base = generator.generate(baseConfig, new SeededRandom(112));
+    const a = generator.generate(jitterConfig, new SeededRandom(112));
+    const b = generator.generate(jitterConfig, new SeededRandom(112));
+    const baseCenters = base.territoryZones.map((zone) => [zone.centerX, zone.centerY]);
+    const aCenters = a.territoryZones.map((zone) => [zone.centerX, zone.centerY]);
+    const bCenters = b.territoryZones.map((zone) => [zone.centerX, zone.centerY]);
+    expect(aCenters).toEqual(bCenters);
+    expect(aCenters).not.toEqual(baseCenters);
+  }, 120_000);
+
+  it('keeps special rooms and structures from overlapping each other', () => {
+    const floor = new CaveSystemGenerator({ presentCount: 4 }).generate(
+      {
+        ...smallConfig(42, 200, 200),
+        caveSystem: {
+          bossDenSize: 10,
+          resourceHeartDiameterTiles: 30,
+          territoryRadiusFraction: 0.5,
+          denTargetRadiusMinFraction: 0.5,
+          denTargetRadiusMaxFraction: 0.66,
+          denTargetMinSeparationTiles: 50,
+          regionSeparationTiles: 50,
+          settlementMinDistanceFromDenTiles: 30,
+          settlementMinDistanceFromResourceHeartTiles: 20,
+        },
+      },
+      new SeededRandom(42),
+    );
+
+    const structureRoles = new Set([
+      RoomRole.RESOURCE_HEART,
+      RoomRole.BOSS_DEN,
+      RoomRole.SETTLEMENT,
+      RoomRole.SPAWN,
+    ]);
+    const structures = floor.roomGraph.getAll().filter((room) => structureRoles.has(room.role));
+
+    const overlaps = (a: (typeof structures)[number], b: (typeof structures)[number]) =>
+      a.bounds.x < b.bounds.x + b.bounds.width &&
+      a.bounds.x + a.bounds.width > b.bounds.x &&
+      a.bounds.y < b.bounds.y + b.bounds.height &&
+      a.bounds.y + a.bounds.height > b.bounds.y;
+
+    for (let i = 0; i < structures.length; i++) {
+      for (let j = i + 1; j < structures.length; j++) {
+        expect(
+          overlaps(structures[i]!, structures[j]!),
+          `${structures[i]!.role} overlaps ${structures[j]!.role}`,
+        ).toBe(false);
+      }
+    }
+  });
 
   it('RoomGraph.getRoomAt reports -1 for a wall tile inside a cave region bbox', () => {
     const floor = generateWithPresent(1, 4);

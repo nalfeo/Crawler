@@ -8,7 +8,10 @@ import type { MapConfig } from '../../src/shared/map-types.js';
 import { CaveSystemGenerator } from '../../src/core/map/generators/cave-system.js';
 import type { FloorMap } from '../../src/core/map/FloorMap.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../src/shared/constants.js';
-import { initializeFloor2Scenario } from '../../src/game/floor2Scenario.js';
+import {
+  FLOOR2_CAVE_SYSTEM_DEFAULTS,
+  initializeFloor2Scenario,
+} from '../../src/game/floor2Scenario.js';
 import { getFloorManifest, registerFloorManifest } from '../../src/shared/floor-registry.js';
 import { getQuestDef } from '../../src/shared/quest-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -194,6 +197,55 @@ describe('initializeFloor2Scenario manifest validation', () => {
       ),
     );
     expect(lockedHeartDoor).toBe(true);
+  });
+
+  it('applies floor2 cave defaults to real-game scenario map generation', () => {
+    const { world, playerEid } = createScenarioWorld();
+    initializeFloor2Scenario(world, playerEid);
+
+    const cave = world.floorMap!.config.caveSystem;
+    expect(cave).toBeDefined();
+    expect(cave?.initialFill).toBe(FLOOR2_CAVE_SYSTEM_DEFAULTS.initialFill);
+    expect(cave?.smoothingPasses).toBe(FLOOR2_CAVE_SYSTEM_DEFAULTS.smoothingPasses);
+    expect(cave?.cavernWidenPasses).toBe(FLOOR2_CAVE_SYSTEM_DEFAULTS.cavernWidenPasses);
+    expect(cave?.straightHallwayMinRun).toBe(FLOOR2_CAVE_SYSTEM_DEFAULTS.straightHallwayMinRun);
+    expect(cave?.bossDenSize).toBe(FLOOR2_CAVE_SYSTEM_DEFAULTS.bossDenSize);
+    expect(cave?.resourceHeartDiameterTiles).toBe(
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.resourceHeartDiameterTiles,
+    );
+    expect(cave?.territoryRadiusFraction).toBe(FLOOR2_CAVE_SYSTEM_DEFAULTS.territoryRadiusFraction);
+    expect(cave?.denTargetRadiusMinFraction).toBe(
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.denTargetRadiusMinFraction,
+    );
+    expect(cave?.denTargetRadiusMaxFraction).toBe(
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.denTargetRadiusMaxFraction,
+    );
+    expect(cave?.denTargetMinSeparationTiles).toBe(
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.denTargetMinSeparationTiles,
+    );
+    expect(cave?.denStartAngleJitterFraction).toBe(
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.denStartAngleJitterFraction,
+    );
+    expect(cave?.denDistanceJitterFraction).toBe(
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.denDistanceJitterFraction,
+    );
+    expect(cave?.spawnMinDistanceFromDenTiles).toBe(
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.spawnMinDistanceFromDenTiles,
+    );
+    expect(cave?.spawnMinDistanceFromResourceHeartTiles).toBe(
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.spawnMinDistanceFromResourceHeartTiles,
+    );
+    expect(cave?.spawnMinDistanceFromSettlementTiles).toBe(
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.spawnMinDistanceFromSettlementTiles,
+    );
+    expect(cave?.settlementMinDistanceFromDenTiles).toBe(
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.settlementMinDistanceFromDenTiles,
+    );
+    expect(cave?.settlementMinDistanceFromResourceHeartTiles).toBe(
+      FLOOR2_CAVE_SYSTEM_DEFAULTS.settlementMinDistanceFromResourceHeartTiles,
+    );
+    expect(cave?.regionSeparationTiles).toBe(FLOOR2_CAVE_SYSTEM_DEFAULTS.regionSeparationTiles);
+    expect(cave?.maxRetries).toBe(FLOOR2_CAVE_SYSTEM_DEFAULTS.maxRetries);
   });
 });
 

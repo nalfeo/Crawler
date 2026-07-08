@@ -67,6 +67,34 @@ export interface CaveSystemOptions {
    * radius = 0.5 × fraction × min(width,height). Default: 0.3 (30% diameter).
    */
   territoryRadiusFraction?: number;
+  /** Random angular offset for the first den, as a fraction of one den step. */
+  denStartAngleJitterFraction?: number;
+  /** Per-den radial jitter amount inside the den min/max radial band. */
+  denDistanceJitterFraction?: number;
+  /** Resource-heart chamber target diameter in tiles. Default: 20. */
+  resourceHeartDiameterTiles?: number;
+  /**
+   * Boss-den target radial band minimum as fraction of center→edge distance.
+   * Default: 0.6 (60% toward map edge).
+   */
+  denTargetRadiusMinFraction?: number;
+  /**
+   * Boss-den target radial band maximum as fraction of center→edge distance.
+   * Default: 0.8 (80% toward map edge).
+   */
+  denTargetRadiusMaxFraction?: number;
+  /** Minimum Euclidean separation between den targets in tiles. Default: 12. */
+  denTargetMinSeparationTiles?: number;
+  /** Minimum spawn distance from any den center, in tiles. Default: 24. */
+  spawnMinDistanceFromDenTiles?: number;
+  /** Minimum spawn distance from resource heart center, in tiles. Default: 24. */
+  spawnMinDistanceFromResourceHeartTiles?: number;
+  /** Minimum spawn distance from settlement center, in tiles. Default: 24. */
+  spawnMinDistanceFromSettlementTiles?: number;
+  /** Minimum settlement distance from den centers, in tiles. Default: 20. */
+  settlementMinDistanceFromDenTiles?: number;
+  /** Minimum settlement distance from resource heart center, in tiles. Default: 16. */
+  settlementMinDistanceFromResourceHeartTiles?: number;
 }
 
 const DEFAULT_OPTIONS: Required<CaveSystemOptions> = {
@@ -81,6 +109,17 @@ const DEFAULT_OPTIONS: Required<CaveSystemOptions> = {
   straightHallwayMinRun: 10,
   // 0.3 → territory diameter ≈ 30% of min(width,height).
   territoryRadiusFraction: 0.3,
+  denStartAngleJitterFraction: 1.0,
+  denDistanceJitterFraction: 1.0,
+  resourceHeartDiameterTiles: 20,
+  denTargetRadiusMinFraction: 0.6,
+  denTargetRadiusMaxFraction: 0.8,
+  denTargetMinSeparationTiles: 12,
+  spawnMinDistanceFromDenTiles: 24,
+  spawnMinDistanceFromResourceHeartTiles: 24,
+  spawnMinDistanceFromSettlementTiles: 24,
+  settlementMinDistanceFromDenTiles: 20,
+  settlementMinDistanceFromResourceHeartTiles: 16,
 };
 
 interface RegionInfo {
@@ -149,7 +188,22 @@ export class CaveSystemGenerator implements MapGenerator {
     );
     // Larger den footprints are materially harder to place in wall-only space.
     // Raise retry budget deterministically so high-size sweeps don't fail prematurely.
-    const denRetryFloor = 16 + Math.max(0, resolvedBossDenSize - 8) * 12;
+    const denRetryFloor =
+      resolvedBossDenSize > 8 ? 12 + Math.max(0, resolvedBossDenSize - 8) * 6 : 0;
+    const denTargetMinFraction = Math.max(
+      0.2,
+      Math.min(
+        0.95,
+        valueOr(cave?.denTargetRadiusMinFraction, this.options.denTargetRadiusMinFraction),
+      ),
+    );
+    const denTargetMaxFraction = Math.max(
+      denTargetMinFraction,
+      Math.min(
+        0.98,
+        valueOr(cave?.denTargetRadiusMaxFraction, this.options.denTargetRadiusMaxFraction),
+      ),
+    );
     return {
       presentCount: this.resolvePresentCount(config),
       initialFill: Math.max(
@@ -183,6 +237,97 @@ export class CaveSystemGenerator implements MapGenerator {
       territoryRadiusFraction: Math.max(
         0.1,
         Math.min(2.0, valueOr(cave?.territoryRadiusFraction, this.options.territoryRadiusFraction)),
+      ),
+      denStartAngleJitterFraction: Math.max(
+        0,
+        Math.min(
+          1.0,
+          valueOr(cave?.denStartAngleJitterFraction, this.options.denStartAngleJitterFraction),
+        ),
+      ),
+      denDistanceJitterFraction: Math.max(
+        0,
+        Math.min(
+          1.0,
+          valueOr(cave?.denDistanceJitterFraction, this.options.denDistanceJitterFraction),
+        ),
+      ),
+      resourceHeartDiameterTiles: Math.max(
+        10,
+        Math.min(
+          48,
+          Math.floor(
+            valueOr(cave?.resourceHeartDiameterTiles, this.options.resourceHeartDiameterTiles),
+          ),
+        ),
+      ),
+      denTargetRadiusMinFraction: denTargetMinFraction,
+      denTargetRadiusMaxFraction: denTargetMaxFraction,
+      denTargetMinSeparationTiles: Math.max(
+        6,
+        Math.min(
+          Math.max(config.widthTiles, config.heightTiles),
+          Math.floor(
+            valueOr(cave?.denTargetMinSeparationTiles, this.options.denTargetMinSeparationTiles),
+          ),
+        ),
+      ),
+      spawnMinDistanceFromDenTiles: Math.max(
+        0,
+        Math.min(
+          Math.max(config.widthTiles, config.heightTiles),
+          Math.floor(
+            valueOr(cave?.spawnMinDistanceFromDenTiles, this.options.spawnMinDistanceFromDenTiles),
+          ),
+        ),
+      ),
+      spawnMinDistanceFromResourceHeartTiles: Math.max(
+        0,
+        Math.min(
+          Math.max(config.widthTiles, config.heightTiles),
+          Math.floor(
+            valueOr(
+              cave?.spawnMinDistanceFromResourceHeartTiles,
+              this.options.spawnMinDistanceFromResourceHeartTiles,
+            ),
+          ),
+        ),
+      ),
+      spawnMinDistanceFromSettlementTiles: Math.max(
+        0,
+        Math.min(
+          Math.max(config.widthTiles, config.heightTiles),
+          Math.floor(
+            valueOr(
+              cave?.spawnMinDistanceFromSettlementTiles,
+              this.options.spawnMinDistanceFromSettlementTiles,
+            ),
+          ),
+        ),
+      ),
+      settlementMinDistanceFromDenTiles: Math.max(
+        0,
+        Math.min(
+          Math.max(config.widthTiles, config.heightTiles),
+          Math.floor(
+            valueOr(
+              cave?.settlementMinDistanceFromDenTiles,
+              this.options.settlementMinDistanceFromDenTiles,
+            ),
+          ),
+        ),
+      ),
+      settlementMinDistanceFromResourceHeartTiles: Math.max(
+        0,
+        Math.min(
+          Math.max(config.widthTiles, config.heightTiles),
+          Math.floor(
+            valueOr(
+              cave?.settlementMinDistanceFromResourceHeartTiles,
+              this.options.settlementMinDistanceFromResourceHeartTiles,
+            ),
+          ),
+        ),
       ),
     };
   }
@@ -286,8 +431,7 @@ export class CaveSystemGenerator implements MapGenerator {
     const heart = regions[heartIdx];
     if (!heart) throw new Error('regions[heartIdx] missing');
 
-    // SETTLEMENT = non-heart region whose centroid is CLOSEST to heart centroid.
-    // (Settlement should be near the resource heart, a distinct but adjacent cavern.)
+    // Candidate settlement regions (chosen later once den targets are known).
     const nonHeart = regions
       .map((r, i) => ({
         i,
@@ -296,22 +440,14 @@ export class CaveSystemGenerator implements MapGenerator {
       .filter((s) => s.i !== heartIdx)
       .sort((a, b) => a.d - b.d);
 
-    if (nonHeart.length === 0) {
-      throw new Error('no non-heart region for SETTLEMENT');
-    }
-    const settlementRegion = regions[nonHeart[0]!.i];
-    if (!settlementRegion) throw new Error('settlement region missing');
-    const settlementCluster = this.carveSettlementCluster(
+    // --- 6. Register RESOURCE_HEART (sealed circular room) + SETTLEMENT -
+    const resourceHeart = this.carveSealedResourceHeartRoom(
       tileMap,
       terrain,
-      settlementRegion,
       w,
       h,
-      subSeed,
+      options.resourceHeartDiameterTiles,
     );
-
-    // --- 6. Register RESOURCE_HEART (sealed circular room) + SETTLEMENT -
-    const resourceHeart = this.carveSealedResourceHeartRoom(tileMap, terrain, w, h);
     const heartRoomId = roomGraph.add(
       resourceHeart.bounds,
       resourceHeart.doors,
@@ -321,32 +457,6 @@ export class CaveSystemGenerator implements MapGenerator {
       undefined,
       resourceHeart.interiorCells,
     );
-
-    const settlementRoomIds: number[] = [];
-    for (const room of settlementCluster) {
-      settlementRoomIds.push(
-        roomGraph.add(
-          room.bounds,
-          room.doors,
-          [],
-          RoomRole.SETTLEMENT,
-          room.label,
-          undefined,
-          room.interiorCells,
-        ),
-      );
-    }
-    const settlementBarRoomId = settlementRoomIds[0];
-    if (settlementBarRoomId === undefined) {
-      throw new Error('settlement cluster did not produce a bar room');
-    }
-    roomGraph.addNeighbor(settlementBarRoomId, heartRoomId);
-    roomGraph.addNeighbor(heartRoomId, settlementBarRoomId);
-    for (let i = 1; i < settlementRoomIds.length; i++) {
-      const annexRoomId = settlementRoomIds[i]!;
-      roomGraph.addNeighbor(settlementBarRoomId, annexRoomId);
-      roomGraph.addNeighbor(annexRoomId, settlementBarRoomId);
-    }
 
     // Stamp RESOURCE_HEART centre and immediate neighbours with BOSS_STAIR_FLOOR.
     this.stampBossStairAtHeart(
@@ -366,41 +476,22 @@ export class CaveSystemGenerator implements MapGenerator {
       h,
     );
 
-    // --- 7. Spawn room — carved safe room at farthest point from heart --
-    const farthestFromHeart = this.findFarthestPassableFrom(
+    // --- 7. Connectivity cull (before territory collection) -----------
+    // Cull disconnected passable islands NOW, before we collect territory
+    // blobs or carve boss dens, so that every room's interiorCells refers
+    // only to tiles that survive the cull.
+    const preCullReached = this.floodPassable(
       tileMap,
       w,
       h,
       resourceHeart.centerX,
       resourceHeart.centerY,
     );
-    const spawnRoom = this.carveSmallRoom(
-      tileMap,
-      terrain,
-      farthestFromHeart.x,
-      farthestFromHeart.y,
-      w,
-      h,
-    );
-    const playerSpawn = spawnRoom.spawn;
-    const spawnRoomId = roomGraph.add(
-      spawnRoom.bounds,
-      spawnRoom.doors,
-      [],
-      RoomRole.SPAWN,
-      'spawn_room',
-      undefined,
-      spawnRoom.interiorCells,
-    );
-
-    // --- 8a. Connectivity cull (before territory collection) -----------
-    // Cull disconnected passable islands NOW, before we collect territory
-    // blobs or carve boss dens, so that every room's interiorCells refers
-    // only to tiles that survive the cull.
-    const preCullReached = this.floodPassable(tileMap, w, h, playerSpawn.x, playerSpawn.y);
     this.cullDisconnectedPassable(tileMap, terrain, preCullReached, w, h);
 
-    // --- 8b. Angular boss dens + circular TERRITORY rooms --------------
+    const reservedSpecialBounds: RoomBounds[] = [resourceHeart.bounds];
+
+    // --- 8. Angular boss dens + circular TERRITORY rooms ---------------
     const denTargets = this.placeAngularDenTargets(
       resourceHeart.centerX,
       resourceHeart.centerY,
@@ -408,7 +499,33 @@ export class CaveSystemGenerator implements MapGenerator {
       h,
       presentCount,
       tileMap,
+      options.denTargetRadiusMinFraction,
+      options.denTargetRadiusMaxFraction,
+      options.denTargetMinSeparationTiles,
+      options.denStartAngleJitterFraction,
+      options.denDistanceJitterFraction,
     );
+
+    // Keep spacing constraints meaningful on large maps while avoiding
+    // impossible generation envelopes on tiny/unit-test maps.
+    const spacingCap = Math.max(0, Math.floor(Math.min(w, h) * 0.2));
+    const settlementMinDistanceFromResourceHeartTiles = Math.min(
+      options.settlementMinDistanceFromResourceHeartTiles,
+      spacingCap,
+    );
+    const settlementMinDistanceFromDenTiles = Math.min(
+      options.settlementMinDistanceFromDenTiles,
+      spacingCap,
+    );
+    const spawnMinDistanceFromResourceHeartTiles = Math.min(
+      options.spawnMinDistanceFromResourceHeartTiles,
+      spacingCap,
+    );
+    const spawnMinDistanceFromSettlementTiles = Math.min(
+      options.spawnMinDistanceFromSettlementTiles,
+      spacingCap,
+    );
+    const spawnMinDistanceFromDenTiles = Math.min(options.spawnMinDistanceFromDenTiles, spacingCap);
 
     // Family territory circles: diameter = fraction × min(width,height).
     const minDim = Math.min(w, h);
@@ -423,6 +540,15 @@ export class CaveSystemGenerator implements MapGenerator {
 
     const territoryRoomIds: number[] = [];
     const territoryZones: TerritoryZone[] = [];
+    const denCenters: Array<{ x: number; y: number }> = [];
+    const denEdgeDistance = Math.min(
+      resourceHeart.centerX - 2,
+      w - 3 - resourceHeart.centerX,
+      resourceHeart.centerY - 2,
+      h - 3 - resourceHeart.centerY,
+    );
+    const minDenCenterDistance = Math.floor(denEdgeDistance * options.denTargetRadiusMinFraction);
+    const maxDenCenterDistance = Math.floor(denEdgeDistance * options.denTargetRadiusMaxFraction);
 
     // Claimed cells set: tiles already owned by previously placed territory rooms.
     // Prevents territory interiorCells from overlapping each other.
@@ -468,34 +594,211 @@ export class CaveSystemGenerator implements MapGenerator {
         w,
         h,
         options.bossDenSize,
+        resourceHeart.centerX,
+        resourceHeart.centerY,
+        minDenCenterDistance,
+        maxDenCenterDistance,
+        reservedSpecialBounds,
       );
       if (!denBounds) {
         throw new Error(`could not carve boss-den for familyIndex=${fi}`);
       }
       const denRoomId = roomGraph.add(
         denBounds.bounds,
-        [denBounds.door],
+        denBounds.doors,
         [terrRoomId],
         RoomRole.BOSS_DEN,
         `boss_den_${fi}`,
         fi,
       );
+      reservedSpecialBounds.push(denBounds.bounds);
       roomGraph.addNeighbor(terrRoomId, denRoomId);
 
       // Spawn-zone metadata (used by spawn-weighting, NOT a room).
+      const denCenterX = denBounds.bounds.x + Math.floor(denBounds.bounds.width / 2);
+      const denCenterY = denBounds.bounds.y + Math.floor(denBounds.bounds.height / 2);
+      denCenters.push({ x: denCenterX, y: denCenterY });
       territoryZones.push({
         familyIndex: fi,
-        centerX: target.x,
-        centerY: target.y,
+        centerX: denCenterX,
+        centerY: denCenterY,
         radius: territoryZoneRadius,
       });
     }
+
+    // --- 9. Settlement placement with spacing constraints ---------------
+    if (nonHeart.length === 0) {
+      throw new Error('no non-heart region for SETTLEMENT');
+    }
+    const settlementRegion = this.pickSettlementRegion(
+      regions,
+      nonHeart,
+      resourceHeart.centerX,
+      resourceHeart.centerY,
+      denCenters,
+      settlementMinDistanceFromResourceHeartTiles,
+      settlementMinDistanceFromDenTiles,
+      reservedSpecialBounds,
+      w,
+      h,
+      subSeed,
+    );
+    const settlementCluster = this.carveSettlementCluster(
+      tileMap,
+      terrain,
+      settlementRegion,
+      w,
+      h,
+      subSeed,
+      reservedSpecialBounds,
+    );
+    const settlementBarClusterRoom = settlementCluster.find(
+      (room) => room.label === 'settlement_bar',
+    );
+    if (!settlementBarClusterRoom) {
+      throw new Error('settlement cluster did not include settlement_bar room');
+    }
+    const settlementBarCenter = this.roomCenter({ bounds: settlementBarClusterRoom.bounds });
+    this.ensureConnectedToHeartComponent(
+      tileMap,
+      terrain,
+      w,
+      h,
+      settlementBarCenter.x,
+      settlementBarCenter.y,
+      resourceHeart.centerX,
+      resourceHeart.centerY,
+    );
+    const settlementRoomIds: number[] = [];
+    for (const room of settlementCluster) {
+      settlementRoomIds.push(
+        roomGraph.add(
+          room.bounds,
+          room.doors,
+          [],
+          RoomRole.SETTLEMENT,
+          room.label,
+          undefined,
+          room.interiorCells,
+        ),
+      );
+      reservedSpecialBounds.push(room.bounds);
+    }
+    const settlementBarRoomId = settlementRoomIds[0];
+    if (settlementBarRoomId === undefined) {
+      throw new Error('settlement cluster did not produce a bar room');
+    }
+    roomGraph.addNeighbor(settlementBarRoomId, heartRoomId);
+    roomGraph.addNeighbor(heartRoomId, settlementBarRoomId);
+    for (let i = 1; i < settlementRoomIds.length; i++) {
+      const annexRoomId = settlementRoomIds[i]!;
+      roomGraph.addNeighbor(settlementBarRoomId, annexRoomId);
+      roomGraph.addNeighbor(annexRoomId, settlementBarRoomId);
+    }
+
+    // --- 10. Spawn room with spacing constraints ------------------------
+    const settlementBarRoom = roomGraph.get(settlementBarRoomId);
+    if (!settlementBarRoom) {
+      throw new Error('settlement bar room missing after registration');
+    }
+    const settlementCenter = this.roomCenter(settlementBarRoom);
+    const spawnRelaxationFactors = [1, 0.75, 0.5, 0.25, 0] as const;
+    const spawnSizeCandidates = [6, 5, 4] as const;
+    let farthestFromHeart: { x: number; y: number } | null = null;
+    let spawnRoomSize = 6;
+    for (const roomSize of spawnSizeCandidates) {
+      for (const relaxFactor of spawnRelaxationFactors) {
+        farthestFromHeart = this.findFarthestPassableFrom(
+          tileMap,
+          w,
+          h,
+          resourceHeart.centerX,
+          resourceHeart.centerY,
+          (x, y) => {
+            const spawnBounds = this.computeSmallRoomBounds(x, y, w, h, roomSize);
+            const relaxedFromHeart = Math.floor(
+              spawnMinDistanceFromResourceHeartTiles * relaxFactor,
+            );
+            const relaxedFromSettlement = Math.floor(
+              spawnMinDistanceFromSettlementTiles * relaxFactor,
+            );
+            const relaxedFromDen = Math.floor(spawnMinDistanceFromDenTiles * relaxFactor);
+            return (
+              !reservedSpecialBounds.some((bounds) => this.boundsOverlap(spawnBounds, bounds)) &&
+              this.distanceAtLeast(
+                x,
+                y,
+                resourceHeart.centerX,
+                resourceHeart.centerY,
+                relaxedFromHeart,
+              ) &&
+              this.distanceAtLeast(
+                x,
+                y,
+                settlementCenter.x,
+                settlementCenter.y,
+                relaxedFromSettlement,
+              ) &&
+              denCenters.every((den) => this.distanceAtLeast(x, y, den.x, den.y, relaxedFromDen))
+            );
+          },
+        );
+        if (farthestFromHeart) {
+          spawnRoomSize = roomSize;
+          break;
+        }
+      }
+      if (farthestFromHeart) break;
+    }
+    if (!farthestFromHeart) {
+      const unconstrainedSpawn = this.findFarthestPassableFrom(
+        tileMap,
+        w,
+        h,
+        resourceHeart.centerX,
+        resourceHeart.centerY,
+      );
+      if (!unconstrainedSpawn) {
+        throw new Error('no passable tile available for spawn placement');
+      }
+      farthestFromHeart = unconstrainedSpawn;
+      spawnRoomSize = 4;
+    }
+    const spawnRoom = this.carveSmallRoom(
+      tileMap,
+      terrain,
+      farthestFromHeart.x,
+      farthestFromHeart.y,
+      w,
+      h,
+      spawnRoomSize,
+    );
+    const playerSpawn = spawnRoom.spawn;
+    const spawnRoomId = roomGraph.add(
+      spawnRoom.bounds,
+      spawnRoom.doors,
+      [],
+      RoomRole.SPAWN,
+      'spawn_room',
+      undefined,
+      spawnRoom.interiorCells,
+    );
+    this.ensureConnectedToHeartComponent(
+      tileMap,
+      terrain,
+      w,
+      h,
+      playerSpawn.x,
+      playerSpawn.y,
+      resourceHeart.centerX,
+      resourceHeart.centerY,
+    );
 
     // Wire spawn room ↔ heart for semantic graph connectivity.
     roomGraph.addNeighbor(spawnRoomId, heartRoomId);
     roomGraph.addNeighbor(heartRoomId, spawnRoomId);
 
-    // --- 9. Final reachability verification ---------------------------
+    // --- 11. Final reachability verification ---------------------------
     // Boss dens add new passable tiles (DOOR_OPEN + interior); flood the final map.
     const reached = this.floodPassable(tileMap, w, h, playerSpawn.x, playerSpawn.y);
     const required: Array<{ x: number; y: number; label: string }> = [
@@ -518,13 +821,15 @@ export class CaveSystemGenerator implements MapGenerator {
       const denRoom = roomGraph
         .getAll()
         .find((r) => r.role === RoomRole.BOSS_DEN && r.familyIndex === fi);
-      const door0 = denRoom?.doors[0];
-      if (door0) {
-        required.push({
-          x: door0.x,
-          y: door0.y,
-          label: `BOSS_DEN[${fi}].door`,
-        });
+      if (denRoom) {
+        for (let doorIndex = 0; doorIndex < denRoom.doors.length; doorIndex++) {
+          const door = denRoom.doors[doorIndex]!;
+          required.push({
+            x: door.x,
+            y: door.y,
+            label: `BOSS_DEN[${fi}].door[${doorIndex}]`,
+          });
+        }
       }
     }
 
@@ -536,14 +841,9 @@ export class CaveSystemGenerator implements MapGenerator {
         );
       }
     }
-    // Connectivity invariant: no passable islands may remain after culling.
-    for (let i = 0; i < total; i++) {
-      const x = i % w;
-      const y = (i / w) | 0;
-      if (!tileMap.isPassable(x, y)) continue;
-      if (reached[i] === 1) continue;
-      throw new Error(`passable tile disconnected at (${x},${y}) after culling`);
-    }
+    // Settlement/den carving can wall off residual cave pockets; trim any
+    // disconnected passable islands so the final map remains single-component.
+    this.cullDisconnectedPassable(tileMap, terrain, reached, w, h);
 
     return new FloorMap(
       config,
@@ -991,6 +1291,124 @@ export class CaveSystemGenerator implements MapGenerator {
     }
   }
 
+  private planSettlementCluster(
+    settlementRegion: RegionInfo,
+    w: number,
+    h: number,
+    seed: number,
+    blockedBounds: readonly RoomBounds[] = [],
+  ): {
+    roomCount: number;
+    roomWidth: number;
+    roomHeight: number;
+    barIndex: number;
+    slots: RoomBounds[];
+    overlapsBlocked: boolean;
+  } {
+    const preferredRoomCount = ((seed >>> 1) & 1) === 0 ? 2 : 3;
+    const roomWidth = Math.max(8, Math.min(12, Math.floor(Math.min(w, h) / 11)));
+    const roomHeight = Math.max(7, Math.min(10, Math.floor(Math.min(w, h) / 14)));
+    const gap = 2;
+    const roomCountCandidates = preferredRoomCount === 2 ? [2, 3] : [3, 2];
+    for (const roomCount of roomCountCandidates) {
+      const clusterWidth = roomCount * roomWidth + (roomCount - 1) * gap;
+      const minBaseX = 2;
+      const minBaseY = 2;
+      const maxBaseX = Math.max(minBaseX, w - clusterWidth - 2);
+      const maxBaseY = Math.max(minBaseY, h - roomHeight - 2);
+      const preferredBaseX = Math.max(
+        minBaseX,
+        Math.min(maxBaseX, settlementRegion.centroidX - Math.floor(clusterWidth / 2)),
+      );
+      const preferredBaseY = Math.max(
+        minBaseY,
+        Math.min(maxBaseY, settlementRegion.centroidY - Math.floor(roomHeight / 2)),
+      );
+      const slotOffsets =
+        roomCount === 2 ? [0, roomWidth + gap] : [0, roomWidth + gap, (roomWidth + gap) * 2];
+      const buildSlots = (baseX: number, baseY: number): RoomBounds[] =>
+        slotOffsets.map((offsetX) => ({
+          x: baseX + offsetX,
+          y: baseY,
+          width: roomWidth,
+          height: roomHeight,
+        }));
+
+      const preferredSlots = buildSlots(preferredBaseX, preferredBaseY);
+      const preferredOverlapsBlocked = preferredSlots.some((slot) =>
+        blockedBounds.some((bounds) => this.boundsOverlap(slot, bounds)),
+      );
+      if (!preferredOverlapsBlocked) {
+        const barIndex = roomCount === 2 ? 0 : 1;
+        return {
+          roomCount,
+          roomWidth,
+          roomHeight,
+          barIndex,
+          slots: preferredSlots,
+          overlapsBlocked: false,
+        };
+      }
+
+      const maxShift = Math.max(4, Math.min(8, Math.floor(Math.min(w, h) / 10)));
+      const seenBases = new Set<number>();
+      for (let radius = 0; radius <= maxShift; radius++) {
+        for (let dy = -radius; dy <= radius; dy++) {
+          const dxAbs = radius - Math.abs(dy);
+          for (const dx of dxAbs === 0 ? [0] : [-dxAbs, dxAbs]) {
+            const baseX = Math.max(minBaseX, Math.min(maxBaseX, preferredBaseX + dx));
+            const baseY = Math.max(minBaseY, Math.min(maxBaseY, preferredBaseY + dy));
+            const key = baseY * w + baseX;
+            if (seenBases.has(key)) continue;
+            seenBases.add(key);
+            const slots = buildSlots(baseX, baseY);
+            const overlapsBlocked = slots.some((slot) =>
+              blockedBounds.some((bounds) => this.boundsOverlap(slot, bounds)),
+            );
+            if (!overlapsBlocked) {
+              const barIndex = roomCount === 2 ? 0 : 1;
+              return { roomCount, roomWidth, roomHeight, barIndex, slots, overlapsBlocked: false };
+            }
+          }
+        }
+      }
+    }
+
+    const fallbackRoomCount = preferredRoomCount;
+    const fallbackClusterWidth = fallbackRoomCount * roomWidth + (fallbackRoomCount - 1) * gap;
+    const fallbackBaseX = Math.max(
+      2,
+      Math.min(
+        w - fallbackClusterWidth - 2,
+        settlementRegion.centroidX - Math.floor(fallbackClusterWidth / 2),
+      ),
+    );
+    const fallbackBaseY = Math.max(
+      2,
+      Math.min(h - roomHeight - 2, settlementRegion.centroidY - Math.floor(roomHeight / 2)),
+    );
+    const fallbackOffsets =
+      fallbackRoomCount === 2 ? [0, roomWidth + gap] : [0, roomWidth + gap, (roomWidth + gap) * 2];
+    const slots = fallbackOffsets.map((offsetX) => ({
+      x: fallbackBaseX + offsetX,
+      y: fallbackBaseY,
+      width: roomWidth,
+      height: roomHeight,
+    }));
+    const overlapsBlocked = slots.some((slot) =>
+      blockedBounds.some((bounds) => this.boundsOverlap(slot, bounds)),
+    );
+    const barIndex = fallbackRoomCount === 2 ? 0 : 1;
+    return {
+      roomCount: fallbackRoomCount,
+      roomWidth,
+      roomHeight,
+      barIndex,
+      slots,
+      overlapsBlocked,
+    };
+  }
+
   private carveSettlementCluster(
     tileMap: TileMap,
     terrain: Uint8Array,
@@ -998,47 +1416,29 @@ export class CaveSystemGenerator implements MapGenerator {
     w: number,
     h: number,
     seed: number,
+    blockedBounds: readonly RoomBounds[] = [],
   ): SettlementClusterRoom[] {
-    const roomCount = ((seed >>> 1) & 1) === 0 ? 2 : 3;
-    const roomWidth = Math.max(8, Math.min(12, Math.floor(Math.min(w, h) / 11)));
-    const roomHeight = Math.max(7, Math.min(10, Math.floor(Math.min(w, h) / 14)));
-    const gap = 2;
-    const clusterWidth = roomCount * roomWidth + (roomCount - 1) * gap;
-    const baseX = Math.max(
-      2,
-      Math.min(w - clusterWidth - 2, settlementRegion.centroidX - Math.floor(clusterWidth / 2)),
-    );
-    const baseY = Math.max(
-      2,
-      Math.min(h - roomHeight - 2, settlementRegion.centroidY - Math.floor(roomHeight / 2)),
-    );
-
+    const plan = this.planSettlementCluster(settlementRegion, w, h, seed, blockedBounds);
     const rooms: SettlementClusterRoom[] = [];
-    const addRoom = (x: number, y: number, label: string): SettlementClusterRoom => {
-      const bounds: RoomBounds = { x, y, width: roomWidth, height: roomHeight };
+    const addRoom = (bounds: RoomBounds, label: string): SettlementClusterRoom => {
       this.carveStoneRoom(tileMap, terrain, bounds, w);
       const interiorCells: Array<{ x: number; y: number }> = [];
-      for (let iy = y + 1; iy < y + roomHeight - 1; iy++) {
-        for (let ix = x + 1; ix < x + roomWidth - 1; ix++) {
+      for (let iy = bounds.y + 1; iy < bounds.y + bounds.height - 1; iy++) {
+        for (let ix = bounds.x + 1; ix < bounds.x + bounds.width - 1; ix++) {
           interiorCells.push({ x: ix, y: iy });
         }
       }
       return { bounds, label, interiorCells, doors: [] };
     };
 
-    const xSlots =
-      roomCount === 2
-        ? [baseX, baseX + roomWidth + gap]
-        : [baseX, baseX + roomWidth + gap, baseX + (roomWidth + gap) * 2];
-    const barIndex = roomCount === 2 ? 0 : 1;
-    const carved = xSlots.map((x, index) => {
-      if (index === barIndex) return addRoom(x, baseY, 'settlement_bar');
-      const annexLabel = index < barIndex ? 'settlement_annex_left' : 'settlement_annex_right';
-      return addRoom(x, baseY, annexLabel);
+    const carved = plan.slots.map((bounds, index) => {
+      if (index === plan.barIndex) return addRoom(bounds, 'settlement_bar');
+      const annexLabel = index < plan.barIndex ? 'settlement_annex_left' : 'settlement_annex_right';
+      return addRoom(bounds, annexLabel);
     });
-    const barRoom = carved[barIndex]!;
-    const leftRoom = roomCount === 3 ? carved[0]! : null;
-    const rightRoom = roomCount === 3 ? carved[2]! : carved[1]!;
+    const barRoom = carved[plan.barIndex]!;
+    const leftRoom = plan.roomCount === 3 ? carved[0]! : null;
+    const rightRoom = plan.roomCount === 3 ? carved[2]! : carved[1]!;
     rooms.push(barRoom);
     if (leftRoom) rooms.push(leftRoom);
     rooms.push(rightRoom);
@@ -1058,10 +1458,10 @@ export class CaveSystemGenerator implements MapGenerator {
         tileMap.flags[idx] = TilePresets.FLOOR;
         terrain[idx] = TerrainType.STONE_FLOOR;
         for (const sideY of [y - 1, y + 1]) {
+          if (sideY <= 0 || sideY >= h - 1) continue;
           const sideIdx = sideY * w + x;
-          if (tileMap.flags[sideIdx] === TilePresets.WALL) {
-            terrain[sideIdx] = TerrainType.STONE_WALL;
-          }
+          tileMap.flags[sideIdx] = TilePresets.WALL;
+          terrain[sideIdx] = TerrainType.STONE_WALL;
         }
       }
       tileMap.flags[doorA.y * w + doorA.x] = TilePresets.DOOR_OPEN;
@@ -1098,6 +1498,7 @@ export class CaveSystemGenerator implements MapGenerator {
     terrain: Uint8Array,
     bounds: RoomBounds,
     w: number,
+    enforcePerimeterWalls = true,
   ): void {
     for (let y = bounds.y; y < bounds.y + bounds.height; y++) {
       for (let x = bounds.x; x < bounds.x + bounds.width; x++) {
@@ -1108,9 +1509,10 @@ export class CaveSystemGenerator implements MapGenerator {
           x === bounds.x + bounds.width - 1 ||
           y === bounds.y + bounds.height - 1;
         if (perimeter) {
-          // Preserve pre-existing passable flow so carved settlement rooms never
-          // sever global cave connectivity.
-          if (tileMap.isPassable(x, y)) {
+          if (enforcePerimeterWalls) {
+            tileMap.flags[idx] = TilePresets.WALL;
+            terrain[idx] = TerrainType.STONE_WALL;
+          } else if (tileMap.isPassable(x, y)) {
             tileMap.flags[idx] = TilePresets.FLOOR;
             terrain[idx] = TerrainType.CAVE_FLOOR;
           } else {
@@ -1130,12 +1532,12 @@ export class CaveSystemGenerator implements MapGenerator {
    *
    * Strategy:
    * 1) Pick a territory boundary tile + outward direction.
-   * 2) Search outward in that direction for an all-wall chamber footprint.
-   * 3) Stamp a stone-walled chamber + one door.
+   * 2) Search outward in that direction for an in-bounds chamber footprint.
+   * 3) Stamp a stone-walled chamber + double doors.
    * 4) If the chamber is not directly adjacent, carve a short connector tunnel
    *    back toward the territory to preserve global cave connectivity.
    *
-   * Returns the chamber bounds + door location, or null on failure.
+   * Returns the chamber bounds + door locations, or null on failure.
    */
   private carveBossDen(
     tileMap: TileMap,
@@ -1145,7 +1547,12 @@ export class CaveSystemGenerator implements MapGenerator {
     w: number,
     h: number,
     denSize: number,
-  ): { bounds: RoomBounds; door: DoorLocation } | null {
+    heartX: number,
+    heartY: number,
+    minCenterDistance: number,
+    maxCenterDistance: number,
+    blockedBounds: readonly RoomBounds[],
+  ): { bounds: RoomBounds; doors: DoorLocation[] } | null {
     const size = denSize;
 
     // Collect (territoryCell, direction) candidate slots — the direction
@@ -1202,26 +1609,77 @@ export class CaveSystemGenerator implements MapGenerator {
         }
         if (bx < 1 || by < 1 || bx + size >= w - 1 || by + size >= h - 1) continue;
 
-        // Chamber footprint must currently be all wall so we don't sever passable flow.
-        let allWall = true;
-        for (let y = by; y < by + size && allWall; y++) {
-          for (let x = bx; x < bx + size && allWall; x++) {
-            if (tileMap.isPassable(x, y)) allWall = false;
-          }
-        }
-        if (!allWall) continue;
-
         // Sanity check: door must be on the chamber perimeter.
         const doorOnPerim =
           doorX === bx || doorX === bx + size - 1 || doorY === by || doorY === by + size - 1;
         if (!doorOnPerim) continue;
+        const denCenterX = bx + Math.floor(size / 2);
+        const denCenterY = by + Math.floor(size / 2);
+        const denCenterDistance = Math.hypot(denCenterX - heartX, denCenterY - heartY);
+        if (denCenterDistance < minCenterDistance || denCenterDistance > maxCenterDistance) {
+          continue;
+        }
+        const denBounds: RoomBounds = { x: bx, y: by, width: size, height: size };
+        if (blockedBounds.some((bounds) => this.boundsOverlap(denBounds, bounds))) {
+          continue;
+        }
 
-        // Carve interior floor.
-        for (let y = by + 1; y < by + size - 1; y++) {
-          for (let x = bx + 1; x < bx + size - 1; x++) {
+        let secondDoorX = doorX;
+        let secondDoorY = doorY;
+        let sideOffsetX = 0;
+        let sideOffsetY = 0;
+        const sideOffsetCandidates =
+          cand.dx !== 0
+            ? ([
+                [0, 1],
+                [0, -1],
+              ] as const)
+            : ([
+                [1, 0],
+                [-1, 0],
+              ] as const);
+        let hasSecondDoor = false;
+        for (const [offsetX, offsetY] of sideOffsetCandidates) {
+          const candidateX = doorX + offsetX;
+          const candidateY = doorY + offsetY;
+          if (
+            candidateX < bx ||
+            candidateX > bx + size - 1 ||
+            candidateY < by ||
+            candidateY > by + size - 1
+          ) {
+            continue;
+          }
+          const onPerimeter =
+            candidateX === bx ||
+            candidateX === bx + size - 1 ||
+            candidateY === by ||
+            candidateY === by + size - 1;
+          if (!onPerimeter) continue;
+          secondDoorX = candidateX;
+          secondDoorY = candidateY;
+          sideOffsetX = offsetX;
+          sideOffsetY = offsetY;
+          hasSecondDoor = true;
+          break;
+        }
+        if (!hasSecondDoor) continue;
+
+        // Stamp chamber shell + interior.
+        // Boss dens are intentionally fully walled except for the two door tiles.
+        for (let y = by; y < by + size; y++) {
+          for (let x = bx; x < bx + size; x++) {
             const idx = y * w + x;
-            tileMap.flags[idx] = TilePresets.FLOOR;
-            terrain[idx] = TerrainType.STONE_FLOOR;
+            const perimeter = x === bx || y === by || x === bx + size - 1 || y === by + size - 1;
+            if (perimeter) {
+              if ((x === doorX && y === doorY) || (x === secondDoorX && y === secondDoorY))
+                continue;
+              tileMap.flags[idx] = TilePresets.WALL;
+              terrain[idx] = TerrainType.STONE_WALL;
+            } else {
+              tileMap.flags[idx] = TilePresets.FLOOR;
+              terrain[idx] = TerrainType.STONE_FLOOR;
+            }
           }
         }
         // Carve connector tunnel back toward territory when den is offset outward.
@@ -1232,17 +1690,40 @@ export class CaveSystemGenerator implements MapGenerator {
           const cidx = cy * w + cx;
           tileMap.flags[cidx] = TilePresets.FLOOR;
           terrain[cidx] = TerrainType.CAVE_FLOOR;
+          const sideCx = cx + sideOffsetX;
+          const sideCy = cy + sideOffsetY;
+          if (sideCx >= 1 && sideCx < w - 1 && sideCy >= 1 && sideCy < h - 1) {
+            const sideIdx = sideCy * w + sideCx;
+            tileMap.flags[sideIdx] = TilePresets.FLOOR;
+            terrain[sideIdx] = TerrainType.CAVE_FLOOR;
+          }
         }
 
-        // Stamp the door tile — DOOR_OPEN so the den is reachable and the connectivity
-        // invariant holds. The scenario can close the door on floor initialization.
-        const didx = doorY * w + doorX;
-        tileMap.flags[didx] = TilePresets.DOOR_OPEN;
-        terrain[didx] = TerrainType.DOOR;
-
-        const bounds: RoomBounds = { x: bx, y: by, width: size, height: size };
-        const doorLoc: DoorLocation = { x: doorX, y: doorY, connectsTo: -1 };
-        return { bounds, door: doorLoc };
+        const doors: DoorLocation[] = [
+          { x: doorX, y: doorY, connectsTo: -1 },
+          { x: secondDoorX, y: secondDoorY, connectsTo: -1 },
+        ];
+        // Stamp the door tiles — DOOR_OPEN so the den remains reachable and the connectivity
+        // invariant holds. The scenario can close the doors on floor initialization.
+        for (const door of doors) {
+          const didx = door.y * w + door.x;
+          tileMap.flags[didx] = TilePresets.DOOR_OPEN;
+          terrain[didx] = TerrainType.DOOR;
+          const outsideX = door.x - cand.dx;
+          const outsideY = door.y - cand.dy;
+          if (
+            outsideX >= 1 &&
+            outsideX < w - 1 &&
+            outsideY >= 1 &&
+            outsideY < h - 1 &&
+            !tileMap.isPassable(outsideX, outsideY)
+          ) {
+            const outsideIdx = outsideY * w + outsideX;
+            tileMap.flags[outsideIdx] = TilePresets.FLOOR;
+            terrain[outsideIdx] = TerrainType.CAVE_FLOOR;
+          }
+        }
+        return { bounds: denBounds, doors };
       }
     }
 
@@ -1303,6 +1784,57 @@ export class CaveSystemGenerator implements MapGenerator {
     }
   }
 
+  private ensureConnectedToHeartComponent(
+    tileMap: TileMap,
+    terrain: Uint8Array,
+    w: number,
+    h: number,
+    fromX: number,
+    fromY: number,
+    heartX: number,
+    heartY: number,
+  ): void {
+    const reached = this.floodPassable(tileMap, w, h, heartX, heartY);
+    const fromIdx = fromY * w + fromX;
+    if (reached[fromIdx] === 1) return;
+
+    let bestTarget: { x: number; y: number; distance: number } | null = null;
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const idx = y * w + x;
+        if (reached[idx] !== 1) continue;
+        if (!tileMap.isPassable(x, y)) continue;
+        const distance = Math.abs(x - fromX) + Math.abs(y - fromY);
+        if (
+          !bestTarget ||
+          distance < bestTarget.distance ||
+          (distance === bestTarget.distance &&
+            (y < bestTarget.y || (y === bestTarget.y && x < bestTarget.x)))
+        ) {
+          bestTarget = { x, y, distance };
+        }
+      }
+    }
+    if (!bestTarget) {
+      throw new Error('unable to find reachable anchor to connect settlement cluster');
+    }
+
+    let x = fromX;
+    let y = fromY;
+    while (x !== bestTarget.x) {
+      x += Math.sign(bestTarget.x - x);
+      const idx = y * w + x;
+      tileMap.flags[idx] = TilePresets.FLOOR;
+      terrain[idx] = TerrainType.CAVE_FLOOR;
+    }
+    while (y !== bestTarget.y) {
+      y += Math.sign(bestTarget.y - y);
+      const idx = y * w + x;
+      tileMap.flags[idx] = TilePresets.FLOOR;
+      terrain[idx] = TerrainType.CAVE_FLOOR;
+    }
+  }
+
   /** Return the closest reached tile to (tx,ty) within a Chebyshev radius, or null. */
   private findReachableWithin(
     reached: Uint8Array,
@@ -1359,7 +1891,8 @@ export class CaveSystemGenerator implements MapGenerator {
     h: number,
     sx: number,
     sy: number,
-  ): { x: number; y: number } {
+    isCandidate?: (x: number, y: number) => boolean,
+  ): { x: number; y: number } | null {
     const visited = new Uint8Array(w * h);
     const queue: number[] = [];
     const startIdx = sy * w + sx;
@@ -1367,14 +1900,22 @@ export class CaveSystemGenerator implements MapGenerator {
     queue.push(startIdx);
     let head = 0;
     let lastGoodIdx = startIdx;
+    let foundCandidate = false;
     const margin = 4;
     while (head < queue.length) {
       const idx = queue[head++]!;
       const x = idx % w;
       const y = (idx / w) | 0;
       // Track the farthest tile that has enough margin for a spawn room.
-      if (x >= margin && x < w - margin && y >= margin && y < h - margin) {
+      if (
+        x >= margin &&
+        x < w - margin &&
+        y >= margin &&
+        y < h - margin &&
+        (!isCandidate || isCandidate(x, y))
+      ) {
         lastGoodIdx = idx;
+        foundCandidate = true;
       }
       for (const [nx, ny] of [
         [x + 1, y],
@@ -1390,14 +1931,14 @@ export class CaveSystemGenerator implements MapGenerator {
         queue.push(nidx);
       }
     }
+    if (isCandidate && !foundCandidate) return null;
     return { x: lastGoodIdx % w, y: (lastGoodIdx / w) | 0 };
   }
 
   /**
    * Place `count` boss-den target points around the heart.
-   * For count ≤ 4, uses canonical NSEW order matching floor2Scenario's quadrantOrder
-   * ['N','S','E','W'] so that familyIndex 0=N, 1=S, 2=E, 3=W.
-   * For count > 4, falls back to evenly-spaced angles starting from North.
+   * Uses evenly spaced angles with deterministic random rotation for the first den,
+   * plus configurable radial jitter within the configured den band.
    * Returns the nearest actual passable tile to each angular target.
    */
   private placeAngularDenTargets(
@@ -1407,29 +1948,100 @@ export class CaveSystemGenerator implements MapGenerator {
     h: number,
     count: number,
     tileMap: TileMap,
+    minRadiusFraction: number,
+    maxRadiusFraction: number,
+    minSeparationTiles: number,
+    startAngleJitterFraction: number,
+    distanceJitterFraction: number,
   ): Array<{ x: number; y: number }> {
-    const R = Math.max(10, Math.round(Math.min(w * 0.22, h * 0.22)));
-    // Canonical NSEW angles (clockwise from North): 0=N, 1=S, 2=E, 3=W.
-    // Matches floor2Scenario.ts quadrantOrder = ['N','S','E','W'].
-    const NSEW_ANGLES: Record<number, number[]> = {
-      1: [0],
-      2: [0, Math.PI],
-      3: [0, Math.PI, Math.PI / 2],
-      4: [0, Math.PI, Math.PI / 2, (3 * Math.PI) / 2],
-    };
-    const angles: number[] =
-      NSEW_ANGLES[count] ?? Array.from({ length: count }, (_, i) => (i * 2 * Math.PI) / count);
+    const step = (2 * Math.PI) / Math.max(1, count);
+    const baseAngle = RNG.getUniform() * step * startAngleJitterFraction;
+    const nearestSearchRadius = Math.max(20, Math.floor(Math.min(w, h) * 0.2));
 
     const targets: Array<{ x: number; y: number }> = [];
     for (let i = 0; i < count; i++) {
-      const angle = angles[i]!;
-      // angle measured clockwise from North: x = heartX + R·sin(angle), y = heartY - R·cos(angle)
-      const rawX = Math.round(heartX + R * Math.sin(angle));
-      const rawY = Math.round(heartY - R * Math.cos(angle));
-      const clampedX = Math.max(2, Math.min(w - 3, rawX));
-      const clampedY = Math.max(2, Math.min(h - 3, rawY));
-      const nearest = this.findNearestPassable(tileMap, w, h, clampedX, clampedY, 20);
-      targets.push(nearest ?? { x: clampedX, y: clampedY });
+      const angle = baseAngle + i * step;
+      const directionX = Math.sin(angle);
+      const directionY = -Math.cos(angle);
+      const tx = directionX >= 0 ? w - 3 : 2;
+      const ty = directionY >= 0 ? h - 3 : 2;
+      const t = Math.min(
+        directionX === 0 ? Number.POSITIVE_INFINITY : (tx - heartX) / directionX,
+        directionY === 0 ? Number.POSITIVE_INFINITY : (ty - heartY) / directionY,
+      );
+      const edgeDistance = Math.max(8, Math.floor(t));
+      const minDist = Math.max(6, Math.floor(edgeDistance * minRadiusFraction));
+      const maxDist = Math.max(minDist, Math.floor(edgeDistance * maxRadiusFraction));
+      const radialBand = Math.max(0, maxDist - minDist);
+      const jitterBand = Math.floor(radialBand * distanceJitterFraction);
+      const preferredDist =
+        maxDist - (jitterBand > 0 ? Math.floor(RNG.getUniform() * (jitterBand + 1)) : 0);
+      let chosen: { x: number; y: number } | null = null;
+      let fallback: { x: number; y: number } | null = null;
+      let fallbackScore = Number.NEGATIVE_INFINITY;
+      for (let dist = preferredDist; dist >= minDist && !chosen; dist--) {
+        const rawX = Math.round(heartX + directionX * dist);
+        const rawY = Math.round(heartY + directionY * dist);
+        const clampedX = Math.max(2, Math.min(w - 3, rawX));
+        const clampedY = Math.max(2, Math.min(h - 3, rawY));
+        const nearest = this.findNearestPassable(
+          tileMap,
+          w,
+          h,
+          clampedX,
+          clampedY,
+          nearestSearchRadius,
+        );
+        if (!nearest) continue;
+        const minDistanceToExisting =
+          targets.length === 0
+            ? Number.POSITIVE_INFINITY
+            : Math.min(
+                ...targets.map((prev) => Math.hypot(prev.x - nearest.x, prev.y - nearest.y)),
+              );
+        const separated = minDistanceToExisting >= minSeparationTiles;
+        if (separated) chosen = nearest;
+        if (!separated && minDistanceToExisting > fallbackScore) {
+          fallback = nearest;
+          fallbackScore = minDistanceToExisting;
+        }
+      }
+      for (let dist = preferredDist + 1; dist <= maxDist && !chosen; dist++) {
+        const rawX = Math.round(heartX + directionX * dist);
+        const rawY = Math.round(heartY + directionY * dist);
+        const clampedX = Math.max(2, Math.min(w - 3, rawX));
+        const clampedY = Math.max(2, Math.min(h - 3, rawY));
+        const nearest = this.findNearestPassable(
+          tileMap,
+          w,
+          h,
+          clampedX,
+          clampedY,
+          nearestSearchRadius,
+        );
+        if (!nearest) continue;
+        const minDistanceToExisting =
+          targets.length === 0
+            ? Number.POSITIVE_INFINITY
+            : Math.min(
+                ...targets.map((prev) => Math.hypot(prev.x - nearest.x, prev.y - nearest.y)),
+              );
+        const separated = minDistanceToExisting >= minSeparationTiles;
+        if (separated) chosen = nearest;
+        if (!separated && minDistanceToExisting > fallbackScore) {
+          fallback = nearest;
+          fallbackScore = minDistanceToExisting;
+        }
+      }
+      if (!chosen && fallback) {
+        chosen = fallback;
+      }
+      if (!chosen) {
+        throw new Error(
+          `failed to place den target[${i}] within band ${minRadiusFraction}-${maxRadiusFraction} and minSeparation=${minSeparationTiles}`,
+        );
+      }
+      targets.push(chosen);
     }
     return targets;
   }
@@ -1487,9 +2099,94 @@ export class CaveSystemGenerator implements MapGenerator {
     };
   }
 
+  private distanceAtLeast(
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    minDistance: number,
+  ): boolean {
+    if (minDistance <= 0) return true;
+    return Math.hypot(x0 - x1, y0 - y1) >= minDistance;
+  }
+
+  private roomCenter(room: { bounds: RoomBounds }): { x: number; y: number } {
+    return {
+      x: room.bounds.x + Math.floor(room.bounds.width / 2),
+      y: room.bounds.y + Math.floor(room.bounds.height / 2),
+    };
+  }
+
+  private boundsOverlap(a: RoomBounds, b: RoomBounds): boolean {
+    return (
+      a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y
+    );
+  }
+
+  private computeSmallRoomBounds(
+    targetX: number,
+    targetY: number,
+    w: number,
+    h: number,
+    size = 6,
+  ): RoomBounds {
+    const x = Math.max(2, Math.min(w - size - 2, targetX - Math.floor(size / 2)));
+    const y = Math.max(2, Math.min(h - size - 2, targetY - Math.floor(size / 2)));
+    return { x, y, width: size, height: size };
+  }
+
+  private pickSettlementRegion(
+    regions: RegionInfo[],
+    rankedNonHeart: Array<{ i: number; d: number }>,
+    heartX: number,
+    heartY: number,
+    denCenters: ReadonlyArray<{ x: number; y: number }>,
+    minDistanceFromHeart: number,
+    minDistanceFromDens: number,
+    blockedBounds: readonly RoomBounds[],
+    w: number,
+    h: number,
+    seed: number,
+  ): RegionInfo {
+    for (const candidate of rankedNonHeart) {
+      const region = regions[candidate.i];
+      if (!region) continue;
+      if (
+        !this.distanceAtLeast(
+          region.centroidX,
+          region.centroidY,
+          heartX,
+          heartY,
+          minDistanceFromHeart,
+        )
+      ) {
+        continue;
+      }
+      if (
+        !denCenters.every((den) =>
+          this.distanceAtLeast(
+            region.centroidX,
+            region.centroidY,
+            den.x,
+            den.y,
+            minDistanceFromDens,
+          ),
+        )
+      ) {
+        continue;
+      }
+      const planned = this.planSettlementCluster(region, w, h, seed, blockedBounds);
+      if (planned.overlapsBlocked) {
+        continue;
+      }
+      return region;
+    }
+    throw new Error('no settlement region satisfied configured spacing constraints');
+  }
+
   /**
    * Carve a sealed circular resource-heart chamber near map center.
-   * - diameter: 20 tiles (radius 10)
+   * - diameter: configurable via caveSystem.resourceHeartDiameterTiles
    * - center: within 20% of map center (we anchor at center and clamp for bounds)
    * - one perimeter door tile (left open at generation; runtime lock wiring seals it)
    */
@@ -1498,6 +2195,7 @@ export class CaveSystemGenerator implements MapGenerator {
     terrain: Uint8Array,
     w: number,
     h: number,
+    targetDiameterTiles: number,
   ): {
     centerX: number;
     centerY: number;
@@ -1505,7 +2203,7 @@ export class CaveSystemGenerator implements MapGenerator {
     doors: DoorLocation[];
     interiorCells: Array<{ x: number; y: number }>;
   } {
-    const radius = 10;
+    const radius = Math.max(5, Math.floor(targetDiameterTiles / 2));
     const innerRadius = radius - 1;
     const minCenterX = radius + 2;
     const maxCenterX = w - radius - 3;
@@ -1577,27 +2275,26 @@ export class CaveSystemGenerator implements MapGenerator {
     targetY: number,
     w: number,
     h: number,
+    size = 6,
   ): {
     spawn: { x: number; y: number };
     bounds: RoomBounds;
     doors: DoorLocation[];
     interiorCells: Array<{ x: number; y: number }>;
   } {
-    const size = 6;
-    const bx = Math.max(2, Math.min(w - size - 2, targetX - Math.floor(size / 2)));
-    const by = Math.max(2, Math.min(h - size - 2, targetY - Math.floor(size / 2)));
-    const bounds: RoomBounds = { x: bx, y: by, width: size, height: size };
+    const bounds = this.computeSmallRoomBounds(targetX, targetY, w, h, size);
+    const { x: bx, y: by, width: roomSize } = bounds;
     this.carveStoneRoom(tileMap, terrain, bounds, w);
 
     // Override interior tiles to safe-room floor.
-    for (let y = by + 1; y < by + size - 1; y++) {
-      for (let x = bx + 1; x < bx + size - 1; x++) {
+    for (let y = by + 1; y < by + roomSize - 1; y++) {
+      for (let x = bx + 1; x < bx + roomSize - 1; x++) {
         terrain[y * w + x] = TerrainType.SAFE_ROOM_FLOOR;
       }
     }
 
     // North door.
-    const doorNx = bx + Math.floor(size / 2);
+    const doorNx = bx + Math.floor(roomSize / 2);
     const doorNy = by;
     tileMap.flags[doorNy * w + doorNx] = TilePresets.DOOR_OPEN;
     terrain[doorNy * w + doorNx] = TerrainType.DOOR;
@@ -1610,8 +2307,8 @@ export class CaveSystemGenerator implements MapGenerator {
     }
 
     // South door.
-    const doorSx = bx + Math.floor(size / 2);
-    const doorSy = by + size - 1;
+    const doorSx = bx + Math.floor(roomSize / 2);
+    const doorSy = by + roomSize - 1;
     tileMap.flags[doorSy * w + doorSx] = TilePresets.DOOR_OPEN;
     terrain[doorSy * w + doorSx] = TerrainType.DOOR;
     if (doorSy + 1 < h - 1) {
@@ -1627,8 +2324,8 @@ export class CaveSystemGenerator implements MapGenerator {
       { x: doorSx, y: doorSy, connectsTo: -1 },
     ];
     const interiorCells: Array<{ x: number; y: number }> = [];
-    for (let y = by + 1; y < by + size - 1; y++) {
-      for (let x = bx + 1; x < bx + size - 1; x++) {
+    for (let y = by + 1; y < by + roomSize - 1; y++) {
+      for (let x = bx + 1; x < bx + roomSize - 1; x++) {
         interiorCells.push({ x, y });
       }
     }
