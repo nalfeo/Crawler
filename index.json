@@ -1,5 +1,16 @@
 [
   {
+    "commit": "39fda13fece70068922f305a111e44b7956ce547",
+    "commitDate": "2026-07-08T02:15:14Z",
+    "commitSubject": "feat(sprites): consolidate 31 approved assets from 1 check-in(s) (#879)",
+    "capturedAt": "2026-07-08T02:50:04.461Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28912684701",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/39fda13fece70068922f305a111e44b7956ce547.json"
+  },
+  {
     "commit": "67fad76864b59113abe36cc04d0229606abf28d0",
     "commitDate": "2026-07-08T01:59:10Z",
     "commitSubject": "feat(sprites): consolidate 27 approved assets from 1 check-in(s) (#877)",
