@@ -1,0 +1,33 @@
+type: character
+name: npc-spell-broker
+description: |
+  A threadbare hedge-wizard cornered by his own overstuffed bookcase — a tired,
+  academic scholar rather than a grand mage. He wears patched, faded robes,
+  round spectacles perched on his nose, and clutches a well-worn spellbook to
+  his chest with both hands, standing slightly stooped. Standing upright in an
+  idle stance facing straight toward camera (frontal pose, both eyes visible,
+  shoulders squared to viewer), gaze directed at the viewer over the top of the
+  spectacles. Weary, put-upon expression. The silhouette must read as a modest
+  bookish spellseller at small scale — no pointy hero-wizard drama. Muted
+  arcane palette — dull plum or indigo robe, grey beard, brown book, with a
+  faint teal glow on the book's edge as the ONLY saturated accent so he never
+  competes with combat VFX. Single solid connected mass, no gaps or floating
+  pieces, clean readable pixel shapes, crisp dark outline.
+  Keep at least a 1-pixel transparent border around the figure to avoid clipping.
+# NPC (welcome-room "lifer"). Default character anchor (32,63) applies.
+# Judge ON so pose quality + the tired-hedge-wizard read stay strong.
+judge:
+  enabled: true
+sensors:
+  enemy:
+    toleranceDeg: 20
+  edge:
+    allowMainTouch: true
+variations:
+  - stooped hedge-wizard in a patched plum robe, round spectacles, clutching a closed spellbook to his chest, faint teal glow on the book edge, frontal idle
+  - grey-bearded broker in a faded indigo robe and skullcap, spectacles low on his nose, holding an open spellbook, weary frontal gaze
+  - thin scholar in a threadbare violet robe with a loose hood, spectacles, well-worn book hugged in both arms, tired frontal stance
+  - short round hedge-wizard in a patched blue-grey robe, spectacles pushed up on his forehead, spellbook under one arm and a scroll in hand, frontal idle
+  - lanky broker in a dull-plum robe with rolled cuffs, cracked spectacles, both hands on a heavy tome with a faint teal-glowing clasp, frontal look
+  - bald bespectacled scholar in a patched indigo robe, holding a small glowing-edged spellbook close, put-upon expression, frontal idle pose
+minVariations: 6
