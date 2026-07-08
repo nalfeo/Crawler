@@ -39,6 +39,60 @@ export interface ArtLedger {
   assets: ArtLedgerEntry[];
 }
 
+/** Default human note stored in a fresh / rewritten art-regen ledger. */
+export const DEFAULT_LEDGER_NOTE =
+  'Art assets flagged as needing regeneration. The visual-review agent suppresses these from re-critique until they are removed/marked resolved.';
+
+/**
+ * Parse the persisted art-regen ledger from its raw JSON text, FAIL-CLOSED.
+ *
+ * A present-but-corrupt ledger must NOT silently degrade to an empty suppress-list
+ * — that would re-critique every already-queued asset and violate the maintainer's
+ * "don't re-critique queued art" requirement. So this throws loudly on unparseable
+ * JSON, a non-object root, or a non-array `assets` field. Valid-but-lenient input
+ * is still tolerated: unknown fields are ignored and entries without a string
+ * `asset` are dropped (they can never match or suppress anything).
+ *
+ * A MISSING file is a DIFFERENT case (a first run with nothing queued yet) and is
+ * the caller's responsibility to map to an empty ledger; this function only ever
+ * sees file CONTENT, so reaching it with unparseable content is a real corruption.
+ */
+export function parseArtLedger(raw: string): ArtLedger {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(
+      `art-regen ledger is corrupt/unparseable (${(err as Error).message}). Refusing to ` +
+        `proceed with an EMPTY suppress-list, which would re-critique every already-queued ` +
+        `asset. Fix or delete the ledger file.`,
+      { cause: err },
+    );
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    const got = parsed === null ? 'null' : Array.isArray(parsed) ? 'array' : typeof parsed;
+    throw new Error(
+      `art-regen ledger root must be a JSON object, got ${got}. Refusing to proceed with an ` +
+        `EMPTY suppress-list, which would re-critique every already-queued asset.`,
+    );
+  }
+  const obj = parsed as Partial<ArtLedger>;
+  if (obj.assets !== undefined && !Array.isArray(obj.assets)) {
+    throw new Error(
+      `art-regen ledger 'assets' must be an array. Refusing to proceed with an EMPTY ` +
+        `suppress-list, which would re-critique every already-queued asset.`,
+    );
+  }
+  const assets = Array.isArray(obj.assets)
+    ? obj.assets.filter((a): a is ArtLedgerEntry => typeof a?.asset === 'string')
+    : [];
+  return {
+    updated: typeof obj.updated === 'string' ? obj.updated : '',
+    note: typeof obj.note === 'string' && obj.note.length > 0 ? obj.note : DEFAULT_LEDGER_NOTE,
+    assets,
+  };
+}
+
 /**
  * Minimal structural shape of a model asset finding the ledger consumes. The
  * agent's richer `AssetFinding` is assignable to this.
@@ -86,6 +140,34 @@ export function suppressedAssetKeys(ledger: ArtLedger): Set<string> {
     for (const key of entryMatchKeys(entry)) keys.add(key);
   }
   return keys;
+}
+
+/**
+ * Does a FREE-TEXT finding (a `blocking_findings` / `recommended_fixes` string, or
+ * a `precise_fixes` element/action/reason) reference a queued asset whose
+ * normalized key is in `suppressed`?
+ *
+ * The maintainer's "don't re-critique queued art" requirement has to hold across
+ * EVERY finding array, not just the structured `asset_findings`. The vision model
+ * routinely re-mentions a queued asset in prose ("the welcome banner is still
+ * stretched") even when told not to, so this is the belt-and-suspenders post-filter
+ * the agent applies to those arrays. Matching is TOKEN-BOUNDARY: the normalized
+ * finding text is wrapped in dashes and each suppressed key is matched as `-key-`,
+ * so a multi-word key like `welcome-banner` matches inside a sentence while a short
+ * key like `rug` matches only the standalone token, never `shrug` / `drug`.
+ */
+export function findingTextReferencesSuppressedAsset(
+  text: string,
+  suppressed: ReadonlySet<string>,
+): boolean {
+  if (suppressed.size === 0 || typeof text !== 'string' || text.length === 0) {
+    return false;
+  }
+  const haystack = `-${normalizeAssetKey(text)}-`;
+  for (const key of suppressed) {
+    if (key.length > 0 && haystack.includes(`-${key}-`)) return true;
+  }
+  return false;
 }
 
 /** The ledger entry (if any) whose asset or an alias matches the given label. */

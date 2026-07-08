@@ -78,8 +78,9 @@ export interface SetPieceRenderCounts {
   readonly expectedPersistentPlaceholderCount?: number;
   /**
    * Total number of Image GameObjects on the display list (resolved props +
-   * NPCs). Guards the pre-sync empty scene: zero images means nothing has
-   * rendered yet, so `placeholderRectCount === 0` must not be read as "ready".
+   * NPCs). Combined with {@link SetPieceRenderCounts.placeholderRectCount} it
+   * guards the pre-sync empty scene: only when BOTH are zero has nothing rendered
+   * yet, so `placeholderRectCount === 0` alone must not be read as "ready".
    */
   readonly imageCount: number;
   /**
@@ -100,7 +101,9 @@ export interface SetPieceRenderCounts {
  * Decide whether the set-piece lab is showing REAL art for the current piece.
  *
  * Ready iff ALL of the following hold:
- *  1. at least one Image has rendered (liveness — not the pre-sync empty scene),
+ *  1. the scene has actually rendered SOMETHING (liveness — not the pre-sync empty
+ *     scene): at least one Image OR at least one placeholder Rectangle is on the
+ *     display list,
  *  2. no MORE than the expected persistent count of placeholder Rectangles remain
  *     — i.e. every transient cold-cache rect resolved, leaving at most the
  *     intentional queued-art stand-ins, AND
@@ -110,6 +113,13 @@ export interface SetPieceRenderCounts {
  * requires NPC keys never flips ready until they all resolve — which is loud and
  * correct: the only reviewed piece, welcome-room, has 3 pinned NPC keys, and a
  * capture missing any of them would show a villager fallback.
+ *
+ * The liveness guard keys off `imageCount === 0 && placeholderRectCount === 0`
+ * rather than `imageCount <= 0` so a PURE-placeholder piece (all layers are
+ * intentional queued-art stand-ins, zero resolvable Images) still flips ready once
+ * its Rectangles render, instead of hanging the harness forever. The transient
+ * cold-cache case is still caught by guard (2): while real props are mid-load,
+ * `placeholderRectCount` exceeds `expectedPersistentPlaceholderCount`.
  */
 export function isSetPieceRenderReady(counts: SetPieceRenderCounts): boolean {
   const {
@@ -119,7 +129,7 @@ export function isSetPieceRenderReady(counts: SetPieceRenderCounts): boolean {
     resolvedNpcKeyCount,
     expectedPersistentPlaceholderCount = 0,
   } = counts;
-  if (imageCount <= 0) {
+  if (imageCount === 0 && placeholderRectCount === 0) {
     return false;
   }
   if (placeholderRectCount > expectedPersistentPlaceholderCount) {

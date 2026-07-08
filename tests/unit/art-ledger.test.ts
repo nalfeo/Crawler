@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_LEDGER_NOTE,
   entryMatchKeys,
+  findingTextReferencesSuppressedAsset,
   mergeAssetFindingsIntoLedger,
   normalizeAssetKey,
+  parseArtLedger,
   suppressedAssetKeys,
   type ArtLedger,
   type ArtLedgerEntry,
@@ -156,5 +159,97 @@ describe('mergeAssetFindingsIntoLedger', () => {
     );
     expect(added).toHaveLength(0);
     expect(ledger.assets).toHaveLength(0);
+  });
+});
+
+describe('parseArtLedger (fail-closed)', () => {
+  it('parses a valid ledger and preserves needs-regen entries', () => {
+    const raw = JSON.stringify({
+      updated: '2026-07-08T00:00:00.000Z',
+      note: 'custom note',
+      assets: [entry({ asset: 'welcome-banner' })],
+    });
+    const ledger = parseArtLedger(raw);
+    expect(ledger.updated).toBe('2026-07-08T00:00:00.000Z');
+    expect(ledger.note).toBe('custom note');
+    expect(ledger.assets).toHaveLength(1);
+    expect(ledger.assets[0]?.asset).toBe('welcome-banner');
+  });
+
+  it('defaults a missing/empty note and updated to safe values', () => {
+    const ledger = parseArtLedger(JSON.stringify({ assets: [] }));
+    expect(ledger.updated).toBe('');
+    expect(ledger.note).toBe(DEFAULT_LEDGER_NOTE);
+    expect(ledger.assets).toEqual([]);
+  });
+
+  it('is lenient on VALID input: drops entries without a string asset, ignores unknown fields', () => {
+    const raw = JSON.stringify({
+      extra: 'ignored',
+      assets: [entry({ asset: 'rug' }), { issue: 'no asset key' }, { asset: 42 }],
+    });
+    const ledger = parseArtLedger(raw);
+    expect(ledger.assets).toHaveLength(1);
+    expect(ledger.assets[0]?.asset).toBe('rug');
+  });
+
+  it('FAILS CLOSED (throws) on unparseable JSON rather than returning an empty suppress-list', () => {
+    expect(() => parseArtLedger('{ this is not: json ')).toThrow(/corrupt|unparseable/i);
+  });
+
+  it('FAILS CLOSED on a non-object root (array / null / scalar)', () => {
+    expect(() => parseArtLedger('[]')).toThrow(/must be a JSON object/i);
+    expect(() => parseArtLedger('null')).toThrow(/must be a JSON object/i);
+    expect(() => parseArtLedger('7')).toThrow(/must be a JSON object/i);
+  });
+
+  it('FAILS CLOSED when assets is present but not an array', () => {
+    expect(() => parseArtLedger(JSON.stringify({ assets: { welcome: 'banner' } }))).toThrow(
+      /'assets' must be an array/i,
+    );
+  });
+});
+
+describe('findingTextReferencesSuppressedAsset', () => {
+  const suppressed = (...keys: string[]) => new Set(keys);
+
+  it('matches a multi-word queued asset mentioned in prose', () => {
+    expect(
+      findingTextReferencesSuppressedAsset(
+        'The welcome banner is still stretched and floats off the wall.',
+        suppressed('welcome-banner'),
+      ),
+    ).toBe(true);
+  });
+
+  it('matches regardless of punctuation/case drift in the finding text', () => {
+    expect(
+      findingTextReferencesSuppressedAsset(
+        'Welcome-Sign.text overlaps the goon.',
+        suppressed('welcome-sign-text'),
+      ),
+    ).toBe(true);
+  });
+
+  it('matches a standalone short-token key without matching a superstring word', () => {
+    expect(findingTextReferencesSuppressedAsset('the rug is skewed', suppressed('rug'))).toBe(true);
+    // "shrug"/"drug" must NOT match the queued key "rug" (token-boundary guard).
+    expect(findingTextReferencesSuppressedAsset('the goon gives a shrug', suppressed('rug'))).toBe(
+      false,
+    );
+  });
+
+  it('returns false for an unrelated finding', () => {
+    expect(
+      findingTextReferencesSuppressedAsset(
+        'the merchant table overlaps the rug',
+        suppressed('welcome-banner'),
+      ),
+    ).toBe(false);
+  });
+
+  it('returns false when the suppressed set or text is empty', () => {
+    expect(findingTextReferencesSuppressedAsset('welcome banner', suppressed())).toBe(false);
+    expect(findingTextReferencesSuppressedAsset('', suppressed('welcome-banner'))).toBe(false);
   });
 });

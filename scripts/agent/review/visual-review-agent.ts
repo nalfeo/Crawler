@@ -21,8 +21,11 @@ import {
 } from './visual-review-lib.mjs';
 import type { VisualReviewBox, VisualReviewRegion } from './visual-review-lib.mjs';
 import {
+  DEFAULT_LEDGER_NOTE,
+  findingTextReferencesSuppressedAsset,
   mergeAssetFindingsIntoLedger,
   normalizeAssetKey,
+  parseArtLedger,
   suppressedAssetKeys,
 } from './art-ledger.js';
 import type { ArtLedger, ArtLedgerEntry } from './art-ledger.js';
@@ -135,6 +138,12 @@ interface VisualReviewResult {
   asset_findings?: AssetFinding[];
   /** Assets suppressed this run because they are already on the art-regen ledger. */
   suppressed_ledger_assets?: string[];
+  /**
+   * How many FREE-TEXT findings (blocking_findings / recommended_fixes /
+   * precise_fixes) were dropped this run for referencing a suppressed queued asset
+   * — the cross-array half of the "don't re-critique queued art" suppression.
+   */
+  suppressed_text_finding_count?: number;
   /** Assets newly appended to the art-regen ledger by this run. */
   ledger_added?: string[];
 }
@@ -1187,21 +1196,25 @@ function loadPriorFindingKeys(
   }
 }
 
-/** Load the art-regen ledger, tolerating a missing/corrupt file (returns empty). */
+/**
+ * Load the art-regen ledger. A MISSING file is the normal first-run case (nothing
+ * queued yet) → an empty ledger. A present-but-corrupt file FAILS CLOSED via
+ * {@link parseArtLedger} (throws), because silently degrading to an empty
+ * suppress-list would re-critique every already-queued asset — the exact behavior
+ * the ledger exists to prevent.
+ */
 function loadArtLedger(path: string): ArtLedger {
+  let raw: string;
   try {
-    const raw = JSON.parse(readFileSync(path, 'utf-8')) as Partial<ArtLedger>;
-    const assets = Array.isArray(raw.assets)
-      ? raw.assets.filter((a): a is ArtLedgerEntry => typeof a?.asset === 'string')
-      : [];
-    return { updated: raw.updated ?? '', note: raw.note ?? '', assets };
-  } catch {
-    return {
-      updated: '',
-      note: 'Art assets flagged as needing regeneration. The visual-review agent suppresses these from re-critique until they are removed/marked resolved.',
-      assets: [],
-    };
+    raw = readFileSync(path, 'utf-8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
+      return { updated: '', note: DEFAULT_LEDGER_NOTE, assets: [] };
+    }
+    // Permission / other IO error: fail loudly rather than silently un-suppress.
+    throw err;
   }
+  return parseArtLedger(raw);
 }
 
 function saveArtLedger(path: string, ledger: ArtLedger): void {
@@ -1522,6 +1535,40 @@ async function main(): Promise<number> {
         (f) => typeof f?.asset !== 'string' || !suppressed.has(normalizeAssetKey(f.asset)),
       );
     }
+    // Belt-and-suspenders: a queued asset must not be re-critiqued through ANY
+    // finding array, not just the structured asset_findings. The vision model still
+    // re-mentions a ledgered asset in free-text prose (and could re-FAIL the gate
+    // via blocking_findings), so drop any blocking finding / recommended fix /
+    // precise fix that references a suppressed asset. Deterministic blockers are
+    // NEVER dropped — they are geometry/pixel checks, not art-pixel critiques.
+    let suppressedTextFindings = 0;
+    if (Array.isArray(result.blocking_findings)) {
+      const deterministic = new Set(result.deterministic_blocking_findings ?? []);
+      const before = result.blocking_findings.length;
+      result.blocking_findings = result.blocking_findings.filter(
+        (f) => deterministic.has(f) || !findingTextReferencesSuppressedAsset(f, suppressed),
+      );
+      suppressedTextFindings += before - result.blocking_findings.length;
+    }
+    if (Array.isArray(result.recommended_fixes)) {
+      const before = result.recommended_fixes.length;
+      result.recommended_fixes = result.recommended_fixes.filter(
+        (f) => !findingTextReferencesSuppressedAsset(f, suppressed),
+      );
+      suppressedTextFindings += before - result.recommended_fixes.length;
+    }
+    if (Array.isArray(result.precise_fixes)) {
+      const before = result.precise_fixes.length;
+      result.precise_fixes = result.precise_fixes.filter(
+        (f) =>
+          !findingTextReferencesSuppressedAsset(
+            `${f?.element ?? ''} ${f?.action ?? ''} ${f?.reason ?? ''}`,
+            suppressed,
+          ),
+      );
+      suppressedTextFindings += before - result.precise_fixes.length;
+    }
+    result.suppressed_text_finding_count = suppressedTextFindings;
     const added = mergeAssetFindingsIntoLedger(ledger, result.asset_findings ?? [], isoNow);
     result.ledger_added = added.map((a) => a.asset);
     saveArtLedger(artLedgerPath, ledger);

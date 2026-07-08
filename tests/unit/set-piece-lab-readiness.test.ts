@@ -152,12 +152,30 @@ describe('isSetPieceRenderReady', () => {
     ).toBe(false);
   });
 
-  it('still guards liveness with expected persistent placeholders (no images yet)', () => {
-    // Pre-sync: even if every rect drawn so far is an expected stand-in, zero
-    // images means nothing real has rendered — not ready.
+  it('is ready for a PURE-placeholder piece once its stand-in rects render (regression: gemini High)', () => {
+    // A hypothetical piece whose ONLY content is intentional queued-art stand-ins
+    // (custom-no-placeholder props) renders as N persistent Rectangles and ZERO
+    // Images — that IS its final rendered state, so it must flip ready rather than
+    // hang the harness forever. The old `imageCount <= 0` liveness guard wedged
+    // such a piece at false permanently; liveness now keys off "no rects AND no
+    // images". (welcome-room is unaffected: it always has 3 NPC images.)
     expect(
       isSetPieceRenderReady({
         placeholderRectCount: 3,
+        imageCount: 0,
+        requiredNpcKeyCount: 0,
+        resolvedNpcKeyCount: 0,
+        expectedPersistentPlaceholderCount: 3,
+      }),
+    ).toBe(true);
+  });
+
+  it('still guards liveness for the truly-empty scene even with a persistent budget', () => {
+    // Pre-sync: nothing has rendered at all (0 rects AND 0 images). A declared
+    // persistent-placeholder budget must not make the empty scene read as ready.
+    expect(
+      isSetPieceRenderReady({
+        placeholderRectCount: 0,
         imageCount: 0,
         requiredNpcKeyCount: 0,
         resolvedNpcKeyCount: 0,
