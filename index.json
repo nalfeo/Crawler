@@ -1,5 +1,16 @@
 [
   {
+    "commit": "ff73b679bb5c3a0b1e54b0485dbc469b263ced37",
+    "commitDate": "2026-07-08T10:07:17Z",
+    "commitSubject": "feat(engine): render welcome-room NPCs as distinct generated sprites (#907)",
+    "capturedAt": "2026-07-08T10:47:37.025Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28934961196",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/ff73b679bb5c3a0b1e54b0485dbc469b263ced37.json"
+  },
+  {
     "commit": "cb0bbc561d9167fe03b9a667e5c0de93d6e97b04",
     "commitDate": "2026-07-08T09:24:47Z",
     "commitSubject": "feat(map-gen): unify cave lab overlays with Floor 2 runtime parity (#903)",
