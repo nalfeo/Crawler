@@ -23,6 +23,27 @@
  * gameplay, the bridge, or set-piece rendering.
  */
 
+import type { SpriteRef } from '../../shared/set-piece-types.js';
+
+/**
+ * Does this layer's sprite render as a PERMANENT placeholder Rectangle — one that
+ * will never resolve to real art no matter how long we wait?
+ *
+ * The bridge's `resolveSetPieceSprite` returns `null` (→ a grey Rectangle) for a
+ * `custom` ref that has no `placeholder` fallback, and there is no bespoke-asset
+ * path that can later fill it in, so such a prop stays a Rectangle for the life of
+ * the scene. That is INTENTIONAL — an honest "art queued, not yet generated"
+ * stand-in (see `collectCustomArtRequests`) — and must NOT be mistaken for a
+ * still-loading cold-cache placeholder by the readiness gate.
+ *
+ * Every other ref (catalog, sheet, or a custom ref WITH a placeholder chain)
+ * either resolves to an Image or is merely TRANSIENTLY a Rectangle until its
+ * texture loads, so it is excluded here — the gate must keep waiting on those.
+ */
+export function spriteRefRendersPersistentPlaceholder(ref: SpriteRef): boolean {
+  return ref.source === 'custom' && ref.placeholder === undefined;
+}
+
 /** A snapshot of the set-piece scene's display list, reduced to the counts that
  *  decide whether real art is on screen. */
 export interface SetPieceRenderCounts {
@@ -30,20 +51,31 @@ export interface SetPieceRenderCounts {
    * Number of set-piece prop placeholder Rectangles currently on the display
    * list. A resolved prop is an Image; the bridge destroys the placeholder
    * Rectangle and creates an Image once the texture loads, so any Rectangle
-   * remaining means at least one prop texture is still unresolved (cold cache).
+   * remaining ABOVE the expected persistent count means at least one prop texture
+   * is still unresolved (cold cache).
    *
-   * SCOPE CAVEAT: this counts the standard set-piece placeholder path, where an
-   * unresolved prop renders as a grey Rectangle. It does NOT generically catch a
+   * SCOPE NOTE: this counts the standard set-piece placeholder path, where an
+   * unresolved prop renders as a grey Rectangle. INTENTIONAL, forever-unresolved
+   * placeholders (a `custom` ref with no `placeholder` fallback — honest "art
+   * queued" stand-ins) are also Rectangles but must not block readiness; they are
+   * accounted for by {@link SetPieceRenderCounts.expectedPersistentPlaceholderCount}
+   * (see {@link spriteRefRendersPersistentPlaceholder}). It still does NOT catch a
    * custom-art prop that renders an unresolved fallback as an *Image* (the
    * `ref.placeholder` path in the bridge) — for such a prop `placeholderRectCount`
-   * would read 0 while placeholder art is still on screen. The only surface this
-   * gate is validated against — Floor-1 welcome-room — uses the Rectangle path
-   * for every prop (confirmed by cold-cache capture: 14 → 0 Rectangles as the
-   * generated textures resolve), so the count is exact here. A future piece built
-   * from custom placeholder Images would need the gate strengthened to track
-   * expected per-prop final textures rather than GameObject-type counts.
+   * would read 0 while placeholder art is on screen; no currently-reviewed piece
+   * uses that path.
    */
   readonly placeholderRectCount: number;
+  /**
+   * How many placeholder Rectangles are EXPECTED to remain permanently for the
+   * current piece — one per prop layer whose sprite renders a persistent
+   * placeholder (see {@link spriteRefRendersPersistentPlaceholder}). The gate
+   * treats the piece as prop-ready once `placeholderRectCount` has fallen to at
+   * most this many (every TRANSIENT cold-cache rect resolved; only the intentional
+   * queued-art stand-ins are left). Defaults to 0 — a piece with no custom
+   * placeholder props must still resolve every Rectangle.
+   */
+  readonly expectedPersistentPlaceholderCount?: number;
   /**
    * Total number of Image GameObjects on the display list (resolved props +
    * NPCs). Guards the pre-sync empty scene: zero images means nothing has
@@ -69,7 +101,9 @@ export interface SetPieceRenderCounts {
  *
  * Ready iff ALL of the following hold:
  *  1. at least one Image has rendered (liveness — not the pre-sync empty scene),
- *  2. zero placeholder Rectangles remain (every prop resolved to real art), AND
+ *  2. no MORE than the expected persistent count of placeholder Rectangles remain
+ *     — i.e. every transient cold-cache rect resolved, leaving at most the
+ *     intentional queued-art stand-ins, AND
  *  3. every required pinned NPC key is resident (no villager fallbacks left).
  *
  * A piece with no required NPC keys is ready on (1)+(2) alone. A piece that
@@ -78,11 +112,17 @@ export interface SetPieceRenderCounts {
  * capture missing any of them would show a villager fallback.
  */
 export function isSetPieceRenderReady(counts: SetPieceRenderCounts): boolean {
-  const { placeholderRectCount, imageCount, requiredNpcKeyCount, resolvedNpcKeyCount } = counts;
+  const {
+    placeholderRectCount,
+    imageCount,
+    requiredNpcKeyCount,
+    resolvedNpcKeyCount,
+    expectedPersistentPlaceholderCount = 0,
+  } = counts;
   if (imageCount <= 0) {
     return false;
   }
-  if (placeholderRectCount > 0) {
+  if (placeholderRectCount > expectedPersistentPlaceholderCount) {
     return false;
   }
   if (resolvedNpcKeyCount < requiredNpcKeyCount) {
