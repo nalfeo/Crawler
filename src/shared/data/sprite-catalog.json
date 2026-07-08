@@ -2300,5 +2300,44 @@
     "frame": 0,
     "col": 0,
     "row": 0
+  },
+  {
+    "id": "generated:faerie-blink-var-0",
+    "kind": "sprite",
+    "label": "faerie-blink-var-0",
+    "description": "Generated sprite from brief: faerie-blink.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "faerie-blink-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/faerie-blink-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:goblin-grunt-var-6",
+    "kind": "sprite",
+    "label": "goblin-grunt-var-6",
+    "description": "Generated sprite from brief: goblin-grunt.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "goblin-grunt-var-6",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/goblin-grunt-var-6.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:llama-spitter-var-0",
+    "kind": "sprite",
+    "label": "llama-spitter-var-0",
+    "description": "Generated sprite from brief: llama-spitter.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "llama-spitter-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/llama-spitter-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
   }
 ]
