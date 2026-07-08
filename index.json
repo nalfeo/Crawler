@@ -1,5 +1,16 @@
 [
   {
+    "commit": "dbc84a204d578e511eb777f2243f598458305819",
+    "commitDate": "2026-07-08T21:04:59Z",
+    "commitSubject": "fix(sprites): slicer cuts only at real gutters — never chop foreground art (data-driven salvage, ADR 0052) (#919)",
+    "capturedAt": "2026-07-08T21:39:24.393Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28975963271",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/dbc84a204d578e511eb777f2243f598458305819.json"
+  },
+  {
     "commit": "83051cd4edda70f46b848cb4fcfb5ba50f7b9984",
     "commitDate": "2026-07-08T20:56:08Z",
     "commitSubject": "docs: capture guard-telemetry summary for enemy-render-path-wiring session (#923)",
