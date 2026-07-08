@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-08",
+  "session_slug": "welcome-room-sprite-reprocess",
+  "task_title": "Reprocess welcome-room sprites with fixed slicer",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Plan review flagged four non-blocking concerns (grid-drift semantic mapping risk, reliance on existing local run artifacts, unchanged-content metadata refresh path, and durable artifact capture). For this scoped salvage workflow, these were triaged as accepted tradeoffs with explicit command/reporting and user-approved outcomes."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

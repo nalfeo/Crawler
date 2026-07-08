@@ -174,6 +174,13 @@ export interface RepostprocessArgs {
   readonly sheetFile?: string;
   /** Restrict re-postprocess to these variant indexes; omit to process all. */
   readonly variantIndexes?: ReadonlyArray<number>;
+  /**
+   * When true, allows the persisted-grid carry-forward guard to be bypassed and
+   * adopts the CURRENT slicer grid for this run. Use only for explicit legacy
+   * salvage migrations where the slicer algorithm changed and we intentionally
+   * want to replace prior per-variant indexing with the new data-driven grid.
+   */
+  readonly allowGridDrift?: boolean;
   readonly manualAnchor?: ManualAnchorOverride | null;
   readonly facing?: {
     variantIndex: number;
@@ -267,6 +274,7 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
   // stored `summary.variantCount`, then backfill `summary.grid` on success so the
   // next re-run takes the modern (structure-exact) path.
   const priorGrid = summary.grid;
+  const allowGridDrift = args.allowGridDrift === true;
   let sliceResult: BriefSliceResult;
   try {
     sliceResult = priorGrid
@@ -283,7 +291,7 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
       resliced.rows !== priorGrid.rows ||
       resliced.cols !== priorGrid.cols ||
       !sameEmptyCells(resliced.emptyCells, priorGrid.emptyCells);
-    if (gridChanged) {
+    if (gridChanged && !allowGridDrift) {
       throw new RerunError(
         'variant-count-mismatch',
         `the stored run's persisted ${priorGrid.rows}×${priorGrid.cols} grid ` +
@@ -292,7 +300,7 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
           `the persisted grid is corrupt or the slicer changed since generation`,
       );
     }
-  } else if (sliceResult.variantCount !== summary.variantCount) {
+  } else if (sliceResult.variantCount !== summary.variantCount && !allowGridDrift) {
     throw new RerunError(
       'variant-count-mismatch',
       `the stored run recorded ${summary.variantCount} variants but the stored sheet now ` +
