@@ -1,5 +1,16 @@
 [
   {
+    "commit": "3cfaeb6e34e54cd9372ee716c9a955d994e9f39c",
+    "commitDate": "2026-07-07T23:31:57Z",
+    "commitSubject": "fix(sprites): reconcile content-aware slicer to the brief grid and make slicing crash-proof (#860)",
+    "capturedAt": "2026-07-08T00:11:50.161Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28906315929",
+    "winRate": 0.8433333333333334,
+    "totalWins": 253,
+    "totalRuns": 300,
+    "path": "by-sha/3cfaeb6e34e54cd9372ee716c9a955d994e9f39c.json"
+  },
+  {
     "commit": "766895d4f1392f685ec70d3624eea3de91cf588a",
     "commitDate": "2026-07-07T22:17:31Z",
     "commitSubject": "feat(ai): two-axis AI A/B toggle + visualization harness (LEGACY-default, byte-identical) (#851)",
