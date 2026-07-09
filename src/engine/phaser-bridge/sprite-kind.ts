@@ -287,7 +287,7 @@ const GENERATED_BRIEF_BY_APPEARANCE_KEY: Readonly<Record<string, string>> = {
   // Two plural remaps reconcile singular archetype ids to plural brief ids.
   'goblin-boss': 'goblin-boss',
   'goblin-grunt': 'goblin-grunt',
-  'goblin-elite-joyrider': 'goblin-grunt',
+  'goblin-elite-joyrider': 'goblin-elite-joyrider-v1',
   'goblin-junkshot': 'goblin-junkshot-v1',
   'llama-boss': 'llama-boss',
   'llama-spitter': 'llama-spitter',
@@ -323,7 +323,7 @@ const GENERATED_BRIEF_BY_APPEARANCE_KEY: Readonly<Record<string, string>> = {
   'ratfolk-sewer-sniper': 'ratfolk-plague',
   'cactusfolk-boss': 'cactusfolk-boss',
   'cactusfolk-spiny': 'cactusfolk-spiny',
-  'cactusfolk-elite-desert-capo': 'cactusfolk-spiny',
+  'cactusfolk-elite-desert-capo': 'cactusfolk-elite-desert-capo-v1',
   'cactusfolk-needle-gunner': 'cactusfolk-needle-gunner-v1',
   'batfolk-boss': 'batfolk-boss',
   'batfolk-diver': 'batfolk-diver',
