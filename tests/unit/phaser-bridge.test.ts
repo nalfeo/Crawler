@@ -453,6 +453,43 @@ describe('createPhaserBridge', () => {
     expect(propRects[0]?.destroyed).toBe(true);
   });
 
+  it('applies and then clears set-piece prop-layer rotation on resync', () => {
+    const propImages: MockImage[] = [];
+    const scene = {
+      add: {
+        image: vi.fn((x = 0, y = 0, textureKey = '', frame?: number) => {
+          const img = new MockImage(x, y, textureKey, frame);
+          propImages.push(img);
+          return img as unknown as Phaser.GameObjects.Image;
+        }),
+        rectangle: vi.fn((x = 0, y = 0, width = 0, height = 0) => {
+          const rect = new PropRect(x, y, width, height);
+          return rect as unknown as Phaser.GameObjects.Rectangle;
+        }),
+      },
+      textures: { exists: (key: string) => key === 'kenney-tiny-town' },
+    } as unknown as Phaser.Scene;
+
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    addSetPieceProp(world, 3, 2, {
+      sprite: { source: 'sheet', sheetKey: 'kenney-tiny-town', col: 2, row: 5 },
+      depth: setPieceZToDepth(30),
+      widthFt: 12,
+      heightFt: 4,
+      rotationDeg: 45,
+      label: 'rotated-prop',
+    });
+
+    bridge.sync(world);
+    expect(propImages).toHaveLength(1);
+    expect(propImages[0]?.rotation).toBeCloseTo((45 * Math.PI) / 180);
+
+    world.setPieceProps[0]!.render.rotationDeg = 0;
+    bridge.sync(world);
+    expect(propImages[0]?.rotation).toBeCloseTo(0);
+  });
+
   it('contain-fits real art to a uniform scale so no set-piece sprite is ever stretched', () => {
     // Native art is 100×50 (aspect 2.0). The authored feet box is 10×10 ft →
     // 80×80 px (aspect 1.0) — a DIFFERENT aspect. A naive setDisplaySize(80,80)

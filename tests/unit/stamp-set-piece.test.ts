@@ -251,6 +251,34 @@ describe('stampSetPiece — props and layering', () => {
     expect(tinted?.render.tintHex).toBe('#3fae5a');
   });
 
+  it('propagates authored prop-layer rotation into stamped render metadata', () => {
+    const def: SetPieceDef = {
+      id: 'rotation-fixture',
+      name: 'Rotation Fixture',
+      theme: 'test',
+      sizing: 'exact',
+      width: 1,
+      height: 1,
+      description: 'synthetic rotated prop',
+      tags: [],
+      props: [
+        {
+          id: 'rotated',
+          kind: 'fixture',
+          x: 0,
+          y: 0,
+          width: 1,
+          height: 1,
+          z: 20,
+          layers: [{ sprite: { source: 'catalog', spriteId: 'sprite:item.gem' }, rotationDeg: 45 }],
+        },
+      ],
+      npcs: [],
+    };
+    const stamp = stampSetPiece(def, opts(ROOM_LARGE));
+    expect(stamp.props[0]?.render.rotationDeg).toBe(45);
+  });
+
   it('honours an explicit feet box over the tile-derived footprint (no-stretch sizing)', () => {
     const stamp = stampSetPiece(welcomeRoom(), opts(ROOM_LARGE));
     // welcome-rug is authored 4×2 tiles but carries an explicit 14×8 ft box so

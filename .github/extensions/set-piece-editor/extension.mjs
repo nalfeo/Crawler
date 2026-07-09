@@ -2128,6 +2128,13 @@ document.getElementById('btnresize').addEventListener('click',function(){
     if(p.y+ph>nh)p.y=Math.max(0,nh-ph);
     p.x=Math.max(0,p.x);p.y=Math.max(0,p.y);
   });
+  // clamp NPC anchors to the same in-bounds authored tile domain
+  (sp.npcs||[]).forEach(function(n){
+    var nx=nnum(n.x,0),ny=nnum(n.y,0);
+    if(nx>=nw)n.x=Math.max(0,nw-1);
+    if(ny>=nh)n.y=Math.max(0,nh-1);
+    n.x=Math.max(0,nnum(n.x,0));n.y=Math.max(0,nnum(n.y,0));
+  });
   markDirty();render();
   setGs('Editing: '+sp.name+' ('+sp.width+'x'+sp.height+')');
   showToast('Resized to '+nw+'\u00d7'+nh);
