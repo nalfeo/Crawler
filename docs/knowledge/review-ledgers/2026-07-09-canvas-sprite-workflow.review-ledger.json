@@ -1,0 +1,40 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-09",
+  "session_slug": "canvas-sprite-workflow",
+  "task_title": "Canvas extension: sprite-generation-workflow (read slice B1)",
+  "estimated_apples": 3,
+  "apples_rescored_from": 5,
+  "rescore_reason": "Orchestrator assigned Slice B at 5 apples for FULL parity (13-stage pipeline, 30+ mutating actions, ~930-line queue state machine, Azure generation). Investigation showed full write-parity is not viable in one clean PR; flagged the split to the orchestrator. This PR ships ONLY the read/browse surface (backlog dashboard with confirmed-real integration column, plan/brief YAML viewers, run inspection) with zero mutations, no state-machine port, and no Azure calls — after an orchestrator scope refinement (2026-07-09) moved the read-only durable-queue + asset-request status reads into B2 (a status read without its start/stop/mutate controls is a confusing half-panel, so each pairs with its mutations in B2). B2 (all writes: synthesize/promote/generate/postprocess/judge/approve/checkin/metadata/tag + worker/issues start-stop + queue state machine + the two status reads) is a documented follow-up. The shipped read slice is honestly a 3-apple change.",
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 9,
+      "resolved_count": 9,
+      "plan_divergence": "minor",
+      "notes": "Separate-model (gpt-5.4) rubber-duck plan review. 2 blocking + 5 important + 2 nice-to-have, all addressed. BLOCKING-1 (unverified integration): added an explicit unverified path in workflow-model - when the sprite/item registry cannot be loaded (integrationResolved=false), target-bearing assets get integrationState='unverified' and approved+file-present assets get status='approved-unverified' rather than a fabricated 'missing'; renderer shows a banner. The ported resolveIntegrationState/resolveArtPlanStatus stay byte-1:1 with the monolith (overlay is additive, behind an option defaulting to the monolith behavior). BLOCKING-2 (durable queue read omitted): pulled the read-only GET /api/workflow/state into B1 as a faithful read-only queue table (items: seq/name/kebabName/type/stage/source + raw-JSON details); narrowed the B1 claim to read/browse parity (explicitly NOT the interactive queue state machine, which stays B2). IMPORTANT-1 (asset-requests read): pulled read-only GET /api/workflow/asset-requests into B1. IMPORTANT-2: added normalizeAssetPath (strip leading slash and 'assets/') before the fs existence check. IMPORTANT-3 (path traversal): plan/brief content is served ONLY via an allowlist map built from listArtPlans/listBriefs (relPath -> absPath); arbitrary query params are never path.join'd against repoRoot. IMPORTANT-4 (perf): per-instance cache of backlog + registryIds + allowlist, recomputed only on explicit reload; live sidecar reads stay per-buildState. IMPORTANT-5 (store-oriented runs): each run carries a best-effort 'promoted' flag derived from matching its runId against manifest sourceRun tails, plus a client-side All/Promoted/Unpromoted filter. NICE-1 (cache namespace): the vendored image-cache is already per-extension and runIds are globally-unique timestamps+hashes, so cross-worktree collision is effectively impossible; vendored file left unchanged. NICE-2: added renderer/state degrade tests (sidecar down, wrong-repo, unverified integration). SCOPE REFINEMENT (post-plan-review, orchestrator-directed 2026-07-09): the read-only durable-queue read (BLOCKING-2) and asset-requests read (IMPORTANT-1) were subsequently moved OUT of B1 into the B2 write slice — a status read without its start/stop/mutate controls is a confusing half-panel, so each pairs with its mutations in B2. Final B1 = 3 self-contained read surfaces (backlog, plan/brief browsing, run inspection). The BLOCKING-2 concern itself (never fabricate integration status) remains fully addressed via the unverified path, which now shipped as confirmed-real (24 sprites + 123 items via esbuild source-transform, degrade is fallback-only)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": false,
+          "notes": "Round 1 (single-model code-review agent) on the pre-trim 5-surface shape. Verified 8 invariants concretely: async getStatic awaited at every call site; plan/brief content served ONLY via an allowlist Map keyed by relPath (never path.join(repoRoot,userInput)); REPO_ROOT via path.resolve(dirname(fileURLToPath),'..','..','..') not session.workspacePath; no console.* (session.log/log() only); graceful sidecar degrade; imageCache.fetchThrough hit/miss contract; run-selection state machine; and a 1:1 port of resolveIntegrationState/resolveArtPlanStatus/briefKey vs src/shared/art-plan-status.ts. Re-ran the registry loader live (24 sprites + 123 items, error=null). Verdict: no blocking/important concerns. Marked clean:false because the reviewed diff was then materially changed by the scope trim (Queue+Requests read tabs removed), necessitating round 2 on the final shape."
+        },
+        {
+          "round": 2,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Round 2 (single-model code-review agent) on the FINAL trimmed diff after the orchestrator scope refinement removed the Queue (workflow-state) + Requests (asset-requests) read tabs into B2. Verified: ZERO dangling references to removed symbols (renderQueue/renderRequests/safeJson/fetchWorkflowState/fetchAssetRequests/workflowStateUrl/assetRequestsUrl/get_workflow_state/get_asset_requests and queue/requests tab ids all gone; 'queue' survives only in B2-prose comments + the base-harness 'queueBackend' /api/health field, distinct from the removed tab); the run-selection state machine (entry.requested briefId/runId) is intact and untouched; all 8 invariants from round 1 still hold; sidecar-client return object + urls object have no leftover workflowState/assetRequests entries while runsUrl(baseUrl,{promoted}) base code is retained; tests/sidecar-client.test.mjs rewritten to cover only the retained surface (runsUrl incl promoted, runSummaryUrl/sheetUrl/sliceMapUrl encoding, listRuns via fake fetchImpl) and still exercises the ../../../../scripts/shared import-resolution; renderer.test.mjs asserts Queue/Requests renderers are ABSENT; 28/28 ext tests pass incl harness-drift. ONE non-blocking concern: a stale 'all five read surfaces' docstring in renderer.test.mjs:4 — FIXED to 'all three' (comment-only). Loop converged clean within the 2-round cap; no human escalation needed."
+        }
+      ]
+    }
+  }
+}
