@@ -1,0 +1,224 @@
+# AI combo × hill-climb evaluation pipeline (cloud-parallel, dispatch-only).
+#
+# WHAT IT DOES
+#   For each selected pathing×decision COMBO it runs an in-process coordinate-ascent
+#   knob search on the TRAIN seed panel (job = one combo, worker-pool for weapon×seed
+#   parallelism), then VALIDATES each combo's tuned finalist — plus the untuned
+#   LEGACY/LEGACY incumbent control — on a full seed panel, then fans the shard
+#   artifacts into ONE leaderboard (Σ composite score, win count, flips-vs-incumbent,
+#   clear time, xp, gold, min-HP) rendered to the run summary + a JSON artifact.
+#
+#   It only MEASURES. It never flips the shipped default (that is the separate,
+#   human-gated Stage-5 PR). Main stays LEGACY/LEGACY byte-identical.
+#
+# HOW TO RUN (staged, per the plan)
+#   - Cheap screen / calibration (DEFAULTS): rounds=2, train 1-24, validate 1-40.
+#     Proves the pipeline + gives a real-ubuntu per-run wall time. Never touches
+#     holdout seeds 81-100.
+#   - Full graduation run: set train_seeds=1-80, validate_seeds=1-100, rounds=3.
+#     TRAIN=1-80 is the only panel the search/tuning ever sees; HOLDOUT=81-100 is
+#     touched exactly once here, at validate, so an overfit finalist is caught.
+#
+#   gh workflow run ai-sweep.yml --ref <branch> \
+#     -f combos=all -f train_seeds=1-80 -f validate_seeds=1-100 -f rounds=3
+#
+# WHY DISPATCH-ONLY: a push/token trigger is a permanent compute foot-gun (any
+# tokenized commit burns a full matrix). Dispatch is deliberate. `workflow_dispatch`
+# must live on the default branch to be dispatchable, but `gh workflow run --ref
+# <branch>` then executes THAT branch's YAML + code, so experiment branches work.
+
+name: AI Sweep Eval
+
+on:
+  workflow_dispatch:
+    inputs:
+      combos:
+        description: 'Combos to evaluate: "all" or a CSV of ids (e.g. legacy+legacy,navmeshFused+legacy)'
+        type: string
+        default: 'all'
+      train_seeds:
+        description: 'TRAIN seed panel for the knob search (never includes holdout). Full run: 1-80'
+        type: string
+        default: '1-24'
+      validate_seeds:
+        description: 'Seed panel for finalist validation. Full graduation run: 1-100 (touches holdout once)'
+        type: string
+        default: '1-40'
+      weapons:
+        description: 'Comma-separated Floor-1 weapons'
+        type: string
+        default: 'sword,bow,baseball-bat'
+      workers:
+        description: 'Intra-job worker-pool size (match runner vCPUs)'
+        type: string
+        default: '4'
+      rounds:
+        description: 'Coordinate-ascent rounds. 0 = screen only (no tuning). Full run: 3'
+        type: string
+        default: '2'
+      secondary:
+        description: 'Also tune the secondary knobs (retreatDangerRadius, scanRadius, opportunisticGrabRadius)'
+        type: boolean
+        default: false
+
+# Read-only: checkout + artifact up/download need nothing more. No default flip here.
+permissions:
+  contents: read
+
+jobs:
+  # Derive the combo matrix from the SSOT generator (not hard-coded here), validate
+  # any user-supplied subset against the real enum, and hard-fail on an oversized
+  # matrix (adversarial-review cardinality guard).
+  preflight:
+    name: Preflight (derive + cap combo matrix)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      combos: ${{ steps.matrix.outputs.combos }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+
+      - name: Resolve + validate combo matrix
+        id: matrix
+        env:
+          COMBOS_INPUT: ${{ inputs.combos }}
+        run: |
+          set -euo pipefail
+          ALL=$(npx tsx scripts/agent/perf/gen-configs.ts | jq -c '[.combos[].id]')
+          echo "All combos: $ALL"
+          if [ -z "${COMBOS_INPUT:-}" ] || [ "$COMBOS_INPUT" = "all" ]; then
+            SELECTED="$ALL"
+          else
+            SELECTED=$(printf '%s' "$COMBOS_INPUT" \
+              | jq -R -c 'split(",") | map(gsub("^\\s+|\\s+$";"")) | map(select(length>0))')
+            UNKNOWN=$(jq -c -n --argjson all "$ALL" --argjson sel "$SELECTED" '$sel - $all')
+            if [ "$(printf '%s' "$UNKNOWN" | jq 'length')" -ne 0 ]; then
+              echo "::error::Unknown combo id(s): $UNKNOWN. Valid: $ALL"
+              exit 1
+            fi
+          fi
+          COUNT=$(printf '%s' "$SELECTED" | jq 'length')
+          echo "Selected $COUNT combo(s): $SELECTED"
+          if [ "$COUNT" -lt 1 ] || [ "$COUNT" -gt 200 ]; then
+            echo "::error::combo matrix cardinality $COUNT out of bounds (1..200)"
+            exit 1
+          fi
+          echo "combos=$SELECTED" >> "$GITHUB_OUTPUT"
+
+  # One job per combo: full in-process coordinate-ascent knob search on TRAIN seeds.
+  search:
+    name: Search ${{ matrix.combo }}
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        combo: ${{ fromJSON(needs.preflight.outputs.combos) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+
+      - name: Coordinate-ascent search (TRAIN panel)
+        env:
+          COMBO: ${{ matrix.combo }}
+          TRAIN_SEEDS: ${{ inputs.train_seeds }}
+          WEAPONS: ${{ inputs.weapons }}
+          WORKERS: ${{ inputs.workers }}
+          ROUNDS: ${{ inputs.rounds }}
+          SECONDARY: ${{ inputs.secondary }}
+        run: |
+          set -euo pipefail
+          SECONDARY_FLAG=""
+          if [ "$SECONDARY" = "true" ]; then SECONDARY_FLAG="--secondary"; fi
+          npx tsx scripts/agent/perf/sweep-eval.ts \
+            --stage search --combo "$COMBO" \
+            --train-seeds "$TRAIN_SEEDS" --weapons "$WEAPONS" \
+            --workers "$WORKERS" --rounds "$ROUNDS" $SECONDARY_FLAG \
+            --out "search-$COMBO.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: search-${{ matrix.combo }}
+          path: search-*.json
+          if-no-files-found: error
+          retention-days: 7
+
+  # One job per combo: validate that combo's tuned finalist + the untuned incumbent
+  # control on the validation panel (full graduation run touches holdout here once).
+  validate:
+    name: Validate ${{ matrix.combo }}
+    needs: [preflight, search]
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        combo: ${{ fromJSON(needs.preflight.outputs.combos) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+
+      - name: Download this combo's search artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: search-${{ matrix.combo }}
+
+      - name: Validate finalist + incumbent
+        env:
+          COMBO: ${{ matrix.combo }}
+          VALIDATE_SEEDS: ${{ inputs.validate_seeds }}
+          WEAPONS: ${{ inputs.weapons }}
+          WORKERS: ${{ inputs.workers }}
+        run: |
+          set -euo pipefail
+          npx tsx scripts/agent/perf/sweep-eval.ts \
+            --stage validate --combo "$COMBO" \
+            --search-artifact "search-$COMBO.json" \
+            --seeds "$VALIDATE_SEEDS" --weapons "$WEAPONS" \
+            --workers "$WORKERS" \
+            --out "validate-$COMBO.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: validate-${{ matrix.combo }}
+          path: validate-*.json
+          if-no-files-found: error
+          retention-days: 7
+
+  # Fan-in: merge every validate shard → recompute totals from rows → leaderboard.
+  aggregate:
+    name: Aggregate → leaderboard
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+
+      - name: Download all validate shards
+        uses: actions/download-artifact@v4
+        with:
+          pattern: validate-*
+          merge-multiple: true
+          path: shards
+
+      - name: Build leaderboard
+        run: |
+          set -euo pipefail
+          ls -la shards
+          BASE_ID=$(npx tsx scripts/agent/perf/gen-configs.ts --combo legacy+legacy | jq -r .baseId)
+          echo "Incumbent (untuned LEGACY/LEGACY) config id: $BASE_ID"
+          npx tsx scripts/agent/perf/aggregate-shards.ts shards/*.json \
+            --incumbent-combo legacy+legacy --incumbent-config "$BASE_ID" \
+            --out leaderboard.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: leaderboard
+          path: leaderboard.json
+          if-no-files-found: error
+          retention-days: 30

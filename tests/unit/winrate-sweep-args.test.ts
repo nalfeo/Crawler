@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BUDGET_FRAMES,
   FLOOR1_WEAPONS,
+  parseNonNegativeInt,
   parseNonNegativeNumber,
   parsePositiveInt,
   parseSeeds,
@@ -127,18 +128,47 @@ describe('parseSeeds', () => {
   it('throws on non-numeric seed tokens', () => {
     expect(() => parseSeeds('1,foo,3')).toThrowError(/Invalid --seeds/);
   });
+
+  it('rejects blank / doubled-comma segments instead of injecting seed 0', () => {
+    // Regression: `Number('')` coerces to 0, which previously let a stray or
+    // doubled comma silently expand into a bogus seed `0` and skew the panel.
+    expect(() => parseSeeds('1,')).toThrowError(/empty seed segment/);
+    expect(() => parseSeeds(',2')).toThrowError(/empty seed segment/);
+    expect(() => parseSeeds('1,,3')).toThrowError(/empty seed segment/);
+    expect(() => parseSeeds('   ')).toThrowError(/empty seed segment/);
+  });
+
+  it('rejects blank range endpoints', () => {
+    expect(() => parseSeeds('1-')).toThrowError(/Invalid --seeds/);
+    expect(() => parseSeeds('-3')).toThrowError(/Invalid --seeds/);
+    expect(() => parseSeeds('1- ')).toThrowError(/Invalid --seeds/);
+  });
 });
 
 describe('numeric validators', () => {
-  it('parsePositiveInt rejects NaN / <=0 and accepts positive integers', () => {
+  it('parsePositiveInt rejects NaN / <=0 / blank and accepts positive integers', () => {
     expect(() => parsePositiveInt('--x', 'foo')).toThrow();
     expect(() => parsePositiveInt('--x', '0')).toThrow();
+    expect(() => parsePositiveInt('--x', '')).toThrow();
+    expect(() => parsePositiveInt('--x', '   ')).toThrow();
     expect(parsePositiveInt('--x', '12')).toBe(12);
   });
 
-  it('parseNonNegativeNumber rejects negative / infinite and accepts 0 and fractions', () => {
+  it('parseNonNegativeInt rejects blank / non-integer / negative and accepts 0 and positive integers', () => {
+    // Regression: blank / whitespace must not coerce to a silent `0`.
+    expect(() => parseNonNegativeInt('--rounds', '')).toThrow();
+    expect(() => parseNonNegativeInt('--rounds', '   ')).toThrow();
+    expect(() => parseNonNegativeInt('--rounds', '-1')).toThrow();
+    expect(() => parseNonNegativeInt('--rounds', '1.5')).toThrow();
+    expect(parseNonNegativeInt('--rounds', '0')).toBe(0);
+    expect(parseNonNegativeInt('--rounds', '3')).toBe(3);
+  });
+
+  it('parseNonNegativeNumber rejects negative / infinite / blank and accepts 0 and fractions', () => {
     expect(() => parseNonNegativeNumber('--x', 'Infinity')).toThrow();
     expect(() => parseNonNegativeNumber('--x', '-0.5')).toThrow();
+    expect(() => parseNonNegativeNumber('--x', '')).toThrow();
+    expect(() => parseNonNegativeNumber('--x', '  ')).toThrow();
     expect(parseNonNegativeNumber('--x', '0')).toBe(0);
     expect(parseNonNegativeNumber('--x', '2.25')).toBe(2.25);
   });
