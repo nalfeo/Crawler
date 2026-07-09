@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 
 import { loadRegistryIds } from '../lib/registry-ids.mjs';
 
-// Three hops from tests/ -> workflow/ -> extensions/ -> .github/ -> repo root.
+// Four hops from tests/ -> workflow/ -> extensions/ -> .github/ -> repo root.
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',

@@ -13,16 +13,16 @@
  * dependency resolved from the repo `node_modules`), which is expected for a
  * project-scoped extension.
  *
- * @module sprite-review/yaml-reader
+ * @module workflow/yaml-reader
  */
 
-import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, existsSync, lstatSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-// lib -> sprite-review -> extensions -> .github -> repo root
+// lib -> workflow -> extensions -> .github -> repo root
 export const DEFAULT_REPO_ROOT = path.resolve(HERE, '..', '..', '..', '..');
 
 /** Recursively collect files under `dir` whose basename matches `matcher`. */
@@ -35,13 +35,18 @@ function walkFiles(dir, matcher, acc) {
     return acc;
   }
   for (const entry of entries) {
+    // Never traverse or serve symlinks: a repo-controlled link under plans/ or
+    // briefs/ could otherwise escape the repo root and disclose arbitrary files.
+    if (entry.isSymbolicLink()) continue;
     const full = path.join(dir, entry.name);
-    // Some environments (symlinks) report neither; stat defensively.
+    // Some environments report neither dir nor file; lstat defensively (never
+    // following links, so a symlink the dirent missed is skipped, not resolved).
     let isDir = entry.isDirectory();
     let isFile = entry.isFile();
     if (!isDir && !isFile) {
       try {
-        const st = statSync(full);
+        const st = lstatSync(full);
+        if (st.isSymbolicLink()) continue;
         isDir = st.isDirectory();
         isFile = st.isFile();
       } catch {

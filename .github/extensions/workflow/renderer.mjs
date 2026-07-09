@@ -152,10 +152,12 @@ const CLIENT_SCRIPT = String.raw`
     'needs-art-placeholder': '#94a3b8',
     'planned': '#64748b'
   };
+  // Mirror the domain model's ALL_STATUSES ordering: the canvas-only
+  // approved-unverified degrade status sorts LAST, after STATUS_ORDER.
   var STATUS_ORDER = [
-    'ready', 'approved', 'approved-not-integrated', 'approved-missing-file', 'approved-unverified',
+    'ready', 'approved', 'approved-not-integrated', 'approved-missing-file',
     'brief-ready', 'brief-ready-placeholder', 'draft-ready', 'draft-ready-placeholder',
-    'needs-art-placeholder', 'planned'
+    'needs-art-placeholder', 'planned', 'approved-unverified'
   ];
   var JUDGE_AXES = [
     { key: 'styleMatch', label: 'Style match' },

@@ -12,7 +12,7 @@
  * except the network calls, so the whole module is unit-testable with a fake
  * fetch and no live sidecar.
  *
- * @module sprite-review/sidecar-client
+ * @module workflow/sidecar-client
  */
 
 import {

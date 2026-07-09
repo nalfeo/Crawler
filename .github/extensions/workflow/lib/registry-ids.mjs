@@ -38,7 +38,8 @@ async function loadIdSet(absFile, exportName) {
   // Import esbuild lazily so a context without it degrades instead of failing
   // at module load. `esbuild` resolves from the repo node_modules (node walks
   // up from this file's location).
-  const esbuild = (await import('esbuild')).default ?? (await import('esbuild'));
+  const esbuildMod = await import('esbuild');
+  const esbuild = esbuildMod.default ?? esbuildMod;
   const source = await readFile(absFile, 'utf8');
   const { code } = await esbuild.transform(source, {
     loader: 'ts',

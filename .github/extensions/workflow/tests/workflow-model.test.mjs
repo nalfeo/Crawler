@@ -306,9 +306,11 @@ test('loadBacklog (registry available) resolves integration and collects promote
   const report = backlog.reports[0];
   const goblin = report.assets.find((a) => a.id === 'goblin');
   assert.equal(goblin.status, 'ready');
-  // promoted run id = last path segment of the non-placeholder sourceRun; the
-  // placeholder entry contributes nothing.
-  assert.ok(backlog.promotedRunIds.has('2026-07-02T21-45-32-1de0721b'));
+  // promoted run key = last TWO segments of the non-placeholder sourceRun
+  // (`<briefId>/<runId>`, backslash-normalized), matching the sidecar's canonical
+  // keying; the runId-alone key is NOT present and the placeholder contributes nothing.
+  assert.ok(backlog.promotedRunIds.has('enemy-goblin/2026-07-02T21-45-32-1de0721b'));
+  assert.equal(backlog.promotedRunIds.has('2026-07-02T21-45-32-1de0721b'), false);
   assert.equal(backlog.promotedRunIds.has('placeholder'), false);
   // Totals cover every status bucket including the canvas-only one.
   for (const status of ALL_STATUSES) assert.ok(status in backlog.totals);
@@ -331,5 +333,38 @@ test('loadBacklog degrades to an empty backlog for a repo with no plans', () => 
     assert.equal(backlog.promotedRunIds.size, 0);
   } finally {
     rmSync(empty, { recursive: true, force: true });
+  }
+});
+
+test('loadBacklog normalizes Windows-style sourceRun into the two-segment promoted key', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'workflow-winpath-'));
+  try {
+    mkdirSync(path.join(root, 'public', 'assets', 'generated'), { recursive: true });
+    writeFileSync(path.join(root, 'public', 'assets', 'generated', 'orc.png'), 'png');
+    writeFileSync(
+      path.join(root, 'public', 'assets', 'generated', 'manifest.json'),
+      JSON.stringify({
+        version: 1,
+        entries: {
+          'enemy::orc': {
+            briefId: 'orc',
+            assetPath: 'generated/orc.png',
+            // Backslash-separated path as produced on Windows: must be normalized
+            // and keyed by the last TWO segments, matching the sidecar.
+            sourceRun: 'runs\\enemy-orc\\2026-07-05T10-11-12-abcd1234',
+            variantIndex: 0,
+          },
+        },
+      }),
+    );
+    const backlog = loadBacklog({ repoRoot: root, spriteIds: new Set(), itemIds: new Set() });
+    assert.ok(backlog.promotedRunIds.has('enemy-orc/2026-07-05T10-11-12-abcd1234'));
+    // The un-normalized backslash string must NOT leak through as a key.
+    assert.equal(
+      backlog.promotedRunIds.has('runs\\enemy-orc\\2026-07-05T10-11-12-abcd1234'),
+      false,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });

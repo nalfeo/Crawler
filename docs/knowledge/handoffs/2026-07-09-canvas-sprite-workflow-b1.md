@@ -174,3 +174,36 @@ sidecar route list — `POST` approve/synthesize/promote-brief/generate/metadata
   re-implementing sidecar-down/wrong-repo states (carried over from Slice A).
 - When B2 lands the queue/asset-requests reads, the `workflow-model` port could
   grow to cover the queue projection too, keeping one `.mjs` source of truth.
+
+### Review round 3 (PR #990 — Copilot reviewer follow-up, 2026-07-09)
+
+The `copilot-pull-request-reviewer` bot raised **15 threads** on the open PR. Each
+was evaluated against the canonical source before acting (rule #12 — never
+blind-resolve); all 15 were genuine and fixed:
+
+- **[4][5]** `get_plan`/`get_brief` actions `readFileSync` had NO try/catch while
+  the GET `fileContentRoute` did → wrapped both to throw a controlled
+  `CanvasError('read_failed')` (parity with the route's graceful degrade).
+- **[6][10]** `registry-ids` imported `esbuild` twice
+  (`(await import).default ?? (await import)`) → import once, then pick
+  `.default ?? namespace`.
+- **[7]** renderer client `STATUS_ORDER` placed `approved-unverified` mid-list,
+  contradicting the domain model's `ALL_STATUSES` (canvas-only degrade status
+  sorts LAST) → moved last.
+- **[8][9]** `yaml-reader` `walkFiles` fell back to `statSync` (follows symlinks)
+  → a repo-controlled symlink under `plans/`/`briefs/` could escape root + be
+  served. Now skips `entry.isSymbolicLink()` and uses `lstatSync` in the fallback.
+- **[14]** `workflow-model` `promotedRunIds` keyed by only the last path segment
+  (`split('/').pop()`); the canonical sidecar (`server.ts` `listPromotedRuns`,
+  2460-2468) backslash-normalizes and keys by the last TWO segments
+  (`<briefId>/<runId>`) → aligned model + the `extension.mjs` run-list consumer
+  (`${run.briefId}/${run.runId}`). Added a Windows-backslash regression test.
+- **[1][2][3][11][12][13][15]** cosmetic: stale `sprite-review` `@module`/hop
+  comments in the vendored (NON-drift-tested) `yaml-reader.mjs`/`sidecar-client.mjs`
+  → `workflow/*`; "Three hops" → "Four hops" in `registry-ids.test.mjs`.
+
+The ext test suite caught a **real bug I introduced** mid-fix — a backtick around
+`approved-unverified` in a renderer comment that sits inside a backtick template
+literal, prematurely closing the client-script string (SyntaxError) — fixed to
+plain text. Final: **29/29 ext tests** (was 28; +1 Windows-path test); `test:guards`
+507/507. Ledger `code_review` round 3 recorded (15 concerns / 15 resolved, clean).

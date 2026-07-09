@@ -407,11 +407,17 @@ export function loadBacklog({ repoRoot, spriteIds, itemIds }) {
         // raw manifest value) matches; only the fs join is normalised.
         existingAssets.add(entry.assetPath);
       }
-      // Store-oriented "promoted" hint: the runId is the last path segment of a
-      // non-placeholder sourceRun (e.g. `.../2026-07-02T21-45-32-1de0721b`).
+      // Store-oriented "promoted" hint: key by the last TWO path segments of a
+      // non-placeholder sourceRun (`<briefId>/<runId>`), backslash-normalized —
+      // matching the sidecar's canonical promotion keying (server.ts
+      // `listPromotedRuns`) so Windows-style paths and runId collisions resolve.
       if (entry.sourceRun && entry.sourceRun !== 'placeholder') {
-        const seg = entry.sourceRun.split('/').pop();
-        if (seg) promotedRunIds.add(seg);
+        const parts = entry.sourceRun
+          .replace(/\\/g, '/')
+          .split('/')
+          .filter((segment) => segment !== '')
+          .slice(-2);
+        if (parts.length === 2) promotedRunIds.add(`${parts[0]}/${parts[1]}`);
       }
     }
   }

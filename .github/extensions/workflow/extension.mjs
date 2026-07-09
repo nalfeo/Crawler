@@ -217,7 +217,9 @@ async function buildState(instanceId) {
         briefId: run.briefId,
         runId: run.runId,
         candidateCount: typeof run.candidateCount === 'number' ? run.candidateCount : null,
-        promoted: stat.promotedRunIds.has(run.runId),
+        // Key by `<briefId>/<runId>` to match the sidecar's canonical promotion
+        // keying (workflow-model normalizes sourceRun the same way).
+        promoted: stat.promotedRunIds.has(`${run.briefId}/${run.runId}`),
       }));
   } catch (err) {
     runsError = `Failed to list runs: ${err?.message ?? err}`;
@@ -514,7 +516,11 @@ const canvas = createCanvas({
         if (!entry) throw new CanvasError('not_open', 'Canvas instance is not open.');
         const hit = (await getStatic(entry)).allowlist.get(ctx.input.relPath);
         if (!hit || hit.kind !== 'plan') throw new CanvasError('not_found', 'Unknown plan path.');
-        return { relPath: ctx.input.relPath, content: readFileSync(hit.path, 'utf8') };
+        try {
+          return { relPath: ctx.input.relPath, content: readFileSync(hit.path, 'utf8') };
+        } catch (err) {
+          throw new CanvasError('read_failed', `Failed to read plan: ${err?.message ?? err}`);
+        }
       },
     },
     {
@@ -541,7 +547,11 @@ const canvas = createCanvas({
         if (!entry) throw new CanvasError('not_open', 'Canvas instance is not open.');
         const hit = (await getStatic(entry)).allowlist.get(ctx.input.relPath);
         if (!hit || hit.kind !== 'brief') throw new CanvasError('not_found', 'Unknown brief path.');
-        return { relPath: ctx.input.relPath, content: readFileSync(hit.path, 'utf8') };
+        try {
+          return { relPath: ctx.input.relPath, content: readFileSync(hit.path, 'utf8') };
+        } catch (err) {
+          throw new CanvasError('read_failed', `Failed to read brief: ${err?.message ?? err}`);
+        }
       },
     },
     {
