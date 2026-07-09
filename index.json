@@ -1,5 +1,16 @@
 [
   {
+    "commit": "0e10aeba923345782e54c4efb05ee72f33ade431",
+    "commitDate": "2026-07-09T05:31:00Z",
+    "commitSubject": "feat: expand Floor 2 family roster and generic spawn-zone union (#934)",
+    "capturedAt": "2026-07-09T06:09:51.544Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28996683372",
+    "winRate": 0.82,
+    "totalWins": 246,
+    "totalRuns": 300,
+    "path": "by-sha/0e10aeba923345782e54c4efb05ee72f33ade431.json"
+  },
+  {
     "commit": "1de738949f171620df9c925248b9b9b2e6dc3c6f",
     "commitDate": "2026-07-09T05:12:32Z",
     "commitSubject": "feat(ai): NAVMESH_FUSED seam-following term (tangential-to-gradient, w=2) (#933)",
