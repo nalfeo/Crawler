@@ -188,8 +188,6 @@ export interface SetPieceNpcDef {
   readonly x: number;
   /** Tile row within the set piece (0-based, top to bottom). */
   readonly y: number;
-  /** Optional render scale multiplier; 1 = 100%, 0.5 = 50%. */
-  readonly scale?: number;
   /** Optional scene-layer id used by editors for visibility/locking workflows. */
   readonly sceneLayer?: string;
   /** If set, this NPC's spawn tile drives the named objective anchor. */
@@ -337,7 +335,6 @@ const npcSourceSchema = z
     npcTypeId: z.string().trim().min(1),
     x: z.number().int().min(0),
     y: z.number().int().min(0),
-    scale: z.number().positive().optional(),
     sceneLayer: z.string().trim().min(1).optional(),
     anchorRole: z.enum(npcAnchorRoles).optional(),
   })
@@ -470,7 +467,6 @@ function compileNpc(source: SetPieceSource['npcs'][number]): SetPieceNpcDef {
     npcTypeId: source.npcTypeId,
     x: source.x,
     y: source.y,
-    scale: source.scale,
     sceneLayer: source.sceneLayer,
     anchorRole: source.anchorRole,
   };
