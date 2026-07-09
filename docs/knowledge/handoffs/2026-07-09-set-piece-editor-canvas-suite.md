@@ -36,7 +36,9 @@ Completed the set-piece editor canvas stack so authored layout and transform cha
 
 ## Unresolved Issues
 
-- Local full-verify run currently fails in existing welcome-room expectation tests (`tests/unit/set-piece-types.test.ts`, `tests/unit/stamp-set-piece.test.ts`) that assert older authored layout/details.
+- Latest `VERIFY_FULL=1 npm run verify` (2026-07-09 follow-up) still fails in pre-existing headless gates:
+  - `tests/headless/collision-pair-parity.test.ts` (golden fingerprint drift on seeds 7/13/42/137)
+  - `tests/headless/floor2-completion.test.ts` (timeout at 300000ms)
 
 ## Recommended Next Steps
 

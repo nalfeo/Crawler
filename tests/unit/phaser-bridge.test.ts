@@ -268,7 +268,7 @@ describe('createPhaserBridge', () => {
     expect(typeof images[0]?.frame).toBe('number');
     expect(images[0]?.displayWidth).toBeCloseTo(32);
     expect(images[0]?.displayHeight).toBeCloseTo(40);
-    expect(images[0]?.depth).toBeCloseTo(0.06);
+    expect(images[0]?.depth).toBeCloseTo(setPieceZToDepth(6));
 
     const instance = world.npcs.get(eid)!;
     instance.flipX = false;
@@ -279,7 +279,7 @@ describe('createPhaserBridge', () => {
     expect(images[0]?.flipX).toBe(false);
     expect(images[0]?.flipY).toBe(false);
     expect(images[0]?.rotation).toBeCloseTo(0);
-    expect(images[0]?.depth).toBeCloseTo(-0.04);
+    expect(images[0]?.depth).toBeCloseTo(setPieceZToDepth(-4));
   });
 
   it('destroys images when entities disappear or the bridge is destroyed', () => {

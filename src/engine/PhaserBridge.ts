@@ -20,7 +20,12 @@ import {
 import { ftToPx } from '../shared/units.js';
 import { DEFAULT_HANDHELD_SPRITE_ANCHOR } from '../shared/sprite-anchor.js';
 import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../shared/decorationDefs.js';
-import { ENTITY_DEPTH, PROP_DEPTH, WORLD_VFX_DEPTH } from '../shared/render-depths.js';
+import {
+  ENTITY_DEPTH,
+  PROP_DEPTH,
+  WORLD_VFX_DEPTH,
+  setPieceZToDepth,
+} from '../shared/render-depths.js';
 import type { SpriteRef } from '../shared/set-piece-types.js';
 import { getHarvestableDefByIndex } from '../shared/harvestableDefs.js';
 import {
@@ -1209,11 +1214,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             img.setDisplaySize(ftToPx(npcWidthFt), ftToPx(npcHeightFt));
           }
           if (typeof img.setDepth === 'function') {
-            const depthOffset =
-              Number.isFinite(npcInstance?.z ?? NaN) && npcInstance?.z !== undefined
-                ? npcInstance.z * 0.01
-                : 0;
-            img.setDepth(ENTITY_DEPTH + depthOffset);
+            if (Number.isFinite(npcInstance?.z ?? NaN) && npcInstance?.z !== undefined) {
+              img.setDepth(setPieceZToDepth(npcInstance.z));
+            } else {
+              img.setDepth(ENTITY_DEPTH);
+            }
           }
           if (typeof img.setFlipX === 'function') {
             img.setFlipX(npcInstance?.flipX === true);

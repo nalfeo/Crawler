@@ -1466,7 +1466,7 @@ canvas.addEventListener('mousemove',function(e){
   hideCtxMenu();
   if(drag&&sp){
     var pos=cxy(e),ts=S.tileSize,dx=pos.x-drag.sx,dy=pos.y-drag.sy;
-    if(Math.abs(dx)>0.5||Math.abs(dy)>0.5)drag.moved=true;
+    if((dx*dx+dy*dy)>=9)drag.moved=true;
     if(drag.mode==='move-npc'){
       var dn=sp.npcs&&sp.npcs[drag.idx];
       var dns=npcSizeTiles(dn);
@@ -2037,7 +2037,10 @@ document.getElementById('btnapply').addEventListener('click',async function(){
     var r=await res.json();
     if(r.ok){origSP=JSON.stringify(sp);showToast('\u2713 Applied!');S.dirty=false;updateStatus();
       fetch('/data').then(function(rd){return rd.json();}).then(function(np){S.pack=np;});}
-    else showToast('\u2717 '+r.error,true);
+    else{
+      var detail=Array.isArray(r.issues)&&r.issues.length?(' — '+r.issues.join('; ')):'';
+      showToast('\u2717 '+r.error+detail,true);
+    }
   }catch(e){showToast('\u2717 '+e.message,true);}
   finally{btn.disabled=false;btn.textContent='\u2713 Apply';}
 });

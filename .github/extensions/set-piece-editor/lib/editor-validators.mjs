@@ -2,6 +2,8 @@ function isFiniteNumber(value) {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+const DEFAULT_KNOWN_NPC_TYPE_IDS = ['tutorial-goon', 'shopkeeper', 'spell-quest-giver'];
+
 export function countSheetRows(naturalHeight, margin, spacing) {
   if (
     !isFiniteNumber(naturalHeight) ||
@@ -195,7 +197,10 @@ export function validateSetPieceCandidate(setPiece, options = {}) {
   if (issues.length > 0) return issues;
   const boundW = setPiece.maxWidth ?? setPiece.width;
   const boundH = setPiece.maxHeight ?? setPiece.height;
+  const knownNpcTypeIds = Array.isArray(options.knownNpcTypeIds)
+    ? options.knownNpcTypeIds
+    : DEFAULT_KNOWN_NPC_TYPE_IDS;
   issues.push(...validateProps(setPiece, boundW, boundH));
-  issues.push(...validateNpcs(setPiece, boundW, boundH, options.knownNpcTypeIds));
+  issues.push(...validateNpcs(setPiece, boundW, boundH, knownNpcTypeIds));
   return issues;
 }
