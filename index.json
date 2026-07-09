@@ -55,6 +55,17 @@
     "path": "by-sha/3d45254e827899a78626190144c12ded4c9a2d06.json"
   },
   {
+    "commit": "dd92e7412520e5d9111ecba73332d93bb1e63e68",
+    "commitDate": "2026-07-08T23:22:00-07:00",
+    "commitSubject": "docs(agents): add sprite issue factory agent (#974)",
+    "capturedAt": "2026-07-09T06:56:13.950Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28998499068",
+    "winRate": 0.82,
+    "totalWins": 246,
+    "totalRuns": 300,
+    "path": "by-sha/dd92e7412520e5d9111ecba73332d93bb1e63e68.json"
+  },
+  {
     "commit": "b6c4ee57715da5735396d836621ada13d0b1ea8f",
     "commitDate": "2026-07-08T22:31:03Z",
     "commitSubject": "feat(engine): stamp approved generated Floor-1 tile textures in terrain-renderer (#927)",
