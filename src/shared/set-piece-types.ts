@@ -147,6 +147,8 @@ export interface SpriteLayer {
   /** Mirror the sprite horizontally / vertically (e.g. mirror a paired sconce). */
   readonly flipX?: boolean;
   readonly flipY?: boolean;
+  /** Optional clockwise rotation in degrees. */
+  readonly rotationDeg?: number;
   /** Optional tint as `#rrggbb`. */
   readonly tintHex?: string;
 }
@@ -155,15 +157,17 @@ export interface SpriteLayer {
 export interface SetPiecePropDef {
   readonly id: string;
   readonly kind: SetPiecePropKind;
-  /** Tile column within the set piece (0-based, left to right). */
+  /** Tile-space X within the set piece (0-based; supports sub-tile offsets). */
   readonly x: number;
-  /** Tile row within the set piece (0-based, top to bottom). */
+  /** Tile-space Y within the set piece (0-based; supports sub-tile offsets). */
   readonly y: number;
   /** Footprint in tiles (defaults to 1×1). */
   readonly width: number;
   readonly height: number;
   /** Explicit render order; defaults to {@link PROP_KIND_Z} for the prop kind. */
   readonly z: number;
+  /** Optional scene-layer id used by editors for visibility/locking workflows. */
+  readonly sceneLayer?: string;
   /** Ordered visual layers (base first, stacked extras after). */
   readonly layers: readonly SpriteLayer[];
 }
@@ -184,14 +188,25 @@ export interface SetPieceNpcDef {
   readonly id: string;
   /** NPC type id resolved against the NPC registry, e.g. `tutorial-goon`. */
   readonly npcTypeId: string;
-  /** Tile column within the set piece (0-based, left to right). */
+  /** Tile-space X within the set piece (0-based; supports sub-tile offsets). */
   readonly x: number;
-  /** Tile row within the set piece (0-based, top to bottom). */
+  /** Tile-space Y within the set piece (0-based; supports sub-tile offsets). */
   readonly y: number;
+  /** Optional per-instance render/collision width in feet. Must pair with heightFt. */
+  readonly widthFt?: number;
+  /** Optional per-instance render/collision height in feet. Must pair with widthFt. */
+  readonly heightFt?: number;
+  /** Optional sprite mirror flags applied at render time. */
+  readonly flipX?: boolean;
+  readonly flipY?: boolean;
+  /** Optional clockwise sprite rotation in degrees. */
+  readonly rotationDeg?: number;
   /** Optional local z-order within its scene layer (higher draws on top). */
   readonly z?: number;
   /** Optional scene-layer id used by editors for visibility/locking workflows. */
   readonly sceneLayer?: string;
+  /** Optional visual override sprite; NPC behavior still comes from npcTypeId. */
+  readonly spriteOverride?: SpriteRef;
   /** If set, this NPC's spawn tile drives the named objective anchor. */
   readonly anchorRole?: SetPieceNpcAnchorRole;
 }
@@ -238,12 +253,21 @@ export interface SetPieceDef {
   readonly props: readonly SetPiecePropDef[];
   /** NPCs placed by this set piece (empty when none authored). */
   readonly npcs: readonly SetPieceNpcDef[];
+  /** Optional editor scene layers (bottom-to-top ordering). */
+  readonly sceneLayers?: readonly SetPieceSceneLayerDef[];
 }
 
 export interface SetPiecePackDef {
   readonly version: 1;
   readonly packId: string;
   readonly setPieces: readonly SetPieceSource[];
+}
+
+export interface SetPieceSceneLayerDef {
+  readonly id: string;
+  readonly name: string;
+  readonly visible?: boolean;
+  readonly locked?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -299,6 +323,7 @@ const spriteLayerSchema = z
     scale: z.number().positive().optional(),
     flipX: z.boolean().optional(),
     flipY: z.boolean().optional(),
+    rotationDeg: z.number().finite().optional(),
     tintHex: z
       .string()
       .regex(/^#[0-9a-fA-F]{6}$/, 'tintHex must be #rrggbb')
@@ -320,11 +345,12 @@ const propSourceSchema = z
   .object({
     id: z.string().trim().min(1),
     kind: z.enum(propKinds),
-    x: z.number().int().min(0),
-    y: z.number().int().min(0),
+    x: z.number().min(0),
+    y: z.number().min(0),
     width: z.number().int().positive().optional(),
     height: z.number().int().positive().optional(),
     z: z.number().int().optional(),
+    sceneLayer: z.string().trim().min(1).optional(),
     layers: z.array(spriteLayerSchema).min(1),
   })
   .strict();
@@ -335,11 +361,26 @@ const npcSourceSchema = z
   .object({
     id: z.string().trim().min(1),
     npcTypeId: z.string().trim().min(1),
-    x: z.number().int().min(0),
-    y: z.number().int().min(0),
+    x: z.number().min(0),
+    y: z.number().min(0),
+    widthFt: z.number().positive().optional(),
+    heightFt: z.number().positive().optional(),
+    flipX: z.boolean().optional(),
+    flipY: z.boolean().optional(),
+    rotationDeg: z.number().finite().optional(),
     z: z.number().int().optional(),
     sceneLayer: z.string().trim().min(1).optional(),
+    spriteOverride: spriteRefSchema.optional(),
     anchorRole: z.enum(npcAnchorRoles).optional(),
+  })
+  .strict();
+
+const setPieceSceneLayerSchema = z
+  .object({
+    id: z.string().trim().min(1),
+    name: z.string().trim().min(1),
+    visible: z.boolean().optional(),
+    locked: z.boolean().optional(),
   })
   .strict();
 
@@ -365,6 +406,7 @@ const setPieceSourceSchema = z
     placement: placementSchema.optional(),
     props: z.array(propSourceSchema).min(1),
     npcs: z.array(npcSourceSchema).default([]),
+    sceneLayers: z.array(setPieceSceneLayerSchema).optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -411,6 +453,12 @@ const setPieceSourceSchema = z
         });
       }
       seenNpcIds.add(npc.id);
+      if ((npc.widthFt === undefined) !== (npc.heightFt === undefined)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `NPC "${npc.id}" must specify widthFt and heightFt together.`,
+        });
+      }
       if (npc.x >= boundW || npc.y >= boundH) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -460,6 +508,7 @@ function compileProp(source: SetPieceSource['props'][number]): SetPiecePropDef {
     width: source.width ?? 1,
     height: source.height ?? 1,
     z: source.z ?? PROP_KIND_Z[source.kind],
+    sceneLayer: source.sceneLayer,
     layers: source.layers,
   };
 }
@@ -470,8 +519,14 @@ function compileNpc(source: SetPieceSource['npcs'][number]): SetPieceNpcDef {
     npcTypeId: source.npcTypeId,
     x: source.x,
     y: source.y,
+    widthFt: source.widthFt,
+    heightFt: source.heightFt,
+    flipX: source.flipX,
+    flipY: source.flipY,
+    rotationDeg: source.rotationDeg,
     z: source.z,
     sceneLayer: source.sceneLayer,
+    spriteOverride: source.spriteOverride,
     anchorRole: source.anchorRole,
   };
 }
@@ -491,6 +546,7 @@ function compileSetPiece(source: SetPieceSource): SetPieceDef {
     ...(source.placement !== undefined ? { placement: source.placement } : {}),
     props: source.props.map(compileProp),
     npcs: source.npcs.map(compileNpc),
+    ...(source.sceneLayers !== undefined ? { sceneLayers: source.sceneLayers } : {}),
   };
 }
 

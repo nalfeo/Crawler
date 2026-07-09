@@ -238,7 +238,22 @@ const GENERATED_NPC_SPRITE_SCALE = 0.4;
  * feature requires whenever a generated NPC texture is ever missing, while
  * giving each welcome-room NPC its own distinct sprite when the art is present.
  */
-function resolveNpcTexture(scene: Phaser.Scene, defId: string | undefined): ResolvedTexture {
+function resolveNpcTexture(
+  scene: Phaser.Scene,
+  defId: string | undefined,
+  spriteOverride: SpriteRef | undefined,
+): ResolvedTexture {
+  if (spriteOverride !== undefined) {
+    const resolvedOverride = resolveSetPieceSprite(scene, spriteOverride);
+    if (resolvedOverride !== null) {
+      return {
+        key: resolvedOverride.textureKey,
+        ...(resolvedOverride.frame !== undefined ? { frame: resolvedOverride.frame } : {}),
+        scale: resolvedOverride.frame === undefined ? GENERATED_NPC_SPRITE_SCALE : 1,
+        fallback: false,
+      };
+    }
+  }
   const generatedKey = pickGeneratedNpcTextureKey(defId);
   if (generatedKey !== null && scene.textures?.exists(generatedKey) === true) {
     return { key: generatedKey, scale: GENERATED_NPC_SPRITE_SCALE, fallback: false };
@@ -828,9 +843,10 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           if (visual) {
             visual.obj.destroy();
           }
+          const npcInstance = world.npcs.get(eid);
           const resolved =
             entityType === 'npc'
-              ? resolveNpcTexture(scene, world.npcs.get(eid)?.defId)
+              ? resolveNpcTexture(scene, npcInstance?.defId, npcInstance?.spriteOverride)
               : resolveTexture(scene, visualType, {
                   appearanceKey,
                   variantRoll: world.stores.sprite.variantRoll[eid],
@@ -868,7 +884,12 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           // finished loading. Reconcile to the def-aware generated sprite once it
           // is available so each welcome-room NPC upgrades off the shared Kenney
           // villager placeholder (mirrors the enemy late-load reconcile above).
-          const preferred = resolveNpcTexture(scene, world.npcs.get(eid)?.defId);
+          const npcInstance = world.npcs.get(eid);
+          const preferred = resolveNpcTexture(
+            scene,
+            npcInstance?.defId,
+            npcInstance?.spriteOverride,
+          );
           if (img.texture.key !== preferred.key) {
             img.setTexture(preferred.key, preferred.frame);
             visual.baseScale = preferred.scale;
@@ -1143,11 +1164,28 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               }
             } else {
               img.setScale(visual.baseScale);
-              if (typeof img.setFlipX === 'function') {
+              if (entityType !== 'npc' && typeof img.setFlipX === 'function') {
                 img.setFlipX(false);
               }
             }
             break;
+        }
+
+        if (entityType === 'npc') {
+          const npcInstance = world.npcs.get(eid);
+          if (typeof img.setFlipX === 'function') {
+            img.setFlipX(npcInstance?.flipX === true);
+          }
+          if (typeof img.setFlipY === 'function') {
+            img.setFlipY(npcInstance?.flipY === true);
+          }
+          if (typeof img.setAngle === 'function') {
+            img.setAngle(
+              Number.isFinite(npcInstance?.rotationDeg ?? NaN)
+                ? (npcInstance?.rotationDeg ?? 0)
+                : 0,
+            );
+          }
         }
 
         // Corpse styling wins over the per-type switch: a dead enemy drains
@@ -1399,6 +1437,9 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           }
           if (typeof img.setFlipY === 'function') {
             img.setFlipY(sp.flipY === true);
+          }
+          if (typeof img.setAngle === 'function') {
+            img.setAngle(Number.isFinite(sp.rotationDeg) ? sp.rotationDeg : 0);
           }
           img.setDepth(spDepth);
           if (spTint !== undefined) {

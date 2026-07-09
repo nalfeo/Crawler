@@ -117,12 +117,47 @@ describe('stampSetPiece — welcome room NPCs', () => {
     const origin = computeStampOrigin(def, ROOM_LARGE);
     const goon = stamp.npcs.find((n) => n.anchorRole === 'welcome');
 
-    // welcome-goon authored at (3,1) → tile (origin.x+3, origin.y+1).
-    expect(goon?.tileX).toBe(origin.originTileX + 3);
-    expect(goon?.tileY).toBe(origin.originTileY + 1);
+    // welcome-goon authored at (4,2) after perimeter-wall expansion.
+    expect(goon?.tileX).toBe(origin.originTileX + 4);
+    expect(goon?.tileY).toBe(origin.originTileY + 2);
     // World coords are the tile centre (tile * tileSizeFt + half).
-    expect(goon?.x).toBe((origin.originTileX + 3) * TILE + TILE / 2);
-    expect(goon?.y).toBe((origin.originTileY + 1) * TILE + TILE / 2);
+    expect(goon?.x).toBe((origin.originTileX + 4) * TILE + TILE / 2);
+    expect(goon?.y).toBe((origin.originTileY + 2) * TILE + TILE / 2);
+  });
+
+  it('threads NPC sprite override, size, and transform metadata while preserving sub-tile world coords', () => {
+    const def = makeDef({
+      npcs: [
+        {
+          id: 'npc-probe',
+          npcTypeId: 'tutorial-goon',
+          x: 1.25,
+          y: 2.75,
+          widthFt: 5,
+          heightFt: 7,
+          flipX: true,
+          flipY: true,
+          rotationDeg: 90,
+          spriteOverride: { source: 'catalog', spriteId: 'sprite:npc.guide' },
+        },
+      ],
+    });
+    const stamp = stampSetPiece(def, opts(ROOM_LARGE));
+    const origin = computeStampOrigin(def, ROOM_LARGE);
+    const npc = stamp.npcs[0]!;
+    const rawTileX = origin.originTileX + 1.25;
+    const rawTileY = origin.originTileY + 2.75;
+
+    expect(npc.tileX).toBe(Math.floor(rawTileX));
+    expect(npc.tileY).toBe(Math.floor(rawTileY));
+    expect(npc.x).toBe(rawTileX * TILE + TILE / 2);
+    expect(npc.y).toBe(rawTileY * TILE + TILE / 2);
+    expect(npc.widthFt).toBe(5);
+    expect(npc.heightFt).toBe(7);
+    expect(npc.flipX).toBe(true);
+    expect(npc.flipY).toBe(true);
+    expect(npc.rotationDeg).toBe(90);
+    expect(npc.spriteOverride).toEqual({ source: 'catalog', spriteId: 'sprite:npc.guide' });
   });
 
   it('keeps every pair of NPCs at least 3 tiles apart (Chebyshev)', () => {

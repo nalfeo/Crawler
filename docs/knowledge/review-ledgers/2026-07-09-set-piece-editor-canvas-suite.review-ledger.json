@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-09",
+  "session_slug": "set-piece-editor-canvas-suite",
+  "task_title": "Set-piece editor canvas interaction + runtime wiring",
+  "estimated_apples": 2,
+  "stages": {}
+}

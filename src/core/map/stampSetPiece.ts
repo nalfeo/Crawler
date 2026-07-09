@@ -90,6 +90,17 @@ export interface StampedSetPieceProp {
 export interface StampedSetPieceNpc {
   /** NPC type id resolved against the NPC registry (e.g. `tutorial-goon`). */
   readonly npcTypeId: string;
+  /** Optional per-instance width in feet (paired with heightFt). */
+  readonly widthFt?: number;
+  /** Optional per-instance height in feet (paired with widthFt). */
+  readonly heightFt?: number;
+  /** Optional sprite mirror flags applied at render time. */
+  readonly flipX?: boolean;
+  readonly flipY?: boolean;
+  /** Optional clockwise sprite rotation in degrees. */
+  readonly rotationDeg?: number;
+  /** Optional visual override sprite for this spawned NPC. */
+  readonly spriteOverride?: SpriteRef;
   /** Objective anchor this NPC drives, if any. */
   readonly anchorRole?: SetPieceNpcAnchorRole;
   /** Clamped interior tile column. */
@@ -253,6 +264,7 @@ export function stampSetPiece(def: SetPieceDef, opts: StampSetPieceOptions): Sta
       ...(layer.scale !== undefined ? { scale: layer.scale } : {}),
       ...(layer.flipX !== undefined ? { flipX: layer.flipX } : {}),
       ...(layer.flipY !== undefined ? { flipY: layer.flipY } : {}),
+      ...(layer.rotationDeg !== undefined ? { rotationDeg: layer.rotationDeg } : {}),
       ...(layer.tintHex !== undefined ? { tintHex: layer.tintHex } : {}),
       label: prop.id,
     };
@@ -266,15 +278,25 @@ export function stampSetPiece(def: SetPieceDef, opts: StampSetPieceOptions): Sta
   });
 
   const npcs: StampedSetPieceNpc[] = def.npcs.map((npc) => {
-    const tileX = clamp(originTileX + npc.x, interior.minX, interior.maxX);
-    const tileY = clamp(originTileY + npc.y, interior.minY, interior.maxY);
+    const rawTileX = originTileX + npc.x;
+    const rawTileY = originTileY + npc.y;
+    // Keep objective/occupancy tile bookkeeping integer-based (the containing
+    // interior tile), while preserving authored sub-tile NPC world positions.
+    const tileX = clamp(Math.floor(rawTileX), interior.minX, interior.maxX);
+    const tileY = clamp(Math.floor(rawTileY), interior.minY, interior.maxY);
     return {
       npcTypeId: npc.npcTypeId,
+      ...(npc.widthFt !== undefined ? { widthFt: npc.widthFt } : {}),
+      ...(npc.heightFt !== undefined ? { heightFt: npc.heightFt } : {}),
+      ...(npc.flipX !== undefined ? { flipX: npc.flipX } : {}),
+      ...(npc.flipY !== undefined ? { flipY: npc.flipY } : {}),
+      ...(npc.rotationDeg !== undefined ? { rotationDeg: npc.rotationDeg } : {}),
+      ...(npc.spriteOverride !== undefined ? { spriteOverride: npc.spriteOverride } : {}),
       ...(npc.anchorRole !== undefined ? { anchorRole: npc.anchorRole } : {}),
       tileX,
       tileY,
-      x: tileX * tileSizeFt + half,
-      y: tileY * tileSizeFt + half,
+      x: rawTileX * tileSizeFt + half,
+      y: rawTileY * tileSizeFt + half,
     };
   });
 

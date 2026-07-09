@@ -1402,7 +1402,16 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       let eid: number;
       if (stamped && stampedPassable) {
         // Fixed authored position from the set piece — no scatter.
-        eid = spawnNpc(world, stamped.x, stamped.y, placement.npcTypeId);
+        eid = spawnNpc(world, stamped.x, stamped.y, placement.npcTypeId, {
+          ...(stamped.spriteOverride !== undefined
+            ? { spriteOverride: stamped.spriteOverride }
+            : {}),
+          ...(stamped.widthFt !== undefined ? { widthFt: stamped.widthFt } : {}),
+          ...(stamped.heightFt !== undefined ? { heightFt: stamped.heightFt } : {}),
+          ...(stamped.flipX !== undefined ? { flipX: stamped.flipX } : {}),
+          ...(stamped.flipY !== undefined ? { flipY: stamped.flipY } : {}),
+          ...(stamped.rotationDeg !== undefined ? { rotationDeg: stamped.rotationDeg } : {}),
+        });
         occupiedNpcTiles.add(tileKey(stamped.tileX, stamped.tileY));
       } else {
         eid = spawnNpcFromPlacement(
