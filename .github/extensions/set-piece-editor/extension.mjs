@@ -16,6 +16,7 @@ const REPO_ROOT = join(__extDir, '..', '..', '..');
 const CANONICAL_NPC_TYPE_IDS = [
   'tutorial-goon',
   'shopkeeper',
+  'floor2-defector',
   'spell-quest-giver',
   'the-broker',
   'shop-the-fence',
@@ -2130,9 +2131,9 @@ document.getElementById('btnresize').addEventListener('click',function(){
   });
   // clamp NPC anchors to the same in-bounds authored tile domain
   (sp.npcs||[]).forEach(function(n){
-    var nx=nnum(n.x,0),ny=nnum(n.y,0);
-    if(nx>=nw)n.x=Math.max(0,nw-1);
-    if(ny>=nh)n.y=Math.max(0,nh-1);
+    var ns=npcSizeTiles(n),nx=nnum(n.x,0),ny=nnum(n.y,0);
+    if(nx+ns.w>nw)n.x=Math.max(0,nw-ns.w);
+    if(ny+ns.h>nh)n.y=Math.max(0,nh-ns.h);
     n.x=Math.max(0,nnum(n.x,0));n.y=Math.max(0,nnum(n.y,0));
   });
   markDirty();render();
@@ -2179,7 +2180,7 @@ document.getElementById('btnundo').addEventListener('click',function(){
 document.getElementById('btnredo').addEventListener('click',function(){
   if(histIdx>=hist.length-1)return;
   histIdx++;applyHistState(hist[histIdx]);
-  S.dirty=true;updateStatus();updUR();
+  S.dirty=hist[histIdx]!==origSP;updateStatus();updUR();
 });
 document.getElementById('btnreset').addEventListener('click',function(){
   if(!origSP)return;

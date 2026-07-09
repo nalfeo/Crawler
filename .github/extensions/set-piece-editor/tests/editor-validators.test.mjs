@@ -109,3 +109,62 @@ test('validateSetPieceCandidate accepts a minimally valid payload', () => {
 
   assert.deepEqual(issues, []);
 });
+
+test('validateSetPieceCandidate rejects max bounds smaller than current dimensions', () => {
+  const issues = validateSetPieceCandidate({
+    width: 8,
+    height: 7,
+    maxWidth: 6,
+    maxHeight: 5,
+    props: [
+      {
+        id: 'floor',
+        kind: 'floor',
+        x: 0,
+        y: 0,
+        width: 8,
+        height: 7,
+        layers: [{ sprite: { source: 'catalog', spriteId: 'sprite:item.gem' } }],
+      },
+    ],
+    npcs: [{ id: 'goon', npcTypeId: 'tutorial-goon', x: 4, y: 2 }],
+  });
+
+  assert.ok(
+    issues.some((issue) => issue.includes('maxWidth must be greater than or equal to width')),
+  );
+  assert.ok(
+    issues.some((issue) => issue.includes('maxHeight must be greater than or equal to height')),
+  );
+});
+
+test('validateSetPieceCandidate rejects malformed npc spriteOverride payloads', () => {
+  const issues = validateSetPieceCandidate({
+    width: 8,
+    height: 7,
+    props: [
+      {
+        id: 'floor',
+        kind: 'floor',
+        x: 0,
+        y: 0,
+        width: 8,
+        height: 7,
+        layers: [{ sprite: { source: 'catalog', spriteId: 'sprite:item.gem' } }],
+      },
+    ],
+    npcs: [
+      {
+        id: 'goon',
+        npcTypeId: 'tutorial-goon',
+        x: 4,
+        y: 2,
+        spriteOverride: { source: 'sheet' },
+      },
+    ],
+  });
+
+  assert.ok(issues.some((issue) => issue.includes('npcs[0].spriteOverride.sheetKey is required')));
+  assert.ok(issues.some((issue) => issue.includes('npcs[0].spriteOverride.col must be')));
+  assert.ok(issues.some((issue) => issue.includes('npcs[0].spriteOverride.row must be')));
+});

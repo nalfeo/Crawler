@@ -27,6 +27,42 @@ function asFiniteNonNegative(value) {
   return isFiniteNumber(value) && value >= 0;
 }
 
+function validateSpriteRefLike(sprite, issuePrefix) {
+  const issues = [];
+  if (!sprite || typeof sprite !== 'object' || typeof sprite.source !== 'string') {
+    issues.push(issuePrefix + ' must be an object with source');
+    return issues;
+  }
+  if (sprite.source === 'catalog') {
+    if (typeof sprite.spriteId !== 'string' || sprite.spriteId.trim() === '') {
+      issues.push(issuePrefix + '.spriteId is required');
+    }
+  } else if (sprite.source === 'sheet') {
+    if (typeof sprite.sheetKey !== 'string' || sprite.sheetKey.trim() === '') {
+      issues.push(issuePrefix + '.sheetKey is required');
+    }
+    if (!Number.isInteger(sprite.col) || sprite.col < 0) {
+      issues.push(issuePrefix + '.col must be a non-negative integer');
+    }
+    if (!Number.isInteger(sprite.row) || sprite.row < 0) {
+      issues.push(issuePrefix + '.row must be a non-negative integer');
+    }
+  } else if (sprite.source === 'custom') {
+    if (typeof sprite.requestId !== 'string' || sprite.requestId.trim() === '') {
+      issues.push(issuePrefix + '.requestId is required');
+    }
+    if (typeof sprite.label !== 'string' || sprite.label.trim() === '') {
+      issues.push(issuePrefix + '.label is required');
+    }
+    if (typeof sprite.prompt !== 'string' || sprite.prompt.trim() === '') {
+      issues.push(issuePrefix + '.prompt is required');
+    }
+  } else {
+    issues.push(issuePrefix + '.source must be catalog, sheet, or custom');
+  }
+  return issues;
+}
+
 function validateLayer(layer, index) {
   const issues = [];
   if (!layer || typeof layer !== 'object') {
@@ -238,15 +274,7 @@ function validateNpcs(
       issues.push('NPC "' + (npc.id || i) + '" references unknown sceneLayer');
     }
     if (npc.spriteOverride !== undefined) {
-      if (!npc.spriteOverride || typeof npc.spriteOverride !== 'object') {
-        issues.push('npcs[' + i + '].spriteOverride must be an object when present');
-      } else if (
-        npc.spriteOverride.source !== 'catalog' &&
-        npc.spriteOverride.source !== 'sheet' &&
-        npc.spriteOverride.source !== 'custom'
-      ) {
-        issues.push('npcs[' + i + '].spriteOverride.source must be catalog, sheet, or custom');
-      }
+      issues.push(...validateSpriteRefLike(npc.spriteOverride, 'npcs[' + i + '].spriteOverride'));
     }
     if (npc.anchorRole !== undefined) {
       if (typeof npc.anchorRole !== 'string' || npc.anchorRole.trim() === '') {
@@ -271,6 +299,20 @@ export function validateSetPieceCandidate(setPiece, options = {}) {
     issues.push('height must be a positive integer');
   }
   if (issues.length > 0) return issues;
+  if (setPiece.maxWidth !== undefined) {
+    if (!Number.isInteger(setPiece.maxWidth) || setPiece.maxWidth <= 0) {
+      issues.push('maxWidth must be a positive integer when present');
+    } else if (setPiece.maxWidth < setPiece.width) {
+      issues.push('maxWidth must be greater than or equal to width');
+    }
+  }
+  if (setPiece.maxHeight !== undefined) {
+    if (!Number.isInteger(setPiece.maxHeight) || setPiece.maxHeight <= 0) {
+      issues.push('maxHeight must be a positive integer when present');
+    } else if (setPiece.maxHeight < setPiece.height) {
+      issues.push('maxHeight must be greater than or equal to height');
+    }
+  }
   const boundW = setPiece.maxWidth ?? setPiece.width;
   const boundH = setPiece.maxHeight ?? setPiece.height;
   const { issues: sceneLayerIssues, layerIds, hasDeclaredLayers } = validateSceneLayers(setPiece);
