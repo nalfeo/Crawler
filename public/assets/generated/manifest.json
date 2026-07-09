@@ -7470,6 +7470,108 @@
       "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-elite-joyrider-v1/2026-07-09T08-20-24-5bbef3dd/postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
+    },
+    "cactusfolk-elite-desert-capo-v1-var-0": {
+      "briefId": "cactusfolk-elite-desert-capo-v1",
+      "spriteName": "cactusfolk-elite-desert-capo-v1-var-0",
+      "assetPath": "generated/cactusfolk-elite-desert-capo-v1-var-0.png",
+      "approvedAt": "2026-07-09T08:40:21.115Z",
+      "sourceRun": "generated/runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 30,
+        "y": 34,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 30,
+          "y": 34,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "be97936e9092a11bbefde3526615d0ed9d3c76a97d24e5b85df2462870689eab",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "cactusfolk-elite-desert-capo-v1-var-1": {
+      "briefId": "cactusfolk-elite-desert-capo-v1",
+      "spriteName": "cactusfolk-elite-desert-capo-v1-var-1",
+      "assetPath": "generated/cactusfolk-elite-desert-capo-v1-var-1.png",
+      "approvedAt": "2026-07-09T08:40:21.162Z",
+      "sourceRun": "generated/runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 30,
+        "y": 32,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 30,
+          "y": 32,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "de181bda594892bfe812aaffa9623dd0fdf1628ad934a749d55454922e1e63aa",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "cactusfolk-elite-desert-capo-v1-var-2": {
+      "briefId": "cactusfolk-elite-desert-capo-v1",
+      "spriteName": "cactusfolk-elite-desert-capo-v1-var-2",
+      "assetPath": "generated/cactusfolk-elite-desert-capo-v1-var-2.png",
+      "approvedAt": "2026-07-09T08:40:21.182Z",
+      "sourceRun": "generated/runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 29,
+        "y": 33,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 29,
+          "y": 33,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 29,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "590806f184751062a5bc5f5c49fd62bfae245ea0cf1ce7f605241303c4ab080b",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     }
   }
 }
