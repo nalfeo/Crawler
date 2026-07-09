@@ -173,7 +173,7 @@ const CLIENT_SCRIPT = String.raw`
   var activeTab = 'backlog';
   var lastState = null;
   var openedFile = null; // { relPath, kind, content, error }
-  var runFilter = 'all'; // all | promoted | unpromoted
+  var runFilter = 'all'; // all | promoted | not-promoted (matches sidecar API token)
 
   function h(tag, props, children) {
     var elem = document.createElement(tag);
@@ -426,7 +426,7 @@ const CLIENT_SCRIPT = String.raw`
     });
 
     var filterSel = h('select', { title: 'Filter runs by promotion state' });
-    var opts = [['all', 'All runs'], ['promoted', 'Promoted (★)'], ['unpromoted', 'Not promoted']];
+    var opts = [['all', 'All runs'], ['promoted', 'Promoted (★)'], ['not-promoted', 'Not promoted']];
     for (var f = 0; f < opts.length; f++) {
       var o = document.createElement('option');
       o.value = opts[f][0]; o.textContent = opts[f][1];
@@ -445,7 +445,7 @@ const CLIENT_SCRIPT = String.raw`
   function filteredRuns(state) {
     var runs = state.runs || [];
     if (runFilter === 'promoted') return runs.filter(function (r) { return r.promoted; });
-    if (runFilter === 'unpromoted') return runs.filter(function (r) { return !r.promoted; });
+    if (runFilter === 'not-promoted') return runs.filter(function (r) { return !r.promoted; });
     return runs;
   }
 

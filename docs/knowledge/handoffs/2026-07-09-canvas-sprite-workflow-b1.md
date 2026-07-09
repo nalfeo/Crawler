@@ -207,3 +207,30 @@ The ext test suite caught a **real bug I introduced** mid-fix — a backtick aro
 literal, prematurely closing the client-script string (SyntaxError) — fixed to
 plain text. Final: **29/29 ext tests** (was 28; +1 Windows-path test); `test:guards`
 507/507. Ledger `code_review` round 3 recorded (15 concerns / 15 resolved, clean).
+
+## Review round 4 (2026-07-09) — 2 further copilot-pull-request-reviewer threads
+
+The reviewer re-reviewed the `ffb197ce` push and opened 2 more threads. Both
+evaluated against source before acting (rule #12):
+
+- **FIXED — renderer.mjs run filter token.** The client `runFilter` used the
+  internal token `unpromoted` while the sidecar API + this ext's `list_runs`
+  action enum both use `not-promoted`. Aligned all three renderer occurrences
+  (init comment, `<select>` option token, client-side filter comparison) to
+  `not-promoted`. Purely client-side filter (compares boolean `r.promoted`), so
+  no behavior change today — removes the trap if ever plumbed into
+  `/api/runs?promoted=`. No test referenced it; 29/29 ext tests still pass.
+- **DISPOSITIONED (out-of-scope, drift-locked shared harness) — image-cache.mjs
+  `put()` tmp-file cleanup.** On a mid-write failure the `catch` only logs, so
+  orphan `.tmp-*` files can accumulate in the shared cache dir. GENUINE minor
+  robustness gap, but `image-cache.mjs` is a **drift-locked CANONICAL harness
+  file** (`CANONICAL_FILES=['canvas-harness.mjs','image-cache.mjs']`;
+  `harness-drift.test.mjs` enforces byte-identity with
+  `scripts/canvas-harness/image-cache.mjs` — verified byte-identical). It is
+  Slice A's shared harness, vendored unchanged into EVERY sibling extension.
+  Editing my copy breaks the drift guard; fixing canonical + re-vendoring is a
+  cross-cutting shared-infra change to all sibling exts (and their in-flight
+  PRs) that is explicitly outside B1's read-only scope. Resolved per convention
+  (in-thread explanation) + flagged to the orchestrator as a **harness-maintenance
+  follow-up** for the harness owner. Ledger `code_review` round 4 recorded
+  (2 concerns / 2 resolved, clean).
