@@ -139,6 +139,18 @@ test('destructive persists are confirm-guarded with the shared pure predicate', 
   assert.match(html, /window\.confirm\(/);
 });
 
+test('Apply changes is guarded against a double-submit (single POST in flight)', () => {
+  const html = renderHtml('x');
+  // an in-flight flag early-returns a re-click, and the Apply button is disabled
+  // for the duration so a rapid double-click cannot fire two identical persists.
+  assert.match(html, /var applyInFlight = false;/);
+  assert.match(html, /if \(applyInFlight\) return;/);
+  assert.match(html, /applyInFlight = true;/);
+  assert.match(html, /applyInFlight = false;/);
+  assert.match(html, /authoringApplyBtn\.disabled = true;/);
+  assert.match(html, /authoringApplyBtn\.disabled = false;/);
+});
+
 test('the final output image is clickable and draws the anchor marker', () => {
   const html = renderHtml('x');
   assert.match(html, /function redrawAnchorMarker\(/);

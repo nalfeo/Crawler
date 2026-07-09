@@ -200,6 +200,8 @@ const CLIENT_SCRIPT = String.raw`
   var applyNote = null;              // survives the post-Apply re-render for feedback
   var finalImgEl = null;             // current final <img> (for marker redraw)
   var finalMarkerEl = null;          // current marker dot
+  var authoringApplyBtn = null;      // current "Apply changes" <button> (for in-flight disable)
+  var applyInFlight = false;         // guards against a double-POST from a rapid re-click
 
   function h(tag, props, children) {
     var elem = document.createElement(tag);
@@ -594,6 +596,7 @@ const CLIENT_SCRIPT = String.raw`
 
     var applyBtn = h('button', { type: 'button', class: 'primary', text: 'Apply changes' });
     applyBtn.addEventListener('click', applyChanges);
+    authoringApplyBtn = applyBtn;
 
     applyStatusEl = h('span', { class: 'apply-status' });
     if (applyNote) {
@@ -613,6 +616,7 @@ const CLIENT_SCRIPT = String.raw`
 
   function applyChanges() {
     if (!currentState || !currentState.selected) return;
+    if (applyInFlight) return; // a persist is already pending — ignore the re-click
     var sel = currentState.selected;
     var mode = pendingMode === 'reset' ? 'reset' : 'replace';
     var applyToAll = currentScope === 'all';
@@ -637,22 +641,29 @@ const CLIENT_SCRIPT = String.raw`
     else if (currentAnchor) body.manualAnchor = { x: currentAnchor.x, y: currentAnchor.y };
     setApplyStatus('Applying\u2026', '#94a3b8');
     setBusy(true, 'Persisting overrides\u2026');
+    applyInFlight = true;
+    if (authoringApplyBtn) authoringApplyBtn.disabled = true;
     fetch('/api/persist-postprocess', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     }).then(function (r) { return r.json(); }).then(function (resp) {
       setBusy(false);
+      applyInFlight = false;
       if (resp && resp.ok && resp.state) {
         // Single re-render from the fresh (re-seeded) state; render() bumps
         // renderToken so any in-flight pre-apply live relay is dropped. applyNote
-        // survives the re-render to show the "Saved" confirmation.
+        // survives the re-render to show the "Saved" confirmation. render()
+        // rebuilds the authoring panel with a fresh, enabled Apply button.
         applyNote = { text: 'Saved \u2713', color: '#86efac' };
         render(resp.state);
       } else {
+        if (authoringApplyBtn) authoringApplyBtn.disabled = false;
         setApplyStatus('Failed: ' + ((resp && (resp.message || resp.reason)) || 'unknown'), '#fca5a5');
       }
     }).catch(function (err) {
       setBusy(false);
+      applyInFlight = false;
+      if (authoringApplyBtn) authoringApplyBtn.disabled = false;
       setApplyStatus('Failed: ' + err, '#fca5a5');
     });
   }
