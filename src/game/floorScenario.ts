@@ -103,13 +103,14 @@ import { evaluateAchievementUnlocksForPhase } from './systems/achievementSystem.
 import { getAllSkillDefinitions } from './skills/registry.js';
 import type { SkillState } from '../shared/skills.js';
 import { floor1Config } from '../shared/floor-config.js';
-import { floor1EnemyPack, floor2EnemyPack, pickEnemyArchetype } from '../shared/enemy-packs.js';
+import { floor1EnemyPack, floor2EnemyPack } from '../shared/enemy-packs.js';
 import { floor1Manifest } from '../shared/floor-manifest.js';
 import type { NpcPlacementDef } from '../shared/npc-placements.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
 import { getSpawnerArchetype, getSpawnerArchetypeIndex } from './spawners/registry.js';
 import { hashStringToSeed, SeededRandom } from '../shared/random.js';
 import { computeMobLevelScale } from '../shared/mob-scaling.js';
+import { pickFromSpawnZones, type SpawnZoneWeights } from './spawn-zones.js';
 
 // Derived constants computed from config at module initialization.
 // The camera/viewport is a render-pixel concept, so convert it to feet at this
@@ -2148,7 +2149,19 @@ export function scaleAmbientSpawnStats(
  */
 function spawnAmbientArchetype(world: GameWorld, x: number, y: number): number {
   const pack = floor1EnemyPack;
-  const archetype = pickEnemyArchetype(pack.archetypes, () => world.rng.next());
+  const globalZoneWeights = new Map<string, number>();
+  for (const entry of pack.archetypes) {
+    globalZoneWeights.set(entry.id, entry.spawnWeight);
+  }
+  const { pickedId } = pickFromSpawnZones([globalZoneWeights as SpawnZoneWeights], () =>
+    world.rng.next(),
+  );
+  const archetype =
+    (pickedId ? pack.archetypes.find((entry) => entry.id === pickedId) : undefined) ??
+    pack.archetypes[0];
+  if (!archetype) {
+    throw new Error('No archetypes available in floor1EnemyPack');
+  }
 
   // Scale HP and speed based on distance from the player's starting tile so
   // enemies deeper in the dungeon feel progressively more dangerous.
