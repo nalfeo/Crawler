@@ -1,5 +1,16 @@
 [
   {
+    "commit": "2ae569f3ede94610cab5d5eef3e038b20d629896",
+    "commitDate": "2026-07-09T07:59:32Z",
+    "commitSubject": "feat(ai): cloud-parallel pathing × decision combo evaluation + hill-climb pipeline (#976)",
+    "capturedAt": "2026-07-09T08:43:09.769Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29003847672",
+    "winRate": 0.82,
+    "totalWins": 246,
+    "totalRuns": 300,
+    "path": "by-sha/2ae569f3ede94610cab5d5eef3e038b20d629896.json"
+  },
+  {
     "commit": "cdef5469f4c33e84c646df351f13c0ee831e2bd0",
     "commitDate": "2026-07-09T07:39:53Z",
     "commitSubject": "feat(sprites): consolidate 14 approved assets from 1 check-in(s) (#978)",
