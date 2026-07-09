@@ -126,6 +126,8 @@ interface AiRunnerLabState {
     visualNavmesh: boolean;
     threatPreviewFrames: number;
     autoPauseOnDamage: boolean;
+    /** Slice 4b NAVMESH_FUSED seam weight (0 = shipped-4a control). */
+    seamWeight?: number;
   };
 }
 
@@ -286,6 +288,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     visualNavmesh: boolean;
     threatPreviewFrames: number;
     autoPauseOnDamage: boolean;
+    seamWeight: number;
   } = {
     pathingMode: persisted?.pathingMode ?? AIPathingMode.LEGACY,
     decisionMode: persisted?.decisionMode ?? AIDecisionMode.LEGACY,
@@ -293,6 +296,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     visualNavmesh: persisted?.aiConfig?.visualNavmesh ?? false,
     threatPreviewFrames: persisted?.aiConfig?.threatPreviewFrames ?? 0,
     autoPauseOnDamage: persisted?.aiConfig?.autoPauseOnDamage ?? false,
+    seamWeight: persisted?.aiConfig?.seamWeight ?? 0,
   };
 
   let ai = new BehaviorTreeAI({
@@ -302,6 +306,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     debug: true,
     pathingMode: aiConfig.pathingMode,
     decisionMode: aiConfig.decisionMode,
+    seamWeight: aiConfig.seamWeight,
   });
   let selectedSpeed = 1;
   let isPaused = true;
@@ -354,6 +359,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         visualNavmesh: aiConfig.visualNavmesh,
         threatPreviewFrames: aiConfig.threatPreviewFrames,
         autoPauseOnDamage: aiConfig.autoPauseOnDamage,
+        seamWeight: aiConfig.seamWeight,
       },
     });
   };
@@ -878,6 +884,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       debug: true,
       pathingMode: aiConfig.pathingMode,
       decisionMode: aiConfig.decisionMode,
+      seamWeight: aiConfig.seamWeight,
     });
   };
 
@@ -897,6 +904,18 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   aiModesFolder
     .add(aiConfig, 'decisionMode', [AIDecisionMode.LEGACY, AIDecisionMode.SLACK_AWARE])
     .name('Decision')
+    .onChange(() => {
+      rebuildAiBrain();
+      persistLabState();
+    });
+  // Slice 4b: NAVMESH_FUSED seam weight. 0 = shipped-4a control (seam term OFF,
+  // byte-identical); higher biases travel ALONG the danger boundary toward the
+  // goal when farmable reward lies along the seam. Turn on "Show risk/reward
+  // fields" + pick NAVMESH_FUSED to see the magenta danger-gradient + orange
+  // seam-tangent overlay. Only affects NAVMESH_FUSED.
+  aiModesFolder
+    .add(aiConfig, 'seamWeight', 0, 4, 0.25)
+    .name('Seam weight (NAVMESH_FUSED)')
     .onChange(() => {
       rebuildAiBrain();
       persistLabState();
@@ -1002,6 +1021,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       debug: true,
       pathingMode: aiConfig.pathingMode,
       decisionMode: aiConfig.decisionMode,
+      seamWeight: aiConfig.seamWeight,
     });
     pollCount = 0;
     arenaEntryFrame = null;
@@ -1730,6 +1750,47 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       graphics.strokePath();
       graphics.fillStyle(0x33ffff, 0.95);
       graphics.fillCircle(ex, ey, 5);
+    }
+
+    // Slice 4b seam term: draw the centered danger GRADIENT (magenta, points
+    // uphill in danger) and, when the seam re-selected the heading this poll, the
+    // TANGENT the agent travels along (bright orange). Sourced from the real
+    // scorer's `seam` snapshot — the seam is defined ⟂ gradient, so an orange
+    // arrow ~90° off the magenta one, hugging the danger boundary, IS the
+    // "travelling the seam" evidence. Absent (null) when the seam block did not
+    // run (weight 0 or non-fused), so this stays invisible for the 4a control.
+    const seam = debug.seam;
+    if (seam) {
+      const gradLen = Math.hypot(seam.gradX, seam.gradY);
+      if (gradLen > 1e-9) {
+        const gx = px + (seam.gradX / gradLen) * rayLenPx;
+        const gy = py + (seam.gradY / gradLen) * rayLenPx;
+        graphics.lineStyle(2, 0xff33cc, 0.85); // magenta = danger gradient (uphill)
+        graphics.beginPath();
+        graphics.moveTo(px, py);
+        graphics.lineTo(gx, gy);
+        graphics.strokePath();
+        graphics.fillStyle(0xff33cc, 0.85);
+        graphics.fillCircle(gx, gy, 4);
+      }
+      if (seam.seamActive) {
+        // Tangent is unit length; draw both ways so the boundary line reads as a
+        // seam, with the forward (goal-oriented) half emphasized.
+        const tx = seam.tangentX * rayLenPx;
+        const ty = seam.tangentY * rayLenPx;
+        graphics.lineStyle(2, 0xffaa00, 0.5);
+        graphics.beginPath();
+        graphics.moveTo(px - tx, py - ty);
+        graphics.lineTo(px, py);
+        graphics.strokePath();
+        graphics.lineStyle(5, 0xffaa00, 0.95); // bright orange = seam travel dir
+        graphics.beginPath();
+        graphics.moveTo(px, py);
+        graphics.lineTo(px + tx, py + ty);
+        graphics.strokePath();
+        graphics.fillStyle(0xffaa00, 0.95);
+        graphics.fillCircle(px + tx, py + ty, 6);
+      }
     }
   };
 
