@@ -57,6 +57,28 @@ function validateSpriteRefLike(sprite, issuePrefix) {
     if (typeof sprite.prompt !== 'string' || sprite.prompt.trim() === '') {
       issues.push(issuePrefix + '.prompt is required');
     }
+    if (
+      sprite.widthTiles !== undefined &&
+      (!Number.isInteger(sprite.widthTiles) || sprite.widthTiles <= 0)
+    ) {
+      issues.push(issuePrefix + '.widthTiles must be a positive integer when present');
+    }
+    if (
+      sprite.heightTiles !== undefined &&
+      (!Number.isInteger(sprite.heightTiles) || sprite.heightTiles <= 0)
+    ) {
+      issues.push(issuePrefix + '.heightTiles must be a positive integer when present');
+    }
+    if (sprite.placeholder !== undefined) {
+      const placeholderPrefix = issuePrefix + '.placeholder';
+      if (!sprite.placeholder || typeof sprite.placeholder !== 'object') {
+        issues.push(placeholderPrefix + ' must be an object when present');
+      } else if (sprite.placeholder.source !== 'catalog' && sprite.placeholder.source !== 'sheet') {
+        issues.push(placeholderPrefix + '.source must be catalog or sheet');
+      } else {
+        issues.push(...validateSpriteRefLike(sprite.placeholder, placeholderPrefix));
+      }
+    }
   } else {
     issues.push(issuePrefix + '.source must be catalog, sheet, or custom');
   }
@@ -110,8 +132,32 @@ function validateLayer(layer, index) {
   if (layer.scale !== undefined && !asFinitePositive(layer.scale)) {
     issues.push('layers[' + index + '].scale must be a positive number');
   }
+  if (layer.offsetX !== undefined && !isFiniteNumber(layer.offsetX)) {
+    issues.push('layers[' + index + '].offsetX must be finite when present');
+  }
+  if (layer.offsetY !== undefined && !isFiniteNumber(layer.offsetY)) {
+    issues.push('layers[' + index + '].offsetY must be finite when present');
+  }
+  if (layer.offsetXFt !== undefined && !isFiniteNumber(layer.offsetXFt)) {
+    issues.push('layers[' + index + '].offsetXFt must be finite when present');
+  }
+  if (layer.offsetYFt !== undefined && !isFiniteNumber(layer.offsetYFt)) {
+    issues.push('layers[' + index + '].offsetYFt must be finite when present');
+  }
+  if (layer.flipX !== undefined && typeof layer.flipX !== 'boolean') {
+    issues.push('layers[' + index + '].flipX must be boolean when present');
+  }
+  if (layer.flipY !== undefined && typeof layer.flipY !== 'boolean') {
+    issues.push('layers[' + index + '].flipY must be boolean when present');
+  }
   if (layer.rotationDeg !== undefined && !isFiniteNumber(layer.rotationDeg)) {
     issues.push('layers[' + index + '].rotationDeg must be finite');
+  }
+  if (
+    layer.tintHex !== undefined &&
+    (typeof layer.tintHex !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(layer.tintHex))
+  ) {
+    issues.push('layers[' + index + '].tintHex must match #rrggbb when present');
   }
   return issues;
 }

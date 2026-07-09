@@ -168,3 +168,33 @@ test('validateSetPieceCandidate rejects malformed npc spriteOverride payloads', 
   assert.ok(issues.some((issue) => issue.includes('npcs[0].spriteOverride.col must be')));
   assert.ok(issues.some((issue) => issue.includes('npcs[0].spriteOverride.row must be')));
 });
+
+test('validateSetPieceCandidate rejects malformed layer transform/tint fields', () => {
+  const issues = validateSetPieceCandidate({
+    width: 8,
+    height: 7,
+    props: [
+      {
+        id: 'floor',
+        kind: 'floor',
+        x: 0,
+        y: 0,
+        width: 8,
+        height: 7,
+        layers: [
+          {
+            sprite: { source: 'catalog', spriteId: 'sprite:item.gem' },
+            flipX: 'false',
+            tintHex: '#abcd',
+            offsetX: Number.NaN,
+          },
+        ],
+      },
+    ],
+    npcs: [{ id: 'goon', npcTypeId: 'tutorial-goon', x: 4, y: 2 }],
+  });
+
+  assert.ok(issues.some((issue) => issue.includes('layers[0].flipX must be boolean')));
+  assert.ok(issues.some((issue) => issue.includes('layers[0].tintHex must match #rrggbb')));
+  assert.ok(issues.some((issue) => issue.includes('layers[0].offsetX must be finite')));
+});

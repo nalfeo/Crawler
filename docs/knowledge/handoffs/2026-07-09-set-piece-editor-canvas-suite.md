@@ -14,7 +14,7 @@ devtools, mapgen, enemies
 
 ## Apples
 
-2🍎 estimated, 2🍎 actual (schema/stamp/bridge threading plus deterministic unit-test coverage, no new runtime system introduced).
+4🍎 estimated, 4🍎 actual (multi-system editor + shared/core/game/engine threading with runtime-fidelity and review-harness evidence captured in the review ledger).
 
 ## What Was Done
 
