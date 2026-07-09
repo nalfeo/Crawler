@@ -260,6 +260,166 @@ describe('AIPathingMode.NAVMESH — pure-locomotion preservation (fused fan stay
   });
 });
 
+describe('AIPathingMode.NAVMESH_FUSED — Slice 4b seam term (weight 0 dormant, weight>0 active + deterministic)', () => {
+  it('seamWeight 0 leaves the seam machinery fully dormant (counters 0, no seam debug)', () => {
+    const world = freshFloor1World(42);
+    const ai = new BehaviorTreeAI({
+      seed: 42,
+      pathingMode: AIPathingMode.NAVMESH_FUSED,
+      seamWeight: 0,
+    });
+    activeNavAi = ai; // freed in afterEach so the built recast handle never leaks
+    // Capture ON — the seam block must STILL never run at weight 0. This is the
+    // structural basis for "NAVMESH_FUSED at weight 0 is byte-identical to Slice
+    // 4a": the whole seam branch is gated on seamWeight > 0, so at 0 it cannot
+    // perturb the fan (analogous to the LEGACY-dormancy lock above).
+    ai.fusedDebugCapture = true;
+
+    let sawFan = false;
+    for (let i = 0; i < POLL_BUDGET; i++) {
+      ai.poll(createInputState(), world);
+      const debug = ai.getFusedDebug();
+      if (debug) {
+        sawFan = true;
+        // The fused fan runs, but the seam block did not (seam absent/null).
+        expect(debug.seam ?? null).toBeNull();
+      }
+    }
+
+    expect(sawFan).toBe(true);
+    expect(ai.navmeshSeamPolls).toBe(0);
+    expect(ai.navmeshSeamActivePolls).toBe(0);
+    expect(ai.navmeshSeamAlignSum).toBe(0);
+  });
+
+  it('a non-finite / negative seamWeight is clamped to OFF (byte-identical to weight 0)', () => {
+    // The constructor clamps seamWeight to (finite, > 0) else 0, so a garbage
+    // config value can never silently enable the seam term or emit a NaN heading.
+    const worldZero = freshFloor1World(42);
+    const worldNaN = freshFloor1World(42);
+    const worldNeg = freshFloor1World(42);
+    const aiZero = new BehaviorTreeAI({
+      seed: 42,
+      pathingMode: AIPathingMode.NAVMESH_FUSED,
+      seamWeight: 0,
+    });
+    const aiNaN = new BehaviorTreeAI({
+      seed: 42,
+      pathingMode: AIPathingMode.NAVMESH_FUSED,
+      seamWeight: Number.NaN,
+    });
+    const aiNeg = new BehaviorTreeAI({
+      seed: 42,
+      pathingMode: AIPathingMode.NAVMESH_FUSED,
+      seamWeight: -1,
+    });
+    try {
+      for (let i = 0; i < POLL_BUDGET; i++) {
+        const sZero = createInputState();
+        const sNaN = createInputState();
+        const sNeg = createInputState();
+        aiZero.poll(sZero, worldZero);
+        aiNaN.poll(sNaN, worldNaN);
+        aiNeg.poll(sNeg, worldNeg);
+        // Clamped weights must reproduce the weight-0 heading stream exactly.
+        expect(sNaN).toStrictEqual(sZero);
+        expect(sNeg).toStrictEqual(sZero);
+      }
+      // And the seam machinery stayed dormant for the clamped-off runs.
+      expect(aiNaN.navmeshSeamPolls).toBe(0);
+      expect(aiNeg.navmeshSeamPolls).toBe(0);
+    } finally {
+      aiZero.disposeNavmesh();
+      aiNaN.disposeNavmesh();
+      aiNeg.disposeNavmesh();
+    }
+  });
+
+  it('seamWeight>0 activates the seam block (counter climbs) while route + fan still run', () => {
+    const world = freshFloor1World(42);
+    const ai = new BehaviorTreeAI({
+      seed: 42,
+      pathingMode: AIPathingMode.NAVMESH_FUSED,
+      seamWeight: 2,
+    });
+    activeNavAi = ai; // freed in afterEach so the built recast handle never leaks
+    ai.fusedDebugCapture = true;
+
+    let sawNavRoute = false;
+    let sawMotion = false;
+    let sawSeamDebug = false;
+    for (let i = 0; i < POLL_BUDGET; i++) {
+      const state = createInputState();
+      ai.poll(state, world);
+      if (ai.getNavigationDebug().navWaypoints.length > 0) sawNavRoute = true;
+      if (Math.hypot(state.moveX, state.moveY) > 0) sawMotion = true;
+      const debug = ai.getFusedDebug();
+      // When the fan ran with the seam term on, the seam snapshot is present (its
+      // `seamActive` flag then says whether the tangential term re-selected the
+      // heading — see navmeshSeamActivePolls).
+      if (debug?.seam) sawSeamDebug = true;
+    }
+
+    // The navmesh route + fused fan still compose exactly as in 4a …
+    expect(sawNavRoute).toBe(true);
+    expect(sawMotion).toBe(true);
+    // … and the seam block ran on every fused poll (weight > 0) — non-inert and
+    // distinguishable from the weight-0 dormant case above. Whether it re-selected
+    // a heading (navmeshSeamActivePolls) is reward-reachability-gated, so we assert
+    // the block engaged, not that the gate opened within this short budget.
+    expect(ai.navmeshSeamPolls).toBeGreaterThan(0);
+    expect(sawSeamDebug).toBe(true);
+    // Active polls are a subset of polls, and every alignment is a unit-vector dot
+    // (≤ 1) so the accumulator can never exceed the active count — cheap invariant
+    // that a garbage seam value would violate.
+    expect(ai.navmeshSeamActivePolls).toBeLessThanOrEqual(ai.navmeshSeamPolls);
+    expect(ai.navmeshSeamAlignSum).toBeLessThanOrEqual(ai.navmeshSeamActivePolls + 1e-9);
+    // Every counted (seam-active) poll re-selected a heading that strictly beat the
+    // base pick via a positive (align > 0) tangential bonus, so its alignment is
+    // > 0 — the accumulator is therefore non-negative. This would have caught the
+    // earlier bug where alignment was folded in whenever the reward gate opened
+    // (even without a re-selection), letting NEGATIVE alignments accumulate.
+    expect(ai.navmeshSeamAlignSum).toBeGreaterThanOrEqual(0);
+  });
+
+  it('seamWeight>0 is deterministic run-to-run (byte-identical InputState stream)', () => {
+    const worldA = freshFloor1World(42);
+    const worldB = freshFloor1World(42);
+    const aiA = new BehaviorTreeAI({
+      seed: 42,
+      pathingMode: AIPathingMode.NAVMESH_FUSED,
+      seamWeight: 2,
+    });
+    const aiB = new BehaviorTreeAI({
+      seed: 42,
+      pathingMode: AIPathingMode.NAVMESH_FUSED,
+      seamWeight: 2,
+    });
+    try {
+      for (let i = 0; i < POLL_BUDGET; i++) {
+        const stateA = createInputState();
+        const stateB = createInputState();
+        aiA.poll(stateA, worldA);
+        aiB.poll(stateB, worldB);
+        // The seam term (centered gradient, tangent sign, reward gate, re-argmax)
+        // is pure float arithmetic over deterministic inputs — same seed ⇒ every
+        // poll's InputState is byte-identical. This weight (2) is the shipped
+        // NAVMESH_FUSED_SEAM_WEIGHT, and the same-seed byte-identity of the full
+        // Floor-1 composition at this weight is the headless golden in
+        // tests/headless/navmesh-fused-determinism.test.ts.
+        expect(stateA).toStrictEqual(stateB);
+      }
+      // Seam engagement is itself deterministic across the two runs.
+      expect(aiA.navmeshSeamPolls).toBe(aiB.navmeshSeamPolls);
+      expect(aiA.navmeshSeamActivePolls).toBe(aiB.navmeshSeamActivePolls);
+      expect(aiA.navmeshSeamAlignSum).toBe(aiB.navmeshSeamAlignSum);
+    } finally {
+      aiA.disposeNavmesh();
+      aiB.disposeNavmesh();
+    }
+  });
+});
+
 describe('AIPathingMode.NAVMESH_FUSED — partial-path guard falls back to grid-A* (not frozen)', () => {
   afterEach(() => {
     // Restore call-through so a mocked stub never leaks into another test.

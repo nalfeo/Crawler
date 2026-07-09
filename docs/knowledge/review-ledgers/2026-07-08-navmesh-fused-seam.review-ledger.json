@@ -1,0 +1,64 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-08",
+  "session_slug": "navmesh-fused-seam",
+  "task_title": "Slice 4b: tangential-to-gradient seam term on NAVMESH_FUSED fan",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.5",
+      "concerns_count": 11,
+      "resolved_count": 11,
+      "adversarial": true,
+      "alternatives_considered": 6,
+      "plan_divergence": "minor",
+      "notes": "Adversarial red-team (gpt-5.5, high) of the fork-A tangential-to-gradient seam term on the shared RISK_REWARD_FUSED fan. Enumerated 6 alternatives (A guarded-duplicate vs helper-extract; B centered/contrast gradient; C finite-difference field; D nearest-threat tangent; E route-level poly cost [rejected: violates pure-query]; F reward-being-on-seam [creator-rejected, confirmed weaker]). Verdict: sound-with-changes, ~4 apples, split term/tune. 11 concerns adopted: B1 keep weight-0 path LITERALLY unchanged (no computeCandidateDanger extraction) -> adopted: seam logic entirely behind if(seamWeight>0), main loop stores {dir,danger,score} only under that guard + skipped post-loop block -> byte-identical by construction. B2 raw sum has forward-semicircle bias -> adopted CENTERED estimator grad=sum(dir_i*(danger_i-meanDanger)); zero contrast => seam inactive. B3 finite/epsSq/tie handling for gradient+tangent sign -> adopted (gradLenSq>EPS gate, no-flip on exact 0). M1 reward gate flicker -> epsilon gate + report seam-active toggle rate in sweep. M2 seam can overpower progress -> progress-floor gate (no seam bonus below SEAM_PROGRESS_FLOOR) + report completion time/timeouts. M3 prevFusedDir stale-tangent -> tangent recomputed fresh each poll (never carried); track seam-active-prev + report flicker, add hysteresis only if sweep shows oscillation. M4 fallback metric blind to off-route seam drag -> report completion time + timeout count (+ off-corridor distance if cheap). M5 danger-band occupancy insufficient -> richer metric: seam-active frame fraction + mean chosenDir.tangent while active (directional travel proof) + danger-band occupancy (mode-agnostic before/after). m1 clamp seamWeight finite>=0 (config field, no env read). m2 debug schema exposes gradient/tangent/seamAlign/effectiveSeamWeight/seam-active reason for lab overlay. m3 no allocation on weight-0 path. Divergence=minor: design intact, gradient estimator tightened + guards added."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.5", "gemini-3.1-pro", "claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": false,
+          "notes": "3 distinct models on the w=2 staged seam diff. gpt-5.5: (1) five seam scratch Float64Arrays allocate eagerly at construction for all AI instances/modes; (2) reset() omits the 3 seam counters. gemini-3.1-pro: no issues. claude-sonnet-4.6: (3) seam counters (navmeshSeamActivePolls/navmeshSeamAlignSum) increment when the reward-reachability GATE opens, not when the heading is actually re-selected, contradicting the docstring and polluting the Rule-#10 meanSeamAlign evidence. All 3 resolved: fix #3 (sonnet, the important one) gated counter increments + heading mutation on seamBestIndex !== priorBestIndex (tanX/tanY still recorded on gate-open for dev viz); fix #2 (gpt) added the 3 counter resets to reset(); concern #1 (gpt, alloc) adjudicated wont-fix and reviewer-accepted -> field comment tightened to state the eager alloc is inert and byte-identity/determinism-immaterial. m3 DEVIATION (transparent): the adversarial plan adopted m3 no-alloc-at-weight-0; instance-level satisfies the core no-per-poll-alloc intent, but the residual one-time construction alloc (~0.5KB/AI) was NOT lazy-alloc-eliminated -> adjudicated immaterial (sim fingerprint is state not heap; lazy-alloc would add ~15 hot-path non-null assertions for zero determinism benefit) and explicitly accepted by the raiser on re-review. NOT a rule-#12 weakening. Post-fix: unit 11/11 green, typecheck exit 0, headless golden PASSED at w=2 (2/2 byte-identical)."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "2 distinct models re-reviewed the batched fix round. BOTH CLEAN. gpt-5.5 (the round-1 alloc raiser) verified all 3 fixes, ran the unit tests + typecheck itself, and explicitly accepted the doc-only alloc resolution as sufficient (no correctness/determinism mechanism affecting the sim fingerprint). claude-sonnet-4.6 independently reconstructed the byte-identity proof (seamDirX[priorBestIndex] === bestX is IEEE-754 exact; bestScore divergence confined to dev-only if(captured); return moveX/moveY provably bit-identical in all cases) and proved the new navmeshSeamAlignSum >= 0 assertion AIRTIGHT via argmax strict-> semantics (a zero/negative-align candidate can never displace the base winner). No new bugs. Loop closed clean at round 2 (well under the 2-round cap; no escalation)."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.5", "gemini-3.1-pro", "claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "clean": false,
+          "notes": "Same 3 distinct-model round-1 pass, adjudicated by claude-opus-4.8. All 3 concerns judged VALID: (gpt) eager scratch alloc, (gpt) reset() omission, (sonnet) counter-increment semantics vs docstring. Adjudicated remedies: 2 code-fixes (counter-gating on re-selection; 3 reset() lines) + 1 doc-resolution (alloc: eager+comment, byte-identity provably safe, raiser-accepted). m3 alloc deviation documented (see code_review round 1). gemini contributed a clean signal (no false-positive noise to adjudicate)."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.5"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "2 distinct models, both CLEAN (see code_review round 2). Adjudicator claude-opus-4.8 confirms zero valid outstanding concerns: the round-1 alloc raiser accepted the doc resolution, sonnet independently proved byte-identity + the >= 0 assertion. Corrected Rule-#10 metric regenerated post-fix (meanSeamAlign 0.963, seamActive 3.4%, 0 fallbacks, 9/9 wins >= pure-NAVMESH 8/9 on the 3-seed subset) confirming the sim is unchanged and only the diagnostic semantics tightened. Loop closed clean at round 2."
+        }
+      ]
+    }
+  }
+}

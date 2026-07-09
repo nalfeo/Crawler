@@ -11,6 +11,27 @@
  */
 import { AIDecisionMode, AIPathingMode, type AIConfig } from './types.js';
 
+// Slice 4b: NAVMESH_FUSED tangential-seam-following weight. This is the human-
+// adjudicated production weight from the mandatory two-stage tuning sweep
+// (`npm run ai:navmesh-seam-sweep`), NOT a silently-tuned number (rule #12/#13):
+//
+//   2026-07-08 — operator picked W=2 from the 6-point sweep [0,0.5,1,2,3,4]
+//   (12 seeds × 3 weapons = 36 pairs/weight). W=2 is the Pareto sweet spot:
+//   highest seam alignment among the zero-fallback / no-regression weights
+//   (meanSeamAlign 0.972), 0 partial-path fallbacks, wins 30/36 and completions
+//   31/36 both == the pure-NAVMESH baseline (hard gate held, no orbit-collapse).
+//   W≥3 bought marginal alignment (0.982→0.987) but re-introduced 18 off-mesh
+//   fallbacks and shaved a completion; W=4 also lost a win — strictly worse.
+//
+// At weight 0 the whole tangential-seam block in computeRiskRewardFusedHeading is
+// skipped, so NAVMESH_FUSED is byte-identical to Slice 4a (that dormancy is the
+// A/B control, locked by tests/unit/ai/navmesh-pathing.test.ts). Because the seam
+// weight only applies when pathingMode === NAVMESH_FUSED (an opt-in A/B mode) and
+// the default pathingMode is LEGACY, raising this from 0→2 does NOT change the
+// live game: LEGACY / pure-NAVMESH / RISK_REWARD_FUSED stay byte-identical.
+// Do NOT re-tune this without a fresh operator-adjudicated sweep.
+export const NAVMESH_FUSED_SEAM_WEIGHT = 2;
+
 export const DEFAULT_CONFIG: Required<AIConfig> = {
   seed: 12345,
   aggression: 1,
@@ -39,6 +60,11 @@ export const DEFAULT_CONFIG: Required<AIConfig> = {
   // caller explicitly opts into an experimental mode.
   pathingMode: AIPathingMode.LEGACY,
   decisionMode: AIDecisionMode.LEGACY,
+  // Slice 4b tangential-seam term. The production weight (NAVMESH_FUSED_SEAM_WEIGHT
+  // = 2) only takes effect when a caller opts into pathingMode NAVMESH_FUSED; every
+  // other mode forces the seam weight to 0 at the call site, so the LEGACY default
+  // (and pure-NAVMESH / RISK_REWARD_FUSED) stay byte-identical to main.
+  seamWeight: NAVMESH_FUSED_SEAM_WEIGHT,
   debug: false,
 };
 

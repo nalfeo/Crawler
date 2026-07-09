@@ -1,27 +1,31 @@
 /**
- * NAVMESH_FUSED determinism guard (Slice 4a).
+ * NAVMESH_FUSED determinism guard (Slice 4a + 4b seam term).
  *
- * NAVMESH_FUSED composes two already-deterministic layers: the Slice-3 recast
+ * NAVMESH_FUSED composes three already-deterministic layers: the Slice-3 recast
  * waypoint route (a PURE query — its cross-platform byte-identity is locked by
- * the navmesh-determinism golden 75917f12) and the RISK_REWARD_FUSED danger/
- * reward fan applied at FOLLOW level (its own determinism is locked by
- * fused-pathing-determinism.test.ts). This test proves the COMPOSITION is still
- * bit-reproducible end-to-end: the fused fan sums a float danger field over a
- * bitecs enemy `query()`, runs an argmax over a fixed 13-candidate heading fan,
- * and carries `prevFusedDir` continuity state across the navmesh-driven travel
- * polls — so an argmax near-tie or a continuity-state cascade on the navmesh
- * heading could in principle diverge run-to-run without EITHER component golden
- * catching it (neither exercises navmesh-route + fused-follow together).
+ * the navmesh-determinism golden 75917f12), the RISK_REWARD_FUSED danger/reward
+ * fan applied at FOLLOW level (its own determinism is locked by
+ * fused-pathing-determinism.test.ts), and — as of Slice 4b — the tangential
+ * seam-following term that rides ON TOP of that fan at the shipped weight
+ * (NAVMESH_FUSED_SEAM_WEIGHT = 2, the operator-adjudicated production weight).
+ * This test proves the COMPOSITION is still bit-reproducible end-to-end: the
+ * fused fan sums a float danger field over a bitecs enemy `query()`, the seam
+ * term adds a centered-gradient tangent alignment bonus, an argmax runs over a
+ * fixed 13-candidate heading fan, and `prevFusedDir` continuity state carries
+ * across the navmesh-driven travel polls — so an argmax near-tie or a continuity
+ * cascade on the navmesh heading could in principle diverge run-to-run without
+ * ANY component golden catching it (none exercises navmesh-route + fused-follow +
+ * seam together).
  *
  * Same-seed byte-identity ONLY. The functional wiring proof — that NAVMESH_FUSED
- * genuinely runs BOTH the recast route AND the fused fan (i.e. is not a silent
- * delegate to pure NAVMESH) — is the DETERMINISTIC unit assertion in
+ * genuinely runs the recast route AND the fused fan AND (at weight > 0) the seam
+ * block — is the DETERMINISTIC unit assertion in
  * tests/unit/ai/navmesh-pathing.test.ts (getFusedDebug() non-null + navWaypoints
- * populated). A headless "fingerprint differs from pure-NAVMESH on \u22651 seed"
- * gate was deliberately NOT added here: it is brittle (2026-07-08 plan review,
- * concern #1) because two modes can legitimately coincide on a given seed set
- * without either being inert, so it belongs in the deterministic unit test, not
- * a full-run fingerprint diff.
+ * populated + the seam counter climbing at weight 2). A headless "fingerprint
+ * differs from pure-NAVMESH on \u22651 seed" gate was deliberately NOT added here: it
+ * is brittle (2026-07-08 plan review, concern #1) because two modes can
+ * legitimately coincide on a given seed set without either being inert, so it
+ * belongs in the deterministic unit test, not a full-run fingerprint diff.
  *
  * maxWallTimeMs is Infinity on purpose: sim correctness is frame-based, so a slow
  * CI box must NOT truncate a run mid-flight and manufacture a false mismatch.
@@ -60,7 +64,10 @@ function fingerprint(s: RunStats): Fingerprint {
 }
 
 // runHeadless awaits initNavmesh() internally for navmesh-routed modes, so this
-// test does not need to init the recast runtime itself.
+// test does not need to init the recast runtime itself. seamWeight is left to the
+// default (NAVMESH_FUSED_SEAM_WEIGHT = 2) on purpose: this golden tracks the
+// SHIPPED NAVMESH_FUSED behavior, so it always locks determinism of whatever seam
+// weight production runs — currently the operator-adjudicated W=2.
 async function runSlice(seed: number): Promise<RunStats> {
   const ai = new BehaviorTreeAI({ seed, pathingMode: AIPathingMode.NAVMESH_FUSED });
   return runHeadless(ai, {
