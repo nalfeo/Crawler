@@ -92,6 +92,11 @@ export class MockImage {
     return this;
   }
 
+  setAngle(angleDeg: number): this {
+    this.rotation = angleDeg;
+    return this;
+  }
+
   setVisible(visible: boolean): this {
     this.visible = visible;
     return this;

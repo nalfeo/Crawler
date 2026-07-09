@@ -35,15 +35,15 @@ describe('set piece content packs', () => {
   it("keeps a named exact set piece (Jimmy's Pizza) with a fixed footprint", () => {
     const jimmys = getSetPieceDef('jimmys-pizza');
     expect(jimmys?.sizing).toBe('exact');
-    expect(getSetPieceFootprint(jimmys!)).toEqual({ width: 8, height: 6 });
+    expect(getSetPieceFootprint(jimmys!)).toEqual({ width: 10, height: 8 });
   });
 
   it('reports the max footprint for themed kits', () => {
     const office = getSetPieceDef('doctors-office');
     expect(office?.sizing).toBe('themed');
     // width/height is the minimum; footprint reflects the max extent.
-    expect(office?.width).toBe(6);
-    expect(getSetPieceFootprint(office!)).toEqual({ width: 9, height: 7 });
+    expect(office?.width).toBe(8);
+    expect(getSetPieceFootprint(office!)).toEqual({ width: 11, height: 9 });
   });
 
   it('groups set pieces by theme', () => {
@@ -320,6 +320,29 @@ describe('set piece NPC placement', () => {
     expect(goon).toMatchObject({ npcTypeId: 'tutorial-goon', x: 3, y: 0, anchorRole: 'welcome' });
   });
 
+  it('compiles NPC visual override, size, and transform metadata', () => {
+    const pack = JSON.parse(JSON.stringify(validNpcPack)) as typeof validNpcPack;
+    const goon = pack.setPieces[0]!.npcs[0] as Record<string, unknown>;
+    goon.widthFt = 5;
+    goon.heightFt = 7;
+    goon.flipX = true;
+    goon.flipY = true;
+    goon.rotationDeg = 180;
+    goon.spriteOverride = { source: 'catalog', spriteId: 'sprite:npc.guide' };
+
+    installSetPiecePacks([setPiecePackSchema.parse(pack)]);
+    const room = getSetPieceDef('greeting-room')!;
+    const compiled = room.npcs.find((npc) => npc.id === 'goon');
+    expect(compiled).toMatchObject({
+      widthFt: 5,
+      heightFt: 7,
+      flipX: true,
+      flipY: true,
+      rotationDeg: 180,
+      spriteOverride: { source: 'catalog', spriteId: 'sprite:npc.guide' },
+    });
+  });
+
   it('resolves NPCs by objective anchor role', () => {
     installSetPiecePacks([setPiecePackSchema.parse(validNpcPack)]);
     const room = getSetPieceDef('greeting-room')!;
@@ -401,6 +424,16 @@ describe('set piece NPC placement', () => {
     ).toThrow(/Duplicate NPC id/);
   });
 
+  it('rejects NPC widthFt/heightFt when only one side is provided', () => {
+    const pack = JSON.parse(JSON.stringify(validNpcPack)) as typeof validNpcPack;
+    const goon = pack.setPieces[0]!.npcs[0] as Record<string, unknown>;
+    goon.widthFt = 5;
+    delete goon.heightFt;
+    expect(() => setPiecePackSchema.parse(pack)).toThrow(
+      /must specify widthFt and heightFt together/,
+    );
+  });
+
   it('rejects unknown npcTypeId references', () => {
     expect(() =>
       setPiecePackSchema.parse({
@@ -473,10 +506,10 @@ describe('welcome-room authored set piece', () => {
   const chebyshev = (a: { x: number; y: number }, b: { x: number; y: number }): number =>
     Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 
-  it('is a fixed 8x7 reality-show room', () => {
+  it('is a fixed 10x9 reality-show room', () => {
     const room = getSetPieceDef('welcome-room')!;
     expect(room.sizing).toBe('exact');
-    expect(getSetPieceFootprint(room)).toEqual({ width: 8, height: 7 });
+    expect(getSetPieceFootprint(room)).toEqual({ width: 10, height: 9 });
     expect(room.theme).toBe('reality-show');
   });
 
@@ -502,8 +535,8 @@ describe('welcome-room authored set piece', () => {
     const goon = findSetPieceNpcByAnchor(room, 'welcome')!;
     const desk = room.props.find((p) => p.id === 'welcome-desk')!;
     const banner = room.props.find((p) => p.id === 'welcome-banner')!;
-    // Back wall is y=0; the goon hugs it.
-    expect(goon.y).toBeLessThanOrEqual(1);
+    // Back wall is y=0; one perimeter wall tile means the playable back row is y=1.
+    expect(goon.y).toBeLessThanOrEqual(2);
     // Desk is in front of the goon (higher row toward the entrance).
     expect(desk.y).toBeGreaterThan(goon.y);
     // Banner is behind the goon (on the back wall) and layers over it.
@@ -571,7 +604,18 @@ describe('welcome-room authored set piece', () => {
       expect(prop.layers.some((l) => isCustomSpriteRef(l.sprite))).toBe(false);
     }
 
-    // Each hero prop's base layer pins the exact approved generated variant
+    // Hero furniture stays pinned to approved generated variants, but the
+    // floor-kind rug now uses the canonical shared floor sheet tile.
+    const rugBase = room.props.find((p) => p.id === 'welcome-rug')!.layers[0]!.sprite;
+    expect(rugBase.source).toBe('sheet');
+    if (rugBase.source !== 'sheet') {
+      throw new Error('welcome-rug base sprite is not a sheet ref');
+    }
+    expect(rugBase.sheetKey).toBe('kenney-roguelike-rpg-pack');
+    expect(rugBase.col).toBe(11);
+    expect(rugBase.row).toBe(20);
+
+    // Remaining hero props keep exact generated variants
     // (the velvet rope shipped as var-2, the rest as var-0).
     const baseSpriteId = (propId: string): string => {
       const prop = room.props.find((p) => p.id === propId)!;
@@ -581,7 +625,6 @@ describe('welcome-room authored set piece', () => {
       }
       return sprite.spriteId;
     };
-    expect(baseSpriteId('welcome-rug')).toBe('welcome-room-rug-var-0');
     expect(baseSpriteId('welcome-desk')).toBe('welcome-room-desk-var-0');
     expect(baseSpriteId('shop-table')).toBe('welcome-room-shop-table-var-0');
     expect(baseSpriteId('broker-bookcase')).toBe('welcome-room-bookcase-var-0');
@@ -602,7 +645,7 @@ describe('welcome-room authored set piece', () => {
     expect(room.props.some((p) => p.id.startsWith('torch-'))).toBe(false);
     for (const sconce of sconces) {
       // Authored on the back-wall row...
-      expect(sconce.y).toBe(0);
+      expect(sconce.y).toBe(1);
       // ...and lifted up off the floor onto the wall with a negative feet nudge.
       expect(sconce.layers[0]?.offsetYFt).toBeLessThan(0);
     }

@@ -561,7 +561,14 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
         }
       }
       for (const npc of stamp.npcs) {
-        spawnNpc(this.world, npc.x, npc.y, npc.npcTypeId);
+        spawnNpc(this.world, npc.x, npc.y, npc.npcTypeId, {
+          ...(npc.spriteOverride !== undefined ? { spriteOverride: npc.spriteOverride } : {}),
+          ...(npc.widthFt !== undefined ? { widthFt: npc.widthFt } : {}),
+          ...(npc.heightFt !== undefined ? { heightFt: npc.heightFt } : {}),
+          ...(npc.flipX !== undefined ? { flipX: npc.flipX } : {}),
+          ...(npc.flipY !== undefined ? { flipY: npc.flipY } : {}),
+          ...(npc.rotationDeg !== undefined ? { rotationDeg: npc.rotationDeg } : {}),
+        });
         const npcKey = pickGeneratedNpcTextureKey(npc.npcTypeId);
         if (npcKey) {
           this.requiredNpcKeys.add(npcKey);

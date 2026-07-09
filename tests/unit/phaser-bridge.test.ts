@@ -6,6 +6,7 @@ import {
   Enemy,
   Gold,
   Harvestable,
+  Npc,
   Player,
   Position,
   Prop,
@@ -236,6 +237,42 @@ describe('createPhaserBridge', () => {
 
     expect(images).toHaveLength(1);
     expect(images[0]).toMatchObject({ x: 240, y: 320 });
+  });
+
+  it('applies per-instance NPC flip and rotation transforms from runtime metadata', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: true });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    addComponent(world.ecs, eid, set(Position, { x: 10, y: 20 }));
+    addComponent(world.ecs, eid, Npc);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 2.5, height: 3.5 }));
+    world.npcs.set(eid, {
+      defId: 'tutorial-goon',
+      spriteOverride: { source: 'catalog', spriteId: 'sprite:npc.guide' },
+      flipX: true,
+      flipY: true,
+      rotationDeg: 90,
+      dialogueIndex: 0,
+      quests: [],
+      nearbyPlayer: false,
+    });
+
+    bridge.sync(world);
+    expect(images).toHaveLength(1);
+    expect(images[0]?.flipX).toBe(true);
+    expect(images[0]?.flipY).toBe(true);
+    expect(images[0]?.rotation).toBe(90);
+
+    const instance = world.npcs.get(eid)!;
+    instance.flipX = false;
+    instance.flipY = false;
+    instance.rotationDeg = 0;
+    bridge.sync(world);
+    expect(images[0]?.flipX).toBe(false);
+    expect(images[0]?.flipY).toBe(false);
+    expect(images[0]?.rotation).toBe(0);
   });
 
   it('destroys images when entities disappear or the bridge is destroyed', () => {
@@ -471,11 +508,9 @@ describe('createPhaserBridge', () => {
     bridge.destroy();
   });
 
-  it('resolves shipped welcome-room generated props to real catalog art (bare key, rug untinted)', () => {
-    // The exact generated manifest keys shipped for the welcome room. The rug is
-    // var-0; the velvet rope is var-2 (the others are var-0).
+  it('resolves shipped welcome-room generated catalog props to real art (bare key)', () => {
+    // Exact generated manifest keys still used as catalog refs in welcome-room.
     const GENERATED_KEYS = {
-      rug: 'welcome-room-rug-var-0',
       desk: 'welcome-room-desk-var-0',
       shopTable: 'welcome-room-shop-table-var-0',
       bookcase: 'welcome-room-bookcase-var-0',
@@ -496,21 +531,6 @@ describe('createPhaserBridge', () => {
     );
     for (const key of expectedKeys) {
       expect(catalogSpriteIds.has(key)).toBe(true);
-    }
-
-    // The rug layer must NOT carry a tint: the generated art is already a worn
-    // red velvet runner, so a `#7f1d1d` tint would double-darken it. This guards
-    // the tint drop that landed with the custom→catalog ref swap.
-    const rugLayers = layers.filter((draw) => {
-      const sprite = draw.layer.sprite;
-      return (
-        sprite.source === 'catalog' &&
-        (sprite as { spriteId: string }).spriteId === GENERATED_KEYS.rug
-      );
-    });
-    expect(rugLayers.length).toBeGreaterThan(0);
-    for (const draw of rugLayers) {
-      expect(draw.layer.tintHex).toBeUndefined();
     }
 
     // Render path: a `catalog` ref whose generated texture is loaded under its
@@ -551,13 +571,13 @@ describe('createPhaserBridge', () => {
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
 
-    // Rug (background band, z=0, untinted) + desk (foreground band, z=30).
+    // Shop table (background band, z=0) + desk (foreground band, z=30).
     addSetPieceProp(world, 5, 6, {
-      sprite: { source: 'catalog', spriteId: GENERATED_KEYS.rug },
+      sprite: { source: 'catalog', spriteId: GENERATED_KEYS.shopTable },
       depth: setPieceZToDepth(0),
       widthFt: 16,
       heightFt: 8,
-      label: 'welcome-room-rug',
+      label: 'welcome-room-shop-table',
     });
     addSetPieceProp(world, 3, 2, {
       sprite: { source: 'catalog', spriteId: GENERATED_KEYS.desk },
@@ -569,22 +589,21 @@ describe('createPhaserBridge', () => {
 
     bridge.sync(world);
 
-    const rug = propImages.find((img) => img.textureKey === GENERATED_KEYS.rug);
+    const shopTable = propImages.find((img) => img.textureKey === GENERATED_KEYS.shopTable);
     const desk = propImages.find((img) => img.textureKey === GENERATED_KEYS.desk);
-    expect(rug).toBeDefined();
+    expect(shopTable).toBeDefined();
     expect(desk).toBeDefined();
     // Bare generated key → individual texture, no spritesheet frame.
-    expect(rug?.frame).toBeUndefined();
+    expect(shopTable?.frame).toBeUndefined();
     expect(desk?.frame).toBeUndefined();
     // Both resolved to real art: no labeled-placeholder rects were drawn.
     expect(propRects).toHaveLength(0);
-    // Rug renders untinted; desk sits above the entity plane, rug below it.
-    expect(rug?.tinted).toBe(false);
-    expect(rug?.depth).toBeLessThan(ENTITY_DEPTH);
+    // Desk sits above the entity plane; the background prop stays below it.
+    expect(shopTable?.depth).toBeLessThan(ENTITY_DEPTH);
     expect(desk?.depth).toBeGreaterThan(ENTITY_DEPTH);
 
     bridge.destroy();
-    expect(rug?.destroyed).toBe(true);
+    expect(shopTable?.destroyed).toBe(true);
     expect(desk?.destroyed).toBe(true);
   });
 
