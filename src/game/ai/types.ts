@@ -183,6 +183,22 @@ export interface AIConfig {
    */
   pathingMode?: AIPathingModeValue;
   /**
+   * Slice 4b seam-following weight for {@link AIPathingMode.NAVMESH_FUSED} ONLY.
+   * Adds a tangential-to-danger-gradient bonus on top of the fused fan so the
+   * agent travels ALONG danger boundaries (seams) toward the goal while farmable
+   * reward lies along them, instead of taking the pure shortest path or hiding in
+   * corners. At seamWeight 0 the seam block is fully skipped and NAVMESH_FUSED is
+   * byte-identical to Slice 4a. This defaults to NAVMESH_FUSED_SEAM_WEIGHT (=2, the
+   * human-adjudicated production weight), so an AI in NAVMESH_FUSED with no explicit
+   * seamWeight runs the seam term at 2 — NOT off. The shipped game stays
+   * byte-identical to 4a because the default pathingMode is LEGACY and the call site
+   * forces seamWeight to 0 for every non-NAVMESH_FUSED mode, not because this
+   * defaults to 0. Ignored by every other pathing mode. Clamped to a finite value
+   * ≥ 0 at construction; the production value is human-adjudicated via the two-stage
+   * tuning sweep (`npm run ai:navmesh-seam-sweep`).
+   */
+  seamWeight?: number;
+  /**
    * A/B axis 2: how Track A goal eligibility is decided. Defaults to
    * {@link AIDecisionMode.LEGACY} — with the default the Track A ladder is
    * byte-identical to main. {@link AIDecisionMode.SLACK_AWARE} applies monotone

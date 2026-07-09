@@ -626,15 +626,3 @@ function toRepoRelativePosix(repoRoot: string, abs: string): string {
   const rel = path.relative(repoRoot, abs);
   return rel.split(path.sep).join('/');
 }
-
-/**
- * Compute a stable short hash for a manifest entry. Currently only used by
- * test snapshots / future cache-busting; export so consumers don't have to
- * recompute the hashing convention.
- */
-export function entryHash(entry: ManifestEntry): string {
-  return createHash('sha256')
-    .update(`${entry.briefId}|${entry.sourceRun}|${entry.variantIndex}`)
-    .digest('hex')
-    .slice(0, 12);
-}

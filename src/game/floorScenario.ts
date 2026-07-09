@@ -103,13 +103,14 @@ import { evaluateAchievementUnlocksForPhase } from './systems/achievementSystem.
 import { getAllSkillDefinitions } from './skills/registry.js';
 import type { SkillState } from '../shared/skills.js';
 import { floor1Config } from '../shared/floor-config.js';
-import { floor1EnemyPack, floor2EnemyPack, pickEnemyArchetype } from '../shared/enemy-packs.js';
+import { floor1EnemyPack, floor2EnemyPack } from '../shared/enemy-packs.js';
 import { floor1Manifest } from '../shared/floor-manifest.js';
 import type { NpcPlacementDef } from '../shared/npc-placements.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
 import { getSpawnerArchetype, getSpawnerArchetypeIndex } from './spawners/registry.js';
 import { hashStringToSeed, SeededRandom } from '../shared/random.js';
 import { computeMobLevelScale } from '../shared/mob-scaling.js';
+import { pickFromSpawnZones, type SpawnZoneWeights } from './spawn-zones.js';
 
 // Derived constants computed from config at module initialization.
 // The camera/viewport is a render-pixel concept, so convert it to feet at this
@@ -2157,7 +2158,19 @@ export function scaleAmbientSpawnStats(
  */
 function spawnAmbientArchetype(world: GameWorld, x: number, y: number): number {
   const pack = floor1EnemyPack;
-  const archetype = pickEnemyArchetype(pack.archetypes, () => world.rng.next());
+  const globalZoneWeights = new Map<string, number>();
+  for (const entry of pack.archetypes) {
+    globalZoneWeights.set(entry.id, entry.spawnWeight);
+  }
+  const { pickedId } = pickFromSpawnZones([globalZoneWeights as SpawnZoneWeights], () =>
+    world.rng.next(),
+  );
+  const archetype =
+    (pickedId ? pack.archetypes.find((entry) => entry.id === pickedId) : undefined) ??
+    pack.archetypes[0];
+  if (!archetype) {
+    throw new Error('No archetypes available in floor1EnemyPack');
+  }
 
   // Scale HP and speed based on distance from the player's starting tile so
   // enemies deeper in the dungeon feel progressively more dangerous.
@@ -2412,7 +2425,7 @@ function resolveRoomInteriorSpawn(
  * first visit regardless of the roll outcome, so leaving and re-entering never
  * re-rolls. SPAWN, SAFE, and BOSS_STAIR rooms are never seeded.
  */
-export function prepopulateEnteredRoom(world: GameWorld, playerX: number, playerY: number): void {
+function prepopulateEnteredRoom(world: GameWorld, playerX: number, playerY: number): void {
   const floorMap = world.floorMap;
   if (!floorMap || !world.floorScenario) {
     return;
@@ -3173,15 +3186,6 @@ export function shouldShowSpellSelector(world: GameWorld): boolean {
     world.goalFlags.get('floor1-boss-battle-complete') === true &&
     world.featureUnlocks.spells === false
   );
-}
-
-/** Show the spell selector modal with available spells. */
-export function showSpellSelector(world: GameWorld, showModal: (spellIds: string[]) => void): void {
-  if (!shouldShowSpellSelector(world)) {
-    return;
-  }
-  // The showModal callback receives the list of available spell IDs to display
-  showModal(Array.from(FLOOR1_BOSS_REWARD_SPELL_IDS));
 }
 
 /** Select a spell to equip. Returns true when the spell was successfully learned. */

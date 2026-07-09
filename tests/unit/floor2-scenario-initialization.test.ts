@@ -12,6 +12,7 @@ import {
   FLOOR2_CAVE_SYSTEM_DEFAULTS,
   initializeFloor2Scenario,
 } from '../../src/game/floor2Scenario.js';
+import { getFloor2NeutralTrash } from '../../src/shared/enemy-packs.js';
 import { getFloorManifest, registerFloorManifest } from '../../src/shared/floor-registry.js';
 import { getQuestDef } from '../../src/shared/quest-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -202,6 +203,21 @@ describe('initializeFloor2Scenario manifest validation', () => {
       ),
     );
     expect(lockedHeartDoor).toBe(true);
+  });
+
+  it('initializes deterministic quadrant trash territories from the neutral pool', () => {
+    const { world, playerEid } = createScenarioWorld();
+    initializeFloor2Scenario(world, playerEid);
+
+    const territories = world.floorExtendedState?.trashTerritories;
+    expect(territories).toBeDefined();
+    expect(territories?.size).toBe(4);
+    expect(new Set(territories?.keys())).toEqual(new Set(['N', 'S', 'E', 'W']));
+
+    const neutralIds = new Set(getFloor2NeutralTrash().map((entry) => entry.id));
+    for (const archetypeId of territories?.values() ?? []) {
+      expect(neutralIds.has(archetypeId)).toBe(true);
+    }
   });
 
   it('applies floor2 cave defaults to real-game scenario map generation', () => {

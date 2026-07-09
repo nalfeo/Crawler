@@ -337,11 +337,6 @@ export function setEntityTags(world: GameWorld, entity: number, tags: string[]):
   getEntityTagMap(world).set(entity, new Set(tags));
 }
 
-/** Get entity tags. */
-export function getEntityTags(world: GameWorld, entity: number): ReadonlySet<string> {
-  return getEntityTagMap(world).get(entity) ?? new Set();
-}
-
 /** Register a custom equip requirement predicate. Must be pure and deterministic. */
 export function registerCustomRequirement(
   world: GameWorld,

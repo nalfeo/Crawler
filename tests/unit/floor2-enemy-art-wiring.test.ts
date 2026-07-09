@@ -11,7 +11,7 @@ import type { EntitySpriteMappings } from '../../src/shared/data/entity-sprite-m
 import ENTITY_SPRITE_MAPPINGS from '../../src/shared/data/entity-sprite-mappings.json';
 
 /**
- * Guard A — Floor-2 enemy art WIRING completeness (data surfaces + all-44
+ * Guard A — Floor-2 enemy art WIRING completeness (data surfaces + all-80
  * manifest resolution).
  *
  * ~43 generated Floor-2 enemy sprites shipped on `main` but rendered as
@@ -92,13 +92,13 @@ describe('Floor 2 enemy art wiring — all archetypes resolve to shipped art', (
     expect(unresolved).toEqual([]);
   });
 
-  it('covers the full 44-archetype Floor-2 roster (18 bosses + 26 grunts/ambient)', () => {
+  it('covers the full 80-archetype Floor-2 roster (18 bosses + 54 family mobs + 8 neutral)', () => {
     const bosses = floor2EnemyPack.archetypes.filter((a) => a.isBoss === true);
-    expect(floor2EnemyPack.archetypes.length).toBe(44);
+    expect(floor2EnemyPack.archetypes.length).toBe(80);
     expect(bosses.length).toBe(18);
     // All 18 bosses must now carry the dedicated enemy_family_boss texture id.
     expect(bosses.every((a) => a.spriteTexture === 5)).toBe(true);
-    // Non-bosses keep their original ids (25 at rat-slot 1, cave-slime at 2).
+    // Non-bosses remain in the ambient texture lanes (rat-slot 1, cave-slime at 2).
     const nonBoss = floor2EnemyPack.archetypes.filter((a) => a.isBoss !== true);
     expect(nonBoss.every((a) => a.spriteTexture === 1 || a.id === 'cave-slime')).toBe(true);
   });

@@ -42,7 +42,7 @@ export interface AnnouncementEvent {
  * but headless / lab runs have no consumer, so growth is capped defensively
  * (oldest dropped). Announcement data is HUD-only, so dropping is harmless.
  */
-export const ANNOUNCEMENT_EVENT_CAP = 32;
+const ANNOUNCEMENT_EVENT_CAP = 32;
 
 /** Push an announcement, enforcing {@link ANNOUNCEMENT_EVENT_CAP}. */
 export function pushAnnouncement(events: AnnouncementEvent[], event: AnnouncementEvent): void {

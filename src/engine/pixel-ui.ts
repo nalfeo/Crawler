@@ -423,7 +423,7 @@ const ICONS: readonly IconDef[] = [
  * Generate the shared pixel-art icon textures once per scene. Safe to call
  * every time a HUD element is created — existing textures are left untouched.
  */
-export function ensurePixelUiTextures(scene: Phaser.Scene): void {
+function ensurePixelUiTextures(scene: Phaser.Scene): void {
   const first = ICONS[0]!;
   if (scene.textures.exists(first.key)) return;
 

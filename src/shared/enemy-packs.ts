@@ -11,7 +11,7 @@ import floor2EnemyPackJson from './data/enemies.floor2.json';
 /**
  * Single enemy archetype configuration for spawning.
  */
-export const enemyArchetypeDefSchema = z
+const enemyArchetypeDefSchema = z
   .object({
     /** Unique identifier for this enemy type. */
     id: z.string().min(1),
@@ -158,23 +158,4 @@ export function getFloor2FamilyTrash(familyId: string): readonly EnemyArchetypeD
 /** Get the floor-neutral trash pool (no `familyId`). */
 export function getFloor2NeutralTrash(): readonly EnemyArchetypeDef[] {
   return floor2EnemyPack.archetypes.filter((a) => a.familyId === undefined);
-}
-
-/**
- * Selects a random enemy archetype from the pack using weighted selection.
- */
-export function pickEnemyArchetype(
-  archetypes: readonly EnemyArchetypeDef[],
-  random: () => number,
-): EnemyArchetypeDef {
-  const roll = random();
-  let cumulative = 0;
-  for (const archetype of archetypes) {
-    cumulative += archetype.spawnWeight;
-    if (roll < cumulative) {
-      return archetype;
-    }
-  }
-  // Fallback to last archetype if weights don't sum to 1
-  return archetypes[archetypes.length - 1]!;
 }

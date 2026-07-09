@@ -151,7 +151,7 @@ export function addDiagonalShortcuts(
  * Each step also widens the path by one tile perpendicular to the major axis
  * so the diagonal corridor is 2 tiles wide and freely navigable.
  */
-export function carveBresenhamPath(
+function carveBresenhamPath(
   tileMap: TileMap,
   terrain: Uint8Array,
   x0: number,

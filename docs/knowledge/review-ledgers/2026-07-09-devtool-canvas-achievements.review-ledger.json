@@ -1,0 +1,17 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-09",
+  "session_slug": "devtool-canvas-achievements",
+  "task_title": "Achievements editor canvas extension",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Separate-model (gpt-5.4, rubber-duck) plan review: approved_with_changes. 6 concerns (1 blocking) all resolved. BLOCKING #1: harness binds each instance to a random 127.0.0.1:0 port, so origin-scoped localStorage vanishes on reopen/reload; resolved by a durable server-side override store (lib/overrides-store.mjs) keyed by repo root under COPILOT_HOME as source of truth, while the client STILL mirrors every write to localStorage under the identical key/shape (crawler.devtools.achievement-overrides.v1) and heals a localStorage-only set up to the server on load. #2 transform-drift risk resolved with a Vitest parity test importing the REAL src/shared/achievements.ts and deep-comparing LOOT_BOX_TIERS/FLOOR1_ACHIEVEMENTS/ACHIEVEMENT_ART_BACKLOG vs the .mjs adapter (4/4 pass). #3 monolith specifics verified and pinned in tests (save re-renders list+export only; filter on merged; art backlog from base; invalid reward tier maps to common; bad payload maps to empty). #4 pure logic extracted into overrides-model.mjs, imported by BOTH tests and the iframe over loopback. #5 SSE dropped for a fetch-only model (server authoritative + explicit Refresh). #6 ledger kept because the orchestrator explicitly mandated it. Divergence minor: architecture kept; only override-persistence mechanism changed."
+    }
+  }
+}

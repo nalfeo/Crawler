@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-09",
+  "session_slug": "dead-code-cleanup",
+  "task_title": "Tighten dead-code lint and remove unused files/exports",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Reviewed by rubber-duck gpt-5.4. Added explicit ledger-first sequencing, prototype stricter knip before codifying it, config tuning for dynamic-loader/test-only false positives, explicit post-cleanup npm run lint:dead-code clean gate, and bounded scope wording around current knip coverage."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

@@ -60,7 +60,7 @@ export function applyRoomShapes(
  * Carve room interior into an ellipse, walling off tiles outside the
  * inscribed ellipse. Boundary tiles (where doors live) are untouched.
  */
-export function applyEllipseShape(
+function applyEllipseShape(
   tileMap: TileMap,
   terrain: Uint8Array,
   w: number,
@@ -97,7 +97,7 @@ export function applyEllipseShape(
  * Penalizes quadrants adjacent to doors; breaks ties with RNG.
  * Returns null if the room is too small for an L-shape (no RNG consumed).
  */
-export function selectLShapeQuadrant(
+function selectLShapeQuadrant(
   rx: number,
   ry: number,
   rw: number,
@@ -138,7 +138,7 @@ export function selectLShapeQuadrant(
  * The quadrant furthest from any door is selected to keep connectivity safe.
  * After removal, tiles immediately inside each door are guaranteed floor.
  */
-export function applyLShape(
+function applyLShape(
   tileMap: TileMap,
   terrain: Uint8Array,
   w: number,

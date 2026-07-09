@@ -188,6 +188,22 @@ describe('buildPlaceholderAudit — bucketing', () => {
     const goblin = report.placeholderOnly[0];
     expect(goblin?.placeholders[0]).toMatchObject({ kind: 'mob-def', id: 'goblin' });
   });
+
+  it('records enemy-pack archetypes with no dedicated real generated art as placeholders', () => {
+    const report = audit({
+      manifestEntries: {
+        'goblin-grunt-v1-var-0': manifestEntry({ briefId: 'goblin-grunt-v1' }),
+      },
+      enemyArchetypeIds: ['goblin-grunt', 'goblin-elite-joyrider'],
+    });
+
+    expect(report.newContent.map((c) => c.concept)).toEqual(['goblin-grunt']);
+    expect(report.placeholderOnly.map((c) => c.concept)).toEqual(['goblin-elite-joyrider']);
+    const elite = report.placeholderOnly[0];
+    expect(elite?.placeholders).toEqual([
+      { kind: 'enemy-pack', id: 'goblin-elite-joyrider', detail: 'missing-generated-art' },
+    ]);
+  });
 });
 
 describe('buildPlaceholderAudit — --since scoping', () => {

@@ -68,7 +68,8 @@ import type { FloorMap } from '../core/map/FloorMap.js';
 import {
   floor2EnemyPack,
   getFloor2BossArchetype,
-  pickEnemyArchetype,
+  getFloor2FamilyTrash,
+  getFloor2NeutralTrash,
   type EnemyArchetypeDef,
 } from '../shared/enemy-packs.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
@@ -95,7 +96,6 @@ import { acceptQuest, addQuestCounter } from '../core/systems/questSystem.js';
 import type { SeededRandom } from '../shared/random.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
 import { setEnemyAppearanceKey } from '../core/spawners/combatants.js';
-import { getFloor2NeutralTrash } from '../shared/enemy-packs.js';
 import {
   scaleAmbientSpawnStats,
   pruneAmbientOutOfRange,
@@ -106,6 +106,7 @@ import {
   resolveAmbientSpawnPoint,
   getSpawnerState,
 } from './floorScenario.js';
+import { pickFromSpawnZones, type SpawnZoneWeights } from './spawn-zones.js';
 
 const FLOOR2_DEN_UNLOCK_KILL_TARGET = 3;
 const FLOOR2_BOSS_HP_SCALE = 0.03;
@@ -328,7 +329,7 @@ export function spawnFamilyBoss(
  * function creates the ECS entity + `DoorState` component + lock config that
  * makes the door player-interactable and goal-gated.
  */
-export function installBossDenDoorLocks(
+function installBossDenDoorLocks(
   world: GameWorld,
   denRoom: RoomData,
   unlockGoalId: string,
@@ -362,7 +363,7 @@ export function installBossDenDoorLocks(
  * Wire RESOURCE_HEART doors to the floor2-victory latch.
  * Doors start closed+locked and unlock once the floor victory condition is met.
  */
-export function installResourceHeartDoorLocks(world: GameWorld, floorMap: FloorMap): number[] {
+function installResourceHeartDoorLocks(world: GameWorld, floorMap: FloorMap): number[] {
   const created: number[] = [];
   const room = floorMap.roomGraph.getFirstRoomByRole(RoomRole.RESOURCE_HEART);
   if (!room) return created;
@@ -670,29 +671,13 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
   });
   initializeFactionRelations(world, roster.presentFamilies);
 
-  // Initialize trash territories: randomly pick 4 of 8 neutral trash types
-  // and assign them to map quadrants (N, S, E, W)
-  const allNeutralTrash = getFloor2NeutralTrash();
-  const trashArchetypeIds = allNeutralTrash.map((a: EnemyArchetypeDef) => a.id);
-  const trashRng = new SeededRandomClass(
-    hashStringToSeed(`${world.seed}:floor2-trash-territories`),
-  );
-  trashRng.shuffle(trashArchetypeIds);
-  const selectedTrashTypes = trashArchetypeIds.slice(0, 4);
-  const quadrantTrashMap = new Map<string, string>([
-    ['N', selectedTrashTypes[0] ?? 'cave-slime'],
-    ['S', selectedTrashTypes[1] ?? 'giant-cave-rat'],
-    ['E', selectedTrashTypes[2] ?? 'cave-bat-swarm'],
-    ['W', selectedTrashTypes[3] ?? 'rock-lice'],
-  ]);
-
   world.floorExtendedState = {
     familyState: {
       presentFamilies: roster.presentFamilies.slice(),
       contestedResource: roster.contestedResource,
       betrayerFlag: false,
     },
-    trashTerritories: quadrantTrashMap,
+    trashTerritories: assignQuadrantTrashTerritories(world),
     ambientEnemyArchetypes: new Map<number, string>(),
   };
   world.floorScenario = null;
@@ -867,15 +852,6 @@ export function markDenUnlocked(world: GameWorld, familyId: FamilyId): void {
   setGoalFlag(world, denUnlockGoalId(familyId), true);
 }
 
-/**
- * Number of families defined in the Floor 2 enemy pack that have a boss
- * archetype registered. Used by the schema tests to catch drift between
- * families.json and enemies.floor2.json.
- */
-export function countFloor2BossArchetypes(): number {
-  return floor2EnemyPack.archetypes.filter((a) => a.isBoss === true).length;
-}
-
 // Internal helpers ---------------------------------------------------------
 
 function ensureDecapitatedSet(world: GameWorld): Set<FamilyId> {
@@ -986,64 +962,143 @@ export function getQuadrantSpawnWeights(playerQuadrant: string): Map<string, num
   return weights;
 }
 
-/**
- * Pick a trash archetype respecting quadrant-based weights.
- */
-function pickFloor2TrashArchetype(world: GameWorld, _playerX: number, _playerY: number): string {
-  const territoryMap = world.floorExtendedState?.trashTerritories;
-  if (!territoryMap || territoryMap.size === 0) {
-    // Fallback: neutral trash pool
-    const pack = floor2EnemyPack;
-    return pickEnemyArchetype(pack.archetypes, () => world.rng.next()).id;
+const FLOOR2_QUADRANTS = ['N', 'S', 'E', 'W'] as const;
+
+function assignQuadrantTrashTerritories(world: GameWorld): Map<string, string> {
+  const out = new Map<string, string>();
+  const neutralTrash = getFloor2NeutralTrash();
+  if (neutralTrash.length === 0) {
+    return out;
   }
-
-  const playerQuadrant = getQuadrantForPosition(world, _playerX, _playerY);
-  const weights = getQuadrantSpawnWeights(playerQuadrant);
-
-  // Build a weighted list of all archetypes
-  const weightedList: string[] = [];
-  for (const [quadrant, archetype] of territoryMap) {
-    const weight = weights.get(quadrant) || 0;
-    const count = Math.round(weight * 10); // Scale 0-1 to 0-10 for sampling
-    for (let i = 0; i < count; i += 1) {
-      weightedList.push(archetype);
+  const pool = neutralTrash.map((archetype) => archetype.id);
+  const quadrantRng = new SeededRandomClass(
+    hashStringToSeed(`${world.seed}:floor2-trash-territories`),
+  );
+  for (const quadrant of FLOOR2_QUADRANTS) {
+    if (pool.length === 0) {
+      out.set(quadrant, neutralTrash[quadrantRng.nextInt(0, neutralTrash.length - 1)]!.id);
+      continue;
     }
+    const pickIndex = quadrantRng.nextInt(0, pool.length - 1);
+    out.set(quadrant, pool[pickIndex]!);
+    pool.splice(pickIndex, 1);
   }
-
-  if (weightedList.length === 0) {
-    // Fallback if something went wrong
-    const firstValue = territoryMap.values().next().value;
-    return typeof firstValue === 'string' ? firstValue : 'cave-slime';
-  }
-
-  // Pick a random entry from the weighted list
-  const picked: string | undefined = weightedList[world.rng.nextInt(0, weightedList.length - 1)];
-  return picked ?? 'cave-slime';
+  return out;
 }
 
-function resolveAmbientFamilyIndex(world: GameWorld, archetypeId: string): number {
-  const territories = world.floorExtendedState?.trashTerritories;
-  const familyState = world.floorExtendedState?.familyState;
-  const presentFamilies = familyState?.presentFamilies ?? [];
-  if (!territories || presentFamilies.length === 0) {
-    return -1;
-  }
-  let ownerQuadrant: string | null = null;
-  for (const [quadrant, territoryArchetype] of territories) {
-    if (territoryArchetype === archetypeId) {
-      ownerQuadrant = quadrant;
-      break;
+/**
+ * Pick a Floor 2 ambient archetype by unioning every spawn zone in scope at
+ * the current position, then normalizing the combined weights:
+ *  1) family territory-zone pools (per-family 1/74/25),
+ *  2) quadrant territory-zone pool (single quadrant archetype),
+ *  3) global fallback pool (neutral cave trash).
+ */
+function pickFloor2TrashArchetype(world: GameWorld, x: number, y: number): EnemyArchetypeDef {
+  const familyZone = collectFamilyTerritoryZoneWeights(world, x, y);
+  const quadrantZone = collectQuadrantZoneWeights(world, x, y);
+  const globalZone = collectGlobalFallbackZoneWeights();
+  const { pickedId } = pickFromSpawnZones(
+    [familyZone, quadrantZone, globalZone] as const satisfies readonly SpawnZoneWeights[],
+    () => world.rng.next(),
+  );
+  if (pickedId !== null) {
+    const picked = floor2EnemyPack.archetypes.find((entry) => entry.id === pickedId);
+    if (picked) {
+      return picked;
     }
   }
-  if (!ownerQuadrant) {
+
+  // Hard fallback only for malformed/empty packs.
+  const neutralTrash = getFloor2NeutralTrash();
+  const neutralFallback = floor2EnemyPack.archetypes[0];
+  if (!neutralFallback) {
+    throw new Error('No archetypes available in floor2EnemyPack');
+  }
+  if (neutralTrash.length > 0) {
+    return neutralTrash[world.rng.nextInt(0, neutralTrash.length - 1)]!;
+  }
+  return neutralFallback;
+}
+
+export function resolveAmbientFamilyIndex(world: GameWorld, archetypeId: string): number {
+  const familyState = world.floorExtendedState?.familyState;
+  const presentFamilies = familyState?.presentFamilies ?? [];
+  if (presentFamilies.length === 0) {
     return -1;
   }
-  const quadrantOrder = ['N', 'S', 'E', 'W'];
-  const quadrantIndex = quadrantOrder.indexOf(ownerQuadrant);
-  if (quadrantIndex < 0) {
+  const archetype = floor2EnemyPack.archetypes.find((entry) => entry.id === archetypeId);
+  if (!archetype?.familyId) {
     return -1;
   }
-  return quadrantIndex % presentFamilies.length;
+  return presentFamilies.indexOf(archetype.familyId as (typeof presentFamilies)[number]);
+}
+
+function addWeight(weights: Map<string, number>, archetypeId: string, weight: number): void {
+  if (!(weight > 0) || !Number.isFinite(weight)) {
+    return;
+  }
+  weights.set(archetypeId, (weights.get(archetypeId) ?? 0) + weight);
+}
+
+function collectFamilyTerritoryZoneWeights(
+  world: GameWorld,
+  x: number,
+  y: number,
+): Map<string, number> {
+  const weights = new Map<string, number>();
+  const familyState = world.floorExtendedState?.familyState;
+  const floorMap = world.floorMap;
+  if (!familyState || !floorMap) {
+    return weights;
+  }
+  const zones = floorMap.territoryZones;
+  if (zones.length === 0) {
+    return weights;
+  }
+  const tile = floorMap.worldToTile(x, y);
+  for (const zone of zones) {
+    if (zone.familyIndex < 0 || zone.familyIndex >= familyState.presentFamilies.length) {
+      continue;
+    }
+    const dx = tile.x - zone.centerX;
+    const dy = tile.y - zone.centerY;
+    if (dx * dx + dy * dy > zone.radius * zone.radius) {
+      continue;
+    }
+    const familyId = familyState.presentFamilies[zone.familyIndex]!;
+    if (isFamilySpawnGated(world, familyId)) {
+      continue;
+    }
+    const familyTrash = getFloor2FamilyTrash(familyId);
+    for (const archetype of familyTrash) {
+      addWeight(weights, archetype.id, archetype.spawnWeight);
+    }
+  }
+  return weights;
+}
+
+function collectQuadrantZoneWeights(world: GameWorld, x: number, y: number): Map<string, number> {
+  const weights = new Map<string, number>();
+  const territories = world.floorExtendedState?.trashTerritories;
+  if (!territories || territories.size === 0) {
+    return weights;
+  }
+  const quadrant = getQuadrantForPosition(world, x, y);
+  const archetypeId = territories.get(quadrant);
+  if (!archetypeId) {
+    return weights;
+  }
+  addWeight(weights, archetypeId, 1);
+  return weights;
+}
+
+function collectGlobalFallbackZoneWeights(): Map<string, number> {
+  const weights = new Map<string, number>();
+  const neutralTrash = getFloor2NeutralTrash();
+  for (const archetype of neutralTrash) {
+    addWeight(weights, archetype.id, archetype.spawnWeight);
+  }
+  return weights;
 }
 
 function isBossDenSpawn(world: GameWorld, x: number, y: number): boolean {
@@ -1117,19 +1172,7 @@ function unstickFloor2Bosses(world: GameWorld): void {
  * scaling stats based on distance from spawn.
  */
 function spawnFloor2AmbientArchetype(world: GameWorld, x: number, y: number): number {
-  const pack = floor2EnemyPack;
-  const archetypeId = pickFloor2TrashArchetype(world, x, y);
-  const archetype = pack.archetypes.find((a: EnemyArchetypeDef) => a.id === archetypeId);
-
-  if (!archetype) {
-    // Fallback to first available
-    const fallback = pack.archetypes[0];
-    if (!fallback) {
-      throw new Error('No archetypes available in floor2EnemyPack');
-    }
-  }
-
-  const selectedArchetype = archetype || pack.archetypes[0]!;
+  const selectedArchetype = pickFloor2TrashArchetype(world, x, y);
   let hp = selectedArchetype.hp;
   let speed = selectedArchetype.speed;
   if (world.floorMap) {

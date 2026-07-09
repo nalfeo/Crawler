@@ -35,6 +35,12 @@ export interface CLIArgs {
  * hung silently after printing its header.
  */
 export function parsePositiveInt(flag: string, raw: string): number {
+  // `Number('')` and `Number('   ')` both coerce to `0`, so a blank / whitespace
+  // segment must be rejected explicitly before the numeric check to avoid a
+  // misleading "expected a positive integer" path on empty input.
+  if (raw.trim() === '') {
+    throw new Error(`Invalid ${flag} value ${JSON.stringify(raw)}: expected a positive integer.`);
+  }
   const value = Number(raw);
   if (!Number.isInteger(value) || value <= 0) {
     throw new Error(`Invalid ${flag} value ${JSON.stringify(raw)}: expected a positive integer.`);
@@ -48,6 +54,14 @@ export function parsePositiveInt(flag: string, raw: string): number {
  * legitimate seed value.
  */
 export function parseNonNegativeInt(flag: string, raw: string): number {
+  // `Number('')` / `Number('   ')` coerce to `0`, which would silently pass the
+  // `>= 0` check and inject a bogus `0` (e.g. a blank seed segment becoming seed
+  // `0`). Reject blank / whitespace-only input explicitly before coercion.
+  if (raw.trim() === '') {
+    throw new Error(
+      `Invalid ${flag} value ${JSON.stringify(raw)}: expected a non-negative integer.`,
+    );
+  }
   const value = Number(raw);
   if (!Number.isInteger(value) || value < 0) {
     throw new Error(
@@ -62,6 +76,12 @@ export function parseNonNegativeInt(flag: string, raw: string): number {
  * "no hostile damage"), throwing on non-numeric / negative / infinite input.
  */
 export function parseNonNegativeNumber(flag: string, raw: string): number {
+  // Same blank-coerces-to-`0` hazard as parseNonNegativeInt (see above).
+  if (raw.trim() === '') {
+    throw new Error(
+      `Invalid ${flag} value ${JSON.stringify(raw)}: expected a non-negative number.`,
+    );
+  }
   const value = Number(raw);
   if (!Number.isFinite(value) || value < 0) {
     throw new Error(
@@ -74,8 +94,16 @@ export function parseNonNegativeNumber(flag: string, raw: string): number {
 export function parseSeeds(spec: string): number[] {
   const seeds: number[] = [];
   for (const part of spec.split(',')) {
+    // Reject blank CSV segments up front so a stray / doubled comma (`1,,3`,
+    // `1,`, `,2`) fails loudly instead of silently expanding to seed `0`.
+    if (part.trim() === '') {
+      throw new Error(
+        `Invalid --seeds value ${JSON.stringify(spec)}: empty seed segment (check for stray or doubled commas).`,
+      );
+    }
     const range = part.split('-');
     if (range.length === 2) {
+      // Blank range endpoints (`1-`, `-3`) are rejected by parseNonNegativeInt.
       const lo = parseNonNegativeInt('--seeds', range[0]!);
       const hi = parseNonNegativeInt('--seeds', range[1]!);
       for (let s = lo; s <= hi; s++) seeds.push(s);

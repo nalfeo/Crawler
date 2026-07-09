@@ -73,7 +73,7 @@ function getElements(): LabShellElements {
   };
 }
 
-export function shouldAllowViewportPreset(): boolean {
+function shouldAllowViewportPreset(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
     return true;
   }

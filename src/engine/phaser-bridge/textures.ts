@@ -12,27 +12,27 @@ import { createLogger } from '../../shared/logger.js';
  */
 
 // --- Texture keys ---
-export const TEX_PLAYER = '__cw_player';
-export const TEX_ENEMY = '__cw_enemy';
-export const TEX_NPC = '__cw_npc';
-export const TEX_ENEMY_RAT = '__cw_enemy_rat';
-export const TEX_ENEMY_SLIME = '__cw_enemy_slime';
-export const TEX_ENEMY_BOSS = '__cw_enemy_boss';
-export const TEX_GEM = '__cw_gem';
-export const TEX_BULLET = '__cw_bullet';
-export const TEX_ENEMY_BULLET = '__cw_enemy_bullet';
-export const TEX_AOE_PROJ = '__cw_aoe_proj';
-export const TEX_ENEMY_AOE_PROJ = '__cw_enemy_aoe_proj';
-export const TEX_RETURNING = '__cw_returning';
-export const TEX_MELEE = '__cw_melee';
-export const TEX_TRAP_ARMED = '__cw_trap_armed';
-export const TEX_TRAP_ARMING = '__cw_trap_arming';
-export const TEX_EXPLOSION = '__cw_explosion';
-export const TEX_ENEMY_EXPLOSION = '__cw_enemy_explosion';
-export const TEX_DEAD_SKULL = '__cw_dead_skull';
+const TEX_PLAYER = '__cw_player';
+const TEX_ENEMY = '__cw_enemy';
+const TEX_NPC = '__cw_npc';
+const TEX_ENEMY_RAT = '__cw_enemy_rat';
+const TEX_ENEMY_SLIME = '__cw_enemy_slime';
+const TEX_ENEMY_BOSS = '__cw_enemy_boss';
+const TEX_GEM = '__cw_gem';
+const TEX_BULLET = '__cw_bullet';
+const TEX_ENEMY_BULLET = '__cw_enemy_bullet';
+const TEX_AOE_PROJ = '__cw_aoe_proj';
+const TEX_ENEMY_AOE_PROJ = '__cw_enemy_aoe_proj';
+const TEX_RETURNING = '__cw_returning';
+const TEX_MELEE = '__cw_melee';
+const TEX_TRAP_ARMED = '__cw_trap_armed';
+const TEX_TRAP_ARMING = '__cw_trap_arming';
+const TEX_EXPLOSION = '__cw_explosion';
+const TEX_ENEMY_EXPLOSION = '__cw_enemy_explosion';
+const TEX_DEAD_SKULL = '__cw_dead_skull';
 export const TEX_WELCOME_SIGN = '__cw_welcome_sign';
 export const TEX_WELCOME_SIGN_LEFT = '__cw_welcome_sign_left';
-export const TEX_GOLD = '__cw_gold';
+const TEX_GOLD = '__cw_gold';
 export const PROCEDURAL_TEXTURE_KEYS = {
   default: TEX_BULLET,
   player: TEX_PLAYER,

@@ -1,0 +1,64 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-09",
+  "session_slug": "ai-sweep-eval-pipeline",
+  "task_title": "Cloud-parallel AI combo x hill-climb eval pipeline",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 12,
+      "resolved_count": 12,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "major_fork",
+      "notes": "Adversarial review REJECTED the config-by-seed matrix + top-K-on-defaults design; all 12 concerns (8 blocking) adopted. Major fork: (1) SSOT win comparator officialWin=victory AND gameTimeMs<6min, slack maxFrames; (2) multi-column leaderboard not single scalar winner, composite score headline + win-count/flips/time/xp/gold, flag divergence for human at S5; (3) real holdout seeds 81-100 touched once at validate; (4) all 8 combos get a tuned pass, no default pruning, LEGACY tuned control; (5,6) matrix over COMBO (8 jobs) with in-process coordinate-ascent + worker-pool, kills 256-cap risk and cross-run handoff; (7) knob spec from real SSOT not stale hill-climb ranges; (8) carry forward zero win-loss-flip / no-regression veto columns; (10,11) provenance + aggregate recompute-from-rows with dedup/missing/mismatch rejection; (12) dispatch-only trigger, drop sweep push token. Alternatives 1 in-process orchestrator, 2 combo-only matrix, 3 all-combos coarse + halving — blended all three."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview", "claude-sonnet-4.6"],
+          "concerns_count": 5,
+          "resolved_count": 5,
+          "clean": false,
+          "notes": "1 (BLOCKING, gpt-5.4 + claude-sonnet-4.6): aggregator trusted row.officialWin/row.score -> shared deriveRunFacts(ScorableStats, budgetMs) used by BOTH producer runOne AND verifier assertRowsConsistent + isWin recompute in buildLeaderboard. 2 (BLOCKING, gpt-5.4): mixed-provenance shards -> mergeShards throws on stage/runnerOs/nodeVersion/packageLockHash/workflowSha mismatch. 3 (BLOCKING, gpt-5.4): NaN CLI ints hang the pool -> strict parsePositiveInt/parseNonNegativeInt on --workers/--rounds. 4 (HIGH, gemini): runOne downgraded ALL non-wins to timeout -> narrowed to over-budget victory only. 5 (NON-BLOCKING, claude-sonnet-4.6): configId collision silent overwrite -> mergeShards throws on conflicting definition."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Confirmation round on the fixed diff. Both models confirmed all 5 round-1 fixes correct and independently CLEARED the flagged highest-risk item (strict === on score after a JSON round-trip is safe: V8 serializes doubles with shortest-round-trip precision and scoreRun is pure over exactly the stored fields). gemini: fully clean, no issues. gpt-5.4: 1 new HIGH -> parseNonNegativeInt/parseSeeds coerced blank/whitespace segments to seed 0 (e.g. 1,,3), letting a malformed workflow_dispatch seed input silently skew the panel. RESOLVED: blank-guard in parseNonNegativeInt/parseNonNegativeNumber/parsePositiveInt + explicit empty-segment guard in parseSeeds; 3 regression tests covering gpt reproduction cases (1, / ,2 / 1,,3 / 1- / blank rounds); verified green + direct tsx smoke of all reproduction inputs."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview", "claude-sonnet-4.6"],
+          "concerns_count": 5,
+          "valid_count": 5,
+          "resolved_count": 5,
+          "clean": false,
+          "notes": "3 distinct models; claude-opus-4.8 adjudicated all 5 concerns valid (2 flagged by two models independently). All 5 fixed per rule #12 (fix, never weaken). See code_review round 1 for the concern list."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "2 distinct models confirm round-1 fixes + float-roundtrip exactness. Adjudicator judged the 1 new gpt-5.4 concern (blank seed segment -> silent seed 0) valid and tractable (not intractable -> no escalation); resolved with parser blank-guards + regression tests. Within the 2-round cap; terminal clean."
+        }
+      ]
+    }
+  }
+}

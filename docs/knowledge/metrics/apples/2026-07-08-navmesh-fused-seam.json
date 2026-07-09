@@ -1,0 +1,10 @@
+{
+  "date": "2026-07-08",
+  "session": "navmesh-fused-seam",
+  "estimated_apples": 4,
+  "actual_apples": 4,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.7,
+  "notes": "Slice 4b: tangential-to-danger-gradient seam term (fork A) layered additively on the shipped 4a NAVMESH_FUSED fan, default weight w=2 (human-adjudicated), byte-identical-at-weight-0 by construction. Full 4-apple harness: adversarial plan_review (gpt-5.5, 6 alternatives, 11 concerns) + 2-round-clean code_review (3 distinct models r1 -> 2 distinct models r2) + 2-round-clean multi_model_review (opus-4.8 adjudicator). Friction (kept exact, not over): a metric-semantics bug (seam counters incremented on reward-gate-open rather than heading re-selection) was caught by sonnet-4.6 in round 1 and fixed; and the full-36-pair sweep artifact at the shipping weight w=2 was absent at finalize time (only 9-pair w=2 + a 36-pair w=0/3/4 bracket) -> shipped on that evidence per explicit human authorization given the mode is default-OFF and live-byte-identical."
+}

@@ -1,0 +1,62 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-09",
+  "session_slug": "devtool-canvas-storage",
+  "task_title": "Rewrite Azure storage lifecycle DevTool as a canvas extension",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "plan_divergence": "major_fork",
+      "notes": "Separate-model (gpt-5.4) review returned rejected: 4 blocking + 4 suggestions, all 8 adopted. B1 health-gate mutations (re-probe, refuse !up, 409). B2 per-instance mutation token minted into iframe, required header on mutation routes (sidecar routes equally unguarded so strictly stricter, never easier). B3 keep two-phase list->enrich. B4 monotonic requestSeq drops stale responses. major_fork: B3+B4 reversed load-bearing data-flow decision -> pivot from server-authoritative-state+SSE to client-authoritative (mirrors monolith) + stateless proxy routes, making two-phase native and dissolving the server-state race. S5 400 returns invalidKeys + client prunes. S6 enrichment as array (no proto hazard). S7 readJsonBody 64KB cap. S8 sidecar-client contract test."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true,
+          "notes": "Default code-review agent (~551s). Verdict CLEAN: destructive-op safety airtight, security clean, REPO_ROOT 3-hop correct, 33 tests pass. Raised 3 non-blocking items — all considered and cleared (no code change required)."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "Explicit claude-sonnet-4.6 re-review (~655s). Found 2 real Medium bugs: (1) renderer.mjs reload() leaked the inflight busy counter on stale responses (setBusy(false) ran AFTER the stale-sequence guard), permanently disabling refresh; (2) the server-side destructive route guards (token->validate->health-gate->409) were ENTIRELY untested — a one-line deletion of the health gate would have shipped green. BOTH fixed this session: setBusy(false) moved before the stale guard in both arms + regression test; the decision extracted to a pure DI module lib/mutation-guard.mjs (decideMutation) with 19 spy-based ordering/refusal tests. Tractable + resolved, so the loop continued to a clean round rather than escalating."
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.3-codex"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Fresh model gpt-5.3-codex (~137s), distinct family from round 2. Focused re-review of both round-2 fixes + a full destructive-ops safety pass (confirm strings, no destructive canvas actions, health-gating, batch-poisoning, token/path-validation, new-test meaningfulness). Verdict: CLEAN — no concerns. 53 storage tests + 436 test:guards + verify:fast all green."
+        },
+        {
+          "round": 4,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "GitHub PR reviewer (copilot-pull-request-reviewer) on PR #987 raised 2 concerns, both resolved this round: (1) apple metric hello_kitties was 0.8 but the repo convention is actual_apples/5 = 3/5 = 0.6 (0.8 implies 4 apples) — corrected to 0.6; (2) renderer.mjs `selectedCount` was write-only — mutated in the checkbox change handler, clearSelection, and pruneInvalid but never read (selection is derived from `selected` via selectKeys()), and the monolith tracks no selection count either → removed the declaration + all mutation sites together (required under 'use strict' to avoid ReferenceError). 53 storage tests still green; no safety gate touched."
+        },
+        {
+          "round": 5,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "After the rebase onto main (Slice C postprocess PR #986 merged), the GitHub PR reviewer raised 1 concern: the vendored harness-drift.test.mjs was a verbatim copy of sprite-review and still asserted result.checked.includes('sprite-review') instead of 'storage'. checkHarness() only inspects extensions with lib/canvas-harness.mjs vendored, so if the storage anchor were ever removed, 'storage' would silently drop from `checked` and the assertion would still pass on sprite-review — a false green for the very extension it guards. Fixed to assert on 'storage' (matches the merged postprocess sibling's pattern); fixed drift test passes (fail 0). No safety gate touched."
+        }
+      ]
+    }
+  }
+}
