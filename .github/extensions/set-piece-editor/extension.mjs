@@ -300,6 +300,23 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden;
   background:#238636;color:#fff;padding:5px 13px;border-radius:8px;
   font-size:12px;font-weight:600;opacity:0;transition:opacity .2s;pointer-events:none;z-index:100}
 .toast.show{opacity:1}
+.gal{display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.72);align-items:center;justify-content:center}
+.galp{background:var(--background-color-default,#0d1117);border:1px solid var(--border-color-default,#30363d);border-radius:10px;width:540px;max-height:82vh;display:flex;flex-direction:column;overflow:hidden}
+.galh{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border-color-default,#30363d);flex-shrink:0}
+.galtabs{display:flex;flex-shrink:0;border-bottom:1px solid var(--border-color-default,#30363d)}
+.galtab{flex:1;padding:5px 0;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-color-muted,#8b949e);cursor:pointer;font-size:12px;font-family:inherit}
+.galtab.act{border-bottom-color:#1f6feb;color:var(--text-color-default,#e6edf3);font-weight:600}
+.galsc{flex:1;overflow:auto;padding:8px}
+.galsi{display:inline-flex;flex-direction:column;align-items:center;cursor:pointer;padding:3px;border-radius:4px;border:1px solid transparent;width:58px;vertical-align:top;margin:1px}
+.galsi:hover{border-color:var(--border-color-default,#30363d);background:var(--background-color-subtle,#21262d)}
+.galsi canvas{image-rendering:pixelated;width:32px;height:32px}
+.galsi span{font-size:9px;text-align:center;color:var(--text-color-muted,#8b949e);word-break:break-all;line-height:1.2;margin-top:2px;max-width:54px;overflow:hidden}
+.galsi.sel{border-color:#1f6feb;background:rgba(31,111,235,.15)}
+.galsrch{flex:1;background:var(--background-color-inset,#161b22);color:var(--text-color-default,#e6edf3);border:1px solid var(--border-color-default,#30363d);border-radius:4px;padding:3px 8px;font-size:12px;font-family:inherit}
+.galsrch:focus{outline:2px solid var(--color-focus-outline,#1f6feb);outline-offset:-1px}
+.pickbtn{display:inline-block;padding:1px 5px;background:var(--background-color-subtle,#21262d);border:1px solid var(--border-color-default,#30363d);border-radius:3px;cursor:pointer;font-size:10px;color:var(--text-color-muted,#8b949e)}
+.pickbtn:hover{background:var(--background-color-emphasis,#30363d);color:var(--text-color-default,#e6edf3)}
+
 </style>
 </head>
 <body>
@@ -318,6 +335,9 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden;
   <button class="btn" id="btnzm" style="padding:3px 7px">&#8722;</button>
   <span id="zoomlbl" style="font-size:11px;min-width:32px;text-align:center">48px</span>
   <button class="btn" id="btnzp" style="padding:3px 7px">+</button>
+  <button class="btn" id="btnundo" disabled title="Undo (Ctrl+Z)">&#8630; Undo</button>
+  <button class="btn" id="btnredo" disabled title="Redo (Ctrl+Y)">&#8631; Redo</button>
+  <button class="btn" id="btnreset" title="Reset to last saved">&#10227; Reset</button>
   <button class="btn" id="btnadd">+ Prop</button>
   <button class="btn btn-r" id="btndel" disabled>&#10005;</button>
   <button class="btn btn-g" id="btnapply">&#10003; Apply</button>
@@ -375,17 +395,36 @@ var SHEETS_META={
   'kenney-roguelike-characters':{margin:0,spacing:1,cols:54},
   'custom-pixel-sprites':{margin:1,spacing:1,cols:19}
 };
-var CATALOG={
-  'player':{k:'kenney-tiny-dungeon',c:0,r:8},
-  'enemy.goblin':{k:'kenney-tiny-dungeon',c:1,r:10},
-  'enemy.orc':{k:'kenney-tiny-dungeon',c:1,r:9},
-  'enemy.rat':{k:'kenney-tiny-dungeon',c:3,r:10},
-  'enemy.slime':{k:'kenney-tiny-dungeon',c:0,r:9},
-  'enemy.boss':{k:'kenney-tiny-dungeon',c:0,r:10},
-  'npc.guide':{k:'kenney-tiny-dungeon',c:3,r:8},
-  'item.gem':{k:'custom-pixel-sprites',c:7,r:0},
-  'weapon.sword':{k:'kenney-tiny-dungeon',c:8,r:8},
-  'weapon.bat':{k:'kenney-tiny-dungeon',c:9,r:9}
+// Full catalog mirrored from src/engine/sprites/registry.ts SPRITES array.
+// col = frame % sheetCols, row = Math.floor(frame / sheetCols)
+var CATALOG = {
+  // Kenney Tiny Dungeon (cols=12)
+  player: { k: 'kenney-tiny-dungeon', c: 0, r: 8 },
+  'enemy.goblin': { k: 'kenney-tiny-dungeon', c: 1, r: 10 },
+  'enemy.orc': { k: 'kenney-tiny-dungeon', c: 1, r: 9 },
+  'enemy.rat': { k: 'kenney-tiny-dungeon', c: 3, r: 10 },
+  'enemy.slime': { k: 'kenney-tiny-dungeon', c: 0, r: 9 },
+  'enemy.boss': { k: 'kenney-tiny-dungeon', c: 0, r: 10 },
+  'npc.guide': { k: 'kenney-tiny-dungeon', c: 3, r: 8 },
+  'weapon.sword': { k: 'kenney-tiny-dungeon', c: 8, r: 8 },
+  'weapon.bat': { k: 'kenney-tiny-dungeon', c: 9, r: 9 },
+  'weapon.arrow': { k: 'kenney-tiny-dungeon', c: 11, r: 10 },
+  // Kenney Roguelike Characters (cols=54)
+  'enemy.brigand': { k: 'kenney-roguelike-characters', c: 0, r: 7 },
+  'enemy.ghost': { k: 'kenney-roguelike-characters', c: 1, r: 11 },
+  // Custom pixel sprites (cols=19, row 0)
+  'item.gem': { k: 'custom-pixel-sprites', c: 7, r: 0 },
+  'effect.proj': { k: 'custom-pixel-sprites', c: 8, r: 0 },
+  'effect.enemy_proj': { k: 'custom-pixel-sprites', c: 9, r: 0 },
+  'effect.aoe': { k: 'custom-pixel-sprites', c: 10, r: 0 },
+  'effect.enemy_aoe': { k: 'custom-pixel-sprites', c: 11, r: 0 },
+  'weapon.returning': { k: 'custom-pixel-sprites', c: 12, r: 0 },
+  'effect.melee': { k: 'custom-pixel-sprites', c: 13, r: 0 },
+  'effect.trap_arming': { k: 'custom-pixel-sprites', c: 14, r: 0 },
+  'effect.trap_armed': { k: 'custom-pixel-sprites', c: 15, r: 0 },
+  'effect.explosion': { k: 'custom-pixel-sprites', c: 16, r: 0 },
+  'effect.enemy_explosion': { k: 'custom-pixel-sprites', c: 17, r: 0 },
+  'effect.dead': { k: 'custom-pixel-sprites', c: 18, r: 0 },
 };
 var imgCache={};
 function loadSheet(key){
@@ -413,6 +452,7 @@ function resolveSprite(s){
 }
 var S={pack:null,selId:null,selPropIdx:-1,tileSize:48,dirty:false,snapMode:'tile',activeLayerId:null};
 var sp=null;
+var hist=[],histIdx=-1,origSP=null,galTab='catalog',galleryTarget=null;
 var KINDS={
   floor:{bg:'#162016',bd:'#2d5a2d',lb:'#4ade80'},
   wall:{bg:'#16162e',bd:'#2d2d5a',lb:'#818cf8'},
@@ -454,8 +494,9 @@ function selectSP(id){
   document.getElementById('spsel').value=id;
   document.getElementById('spmeta').textContent=(sp.theme||'')+' \u00b7 '+(sp.sizing||'');
   getLayers();S.activeLayerId=sp.sceneLayers[0].id;
+  origSP=JSON.stringify(sp);hist=[origSP];histIdx=0;
   renderLayersPanel();updatePropPanel();render();
-  setGs('Editing: '+sp.name+' ('+sp.width+'x'+sp.height+')');updateStatus();
+  setGs('Editing: '+sp.name+' ('+sp.width+'x'+sp.height+')');updateStatus();updUR();
 }
 function renderLayersPanel(){
   var ll=document.getElementById('ll');ll.innerHTML='';
@@ -726,10 +767,14 @@ function mkSpriteFields(sprite,li){
   ss.onchange=function(){setSprSrc(li,ss.value);};
   sr.appendChild(ss);frag.appendChild(sr);
   if(sprite.source==='catalog'){
-    var r=mkFR('spriteId');var inp=document.createElement('input');
-    inp.type='text';inp.value=sprite.spriteId||'';inp.placeholder='sprite:player';
-    inp.onchange=function(){setSprFld(li,'spriteId',inp.value);};
-    r.appendChild(inp);frag.appendChild(r);
+    var rcat=mkFR('sprite');
+    var cur=sprite.spriteId||'';
+    var clbl=document.createElement('span');
+    clbl.textContent=cur?cur.replace('sprite:',''):'(none)';
+    clbl.style.cssText='flex:1;font-size:11px;color:var(--text-color-muted,#8b949e);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    var cpick=document.createElement('button');cpick.className='pickbtn';cpick.textContent='Pick...';
+    (function(li2){cpick.onclick=function(){openGallery(S.selPropIdx,li2);};})(li);
+    rcat.appendChild(clbl);rcat.appendChild(cpick);frag.appendChild(rcat);
   }else if(sprite.source==='sheet'){
     var kr=mkFR('sheet');var ks=document.createElement('select');
     KNOWNSHEETS.forEach(function(k){var o=document.createElement('option');o.value=k;o.textContent=k.replace('kenney-','');if(sprite.sheetKey===k)o.selected=true;ks.appendChild(o);});
@@ -798,9 +843,8 @@ document.getElementById('btndel').addEventListener('click',function(){
   sp.props.splice(S.selPropIdx,1);S.selPropIdx=-1;updatePropPanel();render();markDirty();
 });
 document.getElementById('btnaddsprite').addEventListener('click',function(){
-  var p=sp&&sp.props[S.selPropIdx];if(!p)return;
-  p.layers.push({sprite:{source:'sheet',sheetKey:'kenney-tiny-dungeon',col:0,row:0}});
-  refreshSprites();render();markDirty();
+  if(S.selPropIdx<0||!sp)return;
+  openGallery(S.selPropIdx,-1);
 });
 document.getElementById('btnapply').addEventListener('click',async function(){
   if(!sp)return;
@@ -836,7 +880,25 @@ document.getElementById('btnfit').addEventListener('click',function(){
   S.tileSize=Math.max(12,Math.min(128,Math.min(Math.floor(aw/sp.width),Math.floor(ah/sp.height))));
   document.getElementById('zoomlbl').textContent=S.tileSize+'px';render();
 });
-function markDirty(){S.dirty=true;updateStatus();}
+function pushHistory(){
+  hist=hist.slice(0,histIdx+1);
+  hist.push(JSON.stringify(sp));
+  if(hist.length>80)hist.shift(); else histIdx++;
+  updUR();
+}
+function updUR(){
+  document.getElementById('btnundo').disabled=histIdx<=0;
+  document.getElementById('btnredo').disabled=histIdx>=hist.length-1;
+}
+function applyHistState(s){
+  var o=JSON.parse(s);
+  sp.props=o.props;
+  if(o.sceneLayers)sp.sceneLayers=o.sceneLayers;
+  S.selPropIdx=-1;
+  getLayers();if(sp.sceneLayers&&sp.sceneLayers[0])S.activeLayerId=sp.sceneLayers[0].id;
+  renderLayersPanel();updatePropPanel();render();
+}
+function markDirty(){pushHistory();S.dirty=true;updateStatus();}
 function setGs(t){document.getElementById('gstatus').textContent=t;}
 function updateStatus(){
   var sb=document.getElementById('stbar');
@@ -853,6 +915,180 @@ function showToast(msg,err){
 var es=new EventSource('/events');
 es.onmessage=function(e){try{var d=JSON.parse(e.data);if(d.type==='applied')showToast('\u2713 Saved!');}catch(ex){}};
 loadData().catch(function(e){setGs('Error: '+e.message);});
+
+document.getElementById('btnundo').addEventListener('click',function(){
+  if(histIdx<=0)return;
+  histIdx--;applyHistState(hist[histIdx]);
+  S.dirty=hist[histIdx]!==origSP;updateStatus();updUR();
+});
+document.getElementById('btnredo').addEventListener('click',function(){
+  if(histIdx>=hist.length-1)return;
+  histIdx++;applyHistState(hist[histIdx]);
+  S.dirty=true;updateStatus();updUR();
+});
+document.getElementById('btnreset').addEventListener('click',function(){
+  if(!origSP)return;
+  if(S.dirty&&!confirm('Reset to last saved state? Unsaved changes will be lost.'))return;
+  var o=JSON.parse(origSP);
+  sp.props=o.props;sp.sceneLayers=o.sceneLayers||sp.sceneLayers;
+  S.selPropIdx=-1;S.dirty=false;hist=[origSP];histIdx=0;
+  getLayers();S.activeLayerId=sp.sceneLayers[0].id;
+  renderLayersPanel();updatePropPanel();render();updateStatus();updUR();
+  showToast('Reset to saved state');
+});
+document.addEventListener('keydown',function(e){
+  if(document.getElementById('gal').style.display==='flex'){if(e.key==='Escape')closeGallery();return;}
+  if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&e.key==='z'){e.preventDefault();document.getElementById('btnundo').click();}
+  if((e.ctrlKey||e.metaKey)&&(e.key==='y'||(e.shiftKey&&e.key==='Z'))){e.preventDefault();document.getElementById('btnredo').click();}
+});
+
+// ── Gallery ──────────────────────────────────────────────────────────────────
+function openGallery(propIdx,layerIdx){
+  galleryTarget={propIdx:propIdx,layerIdx:layerIdx};
+  document.getElementById('galsrch').value='';
+  document.getElementById('gal').style.display='flex';
+  galTab='catalog';
+  document.getElementById('galtab-cat').classList.add('act');
+  document.getElementById('galtab-sht').classList.remove('act');
+  renderGalCatalog('');
+}
+function closeGallery(){
+  document.getElementById('gal').style.display='none';
+  galleryTarget=null;
+}
+function applyGallerySprite(sprite){
+  if(!galleryTarget||!sp)return;
+  var p=sp.props[galleryTarget.propIdx];if(!p)return;
+  if(galleryTarget.layerIdx===-1){
+    p.layers.push({sprite:sprite});
+  }else{
+    p.layers[galleryTarget.layerIdx].sprite=sprite;
+  }
+  S.selPropIdx=galleryTarget.propIdx;
+  closeGallery();
+  refreshSprites();render();markDirty();
+}
+function mkGalThumb(k,c,r){
+  var cvs=document.createElement('canvas');cvs.width=32;cvs.height=32;
+  var meta=SHEETS_META[k];
+  function draw(){
+    var img=imgCache[k];if(!img||!meta)return;
+    var cx=cvs.getContext('2d');cx.imageSmoothingEnabled=false;
+    cx.fillStyle='#0d1117';cx.fillRect(0,0,32,32);
+    var sx=meta.margin+c*(16+meta.spacing),sy=meta.margin+r*(16+meta.spacing);
+    cx.drawImage(img,sx,sy,16,16,0,0,32,32);
+  }
+  if(imgCache[k]){draw();}else{
+    loadSheet(k);
+    var tid=setInterval(function(){if(imgCache[k]){clearInterval(tid);draw();}},120);
+  }
+  return cvs;
+}
+function renderGalCatalog(filter){
+  var sc=document.getElementById('galsc');sc.innerHTML='';
+  var lo=filter.toLowerCase();
+  var keys=Object.keys(CATALOG).filter(function(k){return!filter||k.indexOf(lo)>=0;});
+  if(!keys.length){sc.innerHTML='<div style="color:var(--text-color-muted,#8b949e);padding:16px;text-align:center">No matches</div>';return;}
+  keys.forEach(function(k){
+    var def=CATALOG[k];
+    var item=document.createElement('div');item.className='galsi';item.title='sprite:'+k;
+    item.appendChild(mkGalThumb(def.k,def.c,def.r));
+    var lbl=document.createElement('span');lbl.textContent=k;item.appendChild(lbl);
+    item.onclick=function(){applyGallerySprite({source:'catalog',spriteId:'sprite:'+k});};
+    sc.appendChild(item);
+  });
+}
+function renderGalSheet(sheetKey){
+  var sc=document.getElementById('galsc');sc.innerHTML='';
+  var sel=document.createElement('select');
+  sel.style.cssText='margin-bottom:8px;display:block;background:var(--background-color-inset,#161b22);color:var(--text-color-default,#e6edf3);border:1px solid var(--border-color-default,#30363d);border-radius:4px;padding:3px 7px;font-size:11px;';
+  Object.keys(SHEETS_META).forEach(function(k){
+    var o=document.createElement('option');o.value=k;o.textContent=k;if(k===sheetKey)o.selected=true;sel.appendChild(o);
+  });
+  sel.onchange=function(){renderGalSheet(sel.value);};
+  sc.appendChild(sel);
+  var meta=SHEETS_META[sheetKey];
+  if(!imgCache[sheetKey]){
+    loadSheet(sheetKey);
+    var pnode=document.createElement('p');pnode.textContent='Loading sheet...';pnode.style.color='var(--text-color-muted,#8b949e)';sc.appendChild(pnode);
+    var wt=setInterval(function(){if(imgCache[sheetKey]){clearInterval(wt);renderGalSheet(sheetKey);}},200);
+    return;
+  }
+  var img=imgCache[sheetKey];
+  var scale=2;
+  var W=img.naturalWidth*scale,H=img.naturalHeight*scale;
+  var cvs=document.createElement('canvas');cvs.width=W;cvs.height=H;
+  cvs.style.cssText='image-rendering:pixelated;cursor:crosshair;display:block;border:1px solid var(--border-color-default,#30363d);border-radius:4px;';
+  var cx=cvs.getContext('2d');cx.imageSmoothingEnabled=false;
+  cx.drawImage(img,0,0,W,H);
+  cx.strokeStyle='rgba(255,255,255,.2)';cx.lineWidth=1;
+  var rows=Math.floor((img.naturalHeight-meta.margin)/(16+meta.spacing));
+  for(var gc=0;gc<=meta.cols;gc++){var gx=(meta.margin+gc*(16+meta.spacing))*scale;cx.beginPath();cx.moveTo(gx,0);cx.lineTo(gx,H);cx.stroke();}
+  for(var gr=0;gr<=rows;gr++){var gy=(meta.margin+gr*(16+meta.spacing))*scale;cx.beginPath();cx.moveTo(0,gy);cx.lineTo(W,gy);cx.stroke();}
+  var hover={c:-1,r:-1};
+  function redrawHover(){
+    cx.drawImage(img,0,0,W,H);
+    cx.strokeStyle='rgba(255,255,255,.2)';cx.lineWidth=1;
+    for(var hc=0;hc<=meta.cols;hc++){var hx=(meta.margin+hc*(16+meta.spacing))*scale;cx.beginPath();cx.moveTo(hx,0);cx.lineTo(hx,H);cx.stroke();}
+    for(var hr=0;hr<=rows;hr++){var hy=(meta.margin+hr*(16+meta.spacing))*scale;cx.beginPath();cx.moveTo(0,hy);cx.lineTo(W,hy);cx.stroke();}
+    if(hover.c>=0){
+      cx.fillStyle='rgba(31,111,235,.35)';
+      cx.fillRect((meta.margin+hover.c*(16+meta.spacing))*scale,(meta.margin+hover.r*(16+meta.spacing))*scale,16*scale,16*scale);
+    }
+  }
+  cvs.onmousemove=function(e){
+    var rb=cvs.getBoundingClientRect();
+    var px=(e.clientX-rb.left)*(cvs.width/rb.width);
+    var py=(e.clientY-rb.top)*(cvs.height/rb.height);
+    var nc=Math.floor((px/scale-meta.margin)/(16+meta.spacing));
+    var nr=Math.floor((py/scale-meta.margin)/(16+meta.spacing));
+    if(nc!==hover.c||nr!==hover.r){hover.c=nc;hover.r=nr;redrawHover();}
+  };
+  cvs.onmouseleave=function(){hover.c=-1;hover.r=-1;redrawHover();};
+  cvs.onclick=function(e){
+    var rb=cvs.getBoundingClientRect();
+    var px=(e.clientX-rb.left)*(cvs.width/rb.width);
+    var py=(e.clientY-rb.top)*(cvs.height/rb.height);
+    var tc=Math.floor((px/scale-meta.margin)/(16+meta.spacing));
+    var tr=Math.floor((py/scale-meta.margin)/(16+meta.spacing));
+    if(tc<0||tr<0||tc>=meta.cols||tr<0)return;
+    applyGallerySprite({source:'sheet',sheetKey:sheetKey,col:tc,row:tr});
+  };
+  sc.appendChild(cvs);
+}
+document.getElementById('galsrch').addEventListener('input',function(){
+  if(galTab==='catalog')renderGalCatalog(this.value);
+});
+document.getElementById('galbtnclose').addEventListener('click',closeGallery);
+document.getElementById('gal').addEventListener('click',function(e){if(e.target===this)closeGallery();});
+document.getElementById('galtab-cat').addEventListener('click',function(){
+  galTab='catalog';
+  document.getElementById('galtab-cat').classList.add('act');
+  document.getElementById('galtab-sht').classList.remove('act');
+  renderGalCatalog(document.getElementById('galsrch').value);
+});
+document.getElementById('galtab-sht').addEventListener('click',function(){
+  galTab='sheet';
+  document.getElementById('galtab-sht').classList.add('act');
+  document.getElementById('galtab-cat').classList.remove('act');
+  document.getElementById('galsrch').value='';
+  renderGalSheet(Object.keys(SHEETS_META)[0]);
+});
 </script>
+<div class="gal" id="gal">
+  <div class="galp">
+    <div class="galh">
+      <span style="font-weight:700;font-size:13px">Pick Sprite</span>
+      <span style="flex:1"></span>
+      <input class="galsrch" id="galsrch" type="text" placeholder="Search catalog...">
+      <button class="btn" id="galbtnclose">&#10005;</button>
+    </div>
+    <div class="galtabs">
+      <button class="galtab act" id="galtab-cat">Catalog</button>
+      <button class="galtab" id="galtab-sht">Sheet Browser</button>
+    </div>
+    <div class="galsc" id="galsc"></div>
+  </div>
+</div>
 </body>
 </html>`;
