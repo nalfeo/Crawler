@@ -13,6 +13,8 @@
  *   2. The engine sprite registry (`SPRITES`) — temp CC0 Kenney frames whose
  *      `note` says "temp CC0 art" (e.g. `enemy.slime`, `enemy.rat`, `player`).
  *   3. Mob defs — any mob whose `spriteId` is the shared `mob-placeholder`.
+ *   4. Enemy-pack archetypes — any configured enemy archetype id that still has
+ *      no dedicated real generated asset under its own concept id.
  *
  * Real generated assets carry a versioned briefId (`slime-queen-v1`), so they
  * do NOT auto-wire over a bare-concept placeholder (`slime-queen`); that
@@ -30,7 +32,7 @@ import type { ManifestEntry } from '../../src/shared/generated-assets.js';
 export const MOB_PLACEHOLDER_SPRITE_ID = 'mob-placeholder';
 
 /** Where a placeholder reference was found. */
-export type PlaceholderSourceKind = 'manifest' | 'sprite-registry' | 'mob-def';
+export type PlaceholderSourceKind = 'manifest' | 'sprite-registry' | 'mob-def' | 'enemy-pack';
 
 /** A single placeholder still present in the project, tagged with its source. */
 export interface PlaceholderRef {
@@ -112,6 +114,11 @@ export interface PlaceholderAuditInput {
   readonly spriteRegistry: readonly SpriteRegistryLike[];
   /** Mob defs to scan for `mob-placeholder` usage. */
   readonly mobDefs: readonly MobDefLike[];
+  /**
+   * Enemy archetype IDs that should have dedicated generated art. Any id whose
+   * concept lacks a real generated asset is tracked as a placeholder-needed mob.
+   */
+  readonly enemyArchetypeIds?: readonly string[];
   /**
    * `public/`-relative, forward-slashed asset paths added since a git ref.
    * When provided, real assets are flagged `isNew` and the report is scoped:
@@ -219,6 +226,17 @@ export function buildPlaceholderAudit(input: PlaceholderAuditInput): Placeholder
       kind: 'mob-def',
       id: mob.id,
       detail: mob.spriteId,
+    });
+  }
+
+  // 4. Enemy archetypes with no dedicated generated art yet.
+  for (const archetypeId of input.enemyArchetypeIds ?? []) {
+    const bucket = conceptFor(byConcept, normalizeConcept(archetypeId));
+    if (bucket.realAssets.length > 0) continue;
+    bucket.placeholders.push({
+      kind: 'enemy-pack',
+      id: archetypeId,
+      detail: 'missing-generated-art',
     });
   }
 
