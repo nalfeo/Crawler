@@ -26,9 +26,6 @@
  */
 
 import { createHash } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
-import path from 'node:path';
-import { buildAnchorOverlay } from './anchor-overlay.js';
 import type { Brief } from './brief-schema.js';
 import type { DiversitySummary } from './diversity.js';
 import type { ExpansionSkipReason } from './expand-variations.js';
@@ -308,122 +305,11 @@ export interface RunSummary {
   };
 }
 
-/**
- * Compose the path structure for a run. Pure given (root, brief, runId).
- */
-export function runPaths(root: string, brief: Brief, runId: string): RunPaths {
-  const briefDir = path.join(root, 'runs', brief.name, runId);
-  return {
-    root,
-    runId,
-    briefDir,
-    rawDir: path.join(briefDir, 'raw'),
-    processedDir: path.join(briefDir, 'processed'),
-  };
-}
-
 /** Pure run-id builder. Caller supplies `now` and the prompt so tests are deterministic. */
 export function makeRunId(now: Date, prompt: string): string {
   const ts = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const hash = createHash('sha256').update(prompt).digest('hex').slice(0, 8);
   return `${ts}-${hash}`;
-}
-
-/** Create the run directory tree. Impure. */
-export function ensureRunDirs(paths: RunPaths): void {
-  mkdirSync(paths.briefDir, { recursive: true });
-  mkdirSync(paths.rawDir, { recursive: true });
-  mkdirSync(paths.processedDir, { recursive: true });
-}
-
-/** Write the raw multi-variant sheet PNG for a given attempt index. */
-export function writeSheet(paths: RunPaths, attemptIndex: number, sheet: Buffer): string {
-  const file = path.join(paths.briefDir, `sheet-${String(attemptIndex).padStart(2, '0')}.png`);
-  writeFileSync(file, sheet);
-  return file;
-}
-
-/** Write one variant's raw + processed PNGs and its scorecard. Returns paths. */
-export function writeVariant(
-  paths: RunPaths,
-  index: number,
-  raw: Buffer,
-  processed: Buffer,
-  scorecard: Scorecard,
-  options: {
-    /**
-     * Sprite width/height for the anchor overlay PNG. Defaults to 64x64.
-     * Passed explicitly so per-brief size overrides don't silently mis-render.
-     */
-    readonly overlaySize?: { readonly width: number; readonly height: number };
-  } = {},
-): {
-  readonly rawPath: string;
-  readonly processedPath: string;
-  readonly scorecardPath: string;
-  readonly anchorSidecarPath: string | null;
-  readonly centerOfGravitySidecarPath: string | null;
-  readonly anchorOverlayPath: string;
-} {
-  const id = String(index).padStart(2, '0');
-  const rawPath = path.join(paths.rawDir, `${id}.png`);
-  const processedPath = path.join(paths.processedDir, `${id}.png`);
-  const scorecardPath = path.join(paths.processedDir, `${id}.scorecard.json`);
-  writeFileSync(rawPath, raw);
-  writeFileSync(processedPath, processed);
-  writeFileSync(scorecardPath, `${JSON.stringify(scorecard, null, 2)}\n`);
-
-  let anchorSidecarPath: string | null = null;
-  if (scorecard.derivedAnchors.hold) {
-    anchorSidecarPath = path.join(paths.processedDir, `${id}.anchor.json`);
-    const sidecar = {
-      x: scorecard.derivedAnchors.hold.x,
-      y: scorecard.derivedAnchors.hold.y,
-      source: 'derived' as const,
-    };
-    writeFileSync(anchorSidecarPath, `${JSON.stringify(sidecar, null, 2)}\n`);
-  }
-  let centerOfGravitySidecarPath: string | null = null;
-  if (scorecard.derivedAnchors.centerOfGravity) {
-    centerOfGravitySidecarPath = path.join(paths.processedDir, `${id}.anchor.cog.json`);
-    const cogSidecar = {
-      x: scorecard.derivedAnchors.centerOfGravity.x,
-      y: scorecard.derivedAnchors.centerOfGravity.y,
-      source: 'derived' as const,
-    };
-    writeFileSync(centerOfGravitySidecarPath, `${JSON.stringify(cogSidecar, null, 2)}\n`);
-  }
-
-  // Always emit the overlay PNG, even when the anchor is null. A consistent
-  // file-per-variant means the gallery can blindly `<img>` it next to the
-  // sprite without branching on whether derivation succeeded; null-anchor
-  // overlays are fully transparent and so render as a no-op.
-  const overlaySize = options.overlaySize ?? { width: 64, height: 64 };
-  const anchorOverlayPath = path.join(paths.processedDir, `${id}.anchor-overlay.png`);
-  const overlayPng = buildAnchorOverlay({
-    width: overlaySize.width,
-    height: overlaySize.height,
-    anchor: scorecard.derivedAnchor
-      ? { x: scorecard.derivedAnchor.x, y: scorecard.derivedAnchor.y }
-      : null,
-  });
-  writeFileSync(anchorOverlayPath, overlayPng);
-
-  return {
-    rawPath,
-    processedPath,
-    scorecardPath,
-    anchorSidecarPath,
-    centerOfGravitySidecarPath,
-    anchorOverlayPath,
-  };
-}
-
-/** Write run summary JSON. Returns path. */
-export function writeSummary(paths: RunPaths, summary: RunSummary): string {
-  const file = path.join(paths.briefDir, 'summary.json');
-  writeFileSync(file, `${JSON.stringify(summary, null, 2)}\n`);
-  return file;
 }
 
 /**

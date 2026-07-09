@@ -2416,7 +2416,7 @@ function resolveRoomInteriorSpawn(
  * first visit regardless of the roll outcome, so leaving and re-entering never
  * re-rolls. SPAWN, SAFE, and BOSS_STAIR rooms are never seeded.
  */
-export function prepopulateEnteredRoom(world: GameWorld, playerX: number, playerY: number): void {
+function prepopulateEnteredRoom(world: GameWorld, playerX: number, playerY: number): void {
   const floorMap = world.floorMap;
   if (!floorMap || !world.floorScenario) {
     return;
@@ -3177,15 +3177,6 @@ export function shouldShowSpellSelector(world: GameWorld): boolean {
     world.goalFlags.get('floor1-boss-battle-complete') === true &&
     world.featureUnlocks.spells === false
   );
-}
-
-/** Show the spell selector modal with available spells. */
-export function showSpellSelector(world: GameWorld, showModal: (spellIds: string[]) => void): void {
-  if (!shouldShowSpellSelector(world)) {
-    return;
-  }
-  // The showModal callback receives the list of available spell IDs to display
-  showModal(Array.from(FLOOR1_BOSS_REWARD_SPELL_IDS));
 }
 
 /** Select a spell to equip. Returns true when the spell was successfully learned. */

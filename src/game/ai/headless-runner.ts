@@ -223,7 +223,7 @@ function computeSpawnerArenaMetrics(world: GameWorld): {
   return { total, triggered, resolved, barrierArmed, resolvedArmed, bankedXpTotal };
 }
 
-export function applyStartPlayerLevel(world: GameWorld, targetLevel: number): void {
+function applyStartPlayerLevel(world: GameWorld, targetLevel: number): void {
   const level = Math.max(1, Math.floor(targetLevel));
   if (level <= 1) {
     return;

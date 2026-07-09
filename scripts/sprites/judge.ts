@@ -49,10 +49,9 @@ import type { EvaluateRequest, VisionProvider } from './provider/vision-types.js
  * The judge cache mixes this into its hash key so a prompt change
  * automatically invalidates old verdicts without manual cache clears.
  */
-export const PROMPT_TEMPLATE_VERSION = 'v2';
+const PROMPT_TEMPLATE_VERSION = 'v2';
 
-export const EVALUATORS = ['style_match', 'brief_match', 'readability'] as const;
-export type Evaluator = (typeof EVALUATORS)[number];
+export type Evaluator = 'style_match' | 'brief_match' | 'readability';
 
 /** Per-evaluator result on the 1-5 ordinal scale. */
 export interface EvaluatorResult {
@@ -141,7 +140,7 @@ const evaluatorPayloadSchema = z
   })
   .strict();
 
-export const judgeResponseSchema = z
+const judgeResponseSchema = z
   .object({
     style_match: evaluatorPayloadSchema,
     brief_match: evaluatorPayloadSchema,

@@ -25,8 +25,6 @@
 
 export const SIDECAR_AZURE_RUN_STORE = 'azure-blob';
 export const SIDECAR_AZURE_ASSET_QUEUE = 'azure-queue';
-export const SIDECAR_LOCAL_RUN_STORE = 'local';
-export const SIDECAR_LOCAL_ASSET_QUEUE = 'noop';
 
 export interface SidecarBackendSelection {
   /** Effective `SPRITES_RUN_STORE` selector (lowercased). */

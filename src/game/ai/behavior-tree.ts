@@ -60,7 +60,7 @@ export interface BTNode {
 /**
  * Abstract base class for behavior tree nodes.
  */
-export abstract class BTNodeBase implements BTNode {
+abstract class BTNodeBase implements BTNode {
   constructor(protected readonly name: string) {}
 
   abstract tick(context: BTContext): BTStatus;
@@ -229,7 +229,7 @@ export class BTAction extends BTNodeBase {
 /**
  * Decorator base class: wraps a single child node and modifies its behavior.
  */
-export abstract class BTDecorator extends BTNodeBase {
+abstract class BTDecorator extends BTNodeBase {
   constructor(
     name: string,
     protected readonly child: BTNode,

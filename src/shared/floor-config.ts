@@ -56,7 +56,7 @@ const bossVariantConfigSchema = z
   })
   .strict();
 
-export const floorConfigSchema = z
+const floorConfigSchema = z
   .object({
     protagonist: z.string().min(1),
     starterWeapons: z.array(z.string().min(1)).min(1),
@@ -155,7 +155,7 @@ export function loadFloorConfigFromManifest(floorId: string): FloorConfig | null
   const ratArchetype = enemyPack.archetypes.find((a) => a.id === 'rat')!;
   const slimeArchetype = enemyPack.archetypes.find((a) => a.id === 'slime')!;
 
-  return {
+  return floorConfigSchema.parse({
     protagonist: manifest.protagonist,
     starterWeapons: manifest.starterWeapons,
     timer: manifest.timer,
@@ -203,7 +203,7 @@ export function loadFloorConfigFromManifest(floorId: string): FloorConfig | null
             welcomeSign: manifest.sprites.welcomeSign,
           }
         : undefined,
-  };
+  });
 }
 
 /**

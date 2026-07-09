@@ -329,7 +329,7 @@ export function spawnFamilyBoss(
  * function creates the ECS entity + `DoorState` component + lock config that
  * makes the door player-interactable and goal-gated.
  */
-export function installBossDenDoorLocks(
+function installBossDenDoorLocks(
   world: GameWorld,
   denRoom: RoomData,
   unlockGoalId: string,
@@ -363,7 +363,7 @@ export function installBossDenDoorLocks(
  * Wire RESOURCE_HEART doors to the floor2-victory latch.
  * Doors start closed+locked and unlock once the floor victory condition is met.
  */
-export function installResourceHeartDoorLocks(world: GameWorld, floorMap: FloorMap): number[] {
+function installResourceHeartDoorLocks(world: GameWorld, floorMap: FloorMap): number[] {
   const created: number[] = [];
   const room = floorMap.roomGraph.getFirstRoomByRole(RoomRole.RESOURCE_HEART);
   if (!room) return created;
@@ -850,15 +850,6 @@ export function isDenUnlocked(world: GameWorld, familyId: FamilyId): boolean {
  */
 export function markDenUnlocked(world: GameWorld, familyId: FamilyId): void {
   setGoalFlag(world, denUnlockGoalId(familyId), true);
-}
-
-/**
- * Number of families defined in the Floor 2 enemy pack that have a boss
- * archetype registered. Used by the schema tests to catch drift between
- * families.json and enemies.floor2.json.
- */
-export function countFloor2BossArchetypes(): number {
-  return floor2EnemyPack.archetypes.filter((a) => a.isBoss === true).length;
 }
 
 // Internal helpers ---------------------------------------------------------

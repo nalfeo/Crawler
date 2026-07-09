@@ -7,8 +7,8 @@ import type { RunStore } from './store/types.js';
 export const POSTPROCESS_PROFILE_KEY = 'postprocess.overrides.json';
 export const EFFECTIVE_PIPELINE_JSON_KEY = 'postprocess.pipeline.effective.json';
 export const EFFECTIVE_PIPELINE_YAML_KEY = 'postprocess.pipeline.effective.yaml';
-export const MANUAL_ANCHOR_KEY = 'manual-anchor.json';
-export const FACING_OVERRIDE_KEY = 'facing-override.json';
+const MANUAL_ANCHOR_KEY = 'manual-anchor.json';
+const FACING_OVERRIDE_KEY = 'facing-override.json';
 
 export interface ManualAnchorOverride {
   readonly variantIndex: number;

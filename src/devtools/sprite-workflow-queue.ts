@@ -36,7 +36,7 @@ export function isSizeVariant(value: unknown): value is SizeVariant {
  * Approve → (optional) Check in → Tag; brief promotion folds into the
  * Choose→Generate transition, so there is no standalone Promote stage.
  */
-export const WORKFLOW_STAGES = [
+const WORKFLOW_STAGES = [
   'draft',
   'synthesizing',
   'candidates',
@@ -54,7 +54,7 @@ export const WORKFLOW_STAGES = [
 export type WorkflowStage = (typeof WORKFLOW_STAGES)[number];
 
 /** Human-facing milestone steps shown in the per-item stepper. */
-export const STEP_LABELS = [
+const STEP_LABELS = [
   'Synthesize',
   'Choose',
   'Generate',

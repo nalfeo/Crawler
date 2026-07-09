@@ -30,7 +30,7 @@ import { AIDecisionMode, AIPathingMode, type AIConfig } from './types.js';
 // the default pathingMode is LEGACY, raising this from 0→2 does NOT change the
 // live game: LEGACY / pure-NAVMESH / RISK_REWARD_FUSED stay byte-identical.
 // Do NOT re-tune this without a fresh operator-adjudicated sweep.
-export const NAVMESH_FUSED_SEAM_WEIGHT = 2;
+const NAVMESH_FUSED_SEAM_WEIGHT = 2;
 
 export const DEFAULT_CONFIG: Required<AIConfig> = {
   seed: 12345,

@@ -29,7 +29,7 @@ const shopEntrySchema = z
 
 export type ShopEntryDef = z.infer<typeof shopEntrySchema>;
 
-export const shopArchetypeDefSchema = z
+const shopArchetypeDefSchema = z
   .object({
     id: z.string().min(1),
     name: z.string().min(1),
