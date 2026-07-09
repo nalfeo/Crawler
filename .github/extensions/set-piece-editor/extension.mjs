@@ -110,7 +110,7 @@ function handleRequest(instanceId, req, res) {
     });
     req.on('end', () => {
       try {
-        const { setPieceId, props, sceneLayers } = JSON.parse(body);
+        const { setPieceId, props, sceneLayers, npcs } = JSON.parse(body);
         const pack = readPack();
         const idx = pack.setPieces.findIndex((s) => s.id === setPieceId);
         if (idx === -1) {
@@ -120,6 +120,7 @@ function handleRequest(instanceId, req, res) {
         }
         pack.setPieces[idx] = { ...pack.setPieces[idx], props };
         if (sceneLayers && sceneLayers.length > 0) pack.setPieces[idx].sceneLayers = sceneLayers;
+        if (npcs !== undefined) pack.setPieces[idx].npcs = npcs;
         writePack(pack);
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify({ ok: true }));
@@ -275,18 +276,19 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden;
   padding:2px 5px;font-size:11px;font-family:inherit}
 .gs{flex:1;overflow:auto;padding:16px}
 #gc{cursor:default;display:block;image-rendering:pixelated}
-.ins{width:215px;flex-shrink:0;display:flex;flex-direction:column;
-  border-left:1px solid var(--border-color-default,#30363d);overflow-y:auto}
-.ps{padding:7px 9px;border-bottom:1px solid var(--border-color-default,#30363d)}
+.ins{width:215px;min-width:0;flex-shrink:0;display:flex;flex-direction:column;
+  border-left:1px solid var(--border-color-default,#30363d);overflow-y:auto;overflow-x:hidden}
+.ps{padding:7px 9px;border-bottom:1px solid var(--border-color-default,#30363d);
+  box-sizing:border-box;width:100%}
 .ps h3{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
   color:var(--text-color-muted,#8b949e);margin-bottom:5px}
-.fr{display:flex;align-items:center;gap:4px;margin-bottom:4px}
-.fr label{width:38px;font-size:11px;color:var(--text-color-muted,#8b949e);flex-shrink:0}
-.fr input,.fr select{flex:1;min-width:0;background:var(--background-color-inset,#161b22);
+.fr{display:flex;align-items:center;gap:4px;margin-bottom:4px;min-width:0}
+.fr label{width:28px;font-size:11px;color:var(--text-color-muted,#8b949e);flex-shrink:0}
+.fr input,.fr select{flex:1;min-width:0;width:0;background:var(--background-color-inset,#161b22);
   color:var(--text-color-default,#e6edf3);border:1px solid var(--border-color-default,#30363d);
-  border-radius:4px;padding:2px 5px;font-size:11px;font-family:inherit}
+  border-radius:4px;padding:2px 5px;font-size:11px;font-family:inherit;box-sizing:border-box}
 .fr input:focus,.fr select:focus{outline:2px solid var(--color-focus-outline,#1f6feb);outline-offset:-1px}
-.pr{display:grid;grid-template-columns:1fr 1fr;gap:3px}
+.pr{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:3px}
 .nosel{padding:12px;color:var(--text-color-muted,#8b949e);font-size:11px;text-align:center}
 .si{background:var(--background-color-inset,#161b22);border:1px solid var(--border-color-default,#30363d);
   border-radius:5px;margin-bottom:4px;overflow:hidden}
@@ -339,6 +341,7 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden;
   <button class="btn" id="btnredo" disabled title="Redo (Ctrl+Y)">&#8631; Redo</button>
   <button class="btn" id="btnreset" title="Reset to last saved">&#10227; Reset</button>
   <button class="btn" id="btnadd">+ Prop</button>
+  <button class="btn" id="btnaddnpc">+ NPC</button>
   <button class="btn btn-r" id="btndel" disabled>&#10005;</button>
   <button class="btn btn-g" id="btnapply">&#10003; Apply</button>
 </div>
@@ -353,7 +356,7 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden;
     <div class="gs" id="gs"><canvas id="gc"></canvas></div>
   </div>
   <div class="ins">
-    <div class="nosel" id="nosel">Click a prop to inspect.</div>
+    <div class="nosel" id="nosel">Click a prop or NPC to inspect.</div>
     <div id="proped" style="display:none">
       <div class="ps">
         <h3>Prop</h3>
@@ -379,6 +382,25 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden;
         <h3>Sprites</h3>
         <div id="spriteslist"></div>
         <button class="btn" id="btnaddsprite" style="width:100%;margin-top:3px;font-size:11px">+ Add Sprite</button>
+      </div>
+    </div>
+    <div id="npcped" style="display:none">
+      <div class="ps">
+        <h3>NPC</h3>
+        <div class="fr"><label>id</label><input id="nid" type="text"></div>
+        <div class="fr"><label>type</label><input id="ntype" type="text" placeholder="e.g. tutorial-goon"></div>
+        <div class="pr">
+          <div class="fr"><label>x</label><input id="nxf" type="number" min="0" step="1"></div>
+          <div class="fr"><label>y</label><input id="nyf" type="number" min="0" step="1"></div>
+        </div>
+        <div class="fr"><label>anchor</label>
+          <select id="nanchor">
+            <option value="">none</option>
+            <option value="welcome">welcome</option>
+            <option value="shop">shop</option>
+            <option value="spell">spell</option>
+          </select>
+        </div>
       </div>
     </div>
   </div>
@@ -466,7 +488,7 @@ function resolveSprite(s){
   var img=loadSheet(k);if(!img)return null;
   return{img:img,sx:meta.margin+c*(16+meta.spacing),sy:meta.margin+r*(16+meta.spacing),w:16,h:16};
 }
-var S={pack:null,selId:null,selPropIdx:-1,tileSize:48,dirty:false,snapMode:'tile',activeLayerId:null};
+var S={pack:null,selId:null,selPropIdx:-1,selNpcIdx:-1,tileSize:48,dirty:false,snapMode:'tile',activeLayerId:null};
 var sp=null;
 var hist=[],histIdx=-1,origSP=null,galTab='catalog',galleryTarget=null;
 var KINDS={
@@ -580,7 +602,12 @@ function render(){
   var sorted=sp.props.map(function(p,i){return{p:p,i:i};})
     .filter(function(x){return layerVisible(propLayer(x.p));})
     .sort(function(a,b){return getZ(a.p)-getZ(b.p);});
-  sorted.forEach(function(x){drawProp(x.p,x.i===S.selPropIdx,drag&&drag.idx===x.i?drag:null);});
+  sorted.forEach(function(x){drawProp(x.p,x.i===S.selPropIdx,drag&&drag.mode==='move'&&drag.idx===x.i?drag:null);});
+  // Render NPCs on top (z=60)
+  if(sp.npcs){sp.npcs.forEach(function(npc,ni){
+    var nd=drag&&drag.mode==='move-npc'&&drag.idx===ni?drag:null;
+    drawNpcEntity(npc,ni===S.selNpcIdx,nd);
+  });}
   if(S.selPropIdx>=0&&!drag){
     var sp2=sp.props[S.selPropIdx];
     if(sp2&&layerVisible(propLayer(sp2)))drawHandles(sp2.x*ts,sp2.y*ts,sp2.width||1,sp2.height||1);
@@ -625,6 +652,35 @@ function drawProp(prop,sel,ad){
     ctx.fillText('\uD83D\uDD12',px+pw2/2,py+ph2/2);
   }
 }
+// NPC entity rendering (separate from props — npcs[] array, spawned as living entities)
+var NPC_BG='#0a1a28',NPC_BD='#1060a0',NPC_LB='#38bdf8';
+function drawNpcEntity(npc,sel,nd){
+  var ts=S.tileSize,px,py;
+  if(nd){px=nd.dispX;py=nd.dispY;}else{px=npc.x*ts;py=npc.y*ts;}
+  var sz=ts;
+  ctx.fillStyle=NPC_BG;ctx.fillRect(px+1,py+1,sz-2,sz-2);
+  var ns={source:'catalog',spriteId:'sprite:npc.guide'};
+  var res=resolveSprite(ns);
+  if(res){
+    ctx.save();ctx.imageSmoothingEnabled=false;
+    ctx.beginPath();ctx.rect(px+1,py+1,sz-2,sz-2);ctx.clip();
+    ctx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,px+1,py+1,sz-2,sz-2);
+    ctx.restore();
+    ctx.fillStyle='rgba(0,0,0,0.28)';ctx.fillRect(px+1,py+1,sz-2,Math.min(18,sz-2));
+  }
+  ctx.strokeStyle=sel?'#fff':NPC_BD;ctx.lineWidth=sel?2.5:1.5;
+  ctx.strokeRect(px+1.5,py+1.5,sz-3,sz-3);
+  // NPC badge top-right
+  ctx.fillStyle=NPC_LB;ctx.font='bold 7px system-ui';ctx.textAlign='left';ctx.textBaseline='top';
+  ctx.fillText(truncT(npc.id,sz-6),px+3,py+3);
+  // Anchor role badge
+  if(npc.anchorRole){
+    ctx.fillStyle='rgba(0,0,0,.6)';var aw=ctx.measureText(npc.anchorRole).width+6;
+    ctx.fillRect(px+(sz-aw)/2,py+sz-14,aw,12);
+    ctx.fillStyle='#facc15';ctx.font='bold 7px system-ui';ctx.textAlign='center';ctx.textBaseline='top';
+    ctx.fillText(npc.anchorRole,px+sz/2,py+sz-13);
+  }
+}
 function truncT(txt,mx){
   if(ctx.measureText(txt).width<=mx)return txt;
   var t=txt;
@@ -663,6 +719,15 @@ function hitProp(cx,cy){
   }
   return-1;
 }
+function hitNpc(cx,cy){
+  if(!sp||!sp.npcs)return-1;
+  var ts=S.tileSize;
+  for(var i=sp.npcs.length-1;i>=0;i--){
+    var n=sp.npcs[i];
+    if(cx>=n.x*ts&&cx<(n.x+1)*ts&&cy>=n.y*ts&&cy<(n.y+1)*ts)return i;
+  }
+  return-1;
+}
 function snapV(v){if(S.snapMode==='tile')return Math.round(v);if(S.snapMode==='half')return Math.round(v*2)/2;return Math.round(v*100)/100;}
 function snapSz(v){if(S.snapMode==='tile')return Math.max(1,Math.round(v));if(S.snapMode==='half')return Math.max(0.5,Math.round(v*2)/2);return Math.max(0.25,Math.round(v*100)/100);}
 var drag=null;
@@ -680,17 +745,32 @@ canvas.addEventListener('mousedown',function(e){
           dispW:(p.width||1)*ts,dispH:(p.height||1)*ts,h:h};return;}
     }
   }
+  // NPCs take priority at top of z-stack
+  var ni=hitNpc(pos.x,pos.y);
+  if(ni>=0){
+    S.selNpcIdx=ni;S.selPropIdx=-1;
+    var nn=sp.npcs[ni];var ts3=S.tileSize;
+    drag={mode:'move-npc',idx:ni,sx:pos.x,sy:pos.y,
+      orig:{x:nn.x,y:nn.y},dispX:nn.x*ts3,dispY:nn.y*ts3};
+    updatePropPanel();render();return;
+  }
   var idx=hitProp(pos.x,pos.y);
   if(idx>=0){
-    S.selPropIdx=idx;var pp=sp.props[idx];var ts2=S.tileSize;
+    S.selPropIdx=idx;S.selNpcIdx=-1;var pp=sp.props[idx];var ts2=S.tileSize;
     drag={mode:'move',idx:idx,sx:pos.x,sy:pos.y,
       orig:JSON.parse(JSON.stringify(pp)),dispX:pp.x*ts2,dispY:pp.y*ts2};
     updatePropPanel();render();
-  }else{S.selPropIdx=-1;drag=null;updatePropPanel();render();}
+  }else{S.selPropIdx=-1;S.selNpcIdx=-1;drag=null;updatePropPanel();render();}
 });
 canvas.addEventListener('mousemove',function(e){
   if(!drag||!sp)return;
-  var pos=cxy(e),ts=S.tileSize,dx=pos.x-drag.sx,dy=pos.y-drag.sy,p=sp.props[drag.idx];
+  var pos=cxy(e),ts=S.tileSize,dx=pos.x-drag.sx,dy=pos.y-drag.sy;
+  if(drag.mode==='move-npc'){
+    drag.dispX=Math.max(0,Math.min((sp.width-1)*ts,drag.orig.x*ts+dx));
+    drag.dispY=Math.max(0,Math.min((sp.height-1)*ts,drag.orig.y*ts+dy));
+    render();return;
+  }
+  var p=sp.props[drag.idx];
   if(!p)return;
   if(drag.mode==='move'){
     var pw=(p.width||1)*ts,ph=(p.height||1)*ts;
@@ -711,7 +791,17 @@ canvas.addEventListener('mousemove',function(e){
 });
 canvas.addEventListener('mouseup',function(){
   if(!drag||!sp)return;
-  var ts=S.tileSize,p=sp.props[drag.idx];
+  var ts=S.tileSize;
+  if(drag.mode==='move-npc'){
+    var n=sp.npcs&&sp.npcs[drag.idx];
+    if(n){
+      n.x=Math.max(0,Math.min(sp.width-1,Math.round(drag.dispX/ts)));
+      n.y=Math.max(0,Math.min(sp.height-1,Math.round(drag.dispY/ts)));
+      refreshNpcInputs();markDirty();
+    }
+    drag=null;render();return;
+  }
+  var p=sp.props[drag.idx];
   if(p){
     if(drag.mode==='move'){
       p.x=snapV(drag.dispX/ts);p.y=snapV(drag.dispY/ts);
@@ -735,14 +825,24 @@ canvas.addEventListener('mousemove',function(e){
     var p=sp.props[S.selPropIdx];
     if(!layerLocked(propLayer(p))){var h=hitHandle(p,pos.x,pos.y);if(h){canvas.style.cursor=CRS[h.t]||'crosshair';return;}}
   }
-  canvas.style.cursor=hitProp(pos.x,pos.y)>=0?'grab':'default';
+  canvas.style.cursor=hitNpc(pos.x,pos.y)>=0?'grab':(hitProp(pos.x,pos.y)>=0?'grab':'default');
 },true);
 function updatePropPanel(){
-  var ns=document.getElementById('nosel'),ed=document.getElementById('proped');
-  document.getElementById('btndel').disabled=S.selPropIdx<0;
+  var ns=document.getElementById('nosel'),ed=document.getElementById('proped'),ne=document.getElementById('npcped');
+  document.getElementById('btndel').disabled=S.selPropIdx<0&&S.selNpcIdx<0;
+  if(S.selNpcIdx>=0&&sp){ns.style.display='none';ed.style.display='none';ne.style.display='';refreshNpcInputs();return;}
+  ne.style.display='none';
   if(S.selPropIdx<0||!sp){ns.style.display='';ed.style.display='none';return;}
   ns.style.display='none';ed.style.display='';
   refreshPropInputs();refreshSprites();
+}
+function refreshNpcInputs(){
+  var n=sp&&sp.npcs&&sp.npcs[S.selNpcIdx];if(!n)return;
+  document.getElementById('nid').value=n.id;
+  document.getElementById('ntype').value=n.npcTypeId;
+  document.getElementById('nxf').value=n.x;
+  document.getElementById('nyf').value=n.y;
+  document.getElementById('nanchor').value=n.anchorRole||'';
 }
 function refreshPropInputs(){
   var p=sp&&sp.props[S.selPropIdx];if(!p)return;
@@ -846,14 +946,37 @@ function syncPropInputs(){
   if(zv===''){delete p.z;}else{p.z=parseInt(zv);}
   render();markDirty();
 }
+function syncNpcInputs(){
+  var n=sp&&sp.npcs&&sp.npcs[S.selNpcIdx];if(!n)return;
+  var nidv=document.getElementById('nid').value.trim();if(nidv)n.id=nidv;
+  n.npcTypeId=document.getElementById('ntype').value.trim();
+  n.x=Math.max(0,Math.min(sp.width-1,parseInt(document.getElementById('nxf').value)||0));
+  n.y=Math.max(0,Math.min(sp.height-1,parseInt(document.getElementById('nyf').value)||0));
+  var anch=document.getElementById('nanchor').value;
+  if(anch)n.anchorRole=anch;else delete n.anchorRole;
+  render();markDirty();
+}
+['nid','ntype','nxf','nyf','nanchor'].forEach(function(id){
+  document.getElementById(id).addEventListener('change',syncNpcInputs);
+});
 document.getElementById('btnadd').addEventListener('click',function(){
   if(!sp)return;
   var al=getActiveLayer();
   sp.props.push({id:'prop-'+Date.now(),kind:'furniture',x:0,y:0,width:1,height:1,
     sceneLayer:al.id,layers:[{sprite:{source:'sheet',sheetKey:'kenney-tiny-dungeon',col:0,row:0}}]});
-  S.selPropIdx=sp.props.length-1;updatePropPanel();render();markDirty();
+  S.selPropIdx=sp.props.length-1;S.selNpcIdx=-1;updatePropPanel();render();markDirty();
+});
+document.getElementById('btnaddnpc').addEventListener('click',function(){
+  if(!sp)return;
+  if(!sp.npcs)sp.npcs=[];
+  sp.npcs.push({id:'npc-'+Date.now(),npcTypeId:'tutorial-goon',x:0,y:0});
+  S.selNpcIdx=sp.npcs.length-1;S.selPropIdx=-1;updatePropPanel();render();markDirty();
 });
 document.getElementById('btndel').addEventListener('click',function(){
+  if(S.selNpcIdx>=0&&sp&&sp.npcs){
+    if(!confirm('Delete NPC "'+sp.npcs[S.selNpcIdx].id+'"?'))return;
+    sp.npcs.splice(S.selNpcIdx,1);S.selNpcIdx=-1;updatePropPanel();render();markDirty();return;
+  }
   if(S.selPropIdx<0||!sp)return;
   if(!confirm('Delete prop "'+sp.props[S.selPropIdx].id+'"?'))return;
   sp.props.splice(S.selPropIdx,1);S.selPropIdx=-1;updatePropPanel();render();markDirty();
@@ -875,7 +998,7 @@ document.getElementById('btnapply').addEventListener('click',async function(){
   var btn=document.getElementById('btnapply');btn.disabled=true;btn.textContent='Applying\u2026';
   try{
     var res=await fetch('/apply',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({setPieceId:sp.id,props:props,sceneLayers:sp.sceneLayers})});
+      body:JSON.stringify({setPieceId:sp.id,props:props,sceneLayers:sp.sceneLayers,npcs:sp.npcs||[]})});
     var r=await res.json();
     if(r.ok){showToast('\u2713 Applied!');S.dirty=false;updateStatus();}
     else showToast('\u2717 '+r.error,true);
@@ -910,7 +1033,8 @@ function applyHistState(s){
   var o=JSON.parse(s);
   sp.props=o.props;
   if(o.sceneLayers)sp.sceneLayers=o.sceneLayers;
-  S.selPropIdx=-1;
+  if(o.npcs!==undefined)sp.npcs=o.npcs;
+  S.selPropIdx=-1;S.selNpcIdx=-1;
   getLayers();if(sp.sceneLayers&&sp.sceneLayers[0])S.activeLayerId=sp.sceneLayers[0].id;
   renderLayersPanel();updatePropPanel();render();
 }
@@ -947,7 +1071,8 @@ document.getElementById('btnreset').addEventListener('click',function(){
   if(S.dirty&&!confirm('Reset to last saved state? Unsaved changes will be lost.'))return;
   var o=JSON.parse(origSP);
   sp.props=o.props;sp.sceneLayers=o.sceneLayers||sp.sceneLayers;
-  S.selPropIdx=-1;S.dirty=false;hist=[origSP];histIdx=0;
+  if(o.npcs!==undefined)sp.npcs=o.npcs;
+  S.selPropIdx=-1;S.selNpcIdx=-1;S.dirty=false;hist=[origSP];histIdx=0;
   getLayers();S.activeLayerId=sp.sceneLayers[0].id;
   renderLayersPanel();updatePropPanel();render();updateStatus();updUR();
   showToast('Reset to saved state');
