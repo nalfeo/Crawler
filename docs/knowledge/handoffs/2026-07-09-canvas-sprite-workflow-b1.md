@@ -234,3 +234,19 @@ evaluated against source before acting (rule #12):
   (in-thread explanation) + flagged to the orchestrator as a **harness-maintenance
   follow-up** for the harness owner. Ledger `code_review` round 4 recorded
   (2 concerns / 2 resolved, clean).
+
+## Review round 5 (2026-07-09) — get_run slice-map error-shape consistency
+
+The reviewer re-reviewed the full PR on the `a0cf5566` push and flagged one more
+consistency issue (on `extension.mjs`, which that push did not touch — it re-scans
+the whole PR). Evaluated against source (rule #12):
+
+- **FIXED — `get_run` slice-map degrade.** `get_run` returned `sliceMap = null` on
+  a fetch failure (via `.catch(() => null)`), indistinguishable from the valid
+  "no sheet" case (also `null`) and inconsistent with `buildState` (L278), which
+  degrades the same failure to `{ ok:false, error }`. Aligned `get_run` to mirror
+  `buildState` exactly, so `null` = no sheet, `{ ok:false, error }` = fetch failed,
+  object = success — one representation across the MCP action and the iframe state
+  builder. Proactively confirmed the other `get_run` degrade (`fetchSheets → []`)
+  already matches `buildState`. No test asserts the shape; `node --check` clean;
+  29/29 ext tests pass. Ledger `code_review` round 5 recorded (1 concern / 1 resolved).
