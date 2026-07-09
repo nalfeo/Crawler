@@ -1,5 +1,16 @@
 [
   {
+    "commit": "148043772a1e9693956302fc0a598bb05cd6a1d2",
+    "commitDate": "2026-07-09T00:36:57Z",
+    "commitSubject": "feat: stamp approved generated art on Floor-1 closed doors (F1 terrain 6/6) (#932)",
+    "capturedAt": "2026-07-09T01:16:09.995Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28985889606",
+    "winRate": 0.82,
+    "totalWins": 246,
+    "totalRuns": 300,
+    "path": "by-sha/148043772a1e9693956302fc0a598bb05cd6a1d2.json"
+  },
+  {
     "commit": "571b2a55b60a89d2725c6147c7523631688f5e8c",
     "commitDate": "2026-07-08T23:40:39Z",
     "commitSubject": "fix(set-piece): no-stretch welcome-room rendering + art-defect judge/regen-ledger (#930)",
