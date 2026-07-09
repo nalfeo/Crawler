@@ -2438,7 +2438,7 @@ function renderGalSheet(sheetKey,filter){
     var py=(e.clientY-rb.top)*(cvs.height/rb.height);
     var tc=Math.floor((px/scale-meta.margin)/(16+meta.spacing));
     var tr=Math.floor((py/scale-meta.margin)/(16+meta.spacing));
-    if(tc<0||tr<0||tc>=meta.cols||tr<0)return;
+    if(tc<0||tr<0||tc>=meta.cols||tr>=meta.rows)return;
     applyGallerySprite({source:'sheet',sheetKey:sheetKey,col:tc,row:tr});
   };
   sc.appendChild(cvs);
