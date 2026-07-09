@@ -670,30 +670,54 @@ const CLIENT_SCRIPT = String.raw`
     if (refreshBtn) refreshBtn.disabled = active;
   }
 
-  function loadState(label) {
+  // Boot must render exactly once. loadState() (GET /api/state) AND the harness's
+  // unconditional SSE initial-state frame both deliver the same boot state; rendering
+  // both would run the live postprocess relay twice on open (the seq guard drops the
+  // stale response, but both still hit the sidecar). Whichever arrives first renders
+  // boot and sets bootRendered; the redundant initial SSE frame is then dropped. If
+  // loadState fails, bootRendered stays false so the initial SSE frame can recover.
+  var bootRendered = false;
+  var sseInitialSeen = false;
+
+  function loadState(label, isBoot) {
     setBusy(true, label || 'Loading from sidecar\u2026');
     return fetch('/api/state').then(function (r) { return r.json(); }).then(function (state) {
-      setBusy(false); render(state);
+      setBusy(false);
+      if (isBoot && bootRendered) return; // SSE initial frame already rendered boot
+      bootRendered = true;
+      render(state);
     }).catch(function (err) {
       setBusy(false);
+      // On boot failure leave bootRendered false so the SSE initial frame can recover.
       app.replaceChildren(h('div', { class: 'panel error', text: 'Failed to load state: ' + err }));
     });
   }
 
-  if (refreshBtn) refreshBtn.addEventListener('click', function () { loadState('Refreshing\u2026'); });
+  if (refreshBtn) refreshBtn.addEventListener('click', function () { loadState('Refreshing\u2026', false); });
 
   function connect() {
     try {
       var es = new EventSource('/events');
       es.onmessage = function (ev) {
-        try { var msg = JSON.parse(ev.data); if (msg && msg.type === 'state') render(msg.state); }
-        catch (e) { /* ignore malformed frame */ }
+        try {
+          var msg = JSON.parse(ev.data);
+          if (!msg || msg.type !== 'state') return;
+          if (!sseInitialSeen) {
+            sseInitialSeen = true;
+            // The harness sends one unconditional state frame on connect. Drop it if
+            // loadState already rendered boot (avoids a duplicate live relay); otherwise
+            // render it (loadState in-flight or failed) so the view appears / recovers.
+            if (bootRendered) return;
+            bootRendered = true;
+          }
+          render(msg.state);
+        } catch (e) { /* ignore malformed frame */ }
       };
       es.onerror = function () { /* browser auto-reconnects */ };
     } catch (e) { /* EventSource unsupported */ }
   }
 
-  loadState();
+  loadState(undefined, true);
   connect();
 })();
 `;

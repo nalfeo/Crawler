@@ -78,6 +78,21 @@ test('the client script wires busy state, loadState, and refresh', () => {
   assert.match(html, /Loading sheet from Azure/);
 });
 
+test('boot renders exactly once (dedupes loadState vs SSE initial frame)', () => {
+  const html = renderHtml('x');
+  // dedup flags exist and both boot paths are guarded so the live relay fires once
+  assert.match(html, /var bootRendered = false;/);
+  assert.match(html, /var sseInitialSeen = false;/);
+  // loadState skips its boot render if the SSE initial frame already rendered
+  assert.match(html, /if \(isBoot && bootRendered\) return;/);
+  // boot call is flagged, refresh is not (refresh must always re-render)
+  assert.match(html, /loadState\(undefined, true\);/);
+  assert.match(html, /loadState\('Refreshing\\u2026', false\);/);
+  // SSE handler drops the one unconditional initial frame once boot has rendered,
+  // but always renders subsequent (external pushState) frames
+  assert.match(html, /if \(!sseInitialSeen\)/);
+});
+
 test('instanceId is HTML-escaped into the shell', () => {
   const html = renderHtml('a"><script>bad</script>');
   assert.ok(!html.includes('a"><script>bad'));
