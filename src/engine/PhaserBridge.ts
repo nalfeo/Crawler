@@ -23,6 +23,7 @@ import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../shared/decorationDe
 import {
   ENTITY_DEPTH,
   PROP_DEPTH,
+  TERRAIN_DEPTH,
   WORLD_VFX_DEPTH,
   setPieceZToDepth,
 } from '../shared/render-depths.js';
@@ -1215,7 +1216,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           }
           if (typeof img.setDepth === 'function') {
             if (Number.isFinite(npcInstance?.z ?? NaN) && npcInstance?.z !== undefined) {
-              img.setDepth(setPieceZToDepth(npcInstance.z));
+              img.setDepth(Math.max(TERRAIN_DEPTH + 0.001, setPieceZToDepth(npcInstance.z)));
             } else {
               img.setDepth(ENTITY_DEPTH);
             }

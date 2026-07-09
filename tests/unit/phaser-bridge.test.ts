@@ -19,7 +19,7 @@ import {
 import { HARVESTABLE_DEFS } from '../../src/shared/harvestableDefs.js';
 import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
 import { RAT_BRUTE_TINT } from '../../src/engine/phaser-bridge/sprite-kind.js';
-import { ENTITY_DEPTH, WORLD_VFX_DEPTH } from '../../src/shared/render-depths.js';
+import { ENTITY_DEPTH, TERRAIN_DEPTH, WORLD_VFX_DEPTH } from '../../src/shared/render-depths.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { set } from '../../src/core/world.js';
 import { buildGeneratedSpriteRegistry } from '../../src/shared/generated-assets.js';
@@ -279,7 +279,7 @@ describe('createPhaserBridge', () => {
     expect(images[0]?.flipX).toBe(false);
     expect(images[0]?.flipY).toBe(false);
     expect(images[0]?.rotation).toBeCloseTo(0);
-    expect(images[0]?.depth).toBeCloseTo(setPieceZToDepth(-4));
+    expect(images[0]?.depth).toBeCloseTo(TERRAIN_DEPTH + 0.001);
   });
 
   it('destroys images when entities disappear or the bridge is destroyed', () => {

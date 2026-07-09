@@ -100,6 +100,15 @@ export function spawnNpc(
   if ((options.widthFt === undefined) !== (options.heightFt === undefined)) {
     throw new Error('spawnNpc requires widthFt and heightFt to be provided together.');
   }
+  if (
+    options.widthFt !== undefined &&
+    (!Number.isFinite(options.widthFt) ||
+      !Number.isFinite(options.heightFt) ||
+      options.widthFt <= 0 ||
+      (options.heightFt ?? 0) <= 0)
+  ) {
+    throw new Error('spawnNpc requires widthFt and heightFt to be finite positive numbers.');
+  }
   const def = getNpcDef(defId);
   if (def === undefined) {
     return -1;

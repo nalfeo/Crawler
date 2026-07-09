@@ -81,6 +81,15 @@ function validateLayer(layer, index) {
 }
 
 function validateProps(setPiece, boundW, boundH) {
+  const allowedPropKinds = new Set([
+    'floor',
+    'wall',
+    'door',
+    'fixture',
+    'furniture',
+    'decoration',
+    'actor',
+  ]);
   const issues = [];
   if (!Array.isArray(setPiece.props) || setPiece.props.length === 0) {
     return ['props must be a non-empty array'];
@@ -101,6 +110,9 @@ function validateProps(setPiece, boundW, boundH) {
     }
     if (!asFiniteNonNegative(prop.x) || !asFiniteNonNegative(prop.y)) {
       issues.push('props[' + i + '] x/y must be non-negative numbers');
+    }
+    if (typeof prop.kind !== 'string' || !allowedPropKinds.has(prop.kind)) {
+      issues.push('props[' + i + '].kind must be a known prop kind');
     }
     const width = prop.width === undefined ? 1 : prop.width;
     const height = prop.height === undefined ? 1 : prop.height;
@@ -125,7 +137,51 @@ function validateProps(setPiece, boundW, boundH) {
   return issues;
 }
 
-function validateNpcs(setPiece, boundW, boundH, knownNpcTypeIds) {
+function validateSceneLayers(setPiece) {
+  const issues = [];
+  const ids = new Set();
+  if (setPiece.sceneLayers === undefined) {
+    return { issues, layerIds: ids, hasDeclaredLayers: false };
+  }
+  if (!Array.isArray(setPiece.sceneLayers)) {
+    return { issues: ['sceneLayers must be an array'], layerIds: ids, hasDeclaredLayers: false };
+  }
+  for (let i = 0; i < setPiece.sceneLayers.length; i += 1) {
+    const layer = setPiece.sceneLayers[i];
+    if (!layer || typeof layer !== 'object') {
+      issues.push('sceneLayers[' + i + '] must be an object');
+      continue;
+    }
+    if (typeof layer.id !== 'string' || layer.id.trim() === '') {
+      issues.push('sceneLayers[' + i + '].id is required');
+      continue;
+    }
+    if (ids.has(layer.id)) {
+      issues.push('Duplicate scene layer id "' + layer.id + '"');
+    } else {
+      ids.add(layer.id);
+    }
+    if (typeof layer.name !== 'string' || layer.name.trim() === '') {
+      issues.push('sceneLayers[' + i + '].name is required');
+    }
+    if (layer.visible !== undefined && typeof layer.visible !== 'boolean') {
+      issues.push('sceneLayers[' + i + '].visible must be boolean when present');
+    }
+    if (layer.locked !== undefined && typeof layer.locked !== 'boolean') {
+      issues.push('sceneLayers[' + i + '].locked must be boolean when present');
+    }
+  }
+  return { issues, layerIds: ids, hasDeclaredLayers: true };
+}
+
+function validateNpcs(
+  setPiece,
+  boundW,
+  boundH,
+  knownNpcTypeIds,
+  layerIds = new Set(),
+  hasDeclaredLayers = false,
+) {
   const issues = [];
   if (setPiece.npcs === undefined) return issues;
   if (!Array.isArray(setPiece.npcs)) return ['npcs must be an array'];
@@ -169,8 +225,28 @@ function validateNpcs(setPiece, boundW, boundH, knownNpcTypeIds) {
     if (npc.rotationDeg !== undefined && !isFiniteNumber(npc.rotationDeg)) {
       issues.push('npcs[' + i + '].rotationDeg must be finite');
     }
+    if (npc.flipX !== undefined && typeof npc.flipX !== 'boolean') {
+      issues.push('npcs[' + i + '].flipX must be boolean when present');
+    }
+    if (npc.flipY !== undefined && typeof npc.flipY !== 'boolean') {
+      issues.push('npcs[' + i + '].flipY must be boolean when present');
+    }
     if (npc.z !== undefined && !Number.isInteger(npc.z)) {
       issues.push('npcs[' + i + '].z must be an integer');
+    }
+    if (hasDeclaredLayers && npc.sceneLayer !== undefined && !layerIds.has(npc.sceneLayer)) {
+      issues.push('NPC "' + (npc.id || i) + '" references unknown sceneLayer');
+    }
+    if (npc.spriteOverride !== undefined) {
+      if (!npc.spriteOverride || typeof npc.spriteOverride !== 'object') {
+        issues.push('npcs[' + i + '].spriteOverride must be an object when present');
+      } else if (
+        npc.spriteOverride.source !== 'catalog' &&
+        npc.spriteOverride.source !== 'sheet' &&
+        npc.spriteOverride.source !== 'custom'
+      ) {
+        issues.push('npcs[' + i + '].spriteOverride.source must be catalog, sheet, or custom');
+      }
     }
     if (npc.anchorRole !== undefined) {
       if (typeof npc.anchorRole !== 'string' || npc.anchorRole.trim() === '') {
@@ -197,10 +273,22 @@ export function validateSetPieceCandidate(setPiece, options = {}) {
   if (issues.length > 0) return issues;
   const boundW = setPiece.maxWidth ?? setPiece.width;
   const boundH = setPiece.maxHeight ?? setPiece.height;
+  const { issues: sceneLayerIssues, layerIds, hasDeclaredLayers } = validateSceneLayers(setPiece);
   const knownNpcTypeIds = Array.isArray(options.knownNpcTypeIds)
     ? options.knownNpcTypeIds
     : DEFAULT_KNOWN_NPC_TYPE_IDS;
+  issues.push(...sceneLayerIssues);
   issues.push(...validateProps(setPiece, boundW, boundH));
-  issues.push(...validateNpcs(setPiece, boundW, boundH, knownNpcTypeIds));
+  if (hasDeclaredLayers && Array.isArray(setPiece.props)) {
+    for (let i = 0; i < setPiece.props.length; i += 1) {
+      const prop = setPiece.props[i];
+      if (prop?.sceneLayer !== undefined && !layerIds.has(prop.sceneLayer)) {
+        issues.push('Prop "' + (prop.id || i) + '" references unknown sceneLayer');
+      }
+    }
+  }
+  issues.push(
+    ...validateNpcs(setPiece, boundW, boundH, knownNpcTypeIds, layerIds, hasDeclaredLayers),
+  );
   return issues;
 }

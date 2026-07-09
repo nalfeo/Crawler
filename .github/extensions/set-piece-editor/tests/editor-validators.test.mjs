@@ -57,6 +57,38 @@ test('validateSetPieceCandidate rejects unknown npcTypeId when a registry is pro
   assert.ok(issues.some((issue) => issue.includes('must reference a known NPC type')));
 });
 
+test('validateSetPieceCandidate rejects unknown scene-layer references', () => {
+  const issues = validateSetPieceCandidate({
+    width: 8,
+    height: 7,
+    sceneLayers: [{ id: 'default', name: 'Default' }],
+    props: [
+      {
+        id: 'floor',
+        kind: 'floor',
+        x: 0,
+        y: 0,
+        width: 8,
+        height: 7,
+        sceneLayer: 'missing-layer',
+        layers: [{ sprite: { source: 'catalog', spriteId: 'sprite:item.gem' } }],
+      },
+    ],
+    npcs: [
+      {
+        id: 'goon',
+        npcTypeId: 'tutorial-goon',
+        x: 4,
+        y: 2,
+        sceneLayer: 'missing-layer',
+      },
+    ],
+  });
+
+  assert.ok(issues.some((issue) => issue.includes('Prop "floor" references unknown sceneLayer')));
+  assert.ok(issues.some((issue) => issue.includes('NPC "goon" references unknown sceneLayer')));
+});
+
 test('validateSetPieceCandidate accepts a minimally valid payload', () => {
   const issues = validateSetPieceCandidate({
     width: 8,

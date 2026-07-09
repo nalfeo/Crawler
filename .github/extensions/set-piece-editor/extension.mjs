@@ -13,7 +13,16 @@ import { validateSetPieceCandidate } from './lib/editor-validators.mjs';
 
 const __extDir = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__extDir, '..', '..', '..');
-const CANONICAL_NPC_TYPE_IDS = ['tutorial-goon', 'shopkeeper', 'spell-quest-giver'];
+const CANONICAL_NPC_TYPE_IDS = [
+  'tutorial-goon',
+  'shopkeeper',
+  'spell-quest-giver',
+  'the-broker',
+  'shop-the-fence',
+  'shop-the-apothecary',
+  'shop-the-quartermaster',
+  'shop-the-resource-broker',
+];
 
 const SHEET_PATHS = {
   'kenney-tiny-dungeon': join(REPO_ROOT, 'public/assets/kenney/tiny-dungeon/spritesheet.png'),

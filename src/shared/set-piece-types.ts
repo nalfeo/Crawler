@@ -413,6 +413,8 @@ const setPieceSourceSchema = z
     const isThemed = value.sizing === 'themed';
     const boundW = isThemed ? (value.maxWidth ?? value.width) : value.width;
     const boundH = isThemed ? (value.maxHeight ?? value.height) : value.height;
+    const layerIds = new Set<string>();
+    const hasDeclaredLayers = value.sceneLayers !== undefined && value.sceneLayers.length > 0;
     if (value.maxWidth !== undefined && value.maxWidth < value.width) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'maxWidth must be >= width.' });
     }
@@ -424,6 +426,18 @@ const setPieceSourceSchema = z
         code: z.ZodIssueCode.custom,
         message: 'maxWidth/maxHeight are only valid for themed set pieces.',
       });
+    }
+    if (value.sceneLayers !== undefined) {
+      for (const layer of value.sceneLayers) {
+        if (layerIds.has(layer.id)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Duplicate scene layer id "${layer.id}".`,
+          });
+        } else {
+          layerIds.add(layer.id);
+        }
+      }
     }
     const seen = new Set<string>();
     for (const prop of value.props) {
@@ -440,6 +454,12 @@ const setPieceSourceSchema = z
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: `Prop "${prop.id}" extends outside the ${boundW}×${boundH} footprint.`,
+        });
+      }
+      if (hasDeclaredLayers && prop.sceneLayer !== undefined && !layerIds.has(prop.sceneLayer)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Prop "${prop.id}" references unknown sceneLayer "${prop.sceneLayer}".`,
         });
       }
     }
@@ -469,6 +489,12 @@ const setPieceSourceSchema = z
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: `NPC "${npc.id}" references unknown npcTypeId "${npc.npcTypeId}".`,
+        });
+      }
+      if (hasDeclaredLayers && npc.sceneLayer !== undefined && !layerIds.has(npc.sceneLayer)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `NPC "${npc.id}" references unknown sceneLayer "${npc.sceneLayer}".`,
         });
       }
       if (npc.anchorRole !== undefined) {
