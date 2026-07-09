@@ -122,7 +122,12 @@ function handleRequest(instanceId, req, res) {
   }
   if (req.method === 'GET' && url.pathname.startsWith('/generated/')) {
     const name = decodeURIComponent(url.pathname.slice(11));
-    if (name.includes('..') || name.includes('/')) {
+    if (
+      name.includes('..') ||
+      name.includes('/') ||
+      name.includes('\\') ||
+      !name.endsWith('.png')
+    ) {
       res.writeHead(400);
       res.end('Bad');
       return;
@@ -140,7 +145,7 @@ function handleRequest(instanceId, req, res) {
   }
   if (req.method === 'POST' && url.pathname === '/apply') {
     const origin = req.headers.origin;
-    if (typeof origin === 'string' && origin !== expectedOrigin) {
+    if (typeof origin !== 'string' || origin !== expectedOrigin) {
       res.writeHead(403);
       res.end(JSON.stringify({ ok: false, error: 'Forbidden origin' }));
       return;
