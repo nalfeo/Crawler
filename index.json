@@ -1,5 +1,16 @@
 [
   {
+    "commit": "571b2a55b60a89d2725c6147c7523631688f5e8c",
+    "commitDate": "2026-07-08T23:40:39Z",
+    "commitSubject": "fix(set-piece): no-stretch welcome-room rendering + art-defect judge/regen-ledger (#930)",
+    "capturedAt": "2026-07-09T00:19:27.990Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28983567397",
+    "winRate": 0.82,
+    "totalWins": 246,
+    "totalRuns": 300,
+    "path": "by-sha/571b2a55b60a89d2725c6147c7523631688f5e8c.json"
+  },
+  {
     "commit": "3d45254e827899a78626190144c12ded4c9a2d06",
     "commitDate": "2026-07-08T23:24:04Z",
     "commitSubject": "feat: wire generated corridor tile texture (F1 terrain 5/6) (#928)",
