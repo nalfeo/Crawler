@@ -265,6 +265,7 @@ describe('createPhaserBridge', () => {
     expect(images[0]?.flipX).toBe(true);
     expect(images[0]?.flipY).toBe(true);
     expect(images[0]?.rotation).toBeCloseTo(Math.PI * 0.5);
+    expect(typeof images[0]?.frame).toBe('number');
     expect(images[0]?.displayWidth).toBeCloseTo(32);
     expect(images[0]?.displayHeight).toBeCloseTo(40);
     expect(images[0]?.depth).toBeCloseTo(0.06);

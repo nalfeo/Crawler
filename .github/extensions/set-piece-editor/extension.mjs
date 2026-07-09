@@ -13,6 +13,7 @@ import { validateSetPieceCandidate } from './lib/editor-validators.mjs';
 
 const __extDir = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__extDir, '..', '..', '..');
+const CANONICAL_NPC_TYPE_IDS = ['tutorial-goon', 'shopkeeper', 'spell-quest-giver'];
 
 const SHEET_PATHS = {
   'kenney-tiny-dungeon': join(REPO_ROOT, 'public/assets/kenney/tiny-dungeon/spritesheet.png'),
@@ -179,7 +180,9 @@ function handleRequest(instanceId, req, res) {
         if (npcs !== undefined) candidate.npcs = npcs;
         if (width > 0) candidate.width = width;
         if (height > 0) candidate.height = height;
-        const issues = validateSetPieceCandidate(candidate);
+        const issues = validateSetPieceCandidate(candidate, {
+          knownNpcTypeIds: CANONICAL_NPC_TYPE_IDS,
+        });
         if (issues.length > 0) {
           res.writeHead(400);
           res.end(JSON.stringify({ ok: false, error: 'Validation failed', issues }));
@@ -253,7 +256,17 @@ await joinSession({
             const pack = readPack();
             const idx = pack.setPieces.findIndex((s) => s.id === setPieceId);
             if (idx === -1) throw new CanvasError('not_found', '"' + setPieceId + '" not found');
-            pack.setPieces[idx] = { ...pack.setPieces[idx], props };
+            const candidate = { ...pack.setPieces[idx], props };
+            const issues = validateSetPieceCandidate(candidate, {
+              knownNpcTypeIds: CANONICAL_NPC_TYPE_IDS,
+            });
+            if (issues.length > 0) {
+              throw new CanvasError(
+                'invalid_input',
+                'Layout validation failed: ' + issues.join('; '),
+              );
+            }
+            pack.setPieces[idx] = candidate;
             writePack(pack);
             return { ok: true, setPieceId };
           },
@@ -645,23 +658,27 @@ var KNOWN_NPC_TYPE_IDS = [
   'shop-the-resource-broker'
 ];
 var imgCache={};
+var imgLoadFailed={};
 function loadSheet(key){
   if(imgCache[key]!==undefined)return imgCache[key];
   imgCache[key]=null;
+  imgLoadFailed[key]=false;
   var img=new Image();
   img.onload=function(){imgCache[key]=img;render();};
-  img.onerror=function(){imgCache[key]=null;};
+  img.onerror=function(){imgCache[key]=null;imgLoadFailed[key]=true;};
   img.src='/sheet/'+encodeURIComponent(key);
   return null;
 }
 // Individual generated sprite PNGs (source:'catalog', non-registry IDs)
 var genCache={};
+var genLoadFailed={};
 function loadGenSprite(id){
   if(genCache[id]!==undefined)return genCache[id];
   genCache[id]=null;
+  genLoadFailed[id]=false;
   var img=new Image();
   img.onload=function(){genCache[id]=img;render();};
-  img.onerror=function(){genCache[id]=null;};
+  img.onerror=function(){genCache[id]=null;genLoadFailed[id]=true;};
   img.src='/generated/'+encodeURIComponent(id)+'.png';
   return null;
 }
@@ -2127,7 +2144,7 @@ function addStructTile(kind,layerId,layerName,insertIdx,col,row){
     layers:[{sprite:{source:'sheet',sheetKey:'kenney-tiny-dungeon',col:col,row:row}}],
   };
   sp.props.push(p);
-  S.selPropIdx=sp.props.length-1;S.selNpcIdx=-1;
+  setSinglePropSelection(sp.props.length-1);
   S.activeLayerId=layer.id;
   markDirty();renderLayersPanel();updatePropPanel();render();
 }
@@ -2287,7 +2304,14 @@ function mkGalThumb(k,c,r){
   }
   if(imgCache[k]){draw();}else{
     loadSheet(k);
-    var tid=setInterval(function(){if(imgCache[k]){clearInterval(tid);draw();}},120);
+    var attempts=0;
+    var tid=setInterval(function(){
+      attempts++;
+      if(imgCache[k]||imgLoadFailed[k]||attempts>=60){
+        clearInterval(tid);
+        if(imgCache[k])draw();
+      }
+    },120);
   }
   return cvs;
 }
@@ -2301,7 +2325,14 @@ function mkGenThumb(id){
   }
   if(genCache[id]){draw();}else{
     loadGenSprite(id);
-    var tid2=setInterval(function(){if(genCache[id]){clearInterval(tid2);draw();}},120);
+    var attempts2=0;
+    var tid2=setInterval(function(){
+      attempts2++;
+      if(genCache[id]||genLoadFailed[id]||attempts2>=60){
+        clearInterval(tid2);
+        if(genCache[id])draw();
+      }
+    },120);
   }
   return cvs;
 }
@@ -2403,7 +2434,15 @@ function renderGalSheet(sheetKey,filter){
   if(!imgCache[sheetKey]){
     loadSheet(sheetKey);
     var pnode=document.createElement('p');pnode.textContent='Loading sheet...';pnode.style.color='var(--text-color-muted,#8b949e)';sc.appendChild(pnode);
-    var wt=setInterval(function(){if(imgCache[sheetKey]){clearInterval(wt);renderGalSheet(sheetKey,document.getElementById('galsrch').value);}},200);
+    var waitAttempts=0;
+    var wt=setInterval(function(){
+      waitAttempts++;
+      if(imgCache[sheetKey]||imgLoadFailed[sheetKey]||waitAttempts>=50){
+        clearInterval(wt);
+        if(imgCache[sheetKey])renderGalSheet(sheetKey,document.getElementById('galsrch').value);
+        else pnode.textContent='Failed to load sheet.';
+      }
+    },200);
     return;
   }
   var img=imgCache[sheetKey];

@@ -33,6 +33,30 @@ test('validateSetPieceCandidate rejects empty npcTypeId + duplicate ids', () => 
   assert.ok(issues.some((issue) => issue.includes('Duplicate NPC id')));
 });
 
+test('validateSetPieceCandidate rejects unknown npcTypeId when a registry is provided', () => {
+  const issues = validateSetPieceCandidate(
+    {
+      width: 4,
+      height: 4,
+      props: [
+        {
+          id: 'desk',
+          kind: 'furniture',
+          x: 0,
+          y: 0,
+          width: 1,
+          height: 1,
+          layers: [{ sprite: { source: 'catalog', spriteId: 'sprite:prop.desk' } }],
+        },
+      ],
+      npcs: [{ id: 'npc-a', npcTypeId: 'typo-goon', x: 1, y: 1 }],
+    },
+    { knownNpcTypeIds: ['tutorial-goon'] },
+  );
+
+  assert.ok(issues.some((issue) => issue.includes('must reference a known NPC type')));
+});
+
 test('validateSetPieceCandidate accepts a minimally valid payload', () => {
   const issues = validateSetPieceCandidate({
     width: 8,

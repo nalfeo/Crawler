@@ -123,7 +123,7 @@ function validateProps(setPiece, boundW, boundH) {
   return issues;
 }
 
-function validateNpcs(setPiece, boundW, boundH) {
+function validateNpcs(setPiece, boundW, boundH, knownNpcTypeIds) {
   const issues = [];
   if (setPiece.npcs === undefined) return issues;
   if (!Array.isArray(setPiece.npcs)) return ['npcs must be an array'];
@@ -144,6 +144,12 @@ function validateNpcs(setPiece, boundW, boundH) {
     }
     if (typeof npc.npcTypeId !== 'string' || npc.npcTypeId.trim() === '') {
       issues.push('npcs[' + i + '].npcTypeId is required');
+    } else if (
+      Array.isArray(knownNpcTypeIds) &&
+      knownNpcTypeIds.length > 0 &&
+      !knownNpcTypeIds.includes(npc.npcTypeId)
+    ) {
+      issues.push('npcs[' + i + '].npcTypeId must reference a known NPC type');
     }
     if (!asFiniteNonNegative(npc.x) || !asFiniteNonNegative(npc.y)) {
       issues.push('npcs[' + i + '] x/y must be non-negative numbers');
@@ -177,7 +183,7 @@ function validateNpcs(setPiece, boundW, boundH) {
   return issues;
 }
 
-export function validateSetPieceCandidate(setPiece) {
+export function validateSetPieceCandidate(setPiece, options = {}) {
   if (!setPiece || typeof setPiece !== 'object') return ['set piece payload must be an object'];
   const issues = [];
   if (!Number.isInteger(setPiece.width) || setPiece.width <= 0) {
@@ -190,6 +196,6 @@ export function validateSetPieceCandidate(setPiece) {
   const boundW = setPiece.maxWidth ?? setPiece.width;
   const boundH = setPiece.maxHeight ?? setPiece.height;
   issues.push(...validateProps(setPiece, boundW, boundH));
-  issues.push(...validateNpcs(setPiece, boundW, boundH));
+  issues.push(...validateNpcs(setPiece, boundW, boundH, options.knownNpcTypeIds));
   return issues;
 }

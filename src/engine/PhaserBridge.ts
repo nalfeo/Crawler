@@ -169,13 +169,16 @@ function resolveSetPieceSprite(
     return { textureKey: ref.sheetKey, frame: ref.row * sheet.cols + ref.col };
   }
   if (ref.source === 'catalog') {
-    const spriteDef = getSprite(ref.spriteId);
+    const normalizedSpriteId = ref.spriteId.startsWith('sprite:')
+      ? ref.spriteId.slice('sprite:'.length)
+      : ref.spriteId;
+    const spriteDef = getSprite(normalizedSpriteId);
     if (spriteDef !== undefined && scene.textures?.exists(spriteDef.sheetKey) === true) {
       return { textureKey: spriteDef.sheetKey, frame: spriteDef.frame };
     }
     // Generated sprites are loaded as individual textures keyed by the bare manifest key.
-    if (scene.textures?.exists(ref.spriteId) === true) {
-      return { textureKey: ref.spriteId };
+    if (scene.textures?.exists(normalizedSpriteId) === true) {
+      return { textureKey: normalizedSpriteId };
     }
     return null;
   }
