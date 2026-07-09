@@ -2,7 +2,7 @@ import { SPRITE_TYPES, type Brief } from './brief-schema.js';
 
 type SpriteType = Brief['type'];
 
-export const BRIEF_DIRECTORY_BY_TYPE: Readonly<Record<SpriteType, string>> = {
+const BRIEF_DIRECTORY_BY_TYPE: Readonly<Record<SpriteType, string>> = {
   weapon: 'weapons',
   enemy: 'enemies',
   item: 'items',

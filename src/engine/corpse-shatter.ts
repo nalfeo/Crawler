@@ -20,21 +20,21 @@ export const SHATTER_COLS = 3;
 export const SHATTER_ROWS = 3;
 
 /** Base outward speed (px/s) of a shard at impact, before jitter. */
-export const SHATTER_BASE_SPEED = 90;
+const SHATTER_BASE_SPEED = 90;
 /** Random speed multiplier range per shard: `[1 - j, 1 + j]`. */
-export const SHATTER_SPEED_JITTER = 0.45;
+const SHATTER_SPEED_JITTER = 0.45;
 /** Extra speed (px/s) added along the blow direction so shards follow the hit. */
-export const SHATTER_IMPACT_BOOST = 70;
+const SHATTER_IMPACT_BOOST = 70;
 /** Downward acceleration (px/s^2) so shards arc and fall. */
 export const SHATTER_GRAVITY = 240;
 /** Velocity retained per second (linear drag): `v *= 1 - DRAG * dt`. */
-export const SHATTER_DRAG = 0.6;
+const SHATTER_DRAG = 0.6;
 /** Max absolute angular velocity (rad/s) of a tumbling shard. */
-export const SHATTER_SPIN = 12;
+const SHATTER_SPIN = 12;
 /** Shard lifetime (ms) before it has fully faded. */
-export const SHATTER_LIFETIME_MS = 650;
+const SHATTER_LIFETIME_MS = 650;
 /** Random +/- fraction applied to each shard's lifetime. */
-export const SHATTER_LIFETIME_JITTER = 0.25;
+const SHATTER_LIFETIME_JITTER = 0.25;
 
 /** Progress at/below which a shard holds full opacity (then it fades to 0). */
 const ALPHA_HOLD_FRACTION = 0.5;

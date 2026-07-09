@@ -12,7 +12,7 @@ import familiesJson from './families.json';
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
 /** Zod schema for a single boss definition inside a family. */
-export const familyBossSchema = z
+const familyBossSchema = z
   .object({
     title: z.string().min(1),
     name: z.string().min(1),

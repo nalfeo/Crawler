@@ -13,8 +13,8 @@
 
 import { PNG } from 'pngjs';
 
-export const FIXTURE_SIZE = 1024;
-export const BG_COLOR: readonly [number, number, number] = [255, 0, 255]; // magenta — easy to corner-remove
+const FIXTURE_SIZE = 1024;
+const BG_COLOR: readonly [number, number, number] = [255, 0, 255]; // magenta — easy to corner-remove
 
 interface RgbaPlane {
   readonly width: number;

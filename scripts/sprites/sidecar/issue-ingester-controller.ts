@@ -3,7 +3,7 @@ import type { AssetQueue, IssueAssetRequest } from '../queue/types.js';
 import type { RunStore } from '../store/types.js';
 import type { AssetRequestIssueApi, OpenAssetRequestIssue } from './asset-request-issue-api.js';
 
-export const INGEST_STATE_KEY = 'workflow-state/asset-request-ingest.json';
+const INGEST_STATE_KEY = 'workflow-state/asset-request-ingest.json';
 
 /**
  * Blob-store key prefix the sprite worker pipeline uses to write per-issue

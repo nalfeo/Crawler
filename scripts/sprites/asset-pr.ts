@@ -28,8 +28,6 @@ import {
   type Exec,
 } from './checkin.js';
 
-export { ASSET_CHECKIN_LABEL };
-
 /** One open check-in issue paired with its decoded payload. */
 export interface AssetIssue {
   readonly number: number;

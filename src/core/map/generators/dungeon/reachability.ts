@@ -82,7 +82,7 @@ export function cullIsolatedFloorTiles(
  * treated as impassable, letting callers measure reachability that avoids a
  * particular region (e.g. the locked boss-stair room).
  */
-export function floodReachableTiles(
+function floodReachableTiles(
   tileMap: TileMap,
   w: number,
   h: number,
@@ -119,7 +119,7 @@ export function floodReachableTiles(
 }
 
 /** Does the room have ≥1 passable interior tile, and is any of them reachable? */
-export function roomInteriorStatus(
+function roomInteriorStatus(
   tileMap: TileMap,
   w: number,
   room: { bounds: RoomBounds },
@@ -139,7 +139,7 @@ export function roomInteriorStatus(
 }
 
 /** Build a mask covering every tile inside a room's bounds plus its door tiles. */
-export function buildRoomBlockMask(
+function buildRoomBlockMask(
   room: { bounds: RoomBounds; doors: readonly DoorLocation[] },
   w: number,
   h: number,
@@ -240,7 +240,7 @@ export function ensureRoomsReachable(
  * region (the locked boss room). Deterministic (fixed neighbour order, BFS by
  * insertion order). Returns true when a connector was carved.
  */
-export function carveRoomConnector(
+function carveRoomConnector(
   tileMap: TileMap,
   terrain: Uint8Array,
   w: number,

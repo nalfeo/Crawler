@@ -47,7 +47,7 @@ const PALETTE_JSON = JSON.stringify([
 ]);
 
 /** Brief YAML with a tweakable `judge:` block (mirrors the judge integration test). */
-export function briefYaml(judgeBlock: string): string {
+function briefYaml(judgeBlock: string): string {
   return `
 type: weapon
 name: iron-sword
@@ -79,7 +79,7 @@ ${judgeBlock}
 }
 
 /** Tile four 1024x1024 cells into a single 2048x2048 sheet PNG. */
-export function tileVariantsIntoSheet(variants: Buffer[], rows = 2, cols = 2): Buffer {
+function tileVariantsIntoSheet(variants: Buffer[], rows = 2, cols = 2): Buffer {
   if (variants.length !== rows * cols) {
     throw new Error(`tileVariants: expected ${rows * cols} variants, got ${variants.length}`);
   }

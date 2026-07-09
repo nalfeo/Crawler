@@ -1,4 +1,4 @@
-export const LIGHTING_PRESET_STEPS = {
+const LIGHTING_PRESET_STEPS = {
   tile: 32,
   halfTile: 16,
   quarterTile: 8,

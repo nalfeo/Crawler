@@ -39,7 +39,7 @@ const effectSchema = z
   })
   .strict();
 
-export const emergentEventDefSchema = z
+const emergentEventDefSchema = z
   .object({
     id: z.string().min(1),
     title: z.string().min(1),

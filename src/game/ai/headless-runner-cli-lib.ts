@@ -28,8 +28,8 @@ export interface CLIArgs {
   decisionMode: AIDecisionModeValue;
 }
 
-export const PATHING_MODE_VALUES = Object.values(AIPathingMode) as AIPathingModeValue[];
-export const DECISION_MODE_VALUES = Object.values(AIDecisionMode) as AIDecisionModeValue[];
+const PATHING_MODE_VALUES = Object.values(AIPathingMode) as AIPathingModeValue[];
+const DECISION_MODE_VALUES = Object.values(AIDecisionMode) as AIDecisionModeValue[];
 
 export function defaultCLIArgs(): CLIArgs {
   return {

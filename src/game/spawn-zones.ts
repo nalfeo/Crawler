@@ -28,7 +28,7 @@ export function normalizeSpawnZoneWeights(weights: SpawnZoneWeights): Map<string
   return normalized;
 }
 
-export function pickFromNormalizedSpawnZoneWeights(
+function pickFromNormalizedSpawnZoneWeights(
   normalized: SpawnZoneWeights,
   random: () => number,
 ): string | null {

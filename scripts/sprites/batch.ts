@@ -154,19 +154,18 @@ export interface BatchSummary {
   readonly totals: BatchTotals;
 }
 
-/** Path layout for a single batch. Exposed so the CLI + tests agree. */
-export interface BatchPaths {
+interface BatchPaths {
   readonly batchDir: string;
   readonly summaryPath: string;
 }
 
-export function makeBatchId(now: Date, seed: string): string {
+function makeBatchId(now: Date, seed: string): string {
   const iso = now.toISOString().replace(/[:.]/g, '-').replace(/-+Z$/, 'Z');
   const hash = createHash('sha256').update(seed).digest('hex').slice(0, 6);
   return `${iso}-${hash}`;
 }
 
-export function batchPaths(outputRoot: string, batchId: string): BatchPaths {
+function batchPaths(outputRoot: string, batchId: string): BatchPaths {
   const batchDir = path.join(outputRoot, 'runs', '_batch', batchId);
   return { batchDir, summaryPath: path.join(batchDir, 'batch-summary.json') };
 }

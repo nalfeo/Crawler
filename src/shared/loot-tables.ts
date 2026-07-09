@@ -169,7 +169,7 @@ export const LOOT_TABLES = {
  * Per-archetype drop overrides layered on top of the default loot tables.
  * Omitted archetypes inherit the standard enemy drop behavior.
  */
-export const ENEMY_DROP_CONFIGS: Readonly<Record<string, EnemyDropConfig>> = {
+const ENEMY_DROP_CONFIGS: Readonly<Record<string, EnemyDropConfig>> = {
   'slime-mini': {
     dropsEnabled: false,
   },
