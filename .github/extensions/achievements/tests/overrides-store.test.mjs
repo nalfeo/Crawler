@@ -33,9 +33,14 @@ test('resolveStorePath falls back to ~/.copilot when COPILOT_HOME is unset', () 
   assert.ok(p.startsWith(path.join('/users/me', '.copilot', 'extensions', 'achievements')));
 });
 
-test('resolveStorePath uses the real homedir default when no deps are given', () => {
-  const p = resolveStorePath('/repo/one');
-  assert.ok(p.startsWith(path.join(os.homedir(), '.copilot')) || p.length > 0);
+test('resolveStorePath uses the os.homedir() default when the homedir dep is omitted', () => {
+  // env:{} forces the ~/.copilot fallback (independent of ambient COPILOT_HOME);
+  // omitting `homedir` exercises the `homedir ?? os.homedir()` default. This makes
+  // the assertion deterministic and actually able to fail — not a tautology.
+  const p = resolveStorePath('/repo/one', { env: {} });
+  assert.ok(
+    p.startsWith(path.join(os.homedir(), '.copilot', 'extensions', 'achievements', 'artifacts')),
+  );
   assert.match(path.basename(p), /^overrides\.[0-9a-f]{12}\.json$/);
 });
 

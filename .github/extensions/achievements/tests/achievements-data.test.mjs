@@ -6,8 +6,8 @@
  * (icons first-seen THEN loot boxes in tier order), catalog validation, and a
  * real-file smoke test against the committed JSON so drift shows up as a
  * failing assertion, not a silent parity gap. (A separate Vitest test in
- * `tests/devtools/` deep-compares the adapter output against the REAL
- * `FLOOR1_ACHIEVEMENTS` for full drift coverage.)
+ * `tests/unit/devtools/achievements-canvas-adapter-parity.test.ts` deep-compares
+ * the adapter output against the REAL `FLOOR1_ACHIEVEMENTS` for full drift coverage.)
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

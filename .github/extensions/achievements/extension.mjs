@@ -81,7 +81,7 @@ let sessionRef = null;
 
 /**
  * Per-open-instance server handle.
- * @type {Map<string, { url: string, pushState: (state?: unknown) => Promise<unknown>, close: () => Promise<void> }>}
+ * @type {Map<string, { url: string, close: () => Promise<void> }>}
  */
 const instances = new Map();
 
@@ -154,7 +154,7 @@ const jsonRoutes = [
   {
     method: 'PUT',
     path: '/api/overrides',
-    handler: async ({ req, instanceId }) => {
+    handler: async ({ req }) => {
       const body = await readJsonBody(req);
       const incoming =
         body && typeof body === 'object' && 'overrides' in body ? body.overrides : body;
@@ -164,9 +164,10 @@ const jsonRoutes = [
       } catch (err) {
         return { status: 500, json: { ok: false, error: err?.message ?? String(err) } };
       }
-      const entry = instances.get(instanceId);
-      // Push fresh state so any OTHER open instance in this worktree re-syncs.
-      await entry?.pushState?.(buildState());
+      // The durable store is the source of truth; the calling iframe mirrors this
+      // write to localStorage and re-renders in-page. Open iframes are fetch-only
+      // (no EventSource), matching the single-page monolith's no-live-sync model —
+      // a reopen/refresh re-fetches /api/state and picks up the persisted map.
       return { json: { ok: true, overrides: clean } };
     },
   },
@@ -218,7 +219,7 @@ async function startServerForInstance(ctx) {
     binaryRoutes,
     log,
   });
-  const entry = { url: server.url, pushState: server.pushState, close: server.close };
+  const entry = { url: server.url, close: server.close };
   instances.set(ctx.instanceId, entry);
   log(`serving instance ${ctx.instanceId} at ${server.url}`);
   return entry;
@@ -274,13 +275,13 @@ const canvas = createCanvas({
     },
     {
       name: 'reload',
-      description: 'Re-read the catalog + saved overrides and push fresh state to the iframe.',
+      description:
+        'Re-read the catalog + saved overrides and return current totals. The open iframe refreshes via its own controls or a reopen (fetch-only, no live push).',
       inputSchema: { type: 'object', additionalProperties: false, properties: {} },
       handler: async (ctx) => {
         const entry = instances.get(ctx.instanceId);
         if (!entry) throw new CanvasError('not_open', 'Canvas instance is not open.');
         const state = buildState();
-        await entry.pushState?.(state);
         if (state.error) return { ok: false, error: state.error };
         return {
           ok: true,
