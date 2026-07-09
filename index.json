@@ -1,5 +1,16 @@
 [
   {
+    "commit": "45eb0c03dd02230745a09b0447d054a5db380674",
+    "commitDate": "2026-07-09T21:50:11Z",
+    "commitSubject": "feat: Floor 2 starter quest + defected family member NPC in settlement (#993)",
+    "capturedAt": "2026-07-09T22:29:08.519Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29052965307",
+    "winRate": 0.82,
+    "totalWins": 246,
+    "totalRuns": 300,
+    "path": "by-sha/45eb0c03dd02230745a09b0447d054a5db380674.json"
+  },
+  {
     "commit": "c7b6bd114a05f8d946451d74383ef026a1845cba",
     "commitDate": "2026-07-09T14:25:41-07:00",
     "commitSubject": "chore: tighten dead-code cleanup gate (#994)",
