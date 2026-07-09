@@ -23,7 +23,11 @@
  * (its outcome is downgraded before scoring) so the headline Σ-score metric can
  * never reward a config for a run the tournament counts as a loss.
  *
- * Deterministic: seeded runs only, no Math.random / Date.now in the eval path.
+ * Deterministic RESULTS: seeded runs only. The scored facts — every `scoreRun`
+ * input, `RunRow` field, and emitted artifact row — read neither `Math.random` nor
+ * the wall clock, so identical inputs always yield byte-identical outputs. `Date.now`
+ * appears only in human-readable "elapsed Ns" progress logs, which never feed scoring
+ * or any emitted artifact.
  *
  * Usage
  * -----
