@@ -1,5 +1,16 @@
 [
   {
+    "commit": "852fdced2421fb18923355883353c8f477062f50",
+    "commitDate": "2026-07-09T07:20:24Z",
+    "commitSubject": "feat: add sprite-review canvas extension + reusable canvas harness (Slice A) (#975)",
+    "capturedAt": "2026-07-09T07:59:27.085Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29001588861",
+    "winRate": 0.82,
+    "totalWins": 246,
+    "totalRuns": 300,
+    "path": "by-sha/852fdced2421fb18923355883353c8f477062f50.json"
+  },
+  {
     "commit": "0e10aeba923345782e54c4efb05ee72f33ade431",
     "commitDate": "2026-07-09T05:31:00Z",
     "commitSubject": "feat: expand Floor 2 family roster and generic spawn-zone union (#934)",
