@@ -35,6 +35,10 @@ export interface NpcInstance {
   /** Index of the next dialogue line to show. */
   dialogueIndex: number;
   quests: NpcQuestState[];
+  /** Optional per-instance dialogue that overrides the static NPC def copy. */
+  dialogueOverride?: readonly string[];
+  /** Optional fallback appearance key when the preferred one has no generated art. */
+  appearanceFallbackKey?: string;
   /** True when the player is within NPC_INTERACT_RANGE_FT. */
   nearbyPlayer: boolean;
 }
@@ -264,6 +268,30 @@ const THE_BROKER_DEF: NpcDef = {
   heightFt: 3.5,
 };
 
+export const FLOOR2_DEFECTOR_NPC_ID = 'floor2-defector';
+
+function formatFloor2FamilyName(familyId: string): string {
+  return familyId
+    .split('-')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+export function buildFloor2DefectorDialogue(familyId: string): readonly string[] {
+  const familyName = formatFloor2FamilyName(familyId);
+  return [
+    `Keep your voice down. I used to run with the ${familyName}, right up until they started feeding their own to the cameras.`,
+    `You want to stay breathing, watch how the ${familyName} move when the settlement ledger tilts against them. They get mean before they get sloppy.`,
+    `I am done bleeding for the ${familyName}. You? You can still decide who gets your favor.`,
+  ];
+}
+
+const FLOOR2_DEFECTOR_DEF: NpcDef = makeShopNpcDef(
+  FLOOR2_DEFECTOR_NPC_ID,
+  'Defected Family Member',
+  ['Keep your head down. The families remember every face on this floor.'],
+);
+
 /** Helper: build a boilerplate shopkeeper NPC def for Floor 2 shop archetypes. */
 function makeShopNpcDef(id: string, name: string, dialogue: readonly string[]): NpcDef {
   return {
@@ -314,6 +342,7 @@ const NPC_REGISTRY: ReadonlyMap<string, NpcDef> = new Map([
   [SPELL_QUEST_GIVER_DEF.id, SPELL_QUEST_GIVER_DEF],
   [SHOPKEEPER_DEF.id, SHOPKEEPER_DEF],
   [THE_BROKER_DEF.id, THE_BROKER_DEF],
+  [FLOOR2_DEFECTOR_DEF.id, FLOOR2_DEFECTOR_DEF],
   [SHOP_THE_FENCE_DEF.id, SHOP_THE_FENCE_DEF],
   [SHOP_THE_APOTHECARY_DEF.id, SHOP_THE_APOTHECARY_DEF],
   [SHOP_THE_QUARTERMASTER_DEF.id, SHOP_THE_QUARTERMASTER_DEF],

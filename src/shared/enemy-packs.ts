@@ -155,6 +155,22 @@ export function getFloor2FamilyTrash(familyId: string): readonly EnemyArchetypeD
   return floor2EnemyPack.archetypes.filter((a) => a.familyId === familyId && a.isBoss !== true);
 }
 
+/** Get the elite non-boss archetype for a specific Floor 2 family id. */
+export function getFloor2FamilyEliteArchetype(familyId: string): EnemyArchetypeDef | undefined {
+  const elites = floor2EnemyPack.archetypes.filter(
+    (a) => a.familyId === familyId && a.isBoss !== true && a.id.includes('-elite-'),
+  );
+  return elites.length === 1 ? elites[0] : undefined;
+}
+
+/** Get a family's non-elite non-boss archetype for fallback visual usage. */
+export function getFloor2FamilyFallbackArchetype(familyId: string): EnemyArchetypeDef | undefined {
+  const nonElite = floor2EnemyPack.archetypes.filter(
+    (a) => a.familyId === familyId && a.isBoss !== true && !a.id.includes('-elite-'),
+  );
+  return nonElite[0];
+}
+
 /** Get the floor-neutral trash pool (no `familyId`). */
 export function getFloor2NeutralTrash(): readonly EnemyArchetypeDef[] {
   return floor2EnemyPack.archetypes.filter((a) => a.familyId === undefined);

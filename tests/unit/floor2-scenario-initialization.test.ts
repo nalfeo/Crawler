@@ -10,11 +10,14 @@ import type { FloorMap } from '../../src/core/map/FloorMap.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../src/shared/constants.js';
 import {
   FLOOR2_CAVE_SYSTEM_DEFAULTS,
+  FLOOR2_SETTLEMENT_FOUND_GOAL_ID,
+  floor2ObjectiveTick,
   initializeFloor2Scenario,
 } from '../../src/game/floor2Scenario.js';
+import { questSystem } from '../../src/core/systems/questSystem.js';
 import { getFloor2NeutralTrash } from '../../src/shared/enemy-packs.js';
 import { getFloorManifest, registerFloorManifest } from '../../src/shared/floor-registry.js';
-import { getQuestDef } from '../../src/shared/quest-types.js';
+import { FLOOR2_FIND_SETTLEMENT_QUEST_ID, getQuestDef } from '../../src/shared/quest-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 const originalFloor2Manifest = structuredClone(getFloorManifest('floor2')!);
@@ -128,7 +131,7 @@ describe('initializeFloor2Scenario manifest validation', () => {
     );
   });
 
-  it('seeds the Floor 2 den quests into the active quest log', () => {
+  it('seeds the Floor 2 starter quest and den quests into the active quest log', () => {
     const seed = 4444;
     const gen = new CaveSystemGenerator({ presentCount: 3 });
     const floorMap = gen.generate(smallCaveConfig(seed), new SeededRandom(seed));
@@ -142,11 +145,46 @@ describe('initializeFloor2Scenario manifest validation', () => {
       .filter((quest) => quest.status === 'active')
       .map((quest) => quest.questId);
     expect(activeQuestIds.length).toBeGreaterThan(0);
-    expect(activeQuestIds.every((questId) => questId.startsWith('floor2-den-'))).toBe(true);
-    expect([...world.questLog.values()].some((quest) => quest.tracked)).toBe(true);
+    expect(activeQuestIds).toContain(FLOOR2_FIND_SETTLEMENT_QUEST_ID);
+    const denQuestIds = activeQuestIds.filter((questId) => questId.startsWith('floor2-den-'));
+    expect(denQuestIds.length).toBeGreaterThan(0);
+    expect(world.questLog.get(FLOOR2_FIND_SETTLEMENT_QUEST_ID)?.tracked).toBe(true);
     expect(
-      activeQuestIds.every((questId) =>
+      denQuestIds.every((questId) =>
         getQuestDef(questId)?.objectives.every((objective) => objective.kind === 'counter'),
+      ),
+    ).toBe(true);
+  });
+
+  it('completes the starter quest the first time the player enters the settlement area', () => {
+    const { world, playerEid } = createScenarioWorld();
+    initializeFloor2Scenario(world, playerEid);
+
+    expect(world.goalFlags.get(FLOOR2_SETTLEMENT_FOUND_GOAL_ID)).toBe(false);
+    expect(world.questLog.get(FLOOR2_FIND_SETTLEMENT_QUEST_ID)?.status).toBe('active');
+
+    const settlementRoomId = world.floorExtendedState?.settlement?.settlementRoomId;
+    expect(settlementRoomId).toBeDefined();
+    const settlementRoom = world.floorMap?.roomGraph.get(settlementRoomId!);
+    expect(settlementRoom).toBeDefined();
+    const tile = settlementRoom?.interiorCells?.[0] ?? {
+      x: settlementRoom!.bounds.x + Math.floor(settlementRoom!.bounds.width / 2),
+      y: settlementRoom!.bounds.y + Math.floor(settlementRoom!.bounds.height / 2),
+    };
+    const pos = world.floorMap!.tileToWorld(tile.x, tile.y);
+    world.stores.position.x[playerEid] = pos.x;
+    world.stores.position.y[playerEid] = pos.y;
+
+    floor2ObjectiveTick(world);
+    questSystem(world);
+
+    expect(world.goalFlags.get(FLOOR2_SETTLEMENT_FOUND_GOAL_ID)).toBe(true);
+    expect(world.questLog.get(FLOOR2_FIND_SETTLEMENT_QUEST_ID)?.status).toBe('complete');
+    expect(world.questLog.get(FLOOR2_FIND_SETTLEMENT_QUEST_ID)?.tracked).toBe(false);
+    expect(
+      [...world.questLog.values()].some(
+        (quest) =>
+          quest.status === 'active' && quest.questId.startsWith('floor2-den-') && quest.tracked,
       ),
     ).toBe(true);
   });

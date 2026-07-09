@@ -2648,11 +2648,16 @@ export class MainGameScene extends Phaser.Scene {
         this.dialogueBox?.hide();
       } else {
         const def = getNpcDef(instance.defId);
-        const activeDialogue = resolveDialogueLines(instance.defId, this.world, {
-          shopkeeper: this.options.shopkeeper,
-          spellQuestGiver: this.options.spellQuestGiver,
-          shopkeeperJustReturned: this.shopkeeperJustReturned,
-        });
+        const activeDialogue = resolveDialogueLines(
+          instance.defId,
+          this.world,
+          {
+            shopkeeper: this.options.shopkeeper,
+            spellQuestGiver: this.options.spellQuestGiver,
+            shopkeeperJustReturned: this.shopkeeperJustReturned,
+          },
+          this.conversationNpcEid,
+        );
         this.interactionHint?.setVisible(false);
         this.dialogueBox?.setCloseVisible(true);
 
@@ -2717,11 +2722,16 @@ export class MainGameScene extends Phaser.Scene {
               return;
             }
           }
-          const activeDialogue = resolveDialogueLines(instance.defId, this.world, {
-            shopkeeper: this.options.shopkeeper,
-            spellQuestGiver: this.options.spellQuestGiver,
-            shopkeeperJustReturned: this.shopkeeperJustReturned,
-          });
+          const activeDialogue = resolveDialogueLines(
+            instance.defId,
+            this.world,
+            {
+              shopkeeper: this.options.shopkeeper,
+              spellQuestGiver: this.options.spellQuestGiver,
+              shopkeeperJustReturned: this.shopkeeperJustReturned,
+            },
+            nearNpcEid,
+          );
           if (def && activeDialogue.length > 0) {
             this.conversationNpcEid = nearNpcEid;
             if (instance.defId === 'tutorial-goon' && this.options.tutorialGoon) {
