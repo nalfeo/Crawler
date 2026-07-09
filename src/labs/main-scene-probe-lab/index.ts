@@ -88,6 +88,14 @@ interface MainSceneInternals {
     spriteCount: number;
     colorCount: number;
   };
+  getDoorRenderSummary(): {
+    closedGeneratedCount: number;
+    closedKenneyCount: number;
+    closedColorCount: number;
+    openKenneyCount: number;
+    openColorCount: number;
+    renderableClosedCount: number;
+  };
 }
 
 /** A 2-D point in some coordinate space (feet for world, pixels for camera). */
@@ -185,6 +193,29 @@ export interface TerrainRenderSummary {
 }
 
 /**
+ * Door-render provenance counts from the last `updateDoorOverlay()` pass in the
+ * REAL booted scene. Doors are drawn per-frame as overlay Images (not baked into
+ * the terrain RenderTexture); this summary (read from the scene's stored counts)
+ * is the observe seam proving CLOSED doors stamp the approved generated texture
+ * (`closedGeneratedCount === renderableClosedCount`) rather than the Kenney
+ * placeholder. The five kind buckets are mutually exclusive.
+ */
+export interface DoorRenderSummary {
+  /** Closed doors rendered from the approved GENERATED texture. */
+  readonly closedGeneratedCount: number;
+  /** Closed doors rendered from the Kenney closed frame (fallback). */
+  readonly closedKenneyCount: number;
+  /** Closed doors drawn as a solid-color fill (no art at all). */
+  readonly closedColorCount: number;
+  /** Open doors rendered from the Kenney open frame (non-destructive default). */
+  readonly openKenneyCount: number;
+  /** Open doors drawn as a solid-color fill (no art at all). */
+  readonly openColorCount: number;
+  /** Sum of the three CLOSED buckets — total closed doors actually rendered. */
+  readonly renderableClosedCount: number;
+}
+
+/**
  * Automation surface attached to `window.__mainSceneProbe`. The e2e suite polls
  * {@link MainSceneProbeApi.ready} then drives loadout/camera through these.
  */
@@ -219,6 +250,13 @@ export interface MainSceneProbeApi {
    * approved generated tile textures stamp (`generatedCount > 0`).
    */
   getTerrainRenderSummary(): TerrainRenderSummary;
+  /**
+   * Door-render provenance counts from the last `updateDoorOverlay()` pass. Used
+   * by the generated-door-overlay e2e to prove — in the REAL booted scene — that
+   * closed dungeon doors stamp the approved generated texture
+   * (`renderableClosedCount > 0 && closedGeneratedCount === renderableClosedCount`).
+   */
+  getDoorRenderSummary(): DoorRenderSummary;
 }
 
 function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): () => void {
@@ -454,6 +492,18 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         generatedCount: summary?.generatedCount ?? 0,
         spriteCount: summary?.spriteCount ?? 0,
         colorCount: summary?.colorCount ?? 0,
+      };
+    },
+
+    getDoorRenderSummary: (): DoorRenderSummary => {
+      const summary = getScene()?.getDoorRenderSummary();
+      return {
+        closedGeneratedCount: summary?.closedGeneratedCount ?? 0,
+        closedKenneyCount: summary?.closedKenneyCount ?? 0,
+        closedColorCount: summary?.closedColorCount ?? 0,
+        openKenneyCount: summary?.openKenneyCount ?? 0,
+        openColorCount: summary?.openColorCount ?? 0,
+        renderableClosedCount: summary?.renderableClosedCount ?? 0,
       };
     },
   };
