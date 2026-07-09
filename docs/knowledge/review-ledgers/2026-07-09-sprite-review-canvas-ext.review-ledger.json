@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-09",
+  "session_slug": "sprite-review-canvas-ext",
+  "task_title": "Add sprite-review canvas extension + reusable canvas harness (Slice A)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "plan_divergence": "major_fork",
+      "notes": "Separate-model (gpt-5.4) review: approved_with_changes, 8 concerns (5 blocking) all adopted. MAJOR FORK on the load-bearing reuse mechanism: replaced manual copy-the-folder-verbatim with a single source of truth (scripts/canvas-harness/canvas-harness.mjs) + vendor sync script + a drift test. Alt A (live ../ cross-ext import) rejected: breaks per-folder portability. Alt B (manual copy) rejected: guarantees 5-way drift on the first harness bugfix. Also split the lib boundary into generic canvas-harness (server/route-table/SSE/state/response-helpers/injected-logger) vs sprite domain adapter (sidecar-client) vs optional shared utility (yaml-reader) [c1,c8]; allowlisted JSON+binary proxy route table with streamed binary relay preserving upstream status+Content-Type, no generic passthrough [c4]; repo-aware health that compares /api/health repoRoot to the workspace root and surfaces a distinct wrong-repo state [c3]; full slice-map schema normalization incl emptyCellsApplied+offsets with degraded state first-class [c5]; strengthened degrade tests for sidecar-down/wrong-repo/404/415/500/binary-fail [c6]; sheet-picker superset when >1 sheet [c7]. Verified sidecar base URL derives via canonical getSessionServerPorts(workspacePath)=17790 in this worktree, not the static 3010 fallback."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "models": ["gpt-5.4"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": false,
+          "notes": "Round 1 (single-model, gpt-5.4) on the canonical harness + extension. 3 findings, ALL adopted: (1) BLOCKING — relayWebResponse piped the upstream body with no 'error' listener, so a mid-stream sidecar/socket failure would crash the ext process; added stream 'error' handler that destroys the response and logs. (2) MAJOR — ensureServer inserted a half-initialized instances entry before listen() resolved, so a concurrent open() for the same instanceId could read an entry with no url/server (race); refactored into ensureServer + a pendingStartups Promise map so the entry is published only after the server is fully listening, and added closeAllConnections() on teardown. (3) MINOR — a non-2xx JSON upstream was re-encoded as text/plain, dropping the upstream Content-Type; now preserves upstream status + Content-Type on non-OK relays. Re-vendored via sync.mjs; +2 regression tests (37/37 green)."
+        },
+        {
+          "models": ["gpt-5.4", "claude-opus-4.8"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Round 2 (MULTI-MODEL: gpt-5.4 + claude-opus-4.8 default, run in parallel) on the FINAL staged diff, scoped hard at the new fs-writing image-cache.mjs (path traversal, atomic writes, never-throw), extension.mjs imageRoute (SSRF, cache-vs-relay), sync.mjs CANONICAL_FILES generalization, and renderer.mjs toolbar/busy-counter. Both reviewers: NO blocking/major/minor concerns. Verified: path traversal safe (SEGMENT_RE rejects ./../slash/backslash + entryPath re-asserts containment via path.relative); atomic-write ordering correct (.ctype renamed before bytes, get() defaults octet-stream on race) — no window exposes bytes without ctype; never-throw holds (construction/get/put/entryPath all guarded, disabled cache = transparent pass-through); SSRF not exploitable (fixed loopback host, params encodeURIComponent'd into path only); Windows reserved-device-name quirk empirically probed on Node v24 — not exploitable (real files created/hit, device reads ENOENT, no hang); checkHarness {ok,checked,drifted} contract preserved, vendored copies byte-identical; toolbar/#busy outside #app survive replaceChildren, inflight counter balanced+clamped. Multi-model review was run as cheap insurance for the fs-writing cache even though the declared tier stayed 3🍎 (the 3 mid-flight feature asks are refinements within the same read-only-canvas-proxy envelope). Loop converged clean within the 2-round cap; no escalation needed."
+        }
+      ]
+    }
+  }
+}
