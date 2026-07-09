@@ -1,0 +1,23 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "f1-door-overlay-generated",
+  "date": "2026-07-09",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 14,
+  "guards": {
+    "pr-preflight": {
+      "allow": 7
+    },
+    "pr-review-ledger": {
+      "allow": 4,
+      "skip": 3
+    }
+  },
+  "tools": {
+    "create_pull_request": 14
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}
