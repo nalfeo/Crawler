@@ -13,6 +13,9 @@ import {
   clampTolerance,
   normalizePipelineManifest,
   extractAppliedBackgroundTweaks,
+  extractAppliedFacing,
+  extractAppliedManualAnchor,
+  isDestructivePersist,
   DEFAULT_BACKGROUND_TWEAKS,
   MAX_BACKGROUND_TOLERANCE_SQ,
 } from '../lib/postprocess-client.mjs';
@@ -33,6 +36,7 @@ function fakeSidecar({ summary, summaryError } = {}) {
     },
     urls: {
       processed: (b, r, f) => `${BASE}/api/runs/${b}/${r}/processed/${f}`,
+      runPostprocess: (b, r) => `${BASE}/api/runs/${b}/${r}/postprocess`,
     },
   };
 }
@@ -251,4 +255,156 @@ test('fetchPipelineManifest: normalizes a 200 manifest, null on failure', async 
     },
   });
   assert.equal(await throwClient.fetchPipelineManifest('b', 'r', '00'), null);
+});
+
+// ---------------------------------------------------------------------------
+// C2 persist / mutation surface
+// ---------------------------------------------------------------------------
+
+test('extractAppliedFacing reads a persisted facing override or null', () => {
+  assert.deepEqual(
+    extractAppliedFacing({
+      postprocessOverrides: { facing: { direction: 'left', applyToAllVariants: true } },
+    }),
+    { direction: 'left', applyToAllVariants: true },
+  );
+  assert.deepEqual(
+    extractAppliedFacing({ postprocessOverrides: { facing: { direction: 'right' } } }),
+    { direction: 'right', applyToAllVariants: false },
+  );
+  assert.equal(extractAppliedFacing({}), null);
+  assert.equal(extractAppliedFacing({ postprocessOverrides: {} }), null);
+  assert.equal(
+    extractAppliedFacing({ postprocessOverrides: { facing: { direction: 'up' } } }), // bad direction
+    null,
+  );
+});
+
+test('extractAppliedManualAnchor reads a persisted anchor override or null', () => {
+  assert.deepEqual(
+    extractAppliedManualAnchor({
+      postprocessOverrides: {
+        manualAnchor: { variantIndex: 2, x: 5, y: 9, applyToAllVariants: true },
+      },
+    }),
+    { variantIndex: 2, x: 5, y: 9, applyToAllVariants: true },
+  );
+  assert.deepEqual(
+    extractAppliedManualAnchor({
+      postprocessOverrides: { manualAnchor: { variantIndex: 0, x: 1, y: 2 } },
+    }),
+    { variantIndex: 0, x: 1, y: 2, applyToAllVariants: false },
+  );
+  assert.equal(extractAppliedManualAnchor({}), null);
+  assert.equal(
+    extractAppliedManualAnchor({
+      postprocessOverrides: { manualAnchor: { variantIndex: 0, x: 1 } }, // y missing
+    }),
+    null,
+  );
+});
+
+test('isDestructivePersist flags resets and apply-to-all writes only', () => {
+  assert.equal(isDestructivePersist({ mode: 'reset' }), true);
+  assert.equal(isDestructivePersist({ mode: 'replace', applyToAll: true }), true);
+  assert.equal(isDestructivePersist({ mode: 'replace', applyToAll: false }), false);
+  assert.equal(isDestructivePersist({ mode: 'replace' }), false);
+  assert.equal(isDestructivePersist(null), false);
+});
+
+test('relayPersistPostprocess: rejects a bad request without a network call', async () => {
+  let called = false;
+  const client = createPostprocessClient({
+    sidecarClient: fakeSidecar({ summary: {} }),
+    fetchImpl: async () => {
+      called = true;
+      return jsonResponse({});
+    },
+  });
+  const noIds = await client.relayPersistPostprocess({ runId: 'r', payload: { mode: 'reset' } });
+  assert.equal(noIds.ok, false);
+  assert.equal(noIds.reason, 'bad-request');
+  const noPayload = await client.relayPersistPostprocess({ briefId: 'b', runId: 'r' });
+  assert.equal(noPayload.ok, false);
+  assert.equal(noPayload.reason, 'bad-request');
+  assert.equal(called, false);
+});
+
+test('relayPersistPostprocess: posts the payload to the run route and reads back the summary', async () => {
+  let capturedUrl = null;
+  let capturedInit = null;
+  const client = createPostprocessClient({
+    sidecarClient: fakeSidecar({
+      summary: { postprocessOverrides: { facing: { direction: 'left' } } },
+    }),
+    fetchImpl: async (url, init) => {
+      capturedUrl = url;
+      capturedInit = init;
+      return jsonResponse({ ok: true });
+    },
+  });
+  const payload = { mode: 'replace', facing: { variantIndex: 0, direction: 'left' } };
+  const out = await client.relayPersistPostprocess({ briefId: 'b', runId: 'r', payload });
+  assert.equal(capturedUrl, `${BASE}/api/runs/b/r/postprocess`);
+  assert.equal(capturedInit.method, 'POST');
+  assert.deepEqual(JSON.parse(capturedInit.body), payload);
+  assert.equal(out.ok, true);
+  assert.deepEqual(out.summary, { postprocessOverrides: { facing: { direction: 'left' } } });
+});
+
+test('relayPersistPostprocess: write ok but read-back throws → ok with summary:null', async () => {
+  let calls = 0;
+  const client = createPostprocessClient({
+    sidecarClient: {
+      baseUrl: BASE,
+      async fetchRunSummary() {
+        throw new Error('summary offline');
+      },
+      urls: { runPostprocess: (b, r) => `${BASE}/api/runs/${b}/${r}/postprocess` },
+    },
+    fetchImpl: async () => {
+      calls += 1;
+      return jsonResponse({ ok: true });
+    },
+  });
+  const out = await client.relayPersistPostprocess({
+    briefId: 'b',
+    runId: 'r',
+    payload: { mode: 'reset' },
+  });
+  assert.equal(calls, 1);
+  assert.equal(out.ok, true);
+  assert.equal(out.summary, null);
+});
+
+test('relayPersistPostprocess: sidecar non-200 → persist-failed with status + message', async () => {
+  const client = createPostprocessClient({
+    sidecarClient: fakeSidecar({ summary: {} }),
+    fetchImpl: async () => jsonResponse({ message: 'run not found' }, { ok: false, status: 404 }),
+  });
+  const out = await client.relayPersistPostprocess({
+    briefId: 'b',
+    runId: 'r',
+    payload: { mode: 'reset' },
+  });
+  assert.equal(out.ok, false);
+  assert.equal(out.reason, 'persist-failed');
+  assert.equal(out.status, 404);
+  assert.equal(out.message, 'run not found');
+});
+
+test('relayPersistPostprocess: network throw → reason network', async () => {
+  const client = createPostprocessClient({
+    sidecarClient: fakeSidecar({ summary: {} }),
+    fetchImpl: async () => {
+      throw new Error('ECONNREFUSED');
+    },
+  });
+  const out = await client.relayPersistPostprocess({
+    briefId: 'b',
+    runId: 'r',
+    payload: { mode: 'reset' },
+  });
+  assert.equal(out.ok, false);
+  assert.equal(out.reason, 'network');
 });

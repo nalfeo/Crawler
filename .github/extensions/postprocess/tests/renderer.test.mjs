@@ -98,3 +98,50 @@ test('instanceId is HTML-escaped into the shell', () => {
   assert.ok(!html.includes('a"><script>bad'));
   assert.match(html, /data-instance="a&quot;&gt;&lt;script&gt;bad&lt;\/script&gt;"/);
 });
+
+// ---------------------------------------------------------------------------
+// C2 persist / mutation surface
+// ---------------------------------------------------------------------------
+
+test('the anchor + confirm helpers are injected verbatim (no placeholder left)', () => {
+  const html = renderHtml('x');
+  assert.ok(!html.includes('__ANCHOR_FNS__'), 'anchor injection placeholder replaced');
+  for (const name of ['finalImageClickToAnchor', 'anchorMarkerPercent', 'isDestructivePersist']) {
+    assert.ok(html.includes('var ' + name + ' = function'), 'injected: ' + name);
+  }
+});
+
+test('the client wires the authoring / persist flow with parity controls', () => {
+  const html = renderHtml('x');
+  // panel + apply handler + persist relay endpoint
+  assert.match(html, /function makeAuthoringPanel\(/);
+  assert.match(html, /function applyChanges\(/);
+  assert.match(html, /\/api\/persist-postprocess/);
+  // the five controls: facing, apply-scope (this/all), anchor picker + x/y sync, reset
+  assert.match(html, /Facing/);
+  assert.match(html, /This variant/);
+  assert.match(html, /All variants/);
+  assert.match(html, /function syncAnchorFromInputs\(/);
+  assert.match(html, /Apply changes/);
+  assert.match(html, /Reset to defaults/);
+  assert.match(html, /Reset anchor/);
+  // local staging state machine (persist fires only on Apply)
+  assert.match(html, /currentFacing/);
+  assert.match(html, /currentScope/);
+  assert.match(html, /currentAnchor/);
+  assert.match(html, /pendingMode/);
+});
+
+test('destructive persists are confirm-guarded with the shared pure predicate', () => {
+  const html = renderHtml('x');
+  // the SAME isDestructivePersist used in unit tests gates a window.confirm()
+  assert.match(html, /isDestructivePersist\(\{/);
+  assert.match(html, /window\.confirm\(/);
+});
+
+test('the final output image is clickable and draws the anchor marker', () => {
+  const html = renderHtml('x');
+  assert.match(html, /function redrawAnchorMarker\(/);
+  assert.match(html, /finalImageClickToAnchor\(/);
+  assert.match(html, /anchorMarkerPercent\(/);
+});

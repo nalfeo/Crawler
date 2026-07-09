@@ -1,0 +1,21 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-09",
+  "session_slug": "postprocess-c2-mutation",
+  "task_title": "Postprocess debugger canvas ext - persist/mutation slice (C2)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "gpt-5.4 rubber-duck plan review; verdict sound-with-concerns (3 blocking + 4 non-blocking), all resolved. B1 route-contract: client sends ALL raw intent bits (mode, variantIndex, applyToAll, facingDirection, manualAnchorClear, manualAnchor{x,y} optional, tolerances); server validates enums + finite x/y then rebuilds via the pure builder. B2 reseed: extend buildState with appliedFacing + appliedManualAnchor; render() resets authoring state to monolith defaults (facing=right, scope=variant, anchor=null, clear=false, mode=default) BEFORE layering persisted values; scope derived from facing OR anchor applyToAllVariants. B3 single-render: persist route returns FRESH STATE (no SSE broadcast, like /api/select); client renders once; render() bumps renderToken invalidating any in-flight pre-apply live response so exactly one relay fires. NB4 observe: snapshot original postprocessOverrides + restore exactly (or scratch run), and prove via a FRESH read path (reselect) not just the direct read-back. NB5 route tests: the highest-risk logic (validation + tri-state + fan-out) lives in pure normalizePersistRequest + buildPersistPostprocessPayload, unit-tested for all listed cases. NB6 confirm-cancel no-op: pure isDestructivePersist predicate + client guard; test cancel implies no POST. NB7 anchor click math: pure finalImageClickToAnchor (floor+clamp) + anchorMarkerPercent in lib/anchor.mjs, serialized into the client via toString() (C1 pattern), unit-tested. Divergence minor: the core approach (pure builder + thin validated route + client control panel + persist relay) held; the review tightened the wire contract, default-first reseed, and unified the post-Apply render path."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    }
+  }
+}

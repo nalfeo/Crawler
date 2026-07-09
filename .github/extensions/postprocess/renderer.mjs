@@ -10,6 +10,10 @@
  *   - `GET  /api/select?briefId=&runId=&variant=&sheet=` — change selection.
  *   - `POST /api/live-postprocess` — relay a live re-process (body carries the
  *     browser-computed raw PNG + tolerances); returns `{ok, finalPng, steps}`.
+ *   - `POST /api/persist-postprocess` — persist overrides (the "Apply changes"
+ *     write); body carries the raw authoring intent, the server re-validates +
+ *     rebuilds the payload, POSTs it to the sidecar run store, and returns fresh
+ *     `{ok, state}` (re-seeded) so the iframe re-renders exactly once (no SSE).
  *   - `GET  /img/sheet|processed|raw?briefId=&runId=&file=` — binary image proxies.
  *
  * FUNCTIONAL parity target: the monolith `?page=postprocess` in
@@ -21,16 +25,24 @@
  *      that are serialized into this client verbatim (no hand-duplicated drift).
  *   3. Postprocess pipeline — live trace (`/api/live-postprocess`) with a
  *      pre-baked manifest fallback; adjustable background tolerances (Apply /
- *      Reset, non-persisting); final output.
+ *      Reset, non-persisting preview); final output. The final output image is
+ *      click-to-anchor (pure math from `lib/anchor.mjs`, serialized in verbatim).
+ *   4. Authoring / persist — facing (left/right), apply-scope (this variant / all
+ *      variants), a manual anchor (click the final image or type x/y), "Reset
+ *      anchor", "Reset to defaults" (mode `reset`), and "Apply changes" (mode
+ *      `replace`), matching the monolith's `renderPostprocessDebugger` write path.
+ *      Destructive persists (all-variants or reset) are confirm-guarded.
  *
  * The client script is intentionally template-literal-free (plain string concat +
  * createElement) so this whole file stays clean outer template literals with no
- * escaping. It is READ-ONLY: no persistence/mutate affordances.
+ * escaping.
  *
  * @module postprocess/renderer
  */
 
 import * as overlay from './lib/slice-overlay.mjs';
+import * as anchorFns from './lib/anchor.mjs';
+import { isDestructivePersist } from './lib/postprocess-client.mjs';
 
 function escapeHtml(value) {
   return String(value)
@@ -51,6 +63,22 @@ function overlayFnsSource() {
     .filter((name) => typeof overlay[name] === 'function')
     .map((name) => 'var ' + name + ' = ' + overlay[name].toString() + ';')
     .join('\n');
+}
+
+/**
+ * Serialize the pure anchor-geometry helpers (`lib/anchor.mjs`) plus the pure
+ * `isDestructivePersist` confirm predicate into browser source, the SAME way as
+ * {@link overlayFnsSource}. All are self-contained (no imports/closures) so
+ * `toString()` yields runnable declarations and the SAME unit-tested code runs in
+ * the iframe.
+ * @returns {string}
+ */
+function anchorFnsSource() {
+  const parts = Object.keys(anchorFns)
+    .filter((name) => typeof anchorFns[name] === 'function')
+    .map((name) => 'var ' + name + ' = ' + anchorFns[name].toString() + ';');
+  parts.push('var isDestructivePersist = ' + isDestructivePersist.toString() + ';');
+  return parts.join('\n');
 }
 
 const STYLES = `
@@ -111,6 +139,18 @@ const STYLES = `
   .ba .arrow { color: #475569; font-size: 18px; }
   .final img { max-width: 160px; max-height: 160px; image-rendering: pixelated; border-radius: 4px;
     border: 1px solid rgba(148,163,184,0.2); }
+  .final .anchorable { cursor: crosshair; }
+  .final .wrap { position: relative; display: inline-block; line-height: 0; }
+  .final .marker { position: absolute; width: 9px; height: 9px; border-radius: 50%;
+    transform: translate(-50%, -50%); pointer-events: none; box-shadow: 0 0 0 1px #0b1120, 0 0 4px rgba(0,0,0,0.6); }
+  .authoring { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 12px;
+    padding: 10px; border: 1px solid rgba(125,211,252,0.35); border-radius: 8px; background: #0b1220; }
+  .authoring .fld { display: flex; flex-direction: column; gap: 3px; }
+  .authoring .fld label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em; }
+  .authoring .fld input[type=number] { width: 72px; }
+  .authoring .primary { border-color: #7dd3fc; color: #7dd3fc; font-weight: 600; }
+  .authoring .danger { border-color: rgba(252,165,165,0.5); color: #fca5a5; }
+  .apply-status { font-size: 11px; min-width: 60px; }
   .tuning { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 12px;
     padding: 10px; border: 1px solid rgba(148,163,184,0.2); border-radius: 8px; background: #0b1220; }
   .tuning .fld { display: flex; flex-direction: column; gap: 3px; }
@@ -126,11 +166,13 @@ const STYLES = `
 `;
 
 // NOTE: template-literal-free on purpose (no backticks, no ${}) — see header.
-// `/*__OVERLAY_FNS__*/` is replaced with the serialized slice-overlay helpers.
+// `/*__OVERLAY_FNS__*/` is replaced with the serialized slice-overlay helpers;
+// `/*__ANCHOR_FNS__*/` with the serialized anchor-geometry + isDestructivePersist.
 const CLIENT_SCRIPT = String.raw`
 (function () {
   'use strict';
   /*__OVERLAY_FNS__*/
+  /*__ANCHOR_FNS__*/
 
   var DEFAULT_TWEAKS = { colorToleranceSq: 4000, fringeToleranceSq: 12000 };
   var MAX_TOLERANCE = 255 * 255 * 3;
@@ -142,6 +184,22 @@ const CLIENT_SCRIPT = String.raw`
   var currentState = null;
   var currentTweaks = { colorToleranceSq: 4000, fringeToleranceSq: 12000 };
   var sheetImg = null;
+
+  // ── Authoring / persist state (reset + reseeded from persisted overrides in
+  //    render(); the POST fires ONLY on "Apply changes") ──────────────────
+  var currentFacing = 'right';       // 'left' | 'right'
+  var currentScope = 'variant';      // 'variant' | 'all'
+  var currentAnchor = null;          // {x,y} in final-image pixels, or null
+  var pendingClear = false;          // "Reset anchor" staged a manualAnchor:null
+  var pendingMode = 'default';       // 'default' | 'replace' | 'reset'
+  var tuningColorInput = null;       // refs so "Reset to defaults" can reset the
+  var tuningFringeInput = null;      //   preview knobs visually
+  var anchorXInput = null;
+  var anchorYInput = null;
+  var applyStatusEl = null;
+  var applyNote = null;              // survives the post-Apply re-render for feedback
+  var finalImgEl = null;             // current final <img> (for marker redraw)
+  var finalMarkerEl = null;          // current marker dot
 
   function h(tag, props, children) {
     var elem = document.createElement(tag);
@@ -203,7 +261,7 @@ const CLIENT_SCRIPT = String.raw`
     return h('div', { class: 'between' }, [
       h('div', null, [
         h('h1', { text: 'Postprocess Debugger' }),
-        h('div', { class: 'muted', text: 'Inspect pipeline steps, validate sheet slicing, and trace live postprocess output.' })
+        h('div', { class: 'muted', text: 'Inspect pipeline steps, validate sheet slicing, trace live postprocess output, and persist overrides.' })
       ]),
       h('div', { class: 'row' }, [badge, h('span', { class: 'muted', text: meta.join('  \u00b7  ') })])
     ]);
@@ -421,6 +479,8 @@ const CLIENT_SCRIPT = String.raw`
   function makeTuningPanel(state) {
     var colorIn = h('input', { type: 'number', min: '0', max: String(MAX_TOLERANCE), step: '100', value: String(currentTweaks.colorToleranceSq) });
     var fringeIn = h('input', { type: 'number', min: '0', max: String(MAX_TOLERANCE), step: '100', value: String(currentTweaks.fringeToleranceSq) });
+    tuningColorInput = colorIn;
+    tuningFringeInput = fringeIn;
     var applyBtn = h('button', { type: 'button', text: 'Apply' });
     var resetBtn = h('button', { type: 'button', text: 'Reset' });
     applyBtn.addEventListener('click', function () {
@@ -430,10 +490,15 @@ const CLIENT_SCRIPT = String.raw`
       };
       colorIn.value = String(currentTweaks.colorToleranceSq);
       fringeIn.value = String(currentTweaks.fringeToleranceSq);
+      // Stage these tolerances for the next "Apply changes" persist (a live-only
+      // preview, but an explicit tweak IS a change to persist — matches monolith).
+      pendingMode = 'replace';
       liveFailed = false;
       startPipeline(currentState, renderToken);
     });
     resetBtn.addEventListener('click', function () {
+      // Preview-only reset of the tolerance knobs (does NOT stage a persist-reset;
+      // that is the authoring panel's "Reset to defaults", mode:'reset').
       currentTweaks = { colorToleranceSq: DEFAULT_TWEAKS.colorToleranceSq, fringeToleranceSq: DEFAULT_TWEAKS.fringeToleranceSq };
       colorIn.value = String(currentTweaks.colorToleranceSq);
       fringeIn.value = String(currentTweaks.fringeToleranceSq);
@@ -444,8 +509,152 @@ const CLIENT_SCRIPT = String.raw`
       h('div', { class: 'fld' }, [h('label', { text: 'colorToleranceSq' }), colorIn]),
       h('div', { class: 'fld' }, [h('label', { text: 'fringeToleranceSq' }), fringeIn]),
       applyBtn, resetBtn,
-      h('span', { class: 'muted', text: 'max ' + MAX_TOLERANCE + ' \u00b7 non-persisting' })
+      h('span', { class: 'muted', text: 'max ' + MAX_TOLERANCE + ' \u00b7 live preview (persists via Apply changes)' })
     ]);
+  }
+
+  // ── Authoring / persist panel ────────────────────────────────────
+  function setApplyStatus(text, color) {
+    if (!applyStatusEl) return;
+    applyStatusEl.textContent = text || '';
+    applyStatusEl.style.color = color || '#94a3b8';
+  }
+
+  function syncAnchorFromInputs() {
+    if (!anchorXInput || !anchorYInput) return;
+    var x = parseInt(anchorXInput.value, 10);
+    var y = parseInt(anchorYInput.value, 10);
+    // Monolith syncManualAnchorFromInputs: no-op if either coord is non-finite.
+    if (!isFinite(x) || !isFinite(y)) return;
+    currentAnchor = { x: x, y: y };
+    pendingClear = false;
+    pendingMode = 'replace';
+    redrawAnchorMarker();
+  }
+
+  function makeAuthoringPanel(state) {
+    var facingSel = h('select', { title: 'Facing direction to persist' });
+    ['right', 'left'].forEach(function (dir) {
+      var o = document.createElement('option');
+      o.value = dir; o.textContent = dir;
+      if (dir === currentFacing) o.selected = true;
+      facingSel.appendChild(o);
+    });
+    facingSel.addEventListener('change', function () {
+      currentFacing = facingSel.value === 'left' ? 'left' : 'right';
+      pendingMode = 'replace';
+    });
+
+    var scopeSel = h('select', { title: 'Which variants the persist applies to' });
+    [['variant', 'This variant'], ['all', 'All variants']].forEach(function (pair) {
+      var o = document.createElement('option');
+      o.value = pair[0]; o.textContent = pair[1];
+      if (pair[0] === currentScope) o.selected = true;
+      scopeSel.appendChild(o);
+    });
+    scopeSel.addEventListener('change', function () {
+      currentScope = scopeSel.value === 'all' ? 'all' : 'variant';
+      pendingMode = 'replace';
+    });
+
+    anchorXInput = h('input', { type: 'number', step: '1', value: currentAnchor ? String(currentAnchor.x) : '' });
+    anchorYInput = h('input', { type: 'number', step: '1', value: currentAnchor ? String(currentAnchor.y) : '' });
+    anchorXInput.addEventListener('change', syncAnchorFromInputs);
+    anchorYInput.addEventListener('change', syncAnchorFromInputs);
+
+    var resetAnchorBtn = h('button', { type: 'button', text: 'Reset anchor' });
+    resetAnchorBtn.addEventListener('click', function () {
+      // Clear the manual anchor but STAY a 'replace' persist (sends manualAnchor:null),
+      // matching the monolith resetAnchorBtn (mode stays 'replace').
+      currentAnchor = null;
+      pendingClear = true;
+      pendingMode = 'replace';
+      anchorXInput.value = '';
+      anchorYInput.value = '';
+      redrawAnchorMarker();
+    });
+
+    var resetDefaultsBtn = h('button', { type: 'button', class: 'danger', text: 'Reset to defaults' });
+    resetDefaultsBtn.addEventListener('click', function () {
+      // Stage a full persist-reset (mode:'reset', monolith resetTweaksBtn): visually
+      // reset the knobs + authoring state; the actual clear happens server-side on
+      // Apply changes. Also refresh the live preview with default tolerances.
+      currentTweaks = { colorToleranceSq: DEFAULT_TWEAKS.colorToleranceSq, fringeToleranceSq: DEFAULT_TWEAKS.fringeToleranceSq };
+      if (tuningColorInput) tuningColorInput.value = String(currentTweaks.colorToleranceSq);
+      if (tuningFringeInput) tuningFringeInput.value = String(currentTweaks.fringeToleranceSq);
+      currentFacing = 'right'; facingSel.value = 'right';
+      currentScope = 'variant'; scopeSel.value = 'variant';
+      currentAnchor = null; pendingClear = false;
+      anchorXInput.value = ''; anchorYInput.value = '';
+      pendingMode = 'reset';
+      redrawAnchorMarker();
+      liveFailed = false;
+      startPipeline(currentState, renderToken);
+    });
+
+    var applyBtn = h('button', { type: 'button', class: 'primary', text: 'Apply changes' });
+    applyBtn.addEventListener('click', applyChanges);
+
+    applyStatusEl = h('span', { class: 'apply-status' });
+    if (applyNote) {
+      applyStatusEl.textContent = applyNote.text;
+      applyStatusEl.style.color = applyNote.color;
+      applyNote = null;
+    }
+
+    return h('div', { class: 'authoring' }, [
+      h('div', { class: 'fld' }, [h('label', { text: 'facing' }), facingSel]),
+      h('div', { class: 'fld' }, [h('label', { text: 'apply scope' }), scopeSel]),
+      h('div', { class: 'fld' }, [h('label', { text: 'anchor x' }), anchorXInput]),
+      h('div', { class: 'fld' }, [h('label', { text: 'anchor y' }), anchorYInput]),
+      resetAnchorBtn, resetDefaultsBtn, applyBtn, applyStatusEl
+    ]);
+  }
+
+  function applyChanges() {
+    if (!currentState || !currentState.selected) return;
+    var sel = currentState.selected;
+    var mode = pendingMode === 'reset' ? 'reset' : 'replace';
+    var applyToAll = currentScope === 'all';
+    // Confirm-guard destructive persists (reset clears everything; all-variants
+    // clobbers siblings). The monolith has no confirm; this is an intentional
+    // safety affordance for the canvas tool (isDestructivePersist is the SAME
+    // unit-tested predicate the server uses).
+    if (isDestructivePersist({ mode: mode, applyToAll: applyToAll })) {
+      var msg = mode === 'reset'
+        ? 'Reset ALL postprocess overrides for this run to defaults? This clears the persisted background tolerances, facing, and manual anchor.'
+        : 'Apply these overrides to ALL variants of this run? This overwrites every variant\u2019s facing and anchor.';
+      if (!window.confirm(msg)) return;
+    }
+    var body = {
+      briefId: sel.briefId, runId: sel.runId, mode: mode,
+      variantIndex: sel.variantIndex, applyToAll: applyToAll,
+      facingDirection: currentFacing,
+      colorToleranceSq: currentTweaks.colorToleranceSq,
+      fringeToleranceSq: currentTweaks.fringeToleranceSq
+    };
+    if (pendingClear) body.manualAnchorClear = true;
+    else if (currentAnchor) body.manualAnchor = { x: currentAnchor.x, y: currentAnchor.y };
+    setApplyStatus('Applying\u2026', '#94a3b8');
+    setBusy(true, 'Persisting overrides\u2026');
+    fetch('/api/persist-postprocess', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function (r) { return r.json(); }).then(function (resp) {
+      setBusy(false);
+      if (resp && resp.ok && resp.state) {
+        // Single re-render from the fresh (re-seeded) state; render() bumps
+        // renderToken so any in-flight pre-apply live relay is dropped. applyNote
+        // survives the re-render to show the "Saved" confirmation.
+        applyNote = { text: 'Saved \u2713', color: '#86efac' };
+        render(resp.state);
+      } else {
+        setApplyStatus('Failed: ' + ((resp && (resp.message || resp.reason)) || 'unknown'), '#fca5a5');
+      }
+    }).catch(function (err) {
+      setBusy(false);
+      setApplyStatus('Failed: ' + err, '#fca5a5');
+    });
   }
 
   // ── Pipeline body (live + prebaked) ──────────────────────────────
@@ -463,10 +672,52 @@ const CLIENT_SCRIPT = String.raw`
   }
 
   function makeFinalCard(src) {
-    return h('div', { class: 'step final' }, [
-      h('div', { class: 'label', text: 'Final output' }),
-      src ? h('img', { class: 'checker', src: src, alt: 'final output' }) : h('span', { class: 'muted', text: 'No final output available.' })
-    ]);
+    var label = h('div', { class: 'label', text: 'Final output' });
+    if (!src) {
+      finalImgEl = null;
+      finalMarkerEl = null;
+      return h('div', { class: 'step final' }, [label, h('span', { class: 'muted', text: 'No final output available.' })]);
+    }
+    var img = h('img', { class: 'checker anchorable', src: src, alt: 'final output',
+      title: 'Click to set a manual anchor (final-image pixel space)' });
+    var marker = h('div', { class: 'marker', style: { display: 'none' } });
+    var wrap = h('div', { class: 'wrap' }, [img, marker]);
+    finalImgEl = img;
+    finalMarkerEl = marker;
+    img.addEventListener('load', function () { redrawAnchorMarker(); });
+    img.addEventListener('click', function (ev) {
+      var rect = img.getBoundingClientRect();
+      var a = finalImageClickToAnchor({
+        clientX: ev.clientX, clientY: ev.clientY, rect: rect,
+        naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight
+      });
+      if (!a) return;
+      currentAnchor = { x: a.x, y: a.y };
+      pendingClear = false;
+      pendingMode = 'replace';
+      if (anchorXInput) anchorXInput.value = String(a.x);
+      if (anchorYInput) anchorYInput.value = String(a.y);
+      redrawAnchorMarker();
+    });
+    return h('div', { class: 'step final' }, [label, wrap]);
+  }
+
+  // Position the anchor marker over the final image (center-of-pixel percent).
+  function redrawAnchorMarker() {
+    if (!finalImgEl || !finalMarkerEl) return;
+    if (!currentAnchor || !finalImgEl.complete || !finalImgEl.naturalWidth) {
+      finalMarkerEl.style.display = 'none';
+      return;
+    }
+    var pct = anchorMarkerPercent({
+      x: currentAnchor.x, y: currentAnchor.y,
+      naturalWidth: finalImgEl.naturalWidth, naturalHeight: finalImgEl.naturalHeight
+    });
+    if (!pct) { finalMarkerEl.style.display = 'none'; return; }
+    finalMarkerEl.style.display = '';
+    finalMarkerEl.style.left = pct.leftPct + '%';
+    finalMarkerEl.style.top = pct.topPct + '%';
+    finalMarkerEl.style.background = '#facc15';
   }
 
   function renderLiveSteps(state, resp, inputSrc) {
@@ -590,12 +841,38 @@ const CLIENT_SCRIPT = String.raw`
     overlayStatus = null;
     overlayHitCells = [];
     liveFailed = false;
+    finalImgEl = null;
+    finalMarkerEl = null;
 
-    // reset tolerance knobs from the run's persisted overrides (or defaults)
+    // Reset tolerance knobs from the run's persisted overrides (or defaults).
     var applied = state.selected && state.selected.appliedBackground;
     currentTweaks = applied
       ? { colorToleranceSq: applied.colorToleranceSq, fringeToleranceSq: applied.fringeToleranceSq }
       : { colorToleranceSq: DEFAULT_TWEAKS.colorToleranceSq, fringeToleranceSq: DEFAULT_TWEAKS.fringeToleranceSq };
+
+    // Reset authoring state to defaults FIRST, THEN layer persisted overrides
+    // (default-first seeding — mirrors the monolith read-back at ~5939-6022). A
+    // fresh render always starts from a clean authoring slate; nothing is staged
+    // (pendingMode 'default') until the user edits a control.
+    currentFacing = 'right';
+    currentScope = 'variant';
+    currentAnchor = null;
+    pendingClear = false;
+    pendingMode = 'default';
+    anchorXInput = null;
+    anchorYInput = null;
+    var appliedFacing = state.selected && state.selected.appliedFacing;
+    if (appliedFacing) {
+      if (appliedFacing.direction === 'left' || appliedFacing.direction === 'right') {
+        currentFacing = appliedFacing.direction;
+      }
+      if (appliedFacing.applyToAllVariants === true) currentScope = 'all';
+    }
+    var appliedAnchor = state.selected && state.selected.appliedManualAnchor;
+    if (appliedAnchor && typeof appliedAnchor.x === 'number' && typeof appliedAnchor.y === 'number') {
+      currentAnchor = { x: appliedAnchor.x, y: appliedAnchor.y };
+      if (appliedAnchor.applyToAllVariants === true) currentScope = 'all';
+    }
 
     var frag = document.createDocumentFragment();
     frag.appendChild(renderHealth(state));
@@ -627,6 +904,7 @@ const CLIENT_SCRIPT = String.raw`
     if (state.selected) {
       pipelineBody.appendChild(makeSlicingCard(state));
       pipelineBody.appendChild(makeTuningPanel(state));
+      pipelineBody.appendChild(makeAuthoringPanel(state));
       var stepsHost = h('div', {}, [h('div', { class: 'muted', text: 'Loading pipeline trace\u2026' })]);
       pipelineBody.appendChild(stepsHost);
       // re-point pipelineBody at the steps host so live/prebaked replace only steps,
@@ -728,7 +1006,9 @@ const CLIENT_SCRIPT = String.raw`
  * @returns {string}
  */
 export function renderHtml(instanceId) {
-  const clientScript = CLIENT_SCRIPT.replace('/*__OVERLAY_FNS__*/', () => overlayFnsSource());
+  const clientScript = CLIENT_SCRIPT.replace('/*__OVERLAY_FNS__*/', () =>
+    overlayFnsSource(),
+  ).replace('/*__ANCHOR_FNS__*/', () => anchorFnsSource());
   return [
     '<!doctype html>',
     '<html lang="en"><head><meta charset="utf-8" />',

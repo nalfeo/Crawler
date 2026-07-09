@@ -11,6 +11,7 @@ import {
   healthUrl,
   runsUrl,
   runSummaryUrl,
+  runPostprocessUrl,
   sheetsUrl,
   sheetUrl,
   processedUrl,
@@ -52,6 +53,8 @@ test('URL builders match the sidecar routes and encode segments', () => {
   assert.equal(runsUrl(BASE, { promoted: 'promoted' }), `${BASE}/api/runs?promoted=promoted`);
   assert.equal(runsUrl(BASE, { promoted: 'all' }), `${BASE}/api/runs`);
   assert.equal(runSummaryUrl(BASE, 'b', 'r'), `${BASE}/api/runs/b/r`);
+  assert.equal(runPostprocessUrl(BASE, 'b', 'r'), `${BASE}/api/runs/b/r/postprocess`);
+  assert.equal(runPostprocessUrl(BASE, 'a b', 'r/1'), `${BASE}/api/runs/a%20b/r%2F1/postprocess`);
   assert.equal(sheetsUrl(BASE, 'b', 'r'), `${BASE}/api/runs/b/r/sheets`);
   assert.equal(sheetUrl(BASE, 'b', 'r', 'a b.png'), `${BASE}/api/runs/b/r/sheet/a%20b.png`);
   assert.equal(processedUrl(BASE, 'b', 'r', '00.png'), `${BASE}/api/runs/b/r/processed/00.png`);
