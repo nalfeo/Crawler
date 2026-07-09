@@ -1,5 +1,16 @@
 [
   {
+    "commit": "ec0434f5b65fb89457da25db6ffb06e08c9b9b5e",
+    "commitDate": "2026-07-09T11:22:33Z",
+    "commitSubject": "feat(devtools): add persist/mutation slice to postprocess canvas ext (Slice C2) (#992)",
+    "capturedAt": "2026-07-09T12:03:01.327Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29015005676",
+    "winRate": 0.82,
+    "totalWins": 246,
+    "totalRuns": 300,
+    "path": "by-sha/ec0434f5b65fb89457da25db6ffb06e08c9b9b5e.json"
+  },
+  {
     "commit": "ad4c7d2f8279b34a0ea81537c5f1f1c6952f6daa",
     "commitDate": "2026-07-09T11:12:20Z",
     "commitSubject": "feat: read-only sprite-generation-workflow canvas extension (Slice B1) (#990)",
