@@ -1,0 +1,32 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-09",
+  "session_slug": "floor2-settlement-defector",
+  "task_title": "Add Floor 2 settlement defector NPC",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "plan_divergence": "minor",
+      "notes": "",
+      "clean": true,
+      "summary": "Separate-model plan review requested two concrete changes: thread per-instance dialogue override through both MainGameScene conversation paths, and add explicit elite appearance resolution coverage instead of assuming the appearance key already yields elite art."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "One concern: getFloor2FamilyFallbackArchetype returns nonElite[0] vs canonical fallback in GENERATED_BRIEF_BY_APPEARANCE_KEY. Analysis: all non-elite archetypes within each family share the same brief id in the mapping so visual outcome is identical. No code change required."
+        }
+      ]
+    }
+  }
+}

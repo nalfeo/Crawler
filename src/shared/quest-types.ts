@@ -7,6 +7,7 @@
  */
 import { z } from 'zod';
 import floor1QuestPack from './data/quests.floor1.json';
+import floor2QuestPack from './data/quests.floor2.json';
 
 /**
  * How an objective is satisfied.
@@ -80,6 +81,7 @@ export const FLOOR1_BOSS_BATTLE_QUEST_ID = 'floor1-boss-battle';
 export const FLOOR1_SHOP_QUEST_ID = 'floor1-shopkeeper-errand';
 /** Final Floor 1 quest: defeat the Floor Boss and take the stairs to Floor 2. */
 export const FLOOR1_LEAVE_FLOOR_QUEST_ID = 'floor1-leave-floor';
+export const FLOOR2_FIND_SETTLEMENT_QUEST_ID = 'floor2-find-settlement';
 
 /** The gross, rat/slime-themed key item the shopkeeper sends you to fetch. */
 export const SHOPKEEPER_FETCH_ITEM_ID = 'glistening-rat-tail';
@@ -331,6 +333,7 @@ function buildRegistry(packs: readonly QuestPackDef[]): ReadonlyMap<string, Ques
 
 const DEFAULT_QUEST_PACKS: readonly QuestPackDef[] = Object.freeze([
   questPackSchema.parse(floor1QuestPack),
+  questPackSchema.parse(floor2QuestPack),
 ]);
 
 let questRegistry: ReadonlyMap<string, QuestDef> = buildRegistry(DEFAULT_QUEST_PACKS);

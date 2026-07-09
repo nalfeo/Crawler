@@ -3,6 +3,7 @@ import {
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
   FLOOR1_SHOP_QUEST_ID,
   FLOOR1_TUTORIAL_QUEST_ID,
+  FLOOR2_FIND_SETTLEMENT_QUEST_ID,
   getQuestDef,
   getAllQuestDefs,
   getQuestPacks,
@@ -18,7 +19,7 @@ describe('quest content packs', () => {
   });
 
   it('loads bundled floor1 quests from a validated data pack', () => {
-    expect(getQuestPacks()).toHaveLength(1);
+    expect(getQuestPacks()).toHaveLength(2);
 
     expect(getQuestDef(FLOOR1_TUTORIAL_QUEST_ID)?.objectives).toEqual([
       {
@@ -50,6 +51,14 @@ describe('quest content packs', () => {
       'goal',
       'haveEquippable',
       'equip',
+    ]);
+    expect(getQuestDef(FLOOR2_FIND_SETTLEMENT_QUEST_ID)?.objectives).toEqual([
+      {
+        id: 'find-settlement',
+        label: 'Find the settlement',
+        kind: 'goal',
+        goalId: 'floor2-settlement-found',
+      },
     ]);
   });
 
@@ -116,6 +125,7 @@ describe('quest content packs', () => {
     expect(ids).toContain(FLOOR1_TUTORIAL_QUEST_ID);
     expect(ids).toContain(FLOOR1_SHOP_QUEST_ID);
     expect(ids).toContain(FLOOR1_BOSS_UNLOCK_QUEST_ID);
+    expect(ids).toContain(FLOOR2_FIND_SETTLEMENT_QUEST_ID);
   });
 
   it('rejects a quest source that provides both objectives and a template', () => {

@@ -1,0 +1,24 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "floor2-neutral-trash-cap",
+  "date": "2026-07-09",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 4,
+  "guards": {
+    "pr-preflight": {
+      "deny": 1,
+      "allow": 1
+    },
+    "pr-review-ledger": {
+      "deny": 1,
+      "allow": 1
+    }
+  },
+  "tools": {
+    "create_pull_request": 4
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

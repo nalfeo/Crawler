@@ -91,8 +91,9 @@ import {
   type QuestPackDef,
   type QuestPackQuestSource,
   getQuestPacks,
+  FLOOR2_FIND_SETTLEMENT_QUEST_ID,
 } from '../shared/quest-types.js';
-import { acceptQuest, addQuestCounter } from '../core/systems/questSystem.js';
+import { acceptQuest, addQuestCounter, setTrackedQuest } from '../core/systems/questSystem.js';
 import type { SeededRandom } from '../shared/random.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
 import { setEnemyAppearanceKey } from '../core/spawners/combatants.js';
@@ -156,6 +157,8 @@ export const FLOOR2_VICTORY_GOAL_ID = 'floor2-victory';
 export const FLOOR2_STAIRS_POPPED_GOAL_ID = 'floor2-stairs-popped';
 /** Latched when Floor 2 collapse timer expires (for headless outcome classification). */
 export const FLOOR2_TIMEOUT_GOAL_ID = 'floor2-timeout';
+/** Latched when the player first enters the settlement cluster. */
+export const FLOOR2_SETTLEMENT_FOUND_GOAL_ID = 'floor2-settlement-found';
 
 /** Goal-flag name for a family's den-unlock latch. */
 export function denUnlockGoalId(familyId: FamilyId): string {
@@ -481,6 +484,25 @@ export function floor2ObjectiveTick(world: GameWorld): void {
   const floor2State = world.floorExtendedState?.familyState;
   if (!floor2State) return;
 
+  const playerEid = query(world.ecs, [Player])[0];
+  const settlement = world.floorExtendedState?.settlement;
+  const floorMap = world.floorMap;
+  if (
+    playerEid !== undefined &&
+    settlement &&
+    floorMap &&
+    world.goalFlags.get(FLOOR2_SETTLEMENT_FOUND_GOAL_ID) !== true
+  ) {
+    const playerTile = floorMap.worldToTile(
+      world.stores.position.x[playerEid] ?? 0,
+      world.stores.position.y[playerEid] ?? 0,
+    );
+    const playerRoomId = floorMap.roomGraph.getRoomAt(playerTile.x, playerTile.y);
+    if (playerRoomId !== undefined && settlement.settlementRoomIds.includes(playerRoomId)) {
+      setGoalFlag(world, FLOOR2_SETTLEMENT_FOUND_GOAL_ID, true);
+    }
+  }
+
   const decapitated = ensureDecapitatedSet(world);
   let processedEvents = floor2ProcessedCombatEvents.get(world);
   if (!processedEvents) {
@@ -684,6 +706,7 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
   setGoalFlag(world, FLOOR2_VICTORY_GOAL_ID, false);
   setGoalFlag(world, FLOOR2_STAIRS_POPPED_GOAL_ID, false);
   setGoalFlag(world, FLOOR2_TIMEOUT_GOAL_ID, false);
+  setGoalFlag(world, FLOOR2_SETTLEMENT_FOUND_GOAL_ID, false);
 
   removeStatModifiers(world, 'floor', 'floor2-manifest-player');
   if (manifest.player.moveSpeedBonus > 0) {
@@ -762,12 +785,11 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
     floorMap,
     world.floorExtendedState!.familyState!,
   );
+  acceptQuest(world, FLOOR2_FIND_SETTLEMENT_QUEST_ID);
   for (const objective of objectives) {
     acceptQuest(world, objective.questId);
   }
-  if (objectives.length > 0) {
-    world.questLog.get(objectives[0]!.questId)!.tracked = true;
-  }
+  setTrackedQuest(world, FLOOR2_FIND_SETTLEMENT_QUEST_ID);
   if (floor2Config?.governor?.autoUnlockDens === true) {
     for (const objective of objectives) {
       setGoalFlag(world, objective.unlockGoalId, true);
@@ -991,12 +1013,12 @@ function assignQuadrantTrashTerritories(world: GameWorld): Map<string, string> {
  * the current position, then normalizing the combined weights:
  *  1) family territory-zone pools (per-family 1/74/25),
  *  2) quadrant territory-zone pool (single quadrant archetype),
- *  3) global fallback pool (neutral cave trash).
+ *  3) global fallback pool (the same per-seed quadrant trash set).
  */
 function pickFloor2TrashArchetype(world: GameWorld, x: number, y: number): EnemyArchetypeDef {
   const familyZone = collectFamilyTerritoryZoneWeights(world, x, y);
   const quadrantZone = collectQuadrantZoneWeights(world, x, y);
-  const globalZone = collectGlobalFallbackZoneWeights();
+  const globalZone = collectGlobalFallbackZoneWeights(world);
   const { pickedId } = pickFromSpawnZones(
     [familyZone, quadrantZone, globalZone] as const satisfies readonly SpawnZoneWeights[],
     () => world.rng.next(),
@@ -1092,8 +1114,15 @@ function collectQuadrantZoneWeights(world: GameWorld, x: number, y: number): Map
   return weights;
 }
 
-function collectGlobalFallbackZoneWeights(): Map<string, number> {
+function collectGlobalFallbackZoneWeights(world: GameWorld): Map<string, number> {
   const weights = new Map<string, number>();
+  const territories = world.floorExtendedState?.trashTerritories;
+  if (territories && territories.size > 0) {
+    for (const archetypeId of territories.values()) {
+      addWeight(weights, archetypeId, 1);
+    }
+    return weights;
+  }
   const neutralTrash = getFloor2NeutralTrash();
   for (const archetype of neutralTrash) {
     addWeight(weights, archetype.id, archetype.spawnWeight);
