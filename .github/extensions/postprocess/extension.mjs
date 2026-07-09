@@ -1,16 +1,23 @@
 /**
- * postprocess — a READ-ONLY canvas debugger for the Crawler sprite-postprocess
- * pipeline.
+ * postprocess — a canvas debugger + authoring surface for the Crawler
+ * sprite-postprocess pipeline.
  *
  * Functional parity with the `?page=postprocess` DevTool in the monolith
  * (`renderPostprocessDebugger` in `src/devtools-main.ts`): it shows a run's
  * source sheet, the slice-map cell overlay (click a cell to select its variant),
  * and the postprocess pipeline step-by-step — a LIVE trace via the sidecar
  * `POST /api/postprocess` with adjustable background tolerances (Apply / Reset,
- * non-persisting), falling back to the pre-baked `<padded>.pipeline.json`
- * manifest. It never mutates anything — no persistence of anchors / facing /
- * postprocess overrides (those are the monolith's authoring writes, out of scope
- * for this inspection tool).
+ * non-persisting preview), falling back to the pre-baked `<padded>.pipeline.json`
+ * manifest.
+ *
+ * It also PERSISTS overrides — the monolith "Apply changes" write. The
+ * authoring panel stages background tolerances, facing (left/right), a manual
+ * anchor (click the final image or type x/y), and an apply-scope (this variant /
+ * all variants); "Apply changes" POSTs to the sidecar
+ * `POST /api/runs/:briefId/:runId/postprocess` (mode `replace`), and
+ * "Reset to defaults" clears them (mode `reset`). Destructive persists
+ * (all-variants or reset) are confirm-guarded, and the payload is always
+ * re-validated + rebuilt server-side (never trusting the client body).
  *
  * Architecture (the pattern from slice A / sprite-review):
  *   - `lib/canvas-harness.mjs`     — GENERIC loopback HTTP server (vendored, do
@@ -19,11 +26,13 @@
  *   - `lib/sidecar-client.mjs`     — DOMAIN sidecar adapter (copied verbatim from
  *     sprite-review: runs / summary / sheets / slice-map / image URLs + health).
  *   - `lib/postprocess-client.mjs` — layer-2 orchestration composing the sidecar
- *     client: live-postprocess relay + pre-baked manifest.
+ *     client: live-postprocess relay + persist relay + pre-baked manifest.
  *   - `lib/slice-overlay.mjs`      — pure overlay geometry/selection/status math.
+ *   - `lib/anchor.mjs`             — pure final-image click → anchor pixel + marker
+ *     percent math (serialized into the iframe client).
  *   - `renderer.mjs`               — the iframe document (state-driven, SSE).
  *   - `extension.mjs` (this)       — wires them: resolve sidecar URL, start one
- *     server per instance, build state, expose read-only routes + actions.
+ *     server per instance, build state, expose read + persist routes + actions.
  *
  * stdout is reserved for JSON-RPC — we log via `session.log`, never `console.log`.
  *
@@ -43,6 +52,10 @@ import { resolveSidecarBaseUrl, createSidecarClient } from './lib/sidecar-client
 import {
   createPostprocessClient,
   extractAppliedBackgroundTweaks,
+  extractAppliedFacing,
+  extractAppliedManualAnchor,
+  normalizePersistRequest,
+  buildPersistPostprocessPayload,
   padVariant,
   clampTolerance,
   DEFAULT_BACKGROUND_TWEAKS,
@@ -211,6 +224,8 @@ async function buildState(instanceId) {
   let variantIndices = [];
   let briefPath = null;
   let appliedBackground = null;
+  let appliedFacing = null;
+  let appliedManualAnchor = null;
   let summaryError = null;
   try {
     const summary = await entry.client.fetchRunSummary(selected.briefId, selected.runId);
@@ -220,6 +235,8 @@ async function buildState(instanceId) {
         ? summary.briefPath
         : null;
     appliedBackground = extractAppliedBackgroundTweaks(summary);
+    appliedFacing = extractAppliedFacing(summary);
+    appliedManualAnchor = extractAppliedManualAnchor(summary);
   } catch (err) {
     summaryError = `Failed to load run summary: ${err?.message ?? err}`;
   }
@@ -305,6 +322,8 @@ async function buildState(instanceId) {
       manifestSteps: manifest ? manifest.steps : [],
       profile: manifest ? manifest.profile : null,
       appliedBackground,
+      appliedFacing,
+      appliedManualAnchor,
     },
   };
 }
@@ -436,6 +455,51 @@ const jsonRoutes = [
     },
   },
   {
+    method: 'POST',
+    path: '/api/persist-postprocess',
+    handler: async ({ req, instanceId }) => {
+      const entry = instances.get(instanceId);
+      if (!entry) {
+        return {
+          status: 404,
+          json: { ok: false, reason: 'not-open', message: 'instance not found' },
+        };
+      }
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (err) {
+        return {
+          status: 400,
+          json: { ok: false, reason: 'bad-request', message: err?.message ?? String(err) },
+        };
+      }
+      // NEVER trust the client: validate + rebuild the payload server-side from the
+      // raw intent bits (mode / variantIndex / applyToAll / facing / manualAnchor /
+      // tolerances). The PURE builder guarantees byte-parity with the monolith body.
+      const normalized = normalizePersistRequest(body);
+      if (!normalized.ok) {
+        return {
+          status: 400,
+          json: { ok: false, reason: 'bad-request', message: normalized.error },
+        };
+      }
+      const payload = buildPersistPostprocessPayload(normalized.args);
+      const result = await entry.postprocessClient.relayPersistPostprocess({
+        briefId: normalized.args.briefId,
+        runId: normalized.args.runId,
+        payload,
+      });
+      if (!result.ok) return { json: result };
+      // Persist succeeded. Return FRESH state (re-fetched summary → re-seeded
+      // overrides) so the iframe re-renders exactly ONCE from the response. We do
+      // NOT also broadcast over SSE — a double delivery would re-run render() and
+      // fire a duplicate live /api/postprocess relay (same rule as /api/select).
+      const state = await buildState(instanceId);
+      return { json: { ok: true, state } };
+    },
+  },
+  {
     method: 'GET',
     path: '/api/runs',
     handler: async ({ instanceId }) => {
@@ -523,7 +587,7 @@ const canvas = createCanvas({
   id: 'postprocess',
   displayName: 'Postprocess Debugger',
   description:
-    'Inspect pipeline steps, validate sheet slicing, and trace live postprocess output for a generated sprite run (read-only).',
+    'Inspect pipeline steps, validate sheet slicing, trace live postprocess output, and persist background / facing / manual-anchor overrides for a generated sprite run.',
   inputSchema: {
     type: 'object',
     additionalProperties: false,
@@ -617,6 +681,77 @@ const canvas = createCanvas({
           rawPngBase64,
           options: { background: { colorToleranceSq, fringeToleranceSq } },
         });
+      },
+    },
+    {
+      name: 'persist_postprocess',
+      description:
+        'Persist postprocess overrides for a run — the monolith "Apply changes". mode:"replace" writes background tolerances + facing + an optional manual anchor; mode:"reset" clears all overrides. Writes to the sidecar run store, focuses the iframe on that run, and pushes fresh (re-seeded) state.',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['briefId', 'runId', 'mode'],
+        properties: {
+          briefId: { type: 'string' },
+          runId: { type: 'string' },
+          mode: { type: 'string', enum: ['replace', 'reset'] },
+          variantIndex: { type: 'number' },
+          applyToAll: { type: 'boolean' },
+          facingDirection: { type: 'string', enum: ['left', 'right'] },
+          manualAnchorClear: { type: 'boolean' },
+          manualAnchor: {
+            type: 'object',
+            additionalProperties: false,
+            properties: { x: { type: 'number' }, y: { type: 'number' } },
+          },
+          colorToleranceSq: { type: 'number' },
+          fringeToleranceSq: { type: 'number' },
+        },
+      },
+      handler: async (ctx) => {
+        const entry = instances.get(ctx.instanceId);
+        if (!entry) throw new CanvasError('not_open', 'Canvas instance is not open.');
+        const normalized = normalizePersistRequest(ctx.input);
+        if (!normalized.ok) throw new CanvasError('bad_input', normalized.error);
+        const payload = buildPersistPostprocessPayload(normalized.args);
+        const result = await entry.postprocessClient.relayPersistPostprocess({
+          briefId: normalized.args.briefId,
+          runId: normalized.args.runId,
+          payload,
+        });
+        if (!result.ok) return result;
+        // Focus the iframe on the run we just modified so the pushed state reflects
+        // the persisted overrides (mirrors the monolith operating on the shown target).
+        const changedRun =
+          !entry.selected ||
+          entry.selected.briefId !== normalized.args.briefId ||
+          entry.selected.runId !== normalized.args.runId;
+        const targetVariant =
+          normalized.args.mode === 'replace'
+            ? normalized.args.variantIndex
+            : (entry.selected?.variantIndex ?? 0);
+        entry.requested = {
+          briefId: normalized.args.briefId,
+          runId: normalized.args.runId,
+          variantIndex: targetVariant,
+        };
+        entry.selected = {
+          briefId: normalized.args.briefId,
+          runId: normalized.args.runId,
+          variantIndex: targetVariant,
+          sheet: changedRun ? null : (entry.selected?.sheet ?? null),
+        };
+        const state = await buildState(ctx.instanceId);
+        await entry.pushState?.(state);
+        return {
+          ok: true,
+          persisted: {
+            background: extractAppliedBackgroundTweaks(result.summary),
+            facing: extractAppliedFacing(result.summary),
+            manualAnchor: extractAppliedManualAnchor(result.summary),
+          },
+          selected: state.selected,
+        };
       },
     },
     {

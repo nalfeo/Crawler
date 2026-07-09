@@ -88,6 +88,15 @@ export function runSummaryUrl(baseUrl, briefId, runId) {
   return `${baseUrl}/api/runs/${enc(briefId)}/${enc(runId)}`;
 }
 
+/**
+ * Persist-postprocess endpoint for a run. The monolith `renderPostprocessDebugger`
+ * "Apply changes" POSTs its override payload here (`src/devtools-main.ts` ~5729);
+ * the sidecar writes `postprocessOverrides` onto the run (`server.ts` ~1029).
+ */
+export function runPostprocessUrl(baseUrl, briefId, runId) {
+  return `${runSummaryUrl(baseUrl, briefId, runId)}/postprocess`;
+}
+
 export function sheetsUrl(baseUrl, briefId, runId) {
   return `${runSummaryUrl(baseUrl, briefId, runId)}/sheets`;
 }
@@ -491,6 +500,7 @@ export function createSidecarClient(options) {
       health: () => healthUrl(baseUrl),
       runs: (o) => runsUrl(baseUrl, o),
       runSummary: (b, r) => runSummaryUrl(baseUrl, b, r),
+      runPostprocess: (b, r) => runPostprocessUrl(baseUrl, b, r),
       sheets: (b, r) => sheetsUrl(baseUrl, b, r),
       sheet: (b, r, f) => sheetUrl(baseUrl, b, r, f),
       processed: (b, r, f) => processedUrl(baseUrl, b, r, f),

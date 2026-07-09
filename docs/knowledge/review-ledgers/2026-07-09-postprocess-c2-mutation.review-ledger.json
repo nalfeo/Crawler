@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-09",
+  "session_slug": "postprocess-c2-mutation",
+  "task_title": "Postprocess debugger canvas ext - persist/mutation slice (C2)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "gpt-5.4 rubber-duck plan review; verdict sound-with-concerns (3 blocking + 4 non-blocking), all resolved. B1 route-contract: client sends ALL raw intent bits (mode, variantIndex, applyToAll, facingDirection, manualAnchorClear, manualAnchor{x,y} optional, tolerances); server validates enums + finite x/y then rebuilds via the pure builder. B2 reseed: extend buildState with appliedFacing + appliedManualAnchor; render() resets authoring state to monolith defaults (facing=right, scope=variant, anchor=null, clear=false, mode=default) BEFORE layering persisted values; scope derived from facing OR anchor applyToAllVariants. B3 single-render: persist route returns FRESH STATE (no SSE broadcast, like /api/select); client renders once; render() bumps renderToken invalidating any in-flight pre-apply live response so exactly one relay fires. NB4 observe: snapshot original postprocessOverrides + restore exactly (or scratch run), and prove via a FRESH read path (reselect) not just the direct read-back. NB5 route tests: the highest-risk logic (validation + tri-state + fan-out) lives in pure normalizePersistRequest + buildPersistPostprocessPayload, unit-tested for all listed cases. NB6 confirm-cancel no-op: pure isDestructivePersist predicate + client guard; test cancel implies no POST. NB7 anchor click math: pure finalImageClickToAnchor (floor+clamp) + anchorMarkerPercent in lib/anchor.mjs, serialized into the client via toString() (C1 pattern), unit-tested. Divergence minor: the core approach (pure builder + thin validated route + client control panel + persist relay) held; the review tightened the wire contract, default-first reseed, and unified the post-Apply render path."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ],
+      "notes": "Code-review loop on the C2 persist/mutation surface, converged clean. One concern surfaced during the loop: the 'Apply changes' button was not disabled during an in-flight persist, so a rapid double-click could fire two identical (idempotent) POST /api/persist-postprocess relays plus a redundant re-render (the same duplicate-POST class C1 fixed for the boot path). RESOLVED in 61984034 via a module-level applyInFlight guard (early-return on re-click) + authoringApplyBtn.disabled toggle, re-enabled on the failure/catch paths, with a renderer.test.mjs regression assertion. The definitive review (claude-sonnet-4.6, run on the complete rebased branch INCLUDING the fix) found NO significant issues: all five high-value checks pass — (1) applyInFlight cannot get permanently stuck (reset unconditionally in .then before the success/failure split and in .catch; every early-return fires before it is set true); (2) manualAnchor tri-state correct end-to-end (clear->null, set->{variantIndex,x,y}, neither->omitted via the !==undefined guard); (3) variantIndexes present only for single-variant replace, omitted for reset and apply-to-all; (4) relayPersistPostprocess never throws (network->{ok:false,reason:'network'}, non-2xx->{ok:false,reason:'persist-failed'}, read-back throw->{ok:true,summary:null}); (5) client-injected fns (finalImageClickToAnchor, anchorMarkerPercent, isDestructivePersist) are self-contained (Math/Number only); normalize/build closures are NOT serialized into the client. One benign already-handled code smell noted (a swallowed TypeError path in relayPersistPostprocess that doFetch never actually triggers) — no action needed. 91/91 ext tests pass."
+    }
+  }
+}
