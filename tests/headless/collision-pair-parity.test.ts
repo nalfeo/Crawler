@@ -97,15 +97,41 @@ interface CollisionFingerprint {
  *   seed  13:  6/236/5/0   →  7/211/5/0
  *   seed  42:  7/264/10/8  →  7/279/5/8    (kills & score unchanged)
  *   seed 137:  6/230/0/0   →  5/206/0/2
+ *
+ * ## 2026-07-08 re-baseline — welcome-room set piece retune: final spaced layout
+ *
+ * The welcome-room set piece was retuned again (commit 4ce1027b, DATA-ONLY in
+ * `set-pieces.json`) to the maintainer-approved final layout: the Goon pinned to
+ * the back wall behind his welcome desk, the merchant and spell broker spaced to
+ * opposite sides by their shop table and overstuffed bookcase. This moves all
+ * three quest NPCs to new tiles (their `x` tiles shift 7→1 / 1→6 / 6→7), which
+ * shifts their Size-backed collision footprints, changes the per-frame
+ * collision-pair set, and cascades through `applyDamage`'s RNG draws — the same
+ * NPC-repositioning mechanism as the 2026-07-07 block. Bisected and proven to be
+ * NPC-data-only: this guard still passes 5/5 at the pre-retune commit 7677075e
+ * (with every structural change already present — feet-based sizing schema, stamp
+ * plumbing, contain-fit rendering, and props stamped), and drifts ONLY once the
+ * NPC tile data moves at 4ce1027b. So the newly-added/retuned cosmetic PROPS stay
+ * render-only, non-entity instances on `world.setPieceProps` (provably
+ * non-perturbing) and NPC placement is the sole cause. A deliberate, user-approved
+ * change — same room, trivially pathable, no reachability/balance impact (the
+ * Floor-1 win-rate sweep in `floor1-completion.test.ts` stays green). Verified
+ * stable across two back-to-back runs per seed. Seed 7's first-1500-frame path
+ * never reaches the moved tiles, so it is unchanged.
+ * Before → after (kills / damageDealt / damageTaken / score):
+ *   seed   7:  3/125/15/0  →  3/125/15/0   (unchanged)
+ *   seed  13:  7/211/5/0   →  8/228/5/0
+ *   seed  42:  7/279/5/8   →  6/236/10/4
+ *   seed 137:  5/206/0/2   →  5/226/5/2
  */
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 7,
-    damageDealt: 279,
-    damageTaken: 5,
-    finalScore: 8,
+    kills: 6,
+    damageDealt: 236,
+    damageTaken: 10,
+    finalScore: 4,
   },
   7: {
     totalFrames: 1500,
@@ -118,8 +144,8 @@ const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   13: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 7,
-    damageDealt: 211,
+    kills: 8,
+    damageDealt: 228,
     damageTaken: 5,
     finalScore: 0,
   },
@@ -127,8 +153,8 @@ const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
     totalFrames: 1500,
     outcome: 'timeout',
     kills: 5,
-    damageDealt: 206,
-    damageTaken: 0,
+    damageDealt: 226,
+    damageTaken: 5,
     finalScore: 2,
   },
 };

@@ -42,6 +42,8 @@ emit_all() {
   emit_output art_only "$1"
   emit_output docs_only "$2"
   emit_output gameplay_safe "$3"
+  emit_output sprites_only "$4"
+  emit_output sprites_touched "$5"
 }
 
 # Resolve the set of changed files. Normally derived from git; the
@@ -69,7 +71,7 @@ else
 
   if [ -z "$base_ref" ]; then
     echo "No comparison base available — running full CI." >&2
-    emit_all false false false
+    emit_all false false false false false
     exit 0
   fi
 
@@ -87,7 +89,7 @@ echo "${changed:-<none>}" >&2
 
 # Fail-safe: no changed files (or an all-whitespace override) runs the full suite.
 if [ -z "$(printf '%s' "$changed" | tr -d '[:space:]')" ]; then
-  emit_all false false false
+  emit_all false false false false false
   exit 0
 fi
 
@@ -125,6 +127,9 @@ done <<<"$changed"
 # src/core, src/game, src/shared, tests/headless, tests/unit, tests/integration,
 # scripts, .github, root config — forces the gate to run. Consumed by ci.yml to
 # skip the headless job on pull_requests only.
+# The sprite pipeline (scripts/sprites/, tests/unit/sprites/, tests/integration/sprites/,
+# and the 8 root pipeline integration tests) is also safe: the headless runner imports
+# only src/core, src/shared, src/game/ai and never touches scripts/sprites/.
 gameplay_safe=true
 while IFS= read -r file; do
   [ -z "$file" ] && continue
@@ -134,6 +139,17 @@ while IFS= read -r file; do
     tests/e2e/*) ;;
     docs/*) ;;
     public/*) ;;
+    scripts/sprites/*) ;;
+    tests/unit/sprites/*) ;;
+    tests/integration/sprites/*) ;;
+    tests/integration/batch-cli.test.ts) ;;
+    tests/integration/generate-one.test.ts) ;;
+    tests/integration/judge-budget-cache.test.ts) ;;
+    tests/integration/judge-pipeline.test.ts) ;;
+    tests/integration/run-full.test.ts) ;;
+    tests/integration/sidecar-lifecycle.test.ts) ;;
+    tests/integration/synth-to-generate.test.ts) ;;
+    tests/integration/weapons-pipeline.test.ts) ;;
     *.md) ;;
     *.txt) ;;
     *)
@@ -143,4 +159,52 @@ while IFS= read -r file; do
   esac
 done <<<"$changed"
 
-emit_all "$art_only" "$docs_only" "$gameplay_safe"
+# sprites_only: every changed file is in the sprite generation/editing pipeline.
+# When true, CI skips game tests (unit, integration, headless, e2e) and runs only
+# the dedicated sprites test project.
+# Sprite surface: scripts/sprites/, tests/unit/sprites/, tests/integration/sprites/,
+# plus the 8 root pipeline integration tests that exercise the full pipeline E2E.
+sprites_only=true
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  case "$file" in
+    scripts/sprites/*) ;;
+    tests/unit/sprites/*) ;;
+    tests/integration/sprites/*) ;;
+    tests/integration/batch-cli.test.ts) ;;
+    tests/integration/generate-one.test.ts) ;;
+    tests/integration/judge-budget-cache.test.ts) ;;
+    tests/integration/judge-pipeline.test.ts) ;;
+    tests/integration/run-full.test.ts) ;;
+    tests/integration/sidecar-lifecycle.test.ts) ;;
+    tests/integration/synth-to-generate.test.ts) ;;
+    tests/integration/weapons-pipeline.test.ts) ;;
+    *)
+      sprites_only=false
+      break
+      ;;
+  esac
+done <<<"$changed"
+
+# sprites_touched: at least one changed file is in the sprite pipeline surface.
+# Used to gate test-sprites in CI: if no sprite file changed, skip the sprite test
+# job (a pure game change cannot break pipeline tests and vice versa).
+sprites_touched=false
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  case "$file" in
+    scripts/sprites/*) sprites_touched=true; break ;;
+    tests/unit/sprites/*) sprites_touched=true; break ;;
+    tests/integration/sprites/*) sprites_touched=true; break ;;
+    tests/integration/batch-cli.test.ts) sprites_touched=true; break ;;
+    tests/integration/generate-one.test.ts) sprites_touched=true; break ;;
+    tests/integration/judge-budget-cache.test.ts) sprites_touched=true; break ;;
+    tests/integration/judge-pipeline.test.ts) sprites_touched=true; break ;;
+    tests/integration/run-full.test.ts) sprites_touched=true; break ;;
+    tests/integration/sidecar-lifecycle.test.ts) sprites_touched=true; break ;;
+    tests/integration/synth-to-generate.test.ts) sprites_touched=true; break ;;
+    tests/integration/weapons-pipeline.test.ts) sprites_touched=true; break ;;
+  esac
+done <<<"$changed"
+
+emit_all "$art_only" "$docs_only" "$gameplay_safe" "$sprites_only" "$sprites_touched"

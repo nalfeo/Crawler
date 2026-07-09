@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { briefSchema, type PaletteColors } from '../../scripts/sprites/brief-schema.js';
+import { briefSchema, type PaletteColors } from '../../../scripts/sprites/brief-schema.js';
 import {
   postprocessModules,
   type ModuleContext,
-} from '../../scripts/sprites/postprocess-modules.js';
+} from '../../../scripts/sprites/postprocess-modules.js';
 
 interface TestImage {
   readonly width: number;

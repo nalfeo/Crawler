@@ -31,6 +31,7 @@
     "test:integration": "vitest run --project integration",
     "test:e2e": "vitest run --project e2e",
     "test:headless": "vitest run --project headless --reporter=verbose",
+    "test:sprites": "vitest run --project sprites --reporter=verbose",
     "test:guards": "node --test \".github/extensions/copilot-guards/tests/*.test.mjs\" \".github/extensions/agent-perf-panel/tests/*.test.mjs\" \"scripts/agent/review/*.test.mjs\" \".github/scripts/codex/tests/*.test.mjs\"",
     "lab": "vite --mode lab",
     "devtools": "vite --mode devtools",

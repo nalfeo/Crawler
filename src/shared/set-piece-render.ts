@@ -46,6 +46,9 @@ export interface SetPiecePropRender {
   readonly heightFt: number;
   /** Optional uniform scale multiplier applied on top of the footprint (1 = native). */
   readonly scale?: number;
+  /** Mirror the sprite horizontally / vertically at render time. */
+  readonly flipX?: boolean;
+  readonly flipY?: boolean;
   /** Optional tint as `#rrggbb`, applied to the sprite or placeholder. */
   readonly tintHex?: string;
   /** Human-readable label used for the placeholder fallback + debugging. */

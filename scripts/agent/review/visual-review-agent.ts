@@ -1,5 +1,12 @@
 #!/usr/bin/env tsx
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  writeFileSync,
+} from 'node:fs';
 import { resolve } from 'node:path';
 import process from 'node:process';
 import { chromium } from 'playwright';
@@ -13,6 +20,15 @@ import {
   normalizeOverallScore,
 } from './visual-review-lib.mjs';
 import type { VisualReviewBox, VisualReviewRegion } from './visual-review-lib.mjs';
+import {
+  DEFAULT_LEDGER_NOTE,
+  findingTextReferencesSuppressedAsset,
+  mergeAssetFindingsIntoLedger,
+  normalizeAssetKey,
+  parseArtLedger,
+  suppressedAssetKeys,
+} from './art-ledger.js';
+import type { ArtLedger, ArtLedgerEntry } from './art-ledger.js';
 
 interface CliOptions {
   labUrl: string;
@@ -30,6 +46,19 @@ interface CliOptions {
    * geometry and issue a FINAL verdict (defend with numbers or withdraw).
    */
   rebuttals: string[];
+  /**
+   * Art-review mode (opt-in). When set, the prompt gains an ASSET INTEGRITY
+   * critique block (stretched/wrong-aspect, semantic mismatch, wall-fixture-on-
+   * floor, wrong orientation, clipped) + an `asset_findings` schema field, the
+   * agent reads/writes an art-regen ledger (suppress-list of known-bad art), and
+   * it stores a labeled GOOD/BAD evidence corpus. Off by default so DOM-panel
+   * surfaces (equipment/inventory) keep their exact prior prompt + output.
+   */
+  artReview: boolean;
+  /** Path to the art-regen ledger JSON (art-review mode). Defaults under outputDir. */
+  artLedger: string | null;
+  /** Root dir for the labeled evidence corpus (art-review mode). Defaults under outputDir. */
+  evidenceDir: string | null;
 }
 
 type ScreenClip = { x: number; y: number; width: number; height: number };
@@ -48,6 +77,39 @@ interface PreciseFix {
   dw?: number;
   dh?: number;
   reason?: string;
+}
+
+/** Defect class for an art-asset-level finding. */
+type AssetDefectKind =
+  | 'stretched'
+  | 'oversized'
+  | 'semantic-mismatch'
+  | 'misplaced-fixture'
+  | 'wrong-orientation'
+  | 'clipped'
+  | 'other';
+
+/**
+ * An art-asset-level defect (art-review mode) — a problem with the generated
+ * sprite pixels or how the fixture reads, distinct from a layout/data defect.
+ * `needs_regen === true` means only regenerating/replacing the source art can
+ * fix it, so it feeds the art-regen ledger (and is then suppressed next run).
+ */
+interface AssetFinding {
+  asset: string;
+  prop?: string;
+  kind?: AssetDefectKind;
+  issue?: string;
+  needs_regen?: boolean;
+}
+
+/** A per-element crop captured in screenshot space for the evidence corpus. */
+interface EvidenceRegionShot {
+  id: string;
+  kind: string;
+  box: { x: number; y: number; width: number; height: number };
+  /** Absolute path to the (unlabeled) crop PNG, or null if off-screen / too small. */
+  cropPath: string | null;
 }
 
 interface VisualReviewResult {
@@ -72,6 +134,18 @@ interface VisualReviewResult {
   regions_declared?: string[];
   /** NEW vs RECURRING split of blocking findings against the most recent prior review. */
   finding_trajectory?: { new: string[]; recurring: string[] };
+  /** Art-asset-level defects (art-review mode). Layout defects stay in blocking_findings. */
+  asset_findings?: AssetFinding[];
+  /** Assets suppressed this run because they are already on the art-regen ledger. */
+  suppressed_ledger_assets?: string[];
+  /**
+   * How many FREE-TEXT findings (blocking_findings / recommended_fixes /
+   * precise_fixes) were dropped this run for referencing a suppressed queued asset
+   * — the cross-array half of the "don't re-critique queued art" suppression.
+   */
+  suppressed_text_finding_count?: number;
+  /** Assets newly appended to the art-regen ledger by this run. */
+  ledger_added?: string[];
 }
 
 interface ElementBox {
@@ -118,6 +192,8 @@ interface CaptureResult {
   /** Declared regions (declared path only); empty otherwise. */
   regions: VisualReviewRegion[];
   expect: SurfaceExpectations;
+  /** Per-element crops for the evidence corpus (art-review mode); empty otherwise. */
+  evidenceRegions: EvidenceRegionShot[];
 }
 
 function parseArgs(argv: string[]): CliOptions {
@@ -133,6 +209,9 @@ function parseArgs(argv: string[]): CliOptions {
     waitMs: 350,
     clip: null,
     rebuttals: [],
+    artReview: false,
+    artLedger: null,
+    evidenceDir: null,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -172,6 +251,20 @@ function parseArgs(argv: string[]): CliOptions {
       if (line.length > 0) {
         opts.rebuttals.push(line);
       }
+      i += 1;
+      continue;
+    }
+    if (arg === '--art-review') {
+      opts.artReview = true;
+      continue;
+    }
+    if (arg === '--art-ledger' && next) {
+      opts.artLedger = resolve(process.cwd(), next);
+      i += 1;
+      continue;
+    }
+    if (arg === '--evidence-dir' && next) {
+      opts.evidenceDir = resolve(process.cwd(), next);
       i += 1;
       continue;
     }
@@ -258,7 +351,12 @@ function nowStamp(): string {
 function buildPrompt(
   opts: Pick<CliOptions, 'uxName' | 'uxGoal' | 'rebuttals'>,
   geometryText: string,
-  context: { expect: SurfaceExpectations; regionIds: string[] },
+  context: {
+    expect: SurfaceExpectations;
+    regionIds: string[];
+    artReview?: boolean;
+    ledgerAssets?: ArtLedgerEntry[];
+  },
 ): { system: string; user: string } {
   const rebuttalBlock =
     opts.rebuttals.length > 0
@@ -333,6 +431,47 @@ How to handle each rebuttal (do this rigorously, it is the point of this pass):
     context.regionIds.length > 0
       ? `\n\nDECLARED REGION IDS (reference these EXACT ids in precise_fixes.element and when citing elements): ${context.regionIds.join(', ')}.`
       : '';
+  // ART-REVIEW MODE (opt-in): critique the ART ASSETS themselves, maintain a
+  // regen ledger, and suppress already-queued assets. These blocks are EMPTY
+  // for non-art surfaces so equipment/inventory prompts stay byte-for-byte.
+  const artReview = context.artReview === true;
+  const assetIntegrityBlock = artReview
+    ? `
+
+ASSET INTEGRITY — judge the ART ASSETS themselves, not just the layout (be HARSH here):
+This surface composites generated sprite art into a top-down room diorama. In ADDITION to layout, hunt for defects baked into the art or the way a fixture reads, and report EACH as a blocking finding AND as an entry in "asset_findings":
+- STRETCHED / WRONG ASPECT: a sprite visibly squashed or elongated away from natural proportions (e.g. a square motif smeared across a wide footprint). Oddly stretched art is a serious defect — call it out EVERY time you see it, and say which element.
+- RELATIVE SCALE / OUT-OF-PROPORTION: an element whose on-screen SIZE is wrong RELATIVE to the people (NPCs) and furniture around it — furniture that dwarfs the human characters, or props (sconces, potions, junk, plants) that are far too big or too small for what they are. Use an NPC's height as the human reference: a reception desk, table, or bookcase should read a bit taller/wider than a person, never several times their size; a wall sconce or potion bottle should read much SMALLER than a person. When something is clearly out of proportion, flag it, name the element, and say whether it is too big or too small versus the NPCs.
+- SEMANTIC MISMATCH (asked-vs-got): the rendered art does not depict what the element is supposed to be. Concrete example to watch for: a "welcome BANNER" that is actually a free-standing SIGN and is NOT mounted on the wall. If the intent word (banner, desk, bookcase, rug, sconce, torch, table) disagrees with what you actually SEE, flag it.
+- WALL FIXTURE ON THE FLOOR: a fixture that belongs mounted on a wall (sconce, torch, banner, sign, wall shelf) but is drawn sitting on the floor or in open space instead of on/against a wall.
+- WRONG ORIENTATION FOR WALL SIDE: a wall fixture whose facing does not match the wall it sits on — a LEFT-wall sconce must face inward (to the right), a RIGHT-wall sconce must face inward (to the left), a BACK-wall fixture faces toward the camera. Mismatched orientation is a defect; name the fixture and the wall it is on.
+- CLIPPED / CUT OFF: a sprite whose edges are cut off by the frame, by a neighbor, or by its own footprint box.
+
+For EACH "asset_findings" entry:
+- "asset": the element you are judging (use a DECLARED REGION ID above if one matches, e.g. "welcome-banner"; otherwise a short descriptive label like "left wall sconce").
+- "kind": one of stretched | oversized | semantic-mismatch | misplaced-fixture | wrong-orientation | clipped | other.
+- "needs_regen": true ONLY when the ART PIXELS themselves are wrong so NO reposition/resize in the scene could fix it (wrong subject, baked-in stretch/orientation). false when moving/resizing/re-anchoring the EXISTING sprite would fix it — that is a layout fix, so ALSO keep it in blocking_findings/precise_fixes. RELATIVE-SCALE / oversized findings are almost always needs_regen=false (the scene can resize the sprite).`
+    : '';
+  const ledgerAssets = artReview ? (context.ledgerAssets ?? []) : [];
+  const ledgerSuppressBlock =
+    ledgerAssets.length > 0
+      ? `
+
+KNOWN ART-REGEN QUEUE (already logged as needing regeneration — do NOT re-critique these):
+${ledgerAssets
+  .map(
+    (e) =>
+      `- ${e.asset}${e.prop ? ` (${e.prop})` : ''} — ${e.kind ?? 'defect'}: ${e.issue ?? 'queued for regen'}`,
+  )
+  .join('\n')}
+Treat each listed asset as if it WILL be replaced. Do NOT mention it in any axis "issues", blocking_findings, asset_findings, recommended_fixes, or precise_fixes, and do NOT lower any axis or overall score because of it. Judge everything else normally.`
+      : '';
+  const assetFindingsSchema = artReview
+    ? `,
+  "asset_findings": [
+    { "asset": string, "prop": string, "kind": "stretched" | "oversized" | "semantic-mismatch" | "misplaced-fixture" | "wrong-orientation" | "clipped" | "other", "issue": string, "needs_regen": boolean }
+  ]`
+    : '';
   return {
     system: `You are a brutally honest senior game UI art director.
 Evaluate ONLY what is visible in the screenshot and output strict JSON.
@@ -343,7 +482,7 @@ The measured geometry is AUTHORITATIVE: when a claim about a pixel gap, overlap,
 Design intent for this surface: ${opts.uxGoal}.
 
 MEASURED LAYOUT GEOMETRY (layout pixels, origin top-left; this is the SAME layout shown in the screenshot, so relative positions and pixel deltas are exact and directly actionable):
-${geometryText}${rebuttalBlock}${regionIdsBlock}
+${geometryText}${rebuttalBlock}${regionIdsBlock}${ledgerSuppressBlock}
 
 Score each axis 1-5 (1 = unacceptable, 5 = shippable quality):
 - layout_consistency
@@ -367,6 +506,7 @@ If the UI reads as generic modern app chrome (flat/sterile panels, non-dungeon m
 score thematic_fidelity <= 2 and include it as a blocking finding.
 
 ${hardRequirementLines}
+${assetIntegrityBlock}
 
 PRECISE, COORDINATE-LEVEL FIXES (REQUIRED wherever a defect is positional or sizing-related):
 - For EVERY positional/spacing/sizing defect, emit an entry in "precise_fixes" as a concrete pixel delta on a NAMED element from the geometry table above.
@@ -394,7 +534,7 @@ Return ONLY this JSON schema:
   "recommended_fixes": string[],
   "precise_fixes": [
     { "element": string, "action": "move" | "resize" | "pad", "dx": number, "dy": number, "dw": number, "dh": number, "reason": string }
-  ]
+  ]${assetFindingsSchema}
 }`,
   };
 }
@@ -402,11 +542,13 @@ Return ONLY this JSON schema:
 async function captureScreenshot(
   opts: Pick<CliOptions, 'labUrl' | 'setupFile' | 'waitMs' | 'clip'>,
   outPath: string,
+  cropsDir: string | null,
 ): Promise<CaptureResult> {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
   const page = await context.newPage();
 
+  console.log(`[visual-review-agent] navigating to: ${opts.labUrl}`);
   await page.goto(opts.labUrl, { waitUntil: 'commit', timeout: 45_000 });
   await page.waitForFunction(
     () => {
@@ -483,6 +625,7 @@ async function captureScreenshot(
       surface: harvest.surface,
       regions,
       expect: harvest.expect,
+      evidenceRegions: [],
     };
   } else if (harvest.source === 'equipment-legacy') {
     // Legacy EquipmentUI path: the two in-browser probes run VERBATIM so the
@@ -500,6 +643,7 @@ async function captureScreenshot(
         statLabelsHumanReadable: true,
         sectionDividers: true,
       },
+      evidenceRegions: [],
     };
   } else {
     // No declared contract and no equipment probe: no deterministic checks, no
@@ -516,6 +660,7 @@ async function captureScreenshot(
         statLabelsHumanReadable: false,
         sectionDividers: false,
       },
+      evidenceRegions: [],
     };
   }
   const setupClip = normalizeClip(
@@ -531,9 +676,121 @@ async function captureScreenshot(
     ...(screenshotClip ? { clip: screenshotClip } : {}),
   });
 
+  // Art-review evidence corpus: crop each declared/published element in the
+  // SAME screenshot space (browser still open) so we can later file the crops
+  // as GOOD/BAD training examples once the LLM verdict is known.
+  if (cropsDir) {
+    captured.evidenceRegions = await captureEvidenceCrops(page, cropsDir);
+  }
+
   await context.close();
   await browser.close();
   return captured;
+}
+
+/**
+ * Crop every element published on `window.__evidenceRegions` (world-pixel rects)
+ * into screenshot-space PNGs. World -> screenshot transform uses the live camera
+ * worldView + zoom and the canvas client rect, so crops line up with the capture
+ * regardless of camera fit/zoom. Off-screen / sub-4px regions are skipped.
+ */
+async function captureEvidenceCrops(page: Page, cropsDir: string): Promise<EvidenceRegionShot[]> {
+  let boxes: Array<{ id: string; kind: string; box: EvidenceRegionShot['box'] }> | null;
+  try {
+    boxes = await page.evaluate(() => {
+      const w = window as unknown as {
+        __setPieceScene?: {
+          cameras?: { main?: { worldView?: { x: number; y: number }; zoom?: number } };
+          scale?: { width?: number; height?: number };
+          game?: { canvas?: HTMLCanvasElement };
+        };
+        __evidenceRegions?: Array<{
+          id?: unknown;
+          kind?: unknown;
+          centreXpx?: unknown;
+          centreYpx?: unknown;
+          halfWpx?: unknown;
+          halfHpx?: unknown;
+        }>;
+      };
+      const scene = w.__setPieceScene;
+      const regions = w.__evidenceRegions;
+      const cam = scene?.cameras?.main;
+      const canvas = scene?.game?.canvas;
+      if (!scene || !Array.isArray(regions) || !cam || !canvas || !cam.worldView) return null;
+      const wv = cam.worldView;
+      const zoom = typeof cam.zoom === 'number' && cam.zoom > 0 ? cam.zoom : 1;
+      const rect = canvas.getBoundingClientRect();
+      const gw = scene.scale?.width ?? rect.width;
+      const gh = scene.scale?.height ?? rect.height;
+      const sx = gw > 0 ? rect.width / gw : 1;
+      const sy = gh > 0 ? rect.height / gh : 1;
+      const out: Array<{
+        id: string;
+        kind: string;
+        box: { x: number; y: number; width: number; height: number };
+      }> = [];
+      for (const r of regions) {
+        const cx = Number(r.centreXpx);
+        const cy = Number(r.centreYpx);
+        const hw = Number(r.halfWpx);
+        const hh = Number(r.halfHpx);
+        if (![cx, cy, hw, hh].every((v) => Number.isFinite(v))) continue;
+        const gx = (cx - wv.x) * zoom;
+        const gy = (cy - wv.y) * zoom;
+        const wpx = hw * 2 * zoom * sx;
+        const hpx = hh * 2 * zoom * sy;
+        const px = rect.left + (gx - hw * zoom) * sx;
+        const py = rect.top + (gy - hh * zoom) * sy;
+        out.push({
+          id: typeof r.id === 'string' && r.id.length > 0 ? r.id : 'element',
+          kind: typeof r.kind === 'string' ? r.kind : 'prop',
+          box: { x: px, y: py, width: wpx, height: hpx },
+        });
+      }
+      return out;
+    });
+  } catch {
+    return [];
+  }
+  if (!boxes || boxes.length === 0) return [];
+  mkdirSync(cropsDir, { recursive: true });
+  const viewport = page.viewportSize() ?? { width: 1600, height: 1000 };
+  const shots: EvidenceRegionShot[] = [];
+  const usedNames = new Set<string>();
+  for (const b of boxes) {
+    const x = Math.max(0, Math.floor(b.box.x));
+    const y = Math.max(0, Math.floor(b.box.y));
+    const right = Math.min(viewport.width, Math.ceil(b.box.x + b.box.width));
+    const bottom = Math.min(viewport.height, Math.ceil(b.box.y + b.box.height));
+    const width = right - x;
+    const height = bottom - y;
+    let cropPath: string | null = null;
+    if (width >= 4 && height >= 4) {
+      let token = safeFileToken(b.id);
+      while (usedNames.has(token)) token = `${token}_`;
+      usedNames.add(token);
+      cropPath = resolve(cropsDir, `${token}.png`);
+      try {
+        await page.screenshot({ path: cropPath, clip: { x, y, width, height } });
+      } catch {
+        cropPath = null;
+      }
+    }
+    shots.push({ id: b.id, kind: b.kind, box: { x, y, width, height }, cropPath });
+  }
+  return shots;
+}
+
+/** Sanitize an element id for use as a filesystem token. */
+function safeFileToken(id: string): string {
+  const token = id
+    .toLowerCase()
+    .replace(/&[a-z]+;/g, '-')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48);
+  return token.length > 0 ? token : 'element';
 }
 
 function formatGeometry(geo: GeometrySnapshot): string {
@@ -939,6 +1196,211 @@ function loadPriorFindingKeys(
   }
 }
 
+/**
+ * Load the art-regen ledger. A MISSING file is the normal first-run case (nothing
+ * queued yet) → an empty ledger. A present-but-corrupt file FAILS CLOSED via
+ * {@link parseArtLedger} (throws), because silently degrading to an empty
+ * suppress-list would re-critique every already-queued asset — the exact behavior
+ * the ledger exists to prevent.
+ */
+function loadArtLedger(path: string): ArtLedger {
+  let raw: string;
+  try {
+    raw = readFileSync(path, 'utf-8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
+      return { updated: '', note: DEFAULT_LEDGER_NOTE, assets: [] };
+    }
+    // Permission / other IO error: fail loudly rather than silently un-suppress.
+    throw err;
+  }
+  return parseArtLedger(raw);
+}
+
+function saveArtLedger(path: string, ledger: ArtLedger): void {
+  mkdirSync(resolve(path, '..'), { recursive: true });
+  ledger.updated = new Date().toISOString();
+  writeFileSync(path, `${JSON.stringify(ledger, null, 2)}\n`, 'utf-8');
+}
+
+const EVIDENCE_STOPWORDS = new Set([
+  'welcome',
+  'room',
+  'npc',
+  'prop',
+  'the',
+  'and',
+  'for',
+  'its',
+  'has',
+  'var',
+  'layer',
+  'side',
+  'set',
+  'piece',
+  'with',
+  'wall',
+  'floor',
+  'left',
+  'right',
+  'back',
+  'front',
+  'top',
+  'this',
+  'that',
+  'too',
+  'not',
+  'are',
+  'was',
+  'sitting',
+  'looks',
+  'look',
+  'from',
+  'onto',
+  'into',
+]);
+
+/** Distinctive lowercase word tokens of a label/finding for fuzzy element matching. */
+function distinctiveTokens(s: string): Set<string> {
+  return new Set(
+    s
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((t) => t.length > 2 && !EVIDENCE_STOPWORDS.has(t)),
+  );
+}
+
+function tokensIntersect(a: Set<string>, pool: Set<string>): boolean {
+  for (const t of a) if (pool.has(t)) return true;
+  return false;
+}
+
+/** Flatten all axis strengths into a single GOOD-observation list. */
+function collectGoodNotes(result: VisualReviewResult): string[] {
+  const out: string[] = [];
+  for (const axis of Object.values(result.axes ?? {})) {
+    for (const s of axis.strengths ?? []) out.push(s);
+  }
+  return out;
+}
+
+/** Flatten blocking findings + asset-finding issues into a single BAD list. */
+function collectBadNotes(result: VisualReviewResult): string[] {
+  const out: string[] = [...(result.blocking_findings ?? [])];
+  for (const f of result.asset_findings ?? []) {
+    out.push(`${f.asset}${f.prop ? ` (${f.prop})` : ''}: ${f.issue ?? f.kind ?? 'asset defect'}`);
+  }
+  return out;
+}
+
+/**
+ * File each captured crop into crops/good|bad|neutral by fuzzy-matching the
+ * element id against the run's GOOD/BAD note pools (BAD wins ties). Returns a
+ * manifest describing each labeled crop for evidence.json.
+ */
+function labelAndFileCrops(
+  bundleDir: string,
+  regions: EvidenceRegionShot[],
+  result: VisualReviewResult,
+): Array<{
+  id: string;
+  kind: string;
+  label: 'good' | 'bad' | 'neutral';
+  box: EvidenceRegionShot['box'];
+  crop: string | null;
+}> {
+  const badTokens = new Set<string>();
+  for (const n of collectBadNotes(result)) for (const t of distinctiveTokens(n)) badTokens.add(t);
+  const goodTokens = new Set<string>();
+  for (const n of collectGoodNotes(result)) for (const t of distinctiveTokens(n)) goodTokens.add(t);
+  const manifest: Array<{
+    id: string;
+    kind: string;
+    label: 'good' | 'bad' | 'neutral';
+    box: EvidenceRegionShot['box'];
+    crop: string | null;
+  }> = [];
+  for (const r of regions) {
+    const idTokens = distinctiveTokens(r.id);
+    const label: 'good' | 'bad' | 'neutral' = tokensIntersect(idTokens, badTokens)
+      ? 'bad'
+      : tokensIntersect(idTokens, goodTokens)
+        ? 'good'
+        : 'neutral';
+    let rel: string | null = null;
+    if (r.cropPath) {
+      const destDir = resolve(bundleDir, 'crops', label);
+      mkdirSync(destDir, { recursive: true });
+      const fileName = `${safeFileToken(r.id)}.png`;
+      const dest = resolve(destDir, fileName);
+      try {
+        renameSync(r.cropPath, dest);
+        rel = `crops/${label}/${fileName}`;
+      } catch {
+        rel = null;
+      }
+    }
+    manifest.push({ id: r.id, kind: r.kind, label, box: r.box, crop: rel });
+  }
+  return manifest;
+}
+
+/**
+ * Write a labeled GOOD/BAD evidence bundle for this review round: the full
+ * screenshot, per-element crops filed under crops/good|bad|neutral, and an
+ * evidence.json capturing the verdict + good/bad observations + ledger deltas.
+ * This corpus is a durable training/QA record for improving the judge later.
+ */
+function writeEvidenceBundle(args: {
+  bundleDir: string;
+  stamp: string;
+  isoNow: string;
+  uxName: string;
+  uxGoal: string;
+  screenshotPath: string;
+  score: number;
+  result: VisualReviewResult;
+  regions: EvidenceRegionShot[];
+}): string {
+  const { bundleDir, screenshotPath, result, regions } = args;
+  mkdirSync(bundleDir, { recursive: true });
+  try {
+    copyFileSync(screenshotPath, resolve(bundleDir, 'full.png'));
+  } catch {
+    /* full-frame copy is best-effort */
+  }
+  const labeled = labelAndFileCrops(bundleDir, regions, result);
+  const evidence = {
+    stamp: args.stamp,
+    captured_at: args.isoNow,
+    ux_name: args.uxName,
+    ux_goal: args.uxGoal,
+    score: args.score,
+    verdict: result.overall?.verdict ?? 'unknown',
+    summary: result.overall?.summary ?? '',
+    good: collectGoodNotes(result),
+    bad: collectBadNotes(result),
+    blocking_findings: result.blocking_findings ?? [],
+    asset_findings: result.asset_findings ?? [],
+    ledger_added: result.ledger_added ?? [],
+    suppressed_ledger_assets: result.suppressed_ledger_assets ?? [],
+    counts: {
+      elements: labeled.length,
+      bad: labeled.filter((l) => l.label === 'bad').length,
+      good: labeled.filter((l) => l.label === 'good').length,
+      neutral: labeled.filter((l) => l.label === 'neutral').length,
+    },
+    elements: labeled,
+    full: 'full.png',
+  };
+  writeFileSync(
+    resolve(bundleDir, 'evidence.json'),
+    `${JSON.stringify(evidence, null, 2)}\n`,
+    'utf-8',
+  );
+  return bundleDir;
+}
+
 async function main(): Promise<number> {
   if (process.env.CI) {
     console.error('[visual-review-agent] Refusing to run in CI (dev-session tool only).');
@@ -948,10 +1410,26 @@ async function main(): Promise<number> {
   const opts = parseArgs(process.argv.slice(2));
   mkdirSync(opts.outputDir, { recursive: true });
   const stamp = nowStamp();
+  const isoNow = new Date().toISOString();
   const screenshotPath = resolve(opts.outputDir, `${opts.screenshotName}-${stamp}.png`);
   const reviewPath = resolve(opts.outputDir, `${opts.screenshotName}-${stamp}.review.json`);
 
-  const capture = await captureScreenshot(opts, screenshotPath);
+  // Art-review mode: resolve the ledger + evidence-corpus paths, and the raw
+  // crops dir passed into capture (so per-element crops are grabbed while the
+  // browser is still open).
+  const artLedgerPath = opts.artReview
+    ? (opts.artLedger ?? resolve(opts.outputDir, 'art-regen-ledger.json'))
+    : null;
+  const evidenceRoot = opts.artReview
+    ? (opts.evidenceDir ?? resolve(opts.outputDir, 'evidence'))
+    : null;
+  const evidenceBundleDir = evidenceRoot
+    ? resolve(evidenceRoot, `${opts.screenshotName}-${stamp}`)
+    : null;
+  const rawCropsDir = evidenceBundleDir ? resolve(evidenceBundleDir, 'crops', '_raw') : null;
+  const ledger = artLedgerPath ? loadArtLedger(artLedgerPath) : null;
+
+  const capture = await captureScreenshot(opts, screenshotPath, rawCropsDir);
   if (lacksPixelGroundedGeometry(capture.harvestSource, capture.regions.length)) {
     // Either no contract at all ('none') or a declared-but-empty (misconfigured)
     // surface. Both silently degrade to screenshot-only, non-pixel-grounded
@@ -1004,6 +1482,8 @@ async function main(): Promise<number> {
   const prompt = buildPrompt(opts, capture.geometryText, {
     expect: capture.expect,
     regionIds: capture.regions.map((r) => r.id),
+    artReview: opts.artReview,
+    ledgerAssets: ledger?.assets.filter((a) => a.status === 'needs-regen') ?? [],
   });
   const png = readFileSync(screenshotPath);
   const evaluation = await provider.evaluate({
@@ -1043,8 +1523,85 @@ async function main(): Promise<number> {
     result.finding_trajectory = diffFindings(priorKeys, result.blocking_findings);
   }
 
+  // Art-review mode: (1) drop any asset_findings the model still returned for an
+  // already-ledgered asset, (2) merge NEW needs_regen findings into the ledger
+  // (suppressed on the next run), and (3) write the labeled GOOD/BAD evidence
+  // corpus for this round.
+  if (opts.artReview && ledger && artLedgerPath) {
+    const suppressed = suppressedAssetKeys(ledger);
+    result.suppressed_ledger_assets = [...suppressed];
+    if (Array.isArray(result.asset_findings)) {
+      result.asset_findings = result.asset_findings.filter(
+        (f) => typeof f?.asset !== 'string' || !suppressed.has(normalizeAssetKey(f.asset)),
+      );
+    }
+    // Belt-and-suspenders: a queued asset must not be re-critiqued through ANY
+    // finding array, not just the structured asset_findings. The vision model still
+    // re-mentions a ledgered asset in free-text prose (and could re-FAIL the gate
+    // via blocking_findings), so drop any blocking finding / recommended fix /
+    // precise fix that references a suppressed asset. Deterministic blockers are
+    // NEVER dropped — they are geometry/pixel checks, not art-pixel critiques.
+    let suppressedTextFindings = 0;
+    if (Array.isArray(result.blocking_findings)) {
+      const deterministic = new Set(result.deterministic_blocking_findings ?? []);
+      const before = result.blocking_findings.length;
+      result.blocking_findings = result.blocking_findings.filter(
+        (f) => deterministic.has(f) || !findingTextReferencesSuppressedAsset(f, suppressed),
+      );
+      suppressedTextFindings += before - result.blocking_findings.length;
+    }
+    if (Array.isArray(result.recommended_fixes)) {
+      const before = result.recommended_fixes.length;
+      result.recommended_fixes = result.recommended_fixes.filter(
+        (f) => !findingTextReferencesSuppressedAsset(f, suppressed),
+      );
+      suppressedTextFindings += before - result.recommended_fixes.length;
+    }
+    if (Array.isArray(result.precise_fixes)) {
+      const before = result.precise_fixes.length;
+      result.precise_fixes = result.precise_fixes.filter(
+        (f) =>
+          !findingTextReferencesSuppressedAsset(
+            `${f?.element ?? ''} ${f?.action ?? ''} ${f?.reason ?? ''}`,
+            suppressed,
+          ),
+      );
+      suppressedTextFindings += before - result.precise_fixes.length;
+    }
+    result.suppressed_text_finding_count = suppressedTextFindings;
+    const added = mergeAssetFindingsIntoLedger(ledger, result.asset_findings ?? [], isoNow);
+    result.ledger_added = added.map((a) => a.asset);
+    saveArtLedger(artLedgerPath, ledger);
+    if (added.length > 0) {
+      console.log(
+        `[visual-review-agent] art-regen ledger: +${added.length} new (${added
+          .map((a) => a.asset)
+          .join(', ')}); ${ledger.assets.length} total queued -> ${artLedgerPath}`,
+      );
+    } else {
+      console.log(
+        `[visual-review-agent] art-regen ledger: no new assets (${ledger.assets.length} queued, ${suppressed.size} suppressed this run) -> ${artLedgerPath}`,
+      );
+    }
+  }
+
   writeFileSync(reviewPath, `${JSON.stringify(result, null, 2)}\n`, 'utf-8');
   printResult(result, screenshotPath, reviewPath);
+
+  if (opts.artReview && evidenceBundleDir) {
+    const dir = writeEvidenceBundle({
+      bundleDir: evidenceBundleDir,
+      stamp,
+      isoNow,
+      uxName: opts.uxName,
+      uxGoal: opts.uxGoal,
+      screenshotPath,
+      score: normalized.score,
+      result,
+      regions: capture.evidenceRegions,
+    });
+    console.log(`[visual-review-agent] evidence bundle: ${dir}`);
+  }
 
   const score = normalized.score;
   const blockers = result.blocking_findings ?? [];

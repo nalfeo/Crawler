@@ -30,13 +30,66 @@ function opts(bounds: RoomBounds): StampSetPieceOptions {
   return { roomBounds: bounds, tileSizeFt: TILE };
 }
 
+/**
+ * A synthetic 8×7 exact-sizing def with a single full-footprint prop, decoupled
+ * from the welcome-room content so the origin/sizing logic can be tested in
+ * isolation. `placement` and extra layers are supplied per-test.
+ */
+function makeDef(overrides: Partial<SetPieceDef> = {}): SetPieceDef {
+  return {
+    id: 'synthetic',
+    name: 'Synthetic',
+    theme: 'test',
+    sizing: 'exact',
+    width: 8,
+    height: 7,
+    description: 'synthetic def for origin/sizing tests',
+    tags: [],
+    props: [
+      {
+        id: 'base',
+        kind: 'floor',
+        x: 0,
+        y: 0,
+        width: 8,
+        height: 7,
+        z: 0,
+        layers: [{ sprite: { source: 'catalog', spriteId: 'sprite:item.gem' } }],
+      },
+    ],
+    npcs: [],
+    ...overrides,
+  };
+}
+
 describe('computeStampOrigin', () => {
-  it('centres an 8×7 def inside a larger interior', () => {
-    const def = welcomeRoom();
+  it('centres a placement-free 8×7 def inside a larger interior', () => {
     // Interior of ROOM_LARGE = [11..22] × [21..30] → 12 wide, 10 tall.
     // Offset = floor((12-8)/2)=2, floor((10-7)/2)=1.
-    const origin = computeStampOrigin(def, ROOM_LARGE);
+    const origin = computeStampOrigin(makeDef(), ROOM_LARGE);
     expect(origin).toEqual({ originTileX: 13, originTileY: 22 });
+  });
+
+  it('hugs the top wall for a placement.verticalAlign="top" def', () => {
+    // Vertical slack (3) collapses to 0 at the top, so the origin pins to the
+    // interior's top row while X stays centred — this is what mounts the
+    // welcome-room reception against the real back wall.
+    const origin = computeStampOrigin(makeDef({ placement: { verticalAlign: 'top' } }), ROOM_LARGE);
+    expect(origin).toEqual({ originTileX: 13, originTileY: 21 });
+  });
+
+  it('pushes to the far edge for bottom/right alignment', () => {
+    const origin = computeStampOrigin(
+      makeDef({ placement: { verticalAlign: 'bottom', horizontalAlign: 'right' } }),
+      ROOM_LARGE,
+    );
+    // slackX=4 → originX = 11+4 = 15; slackY=3 → originY = 21+3 = 24.
+    expect(origin).toEqual({ originTileX: 15, originTileY: 24 });
+  });
+
+  it('matches the shipped welcome-room top placement', () => {
+    const origin = computeStampOrigin(welcomeRoom(), ROOM_LARGE);
+    expect(origin.originTileY).toBe(21);
   });
 
   it('pins the origin to the interior top-left when the def overflows the room', () => {
@@ -158,51 +211,102 @@ describe('stampSetPiece — props and layering', () => {
     expect(tinted?.render.tintHex).toBe('#3fae5a');
   });
 
-  it('sizes a multi-tile prop footprint in feet', () => {
+  it('honours an explicit feet box over the tile-derived footprint (no-stretch sizing)', () => {
     const stamp = stampSetPiece(welcomeRoom(), opts(ROOM_LARGE));
-    // welcome-rug is authored 4×2 tiles.
+    // welcome-rug is authored 4×2 tiles but carries an explicit 14×8 ft box so
+    // the shipped 128×73 art is contain-fit at its true aspect (never stretched
+    // to the 16×8 ft tile footprint).
     const rug = stamp.props.find((p) => p.render.label === 'welcome-rug');
-    expect(rug?.render.widthFt).toBe(4 * TILE);
-    expect(rug?.render.heightFt).toBe(2 * TILE);
+    expect(rug?.render.widthFt).toBe(14);
+    expect(rug?.render.heightFt).toBe(8);
   });
 
-  it('sizes non-base accent layers by their own extent, not the parent footprint', () => {
-    const def = welcomeRoom();
-    const draws = flattenSetPieceLayers(def);
-    const stamp = stampSetPiece(def, opts(ROOM_LARGE));
-    // stampSetPiece emits one prop per flattened draw layer, in the same order.
-    expect(stamp.props).toHaveLength(draws.length);
-
-    let sawBase = false;
-    let sawShrunkAccent = false;
-    draws.forEach((draw, i) => {
-      const { render } = stamp.props[i]!;
-      if (draw.layerIndex === 0) {
-        // Base layer fills the whole prop footprint.
-        expect(render.widthFt).toBe(draw.prop.width * TILE);
-        expect(render.heightFt).toBe(draw.prop.height * TILE);
-        sawBase = true;
-        return;
-      }
-      // Accent layer: sized by its own extent (custom tile footprint, else a
-      // single tile) — NEVER inflated to the parent footprint.
-      const sprite = draw.layer.sprite;
-      const expectedW = sprite.source === 'custom' ? (sprite.widthTiles ?? 1) * TILE : TILE;
-      const expectedH = sprite.source === 'custom' ? (sprite.heightTiles ?? 1) * TILE : TILE;
-      expect(render.widthFt).toBe(expectedW);
-      expect(render.heightFt).toBe(expectedH);
-      // On a multi-tile prop the accent MUST be strictly smaller than the
-      // footprint — this is the giant-bottle regression the fix guards against.
-      if (draw.prop.width > 1 || draw.prop.height > 1) {
-        expect(render.widthFt).toBeLessThan(draw.prop.width * TILE);
-        sawShrunkAccent = true;
-      }
+  it('falls back to the footprint (base) / native tile (accent) box when no feet box is authored', () => {
+    // A synthetic composite: a 4×2 base plus a custom 2×1 accent and a plain
+    // single-tile accent, none carrying an explicit feet box — so the tile-derived
+    // fallback path is what sizes them.
+    const def = makeDef({
+      width: 4,
+      height: 2,
+      props: [
+        {
+          id: 'composite',
+          kind: 'floor',
+          x: 0,
+          y: 0,
+          width: 4,
+          height: 2,
+          z: 0,
+          layers: [
+            { sprite: { source: 'catalog', spriteId: 'sprite:item.gem' } },
+            {
+              sprite: {
+                source: 'custom',
+                requestId: 'r',
+                label: 'accent',
+                prompt: 'p',
+                widthTiles: 2,
+                heightTiles: 1,
+              },
+            },
+            { sprite: { source: 'sheet', sheetKey: 'k', col: 0, row: 0 } },
+          ],
+        },
+      ],
     });
+    const stamp = stampSetPiece(def, opts(ROOM_LARGE));
+    // Base layer fills the whole 4×2 footprint.
+    expect(stamp.props[0]!.render.widthFt).toBe(4 * TILE);
+    expect(stamp.props[0]!.render.heightFt).toBe(2 * TILE);
+    // Custom accent keeps its own 2×1 tile extent — NOT inflated to the parent.
+    expect(stamp.props[1]!.render.widthFt).toBe(2 * TILE);
+    expect(stamp.props[1]!.render.heightFt).toBe(1 * TILE);
+    expect(stamp.props[1]!.render.widthFt).toBeLessThan(4 * TILE);
+    // Plain accent falls back to a single tile.
+    expect(stamp.props[2]!.render.widthFt).toBe(TILE);
+    expect(stamp.props[2]!.render.heightFt).toBe(TILE);
+  });
 
-    // Guard the fixture: the welcome room must exercise both paths so this test
-    // can't silently pass if the content ever loses its layered props.
-    expect(sawBase).toBe(true);
-    expect(sawShrunkAccent).toBe(true);
+  it('threads a feet offset and flip through to the render sidecar', () => {
+    const def = makeDef({
+      width: 2,
+      height: 2,
+      props: [
+        {
+          id: 'nudged',
+          kind: 'decoration',
+          x: 0,
+          y: 0,
+          width: 2,
+          height: 2,
+          z: 0,
+          layers: [
+            {
+              sprite: { source: 'catalog', spriteId: 'sprite:item.gem' },
+              widthFt: 1.5,
+              heightFt: 1.5,
+              offsetXFt: 1,
+              offsetYFt: -4,
+              flipX: true,
+            },
+          ],
+        },
+      ],
+    });
+    const stamp = stampSetPiece(def, opts(ROOM_LARGE));
+    const prop = stamp.props[0]!;
+    // Explicit box wins.
+    expect(prop.render.widthFt).toBe(1.5);
+    expect(prop.render.heightFt).toBe(1.5);
+    // Flip flag threads through untouched.
+    expect(prop.render.flipX).toBe(true);
+    // The -4 ft vertical nudge lifts the sprite a full tile off its footprint
+    // centre (this is what mounts a sconce onto the wall row).
+    const origin = computeStampOrigin(def, ROOM_LARGE);
+    const footprintCentreY = origin.originTileY * TILE + (2 * TILE) / 2;
+    expect(prop.y).toBe(footprintCentreY - 4);
+    const footprintCentreX = origin.originTileX * TILE + (2 * TILE) / 2;
+    expect(prop.x).toBe(footprintCentreX + 1);
   });
 });
 
@@ -222,11 +326,15 @@ describe('stampSetPiece — clamping and determinism', () => {
       expect(npc.tileY).toBeGreaterThanOrEqual(minY);
       expect(npc.tileY).toBeLessThanOrEqual(maxY);
     }
-    // Prop top-left tiles derive from clamped world coords; assert they stay in
-    // the interior band (world feet ≥ minX*TILE and ≤ (maxX+1)*TILE).
+    // Prop top-left tiles are clamped to the interior. (The render x/y may sit
+    // slightly outside this band by design — e.g. a wall sconce's offsetYFt lifts
+    // its sprite up onto the wall row — so the invariant is asserted on the
+    // clamped footprint TILE, not the offset-adjusted render position.)
     for (const prop of stamp.props) {
-      expect(prop.x).toBeGreaterThanOrEqual(minX * TILE);
-      expect(prop.y).toBeGreaterThanOrEqual(minY * TILE);
+      expect(prop.tileX).toBeGreaterThanOrEqual(minX);
+      expect(prop.tileX).toBeLessThanOrEqual(maxX);
+      expect(prop.tileY).toBeGreaterThanOrEqual(minY);
+      expect(prop.tileY).toBeLessThanOrEqual(maxY);
     }
   });
 
@@ -251,10 +359,17 @@ describe('stampSetPiece — clamping and determinism', () => {
     const interiorMaxX = 6;
     const interiorMinY = 1;
     const interiorMaxY = 5;
-    const stamp = stampSetPiece(welcomeRoom(), opts(bounds));
-    for (const prop of stamp.props) {
-      const widthTiles = prop.render.widthFt / TILE;
-      const heightTiles = prop.render.heightFt / TILE;
+    const def = welcomeRoom();
+    // Footprint tiles come from the flattened draw layers (aligned by index with
+    // stamp.props), NOT the render feet box — an explicit widthFt/heightFt is a
+    // contain-fit visual box that can be fractional and decoupled from the tile
+    // footprint the clamp actually operates on.
+    const draws = flattenSetPieceLayers(def);
+    const stamp = stampSetPiece(def, opts(bounds));
+    expect(stamp.props).toHaveLength(draws.length);
+    stamp.props.forEach((prop, i) => {
+      const widthTiles = draws[i]!.prop.width;
+      const heightTiles = draws[i]!.prop.height;
       expect(prop.tileX).toBeGreaterThanOrEqual(interiorMinX);
       expect(prop.tileY).toBeGreaterThanOrEqual(interiorMinY);
       // A prop no wider/taller than the interior must fit entirely; a prop
@@ -269,7 +384,7 @@ describe('stampSetPiece — clamping and determinism', () => {
       } else {
         expect(prop.tileY).toBe(interiorMinY);
       }
-    }
+    });
   });
 
   it('returns no placements for a room with no passable interior', () => {

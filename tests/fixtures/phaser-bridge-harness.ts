@@ -34,6 +34,7 @@ export class MockImage {
   visible = true;
   alpha = 1;
   flipX = false;
+  flipY = false;
   scaleX = 1;
   scaleY = 1;
   rotation = 0;
@@ -98,6 +99,11 @@ export class MockImage {
 
   setFlipX(flipX: boolean): this {
     this.flipX = flipX;
+    return this;
+  }
+
+  setFlipY(flipY: boolean): this {
+    this.flipY = flipY;
     return this;
   }
 

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { removeReintroducedBackground, type RgbaImage } from '../../scripts/sprites/postprocess.js';
+import {
+  removeReintroducedBackground,
+  type RgbaImage,
+} from '../../../scripts/sprites/postprocess.js';
 
 const MAGENTA: readonly [number, number, number] = [255, 0, 255];
 

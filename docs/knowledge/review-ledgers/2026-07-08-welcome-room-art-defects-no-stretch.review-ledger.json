@@ -1,0 +1,64 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-08",
+  "session_slug": "welcome-room-art-defects-no-stretch",
+  "task_title": "Welcome-room set-piece art defect fixes: no-stretch contain-fit, feet sizing, placement anchor, Kenney->custom queue, alias-aware judge ledger",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.5",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Adversarial plan review (gpt-5.5) red-teamed the design and enumerated alternatives per decision: 9-slice vs cover-fit vs contain-fit for no-stretch; feet vs pixel vs tile-count sizing; fail-open vs fail-closed ledger load; asset_findings-only vs cross-array suppression; auto-inferred vs curated aliases; treat-any-placeholder-as-not-ready vs expected-count. Verdict: approved_with_changes. 2 BLOCKING concerns, both resolved in 2d234795: P1 (queued-asset suppression only covered asset_findings, so a ledgered defect was re-critiqued via blocking_findings/recommended_fixes/precise_fixes -> fixed with cross-array token-boundary suppression, deterministic blockers exempt) and P2 (ledger load failed OPEN on a corrupt file, silently returning an empty suppress-list -> fixed to fail-closed: throw on corrupt, tolerate only ENOENT). Non-blocking, DEFERRED as follow-ups (not counted as gating concerns): P5 deterministic sconce-on-wall invariant test (valuable, larger, out of the user's stated 2-blocking scope), plus minor P3/P4/P6 doc/naming notes. plan_divergence=minor: hardening + a test were added, no re-architecture."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "gemini-3.1-pro flagged a High: the set-piece readiness liveness guard (imageCount <= 0) would hang forever for a pure-placeholder piece with no image layers. Fixed in 2d234795: guard tightened to imageCount === 0 && placeholderRectCount === 0."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.3-codex", "claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Closing re-review of the post-fix diff (2d234795) by two distinct models. Both returned 'no concerns; fixes verified correct' after independently verifying fail-closed load, cross-array suppression, and pure-placeholder readiness against the unit tests. Loop closed clean within the 2-round cap; no human escalation needed."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview", "gpt-5.4"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Initial multi-model review of the full set-piece follow-up diff. gpt-5.3-codex: clean. gpt-5.4 (security pass): clean. gemini-3.1-pro-preview: 1 High (readiness liveness hang). Adjudicated (gpt-5.4): the gemini High is VALID; codex/security clean stand. The 1 valid concern was fixed in 2d234795."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.3-codex", "claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Closing adjudicated re-review on the post-fix diff by two distinct models (gpt-5.3-codex, claude-sonnet-4.6). Both clean: 'fixes verified correct.' Adjudicator gpt-5.4 confirms no remaining valid concerns. Multi-model loop closed clean within the 2-round cap."
+        }
+      ]
+    }
+  }
+}

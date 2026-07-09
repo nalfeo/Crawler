@@ -1379,7 +1379,27 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             }
           }
           img.setPosition(propX, propY);
-          img.setDisplaySize(spWidthPx, spHeightPx);
+          // Contain-fit: a uniform scale that fits the native sprite INSIDE the
+          // feet box while preserving its aspect ratio. No tile in this game is
+          // designed to stretch, so we never call setDisplaySize on real art
+          // (which would distort a 1.26:1 desk into its 3:1 footprint box).
+          // Fall back to setDisplaySize only for a degenerate zero-size frame.
+          const nativeW = img.width;
+          const nativeH = img.height;
+          if (nativeW > 0 && nativeH > 0) {
+            img.setScale(Math.min(spWidthPx / nativeW, spHeightPx / nativeH));
+          } else {
+            img.setDisplaySize(spWidthPx, spHeightPx);
+          }
+          // Mirror the sprite when the layer requests it (e.g. a right-side wall
+          // sconce reuses the single approved variant via flipX). Guarded like
+          // the entity path above so a mock/object without the flip API is safe.
+          if (typeof img.setFlipX === 'function') {
+            img.setFlipX(sp.flipX === true);
+          }
+          if (typeof img.setFlipY === 'function') {
+            img.setFlipY(sp.flipY === true);
+          }
           img.setDepth(spDepth);
           if (spTint !== undefined) {
             img.setTint(spTint);

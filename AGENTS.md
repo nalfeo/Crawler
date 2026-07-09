@@ -60,6 +60,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Fast verify             | `npm run verify:fast`              |
 | Full verify             | `npm run verify`                   |
 | Full verify + headless  | `VERIFY_FULL=1 npm run verify`     |
+| Sprite pipeline tests   | `npm run test:sprites`             |
 | Full verify + knip      | `VERIFY_KNIP=1 npm run verify`     |
 | PR prereq check         | `npm run verify:pr-prereqs`        |
 | Guard telemetry capture | `npm run telemetry:capture`        |

@@ -5,7 +5,7 @@ import {
   subjectTrimMarginPx,
   trimTransparentEdges,
   type RgbaImage,
-} from '../../scripts/sprites/postprocess.js';
+} from '../../../scripts/sprites/postprocess.js';
 
 function mkImage(width: number, height: number): RgbaImage {
   return { width, height, data: new Uint8Array(width * height * 4) };

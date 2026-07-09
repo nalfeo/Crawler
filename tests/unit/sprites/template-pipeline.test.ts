@@ -6,7 +6,7 @@ import {
   clearPipelineCache,
   getActiveModules,
   getPipelineForType,
-} from '../../scripts/sprites/template-pipeline.js';
+} from '../../../scripts/sprites/template-pipeline.js';
 
 const tempDirs: string[] = [];
 
