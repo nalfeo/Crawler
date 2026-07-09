@@ -393,6 +393,7 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden;
           <div class="fr"><label>x</label><input id="nxf" type="number" min="0" step="1"></div>
           <div class="fr"><label>y</label><input id="nyf" type="number" min="0" step="1"></div>
         </div>
+        <div class="fr"><label>scale</label><input id="nscale" type="number" min="0.1" step="0.05"></div>
         <div class="fr"><label>layer</label><select id="nlayer"></select></div>
         <div class="fr"><label>anchor</label>
           <select id="nanchor">
@@ -643,9 +644,16 @@ function drawProp(prop,sel,ad){
   if(fs){
     var res=resolveSprite(fs);
     if(res){
+      var lox=fl&&fl.offsetX!==undefined?fl.offsetX:0;
+      var loy=fl&&fl.offsetY!==undefined?fl.offsetY:0;
+      var lsc=fl&&fl.scale!==undefined?fl.scale:1;
+      if(!(lsc>0))lsc=1;
+      var baseW=pw2-2,baseH=ph2-2;
+      var drawW=baseW*lsc,drawH=baseH*lsc;
+      var drawX=px+1+lox+(baseW-drawW)/2,drawY=py+1+loy+(baseH-drawH)/2;
       ctx.save();ctx.imageSmoothingEnabled=false;
       ctx.beginPath();ctx.rect(px+1,py+1,pw2-2,ph2-2);ctx.clip();
-      ctx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,px+1,py+1,pw2-2,ph2-2);
+      ctx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,drawX,drawY,drawW,drawH);
       ctx.restore();sprited=true;
     }else if(fs.source==='custom'&&!fs.placeholder){
       ctx.fillStyle='#ff00ff33';ctx.fillRect(px+1,py+1,pw2-2,ph2-2);
@@ -678,9 +686,14 @@ function drawNpcEntity(npc,sel,nd){
   var ns=mapped?{source:'catalog',spriteId:mapped}:{source:'catalog',spriteId:'sprite:npc.guide'};
   var res=resolveSprite(ns);
   if(res){
+    var nsc=npc.scale!==undefined?npc.scale:1;
+    if(!(nsc>0))nsc=1;
+    var inW=sz-2,inH=sz-2;
+    var drW=inW*nsc,drH=inH*nsc;
+    var drX=px+1+(inW-drW)/2,drY=py+1+(inH-drH)/2;
     ctx.save();ctx.imageSmoothingEnabled=false;
     ctx.beginPath();ctx.rect(px+1,py+1,sz-2,sz-2);ctx.clip();
-    ctx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,px+1,py+1,sz-2,sz-2);
+    ctx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,drX,drY,drW,drH);
     ctx.restore();
     ctx.fillStyle='rgba(0,0,0,0.28)';ctx.fillRect(px+1,py+1,sz-2,Math.min(18,sz-2));
   }
@@ -859,6 +872,7 @@ function refreshNpcInputs(){
   document.getElementById('ntype').value=n.npcTypeId;
   document.getElementById('nxf').value=n.x;
   document.getElementById('nyf').value=n.y;
+  document.getElementById('nscale').value=n.scale!==undefined?n.scale:1;
   document.getElementById('nlayer').value=npcLayer(n);
   document.getElementById('nanchor').value=n.anchorRole||'';
 }
@@ -930,6 +944,20 @@ function mkSpriteFields(sprite,li){
       r3.appendChild(i3);frag.appendChild(r3);
     });
   }
+  var pr=document.createElement('div');pr.className='pr';
+  [['offsetX','offX',0,'1'],['offsetY','offY',0,'1'],['scale','scale',1,'0.05']].forEach(function(t){
+    var r2=mkFR(t[1]);var i2=document.createElement('input');
+    i2.type='number';i2.step=t[3];i2.value=sprite[t[0]]!==undefined?sprite[t[0]]:t[2];
+    if(t[0]==='scale')i2.min='0.1';
+    i2.onchange=function(){
+      var v=parseFloat(i2.value);
+      if(!Number.isFinite(v))v=t[2];
+      if(t[0]==='scale'&&v<=0)v=1;
+      setSprFld(li,t[0],v);
+    };
+    r2.appendChild(i2);pr.appendChild(r2);
+  });
+  frag.appendChild(pr);
   return frag;
 }
 function mkFR(lb){
@@ -970,12 +998,14 @@ function syncNpcInputs(){
   n.npcTypeId=document.getElementById('ntype').value.trim();
   n.x=Math.max(0,Math.min(sp.width-1,parseInt(document.getElementById('nxf').value)||0));
   n.y=Math.max(0,Math.min(sp.height-1,parseInt(document.getElementById('nyf').value)||0));
+  var nsc=parseFloat(document.getElementById('nscale').value);
+  n.scale=Number.isFinite(nsc)&&nsc>0?nsc:1;
   n.sceneLayer=document.getElementById('nlayer').value;
   var anch=document.getElementById('nanchor').value;
   if(anch)n.anchorRole=anch;else delete n.anchorRole;
   render();markDirty();
 }
-['nid','ntype','nxf','nyf','nlayer','nanchor'].forEach(function(id){
+['nid','ntype','nxf','nyf','nscale','nlayer','nanchor'].forEach(function(id){
   document.getElementById(id).addEventListener('change',syncNpcInputs);
 });
 document.getElementById('btnadd').addEventListener('click',function(){
@@ -989,7 +1019,7 @@ document.getElementById('btnaddnpc').addEventListener('click',function(){
   if(!sp)return;
   if(!sp.npcs)sp.npcs=[];
   var al=getActiveLayer();
-  sp.npcs.push({id:'npc-'+Date.now(),npcTypeId:'tutorial-goon',x:0,y:0,sceneLayer:al.id});
+  sp.npcs.push({id:'npc-'+Date.now(),npcTypeId:'tutorial-goon',x:0,y:0,scale:1,sceneLayer:al.id});
   S.selNpcIdx=sp.npcs.length-1;S.selPropIdx=-1;updatePropPanel();render();markDirty();
 });
 document.getElementById('btndel').addEventListener('click',function(){
