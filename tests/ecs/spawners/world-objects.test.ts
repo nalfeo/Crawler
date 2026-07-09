@@ -78,6 +78,36 @@ describe('spawnNpc', () => {
     expect(world.stores.size.halfWidth[eid]).toBeCloseTo((def?.widthFt ?? 0) * 0.5);
     expect(world.stores.size.halfHeight[eid]).toBeCloseTo((def?.heightFt ?? 0) * 0.5);
   });
+
+  it('throws when only one NPC size override axis is supplied', () => {
+    const world = createTestWorld();
+    expect(() => spawnNpc(world, 0, 0, 'tutorial-goon', { widthFt: 4 })).toThrow(
+      /widthFt and heightFt/,
+    );
+  });
+
+  it('applies paired size + visual overrides onto sprite, size, and npc instance metadata', () => {
+    const world = createTestWorld();
+    const eid = spawnNpc(world, 10, 20, 'tutorial-goon', {
+      widthFt: 4,
+      heightFt: 5,
+      spriteOverride: { source: 'catalog', spriteId: 'sprite:npc.guide' },
+      flipX: true,
+      flipY: true,
+      rotationDeg: 45,
+    });
+
+    expect(world.stores.sprite.width[eid]).toBeCloseTo(4);
+    expect(world.stores.sprite.height[eid]).toBeCloseTo(5);
+    expect(world.stores.size.halfWidth[eid]).toBeCloseTo(2);
+    expect(world.stores.size.halfHeight[eid]).toBeCloseTo(2.5);
+    expect(world.npcs.get(eid)).toMatchObject({
+      spriteOverride: { source: 'catalog', spriteId: 'sprite:npc.guide' },
+      flipX: true,
+      flipY: true,
+      rotationDeg: 45,
+    });
+  });
 });
 
 describe('spawnProp', () => {

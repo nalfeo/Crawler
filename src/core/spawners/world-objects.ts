@@ -35,6 +35,12 @@ export interface SpawnNpcOptions {
   readonly appearanceKey?: string;
   /** Optional fallback borrowed appearance key when the preferred key has no art. */
   readonly appearanceFallbackKey?: string;
+  readonly spriteOverride?: SpriteRef;
+  readonly widthFt?: number;
+  readonly heightFt?: number;
+  readonly flipX?: boolean;
+  readonly flipY?: boolean;
+  readonly rotationDeg?: number;
 }
 
 /** Spawn a trap entity at a position. */
@@ -75,15 +81,6 @@ export function spawnTrap(
     }),
   );
   return eid;
-}
-
-export interface SpawnNpcOptions {
-  readonly spriteOverride?: SpriteRef;
-  readonly widthFt?: number;
-  readonly heightFt?: number;
-  readonly flipX?: boolean;
-  readonly flipY?: boolean;
-  readonly rotationDeg?: number;
 }
 
 /**
