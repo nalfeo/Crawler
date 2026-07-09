@@ -372,6 +372,19 @@
     "row": 0
   },
   {
+    "id": "generated:batfolk-elite-rave-don-v1-var-4",
+    "kind": "sprite",
+    "label": "batfolk-elite-rave-don-v1-var-4",
+    "description": "Generated sprite from brief: batfolk-elite-rave-don-v1.",
+    "tags": ["generated", "pipeline-approved"],
+    "spriteId": "batfolk-elite-rave-don-v1-var-4",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/batfolk-elite-rave-don-v1-var-4.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:beetlefolk-boss-var-0",
     "kind": "sprite",
     "label": "beetlefolk-boss-var-0",
@@ -952,6 +965,32 @@
     "spriteId": "goblin-grunt-var-6",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/goblin-grunt-var-6.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:goblin-junkshot-v1-var-5",
+    "kind": "sprite",
+    "label": "goblin-junkshot-v1-var-5",
+    "description": "Generated sprite from brief: goblin-junkshot-v1.",
+    "tags": ["generated", "pipeline-approved"],
+    "spriteId": "goblin-junkshot-v1-var-5",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/goblin-junkshot-v1-var-5.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:goblin-junkshot-v1-var-8",
+    "kind": "sprite",
+    "label": "goblin-junkshot-v1-var-8",
+    "description": "Generated sprite from brief: goblin-junkshot-v1.",
+    "tags": ["generated", "pipeline-approved"],
+    "spriteId": "goblin-junkshot-v1-var-8",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/goblin-junkshot-v1-var-8.png",
     "frame": 0,
     "col": 0,
     "row": 0

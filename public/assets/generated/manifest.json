@@ -735,6 +735,40 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
+    "batfolk-elite-rave-don-v1-var-4": {
+      "briefId": "batfolk-elite-rave-don-v1",
+      "spriteName": "batfolk-elite-rave-don-v1-var-4",
+      "assetPath": "generated/batfolk-elite-rave-don-v1-var-4.png",
+      "approvedAt": "2026-07-09T08:03:07.566Z",
+      "sourceRun": "generated/runs/batfolk-elite-rave-don-v1/2026-07-09T07-48-46-afaba2ce",
+      "variantIndex": 4,
+      "anchor": {
+        "x": 30,
+        "y": 31,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 30,
+          "y": 31,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 31,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "3",
+      "type": null,
+      "contentHash": "703a74c4646cca5089170ba38871b3954e4021e3820eed597f9cc3e75cf77d80",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/batfolk-elite-rave-don-v1/2026-07-09T07-48-46-afaba2ce/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/batfolk-elite-rave-don-v1/2026-07-09T07-48-46-afaba2ce/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/batfolk-elite-rave-don-v1/2026-07-09T07-48-46-afaba2ce/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
     "beaded-bracelet-placeholder": {
       "briefId": "beaded-bracelet",
       "spriteName": "beaded-bracelet",
@@ -2518,6 +2552,74 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-grunt\\2026-07-08T03-07-44-38236e80\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-grunt\\2026-07-08T03-07-44-38236e80\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-grunt\\2026-07-08T03-07-44-38236e80\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "goblin-junkshot-v1-var-5": {
+      "briefId": "goblin-junkshot-v1",
+      "spriteName": "goblin-junkshot-v1-var-5",
+      "assetPath": "generated/goblin-junkshot-v1-var-5.png",
+      "approvedAt": "2026-07-09T08:03:08.781Z",
+      "sourceRun": "generated/runs/goblin-junkshot-v1/2026-07-09T07-36-09-c18fe968",
+      "variantIndex": 5,
+      "anchor": {
+        "x": 31,
+        "y": 32,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 32,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "3",
+      "type": null,
+      "contentHash": "38daca4f0bb4097131ae47df88c182a85c7cdda8a9bbab8df669faf64b3cf9d4",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-junkshot-v1/2026-07-09T07-36-09-c18fe968/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-junkshot-v1/2026-07-09T07-36-09-c18fe968/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-junkshot-v1/2026-07-09T07-36-09-c18fe968/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "goblin-junkshot-v1-var-8": {
+      "briefId": "goblin-junkshot-v1",
+      "spriteName": "goblin-junkshot-v1-var-8",
+      "assetPath": "generated/goblin-junkshot-v1-var-8.png",
+      "approvedAt": "2026-07-09T08:03:09.843Z",
+      "sourceRun": "generated/runs/goblin-junkshot-v1/2026-07-09T07-36-09-c18fe968",
+      "variantIndex": 8,
+      "anchor": {
+        "x": 31,
+        "y": 32,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 32,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "3",
+      "type": null,
+      "contentHash": "1889b8698b1a2ae574014657acbd788231ce51433489a7a5e8cfe5fdad23dcb3",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-junkshot-v1/2026-07-09T07-36-09-c18fe968/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-junkshot-v1/2026-07-09T07-36-09-c18fe968/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-junkshot-v1/2026-07-09T07-36-09-c18fe968/postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
