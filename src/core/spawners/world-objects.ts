@@ -28,6 +28,15 @@ import { type HarvestableDef, HARVESTABLE_DEFS } from '../../shared/harvestableD
 import { hashStringToSeed, SeededRandom } from '../../shared/random.js';
 import { createEntity } from './entity-core.js';
 
+export interface SpawnNpcOptions {
+  /** Optional per-instance dialogue that overrides the static NPC def. */
+  readonly dialogueOverride?: readonly string[];
+  /** Optional borrowed appearance key (e.g. family elite sprite for a neutral NPC). */
+  readonly appearanceKey?: string;
+  /** Optional fallback borrowed appearance key when the preferred key has no art. */
+  readonly appearanceFallbackKey?: string;
+}
+
 /** Spawn a trap entity at a position. */
 export function spawnTrap(
   world: GameWorld,
@@ -88,17 +97,17 @@ export function spawnNpc(
   x: number,
   y: number,
   defId: string,
-  options?: SpawnNpcOptions,
+  options: SpawnNpcOptions = {},
 ): number {
-  if ((options?.widthFt === undefined) !== (options?.heightFt === undefined)) {
+  if ((options.widthFt === undefined) !== (options.heightFt === undefined)) {
     throw new Error('spawnNpc requires widthFt and heightFt to be provided together.');
   }
   const def = getNpcDef(defId);
   if (def === undefined) {
     return -1;
   }
-  const widthFt = options?.widthFt ?? def.widthFt;
-  const heightFt = options?.heightFt ?? def.heightFt;
+  const widthFt = options.widthFt ?? def.widthFt;
+  const heightFt = options.heightFt ?? def.heightFt;
 
   const eid = createEntity(world);
 
@@ -128,15 +137,20 @@ export function spawnNpc(
 
   const instance: NpcInstance = {
     defId,
-    ...(options?.spriteOverride !== undefined ? { spriteOverride: options.spriteOverride } : {}),
-    ...(options?.flipX !== undefined ? { flipX: options.flipX } : {}),
-    ...(options?.flipY !== undefined ? { flipY: options.flipY } : {}),
-    ...(options?.rotationDeg !== undefined ? { rotationDeg: options.rotationDeg } : {}),
+    ...(options.spriteOverride !== undefined ? { spriteOverride: options.spriteOverride } : {}),
+    ...(options.flipX !== undefined ? { flipX: options.flipX } : {}),
+    ...(options.flipY !== undefined ? { flipY: options.flipY } : {}),
+    ...(options.rotationDeg !== undefined ? { rotationDeg: options.rotationDeg } : {}),
     dialogueIndex: 0,
     quests: def.quests.map((q) => ({ questId: q.questId, status: 'available' })),
+    dialogueOverride: options.dialogueOverride,
+    appearanceFallbackKey: options.appearanceFallbackKey,
     nearbyPlayer: false,
   };
   world.npcs.set(eid, instance);
+  if (options.appearanceKey !== undefined) {
+    world.enemyAppearanceKeys.set(eid, options.appearanceKey);
+  }
 
   return eid;
 }

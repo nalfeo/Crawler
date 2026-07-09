@@ -23,6 +23,11 @@ import {
 import { initializeFloor2Settlement } from '../../src/game/floor2Settlement.js';
 import { DoorState } from '../../src/core/components.js';
 import {
+  getFloor2FamilyEliteArchetype,
+  getFloor2FamilyFallbackArchetype,
+} from '../../src/shared/enemy-packs.js';
+import { buildFloor2DefectorDialogue } from '../../src/shared/npc-types.js';
+import {
   forceFireEmergentEvent,
   _resetEmergentEventScheduler,
 } from '../../src/game/systems/emergentEventSystem.js';
@@ -59,19 +64,39 @@ const FAMS: FamilyId[] = [
 ];
 
 describe('Floor 2 settlement · initialization', () => {
+  const presentFamilies: FamilyId[] = [
+    asFamilyId('goblins'),
+    asFamilyId('crabfolk'),
+    asFamilyId('imps'),
+  ];
+
+  function seedSettlementFamilyState(world: ReturnType<typeof createTestWorld>) {
+    world.floorExtendedState = {
+      ...(world.floorExtendedState ?? {}),
+      familyState: {
+        presentFamilies: [...presentFamilies],
+        contestedResource: 'gold-veins' as never,
+        betrayerFlag: false,
+      },
+    };
+  }
+
   beforeEach(() => {
     _resetEmergentEventScheduler();
     _resetEmergentEventCache();
   });
 
-  it('spawns The Broker + 1-2 shops inside the settlement cluster', () => {
+  it('spawns the Broker, a family defector, and 1-2 shops inside the settlement cluster', () => {
     const world = createTestWorld({ seed: 999 });
     world.floorMap = buildFloor2Map();
     spawnPlayer(world, 0, 0);
     world.floor = 2;
+    seedSettlementFamilyState(world);
 
     const snap = initializeFloor2Settlement(world, { shopCount: 2 });
     expect(snap.brokerEid).toBeGreaterThan(0);
+    expect(snap.defectorEid).toBeGreaterThan(0);
+    expect(presentFamilies).toContain(snap.defectorFamilyId as FamilyId);
     expect(snap.settlementRoomIds.length).toBeGreaterThanOrEqual(2);
     expect(snap.settlementRoomIds.length).toBeLessThanOrEqual(3);
     expect(snap.shops.length).toBe(2);
@@ -82,6 +107,17 @@ describe('Floor 2 settlement · initialization', () => {
         expect(item.unitPrice).toBeGreaterThanOrEqual(1);
       }
     }
+
+    const elite = getFloor2FamilyEliteArchetype(snap.defectorFamilyId);
+    const fallback = getFloor2FamilyFallbackArchetype(snap.defectorFamilyId);
+    expect(elite?.id ?? fallback?.id).toBe(snap.defectorAppearanceKey);
+    expect(fallback?.id).toBe(snap.defectorFallbackAppearanceKey);
+    expect(world.enemyAppearanceKeys.get(snap.defectorEid)).toBe(snap.defectorAppearanceKey);
+    const defectorInstance = world.npcs.get(snap.defectorEid);
+    expect(defectorInstance?.appearanceFallbackKey).toBe(snap.defectorFallbackAppearanceKey);
+    expect(defectorInstance?.dialogueOverride).toEqual(
+      buildFloor2DefectorDialogue(snap.defectorFamilyId),
+    );
 
     // Settlement cluster rooms are retagged SAFE.
     const settlementRooms = snap.settlementRoomIds
@@ -106,6 +142,31 @@ describe('Floor 2 settlement · initialization', () => {
       seenDoorKeys.add(key);
     }
     expect(seenDoorKeys).toEqual(expectedDoorKeys);
+
+    const settlementDoorTiles = settlementRooms.flatMap((room) => room.doors);
+    const npcEids = [snap.brokerEid, snap.defectorEid, ...snap.shops.map((shop) => shop.npcEid)];
+    const npcTiles = npcEids.map((eid) => {
+      const tile = world.floorMap!.worldToTile(
+        world.stores.position.x[eid] ?? 0,
+        world.stores.position.y[eid] ?? 0,
+      );
+      const roomId = world.floorMap!.roomGraph.getRoomAt(tile.x, tile.y);
+      expect(roomId).toBeGreaterThanOrEqual(0);
+      expect(snap.settlementRoomIds).toContain(roomId);
+      expect(
+        settlementDoorTiles.some(
+          (door) => Math.max(Math.abs(tile.x - door.x), Math.abs(tile.y - door.y)) <= 1,
+        ),
+      ).toBe(false);
+      return tile;
+    });
+    for (let i = 0; i < npcTiles.length; i += 1) {
+      for (let j = i + 1; j < npcTiles.length; j += 1) {
+        expect(
+          Math.hypot(npcTiles[i]!.x - npcTiles[j]!.x, npcTiles[i]!.y - npcTiles[j]!.y),
+        ).toBeGreaterThanOrEqual(3);
+      }
+    }
   });
 
   it('is idempotent — a second call returns the same snapshot', () => {
@@ -113,6 +174,7 @@ describe('Floor 2 settlement · initialization', () => {
     world.floorMap = buildFloor2Map();
     spawnPlayer(world, 0, 0);
     world.floor = 2;
+    seedSettlementFamilyState(world);
 
     const first = initializeFloor2Settlement(world);
     const second = initializeFloor2Settlement(world);
@@ -125,10 +187,12 @@ describe('Floor 2 settlement · initialization', () => {
       world.floorMap = buildFloor2Map();
       spawnPlayer(world, 0, 0);
       world.floor = 2;
+      seedSettlementFamilyState(world);
       return initializeFloor2Settlement(world, { shopCount: 2 });
     }
     const a = run();
     const b = run();
+    expect(a.defectorFamilyId).toEqual(b.defectorFamilyId);
     expect(a.shops.map((s) => s.archetypeId)).toEqual(b.shops.map((s) => s.archetypeId));
     expect(a.shops.map((s) => s.inventory)).toEqual(b.shops.map((s) => s.inventory));
   });

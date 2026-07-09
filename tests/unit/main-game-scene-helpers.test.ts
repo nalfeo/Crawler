@@ -239,6 +239,21 @@ describe('resolveDialogueLines', () => {
     expect(resolveDialogueLines('shopkeeper', world, baseDeps)).toEqual(expected);
   });
 
+  it('prefers a per-instance dialogue override when one exists', () => {
+    const world = createTestWorld();
+    world.npcs.set(7, {
+      defId: 'shopkeeper',
+      dialogueIndex: 0,
+      quests: [],
+      dialogueOverride: ['Custom line 1', 'Custom line 2'],
+      nearbyPlayer: true,
+    });
+    expect(resolveDialogueLines('shopkeeper', world, baseDeps, 7)).toEqual([
+      'Custom line 1',
+      'Custom line 2',
+    ]);
+  });
+
   it('returns an empty list for an unknown NPC', () => {
     const world = createTestWorld();
     expect(resolveDialogueLines('nobody', world, baseDeps)).toEqual([]);

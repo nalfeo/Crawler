@@ -130,6 +130,53 @@ describe('Floor 2 director/runtime behavior', () => {
     expect(query(world.ecs, [Enemy]).length).toBeGreaterThan(0);
   });
 
+  it('keeps neutral trash spawns within the 4 assigned territory archetypes', () => {
+    const { world, playerEid } = createFloor2World(188);
+    const ambient = world.floorExtendedState?.ambientEnemyArchetypes;
+    expect(ambient).toBeDefined();
+    if (!ambient) {
+      throw new Error('ambientEnemyArchetypes must be initialized');
+    }
+    const seenNeutral = new Set<string>();
+    const originalSet = ambient.set.bind(ambient);
+    ambient.set = ((eid: number, archetypeId: string) => {
+      if (resolveAmbientFamilyIndex(world, archetypeId) < 0) {
+        seenNeutral.add(archetypeId);
+      }
+      return originalSet(eid, archetypeId);
+    }) as typeof ambient.set;
+
+    const floorMap = world.floorMap!;
+    const tileSize = floorMap.config.tileSizeFt;
+    const widthFt = floorMap.width * tileSize;
+    const heightFt = floorMap.height * tileSize;
+    const anchors = [
+      [widthFt * 0.25, heightFt * 0.25],
+      [widthFt * 0.25, heightFt * 0.75],
+      [widthFt * 0.75, heightFt * 0.25],
+      [widthFt * 0.75, heightFt * 0.75],
+    ] as const;
+
+    for (let i = 0; i < 60; i += 1) {
+      const [x, y] = anchors[i % anchors.length]!;
+      world.stores.position.x[playerEid] = x;
+      world.stores.position.y[playerEid] = y;
+      world.elapsedMs += 1000;
+      floor2EnemyDirectorSystem(world);
+    }
+
+    const territories = world.floorExtendedState?.trashTerritories;
+    expect(territories).toBeDefined();
+    const allowedNeutral = new Set(territories?.values() ?? []);
+    for (const archetypeId of seenNeutral) {
+      expect(
+        allowedNeutral.has(archetypeId),
+        `neutral archetype ${archetypeId} must come from assigned quadrant territories`,
+      ).toBe(true);
+    }
+    expect(seenNeutral.size).toBeLessThanOrEqual(4);
+  });
+
   it('transitions to game_over when the collapse timer expires', () => {
     const { world } = createFloor2World(99);
     world.elapsedMs = 1_200_000;

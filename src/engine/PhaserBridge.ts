@@ -231,17 +231,18 @@ function resolveTexture(
 const GENERATED_NPC_SPRITE_SCALE = 0.4;
 
 /**
- * Resolve an NPC's texture def-aware: prefer its pinned generated sprite (keyed
- * by NPC def id via {@link pickGeneratedNpcTextureKey}) when that texture is
- * loaded, otherwise fall back to the shared Kenney villager through the normal
- * `npc` render-kind path. This keeps the placeholder-free graceful fallback the
- * feature requires whenever a generated NPC texture is ever missing, while
- * giving each welcome-room NPC its own distinct sprite when the art is present.
+ * Resolve an NPC's texture def-aware: some NPCs borrow an enemy appearance key
+ * (e.g. the Floor 2 settlement defector wearing a present family's elite art);
+ * otherwise prefer a pinned generated NPC sprite keyed by def id; otherwise
+ * fall back to the shared Kenney villager through the normal `npc` render-kind
+ * path.
  */
 function resolveNpcTexture(
   scene: Phaser.Scene,
   defId: string | undefined,
   spriteOverride: SpriteRef | undefined,
+  appearanceKey?: string,
+  appearanceFallbackKey?: string,
 ): ResolvedTexture {
   if (spriteOverride !== undefined) {
     const resolvedOverride = resolveSetPieceSprite(scene, spriteOverride);
@@ -253,6 +254,18 @@ function resolveNpcTexture(
         fallback: false,
       };
     }
+  }
+  if (appearanceKey !== undefined) {
+    const registry = getGeneratedSpriteRegistry(scene);
+    const eliteBriefId = `${appearanceKey}-v1`;
+    const eliteTexture = registry?.variants(eliteBriefId)?.[0]?.textureKey;
+    if (eliteTexture) {
+      return { key: eliteTexture, scale: GENERATED_NPC_SPRITE_SCALE, fallback: false };
+    }
+    if (appearanceFallbackKey !== undefined) {
+      return resolveTexture(scene, 'enemy', { appearanceKey: appearanceFallbackKey });
+    }
+    return resolveTexture(scene, 'enemy', { appearanceKey });
   }
   const generatedKey = pickGeneratedNpcTextureKey(defId);
   if (generatedKey !== null && scene.textures?.exists(generatedKey) === true) {
@@ -846,7 +859,13 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           const npcInstance = world.npcs.get(eid);
           const resolved =
             entityType === 'npc'
-              ? resolveNpcTexture(scene, npcInstance?.defId, npcInstance?.spriteOverride)
+              ? resolveNpcTexture(
+                  scene,
+                  npcInstance?.defId,
+                  npcInstance?.spriteOverride,
+                  world.enemyAppearanceKeys.get(eid),
+                  npcInstance?.appearanceFallbackKey,
+                )
               : resolveTexture(scene, visualType, {
                   appearanceKey,
                   variantRoll: world.stores.sprite.variantRoll[eid],
@@ -889,6 +908,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             scene,
             npcInstance?.defId,
             npcInstance?.spriteOverride,
+            world.enemyAppearanceKeys.get(eid),
+            npcInstance?.appearanceFallbackKey,
           );
           if (img.texture.key !== preferred.key) {
             img.setTexture(preferred.key, preferred.frame);
