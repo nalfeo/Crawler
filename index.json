@@ -132,6 +132,17 @@
     "path": "by-sha/5a11f3590bdcfb0e6c2d3740b7e979f652b48974.json"
   },
   {
+    "commit": "2b0ff1ad8fd1c82256b74ffae358d12d3ad873b0",
+    "commitDate": "2026-07-08T17:01:10-07:00",
+    "commitSubject": "fix: stabilize AI runner run-target apply and restart UX (#929)",
+    "capturedAt": "2026-07-09T00:41:16.807Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28984466568",
+    "winRate": 0.82,
+    "totalWins": 246,
+    "totalRuns": 300,
+    "path": "by-sha/2b0ff1ad8fd1c82256b74ffae358d12d3ad873b0.json"
+  },
+  {
     "commit": "771f0e26a51a8a34be1f0f9c572e79731083532d",
     "commitDate": "2026-07-08T11:45:58Z",
     "commitSubject": "feat(engine): wire Floor-1 rubble prop and slime-rat mid-boss to generated art (#912)",
