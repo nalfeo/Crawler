@@ -348,9 +348,12 @@ const RISK_REWARD_WALL_PROXIMITY_FT = 2.0;
 // rewards DIRECTIONAL travel ALONG the danger boundary (perpendicular to the
 // danger gradient) toward the goal while farmable reward lies along that seam, so
 // the agent "travels the seams" instead of taking the shortest path or hiding in
-// corners. seamWeight defaults to 0 (bt-ai-tuning NAVMESH_FUSED_SEAM_WEIGHT) so
-// the shipped default is byte-identical to Slice 4a — the whole block is skipped
-// at weight 0. Every guard here is deterministic (no Math.random / Date.now).
+// corners. At seamWeight 0 the whole block is skipped, making NAVMESH_FUSED
+// byte-identical to Slice 4a. seamWeight defaults to NAVMESH_FUSED_SEAM_WEIGHT (=2)
+// in bt-ai-tuning, so the shipped game is byte-identical to 4a because the default
+// pathingMode is LEGACY and the call site forces seamWeight to 0 for every
+// non-NAVMESH_FUSED mode — NOT because the weight defaults to 0. Every guard here
+// is deterministic (no Math.random / Date.now).
 //
 // The gradient is a CENTERED estimator: grad = Σ dir_i·(danger_i − meanDanger).
 // The raw Σ dir_i·danger_i would fabricate a forward-biased gradient under
