@@ -5,6 +5,7 @@
 //   snap modes (tile / half-tile / free), zoom-to-fit, Apply to repo.
 
 import { createServer } from 'node:http';
+import { randomBytes } from 'node:crypto';
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -93,10 +94,11 @@ function broadcastToInstance(instanceId, data) {
 function handleRequest(instanceId, req, res) {
   const url = new URL(req.url, 'http://127.0.0.1');
   const expectedOrigin = `http://${req.headers.host ?? ''}`;
+  const applyToken = applyTokens.get(instanceId);
 
   if (req.method === 'GET' && url.pathname === '/') {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.end(renderHtml());
+    res.end(renderHtml(applyToken ?? ''));
     return;
   }
   if (req.method === 'GET' && url.pathname === '/data') {
@@ -156,6 +158,11 @@ function handleRequest(instanceId, req, res) {
     return;
   }
   if (req.method === 'POST' && url.pathname === '/apply') {
+    if (!applyToken || req.headers['x-set-piece-editor-token'] !== applyToken) {
+      res.writeHead(403);
+      res.end(JSON.stringify({ ok: false, error: 'Missing or invalid apply token' }));
+      return;
+    }
     const origin = req.headers.origin;
     if (typeof origin !== 'string' || origin !== expectedOrigin) {
       res.writeHead(403);
@@ -225,7 +232,9 @@ function handleRequest(instanceId, req, res) {
 }
 
 const servers = new Map();
+const applyTokens = new Map();
 async function startServer(instanceId) {
+  applyTokens.set(instanceId, randomBytes(16).toString('hex'));
   const server = createServer((req, res) => handleRequest(instanceId, req, res));
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   return { server, url: 'http://127.0.0.1:' + server.address().port + '/' };
@@ -299,6 +308,7 @@ await joinSession({
         if (entry) {
           servers.delete(ctx.instanceId);
           sseClients.delete(ctx.instanceId);
+          applyTokens.delete(ctx.instanceId);
           await new Promise((r) => entry.server.close(() => r()));
         }
       },
@@ -306,8 +316,8 @@ await joinSession({
   ],
 });
 
-function renderHtml() {
-  return HTML_TEMPLATE;
+function renderHtml(applyToken) {
+  return HTML_TEMPLATE.replace('__SET_PIECE_EDITOR_APPLY_TOKEN__', JSON.stringify(applyToken));
 }
 
 const HTML_TEMPLATE = `<!doctype html>
@@ -751,6 +761,7 @@ function clampNpcSnappedCoord(v,limit,sizeTiles){
   return Math.max(0,Math.min(max,nnum(v,0)));
 }
 var FEET_PER_TILE=4;
+var APPLY_TOKEN=__SET_PIECE_EDITOR_APPLY_TOKEN__;
 var S={pack:null,selId:null,selPropIdx:-1,selNpcIdx:-1,selPropIds:{},selNpcIds:{},tileSize:48,dirty:false,snapMode:'tile',activeLayerId:null,propSizeUnit:'tiles',showOverlay:true,keepAspect:false};
 var GENERATED_LIBRARY=[];
 var CLIPBOARD={props:[],npcs:[]};
@@ -2042,7 +2053,7 @@ document.getElementById('btnapply').addEventListener('click',async function(){
   });
   var btn=document.getElementById('btnapply');btn.disabled=true;btn.textContent='Applying\u2026';
   try{
-    var res=await fetch('/apply',{method:'POST',headers:{'Content-Type':'application/json'},
+    var res=await fetch('/apply',{method:'POST',headers:{'Content-Type':'application/json','X-Set-Piece-Editor-Token':APPLY_TOKEN},
       body:JSON.stringify({setPieceId:sp.id,props:props,sceneLayers:sp.sceneLayers,npcs:sp.npcs||[],width:sp.width,height:sp.height})});
     var r=await res.json();
     if(r.ok){origSP=JSON.stringify(sp);showToast('\u2713 Applied!');S.dirty=false;updateStatus();
