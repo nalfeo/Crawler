@@ -393,7 +393,6 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden;
           <div class="fr"><label>x</label><input id="nxf" type="number" min="0" step="1"></div>
           <div class="fr"><label>y</label><input id="nyf" type="number" min="0" step="1"></div>
         </div>
-        <div class="fr"><label>scale</label><input id="nscale" type="number" min="0.1" step="0.05"></div>
         <div class="fr"><label>layer</label><select id="nlayer"></select></div>
         <div class="fr"><label>anchor</label>
           <select id="nanchor">
@@ -644,16 +643,9 @@ function drawProp(prop,sel,ad){
   if(fs){
     var res=resolveSprite(fs);
     if(res){
-      var lox=fl&&fl.offsetX!==undefined?fl.offsetX:0;
-      var loy=fl&&fl.offsetY!==undefined?fl.offsetY:0;
-      var lsc=fl&&fl.scale!==undefined?fl.scale:1;
-      if(!(lsc>0))lsc=1;
-      var baseW=pw2-2,baseH=ph2-2;
-      var drawW=baseW*lsc,drawH=baseH*lsc;
-      var drawX=px+1+lox+(baseW-drawW)/2,drawY=py+1+loy+(baseH-drawH)/2;
       ctx.save();ctx.imageSmoothingEnabled=false;
       ctx.beginPath();ctx.rect(px+1,py+1,pw2-2,ph2-2);ctx.clip();
-      ctx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,drawX,drawY,drawW,drawH);
+      ctx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,px+1,py+1,pw2-2,ph2-2);
       ctx.restore();sprited=true;
     }else if(fs.source==='custom'&&!fs.placeholder){
       ctx.fillStyle='#ff00ff33';ctx.fillRect(px+1,py+1,pw2-2,ph2-2);
@@ -686,14 +678,9 @@ function drawNpcEntity(npc,sel,nd){
   var ns=mapped?{source:'catalog',spriteId:mapped}:{source:'catalog',spriteId:'sprite:npc.guide'};
   var res=resolveSprite(ns);
   if(res){
-    var nsc=npc.scale!==undefined?npc.scale:1;
-    if(!(nsc>0))nsc=1;
-    var inW=sz-2,inH=sz-2;
-    var drW=inW*nsc,drH=inH*nsc;
-    var drX=px+1+(inW-drW)/2,drY=py+1+(inH-drH)/2;
     ctx.save();ctx.imageSmoothingEnabled=false;
     ctx.beginPath();ctx.rect(px+1,py+1,sz-2,sz-2);ctx.clip();
-    ctx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,drX,drY,drW,drH);
+    ctx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,px+1,py+1,sz-2,sz-2);
     ctx.restore();
     ctx.fillStyle='rgba(0,0,0,0.28)';ctx.fillRect(px+1,py+1,sz-2,Math.min(18,sz-2));
   }
@@ -759,7 +746,11 @@ function hitNpc(cx,cy){
   return-1;
 }
 function snapV(v){if(S.snapMode==='tile')return Math.round(v);if(S.snapMode==='half')return Math.round(v*2)/2;return Math.round(v*100)/100;}
-function snapSz(v){if(S.snapMode==='tile')return Math.max(1,Math.round(v));if(S.snapMode==='half')return Math.max(0.5,Math.round(v*2)/2);return Math.max(0.25,Math.round(v*100)/100);}
+function snapSz(v){
+  if(S.snapMode==='tile')return Math.max(0.25,Math.round(v*4)/4);
+  if(S.snapMode==='half')return Math.max(0.25,Math.round(v*2)/2);
+  return Math.max(0.25,Math.round(v*100)/100);
+}
 var drag=null;
 function cxy(e){var r=canvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};}
 canvas.addEventListener('mousedown',function(e){
@@ -809,10 +800,11 @@ canvas.addEventListener('mousemove',function(e){
   }else{
     var h=drag.h,o=drag.orig;
     var nx=o.x*ts,ny=o.y*ts,nw=(o.width||1)*ts,nh=(o.height||1)*ts;
-    if(h.dx<0){var dd=Math.min(dx,nw-ts);nx=o.x*ts+dd;nw=(o.width||1)*ts-dd;}
-    else if(h.dx>0){nw=Math.max(ts,(o.width||1)*ts+dx);}
-    if(h.dy<0){var de=Math.min(dy,nh-ts);ny=o.y*ts+de;nh=(o.height||1)*ts-de;}
-    else if(h.dy>0){nh=Math.max(ts,(o.height||1)*ts+dy);}
+    var minPx=0.25*ts;
+    if(h.dx<0){var dd=Math.min(dx,nw-minPx);nx=o.x*ts+dd;nw=(o.width||1)*ts-dd;}
+    else if(h.dx>0){nw=Math.max(minPx,(o.width||1)*ts+dx);}
+    if(h.dy<0){var de=Math.min(dy,nh-minPx);ny=o.y*ts+de;nh=(o.height||1)*ts-de;}
+    else if(h.dy>0){nh=Math.max(minPx,(o.height||1)*ts+dy);}
     nx=Math.max(0,nx);ny=Math.max(0,ny);
     nw=Math.min(nw,sp.width*ts-nx);nh=Math.min(nh,sp.height*ts-ny);
     drag.dispX=nx;drag.dispY=ny;drag.dispW=nw;drag.dispH=nh;
@@ -872,7 +864,6 @@ function refreshNpcInputs(){
   document.getElementById('ntype').value=n.npcTypeId;
   document.getElementById('nxf').value=n.x;
   document.getElementById('nyf').value=n.y;
-  document.getElementById('nscale').value=n.scale!==undefined?n.scale:1;
   document.getElementById('nlayer').value=npcLayer(n);
   document.getElementById('nanchor').value=n.anchorRole||'';
 }
@@ -944,20 +935,6 @@ function mkSpriteFields(sprite,li){
       r3.appendChild(i3);frag.appendChild(r3);
     });
   }
-  var pr=document.createElement('div');pr.className='pr';
-  [['offsetX','offX',0,'1'],['offsetY','offY',0,'1'],['scale','scale',1,'0.05']].forEach(function(t){
-    var r2=mkFR(t[1]);var i2=document.createElement('input');
-    i2.type='number';i2.step=t[3];i2.value=sprite[t[0]]!==undefined?sprite[t[0]]:t[2];
-    if(t[0]==='scale')i2.min='0.1';
-    i2.onchange=function(){
-      var v=parseFloat(i2.value);
-      if(!Number.isFinite(v))v=t[2];
-      if(t[0]==='scale'&&v<=0)v=1;
-      setSprFld(li,t[0],v);
-    };
-    r2.appendChild(i2);pr.appendChild(r2);
-  });
-  frag.appendChild(pr);
   return frag;
 }
 function mkFR(lb){
@@ -998,14 +975,12 @@ function syncNpcInputs(){
   n.npcTypeId=document.getElementById('ntype').value.trim();
   n.x=Math.max(0,Math.min(sp.width-1,parseInt(document.getElementById('nxf').value)||0));
   n.y=Math.max(0,Math.min(sp.height-1,parseInt(document.getElementById('nyf').value)||0));
-  var nsc=parseFloat(document.getElementById('nscale').value);
-  n.scale=Number.isFinite(nsc)&&nsc>0?nsc:1;
   n.sceneLayer=document.getElementById('nlayer').value;
   var anch=document.getElementById('nanchor').value;
   if(anch)n.anchorRole=anch;else delete n.anchorRole;
   render();markDirty();
 }
-['nid','ntype','nxf','nyf','nscale','nlayer','nanchor'].forEach(function(id){
+['nid','ntype','nxf','nyf','nlayer','nanchor'].forEach(function(id){
   document.getElementById(id).addEventListener('change',syncNpcInputs);
 });
 document.getElementById('btnadd').addEventListener('click',function(){
@@ -1019,7 +994,7 @@ document.getElementById('btnaddnpc').addEventListener('click',function(){
   if(!sp)return;
   if(!sp.npcs)sp.npcs=[];
   var al=getActiveLayer();
-  sp.npcs.push({id:'npc-'+Date.now(),npcTypeId:'tutorial-goon',x:0,y:0,scale:1,sceneLayer:al.id});
+  sp.npcs.push({id:'npc-'+Date.now(),npcTypeId:'tutorial-goon',x:0,y:0,sceneLayer:al.id});
   S.selNpcIdx=sp.npcs.length-1;S.selPropIdx=-1;updatePropPanel();render();markDirty();
 });
 document.getElementById('btndel').addEventListener('click',function(){
