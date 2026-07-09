@@ -88,7 +88,22 @@ const cases: Case[] = [
   {
     name: 'sprite catalog data',
     files: ['src/shared/data/sprite-catalog.json'],
-    expected: F(true, false, false, false, false),
+    expected: F(true, false, true, false, false),
+  },
+  {
+    name: 'package script wiring',
+    files: ['package.json'],
+    expected: F(false, false, true, false, false),
+  },
+  {
+    name: 'scope classifier script',
+    files: ['scripts/agent/ci/detect-art-only.sh'],
+    expected: F(false, false, true, false, false),
+  },
+  {
+    name: 'scope classifier unit test',
+    files: ['tests/unit/detect-change-scope.test.ts'],
+    expected: F(false, false, true, false, false),
   },
   // Docs / text.
   {
@@ -147,7 +162,7 @@ const cases: Case[] = [
   {
     name: 'ci script change',
     files: ['scripts/agent/ci/detect-art-only.sh'],
-    expected: F(false, false, false, false, false),
+    expected: F(false, false, true, false, false),
   },
   {
     name: 'workflow change',
