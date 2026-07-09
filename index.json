@@ -1,5 +1,16 @@
 [
   {
+    "commit": "ad4c7d2f8279b34a0ea81537c5f1f1c6952f6daa",
+    "commitDate": "2026-07-09T11:12:20Z",
+    "commitSubject": "feat: read-only sprite-generation-workflow canvas extension (Slice B1) (#990)",
+    "capturedAt": "2026-07-09T11:57:36.567Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29014703846",
+    "winRate": 0.82,
+    "totalWins": 246,
+    "totalRuns": 300,
+    "path": "by-sha/ad4c7d2f8279b34a0ea81537c5f1f1c6952f6daa.json"
+  },
+  {
     "commit": "58ff0c129483ee4e57abb4ab377fc471ca0507da",
     "commitDate": "2026-07-09T10:04:26Z",
     "commitSubject": "feat: add Azure storage-lifecycle canvas extension (DevTool Slice E) (#987)",
