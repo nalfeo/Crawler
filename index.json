@@ -1,5 +1,16 @@
 [
   {
+    "commit": "1de738949f171620df9c925248b9b9b2e6dc3c6f",
+    "commitDate": "2026-07-09T05:12:32Z",
+    "commitSubject": "feat(ai): NAVMESH_FUSED seam-following term (tangential-to-gradient, w=2) (#933)",
+    "capturedAt": "2026-07-09T05:55:50.502Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28995959659",
+    "winRate": 0.82,
+    "totalWins": 246,
+    "totalRuns": 300,
+    "path": "by-sha/1de738949f171620df9c925248b9b9b2e6dc3c6f.json"
+  },
+  {
     "commit": "148043772a1e9693956302fc0a598bb05cd6a1d2",
     "commitDate": "2026-07-09T00:36:57Z",
     "commitSubject": "feat: stamp approved generated art on Floor-1 closed doors (F1 terrain 6/6) (#932)",
