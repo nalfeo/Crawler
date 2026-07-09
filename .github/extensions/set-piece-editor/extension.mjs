@@ -592,7 +592,22 @@ function renderLayersPanel(){
       if(S.activeLayerId===layer.id)S.activeLayerId=sp.sceneLayers[0].id;
       renderLayersPanel();render();markDirty();
     };
-    row.appendChild(vis);row.appendChild(lck);row.appendChild(nm);row.appendChild(del);
+    var realIdx=sp.sceneLayers.findIndex(function(l){return l.id===layer.id;});
+    var upb=document.createElement('button');upb.className='ib';upb.title='Move Up (higher z)';upb.textContent='\u25b2';
+    upb.disabled=realIdx>=sp.sceneLayers.length-1;
+    upb.onclick=function(e){e.stopPropagation();
+      var i=sp.sceneLayers.findIndex(function(l){return l.id===layer.id;});
+      if(i<sp.sceneLayers.length-1){var t=sp.sceneLayers[i];sp.sceneLayers[i]=sp.sceneLayers[i+1];sp.sceneLayers[i+1]=t;}
+      renderLayersPanel();render();markDirty();
+    };
+    var dnb=document.createElement('button');dnb.className='ib';dnb.title='Move Down (lower z)';dnb.textContent='\u25bc';
+    dnb.disabled=realIdx<=0;
+    dnb.onclick=function(e){e.stopPropagation();
+      var i=sp.sceneLayers.findIndex(function(l){return l.id===layer.id;});
+      if(i>0){var t=sp.sceneLayers[i];sp.sceneLayers[i]=sp.sceneLayers[i-1];sp.sceneLayers[i-1]=t;}
+      renderLayersPanel();render();markDirty();
+    };
+    row.appendChild(vis);row.appendChild(lck);row.appendChild(nm);row.appendChild(upb);row.appendChild(dnb);row.appendChild(del);
     ll.appendChild(row);
   });
   refreshLayerPicker();
@@ -1086,7 +1101,8 @@ document.getElementById('btnapply').addEventListener('click',async function(){
     var res=await fetch('/apply',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({setPieceId:sp.id,props:props,sceneLayers:sp.sceneLayers,npcs:sp.npcs||[]})});
     var r=await res.json();
-    if(r.ok){showToast('\u2713 Applied!');S.dirty=false;updateStatus();}
+    if(r.ok){origSP=JSON.stringify(sp);showToast('\u2713 Applied!');S.dirty=false;updateStatus();
+      fetch('/data').then(function(rd){return rd.json();}).then(function(np){S.pack=np;});}
     else showToast('\u2717 '+r.error,true);
   }catch(e){showToast('\u2717 '+e.message,true);}
   finally{btn.disabled=false;btn.textContent='\u2713 Apply';}
