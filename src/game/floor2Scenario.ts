@@ -991,12 +991,12 @@ function assignQuadrantTrashTerritories(world: GameWorld): Map<string, string> {
  * the current position, then normalizing the combined weights:
  *  1) family territory-zone pools (per-family 1/74/25),
  *  2) quadrant territory-zone pool (single quadrant archetype),
- *  3) global fallback pool (neutral cave trash).
+ *  3) global fallback pool (the same per-seed quadrant trash set).
  */
 function pickFloor2TrashArchetype(world: GameWorld, x: number, y: number): EnemyArchetypeDef {
   const familyZone = collectFamilyTerritoryZoneWeights(world, x, y);
   const quadrantZone = collectQuadrantZoneWeights(world, x, y);
-  const globalZone = collectGlobalFallbackZoneWeights();
+  const globalZone = collectGlobalFallbackZoneWeights(world);
   const { pickedId } = pickFromSpawnZones(
     [familyZone, quadrantZone, globalZone] as const satisfies readonly SpawnZoneWeights[],
     () => world.rng.next(),
@@ -1092,8 +1092,15 @@ function collectQuadrantZoneWeights(world: GameWorld, x: number, y: number): Map
   return weights;
 }
 
-function collectGlobalFallbackZoneWeights(): Map<string, number> {
+function collectGlobalFallbackZoneWeights(world: GameWorld): Map<string, number> {
   const weights = new Map<string, number>();
+  const territories = world.floorExtendedState?.trashTerritories;
+  if (territories && territories.size > 0) {
+    for (const archetypeId of territories.values()) {
+      addWeight(weights, archetypeId, 1);
+    }
+    return weights;
+  }
   const neutralTrash = getFloor2NeutralTrash();
   for (const archetype of neutralTrash) {
     addWeight(weights, archetype.id, archetype.spawnWeight);
