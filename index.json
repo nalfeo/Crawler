@@ -1,5 +1,16 @@
 [
   {
+    "commit": "c7b6bd114a05f8d946451d74383ef026a1845cba",
+    "commitDate": "2026-07-09T14:25:41-07:00",
+    "commitSubject": "chore: tighten dead-code cleanup gate (#994)",
+    "capturedAt": "2026-07-09T21:59:35.070Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29051718111",
+    "winRate": 0.82,
+    "totalWins": 246,
+    "totalRuns": 300,
+    "path": "by-sha/c7b6bd114a05f8d946451d74383ef026a1845cba.json"
+  },
+  {
     "commit": "ec0434f5b65fb89457da25db6ffb06e08c9b9b5e",
     "commitDate": "2026-07-09T11:22:33Z",
     "commitSubject": "feat(devtools): add persist/mutation slice to postprocess canvas ext (Slice C2) (#992)",
