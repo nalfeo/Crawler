@@ -110,6 +110,17 @@
     "path": "by-sha/761f09cbc8ad86a19a03ce9e48b069c14a9d5e44.json"
   },
   {
+    "commit": "ed56521ccaa4f65ad48226ae74b6a1bd06407f38",
+    "commitDate": "2026-07-08T20:20:32-07:00",
+    "commitSubject": "fix(sprites): reprocess welcome-room assets with fixed slicer (#931)",
+    "capturedAt": "2026-07-09T04:00:31.529Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/28991898495",
+    "winRate": 0.82,
+    "totalWins": 246,
+    "totalRuns": 300,
+    "path": "by-sha/ed56521ccaa4f65ad48226ae74b6a1bd06407f38.json"
+  },
+  {
     "commit": "2969daf9ee734fe8025e1c1aee8c59fa50563823",
     "commitDate": "2026-07-08T20:16:39Z",
     "commitSubject": "feat(ai): add AIPathingMode.NAVMESH_FUSED (danger/reward fan on navmesh follow, default-OFF) (#918)",
