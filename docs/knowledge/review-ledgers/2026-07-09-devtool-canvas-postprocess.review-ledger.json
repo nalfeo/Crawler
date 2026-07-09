@@ -1,0 +1,46 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-09",
+  "session_slug": "devtool-canvas-postprocess",
+  "task_title": "Rewrite postprocess DevTool as a canvas extension (Slice C)",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 9,
+      "resolved_count": 9,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "major_fork",
+      "notes": "Alt A POST relay w/ manual body parse; Alt B browser-owned crop + thin relay; Alt C fold methods into sidecar-client. Re-architected live-postprocess data path: adopted browser-crop input (matches monolith makeSelectedRawCellDataUrl, not always /raw) + POST /api/live-postprocess relay + last-sheet/sourceRunId resolution + stale-seq guard + number-input Apply/Reset (no sliders). Kept overall harness/layering + separate orchestration-only postprocess-client + pure slice-overlay geometry module. Read-only scope + judge/sensor omission documented + pinged orchestrator."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview", "claude-opus-4.7"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview", "claude-opus-4.7"],
+          "concerns_count": 5,
+          "valid_count": 4,
+          "resolved_count": 4,
+          "clean": true,
+          "notes": "3 distinct-model review of the staged diff (contracts + traps + scope). gemini-3.1-pro-preview: 1 valid minor -- slice-map ok:false rendered a bogus 'undefined x undefined grid' status (renderer.mjs redrawOverlay); fixed with an ok:false guard + regression assertion. gpt-5.4: 1 MAJOR -- /api/select both pushState-broadcast (SSE) and returned the state, so the in-iframe client rendered twice, re-running render() and (for sheet-less runs) firing a duplicate live /api/postprocess relay; fixed by dropping the SSE echo from /api/select (the client renders the fetch response; SSE reserved for external canvas actions). 1 minor -- onClose ignored pendingStartups, leaking the loopback server if the canvas closed mid-startup; fixed by awaiting the pending startup before closing. claude-opus-4.7: no significant issues (verified REPO_ROOT 3-hop derivation, no console.log, SSRF/path-traversal guards, non-throwing relay, stale-seq guard, toString() injection safety, full state-shape contract); 2 below-bar nits -- applied readJsonBody non-object->{} coercion (null body now yields a clean 400 not a 502); ignored the unreachable fetch->null NPE. All 4 valid concerns resolved; 54 postprocess tests pass; node --check clean on both edited files. Adjudicator: claude-opus-4.8."
+        }
+      ]
+    }
+  }
+}
