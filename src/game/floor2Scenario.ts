@@ -677,6 +677,7 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
       contestedResource: roster.contestedResource,
       betrayerFlag: false,
     },
+    trashTerritories: assignQuadrantTrashTerritories(world),
     ambientEnemyArchetypes: new Map<number, string>(),
   };
   world.floorScenario = null;
@@ -970,6 +971,30 @@ export function getQuadrantSpawnWeights(playerQuadrant: string): Map<string, num
   return weights;
 }
 
+const FLOOR2_QUADRANTS = ['N', 'S', 'E', 'W'] as const;
+
+function assignQuadrantTrashTerritories(world: GameWorld): Map<string, string> {
+  const out = new Map<string, string>();
+  const neutralTrash = getFloor2NeutralTrash();
+  if (neutralTrash.length === 0) {
+    return out;
+  }
+  const pool = neutralTrash.map((archetype) => archetype.id);
+  const quadrantRng = new SeededRandomClass(
+    hashStringToSeed(`${world.seed}:floor2-trash-territories`),
+  );
+  for (const quadrant of FLOOR2_QUADRANTS) {
+    if (pool.length === 0) {
+      out.set(quadrant, neutralTrash[quadrantRng.nextInt(0, neutralTrash.length - 1)]!.id);
+      continue;
+    }
+    const pickIndex = quadrantRng.nextInt(0, pool.length - 1);
+    out.set(quadrant, pool[pickIndex]!);
+    pool.splice(pickIndex, 1);
+  }
+  return out;
+}
+
 /**
  * Pick a Floor 2 ambient archetype by unioning every spawn zone in scope at
  * the current position, then normalizing the combined weights:
@@ -1004,7 +1029,7 @@ function pickFloor2TrashArchetype(world: GameWorld, x: number, y: number): Enemy
   return neutralFallback;
 }
 
-function resolveAmbientFamilyIndex(world: GameWorld, archetypeId: string): number {
+export function resolveAmbientFamilyIndex(world: GameWorld, archetypeId: string): number {
   const familyState = world.floorExtendedState?.familyState;
   const presentFamilies = familyState?.presentFamilies ?? [];
   if (presentFamilies.length === 0) {

@@ -12,6 +12,7 @@ import {
   floor2ObjectiveTick,
   getQuadrantForPosition,
   getQuadrantSpawnWeights,
+  resolveAmbientFamilyIndex,
 } from '../../src/game/floor2Scenario.js';
 import { spawnBehaviorEnemy } from '../../src/core/spawners/combatants.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -101,6 +102,14 @@ describe('Floor 2 quadrant helpers', () => {
 });
 
 describe('Floor 2 director/runtime behavior', () => {
+  it('maps ambient family archetypes to present-family indices', () => {
+    const { world } = createFloor2World(87);
+    expect(resolveAmbientFamilyIndex(world, 'goblin-grunt')).toBe(0);
+    expect(resolveAmbientFamilyIndex(world, 'llama-spitter')).toBe(1);
+    expect(resolveAmbientFamilyIndex(world, 'cave-slime')).toBe(-1);
+    expect(resolveAmbientFamilyIndex(world, 'not-a-real-archetype')).toBe(-1);
+  });
+
   it('spawns and tracks ambient enemies when floorScenario is null', () => {
     const { world, playerEid } = createFloor2World(88);
     const firstZone = world.floorMap!.territoryZones[0];
