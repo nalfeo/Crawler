@@ -331,6 +331,7 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden;
   <select class="ssel" id="snapsel">
     <option value="tile">1 tile</option>
     <option value="half">&#189; tile</option>
+    <option value="quarter">&#188; tile</option>
     <option value="free">Free</option>
   </select>
   <button class="btn" id="btnfit" title="Zoom to fit">&#8599;Fit</button>
@@ -634,10 +635,11 @@ function render(){
   var ts=S.tileSize,w=sp.width,h=sp.height;
   canvas.width=w*ts;canvas.height=h*ts;
   ctx.fillStyle='#090d12';ctx.fillRect(0,0,w*ts,h*ts);
-  if(S.snapMode==='half'){
+  if(S.snapMode==='half'||S.snapMode==='quarter'){
     ctx.strokeStyle='#141c26';ctx.lineWidth=1;
-    for(var hx=1;hx<w*2;hx+=2){ctx.beginPath();ctx.moveTo(hx*ts/2,0);ctx.lineTo(hx*ts/2,h*ts);ctx.stroke();}
-    for(var hy=1;hy<h*2;hy+=2){ctx.beginPath();ctx.moveTo(0,hy*ts/2);ctx.lineTo(w*ts,hy*ts/2);ctx.stroke();}
+    var sub=S.snapMode==='quarter'?4:2;
+    for(var hx=1;hx<w*sub;hx++){if(hx%sub===0)continue;ctx.beginPath();ctx.moveTo(hx*ts/sub,0);ctx.lineTo(hx*ts/sub,h*ts);ctx.stroke();}
+    for(var hy=1;hy<h*sub;hy++){if(hy%sub===0)continue;ctx.beginPath();ctx.moveTo(0,hy*ts/sub);ctx.lineTo(w*ts,hy*ts/sub);ctx.stroke();}
   }
   ctx.strokeStyle='#1e2530';ctx.lineWidth=1;
   for(var gx=0;gx<=w;gx++){ctx.beginPath();ctx.moveTo(gx*ts,0);ctx.lineTo(gx*ts,h*ts);ctx.stroke();}
@@ -810,10 +812,16 @@ function hitTop(cx,cy){
   hits.sort(function(a,b){return b.z-a.z;});
   return hits[0];
 }
-function snapV(v){if(S.snapMode==='tile')return Math.round(v);if(S.snapMode==='half')return Math.round(v*2)/2;return Math.round(v*100)/100;}
+function snapV(v){
+  if(S.snapMode==='tile')return Math.round(v);
+  if(S.snapMode==='half')return Math.round(v*2)/2;
+  if(S.snapMode==='quarter')return Math.round(v*4)/4;
+  return Math.round(v*100)/100;
+}
 function snapSz(v){
   if(S.snapMode==='tile')return Math.max(0.25,Math.round(v*4)/4);
   if(S.snapMode==='half')return Math.max(0.25,Math.round(v*2)/2);
+  if(S.snapMode==='quarter')return Math.max(0.25,Math.round(v*4)/4);
   return Math.max(0.25,Math.round(v*100)/100);
 }
 var drag=null;
@@ -881,8 +889,8 @@ canvas.addEventListener('mouseup',function(){
   if(drag.mode==='move-npc'){
     var n=sp.npcs&&sp.npcs[drag.idx];
     if(n){
-      n.x=Math.max(0,Math.min(sp.width-1,Math.round(drag.dispX/ts)));
-      n.y=Math.max(0,Math.min(sp.height-1,Math.round(drag.dispY/ts)));
+      n.x=Math.max(0,Math.min(sp.width-1,snapV(drag.dispX/ts)));
+      n.y=Math.max(0,Math.min(sp.height-1,snapV(drag.dispY/ts)));
       refreshNpcInputs();markDirty();
     }
     drag=null;render();return;
