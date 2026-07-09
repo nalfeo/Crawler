@@ -47,6 +47,14 @@
           "resolved_count": 2,
           "clean": true,
           "notes": "GitHub PR reviewer (copilot-pull-request-reviewer) on PR #987 raised 2 concerns, both resolved this round: (1) apple metric hello_kitties was 0.8 but the repo convention is actual_apples/5 = 3/5 = 0.6 (0.8 implies 4 apples) — corrected to 0.6; (2) renderer.mjs `selectedCount` was write-only — mutated in the checkbox change handler, clearSelection, and pruneInvalid but never read (selection is derived from `selected` via selectKeys()), and the monolith tracks no selection count either → removed the declaration + all mutation sites together (required under 'use strict' to avoid ReferenceError). 53 storage tests still green; no safety gate touched."
+        },
+        {
+          "round": 5,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "After the rebase onto main (Slice C postprocess PR #986 merged), the GitHub PR reviewer raised 1 concern: the vendored harness-drift.test.mjs was a verbatim copy of sprite-review and still asserted result.checked.includes('sprite-review') instead of 'storage'. checkHarness() only inspects extensions with lib/canvas-harness.mjs vendored, so if the storage anchor were ever removed, 'storage' would silently drop from `checked` and the assertion would still pass on sprite-review — a false green for the very extension it guards. Fixed to assert on 'storage' (matches the merged postprocess sibling's pattern); fixed drift test passes (fail 0). No safety gate touched."
         }
       ]
     }
