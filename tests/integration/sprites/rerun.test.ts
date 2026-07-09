@@ -195,6 +195,32 @@ describe('repostprocessRun', () => {
     ).rejects.toMatchObject({ name: 'RerunError', kind: 'variant-count-mismatch' });
   });
 
+  it('adopts the resliced grid when allowGridDrift is enabled', async () => {
+    // Explicit salvage path: when the slicer changes, allow re-post-process to
+    // adopt the new data-driven grid rather than rejecting the run.
+    const seed = await seedRun({ repoRoot: freshRoot() });
+    const before = await loadRunSummary(seed.store, seed.briefId, seed.runId);
+    const corruptGrid = {
+      ...before,
+      grid: { rows: 2, cols: 3, emptyCells: [] as ReadonlyArray<readonly [number, number]> },
+      variantCount: 6,
+    };
+
+    const result = await repostprocessRun({
+      store: seed.store,
+      briefId: seed.briefId,
+      runId: seed.runId,
+      summary: corruptGrid,
+      brief: seed.brief,
+      palette: seed.palette,
+      allowGridDrift: true,
+    });
+
+    expect(result.summary.variantCount).toBe(4);
+    expect(result.summary.grid).toEqual({ rows: 2, cols: 2, emptyCells: [] });
+    expect(result.summary.candidates).toHaveLength(4);
+  });
+
   it('rejects a legacy run (no persisted grid) whose stored sheet re-slices to a different count', async () => {
     // Legacy runs generated before `grid` was persisted have no anchor, so the
     // guard falls back to a brief-anchored re-slice + a variant-COUNT check

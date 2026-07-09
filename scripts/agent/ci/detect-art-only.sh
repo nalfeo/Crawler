@@ -46,18 +46,78 @@ emit_all() {
   emit_output sprites_touched "$5"
 }
 
+# package.json gameplay-safe split:
+# - safe when ONLY scripts changed and every changed script key is lab/devtools/sprites-facing
+# - unsafe for dependency changes, non-script top-level keys, or unknown script keys
+package_json_gameplay_safe() {
+  if [ "${PACKAGE_JSON_GAMEPLAY_SAFE_OVERRIDE:-}" = "true" ]; then
+    return 0
+  fi
+  if [ "${PACKAGE_JSON_GAMEPLAY_SAFE_OVERRIDE:-}" = "false" ]; then
+    return 1
+  fi
+  if ! command -v node >/dev/null 2>&1; then
+    return 1
+  fi
+  if [ -z "${base_ref:-}" ]; then
+    return 1
+  fi
+  if ! git cat-file -e "${base_ref}:package.json" 2>/dev/null; then
+    return 1
+  fi
+
+  local base_pkg head_pkg
+  base_pkg="$(git show "${base_ref}:package.json" 2>/dev/null || true)"
+  head_pkg="$(cat package.json 2>/dev/null || true)"
+  if [ -z "$base_pkg" ] || [ -z "$head_pkg" ]; then
+    return 1
+  fi
+
+  BASE_PKG="$base_pkg" HEAD_PKG="$head_pkg" node -e '
+const base = JSON.parse(process.env.BASE_PKG ?? "{}");
+const head = JSON.parse(process.env.HEAD_PKG ?? "{}");
+
+const depKeys = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"];
+for (const key of depKeys) {
+  if (JSON.stringify(base[key] ?? {}) !== JSON.stringify(head[key] ?? {})) {
+    process.exit(1);
+  }
+}
+
+const top = new Set([...Object.keys(base), ...Object.keys(head)]);
+const changedTop = [...top].filter((key) => JSON.stringify(base[key]) !== JSON.stringify(head[key]));
+if (changedTop.length === 0) process.exit(1);
+if (changedTop.some((key) => key !== "scripts")) process.exit(1);
+
+const baseScripts = base.scripts ?? {};
+const headScripts = head.scripts ?? {};
+const scriptKeys = new Set([...Object.keys(baseScripts), ...Object.keys(headScripts)]);
+const changedScripts = [...scriptKeys].filter(
+  (key) => JSON.stringify(baseScripts[key]) !== JSON.stringify(headScripts[key]),
+);
+if (changedScripts.length === 0) process.exit(1);
+
+const safeScriptKey = /^(sprites:|lab$|devtools$|setup:azure(?::|$))/;
+if (changedScripts.every((key) => safeScriptKey.test(key))) process.exit(0);
+process.exit(1);
+' >/dev/null 2>&1
+}
+
 # Resolve the set of changed files. Normally derived from git; the
 # SCOPE_FILES_OVERRIDE test hook (newline-separated paths) lets the deterministic
 # unit test drive the classifier without constructing a git scenario. Presence is
 # detected with ${VAR+x}, NOT -n, so an explicitly empty override is honored as an
 # empty change set (→ fail-safe all-false below) rather than silently falling back
 # to git-based diffing.
+base_ref=""
 if [ -n "${SCOPE_FILES_OVERRIDE+x}" ]; then
   changed="${SCOPE_FILES_OVERRIDE:-}"
+  # local-scope.sh passes changed files via override; keep a merge-base for optional
+  # content-aware checks (for example package.json classification).
+  base_ref="$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD main 2>/dev/null || true)"
   echo "Using SCOPE_FILES_OVERRIDE (test hook)." >&2
 else
   # Resolve the comparison base.
-  base_ref=""
   if [ -n "${GITHUB_BASE_REF:-}" ]; then
     # Pull request: compare against the PR's base branch.
     git fetch --no-tags origin "$GITHUB_BASE_REF" >/dev/null 2>&1 || true
@@ -123,10 +183,11 @@ done <<<"$changed"
 
 # gameplay_safe: every changed file is provably unable to change the deterministic
 # Floor-1 simulation. Allowlist = surfaces the headless runner never imports
-# (src/engine, src/labs), plus e2e tests, docs and static assets. Anything else —
-# src/core, src/game, src/shared, tests/headless, tests/unit, tests/integration,
-# scripts, .github, root config — forces the gate to run. Consumed by ci.yml to
-# skip the headless job on pull_requests only.
+# (src/engine, src/labs), plus e2e tests, docs, static assets, sprite-pipeline
+# scripts/tests, and sprite catalog plumbing. Anything else — src/core, src/game,
+# most src/shared, tests/headless, non-sprite scripts, .github, root config —
+# forces the gate to run. Consumed by ci.yml to skip the headless job on
+# pull_requests only.
 # The sprite pipeline (scripts/sprites/, tests/unit/sprites/, tests/integration/sprites/,
 # and the 8 root pipeline integration tests) is also safe: the headless runner imports
 # only src/core, src/shared, src/game/ai and never touches scripts/sprites/.
@@ -139,6 +200,17 @@ while IFS= read -r file; do
     tests/e2e/*) ;;
     docs/*) ;;
     public/*) ;;
+    src/shared/data/sprite-catalog.json) ;;
+    package.json)
+      if package_json_gameplay_safe; then
+        :
+      else
+        gameplay_safe=false
+        break
+      fi
+      ;;
+    scripts/agent/ci/detect-art-only.sh) ;;
+    tests/unit/detect-change-scope.test.ts) ;;
     scripts/sprites/*) ;;
     tests/unit/sprites/*) ;;
     tests/integration/sprites/*) ;;
