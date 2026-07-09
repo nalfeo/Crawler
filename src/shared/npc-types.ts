@@ -41,6 +41,8 @@ export interface NpcInstance {
   flipY?: boolean;
   /** Optional per-instance clockwise sprite rotation in degrees. */
   rotationDeg?: number;
+  /** Optional local z-order carried from authored set-piece NPC metadata. */
+  z?: number;
   /** Index of the next dialogue line to show. */
   dialogueIndex: number;
   quests: NpcQuestState[];

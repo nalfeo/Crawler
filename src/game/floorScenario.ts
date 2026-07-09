@@ -1411,6 +1411,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
           ...(stamped.flipX !== undefined ? { flipX: stamped.flipX } : {}),
           ...(stamped.flipY !== undefined ? { flipY: stamped.flipY } : {}),
           ...(stamped.rotationDeg !== undefined ? { rotationDeg: stamped.rotationDeg } : {}),
+          ...(stamped.z !== undefined ? { z: stamped.z } : {}),
         });
         occupiedNpcTiles.add(tileKey(stamped.tileX, stamped.tileY));
       } else {

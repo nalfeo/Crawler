@@ -247,13 +247,14 @@ describe('createPhaserBridge', () => {
 
     addComponent(world.ecs, eid, set(Position, { x: 10, y: 20 }));
     addComponent(world.ecs, eid, Npc);
-    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 2.5, height: 3.5 }));
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 4, height: 5 }));
     world.npcs.set(eid, {
       defId: 'tutorial-goon',
       spriteOverride: { source: 'catalog', spriteId: 'sprite:npc.guide' },
       flipX: true,
       flipY: true,
       rotationDeg: 90,
+      z: 6,
       dialogueIndex: 0,
       quests: [],
       nearbyPlayer: false,
@@ -264,15 +265,20 @@ describe('createPhaserBridge', () => {
     expect(images[0]?.flipX).toBe(true);
     expect(images[0]?.flipY).toBe(true);
     expect(images[0]?.rotation).toBeCloseTo(Math.PI * 0.5);
+    expect(images[0]?.displayWidth).toBeCloseTo(32);
+    expect(images[0]?.displayHeight).toBeCloseTo(40);
+    expect(images[0]?.depth).toBeCloseTo(0.06);
 
     const instance = world.npcs.get(eid)!;
     instance.flipX = false;
     instance.flipY = false;
     instance.rotationDeg = 0;
+    instance.z = -4;
     bridge.sync(world);
     expect(images[0]?.flipX).toBe(false);
     expect(images[0]?.flipY).toBe(false);
     expect(images[0]?.rotation).toBeCloseTo(0);
+    expect(images[0]?.depth).toBeCloseTo(-0.04);
   });
 
   it('destroys images when entities disappear or the bridge is destroyed', () => {

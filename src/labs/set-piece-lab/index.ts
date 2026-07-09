@@ -568,6 +568,7 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
           ...(npc.flipX !== undefined ? { flipX: npc.flipX } : {}),
           ...(npc.flipY !== undefined ? { flipY: npc.flipY } : {}),
           ...(npc.rotationDeg !== undefined ? { rotationDeg: npc.rotationDeg } : {}),
+          ...(npc.z !== undefined ? { z: npc.z } : {}),
         });
         const npcKey = pickGeneratedNpcTextureKey(npc.npcTypeId);
         if (npcKey) {

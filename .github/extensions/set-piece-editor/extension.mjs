@@ -9,6 +9,7 @@ import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { joinSession, createCanvas, CanvasError } from '@github/copilot-sdk/extension';
+import { validateSetPieceCandidate } from './lib/editor-validators.mjs';
 
 const __extDir = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__extDir, '..', '..', '..');
@@ -173,11 +174,18 @@ function handleRequest(instanceId, req, res) {
           res.end(JSON.stringify({ ok: false, error: 'Not found' }));
           return;
         }
-        pack.setPieces[idx] = { ...pack.setPieces[idx], props };
-        if (sceneLayers && sceneLayers.length > 0) pack.setPieces[idx].sceneLayers = sceneLayers;
-        if (npcs !== undefined) pack.setPieces[idx].npcs = npcs;
-        if (width > 0) pack.setPieces[idx].width = width;
-        if (height > 0) pack.setPieces[idx].height = height;
+        const candidate = { ...pack.setPieces[idx], props };
+        if (sceneLayers !== undefined) candidate.sceneLayers = sceneLayers;
+        if (npcs !== undefined) candidate.npcs = npcs;
+        if (width > 0) candidate.width = width;
+        if (height > 0) candidate.height = height;
+        const issues = validateSetPieceCandidate(candidate);
+        if (issues.length > 0) {
+          res.writeHead(400);
+          res.end(JSON.stringify({ ok: false, error: 'Validation failed', issues }));
+          return;
+        }
+        pack.setPieces[idx] = candidate;
         writePack(pack);
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify({ ok: true }));
@@ -2399,7 +2407,7 @@ function renderGalSheet(sheetKey,filter){
     return;
   }
   var img=imgCache[sheetKey];
-  var rows=Math.floor((img.naturalHeight-meta.margin)/(16+meta.spacing));
+  var rows=Math.max(0,Math.floor((img.naturalHeight-meta.margin+meta.spacing)/(16+meta.spacing)));
   var exact=null,m=lo.match(/^c?\\s*(\\d+)\\s*[,x ]\\s*r?\\s*(\\d+)$/);
   if(m)exact={c:parseInt(m[1],10),r:parseInt(m[2],10)};
   if(lo){

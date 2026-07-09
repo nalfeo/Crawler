@@ -95,6 +95,7 @@ describe('spawnNpc', () => {
       flipX: true,
       flipY: true,
       rotationDeg: 45,
+      z: 6,
     });
 
     expect(world.stores.sprite.width[eid]).toBeCloseTo(4);
@@ -106,6 +107,7 @@ describe('spawnNpc', () => {
       flipX: true,
       flipY: true,
       rotationDeg: 45,
+      z: 6,
     });
   });
 });

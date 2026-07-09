@@ -41,6 +41,7 @@ export interface SpawnNpcOptions {
   readonly flipX?: boolean;
   readonly flipY?: boolean;
   readonly rotationDeg?: number;
+  readonly z?: number;
 }
 
 /** Spawn a trap entity at a position. */
@@ -138,6 +139,7 @@ export function spawnNpc(
     ...(options.flipX !== undefined ? { flipX: options.flipX } : {}),
     ...(options.flipY !== undefined ? { flipY: options.flipY } : {}),
     ...(options.rotationDeg !== undefined ? { rotationDeg: options.rotationDeg } : {}),
+    ...(options.z !== undefined ? { z: options.z } : {}),
     dialogueIndex: 0,
     quests: def.quests.map((q) => ({ questId: q.questId, status: 'available' })),
     dialogueOverride: options.dialogueOverride,

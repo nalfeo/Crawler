@@ -41,6 +41,8 @@ export class MockImage {
   tint = 0xffffff;
   tinted = false;
   frame: number | undefined;
+  displayWidth: number | undefined;
+  displayHeight: number | undefined;
 
   constructor(
     public x: number,
@@ -84,6 +86,12 @@ export class MockImage {
   setScale(x: number, y?: number): this {
     this.scaleX = x;
     this.scaleY = y ?? x;
+    return this;
+  }
+
+  setDisplaySize(width: number, height: number): this {
+    this.displayWidth = width;
+    this.displayHeight = height;
     return this;
   }
 

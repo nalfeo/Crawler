@@ -1194,6 +1194,24 @@ export function createPhaserBridge(scene: Phaser.Scene): {
 
         if (entityType === 'npc') {
           const npcInstance = world.npcs.get(eid);
+          const npcWidthFt = world.stores.sprite.width[eid] ?? 0;
+          const npcHeightFt = world.stores.sprite.height[eid] ?? 0;
+          if (
+            Number.isFinite(npcWidthFt) &&
+            npcWidthFt > 0 &&
+            Number.isFinite(npcHeightFt) &&
+            npcHeightFt > 0 &&
+            typeof img.setDisplaySize === 'function'
+          ) {
+            img.setDisplaySize(ftToPx(npcWidthFt), ftToPx(npcHeightFt));
+          }
+          if (typeof img.setDepth === 'function') {
+            const depthOffset =
+              Number.isFinite(npcInstance?.z ?? NaN) && npcInstance?.z !== undefined
+                ? npcInstance.z * 0.01
+                : 0;
+            img.setDepth(ENTITY_DEPTH + depthOffset);
+          }
           if (typeof img.setFlipX === 'function') {
             img.setFlipX(npcInstance?.flipX === true);
           }

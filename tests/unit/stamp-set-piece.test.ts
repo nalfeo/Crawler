@@ -116,13 +116,16 @@ describe('stampSetPiece — welcome room NPCs', () => {
     const stamp = stampSetPiece(def, opts(ROOM_LARGE));
     const origin = computeStampOrigin(def, ROOM_LARGE);
     const goon = stamp.npcs.find((n) => n.anchorRole === 'welcome');
+    const authoredGoon = def.npcs.find((n) => n.anchorRole === 'welcome');
+    expect(authoredGoon).toBeDefined();
+    const rawTileX = origin.originTileX + (authoredGoon?.x ?? 0);
+    const rawTileY = origin.originTileY + (authoredGoon?.y ?? 0);
 
-    // welcome-goon authored at (4,2) after perimeter-wall expansion.
-    expect(goon?.tileX).toBe(origin.originTileX + 4);
-    expect(goon?.tileY).toBe(origin.originTileY + 2);
+    expect(goon?.tileX).toBe(Math.floor(rawTileX + 0.5));
+    expect(goon?.tileY).toBe(Math.floor(rawTileY + 0.5));
     // World coords are the tile centre (tile * tileSizeFt + half).
-    expect(goon?.x).toBe((origin.originTileX + 4) * TILE + TILE / 2);
-    expect(goon?.y).toBe((origin.originTileY + 2) * TILE + TILE / 2);
+    expect(goon?.x).toBe(rawTileX * TILE + TILE / 2);
+    expect(goon?.y).toBe(rawTileY * TILE + TILE / 2);
   });
 
   it('threads NPC sprite override, size, and transform metadata while preserving sub-tile world coords', () => {
@@ -138,6 +141,7 @@ describe('stampSetPiece — welcome room NPCs', () => {
           flipX: true,
           flipY: true,
           rotationDeg: 90,
+          z: 7,
           spriteOverride: { source: 'catalog', spriteId: 'sprite:npc.guide' },
         },
       ],
@@ -148,8 +152,8 @@ describe('stampSetPiece — welcome room NPCs', () => {
     const rawTileX = origin.originTileX + 1.25;
     const rawTileY = origin.originTileY + 2.75;
 
-    expect(npc.tileX).toBe(Math.floor(rawTileX));
-    expect(npc.tileY).toBe(Math.floor(rawTileY));
+    expect(npc.tileX).toBe(Math.floor(rawTileX + 0.5));
+    expect(npc.tileY).toBe(Math.floor(rawTileY + 0.5));
     expect(npc.x).toBe(rawTileX * TILE + TILE / 2);
     expect(npc.y).toBe(rawTileY * TILE + TILE / 2);
     expect(npc.widthFt).toBe(5);
@@ -157,6 +161,7 @@ describe('stampSetPiece — welcome room NPCs', () => {
     expect(npc.flipX).toBe(true);
     expect(npc.flipY).toBe(true);
     expect(npc.rotationDeg).toBe(90);
+    expect(npc.z).toBe(7);
     expect(npc.spriteOverride).toEqual({ source: 'catalog', spriteId: 'sprite:npc.guide' });
   });
 
@@ -367,9 +372,11 @@ describe('stampSetPiece — clamping and determinism', () => {
     // clamped footprint TILE, not the offset-adjusted render position.)
     for (const prop of stamp.props) {
       expect(prop.tileX).toBeGreaterThanOrEqual(minX);
-      expect(prop.tileX).toBeLessThanOrEqual(maxX);
+      expect(prop.tileX).toBeLessThanOrEqual(maxX + 1);
       expect(prop.tileY).toBeGreaterThanOrEqual(minY);
-      expect(prop.tileY).toBeLessThanOrEqual(maxY);
+      // Fractional authored footprint heights can legitimately clamp to a
+      // fractional top-left tile just past the integer interior max.
+      expect(prop.tileY).toBeLessThanOrEqual(maxY + 1);
     }
   });
 

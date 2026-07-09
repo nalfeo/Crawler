@@ -99,6 +99,8 @@ export interface StampedSetPieceNpc {
   readonly flipY?: boolean;
   /** Optional clockwise sprite rotation in degrees. */
   readonly rotationDeg?: number;
+  /** Optional local z-order carried through to runtime draw depth. */
+  readonly z?: number;
   /** Optional visual override sprite for this spawned NPC. */
   readonly spriteOverride?: SpriteRef;
   /** Objective anchor this NPC drives, if any. */
@@ -285,8 +287,8 @@ export function stampSetPiece(def: SetPieceDef, opts: StampSetPieceOptions): Sta
     // Keep objective/occupancy tile bookkeeping integer-based (the containing
     // interior tile), while preserving authored sub-tile world positions within
     // the same interior bounds.
-    const tileX = Math.floor(boundedTileX);
-    const tileY = Math.floor(boundedTileY);
+    const tileX = Math.floor(boundedTileX + 0.5);
+    const tileY = Math.floor(boundedTileY + 0.5);
     return {
       npcTypeId: npc.npcTypeId,
       ...(npc.widthFt !== undefined ? { widthFt: npc.widthFt } : {}),
@@ -294,6 +296,7 @@ export function stampSetPiece(def: SetPieceDef, opts: StampSetPieceOptions): Sta
       ...(npc.flipX !== undefined ? { flipX: npc.flipX } : {}),
       ...(npc.flipY !== undefined ? { flipY: npc.flipY } : {}),
       ...(npc.rotationDeg !== undefined ? { rotationDeg: npc.rotationDeg } : {}),
+      ...(npc.z !== undefined ? { z: npc.z } : {}),
       ...(npc.spriteOverride !== undefined ? { spriteOverride: npc.spriteOverride } : {}),
       ...(npc.anchorRole !== undefined ? { anchorRole: npc.anchorRole } : {}),
       tileX,
