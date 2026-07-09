@@ -345,8 +345,8 @@ const propSourceSchema = z
   .object({
     id: z.string().trim().min(1),
     kind: z.enum(propKinds),
-    x: z.number().min(0),
-    y: z.number().min(0),
+    x: z.number().finite().min(0),
+    y: z.number().finite().min(0),
     width: z.number().positive().optional(),
     height: z.number().positive().optional(),
     z: z.number().int().optional(),
@@ -361,8 +361,8 @@ const npcSourceSchema = z
   .object({
     id: z.string().trim().min(1),
     npcTypeId: z.string().trim().min(1),
-    x: z.number().min(0),
-    y: z.number().min(0),
+    x: z.number().finite().min(0),
+    y: z.number().finite().min(0),
     widthFt: z.number().positive().optional(),
     heightFt: z.number().positive().optional(),
     flipX: z.boolean().optional(),

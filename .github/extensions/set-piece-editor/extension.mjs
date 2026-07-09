@@ -80,7 +80,7 @@ function broadcastToInstance(instanceId, data) {
 
 function handleRequest(instanceId, req, res) {
   const url = new URL(req.url, 'http://127.0.0.1');
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const expectedOrigin = `http://${req.headers.host ?? ''}`;
 
   if (req.method === 'GET' && url.pathname === '/') {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -139,8 +139,23 @@ function handleRequest(instanceId, req, res) {
     return;
   }
   if (req.method === 'POST' && url.pathname === '/apply') {
+    const origin = req.headers.origin;
+    if (typeof origin === 'string' && origin !== expectedOrigin) {
+      res.writeHead(403);
+      res.end(JSON.stringify({ ok: false, error: 'Forbidden origin' }));
+      return;
+    }
+    const MAX_APPLY_BODY_BYTES = 1024 * 1024;
     let body = '';
+    let totalBytes = 0;
     req.on('data', (chunk) => {
+      totalBytes += chunk.length;
+      if (totalBytes > MAX_APPLY_BODY_BYTES) {
+        res.writeHead(413);
+        res.end(JSON.stringify({ ok: false, error: 'Payload too large' }));
+        req.destroy();
+        return;
+      }
       body += chunk;
     });
     req.on('end', () => {

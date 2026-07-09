@@ -280,10 +280,13 @@ export function stampSetPiece(def: SetPieceDef, opts: StampSetPieceOptions): Sta
   const npcs: StampedSetPieceNpc[] = def.npcs.map((npc) => {
     const rawTileX = originTileX + npc.x;
     const rawTileY = originTileY + npc.y;
+    const boundedTileX = clamp(rawTileX, interior.minX, interior.maxX);
+    const boundedTileY = clamp(rawTileY, interior.minY, interior.maxY);
     // Keep objective/occupancy tile bookkeeping integer-based (the containing
-    // interior tile), while preserving authored sub-tile NPC world positions.
-    const tileX = clamp(Math.floor(rawTileX), interior.minX, interior.maxX);
-    const tileY = clamp(Math.floor(rawTileY), interior.minY, interior.maxY);
+    // interior tile), while preserving authored sub-tile world positions within
+    // the same interior bounds.
+    const tileX = Math.floor(boundedTileX);
+    const tileY = Math.floor(boundedTileY);
     return {
       npcTypeId: npc.npcTypeId,
       ...(npc.widthFt !== undefined ? { widthFt: npc.widthFt } : {}),
@@ -295,8 +298,8 @@ export function stampSetPiece(def: SetPieceDef, opts: StampSetPieceOptions): Sta
       ...(npc.anchorRole !== undefined ? { anchorRole: npc.anchorRole } : {}),
       tileX,
       tileY,
-      x: rawTileX * tileSizeFt + half,
-      y: rawTileY * tileSizeFt + half,
+      x: boundedTileX * tileSizeFt + half,
+      y: boundedTileY * tileSizeFt + half,
     };
   });
 

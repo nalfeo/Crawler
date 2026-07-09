@@ -90,6 +90,9 @@ export function spawnNpc(
   defId: string,
   options?: SpawnNpcOptions,
 ): number {
+  if ((options?.widthFt === undefined) !== (options?.heightFt === undefined)) {
+    throw new Error('spawnNpc requires widthFt and heightFt to be provided together.');
+  }
   const def = getNpcDef(defId);
   if (def === undefined) {
     return -1;

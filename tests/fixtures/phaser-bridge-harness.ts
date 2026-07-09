@@ -93,7 +93,7 @@ export class MockImage {
   }
 
   setAngle(angleDeg: number): this {
-    this.rotation = angleDeg;
+    this.rotation = (angleDeg * Math.PI) / 180;
     return this;
   }
 
