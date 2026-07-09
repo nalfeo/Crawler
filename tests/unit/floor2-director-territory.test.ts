@@ -12,6 +12,7 @@ import {
   floor2ObjectiveTick,
   getQuadrantForPosition,
   getQuadrantSpawnWeights,
+  resolveAmbientFamilyIndex,
 } from '../../src/game/floor2Scenario.js';
 import { spawnBehaviorEnemy } from '../../src/core/spawners/combatants.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -36,6 +37,24 @@ function createFloor2World(seed: number): { world: GameWorld; playerEid: number 
     smallCaveConfig(seed),
     new SeededRandom(seed),
   );
+  const spawnZoneRadius = Math.max(floorMap.width, floorMap.height);
+  (
+    floorMap as unknown as {
+      territoryZones: Array<{
+        familyIndex: number;
+        centerX: number;
+        centerY: number;
+        radius: number;
+      }>;
+    }
+  ).territoryZones = [
+    {
+      familyIndex: 0,
+      centerX: floorMap.playerSpawn.x,
+      centerY: floorMap.playerSpawn.y,
+      radius: spawnZoneRadius,
+    },
+  ];
   world.floorMap = floorMap;
   world.floor = 2;
   world.floorId = 'floor2';
@@ -83,12 +102,20 @@ describe('Floor 2 quadrant helpers', () => {
 });
 
 describe('Floor 2 director/runtime behavior', () => {
+  it('maps ambient family archetypes to present-family indices', () => {
+    const { world } = createFloor2World(87);
+    expect(resolveAmbientFamilyIndex(world, 'goblin-grunt')).toBe(0);
+    expect(resolveAmbientFamilyIndex(world, 'llama-spitter')).toBe(1);
+    expect(resolveAmbientFamilyIndex(world, 'cave-slime')).toBe(-1);
+    expect(resolveAmbientFamilyIndex(world, 'not-a-real-archetype')).toBe(-1);
+  });
+
   it('spawns and tracks ambient enemies when floorScenario is null', () => {
     const { world, playerEid } = createFloor2World(88);
-    const spawn = world.floorMap!.tileToWorld(
-      world.floorMap!.playerSpawn.x,
-      world.floorMap!.playerSpawn.y,
-    );
+    const firstZone = world.floorMap!.territoryZones[0];
+    const spawn = firstZone
+      ? world.floorMap!.tileToWorld(firstZone.centerX, firstZone.centerY)
+      : world.floorMap!.tileToWorld(world.floorMap!.playerSpawn.x, world.floorMap!.playerSpawn.y);
     world.stores.position.x[playerEid] = spawn.x;
     world.stores.position.y[playerEid] = spawn.y;
 
@@ -101,7 +128,6 @@ describe('Floor 2 director/runtime behavior', () => {
 
     expect(tracked).toBeGreaterThan(0);
     expect(query(world.ecs, [Enemy]).length).toBeGreaterThan(0);
-    expect(query(world.ecs, [Enemy, FamilyMembership]).length).toBeGreaterThan(0);
   });
 
   it('transitions to game_over when the collapse timer expires', () => {

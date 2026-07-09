@@ -14,6 +14,7 @@ import process from 'node:process';
 import { parseGeneratedManifest } from '../../src/shared/generated-assets.js';
 import { SPRITES } from '../../src/engine/sprites/index.js';
 import { MOB_DEFS } from '../../src/shared/mobDefs.js';
+import { floor1EnemyPack, floor2EnemyPack } from '../../src/shared/enemy-packs.js';
 import {
   buildPlaceholderAudit,
   type PlaceholderAuditReport,
@@ -219,6 +220,7 @@ function renderTable(report: PlaceholderAuditReport, args: PlaceholderAuditCliAr
 interface PlaceholderAuditOptions {
   readonly spriteRegistry?: readonly { readonly id: string; readonly note?: string }[];
   readonly mobDefs?: readonly { readonly id: string; readonly spriteId: string }[];
+  readonly enemyArchetypeIds?: readonly string[];
 }
 
 export function runPlaceholderAudit(
@@ -237,7 +239,16 @@ export function runPlaceholderAudit(
   const mobDefs =
     options.mobDefs ??
     Array.from(MOB_DEFS.values(), (mob) => ({ id: mob.id, spriteId: mob.spriteId }));
-  return buildPlaceholderAudit({ manifestEntries, spriteRegistry, mobDefs, newAssetPaths });
+  const enemyArchetypeIds =
+    options.enemyArchetypeIds ??
+    [...floor1EnemyPack.archetypes, ...floor2EnemyPack.archetypes].map((archetype) => archetype.id);
+  return buildPlaceholderAudit({
+    manifestEntries,
+    spriteRegistry,
+    mobDefs,
+    enemyArchetypeIds,
+    newAssetPaths,
+  });
 }
 
 function isReplaceableFailure(report: PlaceholderAuditReport): boolean {
