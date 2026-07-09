@@ -118,7 +118,6 @@ const CLIENT_SCRIPT = String.raw`
 
   // Client-authoritative state (mirrors the monolith exactly).
   var selected = Object.create(null);
-  var selectedCount = 0;
   var currentRuns = [];
   var enrichment = new Map();
   var health = { state: 'down' };
@@ -135,7 +134,7 @@ const CLIENT_SCRIPT = String.raw`
     for (var k in selected) { if (selected[k]) out.push(k); }
     return out;
   }
-  function clearSelection() { selected = Object.create(null); selectedCount = 0; }
+  function clearSelection() { selected = Object.create(null); }
 
   function h(tag, props, children) {
     var elem = document.createElement(tag);
@@ -286,8 +285,8 @@ const CLIENT_SCRIPT = String.raw`
       checkbox.checked = selected[key] === true;
       (function (k, cb) {
         cb.addEventListener('change', function () {
-          if (cb.checked) { if (!selected[k]) { selected[k] = true; selectedCount++; } }
-          else if (selected[k]) { delete selected[k]; selectedCount--; }
+          if (cb.checked) { selected[k] = true; }
+          else { delete selected[k]; }
         });
       })(key, checkbox);
       checkCell.appendChild(checkbox);
@@ -413,7 +412,7 @@ const CLIENT_SCRIPT = String.raw`
     if (!Array.isArray(invalidKeys)) return;
     for (var i = 0; i < invalidKeys.length; i++) {
       var k = invalidKeys[i];
-      if (selected[k]) { delete selected[k]; selectedCount--; }
+      delete selected[k];
     }
     renderRows();
   }
