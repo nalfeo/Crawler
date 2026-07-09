@@ -2924,5 +2924,44 @@
     "frame": 0,
     "col": 0,
     "row": 0
+  },
+  {
+    "id": "generated:goblin-elite-joyrider-v1-var-2",
+    "kind": "sprite",
+    "label": "goblin-elite-joyrider-v1-var-2",
+    "description": "Generated sprite from brief: goblin-elite-joyrider-v1.",
+    "tags": ["generated", "pipeline-approved"],
+    "spriteId": "goblin-elite-joyrider-v1-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/goblin-elite-joyrider-v1-var-2.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:goblin-elite-joyrider-v1-var-5",
+    "kind": "sprite",
+    "label": "goblin-elite-joyrider-v1-var-5",
+    "description": "Generated sprite from brief: goblin-elite-joyrider-v1.",
+    "tags": ["generated", "pipeline-approved"],
+    "spriteId": "goblin-elite-joyrider-v1-var-5",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/goblin-elite-joyrider-v1-var-5.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:goblin-elite-joyrider-v1-var-6",
+    "kind": "sprite",
+    "label": "goblin-elite-joyrider-v1-var-6",
+    "description": "Generated sprite from brief: goblin-elite-joyrider-v1.",
+    "tags": ["generated", "pipeline-approved"],
+    "spriteId": "goblin-elite-joyrider-v1-var-6",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/goblin-elite-joyrider-v1-var-6.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
   }
 ]
