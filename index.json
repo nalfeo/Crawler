@@ -1,5 +1,16 @@
 [
   {
+    "commit": "58ff0c129483ee4e57abb4ab377fc471ca0507da",
+    "commitDate": "2026-07-09T10:04:26Z",
+    "commitSubject": "feat: add Azure storage-lifecycle canvas extension (DevTool Slice E) (#987)",
+    "capturedAt": "2026-07-09T10:56:10.598Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29010972419",
+    "winRate": 0.82,
+    "totalWins": 246,
+    "totalRuns": 300,
+    "path": "by-sha/58ff0c129483ee4e57abb4ab377fc471ca0507da.json"
+  },
+  {
     "commit": "195a39b5c0f005c9500e23908721ac7cb44bd3fe",
     "commitDate": "2026-07-09T09:43:44Z",
     "commitSubject": "feat(devtools): achievements editor canvas extension (Slice D) (#983)",
