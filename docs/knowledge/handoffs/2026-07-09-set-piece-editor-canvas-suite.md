@@ -32,11 +32,13 @@ Completed the set-piece editor canvas stack so authored layout and transform cha
 
 - `npm run typecheck`
 - `npm run verify:pr-prereqs` (after adding required PR artifacts)
+- `VERIFY_FULL=1 npm run verify` (executed during PR review follow-up)
 
 ## Unresolved Issues
 
-- None identified for this branch scope.
+- Local full-verify run currently fails in existing welcome-room expectation tests (`tests/unit/set-piece-types.test.ts`, `tests/unit/stamp-set-piece.test.ts`) that assert older authored layout/details.
 
 ## Recommended Next Steps
 
 - Monitor future set-piece editor feature additions to ensure each new authored field is threaded through shared -> core -> game -> engine paths and covered by unit tests.
+- Keep welcome-room fixture expectations synchronized with intentional `set-pieces.json` edits.

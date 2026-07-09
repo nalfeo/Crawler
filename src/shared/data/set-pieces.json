@@ -15561,92 +15561,6 @@
           "sceneLayer": "default"
         },
         {
-          "id": "copy-sconce-left-inner-1783622946850-0",
-          "kind": "decoration",
-          "x": 1.25,
-          "y": 0.25,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "prop-wall-sconce-v1-var-1"
-              },
-              "widthFt": 1.5,
-              "heightFt": 1.5,
-              "offsetYFt": -4
-            }
-          ],
-          "width": 0.5,
-          "height": 0.5,
-          "z": 8,
-          "sceneLayer": "default"
-        },
-        {
-          "id": "copy-sconce-left-inner-1783622968095-0",
-          "kind": "decoration",
-          "x": 7.25,
-          "y": 0.25,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "prop-wall-sconce-v1-var-1"
-              },
-              "widthFt": 1.5,
-              "heightFt": 1.5,
-              "offsetYFt": -4,
-              "flipX": true
-            }
-          ],
-          "width": 0.5,
-          "height": 0.5,
-          "z": 8,
-          "sceneLayer": "default"
-        },
-        {
-          "id": "copy-sconce-left-inner-1783622972093-0",
-          "kind": "decoration",
-          "x": 8.25,
-          "y": 0.25,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "prop-wall-sconce-v1-var-1"
-              },
-              "widthFt": 1.5,
-              "heightFt": 1.5,
-              "offsetYFt": -4,
-              "flipX": true
-            }
-          ],
-          "width": 0.5,
-          "height": 0.5,
-          "z": 8,
-          "sceneLayer": "default"
-        },
-        {
-          "id": "copy-velvet-rope-1783623888080-0",
-          "kind": "decoration",
-          "x": 6,
-          "y": 7,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-velvet-rope-var-2"
-              },
-              "widthFt": 5,
-              "heightFt": 4.06,
-              "rotationDeg": 90,
-              "flipX": true,
-              "flipY": false
-            }
-          ],
-          "z": 40,
-          "sceneLayer": "default"
-        },
-        {
           "id": "door-1783623968560",
           "kind": "door",
           "x": 4,
@@ -15662,43 +15576,6 @@
             }
           ],
           "sceneLayer": "doors"
-        },
-        {
-          "id": "copy-door-1783623968560-1783623998386-0",
-          "kind": "door",
-          "x": 5,
-          "y": 8,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 11,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "doors"
-        },
-        {
-          "id": "copy-welcome-rug-1783626102985-0",
-          "kind": "floor",
-          "x": 5,
-          "y": 2.75,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-rug-var-0"
-              },
-              "widthFt": 14,
-              "heightFt": 8,
-              "flipX": true
-            }
-          ],
-          "width": 2,
-          "z": 0,
-          "sceneLayer": "default"
         }
       ],
       "npcs": [
