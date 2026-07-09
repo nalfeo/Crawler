@@ -1,5 +1,16 @@
 [
   {
+    "commit": "2f62a70adf6c5a72dc397d094c449be5894a10b9",
+    "commitDate": "2026-07-09T09:28:04Z",
+    "commitSubject": "feat: postprocess debugger canvas extension (Slice C) (#986)",
+    "capturedAt": "2026-07-09T10:10:02.224Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29008756212",
+    "winRate": 0.82,
+    "totalWins": 246,
+    "totalRuns": 300,
+    "path": "by-sha/2f62a70adf6c5a72dc397d094c449be5894a10b9.json"
+  },
+  {
     "commit": "73a4ea560b4ce0dc16d710be408b373320b4d28d",
     "commitDate": "2026-07-09T08:43:53Z",
     "commitSubject": "feat(sprites): consolidate 6 approved assets from 1 check-in(s) (#985)",
