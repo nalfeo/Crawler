@@ -19,7 +19,7 @@ test('vendored canvas-harness copies are in sync with the canonical source', () 
       `Run "node scripts/canvas-harness/sync.mjs" to re-vendor.`,
   );
   assert.ok(
-    result.checked.includes('sprite-review'),
-    `expected the sprite-review vendored copy to be checked; checked=${JSON.stringify(result.checked)}`,
+    result.checked.includes('storage'),
+    `expected the storage vendored copy to be checked; checked=${JSON.stringify(result.checked)}`,
   );
 });
