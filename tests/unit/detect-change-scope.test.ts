@@ -29,11 +29,16 @@ interface Scope {
   sprites_touched: boolean;
 }
 
-function run(override: string): Scope {
+function run(override: string, extraEnv: Record<string, string> = {}): Scope {
   const res = spawnSync('bash', [SCRIPT], {
     encoding: 'utf8',
     // GITHUB_OUTPUT='' keeps the script from appending to a real CI output file.
-    env: { ...process.env, SCOPE_FILES_OVERRIDE: override, GITHUB_OUTPUT: '' },
+    env: {
+      ...process.env,
+      ...extraEnv,
+      SCOPE_FILES_OVERRIDE: override,
+      GITHUB_OUTPUT: '',
+    },
   });
   if (res.status !== 0) {
     throw new Error(
@@ -56,12 +61,14 @@ function run(override: string): Scope {
   };
 }
 
-const classify = (files: string[]): Scope => run(files.join('\n'));
+const classify = (files: string[], extraEnv: Record<string, string> = {}): Scope =>
+  run(files.join('\n'), extraEnv);
 
 interface Case {
   name: string;
   files: string[];
   expected: Scope;
+  env?: Record<string, string>;
 }
 
 const F = (
@@ -91,9 +98,16 @@ const cases: Case[] = [
     expected: F(true, false, true, false, false),
   },
   {
-    name: 'package script wiring',
+    name: 'package script wiring (safe split)',
     files: ['package.json'],
+    env: { PACKAGE_JSON_GAMEPLAY_SAFE_OVERRIDE: 'true' },
     expected: F(false, false, true, false, false),
+  },
+  {
+    name: 'package core script wiring (unsafe split)',
+    files: ['package.json'],
+    env: { PACKAGE_JSON_GAMEPLAY_SAFE_OVERRIDE: 'false' },
+    expected: F(false, false, false, false, false),
   },
   {
     name: 'scope classifier script',
@@ -239,7 +253,7 @@ describe('detect-art-only.sh change-scope classifier', () => {
 
   for (const c of cases) {
     it.skipIf(!hasBash)(`classifies ${c.name}`, () => {
-      expect(classify(c.files)).toEqual(c.expected);
+      expect(classify(c.files, c.env ?? {})).toEqual(c.expected);
     });
   }
 });
