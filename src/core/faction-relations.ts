@@ -75,6 +75,16 @@ export interface Floor2State {
   contestedResource: ResourceId;
   /** Betrayer latch — flipped true once the player attacks a Friendly family. */
   betrayerFlag: boolean;
+  /**
+   * Guards the reputation system. When explicitly `false`, `familyRelationshipSystem`
+   * discards queued deltas without applying them and skips passive decay.
+   * `undefined` / `true` = active (backwards-compatible default for labs/tests that
+   * construct `Floor2State` directly).
+   *
+   * Set to `false` at floor init and flipped to `true` by `floor2ObjectiveTick`
+   * once the starter quest chain (settlement-found) is complete.
+   */
+  reputationSystemActive?: boolean;
   /** Boss-defeated family IDs. Populated by floor2ObjectiveTick. */
   decapitatedFamilies?: Set<FamilyId>;
   /** World-space (ft) position of the exit staircase. Set on victory by popFloor2ResourceHeartStairs. */

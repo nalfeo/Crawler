@@ -387,8 +387,13 @@ export function questSystem(world: GameWorld): void {
     evaluateQuest(world, quest, player);
   }
   // Ensure exactly one tracked quest among the actives when possible.
+  // Prefer a visible (non-hidden) quest so the HUD tracker always points to
+  // something the player can actually see. Fall back to any active quest if
+  // all remaining quests are hidden (background-only).
   const active = getActiveQuests(world);
   if (active.length > 0 && !active.some((q) => q.tracked)) {
-    active[0]!.tracked = true;
+    const visible = active.filter((q) => !getQuestDef(q.questId)?.hidden);
+    const toTrack = visible[0] ?? active[0];
+    if (toTrack) toTrack.tracked = true;
   }
 }

@@ -224,6 +224,9 @@ export function buildDenUnlockQuestPack(
       title: `${archetype.title} — ${familyName}`,
       summary: archetype.summary,
       onCompleteGoalFlag: goalId,
+      // Den-unlock kill-counter quests are passive background conditions; they
+      // track mechanically but should never appear in the HUD quest tracker.
+      hidden: true,
       template: {
         kind: 'killTargets',
         targets: [
@@ -503,6 +506,16 @@ export function floor2ObjectiveTick(world: GameWorld): void {
     }
   }
 
+  // Activate the reputation system once the starter quest chain (settlement found)
+  // is complete. This check runs after settlement detection so it fires on the same
+  // tick the player enters the settlement.
+  if (
+    floor2State.reputationSystemActive === false &&
+    world.goalFlags.get(FLOOR2_SETTLEMENT_FOUND_GOAL_ID) === true
+  ) {
+    floor2State.reputationSystemActive = true;
+  }
+
   const decapitated = ensureDecapitatedSet(world);
   let processedEvents = floor2ProcessedCombatEvents.get(world);
   if (!processedEvents) {
@@ -698,6 +711,9 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
       presentFamilies: roster.presentFamilies.slice(),
       contestedResource: roster.contestedResource,
       betrayerFlag: false,
+      // Reputation system starts locked; unlocked by floor2ObjectiveTick once
+      // the settlement-found starter quest completes.
+      reputationSystemActive: false,
     },
     trashTerritories: assignQuadrantTrashTerritories(world),
     ambientEnemyArchetypes: new Map<number, string>(),
@@ -707,6 +723,13 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
   setGoalFlag(world, FLOOR2_STAIRS_POPPED_GOAL_ID, false);
   setGoalFlag(world, FLOOR2_TIMEOUT_GOAL_ID, false);
   setGoalFlag(world, FLOOR2_SETTLEMENT_FOUND_GOAL_ID, false);
+
+  // All Floor 1 progressive systems are active from the start of Floor 2.
+  // Players arrive here having already unlocked these features on Floor 1.
+  world.featureUnlocks.inventory = true;
+  world.featureUnlocks.equipment = true;
+  world.featureUnlocks.spells = true;
+  setGoalFlag(world, 'floor1-drops-unlocked', true);
 
   removeStatModifiers(world, 'floor', 'floor2-manifest-player');
   if (manifest.player.moveSpeedBonus > 0) {

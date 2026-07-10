@@ -154,6 +154,8 @@ describe('initializeFloor2Scenario manifest validation', () => {
         getQuestDef(questId)?.objectives.every((objective) => objective.kind === 'counter'),
       ),
     ).toBe(true);
+    // Den-unlock quests are passive background counters — they must be hidden.
+    expect(denQuestIds.every((questId) => getQuestDef(questId)?.hidden === true)).toBe(true);
   });
 
   it('completes the starter quest the first time the player enters the settlement area', () => {
@@ -181,12 +183,16 @@ describe('initializeFloor2Scenario manifest validation', () => {
     expect(world.goalFlags.get(FLOOR2_SETTLEMENT_FOUND_GOAL_ID)).toBe(true);
     expect(world.questLog.get(FLOOR2_FIND_SETTLEMENT_QUEST_ID)?.status).toBe('complete');
     expect(world.questLog.get(FLOOR2_FIND_SETTLEMENT_QUEST_ID)?.tracked).toBe(false);
+    // Den-unlock quests are hidden; questSystem prefers non-hidden quests for
+    // tracking. With no visible quests remaining, no visible quest is tracked.
+    // (The hidden fallback may technically track a hidden quest, but the HUD
+    // filters it out so the player sees nothing in the tracker.)
     expect(
       [...world.questLog.values()].some(
         (quest) =>
-          quest.status === 'active' && quest.questId.startsWith('floor2-den-') && quest.tracked,
+          quest.status === 'active' && quest.tracked && !getQuestDef(quest.questId)?.hidden,
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   // This determinism guard generates two full Floor 2 scenario worlds (cave-system
@@ -305,6 +311,42 @@ describe('initializeFloor2Scenario manifest validation', () => {
     );
     expect(cave?.regionSeparationTiles).toBe(FLOOR2_CAVE_SYSTEM_DEFAULTS.regionSeparationTiles);
     expect(cave?.maxRetries).toBe(FLOOR2_CAVE_SYSTEM_DEFAULTS.maxRetries);
+  });
+
+  it('activates all Floor 1 feature unlocks at Floor 2 start', () => {
+    const { world, playerEid } = createScenarioWorld();
+    initializeFloor2Scenario(world, playerEid);
+
+    expect(world.featureUnlocks.inventory).toBe(true);
+    expect(world.featureUnlocks.equipment).toBe(true);
+    expect(world.featureUnlocks.spells).toBe(true);
+    expect(world.goalFlags.get('floor1-drops-unlocked')).toBe(true);
+  });
+
+  it('starts with the reputation system locked and activates it after settlement is found', () => {
+    const { world, playerEid } = createScenarioWorld();
+    initializeFloor2Scenario(world, playerEid);
+
+    // Reputation system is initially disabled.
+    expect(world.floorExtendedState?.familyState?.reputationSystemActive).toBe(false);
+
+    // Move player into the settlement room.
+    const settlementRoomId = world.floorExtendedState?.settlement?.settlementRoomId;
+    expect(settlementRoomId).toBeDefined();
+    const settlementRoom = world.floorMap?.roomGraph.get(settlementRoomId!);
+    expect(settlementRoom).toBeDefined();
+    const tile = settlementRoom?.interiorCells?.[0] ?? {
+      x: settlementRoom!.bounds.x + Math.floor(settlementRoom!.bounds.width / 2),
+      y: settlementRoom!.bounds.y + Math.floor(settlementRoom!.bounds.height / 2),
+    };
+    const pos = world.floorMap!.tileToWorld(tile.x, tile.y);
+    world.stores.position.x[playerEid] = pos.x;
+    world.stores.position.y[playerEid] = pos.y;
+
+    floor2ObjectiveTick(world);
+
+    // After finding the settlement, the reputation system should be active.
+    expect(world.floorExtendedState?.familyState?.reputationSystemActive).toBe(true);
   });
 });
 
