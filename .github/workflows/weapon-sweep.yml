@@ -70,7 +70,7 @@ jobs:
     timeout-minutes: 300
     strategy:
       matrix:
-        weapon: ${{ fromJson(needs.setup.outputs.weapon_matrix) }}
+        weapon: ${{ fromJSON(needs.setup.outputs.weapon_matrix) }}
       fail-fast: false
     steps:
       - uses: actions/checkout@v4

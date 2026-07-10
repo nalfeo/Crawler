@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
  * docs/check-session-instructions.ts — Keep the two top-level session
- * instruction files aligned on kickoff behavior.
+ * instruction files aligned on required session policy bullets.
  *
  * Deterministic, LLM-free. Asserts that both `AGENTS.md` and
- * `.github/copilot-instructions.md` contain the same explicit kickoff rules:
+ * `.github/copilot-instructions.md` contain the same explicit required rules:
  *   1. give an upfront recommendation verdict (recommended / risky /
  *      not recommended) with a short reason
  *   2. write plans in session chat unless the human explicitly asks for a file
@@ -33,11 +33,11 @@ async function main(): Promise<void> {
     for (const line of REQUIRED_LINES) {
       if (!text.includes(line)) {
         report.error(
-          `Top-level session instruction is missing the mirrored kickoff rule: \`${line}\``,
+          `Top-level session instruction is missing the mirrored required policy line: \`${line}\``,
           {
             file,
             remediation:
-              'Copy the exact mirrored kickoff bullet into both AGENTS.md and .github/copilot-instructions.md.',
+              'Copy the exact mirrored policy bullet into both AGENTS.md and .github/copilot-instructions.md.',
           },
         );
       }
