@@ -89,6 +89,10 @@ function writeText(res, status, text, contentType = 'text/plain; charset=utf-8')
   res.end(text);
 }
 
+function errorMessage(err) {
+  return err instanceof Error ? err.message : String(err);
+}
+
 function looksLikeWebResponse(value) {
   return (
     !!value &&
@@ -194,15 +198,17 @@ export async function startCanvasServer(options) {
     try {
       return await buildState();
     } catch (err) {
-      log(`buildState failed: ${err?.message ?? err}`, 'error');
-      return { error: String(err?.message ?? err) };
+      const message = errorMessage(err);
+      log(`buildState failed: ${message}`, 'error');
+      return { error: message };
     }
   }
 
   const server = createServer((req, res) => {
     handleRequest(req, res).catch((err) => {
-      log(`unhandled request error: ${err?.message ?? err}`, 'error');
-      if (!res.headersSent) writeJson(res, 500, { error: String(err?.message ?? err) });
+      const message = errorMessage(err);
+      log(`unhandled request error: ${message}`, 'error');
+      if (!res.headersSent) writeJson(res, 500, { error: message });
       else res.destroy();
     });
   });
@@ -249,8 +255,9 @@ export async function startCanvasServer(options) {
       }
       writeJson(res, result.status ?? 200, result.json ?? result, result.headers ?? {});
     } catch (err) {
-      log(`json route ${route.path} failed: ${err?.message ?? err}`, 'warn');
-      if (!res.headersSent) writeJson(res, 502, { error: String(err?.message ?? err) });
+      const message = errorMessage(err);
+      log(`json route ${route.path} failed: ${message}`, 'warn');
+      if (!res.headersSent) writeJson(res, 502, { error: message });
     }
   }
 
@@ -268,8 +275,9 @@ export async function startCanvasServer(options) {
       }
       await relayPlainBinary(res, result, log);
     } catch (err) {
-      log(`binary route ${route.path} failed: ${err?.message ?? err}`, 'warn');
-      if (!res.headersSent) writeJson(res, 502, { error: String(err?.message ?? err) });
+      const message = errorMessage(err);
+      log(`binary route ${route.path} failed: ${message}`, 'warn');
+      if (!res.headersSent) writeJson(res, 502, { error: message });
     }
   }
 
