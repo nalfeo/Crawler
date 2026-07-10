@@ -49,6 +49,8 @@ export interface SetPiecePropRender {
   /** Mirror the sprite horizontally / vertically at render time. */
   readonly flipX?: boolean;
   readonly flipY?: boolean;
+  /** Optional clockwise rotation in degrees. */
+  readonly rotationDeg?: number;
   /** Optional tint as `#rrggbb`, applied to the sprite or placeholder. */
   readonly tintHex?: string;
   /** Human-readable label used for the placeholder fallback + debugging. */

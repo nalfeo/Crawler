@@ -1,5 +1,7 @@
 /** NPC definitions, quest data, and runtime state types. */
 
+import type { SpriteRef } from './set-piece-types.js';
+
 export interface NpcQuestDef {
   questId: string;
   title: string;
@@ -32,6 +34,15 @@ export interface NpcQuestState {
 /** Runtime instance state for a spawned NPC (sidecar, keyed by eid). */
 export interface NpcInstance {
   defId: string;
+  /** Optional per-instance visual override from authored set-piece data. */
+  spriteOverride?: SpriteRef;
+  /** Optional per-instance sprite mirror flags. */
+  flipX?: boolean;
+  flipY?: boolean;
+  /** Optional per-instance clockwise sprite rotation in degrees. */
+  rotationDeg?: number;
+  /** Optional local z-order carried from authored set-piece NPC metadata. */
+  z?: number;
   /** Index of the next dialogue line to show. */
   dialogueIndex: number;
   quests: NpcQuestState[];

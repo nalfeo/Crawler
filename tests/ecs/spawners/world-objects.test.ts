@@ -62,6 +62,11 @@ describe('spawnNpc', () => {
     expect(spawnNpc(world, 0, 0, 'does-not-exist')).toBe(-1);
   });
 
+  it('returns -1 for an unknown defId even when options are malformed', () => {
+    const world = createTestWorld();
+    expect(spawnNpc(world, 0, 0, 'does-not-exist', { widthFt: 4 })).toBe(-1);
+  });
+
   it('attaches a per-axis BOX Size matching def.widthFt/heightFt (Slice-1 legacy parity)', () => {
     // NPC defs are non-square (e.g. 2.5×3.5). The legacy pre-Size collision
     // path read `sprite.width/2 × sprite.height/2` — a per-axis box. A
@@ -77,6 +82,38 @@ describe('spawnNpc', () => {
     expect(world.stores.size.radius[eid]).toBe(0);
     expect(world.stores.size.halfWidth[eid]).toBeCloseTo((def?.widthFt ?? 0) * 0.5);
     expect(world.stores.size.halfHeight[eid]).toBeCloseTo((def?.heightFt ?? 0) * 0.5);
+  });
+
+  it('throws when only one NPC size override axis is supplied', () => {
+    const world = createTestWorld();
+    expect(() => spawnNpc(world, 0, 0, 'tutorial-goon', { widthFt: 4 })).toThrow(
+      /widthFt and heightFt/,
+    );
+  });
+
+  it('applies paired size + visual overrides onto sprite, size, and npc instance metadata', () => {
+    const world = createTestWorld();
+    const eid = spawnNpc(world, 10, 20, 'tutorial-goon', {
+      widthFt: 4,
+      heightFt: 5,
+      spriteOverride: { source: 'catalog', spriteId: 'sprite:npc.guide' },
+      flipX: true,
+      flipY: true,
+      rotationDeg: 45,
+      z: 6,
+    });
+
+    expect(world.stores.sprite.width[eid]).toBeCloseTo(4);
+    expect(world.stores.sprite.height[eid]).toBeCloseTo(5);
+    expect(world.stores.size.halfWidth[eid]).toBeCloseTo(2);
+    expect(world.stores.size.halfHeight[eid]).toBeCloseTo(2.5);
+    expect(world.npcs.get(eid)).toMatchObject({
+      spriteOverride: { source: 'catalog', spriteId: 'sprite:npc.guide' },
+      flipX: true,
+      flipY: true,
+      rotationDeg: 45,
+      z: 6,
+    });
   });
 });
 
