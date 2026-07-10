@@ -190,7 +190,6 @@ export function createAchievementsUI(
   function makeRow(def: AchievementDef, x: number, y: number, w: number): number {
     const isExpanded = expandedIds.has(def.id);
     const claimed = lastWorld?.achievements.claimedIds.has(def.id) === true;
-<<<<<<< HEAD
     const rewardColumnWidth = 150;
     const detailsWidth = w - 180;
     const flavorWrapW = detailsWidth;
@@ -238,7 +237,6 @@ export function createAchievementsUI(
       fontFamily: FONT_FAMILY,
       fontSize: '13px',
       color: hex(COLORS.textSecondary),
-<<<<<<< HEAD
       wordWrap: { width: detailsWidth },
     });
     container.add(crit);
@@ -248,7 +246,6 @@ export function createAchievementsUI(
       fontFamily: FONT_FAMILY,
       fontSize: '12px',
       color: hex(COLORS.flavor),
-<<<<<<< HEAD
       lineSpacing: 2,
       wordWrap: { width: detailsWidth },
       maxLines: isLong && !isExpanded ? FLAVOR_COLLAPSED_LINES : 0,
@@ -275,7 +272,6 @@ export function createAchievementsUI(
     }
 
     const btnLabel = claimed ? rewardReveal(def.reward) : `Open: ${rewardLabel(def.reward)}`;
-<<<<<<< HEAD
     const btn = crispText(x + w - 12, y + 14, btnLabel, {
       fontFamily: FONT_FAMILY,
       fontSize: '12px',
