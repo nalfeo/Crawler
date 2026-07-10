@@ -15,7 +15,7 @@
 import { query } from 'bitecs';
 import type { GameWorld } from '../../core/index.js';
 import { Player, Position } from '../../core/index.js';
-import { AIState, type AIInputProvider } from './types.js';
+import { AIState, AIDecisionDebugState, type AIInputProvider } from './types.js';
 import {
   confirmFloor1StairDescend,
   equipPurchasedGear,
@@ -32,7 +32,8 @@ import type { PrimaryStatId } from '../../shared/stats.js';
 
 /** Frames between auto NPC-talk attempts (debounce repeated `meet*` calls). */
 export const NPC_INTERACTION_COOLDOWN = 30; // frames
-const TUTORIAL_GOON_HANDOFF_DISTANCE_FT = 188;
+/** Fallback interaction radius for tutorial-goon when explore-dwell watchdog has fired. */
+export const TUTORIAL_GOON_HANDOFF_DISTANCE_FT = 188;
 
 /**
  * Headless-compatible NPC interaction system.
@@ -50,8 +51,15 @@ export function autoNpcInteractionSystem(
   }
 
   const decision = aiProvider.getDecision();
+  // Fallback for tutorial-goon seek: allow extended-radius interaction ONLY when
+  // the explore-dwell watchdog has fired and suppressed the progress goal
+  // (i.e. the AI has been stuck trying to reach the goon and the watchdog kicked
+  // in). This prevents immediate first-frame completion when the goon happens to
+  // spawn within the radius before the AI has navigated toward the Welcome Office.
   const tutorialSeekFallback =
-    decision.state === AIState.EXPLORE && decision.reason.includes('Tutorial Goon');
+    decision.state === AIState.EXPLORE &&
+    decision.reason.includes('Tutorial Goon') &&
+    decision.debug?.state === AIDecisionDebugState.SUPPRESSED_PROGRESS_NAV;
   if (decision.state !== AIState.INTERACT && !tutorialSeekFallback) {
     return lastInteractionFrame;
   }

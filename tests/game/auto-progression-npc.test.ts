@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
   NPC_INTERACTION_COOLDOWN,
+  TUTORIAL_GOON_HANDOFF_DISTANCE_FT,
   autoAllocateStatPoints,
   autoFloor1ProgressionSystem,
   autoNpcInteractionSystem,
 } from '../../src/game/ai/auto-progression.js';
-import { AIState, type AIDecision, type AIInputProvider } from '../../src/game/ai/types.js';
+import {
+  AIState,
+  AIDecisionDebugState,
+  AIProgressSuppressionSource,
+  type AIDecision,
+  type AIInputProvider,
+} from '../../src/game/ai/types.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import type { NpcInstance } from '../../src/shared/npc-types.js';
 import type { GameWorld } from '../../src/core/world.js';
@@ -210,6 +217,119 @@ describe('autoNpcInteractionSystem', () => {
         30,
       ),
     ).toBe(100);
+  });
+
+  describe('EXPLORE tutorial-goon fallback (dwell-gated)', () => {
+    function suppressedProgressNavDebug() {
+      return {
+        state: AIDecisionDebugState.SUPPRESSED_PROGRESS_NAV,
+        reason: 'progressGoalSuppressed' as const,
+        source: AIProgressSuppressionSource.EXPLORE_DWELL_FIXED_POSITION_TARGET,
+        criticalChainPhase: 'pre-chain' as const,
+        blockedTargetReason: 'Tutorial Goon',
+        suppressedUntilFrame: 9999,
+        remainingFrames: 9899,
+      };
+    }
+
+    it('does NOT interact on a plain EXPLORE tutorial-seek without dwell-suppression debug', () => {
+      const world = createTestWorld();
+      const player = spawnPlayer(world, 0, 0);
+      world.stores.position.x[player] = 0;
+      world.stores.position.y[player] = 0;
+      addNpc(world, 20, { defId: 'tutorial-goon', nearbyPlayer: false });
+      world.stores.position.x[20] = 50;
+      world.stores.position.y[20] = 0;
+      const result = autoNpcInteractionSystem(
+        world,
+        fakeProvider(
+          decision({
+            state: AIState.EXPLORE,
+            reason: 'Tutorial Goon',
+            targetEid: 20,
+            debug: null, // no suppression signal
+          }),
+        ),
+        0,
+        100,
+        30,
+      );
+      expect(result).toBe(0); // no interaction
+    });
+
+    it('does NOT interact when suppressed but goon is outside the fallback radius', () => {
+      const world = createTestWorld();
+      const player = spawnPlayer(world, 0, 0);
+      world.stores.position.x[player] = 0;
+      world.stores.position.y[player] = 0;
+      addNpc(world, 21, { defId: 'tutorial-goon', nearbyPlayer: false });
+      // Place goon 1 ft beyond the threshold
+      world.stores.position.x[21] = TUTORIAL_GOON_HANDOFF_DISTANCE_FT + 1;
+      world.stores.position.y[21] = 0;
+      const result = autoNpcInteractionSystem(
+        world,
+        fakeProvider(
+          decision({
+            state: AIState.EXPLORE,
+            reason: 'Tutorial Goon',
+            targetEid: 21,
+            debug: suppressedProgressNavDebug(),
+          }),
+        ),
+        0,
+        100,
+        30,
+      );
+      expect(result).toBe(0); // outside radius, no interaction
+    });
+
+    it('interacts when suppressed AND goon is within the fallback radius', () => {
+      const world = createTestWorld();
+      const player = spawnPlayer(world, 0, 0);
+      world.stores.position.x[player] = 0;
+      world.stores.position.y[player] = 0;
+      addNpc(world, 22, { defId: 'tutorial-goon', nearbyPlayer: false });
+      // Place goon exactly at the threshold boundary
+      world.stores.position.x[22] = TUTORIAL_GOON_HANDOFF_DISTANCE_FT;
+      world.stores.position.y[22] = 0;
+      const result = autoNpcInteractionSystem(
+        world,
+        fakeProvider(
+          decision({
+            state: AIState.EXPLORE,
+            reason: 'Tutorial Goon',
+            targetEid: 22,
+            debug: suppressedProgressNavDebug(),
+          }),
+        ),
+        0,
+        100,
+        30,
+      );
+      expect(result).toBe(100); // within radius + suppressed → interact
+      expect(world.goalFlags.get('floor1-drops-unlocked')).toBe(true);
+    });
+
+    it('does NOT trigger for a generic EXPLORE decision unrelated to tutorial-goon', () => {
+      const world = createTestWorld();
+      spawnPlayer(world, 0, 0);
+      addNpc(world, 23, { defId: 'shopkeeper', nearbyPlayer: false });
+      const result = autoNpcInteractionSystem(
+        world,
+        fakeProvider(
+          decision({
+            state: AIState.EXPLORE,
+            reason: 'Exploring frontier',
+            targetEid: 23,
+            debug: suppressedProgressNavDebug(),
+          }),
+        ),
+        0,
+        100,
+        30,
+      );
+      expect(result).toBe(0); // reason does not include 'Tutorial Goon'
+    });
   });
 });
 

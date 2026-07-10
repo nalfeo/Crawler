@@ -2313,7 +2313,14 @@ export class BehaviorTreeAI implements AIInputProvider {
     const fixedPositionProgressTarget =
       targetEid === null ||
       targetEid < 0 ||
-      (targetEid >= 0 && !hasComponent(world.ecs, targetEid, Enemy));
+      // Only suppress for NPC-backed progress goals (Tutorial Goon, Shopkeeper,
+      // etc.). Gold piles, dropped items, and Floor-2 resource targets are also
+      // non-enemy entity-backed but must not start the progress suppression window
+      // — they are not stuck navigation targets, just collectible goals that may
+      // temporarily be unreachable.
+      (targetEid >= 0 &&
+        hasComponent(world.ecs, targetEid, Npc) &&
+        !hasComponent(world.ecs, targetEid, Enemy));
     if (fixedPositionProgressTarget) {
       this.progressGoalSuppressedUntilFrame = currentFrame + PROGRESS_SUPPRESS_FRAMES;
       this.progressGoalSuppressionSource =
