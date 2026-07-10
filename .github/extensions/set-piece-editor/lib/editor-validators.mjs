@@ -150,33 +150,7 @@ function validateLayer(layer, index) {
     issues.push('layers[' + index + '].sprite is required');
     return issues;
   }
-  if (sprite.source === 'catalog') {
-    if (typeof sprite.spriteId !== 'string' || sprite.spriteId.trim() === '') {
-      issues.push('layers[' + index + '].sprite.spriteId is required');
-    }
-  } else if (sprite.source === 'sheet') {
-    if (typeof sprite.sheetKey !== 'string' || sprite.sheetKey.trim() === '') {
-      issues.push('layers[' + index + '].sprite.sheetKey is required');
-    }
-    if (!Number.isInteger(sprite.col) || sprite.col < 0) {
-      issues.push('layers[' + index + '].sprite.col must be a non-negative integer');
-    }
-    if (!Number.isInteger(sprite.row) || sprite.row < 0) {
-      issues.push('layers[' + index + '].sprite.row must be a non-negative integer');
-    }
-  } else if (sprite.source === 'custom') {
-    if (typeof sprite.requestId !== 'string' || sprite.requestId.trim() === '') {
-      issues.push('layers[' + index + '].sprite.requestId is required');
-    }
-    if (typeof sprite.label !== 'string' || sprite.label.trim() === '') {
-      issues.push('layers[' + index + '].sprite.label is required');
-    }
-    if (typeof sprite.prompt !== 'string' || sprite.prompt.trim() === '') {
-      issues.push('layers[' + index + '].sprite.prompt is required');
-    }
-  } else {
-    issues.push('layers[' + index + '].sprite.source must be catalog, sheet, or custom');
-  }
+  issues.push(...validateSpriteRefLike(sprite, 'layers[' + index + '].sprite'));
   if (
     (layer.widthFt === undefined) !== (layer.heightFt === undefined) ||
     (layer.widthFt !== undefined && !asFinitePositive(layer.widthFt)) ||
