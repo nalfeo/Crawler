@@ -851,7 +851,7 @@ var TERRAIN_DEPTH=-20;
 var ENTITY_DEPTH=0;
 var NPC_TERRAIN_MARGIN=0.001;
 function setPieceZToDepth(z){if(z<20)return -19+z*0.8;return 2+(z-20)*0.1;}
-function nativeLayerTiles(sprite){
+function getNativeSpriteTileDimensions(sprite){
   if(sprite&&sprite.source==='custom')return{w:nnum(sprite.widthTiles,1),h:nnum(sprite.heightTiles,1)};
   return{w:1,h:1};
 }
@@ -1335,7 +1335,7 @@ function drawProp(prop,sel,ad){
   var sprited=false;
   layers.forEach(function(layer,layerIndex){
     if(!layer||!layer.sprite)return;
-    var nativeTiles=layerIndex===0?{w:pw,h:ph}:nativeLayerTiles(layer.sprite);
+    var nativeTiles=layerIndex===0?{w:pw,h:ph}:getNativeSpriteTileDimensions(layer.sprite);
     var targetW=(layer.widthFt!==undefined&&layer.heightFt!==undefined)
       ?(Math.max(0.25,nnum(layer.widthFt,FEET_PER_TILE))/FEET_PER_TILE)*ts
       :(nativeTiles.w*ts);

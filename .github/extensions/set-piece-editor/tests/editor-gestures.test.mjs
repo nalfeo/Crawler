@@ -121,22 +121,24 @@ async function canvasPoint(page, tileX, tileY) {
   };
 }
 
-test('production source clamps negative NPC depth above terrain', () => {
-  assert.match(
-    EXTENSION_SOURCE,
-    /Math\.max\(TERRAIN_DEPTH\+NPC_TERRAIN_MARGIN,setPieceZToDepth\(localZ\)\)/,
-  );
+test('production globals clamp negative NPC depth above terrain', async () => {
+  await withEditor(createPack(), async ({ page }) => {
+    const depth = await page.evaluate(() => globalZ('default', 'npc', -10));
+    assert.equal(depth, -19.999);
+  });
 });
 
-test('production source uses native size for later layers', () => {
-  assert.match(
-    EXTENSION_SOURCE,
-    /function nativeLayerTiles\(sprite\)\{\s*if\(sprite&&sprite.source==='custom'\)return\{w:nnum\(sprite.widthTiles,1\),h:nnum\(sprite.heightTiles,1\)\};\s*return\{w:1,h:1\};\s*\}/,
-  );
-  assert.match(
-    EXTENSION_SOURCE,
-    /var nativeTiles=layerIndex===0\?\{w:pw,h:ph\}:nativeLayerTiles\(layer\.sprite\);/,
-  );
+test('production globals expose custom sprite native tile dimensions', async () => {
+  await withEditor(createPack(), async ({ page }) => {
+    const dims = await page.evaluate(() =>
+      getNativeSpriteTileDimensions({ source: 'custom', widthTiles: 2, heightTiles: 3 }),
+    );
+    assert.deepEqual(dims, { w: 2, h: 3 });
+    const fallback = await page.evaluate(() =>
+      getNativeSpriteTileDimensions({ source: 'catalog', spriteId: 'sprite:item.gem' }),
+    );
+    assert.deepEqual(fallback, { w: 1, h: 1 });
+  });
 });
 
 test('hover tooltip reports the real default NPC depth', async () => {
