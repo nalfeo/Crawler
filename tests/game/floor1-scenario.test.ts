@@ -344,7 +344,7 @@ describe('floor1Scenario', () => {
         }
       }
     }
-
+    expect(validated.size).toBeGreaterThan(0);
     expect(validated.size).toBeGreaterThan(0);
   });
 

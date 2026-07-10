@@ -188,9 +188,74 @@ test('same-z overlaps prefer props over NPCs via runtime layer epsilon parity', 
     npcs: [{ id: 'npc-a', npcTypeId: 'tutorial-goon', x: 1, y: 1, z: 20, widthFt: 4, heightFt: 4 }],
   });
   await withEditor(t, pack, async ({ page }) => {
+    const drawOrder = await page.evaluate(() => {
+      const drawables = [];
+      sp.props.forEach((p, i) => {
+        const lid = propLayer(p);
+        if (!layerVisible(lid)) return;
+        drawables.push({ kind: 'prop', idx: i, z: propRenderZ(lid, getZ(p), i) });
+      });
+      (sp.npcs || []).forEach((n, ni) => {
+        const lid = npcLayer(n);
+        if (!layerVisible(lid)) return;
+        drawables.push({ kind: 'npc', idx: ni, z: globalZ(lid, 'npc', n.z) });
+      });
+      drawables.sort((a, b) => {
+        if (a.z !== b.z) return a.z - b.z;
+        if (a.kind === b.kind) return 0;
+        return a.kind === 'npc' ? -1 : 1;
+      });
+      return drawables.map((d) => d.kind);
+    });
+    assert.deepEqual(drawOrder, ['npc', 'prop']);
     const topHit = await page.evaluate(() => hitTop(1.5 * S.tileSize, 1.5 * S.tileSize));
     assert.equal(topHit.kind, 'prop');
     assert.equal(topHit.idx, 0);
+  });
+});
+
+test('tinted prop layers use multiplicative tinting parity in rendered pixels', async (t) => {
+  const pack = createPack({
+    props: [
+      {
+        id: 'plain',
+        kind: 'floor',
+        x: 1,
+        y: 1,
+        width: 1,
+        height: 1,
+        layers: [{ sprite: { source: 'catalog', spriteId: 'sprite:item.gem' } }],
+      },
+      {
+        id: 'tinted',
+        kind: 'floor',
+        x: 3,
+        y: 1,
+        width: 1,
+        height: 1,
+        layers: [
+          { sprite: { source: 'catalog', spriteId: 'sprite:item.gem' }, tintHex: '#00ff00' },
+        ],
+      },
+    ],
+  });
+  await withEditor(t, pack, async ({ page }) => {
+    const sampled = await page.evaluate(() => {
+      const ctx = document.getElementById('gc').getContext('2d');
+      const ts = S.tileSize;
+      const plain = Array.from(
+        ctx.getImageData(Math.floor(1.5 * ts), Math.floor(1.5 * ts), 1, 1).data,
+      );
+      const tinted = Array.from(
+        ctx.getImageData(Math.floor(3.5 * ts), Math.floor(1.5 * ts), 1, 1).data,
+      );
+      return { plain, tinted };
+    });
+    assert.equal(sampled.plain[3] > 0, true);
+    assert.equal(sampled.tinted[3] > 0, true);
+    assert.equal(sampled.tinted[0], 0);
+    assert.equal(sampled.tinted[2], 0);
+    assert.equal(sampled.tinted[1] > 0, true);
   });
 });
 

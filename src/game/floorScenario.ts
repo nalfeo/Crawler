@@ -1163,10 +1163,16 @@ function applyWelcomeRoomStructuralTiles(world: GameWorld, stamp: StampedSetPiec
         const tx = stampedProp.tileX + dx;
         const ty = stampedProp.tileY + dy;
         if (!floorMap.tileMap.inBounds(tx, ty)) continue;
+        const idx = ty * mapWidth + tx;
         if (prop.kind === 'door') {
           floorMap.tileMap.setFlags(tx, ty, TilePresets.DOOR_OPEN);
+          floorMap.terrain[idx] = terrain;
+        } else if (floorMap.terrain[idx] !== TerrainType.DOOR) {
+          if (!floorMap.tileMap.isPassable(tx, ty)) {
+            floorMap.tileMap.setFlags(tx, ty, TilePresets.WALL);
+          }
+          floorMap.terrain[idx] = terrain;
         }
-        floorMap.terrain[ty * mapWidth + tx] = terrain;
       }
     }
   }
