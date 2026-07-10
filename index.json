@@ -22,6 +22,17 @@
     "path": "by-sha/60580aadd7e791c6f200d2f1e3cf6a241a477e1b.json"
   },
   {
+    "commit": "5272a0a4aae904e084105d4dcceefac40ebfc9be",
+    "commitDate": "2026-07-10T08:42:45-07:00",
+    "commitSubject": "ci: scope docs-only PR checks (#922)",
+    "capturedAt": "2026-07-10T16:16:43.867Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29105157410",
+    "winRate": 0.8366666666666667,
+    "totalWins": 251,
+    "totalRuns": 300,
+    "path": "by-sha/5272a0a4aae904e084105d4dcceefac40ebfc9be.json"
+  },
+  {
     "commit": "78958b1131594cb9b9826e65e12ac148e537279e",
     "commitDate": "2026-07-10T08:09:03Z",
     "commitSubject": "feat: set-piece editor/runtime WYSIWYG parity follow-ups (#998)",
