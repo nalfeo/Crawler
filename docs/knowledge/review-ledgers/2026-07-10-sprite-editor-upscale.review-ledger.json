@@ -3,19 +3,6 @@
   "date": "2026-07-10",
   "session_slug": "sprite-editor-upscale",
   "task_title": "Add offline upscale controls to the postprocess sprite editor",
-  "estimated_apples": 3,
-  "stages": {
-    "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "plan_divergence": "",
-      "notes": ""
-    },
-    "code_review": {
-      "clean": false,
-      "rounds": []
-    }
-  }
+  "estimated_apples": 2,
+  "stages": {}
 }
