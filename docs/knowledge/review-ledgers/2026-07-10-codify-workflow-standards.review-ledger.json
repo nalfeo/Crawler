@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-10",
+  "session_slug": "codify-workflow-standards",
+  "task_title": "Codify sweep and investigation workflow standards",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "convergent",
+      "notes": "Reviewed approach before implementation: mirror top-level guidance, codify policy boundaries, and add explicit GitHub workflow-dispatch hook for broad sweeps."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
