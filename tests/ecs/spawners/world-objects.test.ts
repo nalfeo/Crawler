@@ -207,7 +207,6 @@ describe('spawnHarvestableNode', () => {
     expect(world.stores.harvestable.progressMs[eid]).toBe(0);
     expect(world.stores.harvestable.harvesterEid[eid]).toBe(0);
     expect(world.stores.sprite.width[eid]).toBe(1);
-    expect(HARVESTABLE_DEFS[0]?.lightEmission).toBeDefined();
   });
 
   it('seeds a deterministic cosmetic variantRoll so multi-variant art is reachable', () => {

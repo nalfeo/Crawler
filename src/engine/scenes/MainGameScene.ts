@@ -124,13 +124,19 @@ const FLOOR_1_COMMENTARY = {
 } as const;
 const logger = createLogger('engine:main-game-scene');
 
-function isSetPieceLightSpriteId(spriteId: string): boolean {
-  return (
-    spriteId.includes('sconce') ||
-    spriteId.includes('lantern') ||
-    spriteId.includes('torch') ||
-    spriteId.includes('mushroom')
-  );
+function resolveSetPieceLightEmission(
+  spriteId: string,
+): { radiusFt: number; intensity: number } | null {
+  if (/^prop-wall-sconce-v1-var-\d+$/.test(spriteId)) {
+    return { radiusFt: SET_PIECE_LIGHT_RADIUS_FT, intensity: SET_PIECE_LIGHT_INTENSITY };
+  }
+  if (/^prop-torch-v1-var-\d+$/.test(spriteId)) {
+    return { radiusFt: SET_PIECE_LIGHT_RADIUS_FT, intensity: SET_PIECE_LIGHT_INTENSITY };
+  }
+  if (/^prop-lantern-v\d+-var-\d+$/.test(spriteId)) {
+    return { radiusFt: SET_PIECE_LIGHT_RADIUS_FT, intensity: SET_PIECE_LIGHT_INTENSITY };
+  }
+  return null;
 }
 
 export interface MainGameSceneOptions {
@@ -1681,6 +1687,9 @@ export class MainGameScene extends Phaser.Scene {
     }
     for (const harvestableEid of query(this.world.ecs, [Harvestable, Position])) {
       const defIndex = this.world.stores.harvestable.defIndex[harvestableEid] ?? -1;
+      if (defIndex < 0 || defIndex >= HARVESTABLE_DEFS.length) {
+        continue;
+      }
       const lightEmission = HARVESTABLE_DEFS[defIndex]?.lightEmission;
       if (lightEmission === undefined) {
         continue;
@@ -1694,14 +1703,18 @@ export class MainGameScene extends Phaser.Scene {
     }
     for (const setPieceProp of this.world.setPieceProps) {
       const sprite = setPieceProp.render.sprite;
-      if (sprite.source !== 'catalog' || !isSetPieceLightSpriteId(sprite.spriteId)) {
+      if (sprite.source !== 'catalog') {
+        continue;
+      }
+      const lightEmission = resolveSetPieceLightEmission(sprite.spriteId);
+      if (lightEmission === null) {
         continue;
       }
       lightSources.push({
         x: ftToPx(setPieceProp.x),
         y: ftToPx(setPieceProp.y),
-        radiusPx: ftToPx(SET_PIECE_LIGHT_RADIUS_FT),
-        intensity: SET_PIECE_LIGHT_INTENSITY,
+        radiusPx: ftToPx(lightEmission.radiusFt),
+        intensity: lightEmission.intensity,
       });
     }
 
