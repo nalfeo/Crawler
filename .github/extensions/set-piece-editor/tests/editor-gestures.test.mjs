@@ -126,8 +126,11 @@ async function canvasPoint(page, tileX, tileY) {
 
 test('production globals clamp negative NPC depth above terrain', async () => {
   await withEditor(createPack(), async ({ page }) => {
-    const depth = await page.evaluate(() => globalZ('default', 'npc', -10));
-    assert.equal(depth, -19.999);
+    const { depth, expected } = await page.evaluate(() => ({
+      depth: globalZ('default', 'npc', -10),
+      expected: TERRAIN_DEPTH + NPC_TERRAIN_MARGIN,
+    }));
+    assert.equal(depth, expected);
   });
 });
 

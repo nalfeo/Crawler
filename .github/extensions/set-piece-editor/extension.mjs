@@ -849,6 +849,7 @@ function npcLayer(n){return n.sceneLayer||(getLayers()[0]||{id:'default'}).id;}
 // Negative NPC z values clamp above terrain in PhaserBridge, so the editor must too.
 var TERRAIN_DEPTH=-20;
 var ENTITY_DEPTH=0;
+// Keep NPCs infinitesimally above terrain when authored z would otherwise sort them underneath it.
 var NPC_TERRAIN_MARGIN=0.001;
 function setPieceZToDepth(z){if(z<20)return -19+z*0.8;return 2+(z-20)*0.1;}
 function getNativeSpriteTileDimensions(sprite){
