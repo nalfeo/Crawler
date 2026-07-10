@@ -1,5 +1,16 @@
 [
   {
+    "commit": "47ee0d0fd78a96879288ecf6ab432b75f2c48fd4",
+    "commitDate": "2026-07-10T18:00:23Z",
+    "commitSubject": "feat(devtools): add postprocess live upscale control (#1012)",
+    "capturedAt": "2026-07-10T18:43:35.485Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29113450663",
+    "winRate": 0.8366666666666667,
+    "totalWins": 251,
+    "totalRuns": 300,
+    "path": "by-sha/47ee0d0fd78a96879288ecf6ab432b75f2c48fd4.json"
+  },
+  {
     "commit": "b7f03e8defd439c051b64c8e1f4c1f9e7ade2473",
     "commitDate": "2026-07-10T10:01:13Z",
     "commitSubject": "fix: wire derived damage/cooldown stats and shared level-up allocation policy (#1009)",
