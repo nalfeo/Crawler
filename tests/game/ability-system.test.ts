@@ -225,6 +225,7 @@ describe('abilitySystem', () => {
     world.frameCount = 400;
     abilitySystem(world);
     expect(state.cooldownByAbilityId.get('fireball')).toBe(400);
+    expect(state.cooldownFramesByAbilityId.get('fireball')).toBe(150);
   });
 
   it('auto-casts fireball at a single nearby enemy without waiting for a cluster', () => {

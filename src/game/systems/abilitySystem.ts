@@ -250,10 +250,10 @@ function activateAbility(world: GameWorld, holderEid: number, abilityId: string)
   }
 
   const lastTriggerFrame = state.cooldownByAbilityId.get(abilityId) ?? Number.NEGATIVE_INFINITY;
-  const cooldownFrames =
+  const cooldownFramesForGate =
     state.cooldownFramesByAbilityId.get(abilityId) ??
     getEffectiveAbilityCooldownFrames(world, holderEid, def.cooldownFrames);
-  if (world.frameCount - lastTriggerFrame < cooldownFrames) {
+  if (world.frameCount - lastTriggerFrame < cooldownFramesForGate) {
     return;
   }
 
@@ -267,8 +267,13 @@ function activateAbility(world: GameWorld, holderEid: number, abilityId: string)
     });
   }
   spendMp(world, holderEid, def.mpCost);
+  const cooldownFramesForNewWindow = getEffectiveAbilityCooldownFrames(
+    world,
+    holderEid,
+    def.cooldownFrames,
+  );
   state.cooldownByAbilityId.set(abilityId, world.frameCount);
-  state.cooldownFramesByAbilityId.set(abilityId, cooldownFrames);
+  state.cooldownFramesByAbilityId.set(abilityId, cooldownFramesForNewWindow);
 }
 
 export function abilitySystem(world: GameWorld): void {
