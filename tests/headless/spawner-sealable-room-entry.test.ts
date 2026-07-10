@@ -8,7 +8,7 @@
  *
  * An entity-backed door that starts CLOSED can never auto-open: `doorSystem`
  * only auto-opens tile-only doors, and re-closes any unlocked `DoorState`
- * entity whose component `isOpen` is 0 every tick. So a closed-but-unlocked
+ * entity whose component `logicalOpen` is 0 every tick. So a closed-but-unlocked
  * entity door leaves the AI stuck at the doorway forever and the arena never
  * arms (the "door is locked / no arena room beyond" bug). The preset therefore
  * starts the door OPEN; the arena locks it behind the player on arming.
@@ -58,7 +58,7 @@ describe('spawner-sealable-room lab preset — arena entry', () => {
     // The doorway tile must be passable so the AI can path through it, and the
     // door entity must start OPEN so doorSystem keeps it open on approach.
     expect(floorMap.tileMap.isPassable(dtx, dty)).toBe(true);
-    expect(world.stores.doorState.isOpen[doorEid!]).toBe(1);
+    expect(world.stores.doorState.logicalOpen[doorEid!]).toBe(1);
     expect(world.stores.doorState.isLocked[doorEid!]).toBe(0);
   });
 

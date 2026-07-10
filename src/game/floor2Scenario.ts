@@ -361,7 +361,7 @@ function installBossDenDoorLocks(
       set(DoorState, {
         tileX: door.x,
         tileY: door.y,
-        isOpen: 0,
+        logicalOpen: 0,
         isLocked: 1,
         wasUnlocked: 0,
       }),
@@ -393,7 +393,7 @@ function installResourceHeartDoorLocks(world: GameWorld, floorMap: FloorMap): nu
       set(DoorState, {
         tileX: door.x,
         tileY: door.y,
-        isOpen: 0,
+        logicalOpen: 0,
         isLocked: 1,
         wasUnlocked: 0,
       }),
@@ -836,7 +836,7 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
     }
     for (const doorEid of query(world.ecs, [DoorState])) {
       world.stores.doorState.isLocked[doorEid] = 0;
-      world.stores.doorState.isOpen[doorEid] = 1;
+      world.stores.doorState.logicalOpen[doorEid] = 1;
     }
   }
 

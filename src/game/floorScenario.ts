@@ -1588,7 +1588,13 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       addComponent(
         world.ecs,
         doorEid,
-        set(DoorState, { tileX: door.x, tileY: door.y, isOpen: 0, isLocked: 1, wasUnlocked: 0 }),
+        set(DoorState, {
+          tileX: door.x,
+          tileY: door.y,
+          logicalOpen: 0,
+          isLocked: 1,
+          wasUnlocked: 0,
+        }),
       );
       setDoorLockConfig(world, doorEid, {
         unlock: {
@@ -1613,7 +1619,13 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       addComponent(
         world.ecs,
         doorEid,
-        set(DoorState, { tileX: door.x, tileY: door.y, isOpen: 0, isLocked: 1, wasUnlocked: 0 }),
+        set(DoorState, {
+          tileX: door.x,
+          tileY: door.y,
+          logicalOpen: 0,
+          isLocked: 1,
+          wasUnlocked: 0,
+        }),
       );
       setDoorLockConfig(world, doorEid, {
         unlock: {
@@ -2002,7 +2014,7 @@ function beginFloor1SlimeRatBattle(world: GameWorld): void {
   if (floorScenario) {
     for (const doorEid of floorScenario.bossRoomDoorEids.get('slime-rat') ?? []) {
       world.stores.doorState.isLocked[doorEid] = 1;
-      world.stores.doorState.isOpen[doorEid] = 0;
+      world.stores.doorState.logicalOpen[doorEid] = 0;
       setDoorLockConfig(world, doorEid, {
         unlock: {
           operator: 'all',
@@ -2042,7 +2054,7 @@ function beginFloor1BossBattle(world: GameWorld): void {
   // Replace lock config: doors stay locked while boss is active, open once boss defeated.
   for (const doorEid of floorScenario.bossRoomDoorEids.get('staircase') ?? []) {
     world.stores.doorState.isLocked[doorEid] = 1;
-    world.stores.doorState.isOpen[doorEid] = 0;
+    world.stores.doorState.logicalOpen[doorEid] = 0;
     setDoorLockConfig(world, doorEid, {
       unlock: {
         operator: 'all',
@@ -2751,7 +2763,7 @@ function floor1ObjectiveTick(world: GameWorld): void {
     }
     for (const doorEid of world.floorScenario.bossRoomDoorEids.get('slime-rat') ?? []) {
       world.stores.doorState.isLocked[doorEid] = 0;
-      world.stores.doorState.isOpen[doorEid] = 1;
+      world.stores.doorState.logicalOpen[doorEid] = 1;
     }
     setQuestCounter(world, FLOOR1_BOSS_BATTLE_QUEST_ID, 'kill-slime-rat', 1);
     questSystem(world);
@@ -2789,7 +2801,7 @@ function floor1ObjectiveTick(world: GameWorld): void {
     }
     for (const doorEid of world.floorScenario.bossRoomDoorEids.get('staircase') ?? []) {
       world.stores.doorState.isLocked[doorEid] = 0;
-      world.stores.doorState.isOpen[doorEid] = 1;
+      world.stores.doorState.logicalOpen[doorEid] = 1;
     }
     setGoalFlag(world, 'floor1-defeat-boss', true);
   }

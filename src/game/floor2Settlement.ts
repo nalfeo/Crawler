@@ -177,7 +177,7 @@ function installSettlementDoorEntities(world: GameWorld, settlement: RoomData): 
       set(DoorState, {
         tileX: door.x,
         tileY: door.y,
-        isOpen: 1,
+        logicalOpen: 1,
         isLocked: 0,
         wasUnlocked: 1,
       }),

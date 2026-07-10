@@ -39,7 +39,12 @@ export interface DoorNavInfo {
   eid: number;
   tileX: number;
   tileY: number;
-  isOpen: boolean;
+  /** Intended-open LATCH (doorState.logicalOpen). Introspection only — no
+   * navigation decision reads this; A* uses `navigationBlocked`. */
+  logicalOpen: boolean;
+  /** Physical/tile truth (doorState.effectiveOpen): logicalOpen && !isLocked &&
+   * !isForcedClosed. Reflects whether the tile is actually open this frame. */
+  effectiveOpen: boolean;
   isLocked: boolean;
   /**
    * Forward-looking traversal verdict: `true` when A* should treat this door
@@ -112,7 +117,8 @@ export function getDoorNavInfos(world: GameWorld): DoorNavInfo[] {
       eid,
       tileX: doorState.tileX[eid] ?? 0,
       tileY: doorState.tileY[eid] ?? 0,
-      isOpen: (doorState.isOpen[eid] ?? 0) !== 0,
+      logicalOpen: (doorState.logicalOpen[eid] ?? 0) !== 0,
+      effectiveOpen: (doorState.effectiveOpen[eid] ?? 0) !== 0,
       isLocked: (doorState.isLocked[eid] ?? 0) !== 0,
       navigationBlocked: isDoorNavigationBlocked(world, config),
       unlock: config?.unlock,

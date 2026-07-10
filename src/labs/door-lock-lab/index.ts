@@ -201,7 +201,7 @@ function createDoorLockLab(canvasHost: HTMLElement, controls: HTMLElement): () =
       set(DoorState, {
         tileX: DOOR_X,
         tileY: DOOR_Y,
-        isOpen: 0,
+        logicalOpen: 0,
         isLocked: 1,
         wasUnlocked: 0,
       }),
@@ -262,14 +262,14 @@ function createDoorLockLab(canvasHost: HTMLElement, controls: HTMLElement): () =
     renderCtx.fill();
 
     const isLocked = (world.stores.doorState.isLocked[door] ?? 0) !== 0;
-    const isOpen = (world.stores.doorState.isOpen[door] ?? 0) !== 0;
+    const logicalOpen = (world.stores.doorState.logicalOpen[door] ?? 0) !== 0;
     const wasUnlocked = (world.stores.doorState.wasUnlocked[door] ?? 0) !== 0;
 
     status.textContent = [
       `Door lock lab`,
       `elapsedMs: ${world.elapsedMs}`,
       `door.isLocked: ${isLocked}`,
-      `door.isOpen: ${isOpen}`,
+      `door.logicalOpen: ${logicalOpen}`,
       `door.wasUnlocked: ${wasUnlocked}`,
       `tile.passable: ${floorMap.tileMap.isPassable(DOOR_X, DOOR_Y)}`,
       `unlock preset: ${settings.unlockPreset}`,

@@ -138,7 +138,7 @@ describe('Floor 2 settlement · initialization', () => {
       const key = doorKey(tx, ty);
       if (!expectedDoorKeys.has(key)) continue;
       expect(world.stores.doorState.isLocked[eid]).toBe(0);
-      expect(world.stores.doorState.isOpen[eid]).toBe(1);
+      expect(world.stores.doorState.logicalOpen[eid]).toBe(1);
       seenDoorKeys.add(key);
     }
     expect(seenDoorKeys).toEqual(expectedDoorKeys);

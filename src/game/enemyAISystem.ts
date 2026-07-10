@@ -695,12 +695,17 @@ function getDoorRevision(world: GameWorld): number {
   for (const eid of doors) {
     const tx = doorState.tileX[eid] ?? 0;
     const ty = doorState.tileY[eid] ?? 0;
-    const isOpen = doorState.isOpen[eid] ?? 0;
+    // Hash the PHYSICAL tile truth (effectiveOpen), NOT the logicalOpen latch:
+    // this revision gates flow-field / tile-path memo invalidation, which are
+    // built over physical passability. effectiveOpen equals the old isOpen
+    // frame-for-frame except when a transient seal closes a still-latched door,
+    // where hashing it correctly invalidates the now-stale cached paths.
+    const effectiveOpen = doorState.effectiveOpen[eid] ?? 0;
     hash ^= tx * 73856093;
     hash = Math.imul(hash, 16777619);
     hash ^= ty * 19349663;
     hash = Math.imul(hash, 16777619);
-    hash ^= isOpen;
+    hash ^= effectiveOpen;
     hash = Math.imul(hash, 16777619);
   }
 

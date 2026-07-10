@@ -253,7 +253,7 @@ describe('initializeFloor2Scenario manifest validation', () => {
           (world.stores.doorState.tileX[eid] ?? -1) === door.x &&
           (world.stores.doorState.tileY[eid] ?? -1) === door.y &&
           (world.stores.doorState.isLocked[eid] ?? 0) === 1 &&
-          (world.stores.doorState.isOpen[eid] ?? 0) === 0,
+          (world.stores.doorState.logicalOpen[eid] ?? 0) === 0,
       ),
     );
     expect(lockedHeartDoor).toBe(true);

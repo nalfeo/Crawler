@@ -1024,11 +1024,11 @@ describe('enemyAISystem', () => {
     );
 
     const door = addEntity(world.ecs);
-    addComponent(world.ecs, door, set(DoorState, { tileX: 6, tileY: 5, isOpen: 0 }));
+    addComponent(world.ecs, door, set(DoorState, { tileX: 6, tileY: 5, logicalOpen: 0 }));
     runTicks(world, 40);
     const beforeOpenX = world.stores.position.x[navigator] ?? 0;
 
-    setComponent(world.ecs, door, DoorState, { tileX: 6, tileY: 5, isOpen: 1 });
+    setComponent(world.ecs, door, DoorState, { tileX: 6, tileY: 5, logicalOpen: 1 });
     runTicks(world, 100);
 
     expect(beforeOpenX).toBeLessThan(6 * 4);

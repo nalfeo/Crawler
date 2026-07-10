@@ -187,7 +187,7 @@ function configureSpawnerSlice(
     addComponent(
       world.ecs,
       doorEid,
-      set(DoorState, { tileX: doorTile.x, tileY: doorTile.y, isOpen: 1, isLocked: 0 }),
+      set(DoorState, { tileX: doorTile.x, tileY: doorTile.y, logicalOpen: 1, isLocked: 0 }),
     );
   }
 
