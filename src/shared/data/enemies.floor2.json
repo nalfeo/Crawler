@@ -17,6 +17,34 @@
       "isBoss": true
     },
     {
+      "id": "goblin-elite-joyrider",
+      "name": "Cartel Joyrider Lieutenant",
+      "hp": 32,
+      "speed": 0.15,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.0,
+      "spriteHeight": 2.0,
+      "aiType": "chase",
+      "spawnWeight": 0.01,
+      "familyId": "goblins",
+      "isBoss": false
+    },
+    {
+      "id": "goblin-junkshot",
+      "name": "Snaggle Drive-By Junkslinger",
+      "hp": 15,
+      "speed": 0.17,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 1.8,
+      "spriteHeight": 1.8,
+      "aiType": "ranged",
+      "spawnWeight": 0.25,
+      "familyId": "goblins",
+      "isBoss": false
+    },
+    {
       "id": "goblin-grunt",
       "name": "Snaggle Grunt",
       "hp": 18,
@@ -26,7 +54,7 @@
       "spriteWidth": 1.8,
       "spriteHeight": 1.8,
       "aiType": "chase",
-      "spawnWeight": 0.35,
+      "spawnWeight": 0.74,
       "familyId": "goblins",
       "isBoss": false
     },
@@ -45,6 +73,20 @@
       "isBoss": true
     },
     {
+      "id": "llama-elite-backlot-capo",
+      "name": "Backlot Capo Spitter",
+      "hp": 43,
+      "speed": 0.11,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.2,
+      "spriteHeight": 2.2,
+      "aiType": "ranged",
+      "spawnWeight": 0.01,
+      "familyId": "llamas",
+      "isBoss": false
+    },
+    {
       "id": "llama-spitter",
       "name": "Spit Syndicate Spitter",
       "hp": 26,
@@ -54,7 +96,21 @@
       "spriteWidth": 2.0,
       "spriteHeight": 2.0,
       "aiType": "ranged",
-      "spawnWeight": 0.32,
+      "spawnWeight": 0.25,
+      "familyId": "llamas",
+      "isBoss": false
+    },
+    {
+      "id": "llama-curb-stomper",
+      "name": "Spit Syndicate Curb-Stomper",
+      "hp": 31,
+      "speed": 0.12,
+      "detectRange": 50.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.0,
+      "spriteHeight": 2.0,
+      "aiType": "chase",
+      "spawnWeight": 0.74,
       "familyId": "llamas",
       "isBoss": false
     },
@@ -73,6 +129,34 @@
       "isBoss": true
     },
     {
+      "id": "panda-elite-red-envelope",
+      "name": "Red Envelope Collector",
+      "hp": 91,
+      "speed": 0.09,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.6,
+      "spriteHeight": 2.6,
+      "aiType": "ranged",
+      "spawnWeight": 0.01,
+      "familyId": "pandas",
+      "isBoss": false
+    },
+    {
+      "id": "panda-boba-sniper",
+      "name": "Boba Cartel Sniper",
+      "hp": 47,
+      "speed": 0.1,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.4,
+      "spriteHeight": 2.4,
+      "aiType": "ranged",
+      "spawnWeight": 0.25,
+      "familyId": "pandas",
+      "isBoss": false
+    },
+    {
       "id": "panda-bruiser",
       "name": "Bamboo Triad Bruiser",
       "hp": 55,
@@ -82,7 +166,7 @@
       "spriteWidth": 2.4,
       "spriteHeight": 2.4,
       "aiType": "chase",
-      "spawnWeight": 0.33,
+      "spawnWeight": 0.74,
       "familyId": "pandas",
       "isBoss": false
     },
@@ -101,6 +185,34 @@
       "isBoss": true
     },
     {
+      "id": "faerie-elite-fae-driveby",
+      "name": "Fae Drive-By Shotcaller",
+      "hp": 30,
+      "speed": 0.18,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 1.7,
+      "spriteHeight": 1.7,
+      "aiType": "ranged",
+      "spawnWeight": 0.01,
+      "familyId": "faeries",
+      "isBoss": false
+    },
+    {
+      "id": "faerie-spark-caster",
+      "name": "Glitterkin Spark-Caster",
+      "hp": 14,
+      "speed": 0.2,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 1.8,
+      "spriteHeight": 1.8,
+      "aiType": "ranged",
+      "spawnWeight": 0.25,
+      "familyId": "faeries",
+      "isBoss": false
+    },
+    {
       "id": "faerie-blink",
       "name": "Glitterkin Blinker",
       "hp": 16,
@@ -110,7 +222,7 @@
       "spriteWidth": 1.5,
       "spriteHeight": 1.5,
       "aiType": "chase",
-      "spawnWeight": 0.3,
+      "spawnWeight": 0.74,
       "familyId": "faeries",
       "isBoss": false
     },
@@ -129,6 +241,34 @@
       "isBoss": true
     },
     {
+      "id": "kobold-elite-dragon-capo",
+      "name": "Dragon-Capo Streetburner",
+      "hp": 34,
+      "speed": 0.13,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.0,
+      "spriteHeight": 2.0,
+      "aiType": "chase",
+      "spawnWeight": 0.01,
+      "familyId": "kobolds",
+      "isBoss": false
+    },
+    {
+      "id": "kobold-roman-candle",
+      "name": "Emberkin Roman-Candle Gunner",
+      "hp": 17,
+      "speed": 0.15,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 1.8,
+      "spriteHeight": 1.8,
+      "aiType": "ranged",
+      "spawnWeight": 0.25,
+      "familyId": "kobolds",
+      "isBoss": false
+    },
+    {
       "id": "kobold-torch",
       "name": "Emberkin Torchbearer",
       "hp": 20,
@@ -138,7 +278,7 @@
       "spriteWidth": 1.8,
       "spriteHeight": 1.8,
       "aiType": "chase",
-      "spawnWeight": 0.32,
+      "spawnWeight": 0.74,
       "familyId": "kobolds",
       "isBoss": false
     },
@@ -157,6 +297,20 @@
       "isBoss": true
     },
     {
+      "id": "myconid-elite-don-agaric",
+      "name": "Don Agaric Spore-Capo",
+      "hp": 46,
+      "speed": 0.08,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.2,
+      "spriteHeight": 2.2,
+      "aiType": "ranged",
+      "spawnWeight": 0.01,
+      "familyId": "myconids",
+      "isBoss": false
+    },
+    {
       "id": "myconid-spore",
       "name": "Sporeholder Adept",
       "hp": 28,
@@ -166,7 +320,21 @@
       "spriteWidth": 2.0,
       "spriteHeight": 2.0,
       "aiType": "ranged",
-      "spawnWeight": 0.32,
+      "spawnWeight": 0.25,
+      "familyId": "myconids",
+      "isBoss": false
+    },
+    {
+      "id": "myconid-clubcap",
+      "name": "Sporeholder Clubcap Bruiser",
+      "hp": 34,
+      "speed": 0.08,
+      "detectRange": 50.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.0,
+      "spriteHeight": 2.0,
+      "aiType": "chase",
+      "spawnWeight": 0.74,
       "familyId": "myconids",
       "isBoss": false
     },
@@ -185,6 +353,20 @@
       "isBoss": true
     },
     {
+      "id": "toadkin-elite-swamp-consigliere",
+      "name": "Swamp Consigliere",
+      "hp": 50,
+      "speed": 0.1,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.2,
+      "spriteHeight": 2.2,
+      "aiType": "chase",
+      "spawnWeight": 0.01,
+      "familyId": "toadkin",
+      "isBoss": false
+    },
+    {
       "id": "toadkin-tongue",
       "name": "Croak Family Tonguer",
       "hp": 30,
@@ -194,7 +376,21 @@
       "spriteWidth": 2.0,
       "spriteHeight": 2.0,
       "aiType": "ranged",
-      "spawnWeight": 0.3,
+      "spawnWeight": 0.25,
+      "familyId": "toadkin",
+      "isBoss": false
+    },
+    {
+      "id": "toadkin-bouncer",
+      "name": "Croak Family Bouncer",
+      "hp": 36,
+      "speed": 0.1,
+      "detectRange": 50.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.0,
+      "spriteHeight": 2.0,
+      "aiType": "chase",
+      "spawnWeight": 0.74,
       "familyId": "toadkin",
       "isBoss": false
     },
@@ -213,6 +409,20 @@
       "isBoss": true
     },
     {
+      "id": "gnome-elite-pinstripe-artillerist",
+      "name": "Pinstripe Artillerist",
+      "hp": 36,
+      "speed": 0.1,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.0,
+      "spriteHeight": 2.0,
+      "aiType": "ranged",
+      "spawnWeight": 0.01,
+      "familyId": "gnomes",
+      "isBoss": false
+    },
+    {
       "id": "gnome-tinker",
       "name": "Cog Combine Tinker",
       "hp": 22,
@@ -222,7 +432,21 @@
       "spriteWidth": 1.8,
       "spriteHeight": 1.8,
       "aiType": "ranged",
-      "spawnWeight": 0.28,
+      "spawnWeight": 0.25,
+      "familyId": "gnomes",
+      "isBoss": false
+    },
+    {
+      "id": "gnome-wheelman",
+      "name": "Cog Combine Wheelman",
+      "hp": 26,
+      "speed": 0.11,
+      "detectRange": 50.0,
+      "spriteTexture": 1,
+      "spriteWidth": 1.9,
+      "spriteHeight": 1.9,
+      "aiType": "chase",
+      "spawnWeight": 0.74,
       "familyId": "gnomes",
       "isBoss": false
     },
@@ -241,6 +465,34 @@
       "isBoss": true
     },
     {
+      "id": "ratfolk-elite-underboss",
+      "name": "Undercity Underboss",
+      "hp": 32,
+      "speed": 0.15,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 1.8,
+      "spriteHeight": 1.8,
+      "aiType": "chase",
+      "spawnWeight": 0.01,
+      "familyId": "ratfolk",
+      "isBoss": false
+    },
+    {
+      "id": "ratfolk-sewer-sniper",
+      "name": "Gutterline Sewer Sniper",
+      "hp": 15,
+      "speed": 0.17,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 1.8,
+      "spriteHeight": 1.8,
+      "aiType": "ranged",
+      "spawnWeight": 0.25,
+      "familyId": "ratfolk",
+      "isBoss": false
+    },
+    {
       "id": "ratfolk-plague",
       "name": "Gutter Guild Plague-rat",
       "hp": 18,
@@ -250,7 +502,7 @@
       "spriteWidth": 1.6,
       "spriteHeight": 1.6,
       "aiType": "chase",
-      "spawnWeight": 0.34,
+      "spawnWeight": 0.74,
       "familyId": "ratfolk",
       "isBoss": false
     },
@@ -269,6 +521,34 @@
       "isBoss": true
     },
     {
+      "id": "cactusfolk-elite-desert-capo",
+      "name": "Desert Capo Thornlord",
+      "hp": 59,
+      "speed": 0.1,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.2,
+      "spriteHeight": 2.2,
+      "aiType": "chase",
+      "spawnWeight": 0.01,
+      "familyId": "cactusfolk",
+      "isBoss": false
+    },
+    {
+      "id": "cactusfolk-needle-gunner",
+      "name": "Thornbloom Needle Gunner",
+      "hp": 31,
+      "speed": 0.11,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.0,
+      "spriteHeight": 2.0,
+      "aiType": "ranged",
+      "spawnWeight": 0.25,
+      "familyId": "cactusfolk",
+      "isBoss": false
+    },
+    {
       "id": "cactusfolk-spiny",
       "name": "Thornbloom Spiny",
       "hp": 36,
@@ -278,7 +558,7 @@
       "spriteWidth": 2.0,
       "spriteHeight": 2.0,
       "aiType": "chase",
-      "spawnWeight": 0.3,
+      "spawnWeight": 0.74,
       "familyId": "cactusfolk",
       "isBoss": false
     },
@@ -297,6 +577,34 @@
       "isBoss": true
     },
     {
+      "id": "batfolk-elite-rave-don",
+      "name": "Rave Don Echoblade",
+      "hp": 34,
+      "speed": 0.17,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.0,
+      "spriteHeight": 2.0,
+      "aiType": "ranged",
+      "spawnWeight": 0.01,
+      "familyId": "batfolk",
+      "isBoss": false
+    },
+    {
+      "id": "batfolk-sonic-shooter",
+      "name": "Nightwing Sonic Shooter",
+      "hp": 17,
+      "speed": 0.19,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 1.8,
+      "spriteHeight": 1.8,
+      "aiType": "ranged",
+      "spawnWeight": 0.25,
+      "familyId": "batfolk",
+      "isBoss": false
+    },
+    {
       "id": "batfolk-diver",
       "name": "Nightwing Diver",
       "hp": 20,
@@ -306,7 +614,7 @@
       "spriteWidth": 1.8,
       "spriteHeight": 1.8,
       "aiType": "chase",
-      "spawnWeight": 0.3,
+      "spawnWeight": 0.74,
       "familyId": "batfolk",
       "isBoss": false
     },
@@ -325,6 +633,34 @@
       "isBoss": true
     },
     {
+      "id": "crabfolk-elite-shell-capo",
+      "name": "Shell-Capo Shakedown",
+      "hp": 74,
+      "speed": 0.09,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.4,
+      "spriteHeight": 2.4,
+      "aiType": "chase",
+      "spawnWeight": 0.01,
+      "familyId": "crabfolk",
+      "isBoss": false
+    },
+    {
+      "id": "crabfolk-claw-gunner",
+      "name": "Tidewrack Claw Gunner",
+      "hp": 38,
+      "speed": 0.1,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.2,
+      "spriteHeight": 2.2,
+      "aiType": "ranged",
+      "spawnWeight": 0.25,
+      "familyId": "crabfolk",
+      "isBoss": false
+    },
+    {
       "id": "crabfolk-armored",
       "name": "Tidewrack Armored",
       "hp": 45,
@@ -334,7 +670,7 @@
       "spriteWidth": 2.2,
       "spriteHeight": 2.2,
       "aiType": "chase",
-      "spawnWeight": 0.3,
+      "spawnWeight": 0.74,
       "familyId": "crabfolk",
       "isBoss": false
     },
@@ -353,6 +689,34 @@
       "isBoss": true
     },
     {
+      "id": "beetlefolk-elite-bugatti",
+      "name": "Bugatti Chitin Lieutenant",
+      "hp": 66,
+      "speed": 0.12,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.2,
+      "spriteHeight": 2.2,
+      "aiType": "chase",
+      "spawnWeight": 0.01,
+      "familyId": "beetlefolk",
+      "isBoss": false
+    },
+    {
+      "id": "beetlefolk-resin-gunner",
+      "name": "Chitin Clan Resin Gunner",
+      "hp": 34,
+      "speed": 0.14,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.0,
+      "spriteHeight": 2.0,
+      "aiType": "ranged",
+      "spawnWeight": 0.25,
+      "familyId": "beetlefolk",
+      "isBoss": false
+    },
+    {
       "id": "beetlefolk-charger",
       "name": "Chitin Clan Charger",
       "hp": 40,
@@ -362,7 +726,7 @@
       "spriteWidth": 2.0,
       "spriteHeight": 2.0,
       "aiType": "chase",
-      "spawnWeight": 0.3,
+      "spawnWeight": 0.74,
       "familyId": "beetlefolk",
       "isBoss": false
     },
@@ -381,6 +745,34 @@
       "isBoss": true
     },
     {
+      "id": "molefolk-elite-pit-boss",
+      "name": "Deepdig Pit Boss",
+      "hp": 50,
+      "speed": 0.1,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.2,
+      "spriteHeight": 2.2,
+      "aiType": "chase",
+      "spawnWeight": 0.01,
+      "familyId": "molefolk",
+      "isBoss": false
+    },
+    {
+      "id": "molefolk-gravel-slinger",
+      "name": "Motherlode Gravel Slinger",
+      "hp": 26,
+      "speed": 0.12,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.0,
+      "spriteHeight": 2.0,
+      "aiType": "ranged",
+      "spawnWeight": 0.25,
+      "familyId": "molefolk",
+      "isBoss": false
+    },
+    {
       "id": "molefolk-burrower",
       "name": "Deepdig Burrower",
       "hp": 30,
@@ -390,7 +782,7 @@
       "spriteWidth": 2.0,
       "spriteHeight": 2.0,
       "aiType": "chase",
-      "spawnWeight": 0.3,
+      "spawnWeight": 0.74,
       "familyId": "molefolk",
       "isBoss": false
     },
@@ -409,6 +801,34 @@
       "isBoss": true
     },
     {
+      "id": "raccoon-elite-heist-capo",
+      "name": "Heist Capo Ransacker",
+      "hp": 36,
+      "speed": 0.15,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.0,
+      "spriteHeight": 2.0,
+      "aiType": "chase",
+      "spawnWeight": 0.01,
+      "familyId": "raccoons",
+      "isBoss": false
+    },
+    {
+      "id": "raccoon-bottle-rocketeer",
+      "name": "Trash Panda Bottle Rocketeer",
+      "hp": 19,
+      "speed": 0.17,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 1.8,
+      "spriteHeight": 1.8,
+      "aiType": "ranged",
+      "spawnWeight": 0.25,
+      "familyId": "raccoons",
+      "isBoss": false
+    },
+    {
       "id": "raccoon-thief",
       "name": "Trash Panda Thief",
       "hp": 22,
@@ -418,7 +838,7 @@
       "spriteWidth": 1.8,
       "spriteHeight": 1.8,
       "aiType": "flee",
-      "spawnWeight": 0.28,
+      "spawnWeight": 0.74,
       "familyId": "raccoons",
       "isBoss": false
     },
@@ -437,6 +857,34 @@
       "isBoss": true
     },
     {
+      "id": "geese-elite-goosefather",
+      "name": "Goosefather Street Marshal",
+      "hp": 46,
+      "speed": 0.14,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.2,
+      "spriteHeight": 2.2,
+      "aiType": "chase",
+      "spawnWeight": 0.01,
+      "familyId": "geese",
+      "isBoss": false
+    },
+    {
+      "id": "geese-gatling-gander",
+      "name": "Honk Mob Gatling Gander",
+      "hp": 24,
+      "speed": 0.16,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.0,
+      "spriteHeight": 2.0,
+      "aiType": "ranged",
+      "spawnWeight": 0.25,
+      "familyId": "geese",
+      "isBoss": false
+    },
+    {
       "id": "geese-honker",
       "name": "Honk Mob Enforcer",
       "hp": 28,
@@ -446,7 +894,7 @@
       "spriteWidth": 2.0,
       "spriteHeight": 2.0,
       "aiType": "chase",
-      "spawnWeight": 0.3,
+      "spawnWeight": 0.74,
       "familyId": "geese",
       "isBoss": false
     },
@@ -465,6 +913,20 @@
       "isBoss": true
     },
     {
+      "id": "imp-elite-hellfire-capo",
+      "name": "Hellfire Capo",
+      "hp": 36,
+      "speed": 0.12,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.0,
+      "spriteHeight": 2.0,
+      "aiType": "ranged",
+      "spawnWeight": 0.01,
+      "familyId": "imps",
+      "isBoss": false
+    },
+    {
       "id": "imp-flinger",
       "name": "Brimstone Boy Flinger",
       "hp": 22,
@@ -474,7 +936,21 @@
       "spriteWidth": 1.8,
       "spriteHeight": 1.8,
       "aiType": "ranged",
-      "spawnWeight": 0.28,
+      "spawnWeight": 0.25,
+      "familyId": "imps",
+      "isBoss": false
+    },
+    {
+      "id": "imp-chain-brawler",
+      "name": "Brimstone Chain Brawler",
+      "hp": 26,
+      "speed": 0.13,
+      "detectRange": 50.0,
+      "spriteTexture": 1,
+      "spriteWidth": 1.9,
+      "spriteHeight": 1.9,
+      "aiType": "chase",
+      "spawnWeight": 0.74,
       "familyId": "imps",
       "isBoss": false
     },
@@ -493,6 +969,34 @@
       "isBoss": true
     },
     {
+      "id": "snailfolk-elite-slick-don",
+      "name": "Slick Don Slowburn",
+      "hp": 82,
+      "speed": 0.08,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.2,
+      "spriteHeight": 2.2,
+      "aiType": "chase",
+      "spawnWeight": 0.01,
+      "familyId": "snailfolk",
+      "isBoss": false
+    },
+    {
+      "id": "snailfolk-sludge-artillery",
+      "name": "Slowlane Sludge Artillery",
+      "hp": 42,
+      "speed": 0.07,
+      "detectRange": 55.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.0,
+      "spriteHeight": 2.0,
+      "aiType": "ranged",
+      "spawnWeight": 0.25,
+      "familyId": "snailfolk",
+      "isBoss": false
+    },
+    {
       "id": "snailfolk-slimer",
       "name": "Slowlane Slimer",
       "hp": 50,
@@ -502,7 +1006,7 @@
       "spriteWidth": 2.0,
       "spriteHeight": 2.0,
       "aiType": "chase",
-      "spawnWeight": 0.3,
+      "spawnWeight": 0.74,
       "familyId": "snailfolk",
       "isBoss": false
     },

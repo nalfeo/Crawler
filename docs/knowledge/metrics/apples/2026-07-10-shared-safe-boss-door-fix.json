@@ -1,0 +1,10 @@
+{
+  "date": "2026-07-10",
+  "session": "shared-safe-boss-door-fix",
+  "estimated_apples": 5,
+  "actual_apples": 3,
+  "delta": -2,
+  "verdict": "over",
+  "hello_kitties": 0.6,
+  "notes": "Estimated 5 for a full bitecs field-rename migration across 22 files with a subtle latch/derived/physical correctness model. Actual diff came in at ~50 lines of substantive logic (doorSystem reconcile rewrite + one stored component field + one memo line); the remaining +253/-65 is a mechanical isOpen->logicalOpen rename (13 files) plus a +125 deterministic regression test. Maintainer flagged mid-session that the change was smaller than the 5-apple framing implied — correct. Review rigor stayed at the estimated 5-apple tier (adversarial plan review + code-review loop + multi-model gemini/gpt with adjudication); one HIGH memo-lag concern surfaced and was fixed."
+}

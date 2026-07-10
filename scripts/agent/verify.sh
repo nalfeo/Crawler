@@ -27,15 +27,16 @@ echo "🔍 Step 3/10: Format checking..."
 npx prettier --check --log-level warn "src/**/*.ts" "tests/**/*.ts" "scripts/**/*.ts"
 
 echo "🔍 Step 4/10: Dead code detection..."
-# Knip scans the whole project for unused exports/deps (~5-10s). It is ADVISORY
-# in CI (its job is non-blocking) and advisory here too, so gate it behind an
-# opt-in flag to keep the default full-verify inner loop lean. Run it — e.g. when
-# refactoring or removing exports — with VERIFY_KNIP=1. CI's advisory knip job is
+# Knip scans the current typed source/test/sprite-script scope for unused files,
+# exports, and dependencies (~5-10s). It is ADVISORY in CI (its job is
+# non-blocking) and advisory here too, so gate it behind an opt-in flag to keep
+# the default full-verify inner loop lean. Run it — e.g. when refactoring or
+# removing exports/files — with VERIFY_KNIP=1. CI's advisory knip job is
 # unaffected either way. (Mirrors the VERIFY_COVERAGE / VERIFY_FULL opt-ins below.)
 if [ "${VERIFY_KNIP:-}" = "1" ]; then
-  npx knip || echo "⚠️  Knip found unused exports (non-blocking)"
+  npm run lint:dead-code || echo "⚠️  Knip found dead code (non-blocking)"
 else
-  echo "   ⏭️  Skipped (advisory in CI). Set VERIFY_KNIP=1 to run locally — do so when refactoring exports."
+  echo "   ⏭️  Skipped (advisory in CI). Set VERIFY_KNIP=1 to run locally — do so when refactoring files/exports."
 fi
 
 echo "🔍 Step 5/10: Guard + review-ledger tests..."
@@ -71,10 +72,17 @@ if [ ! -d tests/integration ]; then
   echo "ℹ️  No integration tests directory found; skipping."
 # `find -print -quit` emits only the first match; grep confirms at least one file exists.
 elif find tests/integration -type f -name '*.test.ts' -print -quit | grep -q .; then
+  # NOTE: sprite pipeline integration tests (batch-cli, generate-one, judge-*, run-full,
+  # sidecar-lifecycle, synth-to-generate, weapons-pipeline, tests/integration/sprites/)
+  # live in the `sprites` project now and are NOT included here. Run them with:
+  #   npm run test:sprites
   npx vitest run --project integration --reporter=dot
 else
   echo "ℹ️  No integration tests found; skipping."
 fi
+
+echo "🔍 Step 7b/10: Sprite pipeline tests..."
+npx vitest run --project sprites --reporter=dot
 
 # The Headless Floor 1 gate replays a full ~20k-frame deterministic sim per
 # losing (seed, weapon) and is the single slowest step (~300s in CI, the CI

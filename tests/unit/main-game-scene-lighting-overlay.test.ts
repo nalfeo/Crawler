@@ -132,4 +132,18 @@ describe('MainGameScene lighting overlay behavior', () => {
   it('renders the light overlay render-texture at LIGHTING_OVERLAY_DEPTH', () => {
     expect(source).toContain('.setDepth(LIGHTING_OVERLAY_DEPTH)');
   });
+
+  it('collects harvestable and set-piece light emitters for the light field', () => {
+    expect(source).toContain('query(this.world.ecs, [Harvestable, Position])');
+    expect(source).toContain('for (const setPieceProp of this.world.setPieceProps)');
+    expect(source).toContain('/^prop-wall-sconce-v1-var-\\d+$/.test(spriteId)');
+    expect(source).toContain('/^prop-lantern-v\\d+-var-\\d+$/.test(spriteId)');
+    expect(source).toContain('/^prop-torch-v1-var-\\d+$/.test(spriteId)');
+  });
+
+  it('includes secondary light-source membership in the stationary cache key', () => {
+    expect(source).toContain('const secondarySourcesKey = secondarySourceKeyParts.join');
+    expect(source).toContain('this.lightingLastSecondarySourcesKey === secondarySourcesKey');
+    expect(source).toContain('this.lightingLastSecondarySourcesKey = secondarySourcesKey');
+  });
 });

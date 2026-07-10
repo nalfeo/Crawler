@@ -10,6 +10,7 @@ import {
 import {
   BiomeType,
   RoomRole,
+  TilePresets,
   TerrainType,
   type MapConfig,
   type RoomBounds,
@@ -103,13 +104,14 @@ import { evaluateAchievementUnlocksForPhase } from './systems/achievementSystem.
 import { getAllSkillDefinitions } from './skills/registry.js';
 import type { SkillState } from '../shared/skills.js';
 import { floor1Config } from '../shared/floor-config.js';
-import { floor1EnemyPack, floor2EnemyPack, pickEnemyArchetype } from '../shared/enemy-packs.js';
+import { floor1EnemyPack, floor2EnemyPack } from '../shared/enemy-packs.js';
 import { floor1Manifest } from '../shared/floor-manifest.js';
 import type { NpcPlacementDef } from '../shared/npc-placements.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
 import { getSpawnerArchetype, getSpawnerArchetypeIndex } from './spawners/registry.js';
 import { hashStringToSeed, SeededRandom } from '../shared/random.js';
 import { computeMobLevelScale } from '../shared/mob-scaling.js';
+import { pickFromSpawnZones, type SpawnZoneWeights } from './spawn-zones.js';
 
 // Derived constants computed from config at module initialization.
 // The camera/viewport is a render-pixel concept, so convert it to feet at this
@@ -1132,6 +1134,51 @@ function computeWelcomeRoomStamp(
 }
 
 /**
+ * Apply authored structural set-piece props (wall/door) onto real map tiles.
+ *
+ * Set-piece dressing is mostly render-only, but structural props must also
+ * mutate map terrain semantics so authored walls/doors render as wall/door
+ * terrain, and authored doors are treated as real door tiles at runtime.
+ */
+function applyWelcomeRoomStructuralTiles(world: GameWorld, stamp: StampedSetPiece): void {
+  const floorMap = world.floorMap;
+  if (!floorMap) return;
+  const def = getSetPieceDef(WELCOME_ROOM_SET_PIECE_ID);
+  if (!def) return;
+
+  const propById = new Map(def.props.map((prop) => [prop.id, prop]));
+  const applied = new Set<string>();
+  const mapWidth = floorMap.config.widthTiles;
+  for (const stampedProp of stamp.props) {
+    const propId = stampedProp.render.label;
+    if (!propId || applied.has(propId)) continue;
+    const prop = propById.get(propId);
+    if (!prop) continue;
+    applied.add(propId);
+    if (prop.kind !== 'wall' && prop.kind !== 'door') continue;
+
+    const terrain = prop.kind === 'wall' ? TerrainType.STONE_WALL : TerrainType.DOOR;
+    for (let dy = 0; dy < prop.height; dy += 1) {
+      for (let dx = 0; dx < prop.width; dx += 1) {
+        const tx = stampedProp.tileX + dx;
+        const ty = stampedProp.tileY + dy;
+        if (!floorMap.tileMap.inBounds(tx, ty)) continue;
+        const idx = ty * mapWidth + tx;
+        if (prop.kind === 'door') {
+          floorMap.tileMap.setFlags(tx, ty, TilePresets.DOOR_OPEN);
+          floorMap.terrain[idx] = terrain;
+        } else if (floorMap.terrain[idx] !== TerrainType.DOOR) {
+          if (!floorMap.tileMap.isPassable(tx, ty)) {
+            floorMap.tileMap.setFlags(tx, ty, TilePresets.WALL);
+          }
+          floorMap.terrain[idx] = terrain;
+        }
+      }
+    }
+  }
+}
+
+/**
  * Called the first time the player talks to the Tutorial Goon (the reward for
  * finding the Welcome Office). Completes the opening "find the welcome room"
  * quest, accepts the level-2 grind quest, focuses the tracker, and unlocks
@@ -1383,6 +1430,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   const welcomeStamp = computeWelcomeRoomStamp(world, welcomeOfficePos);
   const stampedNpcByType = new Map<string, StampedSetPieceNpc>();
   if (welcomeStamp) {
+    applyWelcomeRoomStructuralTiles(world, welcomeStamp);
     for (const npc of welcomeStamp.npcs) {
       stampedNpcByType.set(npc.npcTypeId, npc);
     }
@@ -1401,7 +1449,17 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       let eid: number;
       if (stamped && stampedPassable) {
         // Fixed authored position from the set piece — no scatter.
-        eid = spawnNpc(world, stamped.x, stamped.y, placement.npcTypeId);
+        eid = spawnNpc(world, stamped.x, stamped.y, placement.npcTypeId, {
+          ...(stamped.spriteOverride !== undefined
+            ? { spriteOverride: stamped.spriteOverride }
+            : {}),
+          ...(stamped.widthFt !== undefined ? { widthFt: stamped.widthFt } : {}),
+          ...(stamped.heightFt !== undefined ? { heightFt: stamped.heightFt } : {}),
+          ...(stamped.flipX !== undefined ? { flipX: stamped.flipX } : {}),
+          ...(stamped.flipY !== undefined ? { flipY: stamped.flipY } : {}),
+          ...(stamped.rotationDeg !== undefined ? { rotationDeg: stamped.rotationDeg } : {}),
+          ...(stamped.z !== undefined ? { z: stamped.z } : {}),
+        });
         occupiedNpcTiles.add(tileKey(stamped.tileX, stamped.tileY));
       } else {
         eid = spawnNpcFromPlacement(
@@ -1530,7 +1588,13 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       addComponent(
         world.ecs,
         doorEid,
-        set(DoorState, { tileX: door.x, tileY: door.y, isOpen: 0, isLocked: 1, wasUnlocked: 0 }),
+        set(DoorState, {
+          tileX: door.x,
+          tileY: door.y,
+          logicalOpen: 0,
+          isLocked: 1,
+          wasUnlocked: 0,
+        }),
       );
       setDoorLockConfig(world, doorEid, {
         unlock: {
@@ -1555,7 +1619,13 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       addComponent(
         world.ecs,
         doorEid,
-        set(DoorState, { tileX: door.x, tileY: door.y, isOpen: 0, isLocked: 1, wasUnlocked: 0 }),
+        set(DoorState, {
+          tileX: door.x,
+          tileY: door.y,
+          logicalOpen: 0,
+          isLocked: 1,
+          wasUnlocked: 0,
+        }),
       );
       setDoorLockConfig(world, doorEid, {
         unlock: {
@@ -1944,7 +2014,7 @@ function beginFloor1SlimeRatBattle(world: GameWorld): void {
   if (floorScenario) {
     for (const doorEid of floorScenario.bossRoomDoorEids.get('slime-rat') ?? []) {
       world.stores.doorState.isLocked[doorEid] = 1;
-      world.stores.doorState.isOpen[doorEid] = 0;
+      world.stores.doorState.logicalOpen[doorEid] = 0;
       setDoorLockConfig(world, doorEid, {
         unlock: {
           operator: 'all',
@@ -1984,7 +2054,7 @@ function beginFloor1BossBattle(world: GameWorld): void {
   // Replace lock config: doors stay locked while boss is active, open once boss defeated.
   for (const doorEid of floorScenario.bossRoomDoorEids.get('staircase') ?? []) {
     world.stores.doorState.isLocked[doorEid] = 1;
-    world.stores.doorState.isOpen[doorEid] = 0;
+    world.stores.doorState.logicalOpen[doorEid] = 0;
     setDoorLockConfig(world, doorEid, {
       unlock: {
         operator: 'all',
@@ -2148,7 +2218,19 @@ export function scaleAmbientSpawnStats(
  */
 function spawnAmbientArchetype(world: GameWorld, x: number, y: number): number {
   const pack = floor1EnemyPack;
-  const archetype = pickEnemyArchetype(pack.archetypes, () => world.rng.next());
+  const globalZoneWeights = new Map<string, number>();
+  for (const entry of pack.archetypes) {
+    globalZoneWeights.set(entry.id, entry.spawnWeight);
+  }
+  const { pickedId } = pickFromSpawnZones([globalZoneWeights as SpawnZoneWeights], () =>
+    world.rng.next(),
+  );
+  const archetype =
+    (pickedId ? pack.archetypes.find((entry) => entry.id === pickedId) : undefined) ??
+    pack.archetypes[0];
+  if (!archetype) {
+    throw new Error('No archetypes available in floor1EnemyPack');
+  }
 
   // Scale HP and speed based on distance from the player's starting tile so
   // enemies deeper in the dungeon feel progressively more dangerous.
@@ -2403,7 +2485,7 @@ function resolveRoomInteriorSpawn(
  * first visit regardless of the roll outcome, so leaving and re-entering never
  * re-rolls. SPAWN, SAFE, and BOSS_STAIR rooms are never seeded.
  */
-export function prepopulateEnteredRoom(world: GameWorld, playerX: number, playerY: number): void {
+function prepopulateEnteredRoom(world: GameWorld, playerX: number, playerY: number): void {
   const floorMap = world.floorMap;
   if (!floorMap || !world.floorScenario) {
     return;
@@ -2681,7 +2763,7 @@ function floor1ObjectiveTick(world: GameWorld): void {
     }
     for (const doorEid of world.floorScenario.bossRoomDoorEids.get('slime-rat') ?? []) {
       world.stores.doorState.isLocked[doorEid] = 0;
-      world.stores.doorState.isOpen[doorEid] = 1;
+      world.stores.doorState.logicalOpen[doorEid] = 1;
     }
     setQuestCounter(world, FLOOR1_BOSS_BATTLE_QUEST_ID, 'kill-slime-rat', 1);
     questSystem(world);
@@ -2719,7 +2801,7 @@ function floor1ObjectiveTick(world: GameWorld): void {
     }
     for (const doorEid of world.floorScenario.bossRoomDoorEids.get('staircase') ?? []) {
       world.stores.doorState.isLocked[doorEid] = 0;
-      world.stores.doorState.isOpen[doorEid] = 1;
+      world.stores.doorState.logicalOpen[doorEid] = 1;
     }
     setGoalFlag(world, 'floor1-defeat-boss', true);
   }
@@ -3164,15 +3246,6 @@ export function shouldShowSpellSelector(world: GameWorld): boolean {
     world.goalFlags.get('floor1-boss-battle-complete') === true &&
     world.featureUnlocks.spells === false
   );
-}
-
-/** Show the spell selector modal with available spells. */
-export function showSpellSelector(world: GameWorld, showModal: (spellIds: string[]) => void): void {
-  if (!shouldShowSpellSelector(world)) {
-    return;
-  }
-  // The showModal callback receives the list of available spell IDs to display
-  showModal(Array.from(FLOOR1_BOSS_REWARD_SPELL_IDS));
 }
 
 /** Select a spell to equip. Returns true when the spell was successfully learned. */

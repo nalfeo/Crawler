@@ -16,6 +16,8 @@ import type {
   MainSceneProbeApi,
   MainSceneState,
   ProbePoint,
+  TerrainRenderSummary,
+  DoorRenderSummary,
 } from '../../../src/labs/main-scene-probe-lab/index.js';
 
 declare global {
@@ -77,6 +79,10 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getCameraViewSize()),
   getHarvestableRenderSummary: (page: Page): Promise<HarvestableRenderSummary> =>
     page.evaluate(() => window.__mainSceneProbe!.getHarvestableRenderSummary()),
+  getTerrainRenderSummary: (page: Page): Promise<TerrainRenderSummary> =>
+    page.evaluate(() => window.__mainSceneProbe!.getTerrainRenderSummary()),
+  getDoorRenderSummary: (page: Page): Promise<DoorRenderSummary> =>
+    page.evaluate(() => window.__mainSceneProbe!.getDoorRenderSummary()),
 };
 
 /**

@@ -35,15 +35,15 @@ describe('set piece content packs', () => {
   it("keeps a named exact set piece (Jimmy's Pizza) with a fixed footprint", () => {
     const jimmys = getSetPieceDef('jimmys-pizza');
     expect(jimmys?.sizing).toBe('exact');
-    expect(getSetPieceFootprint(jimmys!)).toEqual({ width: 8, height: 6 });
+    expect(getSetPieceFootprint(jimmys!)).toEqual({ width: 10, height: 8 });
   });
 
   it('reports the max footprint for themed kits', () => {
     const office = getSetPieceDef('doctors-office');
     expect(office?.sizing).toBe('themed');
     // width/height is the minimum; footprint reflects the max extent.
-    expect(office?.width).toBe(6);
-    expect(getSetPieceFootprint(office!)).toEqual({ width: 9, height: 7 });
+    expect(office?.width).toBe(8);
+    expect(getSetPieceFootprint(office!)).toEqual({ width: 11, height: 9 });
   });
 
   it('groups set pieces by theme', () => {
@@ -200,6 +200,37 @@ describe('setPiecePackSchema', () => {
     ).toThrow(/outside/);
   });
 
+  it('treats explicit sceneLayers field as authoritative even when empty', () => {
+    expect(() =>
+      setPiecePackSchema.parse({
+        version: 1,
+        packId: 'bad-scene-layer-ref',
+        setPieces: [
+          {
+            id: 'layered',
+            name: 'Layered',
+            theme: 'test',
+            sizing: 'exact',
+            width: 2,
+            height: 2,
+            description: 'Explicit empty layer list should still validate sceneLayer refs.',
+            sceneLayers: [],
+            props: [
+              {
+                id: 'p',
+                kind: 'fixture',
+                x: 0,
+                y: 0,
+                sceneLayer: 'ghost',
+                layers: [{ sprite: { source: 'catalog', spriteId: 'sprite:npc.guide' } }],
+              },
+            ],
+          },
+        ],
+      }),
+    ).toThrow(/references unknown sceneLayer/);
+  });
+
   it('rejects maxWidth/maxHeight on exact set pieces', () => {
     expect(() =>
       setPiecePackSchema.parse({
@@ -320,6 +351,29 @@ describe('set piece NPC placement', () => {
     expect(goon).toMatchObject({ npcTypeId: 'tutorial-goon', x: 3, y: 0, anchorRole: 'welcome' });
   });
 
+  it('compiles NPC visual override, size, and transform metadata', () => {
+    const pack = JSON.parse(JSON.stringify(validNpcPack)) as typeof validNpcPack;
+    const goon = pack.setPieces[0]!.npcs[0] as Record<string, unknown>;
+    goon.widthFt = 5;
+    goon.heightFt = 7;
+    goon.flipX = true;
+    goon.flipY = true;
+    goon.rotationDeg = 180;
+    goon.spriteOverride = { source: 'catalog', spriteId: 'sprite:npc.guide' };
+
+    installSetPiecePacks([setPiecePackSchema.parse(pack)]);
+    const room = getSetPieceDef('greeting-room')!;
+    const compiled = room.npcs.find((npc) => npc.id === 'goon');
+    expect(compiled).toMatchObject({
+      widthFt: 5,
+      heightFt: 7,
+      flipX: true,
+      flipY: true,
+      rotationDeg: 180,
+      spriteOverride: { source: 'catalog', spriteId: 'sprite:npc.guide' },
+    });
+  });
+
   it('resolves NPCs by objective anchor role', () => {
     installSetPiecePacks([setPiecePackSchema.parse(validNpcPack)]);
     const room = getSetPieceDef('greeting-room')!;
@@ -401,6 +455,16 @@ describe('set piece NPC placement', () => {
     ).toThrow(/Duplicate NPC id/);
   });
 
+  it('rejects NPC widthFt/heightFt when only one side is provided', () => {
+    const pack = JSON.parse(JSON.stringify(validNpcPack)) as typeof validNpcPack;
+    const goon = pack.setPieces[0]!.npcs[0] as Record<string, unknown>;
+    goon.widthFt = 5;
+    delete goon.heightFt;
+    expect(() => setPiecePackSchema.parse(pack)).toThrow(
+      /must specify widthFt and heightFt together/,
+    );
+  });
+
   it('rejects unknown npcTypeId references', () => {
     expect(() =>
       setPiecePackSchema.parse({
@@ -473,10 +537,10 @@ describe('welcome-room authored set piece', () => {
   const chebyshev = (a: { x: number; y: number }, b: { x: number; y: number }): number =>
     Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 
-  it('is a fixed 8x7 reality-show room', () => {
+  it('is a fixed 10x9 reality-show room', () => {
     const room = getSetPieceDef('welcome-room')!;
     expect(room.sizing).toBe('exact');
-    expect(getSetPieceFootprint(room)).toEqual({ width: 8, height: 7 });
+    expect(getSetPieceFootprint(room)).toEqual({ width: 10, height: 9 });
     expect(room.theme).toBe('reality-show');
   });
 
@@ -502,8 +566,8 @@ describe('welcome-room authored set piece', () => {
     const goon = findSetPieceNpcByAnchor(room, 'welcome')!;
     const desk = room.props.find((p) => p.id === 'welcome-desk')!;
     const banner = room.props.find((p) => p.id === 'welcome-banner')!;
-    // Back wall is y=0; the goon hugs it.
-    expect(goon.y).toBeLessThanOrEqual(1);
+    // Back wall is y=0; one perimeter wall tile means the playable back row is y=1.
+    expect(goon.y).toBeLessThanOrEqual(2);
     // Desk is in front of the goon (higher row toward the entrance).
     expect(desk.y).toBeGreaterThan(goon.y);
     // Banner is behind the goon (on the back wall) and layers over it.
@@ -541,12 +605,45 @@ describe('welcome-room authored set piece', () => {
 
   it('wires the hero props to their shipped generated catalog art', () => {
     const room = getSetPieceDef('welcome-room')!;
-    // Every bespoke welcome-room asset has shipped, so the piece has no
-    // outstanding custom art requests left to generate.
-    expect(collectCustomArtRequests([room])).toHaveLength(0);
-    expect(room.props.some((p) => p.layers.some((l) => isCustomSpriteRef(l.sprite)))).toBe(false);
+    // The three Kenney-sourced cozy decor props (plant, side table, stool) are
+    // placeholders: they render as honest labeled boxes and sit in the custom
+    // art-request queue until bespoke art is generated — never as arbitrary
+    // Kenney tile frames masquerading as furniture.
+    const requestIds = collectCustomArtRequests([room])
+      .map((req) => req.requestId)
+      .sort();
+    expect(requestIds).toEqual([
+      'welcome-room-lounge-stool',
+      'welcome-room-potted-plant',
+      'welcome-room-side-table',
+    ]);
+    // Those three queued decor props must NOT resolve to raw Kenney sheet
+    // frames anymore — each base layer is now an honest custom request.
+    for (const id of ['potted-plant', 'broker-side-table', 'lounge-stool']) {
+      const base = room.props.find((p) => p.id === id)!.layers[0]!.sprite;
+      expect(base.source).toBe('custom');
+    }
+    // No hero prop is a placeholder — the reception/hero furniture is all shipped.
+    for (const id of [
+      'welcome-rug',
+      'welcome-desk',
+      'shop-table',
+      'broker-bookcase',
+      'velvet-rope',
+    ]) {
+      const prop = room.props.find((p) => p.id === id)!;
+      expect(prop.layers.some((l) => isCustomSpriteRef(l.sprite))).toBe(false);
+    }
 
-    // Each hero prop's base layer pins the exact approved generated variant
+    // Hero furniture stays pinned to approved generated variants.
+    const rugBase = room.props.find((p) => p.id === 'welcome-rug')!.layers[0]!.sprite;
+    expect(rugBase.source).toBe('catalog');
+    if (rugBase.source !== 'catalog') {
+      throw new Error('welcome-rug base sprite is not a catalog ref');
+    }
+    expect(rugBase.spriteId).toBe('welcome-room-rug-var-0');
+
+    // Remaining hero props keep exact generated variants
     // (the velvet rope shipped as var-2, the rest as var-0).
     const baseSpriteId = (propId: string): string => {
       const prop = room.props.find((p) => p.id === propId)!;
@@ -556,10 +653,157 @@ describe('welcome-room authored set piece', () => {
       }
       return sprite.spriteId;
     };
-    expect(baseSpriteId('welcome-rug')).toBe('welcome-room-rug-var-0');
     expect(baseSpriteId('welcome-desk')).toBe('welcome-room-desk-var-0');
     expect(baseSpriteId('shop-table')).toBe('welcome-room-shop-table-var-0');
     expect(baseSpriteId('broker-bookcase')).toBe('welcome-room-bookcase-var-0');
     expect(baseSpriteId('velvet-rope')).toBe('welcome-room-velvet-rope-var-2');
+  });
+
+  it('anchors the reception against the back wall via a top placement', () => {
+    const room = getSetPieceDef('welcome-room')!;
+    expect(room.placement?.verticalAlign).toBe('top');
+  });
+
+  it('mounts wall sconces on the back-wall row and lifts them onto the wall', () => {
+    const room = getSetPieceDef('welcome-room')!;
+    const sconces = room.props.filter((p) => p.id.startsWith('sconce-'));
+    expect(sconces.length).toBeGreaterThan(0);
+    expect(room.props.some((p) => p.id.startsWith('torch-'))).toBe(false);
+    for (const sconce of sconces) {
+      // Authored at the back-wall band (integer or sub-tile top row variants).
+      expect(sconce.y).toBeGreaterThanOrEqual(0);
+      expect(sconce.y).toBeLessThanOrEqual(1);
+      // ...and lifted up off the floor onto the wall with a negative feet nudge.
+      expect(sconce.layers[0]?.offsetYFt).toBeLessThan(0);
+    }
+    // Right-side sconces (when present) mirror via flipX for symmetry.
+    const right = sconces.filter((p) => p.id.includes('right'));
+    if (right.length > 0) {
+      expect(right.every((p) => p.layers[0]?.flipX === true)).toBe(true);
+    }
+  });
+
+  it('gives every hero furniture prop an explicit feet box so nothing stretches', () => {
+    const room = getSetPieceDef('welcome-room')!;
+    for (const id of [
+      'welcome-rug',
+      'welcome-desk',
+      'shop-table',
+      'broker-bookcase',
+      'velvet-rope',
+    ]) {
+      const layer = room.props.find((p) => p.id === id)!.layers[0]!;
+      expect(layer.widthFt).toBeGreaterThan(0);
+      expect(layer.heightFt).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('sprite layer feet + flip schema', () => {
+  afterEach(() => {
+    installDefaultSetPiecePacks();
+  });
+
+  const packWithLayer = (layer: Record<string, unknown>) => ({
+    version: 1,
+    packId: 'feet-test',
+    setPieces: [
+      {
+        id: 'feet-room',
+        name: 'Feet Room',
+        theme: 'test',
+        sizing: 'exact',
+        width: 2,
+        height: 2,
+        description: 'Exercises the per-layer feet + flip fields.',
+        props: [
+          {
+            id: 'p',
+            kind: 'decoration',
+            x: 0,
+            y: 0,
+            layers: [{ sprite: { source: 'sheet', sheetKey: 'k', col: 0, row: 0 }, ...layer }],
+          },
+        ],
+      },
+    ],
+  });
+
+  it('accepts a widthFt/heightFt pair plus flip + feet offsets', () => {
+    const pack = setPiecePackSchema.parse(
+      packWithLayer({ widthFt: 1.5, heightFt: 1.5, offsetXFt: 1, offsetYFt: -4, flipX: true }),
+    );
+    installSetPiecePacks([pack]);
+    const layer = getSetPieceDef('feet-room')!.props[0]!.layers[0]!;
+    expect(layer.widthFt).toBe(1.5);
+    expect(layer.heightFt).toBe(1.5);
+    expect(layer.offsetYFt).toBe(-4);
+    expect(layer.flipX).toBe(true);
+  });
+
+  it('rejects a widthFt without a matching heightFt (both-or-neither)', () => {
+    expect(() => setPiecePackSchema.parse(packWithLayer({ widthFt: 3 }))).toThrow(
+      /widthFt and heightFt must be supplied together/,
+    );
+    expect(() => setPiecePackSchema.parse(packWithLayer({ heightFt: 3 }))).toThrow(
+      /widthFt and heightFt must be supplied together/,
+    );
+  });
+
+  it('rejects a non-positive feet box', () => {
+    expect(() => setPiecePackSchema.parse(packWithLayer({ widthFt: 0, heightFt: 2 }))).toThrow();
+  });
+});
+
+describe('set-piece placement schema', () => {
+  afterEach(() => {
+    installDefaultSetPiecePacks();
+  });
+
+  const packWithPlacement = (placement: unknown) => ({
+    version: 1,
+    packId: 'placement-test',
+    setPieces: [
+      {
+        id: 'placed-room',
+        name: 'Placed Room',
+        theme: 'test',
+        sizing: 'exact',
+        width: 2,
+        height: 2,
+        description: 'Exercises the set-piece placement anchor.',
+        ...(placement !== undefined ? { placement } : {}),
+        props: [
+          {
+            id: 'p',
+            kind: 'floor',
+            x: 0,
+            y: 0,
+            layers: [{ sprite: { source: 'sheet', sheetKey: 'k', col: 0, row: 0 } }],
+          },
+        ],
+      },
+    ],
+  });
+
+  it('defaults placement to undefined (centre/centre behaviour)', () => {
+    installSetPiecePacks([setPiecePackSchema.parse(packWithPlacement(undefined))]);
+    expect(getSetPieceDef('placed-room')!.placement).toBeUndefined();
+  });
+
+  it('carries an authored vertical + horizontal alignment through compile', () => {
+    installSetPiecePacks([
+      setPiecePackSchema.parse(
+        packWithPlacement({ verticalAlign: 'top', horizontalAlign: 'right' }),
+      ),
+    ]);
+    const def = getSetPieceDef('placed-room')!;
+    expect(def.placement).toEqual({ verticalAlign: 'top', horizontalAlign: 'right' });
+  });
+
+  it('rejects an unknown alignment value', () => {
+    expect(() =>
+      setPiecePackSchema.parse(packWithPlacement({ verticalAlign: 'middle' })),
+    ).toThrow();
   });
 });

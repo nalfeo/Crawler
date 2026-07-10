@@ -14,11 +14,20 @@ describe('doorSystem safe-room forced-close behaviour', () => {
     spawnPlayer(world, 2 * 32 + 16, 2 * 32 + 16);
 
     const door = addEntity(world.ecs);
-    addComponent(world.ecs, door, set(DoorState, { tileX: 3, tileY: 3, isOpen: 1, isLocked: 0 }));
+    addComponent(
+      world.ecs,
+      door,
+      set(DoorState, { tileX: 3, tileY: 3, logicalOpen: 1, isLocked: 0 }),
+    );
 
     doorSystem(world);
 
-    expect(world.stores.doorState.isOpen[door]).toBe(0);
+    // Decoupled authority model: the safe-room seal closes the TILE (effectiveOpen
+    // + physical passability) but never clobbers the logicalOpen LATCH. This is the
+    // structural fix — the old code asserted logicalOpen===0 here, encoding the very
+    // coupling that permanently sealed a shared safe-room / boss-stair door.
+    expect(world.stores.doorState.logicalOpen[door]).toBe(1);
+    expect(world.stores.doorState.effectiveOpen[door]).toBe(0);
     expect(world.floorMap!.tileMap.isPassable(3, 3)).toBe(false);
   });
 
@@ -29,11 +38,16 @@ describe('doorSystem safe-room forced-close behaviour', () => {
     spawnPlayer(world, 3 * 32 + 16, 2 * 32 + 16);
 
     const door = addEntity(world.ecs);
-    addComponent(world.ecs, door, set(DoorState, { tileX: 3, tileY: 3, isOpen: 1, isLocked: 0 }));
+    addComponent(
+      world.ecs,
+      door,
+      set(DoorState, { tileX: 3, tileY: 3, logicalOpen: 1, isLocked: 0 }),
+    );
 
     doorSystem(world);
 
     // The doorway guard keeps the safe-room door open (not forced closed).
     expect(world.floorMap!.tileMap.isPassable(3, 3)).toBe(true);
+    expect(world.stores.doorState.effectiveOpen[door]).toBe(1);
   });
 });

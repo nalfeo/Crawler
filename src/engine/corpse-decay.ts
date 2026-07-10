@@ -41,7 +41,7 @@ export const SKULL_RISE_PX = 16;
  * `0.5` the corpse reaches full grey once half of the linger has elapsed,
  * leaving the back half to simply fade out.
  */
-export const GREY_RAMP_FRACTION = 0.5;
+const GREY_RAMP_FRACTION = 0.5;
 
 /**
  * Remaining-life fraction at/above which the corpse is fully opaque. Below it
@@ -49,7 +49,7 @@ export const GREY_RAMP_FRACTION = 0.5;
  * the corpse holds full opacity for the first half of the linger, then fades
  * over the second half.
  */
-export const FADE_OUT_FRACTION = 0.5;
+const FADE_OUT_FRACTION = 0.5;
 
 /** Neutral grey the corpse multiply-tint lerps toward (0xRRGGBB). */
 export const CORPSE_GREY = 0x9a9aa0;

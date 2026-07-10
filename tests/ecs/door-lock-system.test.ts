@@ -19,7 +19,11 @@ describe('door lock conditions', () => {
     world.floorMap = makeMapWithDoor();
     player = spawnPlayer(world, 0, 0);
     door = addEntity(world.ecs);
-    addComponent(world.ecs, door, set(DoorState, { tileX: 5, tileY: 5, isOpen: 0, isLocked: 1 }));
+    addComponent(
+      world.ecs,
+      door,
+      set(DoorState, { tileX: 5, tileY: 5, logicalOpen: 0, isLocked: 1 }),
+    );
   });
 
   it('unlocks when inventory condition is satisfied', () => {
@@ -40,7 +44,7 @@ describe('door lock conditions', () => {
     doorSystem(world);
 
     expect(world.stores.doorState.isLocked[door]).toBe(0);
-    expect(world.stores.doorState.isOpen[door]).toBe(1);
+    expect(world.stores.doorState.logicalOpen[door]).toBe(1);
     expect(world.floorMap!.tileMap.isPassable(5, 5)).toBe(true);
   });
 
@@ -136,7 +140,7 @@ describe('door lock conditions', () => {
     world.elapsedMs = 500;
     doorSystem(world);
     expect(world.stores.doorState.isLocked[door]).toBe(1);
-    expect(world.stores.doorState.isOpen[door]).toBe(0);
+    expect(world.stores.doorState.logicalOpen[door]).toBe(0);
     expect(world.floorMap!.tileMap.isPassable(5, 5)).toBe(false);
 
     doorSystem(world);

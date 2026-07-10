@@ -8,14 +8,16 @@
  *   3. Seal its perimeter via `sealSpecialRooms` (same guarantee Floor 1's
  *      welcome office / shop room enjoy).
  *   4. Repaint its floor tiles to `SAFE_ROOM_FLOOR` for the calm-blue tint.
- *   5. Spawn The Broker quest-giver at the cavern centroid.
- *   6. Seeded-pick 1–2 shop archetypes and spawn their shopkeeper NPCs on
- *      opposite sides of the cavern, generating each shop's inventory via
- *      the pure `generateShopInventory` roller.
+ *   5. Spawn The Broker, a defected family member, and 1–2 seeded shops onto
+ *      settlement-room interior tiles with door buffers + spacing.
+ *   6. Generate each shop's inventory via the pure `generateShopInventory`
+ *      roller.
  *
- * Deterministic — every random draw uses `world.rng`. Idempotent-safe: an
- * already-initialised settlement is not re-spawned; the existing snapshot is
- * returned so tests can call the function twice without duplication.
+ * Deterministic — shop selection/inventory use `world.rng`, while the new
+ * placement/defector picks use a derived seeded RNG so the existing shop-roll
+ * stream stays stable. Idempotent-safe: an already-initialised settlement is
+ * not re-spawned; the existing snapshot is returned so tests can call the
+ * function twice without duplication.
  */
 import { RoomRole, TerrainType, type RoomData } from '../shared/map-types.js';
 import { addComponent, set } from 'bitecs';
@@ -26,6 +28,12 @@ import { spawnNpc } from '../core/spawners/world-objects.js';
 import { createEntity } from '../core/spawners/entity-core.js';
 import { generateShopInventory } from '../core/generateShopInventory.js';
 import { loadShopArchetypes, type ShopArchetypeDef } from '../shared/data/shop-archetypes.js';
+import { buildFloor2DefectorDialogue, FLOOR2_DEFECTOR_NPC_ID } from '../shared/npc-types.js';
+import {
+  getFloor2FamilyEliteArchetype,
+  getFloor2FamilyFallbackArchetype,
+} from '../shared/enemy-packs.js';
+import { hashStringToSeed, SeededRandom } from '../shared/random.js';
 import type {
   Floor2SettlementSnapshot,
   Floor2ShopInstance,
@@ -63,6 +71,11 @@ export function initializeFloor2Settlement(
       `initializeFloor2Settlement: expected 2-3 settlement rooms, found ${settlements.length}`,
     );
   }
+  const presentFamilies = world.floorExtendedState?.familyState?.presentFamilies;
+  if (!presentFamilies || presentFamilies.length === 0) {
+    throw new Error('initializeFloor2Settlement: world.floorExtendedState.familyState is missing');
+  }
+  const settlementRng = new SeededRandom(hashStringToSeed(`floor2-settlement:${world.seed}`));
 
   // 1. Retag all settlement-cluster rooms as SAFE + repaint floor tiles.
   for (const room of settlements) {
@@ -76,14 +89,8 @@ export function initializeFloor2Settlement(
     installSettlementDoorEntities(world, room);
   }
 
-  // 3. Compute centroid + spawn positions (tile → world).
-  const centreTile = roomCentroidTile(settlement);
-  const centrePos = floorMap.tileToWorld(centreTile.x, centreTile.y);
-
-  // 4. Spawn The Broker at the centroid.
-  const brokerEid = spawnNpc(world, centrePos.x, centrePos.y, 'the-broker');
-
-  // 5. Seeded shop roll.
+  // 3. Seeded shop roll — preserve the existing world.rng flow for shop selection
+  // and inventories; all new placement/defector randomness uses a derived RNG.
   const archetypes = options.archetypes ?? loadShopArchetypes();
   const shopCount = options.shopCount ?? (world.rng.next() < 0.5 ? 1 : 2);
   const shuffled = [...archetypes];
@@ -95,21 +102,38 @@ export function initializeFloor2Settlement(
   const assignedRooms = picked.map(
     (_archetype, idx) => shopRooms[idx % Math.max(1, shopRooms.length)] ?? fallbackShopRoom,
   );
-  const roomShopTotals = new Map<number, number>();
-  for (const room of assignedRooms) {
-    roomShopTotals.set(room.id, (roomShopTotals.get(room.id) ?? 0) + 1);
+  const defectorFamilyId = settlementRng.pick(presentFamilies);
+  const fallbackArchetype = getFloor2FamilyFallbackArchetype(defectorFamilyId);
+  if (!fallbackArchetype) {
+    throw new Error(
+      `initializeFloor2Settlement: missing fallback archetype for "${defectorFamilyId}"`,
+    );
   }
-  const roomShopSlots = new Map<number, number>();
+  const eliteArchetype = getFloor2FamilyEliteArchetype(defectorFamilyId);
+  const defectorAppearanceKey = eliteArchetype?.id ?? fallbackArchetype.id;
+  const defectorFallbackAppearanceKey = fallbackArchetype.id;
+  const reservedTiles: Array<{ x: number; y: number }> = [];
+  const placementPlan = buildSettlementPlacementPlan(settlement, settlements, assignedRooms);
+  const spawnTiles = placeSettlementNpcs(settlementRng, placementPlan, settlements, reservedTiles);
+  const brokerTile = spawnTiles.get('broker');
+  const defectorTile = spawnTiles.get('defector');
+  if (!brokerTile || !defectorTile) {
+    throw new Error('initializeFloor2Settlement: failed to place broker or defector');
+  }
+  const brokerPos = floorMap.tileToWorld(brokerTile.x, brokerTile.y);
+  const brokerEid = spawnNpc(world, brokerPos.x, brokerPos.y, 'the-broker');
+  const defectorPos = floorMap.tileToWorld(defectorTile.x, defectorTile.y);
+  const defectorEid = spawnNpc(world, defectorPos.x, defectorPos.y, FLOOR2_DEFECTOR_NPC_ID, {
+    dialogueOverride: buildFloor2DefectorDialogue(defectorFamilyId),
+    appearanceKey: defectorAppearanceKey,
+    appearanceFallbackKey: defectorFallbackAppearanceKey,
+  });
   const shops: Floor2ShopInstance[] = [];
   picked.forEach((archetype, idx) => {
-    const spawnRoom = assignedRooms[idx]!;
-    const slot = roomShopSlots.get(spawnRoom.id) ?? 0;
-    roomShopSlots.set(spawnRoom.id, slot + 1);
-    const spawnTile = settlementRoomShopTile(
-      spawnRoom,
-      slot,
-      roomShopTotals.get(spawnRoom.id) ?? 1,
-    );
+    const spawnTile = spawnTiles.get(`shop:${idx}`);
+    if (!spawnTile) {
+      throw new Error(`initializeFloor2Settlement: failed to place shop ${archetype.id}`);
+    }
     const worldPos = floorMap.tileToWorld(spawnTile.x, spawnTile.y);
     const npcEid = spawnNpc(world, worldPos.x, worldPos.y, archetype.npcId);
     const rolled = generateShopInventory(world.rng, archetype);
@@ -130,6 +154,10 @@ export function initializeFloor2Settlement(
     settlementRoomId: settlement.id,
     settlementRoomIds: settlements.map((room) => room.id),
     brokerEid,
+    defectorEid,
+    defectorFamilyId,
+    defectorAppearanceKey,
+    defectorFallbackAppearanceKey,
     shops,
   };
   world.floorExtendedState = { ...(world.floorExtendedState ?? {}), settlement: snapshot };
@@ -149,7 +177,7 @@ function installSettlementDoorEntities(world: GameWorld, settlement: RoomData): 
       set(DoorState, {
         tileX: door.x,
         tileY: door.y,
-        isOpen: 1,
+        logicalOpen: 1,
         isLocked: 0,
         wasUnlocked: 1,
       }),
@@ -174,61 +202,113 @@ function repaintSafeRoomFloor(world: GameWorld, room: RoomData): void {
   }
 }
 
-/**
- * Room centroid — prefer the mean of interiorCells (irregular cavern shape)
- * when available, otherwise fall back to bounds centre.
- */
-function roomCentroidTile(room: RoomData): { x: number; y: number } {
-  if (room.interiorCells && room.interiorCells.length > 0) {
-    let sx = 0;
-    let sy = 0;
-    for (const cell of room.interiorCells) {
-      sx += cell.x;
-      sy += cell.y;
-    }
-    return {
-      x: Math.round(sx / room.interiorCells.length),
-      y: Math.round(sy / room.interiorCells.length),
-    };
-  }
-  return {
-    x: room.bounds.x + Math.floor(room.bounds.width / 2),
-    y: room.bounds.y + Math.floor(room.bounds.height / 2),
-  };
+interface SettlementPlacementEntry {
+  readonly key: string;
+  readonly roomIds: readonly number[];
 }
 
-/**
- * Pick deterministic, distinct-ish tiles for multiple shopkeepers in the same
- * settlement room so they do not stack on one centroid tile.
- */
-function settlementRoomShopTile(
-  room: RoomData,
-  slotIndex: number,
-  totalShopsInRoom: number,
-): { x: number; y: number } {
-  const total = Math.max(1, totalShopsInRoom);
-  const slot = Math.max(0, Math.min(slotIndex, total - 1));
-  if (room.interiorCells && room.interiorCells.length > 0) {
-    const sorted = [...room.interiorCells].sort((a, b) => a.y - b.y || a.x - b.x);
-    if (total === 1 || sorted.length === 1) {
-      const mid = sorted[Math.floor(sorted.length / 2)]!;
-      return { x: mid.x, y: mid.y };
-    }
-    const fraction = total === 1 ? 0.5 : slot / (total - 1);
-    const index = Math.max(
-      0,
-      Math.min(sorted.length - 1, Math.round(fraction * (sorted.length - 1))),
+function buildSettlementPlacementPlan(
+  settlement: RoomData,
+  settlements: readonly RoomData[],
+  assignedRooms: readonly RoomData[],
+): readonly SettlementPlacementEntry[] {
+  const entries: SettlementPlacementEntry[] = [
+    { key: 'broker', roomIds: [settlement.id] },
+    { key: 'defector', roomIds: settlements.map((room) => room.id) },
+  ];
+  assignedRooms.forEach((room, idx) => {
+    entries.push({
+      key: `shop:${idx}`,
+      roomIds: [room.id, ...settlements.map((candidate) => candidate.id)],
+    });
+  });
+  return entries;
+}
+
+function placeSettlementNpcs(
+  rng: SeededRandom,
+  entries: readonly SettlementPlacementEntry[],
+  settlements: readonly RoomData[],
+  reservedTiles: Array<{ x: number; y: number }>,
+): ReadonlyMap<string, { x: number; y: number }> {
+  const byRoom = new Map(settlements.map((room) => [room.id, room]));
+  const placements = new Map<string, { x: number; y: number }>();
+  for (const entry of entries) {
+    const preferredRooms = uniqueRoomOrder(
+      entry.roomIds,
+      settlements.map((room) => room.id),
     );
-    const chosen = sorted[index]!;
-    return { x: chosen.x, y: chosen.y };
+    const tile = pickSettlementPlacementTile(rng, preferredRooms, byRoom, reservedTiles);
+    if (!tile) {
+      throw new Error(
+        `initializeFloor2Settlement: could not place settlement NPC "${entry.key}" with spacing constraints`,
+      );
+    }
+    placements.set(entry.key, tile);
+    reservedTiles.push(tile);
   }
-  const base = roomCentroidTile(room);
-  if (total === 1) return base;
-  const left = room.bounds.x + 1;
-  const right = room.bounds.x + room.bounds.width - 2;
-  const minX = Math.min(left, right);
-  const maxX = Math.max(left, right);
-  const fraction = total === 1 ? 0.5 : slot / (total - 1);
-  const x = Math.round(minX + (maxX - minX) * fraction);
-  return { x, y: base.y };
+  return placements;
+}
+
+function uniqueRoomOrder(
+  preferred: readonly number[],
+  fallback: readonly number[],
+): readonly number[] {
+  const seen = new Set<number>();
+  const ordered: number[] = [];
+  for (const id of [...preferred, ...fallback]) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    ordered.push(id);
+  }
+  return ordered;
+}
+
+function pickSettlementPlacementTile(
+  rng: SeededRandom,
+  roomIds: readonly number[],
+  byRoom: ReadonlyMap<number, RoomData>,
+  reservedTiles: readonly { x: number; y: number }[],
+): { x: number; y: number } | null {
+  for (const roomId of roomIds) {
+    const room = byRoom.get(roomId);
+    if (!room) continue;
+    const candidates = settlementPlacementCandidates(room).filter((tile) =>
+      reservedTiles.every((reserved) => tileDistanceSq(tile, reserved) >= 9),
+    );
+    if (candidates.length === 0) continue;
+    return candidates[rng.nextInt(0, candidates.length - 1)]!;
+  }
+  return null;
+}
+
+function settlementPlacementCandidates(room: RoomData): Array<{ x: number; y: number }> {
+  const base =
+    room.interiorCells && room.interiorCells.length > 0
+      ? room.interiorCells.map((cell) => ({ x: cell.x, y: cell.y }))
+      : boundedInteriorCells(room);
+  const filtered = base.filter((tile) =>
+    room.doors.every((door) => Math.max(Math.abs(tile.x - door.x), Math.abs(tile.y - door.y)) > 1),
+  );
+  return filtered.length > 0 ? filtered : base;
+}
+
+function boundedInteriorCells(room: RoomData): Array<{ x: number; y: number }> {
+  const cells: Array<{ x: number; y: number }> = [];
+  const minX = room.bounds.x + 1;
+  const maxXExclusive = room.bounds.x + room.bounds.width - 1;
+  const minY = room.bounds.y + 1;
+  const maxYExclusive = room.bounds.y + room.bounds.height - 1;
+  for (let y = minY; y < maxYExclusive; y += 1) {
+    for (let x = minX; x < maxXExclusive; x += 1) {
+      cells.push({ x, y });
+    }
+  }
+  return cells;
+}
+
+function tileDistanceSq(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return dx * dx + dy * dy;
 }

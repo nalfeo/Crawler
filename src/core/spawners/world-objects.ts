@@ -23,9 +23,26 @@ import {
 } from '../../shared/decorationDefs.js';
 import { ftToPx } from '../../shared/units.js';
 import type { SetPiecePropRender } from '../../shared/set-piece-render.js';
+import type { SpriteRef } from '../../shared/set-piece-types.js';
 import { type HarvestableDef, HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import { hashStringToSeed, SeededRandom } from '../../shared/random.js';
 import { createEntity } from './entity-core.js';
+
+export interface SpawnNpcOptions {
+  /** Optional per-instance dialogue that overrides the static NPC def. */
+  readonly dialogueOverride?: readonly string[];
+  /** Optional borrowed appearance key (e.g. family elite sprite for a neutral NPC). */
+  readonly appearanceKey?: string;
+  /** Optional fallback borrowed appearance key when the preferred key has no art. */
+  readonly appearanceFallbackKey?: string;
+  readonly spriteOverride?: SpriteRef;
+  readonly widthFt?: number;
+  readonly heightFt?: number;
+  readonly flipX?: boolean;
+  readonly flipY?: boolean;
+  readonly rotationDeg?: number;
+  readonly z?: number;
+}
 
 /** Spawn a trap entity at a position. */
 export function spawnTrap(
@@ -73,11 +90,31 @@ export function spawnTrap(
  * The defId must match a registered NpcDef in npc-types.ts.
  * Returns the entity id, or -1 if the defId is not found.
  */
-export function spawnNpc(world: GameWorld, x: number, y: number, defId: string): number {
+export function spawnNpc(
+  world: GameWorld,
+  x: number,
+  y: number,
+  defId: string,
+  options: SpawnNpcOptions = {},
+): number {
   const def = getNpcDef(defId);
   if (def === undefined) {
     return -1;
   }
+  if ((options.widthFt === undefined) !== (options.heightFt === undefined)) {
+    throw new Error('spawnNpc requires widthFt and heightFt to be provided together.');
+  }
+  if (
+    options.widthFt !== undefined &&
+    (!Number.isFinite(options.widthFt) ||
+      !Number.isFinite(options.heightFt) ||
+      options.widthFt <= 0 ||
+      (options.heightFt ?? 0) <= 0)
+  ) {
+    throw new Error('spawnNpc requires widthFt and heightFt to be finite positive numbers.');
+  }
+  const widthFt = options.widthFt ?? def.widthFt;
+  const heightFt = options.heightFt ?? def.heightFt;
 
   const eid = createEntity(world);
 
@@ -85,7 +122,7 @@ export function spawnNpc(world: GameWorld, x: number, y: number, defId: string):
   addComponent(
     world.ecs,
     eid,
-    set(Sprite, { textureId: def.textureId, width: def.widthFt, height: def.heightFt }),
+    set(Sprite, { textureId: def.textureId, width: widthFt, height: heightFt }),
   );
   addComponent(
     world.ecs,
@@ -97,8 +134,8 @@ export function spawnNpc(world: GameWorld, x: number, y: number, defId: string):
       // horizontal extent by ~40% and is a Slice-1 spec violation ("do not
       // change any numeric size value away from today's sprite half-extents").
       radius: 0,
-      halfWidth: def.widthFt * 0.5,
-      halfHeight: def.heightFt * 0.5,
+      halfWidth: widthFt * 0.5,
+      halfHeight: heightFt * 0.5,
       shape: SHAPE_BOX,
     }),
   );
@@ -107,11 +144,21 @@ export function spawnNpc(world: GameWorld, x: number, y: number, defId: string):
 
   const instance: NpcInstance = {
     defId,
+    ...(options.spriteOverride !== undefined ? { spriteOverride: options.spriteOverride } : {}),
+    ...(options.flipX !== undefined ? { flipX: options.flipX } : {}),
+    ...(options.flipY !== undefined ? { flipY: options.flipY } : {}),
+    ...(options.rotationDeg !== undefined ? { rotationDeg: options.rotationDeg } : {}),
+    ...(options.z !== undefined ? { z: options.z } : {}),
     dialogueIndex: 0,
     quests: def.quests.map((q) => ({ questId: q.questId, status: 'available' })),
+    dialogueOverride: options.dialogueOverride,
+    appearanceFallbackKey: options.appearanceFallbackKey,
     nearbyPlayer: false,
   };
   world.npcs.set(eid, instance);
+  if (options.appearanceKey !== undefined) {
+    world.enemyAppearanceKeys.set(eid, options.appearanceKey);
+  }
 
   return eid;
 }

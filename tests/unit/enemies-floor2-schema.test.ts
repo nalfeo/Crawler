@@ -35,11 +35,22 @@ describe('enemies.floor2.json — schema + content', () => {
     expect(seen.size).toBe(bosses.length);
   });
 
-  it('has at least one trash archetype per family', () => {
+  it('gives every family exactly one elite + one ranged basic + one melee basic', () => {
     const families = loadFamilies();
     for (const family of families) {
       const trash = getFloor2FamilyTrash(family.id);
-      expect(trash.length).toBeGreaterThan(0);
+      expect(trash.length).toBe(3);
+      const elite = trash.filter((entry) => entry.spawnWeight === 0.01);
+      const ranged = trash.filter((entry) => entry.spawnWeight === 0.25);
+      const melee = trash.filter((entry) => entry.spawnWeight === 0.74);
+      expect(elite.length).toBe(1);
+      expect(ranged.length).toBe(1);
+      expect(melee.length).toBe(1);
+      expect(elite[0]?.aiType === 'ranged' || elite[0]?.aiType === 'chase').toBe(true);
+      expect(ranged[0]?.aiType).toBe('ranged');
+      expect(melee[0]?.aiType).not.toBe('ranged');
+      const totalWeight = trash.reduce((sum, entry) => sum + entry.spawnWeight, 0);
+      expect(totalWeight).toBeCloseTo(1, 6);
       for (const t of trash) {
         expect(t.isBoss).not.toBe(true);
         expect(t.familyId).toBe(family.id);

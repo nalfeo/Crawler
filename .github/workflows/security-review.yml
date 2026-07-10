@@ -17,7 +17,7 @@ jobs:
     name: Detect change scope
     runs-on: ubuntu-latest
     outputs:
-      docs_only: ${{ steps.detect.outputs.docs_only }}
+      docs_only: ${{ steps.scope.outputs.docs_only }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,6 +28,15 @@ jobs:
         env:
           EVENT_BEFORE: ${{ github.event.before }}
         run: bash scripts/agent/ci/detect-art-only.sh
+
+      - name: Normalize docs-only scope
+        id: scope
+        run: |
+          docs_only='${{ steps.detect.outputs.docs_only }}'
+          if [ '${{ github.event_name }}' != 'pull_request' ]; then
+            docs_only='false'
+          fi
+          echo "docs_only=${docs_only}" >>"$GITHUB_OUTPUT"
 
   # All six security checks consolidated into one job to reduce runner-slot
   # consumption (previously each check spun up its own runner and paid full
@@ -41,15 +50,13 @@ jobs:
     steps:
       - name: Docs-only no-op
         if: needs.changes.outputs.docs_only == 'true'
-        run: echo "Docs-only change; skipping security scans."
+        run: echo "Docs-only PR change; skipping src-scoped security checks."
 
       - uses: actions/checkout@v4
-        if: needs.changes.outputs.docs_only != 'true'
         with:
           fetch-depth: 0
 
       - uses: ./.github/actions/setup-node
-        if: needs.changes.outputs.docs_only != 'true'
 
       - name: npm audit
         if: ${{ needs.changes.outputs.docs_only != 'true' && !cancelled() }}
@@ -57,7 +64,7 @@ jobs:
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 
       - name: Scan for committed secrets
-        if: ${{ needs.changes.outputs.docs_only != 'true' && !cancelled() }}
+        if: ${{ !cancelled() }}
         run: npx tsx scripts/agent/shared/wrap-step.ts --name security-scan-secrets -- bash scripts/agent/security/scan-secrets.sh
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 

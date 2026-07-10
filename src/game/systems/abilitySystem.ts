@@ -5,8 +5,9 @@ import {
   type AbilityTriggerCondition,
   type AbilityTriggerEvent,
 } from '../abilities/types.js';
-import { Enemy, Health, Player, Position } from '../../core/components.js';
+import { EffectiveStats, Enemy, Health, Player, Position } from '../../core/components.js';
 import type { GameWorld } from '../../core/world.js';
+import { applyCooldownReduction } from '../../shared/stats.js';
 import { getAbilityDefinition } from '../abilities/registry.js';
 import { applyCatalogEffect } from './progressionEffects.js';
 import { removeStatModifiers } from './statsSystem.js';
@@ -186,6 +187,18 @@ function spendMp(world: GameWorld, holderEid: number, mpCost: number): void {
   world.playerMp = Math.max(0, world.playerMp - mpCost);
 }
 
+function getEffectiveAbilityCooldownFrames(
+  world: GameWorld,
+  holderEid: number,
+  baseCooldownFrames: number,
+): number {
+  if (!hasComponent(world.ecs, holderEid, EffectiveStats)) {
+    return baseCooldownFrames;
+  }
+  const reduction = world.stores.effectiveStats.cooldownReduction[holderEid] ?? 0;
+  return applyCooldownReduction(baseCooldownFrames, reduction);
+}
+
 /**
  * Debug helper: force an active/spell ability to fire NOW, bypassing cooldown
  * and mana cost. Intended for the abilities lab's clickable hotbar so any
@@ -219,8 +232,9 @@ export function forceActivateAbility(
       holderEid,
     });
   }
+  const cooldownFrames = getEffectiveAbilityCooldownFrames(world, holderEid, def.cooldownFrames);
   state.cooldownByAbilityId.set(abilityId, world.frameCount);
-  state.cooldownFramesByAbilityId.set(abilityId, def.cooldownFrames);
+  state.cooldownFramesByAbilityId.set(abilityId, cooldownFrames);
   return true;
 }
 
@@ -237,7 +251,10 @@ function activateAbility(world: GameWorld, holderEid: number, abilityId: string)
   }
 
   const lastTriggerFrame = state.cooldownByAbilityId.get(abilityId) ?? Number.NEGATIVE_INFINITY;
-  if (world.frameCount - lastTriggerFrame < def.cooldownFrames) {
+  const cooldownFramesForGate =
+    state.cooldownFramesByAbilityId.get(abilityId) ??
+    getEffectiveAbilityCooldownFrames(world, holderEid, def.cooldownFrames);
+  if (world.frameCount - lastTriggerFrame < cooldownFramesForGate) {
     return;
   }
 
@@ -251,8 +268,13 @@ function activateAbility(world: GameWorld, holderEid: number, abilityId: string)
     });
   }
   spendMp(world, holderEid, def.mpCost);
+  const cooldownFramesForNewWindow = getEffectiveAbilityCooldownFrames(
+    world,
+    holderEid,
+    def.cooldownFrames,
+  );
   state.cooldownByAbilityId.set(abilityId, world.frameCount);
-  state.cooldownFramesByAbilityId.set(abilityId, def.cooldownFrames);
+  state.cooldownFramesByAbilityId.set(abilityId, cooldownFramesForNewWindow);
 }
 
 export function abilitySystem(world: GameWorld): void {

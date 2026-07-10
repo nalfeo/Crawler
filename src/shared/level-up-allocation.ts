@@ -12,7 +12,7 @@
  * Mirrors the immutable-transition shape of `src/shared/modal-picker.ts`:
  * every mutator returns a new state object and never mutates its input.
  */
-import { PRIMARY_STATS, type PrimaryStatId } from './stats.js';
+import { PRIMARY_STATS, isAllocatablePrimaryStat, type PrimaryStatId } from './stats.js';
 
 export type LevelUpStatus = 'open' | 'confirmed' | 'cancelled';
 
@@ -103,7 +103,7 @@ export function incrementStat(
   state: LevelUpAllocationState,
   stat: PrimaryStatId,
 ): LevelUpAllocationState {
-  if (state.status !== 'open' || remainingPoints(state) <= 0) {
+  if (state.status !== 'open' || remainingPoints(state) <= 0 || !isAllocatablePrimaryStat(stat)) {
     return state;
   }
   const index = PRIMARY_STATS.indexOf(stat);

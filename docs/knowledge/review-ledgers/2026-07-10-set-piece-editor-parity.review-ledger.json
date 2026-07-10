@@ -1,0 +1,46 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-10",
+  "session_slug": "set-piece-editor-parity",
+  "task_title": "Set-piece editor/runtime WYSIWYG parity follow-ups",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan review covered runtime door/wall stamping, editor snap/depth/tint parity, and CI/browser guard reliability. Core direction held with minor tightening on structural assertions and deterministic parity checks."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 7,
+          "resolved_count": 7,
+          "clean": false,
+          "notes": "Initial parity pass: addressed runtime tile semantics, production interaction coverage, tint compositing behavior, and metadata consistency."
+        },
+        {
+          "round": 2,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 6,
+          "resolved_count": 6,
+          "clean": false,
+          "notes": "Follow-up review cycle after CI and branch-sync churn: addressed single-path tint draw (no alpha double-paint), production render-order instrumentation, non-opaque sprite fixture coverage, apple metric consistency, and removed unintended overlapping rug copy."
+        },
+        {
+          "round": 3,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Final re-review clean after latest parity/doc/data fixes; no remaining blocking concerns."
+        }
+      ]
+    }
+  }
+}

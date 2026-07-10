@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "packId": "floor2",
+  "quests": [
+    {
+      "id": "floor2-find-settlement",
+      "title": "Find the Settlement",
+      "summary": "Push through the caverns until you reach the settlement. That's where the floor's social game actually starts.",
+      "objectives": [
+        {
+          "id": "find-settlement",
+          "label": "Find the settlement",
+          "kind": "goal",
+          "goalId": "floor2-settlement-found"
+        }
+      ]
+    }
+  ]
+}

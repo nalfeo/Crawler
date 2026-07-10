@@ -141,6 +141,14 @@ export interface Floor2SettlementSnapshot {
   readonly settlementRoomIds: readonly number[];
   /** EID of the spawned Broker NPC, or -1 if the def was not registered. */
   readonly brokerEid: number;
+  /** EID of the spawned defected family member NPC, or -1 if the def was not registered. */
+  readonly defectorEid: number;
+  /** Present-family id the defector used to run with. */
+  readonly defectorFamilyId: string;
+  /** Preferred appearance key for the defected NPC (elite key). */
+  readonly defectorAppearanceKey: string;
+  /** Same-family fallback appearance key when preferred art is unavailable. */
+  readonly defectorFallbackAppearanceKey: string;
   /** 1–2 seeded shop instances. */
   readonly shops: readonly Floor2ShopInstance[];
 }

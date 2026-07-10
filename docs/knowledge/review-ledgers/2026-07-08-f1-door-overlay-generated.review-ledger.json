@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-08",
+  "session_slug": "f1-door-overlay-generated",
+  "task_title": "Wire generated closed-door art into updateDoorOverlay (F1 terrain 6/6)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "Separate-model (GPT-5.4 rubber-duck) plan review. Verdict: sound, minor-divergent. 2 blocking + 5 non-blocking, ALL accepted. | Blocking-1 (e2e can false-fail): generatedClosedCount>0 only proves the branch if the booted map has a renderable closed door; that precondition was implicit. Fix: add renderableClosedCount to the door summary; the real main-scene-probe-lab e2e asserts renderableClosedCount>0 AND closedGeneratedCount===renderableClosedCount, so it cannot pass on zero eligible doors nor on the wrong branch. | Blocking-2 (ambiguous summary buckets): replaced {generatedClosedCount,kenneyClosedCount,openCount,colorCount} with mutually-exclusive buckets: closedGeneratedCount, closedKenneyCount, closedColorCount, openKenneyCount, openColorCount, plus renderableClosedCount. | Non-blocking-3/5 (no hardcoded tileSize/256 in helper): the pure helper picks MODE ONLY (generated | kenney-closed | kenney-open | color); the renderer derives scale from the actual loaded texture width, mirroring terrain-renderer resolveGeneratedScale (getSourceImage().width>0 -> tileSize/width, else null -> fall through to Kenney). Explicit setOrigin(0.5). | Non-blocking-4 (minimal helper): resolveDoorRenderMode(isOpen,{hasGeneratedClosed,hasSheet}) is pure branch-selection, no Phaser/asset dims; frame/key constants live in the renderer module. | Non-blocking-6 (test matrix): added closed+gen+noSheet=>generated (independence from Kenney) and open+gen+sheet=>kenney-open (regression guard: generated never leaks to the open state). | Non-blocking-7 (stale summary): zero the door summary at method entry incl. the early-return (no floorMap/graphics) path, not only at the end."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "notes": "Single-model code-review loop (Sonnet 4.6, 3🍎). Round 1: 1 non-blocking concern — the \"8-case matrix\" only pinned 7 of 8 input combinations; the open+generated+noSheet case (code correct: returns color(open=true)) lacked an explicit regression test. Reviewer confirmed everything else correct: generatedDoorScale ?? 1 provably unreachable-as-1 (only hit when kind===generated ⇒ hasGeneratedClosed ⇒ scale!==null); all image branches go through addDoorImage preserving setOrigin(0.5)/setDepth(-19)/uiCamera.ignore/doorImages.push; summary zeroed on both early-return and normal-exit; e2e is a genuine gate (Kenney-only render would fail closedGeneratedCount===renderableClosedCount). Resolved: added the exact test the reviewer specified (open+gen+noSheet⇒color(open=true)), completing the 4/4 isOpen=true guard. Round 2 clean: fix is test-only (no new production-code surface); unit 9/9 pass."
+    }
+  }
+}

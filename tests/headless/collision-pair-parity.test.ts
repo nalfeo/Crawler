@@ -97,38 +97,95 @@ interface CollisionFingerprint {
  *   seed  13:  6/236/5/0   →  7/211/5/0
  *   seed  42:  7/264/10/8  →  7/279/5/8    (kills & score unchanged)
  *   seed 137:  6/230/0/0   →  5/206/0/2
+ *
+ * ## 2026-07-08 re-baseline — welcome-room set piece retune: final spaced layout
+ *
+ * The welcome-room set piece was retuned again (commit 4ce1027b, DATA-ONLY in
+ * `set-pieces.json`) to the maintainer-approved final layout: the Goon pinned to
+ * the back wall behind his welcome desk, the merchant and spell broker spaced to
+ * opposite sides by their shop table and overstuffed bookcase. This moves all
+ * three quest NPCs to new tiles (their `x` tiles shift 7→1 / 1→6 / 6→7), which
+ * shifts their Size-backed collision footprints, changes the per-frame
+ * collision-pair set, and cascades through `applyDamage`'s RNG draws — the same
+ * NPC-repositioning mechanism as the 2026-07-07 block. Bisected and proven to be
+ * NPC-data-only: this guard still passes 5/5 at the pre-retune commit 7677075e
+ * (with every structural change already present — feet-based sizing schema, stamp
+ * plumbing, contain-fit rendering, and props stamped), and drifts ONLY once the
+ * NPC tile data moves at 4ce1027b. So the newly-added/retuned cosmetic PROPS stay
+ * render-only, non-entity instances on `world.setPieceProps` (provably
+ * non-perturbing) and NPC placement is the sole cause. A deliberate, user-approved
+ * change — same room, trivially pathable, no reachability/balance impact (the
+ * Floor-1 win-rate sweep in `floor1-completion.test.ts` stays green). Verified
+ * stable across two back-to-back runs per seed. Seed 7's first-1500-frame path
+ * never reaches the moved tiles, so it is unchanged.
+ * Before → after (kills / damageDealt / damageTaken / score):
+ *   seed   7:  3/125/15/0  →  3/125/15/0   (unchanged)
+ *   seed  13:  7/211/5/0   →  8/228/5/0
+ *   seed  42:  7/279/5/8   →  6/236/10/4
+ *   seed 137:  5/206/0/2   →  5/226/5/2
+ *
+ * ## 2026-07-09 re-baseline — set-piece NPC transform metadata in runtime
+ *
+ * This branch threads authored NPC visual metadata through the real runtime:
+ * set-piece stamp now carries NPC z/size/transform fields into spawn options,
+ * and the bridge applies per-instance NPC display sizing/depth/flip/rotation.
+ * Those authored welcome-room NPC transforms shift early collision occupancy in
+ * the first 1500-frame headless slice and therefore drift the deterministic
+ * combat fingerprint values. Re-baseline is pinned only after proving every
+ * seed remains deterministic across two back-to-back invocations.
+ * Before → after (kills / damageDealt / damageTaken / score):
+ *   seed   7:  3/125/15/0   →  4/156/10/0
+ *   seed  13:  8/228/5/0    →  7/190/5/0
+ *   seed  42:  6/236/10/4   →  4/193/15/2
+ *   seed 137:  5/226/5/2    →  4/190/0/0
+ *
+ * ## 2026-07-10 re-baseline — derived stat contract + cooldown runtime wiring
+ *
+ * This PR intentionally changes combat math semantics and runtime cooldown
+ * behavior: strength-derived scaling moved from `damageBonus` to a separate
+ * multiplicative `damagePercent` (while keeping gear `damageBonus` flat), and
+ * wisdom-derived `cooldownReduction` now feeds real ability/weapon cooldown
+ * gates. Those design-owned behavior changes alter hit cadence and per-hit
+ * damage in the first 1500-frame slice, so deterministic fingerprints drift.
+ * Re-baseline pinned only after each seed remained deterministic across two
+ * back-to-back invocations (see the determinism test below).
+ * Before → after (kills / damageDealt / damageTaken / score):
+ *   seed   7:  4/156/10/0   →  1/140.16999250650406/25/0
+ *   seed  13:  7/190/5/0    →  4/175.90000247955322/0/0
+ *   seed  42:  4/193/15/2   →  5/205.5999984741211/15/4
+ *   seed 137:  4/190/0/0    →  5/179.23999977111816/10/2
  */
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 7,
-    damageDealt: 279,
-    damageTaken: 5,
-    finalScore: 8,
+    kills: 5,
+    damageDealt: 205.5999984741211,
+    damageTaken: 15,
+    finalScore: 4,
   },
   7: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 3,
-    damageDealt: 125,
-    damageTaken: 15,
+    kills: 1,
+    damageDealt: 140.16999250650406,
+    damageTaken: 25,
     finalScore: 0,
   },
   13: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 7,
-    damageDealt: 211,
-    damageTaken: 5,
+    kills: 4,
+    damageDealt: 175.90000247955322,
+    damageTaken: 0,
     finalScore: 0,
   },
   137: {
     totalFrames: 1500,
     outcome: 'timeout',
     kills: 5,
-    damageDealt: 206,
-    damageTaken: 0,
+    damageDealt: 179.23999977111816,
+    damageTaken: 10,
     finalScore: 2,
   },
 };

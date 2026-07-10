@@ -88,8 +88,9 @@ function emitCorpseExplosion(
  * `EffectiveStats` so bare test worlds (no stat stores) keep deterministic,
  * roll-free behavior:
  *   - Dodge: a player target can fully avoid an incoming hit (player-only).
- *   - Crit: player-sourced damage to an enemy can critically strike, scaling
- *     the amount by the player's critMultiplier.
+ *   - Player damage scaling: player-sourced damage to an enemy applies the
+ *     player's EffectiveStats `damageBonus` (flat) and `damagePercent`
+ *     (multiplier), then can critically strike using critChance/critMultiplier.
  * The target's type fixes the direction of damage — an enemy target means the
  * blow is player-sourced (crit), a player target means it is enemy-sourced
  * (dodge) — so neither path needs the attacker entity.
@@ -158,16 +159,19 @@ export function applyDamage(
     }
   }
 
-  // Crit: player-sourced damage to an enemy. Reads the player singleton's
-  // Luck-derived critChance / critMultiplier from EffectiveStats.
+  // Player-sourced scaling + crit: reads the player singleton's EffectiveStats
+  // and applies flat/percent damage bonuses before the crit roll.
   let finalAmount = amount;
   let isCrit = false;
   if (!isPlayerTarget && hasComponent(world.ecs, target, Enemy)) {
     const player = query(world.ecs, [Player, EffectiveStats])[0];
     if (player !== undefined) {
+      const damageBonus = world.stores.effectiveStats.damageBonus[player] ?? 0;
+      const damagePercent = world.stores.effectiveStats.damagePercent[player] ?? 0;
+      const scaledAmount = Math.max(0, amount + damageBonus) * (1 + Math.max(0, damagePercent));
       const critChance = world.stores.effectiveStats.critChance[player] ?? 0;
       const critMultiplier = world.stores.effectiveStats.critMultiplier[player] ?? 1;
-      const result = resolveCrit(world.rng.next(), amount, critChance, critMultiplier);
+      const result = resolveCrit(world.rng.next(), scaledAmount, critChance, critMultiplier);
       finalAmount = result.amount;
       isCrit = result.isCrit;
     }

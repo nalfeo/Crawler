@@ -60,10 +60,10 @@ describe('level-up allocation state', () => {
 
   it('increment/decrement move the highlight to the touched stat', () => {
     let state = createLevelUpAllocationState(3);
-    state = incrementStat(state, 'luck');
-    expect(selectedStat(state)).toBe('luck');
-    state = decrementStat(state, 'luck');
-    expect(selectedStat(state)).toBe('luck');
+    state = incrementStat(state, 'dexterity');
+    expect(selectedStat(state)).toBe('dexterity');
+    state = decrementStat(state, 'dexterity');
+    expect(selectedStat(state)).toBe('dexterity');
   });
 
   it('operates on the highlighted stat via *Selected helpers', () => {
@@ -128,5 +128,19 @@ describe('level-up allocation state', () => {
     }
     expect(spentTotal(state)).toBe(3);
     expect(remainingPoints(state)).toBe(0);
+  });
+
+  it('does not increment non-allocatable primary stats', () => {
+    const state = createLevelUpAllocationState(2);
+    expect(incrementStat(state, 'charisma')).toBe(state);
+    expect(incrementStat(state, 'weight')).toBe(state);
+  });
+
+  it('keeps luck allocatable', () => {
+    const state = createLevelUpAllocationState(1);
+    const next = incrementStat(state, 'luck');
+    expect(next).not.toBe(state);
+    expect(next.draft.luck).toBe(1);
+    expect(remainingPoints(next)).toBe(0);
   });
 });

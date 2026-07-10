@@ -124,11 +124,31 @@ export type SpriteRef = CatalogSpriteRef | SheetSpriteRef | CustomSpriteRef;
 /** A single drawable layer within a prop. Layers stack to form composites. */
 export interface SpriteLayer {
   readonly sprite: SpriteRef;
-  /** Sub-tile pixel offset from the prop's top-left tile. */
+  /** Sub-tile pixel offset from the prop's top-left tile (lab pixels). */
   readonly offsetX?: number;
   readonly offsetY?: number;
-  /** Uniform scale multiplier (1 = native). */
+  /**
+   * Sub-tile position nudge in FEET, added on top of any pixel offset. Prefer
+   * this over `offsetX`/`offsetY` for real-world placement (e.g. lifting a
+   * sconce up onto the wall with `offsetYFt: -3.5`).
+   */
+  readonly offsetXFt?: number;
+  readonly offsetYFt?: number;
+  /**
+   * Explicit render box in FEET for this layer, overriding the tile-derived
+   * size. The sprite is contain-fit inside this box (aspect preserved, never
+   * stretched), so authoring a realistic footprint (a 1.5 ft sconce, a 5 ft
+   * desk) no longer distorts the art. Both must be supplied together.
+   */
+  readonly widthFt?: number;
+  readonly heightFt?: number;
+  /** Uniform scale multiplier (1 = native), applied on top of the render box. */
   readonly scale?: number;
+  /** Mirror the sprite horizontally / vertically (e.g. mirror a paired sconce). */
+  readonly flipX?: boolean;
+  readonly flipY?: boolean;
+  /** Optional clockwise rotation in degrees. */
+  readonly rotationDeg?: number;
   /** Optional tint as `#rrggbb`. */
   readonly tintHex?: string;
 }
@@ -137,15 +157,17 @@ export interface SpriteLayer {
 export interface SetPiecePropDef {
   readonly id: string;
   readonly kind: SetPiecePropKind;
-  /** Tile column within the set piece (0-based, left to right). */
+  /** Tile-space X within the set piece (0-based; supports sub-tile offsets). */
   readonly x: number;
-  /** Tile row within the set piece (0-based, top to bottom). */
+  /** Tile-space Y within the set piece (0-based; supports sub-tile offsets). */
   readonly y: number;
   /** Footprint in tiles (defaults to 1×1). */
   readonly width: number;
   readonly height: number;
   /** Explicit render order; defaults to {@link PROP_KIND_Z} for the prop kind. */
   readonly z: number;
+  /** Optional scene-layer id used by editors for visibility/locking workflows. */
+  readonly sceneLayer?: string;
   /** Ordered visual layers (base first, stacked extras after). */
   readonly layers: readonly SpriteLayer[];
 }
@@ -166,12 +188,50 @@ export interface SetPieceNpcDef {
   readonly id: string;
   /** NPC type id resolved against the NPC registry, e.g. `tutorial-goon`. */
   readonly npcTypeId: string;
-  /** Tile column within the set piece (0-based, left to right). */
+  /** Tile-space X within the set piece (0-based; supports sub-tile offsets). */
   readonly x: number;
-  /** Tile row within the set piece (0-based, top to bottom). */
+  /** Tile-space Y within the set piece (0-based; supports sub-tile offsets). */
   readonly y: number;
+  /** Optional per-instance render/collision width in feet. Must pair with heightFt. */
+  readonly widthFt?: number;
+  /** Optional per-instance render/collision height in feet. Must pair with widthFt. */
+  readonly heightFt?: number;
+  /** Optional sprite mirror flags applied at render time. */
+  readonly flipX?: boolean;
+  readonly flipY?: boolean;
+  /** Optional clockwise sprite rotation in degrees. */
+  readonly rotationDeg?: number;
+  /** Optional local z-order within its scene layer (higher draws on top). */
+  readonly z?: number;
+  /** Optional scene-layer id used by editors for visibility/locking workflows. */
+  readonly sceneLayer?: string;
+  /** Optional visual override sprite; NPC behavior still comes from npcTypeId. */
+  readonly spriteOverride?: SpriteRef;
   /** If set, this NPC's spawn tile drives the named objective anchor. */
   readonly anchorRole?: SetPieceNpcAnchorRole;
+}
+
+/**
+ * How the set piece's footprint is positioned within the target room's interior
+ * when it is smaller than the room. Floor-1 rooms are usually much larger than
+ * an authored set piece, so the default (centre/centre) strands "back wall"
+ * decor in open floor. Setting `verticalAlign: "top"` slides the whole block up
+ * against the room's top wall, keeping every authored intra-block relationship
+ * (wall decor above the goon, desk in front of him) while letting the wall props
+ * actually reach the wall (paired with a small negative `offsetYFt` lift).
+ *
+ * Alignment is applied per axis over the SLACK (interior extent − footprint
+ * extent); when the footprint meets or exceeds the interior on an axis the
+ * origin pins to that interior edge and per-tile clamping keeps tiles passable.
+ */
+export type SetPieceVerticalAlign = 'top' | 'center' | 'bottom';
+export type SetPieceHorizontalAlign = 'left' | 'center' | 'right';
+
+export interface SetPiecePlacement {
+  /** Vertical anchoring within the room interior. Defaults to `center`. */
+  readonly verticalAlign?: SetPieceVerticalAlign;
+  /** Horizontal anchoring within the room interior. Defaults to `center`. */
+  readonly horizontalAlign?: SetPieceHorizontalAlign;
 }
 
 export interface SetPieceDef {
@@ -188,15 +248,26 @@ export interface SetPieceDef {
   readonly maxHeight?: number;
   readonly description: string;
   readonly tags: readonly string[];
+  /** How the block anchors within an oversized room. Defaults to centre/centre. */
+  readonly placement?: SetPiecePlacement;
   readonly props: readonly SetPiecePropDef[];
   /** NPCs placed by this set piece (empty when none authored). */
   readonly npcs: readonly SetPieceNpcDef[];
+  /** Optional editor scene layers (editor visibility/locking grouping only). */
+  readonly sceneLayers?: readonly SetPieceSceneLayerDef[];
 }
 
 export interface SetPiecePackDef {
   readonly version: 1;
   readonly packId: string;
   readonly setPieces: readonly SetPieceSource[];
+}
+
+export interface SetPieceSceneLayerDef {
+  readonly id: string;
+  readonly name: string;
+  readonly visible?: boolean;
+  readonly locked?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -245,13 +316,28 @@ const spriteLayerSchema = z
     sprite: spriteRefSchema,
     offsetX: z.number().optional(),
     offsetY: z.number().optional(),
-    scale: z.number().positive().optional(),
+    offsetXFt: z.number().optional(),
+    offsetYFt: z.number().optional(),
+    widthFt: z.number().finite().positive().optional(),
+    heightFt: z.number().finite().positive().optional(),
+    scale: z.number().finite().positive().optional(),
+    flipX: z.boolean().optional(),
+    flipY: z.boolean().optional(),
+    rotationDeg: z.number().finite().optional(),
     tintHex: z
       .string()
       .regex(/^#[0-9a-fA-F]{6}$/, 'tintHex must be #rrggbb')
       .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    if ((value.widthFt === undefined) !== (value.heightFt === undefined)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'widthFt and heightFt must be supplied together.',
+      });
+    }
+  });
 
 const propKinds = ['floor', 'wall', 'door', 'fixture', 'furniture', 'decoration', 'actor'] as const;
 
@@ -259,11 +345,12 @@ const propSourceSchema = z
   .object({
     id: z.string().trim().min(1),
     kind: z.enum(propKinds),
-    x: z.number().int().min(0),
-    y: z.number().int().min(0),
-    width: z.number().int().positive().optional(),
-    height: z.number().int().positive().optional(),
+    x: z.number().finite().min(0),
+    y: z.number().finite().min(0),
+    width: z.number().finite().positive().optional(),
+    height: z.number().finite().positive().optional(),
     z: z.number().int().optional(),
+    sceneLayer: z.string().trim().min(1).optional(),
     layers: z.array(spriteLayerSchema).min(1),
   })
   .strict();
@@ -274,9 +361,33 @@ const npcSourceSchema = z
   .object({
     id: z.string().trim().min(1),
     npcTypeId: z.string().trim().min(1),
-    x: z.number().int().min(0),
-    y: z.number().int().min(0),
+    x: z.number().finite().min(0),
+    y: z.number().finite().min(0),
+    widthFt: z.number().finite().positive().optional(),
+    heightFt: z.number().finite().positive().optional(),
+    flipX: z.boolean().optional(),
+    flipY: z.boolean().optional(),
+    rotationDeg: z.number().finite().optional(),
+    z: z.number().int().optional(),
+    sceneLayer: z.string().trim().min(1).optional(),
+    spriteOverride: spriteRefSchema.optional(),
     anchorRole: z.enum(npcAnchorRoles).optional(),
+  })
+  .strict();
+
+const setPieceSceneLayerSchema = z
+  .object({
+    id: z.string().trim().min(1),
+    name: z.string().trim().min(1),
+    visible: z.boolean().optional(),
+    locked: z.boolean().optional(),
+  })
+  .strict();
+
+const placementSchema = z
+  .object({
+    verticalAlign: z.enum(['top', 'center', 'bottom']).optional(),
+    horizontalAlign: z.enum(['left', 'center', 'right']).optional(),
   })
   .strict();
 
@@ -292,14 +403,18 @@ const setPieceSourceSchema = z
     maxHeight: z.number().int().positive().optional(),
     description: z.string().trim().min(1),
     tags: z.array(z.string().trim().min(1)).default([]),
+    placement: placementSchema.optional(),
     props: z.array(propSourceSchema).min(1),
     npcs: z.array(npcSourceSchema).default([]),
+    sceneLayers: z.array(setPieceSceneLayerSchema).optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
     const isThemed = value.sizing === 'themed';
     const boundW = isThemed ? (value.maxWidth ?? value.width) : value.width;
     const boundH = isThemed ? (value.maxHeight ?? value.height) : value.height;
+    const layerIds = new Set<string>();
+    const hasDeclaredLayers = value.sceneLayers !== undefined;
     if (value.maxWidth !== undefined && value.maxWidth < value.width) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'maxWidth must be >= width.' });
     }
@@ -311,6 +426,18 @@ const setPieceSourceSchema = z
         code: z.ZodIssueCode.custom,
         message: 'maxWidth/maxHeight are only valid for themed set pieces.',
       });
+    }
+    if (value.sceneLayers !== undefined) {
+      for (const layer of value.sceneLayers) {
+        if (layerIds.has(layer.id)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Duplicate scene layer id "${layer.id}".`,
+          });
+        } else {
+          layerIds.add(layer.id);
+        }
+      }
     }
     const seen = new Set<string>();
     for (const prop of value.props) {
@@ -329,6 +456,12 @@ const setPieceSourceSchema = z
           message: `Prop "${prop.id}" extends outside the ${boundW}×${boundH} footprint.`,
         });
       }
+      if (hasDeclaredLayers && prop.sceneLayer !== undefined && !layerIds.has(prop.sceneLayer)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Prop "${prop.id}" references unknown sceneLayer "${prop.sceneLayer}".`,
+        });
+      }
     }
     const seenNpcIds = new Set<string>();
     const seenAnchors = new Set<string>();
@@ -340,6 +473,12 @@ const setPieceSourceSchema = z
         });
       }
       seenNpcIds.add(npc.id);
+      if ((npc.widthFt === undefined) !== (npc.heightFt === undefined)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `NPC "${npc.id}" must specify widthFt and heightFt together.`,
+        });
+      }
       if (npc.x >= boundW || npc.y >= boundH) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -350,6 +489,12 @@ const setPieceSourceSchema = z
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: `NPC "${npc.id}" references unknown npcTypeId "${npc.npcTypeId}".`,
+        });
+      }
+      if (hasDeclaredLayers && npc.sceneLayer !== undefined && !layerIds.has(npc.sceneLayer)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `NPC "${npc.id}" references unknown sceneLayer "${npc.sceneLayer}".`,
         });
       }
       if (npc.anchorRole !== undefined) {
@@ -389,6 +534,7 @@ function compileProp(source: SetPieceSource['props'][number]): SetPiecePropDef {
     width: source.width ?? 1,
     height: source.height ?? 1,
     z: source.z ?? PROP_KIND_Z[source.kind],
+    sceneLayer: source.sceneLayer,
     layers: source.layers,
   };
 }
@@ -399,6 +545,14 @@ function compileNpc(source: SetPieceSource['npcs'][number]): SetPieceNpcDef {
     npcTypeId: source.npcTypeId,
     x: source.x,
     y: source.y,
+    widthFt: source.widthFt,
+    heightFt: source.heightFt,
+    flipX: source.flipX,
+    flipY: source.flipY,
+    rotationDeg: source.rotationDeg,
+    z: source.z,
+    sceneLayer: source.sceneLayer,
+    spriteOverride: source.spriteOverride,
     anchorRole: source.anchorRole,
   };
 }
@@ -415,8 +569,10 @@ function compileSetPiece(source: SetPieceSource): SetPieceDef {
     maxHeight: source.maxHeight,
     description: source.description,
     tags: source.tags,
+    ...(source.placement !== undefined ? { placement: source.placement } : {}),
     props: source.props.map(compileProp),
     npcs: source.npcs.map(compileNpc),
+    ...(source.sceneLayers !== undefined ? { sceneLayers: source.sceneLayers } : {}),
   };
 }
 

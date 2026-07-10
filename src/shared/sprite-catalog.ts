@@ -34,7 +34,7 @@ const baseEntrySchema = z
   })
   .strict();
 
-export const spriteSheetCatalogEntrySchema = baseEntrySchema
+const spriteSheetCatalogEntrySchema = baseEntrySchema
   .extend({
     kind: z.literal('sheet'),
     sheetKey: z.string().trim().min(1),
@@ -47,7 +47,7 @@ export const spriteSheetCatalogEntrySchema = baseEntrySchema
   })
   .strict();
 
-export const spriteCatalogEntrySchema = baseEntrySchema
+const spriteCatalogEntrySchema = baseEntrySchema
   .extend({
     kind: z.literal('sprite'),
     spriteId: z.string().trim().min(1),
@@ -62,12 +62,12 @@ export const spriteCatalogEntrySchema = baseEntrySchema
   })
   .strict();
 
-export const spriteCatalogEntryUnionSchema = z.discriminatedUnion('kind', [
+const spriteCatalogEntryUnionSchema = z.discriminatedUnion('kind', [
   spriteSheetCatalogEntrySchema,
   spriteCatalogEntrySchema,
 ]);
 
-export const spriteCatalogSchema = z.array(spriteCatalogEntryUnionSchema);
+const spriteCatalogSchema = z.array(spriteCatalogEntryUnionSchema);
 
 export type SpriteSheetCatalogEntry = z.infer<typeof spriteSheetCatalogEntrySchema>;
 export type SpriteCatalogEntry = z.infer<typeof spriteCatalogEntrySchema>;

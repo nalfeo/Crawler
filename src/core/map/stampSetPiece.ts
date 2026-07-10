@@ -45,6 +45,7 @@ import {
   type SetPieceNpcAnchorRole,
   type SpriteRef,
 } from '../../shared/set-piece-types.js';
+import { getNpcDef } from '../../shared/npc-types.js';
 
 /**
  * Per-layer depth separation so stacked layers within (and across) props keep a
@@ -90,6 +91,19 @@ export interface StampedSetPieceProp {
 export interface StampedSetPieceNpc {
   /** NPC type id resolved against the NPC registry (e.g. `tutorial-goon`). */
   readonly npcTypeId: string;
+  /** Optional per-instance width in feet (paired with heightFt). */
+  readonly widthFt?: number;
+  /** Optional per-instance height in feet (paired with widthFt). */
+  readonly heightFt?: number;
+  /** Optional sprite mirror flags applied at render time. */
+  readonly flipX?: boolean;
+  readonly flipY?: boolean;
+  /** Optional clockwise sprite rotation in degrees. */
+  readonly rotationDeg?: number;
+  /** Optional local z-order carried through to runtime draw depth. */
+  readonly z?: number;
+  /** Optional visual override sprite for this spawned NPC. */
+  readonly spriteOverride?: SpriteRef;
   /** Objective anchor this NPC drives, if any. */
   readonly anchorRole?: SetPieceNpcAnchorRole;
   /** Clamped interior tile column. */
@@ -139,6 +153,20 @@ function clamp(value: number, lo: number, hi: number): number {
   return value;
 }
 
+function clampNpcTopLeftForFootprint(
+  topLeftTile: number,
+  interiorMin: number,
+  interiorMax: number,
+  sizeTiles: number,
+): number | null {
+  const minTopLeft = interiorMin;
+  const maxTopLeft = interiorMax + 1 - sizeTiles;
+  if (maxTopLeft < minTopLeft) {
+    return null;
+  }
+  return clamp(topLeftTile, minTopLeft, maxTopLeft);
+}
+
 /** Interior of a room = a 1-tile inset of its bounds (the border is walls). */
 function interiorOf(bounds: RoomBounds): InteriorBounds {
   const minX = bounds.x + 1;
@@ -156,9 +184,15 @@ function interiorOf(bounds: RoomBounds): InteriorBounds {
 }
 
 /**
- * Choose the interior tile the def's (0,0) maps to, centring the def within the
- * room interior. When the def is larger than the interior the origin pins to the
- * interior's top-left and per-tile clamping keeps everything on passable tiles.
+ * Choose the interior tile the def's (0,0) maps to. The def is anchored within
+ * the room interior per its `placement` (defaulting to centre/centre), applied
+ * over the SLACK on each axis (interior extent − footprint extent). When the def
+ * is larger than the interior the slack is 0, so the origin pins to the interior
+ * top-left and per-tile clamping keeps everything on passable tiles.
+ *
+ * `verticalAlign: "top"` (slack applied as 0) hugs the room's top wall so
+ * wall-mounted decor can reach the wall; `center` reproduces the historical
+ * `floor(slack / 2)` centring exactly; `bottom`/`right` push to the far edge.
  */
 export function computeStampOrigin(
   def: SetPieceDef,
@@ -166,8 +200,14 @@ export function computeStampOrigin(
 ): { originTileX: number; originTileY: number } {
   const interior = interiorOf(roomBounds);
   const footprint = getSetPieceFootprint(def);
-  const offsetX = Math.max(0, Math.floor((interior.width - footprint.width) / 2));
-  const offsetY = Math.max(0, Math.floor((interior.height - footprint.height) / 2));
+  const slackX = Math.max(0, interior.width - footprint.width);
+  const slackY = Math.max(0, interior.height - footprint.height);
+  const horizontalAlign = def.placement?.horizontalAlign ?? 'center';
+  const verticalAlign = def.placement?.verticalAlign ?? 'center';
+  const offsetX =
+    horizontalAlign === 'left' ? 0 : horizontalAlign === 'right' ? slackX : Math.floor(slackX / 2);
+  const offsetY =
+    verticalAlign === 'top' ? 0 : verticalAlign === 'bottom' ? slackY : Math.floor(slackY / 2);
   return {
     originTileX: interior.minX + offsetX,
     originTileY: interior.minY + offsetY,
@@ -191,8 +231,6 @@ export function stampSetPiece(def: SetPieceDef, opts: StampSetPieceOptions): Sta
     return { originTileX, originTileY, props: [], npcs: [] };
   }
 
-  const half = tileSizeFt / 2;
-
   const props: StampedSetPieceProp[] = [];
   flattenSetPieceLayers(def).forEach((draw, index) => {
     const { prop, layer, z, layerIndex } = draw;
@@ -210,20 +248,38 @@ export function stampSetPiece(def: SetPieceDef, opts: StampSetPieceOptions): Sta
     // sub-tile pixel offset (lab pixels → feet).
     const footprintCentreX = tileX * tileSizeFt + (prop.width * tileSizeFt) / 2;
     const footprintCentreY = tileY * tileSizeFt + (prop.height * tileSizeFt) / 2;
-    const offsetXFt = ((layer.offsetX ?? 0) / SET_PIECE_TILE_SIZE) * tileSizeFt;
-    const offsetYFt = ((layer.offsetY ?? 0) / SET_PIECE_TILE_SIZE) * tileSizeFt;
-    // The base layer fills the prop footprint; accent layers keep their own
-    // (smaller) extent so a scale-0.8 potion doesn't inflate to 80% of a table.
-    const layerTiles =
-      layerIndex === 0
-        ? { width: prop.width, height: prop.height }
-        : nativeLayerTiles(layer.sprite);
+    // Position nudge: legacy lab-pixel offset (offsetX/offsetY) plus an explicit
+    // feet nudge (offsetXFt/offsetYFt), so a sconce can be lifted onto the wall.
+    const offsetXFt =
+      ((layer.offsetX ?? 0) / SET_PIECE_TILE_SIZE) * tileSizeFt + (layer.offsetXFt ?? 0);
+    const offsetYFt =
+      ((layer.offsetY ?? 0) / SET_PIECE_TILE_SIZE) * tileSizeFt + (layer.offsetYFt ?? 0);
+    // Render box in feet. An explicit `widthFt`/`heightFt` (validated as a pair)
+    // wins — the sprite is contain-fit inside it, so realistic sizing never
+    // stretches the art. Otherwise the base layer fills the prop footprint and
+    // accent layers keep their own (smaller) extent.
+    let boxWidthFt: number;
+    let boxHeightFt: number;
+    if (layer.widthFt !== undefined && layer.heightFt !== undefined) {
+      boxWidthFt = layer.widthFt;
+      boxHeightFt = layer.heightFt;
+    } else {
+      const layerTiles =
+        layerIndex === 0
+          ? { width: prop.width, height: prop.height }
+          : nativeLayerTiles(layer.sprite);
+      boxWidthFt = layerTiles.width * tileSizeFt;
+      boxHeightFt = layerTiles.height * tileSizeFt;
+    }
     const render: SetPiecePropRender = {
       sprite: layer.sprite,
       depth: setPieceZToDepth(z) + index * LAYER_DEPTH_EPSILON,
-      widthFt: layerTiles.width * tileSizeFt,
-      heightFt: layerTiles.height * tileSizeFt,
+      widthFt: boxWidthFt,
+      heightFt: boxHeightFt,
       ...(layer.scale !== undefined ? { scale: layer.scale } : {}),
+      ...(layer.flipX !== undefined ? { flipX: layer.flipX } : {}),
+      ...(layer.flipY !== undefined ? { flipY: layer.flipY } : {}),
+      ...(layer.rotationDeg !== undefined ? { rotationDeg: layer.rotationDeg } : {}),
       ...(layer.tintHex !== undefined ? { tintHex: layer.tintHex } : {}),
       label: prop.id,
     };
@@ -236,17 +292,53 @@ export function stampSetPiece(def: SetPieceDef, opts: StampSetPieceOptions): Sta
     });
   });
 
-  const npcs: StampedSetPieceNpc[] = def.npcs.map((npc) => {
-    const tileX = clamp(originTileX + npc.x, interior.minX, interior.maxX);
-    const tileY = clamp(originTileY + npc.y, interior.minY, interior.maxY);
-    return {
-      npcTypeId: npc.npcTypeId,
-      ...(npc.anchorRole !== undefined ? { anchorRole: npc.anchorRole } : {}),
-      tileX,
-      tileY,
-      x: tileX * tileSizeFt + half,
-      y: tileY * tileSizeFt + half,
-    };
+  const npcs: StampedSetPieceNpc[] = def.npcs.flatMap((npc) => {
+    const npcDef = getNpcDef(npc.npcTypeId);
+    const widthFt = npc.widthFt ?? npcDef?.widthFt ?? tileSizeFt;
+    const heightFt = npc.heightFt ?? npcDef?.heightFt ?? tileSizeFt;
+    const widthTiles = widthFt / tileSizeFt;
+    const heightTiles = heightFt / tileSizeFt;
+    const rawTileX = originTileX + npc.x;
+    const rawTileY = originTileY + npc.y;
+    const boundedTileX = clampNpcTopLeftForFootprint(
+      rawTileX,
+      interior.minX,
+      interior.maxX,
+      widthTiles,
+    );
+    const boundedTileY = clampNpcTopLeftForFootprint(
+      rawTileY,
+      interior.minY,
+      interior.maxY,
+      heightTiles,
+    );
+    if (boundedTileX === null || boundedTileY === null) {
+      return [];
+    }
+    const centreTileX = boundedTileX + widthTiles / 2;
+    const centreTileY = boundedTileY + heightTiles / 2;
+    // Keep objective/occupancy tile bookkeeping integer-based (the containing
+    // interior tile), while preserving authored sub-tile world positions within
+    // the same interior bounds.
+    const tileX = Math.floor(centreTileX);
+    const tileY = Math.floor(centreTileY);
+    return [
+      {
+        npcTypeId: npc.npcTypeId,
+        ...(npc.widthFt !== undefined ? { widthFt: npc.widthFt } : {}),
+        ...(npc.heightFt !== undefined ? { heightFt: npc.heightFt } : {}),
+        ...(npc.flipX !== undefined ? { flipX: npc.flipX } : {}),
+        ...(npc.flipY !== undefined ? { flipY: npc.flipY } : {}),
+        ...(npc.rotationDeg !== undefined ? { rotationDeg: npc.rotationDeg } : {}),
+        ...(npc.z !== undefined ? { z: npc.z } : {}),
+        ...(npc.spriteOverride !== undefined ? { spriteOverride: npc.spriteOverride } : {}),
+        ...(npc.anchorRole !== undefined ? { anchorRole: npc.anchorRole } : {}),
+        tileX,
+        tileY,
+        x: centreTileX * tileSizeFt,
+        y: centreTileY * tileSizeFt,
+      },
+    ];
   });
 
   return { originTileX, originTileY, props, npcs };

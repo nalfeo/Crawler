@@ -4,6 +4,7 @@ import {
   createGameWorld,
   Enemy,
   fovSystem,
+  Harvestable,
   isInSafeContext,
   Position,
   Prop,
@@ -26,8 +27,16 @@ import {
   type AbilityState,
   type Floor1BossRewardSpellId,
 } from '../../shared/abilities.js';
+import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import { createInputState, type InputState } from '../../shared/input.js';
 import { buildTerrainLayer } from '../terrain-renderer.js';
+import {
+  resolveDoorRenderMode,
+  GENERATED_DOOR_TEXTURE_KEY,
+  DOOR_SHEET_KEY,
+  DOOR_CLOSED_FRAME,
+  DOOR_OPEN_FRAME,
+} from '../sprites/door-visuals.js';
 import { createBarrierOverlay } from '../BarrierOverlay.js';
 import { createInputCapture } from '../InputCapture.js';
 import { createModalPickerUI } from '../ModalPickerUI.js';
@@ -102,6 +111,8 @@ const DIRECTOR_COMMENTARY_MS = 3600;
 const MOBILE_CORNER_BUTTON_MAX_SCALE = 1.4;
 const INTERACTION_HINT_MAX_SCALE = 1.25;
 const INTERACTION_HINT_BOTTOM_MARGIN = 12;
+const SET_PIECE_LIGHT_RADIUS_FT = 20;
+const SET_PIECE_LIGHT_INTENSITY = 0.7;
 const FLOOR_1_COMMENTARY = {
   intro: 'Floor 1 opens. Rhea Vale enters the dungeon and the cameras are rolling.',
   questAccepted: 'Tutorial Goon unlocks XP drops. First milestone: hit level 2 for the audience.',
@@ -112,6 +123,22 @@ const FLOOR_1_COMMENTARY = {
   timeout: 'Time expired before the stairs. Floor 1 run ends here.',
 } as const;
 const logger = createLogger('engine:main-game-scene');
+
+function resolveSetPieceLightEmission(
+  spriteId: string,
+): { radiusFt: number; intensity: number } | null {
+  if (/^prop-wall-sconce-v1-var-\d+$/.test(spriteId)) {
+    return { radiusFt: SET_PIECE_LIGHT_RADIUS_FT, intensity: SET_PIECE_LIGHT_INTENSITY };
+  }
+  if (/^prop-torch-v1-var-\d+$/.test(spriteId)) {
+    return { radiusFt: SET_PIECE_LIGHT_RADIUS_FT, intensity: SET_PIECE_LIGHT_INTENSITY };
+  }
+  if (/^prop-lantern-v\d+-var-\d+$/.test(spriteId)) {
+    return { radiusFt: SET_PIECE_LIGHT_RADIUS_FT, intensity: SET_PIECE_LIGHT_INTENSITY };
+  }
+  return null;
+}
+
 export interface MainGameSceneOptions {
   inputCaptureOverride?: {
     poll: (state: InputState, world: GameWorld) => void;
@@ -152,6 +179,10 @@ export interface MainGameSceneOptions {
     meet: (world: GameWorld) => void;
     /** True while the Spell Broker is gated behind the welcome-goon quest. */
     isLocked?: (world: GameWorld) => boolean;
+  };
+  /** Floor 2 Broker callbacks — fired when the player reads all intro dialogue lines. */
+  broker?: {
+    met: (world: GameWorld) => void;
   };
   /** Spell selection callback for floor1 boss battle reward. */
   selectSpellFromBossBattle?: (world: GameWorld, playerEid: number, spellId: string) => void;
@@ -283,6 +314,46 @@ export class MainGameScene extends Phaser.Scene {
 
   /** Terrain tile layer — baked once per floor as a RenderTexture. */
   private mapRt?: Phaser.GameObjects.RenderTexture;
+
+  /**
+   * Diagnostic tile counts from the last `buildTerrainLayer` bake. Read by the
+   * main-scene-probe-lab observe seam (`getTerrainRenderSummary`) to prove — in
+   * a REAL booted scene — that approved generated tile textures actually stamp
+   * (`generatedCount > 0`). Terrain bakes into ONE RenderTexture, so display-list
+   * counting cannot see per-tile provenance; these counts are the only seam.
+   */
+  private terrainRenderSummary: {
+    generatedCount: number;
+    spriteCount: number;
+    colorCount: number;
+  } = { generatedCount: 0, spriteCount: 0, colorCount: 0 };
+
+  /**
+   * Diagnostic door-render counts from the last `updateDoorOverlay()` pass. Read
+   * by the main-scene-probe-lab observe seam (`getDoorRenderSummary`) to prove —
+   * in a REAL booted scene — that CLOSED dungeon doors render the approved
+   * generated texture (`closedGeneratedCount === renderableClosedCount`) rather
+   * than the Kenney placeholder. The five kind buckets are mutually exclusive;
+   * `renderableClosedCount` is the sum of the three CLOSED buckets so the e2e can
+   * tell "no eligible closed doors on the map" (0) apart from "wrong branch taken"
+   * (generated !== renderable). Doors are drawn per-frame, so these reflect the
+   * most recent overlay pass.
+   */
+  private doorRenderSummary: {
+    closedGeneratedCount: number;
+    closedKenneyCount: number;
+    closedColorCount: number;
+    openKenneyCount: number;
+    openColorCount: number;
+    renderableClosedCount: number;
+  } = {
+    closedGeneratedCount: 0,
+    closedKenneyCount: 0,
+    closedColorCount: 0,
+    openKenneyCount: 0,
+    openColorCount: 0,
+    renderableClosedCount: 0,
+  };
 
   /** Dynamic darkness overlay rendered from a configurable light field. */
   private lightOverlayRt?: Phaser.GameObjects.RenderTexture;
@@ -447,6 +518,8 @@ export class MainGameScene extends Phaser.Scene {
   private lightingDirty = true;
 
   private lightingLastSource?: { x: number; y: number };
+
+  private lightingLastSecondarySourcesKey?: string;
 
   private lightingLastViewRect?: LightFieldDirtyRect;
 
@@ -1237,6 +1310,37 @@ export class MainGameScene extends Phaser.Scene {
     return this.simulationPaused;
   }
 
+  /**
+   * Observe seam (probe/e2e): tile-provenance counts from the last terrain bake.
+   * Terrain bakes into one RenderTexture, so per-tile provenance is invisible to
+   * display-list counting — this accessor lets the main-scene-probe-lab prove
+   * that approved generated tile textures actually stamp (`generatedCount > 0`).
+   */
+  getTerrainRenderSummary(): {
+    generatedCount: number;
+    spriteCount: number;
+    colorCount: number;
+  } {
+    return this.terrainRenderSummary;
+  }
+
+  /**
+   * Diagnostic door-render provenance counts from the last `updateDoorOverlay()`
+   * pass. Lets the main-scene-probe-lab prove — in a REAL booted scene — that
+   * closed dungeon doors stamp the approved generated texture
+   * (`closedGeneratedCount === renderableClosedCount`), not the Kenney frame.
+   */
+  getDoorRenderSummary(): {
+    closedGeneratedCount: number;
+    closedKenneyCount: number;
+    closedColorCount: number;
+    openKenneyCount: number;
+    openColorCount: number;
+    renderableClosedCount: number;
+  } {
+    return this.doorRenderSummary;
+  }
+
   setSimulationSpeed(speed: number): void {
     this.simulationSpeed = Math.max(1, speed);
   }
@@ -1454,6 +1558,7 @@ export class MainGameScene extends Phaser.Scene {
     this.lightField = undefined;
     this.doorGraphics = undefined;
     this.lightingLastSource = undefined;
+    this.lightingLastSecondarySourcesKey = undefined;
     this.lightingLastViewRect = undefined;
     this.lightingDirty = true;
     this.lightingComputeMsAvg = 0;
@@ -1471,9 +1576,10 @@ export class MainGameScene extends Phaser.Scene {
       this.fovSubFactor = floorMap.setSubFactor(this.fovSubFactor);
     }
 
-    const { rt, colorCount } = buildTerrainLayer(this, floorMap);
+    const { rt, generatedCount, spriteCount, colorCount } = buildTerrainLayer(this, floorMap);
     rt.setDepth(-20);
     this.mapRt = rt;
+    this.terrainRenderSummary = { generatedCount, spriteCount, colorCount };
 
     if (colorCount > 0) {
       logger.debug('Terrain layer: tiles using color fallback', {
@@ -1559,10 +1665,6 @@ export class MainGameScene extends Phaser.Scene {
 
     const px = ftToPx(this.world.stores.position.x[this.playerEid] ?? 0);
     const py = ftToPx(this.world.stores.position.y[this.playerEid] ?? 0);
-    const sourceUnchanged = this.lightingLastSource?.x === px && this.lightingLastSource?.y === py;
-    if (!force && !this.lightingDirty && sourceUnchanged && viewRectUnchanged) {
-      return;
-    }
     const radius = this.lighting.sourceRadiusPx;
     // C1: FOV visibility (radius ~25 tiles) changes across a far wider area than
     // the torch light (`sourceRadiusPx`), so a torch-circle dirty rect would leave
@@ -1578,13 +1680,70 @@ export class MainGameScene extends Phaser.Scene {
     const lightSources: { x: number; y: number; radiusPx: number; intensity: number }[] = [
       { x: px, y: py, radiusPx: radius, intensity: this.lighting.sourceIntensity },
     ];
+    const secondarySourceKeyParts: string[] = [];
     for (const propEid of query(this.world.ecs, [Prop, PropLight, Position])) {
+      const sourceX = ftToPx(this.world.stores.position.x[propEid] ?? 0);
+      const sourceY = ftToPx(this.world.stores.position.y[propEid] ?? 0);
+      const sourceRadius = this.world.stores.propLight.radiusPx[propEid] ?? 0;
+      const sourceIntensity = this.world.stores.propLight.intensity[propEid] ?? 0;
       lightSources.push({
-        x: ftToPx(this.world.stores.position.x[propEid] ?? 0),
-        y: ftToPx(this.world.stores.position.y[propEid] ?? 0),
-        radiusPx: this.world.stores.propLight.radiusPx[propEid] ?? 0,
-        intensity: this.world.stores.propLight.intensity[propEid] ?? 0,
+        x: sourceX,
+        y: sourceY,
+        radiusPx: sourceRadius,
+        intensity: sourceIntensity,
       });
+      secondarySourceKeyParts.push(`p:${sourceX},${sourceY},${sourceRadius},${sourceIntensity}`);
+    }
+    for (const harvestableEid of query(this.world.ecs, [Harvestable, Position])) {
+      const defIndex = this.world.stores.harvestable.defIndex[harvestableEid] ?? -1;
+      if (defIndex < 0 || defIndex >= HARVESTABLE_DEFS.length) {
+        continue;
+      }
+      const lightEmission = HARVESTABLE_DEFS[defIndex]?.lightEmission;
+      if (lightEmission === undefined) {
+        continue;
+      }
+      const sourceX = ftToPx(this.world.stores.position.x[harvestableEid] ?? 0);
+      const sourceY = ftToPx(this.world.stores.position.y[harvestableEid] ?? 0);
+      const sourceRadius = ftToPx(lightEmission.radiusFt);
+      const sourceIntensity = lightEmission.intensity;
+      lightSources.push({
+        x: sourceX,
+        y: sourceY,
+        radiusPx: sourceRadius,
+        intensity: sourceIntensity,
+      });
+      secondarySourceKeyParts.push(`h:${sourceX},${sourceY},${sourceRadius},${sourceIntensity}`);
+    }
+    for (const setPieceProp of this.world.setPieceProps) {
+      const sprite = setPieceProp.render.sprite;
+      if (sprite.source !== 'catalog') {
+        continue;
+      }
+      const lightEmission = resolveSetPieceLightEmission(sprite.spriteId);
+      if (lightEmission === null) {
+        continue;
+      }
+      const sourceX = ftToPx(setPieceProp.x);
+      const sourceY = ftToPx(setPieceProp.y);
+      const sourceRadius = ftToPx(lightEmission.radiusFt);
+      const sourceIntensity = lightEmission.intensity;
+      lightSources.push({
+        x: sourceX,
+        y: sourceY,
+        radiusPx: sourceRadius,
+        intensity: sourceIntensity,
+      });
+      secondarySourceKeyParts.push(`s:${sourceX},${sourceY},${sourceRadius},${sourceIntensity}`);
+    }
+
+    const secondarySourcesKey = secondarySourceKeyParts.join('|');
+    const sourceUnchanged =
+      this.lightingLastSource?.x === px &&
+      this.lightingLastSource?.y === py &&
+      this.lightingLastSecondarySourcesKey === secondarySourcesKey;
+    if (!force && !this.lightingDirty && sourceUnchanged && viewRectUnchanged) {
+      return;
     }
 
     computeLightField({
@@ -1636,6 +1795,7 @@ export class MainGameScene extends Phaser.Scene {
     // outside the next (player-sized) dirty rect at darkness 1, leaving most of
     // the map black until the next floor load.
     this.lightingLastSource = { x: px, y: py };
+    this.lightingLastSecondarySourcesKey = secondarySourcesKey;
     this.lightingLastViewRect = viewRect;
     this.lightingDirty = false;
 
@@ -2008,6 +2168,16 @@ export class MainGameScene extends Phaser.Scene {
     const floorMap = this.world.floorMap;
     const g = this.doorGraphics;
     if (!floorMap || !g) {
+      // Nothing to render this pass — zero the observe seam so a prior floor's
+      // counts can't mislead the probe into a false "closed door rendered".
+      this.doorRenderSummary = {
+        closedGeneratedCount: 0,
+        closedKenneyCount: 0,
+        closedColorCount: 0,
+        openKenneyCount: 0,
+        openColorCount: 0,
+        renderableClosedCount: 0,
+      };
       return;
     }
 
@@ -2018,10 +2188,46 @@ export class MainGameScene extends Phaser.Scene {
     this.doorImages.length = 0;
 
     const tileSize = floorMap.config.tileSizeFt * PIXELS_PER_FOOT;
-    const TD_KEY = 'kenney-tiny-dungeon';
-    const DOOR_CLOSED_FRAME = 46; // brown arched wooden door
-    const DOOR_OPEN_FRAME = 34; // door swung open, clear passage
-    const hasSheet = this.textures.exists(TD_KEY);
+    const hasSheet = this.textures.exists(DOOR_SHEET_KEY);
+
+    // Derive the generated closed-door scale ONCE from the texture's ACTUAL
+    // loaded width (mirrors terrain-renderer's resolveGeneratedScale): a usable
+    // width yields tileSize/width so the single 256² PNG fills exactly one tile;
+    // a missing texture or a zero/undefined width falls through to Kenney.
+    let generatedDoorScale: number | null = null;
+    if (this.textures.exists(GENERATED_DOOR_TEXTURE_KEY)) {
+      const source = this.textures.get(GENERATED_DOOR_TEXTURE_KEY).getSourceImage() as {
+        width?: number;
+      };
+      const srcWidth = typeof source?.width === 'number' ? source.width : 0;
+      if (srcWidth > 0) {
+        generatedDoorScale = tileSize / srcWidth;
+      }
+    }
+    const hasGeneratedClosed = generatedDoorScale !== null;
+
+    // Door images are recreated every frame, AFTER refreshCameraMasks() has
+    // already rebuilt the camera ignore lists. Without pinning uiCamera.ignore
+    // here, the scroll-locked UI camera renders them at raw world coordinates, so
+    // doors appear pinned to the screen and "follow" the player. Centralized here
+    // so every image branch (generated + both Kenney frames) gets it.
+    const addDoorImage = (
+      px: number,
+      py: number,
+      key: string,
+      frame: number | undefined,
+      scale: number,
+    ): void => {
+      const img = this.add.image(px, py, key, frame).setOrigin(0.5).setDepth(-19).setScale(scale);
+      this.uiCamera?.ignore(img);
+      this.doorImages.push(img);
+    };
+
+    let closedGeneratedCount = 0;
+    let closedKenneyCount = 0;
+    let closedColorCount = 0;
+    let openKenneyCount = 0;
+    let openColorCount = 0;
 
     const tm = floorMap.tileMap;
     // A wall is an in-bounds tile that is neither passable nor a door.
@@ -2043,28 +2249,54 @@ export class MainGameScene extends Phaser.Scene {
           continue;
         }
         const isOpen = tm.isPassable(x, y);
-        if (hasSheet) {
-          const frame = isOpen ? DOOR_OPEN_FRAME : DOOR_CLOSED_FRAME;
-          const img = this.add
-            .image(x * tileSize + tileSize / 2, y * tileSize + tileSize / 2, TD_KEY, frame)
-            .setDepth(-19)
-            .setScale(tileSize / 16);
-          // Door images are recreated every frame, after refreshCameraMasks()
-          // has already rebuilt the camera ignore lists. Without this, the
-          // scroll-locked UI camera renders them at raw world coordinates, so
-          // doors appear pinned to the screen and "follow" the player. Pinning
-          // the ignore here guarantees only the scrolling world camera draws them.
-          this.uiCamera?.ignore(img);
-          this.doorImages.push(img);
-        } else {
-          // Fallback for environments without the sprite sheet (e.g. tests).
-          g.fillStyle(isOpen ? 0xd2b48c : 0x6b4423, 1);
-          g.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
-          g.lineStyle(1, isOpen ? 0xf5deb3 : 0x3d2615, 0.9);
-          g.strokeRect(x * tileSize + 0.5, y * tileSize + 0.5, tileSize - 1, tileSize - 1);
+        const cx = x * tileSize + tileSize / 2;
+        const cy = y * tileSize + tileSize / 2;
+        const mode = resolveDoorRenderMode(isOpen, { hasGeneratedClosed, hasSheet });
+
+        switch (mode.kind) {
+          case 'generated': {
+            // 'generated' is only chosen when hasGeneratedClosed, so
+            // generatedDoorScale is non-null here (?? 1 is unreachable but keeps
+            // the type checker happy without a non-null assertion).
+            addDoorImage(cx, cy, GENERATED_DOOR_TEXTURE_KEY, undefined, generatedDoorScale ?? 1);
+            closedGeneratedCount += 1;
+            break;
+          }
+          case 'kenney-closed': {
+            addDoorImage(cx, cy, DOOR_SHEET_KEY, DOOR_CLOSED_FRAME, tileSize / 16);
+            closedKenneyCount += 1;
+            break;
+          }
+          case 'kenney-open': {
+            addDoorImage(cx, cy, DOOR_SHEET_KEY, DOOR_OPEN_FRAME, tileSize / 16);
+            openKenneyCount += 1;
+            break;
+          }
+          case 'color': {
+            // Fallback for environments without any door art (e.g. tests).
+            g.fillStyle(mode.open ? 0xd2b48c : 0x6b4423, 1);
+            g.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+            g.lineStyle(1, mode.open ? 0xf5deb3 : 0x3d2615, 0.9);
+            g.strokeRect(x * tileSize + 0.5, y * tileSize + 0.5, tileSize - 1, tileSize - 1);
+            if (mode.open) {
+              openColorCount += 1;
+            } else {
+              closedColorCount += 1;
+            }
+            break;
+          }
         }
       }
     }
+
+    this.doorRenderSummary = {
+      closedGeneratedCount,
+      closedKenneyCount,
+      closedColorCount,
+      openKenneyCount,
+      openColorCount,
+      renderableClosedCount: closedGeneratedCount + closedKenneyCount + closedColorCount,
+    };
   }
 
   private updateCamera(): void {
@@ -2497,11 +2729,16 @@ export class MainGameScene extends Phaser.Scene {
         this.dialogueBox?.hide();
       } else {
         const def = getNpcDef(instance.defId);
-        const activeDialogue = resolveDialogueLines(instance.defId, this.world, {
-          shopkeeper: this.options.shopkeeper,
-          spellQuestGiver: this.options.spellQuestGiver,
-          shopkeeperJustReturned: this.shopkeeperJustReturned,
-        });
+        const activeDialogue = resolveDialogueLines(
+          instance.defId,
+          this.world,
+          {
+            shopkeeper: this.options.shopkeeper,
+            spellQuestGiver: this.options.spellQuestGiver,
+            shopkeeperJustReturned: this.shopkeeperJustReturned,
+          },
+          this.conversationNpcEid,
+        );
         this.interactionHint?.setVisible(false);
         this.dialogueBox?.setCloseVisible(true);
 
@@ -2517,6 +2754,11 @@ export class MainGameScene extends Phaser.Scene {
         ) {
           const nextIndex = instance.dialogueIndex + 1;
           if (nextIndex >= activeDialogue.length) {
+            // Fire broker callback when the player reads the last line of the Broker's
+            // intro — this activates the Floor 2 reputation system.
+            if (instance.defId === 'the-broker') {
+              this.options.broker?.met(this.world);
+            }
             this.conversationNpcEid = null;
             this.dialogueBox?.hide();
             return;
@@ -2566,11 +2808,16 @@ export class MainGameScene extends Phaser.Scene {
               return;
             }
           }
-          const activeDialogue = resolveDialogueLines(instance.defId, this.world, {
-            shopkeeper: this.options.shopkeeper,
-            spellQuestGiver: this.options.spellQuestGiver,
-            shopkeeperJustReturned: this.shopkeeperJustReturned,
-          });
+          const activeDialogue = resolveDialogueLines(
+            instance.defId,
+            this.world,
+            {
+              shopkeeper: this.options.shopkeeper,
+              spellQuestGiver: this.options.spellQuestGiver,
+              shopkeeperJustReturned: this.shopkeeperJustReturned,
+            },
+            nearNpcEid,
+          );
           if (def && activeDialogue.length > 0) {
             this.conversationNpcEid = nearNpcEid;
             if (instance.defId === 'tutorial-goon' && this.options.tutorialGoon) {

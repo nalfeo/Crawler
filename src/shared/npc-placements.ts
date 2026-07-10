@@ -37,16 +37,7 @@ export const npcPlacementDefSchema = z
 
 export type NpcPlacementDef = z.infer<typeof npcPlacementDefSchema>;
 
-/**
- * Collection of NPC placements for a floor.
- */
-export const npcPlacementCollectionSchema = z
-  .object({
-    /** Floor ID this collection belongs to. */
-    floorId: z.string().min(1),
-    /** NPC placements for this floor. */
-    npcs: z.array(npcPlacementDefSchema),
-  })
-  .strict();
-
-export type NpcPlacementCollection = z.infer<typeof npcPlacementCollectionSchema>;
+export interface NpcPlacementCollection {
+  readonly floorId: string;
+  readonly npcs: readonly NpcPlacementDef[];
+}

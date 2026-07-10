@@ -50,7 +50,7 @@ const anchorsSchema = z
  * fields so adding fields on the approve side does not require a coordinated
  * engine update.
  */
-export const manifestEntrySchema = z
+const manifestEntrySchema = z
   .object({
     briefId: z.string().min(1),
     spriteName: z.string().min(1),
@@ -86,7 +86,7 @@ export const manifestEntrySchema = z
 
 export const GENERATED_MANIFEST_VERSION = 1 as const;
 
-export const generatedManifestSchema = z
+const generatedManifestSchema = z
   .object({
     version: z.literal(GENERATED_MANIFEST_VERSION),
     entries: z.record(z.string(), manifestEntrySchema),

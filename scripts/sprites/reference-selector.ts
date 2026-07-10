@@ -34,10 +34,10 @@ export const SELECTOR_VERSION = 'v1' as const;
 export const REFERENCE_COUNT = 3 as const;
 
 /** Minimum sensor pass-ratio (n/m) an entry needs to be eligible. */
-export const SENSOR_FLOOR = 0.75 as const;
+const SENSOR_FLOOR = 0.75 as const;
 
 /** Minimum judge score (1–5) an entry needs; `null` (unscored) also passes. */
-export const JUDGE_FLOOR = 3 as const;
+const JUDGE_FLOOR = 3 as const;
 
 /** Floor added to every eligible entry's weight so nothing is unpickable. */
 const WEIGHT_FLOOR = 0.05 as const;

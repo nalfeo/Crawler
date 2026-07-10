@@ -20,7 +20,13 @@ import {
 import { ftToPx } from '../shared/units.js';
 import { DEFAULT_HANDHELD_SPRITE_ANCHOR } from '../shared/sprite-anchor.js';
 import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../shared/decorationDefs.js';
-import { ENTITY_DEPTH, PROP_DEPTH, WORLD_VFX_DEPTH } from '../shared/render-depths.js';
+import {
+  ENTITY_DEPTH,
+  PROP_DEPTH,
+  TERRAIN_DEPTH,
+  WORLD_VFX_DEPTH,
+  setPieceZToDepth,
+} from '../shared/render-depths.js';
 import type { SpriteRef } from '../shared/set-piece-types.js';
 import { getHarvestableDefByIndex } from '../shared/harvestableDefs.js';
 import {
@@ -169,13 +175,16 @@ function resolveSetPieceSprite(
     return { textureKey: ref.sheetKey, frame: ref.row * sheet.cols + ref.col };
   }
   if (ref.source === 'catalog') {
-    const spriteDef = getSprite(ref.spriteId);
+    const normalizedSpriteId = ref.spriteId.startsWith('sprite:')
+      ? ref.spriteId.slice('sprite:'.length)
+      : ref.spriteId;
+    const spriteDef = getSprite(normalizedSpriteId);
     if (spriteDef !== undefined && scene.textures?.exists(spriteDef.sheetKey) === true) {
       return { textureKey: spriteDef.sheetKey, frame: spriteDef.frame };
     }
     // Generated sprites are loaded as individual textures keyed by the bare manifest key.
-    if (scene.textures?.exists(ref.spriteId) === true) {
-      return { textureKey: ref.spriteId };
+    if (scene.textures?.exists(normalizedSpriteId) === true) {
+      return { textureKey: normalizedSpriteId };
     }
     return null;
   }
@@ -231,14 +240,42 @@ function resolveTexture(
 const GENERATED_NPC_SPRITE_SCALE = 0.4;
 
 /**
- * Resolve an NPC's texture def-aware: prefer its pinned generated sprite (keyed
- * by NPC def id via {@link pickGeneratedNpcTextureKey}) when that texture is
- * loaded, otherwise fall back to the shared Kenney villager through the normal
- * `npc` render-kind path. This keeps the placeholder-free graceful fallback the
- * feature requires whenever a generated NPC texture is ever missing, while
- * giving each welcome-room NPC its own distinct sprite when the art is present.
+ * Resolve an NPC's texture def-aware: some NPCs borrow an enemy appearance key
+ * (e.g. the Floor 2 settlement defector wearing a present family's elite art);
+ * otherwise prefer a pinned generated NPC sprite keyed by def id; otherwise
+ * fall back to the shared Kenney villager through the normal `npc` render-kind
+ * path.
  */
-function resolveNpcTexture(scene: Phaser.Scene, defId: string | undefined): ResolvedTexture {
+function resolveNpcTexture(
+  scene: Phaser.Scene,
+  defId: string | undefined,
+  spriteOverride: SpriteRef | undefined,
+  appearanceKey?: string,
+  appearanceFallbackKey?: string,
+): ResolvedTexture {
+  if (spriteOverride !== undefined) {
+    const resolvedOverride = resolveSetPieceSprite(scene, spriteOverride);
+    if (resolvedOverride !== null) {
+      return {
+        key: resolvedOverride.textureKey,
+        ...(resolvedOverride.frame !== undefined ? { frame: resolvedOverride.frame } : {}),
+        scale: resolvedOverride.frame === undefined ? GENERATED_NPC_SPRITE_SCALE : 1,
+        fallback: false,
+      };
+    }
+  }
+  if (appearanceKey !== undefined) {
+    const registry = getGeneratedSpriteRegistry(scene);
+    const eliteBriefId = `${appearanceKey}-v1`;
+    const eliteTexture = registry?.variants(eliteBriefId)?.[0]?.textureKey;
+    if (eliteTexture) {
+      return { key: eliteTexture, scale: GENERATED_NPC_SPRITE_SCALE, fallback: false };
+    }
+    if (appearanceFallbackKey !== undefined) {
+      return resolveTexture(scene, 'enemy', { appearanceKey: appearanceFallbackKey });
+    }
+    return resolveTexture(scene, 'enemy', { appearanceKey });
+  }
   const generatedKey = pickGeneratedNpcTextureKey(defId);
   if (generatedKey !== null && scene.textures?.exists(generatedKey) === true) {
     return { key: generatedKey, scale: GENERATED_NPC_SPRITE_SCALE, fallback: false };
@@ -828,9 +865,16 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           if (visual) {
             visual.obj.destroy();
           }
+          const npcInstance = world.npcs.get(eid);
           const resolved =
             entityType === 'npc'
-              ? resolveNpcTexture(scene, world.npcs.get(eid)?.defId)
+              ? resolveNpcTexture(
+                  scene,
+                  npcInstance?.defId,
+                  npcInstance?.spriteOverride,
+                  world.enemyAppearanceKeys.get(eid),
+                  npcInstance?.appearanceFallbackKey,
+                )
               : resolveTexture(scene, visualType, {
                   appearanceKey,
                   variantRoll: world.stores.sprite.variantRoll[eid],
@@ -868,7 +912,14 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           // finished loading. Reconcile to the def-aware generated sprite once it
           // is available so each welcome-room NPC upgrades off the shared Kenney
           // villager placeholder (mirrors the enemy late-load reconcile above).
-          const preferred = resolveNpcTexture(scene, world.npcs.get(eid)?.defId);
+          const npcInstance = world.npcs.get(eid);
+          const preferred = resolveNpcTexture(
+            scene,
+            npcInstance?.defId,
+            npcInstance?.spriteOverride,
+            world.enemyAppearanceKeys.get(eid),
+            npcInstance?.appearanceFallbackKey,
+          );
           if (img.texture.key !== preferred.key) {
             img.setTexture(preferred.key, preferred.frame);
             visual.baseScale = preferred.scale;
@@ -1143,11 +1194,46 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               }
             } else {
               img.setScale(visual.baseScale);
-              if (typeof img.setFlipX === 'function') {
+              if (entityType !== 'npc' && typeof img.setFlipX === 'function') {
                 img.setFlipX(false);
               }
             }
             break;
+        }
+
+        if (entityType === 'npc') {
+          const npcInstance = world.npcs.get(eid);
+          const npcWidthFt = world.stores.sprite.width[eid] ?? 0;
+          const npcHeightFt = world.stores.sprite.height[eid] ?? 0;
+          if (
+            Number.isFinite(npcWidthFt) &&
+            npcWidthFt > 0 &&
+            Number.isFinite(npcHeightFt) &&
+            npcHeightFt > 0 &&
+            typeof img.setDisplaySize === 'function'
+          ) {
+            img.setDisplaySize(ftToPx(npcWidthFt), ftToPx(npcHeightFt));
+          }
+          if (typeof img.setDepth === 'function') {
+            if (Number.isFinite(npcInstance?.z ?? NaN) && npcInstance?.z !== undefined) {
+              img.setDepth(Math.max(TERRAIN_DEPTH + 0.001, setPieceZToDepth(npcInstance.z)));
+            } else {
+              img.setDepth(ENTITY_DEPTH);
+            }
+          }
+          if (typeof img.setFlipX === 'function') {
+            img.setFlipX(npcInstance?.flipX === true);
+          }
+          if (typeof img.setFlipY === 'function') {
+            img.setFlipY(npcInstance?.flipY === true);
+          }
+          if (typeof img.setAngle === 'function') {
+            img.setAngle(
+              Number.isFinite(npcInstance?.rotationDeg ?? NaN)
+                ? (npcInstance?.rotationDeg ?? 0)
+                : 0,
+            );
+          }
         }
 
         // Corpse styling wins over the per-type switch: a dead enemy drains
@@ -1379,7 +1465,30 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             }
           }
           img.setPosition(propX, propY);
-          img.setDisplaySize(spWidthPx, spHeightPx);
+          // Contain-fit: a uniform scale that fits the native sprite INSIDE the
+          // feet box while preserving its aspect ratio. No tile in this game is
+          // designed to stretch, so we never call setDisplaySize on real art
+          // (which would distort a 1.26:1 desk into its 3:1 footprint box).
+          // Fall back to setDisplaySize only for a degenerate zero-size frame.
+          const nativeW = img.width;
+          const nativeH = img.height;
+          if (nativeW > 0 && nativeH > 0) {
+            img.setScale(Math.min(spWidthPx / nativeW, spHeightPx / nativeH));
+          } else {
+            img.setDisplaySize(spWidthPx, spHeightPx);
+          }
+          // Mirror the sprite when the layer requests it (e.g. a right-side wall
+          // sconce reuses the single approved variant via flipX). Guarded like
+          // the entity path above so a mock/object without the flip API is safe.
+          if (typeof img.setFlipX === 'function') {
+            img.setFlipX(sp.flipX === true);
+          }
+          if (typeof img.setFlipY === 'function') {
+            img.setFlipY(sp.flipY === true);
+          }
+          if (typeof img.setAngle === 'function') {
+            img.setAngle(Number.isFinite(sp.rotationDeg) ? sp.rotationDeg : 0);
+          }
           img.setDepth(spDepth);
           if (spTint !== undefined) {
             img.setTint(spTint);

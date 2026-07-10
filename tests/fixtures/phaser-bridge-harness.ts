@@ -34,12 +34,15 @@ export class MockImage {
   visible = true;
   alpha = 1;
   flipX = false;
+  flipY = false;
   scaleX = 1;
   scaleY = 1;
   rotation = 0;
   tint = 0xffffff;
   tinted = false;
   frame: number | undefined;
+  displayWidth: number | undefined;
+  displayHeight: number | undefined;
 
   constructor(
     public x: number,
@@ -86,8 +89,19 @@ export class MockImage {
     return this;
   }
 
+  setDisplaySize(width: number, height: number): this {
+    this.displayWidth = width;
+    this.displayHeight = height;
+    return this;
+  }
+
   setRotation(rotation: number): this {
     this.rotation = rotation;
+    return this;
+  }
+
+  setAngle(angleDeg: number): this {
+    this.rotation = (angleDeg * Math.PI) / 180;
     return this;
   }
 
@@ -98,6 +112,11 @@ export class MockImage {
 
   setFlipX(flipX: boolean): this {
     this.flipX = flipX;
+    return this;
+  }
+
+  setFlipY(flipY: boolean): this {
+    this.flipY = flipY;
     return this;
   }
 

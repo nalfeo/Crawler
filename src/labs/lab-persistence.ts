@@ -26,12 +26,3 @@ export function loadLabState<T>(labId: string): T | undefined {
     return undefined;
   }
 }
-
-/** Remove saved state for a lab. */
-export function clearLabState(labId: string): void {
-  try {
-    sessionStorage.removeItem(`${STORAGE_PREFIX}${labId}`);
-  } catch {
-    // Silently ignore
-  }
-}

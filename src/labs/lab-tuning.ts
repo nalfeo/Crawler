@@ -5,21 +5,14 @@
  * which writes them to the JSON data files in src/shared/data/.
  *
  * Usage in a lab:
- *   import { saveTuning, saveTuningBatch } from '../lab-tuning.js';
+ *   import { saveTuning } from '../lab-tuning.js';
  *
  *   // Save a single value
  *   saveTuning('tuning.json', 'player.speed', 4.5);
  *
- *   // Save multiple values at once
- *   saveTuningBatch('tuning.json', { 'player.speed': 4.5, 'damage.defaultContactDamage': 8 });
- *
  *   // Save a weapon property
  *   saveTuning('weapons.json', 'baseDamage', 20, 'sword');
  */
-
-import { createLogger } from '../shared/logger.js';
-
-const logger = createLogger('labs:tuning');
 
 export interface SaveResult {
   ok: boolean;
@@ -77,53 +70,4 @@ export async function saveTuning(
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'Network error' };
   }
-}
-
-/** Save multiple values to a data file at once. */
-export async function saveTuningBatch(
-  file: string,
-  values: Record<string, unknown>,
-  id?: string,
-): Promise<SaveResult> {
-  const capability = getRepoWriteCapability();
-  if (!capability.enabled) {
-    return { ok: false, error: capability.reason };
-  }
-
-  try {
-    const body: Record<string, unknown> = { file, values };
-    if (id) body['id'] = id;
-
-    const res = await fetch('/__save-tuning', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    return (await res.json()) as SaveResult;
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : 'Network error' };
-  }
-}
-
-/**
- * Add a "💾 Save Defaults" button to a lil-gui instance.
- * When clicked, saves the provided values to the specified data file.
- */
-export function addSaveButton(
-  gui: { add: (obj: Record<string, unknown>, key: string) => unknown },
-  getValues: () => { file: string; values: Record<string, unknown>; id?: string },
-  label = '💾 Save Defaults',
-): void {
-  const actions = {
-    [label]: async () => {
-      const { file, values, id } = getValues();
-      const result = await saveTuningBatch(file, values, id);
-      if (result.ok) {
-        logger.info('Saved tuning values', { file, values });
-      } else {
-        logger.error('Failed to save tuning values', { file, error: result.error });
-      }
-    },
-  };
-  gui.add(actions, label);
 }

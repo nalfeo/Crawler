@@ -47,6 +47,7 @@ import {
   type RoomBounds,
 } from '../../shared/map-types.js';
 import { getNpcDef } from '../../shared/npc-types.js';
+import { ENTITY_DEPTH, TERRAIN_DEPTH, setPieceZToDepth } from '../../shared/render-depths.js';
 import {
   collectCustomArtRequests,
   flattenSetPieceLayers,
@@ -59,11 +60,12 @@ import {
 } from '../../shared/set-piece-types.js';
 import { ftToPx } from '../../shared/units.js';
 import { registerLab, type LabCategory } from '../registry.js';
-import { isSetPieceRenderReady } from './readiness.js';
+import { isSetPieceRenderReady, spriteRefRendersPersistentPlaceholder } from './readiness.js';
 
 const LAB_ID = 'set-piece-lab';
 const SCENE_KEY = 'SetPieceLabScene';
 const TILE_SIZE_FT = 4;
+const DEPTH_EPSILON = 0.001;
 /** Fraction of the viewport the map should occupy after fit (leaves a margin). */
 const CAMERA_PADDING = 1.12;
 const MIN_ZOOM = 0.1;
@@ -78,12 +80,13 @@ const CRITICAL_SHEET_KEYS = new Set([
 
 /**
  * Honest render-readiness flag (see {@link isSetPieceRenderReady}). Only `true`
- * while the CURRENTLY selected set piece is rendering REAL art — zero prop
- * placeholder Rectangles and every pinned NPC key resident. Read by the headless
- * visual-review harness through `window.__uiProbe.ready()` so it never captures
- * cold-cache placeholders. Module-scoped so it survives scene restarts (the
- * dropdown restarts the scene, which re-enters `create()` but not the lab
- * factory) and so the probe closure below reflects the latest recompute.
+ * while the CURRENTLY selected set piece is rendering REAL art — every TRANSIENT
+ * prop placeholder Rectangle resolved (only intentional queued-art stand-ins may
+ * remain) and every pinned NPC key resident. Read by the headless visual-review
+ * harness through `window.__uiProbe.ready()` so it never captures cold-cache
+ * placeholders. Module-scoped so it survives scene restarts (the dropdown
+ * restarts the scene, which re-enters `create()` but not the lab factory) and so
+ * the probe closure below reflects the latest recompute.
  */
 let labReady = false;
 
@@ -134,6 +137,10 @@ function tintSwatch(hex: string): string {
   return `<span style="display:inline-block;width:9px;height:9px;border:1px solid rgba(0,0,0,0.5);background:${esc(hex)};vertical-align:middle;margin-right:4px"></span>${esc(hex)}`;
 }
 
+function normalizeCatalogSpriteId(spriteId: string): string {
+  return spriteId.startsWith('sprite:') ? spriteId.slice('sprite:'.length) : spriteId;
+}
+
 /** Human label for where a set-piece depth sits relative to the entity plane. */
 function depthBandLabel(depth: number): string {
   if (depth < 0) {
@@ -161,7 +168,8 @@ function describeAsset(scene: Phaser.Scene, ref: SpriteRef): { text: string; rea
     };
   }
   if (ref.source === 'catalog') {
-    const def = getSprite(ref.spriteId);
+    const normalizedSpriteId = normalizeCatalogSpriteId(ref.spriteId);
+    const def = getSprite(normalizedSpriteId);
     if (def !== undefined && scene.textures?.exists(def.sheetKey) === true) {
       return {
         text: `catalog <code>${esc(ref.spriteId)}</code> → Kenney <code>${esc(def.sheetKey)}</code> #${def.frame}`,
@@ -169,8 +177,8 @@ function describeAsset(scene: Phaser.Scene, ref: SpriteRef): { text: string; rea
       };
     }
     // Generated sprites load as individual textures keyed by the bare manifest key.
-    if (scene.textures?.exists(ref.spriteId) === true) {
-      return { text: `generated <code>${esc(ref.spriteId)}</code>`, real: true };
+    if (scene.textures?.exists(normalizedSpriteId) === true) {
+      return { text: `generated <code>${esc(normalizedSpriteId)}</code>`, real: true };
     }
     return { text: `catalog <code>${esc(ref.spriteId)}</code> · not loaded`, real: false };
   }
@@ -182,6 +190,19 @@ function describeAsset(scene: Phaser.Scene, ref: SpriteRef): { text: string; rea
     text: `custom <code>${esc(ref.requestId)}</code> → ${placeholder.text}`,
     real: placeholder.real,
   };
+}
+
+function requiredGeneratedNpcKeyForStamp(
+  npcTypeId: string,
+  spriteOverride: SpriteRef | undefined,
+): string | null {
+  if (spriteOverride?.source === 'catalog') {
+    const normalizedSpriteId = normalizeCatalogSpriteId(spriteOverride.spriteId);
+    if (getSprite(normalizedSpriteId) === undefined) {
+      return normalizedSpriteId;
+    }
+  }
+  return pickGeneratedNpcTextureKey(npcTypeId);
 }
 
 /** One hover-testable rectangle (a prop layer or an NPC), in world pixels. */
@@ -251,8 +272,13 @@ function buildHoverItems(def: SetPieceDef, stamp: StampedSetPiece): HoverItem[] 
   });
   for (const npc of stamp.npcs) {
     const ndef = getNpcDef(npc.npcTypeId);
-    const wFt = ndef?.widthFt ?? TILE_SIZE_FT;
-    const hFt = ndef?.heightFt ?? TILE_SIZE_FT;
+    const wFt = npc.widthFt ?? ndef?.widthFt ?? TILE_SIZE_FT;
+    const hFt = npc.heightFt ?? ndef?.heightFt ?? TILE_SIZE_FT;
+    const authoredNpcDepth = npc.z !== undefined ? setPieceZToDepth(npc.z) : undefined;
+    const npcDepth =
+      authoredNpcDepth !== undefined
+        ? Math.max(TERRAIN_DEPTH + DEPTH_EPSILON, authoredNpcDepth)
+        : ENTITY_DEPTH;
     const lines: string[] = [];
     if (npc.anchorRole !== undefined) {
       const color = NPC_ANCHOR_COLOR[npc.anchorRole];
@@ -263,14 +289,27 @@ function buildHoverItems(def: SetPieceDef, stamp: StampedSetPiece): HoverItem[] 
     lines.push(
       `<span style="color:#94a3b8">tile</span> (${npc.tileX}, ${npc.tileY}) · <span style="color:#94a3b8">size</span> ${wFt}×${hFt} ft`,
     );
+    lines.push(
+      `<span style="color:#94a3b8">depth</span> ${npcDepth.toFixed(3)} <span style="color:#64748b">(${depthBandLabel(npcDepth)})</span>`,
+    );
+    if (authoredNpcDepth !== undefined && authoredNpcDepth < TERRAIN_DEPTH + DEPTH_EPSILON) {
+      lines.push(
+        `<span style="color:#94a3b8">depth clamp</span> authored z ${npc.z} mapped to ${authoredNpcDepth.toFixed(3)} and was raised above terrain`,
+      );
+    }
+    lines.push(
+      `<span style="color:#94a3b8">transform</span> rot ${npc.rotationDeg ?? 0}° · flipX ${npc.flipX === true ? 'on' : 'off'} · flipY ${npc.flipY === true ? 'on' : 'off'}${npc.z !== undefined ? ` · z ${npc.z}` : ''}`,
+    );
     items.push({
       centreXpx: ftToPx(npc.x),
       centreYpx: ftToPx(npc.y),
       halfWpx: ftToPx(wFt) / 2,
       halfHpx: ftToPx(hFt) / 2,
-      depth: 0,
+      depth: npcDepth,
       header: `NPC · ${esc(ndef?.name ?? npc.npcTypeId)}`,
-      npcDefId: npc.npcTypeId,
+      ...(npc.spriteOverride !== undefined
+        ? { ref: npc.spriteOverride }
+        : { npcDefId: npc.npcTypeId }),
       bodyHtml: lines.join('<br/>'),
     });
   }
@@ -483,6 +522,18 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
      */
     private requiredNpcKeys = new Set<string>();
 
+    /**
+     * How many placeholder Rectangles this piece is EXPECTED to keep forever —
+     * one per prop layer that renders an intentional queued-art stand-in (a
+     * `custom` sprite with no placeholder fallback; see
+     * {@link spriteRefRendersPersistentPlaceholder}). Computed once in create()
+     * from the stamped props and fed to the readiness gate so those honest
+     * stand-ins do not wedge `ready()` at false forever. 0 for pieces made
+     * entirely of catalog/sheet art (e.g. every piece before welcome-room's
+     * Kenney→custom conversion).
+     */
+    private expectedPersistentPlaceholderCount = 0;
+
     constructor() {
       super({ key: SCENE_KEY });
     }
@@ -518,6 +569,7 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
       // freshly stamped piece re-resolves its art on the next recompute.
       labReady = false;
       this.requiredNpcKeys = new Set<string>();
+      this.expectedPersistentPlaceholderCount = 0;
 
       const def = getSetPieceDef(state.selectedId) ?? defs[0];
       if (!def) {
@@ -539,10 +591,24 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
       const stamp = stampSetPiece(def, { roomBounds, tileSizeFt: TILE_SIZE_FT });
       for (const prop of stamp.props) {
         addSetPieceProp(this.world, prop.x, prop.y, prop.render);
+        // Count intentional queued-art stand-ins (custom sprites with no
+        // placeholder) so the readiness gate expects them to stay Rectangles
+        // rather than waiting for art that will never load.
+        if (spriteRefRendersPersistentPlaceholder(prop.render.sprite)) {
+          this.expectedPersistentPlaceholderCount += 1;
+        }
       }
       for (const npc of stamp.npcs) {
-        spawnNpc(this.world, npc.x, npc.y, npc.npcTypeId);
-        const npcKey = pickGeneratedNpcTextureKey(npc.npcTypeId);
+        spawnNpc(this.world, npc.x, npc.y, npc.npcTypeId, {
+          ...(npc.spriteOverride !== undefined ? { spriteOverride: npc.spriteOverride } : {}),
+          ...(npc.widthFt !== undefined ? { widthFt: npc.widthFt } : {}),
+          ...(npc.heightFt !== undefined ? { heightFt: npc.heightFt } : {}),
+          ...(npc.flipX !== undefined ? { flipX: npc.flipX } : {}),
+          ...(npc.flipY !== undefined ? { flipY: npc.flipY } : {}),
+          ...(npc.rotationDeg !== undefined ? { rotationDeg: npc.rotationDeg } : {}),
+          ...(npc.z !== undefined ? { z: npc.z } : {}),
+        });
+        const npcKey = requiredGeneratedNpcKeyForStamp(npc.npcTypeId, npc.spriteOverride);
         if (npcKey) {
           this.requiredNpcKeys.add(npcKey);
         }
@@ -621,6 +687,7 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
         this.bridge = undefined;
         labReady = false;
         this.requiredNpcKeys.clear();
+        this.expectedPersistentPlaceholderCount = 0;
         if (setPieceLabWindow().__setPieceScene === this) {
           setPieceLabWindow().__setPieceScene = undefined;
         }
@@ -661,11 +728,12 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
     /**
      * Walk the live display list and update {@link labReady} via the pure
      * {@link isSetPieceRenderReady} gate. Real art is on screen iff at least one
-     * Image has rendered, zero prop placeholder Rectangles remain, and every
-     * required pinned NPC key is resident. The only Rectangles this scene creates
-     * are set-piece prop placeholders (terrain bakes to a RenderTexture and no
-     * health bars/markers are added here), so counting them by type is an exact
-     * "unresolved prop" signal.
+     * Image has rendered, no more than the expected count of intentional
+     * queued-art placeholder Rectangles remain (every transient cold-cache rect
+     * resolved), and every required pinned NPC key is resident. The only
+     * Rectangles this scene creates are set-piece prop placeholders (terrain bakes
+     * to a RenderTexture and no health bars/markers are added here), so counting
+     * them by type is an exact "unresolved prop" signal.
      */
     private recomputeReady(): void {
       let placeholderRectCount = 0;
@@ -693,6 +761,7 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
         imageCount,
         requiredNpcKeyCount: this.requiredNpcKeys.size,
         resolvedNpcKeyCount,
+        expectedPersistentPlaceholderCount: this.expectedPersistentPlaceholderCount,
       });
     }
 

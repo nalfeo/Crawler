@@ -198,7 +198,12 @@ export function resolveDialogueLines(
   defId: string,
   world: GameWorld,
   deps: DialogueResolutionDeps,
+  npcEid?: number,
 ): string[] {
+  const override = npcEid !== undefined ? world.npcs.get(npcEid)?.dialogueOverride : undefined;
+  if (override !== undefined && override.length > 0) {
+    return [...override];
+  }
   const objective = world.floorScenario?.objective;
   if (defId === 'tutorial-goon') {
     const goonLines = selectTutorialGoonDialogue({

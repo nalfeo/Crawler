@@ -155,7 +155,7 @@ const passiveAbilitySchema = baseAbilitySchema
   })
   .strict();
 
-export const abilityDefinitionSchema: z.ZodType<AbilityDefinition> = z.discriminatedUnion('kind', [
+const abilityDefinitionSchema: z.ZodType<AbilityDefinition> = z.discriminatedUnion('kind', [
   activeAbilitySchema,
   passiveAbilitySchema,
 ]);

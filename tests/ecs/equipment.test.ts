@@ -16,6 +16,7 @@ import {
 } from '../../src/core/systems/equipmentSystem.js';
 import { statSystem } from '../../src/core/systems/statSystem.js';
 import { SLOT_REGISTRY } from '../../src/shared/equipment-slots.js';
+import { CORE_STAT_TO_SECONDARY } from '../../src/shared/stats.js';
 import {
   getEquipmentDefForItem,
   getEquippableItemIds,
@@ -26,6 +27,8 @@ import {
 import { addItem, hasItem, getItemCount, type InventoryBag } from '../../src/shared/inventory.js';
 import { ItemRarity, customTag, type ItemDef } from '../../src/shared/items.js';
 import type { EquipmentItemDef } from '../../src/shared/equipment-types.js';
+
+const STR_TO_DAMAGE_PERCENT = CORE_STAT_TO_SECONDARY.strength.damagePercent!;
 
 // --- Test helpers ---
 
@@ -328,13 +331,17 @@ describe('Equipment System', () => {
 
   // 24. Multi-slot stats not double-counted
   it('does not double-count multi-slot item stats', () => {
+    statSystem(world);
+    const strength = getEffectiveStats(world, entity).strength;
     const item = makeItem({
       id: 'gs',
       slots: ['mainHand', 'offHand'],
       statBonuses: { damageBonus: 10 },
     });
     equip(world, entity, item, { force: true });
-    expect(getEffectiveStats(world, entity).damageBonus).toBe(10);
+    const expected = strength * STR_TO_DAMAGE_PERCENT;
+    expect(getEffectiveStats(world, entity).damagePercent).toBeCloseTo(expected, 6);
+    expect(getEffectiveStats(world, entity).damageBonus).toBeCloseTo(10, 6);
   });
 
   // 25. NaN/Infinity stat values rejected

@@ -23,6 +23,7 @@ import {
   selectSpellFromBossBattle,
   meetShopkeeper,
   meetSpellQuestGiver,
+  meetBroker,
   spendPoints,
 } from '../index.js';
 import type { PrimaryStatId } from '../../shared/stats.js';
@@ -73,8 +74,14 @@ export function autoNpcInteractionSystem(
     meetSpellQuestGiver(world);
     return currentFrame;
   }
+  if (targetNpc.defId === 'the-broker') {
+    meetBroker(world);
+    return currentFrame;
+  }
 
-  return lastInteractionFrame;
+  // Unknown/unsupported NPC interaction: still advance cooldown so the AI can
+  // retarget instead of hammering the same unsupported target every frame.
+  return currentFrame;
 }
 
 export function autoFloor1ProgressionSystem(world: GameWorld, playerEid: number): void {
@@ -138,11 +145,13 @@ export function autoFloor1ProgressionSystem(world: GameWorld, playerEid: number)
  *   - Strength  → +2 Damage · +1 Armor per point
  *   - Constitution → +10 Max HP per point
  *
- * The starter sword's melee damage is a FIXED `def.baseDamage`, so extra damage
- * from Strength is wasted. That leaves armor (via Strength) and maxHp (via
- * Constitution), and the spend ORDER matters — allocating Constitution grants
- * the maxHp delta as immediate current HP (see statsSystem), so each level-up
- * Constitution point is a +10 HP heal. There is no passive regen on Floor 1.
+ * The starter sword still uses fixed `def.baseDamage`, so Strength's flat
+ * `Stats.damage` gain does not directly raise weapon base damage. However,
+ * Strength now contributes `damagePercent`, so it still has live combat payoff
+ * alongside armor. The spend ORDER still matters — allocating Constitution
+ * grants the maxHp delta as immediate current HP (see statsSystem), so each
+ * level-up Constitution point is a +10 HP heal. There is no passive regen on
+ * Floor 1.
  *
  * Spend order is tiered to front-load sustain:
  *   1. Strength → ARMOR_SWARM_FLOOR (5): 5 Strength pts → 5 armor, stops swarm bleed.

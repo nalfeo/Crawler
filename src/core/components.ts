@@ -314,7 +314,16 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
     doorState: {
       tileX: new Uint16Array(maxEntities),
       tileY: new Uint16Array(maxEntities),
-      isOpen: new Uint8Array(maxEntities), // 0 = closed, 1 = open
+      // Intended-open LATCH: written only by lock/unlock and floor/encounter
+      // authorities (doorSystem's lock evaluator, floor objective / boss
+      // transitions, spawner arenas) — never by the safe-room seal / reconcile.
+      // 0 = should be closed, 1 = should be open.
+      logicalOpen: new Uint8Array(maxEntities),
+      // Physical/tile truth, DERIVED every frame by doorSystem's reconcile pass:
+      // effectiveOpen = logicalOpen && !isLocked && !isForcedClosed. This is what
+      // drives the tile flags — a transient safe-room seal closes the TILE via
+      // effectiveOpen while leaving the logicalOpen latch intact.
+      effectiveOpen: new Uint8Array(maxEntities),
       isLocked: new Uint8Array(maxEntities), // 0 = unlocked, 1 = locked
       wasUnlocked: new Uint8Array(maxEntities), // 0 = never unlocked, 1 = unlocked at least once
     },
@@ -370,8 +379,10 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       wisdom: new Float32Array(maxEntities),
       charisma: new Float32Array(maxEntities),
       luck: new Float32Array(maxEntities),
+      weight: new Float32Array(maxEntities),
       armor: new Float32Array(maxEntities),
       damageBonus: new Float32Array(maxEntities),
+      damagePercent: new Float32Array(maxEntities),
       attackSpeed: new Float32Array(maxEntities),
       moveSpeed: new Float32Array(maxEntities),
       critChance: new Float32Array(maxEntities),
@@ -389,8 +400,10 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       wisdom: new Float32Array(maxEntities),
       charisma: new Float32Array(maxEntities),
       luck: new Float32Array(maxEntities),
+      weight: new Float32Array(maxEntities),
       armor: new Float32Array(maxEntities),
       damageBonus: new Float32Array(maxEntities),
+      damagePercent: new Float32Array(maxEntities),
       attackSpeed: new Float32Array(maxEntities),
       moveSpeed: new Float32Array(maxEntities),
       critChance: new Float32Array(maxEntities),
@@ -424,6 +437,7 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       wisdom: new Float32Array(maxEntities),
       charisma: new Float32Array(maxEntities),
       luck: new Float32Array(maxEntities),
+      weight: new Float32Array(maxEntities),
     },
     prop: {
       /** Index into DECORATION_DEF_INDEX for the originating DecorationDef. */

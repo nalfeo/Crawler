@@ -7,6 +7,7 @@ import {
   STAT_BASE,
   STAT_MIN,
   CORE_STAT_GAINS,
+  isAllocatablePrimaryStat,
   type PrimaryStatId,
 } from '../../shared/stats.js';
 import type { StatModifier } from '../skills/types.js';
@@ -116,6 +117,9 @@ export function spendPoints(
       throw new Error(
         `Invalid allocation key "${stat}": expected one of ${PRIMARY_STATS.join(', ')}`,
       );
+    }
+    if ((points ?? 0) > 0 && !isAllocatablePrimaryStat(stat as PrimaryStatId)) {
+      throw new Error(`Stat "${stat}" cannot be allocated via level-up points`);
     }
     const n = points ?? 0;
     if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) {

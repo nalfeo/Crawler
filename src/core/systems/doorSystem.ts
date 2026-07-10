@@ -1,10 +1,21 @@
 /**
- * Door System — syncs DoorState component to tile flags.
+ * Door System — reconciles DoorState into tile flags.
  *
- * When a door entity's isOpen changes, this system updates the
- * corresponding tile in the FloorMap. Opening a door flips the
- * PASSABLE + TRANSPARENT bits; the FOV system naturally adapts
- * on the next frame.
+ * A door carries two independent bits of open state:
+ *   - `logicalOpen`  — the intended-open LATCH. Written only by lock/unlock and
+ *     floor/encounter authorities: the door-lock evaluator below (unlock edge → 1,
+ *     relock/locked → 0), plus floor objective / boss transitions and spawner
+ *     arenas (e.g. floorScenario.ts, floor2Scenario.ts, spawnerArenaSystem.ts).
+ *     The safe-room seal / physical reconcile never touches it.
+ *   - `effectiveOpen` — the physical/tile truth, DERIVED here every frame as
+ *     `logicalOpen && !isLocked && !isForcedClosed` and stored back on the
+ *     component. It drives the tile PASSABLE + TRANSPARENT bits; the FOV system
+ *     adapts on the next frame.
+ *
+ * Decoupling the latch from the derived tile state is what lets a transient
+ * safe-room seal close a door's TILE (via effectiveOpen) without destroying its
+ * unlock latch — so a shared safe-room / boss-stair door reopens the moment the
+ * seal lifts instead of becoming a permanent unlocked-but-closed wall.
  *
  * Must run BEFORE fovSystem each frame.
  */
@@ -49,17 +60,17 @@ export function doorSystem(world: GameWorld): void {
         if (unlockSatisfied && !relockSatisfied) {
           isLocked = false;
           doorState.wasUnlocked[eid] = 1;
-          doorState.isOpen[eid] = 1;
+          doorState.logicalOpen[eid] = 1;
         }
       } else if (relockSatisfied) {
         isLocked = true;
-        doorState.isOpen[eid] = 0;
+        doorState.logicalOpen[eid] = 0;
       }
     }
 
     doorState.isLocked[eid] = isLocked ? 1 : 0;
     if (isLocked) {
-      doorState.isOpen[eid] = 0;
+      doorState.logicalOpen[eid] = 0;
       lockedDoorTiles.add(tileKey(tx, ty));
     }
   }
@@ -114,14 +125,16 @@ export function doorSystem(world: GameWorld): void {
     const ty = doorState.tileY[eid] ?? 0;
     const isForcedClosed = forcedClosedDoorTiles.has(tileKey(tx, ty));
     const isLocked = (doorState.isLocked[eid] ?? 0) !== 0;
-    const isOpen = (doorState.isOpen[eid] ?? 0) !== 0;
+    const logicalOpen = (doorState.logicalOpen[eid] ?? 0) !== 0;
 
-    if (isForcedClosed || isLocked) {
-      if (isForcedClosed) {
-        doorState.isOpen[eid] = 0;
-      }
-      floorMap.tileMap.closeDoor(tx, ty);
-    } else if (isOpen) {
+    // Derive the physical tile truth from the latch WITHOUT mutating the latch.
+    // A lock or a transient safe-room seal (isForcedClosed) closes the TILE
+    // only; the logicalOpen latch survives, so the door reopens the moment the
+    // lock/seal lifts instead of being permanently clobbered shut.
+    const effectiveOpen = logicalOpen && !isLocked && !isForcedClosed;
+    doorState.effectiveOpen[eid] = effectiveOpen ? 1 : 0;
+
+    if (effectiveOpen) {
       floorMap.tileMap.openDoor(tx, ty);
     } else {
       floorMap.tileMap.closeDoor(tx, ty);

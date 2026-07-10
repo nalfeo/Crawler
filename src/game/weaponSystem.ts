@@ -2,6 +2,7 @@ import { hasComponent, query, removeEntity } from 'bitecs';
 import {
   DeathTimer,
   Enemy,
+  EffectiveStats,
   Health,
   MeleeSwing,
   Owner,
@@ -38,6 +39,7 @@ import {
   getActiveWeaponGeneration,
 } from '../core/active-weapon.js';
 import { TeamId, MeleeSpriteId, WEAPON, WeaponType } from '../shared/constants.js';
+import { applyCooldownReduction } from '../shared/stats.js';
 import type { WeaponDef } from '../shared/weaponDefs.js';
 import { createLogger } from '../shared/logger.js';
 import { normalize } from '../shared/vec.js';
@@ -103,7 +105,14 @@ function syncActiveWeaponGeneration(world: GameWorld, state: WeaponState): void 
   }
   state.lastActiveGeneration = generation;
   const def = getActiveWeaponDef(world);
-  state.lastFireMs = def === undefined ? world.elapsedMs : world.elapsedMs - def.cooldownMs;
+  if (def === undefined) {
+    state.lastFireMs = world.elapsedMs;
+    return;
+  }
+  const player = getPlayerEntity(world);
+  const cooldownMs =
+    player === undefined ? def.cooldownMs : getEffectiveCooldownMs(world, player, def.cooldownMs);
+  state.lastFireMs = world.elapsedMs - cooldownMs;
 }
 
 function normalizeVector(x: number, y: number): { x: number; y: number } {
@@ -178,6 +187,14 @@ function isLeadingProjectileWeapon(def: WeaponDef): boolean {
     def.weaponType === WeaponType.MAGIC ||
     def.weaponType === WeaponType.THROWN
   );
+}
+
+function getEffectiveCooldownMs(world: GameWorld, player: number, baseCooldownMs: number): number {
+  if (!hasComponent(world.ecs, player, EffectiveStats)) {
+    return baseCooldownMs;
+  }
+  const reduction = world.stores.effectiveStats.cooldownReduction[player] ?? 0;
+  return applyCooldownReduction(baseCooldownMs, reduction);
 }
 
 function getPlayerEntity(world: GameWorld): number | undefined {
@@ -769,11 +786,12 @@ export function getActiveWeapon(world: GameWorld): WeaponDef | undefined {
 }
 
 /**
- * Active-weapon cooldown readiness, mirroring the gate the melee/data-driven fire
- * path uses (`world.elapsedMs - state.lastFireMs >= def.cooldownMs`). Returns
- * `null` when no weapon is equipped. Exposed so the headless AI can stutter-step:
- * dart into strike range when `ready`, ease back out while a swing is on cooldown
- * instead of standing still and trading blows.
+ * Active-weapon cooldown readiness, mirroring the same effective-cooldown gate
+ * used by the melee/data-driven fire path:
+ * `world.elapsedMs - state.lastFireMs >= getEffectiveCooldownMs(...)`.
+ * Returns `null` when no weapon is equipped. Exposed so the headless AI can
+ * stutter-step: dart into strike range when `ready`, ease back out while a
+ * swing is on cooldown instead of standing still and trading blows.
  */
 export function getActiveWeaponReadiness(
   world: GameWorld,
@@ -784,8 +802,11 @@ export function getActiveWeaponReadiness(
   if (def === undefined) {
     return null;
   }
-  const remainingMs = Math.max(0, def.cooldownMs - (world.elapsedMs - state.lastFireMs));
-  return { ready: remainingMs <= 0, remainingMs, cooldownMs: def.cooldownMs };
+  const player = getPlayerEntity(world);
+  const cooldownMs =
+    player === undefined ? def.cooldownMs : getEffectiveCooldownMs(world, player, def.cooldownMs);
+  const remainingMs = Math.max(0, cooldownMs - (world.elapsedMs - state.lastFireMs));
+  return { ready: remainingMs <= 0, remainingMs, cooldownMs };
 }
 
 export function weaponSystem(world: GameWorld): void {
@@ -824,11 +845,12 @@ export function weaponSystem(world: GameWorld): void {
   const activeDef = getActiveWeaponDef(world);
   if (activeDef !== undefined) {
     const def = activeDef;
+    const cooldownMs = getEffectiveCooldownMs(world, player, def.cooldownMs);
 
     // Trap weapons deploy at the player's feet regardless of enemy proximity.
     if (def.weaponType === WeaponType.TRAP) {
       const lastFire = state.lastFireMs;
-      if (world.elapsedMs - lastFire >= def.cooldownMs) {
+      if (world.elapsedMs - lastFire >= cooldownMs) {
         dispatchAttack(world, player, def, { x: 0, y: 0 });
         state.lastFireMs = world.elapsedMs;
       }
@@ -848,7 +870,7 @@ export function weaponSystem(world: GameWorld): void {
         return;
       }
       const lastFire = state.lastFireMs;
-      if (world.elapsedMs - lastFire < def.cooldownMs) {
+      if (world.elapsedMs - lastFire < cooldownMs) {
         return;
       }
       const gateRangeFt = getWeaponGateRangeFt(def) * ATTACK_TARGET_GATE_MULTIPLIER;
@@ -883,7 +905,7 @@ export function weaponSystem(world: GameWorld): void {
     }
     const lastFire = state.lastFireMs;
 
-    if (world.elapsedMs - lastFire < def.cooldownMs) {
+    if (world.elapsedMs - lastFire < cooldownMs) {
       return;
     }
 

@@ -51,6 +51,10 @@ describe('primary stat display metadata', () => {
   });
 
   it('formatCoreStatGains appends derived secondary stats as percentages', () => {
+    // Strength → damagePercent (0.01 → "+1.0% Damage")
+    const strGains = formatCoreStatGains('strength');
+    expect(strGains).toContain('Damage');
+    expect(strGains).toContain('1.0%');
     // Luck → critChance (0.005 → "+0.5% Crit Chance")
     const luckGains = formatCoreStatGains('luck');
     expect(luckGains).toContain('Crit Chance');
@@ -59,6 +63,10 @@ describe('primary stat display metadata', () => {
     const dexGains = formatCoreStatGains('dexterity');
     expect(dexGains).toContain('Dodge Chance');
     expect(dexGains).toContain('0.3%');
+    // Wisdom → cooldownReduction (0.005 → "+0.5% Cooldown Reduction")
+    const wisdomGains = formatCoreStatGains('wisdom');
+    expect(wisdomGains).toContain('Cooldown Reduction');
+    expect(wisdomGains).toContain('0.5%');
   });
 
   it('formatCoreStatGains surfaces the Wisdom→mana payoff and the Charisma placeholder', () => {

@@ -146,7 +146,7 @@ function lockRoomDoorsImpl(
         unlock: { operator: 'all', conditions: [{ type: 'goal', goalId }] },
       });
       doorState.isLocked[doorEid] = 1;
-      doorState.isOpen[doorEid] = 0;
+      doorState.logicalOpen[doorEid] = 0;
       cachedEids.push(doorEid);
       break;
     }

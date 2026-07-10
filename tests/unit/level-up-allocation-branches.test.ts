@@ -47,6 +47,12 @@ describe('level-up-allocation no-op branches', () => {
     expect(incrementStat(state, PRIMARY_STATS[0]!)).toBe(state);
   });
 
+  it('incrementStat is a no-op for non-allocatable stats', () => {
+    const state = openState();
+    expect(incrementStat(state, 'charisma')).toBe(state);
+    expect(incrementStat(state, 'weight')).toBe(state);
+  });
+
   it('decrementStat is a no-op once cancelled', () => {
     const state = cancel(openState());
     expect(decrementStat(state, PRIMARY_STATS[0]!)).toBe(state);

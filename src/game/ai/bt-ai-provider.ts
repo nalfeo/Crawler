@@ -93,6 +93,7 @@ import {
   getShopkeeperStage,
   SHOPKEEPER_EQUIPMENT_COST,
 } from '../floorScenario.js';
+import { FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID } from '../floor2Scenario.js';
 import { getActiveWeapon, getActiveWeaponReadiness } from '../weaponSystem.js';
 // AI tuning constants (pure values; identical runtime behavior) live in
 // ./bt-ai-tuning.ts. Imported here so every reference in this file is unchanged.
@@ -342,6 +343,32 @@ const RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES = 14;
 // is applied even when the ray centre stays passable.
 const RISK_REWARD_WALL_PROXIMITY_FT = 2.0;
 
+// --- NAVMESH_FUSED seam-following term (Slice 4b) ----------------------------
+// A tangential-to-danger-gradient bonus layered ON TOP of the fused fan, active
+// ONLY for AIPathingMode.NAVMESH_FUSED and ONLY when its seamWeight > 0. It
+// rewards DIRECTIONAL travel ALONG the danger boundary (perpendicular to the
+// danger gradient) toward the goal while farmable reward lies along that seam, so
+// the agent "travels the seams" instead of taking the shortest path or hiding in
+// corners. At seamWeight 0 the whole block is skipped, making NAVMESH_FUSED
+// byte-identical to Slice 4a. seamWeight defaults to NAVMESH_FUSED_SEAM_WEIGHT (=2)
+// in bt-ai-tuning, so the shipped game is byte-identical to 4a because the default
+// pathingMode is LEGACY and the call site forces seamWeight to 0 for every
+// non-NAVMESH_FUSED mode — NOT because the weight defaults to 0. Every guard here
+// is deterministic (no Math.random / Date.now).
+//
+// The gradient is a CENTERED estimator: grad = Σ dir_i·(danger_i − meanDanger).
+// The raw Σ dir_i·danger_i would fabricate a forward-biased gradient under
+// UNIFORM danger (the fan only spans ±90° forward), so the mean is subtracted:
+// uniform danger ⇒ grad ≈ 0 ⇒ seam inactive (adversarial plan review, concern B2).
+// The epsilons below are DEGENERACY guards (avoid a NaN / noise-direction
+// tangent), not tuning knobs — the reward-reachability gate and the progress
+// floor are what actually shape WHEN the seam engages, and both key off real
+// geometry rather than magic thresholds.
+const SEAM_GRAD_EPS_SQ = 1e-6; // min |centered danger gradient|² before a tangent is defined
+const SEAM_REWARD_EPS = 1e-6; // min reward-pull magnitude for the reachability gate
+const SEAM_REWARD_TANGENT_EPS = 1e-6; // min rewardDir·tangent to call reward "along the seam"
+const SEAM_PROGRESS_FLOOR = 1e-3; // candidates below this objective-progress dot get NO seam bonus (anti-orbit)
+
 /**
  * Read-only snapshot of the RISK_REWARD_FUSED field constants, exported so debug
  * visualizers (the ai-runner lab heatmap) can mirror the scorer WITHOUT
@@ -378,6 +405,28 @@ export interface FusedCandidateDebug {
 }
 
 /**
+ * Slice 4b seam-following internals for one fused poll (debug/lab only, never
+ * read back into any decision so it cannot perturb determinism). Present on
+ * {@link FusedHeadingDebug.seam} only when the poll ran the seam block
+ * (seamWeight > 0); `seamActive` distinguishes a poll where the tangential term
+ * actually re-selected the heading from one where the gate held it off.
+ */
+export interface FusedSeamDebug {
+  /** Centered danger gradient Σ dir_i·(danger_i − meanDanger); points uphill in danger. */
+  gradX: number;
+  gradY: number;
+  /** Mean per-candidate danger subtracted to centre the gradient. */
+  meanDanger: number;
+  /** Unit tangent (⟂ gradient, oriented toward the goal) actually used; (0,0) when inactive. */
+  tangentX: number;
+  tangentY: number;
+  /** True when the tangential bonus re-selected the heading this poll. */
+  seamActive: boolean;
+  /** seamWeight in force when active, else 0. */
+  effectiveSeamWeight: number;
+}
+
+/**
  * Snapshot of one RISK_REWARD_FUSED scoring poll, captured ONLY when
  * {@link BehaviorTreeAI.fusedDebugCapture} is enabled (lab/debug). Default-off so
  * the headless runner / A/B sweep path allocates nothing and stays byte-identical
@@ -400,6 +449,8 @@ export interface FusedHeadingDebug {
   /** Velocity-projected enemy threat points the scorer actually scored against. */
   threats: { x: number; y: number }[];
   candidates: FusedCandidateDebug[];
+  /** Slice 4b seam-term internals; null/absent when the seam block did not run. */
+  seam?: FusedSeamDebug | null;
 }
 
 // Assembled once from the TRAVEL_* tuning constants; the pure steering module
@@ -693,6 +744,20 @@ export class BehaviorTreeAI implements AIInputProvider {
    * all-doors (Option-B) navmesh. Expected 0 on Floor 1.
    */
   public navPartialPathFallbacks: number = 0;
+  /**
+   * Slice 4b NAVMESH_FUSED seam-following diagnostics, read by the seam-weight
+   * sweep exactly like {@link navPartialPathFallbacks}. All three stay 0 for
+   * every mode except NAVMESH_FUSED with seamWeight > 0, and are never read back
+   * into the sim, so they cannot perturb determinism. `navmeshSeamPolls` counts
+   * fused polls where the seam block ran (seamWeight > 0); `navmeshSeamActivePolls`
+   * counts the subset where the tangential term actually re-selected the heading;
+   * `navmeshSeamAlignSum` accumulates chosenDir·tangent over those active polls so
+   * the sweep can report the MEAN alignment — the "travelling ALONG the seam"
+   * (not merely "near danger") evidence the seam feature must demonstrate.
+   */
+  public navmeshSeamPolls: number = 0;
+  public navmeshSeamActivePolls: number = 0;
+  public navmeshSeamAlignSum: number = 0;
   private navHandle: NavmeshHandle | null = null;
   private navHandleFloor: FloorMap | null = null;
   private moveWedgeFrames: number = 0;
@@ -903,6 +968,25 @@ export class BehaviorTreeAI implements AIInputProvider {
   private prevFusedDirX: number = 0;
   private prevFusedDirY: number = 0;
   /**
+   * Clamped Slice 4b seam weight (finite, ≥ 0), derived once from
+   * {@link AIConfig.seamWeight} in the constructor and passed to the fused scorer
+   * ONLY in NAVMESH_FUSED mode (0 in every other mode). 0 ⇒ the seam block is
+   * skipped and the fused heading is byte-identical to Slice 4a.
+   */
+  private readonly navmeshSeamWeight: number;
+  // Reusable per-candidate scratch for the seam term (Slice 4b), written only when
+  // seamWeight > 0. Allocated unconditionally (one fixed-size set per AI, ~0.5 KB)
+  // rather than lazily: the weight-0 / non-fused paths never READ or WRITE them, so
+  // the allocation is inert and does NOT affect determinism or same-seed
+  // byte-identity — the sim fingerprint is state, not heap (proven by the golden +
+  // the weight-0 dormancy test). Instance-level to avoid per-poll allocation across
+  // the millions of polls a sweep runs.
+  private readonly seamDirX = new Float64Array(RISK_REWARD_CANDIDATE_OFFSETS_DEG.length);
+  private readonly seamDirY = new Float64Array(RISK_REWARD_CANDIDATE_OFFSETS_DEG.length);
+  private readonly seamDanger = new Float64Array(RISK_REWARD_CANDIDATE_OFFSETS_DEG.length);
+  private readonly seamProgress = new Float64Array(RISK_REWARD_CANDIDATE_OFFSETS_DEG.length);
+  private readonly seamScore = new Float64Array(RISK_REWARD_CANDIDATE_OFFSETS_DEG.length);
+  /**
    * When true, {@link computeRiskRewardFusedHeading} records a per-poll
    * {@link FusedHeadingDebug} snapshot of every scored candidate for the lab
    * visualizer. Default OFF: the headless runner / A/B sweep never sets it, so
@@ -938,6 +1022,14 @@ export class BehaviorTreeAI implements AIInputProvider {
 
   constructor(config: AIConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+    // Clamp the Slice 4b seam weight once (finite, ≥ 0). A NaN/negative value
+    // injected via a partial config must NOT silently flip the seam term on or
+    // produce a NaN heading — an out-of-range weight is treated as "off" (0).
+    const rawSeamWeight = this.config.seamWeight;
+    this.navmeshSeamWeight =
+      typeof rawSeamWeight === 'number' && Number.isFinite(rawSeamWeight) && rawSeamWeight > 0
+        ? rawSeamWeight
+        : 0;
     this.rng = new SeededRandom(this.config.seed);
     this.decision = {
       state: AIState.EXPLORE,
@@ -2672,6 +2764,10 @@ export class BehaviorTreeAI implements AIInputProvider {
         state.moveX,
         state.moveY,
         weights,
+        // Slice 4b: the tangential-seam bonus is a NAVMESH_FUSED-only follow-time
+        // layer. RISK_REWARD_FUSED passes 0 so it (and NAVMESH_FUSED at weight 0)
+        // stays byte-identical to Slice 4a. `navmeshSeamWeight` is pre-clamped ≥ 0.
+        this.config.pathingMode === AIPathingMode.NAVMESH_FUSED ? this.navmeshSeamWeight : 0,
       );
       state.moveX = fused.moveX;
       state.moveY = fused.moveY;
@@ -3015,6 +3111,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     baseMoveX: number,
     baseMoveY: number,
     weights: { dodgeWeight: number; collectPullWeight: number; farmPullWeight: number },
+    seamWeight = 0,
   ): { moveX: number; moveY: number } {
     const baseLen = Math.hypot(baseMoveX, baseMoveY);
     if (baseLen <= TRAVEL_HEADING_EPSILON) {
@@ -3203,7 +3300,117 @@ export class BehaviorTreeAI implements AIInputProvider {
           chosen: false,
         });
       }
+      if (seamWeight > 0) {
+        // Slice 4b: stash the per-candidate terms the post-loop seam block needs
+        // (centered danger gradient + tangential-bonus re-argmax). Skipped at
+        // weight 0 → the loop stays byte-identical to Slice 4a.
+        this.seamDirX[candidateIndex] = dirX;
+        this.seamDirY[candidateIndex] = dirY;
+        this.seamDanger[candidateIndex] = danger;
+        this.seamProgress[candidateIndex] = progress;
+        this.seamScore[candidateIndex] = score;
+      }
       candidateIndex++;
+    }
+
+    // --- Slice 4b: tangential-to-gradient seam term (NAVMESH_FUSED, weight > 0).
+    // Re-selects the heading to travel ALONG the danger boundary toward the goal
+    // when farmable reward lies along that seam. Entirely skipped at weight 0, so
+    // RISK_REWARD_FUSED and NAVMESH_FUSED-at-0 stay byte-identical to Slice 4a.
+    let seamDebug: FusedSeamDebug | null = null;
+    if (seamWeight > 0) {
+      const n = RISK_REWARD_CANDIDATE_OFFSETS_DEG.length;
+      this.navmeshSeamPolls++;
+      // Centered danger gradient (concern B2): subtracting the mean removes the
+      // fake forward bias a raw Σ dir·danger shows under uniform danger.
+      let sumDanger = 0;
+      for (let i = 0; i < n; i++) sumDanger += this.seamDanger[i]!;
+      const meanDanger = sumDanger / n;
+      let gradX = 0;
+      let gradY = 0;
+      for (let i = 0; i < n; i++) {
+        const centered = this.seamDanger[i]! - meanDanger;
+        gradX += this.seamDirX[i]! * centered;
+        gradY += this.seamDirY[i]! * centered;
+      }
+      const gradLenSq = gradX * gradX + gradY * gradY;
+      let seamApplied = false;
+      let tanX = 0;
+      let tanY = 0;
+      // Degeneracy guard (concern B3): a (near-)zero or non-finite gradient has no
+      // well-defined tangent — leave the base pick untouched this poll.
+      if (Number.isFinite(gradLenSq) && gradLenSq > SEAM_GRAD_EPS_SQ) {
+        const gradLen = Math.sqrt(gradLenSq);
+        // Tangent ⟂ gradient = travel ALONG the danger boundary.
+        let tx = -gradY / gradLen;
+        let ty = gradX / gradLen;
+        // Orient the tangent toward the goal so we follow the seam FORWARD. Flip
+        // only on a STRICT negative dot; an exact 0 keeps the (−gradY, gradX)
+        // orientation so the sign choice is deterministic (concern B3 tie policy).
+        if (tx * objectiveX + ty * objectiveY < 0) {
+          tx = -tx;
+          ty = -ty;
+        }
+        // Reward-reachability gate (guardrail #2): only bias along the seam when
+        // farmable reward actually lies along it. Otherwise goal progress
+        // dominates and the agent completes instead of orbiting an empty contour
+        // (concern M1 — positive epsilon, not a strict > 0, to damp gate flicker).
+        const rewardAlongSeam = rewardLen > SEAM_REWARD_EPS ? rewardDirX * tx + rewardDirY * ty : 0;
+        if (rewardLen > SEAM_REWARD_EPS && rewardAlongSeam > SEAM_REWARD_TANGENT_EPS) {
+          // Record the computed seam tangent for the dev visualizer whether or not
+          // the re-argmax ultimately moves the pick (never set in headless/sweep).
+          tanX = tx;
+          tanY = ty;
+          // Re-run the argmax with the tangential bonus. Candidates below the
+          // objective-progress floor get NO bonus (anti-orbit, concern M2), and a
+          // negative alignment never subtracts. First-wins ties match the base
+          // loop's `score > bestScore` so the pick stays deterministic.
+          const priorBestIndex = bestIndex;
+          let seamBestScore = Number.NEGATIVE_INFINITY;
+          let seamBestIndex = 0;
+          for (let i = 0; i < n; i++) {
+            let adjusted = this.seamScore[i]!;
+            if (this.seamProgress[i]! > SEAM_PROGRESS_FLOOR) {
+              const align = this.seamDirX[i]! * tx + this.seamDirY[i]! * ty;
+              if (align > 0) adjusted += align * seamWeight;
+            }
+            if (adjusted > seamBestScore) {
+              seamBestScore = adjusted;
+              seamBestIndex = i;
+            }
+          }
+          // Only COUNT the poll as seam-active and mutate the heading when the
+          // tangential bonus actually re-selected a DIFFERENT candidate. When the
+          // pick is unchanged the seam term had no causal effect, so — per the
+          // navmeshSeamActivePolls / navmeshSeamAlignSum docstring — it must not be
+          // counted, and bestX/bestY/bestScore stay exactly as the base fan set them
+          // (a no-op seam poll is byte-identical to a no-seam poll). Because any
+          // re-selected winner strictly beat the base pick via a positive (align > 0)
+          // bonus, its bestX·tan + bestY·tan > 0 — so navmeshSeamAlignSum only ever
+          // accumulates POSITIVE alignment, and meanSeamAlign is an honest measure of
+          // how strongly the term actually steered along the seam.
+          if (seamBestIndex !== priorBestIndex) {
+            bestIndex = seamBestIndex;
+            bestX = this.seamDirX[seamBestIndex]!;
+            bestY = this.seamDirY[seamBestIndex]!;
+            bestScore = seamBestScore;
+            seamApplied = true;
+            this.navmeshSeamActivePolls++;
+            this.navmeshSeamAlignSum += bestX * tx + bestY * ty;
+          }
+        }
+      }
+      if (captured) {
+        seamDebug = {
+          gradX,
+          gradY,
+          meanDanger,
+          tangentX: tanX,
+          tangentY: tanY,
+          seamActive: seamApplied,
+          effectiveSeamWeight: seamApplied ? seamWeight : 0,
+        };
+      }
     }
 
     this.prevFusedDirX = bestX;
@@ -3223,6 +3430,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         dangerRadiusFt: RISK_REWARD_DANGER_RADIUS_FT,
         threats: threatPoints.map((t) => ({ x: t.x, y: t.y })),
         candidates: captured,
+        seam: seamDebug,
       };
     }
     return { moveX: bestX, moveY: bestY };
@@ -6364,14 +6572,29 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerEid: number,
     npcEid: number,
   ): string | null {
-    const floorScenario = world.floorScenario;
-    if (!floorScenario) {
-      return 'generic-interaction';
-    }
-
     const instance = world.npcs.get(npcEid);
     if (!instance) {
       return null;
+    }
+
+    const familyState = world.floorExtendedState?.familyState;
+    if (familyState) {
+      // Floor 2 intro gate: until the broker intro goal is complete, the broker
+      // is the only relevant interaction target.
+      if (instance.defId === 'the-broker') {
+        return world.goalFlags.get(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID) === true
+          ? null
+          : 'meet-broker-intro';
+      }
+      // Floor 2 currently has no scripted non-broker NPC interaction goals in the
+      // BT pipeline; treat them as irrelevant so headless progression does not
+      // loop on unsupported INTERACT actions.
+      return null;
+    }
+
+    const floorScenario = world.floorScenario;
+    if (!floorScenario) {
+      return 'generic-interaction';
     }
 
     const objective = floorScenario.objective;
@@ -6616,6 +6839,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.dodgeVecY = 0;
     this.prevFusedDirX = 0;
     this.prevFusedDirY = 0;
+    this.navmeshSeamPolls = 0;
+    this.navmeshSeamActivePolls = 0;
+    this.navmeshSeamAlignSum = 0;
     this.fusedDebug = null;
     this.lastTravelSteering = null;
     this.lastRunPlan = null;

@@ -10,10 +10,16 @@ import type { FloorMap } from '../../src/core/map/FloorMap.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../src/shared/constants.js';
 import {
   FLOOR2_CAVE_SYSTEM_DEFAULTS,
+  FLOOR2_SETTLEMENT_FOUND_GOAL_ID,
+  FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID,
+  floor2ObjectiveTick,
   initializeFloor2Scenario,
+  meetBroker,
 } from '../../src/game/floor2Scenario.js';
+import { questSystem } from '../../src/core/systems/questSystem.js';
+import { getFloor2NeutralTrash } from '../../src/shared/enemy-packs.js';
 import { getFloorManifest, registerFloorManifest } from '../../src/shared/floor-registry.js';
-import { getQuestDef } from '../../src/shared/quest-types.js';
+import { FLOOR2_FIND_SETTLEMENT_QUEST_ID, getQuestDef } from '../../src/shared/quest-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 const originalFloor2Manifest = structuredClone(getFloorManifest('floor2')!);
@@ -127,7 +133,7 @@ describe('initializeFloor2Scenario manifest validation', () => {
     );
   });
 
-  it('seeds the Floor 2 den quests into the active quest log', () => {
+  it('seeds the Floor 2 starter quest and den quests into the active quest log', () => {
     const seed = 4444;
     const gen = new CaveSystemGenerator({ presentCount: 3 });
     const floorMap = gen.generate(smallCaveConfig(seed), new SeededRandom(seed));
@@ -141,11 +147,60 @@ describe('initializeFloor2Scenario manifest validation', () => {
       .filter((quest) => quest.status === 'active')
       .map((quest) => quest.questId);
     expect(activeQuestIds.length).toBeGreaterThan(0);
-    expect(activeQuestIds.every((questId) => questId.startsWith('floor2-den-'))).toBe(true);
-    expect([...world.questLog.values()].some((quest) => quest.tracked)).toBe(true);
+    expect(activeQuestIds).toContain(FLOOR2_FIND_SETTLEMENT_QUEST_ID);
+    const denQuestIds = activeQuestIds.filter((questId) => questId.startsWith('floor2-den-'));
+    expect(denQuestIds.length).toBeGreaterThan(0);
+    expect(world.questLog.get(FLOOR2_FIND_SETTLEMENT_QUEST_ID)?.tracked).toBe(true);
     expect(
-      activeQuestIds.every((questId) =>
+      denQuestIds.every((questId) =>
         getQuestDef(questId)?.objectives.every((objective) => objective.kind === 'counter'),
+      ),
+    ).toBe(true);
+    // Den-unlock quests are passive background counters — they must be hidden.
+    expect(denQuestIds.every((questId) => getQuestDef(questId)?.hidden === true)).toBe(true);
+  });
+
+  it('completes the starter quest the first time the player enters the settlement area', () => {
+    const { world, playerEid } = createScenarioWorld();
+    initializeFloor2Scenario(world, playerEid);
+
+    expect(world.goalFlags.get(FLOOR2_SETTLEMENT_FOUND_GOAL_ID)).toBe(false);
+    expect(world.questLog.get(FLOOR2_FIND_SETTLEMENT_QUEST_ID)?.status).toBe('active');
+
+    const settlementRoomId = world.floorExtendedState?.settlement?.settlementRoomId;
+    expect(settlementRoomId).toBeDefined();
+    const settlementRoom = world.floorMap?.roomGraph.get(settlementRoomId!);
+    expect(settlementRoom).toBeDefined();
+    const tile = settlementRoom?.interiorCells?.[0] ?? {
+      x: settlementRoom!.bounds.x + Math.floor(settlementRoom!.bounds.width / 2),
+      y: settlementRoom!.bounds.y + Math.floor(settlementRoom!.bounds.height / 2),
+    };
+    const pos = world.floorMap!.tileToWorld(tile.x, tile.y);
+    world.stores.position.x[playerEid] = pos.x;
+    world.stores.position.y[playerEid] = pos.y;
+
+    floor2ObjectiveTick(world);
+    questSystem(world);
+
+    expect(world.goalFlags.get(FLOOR2_SETTLEMENT_FOUND_GOAL_ID)).toBe(true);
+    expect(world.questLog.get(FLOOR2_FIND_SETTLEMENT_QUEST_ID)?.status).toBe('complete');
+    expect(world.questLog.get(FLOOR2_FIND_SETTLEMENT_QUEST_ID)?.tracked).toBe(false);
+    // Den-unlock quests are hidden; questSystem prefers non-hidden quests for
+    // tracking. With no visible quests remaining, no visible quest is tracked.
+    // (The hidden fallback may technically track a hidden quest, but the HUD
+    // filters it out so the player sees nothing in the tracker.)
+    expect(
+      [...world.questLog.values()].some(
+        (quest) =>
+          quest.status === 'active' && quest.tracked && !getQuestDef(quest.questId)?.hidden,
+      ),
+    ).toBe(false);
+    // Hidden quests must remain mechanically active (status='active') so that
+    // kill-counter events still progress them; the hidden flag only gates HUD
+    // visibility, not quest mechanics.
+    expect(
+      [...world.questLog.values()].some(
+        (quest) => quest.status === 'active' && getQuestDef(quest.questId)?.hidden === true,
       ),
     ).toBe(true);
   });
@@ -198,10 +253,25 @@ describe('initializeFloor2Scenario manifest validation', () => {
           (world.stores.doorState.tileX[eid] ?? -1) === door.x &&
           (world.stores.doorState.tileY[eid] ?? -1) === door.y &&
           (world.stores.doorState.isLocked[eid] ?? 0) === 1 &&
-          (world.stores.doorState.isOpen[eid] ?? 0) === 0,
+          (world.stores.doorState.logicalOpen[eid] ?? 0) === 0,
       ),
     );
     expect(lockedHeartDoor).toBe(true);
+  });
+
+  it('initializes deterministic quadrant trash territories from the neutral pool', () => {
+    const { world, playerEid } = createScenarioWorld();
+    initializeFloor2Scenario(world, playerEid);
+
+    const territories = world.floorExtendedState?.trashTerritories;
+    expect(territories).toBeDefined();
+    expect(territories?.size).toBe(4);
+    expect(new Set(territories?.keys())).toEqual(new Set(['N', 'S', 'E', 'W']));
+
+    const neutralIds = new Set(getFloor2NeutralTrash().map((entry) => entry.id));
+    for (const archetypeId of territories?.values() ?? []) {
+      expect(neutralIds.has(archetypeId)).toBe(true);
+    }
   });
 
   it('applies floor2 cave defaults to real-game scenario map generation', () => {
@@ -251,6 +321,61 @@ describe('initializeFloor2Scenario manifest validation', () => {
     );
     expect(cave?.regionSeparationTiles).toBe(FLOOR2_CAVE_SYSTEM_DEFAULTS.regionSeparationTiles);
     expect(cave?.maxRetries).toBe(FLOOR2_CAVE_SYSTEM_DEFAULTS.maxRetries);
+  });
+
+  it('activates all Floor 1 feature unlocks at Floor 2 start', () => {
+    const { world, playerEid } = createScenarioWorld();
+    initializeFloor2Scenario(world, playerEid);
+
+    expect(world.featureUnlocks.inventory).toBe(true);
+    expect(world.featureUnlocks.equipment).toBe(true);
+    expect(world.featureUnlocks.spells).toBe(true);
+    const abilityState = world.abilityStatesByEntity.get(playerEid);
+    expect(abilityState?.learnedSpellIds.length ?? 0).toBeGreaterThan(0);
+    expect(abilityState?.equippedActiveAbilityIds.length ?? 0).toBeGreaterThan(0);
+    expect(world.goalFlags.get('floor1-drops-unlocked')).toBe(true);
+  });
+
+  it('starts with the reputation system locked and activates it after the broker explains the floor', () => {
+    const { world, playerEid } = createScenarioWorld();
+    initializeFloor2Scenario(world, playerEid);
+
+    // Reputation system is initially disabled.
+    expect(world.floorExtendedState?.familyState?.reputationSystemActive).toBe(false);
+    // Broker intro goal flag starts false.
+    expect(world.goalFlags.get(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID)).toBe(false);
+
+    // Simulate the player reading all of the Broker's intro dialogue.
+    meetBroker(world);
+
+    floor2ObjectiveTick(world);
+
+    // After the broker explains the floor, the reputation system should be active.
+    expect(world.floorExtendedState?.familyState?.reputationSystemActive).toBe(true);
+  });
+
+  it('does NOT activate the reputation system when only the settlement is found (broker not yet met)', () => {
+    const { world, playerEid } = createScenarioWorld();
+    initializeFloor2Scenario(world, playerEid);
+
+    // Move player into the settlement room.
+    const settlementRoomId = world.floorExtendedState?.settlement?.settlementRoomId;
+    expect(settlementRoomId).toBeDefined();
+    const settlementRoom = world.floorMap?.roomGraph.get(settlementRoomId!);
+    expect(settlementRoom).toBeDefined();
+    const tile = settlementRoom?.interiorCells?.[0] ?? {
+      x: settlementRoom!.bounds.x + Math.floor(settlementRoom!.bounds.width / 2),
+      y: settlementRoom!.bounds.y + Math.floor(settlementRoom!.bounds.height / 2),
+    };
+    const pos = world.floorMap!.tileToWorld(tile.x, tile.y);
+    world.stores.position.x[playerEid] = pos.x;
+    world.stores.position.y[playerEid] = pos.y;
+
+    floor2ObjectiveTick(world);
+
+    // Settlement found, but broker not met — reputation system stays locked.
+    expect(world.goalFlags.get(FLOOR2_SETTLEMENT_FOUND_GOAL_ID)).toBe(true);
+    expect(world.floorExtendedState?.familyState?.reputationSystemActive).toBe(false);
   });
 });
 

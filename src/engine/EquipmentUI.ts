@@ -1408,7 +1408,8 @@ export function createEquipmentUI(
       clearPool(slotObjects);
       clearPool(statObjects);
       clearPool(bagObjects);
-      clearTooltip();
+      clearPool(tooltipObjects);
+      tooltipBounds = null;
       slotBounds.clear();
       slotIconBounds.clear();
       bagCellBounds = [];
