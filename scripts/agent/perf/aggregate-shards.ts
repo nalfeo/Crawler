@@ -141,6 +141,18 @@ export function mergeShards(shards: readonly ShardArtifact[]): MergedShards {
   }
   const first = shards[0]!;
   const meta = first.meta;
+  // Reject a batch whose schema predates the current version. All shards must
+  // agree with each OTHER (checked per-shard below) AND with the current SSOT:
+  // an all-v1 batch agrees internally yet its rows lack safeRoomMs, so
+  // deriveRunFacts/isOfficialWin would silently fall back to raw-time
+  // classification — the exact bug the safeRoomMs field fixed.
+  if (meta.schemaVersion !== SHARD_SCHEMA_VERSION) {
+    throw new Error(
+      `Shard schema version ${meta.schemaVersion} != current ${SHARD_SCHEMA_VERSION}; ` +
+        `re-run the sweep — pre-v${SHARD_SCHEMA_VERSION} rows lack safeRoomMs and would ` +
+        `misclassify safe-room-credited wins.`,
+    );
+  }
   const rowsByKey = new Map<string, RunRow>();
   const configs: Record<string, SweepConfig> = {};
   let collapsedDuplicates = 0;

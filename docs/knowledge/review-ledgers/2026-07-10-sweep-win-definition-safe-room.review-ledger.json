@@ -41,6 +41,14 @@
           "resolved_count": 0,
           "clean": true,
           "notes": "Both models independently confirmed the winrate-sweep migration resolves the round-2 finding with no new type/import/determinism issues. gpt-5.4 ran typecheck + an ai:winrate-sweep smoke run (both green); sonnet-4.6 confirmed the fail-record builder correctly stays outcome!==victory and the denominator (seeds.length) is unaffected."
+        },
+        {
+          "round": 4,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 5,
+          "resolved_count": 5,
+          "clean": true,
+          "notes": "Post-PR automated review (GitHub copilot-pull-request-reviewer on #1021) raised 5 in-scope findings; all adjudicated valid and FIXED (rule #12: fix, not reply-and-resolve). (1) winrate-sweep Floor-2 regression: round-2's migration hard-coded the Floor-1 6-min budget for ALL floors, so a non-Floor-1 victory would be misclassified under active-time -> added classifyOfficialWin(stats, floorId) [Floor 1 -> isOfficialWin; other floors -> raw outcome==='victory']. (2) reconciliation gap: failRecord was built only on outcome!=='victory', so over-budget Floor-1 victories counted as losses but never appeared in the printed fail list (totalRuns-totalWins != fails.length) -> compute officialWin worker-side, build failRecord on !officialWin, added officialWin:boolean to SweepTaskResult. (3) aggregate-shards accepted an all-stale-schema batch (v1 rows lack safeRoomMs) that agreed internally -> mergeShards now rejects first.meta.schemaVersion !== SHARD_SCHEMA_VERSION + added an all-stale-batch rejection test. (4) headless-runner safeRoomFrames counter had no coverage -> added a 3rd it(...) to floor1-safe-room-reacquire asserting positive, frame-aligned (frames=round(safeRoomMs/DELTA_MS); safeRoomMs~=frames*DELTA_MS), bounded safe-room dwell. (5) apple JSON legacy schema -> rewrote to canonical (session/delta/verdict/hello_kitties). verify:fast green; aggregate-shards unit test 30/30; reacquire headless test 9/9 in isolation."
         }
       ]
     },

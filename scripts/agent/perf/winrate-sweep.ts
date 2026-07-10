@@ -10,11 +10,15 @@
  * it gates on the *rate* over a representative sample, never on a hand-picked
  * set of comfortable seeds.
  *
- * A "win" here is the SSOT `isOfficialWin(stats, FLOOR1_TIME_BUDGET_MS)` — a
- * victory whose safe-room-credited ACTIVE time is under the 6-min budget —
- * matching scoring.ts, the official headless gate, and the ab-* harnesses. The
+ * A "win" here is floor-aware. On Floor 1 it is the SSOT
+ * `isOfficialWin(stats, FLOOR1_TIME_BUDGET_MS)` — a victory whose
+ * safe-room-credited ACTIVE time is under the 6-min budget — matching
+ * scoring.ts, the official headless gate, and the ab-* harnesses (the
  * floor-collapse deadline pauses in safe rooms, so a bare `outcome==='victory'`
- * would miscount boundary / safe-room-credited clears.
+ * would miscount boundary / safe-room-credited clears). Other floors have
+ * different timing semantics and no validated active-time budget here, so a win
+ * on `--floor floor2` falls back to the raw `outcome==='victory'` (the
+ * pre-safe-room behaviour) rather than misapplying Floor 1's budget.
  *
  * Usage
  * -----
@@ -49,6 +53,19 @@ import { type CLIArgs, parseSweepArgs } from './winrate-sweep-args.js';
  */
 const FLOOR1_TIME_BUDGET_MS = 6 * 60 * 1000;
 
+/**
+ * Classify a run as an official (tournament) win, floor-aware. On Floor 1 this
+ * is the SSOT `isOfficialWin` (a victory whose safe-room-credited active time is
+ * under the 6-min budget). Other floors have no validated active-time budget
+ * here, so they fall back to the raw victory outcome — misapplying Floor 1's
+ * 360s budget to a legitimate longer Floor-2 clear would wrongly report a loss.
+ */
+function classifyOfficialWin(stats: RunStats, floorId: string): boolean {
+  return floorId === 'floor1'
+    ? isOfficialWin(stats, FLOOR1_TIME_BUDGET_MS)
+    : stats.outcome === 'victory';
+}
+
 interface SweepTask {
   weapon: string;
   seed: number;
@@ -64,6 +81,8 @@ interface SweepSharedConfig {
 interface SweepTaskResult {
   task: SweepTask;
   stats: RunStats;
+  /** SSOT floor-aware official-win classification (see classifyOfficialWin). */
+  officialWin: boolean;
   failRecord: FailRecord | null;
 }
 
@@ -85,8 +104,14 @@ async function runSweepTask(task: SweepTask, config: SweepSharedConfig): Promise
           },
         }),
   });
+  // Build the failure diagnostic for every non-official-win — including an
+  // over-budget victory (outcome==='victory' but active time >= budget), which
+  // the aggregation counts as a loss. Doing it here (worker-side, where the
+  // event log is available) keeps the printed failure list reconciled with
+  // totalRuns - totalWins.
+  const officialWin = classifyOfficialWin(stats, config.floorId);
   let failRecord: FailRecord | null = null;
-  if (stats.outcome !== 'victory') {
+  if (!officialWin) {
     const sum = config.skipEvents ? null : summarizeEvents(events);
     const dom = sum ? Object.entries(sum.statePct).sort((a, b) => b[1] - a[1])[0] : null;
     const wig = sum?.wiggleEpisodes[0];
@@ -107,7 +132,7 @@ async function runSweepTask(task: SweepTask, config: SweepSharedConfig): Promise
       stall: stats.stallReason ?? '',
     };
   }
-  return { task, stats, failRecord };
+  return { task, stats, officialWin, failRecord };
 }
 
 interface FailRecord {
@@ -242,11 +267,7 @@ async function sweep(args: CLIArgs): Promise<void> {
           `Sweep task ordering mismatch at ${weapon}/${seed}; got ${result?.task.weapon ?? 'n/a'}/${result?.task.seed ?? 'n/a'}`,
         );
       }
-      const { stats, failRecord } = result;
-      // SSOT win definition (safe-room-credited active time < budget), matching
-      // scoring.ts / the headless gate / the ab-* harnesses — NOT bare
-      // `outcome==='victory'`, which would miscount a boundary/over-budget clear.
-      const officialWin = isOfficialWin(stats, FLOOR1_TIME_BUDGET_MS);
+      const { stats, officialWin, failRecord } = result;
       const gameTimeSec = stats.gameTimeMs / 1000;
       metrics.push({
         weapon,

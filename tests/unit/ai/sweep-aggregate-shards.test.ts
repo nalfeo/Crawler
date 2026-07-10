@@ -142,6 +142,18 @@ describe('mergeShards', () => {
     expect(() => mergeShards([shard([r]), shard([r], override)])).toThrow(pattern as RegExp);
   });
 
+  it('rejects an all-stale-schema batch that agrees internally but predates the SSOT', () => {
+    // Every shard reports the SAME older schema version, so the per-shard
+    // "agrees with each other" check passes — but the batch still predates the
+    // current SSOT. Pre-v2 rows lack safeRoomMs, which would silently revert to
+    // raw-time win classification, so the batch must be rejected outright.
+    const r = row({ combo: 'legacy+legacy', configId: 'c', weapon: 'sword', seed: 1 });
+    const stale = { schemaVersion: SHARD_SCHEMA_VERSION - 1 };
+    expect(() => mergeShards([shard([r], stale), shard([{ ...r }], stale)])).toThrow(
+      /schema version .* != current/,
+    );
+  });
+
   it('throws on a conflicting config definition for the same id', () => {
     const r = row({ combo: 'legacy+legacy', configId: 'c', weapon: 'sword', seed: 1 });
     const s1: ShardArtifact = {
