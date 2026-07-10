@@ -159,6 +159,17 @@ export const FLOOR2_STAIRS_POPPED_GOAL_ID = 'floor2-stairs-popped';
 export const FLOOR2_TIMEOUT_GOAL_ID = 'floor2-timeout';
 /** Latched when the player first enters the settlement cluster. */
 export const FLOOR2_SETTLEMENT_FOUND_GOAL_ID = 'floor2-settlement-found';
+/** Latched when the player completes the Broker's intro dialogue (all lines read). */
+export const FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID = 'floor2-broker-intro-complete';
+
+/**
+ * Call when the player finishes reading the Broker's introductory dialogue.
+ * Latches `floor2-broker-intro-complete`; `floor2ObjectiveTick` uses this to
+ * activate the reputation system.
+ */
+export function meetBroker(world: GameWorld): void {
+  setGoalFlag(world, FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
+}
 
 /** Goal-flag name for a family's den-unlock latch. */
 export function denUnlockGoalId(familyId: FamilyId): string {
@@ -506,12 +517,13 @@ export function floor2ObjectiveTick(world: GameWorld): void {
     }
   }
 
-  // Activate the reputation system once the starter quest chain (settlement found)
-  // is complete. This check runs after settlement detection so it fires on the same
-  // tick the player enters the settlement.
+  // Activate the reputation system once the Broker has explained the floor
+  // (player completed all of the Broker's intro dialogue lines). meetBroker()
+  // latches FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID; MainGameScene fires it when
+  // the player advances past the Broker's last dialogue line.
   if (
     floor2State.reputationSystemActive === false &&
-    world.goalFlags.get(FLOOR2_SETTLEMENT_FOUND_GOAL_ID) === true
+    world.goalFlags.get(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID) === true
   ) {
     floor2State.reputationSystemActive = true;
   }
@@ -723,6 +735,7 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
   setGoalFlag(world, FLOOR2_STAIRS_POPPED_GOAL_ID, false);
   setGoalFlag(world, FLOOR2_TIMEOUT_GOAL_ID, false);
   setGoalFlag(world, FLOOR2_SETTLEMENT_FOUND_GOAL_ID, false);
+  setGoalFlag(world, FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, false);
 
   // All Floor 1 progressive systems are active from the start of Floor 2.
   // Players arrive here having already unlocked these features on Floor 1.

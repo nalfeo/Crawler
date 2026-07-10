@@ -23,6 +23,7 @@ import {
   selectSpellFromBossBattle,
   meetShopkeeper,
   meetSpellQuestGiver,
+  meetBroker,
   spendPoints,
 } from '../index.js';
 import type { PrimaryStatId } from '../../shared/stats.js';
@@ -71,6 +72,10 @@ export function autoNpcInteractionSystem(
   }
   if (targetNpc.defId === 'spell-quest-giver') {
     meetSpellQuestGiver(world);
+    return currentFrame;
+  }
+  if (targetNpc.defId === 'the-broker') {
+    meetBroker(world);
     return currentFrame;
   }
 

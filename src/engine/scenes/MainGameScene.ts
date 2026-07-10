@@ -180,6 +180,10 @@ export interface MainGameSceneOptions {
     /** True while the Spell Broker is gated behind the welcome-goon quest. */
     isLocked?: (world: GameWorld) => boolean;
   };
+  /** Floor 2 Broker callbacks — fired when the player reads all intro dialogue lines. */
+  broker?: {
+    met: (world: GameWorld) => void;
+  };
   /** Spell selection callback for floor1 boss battle reward. */
   selectSpellFromBossBattle?: (world: GameWorld, playerEid: number, spellId: string) => void;
   /**
@@ -2750,6 +2754,11 @@ export class MainGameScene extends Phaser.Scene {
         ) {
           const nextIndex = instance.dialogueIndex + 1;
           if (nextIndex >= activeDialogue.length) {
+            // Fire broker callback when the player reads the last line of the Broker's
+            // intro — this activates the Floor 2 reputation system.
+            if (instance.defId === 'the-broker') {
+              this.options.broker?.met(this.world);
+            }
             this.conversationNpcEid = null;
             this.dialogueBox?.hide();
             return;

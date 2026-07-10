@@ -11,8 +11,10 @@ import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../src/shared/constants.js';
 import {
   FLOOR2_CAVE_SYSTEM_DEFAULTS,
   FLOOR2_SETTLEMENT_FOUND_GOAL_ID,
+  FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID,
   floor2ObjectiveTick,
   initializeFloor2Scenario,
+  meetBroker,
 } from '../../src/game/floor2Scenario.js';
 import { questSystem } from '../../src/core/systems/questSystem.js';
 import { getFloor2NeutralTrash } from '../../src/shared/enemy-packs.js';
@@ -323,12 +325,27 @@ describe('initializeFloor2Scenario manifest validation', () => {
     expect(world.goalFlags.get('floor1-drops-unlocked')).toBe(true);
   });
 
-  it('starts with the reputation system locked and activates it after settlement is found', () => {
+  it('starts with the reputation system locked and activates it after the broker explains the floor', () => {
     const { world, playerEid } = createScenarioWorld();
     initializeFloor2Scenario(world, playerEid);
 
     // Reputation system is initially disabled.
     expect(world.floorExtendedState?.familyState?.reputationSystemActive).toBe(false);
+    // Broker intro goal flag starts false.
+    expect(world.goalFlags.get(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID)).toBe(false);
+
+    // Simulate the player reading all of the Broker's intro dialogue.
+    meetBroker(world);
+
+    floor2ObjectiveTick(world);
+
+    // After the broker explains the floor, the reputation system should be active.
+    expect(world.floorExtendedState?.familyState?.reputationSystemActive).toBe(true);
+  });
+
+  it('does NOT activate the reputation system when only the settlement is found (broker not yet met)', () => {
+    const { world, playerEid } = createScenarioWorld();
+    initializeFloor2Scenario(world, playerEid);
 
     // Move player into the settlement room.
     const settlementRoomId = world.floorExtendedState?.settlement?.settlementRoomId;
@@ -345,8 +362,9 @@ describe('initializeFloor2Scenario manifest validation', () => {
 
     floor2ObjectiveTick(world);
 
-    // After finding the settlement, the reputation system should be active.
-    expect(world.floorExtendedState?.familyState?.reputationSystemActive).toBe(true);
+    // Settlement found, but broker not met — reputation system stays locked.
+    expect(world.goalFlags.get(FLOOR2_SETTLEMENT_FOUND_GOAL_ID)).toBe(true);
+    expect(world.floorExtendedState?.familyState?.reputationSystemActive).toBe(false);
   });
 });
 
