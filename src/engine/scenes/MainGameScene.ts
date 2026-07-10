@@ -1268,6 +1268,8 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     this.processAchievementUnlocks();
+    // Surface toggles above can change HUD/minimap visibility in the same frame.
+    this.updateOverlayText();
   }
 
   private processAchievementUnlocks(): void {
@@ -2538,6 +2540,7 @@ export class MainGameScene extends Phaser.Scene {
     // wide equipment/inventory panel. Change-detected so it catches every
     // open/close path (G/I toggles, ESC, click-away).
     const panelOpen =
+      this.conversationNpcEid !== null ||
       (this.equipmentUI?.isOpen() ?? false) ||
       (this.inventoryUI?.isOpen() ?? false) ||
       (this.achievementsUI?.isOpen() ?? false) ||
