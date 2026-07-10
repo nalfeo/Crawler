@@ -383,7 +383,7 @@ function createPathfindingLab(canvasHost: HTMLElement, controls: HTMLElement): (
       addComponent(
         world.ecs,
         doorEid,
-        set(DoorState, { tileX: dt.x, tileY: dt.y, isOpen: doorOpen ? 1 : 0 }),
+        set(DoorState, { tileX: dt.x, tileY: dt.y, logicalOpen: doorOpen ? 1 : 0 }),
       );
     }
 
@@ -429,7 +429,7 @@ function createPathfindingLab(canvasHost: HTMLElement, controls: HTMLElement): (
       setComponent(world.ecs, doorEid, DoorState, {
         tileX: dt.x,
         tileY: dt.y,
-        isOpen: doorOpen ? 1 : 0,
+        logicalOpen: doorOpen ? 1 : 0,
       });
     }
   }

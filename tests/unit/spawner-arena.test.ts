@@ -368,7 +368,7 @@ describe('spawnerArenaSystem sealed-room door lifecycle', () => {
     addComponent(
       world.ecs,
       doorEid,
-      set(DoorState, { tileX: 8, tileY: 6, isOpen: 0, isLocked: 0 }),
+      set(DoorState, { tileX: 8, tileY: 6, logicalOpen: 0, isLocked: 0 }),
     );
     // Player inside the same room (tile 10,10 → 40,40 ft): same-sealed-room
     // override fires the trigger even though it is outside the 7 ft disc.
@@ -381,7 +381,7 @@ describe('spawnerArenaSystem sealed-room door lifecycle', () => {
     expect(world.stores.spawner.arenaState[spawnerEid]).toBe(1); // locked
     // The system flipped the door from unlocked→locked and closed it.
     expect(world.stores.doorState.isLocked[doorEid]).toBe(1);
-    expect(world.stores.doorState.isOpen[doorEid]).toBe(0);
+    expect(world.stores.doorState.logicalOpen[doorEid]).toBe(0);
     expect(world.spawnerArenaDoors.get(spawnerEid)).toEqual([doorEid]);
     // A real barrier was raised → the persistent "ever armed" latch is set.
     expect(world.spawnerArenaEverArmed.has(spawnerEid)).toBe(true);

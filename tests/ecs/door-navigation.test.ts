@@ -14,7 +14,7 @@ import type { GameWorld } from '../../src/core/world';
 
 function spawnDoor(world: GameWorld, tileX: number, tileY: number): number {
   const eid = addEntity(world.ecs);
-  addComponent(world.ecs, eid, set(DoorState, { tileX, tileY, isOpen: 0, isLocked: 1 }));
+  addComponent(world.ecs, eid, set(DoorState, { tileX, tileY, logicalOpen: 0, isLocked: 1 }));
   return eid;
 }
 

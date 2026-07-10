@@ -49,7 +49,11 @@ describe('Door System', () => {
     world.stores.position.y[player] = pixel.y;
 
     const eid = addEntity(world.ecs);
-    addComponent(world.ecs, eid, set(DoorState, { tileX: 5, tileY: 5, isOpen: 0, isLocked: 1 }));
+    addComponent(
+      world.ecs,
+      eid,
+      set(DoorState, { tileX: 5, tileY: 5, logicalOpen: 0, isLocked: 1 }),
+    );
 
     doorSystem(world);
 
@@ -57,7 +61,7 @@ describe('Door System', () => {
     expect(world.stores.doorState.isLocked[eid]).toBe(1);
   });
 
-  it('should open a closed door when isOpen = 1', () => {
+  it('should open a closed door when logicalOpen = 1', () => {
     const floorMap = makeMapWithDoor();
     world.floorMap = floorMap;
 
@@ -65,9 +69,9 @@ describe('Door System', () => {
     expect(floorMap.tileMap.isPassable(5, 5)).toBe(false);
     expect(floorMap.tileMap.isDoor(5, 5)).toBe(true);
 
-    // Create door entity with isOpen = 1
+    // Create door entity with logicalOpen = 1
     const eid = addEntity(world.ecs);
-    addComponent(world.ecs, eid, set(DoorState, { tileX: 5, tileY: 5, isOpen: 1 }));
+    addComponent(world.ecs, eid, set(DoorState, { tileX: 5, tileY: 5, logicalOpen: 1 }));
 
     doorSystem(world);
 
@@ -77,7 +81,7 @@ describe('Door System', () => {
     expect(floorMap.tileMap.isDoor(5, 5)).toBe(true);
   });
 
-  it('should close an open door when isOpen = 0', () => {
+  it('should close an open door when logicalOpen = 0', () => {
     const floorMap = makeMapWithDoor();
     world.floorMap = floorMap;
 
@@ -85,9 +89,9 @@ describe('Door System', () => {
     floorMap.tileMap.openDoor(5, 5);
     expect(floorMap.tileMap.isPassable(5, 5)).toBe(true);
 
-    // Create door entity with isOpen = 0
+    // Create door entity with logicalOpen = 0
     const eid = addEntity(world.ecs);
-    addComponent(world.ecs, eid, set(DoorState, { tileX: 5, tileY: 5, isOpen: 0 }));
+    addComponent(world.ecs, eid, set(DoorState, { tileX: 5, tileY: 5, logicalOpen: 0 }));
 
     doorSystem(world);
 
@@ -105,11 +109,11 @@ describe('Door System', () => {
 
     // Door 1: open at (5,5)
     const eid1 = addEntity(world.ecs);
-    addComponent(world.ecs, eid1, set(DoorState, { tileX: 5, tileY: 5, isOpen: 1 }));
+    addComponent(world.ecs, eid1, set(DoorState, { tileX: 5, tileY: 5, logicalOpen: 1 }));
 
     // Door 2: closed at (3,3)
     const eid2 = addEntity(world.ecs);
-    addComponent(world.ecs, eid2, set(DoorState, { tileX: 3, tileY: 3, isOpen: 0 }));
+    addComponent(world.ecs, eid2, set(DoorState, { tileX: 3, tileY: 3, logicalOpen: 0 }));
 
     doorSystem(world);
 
@@ -122,18 +126,18 @@ describe('Door System', () => {
     world.floorMap = floorMap;
 
     const eid = addEntity(world.ecs);
-    addComponent(world.ecs, eid, set(DoorState, { tileX: 5, tileY: 5, isOpen: 0 }));
+    addComponent(world.ecs, eid, set(DoorState, { tileX: 5, tileY: 5, logicalOpen: 0 }));
 
     doorSystem(world);
     expect(floorMap.tileMap.isPassable(5, 5)).toBe(false);
 
     // Toggle open
-    world.stores.doorState.isOpen[eid] = 1;
+    world.stores.doorState.logicalOpen[eid] = 1;
     doorSystem(world);
     expect(floorMap.tileMap.isPassable(5, 5)).toBe(true);
 
     // Toggle closed again
-    world.stores.doorState.isOpen[eid] = 0;
+    world.stores.doorState.logicalOpen[eid] = 0;
     doorSystem(world);
     expect(floorMap.tileMap.isPassable(5, 5)).toBe(false);
   });

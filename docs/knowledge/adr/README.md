@@ -127,6 +127,7 @@ hundreds of inbound references.
 - [Parameterized floor configuration system](0005-parameterized-floor-configuration.md) — floor1→floor params via floor-registry; enables multi-floor progression.
 - [Floor 2 family-territory & relationship architecture](0040-floor2-family-territory-and-relationship-architecture.md) — open cave system of feuding mob families, per-family player relationships, and a two-shape (sole-ally / total-war) win condition.
 - [Durable player-hit signal for ally-defend retaliation](0042-durable-player-hit-signal-for-ally-defend.md) — a durable `world.lastPlayerHit` set at the core `applyDamage` choke point (survives the frame-end VFX drain) plus projectile `Owner` threading, so ally-defend fires in the real game and retaliates against the shooter.
+- [Decouple a door's logical-open latch from its physical tile state](0055-door-logical-latch-vs-physical-tile-decouple.md) — renames `doorState.isOpen`→`logicalOpen` (intended-open latch) and adds a derived, stored `effectiveOpen` (physical tile truth), so a safe-room force-close only closes the tile and a shared safe/boss connector door reopens when the seal lifts instead of permanently sealing.
 
 ### Quests & NPCs
 
@@ -246,3 +247,4 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0050 | [Dynamic Barrier Primitive](0050-dynamic-barrier-primitive.md)                                                                  | Accepted           | 2026-07-04 |
 | 0051 | [Replace Dual-Plan Synthesis with an Adversarial Plan Review](0051-adversarial-plan-review-fold.md)                             | Accepted           | 2026-07-08 |
 | 0052 | [Slicer Cuts Only at Real Gutters — Data-Driven Grid Salvage](0052-slicer-never-cut-through-art.md)                             | Accepted           | 2026-07-08 |
+| 0055 | [Decouple a Door's Logical-Open Latch from Its Physical Tile State](0055-door-logical-latch-vs-physical-tile-decouple.md)       | Accepted           | 2026-07-10 |

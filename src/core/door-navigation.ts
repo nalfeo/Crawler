@@ -39,7 +39,16 @@ export interface DoorNavInfo {
   eid: number;
   tileX: number;
   tileY: number;
-  isOpen: boolean;
+  /** Intended-open LATCH (doorState.logicalOpen). Introspection only — no
+   * navigation decision reads this; A* uses `navigationBlocked`. */
+  logicalOpen: boolean;
+  /** Last-reconciled physical/tile snapshot (doorState.effectiveOpen), derived by
+   * `doorSystem` as logicalOpen && !isLocked && !isForcedClosed. Introspection
+   * only — NOT guaranteed live: a floor authority can open a door tile after the
+   * frame's `doorSystem` pass, so this mirror lags live `tileMap.isPassable(...)`
+   * until the next reconcile. Callers needing current passability must read the
+   * tile, not this field (see `getDoorRevision`). */
+  effectiveOpen: boolean;
   isLocked: boolean;
   /**
    * Forward-looking traversal verdict: `true` when A* should treat this door
@@ -112,7 +121,8 @@ export function getDoorNavInfos(world: GameWorld): DoorNavInfo[] {
       eid,
       tileX: doorState.tileX[eid] ?? 0,
       tileY: doorState.tileY[eid] ?? 0,
-      isOpen: (doorState.isOpen[eid] ?? 0) !== 0,
+      logicalOpen: (doorState.logicalOpen[eid] ?? 0) !== 0,
+      effectiveOpen: (doorState.effectiveOpen[eid] ?? 0) !== 0,
       isLocked: (doorState.isLocked[eid] ?? 0) !== 0,
       navigationBlocked: isDoorNavigationBlocked(world, config),
       unlock: config?.unlock,

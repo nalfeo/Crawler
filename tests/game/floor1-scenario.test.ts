@@ -751,7 +751,7 @@ describe('floor1Scenario', () => {
     // Initially all slime rat room doors must be locked.
     for (const doorEid of slimeRatDoorEids) {
       expect(world.stores.doorState.isLocked[doorEid]).toBe(1);
-      expect(world.stores.doorState.isOpen[doorEid]).toBe(0);
+      expect(world.stores.doorState.logicalOpen[doorEid]).toBe(0);
     }
 
     // Accepting the quest via the Spell Broker sets the goal flag that unlocks the door.
