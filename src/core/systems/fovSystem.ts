@@ -33,6 +33,7 @@ export function fovSystem(world: GameWorld): void {
 
   // Convert world position (feet) to sub-tile coordinates.
   const origin = floorMap.worldToSubTile(px, py);
+  const originTile = floorMap.worldToTile(px, py);
   const sf = floorMap.subFactor;
 
   // Clear previous per-frame visibility (discovered memory persists).
@@ -47,14 +48,36 @@ export function fovSystem(world: GameWorld): void {
   // Scaling the radius by `subFactor` keeps the vision range in feet unchanged.
   const fov = new FOV.RecursiveShadowcasting(lightPasses);
 
+  // Cache seam-blocked results per tile coordinate for this FOV pass.
+  // Multiple sub-tiles map to the same (tx,ty); without the cache each sub-tile
+  // would walk the full ray, making the per-frame cost O(sub-tiles × ray-length).
+  const seamCache = new Map<number, boolean>();
+  const mapWidth = floorMap.tileMap.width;
+
   fov.compute(
     origin.x,
     origin.y,
     DEFAULT_FOV_RADIUS * sf,
-    (_hx: number, _hy: number, _r: number, visibility: number) => {
+    (hx: number, hy: number, _r: number, visibility: number) => {
       if (visibility > 0) {
-        floorMap.setVisible(_hx, _hy);
-        floorMap.setDiscovered(_hx, _hy);
+        const tx = Math.floor(hx / sf);
+        const ty = Math.floor(hy / sf);
+        // Apply corner-seam blocking across the entire ray from origin to candidate,
+        // matching the consistency rules enforced by lineOfSight. This ensures FOV
+        // and LOS agree: if lineOfSight rejects a candidate due to a blocked corner
+        // seam, FOV will also reject it. Result is cached per tile to avoid
+        // re-walking the ray for every sub-tile that maps to the same tile coord.
+        const cacheKey = ty * mapWidth + tx;
+        let seamBlocked = seamCache.get(cacheKey);
+        if (seamBlocked === undefined) {
+          seamBlocked = floorMap.tileMap.hasBlockedCornerSeam(originTile.x, originTile.y, tx, ty);
+          seamCache.set(cacheKey, seamBlocked);
+        }
+        if (seamBlocked) {
+          return;
+        }
+        floorMap.setVisible(hx, hy);
+        floorMap.setDiscovered(hx, hy);
       }
     },
   );

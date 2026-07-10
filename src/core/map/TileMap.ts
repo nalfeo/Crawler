@@ -114,6 +114,49 @@ export class TileMap {
   }
 
   /**
+   * Check if a ray has any blocked corner seams (diagonal passages with both
+   * orthogonal neighbors opaque).
+   *
+   * Walks a Bresenham line from (x0,y0) to (x1,y1) and applies the corner-seam
+   * blocking rule: if a diagonal step has both orthogonal corner tiles opaque,
+   * the passage is blocked. Returns `true` if a blocked seam is encountered
+   * (ray should be occluded), `false` if the ray is clear of all seam blocks.
+   *
+   * Used by the FOV visibility callback to ensure consistent corner-seam
+   * behavior across the full ray.
+   */
+  hasBlockedCornerSeam(x0: number, y0: number, x1: number, y1: number): boolean {
+    const dx = Math.abs(x1 - x0);
+    const dy = Math.abs(y1 - y0);
+    const sx = x0 < x1 ? 1 : -1;
+    const sy = y0 < y1 ? 1 : -1;
+    let err = dx - dy;
+    let x = x0;
+    let y = y0;
+
+    while (x !== x1 || y !== y1) {
+      const prevX = x;
+      const prevY = y;
+      const e2 = 2 * err;
+      if (e2 > -dy) {
+        err -= dy;
+        x += sx;
+      }
+      if (e2 < dx) {
+        err += dx;
+        y += sy;
+      }
+      const steppedDiagonally = x !== prevX && y !== prevY;
+      if (steppedDiagonally && !this.isTransparent(x, prevY) && !this.isTransparent(prevX, y)) {
+        return true;
+      }
+      if (x === x1 && y === y1) break;
+    }
+
+    return false;
+  }
+
+  /**
    * Deterministic tile line-of-sight check between two tile coordinates.
    *
    * Walks a Bresenham line from (x0,y0) to (x1,y1) and returns `false` if any
@@ -121,6 +164,10 @@ export class TileMap {
    * endpoint tiles never block — the shooter and target stand on them — so an
    * adjacent target always has line of sight. Out-of-bounds tiles count as
    * opaque, mirroring `isTransparent`.
+   *
+   * Also applies corner-seam blocking: if a diagonal step has both orthogonal
+   * corners opaque, the passage is blocked, ensuring consistent visibility
+   * rules across all rays (LOS is symmetric).
    *
    * Pure integer math: no allocation, no randomness, no floating point.
    */
@@ -134,6 +181,8 @@ export class TileMap {
     let y = y0;
 
     while (x !== x1 || y !== y1) {
+      const prevX = x;
+      const prevY = y;
       const e2 = 2 * err;
       if (e2 > -dy) {
         err -= dy;
@@ -142,6 +191,10 @@ export class TileMap {
       if (e2 < dx) {
         err += dx;
         y += sy;
+      }
+      const steppedDiagonally = x !== prevX && y !== prevY;
+      if (steppedDiagonally && !this.isTransparent(x, prevY) && !this.isTransparent(prevX, y)) {
+        return false;
       }
       // Reaching the target tile means the path was clear; the target tile
       // itself is never treated as a blocker.
