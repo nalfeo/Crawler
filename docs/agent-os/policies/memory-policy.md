@@ -12,12 +12,12 @@ This project uses a three-tier memory model so agents can load the smallest usef
 
 ## Mandatory Handoff Protocol
 
-Every session writes a handoff file before ending work.
+Every implementation session (merge-intent code change) writes a handoff file before ending work.
 
 - Location: `docs/knowledge/handoffs/`
 - Naming: `YYYY-MM-DD-<slug>.md`
 - Minimum contents: summary of work completed, files touched, verification run, unresolved issues, and recommended next steps
-- Rule: no session ends silently; if no code changed, the handoff still records what was learned or decided
+- Rule: no implementation session ends silently; investigation/repro sessions without merge-intent fixes may skip handoff paperwork
 
 ## ADR Threshold
 

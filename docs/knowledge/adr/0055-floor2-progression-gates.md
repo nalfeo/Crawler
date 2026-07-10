@@ -1,8 +1,16 @@
 # ADR 0055 — Floor 2 Progression Gates: Feature Unlocks, Reputation, Hidden Quests
 
-**Date:** 2026-07-10  
-**Status:** Accepted  
-**Systems:** floor2-scenario, quest-system, reputation-system, hud
+## Status
+
+Accepted
+
+## Date
+
+2026-07-10
+
+## Systems
+
+floor2-scenario, quest-system, reputation-system, hud
 
 ---
 

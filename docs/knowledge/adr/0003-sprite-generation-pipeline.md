@@ -39,9 +39,9 @@ Sensors gate every sprite. The judge tunes the corpus. Sensors must be determini
 
 ### 3. Sensor vs. evaluator boundary
 
-A function is a **sensor** when its result is reproducible bit-for-bit from the same input. It returns `{ok, sensor, reason?, pixels?}` and never depends on a model, a clock, or randomness. A function is an **evaluator** the moment it asks "is this _good_?" instead of "is this _valid_?". Evaluators may use models and prose; sensors may not. Mixing the two in one file is forbidden — sensor implementations live under `scripts/sprites/sensors/` so they are reusable by both the runtime scorer and the test suite; their unit tests live under `tests/sensors/`. Evaluators will live behind the sidecar.
+A function is a **sensor** when its result is reproducible bit-for-bit from the same input. It returns `{ok, sensor, reason?, pixels?}` and never depends on a model, a clock, or randomness. A function is an **evaluator** the moment it asks "is this _good_?" instead of "is this _valid_?". Evaluators may use models and prose; sensors may not. Mixing the two in one file is forbidden — sensor implementations live under `scripts/sprites/sensors/` so they are reusable by both the runtime scorer and the test suite; their unit tests live under `tests/unit/sprites/`. Evaluators will live behind the sidecar.
 
-> History: Phase 1 originally co-located the sensor implementations with their tests under `tests/sensors/`. Phase 2 moved the implementations into `scripts/sprites/sensors/` so the deterministic scorer (`scripts/sprites/score-candidate.ts`) does not import from a `tests/` tree. The contract — pure functions returning `SensorResult` — is unchanged.
+> History: Phase 1 originally co-located sensor implementations with tests in a dedicated test-only tree. Phase 2 moved implementations into `scripts/sprites/sensors/` so the deterministic scorer (`scripts/sprites/score-candidate.ts`) does not import from a `tests/` tree. The contract — pure functions returning `SensorResult` — is unchanged.
 
 ### 4. Sidecar architecture
 

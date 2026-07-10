@@ -6,6 +6,16 @@
 - Gates are ordered by speed so failures happen as early and cheaply as possible.
 - Every blocking gate must fail with a clear, actionable error message.
 
+## Broad-Sweep Execution Policy
+
+- Treat any sweep or batch evaluation with **more than 10 runs** as a **broad sweep**.
+- Broad sweeps default to **GitHub infrastructure** (`workflow_dispatch`/CI runners), not local/session compute.
+- Use local execution for sweeps only when:
+  - it is a small smoke run (≤10 runs), or
+  - a human explicitly requests local execution.
+- For Floor 1 weapon balance broad sweeps, use `.github/workflows/weapon-sweep.yml`.
+- For larger AI combo/pathing batch evaluations, use `.github/workflows/ai-sweep.yml`.
+
 ## Canonical Gate Stack
 
 Run the gate stack in this order:
