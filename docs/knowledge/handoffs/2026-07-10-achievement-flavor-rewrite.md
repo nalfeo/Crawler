@@ -25,6 +25,10 @@ achievements
 
 - `npm run verify:fast` ✅ (286 test files, 3342 tests — including the existing length-ordering guard
   and no-criteria-duplication guard)
+- Visual validation in `npm run dev`:
+  - **Before**: Long flavor text (300-700 chars) overflowed the fixed 84px row height, overlapping subsequent rows and controls
+  - **After**: Rows with flavor >120 chars show a "▼ more" toggle below the 2-line preview. Clicking expands to full height with "▲ less" toggle. Subsequent rows shift down cleanly. Scroll/claim state survives expansion.
+  - Verified in achievements panel: brutal-tier entries like "Floor 1 Grand Tour" (677 chars) render collapsed at 2 lines, expand to ~6-7 lines without overflow
 
 ## Unresolved issues
 
@@ -32,9 +36,7 @@ None.
 
 ## Recommended next steps
 
-- Play through the achievements panel to confirm popup readability for hard/brutal tier lines
-  (they are intentionally long; a scrollable popup or a "read more" expansion could be worth
-  considering if they overflow the current UI container).
+None.
 
 ## Apple complexity
 

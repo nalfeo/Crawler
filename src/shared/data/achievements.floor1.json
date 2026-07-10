@@ -1214,7 +1214,7 @@
     "popupText": "New achievement: Budget Boss Kill!",
     "unlockCriteria": "Defeat the boss with only common gear equipped.",
     "details": "Unlock when you defeat the boss with only common gear equipped.",
-    "directorFlavor": "Full common loadout, boss dead — you stripped out every rare piece and closed the final encounter on baseline stats, which is either a constraint run or a public demonstration of contempt for the gear system. The itemization team is reviewing the footage and has declined to issue a statement. The difficulty regression engineers are treating this as a data point and a personal affront.",
+    "directorFlavor": "Boss dead wearing only common gear — the final encounter closed with zero rare equipment equipped, which means you either refused every upgrade that dropped or deliberately stripped your loadout down to baseline before the fight. The itemization team is reviewing the footage and has declined to issue a statement. The difficulty regression engineers are treating this as a data point and a personal affront.",
     "iconId": "achv-boss-with-basic-gear-placeholder",
     "difficulty": "hard",
     "reward": {
@@ -1673,7 +1673,7 @@
     "popupText": "New achievement: Starter Weapon Legend!",
     "unlockCriteria": "Clear Floor 1 without changing your starting weapon.",
     "details": "Unlock when you clear Floor 1 without changing your starting weapon.",
-    "directorFlavor": "Floor One cleared with the original starting weapon still in hand — every pickup considered, every shop browsed, and the opening piece of gear retained through all of it. The itemization team leaves the upgrade path open precisely so contestants will use it; you documented that it's optional. The dungeon's narrative director has added 'committed to the bit' to your contestant profile.",
+    "directorFlavor": "Floor One cleared with the original starting weapon still in hand — the opening piece of gear retained from first room to boss kill without a single swap. The itemization team leaves the upgrade path open precisely so contestants will use it; you documented that it's optional. The dungeon's narrative director has added 'committed to the bit' to your contestant profile.",
     "iconId": "achv-starter-weapon-clear-placeholder",
     "difficulty": "hard",
     "reward": {
@@ -1705,7 +1705,7 @@
     "popupText": "New achievement: Glass Cannon TV!",
     "unlockCriteria": "Clear Floor 1 with zero defense upgrades.",
     "details": "Unlock when you clear Floor 1 with zero defense upgrades.",
-    "directorFlavor": "Floor One cleared with a defense investment of zero — every stat point allocated to output, nothing to mitigation, the full risk loaded into the damage side of the ledger. The dungeon's encounter-scaling team built every room on this floor with the assumption that contestants would have at least some protective stat overhead; your file does not contain any and the system had to fall back to the theoretical zero-defense edge case it was never seriously expected to use. You converted the entire floor into a math problem with only one viable solution — kill everything faster than it kills you — and you solved it with no margin for error and apparently no interest in one. The Director declared the broadcast the most kinetically honest television produced this season, and the network's legal team has asked for a content warning category that doesn't exist yet.",
+    "directorFlavor": "Floor One cleared with zero defense upgrades purchased — not a single stat point allocated to mitigation from start to finish, the full progression budget spent on anything but protection. The dungeon's encounter-scaling team built every room on this floor with the assumption that contestants would invest in at least some defensive stat overhead; your file does not contain any and the system had to fall back to the theoretical zero-defense edge case it was never seriously expected to use. You converted the entire floor into a test of whether you could kill everything before it killed you, accepted that constraint with no defensive margin at all, and cleared anyway. The Director declared the broadcast the most kinetically honest television produced this season, and the network's legal team has asked for a content warning category that doesn't exist yet.",
     "iconId": "achv-glass-cannon-placeholder",
     "difficulty": "brutal",
     "reward": {
@@ -1753,7 +1753,7 @@
     "popupText": "New achievement: Floor 1 Grand Tour!",
     "unlockCriteria": "Unlock 25 different achievements in a single Floor 1 run.",
     "details": "Unlock when you unlock 25 different achievements in a single Floor 1 run.",
-    "directorFlavor": "Twenty-five distinct achievements unlocked across every system in a single Floor One run — a coverage density that forced the achievement-tracking layer into a processing queue designed to handle the full season, not a single run. Every mechanic touched, every category triggered, every tracking condition satisfied within one continuous session; the dungeon's analytics team has already begun building a retroactive map of exactly how this was structured because it defies the probability model. The run log is being used in the achievement design review meeting as primary evidence for why the Grand Tour milestone needed a dedicated title. The Director ordered the full run aired in an unbroken broadcast, described it in the press release as a singular event in the history of the program, and quietly raised the renewal budget for the following season before the final credits rolled.",
+    "directorFlavor": "Twenty-five distinct achievements unlocked in a single Floor One run — a coverage density that forced the achievement-tracking layer into a processing queue designed to handle the full season, not a single session. The achievement catalog contains one hundred entries; you hit a quarter of it in one continuous broadcast without dying or resetting, which required either methodical planning or statistically improbable chaos. The dungeon's analytics team has already begun building a retroactive map of exactly how this coverage was structured because it defies the probability model they use for contestant behavior prediction. The run log is being used in the achievement design review meeting as primary evidence for why the Grand Tour milestone needed a dedicated title. The Director ordered the full run aired in an unbroken broadcast, described it in the press release as a singular event in the history of the program, and quietly raised the renewal budget for the following season before the final credits rolled.",
     "iconId": "achv-floor1-grand-tour-placeholder",
     "difficulty": "brutal",
     "reward": {
