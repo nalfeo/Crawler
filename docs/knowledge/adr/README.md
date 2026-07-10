@@ -246,3 +246,4 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0050 | [Dynamic Barrier Primitive](0050-dynamic-barrier-primitive.md)                                                                  | Accepted           | 2026-07-04 |
 | 0051 | [Replace Dual-Plan Synthesis with an Adversarial Plan Review](0051-adversarial-plan-review-fold.md)                             | Accepted           | 2026-07-08 |
 | 0052 | [Slicer Cuts Only at Real Gutters — Data-Driven Grid Salvage](0052-slicer-never-cut-through-art.md)                             | Accepted           | 2026-07-08 |
+| 0055 | [Decouple a Door's Logical-Open Latch from Its Physical Tile State](0055-door-logical-latch-vs-physical-tile-decouple.md)       | Accepted           | 2026-07-10 |
