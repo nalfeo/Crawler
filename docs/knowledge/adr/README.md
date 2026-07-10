@@ -226,8 +226,19 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0026 | [Door-Pointing Welcome-Sign Wayfinding](0026-welcome-sign-wayfinding.md)                                                                           | Accepted           | 2026-06-27 |
 | 0027 | [Explode Corpses Into Sprite Shards When Hit During Death-Linger](0027-corpse-explosion-on-hit.md)                                                 | Accepted           | 2026-06-27 |
 | 0028 | [Multi-Variant Generated Sprites](0028-generated-sprite-variants.md)                                                                               | Accepted           | 2026-06-26 |
+| 0029 | [Size variants reshape the sheet grid (fixed canvas)](0029-size-variant-grid-reshape.md)                                                           | Accepted           | 2026-06-27 |
+| 0030 | [Materials Harvesting System](0030-materials-harvesting-system.md)                                                                                 | Accepted           | 2026-07-10 |
+| 0031 | [Safe-room Achievements panel with reveal-only rewards](0031-achievements-safe-room-panel.md)                                                      | Accepted           | 2026-06-28 |
+| 0031 | [Quest waypoints + HUD direction arrows for Floor 1 findability](0031-quest-waypoints-direction-arrows.md)                                         | Accepted           | 2026-06-28 |
+| 0032 | [AI Runner gathers harvestables](0032-ai-runner-harvesting.md)                                                                                     | Accepted           | 2026-06-28 |
 | 0033 | [Migrate Content Generation to Azure AI Foundry](0033-azure-foundry-content-generation.md)                                                         | Proposed           | 2026-06-29 |
+| 0033 | [Extract shared math/grid/room-hop utilities and dedupe constants](0033-refactor-shared-utilities.md)                                              | Accepted           | 2026-06-29 |
+| 0034 | [Config-Driven Sprite Wiring](0034-config-driven-sprite-wiring.md)                                                                                 | Accepted           | 2026-06-30 |
+| 0034 | [Quarter-tile FOV/fog-of-war resolution](0034-quarter-tile-fov-resolution.md)                                                                      | Accepted           | 2026-06-30 |
+| 0034 | [Spawner Spawn Telegraph Feedback](0034-spawner-spawn-telegraph-feedback.md)                                                                       | Accepted           | 2026-06-30 |
+| 0035 | [Scope the Headless Gate, De-duplicate Local Verify, and Title-Only Commit-Lint](0035-scope-headless-gate-and-dedup-verify.md)                     | Accepted           | 2026-07-02 |
 | 0036 | [Raise the Review-Harness Code-Review Floor to 3🍎](0036-raise-code-review-floor.md)                                                               | Accepted           | 2026-07-02 |
+| 0036 | [Wire spawnerSystem into the real pipelines + placeholder tint](0036-wire-spawner-system-real-pipelines.md)                                        | Accepted           | 2026-07-02 |
 | 0037 | [Sprite Worker Poison-Message Handling (bounded failures, comment-once)](0037-sprite-worker-poison-message-handling.md)                            | Accepted           | 2026-07-02 |
 | 0038 | [Asset-Request Briefs Accept Rich Multi-Sentence Text](0038-asset-request-multi-sentence-brief.md)                                                 | Accepted           | 2026-07-01 |
 | 0039 | [Deterministic Orphaned-System Wiring Guard](0039-orphaned-system-wiring-guard.md)                                                                 | Accepted           | 2026-07-02 |
@@ -237,6 +248,8 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0043 | [Behavior Tree — Build vs. Buy](0043-behavior-tree-build-vs-buy.md)                                                                                | Accepted           | 2026-06-26 |
 | 0043 | [Asset-request CI Worker Bypass for Constitutional §3](0043-ci-asset-request-worker-bypass.md)                                                     | Accepted           | 2026-07-03 |
 | 0043 | [Floor 2 Scenario Definition & Governor Sweep Wiring](0043-floor2-scenario-definition-and-governor-sweep-wiring.md)                                | Accepted           | 2026-07-03 |
+| 0044 | [Explicit Size and Weight components for canonical physics](0044-explicit-size-weight-components.md)                                               | Proposed           | 2026-07-04 |
+| 0044 | [Floor 2 visual runability wiring and honest Governor gate scope](0044-floor2-visual-runability-and-honest-governor-gate-scope.md)                 | Accepted           | 2026-07-05 |
 | 0044 | [Spawner Battle Arena](0044-spawner-battle-arena.md)                                                                                               | Accepted           | 2026-07-04 |
 | 0045 | [AI Arena Lock-in Priority](0045-ai-arena-lockin-priority.md)                                                                                      | Accepted           | 2026-07-04 |
 | 0046 | [Spawner-Arena "Ever Armed" Latch & `resolvedArmed` Telemetry](0046-spawner-arena-armed-telemetry.md)                                              | Accepted           | 2026-07-05 |
@@ -248,5 +261,9 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0050 | [Dynamic Barrier Primitive](0050-dynamic-barrier-primitive.md)                                                                                     | Accepted           | 2026-07-04 |
 | 0051 | [Replace Dual-Plan Synthesis with an Adversarial Plan Review](0051-adversarial-plan-review-fold.md)                                                | Accepted           | 2026-07-08 |
 | 0052 | [Slicer Cuts Only at Real Gutters — Data-Driven Grid Salvage](0052-slicer-never-cut-through-art.md)                                                | Accepted           | 2026-07-08 |
+| 0053 | [Floor-agnostic spawn-zone union and enemy-art placeholder auditing](0053-floor-spawn-zone-union-and-enemy-placeholder-audit.md)                   | Accepted           | 2026-07-08 |
+| 0054 | [Floor 2 Settlement NPC Appearance-Key and Dialogue-Override Threading](0054-floor2-settlement-npc-appearance-and-dialogue-threading.md)           | Accepted           | 2026-07-09 |
+| 0054 | [Knip dead-code gate and entry roots](0054-knip-dead-code-gate-and-entry-roots.md)                                                                 | Accepted           | 2026-07-09 |
 | 0055 | [Decouple a Door's Logical-Open Latch from Its Physical Tile State](0055-door-logical-latch-vs-physical-tile-decouple.md)                          | Accepted           | 2026-07-10 |
+| 0055 | [Floor 2 Progression Gates: Feature Unlocks, Reputation, Hidden Quests](0055-floor2-progression-gates.md)                                          | Accepted           | 2026-07-10 |
 | 0056 | [GitHub-First Broad-Sweep Execution and Investigation Session Process Boundary](0056-github-first-broad-sweep-and-investigation-session-policy.md) | Accepted           | 2026-07-10 |
