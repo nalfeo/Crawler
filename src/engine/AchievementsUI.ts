@@ -159,6 +159,9 @@ export function createAchievementsUI(
   const listBottom = (): number => panelY + panelHeight - PANEL_PADDING;
 
   const rowObjects: Phaser.GameObjects.GameObject[] = [];
+  let scrollbarTrack: Phaser.GameObjects.Rectangle | null = null;
+  let scrollbarThumb: Phaser.GameObjects.Rectangle | null = null;
+
   function clearRows(): void {
     for (const obj of rowObjects) obj.destroy();
     rowObjects.length = 0;
@@ -318,6 +321,8 @@ export function createAchievementsUI(
       );
       container.add(empty);
       rowObjects.push(empty);
+      if (scrollbarTrack) scrollbarTrack.setVisible(false);
+      if (scrollbarThumb) scrollbarThumb.setVisible(false);
       return;
     }
 
@@ -325,12 +330,63 @@ export function createAchievementsUI(
 
     const bottom = listBottom();
     let currentY = listTop();
+    let visibleCount = 0;
     for (let i = scrollIndex; i < defs.length; i++) {
       const def = defs[i];
       if (!def) break;
       const rowH = makeRow(def, x, currentY, w);
       currentY += rowH + ROW_GAP;
+      visibleCount++;
       if (currentY > bottom) break;
+    }
+
+    // Show scrollbar if there are items off-screen
+    const needsScrollbar = scrollIndex > 0 || scrollIndex + visibleCount < defs.length;
+    if (needsScrollbar) {
+      const scrollbarX = panelX + panelWidth - PANEL_PADDING - 8;
+      const scrollbarY = listTop();
+      const scrollbarH = listBottom() - listTop();
+      const trackW = 6;
+
+      if (!scrollbarTrack) {
+        scrollbarTrack = scene.add.rectangle(
+          scrollbarX,
+          scrollbarY + scrollbarH / 2,
+          trackW,
+          scrollbarH,
+          COLORS.rowBorder,
+          0.5,
+        );
+        container.add(scrollbarTrack);
+      } else {
+        scrollbarTrack.setPosition(scrollbarX, scrollbarY + scrollbarH / 2);
+        scrollbarTrack.setSize(trackW, scrollbarH);
+        scrollbarTrack.setVisible(true);
+      }
+
+      const thumbH = Math.max(20, (visibleCount / defs.length) * scrollbarH);
+      const thumbRange = scrollbarH - thumbH;
+      const scrollProgress = defs.length > 1 ? scrollIndex / (defs.length - 1) : 0;
+      const thumbY = scrollbarY + scrollProgress * thumbRange + thumbH / 2;
+
+      if (!scrollbarThumb) {
+        scrollbarThumb = scene.add.rectangle(
+          scrollbarX,
+          thumbY,
+          trackW,
+          thumbH,
+          COLORS.textSecondary,
+          0.8,
+        );
+        container.add(scrollbarThumb);
+      } else {
+        scrollbarThumb.setPosition(scrollbarX, thumbY);
+        scrollbarThumb.setSize(trackW, thumbH);
+        scrollbarThumb.setVisible(true);
+      }
+    } else {
+      if (scrollbarTrack) scrollbarTrack.setVisible(false);
+      if (scrollbarThumb) scrollbarThumb.setVisible(false);
     }
   }
 
@@ -380,7 +436,7 @@ export function createAchievementsUI(
   scene.input.on('wheel', onWheel);
   scene.scale.on('resize', applyLayout);
 
-  return {
+    return {
     toggle,
     refresh,
     isOpen: () => visible,
@@ -388,6 +444,8 @@ export function createAchievementsUI(
       scene.input.off('wheel', onWheel);
       scene.scale.off('resize', applyLayout);
       clearRows();
+      if (scrollbarTrack) scrollbarTrack.destroy();
+      if (scrollbarThumb) scrollbarThumb.destroy();
       container.destroy();
     },
   };

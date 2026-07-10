@@ -29,6 +29,7 @@ achievements
   - **Before**: Long flavor text (300-700 chars) overflowed the fixed 84px row height, overlapping subsequent rows and controls
   - **After**: Rows with flavor >120 chars show a "▼ more" toggle below the 2-line preview. Clicking expands to full height with "▲ less" toggle. Subsequent rows shift down cleanly. Scroll/claim state survives expansion.
   - Verified in achievements panel: brutal-tier entries like "Floor 1 Grand Tour" (677 chars) render collapsed at 2 lines, expand to ~6-7 lines without overflow
+  - **Scrollbar**: Visual scrollbar track and thumb appear on the right edge when there are more achievements than fit on screen. Thumb position reflects scroll progress.
 
 ## Unresolved issues
 
