@@ -248,13 +248,22 @@ test('same-z render ordering paints props above NPCs for deterministic tie-break
   });
 });
 
-test('prop tint uses multiplicative color math consistent with runtime tinting', async (t) => {
+test('prop tint preserves transparent pixels while applying multiplicative tint', async (t) => {
   const pack = createPack({
     props: [
       {
+        id: 'base',
+        kind: 'furniture',
+        x: 0,
+        y: 1,
+        width: 1,
+        height: 1,
+        layers: [{ sprite: { source: 'catalog', spriteId: 'sprite:test-tint' } }],
+      },
+      {
         id: 'tinted',
         kind: 'furniture',
-        x: 1,
+        x: 2,
         y: 1,
         width: 1,
         height: 1,
@@ -269,14 +278,22 @@ test('prop tint uses multiplicative color math consistent with runtime tinting',
       () => !!resolveSprite({ source: 'catalog', spriteId: 'sprite:test-tint' }),
     );
     await page.evaluate(() => render());
-    const pixel = await page.evaluate(() => {
+    const samples = await page.evaluate(() => {
       const ts = S.tileSize;
-      const data = ctx.getImageData(Math.floor(1.5 * ts), Math.floor(1.5 * ts), 1, 1).data;
-      return Array.from(data);
+      const sample = (xTile, yTile) =>
+        Array.from(ctx.getImageData(Math.floor(xTile * ts), Math.floor(yTile * ts), 1, 1).data);
+      return {
+        baseOpaque: sample(0.5, 1.5),
+        tintedOpaque: sample(2.5, 1.5),
+        baseTransparent: sample(0.1, 1.1),
+        tintedTransparent: sample(2.1, 1.1),
+      };
     });
-    assert.equal(pixel[3] > 0, true);
-    assert.equal(pixel[0] > pixel[1], true);
-    assert.equal(pixel[0] > pixel[2], true);
+    assert.equal(samples.baseOpaque[3] > 0, true);
+    assert.equal(samples.tintedOpaque[3] > 0, true);
+    assert.equal(samples.tintedOpaque[0] > samples.tintedOpaque[1], true);
+    assert.equal(samples.tintedOpaque[0] > samples.tintedOpaque[2], true);
+    assert.deepEqual(samples.tintedTransparent, samples.baseTransparent);
   });
 });
 

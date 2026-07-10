@@ -344,7 +344,7 @@ describe('floor1Scenario', () => {
         }
       }
     }
-    expect(validated.size).toBeGreaterThan(0);
+    expect(validated.size).toBe(structuralById.size);
   });
 
   it('does not accumulate set-piece props when re-initialized on a reused world', () => {

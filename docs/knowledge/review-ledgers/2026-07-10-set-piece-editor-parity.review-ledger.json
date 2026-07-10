@@ -3,6 +3,28 @@
   "date": "2026-07-10",
   "session_slug": "set-piece-editor-parity",
   "task_title": "Set-piece editor/runtime WYSIWYG parity follow-ups",
-  "estimated_apples": 2,
-  "stages": {}
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan review covered runtime door/wall stamping, editor snap/depth/tint parity, and CI/browser guard reliability. Core direction held with minor tightening on structural assertions and deterministic parity checks."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 7,
+          "resolved_count": 7,
+          "clean": true,
+          "notes": "All actionable review concerns addressed across runtime tile semantics, production interaction coverage, tint compositing behavior, and metadata/ledger consistency."
+        }
+      ]
+    }
+  }
 }

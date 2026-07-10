@@ -1376,13 +1376,23 @@ function drawProp(prop,sel,ad){
       if(fx!==1||fy!==1)ctx.scale(fx,fy);
       ctx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,-drawW/2,-drawH/2,drawW,drawH);
       if(typeof layer.tintHex==='string'&&/^#[0-9a-fA-F]{6}$/.test(layer.tintHex)){
-        ctx.save();
-        ctx.globalCompositeOperation='multiply';
-        ctx.fillStyle=layer.tintHex;
-        ctx.fillRect(-drawW/2,-drawH/2,drawW,drawH);
-        ctx.globalCompositeOperation='destination-atop';
-        ctx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,-drawW/2,-drawH/2,drawW,drawH);
-        ctx.restore();
+        var tintW=Math.max(1,Math.ceil(drawW));
+        var tintH=Math.max(1,Math.ceil(drawH));
+        var tintCanvas=document.createElement('canvas');
+        tintCanvas.width=tintW;
+        tintCanvas.height=tintH;
+        var tintCtx=tintCanvas.getContext('2d');
+        if(tintCtx){
+          tintCtx.imageSmoothingEnabled=false;
+          tintCtx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,0,0,tintW,tintH);
+          tintCtx.globalCompositeOperation='multiply';
+          tintCtx.fillStyle=layer.tintHex;
+          tintCtx.fillRect(0,0,tintW,tintH);
+          tintCtx.globalCompositeOperation='destination-atop';
+          tintCtx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,0,0,tintW,tintH);
+          tintCtx.globalCompositeOperation='source-over';
+          ctx.drawImage(tintCanvas,-drawW/2,-drawH/2,drawW,drawH);
+        }
       }
       ctx.restore();
       sprited=true;
