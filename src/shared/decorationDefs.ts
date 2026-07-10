@@ -108,6 +108,7 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
       animationFrames: 4,
       depthLayer: 'back',
       density: 0.08,
+      lightEmission: { radiusFt: 20, intensity: 0.7, colorHex: 0xffb347 },
     }),
   ],
   [

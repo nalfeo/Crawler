@@ -4,6 +4,7 @@ import {
   createGameWorld,
   Enemy,
   fovSystem,
+  Harvestable,
   isInSafeContext,
   Position,
   Prop,
@@ -26,6 +27,7 @@ import {
   type AbilityState,
   type Floor1BossRewardSpellId,
 } from '../../shared/abilities.js';
+import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import { createInputState, type InputState } from '../../shared/input.js';
 import { buildTerrainLayer } from '../terrain-renderer.js';
 import {
@@ -109,6 +111,8 @@ const DIRECTOR_COMMENTARY_MS = 3600;
 const MOBILE_CORNER_BUTTON_MAX_SCALE = 1.4;
 const INTERACTION_HINT_MAX_SCALE = 1.25;
 const INTERACTION_HINT_BOTTOM_MARGIN = 12;
+const SET_PIECE_LIGHT_RADIUS_FT = 20;
+const SET_PIECE_LIGHT_INTENSITY = 0.7;
 const FLOOR_1_COMMENTARY = {
   intro: 'Floor 1 opens. Rhea Vale enters the dungeon and the cameras are rolling.',
   questAccepted: 'Tutorial Goon unlocks XP drops. First milestone: hit level 2 for the audience.',
@@ -119,6 +123,22 @@ const FLOOR_1_COMMENTARY = {
   timeout: 'Time expired before the stairs. Floor 1 run ends here.',
 } as const;
 const logger = createLogger('engine:main-game-scene');
+
+function resolveSetPieceLightEmission(
+  spriteId: string,
+): { radiusFt: number; intensity: number } | null {
+  if (/^prop-wall-sconce-v1-var-\d+$/.test(spriteId)) {
+    return { radiusFt: SET_PIECE_LIGHT_RADIUS_FT, intensity: SET_PIECE_LIGHT_INTENSITY };
+  }
+  if (/^prop-torch-v1-var-\d+$/.test(spriteId)) {
+    return { radiusFt: SET_PIECE_LIGHT_RADIUS_FT, intensity: SET_PIECE_LIGHT_INTENSITY };
+  }
+  if (/^prop-lantern-v\d+-var-\d+$/.test(spriteId)) {
+    return { radiusFt: SET_PIECE_LIGHT_RADIUS_FT, intensity: SET_PIECE_LIGHT_INTENSITY };
+  }
+  return null;
+}
+
 export interface MainGameSceneOptions {
   inputCaptureOverride?: {
     poll: (state: InputState, world: GameWorld) => void;
@@ -494,6 +514,8 @@ export class MainGameScene extends Phaser.Scene {
   private lightingDirty = true;
 
   private lightingLastSource?: { x: number; y: number };
+
+  private lightingLastSecondarySourcesKey?: string;
 
   private lightingLastViewRect?: LightFieldDirtyRect;
 
@@ -1532,6 +1554,7 @@ export class MainGameScene extends Phaser.Scene {
     this.lightField = undefined;
     this.doorGraphics = undefined;
     this.lightingLastSource = undefined;
+    this.lightingLastSecondarySourcesKey = undefined;
     this.lightingLastViewRect = undefined;
     this.lightingDirty = true;
     this.lightingComputeMsAvg = 0;
@@ -1638,10 +1661,6 @@ export class MainGameScene extends Phaser.Scene {
 
     const px = ftToPx(this.world.stores.position.x[this.playerEid] ?? 0);
     const py = ftToPx(this.world.stores.position.y[this.playerEid] ?? 0);
-    const sourceUnchanged = this.lightingLastSource?.x === px && this.lightingLastSource?.y === py;
-    if (!force && !this.lightingDirty && sourceUnchanged && viewRectUnchanged) {
-      return;
-    }
     const radius = this.lighting.sourceRadiusPx;
     // C1: FOV visibility (radius ~25 tiles) changes across a far wider area than
     // the torch light (`sourceRadiusPx`), so a torch-circle dirty rect would leave
@@ -1657,13 +1676,70 @@ export class MainGameScene extends Phaser.Scene {
     const lightSources: { x: number; y: number; radiusPx: number; intensity: number }[] = [
       { x: px, y: py, radiusPx: radius, intensity: this.lighting.sourceIntensity },
     ];
+    const secondarySourceKeyParts: string[] = [];
     for (const propEid of query(this.world.ecs, [Prop, PropLight, Position])) {
+      const sourceX = ftToPx(this.world.stores.position.x[propEid] ?? 0);
+      const sourceY = ftToPx(this.world.stores.position.y[propEid] ?? 0);
+      const sourceRadius = this.world.stores.propLight.radiusPx[propEid] ?? 0;
+      const sourceIntensity = this.world.stores.propLight.intensity[propEid] ?? 0;
       lightSources.push({
-        x: ftToPx(this.world.stores.position.x[propEid] ?? 0),
-        y: ftToPx(this.world.stores.position.y[propEid] ?? 0),
-        radiusPx: this.world.stores.propLight.radiusPx[propEid] ?? 0,
-        intensity: this.world.stores.propLight.intensity[propEid] ?? 0,
+        x: sourceX,
+        y: sourceY,
+        radiusPx: sourceRadius,
+        intensity: sourceIntensity,
       });
+      secondarySourceKeyParts.push(`p:${sourceX},${sourceY},${sourceRadius},${sourceIntensity}`);
+    }
+    for (const harvestableEid of query(this.world.ecs, [Harvestable, Position])) {
+      const defIndex = this.world.stores.harvestable.defIndex[harvestableEid] ?? -1;
+      if (defIndex < 0 || defIndex >= HARVESTABLE_DEFS.length) {
+        continue;
+      }
+      const lightEmission = HARVESTABLE_DEFS[defIndex]?.lightEmission;
+      if (lightEmission === undefined) {
+        continue;
+      }
+      const sourceX = ftToPx(this.world.stores.position.x[harvestableEid] ?? 0);
+      const sourceY = ftToPx(this.world.stores.position.y[harvestableEid] ?? 0);
+      const sourceRadius = ftToPx(lightEmission.radiusFt);
+      const sourceIntensity = lightEmission.intensity;
+      lightSources.push({
+        x: sourceX,
+        y: sourceY,
+        radiusPx: sourceRadius,
+        intensity: sourceIntensity,
+      });
+      secondarySourceKeyParts.push(`h:${sourceX},${sourceY},${sourceRadius},${sourceIntensity}`);
+    }
+    for (const setPieceProp of this.world.setPieceProps) {
+      const sprite = setPieceProp.render.sprite;
+      if (sprite.source !== 'catalog') {
+        continue;
+      }
+      const lightEmission = resolveSetPieceLightEmission(sprite.spriteId);
+      if (lightEmission === null) {
+        continue;
+      }
+      const sourceX = ftToPx(setPieceProp.x);
+      const sourceY = ftToPx(setPieceProp.y);
+      const sourceRadius = ftToPx(lightEmission.radiusFt);
+      const sourceIntensity = lightEmission.intensity;
+      lightSources.push({
+        x: sourceX,
+        y: sourceY,
+        radiusPx: sourceRadius,
+        intensity: sourceIntensity,
+      });
+      secondarySourceKeyParts.push(`s:${sourceX},${sourceY},${sourceRadius},${sourceIntensity}`);
+    }
+
+    const secondarySourcesKey = secondarySourceKeyParts.join('|');
+    const sourceUnchanged =
+      this.lightingLastSource?.x === px &&
+      this.lightingLastSource?.y === py &&
+      this.lightingLastSecondarySourcesKey === secondarySourcesKey;
+    if (!force && !this.lightingDirty && sourceUnchanged && viewRectUnchanged) {
+      return;
     }
 
     computeLightField({
@@ -1715,6 +1791,7 @@ export class MainGameScene extends Phaser.Scene {
     // outside the next (player-sized) dirty rect at darkness 1, leaving most of
     // the map black until the next floor load.
     this.lightingLastSource = { x: px, y: py };
+    this.lightingLastSecondarySourcesKey = secondarySourcesKey;
     this.lightingLastViewRect = viewRect;
     this.lightingDirty = false;
 
