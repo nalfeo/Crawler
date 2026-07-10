@@ -324,10 +324,11 @@ function packageLockHash(): string {
   }
 }
 
-function buildMeta(stage: string): ShardMeta {
+function buildMeta(stage: string, floorId: string): ShardMeta {
   return {
     schemaVersion: SHARD_SCHEMA_VERSION,
     budgetMs: FLOOR1_TIME_BUDGET_MS,
+    floorId,
     maxFrames: MAX_FRAMES,
     stage,
     runnerOs: `${process.platform}-${process.arch}`,
@@ -414,6 +415,13 @@ function parseArgs(argv: readonly string[]): CliArgs {
   if (!args.combo) {
     throw new Error('--combo is required (e.g. --combo legacy+legacy)');
   }
+  if (args.floorId !== 'floor1') {
+    throw new Error(
+      `--floor '${args.floorId}' is not supported: this sweep is Floor-1-calibrated ` +
+        `(the 6-minute budget and safe-room active-time credit are Floor-1-specific). ` +
+        `Non-Floor-1 win semantics are undefined here.`,
+    );
+  }
   return args;
 }
 
@@ -435,7 +443,7 @@ async function main(argv: readonly string[]): Promise<void> {
       floorId: args.floorId,
     });
     const artifact: SearchArtifact = {
-      meta: buildMeta('search'),
+      meta: buildMeta('search', args.floorId),
       combo: comboId(combo),
       bestConfigId: result.bestConfigId,
       configs: result.configs,
@@ -501,7 +509,7 @@ async function main(argv: readonly string[]): Promise<void> {
       )),
     );
   }
-  const artifact: ShardArtifact = { meta: buildMeta('validate'), configs, rows };
+  const artifact: ShardArtifact = { meta: buildMeta('validate', args.floorId), configs, rows };
   emit(artifact, args.out);
   console.log(`⏱  ${((Date.now() - start) / 1000).toFixed(0)}s · ${rows.length} runs`);
 }

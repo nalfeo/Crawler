@@ -41,6 +41,7 @@ const VICTORY_SCORE = 1_000_000;
 const META: ShardMeta = {
   schemaVersion: SHARD_SCHEMA_VERSION,
   budgetMs: 360_000,
+  floorId: 'floor1',
   maxFrames: 23_760,
   stage: 'test',
   runnerOs: 'linux',
@@ -127,6 +128,7 @@ describe('mergeShards', () => {
   it.each([
     ['schema version', { schemaVersion: 999 }, /schema version mismatch/],
     ['win budget', { budgetMs: 1 }, /win-budget mismatch/],
+    ['floor', { floorId: 'floor2' }, /floor mismatch/],
     ['frame budget', { maxFrames: 1 }, /frame-budget mismatch/],
     ['stage', { stage: 'other' }, /stage mismatch/],
     ['runner OS', { runnerOs: 'windows' }, /runner-OS mismatch/],
@@ -152,6 +154,41 @@ describe('mergeShards', () => {
     expect(() => mergeShards([shard([r], stale), shard([{ ...r }], stale)])).toThrow(
       /schema version .* != current/,
     );
+  });
+
+  it('rejects an all-floor2 batch — safe-room win credit is Floor-1-specific', () => {
+    // Every shard agrees on floorId=floor2, so the per-shard cross-shard check
+    // passes, but deriveRunFacts/isOfficialWin apply Floor-1 safe-room credit
+    // unconditionally. A non-floor1 batch would be misclassified with Floor-1
+    // win semantics, so the fan-in rejects it outright (defense-in-depth behind
+    // sweep-eval's own producer-side --floor guard).
+    const r = row({ combo: 'legacy+legacy', configId: 'c', weapon: 'sword', seed: 1 });
+    const floor2 = { floorId: 'floor2' };
+    expect(() => mergeShards([shard([r], floor2), shard([{ ...r }], floor2)])).toThrow(
+      /floorId 'floor2' is not supported/,
+    );
+  });
+
+  it.each([
+    ['a missing (undefined)', undefined],
+    ['a NaN', NaN],
+    ['a negative', -1],
+    ['an over-gameTimeMs', 200_000],
+  ])('rejects %s safeRoomMs at the fan-in boundary', (_label, safeRoomMs) => {
+    // safeRoomMs is typed `number` but arrives via JSON.parse cast to RunRow, so
+    // an omitted/NaN/out-of-range value slips past the type. activeTimeMs would
+    // coalesce a missing value to 0 (raw-time classification) or clamp a value >
+    // gameTimeMs to 0 active time (manufacturing an official win), so the merge
+    // boundary must reject it. gameTimeMs stays 100_000 so 200_000 is over-range.
+    const r = row({
+      combo: 'legacy+legacy',
+      configId: 'c',
+      weapon: 'sword',
+      seed: 1,
+      gameTimeMs: 100_000,
+      safeRoomMs: safeRoomMs as number,
+    });
+    expect(() => mergeShards([shard([r])])).toThrow(/safeRoomMs/);
   });
 
   it('throws on a conflicting config definition for the same id', () => {
