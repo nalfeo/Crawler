@@ -21,7 +21,7 @@ hand-written JSON and wrong-value fix turns.
 
 ## Verification
 
-`npm run verify:fast` passed. CLI smoke-tested: happy path writes correct JSON,
+`npm run verify:fast` and `npm run verify` passed. CLI smoke-tested: happy path writes correct JSON,
 bad `--actual 9` exits 1, duplicate file exits 1, missing args prints usage.
 
 ## Systems touched
@@ -30,7 +30,7 @@ agent-os
 
 ## Apples
 
-🍎🍎 estimated, 🍎🍎 actual — exact.
+🍎🍎🍎 estimated, 🍎🍎🍎 actual — exact.
 
 ## Unresolved issues
 
