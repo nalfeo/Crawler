@@ -126,6 +126,8 @@ export function createAchievementsUI(
   let lastSignature: string | null = null;
   let scrollIndex = 0;
   const expandedIds = new Set<string>();
+  /** Cache of measured full flavor text height keyed by achievement id. */
+  const flavorHeightCache = new Map<string, number>();
 
   const container = scene.add.container(0, 0);
   container.setDepth(1000);
@@ -188,18 +190,24 @@ export function createAchievementsUI(
     const flavorWrapW = w - 150;
     const isLong = def.directorFlavor.length > FLAVOR_EXPAND_THRESHOLD;
 
-    // Measure the full flavor text height by creating a temporary text object.
-    // This runs synchronously and the object is destroyed before the next draw
-    // call, so it never appears on screen.
-    const tmpFlavor = crispText(x + 12, y + 50, def.directorFlavor, {
-      fontFamily: FONT_FAMILY,
-      fontSize: '11px',
-      fontStyle: 'italic',
-      color: hex(COLORS.flavor),
-      wordWrap: { width: flavorWrapW },
-    });
-    const fullFlavorH = Math.max(FLAVOR_LINE_H, tmpFlavor.height);
-    tmpFlavor.destroy();
+    // Measure the full flavor text height. Results are cached so repeated renders
+    // (scrolling, claiming) avoid redundant measurement objects.
+    let fullFlavorH = flavorHeightCache.get(def.id);
+    if (fullFlavorH === undefined) {
+      // Create a temporary text object to measure rendered height. This runs
+      // synchronously and is destroyed before the next draw call so it never
+      // appears on screen.
+      const tmpFlavor = crispText(x + 12, y + 50, def.directorFlavor, {
+        fontFamily: FONT_FAMILY,
+        fontSize: '11px',
+        fontStyle: 'italic',
+        color: hex(COLORS.flavor),
+        wordWrap: { width: flavorWrapW },
+      });
+      fullFlavorH = Math.max(FLAVOR_LINE_H, tmpFlavor.height);
+      tmpFlavor.destroy();
+      flavorHeightCache.set(def.id, fullFlavorH);
+    }
 
     const collapsedFlavorH = FLAVOR_COLLAPSED_LINES * FLAVOR_LINE_H;
     const flavorH = isLong && !isExpanded ? collapsedFlavorH : fullFlavorH;
@@ -266,7 +274,7 @@ export function createAchievementsUI(
     }
 
     const btnLabel = claimed ? rewardReveal(def.reward) : `Open: ${rewardLabel(def.reward)}`;
-    const btn = crispText(x + w - 12, y + ROW_HEIGHT / 2, btnLabel, {
+    const btn = crispText(x + w - 12, y + rowHeight / 2, btnLabel, {
       fontFamily: FONT_FAMILY,
       fontSize: '12px',
       fontStyle: 'bold',
@@ -318,11 +326,11 @@ export function createAchievementsUI(
     const bottom = listBottom();
     let currentY = listTop();
     for (let i = scrollIndex; i < defs.length; i++) {
-      if (currentY + ROW_HEIGHT > bottom) break;
       const def = defs[i];
       if (!def) break;
       const rowH = makeRow(def, x, currentY, w);
       currentY += rowH + ROW_GAP;
+      if (currentY > bottom) break;
     }
   }
 
@@ -337,6 +345,7 @@ export function createAchievementsUI(
     hint
       .setPosition(panelX + panelWidth - PANEL_PADDING, panelY + PANEL_PADDING + 2)
       .setResolution(textResolution);
+    flavorHeightCache.clear();
     if (visible) lastSignature = null;
   }
 
