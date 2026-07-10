@@ -897,6 +897,7 @@ describe('BehaviorTreeAI', () => {
     const unlockedAi = new BehaviorTreeAI({ seed: 52 });
     unlockedAi.poll(createInputState(), world);
     const unlockedDecision = unlockedAi.getDecision();
+    expect(unlockedDecision.state).not.toBe(AIState.INTERACT);
     expect(unlockedDecision.targetEid).not.toBe(brokerEid);
   });
 

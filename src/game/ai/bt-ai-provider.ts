@@ -6586,9 +6586,10 @@ export class BehaviorTreeAI implements AIInputProvider {
           ? null
           : 'meet-broker-intro';
       }
-      if (familyState.reputationSystemActive === false) {
-        return null;
-      }
+      // Floor 2 currently has no scripted non-broker NPC interaction goals in the
+      // BT pipeline; treat them as irrelevant so headless progression does not
+      // loop on unsupported INTERACT actions.
+      return null;
     }
 
     const floorScenario = world.floorScenario;
