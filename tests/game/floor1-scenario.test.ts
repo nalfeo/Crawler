@@ -52,6 +52,7 @@ import { flattenSetPieceLayers, getSetPieceDef } from '../../src/shared/set-piec
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import { floor1EnemyPack } from '../../src/shared/enemy-packs.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
+import { stampSetPiece } from '../../src/core/map/stampSetPiece.js';
 
 describe('floor1Scenario', () => {
   it('initializes Floor 1 into loadout state with deterministic starter choices', () => {
@@ -287,6 +288,63 @@ describe('floor1Scenario', () => {
         ).toBe(true);
       }
     }
+  });
+
+  it('applies welcome-room wall/door props to real map tiles', () => {
+    const def = getSetPieceDef('welcome-room');
+    if (!def) {
+      throw new Error('Expected the welcome-room set piece to be registered');
+    }
+
+    const structuralById = new Map(
+      def.props
+        .filter((prop) => prop.kind === 'wall' || prop.kind === 'door')
+        .map((prop) => [prop.id, prop]),
+    );
+    expect(structuralById.size).toBeGreaterThan(0);
+
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+
+    const map = world.floorMap!;
+    const objective = world.floorScenario!.objective;
+    const welcomeTile = map.worldToTile(objective.welcomeOfficePos.x, objective.welcomeOfficePos.y);
+    const welcomeRoomId = map.roomGraph.getRoomAt(welcomeTile.x, welcomeTile.y);
+    const room = welcomeRoomId >= 0 ? map.roomGraph.get(welcomeRoomId) : undefined;
+    if (!room) {
+      throw new Error('Expected a welcome room at the welcome-office tile');
+    }
+
+    const stamp = stampSetPiece(def, {
+      roomBounds: room.bounds,
+      tileSizeFt: map.config.tileSizeFt,
+    });
+    const validated = new Set<string>();
+    for (const stampedProp of stamp.props) {
+      const propId = stampedProp.render.label;
+      if (!propId || validated.has(propId)) continue;
+      const prop = structuralById.get(propId);
+      if (!prop) continue;
+      validated.add(propId);
+
+      for (let dy = 0; dy < prop.height; dy += 1) {
+        for (let dx = 0; dx < prop.width; dx += 1) {
+          const tx = stampedProp.tileX + dx;
+          const ty = stampedProp.tileY + dy;
+          const idx = ty * map.width + tx;
+          const flags = map.tileMap.flags[idx]!;
+          if (prop.kind === 'wall') {
+            expect(map.terrain[idx]).toBe(TerrainType.STONE_WALL);
+          } else {
+            expect((flags & TileFlags.DOOR) !== 0).toBe(true);
+            expect((flags & TileFlags.PASSABLE) !== 0).toBe(true);
+            expect(map.terrain[idx]).toBe(TerrainType.DOOR);
+          }
+        }
+      }
+    }
+    expect(validated.size).toBe(structuralById.size);
   });
 
   it('does not accumulate set-piece props when re-initialized on a reused world', () => {

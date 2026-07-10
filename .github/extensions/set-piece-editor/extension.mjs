@@ -125,7 +125,7 @@ function handleRequest(instanceId, allowedOrigin, req, res) {
       res.end(JSON.stringify(readPack()));
     } catch (e) {
       res.writeHead(500);
-      res.end(JSON.stringify({ error: String(e) }));
+      res.end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }));
     }
     return;
   }
@@ -135,7 +135,7 @@ function handleRequest(instanceId, allowedOrigin, req, res) {
       res.end(JSON.stringify(readGeneratedSpriteIds()));
     } catch (e) {
       res.writeHead(500);
-      res.end(JSON.stringify({ error: String(e) }));
+      res.end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }));
     }
     return;
   }
@@ -230,7 +230,7 @@ function handleRequest(instanceId, allowedOrigin, req, res) {
         broadcastToInstance(instanceId, { type: 'applied', setPieceId });
       } catch (e) {
         res.writeHead(400);
-        res.end(JSON.stringify({ ok: false, error: String(e) }));
+        res.end(JSON.stringify({ ok: false, error: e instanceof Error ? e.message : String(e) }));
       }
     });
     return;
@@ -784,6 +784,19 @@ function clampNpcSnappedCoord(v,limit,sizeTiles){
   var max=Math.max(0,limit-sizeTiles);
   return Math.max(0,Math.min(max,nnum(v,0)));
 }
+// Snap the NPC *center* to the grid and return the clamped top-left tile coordinate.
+// Mirrors the runtime center convention: stampSetPiece places NPC sprites at
+// centreTile = boundedTopLeft + widthTiles/2, so we align authoring snaps the same way.
+function snapNpcCenter(dispPx,tileSize,sizeTiles,limit){
+  var step=npcSnapStep();
+  var topLeftTiles=dispPx/tileSize;
+  var centerTiles=topLeftTiles+sizeTiles/2;
+  var snappedCenter=step>0?Math.round(centerTiles/step)*step:snapV(centerTiles);
+  var snappedTopLeft=snappedCenter-sizeTiles/2;
+  var max=Math.max(0,limit-sizeTiles);
+  var clamped=Math.max(0,Math.min(max,snappedTopLeft));
+  return step>0?clamped:snapV(clamped);
+}
 function clampGroupDeltaPx(items,dx,dy,widthTiles,heightTiles){
   if(!items||!items.length)return {dx:dx,dy:dy};
   var minDx=-Infinity,maxDx=Infinity,minDy=-Infinity,maxDy=Infinity;
@@ -818,14 +831,6 @@ var KINDS={
 var ZD={floor:0,wall:10,door:12,fixture:20,furniture:30,decoration:40,actor:50};
 function getZ(p){return p.z!==undefined?p.z:(ZD[p.kind]||0);}
 function getNpcZ(n){return n.z!==undefined?n.z:0;}
-function setPieceZToDepth(z){
-  if(z<20)return -19+z*0.8;
-  return 2+(z-20)*0.1;
-}
-function propSortDepth(p){return setPieceZToDepth(getZ(p));}
-function npcSortDepth(n){
-  return n.z!==undefined?setPieceZToDepth(getNpcZ(n)):0;
-}
 function getLayers(){
   if(!sp)return[];
   if(!sp.sceneLayers||!sp.sceneLayers.length)
@@ -841,7 +846,27 @@ function layerVisible(lid){var l=getLayers().find(function(x){return x.id===lid;
 function layerLocked(lid){var l=getLayers().find(function(x){return x.id===lid;});return l&&l.locked===true;}
 function propLayer(p){return p.sceneLayer||(getLayers()[0]||{id:'default'}).id;}
 function npcLayer(n){return n.sceneLayer||(getLayers()[0]||{id:'default'}).id;}
-function globalZ(_layerId,localZ){return localZ;}
+// Mirror src/shared/render-depths.ts:setPieceZToDepth and TERRAIN_DEPTH so draw order matches runtime.
+// Negative NPC z values clamp above terrain in PhaserBridge, so the editor must too.
+var TERRAIN_DEPTH=-20;
+var ENTITY_DEPTH=0;
+var LAYER_DEPTH_EPSILON=0.001;
+// Keep NPCs infinitesimally above terrain when authored z would otherwise sort them underneath it.
+var NPC_TERRAIN_MARGIN=0.001;
+function setPieceZToDepth(z){if(z<20)return -19+z*0.8;return 2+(z-20)*0.1;}
+function getNativeSpriteTileDimensions(sprite){
+  if(sprite&&sprite.source==='custom')return{w:nnum(sprite.widthTiles,1),h:nnum(sprite.heightTiles,1)};
+  return{w:1,h:1};
+}
+// Depth-based sort key — keeps editor canvas order in parity with the Phaser depth stack.
+// NPCs without an authored z sort at ENTITY_DEPTH (between background and foreground props).
+function globalZ(layerId,kind,localZ){
+  if(kind==='npc')return localZ!==undefined?Math.max(TERRAIN_DEPTH+NPC_TERRAIN_MARGIN,setPieceZToDepth(localZ)):ENTITY_DEPTH;
+  return setPieceZToDepth(localZ);
+}
+function propRenderZ(layerId,localZ,propIndex){
+  return globalZ(layerId,'prop',localZ)+propIndex*LAYER_DEPTH_EPSILON;
+}
 function nnum(v,d){var n=Number(v);return Number.isFinite(n)?n:d;}
 function isPropSelectedIndex(idx){
   var p=sp&&sp.props&&sp.props[idx];
@@ -1197,7 +1222,22 @@ function renderLayersPanel(){
       if(S.activeLayerId===layer.id)S.activeLayerId=sp.sceneLayers[0].id;
       renderLayersPanel();render();markDirty();
     };
-    row.appendChild(vis);row.appendChild(lck);row.appendChild(nm);row.appendChild(del);
+    var realIdx=sp.sceneLayers.findIndex(function(l){return l.id===layer.id;});
+    var upb=document.createElement('button');upb.className='ib';upb.title='Move Up (list order)';upb.textContent='\u25b2';
+    upb.disabled=realIdx>=sp.sceneLayers.length-1;
+    upb.onclick=function(e){e.stopPropagation();
+      var i=sp.sceneLayers.findIndex(function(l){return l.id===layer.id;});
+      if(i<sp.sceneLayers.length-1){var t=sp.sceneLayers[i];sp.sceneLayers[i]=sp.sceneLayers[i+1];sp.sceneLayers[i+1]=t;}
+      renderLayersPanel();render();markDirty();
+    };
+    var dnb=document.createElement('button');dnb.className='ib';dnb.title='Move Down (list order)';dnb.textContent='\u25bc';
+    dnb.disabled=realIdx<=0;
+    dnb.onclick=function(e){e.stopPropagation();
+      var i=sp.sceneLayers.findIndex(function(l){return l.id===layer.id;});
+      if(i>0){var t=sp.sceneLayers[i];sp.sceneLayers[i]=sp.sceneLayers[i-1];sp.sceneLayers[i-1]=t;}
+      renderLayersPanel();render();markDirty();
+    };
+    row.appendChild(vis);row.appendChild(lck);row.appendChild(nm);row.appendChild(upb);row.appendChild(dnb);row.appendChild(del);
     ll.appendChild(row);
   });
   refreshLayerPicker();
@@ -1251,14 +1291,18 @@ function render(){
   sp.props.forEach(function(p,i){
     var lid=propLayer(p);
     if(!layerVisible(lid))return;
-    drawables.push({kind:'prop',idx:i,z:globalZ(lid,propSortDepth(p))});
+    drawables.push({kind:'prop',idx:i,z:propRenderZ(lid,getZ(p),i)});
   });
   (sp.npcs||[]).forEach(function(n,ni){
     var lid=npcLayer(n);
     if(!layerVisible(lid))return;
-    drawables.push({kind:'npc',idx:ni,z:globalZ(lid,npcSortDepth(n))});
+    drawables.push({kind:'npc',idx:ni,z:globalZ(lid,'npc',n.z)});
   });
-  drawables.sort(function(a,b){return a.z-b.z;});
+  drawables.sort(function(a,b){
+    if(a.z!==b.z)return a.z-b.z;
+    if(a.kind!==b.kind)return a.kind==='npc'?-1:1;
+    return a.idx-b.idx;
+  });
   drawables.forEach(function(d){
     if(d.kind==='prop'){
       var p=sp.props[d.idx];
@@ -1301,12 +1345,13 @@ function drawProp(prop,sel,ad){
   var sprited=false;
   layers.forEach(function(layer,layerIndex){
     if(!layer||!layer.sprite)return;
+    var nativeTiles=layerIndex===0?{w:pw,h:ph}:getNativeSpriteTileDimensions(layer.sprite);
     var targetW=(layer.widthFt!==undefined&&layer.heightFt!==undefined)
       ?(Math.max(0.25,nnum(layer.widthFt,FEET_PER_TILE))/FEET_PER_TILE)*ts
-      :((layerIndex===0?pw:1)*ts);
+      :(nativeTiles.w*ts);
     var targetH=(layer.widthFt!==undefined&&layer.heightFt!==undefined)
       ?(Math.max(0.25,nnum(layer.heightFt,FEET_PER_TILE))/FEET_PER_TILE)*ts
-      :((layerIndex===0?ph:1)*ts);
+      :(nativeTiles.h*ts);
     var scale=Math.max(0.01,nnum(layer.scale,1));
     targetW*=scale;
     targetH*=scale;
@@ -1329,14 +1374,29 @@ function drawProp(prop,sel,ad){
       ctx.translate(cx,cy);
       if(rot!==0)ctx.rotate(rot);
       if(fx!==1||fy!==1)ctx.scale(fx,fy);
-      ctx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,-drawW/2,-drawH/2,drawW,drawH);
+      var tinted=false;
       if(typeof layer.tintHex==='string'&&/^#[0-9a-fA-F]{6}$/.test(layer.tintHex)){
-        ctx.save();
-        ctx.globalCompositeOperation='source-atop';
-        ctx.globalAlpha=0.55;
-        ctx.fillStyle=layer.tintHex;
-        ctx.fillRect(-drawW/2,-drawH/2,drawW,drawH);
-        ctx.restore();
+        var tintW=Math.max(1,Math.ceil(drawW));
+        var tintH=Math.max(1,Math.ceil(drawH));
+        var tintCanvas=document.createElement('canvas');
+        tintCanvas.width=tintW;
+        tintCanvas.height=tintH;
+        var tintCtx=tintCanvas.getContext('2d');
+        if(tintCtx){
+          tintCtx.imageSmoothingEnabled=false;
+          tintCtx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,0,0,tintW,tintH);
+          tintCtx.globalCompositeOperation='multiply';
+          tintCtx.fillStyle=layer.tintHex;
+          tintCtx.fillRect(0,0,tintW,tintH);
+          tintCtx.globalCompositeOperation='destination-atop';
+          tintCtx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,0,0,tintW,tintH);
+          tintCtx.globalCompositeOperation='source-over';
+          ctx.drawImage(tintCanvas,-drawW/2,-drawH/2,drawW,drawH);
+          tinted=true;
+        }
+      }
+      if(!tinted){
+        ctx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,-drawW/2,-drawH/2,drawW,drawH);
       }
       ctx.restore();
       sprited=true;
@@ -1480,7 +1540,7 @@ function hitTop(cx,cy){
     var pw=(p.width||1)*ts,ph=(p.height||1)*ts;
     var px=nnum(p.x,0)*ts,py=nnum(p.y,0)*ts;
     if(cx>=px&&cx<px+pw&&cy>=py&&cy<py+ph){
-      hits.push({kind:'prop',idx:i,z:globalZ(lid,propSortDepth(p))});
+      hits.push({kind:'prop',idx:i,z:propRenderZ(lid,getZ(p),i)});
     }
   });
   (sp.npcs||[]).forEach(function(n,ni){
@@ -1488,7 +1548,7 @@ function hitTop(cx,cy){
     if(!layerVisible(lid)||layerLocked(lid))return;
     var nx=nnum(n.x,0),ny=nnum(n.y,0),ns=npcSizeTiles(n);
     if(cx>=nx*ts&&cx<((nx+ns.w)*ts)&&cy>=ny*ts&&cy<((ny+ns.h)*ts)){
-      hits.push({kind:'npc',idx:ni,z:globalZ(lid,npcSortDepth(n))});
+      hits.push({kind:'npc',idx:ni,z:globalZ(lid,'npc',n.z)});
     }
   });
   if(!hits.length)return null;
@@ -1502,8 +1562,8 @@ function snapV(v){
   return Math.round(v*100)/100;
 }
 function snapSz(v){
-  if(S.snapMode==='tile')return Math.max(0.25,Math.round(v));
-  if(S.snapMode==='half')return Math.max(0.25,Math.round(v*2)/2);
+  if(S.snapMode==='tile')return Math.max(1,Math.round(v));
+  if(S.snapMode==='half')return Math.max(0.5,Math.round(v*2)/2);
   if(S.snapMode==='quarter')return Math.max(0.25,Math.round(v*4)/4);
   return Math.max(0.25,Math.round(v*100)/100);
 }
@@ -1667,8 +1727,8 @@ canvas.addEventListener('mouseup',function(){
     var n=sp.npcs&&sp.npcs[drag.idx];
     if(n){
       var ns=npcSizeTiles(n);
-      n.x=clampNpcSnappedCoord(snapV(drag.dispX/ts),sp.width||1,ns.w);
-      n.y=clampNpcSnappedCoord(snapV(drag.dispY/ts),sp.height||1,ns.h);
+      n.x=snapNpcCenter(drag.dispX,ts,ns.w,sp.width||1);
+      n.y=snapNpcCenter(drag.dispY,ts,ns.h,sp.height||1);
       refreshNpcInputs();markDirty();
     }
     drag=null;render();return;
@@ -1677,8 +1737,8 @@ canvas.addEventListener('mouseup',function(){
     drag.groupOrig.forEach(function(it){
       var gn=sp.npcs[it.idx];if(!gn)return;
       var gd=drag.groupDisp[it.id];if(!gd)return;
-      gn.x=clampNpcSnappedCoord(snapV(gd.dispX/ts),sp.width||1,it.w);
-      gn.y=clampNpcSnappedCoord(snapV(gd.dispY/ts),sp.height||1,it.h);
+      gn.x=snapNpcCenter(gd.dispX,ts,it.w,sp.width||1);
+      gn.y=snapNpcCenter(gd.dispY,ts,it.h,sp.height||1);
     });
     refreshNpcInputs();markDirty();
     drag=null;render();return;
@@ -1691,8 +1751,8 @@ canvas.addEventListener('mouseup',function(){
       rn.widthFt=rw*FEET_PER_TILE;
       rn.heightFt=rh*FEET_PER_TILE;
       var rns=npcSizeTiles(rn);
-      rn.x=clampNpcSnappedCoord(snapV(drag.dispX/ts),sp.width||1,rns.w);
-      rn.y=clampNpcSnappedCoord(snapV(drag.dispY/ts),sp.height||1,rns.h);
+      rn.x=snapNpcCenter(drag.dispX,ts,rns.w,sp.width||1);
+      rn.y=snapNpcCenter(drag.dispY,ts,rns.h,sp.height||1);
       refreshNpcInputs();markDirty();
     }
     drag=null;render();return;
@@ -1765,7 +1825,7 @@ function showTooltipForHit(ht,cx,cy){
     lines.push('pos: '+(n.x||0)+', '+(n.y||0));
     lines.push('size: '+ns.w.toFixed(2)+'\u00d7'+ns.h.toFixed(2)+' tiles');
     lines.push('layer: '+lname2);
-    if(n.z!==undefined)lines.push('z: '+n.z);else lines.push('z: 60 (default)');
+    if(n.z!==undefined)lines.push('z: '+n.z);else lines.push('z: auto ('+ENTITY_DEPTH+' entity depth)');
     if(n.anchorRole)lines.push('anchor: '+n.anchorRole);
   }
   ttEl.textContent=lines.join('\\n');
