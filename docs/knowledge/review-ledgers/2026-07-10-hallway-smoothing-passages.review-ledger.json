@@ -6,16 +6,31 @@
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Concern 1 addressed by running tests/determinism/dungeon-generator-golden.test.ts after restoring pre-branch corridor generation. Concern 2 addressed by validating the restored generator/goldens with dungeon-generator golden + collision-pair parity after the revert and post-merge verify loop. Concern 3 addressed by adding an immutability guard in tests/unit/terrain-renderer.test.ts proving smoothPassages rendering does not mutate floorMap terrain or tile flags."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     }
   }
 }

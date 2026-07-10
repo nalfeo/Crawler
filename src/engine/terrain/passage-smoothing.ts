@@ -27,7 +27,6 @@ export interface PassageJaggednessReport {
   readonly reduction: number;
 }
 
-const RASTER_SUB_FACTOR = 4;
 const DIAGONAL_DIRECTIONS: ReadonlyArray<readonly [number, number]> = [
   [1, 1],
   [-1, 1],
@@ -215,11 +214,7 @@ function structuralJaggedness(floorMap: FloorMapData): {
   return { includedTiles, exposedCorners, blockedCornerDiagonals };
 }
 
-export function measurePassageJaggedness(
-  floorMap: FloorMapData,
-  subFactor: number = RASTER_SUB_FACTOR,
-): PassageJaggednessReport {
-  void subFactor;
+export function measurePassageJaggedness(floorMap: FloorMapData): PassageJaggednessReport {
   const structural = structuralJaggedness(floorMap);
   const baselineRoughness = structural.exposedCorners + structural.blockedCornerDiagonals;
   const smoothRoughness = structural.blockedCornerDiagonals + structural.exposedCorners * 0.13;

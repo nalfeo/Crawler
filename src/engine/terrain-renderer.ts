@@ -152,7 +152,7 @@ export function buildTerrainLayer(
     }
   }
 
-  if (options.smoothPassages !== false && typeof scene.add.graphics === 'function') {
+  if (options.smoothPassages === true && typeof scene.add.graphics === 'function') {
     const plan = buildPassageRenderPlan(floorMap);
     if (plan.groups.length > 0) {
       const overlay = scene.add.graphics().setVisible(false);

@@ -133,6 +133,11 @@ describe('MainGameScene lighting overlay behavior', () => {
     expect(source).toContain('.setDepth(LIGHTING_OVERLAY_DEPTH)');
   });
 
+  it('opts into smooth hallway passage rendering explicitly at the terrain-layer call site', () => {
+    expect(source).toContain('buildTerrainLayer(this, floorMap, {');
+    expect(source).toContain('smoothPassages: true');
+  });
+
   it('collects harvestable and set-piece light emitters for the light field', () => {
     expect(source).toContain('query(this.world.ecs, [Harvestable, Position])');
     expect(source).toContain('for (const setPieceProp of this.world.setPieceProps)');

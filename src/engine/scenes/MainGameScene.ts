@@ -1572,7 +1572,9 @@ export class MainGameScene extends Phaser.Scene {
       this.fovSubFactor = floorMap.setSubFactor(this.fovSubFactor);
     }
 
-    const { rt, generatedCount, spriteCount, colorCount } = buildTerrainLayer(this, floorMap);
+    const { rt, generatedCount, spriteCount, colorCount } = buildTerrainLayer(this, floorMap, {
+      smoothPassages: true,
+    });
     rt.setDepth(-20);
     this.mapRt = rt;
     this.terrainRenderSummary = { generatedCount, spriteCount, colorCount };

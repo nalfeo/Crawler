@@ -408,6 +408,7 @@ describe('buildTerrainLayer — generated tile wiring (w2)', () => {
         3,
         2,
       ),
+      { smoothPassages: true },
     );
 
     expect(graphics).not.toBeNull();
