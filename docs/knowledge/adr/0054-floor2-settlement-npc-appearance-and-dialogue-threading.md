@@ -1,8 +1,16 @@
 # ADR 0054 — Floor 2 Settlement NPC Appearance-Key and Dialogue-Override Threading
 
-**Date:** 2026-07-09  
-**Status:** Accepted  
-**Systems touched:** floor2-settlement, npc-spawn, phaser-bridge, dialogue
+## Status
+
+Accepted
+
+## Date
+
+2026-07-09
+
+## Systems touched
+
+floor2-settlement, npc-spawn, phaser-bridge, dialogue
 
 ---
 
