@@ -274,9 +274,10 @@ function buildHoverItems(def: SetPieceDef, stamp: StampedSetPiece): HoverItem[] 
     const ndef = getNpcDef(npc.npcTypeId);
     const wFt = npc.widthFt ?? ndef?.widthFt ?? TILE_SIZE_FT;
     const hFt = npc.heightFt ?? ndef?.heightFt ?? TILE_SIZE_FT;
+    const authoredNpcDepth = npc.z !== undefined ? setPieceZToDepth(npc.z) : undefined;
     const npcDepth =
-      npc.z !== undefined
-        ? Math.max(TERRAIN_DEPTH + DEPTH_EPSILON, setPieceZToDepth(npc.z))
+      authoredNpcDepth !== undefined
+        ? Math.max(TERRAIN_DEPTH + DEPTH_EPSILON, authoredNpcDepth)
         : ENTITY_DEPTH;
     const lines: string[] = [];
     if (npc.anchorRole !== undefined) {
@@ -291,6 +292,11 @@ function buildHoverItems(def: SetPieceDef, stamp: StampedSetPiece): HoverItem[] 
     lines.push(
       `<span style="color:#94a3b8">depth</span> ${npcDepth.toFixed(3)} <span style="color:#64748b">(${depthBandLabel(npcDepth)})</span>`,
     );
+    if (authoredNpcDepth !== undefined && authoredNpcDepth < TERRAIN_DEPTH + DEPTH_EPSILON) {
+      lines.push(
+        `<span style="color:#94a3b8">depth clamp</span> authored z ${npc.z} mapped to ${authoredNpcDepth.toFixed(3)} and was raised above terrain`,
+      );
+    }
     lines.push(
       `<span style="color:#94a3b8">transform</span> rot ${npc.rotationDeg ?? 0}° · flipX ${npc.flipX === true ? 'on' : 'off'} · flipY ${npc.flipY === true ? 'on' : 'off'}${npc.z !== undefined ? ` · z ${npc.z}` : ''}`,
     );
