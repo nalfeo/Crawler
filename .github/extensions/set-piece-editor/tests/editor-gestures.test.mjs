@@ -48,14 +48,6 @@ function createPack(overrides = {}) {
   };
 }
 
-function isMissingPlaywrightBrowser(error) {
-  const message = error instanceof Error ? error.message : String(error);
-  return (
-    message.includes("Executable doesn't exist") ||
-    message.includes('Please run the following command to download new browsers')
-  );
-}
-
 async function withEditor(t, pack, run) {
   const applyBodies = [];
   const html = renderHtml('test-token');
@@ -112,14 +104,7 @@ async function withEditor(t, pack, run) {
   const port = server.address().port;
   let browser;
   try {
-    try {
-      browser = await chromium.launch();
-    } catch (error) {
-      if (isMissingPlaywrightBrowser(error)) {
-        t.skip('Playwright Chromium is not installed for this job');
-      }
-      throw error;
-    }
+    browser = await chromium.launch();
     const page = await browser.newPage();
     await page.goto(`http://127.0.0.1:${port}/?setPieceId=sp-1`);
     await page.waitForFunction(() => document.getElementById('spsel').value === 'sp-1');
@@ -246,5 +231,54 @@ test('resizing uses the production editor state machine', async (t) => {
     await page.waitForFunction(() => document.getElementById('nhf').value === '8');
     assert.equal(await page.locator('#nxf').inputValue(), '1');
     assert.equal(await page.locator('#nyf').inputValue(), '1');
+  });
+});
+
+test('undo and redo restore and reapply NPC drag state before apply payload', async (t) => {
+  const pack = createPack({
+    npcs: [{ id: 'npc-a', npcTypeId: 'tutorial-goon', x: 1, y: 1, widthFt: 4, heightFt: 4 }],
+  });
+  await withEditor(t, pack, async ({ page, applyBodies }) => {
+    const start = await canvasPoint(page, 1.5, 1.5);
+    const dragged = await canvasPoint(page, 2.6, 2.6);
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(dragged.x, dragged.y);
+    await page.mouse.up();
+    await page.waitForFunction(() => document.getElementById('nxf').value === '2.5');
+    await page.waitForFunction(() => document.getElementById('nyf').value === '2.5');
+
+    await page.click('#btnundo');
+    await page.waitForFunction(() => document.getElementById('nxf').value === '1');
+    await page.waitForFunction(() => document.getElementById('nyf').value === '1');
+
+    await page.click('#btnredo');
+    await page.waitForFunction(() => document.getElementById('nxf').value === '2.5');
+    await page.waitForFunction(() => document.getElementById('nyf').value === '2.5');
+
+    await page.click('#btnapply');
+    await page.waitForFunction(() => document.getElementById('stbar').textContent === 'Ready');
+    assert.equal(applyBodies.length, 1);
+    assert.equal(applyBodies[0].npcs[0].x, 2.5);
+    assert.equal(applyBodies[0].npcs[0].y, 2.5);
+  });
+});
+
+test('snap size rounds per mode in production globals', async (t) => {
+  await withEditor(t, createPack(), async ({ page }) => {
+    const snap = await page.evaluate(() => {
+      const prev = S.snapMode;
+      S.snapMode = 'tile';
+      const tile = snapSz(1.26);
+      S.snapMode = 'half';
+      const half = snapSz(1.26);
+      S.snapMode = 'quarter';
+      const quarter = snapSz(1.26);
+      S.snapMode = 'free';
+      const free = snapSz(1.26);
+      S.snapMode = prev;
+      return { tile, half, quarter, free };
+    });
+    assert.deepEqual(snap, { tile: 1, half: 1.5, quarter: 1.25, free: 1.26 });
   });
 });

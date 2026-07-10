@@ -35,13 +35,11 @@ Implemented all deferred WYSIWYG parity items from PR #995 review (issue #997).
 4. **Rotation clipping parity** — No code change needed; the old `ctx.clip()`
    was already removed during PR #995 development. Review thread was outdated.
 
-5. **Interaction-test coverage** — Created:
-   - `.github/extensions/set-piece-editor/lib/editor-gestures.mjs` — pure
-     functions extracted for testing: `normalizeRotationDeg`, `snapToStep`,
-     `setPieceZToDepth`, `ENTITY_DEPTH`, `drawSortKey`, `npcCenterSnapPos`,
-     `hitTestRect`, `historyPush`, `historyUndo`, `historyRedo`.
-   - `.github/extensions/set-piece-editor/tests/editor-gestures.test.mjs` — 39
-     unit tests covering all exported helpers; all pass.
+5. **Interaction-test coverage** — Added production-browser interaction coverage in
+   `.github/extensions/set-piece-editor/tests/editor-gestures.test.mjs` that drives
+   the generated editor UI directly (drag/apply, resize, undo/redo, hit-testing,
+   snap behavior, depth helpers). This suite now validates the real in-browser
+   state machine instead of a copied helper module.
 
 ### Files changed
 
@@ -53,15 +51,13 @@ Implemented all deferred WYSIWYG parity items from PR #995 review (issue #997).
   — `snapNpcCenter()` helper added  
   — 3 mouseup NPC snap branches updated to use center-snap
 
-- `.github/extensions/set-piece-editor/lib/editor-gestures.mjs` _(new)_
 - `.github/extensions/set-piece-editor/tests/editor-gestures.test.mjs` _(new)_
 
 ## Key design decisions
 
 - **Inline replication, not import**: `setPieceZToDepth` / `ENTITY_DEPTH` are
   replicated inline in the HTML-rendered browser JS (same pattern used
-  throughout the file). The `lib/editor-gestures.mjs` module is server-side only
-  (like `lib/editor-validators.mjs`) and exists purely for testability.
+  throughout the file).
 - **Center-snap preserves clamping**: `snapNpcCenter` snaps the computed center
   then clamps the resulting top-left to `[0, limit-size]`, so NPCs can never be
   dragged outside the canvas bounds.
@@ -71,9 +67,9 @@ Implemented all deferred WYSIWYG parity items from PR #995 review (issue #997).
 ```bash
 # Extension tests (Node built-in runner)
 cd .github/extensions/set-piece-editor
-node --test tests/editor-validators.test.mjs   # 13 pass
-node --test tests/editor-gestures.test.mjs     # 39 pass
+node --test tests/editor-validators.test.mjs
+node --test tests/editor-gestures.test.mjs
 
 # Full repo fast verify
-npm run verify:fast   # 1155 tests pass
+npm run verify:fast
 ```
