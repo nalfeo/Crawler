@@ -1,287 +1,211 @@
-/**
- * Unit tests for lib/editor-gestures.mjs
- *
- * Covers the gesture-state-machine helpers that drive the set-piece
- * editor canvas: snap logic, depth/z-ordering parity, NPC center-snap,
- * hit testing, and undo/redo history.
- */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
+import { readFileSync } from 'node:fs';
+import { chromium } from 'playwright';
 
-import {
-  nnum,
-  normalizeRotationDeg,
-  snapToStep,
-  setPieceZToDepth,
-  ENTITY_DEPTH,
-  drawSortKey,
-  npcCenterSnapPos,
-  hitTestRect,
-  historyPush,
-  historyUndo,
-  historyRedo,
-} from '../lib/editor-gestures.mjs';
+const EXTENSION_PATH =
+  '/home/runner/work/Crawler/Crawler/.github/extensions/set-piece-editor/extension.mjs';
+const EXTENSION_SOURCE = readFileSync(EXTENSION_PATH, 'utf8');
+const ONE_BY_ONE_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z0n0AAAAASUVORK5CYII=',
+  'base64',
+);
 
-// ---------------------------------------------------------------------------
-// nnum
-// ---------------------------------------------------------------------------
-test('nnum returns default for non-finite values', () => {
-  assert.equal(nnum(undefined, 5), 5);
-  assert.equal(nnum(NaN, 3), 3);
-  assert.equal(nnum(Infinity, 0), 0);
-  assert.equal(nnum('abc', 7), 7);
-});
+function extractEditorHtml(applyToken) {
+  const startMarker = 'const HTML_TEMPLATE = `';
+  const start = EXTENSION_SOURCE.indexOf(startMarker);
+  assert.notEqual(start, -1, 'expected inline editor HTML template');
+  const bodyStart = start + startMarker.length;
+  const bodyEnd = EXTENSION_SOURCE.indexOf('`;', bodyStart);
+  assert.notEqual(bodyEnd, -1, 'expected end of inline editor HTML template');
+  return EXTENSION_SOURCE.slice(bodyStart, bodyEnd).replace(
+    '__SET_PIECE_EDITOR_APPLY_TOKEN__',
+    JSON.stringify(applyToken),
+  );
+}
 
-test('nnum returns the numeric value for finite inputs', () => {
-  assert.equal(nnum(2.5, 0), 2.5);
-  assert.equal(nnum('4', 0), 4);
-  assert.equal(nnum(0, 99), 0);
-});
+function createPack(overrides = {}) {
+  return {
+    setPieces: [
+      {
+        id: 'sp-1',
+        name: 'Fixture Room',
+        theme: 'test',
+        sizing: 'room',
+        width: 8,
+        height: 7,
+        sceneLayers: [{ id: 'default', name: 'Default', visible: true, locked: false }],
+        props: [],
+        npcs: [],
+        ...overrides,
+      },
+    ],
+  };
+}
 
-// ---------------------------------------------------------------------------
-// normalizeRotationDeg
-// ---------------------------------------------------------------------------
-test('normalizeRotationDeg maps 0 → 0', () => {
-  assert.equal(normalizeRotationDeg(0), 0);
-});
-test('normalizeRotationDeg maps 360 → 0', () => {
-  assert.equal(normalizeRotationDeg(360), 0);
-});
-test('normalizeRotationDeg maps 450 → 90', () => {
-  assert.equal(normalizeRotationDeg(450), 90);
-});
-test('normalizeRotationDeg maps -90 → 270', () => {
-  assert.equal(normalizeRotationDeg(-90), 270);
-});
-test('normalizeRotationDeg returns 0 for non-finite', () => {
-  assert.equal(normalizeRotationDeg(NaN), 0);
-  assert.equal(normalizeRotationDeg(Infinity), 0);
-});
-
-// ---------------------------------------------------------------------------
-// snapToStep
-// ---------------------------------------------------------------------------
-test('snapToStep rounds to nearest integer for step=1', () => {
-  assert.equal(snapToStep(2.3, 1), 2);
-  assert.equal(snapToStep(2.7, 1), 3);
-  assert.equal(snapToStep(2.5, 1), 3); // Math.round ties up
-});
-test('snapToStep rounds to nearest half for step=0.5', () => {
-  assert.equal(snapToStep(1.3, 0.5), 1.5);
-  assert.equal(snapToStep(1.7, 0.5), 1.5);
-  assert.equal(snapToStep(1.8, 0.5), 2.0);
-});
-test('snapToStep returns value unchanged for step=0 (free placement)', () => {
-  assert.equal(snapToStep(3.14, 0), 3.14);
-  assert.equal(snapToStep(3.14, -1), 3.14);
-});
-
-// ---------------------------------------------------------------------------
-// setPieceZToDepth (matches runtime render-depths.ts)
-// ---------------------------------------------------------------------------
-test('setPieceZToDepth is monotone non-decreasing across the full ladder', () => {
-  const ladder = [0, 10, 12, 20, 30, 40, 50];
-  for (let i = 1; i < ladder.length; i++) {
-    assert.ok(
-      setPieceZToDepth(ladder[i]) > setPieceZToDepth(ladder[i - 1]),
-      `depth(z=${ladder[i]}) should be > depth(z=${ladder[i - 1]})`,
-    );
+async function withEditor(pack, run) {
+  const applyBodies = [];
+  const html = extractEditorHtml('test-token');
+  const sseClients = new Set();
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url, 'http://127.0.0.1');
+    if (req.method === 'GET' && url.pathname === '/') {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(html);
+      return;
+    }
+    if (req.method === 'GET' && url.pathname === '/data') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(pack));
+      return;
+    }
+    if (req.method === 'GET' && url.pathname === '/generated-index') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end('[]');
+      return;
+    }
+    if (req.method === 'GET' && url.pathname === '/events') {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      });
+      res.write(': connected\n\n');
+      sseClients.add(res);
+      req.on('close', () => sseClients.delete(res));
+      return;
+    }
+    if (req.method === 'GET' && url.pathname.startsWith('/sheet/')) {
+      res.writeHead(200, { 'Content-Type': 'image/png' });
+      res.end(ONE_BY_ONE_PNG);
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === '/apply') {
+      let body = '';
+      req.on('data', (chunk) => {
+        body += chunk;
+      });
+      req.on('end', () => {
+        applyBodies.push(JSON.parse(body));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      });
+      return;
+    }
+    res.writeHead(404);
+    res.end('Not found');
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  try {
+    await page.goto(`http://127.0.0.1:${port}/?setPieceId=sp-1`);
+    await page.waitForFunction(() => document.getElementById('spsel').value === 'sp-1');
+    await run({ page, applyBodies });
+  } finally {
+    await browser.close();
+    for (const client of sseClients) client.destroy();
+    await new Promise((resolve) => server.close(resolve));
   }
-});
-test('setPieceZToDepth: floor(z=0) is below ENTITY_DEPTH', () => {
-  assert.ok(setPieceZToDepth(0) < ENTITY_DEPTH);
-});
-test('setPieceZToDepth: wall(z=10) is below ENTITY_DEPTH', () => {
-  assert.ok(setPieceZToDepth(10) < ENTITY_DEPTH);
-});
-test('setPieceZToDepth: door(z=12) is below ENTITY_DEPTH', () => {
-  assert.ok(setPieceZToDepth(12) < ENTITY_DEPTH);
-});
-test('setPieceZToDepth: fixture(z=20) is above ENTITY_DEPTH', () => {
-  assert.ok(setPieceZToDepth(20) > ENTITY_DEPTH);
-});
-test('setPieceZToDepth: furniture(z=30) is above fixture(z=20)', () => {
-  assert.ok(setPieceZToDepth(30) > setPieceZToDepth(20));
-});
+}
 
-// ---------------------------------------------------------------------------
-// drawSortKey (scene-layer order parity — issue #997 item 1)
-// ---------------------------------------------------------------------------
-test('drawSortKey: floor prop (z=0) sorts below ENTITY_DEPTH', () => {
-  assert.ok(drawSortKey('prop', 0) < ENTITY_DEPTH);
-});
-test('drawSortKey: NPC without authored z sorts at ENTITY_DEPTH', () => {
-  assert.equal(drawSortKey('npc', undefined), ENTITY_DEPTH);
-});
-test('drawSortKey: NPC without z sorts above wall prop (z=10)', () => {
-  assert.ok(drawSortKey('npc', undefined) > drawSortKey('prop', 10));
-});
-test('drawSortKey: NPC without z sorts below fixture prop (z=20)', () => {
-  assert.ok(drawSortKey('npc', undefined) < drawSortKey('prop', 20));
-});
-test('drawSortKey: NPC with authored z=60 uses setPieceZToDepth(60)', () => {
-  assert.equal(drawSortKey('npc', 60), setPieceZToDepth(60));
-});
-test('drawSortKey: NPC with z=60 sorts above furniture prop (z=30)', () => {
-  assert.ok(drawSortKey('npc', 60) > drawSortKey('prop', 30));
-});
-test('drawSortKey: correct ordering matches runtime stack', () => {
-  // floor < wall < door < [entity] < fixture < furniture < decoration < actor
-  const floor = drawSortKey('prop', 0);
-  const wall = drawSortKey('prop', 10);
-  const door = drawSortKey('prop', 12);
-  const npcDefault = drawSortKey('npc', undefined); // ENTITY_DEPTH
-  const fixture = drawSortKey('prop', 20);
-  const furniture = drawSortKey('prop', 30);
-  const decoration = drawSortKey('prop', 40);
-  const actor = drawSortKey('prop', 50);
+async function canvasPoint(page, tileX, tileY) {
+  const box = await page.locator('#gc').boundingBox();
+  assert.ok(box, 'expected canvas bounding box');
+  return {
+    x: box.x + tileX * 48,
+    y: box.y + tileY * 48,
+  };
+}
 
-  assert.ok(floor < wall);
-  assert.ok(wall < door);
-  assert.ok(door < npcDefault);
-  assert.ok(npcDefault < fixture);
-  assert.ok(fixture < furniture);
-  assert.ok(furniture < decoration);
-  assert.ok(decoration < actor);
-});
-
-// ---------------------------------------------------------------------------
-// npcCenterSnapPos (NPC center convention — issue #997 item 3)
-// ---------------------------------------------------------------------------
-test('npcCenterSnapPos: 1-tile NPC snaps center to nearest tile', () => {
-  // NPC with sizeTiles=1, displayed at px=80 in a 48px/tile canvas.
-  // topLeft = 80/48 ≈ 1.667 tiles, center = 2.167 tiles → snaps to 2.
-  // So topLeft result = 2 - 0.5 = 1.5
-  const result = npcCenterSnapPos(
-    /* dispPx */ 80,
-    /* tileSize */ 48,
-    /* sizeTiles */ 1,
-    /* snapStep */ 1,
-    /* limitTiles */ 8,
+test('production source clamps negative NPC depth and uses native size for later layers', () => {
+  assert.match(EXTENSION_SOURCE, /Math\.max\(TERRAIN_DEPTH\+0\.001,setPieceZToDepth\(localZ\)\)/);
+  assert.match(
+    EXTENSION_SOURCE,
+    /var nativeTiles=layerIndex===0\?\{w:pw,h:ph\}:nativeLayerTiles\(layer\.sprite\);/,
   );
-  assert.ok(Math.abs(result - 1.5) < 1e-9, `expected 1.5 but got ${result}`);
 });
 
-test('npcCenterSnapPos: sub-tile NPC (0.625 tiles) snaps center to half-tile step', () => {
-  // NPC width = 2.5ft / 4ft/tile = 0.625 tiles, sizeTiles=0.625
-  // dispPx = 48*2 = 96 → topLeft = 2 tiles, center = 2.3125 tiles
-  // half-step snap (0.5): nearest = 2.5 → topLeft = 2.5 - 0.3125 = 2.1875
-  const result = npcCenterSnapPos(
-    /* dispPx */ 96,
-    /* tileSize */ 48,
-    /* sizeTiles */ 0.625,
-    /* snapStep */ 0.5,
-    /* limitTiles */ 8,
-  );
-  assert.ok(Math.abs(result - 2.1875) < 1e-9, `expected 2.1875 but got ${result}`);
+test('hover tooltip reports the real default NPC depth', async () => {
+  const pack = createPack({
+    npcs: [{ id: 'npc-a', npcTypeId: 'tutorial-goon', x: 1, y: 1, widthFt: 4, heightFt: 4 }],
+  });
+  await withEditor(pack, async ({ page }) => {
+    const point = await canvasPoint(page, 1.5, 1.5);
+    await page.mouse.move(point.x, point.y);
+    await page.waitForFunction(() => document.getElementById('tooltip').style.display === 'block');
+    const tooltip = await page.locator('#tooltip').textContent();
+    assert.match(tooltip, /🧍 NPC: npc-a/);
+    assert.match(tooltip, /z: auto \(0 entity depth\)/);
+  });
 });
 
-test('npcCenterSnapPos: result clamped to [0, limitTiles - sizeTiles]', () => {
-  // dispPx way off right side
-  const result = npcCenterSnapPos(
-    /* dispPx */ 9999,
-    /* tileSize */ 48,
-    /* sizeTiles */ 1,
-    /* snapStep */ 1,
-    /* limitTiles */ 8,
-  );
-  assert.equal(result, 7); // max = 8 - 1 = 7
+test('negative-z NPCs stay above deeper negative props in production hit testing', async () => {
+  const pack = createPack({
+    props: [{ id: 'backdrop', kind: 'floor', x: 1, y: 1, width: 1, height: 1, z: -10, layers: [] }],
+    npcs: [
+      { id: 'npc-a', npcTypeId: 'tutorial-goon', x: 1, y: 1, z: -10, widthFt: 4, heightFt: 4 },
+    ],
+  });
+  await withEditor(pack, async ({ page }) => {
+    const point = await canvasPoint(page, 1.5, 1.5);
+    await page.mouse.move(point.x, point.y);
+    await page.waitForFunction(() => document.getElementById('tooltip').style.display === 'block');
+    await page.mouse.click(point.x, point.y);
+    await page.waitForFunction(() => document.getElementById('nid').value === 'npc-a');
+  });
 });
 
-test('npcCenterSnapPos: result clamped to 0 on left side', () => {
-  const result = npcCenterSnapPos(-999, 48, 1, 1, 8);
-  assert.equal(result, 0);
+test('dragging and applying use the production editor state machine', async () => {
+  const pack = createPack({
+    npcs: [{ id: 'npc-a', npcTypeId: 'tutorial-goon', x: 1, y: 1, widthFt: 4, heightFt: 4 }],
+  });
+  await withEditor(pack, async ({ page, applyBodies }) => {
+    const start = await canvasPoint(page, 1.5, 1.5);
+    const dragged = await canvasPoint(page, 2.6, 2.6);
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(dragged.x, dragged.y);
+    await page.mouse.up();
+    await page.waitForFunction(() => document.getElementById('nxf').value === '2.5');
+    await page.waitForFunction(() => document.getElementById('nyf').value === '2.5');
+
+    await page.click('#btnapply');
+    await page.waitForFunction(() => document.getElementById('stbar').textContent === 'Ready');
+    assert.equal(applyBodies.length, 1);
+    assert.deepEqual(applyBodies[0].npcs, [
+      {
+        id: 'npc-a',
+        npcTypeId: 'tutorial-goon',
+        x: 2.5,
+        y: 2.5,
+        widthFt: 4,
+        heightFt: 4,
+      },
+    ]);
+  });
 });
 
-test('npcCenterSnapPos: free placement (step=0) preserves exact center', () => {
-  // topLeft = 2.3 tiles, center = 2.3 + 0.3125 = 2.6125 → no snap
-  const result = npcCenterSnapPos(
-    /* dispPx */ 48 * 2.3,
-    /* tileSize */ 48,
-    /* sizeTiles */ 0.625,
-    /* snapStep */ 0,
-    /* limitTiles */ 8,
-  );
-  // Expected topLeft = center - 0.3125 = 2.6125 - 0.3125 = 2.3
-  assert.ok(Math.abs(result - 2.3) < 1e-9, `expected 2.3 but got ${result}`);
-});
+test('resizing uses the production editor state machine', async () => {
+  const pack = createPack({
+    npcs: [{ id: 'npc-a', npcTypeId: 'tutorial-goon', x: 1, y: 1, widthFt: 4, heightFt: 4 }],
+  });
+  await withEditor(pack, async ({ page }) => {
+    const point = await canvasPoint(page, 1.5, 1.5);
+    await page.mouse.click(point.x, point.y);
+    await page.waitForFunction(() => document.getElementById('nid').value === 'npc-a');
 
-// ---------------------------------------------------------------------------
-// hitTestRect
-// ---------------------------------------------------------------------------
-test('hitTestRect returns true for point inside the bounding box', () => {
-  // prop at tile (2,3), 2x1, tileSize=48
-  assert.equal(hitTestRect(2, 3, 2, 1, 100, 150, 48), true); // (100,150) inside
-});
-test('hitTestRect returns false for point outside the bounding box', () => {
-  assert.equal(hitTestRect(2, 3, 2, 1, 0, 0, 48), false);
-  assert.equal(hitTestRect(2, 3, 2, 1, 200, 200, 48), false);
-});
-test('hitTestRect: left edge is inclusive, right edge is exclusive', () => {
-  // Prop at (0,0) size 2x2, tileSize=48 → x ∈ [0,96), y ∈ [0,96)
-  assert.equal(hitTestRect(0, 0, 2, 2, 0, 0, 48), true); // left/top edge inclusive
-  assert.equal(hitTestRect(0, 0, 2, 2, 96, 0, 48), false); // right edge exclusive
-  assert.equal(hitTestRect(0, 0, 2, 2, 0, 96, 48), false); // bottom edge exclusive
-});
-
-// ---------------------------------------------------------------------------
-// historyPush / historyUndo / historyRedo
-// ---------------------------------------------------------------------------
-test('historyPush adds state and advances index', () => {
-  const { hist, histIdx } = historyPush([], -1, 'a');
-  assert.deepEqual(hist, ['a']);
-  assert.equal(histIdx, 0);
-});
-test('historyPush trims redo tail', () => {
-  // Start with hist=[a,b,c] at idx=1 (b is current, c is redo)
-  const { hist, histIdx } = historyPush(['a', 'b', 'c'], 1, 'd');
-  assert.deepEqual(hist, ['a', 'b', 'd']);
-  assert.equal(histIdx, 2);
-});
-test('historyPush caps at maxLen and keeps newest entries', () => {
-  const base = Array.from({ length: 5 }, (_, i) => String(i));
-  const { hist, histIdx } = historyPush(base, 4, 'new', 5);
-  assert.equal(hist.length, 5);
-  assert.equal(hist[hist.length - 1], 'new');
-  assert.equal(histIdx, 4);
-});
-
-test('historyUndo moves back one step', () => {
-  const hist = ['a', 'b', 'c'];
-  const result = historyUndo(hist, 2);
-  assert.equal(result.histIdx, 1);
-  assert.equal(result.state, 'b');
-});
-test('historyUndo returns null at beginning', () => {
-  assert.equal(historyUndo(['a'], 0), null);
-});
-
-test('historyRedo moves forward one step', () => {
-  const hist = ['a', 'b', 'c'];
-  const result = historyRedo(hist, 0);
-  assert.equal(result.histIdx, 1);
-  assert.equal(result.state, 'b');
-});
-test('historyRedo returns null at end', () => {
-  assert.equal(historyRedo(['a', 'b'], 1), null);
-});
-
-test('undo/redo round-trip preserves state', () => {
-  let { hist, histIdx } = historyPush([], -1, 'state-0');
-  ({ hist, histIdx } = historyPush(hist, histIdx, 'state-1'));
-  ({ hist, histIdx } = historyPush(hist, histIdx, 'state-2'));
-
-  // Undo twice
-  let step = historyUndo(hist, histIdx);
-  assert.equal(step.state, 'state-1');
-  step = historyUndo(hist, step.histIdx);
-  assert.equal(step.state, 'state-0');
-
-  // Redo to state-1
-  step = historyRedo(hist, step.histIdx);
-  assert.equal(step.state, 'state-1');
-
-  // Cannot redo further than state-2 from idx=1
-  const atEnd = historyRedo(hist, 2);
-  assert.equal(atEnd, null);
+    const handle = await canvasPoint(page, 2, 2);
+    const bigger = await canvasPoint(page, 3, 3);
+    await page.mouse.move(handle.x, handle.y);
+    await page.mouse.down();
+    await page.mouse.move(bigger.x, bigger.y);
+    await page.mouse.up();
+    await page.waitForFunction(() => document.getElementById('nwf').value === '8');
+    await page.waitForFunction(() => document.getElementById('nhf').value === '8');
+    assert.equal(await page.locator('#nxf').inputValue(), '1');
+    assert.equal(await page.locator('#nyf').inputValue(), '1');
+  });
 });

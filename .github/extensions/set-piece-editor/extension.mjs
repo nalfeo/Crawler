@@ -846,12 +846,16 @@ function layerLocked(lid){var l=getLayers().find(function(x){return x.id===lid;}
 function propLayer(p){return p.sceneLayer||(getLayers()[0]||{id:'default'}).id;}
 function npcLayer(n){return n.sceneLayer||(getLayers()[0]||{id:'default'}).id;}
 // Mirror src/shared/render-depths.ts:setPieceZToDepth so draw order matches runtime.
-var ENTITY_DEPTH=0;
+var TERRAIN_DEPTH=-20,ENTITY_DEPTH=0;
 function setPieceZToDepth(z){if(z<20)return -19+z*0.8;return 2+(z-20)*0.1;}
+function nativeLayerTiles(sprite){
+  if(sprite&&sprite.source==='custom')return{w:nnum(sprite.widthTiles,1),h:nnum(sprite.heightTiles,1)};
+  return{w:1,h:1};
+}
 // Depth-based sort key — keeps editor canvas order in parity with the Phaser depth stack.
 // NPCs without an authored z sort at ENTITY_DEPTH (between background and foreground props).
 function globalZ(layerId,kind,localZ){
-  if(kind==='npc')return localZ!==undefined?setPieceZToDepth(localZ):ENTITY_DEPTH;
+  if(kind==='npc')return localZ!==undefined?Math.max(TERRAIN_DEPTH+0.001,setPieceZToDepth(localZ)):ENTITY_DEPTH;
   return setPieceZToDepth(localZ);
 }
 function nnum(v,d){var n=Number(v);return Number.isFinite(n)?n:d;}
@@ -1328,12 +1332,13 @@ function drawProp(prop,sel,ad){
   var sprited=false;
   layers.forEach(function(layer,layerIndex){
     if(!layer||!layer.sprite)return;
+    var nativeTiles=layerIndex===0?{w:pw,h:ph}:nativeLayerTiles(layer.sprite);
     var targetW=(layer.widthFt!==undefined&&layer.heightFt!==undefined)
       ?(Math.max(0.25,nnum(layer.widthFt,FEET_PER_TILE))/FEET_PER_TILE)*ts
-      :(pw*ts);
+      :(nativeTiles.w*ts);
     var targetH=(layer.widthFt!==undefined&&layer.heightFt!==undefined)
       ?(Math.max(0.25,nnum(layer.heightFt,FEET_PER_TILE))/FEET_PER_TILE)*ts
-      :(ph*ts);
+      :(nativeTiles.h*ts);
     var scale=Math.max(0.01,nnum(layer.scale,1));
     targetW*=scale;
     targetH*=scale;
@@ -1792,7 +1797,7 @@ function showTooltipForHit(ht,cx,cy){
     lines.push('pos: '+(n.x||0)+', '+(n.y||0));
     lines.push('size: '+ns.w.toFixed(2)+'\u00d7'+ns.h.toFixed(2)+' tiles');
     lines.push('layer: '+lname2);
-    if(n.z!==undefined)lines.push('z: '+n.z);else lines.push('z: 60 (default)');
+    if(n.z!==undefined)lines.push('z: '+n.z);else lines.push('z: auto ('+ENTITY_DEPTH+' entity depth)');
     if(n.anchorRole)lines.push('anchor: '+n.anchorRole);
   }
   ttEl.textContent=lines.join('\\n');
