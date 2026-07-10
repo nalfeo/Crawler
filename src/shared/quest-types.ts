@@ -54,6 +54,12 @@ export interface QuestDef {
   readonly onCompleteGoalFlag?: string;
   /** NPC that offers this quest, if any. */
   readonly giverNpcId?: string;
+  /**
+   * When true, this quest is tracked mechanically (events fire, goal flag sets on
+   * completion) but is NOT shown in the HUD quest tracker. Useful for passive
+   * background conditions such as den-unlock kill counters.
+   */
+  readonly hidden?: boolean;
 }
 
 export type QuestStatus = 'active' | 'complete';
@@ -140,6 +146,7 @@ export interface QuestPackQuestSource {
   readonly summary: string;
   readonly onCompleteGoalFlag?: string;
   readonly giverNpcId?: string;
+  readonly hidden?: boolean;
   readonly objectives?: readonly QuestObjectiveDef[];
   readonly template?: QuestTemplateDef;
 }
@@ -223,6 +230,7 @@ const questPackQuestSourceSchema = z
     summary: z.string().min(1),
     onCompleteGoalFlag: z.string().min(1).optional(),
     giverNpcId: z.string().min(1).optional(),
+    hidden: z.boolean().optional(),
     objectives: z.array(objectiveSchema).min(1).optional(),
     template: templateSchema.optional(),
   })
@@ -316,6 +324,7 @@ function compileQuestSource(source: QuestPackQuestSource): QuestDef {
     summary: source.summary,
     giverNpcId: source.giverNpcId,
     onCompleteGoalFlag: source.onCompleteGoalFlag,
+    ...(source.hidden ? { hidden: true } : {}),
     objectives,
   };
 }

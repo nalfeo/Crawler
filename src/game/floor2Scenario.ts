@@ -106,6 +106,7 @@ import {
   evictFurthestAmbient,
   resolveAmbientSpawnPoint,
   getSpawnerState,
+  ensureBossBattleSpellReward,
 } from './floorScenario.js';
 import { pickFromSpawnZones, type SpawnZoneWeights } from './spawn-zones.js';
 
@@ -159,6 +160,17 @@ export const FLOOR2_STAIRS_POPPED_GOAL_ID = 'floor2-stairs-popped';
 export const FLOOR2_TIMEOUT_GOAL_ID = 'floor2-timeout';
 /** Latched when the player first enters the settlement cluster. */
 export const FLOOR2_SETTLEMENT_FOUND_GOAL_ID = 'floor2-settlement-found';
+/** Latched when the player completes the Broker's intro dialogue (all lines read). */
+export const FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID = 'floor2-broker-intro-complete';
+
+/**
+ * Call when the player finishes reading the Broker's introductory dialogue.
+ * Latches `floor2-broker-intro-complete`; `floor2ObjectiveTick` uses this to
+ * activate the reputation system.
+ */
+export function meetBroker(world: GameWorld): void {
+  setGoalFlag(world, FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
+}
 
 /** Goal-flag name for a family's den-unlock latch. */
 export function denUnlockGoalId(familyId: FamilyId): string {
@@ -224,6 +236,9 @@ export function buildDenUnlockQuestPack(
       title: `${archetype.title} — ${familyName}`,
       summary: archetype.summary,
       onCompleteGoalFlag: goalId,
+      // Den-unlock kill-counter quests are passive background conditions; they
+      // track mechanically but should never appear in the HUD quest tracker.
+      hidden: true,
       template: {
         kind: 'killTargets',
         targets: [
@@ -503,6 +518,19 @@ export function floor2ObjectiveTick(world: GameWorld): void {
     }
   }
 
+  // Activate the reputation system once the Broker has explained the floor
+  // (player completed all of the Broker's intro dialogue lines). meetBroker()
+  // latches FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID; MainGameScene fires it when
+  // the player advances past the Broker's last dialogue line.
+  // NOTE: `=== false` is intentional — `undefined` means "active by default"
+  // (backwards compat for labs that don't set reputationSystemActive).
+  if (
+    floor2State.reputationSystemActive === false &&
+    world.goalFlags.get(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID) === true
+  ) {
+    floor2State.reputationSystemActive = true;
+  }
+
   const decapitated = ensureDecapitatedSet(world);
   let processedEvents = floor2ProcessedCombatEvents.get(world);
   if (!processedEvents) {
@@ -698,6 +726,9 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
       presentFamilies: roster.presentFamilies.slice(),
       contestedResource: roster.contestedResource,
       betrayerFlag: false,
+      // Reputation system starts locked; unlocked by floor2ObjectiveTick once
+      // the Broker intro completion flag (FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID) is set.
+      reputationSystemActive: false,
     },
     trashTerritories: assignQuadrantTrashTerritories(world),
     ambientEnemyArchetypes: new Map<number, string>(),
@@ -707,6 +738,15 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
   setGoalFlag(world, FLOOR2_STAIRS_POPPED_GOAL_ID, false);
   setGoalFlag(world, FLOOR2_TIMEOUT_GOAL_ID, false);
   setGoalFlag(world, FLOOR2_SETTLEMENT_FOUND_GOAL_ID, false);
+  setGoalFlag(world, FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, false);
+
+  // All Floor 1 progressive systems are active from the start of Floor 2.
+  // Players arrive here having already unlocked these features on Floor 1.
+  world.featureUnlocks.inventory = true;
+  world.featureUnlocks.equipment = true;
+  world.featureUnlocks.spells = true;
+  ensureBossBattleSpellReward(world, playerEid);
+  setGoalFlag(world, 'floor1-drops-unlocked', true);
 
   removeStatModifiers(world, 'floor', 'floor2-manifest-player');
   if (manifest.player.moveSpeedBonus > 0) {

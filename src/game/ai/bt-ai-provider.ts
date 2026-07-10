@@ -93,6 +93,7 @@ import {
   getShopkeeperStage,
   SHOPKEEPER_EQUIPMENT_COST,
 } from '../floorScenario.js';
+import { FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID } from '../floor2Scenario.js';
 import { getActiveWeapon, getActiveWeaponReadiness } from '../weaponSystem.js';
 // AI tuning constants (pure values; identical runtime behavior) live in
 // ./bt-ai-tuning.ts. Imported here so every reference in this file is unchanged.
@@ -6571,14 +6572,29 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerEid: number,
     npcEid: number,
   ): string | null {
-    const floorScenario = world.floorScenario;
-    if (!floorScenario) {
-      return 'generic-interaction';
-    }
-
     const instance = world.npcs.get(npcEid);
     if (!instance) {
       return null;
+    }
+
+    const familyState = world.floorExtendedState?.familyState;
+    if (familyState) {
+      // Floor 2 intro gate: until the broker intro goal is complete, the broker
+      // is the only relevant interaction target.
+      if (instance.defId === 'the-broker') {
+        return world.goalFlags.get(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID) === true
+          ? null
+          : 'meet-broker-intro';
+      }
+      // Floor 2 currently has no scripted non-broker NPC interaction goals in the
+      // BT pipeline; treat them as irrelevant so headless progression does not
+      // loop on unsupported INTERACT actions.
+      return null;
+    }
+
+    const floorScenario = world.floorScenario;
+    if (!floorScenario) {
+      return 'generic-interaction';
     }
 
     const objective = floorScenario.objective;

@@ -43,6 +43,8 @@ export {
   isFamilySpawnGated,
   denUnlockGoalId,
   bossDefeatGoalId,
+  meetBroker,
+  FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID,
 } from './floor2Scenario.js';
 export {
   getShopkeeperStage,
