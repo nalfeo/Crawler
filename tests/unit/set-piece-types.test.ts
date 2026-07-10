@@ -200,6 +200,37 @@ describe('setPiecePackSchema', () => {
     ).toThrow(/outside/);
   });
 
+  it('treats explicit sceneLayers field as authoritative even when empty', () => {
+    expect(() =>
+      setPiecePackSchema.parse({
+        version: 1,
+        packId: 'bad-scene-layer-ref',
+        setPieces: [
+          {
+            id: 'layered',
+            name: 'Layered',
+            theme: 'test',
+            sizing: 'exact',
+            width: 2,
+            height: 2,
+            description: 'Explicit empty layer list should still validate sceneLayer refs.',
+            sceneLayers: [],
+            props: [
+              {
+                id: 'p',
+                kind: 'fixture',
+                x: 0,
+                y: 0,
+                sceneLayer: 'ghost',
+                layers: [{ sprite: { source: 'catalog', spriteId: 'sprite:npc.guide' } }],
+              },
+            ],
+          },
+        ],
+      }),
+    ).toThrow(/references unknown sceneLayer/);
+  });
+
   it('rejects maxWidth/maxHeight on exact set pieces', () => {
     expect(() =>
       setPiecePackSchema.parse({

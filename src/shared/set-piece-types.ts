@@ -414,7 +414,7 @@ const setPieceSourceSchema = z
     const boundW = isThemed ? (value.maxWidth ?? value.width) : value.width;
     const boundH = isThemed ? (value.maxHeight ?? value.height) : value.height;
     const layerIds = new Set<string>();
-    const hasDeclaredLayers = value.sceneLayers !== undefined && value.sceneLayers.length > 0;
+    const hasDeclaredLayers = value.sceneLayers !== undefined;
     if (value.maxWidth !== undefined && value.maxWidth < value.width) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'maxWidth must be >= width.' });
     }

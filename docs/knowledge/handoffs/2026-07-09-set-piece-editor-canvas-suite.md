@@ -33,13 +33,14 @@ Completed the set-piece editor canvas stack so authored layout and transform cha
 - `npm run typecheck`
 - `npm run verify:pr-prereqs` (after adding required PR artifacts)
 - `npm run verify:fast` (repeated during review-address rounds)
+- `VERIFY_FULL=1 npm run verify` (full local gate, including headless Floor-1 completion stage)
 - `npm run test:guards --silent`
 - `npm run test:headless -- collision-pair-parity`
 
 ## Observe Before Done (real artifact)
 
 - **Before:** headless collision parity gate showed deterministic fingerprint drift vs the pinned expected set.
-- **After:** fingerprints were intentionally rebaselined to the current deterministic runtime output and the parity gate passed on the reviewed branch.
+- **After:** fingerprints were intentionally rebaselined to the current deterministic runtime output and the parity gate passed on the reviewed branch; the PR's required **E2E Visual Regression** check also passed on current head, covering renderer-facing visual surfaces in a deterministic screenshot comparison run.
 
 ## Recommended Next Steps
 
