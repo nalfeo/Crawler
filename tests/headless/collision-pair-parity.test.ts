@@ -166,39 +166,55 @@ interface CollisionFingerprint {
  * Before → after (kills / damageDealt / damageTaken / score):
  *   seed  13:  4/175.90000247955322/0/0   →  4/211.00000286102295/0/0
  *   seed  42:  5/205.5999984741211/15/4   →  8/243.75/19/13
+ *
+ * ## 2026-07-10 re-baseline — floor1 class-D pre-chain tutorial-goon AI fix
+ *
+ * The explore-dwell watchdog now correctly suppresses entity-backed NPC
+ * progress targets (tutorial-goon guideNpcEid), and the headless AI driver
+ * gains a tutorial-goon interaction fallback for EXPLORE seek state. Together
+ * these fix the pre-chain EXPLORE/suppressedProgressNav oscillation so the AI
+ * navigates more efficiently in the first 1500 frames: it reaches enemies
+ * sooner and deals significantly more damage. This is a design-intended,
+ * documented AI behavior improvement (class-D fix). Re-baseline pinned only
+ * after each seed remained deterministic across two back-to-back invocations.
+ * Before → after (kills / damageDealt / damageTaken / score):
+ *   seed   7:  1/140.16999250650406/25/0    →  10/294.439998626709/40/17
+ *   seed  13:  4/211.00000286102295/0/0     →  11/296.20000076293945/0/9
+ *   seed  42:  8/243.75/19/13              →   8/273.90000009536743/10/22
+ *   seed 137:  5/179.23999977111816/10/2   →  16/450/0/22
  */
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
     outcome: 'timeout',
     kills: 8,
-    damageDealt: 243.75,
-    damageTaken: 19,
-    finalScore: 13,
+    damageDealt: 273.90000009536743,
+    damageTaken: 10,
+    finalScore: 22,
   },
   7: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 1,
-    damageDealt: 140.16999250650406,
-    damageTaken: 25,
-    finalScore: 0,
+    kills: 10,
+    damageDealt: 294.439998626709,
+    damageTaken: 40,
+    finalScore: 17,
   },
   13: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 4,
-    damageDealt: 211.00000286102295,
+    kills: 11,
+    damageDealt: 296.20000076293945,
     damageTaken: 0,
-    finalScore: 0,
+    finalScore: 9,
   },
   137: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 5,
-    damageDealt: 179.23999977111816,
-    damageTaken: 10,
-    finalScore: 2,
+    kills: 16,
+    damageDealt: 450,
+    damageTaken: 0,
+    finalScore: 22,
   },
 };
 
