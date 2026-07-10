@@ -150,6 +150,51 @@ describe('FOV System', () => {
     expect(floorMap.isVisible(15, 10)).toBe(false);
   });
 
+  it('blocks FOV through a diagonal corner seam', () => {
+    const floorMap = makeSmallMap();
+    world.floorMap = floorMap;
+
+    // Build a blocked corner seam around tile (6,6): the orthogonals
+    // (6,5) and (5,6) are walls, so diagonal peeking across the seam
+    // from (5,5) to (6,6) must be blocked.
+    floorMap.tileMap.setFlags(6, 5, TilePresets.WALL);
+    floorMap.tileMap.setFlags(5, 6, TilePresets.WALL);
+
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(Position, { x: 5 * 32 + 16, y: 5 * 32 + 16 }));
+    addComponent(world.ecs, eid, Player);
+
+    fovSystem(world);
+
+    expect(floorMap.isVisible(5, 5)).toBe(true);
+    expect(floorMap.isVisible(6, 6)).toBe(false);
+  });
+
+  it('blocks FOV through a corner seam several tiles from the player (mid-ray seam)', () => {
+    // Player at (2,2); blocked seam at the (5,5)→(6,6) diagonal step (walls at
+    // (6,5) and (5,6)). The seam is 4 tile-steps away, so this regression ensures
+    // the full-ray check catches seams that are not origin-adjacent.
+    const floorMap = makeSmallMap();
+    world.floorMap = floorMap;
+
+    floorMap.tileMap.setFlags(6, 5, TilePresets.WALL);
+    floorMap.tileMap.setFlags(5, 6, TilePresets.WALL);
+
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(Position, { x: 2 * 32 + 16, y: 2 * 32 + 16 }));
+    addComponent(world.ecs, eid, Player);
+
+    fovSystem(world);
+
+    // The player's own tile and tiles before the seam are visible.
+    expect(floorMap.isVisible(2, 2)).toBe(true);
+    expect(floorMap.isVisible(5, 5)).toBe(true);
+    // Tile (6,6) lies behind the mid-ray blocked seam — must not be visible.
+    expect(floorMap.isVisible(6, 6)).toBe(false);
+    // Tile (7,7) is even further behind the seam — also not visible.
+    expect(floorMap.isVisible(7, 7)).toBe(false);
+  });
+
   it('should clear visibility before recomputing', () => {
     const floorMap = makeSmallMap();
     world.floorMap = floorMap;
@@ -334,15 +379,11 @@ describe('FOV System', () => {
     expect(diffs).toBeGreaterThan(0); // the invariant genuinely breaks at the edge
   });
 
-  it('pins the shadow/occlusion-edge divergence at a doorway (well inside the radius)', () => {
+  it('keeps doorway look-through tiles visible at the shipped sub-factor', () => {
     // A vertical wall at column 12 with a 1-tile doorway at y=10 splits an open
     // 40×40 room; the player stands left of the wall, aligned with the doorway.
-    // The shadow wedge cast through the doorway rasterizes differently per factor.
-    // Verified with the real fovSystem: tiles (21,8)/(22,8)/(23,8) — beyond the
-    // wall, dist ≈15–17 (far inside the 25-tile radius, so this is occlusion- not
-    // radius-driven) — are visible at factor 2 but NOT at factor 8. Tile-level
-    // visibility is therefore not globally factor-invariant; this is intended,
-    // lab-only behavior of the granularity knob, pinned here.
+    // Adjacent diagonal peeking at the corner seam is blocked, but farther
+    // tiles that are genuinely reachable through the doorway stay visible.
     const N = 40;
     const col = 12;
     const doorY = 10;
