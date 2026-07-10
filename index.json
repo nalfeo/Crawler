@@ -22,6 +22,17 @@
     "path": "by-sha/db11e90a8860c6403f5301b7f75e986d2d11aed3.json"
   },
   {
+    "commit": "0808719ff3a45e79bcbc86aba0cc73264b238975",
+    "commitDate": "2026-07-09T23:13:00-07:00",
+    "commitSubject": "chore(labs): remove iPhone landscape viewport simulation (#1007)",
+    "capturedAt": "2026-07-10T06:57:09.809Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29073689605",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/0808719ff3a45e79bcbc86aba0cc73264b238975.json"
+  },
+  {
     "commit": "f6d3f0217c453baf5364d03fdd598b8711e92de0",
     "commitDate": "2026-07-09T22:08:48-07:00",
     "commitSubject": "feat: add local sprite editor canvas (#1005)",
