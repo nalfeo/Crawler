@@ -10,7 +10,7 @@ Accepted
 
 ## Estimated Complexity
 
-🍎 x 3 — three systems touched (ci-policy, agent-personas/AGENTS.md, docs-tooling enforcement)
+🍎 x 4 — multi-system process/policy/tooling coordination with a new workflow path + ADR
 
 ## Context
 
