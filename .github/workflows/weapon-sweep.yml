@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       seed_count:
-        description: 'Number of sequential seeds to run (1..1000)'
+        description: 'Number of sequential seeds to run (1..100)'
         type: string
         default: '100'
       weapons:
@@ -34,8 +34,8 @@ jobs:
           MAX_FRAMES: ${{ inputs.max_frames }}
         run: |
           set -euo pipefail
-          if ! [[ "$SEED_COUNT" =~ ^[0-9]+$ ]] || [ "$SEED_COUNT" -lt 1 ] || [ "$SEED_COUNT" -gt 1000 ]; then
-            echo "::error::seed_count must be an integer in [1,1000]"
+          if ! [[ "$SEED_COUNT" =~ ^[0-9]+$ ]] || [ "$SEED_COUNT" -lt 1 ] || [ "$SEED_COUNT" -gt 100 ]; then
+            echo "::error::seed_count must be an integer in [1,100]"
             exit 1
           fi
           if ! [[ "$MAX_FRAMES" =~ ^[0-9]+$ ]] || [ "$MAX_FRAMES" -lt 1 ] || [ "$MAX_FRAMES" -gt 600000 ]; then
