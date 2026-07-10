@@ -36,6 +36,15 @@ export function familyRelationshipSystem(
   world: GameWorld,
   options: FamilyRelationshipSystemOptions = {},
 ): void {
+  // Guard: when Floor 2 state is present with reputationSystemActive explicitly
+  // false, discard queued deltas (prevents queue buildup) and skip all processing
+  // until the Broker intro completion flag is set.
+  const familyState = world.floorExtendedState?.familyState;
+  if (familyState && familyState.reputationSystemActive === false) {
+    world.factionRelationDeltas.length = 0;
+    return;
+  }
+
   // 1. Drain queued deltas. Copy-then-clear so a delta handler that itself
   //    enqueues more work processes on the next tick, not this one — bounded.
   const deltas = world.factionRelationDeltas;

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import fc from 'fast-check';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import {
@@ -22,6 +22,8 @@ import {
   FLOOR1_TUTORIAL_QUEST_ID,
   SHOPKEEPER_EQUIPMENT_ITEM_ID,
   SHOPKEEPER_FETCH_ITEM_ID,
+  installQuestPacks,
+  installDefaultQuestPacks,
 } from '../../src/shared/quest-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -207,5 +209,107 @@ describe('questSystem', () => {
         }),
       );
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hidden-quest tracking regression tests
+// ---------------------------------------------------------------------------
+// Uses a minimal injected quest pack so tests don't depend on Floor 2 scenario
+// infrastructure. The registry is restored after each test group.
+
+const HIDDEN_QUEST_ID = 'test-hidden-bg-counter';
+const VISIBLE_QUEST_ID = 'test-visible-story';
+
+describe('questSystem — hidden quest tracking', () => {
+  beforeEach(() => {
+    installDefaultQuestPacks();
+  });
+
+  afterEach(() => {
+    installDefaultQuestPacks();
+  });
+
+  function installTestPacks() {
+    installQuestPacks([
+      {
+        version: 1,
+        packId: 'test-hidden',
+        quests: [
+          {
+            id: HIDDEN_QUEST_ID,
+            title: 'Background Counter',
+            summary: 'Passive background task.',
+            hidden: true,
+            objectives: [{ id: 'bg-kills', label: 'Kill things', kind: 'counter', target: 5 }],
+          },
+        ],
+      },
+      {
+        version: 1,
+        packId: 'test-visible',
+        quests: [
+          {
+            id: VISIBLE_QUEST_ID,
+            title: 'Story Quest',
+            summary: 'A real story quest.',
+            objectives: [
+              { id: 'reach-goal', label: 'Reach the goal', kind: 'goal', goalId: 'test-goal' },
+            ],
+          },
+        ],
+      },
+    ]);
+  }
+
+  it('falls back to a hidden quest when no visible quest exists', () => {
+    installTestPacks();
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+
+    acceptQuest(world, HIDDEN_QUEST_ID);
+    questSystem(world);
+
+    // No visible quests — falls back to the hidden one.
+    expect(getTrackedQuest(world)?.questId).toBe(HIDDEN_QUEST_ID);
+  });
+
+  it('reassigns tracking from a hidden quest to a visible quest when one is accepted', () => {
+    installTestPacks();
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+
+    // Hidden quest accepted first — becomes the tracked quest by fallback.
+    acceptQuest(world, HIDDEN_QUEST_ID);
+    questSystem(world);
+    expect(getTrackedQuest(world)?.questId).toBe(HIDDEN_QUEST_ID);
+
+    // A visible quest is accepted while the hidden one is still tracked.
+    // acceptQuest sees hasTracked=true so the new quest gets tracked:false.
+    const visible = acceptQuest(world, VISIBLE_QUEST_ID);
+    expect(visible?.tracked).toBe(false);
+
+    // questSystem detects: tracked quest is hidden AND a visible quest exists.
+    // It must reassign tracking to the visible quest.
+    questSystem(world);
+    expect(getTrackedQuest(world)?.questId).toBe(VISIBLE_QUEST_ID);
+    // Hidden quest is no longer tracked.
+    expect(world.questLog.get(HIDDEN_QUEST_ID)?.tracked).toBe(false);
+  });
+
+  it('does NOT reassign when the tracked quest is already visible', () => {
+    installTestPacks();
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+
+    acceptQuest(world, VISIBLE_QUEST_ID);
+    questSystem(world);
+    expect(getTrackedQuest(world)?.questId).toBe(VISIBLE_QUEST_ID);
+
+    // Accept the hidden quest second — tracking should not move.
+    acceptQuest(world, HIDDEN_QUEST_ID);
+    questSystem(world);
+    expect(getTrackedQuest(world)?.questId).toBe(VISIBLE_QUEST_ID);
+    expect(world.questLog.get(HIDDEN_QUEST_ID)?.tracked).toBe(false);
   });
 });

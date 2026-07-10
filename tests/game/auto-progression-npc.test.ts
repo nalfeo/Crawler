@@ -168,7 +168,7 @@ describe('autoNpcInteractionSystem', () => {
     expect(world.goalFlags.get('floor1-drops-unlocked')).toBe(true);
   });
 
-  it('ignores NPCs with an unrecognized defId', () => {
+  it('advances cooldown for unrecognized NPCs so targeting can progress', () => {
     const world = createTestWorld();
     addNpc(world, 10, { defId: 'mystery-npc', nearbyPlayer: true });
     expect(
@@ -179,7 +179,7 @@ describe('autoNpcInteractionSystem', () => {
         100,
         30,
       ),
-    ).toBe(0);
+    ).toBe(100);
   });
 
   it('meets the shopkeeper NPC', () => {

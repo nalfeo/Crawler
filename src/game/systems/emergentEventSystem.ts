@@ -185,7 +185,11 @@ function playerRoom(world: GameWorld): { roomId: number; role: RoomRole } | null
  */
 export function emergentEventSystem(world: GameWorld): void {
   if (world.state !== 'playing') return;
-  if (world.floorExtendedState?.familyState == null) return;
+  const familyState = world.floorExtendedState?.familyState;
+  if (familyState == null) return;
+  // While the Floor 2 reputation system is locked, pause the scheduler so
+  // one-shot events are not consumed before their deltas can ever apply.
+  if (familyState.reputationSystemActive === false) return;
 
   const state = getState(world);
   if (state.pack === null) state.pack = loadEmergentEventPack();

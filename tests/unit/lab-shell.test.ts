@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   initLabShell,
   setControlsCollapsedState,
-  setViewportPresetState,
   type LabShellElements,
 } from '../../src/labs/lab-shell.js';
 
@@ -51,12 +50,10 @@ function createElements(): {
   elements: LabShellElements;
   controlsPanel: { classList: ClassListMock };
   controlsToggle: ButtonMock;
-  viewportToggle: ButtonMock;
   body: { classList: ClassListMock };
 } {
   const controlsPanel = { classList: new ClassListMock() };
   const controlsToggle = new ButtonMock();
-  const viewportToggle = new ButtonMock();
   const body = { classList: new ClassListMock() };
 
   return {
@@ -64,11 +61,9 @@ function createElements(): {
       body,
       controlsPanel,
       controlsToggle,
-      viewportToggle,
     },
     controlsPanel,
     controlsToggle,
-    viewportToggle,
     body,
   };
 }
@@ -109,60 +104,21 @@ describe('lab shell', () => {
     expect(controlsToggle.attributes.get('aria-expanded')).toBe('true');
   });
 
-  it('updates the viewport toggle label and shell class for the iphone preset', () => {
-    const { elements, body, viewportToggle } = createElements();
-
-    setViewportPresetState(elements, 'iphone-landscape');
-    expect(body.classList.contains('lab-shell--iphone-landscape')).toBe(true);
-    expect(viewportToggle.textContent).toBe('iPhone Landscape: On');
-    expect(viewportToggle.attributes.get('aria-pressed')).toBe('true');
-
-    setViewportPresetState(elements, 'desktop');
-    expect(body.classList.contains('lab-shell--iphone-landscape')).toBe(false);
-    expect(viewportToggle.textContent).toBe('iPhone Landscape: Off');
-    expect(viewportToggle.attributes.get('aria-pressed')).toBe('false');
-  });
-
-  it('restores and persists the desktop viewport toggle for active labs', () => {
-    const { elements, body, controlsToggle, viewportToggle } = createElements();
+  it('restores and persists the collapsed state for active labs', () => {
+    const { elements, controlsToggle } = createElements();
     const { data, storage } = createStorage({
       'lab-controls-collapsed': 'true',
-      'lab-viewport-preset': 'iphone-landscape',
     });
 
     initLabShell({
       hasActiveLab: true,
-      allowViewportPreset: true,
       elements,
       storage,
     });
 
     expect(controlsToggle.textContent).toBe('‹');
-    expect(body.classList.contains('lab-shell--iphone-landscape')).toBe(true);
-    expect(viewportToggle.hidden).toBe(false);
-    expect(viewportToggle.textContent).toBe('iPhone Landscape: On');
-
-    viewportToggle.click();
-    expect(body.classList.contains('lab-shell--iphone-landscape')).toBe(false);
-    expect(data.get('lab-viewport-preset')).toBe('desktop');
 
     controlsToggle.click();
     expect(data.get('lab-controls-collapsed')).toBe('false');
-  });
-
-  it('hides the viewport toggle when the preset is not available', () => {
-    const { elements, body, viewportToggle } = createElements();
-    const { storage } = createStorage({ 'lab-viewport-preset': 'iphone-landscape' });
-
-    initLabShell({
-      hasActiveLab: true,
-      allowViewportPreset: false,
-      elements,
-      storage,
-    });
-
-    expect(viewportToggle.hidden).toBe(true);
-    expect(body.classList.contains('lab-shell--iphone-landscape')).toBe(false);
-    expect(viewportToggle.textContent).toBe('iPhone Landscape: Off');
   });
 });

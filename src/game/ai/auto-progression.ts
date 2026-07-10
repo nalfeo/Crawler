@@ -23,6 +23,7 @@ import {
   selectSpellFromBossBattle,
   meetShopkeeper,
   meetSpellQuestGiver,
+  meetBroker,
   spendPoints,
 } from '../index.js';
 import type { PrimaryStatId } from '../../shared/stats.js';
@@ -73,8 +74,14 @@ export function autoNpcInteractionSystem(
     meetSpellQuestGiver(world);
     return currentFrame;
   }
+  if (targetNpc.defId === 'the-broker') {
+    meetBroker(world);
+    return currentFrame;
+  }
 
-  return lastInteractionFrame;
+  // Unknown/unsupported NPC interaction: still advance cooldown so the AI can
+  // retarget instead of hammering the same unsupported target every frame.
+  return currentFrame;
 }
 
 export function autoFloor1ProgressionSystem(world: GameWorld, playerEid: number): void {
