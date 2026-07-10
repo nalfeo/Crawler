@@ -47,6 +47,7 @@ import {
   type RoomBounds,
 } from '../../shared/map-types.js';
 import { getNpcDef } from '../../shared/npc-types.js';
+import { ENTITY_DEPTH, TERRAIN_DEPTH, setPieceZToDepth } from '../../shared/render-depths.js';
 import {
   collectCustomArtRequests,
   flattenSetPieceLayers,
@@ -270,8 +271,10 @@ function buildHoverItems(def: SetPieceDef, stamp: StampedSetPiece): HoverItem[] 
   });
   for (const npc of stamp.npcs) {
     const ndef = getNpcDef(npc.npcTypeId);
-    const wFt = ndef?.widthFt ?? TILE_SIZE_FT;
-    const hFt = ndef?.heightFt ?? TILE_SIZE_FT;
+    const wFt = npc.widthFt ?? ndef?.widthFt ?? TILE_SIZE_FT;
+    const hFt = npc.heightFt ?? ndef?.heightFt ?? TILE_SIZE_FT;
+    const npcDepth =
+      npc.z !== undefined ? Math.max(TERRAIN_DEPTH + 0.001, setPieceZToDepth(npc.z)) : ENTITY_DEPTH;
     const lines: string[] = [];
     if (npc.anchorRole !== undefined) {
       const color = NPC_ANCHOR_COLOR[npc.anchorRole];
@@ -282,14 +285,22 @@ function buildHoverItems(def: SetPieceDef, stamp: StampedSetPiece): HoverItem[] 
     lines.push(
       `<span style="color:#94a3b8">tile</span> (${npc.tileX}, ${npc.tileY}) · <span style="color:#94a3b8">size</span> ${wFt}×${hFt} ft`,
     );
+    lines.push(
+      `<span style="color:#94a3b8">depth</span> ${npcDepth.toFixed(3)} <span style="color:#64748b">(${depthBandLabel(npcDepth)})</span>`,
+    );
+    lines.push(
+      `<span style="color:#94a3b8">transform</span> rot ${npc.rotationDeg ?? 0}° · flipX ${npc.flipX === true ? 'on' : 'off'} · flipY ${npc.flipY === true ? 'on' : 'off'}${npc.z !== undefined ? ` · z ${npc.z}` : ''}`,
+    );
     items.push({
       centreXpx: ftToPx(npc.x),
       centreYpx: ftToPx(npc.y),
       halfWpx: ftToPx(wFt) / 2,
       halfHpx: ftToPx(hFt) / 2,
-      depth: 0,
+      depth: npcDepth,
       header: `NPC · ${esc(ndef?.name ?? npc.npcTypeId)}`,
-      npcDefId: npc.npcTypeId,
+      ...(npc.spriteOverride !== undefined
+        ? { ref: npc.spriteOverride }
+        : { npcDefId: npc.npcTypeId }),
       bodyHtml: lines.join('<br/>'),
     });
   }

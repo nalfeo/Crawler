@@ -818,6 +818,14 @@ var KINDS={
 var ZD={floor:0,wall:10,door:12,fixture:20,furniture:30,decoration:40,actor:50};
 function getZ(p){return p.z!==undefined?p.z:(ZD[p.kind]||0);}
 function getNpcZ(n){return n.z!==undefined?n.z:0;}
+function setPieceZToDepth(z){
+  if(z<20)return -19+z*0.8;
+  return 2+(z-20)*0.1;
+}
+function propSortDepth(p){return setPieceZToDepth(getZ(p));}
+function npcSortDepth(n){
+  return n.z!==undefined?setPieceZToDepth(getNpcZ(n)):0;
+}
 function getLayers(){
   if(!sp)return[];
   if(!sp.sceneLayers||!sp.sceneLayers.length)
@@ -1258,12 +1266,12 @@ function render(){
   sp.props.forEach(function(p,i){
     var lid=propLayer(p);
     if(!layerVisible(lid))return;
-    drawables.push({kind:'prop',idx:i,z:globalZ(lid,getZ(p))});
+    drawables.push({kind:'prop',idx:i,z:globalZ(lid,propSortDepth(p))});
   });
   (sp.npcs||[]).forEach(function(n,ni){
     var lid=npcLayer(n);
     if(!layerVisible(lid))return;
-    drawables.push({kind:'npc',idx:ni,z:globalZ(lid,getNpcZ(n))});
+    drawables.push({kind:'npc',idx:ni,z:globalZ(lid,npcSortDepth(n))});
   });
   drawables.sort(function(a,b){return a.z-b.z;});
   drawables.forEach(function(d){
@@ -1487,7 +1495,7 @@ function hitTop(cx,cy){
     var pw=(p.width||1)*ts,ph=(p.height||1)*ts;
     var px=nnum(p.x,0)*ts,py=nnum(p.y,0)*ts;
     if(cx>=px&&cx<px+pw&&cy>=py&&cy<py+ph){
-      hits.push({kind:'prop',idx:i,z:globalZ(lid,getZ(p))});
+      hits.push({kind:'prop',idx:i,z:globalZ(lid,propSortDepth(p))});
     }
   });
   (sp.npcs||[]).forEach(function(n,ni){
@@ -1495,7 +1503,7 @@ function hitTop(cx,cy){
     if(!layerVisible(lid)||layerLocked(lid))return;
     var nx=nnum(n.x,0),ny=nnum(n.y,0),ns=npcSizeTiles(n);
     if(cx>=nx*ts&&cx<((nx+ns.w)*ts)&&cy>=ny*ts&&cy<((ny+ns.h)*ts)){
-      hits.push({kind:'npc',idx:ni,z:globalZ(lid,getNpcZ(n))});
+      hits.push({kind:'npc',idx:ni,z:globalZ(lid,npcSortDepth(n))});
     }
   });
   if(!hits.length)return null;
@@ -2065,6 +2073,11 @@ function syncPropInputs(){
   }
   p.width=wv;
   p.height=hv;
+  var baseLayer=p.layers&&p.layers[0];
+  if(baseLayer&&baseLayer.widthFt!==undefined&&baseLayer.heightFt!==undefined){
+    baseLayer.widthFt=p.width*FEET_PER_TILE;
+    baseLayer.heightFt=p.height*FEET_PER_TILE;
+  }
   var zv=document.getElementById('pz').value.trim();
   if(zv===''){delete p.z;}else{p.z=parseInt(zv);}
   render();markDirty();

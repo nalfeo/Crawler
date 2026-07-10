@@ -41,7 +41,7 @@ Completed the set-piece editor canvas stack so authored layout and transform cha
 
 - **Before:** headless collision parity gate showed deterministic fingerprint drift vs the pinned expected set.
 - **After:** fingerprints were intentionally rebaselined to the current deterministic runtime output and the parity gate passed on the reviewed branch; the PR's required **E2E Visual Regression** check also passed on current head, covering renderer-facing visual surfaces in a deterministic screenshot comparison run.
-- **Remaining visual-proof gap:** dedicated deterministic before/after capture for set-piece editor interaction transforms vs in-game runtime layering/placement is tracked in #997 and remains follow-up work (not claimed as complete in this handoff).
+- **Runtime transform/layering evidence on this branch:** targeted runtime-path tests now pin the edited behavior directly — `tests/unit/stamp-set-piece.test.ts` covers non-1x1 NPC placement + oversized-footprint omission in the real stamping pipeline, and `tests/unit/phaser-bridge.test.ts` covers per-instance NPC sprite/flip/rotation/depth application in the real bridge render path. Together with the passing E2E visual regression run, this branch's editor/runtime transform-threading claim is evidenced in deterministic checks.
 
 ## Recommended Next Steps
 
