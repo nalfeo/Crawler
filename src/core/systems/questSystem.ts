@@ -390,10 +390,23 @@ export function questSystem(world: GameWorld): void {
   // Prefer a visible (non-hidden) quest so the HUD tracker always points to
   // something the player can actually see. Fall back to any active quest if
   // all remaining quests are hidden (background-only).
+  // Also reassign if the currently tracked quest is hidden and a visible quest
+  // has since been accepted — prevents a background den-quest from shadowing a
+  // newly-accepted story quest in the tracker.
   const active = getActiveQuests(world);
-  if (active.length > 0 && !active.some((q) => q.tracked)) {
+  if (active.length > 0) {
+    const trackedQuest = active.find((q) => q.tracked);
+    const trackedIsHidden = trackedQuest
+      ? (getQuestDef(trackedQuest.questId)?.hidden ?? false)
+      : false;
     const visible = active.filter((q) => !getQuestDef(q.questId)?.hidden);
-    const toTrack = visible[0] ?? active[0];
-    if (toTrack) toTrack.tracked = true;
+    const needsReassignment = !trackedQuest || (trackedIsHidden && visible.length > 0);
+    if (needsReassignment) {
+      const toTrack = visible[0] ?? active[0];
+      if (toTrack && toTrack !== trackedQuest) {
+        if (trackedQuest) trackedQuest.tracked = false;
+        toTrack.tracked = true;
+      }
+    }
   }
 }

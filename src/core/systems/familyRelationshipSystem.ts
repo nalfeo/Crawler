@@ -38,7 +38,7 @@ export function familyRelationshipSystem(
 ): void {
   // Guard: when Floor 2 state is present with reputationSystemActive explicitly
   // false, discard queued deltas (prevents queue buildup) and skip all processing
-  // until the starter quest chain completes.
+  // until the Broker intro completion flag is set.
   const familyState = world.floorExtendedState?.familyState;
   if (familyState && familyState.reputationSystemActive === false) {
     world.factionRelationDeltas.length = 0;

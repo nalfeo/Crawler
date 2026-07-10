@@ -82,7 +82,7 @@ export interface Floor2State {
    * construct `Floor2State` directly).
    *
    * Set to `false` at floor init and flipped to `true` by `floor2ObjectiveTick`
-   * once the starter quest chain (settlement-found) is complete.
+   * once the Broker intro completion flag (`FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID`) is set.
    */
   reputationSystemActive?: boolean;
   /** Boss-defeated family IDs. Populated by floor2ObjectiveTick. */

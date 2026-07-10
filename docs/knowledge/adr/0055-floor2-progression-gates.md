@@ -41,15 +41,17 @@ Three Floor 2 feedback issues were identified when running Floor 2 from the AI r
 This is the simplest correct fix. Players transitioning from Floor 1 already have these unlocked,
 so Floor 2 always starts with them active.
 
-### 2. Reputation system gated behind starter quest
+### 2. Reputation system gated behind Broker intro dialogue
 
 Added optional `reputationSystemActive?: boolean` to `Floor2State` in `faction-relations.ts`.
 
 - Default: `undefined` (treated as `true` by the guard — backwards compatible for labs/tests).
 - Set to `false` in `initializeFloor2Scenario`.
 - `familyRelationshipSystem` discards deltas and returns early when `reputationSystemActive === false`.
-- `floor2ObjectiveTick` flips it to `true` on the same tick the player enters the settlement
-  (immediately after `FLOOR2_SETTLEMENT_FOUND_GOAL_ID` is set).
+- `floor2ObjectiveTick` flips it to `true` on the same tick the `FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID`
+  flag is set — which happens only after the player has read all of the Broker's intro dialogue lines.
+  `MainGameScene` fires `meetBroker(world)` (which sets that flag) only when the player advances past
+  the Broker's final dialogue line, not when they close the dialogue box early.
 
 **Why not `required: boolean`?** Making it optional avoids updating every lab and test that
 constructs `Floor2State` literally. The default-true semantics preserve existing behavior.
@@ -78,8 +80,9 @@ tracked" invariant.
 **Positive:**
 
 - Floor 2 players have all Floor 1 systems immediately (XP bar, inventory, abilities visible).
-- Reputation/family relations only engage after the player reaches the settlement — narrative
-  gating aligns with gameplay progression.
+- Reputation/family relations only engage after the player reads all of the Broker's
+  intro dialogue — narrative gating aligns with gameplay progression and the moment
+  the player learns about the faction system from the Broker.
 - Den-unlock progress is invisible noise to the HUD; players discover den doors opening without
   an artificial "quest" prompt distracting them.
 

@@ -726,7 +726,7 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
       contestedResource: roster.contestedResource,
       betrayerFlag: false,
       // Reputation system starts locked; unlocked by floor2ObjectiveTick once
-      // the settlement-found starter quest completes.
+      // the Broker intro completion flag (FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID) is set.
       reputationSystemActive: false,
     },
     trashTerritories: assignQuadrantTrashTerritories(world),

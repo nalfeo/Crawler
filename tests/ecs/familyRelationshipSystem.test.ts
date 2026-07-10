@@ -121,3 +121,62 @@ describe('familyRelationshipSystem passive decay', () => {
     expect(world.factionRelationDecayLastMs).toBe(1000);
   });
 });
+
+describe('familyRelationshipSystem locked state (reputationSystemActive = false)', () => {
+  it('discards queued deltas without changing relations or emitting events', () => {
+    const world = createTestWorld();
+    initializeFactionRelations(world, [goblins, llamas]);
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [goblins, llamas],
+        contestedResource: 'test-resource' as never,
+        betrayerFlag: false,
+        reputationSystemActive: false,
+      },
+    };
+
+    queueFactionRelationDelta(world, { familyId: goblins, delta: 10, reason: 'test' });
+    queueFactionRelationDelta(world, { familyId: llamas, delta: -20, reason: 'test' });
+
+    const goblinsBefore = getRelation(world, goblins);
+    const llamasBefore = getRelation(world, llamas);
+
+    familyRelationshipSystem(world);
+
+    // Deltas are discarded — queue is cleared.
+    expect(world.factionRelationDeltas).toHaveLength(0);
+    // Relations are unchanged.
+    expect(getRelation(world, goblins)).toBe(goblinsBefore);
+    expect(getRelation(world, llamas)).toBe(llamasBefore);
+    // No events emitted.
+    expect(world.factionRelationEvents).toHaveLength(0);
+  });
+
+  it('skips passive decay and does not advance the decay timestamp', () => {
+    const world = createTestWorld();
+    initializeFactionRelations(world, [goblins]);
+    adjustFactionRelation(world, goblins, 20); // 45 -> 65
+    world.factionRelationEvents.length = 0;
+
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [goblins],
+        contestedResource: 'test-resource' as never,
+        betrayerFlag: false,
+        reputationSystemActive: false,
+      },
+    };
+
+    world.factionRelationDecayLastMs = 0;
+    world.elapsedMs = 1000;
+
+    familyRelationshipSystem(world, { passiveDecayPerSecond: 5 });
+
+    // Relation unchanged — decay branch never ran.
+    expect(getRelation(world, goblins)).toBe(65);
+    // Timestamp is NOT advanced because the system returned early.
+    expect(world.factionRelationDecayLastMs).toBe(0);
+    // No events emitted.
+    expect(world.factionRelationEvents).toHaveLength(0);
+  });
+});
