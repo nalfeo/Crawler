@@ -132,4 +132,11 @@ describe('MainGameScene lighting overlay behavior', () => {
   it('renders the light overlay render-texture at LIGHTING_OVERLAY_DEPTH', () => {
     expect(source).toContain('.setDepth(LIGHTING_OVERLAY_DEPTH)');
   });
+
+  it('collects harvestable and set-piece light emitters for the light field', () => {
+    expect(source).toContain('query(this.world.ecs, [Harvestable, Position])');
+    expect(source).toContain('for (const setPieceProp of this.world.setPieceProps)');
+    expect(source).toContain("spriteId.includes('sconce')");
+    expect(source).toContain("spriteId.includes('lantern')");
+  });
 });

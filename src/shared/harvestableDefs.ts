@@ -20,6 +20,11 @@ export interface HarvestableDef {
   readonly tint: number;
   /** Maximum number of this node type that may spawn on a single floor. */
   readonly maxPerFloor: number;
+  /** Optional light emission for glow nodes (e.g. mushrooms). */
+  readonly lightEmission?: {
+    readonly radiusFt: number;
+    readonly intensity: number;
+  };
 }
 
 /**
@@ -36,6 +41,7 @@ export const HARVESTABLE_DEFS: readonly HarvestableDef[] = [
     durationMs: 3_000,
     tint: 0xcc3333,
     maxPerFloor: 5,
+    lightEmission: { radiusFt: 10, intensity: 0.45 },
   },
   {
     id: 'azure-mushroom',
@@ -44,6 +50,7 @@ export const HARVESTABLE_DEFS: readonly HarvestableDef[] = [
     durationMs: 3_000,
     tint: 0x3377cc,
     maxPerFloor: 5,
+    lightEmission: { radiusFt: 10, intensity: 0.45 },
   },
   {
     id: 'sunpetal-flower',

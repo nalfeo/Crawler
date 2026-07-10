@@ -4,6 +4,7 @@ import {
   createGameWorld,
   Enemy,
   fovSystem,
+  Harvestable,
   isInSafeContext,
   Position,
   Prop,
@@ -26,6 +27,7 @@ import {
   type AbilityState,
   type Floor1BossRewardSpellId,
 } from '../../shared/abilities.js';
+import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import { createInputState, type InputState } from '../../shared/input.js';
 import { buildTerrainLayer } from '../terrain-renderer.js';
 import {
@@ -109,6 +111,8 @@ const DIRECTOR_COMMENTARY_MS = 3600;
 const MOBILE_CORNER_BUTTON_MAX_SCALE = 1.4;
 const INTERACTION_HINT_MAX_SCALE = 1.25;
 const INTERACTION_HINT_BOTTOM_MARGIN = 12;
+const SET_PIECE_LIGHT_RADIUS_FT = 20;
+const SET_PIECE_LIGHT_INTENSITY = 0.7;
 const FLOOR_1_COMMENTARY = {
   intro: 'Floor 1 opens. Rhea Vale enters the dungeon and the cameras are rolling.',
   questAccepted: 'Tutorial Goon unlocks XP drops. First milestone: hit level 2 for the audience.',
@@ -119,6 +123,16 @@ const FLOOR_1_COMMENTARY = {
   timeout: 'Time expired before the stairs. Floor 1 run ends here.',
 } as const;
 const logger = createLogger('engine:main-game-scene');
+
+function isSetPieceLightSpriteId(spriteId: string): boolean {
+  return (
+    spriteId.includes('sconce') ||
+    spriteId.includes('lantern') ||
+    spriteId.includes('torch') ||
+    spriteId.includes('mushroom')
+  );
+}
+
 export interface MainGameSceneOptions {
   inputCaptureOverride?: {
     poll: (state: InputState, world: GameWorld) => void;
@@ -1663,6 +1677,31 @@ export class MainGameScene extends Phaser.Scene {
         y: ftToPx(this.world.stores.position.y[propEid] ?? 0),
         radiusPx: this.world.stores.propLight.radiusPx[propEid] ?? 0,
         intensity: this.world.stores.propLight.intensity[propEid] ?? 0,
+      });
+    }
+    for (const harvestableEid of query(this.world.ecs, [Harvestable, Position])) {
+      const defIndex = this.world.stores.harvestable.defIndex[harvestableEid] ?? -1;
+      const lightEmission = HARVESTABLE_DEFS[defIndex]?.lightEmission;
+      if (lightEmission === undefined) {
+        continue;
+      }
+      lightSources.push({
+        x: ftToPx(this.world.stores.position.x[harvestableEid] ?? 0),
+        y: ftToPx(this.world.stores.position.y[harvestableEid] ?? 0),
+        radiusPx: ftToPx(lightEmission.radiusFt),
+        intensity: lightEmission.intensity,
+      });
+    }
+    for (const setPieceProp of this.world.setPieceProps) {
+      const sprite = setPieceProp.render.sprite;
+      if (sprite.source !== 'catalog' || !isSetPieceLightSpriteId(sprite.spriteId)) {
+        continue;
+      }
+      lightSources.push({
+        x: ftToPx(setPieceProp.x),
+        y: ftToPx(setPieceProp.y),
+        radiusPx: ftToPx(SET_PIECE_LIGHT_RADIUS_FT),
+        intensity: SET_PIECE_LIGHT_INTENSITY,
       });
     }
 

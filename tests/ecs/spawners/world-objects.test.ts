@@ -139,6 +139,14 @@ describe('spawnProp', () => {
     expect(world.stores.propLight.intensity[eid]).toBeCloseTo(0.7);
   });
 
+  it('adds a PropLight for torch props', () => {
+    const world = createTestWorld();
+    const eid = spawnProp(world, 0, 0, 'torch');
+
+    expect(hasComponent(world.ecs, eid, PropLight)).toBe(true);
+    expect(world.stores.propLight.intensity[eid]).toBeCloseTo(0.7);
+  });
+
   it('returns -1 for an unknown defId', () => {
     const world = createTestWorld();
     expect(spawnProp(world, 0, 0, 'no-such-prop')).toBe(-1);
@@ -199,6 +207,7 @@ describe('spawnHarvestableNode', () => {
     expect(world.stores.harvestable.progressMs[eid]).toBe(0);
     expect(world.stores.harvestable.harvesterEid[eid]).toBe(0);
     expect(world.stores.sprite.width[eid]).toBe(1);
+    expect(HARVESTABLE_DEFS[0]?.lightEmission).toBeDefined();
   });
 
   it('seeds a deterministic cosmetic variantRoll so multi-variant art is reachable', () => {

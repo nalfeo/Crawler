@@ -19,6 +19,16 @@ describe('HARVESTABLE_DEFS', () => {
       expect(typeof def.maxPerFloor).toBe('number');
     }
   });
+
+  it('marks Floor 1 mushrooms as light emitters', () => {
+    const crimson = getHarvestableDef('crimson-mushroom');
+    const azure = getHarvestableDef('azure-mushroom');
+    const sunpetal = getHarvestableDef('sunpetal-flower');
+
+    expect(crimson?.lightEmission).toBeDefined();
+    expect(azure?.lightEmission).toBeDefined();
+    expect(sunpetal?.lightEmission).toBeUndefined();
+  });
 });
 
 describe('getHarvestableDef', () => {
