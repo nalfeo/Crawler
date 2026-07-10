@@ -354,3 +354,26 @@ test('validateSetPieceCandidate rejects unknown fields on strict objects', () =>
   assert.ok(issues.some((issue) => issue.includes('props[0].layers[0] unknown field \"rogue\"')));
   assert.ok(issues.some((issue) => issue.includes('npcs[0] unknown field \"rogue\"')));
 });
+
+test('validateSetPieceCandidate rejects invalid npc sceneLayer type', () => {
+  const issues = validateSetPieceCandidate({
+    width: 8,
+    height: 7,
+    props: [
+      {
+        id: 'floor',
+        kind: 'floor',
+        x: 0,
+        y: 0,
+        width: 8,
+        height: 7,
+        layers: [{ sprite: { source: 'catalog', spriteId: 'sprite:item.gem' } }],
+      },
+    ],
+    npcs: [{ id: 'goon', npcTypeId: 'tutorial-goon', x: 4, y: 2, sceneLayer: 123 }],
+  });
+
+  assert.ok(
+    issues.some((issue) => issue.includes('npcs[0].sceneLayer must be a non-empty string')),
+  );
+});

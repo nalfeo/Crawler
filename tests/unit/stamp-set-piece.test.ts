@@ -181,6 +181,26 @@ describe('stampSetPiece — welcome room NPCs', () => {
       }
     }
   });
+
+  it('omits NPC placements whose authored footprint cannot fit inside the room interior', () => {
+    const def = makeDef({
+      width: 3,
+      height: 3,
+      npcs: [
+        {
+          id: 'giant',
+          npcTypeId: 'tutorial-goon',
+          x: 0,
+          y: 0,
+          widthFt: 24,
+          heightFt: 24,
+        },
+      ],
+    });
+
+    const stamp = stampSetPiece(def, opts({ x: 0, y: 0, width: 5, height: 5 }));
+    expect(stamp.npcs).toHaveLength(0);
+  });
 });
 
 describe('stampSetPiece — props and layering', () => {
