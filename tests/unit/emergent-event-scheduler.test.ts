@@ -84,6 +84,24 @@ describe('emergentEventSystem · gating', () => {
     emergentEventSystem(world);
     expect(getFiredEmergentEvents(world).size).toBe(0);
   });
+
+  it('pauses scheduling while Floor 2 reputation is locked', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    seedFloor2State(world, [FAM_A, FAM_B, FAM_C, FAM_D]);
+    world.state = 'playing';
+    world.elapsedMs = 200_000;
+    const familyState = world.floorExtendedState?.familyState;
+    expect(familyState).toBeDefined();
+    if (familyState) {
+      familyState.reputationSystemActive = false;
+    }
+
+    emergentEventSystem(world);
+
+    expect(getFiredEmergentEvents(world).size).toBe(0);
+    expect(world.factionRelationDeltas).toHaveLength(0);
+  });
 });
 
 describe('emergentEventSystem · timer trigger', () => {

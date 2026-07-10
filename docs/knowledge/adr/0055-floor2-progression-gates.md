@@ -17,8 +17,8 @@ Three Floor 2 feedback issues were identified when running Floor 2 from the AI r
 
 2. **Reputation system active immediately**: `initializeFactionRelations` is called during
    `initializeFloor2Scenario`, making family relations live from the first frame. The "social game"
-   of Floor 2 should only begin after the player establishes a foothold — the settlement — not
-   before they even know the settlement exists.
+   of Floor 2 should only begin after the player finishes the Broker intro dialogue, not before they
+   have the system context.
 
 3. **"Thin the ranks" quests cluttering the tracker**: Den-unlock kill-counter quests (the
    `thin-the-ranks` archetype) appear in the HUD quest tracker. Because they are passive kill
@@ -58,7 +58,7 @@ constructs `Floor2State` literally. The default-true semantics preserve existing
 
 **Why discard deltas?** Queued deltas would accumulate during the locked window and fire as a
 burst when unlocked. Discarding them provides clean, consistent behaviour — family relations start
-at the default and evolve only from the moment the player enters the settlement.
+at the default and evolve only from the moment the Broker intro gate is completed.
 
 ### 3. Hidden den-unlock quests
 
