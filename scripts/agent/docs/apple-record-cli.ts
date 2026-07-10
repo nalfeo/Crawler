@@ -76,7 +76,7 @@ export function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-export function writeAppleRecordFile(outPath: string, entry: Record<string, unknown>): void {
+export function writeAppleRecordFile(outPath: string, entry: AppleRecordEntry): void {
   try {
     writeFileSync(outPath, JSON.stringify(entry, null, 2) + '\n', { encoding: 'utf8', flag: 'wx' });
   } catch (error) {
