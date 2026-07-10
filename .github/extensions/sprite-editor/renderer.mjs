@@ -200,6 +200,20 @@ const CLIENT_SCRIPT = String.raw`
   var listTokenCounter = 0;
   var saveTokenCounter = 0;
   var revertTokenCounter = 0;
+  var scaleFactor = 1;
+  var scaleMethod = 'nearest';
+  var openCvReadyPromise = null;
+
+  var SCALE_FACTOR_MIN = 0.25;
+  var SCALE_FACTOR_MAX = 8;
+  var SCALE_METHODS = [
+    { id: 'nearest', label: 'Nearest (pixel-perfect)' },
+    { id: 'bilinear', label: 'Bilinear' },
+    { id: 'bicubic', label: 'Bicubic' },
+    { id: 'area', label: 'Pixel-area (best downscale)' },
+    { id: 'lanczos4', label: 'Lanczos4' }
+  ];
+  var OPENCV_JS_URL = 'https://docs.opencv.org/4.10.0/opencv.js';
 
   function h(tag, props, children) {
     var elem = document.createElement(tag);
@@ -237,6 +251,148 @@ const CLIENT_SCRIPT = String.raw`
       throw new Error(json.error || json.message || 'Request failed');
     }
     return json;
+  }
+
+  function clampScaleFactor(value) {
+    var n = Number(value);
+    if (!Number.isFinite(n)) return 1;
+    return Math.max(SCALE_FACTOR_MIN, Math.min(SCALE_FACTOR_MAX, n));
+  }
+
+  function resolveInterpolation(cv, methodId, factor) {
+    var id = String(methodId || '').toLowerCase();
+    if (id === 'nearest') return cv.INTER_NEAREST_EXACT != null ? cv.INTER_NEAREST_EXACT : cv.INTER_NEAREST;
+    if (id === 'bilinear') return cv.INTER_LINEAR_EXACT != null ? cv.INTER_LINEAR_EXACT : cv.INTER_LINEAR;
+    if (id === 'bicubic') return cv.INTER_CUBIC;
+    if (id === 'area') return factor < 1 ? cv.INTER_AREA : (cv.INTER_LINEAR_EXACT != null ? cv.INTER_LINEAR_EXACT : cv.INTER_LINEAR);
+    if (id === 'lanczos4') return cv.INTER_LANCZOS4;
+    return cv.INTER_NEAREST_EXACT != null ? cv.INTER_NEAREST_EXACT : cv.INTER_NEAREST;
+  }
+
+  function ensureOpenCvReady() {
+    if (openCvReadyPromise) return openCvReadyPromise;
+    openCvReadyPromise = new Promise(function (resolve, reject) {
+      var timeoutId = setTimeout(function () {
+        reject(new Error('OpenCV.js timed out while loading.'));
+      }, 30000);
+      var finalize = function () {
+        var cv = window.cv;
+        if (!cv) return false;
+        if (typeof cv.Mat === 'function') {
+          clearTimeout(timeoutId);
+          resolve(cv);
+          return true;
+        }
+        var prev = cv.onRuntimeInitialized;
+        cv.onRuntimeInitialized = function () {
+          if (typeof prev === 'function') prev();
+          clearTimeout(timeoutId);
+          resolve(window.cv);
+        };
+        return true;
+      };
+      if (finalize()) return;
+      var existing = document.querySelector('script[data-opencv-js="true"]');
+      if (!existing) {
+        var script = document.createElement('script');
+        script.src = OPENCV_JS_URL;
+        script.async = true;
+        script.defer = true;
+        script.setAttribute('data-opencv-js', 'true');
+        script.addEventListener('load', function () {
+          if (!finalize()) {
+            clearTimeout(timeoutId);
+            reject(new Error('OpenCV.js loaded but cv runtime is unavailable.'));
+          }
+        });
+        script.addEventListener('error', function () {
+          clearTimeout(timeoutId);
+          reject(new Error('Failed to load OpenCV.js.'));
+        });
+        document.head.appendChild(script);
+      } else {
+        existing.addEventListener('load', function () {
+          if (!finalize()) {
+            clearTimeout(timeoutId);
+            reject(new Error('OpenCV.js loaded but cv runtime is unavailable.'));
+          }
+        });
+        existing.addEventListener('error', function () {
+          clearTimeout(timeoutId);
+          reject(new Error('Failed to load OpenCV.js.'));
+        });
+      }
+    });
+    return openCvReadyPromise;
+  }
+
+  async function applyScaleTransform() {
+    if (!canvas || !ctx) return;
+    var factor = clampScaleFactor(scaleFactor);
+    if (factor === 1) {
+      setStatus('Scale factor 1x leaves sprite unchanged.');
+      return;
+    }
+    var nextWidth = Math.max(1, Math.round(canvas.width * factor));
+    var nextHeight = Math.max(1, Math.round(canvas.height * factor));
+    var before = cloneState();
+    setStatus('Scaling sprite via OpenCV.js…');
+    try {
+      var cv = await ensureOpenCvReady();
+      var src = cv.imread(canvas);
+      var dst = new cv.Mat();
+      var dsize = new cv.Size(nextWidth, nextHeight);
+      var interpolation = resolveInterpolation(cv, scaleMethod, factor);
+      cv.resize(src, dst, dsize, 0, 0, interpolation);
+
+      var prevData = canvas.toDataURL('image/png');
+      var scaledCanvas = document.createElement('canvas');
+      cv.imshow(scaledCanvas, dst);
+      var scaledDataUrl = scaledCanvas.toDataURL('image/png');
+      src.delete();
+      dst.delete();
+
+      var img = new Image();
+      await new Promise(function (resolve, reject) {
+        img.addEventListener('load', resolve);
+        img.addEventListener('error', reject);
+        img.src = scaledDataUrl;
+      });
+      canvas.width = img.naturalWidth || img.width;
+      canvas.height = img.naturalHeight || img.height;
+      overlayCanvas.width = canvas.width;
+      overlayCanvas.height = canvas.height;
+      ctx.imageSmoothingEnabled = false;
+      overlayCtx.imageSmoothingEnabled = false;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0);
+      var w = String(canvas.width * pixelScale) + 'px';
+      var hPx = String(canvas.height * pixelScale) + 'px';
+      canvas.style.width = w;
+      canvas.style.height = hPx;
+      overlayCanvas.style.width = w;
+      overlayCanvas.style.height = hPx;
+
+      var after = cloneState();
+      if (statesDiffer(before, after)) pushUndoState(before);
+      renderOverlay();
+      setStatus(
+        'Scaled from ' +
+          String(before.imageData.width) +
+          'x' +
+          String(before.imageData.height) +
+          ' to ' +
+          String(canvas.width) +
+          'x' +
+          String(canvas.height) +
+          ' using ' +
+          scaleMethod +
+          '.',
+      );
+      if (prevData === scaledDataUrl) setStatus('OpenCV scale completed; output image data unchanged.');
+    } catch (error) {
+      setStatus(error.message || String(error), true);
+    }
   }
 
   function currentFilters() {
@@ -1017,6 +1173,31 @@ const CLIENT_SCRIPT = String.raw`
     colorInput.addEventListener('change', function () {
       drawColor = colorInput.value || '#ff00ff';
     });
+    var scaleFactorInput = h('input', {
+      id: 'scale-factor',
+      type: 'number',
+      min: String(SCALE_FACTOR_MIN),
+      max: String(SCALE_FACTOR_MAX),
+      step: '0.25',
+      value: String(scaleFactor),
+    });
+    scaleFactorInput.addEventListener('change', function () {
+      scaleFactor = clampScaleFactor(scaleFactorInput.value);
+      scaleFactorInput.value = String(scaleFactor);
+    });
+    var scaleMethodSelect = h('select', { id: 'scale-method' });
+    for (var methodIdx = 0; methodIdx < SCALE_METHODS.length; methodIdx++) {
+      var option = SCALE_METHODS[methodIdx];
+      scaleMethodSelect.appendChild(h('option', { value: option.id, text: option.label }));
+    }
+    scaleMethodSelect.value = scaleMethod;
+    scaleMethodSelect.addEventListener('change', function () {
+      scaleMethod = scaleMethodSelect.value;
+    });
+    var applyScaleBtn = h('button', { type: 'button', text: 'Apply OpenCV scale' });
+    applyScaleBtn.addEventListener('click', function () {
+      applyScaleTransform();
+    });
     var eyedropperBtn = h(
       'button',
       { type: 'button', class: 'tool-btn' + (eyedropperArmed ? ' on' : ''), text: eyedropperArmed ? 'Eyedropper active' : 'Eyedropper' },
@@ -1096,6 +1277,7 @@ const CLIENT_SCRIPT = String.raw`
         h('span', { class: 'muted', text: 'Brush' }), brushInput,
         h('span', { class: 'muted', text: 'Zoom' }), zoomInput,
         modeSelect, colorInput, eyedropperBtn,
+        h('span', { class: 'muted', text: 'Scale' }), scaleFactorInput, scaleMethodSelect, applyScaleBtn,
         undoBtn, redoBtn,
         toggleAnchorBtn, clickAnchorBtn, holeBtn,
         saveBtn, revertBtn
