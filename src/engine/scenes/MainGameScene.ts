@@ -1153,7 +1153,8 @@ export class MainGameScene extends Phaser.Scene {
     const unlocks = this.world.featureUnlocks;
     const safeCtx = isInSafeContext(this.world);
     const mapOverlayOpen = this.hudUi?.isMapOverlayOpen() ?? false;
-    const uiLockOpen = (this.modalPicker?.isOpen() ?? false) || (this.levelUpUI?.isOpen() ?? false);
+    const isUiLockOpen = (): boolean =>
+      (this.modalPicker?.isOpen() ?? false) || (this.levelUpUI?.isOpen() ?? false);
 
     // Toggle the on-screen touch buttons in step with the key affordances.
     this.inventoryButton?.setVisible(unlocks.inventory && safeCtx && !this.isBlockingSurfaceOpen());
@@ -1183,7 +1184,7 @@ export class MainGameScene extends Phaser.Scene {
       this.closeCharacterPanels();
     }
 
-    if (unlocks.inventory && safeCtx && !uiLockOpen && inventoryToggleRequested) {
+    if (unlocks.inventory && safeCtx && !isUiLockOpen() && inventoryToggleRequested) {
       this.closeMapOverlayIfOpen();
       this.closeCharacterPanels({ keepInventory: true });
       this.inventoryUI?.toggle(this.world);
@@ -1198,7 +1199,7 @@ export class MainGameScene extends Phaser.Scene {
     const equipRequested =
       this.queuedEquip || Boolean(this.keyEquip && Phaser.Input.Keyboard.JustDown(this.keyEquip));
     this.queuedEquip = false;
-    if (unlocks.equipment && safeCtx && !uiLockOpen && equipRequested) {
+    if (unlocks.equipment && safeCtx && !isUiLockOpen() && equipRequested) {
       this.closeMapOverlayIfOpen();
       this.closeCharacterPanels({ keepEquipment: true });
       // [G] toggles the equipment panel only. The bag is now integrated into the
@@ -1220,7 +1221,7 @@ export class MainGameScene extends Phaser.Scene {
       this.queuedAbilitiesToggle ||
       Boolean(this.keyAbilities && Phaser.Input.Keyboard.JustDown(this.keyAbilities));
     this.queuedAbilitiesToggle = false;
-    if (unlocks.spells && !uiLockOpen && abilitiesToggleRequested) {
+    if (unlocks.spells && !isUiLockOpen() && abilitiesToggleRequested) {
       this.closeMapOverlayIfOpen();
       this.closeCharacterPanels();
       this.openAbilitiesConfigModal();
@@ -1231,7 +1232,7 @@ export class MainGameScene extends Phaser.Scene {
       Boolean(this.keyAchievements && Phaser.Input.Keyboard.JustDown(this.keyAchievements));
     this.queuedAchievementsToggle = false;
     const achievementsAvailable = safeCtx && this.world.achievements.unlockedIds.size > 0;
-    if (achievementsAvailable && !uiLockOpen && achievementsToggleRequested) {
+    if (achievementsAvailable && !isUiLockOpen() && achievementsToggleRequested) {
       this.closeMapOverlayIfOpen();
       this.closeCharacterPanels({ keepAchievements: true });
       this.achievementsUI?.toggle(this.world);
@@ -2740,6 +2741,9 @@ export class MainGameScene extends Phaser.Scene {
 
   private updateInteractions(): void {
     const tapped = this.tappedInteraction || this.queuedInteraction;
+    const interactionRequested =
+      (tapped || Boolean(this.keyE && Phaser.Input.Keyboard.JustDown(this.keyE))) &&
+      !this.isBlockingSurfaceOpen();
     const closeRequested = this.queuedConversationClose;
     this.tappedInteraction = false;
     this.queuedInteraction = false;
@@ -2797,13 +2801,7 @@ export class MainGameScene extends Phaser.Scene {
           return;
         }
 
-        if (
-          (tapped ||
-            (this.keyE &&
-              Phaser.Input.Keyboard.JustDown(this.keyE) &&
-              !this.isBlockingSurfaceOpen())) &&
-          activeDialogue.length > 0
-        ) {
+        if (interactionRequested && activeDialogue.length > 0) {
           const nextIndex = instance.dialogueIndex + 1;
           if (nextIndex >= activeDialogue.length) {
             // Fire broker callback when the player reads the last line of the Broker's
@@ -2849,10 +2847,7 @@ export class MainGameScene extends Phaser.Scene {
       this.interactionHint?.setText('Talk').setVisible(true);
       this.dialogueBox?.setCloseVisible(false);
 
-      if (
-        tapped ||
-        (this.keyE && Phaser.Input.Keyboard.JustDown(this.keyE) && !this.isBlockingSurfaceOpen())
-      ) {
+      if (interactionRequested) {
         const instance = this.world.npcs.get(nearNpcEid);
         if (instance) {
           const def = getNpcDef(instance.defId);
@@ -2893,13 +2888,7 @@ export class MainGameScene extends Phaser.Scene {
     } else if (nearStairs) {
       this.interactionHint?.setText('Descend').setVisible(true);
       this.dialogueBox?.hide();
-      if (
-        (tapped ||
-          (this.keyE &&
-            Phaser.Input.Keyboard.JustDown(this.keyE) &&
-            !this.isBlockingSurfaceOpen())) &&
-        this.modalPicker
-      ) {
+      if (interactionRequested && this.modalPicker) {
         if (!this.modalPicker.isOpen()) {
           const isFloor2 = floor2State !== null;
           this.modalPicker.open(
