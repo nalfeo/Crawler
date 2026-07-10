@@ -27,6 +27,15 @@ const FONT_FAMILY = 'Segoe UI, Arial, sans-serif';
 const ROW_HEIGHT = 84;
 const ROW_GAP = 8;
 
+/** Flavor text longer than this (chars) gets a collapse/expand toggle. */
+const FLAVOR_EXPAND_THRESHOLD = 120;
+/** Line height for 11 px flavor font. */
+const FLAVOR_LINE_H = 15;
+/** Number of lines to show in collapsed state. */
+const FLAVOR_COLLAPSED_LINES = 2;
+/** Height of the expand/collapse button row. */
+const EXPANDER_BTN_H = 18;
+
 const COLORS = {
   panelBg: 0x0d0d1a,
   panelBorder: 0x2a2a4a,
@@ -116,6 +125,7 @@ export function createAchievementsUI(
   let lastWorld: GameWorld | null = null;
   let lastSignature: string | null = null;
   let scrollIndex = 0;
+  const expandedIds = new Set<string>();
 
   const container = scene.add.container(0, 0);
   container.setDepth(1000);
@@ -145,8 +155,6 @@ export function createAchievementsUI(
 
   const listTop = (): number => panelY + PANEL_PADDING + 40;
   const listBottom = (): number => panelY + panelHeight - PANEL_PADDING;
-  const rowsPerPage = (): number =>
-    Math.max(1, Math.floor((listBottom() - listTop()) / (ROW_HEIGHT + ROW_GAP)));
 
   const rowObjects: Phaser.GameObjects.GameObject[] = [];
   function clearRows(): void {
@@ -163,7 +171,8 @@ export function createAchievementsUI(
       .map((a) => a.id)
       .join(',');
     const claimed = [...world.achievements.claimedIds].sort().join(',');
-    return `${unlocked}|${claimed}|${scrollIndex}`;
+    const expanded = [...expandedIds].sort().join(';');
+    return `${unlocked}|${claimed}|${scrollIndex}|${expanded}`;
   }
 
   function open(id: string): void {
@@ -173,13 +182,35 @@ export function createAchievementsUI(
     refresh(lastWorld);
   }
 
-  function makeRow(def: AchievementDef, x: number, y: number, w: number): void {
+  function makeRow(def: AchievementDef, x: number, y: number, w: number): number {
+    const isExpanded = expandedIds.has(def.id);
     const claimed = lastWorld?.achievements.claimedIds.has(def.id) === true;
+    const flavorWrapW = w - 150;
+    const isLong = def.directorFlavor.length > FLAVOR_EXPAND_THRESHOLD;
+
+    // Measure the full flavor text height by creating a temporary text object.
+    // This runs synchronously and the object is destroyed before the next draw
+    // call, so it never appears on screen.
+    const tmpFlavor = crispText(x + 12, y + 50, def.directorFlavor, {
+      fontFamily: FONT_FAMILY,
+      fontSize: '11px',
+      fontStyle: 'italic',
+      color: hex(COLORS.flavor),
+      wordWrap: { width: flavorWrapW },
+    });
+    const fullFlavorH = Math.max(FLAVOR_LINE_H, tmpFlavor.height);
+    tmpFlavor.destroy();
+
+    const collapsedFlavorH = FLAVOR_COLLAPSED_LINES * FLAVOR_LINE_H;
+    const flavorH = isLong && !isExpanded ? collapsedFlavorH : fullFlavorH;
+    const expanderH = isLong ? EXPANDER_BTN_H : 0;
+    const rowHeight = Math.max(ROW_HEIGHT, 50 + flavorH + expanderH + 8);
+
     const box = scene.add.rectangle(
       x + w / 2,
-      y + ROW_HEIGHT / 2,
+      y + rowHeight / 2,
       w,
-      ROW_HEIGHT,
+      rowHeight,
       COLORS.rowBg,
       0.9,
     );
@@ -200,7 +231,7 @@ export function createAchievementsUI(
       fontFamily: FONT_FAMILY,
       fontSize: '12px',
       color: hex(COLORS.textSecondary),
-      wordWrap: { width: w - 150 },
+      wordWrap: { width: flavorWrapW },
     });
     container.add(crit);
     rowObjects.push(crit);
@@ -210,10 +241,29 @@ export function createAchievementsUI(
       fontSize: '11px',
       fontStyle: 'italic',
       color: hex(COLORS.flavor),
-      wordWrap: { width: w - 150 },
+      wordWrap: { width: flavorWrapW },
+      maxLines: isLong && !isExpanded ? FLAVOR_COLLAPSED_LINES : 0,
     });
     container.add(flavor);
     rowObjects.push(flavor);
+
+    if (isLong) {
+      const expanderY = y + 50 + flavorH + 2;
+      const expanderLabel = isExpanded ? '▲ less' : '▼ more';
+      const expander = crispText(x + 12, expanderY, expanderLabel, {
+        fontFamily: FONT_FAMILY,
+        fontSize: '10px',
+        color: hex(COLORS.textSecondary),
+      });
+      expander.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
+        if (expandedIds.has(def.id)) expandedIds.delete(def.id);
+        else expandedIds.add(def.id);
+        lastSignature = null;
+        if (lastWorld) refresh(lastWorld);
+      });
+      container.add(expander);
+      rowObjects.push(expander);
+    }
 
     const btnLabel = claimed ? rewardReveal(def.reward) : `Open: ${rewardLabel(def.reward)}`;
     const btn = crispText(x + w - 12, y + ROW_HEIGHT / 2, btnLabel, {
@@ -236,6 +286,8 @@ export function createAchievementsUI(
     }
     container.add(btn);
     rowObjects.push(btn);
+
+    return rowHeight;
   }
 
   function render(): void {
@@ -261,11 +313,17 @@ export function createAchievementsUI(
       return;
     }
 
-    const perPage = rowsPerPage();
-    const maxStart = Math.max(0, defs.length - perPage);
-    if (scrollIndex > maxStart) scrollIndex = maxStart;
-    const page = defs.slice(scrollIndex, scrollIndex + perPage);
-    page.forEach((def, i) => makeRow(def, x, listTop() + i * (ROW_HEIGHT + ROW_GAP), w));
+    if (scrollIndex > Math.max(0, defs.length - 1)) scrollIndex = Math.max(0, defs.length - 1);
+
+    const bottom = listBottom();
+    let currentY = listTop();
+    for (let i = scrollIndex; i < defs.length; i++) {
+      if (currentY + ROW_HEIGHT > bottom) break;
+      const def = defs[i];
+      if (!def) break;
+      const rowH = makeRow(def, x, currentY, w);
+      currentY += rowH + ROW_GAP;
+    }
   }
 
   function applyLayout(): void {
@@ -297,6 +355,7 @@ export function createAchievementsUI(
     container.setVisible(visible);
     if (visible) {
       scrollIndex = 0;
+      expandedIds.clear();
       applyLayout();
       lastSignature = null;
       refresh(world);
