@@ -104,4 +104,14 @@ describe('passage smoothing helpers', () => {
     expect(report.baselineRoughness).toBeGreaterThan(report.smoothRoughness);
     expect(report.reduction).toBeGreaterThanOrEqual(0.6);
   });
+
+  it('does not visually bridge a blocked diagonal corner with no supporting cardinal opening', () => {
+    const floorMap = makeFloorMap(['#####', '#c###', '##c##', '#####']);
+
+    const plan = buildPassageRenderPlan(floorMap);
+    const corridor = plan.groups.find((group) => group.terrain === TerrainType.CORRIDOR);
+
+    expect(corridor).toBeDefined();
+    expect(corridor!.circles).toHaveLength(2);
+  });
 });

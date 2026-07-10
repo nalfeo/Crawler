@@ -1,90 +1,174 @@
 import GUI from 'lil-gui';
-import { DungeonGenerator } from '../../core/map/generators/DungeonGenerator.js';
-import type { FloorMap } from '../../core/map/FloorMap.js';
-import {
-  buildPassageRenderPlan,
-  measurePassageJaggedness,
-} from '../../engine/terrain/passage-smoothing.js';
+import Phaser from 'phaser';
+import { FloorMap } from '../../core/map/FloorMap.js';
+import { RoomGraph } from '../../core/map/RoomGraph.js';
+import { TileMap } from '../../core/map/TileMap.js';
+import { buildTerrainLayer } from '../../engine/terrain-renderer.js';
+import { measurePassageJaggedness } from '../../engine/terrain/passage-smoothing.js';
 import { registerLab } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
-import { TERRAIN_FALLBACK_COLORS, colorToCss } from '../../shared/terrain-colors.js';
-import { BiomeType, TerrainType, type MapConfig } from '../../shared/map-types.js';
-import { SeededRandom } from '../../shared/random.js';
+import { BiomeType, TerrainType, TilePresets, type MapConfig } from '../../shared/map-types.js';
 
 const LAB_ID = 'hallway-smoothing-lab';
-const PANEL_GAP = 32;
 const PANEL_PADDING = 20;
+const PANEL_GAP = 28;
+const LABEL_Y = 14;
+const PANEL_Y = 48;
+const TILE_SIZE_FT = 4;
+const PIXELS_PER_FOOT = 8;
+const TILE_SIZE_PX = TILE_SIZE_FT * PIXELS_PER_FOOT;
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 type ScenarioId = 'diagonal' | 'curved';
 
 interface HallwaySmoothingLabState {
   scenario: ScenarioId;
-  seed: number;
-  cellSize: number;
 }
 
-function rgba(color: number, alpha: number): string {
-  const r = (color >> 16) & 0xff;
-  const g = (color >> 8) & 0xff;
-  const b = color & 0xff;
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+interface FixtureScenario {
+  readonly name: string;
+  readonly rows: readonly string[];
 }
 
-function terrainCss(terrain: TerrainType): string {
-  return colorToCss(TERRAIN_FALLBACK_COLORS[terrain] ?? 0x05060f);
-}
-
-function generateScenario(settings: HallwaySmoothingLabState): FloorMap {
-  const curved = settings.scenario === 'curved';
-  const gen = new DungeonGenerator({ roomVariety: true, caveRegions: curved });
-  const config: MapConfig = {
-    widthTiles: curved ? 56 : 48,
-    heightTiles: curved ? 34 : 30,
-    tileSizeFt: 4,
-    biome: BiomeType.BASIC_UNDERGROUND,
-    seed: settings.seed,
-    roomWidthRange: curved ? [5, 12] : [5, 10],
-    roomHeightRange: curved ? [5, 10] : [5, 9],
-    maxRooms: curved ? 18 : 16,
-    floorDensity: curved ? 0.42 : 0.36,
-  };
-  return gen.generate(config, new SeededRandom(config.seed));
-}
-
-function drawBaseTerrain(
-  ctx: CanvasRenderingContext2D,
-  floorMap: FloorMap,
-  originX: number,
-  originY: number,
-  cellSize: number,
-): void {
-  for (let ty = 0; ty < floorMap.height; ty++) {
-    for (let tx = 0; tx < floorMap.width; tx++) {
-      const idx = ty * floorMap.width + tx;
-      const terrain = (floorMap.terrain[idx] ?? TerrainType.VOID) as TerrainType;
-      ctx.fillStyle = terrainCss(terrain);
-      ctx.fillRect(originX + tx * cellSize, originY + ty * cellSize, cellSize, cellSize);
-    }
+declare global {
+  interface Window {
+    __hallwaySmoothingDebug?: {
+      ready: boolean;
+      scenario: ScenarioId;
+      baselineJaggedness: number;
+      smoothJaggedness: number;
+      reduction: number;
+      includedTiles: number;
+    };
   }
 }
 
-function drawPanelChrome(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  title: string,
-): void {
-  ctx.fillStyle = '#0f172a';
-  ctx.fillRect(x - 12, y - 34, width + 24, height + 50);
-  ctx.strokeStyle = 'rgba(148, 163, 184, 0.45)';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(x - 12, y - 34, width + 24, height + 50);
-  ctx.fillStyle = '#e2e8f0';
-  ctx.font = '16px monospace';
-  ctx.fillText(title, x - 4, y - 12);
+const FIXTURES: Readonly<Record<ScenarioId, FixtureScenario>> = {
+  diagonal: {
+    name: 'Diagonal shortcuts',
+    rows: [
+      '####################',
+      '#....###############',
+      '#....###############',
+      '#....##cc###########',
+      '#....###cc##########',
+      '#....####cc####....#',
+      '#....#####cc###....#',
+      '####d######cc##....#',
+      '####.#######cc#....#',
+      '####...............#',
+      '####################',
+      '####################',
+    ],
+  },
+  curved: {
+    name: 'Curved cave passages',
+    rows: [
+      '####################',
+      '####vvvv############',
+      '###vvvvvv###########',
+      '##vvvv#vvv##########',
+      '##vvv###vvv#########',
+      '##vv#####vvv########',
+      '###vv#####vvv#######',
+      '####vv#####vvv######',
+      '#####vv#####vvvv####',
+      '######vv######vvv###',
+      '#######vvvvvvvvvv###',
+      '####################',
+    ],
+  },
+};
+
+function buildFixtureFloorMap(scenarioId: ScenarioId): FloorMap {
+  const fixture = FIXTURES[scenarioId];
+  const heightTiles = fixture.rows.length;
+  const widthTiles = fixture.rows[0]?.length ?? 0;
+  const tileMap = new TileMap(widthTiles, heightTiles);
+  const terrain = new Uint8Array(widthTiles * heightTiles);
+  const config: MapConfig = {
+    widthTiles,
+    heightTiles,
+    tileSizeFt: TILE_SIZE_FT,
+    biome: BiomeType.BASIC_UNDERGROUND,
+    seed: 42,
+    roomWidthRange: [4, 8],
+    roomHeightRange: [4, 8],
+    maxRooms: 8,
+    floorDensity: 0.4,
+  };
+
+  for (let y = 0; y < heightTiles; y++) {
+    const row = fixture.rows[y]!;
+    for (let x = 0; x < widthTiles; x++) {
+      const idx = y * widthTiles + x;
+      switch (row[x]) {
+        case '.':
+          terrain[idx] = TerrainType.STONE_FLOOR;
+          tileMap.flags[idx] = TilePresets.FLOOR;
+          break;
+        case 'c':
+          terrain[idx] = TerrainType.CORRIDOR;
+          tileMap.flags[idx] = TilePresets.FLOOR;
+          break;
+        case 'd':
+          terrain[idx] = TerrainType.DOOR;
+          tileMap.flags[idx] = TilePresets.DOOR_CLOSED;
+          break;
+        case 'v':
+          terrain[idx] = TerrainType.CAVE_FLOOR;
+          tileMap.flags[idx] = TilePresets.FLOOR;
+          break;
+        default:
+          terrain[idx] = scenarioId === 'curved' ? TerrainType.CAVE_WALL : TerrainType.STONE_WALL;
+          tileMap.flags[idx] = TilePresets.WALL;
+          break;
+      }
+    }
+  }
+
+  return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 1, y: 1 });
+}
+
+class HallwaySmoothingScene extends Phaser.Scene {
+  constructor(
+    private readonly scenarioId: ScenarioId,
+    private readonly metrics: ReturnType<typeof measurePassageJaggedness>,
+  ) {
+    super('HallwaySmoothingScene');
+  }
+
+  create(): void {
+    const floorMap = buildFixtureFloorMap(this.scenarioId);
+    const panelWidth = floorMap.width * TILE_SIZE_PX;
+    const baseline = buildTerrainLayer(this, floorMap, { smoothPassages: false });
+    baseline.rt.setPosition(PANEL_PADDING, PANEL_Y);
+    const smooth = buildTerrainLayer(this, floorMap, { smoothPassages: true });
+    smooth.rt.setPosition(PANEL_PADDING + panelWidth + PANEL_GAP, PANEL_Y);
+
+    this.cameras.main.setBackgroundColor('#0f172a');
+    const style = {
+      fontFamily: 'monospace',
+      fontSize: '24px',
+      color: '#e2e8f0',
+    };
+    this.add.text(PANEL_PADDING, LABEL_Y, 'Baseline tile silhouette', style);
+    this.add.text(
+      PANEL_PADDING + panelWidth + PANEL_GAP,
+      LABEL_Y,
+      'Smoothed contour overlay',
+      style,
+    );
+
+    window.__hallwaySmoothingDebug = {
+      ready: true,
+      scenario: this.scenarioId,
+      baselineJaggedness: this.metrics.baselineRoughness,
+      smoothJaggedness: this.metrics.smoothRoughness,
+      reduction: this.metrics.reduction,
+      includedTiles: this.metrics.includedTiles,
+    };
+  }
 }
 
 function createHallwaySmoothingLab(canvasHost: HTMLElement, controls: HTMLElement): () => void {
@@ -93,18 +177,8 @@ function createHallwaySmoothingLab(canvasHost: HTMLElement, controls: HTMLElemen
 
   const settings: HallwaySmoothingLabState = {
     scenario: 'diagonal',
-    seed: 42,
-    cellSize: 12,
     ...(loadLabState<Partial<HallwaySmoothingLabState>>(LAB_ID) ?? {}),
   };
-
-  const canvas = document.createElement('canvas');
-  canvas.dataset.testid = 'hallway-smoothing-canvas';
-  canvas.style.display = 'block';
-  canvas.style.imageRendering = 'pixelated';
-  canvasHost.appendChild(canvas);
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('2D canvas context unavailable.');
 
   const metricsEl = document.createElement('pre');
   metricsEl.dataset.testid = 'hallway-smoothing-metrics';
@@ -113,51 +187,41 @@ function createHallwaySmoothingLab(canvasHost: HTMLElement, controls: HTMLElemen
     'font:12px/1.5 monospace;white-space:pre-wrap;';
   canvasHost.appendChild(metricsEl);
 
+  let game: Phaser.Game | null = null;
+
   const render = (): void => {
     saveLabState(LAB_ID, settings);
-    const floorMap = generateScenario(settings);
-    const plan = buildPassageRenderPlan(floorMap);
-    const report = measurePassageJaggedness(floorMap);
-    const panelWidth = floorMap.width * settings.cellSize;
-    const panelHeight = floorMap.height * settings.cellSize;
-    const baselineX = PANEL_PADDING;
-    const smoothX = baselineX + panelWidth + PANEL_GAP;
-    const panelY = PANEL_PADDING + 34;
-    canvas.width = smoothX + panelWidth + PANEL_PADDING;
-    canvas.height = panelY + panelHeight + PANEL_PADDING;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#020617';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    drawPanelChrome(ctx, baselineX, panelY, panelWidth, panelHeight, 'Baseline tile silhouette');
-    drawBaseTerrain(ctx, floorMap, baselineX, panelY, settings.cellSize);
-
-    drawPanelChrome(ctx, smoothX, panelY, panelWidth, panelHeight, 'Smoothed contour overlay');
-    drawBaseTerrain(ctx, floorMap, smoothX, panelY, settings.cellSize);
-
-    for (const group of plan.groups) {
-      ctx.fillStyle = rgba(group.color, group.alpha);
-      for (const circle of group.circles) {
-        ctx.beginPath();
-        ctx.arc(
-          smoothX + circle.xTiles * settings.cellSize,
-          panelY + circle.yTiles * settings.cellSize,
-          circle.radiusTiles * settings.cellSize,
-          0,
-          Math.PI * 2,
-        );
-        ctx.fill();
-      }
-    }
-
+    const floorMap = buildFixtureFloorMap(settings.scenario);
+    const metrics = measurePassageJaggedness(floorMap);
+    const panelWidth = floorMap.width * TILE_SIZE_PX;
+    const panelHeight = floorMap.height * TILE_SIZE_PX;
+    window.__hallwaySmoothingDebug = {
+      ready: false,
+      scenario: settings.scenario,
+      baselineJaggedness: metrics.baselineRoughness,
+      smoothJaggedness: metrics.smoothRoughness,
+      reduction: metrics.reduction,
+      includedTiles: metrics.includedTiles,
+    };
     metricsEl.textContent =
       `scenario: ${settings.scenario}\n` +
-      `seed: ${settings.seed}\n` +
-      `included passage tiles: ${report.includedTiles}\n` +
-      `baseline jaggedness: ${report.baselineRoughness}\n` +
-      `smoothed jaggedness: ${report.smoothRoughness}\n` +
-      `reduction: ${(report.reduction * 100).toFixed(1)}%`;
+      `included passage tiles: ${metrics.includedTiles}\n` +
+      `baseline jaggedness: ${metrics.baselineRoughness}\n` +
+      `smoothed jaggedness: ${metrics.smoothRoughness}\n` +
+      `reduction: ${(metrics.reduction * 100).toFixed(1)}%`;
+    game?.destroy(true);
+    game = new Phaser.Game({
+      type: Phaser.AUTO,
+      parent: canvasHost,
+      width: PANEL_PADDING * 2 + panelWidth * 2 + PANEL_GAP,
+      height: PANEL_Y + panelHeight + PANEL_PADDING,
+      scene: new HallwaySmoothingScene(settings.scenario, metrics),
+      pixelArt: true,
+      scale: {
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH,
+      },
+    });
   };
 
   gui
@@ -167,13 +231,13 @@ function createHallwaySmoothingLab(canvasHost: HTMLElement, controls: HTMLElemen
     })
     .name('Scenario')
     .onChange(render);
-  gui.add(settings, 'seed', 1, 9999, 1).name('Seed').onChange(render);
-  gui.add(settings, 'cellSize', 8, 20, 1).name('Zoom').onChange(render);
 
   render();
+
   return () => {
-    canvas.remove();
+    game?.destroy(true);
     metricsEl.remove();
+    delete window.__hallwaySmoothingDebug;
   };
 }
 

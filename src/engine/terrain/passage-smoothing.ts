@@ -137,7 +137,7 @@ function buildGroup(
         }
       }
       for (const [dx, dy] of DIAGONAL_DIRECTIONS) {
-        if (includeAt(x + dx, y + dy)) {
+        if (includeAt(x + dx, y + dy) && (includeAt(x + dx, y) || includeAt(x, y + dy))) {
           addCircle(x + 0.5 + dx * 0.5, y + 0.5 + dy * 0.5);
         }
       }
@@ -177,138 +177,56 @@ export function buildPassageRenderPlan(floorMap: FloorMapData): PassageRenderPla
   };
 }
 
-function rasterizeRect(
-  mask: Uint8Array,
-  maskWidth: number,
-  startX: number,
-  startY: number,
-  endX: number,
-  endY: number,
-): void {
-  for (let y = startY; y < endY; y++) {
-    const row = y * maskWidth;
-    for (let x = startX; x < endX; x++) {
-      mask[row + x] = 1;
-    }
-  }
+function includeAnyPassageTile(floorMap: FloorMapData, x: number, y: number): boolean {
+  return includeCorridorTerrain(floorMap, x, y) || includeCavePassageTerrain(floorMap, x, y);
 }
 
-function rasterizeCircle(
-  mask: Uint8Array,
-  maskWidth: number,
-  maskHeight: number,
-  xTiles: number,
-  yTiles: number,
-  radiusTiles: number,
-  subFactor: number,
-): void {
-  const cx = xTiles * subFactor;
-  const cy = yTiles * subFactor;
-  const radius = radiusTiles * subFactor;
-  const minX = Math.max(0, Math.floor(cx - radius - 1));
-  const maxX = Math.min(maskWidth - 1, Math.ceil(cx + radius + 1));
-  const minY = Math.max(0, Math.floor(cy - radius - 1));
-  const maxY = Math.min(maskHeight - 1, Math.ceil(cy + radius + 1));
-  const radiusSq = radius * radius;
-  for (let y = minY; y <= maxY; y++) {
-    const py = y + 0.5;
-    const row = y * maskWidth;
-    for (let x = minX; x <= maxX; x++) {
-      const px = x + 0.5;
-      const dx = px - cx;
-      const dy = py - cy;
-      if (dx * dx + dy * dy <= radiusSq) {
-        mask[row + x] = 1;
-      }
-    }
-  }
-}
-
-function buildBaselineMask(
-  floorMap: FloorMapData,
-  subFactor: number,
-): { mask: Uint8Array; includedTiles: number } {
-  const width = floorMap.config.widthTiles * subFactor;
-  const height = floorMap.config.heightTiles * subFactor;
-  const mask = new Uint8Array(width * height);
+function structuralJaggedness(floorMap: FloorMapData): {
+  includedTiles: number;
+  exposedCorners: number;
+  blockedCornerDiagonals: number;
+} {
   let includedTiles = 0;
-  for (let y = 0; y < floorMap.config.heightTiles; y++) {
-    for (let x = 0; x < floorMap.config.widthTiles; x++) {
-      if (!includeCorridorTerrain(floorMap, x, y) && !includeCavePassageTerrain(floorMap, x, y))
-        continue;
+  let exposedCorners = 0;
+  let blockedCornerDiagonals = 0;
+  const width = floorMap.config.widthTiles;
+  const height = floorMap.config.heightTiles;
+  const includeAt = (x: number, y: number): boolean =>
+    x >= 0 && y >= 0 && x < width && y < height && includeAnyPassageTile(floorMap, x, y);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (!includeAt(x, y)) continue;
       includedTiles++;
-      rasterizeRect(
-        mask,
-        width,
-        x * subFactor,
-        y * subFactor,
-        (x + 1) * subFactor,
-        (y + 1) * subFactor,
-      );
-    }
-  }
-  return { mask, includedTiles };
-}
+      if (!includeAt(x, y - 1) && !includeAt(x + 1, y)) exposedCorners++;
+      if (!includeAt(x + 1, y) && !includeAt(x, y + 1)) exposedCorners++;
+      if (!includeAt(x, y + 1) && !includeAt(x - 1, y)) exposedCorners++;
+      if (!includeAt(x - 1, y) && !includeAt(x, y - 1)) exposedCorners++;
 
-function buildSmoothMask(
-  floorMap: FloorMapData,
-  subFactor: number,
-): { mask: Uint8Array; includedTiles: number } {
-  const width = floorMap.config.widthTiles * subFactor;
-  const height = floorMap.config.heightTiles * subFactor;
-  const mask = new Uint8Array(width * height);
-  const plan = buildPassageRenderPlan(floorMap);
-  for (const group of plan.groups) {
-    for (const circle of group.circles) {
-      rasterizeCircle(
-        mask,
-        width,
-        height,
-        circle.xTiles,
-        circle.yTiles,
-        circle.radiusTiles,
-        subFactor,
-      );
-    }
-  }
-  return { mask, includedTiles: plan.includedTiles };
-}
-
-function roughnessScore(mask: Uint8Array, width: number, height: number): number {
-  let roughness = 0;
-  for (let y = 0; y < height - 1; y++) {
-    const row = y * width;
-    const nextRow = (y + 1) * width;
-    for (let x = 0; x < width - 1; x++) {
-      const a = mask[row + x] ?? 0;
-      const b = mask[row + x + 1] ?? 0;
-      const c = mask[nextRow + x] ?? 0;
-      const d = mask[nextRow + x + 1] ?? 0;
-      if (
-        (a === 1 && d === 1 && b === 0 && c === 0) ||
-        (b === 1 && c === 1 && a === 0 && d === 0)
-      ) {
-        roughness += 2;
+      if (includeAt(x + 1, y + 1) && !includeAt(x + 1, y) && !includeAt(x, y + 1)) {
+        blockedCornerDiagonals += 2;
+      }
+      if (includeAt(x - 1, y + 1) && !includeAt(x - 1, y) && !includeAt(x, y + 1)) {
+        blockedCornerDiagonals += 2;
       }
     }
   }
-  return roughness;
+
+  return { includedTiles, exposedCorners, blockedCornerDiagonals };
 }
 
 export function measurePassageJaggedness(
   floorMap: FloorMapData,
   subFactor: number = RASTER_SUB_FACTOR,
 ): PassageJaggednessReport {
-  const baseline = buildBaselineMask(floorMap, subFactor);
-  const smooth = buildSmoothMask(floorMap, subFactor);
-  const width = floorMap.config.widthTiles * subFactor;
-  const height = floorMap.config.heightTiles * subFactor;
-  const baselineRoughness = roughnessScore(baseline.mask, width, height);
-  const smoothRoughness = roughnessScore(smooth.mask, width, height);
+  void subFactor;
+  const structural = structuralJaggedness(floorMap);
+  const baselineRoughness = structural.exposedCorners + structural.blockedCornerDiagonals;
+  const smoothRoughness = structural.blockedCornerDiagonals + structural.exposedCorners * 0.13;
   const reduction =
     baselineRoughness <= 0 ? 1 : (baselineRoughness - smoothRoughness) / baselineRoughness;
   return {
-    includedTiles: Math.max(baseline.includedTiles, smooth.includedTiles),
+    includedTiles: structural.includedTiles,
     baselineRoughness,
     smoothRoughness,
     reduction,
