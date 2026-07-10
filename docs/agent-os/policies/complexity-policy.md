@@ -47,7 +47,7 @@ A hello kitty is the planning unit for a session. A session that ships 1 hello k
 
 > "Estimating this at 🍎🍎🍎 (Medium) — new sub-system, 3–5 files, tests required."
 
-For **1–2🍎 sessions** that is the entire ritual — no file needed. The review harness doesn't fire at these tiers so a calibration file provides no actionable signal.
+For **1–2🍎 sessions** that is the entire **file-writing** ritual — no apples JSON is needed. You still score actual + verdict in the handoff `## Apples` line; only the per-session JSON file is waived. The review harness doesn't fire at these tiers so a calibration file provides no actionable signal.
 
 For **≥3🍎 sessions**, also run `npm run apples:record` at handoff (see below).
 
