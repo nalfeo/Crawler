@@ -10,7 +10,7 @@ Accepted
 
 ## Estimated Complexity
 
-🍎 x 2 - extends existing set-piece data flow and render hooks across multiple layers without introducing a new runtime system.
+🍎 x 4 - multi-layer editor/runtime threading across shared/core/game/engine with required adversarial + multi-model review stages.
 
 ## Context
 

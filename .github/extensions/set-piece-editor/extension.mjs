@@ -91,12 +91,30 @@ function broadcastToInstance(instanceId, data) {
   }
 }
 
-function handleRequest(instanceId, req, res) {
+function isLoopbackHostHeader(hostHeader) {
+  if (typeof hostHeader !== 'string' || hostHeader.trim() === '') return false;
+  try {
+    var u = new URL('http://' + hostHeader.trim());
+    var h = (u.hostname || '').toLowerCase();
+    return h === '127.0.0.1' || h === 'localhost' || h === '::1' || h === '[::1]';
+  } catch {
+    return false;
+  }
+}
+
+function handleRequest(instanceId, allowedOrigin, req, res) {
   const url = new URL(req.url, 'http://127.0.0.1');
-  const expectedOrigin = `http://${req.headers.host ?? ''}`;
+  const hostHeader = req.headers.host;
+  const expectedOrigin = allowedOrigin;
   const applyToken = applyTokens.get(instanceId);
+  const requestHostAllowed = isLoopbackHostHeader(hostHeader);
 
   if (req.method === 'GET' && url.pathname === '/') {
+    if (!requestHostAllowed) {
+      res.writeHead(403);
+      res.end('Forbidden host');
+      return;
+    }
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.end(renderHtml(applyToken ?? ''));
     return;
@@ -235,7 +253,12 @@ const servers = new Map();
 const applyTokens = new Map();
 async function startServer(instanceId) {
   applyTokens.set(instanceId, randomBytes(16).toString('hex'));
-  const server = createServer((req, res) => handleRequest(instanceId, req, res));
+  const server = createServer((req, res) => {
+    const address = server.address();
+    const port = address && typeof address === 'object' ? address.port : 0;
+    const allowedOrigin = 'http://127.0.0.1:' + String(port);
+    return handleRequest(instanceId, allowedOrigin, req, res);
+  });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   return { server, url: 'http://127.0.0.1:' + server.address().port + '/' };
 }
@@ -1683,6 +1706,11 @@ canvas.addEventListener('mouseup',function(){
       p.x=Math.max(0,nnum(snapV(drag.dispX/ts),0));p.y=Math.max(0,nnum(snapV(drag.dispY/ts),0));
       p.width=snapSz(drag.dispW/ts);p.height=snapSz(drag.dispH/ts);
       p.width=Math.min(p.width,sp.width-p.x);p.height=Math.min(p.height,sp.height-p.y);
+      var baseLayer=p.layers&&p.layers[0];
+      if(baseLayer&&baseLayer.widthFt!==undefined&&baseLayer.heightFt!==undefined){
+        baseLayer.widthFt=p.width*FEET_PER_TILE;
+        baseLayer.heightFt=p.height*FEET_PER_TILE;
+      }
     }
     refreshPropInputs();markDirty();
   }
