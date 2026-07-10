@@ -18,7 +18,9 @@ YYYY-MM-DD
 ## Apples
 
 <!-- One line. E.g. `2🍎 exact` or `3🍎 estimated, 4🍎 actual (📈 over — surprise scope in X)`.
-     The full JSON summary already lives in docs/knowledge/metrics/apples/YYYY-MM-DD-slug.json — don't duplicate it here. -->
+     For ≥3🍎 sessions, the full JSON summary lives in
+     docs/knowledge/metrics/apples/YYYY-MM-DD-slug.json — don't duplicate it here.
+     1–2🍎 sessions do not require an apples JSON file. -->
 
 ## What Was Done
 

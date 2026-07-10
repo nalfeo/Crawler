@@ -20,6 +20,16 @@ import { verdictFromDelta } from './apple-calibration-lib.js';
 
 const APPLES_DIR = 'docs/knowledge/metrics/apples';
 
+export interface AppleRecordEntry {
+  date: string;
+  session: string;
+  estimated_apples: number;
+  actual_apples: number;
+  delta: number;
+  verdict: ReturnType<typeof verdictFromDelta>;
+  hello_kitties: number;
+}
+
 export function usage(): void {
   process.stderr.write(
     'Usage: npm run apples:record -- --session <slug> --estimated <1-5> --actual <1-5>\n',
@@ -80,27 +90,38 @@ export function writeAppleRecordFile(outPath: string, entry: Record<string, unkn
   }
 }
 
+export function buildAppleRecord(
+  params: { date: string; session: string; estimated: number; actual: number },
+  outputDir = APPLES_DIR,
+): { outPath: string; entry: AppleRecordEntry } {
+  const { date, session, estimated, actual } = params;
+  const delta = actual - estimated;
+  const verdict = verdictFromDelta(delta);
+  const hello_kitties = round2(actual / 5);
+
+  const entry: AppleRecordEntry = {
+    date,
+    session,
+    estimated_apples: estimated,
+    actual_apples: actual,
+    delta,
+    verdict,
+    hello_kitties,
+  };
+
+  const filename = `${date}-${session}.json`;
+  const outPath = join(outputDir, filename);
+  return { outPath, entry };
+}
+
 export function main(): void {
   try {
     const { session, estimated, actual } = parseArgs(process.argv);
 
     const date = todayISO();
-    const delta = actual - estimated;
-    const verdict = verdictFromDelta(delta);
-    const hello_kitties = round2(actual / 5);
-
-    const entry = {
-      date,
-      session,
-      estimated_apples: estimated,
-      actual_apples: actual,
-      delta,
-      verdict,
-      hello_kitties,
-    };
-
-    const filename = `${date}-${session}.json`;
-    const outPath = join(APPLES_DIR, filename);
+    const { outPath, entry } = buildAppleRecord({ date, session, estimated, actual });
+    const delta = entry.delta;
+    const verdict = entry.verdict;
 
     writeAppleRecordFile(outPath, entry);
     process.stdout.write(`✅ Wrote ${outPath}\n`);

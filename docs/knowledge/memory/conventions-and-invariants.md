@@ -21,7 +21,7 @@ boundary by the `copilot-guards` extension and in CI.
 - [test] Unit tests for pure functions; property-based tests with fast-check for invariants; integration tests for pipelines #testing
 - [workflow] Run npm run verify:fast after every change (~30s); npm run verify before committing (~3min) #workflow
 - [process] Write a handoff at docs/knowledge/handoffs/YYYY-MM-DD-slug.md before ending a session #handoff
-- [process] Declare a 1-5 apple complexity estimate before coding; record actuals at docs/knowledge/metrics/apples/YYYY-MM-DD-slug.json #apples
+- [process] Declare a 1-5 apple complexity estimate before coding; record actuals via docs/knowledge/metrics/apples/YYYY-MM-DD-slug.json for ≥3🍎 sessions (1–2🍎 sessions do not require a file) #apples
 - [merge] Authorized merges use: gh pr merge --auto --squash; no approving human review is required #merge
 
 ## Relations

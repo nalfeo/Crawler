@@ -43,7 +43,7 @@ This skill has two modes. Pick based on the request:
 4. **Fix real failures** with a surgical commit on the PR branch. Add/repair unit coverage in touched areas. Re-run `npm run verify:fast` and `bash scripts/agent/lab-gate-check.sh`.
 5. **Resolve review threads:** read inline comments, address actionable ones in code, then reply to + resolve each thread (conversation-resolution gate).
 6. **Arm auto-merge:** `gh pr merge <n> --auto --squash`. If `BLOCKED`, diagnose the actual cause (almost always: CI not yet reported on the latest head, or an unresolved thread) — not "review required".
-7. **Confirm + record:** verify `state=MERGED`, write a handoff in `docs/knowledge/handoffs/`, score apples in `docs/knowledge/metrics/apples/`, commit with a conventional message + the `Co-authored-by: Copilot` trailer. Report the final merge commit.
+7. **Confirm + record:** verify `state=MERGED`, write a handoff in `docs/knowledge/handoffs/`, and (for **≥3🍎** sessions) score apples via `npm run apples:record`. 1–2🍎 sessions do not require an apples JSON. Commit with a conventional message + the `Co-authored-by: Copilot` trailer. Report the final merge commit.
 
 ## Scope & worktree rules (Mode A)
 

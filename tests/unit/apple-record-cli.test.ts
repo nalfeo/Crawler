@@ -3,8 +3,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { describe, expect, it } from 'vitest';
 import {
+  buildAppleRecord,
   parseArgs,
-  round2,
   writeAppleRecordFile,
 } from '../../scripts/agent/docs/apple-record-cli.js';
 
@@ -46,20 +46,29 @@ describe('apple-record-cli parseArgs', () => {
 });
 
 describe('apple-record-cli write behavior', () => {
-  it('writes a new record and rejects duplicate paths', () => {
+  it('derives entry/path and writes a new record; duplicate paths fail', () => {
     const tmpDir = mkdtempSync(path.join(os.tmpdir(), 'apple-record-cli-'));
     try {
-      const outPath = path.join(tmpDir, '2026-07-10-trim-apple-ritual.json');
-      const entry = {
+      const { outPath, entry } = buildAppleRecord(
+        {
+          date: '2026-07-10',
+          session: 'trim-apple-ritual',
+          estimated: 3,
+          actual: 4,
+        },
+        tmpDir,
+      );
+
+      expect(outPath).toBe(path.join(tmpDir, '2026-07-10-trim-apple-ritual.json'));
+      expect(entry).toEqual({
         date: '2026-07-10',
         session: 'trim-apple-ritual',
         estimated_apples: 3,
         actual_apples: 4,
         delta: 1,
         verdict: 'under',
-        hello_kitties: round2(4 / 5),
-      };
-
+        hello_kitties: 0.8,
+      });
       writeAppleRecordFile(outPath, entry);
       expect(JSON.parse(readFileSync(outPath, 'utf8'))).toEqual(entry);
       expect(() => writeAppleRecordFile(outPath, entry)).toThrow(/File already exists/);
