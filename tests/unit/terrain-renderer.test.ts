@@ -414,4 +414,31 @@ describe('buildTerrainLayer — generated tile wiring (w2)', () => {
     expect(graphics!.circles.length).toBeGreaterThan(0);
     expect(rt.draws).toHaveLength(1);
   });
+
+  it('does not mutate map terrain or flags when smooth-passage overlay is enabled', () => {
+    const corridor = getTileVisual(TerrainType.CORRIDOR)!;
+    const { scene } = createTerrainScene({
+      loadedTextures: new Set([corridor.textureKey!, corridor.sheetKey]),
+      enableGraphics: true,
+    });
+    const floorMap = makeFloorMap(
+      [
+        TerrainType.CORRIDOR,
+        TerrainType.CORRIDOR,
+        TerrainType.VOID,
+        TerrainType.VOID,
+        TerrainType.CORRIDOR,
+        TerrainType.CORRIDOR,
+      ],
+      3,
+      2,
+    );
+    const terrainBefore = Array.from(floorMap.terrain);
+    const flagsBefore = Array.from(floorMap.tileMap.flags);
+
+    buildTerrainLayer(scene, floorMap, { smoothPassages: true });
+
+    expect(Array.from(floorMap.terrain)).toEqual(terrainBefore);
+    expect(Array.from(floorMap.tileMap.flags)).toEqual(flagsBefore);
+  });
 });
