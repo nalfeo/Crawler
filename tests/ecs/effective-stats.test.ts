@@ -24,7 +24,7 @@ describe('effective-stats secondary derivation (level-up bridge)', () => {
 
   const LUCK_TO_CRIT = CORE_STAT_TO_SECONDARY.luck.critChance!;
   const DEX_TO_DODGE = CORE_STAT_TO_SECONDARY.dexterity.dodgeChance!;
-  const STR_TO_DAMAGE_BONUS = CORE_STAT_TO_SECONDARY.strength.damageBonus!;
+  const STR_TO_DAMAGE_PERCENT = CORE_STAT_TO_SECONDARY.strength.damagePercent!;
   const WIS_TO_COOLDOWN = CORE_STAT_TO_SECONDARY.wisdom.cooldownReduction!;
 
   it('derives baseline crit/dodge from base primaries (Luck 1, Dexterity 1)', () => {
@@ -34,8 +34,8 @@ describe('effective-stats secondary derivation (level-up bridge)', () => {
     expect(stats.critChance).toBeCloseTo(DEFAULT_BASE_STATS.critChance + 1 * LUCK_TO_CRIT, 6);
     // dodgeChance = base 0 + effective dexterity (1) * rate
     expect(stats.dodgeChance).toBeCloseTo(DEFAULT_BASE_STATS.dodgeChance + 1 * DEX_TO_DODGE, 6);
-    expect(stats.damageBonus).toBeCloseTo(
-      DEFAULT_BASE_STATS.damageBonus + 1 * STR_TO_DAMAGE_BONUS,
+    expect(stats.damagePercent).toBeCloseTo(
+      DEFAULT_BASE_STATS.damagePercent + 1 * STR_TO_DAMAGE_PERCENT,
       6,
     );
     expect(stats.cooldownReduction).toBeCloseTo(
@@ -66,15 +66,15 @@ describe('effective-stats secondary derivation (level-up bridge)', () => {
     expect(after).toBeCloseTo(before + 10 * DEX_TO_DODGE, 6);
   });
 
-  it('raises damageBonus as Strength core points are allocated', () => {
+  it('raises damagePercent as Strength core points are allocated', () => {
     statSystem(world);
-    const before = getEffectiveStats(world, entity).damageBonus;
+    const before = getEffectiveStats(world, entity).damagePercent;
 
     world.stores.coreStatPoints.strength[entity] = 10;
     statSystem(world);
-    const after = getEffectiveStats(world, entity).damageBonus;
+    const after = getEffectiveStats(world, entity).damagePercent;
 
-    expect(after).toBeCloseTo(before + 10 * STR_TO_DAMAGE_BONUS, 6);
+    expect(after).toBeCloseTo(before + 10 * STR_TO_DAMAGE_PERCENT, 6);
   });
 
   it('raises cooldownReduction as Wisdom core points are allocated', () => {

@@ -29,11 +29,10 @@ describe('AI playthrough level-up UX wiring', () => {
     );
   });
 
-  it('LevelUpUI disables level-up + allocation for luck and charisma', () => {
+  it('LevelUpUI consumes shared allocatable-stat policy', () => {
     const source = readFileSync('src/engine/LevelUpUI.ts', 'utf-8');
-    expect(source).toContain(
-      "const DISABLED_LEVEL_UP_STATS = new Set<PrimaryStatId>(['charisma', 'luck', 'weight']);",
-    );
+    expect(source).toContain('isAllocatablePrimaryStat');
+    expect(source).toContain('const canAllocateStat = (stat: PrimaryStatId): boolean =>');
     expect(source).toContain('remaining > 0 && canAllocateStat(stat)');
     expect(source).toContain('if (canAllocateStat(selectedStat(state)))');
   });

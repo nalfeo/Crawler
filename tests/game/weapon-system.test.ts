@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   Damage,
   DeathTimer,
+  EffectiveStats,
   MeleeSwing,
   Position,
   Projectile,
@@ -81,6 +82,23 @@ describe('weaponSystem', () => {
     weaponSystem(world);
 
     expect(query(world.ecs, [Projectile]).length).toBe(1);
+  });
+
+  it('applies cooldown reduction to weapon fire cadence', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 8, 8);
+    addComponent(world.ecs, player, EffectiveStats);
+    world.stores.effectiveStats.cooldownReduction[player] = 0.5;
+    spawnEnemy(world, 25, 8, 10);
+    const pistol = getWeaponDef('pistol')!;
+    setActiveWeapon(world, pistol);
+    world.elapsedMs = pistol.cooldownMs;
+
+    weaponSystem(world);
+    world.elapsedMs += pistol.cooldownMs * 0.6; // > reduced cooldown, < base cooldown
+    weaponSystem(world);
+
+    expect(query(world.ecs, [Projectile]).length).toBe(2);
   });
 
   it('skips corpses when picking a target — a dead enemy must not be shot at', () => {

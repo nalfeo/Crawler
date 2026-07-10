@@ -16,6 +16,7 @@ export const PRIMARY_STATS = [
 export const SECONDARY_STATS = [
   'armor',
   'damageBonus',
+  'damagePercent',
   'attackSpeed',
   'moveSpeed',
   'critChance',
@@ -53,6 +54,7 @@ export const STAT_CLAMPS: Readonly<Record<StatId, StatClamp>> = {
   weight: { min: 0 },
   armor: { min: 0 },
   damageBonus: {},
+  damagePercent: { min: 0 },
   attackSpeed: { min: 0.1 },
   moveSpeed: { min: 0 },
   critChance: { min: 0, max: 1 },
@@ -74,6 +76,7 @@ export const DEFAULT_BASE_STATS: Readonly<Record<StatId, number>> = {
   weight: 1,
   armor: 0,
   damageBonus: 0,
+  damagePercent: 0,
   attackSpeed: 0,
   moveSpeed: 0,
   critChance: 0.05,
@@ -180,6 +183,22 @@ export const CORE_STAT_BASE: Readonly<Record<PrimaryStatId, number>> = {
   weight: 0,
 };
 
+export const ALLOCATABLE_PRIMARY_STATS = [
+  'strength',
+  'dexterity',
+  'constitution',
+  'intelligence',
+  'wisdom',
+] as const satisfies readonly PrimaryStatId[];
+
+const ALLOCATABLE_PRIMARY_STATS_SET: ReadonlySet<PrimaryStatId> = new Set(
+  ALLOCATABLE_PRIMARY_STATS,
+);
+
+export function isAllocatablePrimaryStat(stat: PrimaryStatId): boolean {
+  return ALLOCATABLE_PRIMARY_STATS_SET.has(stat);
+}
+
 /**
  * Per-point contribution of each PRIMARY_STAT to STAT_KEYS gameplay stats.
  *
@@ -226,7 +245,7 @@ export const CORE_STAT_TO_SECONDARY: Readonly<
   Record<PrimaryStatId, Partial<Record<SecondaryStatId, number>>>
 > = {
   /** Strength: offensive pressure — bonus damage multiplier. */
-  strength: { damageBonus: 0.01 },
+  strength: { damagePercent: 0.01 },
   /** Dexterity: nimbleness — chance to fully avoid an incoming hit. */
   dexterity: { dodgeChance: 0.003 },
   constitution: {},

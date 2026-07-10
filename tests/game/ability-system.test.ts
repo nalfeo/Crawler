@@ -1,6 +1,6 @@
 import { addComponent, query, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { SkillHolder, Size, Stats, Enemy } from '../../src/core/components.js';
+import { EffectiveStats, SkillHolder, Size, Stats, Enemy } from '../../src/core/components.js';
 import { SHAPE_BOX } from '../../src/core/physics-defs.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { knockbackSystem } from '../../src/core/systems/knockbackSystem.js';
@@ -172,6 +172,31 @@ describe('abilitySystem', () => {
     abilitySystem(world);
     expect(state.cooldownByAbilityId.get('fireball')).toBe(400);
     expect(world.playerMp).toBe(10);
+  });
+
+  it('honors cooldown reduction by allowing an earlier second activation', () => {
+    const { world, player } = setupPlayer();
+    world.featureUnlocks.spells = true;
+    world.playerMp = 20;
+    addComponent(world.ecs, player, EffectiveStats);
+    world.stores.effectiveStats.cooldownReduction[player] = 0.5;
+    memorizeSpell(world, player, 'fireball');
+    spawnEnemy(world, 1, 0, 100);
+    spawnEnemy(world, 1.5, 0.5, 100);
+    spawnEnemy(world, 1.75, -0.5, 100);
+
+    world.frameCount = 100;
+    abilitySystem(world);
+    const state = world.abilityStatesByEntity.get(player)!;
+    expect(state.cooldownByAbilityId.get('fireball')).toBe(100);
+
+    world.frameCount = 249; // base 300f cooldown would still block here
+    abilitySystem(world);
+    expect(state.cooldownByAbilityId.get('fireball')).toBe(100);
+
+    world.frameCount = 250; // reduced 150f cooldown should allow this cast
+    abilitySystem(world);
+    expect(state.cooldownByAbilityId.get('fireball')).toBe(250);
   });
 
   it('auto-casts fireball at a single nearby enemy without waiting for a cluster', () => {

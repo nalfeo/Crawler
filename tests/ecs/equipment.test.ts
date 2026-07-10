@@ -28,7 +28,7 @@ import { addItem, hasItem, getItemCount, type InventoryBag } from '../../src/sha
 import { ItemRarity, customTag, type ItemDef } from '../../src/shared/items.js';
 import type { EquipmentItemDef } from '../../src/shared/equipment-types.js';
 
-const STR_TO_DAMAGE_BONUS = CORE_STAT_TO_SECONDARY.strength.damageBonus!;
+const STR_TO_DAMAGE_PERCENT = CORE_STAT_TO_SECONDARY.strength.damagePercent!;
 
 // --- Test helpers ---
 
@@ -339,8 +339,9 @@ describe('Equipment System', () => {
       statBonuses: { damageBonus: 10 },
     });
     equip(world, entity, item, { force: true });
-    const expected = 10 + strength * STR_TO_DAMAGE_BONUS;
-    expect(getEffectiveStats(world, entity).damageBonus).toBeCloseTo(expected, 6);
+    const expected = strength * STR_TO_DAMAGE_PERCENT;
+    expect(getEffectiveStats(world, entity).damagePercent).toBeCloseTo(expected, 6);
+    expect(getEffectiveStats(world, entity).damageBonus).toBeCloseTo(10, 6);
   });
 
   // 25. NaN/Infinity stat values rejected

@@ -17,7 +17,7 @@ import { PIXEL_UI } from './pixel-ui.js';
 import { fitUiScale, type ScreenBounds } from './ui-scale.js';
 import { getRenderScale } from './render-scale.js';
 import { GAME } from '../shared/constants.js';
-import { PRIMARY_STATS, type PrimaryStatId } from '../shared/stats.js';
+import { PRIMARY_STATS, isAllocatablePrimaryStat, type PrimaryStatId } from '../shared/stats.js';
 import { PRIMARY_STAT_DISPLAY, formatCoreStatGains } from '../shared/stat-display.js';
 import {
   cancel,
@@ -89,7 +89,6 @@ const HEADER_HEIGHT = 70;
 const FOOTER_HEIGHT = 64;
 const PANEL_HEIGHT =
   HEADER_HEIGHT + PRIMARY_STATS.length * (ROW_HEIGHT + ROW_GAP) + FOOTER_HEIGHT + PANEL_PADDING;
-const DISABLED_LEVEL_UP_STATS = new Set<PrimaryStatId>(['charisma', 'luck', 'weight']);
 
 const TITLE_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
   fontFamily: 'monospace',
@@ -199,7 +198,7 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
 
   const previewValue = (stat: PrimaryStatId, draftPoints: number): number =>
     (params?.currentStats[stat] ?? 0) + draftPoints;
-  const canAllocateStat = (stat: PrimaryStatId): boolean => !DISABLED_LEVEL_UP_STATS.has(stat);
+  const canAllocateStat = (stat: PrimaryStatId): boolean => isAllocatablePrimaryStat(stat);
 
   const layoutPanel = (): void => {
     backdrop.setSize(viewWidth(), viewHeight());

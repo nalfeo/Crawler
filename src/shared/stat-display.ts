@@ -87,7 +87,7 @@ export function formatStatIncrement(stat: StatKey): string {
 export const PRIMARY_STAT_DISPLAY: Readonly<Record<PrimaryStatId, StatDisplayInfo>> = {
   strength: {
     label: 'Strength',
-    description: '+2 Damage · +1 Armor · +1.0% Damage Bonus per point. Melee power and resilience.',
+    description: '+2 Damage · +1 Armor · +1.0% Damage per point. Melee power and resilience.',
     decimals: 0,
   },
   dexterity: {
@@ -134,7 +134,7 @@ export const PRIMARY_STAT_DISPLAY: Readonly<Record<PrimaryStatId, StatDisplayInf
  * "+0.5% Crit Chance").
  */
 const SECONDARY_PERCENT_LABEL: Partial<Record<SecondaryStatId, string>> = {
-  damageBonus: 'Damage Bonus',
+  damagePercent: 'Damage',
   critChance: 'Crit Chance',
   dodgeChance: 'Dodge Chance',
   cooldownReduction: 'Cooldown Reduction',
