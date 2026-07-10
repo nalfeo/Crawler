@@ -8,6 +8,7 @@ function makeRun(overrides: Partial<RunStats> = {}): RunStats {
     totalFrames: 20_000,
     wallTimeMs: 3000,
     gameTimeMs: 320_000,
+    safeRoomMs: 0,
     finalFloor: 1,
     finalScore: 1500,
     outcome: 'victory',

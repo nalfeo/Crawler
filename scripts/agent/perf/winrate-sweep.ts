@@ -10,6 +10,12 @@
  * it gates on the *rate* over a representative sample, never on a hand-picked
  * set of comfortable seeds.
  *
+ * A "win" here is the SSOT `isOfficialWin(stats, FLOOR1_TIME_BUDGET_MS)` — a
+ * victory whose safe-room-credited ACTIVE time is under the 6-min budget —
+ * matching scoring.ts, the official headless gate, and the ab-* harnesses. The
+ * floor-collapse deadline pauses in safe rooms, so a bare `outcome==='victory'`
+ * would miscount boundary / safe-room-credited clears.
+ *
  * Usage
  * -----
  *   npm run ai:winrate-sweep                       # seeds 1-40 × {sword,bow,bat}
@@ -25,6 +31,7 @@ import { writeFileSync } from 'node:fs';
 import { isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../../src/game/ai/headless-runner.js';
+import { isOfficialWin } from '../../../src/game/ai/scoring.js';
 import { summarizeEvents, type SimEvent } from '../../../src/game/ai/event-log.js';
 import type { RunStats } from '../../../src/game/ai/types.js';
 import {
@@ -34,6 +41,13 @@ import {
   type WorkerTaskSuccess,
 } from './worker-pool.js';
 import { type CLIArgs, parseSweepArgs } from './winrate-sweep-args.js';
+
+/**
+ * SSOT Floor-1 win budget: 6 minutes of ACTIVE (safe-room-credited) game time.
+ * A run is a win iff `isOfficialWin(stats, FLOOR1_TIME_BUDGET_MS)`. Kept in sync
+ * with scoring.ts, the headless gate, and the ab-* harnesses.
+ */
+const FLOOR1_TIME_BUDGET_MS = 6 * 60 * 1000;
 
 interface SweepTask {
   weapon: string;
@@ -229,11 +243,15 @@ async function sweep(args: CLIArgs): Promise<void> {
         );
       }
       const { stats, failRecord } = result;
+      // SSOT win definition (safe-room-credited active time < budget), matching
+      // scoring.ts / the headless gate / the ab-* harnesses — NOT bare
+      // `outcome==='victory'`, which would miscount a boundary/over-budget clear.
+      const officialWin = isOfficialWin(stats, FLOOR1_TIME_BUDGET_MS);
       const gameTimeSec = stats.gameTimeMs / 1000;
       metrics.push({
         weapon,
         seed,
-        win: stats.outcome === 'victory',
+        win: officialWin,
         gameTimeSec: Math.round(gameTimeSec),
         damageTaken: stats.combat.damageTaken,
         damageTakenPerSec: gameTimeSec > 0 ? stats.combat.damageTaken / gameTimeSec : 0,
@@ -243,12 +261,12 @@ async function sweep(args: CLIArgs): Promise<void> {
         minHealthPercent: stats.health.minHealthPercent,
         finalHealthPercent: stats.health.finalHealthPercent,
       });
-      if (stats.outcome === 'victory') {
+      if (officialWin) {
         wins++;
       } else if (failRecord) {
         fails.push(failRecord);
       }
-      process.stdout.write(stats.outcome === 'victory' ? '.' : 'F');
+      process.stdout.write(officialWin ? '.' : 'F');
     }
     perWeapon.push({ weapon, wins, runs: args.seeds.length });
     process.stdout.write('\n');

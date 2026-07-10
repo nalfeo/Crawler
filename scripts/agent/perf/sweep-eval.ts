@@ -17,11 +17,16 @@
  *                    carries a flip baseline; the aggregator collapses the
  *                    identical incumbent copies as a determinism proof).
  *
- * The SSOT tournament win is `outcome==='victory' && gameTimeMs < FLOOR1_TIME_BUDGET_MS`
- * (matches the official gate + ab-* harnesses). The composite score reuses
- * `scoreRun`, but a clear that exceeds the 6-min budget is scored as a NON-win
- * (its outcome is downgraded before scoring) so the headline Σ-score metric can
- * never reward a config for a run the tournament counts as a loss.
+ * The SSOT tournament win is `isOfficialWin(stats, FLOOR1_TIME_BUDGET_MS)`:
+ * `outcome==='victory' && (gameTimeMs - safeRoomMs) < FLOOR1_TIME_BUDGET_MS`
+ * (matches the official gate + ab-* harnesses). Safe-room time is credited
+ * because the floor-collapse deadline PAUSES while the player rests in a safe
+ * room, so a clear that is over budget in raw game time but under it in active
+ * time is a legitimate win. The composite score reuses `scoreRun` on RAW time
+ * (so the search gradient never rewards safe-room idling); a clear whose ACTIVE
+ * time exceeds the 6-min budget is scored as a NON-win (its outcome is
+ * downgraded before scoring) so the headline Σ-score metric can never reward a
+ * config for a run the tournament counts as a loss.
  *
  * Deterministic RESULTS: seeded runs only. The scored facts — every `scoreRun`
  * input, `RunRow` field, and emitted artifact row — read neither `Math.random` nor
@@ -116,6 +121,7 @@ async function runOne(task: EvalTask, shared: EvalShared): Promise<RunRow> {
     outcome: stats.outcome,
     officialWin,
     gameTimeMs: stats.gameTimeMs,
+    safeRoomMs: stats.safeRoomMs,
     score,
     xp: stats.totalXp,
     gold: stats.totalGold,

@@ -56,6 +56,7 @@ function row(
     outcome: 'victory',
     officialWin: true,
     gameTimeMs: 100_000,
+    safeRoomMs: 0,
     score: VICTORY_SCORE,
     xp: 100,
     gold: 50,
@@ -95,6 +96,7 @@ function consistent(
     {
       outcome: base.outcome,
       gameTimeMs: base.gameTimeMs,
+      safeRoomMs: base.safeRoomMs,
       totalXp: base.xp,
       totalGold: base.gold,
       finalLevel: base.finalLevel,

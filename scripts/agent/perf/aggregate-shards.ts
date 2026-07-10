@@ -28,11 +28,11 @@
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { RunStats } from '../../../src/game/ai/types.js';
-import { scoreRun } from '../../../src/game/ai/scoring.js';
+import { scoreRun, isOfficialWin, SAFE_ROOM_FLAG_MS } from '../../../src/game/ai/scoring.js';
 import type { SweepConfig } from './gen-configs.js';
 
 /** Current shard-artifact schema version. Bump on any breaking row/meta change. */
-export const SHARD_SCHEMA_VERSION = 1;
+export const SHARD_SCHEMA_VERSION = 2;
 
 /** One evaluated headless run. `officialWin` is the SSOT tournament win. */
 export interface RunRow {
@@ -43,6 +43,9 @@ export interface RunRow {
   outcome: RunStats['outcome'];
   officialWin: boolean;
   gameTimeMs: number;
+  /** Safe-room dwell (ms); collapse deadline pauses here, so it is excluded
+   *  from the active time behind {@link deriveRunFacts}'s official-win check. */
+  safeRoomMs: number;
   score: number;
   xp: number;
   gold: number;
@@ -55,21 +58,23 @@ export interface RunRow {
  *  so a row's (officialWin, score) can never drift between the two. */
 export type ScorableStats = Pick<
   RunStats,
-  'outcome' | 'gameTimeMs' | 'totalXp' | 'totalGold' | 'finalLevel'
+  'outcome' | 'gameTimeMs' | 'safeRoomMs' | 'totalXp' | 'totalGold' | 'finalLevel'
 >;
 
 /**
  * Derive the SSOT tournament facts for one run: whether it is an official win (a
- * victory within the time budget) and its composite score. An OVER-BUDGET
- * victory is the only outcome downgraded — scored as a timeout to strip its
- * victory/time bonus; deaths and timeouts keep their real outcome so a future
- * death penalty in scoreRun is never masked. Deterministic.
+ * victory whose safe-room-credited active time is within the budget) and its
+ * composite score. An OVER-BUDGET victory is the only outcome downgraded —
+ * scored as a timeout to strip its victory/time bonus; deaths and timeouts keep
+ * their real outcome so a future death penalty in scoreRun is never masked.
+ * Scoring stays on RAW gameTimeMs (see scoreRun) so the search gradient never
+ * rewards idling in a safe room. Deterministic.
  */
 export function deriveRunFacts(
   stats: ScorableStats,
   budgetMs: number,
 ): { officialWin: boolean; score: number } {
-  const officialWin = stats.outcome === 'victory' && stats.gameTimeMs < budgetMs;
+  const officialWin = isOfficialWin(stats, budgetMs);
   const statsForScore: ScorableStats =
     stats.outcome === 'victory' && !officialWin ? { ...stats, outcome: 'timeout' } : stats;
   const { score } = scoreRun(statsForScore as RunStats, budgetMs);
@@ -109,6 +114,7 @@ function rowFacts(row: RunRow): string {
     row.outcome,
     row.officialWin,
     row.gameTimeMs,
+    row.safeRoomMs,
     row.score,
     row.xp,
     row.gold,
@@ -239,6 +245,7 @@ export function assertRowsConsistent(rows: readonly RunRow[], budgetMs: number):
       {
         outcome: row.outcome,
         gameTimeMs: row.gameTimeMs,
+        safeRoomMs: row.safeRoomMs,
         totalXp: row.xp,
         totalGold: row.gold,
         finalLevel: row.finalLevel,
@@ -321,14 +328,13 @@ export function buildLeaderboard(
     }
   }
 
-  // Whether a row is an official win. Recomputed from raw facts when a budget is
-  // supplied (aggregate always supplies meta.budgetMs) so a runner's stored
-  // officialWin flag can never corrupt the wins/flips safety columns; falls back
-  // to the stored flag only for primitive ranking tests that omit the budget.
+  // Whether a row is an official win. Recomputed from raw facts (safe-room
+  // credited) when a budget is supplied (aggregate always supplies
+  // meta.budgetMs) so a runner's stored officialWin flag can never corrupt the
+  // wins/flips safety columns; falls back to the stored flag only for primitive
+  // ranking tests that omit the budget.
   const isWin = (row: RunRow): boolean =>
-    options.budgetMs !== undefined
-      ? row.outcome === 'victory' && row.gameTimeMs < options.budgetMs
-      : row.officialWin;
+    options.budgetMs !== undefined ? isOfficialWin(row, options.budgetMs) : row.officialWin;
 
   // Incumbent per-(weapon,seed) win map for flip computation.
   const incumbentKey =
@@ -433,6 +439,11 @@ export interface AggregateResult {
   lexicographicWinner: LeaderboardRow | null;
   collapsedDuplicates: number;
   totalRuns: number;
+  /** Largest safe-room dwell (ms) across all runs — surfaces the maintainer's
+   *  ">60s in safe rooms" flag at a glance. */
+  maxSafeRoomMs: number;
+  /** Count of runs whose safe-room dwell exceeded {@link SAFE_ROOM_FLAG_MS}. */
+  safeRoomFlaggedCount: number;
 }
 
 /** Full fan-in: merge → (optional completeness check) → leaderboard → both orderings. */
@@ -465,6 +476,10 @@ export function aggregate(
     lexicographicWinner !== null &&
     groupKey(compositeWinner.combo, compositeWinner.configId) !==
       groupKey(lexicographicWinner.combo, lexicographicWinner.configId);
+  const maxSafeRoomMs = merged.rows.reduce((m, r) => Math.max(m, r.safeRoomMs ?? 0), 0);
+  const safeRoomFlaggedCount = merged.rows.filter(
+    (r) => (r.safeRoomMs ?? 0) > SAFE_ROOM_FLAG_MS,
+  ).length;
   return {
     meta: merged.meta,
     byComposite,
@@ -474,6 +489,8 @@ export function aggregate(
     lexicographicWinner,
     collapsedDuplicates: merged.collapsedDuplicates,
     totalRuns: merged.rows.length,
+    maxSafeRoomMs,
+    safeRoomFlaggedCount,
   };
 }
 
@@ -493,6 +510,12 @@ export function renderMarkdown(result: AggregateResult): string {
       `> ${result.collapsedDuplicates} identical duplicate run(s) collapsed (determinism proof).`,
     );
   }
+  lines.push('');
+  lines.push(
+    `Safe-room dwell: max **${(result.maxSafeRoomMs / 1000).toFixed(1)}s** · ` +
+      `runs over ${(SAFE_ROOM_FLAG_MS / 1000).toFixed(0)}s flag: **${result.safeRoomFlaggedCount}**` +
+      (result.safeRoomFlaggedCount > 0 ? ' ⚠️ (inspect for a stuck-near-safe-room stall)' : ''),
+  );
   if (result.winnersDiverge) {
     lines.push('');
     lines.push(
