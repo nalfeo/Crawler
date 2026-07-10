@@ -48,7 +48,15 @@ function createPack(overrides = {}) {
   };
 }
 
-async function withEditor(pack, run) {
+function isMissingPlaywrightBrowser(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("Executable doesn't exist") ||
+    message.includes('Please run the following command to download new browsers')
+  );
+}
+
+async function withEditor(t, pack, run) {
   const applyBodies = [];
   const html = renderHtml('test-token');
   const sseClients = new Set();
@@ -102,14 +110,22 @@ async function withEditor(pack, run) {
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
-  const browser = await chromium.launch();
-  const page = await browser.newPage();
+  let browser;
   try {
+    try {
+      browser = await chromium.launch();
+    } catch (error) {
+      if (isMissingPlaywrightBrowser(error)) {
+        t.skip('Playwright Chromium is not installed for this job');
+      }
+      throw error;
+    }
+    const page = await browser.newPage();
     await page.goto(`http://127.0.0.1:${port}/?setPieceId=sp-1`);
     await page.waitForFunction(() => document.getElementById('spsel').value === 'sp-1');
     await run({ page, applyBodies });
   } finally {
-    await browser.close();
+    await browser?.close();
     for (const client of sseClients) client.destroy();
     await new Promise((resolve) => server.close(resolve));
   }
@@ -124,8 +140,8 @@ async function canvasPoint(page, tileX, tileY) {
   };
 }
 
-test('production globals clamp negative NPC depth above terrain', async () => {
-  await withEditor(createPack(), async ({ page }) => {
+test('production globals clamp negative NPC depth above terrain', async (t) => {
+  await withEditor(t, createPack(), async ({ page }) => {
     const { depth, expected } = await page.evaluate(() => ({
       depth: globalZ('default', 'npc', -10),
       expected: TERRAIN_DEPTH + NPC_TERRAIN_MARGIN,
@@ -134,8 +150,8 @@ test('production globals clamp negative NPC depth above terrain', async () => {
   });
 });
 
-test('production globals expose custom sprite native tile dimensions', async () => {
-  await withEditor(createPack(), async ({ page }) => {
+test('production globals expose custom sprite native tile dimensions', async (t) => {
+  await withEditor(t, createPack(), async ({ page }) => {
     const dims = await page.evaluate(() =>
       getNativeSpriteTileDimensions({ source: 'custom', widthTiles: 2, heightTiles: 3 }),
     );
@@ -147,11 +163,11 @@ test('production globals expose custom sprite native tile dimensions', async () 
   });
 });
 
-test('hover tooltip reports the real default NPC depth', async () => {
+test('hover tooltip reports the real default NPC depth', async (t) => {
   const pack = createPack({
     npcs: [{ id: 'npc-a', npcTypeId: 'tutorial-goon', x: 1, y: 1, widthFt: 4, heightFt: 4 }],
   });
-  await withEditor(pack, async ({ page }) => {
+  await withEditor(t, pack, async ({ page }) => {
     const point = await canvasPoint(page, 1.5, 1.5);
     await page.mouse.move(point.x, point.y);
     await page.waitForFunction(() => document.getElementById('tooltip').style.display === 'block');
@@ -165,14 +181,14 @@ test('hover tooltip reports the real default NPC depth', async () => {
   });
 });
 
-test('negative-z NPCs stay above deeper negative props in production hit testing', async () => {
+test('negative-z NPCs stay above deeper negative props in production hit testing', async (t) => {
   const pack = createPack({
     props: [{ id: 'backdrop', kind: 'floor', x: 1, y: 1, width: 1, height: 1, z: -10, layers: [] }],
     npcs: [
       { id: 'npc-a', npcTypeId: 'tutorial-goon', x: 1, y: 1, z: -10, widthFt: 4, heightFt: 4 },
     ],
   });
-  await withEditor(pack, async ({ page }) => {
+  await withEditor(t, pack, async ({ page }) => {
     const point = await canvasPoint(page, 1.5, 1.5);
     await page.mouse.move(point.x, point.y);
     await page.waitForFunction(() => document.getElementById('tooltip').style.display === 'block');
@@ -181,11 +197,11 @@ test('negative-z NPCs stay above deeper negative props in production hit testing
   });
 });
 
-test('dragging and applying use the production editor state machine', async () => {
+test('dragging and applying use the production editor state machine', async (t) => {
   const pack = createPack({
     npcs: [{ id: 'npc-a', npcTypeId: 'tutorial-goon', x: 1, y: 1, widthFt: 4, heightFt: 4 }],
   });
-  await withEditor(pack, async ({ page, applyBodies }) => {
+  await withEditor(t, pack, async ({ page, applyBodies }) => {
     const start = await canvasPoint(page, 1.5, 1.5);
     const dragged = await canvasPoint(page, 2.6, 2.6);
     await page.mouse.move(start.x, start.y);
@@ -211,11 +227,11 @@ test('dragging and applying use the production editor state machine', async () =
   });
 });
 
-test('resizing uses the production editor state machine', async () => {
+test('resizing uses the production editor state machine', async (t) => {
   const pack = createPack({
     npcs: [{ id: 'npc-a', npcTypeId: 'tutorial-goon', x: 1, y: 1, widthFt: 4, heightFt: 4 }],
   });
-  await withEditor(pack, async ({ page }) => {
+  await withEditor(t, pack, async ({ page }) => {
     const point = await canvasPoint(page, 1.5, 1.5);
     await page.mouse.click(point.x, point.y);
     await page.waitForFunction(() => document.getElementById('nid').value === 'npc-a');
