@@ -791,10 +791,11 @@ function snapNpcCenter(dispPx,tileSize,sizeTiles,limit){
   var step=npcSnapStep();
   var topLeftTiles=dispPx/tileSize;
   var centerTiles=topLeftTiles+sizeTiles/2;
-  var snappedCenter=step>0?Math.round(centerTiles/step)*step:centerTiles;
+  var snappedCenter=step>0?Math.round(centerTiles/step)*step:snapV(centerTiles);
   var snappedTopLeft=snappedCenter-sizeTiles/2;
   var max=Math.max(0,limit-sizeTiles);
-  return Math.max(0,Math.min(max,snappedTopLeft));
+  var clamped=Math.max(0,Math.min(max,snappedTopLeft));
+  return step>0?clamped:snapV(clamped);
 }
 function clampGroupDeltaPx(items,dx,dy,widthTiles,heightTiles){
   if(!items||!items.length)return {dx:dx,dy:dy};

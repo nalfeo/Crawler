@@ -1137,8 +1137,8 @@ function computeWelcomeRoomStamp(
  * Apply authored structural set-piece props (wall/door) onto real map tiles.
  *
  * Set-piece dressing is mostly render-only, but structural props must also
- * mutate map physics/terrain so authored walls block movement and authored doors
- * are treated as doors at runtime.
+ * mutate map terrain semantics so authored walls/doors render as wall/door
+ * terrain, and authored doors are treated as real door tiles at runtime.
  */
 function applyWelcomeRoomStructuralTiles(world: GameWorld, stamp: StampedSetPiece): void {
   const floorMap = world.floorMap;

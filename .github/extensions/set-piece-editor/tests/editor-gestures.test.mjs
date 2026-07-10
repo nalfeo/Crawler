@@ -295,3 +295,16 @@ test('snap size rounds per mode in production globals', async (t) => {
     assert.deepEqual(snap, { tile: 1, half: 1.5, quarter: 1.25, free: 1.26 });
   });
 });
+
+test('free-snap NPC center snapping normalizes coordinates to two decimals', async (t) => {
+  await withEditor(t, createPack(), async ({ page }) => {
+    const snapped = await page.evaluate(() => {
+      const prev = S.snapMode;
+      S.snapMode = 'free';
+      const v = snapNpcCenter(1, S.tileSize, 1, 8);
+      S.snapMode = prev;
+      return v;
+    });
+    assert.equal(snapped, 0.02);
+  });
+});
