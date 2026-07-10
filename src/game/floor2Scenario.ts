@@ -106,6 +106,7 @@ import {
   evictFurthestAmbient,
   resolveAmbientSpawnPoint,
   getSpawnerState,
+  ensureBossBattleSpellReward,
 } from './floorScenario.js';
 import { pickFromSpawnZones, type SpawnZoneWeights } from './spawn-zones.js';
 
@@ -744,6 +745,7 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
   world.featureUnlocks.inventory = true;
   world.featureUnlocks.equipment = true;
   world.featureUnlocks.spells = true;
+  ensureBossBattleSpellReward(world, playerEid);
   setGoalFlag(world, 'floor1-drops-unlocked', true);
 
   removeStatModifiers(world, 'floor', 'floor2-manifest-player');

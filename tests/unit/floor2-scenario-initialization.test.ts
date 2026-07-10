@@ -330,6 +330,9 @@ describe('initializeFloor2Scenario manifest validation', () => {
     expect(world.featureUnlocks.inventory).toBe(true);
     expect(world.featureUnlocks.equipment).toBe(true);
     expect(world.featureUnlocks.spells).toBe(true);
+    const abilityState = world.abilityStatesByEntity.get(playerEid);
+    expect(abilityState?.learnedSpellIds.length ?? 0).toBeGreaterThan(0);
+    expect(abilityState?.equippedActiveAbilityIds.length ?? 0).toBeGreaterThan(0);
     expect(world.goalFlags.get('floor1-drops-unlocked')).toBe(true);
   });
 
