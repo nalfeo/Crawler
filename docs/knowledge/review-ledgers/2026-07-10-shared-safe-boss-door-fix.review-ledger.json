@@ -1,0 +1,69 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-10",
+  "session_slug": "shared-safe-boss-door-fix",
+  "task_title": "Full door-state migration: logicalOpen latch + stored effectiveOpen (fix shared safe/boss door permanent seal)",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 4,
+      "plan_divergence": "major_fork",
+      "notes": "Two adversarial gpt-5.4 plan reviews. (A) design red-team enumerated F1-F4 + Strengthened-F4; maintainer overrode Strengthened to the full migration (major_fork). (B) migration-mechanics red-team found 2 BLOCKING plan bugs, both resolved. B1: memo hash must track PHYSICAL openness not the latch, so getDoorRevision hashes effectiveOpen (not logicalOpen); effectiveOpen equals old isOpen frame-for-frame on every non-bug seed => byte-identical AND correct cache invalidation on seal. B2: the spawner unlockRoomDoors missed-writer premise was incorrect (config cleared in the same call so the unlock edge never fires; resolve test asserts only isLocked=0), so mechanical rename only with no arena behavior change; algebraic proof: non-force-closed doors are byte-identical regardless of latch value; pinned with a resolve-behavior test; latent Floor-2+ arena-reopen gap flagged as out-of-scope follow-up. Non-blocking: 3 divergence stated precisely (only a Floor-1 safe-room ENTITY door with logicalOpen=1, i.e. the shared boss gate, changes behavior). 4 ran exhaustive greps, full surface finalized, temp probe to be deleted. 5 rename adopted, atomic with repo-wide payload grep. 6 adopted order test-first, schema+payloads together, reconcile, hash last. 7 adding 3 controls plus an enemy-reacts-to-seal cache canary."
+    },
+    "code_review": {
+      "clean": true,
+      "concerns_count": 1,
+      "resolved_count": 1,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gemini-3.1-pro-preview", "gpt-5.4"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "gemini-3.1-pro-preview: clean on the migration commit. gpt-5.4: one HIGH/HIGH concern — getDoorRevision hashed the stored effectiveOpen mirror, which doorSystem derives AFTER enemyAISystem runs, so on a frame where floor1PlayerStatSystem opens a door tile pre-AI (mini-boss death) the path memo lagged one frame vs the pre-migration isOpen hash. Adjudicated VALID; fixed with gpt's own prescribed remedy (hash live tileMap.isPassable(doorTile)) in commit ce92ed26."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Confirming round on final HEAD (post memo-fix). Independent full-tree grep for stray isOpen door payloads returned zero; reconcile logic, byte-identity, memo hash ordering (no lag), A* passability, and the seeded regression test all verified correct; effectiveOpen not orphaned; all 4678 tests pass. Floor-2+ arena-door gap independently confirmed pre-existing, not a regression."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "concerns_count": 1,
+      "valid_count": 1,
+      "resolved_count": 1,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gemini-3.1-pro-preview", "gpt-5.4"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Distinct-model pass on the migration commit. gemini-3.1-pro-preview: clean. gpt-5.4: one HIGH/HIGH memo-lag concern (getDoorRevision hashed stored effectiveOpen, derived post-enemyAISystem, so it lagged one frame vs pre-migration isOpen on pre-AI tile-open frames). Adjudicated VALID by claude-opus-4.8; remedy = hash live tileMap.isPassable (gpt's own option a); fixed in commit ce92ed26."
+        },
+        {
+          "round": 2,
+          "models": ["gemini-3.1-pro-preview", "claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Two distinct models independently re-reviewed the FINAL HEAD (both commits, post memo-fix). claude-sonnet-4.6: clean, full-tree grep + 4678 tests pass. gemini-3.1-pro-preview: clean, 'ready to ship' — confirmed hashing live isPassable is the right call (matches A* passability + invalidates the flow-field memo on the exact frame physical passability changes; no 1-frame stale cache). No remaining concerns."
+        }
+      ]
+    }
+  }
+}
