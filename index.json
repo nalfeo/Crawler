@@ -33,6 +33,17 @@
     "path": "by-sha/db11e90a8860c6403f5301b7f75e986d2d11aed3.json"
   },
   {
+    "commit": "1c43ccd823ddb397fa33e39d6ec3d18077b181c7",
+    "commitDate": "2026-07-10T00:17:09-07:00",
+    "commitSubject": "fix: block diagonal corner-seam leaks in LOS and FOV visibility (#1000)",
+    "capturedAt": "2026-07-10T07:59:23.030Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29076787389",
+    "winRate": 0.8266666666666667,
+    "totalWins": 248,
+    "totalRuns": 300,
+    "path": "by-sha/1c43ccd823ddb397fa33e39d6ec3d18077b181c7.json"
+  },
+  {
     "commit": "0808719ff3a45e79bcbc86aba0cc73264b238975",
     "commitDate": "2026-07-09T23:13:00-07:00",
     "commitSubject": "chore(labs): remove iPhone landscape viewport simulation (#1007)",
