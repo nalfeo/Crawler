@@ -220,9 +220,9 @@ branch off `main` normally.
 
 - **Persona:** default **Producer** (`docs/agent-os/personas/producer.md`) for
   multi-layer/ambiguous shepherding work.
-- **Apples:** declare a 🍎–🍎🍎🍎🍎🍎 estimate before writing code; score actuals
-  at handoff in `docs/knowledge/metrics/apples/YYYY-MM-DD-<slug>.json`
-  (`docs/agent-os/policies/complexity-policy.md`).
+- **Apples:** declare a 🍎–🍎🍎🍎🍎🍎 estimate before writing code; for **≥3🍎 sessions** run
+  `npm run apples:record -- --session <slug> --estimated <n> --actual <n>` at handoff
+  (`docs/agent-os/policies/complexity-policy.md`). 1–2🍎 sessions need no file.
 - **Handoff:** write `docs/knowledge/handoffs/YYYY-MM-DD-<slug>.md` before ending.
   To avoid resetting a green, auto-merging PR, keep the shepherd handoff in your
   session artifacts rather than pushing a fresh commit onto the in-flight branch.

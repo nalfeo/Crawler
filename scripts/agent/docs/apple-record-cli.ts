@@ -1,0 +1,104 @@
+#!/usr/bin/env tsx
+/**
+ * apple-record-cli.ts — Write a per-session apple entry file.
+ *
+ * Usage:
+ *   npm run apples:record -- --session <slug> --estimated <1-5> --actual <1-5>
+ *
+ * The script derives delta, verdict, and hello_kitties automatically, uses
+ * today's date, and writes to docs/knowledge/metrics/apples/<date>-<slug>.json.
+ *
+ * Only required for ≥3🍎 sessions (see docs/agent-os/policies/complexity-policy.md).
+ * 1–2🍎 sessions do not need a file.
+ */
+
+import { existsSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import process from 'node:process';
+import { verdictFromDelta } from './apple-calibration-lib.js';
+
+const APPLES_DIR = 'docs/knowledge/metrics/apples';
+
+function usage(): void {
+  process.stderr.write(
+    'Usage: npm run apples:record -- --session <slug> --estimated <1-5> --actual <1-5>\n',
+  );
+}
+
+function parseArgs(argv: string[]): { session: string; estimated: number; actual: number } {
+  const args = argv.slice(2);
+  const get = (flag: string): string | undefined => {
+    const i = args.indexOf(flag);
+    return i !== -1 ? args[i + 1] : undefined;
+  };
+
+  const session = get('--session');
+  const estimatedRaw = get('--estimated');
+  const actualRaw = get('--actual');
+
+  if (!session || !estimatedRaw || !actualRaw) {
+    usage();
+    process.exit(1);
+  }
+
+  const estimated = parseInt(estimatedRaw, 10);
+  const actual = parseInt(actualRaw, 10);
+
+  if (isNaN(estimated) || estimated < 1 || estimated > 5) {
+    process.stderr.write(`--estimated must be 1–5, got: ${estimatedRaw}\n`);
+    process.exit(1);
+  }
+  if (isNaN(actual) || actual < 1 || actual > 5) {
+    process.stderr.write(`--actual must be 1–5, got: ${actualRaw}\n`);
+    process.exit(1);
+  }
+  if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(session)) {
+    process.stderr.write(`--session must be a kebab-case slug, got: ${session}\n`);
+    process.exit(1);
+  }
+
+  return { session, estimated, actual };
+}
+
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function main(): void {
+  const { session, estimated, actual } = parseArgs(process.argv);
+
+  const date = todayISO();
+  const delta = actual - estimated;
+  const verdict = verdictFromDelta(delta);
+  const hello_kitties = round2(actual / 5);
+
+  const entry = {
+    date,
+    session,
+    estimated_apples: estimated,
+    actual_apples: actual,
+    delta,
+    verdict,
+    hello_kitties,
+  };
+
+  const filename = `${date}-${session}.json`;
+  const outPath = join(APPLES_DIR, filename);
+
+  if (existsSync(outPath)) {
+    process.stderr.write(`File already exists: ${outPath}\nTo update it, delete it first.\n`);
+    process.exit(1);
+  }
+
+  writeFileSync(outPath, JSON.stringify(entry, null, 2) + '\n', 'utf8');
+  process.stdout.write(`✅ Wrote ${outPath}\n`);
+  process.stdout.write(
+    `   ${estimated}🍎 estimated → ${actual}🍎 actual (delta ${delta >= 0 ? '+' : ''}${delta}, ${verdict})\n`,
+  );
+}
+
+main();
