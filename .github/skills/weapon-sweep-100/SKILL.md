@@ -56,8 +56,9 @@ Notes:
   of the comparison.
 - `max_frames` defaults to `19_800` (~330s at 60fps), matching the hill-climb
   baseline.
-- Download the artifact JSON from the workflow run (artifact:
-  `weapon-sweep-results`) and use that file for reporting.
+- Download the per-weapon artifact JSONs from the workflow run (artifacts named
+  `weapon-sweep-sword`, `weapon-sweep-bow`, `weapon-sweep-baseball-bat`) and use
+  those files for reporting.
 
 ### Local fallback (only when explicitly requested)
 

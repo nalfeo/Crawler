@@ -43,6 +43,15 @@ jobs:
             exit 1
           fi
           weapon_matrix=$(echo "$WEAPONS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' | jq -R . | jq -sc .)
+          # Validate each weapon token: allow only alphanumerics and hyphens
+          if echo "$weapon_matrix" | jq -e '.[] | select(test("[^a-zA-Z0-9-]"))' > /dev/null 2>&1; then
+            echo "::error::weapons must be alphanumeric (hyphens allowed); no spaces, slashes, or special characters"
+            exit 1
+          fi
+          if [ "$(echo "$weapon_matrix" | jq 'length')" -lt 1 ]; then
+            echo "::error::weapons must contain at least one entry"
+            exit 1
+          fi
           echo "weapon_matrix=$weapon_matrix" >> "$GITHUB_OUTPUT"
           echo "seed_list=$(seq -s, 1 "$SEED_COUNT")" >> "$GITHUB_OUTPUT"
 
