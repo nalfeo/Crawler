@@ -13,6 +13,7 @@
  * forever on the boss-reward spell modal it has no way to dismiss.
  */
 import type { GameWorld } from '../../core/index.js';
+import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../shared/constants.js';
 import { AIState, type AIInputProvider } from './types.js';
 import {
   confirmFloor1StairDescend,
@@ -26,7 +27,9 @@ import {
   meetBroker,
   spendPoints,
 } from '../index.js';
-import type { PrimaryStatId } from '../../shared/stats.js';
+import { confirmFloor2StairDescend } from '../floor2Scenario.js';
+import { computeAutoStatAllocation } from '../scenarios/playerStatAllocationPolicy.js';
+export { computeAutoStatAllocation } from '../scenarios/playerStatAllocationPolicy.js';
 
 /** Frames between auto NPC-talk attempts (debounce repeated `meet*` calls). */
 export const NPC_INTERACTION_COOLDOWN = 30; // frames
@@ -132,6 +135,29 @@ export function autoFloor1ProgressionSystem(world: GameWorld, playerEid: number)
   }
 }
 
+export function autoFloor2ProgressionSystem(world: GameWorld, playerEid: number): void {
+  const floor2State = world.floorExtendedState?.familyState;
+  if (!floor2State) {
+    return;
+  }
+  if (
+    !floor2State.staircaseUnlocked ||
+    !floor2State.staircaseSpawned ||
+    floor2State.staircaseDiscovered ||
+    !floor2State.staircasePos
+  ) {
+    return;
+  }
+
+  const playerX = world.stores.position.x[playerEid] ?? 0;
+  const playerY = world.stores.position.y[playerEid] ?? 0;
+  const dx = playerX - floor2State.staircasePos.x;
+  const dy = playerY - floor2State.staircasePos.y;
+  if (Math.hypot(dx, dy) <= FLOOR2_STAIR_MARKER_RADIUS_FT) {
+    confirmFloor2StairDescend(world, playerEid);
+  }
+}
+
 /**
  * Headless-only: spend earned level-up points the way a survival-minded player
  * would via the in-scene stat-allocation modal. The human-played scene exposes
@@ -153,71 +179,7 @@ export function autoFloor1ProgressionSystem(world: GameWorld, playerEid: number)
  * level-up Constitution point is a +10 HP heal. There is no passive regen on
  * Floor 1.
  *
- * Spend order is tiered to front-load sustain:
- *   1. Strength → ARMOR_SWARM_FLOOR (5): 5 Strength pts → 5 armor, stops swarm bleed.
- *   2. Constitution → MAXHP_CUSHION_POINTS (6): 6 pts → +60 HP pool and immediate heals.
- *   3. Strength → ARMOR_BOSS_TARGET (11): 11 Strength pts → 11 armor, floors boss melee.
- *   4. Constitution: dump remainder for HP depth in the boss room.
  */
-const ARMOR_SWARM_FLOOR = 5;
-const MAXHP_CUSHION_POINTS = 6;
-const ARMOR_BOSS_TARGET = 11;
-
-/**
- * Compute the survival-tiered core-stat allocation for `available` unspent
- * points, WITHOUT spending them. Pure read of the player's `coreStatPoints`
- * stores; returns the per-stat point map to hand to `spendPoints` (or to drive
- * the level-up modal via `LevelUpUI.autoResolve`).
- *
- * Split out from {@link autoAllocateStatPoints} so the in-browser AI Runner Lab
- * can feed the same decision through the real level-up UX (the modal's
- * confirm/`spendPoints` path) instead of bypassing it, while the headless runner
- * — which has no DOM/modal — keeps spending directly. See the spend-order
- * rationale on the constants above.
- */
-export function computeAutoStatAllocation(
-  world: GameWorld,
-  playerEid: number,
-  available: number,
-): Partial<Record<PrimaryStatId, number>> {
-  const allocation: Partial<Record<PrimaryStatId, number>> = {};
-  let remaining = Number.isFinite(available) ? Math.max(0, Math.floor(available)) : 0;
-  if (remaining <= 0) {
-    return allocation;
-  }
-
-  // Strength → armor (1 strength = 1 armor). Spend strength up to armor target.
-  const spendStrengthUpTo = (target: number): void => {
-    const current =
-      (world.stores.coreStatPoints.strength[playerEid] ?? 0) + (allocation.strength ?? 0);
-    const spend = Math.min(Math.max(0, target - current), remaining);
-    if (spend > 0) {
-      allocation.strength = (allocation.strength ?? 0) + spend;
-      remaining -= spend;
-    }
-  };
-
-  // Constitution → maxHp (+10 maxHp per point). Spend constitution up to target.
-  const spendConstitutionUpTo = (targetPoints: number): void => {
-    const current =
-      (world.stores.coreStatPoints.constitution[playerEid] ?? 0) + (allocation.constitution ?? 0);
-    const spend = Math.min(Math.max(0, targetPoints - current), remaining);
-    if (spend > 0) {
-      allocation.constitution = (allocation.constitution ?? 0) + spend;
-      remaining -= spend;
-    }
-  };
-
-  spendStrengthUpTo(ARMOR_SWARM_FLOOR);
-  spendConstitutionUpTo(MAXHP_CUSHION_POINTS);
-  spendStrengthUpTo(ARMOR_BOSS_TARGET);
-  if (remaining > 0) {
-    allocation.constitution = (allocation.constitution ?? 0) + remaining;
-  }
-
-  return allocation;
-}
-
 export function autoAllocateStatPoints(world: GameWorld, playerEid: number): void {
   const pl = world.playerLevel;
   if (pl.unspentPoints <= 0) {

@@ -32,6 +32,7 @@
  */
 import { addComponent, hasComponent, query, set, setComponent } from 'bitecs';
 import {
+  BaseStats,
   BroadcastScore,
   Damage,
   DoorState,
@@ -41,6 +42,7 @@ import {
   Player,
   Position,
   Size,
+  Stats,
   Sprite,
   type GameWorld,
 } from '../core/index.js';
@@ -84,16 +86,28 @@ import {
 import { loadFamilies, type FamilyDef } from '../shared/data/families.js';
 import { initializeFloor2Settlement } from './floor2Settlement.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
-import { setActiveWeapon } from './weaponSystem.js';
-import { addStatModifier, removeStatModifiers } from './systems/statsSystem.js';
+import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
+import { equip, initializeBaseStats, unequip } from '../core/systems/equipmentSystem.js';
+import {
+  addStatModifier,
+  removeStatModifiers,
+  spendPoints,
+  statsSystem,
+} from './systems/statsSystem.js';
 import {
   installQuestPacks,
   type QuestPackDef,
   type QuestPackQuestSource,
   getQuestPacks,
   FLOOR2_FIND_SETTLEMENT_QUEST_ID,
+  FLOOR2_LEAVE_FLOOR_QUEST_ID,
 } from '../shared/quest-types.js';
-import { acceptQuest, addQuestCounter, setTrackedQuest } from '../core/systems/questSystem.js';
+import {
+  acceptQuest,
+  addQuestCounter,
+  questSystem,
+  setTrackedQuest,
+} from '../core/systems/questSystem.js';
 import type { SeededRandom } from '../shared/random.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
 import { setEnemyAppearanceKey } from '../core/spawners/combatants.js';
@@ -109,10 +123,13 @@ import {
   ensureBossBattleSpellReward,
 } from './floorScenario.js';
 import { pickFromSpawnZones, type SpawnZoneWeights } from './spawn-zones.js';
+import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
+import { applyStartPlayerLevel } from './scenarios/playerLevelProgression.js';
+import { computeAutoStatAllocation } from './scenarios/playerStatAllocationPolicy.js';
 
-const FLOOR2_DEN_UNLOCK_KILL_TARGET = 3;
 const FLOOR2_BOSS_HP_SCALE = 0.03;
 const FLOOR2_BOSS_CONTACT_DAMAGE = 2;
+const FLOOR2_DIRECT_START_LEVEL = 5;
 const floor2ProcessedCombatEvents = new WeakMap<GameWorld, WeakSet<object>>();
 
 export const FLOOR2_CAVE_SYSTEM_DEFAULTS = {
@@ -162,6 +179,8 @@ export const FLOOR2_TIMEOUT_GOAL_ID = 'floor2-timeout';
 export const FLOOR2_SETTLEMENT_FOUND_GOAL_ID = 'floor2-settlement-found';
 /** Latched when the player completes the Broker's intro dialogue (all lines read). */
 export const FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID = 'floor2-broker-intro-complete';
+/** Latched when the player actually takes the popped Floor 2 stairs. */
+export const FLOOR2_STAIRS_DISCOVERED_GOAL_ID = 'floor2.objective.staircaseDiscovered';
 
 /**
  * Call when the player finishes reading the Broker's introductory dialogue.
@@ -245,7 +264,7 @@ export function buildDenUnlockQuestPack(
           {
             objectiveId: `${questId}-kills`,
             label,
-            target: FLOOR2_DEN_UNLOCK_KILL_TARGET,
+            target: archetype.killTarget,
           },
         ],
       },
@@ -639,8 +658,7 @@ export function floor2VictorySystem(world: GameWorld): void {
 
   if (!soleAllyWin && !allBossesResolved) return;
 
-  setGoalFlag(world, FLOOR2_VICTORY_GOAL_ID, true);
-  popFloor2ResourceHeartStairs(world);
+  latchFloor2Victory(world);
 }
 
 /**
@@ -654,6 +672,10 @@ export function confirmFloor2StairDescend(world: GameWorld, _playerEid: number):
   if (!floor2State.staircaseSpawned || !floor2State.staircaseUnlocked) return false;
   if (floor2State.staircaseDiscovered) return false;
   floor2State.staircaseDiscovered = true;
+  setGoalFlag(world, FLOOR2_STAIRS_DISCOVERED_GOAL_ID, true);
+  // The visual scene switches to safe_room immediately after this callback returns,
+  // so complete any goal-backed finale quests before the state flip.
+  questSystem(world);
   world.state = 'safe_room';
   return true;
 }
@@ -739,12 +761,15 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
   setGoalFlag(world, FLOOR2_TIMEOUT_GOAL_ID, false);
   setGoalFlag(world, FLOOR2_SETTLEMENT_FOUND_GOAL_ID, false);
   setGoalFlag(world, FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, false);
+  setGoalFlag(world, FLOOR2_STAIRS_DISCOVERED_GOAL_ID, false);
+  setGoalFlag(world, 'floor2-leave-floor-complete', false);
 
   // All Floor 1 progressive systems are active from the start of Floor 2.
   // Players arrive here having already unlocked these features on Floor 1.
   world.featureUnlocks.inventory = true;
   world.featureUnlocks.equipment = true;
   world.featureUnlocks.spells = true;
+  applyFloor2DirectStartPlayerState(world, playerEid);
   ensureBossBattleSpellReward(world, playerEid);
   setGoalFlag(world, 'floor1-drops-unlocked', true);
 
@@ -865,7 +890,7 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
       const weaponDef = getWeaponDef(picked);
       if (weaponDef) {
         selectedWeaponId = weaponDef.id;
-        setActiveWeapon(world, weaponDef);
+        equipStarterOrFallback(world, weaponDef.id, weaponDef);
       }
     }
   }
@@ -876,13 +901,13 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
     if (fallbackId) {
       const fallbackDef = getWeaponDef(fallbackId);
       if (fallbackDef) {
-        setActiveWeapon(world, fallbackDef);
+        equipStarterOrFallback(world, fallbackDef.id, fallbackDef);
       }
     }
   }
 
   if (floor2Config?.governor?.autoVictoryOnStart === true) {
-    setGoalFlag(world, FLOOR2_VICTORY_GOAL_ID, true);
+    latchFloor2Victory(world);
   }
   world.state = 'playing';
   world.floorObjectiveTick = floor2ObjectiveTick;
@@ -941,6 +966,34 @@ function popFloor2ResourceHeartStairs(world: GameWorld): void {
   floor2State.staircaseSpawned = true;
   floor2State.staircaseUnlocked = true;
   setGoalFlag(world, FLOOR2_STAIRS_POPPED_GOAL_ID, true);
+  if (!world.questLog.has(FLOOR2_LEAVE_FLOOR_QUEST_ID)) {
+    acceptQuest(world, FLOOR2_LEAVE_FLOOR_QUEST_ID);
+    setTrackedQuest(world, FLOOR2_LEAVE_FLOOR_QUEST_ID);
+  }
+}
+
+function latchFloor2Victory(world: GameWorld): void {
+  setGoalFlag(world, FLOOR2_VICTORY_GOAL_ID, true);
+  popFloor2ResourceHeartStairs(world);
+}
+
+function applyFloor2DirectStartPlayerState(world: GameWorld, playerEid: number): void {
+  if (!hasComponent(world.ecs, playerEid, BaseStats)) {
+    initializeBaseStats(world, playerEid);
+  }
+  if (!hasComponent(world.ecs, playerEid, Stats)) {
+    addComponent(world.ecs, playerEid, Stats);
+  }
+
+  applyStartPlayerLevel(world, FLOOR2_DIRECT_START_LEVEL);
+  const allocations = computeAutoStatAllocation(world, playerEid, world.playerLevel.unspentPoints);
+  if (Object.keys(allocations).length > 0) {
+    spendPoints(world, allocations);
+  }
+  statsSystem(world);
+
+  unequip(world, playerEid, 'neck', { force: true });
+  equip(world, playerEid, MERCHANTS_CHARM_DEF, { force: true });
 }
 
 function findResourceHeartStairTile(world: GameWorld): { x: number; y: number } | null {

@@ -14,6 +14,20 @@
           "goalId": "floor2-settlement-found"
         }
       ]
+    },
+    {
+      "id": "floor2-leave-floor",
+      "title": "Exit the Floor",
+      "summary": "The resource room is open and the stairs are live. Leave before the families regroup.",
+      "onCompleteGoalFlag": "floor2-leave-floor-complete",
+      "objectives": [
+        {
+          "id": "take-stairs",
+          "label": "Take the stairs out of Floor 2",
+          "kind": "goal",
+          "goalId": "floor2.objective.staircaseDiscovered"
+        }
+      ]
     }
   ]
 }

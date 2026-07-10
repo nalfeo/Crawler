@@ -21,10 +21,9 @@ import { createInputState } from '../../shared/input.js';
 import { GAME } from '../../shared/constants.js';
 import { createLogger } from '../../shared/logger.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
-import { FLOOR1_TUTORIAL_QUEST_ID } from '../../shared/quest-types.js';
-import { xpRequiredForLevel } from '../../shared/xpMath.js';
+import { FLOOR1_TUTORIAL_QUEST_ID, FLOOR2_LEAVE_FLOOR_QUEST_ID } from '../../shared/quest-types.js';
 import { createWeaponTelemetry, summarizeWeaponTelemetry } from '../../core/weapon-telemetry.js';
-import { FLOOR2_TIMEOUT_GOAL_ID } from '../floor2Scenario.js';
+import { FLOOR2_STAIRS_DISCOVERED_GOAL_ID, FLOOR2_TIMEOUT_GOAL_ID } from '../floor2Scenario.js';
 import {
   AIDecisionDebugState,
   AIPathingMode,
@@ -39,8 +38,10 @@ import { getScenarioDefinition } from '../scenarioDefinitions.js';
 import {
   autoAllocateStatPoints,
   autoFloor1ProgressionSystem,
+  autoFloor2ProgressionSystem,
   autoNpcInteractionSystem,
 } from './auto-progression.js';
+import { applyStartPlayerLevel } from '../scenarios/playerLevelProgression.js';
 import { computeFloorProgressScore } from './bt-ai-provider.js';
 import { initNavmesh } from './navmesh/index.js';
 import { QuestProgressStallTracker, formatQuestStallReason } from './quest-stall.js';
@@ -59,6 +60,14 @@ const logger = createLogger('game:headless-runner');
  */
 function readRunState(world: GameWorld): GameWorld['state'] {
   return world.state;
+}
+
+function hasFloor2ExitCompleted(world: GameWorld): boolean {
+  return (
+    world.goalFlags.get(FLOOR2_STAIRS_DISCOVERED_GOAL_ID) === true ||
+    world.questLog.get(FLOOR2_LEAVE_FLOOR_QUEST_ID)?.status === 'complete' ||
+    readRunState(world) === 'safe_room'
+  );
 }
 
 export function classifyGameOverOutcome(world: GameWorld): 'timeout' | 'death' {
@@ -221,22 +230,6 @@ function computeSpawnerArenaMetrics(world: GameWorld): {
     bankedXpTotal += store.bankedXp[eid] ?? 0;
   }
   return { total, triggered, resolved, barrierArmed, resolvedArmed, bankedXpTotal };
-}
-
-function applyStartPlayerLevel(world: GameWorld, targetLevel: number): void {
-  const level = Math.max(1, Math.floor(targetLevel));
-  if (level <= 1) {
-    return;
-  }
-  const previousLevel = Math.max(1, world.playerLevel.level);
-  if (previousLevel >= level) {
-    return;
-  }
-  const levelsGained = level - previousLevel;
-  world.playerLevel.level = level;
-  world.playerLevel.xp = Math.max(world.playerLevel.xp, xpRequiredForLevel(level));
-  world.playerLevel.unspentPoints += levelsGained * world.playerLevel.pointsPerLevel;
-  world.statsDirty = true;
 }
 
 /**
@@ -501,6 +494,7 @@ export async function runHeadless(
       // Floor objective handling (including Floor 2 objective ticks) runs inside
       // runSimulationStep, so no second explicit objective call is needed here.
       autoFloor1ProgressionSystem(world, playerEid);
+      autoFloor2ProgressionSystem(world, playerEid);
       autoAllocateStatPoints(world, playerEid);
 
       frameCount++;
@@ -665,7 +659,7 @@ export async function runHeadless(
         outcome = 'victory';
         break;
       }
-      if (world.goalFlags.get('floor2-victory') === true) {
+      if (world.floorId === 'floor2' && hasFloor2ExitCompleted(world)) {
         outcome = 'victory';
         break;
       }

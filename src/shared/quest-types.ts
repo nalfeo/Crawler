@@ -88,6 +88,7 @@ export const FLOOR1_SHOP_QUEST_ID = 'floor1-shopkeeper-errand';
 /** Final Floor 1 quest: defeat the Floor Boss and take the stairs to Floor 2. */
 export const FLOOR1_LEAVE_FLOOR_QUEST_ID = 'floor1-leave-floor';
 export const FLOOR2_FIND_SETTLEMENT_QUEST_ID = 'floor2-find-settlement';
+export const FLOOR2_LEAVE_FLOOR_QUEST_ID = 'floor2-leave-floor';
 
 /** The gross, rat/slime-themed key item the shopkeeper sends you to fetch. */
 export const SHOPKEEPER_FETCH_ITEM_ID = 'glistening-rat-tail';

@@ -1,0 +1,10 @@
+{
+  "date": "2026-07-10",
+  "session": "floor2-direct-start-flow",
+  "estimated_apples": 4,
+  "actual_apples": 4,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.8,
+  "notes": "Scoped Floor 2 direct-start bootstrap + temporary leave-floor closeout wiring with 4-apple review-harness completion."
+}
