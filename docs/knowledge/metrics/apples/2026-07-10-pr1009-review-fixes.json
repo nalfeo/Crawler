@@ -1,0 +1,10 @@
+{
+  "date": "2026-07-10",
+  "session": "pr1009-review-fixes",
+  "estimated_apples": 2,
+  "actual_apples": 2,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.4,
+  "notes": "PR shepherd fix pass for review blockers (damage contract, cooldown wiring, allocatable stat policy) with targeted tests."
+}

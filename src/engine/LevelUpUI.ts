@@ -17,7 +17,7 @@ import { PIXEL_UI } from './pixel-ui.js';
 import { fitUiScale, type ScreenBounds } from './ui-scale.js';
 import { getRenderScale } from './render-scale.js';
 import { GAME } from '../shared/constants.js';
-import { PRIMARY_STATS, type PrimaryStatId } from '../shared/stats.js';
+import { PRIMARY_STATS, isAllocatablePrimaryStat, type PrimaryStatId } from '../shared/stats.js';
 import { PRIMARY_STAT_DISPLAY, formatCoreStatGains } from '../shared/stat-display.js';
 import {
   cancel,
@@ -198,6 +198,7 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
 
   const previewValue = (stat: PrimaryStatId, draftPoints: number): number =>
     (params?.currentStats[stat] ?? 0) + draftPoints;
+  const canAllocateStat = (stat: PrimaryStatId): boolean => isAllocatablePrimaryStat(stat);
 
   const layoutPanel = (): void => {
     backdrop.setSize(viewWidth(), viewHeight());
@@ -348,7 +349,7 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
       ).setOrigin(0.5, 0.5);
       dynamicNodes.push(count);
       overlay.add(count);
-      const plusBox = addButton(plusX, btnY, '+', remaining > 0, () =>
+      const plusBox = addButton(plusX, btnY, '+', remaining > 0 && canAllocateStat(stat), () =>
         dispatch(incrementStat(state!, stat)),
       );
       statControls.push({ stat, minus: minusBox, plus: plusBox });
@@ -434,7 +435,9 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
       case 'Equal':
       case 'NumpadAdd':
         event.preventDefault();
-        dispatch(incrementStat(state, selectedStat(state)));
+        if (canAllocateStat(selectedStat(state))) {
+          dispatch(incrementStat(state, selectedStat(state)));
+        }
         break;
       case 'ArrowLeft':
       case 'KeyA':
@@ -486,6 +489,9 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
       // a human's clicks go through are exercised, then confirm (which closes the
       // overlay and fires onConfirm with the resulting draft).
       for (const stat of PRIMARY_STATS) {
+        if (!canAllocateStat(stat)) {
+          continue;
+        }
         const points = allocations[stat] ?? 0;
         for (let i = 0; i < points; i += 1) {
           dispatch(incrementStat(state, stat));

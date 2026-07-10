@@ -102,6 +102,12 @@ describe('spendPoints', () => {
       spendPoints(world, { lucky: 1 } as unknown as Parameters<typeof spendPoints>[1]),
     ).toThrow();
   });
+
+  it('throws for non-allocatable primary stats', () => {
+    const { world } = setupPlayerWithStats();
+    world.playerLevel.unspentPoints = 10;
+    expect(() => spendPoints(world, { weight: 1 })).toThrow(/cannot be allocated/i);
+  });
 });
 
 describe('addStatModifier / removeStatModifiers', () => {

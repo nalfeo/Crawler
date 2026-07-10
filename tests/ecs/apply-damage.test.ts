@@ -187,6 +187,26 @@ describe('applyDamage', () => {
     });
   });
 
+  it('applies player flat and percent damage bonuses before crit resolution', () => {
+    const world = createTestWorld();
+    const player = createEntity(world);
+    addComponent(world.ecs, player, Player);
+    addComponent(world.ecs, player, EffectiveStats);
+    world.stores.effectiveStats.damageBonus[player] = 2;
+    world.stores.effectiveStats.damagePercent[player] = 0.5;
+    world.stores.effectiveStats.critChance[player] = 1;
+    world.stores.effectiveStats.critMultiplier[player] = 2;
+    const enemy = createEntity(world);
+    addComponent(world.ecs, enemy, set(Health, { current: 100, max: 100 }));
+    addComponent(world.ecs, enemy, Enemy);
+
+    const dealt = applyDamage(world, enemy, 10, 1, 2);
+
+    expect(dealt).toBe(36); // ((10 + 2) * (1 + 0.5)) * 2
+    expect(world.stores.health.current[enemy]).toBe(64);
+    expect(world.combatEvents[0]).toMatchObject({ amount: 36, isCrit: true });
+  });
+
   it('consumes no RNG when neither crit nor dodge applies (bare world without EffectiveStats)', () => {
     const control = createTestWorld();
     const world = createTestWorld(); // same default seed (42) as the control

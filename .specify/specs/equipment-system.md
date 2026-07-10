@@ -81,15 +81,16 @@ Equipment may grant bonuses to **primary stats** and/or **secondary stats**.
 
 #### Primary Stats
 
-| Stat ID        | Label        | Effect Summary                              |
-| -------------- | ------------ | ------------------------------------------- |
-| `strength`     | Strength     | Melee damage, carry capacity                |
-| `dexterity`    | Dexterity    | Attack speed, dodge chance, crit chance     |
-| `constitution` | Constitution | Max HP, HP regen, status resist             |
-| `intelligence` | Intelligence | Spell/ability power, crafting bonus         |
-| `wisdom`       | Wisdom       | XP gain, cooldown reduction, awareness      |
-| `charisma`     | Charisma     | Broadcast Score bonus, shop prices, sponsor |
-| `luck`         | Luck         | Drop rates, crit chance, random event bias  |
+| Stat ID        | Label        | Effect Summary                               |
+| -------------- | ------------ | -------------------------------------------- |
+| `strength`     | Strength     | Melee damage, carry capacity                 |
+| `dexterity`    | Dexterity    | Attack speed, dodge chance, crit chance      |
+| `constitution` | Constitution | Max HP, HP regen, status resist              |
+| `intelligence` | Intelligence | Spell/ability power, crafting bonus          |
+| `wisdom`       | Wisdom       | XP gain, cooldown reduction, awareness       |
+| `charisma`     | Charisma     | Broadcast Score bonus, shop prices, sponsor  |
+| `luck`         | Luck         | Drop rates, crit chance, random event bias   |
+| `weight`       | Weight       | Placeholder for future momentum interactions |
 
 #### Secondary Stats (derived / granted by items)
 
@@ -97,6 +98,7 @@ Equipment may grant bonuses to **primary stats** and/or **secondary stats**.
 | ------------------- | ------------------ | ----------------------------------------- |
 | `armor`             | Armor              | Flat damage reduction                     |
 | `damageBonus`       | Damage Bonus       | Additive bonus to outgoing damage         |
+| `damagePercent`     | Damage %           | Multiplicative outgoing-damage scaler     |
 | `attackSpeed`       | Attack Speed       | Modifier to fire rate / swing cooldown    |
 | `moveSpeed`         | Move Speed         | Movement speed modifier                   |
 | `critChance`        | Crit Chance        | Percentage chance for critical hit        |
@@ -119,13 +121,14 @@ Recomputation always starts from `BaseStats` and sums all equipped item bonuses.
 
 ### Stat Semantics & Stacking
 
-All equipment stat bonuses are **additive flat values** in v1. No multiplicative stacking.
+Equipment item bonuses are **additive flat values** in v1. Multiplicative behavior is provided by explicitly fractional stats (for example `damagePercent`, `critChance`, and `cooldownReduction`) and by downstream formulas that consume them.
 
 | Stat                | Unit / Type   | Clamp Range   | Notes                           |
 | ------------------- | ------------- | ------------- | ------------------------------- |
 | `strength` etc.     | Flat integer  | [0, ∞)        | Primary stats; floor at 0       |
 | `armor`             | Flat integer  | [0, ∞)        | Damage reduction points         |
 | `damageBonus`       | Flat number   | (-∞, ∞)       | Can be negative (cursed items)  |
+| `damagePercent`     | Decimal       | [0, ∞)        | Multiplicative damage scalar    |
 | `attackSpeed`       | Flat number   | Added to base | Higher = faster; floor at 0.1   |
 | `moveSpeed`         | Flat number   | Added to base | Higher = faster; floor at 0     |
 | `critChance`        | Decimal [0–1] | [0, 1]        | Clamped percentage              |
@@ -135,16 +138,18 @@ All equipment stat bonuses are **additive flat values** in v1. No multiplicative
 | `xpBonus`           | Decimal       | [0, ∞)        | Additive percentage; 0.1 = +10% |
 | `cooldownReduction` | Decimal [0–1] | [0, 0.80]     | Hard cap at 80%                 |
 
-Primary stat → secondary stat derivation formulas are **deferred to a future spec**. In v1, primary stats are tracked but do not auto-derive secondary stats.
+Primary stats can derive secondary stats via the shared stat pipeline (e.g. strength contributes to `damagePercent`; luck contributes to `critChance` and `pickupRange`).
 
 ### V1 Stat Formulas (Downstream Integration)
 
 These formulas define how `EffectiveStats` modify existing systems:
 
 ```
-// Weapon system (weaponSystem.ts)
-effectiveFireRateMs = baseCooldownMs / max(0.1, 1 + attackSpeed) * (1 - cooldownReduction)
-outgoingDamage     = max(0, baseDamage + damageBonus)
+// Weapon cooldown system (weaponSystem.ts)
+effectiveFireRateMs = baseCooldownMs * (1 - cooldownReduction)
+
+// Damage choke point (apply-damage.ts)
+outgoingDamage     = max(0, (baseDamage + damageBonus) * (1 + damagePercent))
 isCrit             = world.rng.next() < critChance   // uses SeededRandom
 critDamage         = outgoingDamage * critMultiplier
 
@@ -164,13 +169,15 @@ effectiveXp        = baseXpValue * (1 + xpBonus)
 
 **Integration points** (existing systems to update):
 
-- `weaponSystem.ts` → read `EffectiveStats` for `damageBonus`, `attackSpeed`, `cooldownReduction`, `critChance`, `critMultiplier`
+- `weaponSystem.ts` → read `EffectiveStats` for `cooldownReduction`
+- `abilitySystem.ts` → read `cooldownReduction` for effective ability cooldown windows (snapshotted per active cooldown)
+- `apply-damage.ts` → read `damageBonus`, `damagePercent`, `critChance`, `critMultiplier`
 - `healthSystem.ts` → read `armor`, `dodgeChance`, `hpRegen`
 - `playerInputSystem.ts` → read `moveSpeed`
 - XP collection (when implemented) → read `xpBonus`
 - `BroadcastScore` → read `charisma` bonus (future)
 
-Stats are read **live each frame** from the `EffectiveStats` store, not snapshotted. Projectiles use damage values at spawn time.
+Stats are read live from `EffectiveStats` by default; the explicit exception is ability cooldown windows, where `abilitySystem` snapshots the computed cooldown duration at cast time to keep HUD and gating semantics aligned for that window. Projectiles still snapshot spawn-time base damage, but `apply-damage.ts` reads live `damageBonus`/`damagePercent`/crit stats at hit time.
 
 ### Default Base Stats
 
@@ -186,9 +193,11 @@ const DEFAULT_BASE_STATS: Record<StatId, number> = {
   wisdom: 1,
   charisma: 1,
   luck: 1,
+  weight: 1,
   // Secondary
   armor: 0,
   damageBonus: 0,
+  damagePercent: 0,
   attackSpeed: 0,
   moveSpeed: 0,
   critChance: 0.05,

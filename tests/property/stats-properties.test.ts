@@ -5,7 +5,12 @@ import { Stats } from '../../src/core/components.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { statsSystem, spendPoints, addStatModifier } from '../../src/game/systems/statsSystem.js';
-import { PRIMARY_STATS, STAT_KEYS, STAT_MIN } from '../../src/shared/stats.js';
+import {
+  PRIMARY_STATS,
+  STAT_KEYS,
+  STAT_MIN,
+  isAllocatablePrimaryStat,
+} from '../../src/shared/stats.js';
 import { xpThresholdForLevel, xpRequiredForLevel, levelForXp } from '../../src/shared/xpMath.js';
 
 describe('stats invariants (property-based)', () => {
@@ -27,6 +32,7 @@ describe('stats invariants (property-based)', () => {
           const allocations: Partial<Record<(typeof PRIMARY_STATS)[number], number>> = {};
           for (let i = 0; i < PRIMARY_STATS.length; i++) {
             const key = PRIMARY_STATS[i]!;
+            if (!isAllocatablePrimaryStat(key)) continue;
             if ((pointCounts[i] ?? 0) > 0) {
               allocations[key] = pointCounts[i];
             }
