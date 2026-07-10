@@ -1,5 +1,16 @@
 [
   {
+    "commit": "db11e90a8860c6403f5301b7f75e986d2d11aed3",
+    "commitDate": "2026-07-10T03:16:45Z",
+    "commitSubject": "feat: add editable set-piece canvas with runtime transform fidelity (#995)",
+    "capturedAt": "2026-07-10T03:58:10.581Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29066785949",
+    "winRate": 0.8166666666666667,
+    "totalWins": 245,
+    "totalRuns": 300,
+    "path": "by-sha/db11e90a8860c6403f5301b7f75e986d2d11aed3.json"
+  },
+  {
     "commit": "45eb0c03dd02230745a09b0447d054a5db380674",
     "commitDate": "2026-07-09T21:50:11Z",
     "commitSubject": "feat: Floor 2 starter quest + defected family member NPC in settlement (#993)",
