@@ -140,4 +140,10 @@ describe('MainGameScene lighting overlay behavior', () => {
     expect(source).toContain('/^prop-lantern-v\\d+-var-\\d+$/.test(spriteId)');
     expect(source).toContain('/^prop-torch-v1-var-\\d+$/.test(spriteId)');
   });
+
+  it('includes secondary light-source membership in the stationary cache key', () => {
+    expect(source).toContain('const secondarySourcesKey = secondarySourceKeyParts.join');
+    expect(source).toContain('this.lightingLastSecondarySourcesKey === secondarySourcesKey');
+    expect(source).toContain('this.lightingLastSecondarySourcesKey = secondarySourcesKey');
+  });
 });
