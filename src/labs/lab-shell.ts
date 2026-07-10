@@ -1,5 +1,3 @@
-export type LabViewportPreset = 'desktop';
-
 type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;
 
 type ClassListLike = Pick<DOMTokenList, 'toggle'>;
