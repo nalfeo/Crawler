@@ -27,6 +27,14 @@ function asFiniteNonNegative(value) {
   return isFiniteNumber(value) && value >= 0;
 }
 
+function reportUnknownKeys(obj, allowedKeys, issuePrefix, issues) {
+  Object.keys(obj || {}).forEach((key) => {
+    if (!allowedKeys.has(key)) {
+      issues.push(issuePrefix + ' unknown field "' + key + '" is not allowed');
+    }
+  });
+}
+
 function validateSpriteRefLike(sprite, issuePrefix) {
   const issues = [];
   if (!sprite || typeof sprite !== 'object' || typeof sprite.source !== 'string') {
@@ -90,6 +98,25 @@ function validateLayer(layer, index) {
   if (!layer || typeof layer !== 'object') {
     return ['layers[' + index + '] must be an object'];
   }
+  reportUnknownKeys(
+    layer,
+    new Set([
+      'sprite',
+      'offsetX',
+      'offsetY',
+      'offsetXFt',
+      'offsetYFt',
+      'widthFt',
+      'heightFt',
+      'scale',
+      'flipX',
+      'flipY',
+      'rotationDeg',
+      'tintHex',
+    ]),
+    'layers[' + index + ']',
+    issues,
+  );
   const sprite = layer.sprite;
   if (!sprite || typeof sprite !== 'object' || typeof sprite.source !== 'string') {
     issues.push('layers[' + index + '].sprite is required');
@@ -183,6 +210,12 @@ function validateProps(setPiece, boundW, boundH) {
       issues.push('props[' + i + '] must be an object');
       continue;
     }
+    reportUnknownKeys(
+      prop,
+      new Set(['id', 'kind', 'x', 'y', 'width', 'height', 'z', 'sceneLayer', 'layers']),
+      'props[' + i + ']',
+      issues,
+    );
     if (typeof prop.id !== 'string' || prop.id.trim() === '') {
       issues.push('props[' + i + '].id is required');
     } else if (seen.has(prop.id)) {
@@ -195,6 +228,9 @@ function validateProps(setPiece, boundW, boundH) {
     }
     if (typeof prop.kind !== 'string' || !allowedPropKinds.has(prop.kind)) {
       issues.push('props[' + i + '].kind must be a known prop kind');
+    }
+    if (prop.z !== undefined && !Number.isInteger(prop.z)) {
+      issues.push('props[' + i + '].z must be an integer when present');
     }
     const width = prop.width === undefined ? 1 : prop.width;
     const height = prop.height === undefined ? 1 : prop.height;
@@ -234,6 +270,12 @@ function validateSceneLayers(setPiece) {
       issues.push('sceneLayers[' + i + '] must be an object');
       continue;
     }
+    reportUnknownKeys(
+      layer,
+      new Set(['id', 'name', 'visible', 'locked']),
+      'sceneLayers[' + i + ']',
+      issues,
+    );
     if (typeof layer.id !== 'string' || layer.id.trim() === '') {
       issues.push('sceneLayers[' + i + '].id is required');
       continue;
@@ -275,6 +317,26 @@ function validateNpcs(
       issues.push('npcs[' + i + '] must be an object');
       continue;
     }
+    reportUnknownKeys(
+      npc,
+      new Set([
+        'id',
+        'npcTypeId',
+        'x',
+        'y',
+        'widthFt',
+        'heightFt',
+        'flipX',
+        'flipY',
+        'rotationDeg',
+        'z',
+        'sceneLayer',
+        'spriteOverride',
+        'anchorRole',
+      ]),
+      'npcs[' + i + ']',
+      issues,
+    );
     if (typeof npc.id !== 'string' || npc.id.trim() === '') {
       issues.push('npcs[' + i + '].id is required');
     } else if (seenIds.has(npc.id)) {
@@ -323,8 +385,11 @@ function validateNpcs(
       issues.push(...validateSpriteRefLike(npc.spriteOverride, 'npcs[' + i + '].spriteOverride'));
     }
     if (npc.anchorRole !== undefined) {
-      if (typeof npc.anchorRole !== 'string' || npc.anchorRole.trim() === '') {
-        issues.push('npcs[' + i + '].anchorRole must be non-empty when present');
+      if (
+        typeof npc.anchorRole !== 'string' ||
+        (npc.anchorRole !== 'welcome' && npc.anchorRole !== 'shop' && npc.anchorRole !== 'spell')
+      ) {
+        issues.push('npcs[' + i + '].anchorRole must be welcome, shop, or spell when present');
       } else if (seenAnchors.has(npc.anchorRole)) {
         issues.push('Duplicate anchorRole "' + npc.anchorRole + '"');
       } else {

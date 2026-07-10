@@ -485,7 +485,10 @@ describe('createPhaserBridge', () => {
     expect(propImages).toHaveLength(1);
     expect(propImages[0]?.rotation).toBeCloseTo((45 * Math.PI) / 180);
 
-    world.setPieceProps[0]!.render.rotationDeg = 0;
+    world.setPieceProps[0] = {
+      ...world.setPieceProps[0]!,
+      render: { ...world.setPieceProps[0]!.render, rotationDeg: 0 },
+    };
     bridge.sync(world);
     expect(propImages[0]?.rotation).toBeCloseTo(0);
   });

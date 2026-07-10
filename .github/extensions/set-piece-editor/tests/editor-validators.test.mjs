@@ -198,3 +198,60 @@ test('validateSetPieceCandidate rejects malformed layer transform/tint fields', 
   assert.ok(issues.some((issue) => issue.includes('layers[0].tintHex must match #rrggbb')));
   assert.ok(issues.some((issue) => issue.includes('layers[0].offsetX must be finite')));
 });
+
+test('validateSetPieceCandidate rejects non-integer prop z and invalid NPC anchorRole', () => {
+  const issues = validateSetPieceCandidate({
+    width: 8,
+    height: 7,
+    props: [
+      {
+        id: 'desk',
+        kind: 'furniture',
+        x: 1,
+        y: 1,
+        width: 1,
+        height: 1,
+        z: 1.5,
+        layers: [{ sprite: { source: 'catalog', spriteId: 'sprite:item.gem' } }],
+      },
+    ],
+    npcs: [
+      {
+        id: 'goon',
+        npcTypeId: 'tutorial-goon',
+        x: 4,
+        y: 2,
+        anchorRole: 'not-valid',
+      },
+    ],
+  });
+
+  assert.ok(issues.some((issue) => issue.includes('props[0].z must be an integer')));
+  assert.ok(issues.some((issue) => issue.includes('anchorRole must be welcome, shop, or spell')));
+});
+
+test('validateSetPieceCandidate rejects unknown fields on strict objects', () => {
+  const issues = validateSetPieceCandidate({
+    width: 8,
+    height: 7,
+    sceneLayers: [{ id: 'default', name: 'Default', rogue: true }],
+    props: [
+      {
+        id: 'desk',
+        kind: 'furniture',
+        x: 1,
+        y: 1,
+        width: 1,
+        height: 1,
+        rogue: true,
+        layers: [{ sprite: { source: 'catalog', spriteId: 'sprite:item.gem' }, rogue: true }],
+      },
+    ],
+    npcs: [{ id: 'goon', npcTypeId: 'tutorial-goon', x: 4, y: 2, rogue: true }],
+  });
+
+  assert.ok(issues.some((issue) => issue.includes('sceneLayers[0] unknown field \"rogue\"')));
+  assert.ok(issues.some((issue) => issue.includes('props[0] unknown field \"rogue\"')));
+  assert.ok(issues.some((issue) => issue.includes('props[0].layers[0] unknown field \"rogue\"')));
+  assert.ok(issues.some((issue) => issue.includes('npcs[0] unknown field \"rogue\"')));
+});
