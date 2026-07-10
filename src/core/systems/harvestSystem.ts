@@ -23,9 +23,10 @@ import { pushVfxEvent } from '../../shared/vfx-events.js';
 
 /**
  * Proximity radius in feet within which the player triggers harvesting.
- * Intentionally tight so the player must stand roughly on the node.
+ * 4 ft from center gives a comfortable pickup radius that is forgiving to
+ * both manual play and AI navigation without feeling accidental.
  */
-export const HARVEST_RANGE_FT = 1.0;
+export const HARVEST_RANGE_FT = 4.0;
 
 export function harvestSystem(world: GameWorld): void {
   // Locate the player — there is exactly one Player entity per world.
