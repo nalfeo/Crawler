@@ -145,7 +145,7 @@ These formulas define how `EffectiveStats` modify existing systems:
 
 ```
 // Weapon cooldown system (weaponSystem.ts)
-effectiveFireRateMs = baseCooldownMs / max(0.1, 1 + attackSpeed) * (1 - cooldownReduction)
+effectiveFireRateMs = baseCooldownMs * (1 - cooldownReduction)
 
 // Damage choke point (apply-damage.ts)
 outgoingDamage     = max(0, (baseDamage + damageBonus) * (1 + damagePercent))
@@ -168,7 +168,7 @@ effectiveXp        = baseXpValue * (1 + xpBonus)
 
 **Integration points** (existing systems to update):
 
-- `weaponSystem.ts` → read `EffectiveStats` for `attackSpeed`, `cooldownReduction`
+- `weaponSystem.ts` → read `EffectiveStats` for `cooldownReduction`
 - `abilitySystem.ts` → read `cooldownReduction` for effective ability cooldown windows (snapshotted per active cooldown)
 - `apply-damage.ts` → read `damageBonus`, `damagePercent`, `critChance`, `critMultiplier`
 - `healthSystem.ts` → read `armor`, `dodgeChance`, `hpRegen`
