@@ -48,6 +48,12 @@ export function fovSystem(world: GameWorld): void {
   // Scaling the radius by `subFactor` keeps the vision range in feet unchanged.
   const fov = new FOV.RecursiveShadowcasting(lightPasses);
 
+  // Cache seam-blocked results per tile coordinate for this FOV pass.
+  // Multiple sub-tiles map to the same (tx,ty); without the cache each sub-tile
+  // would walk the full ray, making the per-frame cost O(sub-tiles × ray-length).
+  const seamCache = new Map<number, boolean>();
+  const mapWidth = floorMap.tileMap.width;
+
   fov.compute(
     origin.x,
     origin.y,
@@ -59,8 +65,15 @@ export function fovSystem(world: GameWorld): void {
         // Apply corner-seam blocking across the entire ray from origin to candidate,
         // matching the consistency rules enforced by lineOfSight. This ensures FOV
         // and LOS agree: if lineOfSight rejects a candidate due to a blocked corner
-        // seam, FOV will also reject it.
-        if (floorMap.tileMap.hasBlockedCornerSeam(originTile.x, originTile.y, tx, ty)) {
+        // seam, FOV will also reject it. Result is cached per tile to avoid
+        // re-walking the ray for every sub-tile that maps to the same tile coord.
+        const cacheKey = ty * mapWidth + tx;
+        let seamBlocked = seamCache.get(cacheKey);
+        if (seamBlocked === undefined) {
+          seamBlocked = floorMap.tileMap.hasBlockedCornerSeam(originTile.x, originTile.y, tx, ty);
+          seamCache.set(cacheKey, seamBlocked);
+        }
+        if (seamBlocked) {
           return;
         }
         floorMap.setVisible(hx, hy);

@@ -170,6 +170,31 @@ describe('FOV System', () => {
     expect(floorMap.isVisible(6, 6)).toBe(false);
   });
 
+  it('blocks FOV through a corner seam several tiles from the player (mid-ray seam)', () => {
+    // Player at (2,2); blocked seam at the (5,5)→(6,6) diagonal step (walls at
+    // (6,5) and (5,6)). The seam is 4 tile-steps away, so this regression ensures
+    // the full-ray check catches seams that are not origin-adjacent.
+    const floorMap = makeSmallMap();
+    world.floorMap = floorMap;
+
+    floorMap.tileMap.setFlags(6, 5, TilePresets.WALL);
+    floorMap.tileMap.setFlags(5, 6, TilePresets.WALL);
+
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(Position, { x: 2 * 32 + 16, y: 2 * 32 + 16 }));
+    addComponent(world.ecs, eid, Player);
+
+    fovSystem(world);
+
+    // The player's own tile and tiles before the seam are visible.
+    expect(floorMap.isVisible(2, 2)).toBe(true);
+    expect(floorMap.isVisible(5, 5)).toBe(true);
+    // Tile (6,6) lies behind the mid-ray blocked seam — must not be visible.
+    expect(floorMap.isVisible(6, 6)).toBe(false);
+    // Tile (7,7) is even further behind the seam — also not visible.
+    expect(floorMap.isVisible(7, 7)).toBe(false);
+  });
+
   it('should clear visibility before recomputing', () => {
     const floorMap = makeSmallMap();
     world.floorMap = floorMap;

@@ -119,11 +119,11 @@ export class TileMap {
    *
    * Walks a Bresenham line from (x0,y0) to (x1,y1) and applies the corner-seam
    * blocking rule: if a diagonal step has both orthogonal corner tiles opaque,
-   * the passage is blocked. Returns `false` if a blocked seam is encountered,
-   * `true` if the ray can pass through all seams.
+   * the passage is blocked. Returns `true` if a blocked seam is encountered
+   * (ray should be occluded), `false` if the ray is clear of all seam blocks.
    *
-   * Used by both `lineOfSight` (full LOS check) and FOV visibility callback
-   * to ensure consistent corner-seam behavior across the full ray.
+   * Used by the FOV visibility callback to ensure consistent corner-seam
+   * behavior across the full ray.
    */
   hasBlockedCornerSeam(x0: number, y0: number, x1: number, y1: number): boolean {
     const dx = Math.abs(x1 - x0);
