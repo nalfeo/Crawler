@@ -56,10 +56,13 @@ forced-closed shared door keeps `logicalOpen = 1`, and when the seal lifts `effe
 recomputes to `true` and the door reopens — no edge re-fire needed.
 
 The AI pathfinding revision memo (`getDoorRevision` in `enemyAISystem.ts`) hashes the **live
-tile passability** (`tileMap.isPassable(tx, ty)`), not the stored `effectiveOpen` mirror.
-`floor1PlayerStatSystem` can open a door tile pre-AI (mini-boss-death frames) but
-`effectiveOpen` is only derived later in `doorSystem` (post-AI); hashing the live tile matches
-the pre-migration `isOpen` timing exactly and is what A\* / flow-fields actually read.
+tile passability** (`tileMap.isPassable(tx, ty)`), not the stored `effectiveOpen` mirror. A floor
+objective authority — `floor1ObjectiveTick`, invoked by `floorObjectiveSystem` **after**
+`doorSystem` — can call `tileMap.openDoor(...)` and set `logicalOpen` on boss / mini-boss defeat.
+Because `effectiveOpen` is only reconciled inside `doorSystem` (which already ran earlier that
+frame), the stored mirror stays stale until the **next** frame's `doorSystem` pass — one AI tick
+after the tile is already passable. Hashing the live tile picks the opening up immediately, matches
+the pre-migration `isOpen` timing exactly, and is what A\* / flow-fields actually read.
 
 This is the full-migration option the maintainer selected over a narrower fix.
 

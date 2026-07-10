@@ -37,9 +37,11 @@ truth (chosen over 4 narrower alternatives in an adversarial plan review;
 - `getDoorRevision()` (enemyAISystem path-memo hash) hashes the **live physical
   tile passability** `tileMap.isPassable(tx,ty)` — not the stored `effectiveOpen`
   mirror and not the latch. This closes a one-frame memo lag a reviewer found
-  (`effectiveOpen` is derived in `doorSystem`, which runs AFTER `enemyAISystem`,
-  whereas `floor1PlayerStatSystem` opens tiles pre-AI on mini-boss-death frames).
-  Hashing the live tile matches pre-migration `isOpen` timing exactly.
+  (`effectiveOpen` is reconciled in `doorSystem`; the floor objective authority
+  `floor1ObjectiveTick`/`floorObjectiveSystem` runs AFTER `doorSystem` and opens
+  tiles on boss/mini-boss defeat, so the mirror is stale until the next frame's
+  `doorSystem` — one AI tick late). Hashing the live tile matches pre-migration
+  `isOpen` timing exactly.
 
 ## Verification (real artifacts, not a lab)
 

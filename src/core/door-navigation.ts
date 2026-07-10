@@ -42,8 +42,12 @@ export interface DoorNavInfo {
   /** Intended-open LATCH (doorState.logicalOpen). Introspection only — no
    * navigation decision reads this; A* uses `navigationBlocked`. */
   logicalOpen: boolean;
-  /** Physical/tile truth (doorState.effectiveOpen): logicalOpen && !isLocked &&
-   * !isForcedClosed. Reflects whether the tile is actually open this frame. */
+  /** Last-reconciled physical/tile snapshot (doorState.effectiveOpen), derived by
+   * `doorSystem` as logicalOpen && !isLocked && !isForcedClosed. Introspection
+   * only — NOT guaranteed live: a floor authority can open a door tile after the
+   * frame's `doorSystem` pass, so this mirror lags live `tileMap.isPassable(...)`
+   * until the next reconcile. Callers needing current passability must read the
+   * tile, not this field (see `getDoorRevision`). */
   effectiveOpen: boolean;
   isLocked: boolean;
   /**

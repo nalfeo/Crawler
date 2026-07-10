@@ -19,6 +19,7 @@ import {
 } from '../../src/core/index.js';
 import { BiomeType, RoomRole, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 import { AI_TYPE, PATH_PERSONA, TRAVERSAL_MODE, enemyAISystem } from '../../src/game/index.js';
+import { getDoorRevision } from '../../src/game/enemyAISystem.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 const ENEMY_RADIUS = 1;
@@ -1033,5 +1034,30 @@ describe('enemyAISystem', () => {
 
     expect(beforeOpenX).toBeLessThan(6 * 4);
     expect(world.stores.position.x[navigator]).toBeGreaterThan(8 * 4);
+  });
+
+  it('door revision hashes live tile passability, not the stale effectiveOpen mirror', () => {
+    const world = createTestWorld();
+    world.floorMap = makePathingFloorMap(false); // door tile (6,5) starts closed
+    const tileMap = world.floorMap.tileMap;
+    const door = addEntity(world.ecs);
+    addComponent(world.ecs, door, set(DoorState, { tileX: 6, tileY: 5, logicalOpen: 0 }));
+
+    const rev1 = getDoorRevision(world, tileMap);
+
+    // Writing only the stored `effectiveOpen` mirror (what `doorSystem` derives)
+    // while the tile stays physically closed must NOT bump the revision: the memo
+    // keys off live tile truth, never the post-`doorSystem` mirror. If this ever
+    // regressed to hashing `effectiveOpen`, the revision would change right here.
+    world.stores.doorState.effectiveOpen[door] = 1;
+    expect(tileMap.isPassable(6, 5)).toBe(false);
+    expect(getDoorRevision(world, tileMap)).toBe(rev1);
+
+    // Opening the real tile pre-`doorSystem` (mirror already 1, but the physical
+    // tile is what changed) MUST bump the revision that same AI tick so flow-field
+    // / tile-path memos invalidate immediately instead of one tick late.
+    tileMap.openDoor(6, 5);
+    expect(tileMap.isPassable(6, 5)).toBe(true);
+    expect(getDoorRevision(world, tileMap)).not.toBe(rev1);
   });
 });

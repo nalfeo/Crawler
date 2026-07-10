@@ -11,6 +11,7 @@ import {
 } from '../core/components.js';
 import { findTilePath, PATH_TRAVERSAL, type TilePoint } from '../core/map/pathfinding.js';
 import { computeFlowField, flowFieldStep, type FlowField } from '../core/map/flow-field.js';
+import type { TileMap } from '../core/map/TileMap.js';
 import { spawnAoeProjectile, spawnEnemyProjectile } from '../core/helpers.js';
 import { isPointInSafeSpace } from '../core/safe-space.js';
 import type { GameWorld } from '../core/world.js';
@@ -687,10 +688,9 @@ function getSharedPathMemo(world: GameWorld, doorRevision: number): Map<string, 
   return entry.map;
 }
 
-function getDoorRevision(world: GameWorld): number {
+export function getDoorRevision(world: GameWorld, tileMap: TileMap): number {
   const doors = query(world.ecs, [DoorState]);
   const { doorState } = world.stores;
-  const tileMap = world.floorMap?.tileMap;
   let hash = 2_166_136_261;
 
   for (const eid of doors) {
@@ -699,13 +699,15 @@ function getDoorRevision(world: GameWorld): number {
     // Hash the LIVE physical tile passability, NOT the stored `effectiveOpen`
     // mirror or the `logicalOpen` latch: this revision gates flow-field /
     // tile-path memo invalidation, which are built over physical passability
-    // (see buildDoorAwarePassable). Reading the tile fresh each frame reflects a
-    // pre-`doorSystem` authority tile-open the SAME frame it happens — e.g. the
-    // mini-boss death in `floor1PlayerStatSystem` (which runs before
-    // `enemyAISystem`, whereas `doorSystem` reconciles `effectiveOpen` after it).
-    // This matches the pre-migration `isOpen`-hash timing exactly and avoids a
-    // one-frame memo lag; `effectiveOpen` would be stale on that frame.
-    const physicallyOpen = tileMap?.isPassable(tx, ty) ? 1 : 0;
+    // (see buildDoorAwarePassable). `effectiveOpen` is only reconciled by
+    // `doorSystem`, which runs AFTER `enemyAISystem` this frame; a floor
+    // objective authority (`floor1ObjectiveTick`, invoked by
+    // `floorObjectiveSystem` after `doorSystem`) can call `tileMap.openDoor(...)`
+    // and set `logicalOpen` on boss/mini-boss defeat, so the stored
+    // `effectiveOpen` mirror stays stale until the NEXT frame's `doorSystem`
+    // pass — one AI tick too late. Reading the tile fresh each frame picks that
+    // opening up immediately, matching the pre-migration `isOpen`-hash timing.
+    const physicallyOpen = tileMap.isPassable(tx, ty) ? 1 : 0;
     hash ^= tx * 73856093;
     hash = Math.imul(hash, 16777619);
     hash ^= ty * 19349663;
@@ -1675,7 +1677,7 @@ export function enemyAISystem(world: GameWorld): void {
   const playerY = position.y[playerEid]!;
   const swarmEntities = enemyList.filter((eid) => enemyBehavior.type[eid] === AI_TYPE.SWARM);
   const activeEnemies: number[] = [];
-  const doorRevision = floorMap ? getDoorRevision(world) : 0;
+  const doorRevision = floorMap ? getDoorRevision(world, floorMap.tileMap) : 0;
   const groundFlow = getGroundFlowField(world, playerX, playerY, doorRevision);
   const playerHiddenInSafeRoom = world.playerInSafeRoom;
 
