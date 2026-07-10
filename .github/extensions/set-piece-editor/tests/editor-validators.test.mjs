@@ -89,6 +89,33 @@ test('validateSetPieceCandidate rejects unknown scene-layer references', () => {
   assert.ok(issues.some((issue) => issue.includes('NPC "goon" references unknown sceneLayer')));
 });
 
+test('validateSetPieceCandidate requires sceneLayer to be a non-empty string', () => {
+  const issues = validateSetPieceCandidate({
+    width: 8,
+    height: 7,
+    props: [
+      {
+        id: 'floor',
+        kind: 'floor',
+        x: 0,
+        y: 0,
+        width: 8,
+        height: 7,
+        sceneLayer: 123,
+        layers: [{ sprite: { source: 'catalog', spriteId: 'sprite:item.gem' } }],
+      },
+    ],
+    npcs: [{ id: 'goon', npcTypeId: 'tutorial-goon', x: 4, y: 2, sceneLayer: '' }],
+  });
+
+  assert.ok(
+    issues.some((issue) => issue.includes('props[0].sceneLayer must be a non-empty string')),
+  );
+  assert.ok(
+    issues.some((issue) => issue.includes('npcs[0].sceneLayer must be a non-empty string')),
+  );
+});
+
 test('validateSetPieceCandidate accepts a minimally valid payload', () => {
   const issues = validateSetPieceCandidate({
     width: 8,

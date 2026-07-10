@@ -153,19 +153,18 @@ function clamp(value: number, lo: number, hi: number): number {
   return value;
 }
 
-function clampNpcAnchorForFootprint(
-  anchorTile: number,
+function clampNpcTopLeftForFootprint(
+  topLeftTile: number,
   interiorMin: number,
   interiorMax: number,
   sizeTiles: number,
-): number {
-  const halfTiles = Math.max(0.5, sizeTiles / 2);
-  const minAnchor = interiorMin - 0.5 + halfTiles;
-  const maxAnchor = interiorMax + 0.5 - halfTiles;
-  if (minAnchor > maxAnchor) {
-    return (minAnchor + maxAnchor) / 2;
+): number | null {
+  const minTopLeft = interiorMin;
+  const maxTopLeft = interiorMax + 1 - sizeTiles;
+  if (maxTopLeft < minTopLeft) {
+    return null;
   }
-  return clamp(anchorTile, minAnchor, maxAnchor);
+  return clamp(topLeftTile, minTopLeft, maxTopLeft);
 }
 
 /** Interior of a room = a 1-tile inset of its bounds (the border is walls). */
@@ -232,8 +231,6 @@ export function stampSetPiece(def: SetPieceDef, opts: StampSetPieceOptions): Sta
     return { originTileX, originTileY, props: [], npcs: [] };
   }
 
-  const half = tileSizeFt / 2;
-
   const props: StampedSetPieceProp[] = [];
   flattenSetPieceLayers(def).forEach((draw, index) => {
     const { prop, layer, z, layerIndex } = draw;
@@ -295,7 +292,7 @@ export function stampSetPiece(def: SetPieceDef, opts: StampSetPieceOptions): Sta
     });
   });
 
-  const npcs: StampedSetPieceNpc[] = def.npcs.map((npc) => {
+  const npcs: StampedSetPieceNpc[] = def.npcs.flatMap((npc) => {
     const npcDef = getNpcDef(npc.npcTypeId);
     const widthFt = npc.widthFt ?? npcDef?.widthFt ?? tileSizeFt;
     const heightFt = npc.heightFt ?? npcDef?.heightFt ?? tileSizeFt;
@@ -303,38 +300,45 @@ export function stampSetPiece(def: SetPieceDef, opts: StampSetPieceOptions): Sta
     const heightTiles = heightFt / tileSizeFt;
     const rawTileX = originTileX + npc.x;
     const rawTileY = originTileY + npc.y;
-    const boundedTileX = clampNpcAnchorForFootprint(
+    const boundedTileX = clampNpcTopLeftForFootprint(
       rawTileX,
       interior.minX,
       interior.maxX,
       widthTiles,
     );
-    const boundedTileY = clampNpcAnchorForFootprint(
+    const boundedTileY = clampNpcTopLeftForFootprint(
       rawTileY,
       interior.minY,
       interior.maxY,
       heightTiles,
     );
+    if (boundedTileX === null || boundedTileY === null) {
+      return [];
+    }
+    const centreTileX = boundedTileX + widthTiles / 2;
+    const centreTileY = boundedTileY + heightTiles / 2;
     // Keep objective/occupancy tile bookkeeping integer-based (the containing
     // interior tile), while preserving authored sub-tile world positions within
     // the same interior bounds.
-    const tileX = Math.floor(boundedTileX + 0.5);
-    const tileY = Math.floor(boundedTileY + 0.5);
-    return {
-      npcTypeId: npc.npcTypeId,
-      ...(npc.widthFt !== undefined ? { widthFt: npc.widthFt } : {}),
-      ...(npc.heightFt !== undefined ? { heightFt: npc.heightFt } : {}),
-      ...(npc.flipX !== undefined ? { flipX: npc.flipX } : {}),
-      ...(npc.flipY !== undefined ? { flipY: npc.flipY } : {}),
-      ...(npc.rotationDeg !== undefined ? { rotationDeg: npc.rotationDeg } : {}),
-      ...(npc.z !== undefined ? { z: npc.z } : {}),
-      ...(npc.spriteOverride !== undefined ? { spriteOverride: npc.spriteOverride } : {}),
-      ...(npc.anchorRole !== undefined ? { anchorRole: npc.anchorRole } : {}),
-      tileX,
-      tileY,
-      x: boundedTileX * tileSizeFt + half,
-      y: boundedTileY * tileSizeFt + half,
-    };
+    const tileX = Math.floor(centreTileX);
+    const tileY = Math.floor(centreTileY);
+    return [
+      {
+        npcTypeId: npc.npcTypeId,
+        ...(npc.widthFt !== undefined ? { widthFt: npc.widthFt } : {}),
+        ...(npc.heightFt !== undefined ? { heightFt: npc.heightFt } : {}),
+        ...(npc.flipX !== undefined ? { flipX: npc.flipX } : {}),
+        ...(npc.flipY !== undefined ? { flipY: npc.flipY } : {}),
+        ...(npc.rotationDeg !== undefined ? { rotationDeg: npc.rotationDeg } : {}),
+        ...(npc.z !== undefined ? { z: npc.z } : {}),
+        ...(npc.spriteOverride !== undefined ? { spriteOverride: npc.spriteOverride } : {}),
+        ...(npc.anchorRole !== undefined ? { anchorRole: npc.anchorRole } : {}),
+        tileX,
+        tileY,
+        x: centreTileX * tileSizeFt,
+        y: centreTileY * tileSizeFt,
+      },
+    ];
   });
 
   return { originTileX, originTileY, props, npcs };

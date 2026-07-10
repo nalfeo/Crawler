@@ -11,6 +11,7 @@ import {
   getSetPieceDef,
   type SetPieceDef,
 } from '../../src/shared/set-piece-types.js';
+import { getNpcDef } from '../../src/shared/npc-types.js';
 import type { RoomBounds } from '../../src/shared/map-types.js';
 
 const TILE = 4;
@@ -120,12 +121,14 @@ describe('stampSetPiece — welcome room NPCs', () => {
     expect(authoredGoon).toBeDefined();
     const rawTileX = origin.originTileX + (authoredGoon?.x ?? 0);
     const rawTileY = origin.originTileY + (authoredGoon?.y ?? 0);
+    const goonDef = getNpcDef(authoredGoon?.npcTypeId ?? '');
+    const widthTiles = (authoredGoon?.widthFt ?? goonDef?.widthFt ?? TILE) / TILE;
+    const heightTiles = (authoredGoon?.heightFt ?? goonDef?.heightFt ?? TILE) / TILE;
 
-    expect(goon?.tileX).toBe(Math.floor(rawTileX + 0.5));
-    expect(goon?.tileY).toBe(Math.floor(rawTileY + 0.5));
-    // World coords are the tile centre (tile * tileSizeFt + half).
-    expect(goon?.x).toBe(rawTileX * TILE + TILE / 2);
-    expect(goon?.y).toBe(rawTileY * TILE + TILE / 2);
+    expect(goon?.tileX).toBe(Math.floor(rawTileX + widthTiles / 2));
+    expect(goon?.tileY).toBe(Math.floor(rawTileY + heightTiles / 2));
+    expect(goon?.x).toBe((rawTileX + widthTiles / 2) * TILE);
+    expect(goon?.y).toBe((rawTileY + heightTiles / 2) * TILE);
   });
 
   it('threads NPC sprite override, size, and transform metadata while preserving sub-tile world coords', () => {
@@ -152,10 +155,12 @@ describe('stampSetPiece — welcome room NPCs', () => {
     const rawTileX = origin.originTileX + 1.25;
     const rawTileY = origin.originTileY + 2.75;
 
-    expect(npc.tileX).toBe(Math.floor(rawTileX + 0.5));
-    expect(npc.tileY).toBe(Math.floor(rawTileY + 0.5));
-    expect(npc.x).toBe(rawTileX * TILE + TILE / 2);
-    expect(npc.y).toBe(rawTileY * TILE + TILE / 2);
+    const widthTiles = 5 / TILE;
+    const heightTiles = 7 / TILE;
+    expect(npc.tileX).toBe(Math.floor(rawTileX + widthTiles / 2));
+    expect(npc.tileY).toBe(Math.floor(rawTileY + heightTiles / 2));
+    expect(npc.x).toBe((rawTileX + widthTiles / 2) * TILE);
+    expect(npc.y).toBe((rawTileY + heightTiles / 2) * TILE);
     expect(npc.widthFt).toBe(5);
     expect(npc.heightFt).toBe(7);
     expect(npc.flipX).toBe(true);
@@ -491,6 +496,24 @@ describe('stampSetPiece — clamping and determinism', () => {
     expect(maxEdgeX).toBeLessThanOrEqual(interiorMaxX + 1);
     expect(minEdgeY).toBeGreaterThanOrEqual(interiorMinY);
     expect(maxEdgeY).toBeLessThanOrEqual(interiorMaxY + 1);
+  });
+
+  it('omits oversized NPC footprints that cannot fit in the room interior', () => {
+    const bounds: RoomBounds = { x: 0, y: 0, width: 6, height: 5 };
+    const def = makeDef({
+      npcs: [
+        {
+          id: 'oversized',
+          npcTypeId: 'tutorial-goon',
+          x: 0,
+          y: 0,
+          widthFt: 40,
+          heightFt: 40,
+        },
+      ],
+    });
+    const stamp = stampSetPiece(def, opts(bounds));
+    expect(stamp.npcs).toHaveLength(0);
   });
 
   it('returns no placements for a room with no passable interior', () => {

@@ -833,12 +833,7 @@ function layerVisible(lid){var l=getLayers().find(function(x){return x.id===lid;
 function layerLocked(lid){var l=getLayers().find(function(x){return x.id===lid;});return l&&l.locked===true;}
 function propLayer(p){return p.sceneLayer||(getLayers()[0]||{id:'default'}).id;}
 function npcLayer(n){return n.sceneLayer||(getLayers()[0]||{id:'default'}).id;}
-function layerRank(lid){
-  var ls=getLayers();
-  for(var i=0;i<ls.length;i++)if(ls[i].id===lid)return i;
-  return 0;
-}
-function globalZ(layerId,localZ){return layerRank(layerId)*10000+localZ;}
+function globalZ(_layerId,localZ){return localZ;}
 function nnum(v,d){var n=Number(v);return Number.isFinite(n)?n:d;}
 function isPropSelectedIndex(idx){
   var p=sp&&sp.props&&sp.props[idx];
@@ -1099,6 +1094,24 @@ function enforceAspectRect(ox,oy,ow,oh,nx,ny,nw,nh,h){
   if(h.dx<0)nx=ox+(ow-nw);else if(h.dx===0)nx=ox+(ow-nw)/2;
   if(h.dy<0)ny=oy+(oh-nh);else if(h.dy===0)ny=oy+(oh-nh)/2;
   return {nx:nx,ny:ny,nw:nw,nh:nh};
+}
+function clampResizeRectToBounds(ox,oy,ow,oh,nx,ny,nw,nh,h,maxW,maxH){
+  nx=Math.max(0,nx);ny=Math.max(0,ny);
+  var availW=Math.max(0,maxW-nx),availH=Math.max(0,maxH-ny);
+  if(!S.keepAspect){
+    return {nx:nx,ny:ny,nw:Math.min(nw,availW),nh:Math.min(nh,availH)};
+  }
+  var sw=Math.max(0.0001,ow),sh=Math.max(0.0001,oh);
+  var scale=Math.min(Math.max(0,nw)/sw,Math.max(0,nh)/sh,availW/sw,availH/sh);
+  if(!Number.isFinite(scale))scale=0;
+  var cw=sw*scale,ch=sh*scale;
+  if(h.dx<0)nx=ox+(ow-cw);else if(h.dx===0)nx=ox+(ow-cw)/2;
+  if(h.dy<0)ny=oy+(oh-ch);else if(h.dy===0)ny=oy+(oh-ch)/2;
+  if(nx<0)nx=0;
+  if(ny<0)ny=0;
+  if(nx+cw>maxW)nx=Math.max(0,maxW-cw);
+  if(ny+ch>maxH)ny=Math.max(0,maxH-ch);
+  return {nx:nx,ny:ny,nw:cw,nh:ch};
 }
 async function loadData(){
   var params=new URLSearchParams(location.search),initId=params.get('setPieceId')||'';
@@ -1621,8 +1634,10 @@ canvas.addEventListener('mousemove',function(e){
       else if(h.dy>0){nh=Math.max(minPx,(o.height||1)*ts+dy);}
       var ar=enforceAspectRect(o.x*ts,o.y*ts,(o.width||1)*ts,(o.height||1)*ts,nx,ny,nw,nh,h);
       nx=ar.nx;ny=ar.ny;nw=ar.nw;nh=ar.nh;
-      nx=Math.max(0,nx);ny=Math.max(0,ny);
-      nw=Math.min(nw,sp.width*ts-nx);nh=Math.min(nh,sp.height*ts-ny);
+      var cl=clampResizeRectToBounds(
+        o.x*ts,o.y*ts,(o.width||1)*ts,(o.height||1)*ts,nx,ny,nw,nh,h,sp.width*ts,sp.height*ts
+      );
+      nx=cl.nx;ny=cl.ny;nw=cl.nw;nh=cl.nh;
       drag.dispX=nx;drag.dispY=ny;drag.dispW=nw;drag.dispH=nh;
     }else if(drag.mode==='resize-npc'){
       var n1=sp.npcs&&sp.npcs[drag.idx];
@@ -1636,8 +1651,10 @@ canvas.addEventListener('mousemove',function(e){
       else if(h2.dy>0){nh2=Math.max(minPx2,ons.h*ts+dy);}
       var ar2=enforceAspectRect(nnum(o2.x,0)*ts,nnum(o2.y,0)*ts,ons.w*ts,ons.h*ts,nx2,ny2,nw2,nh2,h2);
       nx2=ar2.nx;ny2=ar2.ny;nw2=ar2.nw;nh2=ar2.nh;
-      nx2=Math.max(0,nx2);ny2=Math.max(0,ny2);
-      nw2=Math.min(nw2,sp.width*ts-nx2);nh2=Math.min(nh2,sp.height*ts-ny2);
+      var cl2=clampResizeRectToBounds(
+        nnum(o2.x,0)*ts,nnum(o2.y,0)*ts,ons.w*ts,ons.h*ts,nx2,ny2,nw2,nh2,h2,sp.width*ts,sp.height*ts
+      );
+      nx2=cl2.nx;ny2=cl2.ny;nw2=cl2.nw;nh2=cl2.nh;
       drag.dispX=nx2;drag.dispY=ny2;drag.dispW=nw2;drag.dispH=nh2;
     }
     render();

@@ -234,6 +234,12 @@ function validateProps(setPiece, boundW, boundH) {
     if (prop.z !== undefined && !Number.isInteger(prop.z)) {
       issues.push('props[' + i + '].z must be an integer when present');
     }
+    if (
+      prop.sceneLayer !== undefined &&
+      (typeof prop.sceneLayer !== 'string' || prop.sceneLayer.trim() === '')
+    ) {
+      issues.push('props[' + i + '].sceneLayer must be a non-empty string when present');
+    }
     const width = prop.width === undefined ? 1 : prop.width;
     const height = prop.height === undefined ? 1 : prop.height;
     if (!asFinitePositive(width) || !asFinitePositive(height)) {
@@ -380,7 +386,18 @@ function validateNpcs(
     if (npc.z !== undefined && !Number.isInteger(npc.z)) {
       issues.push('npcs[' + i + '].z must be an integer');
     }
-    if (hasDeclaredLayers && npc.sceneLayer !== undefined && !layerIds.has(npc.sceneLayer)) {
+    if (
+      npc.sceneLayer !== undefined &&
+      (typeof npc.sceneLayer !== 'string' || npc.sceneLayer.trim() === '')
+    ) {
+      issues.push('npcs[' + i + '].sceneLayer must be a non-empty string when present');
+    }
+    if (
+      hasDeclaredLayers &&
+      typeof npc.sceneLayer === 'string' &&
+      npc.sceneLayer.trim() !== '' &&
+      !layerIds.has(npc.sceneLayer)
+    ) {
       issues.push('NPC "' + (npc.id || i) + '" references unknown sceneLayer');
     }
     if (npc.spriteOverride !== undefined) {
@@ -437,7 +454,11 @@ export function validateSetPieceCandidate(setPiece, options = {}) {
   if (hasDeclaredLayers && Array.isArray(setPiece.props)) {
     for (let i = 0; i < setPiece.props.length; i += 1) {
       const prop = setPiece.props[i];
-      if (prop?.sceneLayer !== undefined && !layerIds.has(prop.sceneLayer)) {
+      if (
+        typeof prop?.sceneLayer === 'string' &&
+        prop.sceneLayer.trim() !== '' &&
+        !layerIds.has(prop.sceneLayer)
+      ) {
         issues.push('Prop "' + (prop.id || i) + '" references unknown sceneLayer');
       }
     }
