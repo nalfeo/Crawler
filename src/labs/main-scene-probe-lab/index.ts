@@ -155,6 +155,8 @@ export interface MainSceneState {
   readonly achievementsOpen: boolean;
   /** True while a conversation is active. */
   readonly conversationOpen: boolean;
+  /** Active NPC dialogue line index, or null when no conversation is open. */
+  readonly conversationLineIndex: number | null;
   /** Current corner-button visibility (safe-room panel shortcuts). */
   readonly inventoryButtonVisible: boolean;
   readonly equipButtonVisible: boolean;
@@ -399,6 +401,11 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       const inventoryOpen = scene?.inventoryUI?.isOpen() ?? false;
       const equipmentOpen = scene?.equipmentUI?.isOpen() ?? false;
       const achievementsOpen = scene?.achievementsUI?.isOpen() ?? false;
+      const conversationNpcEid = scene?.conversationNpcEid ?? null;
+      const conversationLineIndex =
+        conversationNpcEid !== null
+          ? (world?.npcs.get(conversationNpcEid)?.dialogueIndex ?? 0)
+          : null;
       return {
         worldState: world?.state ?? null,
         playerEid: eid,
@@ -408,7 +415,8 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         inventoryOpen,
         equipmentOpen,
         achievementsOpen,
-        conversationOpen: scene?.conversationNpcEid !== null,
+        conversationOpen: conversationNpcEid !== null,
+        conversationLineIndex,
         inventoryButtonVisible: scene?.inventoryButton?.visible ?? false,
         equipButtonVisible: scene?.equipButton?.visible ?? false,
         achievementsButtonVisible: scene?.achievementsButton?.visible ?? false,

@@ -77,6 +77,16 @@ describe('MainGameScene UI exclusivity', () => {
     await mainSceneProbe.queueInteraction(page);
     await waitForState(page, (s) => s.conversationOpen, { label: 'npc dialogue opened' });
 
+    const beforeAdvance = await mainSceneProbe.getState(page);
+    await mainSceneProbe.queueInteraction(page);
+    await page.waitForTimeout(150);
+    const afterAdvance = await mainSceneProbe.getState(page);
+    expect(
+      !afterAdvance.conversationOpen ||
+        (afterAdvance.conversationLineIndex ?? -1) > (beforeAdvance.conversationLineIndex ?? -1),
+      'interaction input must still advance/close active dialogue',
+    ).toBe(true);
+
     await mainSceneProbe.requestInventoryToggle(page);
     await mainSceneProbe.requestEquipToggle(page);
     await mainSceneProbe.requestAchievementsToggle(page);

@@ -2744,9 +2744,12 @@ export class MainGameScene extends Phaser.Scene {
 
   private updateInteractions(): void {
     const tapped = this.tappedInteraction || this.queuedInteraction;
+    const interactionInputRequested =
+      tapped || Boolean(this.keyE && Phaser.Input.Keyboard.JustDown(this.keyE));
     const interactionRequested =
-      (tapped || Boolean(this.keyE && Phaser.Input.Keyboard.JustDown(this.keyE))) &&
-      !this.isBlockingSurfaceOpen();
+      this.conversationNpcEid !== null
+        ? interactionInputRequested
+        : interactionInputRequested && !this.isBlockingSurfaceOpen();
     const closeRequested = this.queuedConversationClose;
     this.tappedInteraction = false;
     this.queuedInteraction = false;
