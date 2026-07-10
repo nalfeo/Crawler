@@ -195,6 +195,14 @@ describe('initializeFloor2Scenario manifest validation', () => {
           quest.status === 'active' && quest.tracked && !getQuestDef(quest.questId)?.hidden,
       ),
     ).toBe(false);
+    // Hidden quests must remain mechanically active (status='active') so that
+    // kill-counter events still progress them; the hidden flag only gates HUD
+    // visibility, not quest mechanics.
+    expect(
+      [...world.questLog.values()].some(
+        (quest) => quest.status === 'active' && getQuestDef(quest.questId)?.hidden === true,
+      ),
+    ).toBe(true);
   });
 
   // This determinism guard generates two full Floor 2 scenario worlds (cave-system

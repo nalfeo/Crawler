@@ -521,6 +521,8 @@ export function floor2ObjectiveTick(world: GameWorld): void {
   // (player completed all of the Broker's intro dialogue lines). meetBroker()
   // latches FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID; MainGameScene fires it when
   // the player advances past the Broker's last dialogue line.
+  // NOTE: `=== false` is intentional — `undefined` means "active by default"
+  // (backwards compat for labs that don't set reputationSystemActive).
   if (
     floor2State.reputationSystemActive === false &&
     world.goalFlags.get(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID) === true
