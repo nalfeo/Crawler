@@ -847,7 +847,7 @@ function propLayer(p){return p.sceneLayer||(getLayers()[0]||{id:'default'}).id;}
 function npcLayer(n){return n.sceneLayer||(getLayers()[0]||{id:'default'}).id;}
 // Mirror src/shared/render-depths.ts:setPieceZToDepth and TERRAIN_DEPTH so draw order matches runtime.
 // Negative NPC z values clamp above terrain in PhaserBridge, so the editor must too.
-var TERRAIN_DEPTH=-20,ENTITY_DEPTH=0;
+var TERRAIN_DEPTH=-20,ENTITY_DEPTH=0,NPC_TERRAIN_MARGIN=0.001;
 function setPieceZToDepth(z){if(z<20)return -19+z*0.8;return 2+(z-20)*0.1;}
 function nativeLayerTiles(sprite){
   if(sprite&&sprite.source==='custom')return{w:nnum(sprite.widthTiles,1),h:nnum(sprite.heightTiles,1)};
@@ -856,7 +856,7 @@ function nativeLayerTiles(sprite){
 // Depth-based sort key — keeps editor canvas order in parity with the Phaser depth stack.
 // NPCs without an authored z sort at ENTITY_DEPTH (between background and foreground props).
 function globalZ(layerId,kind,localZ){
-  if(kind==='npc')return localZ!==undefined?Math.max(TERRAIN_DEPTH+0.001,setPieceZToDepth(localZ)):ENTITY_DEPTH;
+  if(kind==='npc')return localZ!==undefined?Math.max(TERRAIN_DEPTH+NPC_TERRAIN_MARGIN,setPieceZToDepth(localZ)):ENTITY_DEPTH;
   return setPieceZToDepth(localZ);
 }
 function nnum(v,d){var n=Number(v);return Number.isFinite(n)?n:d;}
