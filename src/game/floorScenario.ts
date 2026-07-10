@@ -10,6 +10,7 @@ import {
 import {
   BiomeType,
   RoomRole,
+  TilePresets,
   TerrainType,
   type MapConfig,
   type RoomBounds,
@@ -1133,6 +1134,45 @@ function computeWelcomeRoomStamp(
 }
 
 /**
+ * Apply authored structural set-piece props (wall/door) onto real map tiles.
+ *
+ * Set-piece dressing is mostly render-only, but structural props must also
+ * mutate map physics/terrain so authored walls block movement and authored doors
+ * are treated as doors at runtime.
+ */
+function applyWelcomeRoomStructuralTiles(world: GameWorld, stamp: StampedSetPiece): void {
+  const floorMap = world.floorMap;
+  if (!floorMap) return;
+  const def = getSetPieceDef(WELCOME_ROOM_SET_PIECE_ID);
+  if (!def) return;
+
+  const propById = new Map(def.props.map((prop) => [prop.id, prop]));
+  const applied = new Set<string>();
+  const mapWidth = floorMap.config.widthTiles;
+  for (const stampedProp of stamp.props) {
+    const propId = stampedProp.render.label;
+    if (!propId || applied.has(propId)) continue;
+    const prop = propById.get(propId);
+    if (!prop) continue;
+    applied.add(propId);
+    if (prop.kind !== 'wall' && prop.kind !== 'door') continue;
+
+    const terrain = prop.kind === 'wall' ? TerrainType.STONE_WALL : TerrainType.DOOR;
+    for (let dy = 0; dy < prop.height; dy += 1) {
+      for (let dx = 0; dx < prop.width; dx += 1) {
+        const tx = stampedProp.tileX + dx;
+        const ty = stampedProp.tileY + dy;
+        if (!floorMap.tileMap.inBounds(tx, ty)) continue;
+        if (prop.kind === 'door') {
+          floorMap.tileMap.setFlags(tx, ty, TilePresets.DOOR_OPEN);
+        }
+        floorMap.terrain[ty * mapWidth + tx] = terrain;
+      }
+    }
+  }
+}
+
+/**
  * Called the first time the player talks to the Tutorial Goon (the reward for
  * finding the Welcome Office). Completes the opening "find the welcome room"
  * quest, accepts the level-2 grind quest, focuses the tracker, and unlocks
@@ -1384,6 +1424,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   const welcomeStamp = computeWelcomeRoomStamp(world, welcomeOfficePos);
   const stampedNpcByType = new Map<string, StampedSetPieceNpc>();
   if (welcomeStamp) {
+    applyWelcomeRoomStructuralTiles(world, welcomeStamp);
     for (const npc of welcomeStamp.npcs) {
       stampedNpcByType.set(npc.npcTypeId, npc);
     }
