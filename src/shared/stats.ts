@@ -189,6 +189,7 @@ const ALLOCATABLE_PRIMARY_STATS = [
   'constitution',
   'intelligence',
   'wisdom',
+  'luck',
 ] as const satisfies readonly PrimaryStatId[];
 
 const ALLOCATABLE_PRIMARY_STATS_SET: ReadonlySet<PrimaryStatId> = new Set(

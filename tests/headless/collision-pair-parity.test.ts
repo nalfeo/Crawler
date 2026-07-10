@@ -138,6 +138,22 @@ interface CollisionFingerprint {
  *   seed  13:  8/228/5/0    →  7/190/5/0
  *   seed  42:  6/236/10/4   →  4/193/15/2
  *   seed 137:  5/226/5/2    →  4/190/0/0
+ *
+ * ## 2026-07-10 re-baseline — derived stat contract + cooldown runtime wiring
+ *
+ * This PR intentionally changes combat math semantics and runtime cooldown
+ * behavior: strength-derived scaling moved from `damageBonus` to a separate
+ * multiplicative `damagePercent` (while keeping gear `damageBonus` flat), and
+ * wisdom-derived `cooldownReduction` now feeds real ability/weapon cooldown
+ * gates. Those design-owned behavior changes alter hit cadence and per-hit
+ * damage in the first 1500-frame slice, so deterministic fingerprints drift.
+ * Re-baseline pinned only after each seed remained deterministic across two
+ * back-to-back invocations (see the determinism test below).
+ * Before → after (kills / damageDealt / damageTaken / score):
+ *   seed   7:  4/156/10/0   →  1/140.16999250650406/25/0
+ *   seed  13:  7/190/5/0    →  4/175.90000247955322/0/0
+ *   seed  42:  4/193/15/2   →  5/205.5999984741211/15/4
+ *   seed 137:  4/190/0/0    →  5/179.23999977111816/10/2
  */
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
