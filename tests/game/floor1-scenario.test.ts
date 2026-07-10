@@ -345,7 +345,6 @@ describe('floor1Scenario', () => {
       }
     }
     expect(validated.size).toBeGreaterThan(0);
-    expect(validated.size).toBeGreaterThan(0);
   });
 
   it('does not accumulate set-piece props when re-initialized on a reused world', () => {
