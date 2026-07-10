@@ -21,8 +21,24 @@
           "models": ["copilot-pull-request-reviewer"],
           "concerns_count": 7,
           "resolved_count": 7,
+          "clean": false,
+          "notes": "Initial parity pass: addressed runtime tile semantics, production interaction coverage, tint compositing behavior, and metadata consistency."
+        },
+        {
+          "round": 2,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 6,
+          "resolved_count": 6,
+          "clean": false,
+          "notes": "Follow-up review cycle after CI and branch-sync churn: addressed single-path tint draw (no alpha double-paint), production render-order instrumentation, non-opaque sprite fixture coverage, apple metric consistency, and removed unintended overlapping rug copy."
+        },
+        {
+          "round": 3,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 0,
+          "resolved_count": 0,
           "clean": true,
-          "notes": "All actionable review concerns addressed across runtime tile semantics, production interaction coverage, tint compositing behavior, and metadata/ledger consistency."
+          "notes": "Final re-review clean after latest parity/doc/data fixes; no remaining blocking concerns."
         }
       ]
     }
