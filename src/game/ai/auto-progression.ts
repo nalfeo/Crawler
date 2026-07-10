@@ -12,7 +12,9 @@
  * stat points (stays at base HP and death-spirals at low health) and stalls
  * forever on the boss-reward spell modal it has no way to dismiss.
  */
+import { query } from 'bitecs';
 import type { GameWorld } from '../../core/index.js';
+import { Player, Position } from '../../core/index.js';
 import { AIState, type AIInputProvider } from './types.js';
 import {
   confirmFloor1StairDescend,
@@ -30,6 +32,7 @@ import type { PrimaryStatId } from '../../shared/stats.js';
 
 /** Frames between auto NPC-talk attempts (debounce repeated `meet*` calls). */
 export const NPC_INTERACTION_COOLDOWN = 30; // frames
+const TUTORIAL_GOON_HANDOFF_DISTANCE_FT = 188;
 
 /**
  * Headless-compatible NPC interaction system.
@@ -47,7 +50,9 @@ export function autoNpcInteractionSystem(
   }
 
   const decision = aiProvider.getDecision();
-  if (decision.state !== AIState.INTERACT) {
+  const tutorialSeekFallback =
+    decision.state === AIState.EXPLORE && decision.reason.includes('Tutorial Goon');
+  if (decision.state !== AIState.INTERACT && !tutorialSeekFallback) {
     return lastInteractionFrame;
   }
 
@@ -57,7 +62,22 @@ export function autoNpcInteractionSystem(
   }
 
   const targetNpc = world.npcs.get(targetEid);
-  if (!targetNpc?.nearbyPlayer) {
+  if (!targetNpc) {
+    return lastInteractionFrame;
+  }
+  let tutorialHandoffNearby = false;
+  if (targetNpc.defId === 'tutorial-goon' && decision.reason.includes('Tutorial Goon')) {
+    const playerEid = query(world.ecs, [Player, Position])[0];
+    if (playerEid !== undefined) {
+      const px = world.stores.position.x[playerEid] ?? 0;
+      const py = world.stores.position.y[playerEid] ?? 0;
+      const nx = world.stores.position.x[targetEid] ?? 0;
+      const ny = world.stores.position.y[targetEid] ?? 0;
+      const tutorialDistance = Math.hypot(nx - px, ny - py);
+      tutorialHandoffNearby = tutorialDistance <= TUTORIAL_GOON_HANDOFF_DISTANCE_FT;
+    }
+  }
+  if (!targetNpc.nearbyPlayer && !tutorialHandoffNearby) {
     return lastInteractionFrame;
   }
 

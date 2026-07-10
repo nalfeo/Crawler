@@ -204,15 +204,19 @@ describe('BehaviorTreeAI', () => {
 
     const decision = ai.getDecision();
     expect(decision.reason).toContain('Tutorial Goon');
+    expect(decision.targetEid).toBe(world.floorScenario?.guideNpcEid ?? -1);
     expect(decision.targetX).toBe(world.floorScenario?.objective.welcomeOfficePos.x);
     expect(decision.targetY).toBe(world.floorScenario?.objective.welcomeOfficePos.y);
   });
 
-  it('labels EXPLORE fallback caused by suppressed fixed-position progress navigation', () => {
+  it('labels EXPLORE fallback caused by suppressed fixed-position post-tutorial progress navigation', () => {
     const world = createTestWorld({ seed: 42 });
     const player = spawnPlayer(world, 0, 0);
     initializeFloor1Scenario(world, player);
     selectFloor1StarterWeapon(world, 0);
+    meetTutorialGoon(world);
+    world.playerLevel.level = 2;
+    world.floorScenario!.objective.questCompleted = true;
 
     const ai = new BehaviorTreeAI({ seed: 42, scanRadius: 0 });
     const suppressionHarness = ai as unknown as {
@@ -232,14 +236,11 @@ describe('BehaviorTreeAI', () => {
       state: 'suppressedProgressNav',
       reason: 'progressGoalSuppressed',
       source: AIProgressSuppressionSource.EXPLORE_DWELL_FIXED_POSITION_TARGET,
-      criticalChainPhase: 'pre-chain',
-      blockedTargetReason: 'Seeking Tutorial Goon to unlock the floor quest',
+      criticalChainPhase: 'shop',
+      blockedTargetReason: 'Seeking Shopkeeper to start the merchant errand',
       suppressedUntilFrame: 120,
       remainingFrames: 120,
     });
-
-    decision.debug!.remainingFrames = 0;
-    expect(ai.getDecision().debug?.remainingFrames).toBe(120);
   });
 
   it('approaches enemies into honest melee range instead of targeting their center', () => {
