@@ -2,9 +2,11 @@
  * Door System — reconciles DoorState into tile flags.
  *
  * A door carries two independent bits of open state:
- *   - `logicalOpen`  — the intended-open LATCH, written ONLY by the lock/unlock
- *     authorities in this file (unlock edge → 1, relock/locked → 0). The
- *     safe-room seal never touches it.
+ *   - `logicalOpen`  — the intended-open LATCH. Written only by lock/unlock and
+ *     floor/encounter authorities: the door-lock evaluator below (unlock edge → 1,
+ *     relock/locked → 0), plus floor objective / boss transitions and spawner
+ *     arenas (e.g. floorScenario.ts, floor2Scenario.ts, spawnerArenaSystem.ts).
+ *     The safe-room seal / physical reconcile never touches it.
  *   - `effectiveOpen` — the physical/tile truth, DERIVED here every frame as
  *     `logicalOpen && !isLocked && !isForcedClosed` and stored back on the
  *     component. It drives the tile PASSABLE + TRANSPARENT bits; the FOV system

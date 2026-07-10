@@ -26,7 +26,7 @@
           "concerns_count": 1,
           "resolved_count": 1,
           "clean": false,
-          "notes": "gemini-3.1-pro-preview: clean on the migration commit. gpt-5.4: one HIGH/HIGH concern — getDoorRevision hashed the stored effectiveOpen mirror, which doorSystem derives AFTER enemyAISystem runs, so on a frame where floor1PlayerStatSystem opens a door tile pre-AI (mini-boss death) the path memo lagged one frame vs the pre-migration isOpen hash. Adjudicated VALID; fixed with gpt's own prescribed remedy (hash live tileMap.isPassable(doorTile)) in commit ce92ed26."
+          "notes": "gemini-3.1-pro-preview: clean on the migration commit. gpt-5.4: one HIGH/HIGH concern — getDoorRevision hashed the stored effectiveOpen mirror, which doorSystem derives AFTER enemyAISystem runs, so on the frame after floor1ObjectiveTick (via floorObjectiveSystem, which runs AFTER doorSystem) opens a door tile on boss/mini-boss defeat, the stored mirror is stale for the next pre-reconcile AI pass and the path memo lagged one frame vs the pre-migration isOpen hash. Adjudicated VALID; fixed with gpt's own prescribed remedy (hash live tileMap.isPassable(doorTile)) in commit ce92ed26."
         },
         {
           "round": 2,

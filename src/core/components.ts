@@ -314,8 +314,10 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
     doorState: {
       tileX: new Uint16Array(maxEntities),
       tileY: new Uint16Array(maxEntities),
-      // Intended-open LATCH: written ONLY by the lock/unlock authorities
-      // (never by the safe-room seal). 0 = should be closed, 1 = should be open.
+      // Intended-open LATCH: written only by lock/unlock and floor/encounter
+      // authorities (doorSystem's lock evaluator, floor objective / boss
+      // transitions, spawner arenas) — never by the safe-room seal / reconcile.
+      // 0 = should be closed, 1 = should be open.
       logicalOpen: new Uint8Array(maxEntities),
       // Physical/tile truth, DERIVED every frame by doorSystem's reconcile pass:
       // effectiveOpen = logicalOpen && !isLocked && !isForcedClosed. This is what

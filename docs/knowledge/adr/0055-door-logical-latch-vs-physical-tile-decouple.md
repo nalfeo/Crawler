@@ -43,8 +43,9 @@ the **latch** to achieve a **physical** effect, corrupting the state machine's i
 Split the two meanings into two fields on the `doorState` bitecs store and make the physical
 truth a **derived, stored** value:
 
-- **`logicalOpen`** (renamed from `isOpen`) — the intended-open **latch**. Written **only**
-  by lock/unlock authorities. Never mutated for a physical effect.
+- **`logicalOpen`** (renamed from `isOpen`) — the intended-open **latch**. Written only by
+  lock/unlock and floor/encounter authorities (the door-lock evaluator, floor objective / boss
+  transitions, spawner arenas). Never mutated for a physical effect by the safe-room seal.
 - **`isLocked`** — unchanged; the lock state.
 - **`effectiveOpen`** (new `Uint8Array`) — the physical/tile truth, **derived and stored by
   `doorSystem` reconcile every frame** as

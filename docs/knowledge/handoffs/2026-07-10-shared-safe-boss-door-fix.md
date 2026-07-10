@@ -27,7 +27,8 @@ truth (chosen over 4 narrower alternatives in an adversarial plan review;
 ## The fix model
 
 - `doorState.isOpen` (bitecs SoA field) → **`logicalOpen`** = intended-open
-  LATCH, written ONLY by lock/unlock authorities.
+  LATCH, written only by lock/unlock and floor/encounter authorities (door-lock
+  evaluator, floor objective / boss transitions, spawner arenas) — never the seal.
 - New stored **`effectiveOpen: Uint8Array`** = physical tile truth, DERIVED every
   frame by `doorSystem` reconcile as `logicalOpen && !isLocked && !isForcedClosed`;
   the tile is driven from `effectiveOpen`.
