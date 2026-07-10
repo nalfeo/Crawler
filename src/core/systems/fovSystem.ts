@@ -56,7 +56,15 @@ export function fovSystem(world: GameWorld): void {
       if (visibility > 0) {
         const tx = Math.floor(hx / sf);
         const ty = Math.floor(hy / sf);
-        if (!floorMap.tileMap.lineOfSight(originTile.x, originTile.y, tx, ty)) return;
+        const adjacentDiagonal =
+          Math.abs(tx - originTile.x) === 1 && Math.abs(ty - originTile.y) === 1;
+        if (
+          adjacentDiagonal &&
+          !floorMap.tileMap.isTransparent(tx, originTile.y) &&
+          !floorMap.tileMap.isTransparent(originTile.x, ty)
+        ) {
+          return;
+        }
         floorMap.setVisible(hx, hy);
         floorMap.setDiscovered(hx, hy);
       }

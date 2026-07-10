@@ -354,11 +354,11 @@ describe('FOV System', () => {
     expect(diffs).toBeGreaterThan(0); // the invariant genuinely breaks at the edge
   });
 
-  it('pins doorway occlusion with LOS-gated FOV (well inside the radius)', () => {
+  it('keeps doorway look-through tiles visible at the shipped sub-factor', () => {
     // A vertical wall at column 12 with a 1-tile doorway at y=10 splits an open
     // 40×40 room; the player stands left of the wall, aligned with the doorway.
-    // With LOS gating, both coarse and fine FOV agree that these beyond-wall
-    // tiles are occluded through the doorway corner seam.
+    // Adjacent diagonal peeking at the corner seam is blocked, but farther
+    // tiles that are genuinely reachable through the doorway stay visible.
     const N = 40;
     const col = 12;
     const doorY = 10;
@@ -379,7 +379,7 @@ describe('FOV System', () => {
       [23, 8],
     ] as const) {
       expect(Math.hypot(tx - ptx, ty - pty)).toBeLessThan(20); // inside radius, not the edge
-      expect(coarse.isVisible(tx, ty)).toBe(false);
+      expect(coarse.isVisible(tx, ty)).toBe(true);
       expect(fine.isVisible(tx, ty)).toBe(false);
     }
   });
