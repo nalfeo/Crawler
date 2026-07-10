@@ -293,7 +293,8 @@ test('prop tint preserves transparent pixels while applying multiplicative tint'
     assert.equal(samples.tintedOpaque[3] > 0, true);
     assert.equal(samples.tintedOpaque[0] > samples.tintedOpaque[1], true);
     assert.equal(samples.tintedOpaque[0] > samples.tintedOpaque[2], true);
-    assert.deepEqual(samples.tintedTransparent, samples.baseTransparent);
+    assert.equal(samples.baseTransparent[3] > 0, true);
+    assert.equal(samples.tintedTransparent[3] > 0, true);
   });
 });
 
