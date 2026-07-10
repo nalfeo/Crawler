@@ -214,6 +214,20 @@ describe('TileMap', () => {
       const map = openMap();
       expect(map.lineOfSight(3, 3, 3, 3)).toBe(true);
     });
+
+    it('blocks diagonal LOS through a blocked corner seam', () => {
+      const map = openMap();
+      // Crossing from (1,1) -> (2,2) passes between (2,1) and (1,2).
+      map.setFlags(2, 1, TilePresets.WALL);
+      map.setFlags(1, 2, TilePresets.WALL);
+      expect(map.lineOfSight(1, 1, 2, 2)).toBe(false);
+    });
+
+    it('allows diagonal LOS when only one side of the corner seam is blocked', () => {
+      const map = openMap();
+      map.setFlags(2, 1, TilePresets.WALL);
+      expect(map.lineOfSight(1, 1, 2, 2)).toBe(true);
+    });
   });
 
   describe('tile flag bitfield correctness', () => {

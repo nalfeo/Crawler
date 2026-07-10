@@ -150,6 +150,26 @@ describe('FOV System', () => {
     expect(floorMap.isVisible(15, 10)).toBe(false);
   });
 
+  it('blocks FOV through a diagonal corner seam', () => {
+    const floorMap = makeSmallMap();
+    world.floorMap = floorMap;
+
+    // Build a blocked corner seam around tile (6,6): the orthogonals
+    // (6,5) and (5,6) are walls, so diagonal peeking across the seam
+    // from (5,5) to (6,6) must be blocked.
+    floorMap.tileMap.setFlags(6, 5, TilePresets.WALL);
+    floorMap.tileMap.setFlags(5, 6, TilePresets.WALL);
+
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(Position, { x: 5 * 32 + 16, y: 5 * 32 + 16 }));
+    addComponent(world.ecs, eid, Player);
+
+    fovSystem(world);
+
+    expect(floorMap.isVisible(5, 5)).toBe(true);
+    expect(floorMap.isVisible(6, 6)).toBe(false);
+  });
+
   it('should clear visibility before recomputing', () => {
     const floorMap = makeSmallMap();
     world.floorMap = floorMap;
@@ -334,15 +354,11 @@ describe('FOV System', () => {
     expect(diffs).toBeGreaterThan(0); // the invariant genuinely breaks at the edge
   });
 
-  it('pins the shadow/occlusion-edge divergence at a doorway (well inside the radius)', () => {
+  it('pins doorway occlusion with LOS-gated FOV (well inside the radius)', () => {
     // A vertical wall at column 12 with a 1-tile doorway at y=10 splits an open
     // 40×40 room; the player stands left of the wall, aligned with the doorway.
-    // The shadow wedge cast through the doorway rasterizes differently per factor.
-    // Verified with the real fovSystem: tiles (21,8)/(22,8)/(23,8) — beyond the
-    // wall, dist ≈15–17 (far inside the 25-tile radius, so this is occlusion- not
-    // radius-driven) — are visible at factor 2 but NOT at factor 8. Tile-level
-    // visibility is therefore not globally factor-invariant; this is intended,
-    // lab-only behavior of the granularity knob, pinned here.
+    // With LOS gating, both coarse and fine FOV agree that these beyond-wall
+    // tiles are occluded through the doorway corner seam.
     const N = 40;
     const col = 12;
     const doorY = 10;
@@ -363,7 +379,7 @@ describe('FOV System', () => {
       [23, 8],
     ] as const) {
       expect(Math.hypot(tx - ptx, ty - pty)).toBeLessThan(20); // inside radius, not the edge
-      expect(coarse.isVisible(tx, ty)).toBe(true);
+      expect(coarse.isVisible(tx, ty)).toBe(false);
       expect(fine.isVisible(tx, ty)).toBe(false);
     }
   });

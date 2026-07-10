@@ -33,6 +33,7 @@ export function fovSystem(world: GameWorld): void {
 
   // Convert world position (feet) to sub-tile coordinates.
   const origin = floorMap.worldToSubTile(px, py);
+  const originTile = floorMap.worldToTile(px, py);
   const sf = floorMap.subFactor;
 
   // Clear previous per-frame visibility (discovered memory persists).
@@ -51,10 +52,13 @@ export function fovSystem(world: GameWorld): void {
     origin.x,
     origin.y,
     DEFAULT_FOV_RADIUS * sf,
-    (_hx: number, _hy: number, _r: number, visibility: number) => {
+    (hx: number, hy: number, _r: number, visibility: number) => {
       if (visibility > 0) {
-        floorMap.setVisible(_hx, _hy);
-        floorMap.setDiscovered(_hx, _hy);
+        const tx = Math.floor(hx / sf);
+        const ty = Math.floor(hy / sf);
+        if (!floorMap.tileMap.lineOfSight(originTile.x, originTile.y, tx, ty)) return;
+        floorMap.setVisible(hx, hy);
+        floorMap.setDiscovered(hx, hy);
       }
     },
   );

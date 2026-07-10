@@ -134,6 +134,8 @@ export class TileMap {
     let y = y0;
 
     while (x !== x1 || y !== y1) {
+      const prevX = x;
+      const prevY = y;
       const e2 = 2 * err;
       if (e2 > -dy) {
         err -= dy;
@@ -142,6 +144,10 @@ export class TileMap {
       if (e2 < dx) {
         err += dx;
         y += sy;
+      }
+      const steppedDiagonally = x !== prevX && y !== prevY;
+      if (steppedDiagonally && !this.isTransparent(x, prevY) && !this.isTransparent(prevX, y)) {
+        return false;
       }
       // Reaching the target tile means the path was clear; the target tile
       // itself is never treated as a blocker.
