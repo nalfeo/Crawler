@@ -13,13 +13,16 @@ const ONE_BY_ONE_PNG = Buffer.from(
   'base64',
 );
 
-function extractEditorHtml(applyToken) {
-  const startMarker = 'const HTML_TEMPLATE = `';
+function renderHtml(applyToken) {
+  const startMarker = 'function renderHtml(applyToken) {';
   const start = EXTENSION_SOURCE.indexOf(startMarker);
-  assert.notEqual(start, -1, 'expected inline editor HTML template');
-  const bodyStart = start + startMarker.length;
+  assert.notEqual(start, -1, 'expected renderHtml function');
+  const templateMarker = 'const HTML_TEMPLATE = `';
+  const templateStart = EXTENSION_SOURCE.indexOf(templateMarker, start);
+  assert.notEqual(templateStart, -1, 'expected HTML template');
+  const bodyStart = templateStart + templateMarker.length;
   const bodyEnd = EXTENSION_SOURCE.indexOf('`;', bodyStart);
-  assert.notEqual(bodyEnd, -1, 'expected end of inline editor HTML template');
+  assert.notEqual(bodyEnd, -1, 'expected end of HTML template');
   return EXTENSION_SOURCE.slice(bodyStart, bodyEnd).replace(
     '__SET_PIECE_EDITOR_APPLY_TOKEN__',
     JSON.stringify(applyToken),
@@ -47,7 +50,7 @@ function createPack(overrides = {}) {
 
 async function withEditor(pack, run) {
   const applyBodies = [];
-  const html = extractEditorHtml('test-token');
+  const html = renderHtml('test-token');
   const sseClients = new Set();
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
@@ -150,10 +153,12 @@ test('hover tooltip reports the real default NPC depth', async () => {
     await page.mouse.move(point.x, point.y);
     await page.waitForFunction(() => document.getElementById('tooltip').style.display === 'block');
     const tooltip = await page.locator('#tooltip').textContent();
-    assert.match(
-      tooltip,
-      /🧍 NPC: npc-a[\s\S]*type: tutorial-goon[\s\S]*pos: 1, 1[\s\S]*size: 1\.00×1\.00 tiles[\s\S]*layer: Default[\s\S]*z: auto \(0 entity depth\)/,
-    );
+    assert.match(tooltip, /🧍 NPC: npc-a/);
+    assert.match(tooltip, /type: tutorial-goon/);
+    assert.match(tooltip, /pos: 1, 1/);
+    assert.match(tooltip, /size: 1\.00×1\.00 tiles/);
+    assert.match(tooltip, /layer: Default/);
+    assert.match(tooltip, /z: auto \(0 entity depth\)/);
   });
 });
 
