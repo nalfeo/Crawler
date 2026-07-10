@@ -11,6 +11,17 @@
     "path": "by-sha/db11e90a8860c6403f5301b7f75e986d2d11aed3.json"
   },
   {
+    "commit": "d1cc5d9d1b3452338a0cbca4dc06be52b81fd21e",
+    "commitDate": "2026-07-09T21:54:20-07:00",
+    "commitSubject": "fix: widen harvest pickup range from 1ft to 4ft (#1003)",
+    "capturedAt": "2026-07-10T05:34:33.261Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29070373909",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/d1cc5d9d1b3452338a0cbca4dc06be52b81fd21e.json"
+  },
+  {
     "commit": "45eb0c03dd02230745a09b0447d054a5db380674",
     "commitDate": "2026-07-09T21:50:11Z",
     "commitSubject": "feat: Floor 2 starter quest + defected family member NPC in settlement (#993)",
