@@ -121,11 +121,14 @@ async function canvasPoint(page, tileX, tileY) {
   };
 }
 
-test('production source clamps negative NPC depth and uses native size for later layers', () => {
+test('production source clamps negative NPC depth above terrain', () => {
   assert.match(
     EXTENSION_SOURCE,
     /Math\.max\(TERRAIN_DEPTH\+NPC_TERRAIN_MARGIN,setPieceZToDepth\(localZ\)\)/,
   );
+});
+
+test('production source uses native size for later layers', () => {
   assert.match(
     EXTENSION_SOURCE,
     /function nativeLayerTiles\(sprite\)\{\s*if\(sprite&&sprite.source==='custom'\)return\{w:nnum\(sprite.widthTiles,1\),h:nnum\(sprite.heightTiles,1\)\};\s*return\{w:1,h:1\};\s*\}/,
@@ -145,7 +148,10 @@ test('hover tooltip reports the real default NPC depth', async () => {
     await page.mouse.move(point.x, point.y);
     await page.waitForFunction(() => document.getElementById('tooltip').style.display === 'block');
     const tooltip = await page.locator('#tooltip').textContent();
-    assert.match(tooltip, /🧍 NPC: npc-a[\s\S]*z: auto \(0 entity depth\)/);
+    assert.match(
+      tooltip,
+      /🧍 NPC: npc-a[\s\S]*type: tutorial-goon[\s\S]*pos: 1, 1[\s\S]*size: 1\.00×1\.00 tiles[\s\S]*layer: Default[\s\S]*z: auto \(0 entity depth\)/,
+    );
   });
 });
 
