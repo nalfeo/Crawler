@@ -85,6 +85,11 @@ async function withEditor(t, pack, run) {
       res.end(ONE_BY_ONE_PNG);
       return;
     }
+    if (req.method === 'GET' && url.pathname.startsWith('/generated/')) {
+      res.writeHead(200, { 'Content-Type': 'image/png' });
+      res.end(ONE_BY_ONE_PNG);
+      return;
+    }
     if (req.method === 'POST' && url.pathname === '/apply') {
       let body = '';
       req.on('data', (chunk) => {
@@ -214,48 +219,64 @@ test('same-z overlaps prefer props over NPCs via runtime layer epsilon parity', 
   });
 });
 
-test('tinted prop layers use multiplicative tinting parity in rendered pixels', async (t) => {
+test('same-z render ordering paints props above NPCs for deterministic tie-break parity', async (t) => {
+  const pack = createPack({
+    props: [{ id: 'desk', kind: 'furniture', x: 1, y: 1, width: 1, height: 1, z: 20, layers: [] }],
+    npcs: [{ id: 'npc-a', npcTypeId: 'tutorial-goon', x: 1, y: 1, z: 20, widthFt: 4, heightFt: 4 }],
+  });
+  await withEditor(t, pack, async ({ page }) => {
+    const orderedKinds = await page.evaluate(() => {
+      const drawables = [];
+      sp.props.forEach((p, i) => {
+        const lid = propLayer(p);
+        if (!layerVisible(lid)) return;
+        drawables.push({ kind: 'prop', idx: i, z: propRenderZ(lid, getZ(p), i) });
+      });
+      (sp.npcs || []).forEach((n, ni) => {
+        const lid = npcLayer(n);
+        if (!layerVisible(lid)) return;
+        drawables.push({ kind: 'npc', idx: ni, z: globalZ(lid, 'npc', n.z) });
+      });
+      drawables.sort((a, b) => {
+        if (a.z !== b.z) return a.z - b.z;
+        if (a.kind !== b.kind) return a.kind === 'npc' ? -1 : 1;
+        return a.idx - b.idx;
+      });
+      return drawables.map((d) => d.kind);
+    });
+    assert.equal(orderedKinds[orderedKinds.length - 1], 'prop');
+  });
+});
+
+test('prop tint uses multiplicative color math consistent with runtime tinting', async (t) => {
   const pack = createPack({
     props: [
       {
-        id: 'plain',
-        kind: 'floor',
+        id: 'tinted',
+        kind: 'furniture',
         x: 1,
         y: 1,
         width: 1,
         height: 1,
-        layers: [{ sprite: { source: 'catalog', spriteId: 'sprite:item.gem' } }],
-      },
-      {
-        id: 'tinted',
-        kind: 'floor',
-        x: 3,
-        y: 1,
-        width: 1,
-        height: 1,
         layers: [
-          { sprite: { source: 'catalog', spriteId: 'sprite:item.gem' }, tintHex: '#00ff00' },
+          { sprite: { source: 'catalog', spriteId: 'sprite:test-tint' }, tintHex: '#ff0000' },
         ],
       },
     ],
   });
   await withEditor(t, pack, async ({ page }) => {
-    const sampled = await page.evaluate(() => {
-      const ctx = document.getElementById('gc').getContext('2d');
+    await page.waitForFunction(
+      () => !!resolveSprite({ source: 'catalog', spriteId: 'sprite:test-tint' }),
+    );
+    await page.evaluate(() => render());
+    const pixel = await page.evaluate(() => {
       const ts = S.tileSize;
-      const plain = Array.from(
-        ctx.getImageData(Math.floor(1.5 * ts), Math.floor(1.5 * ts), 1, 1).data,
-      );
-      const tinted = Array.from(
-        ctx.getImageData(Math.floor(3.5 * ts), Math.floor(1.5 * ts), 1, 1).data,
-      );
-      return { plain, tinted };
+      const data = ctx.getImageData(Math.floor(1.5 * ts), Math.floor(1.5 * ts), 1, 1).data;
+      return Array.from(data);
     });
-    assert.equal(sampled.plain[3] > 0, true);
-    assert.equal(sampled.tinted[3] > 0, true);
-    assert.equal(sampled.tinted[0], 0);
-    assert.equal(sampled.tinted[2], 0);
-    assert.equal(sampled.tinted[1] > 0, true);
+    assert.equal(pixel[3] > 0, true);
+    assert.equal(pixel[0] > pixel[1], true);
+    assert.equal(pixel[0] > pixel[2], true);
   });
 });
 

@@ -1300,8 +1300,8 @@ function render(){
   });
   drawables.sort(function(a,b){
     if(a.z!==b.z)return a.z-b.z;
-    if(a.kind===b.kind)return 0;
-    return a.kind==='npc'?-1:1;
+    if(a.kind!==b.kind)return a.kind==='npc'?-1:1;
+    return a.idx-b.idx;
   });
   drawables.forEach(function(d){
     if(d.kind==='prop'){
