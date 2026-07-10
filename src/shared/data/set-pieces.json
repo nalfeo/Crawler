@@ -15299,15 +15299,15 @@
           "id": "welcome-rug",
           "kind": "floor",
           "x": 4.5,
-          "y": 2.75,
+          "y": 2.5,
           "layers": [
             {
               "sprite": {
                 "source": "catalog",
                 "spriteId": "welcome-room-rug-var-0"
               },
-              "widthFt": 14,
-              "heightFt": 8
+              "widthFt": 8,
+              "heightFt": 4
             }
           ],
           "width": 2,
@@ -15367,7 +15367,7 @@
                 "spriteId": "welcome-room-bookcase-var-0"
               },
               "widthFt": 4,
-              "heightFt": 4.42
+              "heightFt": 4
             }
           ],
           "z": 9,
@@ -15384,7 +15384,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-desk-var-0"
               },
-              "widthFt": 5.05,
+              "widthFt": 8,
               "heightFt": 4
             }
           ],
@@ -15395,16 +15395,16 @@
         {
           "id": "shop-table",
           "kind": "furniture",
-          "x": 1.5,
-          "y": 5.5,
+          "x": 1,
+          "y": 6,
           "layers": [
             {
               "sprite": {
                 "source": "catalog",
                 "spriteId": "welcome-room-shop-table-var-0"
               },
-              "widthFt": 5.15,
-              "heightFt": 3.5
+              "widthFt": 8,
+              "heightFt": 5
             },
             {
               "sprite": {
@@ -15418,6 +15418,7 @@
             }
           ],
           "width": 2,
+          "height": 1.25,
           "z": 30,
           "sceneLayer": "default"
         },
@@ -15576,6 +15577,65 @@
             }
           ],
           "sceneLayer": "doors"
+        },
+        {
+          "id": "copy-door-1783623968560-1783661827403-0",
+          "kind": "door",
+          "x": 5,
+          "y": 8,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 10,
+                "row": 3
+              },
+              "flipX": true
+            }
+          ],
+          "sceneLayer": "doors"
+        },
+        {
+          "id": "copy-velvet-rope-1783661837863-0",
+          "kind": "decoration",
+          "x": 6,
+          "y": 7,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-velvet-rope-var-2"
+              },
+              "widthFt": 5,
+              "heightFt": 4.06,
+              "rotationDeg": 90,
+              "flipX": true,
+              "flipY": true
+            }
+          ],
+          "z": 40,
+          "sceneLayer": "default"
+        },
+        {
+          "id": "copy-welcome-rug-1783661903651-0",
+          "kind": "floor",
+          "x": 5,
+          "y": 2.5,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-rug-var-0"
+              },
+              "widthFt": 8,
+              "heightFt": 4,
+              "flipX": true
+            }
+          ],
+          "width": 2,
+          "z": 0,
+          "sceneLayer": "default"
         }
       ],
       "npcs": [
@@ -15597,7 +15657,7 @@
           "id": "welcome-merchant",
           "npcTypeId": "shopkeeper",
           "x": 1.75,
-          "y": 5,
+          "y": 5.375,
           "anchorRole": "shop",
           "sceneLayer": "default",
           "z": 4,
@@ -15627,7 +15687,7 @@
           "id": "floor",
           "name": "Floor",
           "visible": true,
-          "locked": false
+          "locked": true
         },
         {
           "id": "walls",
