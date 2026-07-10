@@ -217,14 +217,7 @@ export function createAchievementsUI(
     const expanderH = isLong ? EXPANDER_BTN_H : 0;
     const rowHeight = Math.max(ROW_HEIGHT, 50 + flavorH + expanderH + 8);
 
-    const box = scene.add.rectangle(
-      x + w / 2,
-      y + rowHeight / 2,
-      w,
-      rowHeight,
-      COLORS.rowBg,
-      0.9,
-    );
+    const box = scene.add.rectangle(x + w / 2, y + rowHeight / 2, w, rowHeight, COLORS.rowBg, 0.9);
     box.setStrokeStyle(1, DIFFICULTY_HEX[def.difficulty]);
     container.add(box);
     rowObjects.push(box);
@@ -436,7 +429,7 @@ export function createAchievementsUI(
   scene.input.on('wheel', onWheel);
   scene.scale.on('resize', applyLayout);
 
-    return {
+  return {
     toggle,
     refresh,
     isOpen: () => visible,

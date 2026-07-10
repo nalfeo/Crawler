@@ -20,10 +20,10 @@ Use this guide when authoring achievement flavor text and Director-style copy.
 - Every line must clearly connect to the **actual unlock requirement** (enemy type, count, quest beat, risk, or milestone).
 - Do **not** copy unlock criteria text verbatim into director flavor.
 - **Scale length to difficulty** — harder/rarer achievements deserve more commentary:
-  - **basic**: 1 sentence. A punchy, self-contained one-liner.
-  - **standard**: 1–2 sentences. A beat and a punchline, or a two-step joke.
-  - **hard**: 2–3 sentences. Setup, escalation, and a closing zinger.
-  - **brutal**: 3–4 sentences. A full Director monologue — milk the achievement, add production context, close with a statement of consequence.
+  - **basic**: 2 sentences (~220 chars). Derisive, sarcastic — the Director is bored or eye-rolling at having to congratulate you for this.
+  - **standard**: 2–4 sentences (~346 chars). Derisive, sarcastic — still not impressed, with a dismissive punchline.
+  - **hard**: 4–6 sentences (~728 chars). Detailed and unhinged — the Director is surprised, disappointed, or excited that you're still alive and pulled this off.
+  - **brutal**: 6–8 sentences (~1354 chars). A full unhinged Director monologue — shocked you survived, cataloging the chaos, adding production details, closing with consequences or commentary on what this means for the season.
 - Do not require quote marks or a signature line.
 - Keep references in-universe unless a deliberate season-quirk bit justifies a modern callback.
 
