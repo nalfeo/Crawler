@@ -906,6 +906,7 @@ export class MainGameScene extends Phaser.Scene {
 
   private isBlockingSurfaceOpen(): boolean {
     return (
+      this.conversationNpcEid !== null ||
       (this.hudUi?.isMapOverlayOpen() ?? false) ||
       (this.modalPicker?.isOpen() ?? false) ||
       (this.levelUpUI?.isOpen() ?? false) ||
@@ -1154,7 +1155,9 @@ export class MainGameScene extends Phaser.Scene {
     const safeCtx = isInSafeContext(this.world);
     const mapOverlayOpen = this.hudUi?.isMapOverlayOpen() ?? false;
     const isUiLockOpen = (): boolean =>
-      (this.modalPicker?.isOpen() ?? false) || (this.levelUpUI?.isOpen() ?? false);
+      this.conversationNpcEid !== null ||
+      (this.modalPicker?.isOpen() ?? false) ||
+      (this.levelUpUI?.isOpen() ?? false);
 
     // Toggle the on-screen touch buttons in step with the key affordances.
     this.inventoryButton?.setVisible(unlocks.inventory && safeCtx && !this.isBlockingSurfaceOpen());

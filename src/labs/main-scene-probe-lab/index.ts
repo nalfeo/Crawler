@@ -83,10 +83,15 @@ interface MainSceneInternals {
   inventoryUI?: { isOpen(): boolean };
   equipmentUI?: { isOpen(): boolean };
   achievementsUI?: { isOpen(): boolean };
+  inventoryButton?: { visible: boolean };
+  equipButton?: { visible: boolean };
+  achievementsButton?: { visible: boolean };
   modalPicker?: { isOpen(): boolean; close(): void };
   conversationNpcEid?: number | null;
   queuedInteraction?: boolean;
   queuedAbilitiesToggle?: boolean;
+  requestInventoryToggle?(): void;
+  requestEquipAction?(): void;
   requestAchievementsToggle?(): void;
   setSimulationPaused(paused: boolean): void;
   isSimulationPaused(): boolean;
@@ -150,6 +155,10 @@ export interface MainSceneState {
   readonly achievementsOpen: boolean;
   /** True while a conversation is active. */
   readonly conversationOpen: boolean;
+  /** Current corner-button visibility (safe-room panel shortcuts). */
+  readonly inventoryButtonVisible: boolean;
+  readonly equipButtonVisible: boolean;
+  readonly achievementsButtonVisible: boolean;
   /** Number of primary surfaces currently open (modal/inventory/equipment/achievements). */
   readonly primarySurfaceCount: number;
   /** True when safe-room-gated surfaces should be allowed. */
@@ -257,6 +266,11 @@ export interface MainSceneProbeApi {
   primeNpcInteractionTarget(): ProbePoint | null;
   /** Queue the Achievements toggle through the real MainGameScene request path. */
   requestAchievementsToggle(): void;
+  /** Queue Inventory ([I]) and Equipment ([G]) toggles through scene request paths. */
+  requestInventoryToggle(): void;
+  requestEquipToggle(): void;
+  /** Queue abilities ([B]) toggle for the next update frame. */
+  queueAbilitiesToggle(): void;
   /** Queue B + V in the same frame to exercise single-surface exclusivity. */
   queueAbilitiesAndAchievementsToggle(): void;
   /** Queue the shared interaction request used by touch and repeated E presses. */
@@ -395,6 +409,9 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         equipmentOpen,
         achievementsOpen,
         conversationOpen: scene?.conversationNpcEid !== null,
+        inventoryButtonVisible: scene?.inventoryButton?.visible ?? false,
+        equipButtonVisible: scene?.equipButton?.visible ?? false,
+        achievementsButtonVisible: scene?.achievementsButton?.visible ?? false,
         primarySurfaceCount: [modalOpen, inventoryOpen, equipmentOpen, achievementsOpen].filter(
           Boolean,
         ).length,
@@ -497,6 +514,21 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
 
     requestAchievementsToggle: () => {
       getScene()?.requestAchievementsToggle?.();
+    },
+
+    requestInventoryToggle: () => {
+      getScene()?.requestInventoryToggle?.();
+    },
+
+    requestEquipToggle: () => {
+      getScene()?.requestEquipAction?.();
+    },
+
+    queueAbilitiesToggle: () => {
+      const scene = getScene();
+      if (scene) {
+        scene.queuedAbilitiesToggle = true;
+      }
     },
 
     queueAbilitiesAndAchievementsToggle: () => {

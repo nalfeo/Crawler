@@ -29,8 +29,8 @@ const ROW_GAP = 8;
 
 /** Flavor text longer than this (chars) gets a collapse/expand toggle. */
 const FLAVOR_EXPAND_THRESHOLD = 120;
-/** Line height for 11 px flavor font. */
-const FLAVOR_LINE_H = 15;
+/** Approx line height for flavor text (12 px font + spacing). */
+const FLAVOR_LINE_H = 16;
 /** Number of lines to show in collapsed state. */
 const FLAVOR_COLLAPSED_LINES = 2;
 /** Height of the expand/collapse button row. */
@@ -193,6 +193,13 @@ export function createAchievementsUI(
     const rewardColumnWidth = 150;
     const detailsWidth = w - 180;
     const flavorWrapW = detailsWidth;
+    const flavorStyle: Phaser.Types.GameObjects.Text.TextStyle = {
+      fontFamily: FONT_FAMILY,
+      fontSize: '12px',
+      color: hex(COLORS.flavor),
+      lineSpacing: 2,
+      wordWrap: { width: flavorWrapW },
+    };
     const isLong = def.directorFlavor.length > FLAVOR_EXPAND_THRESHOLD;
 
     // Measure the full flavor text height. Results are cached so repeated renders
@@ -202,13 +209,7 @@ export function createAchievementsUI(
       // Create a temporary text object to measure rendered height. This runs
       // synchronously and is destroyed before the next draw call so it never
       // appears on screen.
-      const tmpFlavor = crispText(x + 12, y + 50, def.directorFlavor, {
-        fontFamily: FONT_FAMILY,
-        fontSize: '11px',
-        fontStyle: 'italic',
-        color: hex(COLORS.flavor),
-        wordWrap: { width: flavorWrapW },
-      });
+      const tmpFlavor = crispText(x + 12, y + 50, def.directorFlavor, flavorStyle);
       fullFlavorH = Math.max(FLAVOR_LINE_H, tmpFlavor.height);
       tmpFlavor.destroy();
       flavorHeightCache.set(def.id, fullFlavorH);
@@ -243,11 +244,7 @@ export function createAchievementsUI(
     rowObjects.push(crit);
 
     const flavor = crispText(x + 12, y + 50, def.directorFlavor, {
-      fontFamily: FONT_FAMILY,
-      fontSize: '12px',
-      color: hex(COLORS.flavor),
-      lineSpacing: 2,
-      wordWrap: { width: detailsWidth },
+      ...flavorStyle,
       maxLines: isLong && !isExpanded ? FLAVOR_COLLAPSED_LINES : 0,
     });
     container.add(flavor);

@@ -67,4 +67,40 @@ describe('MainGameScene UI exclusivity', () => {
     ).toBe(false);
     expect(state.primarySurfaceCount, 'only the achievements surface should remain open').toBe(1);
   });
+
+  it('blocks character-surface toggles and hides corner shortcuts while NPC dialogue is open', async () => {
+    await bootPlayingSafeScene();
+
+    const npcTarget = await mainSceneProbe.primeNpcInteractionTarget(page);
+    expect(npcTarget, 'probe should expose at least one NPC interaction target').not.toBeNull();
+
+    await mainSceneProbe.queueInteraction(page);
+    await waitForState(page, (s) => s.conversationOpen, { label: 'npc dialogue opened' });
+
+    await mainSceneProbe.requestInventoryToggle(page);
+    await mainSceneProbe.requestEquipToggle(page);
+    await mainSceneProbe.requestAchievementsToggle(page);
+    await mainSceneProbe.queueAbilitiesToggle(page);
+    await page.waitForTimeout(250);
+
+    const state = await mainSceneProbe.getState(page);
+    expect(state.conversationOpen, 'conversation should still be active').toBe(true);
+    expect(state.inventoryOpen, 'inventory must stay closed during conversation').toBe(false);
+    expect(state.equipmentOpen, 'equipment must stay closed during conversation').toBe(false);
+    expect(state.achievementsOpen, 'achievements must stay closed during conversation').toBe(false);
+    expect(state.modalOpen, 'abilities modal must stay closed during conversation').toBe(false);
+    expect(
+      state.inventoryButtonVisible,
+      'inventory shortcut should hide while a blocking conversation is open',
+    ).toBe(false);
+    expect(
+      state.equipButtonVisible,
+      'equipment shortcut should hide while a blocking conversation is open',
+    ).toBe(false);
+    expect(
+      state.achievementsButtonVisible,
+      'achievements shortcut should hide while a blocking conversation is open',
+    ).toBe(false);
+    expect(state.primarySurfaceCount, 'no character surfaces may open during conversation').toBe(0);
+  });
 });
