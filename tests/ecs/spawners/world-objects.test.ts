@@ -139,6 +139,14 @@ describe('spawnProp', () => {
     expect(world.stores.propLight.intensity[eid]).toBeCloseTo(0.7);
   });
 
+  it('adds a PropLight for torch props', () => {
+    const world = createTestWorld();
+    const eid = spawnProp(world, 0, 0, 'torch');
+
+    expect(hasComponent(world.ecs, eid, PropLight)).toBe(true);
+    expect(world.stores.propLight.intensity[eid]).toBeCloseTo(0.7);
+  });
+
   it('returns -1 for an unknown defId', () => {
     const world = createTestWorld();
     expect(spawnProp(world, 0, 0, 'no-such-prop')).toBe(-1);
