@@ -39,6 +39,7 @@ import { TERRAIN_FALLBACK_COLORS } from '../shared/terrain-colors.js';
 import { getTileVisual, resolveFrame } from './sprites/tile-visuals.js';
 import { getSheet } from './sprites/index.js';
 import { createLogger } from '../shared/logger.js';
+import { buildPassageRenderPlan } from './terrain/passage-smoothing.js';
 
 const logger = createLogger('engine:terrain-renderer');
 
@@ -57,6 +58,10 @@ export interface TerrainLayerResult {
   colorCount: number;
 }
 
+export interface TerrainLayerOptions {
+  readonly smoothPassages?: boolean;
+}
+
 /**
  * Bake all terrain tiles from `floorMap` into a single RenderTexture.
  *
@@ -66,7 +71,11 @@ export interface TerrainLayerResult {
  * @param scene  Active Phaser scene — used to create the RenderTexture.
  * @param floorMap  The floor to render.
  */
-export function buildTerrainLayer(scene: Phaser.Scene, floorMap: FloorMap): TerrainLayerResult {
+export function buildTerrainLayer(
+  scene: Phaser.Scene,
+  floorMap: FloorMap,
+  options: TerrainLayerOptions = {},
+): TerrainLayerResult {
   const { width, height, config } = floorMap;
   // Bake terrain at native pixel resolution: feet → px via PIXELS_PER_FOOT.
   // The renderer keeps the world in pixel-space, so this layer is placed at
@@ -140,6 +149,25 @@ export function buildTerrainLayer(scene: Phaser.Scene, floorMap: FloorMap): Terr
         rt.fill(color, 1, tx * tileSize, ty * tileSize, tileSize, tileSize);
         colorCount++;
       }
+    }
+  }
+
+  if (options.smoothPassages !== false && typeof scene.add.graphics === 'function') {
+    const plan = buildPassageRenderPlan(floorMap);
+    if (plan.groups.length > 0) {
+      const overlay = scene.add.graphics().setVisible(false);
+      for (const group of plan.groups) {
+        overlay.fillStyle(group.color, group.alpha);
+        for (const circle of group.circles) {
+          overlay.fillCircle(
+            circle.xTiles * tileSize,
+            circle.yTiles * tileSize,
+            circle.radiusTiles * tileSize,
+          );
+        }
+      }
+      rt.draw(overlay);
+      overlay.destroy();
     }
   }
 

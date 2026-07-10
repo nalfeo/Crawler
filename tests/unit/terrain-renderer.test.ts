@@ -37,6 +37,37 @@ interface FillCall {
   w: number;
   h: number;
 }
+interface DrawCall {
+  target: unknown;
+}
+
+class MockGraphics {
+  visible = true;
+  readonly circles: Array<{ x: number; y: number; radius: number; color: number; alpha: number }> =
+    [];
+  private currentColor = 0xffffff;
+  private currentAlpha = 1;
+
+  setVisible(value: boolean): this {
+    this.visible = value;
+    return this;
+  }
+
+  fillStyle(color: number, alpha: number): this {
+    this.currentColor = color;
+    this.currentAlpha = alpha;
+    return this;
+  }
+
+  fillCircle(x: number, y: number, radius: number): this {
+    this.circles.push({ x, y, radius, color: this.currentColor, alpha: this.currentAlpha });
+    return this;
+  }
+
+  destroy(): this {
+    return this;
+  }
+}
 
 /** Records every stamp/fill command so tests can assert per-tile provenance. */
 class MockRenderTexture {
@@ -49,6 +80,7 @@ class MockRenderTexture {
   depth = 0;
   readonly stamps: StampCall[] = [];
   readonly fills: FillCall[] = [];
+  readonly draws: DrawCall[] = [];
 
   setOrigin(x: number, y: number): this {
     this.originX = x;
@@ -75,11 +107,17 @@ class MockRenderTexture {
   render(): this {
     return this;
   }
+
+  draw(target: unknown): this {
+    this.draws.push({ target });
+    return this;
+  }
 }
 
 interface TerrainSceneStub {
   scene: Phaser.Scene;
   rt: MockRenderTexture;
+  graphics: MockGraphics | null;
   /** How many times getSourceImage() was called per texture key (memo proof). */
   sourceImageCalls: Map<string, number>;
 }
@@ -92,19 +130,25 @@ interface TerrainSceneStub {
 function createTerrainScene(opts: {
   loadedTextures: Set<string>;
   sourceWidths?: Map<string, number>;
+  enableGraphics?: boolean;
 }): TerrainSceneStub {
   const rt = new MockRenderTexture();
+  const graphics = opts.enableGraphics ? new MockGraphics() : null;
   const sourceImageCalls = new Map<string, number>();
-  const scene = {
-    add: {
-      renderTexture: (x: number, y: number, w: number, h: number) => {
-        rt.x = x;
-        rt.y = y;
-        rt.width = w;
-        rt.height = h;
-        return rt as unknown as Phaser.GameObjects.RenderTexture;
-      },
+  const add: Record<string, unknown> = {
+    renderTexture: (x: number, y: number, w: number, h: number) => {
+      rt.x = x;
+      rt.y = y;
+      rt.width = w;
+      rt.height = h;
+      return rt as unknown as Phaser.GameObjects.RenderTexture;
     },
+  };
+  if (graphics) {
+    add.graphics = () => graphics as unknown as Phaser.GameObjects.Graphics;
+  }
+  const scene = {
+    add,
     textures: {
       exists: (key: string) => opts.loadedTextures.has(key),
       get: (key: string) => ({
@@ -115,7 +159,7 @@ function createTerrainScene(opts: {
       }),
     },
   } as unknown as Phaser.Scene;
-  return { scene, rt, sourceImageCalls };
+  return { scene, rt, graphics, sourceImageCalls };
 }
 
 const TILE_SIZE_FT = 16; // → tileSize = 128px; generated scale = 128/256 = 0.5 (distinct from 1)
@@ -341,5 +385,33 @@ describe('buildTerrainLayer — generated tile wiring (w2)', () => {
     expect(result.spriteCount).toBe(1);
     expect(result.colorCount).toBe(1);
     expect(result.generatedCount + result.spriteCount + result.colorCount).toBe(terrain.length);
+  });
+
+  it('draws a smooth-passage overlay when graphics support is available', () => {
+    const corridor = getTileVisual(TerrainType.CORRIDOR)!;
+    const { scene, rt, graphics } = createTerrainScene({
+      loadedTextures: new Set([corridor.textureKey!, corridor.sheetKey]),
+      enableGraphics: true,
+    });
+
+    buildTerrainLayer(
+      scene,
+      makeFloorMap(
+        [
+          TerrainType.CORRIDOR,
+          TerrainType.CORRIDOR,
+          TerrainType.VOID,
+          TerrainType.VOID,
+          TerrainType.CORRIDOR,
+          TerrainType.CORRIDOR,
+        ],
+        3,
+        2,
+      ),
+    );
+
+    expect(graphics).not.toBeNull();
+    expect(graphics!.circles.length).toBeGreaterThan(0);
+    expect(rt.draws).toHaveLength(1);
   });
 });

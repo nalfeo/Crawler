@@ -11,6 +11,7 @@ import { CaveGenerator } from '../../src/core/map/generators/CaveGenerator';
 import { ArenaGenerator } from '../../src/core/map/generators/ArenaGenerator';
 import { getGenerator, getRegisteredBiomes } from '../../src/core/map/generators/registry';
 import type { FloorMap } from '../../src/core/map/FloorMap';
+import { measurePassageJaggedness } from '../../src/engine/terrain/passage-smoothing.js';
 
 type GeneratedFloor = ReturnType<DungeonGenerator['generate']>;
 type GeneratedRoom = GeneratedFloor['rooms'][number];
@@ -302,6 +303,44 @@ describe('Map Generators', () => {
       expect(caveFloorCount).toBeGreaterThan(0);
       expect(caveWallCount).toBeGreaterThan(0);
       expect(caveJunctionLikeCount).toBeGreaterThan(0);
+    });
+
+    it('reduces diagonal passage jaggedness by at least 60% across representative floor-1 seeds', () => {
+      const gen = new DungeonGenerator({ roomVariety: true });
+      let baseline = 0;
+      let smooth = 0;
+
+      for (const seed of REGRESSION_TEST_SEEDS) {
+        const floor = gen.generate(
+          smallConfig(BiomeType.BASIC_UNDERGROUND),
+          new SeededRandom(seed),
+        );
+        const report = measurePassageJaggedness(floor);
+        baseline += report.baselineRoughness;
+        smooth += report.smoothRoughness;
+      }
+
+      expect(baseline).toBeGreaterThan(0);
+      expect((baseline - smooth) / baseline).toBeGreaterThanOrEqual(0.6);
+    });
+
+    it('reduces curved cave-passage jaggedness by at least 60% across fixed cave-region seeds', () => {
+      const gen = new DungeonGenerator({ roomVariety: true, caveRegions: true });
+      let baseline = 0;
+      let smooth = 0;
+
+      for (const seed of [42, 99, 1337] as const) {
+        const floor = gen.generate(
+          smallConfig(BiomeType.BASIC_UNDERGROUND),
+          new SeededRandom(seed),
+        );
+        const report = measurePassageJaggedness(floor);
+        baseline += report.baselineRoughness;
+        smooth += report.smoothRoughness;
+      }
+
+      expect(baseline).toBeGreaterThan(0);
+      expect((baseline - smooth) / baseline).toBeGreaterThanOrEqual(0.6);
     });
 
     it('should keep every room reachable from the spawn room across representative seeds', () => {

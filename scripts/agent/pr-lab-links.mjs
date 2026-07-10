@@ -134,6 +134,7 @@ const SOURCE_PATH_TO_LABS = {
   'src/core/systems/doorSystem': ['door-lab', 'door-lock-lab'],
   'src/core/door-lock': ['door-lock-lab'],
   'src/core/systems/fovSystem': ['fov-lab'],
+  'src/core/map/generators/dungeon/corridors': ['hallway-smoothing-lab', 'map-gen-lab'],
   // Entities
   'src/core/systems/npcSystem': ['npc-lab'],
   'src/core/systems/questSystem': ['quest-lab'],
@@ -141,6 +142,8 @@ const SOURCE_PATH_TO_LABS = {
   'src/game/systems/propPlacer': ['prop-lab'],
   'src/shared/decorationDefs': ['prop-lab'],
   // Engine / rendering
+  'src/engine/terrain/': ['hallway-smoothing-lab', 'tile-render-lab'],
+  'src/engine/terrain-renderer': ['hallway-smoothing-lab', 'tile-render-lab'],
   'src/engine/terrain': ['tile-render-lab'],
   'src/engine/sprites/tile': ['tile-render-lab', 'tile-explorer'],
   'src/engine/GoreVfx': ['gore-lab'],

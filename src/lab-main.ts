@@ -42,6 +42,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'gore-lab': '/src/labs/gore-lab/index.ts',
   'juice-lab': '/src/labs/juice-lab/index.ts',
   'fov-lab': '/src/labs/fov-lab/index.ts',
+  'hallway-smoothing-lab': '/src/labs/hallway-smoothing-lab/index.ts',
   'door-lab': '/src/labs/door-lab/index.ts',
   'door-lock-lab': '/src/labs/door-lock-lab/index.ts',
   'barrier-lab': '/src/labs/barrier-lab/index.ts',
