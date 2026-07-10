@@ -1,0 +1,81 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-10",
+  "session_slug": "sweep-win-definition-safe-room",
+  "task_title": "Credit safe-room time in sweep win-definition (metric-only)",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "major_fork",
+      "notes": "Adversarial review (gpt-5.4, high, 388s) REJECTED option B as written; enumerated 3 alternatives (A metric-only / local-derived counter / opt-in active-frame cap). MAJOR_FORK: dropped the global runner frame-cap rewrite, the world.safeRoomElapsedMs field, AND the scoreRun timeBonus change from the confirmed plan; pivoted to metric-only + a runner-local integer safeRoomFrames counter. Adjudication of 5 blocking + 2 non-blocking: (1 BLOCK, adopted) global maxFrames rewrite changes a shared runHeadless contract (determinism goldens/repro/--max-frames) AND is a no-op on all observed data (every over-budget safe-room victory already completed within the current 396s cap; only the scorer downgraded them) -> maintainer confirmed metric-only, NO runner change. (2 BLOCK, adopted) drop world.safeRoomElapsedMs -> runner-local integer safeRoomFrames counter reading existing world.playerInSafeRoom; safeRoomMs = frames*DELTA_MS (integer-exact, no float recovery, no world.ts/floorScenario.ts edit). (3 BLOCK, adopted) do NOT change scoreRun timeBonus to active time (feeds hill-climb.ts/weapon-sweep.ts search gradient; would reward safe-room idling) -> scoreRun stays raw; only win CLASSIFICATION uses active time. (4 BLOCK, adopted) NaN/stale-artifact threading -> activeTimeMs coalesces safeRoomMs ?? 0; RunRow/ScorableStats gain safeRoomMs; rowFacts includes it; assertRowsConsistent + buildLeaderboard recomputes migrate to isOfficialWin; BUMP SHARD_SCHEMA_VERSION 1->2. (5 BLOCK, adopted) coordinated migration of all raw-budget gates (floor1-completion, spawner-arena incl. the every-victory<360s assertion, 4 A/B isWin helpers, aggregate). (6 non-block, adopted) diagnostic surfaces maxSafeRoomMs + flaggedCount, not just a count. (7 non-block, satisfied) reproducer = isOfficialWin unit test (gameTimeMs 380s, safeRoomMs 30s -> active 350s -> win; safeRoomMs 0 -> raw-identical). SSOT helpers land in scoring.ts: SAFE_ROOM_FLAG_MS=60000, activeTimeMs, isOfficialWin."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.4", "gemini-3.1-pro"],
+          "concerns_count": 3,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "A (unanimous 3/3): floor1-completion.test.ts still filtered raw gameTimeMs -> migrated to isOfficialWin. B (gpt-5.4): crash-path safeRoomMs off-by-one -> fixed by moving frameCount++/safeRoomFrames++ to immediately after runSimulationStep(). C (gemini-3.1-pro): migrate winrate/weapon-sweep AND inflate maxFrames -> the maxFrames-inflate part REJECTED as an out-of-scope runner-behavior change; the win-definition migration part carried to round 2. resolved_count=2 (A+B fixed this round)."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4", "claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "gpt-5.4 sharpened C into an in-scope, metric-only finding: winrate-sweep.ts classified a win as outcome===victory, so at maxFrames===360s a last-frame boundary clear (gameTimeMs===360000) is a win under victory-string but a loss under isOfficialWin (strict <). sonnet-4.6 argued out-of-scope/no-op at the 360s cap. Resolved by migrating winrate-sweep 3 classification sites to isOfficialWin (metric-only, NO maxFrames change)."
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.4", "claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Both models independently confirmed the winrate-sweep migration resolves the round-2 finding with no new type/import/determinism issues. gpt-5.4 ran typecheck + an ai:winrate-sweep smoke run (both green); sonnet-4.6 confirmed the fail-record builder correctly stays outcome!==victory and the denominator (seeds.length) is unaffected."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.4", "gemini-3.1-pro"],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "3 distinct models. Adjudication (claude-opus-4.8): A valid (unanimous) -> fix; B valid (gpt-5.4) -> fix; C valid-in-part -> the maxFrames-inflate portion rejected as an out-of-scope runner-behavior change (rules #12/#13: do not change runner behavior to move the metric), the win-definition migration portion carried to round 2. resolved_count=2 (A+B) this round."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4", "claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Genuine model DISAGREEMENT adjudicated: gpt-5.4 flagged winrate-sweep boundary/SSOT-consistency (in-scope, metric-only); claude-sonnet-4.6 argued out-of-scope/no-op. Adjudicator (claude-opus-4.8) sided with gpt-5.4: winrate-sweep is the canonical 90% Floor-1 win-rate instrument (called by deploy.yml) so its win definition MUST be the SSOT isOfficialWin; the migration is pure metric-only (no maxFrames change) and future-proofs any inflated --max-frames where victory-string and isOfficialWin genuinely diverge. weapon-sweep left as-is (330s cap strictly < 360s budget -> true no-op; self-contained balance tool). Resolved by migrating winrate-sweep."
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.4", "claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "2 distinct models independently CONFIRMED CLEAN on the final diff (winrate-sweep migration + committed src changes): correct import path, consistent officialWin at all 3 sites, fail-record builder correctly left as outcome!==victory (boundary victory has no diagnostic), scoreRun stays raw, safeRoomFrames frame-aligned with the deadline pause on normal+crash paths, no new type/determinism issues."
+        }
+      ]
+    }
+  }
+}
