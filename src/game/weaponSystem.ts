@@ -785,11 +785,12 @@ export function getActiveWeapon(world: GameWorld): WeaponDef | undefined {
 }
 
 /**
- * Active-weapon cooldown readiness, mirroring the gate the melee/data-driven fire
- * path uses (`world.elapsedMs - state.lastFireMs >= def.cooldownMs`). Returns
- * `null` when no weapon is equipped. Exposed so the headless AI can stutter-step:
- * dart into strike range when `ready`, ease back out while a swing is on cooldown
- * instead of standing still and trading blows.
+ * Active-weapon cooldown readiness, mirroring the same effective-cooldown gate
+ * used by the melee/data-driven fire path:
+ * `world.elapsedMs - state.lastFireMs >= getEffectiveCooldownMs(...)`.
+ * Returns `null` when no weapon is equipped. Exposed so the headless AI can
+ * stutter-step: dart into strike range when `ready`, ease back out while a
+ * swing is on cooldown instead of standing still and trading blows.
  */
 export function getActiveWeaponReadiness(
   world: GameWorld,
