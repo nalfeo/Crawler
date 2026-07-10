@@ -38,6 +38,25 @@ export function isValidStatId(id: string): id is StatId {
   return VALID_STAT_IDS.has(id);
 }
 
+const NEAR_INTEGER_EPSILON = 1e-6;
+
+export function ceilNearInteger(value: number, epsilon = NEAR_INTEGER_EPSILON): number {
+  if (!Number.isFinite(value)) {
+    return Math.ceil(value);
+  }
+  const nearestInteger = Math.round(value);
+  const tolerance = Math.max(epsilon, Number.EPSILON * Math.max(1, Math.abs(value)) * 16);
+  if (Math.abs(value - nearestInteger) <= tolerance) {
+    return nearestInteger;
+  }
+  return Math.ceil(value);
+}
+
+export function applyCooldownReduction(baseDuration: number, reduction: number): number {
+  const scaledDuration = baseDuration * (1 - reduction);
+  return Math.max(1, ceilNearInteger(scaledDuration));
+}
+
 export interface StatClamp {
   readonly min?: number;
   readonly max?: number;

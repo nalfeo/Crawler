@@ -101,6 +101,26 @@ describe('weaponSystem', () => {
     expect(query(world.ecs, [Projectile]).length).toBe(2);
   });
 
+  it('does not add an extra millisecond for float32 near-integer cooldown products', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 8, 8);
+    addComponent(world.ecs, player, EffectiveStats);
+    world.stores.effectiveStats.cooldownReduction[player] = 0.01;
+    spawnEnemy(world, 25, 8, 10);
+    const pistol = getWeaponDef('pistol')!;
+    setActiveWeapon(world, pistol);
+    world.elapsedMs = pistol.cooldownMs;
+
+    weaponSystem(world);
+    world.elapsedMs += 494;
+    weaponSystem(world);
+    expect(query(world.ecs, [Projectile]).length).toBe(1);
+
+    world.elapsedMs += 1;
+    weaponSystem(world);
+    expect(query(world.ecs, [Projectile]).length).toBe(2);
+  });
+
   it('skips corpses when picking a target — a dead enemy must not be shot at', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);

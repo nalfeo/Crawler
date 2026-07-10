@@ -7,6 +7,7 @@ import {
 } from '../abilities/types.js';
 import { EffectiveStats, Enemy, Health, Player, Position } from '../../core/components.js';
 import type { GameWorld } from '../../core/world.js';
+import { applyCooldownReduction } from '../../shared/stats.js';
 import { getAbilityDefinition } from '../abilities/registry.js';
 import { applyCatalogEffect } from './progressionEffects.js';
 import { removeStatModifiers } from './statsSystem.js';
@@ -195,7 +196,7 @@ function getEffectiveAbilityCooldownFrames(
     return baseCooldownFrames;
   }
   const reduction = world.stores.effectiveStats.cooldownReduction[holderEid] ?? 0;
-  return Math.max(1, Math.ceil(baseCooldownFrames * (1 - reduction)));
+  return applyCooldownReduction(baseCooldownFrames, reduction);
 }
 
 /**

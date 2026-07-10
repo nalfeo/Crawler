@@ -199,6 +199,31 @@ describe('abilitySystem', () => {
     expect(state.cooldownByAbilityId.get('fireball')).toBe(250);
   });
 
+  it('does not add an extra frame for float32 near-integer cooldown products', () => {
+    const { world, player } = setupPlayer();
+    world.featureUnlocks.spells = true;
+    world.playerMp = 20;
+    addComponent(world.ecs, player, EffectiveStats);
+    world.stores.effectiveStats.cooldownReduction[player] = 0.01;
+    memorizeSpell(world, player, 'fireball');
+    spawnEnemy(world, 1, 0, 100);
+    spawnEnemy(world, 1.5, 0.5, 100);
+    spawnEnemy(world, 1.75, -0.5, 100);
+
+    world.frameCount = 100;
+    abilitySystem(world);
+    const state = world.abilityStatesByEntity.get(player)!;
+    expect(state.cooldownByAbilityId.get('fireball')).toBe(100);
+
+    world.frameCount = 396;
+    abilitySystem(world);
+    expect(state.cooldownByAbilityId.get('fireball')).toBe(100);
+
+    world.frameCount = 397;
+    abilitySystem(world);
+    expect(state.cooldownByAbilityId.get('fireball')).toBe(397);
+  });
+
   it('keeps cooldown gate aligned to the snapped HUD cooldown when stats change mid-cooldown', () => {
     const { world, player } = setupPlayer();
     world.featureUnlocks.spells = true;

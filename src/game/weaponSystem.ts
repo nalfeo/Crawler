@@ -39,6 +39,7 @@ import {
   getActiveWeaponGeneration,
 } from '../core/active-weapon.js';
 import { TeamId, MeleeSpriteId, WEAPON, WeaponType } from '../shared/constants.js';
+import { applyCooldownReduction } from '../shared/stats.js';
 import type { WeaponDef } from '../shared/weaponDefs.js';
 import { createLogger } from '../shared/logger.js';
 import { normalize } from '../shared/vec.js';
@@ -193,7 +194,7 @@ function getEffectiveCooldownMs(world: GameWorld, player: number, baseCooldownMs
     return baseCooldownMs;
   }
   const reduction = world.stores.effectiveStats.cooldownReduction[player] ?? 0;
-  return Math.max(1, Math.ceil(baseCooldownMs * (1 - reduction)));
+  return applyCooldownReduction(baseCooldownMs, reduction);
 }
 
 function getPlayerEntity(world: GameWorld): number | undefined {
