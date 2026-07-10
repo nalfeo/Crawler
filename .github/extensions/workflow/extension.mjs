@@ -600,12 +600,10 @@ const canvas = createCanvas({
         const sheets = await entry.client.fetchSheets(briefId, runId).catch(() => []);
         const chosenSheet = sheet && sheets.includes(sheet) ? sheet : (sheets[0] ?? null);
         const sliceMap = chosenSheet
-          ? await entry.client
-              .fetchSliceMap(briefId, runId, chosenSheet)
-              .catch((err) => ({
-                ok: false,
-                error: `slice-map fetch failed: ${err?.message ?? err}`,
-              }))
+          ? await entry.client.fetchSliceMap(briefId, runId, chosenSheet).catch((err) => ({
+              ok: false,
+              error: `slice-map fetch failed: ${err?.message ?? err}`,
+            }))
           : null;
         return { briefId, runId, candidates, sheets, sheet: chosenSheet, sliceMap };
       },

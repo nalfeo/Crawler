@@ -153,6 +153,15 @@ describe('local-scope.sh working-tree change-scope helper', () => {
     expect(repo.scope()).toEqual(F(false, true, true));
   });
 
+  it.skipIf(!hasBash)('committed docs json branch change still counts as docs-only', () => {
+    const repo = makeRepo();
+    mainWithFeature(repo);
+    repo.write('docs/knowledge/metrics/apples/2026-07-08-adr-cleanup.json', '{"ok":true}\n');
+    repo.git('add', '.');
+    repo.git('commit', '-q', '-m', 'docs json');
+    expect(repo.scope()).toEqual(F(false, true, true));
+  });
+
   it.skipIf(!hasBash)('committed src/core branch change ⇒ not safe', () => {
     const repo = makeRepo();
     mainWithFeature(repo);

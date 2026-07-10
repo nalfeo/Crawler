@@ -9,8 +9,9 @@ on:
 jobs:
   # Job 0: Detect the change scope.
   # art_only=true      → heavy gameplay gates skipped; typecheck/lint/format/unit run.
-  # docs_only=true     → ALL heavy gates skipped; only commit-lint (separate workflow)
-  #                      and the merge-gate no-op run. Markdown cannot change game logic.
+  # docs_only=true     → ALL heavy gates skipped; only commit-lint / lightweight
+  #                      review workflows run. Documentation/governance surfaces
+  #                      cannot change shipped game logic.
   # gameplay_safe=true → the diff provably can't change the deterministic Floor-1 sim
   #                      (engine/labs/e2e/docs/assets only), so the headless gate is
   #                      skipped ON PULL REQUESTS ONLY (main-push still runs it).

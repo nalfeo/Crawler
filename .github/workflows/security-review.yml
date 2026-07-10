@@ -13,6 +13,31 @@ permissions:
   issues: write
 
 jobs:
+  changes:
+    name: Detect change scope
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.scope.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect change scope
+        id: detect
+        env:
+          EVENT_BEFORE: ${{ github.event.before }}
+        run: bash scripts/agent/ci/detect-art-only.sh
+
+      - name: Normalize docs-only scope
+        id: scope
+        run: |
+          docs_only='${{ steps.detect.outputs.docs_only }}'
+          if [ '${{ github.event_name }}' != 'pull_request' ]; then
+            docs_only='false'
+          fi
+          echo "docs_only=${docs_only}" >>"$GITHUB_OUTPUT"
+
   # All six security checks consolidated into one job to reduce runner-slot
   # consumption (previously each check spun up its own runner and paid full
   # setup overhead). Each step is independent; continue-on-error per-step
@@ -21,7 +46,12 @@ jobs:
     name: Security checks
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    needs: [changes]
     steps:
+      - name: Docs-only no-op
+        if: needs.changes.outputs.docs_only == 'true'
+        run: echo "Docs-only PR change; skipping src-scoped security checks."
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -29,7 +59,7 @@ jobs:
       - uses: ./.github/actions/setup-node
 
       - name: npm audit
-        if: ${{ !cancelled() }}
+        if: ${{ needs.changes.outputs.docs_only != 'true' && !cancelled() }}
         run: npx tsx scripts/agent/shared/wrap-step.ts --name security-npm-audit -- npm audit --audit-level=high
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 
@@ -39,22 +69,22 @@ jobs:
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 
       - name: CODEOWNERS coverage
-        if: ${{ !cancelled() }}
+        if: ${{ needs.changes.outputs.docs_only != 'true' && !cancelled() }}
         run: npx tsx scripts/agent/security/check-codeowners.ts
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 
       - name: Dependency allowlist
-        if: ${{ !cancelled() }}
+        if: ${{ needs.changes.outputs.docs_only != 'true' && !cancelled() }}
         run: npx tsx scripts/agent/security/check-deps.ts
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 
       - name: Dynamic-execution patterns
-        if: ${{ !cancelled() }}
+        if: ${{ needs.changes.outputs.docs_only != 'true' && !cancelled() }}
         run: npx tsx scripts/agent/shared/wrap-step.ts --name security-dynamic-patterns -- bash scripts/agent/security/check-dynamic-patterns.sh
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 
       - name: AI prompt-injection scan
-        if: ${{ !cancelled() }}
+        if: ${{ needs.changes.outputs.docs_only != 'true' && !cancelled() }}
         run: npx tsx scripts/agent/security/check-ai-prompts.ts
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 
