@@ -123,39 +123,54 @@ interface CollisionFingerprint {
  *   seed  13:  7/211/5/0   →  8/228/5/0
  *   seed  42:  7/279/5/8   →  6/236/10/4
  *   seed 137:  5/206/0/2   →  5/226/5/2
+ *
+ * ## 2026-07-09 re-baseline — set-piece NPC transform metadata in runtime
+ *
+ * This branch threads authored NPC visual metadata through the real runtime:
+ * set-piece stamp now carries NPC z/size/transform fields into spawn options,
+ * and the bridge applies per-instance NPC display sizing/depth/flip/rotation.
+ * Those authored welcome-room NPC transforms shift early collision occupancy in
+ * the first 1500-frame headless slice and therefore drift the deterministic
+ * combat fingerprint values. Re-baseline is pinned only after proving every
+ * seed remains deterministic across two back-to-back invocations.
+ * Before → after (kills / damageDealt / damageTaken / score):
+ *   seed   7:  3/125/15/0   →  4/156/10/0
+ *   seed  13:  8/228/5/0    →  7/190/5/0
+ *   seed  42:  6/236/10/4   →  4/193/15/2
+ *   seed 137:  5/226/5/2    →  4/190/0/0
  */
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 6,
-    damageDealt: 236,
-    damageTaken: 10,
-    finalScore: 4,
+    kills: 4,
+    damageDealt: 193,
+    damageTaken: 15,
+    finalScore: 2,
   },
   7: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 3,
-    damageDealt: 125,
-    damageTaken: 15,
+    kills: 4,
+    damageDealt: 156,
+    damageTaken: 10,
     finalScore: 0,
   },
   13: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 8,
-    damageDealt: 228,
+    kills: 7,
+    damageDealt: 190,
     damageTaken: 5,
     finalScore: 0,
   },
   137: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 5,
-    damageDealt: 226,
-    damageTaken: 5,
-    finalScore: 2,
+    kills: 4,
+    damageDealt: 190,
+    damageTaken: 0,
+    finalScore: 0,
   },
 };
 

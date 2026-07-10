@@ -135,6 +135,10 @@ function tintSwatch(hex: string): string {
   return `<span style="display:inline-block;width:9px;height:9px;border:1px solid rgba(0,0,0,0.5);background:${esc(hex)};vertical-align:middle;margin-right:4px"></span>${esc(hex)}`;
 }
 
+function normalizeCatalogSpriteId(spriteId: string): string {
+  return spriteId.startsWith('sprite:') ? spriteId.slice('sprite:'.length) : spriteId;
+}
+
 /** Human label for where a set-piece depth sits relative to the entity plane. */
 function depthBandLabel(depth: number): string {
   if (depth < 0) {
@@ -162,7 +166,8 @@ function describeAsset(scene: Phaser.Scene, ref: SpriteRef): { text: string; rea
     };
   }
   if (ref.source === 'catalog') {
-    const def = getSprite(ref.spriteId);
+    const normalizedSpriteId = normalizeCatalogSpriteId(ref.spriteId);
+    const def = getSprite(normalizedSpriteId);
     if (def !== undefined && scene.textures?.exists(def.sheetKey) === true) {
       return {
         text: `catalog <code>${esc(ref.spriteId)}</code> → Kenney <code>${esc(def.sheetKey)}</code> #${def.frame}`,
@@ -170,8 +175,8 @@ function describeAsset(scene: Phaser.Scene, ref: SpriteRef): { text: string; rea
       };
     }
     // Generated sprites load as individual textures keyed by the bare manifest key.
-    if (scene.textures?.exists(ref.spriteId) === true) {
-      return { text: `generated <code>${esc(ref.spriteId)}</code>`, real: true };
+    if (scene.textures?.exists(normalizedSpriteId) === true) {
+      return { text: `generated <code>${esc(normalizedSpriteId)}</code>`, real: true };
     }
     return { text: `catalog <code>${esc(ref.spriteId)}</code> · not loaded`, real: false };
   }
@@ -183,6 +188,19 @@ function describeAsset(scene: Phaser.Scene, ref: SpriteRef): { text: string; rea
     text: `custom <code>${esc(ref.requestId)}</code> → ${placeholder.text}`,
     real: placeholder.real,
   };
+}
+
+function requiredGeneratedNpcKeyForStamp(
+  npcTypeId: string,
+  spriteOverride: SpriteRef | undefined,
+): string | null {
+  if (spriteOverride?.source === 'catalog') {
+    const normalizedSpriteId = normalizeCatalogSpriteId(spriteOverride.spriteId);
+    if (getSprite(normalizedSpriteId) === undefined) {
+      return normalizedSpriteId;
+    }
+  }
+  return pickGeneratedNpcTextureKey(npcTypeId);
 }
 
 /** One hover-testable rectangle (a prop layer or an NPC), in world pixels. */
@@ -561,8 +579,16 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
         }
       }
       for (const npc of stamp.npcs) {
-        spawnNpc(this.world, npc.x, npc.y, npc.npcTypeId);
-        const npcKey = pickGeneratedNpcTextureKey(npc.npcTypeId);
+        spawnNpc(this.world, npc.x, npc.y, npc.npcTypeId, {
+          ...(npc.spriteOverride !== undefined ? { spriteOverride: npc.spriteOverride } : {}),
+          ...(npc.widthFt !== undefined ? { widthFt: npc.widthFt } : {}),
+          ...(npc.heightFt !== undefined ? { heightFt: npc.heightFt } : {}),
+          ...(npc.flipX !== undefined ? { flipX: npc.flipX } : {}),
+          ...(npc.flipY !== undefined ? { flipY: npc.flipY } : {}),
+          ...(npc.rotationDeg !== undefined ? { rotationDeg: npc.rotationDeg } : {}),
+          ...(npc.z !== undefined ? { z: npc.z } : {}),
+        });
+        const npcKey = requiredGeneratedNpcKeyForStamp(npc.npcTypeId, npc.spriteOverride);
         if (npcKey) {
           this.requiredNpcKeys.add(npcKey);
         }

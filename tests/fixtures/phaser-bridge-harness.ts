@@ -41,6 +41,8 @@ export class MockImage {
   tint = 0xffffff;
   tinted = false;
   frame: number | undefined;
+  displayWidth: number | undefined;
+  displayHeight: number | undefined;
 
   constructor(
     public x: number,
@@ -87,8 +89,19 @@ export class MockImage {
     return this;
   }
 
+  setDisplaySize(width: number, height: number): this {
+    this.displayWidth = width;
+    this.displayHeight = height;
+    return this;
+  }
+
   setRotation(rotation: number): this {
     this.rotation = rotation;
+    return this;
+  }
+
+  setAngle(angleDeg: number): this {
+    this.rotation = (angleDeg * Math.PI) / 180;
     return this;
   }
 
