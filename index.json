@@ -1,5 +1,16 @@
 [
   {
+    "commit": "c2ea2b9d3959584b43e1f3ea7b3e37cad78f2628",
+    "commitDate": "2026-07-10T06:38:45Z",
+    "commitSubject": "feat: floor2 feedback — feature unlocks, reputation gating, hidden den quests (#999)",
+    "capturedAt": "2026-07-10T07:34:10.664Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29075202431",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/c2ea2b9d3959584b43e1f3ea7b3e37cad78f2628.json"
+  },
+  {
     "commit": "ad9a1458704f21dde9207a3edb138c2fe885dbe0",
     "commitDate": "2026-07-10T05:24:12Z",
     "commitSubject": "fix: add runtime lighting for floor 1 mushrooms and fixture props (#1002)",
