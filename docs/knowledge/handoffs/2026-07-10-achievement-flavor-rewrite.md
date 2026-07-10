@@ -8,14 +8,17 @@ instructions file to remove the old 2-sentence maximum and add explicit tiered l
 
 ## What changed
 
-- **`.github/instructions/flavor.instructions.md`** — replaced "Prefer 1 sentence (2 max)" with a
-  tiered length rule: basic=1 sentence, standard=1–2, hard=2–3, brutal=3–4.
-- **`src/shared/data/achievements.floor1.json`** — rewrote all 100 `directorFlavor` strings.
-  Every line is now unique and tied to its specific unlock mechanic. Average lengths by tier:
-  - basic: ~110 chars
-  - standard: ~173 chars
-  - hard: ~364 chars
-  - brutal: ~677 chars
+- **`.github/instructions/flavor.instructions.md`** — replaced previous length guidance with doubled targets and explicit tone scaling:
+  - basic=2 sentences (~220 chars), derisive/sarcastic tone
+  - standard=2–4 sentences (~346 chars), derisive/sarcastic tone
+  - hard=4–6 sentences (~728 chars), detailed and unhinged tone
+  - brutal=6–8 sentences (~1354 chars), extremely unhinged tone
+- **`src/shared/data/achievements.floor1.json`** — rewrote all 100 `directorFlavor` strings with doubled length targets and proper tone scaling.
+  Every line is unique, tied to its specific unlock mechanic, and scaled by difficulty. Average lengths by tier:
+  - basic: ~243 chars (2 sentences, derisive/sarcastic — Director is bored)
+  - standard: ~407 chars (2-4 sentences, derisive/sarcastic — still unimpressed)
+  - hard: ~912 chars (4-6 sentences, detailed and unhinged — surprised you're alive)
+  - brutal: ~1748 chars (6-8 sentences, extremely unhinged — shocked you survived)
 
 ## Systems touched
 
