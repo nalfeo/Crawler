@@ -16,11 +16,11 @@ Three Floor 2 feedback issues addressed:
    `world.featureUnlocks.{inventory,equipment,spells} = true` and sets the `floor1-drops-unlocked`
    goal flag so the XP bar and all UI panels are visible from the first frame of Floor 2.
 
-2. **Reputation system gated behind settlement quest** — Added optional `reputationSystemActive`
+2. **Reputation system gated behind Broker intro dialogue** — Added optional `reputationSystemActive`
    field to `Floor2State` (default: `undefined` = active, for backwards compat). Set to `false`
    at floor init; `familyRelationshipSystem` now discards queued deltas and skips when explicitly
-   `false`; `floor2ObjectiveTick` flips it to `true` on the same tick the player enters the
-   settlement (immediately after `FLOOR2_SETTLEMENT_FOUND_GOAL_ID` is set).
+   `false`; `floor2ObjectiveTick` flips it to `true` on the same tick
+   `FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID` is set (after the player reads all Broker intro lines).
 
 3. **"Thin the ranks" den quests hidden** — Added `hidden?: boolean` to `QuestDef` and the
    Zod quest schema. Den-unlock kill-counter quests are now marked `hidden: true` in
@@ -59,6 +59,6 @@ Three Floor 2 feedback issues addressed:
 ## Recommended next steps
 
 - Add more Floor 2 starter quest chain quests (settlement NPC conversations, etc.) gated behind
-  the reputation activation — currently only `floor2-find-settlement` gates reputation.
+  the reputation activation — currently the Broker intro completion flag gates reputation.
 - Consider whether "thin the ranks" should be surfaced somewhere else (e.g. a passive progress
   tooltip on the den door) so players still get feedback on their kill progress.

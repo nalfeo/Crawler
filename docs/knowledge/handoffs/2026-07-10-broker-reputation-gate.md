@@ -33,8 +33,9 @@ restarted by talking to her again.
 
 **Headless path:** `autoNpcInteractionSystem` in `auto-progression.ts` now handles
 `'the-broker'` defId, calling `meetBroker(world)` when the AI reaches the broker.
-The AI navigates to her via `'generic-interaction'` reason (Floor 2 has no
-`floorScenario`, so all NPCs return `'generic-interaction'`).
+While `reputationSystemActive === false`, `getNpcInteractionReason` returns
+`'meet-broker-intro'` for `'the-broker'` and `null` for other NPCs, so headless
+targeting prioritizes the Broker until the intro flag is completed.
 
 ## Files changed
 

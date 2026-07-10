@@ -4,6 +4,7 @@ import {
   spawnEnemy,
   spawnGold,
   spawnHarvestableNode,
+  spawnNpc,
   spawnPlayer,
   spawnXpGem,
 } from '../../src/core/helpers.js';
@@ -17,6 +18,7 @@ import {
   meetSpellQuestGiver,
   selectFloor1StarterWeapon,
 } from '../../src/game/floorScenario.js';
+import { FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID } from '../../src/game/floor2Scenario.js';
 import { setActiveWeapon } from '../../src/game/weaponSystem.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -860,6 +862,42 @@ describe('BehaviorTreeAI', () => {
     expect(decision.state).toBe(AIState.INTERACT);
     expect(decision.targetEid).toBe(shopkeeperNpcEid);
     expect(decision.reason).toContain('Interacting with shopkeeper');
+  });
+
+  it('prioritizes the broker while floor2 reputation is locked, then drops broker targeting after intro completion', () => {
+    const world = createTestWorld({ seed: 52, floor: 2 });
+    const player = spawnPlayer(world, 0, 0);
+    world.floorMap = makeOpenRoom(40, 20);
+    world.stores.position.x[player] = 14;
+    world.stores.position.y[player] = 10;
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [],
+        contestedResource: 'gold-veins' as never,
+        betrayerFlag: false,
+        reputationSystemActive: false,
+      },
+    };
+    world.goalFlags.set(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, false);
+
+    const brokerEid = spawnNpc(world, 16, 10, 'the-broker');
+    const closerNpcEid = spawnNpc(world, 15, 10, 'shopkeeper');
+    void closerNpcEid;
+
+    const lockedAi = new BehaviorTreeAI({ seed: 52 });
+    lockedAi.poll(createInputState(), world);
+    const lockedDecision = lockedAi.getDecision();
+    expect(lockedDecision.state).toBe(AIState.INTERACT);
+    expect(lockedDecision.targetEid).toBe(brokerEid);
+
+    world.goalFlags.set(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
+    if (world.floorExtendedState?.familyState) {
+      world.floorExtendedState.familyState.reputationSystemActive = true;
+    }
+    const unlockedAi = new BehaviorTreeAI({ seed: 52 });
+    unlockedAi.poll(createInputState(), world);
+    const unlockedDecision = unlockedAi.getDecision();
+    expect(unlockedDecision.targetEid).not.toBe(brokerEid);
   });
 
   it('engages nearby enemies before long NPC approach paths', () => {
