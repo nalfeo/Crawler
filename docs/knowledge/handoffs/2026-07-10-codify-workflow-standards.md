@@ -32,8 +32,8 @@ Observed in real artifact checks: before this session there was no dedicated `we
 ## What's Next / Blockers
 
 - `npm run verify:fast` passed.
-- `npm run docs:check` still has pre-existing ADR consistency blockers unrelated to this slice (missing historical path references in ADR 0003/0018/0052) plus non-blocking ADR status warnings in 0054/0055.
-- Recommended next step: separate docs-tooling cleanup PR to repair those ADR path references so docs:check is green again.
+- `docs:check` ADR consistency blockers from ADRs 0003/0018/0052/0054/0055 were repaired in this same branch (commit `a2d20cb4`). No remaining docs:check blockers.
+- ADR 0056 added in this branch to record the cross-system policy decision (addressing the two-system rule).
 
 ## Retrospective
 

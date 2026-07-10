@@ -12,7 +12,7 @@ on:
         type: string
         default: 'sword,bow,baseball-bat'
       max_frames:
-        description: 'Frame budget per run'
+        description: 'Frame budget per run (positive integer ≤ 600000; default 19800 ≈ 330s at 60fps)'
         type: string
         default: '19800'
 
@@ -20,41 +20,60 @@ permissions:
   contents: read
 
 jobs:
-  weapon-sweep:
+  setup:
     runs-on: ubuntu-latest
-    timeout-minutes: 300
+    outputs:
+      weapon_matrix: ${{ steps.parse.outputs.weapon_matrix }}
+      seed_list: ${{ steps.parse.outputs.seed_list }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-node
-
-      - name: Build seed list
-        id: seeds
+      - name: Validate inputs and build matrix
+        id: parse
         env:
           SEED_COUNT: ${{ inputs.seed_count }}
+          WEAPONS: ${{ inputs.weapons }}
+          MAX_FRAMES: ${{ inputs.max_frames }}
         run: |
           set -euo pipefail
           if ! [[ "$SEED_COUNT" =~ ^[0-9]+$ ]] || [ "$SEED_COUNT" -lt 1 ] || [ "$SEED_COUNT" -gt 1000 ]; then
             echo "::error::seed_count must be an integer in [1,1000]"
             exit 1
           fi
-          echo "list=$(seq -s, 1 "$SEED_COUNT")" >> "$GITHUB_OUTPUT"
+          if ! [[ "$MAX_FRAMES" =~ ^[0-9]+$ ]] || [ "$MAX_FRAMES" -lt 1 ] || [ "$MAX_FRAMES" -gt 600000 ]; then
+            echo "::error::max_frames must be a positive integer in [1,600000]"
+            exit 1
+          fi
+          weapon_matrix=$(echo "$WEAPONS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' | jq -R . | jq -sc .)
+          echo "weapon_matrix=$weapon_matrix" >> "$GITHUB_OUTPUT"
+          echo "seed_list=$(seq -s, 1 "$SEED_COUNT")" >> "$GITHUB_OUTPUT"
 
-      - name: Run weapon sweep
+  weapon-sweep:
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      matrix:
+        weapon: ${{ fromJson(needs.setup.outputs.weapon_matrix) }}
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+
+      - name: Run sweep for ${{ matrix.weapon }}
         env:
-          SEEDS: ${{ steps.seeds.outputs.list }}
-          WEAPONS: ${{ inputs.weapons }}
+          SEEDS: ${{ needs.setup.outputs.seed_list }}
+          WEAPON: ${{ matrix.weapon }}
           MAX_FRAMES: ${{ inputs.max_frames }}
         run: |
           set -euo pipefail
           npx tsx scripts/agent/perf/weapon-sweep.ts \
             --seeds "$SEEDS" \
-            --weapons "$WEAPONS" \
+            --weapons "$WEAPON" \
             --max-frames "$MAX_FRAMES" \
-            --out weapon-sweep.json
+            --out "weapon-sweep-${{ matrix.weapon }}.json"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: weapon-sweep-results
-          path: weapon-sweep.json
+          name: weapon-sweep-${{ matrix.weapon }}
+          path: weapon-sweep-${{ matrix.weapon }}.json
           if-no-files-found: error
           retention-days: 30
