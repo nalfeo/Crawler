@@ -879,6 +879,42 @@ export class MainGameScene extends Phaser.Scene {
     return this.inventoryUI?.isOpen() ?? false;
   }
 
+  private closeMapOverlayIfOpen(): void {
+    if (this.hudUi?.isMapOverlayOpen()) {
+      this.hudUi.closeMapOverlay();
+    }
+  }
+
+  private closeCharacterPanels(
+    options: {
+      keepInventory?: boolean;
+      keepEquipment?: boolean;
+      keepAchievements?: boolean;
+    } = {},
+  ): void {
+    const { keepInventory = false, keepEquipment = false, keepAchievements = false } = options;
+    if (!keepAchievements && this.achievementsUI?.isOpen()) {
+      this.achievementsUI.toggle(this.world);
+    }
+    if (!keepEquipment && this.equipmentUI?.isOpen()) {
+      this.equipmentUI.toggle(this.world);
+    }
+    if (!keepInventory && this.inventoryUI?.isOpen()) {
+      this.inventoryUI.toggle(this.world);
+    }
+  }
+
+  private isBlockingSurfaceOpen(): boolean {
+    return (
+      (this.hudUi?.isMapOverlayOpen() ?? false) ||
+      (this.modalPicker?.isOpen() ?? false) ||
+      (this.levelUpUI?.isOpen() ?? false) ||
+      (this.inventoryUI?.isOpen() ?? false) ||
+      (this.equipmentUI?.isOpen() ?? false) ||
+      (this.achievementsUI?.isOpen() ?? false)
+    );
+  }
+
   update(_time: number, delta: number): void {
     if (!this.bridge || !this.inputCapture) {
       if (!this.warnedMissingDependencies) {
@@ -1116,11 +1152,15 @@ export class MainGameScene extends Phaser.Scene {
   private updateFeatureUnlocks(): void {
     const unlocks = this.world.featureUnlocks;
     const safeCtx = isInSafeContext(this.world);
+    const mapOverlayOpen = this.hudUi?.isMapOverlayOpen() ?? false;
+    const uiLockOpen = (this.modalPicker?.isOpen() ?? false) || (this.levelUpUI?.isOpen() ?? false);
 
     // Toggle the on-screen touch buttons in step with the key affordances.
-    this.inventoryButton?.setVisible(unlocks.inventory && safeCtx);
-    this.equipButton?.setVisible(unlocks.equipment && safeCtx);
-    this.achievementsButton?.setVisible(safeCtx && this.world.achievements.unlockedIds.size > 0);
+    this.inventoryButton?.setVisible(unlocks.inventory && safeCtx && !this.isBlockingSurfaceOpen());
+    this.equipButton?.setVisible(unlocks.equipment && safeCtx && !this.isBlockingSurfaceOpen());
+    this.achievementsButton?.setVisible(
+      safeCtx && this.world.achievements.unlockedIds.size > 0 && !this.isBlockingSurfaceOpen(),
+    );
 
     if (unlocks.inventory && !this.inventoryUnlockNotified) {
       this.inventoryUnlockNotified = true;
@@ -1139,31 +1179,32 @@ export class MainGameScene extends Phaser.Scene {
       this.queuedInventoryToggle ||
       Boolean(this.keyInventory && Phaser.Input.Keyboard.JustDown(this.keyInventory));
     this.queuedInventoryToggle = false;
-    if (unlocks.inventory && safeCtx && inventoryToggleRequested) {
+    if (mapOverlayOpen) {
+      this.closeCharacterPanels();
+    }
+
+    if (unlocks.inventory && safeCtx && !uiLockOpen && inventoryToggleRequested) {
+      this.closeMapOverlayIfOpen();
+      this.closeCharacterPanels({ keepInventory: true });
       this.inventoryUI?.toggle(this.world);
     } else if (this.inventoryUI?.isOpen()) {
-      this.inventoryUI.refresh(this.world);
+      if (safeCtx) {
+        this.inventoryUI.refresh(this.world);
+      } else {
+        this.inventoryUI.toggle(this.world);
+      }
     }
 
     const equipRequested =
       this.queuedEquip || Boolean(this.keyEquip && Phaser.Input.Keyboard.JustDown(this.keyEquip));
     this.queuedEquip = false;
-    if (unlocks.equipment && safeCtx && equipRequested) {
+    if (unlocks.equipment && safeCtx && !uiLockOpen && equipRequested) {
+      this.closeMapOverlayIfOpen();
+      this.closeCharacterPanels({ keepEquipment: true });
       // [G] toggles the equipment panel only. The bag is now integrated into the
       // panel itself (paper-doll | stats | equippable-bag), so we no longer
       // auto-open the standalone InventoryUI — [I] still opens the full pack.
       this.equipmentUI?.toggle(this.world);
-      if (
-        this.equipmentUI?.isOpen() &&
-        unlocks.inventory &&
-        this.inventoryUI &&
-        !this.inventoryUI.isOpen()
-      ) {
-        this.inventoryUI.toggle(this.world);
-      }
-      if (this.equipmentUI?.isOpen() && unlocks.inventory) {
-        this.inventoryUI?.refresh(this.world);
-      }
     } else if (this.equipmentUI?.isOpen()) {
       if (safeCtx) {
         this.equipmentUI.refresh(this.world);
@@ -1179,7 +1220,9 @@ export class MainGameScene extends Phaser.Scene {
       this.queuedAbilitiesToggle ||
       Boolean(this.keyAbilities && Phaser.Input.Keyboard.JustDown(this.keyAbilities));
     this.queuedAbilitiesToggle = false;
-    if (unlocks.spells && abilitiesToggleRequested) {
+    if (unlocks.spells && !uiLockOpen && abilitiesToggleRequested) {
+      this.closeMapOverlayIfOpen();
+      this.closeCharacterPanels();
       this.openAbilitiesConfigModal();
     }
 
@@ -1188,7 +1231,9 @@ export class MainGameScene extends Phaser.Scene {
       Boolean(this.keyAchievements && Phaser.Input.Keyboard.JustDown(this.keyAchievements));
     this.queuedAchievementsToggle = false;
     const achievementsAvailable = safeCtx && this.world.achievements.unlockedIds.size > 0;
-    if (achievementsAvailable && achievementsToggleRequested) {
+    if (achievementsAvailable && !uiLockOpen && achievementsToggleRequested) {
+      this.closeMapOverlayIfOpen();
+      this.closeCharacterPanels({ keepAchievements: true });
       this.achievementsUI?.toggle(this.world);
     } else if (this.achievementsUI?.isOpen()) {
       if (safeCtx) {
@@ -2469,7 +2514,11 @@ export class MainGameScene extends Phaser.Scene {
     // wide equipment/inventory panel. Change-detected so it catches every
     // open/close path (G/I toggles, ESC, click-away).
     const panelOpen =
-      (this.equipmentUI?.isOpen() ?? false) || (this.inventoryUI?.isOpen() ?? false);
+      (this.equipmentUI?.isOpen() ?? false) ||
+      (this.inventoryUI?.isOpen() ?? false) ||
+      (this.achievementsUI?.isOpen() ?? false) ||
+      (this.modalPicker?.isOpen() ?? false) ||
+      (this.levelUpUI?.isOpen() ?? false);
     if (panelOpen !== this.hudHiddenForPanel) {
       this.hudHiddenForPanel = panelOpen;
       this.hudUi?.setVisible(!panelOpen);
@@ -2749,7 +2798,10 @@ export class MainGameScene extends Phaser.Scene {
         }
 
         if (
-          (tapped || (this.keyE && Phaser.Input.Keyboard.JustDown(this.keyE))) &&
+          (tapped ||
+            (this.keyE &&
+              Phaser.Input.Keyboard.JustDown(this.keyE) &&
+              !this.isBlockingSurfaceOpen())) &&
           activeDialogue.length > 0
         ) {
           const nextIndex = instance.dialogueIndex + 1;
@@ -2797,7 +2849,10 @@ export class MainGameScene extends Phaser.Scene {
       this.interactionHint?.setText('Talk').setVisible(true);
       this.dialogueBox?.setCloseVisible(false);
 
-      if (tapped || (this.keyE && Phaser.Input.Keyboard.JustDown(this.keyE))) {
+      if (
+        tapped ||
+        (this.keyE && Phaser.Input.Keyboard.JustDown(this.keyE) && !this.isBlockingSurfaceOpen())
+      ) {
         const instance = this.world.npcs.get(nearNpcEid);
         if (instance) {
           const def = getNpcDef(instance.defId);
@@ -2839,7 +2894,10 @@ export class MainGameScene extends Phaser.Scene {
       this.interactionHint?.setText('Descend').setVisible(true);
       this.dialogueBox?.hide();
       if (
-        (tapped || (this.keyE && Phaser.Input.Keyboard.JustDown(this.keyE))) &&
+        (tapped ||
+          (this.keyE &&
+            Phaser.Input.Keyboard.JustDown(this.keyE) &&
+            !this.isBlockingSurfaceOpen())) &&
         this.modalPicker
       ) {
         if (!this.modalPicker.isOpen()) {

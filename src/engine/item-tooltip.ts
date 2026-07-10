@@ -50,11 +50,32 @@ export function renderItemTooltip(
   } = params;
 
   const snap = (value: number): number => Math.round(value);
-  const tx = snap(Math.min(anchorX + anchorSize / 2 + 8, panelX + panelWidth - TOOLTIP_WIDTH - 8));
+  const rightCandidateX = anchorX + anchorSize / 2 + 8;
+  const leftCandidateX = anchorX - anchorSize / 2 - TOOLTIP_WIDTH - 8;
+  const rightSpace = panelX + panelWidth - rightCandidateX;
+  const leftSpace = leftCandidateX + TOOLTIP_WIDTH - panelX;
+  const preferRight = rightSpace >= TOOLTIP_WIDTH || rightSpace >= leftSpace;
+  const tx = snap(
+    Math.max(
+      panelX + 8,
+      Math.min(
+        preferRight ? rightCandidateX : leftCandidateX,
+        panelX + panelWidth - TOOLTIP_WIDTH - 8,
+      ),
+    ),
+  );
+
+  const aboveCandidateY = anchorY - anchorSize / 2 - TOOLTIP_HEIGHT - 8;
+  const belowCandidateY = anchorY + anchorSize / 2 + 8;
+  const aboveFits = aboveCandidateY >= panelY + 8;
+  const belowFits = belowCandidateY <= panelY + panelHeight - TOOLTIP_HEIGHT - 8;
   const ty = snap(
     Math.max(
       panelY + 8,
-      Math.min(anchorY - TOOLTIP_HEIGHT / 2, panelY + panelHeight - TOOLTIP_HEIGHT - 8),
+      Math.min(
+        aboveFits ? aboveCandidateY : belowFits ? belowCandidateY : aboveCandidateY,
+        panelY + panelHeight - TOOLTIP_HEIGHT - 8,
+      ),
     ),
   );
 

@@ -35,11 +35,12 @@ const HUD_MAX_SCALE = 1.6;
  * bottom-center UX affordances (Talk/Descend prompt, dialogue hint area) keep
  * clear space and never collide with the slots row.
  */
-const ABILITY_BAR_MAX_SCALE = 1.2;
+const ABILITY_BAR_MAX_SCALE = 1.0;
 
 export function createHudUI(scene: Phaser.Scene): {
   sync(world: GameWorld, playerEid: number): void;
   isMapOverlayOpen(): boolean;
+  closeMapOverlay(): void;
   setVisible(visible: boolean): void;
   destroy(): void;
 } {
@@ -155,5 +156,11 @@ export function createHudUI(scene: Phaser.Scene): {
     bottomRight.destroy();
   }
 
-  return { sync, isMapOverlayOpen: minimap.isOverlayOpen, setVisible, destroy };
+  return {
+    sync,
+    isMapOverlayOpen: minimap.isOverlayOpen,
+    closeMapOverlay: minimap.closeOverlay,
+    setVisible,
+    destroy,
+  };
 }

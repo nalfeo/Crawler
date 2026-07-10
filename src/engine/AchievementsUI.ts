@@ -24,7 +24,7 @@ import { claimAchievementReward } from '../core/systems/achievementRewards.js';
 
 const PANEL_PADDING = 16;
 const FONT_FAMILY = 'Segoe UI, Arial, sans-serif';
-const ROW_HEIGHT = 84;
+const ROW_HEIGHT = 98;
 const ROW_GAP = 8;
 
 /** Flavor text longer than this (chars) gets a collapse/expand toggle. */
@@ -44,7 +44,7 @@ const COLORS = {
   rowBorder: 0x333355,
   textPrimary: 0xf8fafc,
   textSecondary: 0x9ca3af,
-  flavor: 0xc9b8ff,
+  flavor: 0xd6d9f1,
   btnBg: 0x2a2a4a,
   btnHover: 0x3a3a6a,
   claimed: 0x22c55e,
@@ -190,7 +190,10 @@ export function createAchievementsUI(
   function makeRow(def: AchievementDef, x: number, y: number, w: number): number {
     const isExpanded = expandedIds.has(def.id);
     const claimed = lastWorld?.achievements.claimedIds.has(def.id) === true;
-    const flavorWrapW = w - 150;
+<<<<<<< HEAD
+    const rewardColumnWidth = 150;
+    const detailsWidth = w - 180;
+    const flavorWrapW = detailsWidth;
     const isLong = def.directorFlavor.length > FLAVOR_EXPAND_THRESHOLD;
 
     // Measure the full flavor text height. Results are cached so repeated renders
@@ -233,19 +236,21 @@ export function createAchievementsUI(
 
     const crit = crispText(x + 12, y + 30, def.unlockCriteria, {
       fontFamily: FONT_FAMILY,
-      fontSize: '12px',
+      fontSize: '13px',
       color: hex(COLORS.textSecondary),
-      wordWrap: { width: flavorWrapW },
+<<<<<<< HEAD
+      wordWrap: { width: detailsWidth },
     });
     container.add(crit);
     rowObjects.push(crit);
 
     const flavor = crispText(x + 12, y + 50, def.directorFlavor, {
       fontFamily: FONT_FAMILY,
-      fontSize: '11px',
-      fontStyle: 'italic',
+      fontSize: '12px',
       color: hex(COLORS.flavor),
-      wordWrap: { width: flavorWrapW },
+<<<<<<< HEAD
+      lineSpacing: 2,
+      wordWrap: { width: detailsWidth },
       maxLines: isLong && !isExpanded ? FLAVOR_COLLAPSED_LINES : 0,
     });
     container.add(flavor);
@@ -270,7 +275,8 @@ export function createAchievementsUI(
     }
 
     const btnLabel = claimed ? rewardReveal(def.reward) : `Open: ${rewardLabel(def.reward)}`;
-    const btn = crispText(x + w - 12, y + rowHeight / 2, btnLabel, {
+<<<<<<< HEAD
+    const btn = crispText(x + w - 12, y + 14, btnLabel, {
       fontFamily: FONT_FAMILY,
       fontSize: '12px',
       fontStyle: 'bold',
@@ -278,9 +284,10 @@ export function createAchievementsUI(
       backgroundColor: claimed ? undefined : hex(COLORS.btnBg),
       padding: { x: 8, y: 6 },
       align: 'right',
-      wordWrap: { width: 130 },
+      lineSpacing: 2,
+      wordWrap: { width: rewardColumnWidth },
     });
-    btn.setOrigin(1, 0.5);
+    btn.setOrigin(1, 0);
     if (!claimed) {
       btn
         .setInteractive({ useHandCursor: true })

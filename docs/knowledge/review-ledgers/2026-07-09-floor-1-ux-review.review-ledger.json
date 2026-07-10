@@ -1,0 +1,47 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-09",
+  "session_slug": "floor-1-ux-review",
+  "task_title": "Floor 1 unlocked UX overlap and readability cleanup",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Adversarial review compared coordinator-state-machine, unified character shell tabs, and overlay-priority registry approaches. Kept incremental scene-level coordination for this slice while resolving blocker concerns through follow-up fixes in input gating, panel exclusivity, and touch-safe close behavior."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 7,
+          "resolved_count": 7,
+          "clean": true,
+          "notes": "Resolved all reported defects: removed equipment->inventory auto-open coupling, allowed map-to-panel toggles by unlocking map from uiLock gate, auto-closed inventory when leaving safe context, blocked key-E interactions while blocking surfaces are open, fixed minimap Escape visibility leak under masterHidden, and corrected tooltip center-anchor placement math."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.3-codex",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 7,
+          "valid_count": 7,
+          "resolved_count": 7,
+          "clean": true,
+          "notes": "Cross-model adjudication accepted all concrete runtime concerns and verified fixes were applied in MainGameScene, HudMinimap, and item-tooltip without broadening scope."
+        }
+      ]
+    }
+  }
+}
