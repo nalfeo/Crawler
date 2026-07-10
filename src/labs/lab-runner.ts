@@ -23,11 +23,6 @@ function getLabElements(): { canvas: HTMLElement; controls: ControlsWithGui } {
   return { canvas, controls };
 }
 
-function getViewportToggle(): HTMLButtonElement | null {
-  const toggle = document.getElementById('viewport-toggle');
-  return toggle instanceof HTMLButtonElement ? toggle : null;
-}
-
 function destroyActiveLab(): void {
   try {
     activeCleanup?.();
@@ -139,24 +134,6 @@ export function runLab(labId: string): void {
 
   header.append(title, description, link);
   controls.append(header);
-
-  const globalControlsSection = document.createElement('section');
-  globalControlsSection.style.marginBottom = '16px';
-
-  const globalControlsHeading = document.createElement('h2');
-  globalControlsHeading.textContent = 'Global Controls';
-  globalControlsHeading.style.fontSize = '18px';
-  globalControlsHeading.style.marginBottom = '10px';
-
-  const viewportToggle = getViewportToggle();
-  if (viewportToggle) {
-    viewportToggle.style.display = 'inline-flex';
-    viewportToggle.style.marginTop = '0';
-    viewportToggle.style.marginBottom = '8px';
-    viewportToggle.style.alignSelf = 'flex-start';
-    globalControlsSection.append(globalControlsHeading, viewportToggle);
-    controls.append(globalControlsSection);
-  }
 
   const gui = new GUI({ autoPlace: false, container: controls, title: `${lab.name} Controls` });
   const globalControlsFolder = gui.addFolder('Global Controls');

@@ -95,10 +95,6 @@
         overflow-y: auto;
         overflow-x: hidden;
       }
-      #viewport-toggle[hidden] {
-        display: none;
-      }
-
       #lab-controls {
         width: 300px;
         flex-shrink: 0;
@@ -139,39 +135,6 @@
       }
       #controls-toggle.collapsed {
         right: 0;
-      }
-
-      body.lab-shell--iphone-landscape #lab-stage {
-        align-items: center;
-        justify-content: center;
-        padding: 24px;
-        background:
-          radial-gradient(circle at top, rgba(126, 224, 255, 0.12), transparent 35%),
-          linear-gradient(180deg, #141423 0%, #090912 100%);
-      }
-      body.lab-shell--iphone-landscape #lab-canvas {
-        flex: none;
-        width: min(844px, 100%);
-        height: min(390px, 100%);
-        max-width: 844px;
-        max-height: 390px;
-        border-radius: 30px;
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        box-shadow:
-          0 24px 64px rgba(0, 0, 0, 0.45),
-          inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-        overflow: hidden;
-        background: #05050a;
-      }
-      body.lab-shell--iphone-landscape #lab-canvas > * {
-        width: 100%;
-        height: 100%;
-      }
-
-      @media (pointer: coarse), (max-width: 900px) {
-        #viewport-toggle {
-          display: none;
-        }
       }
 
       /* On narrow screens in portrait, stack canvas above controls */
@@ -227,9 +190,6 @@
       <div id="lab-stage">
         <div id="lab-canvas"></div>
       </div>
-      <!-- viewport-toggle is kept here (hidden) so lab-shell.ts can find it on init;
-           lab-runner.ts moves it into the sidebar "Global Controls" section. -->
-      <button id="viewport-toggle" hidden aria-label="Switch viewport"></button>
       <button id="controls-toggle" aria-label="Collapse config panel" aria-expanded="true">
         ›
       </button>
