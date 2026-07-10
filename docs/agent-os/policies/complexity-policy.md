@@ -43,11 +43,11 @@ A hello kitty is the planning unit for a session. A session that ships 1 hello k
 
 ## When to Declare
 
-**Before writing a single line of code or creating any file.** State the estimate in your first session turn as:
+**Before writing implementation code in a merge-intent session.** State the estimate in your first session turn as:
 
 > "Estimating this at 🍎🍎🍎 (Medium) — new sub-system, 3–5 files, tests required."
 
-Record the same estimate in the `## Apples` section of your handoff file when you start.
+For implementation sessions, record the same estimate in the `## Apples` section of your handoff when you start.
 
 ---
 
