@@ -3,7 +3,7 @@
 **Date:** 2026-07-10  
 **Issue:** #997  
 **PR branch:** `copilot/nalfeo-997-set-piece-editor-runtime-parity`  
-**Apple estimate:** 2🍎  
+**Apple estimate:** 3🍎  
 **Verdict:** Completed
 
 ## Systems touched

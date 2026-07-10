@@ -15616,26 +15616,6 @@
           ],
           "z": 40,
           "sceneLayer": "default"
-        },
-        {
-          "id": "copy-welcome-rug-1783661903651-0",
-          "kind": "floor",
-          "x": 5,
-          "y": 2.5,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-rug-var-0"
-              },
-              "widthFt": 8,
-              "heightFt": 4,
-              "flipX": true
-            }
-          ],
-          "width": 2,
-          "z": 0,
-          "sceneLayer": "default"
         }
       ],
       "npcs": [

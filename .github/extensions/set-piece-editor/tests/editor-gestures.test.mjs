@@ -9,7 +9,7 @@ import { chromium } from 'playwright';
 const EXTENSION_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'extension.mjs');
 const EXTENSION_SOURCE = readFileSync(EXTENSION_PATH, 'utf8');
 const ONE_BY_ONE_PNG = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z0n0AAAAASUVORK5CYII=',
+  'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAE0lEQVR42mP4DwQMIAAkG4DkfwBLSQd6Nhz6dgAAAABJRU5ErkJggg==',
   'base64',
 );
 
@@ -226,23 +226,24 @@ test('same-z render ordering paints props above NPCs for deterministic tie-break
   });
   await withEditor(t, pack, async ({ page }) => {
     const orderedKinds = await page.evaluate(() => {
-      const drawables = [];
-      sp.props.forEach((p, i) => {
-        const lid = propLayer(p);
-        if (!layerVisible(lid)) return;
-        drawables.push({ kind: 'prop', idx: i, z: propRenderZ(lid, getZ(p), i) });
-      });
-      (sp.npcs || []).forEach((n, ni) => {
-        const lid = npcLayer(n);
-        if (!layerVisible(lid)) return;
-        drawables.push({ kind: 'npc', idx: ni, z: globalZ(lid, 'npc', n.z) });
-      });
-      drawables.sort((a, b) => {
-        if (a.z !== b.z) return a.z - b.z;
-        if (a.kind !== b.kind) return a.kind === 'npc' ? -1 : 1;
-        return a.idx - b.idx;
-      });
-      return drawables.map((d) => d.kind);
+      const order = [];
+      const originalDrawProp = drawProp;
+      const originalDrawNpc = drawNpcEntity;
+      drawProp = function (...args) {
+        order.push('prop');
+        return originalDrawProp.apply(this, args);
+      };
+      drawNpcEntity = function (...args) {
+        order.push('npc');
+        return originalDrawNpc.apply(this, args);
+      };
+      try {
+        render();
+      } finally {
+        drawProp = originalDrawProp;
+        drawNpcEntity = originalDrawNpc;
+      }
+      return order;
     });
     assert.equal(orderedKinds[orderedKinds.length - 1], 'prop');
   });
@@ -283,10 +284,10 @@ test('prop tint preserves transparent pixels while applying multiplicative tint'
       const sample = (xTile, yTile) =>
         Array.from(ctx.getImageData(Math.floor(xTile * ts), Math.floor(yTile * ts), 1, 1).data);
       return {
-        baseOpaque: sample(0.5, 1.5),
-        tintedOpaque: sample(2.5, 1.5),
-        baseTransparent: sample(0.1, 1.1),
-        tintedTransparent: sample(2.1, 1.1),
+        baseOpaque: sample(0.25, 1.25),
+        tintedOpaque: sample(2.25, 1.25),
+        baseTransparent: sample(0.75, 1.25),
+        tintedTransparent: sample(2.75, 1.25),
       };
     });
     assert.equal(samples.baseOpaque[3] > 0, true);

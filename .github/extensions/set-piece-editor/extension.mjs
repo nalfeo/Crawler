@@ -1374,7 +1374,7 @@ function drawProp(prop,sel,ad){
       ctx.translate(cx,cy);
       if(rot!==0)ctx.rotate(rot);
       if(fx!==1||fy!==1)ctx.scale(fx,fy);
-      ctx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,-drawW/2,-drawH/2,drawW,drawH);
+      var tinted=false;
       if(typeof layer.tintHex==='string'&&/^#[0-9a-fA-F]{6}$/.test(layer.tintHex)){
         var tintW=Math.max(1,Math.ceil(drawW));
         var tintH=Math.max(1,Math.ceil(drawH));
@@ -1392,7 +1392,11 @@ function drawProp(prop,sel,ad){
           tintCtx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,0,0,tintW,tintH);
           tintCtx.globalCompositeOperation='source-over';
           ctx.drawImage(tintCanvas,-drawW/2,-drawH/2,drawW,drawH);
+          tinted=true;
         }
+      }
+      if(!tinted){
+        ctx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,-drawW/2,-drawH/2,drawW,drawH);
       }
       ctx.restore();
       sprited=true;
