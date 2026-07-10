@@ -154,15 +154,27 @@ interface CollisionFingerprint {
  *   seed  13:  7/190/5/0    →  4/175.90000247955322/0/0
  *   seed  42:  4/193/15/2   →  5/205.5999984741211/15/4
  *   seed 137:  4/190/0/0    →  5/179.23999977111816/10/2
+ *
+ * ## 2026-07-10 re-baseline — Floor 1 safe-room egress reacquisition fix
+ *
+ * `BehaviorTreeAI` now force-acquires a far threat while trapped in a safe room
+ * during the tutorial pre-level-2 phase and keeps hunting immediately after
+ * egress, fixing a deterministic floor1-tutorial stall class for non-baseline
+ * starter weapons. That intentional behavior shift changes early combat
+ * interactions in this 1500-frame parity slice, drifting seed 13/42 while 7/137
+ * remain unchanged.
+ * Before → after (kills / damageDealt / damageTaken / score):
+ *   seed  13:  4/175.90000247955322/0/0   →  4/211.00000286102295/0/0
+ *   seed  42:  5/205.5999984741211/15/4   →  8/243.75/19/13
  */
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 5,
-    damageDealt: 205.5999984741211,
-    damageTaken: 15,
-    finalScore: 4,
+    kills: 8,
+    damageDealt: 243.75,
+    damageTaken: 19,
+    finalScore: 13,
   },
   7: {
     totalFrames: 1500,
@@ -176,7 +188,7 @@ const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
     totalFrames: 1500,
     outcome: 'timeout',
     kills: 4,
-    damageDealt: 175.90000247955322,
+    damageDealt: 211.00000286102295,
     damageTaken: 0,
     finalScore: 0,
   },

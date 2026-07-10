@@ -1571,12 +1571,18 @@ export class BehaviorTreeAI implements AIInputProvider {
         ) {
           return false;
         }
-        const nearest = this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY);
+        const tutorialLevelGrind =
+          ctx.world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID) &&
+          (ctx.world.playerLevel.level ?? 0) < 2;
+        const huntScanRadius = tutorialLevelGrind
+          ? Number.POSITIVE_INFINITY
+          : this.config.scanRadius;
+        const nearest = this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY, huntScanRadius);
         if (!nearest) {
           return false;
         }
         const engageRadius = this.getEngageRadius(ctx.world);
-        if (nearest.distance <= engageRadius || nearest.distance > this.config.scanRadius) {
+        if (nearest.distance <= engageRadius || nearest.distance > huntScanRadius) {
           return false;
         }
         ctx.blackboard['huntEnemy'] = nearest;
@@ -1597,12 +1603,12 @@ export class BehaviorTreeAI implements AIInputProvider {
 
   /**
    * Leave-safe-room behavior: when the player is standing in a safe room and a
-   * living enemy is within scan range, drive *past* the nearest enemy to exit
-   * the safe zone. The weapon is hard-disabled inside safe rooms (weaponSystem
-   * safe-space gate), so holding melee range there is a permanent stalemate and
-   * the engage watchdog would otherwise blacklist the entire wave as
-   * "unreachable". This outranks Engage/Collect so the AI commits to leaving
-   * instead of oscillating across the boundary.
+   * living enemy exists, drive *past* the nearest enemy to exit the safe zone.
+   * The weapon is hard-disabled inside safe rooms (weaponSystem safe-space
+   * gate), so holding melee range there is a permanent stalemate and the engage
+   * watchdog would otherwise blacklist the entire wave as "unreachable". This
+   * outranks Engage/Collect so the AI commits to leaving instead of oscillating
+   * across the boundary.
    */
   private buildLeaveSafeRoomBehavior(): BTNode {
     return sequence(
@@ -1611,7 +1617,18 @@ export class BehaviorTreeAI implements AIInputProvider {
         if (!ctx.world.playerInSafeRoom) {
           return false;
         }
-        const nearest = this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY);
+        // During the tutorial's pre-level-2 grind, relying on the default 50ft
+        // scan can deadlock in the safe room when the nearest swarm is just
+        // outside that radius. Use an unbounded threat search only for this phase
+        // so the AI always acquires an egress target and leaves the safe room.
+        const tutorialAccepted = ctx.world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID);
+        const forceTutorialEgress = tutorialAccepted && (ctx.world.playerLevel.level ?? 0) < 2;
+        const nearest = this.findNearestEnemy(
+          ctx.world,
+          ctx.playerX,
+          ctx.playerY,
+          forceTutorialEgress ? Number.POSITIVE_INFINITY : this.config.scanRadius,
+        );
         if (!nearest) {
           return false;
         }

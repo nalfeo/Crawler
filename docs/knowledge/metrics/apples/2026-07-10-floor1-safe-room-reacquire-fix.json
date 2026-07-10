@@ -1,0 +1,8 @@
+{
+  "date": "2026-07-10",
+  "slug": "floor1-safe-room-reacquire-fix",
+  "estimated_apples": 4,
+  "actual_apples": 4,
+  "verdict": "on-target",
+  "notes": "Fixed a deterministic Floor 1 tutorial stagnation class for seed 1 on non-baseline starters by tightening safe-room egress objective reacquisition in BehaviorTreeAI (tutorial pre-level-2 unbounded threat acquisition in LeaveSafeRoom and Hunt). Added seam-level BT regression plus headless canary coverage for pistol/throwing-knife/fireball. Review harness completed at 4-apple tier with validated ledger. Collision-pair parity golden fingerprints for seeds 13/42 were re-baselined during full verify because intentional AI behavior drift changed deterministic combat fingerprints."
+}

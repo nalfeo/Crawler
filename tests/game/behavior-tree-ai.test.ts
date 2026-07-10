@@ -864,6 +864,44 @@ describe('BehaviorTreeAI', () => {
     expect(decision.reason).toContain('Interacting with shopkeeper');
   });
 
+  it('keeps hunting after forced safe-room egress until far threats re-enter normal scan', () => {
+    const world = createTestWorld({ seed: 31 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    meetTutorialGoon(world);
+    world.playerLevel.level = 0;
+    world.floorMap = makeOpenRoom(40, 20);
+    world.stores.position.x[player] = 14;
+    world.stores.position.y[player] = 10;
+    world.playerInSafeRoom = true;
+
+    const farThreat = spawnEnemy(world, 84, 10, 20);
+
+    const ai = new BehaviorTreeAI({ seed: 31 });
+    const input = createInputState();
+    ai.poll(input, world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(decision.targetEid).toBe(farThreat);
+    expect(decision.reason).toContain('Leaving safe room');
+    expect(decision.targetX).not.toBeNull();
+    expect(decision.targetX!).toBeGreaterThan(84);
+
+    // Next frame outside safe room, threat still >50ft away: the AI should keep
+    // committing to the same far threat (Hunt), not drop to EXPLORE.
+    world.playerInSafeRoom = false;
+    world.stores.position.x[player] = 20;
+    world.stores.position.y[player] = 10;
+
+    ai.poll(input, world);
+    const postExit = ai.getDecision();
+    expect(postExit.state).toBe(AIState.ENGAGE);
+    expect(postExit.targetEid).toBe(farThreat);
+    expect(postExit.reason).toContain('Hunting enemy');
+  });
+
   it('prioritizes the broker while floor2 reputation is locked, then drops broker targeting after intro completion', () => {
     const world = createTestWorld({ seed: 52, floor: 2 });
     const player = spawnPlayer(world, 0, 0);
