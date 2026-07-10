@@ -22,6 +22,17 @@
     "path": "by-sha/47ee0d0fd78a96879288ecf6ab432b75f2c48fd4.json"
   },
   {
+    "commit": "5fc10da90f0fcf24fc0e992dd284886f228cbaec",
+    "commitDate": "2026-07-10T12:53:02-07:00",
+    "commitSubject": "fix(ai): restore floor1 safe-room progression reacquisition (#1016)",
+    "capturedAt": "2026-07-10T20:37:29.271Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29119953437",
+    "winRate": 0.8433333333333334,
+    "totalWins": 253,
+    "totalRuns": 300,
+    "path": "by-sha/5fc10da90f0fcf24fc0e992dd284886f228cbaec.json"
+  },
+  {
     "commit": "b7f03e8defd439c051b64c8e1f4c1f9e7ade2473",
     "commitDate": "2026-07-10T10:01:13Z",
     "commitSubject": "fix: wire derived damage/cooldown stats and shared level-up allocation policy (#1009)",
