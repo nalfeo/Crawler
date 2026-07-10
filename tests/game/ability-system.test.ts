@@ -199,6 +199,34 @@ describe('abilitySystem', () => {
     expect(state.cooldownByAbilityId.get('fireball')).toBe(250);
   });
 
+  it('keeps cooldown gate aligned to the snapped HUD cooldown when stats change mid-cooldown', () => {
+    const { world, player } = setupPlayer();
+    world.featureUnlocks.spells = true;
+    world.playerMp = 20;
+    addComponent(world.ecs, player, EffectiveStats);
+    world.stores.effectiveStats.cooldownReduction[player] = 0;
+    memorizeSpell(world, player, 'fireball');
+    spawnEnemy(world, 1, 0, 100);
+    spawnEnemy(world, 1.5, 0.5, 100);
+    spawnEnemy(world, 1.75, -0.5, 100);
+
+    world.frameCount = 100;
+    abilitySystem(world);
+    const state = world.abilityStatesByEntity.get(player)!;
+    expect(state.cooldownByAbilityId.get('fireball')).toBe(100);
+    expect(state.cooldownFramesByAbilityId.get('fireball')).toBe(300);
+
+    // Mid-cooldown stat changes should not desync the gate vs HUD countdown.
+    world.stores.effectiveStats.cooldownReduction[player] = 0.5;
+    world.frameCount = 250;
+    abilitySystem(world);
+    expect(state.cooldownByAbilityId.get('fireball')).toBe(100);
+
+    world.frameCount = 400;
+    abilitySystem(world);
+    expect(state.cooldownByAbilityId.get('fireball')).toBe(400);
+  });
+
   it('auto-casts fireball at a single nearby enemy without waiting for a cluster', () => {
     const { world, player } = setupPlayer();
     world.featureUnlocks.spells = true;

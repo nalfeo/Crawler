@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded by `2026-07-10-shared-stat-allocation-and-runtime-derivations.md`
 
 ## Date
 

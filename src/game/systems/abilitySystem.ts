@@ -250,7 +250,9 @@ function activateAbility(world: GameWorld, holderEid: number, abilityId: string)
   }
 
   const lastTriggerFrame = state.cooldownByAbilityId.get(abilityId) ?? Number.NEGATIVE_INFINITY;
-  const cooldownFrames = getEffectiveAbilityCooldownFrames(world, holderEid, def.cooldownFrames);
+  const cooldownFrames =
+    state.cooldownFramesByAbilityId.get(abilityId) ??
+    getEffectiveAbilityCooldownFrames(world, holderEid, def.cooldownFrames);
   if (world.frameCount - lastTriggerFrame < cooldownFrames) {
     return;
   }
