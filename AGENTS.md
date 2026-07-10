@@ -13,6 +13,8 @@
 
 - **Kickoff verdict is mandatory:** At session kickoff, explicitly say whether the ask is **recommended**, **risky**, or **not recommended**, with a short reason.
 - **Plans stay in session chat:** When giving a plan, write the full plan in session chat. Do **not** hide plans in repo files unless the human explicitly asks for a file artifact.
+- **Broad sweeps default to GitHub:** For sweeps or batch evals with **more than 10 runs**, default to GitHub-backed `workflow_dispatch`/CI execution (for example `.github/workflows/weapon-sweep.yml` or `.github/workflows/ai-sweep.yml`) instead of local/session compute unless a human explicitly asks for local.
+- **Investigation sessions are process-light:** Investigation/repro/debug sessions with no merge-intent fix may stay lightweight (no review ledger/full PR paperwork). If a fix should land, spin a separate implementation child session/PR and run the normal full process there.
 
 ## Request Intake
 
@@ -82,12 +84,12 @@ expensive checks on its flags. It prints `art_only` / `docs_only` / `gameplay_sa
 union of your committed branch changes **and** uncommitted work; it fails safe (all-false →
 run everything) when it can't resolve a merge base.
 
-| Heavy run                          | Run it locally only when…                                       |
-| ---------------------------------- | --------------------------------------------------------------- |
-| Headless Floor-1 (`VERIFY_FULL=1`) | `scope` shows `gameplay_safe=false` (else the sim can't change) |
-| Weapon sweeps (`ai:weapon-sweep`)  | touching `src/core`, `src/game/ai`, or balance data             |
-| Visual review (`review:visual`)    | a changed **UI surface** is in scope                            |
-| `VERIFY_KNIP=1 npm run verify`     | refactoring or removing exports/deps                            |
+| Heavy run                          | Run it locally only when…                                                                                                        |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Headless Floor-1 (`VERIFY_FULL=1`) | `scope` shows `gameplay_safe=false` (else the sim can't change)                                                                  |
+| Weapon sweeps (`ai:weapon-sweep`)  | **small smoke sweeps only (≤10 runs)**; for broad sweeps (>10), use GitHub workflow dispatch (`weapon-sweep.yml`/`ai-sweep.yml`) |
+| Visual review (`review:visual`)    | a changed **UI surface** is in scope                                                                                             |
+| `VERIFY_KNIP=1 npm run verify`     | refactoring or removing exports/deps                                                                                             |
 
 CI still enforces the real gates on non-`gameplay_safe` PRs and on main-push, so scoping
 these **locally** never weakens a required check — it just skips work that provably can't
@@ -159,7 +161,7 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 3. **Never use Math.random()**: Use `SeededRandom` from `src/shared/random.ts`
 4. **Never use Date.now()**: Pass delta/frameCount as parameters
 5. **Conventional commits**: full type set enforced by commitlint — `feat:`, `fix:`, `chore:`, `docs:`, `lab:`, `refactor:`, `test:`, `perf:`, `ci:`, `build:`, `revert:`
-6. **Handoff required**: Write `docs/knowledge/handoffs/YYYY-MM-DD-<slug>.md` before ending session. Include the `## Systems touched` field (comma-separated slugs from `docs/systems/README.md`) so the session shows up in `docs/knowledge/handoffs/INDEX.md`. It will be required by the pre-flight lint once the handoff tooling PR wires that in; treat as advisory until then.
+6. **Handoff required for implementation sessions**: For sessions producing merge-intent changes, write `docs/knowledge/handoffs/YYYY-MM-DD-<slug>.md` before ending session. Include the `## Systems touched` field (comma-separated slugs from `docs/systems/README.md`) so the session shows up in `docs/knowledge/handoffs/INDEX.md`. It will be required by the pre-flight lint once the handoff tooling PR wires that in; treat as advisory until then.
 7. **ADR required**: Any decision affecting 2+ systems needs an ADR
 8. **Always fix test and infra failures**: Never skip, ignore, or document broken tests/lint/build issues as "preexisting" or "unrelated" and move on. Fix every failure you encounter, regardless of whether you caused it. There is no such thing as a pre-existing issue that is out of scope — cruft compounds and wastes future agent time.
 9. **Best-effort UT coverage progress**: As part of every fix/implementation, make a best effort to improve or preserve unit-test coverage in touched areas so work moves toward UT coverage goals.
@@ -170,6 +172,8 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 13. **Never bend gameplay to pass seeds; gate on win-RATE, not cherry-picked seeds**: Do not tune game balance to rescue specific pre-existing seed runs, and do not add shortcuts/cheats that hold map structure fixed just to avoid recomputing success/failure rates. **Target: 90%+ of Floor 1 seeds should easily reach a win condition.** If a broad seed sweep shows materially less, treat it as a likely **AI-runner bug or extreme gameplay regression** and fix the root cause — never hand-pick a handful of comfortable seeds to make the gate green.
 14. **Apple-scaled review harness before PR**: Every code-touching change runs the review harness scaled to its apple estimate and records it in a **review ledger** (`docs/knowledge/review-ledgers/<date>-<slug>.review-ledger.json`). **≥3🍎** → separate-model **plan review** **and** a **code-review loop until no concerns _or_ a 2-round cap then human escalation**; >3🍎 → the plan review must be **adversarial** (one reviewer enumerates ≥2 alternatives and argues against the chosen design) **and** **multi-model review** with adjudication (same 2-round-cap/escalation rule). Every plan review (≥3🍎) records a `plan_divergence` signal so the real design fork-rate can be measured. 1–2🍎 require no review stages (plan-review floor raised 2🍎→3🍎 on 2026-07-07 to match the code-review floor, ADR 0036; dual-plan synthesis retired as a required 4–5🍎 stage on 2026-07-08, ADR 0051 — replaced by the adversarial plan review). The `pr-review-ledger` guard hard-denies `create_pull_request` without a valid ledger for the tier (docs/art/deps-only diffs are exempt). Author it with the [`review-harness` skill](.github/skills/review-harness/SKILL.md); never weaken a stage to go green (see rule #12) — escalate to a human instead. Canonical: [`docs/agent-os/policies/review-harness-policy.md`](docs/agent-os/policies/review-harness-policy.md).
 15. **Every game system must be wired or explicitly allowlisted**: Any `*System` exported from `src/core/**` or `src/game/**` MUST be referenced by a real runtime wiring site (`src/bootstrap/floor-main-scene-options.ts`, `src/engine/sim/simulation-step.ts`, `src/game/ai/simulation-step.ts`, `src/game/ai/headless-runner.ts`, `src/engine/scenes/MainGameScene.ts`) or added to the documented allowlist in `scripts/agent/health/orphaned-systems-lib.ts` with a reason. Lab/test references do NOT count. Enforced by `npm run check:wired-systems` (ADR 0039), run in `verify` and the `check-format-and-labs` CI job. Never allowlist a system just to go green (see rule #12) — allowlisting is only for systems intentionally not-yet-wired, and the reason must say so.
+16. **Broad sweeps (>10 runs) use GitHub infrastructure by default**: Prefer GitHub Actions `workflow_dispatch`/CI runners over local or session compute for broad sweeps so sampling is parallelized and local resources stay available. Keep local sweeps for small smoke checks or explicit human override.
+17. **Split investigation from landing implementation**: Investigation/repro/debug sessions can be scrappy and low-overhead when they are not landing code. Once an investigation identifies a fix to ship, open a separate implementation child session/PR that follows the full normal process (apple accounting, verify gates, review harness/ledger, and handoff).
 
 > Several of these rules are now **hard-enforced** at the tool-call boundary by
 > the `copilot-guards` extension. See

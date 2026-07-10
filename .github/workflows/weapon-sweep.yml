@@ -1,0 +1,60 @@
+name: Weapon Sweep
+
+on:
+  workflow_dispatch:
+    inputs:
+      seed_count:
+        description: 'Number of sequential seeds to run (1..1000)'
+        type: string
+        default: '100'
+      weapons:
+        description: 'Comma-separated Floor-1 weapons'
+        type: string
+        default: 'sword,bow,baseball-bat'
+      max_frames:
+        description: 'Frame budget per run'
+        type: string
+        default: '19800'
+
+permissions:
+  contents: read
+
+jobs:
+  weapon-sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+
+      - name: Build seed list
+        id: seeds
+        env:
+          SEED_COUNT: ${{ inputs.seed_count }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$SEED_COUNT" =~ ^[0-9]+$ ]] || [ "$SEED_COUNT" -lt 1 ] || [ "$SEED_COUNT" -gt 1000 ]; then
+            echo "::error::seed_count must be an integer in [1,1000]"
+            exit 1
+          fi
+          echo "list=$(seq -s, 1 "$SEED_COUNT")" >> "$GITHUB_OUTPUT"
+
+      - name: Run weapon sweep
+        env:
+          SEEDS: ${{ steps.seeds.outputs.list }}
+          WEAPONS: ${{ inputs.weapons }}
+          MAX_FRAMES: ${{ inputs.max_frames }}
+        run: |
+          set -euo pipefail
+          npx tsx scripts/agent/perf/weapon-sweep.ts \
+            --seeds "$SEEDS" \
+            --weapons "$WEAPONS" \
+            --max-frames "$MAX_FRAMES" \
+            --out weapon-sweep.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: weapon-sweep-results
+          path: weapon-sweep.json
+          if-no-files-found: error
+          retention-days: 30
