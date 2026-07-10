@@ -690,22 +690,27 @@ function getSharedPathMemo(world: GameWorld, doorRevision: number): Map<string, 
 function getDoorRevision(world: GameWorld): number {
   const doors = query(world.ecs, [DoorState]);
   const { doorState } = world.stores;
+  const tileMap = world.floorMap?.tileMap;
   let hash = 2_166_136_261;
 
   for (const eid of doors) {
     const tx = doorState.tileX[eid] ?? 0;
     const ty = doorState.tileY[eid] ?? 0;
-    // Hash the PHYSICAL tile truth (effectiveOpen), NOT the logicalOpen latch:
-    // this revision gates flow-field / tile-path memo invalidation, which are
-    // built over physical passability. effectiveOpen equals the old isOpen
-    // frame-for-frame except when a transient seal closes a still-latched door,
-    // where hashing it correctly invalidates the now-stale cached paths.
-    const effectiveOpen = doorState.effectiveOpen[eid] ?? 0;
+    // Hash the LIVE physical tile passability, NOT the stored `effectiveOpen`
+    // mirror or the `logicalOpen` latch: this revision gates flow-field /
+    // tile-path memo invalidation, which are built over physical passability
+    // (see buildDoorAwarePassable). Reading the tile fresh each frame reflects a
+    // pre-`doorSystem` authority tile-open the SAME frame it happens — e.g. the
+    // mini-boss death in `floor1PlayerStatSystem` (which runs before
+    // `enemyAISystem`, whereas `doorSystem` reconciles `effectiveOpen` after it).
+    // This matches the pre-migration `isOpen`-hash timing exactly and avoids a
+    // one-frame memo lag; `effectiveOpen` would be stale on that frame.
+    const physicallyOpen = tileMap?.isPassable(tx, ty) ? 1 : 0;
     hash ^= tx * 73856093;
     hash = Math.imul(hash, 16777619);
     hash ^= ty * 19349663;
     hash = Math.imul(hash, 16777619);
-    hash ^= effectiveOpen;
+    hash ^= physicallyOpen;
     hash = Math.imul(hash, 16777619);
   }
 
