@@ -135,4 +135,12 @@ describe('level-up allocation state', () => {
     expect(incrementStat(state, 'charisma')).toBe(state);
     expect(incrementStat(state, 'weight')).toBe(state);
   });
+
+  it('keeps luck allocatable', () => {
+    const state = createLevelUpAllocationState(1);
+    const next = incrementStat(state, 'luck');
+    expect(next).not.toBe(state);
+    expect(next.draft.luck).toBe(1);
+    expect(remainingPoints(next)).toBe(0);
+  });
 });
