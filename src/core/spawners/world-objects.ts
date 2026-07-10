@@ -97,6 +97,10 @@ export function spawnNpc(
   defId: string,
   options: SpawnNpcOptions = {},
 ): number {
+  const def = getNpcDef(defId);
+  if (def === undefined) {
+    return -1;
+  }
   if ((options.widthFt === undefined) !== (options.heightFt === undefined)) {
     throw new Error('spawnNpc requires widthFt and heightFt to be provided together.');
   }
@@ -108,10 +112,6 @@ export function spawnNpc(
       (options.heightFt ?? 0) <= 0)
   ) {
     throw new Error('spawnNpc requires widthFt and heightFt to be finite positive numbers.');
-  }
-  const def = getNpcDef(defId);
-  if (def === undefined) {
-    return -1;
   }
   const widthFt = options.widthFt ?? def.widthFt;
   const heightFt = options.heightFt ?? def.heightFt;

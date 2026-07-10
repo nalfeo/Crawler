@@ -62,6 +62,11 @@ describe('spawnNpc', () => {
     expect(spawnNpc(world, 0, 0, 'does-not-exist')).toBe(-1);
   });
 
+  it('returns -1 for an unknown defId even when options are malformed', () => {
+    const world = createTestWorld();
+    expect(spawnNpc(world, 0, 0, 'does-not-exist', { widthFt: 4 })).toBe(-1);
+  });
+
   it('attaches a per-axis BOX Size matching def.widthFt/heightFt (Slice-1 legacy parity)', () => {
     // NPC defs are non-square (e.g. 2.5×3.5). The legacy pre-Size collision
     // path read `sprite.width/2 × sprite.height/2` — a per-axis box. A

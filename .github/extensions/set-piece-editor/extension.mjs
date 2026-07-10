@@ -1197,22 +1197,7 @@ function renderLayersPanel(){
       if(S.activeLayerId===layer.id)S.activeLayerId=sp.sceneLayers[0].id;
       renderLayersPanel();render();markDirty();
     };
-    var realIdx=sp.sceneLayers.findIndex(function(l){return l.id===layer.id;});
-    var upb=document.createElement('button');upb.className='ib';upb.title='Move Up (higher z)';upb.textContent='\u25b2';
-    upb.disabled=realIdx>=sp.sceneLayers.length-1;
-    upb.onclick=function(e){e.stopPropagation();
-      var i=sp.sceneLayers.findIndex(function(l){return l.id===layer.id;});
-      if(i<sp.sceneLayers.length-1){var t=sp.sceneLayers[i];sp.sceneLayers[i]=sp.sceneLayers[i+1];sp.sceneLayers[i+1]=t;}
-      renderLayersPanel();render();markDirty();
-    };
-    var dnb=document.createElement('button');dnb.className='ib';dnb.title='Move Down (lower z)';dnb.textContent='\u25bc';
-    dnb.disabled=realIdx<=0;
-    dnb.onclick=function(e){e.stopPropagation();
-      var i=sp.sceneLayers.findIndex(function(l){return l.id===layer.id;});
-      if(i>0){var t=sp.sceneLayers[i];sp.sceneLayers[i]=sp.sceneLayers[i-1];sp.sceneLayers[i-1]=t;}
-      renderLayersPanel();render();markDirty();
-    };
-    row.appendChild(vis);row.appendChild(lck);row.appendChild(nm);row.appendChild(upb);row.appendChild(dnb);row.appendChild(del);
+    row.appendChild(vis);row.appendChild(lck);row.appendChild(nm);row.appendChild(del);
     ll.appendChild(row);
   });
   refreshLayerPicker();
@@ -1517,7 +1502,7 @@ function snapV(v){
   return Math.round(v*100)/100;
 }
 function snapSz(v){
-  if(S.snapMode==='tile')return Math.max(0.25,Math.round(v*4)/4);
+  if(S.snapMode==='tile')return Math.max(0.25,Math.round(v));
   if(S.snapMode==='half')return Math.max(0.25,Math.round(v*2)/2);
   if(S.snapMode==='quarter')return Math.max(0.25,Math.round(v*4)/4);
   return Math.max(0.25,Math.round(v*100)/100);
