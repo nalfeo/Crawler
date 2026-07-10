@@ -155,7 +155,7 @@ function formatSecondaryGain(stat: SecondaryStatId, value: number): string {
  * gameplay-stat gains (`CORE_STAT_GAINS`), derived secondary stats
  * (`CORE_STAT_TO_SECONDARY`), and the Wisdom→mana resource payoff (which lives
  * outside both maps, see `shared/mana.ts`). Returns `"(no effect yet)"` for
- * stats with no gains in any of those (currently only Charisma).
+ * stats with no gains in any of those (currently Charisma and Weight).
  */
 export function formatCoreStatGains(stat: PrimaryStatId): string {
   const parts: string[] = [];
