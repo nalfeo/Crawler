@@ -1,5 +1,16 @@
 [
   {
+    "commit": "763b0d1dd05db893dd2e68d5063c7f4c9919132e",
+    "commitDate": "2026-07-10T19:29:01Z",
+    "commitSubject": "fix(hud-ux): enforce surface exclusivity and improve readability (#1011)",
+    "capturedAt": "2026-07-10T20:11:12.454Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29118572708",
+    "winRate": 0.8366666666666667,
+    "totalWins": 251,
+    "totalRuns": 300,
+    "path": "by-sha/763b0d1dd05db893dd2e68d5063c7f4c9919132e.json"
+  },
+  {
     "commit": "47ee0d0fd78a96879288ecf6ab432b75f2c48fd4",
     "commitDate": "2026-07-10T18:00:23Z",
     "commitSubject": "feat(devtools): add postprocess live upscale control (#1012)",
