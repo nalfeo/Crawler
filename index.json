@@ -1,5 +1,16 @@
 [
   {
+    "commit": "60580aadd7e791c6f200d2f1e3cf6a241a477e1b",
+    "commitDate": "2026-07-10T08:48:56Z",
+    "commitSubject": "fix: shared safe/boss door permanent-seal — decouple door logical latch from physical tile state (#1013)",
+    "capturedAt": "2026-07-10T09:31:07.307Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29081376145",
+    "winRate": 0.8433333333333334,
+    "totalWins": 253,
+    "totalRuns": 300,
+    "path": "by-sha/60580aadd7e791c6f200d2f1e3cf6a241a477e1b.json"
+  },
+  {
     "commit": "78958b1131594cb9b9826e65e12ac148e537279e",
     "commitDate": "2026-07-10T08:09:03Z",
     "commitSubject": "feat: set-piece editor/runtime WYSIWYG parity follow-ups (#998)",
