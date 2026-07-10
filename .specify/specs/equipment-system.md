@@ -81,15 +81,16 @@ Equipment may grant bonuses to **primary stats** and/or **secondary stats**.
 
 #### Primary Stats
 
-| Stat ID        | Label        | Effect Summary                              |
-| -------------- | ------------ | ------------------------------------------- |
-| `strength`     | Strength     | Melee damage, carry capacity                |
-| `dexterity`    | Dexterity    | Attack speed, dodge chance, crit chance     |
-| `constitution` | Constitution | Max HP, HP regen, status resist             |
-| `intelligence` | Intelligence | Spell/ability power, crafting bonus         |
-| `wisdom`       | Wisdom       | XP gain, cooldown reduction, awareness      |
-| `charisma`     | Charisma     | Broadcast Score bonus, shop prices, sponsor |
-| `luck`         | Luck         | Drop rates, crit chance, random event bias  |
+| Stat ID        | Label        | Effect Summary                               |
+| -------------- | ------------ | -------------------------------------------- |
+| `strength`     | Strength     | Melee damage, carry capacity                 |
+| `dexterity`    | Dexterity    | Attack speed, dodge chance, crit chance      |
+| `constitution` | Constitution | Max HP, HP regen, status resist              |
+| `intelligence` | Intelligence | Spell/ability power, crafting bonus          |
+| `wisdom`       | Wisdom       | XP gain, cooldown reduction, awareness       |
+| `charisma`     | Charisma     | Broadcast Score bonus, shop prices, sponsor  |
+| `luck`         | Luck         | Drop rates, crit chance, random event bias   |
+| `weight`       | Weight       | Placeholder for future momentum interactions |
 
 #### Secondary Stats (derived / granted by items)
 
@@ -176,7 +177,7 @@ effectiveXp        = baseXpValue * (1 + xpBonus)
 - XP collection (when implemented) → read `xpBonus`
 - `BroadcastScore` → read `charisma` bonus (future)
 
-Stats are read live from `EffectiveStats` by default; the explicit exception is ability cooldown windows, where `abilitySystem` snapshots the computed cooldown duration at cast time to keep HUD and gating semantics aligned for that window. Projectiles use damage values at spawn time.
+Stats are read live from `EffectiveStats` by default; the explicit exception is ability cooldown windows, where `abilitySystem` snapshots the computed cooldown duration at cast time to keep HUD and gating semantics aligned for that window. Projectiles still snapshot spawn-time base damage, but `apply-damage.ts` reads live `damageBonus`/`damagePercent`/crit stats at hit time.
 
 ### Default Base Stats
 
@@ -192,9 +193,11 @@ const DEFAULT_BASE_STATS: Record<StatId, number> = {
   wisdom: 1,
   charisma: 1,
   luck: 1,
+  weight: 1,
   // Secondary
   armor: 0,
   damageBonus: 0,
+  damagePercent: 0,
   attackSpeed: 0,
   moveSpeed: 0,
   critChance: 0.05,
