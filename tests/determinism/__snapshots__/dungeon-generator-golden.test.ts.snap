@@ -3,7 +3,7 @@
 exports[`DungeonGenerator golden-map determinism > produces byte-identical FloorMaps across the config/seed matrix 1`] = `
 {
   "caves#1": {
-    "flagsHash": "a3ed5bd2",
+    "flagsHash": "7ae51e8b",
     "height": 60,
     "rooms": [
       {
@@ -16,7 +16,6 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "neighbors": [
           4,
           5,
-          9,
         ],
         "role": "spawn",
       },
@@ -66,28 +65,28 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "bounds": "52,28,13,14",
         "doors": [
           "53,28->1",
-          "58,41->0",
+          "58,41->5",
           "64,30->0",
         ],
         "id": 4,
         "neighbors": [
           1,
           0,
-          5,
           9,
+          5,
         ],
         "role": "normal",
       },
       {
         "bounds": "46,47,16,12",
         "doors": [
-          "58,47->0",
+          "58,47->4",
         ],
         "id": 5,
         "neighbors": [
           0,
-          9,
           4,
+          9,
         ],
         "role": "normal",
       },
@@ -107,26 +106,25 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       {
         "bounds": "6,0,12,15",
         "doors": [
-          "17,8->6",
-          "17,9->6",
+          "17,8->2",
+          "17,9->2",
         ],
         "id": 7,
         "neighbors": [
-          6,
           2,
+          6,
         ],
         "role": "boss_stair",
       },
       {
         "bounds": "7,22,12,12",
         "doors": [
-          "18,31->10",
-          "18,32->10",
+          "18,31->3",
         ],
         "id": 8,
         "neighbors": [
-          10,
           3,
+          10,
           9,
         ],
         "role": "safe",
@@ -140,11 +138,10 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "id": 9,
         "neighbors": [
           8,
-          10,
           3,
-          0,
-          5,
+          10,
           4,
+          5,
         ],
         "role": "normal",
       },
@@ -166,11 +163,11 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       },
     ],
     "spawn": "73,36",
-    "terrainHash": "f8e9997e",
+    "terrainHash": "564f59ee",
     "width": 80,
   },
   "caves#10": {
-    "flagsHash": "92b1fc3f",
+    "flagsHash": "6bb23424",
     "height": 60,
     "rooms": [
       {
@@ -182,8 +179,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "id": 0,
         "neighbors": [
           2,
-          3,
           6,
+          3,
           5,
           7,
         ],
@@ -204,15 +201,15 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       {
         "bounds": "28,12,15,12",
         "doors": [
-          "42,18->3",
-          "38,23->3",
+          "42,18->6",
+          "38,23->6",
           "28,21->0",
         ],
         "id": 2,
         "neighbors": [
           0,
-          3,
           6,
+          3,
           5,
           7,
         ],
@@ -221,13 +218,13 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       {
         "bounds": "22,42,11,13",
         "doors": [
-          "22,47->2",
+          "22,47->6",
         ],
         "id": 3,
         "neighbors": [
           2,
-          0,
           6,
+          0,
           5,
           7,
         ],
@@ -254,9 +251,9 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "id": 5,
         "neighbors": [
           2,
+          6,
           3,
           0,
-          6,
           7,
           9,
         ],
@@ -266,7 +263,7 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "bounds": "10,42,12,14",
         "doors": [
           "21,44->2",
-          "21,47->2",
+          "21,47->3",
         ],
         "id": 6,
         "neighbors": [
@@ -288,9 +285,9 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "id": 7,
         "neighbors": [
           2,
+          6,
           3,
           0,
-          6,
           5,
           8,
           1,
@@ -325,11 +322,11 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       },
     ],
     "spawn": "10,17",
-    "terrainHash": "d74d0082",
+    "terrainHash": "cc341ebf",
     "width": 80,
   },
   "caves#2": {
-    "flagsHash": "2ad77eb4",
+    "flagsHash": "1c28e3ad",
     "height": 60,
     "rooms": [
       {
@@ -344,8 +341,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
           8,
           12,
           11,
-          10,
           3,
+          10,
           4,
         ],
         "role": "spawn",
@@ -390,7 +387,6 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
           0,
           10,
           4,
-          6,
           2,
         ],
         "role": "normal",
@@ -404,7 +400,6 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         ],
         "id": 4,
         "neighbors": [
-          11,
           0,
           10,
           3,
@@ -431,9 +426,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         ],
         "id": 6,
         "neighbors": [
-          3,
-          4,
           10,
+          4,
           1,
         ],
         "role": "normal",
@@ -483,11 +477,10 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         ],
         "id": 10,
         "neighbors": [
-          11,
+          12,
           0,
           3,
           4,
-          12,
           5,
           6,
         ],
@@ -501,10 +494,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         ],
         "id": 11,
         "neighbors": [
-          0,
-          10,
           3,
-          4,
+          0,
         ],
         "role": "normal",
       },
@@ -523,11 +514,11 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       },
     ],
     "spawn": "27,18",
-    "terrainHash": "fdfa1fd4",
+    "terrainHash": "79c33656",
     "width": 80,
   },
   "caves#3": {
-    "flagsHash": "7ecde04f",
+    "flagsHash": "9fd7b985",
     "height": 60,
     "rooms": [
       {
@@ -546,8 +537,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
           11,
           9,
           4,
-          8,
           10,
+          8,
         ],
         "role": "spawn",
       },
@@ -598,8 +589,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "id": 4,
         "neighbors": [
           9,
-          8,
           10,
+          8,
           0,
         ],
         "role": "normal",
@@ -612,8 +603,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         ],
         "id": 5,
         "neighbors": [
-          7,
           6,
+          7,
           11,
           0,
           2,
@@ -655,9 +646,9 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         ],
         "id": 8,
         "neighbors": [
+          10,
           9,
           4,
-          10,
           0,
         ],
         "role": "normal",
@@ -687,8 +678,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "id": 10,
         "neighbors": [
           9,
-          4,
           8,
+          4,
           0,
         ],
         "role": "normal",
@@ -700,8 +691,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         ],
         "id": 11,
         "neighbors": [
-          7,
           6,
+          7,
           5,
           0,
           2,
@@ -710,11 +701,11 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       },
     ],
     "spawn": "51,47",
-    "terrainHash": "b2a6bc43",
+    "terrainHash": "c78b620b",
     "width": 80,
   },
   "caves#4": {
-    "flagsHash": "229b45d7",
+    "flagsHash": "b7f4ba87",
     "height": 60,
     "rooms": [
       {
@@ -731,7 +722,6 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
           2,
           10,
           5,
-          12,
         ],
         "role": "spawn",
       },
@@ -761,11 +751,10 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
           4,
           3,
           8,
-          0,
           9,
           10,
           5,
-          12,
+          0,
         ],
         "role": "normal",
       },
@@ -802,10 +791,10 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "id": 5,
         "neighbors": [
           8,
-          0,
           9,
           2,
           10,
+          0,
           12,
         ],
         "role": "normal",
@@ -840,12 +829,11 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         ],
         "id": 8,
         "neighbors": [
-          0,
           9,
           2,
           10,
           5,
-          12,
+          0,
         ],
         "role": "normal",
       },
@@ -860,10 +848,10 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "id": 9,
         "neighbors": [
           8,
-          0,
           2,
           10,
           5,
+          0,
           12,
         ],
         "role": "normal",
@@ -876,11 +864,10 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "id": 10,
         "neighbors": [
           8,
-          0,
           9,
           2,
           5,
-          12,
+          0,
         ],
         "role": "normal",
       },
@@ -895,7 +882,6 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "neighbors": [
           3,
           1,
-          12,
         ],
         "role": "normal",
       },
@@ -907,25 +893,20 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         ],
         "id": 12,
         "neighbors": [
-          8,
-          0,
-          9,
-          2,
-          10,
-          5,
-          11,
           1,
+          9,
           7,
+          5,
         ],
         "role": "normal",
       },
     ],
     "spawn": "5,29",
-    "terrainHash": "e019eee0",
+    "terrainHash": "4e2cfc0a",
     "width": 80,
   },
   "caves#5": {
-    "flagsHash": "8b434a60",
+    "flagsHash": "20f79ad5",
     "height": 60,
     "rooms": [
       {
@@ -1121,26 +1102,26 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       },
     ],
     "spawn": "30,10",
-    "terrainHash": "18e38265",
+    "terrainHash": "4b8af5cc",
     "width": 80,
   },
   "caves#6": {
-    "flagsHash": "d2fe0dee",
+    "flagsHash": "214e0469",
     "height": 60,
     "rooms": [
       {
         "bounds": "49,34,11,15",
         "doors": [
           "56,34->1",
-          "59,46->3",
+          "59,46->12",
           "51,48->5",
         ],
         "id": 0,
         "neighbors": [
           1,
-          3,
           5,
           12,
+          3,
         ],
         "role": "spawn",
       },
@@ -1169,8 +1150,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "neighbors": [
           10,
           4,
-          6,
           13,
+          6,
           11,
         ],
         "role": "normal",
@@ -1185,8 +1166,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "id": 3,
         "neighbors": [
           8,
-          0,
           1,
+          0,
           12,
         ],
         "role": "normal",
@@ -1221,12 +1202,12 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "doors": [
           "31,38->5",
           "23,47->9",
-          "21,35->13",
+          "21,35->2",
         ],
         "id": 6,
         "neighbors": [
-          13,
           2,
+          13,
           5,
           9,
         ],
@@ -1311,22 +1292,22 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       {
         "bounds": "1,24,15,14",
         "doors": [
-          "15,31->6",
+          "15,31->2",
         ],
         "id": 13,
         "neighbors": [
-          6,
           2,
+          6,
         ],
         "role": "safe",
       },
     ],
     "spawn": "54,41",
-    "terrainHash": "7d11920d",
+    "terrainHash": "1ba281e1",
     "width": 80,
   },
   "caves#7": {
-    "flagsHash": "59d777d1",
+    "flagsHash": "a93013ae",
     "height": 60,
     "rooms": [
       {
@@ -1339,10 +1320,6 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "neighbors": [
           7,
           4,
-          10,
-          5,
-          9,
-          8,
         ],
         "role": "spawn",
       },
@@ -1385,17 +1362,16 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       {
         "bounds": "3,31,13,12",
         "doors": [
-          "15,36->7",
+          "15,36->5",
           "8,31->0",
         ],
         "id": 4,
         "neighbors": [
-          7,
-          10,
-          5,
-          9,
           8,
           0,
+          5,
+          10,
+          9,
           2,
         ],
         "role": "normal",
@@ -1403,19 +1379,17 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       {
         "bounds": "30,25,15,11",
         "doors": [
-          "43,35->7",
-          "30,34->7",
+          "43,35->10",
+          "30,34->10",
           "43,25->8",
         ],
         "id": 5,
         "neighbors": [
-          7,
-          4,
-          10,
-          9,
           8,
-          0,
           1,
+          10,
+          4,
+          9,
         ],
         "role": "normal",
       },
@@ -1434,16 +1408,11 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       {
         "bounds": "11,3,15,11",
         "doors": [
-          "19,13->4",
+          "19,13->0",
         ],
         "id": 7,
         "neighbors": [
           0,
-          4,
-          10,
-          5,
-          9,
-          8,
         ],
         "role": "normal",
       },
@@ -1457,12 +1426,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "id": 8,
         "neighbors": [
           11,
-          7,
           4,
-          10,
           5,
-          9,
-          0,
         ],
         "role": "normal",
       },
@@ -1470,16 +1435,13 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "bounds": "33,40,12,13",
         "doors": [
           "44,44->3",
-          "43,40->7",
+          "43,40->5",
         ],
         "id": 9,
         "neighbors": [
-          7,
-          4,
-          10,
           5,
-          8,
-          0,
+          10,
+          4,
           3,
         ],
         "role": "normal",
@@ -1487,18 +1449,15 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       {
         "bounds": "19,33,12,11",
         "doors": [
-          "30,34->7",
+          "30,34->5",
           "22,43->2",
-          "19,36->7",
+          "19,36->5",
         ],
         "id": 10,
         "neighbors": [
-          7,
-          4,
           5,
+          4,
           9,
-          8,
-          0,
           2,
         ],
         "role": "normal",
@@ -1516,11 +1475,11 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       },
     ],
     "spawn": "8,23",
-    "terrainHash": "ce6e6ee0",
+    "terrainHash": "f36866d2",
     "width": 80,
   },
   "caves#8": {
-    "flagsHash": "50ea342d",
+    "flagsHash": "0dc5b4dc",
     "height": 60,
     "rooms": [
       {
@@ -1649,28 +1608,28 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       },
     ],
     "spawn": "32,54",
-    "terrainHash": "9eae6b48",
+    "terrainHash": "851f1b51",
     "width": 80,
   },
   "caves#9": {
-    "flagsHash": "3bc5bc50",
+    "flagsHash": "3b210879",
     "height": 60,
     "rooms": [
       {
         "bounds": "51,28,11,14",
         "doors": [
-          "51,30->1",
-          "54,41->12",
+          "51,30->3",
+          "54,41->5",
           "60,28->1",
-          "61,39->12",
+          "61,39->5",
         ],
         "id": 0,
         "neighbors": [
-          1,
           3,
           9,
-          12,
+          1,
           5,
+          12,
           8,
         ],
         "role": "spawn",
@@ -1705,17 +1664,17 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       {
         "bounds": "35,34,14,14",
         "doors": [
-          "37,34->1",
-          "39,34->1",
-          "43,47->0",
+          "37,34->0",
+          "39,34->0",
+          "43,47->5",
         ],
         "id": 3,
         "neighbors": [
-          1,
           0,
           9,
-          12,
+          1,
           5,
+          12,
           8,
           11,
           2,
@@ -1744,8 +1703,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "neighbors": [
           0,
           12,
-          8,
           3,
+          8,
         ],
         "role": "normal",
       },
@@ -1778,13 +1737,13 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       {
         "bounds": "66,44,13,11",
         "doors": [
-          "66,50->0",
+          "66,50->5",
         ],
         "id": 8,
         "neighbors": [
+          5,
           0,
           12,
-          5,
           3,
         ],
         "role": "normal",
@@ -1793,14 +1752,14 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "bounds": "26,12,14,15",
         "doors": [
           "27,12->7",
-          "37,26->1",
+          "37,26->0",
         ],
         "id": 9,
         "neighbors": [
           7,
-          1,
           0,
           3,
+          1,
           6,
         ],
         "role": "normal",
@@ -1834,20 +1793,20 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       {
         "bounds": "41,48,11,11",
         "doors": [
-          "48,48->0",
+          "48,48->5",
         ],
         "id": 12,
         "neighbors": [
-          0,
           5,
-          8,
+          0,
           3,
+          8,
         ],
         "role": "normal",
       },
     ],
     "spawn": "56,35",
-    "terrainHash": "29e763a0",
+    "terrainHash": "5d7bf5ce",
     "width": 80,
   },
   "flat#1": {
@@ -4441,7 +4400,7 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
     "width": 60,
   },
   "variety#1": {
-    "flagsHash": "a3ed5bd2",
+    "flagsHash": "7ae51e8b",
     "height": 60,
     "rooms": [
       {
@@ -4503,7 +4462,7 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "bounds": "52,28,13,14",
         "doors": [
           "53,28->1",
-          "58,41->0",
+          "58,41->5",
           "64,30->0",
         ],
         "id": 4,
@@ -4518,7 +4477,7 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       {
         "bounds": "46,47,16,12",
         "doors": [
-          "58,47->0",
+          "58,47->4",
         ],
         "id": 5,
         "neighbors": [
@@ -4544,26 +4503,25 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       {
         "bounds": "6,0,12,15",
         "doors": [
-          "17,8->6",
-          "17,9->6",
+          "17,8->2",
+          "17,9->2",
         ],
         "id": 7,
         "neighbors": [
-          6,
           2,
+          6,
         ],
         "role": "boss_stair",
       },
       {
         "bounds": "7,22,12,12",
         "doors": [
-          "18,31->10",
-          "18,32->10",
+          "18,31->3",
         ],
         "id": 8,
         "neighbors": [
-          10,
           3,
+          10,
           9,
         ],
         "role": "safe",
@@ -4577,8 +4535,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "id": 9,
         "neighbors": [
           8,
-          10,
           3,
+          10,
           4,
           5,
         ],
@@ -4602,11 +4560,11 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       },
     ],
     "spawn": "73,36",
-    "terrainHash": "d13fd156",
+    "terrainHash": "30a4d299",
     "width": 80,
   },
   "variety#10": {
-    "flagsHash": "92b1fc3f",
+    "flagsHash": "6bb23424",
     "height": 60,
     "rooms": [
       {
@@ -4655,7 +4613,7 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       {
         "bounds": "22,42,11,13",
         "doors": [
-          "22,47->0",
+          "22,47->6",
         ],
         "id": 3,
         "neighbors": [
@@ -4688,8 +4646,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "neighbors": [
           2,
           7,
-          3,
           9,
+          3,
         ],
         "role": "normal",
       },
@@ -4697,7 +4655,7 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "bounds": "10,42,12,14",
         "doors": [
           "21,44->0",
-          "21,47->0",
+          "21,47->3",
         ],
         "id": 6,
         "neighbors": [
@@ -4751,11 +4709,11 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       },
     ],
     "spawn": "10,17",
-    "terrainHash": "e1641d0d",
+    "terrainHash": "3a525b7f",
     "width": 80,
   },
   "variety#2": {
-    "flagsHash": "2ad77eb4",
+    "flagsHash": "1c28e3ad",
     "height": 60,
     "rooms": [
       {
@@ -4770,8 +4728,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
           8,
           12,
           11,
-          10,
           3,
+          10,
           4,
         ],
         "role": "spawn",
@@ -4816,7 +4774,6 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
           0,
           10,
           4,
-          6,
           2,
         ],
         "role": "normal",
@@ -4830,7 +4787,6 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         ],
         "id": 4,
         "neighbors": [
-          11,
           0,
           10,
           3,
@@ -4857,9 +4813,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         ],
         "id": 6,
         "neighbors": [
-          3,
-          4,
           10,
+          4,
           1,
         ],
         "role": "normal",
@@ -4909,11 +4864,10 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         ],
         "id": 10,
         "neighbors": [
-          11,
+          12,
           0,
           3,
           4,
-          12,
           5,
           6,
         ],
@@ -4927,10 +4881,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         ],
         "id": 11,
         "neighbors": [
-          0,
-          10,
           3,
-          4,
+          0,
         ],
         "role": "normal",
       },
@@ -4949,11 +4901,11 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       },
     ],
     "spawn": "27,18",
-    "terrainHash": "d2cce5ca",
+    "terrainHash": "c0f24760",
     "width": 80,
   },
   "variety#3": {
-    "flagsHash": "7ecde04f",
+    "flagsHash": "9fd7b985",
     "height": 60,
     "rooms": [
       {
@@ -5023,8 +4975,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "neighbors": [
           9,
           0,
-          8,
           10,
+          8,
         ],
         "role": "normal",
       },
@@ -5036,8 +4988,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         ],
         "id": 5,
         "neighbors": [
-          7,
           6,
+          7,
           11,
           0,
           2,
@@ -5120,8 +5072,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         ],
         "id": 11,
         "neighbors": [
-          7,
           6,
+          7,
           5,
           0,
           2,
@@ -5130,11 +5082,11 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       },
     ],
     "spawn": "51,47",
-    "terrainHash": "20db11a0",
+    "terrainHash": "34def348",
     "width": 80,
   },
   "variety#4": {
-    "flagsHash": "229b45d7",
+    "flagsHash": "b7f4ba87",
     "height": 60,
     "rooms": [
       {
@@ -5151,7 +5103,6 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
           2,
           10,
           5,
-          12,
         ],
         "role": "spawn",
       },
@@ -5181,8 +5132,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
           4,
           3,
           8,
-          0,
           9,
+          0,
         ],
         "role": "normal",
       },
@@ -5254,9 +5205,9 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         ],
         "id": 8,
         "neighbors": [
-          0,
           9,
           2,
+          0,
         ],
         "role": "normal",
       },
@@ -5271,8 +5222,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "id": 9,
         "neighbors": [
           8,
-          0,
           2,
+          0,
           10,
           5,
           12,
@@ -5287,9 +5238,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "id": 10,
         "neighbors": [
           0,
-          9,
           5,
-          12,
+          9,
         ],
         "role": "normal",
       },
@@ -5304,7 +5254,6 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "neighbors": [
           3,
           1,
-          12,
         ],
         "role": "normal",
       },
@@ -5316,22 +5265,19 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         ],
         "id": 12,
         "neighbors": [
-          0,
-          10,
+          1,
           9,
           5,
-          11,
-          1,
         ],
         "role": "normal",
       },
     ],
     "spawn": "5,29",
-    "terrainHash": "f4a51344",
+    "terrainHash": "c376d27c",
     "width": 80,
   },
   "variety#5": {
-    "flagsHash": "8b434a60",
+    "flagsHash": "20f79ad5",
     "height": 60,
     "rooms": [
       {
@@ -5344,9 +5290,9 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "id": 0,
         "neighbors": [
           8,
+          6,
           5,
           7,
-          6,
         ],
         "role": "spawn",
       },
@@ -5404,15 +5350,15 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       {
         "bounds": "14,35,15,11",
         "doors": [
-          "20,35->0",
+          "20,35->8",
           "26,45->2",
         ],
         "id": 5,
         "neighbors": [
-          0,
-          7,
           8,
           6,
+          0,
+          7,
           2,
         ],
         "role": "normal",
@@ -5424,10 +5370,10 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         ],
         "id": 6,
         "neighbors": [
+          8,
           0,
           5,
           7,
-          8,
         ],
         "role": "normal",
       },
@@ -5436,16 +5382,16 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "doors": [
           "38,16->9",
           "32,15->0",
-          "26,20->0",
+          "26,20->8",
         ],
         "id": 7,
         "neighbors": [
-          0,
-          5,
-          8,
-          6,
           9,
           12,
+          8,
+          6,
+          0,
+          5,
         ],
         "role": "normal",
       },
@@ -5458,9 +5404,9 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "id": 8,
         "neighbors": [
           0,
+          6,
           5,
           7,
-          6,
         ],
         "role": "normal",
       },
@@ -5525,26 +5471,26 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       },
     ],
     "spawn": "30,10",
-    "terrainHash": "9aca08ce",
+    "terrainHash": "98c7039c",
     "width": 80,
   },
   "variety#6": {
-    "flagsHash": "d2fe0dee",
+    "flagsHash": "214e0469",
     "height": 60,
     "rooms": [
       {
         "bounds": "49,34,11,15",
         "doors": [
           "56,34->1",
-          "59,46->3",
+          "59,46->12",
           "51,48->5",
         ],
         "id": 0,
         "neighbors": [
           1,
-          3,
           5,
           12,
+          3,
         ],
         "role": "spawn",
       },
@@ -5573,8 +5519,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "neighbors": [
           10,
           4,
-          6,
           13,
+          6,
           11,
         ],
         "role": "normal",
@@ -5589,8 +5535,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "id": 3,
         "neighbors": [
           8,
-          0,
           1,
+          0,
           12,
         ],
         "role": "normal",
@@ -5625,12 +5571,12 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "doors": [
           "31,38->5",
           "23,47->9",
-          "21,35->13",
+          "21,35->2",
         ],
         "id": 6,
         "neighbors": [
-          13,
           2,
+          13,
           5,
           9,
         ],
@@ -5715,22 +5661,22 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       {
         "bounds": "1,24,15,14",
         "doors": [
-          "15,31->6",
+          "15,31->2",
         ],
         "id": 13,
         "neighbors": [
-          6,
           2,
+          6,
         ],
         "role": "safe",
       },
     ],
     "spawn": "54,41",
-    "terrainHash": "21bbfc26",
+    "terrainHash": "d2f173d0",
     "width": 80,
   },
   "variety#7": {
-    "flagsHash": "59d777d1",
+    "flagsHash": "a93013ae",
     "height": 60,
     "rooms": [
       {
@@ -5743,9 +5689,6 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "neighbors": [
           7,
           4,
-          10,
-          8,
-          5,
         ],
         "role": "spawn",
       },
@@ -5788,16 +5731,14 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       {
         "bounds": "3,31,13,12",
         "doors": [
-          "15,36->7",
+          "15,36->10",
           "8,31->0",
         ],
         "id": 4,
         "neighbors": [
-          7,
-          10,
           8,
-          5,
           0,
+          10,
           2,
         ],
         "role": "normal",
@@ -5811,12 +5752,9 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         ],
         "id": 5,
         "neighbors": [
-          7,
-          4,
-          10,
           8,
-          0,
           1,
+          10,
           9,
         ],
         "role": "normal",
@@ -5836,15 +5774,11 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       {
         "bounds": "11,3,15,11",
         "doors": [
-          "19,13->4",
+          "19,13->0",
         ],
         "id": 7,
         "neighbors": [
           0,
-          4,
-          10,
-          8,
-          5,
         ],
         "role": "normal",
       },
@@ -5858,11 +5792,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "id": 8,
         "neighbors": [
           11,
-          7,
           4,
-          10,
           5,
-          0,
         ],
         "role": "normal",
       },
@@ -5884,15 +5815,12 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "doors": [
           "30,34->5",
           "22,43->2",
-          "19,36->7",
+          "19,36->4",
         ],
         "id": 10,
         "neighbors": [
-          7,
-          4,
-          8,
           5,
-          0,
+          4,
           2,
         ],
         "role": "normal",
@@ -5910,11 +5838,11 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       },
     ],
     "spawn": "8,23",
-    "terrainHash": "0e0274d4",
+    "terrainHash": "a69a784a",
     "width": 80,
   },
   "variety#8": {
-    "flagsHash": "50ea342d",
+    "flagsHash": "0dc5b4dc",
     "height": 60,
     "rooms": [
       {
@@ -6043,28 +5971,28 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       },
     ],
     "spawn": "32,54",
-    "terrainHash": "25b8fe9c",
+    "terrainHash": "10f28d9e",
     "width": 80,
   },
   "variety#9": {
-    "flagsHash": "3bc5bc50",
+    "flagsHash": "3b210879",
     "height": 60,
     "rooms": [
       {
         "bounds": "51,28,11,14",
         "doors": [
-          "51,30->1",
-          "54,41->12",
+          "51,30->3",
+          "54,41->5",
           "60,28->1",
-          "61,39->12",
+          "61,39->5",
         ],
         "id": 0,
         "neighbors": [
-          1,
           3,
           9,
-          12,
+          1,
           5,
+          12,
           8,
         ],
         "role": "spawn",
@@ -6098,17 +6026,17 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       {
         "bounds": "35,34,14,14",
         "doors": [
-          "37,34->1",
-          "39,34->1",
-          "43,47->0",
+          "37,34->0",
+          "39,34->0",
+          "43,47->5",
         ],
         "id": 3,
         "neighbors": [
-          1,
           0,
           9,
-          12,
+          1,
           5,
+          12,
           8,
           11,
         ],
@@ -6136,8 +6064,8 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "neighbors": [
           0,
           12,
-          8,
           3,
+          8,
         ],
         "role": "normal",
       },
@@ -6170,13 +6098,13 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       {
         "bounds": "66,44,13,11",
         "doors": [
-          "66,50->0",
+          "66,50->5",
         ],
         "id": 8,
         "neighbors": [
+          5,
           0,
           12,
-          5,
           3,
         ],
         "role": "normal",
@@ -6185,14 +6113,14 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
         "bounds": "26,12,14,15",
         "doors": [
           "27,12->7",
-          "37,26->1",
+          "37,26->0",
         ],
         "id": 9,
         "neighbors": [
           7,
-          1,
           0,
           3,
+          1,
           6,
         ],
         "role": "normal",
@@ -6226,20 +6154,20 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       {
         "bounds": "41,48,11,11",
         "doors": [
-          "48,48->0",
+          "48,48->5",
         ],
         "id": 12,
         "neighbors": [
-          0,
           5,
-          8,
+          0,
           3,
+          8,
         ],
         "role": "normal",
       },
     ],
     "spawn": "56,35",
-    "terrainHash": "9ef94e80",
+    "terrainHash": "e4ea296e",
     "width": 80,
   },
 }

@@ -2,8 +2,8 @@
  * Corridor post-processing for the dungeon generator.
  *
  * - `widenCorridors` — widen ~60% of corridor tiles by one perpendicular tile.
- * - `addDiagonalShortcuts` — carve centerline/tube diagonal links between nearby rooms.
- * - `carveTubePath` — carve a capsule-shaped diagonal corridor between two points.
+ * - `addDiagonalShortcuts` — carve Bresenham diagonal links between nearby rooms.
+ * - `carveBresenhamPath` — carve a 2-wide diagonal corridor between two points.
  *
  * Extracted from DungeonGenerator.ts (behavior-preserving split).
  */
@@ -84,8 +84,8 @@ export function widenCorridors(
 
 /**
  * Add diagonal shortcut corridors between rooms that are positioned diagonally
- * and not yet directly connected. Uses a centerline + tube brush to carve a
- * smoother diagonal path. Only wall tiles are overwritten; existing
+ * and not yet directly connected. Uses Bresenham's line algorithm to carve a
+ * staircase-style diagonal path. Only wall tiles are overwritten; existing
  * floor/corridor/door tiles are preserved.
  */
 export function addDiagonalShortcuts(
@@ -139,19 +139,19 @@ export function addDiagonalShortcuts(
       const b = rooms[bestJ]!;
       const cxB = Math.floor(b.bounds.x + b.bounds.width / 2);
       const cyB = Math.floor(b.bounds.y + b.bounds.height / 2);
-      carveTubePath(tileMap, terrain, cxA, cyA, cxB, cyB, w, h, protectedWalls);
+      carveBresenhamPath(tileMap, terrain, cxA, cyA, cxB, cyB, w, h, protectedWalls);
       connected.add(`${Math.min(i, bestJ)}:${Math.max(i, bestJ)}`);
     }
   }
 }
 
 /**
- * Carve a line-tube path from (x0,y0) to (x1,y1), converting STONE_WALL tiles
- * to CORRIDOR. Existing floor/door tiles are left unchanged.
- * The brush is a deterministic capsule around the line segment, so diagonal
- * corridors no longer staircase as harshly as a Bresenham walk.
+ * Carve a Bresenham-line path from (x0,y0) to (x1,y1), converting STONE_WALL
+ * tiles to CORRIDOR. Existing floor/door tiles are left unchanged.
+ * Each step also widens the path by one tile perpendicular to the major axis
+ * so the diagonal corridor is 2 tiles wide and freely navigable.
  */
-function carveTubePath(
+function carveBresenhamPath(
   tileMap: TileMap,
   terrain: Uint8Array,
   x0: number,
@@ -172,66 +172,33 @@ function carveTubePath(
     }
   };
 
-  const ax = x0 + 0.5;
-  const ay = y0 + 0.5;
-  const bx = x1 + 0.5;
-  const by = y1 + 0.5;
-  const dx = bx - ax;
-  const dy = by - ay;
-  const lenSq = dx * dx + dy * dy;
-  const radius = 0.95;
+  let x = x0;
+  let y = y0;
+  const dx = Math.abs(x1 - x0);
+  const dy = Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1;
+  const sy = y0 < y1 ? 1 : -1;
+  let err = dx - dy;
 
-  const pointToSegmentDistance = (px: number, py: number): number => {
-    if (lenSq <= 0.0001) return Math.hypot(px - ax, py - ay);
-    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
-    const projX = ax + dx * t;
-    const projY = ay + dy * t;
-    return Math.hypot(px - projX, py - projY);
-  };
-
-  const minX = Math.max(1, Math.floor(Math.min(ax, bx) - radius - 1));
-  const maxX = Math.min(w - 2, Math.ceil(Math.max(ax, bx) + radius + 1));
-  const minY = Math.max(1, Math.floor(Math.min(ay, by) - radius - 1));
-  const maxY = Math.min(h - 2, Math.ceil(Math.max(ay, by) + radius + 1));
-
-  for (let y = minY; y <= maxY; y++) {
-    for (let x = minX; x <= maxX; x++) {
-      const distance = pointToSegmentDistance(x + 0.5, y + 0.5);
-      if (distance <= radius) carve(x, y);
+  while (true) {
+    carve(x, y);
+    // Widen by one tile in a fixed perpendicular direction so the corridor is
+    // consistently 2 tiles wide regardless of path direction.
+    if (dx >= dy) {
+      carve(x, y + 1); // horizontal-dominant: always expand south
+    } else {
+      carve(x + 1, y); // vertical-dominant: always expand east
     }
-  }
 
-  const toFill: number[] = [];
-  for (let y = minY; y <= maxY; y++) {
-    for (let x = minX; x <= maxX; x++) {
-      const idx = y * w + x;
-      if (protectedWalls.has(idx) || terrain[idx] !== TerrainType.STONE_WALL) continue;
-      let passableNeighbors = 0;
-      for (let dy2 = -1; dy2 <= 1; dy2++) {
-        for (let dx2 = -1; dx2 <= 1; dx2++) {
-          if (dx2 === 0 && dy2 === 0) continue;
-          const nx = x + dx2;
-          const ny = y + dy2;
-          const neighbor = terrain[ny * w + nx];
-          if (
-            neighbor === TerrainType.CORRIDOR ||
-            neighbor === TerrainType.STONE_FLOOR ||
-            neighbor === TerrainType.DOOR ||
-            neighbor === TerrainType.SAFE_ROOM_FLOOR ||
-            neighbor === TerrainType.BOSS_STAIR_FLOOR
-          ) {
-            passableNeighbors++;
-          }
-        }
-      }
-      if (passableNeighbors >= 5 && pointToSegmentDistance(x + 0.5, y + 0.5) <= radius + 0.6) {
-        toFill.push(idx);
-      }
+    if (x === x1 && y === y1) break;
+    const e2 = 2 * err;
+    if (e2 > -dy) {
+      err -= dy;
+      x += sx;
     }
-  }
-
-  for (const idx of toFill) {
-    terrain[idx] = TerrainType.CORRIDOR;
-    tileMap.flags[idx] = TilePresets.FLOOR;
+    if (e2 < dx) {
+      err += dx;
+      y += sy;
+    }
   }
 }

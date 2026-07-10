@@ -9,7 +9,7 @@
  * door-inclusive geometry) because the spike's cs 0.5 / doors-omitted config
  * shattered the navmesh into per-room islands and only ever produced 2-point
  * stub paths — determinism held, but on degenerate output. This test reproduces
- * the corrected golden **960023cd** from the PROMOTED production module
+ * the corrected golden **75917f12** from the PROMOTED production module
  * (`src/game/ai/navmesh/`), not a throwaway spike script, and additionally
  * asserts every query ROUTES to its goal so the golden can never again lock a
  * stub. Crawler's headless win-rate gate runs on linux/x64.
@@ -66,7 +66,7 @@ import type { FloorMap } from '../../src/core/map/FloorMap.js';
  * (seed-42: 45/45 room centers reached). LOCKED — see file header. Cross-platform
  * re-proof (win local == linux CI) tracked in the Slice-3 handoff.
  */
-const GOLDEN_DETERMINISM_HASH = '960023cd';
+const GOLDEN_DETERMINISM_HASH = '75917f12';
 
 /** The exact seeds the spike hashed. */
 const SEEDS = [42, 1337, 999999] as const;
@@ -252,7 +252,7 @@ describe('NAVMESH determinism — pinned config regression guard (Gate 2)', () =
     await initNavmesh();
   });
 
-  it('reproduces the corrected Slice-3 golden determinism hash (960023cd)', () => {
+  it('reproduces the corrected Slice-3 golden determinism hash (75917f12)', () => {
     const results = SEEDS.map((s) => runSeed(s));
     // Sanity: every seed must produce passable geometry AND every query must
     // ROUTE ALL THE WAY to its goal — not just return >1 point. The Slice-1
