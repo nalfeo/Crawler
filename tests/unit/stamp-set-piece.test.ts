@@ -457,6 +457,42 @@ describe('stampSetPiece — clamping and determinism', () => {
     });
   });
 
+  it('clamps NPC anchor by half-extents so resized collision boxes stay inside interior', () => {
+    const bounds: RoomBounds = { x: 0, y: 0, width: 10, height: 9 };
+    const def = makeDef({
+      npcs: [
+        {
+          id: 'large-npc',
+          npcTypeId: 'tutorial-goon',
+          x: 7,
+          y: 6,
+          widthFt: 8,
+          heightFt: 8,
+        },
+      ],
+    });
+    const stamp = stampSetPiece(def, opts(bounds));
+    expect(stamp.npcs).toHaveLength(1);
+    const npc = stamp.npcs[0]!;
+    const interiorMinX = 1;
+    const interiorMaxX = 8;
+    const interiorMinY = 1;
+    const interiorMaxY = 7;
+    const widthTiles = (npc.widthFt ?? 8) / TILE;
+    const heightTiles = (npc.heightFt ?? 8) / TILE;
+    const centerTileX = npc.x / TILE;
+    const centerTileY = npc.y / TILE;
+    const minEdgeX = centerTileX - widthTiles / 2;
+    const maxEdgeX = centerTileX + widthTiles / 2;
+    const minEdgeY = centerTileY - heightTiles / 2;
+    const maxEdgeY = centerTileY + heightTiles / 2;
+
+    expect(minEdgeX).toBeGreaterThanOrEqual(interiorMinX);
+    expect(maxEdgeX).toBeLessThanOrEqual(interiorMaxX + 1);
+    expect(minEdgeY).toBeGreaterThanOrEqual(interiorMinY);
+    expect(maxEdgeY).toBeLessThanOrEqual(interiorMaxY + 1);
+  });
+
   it('returns no placements for a room with no passable interior', () => {
     // 2×2 room → interior width/height 0 after the 1-tile wall inset. Nothing
     // can be placed without landing on a wall, so the stamp is empty.

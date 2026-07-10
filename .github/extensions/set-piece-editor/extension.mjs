@@ -794,7 +794,7 @@ var KINDS={
 };
 var ZD={floor:0,wall:10,door:12,fixture:20,furniture:30,decoration:40,actor:50};
 function getZ(p){return p.z!==undefined?p.z:(ZD[p.kind]||0);}
-function getNpcZ(n){return n.z!==undefined?n.z:60;}
+function getNpcZ(n){return n.z!==undefined?n.z:0;}
 function getLayers(){
   if(!sp)return[];
   if(!sp.sceneLayers||!sp.sceneLayers.length)
@@ -1360,7 +1360,6 @@ function drawNpcEntity(npc,sel,nd){
   if(!res){ctx.fillStyle=NPC_BG;ctx.fillRect(px+1,py+1,sw-2,sh-2);}
   if(res){
     ctx.save();ctx.imageSmoothingEnabled=false;
-    ctx.beginPath();ctx.rect(px+1,py+1,sw-2,sh-2);ctx.clip();
     var dw=sw-2,dh=sh-2,cx=px+1+dw/2,cy=py+1+dh/2;
     var rot=(normalizeRotationDeg(npc&&npc.rotationDeg)||0)*(Math.PI/180);
     var fx=(npc&&npc.flipX===true)?-1:1;

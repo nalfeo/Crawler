@@ -42,10 +42,12 @@ function validateSpriteRefLike(sprite, issuePrefix) {
     return issues;
   }
   if (sprite.source === 'catalog') {
+    reportUnknownKeys(sprite, new Set(['source', 'spriteId']), issuePrefix, issues);
     if (typeof sprite.spriteId !== 'string' || sprite.spriteId.trim() === '') {
       issues.push(issuePrefix + '.spriteId is required');
     }
   } else if (sprite.source === 'sheet') {
+    reportUnknownKeys(sprite, new Set(['source', 'sheetKey', 'col', 'row']), issuePrefix, issues);
     if (typeof sprite.sheetKey !== 'string' || sprite.sheetKey.trim() === '') {
       issues.push(issuePrefix + '.sheetKey is required');
     }
@@ -65,6 +67,21 @@ function validateSpriteRefLike(sprite, issuePrefix) {
     if (typeof sprite.prompt !== 'string' || sprite.prompt.trim() === '') {
       issues.push(issuePrefix + '.prompt is required');
     }
+    reportUnknownKeys(
+      sprite,
+      new Set([
+        'source',
+        'requestId',
+        'label',
+        'prompt',
+        'widthTiles',
+        'heightTiles',
+        'tags',
+        'placeholder',
+      ]),
+      issuePrefix,
+      issues,
+    );
     if (
       sprite.widthTiles !== undefined &&
       (!Number.isInteger(sprite.widthTiles) || sprite.widthTiles <= 0)
@@ -76,6 +93,17 @@ function validateSpriteRefLike(sprite, issuePrefix) {
       (!Number.isInteger(sprite.heightTiles) || sprite.heightTiles <= 0)
     ) {
       issues.push(issuePrefix + '.heightTiles must be a positive integer when present');
+    }
+    if (sprite.tags !== undefined) {
+      if (!Array.isArray(sprite.tags)) {
+        issues.push(issuePrefix + '.tags must be an array of non-empty strings when present');
+      } else {
+        sprite.tags.forEach((tag, index) => {
+          if (typeof tag !== 'string' || tag.trim() === '') {
+            issues.push(issuePrefix + '.tags[' + index + '] must be a non-empty string');
+          }
+        });
+      }
     }
     if (sprite.placeholder !== undefined) {
       const placeholderPrefix = issuePrefix + '.placeholder';

@@ -45,6 +45,7 @@ import {
   type SetPieceNpcAnchorRole,
   type SpriteRef,
 } from '../../shared/set-piece-types.js';
+import { getNpcDef } from '../../shared/npc-types.js';
 
 /**
  * Per-layer depth separation so stacked layers within (and across) props keep a
@@ -150,6 +151,21 @@ function clamp(value: number, lo: number, hi: number): number {
     return hi;
   }
   return value;
+}
+
+function clampNpcAnchorForFootprint(
+  anchorTile: number,
+  interiorMin: number,
+  interiorMax: number,
+  sizeTiles: number,
+): number {
+  const halfTiles = Math.max(0.5, sizeTiles / 2);
+  const minAnchor = interiorMin - 0.5 + halfTiles;
+  const maxAnchor = interiorMax + 0.5 - halfTiles;
+  if (minAnchor > maxAnchor) {
+    return (minAnchor + maxAnchor) / 2;
+  }
+  return clamp(anchorTile, minAnchor, maxAnchor);
 }
 
 /** Interior of a room = a 1-tile inset of its bounds (the border is walls). */
@@ -280,10 +296,25 @@ export function stampSetPiece(def: SetPieceDef, opts: StampSetPieceOptions): Sta
   });
 
   const npcs: StampedSetPieceNpc[] = def.npcs.map((npc) => {
+    const npcDef = getNpcDef(npc.npcTypeId);
+    const widthFt = npc.widthFt ?? npcDef?.widthFt ?? tileSizeFt;
+    const heightFt = npc.heightFt ?? npcDef?.heightFt ?? tileSizeFt;
+    const widthTiles = widthFt / tileSizeFt;
+    const heightTiles = heightFt / tileSizeFt;
     const rawTileX = originTileX + npc.x;
     const rawTileY = originTileY + npc.y;
-    const boundedTileX = clamp(rawTileX, interior.minX, interior.maxX);
-    const boundedTileY = clamp(rawTileY, interior.minY, interior.maxY);
+    const boundedTileX = clampNpcAnchorForFootprint(
+      rawTileX,
+      interior.minX,
+      interior.maxX,
+      widthTiles,
+    );
+    const boundedTileY = clampNpcAnchorForFootprint(
+      rawTileY,
+      interior.minY,
+      interior.maxY,
+      heightTiles,
+    );
     // Keep objective/occupancy tile bookkeeping integer-based (the containing
     // interior tile), while preserving authored sub-tile world positions within
     // the same interior bounds.

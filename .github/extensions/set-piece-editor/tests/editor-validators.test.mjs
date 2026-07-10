@@ -169,6 +169,78 @@ test('validateSetPieceCandidate rejects malformed npc spriteOverride payloads', 
   assert.ok(issues.some((issue) => issue.includes('npcs[0].spriteOverride.row must be')));
 });
 
+test('validateSetPieceCandidate rejects strict custom sprite-ref shape violations', () => {
+  const issues = validateSetPieceCandidate({
+    width: 8,
+    height: 7,
+    props: [
+      {
+        id: 'floor',
+        kind: 'floor',
+        x: 0,
+        y: 0,
+        width: 8,
+        height: 7,
+        layers: [
+          {
+            sprite: {
+              source: 'custom',
+              requestId: 'req-1',
+              label: 'Lamp',
+              prompt: 'old desk lamp',
+              tags: ['ok', ''],
+              placeholder: { source: 'catalog', spriteId: 'sprite:item.gem', rogue: true },
+              rogue: true,
+            },
+          },
+        ],
+      },
+    ],
+    npcs: [
+      {
+        id: 'goon',
+        npcTypeId: 'tutorial-goon',
+        x: 4,
+        y: 2,
+        spriteOverride: {
+          source: 'custom',
+          requestId: 'req-2',
+          label: 'Broker',
+          prompt: 'spell broker',
+          widthTiles: 0,
+          tags: 'bad',
+        },
+      },
+    ],
+  });
+
+  assert.ok(
+    issues.some((issue) => issue.includes('props[0].layers[0].sprite unknown field "rogue"')),
+  );
+  assert.ok(
+    issues.some((issue) =>
+      issue.includes('props[0].layers[0].sprite.placeholder unknown field "rogue"'),
+    ),
+  );
+  assert.ok(
+    issues.some((issue) =>
+      issue.includes('props[0].layers[0].sprite.tags[1] must be a non-empty string'),
+    ),
+  );
+  assert.ok(
+    issues.some((issue) =>
+      issue.includes('npcs[0].spriteOverride.widthTiles must be a positive integer when present'),
+    ),
+  );
+  assert.ok(
+    issues.some((issue) =>
+      issue.includes(
+        'npcs[0].spriteOverride.tags must be an array of non-empty strings when present',
+      ),
+    ),
+  );
+});
+
 test('validateSetPieceCandidate rejects malformed layer transform/tint fields', () => {
   const issues = validateSetPieceCandidate({
     width: 8,

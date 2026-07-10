@@ -253,7 +253,7 @@ export interface SetPieceDef {
   readonly props: readonly SetPiecePropDef[];
   /** NPCs placed by this set piece (empty when none authored). */
   readonly npcs: readonly SetPieceNpcDef[];
-  /** Optional editor scene layers (bottom-to-top ordering). */
+  /** Optional editor scene layers (editor visibility/locking grouping only). */
   readonly sceneLayers?: readonly SetPieceSceneLayerDef[];
 }
 
