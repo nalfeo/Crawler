@@ -14,7 +14,7 @@ ci-policy, agent-personas, docs-tooling
 
 ## Apples
 
-3🍎 estimated, 3🍎 actual (🎯 exact)
+4🍎 estimated, 4🍎 actual (🎯 exact)
 
 ## What Was Done
 

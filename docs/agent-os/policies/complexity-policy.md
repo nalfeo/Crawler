@@ -101,7 +101,7 @@ stage (project rule #12).
 
 ## Calibration Scoring (at Handoff)
 
-At the end of every session, score the **actual** apples and compute the verdict:
+At the end of every **implementation session** (merge-intent code change), score the **actual** apples and compute the verdict:
 
 | delta = actual − estimated | Verdict  | Meaning                        |
 | -------------------------- | -------- | ------------------------------ |
@@ -136,7 +136,7 @@ If a task feels like 6+ apples, split it. A single session should not attempt mo
 
 ## Recording Apple Entries
 
-At the end of every session create a **single new file** at:
+At the end of every **implementation session** create a **single new file** at:
 
 ```
 docs/knowledge/metrics/apples/YYYY-MM-DD-<slug>.json

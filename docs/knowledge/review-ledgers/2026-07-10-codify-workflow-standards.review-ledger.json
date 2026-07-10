@@ -3,15 +3,17 @@
   "date": "2026-07-10",
   "session_slug": "codify-workflow-standards",
   "task_title": "Codify sweep and investigation workflow standards",
-  "estimated_apples": 3,
+  "estimated_apples": 4,
   "stages": {
     "plan_review": {
       "completed": true,
       "reviewer_model": "gpt-5.4",
+      "adversarial": true,
+      "alternatives_considered": 3,
       "concerns_count": 4,
       "resolved_count": 4,
-      "plan_divergence": "convergent",
-      "notes": "Reviewed approach before implementation: mirror top-level guidance, codify policy boundaries, and add explicit GitHub workflow-dispatch hook for broad sweeps."
+      "plan_divergence": "minor",
+      "notes": "Adversarial review enumerated alternatives (reuse ai-sweep workflow mode, add a dispatcher wrapper, enforce investigation->implementation mode-flip) and converged on dedicated workflow + tighter validation/enforcement updates."
     },
     "code_review": {
       "clean": true,
@@ -19,8 +21,22 @@
         {
           "round": 1,
           "models": ["claude-sonnet-4.6"],
-          "concerns_count": 3,
-          "resolved_count": 3,
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
           "clean": true
         }
       ]

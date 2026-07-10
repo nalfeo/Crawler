@@ -52,6 +52,15 @@ jobs:
             echo "::error::weapons must contain at least one entry"
             exit 1
           fi
+          if [ "$(echo "$weapon_matrix" | jq 'length')" -ne "$(echo "$weapon_matrix" | jq '[.[] | ascii_downcase] | unique | length')" ]; then
+            echo "::error::weapons must not contain duplicates"
+            exit 1
+          fi
+          if echo "$weapon_matrix" | jq -e '.[] | ascii_downcase | select(. != "sword" and . != "bow" and . != "baseball-bat")' > /dev/null 2>&1; then
+            echo "::error::weapons must be a comma-separated subset of: sword,bow,baseball-bat"
+            exit 1
+          fi
+          weapon_matrix=$(echo "$weapon_matrix" | jq -c '[.[] | ascii_downcase]')
           echo "weapon_matrix=$weapon_matrix" >> "$GITHUB_OUTPUT"
           echo "seed_list=$(seq -s, 1 "$SEED_COUNT")" >> "$GITHUB_OUTPUT"
 
