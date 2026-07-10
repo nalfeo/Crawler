@@ -2549,6 +2549,12 @@ export class MainGameScene extends Phaser.Scene {
     if (panelOpen !== this.hudHiddenForPanel) {
       this.hudHiddenForPanel = panelOpen;
       this.hudUi?.setVisible(!panelOpen);
+      if (panelOpen) {
+        this.interactionHint?.setVisible(false);
+        this.inventoryButton?.setVisible(false);
+        this.equipButton?.setVisible(false);
+        this.achievementsButton?.setVisible(false);
+      }
     }
     // HUD (health bar, floor timer, boss bar, minimap) updates every frame
     this.hudUi?.sync(this.world, this.playerEid);
@@ -2852,6 +2858,12 @@ export class MainGameScene extends Phaser.Scene {
           );
         }
       }
+      return;
+    }
+
+    if (this.isBlockingSurfaceOpen()) {
+      this.interactionHint?.setVisible(false);
+      this.dialogueBox?.setCloseVisible(false);
       return;
     }
 
