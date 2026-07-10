@@ -163,9 +163,10 @@ this ADR only removes the art-destroying way 0707 reached the commanded count.
   become data-driven.
 - **Add the emitted `grid` to the `SliceMap` returned by the bare
   `computeSliceMap`.** Rejected — it would change the `/api/slice-map` debugger
-  response contract that ADR 0018 unified and that `sidecar/server.ts` depends
-  on being byte-stable. The data-driven grid is returned only from the
-  brief-aware `BriefSliceResult`, leaving the bare path untouched.
+  response contract that ADR 0018 unified and that
+  `scripts/sprites/sidecar/server.ts` depends on being byte-stable. The
+  data-driven grid is returned only from the brief-aware `BriefSliceResult`,
+  leaving the bare path untouched.
 - **`betterAxisScore` ordering dispersion-before-anchorDelta.** Rejected during
   adversarial plan review — anchoring on dispersion before the soft
   commanded-count delta collapses irregular-but-real grids toward `k=1`; the

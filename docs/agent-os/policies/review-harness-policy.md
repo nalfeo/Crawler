@@ -31,6 +31,15 @@ config (`eslint.config.js`, `vite`/`vitest`/`tsconfig`/`commitlint`, and
 `package.json`). The strict allowlist lives in
 `.github/extensions/copilot-guards/lib/pr-scope.mjs`.
 
+### Investigation-only sessions
+
+Investigation/repro/debug sessions are intentionally lightweight when they do
+**not** produce merge-intent code changes. In that mode, you may skip
+review-ledger and PR paperwork. If the investigation finds a fix that should
+land, spin that into a **separate implementation session/PR** and run the full
+normal process there (apple declaration, verify gates, review harness/ledger,
+handoff).
+
 ## Trigger (apple tiers → required stages)
 
 The required stages scale with the apple estimate you declare per

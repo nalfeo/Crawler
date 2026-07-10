@@ -64,7 +64,7 @@ slicer: content-aware band detection.**
   the variants the debugger previews are byte-for-byte what generation produces
   and what `approve` ships.
 - **Locked the post-process background defaults** with a guard test in
-  `tests/unit/bg-remove.test.ts` asserting `BACKGROUND_B_COLOR_TOLERANCE_SQ === 4000`
+  `tests/unit/sprites/bg-remove.test.ts` asserting `BACKGROUND_B_COLOR_TOLERANCE_SQ === 4000`
   and `BACKGROUND_B_FRINGE_TOLERANCE_SQ === 12000`, plus a cross-reference comment
   on `DEFAULT_BACKGROUND_TWEAKS` in `src/devtools-main.ts`.
 

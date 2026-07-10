@@ -43,11 +43,11 @@ A hello kitty is the planning unit for a session. A session that ships 1 hello k
 
 ## When to Declare
 
-**Before writing a single line of code or creating any file.** State the estimate in your first session turn as:
+**Before writing implementation code in a merge-intent session.** State the estimate in your first session turn as:
 
 > "Estimating this at 🍎🍎🍎 (Medium) — new sub-system, 3–5 files, tests required."
 
-Record the same estimate in the `## Apples` section of your handoff file when you start.
+For implementation sessions, record the same estimate in the `## Apples` section of your handoff when you start.
 
 ---
 
@@ -101,7 +101,7 @@ stage (project rule #12).
 
 ## Calibration Scoring (at Handoff)
 
-At the end of every session, score the **actual** apples and compute the verdict:
+At the end of every **implementation session** (merge-intent code change), score the **actual** apples and compute the verdict:
 
 | delta = actual − estimated | Verdict  | Meaning                        |
 | -------------------------- | -------- | ------------------------------ |
@@ -136,7 +136,7 @@ If a task feels like 6+ apples, split it. A single session should not attempt mo
 
 ## Recording Apple Entries
 
-At the end of every session create a **single new file** at:
+At the end of every **implementation session** create a **single new file** at:
 
 ```
 docs/knowledge/metrics/apples/YYYY-MM-DD-<slug>.json

@@ -8,7 +8,7 @@ description: >-
   off the 300-run weapon sweep", "check weapon balance across 100 seeds", or
   "do a large-N Floor 1 weapon balance pass". Wraps `npm run ai:weapon-sweep`
   (`scripts/agent/perf/weapon-sweep.ts`) with the canonical large-sample flags
-  and the correct long-running / background execution pattern.
+  and the canonical GitHub workflow-dispatch execution path.
 ---
 
 # 100 × 3 Weapon Sweep
@@ -39,7 +39,31 @@ weapon vs. AI vs. map layout.
 Do **not** use this skill for a single-weapon smoke test — plain
 `npm run ai:weapon-sweep` (3 default seeds) is faster and sufficient there.
 
-## How to run
+## How to run (default: GitHub workflow)
+
+```bash
+gh workflow run weapon-sweep.yml --ref <branch> \
+  -f seed_count=100 \
+  -f weapons=sword,bow,baseball-bat \
+  -f max_frames=19800
+```
+
+Notes:
+
+- This follows the repo standard: broad sweeps (>10 runs) should use GitHub
+  infrastructure by default.
+- Keep `weapons` at all three Floor 1 starters; changing it defeats the point
+  of the comparison.
+- `max_frames` defaults to `19_800` (~330s at 60fps), matching the hill-climb
+  baseline.
+- Download the per-weapon artifact JSONs from the workflow run (artifacts named
+  `weapon-sweep-sword`, `weapon-sweep-bow`, `weapon-sweep-baseball-bat`) and use
+  those files for reporting.
+
+### Local fallback (only when explicitly requested)
+
+Only use a local run when a human explicitly asks for local execution, or when
+running a small smoke sweep (≤10 runs). For a full 100×3 local fallback:
 
 ```bash
 npm run ai:weapon-sweep -- \
@@ -47,34 +71,6 @@ npm run ai:weapon-sweep -- \
   --weapons sword,bow,baseball-bat \
   --out files/weapon-sweep-100.json
 ```
-
-Notes:
-
-- The `--seeds` list is spelled out explicitly (the CLI expects a
-  comma-separated list — there is no range shorthand). Copy the line above
-  verbatim.
-- `--weapons` is left as all three Floor 1 starting weapons; changing it
-  defeats the point of the sweep.
-- `--out` lands the raw JSON inside the session's `files/` folder so it
-  persists across checkpoints without being committed. Override only if you
-  need a specific path.
-- `--max-frames` defaults to `19_800` (~330s at 60fps), matching the hill-climb
-  baseline. Leave it alone unless you have a specific reason.
-
-### Long-running: launch in the background
-
-300 runs × up to ~5 minutes each is far more than a sync shell wait can hold.
-**Always launch this via `mode: "async"`** (or an equivalent background/task
-agent) and monitor the shell for completion. Do not sit in a sync
-`initial_wait` loop expecting it to finish — you will time out and lose the
-handle.
-
-Rough back-of-envelope: many runs end well before the frame budget (victory or
-death), so a full 100×3 sweep typically completes in tens of minutes on a
-developer box, not hours. Still: treat it as a background job.
-
-Once the shell reports completion, read the tail of the output and the
-generated JSON at `--out`.
 
 ## Reading the report
 
