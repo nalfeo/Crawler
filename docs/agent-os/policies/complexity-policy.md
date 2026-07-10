@@ -47,7 +47,9 @@ A hello kitty is the planning unit for a session. A session that ships 1 hello k
 
 > "Estimating this at 🍎🍎🍎 (Medium) — new sub-system, 3–5 files, tests required."
 
-For implementation sessions, record the same estimate in the `## Apples` section of your handoff when you start.
+For **1–2🍎 sessions** that is the entire **file-writing** ritual — no apples JSON is needed. You still score actual + verdict in the handoff `## Apples` line; only the per-session JSON file is waived. The review harness doesn't fire at these tiers so a calibration file provides no actionable signal.
+
+For **≥3🍎 sessions**, also run `npm run apples:record` at handoff (see below).
 
 ---
 
@@ -134,30 +136,26 @@ If a task feels like 6+ apples, split it. A single session should not attempt mo
 
 ---
 
-## Recording Apple Entries
+## Recording Apple Entries (≥3🍎 sessions only)
 
-At the end of every **implementation session** create a **single new file** at:
+At the end of every **≥3🍎** session run:
+
+```
+npm run apples:record -- --session <slug> --estimated <n> --actual <n>
+```
+
+where `<slug>` matches the handoff filename slug (e.g. `movement-system` for `2026-06-21-movement-system.md`).
+
+The script auto-computes `delta`, `verdict`, and `hello_kitties`, uses today's date, and writes:
 
 ```
 docs/knowledge/metrics/apples/YYYY-MM-DD-<slug>.json
 ```
 
-where `<slug>` matches the handoff filename slug (e.g. `2026-06-21-movement-system`).
+**Do not hand-write these files** — use the script to avoid wrong values and unnecessary fix turns.
 
-File contents — one JSON object (not an array):
+**1–2🍎 sessions do not need a file.** The review harness never fires at these tiers, so recording provides no actionable signal.
 
-```json
-{
-  "date": "YYYY-MM-DD",
-  "session": "brief-slug-matching-handoff-filename",
-  "estimated_apples": 3,
-  "actual_apples": 2,
-  "delta": -1,
-  "verdict": "over",
-  "hello_kitties": 0.4
-}
-```
+`hello_kitties` = `actual_apples / 5` (rounded to 2 decimal places). **5 apples = 1 hello kitty 🎀**
 
-`hello_kitties` = `actual_apples / 5` (rounded to 2 decimal places).
-
-**Why individual files?** Each session writes its own file so concurrent PRs never conflict on the same file. The legacy `docs/knowledge/metrics/apple-log.json` is kept as historical data and is still read by the calibration script.
+**Why individual files?** Each session writes its own file so concurrent PRs never conflict. The legacy `docs/knowledge/metrics/apple-log.json` is kept as historical data and is still read by the calibration script.

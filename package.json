@@ -84,6 +84,7 @@
     "check:physics-defs-sync": "tsx scripts/agent/health/check-physics-defs-sync.ts",
     "check:size-coverage": "tsx scripts/agent/health/check-size-coverage.ts",
     "check:weight-coverage": "tsx scripts/agent/health/check-weight-coverage.ts",
+    "apples:record": "tsx scripts/agent/docs/apple-record-cli.ts",
     "telemetry:capture": "tsx scripts/agent/docs/guard-telemetry.ts --capture-session",
     "docs:index": "tsx scripts/agent/docs/build-system-index.ts --apply",
     "verify:coverage": "vitest run --project unit --coverage",

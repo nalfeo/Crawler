@@ -1,0 +1,31 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-10",
+  "session_slug": "trim-apple-ritual",
+  "task_title": "Add apples:record CLI, drop 1-2 apple file requirement",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "adversarial": false,
+      "alternatives_considered": 2,
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Plan review validated dropping 1-2🍎 file generation, tightening CLI input parsing, and preserving deterministic per-session file outputs for >=3🍎."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

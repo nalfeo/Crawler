@@ -66,6 +66,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Full verify + knip      | `VERIFY_KNIP=1 npm run verify`     |
 | PR prereq check         | `npm run verify:pr-prereqs`        |
 | Guard telemetry capture | `npm run telemetry:capture`        |
+| Record apple entry      | `npm run apples:record`            |
 | Full verify + coverage  | `VERIFY_COVERAGE=1 npm run verify` |
 | Guard + ledger tests    | `npm run test:guards`              |
 | Review ledger           | `npm run review:ledger`            |
