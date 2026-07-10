@@ -10,6 +10,7 @@ export const PRIMARY_STATS = [
   'wisdom',
   'charisma',
   'luck',
+  'weight',
 ] as const;
 
 export const SECONDARY_STATS = [
@@ -49,6 +50,7 @@ export const STAT_CLAMPS: Readonly<Record<StatId, StatClamp>> = {
   wisdom: { min: 0 },
   charisma: { min: 0 },
   luck: { min: 0 },
+  weight: { min: 0 },
   armor: { min: 0 },
   damageBonus: {},
   attackSpeed: { min: 0.1 },
@@ -69,6 +71,7 @@ export const DEFAULT_BASE_STATS: Readonly<Record<StatId, number>> = {
   wisdom: 1,
   charisma: 1,
   luck: 1,
+  weight: 1,
   armor: 0,
   damageBonus: 0,
   attackSpeed: 0,
@@ -141,11 +144,10 @@ export const STAT_POINT_INCREMENT: Record<StatKey, number> = {
    * Direct stat-point allocation to accuracy is not currently exposed in the
    * level-up UI (accuracy is trained via weapon type skills + dexterity).
    * This entry satisfies the Record<StatKey> constraint; the value is reserved
-   * for any future direct-allocation path. Dexterity contributes 0.01/pt
-   * (see CORE_STAT_GAINS) — intentionally lower than a direct allocation would
-   * grant, because dexterity also buys attackSpeed and moveSpeed.
+   * for any future direct-allocation path. Keep this in sync with dexterity's
+   * per-point accuracy contribution in CORE_STAT_GAINS.
    */
-  accuracy: 0.02,
+  accuracy: 0.01,
 };
 
 /** Minimum clamped value for each stat. */
@@ -175,6 +177,7 @@ export const CORE_STAT_BASE: Readonly<Record<PrimaryStatId, number>> = {
   wisdom: 0,
   charisma: 0,
   luck: 0,
+  weight: 0,
 };
 
 /**
@@ -183,8 +186,9 @@ export const CORE_STAT_BASE: Readonly<Record<PrimaryStatId, number>> = {
  * When `statsSystem` recomputes, it sums:
  *   STAT_BASE[key] + (Σ coreStatPoints[p] × CORE_STAT_GAINS[p][key]) + modifiers
  *
- * Stats not listed here (wisdom, charisma) are reserved for future systems
- * (mana, XP multiplier, NPC relations) that do not yet have STAT_KEYS entries.
+ * Stats not listed here (charisma, weight) are reserved for future systems
+ * (XP multiplier/NPC relations, momentum interactions) that do not yet have
+ * STAT_KEYS entries.
  */
 export const CORE_STAT_GAINS: Readonly<Record<PrimaryStatId, Partial<Record<StatKey, number>>>> = {
   /** Strength: raw damage output and physical resilience. */
@@ -201,6 +205,8 @@ export const CORE_STAT_GAINS: Readonly<Record<PrimaryStatId, Partial<Record<Stat
   charisma: {},
   /** Luck: item magnetism and fortune. */
   luck: { pickupRange: 0.5 },
+  /** Weight: reserved for future momentum/knockback interactions. */
+  weight: {},
 };
 
 /**
@@ -219,13 +225,16 @@ export const CORE_STAT_GAINS: Readonly<Record<PrimaryStatId, Partial<Record<Stat
 export const CORE_STAT_TO_SECONDARY: Readonly<
   Record<PrimaryStatId, Partial<Record<SecondaryStatId, number>>>
 > = {
-  strength: {},
+  /** Strength: offensive pressure — bonus damage multiplier. */
+  strength: { damageBonus: 0.01 },
   /** Dexterity: nimbleness — chance to fully avoid an incoming hit. */
   dexterity: { dodgeChance: 0.003 },
   constitution: {},
   intelligence: {},
-  wisdom: {},
+  /** Wisdom: focus — faster ability/skill cooldown recovery. */
+  wisdom: { cooldownReduction: 0.005 },
   charisma: {},
   /** Luck: fortune — chance for an outgoing hit to critically strike. */
   luck: { critChance: 0.005 },
+  weight: {},
 };

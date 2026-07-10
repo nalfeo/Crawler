@@ -87,7 +87,7 @@ export function formatStatIncrement(stat: StatKey): string {
 export const PRIMARY_STAT_DISPLAY: Readonly<Record<PrimaryStatId, StatDisplayInfo>> = {
   strength: {
     label: 'Strength',
-    description: '+2 Damage · +1 Armor per point. Melee power and physical resilience.',
+    description: '+2 Damage · +1 Armor · +1.0% Damage Bonus per point. Melee power and resilience.',
     decimals: 0,
   },
   dexterity: {
@@ -108,7 +108,7 @@ export const PRIMARY_STAT_DISPLAY: Readonly<Record<PrimaryStatId, StatDisplayInf
   },
   wisdom: {
     label: 'Wisdom',
-    description: `+${MANA_PER_WISDOM} Max Mana per point. Arcane reserves that fuel your spells.`,
+    description: `+${MANA_PER_WISDOM} Max Mana · +0.5% Cooldown Reduction per point. Arcane reserves and focus.`,
     decimals: 0,
   },
   charisma: {
@@ -121,6 +121,11 @@ export const PRIMARY_STAT_DISPLAY: Readonly<Record<PrimaryStatId, StatDisplayInf
     description: '+4 Pickup Range · +0.5% Crit Chance per point. Fortune and item magnetism.',
     decimals: 0,
   },
+  weight: {
+    label: 'Weight',
+    description: 'Reserved — future momentum/knockback tuning.',
+    decimals: 0,
+  },
 };
 
 /**
@@ -129,8 +134,10 @@ export const PRIMARY_STAT_DISPLAY: Readonly<Record<PrimaryStatId, StatDisplayInf
  * "+0.5% Crit Chance").
  */
 const SECONDARY_PERCENT_LABEL: Partial<Record<SecondaryStatId, string>> = {
+  damageBonus: 'Damage Bonus',
   critChance: 'Crit Chance',
   dodgeChance: 'Dodge Chance',
+  cooldownReduction: 'Cooldown Reduction',
 };
 
 /** Format a single derived secondary-stat gain for the level-up summary. */

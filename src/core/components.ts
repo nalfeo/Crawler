@@ -379,6 +379,7 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       wisdom: new Float32Array(maxEntities),
       charisma: new Float32Array(maxEntities),
       luck: new Float32Array(maxEntities),
+      weight: new Float32Array(maxEntities),
       armor: new Float32Array(maxEntities),
       damageBonus: new Float32Array(maxEntities),
       attackSpeed: new Float32Array(maxEntities),
@@ -398,6 +399,7 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       wisdom: new Float32Array(maxEntities),
       charisma: new Float32Array(maxEntities),
       luck: new Float32Array(maxEntities),
+      weight: new Float32Array(maxEntities),
       armor: new Float32Array(maxEntities),
       damageBonus: new Float32Array(maxEntities),
       attackSpeed: new Float32Array(maxEntities),
@@ -433,6 +435,7 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       wisdom: new Float32Array(maxEntities),
       charisma: new Float32Array(maxEntities),
       luck: new Float32Array(maxEntities),
+      weight: new Float32Array(maxEntities),
     },
     prop: {
       /** Index into DECORATION_DEF_INDEX for the originating DecorationDef. */

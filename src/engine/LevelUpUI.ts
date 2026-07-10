@@ -89,7 +89,7 @@ const HEADER_HEIGHT = 70;
 const FOOTER_HEIGHT = 64;
 const PANEL_HEIGHT =
   HEADER_HEIGHT + PRIMARY_STATS.length * (ROW_HEIGHT + ROW_GAP) + FOOTER_HEIGHT + PANEL_PADDING;
-const DISABLED_LEVEL_UP_STATS = new Set<PrimaryStatId>(['charisma', 'luck']);
+const DISABLED_LEVEL_UP_STATS = new Set<PrimaryStatId>(['charisma', 'luck', 'weight']);
 
 const TITLE_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
   fontFamily: 'monospace',

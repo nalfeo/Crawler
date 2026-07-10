@@ -41,6 +41,7 @@ function zeroCore(): Record<PrimaryStatId, number> {
     wisdom: 0,
     charisma: 0,
     luck: 0,
+    weight: 0,
   };
 }
 
