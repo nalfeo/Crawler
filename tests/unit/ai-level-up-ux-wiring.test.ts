@@ -29,6 +29,15 @@ describe('AI playthrough level-up UX wiring', () => {
     );
   });
 
+  it('LevelUpUI disables level-up + allocation for luck and charisma', () => {
+    const source = readFileSync('src/engine/LevelUpUI.ts', 'utf-8');
+    expect(source).toContain(
+      "const DISABLED_LEVEL_UP_STATS = new Set<PrimaryStatId>(['charisma', 'luck']);",
+    );
+    expect(source).toContain('remaining > 0 && canAllocateStat(stat)');
+    expect(source).toContain('if (canAllocateStat(selectedStat(state)))');
+  });
+
   it('MainGameScene drives the modal via an optional autoLevelUpAllocator', () => {
     const source = readFileSync('src/engine/scenes/MainGameScene.ts', 'utf-8');
     expect(source).toContain('autoLevelUpAllocator?:');
