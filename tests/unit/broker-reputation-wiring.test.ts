@@ -23,33 +23,45 @@ describe('MainGameScene — Broker reputation callback wiring', () => {
 
   it('calls broker.met only inside the final-dialogue-line branch', () => {
     // The callback must be nested inside `if (nextIndex >= activeDialogue.length)`.
-    expect(source).toMatch(
-      /if\s*\(\s*nextIndex\s*>=\s*activeDialogue\.length\s*\)[\s\S]*?broker\?\.met\s*\(\s*this\.world\s*\)/,
-    );
+    // Use a bounded pattern: the broker call must appear within ~200 chars of the
+    // branch opening to avoid matching across unrelated code.
+    const branchIdx = source.indexOf('if (nextIndex >= activeDialogue.length)');
+    expect(branchIdx).toBeGreaterThanOrEqual(0);
+    const brokerCallIdx = source.indexOf("this.options.broker?.met(this.world)");
+    expect(brokerCallIdx).toBeGreaterThanOrEqual(0);
+    // Broker call is after the branch opening and within a short block.
+    expect(brokerCallIdx).toBeGreaterThan(branchIdx);
+    expect(brokerCallIdx - branchIdx).toBeLessThan(300);
   });
 
   it('early-close (closeRequested / ESC) returns before entering the nextIndex block', () => {
-    // The close-request guard must contain a `return` statement so it exits
-    // before the nextIndex advancement and broker callback are reached.
-    expect(source).toMatch(
-      /if\s*\(\s*closeRequested\s*\|[\s\S]*?keyEsc[\s\S]*?\)\s*\{[\s\S]*?return;[\s\S]*?\}/,
+    // The close-request guard must have a `return` before `nextIndex` is computed.
+    const closeGuardIdx = source.indexOf(
+      'if (closeRequested || (this.keyEsc && Phaser.Input.Keyboard.JustDown(this.keyEsc)))',
     );
+    const nextIndexIdx = source.indexOf('const nextIndex = instance.dialogueIndex + 1');
+    expect(closeGuardIdx).toBeGreaterThanOrEqual(0);
+    expect(nextIndexIdx).toBeGreaterThanOrEqual(0);
 
-    // Verify that closeRequested/ESC block comes BEFORE the `broker?.met` call
-    // in the source — early-close exits before the callback is ever reached.
-    const closeIdx = source.indexOf('closeRequested');
-    const brokerIdx = source.indexOf('broker?.met');
-    expect(closeIdx).toBeGreaterThanOrEqual(0);
-    expect(brokerIdx).toBeGreaterThanOrEqual(0);
-    expect(closeIdx).toBeLessThan(brokerIdx);
+    // The close guard appears before the nextIndex block.
+    expect(closeGuardIdx).toBeLessThan(nextIndexIdx);
+
+    // There is a `return;` between the close guard and the nextIndex computation.
+    const between = source.slice(closeGuardIdx, nextIndexIdx);
+    expect(between).toContain('return;');
   });
 
   it('broker.met is NOT called in the early-close branch', () => {
-    // The close-guard block must not contain `broker?.met`.
-    const closeBlockMatch = source.match(
-      /if\s*\(\s*closeRequested[\s\S]*?\{[\s\S]*?return;[\s\S]*?\}/,
+    // The region between the close guard and the nextIndex computation must not
+    // contain a broker callback — broker fires only on the final-line path.
+    const closeGuardIdx = source.indexOf(
+      'if (closeRequested || (this.keyEsc && Phaser.Input.Keyboard.JustDown(this.keyEsc)))',
     );
-    expect(closeBlockMatch).not.toBeNull();
-    expect(closeBlockMatch![0]).not.toContain('broker');
+    const nextIndexIdx = source.indexOf('const nextIndex = instance.dialogueIndex + 1');
+    expect(closeGuardIdx).toBeGreaterThanOrEqual(0);
+    expect(nextIndexIdx).toBeGreaterThanOrEqual(0);
+
+    const closeBlock = source.slice(closeGuardIdx, nextIndexIdx);
+    expect(closeBlock).not.toContain('broker');
   });
 });

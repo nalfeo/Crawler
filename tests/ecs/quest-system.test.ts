@@ -1,4 +1,4 @@
-import { describe, expect, it, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import fc from 'fast-check';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import {
@@ -222,6 +222,10 @@ const HIDDEN_QUEST_ID = 'test-hidden-bg-counter';
 const VISIBLE_QUEST_ID = 'test-visible-story';
 
 describe('questSystem — hidden quest tracking', () => {
+  beforeEach(() => {
+    installDefaultQuestPacks();
+  });
+
   afterEach(() => {
     installDefaultQuestPacks();
   });
