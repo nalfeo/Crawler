@@ -27,7 +27,7 @@ describe('MainGameScene — Broker reputation callback wiring', () => {
     // branch opening to avoid matching across unrelated code.
     const branchIdx = source.indexOf('if (nextIndex >= activeDialogue.length)');
     expect(branchIdx).toBeGreaterThanOrEqual(0);
-    const brokerCallIdx = source.indexOf("this.options.broker?.met(this.world)");
+    const brokerCallIdx = source.indexOf('this.options.broker?.met(this.world)');
     expect(brokerCallIdx).toBeGreaterThanOrEqual(0);
     // Broker call is after the branch opening and within a short block.
     expect(brokerCallIdx).toBeGreaterThan(branchIdx);
