@@ -125,7 +125,7 @@ function handleRequest(instanceId, allowedOrigin, req, res) {
       res.end(JSON.stringify(readPack()));
     } catch (e) {
       res.writeHead(500);
-      res.end(JSON.stringify({ error: String(e) }));
+      res.end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }));
     }
     return;
   }
@@ -135,7 +135,7 @@ function handleRequest(instanceId, allowedOrigin, req, res) {
       res.end(JSON.stringify(readGeneratedSpriteIds()));
     } catch (e) {
       res.writeHead(500);
-      res.end(JSON.stringify({ error: String(e) }));
+      res.end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }));
     }
     return;
   }
@@ -230,7 +230,7 @@ function handleRequest(instanceId, allowedOrigin, req, res) {
         broadcastToInstance(instanceId, { type: 'applied', setPieceId });
       } catch (e) {
         res.writeHead(400);
-        res.end(JSON.stringify({ ok: false, error: String(e) }));
+        res.end(JSON.stringify({ ok: false, error: e instanceof Error ? e.message : String(e) }));
       }
     });
     return;
