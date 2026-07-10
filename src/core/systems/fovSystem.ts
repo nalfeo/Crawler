@@ -56,13 +56,11 @@ export function fovSystem(world: GameWorld): void {
       if (visibility > 0) {
         const tx = Math.floor(hx / sf);
         const ty = Math.floor(hy / sf);
-        const adjacentDiagonal =
-          Math.abs(tx - originTile.x) === 1 && Math.abs(ty - originTile.y) === 1;
-        if (
-          adjacentDiagonal &&
-          !floorMap.tileMap.isTransparent(tx, originTile.y) &&
-          !floorMap.tileMap.isTransparent(originTile.x, ty)
-        ) {
+        // Apply corner-seam blocking across the entire ray from origin to candidate,
+        // matching the consistency rules enforced by lineOfSight. This ensures FOV
+        // and LOS agree: if lineOfSight rejects a candidate due to a blocked corner
+        // seam, FOV will also reject it.
+        if (floorMap.tileMap.hasBlockedCornerSeam(originTile.x, originTile.y, tx, ty)) {
           return;
         }
         floorMap.setVisible(hx, hy);
