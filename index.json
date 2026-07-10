@@ -1,5 +1,16 @@
 [
   {
+    "commit": "78958b1131594cb9b9826e65e12ac148e537279e",
+    "commitDate": "2026-07-10T08:09:03Z",
+    "commitSubject": "feat: set-piece editor/runtime WYSIWYG parity follow-ups (#998)",
+    "capturedAt": "2026-07-10T08:51:54.788Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29079304170",
+    "winRate": 0.8233333333333334,
+    "totalWins": 247,
+    "totalRuns": 300,
+    "path": "by-sha/78958b1131594cb9b9826e65e12ac148e537279e.json"
+  },
+  {
     "commit": "c2ea2b9d3959584b43e1f3ea7b3e37cad78f2628",
     "commitDate": "2026-07-10T06:38:45Z",
     "commitSubject": "feat: floor2 feedback — feature unlocks, reputation gating, hidden den quests (#999)",
