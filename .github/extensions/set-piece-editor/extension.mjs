@@ -830,10 +830,6 @@ var KINDS={
 var ZD={floor:0,wall:10,door:12,fixture:20,furniture:30,decoration:40,actor:50};
 function getZ(p){return p.z!==undefined?p.z:(ZD[p.kind]||0);}
 function getNpcZ(n){return n.z!==undefined?n.z:0;}
-function setPieceZToDepth(z){
-  if(z<20)return -19+z*0.8;
-  return 2+(z-20)*0.1;
-}
 function getLayers(){
   if(!sp)return[];
   if(!sp.sceneLayers||!sp.sceneLayers.length)
@@ -851,6 +847,7 @@ function propLayer(p){return p.sceneLayer||(getLayers()[0]||{id:'default'}).id;}
 function npcLayer(n){return n.sceneLayer||(getLayers()[0]||{id:'default'}).id;}
 // Mirror src/shared/render-depths.ts:setPieceZToDepth so draw order matches runtime.
 var ENTITY_DEPTH=0;
+function setPieceZToDepth(z){if(z<20)return -19+z*0.8;return 2+(z-20)*0.1;}
 // Depth-based sort key — keeps editor canvas order in parity with the Phaser depth stack.
 // NPCs without an authored z sort at ENTITY_DEPTH (between background and foreground props).
 function globalZ(layerId,kind,localZ){

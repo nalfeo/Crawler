@@ -65,6 +65,7 @@ import { isSetPieceRenderReady, spriteRefRendersPersistentPlaceholder } from './
 const LAB_ID = 'set-piece-lab';
 const SCENE_KEY = 'SetPieceLabScene';
 const TILE_SIZE_FT = 4;
+const DEPTH_EPSILON = 0.001;
 /** Fraction of the viewport the map should occupy after fit (leaves a margin). */
 const CAMERA_PADDING = 1.12;
 const MIN_ZOOM = 0.1;
@@ -274,7 +275,9 @@ function buildHoverItems(def: SetPieceDef, stamp: StampedSetPiece): HoverItem[] 
     const wFt = npc.widthFt ?? ndef?.widthFt ?? TILE_SIZE_FT;
     const hFt = npc.heightFt ?? ndef?.heightFt ?? TILE_SIZE_FT;
     const npcDepth =
-      npc.z !== undefined ? Math.max(TERRAIN_DEPTH + 0.001, setPieceZToDepth(npc.z)) : ENTITY_DEPTH;
+      npc.z !== undefined
+        ? Math.max(TERRAIN_DEPTH + DEPTH_EPSILON, setPieceZToDepth(npc.z))
+        : ENTITY_DEPTH;
     const lines: string[] = [];
     if (npc.anchorRole !== undefined) {
       const color = NPC_ANCHOR_COLOR[npc.anchorRole];
