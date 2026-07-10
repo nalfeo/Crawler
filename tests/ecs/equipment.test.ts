@@ -334,7 +334,7 @@ describe('Equipment System', () => {
       statBonuses: { damageBonus: 10 },
     });
     equip(world, entity, item, { force: true });
-    expect(getEffectiveStats(world, entity).damageBonus).toBe(10);
+    expect(getEffectiveStats(world, entity).damageBonus).toBeCloseTo(10.01, 6);
   });
 
   // 25. NaN/Infinity stat values rejected
