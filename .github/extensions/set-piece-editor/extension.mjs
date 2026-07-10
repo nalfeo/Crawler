@@ -784,6 +784,18 @@ function clampNpcSnappedCoord(v,limit,sizeTiles){
   var max=Math.max(0,limit-sizeTiles);
   return Math.max(0,Math.min(max,nnum(v,0)));
 }
+// Snap the NPC *center* to the grid and return the clamped top-left tile coordinate.
+// Mirrors the runtime center convention: stampSetPiece places NPC sprites at
+// centreTile = boundedTopLeft + widthTiles/2, so we align authoring snaps the same way.
+function snapNpcCenter(dispPx,tileSize,sizeTiles,limit){
+  var step=npcSnapStep();
+  var topLeftTiles=dispPx/tileSize;
+  var centerTiles=topLeftTiles+sizeTiles/2;
+  var snappedCenter=step>0?Math.round(centerTiles/step)*step:centerTiles;
+  var snappedTopLeft=snappedCenter-sizeTiles/2;
+  var max=Math.max(0,limit-sizeTiles);
+  return Math.max(0,Math.min(max,snappedTopLeft));
+}
 function clampGroupDeltaPx(items,dx,dy,widthTiles,heightTiles){
   if(!items||!items.length)return {dx:dx,dy:dy};
   var minDx=-Infinity,maxDx=Infinity,minDy=-Infinity,maxDy=Infinity;
@@ -833,7 +845,15 @@ function layerVisible(lid){var l=getLayers().find(function(x){return x.id===lid;
 function layerLocked(lid){var l=getLayers().find(function(x){return x.id===lid;});return l&&l.locked===true;}
 function propLayer(p){return p.sceneLayer||(getLayers()[0]||{id:'default'}).id;}
 function npcLayer(n){return n.sceneLayer||(getLayers()[0]||{id:'default'}).id;}
-function globalZ(_layerId,localZ){return localZ;}
+// Mirror src/shared/render-depths.ts:setPieceZToDepth so draw order matches runtime.
+var ENTITY_DEPTH=0;
+function setPieceZToDepth(z){if(z<20)return -19+z*0.8;return 2+(z-20)*0.1;}
+// Depth-based sort key — keeps editor canvas order in parity with the Phaser depth stack.
+// NPCs without an authored z sort at ENTITY_DEPTH (between background and foreground props).
+function globalZ(layerId,kind,localZ){
+  if(kind==='npc')return localZ!==undefined?setPieceZToDepth(localZ):ENTITY_DEPTH;
+  return setPieceZToDepth(localZ);
+}
 function nnum(v,d){var n=Number(v);return Number.isFinite(n)?n:d;}
 function isPropSelectedIndex(idx){
   var p=sp&&sp.props&&sp.props[idx];
@@ -1258,12 +1278,12 @@ function render(){
   sp.props.forEach(function(p,i){
     var lid=propLayer(p);
     if(!layerVisible(lid))return;
-    drawables.push({kind:'prop',idx:i,z:globalZ(lid,getZ(p))});
+    drawables.push({kind:'prop',idx:i,z:globalZ(lid,'prop',getZ(p))});
   });
   (sp.npcs||[]).forEach(function(n,ni){
     var lid=npcLayer(n);
     if(!layerVisible(lid))return;
-    drawables.push({kind:'npc',idx:ni,z:globalZ(lid,getNpcZ(n))});
+    drawables.push({kind:'npc',idx:ni,z:globalZ(lid,'npc',n.z)});
   });
   drawables.sort(function(a,b){return a.z-b.z;});
   drawables.forEach(function(d){
@@ -1310,10 +1330,10 @@ function drawProp(prop,sel,ad){
     if(!layer||!layer.sprite)return;
     var targetW=(layer.widthFt!==undefined&&layer.heightFt!==undefined)
       ?(Math.max(0.25,nnum(layer.widthFt,FEET_PER_TILE))/FEET_PER_TILE)*ts
-      :((layerIndex===0?pw:1)*ts);
+      :(pw*ts);
     var targetH=(layer.widthFt!==undefined&&layer.heightFt!==undefined)
       ?(Math.max(0.25,nnum(layer.heightFt,FEET_PER_TILE))/FEET_PER_TILE)*ts
-      :((layerIndex===0?ph:1)*ts);
+      :(ph*ts);
     var scale=Math.max(0.01,nnum(layer.scale,1));
     targetW*=scale;
     targetH*=scale;
@@ -1487,7 +1507,7 @@ function hitTop(cx,cy){
     var pw=(p.width||1)*ts,ph=(p.height||1)*ts;
     var px=nnum(p.x,0)*ts,py=nnum(p.y,0)*ts;
     if(cx>=px&&cx<px+pw&&cy>=py&&cy<py+ph){
-      hits.push({kind:'prop',idx:i,z:globalZ(lid,getZ(p))});
+      hits.push({kind:'prop',idx:i,z:globalZ(lid,'prop',getZ(p))});
     }
   });
   (sp.npcs||[]).forEach(function(n,ni){
@@ -1495,7 +1515,7 @@ function hitTop(cx,cy){
     if(!layerVisible(lid)||layerLocked(lid))return;
     var nx=nnum(n.x,0),ny=nnum(n.y,0),ns=npcSizeTiles(n);
     if(cx>=nx*ts&&cx<((nx+ns.w)*ts)&&cy>=ny*ts&&cy<((ny+ns.h)*ts)){
-      hits.push({kind:'npc',idx:ni,z:globalZ(lid,getNpcZ(n))});
+      hits.push({kind:'npc',idx:ni,z:globalZ(lid,'npc',n.z)});
     }
   });
   if(!hits.length)return null;
@@ -1674,8 +1694,8 @@ canvas.addEventListener('mouseup',function(){
     var n=sp.npcs&&sp.npcs[drag.idx];
     if(n){
       var ns=npcSizeTiles(n);
-      n.x=clampNpcSnappedCoord(snapV(drag.dispX/ts),sp.width||1,ns.w);
-      n.y=clampNpcSnappedCoord(snapV(drag.dispY/ts),sp.height||1,ns.h);
+      n.x=snapNpcCenter(drag.dispX,ts,ns.w,sp.width||1);
+      n.y=snapNpcCenter(drag.dispY,ts,ns.h,sp.height||1);
       refreshNpcInputs();markDirty();
     }
     drag=null;render();return;
@@ -1684,8 +1704,8 @@ canvas.addEventListener('mouseup',function(){
     drag.groupOrig.forEach(function(it){
       var gn=sp.npcs[it.idx];if(!gn)return;
       var gd=drag.groupDisp[it.id];if(!gd)return;
-      gn.x=clampNpcSnappedCoord(snapV(gd.dispX/ts),sp.width||1,it.w);
-      gn.y=clampNpcSnappedCoord(snapV(gd.dispY/ts),sp.height||1,it.h);
+      gn.x=snapNpcCenter(gd.dispX,ts,it.w,sp.width||1);
+      gn.y=snapNpcCenter(gd.dispY,ts,it.h,sp.height||1);
     });
     refreshNpcInputs();markDirty();
     drag=null;render();return;
@@ -1698,8 +1718,8 @@ canvas.addEventListener('mouseup',function(){
       rn.widthFt=rw*FEET_PER_TILE;
       rn.heightFt=rh*FEET_PER_TILE;
       var rns=npcSizeTiles(rn);
-      rn.x=clampNpcSnappedCoord(snapV(drag.dispX/ts),sp.width||1,rns.w);
-      rn.y=clampNpcSnappedCoord(snapV(drag.dispY/ts),sp.height||1,rns.h);
+      rn.x=snapNpcCenter(drag.dispX,ts,rns.w,sp.width||1);
+      rn.y=snapNpcCenter(drag.dispY,ts,rns.h,sp.height||1);
       refreshNpcInputs();markDirty();
     }
     drag=null;render();return;
