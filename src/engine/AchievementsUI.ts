@@ -27,6 +27,15 @@ const FONT_FAMILY = 'Segoe UI, Arial, sans-serif';
 const ROW_HEIGHT = 84;
 const ROW_GAP = 8;
 
+/** Flavor text longer than this (chars) gets a collapse/expand toggle. */
+const FLAVOR_EXPAND_THRESHOLD = 120;
+/** Line height for 11 px flavor font. */
+const FLAVOR_LINE_H = 15;
+/** Number of lines to show in collapsed state. */
+const FLAVOR_COLLAPSED_LINES = 2;
+/** Height of the expand/collapse button row. */
+const EXPANDER_BTN_H = 18;
+
 const COLORS = {
   panelBg: 0x0d0d1a,
   panelBorder: 0x2a2a4a,
@@ -116,6 +125,9 @@ export function createAchievementsUI(
   let lastWorld: GameWorld | null = null;
   let lastSignature: string | null = null;
   let scrollIndex = 0;
+  const expandedIds = new Set<string>();
+  /** Cache of measured full flavor text height keyed by achievement id. */
+  const flavorHeightCache = new Map<string, number>();
 
   const container = scene.add.container(0, 0);
   container.setDepth(1000);
@@ -145,10 +157,11 @@ export function createAchievementsUI(
 
   const listTop = (): number => panelY + PANEL_PADDING + 40;
   const listBottom = (): number => panelY + panelHeight - PANEL_PADDING;
-  const rowsPerPage = (): number =>
-    Math.max(1, Math.floor((listBottom() - listTop()) / (ROW_HEIGHT + ROW_GAP)));
 
   const rowObjects: Phaser.GameObjects.GameObject[] = [];
+  let scrollbarTrack: Phaser.GameObjects.Rectangle | null = null;
+  let scrollbarThumb: Phaser.GameObjects.Rectangle | null = null;
+
   function clearRows(): void {
     for (const obj of rowObjects) obj.destroy();
     rowObjects.length = 0;
@@ -163,7 +176,8 @@ export function createAchievementsUI(
       .map((a) => a.id)
       .join(',');
     const claimed = [...world.achievements.claimedIds].sort().join(',');
-    return `${unlocked}|${claimed}|${scrollIndex}`;
+    const expanded = [...expandedIds].sort().join(';');
+    return `${unlocked}|${claimed}|${scrollIndex}|${expanded}`;
   }
 
   function open(id: string): void {
@@ -173,16 +187,37 @@ export function createAchievementsUI(
     refresh(lastWorld);
   }
 
-  function makeRow(def: AchievementDef, x: number, y: number, w: number): void {
+  function makeRow(def: AchievementDef, x: number, y: number, w: number): number {
+    const isExpanded = expandedIds.has(def.id);
     const claimed = lastWorld?.achievements.claimedIds.has(def.id) === true;
-    const box = scene.add.rectangle(
-      x + w / 2,
-      y + ROW_HEIGHT / 2,
-      w,
-      ROW_HEIGHT,
-      COLORS.rowBg,
-      0.9,
-    );
+    const flavorWrapW = w - 150;
+    const isLong = def.directorFlavor.length > FLAVOR_EXPAND_THRESHOLD;
+
+    // Measure the full flavor text height. Results are cached so repeated renders
+    // (scrolling, claiming) avoid redundant measurement objects.
+    let fullFlavorH = flavorHeightCache.get(def.id);
+    if (fullFlavorH === undefined) {
+      // Create a temporary text object to measure rendered height. This runs
+      // synchronously and is destroyed before the next draw call so it never
+      // appears on screen.
+      const tmpFlavor = crispText(x + 12, y + 50, def.directorFlavor, {
+        fontFamily: FONT_FAMILY,
+        fontSize: '11px',
+        fontStyle: 'italic',
+        color: hex(COLORS.flavor),
+        wordWrap: { width: flavorWrapW },
+      });
+      fullFlavorH = Math.max(FLAVOR_LINE_H, tmpFlavor.height);
+      tmpFlavor.destroy();
+      flavorHeightCache.set(def.id, fullFlavorH);
+    }
+
+    const collapsedFlavorH = FLAVOR_COLLAPSED_LINES * FLAVOR_LINE_H;
+    const flavorH = isLong && !isExpanded ? collapsedFlavorH : fullFlavorH;
+    const expanderH = isLong ? EXPANDER_BTN_H : 0;
+    const rowHeight = Math.max(ROW_HEIGHT, 50 + flavorH + expanderH + 8);
+
+    const box = scene.add.rectangle(x + w / 2, y + rowHeight / 2, w, rowHeight, COLORS.rowBg, 0.9);
     box.setStrokeStyle(1, DIFFICULTY_HEX[def.difficulty]);
     container.add(box);
     rowObjects.push(box);
@@ -200,7 +235,7 @@ export function createAchievementsUI(
       fontFamily: FONT_FAMILY,
       fontSize: '12px',
       color: hex(COLORS.textSecondary),
-      wordWrap: { width: w - 150 },
+      wordWrap: { width: flavorWrapW },
     });
     container.add(crit);
     rowObjects.push(crit);
@@ -210,13 +245,32 @@ export function createAchievementsUI(
       fontSize: '11px',
       fontStyle: 'italic',
       color: hex(COLORS.flavor),
-      wordWrap: { width: w - 150 },
+      wordWrap: { width: flavorWrapW },
+      maxLines: isLong && !isExpanded ? FLAVOR_COLLAPSED_LINES : 0,
     });
     container.add(flavor);
     rowObjects.push(flavor);
 
+    if (isLong) {
+      const expanderY = y + 50 + flavorH + 2;
+      const expanderLabel = isExpanded ? '▲ less' : '▼ more';
+      const expander = crispText(x + 12, expanderY, expanderLabel, {
+        fontFamily: FONT_FAMILY,
+        fontSize: '10px',
+        color: hex(COLORS.textSecondary),
+      });
+      expander.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
+        if (expandedIds.has(def.id)) expandedIds.delete(def.id);
+        else expandedIds.add(def.id);
+        lastSignature = null;
+        if (lastWorld) refresh(lastWorld);
+      });
+      container.add(expander);
+      rowObjects.push(expander);
+    }
+
     const btnLabel = claimed ? rewardReveal(def.reward) : `Open: ${rewardLabel(def.reward)}`;
-    const btn = crispText(x + w - 12, y + ROW_HEIGHT / 2, btnLabel, {
+    const btn = crispText(x + w - 12, y + rowHeight / 2, btnLabel, {
       fontFamily: FONT_FAMILY,
       fontSize: '12px',
       fontStyle: 'bold',
@@ -236,6 +290,8 @@ export function createAchievementsUI(
     }
     container.add(btn);
     rowObjects.push(btn);
+
+    return rowHeight;
   }
 
   function render(): void {
@@ -258,14 +314,73 @@ export function createAchievementsUI(
       );
       container.add(empty);
       rowObjects.push(empty);
+      if (scrollbarTrack) scrollbarTrack.setVisible(false);
+      if (scrollbarThumb) scrollbarThumb.setVisible(false);
       return;
     }
 
-    const perPage = rowsPerPage();
-    const maxStart = Math.max(0, defs.length - perPage);
-    if (scrollIndex > maxStart) scrollIndex = maxStart;
-    const page = defs.slice(scrollIndex, scrollIndex + perPage);
-    page.forEach((def, i) => makeRow(def, x, listTop() + i * (ROW_HEIGHT + ROW_GAP), w));
+    if (scrollIndex > Math.max(0, defs.length - 1)) scrollIndex = Math.max(0, defs.length - 1);
+
+    const bottom = listBottom();
+    let currentY = listTop();
+    let visibleCount = 0;
+    for (let i = scrollIndex; i < defs.length; i++) {
+      const def = defs[i];
+      if (!def) break;
+      const rowH = makeRow(def, x, currentY, w);
+      currentY += rowH + ROW_GAP;
+      visibleCount++;
+      if (currentY > bottom) break;
+    }
+
+    // Show scrollbar if there are items off-screen
+    const needsScrollbar = scrollIndex > 0 || scrollIndex + visibleCount < defs.length;
+    if (needsScrollbar) {
+      const scrollbarX = panelX + panelWidth - PANEL_PADDING - 8;
+      const scrollbarY = listTop();
+      const scrollbarH = listBottom() - listTop();
+      const trackW = 6;
+
+      if (!scrollbarTrack) {
+        scrollbarTrack = scene.add.rectangle(
+          scrollbarX,
+          scrollbarY + scrollbarH / 2,
+          trackW,
+          scrollbarH,
+          COLORS.rowBorder,
+          0.5,
+        );
+        container.add(scrollbarTrack);
+      } else {
+        scrollbarTrack.setPosition(scrollbarX, scrollbarY + scrollbarH / 2);
+        scrollbarTrack.setSize(trackW, scrollbarH);
+        scrollbarTrack.setVisible(true);
+      }
+
+      const thumbH = Math.max(20, (visibleCount / defs.length) * scrollbarH);
+      const thumbRange = scrollbarH - thumbH;
+      const scrollProgress = defs.length > 1 ? scrollIndex / (defs.length - 1) : 0;
+      const thumbY = scrollbarY + scrollProgress * thumbRange + thumbH / 2;
+
+      if (!scrollbarThumb) {
+        scrollbarThumb = scene.add.rectangle(
+          scrollbarX,
+          thumbY,
+          trackW,
+          thumbH,
+          COLORS.textSecondary,
+          0.8,
+        );
+        container.add(scrollbarThumb);
+      } else {
+        scrollbarThumb.setPosition(scrollbarX, thumbY);
+        scrollbarThumb.setSize(trackW, thumbH);
+        scrollbarThumb.setVisible(true);
+      }
+    } else {
+      if (scrollbarTrack) scrollbarTrack.setVisible(false);
+      if (scrollbarThumb) scrollbarThumb.setVisible(false);
+    }
   }
 
   function applyLayout(): void {
@@ -279,6 +394,7 @@ export function createAchievementsUI(
     hint
       .setPosition(panelX + panelWidth - PANEL_PADDING, panelY + PANEL_PADDING + 2)
       .setResolution(textResolution);
+    flavorHeightCache.clear();
     if (visible) lastSignature = null;
   }
 
@@ -297,6 +413,7 @@ export function createAchievementsUI(
     container.setVisible(visible);
     if (visible) {
       scrollIndex = 0;
+      expandedIds.clear();
       applyLayout();
       lastSignature = null;
       refresh(world);
@@ -320,6 +437,8 @@ export function createAchievementsUI(
       scene.input.off('wheel', onWheel);
       scene.scale.off('resize', applyLayout);
       clearRows();
+      if (scrollbarTrack) scrollbarTrack.destroy();
+      if (scrollbarThumb) scrollbarThumb.destroy();
       container.destroy();
     },
   };
