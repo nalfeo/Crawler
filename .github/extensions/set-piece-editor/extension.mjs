@@ -1298,7 +1298,11 @@ function render(){
     if(!layerVisible(lid))return;
     drawables.push({kind:'npc',idx:ni,z:globalZ(lid,'npc',n.z)});
   });
-  drawables.sort(function(a,b){return a.z-b.z;});
+  drawables.sort(function(a,b){
+    if(a.z!==b.z)return a.z-b.z;
+    if(a.kind!==b.kind)return a.kind==='npc'?-1:1;
+    return a.idx-b.idx;
+  });
   drawables.forEach(function(d){
     if(d.kind==='prop'){
       var p=sp.props[d.idx];
@@ -1373,10 +1377,11 @@ function drawProp(prop,sel,ad){
       ctx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,-drawW/2,-drawH/2,drawW,drawH);
       if(typeof layer.tintHex==='string'&&/^#[0-9a-fA-F]{6}$/.test(layer.tintHex)){
         ctx.save();
-        ctx.globalCompositeOperation='source-atop';
-        ctx.globalAlpha=0.55;
+        ctx.globalCompositeOperation='multiply';
         ctx.fillStyle=layer.tintHex;
         ctx.fillRect(-drawW/2,-drawH/2,drawW,drawH);
+        ctx.globalCompositeOperation='destination-atop';
+        ctx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,-drawW/2,-drawH/2,drawW,drawH);
         ctx.restore();
       }
       ctx.restore();
