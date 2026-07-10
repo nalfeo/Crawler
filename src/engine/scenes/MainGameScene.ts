@@ -826,6 +826,20 @@ export class MainGameScene extends Phaser.Scene {
     if (this.isTouchPointer(pointer)) {
       return;
     }
+    const isCornerButtonHit = (button?: Phaser.GameObjects.Text): boolean =>
+      Boolean(
+        button &&
+        button.visible &&
+        button.input?.enabled &&
+        button.getBounds().contains(pointer.x, pointer.y),
+      );
+    if (
+      isCornerButtonHit(this.inventoryButton) ||
+      isCornerButtonHit(this.equipButton) ||
+      isCornerButtonHit(this.achievementsButton)
+    ) {
+      return;
+    }
     this.tappedInteraction = true;
   }
 
@@ -864,14 +878,20 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   public requestInventoryToggle(): void {
+    this.tappedInteraction = false;
+    this.queuedInteraction = false;
     this.queuedInventoryToggle = true;
   }
 
   public requestEquipAction(): void {
+    this.tappedInteraction = false;
+    this.queuedInteraction = false;
     this.queuedEquip = true;
   }
 
   public requestAchievementsToggle(): void {
+    this.tappedInteraction = false;
+    this.queuedInteraction = false;
     this.queuedAchievementsToggle = true;
   }
 

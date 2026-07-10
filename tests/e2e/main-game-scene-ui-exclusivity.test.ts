@@ -77,16 +77,6 @@ describe('MainGameScene UI exclusivity', () => {
     await mainSceneProbe.queueInteraction(page);
     await waitForState(page, (s) => s.conversationOpen, { label: 'npc dialogue opened' });
 
-    const beforeAdvance = await mainSceneProbe.getState(page);
-    await mainSceneProbe.queueInteraction(page);
-    await page.waitForTimeout(150);
-    const afterAdvance = await mainSceneProbe.getState(page);
-    expect(
-      !afterAdvance.conversationOpen ||
-        (afterAdvance.conversationLineIndex ?? -1) > (beforeAdvance.conversationLineIndex ?? -1),
-      'interaction input must still advance/close active dialogue',
-    ).toBe(true);
-
     await mainSceneProbe.requestInventoryToggle(page);
     await mainSceneProbe.requestEquipToggle(page);
     await mainSceneProbe.requestAchievementsToggle(page);
@@ -112,5 +102,27 @@ describe('MainGameScene UI exclusivity', () => {
       'achievements shortcut should hide while a blocking conversation is open',
     ).toBe(false);
     expect(state.primarySurfaceCount, 'no character surfaces may open during conversation').toBe(0);
+  });
+
+  it('still allows interaction input to advance or close active dialogue', async () => {
+    await bootPlayingSafeScene();
+
+    const npcTarget = await mainSceneProbe.primeNpcInteractionTarget(page);
+    expect(npcTarget, 'probe should expose at least one NPC interaction target').not.toBeNull();
+
+    await mainSceneProbe.queueInteraction(page);
+    const before = await waitForState(page, (s) => s.conversationOpen, {
+      label: 'npc dialogue opened',
+    });
+
+    await mainSceneProbe.queueInteraction(page);
+    await page.waitForTimeout(150);
+    const after = await mainSceneProbe.getState(page);
+
+    expect(
+      !after.conversationOpen ||
+        (after.conversationLineIndex ?? -1) > (before.conversationLineIndex ?? -1),
+      'interaction input should advance to the next line or close the conversation',
+    ).toBe(true);
   });
 });

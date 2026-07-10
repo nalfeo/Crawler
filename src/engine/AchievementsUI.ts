@@ -327,7 +327,16 @@ export function createAchievementsUI(
     for (let i = scrollIndex; i < defs.length; i++) {
       const def = defs[i];
       if (!def) break;
+      const rowStartIndex = rowObjects.length;
       const rowH = makeRow(def, x, currentY, w);
+      if (visibleCount > 0 && currentY + rowH > bottom) {
+        for (let j = rowObjects.length - 1; j >= rowStartIndex; j -= 1) {
+          const overflowObj = rowObjects[j];
+          overflowObj?.destroy();
+          rowObjects.pop();
+        }
+        break;
+      }
       currentY += rowH + ROW_GAP;
       visibleCount++;
       if (currentY > bottom) break;
