@@ -845,7 +845,8 @@ function layerVisible(lid){var l=getLayers().find(function(x){return x.id===lid;
 function layerLocked(lid){var l=getLayers().find(function(x){return x.id===lid;});return l&&l.locked===true;}
 function propLayer(p){return p.sceneLayer||(getLayers()[0]||{id:'default'}).id;}
 function npcLayer(n){return n.sceneLayer||(getLayers()[0]||{id:'default'}).id;}
-// Mirror src/shared/render-depths.ts:setPieceZToDepth so draw order matches runtime.
+// Mirror src/shared/render-depths.ts:setPieceZToDepth and TERRAIN_DEPTH so draw order matches runtime.
+// Negative NPC z values clamp above terrain in PhaserBridge, so the editor must too.
 var TERRAIN_DEPTH=-20,ENTITY_DEPTH=0;
 function setPieceZToDepth(z){if(z<20)return -19+z*0.8;return 2+(z-20)*0.1;}
 function nativeLayerTiles(sprite){

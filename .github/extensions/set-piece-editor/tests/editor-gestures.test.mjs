@@ -2,10 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
-const EXTENSION_PATH =
-  '/home/runner/work/Crawler/Crawler/.github/extensions/set-piece-editor/extension.mjs';
+const EXTENSION_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'extension.mjs');
 const EXTENSION_SOURCE = readFileSync(EXTENSION_PATH, 'utf8');
 const ONE_BY_ONE_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z0n0AAAAASUVORK5CYII=',
@@ -122,6 +123,10 @@ async function canvasPoint(page, tileX, tileY) {
 
 test('production source clamps negative NPC depth and uses native size for later layers', () => {
   assert.match(EXTENSION_SOURCE, /Math\.max\(TERRAIN_DEPTH\+0\.001,setPieceZToDepth\(localZ\)\)/);
+  assert.match(
+    EXTENSION_SOURCE,
+    /function nativeLayerTiles\(sprite\)\{\s*if\(sprite&&sprite.source==='custom'\)return\{w:nnum\(sprite.widthTiles,1\),h:nnum\(sprite.heightTiles,1\)\};\s*return\{w:1,h:1\};\s*\}/,
+  );
   assert.match(
     EXTENSION_SOURCE,
     /var nativeTiles=layerIndex===0\?\{w:pw,h:ph\}:nativeLayerTiles\(layer\.sprite\);/,
