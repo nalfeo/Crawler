@@ -148,6 +148,7 @@ function drawSquareMarker(
 export function createHudMinimap(scene: Phaser.Scene): {
   sync(world: GameWorld, playerEid: number): void;
   toggle(): void;
+  closeOverlay(): void;
   isOverlayOpen(): boolean;
   /**
    * Master visibility gate. Hides/shows the entire minimap (docked radar and
@@ -449,6 +450,9 @@ export function createHudMinimap(scene: Phaser.Scene): {
   let masterHidden = false;
 
   function setOverlayVisible(visible: boolean): void {
+    if (masterHidden) {
+      return;
+    }
     overlayDimmer.setVisible(visible);
     panelBg.setVisible(visible);
     panelTitle.setVisible(visible);
@@ -1132,6 +1136,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
   return {
     sync,
     toggle,
+    closeOverlay,
     isOverlayOpen: () => overlayOpen,
     setHudVisible,
     getOverlayCloseBounds: (): ScreenBounds | null => {

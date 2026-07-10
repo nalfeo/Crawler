@@ -15,6 +15,7 @@ import type {
   HarvestableRenderSummary,
   MainSceneProbeApi,
   MainSceneState,
+  NpcRenderInfo,
   ProbePoint,
   TerrainRenderSummary,
   DoorRenderSummary,
@@ -65,18 +66,38 @@ export async function loadMainSceneProbeLab(
 export const mainSceneProbe = {
   getState: (page: Page): Promise<MainSceneState> =>
     page.evaluate(() => window.__mainSceneProbe!.getState()),
+  setSafeContext: (page: Page, enabled: boolean): Promise<void> =>
+    page.evaluate((value) => window.__mainSceneProbe!.setSafeContext(value), enabled),
+  unlockSafeRoomSurfaces: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.unlockSafeRoomSurfaces()),
   resolveLoadout: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.resolveLoadout()),
   setSimulationPaused: (page: Page, paused: boolean): Promise<void> =>
     page.evaluate((p) => window.__mainSceneProbe!.setSimulationPaused(p), paused),
   setPlayerFeet: (page: Page, x: number, y: number): Promise<void> =>
     page.evaluate(({ x: fx, y: fy }) => window.__mainSceneProbe!.setPlayerFeet(fx, fy), { x, y }),
+  primeNpcInteractionTarget: (page: Page): Promise<ProbePoint | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeNpcInteractionTarget()),
+  requestAchievementsToggle: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.requestAchievementsToggle()),
+  requestInventoryToggle: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.requestInventoryToggle()),
+  requestEquipToggle: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.requestEquipToggle()),
+  queueAbilitiesToggle: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.queueAbilitiesToggle()),
+  queueAbilitiesAndAchievementsToggle: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.queueAbilitiesAndAchievementsToggle()),
+  queueInteraction: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.queueInteraction()),
   getCameraCenter: (page: Page): Promise<ProbePoint | null> =>
     page.evaluate(() => window.__mainSceneProbe!.getCameraCenter()),
   getMapSizeFeet: (page: Page): Promise<ProbePoint | null> =>
     page.evaluate(() => window.__mainSceneProbe!.getMapSizeFeet()),
   getCameraViewSize: (page: Page): Promise<ProbePoint | null> =>
     page.evaluate(() => window.__mainSceneProbe!.getCameraViewSize()),
+  getNpcRenderInfo: (page: Page): Promise<NpcRenderInfo[]> =>
+    page.evaluate(() => window.__mainSceneProbe!.getNpcRenderInfo()),
   getHarvestableRenderSummary: (page: Page): Promise<HarvestableRenderSummary> =>
     page.evaluate(() => window.__mainSceneProbe!.getHarvestableRenderSummary()),
   getTerrainRenderSummary: (page: Page): Promise<TerrainRenderSummary> =>

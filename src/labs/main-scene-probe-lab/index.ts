@@ -80,7 +80,19 @@ interface MainSceneInternals {
   playerEid?: number;
   bridge?: unknown;
   hudUi?: unknown;
+  inventoryUI?: { isOpen(): boolean };
+  equipmentUI?: { isOpen(): boolean };
+  achievementsUI?: { isOpen(): boolean };
+  inventoryButton?: { visible: boolean };
+  equipButton?: { visible: boolean };
+  achievementsButton?: { visible: boolean };
   modalPicker?: { isOpen(): boolean; close(): void };
+  conversationNpcEid?: number | null;
+  queuedInteraction?: boolean;
+  queuedAbilitiesToggle?: boolean;
+  requestInventoryToggle?(): void;
+  requestEquipAction?(): void;
+  requestAchievementsToggle?(): void;
   setSimulationPaused(paused: boolean): void;
   isSimulationPaused(): boolean;
   getTerrainRenderSummary(): {
@@ -135,6 +147,24 @@ export interface MainSceneState {
   readonly bridgePresent: boolean;
   /** True while the loadout / modal picker overlay is open. */
   readonly modalOpen: boolean;
+  /** True when inventory is open. */
+  readonly inventoryOpen: boolean;
+  /** True when equipment is open. */
+  readonly equipmentOpen: boolean;
+  /** True when achievements is open. */
+  readonly achievementsOpen: boolean;
+  /** True while a conversation is active. */
+  readonly conversationOpen: boolean;
+  /** Active NPC dialogue line index, or null when no conversation is open. */
+  readonly conversationLineIndex: number | null;
+  /** Current corner-button visibility (safe-room panel shortcuts). */
+  readonly inventoryButtonVisible: boolean;
+  readonly equipButtonVisible: boolean;
+  readonly achievementsButtonVisible: boolean;
+  /** Number of primary surfaces currently open (modal/inventory/equipment/achievements). */
+  readonly primarySurfaceCount: number;
+  /** True when safe-room-gated surfaces should be allowed. */
+  readonly safeContext: boolean;
   /** Whether the simulation is currently paused. */
   readonly simulationPaused: boolean;
   /** Number of top-level Phaser display objects on the scene. */
@@ -224,12 +254,29 @@ export interface MainSceneProbeApi {
   ready(): boolean;
   /** Snapshot of boot facts + live camera/player readings. */
   getState(): MainSceneState;
+  /** Force `isInSafeContext(world)` on/off via `playerInSafeRoom`. */
+  setSafeContext(enabled: boolean): void;
+  /** Unlock inventory/equipment/abilities and seed one achievement for testing. */
+  unlockSafeRoomSurfaces(): void;
   /** Resolve the opening loadout modal (pick option 0) and freeze the sim. */
   resolveLoadout(): void;
   /** Pause / unpause the simulation. */
   setSimulationPaused(paused: boolean): void;
   /** Overwrite the player's FEET position and zero its velocity. */
   setPlayerFeet(x: number, y: number): void;
+  /** Move the player onto the first NPC and mark it interactable for probe tests. */
+  primeNpcInteractionTarget(): ProbePoint | null;
+  /** Queue the Achievements toggle through the real MainGameScene request path. */
+  requestAchievementsToggle(): void;
+  /** Queue Inventory ([I]) and Equipment ([G]) toggles through scene request paths. */
+  requestInventoryToggle(): void;
+  requestEquipToggle(): void;
+  /** Queue abilities ([B]) toggle for the next update frame. */
+  queueAbilitiesToggle(): void;
+  /** Queue B + V in the same frame to exercise single-surface exclusivity. */
+  queueAbilitiesAndAchievementsToggle(): void;
+  /** Queue the shared interaction request used by touch and repeated E presses. */
+  queueInteraction(): void;
   /** Live world-camera center in PIXELS, or null before the camera exists. */
   getCameraCenter(): ProbePoint | null;
   /** Floor map size in FEET (camera bounds === ftToPx of this), or null. */
@@ -350,17 +397,73 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       const position = world?.stores.position;
       const playerFeet =
         position && eid >= 0 ? { x: position.x[eid] ?? 0, y: position.y[eid] ?? 0 } : null;
+      const modalOpen = scene?.modalPicker?.isOpen() ?? false;
+      const inventoryOpen = scene?.inventoryUI?.isOpen() ?? false;
+      const equipmentOpen = scene?.equipmentUI?.isOpen() ?? false;
+      const achievementsOpen = scene?.achievementsUI?.isOpen() ?? false;
+      const conversationNpcEid = scene?.conversationNpcEid ?? null;
+      const conversationLineIndex =
+        conversationNpcEid !== null
+          ? (world?.npcs.get(conversationNpcEid)?.dialogueIndex ?? 0)
+          : null;
       return {
         worldState: world?.state ?? null,
         playerEid: eid,
         hudPresent: scene?.hudUi != null,
         bridgePresent: scene?.bridge != null,
-        modalOpen: scene?.modalPicker?.isOpen() ?? false,
+        modalOpen,
+        inventoryOpen,
+        equipmentOpen,
+        achievementsOpen,
+        conversationOpen: conversationNpcEid !== null,
+        conversationLineIndex,
+        inventoryButtonVisible: scene?.inventoryButton?.visible ?? false,
+        equipButtonVisible: scene?.equipButton?.visible ?? false,
+        achievementsButtonVisible: scene?.achievementsButton?.visible ?? false,
+        primarySurfaceCount: [modalOpen, inventoryOpen, equipmentOpen, achievementsOpen].filter(
+          Boolean,
+        ).length,
+        safeContext: (world?.playerInSafeRoom ?? false) || world?.state === 'safe_room',
         simulationPaused: scene?.isSimulationPaused() ?? false,
         displayObjectCount: phaserScene?.children.list.length ?? 0,
         playerFeet,
         cameraCenter: cameraCenter(),
       };
+    },
+
+    setSafeContext: (enabled: boolean) => {
+      const world = getScene()?.world;
+      if (world) {
+        world.playerInSafeRoom = enabled;
+      }
+    },
+
+    unlockSafeRoomSurfaces: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      const eid = playerEidOf(scene);
+      if (!world) {
+        return;
+      }
+      world.playerInSafeRoom = true;
+      world.featureUnlocks.inventory = true;
+      world.featureUnlocks.equipment = true;
+      world.featureUnlocks.spells = true;
+      world.achievements.unlockedIds.add('first-bonk');
+      if (eid >= 0) {
+        const state = world.abilityStatesByEntity.get(eid) ?? {
+          learnedSpellIds: [] as string[],
+          equippedActiveAbilityIds: [] as string[],
+          passiveAbilityIds: [] as string[],
+          cooldownByAbilityId: new Map<string, number>(),
+          cooldownFramesByAbilityId: new Map<string, number>(),
+          appliedPassiveAbilityIds: new Set<string>(),
+        };
+        if (state.learnedSpellIds.length === 0 && state.equippedActiveAbilityIds.length === 0) {
+          state.learnedSpellIds = ['fireball'];
+        }
+        world.abilityStatesByEntity.set(eid, state);
+      }
     },
 
     resolveLoadout: () => {
@@ -393,6 +496,63 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       world.stores.position.y[eid] = y;
       world.stores.velocity.x[eid] = 0;
       world.stores.velocity.y[eid] = 0;
+    },
+
+    primeNpcInteractionTarget: (): ProbePoint | null => {
+      const scene = getScene();
+      const world = scene?.world;
+      const eid = playerEidOf(scene);
+      if (!world || eid < 0) {
+        return null;
+      }
+      const firstNpc = world.npcs.entries().next().value;
+      if (!firstNpc) {
+        return null;
+      }
+      const [npcEid, instance] = firstNpc;
+      const x = world.stores.position.x[npcEid] ?? 0;
+      const y = world.stores.position.y[npcEid] ?? 0;
+      instance.nearbyPlayer = true;
+      world.stores.position.x[eid] = x;
+      world.stores.position.y[eid] = y;
+      world.stores.velocity.x[eid] = 0;
+      world.stores.velocity.y[eid] = 0;
+      return { x, y };
+    },
+
+    requestAchievementsToggle: () => {
+      getScene()?.requestAchievementsToggle?.();
+    },
+
+    requestInventoryToggle: () => {
+      getScene()?.requestInventoryToggle?.();
+    },
+
+    requestEquipToggle: () => {
+      getScene()?.requestEquipAction?.();
+    },
+
+    queueAbilitiesToggle: () => {
+      const scene = getScene();
+      if (scene) {
+        scene.queuedAbilitiesToggle = true;
+      }
+    },
+
+    queueAbilitiesAndAchievementsToggle: () => {
+      const scene = getScene();
+      if (!scene) {
+        return;
+      }
+      scene.requestAchievementsToggle?.();
+      scene.queuedAbilitiesToggle = true;
+    },
+
+    queueInteraction: () => {
+      const scene = getScene();
+      if (scene) {
+        scene.queuedInteraction = true;
+      }
     },
 
     getCameraCenter: () => cameraCenter(),
