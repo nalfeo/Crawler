@@ -1,0 +1,8 @@
+{
+  "date": "2026-07-10",
+  "slug": "sweep-win-definition-safe-room",
+  "estimated_apples": 4,
+  "actual_apples": 4,
+  "verdict": "on-target",
+  "notes": "Metric-only fix: the AI sweep/gate tooling scored an official win against RAW gameTimeMs, but the Floor-1 collapse deadline PAUSES while the player rests in a safe room, so legitimate safe-room-credited victories were downgraded to timeouts and hid the true Floor-1 win rate (sword/bat ~90%+). Introduced isOfficialWin/activeTimeMs in scoring.ts as the SSOT (scoreRun stays on raw time so the hill-climb gradient never rewards idling), threaded a required RunStats.safeRoomMs from the headless runner (counted under the exact playerInSafeRoom condition that pauses the deadline, on both normal and crash paths), and migrated every win-definition site (floor1-completion + spawner-arena gates, sweep-eval/aggregate-shards, 4 A/B + navmesh sweeps, and winrate-sweep). Deliberate scope decision: NO maxFrames inflation for weapon/winrate-sweep (that is an out-of-scope runner-behavior change; rules #12/#13) — only the win DEFINITION was made consistent. weapon-sweep left as-is (330s cap strictly < 360s budget => isOfficialWin is a true no-op). 17 files, 247 insertions. Full 4-apple review harness: adversarial plan review (major_fork, 3 alternatives, dropped the global frame-cap rewrite + world field + scoreRun timeBonus change), 3-round code-review + multi-model loop converging 3->1->0 concerns, adjudicated a genuine gpt-5.4-vs-sonnet-4.6 disagreement over the winrate-sweep boundary in favor of migrating (SSOT consistency + boundary correctness + inflated-cap future-proofing). Validated ledger."
+}
