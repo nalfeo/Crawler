@@ -35,7 +35,11 @@ import {
   selectSpellFromBossBattle,
   SHOPKEEPER_EQUIPMENT_COST,
 } from '../game/floorScenario.js';
-import { floor2VictorySystem, confirmFloor2StairDescend } from '../game/floor2Scenario.js';
+import {
+  floor2VictorySystem,
+  confirmFloor2StairDescend,
+  meetBroker,
+} from '../game/floor2Scenario.js';
 import {
   statSystem,
   manaSystem,
@@ -104,6 +108,7 @@ export function createFloorMainSceneOptions(floorId: string = 'floor1') {
           isLocked: (world: GameWorld) => !hasCompletedWelcomeGoonQuest(world),
         }
       : undefined,
+    broker: !floor1Callbacks ? { met: meetBroker } : undefined,
     preSystems: [
       statsSystem,
       statSystem,

@@ -157,7 +157,10 @@ export function createHudQuestTracker(
   function sync(world: GameWorld, playerEid?: number): void {
     lastWorld = world;
     lastPlayerEid = playerEid;
-    const active = getActiveQuests(world).slice(0, MAX_ACTIVE_QUESTS);
+    // Hidden quests are tracked mechanically but never shown to the player.
+    const active = getActiveQuests(world)
+      .filter((q) => !getQuestDef(q.questId)?.hidden)
+      .slice(0, MAX_ACTIVE_QUESTS);
     if (active.length === 0) {
       body.setText('');
       setVisible(false);

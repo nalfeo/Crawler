@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-10",
+  "session_slug": "broker-reputation-gate",
+  "task_title": "Gate Floor 2 reputation system behind broker intro dialogue",
+  "estimated_apples": 1,
+  "stages": {}
+}
