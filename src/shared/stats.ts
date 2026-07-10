@@ -40,7 +40,7 @@ export function isValidStatId(id: string): id is StatId {
 
 const NEAR_INTEGER_EPSILON = 1e-6;
 
-function ceilNearInteger(value: number, epsilon = NEAR_INTEGER_EPSILON): number {
+export function ceilNearInteger(value: number, epsilon = NEAR_INTEGER_EPSILON): number {
   if (!Number.isFinite(value)) {
     return Math.ceil(value);
   }

@@ -63,12 +63,6 @@ test('the client wires the parity-critical postprocess flow', () => {
   assert.match(html, /colorToleranceSq: 4000/);
   assert.match(html, /fringeToleranceSq: 12000/);
   assert.match(html, /255 \* 255 \* 3/);
-  // live-only offline upscale control + safe upscale pipeline behavior wiring
-  assert.match(html, /upscaleFactor \(live\)/);
-  assert.match(html, /upscale is live-only and does not persist/);
-  assert.match(html, /if \(tolerancesChanged\) pendingMode = 'replace';/);
-  assert.match(html, /reject\(err instanceof Error \? err : new Error\(String\(err\)\)\);/);
-  assert.ok(!html.includes('upscaleFactor: currentLiveUpscaleFactor'));
   // pre-baked fallback affordance
   assert.match(html, /No pipeline trace available/);
   // slice-map load failure surfaces its error in the overlay status instead of a

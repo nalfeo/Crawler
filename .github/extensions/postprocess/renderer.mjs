@@ -176,8 +176,6 @@ const CLIENT_SCRIPT = String.raw`
 
   var DEFAULT_TWEAKS = { colorToleranceSq: 4000, fringeToleranceSq: 12000 };
   var MAX_TOLERANCE = 255 * 255 * 3;
-  var DEFAULT_UPSCALE_FACTOR = 1;
-  var MAX_UPSCALE_FACTOR = 8;
   var app = document.getElementById('app');
 
   var renderToken = 0;
@@ -185,7 +183,6 @@ const CLIENT_SCRIPT = String.raw`
   var liveFailed = false;
   var currentState = null;
   var currentTweaks = { colorToleranceSq: 4000, fringeToleranceSq: 12000 };
-  var currentLiveUpscaleFactor = DEFAULT_UPSCALE_FACTOR;
   var sheetImg = null;
 
   // ── Authoring / persist state (reset + reseeded from persisted overrides in
@@ -197,7 +194,6 @@ const CLIENT_SCRIPT = String.raw`
   var pendingMode = 'default';       // 'default' | 'replace' | 'reset'
   var tuningColorInput = null;       // refs so "Reset to defaults" can reset the
   var tuningFringeInput = null;      //   preview knobs visually
-  var tuningUpscaleInput = null;
   var anchorXInput = null;
   var anchorYInput = null;
   var applyStatusEl = null;
@@ -235,11 +231,6 @@ const CLIENT_SCRIPT = String.raw`
     return Math.max(0, Math.min(MAX_TOLERANCE, Math.round(value)));
   }
 
-  function clampUpscaleFactor(value, fallback) {
-    if (typeof value !== 'number' || !isFinite(value)) return fallback;
-    return Math.max(DEFAULT_UPSCALE_FACTOR, Math.min(MAX_UPSCALE_FACTOR, Math.round(value)));
-  }
-
   function imgUrl(kind, briefId, runId, file) {
     return '/img/' + kind + '?briefId=' + encodeURIComponent(briefId)
       + '&runId=' + encodeURIComponent(runId) + '&file=' + encodeURIComponent(file);
@@ -260,45 +251,6 @@ const CLIENT_SCRIPT = String.raw`
   }
 
   function b64Src(b64) { return 'data:image/png;base64,' + b64; }
-
-  function maybeUpscaleBase64(base64, factor) {
-    var normalized = clampUpscaleFactor(factor, DEFAULT_UPSCALE_FACTOR);
-    if (normalized <= DEFAULT_UPSCALE_FACTOR) {
-      return Promise.resolve({ base64: base64, src: b64Src(base64) });
-    }
-    return new Promise(function (resolve, reject) {
-      var img = new Image();
-      img.addEventListener('load', function () {
-        try {
-          var srcW = img.naturalWidth || img.width;
-          var srcH = img.naturalHeight || img.height;
-          if (!srcW || !srcH) {
-            resolve({ base64: base64, src: b64Src(base64) });
-            return;
-          }
-          var canvas = document.createElement('canvas');
-          canvas.width = srcW * normalized;
-          canvas.height = srcH * normalized;
-          var ctx = canvas.getContext('2d');
-          if (!ctx) {
-            resolve({ base64: base64, src: b64Src(base64) });
-            return;
-          }
-          ctx.imageSmoothingEnabled = false;
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, 0, srcW, srcH, 0, 0, canvas.width, canvas.height);
-          var scaled = stripDataUrl(canvas.toDataURL('image/png'));
-          resolve({ base64: scaled, src: b64Src(scaled) });
-        } catch (err) {
-          reject(err instanceof Error ? err : new Error(String(err)));
-        }
-      });
-      img.addEventListener('error', function () {
-        reject(new Error('upscale-image-load-failed'));
-      });
-      img.src = b64Src(base64);
-    });
-  }
 
   // ── Health + degrade ─────────────────────────────────────────────
   function renderHealth(state) {
@@ -529,38 +481,20 @@ const CLIENT_SCRIPT = String.raw`
   function makeTuningPanel(state) {
     var colorIn = h('input', { type: 'number', min: '0', max: String(MAX_TOLERANCE), step: '100', value: String(currentTweaks.colorToleranceSq) });
     var fringeIn = h('input', { type: 'number', min: '0', max: String(MAX_TOLERANCE), step: '100', value: String(currentTweaks.fringeToleranceSq) });
-    var upscaleIn = h('input', {
-      type: 'number',
-      min: String(DEFAULT_UPSCALE_FACTOR),
-      max: String(MAX_UPSCALE_FACTOR),
-      step: '1',
-      value: String(currentLiveUpscaleFactor)
-    });
     tuningColorInput = colorIn;
     tuningFringeInput = fringeIn;
-    tuningUpscaleInput = upscaleIn;
     var applyBtn = h('button', { type: 'button', text: 'Apply' });
     var resetBtn = h('button', { type: 'button', text: 'Reset' });
     applyBtn.addEventListener('click', function () {
-      var prevColorToleranceSq = currentTweaks.colorToleranceSq;
-      var prevFringeToleranceSq = currentTweaks.fringeToleranceSq;
       currentTweaks = {
         colorToleranceSq: clampTol(parseFloat(colorIn.value), DEFAULT_TWEAKS.colorToleranceSq),
         fringeToleranceSq: clampTol(parseFloat(fringeIn.value), DEFAULT_TWEAKS.fringeToleranceSq)
       };
-      currentLiveUpscaleFactor = clampUpscaleFactor(
-        parseFloat(upscaleIn.value),
-        DEFAULT_UPSCALE_FACTOR
-      );
       colorIn.value = String(currentTweaks.colorToleranceSq);
       fringeIn.value = String(currentTweaks.fringeToleranceSq);
-      upscaleIn.value = String(currentLiveUpscaleFactor);
-      // Stage persists only when tolerances changed. Live-only upscale is preview
-      // input shaping and must not overwrite a staged reset intent.
-      var tolerancesChanged =
-        currentTweaks.colorToleranceSq !== prevColorToleranceSq ||
-        currentTweaks.fringeToleranceSq !== prevFringeToleranceSq;
-      if (tolerancesChanged) pendingMode = 'replace';
+      // Stage these tolerances for the next "Apply changes" persist (a live-only
+      // preview, but an explicit tweak IS a change to persist — matches monolith).
+      pendingMode = 'replace';
       liveFailed = false;
       startPipeline(currentState, renderToken);
     });
@@ -568,22 +502,16 @@ const CLIENT_SCRIPT = String.raw`
       // Preview-only reset of the tolerance knobs (does NOT stage a persist-reset;
       // that is the authoring panel's "Reset to defaults", mode:'reset').
       currentTweaks = { colorToleranceSq: DEFAULT_TWEAKS.colorToleranceSq, fringeToleranceSq: DEFAULT_TWEAKS.fringeToleranceSq };
-      currentLiveUpscaleFactor = DEFAULT_UPSCALE_FACTOR;
       colorIn.value = String(currentTweaks.colorToleranceSq);
       fringeIn.value = String(currentTweaks.fringeToleranceSq);
-      upscaleIn.value = String(currentLiveUpscaleFactor);
       liveFailed = false;
       startPipeline(currentState, renderToken);
     });
     return h('div', { class: 'tuning' }, [
       h('div', { class: 'fld' }, [h('label', { text: 'colorToleranceSq' }), colorIn]),
       h('div', { class: 'fld' }, [h('label', { text: 'fringeToleranceSq' }), fringeIn]),
-      h('div', { class: 'fld' }, [h('label', { text: 'upscaleFactor (live)' }), upscaleIn]),
       applyBtn, resetBtn,
-      h('span', {
-        class: 'muted',
-        text: 'max ' + MAX_TOLERANCE + ' \u00b7 live preview (persists via Apply changes) \u00b7 upscale is live-only and does not persist'
-      })
+      h('span', { class: 'muted', text: 'max ' + MAX_TOLERANCE + ' \u00b7 live preview (persists via Apply changes)' })
     ]);
   }
 
@@ -656,8 +584,6 @@ const CLIENT_SCRIPT = String.raw`
       currentTweaks = { colorToleranceSq: DEFAULT_TWEAKS.colorToleranceSq, fringeToleranceSq: DEFAULT_TWEAKS.fringeToleranceSq };
       if (tuningColorInput) tuningColorInput.value = String(currentTweaks.colorToleranceSq);
       if (tuningFringeInput) tuningFringeInput.value = String(currentTweaks.fringeToleranceSq);
-      currentLiveUpscaleFactor = DEFAULT_UPSCALE_FACTOR;
-      if (tuningUpscaleInput) tuningUpscaleInput.value = String(currentLiveUpscaleFactor);
       currentFacing = 'right'; facingSel.value = 'right';
       currentScope = 'variant'; scopeSel.value = 'variant';
       currentAnchor = null; pendingClear = false;
@@ -863,7 +789,7 @@ const CLIENT_SCRIPT = String.raw`
             ctx.imageSmoothingEnabled = false;
             ctx.drawImage(sheetImg, cell.x0, cell.y0, cell.w, cell.h, 0, 0, cell.w, cell.h);
             var b64 = stripDataUrl(c.toDataURL('image/png'));
-            return maybeUpscaleBase64(b64, currentLiveUpscaleFactor);
+            return Promise.resolve({ base64: b64, src: b64Src(b64) });
           }
         } catch (e) { /* tainted/oversize — fall through to stored raw */ }
       }
@@ -873,9 +799,7 @@ const CLIENT_SCRIPT = String.raw`
       if (!r.ok) throw new Error('raw ' + r.status);
       return r.blob();
     }).then(function (blob) {
-      return blobToBase64(blob).then(function (b64) {
-        return maybeUpscaleBase64(b64, currentLiveUpscaleFactor);
-      });
+      return blobToBase64(blob).then(function (b64) { return { base64: b64, src: b64Src(b64) }; });
     });
   }
 
