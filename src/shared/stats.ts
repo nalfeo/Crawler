@@ -183,7 +183,7 @@ export const CORE_STAT_BASE: Readonly<Record<PrimaryStatId, number>> = {
   weight: 0,
 };
 
-export const ALLOCATABLE_PRIMARY_STATS = [
+const ALLOCATABLE_PRIMARY_STATS = [
   'strength',
   'dexterity',
   'constitution',
