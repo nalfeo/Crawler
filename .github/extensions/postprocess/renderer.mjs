@@ -269,25 +269,29 @@ const CLIENT_SCRIPT = String.raw`
     return new Promise(function (resolve, reject) {
       var img = new Image();
       img.addEventListener('load', function () {
-        var srcW = img.naturalWidth || img.width;
-        var srcH = img.naturalHeight || img.height;
-        if (!srcW || !srcH) {
-          resolve({ base64: base64, src: b64Src(base64) });
-          return;
+        try {
+          var srcW = img.naturalWidth || img.width;
+          var srcH = img.naturalHeight || img.height;
+          if (!srcW || !srcH) {
+            resolve({ base64: base64, src: b64Src(base64) });
+            return;
+          }
+          var canvas = document.createElement('canvas');
+          canvas.width = srcW * normalized;
+          canvas.height = srcH * normalized;
+          var ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve({ base64: base64, src: b64Src(base64) });
+            return;
+          }
+          ctx.imageSmoothingEnabled = false;
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, srcW, srcH, 0, 0, canvas.width, canvas.height);
+          var scaled = stripDataUrl(canvas.toDataURL('image/png'));
+          resolve({ base64: scaled, src: b64Src(scaled) });
+        } catch (err) {
+          reject(err instanceof Error ? err : new Error(String(err)));
         }
-        var canvas = document.createElement('canvas');
-        canvas.width = srcW * normalized;
-        canvas.height = srcH * normalized;
-        var ctx = canvas.getContext('2d');
-        if (!ctx) {
-          resolve({ base64: base64, src: b64Src(base64) });
-          return;
-        }
-        ctx.imageSmoothingEnabled = false;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0, srcW, srcH, 0, 0, canvas.width, canvas.height);
-        var scaled = stripDataUrl(canvas.toDataURL('image/png'));
-        resolve({ base64: scaled, src: b64Src(scaled) });
       });
       img.addEventListener('error', function () {
         reject(new Error('upscale-image-load-failed'));
@@ -538,6 +542,8 @@ const CLIENT_SCRIPT = String.raw`
     var applyBtn = h('button', { type: 'button', text: 'Apply' });
     var resetBtn = h('button', { type: 'button', text: 'Reset' });
     applyBtn.addEventListener('click', function () {
+      var prevColorToleranceSq = currentTweaks.colorToleranceSq;
+      var prevFringeToleranceSq = currentTweaks.fringeToleranceSq;
       currentTweaks = {
         colorToleranceSq: clampTol(parseFloat(colorIn.value), DEFAULT_TWEAKS.colorToleranceSq),
         fringeToleranceSq: clampTol(parseFloat(fringeIn.value), DEFAULT_TWEAKS.fringeToleranceSq)
@@ -549,9 +555,12 @@ const CLIENT_SCRIPT = String.raw`
       colorIn.value = String(currentTweaks.colorToleranceSq);
       fringeIn.value = String(currentTweaks.fringeToleranceSq);
       upscaleIn.value = String(currentLiveUpscaleFactor);
-      // Stage these tolerances for the next "Apply changes" persist (a live-only
-      // preview, but an explicit tweak IS a change to persist — matches monolith).
-      pendingMode = 'replace';
+      // Stage persists only when tolerances changed. Live-only upscale is preview
+      // input shaping and must not overwrite a staged reset intent.
+      var tolerancesChanged =
+        currentTweaks.colorToleranceSq !== prevColorToleranceSq ||
+        currentTweaks.fringeToleranceSq !== prevFringeToleranceSq;
+      if (tolerancesChanged) pendingMode = 'replace';
       liveFailed = false;
       startPipeline(currentState, renderToken);
     });
@@ -894,7 +903,6 @@ const CLIENT_SCRIPT = String.raw`
           rawPngBase64: input.base64,
           colorToleranceSq: currentTweaks.colorToleranceSq,
           fringeToleranceSq: currentTweaks.fringeToleranceSq,
-          upscaleFactor: currentLiveUpscaleFactor,
           seq: mySeq
         })
       });
