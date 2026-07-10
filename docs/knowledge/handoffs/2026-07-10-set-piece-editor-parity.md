@@ -21,10 +21,10 @@ Implemented all deferred WYSIWYG parity items from PR #995 review (issue #997).
    editor drawables in the same depth bands as runtime. NPCs without an authored
    `z` sort at `ENTITY_DEPTH=0`, exactly matching the runtime entity band.
 
-2. **Multi-layer prop rendering parity** — `drawProp` previously defaulted
-   non-first layers to `1×1 tile` target size. Fixed to always use `pw*ts` /
-   `ph*ts` (the prop footprint) for any layer that doesn't declare an explicit
-   `widthFt`/`heightFt`, matching `stampSetPiece.ts` semantics.
+2. **Multi-layer prop rendering parity** — `drawProp` now matches
+   `stampSetPiece.ts` semantics: layer 0 defaults to the authored prop footprint,
+   while non-first layers default to their native/custom sprite dimensions unless
+   explicit `widthFt`/`heightFt` is provided.
 
 3. **NPC coordinate/anchor parity** — Introduced `snapNpcCenter()` helper in
    `extension.mjs`. The three mouseup branches (`move-npc`, `move-npc-group`,
@@ -47,7 +47,8 @@ Implemented all deferred WYSIWYG parity items from PR #995 review (issue #997).
   — `setPieceZToDepth` + `ENTITY_DEPTH` constants added inline  
   — `globalZ` signature expanded to `(layerId, kind, localZ)`  
   — 4 render-loop/hit-test `globalZ` callsites updated  
-  — `drawProp` multi-layer size default fixed  
+  — prop render/hit sort now includes runtime epsilon tie-break parity  
+  — `drawProp` multi-layer size defaults aligned with runtime flattening  
   — `snapNpcCenter()` helper added  
   — 3 mouseup NPC snap branches updated to use center-snap
 
@@ -73,3 +74,14 @@ node --test tests/editor-gestures.test.mjs
 # Full repo fast verify
 npm run verify:fast
 ```
+
+## Observe Before Done (real artifact)
+
+- Deterministic runtime/equivalence evidence for this branch is captured in real
+  runtime-path tests, not editor-only stubs: `tests/unit/stamp-set-piece.test.ts`
+  (set-piece layer flattening/stamp behavior) and
+  `tests/unit/phaser-bridge.test.ts` (runtime bridge depth/render application).
+- The production editor interaction suite
+  (`.github/extensions/set-piece-editor/tests/editor-gestures.test.mjs`) exercises
+  real generated-editor behavior (hit order, drag/resize, snap modes, undo/redo,
+  apply payload) under Chromium.

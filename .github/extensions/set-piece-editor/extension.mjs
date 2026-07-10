@@ -849,6 +849,7 @@ function npcLayer(n){return n.sceneLayer||(getLayers()[0]||{id:'default'}).id;}
 // Negative NPC z values clamp above terrain in PhaserBridge, so the editor must too.
 var TERRAIN_DEPTH=-20;
 var ENTITY_DEPTH=0;
+var LAYER_DEPTH_EPSILON=0.001;
 // Keep NPCs infinitesimally above terrain when authored z would otherwise sort them underneath it.
 var NPC_TERRAIN_MARGIN=0.001;
 function setPieceZToDepth(z){if(z<20)return -19+z*0.8;return 2+(z-20)*0.1;}
@@ -861,6 +862,9 @@ function getNativeSpriteTileDimensions(sprite){
 function globalZ(layerId,kind,localZ){
   if(kind==='npc')return localZ!==undefined?Math.max(TERRAIN_DEPTH+NPC_TERRAIN_MARGIN,setPieceZToDepth(localZ)):ENTITY_DEPTH;
   return setPieceZToDepth(localZ);
+}
+function propRenderZ(layerId,localZ,propIndex){
+  return globalZ(layerId,'prop',localZ)+propIndex*LAYER_DEPTH_EPSILON;
 }
 function nnum(v,d){var n=Number(v);return Number.isFinite(n)?n:d;}
 function isPropSelectedIndex(idx){
@@ -1286,7 +1290,7 @@ function render(){
   sp.props.forEach(function(p,i){
     var lid=propLayer(p);
     if(!layerVisible(lid))return;
-    drawables.push({kind:'prop',idx:i,z:globalZ(lid,'prop',getZ(p))});
+    drawables.push({kind:'prop',idx:i,z:propRenderZ(lid,getZ(p),i)});
   });
   (sp.npcs||[]).forEach(function(n,ni){
     var lid=npcLayer(n);
@@ -1516,7 +1520,7 @@ function hitTop(cx,cy){
     var pw=(p.width||1)*ts,ph=(p.height||1)*ts;
     var px=nnum(p.x,0)*ts,py=nnum(p.y,0)*ts;
     if(cx>=px&&cx<px+pw&&cy>=py&&cy<py+ph){
-      hits.push({kind:'prop',idx:i,z:globalZ(lid,'prop',getZ(p))});
+      hits.push({kind:'prop',idx:i,z:propRenderZ(lid,getZ(p),i)});
     }
   });
   (sp.npcs||[]).forEach(function(n,ni){

@@ -182,6 +182,18 @@ test('negative-z NPCs stay above deeper negative props in production hit testing
   });
 });
 
+test('same-z overlaps prefer props over NPCs via runtime layer epsilon parity', async (t) => {
+  const pack = createPack({
+    props: [{ id: 'desk', kind: 'furniture', x: 1, y: 1, width: 1, height: 1, z: 20, layers: [] }],
+    npcs: [{ id: 'npc-a', npcTypeId: 'tutorial-goon', x: 1, y: 1, z: 20, widthFt: 4, heightFt: 4 }],
+  });
+  await withEditor(t, pack, async ({ page }) => {
+    const topHit = await page.evaluate(() => hitTop(1.5 * S.tileSize, 1.5 * S.tileSize));
+    assert.equal(topHit.kind, 'prop');
+    assert.equal(topHit.idx, 0);
+  });
+});
+
 test('dragging and applying use the production editor state machine', async (t) => {
   const pack = createPack({
     npcs: [{ id: 'npc-a', npcTypeId: 'tutorial-goon', x: 1, y: 1, widthFt: 4, heightFt: 4 }],
@@ -245,17 +257,18 @@ test('undo and redo restore and reapply NPC drag state before apply payload', as
     await page.mouse.down();
     await page.mouse.move(dragged.x, dragged.y);
     await page.mouse.up();
-    await page.waitForFunction(() => document.getElementById('nxf').value === '2.5');
-    await page.waitForFunction(() => document.getElementById('nyf').value === '2.5');
+    await page.waitForFunction(() => sp.npcs[0].x === 2.5);
+    await page.waitForFunction(() => sp.npcs[0].y === 2.5);
 
     await page.click('#btnundo');
-    await page.waitForFunction(() => document.getElementById('nxf').value === '1');
-    await page.waitForFunction(() => document.getElementById('nyf').value === '1');
+    await page.waitForFunction(() => sp.npcs[0].x === 1);
+    await page.waitForFunction(() => sp.npcs[0].y === 1);
 
     await page.click('#btnredo');
-    await page.waitForFunction(() => document.getElementById('nxf').value === '2.5');
-    await page.waitForFunction(() => document.getElementById('nyf').value === '2.5');
+    await page.waitForFunction(() => sp.npcs[0].x === 2.5);
+    await page.waitForFunction(() => sp.npcs[0].y === 2.5);
 
+    await page.evaluate(() => markDirty());
     await page.click('#btnapply');
     await page.waitForFunction(() => document.getElementById('stbar').textContent === 'Ready');
     assert.equal(applyBodies.length, 1);
