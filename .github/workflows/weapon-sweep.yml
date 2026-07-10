@@ -42,7 +42,7 @@ jobs:
             echo "::error::max_frames must be a positive integer in [1,600000]"
             exit 1
           fi
-          weapon_matrix=$(echo "$WEAPONS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' | jq -R . | jq -sc .)
+          weapon_matrix=$(echo "$WEAPONS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | awk 'NF' | jq -R . | jq -sc .)
           # Validate each weapon token: allow only alphanumerics and hyphens
           if echo "$weapon_matrix" | jq -e '.[] | select(test("[^a-zA-Z0-9-]"))' > /dev/null 2>&1; then
             echo "::error::weapons must be alphanumeric (hyphens allowed); no spaces, slashes, or special characters"
