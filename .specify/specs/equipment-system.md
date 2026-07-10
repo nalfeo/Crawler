@@ -144,8 +144,10 @@ Primary stats can derive secondary stats via the shared stat pipeline (e.g. stre
 These formulas define how `EffectiveStats` modify existing systems:
 
 ```
-// Weapon system (weaponSystem.ts)
+// Weapon cooldown system (weaponSystem.ts)
 effectiveFireRateMs = baseCooldownMs / max(0.1, 1 + attackSpeed) * (1 - cooldownReduction)
+
+// Damage choke point (apply-damage.ts)
 outgoingDamage     = max(0, (baseDamage + damageBonus) * (1 + damagePercent))
 isCrit             = world.rng.next() < critChance   // uses SeededRandom
 critDamage         = outgoingDamage * critMultiplier
@@ -166,13 +168,15 @@ effectiveXp        = baseXpValue * (1 + xpBonus)
 
 **Integration points** (existing systems to update):
 
-- `weaponSystem.ts` → read `EffectiveStats` for `damageBonus`, `damagePercent`, `attackSpeed`, `cooldownReduction`, `critChance`, `critMultiplier`
+- `weaponSystem.ts` → read `EffectiveStats` for `attackSpeed`, `cooldownReduction`
+- `abilitySystem.ts` → read `cooldownReduction` for effective ability cooldown windows (snapshotted per active cooldown)
+- `apply-damage.ts` → read `damageBonus`, `damagePercent`, `critChance`, `critMultiplier`
 - `healthSystem.ts` → read `armor`, `dodgeChance`, `hpRegen`
 - `playerInputSystem.ts` → read `moveSpeed`
 - XP collection (when implemented) → read `xpBonus`
 - `BroadcastScore` → read `charisma` bonus (future)
 
-Stats are read **live each frame** from the `EffectiveStats` store, not snapshotted. Projectiles use damage values at spawn time.
+Stats are read live from `EffectiveStats` by default; the explicit exception is ability cooldown windows, where `abilitySystem` snapshots the computed cooldown duration at cast time to keep HUD and gating semantics aligned for that window. Projectiles use damage values at spawn time.
 
 ### Default Base Stats
 
