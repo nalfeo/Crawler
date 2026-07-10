@@ -146,13 +146,7 @@ export class TileMap {
         y += sy;
       }
       const steppedDiagonally = x !== prevX && y !== prevY;
-      const steppedFromOrigin = prevX === x0 && prevY === y0;
-      if (
-        steppedFromOrigin &&
-        steppedDiagonally &&
-        !this.isTransparent(x, prevY) &&
-        !this.isTransparent(prevX, y)
-      ) {
+      if (steppedDiagonally && !this.isTransparent(x, prevY) && !this.isTransparent(prevX, y)) {
         return false;
       }
       // Reaching the target tile means the path was clear; the target tile

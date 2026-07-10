@@ -228,6 +228,14 @@ describe('TileMap', () => {
       map.setFlags(2, 1, TilePresets.WALL);
       expect(map.lineOfSight(1, 1, 2, 2)).toBe(true);
     });
+
+    it('blocks multi-step diagonal LOS through the same corner seam in both directions', () => {
+      const map = openMap();
+      map.setFlags(2, 1, TilePresets.WALL);
+      map.setFlags(1, 2, TilePresets.WALL);
+      expect(map.lineOfSight(1, 1, 3, 3)).toBe(false);
+      expect(map.lineOfSight(3, 3, 1, 1)).toBe(false);
+    });
   });
 
   describe('tile flag bitfield correctness', () => {
