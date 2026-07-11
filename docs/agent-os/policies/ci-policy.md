@@ -80,6 +80,20 @@ Protect `main` with the following rules:
 - Block force-pushes and branch deletion on `main`
 - Prefer squash merge or other linear-history-friendly merge settings
 
+When `MERGE_TRAIN_MODE=live`, the repository-managed train supersedes ordinary
+squash auto-merge:
+
+- Require the `merge-train` check so no ordinary/manual path can bypass the
+  train.
+- CI recovery adds clean same-repository PRs to the train instead of arming
+  auto-merge.
+- Only the repository App may bypass protection, and only to fast-forward
+  `main` to the exact validated candidate SHA.
+- Candidate validation runs full verify, headless, e2e, and security gates.
+- See
+  [`docs/guides/merge-train.md`](../../guides/merge-train.md) and ADR
+  [`0060-repository-managed-speculative-merge-train`](../../knowledge/adr/0060-repository-managed-speculative-merge-train.md).
+
 ## Looping Automation Workflows
 
 In addition to the per-PR `ci.yml` gate stack, three scheduled workflows run

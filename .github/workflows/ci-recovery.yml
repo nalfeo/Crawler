@@ -52,6 +52,7 @@ jobs:
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI_RECOVERY_MODE: ${{ vars.CI_RECOVERY_MODE || 'dry-run' }}
+          MERGE_TRAIN_MODE: ${{ vars.MERGE_TRAIN_MODE || 'off' }}
           PR_NUMBER: ${{ inputs.pr_number }}
           RECOVERY_OPERATION: ${{ inputs.operation }}
           RECOVERY_TRIGGER: ${{ inputs.trigger }}

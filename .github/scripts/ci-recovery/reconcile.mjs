@@ -27,6 +27,8 @@ const mode = (process.env.CI_RECOVERY_MODE || 'dry-run').toLowerCase();
 const pat = process.env.CRAWLER_CI_PAT || '';
 const readToken = pat || process.env.GITHUB_TOKEN || '';
 const shouldMutate = shouldMutateRecoveryState(mode, operation);
+const live = mode === 'live';
+const mergeTrainMode = (process.env.MERGE_TRAIN_MODE || 'off').toLowerCase();
 const now = new Date();
 
 if (!owner || !repo || !Number.isInteger(prNumber) || !readToken) {
@@ -226,6 +228,27 @@ for (const thread of review.threads.filter(
   (candidate) => !candidate.isResolved && shouldResolveThread(candidate, pr.head.sha),
 )) {
   if (shouldMutate) {
+  if (shouldMutate) {
+    if (mergeTrainMode === 'live') {
+      try {
+        await request(pat, `/repos/${owner}/${repo}/labels`, {
+          method: 'POST',
+          body: {
+            name: 'merge-train',
+            color: '1f6feb',
+            description: 'Ready for the repository-managed merge train',
+          },
+        });
+      } catch (error) {
+        if (error.status !== 422) throw error;
+      }
+      await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/labels`, {
+        method: 'POST',
+        body: { labels: ['merge-train'] },
+      });
+      process.stdout.write(`queued merge-train pr=#${prNumber}\n`);
+      process.exit(0);
+    }
     await graphql(
       pat,
       `

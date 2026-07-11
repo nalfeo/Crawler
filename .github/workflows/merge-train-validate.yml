@@ -1,0 +1,104 @@
+name: Merge Train Validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Immutable candidate commit to validate
+        required: true
+        type: string
+      fingerprint:
+        description: Queue generation fingerprint
+        required: true
+        type: string
+      pr_numbers:
+        description: Ordered comma-separated PR numbers
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - name: Validate final commit subject
+        run: git log -1 --pretty=%s | npx commitlint --config commitlint.title.config.cjs --verbose
+      - name: Full repository verification
+        run: npm run verify
+
+  headless:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - run: npm run test:headless
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+        with:
+          install-playwright: 'true'
+      - run: npm run test:e2e
+
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - run: npm run security:check
+
+  publish:
+    if: always()
+    needs: [verify, headless, e2e, security]
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      contents: read
+    steps:
+      - name: Publish immutable candidate result
+        uses: actions/github-script@v7
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          FINGERPRINT: ${{ inputs.fingerprint }}
+          PR_NUMBERS: ${{ inputs.pr_numbers }}
+          PASSED: ${{ needs.verify.result == 'success' && needs.headless.result == 'success' && needs.e2e.result == 'success' && needs.security.result == 'success' }}
+        with:
+          script: |
+            const passed = process.env.PASSED === 'true';
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'merge-train',
+              head_sha: process.env.CANDIDATE_SHA,
+              status: 'completed',
+              conclusion: passed ? 'success' : 'failure',
+              external_id: process.env.FINGERPRINT,
+              output: {
+                title: passed ? 'Merge-train candidate passed' : 'Merge-train candidate failed',
+                summary: `PR order: ${process.env.PR_NUMBERS}\nFingerprint: ${process.env.FINGERPRINT}`,
+              },
+            });
