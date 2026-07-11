@@ -7,6 +7,12 @@ export type Floor1LoadoutChoiceId = 'sword' | 'bow' | 'baseball-bat';
 
 export const DEFAULT_FLOOR1_LOADOUT_CHOICE: Floor1LoadoutChoiceId = 'sword';
 
+export const FLOOR1_LOADOUT_CHOICE_IDS: readonly Floor1LoadoutChoiceId[] = [
+  'sword',
+  'bow',
+  'baseball-bat',
+];
+
 const FLOOR1_LOADOUT_OPTIONS = [
   {
     id: 'sword',

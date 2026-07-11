@@ -35,6 +35,7 @@ import {
   SHOPKEEPER_EQUIPMENT_COST,
 } from '../../src/game/floorScenario.js';
 import { getActiveWeapon } from '../../src/game/weaponSystem.js';
+import { FLOOR1_LOADOUT_CHOICE_IDS } from '../../src/game/scenarios/floorLoadoutScenario.js';
 import {
   acceptQuest,
   isQuestComplete,
@@ -1284,16 +1285,18 @@ describe('floor1Scenario', () => {
       expect(world.playerGold).toBe(SHOPKEEPER_EQUIPMENT_COST - 1);
     });
 
-    it('offers 2 deterministic extra starter-weapon options from the starter pool', () => {
+    it('offers 2 deterministic extra starter-weapon options from the Floor 1 loadout set', () => {
       const worldA = createTestWorld({ seed: 5 });
       const playerA = spawnPlayer(worldA, 0, 0);
       initializeFloor1Scenario(worldA, playerA);
       worldA.goalFlags.set('floor1-shop-quest-complete', true);
+      worldA.floorScenario!.starterChoices = [...FLOOR1_LOADOUT_CHOICE_IDS];
 
       const worldB = createTestWorld({ seed: 5 });
       const playerB = spawnPlayer(worldB, 0, 0);
       initializeFloor1Scenario(worldB, playerB);
       worldB.goalFlags.set('floor1-shop-quest-complete', true);
+      worldB.floorScenario!.starterChoices = [...FLOOR1_LOADOUT_CHOICE_IDS];
 
       const stockA = getShopkeeperPostQuestStock(worldA);
       const stockB = getShopkeeperPostQuestStock(worldB);
@@ -1308,12 +1311,8 @@ describe('floor1Scenario', () => {
         'throwing-knife': 'throwing-knife',
         fireball: 'fireball',
       };
-      const starterChoices = new Set(worldA.floorScenario?.starterChoices ?? []);
       const expectedItemIds = new Set(
-        (worldA.floorScenario?.starterWeaponPool ?? [])
-          .filter((weaponId) => !starterChoices.has(weaponId))
-          .map((weaponId) => starterToItem[weaponId])
-          .filter((itemId): itemId is string => Boolean(itemId)),
+        FLOOR1_LOADOUT_CHOICE_IDS.map((weaponId) => starterToItem[weaponId]),
       );
       for (const entry of stockA) {
         expect(expectedItemIds.has(entry.itemId)).toBe(true);
