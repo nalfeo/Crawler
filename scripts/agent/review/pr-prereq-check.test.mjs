@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   evaluatePrereqs,
+  inferTelemetrySessionSlug,
   summarizePrereqResult,
   telemetryCaptureNote,
 } from './pr-prereq-check.mjs';
@@ -50,6 +51,26 @@ test('evaluatePrereqs skips ledger for docs-only changes', () => {
   assert.match(r.notes.join('\n'), /review ledger not required|docs\/art\/deps-only/);
 });
 
+test('inferTelemetrySessionSlug prefers the handoff slug when present', () => {
+  assert.equal(
+    inferTelemetrySessionSlug(
+      [CODE_FILE, 'docs/knowledge/review-ledgers/2026-06-29-prereq-check.review-ledger.json'],
+      ['docs/knowledge/handoffs/2026-06-29-prereq-check.md'],
+    ),
+    'prereq-check',
+  );
+});
+
+test('inferTelemetrySessionSlug falls back to the ledger slug', () => {
+  assert.equal(
+    inferTelemetrySessionSlug(
+      [CODE_FILE, 'docs/knowledge/review-ledgers/2026-06-29-prereq-check.review-ledger.json'],
+      [],
+    ),
+    'prereq-check',
+  );
+});
+
 function withTelemetryArtifact(fn) {
   const dir = mkdtempSync(join(tmpdir(), 'telemetry-note-'));
   try {
@@ -67,27 +88,57 @@ function withTelemetryArtifact(fn) {
 test('telemetryCaptureNote returns null when no session artifact exists', () => {
   const dir = mkdtempSync(join(tmpdir(), 'telemetry-note-empty-'));
   try {
-    assert.equal(telemetryCaptureNote(dir, ['src/core/foo.ts']), null);
+    assert.equal(telemetryCaptureNote(dir, ['src/core/foo.ts'], []), null);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test('telemetryCaptureNote warns when artifact exists but no capture file is staged', () => {
+test('telemetryCaptureNote auto-captures when it can infer the session slug', () => {
   withTelemetryArtifact((dir) => {
-    const note = telemetryCaptureNote(dir, ['src/core/foo.ts']);
+    const slug = 'telemetry-auto';
+    const today = new Date().toISOString().slice(0, 10);
+    const note = telemetryCaptureNote(
+      dir,
+      ['src/core/foo.ts', `docs/knowledge/handoffs/${today}-${slug}.md`],
+      [`docs/knowledge/handoffs/${today}-${slug}.md`],
+      {
+        captureTelemetry(cwd, inferredSlug) {
+          assert.equal(cwd, dir);
+          assert.equal(inferredSlug, slug);
+          mkdirSync(join(dir, 'docs', 'knowledge', 'metrics', 'guard-telemetry'), {
+            recursive: true,
+          });
+          writeFileSync(
+            join(dir, 'docs', 'knowledge', 'metrics', 'guard-telemetry', `${today}-${slug}.json`),
+            '{}\n',
+          );
+        },
+      },
+    );
+
     assert.ok(note, 'expected a non-null note');
     assert.match(note, /\[guard-telemetry\]/);
-    assert.match(note, /npm run telemetry:capture/);
+    assert.match(note, /Auto-captured guard telemetry/);
+    assert.match(note, new RegExp(`${today}-${slug}\\.json`));
+  });
+});
+
+test('telemetryCaptureNote falls back to the manual reminder when no slug is inferable', () => {
+  withTelemetryArtifact((dir) => {
+    const note = telemetryCaptureNote(dir, ['src/core/foo.ts'], []);
+    assert.ok(note, 'expected a non-null note');
+    assert.match(note, /npm run telemetry:capture -- <session-slug>/);
   });
 });
 
 test('telemetryCaptureNote returns null once a capture file is staged', () => {
   withTelemetryArtifact((dir) => {
-    const note = telemetryCaptureNote(dir, [
-      'src/core/foo.ts',
-      'docs/knowledge/metrics/guard-telemetry/2026-07-02-demo.json',
-    ]);
+    const note = telemetryCaptureNote(
+      dir,
+      ['src/core/foo.ts', 'docs/knowledge/metrics/guard-telemetry/2026-07-02-demo.json'],
+      [],
+    );
     assert.equal(note, null);
   });
 });
