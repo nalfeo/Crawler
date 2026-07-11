@@ -61,6 +61,34 @@ describe('formatBaselineComment', () => {
     expect(body).toContain('[Sweep run](https://example.test/fallback-run)');
   });
 
+  it('orders timestamps by absolute time across UTC offsets and leaves undated entries last', () => {
+    const body = formatBaselineComment(
+      { winRate: 0.84, totalWins: 252, totalRuns: 300 },
+      [
+        {
+          commit: 'a'.repeat(40),
+          commitDate: '2026-07-10T00:30:00+02:00',
+          winRate: 0.82,
+        },
+        {
+          commit: 'b'.repeat(40),
+          commitDate: '2026-07-09T23:00:00-02:00',
+          winRate: 0.84,
+        },
+        { commit: 'c'.repeat(40), winRate: 0.8 },
+      ],
+      options,
+    );
+
+    expect(body).toContain(
+      [
+        '- unknown date `ccccccc` — **80.0%** (—)',
+        '- 2026-07-09 `aaaaaaa` — **82.0%** (+2.0 pp)',
+        '- 2026-07-10 `bbbbbbb` — **84.0%** (+2.0 pp)',
+      ].join('\n'),
+    );
+  });
+
   it('rejects invalid history instead of silently omitting the trend', () => {
     expect(() =>
       formatBaselineComment({ winRate: 0.84, totalWins: 252, totalRuns: 300 }, [], options),

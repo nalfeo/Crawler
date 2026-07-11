@@ -31,8 +31,8 @@ function assertWinRate(winRate: number, context: string): void {
 }
 
 function formatReleaseLabel(entry: BaselineIndexEntry): string {
-  const recordedAt = entry.commitDate ?? entry.capturedAt;
-  const date = recordedAt?.slice(0, 10) || 'unknown date';
+  const timestamp = recordedTimestamp(entry);
+  const date = timestamp === null ? 'unknown date' : new Date(timestamp).toISOString().slice(0, 10);
   return `${date} \`${entry.commit.slice(0, 7)}\``;
 }
 
@@ -41,6 +41,13 @@ function formatDelta(current: number, previous: number | undefined): string {
   const delta = (current - previous) * 100;
   const sign = delta >= 0 ? '+' : '';
   return `${sign}${delta.toFixed(1)} pp`;
+}
+
+function recordedTimestamp(entry: BaselineIndexEntry): number | null {
+  const recordedAt = entry.commitDate ?? entry.capturedAt;
+  if (!recordedAt) return null;
+  const timestamp = Date.parse(recordedAt);
+  return Number.isNaN(timestamp) ? null : timestamp;
 }
 
 export function formatBaselineComment(
@@ -64,9 +71,13 @@ export function formatBaselineComment(
       assertWinRate(entry.winRate, `baseline index entry ${position}`);
       return entry;
     })
-    .sort((a, b) =>
-      (b.commitDate ?? b.capturedAt ?? '').localeCompare(a.commitDate ?? a.capturedAt ?? ''),
-    );
+    .sort((a, b) => {
+      const aTimestamp = recordedTimestamp(a);
+      const bTimestamp = recordedTimestamp(b);
+      if (aTimestamp === null) return bTimestamp === null ? 0 : 1;
+      if (bTimestamp === null) return -1;
+      return bTimestamp - aTimestamp;
+    });
   const newestFive = history.slice(0, 5);
   const trendLines = newestFive
     .map((entry, position) => {
