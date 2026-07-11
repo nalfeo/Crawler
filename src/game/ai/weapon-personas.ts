@@ -1,6 +1,5 @@
 import type { GameWorld } from '../../core/world.js';
 import { getActiveWeaponDef } from '../../core/active-weapon.js';
-import type { EquipmentItemDef } from '../../shared/equipment-types.js';
 import {
   PRIMARY_STATS,
   isAllocatablePrimaryStat,
@@ -153,24 +152,4 @@ export function computeWeaponPersonaStatAllocation(
     allocation[stat] = (allocation[stat] ?? 0) + 1;
   }
   return allocation;
-}
-
-export function scoreEquipmentForPersona(
-  equipment: EquipmentItemDef,
-  persona: WeaponPersona,
-  currentStats: Partial<Readonly<Record<StatId, number>>>,
-): number {
-  let score = 0;
-  for (const stat of PRIMARY_STATS) {
-    const bonus = equipment.statBonuses[stat] ?? 0;
-    const deficit = Math.max(0, (persona.minimumTargets[stat] ?? 0) - (currentStats[stat] ?? 0));
-    score += bonus * (persona.statWeights[stat] ?? 0);
-    score += Math.min(deficit, Math.max(0, bonus)) * 100;
-  }
-  for (const [stat, bonus] of Object.entries(equipment.statBonuses) as [StatId, number][]) {
-    if (!(PRIMARY_STATS as readonly string[]).includes(stat)) {
-      score += bonus * (persona.statWeights[stat] ?? 0);
-    }
-  }
-  return score;
 }
