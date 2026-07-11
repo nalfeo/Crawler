@@ -3104,10 +3104,10 @@ export function meetShopkeeper(world: GameWorld): void {
   }
   const quest =
     world.questLog.get(FLOOR1_SHOP_QUEST_ID) ?? acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
-  if (quest?.status === 'active') {
+  notifyQuestTalk(world, 'shopkeeper');
+  if (quest?.status === 'active' && getShopkeeperStage(world) === 'awaiting-prize') {
     setTrackedQuest(world, FLOOR1_SHOP_QUEST_ID);
   }
-  notifyQuestTalk(world, 'shopkeeper');
 }
 
 /**

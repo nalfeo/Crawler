@@ -35,6 +35,7 @@ const LABEL_OFFSET = ARROW_SIZE + 4;
 const LABEL_CHAR_WIDTH = 7;
 const LABEL_HEIGHT = 16;
 const LABEL_COLLISION_PADDING = 6;
+const LABEL_VIEWPORT_PADDING = 8;
 
 const KIND_COLORS: Readonly<Record<QuestWaypointKind, number>> = {
   npc: 0xfcd34d,
@@ -71,10 +72,14 @@ function labelLayout(
   screenY: number,
   text: string,
 ): { x: number; y: number; width: number; height: number } {
+  const width = Math.min(text.length * LABEL_CHAR_WIDTH, GAME.WIDTH - LABEL_VIEWPORT_PADDING * 2);
   return {
-    x: screenX,
+    x: Math.min(
+      GAME.WIDTH - LABEL_VIEWPORT_PADDING - width / 2,
+      Math.max(LABEL_VIEWPORT_PADDING + width / 2, screenX),
+    ),
     y: screenY + (screenY >= CY ? -LABEL_OFFSET : LABEL_OFFSET),
-    width: text.length * LABEL_CHAR_WIDTH,
+    width,
     height: LABEL_HEIGHT,
   };
 }

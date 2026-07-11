@@ -70,6 +70,29 @@ describe('resolveDirectionArrowStates', () => {
     expect(labelsOverlap(states[1]!, states[2]!)).toBe(false);
   });
 
+  it('keeps wide labels inside the viewport at the left and right edges', () => {
+    const states = resolveDirectionArrowStates(
+      [
+        {
+          ...waypoint('right', 100, 0),
+          label: 'Find the distant Welcome Office proprietor and ask for directions',
+        },
+        {
+          ...waypoint('left', -100, 0),
+          label: 'Return the disgusting Rat Tail to the merchant before leaving',
+        },
+      ],
+      0,
+      0,
+      1,
+    );
+
+    for (const state of states) {
+      expect(state.labelScreenX - state.labelWidth / 2).toBeGreaterThanOrEqual(8);
+      expect(state.labelScreenX + state.labelWidth / 2).toBeLessThanOrEqual(1272);
+    }
+  });
+
   it('omits waypoints whose targets are already on screen', () => {
     const states = resolveDirectionArrowStates(
       [waypoint('nearby', 1, 1), waypoint('far', 100, 0)],

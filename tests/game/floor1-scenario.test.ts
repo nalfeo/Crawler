@@ -1122,6 +1122,21 @@ describe('floor1Scenario', () => {
           kind: 'item',
         }),
       );
+
+      const bag = world.inventories.get(player)!;
+      addItem(bag, SHOPKEEPER_FETCH_ITEM_ID, 1);
+      expect(returnShopkeeperPrize(world, player)).toBe(true);
+      questSystem(world);
+      setTrackedQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+      meetShopkeeper(world);
+      expect(world.questLog.get(FLOOR1_BOSS_BATTLE_QUEST_ID)?.tracked).toBe(true);
+
+      world.playerGold = SHOPKEEPER_EQUIPMENT_COST;
+      expect(purchaseShopkeeperEquipment(world, player)).toBe(true);
+      questSystem(world);
+      setTrackedQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+      meetShopkeeper(world);
+      expect(world.questLog.get(FLOOR1_BOSS_BATTLE_QUEST_ID)?.tracked).toBe(true);
     });
 
     it('refuses to sell when the player cannot afford the charm', () => {
