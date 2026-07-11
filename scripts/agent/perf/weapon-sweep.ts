@@ -32,9 +32,10 @@ interface CLIArgs {
   weapons: string[];
   maxFrames: number;
   out: string;
+  weaponPersonas: boolean;
 }
 
-const FLOOR1_WEAPONS = ['sword', 'bow', 'baseball-bat'];
+const FLOOR1_WEAPONS = ['sword', 'bow', 'baseball-bat', 'pistol', 'throwing-knife', 'fireball'];
 
 function parseArgs(): CLIArgs {
   const args: CLIArgs = {
@@ -42,6 +43,7 @@ function parseArgs(): CLIArgs {
     weapons: FLOOR1_WEAPONS,
     maxFrames: 19_800, // ~330 s at 60 fps — same budget as the hill-climb baseline
     out: '/tmp/weapon-sweep.json',
+    weaponPersonas: false,
   };
 
   for (let i = 2; i < process.argv.length; i++) {
@@ -59,7 +61,16 @@ function parseArgs(): CLIArgs {
     } else if (arg === '--out' && next) {
       args.out = next;
       i++;
+    } else if (arg === '--weapon-personas') {
+      args.weaponPersonas = true;
     }
+  }
+
+  const invalidWeapons = args.weapons.filter((weapon) => !FLOOR1_WEAPONS.includes(weapon));
+  if (invalidWeapons.length > 0) {
+    throw new Error(
+      `Invalid --weapons entries: ${invalidWeapons.join(', ')}. Allowed: ${FLOOR1_WEAPONS.join(', ')}`,
+    );
   }
 
   return args;
@@ -113,6 +124,7 @@ async function sweep(args: CLIArgs): Promise<void> {
   console.log(`Seeds:      ${args.seeds.join(', ')}`);
   console.log(`Weapons:    ${args.weapons.join(', ')}`);
   console.log(`Budget:     ${args.maxFrames} frames (~${(args.maxFrames / 60).toFixed(0)}s)`);
+  console.log(`Personas:   ${args.weaponPersonas ? 'enabled' : 'disabled'}`);
   console.log(`Total runs: ${args.seeds.length * args.weapons.length}`);
   console.log('');
 
@@ -130,6 +142,7 @@ async function sweep(args: CLIArgs): Promise<void> {
         seed,
         maxFrames: args.maxFrames,
         forceWeaponId: weapon,
+        weaponPersonas: args.weaponPersonas,
       });
       const bd: ScoreBreakdown = scoreRun(stats, maxGameTimeMs);
       const rec: RunRecord = {
@@ -236,6 +249,7 @@ async function sweep(args: CLIArgs): Promise<void> {
     seeds: args.seeds,
     weapons: args.weapons,
     maxFrames: args.maxFrames,
+    weaponPersonas: args.weaponPersonas,
     budgetSec: args.maxFrames / 60,
     summaries,
     allRecords,

@@ -10,7 +10,11 @@ on:
       weapons:
         description: 'Comma-separated Floor-1 weapons'
         type: string
-        default: 'sword,bow,baseball-bat'
+        default: 'sword,bow,baseball-bat,pistol,throwing-knife,fireball'
+      weapon_personas:
+        description: 'Enable weapon-specific AI stat/gear personas'
+        type: boolean
+        default: false
       max_frames:
         description: 'Frame budget per run (positive integer ≤ 600000; default 19800 ≈ 330s at 60fps)'
         type: string
@@ -31,6 +35,7 @@ jobs:
         env:
           SEED_COUNT: ${{ inputs.seed_count }}
           WEAPONS: ${{ inputs.weapons }}
+          WEAPON_PERSONAS: ${{ inputs.weapon_personas }}
           MAX_FRAMES: ${{ inputs.max_frames }}
         run: |
           set -euo pipefail
@@ -56,8 +61,12 @@ jobs:
             echo "::error::weapons must not contain duplicates"
             exit 1
           fi
-          if echo "$weapon_matrix" | jq -e '.[] | ascii_downcase | select(. != "sword" and . != "bow" and . != "baseball-bat")' > /dev/null 2>&1; then
-            echo "::error::weapons must be a comma-separated subset of: sword,bow,baseball-bat"
+          if echo "$weapon_matrix" | jq -e '.[] | ascii_downcase | select(. != "sword" and . != "bow" and . != "baseball-bat" and . != "pistol" and . != "throwing-knife" and . != "fireball")' > /dev/null 2>&1; then
+            echo "::error::weapons must be a comma-separated subset of: sword,bow,baseball-bat,pistol,throwing-knife,fireball"
+            exit 1
+          fi
+          if [ "$WEAPON_PERSONAS" != "true" ] && [ "$WEAPON_PERSONAS" != "false" ]; then
+            echo "::error::weapon_personas must be true or false"
             exit 1
           fi
           weapon_matrix=$(echo "$weapon_matrix" | jq -c '[.[] | ascii_downcase]')
@@ -81,12 +90,18 @@ jobs:
           SEEDS: ${{ needs.setup.outputs.seed_list }}
           WEAPON: ${{ matrix.weapon }}
           MAX_FRAMES: ${{ inputs.max_frames }}
+          WEAPON_PERSONAS: ${{ inputs.weapon_personas }}
         run: |
           set -euo pipefail
+          persona_flag=""
+          if [ "$WEAPON_PERSONAS" = "true" ]; then
+            persona_flag="--weapon-personas"
+          fi
           npx tsx scripts/agent/perf/weapon-sweep.ts \
             --seeds "$SEEDS" \
             --weapons "$WEAPON" \
             --max-frames "$MAX_FRAMES" \
+            $persona_flag \
             --out "weapon-sweep-${{ matrix.weapon }}.json"
 
       - uses: actions/upload-artifact@v4
