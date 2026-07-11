@@ -1,5 +1,16 @@
 [
   {
+    "commit": "521ed104ee0204448525518d72a6d8c4acfdb7d9",
+    "commitDate": "2026-07-11T20:29:36Z",
+    "commitSubject": "ci: consolidate CI automation — issue intake, security-review fix, issue retention (#1035)",
+    "capturedAt": "2026-07-11T21:01:21.724Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29167273780",
+    "winRate": 0.9233333333333333,
+    "totalWins": 277,
+    "totalRuns": 300,
+    "path": "by-sha/521ed104ee0204448525518d72a6d8c4acfdb7d9.json"
+  },
+  {
     "commit": "7c509d7ff4bd7e3f11c560bc009559e9de04c966",
     "commitDate": "2026-07-11T19:35:53Z",
     "commitSubject": "perf: speed up headless runs and shard weapon sweeps (#1048)",
