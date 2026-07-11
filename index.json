@@ -1,5 +1,16 @@
 [
   {
+    "commit": "c73862e9ef0715922b00159a73cbab666e3b3e1f",
+    "commitDate": "2026-07-11T10:20:00-07:00",
+    "commitSubject": "docs: stop routine pre-PR full verification (#1040)",
+    "capturedAt": "2026-07-11T19:03:52.220Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29162836802",
+    "winRate": 0.9,
+    "totalWins": 270,
+    "totalRuns": 300,
+    "path": "by-sha/c73862e9ef0715922b00159a73cbab666e3b3e1f.json"
+  },
+  {
     "commit": "4d930a1f2f2201ec37db713b1c67817e3cf62362",
     "commitDate": "2026-07-11T08:12:24-07:00",
     "commitSubject": "fix(floor2): guide settlement progression (#1042)",
