@@ -140,7 +140,10 @@ export interface GameWorld {
    * the attack entity expires or is destroyed. AoE-on-impact and trap
    * explosions propagate the source to the spawned explosion entity.
    */
-  attackSkillSources: Map<number, { attackerEid: number; classSkillId: string; typeSkillId: string }>;
+  attackSkillSources: Map<
+    number,
+    { attackerEid: number; classSkillId: string; typeSkillId: string }
+  >;
   /** Per-entity ability state keyed by holder eid. */
   abilityStatesByEntity: Map<number, AbilityState>;
   /** Trigger events emitted this frame — cleared at end of abilitySystem. */
