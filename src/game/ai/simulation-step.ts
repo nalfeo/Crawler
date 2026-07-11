@@ -98,7 +98,8 @@ export interface SimulationOptions {
  * The `level_up` state reset (needed so the headless loop doesn't park on
  * a level-up frame) must be performed by the CALLER between steps — mirroring
  * the visual game's `MainGameScene.update()` which resets the state outside
- * the sim step.
+ * the sim step. In the headless runner, this is done at
+ * `src/game/ai/headless-runner.ts` (before each `runSimulationStep` call).
  *
  * @param world - Game world to simulate
  * @param input - Input state for this frame

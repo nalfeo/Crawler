@@ -11,6 +11,7 @@ import {
   spawnerArenaSystem,
   spawnerSystem,
 } from '../../src/game/index.js';
+import { weaponSystem } from '../../src/game/weaponSystem.js';
 import { FLOOR1_BOSS_BATTLE_QUEST_ID } from '../../src/shared/quest-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -50,6 +51,30 @@ describe('createFloor1MainSceneOptions', () => {
     expect(aiIndex).toBeLessThan(directorIndex);
     // spawnerArenaSystem must run immediately before spawnerSystem in both pipelines.
     expect(spawnerIndex).toBe(arenaIndex + 1);
+  });
+
+  /**
+   * Pipeline-parity contract (issue #663).
+   *
+   * The two divergences that existed before pipeline unification:
+   *   1. weaponSystem ran post-movement in headless, pre-movement in visual.
+   *   2. floor1EnemyDirectorSystem ran post-core in headless, pre-core in visual.
+   *
+   * Both must be in preSystems (pre-movement = pre-core) in the canonical
+   * definition. Since the headless runner now derives its ordering from
+   * createFloorMainSceneOptions(), this single assertion covers both pipelines.
+   */
+  it('weaponSystem and floor1EnemyDirectorSystem are both in preSystems (pre-movement)', () => {
+    const preSystems = createFloor1MainSceneOptions().preSystems ?? [];
+    const weaponIdx = preSystems.indexOf(weaponSystem);
+    const directorIdx = preSystems.indexOf(floor1EnemyDirectorSystem);
+
+    // Both must be present in preSystems (not post-core / post-movement).
+    expect(weaponIdx).toBeGreaterThanOrEqual(0);
+    expect(directorIdx).toBeGreaterThanOrEqual(0);
+    // spawnerSystem immediately precedes the director (true adjacency, issue #663 comment).
+    const spawnerIdx = preSystems.indexOf(spawnerSystem);
+    expect(directorIdx).toBe(spawnerIdx + 1);
   });
 
   it('keeps spawnerSystem wired for floor2+', () => {

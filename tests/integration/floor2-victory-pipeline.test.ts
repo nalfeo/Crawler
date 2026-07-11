@@ -86,6 +86,9 @@ describe('Floor 2 Slice 5 — victory pipeline', () => {
     }
 
     world.floorObjectiveTick = floor2ObjectiveTick;
+    // TODO(#663-followup): Replace inline postSystems with canonical
+    // createFloor2MainSceneOptions().postSystems once a floor2 bootstrap
+    // options function is added (currently there is only createFloor1MainSceneOptions).
     runSimulationStep(world, createInputState(), 16, {
       postSystems: [
         // floorObjectiveSystem delegates to world.floorObjectiveTick, which is
