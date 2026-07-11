@@ -657,6 +657,46 @@ test('Zoom to fit can shrink large sprites below the interactive zoom floor', as
     assert.ok(fitted.width <= 230, `expected fitted width <= 230px, got ${fitted.width}px`);
     assert.ok(fitted.height <= 356, `expected fitted height <= 356px, got ${fitted.height}px`);
     assert.ok(fitted.width < 2048 * 0.5, 'fit scale should be allowed below 0.5x');
+
+    await page.locator('[data-canvas-wrap]').dispatchEvent('wheel', { deltaY: 100 });
+    assert.equal(
+      await page
+        .locator('.sprite-canvas')
+        .evaluate((element) => Number.parseFloat(element.style.width)),
+      fitted.width,
+      'zooming out below the interactive floor should be a no-op',
+    );
+    await page.locator('[data-canvas-wrap]').dispatchEvent('wheel', { deltaY: -100 });
+    assert.equal(
+      await page
+        .locator('.sprite-canvas')
+        .evaluate((element) => Number.parseFloat(element.style.width)),
+      1024,
+      'the first zoom-in should move to the 0.5x interactive floor',
+    );
+  });
+});
+
+test('Unsaved badge tracks brush, comment, and reaction mutations immediately', async () => {
+  await withEditor(async (page) => {
+    const badge = page.locator('.dirty-badge');
+    assert.equal(await badge.count(), 0);
+
+    await page.getByTitle('Erase mode').click();
+    await clickCanvasPixel(page, 0, 0);
+    assert.equal(await badge.textContent(), 'Unsaved');
+    await page.keyboard.press('Control+z');
+    assert.equal(await badge.count(), 0);
+
+    await page.locator('#comment').fill('Needs another pass');
+    assert.equal(await badge.textContent(), 'Unsaved');
+    await page.locator('#comment').fill('');
+    assert.equal(await badge.count(), 0);
+
+    await page.locator('#favorite-heart').click();
+    assert.equal(await badge.textContent(), 'Unsaved');
+    await page.locator('#favorite-heart').click();
+    assert.equal(await badge.count(), 0);
   });
 });
 
@@ -966,5 +1006,33 @@ test('despill uses its own background-push target instead of opaque-average neig
     const pixels = await readCanvasPixels(page);
     const offset = (2 * 4 + 2) * 4;
     assert.deepEqual(pixels.slice(offset, offset + 4), [40, 185, 40, 255]);
+  });
+});
+
+test('fringe normalization preserves low-alpha interior details', async () => {
+  await withEditor(async (page) => {
+    await paintSprite(page, 3, 3, [
+      ...rgba(180, 40, 40),
+      ...rgba(180, 40, 40),
+      ...rgba(180, 40, 40),
+      ...rgba(180, 40, 40),
+      ...rgba(20, 80, 220, 20),
+      ...rgba(180, 40, 40),
+      ...rgba(180, 40, 40),
+      ...rgba(180, 40, 40),
+      ...rgba(180, 40, 40),
+    ]);
+    const before = await readCanvasPixels(page);
+    await page.locator('#tool-fringe').click();
+    await setControlValue(page, '#fringe-normalize-method', 'opaque-average');
+    await setControlValue(page, '#fringe-normalize-strength', 100);
+    await page.locator('.tool-panel').getByRole('button', { name: 'Normalize fringe' }).click();
+
+    const pixels = await readCanvasPixels(page);
+    const centerOffset = (1 * 3 + 1) * 4;
+    assert.deepEqual(
+      pixels.slice(centerOffset, centerOffset + 4),
+      before.slice(centerOffset, centerOffset + 4),
+    );
   });
 });

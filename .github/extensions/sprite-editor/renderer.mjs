@@ -571,7 +571,8 @@ const CLIENT_SCRIPT = String.raw`
   }
 
   function zoomBy(delta) {
-    var next = clampPixelScale(pixelScale + delta);
+    if (pixelScale < ZOOM_MIN && delta < 0) return false;
+    var next = pixelScale < ZOOM_MIN ? ZOOM_MIN : clampPixelScale(pixelScale + delta);
     if (next === pixelScale) return false;
     pixelScale = next;
     applyZoomScale();
@@ -1468,7 +1469,7 @@ const CLIENT_SCRIPT = String.raw`
     var offset = getPixelOffset(x, y, width);
     var alpha = data[offset + 3];
     if (alpha === 0) return false;
-    if (alpha <= alphaCutoff) return true;
+    var lowAlpha = alpha <= alphaCutoff;
     var selfNearBg =
       colorDistanceSq(data[offset], data[offset + 1], data[offset + 2], referenceColor.r, referenceColor.g, referenceColor.b) <=
       bgLimitSq;
@@ -1486,7 +1487,7 @@ const CLIENT_SCRIPT = String.raw`
         if (neighborAlpha >= Math.max(alphaCutoff, 96)) touchesSolid = true;
       }
     }
-    return touchesTransparent && (selfNearBg || touchesSolid);
+    return touchesTransparent && (lowAlpha || selfNearBg || touchesSolid);
   }
 
   function applyImageDataTransform(label, applyFn, onApplied) {
@@ -1802,6 +1803,7 @@ const CLIENT_SCRIPT = String.raw`
     if (undoStack.length > maxHistory) undoStack.shift();
     redoStack = [];
     refreshAppliedActionButtons();
+    updateDirtyIndicator();
   }
 
   function refreshAppliedActionButtons() {
@@ -1811,6 +1813,17 @@ const CLIENT_SCRIPT = String.raw`
     if (edgeButton) edgeButton.disabled = !hasDirtyEdgeCleanupSettings();
     if (backgroundButton) backgroundButton.disabled = !hasDirtyBackgroundRemovalSettings();
     if (fringeButton) fringeButton.disabled = !hasDirtyFringeNormalizeSettings();
+  }
+
+  function updateDirtyIndicator() {
+    var titleRow = document.querySelector('.sprite-title-row');
+    if (!titleRow) return;
+    var badge = titleRow.querySelector('.dirty-badge');
+    if (isDirty()) {
+      if (!badge) titleRow.appendChild(h('span', { class: 'dirty-badge', text: 'Unsaved' }));
+    } else if (badge) {
+      badge.remove();
+    }
   }
 
   function undo() {
@@ -2939,6 +2952,7 @@ const CLIENT_SCRIPT = String.raw`
           dislikeBtn.className = 'dislike-btn' + (disliked ? ' on' : '');
           favValue.value = favorite ? 'true' : 'false';
           dislikedValue.value = disliked ? 'true' : 'false';
+          updateDirtyIndicator();
         };
         heartBtn.addEventListener('click', function () {
           var next = heartBtn.getAttribute('aria-pressed') !== 'true';
@@ -2966,6 +2980,7 @@ const CLIENT_SCRIPT = String.raw`
       h('textarea', { id: 'comment' })
     ]);
     commentField.querySelector('textarea').value = sprite.comment || '';
+    commentField.querySelector('textarea').addEventListener('input', updateDirtyIndicator);
 
     var canvasArea = h('div', { class: 'canvas-area' }, [
       h('div', { class: 'canvas-topline' }, [
@@ -2987,6 +3002,8 @@ const CLIENT_SCRIPT = String.raw`
       commentField
     ]);
     editorEl.append(appBar, workspaceShell, metadataPanel);
+    metaGrid.addEventListener('input', updateDirtyIndicator);
+    metaGrid.addEventListener('change', updateDirtyIndicator);
     canvasWrap.scrollLeft = canvasScrollLeft;
     canvasWrap.scrollTop = canvasScrollTop;
     var syncAnchorFromInputs = function () {
