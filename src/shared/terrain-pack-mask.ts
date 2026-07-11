@@ -1,0 +1,224 @@
+/**
+ * Terrain-pack 47-mask blob normalizer — single shared source of truth for how
+ * an 8-neighbor raw mask (256 possibilities) collapses onto the canonical
+ * 47-mask "blob47" wall autotile set.
+ *
+ * Both the runtime renderer (`src/engine/terrain-renderer.ts`) and the offline
+ * pack assembler/validator (`scripts/sprites/terrain-packs/`) import this
+ * module so the bit order, diagonal-gating rule, and canonical mask list can
+ * never drift between build time and render time (reviewed-design refinement
+ * #3).
+ *
+ * Bit order (pinned — do not renumber without updating every manifest):
+ *   bit 0 (  1): N   bit 1 (  2): E   bit 2 (  4): S   bit 3 (  8): W
+ *   bit 4 ( 16): NE  bit 5 ( 32): SE  bit 6 ( 64): SW  bit 7 (128): NW
+ *
+ * Diagonal gating rule: a diagonal bit only survives normalization if BOTH of
+ * its adjacent cardinal bits are also set in the raw mask, e.g. NE survives
+ * only when N and E are both set. This is the standard "blob47" rule (used by
+ * RPG Maker / Godot-style 47-tile wall autotiling) and is what collapses 256
+ * raw 8-neighbor combinations down to exactly 47 distinct canonical masks —
+ * verified exhaustively in `tests/unit/terrain-pack-mask.test.ts`.
+ *
+ * Out-of-bounds neighbours are treated as non-matching (bit = 0), mirroring
+ * the existing 4-directional `neighborMask()` in `tile-visuals.ts`.
+ */
+
+/** Bit values for each of the 8 neighbour directions. Pinned — see module doc. */
+export const MASK_BIT = {
+  N: 1,
+  E: 2,
+  S: 4,
+  W: 8,
+  NE: 16,
+  SE: 32,
+  SW: 64,
+  NW: 128,
+} as const;
+
+export type MaskDirection = keyof typeof MASK_BIT;
+
+/** The four cardinal directions, in the order used for wall-edge classification. */
+export const CARDINAL_DIRECTIONS = ['N', 'E', 'S', 'W'] as const;
+
+/** The four corner (diagonal) directions and their two adjacent cardinals. */
+export const CORNER_ADJACENCY = {
+  NE: ['N', 'E'],
+  SE: ['S', 'E'],
+  SW: ['S', 'W'],
+  NW: ['N', 'W'],
+} as const satisfies Record<string, readonly ['N' | 'S', 'E' | 'W']>;
+
+/**
+ * Normalize a raw 8-neighbor mask (0–255) to its canonical blob47 mask.
+ *
+ * Clears each diagonal bit unless BOTH of its adjacent cardinal bits are set
+ * in the raw mask. Cardinal bits always pass through unchanged.
+ *
+ * Pure, deterministic, total over the full 0–255 input domain.
+ */
+export function normalizeBlob47Mask(raw: number): number {
+  const cardinals = raw & (MASK_BIT.N | MASK_BIT.E | MASK_BIT.S | MASK_BIT.W);
+  let mask = cardinals;
+  if (raw & MASK_BIT.NE && cardinals & MASK_BIT.N && cardinals & MASK_BIT.E) {
+    mask |= MASK_BIT.NE;
+  }
+  if (raw & MASK_BIT.SE && cardinals & MASK_BIT.S && cardinals & MASK_BIT.E) {
+    mask |= MASK_BIT.SE;
+  }
+  if (raw & MASK_BIT.SW && cardinals & MASK_BIT.S && cardinals & MASK_BIT.W) {
+    mask |= MASK_BIT.SW;
+  }
+  if (raw & MASK_BIT.NW && cardinals & MASK_BIT.N && cardinals & MASK_BIT.W) {
+    mask |= MASK_BIT.NW;
+  }
+  return mask;
+}
+
+/** Compute the full set of distinct canonical masks over all 256 raw masks. */
+function computeBlob47CanonicalMasks(): readonly number[] {
+  const seen = new Set<number>();
+  for (let raw = 0; raw < 256; raw++) {
+    seen.add(normalizeBlob47Mask(raw));
+  }
+  return Object.freeze([...seen].sort((a, b) => a - b));
+}
+
+/**
+ * The 47 canonical blob47 masks, in ascending numeric order. This ordering IS
+ * the canonical ordering referenced by "canonical ordering" in the reviewed
+ * design — pack manifests assign an explicit `frameIndex` per mask value
+ * rather than relying on this array's index, but this array is what
+ * `assertCompleteBlob47Coverage` checks manifests against.
+ */
+export const BLOB47_CANONICAL_MASKS: readonly number[] = computeBlob47CanonicalMasks();
+
+/** Fails fast at module load if the gating rule above ever stops yielding 47. */
+if (BLOB47_CANONICAL_MASKS.length !== 47) {
+  throw new Error(
+    `normalizeBlob47Mask invariant violated: expected 47 canonical masks, got ${BLOB47_CANONICAL_MASKS.length}`,
+  );
+}
+
+const BLOB47_CANONICAL_SET: ReadonlySet<number> = new Set(BLOB47_CANONICAL_MASKS);
+
+/** True when `mask` is one of the 47 canonical blob47 masks. */
+export function isCanonicalBlob47Mask(mask: number): boolean {
+  return BLOB47_CANONICAL_SET.has(mask);
+}
+
+/**
+ * Compute the raw 8-neighbor mask for tile (tx, ty), given a per-direction
+ * match predicate. Out-of-bounds neighbours are treated as non-matching.
+ *
+ * `matches(nx, ny)` should return whether the neighbour tile at (nx, ny)
+ * counts as "the same wall" for autotiling purposes — callers typically check
+ * terrain-type equality (see `neighborMask8InTerrain` for the common case).
+ */
+export function computeRawMask8(
+  tx: number,
+  ty: number,
+  width: number,
+  height: number,
+  matches: (nx: number, ny: number) => boolean,
+): number {
+  const inBounds = (nx: number, ny: number): boolean =>
+    nx >= 0 && nx < width && ny >= 0 && ny < height;
+  const at = (dx: number, dy: number): boolean => {
+    const nx = tx + dx;
+    const ny = ty + dy;
+    return inBounds(nx, ny) && matches(nx, ny);
+  };
+  let mask = 0;
+  if (at(0, -1)) mask |= MASK_BIT.N;
+  if (at(1, 0)) mask |= MASK_BIT.E;
+  if (at(0, 1)) mask |= MASK_BIT.S;
+  if (at(-1, 0)) mask |= MASK_BIT.W;
+  if (at(1, -1)) mask |= MASK_BIT.NE;
+  if (at(1, 1)) mask |= MASK_BIT.SE;
+  if (at(-1, 1)) mask |= MASK_BIT.SW;
+  if (at(-1, -1)) mask |= MASK_BIT.NW;
+  return mask;
+}
+
+/**
+ * Convenience: 8-neighbor mask over a flat row-major terrain array, matching
+ * tiles equal to `matchTerrain`. Mirrors `neighborMask()` in `tile-visuals.ts`
+ * (the 4-directional legacy path) but returns the full 8-bit raw mask before
+ * blob47 gating — callers normalize with `normalizeBlob47Mask`.
+ */
+export function neighborMask8InTerrain(
+  terrain: Uint8Array,
+  width: number,
+  height: number,
+  tx: number,
+  ty: number,
+  matchTerrain: number,
+): number {
+  return computeRawMask8(
+    tx,
+    ty,
+    width,
+    height,
+    (nx, ny) => terrain[ny * width + nx] === matchTerrain,
+  );
+}
+
+/** Cardinal presence booleans decoded from a canonical (already-gated) mask. */
+export interface EdgeConnections {
+  readonly N: boolean;
+  readonly E: boolean;
+  readonly S: boolean;
+  readonly W: boolean;
+}
+
+/** Decode the 4 cardinal bits of a mask into booleans. */
+export function edgeConnectionsFromMask(mask: number): EdgeConnections {
+  return {
+    N: (mask & MASK_BIT.N) !== 0,
+    E: (mask & MASK_BIT.E) !== 0,
+    S: (mask & MASK_BIT.S) !== 0,
+    W: (mask & MASK_BIT.W) !== 0,
+  };
+}
+
+/**
+ * The 5 possible local states of one quadrant (corner) of a blob47 wall cell,
+ * derived from the two adjacent cardinal bits + the diagonal bit between them
+ * (reviewed-design refinement: "20-quadrant kit" = 4 corners × 5 states).
+ *
+ *   'open'    — neither adjacent cardinal set: convex/outer corner, fully open.
+ *   'edgeA'   — only the first adjacent cardinal set (see CORNER_ADJACENCY order).
+ *   'edgeB'   — only the second adjacent cardinal set.
+ *   'concave' — both cardinals set but the diagonal between them is NOT set:
+ *               an inner-corner notch (the diagonal neighbour is missing even
+ *               though both cardinal neighbours are present).
+ *   'full'    — both cardinals AND the diagonal set: solid, no cut.
+ */
+export type QuadrantState = 'open' | 'edgeA' | 'edgeB' | 'concave' | 'full';
+
+/** The 4 quadrant (corner) positions of a wall cell. */
+export const QUADRANT_CORNERS = ['NW', 'NE', 'SE', 'SW'] as const;
+export type QuadrantCorner = (typeof QUADRANT_CORNERS)[number];
+
+/**
+ * Classify one quadrant's local state from a canonical (gated) mask.
+ *
+ * `mask` MUST already be blob47-canonical (i.e. a diagonal bit is only set
+ * when both its adjacent cardinals are set) — pass a raw mask through
+ * `normalizeBlob47Mask` first. Given that precondition, the diagonal bit
+ * alone distinguishes 'concave' from 'full' whenever both cardinals are set.
+ */
+export function quadrantStateFromMask(mask: number, corner: QuadrantCorner): QuadrantState {
+  const [cardA, cardB] = CORNER_ADJACENCY[corner];
+  const bitA = MASK_BIT[cardA];
+  const bitB = MASK_BIT[cardB];
+  const bitDiag = MASK_BIT[corner];
+  const hasA = (mask & bitA) !== 0;
+  const hasB = (mask & bitB) !== 0;
+  if (!hasA && !hasB) return 'open';
+  if (hasA && !hasB) return 'edgeA';
+  if (!hasA && hasB) return 'edgeB';
+  // hasA && hasB
+  return (mask & bitDiag) !== 0 ? 'full' : 'concave';
+}

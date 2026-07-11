@@ -72,4 +72,18 @@ describe('createFloor1MainSceneOptions', () => {
 
     expect(world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID)).toBe(true);
   });
+
+  it('omits terrainPackId for Floor 1 (legacy 16-mask + generated-single path)', () => {
+    // Floor 1's manifest has no `terrainPackId`, so this must stay `undefined`
+    // — buildTerrainLayer only takes the terrain-pack precedence branch when
+    // `options.terrainPackId` is truthy, so this is what keeps Floor 1's
+    // rendering byte-for-byte identical to the pre-terrain-pack behavior.
+    const options = createFloor1MainSceneOptions();
+    expect(options.terrainPackId).toBeUndefined();
+  });
+
+  it("passes Floor 2's registry-backed terrainPackId through to the scene options", () => {
+    const options = createFloorMainSceneOptions('floor2');
+    expect(options.terrainPackId).toBe('industrial-cave');
+  });
 });
