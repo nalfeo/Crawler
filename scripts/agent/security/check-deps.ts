@@ -64,6 +64,10 @@ const TRUSTED_PACKAGES = new Set<string>([
   // future @recast-navigation/* packages stay unvetted-by-default.
   'recast-navigation',
   '@recast-navigation/wasm',
+  // File-lock primitive for atomic cross-process read-modify-write on
+  // `.cost-state.json` (JudgeBudget). MIT-licensed, well-tested, handles
+  // stale-lock recovery. Used in cost-tracker.ts. ADR / Issue #73.
+  'proper-lockfile',
 ]);
 
 function isTrusted(name: string): boolean {

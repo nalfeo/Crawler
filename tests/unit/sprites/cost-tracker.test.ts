@@ -12,11 +12,15 @@
  *     state file picks up cumulative spend; `reset: true` clears it.
  *   - `recordSkip` bumps the per-run skipped counter without touching
  *     persistent state.
+ *   - Concurrent processes both land their deltas (lock-protected RMW).
  */
 
+import { execFile } from 'node:child_process';
 import { mkdtempSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 
 import { describe, expect, it } from 'vitest';
 
@@ -27,6 +31,9 @@ import {
   PRICING,
   resolveRates,
 } from '../../../scripts/sprites/cost-tracker.js';
+
+const execFileAsync = promisify(execFile);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function tmpStateFile(): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'judge-budget-'));
@@ -78,7 +85,7 @@ describe('resolveRates', () => {
 });
 
 describe('JudgeBudget.wouldExceed', () => {
-  it('returns false for an Infinity budget regardless of spend', () => {
+  it('returns false for an Infinity budget regardless of spend', async () => {
     const budget = new JudgeBudget({
       budgetUsd: Number.POSITIVE_INFINITY,
       modelDeployment: 'gpt-4o',
@@ -86,7 +93,7 @@ describe('JudgeBudget.wouldExceed', () => {
       reset: true,
     });
     // Burn a lot.
-    budget.recordCall({
+    await budget.recordCall({
       promptTokens: 10_000_000,
       completionTokens: 10_000_000,
       totalTokens: 20_000_000,
@@ -95,7 +102,7 @@ describe('JudgeBudget.wouldExceed', () => {
     expect(budget.wouldExceed(100_000_000)).toBe(false);
   });
 
-  it('returns true once recorded spend meets/exceeds the ceiling', () => {
+  it('returns true once recorded spend meets/exceeds the ceiling', async () => {
     const budget = new JudgeBudget({
       budgetUsd: 0.01,
       modelDeployment: 'gpt-4o', // $2.50/M in, $10/M out
@@ -104,7 +111,7 @@ describe('JudgeBudget.wouldExceed', () => {
     });
     expect(budget.wouldExceed()).toBe(false);
     // 1000 output tokens = $0.01 — exactly at the ceiling.
-    budget.recordCall({ promptTokens: 0, completionTokens: 1000, totalTokens: 1000 });
+    await budget.recordCall({ promptTokens: 0, completionTokens: 1000, totalTokens: 1000 });
     expect(budget.wouldExceed()).toBe(true);
   });
 
@@ -129,7 +136,7 @@ describe('JudgeBudget.wouldExceed', () => {
 });
 
 describe('JudgeBudget persistence', () => {
-  it('round-trips spend across instances pointed at the same state file', () => {
+  it('round-trips spend across instances pointed at the same state file', async () => {
     const stateFile = tmpStateFile();
     const a = new JudgeBudget({
       budgetUsd: 1.0,
@@ -137,7 +144,7 @@ describe('JudgeBudget persistence', () => {
       stateFile,
       reset: true,
     });
-    a.recordCall({ promptTokens: 100_000, completionTokens: 100_000, totalTokens: 200_000 });
+    await a.recordCall({ promptTokens: 100_000, completionTokens: 100_000, totalTokens: 200_000 });
     const aSnap = a.snapshot();
     // gpt-4o: 100k * $2.50/M + 100k * $10/M = $0.25 + $1.00 = $1.25
     // but budget is $1 so we're "over"; snapshot still reports it.
@@ -155,7 +162,7 @@ describe('JudgeBudget persistence', () => {
     expect(b.wouldExceed()).toBe(true);
   });
 
-  it('reset: true wipes prior state', () => {
+  it('reset: true wipes prior state', async () => {
     const stateFile = tmpStateFile();
     const a = new JudgeBudget({
       budgetUsd: 1.0,
@@ -163,7 +170,7 @@ describe('JudgeBudget persistence', () => {
       stateFile,
       reset: true,
     });
-    a.recordCall({ promptTokens: 1_000_000, completionTokens: 0, totalTokens: 1_000_000 });
+    await a.recordCall({ promptTokens: 1_000_000, completionTokens: 0, totalTokens: 1_000_000 });
     expect(a.snapshot().spentUsd).toBeGreaterThan(0);
 
     const fresh = new JudgeBudget({
@@ -176,7 +183,7 @@ describe('JudgeBudget persistence', () => {
     expect(fresh.snapshot().callCount).toBe(0);
   });
 
-  it('writes a valid versioned JSON state file', () => {
+  it('writes a valid versioned JSON state file', async () => {
     const stateFile = tmpStateFile();
     const budget = new JudgeBudget({
       budgetUsd: 1.0,
@@ -184,7 +191,7 @@ describe('JudgeBudget persistence', () => {
       stateFile,
       reset: true,
     });
-    budget.recordCall({ promptTokens: 100, completionTokens: 50, totalTokens: 150 });
+    await budget.recordCall({ promptTokens: 100, completionTokens: 50, totalTokens: 150 });
     expect(existsSync(stateFile)).toBe(true);
     const parsed = JSON.parse(readFileSync(stateFile, 'utf8'));
     expect(parsed.version).toBe(1);
@@ -223,14 +230,14 @@ describe('JudgeBudget.recordSkip', () => {
 });
 
 describe('JudgeBudget.format', () => {
-  it('produces a single-line summary including spend and cap', () => {
+  it('produces a single-line summary including spend and cap', async () => {
     const budget = new JudgeBudget({
       budgetUsd: 0.5,
       modelDeployment: 'gpt-4o',
       stateFile: tmpStateFile(),
       reset: true,
     });
-    budget.recordCall({ promptTokens: 1000, completionTokens: 500, totalTokens: 1500 });
+    await budget.recordCall({ promptTokens: 1000, completionTokens: 500, totalTokens: 1500 });
     const line = budget.format();
     expect(line).toMatch(/judge-budget/);
     expect(line).toMatch(/\$0\.5000/);
@@ -246,4 +253,36 @@ describe('JudgeBudget.format', () => {
     });
     expect(budget.format()).toMatch(/<no cap>/);
   });
+});
+
+describe('JudgeBudget concurrency', () => {
+  it('two concurrent processes both land their deltas (lock-protected RMW)', async () => {
+    const stateFile = tmpStateFile();
+    // Initialise the file so both workers read a consistent baseline.
+    new JudgeBudget({
+      budgetUsd: Infinity,
+      modelDeployment: 'gpt-4o-mini',
+      stateFile,
+      reset: true,
+    });
+
+    // Each worker records 10 calls: 100 prompt + 50 completion @ gpt-4o-mini rates.
+    // $0.15/M in + $0.60/M out → 100 * 0.15/1e6 + 50 * 0.60/1e6 = 0.000015 + 0.000030 = $0.000045 per call.
+    // 10 calls × 2 workers = 20 calls total, $0.0009 total.
+    const workerScript = path.join(__dirname, '_fixtures', 'judge-budget-worker.ts');
+    const tsx = path.resolve(__dirname, '../../../node_modules/.bin/tsx');
+
+    await Promise.all([
+      execFileAsync(tsx, [workerScript, stateFile, '10']),
+      execFileAsync(tsx, [workerScript, stateFile, '10']),
+    ]);
+
+    const parsed = JSON.parse(readFileSync(stateFile, 'utf8')) as {
+      callCount: number;
+      spentUsd: number;
+    };
+    expect(parsed.callCount).toBe(20);
+    expect(parsed.spentUsd).toBeCloseTo(0.0009, 6);
+  }, // Give the two sub-processes generous headroom on a loaded CI runner.
+  30_000);
 });

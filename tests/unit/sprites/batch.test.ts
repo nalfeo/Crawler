@@ -245,7 +245,7 @@ describe('runBatch', () => {
       });
       const generate: RunFullFactory = vi.fn(async (_opts) => {
         // Simulate runFull recording one judge call (pushes spend past cap).
-        budget.recordCall({ promptTokens: 1500, completionTokens: 80, totalTokens: 1580 });
+        await budget.recordCall({ promptTokens: 1500, completionTokens: 80, totalTokens: 1580 });
         return fakeResult(path.join(root, 'generated', 'runs', 'a'), 'a');
       });
       const summary = await runBatch({
@@ -365,7 +365,7 @@ describe('runBatch', () => {
       const cache = new JudgeCache({ cacheDir: path.join(root, 'cache') });
       const generate: RunFullFactory = vi.fn(async (opts) => {
         // Each brief simulates one judge call + one cache miss.
-        budget.recordCall({ promptTokens: 1500, completionTokens: 80, totalTokens: 1580 });
+        await budget.recordCall({ promptTokens: 1500, completionTokens: 80, totalTokens: 1580 });
         cache.put(
           `key-${path.basename(opts.briefPath, '.yaml')}`,
           {

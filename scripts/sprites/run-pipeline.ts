@@ -378,7 +378,7 @@ export async function runJudgePass(args: JudgePassArgs): Promise<JudgePassResult
     });
     const newAzureCall = args.judgeCache ? args.judgeCache.stats.misses > cacheMissesBefore : true;
     if (newAzureCall && args.judgeBudget && scorecard.usage) {
-      args.judgeBudget.recordCall(scorecard.usage);
+      await args.judgeBudget.recordCall(scorecard.usage);
     }
     judgePlan.set(e.index, scorecard);
     judgeSkipReason.set(e.index, null);

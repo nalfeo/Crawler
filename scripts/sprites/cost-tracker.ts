@@ -11,9 +11,13 @@
  *
  * Design choices:
  *
- *   - Persisted state is read/written at construction and after every
- *     `recordCall`, so a Ctrl-C mid-batch doesn't lose accounting and
- *     a resumed batch run honors the same ceiling.
+ *   - `recordCall` is async and performs a lock-protected read-modify-write
+ *     so concurrent `JudgeBudget` instances (e.g. two parallel batch CLI
+ *     invocations sharing a worktree) each land their spend correctly.
+ *     A Ctrl-C mid-batch still produces correct accounting because every
+ *     call is flushed before returning.
+ *   - The lock file is `<stateFile>.lock` (a directory, POSIX-atomic mkdir).
+ *     Locks older than 10 s are considered stale and auto-removed.
  *   - The pricing table is small and static; rates live alongside the
  *     code so the source of truth is reviewable in a PR. Update the
  *     `PRICING` table when Azure publishes new rates. There is no
@@ -33,6 +37,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import lockfile from 'proper-lockfile';
 import type { VisionUsage } from './provider/vision-types.js';
 
 /**
@@ -173,16 +178,51 @@ export class JudgeBudget {
 
   /**
    * Record token usage from a completed judge call. Updates the
-   * in-memory state AND the persisted state file in the same call so a
-   * crash between calls still produces correct accounting for the
-   * next run. Returns the live snapshot for convenience.
+   * persisted state file atomically (file-locked read-modify-write) so
+   * two concurrent `JudgeBudget` instances on the same state file both
+   * land their spend rather than one silently overwriting the other.
+   * Also updates the in-memory `spentUsd` / `callCount` to the new
+   * file value, keeping `wouldExceed()` accurate after each call.
+   *
+   * Returns the live snapshot for convenience.
    */
-  recordCall(usage: VisionUsage): JudgeBudgetSnapshot {
+  async recordCall(usage: VisionUsage): Promise<JudgeBudgetSnapshot> {
     const cost = costForUsage(usage, this.rates);
-    this.spentUsd += cost;
-    this.callCount += 1;
     this.callsThisRun += 1;
-    this.persist();
+
+    mkdirSync(path.dirname(this.stateFile), { recursive: true });
+    // proper-lockfile requires the file to exist before locking.
+    if (!existsSync(this.stateFile)) {
+      writeFileSync(
+        this.stateFile,
+        `${JSON.stringify({ version: STATE_VERSION, spentUsd: 0, callCount: 0, lastUpdated: '' }, null, 2)}\n`,
+      );
+    }
+
+    const release = await lockfile.lock(this.stateFile, {
+      retries: { retries: 10, minTimeout: 50, maxTimeout: 500 },
+      stale: 10_000,
+    });
+    try {
+      // Re-read the file under the lock so that the delta from any
+      // concurrent writer is included in our new value.
+      const current = readState(this.stateFile) ?? { spentUsd: 0, callCount: 0 };
+      const newSpentUsd = current.spentUsd + cost;
+      const newCallCount = current.callCount + 1;
+      const state: CostState = {
+        version: STATE_VERSION,
+        spentUsd: newSpentUsd,
+        callCount: newCallCount,
+        lastUpdated: this.now().toISOString(),
+      };
+      writeFileSync(this.stateFile, `${JSON.stringify(state, null, 2)}\n`);
+      // Mirror file values in memory so wouldExceed() stays accurate.
+      this.spentUsd = newSpentUsd;
+      this.callCount = newCallCount;
+    } finally {
+      await release();
+    }
+
     return this.snapshot();
   }
 
@@ -219,6 +259,11 @@ export class JudgeBudget {
     return `judge-budget: spent $${s.spentUsd.toFixed(4)} of ${cap}${rem}, ${s.callsThisRun} call(s) this run, ${s.callsSkippedDueToBudget} skipped`;
   }
 
+  /**
+   * Synchronously write zeros to the state file. Only called from the
+   * constructor when `reset: true` — a single-process, single-writer
+   * operation that does not need a lock.
+   */
   private persist(): void {
     const state: CostState = {
       version: STATE_VERSION,
