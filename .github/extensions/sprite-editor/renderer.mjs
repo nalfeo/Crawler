@@ -1317,6 +1317,7 @@ const CLIENT_SCRIPT = String.raw`
       for (var y = startY; y < Math.min(height, startY + sampleSize); y++) {
         for (var x = startX; x < Math.min(width, startX + sampleSize); x++) {
           var offset = getPixelOffset(x, y, width);
+          if (data[offset + 3] === 0) continue;
           totalR += data[offset];
           totalG += data[offset + 1];
           totalB += data[offset + 2];
@@ -1328,7 +1329,7 @@ const CLIENT_SCRIPT = String.raw`
     sampleBlock(Math.max(0, width - sampleSize), 0);
     sampleBlock(0, Math.max(0, height - sampleSize));
     sampleBlock(Math.max(0, width - sampleSize), Math.max(0, height - sampleSize));
-    if (count === 0) return { r: 0, g: 0, b: 0 };
+    if (count === 0) return null;
     return {
       r: Math.round(totalR / count),
       g: Math.round(totalG / count),
@@ -1509,7 +1510,7 @@ const CLIENT_SCRIPT = String.raw`
     ctx.putImageData(working, 0, 0);
     var after = cloneState();
     if (!statesDiffer(before, after)) {
-      setStatus(label + ' made no visible change.');
+      setStatus(result.message || (label + ' made no visible change.'));
       renderEditor();
       renderOverlay();
       return;
@@ -1529,7 +1530,6 @@ const CLIENT_SCRIPT = String.raw`
       var data = imageData.data;
       var width = imageData.width;
       var height = imageData.height;
-      var matte = resolveBackgroundReference(imageData);
       var strength = amount / 100;
       var bgTolerance = Math.max(10, clampByte(backgroundTolerance, 36));
       var bgLimitSq = bgTolerance * bgTolerance * 3;
@@ -1539,6 +1539,8 @@ const CLIENT_SCRIPT = String.raw`
         }
         return { message: 'Edge cleanup alpha-threshold applied.' };
       }
+      var matte = resolveBackgroundReference(imageData);
+      if (!matte) return { message: 'Pick a background color before edge cleanup.' };
       for (var y = 0; y < height; y++) {
         for (var x = 0; x < width; x++) {
           var offset = getPixelOffset(x, y, width);
@@ -1594,7 +1596,6 @@ const CLIENT_SCRIPT = String.raw`
       var data = imageData.data;
       var width = imageData.width;
       var height = imageData.height;
-      var matte = resolveBackgroundReference(imageData);
       var limitSq = tolerance * tolerance * 3;
       var softLimitSq = Math.max(limitSq + softness * softness * 3, limitSq + 1);
       var seedPoints = methodId === 'flood-fill' && sampledBackgroundPoint
@@ -1611,6 +1612,8 @@ const CLIENT_SCRIPT = String.raw`
         }
         return { message: 'Background removal alpha-threshold applied.' };
       }
+      var matte = resolveBackgroundReference(imageData);
+      if (!matte) return { message: 'Pick a background color before background removal.' };
       if (methodId === 'flood-fill') {
         var connectedMask = collectConnectedBackgroundMask(data, width, height, matte, limitSq, softLimitSq, seedPoints);
         for (var idx2 = 0; idx2 < connectedMask.length; idx2++) {
@@ -1650,6 +1653,9 @@ const CLIENT_SCRIPT = String.raw`
       var width = imageData.width;
       var height = imageData.height;
       var referenceColor = resolveBackgroundReference(imageData);
+      if (!referenceColor) {
+        return { message: 'Pick a background color before fringe normalization.' };
+      }
       var bgLimitSq = threshold * threshold * 3;
       var changed = 0;
       for (var y = 0; y < height; y++) {
@@ -2135,7 +2141,9 @@ const CLIENT_SCRIPT = String.raw`
       if (saveToken !== saveTokenCounter) return false;
       if (!sprite || sprite.key !== expectedKey) return false;
       if (currentEditorFingerprint() !== submittedFingerprint) {
+        baselineFingerprint = submittedFingerprint;
         captureLastSavedSnapshot(submittedCanvas);
+        updateDirtyIndicator();
         setStatus('Saved submitted state; newer edits remain unsaved.');
         return false;
       }
@@ -2994,7 +3002,7 @@ const CLIENT_SCRIPT = String.raw`
     ]);
 
     var commentField = h('div', { class: 'field' }, [
-      h('label', { text: 'Comment / Feedback' }),
+      h('label', { for: 'comment', text: 'Comment / Feedback' }),
       h('textarea', { id: 'comment' })
     ]);
     commentField.querySelector('textarea').value = sprite.comment || '';

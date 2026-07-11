@@ -743,6 +743,47 @@ test('save preserves edits made while the request is in flight', async () => {
   );
 });
 
+test('save moves the clean baseline to the submitted state when Undo wins the race', async () => {
+  await withEditor(
+    async (page) => {
+      const initialPng = await page
+        .locator('.sprite-canvas')
+        .evaluate((element) => element.toDataURL());
+      await page.getByTitle('Erase mode').click();
+      await clickCanvasPixel(page, 0, 0);
+      await page.getByRole('button', { name: 'Save' }).click();
+      await page.waitForFunction(
+        () => document.querySelector('#status')?.textContent === 'Saving…',
+      );
+
+      await page.keyboard.press('Control+z');
+      await page.waitForFunction(
+        () =>
+          document.querySelector('#status')?.textContent ===
+          'Saved submitted state; newer edits remain unsaved.',
+      );
+      assert.equal(
+        await page.locator('.sprite-canvas').evaluate((element) => element.toDataURL()),
+        initialPng,
+        'Undo should leave the live canvas untouched when the save completes',
+      );
+      assert.equal(await page.locator('.dirty-badge').textContent(), 'Unsaved');
+
+      const dialogMessages = [];
+      page.on('dialog', async (dialog) => {
+        dialogMessages.push(dialog.message());
+        await dialog.dismiss();
+      });
+      await page.getByRole('button', { name: /Second Fixture/ }).click();
+      await page.waitForFunction(
+        () => document.querySelector('#status')?.textContent === 'Stayed on current sprite.',
+      );
+      assert.match(dialogMessages[0], /Unsaved edits detected/);
+    },
+    { saveDelayMs: 200 },
+  );
+});
+
 test('stale scaling results cannot overwrite a newly selected sprite', async () => {
   await withEditor(async (page) => {
     await page.evaluate(() => {
@@ -894,6 +935,7 @@ test('mutually exclusive reactions stay scoped to the sprite being edited', asyn
   await withEditor(async (page) => {
     const heart = page.locator('#favorite-heart');
     const dislike = page.locator('#dislike-button');
+    assert.equal(await page.getByRole('textbox', { name: 'Comment / Feedback' }).count(), 1);
     assert.equal(await heart.getAttribute('aria-label'), 'Like as exemplar');
     assert.equal(await dislike.getAttribute('aria-label'), 'Dislike and flag for regeneration');
     assert.equal(await heart.getAttribute('aria-pressed'), 'false');
@@ -922,6 +964,35 @@ test('mutually exclusive reactions stay scoped to the sprite being edited', asyn
     );
     assert.equal(await page.locator('#favorite-heart').getAttribute('aria-pressed'), 'false');
     assert.equal(await page.locator('#dislike-button').getAttribute('aria-pressed'), 'true');
+  });
+});
+
+test('transparent corners require an explicit background sample for color cleanup', async () => {
+  await withEditor(async (page) => {
+    const pixels = new Array(8 * 8 * 4).fill(0);
+    pixels.splice((3 * 8 + 3) * 4, 4, ...rgba(0, 0, 0));
+    pixels.splice((3 * 8 + 4) * 4, 4, ...rgba(180, 40, 40));
+    await paintSprite(page, 8, 8, pixels);
+    const before = await readCanvasPixels(page);
+
+    await page.locator('#tool-background').click();
+    await setControlValue(page, '#background-removal-method', 'color-key');
+    await setControlValue(page, '#background-removal-tolerance', 0);
+    await setControlValue(page, '#background-removal-softness', 0);
+    await page.locator('.tool-panel').getByRole('button', { name: 'Remove BG' }).click();
+    assert.equal(
+      await page.locator('#status').textContent(),
+      'Pick a background color before background removal.',
+    );
+    assert.deepEqual(await readCanvasPixels(page), before);
+
+    await page.locator('#tool-fringe').click();
+    await page.locator('.tool-panel').getByRole('button', { name: 'Normalize fringe' }).click();
+    assert.equal(
+      await page.locator('#status').textContent(),
+      'Pick a background color before fringe normalization.',
+    );
+    assert.deepEqual(await readCanvasPixels(page), before);
   });
 });
 
