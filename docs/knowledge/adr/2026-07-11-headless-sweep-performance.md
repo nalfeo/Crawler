@@ -1,7 +1,12 @@
 # ADR: Cache deterministic visibility and shard broad sweeps
 
-**Status:** Accepted  
-**Date:** 2026-07-11
+## Status
+
+Accepted
+
+## Date
+
+2026-07-11
 
 ## Context
 
