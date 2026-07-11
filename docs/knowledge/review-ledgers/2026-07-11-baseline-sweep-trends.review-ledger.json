@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-11",
+  "session_slug": "baseline-sweep-trends",
+  "task_title": "Add five-release baseline trend to sweep comments",
+  "estimated_apples": 2,
+  "stages": {}
+}
