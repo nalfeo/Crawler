@@ -35,6 +35,7 @@ _check-merge.sh
 
 
 # Local automation report drops
+.automation-reports/
 .automation-reports-local/
 files/guard-telemetry.jsonl
 files/producer-orchestration.jsonl

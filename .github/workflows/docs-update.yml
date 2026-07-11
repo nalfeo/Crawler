@@ -32,7 +32,9 @@ jobs:
         run: npm ci
 
       - name: Prepare report directory
-        run: mkdir -p "$AUTOMATION_REPORT_DIR"
+        run: |
+          rm -rf "$AUTOMATION_REPORT_DIR"
+          mkdir -p "$AUTOMATION_REPORT_DIR"
 
       # Each check writes a JSON summary under $AUTOMATION_REPORT_DIR.
       # `continue-on-error: true` is intentional — we aggregate at the end.

@@ -163,7 +163,9 @@ jobs:
       - uses: ./.github/actions/setup-node
 
       - name: Prepare report directory
-        run: mkdir -p "$AUTOMATION_REPORT_DIR"
+        run: |
+          rm -rf "$AUTOMATION_REPORT_DIR"
+          mkdir -p "$AUTOMATION_REPORT_DIR"
 
       - name: Aggregate report
         id: aggregate

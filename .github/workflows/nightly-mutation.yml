@@ -58,7 +58,9 @@ jobs:
       - uses: ./.github/actions/setup-node
 
       - name: Prepare report directory
-        run: mkdir -p "$AUTOMATION_REPORT_DIR"
+        run: |
+          rm -rf "$AUTOMATION_REPORT_DIR"
+          mkdir -p "$AUTOMATION_REPORT_DIR"
 
       - name: Download mutation report
         uses: actions/download-artifact@v4
