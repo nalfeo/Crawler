@@ -20,6 +20,15 @@ import type { GameWorld } from '../world.js';
 /** Default FOV radius in tiles (~25 tiles ≈ 100ft at 4ft/tile). */
 const DEFAULT_FOV_RADIUS = 25;
 
+interface FovCacheKey {
+  originX: number;
+  originY: number;
+  subFactor: number;
+  transparencyRevision: number;
+}
+
+const fovCacheByMap = new WeakMap<GameWorld['floorMap'] & object, FovCacheKey>();
+
 export function fovSystem(world: GameWorld): void {
   const floorMap = world.floorMap;
   if (!floorMap) return;
@@ -35,6 +44,16 @@ export function fovSystem(world: GameWorld): void {
   const origin = floorMap.worldToSubTile(px, py);
   const originTile = floorMap.worldToTile(px, py);
   const sf = floorMap.subFactor;
+  const transparencyRevision = floorMap.tileMap.transparencyRevision;
+  const cached = fovCacheByMap.get(floorMap);
+  if (
+    cached?.originX === origin.x &&
+    cached.originY === origin.y &&
+    cached.subFactor === sf &&
+    cached.transparencyRevision === transparencyRevision
+  ) {
+    return;
+  }
 
   // Clear previous per-frame visibility (discovered memory persists).
   floorMap.clearVisibility();
@@ -81,4 +100,10 @@ export function fovSystem(world: GameWorld): void {
       }
     },
   );
+  fovCacheByMap.set(floorMap, {
+    originX: origin.x,
+    originY: origin.y,
+    subFactor: sf,
+    transparencyRevision,
+  });
 }

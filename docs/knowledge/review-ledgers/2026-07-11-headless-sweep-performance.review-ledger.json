@@ -1,0 +1,28 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-11",
+  "session_slug": "headless-sweep-performance",
+  "task_title": "Speed up headless runs and weapon sweeps",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 10,
+      "resolved_count": 10,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Alternatives: intra-job workers alone rejected because 2-core runner overhead cannot reliably guarantee >=50%; raw subtile discovery rejected in favor of tile-level FloorMap APIs; LOS/flow-first rejected unless measured FOV/discovery work misses >=25%. Resolutions: transparency revision increments only on actual transparent-bit changes; FOV cache keys map identity, subFactor, origin and live transparency revision; bootstrap remains permissive until current/player tile visibility exists; runtime parity is proven before sharding; fan-in recreates exact per-weapon artifact names/schema and rejects missing, duplicate, or out-of-order tuples; benchmarks use warmed repeated runs, exclude runAt/wallTimeMs from determinism, and compare GitHub job execution time; cache-hit instrumentation and fresh profile trigger LOS/flow fallback if needed. Floor-map replacement naturally isolates discovered state; canonical Floor 1 runs never transition floors, and focused tests cover replacement."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    }
+  }
+}
