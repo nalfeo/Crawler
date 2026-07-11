@@ -38,7 +38,13 @@ export function workflowApprovalRejection({
   if (Number.isInteger(expectedChangedFiles) && expectedChangedFiles !== changedFiles.length) {
     return 'changed-files-incomplete';
   }
-  if (changedFiles.some((file) => normalize(file?.filename) === workflowPath)) {
+  if (
+    changedFiles.some(
+      (file) =>
+        normalize(file?.filename) === workflowPath ||
+        normalize(file?.previous_filename) === workflowPath,
+    )
+  ) {
     return 'workflow-modified';
   }
 

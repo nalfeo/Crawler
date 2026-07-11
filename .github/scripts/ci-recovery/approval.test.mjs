@@ -77,6 +77,28 @@ test('rejects an allowlisted workflow when the PR modifies its definition', () =
   );
 });
 
+test('rejects an allowlisted workflow when the PR renames its definition file', () => {
+  assert.equal(
+    workflowApprovalRejection({
+      repository,
+      prNumber,
+      prHeadRepository: repository,
+      changedFiles: [
+        {
+          filename: '.github/workflows/ci-recovery-router-v2.yml',
+          previous_filename: '.github/workflows/ci-recovery-router.yml',
+        },
+      ],
+      run: {
+        path: '.github/workflows/ci-recovery-router.yml',
+        event: 'pull_request_review',
+        pull_requests: [{ number: prNumber }],
+      },
+    }),
+    'workflow-modified',
+  );
+});
+
 test('rejects when changed-files list is incomplete', () => {
   assert.equal(
     workflowApprovalRejection({
