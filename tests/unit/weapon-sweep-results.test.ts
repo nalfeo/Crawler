@@ -1,0 +1,73 @@
+import { describe, expect, it } from 'vitest';
+import {
+  mergeWeaponSweepShards,
+  summarizeWeaponRecords,
+  type WeaponSweepOutput,
+  type WeaponSweepRecord,
+} from '../../scripts/agent/perf/weapon-sweep-results';
+
+function record(seed: number, weapon = 'sword'): WeaponSweepRecord {
+  return {
+    weapon,
+    seed,
+    outcome: seed % 2 === 0 ? 'death' : 'victory',
+    gameTimeSec: seed * 10,
+    finalLevel: seed,
+    totalKills: seed * 2,
+    totalXp: seed * 3,
+    totalGold: seed * 4,
+    score: seed * 5,
+    minHealthPct: seed / 10,
+    closeCallCount: seed,
+    questsCompleted: seed,
+  };
+}
+
+function shard(seeds: number[]): WeaponSweepOutput {
+  const records = seeds.map((seed) => record(seed));
+  return {
+    runAt: 'ignored',
+    seeds,
+    weapons: ['sword'],
+    maxFrames: 19_800,
+    budgetSec: 330,
+    summaries: [summarizeWeaponRecords('sword', records)],
+    allRecords: records,
+  };
+}
+
+describe('mergeWeaponSweepShards', () => {
+  it('restores canonical seed order and recomputes the summary', () => {
+    const result = mergeWeaponSweepShards([shard([2, 4]), shard([1, 3])], 'sword', [1, 2, 3, 4]);
+
+    expect(result.seeds).toEqual([1, 2, 3, 4]);
+    expect(result.allRecords.map(({ seed }) => seed)).toEqual([1, 2, 3, 4]);
+    expect(result.summaries[0]).toMatchObject({
+      weapon: 'sword',
+      runs: 4,
+      victories: 2,
+      winRate: 0.5,
+      meanScore: 12.5,
+    });
+  });
+
+  it('rejects duplicate seed coverage', () => {
+    expect(() =>
+      mergeWeaponSweepShards([shard([1, 2]), shard([2, 3])], 'sword', [1, 2, 3]),
+    ).toThrow('Duplicate sweep record for sword/2');
+  });
+
+  it('rejects missing seed coverage', () => {
+    expect(() => mergeWeaponSweepShards([shard([1, 3])], 'sword', [1, 2, 3])).toThrow(
+      'Missing 1 sweep record(s) for sword: 2',
+    );
+  });
+
+  it('rejects out-of-order records inside a shard', () => {
+    const malformed = shard([1, 2]);
+    malformed.allRecords.reverse();
+    expect(() => mergeWeaponSweepShards([malformed], 'sword', [1, 2])).toThrow(
+      'Out-of-order shard record for sword/1',
+    );
+  });
+});
