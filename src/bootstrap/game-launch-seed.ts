@@ -5,7 +5,7 @@ export function generateGameLaunchSeed(): number {
   let seed = 0;
   while (seed === 0) {
     globalThis.crypto.getRandomValues(values);
-    seed = values[0]!;
+    seed = values.at(0) ?? 0;
   }
   return seed;
 }
