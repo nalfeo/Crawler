@@ -1,0 +1,28 @@
+#!/usr/bin/env sh
+# commit-msg hook: validate and auto-fix the commit subject before finalising.
+# Installed automatically by `npm install` (see scripts/agent/setup-git-hooks.mjs).
+set -eu
+
+commit_msg_file="$1"
+repo_root="$(git rev-parse --show-toplevel)"
+common_git_dir="$(git rev-parse --git-common-dir)"
+
+# Locate the guard script (handles worktree layouts where node_modules lives
+# in the common git dir, one level above the worktree root).
+guard="$repo_root/scripts/agent/bot-commit-guard.mjs"
+if [ ! -f "$guard" ]; then
+  # Fresh clone before setup — skip silently.
+  exit 0
+fi
+
+# Prefer the worktree-local node_modules, fall back to the common one.
+node_modules="$repo_root/node_modules"
+if [ ! -d "$node_modules" ]; then
+  node_modules="$common_git_dir/../node_modules"
+fi
+if [ ! -d "$node_modules" ]; then
+  echo "[bot-commit-guard] node_modules not found (run npm install). Skipping commit-msg check." >&2
+  exit 0
+fi
+
+exec node "$guard" --fix-msg "$commit_msg_file"

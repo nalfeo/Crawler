@@ -14,7 +14,7 @@ if (existsSync(resolve('.git'))) {
   }
 }
 
-for (const hook of ['pre-commit', 'pre-push']) {
+for (const hook of ['pre-commit', 'pre-push', 'commit-msg']) {
   const hookPath = resolve('.githooks', hook);
   if (existsSync(hookPath)) {
     chmodSync(hookPath, 0o755);
