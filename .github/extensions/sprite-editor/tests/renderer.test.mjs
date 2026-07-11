@@ -254,6 +254,8 @@ test('sprite editor wires OpenCV scaling controls and methods', () => {
   assert.match(html, /\/vendor\/opencv\.js/);
   assert.match(html, /SCALE_FACTOR_MIN = 0\.25/);
   assert.match(html, /SCALE_FACTOR_MAX = 8/);
+  assert.match(html, /MAX_SCALE_DIMENSION = 4096/);
+  assert.match(html, /MAX_SCALE_PIXELS = 16 \* 1024 \* 1024/);
   assert.match(html, /Nearest \(pixel-perfect\)/);
   assert.match(html, /Bilinear/);
   assert.match(html, /Bicubic/);
@@ -677,10 +679,35 @@ test('Zoom to fit can shrink large sprites below the interactive zoom floor', as
   });
 });
 
+test('scaling rejects target allocations above the safe pixel budget', async () => {
+  await withEditor(async (page) => {
+    await paintSprite(page, 4096, 1, new Array(4096 * 4).fill(255));
+    await page.locator('#tool-scale').click();
+    await setControlValue(page, '#scale-factor', 8);
+    await page.locator('.tool-panel').getByRole('button', { name: 'Scale' }).click();
+
+    assert.match(await page.locator('#status').textContent(), /exceeds the safe .* limit/);
+    assert.deepEqual(
+      await page.locator('.sprite-canvas').evaluate((element) => ({
+        width: element.width,
+        height: element.height,
+      })),
+      { width: 4096, height: 1 },
+    );
+  });
+});
+
 test('Unsaved badge tracks brush, comment, and reaction mutations immediately', async () => {
   await withEditor(async (page) => {
     const badge = page.locator('.dirty-badge');
+    const unloadIsBlocked = () =>
+      page.evaluate(() => {
+        const event = new Event('beforeunload', { cancelable: true });
+        window.dispatchEvent(event);
+        return event.defaultPrevented;
+      });
     assert.equal(await badge.count(), 0);
+    assert.equal(await unloadIsBlocked(), false);
 
     await page.getByTitle('Erase mode').click();
     await clickCanvasPixel(page, 0, 0);
@@ -690,8 +717,10 @@ test('Unsaved badge tracks brush, comment, and reaction mutations immediately', 
 
     await page.locator('#comment').fill('Needs another pass');
     assert.equal(await badge.textContent(), 'Unsaved');
+    assert.equal(await unloadIsBlocked(), true);
     await page.locator('#comment').fill('');
     assert.equal(await badge.count(), 0);
+    assert.equal(await unloadIsBlocked(), false);
 
     await page.locator('#favorite-heart').click();
     assert.equal(await badge.textContent(), 'Unsaved');
@@ -712,12 +741,16 @@ test('save preserves edits made while the request is in flight', async () => {
       await page.waitForFunction(
         () => document.querySelector('#status')?.textContent === 'Saving…',
       );
+      assert.equal(await page.locator('#save-current').isDisabled(), true);
+      assert.equal(await page.locator('#revert-current').isDisabled(), true);
       await clickCanvasPixel(page, 1, 0);
       await page.waitForFunction(
         () =>
           document.querySelector('#status')?.textContent ===
           'Saved submitted state; newer edits remain unsaved.',
       );
+      assert.equal(await page.locator('#save-current').isDisabled(), false);
+      assert.equal(await page.locator('#revert-current').isDisabled(), false);
       assert.equal(
         await page.locator('#comparison-before-canvas').evaluate((element) => element.toDataURL()),
         submittedPng,

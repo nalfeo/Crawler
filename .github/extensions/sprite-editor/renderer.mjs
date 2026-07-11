@@ -425,6 +425,7 @@ const CLIENT_SCRIPT = String.raw`
   var fringeNormalizeThreshold = 28;
   var lastAppliedFringeNormalizeSignature = null;
   var scaleInFlight = false;
+  var mutationInFlight = false;
   var activeEditorTool = 'draw';
   var previousEditorTool = 'draw';
   var comparisonBeforeCanvas = null;
@@ -441,6 +442,8 @@ const CLIENT_SCRIPT = String.raw`
   ];
   var OPENCV_JS_URL = '/vendor/opencv.js';
   var SCALE_WORKER_TIMEOUT_MS = 10000;
+  var MAX_SCALE_DIMENSION = 4096;
+  var MAX_SCALE_PIXELS = 16 * 1024 * 1024;
   var ZOOM_MIN = 0.5;
   var ZOOM_MAX = 20;
   var ZOOM_STEP = 0.5;
@@ -838,10 +841,26 @@ const CLIENT_SCRIPT = String.raw`
       renderEditor();
       return;
     }
-    scaleInFlight = true;
-    renderEditor();
     var nextWidth = Math.max(1, Math.round(canvas.width * factor));
     var nextHeight = Math.max(1, Math.round(canvas.height * factor));
+    if (
+      nextWidth > MAX_SCALE_DIMENSION ||
+      nextHeight > MAX_SCALE_DIMENSION ||
+      nextWidth * nextHeight > MAX_SCALE_PIXELS
+    ) {
+      setStatus(
+        'Scale target ' +
+          String(nextWidth) +
+          'x' +
+          String(nextHeight) +
+          ' exceeds the safe 4096px / 16-megapixel limit.',
+        true
+      );
+      renderEditor();
+      return;
+    }
+    scaleInFlight = true;
+    renderEditor();
     var before = cloneState();
     setStatus(
       'Scaling sprite from ' +
@@ -2115,18 +2134,31 @@ const CLIENT_SCRIPT = String.raw`
     return { favorite: favorite, disliked: disliked, comment: comment };
   }
 
+  function setMutationInFlight(nextValue) {
+    mutationInFlight = nextValue;
+    var saveControl = document.getElementById('save-current');
+    var revertControl = document.getElementById('revert-current');
+    if (saveControl) saveControl.disabled = mutationInFlight;
+    if (revertControl) revertControl.disabled = mutationInFlight;
+  }
+
   async function saveCurrent() {
     var options = arguments.length > 0 && arguments[0] ? arguments[0] : {};
     if (!sprite) return;
+    if (mutationInFlight) {
+      setStatus('A save or revert is already in progress.');
+      return false;
+    }
+    setMutationInFlight(true);
     var expectedKey = sprite.key;
     var saveToken = ++saveTokenCounter;
-    var submittedFingerprint = currentEditorFingerprint();
-    var submittedCanvas = h('canvas');
-    submittedCanvas.width = canvas.width;
-    submittedCanvas.height = canvas.height;
-    submittedCanvas.getContext('2d').drawImage(canvas, 0, 0);
     setStatus('Saving…');
     try {
+      var submittedFingerprint = currentEditorFingerprint();
+      var submittedCanvas = h('canvas');
+      submittedCanvas.width = canvas.width;
+      submittedCanvas.height = canvas.height;
+      submittedCanvas.getContext('2d').drawImage(canvas, 0, 0);
       var body = {
         key: sprite.key,
         metadata: metadataFromForm(),
@@ -2157,12 +2189,19 @@ const CLIENT_SCRIPT = String.raw`
     } catch (error) {
       setStatus(error.message || String(error), true);
       return false;
+    } finally {
+      setMutationInFlight(false);
     }
   }
 
   async function revertCurrent() {
     if (!sprite) return;
+    if (mutationInFlight) {
+      setStatus('A save or revert is already in progress.');
+      return;
+    }
     if (!confirm('Revert this sprite PNG + manifest/catalog metadata to HEAD?')) return;
+    setMutationInFlight(true);
     var expectedKey = sprite.key;
     var revertToken = ++revertTokenCounter;
     setStatus('Reverting…');
@@ -2184,6 +2223,8 @@ const CLIENT_SCRIPT = String.raw`
       setStatus('Reverted to HEAD.');
     } catch (error) {
       setStatus(error.message || String(error), true);
+    } finally {
+      setMutationInFlight(false);
     }
   }
 
@@ -2671,9 +2712,19 @@ const CLIENT_SCRIPT = String.raw`
     fringeNormalizeBtn.disabled = !fringeNormalizeDirty;
     fringeNormalizeBtn.addEventListener('click', applyFringeNormalize);
 
-    var saveBtn = h('button', { type: 'button', class: 'primary-action' }, ['Save']);
+    var saveBtn = h(
+      'button',
+      { id: 'save-current', type: 'button', class: 'primary-action' },
+      ['Save']
+    );
+    saveBtn.disabled = mutationInFlight;
     saveBtn.addEventListener('click', saveCurrent);
-    var revertBtn = h('button', { type: 'button', class: 'danger-action' }, ['Revert']);
+    var revertBtn = h(
+      'button',
+      { id: 'revert-current', type: 'button', class: 'danger-action' },
+      ['Revert']
+    );
+    revertBtn.disabled = mutationInFlight;
     revertBtn.title = 'Revert PNG and metadata to HEAD';
     revertBtn.addEventListener('click', revertCurrent);
     var undoBtn = h('button', { type: 'button', text: 'Undo' });
@@ -3142,6 +3193,11 @@ const CLIENT_SCRIPT = String.raw`
       hideContextMenu();
     });
     window.addEventListener('scroll', hideContextMenu, true);
+    window.addEventListener('beforeunload', function (ev) {
+      if (!isDirty()) return;
+      ev.preventDefault();
+      ev.returnValue = '';
+    });
     document.addEventListener('keydown', function (ev) {
       var target = ev.target;
       var tag = target && target.tagName ? String(target.tagName).toUpperCase() : '';
