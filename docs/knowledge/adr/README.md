@@ -6,7 +6,7 @@ consequences. New decisions that affect **2+ systems** require an ADR (see the
 constitution and `.github/copilot-instructions.md`).
 
 - **Template:** `docs/knowledge/adr/TEMPLATE.md`
-- **Count:** 105 ADR files — 86 numbered (0001–0056, with number reuse and gaps in this index — see below) + 19 date-prefixed
+- **Count:** 109 ADR files — 90 numbered (0001–0059, with number reuse and gaps in this index — see below) + 19 date-prefixed
 - **Status convention:** `## Status` heading with one of
   `Proposed | Accepted | Deprecated | Superseded by NNNN`
 
@@ -67,7 +67,7 @@ hundreds of inbound references.
 ### Adding a new ADR
 
 1. Copy `TEMPLATE.md` to `NNNN-your-slug.md`, where `NNNN` is **the next unused
-   number** (currently **0057**).
+   number** (currently **0060**).
 2. Fill in `## Status`, `## Date`, `## Estimated Complexity`, `## Context`,
    `## Decision`, `## Consequences`.
 3. Always **link by slug**, never by bare number, so collisions stay
@@ -128,6 +128,7 @@ hundreds of inbound references.
 - [Floor 2 family-territory & relationship architecture](0040-floor2-family-territory-and-relationship-architecture.md) — open cave system of feuding mob families, per-family player relationships, and a two-shape (sole-ally / total-war) win condition.
 - [Durable player-hit signal for ally-defend retaliation](0042-durable-player-hit-signal-for-ally-defend.md) — a durable `world.lastPlayerHit` set at the core `applyDamage` choke point (survives the frame-end VFX drain) plus projectile `Owner` threading, so ally-defend fires in the real game and retaliates against the shooter.
 - [Decouple a door's logical-open latch from its physical tile state](0055-door-logical-latch-vs-physical-tile-decouple.md) — renames `doorState.isOpen`→`logicalOpen` (intended-open latch) and adds a derived, stored `effectiveOpen` (physical tile truth), so a safe-room force-close only closes the tile and a shared safe/boss connector door reopens when the seal lifts instead of permanently sealing.
+- [Floor 2 settlement progression contract](0059-floor2-settlement-progression-contract.md) — deterministic two-phase introduction (settlement discovery then Broker introduction) shared by quest waypoints, AI routing, and the Families HUD activation gate.
 
 ### Quests & NPCs
 
@@ -267,3 +268,4 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0055 | [Decouple a Door's Logical-Open Latch from Its Physical Tile State](0055-door-logical-latch-vs-physical-tile-decouple.md)                          | Accepted           | 2026-07-10 |
 | 0055 | [Floor 2 Progression Gates: Feature Unlocks, Reputation, Hidden Quests](0055-floor2-progression-gates.md)                                          | Accepted           | 2026-07-10 |
 | 0056 | [GitHub-First Broad-Sweep Execution and Investigation Session Process Boundary](0056-github-first-broad-sweep-and-investigation-session-policy.md) | Accepted           | 2026-07-10 |
+| 0059 | [Floor 2 Settlement Progression Contract](0059-floor2-settlement-progression-contract.md)                                                          | Accepted           | 2026-07-11 |

@@ -19,6 +19,8 @@ import {
   meetBroker,
 } from '../../src/game/floor2Scenario.js';
 import { questSystem } from '../../src/core/systems/questSystem.js';
+import { getQuestWaypoints } from '../../src/core/systems/questWaypoints.js';
+import { resolveFloor2SettlementAnchor } from '../../src/core/floor2-settlement-anchor.js';
 import { getFloor2NeutralTrash } from '../../src/shared/enemy-packs.js';
 import { getFloorManifest, registerFloorManifest } from '../../src/shared/floor-registry.js';
 import { FLOOR2_FIND_SETTLEMENT_QUEST_ID, getQuestDef } from '../../src/shared/quest-types.js';
@@ -153,6 +155,16 @@ describe('initializeFloor2Scenario manifest validation', () => {
     const denQuestIds = activeQuestIds.filter((questId) => questId.startsWith('floor2-den-'));
     expect(denQuestIds.length).toBeGreaterThan(0);
     expect(world.questLog.get(FLOOR2_FIND_SETTLEMENT_QUEST_ID)?.tracked).toBe(true);
+    const settlementAnchor = resolveFloor2SettlementAnchor(world);
+    expect(settlementAnchor).not.toBeNull();
+    expect(getQuestWaypoints(world, playerEid)).toEqual([
+      {
+        ...settlementAnchor!,
+        questId: FLOOR2_FIND_SETTLEMENT_QUEST_ID,
+        label: 'Find the settlement',
+        kind: 'npc',
+      },
+    ]);
     expect(
       denQuestIds.every((questId) =>
         getQuestDef(questId)?.objectives.every((objective) => objective.kind === 'counter'),
@@ -207,6 +219,7 @@ describe('initializeFloor2Scenario manifest validation', () => {
     expect(world.goalFlags.get(FLOOR2_SETTLEMENT_FOUND_GOAL_ID)).toBe(true);
     expect(world.questLog.get(FLOOR2_FIND_SETTLEMENT_QUEST_ID)?.status).toBe('complete');
     expect(world.questLog.get(FLOOR2_FIND_SETTLEMENT_QUEST_ID)?.tracked).toBe(false);
+    expect(getQuestWaypoints(world, playerEid)).toEqual([]);
     // Den-unlock quests are hidden; questSystem prefers non-hidden quests for
     // tracking. With no visible quests remaining, no visible quest is tracked.
     // (The hidden fallback may technically track a hidden quest, but the HUD

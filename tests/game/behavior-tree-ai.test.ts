@@ -18,9 +18,15 @@ import {
   meetSpellQuestGiver,
   selectFloor1StarterWeapon,
 } from '../../src/game/floorScenario.js';
-import { FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID } from '../../src/game/floor2Scenario.js';
+import {
+  FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID,
+  FLOOR2_SETTLEMENT_FOUND_GOAL_ID,
+  initializeFloor2Scenario,
+} from '../../src/game/floor2Scenario.js';
 import { setActiveWeapon } from '../../src/game/weaponSystem.js';
 import type { GameWorld } from '../../src/core/world.js';
+import { resolveFloor2SettlementAnchor } from '../../src/core/floor2-settlement-anchor.js';
+import { acceptQuest } from '../../src/core/systems/questSystem.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { makeDiagonalCornerMap } from '../helpers/map-fixtures.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
@@ -34,6 +40,7 @@ import {
   NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES,
 } from '../../src/game/ai/bt-ai-tuning.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
+import { FLOOR1_TUTORIAL_QUEST_ID } from '../../src/shared/quest-types.js';
 
 /**
  * Build an all-open room (walls only on the border) so A* has a clear straight
@@ -1006,6 +1013,91 @@ describe('BehaviorTreeAI', () => {
     expect(unlockedDecision.targetEid).not.toBe(brokerEid);
   });
 
+  it('routes direct Floor 2 starts to the settlement before den, enemy, or loot goals', () => {
+    const world = createTestWorld({ seed: 54, floor: 2 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor2Scenario(world, player);
+    const anchor = resolveFloor2SettlementAnchor(world);
+    expect(anchor).not.toBeNull();
+
+    const px = world.stores.position.x[player] ?? 0;
+    const py = world.stores.position.y[player] ?? 0;
+    const dx = anchor!.x - px;
+    const dy = anchor!.y - py;
+    const distance = Math.hypot(dx, dy);
+    const ux = distance > 0 ? dx / distance : 1;
+    const uy = distance > 0 ? dy / distance : 0;
+    spawnEnemy(world, px + ux * 20, py + uy * 20, 20);
+    spawnXpGem(world, px + ux * 4 - uy * 2, py + uy * 4 + ux * 2, 5);
+
+    const ai = new BehaviorTreeAI({ seed: 54, farmPullWeight: 0.35 });
+    const input = createInputState();
+    ai.poll(input, world);
+    ai.poll(input, world);
+
+    expect(ai.getDecision()).toMatchObject({
+      state: AIState.EXPLORE,
+      targetEid: -1,
+      targetX: anchor!.x,
+      targetY: anchor!.y,
+      reason: 'Heading to the Floor 2 settlement',
+    });
+    expect(ai.getOpportunisticDebug()).toMatchObject({
+      pullX: 0,
+      pullY: 0,
+      farmX: 0,
+      farmY: 0,
+    });
+  });
+
+  it('keeps simulated carry-over runs on the Broker after settlement discovery despite nearby threats', () => {
+    const world = createTestWorld({ seed: 55, floor: 2 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor2Scenario(world, player);
+    acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
+    world.goalFlags.set(FLOOR2_SETTLEMENT_FOUND_GOAL_ID, true);
+
+    const brokerEid = world.floorExtendedState!.settlement!.brokerEid;
+    const px = world.stores.position.x[player] ?? 0;
+    const py = world.stores.position.y[player] ?? 0;
+    spawnEnemy(world, px + 6, py, 20);
+    spawnXpGem(world, px + 3, py + 2, 5);
+
+    const ai = new BehaviorTreeAI({ seed: 55 });
+    ai.poll(createInputState(), world);
+
+    expect(ai.getDecision()).toMatchObject({
+      state: AIState.EXPLORE,
+      targetEid: brokerEid,
+      reason: 'Heading to the Floor 2 Broker introduction',
+    });
+  });
+
+  it.each([
+    ['invalid Broker eid', -1],
+    ['missing Broker entity', 2999],
+  ])('holds the Broker phase at the settlement anchor for a %s', (_label, brokerEid) => {
+    const world = createTestWorld({ seed: 56, floor: 2 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor2Scenario(world, player);
+    world.goalFlags.set(FLOOR2_SETTLEMENT_FOUND_GOAL_ID, true);
+    const settlement = world.floorExtendedState!.settlement!;
+    world.floorExtendedState!.settlement = { ...settlement, brokerEid };
+    const anchor = resolveFloor2SettlementAnchor(world);
+    expect(anchor).not.toBeNull();
+
+    const ai = new BehaviorTreeAI({ seed: 56 });
+    ai.poll(createInputState(), world);
+
+    expect(ai.getDecision()).toMatchObject({
+      state: AIState.EXPLORE,
+      targetEid: -1,
+      targetX: anchor!.x,
+      targetY: anchor!.y,
+      reason: 'Heading to the Floor 2 Broker introduction',
+    });
+  });
+
   it('routes to spawned Floor 2 exit stairs as the terminal progress objective', () => {
     const world = createTestWorld({ seed: 53, floor: 2 });
     spawnPlayer(world, 8, 8);
@@ -1022,6 +1114,8 @@ describe('BehaviorTreeAI', () => {
         staircasePos: { x: 80, y: 40 },
       },
     };
+    world.goalFlags.set(FLOOR2_SETTLEMENT_FOUND_GOAL_ID, true);
+    world.goalFlags.set(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
 
     const ai = new BehaviorTreeAI({ seed: 53 });
     ai.poll(createInputState(), world);
