@@ -28,8 +28,14 @@ export const DEFAULT_FLOOR1_LOADOUT_CHOICE: Floor1LoadoutChoiceId = 'sword';
 export const FLOOR1_LOADOUT_CHOICE_IDS: readonly Floor1LoadoutChoiceId[] =
   FLOOR1_LOADOUT_OPTIONS.map((option) => option.id);
 
+function isFloor1LoadoutChoiceId(choiceId: string | undefined): choiceId is Floor1LoadoutChoiceId {
+  return (
+    choiceId !== undefined && FLOOR1_LOADOUT_CHOICE_IDS.includes(choiceId as Floor1LoadoutChoiceId)
+  );
+}
+
 function resolveFloor1LoadoutChoice(choiceId: string | undefined): Floor1LoadoutChoiceId {
-  if (choiceId === 'sword' || choiceId === 'bow' || choiceId === 'baseball-bat') {
+  if (isFloor1LoadoutChoiceId(choiceId)) {
     return choiceId;
   }
   return DEFAULT_FLOOR1_LOADOUT_CHOICE;

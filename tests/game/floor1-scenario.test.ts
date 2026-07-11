@@ -1290,6 +1290,8 @@ describe('floor1Scenario', () => {
       const playerA = spawnPlayer(worldA, 0, 0);
       initializeFloor1Scenario(worldA, playerA);
       worldA.goalFlags.set('floor1-shop-quest-complete', true);
+      // Reproduce the reported in-game case: the visible Floor 1 starter set is
+      // sword/bow/baseball-bat, so the merchant must stay inside that set.
       worldA.floorScenario!.starterChoices = [...FLOOR1_LOADOUT_CHOICE_IDS];
       expect(worldA.floorScenario?.starterChoices).toEqual([...FLOOR1_LOADOUT_CHOICE_IDS]);
 
