@@ -48,7 +48,7 @@ import { normalizeInputDirection } from '../../shared/input.js';
 import { hasItem } from '../../shared/inventory.js';
 import { SeededRandom } from '../../shared/random.js';
 import { createLogger } from '../../shared/logger.js';
-import { GAME, WeaponType, PLAYER_SPEED } from '../../shared/constants.js';
+import { GAME, WeaponType, PLAYER_SPEED, type WeaponTypeValue } from '../../shared/constants.js';
 import { floor1Config } from '../../shared/floor-config.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
@@ -213,6 +213,7 @@ import {
   QUEST_GIVER_DETOUR_ABANDON_FRAMES,
   NPC_INTERACTION_RADIUS_FT,
   NPC_APPROACH_THREAT_RADIUS_FT,
+  NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES,
   ARENA_LOCKIN_ADD_HYSTERESIS_FT,
   TRAVEL_STEERING_ENABLED,
   TRAVEL_BODY_RADIUS_FT,
@@ -521,6 +522,20 @@ interface LootTarget extends WorldTarget {
 
 interface ProgressTarget extends WorldTarget {
   reason: string;
+}
+
+/**
+ * Every projectile-firing weapon (RANGED, MAGIC, THROWN, BEAM) kites/auto-fires
+ * at a standoff instead of needing melee contact. TRAP and MELEE are not
+ * projectile weapons and still require closing distance.
+ */
+function isProjectileWeaponType(weaponType: WeaponTypeValue): boolean {
+  return (
+    weaponType === WeaponType.RANGED ||
+    weaponType === WeaponType.MAGIC ||
+    weaponType === WeaponType.THROWN ||
+    weaponType === WeaponType.BEAM
+  );
 }
 
 interface CollapsePanicInput {
@@ -1030,6 +1045,31 @@ export class BehaviorTreeAI implements AIInputProvider {
    * runner's total time near an unreachable NPC. */
   private committedDetourNoProgressFrames: number = 0;
   /**
+   * NPC-approach threat-clear no-progress valve. While a nearby non-projectile
+   * threat is blocking the path to a quest NPC, we re-enter ENGAGE to clear it
+   * each poll — but if the player→NPC distance stops improving for
+   * {@link NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES} consecutive polls (even as
+   * the specific blocking enemy rotates via the per-enemy ENGAGE_GIVEUP_FRAMES
+   * watchdog), we latch a bypass so the AI walks toward the NPC directly
+   * instead of livelocking on threat-clear forever. `null` when no NPC is
+   * currently being tracked; reset per run in {@link reset}.
+   */
+  private npcApproachThreatNpcEid: number | null = null;
+  /** Smallest player→NPC distance seen since {@link npcApproachThreatNpcEid}
+   * was latched; drives the no-progress bypass above. `+Infinity` while no
+   * NPC is being tracked. */
+  private npcApproachThreatBestDistance: number = Number.POSITIVE_INFINITY;
+  /** Consecutive polls with no improvement toward the tracked NPC. */
+  private npcApproachThreatNoProgressFrames: number = 0;
+  /** Entity id of the NPC for which the no-progress bypass has latched. While
+   * this matches {@link npcApproachThreatNpcEid}, threat-clear ENGAGE is
+   * bypassed until the nearby-threat gate exits and resets tracking. `null`
+   * when no bypass is active. */
+  private npcApproachThreatBypassEid: number | null = null;
+  /** True when Track A reached Progress during this poll. Used to clear stale
+   * NPC threat-clear bypass state if higher-priority nodes pre-empt Progress. */
+  private npcApproachThreatProgressEvaluatedThisPoll: boolean = false;
+  /**
    * Latched safe-room egress waypoint. While LeaveSafeRoom is active we keep a
    * single reachable world target until the player exits the safe room, so
    * threat-relative ENGAGE pursuit cannot flip the heading each frame.
@@ -1469,6 +1509,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     return sequence(
       'Progress',
       condition('Progress Objective Available', (ctx) => {
+        this.npcApproachThreatProgressEvaluatedThisPoll = true;
         const target = this.findProgressObjective(
           ctx.world,
           ctx.playerEid,
@@ -1482,6 +1523,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           ctx.blackboard['progressTarget'] = target;
           return true;
         }
+        this.resetNpcApproachThreatTracking();
         return false;
       }),
       action('Set Progress State', (ctx) => {
@@ -1501,14 +1543,27 @@ export class BehaviorTreeAI implements AIInputProvider {
             NPC_APPROACH_THREAT_RADIUS_FT,
           );
           if (nearestEnemy && nearestEnemy.distance <= npcThreatRadius) {
-            const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, nearestEnemy);
-            this.decision.state = AIState.ENGAGE;
-            this.decision.targetEid = nearestEnemy.eid;
-            this.decision.targetX = plan.targetX;
-            this.decision.targetY = plan.targetY;
-            this.decision.reason = `Clearing nearby threat before NPC interaction — ${plan.reason}`;
-            return BTStatus.SUCCESS;
+            const weapon = getActiveWeapon(ctx.world);
+            const projectileWeapon = weapon ? isProjectileWeaponType(weapon.weaponType) : false;
+            if (projectileWeapon) {
+              // Auto-fire handles projectile weapons at range, so keep travelling
+              // toward the NPC instead of re-entering ENGAGE — fall through to the
+              // direct-approach path below.
+              this.resetNpcApproachThreatTracking();
+            } else if (this.shouldClearThreatBeforeNpc(target)) {
+              const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, nearestEnemy);
+              this.decision.state = AIState.ENGAGE;
+              this.decision.targetEid = nearestEnemy.eid;
+              this.decision.targetX = plan.targetX;
+              this.decision.targetY = plan.targetY;
+              this.decision.reason = `Clearing nearby threat before NPC interaction — ${plan.reason}`;
+              return BTStatus.SUCCESS;
+            }
+          } else {
+            this.resetNpcApproachThreatTracking();
           }
+        } else {
+          this.resetNpcApproachThreatTracking();
         }
         // If this progress goal points at a living enemy (e.g. hunting quest mobs,
         // farming the swarm for charm gold), reuse the shared engagement kite so
@@ -1533,6 +1588,50 @@ export class BehaviorTreeAI implements AIInputProvider {
         return BTStatus.SUCCESS;
       }),
     );
+  }
+
+  /**
+   * No-progress valve for the NPC-approach threat-clear gate above. Tracks
+   * player→NPC distance (not player→enemy distance) so the valve spans enemy
+   * rotation caused by the per-enemy {@link ENGAGE_GIVEUP_FRAMES} watchdog —
+   * only a stall in overall progress toward the NPC itself trips the bypass.
+   * Returns true while threat-clear ENGAGE should keep firing for this target,
+   * false once the bypass has latched (walk toward the NPC directly instead).
+   */
+  private shouldClearThreatBeforeNpc(target: ProgressTarget): boolean {
+    if (this.npcApproachThreatNpcEid !== target.eid) {
+      this.npcApproachThreatNpcEid = target.eid;
+      this.npcApproachThreatBestDistance = target.distance;
+      this.npcApproachThreatNoProgressFrames = 0;
+      this.npcApproachThreatBypassEid = null;
+      return true;
+    }
+    if (this.npcApproachThreatBypassEid === target.eid) {
+      return false;
+    }
+    if (this.npcApproachThreatBestDistance - target.distance > ENGAGE_PROGRESS_EPSILON_FT) {
+      this.npcApproachThreatBestDistance = target.distance;
+      this.npcApproachThreatNoProgressFrames = 0;
+      return true;
+    }
+    this.npcApproachThreatNoProgressFrames += 1;
+    if (this.npcApproachThreatNoProgressFrames > NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES) {
+      this.npcApproachThreatBypassEid = target.eid;
+      return false;
+    }
+    return true;
+  }
+
+  /** Clear the NPC-approach threat-clear no-progress tracking/bypass. Called
+   * whenever the nearby-threat gate is not active (no progress target, target
+   * is not an NPC, target is already in interaction range, or no threat is
+   * nearby) so a later re-entry starts fresh instead of inheriting a stale
+   * bypass latch. */
+  private resetNpcApproachThreatTracking(): void {
+    this.npcApproachThreatNpcEid = null;
+    this.npcApproachThreatBestDistance = Number.POSITIVE_INFINITY;
+    this.npcApproachThreatNoProgressFrames = 0;
+    this.npcApproachThreatBypassEid = null;
   }
 
   /**
@@ -2865,9 +2964,13 @@ export class BehaviorTreeAI implements AIInputProvider {
       blackboard: {},
     };
 
+    this.npcApproachThreatProgressEvaluatedThisPoll = false;
     // Execute behavior tree (Track A sets this.decision; Track B writes
     // opportunisticPullX/Y and dodgeVecX/Y as side-effects)
     this.tree.tick(context);
+    if (!this.npcApproachThreatProgressEvaluatedThisPoll) {
+      this.resetNpcApproachThreatTracking();
+    }
 
     // Pathing A/B seam (axis 1) — three non-overlapping mode booleans (poll-invariant):
     //  • usesNavmeshRoute — route via the deterministic recast waypoint route to the
@@ -6323,12 +6426,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     // Every projectile-firing weapon (RANGED, MAGIC, THROWN, BEAM) kites at a
     // standoff instead of charging the enemy. Only TRAP — which has no projectile
     // and is dropped at the player's feet — keeps the generic close-range engage.
-    if (
-      weapon.weaponType === WeaponType.RANGED ||
-      weapon.weaponType === WeaponType.MAGIC ||
-      weapon.weaponType === WeaponType.THROWN ||
-      weapon.weaponType === WeaponType.BEAM
-    ) {
+    if (isProjectileWeaponType(weapon.weaponType)) {
       return this.planRangedEngagement(world, playerX, playerY, target, reachFt);
     }
 
@@ -7195,6 +7293,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.committedDetourNpcEid = null;
     this.committedDetourBestDistance = Number.POSITIVE_INFINITY;
     this.committedDetourNoProgressFrames = 0;
+    this.resetNpcApproachThreatTracking();
     this.clearSafeRoomEgressWaypoint();
   }
 }
