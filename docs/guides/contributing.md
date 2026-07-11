@@ -53,21 +53,20 @@ npm run verify:fast
 
 This is the minimum bar before pushing branch updates.
 
-## 6. Verify fully before opening or updating a PR
+## 6. Verify before opening or updating a PR
 
 Before a pull request, run:
 
 ```bash
-npm run verify                # includes typecheck, lint, format, guard tests,
-                              # check:wired-systems, unit + integration,
-                              # PR prereqs, and vite build
-npm run verify:pr-prereqs     # run standalone if you want just the PR-shape checks
+npm run verify:fast
+npm run verify:pr-prereqs
 bash scripts/agent/lab-gate-check.sh
 ```
 
-Add `VERIFY_COVERAGE=1` to include coverage locally; add `VERIFY_FULL=1` to also
-run the headless Floor 1 win-rate gate. CI enforces coverage, headless, and e2e
-independently as required merge-gate inputs.
+Reserve local full `npm run verify` runs for explicit human requests or targeted
+diagnosis. Add `VERIFY_COVERAGE=1` to include coverage locally; add `VERIFY_FULL=1`
+to also run the headless Floor 1 win-rate gate. CI enforces coverage, headless,
+and e2e independently as required merge-gate inputs.
 
 If the change adds or touches an ECS system, the lab gate is mandatory and the
 real-pipeline wiring guard (`check:wired-systems`, ADR 0039) must pass — a lab
