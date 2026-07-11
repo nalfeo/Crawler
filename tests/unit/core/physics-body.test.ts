@@ -15,7 +15,11 @@ import type { GameWorld } from '../../../src/core/world.js';
 
 function createCircleEntity(world: GameWorld, radius: number): number {
   const eid = createEntity(world);
-  addComponent(world.ecs, eid, set(Size, { radius, halfWidth: 0, halfHeight: 0, shape: SHAPE_CIRCLE }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, { radius, halfWidth: 0, halfHeight: 0, shape: SHAPE_CIRCLE }),
+  );
   return eid;
 }
 
