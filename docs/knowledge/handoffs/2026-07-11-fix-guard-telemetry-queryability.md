@@ -18,7 +18,11 @@ ci-policy, docs-tooling
 
 ## What Was Done
 
-Updated `scripts/agent/review/pr-prereq-check.mjs` so the PR-prerequisite check now tries to auto-capture guard telemetry when `files/guard-telemetry.jsonl` exists and the session slug can be inferred from the branch diff's new handoff or review-ledger file. The check now prefers the handoff slug, falls back to the ledger slug, runs `npm run telemetry:capture -- <slug>`, and reports either the generated capture path or the manual fallback command. Added focused node tests covering slug inference, successful auto-capture, capture-failure diagnostics, the manual-reminder fallback, and the existing staged-capture/no-artifact cases. Observed in the real CLI artifact `npm run verify:pr-prereqs`: before this change it could only remind the agent to run `telemetry:capture`; after this change it can automatically write the durable capture file when a session artifact and inferable slug are present.
+Updated `scripts/agent/review/pr-prereq-check.mjs` so the PR-prerequisite check now tries to auto-capture guard telemetry when `files/guard-telemetry.jsonl` exists and the session slug can be inferred from the branch diff's new handoff or review-ledger file.
+
+The check now prefers the handoff slug, falls back to the ledger slug, runs `npm run telemetry:capture -- <slug>`, and reports either the generated capture path or the manual fallback command.
+
+Added focused node tests covering slug inference, successful auto-capture, capture-failure diagnostics, the manual-reminder fallback, and the existing staged-capture/no-artifact cases. Observed in the real CLI artifact `npm run verify:pr-prereqs`: before this change it could only remind the agent to run `telemetry:capture`; after this change it can automatically write the durable capture file when a session artifact and inferable slug are present.
 
 ## Key Decisions Made
 

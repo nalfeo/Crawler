@@ -60,12 +60,12 @@ function captureTelemetry(cwd, slug) {
 
 function captureErrorDetail(err) {
   if (typeof err?.stderr === 'string' && err.stderr.trim()) {
-    return err.stderr.trim();
+    return `telemetry:capture subprocess failed: ${err.stderr.trim()}`;
   }
   if (typeof err?.message === 'string' && err.message.trim()) {
-    return err.message.trim();
+    return `telemetry:capture subprocess failed: ${err.message.trim()}`;
   }
-  return 'unknown telemetry:capture failure';
+  return 'telemetry:capture subprocess failed: unknown error';
 }
 
 export function summarizePrereqResult(preflightDecision, ledgerDecision) {
