@@ -5297,6 +5297,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         'Heading to the Floor 2 Broker introduction',
         settlementAnchor.x,
         settlementAnchor.y,
+        AINpcInteractionAction.MEET_BROKER_INTRO,
       );
     }
 
