@@ -44,6 +44,17 @@
     "path": "by-sha/554da4b923bc52b5442bca2f20c7bbfd0d5b3d00.json"
   },
   {
+    "commit": "1098393321aa8dae50e30aa4c940b0df4d9612ad",
+    "commitDate": "2026-07-10T21:46:59-07:00",
+    "commitSubject": "fix(ai): stabilize floor1 staircase boss-room lock-in survival (#1025)",
+    "capturedAt": "2026-07-11T05:30:03.807Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29140352152",
+    "winRate": 0.8566666666666667,
+    "totalWins": 257,
+    "totalRuns": 300,
+    "path": "by-sha/1098393321aa8dae50e30aa4c940b0df4d9612ad.json"
+  },
+  {
     "commit": "6c2ff3caaba2a7987fa081e8aaeb12037f75f101",
     "commitDate": "2026-07-10T20:35:40-07:00",
     "commitSubject": "fix: resolve floor1 class-B safe-room egress deadlock (#1022)",
