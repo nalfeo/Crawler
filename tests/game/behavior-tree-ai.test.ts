@@ -1025,8 +1025,8 @@ describe('BehaviorTreeAI', () => {
     const dx = anchor!.x - px;
     const dy = anchor!.y - py;
     const distance = Math.hypot(dx, dy);
-    const ux = dx / distance;
-    const uy = dy / distance;
+    const ux = distance > 0 ? dx / distance : 1;
+    const uy = distance > 0 ? dy / distance : 0;
     spawnEnemy(world, px + ux * 20, py + uy * 20, 20);
     spawnXpGem(world, px + ux * 4 - uy * 2, py + uy * 4 + ux * 2, 5);
 
@@ -1076,7 +1076,7 @@ describe('BehaviorTreeAI', () => {
   it.each([
     ['invalid Broker eid', -1],
     ['missing Broker entity', 2999],
-  ])('holds the Broker phase at the settlement anchor for an %s', (_label, brokerEid) => {
+  ])('holds the Broker phase at the settlement anchor for a %s', (_label, brokerEid) => {
     const world = createTestWorld({ seed: 56, floor: 2 });
     const player = spawnPlayer(world, 0, 0);
     initializeFloor2Scenario(world, player);
