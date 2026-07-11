@@ -31,6 +31,8 @@ ci-policy
   comments, then failed because Copilot was absent from the issue assignees.
 - After: `.github/scripts/ci-recovery/issue-intake.test.mjs` proves assignment
   precedes comment mutation and assignment failure performs no comment API calls.
+- Live artifact: applying the same GraphQL actor-ID mutation to issue #1067
+  persisted `Copilot` in the issue's assignee list.
 
 ## Key Decisions Made
 
@@ -41,5 +43,4 @@ ci-policy
 
 ## What's Next / Blockers
 
-- After merge, rerun failed intake run `29168539637` to repair issue #1067 and
-  confirm the live workflow assigns Copilot.
+- Auto-merge is armed. No known blockers remain.
