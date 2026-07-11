@@ -11,18 +11,18 @@
       "anchor": {
         "x": 24,
         "y": 60,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 24,
           "y": 60,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 31,
           "y": 35,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/7",
@@ -32,7 +32,8 @@
       "postprocessOverrideProfilePath": null,
       "effectivePipelineSnapshotPath": null,
       "effectivePipelineSnapshotYamlPath": null,
-      "effectiveAnchorSource": "derived"
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "right"
     },
     "ability-icon-fireball-v1-var-11": {
       "briefId": "ability-icon-fireball-v1",
@@ -44,24 +45,26 @@
       "anchor": {
         "x": 27,
         "y": 60,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 27,
           "y": 60,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 31,
           "y": 34,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/7",
       "judgeScore": "3",
       "type": "item",
-      "contentHash": "f35e12cf40e6f3a577e1759a37578c1618e685f3c6734a1915789483859c928d"
+      "contentHash": "f35e12cf40e6f3a577e1759a37578c1618e685f3c6734a1915789483859c928d",
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "right"
     },
     "ability-icon-heal-v1-var-1": {
       "briefId": "ability-icon-heal-v1",
@@ -557,24 +560,26 @@
       "anchor": {
         "x": 32,
         "y": 33,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 32,
           "y": 33,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 32,
           "y": 33,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/8",
       "judgeScore": "4",
       "type": "enemy",
-      "contentHash": "846c82cfe9c8f9e4cad08cb9e5893250fb02d8fecdc393ec97227a476fe2577a"
+      "contentHash": "846c82cfe9c8f9e4cad08cb9e5893250fb02d8fecdc393ec97227a476fe2577a",
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "right"
     },
     "baby-slime-v1-var-8": {
       "briefId": "baby-slime-v1",
@@ -586,24 +591,26 @@
       "anchor": {
         "x": 32,
         "y": 33,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 32,
           "y": 33,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 32,
           "y": 33,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/8",
       "judgeScore": "4",
       "type": "enemy",
-      "contentHash": "bd51fd12d56c89376666aa5766e6dd929ac8b5a32f70a7f6c90a6c1a4f25cbd4"
+      "contentHash": "bd51fd12d56c89376666aa5766e6dd929ac8b5a32f70a7f6c90a6c1a4f25cbd4",
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "right"
     },
     "band-of-fortune-placeholder": {
       "briefId": "band-of-fortune",
@@ -653,19 +660,29 @@
       "approvedAt": "2026-07-01T23:50:06.996Z",
       "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-epAsqG/baseball-bat-v3/2026-07-01T05-44-14-a5501f8d",
       "variantIndex": 6,
-      "anchor": null,
+      "anchor": {
+        "x": 0,
+        "y": 0,
+        "source": "manual"
+      },
       "anchors": {
-        "hold": null,
+        "hold": {
+          "x": 0,
+          "y": 0,
+          "source": "manual"
+        },
         "centerOfGravity": {
           "x": 34,
           "y": 29,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "6/8",
       "judgeScore": "2",
       "type": "weapon",
-      "contentHash": "d266dc9661f90db29c6611c241bcf96cecdbde3e61df48f09071a6d5cb4db47a"
+      "contentHash": "d266dc9661f90db29c6611c241bcf96cecdbde3e61df48f09071a6d5cb4db47a",
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "right"
     },
     "batfolk-boss-var-3": {
       "briefId": "batfolk-boss",
@@ -825,11 +842,25 @@
       "anchor": {
         "x": 18,
         "y": 67,
-        "source": "derived"
+        "source": "manual"
       },
       "sensorScore": "7/7",
       "judgeScore": "4",
-      "type": "weapon"
+      "type": "weapon",
+      "anchors": {
+        "hold": {
+          "x": 18,
+          "y": 67,
+          "source": "manual"
+        },
+        "centerOfGravity": {
+          "x": 18,
+          "y": 67,
+          "source": "manual"
+        }
+      },
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "right"
     },
     "bent-pipe-v1-var-5": {
       "briefId": "bent-pipe-v1",
@@ -841,11 +872,25 @@
       "anchor": {
         "x": 16,
         "y": 67,
-        "source": "derived"
+        "source": "manual"
       },
       "sensorScore": "7/7",
       "judgeScore": "3",
-      "type": "weapon"
+      "type": "weapon",
+      "anchors": {
+        "hold": {
+          "x": 16,
+          "y": 67,
+          "source": "manual"
+        },
+        "centerOfGravity": {
+          "x": 16,
+          "y": 67,
+          "source": "manual"
+        }
+      },
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "right"
     },
     "berserker-brew-placeholder": {
       "briefId": "berserker-brew",
@@ -1091,18 +1136,18 @@
       "anchor": {
         "x": 32,
         "y": 36,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 32,
           "y": 36,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 32,
           "y": 36,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/7",
@@ -1112,7 +1157,7 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cactusfolk-boss\\2026-07-08T02-14-48-5fde1528\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cactusfolk-boss\\2026-07-08T02-14-48-5fde1528\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cactusfolk-boss\\2026-07-08T02-14-48-5fde1528\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "cactusfolk-spiny-var-2": {
@@ -1222,18 +1267,18 @@
       "anchor": {
         "x": 127,
         "y": 255,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 127,
           "y": 255,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 127,
           "y": 127,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/7",
@@ -1243,7 +1288,7 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-floor\\2026-07-08T00-30-37-269bdc53\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-floor\\2026-07-08T00-30-37-269bdc53\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-floor\\2026-07-08T00-30-37-269bdc53\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "cave-slime-var-0": {
@@ -1290,18 +1335,18 @@
       "anchor": {
         "x": 127,
         "y": 255,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 127,
           "y": 255,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 127,
           "y": 127,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/7",
@@ -1311,7 +1356,7 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-wall\\2026-07-08T00-34-06-cb8a2d11\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-wall\\2026-07-08T00-34-06-cb8a2d11\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-wall\\2026-07-08T00-34-06-cb8a2d11\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "celestial-ingot-placeholder": {
@@ -1348,24 +1393,26 @@
       "anchor": {
         "x": 31,
         "y": 60,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 31,
           "y": 60,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 30,
           "y": 33,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "6/8",
       "judgeScore": "4",
       "type": "character",
-      "contentHash": "f88d72535b4d9e8609b048200b982adcc21fc2bb2a567a24a993c980b9ef92de"
+      "contentHash": "f88d72535b4d9e8609b048200b982adcc21fc2bb2a567a24a993c980b9ef92de",
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "right"
     },
     "classified-dossier-var-2": {
       "briefId": "classified-dossier",
@@ -1377,24 +1424,26 @@
       "anchor": {
         "x": 32,
         "y": 60,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 32,
           "y": 60,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 30,
           "y": 33,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "6/8",
       "judgeScore": "4",
       "type": "character",
-      "contentHash": "0c9c7d748c4510f3fe2693a97601a47b4aa4a1a2d1077f3403e60c335e807881"
+      "contentHash": "0c9c7d748c4510f3fe2693a97601a47b4aa4a1a2d1077f3403e60c335e807881",
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "right"
     },
     "classified-dossier-var-5": {
       "briefId": "classified-dossier",
@@ -1406,24 +1455,26 @@
       "anchor": {
         "x": 31,
         "y": 60,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 31,
           "y": 60,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 30,
           "y": 33,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "6/8",
       "judgeScore": "4",
       "type": "character",
-      "contentHash": "5bd32259bf3db2581120367118eeb937692df5775082b77c7ea90ac9d147bd34"
+      "contentHash": "5bd32259bf3db2581120367118eeb937692df5775082b77c7ea90ac9d147bd34",
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "right"
     },
     "confetti-popper-placeholder": {
       "briefId": "confetti-popper",
@@ -1480,18 +1531,18 @@
       "anchor": {
         "x": 29,
         "y": 60,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 29,
           "y": 60,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 32,
           "y": 28,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/7",
@@ -1501,7 +1552,7 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crabfolk-armored\\2026-07-08T04-55-43-4e9d5e48\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crabfolk-armored\\2026-07-08T04-55-43-4e9d5e48\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crabfolk-armored\\2026-07-08T04-55-43-4e9d5e48\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "crabfolk-boss-var-10": {
@@ -1514,18 +1565,18 @@
       "anchor": {
         "x": 30,
         "y": 35,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 30,
           "y": 35,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 30,
           "y": 35,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/7",
@@ -1535,7 +1586,7 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crabfolk-boss\\2026-07-08T02-27-51-931d271c\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crabfolk-boss\\2026-07-08T02-27-51-931d271c\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crabfolk-boss\\2026-07-08T02-27-51-931d271c\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "crimson-mushroom-v1-var-3": {
@@ -1720,24 +1771,26 @@
       "anchor": {
         "x": 34,
         "y": 59,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 34,
           "y": 59,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 32,
           "y": 31,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "6/7",
       "judgeScore": "2",
       "type": "item",
-      "contentHash": "b331dd2199e8269e3d8d59111e84f0b165506d00e1105d5c340b6feda07a15c2"
+      "contentHash": "b331dd2199e8269e3d8d59111e84f0b165506d00e1105d5c340b6feda07a15c2",
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "right"
     },
     "directors-pass-placeholder": {
       "briefId": "directors-pass",
@@ -1872,18 +1925,18 @@
       "anchor": {
         "x": 32,
         "y": 34,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 32,
           "y": 34,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 32,
           "y": 34,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/7",
@@ -1893,7 +1946,7 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\faerie-boss\\2026-07-08T01-39-33-5bfe280b\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\faerie-boss\\2026-07-08T01-39-33-5bfe280b\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\faerie-boss\\2026-07-08T01-39-33-5bfe280b\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "feathersteel-placeholder": {
@@ -2031,18 +2084,18 @@
       "anchor": {
         "x": 32,
         "y": 60,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 32,
           "y": 60,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 32,
           "y": 30,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/7",
@@ -2052,7 +2105,7 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\frost-lichen-v1\\2026-07-08T07-33-36-da4ad214\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\frost-lichen-v1\\2026-07-08T07-33-36-da4ad214\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\frost-lichen-v1\\2026-07-08T07-33-36-da4ad214\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "fungal-husk-var-1": {
@@ -2293,18 +2346,18 @@
       "anchor": {
         "x": 31,
         "y": 33,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 31,
           "y": 33,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 31,
           "y": 33,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/7",
@@ -2314,7 +2367,7 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\gnome-boss\\2026-07-08T02-04-07-24c663e7\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\gnome-boss\\2026-07-08T02-04-07-24c663e7\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\gnome-boss\\2026-07-08T02-04-07-24c663e7\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "gnome-tinker-var-0": {
@@ -2361,18 +2414,18 @@
       "anchor": {
         "x": 30,
         "y": 33,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 30,
           "y": 33,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 30,
           "y": 33,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/7",
@@ -2382,7 +2435,7 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-boss\\2026-07-08T01-44-14-cc6e849a\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-boss\\2026-07-08T01-44-14-cc6e849a\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-boss\\2026-07-08T01-44-14-cc6e849a\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "goblin-grunt-var-6": {
@@ -2465,24 +2518,26 @@
       "anchor": {
         "x": 31,
         "y": 33,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 31,
           "y": 33,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 31,
           "y": 33,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "6/7",
       "judgeScore": "4",
       "type": "enemy",
-      "contentHash": "dd5aabb4324937f80bafd717f4207a6589662fd35f30e378e9704835da1013a3"
+      "contentHash": "dd5aabb4324937f80bafd717f4207a6589662fd35f30e378e9704835da1013a3",
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "right"
     },
     "hardite-plank-placeholder": {
       "briefId": "hardite-plank",
@@ -2530,18 +2585,18 @@
       "anchor": {
         "x": 35,
         "y": 60,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 35,
           "y": 60,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 27,
           "y": 34,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/7",
@@ -2551,7 +2606,7 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\imp-flinger\\2026-07-08T05-21-18-9a9eeb90\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\imp-flinger\\2026-07-08T05-21-18-9a9eeb90\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\imp-flinger\\2026-07-08T05-21-18-9a9eeb90\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "imps-boss-var-5": {
@@ -2564,18 +2619,18 @@
       "anchor": {
         "x": 32,
         "y": 60,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 32,
           "y": 60,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 30,
           "y": 36,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/7",
@@ -2585,7 +2640,7 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\imps-boss\\2026-07-08T02-57-23-ad439923\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\imps-boss\\2026-07-08T02-57-23-ad439923\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\imps-boss\\2026-07-08T02-57-23-ad439923\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "iron-armguard-placeholder": {
@@ -2704,18 +2759,18 @@
       "anchor": {
         "x": 35,
         "y": 35,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 35,
           "y": 35,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 35,
           "y": 35,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/7",
@@ -2725,7 +2780,7 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\kobold-boss\\2026-07-08T01-55-03-caed3cb8\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\kobold-boss\\2026-07-08T01-55-03-caed3cb8\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\kobold-boss\\2026-07-08T01-55-03-caed3cb8\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "kobold-torch-var-3": {
@@ -2844,18 +2899,18 @@
       "anchor": {
         "x": 33,
         "y": 28,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 33,
           "y": 28,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 33,
           "y": 28,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/7",
@@ -2865,7 +2920,7 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\llama-boss\\2026-07-08T01-47-26-a621a96d\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\llama-boss\\2026-07-08T01-47-26-a621a96d\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\llama-boss\\2026-07-08T01-47-26-a621a96d\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "llama-spitter-var-0": {
@@ -3084,18 +3139,18 @@
       "anchor": {
         "x": 32,
         "y": 35,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 32,
           "y": 35,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 32,
           "y": 35,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/7",
@@ -3105,7 +3160,7 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\molefolk-boss\\2026-07-08T02-36-04-4d62866e\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\molefolk-boss\\2026-07-08T02-36-04-4d62866e\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\molefolk-boss\\2026-07-08T02-36-04-4d62866e\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "molefolk-burrower-var-1": {
@@ -3152,18 +3207,18 @@
       "anchor": {
         "x": 30,
         "y": 60,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 30,
           "y": 60,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 32,
           "y": 28,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/7",
@@ -3173,7 +3228,7 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\moonbloom-flower-v1\\2026-07-08T07-20-58-040c45b3\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\moonbloom-flower-v1\\2026-07-08T07-20-58-040c45b3\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\moonbloom-flower-v1\\2026-07-08T07-20-58-040c45b3\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "mushroom-cap-placeholder": {
@@ -3198,18 +3253,18 @@
       "anchor": {
         "x": 31,
         "y": 32,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 31,
           "y": 32,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 31,
           "y": 32,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/7",
@@ -3219,7 +3274,7 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\myconid-boss\\2026-07-08T01-57-57-256336a3\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\myconid-boss\\2026-07-08T01-57-57-256336a3\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\myconid-boss\\2026-07-08T01-57-57-256336a3\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "myconid-spore-var-8": {
@@ -3278,18 +3333,18 @@
       "anchor": {
         "x": 32,
         "y": 63,
-        "source": "brief"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 32,
           "y": 63,
-          "source": "brief"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 31,
           "y": 36,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "6/8",
@@ -3299,7 +3354,7 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-spell-broker\\2026-07-08T07-16-56-63af926a\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-spell-broker\\2026-07-08T07-16-56-63af926a\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-spell-broker\\2026-07-08T07-16-56-63af926a\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "brief",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "npc-sweaty-merchant-var-0": {
@@ -3312,18 +3367,18 @@
       "anchor": {
         "x": 32,
         "y": 63,
-        "source": "brief"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 32,
           "y": 63,
-          "source": "brief"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 30,
           "y": 33,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/8",
@@ -3333,7 +3388,7 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-sweaty-merchant\\2026-07-08T07-22-13-938e6e34\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-sweaty-merchant\\2026-07-08T07-22-13-938e6e34\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-sweaty-merchant\\2026-07-08T07-22-13-938e6e34\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "brief",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "npc-welcome-goon-var-0": {
@@ -3346,18 +3401,18 @@
       "anchor": {
         "x": 32,
         "y": 60,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 32,
           "y": 60,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 32,
           "y": 35,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "6/8",
@@ -3367,7 +3422,7 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-welcome-goon\\2026-07-08T07-12-20-9e177903\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-welcome-goon\\2026-07-08T07-12-20-9e177903\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-welcome-goon\\2026-07-08T07-12-20-9e177903\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "obsidian-axe-placeholder": {
@@ -3460,18 +3515,18 @@
       "anchor": {
         "x": 32,
         "y": 33,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 32,
           "y": 33,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 32,
           "y": 33,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/7",
@@ -3481,7 +3536,7 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\panda-bruiser\\2026-07-08T03-42-51-9ac1a99c\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\panda-bruiser\\2026-07-08T03-42-51-9ac1a99c\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\panda-bruiser\\2026-07-08T03-42-51-9ac1a99c\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "papa-slime-v1-var-0": {
@@ -3726,13 +3781,21 @@
       "approvedAt": "2026-07-08T00:25:29.616Z",
       "sourceRun": "generated/runs/prop-rubble-pile/2026-07-08T00-21-17-9228c900",
       "variantIndex": 1,
-      "anchor": null,
+      "anchor": {
+        "x": 34,
+        "y": 32,
+        "source": "manual"
+      },
       "anchors": {
-        "hold": null,
+        "hold": {
+          "x": 34,
+          "y": 32,
+          "source": "manual"
+        },
         "centerOfGravity": {
           "x": 32,
           "y": 33,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "6/7",
@@ -3742,7 +3805,7 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\prop-rubble-pile\\2026-07-08T00-21-17-9228c900\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\prop-rubble-pile\\2026-07-08T00-21-17-9228c900\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\prop-rubble-pile\\2026-07-08T00-21-17-9228c900\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": null,
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "prop-torch-v1-var-10": {
@@ -3871,18 +3934,18 @@
       "anchor": {
         "x": 34,
         "y": 60,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 34,
           "y": 60,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 32,
           "y": 34,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "6/8",
@@ -3892,7 +3955,8 @@
       "postprocessOverrideProfilePath": null,
       "effectivePipelineSnapshotPath": null,
       "effectivePipelineSnapshotYamlPath": null,
-      "effectiveAnchorSource": "derived"
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "left"
     },
     "prop-wall-sconce-v1-var-2": {
       "briefId": "prop-wall-sconce-v1",
@@ -3904,18 +3968,18 @@
       "anchor": {
         "x": 33,
         "y": 60,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 33,
           "y": 60,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 30,
           "y": 32,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "6/8",
@@ -3925,7 +3989,8 @@
       "postprocessOverrideProfilePath": null,
       "effectivePipelineSnapshotPath": null,
       "effectivePipelineSnapshotYamlPath": null,
-      "effectiveAnchorSource": "derived"
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "left"
     },
     "prop-wall-sconce-v1-var-4": {
       "briefId": "prop-wall-sconce-v1",
@@ -3934,13 +3999,21 @@
       "approvedAt": "2026-07-06T17:36:33.240Z",
       "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-yTogbn/prop-wall-sconce-v1/2026-07-02T21-49-42-6419720f",
       "variantIndex": 4,
-      "anchor": null,
+      "anchor": {
+        "x": 0,
+        "y": 0,
+        "source": "manual"
+      },
       "anchors": {
-        "hold": null,
+        "hold": {
+          "x": 0,
+          "y": 0,
+          "source": "manual"
+        },
         "centerOfGravity": {
           "x": 33,
           "y": 33,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "6/8",
@@ -3950,7 +4023,8 @@
       "postprocessOverrideProfilePath": null,
       "effectivePipelineSnapshotPath": null,
       "effectivePipelineSnapshotYamlPath": null,
-      "effectiveAnchorSource": null
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "left"
     },
     "prop-wall-sconce-v1-var-6": {
       "briefId": "prop-wall-sconce-v1",
@@ -3962,18 +4036,18 @@
       "anchor": {
         "x": 32,
         "y": 60,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 32,
           "y": 60,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 30,
           "y": 32,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "6/8",
@@ -3983,7 +4057,8 @@
       "postprocessOverrideProfilePath": null,
       "effectivePipelineSnapshotPath": null,
       "effectivePipelineSnapshotYamlPath": null,
-      "effectiveAnchorSource": "derived"
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "left"
     },
     "prop-wall-sconce-v1-var-7": {
       "briefId": "prop-wall-sconce-v1",
@@ -3995,18 +4070,18 @@
       "anchor": {
         "x": 34,
         "y": 60,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 34,
           "y": 60,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 33,
           "y": 32,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "6/8",
@@ -4016,7 +4091,8 @@
       "postprocessOverrideProfilePath": null,
       "effectivePipelineSnapshotPath": null,
       "effectivePipelineSnapshotYamlPath": null,
-      "effectiveAnchorSource": "derived"
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "left"
     },
     "prop-wall-sconce-v1-var-8": {
       "briefId": "prop-wall-sconce-v1",
@@ -4028,18 +4104,18 @@
       "anchor": {
         "x": 35,
         "y": 60,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 35,
           "y": 60,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 34,
           "y": 31,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "6/8",
@@ -4049,7 +4125,8 @@
       "postprocessOverrideProfilePath": null,
       "effectivePipelineSnapshotPath": null,
       "effectivePipelineSnapshotYamlPath": null,
-      "effectiveAnchorSource": "derived"
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "left"
     },
     "prop-wall-sconce-v1-var-9": {
       "briefId": "prop-wall-sconce-v1",
@@ -4061,18 +4138,18 @@
       "anchor": {
         "x": 33,
         "y": 60,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 33,
           "y": 60,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 33,
           "y": 31,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "6/8",
@@ -4082,7 +4159,8 @@
       "postprocessOverrideProfilePath": null,
       "effectivePipelineSnapshotPath": null,
       "effectivePipelineSnapshotYamlPath": null,
-      "effectiveAnchorSource": "derived"
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "left"
     },
     "purple-potion-bottle-v1-var-4": {
       "briefId": "purple-potion-bottle-v1",
@@ -4094,23 +4172,25 @@
       "anchor": {
         "x": 29,
         "y": 62,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 29,
           "y": 62,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 29,
           "y": 36,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "6/6",
       "judgeScore": "2",
-      "type": "item"
+      "type": "item",
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "right"
     },
     "raccoon-thief-var-0": {
       "briefId": "raccoon-thief",
@@ -4156,18 +4236,18 @@
       "anchor": {
         "x": 32,
         "y": 34,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 32,
           "y": 34,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 32,
           "y": 34,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/7",
@@ -4177,7 +4257,7 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\raccoons-boss\\2026-07-08T02-47-01-09a78ec7\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\raccoons-boss\\2026-07-08T02-47-01-09a78ec7\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\raccoons-boss\\2026-07-08T02-47-01-09a78ec7\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "rage-elixir-placeholder": {
@@ -4268,24 +4348,26 @@
       "anchor": {
         "x": 32,
         "y": 63,
-        "source": "brief"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 32,
           "y": 63,
-          "source": "brief"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 32,
           "y": 33,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "5/8",
       "judgeScore": "4",
       "type": "enemy",
-      "contentHash": "6219063caaf2343774fdc0416b8111685c0e4dcdc7c8eb897174c145117bfd94"
+      "contentHash": "6219063caaf2343774fdc0416b8111685c0e4dcdc7c8eb897174c145117bfd94",
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "right"
     },
     "rat-king-v1-var-8": {
       "briefId": "rat-king-v1",
@@ -4495,24 +4577,26 @@
       "anchor": {
         "x": 29,
         "y": 60,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 29,
           "y": 60,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 32,
           "y": 33,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "6/8",
       "judgeScore": "4",
       "type": "enemy",
-      "contentHash": "678cd12ba0ca0a8a8364d7f3276ea34036bad1500b2db27cead90f9d84c14d9d"
+      "contentHash": "678cd12ba0ca0a8a8364d7f3276ea34036bad1500b2db27cead90f9d84c14d9d",
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "right"
     },
     "rat-slime-v1-var-1": {
       "briefId": "rat-slime-v1",
@@ -4640,18 +4724,18 @@
       "anchor": {
         "x": 33,
         "y": 60,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 33,
           "y": 60,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 31,
           "y": 34,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/7",
@@ -4661,7 +4745,7 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\ratfolk-boss\\2026-07-08T02-11-30-a6991641\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\ratfolk-boss\\2026-07-08T02-11-30-a6991641\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\ratfolk-boss\\2026-07-08T02-11-30-a6991641\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "ratfolk-plague-var-4": {
@@ -5635,18 +5719,18 @@
       "anchor": {
         "x": 30,
         "y": 60,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 30,
           "y": 60,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 31,
           "y": 30,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/7",
@@ -5656,7 +5740,7 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\sunpetal-flower-v1\\2026-07-08T07-17-38-10ba1350\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\sunpetal-flower-v1\\2026-07-08T07-17-38-10ba1350\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\sunpetal-flower-v1\\2026-07-08T07-17-38-10ba1350\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "sweaty-merchant-v1-var-1": {
@@ -6467,18 +6551,18 @@
       "anchor": {
         "x": 61,
         "y": 65,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 61,
           "y": 65,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 64,
           "y": 36,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/7",
@@ -6488,7 +6572,7 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-rug\\2026-07-08T03-53-58-1d62f27a\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-rug\\2026-07-08T03-53-58-1d62f27a\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-rug\\2026-07-08T03-53-58-1d62f27a\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "welcome-room-shop-table-var-0": {
@@ -6903,18 +6987,18 @@
       "anchor": {
         "x": 28,
         "y": 33,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 28,
           "y": 33,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 28,
           "y": 33,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/7",
@@ -6924,7 +7008,7 @@
       "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/imp-elite-hellfire-capo-v1/2026-07-09T07-05-53-19bcf8bf/postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/imp-elite-hellfire-capo-v1/2026-07-09T07-05-53-19bcf8bf/postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/imp-elite-hellfire-capo-v1/2026-07-09T07-05-53-19bcf8bf/postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "imp-elite-hellfire-capo-v1-var-5": {
@@ -6937,18 +7021,18 @@
       "anchor": {
         "x": 34,
         "y": 60,
-        "source": "derived"
+        "source": "manual"
       },
       "anchors": {
         "hold": {
           "x": 34,
           "y": 60,
-          "source": "derived"
+          "source": "manual"
         },
         "centerOfGravity": {
           "x": 30,
           "y": 34,
-          "source": "derived"
+          "source": "manual"
         }
       },
       "sensorScore": "7/7",
@@ -6958,7 +7042,7 @@
       "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/imp-elite-hellfire-capo-v1/2026-07-09T07-05-53-19bcf8bf/postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/imp-elite-hellfire-capo-v1/2026-07-09T07-05-53-19bcf8bf/postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/imp-elite-hellfire-capo-v1/2026-07-09T07-05-53-19bcf8bf/postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
+      "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
     "myconid-clubcap-v1-var-0": {

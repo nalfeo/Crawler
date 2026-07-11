@@ -21,6 +21,8 @@ const ANNOTATIONS_PATH = path.join(
 const ASSETS_ROOT = path.join(REPO_ROOT, 'public', 'assets');
 const MAX_WRITE_BYTES = 6 * 1024 * 1024;
 const MAX_RESULTS = 500;
+const OPENCV_VENDOR_BASE = 'https://docs.opencv.org/4.x';
+const OPENCV_VENDOR_FILES = new Set(['opencv.js', 'opencv_js.wasm', 'opencv_js.worker.js']);
 
 let sessionRef = null;
 const instances = new Map();
@@ -119,6 +121,7 @@ function computeSummary(entryKey, manifestEntry, catalogEntry, note) {
     ? catalogEntry.tags.filter((tag) => typeof tag === 'string' && tag.trim().length > 0)
     : [];
   const favorite = note?.favorite === true;
+  const disliked = note?.disliked === true && !favorite;
   const comment = typeof note?.comment === 'string' ? note.comment : '';
   return {
     key: entryKey,
@@ -144,6 +147,7 @@ function computeSummary(entryKey, manifestEntry, catalogEntry, note) {
     row: typeof catalogEntry?.row === 'number' ? catalogEntry.row : null,
     tags,
     favorite,
+    disliked,
     comment,
     variantCount: 1,
     variantPosition: 1,
@@ -318,10 +322,11 @@ function applyAnnotationUpdate(payload, data, key) {
     data.annotations = { version: 1, sprites: {} };
   }
   const favorite = payload?.annotation?.favorite === true;
+  const disliked = payload?.annotation?.disliked === true && !favorite;
   const rawComment =
     typeof payload?.annotation?.comment === 'string' ? payload.annotation.comment : '';
   const comment = rawComment.trim().slice(0, 1000);
-  data.annotations.sprites[key] = { favorite, comment };
+  data.annotations.sprites[key] = { favorite, disliked, comment };
 }
 
 async function saveSprite(payload) {
@@ -512,6 +517,25 @@ function parseListFilters(url, input = null) {
   };
 }
 
+async function fetchOpenCvVendorAsset(fileName) {
+  if (!OPENCV_VENDOR_FILES.has(fileName)) {
+    return { status: 404, body: 'unknown vendor asset' };
+  }
+  const url = `${OPENCV_VENDOR_BASE}/${fileName}`;
+  const upstream = await fetch(url);
+  if (!upstream.ok) {
+    const body = await upstream.text().catch(() => '');
+    return {
+      status: upstream.status,
+      headers: {
+        'Content-Type': upstream.headers.get('content-type') ?? 'text/plain; charset=utf-8',
+      },
+      body: body || `failed to fetch ${fileName}`,
+    };
+  }
+  return upstream;
+}
+
 function listSprites(filters) {
   const data = loadData();
   const filtered = data.summaries.filter((summary) => matchesFilters(summary, filters));
@@ -579,6 +603,14 @@ const jsonRoutes = [
 ];
 
 const binaryRoutes = [
+  {
+    method: 'GET',
+    path: /^\/vendor\/opencv(?:_js)?(?:\.worker)?\.(?:js|wasm)$/u,
+    handler: async ({ url }) => {
+      const fileName = path.posix.basename(url.pathname);
+      return fetchOpenCvVendorAsset(fileName);
+    },
+  },
   {
     method: 'GET',
     path: '/img/sprite',

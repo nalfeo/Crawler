@@ -1,0 +1,41 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-11",
+  "session_slug": "sprite-editor-ux-refinement",
+  "task_title": "Refine sprite editor UX",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Approved with six adopted changes: explicit two-click action matrix, persistent expert actions, centralized rerender state, accessibility semantics, dirty-state safety, and deterministic interaction coverage.",
+      "verdict": "approved_with_changes",
+      "models": ["gpt-5.4"],
+      "summary": "Adopted explicit 2-click action matrix, persistent expert actions/hotkeys, centralized rerender state, accessible labels/focus/status semantics, sticky dirty/save safety, and deterministic interaction coverage."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ],
+      "completed": true,
+      "summary": "Round 1 moved scroll restoration after DOM insertion and added browser coverage. Round 2 added live Redo coverage; retained comparison capture on no-op Apply because the human explicitly defined any applied non-brush action as a brush-session boundary. Favorite bleed found during live use was fixed with stale-form bypass on server-loaded renders and browser regression coverage."
+    }
+  }
+}
