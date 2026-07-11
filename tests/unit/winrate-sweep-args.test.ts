@@ -123,6 +123,23 @@ describe('parseSweepArgs — defaults and flags', () => {
   it('defaults floor2 to a single weapon when weapons are not overridden', () => {
     expect(parseSweepArgs(argv('--floor', 'floor2'), 8).weapons).toEqual(['sword']);
   });
+
+  it('scopes the DEFAULT_MAX_FRAMES slack cap to floor1 only (regression: floor2 must keep its prior default)', () => {
+    // DEFAULT_MAX_FRAMES carries the Floor-1 safe-room slack, so it must NOT leak
+    // into other floors. A non-floor1 sweep without an explicit --max-frames must
+    // retain the prior BUDGET_FRAMES default — this Floor-1-scoped fix cannot be
+    // allowed to silently inflate a floor2 sweep's frame budget (which could turn
+    // formerly-truncated floor2 runs into victories).
+    expect(parseSweepArgs(argv(), 1).maxFrames).toBe(DEFAULT_MAX_FRAMES); // floor1 (default)
+    expect(parseSweepArgs(argv('--floor', 'floor1'), 1).maxFrames).toBe(DEFAULT_MAX_FRAMES);
+    expect(parseSweepArgs(argv('--floor', 'floor2'), 1).maxFrames).toBe(BUDGET_FRAMES);
+    expect(parseSweepArgs(argv('--floor', 'floor3'), 1).maxFrames).toBe(BUDGET_FRAMES);
+  });
+
+  it('lets an explicit --max-frames override the floor-aware default for any floor', () => {
+    expect(parseSweepArgs(argv('--floor', 'floor2', '--max-frames', '600'), 1).maxFrames).toBe(600);
+    expect(parseSweepArgs(argv('--floor', 'floor1', '--max-frames', '600'), 1).maxFrames).toBe(600);
+  });
 });
 
 describe('parseSeeds', () => {

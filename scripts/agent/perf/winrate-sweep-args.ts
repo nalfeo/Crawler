@@ -29,6 +29,12 @@ export const BUDGET_FRAMES = 21_600;
  * force-terminate those safe-room-credited wins before they finish and miscount
  * them as timeouts — biasing the reported win rate DOWN, the opposite of the
  * safe-room win-definition fix's intent.
+ *
+ * This slack cap is derived from the Floor-1 budget + the Floor-1 safe-room-credited
+ * win definition, so it is applied ONLY when `--floor floor1` (the default). Any
+ * other floor retains the prior `BUDGET_FRAMES` default (see `parseSweepArgs`); an
+ * explicit `--max-frames` still overrides for every floor. This keeps the Floor-1
+ * safe-room fix from silently changing another floor's truncation behavior.
  */
 export const DEFAULT_MAX_FRAMES = Math.ceil((FLOOR1_TIME_BUDGET_MS * 1.1) / GAME.DELTA_MS);
 
@@ -148,6 +154,7 @@ export function parseSweepArgs(
 ): CLIArgs {
   let weaponsProvided = false;
   let workersProvided = false;
+  let maxFramesProvided = false;
   const args: CLIArgs = {
     seeds: Array.from({ length: 40 }, (_, i) => i + 1),
     weapons: FLOOR1_WEAPONS,
@@ -170,6 +177,7 @@ export function parseSweepArgs(
       i++;
     } else if (arg === '--max-frames' && next) {
       args.maxFrames = parsePositiveInt('--max-frames', next);
+      maxFramesProvided = true;
       i++;
     } else if (arg === '--out' && next) {
       args.out = next;
@@ -194,6 +202,14 @@ export function parseSweepArgs(
     args.weapons.length === FLOOR1_WEAPONS.length
   ) {
     args.weapons = ['sword'];
+  }
+  // DEFAULT_MAX_FRAMES carries the Floor-1 safe-room slack (see its docstring) and
+  // is Floor-1-specific. A non-Floor-1 sweep that did not explicitly pass
+  // --max-frames retains the prior BUDGET_FRAMES default, so this Floor-1-scoped
+  // safe-room win-definition fix never silently alters another floor's truncation
+  // behavior. An explicit --max-frames overrides for every floor.
+  if (!maxFramesProvided && args.floorId !== 'floor1') {
+    args.maxFrames = BUDGET_FRAMES;
   }
   if (!workersProvided) {
     args.workers = Math.max(1, Math.min(parallelism, args.seeds.length * args.weapons.length));

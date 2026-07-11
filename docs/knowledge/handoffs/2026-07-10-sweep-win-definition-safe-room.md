@@ -1,4 +1,4 @@
-# Handoff — Sweep win-definition safe-room credit (metric-only)
+# Handoff — Sweep win-definition safe-room credit + Floor-1 slack-cap alignment
 
 **Date:** 2026-07-10  
 **Branch:** `nalfeo-slicemap-s4b-merged`  
@@ -25,7 +25,12 @@ game time can still be a **legitimate win** once the paused safe-room dwell is c
 on raw time wrongly downgraded those safe-room-credited victories to timeouts and **hid the true
 Floor-1 win rate** (sword/bat are ~90%+, not the deflated number the sweep reported).
 
-This is a **metric-only** fix — it changes the win **definition**, not runner behavior.
+This is primarily a **win-definition** fix. It also **aligns `winrate-sweep`'s default frame cap**
+to the same ~10% slack budget (23,760 frames / 396 s) already used by `sweep-eval.ts` and the
+ab-\* / headless Floor-1 harnesses, because a safe-room-credited win can legitimately finish past
+360 s of raw game time and the old 21,600-frame (360 s) default would force-truncate it before
+`isOfficialWin` classifies it. That default-cap change is **scoped to Floor 1**; arbitrary
+inflation _beyond_ the shared slack cap was rejected (see the scope section below).
 
 ## The fix
 
@@ -46,18 +51,31 @@ These helpers read no wall clock and no `Math.random` → deterministic.
 
 **Migrated every win-definition site** to `isOfficialWin`: `floor1-completion` + `spawner-arena-win-rate` headless gates, `sweep-eval` + `aggregate-shards` (SHARD_SCHEMA_VERSION bumped), the 4 A/B + navmesh sweep harnesses, and **`winrate-sweep.ts`** (the canonical 90%+ Floor-1 win-rate instrument, called by `deploy.yml`). Added `tests/unit/ai/scoring-official-win.test.ts` regression suite + `maxSafeRoomMs`/`safeRoomFlaggedCount` sweep diagnostics.
 
-## Deliberate scope decision (out-of-scope: maxFrames inflation)
+## Deliberate scope decision (maxFrames: align Floor-1 to the shared slack cap; reject inflation beyond it)
 
 The adversarial plan review and a round-1 reviewer both raised inflating `--max-frames` on the
-sweeps. That was **rejected as an out-of-scope runner-behavior change** (rules #12/#13: do not
-change how the runner executes just to move a metric). Only the win **definition** was made
-consistent.
+sweeps. The distinction that shipped:
 
-- **`winrate-sweep.ts` MIGRATED** (win-definition only, no maxFrames change). Rationale: it is the
-  canonical Floor-1 win-rate gate, so it must use the SSOT `isOfficialWin`; at its 360s cap a
-  last-frame boundary clear (`gameTimeMs === 360_000`) was a win under `outcome === 'victory'` but
-  a loss under strict `<`, and the migration also future-proofs any inflated `--max-frames` run
-  where the two definitions genuinely diverge.
+- **REJECTED — arbitrary inflation beyond the shared slack cap** (rules #12/#13: do not enlarge the
+  runner's budget just to rescue slow runs / move a metric).
+- **APPLIED — aligning the Floor-1 default cap to the official gate's slack budget.**
+  `DEFAULT_MAX_FRAMES = ceil(FLOOR1_TIME_BUDGET_MS * 1.1 / DELTA_MS)` = **23,760 frames (396 s)**,
+  byte-identical to the formula in `sweep-eval.ts` and the ab-\* / headless Floor-1 harnesses. This
+  is **correctness-required**, not metric-gaming: the Floor-1 win is safe-room-credited
+  (`isOfficialWin` compares `gameTimeMs - safeRoomMs` against the 6-min budget), so a legitimate
+  clear can run past 360 s of RAW game time; capping at the old `BUDGET_FRAMES` (21,600 / 360 s raw)
+  would force-terminate those safe-room-credited wins before `isOfficialWin` sees them and miscount
+  them as timeouts — biasing the win rate DOWN, the opposite of the fix's intent. So the durable
+  record is: **the Floor-1 cap was aligned to the shared slack budget; only inflation beyond it was
+  rejected.**
+
+- **`winrate-sweep.ts` MIGRATED + Floor-1 default cap aligned.** It is the canonical Floor-1
+  win-rate gate, so it must use the SSOT `isOfficialWin`; and its **default** frame cap was raised
+  from `BUDGET_FRAMES` (21,600 / 360 s) to `DEFAULT_MAX_FRAMES` (23,760 / 396 s) so a
+  safe-room-credited win finishing past 360 s raw is observed rather than truncated. The cap change
+  is **scoped to Floor 1** — a `--floor floor2` (or any non-`floor1`) sweep retains the prior
+  `BUDGET_FRAMES` default, and an explicit `--max-frames` overrides for any floor (regression test in
+  `tests/unit/winrate-sweep-args.test.ts`).
 - **`weapon-sweep.ts` LEFT AS-IS.** Its 330s cap is strictly below the 360s budget, so
   `isOfficialWin(·, 360s)` is a **true no-op** there; it is a self-contained balance/hill-climb
   tool with "victory within window" semantics. (Note: `#1015` added `weapon-sweep.yml`, but its
