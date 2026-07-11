@@ -6,7 +6,12 @@ import {
   autoNpcInteractionSystem,
 } from '../../src/game/ai/auto-progression.js';
 import { NPC_INTERACTION_RADIUS_FT } from '../../src/game/ai/bt-ai-tuning.js';
-import { AIState, type AIDecision, type AIInputProvider } from '../../src/game/ai/types.js';
+import {
+  AINpcInteractionAction,
+  AIState,
+  type AIDecision,
+  type AIInputProvider,
+} from '../../src/game/ai/types.js';
 import { setActiveWeaponDef } from '../../src/core/active-weapon.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { equip, getEquipmentState } from '../../src/core/systems/equipmentSystem.js';
@@ -90,8 +95,9 @@ function decision(partial: Partial<AIDecision>): AIDecision {
     targetX: null,
     targetY: null,
     reason: 'test',
-    debug: null,
     ...partial,
+    npcInteraction: partial.npcInteraction ?? null,
+    debug: partial.debug ?? null,
   };
 }
 
@@ -236,24 +242,29 @@ describe('autoNpcInteractionSystem', () => {
     ).toBe(100);
   });
 
-  describe('EXPLORE tutorial-goon fallback (normal interaction range)', () => {
-    it('does NOT interact when tutorial-goon is outside normal interaction range', () => {
+  describe('EXPLORE explicit NPC interaction intent', () => {
+    it('does NOT interact when the targeted anchor is outside normal interaction range', () => {
       const world = createTestWorld();
       const player = spawnPlayer(world, 0, 0);
       world.stores.position.x[player] = 0;
       world.stores.position.y[player] = 0;
       addNpc(world, 20, { defId: 'tutorial-goon', nearbyPlayer: false });
-      // Outside the bounded interaction radius.
-      world.stores.position.x[20] = NPC_INTERACTION_RADIUS_FT + 1;
+      world.stores.position.x[20] = 20;
       world.stores.position.y[20] = 0;
       const result = autoNpcInteractionSystem(
         world,
         fakeProvider(
           decision({
             state: AIState.EXPLORE,
-            reason: 'Tutorial Goon',
+            reason: 'Seeking Tutorial Goon to unlock the floor quest',
             targetEid: 20,
-            debug: null,
+            targetX: NPC_INTERACTION_RADIUS_FT + 1,
+            targetY: 0,
+            npcInteraction: {
+              npcEid: 20,
+              action: AINpcInteractionAction.ACCEPT_TUTORIAL_QUEST,
+              allowWhileExploring: true,
+            },
           }),
         ),
         0,
@@ -263,22 +274,28 @@ describe('autoNpcInteractionSystem', () => {
       expect(result).toBe(0);
     });
 
-    it('interacts when EXPLORE targets tutorial-goon and player is within interaction range', () => {
+    it('interacts when EXPLORE carries explicit tutorial-goon intent and the anchor is in range', () => {
       const world = createTestWorld();
       const player = spawnPlayer(world, 0, 0);
       world.stores.position.x[player] = 0;
       world.stores.position.y[player] = 0;
       addNpc(world, 21, { defId: 'tutorial-goon', nearbyPlayer: false });
-      world.stores.position.x[21] = NPC_INTERACTION_RADIUS_FT - 0.25;
+      world.stores.position.x[21] = 20;
       world.stores.position.y[21] = 0;
       const result = autoNpcInteractionSystem(
         world,
         fakeProvider(
           decision({
             state: AIState.EXPLORE,
-            reason: 'Tutorial Goon',
+            reason: 'Seeking Tutorial Goon to unlock the floor quest',
             targetEid: 21,
-            debug: null,
+            targetX: NPC_INTERACTION_RADIUS_FT - 0.25,
+            targetY: 0,
+            npcInteraction: {
+              npcEid: 21,
+              action: AINpcInteractionAction.ACCEPT_TUTORIAL_QUEST,
+              allowWhileExploring: true,
+            },
           }),
         ),
         0,
@@ -289,18 +306,28 @@ describe('autoNpcInteractionSystem', () => {
       expect(world.goalFlags.get('floor1-drops-unlocked')).toBe(true);
     });
 
-    it('interacts when tutorial-goon is marked nearbyPlayer during EXPLORE fallback', () => {
+    it('interacts when EXPLORE carries explicit shopkeeper intent and the anchor is in range', () => {
       const world = createTestWorld();
-      spawnPlayer(world, 0, 0);
-      addNpc(world, 22, { defId: 'tutorial-goon', nearbyPlayer: true });
+      const player = spawnPlayer(world, 0, 0);
+      world.stores.position.x[player] = 0;
+      world.stores.position.y[player] = 0;
+      addNpc(world, 22, { defId: 'shopkeeper', nearbyPlayer: false });
+      world.stores.position.x[22] = 18;
+      world.stores.position.y[22] = 0;
       const result = autoNpcInteractionSystem(
         world,
         fakeProvider(
           decision({
             state: AIState.EXPLORE,
-            reason: 'Tutorial Goon',
+            reason: 'Returning to the Shopkeeper to buy the charm',
             targetEid: 22,
-            debug: null,
+            targetX: NPC_INTERACTION_RADIUS_FT - 0.5,
+            targetY: 0,
+            npcInteraction: {
+              npcEid: 22,
+              action: AINpcInteractionAction.BUY_SHOPKEEPER_EQUIPMENT,
+              allowWhileExploring: true,
+            },
           }),
         ),
         0,
@@ -308,13 +335,16 @@ describe('autoNpcInteractionSystem', () => {
         30,
       );
       expect(result).toBe(100);
-      expect(world.goalFlags.get('floor1-drops-unlocked')).toBe(true);
     });
 
-    it('does NOT trigger for a generic EXPLORE decision unrelated to tutorial-goon', () => {
+    it('does NOT trigger for a generic EXPLORE decision without explicit NPC intent', () => {
       const world = createTestWorld();
-      spawnPlayer(world, 0, 0);
+      const player = spawnPlayer(world, 0, 0);
+      world.stores.position.x[player] = 0;
+      world.stores.position.y[player] = 0;
       addNpc(world, 23, { defId: 'shopkeeper', nearbyPlayer: false });
+      world.stores.position.x[23] = 18;
+      world.stores.position.y[23] = 0;
       const result = autoNpcInteractionSystem(
         world,
         fakeProvider(
@@ -322,14 +352,15 @@ describe('autoNpcInteractionSystem', () => {
             state: AIState.EXPLORE,
             reason: 'Exploring frontier',
             targetEid: 23,
-            debug: null,
+            targetX: NPC_INTERACTION_RADIUS_FT - 0.5,
+            targetY: 0,
           }),
         ),
         0,
         100,
         30,
       );
-      expect(result).toBe(0); // reason does not include 'Tutorial Goon'
+      expect(result).toBe(0);
     });
   });
 });
