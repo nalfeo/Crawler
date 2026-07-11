@@ -30,7 +30,7 @@
  * 0011 (data-driven quest packs), ADR 0023 (special-room sealing already
  * applied by CaveSystemGenerator + the generic sealing pass).
  */
-import { addComponent, hasComponent, query, set, setComponent } from 'bitecs';
+import { addComponent, hasComponent, query, removeComponent, set, setComponent } from 'bitecs';
 import {
   BaseStats,
   BroadcastScore,
@@ -39,6 +39,7 @@ import {
   Enemy,
   FamilyMembership,
   Health,
+  Invincible,
   Player,
   Position,
   Size,
@@ -489,6 +490,7 @@ export function initializeFloor2Bosses(
     const spawnTile = pickBossSpawnTile(denRoom);
     const spawnWorld = floorMap.tileToWorld(spawnTile.x, spawnTile.y);
     const bossEid = spawnFamilyBoss(world, spawnWorld.x, spawnWorld.y, familyIndex, familyId);
+    addComponent(world.ecs, bossEid, Invincible);
     const bossArchetype = getFloor2BossArchetype(familyId);
     floor2State.bossEncounters.set(familyId, {
       familyId,
@@ -577,6 +579,7 @@ export function floor2ObjectiveTick(world: GameWorld): void {
       }
       encounter.started = true;
       if (encounter.bossEid !== null) {
+        removeComponent(world.ecs, encounter.bossEid, Invincible);
         world.stores.enemyBehavior.aggroedPermanently[encounter.bossEid] = 1;
       }
       setGoalFlag(world, encounter.activeGoalId, true);

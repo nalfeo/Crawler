@@ -67,6 +67,12 @@
       "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
       "concerns_count": 0,
       "clean": true
+    },
+    {
+      "reason": "Post-PR review fix making pre-entry den bosses invulnerable until encounter activation.",
+      "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+      "concerns_count": 0,
+      "clean": true
     }
   ]
 }

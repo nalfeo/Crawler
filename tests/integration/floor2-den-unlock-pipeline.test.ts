@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { removeComponent } from 'bitecs';
+import { hasComponent, removeComponent } from 'bitecs';
 import { SeededRandom } from '../../src/shared/random.js';
 import { BiomeType } from '../../src/shared/map-types.js';
 import type { MapConfig } from '../../src/shared/map-types.js';
@@ -18,7 +18,13 @@ import { selectFloor2Roster } from '../../src/core/faction-relations.js';
 import { loadFamilies } from '../../src/shared/data/families.js';
 import { loadResources } from '../../src/shared/data/resources.js';
 import { acceptQuest, questSystem } from '../../src/core/systems/questSystem.js';
-import { FamilyMembership, spawnEnemy, spawnPlayer } from '../../src/core/index.js';
+import {
+  FamilyMembership,
+  Invincible,
+  applyDamage,
+  spawnEnemy,
+  spawnPlayer,
+} from '../../src/core/index.js';
 import { doorSystem } from '../../src/core/systems/doorSystem.js';
 import { enemyAISystem } from '../../src/game/enemyAISystem.js';
 import { familyFeudSystem, getFamilyAIDecision } from '../../src/game/systems/familyFeudSystem.js';
@@ -96,13 +102,44 @@ describe('Floor 2 Slice 4 — den-unlock pipeline', () => {
       y: denRoom!.bounds.y + 1,
     };
     const playerPos = floorMap.tileToWorld(denTile.x, denTile.y);
-    spawnPlayer(world, playerPos.x, playerPos.y);
+    const playerEid = spawnPlayer(world, playerPos.x, playerPos.y);
+    const bossHpBeforeEntry = world.stores.health.current[encounter.bossEid!] ?? 0;
+    expect(hasComponent(world.ecs, encounter.bossEid!, Invincible)).toBe(true);
+    expect(
+      applyDamage(
+        world,
+        encounter.bossEid!,
+        bossHpBeforeEntry,
+        world.stores.position.x[encounter.bossEid!] ?? 0,
+        world.stores.position.y[encounter.bossEid!] ?? 0,
+        undefined,
+        playerPos.x,
+        playerPos.y,
+        playerEid,
+      ),
+    ).toBe(0);
+    expect(world.stores.health.current[encounter.bossEid!]).toBe(bossHpBeforeEntry);
     enemyAISystem(world);
     expect(world.stores.velocity.x[encounter.bossEid!]).toBe(0);
     expect(world.stores.velocity.y[encounter.bossEid!]).toBe(0);
     floor2ObjectiveTick(world);
     doorSystem(world);
     expect(encounter.started).toBe(true);
+    expect(hasComponent(world.ecs, encounter.bossEid!, Invincible)).toBe(false);
+    expect(
+      applyDamage(
+        world,
+        encounter.bossEid!,
+        1,
+        world.stores.position.x[encounter.bossEid!] ?? 0,
+        world.stores.position.y[encounter.bossEid!] ?? 0,
+        undefined,
+        playerPos.x,
+        playerPos.y,
+        playerEid,
+      ),
+    ).toBeGreaterThan(0);
+    expect(world.stores.health.current[encounter.bossEid!]).toBe(bossHpBeforeEntry - 1);
     expect(world.stores.enemyBehavior.aggroedPermanently[encounter.bossEid!]).toBe(1);
     world.factionRelations.set(target.familyId, 50);
     familyFeudSystem(world);
