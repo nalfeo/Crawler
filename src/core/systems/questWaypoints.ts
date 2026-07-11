@@ -122,9 +122,10 @@ function objectiveTarget(
 }
 
 /**
- * Waypoints for every visible active quest's current step, in quest-log insertion
- * order. Quests without a fixed location (for example, grind-anywhere objectives)
- * are omitted.
+ * Waypoints for every visible active quest's current step. The tracked quest is
+ * first so single-waypoint consumers retain their focused objective; remaining
+ * quests preserve quest-log insertion order. Quests without a fixed location
+ * (for example, grind-anywhere objectives) are omitted.
  */
 export function getQuestWaypoints(world: GameWorld, playerEid?: number): QuestWaypoint[] {
   const objective = world.floorScenario?.objective;
@@ -132,8 +133,13 @@ export function getQuestWaypoints(world: GameWorld, playerEid?: number): QuestWa
     return [];
   }
 
+  const activeQuests = getActiveQuests(world);
+  const trackedQuest = activeQuests.find((quest) => quest.tracked);
+  const orderedQuests = trackedQuest
+    ? [trackedQuest, ...activeQuests.filter((quest) => quest !== trackedQuest)]
+    : activeQuests;
   const waypoints: QuestWaypoint[] = [];
-  for (const quest of getActiveQuests(world)) {
+  for (const quest of orderedQuests) {
     const def = getQuestDef(quest.questId);
     if (!def || def.hidden) {
       continue;

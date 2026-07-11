@@ -31,6 +31,10 @@ const ARROW_SIZE = 22;
 const SCREEN_MARGIN = 80;
 const MIN_ARROW_SEPARATION = 48;
 const FAN_ANGLE_STEP = Math.PI / 24;
+const LABEL_OFFSET = ARROW_SIZE + 4;
+const LABEL_CHAR_WIDTH = 7;
+const LABEL_HEIGHT = 16;
+const LABEL_COLLISION_PADDING = 6;
 
 const KIND_COLORS: Readonly<Record<QuestWaypointKind, number>> = {
   npc: 0xfcd34d,
@@ -47,6 +51,11 @@ export interface DirectionArrowState {
   readonly screenY: number;
   readonly rotation: number;
   readonly distanceFt: number;
+  readonly labelText: string;
+  readonly labelScreenX: number;
+  readonly labelScreenY: number;
+  readonly labelWidth: number;
+  readonly labelHeight: number;
 }
 
 function fanOffset(attempt: number): number {
@@ -55,6 +64,29 @@ function fanOffset(attempt: number): number {
   }
   const direction = attempt % 2 === 1 ? 1 : -1;
   return Math.ceil(attempt / 2) * FAN_ANGLE_STEP * direction;
+}
+
+function labelLayout(
+  screenX: number,
+  screenY: number,
+  text: string,
+): { x: number; y: number; width: number; height: number } {
+  return {
+    x: screenX,
+    y: screenY + (screenY >= CY ? -LABEL_OFFSET : LABEL_OFFSET),
+    width: text.length * LABEL_CHAR_WIDTH,
+    height: LABEL_HEIGHT,
+  };
+}
+
+function labelsOverlap(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+): boolean {
+  return (
+    Math.abs(a.x - b.x) * 2 < a.width + b.width + LABEL_COLLISION_PADDING * 2 &&
+    Math.abs(a.y - b.y) * 2 < a.height + b.height + LABEL_COLLISION_PADDING * 2
+  );
 }
 
 /** Pure screen-space layout used by the Phaser widget and unit tests. */
@@ -82,20 +114,31 @@ export function resolveDirectionArrowStates(
     }
 
     const targetAngle = Math.atan2(dy, dx);
+    const distanceFt = Math.hypot(dx, dy);
+    const labelText = `${waypoint.label}  ${Math.round(distanceFt)}'`;
     let screenX = CX + Math.cos(targetAngle) * RX;
     let screenY = CY + Math.sin(targetAngle) * RY;
-    const maxAttempts = waypoints.length * 4;
+    let label = labelLayout(screenX, screenY, labelText);
+    const maxAttempts = Math.max(24, waypoints.length * 8);
     for (let attempt = 0; attempt <= maxAttempts; attempt += 1) {
       const displayAngle = targetAngle + fanOffset(attempt);
       const candidateX = CX + Math.cos(displayAngle) * RX;
       const candidateY = CY + Math.sin(displayAngle) * RY;
+      const candidateLabel = labelLayout(candidateX, candidateY, labelText);
       const clear = states.every(
         (state) =>
           Math.hypot(candidateX - state.screenX, candidateY - state.screenY) >=
-          MIN_ARROW_SEPARATION,
+            MIN_ARROW_SEPARATION &&
+          !labelsOverlap(candidateLabel, {
+            x: state.labelScreenX,
+            y: state.labelScreenY,
+            width: state.labelWidth,
+            height: state.labelHeight,
+          }),
       );
       screenX = candidateX;
       screenY = candidateY;
+      label = candidateLabel;
       if (clear) {
         break;
       }
@@ -108,7 +151,12 @@ export function resolveDirectionArrowStates(
       screenX,
       screenY,
       rotation: targetAngle + Math.PI / 2,
-      distanceFt: Math.hypot(dx, dy),
+      distanceFt,
+      labelText,
+      labelScreenX: label.x,
+      labelScreenY: label.y,
+      labelWidth: label.width,
+      labelHeight: label.height,
     });
   }
 
@@ -224,8 +272,8 @@ export function createHudDirectionArrows(scene: Phaser.Scene): {
         .setFillStyle(KIND_COLORS[state.kind], 1)
         .setVisible(true);
       visual.label
-        .setPosition(state.screenX, state.screenY + ARROW_SIZE + 4)
-        .setText(`${state.label}  ${Math.round(state.distanceFt)}'`)
+        .setPosition(state.labelScreenX, state.labelScreenY)
+        .setText(state.labelText)
         .setVisible(true);
       visual.pulse.resume();
     }

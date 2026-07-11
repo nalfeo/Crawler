@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { spawnPlayer } from '../../src/core/helpers.js';
-import { acceptQuest } from '../../src/core/systems/questSystem.js';
+import { acceptQuest, setTrackedQuest } from '../../src/core/systems/questSystem.js';
 import { getQuestWaypoints } from '../../src/core/systems/questWaypoints.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
@@ -168,6 +168,21 @@ describe('getQuestWaypoints', () => {
       FLOOR1_FIND_WELCOME_QUEST_ID,
       FLOOR1_SHOP_QUEST_ID,
       FLOOR1_BOSS_BATTLE_QUEST_ID,
+    ]);
+  });
+
+  it('returns the tracked quest first while preserving other quest insertion order', () => {
+    const world = withFloor1(createTestWorld());
+    spawnPlayer(world, 0, 0);
+    acceptQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
+    acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
+    acceptQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+    setTrackedQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+
+    expect(getQuestWaypoints(world).map((wp) => wp.questId)).toEqual([
+      FLOOR1_BOSS_BATTLE_QUEST_ID,
+      FLOOR1_FIND_WELCOME_QUEST_ID,
+      FLOOR1_SHOP_QUEST_ID,
     ]);
   });
 

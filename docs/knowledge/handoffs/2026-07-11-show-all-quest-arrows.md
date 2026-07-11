@@ -27,8 +27,9 @@ quests, hud-ux
 
 ## Runtime observation
 
-- Before: the three-active-quest lab fixture rendered only the tracked quest's arrow.
-- After: the real Phaser HUD probe reported
+- Before: the real `MainGameScene` HUD rendered only the tracked quest's arrow.
+- After: `tests/e2e/quest-waypoint-arrows.deterministic.test.ts` booted the real
+  `MainGameScene` through the shipped Floor 1 bootstrap, and its live display list reported
   `floor1-find-welcome`, `floor1-shopkeeper-errand`, and
   `floor1-boss-battle` as three simultaneously visible arrow objects.
 

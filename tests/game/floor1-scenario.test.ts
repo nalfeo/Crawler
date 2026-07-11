@@ -1112,6 +1112,7 @@ describe('floor1Scenario', () => {
       meetShopkeeper(world);
       questSystem(world);
 
+      expect(world.questLog.get(FLOOR1_SHOP_QUEST_ID)?.tracked).toBe(true);
       const itemPos = world.floorScenario!.objective.questItemPos;
       expect(getQuestWaypoints(world, player)).toContainEqual(
         expect.objectContaining({
