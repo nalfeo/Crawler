@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { test } from 'node:test';
 import { chromium } from 'playwright';
 
 import { renderHtml } from '../renderer.mjs';
 
+const EXTENSION_SOURCE = readFileSync(new URL('../extension.mjs', import.meta.url), 'utf8');
 const TWO_BY_TWO_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAE0lEQVR42mP4DwQMIAAkG4DkfwBLSQd6Nhz6dgAAAABJRU5ErkJggg==',
   'base64',
@@ -276,6 +278,17 @@ test('sprite editor wires OpenCV scaling controls and methods', () => {
   assert.match(html, /'aria-label': 'Dislike and flag for regeneration'/);
   assert.match(html, /role: 'status'/);
   assert.doesNotMatch(html, /id="app" aria-live/);
+});
+
+test('sprite editor pins and verifies the OpenCV vendor asset', () => {
+  assert.match(EXTENSION_SOURCE, /https:\/\/docs\.opencv\.org\/4\.13\.0/);
+  assert.doesNotMatch(EXTENSION_SOURCE, /https:\/\/docs\.opencv\.org\/4\.x/);
+  assert.match(
+    EXTENSION_SOURCE,
+    /63366510248adf3a7eddf3e793dd825404efb7df3749f4d6f8557c7fa4ca8aa0/,
+  );
+  assert.match(EXTENSION_SOURCE, /createHash\('sha256'\)\.update\(body\)\.digest\('hex'\)/);
+  assert.match(EXTENSION_SOURCE, /vendor asset integrity check failed/);
 });
 
 test('sprite editor keeps every edit action within two clicks and preserves tool state', async () => {

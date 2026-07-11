@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { Buffer } from 'node:buffer';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,8 +22,11 @@ const ANNOTATIONS_PATH = path.join(
 const ASSETS_ROOT = path.join(REPO_ROOT, 'public', 'assets');
 const MAX_WRITE_BYTES = 6 * 1024 * 1024;
 const MAX_RESULTS = 500;
-const OPENCV_VENDOR_BASE = 'https://docs.opencv.org/4.x';
-const OPENCV_VENDOR_FILES = new Set(['opencv.js', 'opencv_js.wasm', 'opencv_js.worker.js']);
+const OPENCV_VENDOR_BASE = 'https://docs.opencv.org/4.13.0';
+const OPENCV_VENDOR_HASHES = new Map([
+  ['opencv.js', '63366510248adf3a7eddf3e793dd825404efb7df3749f4d6f8557c7fa4ca8aa0'],
+]);
+const openCvVendorCache = new Map();
 
 let sessionRef = null;
 const instances = new Map();
@@ -518,9 +522,12 @@ function parseListFilters(url, input = null) {
 }
 
 async function fetchOpenCvVendorAsset(fileName) {
-  if (!OPENCV_VENDOR_FILES.has(fileName)) {
+  const expectedHash = OPENCV_VENDOR_HASHES.get(fileName);
+  if (!expectedHash) {
     return { status: 404, body: 'unknown vendor asset' };
   }
+  const cached = openCvVendorCache.get(fileName);
+  if (cached) return cached;
   const url = `${OPENCV_VENDOR_BASE}/${fileName}`;
   const upstream = await fetch(url);
   if (!upstream.ok) {
@@ -533,7 +540,23 @@ async function fetchOpenCvVendorAsset(fileName) {
       body: body || `failed to fetch ${fileName}`,
     };
   }
-  return upstream;
+  const body = Buffer.from(await upstream.arrayBuffer());
+  const actualHash = createHash('sha256').update(body).digest('hex');
+  if (actualHash !== expectedHash) {
+    log(`Rejected ${fileName}: expected SHA-256 ${expectedHash}, received ${actualHash}`, 'error');
+    return { status: 502, body: 'vendor asset integrity check failed' };
+  }
+  const verified = {
+    status: 200,
+    headers: {
+      'Cache-Control': 'private, max-age=86400',
+      'Content-Type': upstream.headers.get('content-type') ?? 'application/octet-stream',
+      'X-Content-Type-Options': 'nosniff',
+    },
+    body,
+  };
+  openCvVendorCache.set(fileName, verified);
+  return verified;
 }
 
 function listSprites(filters) {
