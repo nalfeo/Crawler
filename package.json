@@ -32,7 +32,7 @@
     "test:e2e": "vitest run --project e2e",
     "test:headless": "vitest run --project headless --reporter=verbose",
     "test:sprites": "vitest run --project sprites --reporter=verbose",
-    "test:guards": "node --test \".github/extensions/copilot-guards/tests/*.test.mjs\" \".github/extensions/agent-perf-panel/tests/*.test.mjs\" \".github/extensions/sprite-review/tests/*.test.mjs\" \".github/extensions/postprocess/tests/*.test.mjs\" \".github/extensions/achievements/tests/*.test.mjs\" \".github/extensions/storage/tests/*.test.mjs\" \".github/extensions/workflow/tests/*.test.mjs\" \".github/extensions/set-piece-editor/tests/*.test.mjs\" \"scripts/agent/review/*.test.mjs\" \".github/scripts/ci-recovery/*.test.mjs\"",
+    "test:guards": "node --test \".github/extensions/copilot-guards/tests/*.test.mjs\" \".github/extensions/agent-perf-panel/tests/*.test.mjs\" \".github/extensions/sprite-review/tests/*.test.mjs\" \".github/extensions/postprocess/tests/*.test.mjs\" \".github/extensions/achievements/tests/*.test.mjs\" \".github/extensions/storage/tests/*.test.mjs\" \".github/extensions/workflow/tests/*.test.mjs\" \".github/extensions/set-piece-editor/tests/*.test.mjs\" \"scripts/agent/review/*.test.mjs\" \".github/scripts/ci-recovery/*.test.mjs\" \".github/scripts/tracking-issues/*.test.mjs\"",
     "lab": "vite --mode lab",
     "devtools": "vite --mode devtools",
     "ai:headless": "tsx src/game/ai/headless-runner-cli.ts",
