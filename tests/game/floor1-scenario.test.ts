@@ -32,11 +32,18 @@ import {
   SHOPKEEPER_EQUIPMENT_COST,
 } from '../../src/game/floorScenario.js';
 import { getActiveWeapon } from '../../src/game/weaponSystem.js';
-import { isQuestComplete, questSystem } from '../../src/core/systems/questSystem.js';
+import {
+  acceptQuest,
+  isQuestComplete,
+  questSystem,
+  setTrackedQuest,
+} from '../../src/core/systems/questSystem.js';
+import { getQuestWaypoints } from '../../src/core/systems/questWaypoints.js';
 import { doorSystem } from '../../src/core/systems/doorSystem.js';
 import { addItem, hasItem } from '../../src/shared/inventory.js';
 import { TileFlags, RoomRole, TerrainType } from '../../src/shared/map-types.js';
 import {
+  FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
   FLOOR1_FIND_WELCOME_QUEST_ID,
   FLOOR1_LEAVE_FLOOR_QUEST_ID,
@@ -1088,6 +1095,31 @@ describe('floor1Scenario', () => {
       questSystem(world);
       expect(getShopkeeperStage(world)).toBe('complete');
       expect(isQuestComplete(world, FLOOR1_SHOP_QUEST_ID)).toBe(true);
+    });
+
+    it('restores the Rat Tail waypoint when the player speaks to the merchant again', () => {
+      const world = createTestWorld({ seed: 5 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+      world.goalFlags.set('floor1-leveling-quest-complete', true);
+
+      meetShopkeeper(world);
+      questSystem(world);
+      acceptQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+      setTrackedQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+
+      meetShopkeeper(world);
+      questSystem(world);
+
+      const itemPos = world.floorScenario!.objective.questItemPos;
+      expect(getQuestWaypoints(world, player)).toEqual([
+        expect.objectContaining({
+          x: itemPos.x,
+          y: itemPos.y,
+          kind: 'item',
+        }),
+      ]);
     });
 
     it('refuses to sell when the player cannot afford the charm', () => {

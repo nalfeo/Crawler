@@ -3102,8 +3102,9 @@ export function meetShopkeeper(world: GameWorld): void {
   if (!hasCompletedWelcomeGoonQuest(world)) {
     return;
   }
-  if (!world.questLog.has(FLOOR1_SHOP_QUEST_ID)) {
-    acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
+  const quest =
+    world.questLog.get(FLOOR1_SHOP_QUEST_ID) ?? acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
+  if (quest?.status === 'active') {
     setTrackedQuest(world, FLOOR1_SHOP_QUEST_ID);
   }
   notifyQuestTalk(world, 'shopkeeper');
