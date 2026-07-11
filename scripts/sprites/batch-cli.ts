@@ -275,13 +275,14 @@ async function main(): Promise<number> {
     const cacheHitsByBriefId = judgeCache.countEntriesByBriefId();
     const briefInfos: DryRunBriefInfo[] = briefs.map((briefPath) => {
       let vc = 4; // fallback variant count if brief loading fails
-      let briefName = path.basename(briefPath).replace(/\.ya?ml$/i, '');
+      let briefName: string;
       try {
         const { brief } = loadBrief(briefPath, { projectRoot: process.cwd() });
         vc = computeVariantCount(brief);
         briefName = brief.name;
       } catch {
-        // Brief failed to load — use defaults for projection.
+        // Brief failed to load — derive the id from the file path as a fallback.
+        briefName = path.basename(briefPath).replace(/\.ya?ml$/i, '');
       }
       // Cap cachedVariants at the actual variant count to guard against
       // stale meta entries from an old brief with more variants.

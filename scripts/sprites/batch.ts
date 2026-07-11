@@ -422,6 +422,13 @@ export interface DryRunProjection {
 }
 
 export interface DryRunInputs {
+  /**
+   * Number of briefs. Used as the fallback `briefCount` in the output when
+   * `briefInfos` is not provided. When `briefInfos` IS provided with at least
+   * one entry, the output `briefCount` is always `briefInfos.length` — the
+   * two are expected to match, but `briefInfos.length` wins to avoid silent
+   * divergence if they differ.
+   */
   readonly briefCount: number;
   /**
    * Azure vision deployment name (e.g. `gpt-4o-vision`). Used to resolve
