@@ -215,6 +215,44 @@ export class JudgeCache {
     return this.listScorecardEntries().length;
   }
 
+  /**
+   * Scans the cache directory and returns a map of `briefId` → number of
+   * cached scorecard entries for that brief.
+   *
+   * Used by the batch dry-run cost projection to estimate how many judge
+   * calls a re-run would skip due to cache hits. The `briefId` values are
+   * read from the `.meta.json` sidecar files written alongside each scorecard.
+   *
+   * When the cache is disabled, returns an empty map (no hits possible).
+   *
+   * **Accuracy note**: these counts are OPTIMISTIC estimates. Meta entries
+   * may correspond to variants from a prior non-deterministic generation run
+   * whose PNG bytes differ from the next run's output. Actual cache hits in
+   * a real run may therefore be lower than the counts returned here.
+   */
+  countEntriesByBriefId(): Map<string, number> {
+    if (!this.enabled || !existsSync(this.cacheDir)) return new Map();
+    const counts = new Map<string, number>();
+    let metaFiles: string[];
+    try {
+      metaFiles = readdirSync(this.cacheDir).filter((n) => n.endsWith('.meta.json'));
+    } catch {
+      return counts;
+    }
+    for (const file of metaFiles) {
+      try {
+        const raw = readFileSync(path.join(this.cacheDir, file), 'utf8');
+        const meta = JSON.parse(raw) as { briefId?: unknown };
+        if (typeof meta.briefId === 'string') {
+          counts.set(meta.briefId, (counts.get(meta.briefId) ?? 0) + 1);
+        }
+      } catch {
+        // Corrupt meta file — skip.
+      }
+    }
+    return counts;
+  }
+
   private entryPath(key: string): string {
     return path.join(this.cacheDir, `${key}.json`);
   }

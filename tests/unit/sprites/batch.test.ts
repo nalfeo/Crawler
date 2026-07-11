@@ -439,6 +439,55 @@ describe('projectDryRunCost', () => {
     // total: 0.0014 * 9 * 1 = 0.0126
     expect(projection.projectedUsd).toBeCloseTo(0.0126, 6);
   });
+
+  it('resolves pricing from modelDeployment via cost-tracker.ts (gpt-4o-mini rates)', () => {
+    // gpt-4o-mini rates: inputPerMillion=0.15, outputPerMillion=0.6
+    const projection = projectDryRunCost({
+      briefCount: 1,
+      variantsPerBrief: 1,
+      modelDeployment: 'gpt-4o-mini',
+    });
+    // per-call: 1500/1e6 * 0.15 + 80/1e6 * 0.6 = 0.000225 + 0.000048 = 0.000273
+    expect(projection.inputPerMillionUsd).toBe(0.15);
+    expect(projection.outputPerMillionUsd).toBe(0.6);
+    expect(projection.projectedUsd).toBeCloseTo(0.000273, 7);
+  });
+
+  it('uses actual per-brief variant counts from briefInfos', () => {
+    // Two briefs with different variant counts (not the default 4 each).
+    const projection = projectDryRunCost({
+      briefCount: 2,
+      modelDeployment: 'gpt-4o',
+      briefInfos: [
+        { variantCount: 2, cachedVariants: 0 },
+        { variantCount: 9, cachedVariants: 0 },
+      ],
+    });
+    // Total variants = 2 + 9 = 11; zero cache hits.
+    // gpt-4o per-call: 1500/1e6 * 2.50 + 80/1e6 * 10.0 = 0.00455
+    // total: 0.00455 * 11 = 0.05005
+    expect(projection.variantCallsProjected).toBe(11);
+    expect(projection.cacheHitCount).toBe(0);
+    expect(projection.projectedUsd).toBeCloseTo(0.05005, 6);
+    // Average variants per brief = 11 / 2 = 5.5
+    expect(projection.variantsPerBrief).toBeCloseTo(5.5);
+  });
+
+  it('treats confirmed cache hits as $0 in the projection', () => {
+    const projection = projectDryRunCost({
+      briefCount: 2,
+      modelDeployment: 'gpt-4o',
+      briefInfos: [
+        { variantCount: 4, cachedVariants: 3 }, // 3 of 4 cached
+        { variantCount: 4, cachedVariants: 4 }, // all 4 cached
+      ],
+    });
+    // Cache hits: 3 + 4 = 7; calls to issue: (4-3) + (4-4) = 1
+    expect(projection.cacheHitCount).toBe(7);
+    expect(projection.variantCallsProjected).toBe(1);
+    // gpt-4o per-call: 0.00455
+    expect(projection.projectedUsd).toBeCloseTo(0.00455, 6);
+  });
 });
 
 // (BatchBriefResult and RunFullFactory are imported for type usage above;

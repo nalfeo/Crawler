@@ -45,6 +45,7 @@ import { createHash } from 'node:crypto';
 import { runFull } from './run-full.js';
 import type { RunFullOptions, RunFullResult } from './run-full.js';
 import type { JudgeBudget } from './cost-tracker.js';
+import { resolveRates } from './cost-tracker.js';
 import type { JudgeCache } from './judge-cache.js';
 import type { RunSummary } from './run-artifacts.js';
 
@@ -363,55 +364,147 @@ function briefIdFromPath(briefPath: string): string {
 }
 
 /**
- * Rough cost projection for `--dry-run`. Conservative: assumes EVERY
- * brief judges its full variant count using `gpt-4o` rates and the
- * average per-call token usage we've seen across Phase 3. Deliberately
- * does NOT load brief YAMLs (a dry run shouldn't touch the file system
- * beyond glob/stat) — we take a fixed `variantsPerBrief` instead.
+ * Rough cost projection for `--dry-run`.
  *
- * Inputs use `gpt-4o-vision` pricing as the default deployment because
- * that's the production judge model; callers that know their rates can
- * override.
+ * By default (no `briefInfos`): conservative, assumes every brief judges its
+ * full variant count (`variantsPerBrief`, default 4) with zero cache hits.
+ *
+ * When `briefInfos` is provided: projection uses each brief's actual variant
+ * count (from its YAML) and the confirmed cache hit count for that brief,
+ * so cached variants contribute $0 and only projected misses are costed.
+ *
+ * Pricing is resolved from `cost-tracker.ts` via `resolveRates(modelDeployment)`
+ * — the same lookup `JudgeBudget` uses — so the projection stays in sync with
+ * the authoritative pricing table. Falls back to `'gpt-4o'` (the default
+ * production judge deployment) when `modelDeployment` is omitted.
+ *
+ * Note on cache hit accuracy: cache hit counts supplied via `briefInfos` are
+ * typically derived by scanning the cache's `.meta.json` files for entries
+ * matching each brief's `name`. These are OPTIMISTIC estimates — meta entries
+ * may correspond to variant PNGs from a previous non-deterministic generation
+ * run, and actual hits in the next run may be lower. The estimates are useful
+ * for "is re-running worth it with a warm cache?" but should not be treated as
+ * exact accounting.
  */
+export interface DryRunBriefInfo {
+  /** Actual variant count from this brief's sheet config (`rows × cols − emptyCells`). */
+  readonly variantCount: number;
+  /**
+   * Number of variants for this brief estimated to be judge-cache hits and
+   * therefore contributing $0. Zero when cache was not probed.
+   *
+   * This count is capped at `variantCount` internally to guard against
+   * stale meta entries exceeding the current brief's slot count.
+   */
+  readonly cachedVariants: number;
+}
+
 export interface DryRunProjection {
   readonly briefCount: number;
+  /**
+   * Variants-per-brief used in the projection. When `briefInfos` is
+   * provided this is the average across briefs (may be fractional);
+   * otherwise it is the flat `variantsPerBrief` fallback value.
+   */
   readonly variantsPerBrief: number;
   readonly inputTokensPerCall: number;
   readonly outputTokensPerCall: number;
   readonly inputPerMillionUsd: number;
   readonly outputPerMillionUsd: number;
   readonly projectedUsd: number;
+  /** Total variant judge calls projected to be issued (excludes cache hits). */
+  readonly variantCallsProjected: number;
+  /**
+   * Variant slots projected to be served from the judge cache at $0 each.
+   * Zero when cache probing was not performed.
+   */
+  readonly cacheHitCount: number;
 }
 
 export interface DryRunInputs {
   readonly briefCount: number;
+  /**
+   * Azure vision deployment name (e.g. `gpt-4o-vision`). Used to resolve
+   * pricing via `resolveRates()` from `cost-tracker.ts` — the same path
+   * `JudgeBudget` uses. Falls back to `'gpt-4o'` when omitted.
+   */
+  readonly modelDeployment?: string;
+  /**
+   * Per-brief variant counts and confirmed cache hits. When provided,
+   * overrides `variantsPerBrief` and enables per-brief accuracy + cache
+   * awareness. When omitted, falls back to the flat `variantsPerBrief`
+   * (default 4) with 0 assumed cache hits.
+   */
+  readonly briefInfos?: ReadonlyArray<DryRunBriefInfo>;
+  /**
+   * Fallback variants-per-brief used when `briefInfos` is not provided.
+   * Default 4.
+   */
   readonly variantsPerBrief?: number;
   readonly inputTokensPerCall?: number;
   readonly outputTokensPerCall?: number;
+  /**
+   * @deprecated Pass `modelDeployment` instead. Explicit rate overrides
+   * are still honoured so existing test fixtures continue to work.
+   */
   readonly inputPerMillionUsd?: number;
+  /**
+   * @deprecated Pass `modelDeployment` instead. Explicit rate overrides
+   * are still honoured so existing test fixtures continue to work.
+   */
   readonly outputPerMillionUsd?: number;
 }
 
 export function projectDryRunCost(inputs: DryRunInputs): DryRunProjection {
-  const variantsPerBrief = inputs.variantsPerBrief ?? 4;
   const inputTokensPerCall = inputs.inputTokensPerCall ?? 1500;
   const outputTokensPerCall = inputs.outputTokensPerCall ?? 80;
-  // gpt-4o rates from `cost-tracker.ts` — duplicated literally rather
-  // than imported so this stays a pure projection helper with no
-  // import-cycle risk back into the orchestrator.
-  const inputPerMillionUsd = inputs.inputPerMillionUsd ?? 2.5;
-  const outputPerMillionUsd = inputs.outputPerMillionUsd ?? 10.0;
+
+  // Resolve pricing from cost-tracker.ts so the projection stays in sync
+  // with the authoritative PRICING table. Explicit override fields win over
+  // the deployment lookup (backward compat with existing test fixtures).
+  const rates = resolveRates(inputs.modelDeployment ?? 'gpt-4o');
+  const inputPerMillionUsd = inputs.inputPerMillionUsd ?? rates.inputPerMillion;
+  const outputPerMillionUsd = inputs.outputPerMillionUsd ?? rates.outputPerMillion;
+
   const perCallUsd =
     (inputTokensPerCall / 1_000_000) * inputPerMillionUsd +
     (outputTokensPerCall / 1_000_000) * outputPerMillionUsd;
-  const projectedUsd = perCallUsd * variantsPerBrief * inputs.briefCount;
+
+  let variantCallsProjected: number;
+  let cacheHitCount: number;
+  let variantsPerBrief: number;
+
+  if (inputs.briefInfos !== undefined && inputs.briefInfos.length > 0) {
+    let totalVariants = 0;
+    let totalCacheHits = 0;
+    for (const info of inputs.briefInfos) {
+      totalVariants += info.variantCount;
+      // Cap cached variants at the brief's actual variant count to guard
+      // against stale meta entries that exceed the current sheet size.
+      totalCacheHits += Math.min(info.cachedVariants, info.variantCount);
+    }
+    cacheHitCount = totalCacheHits;
+    variantCallsProjected = Math.max(0, totalVariants - totalCacheHits);
+    // Report average variants per brief for the summary line.
+    variantsPerBrief = totalVariants / inputs.briefInfos.length;
+  } else {
+    const fallbackVariantsPerBrief = inputs.variantsPerBrief ?? 4;
+    variantsPerBrief = fallbackVariantsPerBrief;
+    variantCallsProjected = fallbackVariantsPerBrief * inputs.briefCount;
+    cacheHitCount = 0;
+  }
+
+  const projectedUsd = perCallUsd * variantCallsProjected;
+
   return {
-    briefCount: inputs.briefCount,
+    briefCount: inputs.briefInfos !== undefined ? inputs.briefInfos.length : inputs.briefCount,
     variantsPerBrief,
     inputTokensPerCall,
     outputTokensPerCall,
     inputPerMillionUsd,
     outputPerMillionUsd,
     projectedUsd,
+    variantCallsProjected,
+    cacheHitCount,
   };
 }

@@ -26,13 +26,20 @@ import path from 'node:path';
 import process from 'node:process';
 import { JudgeBudget } from './cost-tracker.js';
 import { JudgeCache } from './judge-cache.js';
-import { runBatch, projectDryRunCost, type BatchBriefResult } from './batch.js';
+import {
+  runBatch,
+  projectDryRunCost,
+  type BatchBriefResult,
+  type DryRunBriefInfo,
+} from './batch.js';
 import {
   createImageProvider,
   createTextProvider,
   createVisionProvider,
 } from './provider/factory.js';
 import { ProviderError } from './provider/types.js';
+import { loadBrief } from './load-brief.js';
+import { variantCount as computeVariantCount } from './brief-schema.js';
 
 interface BatchCliArgs {
   readonly briefs: ReadonlyArray<string>;
@@ -249,19 +256,65 @@ async function main(): Promise<number> {
     return 2;
   }
 
+  // Create the judge cache early — needed by both the dry-run projection
+  // (for per-brief cache-hit estimation) and the real run.
+  const generatedDir = path.join(process.cwd(), 'generated');
+  const judgeCache = new JudgeCache({
+    cacheDir: path.join(generatedDir, '.judge-cache'),
+    enabled: !args.noJudgeCache,
+    ...(args.cacheMaxEntries !== undefined ? { maxEntries: args.cacheMaxEntries } : {}),
+  });
+
   if (args.dryRun) {
-    const projection = projectDryRunCost({ briefCount: briefs.length });
+    // Resolve deployment name from the same env var the real run uses, so
+    // the dry-run pricing matches what JudgeBudget would compute.
+    const modelDeployment = process.env.AZURE_OPENAI_VISION_DEPLOYMENT ?? 'gpt-4o';
+
+    // Load each brief YAML to get per-brief variant counts. On error, fall
+    // back to the default 4 so a bad brief doesn't abort the projection.
+    const cacheHitsByBriefId = judgeCache.countEntriesByBriefId();
+    const briefInfos: DryRunBriefInfo[] = briefs.map((briefPath) => {
+      let vc = 4; // fallback variant count if brief loading fails
+      let briefName = path.basename(briefPath).replace(/\.ya?ml$/i, '');
+      try {
+        const { brief } = loadBrief(briefPath, { projectRoot: process.cwd() });
+        vc = computeVariantCount(brief);
+        briefName = brief.name;
+      } catch {
+        // Brief failed to load — use defaults for projection.
+      }
+      // Cap cachedVariants at the actual variant count to guard against
+      // stale meta entries from an old brief with more variants.
+      const cachedVariants = Math.min(vc, cacheHitsByBriefId.get(briefName) ?? 0);
+      return { variantCount: vc, cachedVariants };
+    });
+
+    const projection = projectDryRunCost({
+      briefCount: briefs.length,
+      modelDeployment,
+      briefInfos,
+    });
+
     process.stdout.write(
       `sprites:batch — DRY RUN, ${briefs.length} brief${briefs.length === 1 ? '' : 's'}\n`,
     );
     for (let i = 0; i < briefs.length; i++) {
       process.stdout.write(`  [${i + 1}/${briefs.length}] ${briefs[i]}\n`);
     }
+
+    let cacheNote: string;
+    if (!args.noJudgeCache && projection.cacheHitCount > 0) {
+      cacheNote = `, ${projection.cacheHitCount} variant(s) estimated as cache hits ($0)`;
+    } else if (!args.noJudgeCache) {
+      cacheNote = ` (no prior cache entries found)`;
+    } else {
+      cacheNote = ` (cache disabled)`;
+    }
     process.stdout.write(
       `\nprojected cost: $${projection.projectedUsd.toFixed(4)} ` +
-        `(${projection.variantsPerBrief} variants × ` +
-        `${projection.inputTokensPerCall}+${projection.outputTokensPerCall} tokens × ` +
-        `gpt-4o-rates × ${projection.briefCount} briefs)\n`,
+        `(${projection.variantCallsProjected} variant call(s) × ` +
+        `${projection.inputTokensPerCall}+${projection.outputTokensPerCall} tokens, ` +
+        `${modelDeployment}-rates × ${projection.briefCount} briefs${cacheNote})\n`,
     );
     process.stdout.write(`(no Azure calls issued)\n`);
     return 0;
@@ -277,12 +330,6 @@ async function main(): Promise<number> {
     process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
     return 2;
   }
-  const generatedDir = path.join(process.cwd(), 'generated');
-  const judgeCache = new JudgeCache({
-    cacheDir: path.join(generatedDir, '.judge-cache'),
-    enabled: !args.noJudgeCache,
-    ...(args.cacheMaxEntries !== undefined ? { maxEntries: args.cacheMaxEntries } : {}),
-  });
   if (args.pruneJudgeCacheHours !== undefined) {
     const deleted = judgeCache.prune(args.pruneJudgeCacheHours);
     process.stdout.write(
