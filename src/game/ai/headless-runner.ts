@@ -144,6 +144,8 @@ export interface HeadlessRunnerConfig {
    * unaffected.
    */
   recordWeaponTelemetry?: boolean;
+  /** Opt into weapon-specific stat and gear personas. Default false until balanced. */
+  weaponPersonas?: boolean;
 }
 
 const DEFAULT_CONFIG: Required<
@@ -160,6 +162,7 @@ const DEFAULT_CONFIG: Required<
   floorId: 'floor1',
   startPlayerLevel: 1,
   recordWeaponTelemetry: false,
+  weaponPersonas: false,
 };
 
 function applyConfiguredHostileDamageMultiplier(
@@ -513,9 +516,9 @@ export async function runHeadless(
       }
       // Floor objective handling (including Floor 2 objective ticks) runs inside
       // runSimulationStep, so no second explicit objective call is needed here.
-      autoFloor1ProgressionSystem(world, playerEid);
+      autoFloor1ProgressionSystem(world, playerEid, config.weaponPersonas);
       autoFloor2ProgressionSystem(world, playerEid);
-      autoAllocateStatPoints(world, playerEid);
+      autoAllocateStatPoints(world, playerEid, config.weaponPersonas);
 
       // Check win/loss conditions
       if (

@@ -14,8 +14,13 @@
  */
 import { query } from 'bitecs';
 import type { GameWorld } from '../../core/index.js';
-import { Player, Position } from '../../core/index.js';
+import { getActiveWeaponDef, Player, Position } from '../../core/index.js';
+import { equip } from '../../core/systems/equipmentSystem.js';
+import type { EquipmentItemDef } from '../../shared/equipment-types.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../shared/constants.js';
+import { getEquipmentDefForItem, isEquippableItem } from '../../shared/equipmentDefs.js';
+import { removeItem } from '../../shared/inventory.js';
+import type { PrimaryStatId } from '../../shared/stats.js';
 import { AIState, type AIInputProvider } from './types.js';
 import { NPC_INTERACTION_RADIUS_FT } from './bt-ai-tuning.js';
 import {
@@ -32,6 +37,11 @@ import {
 } from '../index.js';
 import { confirmFloor2StairDescend } from '../floor2Scenario.js';
 import { computeAutoStatAllocation } from '../scenarios/playerStatAllocationPolicy.js';
+import {
+  computeWeaponPersonaStatAllocation,
+  getWeaponPersona,
+  scoreEquipmentForPersona,
+} from './weapon-personas.js';
 export { computeAutoStatAllocation } from '../scenarios/playerStatAllocationPolicy.js';
 
 /** Frames between auto NPC-talk attempts (debounce repeated `meet*` calls). */
@@ -119,7 +129,11 @@ export function autoNpcInteractionSystem(
   return currentFrame;
 }
 
-export function autoFloor1ProgressionSystem(world: GameWorld, playerEid: number): void {
+export function autoFloor1ProgressionSystem(
+  world: GameWorld,
+  playerEid: number,
+  weaponPersonas = false,
+): void {
   if (!world.floorScenario) {
     return;
   }
@@ -151,7 +165,9 @@ export function autoFloor1ProgressionSystem(world: GameWorld, playerEid: number)
     }
   }
 
-  equipPurchasedGear(world, playerEid);
+  if (!weaponPersonas || !equipPersonaPreferredGear(world, playerEid)) {
+    equipPurchasedGear(world, playerEid);
+  }
 
   const objective = world.floorScenario.objective;
   if (!objective.staircaseUnlocked || objective.staircaseDiscovered) {
@@ -212,10 +228,58 @@ export function autoFloor2ProgressionSystem(world: GameWorld, playerEid: number)
  * Floor 1.
  *
  */
-export function autoAllocateStatPoints(world: GameWorld, playerEid: number): void {
+export function computeAiStatAllocation(
+  world: GameWorld,
+  playerEid: number,
+  available: number,
+  weaponPersonas = false,
+): Partial<Record<PrimaryStatId, number>> {
+  const persona = weaponPersonas ? getWeaponPersona(getActiveWeaponDef(world)?.id) : undefined;
+  return persona
+    ? computeWeaponPersonaStatAllocation(world, playerEid, available, persona)
+    : computeAutoStatAllocation(world, playerEid, available);
+}
+
+export function autoAllocateStatPoints(
+  world: GameWorld,
+  playerEid: number,
+  weaponPersonas = false,
+): void {
   const pl = world.playerLevel;
   if (pl.unspentPoints <= 0) {
     return;
   }
-  spendPoints(world, computeAutoStatAllocation(world, playerEid, pl.unspentPoints));
+  spendPoints(world, computeAiStatAllocation(world, playerEid, pl.unspentPoints, weaponPersonas));
+}
+
+function equipPersonaPreferredGear(world: GameWorld, playerEid: number): boolean {
+  const persona = getWeaponPersona(getActiveWeaponDef(world)?.id);
+  const bag = world.inventories.get(playerEid);
+  if (!persona || !bag) return false;
+
+  const currentStats = Object.fromEntries(
+    Object.entries(world.stores.coreStatPoints).map(([stat, values]) => [
+      stat,
+      values[playerEid] ?? 0,
+    ]),
+  ) as Partial<Record<PrimaryStatId, number>>;
+  const candidates = bag.slots
+    .map((slot) => getEquipmentDefForItem(slot.itemId))
+    .filter((def): def is EquipmentItemDef => def !== undefined && isEquippableItem(def.id))
+    .sort(
+      (a, b) =>
+        scoreEquipmentForPersona(a, persona, currentStats) -
+          scoreEquipmentForPersona(b, persona, currentStats) ||
+        (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+    );
+
+  let equippedAny = false;
+  for (const def of candidates) {
+    const result = equip(world, playerEid, def, { force: true });
+    if (result.ok) {
+      removeItem(bag, def.id, 1);
+      equippedAny = true;
+    }
+  }
+  return equippedAny;
 }

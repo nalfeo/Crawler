@@ -44,6 +44,11 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
     expect(args.pathingMode).toBe(AIPathingMode.LEGACY);
   });
 
+  it('keeps weapon personas off by default and supports an explicit opt-in', () => {
+    expect(cli().weaponPersonas).toBe(false);
+    expect(cli('--weapon-personas').weaponPersonas).toBe(true);
+  });
+
   it('throws on an invalid --decision-mode', () => {
     expect(() => cli('--decision-mode', 'bogus')).toThrow(/Invalid --decision-mode/);
   });

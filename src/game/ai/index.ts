@@ -15,6 +15,13 @@ export type {
 } from './types.js';
 export { AIState, AIPathingMode, AIDecisionMode } from './types.js';
 export { runHeadless } from './headless-runner.js';
+export {
+  WEAPON_PERSONAS,
+  getWeaponPersona,
+  computeWeaponPersonaStatAllocation,
+  scoreEquipmentForPersona,
+  type WeaponPersona,
+} from './weapon-personas.js';
 export { scoreRun, aggregateScores } from './scoring.js';
 export type { ScoreBreakdown } from './scoring.js';
 export { runSimulationStep, type SimulationOptions } from './simulation-step.js';
