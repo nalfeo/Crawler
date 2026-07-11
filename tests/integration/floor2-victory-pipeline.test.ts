@@ -18,6 +18,7 @@ import { loadResources } from '../../src/shared/data/resources.js';
 import { FLOOR2_LEAVE_FLOOR_QUEST_ID } from '../../src/shared/quest-types.js';
 import { createInputState } from '../../src/shared/input.js';
 import { runSimulationStep } from '../../src/game/ai/simulation-step.js';
+import { questSystem, achievementSystem } from '../../src/game/index.js';
 
 function smallCaveConfig(seed: number): MapConfig {
   return {
@@ -85,7 +86,16 @@ describe('Floor 2 Slice 5 — victory pipeline', () => {
     }
 
     world.floorObjectiveTick = floor2ObjectiveTick;
-    runSimulationStep(world, createInputState(), 16);
+    runSimulationStep(world, createInputState(), 16, {
+      postSystems: [
+        // floorObjectiveSystem delegates to world.floorObjectiveTick, which is
+        // set above to floor2ObjectiveTick. questSystem and achievementSystem
+        // must follow so quest state latches in the same step.
+        (w) => w.floorObjectiveTick?.(w),
+        questSystem,
+        achievementSystem,
+      ],
+    });
 
     expect(world.goalFlags.get(FLOOR2_VICTORY_GOAL_ID)).toBe(true);
     expect(world.goalFlags.get(FLOOR2_STAIRS_POPPED_GOAL_ID)).toBe(true);

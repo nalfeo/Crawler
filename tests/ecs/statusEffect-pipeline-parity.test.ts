@@ -15,9 +15,10 @@ import { createTestWorld } from '../helpers/world-factory.js';
  * Cross-pipeline parity (isolated fixture).
  *
  * The framework must behave identically no matter which sim pipeline drives it:
- * the headless runner (`src/game/ai/simulation-step.ts`, which hardcodes
- * `statusEffectSystem`) and the visual step (`src/engine/sim/simulation-step.ts`,
- * which receives it via `preSystems` from the Floor bootstrap).
+ * both the headless step (`src/game/ai/simulation-step.ts`) and the visual step
+ * (`src/engine/sim/simulation-step.ts`) now receive `statusEffectSystem` via
+ * `preSystems` from the Floor bootstrap — neither hardcodes it. Unification
+ * landed in issue #663; this test verifies the shared contract.
  *
  * We deliberately use a controlled, player-only, NO-COMBAT world so the only
  * thing that can move `health.current` is the HoT apply inside `statusEffectSystem`.
@@ -73,7 +74,9 @@ describe('status-effect cross-pipeline parity (HoT, no combat)', () => {
     const run = woundedPlayerWorld();
     const input = createInputState();
     for (let i = 0; i < FRAMES; i++) {
-      runHeadlessStep(run.world, input, DELTA, {});
+      // statusEffectSystem must be passed as a preSystems entry — the headless
+      // step is now a pure ECS core + hooks (no hardcoded game systems, issue #663).
+      runHeadlessStep(run.world, input, DELTA, { preSystems: [statusEffectSystem] });
     }
 
     expect(hp(run.world, run.player)).toBe(hp(base.world, base.player));
@@ -99,8 +102,9 @@ describe('status-effect speed-expiry symmetry (pipeline ordering)', () => {
     // playerInputSystem folds player speed before all preSystems, and enemyAISystem
     // folds enemy speed. statusEffectSystem (which expires effects) must therefore
     // run AFTER enemyAISystem so a timed speed effect expires for player and enemy on
-    // the SAME frame (no 1-frame skew). This pins the visual seam; the headless step
-    // (game/ai/simulation-step.ts) mirrors it with enemyAISystem→statusEffectSystem.
+    // the SAME frame (no 1-frame skew). This pins the canonical preSystems ordering;
+    // since both headless and visual pipelines derive from the same
+    // createFloorMainSceneOptions() (issue #663), this invariant now holds for both.
     const { preSystems } = createFloorMainSceneOptions('floor1');
     const statusIdx = preSystems.indexOf(statusEffectSystem);
     const enemyIdx = preSystems.indexOf(enemyAISystem);

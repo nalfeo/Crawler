@@ -26,6 +26,7 @@ import { runSimulationStep } from '../../src/game/ai/simulation-step.js';
 import { getScenarioDefinition } from '../../src/game/scenarioDefinitions.js';
 import { BehaviorTreeAI } from '../../src/game/ai/index.js';
 import { getAiRunnerScenarioPreset } from '../../src/labs/ai-runner-lab/scenario-presets.js';
+import { createFloor1MainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 import { createInputState } from '../../src/shared/input.js';
 import { GAME } from '../../src/shared/constants.js';
 import type { GameWorld } from '../../src/core/world.js';
@@ -81,12 +82,21 @@ describe('spawner-sealable-room lab preset — arena entry', () => {
       // reaches the doorway — we're testing entry, not survival.
       world.stores.health.max[playerEid] = 100_000;
 
+      // Canonical pre/post systems from the shared source of truth (same as the
+      // visual pipeline). spawnerArenaSystem in preSystems arms the arena.
+      const sceneSystems = createFloor1MainSceneOptions();
+      const simOpts = {
+        preSystems: sceneSystems.preSystems,
+        postSystems: sceneSystems.postSystems,
+      } as const;
+
       let armedFrame = -1;
       const BUDGET = 300;
       for (let frame = 0; frame < BUDGET; frame += 1) {
         world.stores.health.current[playerEid] = 100_000;
         ai.poll(inputState, world);
-        runSimulationStep(world, inputState, GAME.DELTA_MS);
+        if (world.state === 'level_up') world.state = 'playing';
+        runSimulationStep(world, inputState, GAME.DELTA_MS, simOpts);
         if ((world.stores.spawner.arenaState[spawnerEid] ?? 0) === 1) {
           armedFrame = frame;
           break;
