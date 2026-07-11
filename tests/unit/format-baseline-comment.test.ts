@@ -75,14 +75,19 @@ describe('formatBaselineComment', () => {
           commitDate: '2026-07-09T23:00:00-02:00',
           winRate: 0.84,
         },
-        { commit: 'c'.repeat(40), winRate: 0.8 },
+        {
+          commit: 'c'.repeat(40),
+          commitDate: 'not-a-date',
+          capturedAt: '2026-07-08T12:00:00Z',
+          winRate: 0.8,
+        },
       ],
       options,
     );
 
     expect(body).toContain(
       [
-        '- unknown date `ccccccc` — **80.0%** (—)',
+        '- 2026-07-08 `ccccccc` — **80.0%** (—)',
         '- 2026-07-09 `aaaaaaa` — **82.0%** (+2.0 pp)',
         '- 2026-07-10 `bbbbbbb` — **84.0%** (+2.0 pp)',
       ].join('\n'),

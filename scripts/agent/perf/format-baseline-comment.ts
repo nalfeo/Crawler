@@ -44,10 +44,12 @@ function formatDelta(current: number, previous: number | undefined): string {
 }
 
 function recordedTimestamp(entry: BaselineIndexEntry): number | null {
-  const recordedAt = entry.commitDate ?? entry.capturedAt;
-  if (!recordedAt) return null;
-  const timestamp = Date.parse(recordedAt);
-  return Number.isNaN(timestamp) ? null : timestamp;
+  for (const recordedAt of [entry.commitDate, entry.capturedAt]) {
+    if (!recordedAt) continue;
+    const timestamp = Date.parse(recordedAt);
+    if (!Number.isNaN(timestamp)) return timestamp;
+  }
+  return null;
 }
 
 export function formatBaselineComment(
