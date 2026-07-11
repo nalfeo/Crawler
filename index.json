@@ -11,6 +11,17 @@
     "path": "by-sha/6eba0f310e23befc723f9a509273d70e239e38e2.json"
   },
   {
+    "commit": "247a6a6191eac8be5ede28dd221d2edd946df8e4",
+    "commitDate": "2026-07-11T07:06:31Z",
+    "commitSubject": "fix(quests): show all quest arrows and restore merchant guidance (#1031)",
+    "capturedAt": "2026-07-11T07:49:21.538Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29144151156",
+    "winRate": 0.8666666666666667,
+    "totalWins": 260,
+    "totalRuns": 300,
+    "path": "by-sha/247a6a6191eac8be5ede28dd221d2edd946df8e4.json"
+  },
+  {
     "commit": "0300bd245a9fbd89849508dab8ac38c32ad83978",
     "commitDate": "2026-07-11T05:02:55Z",
     "commitSubject": "ci: add release baseline win-rate trends (#1026)",
