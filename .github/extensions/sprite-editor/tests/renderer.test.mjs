@@ -257,6 +257,27 @@ test('sprite editor keeps every edit action within two clicks and preserves tool
 
     assert.equal(await page.locator('#app').getAttribute('aria-live'), null);
     assert.equal(await page.locator('#status').getAttribute('role'), 'status');
+    assert.equal(await page.locator('#zoom-level').getAttribute('aria-label'), 'Zoom level');
+    assert.equal(await page.locator('#draw-color').getAttribute('aria-label'), 'Draw color');
+
+    await page.locator('#tool-edge').click();
+    assert.equal(
+      await page.locator('.tool-panel').getByRole('button', { name: 'Edge cleanup' }).isEnabled(),
+      true,
+    );
+    await page.locator('#tool-background').click();
+    assert.equal(
+      await page.locator('.tool-panel').getByRole('button', { name: 'Remove BG' }).isEnabled(),
+      true,
+    );
+    await page.locator('#tool-fringe').click();
+    assert.equal(
+      await page
+        .locator('.tool-panel')
+        .getByRole('button', { name: 'Normalize fringe' })
+        .isEnabled(),
+      true,
+    );
 
     const brushStroke = async (x, y) => {
       await page.evaluate(
@@ -326,6 +347,121 @@ test('sprite editor keeps every edit action within two clicks and preserves tool
       await page.locator('[data-canvas-wrap]').evaluate((element) => element.scrollLeft),
       180,
     );
+  });
+});
+
+test('scaling restores dimensions, pixels, and anchors through undo and redo', async () => {
+  await withEditor(async (page) => {
+    const readCanvas = (selector) =>
+      page.locator(selector).evaluate((element) => {
+        const context = element.getContext('2d');
+        return {
+          width: element.width,
+          height: element.height,
+          pixels: Array.from(context.getImageData(0, 0, element.width, element.height).data),
+        };
+      });
+    const initial = await readCanvas('.sprite-canvas');
+
+    await page.locator('#tool-scale').click();
+    await page.evaluate(() => {
+      document.querySelector('#holdX').value = '1';
+      document.querySelector('#holdY').value = '1';
+      document.querySelector('#pivotX').value = '1';
+      document.querySelector('#pivotY').value = '1';
+    });
+    await page.locator('#scale-factor').evaluate((element) => {
+      element.value = '2';
+      element.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await page.locator('.tool-panel').getByRole('button', { name: 'Scale' }).click();
+    await page.waitForFunction(
+      () =>
+        document.querySelector('.sprite-canvas')?.width === 4 &&
+        document.querySelector('#status')?.textContent.startsWith('Scaled from'),
+    );
+
+    const scaled = await readCanvas('.sprite-canvas');
+    assert.deepEqual([scaled.width, scaled.height], [4, 4]);
+    assert.deepEqual(
+      await page.locator('.overlay-canvas').evaluate((element) => [element.width, element.height]),
+      [4, 4],
+    );
+    for (let y = 0; y < scaled.height; y += 1) {
+      for (let x = 0; x < scaled.width; x += 1) {
+        const sourceOffset = (Math.floor(y / 2) * initial.width + Math.floor(x / 2)) * 4;
+        const scaledOffset = (y * scaled.width + x) * 4;
+        assert.deepEqual(
+          scaled.pixels.slice(scaledOffset, scaledOffset + 4),
+          initial.pixels.slice(sourceOffset, sourceOffset + 4),
+        );
+      }
+    }
+    assert.deepEqual(
+      await page.evaluate(() =>
+        ['holdX', 'holdY', 'pivotX', 'pivotY'].map((id) => document.querySelector(`#${id}`).value),
+      ),
+      ['2', '2', '2', '2'],
+    );
+
+    await page.getByRole('button', { name: 'Undo' }).click();
+    assert.deepEqual(await readCanvas('.sprite-canvas'), initial);
+    assert.deepEqual(
+      await page.locator('.overlay-canvas').evaluate((element) => [element.width, element.height]),
+      [2, 2],
+    );
+    assert.deepEqual(
+      await page.evaluate(() =>
+        ['holdX', 'holdY', 'pivotX', 'pivotY'].map((id) => document.querySelector(`#${id}`).value),
+      ),
+      ['1', '1', '1', '1'],
+    );
+
+    await page.getByRole('button', { name: 'Redo' }).click();
+    assert.deepEqual(await readCanvas('.sprite-canvas'), scaled);
+    assert.deepEqual(
+      await page.evaluate(() =>
+        ['holdX', 'holdY', 'pivotX', 'pivotY'].map((id) => document.querySelector(`#${id}`).value),
+      ),
+      ['2', '2', '2', '2'],
+    );
+  });
+});
+
+test('stale scaling results cannot overwrite a newly selected sprite', async () => {
+  await withEditor(async (page) => {
+    await page.evaluate(() => {
+      window.Worker = class DelayedFailureWorker {
+        listeners = {};
+
+        addEventListener(type, listener) {
+          this.listeners[type] = listener;
+        }
+
+        postMessage() {
+          setTimeout(() => this.listeners.error?.(new Event('error')), 150);
+        }
+
+        terminate() {}
+      };
+    });
+    await page.locator('#tool-scale').click();
+    await page.locator('#scale-factor').evaluate((element) => {
+      element.value = '2';
+      element.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await page.locator('.tool-panel').getByRole('button', { name: 'Scale' }).click();
+    await page.getByRole('button', { name: /Second Fixture/ }).click();
+    await page.waitForFunction(
+      () => document.querySelector('.sprite-title')?.textContent === 'Second Fixture',
+    );
+    await page.waitForTimeout(250);
+
+    assert.deepEqual(
+      await page.locator('.sprite-canvas').evaluate((element) => [element.width, element.height]),
+      [2, 2],
+    );
+    assert.equal(await page.locator('.sprite-title').textContent(), 'Second Fixture');
   });
 });
 

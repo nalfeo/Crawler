@@ -414,17 +414,17 @@ const CLIENT_SCRIPT = String.raw`
   var edgeCleanupMethod = 'defringe';
   var edgeCleanupAmount = 60;
   var edgeCleanupAlphaCutoff = 24;
-  var lastAppliedEdgeCleanupSignature = 'defringe|60|24';
+  var lastAppliedEdgeCleanupSignature = null;
   var backgroundRemovalMethod = 'color-key';
   var backgroundTolerance = 36;
   var backgroundSoftness = 24;
   var sampledBackgroundColor = null;
   var sampledBackgroundPoint = null;
-  var lastAppliedBackgroundRemovalSignature = 'color-key|36|24|auto';
+  var lastAppliedBackgroundRemovalSignature = null;
   var fringeNormalizeMethod = 'opaque-average';
   var fringeNormalizeStrength = 70;
   var fringeNormalizeThreshold = 28;
-  var lastAppliedFringeNormalizeSignature = 'opaque-average|70|28';
+  var lastAppliedFringeNormalizeSignature = null;
   var scaleInFlight = false;
   var activeEditorTool = 'draw';
   var previousEditorTool = 'draw';
@@ -792,7 +792,20 @@ const CLIENT_SCRIPT = String.raw`
       setStatus('Scaling is already in progress…');
       return;
     }
+    persistFormDraftToSprite();
+    var expectedKey = sprite ? sprite.key : null;
+    var expectedCanvas = canvas;
+    var expectedLoadToken = loadTokenCounter;
+    var methodId = scaleMethod;
     var factor = clampScaleFactor(scaleFactor);
+    var isCurrentScaleTarget = function () {
+      return (
+        !!sprite &&
+        sprite.key === expectedKey &&
+        canvas === expectedCanvas &&
+        loadTokenCounter === expectedLoadToken
+      );
+    };
     if (factor === 1) {
       lastAppliedScaleFactor = factor;
       lastAppliedScaleMethod = scaleMethod;
@@ -829,14 +842,21 @@ const CLIENT_SCRIPT = String.raw`
           targetWidth: nextWidth,
           targetHeight: nextHeight,
           factor: factor,
-          methodId: scaleMethod,
+          methodId: methodId,
           opencvUrl: OPENCV_JS_URL
         });
         bitmap = workerResult.bitmap;
         engine = workerResult.engine || 'browser';
       } catch (_workerError) {
+        if (!isCurrentScaleTarget()) return;
         setStatus('Background worker unavailable; applying in-tab fallback…');
-        var browserScaledCanvas = scaleWithBrowserCanvas(canvas, nextWidth, nextHeight, scaleMethod, factor);
+        var browserScaledCanvas = scaleWithBrowserCanvas(
+          expectedCanvas,
+          nextWidth,
+          nextHeight,
+          methodId,
+          factor
+        );
         canvas.width = browserScaledCanvas.width;
         canvas.height = browserScaledCanvas.height;
         overlayCanvas.width = canvas.width;
@@ -847,6 +867,10 @@ const CLIENT_SCRIPT = String.raw`
         ctx.drawImage(browserScaledCanvas, 0, 0);
       }
       if (bitmap) {
+        if (!isCurrentScaleTarget()) {
+          if (typeof bitmap.close === 'function') bitmap.close();
+          return;
+        }
         canvas.width = bitmap.width || nextWidth;
         canvas.height = bitmap.height || nextHeight;
         overlayCanvas.width = canvas.width;
@@ -862,6 +886,12 @@ const CLIENT_SCRIPT = String.raw`
       ctx.imageSmoothingEnabled = false;
       overlayCtx.imageSmoothingEnabled = false;
       applyZoomScale();
+      var widthRatio = canvas.width / before.imageData.width;
+      var heightRatio = canvas.height / before.imageData.height;
+      sprite.holdX = Math.round(before.holdX * widthRatio);
+      sprite.holdY = Math.round(before.holdY * heightRatio);
+      sprite.pivotX = Math.round(before.pivotX * widthRatio);
+      sprite.pivotY = Math.round(before.pivotY * heightRatio);
 
       var after = cloneState();
       if (statesDiffer(before, after)) pushUndoState(before);
@@ -876,18 +906,18 @@ const CLIENT_SCRIPT = String.raw`
           'x' +
           String(canvas.height) +
           ' using ' +
-          scaleMethod +
+          methodId +
           '.';
       successMessage += engine === 'opencv' ? ' (OpenCV worker)' : ' (browser worker)';
       setStatus(successMessage);
       if (prevData === canvas.toDataURL('image/png')) setStatus('Scale completed; output image data unchanged.');
       lastAppliedScaleFactor = factor;
-      lastAppliedScaleMethod = scaleMethod;
+      lastAppliedScaleMethod = methodId;
     } catch (error) {
       setStatus(error.message || String(error), true);
     } finally {
       scaleInFlight = false;
-      renderEditor();
+      renderEditor({ skipDraftPersist: true });
     }
   }
 
@@ -1187,9 +1217,9 @@ const CLIENT_SCRIPT = String.raw`
     sampledBackgroundPoint = null;
     lastAppliedScaleFactor = clampScaleFactor(scaleFactor);
     lastAppliedScaleMethod = scaleMethod;
-    lastAppliedEdgeCleanupSignature = edgeCleanupSignature();
-    lastAppliedBackgroundRemovalSignature = backgroundRemovalSignature();
-    lastAppliedFringeNormalizeSignature = fringeNormalizeSignature();
+    lastAppliedEdgeCleanupSignature = null;
+    lastAppliedBackgroundRemovalSignature = null;
+    lastAppliedFringeNormalizeSignature = null;
     armEyedropper(false);
     bindCanvasDraw();
     renderOverlay();
@@ -1683,13 +1713,30 @@ const CLIENT_SCRIPT = String.raw`
     return {
       imageData: ctx.getImageData(0, 0, canvas.width, canvas.height),
       holdX: sprite ? Number(sprite.holdX || 0) : 0,
-      holdY: sprite ? Number(sprite.holdY || 0) : 0
+      holdY: sprite ? Number(sprite.holdY || 0) : 0,
+      pivotX: sprite ? Number(sprite.pivotX || 0) : 0,
+      pivotY: sprite ? Number(sprite.pivotY || 0) : 0
     };
   }
 
   function statesDiffer(a, b) {
     if (!a || !b) return false;
-    if (a.holdX !== b.holdX || a.holdY !== b.holdY) return true;
+    if (
+      a.holdX !== b.holdX ||
+      a.holdY !== b.holdY ||
+      a.pivotX !== b.pivotX ||
+      a.pivotY !== b.pivotY
+    ) {
+      return true;
+    }
+    if (
+      !a.imageData ||
+      !b.imageData ||
+      a.imageData.width !== b.imageData.width ||
+      a.imageData.height !== b.imageData.height
+    ) {
+      return true;
+    }
     var lhs = a.imageData && a.imageData.data ? a.imageData.data : null;
     var rhs = b.imageData && b.imageData.data ? b.imageData.data : null;
     if (!lhs || !rhs || lhs.length !== rhs.length) return true;
@@ -1701,13 +1748,34 @@ const CLIENT_SCRIPT = String.raw`
 
   function applyState(state) {
     if (!state || !ctx || !canvas || !sprite) return;
+    if (
+      canvas.width !== state.imageData.width ||
+      canvas.height !== state.imageData.height
+    ) {
+      canvas.width = state.imageData.width;
+      canvas.height = state.imageData.height;
+      overlayCanvas.width = canvas.width;
+      overlayCanvas.height = canvas.height;
+      ctx = canvas.getContext('2d', { willReadFrequently: true });
+      overlayCtx = overlayCanvas.getContext('2d', { willReadFrequently: true });
+      ctx.imageSmoothingEnabled = false;
+      overlayCtx.imageSmoothingEnabled = false;
+      applyZoomScale();
+    }
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.putImageData(state.imageData, 0, 0);
     sprite.holdX = state.holdX;
     sprite.holdY = state.holdY;
+    sprite.pivotX = state.pivotX;
+    sprite.pivotY = state.pivotY;
     var xInput = document.getElementById('holdX');
     var yInput = document.getElementById('holdY');
+    var pivotXInput = document.getElementById('pivotX');
+    var pivotYInput = document.getElementById('pivotY');
     if (xInput) xInput.value = String(state.holdX);
     if (yInput) yInput.value = String(state.holdY);
+    if (pivotXInput) pivotXInput.value = String(state.pivotX);
+    if (pivotYInput) pivotYInput.value = String(state.pivotY);
   }
 
   function pushUndoState(state) {
@@ -2256,6 +2324,7 @@ const CLIENT_SCRIPT = String.raw`
     var zoomInput = h('input', {
       id: 'zoom-level',
       type: 'number',
+      'aria-label': 'Zoom level',
       min: String(ZOOM_MIN),
       max: String(ZOOM_MAX),
       step: String(ZOOM_STEP),
@@ -2284,7 +2353,12 @@ const CLIENT_SCRIPT = String.raw`
       renderEditor();
     });
 
-    var colorInput = h('input', { id: 'draw-color', type: 'color', value: drawColor });
+    var colorInput = h('input', {
+      id: 'draw-color',
+      type: 'color',
+      value: drawColor,
+      'aria-label': 'Draw color'
+    });
     colorInput.addEventListener('change', function () {
       drawColor = colorInput.value || '#ff00ff';
     });
