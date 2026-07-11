@@ -47,11 +47,10 @@ function lastCommitTs(rel: string): number | null {
 /** Extract `> **Code source-of-truth:** path1, path2` values from spec text. */
 function extractSourceOfTruth(text: string): string[] {
   const paths: string[] = [];
-  // Use `s` flag (dotAll) so the match captures across lines if needed;
-  // strip any inline HTML comments before splitting on commas/whitespace.
   const match = text.match(/\*\*Code source-of-truth:\*\*\s*([^\n]+)/);
   if (!match || !match[1]) return paths;
-  // Remove HTML comments (use [\s\S] to match multiline comments safely)
+  // Remove HTML comments using [\s\S]*? so multiline comments like
+  // `<!-- intentionally omitted -->` are fully stripped before path parsing.
   const raw = match[1].replace(/<!--[\s\S]*?-->/g, '');
   // Split on commas or whitespace, strip markdown emphasis/backticks
   const parts = raw.split(/[,\s]+/).map((p) => p.replace(/[`*_]/g, '').trim());

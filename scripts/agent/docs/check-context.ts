@@ -118,7 +118,11 @@ function checkDocPaths(
       // Skip allowlisted entries
       if (ALLOWLIST.has(candidate)) continue;
 
-      // npm run script check — match `npm run <script>` with optional `-- <flags>` suffix
+      // npm run script check.
+      // Pattern captures: `npm run verify:fast` or `npm run verify -- --flag`
+      // The `(?:\s.*)?` tail matches optional arguments like `-- <args>` so docs
+      // that write `npm run verify:fast` and `VERIFY_FULL=1 npm run verify` both
+      // route here; only the bare script name is looked up in package.json.
       const npmRunMatch = candidate.match(/^npm run ([a-zA-Z0-9:_-]+)(?:\s.*)?$/);
       if (npmRunMatch) {
         const script = npmRunMatch[1];

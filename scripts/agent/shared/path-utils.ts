@@ -27,11 +27,15 @@ export const PATH_EXTS = ['.ts', '.tsx', '.md', '.json', '.yml', '.yaml', '.sh',
 /**
  * Heuristically decide whether a backtick-quoted string looks like a repo
  * file/directory path worth checking against the file system.
+ *
+ * Exclusion rationale:
+ *  - Strings with spaces / http URLs / npm or bash commands — these are prose, not paths.
+ *  - Strings containing `<` or `>` — HTML tags or template placeholders like `<slug>`.
+ *  - Strings containing YYYY, NNNN, or starting with "NN-" — date/ADR templates.
  */
 export function looksLikePath(s: string): boolean {
   if (s.includes(' ') || s.startsWith('http') || s.startsWith('npm ') || s.startsWith('bash '))
     return false;
-  // Template placeholders
   if (s.includes('<') || s.includes('>')) return false;
   if (/\bYYYY\b/.test(s) || /\bNNNN\b/.test(s) || /\bNN-/.test(s)) return false;
   if (PATH_PREFIXES.some((p) => s.startsWith(p))) return true;
