@@ -17,7 +17,8 @@ export async function supersedeTrackingIssues({ github, context, keepIssueNumber
     (issue) =>
       !issue.pull_request &&
       issue.number !== keepIssueNumber &&
-      matchesAnyPattern(issue.title, titlePatterns),
+      matchesAnyPattern(issue.title, titlePatterns) &&
+      issue.labels?.some((l) => l.name === 'automation'),
   );
 
   for (const issue of superseded) {

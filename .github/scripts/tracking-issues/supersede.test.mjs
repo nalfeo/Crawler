@@ -38,15 +38,28 @@ function createGithub(openIssues, { commentError } = {}) {
 
 test('closes only older reports in the requested stream', async () => {
   const { github, comments, updates } = createGithub([
-    { number: 12, title: 'nightly-mutation: 2026-07-12 regression' },
-    { number: 11, title: 'nightly-mutation: 2026-07-11 regression' },
-    { number: 10, title: 'nightly-mutation: baseline update needed' },
+    {
+      number: 12,
+      title: 'nightly-mutation: 2026-07-12 regression',
+      labels: [{ name: 'automation' }],
+    },
+    {
+      number: 11,
+      title: 'nightly-mutation: 2026-07-11 regression',
+      labels: [{ name: 'automation' }],
+    },
+    {
+      number: 10,
+      title: 'nightly-mutation: baseline update needed',
+      labels: [{ name: 'automation' }],
+    },
     {
       number: 9,
       title: 'nightly-mutation: 2026-07-09 regression',
+      labels: [{ name: 'automation' }],
       pull_request: { url: 'https://example.test/pr/9' },
     },
-    { number: 8, title: 'docs-update: 2026-07-08 findings' },
+    { number: 8, title: 'docs-update: 2026-07-08 findings', labels: [{ name: 'automation' }] },
   ]);
 
   const closed = await supersedeTrackingIssues({
@@ -73,9 +86,13 @@ test('closes only older reports in the requested stream', async () => {
 
 test('treats legacy Chronicle and docs-update titles as one stream', async () => {
   const { github, updates } = createGithub([
-    { number: 22, title: 'docs-update: 2026-07-12 findings' },
-    { number: 21, title: '[Chronicle] Agent-OS Telemetry Report — 2026-07-06' },
-    { number: 20, title: 'docs-update: scheduled report' },
+    { number: 22, title: 'docs-update: 2026-07-12 findings', labels: [{ name: 'automation' }] },
+    {
+      number: 21,
+      title: '[Chronicle] Agent-OS Telemetry Report — 2026-07-06',
+      labels: [{ name: 'automation' }],
+    },
+    { number: 20, title: 'docs-update: scheduled report', labels: [{ name: 'automation' }] },
   ]);
 
   const closed = await supersedeTrackingIssues({
@@ -97,7 +114,7 @@ test('treats legacy Chronicle and docs-update titles as one stream', async () =>
 
 test('is a no-op when no older matching report remains', async () => {
   const { github, comments, updates } = createGithub([
-    { number: 32, title: 'docs-update: 2026-07-12 findings' },
+    { number: 32, title: 'docs-update: 2026-07-12 findings', labels: [{ name: 'automation' }] },
   ]);
 
   const closed = await supersedeTrackingIssues({
@@ -116,8 +133,8 @@ test('propagates cleanup failures so a retry can supersede the duplicate', async
   const error = new Error('GitHub API unavailable');
   const { github, updates } = createGithub(
     [
-      { number: 42, title: 'docs-update: 2026-07-12 findings' },
-      { number: 41, title: 'docs-update: 2026-07-12 findings' },
+      { number: 42, title: 'docs-update: 2026-07-12 findings', labels: [{ name: 'automation' }] },
+      { number: 41, title: 'docs-update: 2026-07-12 findings', labels: [{ name: 'automation' }] },
     ],
     { commentError: error },
   );
@@ -131,5 +148,23 @@ test('propagates cleanup failures so a retry can supersede the duplicate', async
     }),
     error,
   );
+  assert.deepEqual(updates, []);
+});
+
+test('does not close user-authored issues that lack the automation label', async () => {
+  const { github, comments, updates } = createGithub([
+    { number: 52, title: 'docs-update: 2026-07-12 findings', labels: [{ name: 'automation' }] },
+    { number: 51, title: 'docs-update: 2026-07-11 findings', labels: [] },
+  ]);
+
+  const closed = await supersedeTrackingIssues({
+    github,
+    context,
+    keepIssueNumber: 52,
+    titlePatterns: [/^docs-update: \d{4}-\d{2}-\d{2} findings$/],
+  });
+
+  assert.deepEqual(closed, []);
+  assert.deepEqual(comments, []);
   assert.deepEqual(updates, []);
 });

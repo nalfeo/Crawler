@@ -26,6 +26,14 @@ if (String(issue.user?.login || '').toLowerCase() !== issueOwner) {
   process.exit(0);
 }
 
+const automationLabels = (issue.labels || []).map((l) => String(l.name || '').toLowerCase());
+if (automationLabels.includes('automation')) {
+  process.stdout.write(
+    `skip: issue #${issue.number} has automation label — already managed by CI automation\n`,
+  );
+  process.exit(0);
+}
+
 const actors = await graphql(
   token,
   `

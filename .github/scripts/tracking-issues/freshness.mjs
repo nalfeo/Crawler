@@ -67,7 +67,12 @@ export async function getWorkflowRunFreshness({ github, context, titlePatterns }
   });
 
   const newerCandidates = openIssues.flatMap((issue) => {
-    if (issue.pull_request || !matchesAnyPattern(issue.title, titlePatterns) || !issue.body) {
+    if (
+      issue.pull_request ||
+      !matchesAnyPattern(issue.title, titlePatterns) ||
+      !issue.body ||
+      !issue.labels?.some((l) => l.name === 'automation')
+    ) {
       return [];
     }
 
