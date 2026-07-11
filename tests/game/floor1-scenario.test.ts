@@ -18,6 +18,7 @@ import {
   getNpcQuestIndicatorState,
   getShopkeeperPostQuestStock,
   getShopkeeperStage,
+  buildInitiallyLockedDoorTileSet,
   initializeFloor1Scenario,
   meetSpellQuestGiver,
   meetTutorialGoon,
@@ -206,9 +207,8 @@ describe('floor1Scenario', () => {
       ]);
       expect(uniqueNpcTiles.size, `seed ${seed}: welcome-bar NPCs should not stack`).toBe(3);
 
-      // NPCs should scatter around the welcome bar, not huddle: every pair must
-      // be at least MIN_NPC_SPACING_TILES (3) apart in Chebyshev distance, i.e.
-      // two empty tiles between any two NPCs.
+      // NPCs should not huddle even when authored set-piece tiles are preserved.
+      // Keep at least one empty tile between any pair (Chebyshev >= 2).
       const npcTiles = [tutorialTile, shopTile, spellTile];
       const chebyshev = (a: { x: number; y: number }, b: { x: number; y: number }): number =>
         Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
@@ -217,8 +217,8 @@ describe('floor1Scenario', () => {
           const dist = chebyshev(npcTiles[i]!, npcTiles[j]!);
           expect(
             dist,
-            `seed ${seed}: welcome-bar NPCs ${i} and ${j} too close (Chebyshev ${dist}, want >= 3)`,
-          ).toBeGreaterThanOrEqual(3);
+            `seed ${seed}: welcome-bar NPCs ${i} and ${j} too close (Chebyshev ${dist}, want >= 2)`,
+          ).toBeGreaterThanOrEqual(2);
         }
       }
 
@@ -259,6 +259,10 @@ describe('floor1Scenario', () => {
 
       const map = world.floorMap!;
       const floor1 = world.floorScenario!;
+      const blockedDoorTiles = buildInitiallyLockedDoorTileSet(map, [
+        floor1.objective.staircasePos,
+        floor1.objective.slimeRatRoomPos,
+      ]);
       const npcCases = [
         { label: 'tutorial-goon', eid: floor1.guideNpcEid },
         { label: 'shopkeeper', eid: floor1.shopkeeperNpcEid },
@@ -271,7 +275,9 @@ describe('floor1Scenario', () => {
         const y = world.stores.position.y[eid!]!;
         const targetTile = map.worldToTile(x, y);
         const path = findTilePath(map, map.playerSpawn, targetTile, {
-          isTilePassable: (tx, ty) => map.tileMap.isPassable(tx, ty) || map.tileMap.isDoor(tx, ty),
+          isTilePassable: (tx, ty) =>
+            map.tileMap.isPassable(tx, ty) ||
+            (map.tileMap.isDoor(tx, ty) && !blockedDoorTiles.has(`${tx},${ty}`)),
         });
         expect(
           path.length,

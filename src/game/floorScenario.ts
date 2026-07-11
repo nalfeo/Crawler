@@ -483,7 +483,10 @@ function isCriticalProgressNpcType(npcTypeId: string): boolean {
   return FLOOR1_CRITICAL_PROGRESS_NPC_IDS.has(npcTypeId);
 }
 
-function buildReachableFromSpawnMask(floorMap: FloorMap): Uint8Array {
+function buildReachableFromSpawnMask(
+  floorMap: FloorMap,
+  blockedDoorTiles: ReadonlySet<string>,
+): Uint8Array {
   const width = floorMap.width;
   const height = floorMap.height;
   const mask = new Uint8Array(width * height);
@@ -511,7 +514,11 @@ function buildReachableFromSpawnMask(floorMap: FloorMap): Uint8Array {
       if (mask[neighborIndex]) {
         continue;
       }
-      if (!floorMap.tileMap.isPassable(nx, ny) && !floorMap.tileMap.isDoor(nx, ny)) {
+      const doorTile = floorMap.tileMap.isDoor(nx, ny);
+      if (
+        !floorMap.tileMap.isPassable(nx, ny) &&
+        (!doorTile || blockedDoorTiles.has(tileKey(nx, ny)))
+      ) {
         continue;
       }
       mask[neighborIndex] = 1;
@@ -519,6 +526,27 @@ function buildReachableFromSpawnMask(floorMap: FloorMap): Uint8Array {
     }
   }
   return mask;
+}
+
+export function buildInitiallyLockedDoorTileSet(
+  floorMap: FloorMap,
+  lockedRoomCenters: ReadonlyArray<{ x: number; y: number }>,
+): Set<string> {
+  const blocked = new Set<string>();
+  const seenRooms = new Set<number>();
+  for (const center of lockedRoomCenters) {
+    const centerTile = floorMap.worldToTile(center.x, center.y);
+    const roomId = floorMap.roomGraph.getRoomAt(centerTile.x, centerTile.y);
+    if (roomId < 0 || seenRooms.has(roomId)) {
+      continue;
+    }
+    seenRooms.add(roomId);
+    const room = floorMap.roomGraph.get(roomId);
+    for (const door of room?.doors ?? []) {
+      blocked.add(tileKey(door.x, door.y));
+    }
+  }
+  return blocked;
 }
 
 function isSpawnReachableTile(
@@ -577,6 +605,16 @@ function resolveRoutableNpcSpawnPosition(
     return preferredPos;
   }
   const preferredTile = floorMap.worldToTile(preferredPos.x, preferredPos.y);
+  if (
+    floorMap.tileMap.isPassable(preferredTile.x, preferredTile.y) &&
+    isSpawnReachableTile(floorMap, reachableMask, preferredTile.x, preferredTile.y) &&
+    !occupiedTiles.has(tileKey(preferredTile.x, preferredTile.y))
+  ) {
+    // Preserve an authored/stamped NPC tile when it is already valid; only
+    // scatter within the room if that tile fails passable/routable/occupancy checks.
+    occupiedTiles.add(tileKey(preferredTile.x, preferredTile.y));
+    return floorMap.tileToWorld(preferredTile.x, preferredTile.y);
+  }
   const roomId = floorMap.roomGraph.getRoomAt(preferredTile.x, preferredTile.y);
   const room = roomId >= 0 ? floorMap.roomGraph.get(roomId) : undefined;
   if (room) {
@@ -1185,15 +1223,15 @@ function spawnNpcFromPlacement(
   let x: number;
   let y: number;
 
-  if (isCriticalProgressNpcType(placement.npcTypeId)) {
+  if (placement.position) {
+    // Explicit position override
+    x = placement.position.x;
+    y = placement.position.y;
+  } else if (isCriticalProgressNpcType(placement.npcTypeId)) {
     // Floor-1 progression NPCs intentionally live in the welcome hub so the
     // entire questline remains discoverable without extra room-hunting variance.
     x = objectiveTiles.welcomeOfficePos.x;
     y = objectiveTiles.welcomeOfficePos.y;
-  } else if (placement.position) {
-    // Explicit position override
-    x = placement.position.x;
-    y = placement.position.y;
   } else if (placement.roomRole) {
     // Resolve from room role
     switch (placement.roomRole) {
@@ -1553,7 +1591,13 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   const floor1State = world.floorScenario;
   const npcPlacements = floor1Manifest.npcPlacements;
   const occupiedNpcTiles = new Set<string>();
-  const spawnReachableMask = world.floorMap ? buildReachableFromSpawnMask(world.floorMap) : null;
+  const spawnReachableMask =
+    world.floorMap == null
+      ? null
+      : buildReachableFromSpawnMask(
+          world.floorMap,
+          buildInitiallyLockedDoorTileSet(world.floorMap, [staircasePos, slimeRatRoomPos]),
+        );
   // Dedicated deterministic stream for NPC tile scatter so shared-room hubs (the
   // welcome bar) spread out per seed without consuming — or being perturbed by —
   // the shared gameplay RNG that drives enemies, loot, and props.
@@ -1599,7 +1643,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
               stamped.tileY,
             )));
       const resolvedPlacement = stamped
-        ? stampedPassableAndRoutable && !requireRoutable
+        ? stampedPassableAndRoutable
           ? { ...placement, position: { x: stamped.x, y: stamped.y } }
           : { ...placement, position: welcomeOfficePos }
         : placement;

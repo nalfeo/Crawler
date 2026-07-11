@@ -22,10 +22,10 @@ import {
 } from '../../core/systems/equipmentSystem.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../shared/constants.js';
 import { getEquipmentDefForItem } from '../../shared/equipmentDefs.js';
+import { NPC_INTERACT_RANGE_FT } from '../../shared/npc-types.js';
 import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from '../../shared/quest-types.js';
 import { PRIMARY_STATS, type PrimaryStatId, type StatId } from '../../shared/stats.js';
 import { AIState, type AIInputProvider } from './types.js';
-import { NPC_INTERACTION_RADIUS_FT } from './bt-ai-tuning.js';
 import {
   confirmFloor1StairDescend,
   equipPurchasedGear,
@@ -83,7 +83,12 @@ function isTargetedNpcActionable(
   }
   const px = world.stores.position.x[playerEid] ?? 0;
   const py = world.stores.position.y[playerEid] ?? 0;
-  return Math.hypot(decision.targetX - px, decision.targetY - py) <= NPC_INTERACTION_RADIUS_FT;
+  const npcX = world.stores.position.x[targetEid];
+  const npcY = world.stores.position.y[targetEid];
+  if (npcX === undefined || npcY === undefined) {
+    return false;
+  }
+  return Math.hypot(npcX - px, npcY - py) <= NPC_INTERACT_RANGE_FT;
 }
 
 /**
