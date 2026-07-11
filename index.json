@@ -1,5 +1,16 @@
 [
   {
+    "commit": "07838432da39881c92d76372588ae0dd5afa68d1",
+    "commitDate": "2026-07-11T03:25:59Z",
+    "commitSubject": "feat: complete Floor 2 direct-start and family boss progression (#1018)",
+    "capturedAt": "2026-07-11T04:09:11.014Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29138191630",
+    "winRate": 0.8566666666666667,
+    "totalWins": 257,
+    "totalRuns": 300,
+    "path": "by-sha/07838432da39881c92d76372588ae0dd5afa68d1.json"
+  },
+  {
     "commit": "3fb5cf43d93e75095a818c95ee5fb29a62df7afb",
     "commitDate": "2026-07-11T01:50:05Z",
     "commitSubject": "fix(ai): credit paused safe-room time in Floor-1 official-win definition (#1021)",
