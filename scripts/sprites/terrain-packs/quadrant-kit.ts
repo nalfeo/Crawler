@@ -76,10 +76,12 @@ export function renderQuadrant(corner: QuadrantCorner, state: QuadrantState): Rg
     const x0 = geom.nearLeftIsEdgeB ? 0 : QUADRANT_SRC_PX - EDGE_BAND_PX;
     fillRect(img, x0, 0, EDGE_BAND_PX, QUADRANT_SRC_PX, r, g, b, a);
   }
-  if (state === 'full') {
+  if (state === 'full' || state === 'open') {
     // Inner corner sub-square: the remaining quadrant-diagonal corner opposite this corner's
     // cardinal-near sides. Filling it with the accent color completes full coverage while
     // giving a (non-semantic) visual depth cue distinguishing it from the edge-band fill.
+    // In the `open` state, this keeps isolated-mask cells visibly solid at the center
+    // without painting any cardinal edge band, so edge-compatibility semantics remain intact.
     const x0 = geom.nearLeftIsEdgeB ? EDGE_BAND_PX : 0;
     const y0 = geom.nearTopIsEdgeA ? EDGE_BAND_PX : 0;
     const [ar, ag, ab, aa] = WALL_ACCENT_COLOR;

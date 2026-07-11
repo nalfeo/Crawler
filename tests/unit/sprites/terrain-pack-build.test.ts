@@ -81,6 +81,29 @@ describe('buildIndustrialCavePack (authored)', () => {
     expect(new Set(result.manifest.wallAutotile.masks.map((m) => m.maskId)).size).toBe(47);
   });
 
+  it('renders a non-transparent atlas cell for canonical mask 0 (isolated wall tile)', () => {
+    const atlas = decodePng(atlasBufferOf(result));
+    const mask0 = result.manifest.wallAutotile.masks.find((m) => m.maskId === 0);
+    expect(mask0).toBeDefined();
+    const cellPx = result.manifest.wallAutotile.cellPx;
+    const framesPerRow = Math.floor(atlas.width / cellPx);
+    const frameIndex = mask0!.frameIndex;
+    const x0 = (frameIndex % framesPerRow) * cellPx;
+    const y0 = Math.floor(frameIndex / framesPerRow) * cellPx;
+
+    let hasOpaquePixel = false;
+    for (let y = y0; y < y0 + cellPx && !hasOpaquePixel; y++) {
+      for (let x = x0; x < x0 + cellPx; x++) {
+        const alpha = atlas.data[(y * atlas.width + x) * 4 + 3]!;
+        if (alpha !== 0) {
+          hasOpaquePixel = true;
+          break;
+        }
+      }
+    }
+    expect(hasOpaquePixel).toBe(true);
+  });
+
   it('produces 3-5 floor variants, 3-5 corridor variants, and exactly 4 door PNGs', () => {
     expect(result.manifest.floorPool.length).toBeGreaterThanOrEqual(3);
     expect(result.manifest.floorPool.length).toBeLessThanOrEqual(5);

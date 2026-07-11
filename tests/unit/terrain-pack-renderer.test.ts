@@ -20,7 +20,11 @@ import { TileMap } from '../../src/core/map/TileMap.js';
 import { BiomeType, TerrainType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 import { PIXELS_PER_FOOT } from '../../src/shared/units.js';
 import { getTerrainPack } from '../../src/shared/terrain-pack-registry.js';
-import { neighborMask8InTerrain, normalizeBlob47Mask } from '../../src/shared/terrain-pack-mask.js';
+import {
+  computeRawMask8,
+  neighborMask8InTerrain,
+  normalizeBlob47Mask,
+} from '../../src/shared/terrain-pack-mask.js';
 import { pickPoolVariant } from '../../src/shared/terrain-pack-variants.js';
 
 interface StampCall {
@@ -177,6 +181,38 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
 
     expect(centerStamp!.key).toBe(pack.wallAutotile.textureKey);
     expect(centerStamp!.frame).toBe(expectedFrame);
+  });
+
+  it('treats STONE_WALL and CAVE_WALL as connected pack walls for mask selection', () => {
+    const { scene, rt } = createPackScene(allPackKeys);
+    const floorMap = makeFloorMap([TerrainType.STONE_WALL, TerrainType.CAVE_WALL], 2, 1);
+
+    buildTerrainLayer(scene, floorMap, { terrainPackId: 'industrial-cave' });
+
+    const rawLeft = computeRawMask8(0, 0, 2, 1, (nx, ny) => {
+      const t = floorMap.terrain[ny * 2 + nx] as TerrainType;
+      return t === TerrainType.STONE_WALL || t === TerrainType.CAVE_WALL;
+    });
+    const rawRight = computeRawMask8(1, 0, 2, 1, (nx, ny) => {
+      const t = floorMap.terrain[ny * 2 + nx] as TerrainType;
+      return t === TerrainType.STONE_WALL || t === TerrainType.CAVE_WALL;
+    });
+    const leftFrame = pack.wallAutotile.masks.find(
+      (m) => m.maskId === normalizeBlob47Mask(rawLeft),
+    )!.frameIndex;
+    const rightFrame = pack.wallAutotile.masks.find(
+      (m) => m.maskId === normalizeBlob47Mask(rawRight),
+    )!.frameIndex;
+
+    expect(rt.stamps).toHaveLength(2);
+    expect(rt.stamps[0]!.frame).toBe(leftFrame);
+    expect(rt.stamps[1]!.frame).toBe(rightFrame);
+    expect(rt.stamps[0]!.frame).not.toBe(
+      pack.wallAutotile.masks.find((m) => m.maskId === 0)!.frameIndex,
+    );
+    expect(rt.stamps[1]!.frame).not.toBe(
+      pack.wallAutotile.masks.find((m) => m.maskId === 0)!.frameIndex,
+    );
   });
 
   it('stamps a deterministic floorPool variant for STONE_FLOOR tiles', () => {

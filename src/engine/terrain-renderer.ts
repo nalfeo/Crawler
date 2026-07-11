@@ -44,7 +44,7 @@ import { TERRAIN_FALLBACK_COLORS } from '../shared/terrain-colors.js';
 import { getTileVisual, resolveFrame } from './sprites/tile-visuals.js';
 import { getSheet } from './sprites/index.js';
 import { createLogger } from '../shared/logger.js';
-import { neighborMask8InTerrain, normalizeBlob47Mask } from '../shared/terrain-pack-mask.js';
+import { computeRawMask8, normalizeBlob47Mask } from '../shared/terrain-pack-mask.js';
 import { getTerrainPack } from '../shared/terrain-pack-registry.js';
 import { pickPoolVariant } from '../shared/terrain-pack-variants.js';
 import {
@@ -195,7 +195,9 @@ export function buildTerrainLayer(
       // through to the generated/Kenney/color chain below so a cold boot or
       // a missing asset never leaves a blank tile.
       if (pack && maskFrameLookup && PACK_WALL_TERRAIN_TYPES.has(terrain)) {
-        const rawMask = neighborMask8InTerrain(floorMap.terrain, width, height, tx, ty, terrain);
+        const rawMask = computeRawMask8(tx, ty, width, height, (nx, ny) =>
+          PACK_WALL_TERRAIN_TYPES.has(floorMap.terrain[ny * width + nx] as TerrainType),
+        );
         const canonicalMask = normalizeBlob47Mask(rawMask);
         const frameIndex = maskFrameLookup.get(canonicalMask);
         if (frameIndex !== undefined && scene.textures.exists(pack.wallAutotile.textureKey)) {
