@@ -51,7 +51,7 @@ export function inferTelemetrySessionSlug(files, addedFiles = []) {
 
 function captureTelemetry(cwd, slug) {
   const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  execFileSync(npmCommand, ['run', 'telemetry:capture', '--', slug], {
+  return execFileSync(npmCommand, ['run', 'telemetry:capture', '--', slug], {
     cwd,
     encoding: 'utf-8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -108,18 +108,23 @@ export function telemetryCaptureNote(cwd, files, addedFiles = [], opts = {}) {
   const slug = inferTelemetrySessionSlug(files, addedFiles);
   const runCapture = opts.captureTelemetry ?? captureTelemetry;
   if (slug) {
+    let captureOutput;
     try {
-      runCapture(cwd, slug);
-    } catch {
+      captureOutput = runCapture(cwd, slug) ?? '';
+    } catch (err) {
+      const detail = String(
+        err?.stderr?.toString?.().trim() || err?.message || 'unknown telemetry:capture failure',
+      );
       return section(
         'guard-telemetry',
         `Automatic guard-telemetry capture failed for session "${slug}". Run ` +
-          `\`npm run telemetry:capture -- ${slug}\` manually before PR.`,
+          `\`npm run telemetry:capture -- ${slug}\` manually before PR.\n\n` +
+          `Last error: ${detail}`,
       );
     }
 
     const captureFile = `docs/knowledge/metrics/guard-telemetry/${todayStamp()}-${slug}.json`;
-    if (existsSync(join(cwd, captureFile))) {
+    if (captureOutput.includes('Captured ') || existsSync(join(cwd, captureFile))) {
       return section(
         'guard-telemetry',
         `Auto-captured guard telemetry to \`${captureFile}\`. Stage or commit it with the rest of the session artifacts.`,

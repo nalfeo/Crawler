@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { Buffer } from 'node:buffer';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -129,6 +130,27 @@ test('telemetryCaptureNote falls back to the manual reminder when no slug is inf
     const note = telemetryCaptureNote(dir, ['src/core/foo.ts'], []);
     assert.ok(note, 'expected a non-null note');
     assert.match(note, /npm run telemetry:capture -- <session-slug>/);
+  });
+});
+
+test('telemetryCaptureNote surfaces automatic-capture failure details', () => {
+  withTelemetryArtifact((dir) => {
+    const note = telemetryCaptureNote(
+      dir,
+      ['src/core/foo.ts', 'docs/knowledge/handoffs/2026-07-11-telemetry-auto.md'],
+      ['docs/knowledge/handoffs/2026-07-11-telemetry-auto.md'],
+      {
+        captureTelemetry() {
+          const error = new Error('boom');
+          error.stderr = Buffer.from('capture exploded\n');
+          throw error;
+        },
+      },
+    );
+
+    assert.ok(note, 'expected a non-null note');
+    assert.match(note, /Automatic guard-telemetry capture failed/);
+    assert.match(note, /capture exploded/);
   });
 });
 
