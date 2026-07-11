@@ -4,6 +4,8 @@ Crawler's CI recovery automation consolidates PR conflicts, failed checks,
 workflow approvals, and review threads into one deduplicated Copilot task.
 Repository-level workflow failures use one deduplicated incident issue per
 workflow.
+Issues opened by `nalfeo` are auto-assigned to Copilot with an instruction
+kickoff comment that points Copilot at the normal repo instructions.
 
 ## Trust boundary
 
@@ -11,6 +13,8 @@ workflow.
   backstop into per-PR `workflow_dispatch` runs.
 - `ci-recovery.yml` and `ci-recovery-incidents.yml` are the only recovery
   workflows that receive `CRAWLER_CI_PAT`.
+- `issue-copilot-intake.yml` also receives `CRAWLER_CI_PAT`, but only for
+  owner-opened issue assignment + kickoff-comment mutation.
 - PAT-bearing jobs check out only the default branch with credentials disabled.
   They never check out or execute pull-request code.
 - Fork PRs are ineligible, and fork workflow runs are never approved.

@@ -1,0 +1,27 @@
+name: Issue Copilot Intake
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  intake:
+    if: ${{ !github.event.issue.pull_request && github.event.issue.user.login == 'nalfeo' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted intake script
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Assign Copilot and post instruction kickoff
+        env:
+          CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
+          ISSUE_OWNER: nalfeo
+        run: node .github/scripts/ci-recovery/issue-intake.mjs
