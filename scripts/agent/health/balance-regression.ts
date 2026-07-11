@@ -5,7 +5,7 @@
  * `docs/knowledge/metrics/balance-baseline.json`.
  *
  * Fails on >REGRESSION_PCT drift in any metric. SKIPs cleanly when fresh
- * metrics aren't produced yet (Governor harness still TODO).
+ * metrics aren't produced yet (run governor-playthroughs.ts first).
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -25,7 +25,9 @@ interface BalanceFile {
 async function main(): Promise<void> {
   const report = new Report('health-balance-regression');
   if (!existsSync(fromRepo(FRESH_PATH))) {
-    report.skip(`No fresh balance metrics at ${FRESH_PATH} (governor harness pending).`);
+    report.skip(
+      `No fresh balance metrics at ${FRESH_PATH}. Run \`npx tsx scripts/agent/health/governor-playthroughs.ts\` to generate them.`,
+    );
     report.finish();
   }
   const baseline = JSON.parse(readFileSync(fromRepo(BASELINE_PATH), 'utf8')) as BalanceFile;

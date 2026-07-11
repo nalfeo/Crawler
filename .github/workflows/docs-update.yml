@@ -72,6 +72,14 @@ jobs:
         run: npx tsx scripts/agent/docs/guard-telemetry.ts
         continue-on-error: true
 
+      - name: SpecKit spec drift detection
+        run: npx tsx scripts/agent/docs/check-speckit-drift.ts
+        continue-on-error: true
+
+      - name: Context evaluator (AGENTS.md / persona docs)
+        run: npx tsx scripts/agent/docs/check-context.ts
+        continue-on-error: true
+
       - name: Archive handoffs older than 30 days
         run: npx tsx scripts/agent/docs/archive-handoffs.ts --apply
 
