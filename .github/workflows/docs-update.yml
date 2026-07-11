@@ -126,8 +126,35 @@ jobs:
           echo "exitcode=$?" >> "$GITHUB_OUTPUT"
         continue-on-error: true
 
+      - name: Check workflow-run freshness
+        id: freshness
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const path = require('node:path');
+            const { pathToFileURL } = require('node:url');
+            const helperUrl = pathToFileURL(
+              path.resolve(process.env.GITHUB_WORKSPACE, '.github/scripts/tracking-issues/freshness.mjs')
+            );
+            const { getWorkflowRunFreshness } = await import(helperUrl.href);
+            const freshness = await getWorkflowRunFreshness({
+              github,
+              context,
+              titlePatterns: [
+                /^\[Chronicle\] Agent-OS Telemetry Report\b/,
+                /^docs-update: \d{4}-\d{2}-\d{2} findings$/
+              ]
+            });
+            core.setOutput('is_latest', freshness.isLatest ? 'true' : 'false');
+            if (!freshness.isLatest) {
+              core.warning(
+                `Skipping stale docs-update report for run ${context.runId}; newer filed issue #${freshness.newerIssue.number} already exists.`
+              );
+            }
+
       - name: File tracking issue
-        if: steps.aggregate.outputs.exitcode != '0'
+        if: steps.aggregate.outputs.exitcode != '0' && steps.freshness.outputs.is_latest == 'true'
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -139,12 +166,16 @@ jobs:
               path.resolve(process.env.GITHUB_WORKSPACE, '.github/scripts/tracking-issues/supersede.mjs')
             );
             const { supersedeTrackingIssues } = await import(helperUrl.href);
+            const freshnessHelperUrl = pathToFileURL(
+              path.resolve(process.env.GITHUB_WORKSPACE, '.github/scripts/tracking-issues/freshness.mjs')
+            );
+            const { withTrackingIssueRunMetadata } = await import(freshnessHelperUrl.href);
             const date = new Date().toISOString().slice(0, 10);
             const issue = (await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: `docs-update: ${date} findings`,
-              body: fs.readFileSync('report.md', 'utf8'),
+              body: withTrackingIssueRunMetadata(fs.readFileSync('report.md', 'utf8'), { context }),
               labels: ['automation', 'docs']
             })).data;
 
