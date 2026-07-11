@@ -33,8 +33,11 @@ test('normalizes supported modes and rejects unknown values', () => {
 test('orders eligible same-repository PRs by creation time', () => {
   const fork = pr(3, { head: { sha: 'fork', repo: { full_name: 'fork/Crawler' } } });
   const draft = pr(4, { draft: true });
+  const blocked = pr(5, { labels: [{ name: 'merge-train' }, { name: 'merge-train-blocked' }] });
   assert.deepEqual(
-    queueEntries([pr(2), fork, draft, pr(1)], 'nalfeo/Crawler').map((entry) => entry.number),
+    queueEntries([pr(2), fork, draft, blocked, pr(1)], 'nalfeo/Crawler').map(
+      (entry) => entry.number,
+    ),
     [1, 2],
   );
 });
@@ -70,13 +73,20 @@ test('required checks use the latest attempt and require success', () => {
 
 test('train check state distinguishes missing, pending, failed, and successful checks', () => {
   assert.equal(trainCheckState([]), 'missing');
-  assert.equal(trainCheckState([{ id: 1, name: 'merge-train', status: 'in_progress' }]), 'pending');
   assert.equal(
-    trainCheckState([{ id: 1, name: 'merge-train', status: 'completed', conclusion: 'failure' }]),
+    trainCheckState([{ id: 1, name: 'merge-train-candidate', status: 'in_progress' }]),
+    'pending',
+  );
+  assert.equal(
+    trainCheckState([
+      { id: 1, name: 'merge-train-candidate', status: 'completed', conclusion: 'failure' },
+    ]),
     'failure',
   );
   assert.equal(
-    trainCheckState([{ id: 1, name: 'merge-train', status: 'completed', conclusion: 'success' }]),
+    trainCheckState([
+      { id: 1, name: 'merge-train-candidate', status: 'completed', conclusion: 'success' },
+    ]),
     'success',
   );
 });

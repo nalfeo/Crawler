@@ -29,7 +29,10 @@ jobs:
           ref: ${{ inputs.candidate_sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: ./.github/actions/setup-node
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts
       - name: Validate final commit subject
         run: git log -1 --pretty=%s | npx commitlint --config commitlint.title.config.cjs --verbose
       - name: Full repository verification
@@ -43,7 +46,10 @@ jobs:
         with:
           ref: ${{ inputs.candidate_sha }}
           persist-credentials: false
-      - uses: ./.github/actions/setup-node
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts
       - run: npm run test:headless
 
   e2e:
@@ -54,9 +60,11 @@ jobs:
         with:
           ref: ${{ inputs.candidate_sha }}
           persist-credentials: false
-      - uses: ./.github/actions/setup-node
+      - uses: actions/setup-node@v4
         with:
-          install-playwright: 'true'
+          node-version: '22'
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install chromium
       - run: npm run test:e2e
 
   security:
@@ -68,7 +76,10 @@ jobs:
           ref: ${{ inputs.candidate_sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: ./.github/actions/setup-node
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts
       - run: npm run security:check
 
   publish:
@@ -92,7 +103,7 @@ jobs:
             await github.rest.checks.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              name: 'merge-train',
+              name: 'merge-train-candidate',
               head_sha: process.env.CANDIDATE_SHA,
               status: 'completed',
               conclusion: passed ? 'success' : 'failure',

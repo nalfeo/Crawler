@@ -15,6 +15,8 @@ for the architectural rationale.
 
 1. CI recovery adds `merge-train` after the PR's admission checks pass and all
    review threads resolve.
+   Once labeled, CI recovery and broad auto-rebase both leave the PR unchanged;
+   the train exclusively owns freshness and promotion.
 2. `.github/workflows/merge-train.yml` serializes reconciliation with
    `queue: max`, selects the two oldest admitted PRs, and creates immutable
    cumulative branches:
@@ -22,9 +24,11 @@ for the architectural rationale.
    - slot 2: `main+A+B`
 3. `.github/workflows/merge-train-validate.yml` validates each immutable SHA.
    Candidate-executing jobs have read-only permissions. The final publisher job
-   does not check out candidate code and writes the `merge-train` check.
+   does not check out candidate code and writes the
+   `merge-train-candidate` result.
 4. A green slot 1 is revalidated for current head, title, checks, review threads,
-   and `main` parent. The App then:
+   and `main` parent. Only then does the trusted App publish the required
+   `merge-train` check and:
    - updates the PR head to the tested candidate using an exact force lease;
    - fast-forwards `main` to the same SHA.
 5. Slot 2's SHA remains valid after slot 1 lands because it is already a direct
@@ -38,10 +42,14 @@ candidate SHA, and state.
 - Only trusted default-branch orchestration receives the repository App token.
 - Candidate jobs receive `contents: read` and cannot update refs or checks.
 - The check publisher receives `checks: write` but never checks out or executes
-  candidate code.
+  candidate code. It publishes only `merge-train-candidate`; the required
+  `merge-train` context is written by trusted reconciliation immediately before
+  promotion.
 - Fork PRs are ineligible.
 - Candidate branches are immutable and named by their complete queue
-  fingerprint.
+  fingerprint. Reconciliation always reconstructs their expected SHA from
+  trusted queue metadata and overwrites the ref; a pre-existing ref is never
+  trusted.
 - Every promotion re-reads the PR and `main`; stale state fails closed.
 
 ## Required repository configuration
@@ -100,9 +108,10 @@ gh variable set MERGE_TRAIN_MODE --repo nalfeo/Crawler --body off
 
 - **Waiting:** admission checks or review threads are incomplete. CI recovery
   remains responsible for repair.
-- **Blocked:** cumulative squash conflicts. The PR receives
-  `merge-train-blocked`; repair its source branch, rerun normal CI, and let the
-  fingerprint rebuild.
+- **Blocked:** cumulative squash conflicts. The PR leaves the active queue and
+  receives `merge-train-blocked`, allowing later PRs to proceed. Repair its
+  source branch, rerun normal CI, then remove `merge-train-blocked`; CI recovery
+  will readmit it.
 - **Failed:** inspect the candidate's `Merge Train Validation` run. No ref moves.
 - **Stale:** a PR head/title or `main` changed. The candidate is abandoned and a
   new immutable generation is built.

@@ -32,11 +32,13 @@ Accepted
 - **DEC-002**: Admit only ready, same-repository PRs carrying `merge-train` whose
   configured PR checks have passed and whose review threads are resolved.
 - **DEC-003**: Construct immutable candidates as deterministic squash commits.
-  Candidate one is `main+A`; candidate two is `main+A+B`.
+  Candidate one is `main+A`; candidate two is `main+A+B`. Reconstruct the
+  expected SHA on every reconciliation rather than trusting a pre-existing
+  candidate ref.
 - **DEC-004**: Validate candidates through trusted default-branch
   `workflow_dispatch` code. Candidate-executing jobs receive read-only repository
   permission. A separate job that never checks out candidate code publishes the
-  `merge-train` check on the immutable candidate SHA.
+  `merge-train-candidate` result on the immutable candidate SHA.
 - **DEC-005**: Promote only the train head, only when `main` still equals the
   candidate's recorded parent and the PR head, title, checks, and review state
   remain current.
@@ -50,7 +52,9 @@ Accepted
   `queue: max`. Default the train to `off`; support `dry-run` before `live`.
 - **DEC-009**: Require the `merge-train` check in branch protection so manual or
   legacy merge paths cannot bypass candidate validation. The repository App is
-  the only actor allowed to bypass protection for the exact fast-forward.
+  the only actor that writes this required context, immediately before the exact
+  fast-forward. Manually dispatched validators can write only the non-required
+  `merge-train-candidate` result.
 
 ## Consequences
 
@@ -77,9 +81,9 @@ Accepted
 
 ### Risks
 
-- **RSK-001**: A failure between updating the PR head and fast-forwarding `main`
-  leaves a tested candidate at the PR head. The next serialized reconciliation
-  can retry; no untested commit reaches `main`.
+- **RSK-001**: Git hosting must support atomic multi-ref pushes. If either the PR
+  head lease or `main` lease fails, neither ref moves and reconciliation rebuilds
+  from current state.
 - **RSK-002**: If required PR checks change but
   `MERGE_TRAIN_ADMISSION_CHECKS` does not, admission may wait incorrectly.
   Candidate validation still runs the canonical full verify, headless, e2e, and

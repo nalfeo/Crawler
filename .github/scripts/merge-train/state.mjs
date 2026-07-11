@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 
 export const QUEUE_LABEL = 'merge-train';
 export const BLOCKED_LABEL = 'merge-train-blocked';
-export const CHECK_NAME = 'merge-train';
+export const CANDIDATE_CHECK_NAME = 'merge-train-candidate';
+export const REQUIRED_CHECK_NAME = 'merge-train';
 export const STATUS_MARKER = '<!-- crawler-merge-train:v1 -->';
 export const DEFAULT_ADMISSION_CHECKS = ['ci', 'commit-lint', 'Security checks'];
 
@@ -28,7 +29,8 @@ export function queueEntries(pullRequests, repository) {
         !pr.draft &&
         pr.base?.ref === 'main' &&
         pr.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase() &&
-        (pr.labels || []).some((label) => label.name === QUEUE_LABEL),
+        (pr.labels || []).some((label) => label.name === QUEUE_LABEL) &&
+        !(pr.labels || []).some((label) => label.name === BLOCKED_LABEL),
     )
     .sort(
       (left, right) =>
@@ -91,7 +93,7 @@ export function successfulChecks(checkRuns, requiredNames = DEFAULT_ADMISSION_CH
 }
 
 export function trainCheckState(checkRuns) {
-  const check = latestChecksByName(checkRuns).get(CHECK_NAME);
+  const check = latestChecksByName(checkRuns).get(CANDIDATE_CHECK_NAME);
   if (!check) return 'missing';
   if (check.status !== 'completed') return 'pending';
   return check.conclusion === 'success' ? 'success' : 'failure';

@@ -3,14 +3,15 @@ import { execFileSync } from 'node:child_process';
 import { listReviewThreads, paginate, request } from '../ci-recovery/github.mjs';
 import {
   BLOCKED_LABEL,
+  CANDIDATE_CHECK_NAME,
   candidateFingerprint,
   candidateRef,
-  CHECK_NAME,
   commitTimestamp,
   DEFAULT_ADMISSION_CHECKS,
   normalizeMode,
   QUEUE_LABEL,
   queueEntries,
+  REQUIRED_CHECK_NAME,
   renderStatus,
   STATUS_MARKER,
   successfulChecks,
@@ -173,39 +174,61 @@ function buildCandidate(baseSha, entries, refName) {
   }
   const sha = git(['rev-parse', 'HEAD']);
   if (live) {
-    git(['push', 'origin', `${sha}:refs/heads/${refName}`]);
+    git(['push', '--force', 'origin', `${sha}:refs/heads/${refName}`]);
   }
   return sha;
 }
 
-async function remoteCandidateSha(refName) {
-  const response = await request(
-    token,
-    `/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(refName)}`,
-  ).catch((error) => {
-    if (error.status === 404) return null;
-    throw error;
+async function createTrainCheck(
+  sha,
+  fingerprint,
+  status,
+  conclusion = undefined,
+  name = CANDIDATE_CHECK_NAME,
+) {
+  if (!live) return;
+  await request(token, `/repos/${owner}/${repo}/check-runs`, {
+    method: 'POST',
+    body: {
+      name,
+      head_sha: sha,
+      status,
+      external_id: fingerprint,
+      ...(conclusion ? { conclusion } : {}),
+      output: {
+        title:
+          status === 'completed'
+            ? 'Merge-train validation could not start'
+            : 'Merge-train validation queued',
+        summary: `Fingerprint: ${fingerprint}`,
+      },
+    },
   });
-  return response?.data?.object?.sha || null;
 }
 
 async function dispatchValidation(sha, fingerprint, entries) {
   if (!live) return;
-  await request(
-    token,
-    `/repos/${owner}/${repo}/actions/workflows/merge-train-validate.yml/dispatches`,
-    {
-      method: 'POST',
-      body: {
-        ref: 'main',
-        inputs: {
-          candidate_sha: sha,
-          fingerprint,
-          pr_numbers: entries.map((entry) => entry.number).join(','),
+  await createTrainCheck(sha, fingerprint, 'in_progress');
+  try {
+    await request(
+      token,
+      `/repos/${owner}/${repo}/actions/workflows/merge-train-validate.yml/dispatches`,
+      {
+        method: 'POST',
+        body: {
+          ref: 'main',
+          inputs: {
+            candidate_sha: sha,
+            fingerprint,
+            pr_numbers: entries.map((entry) => entry.number).join(','),
+          },
         },
       },
-    },
-  );
+    );
+  } catch (error) {
+    await createTrainCheck(sha, fingerprint, 'completed', 'failure');
+    throw error;
+  }
 }
 
 async function promote(pr, candidateSha, expectedBase, position) {
@@ -234,17 +257,38 @@ async function promote(pr, candidateSha, expectedBase, position) {
     process.stdout.write(`dry-run would-promote pr=#${pr.number} sha=${candidateSha}\n`);
     return false;
   }
+  const promotionFingerprint = candidateFingerprint(expectedBase, [currentPr]);
+  await createTrainCheck(
+    candidateSha,
+    promotionFingerprint,
+    'completed',
+    'success',
+    REQUIRED_CHECK_NAME,
+  );
   const headRef = currentPr.head.ref;
   if (!/^[A-Za-z0-9._/-]+$/.test(headRef)) {
     throw new Error(`Unsafe PR head ref: ${headRef}`);
   }
-  git([
-    'push',
-    'origin',
-    `${candidateSha}:refs/heads/${headRef}`,
-    `--force-with-lease=refs/heads/${headRef}:${currentPr.head.sha}`,
-  ]);
-  git(['push', 'origin', `${candidateSha}:refs/heads/main`]);
+  try {
+    git([
+      'push',
+      '--atomic',
+      'origin',
+      `${candidateSha}:refs/heads/${headRef}`,
+      `${candidateSha}:refs/heads/main`,
+      `--force-with-lease=refs/heads/${headRef}:${currentPr.head.sha}`,
+      `--force-with-lease=refs/heads/main:${expectedBase}`,
+    ]);
+  } catch (error) {
+    await createTrainCheck(
+      candidateSha,
+      promotionFingerprint,
+      'completed',
+      'failure',
+      REQUIRED_CHECK_NAME,
+    );
+    throw error;
+  }
   await removeLabel(pr.number, QUEUE_LABEL);
   await removeLabel(pr.number, BLOCKED_LABEL);
   await updateStatus(
@@ -300,12 +344,13 @@ for (let index = 0; index < train.length; index += 1) {
   const entries = train.slice(0, index + 1);
   const fingerprint = candidateFingerprint(mainSha, entries);
   const refName = candidateRef(index + 1, fingerprint);
-  let candidateSha = live ? await remoteCandidateSha(refName) : null;
+  let candidateSha;
   try {
-    candidateSha ||= buildCandidate(mainSha, entries, refName);
+    candidateSha = buildCandidate(mainSha, entries, refName);
     await removeLabel(train[index].number, BLOCKED_LABEL);
   } catch (error) {
     await setLabel(train[index].number, BLOCKED_LABEL);
+    await removeLabel(train[index].number, QUEUE_LABEL);
     await updateStatus(
       train[index].number,
       renderStatus({
