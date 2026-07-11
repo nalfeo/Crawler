@@ -57,6 +57,32 @@ function makeLockedSpawnerNearPlayer(
   return spawnerEid;
 }
 
+function startStaircaseBossLockin(
+  world: ReturnType<typeof createTestWorld>,
+  px: number,
+  py: number,
+  bossOffsetX: number,
+  bossOffsetY: number,
+): number {
+  const objective = world.floorScenario?.objective;
+  const staircase = objective?.bossBattles.get('staircase');
+  if (!staircase) {
+    throw new Error('Missing staircase battle in Floor 1 objective setup');
+  }
+  const bossEid = spawnEnemy(world, px + bossOffsetX, py + bossOffsetY, 300);
+  staircase.started = true;
+  staircase.defeated = false;
+  staircase.bossEid = bossEid;
+  return bossEid;
+}
+
+function markEnemyIgnored(ai: BehaviorTreeAI, eid: number, untilFrame: number): void {
+  (ai as unknown as { ignoredEnemyUntilFrame: Map<number, number> }).ignoredEnemyUntilFrame.set(
+    eid,
+    untilFrame,
+  );
+}
+
 describe('BT — arena lock-in priority (1.5)', () => {
   it('selects the spawner as the movement target when locked in an arena', () => {
     const world = createTestWorld({ seed: 42 });
@@ -141,5 +167,81 @@ describe('BT — arena lock-in priority (1.5)', () => {
     expect(decision.targetEid).toBe(spawnerEid);
     expect(decision.reason.toLowerCase()).toContain('arena');
     expect(decision.state).not.toBe(AIState.COLLECT);
+  });
+
+  it('boss lock-in: keeps targeting the boss when add pressure is not immediate', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 30;
+
+    const px = world.stores.position.x[player]!;
+    const py = world.stores.position.y[player]!;
+    const bossEid = startStaircaseBossLockin(world, px, py, 4, 0);
+    spawnEnemy(world, px + 10, py, 40); // non-immediate add: outside melee strike gate
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(decision.targetEid).toBe(bossEid);
+    expect(decision.reason).toContain('boss');
+  });
+
+  it('boss lock-in: ignored closest add is neither selected nor counted for crowd pressure', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 80;
+
+    const px = world.stores.position.x[player]!;
+    const py = world.stores.position.y[player]!;
+    const bossEid = startStaircaseBossLockin(world, px, py, 4, 0);
+    const ignoredAddEid = spawnEnemy(world, px + 4, py + 0.5, 40);
+    for (let i = 0; i < 9; i += 1) {
+      const angle = ((i + 1) / 10) * Math.PI * 2;
+      const radius = 4.5 + (i % 2);
+      spawnEnemy(world, px + Math.cos(angle) * radius, py + Math.sin(angle) * radius, 40);
+    }
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    markEnemyIgnored(ai, ignoredAddEid, world.frameCount + 300);
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(decision.targetEid).toBe(bossEid);
+    expect(decision.targetEid).not.toBe(ignoredAddEid);
+    expect(decision.reason).toContain('boss');
+  });
+
+  it('boss lock-in: ignores a nearby ignored add and stays on the boss target', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 30;
+
+    const px = world.stores.position.x[player]!;
+    const py = world.stores.position.y[player]!;
+    const bossEid = startStaircaseBossLockin(world, px, py, 4, 0);
+    const ignoredStickyAddEid = spawnEnemy(world, px + 3.8, py + 0.4, 40);
+    spawnEnemy(world, px + 4.4, py + 1.2, 40);
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    markEnemyIgnored(ai, ignoredStickyAddEid, world.frameCount + 300);
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(decision.targetEid).toBe(bossEid);
+    expect(decision.targetEid).not.toBe(ignoredStickyAddEid);
+    expect(decision.reason).toContain('boss');
   });
 });
