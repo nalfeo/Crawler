@@ -36,6 +36,7 @@ export interface WeaponSweepOutput {
   seeds: number[];
   weapons: string[];
   maxFrames: number;
+  weaponPersonas: boolean;
   budgetSec: number;
   summaries: WeaponSweepSummary[];
   allRecords: WeaponSweepRecord[];
@@ -100,6 +101,7 @@ function isValidShardShape(value: unknown, expectedWeapon: string): value is Wea
     shard.weapons.length === 1 &&
     shard.weapons[0] === expectedWeapon &&
     isPositiveInteger(shard.maxFrames) &&
+    typeof shard.weaponPersonas === 'boolean' &&
     isFiniteNumber(shard.budgetSec) &&
     Array.isArray(shard.summaries) &&
     shard.summaries.length === 1 &&
@@ -147,6 +149,7 @@ export function mergeWeaponSweepShards(
     throw new Error(`Malformed shard payload for weapon "${weapon}"`);
   }
   const maxFrames = firstShard.maxFrames;
+  const weaponPersonas = firstShard.weaponPersonas;
   const bySeed = new Map<number, WeaponSweepRecord>();
 
   for (const shard of shards) {
@@ -155,6 +158,11 @@ export function mergeWeaponSweepShards(
     }
     if (shard.maxFrames !== maxFrames) {
       throw new Error(`Shard frame-budget mismatch: ${shard.maxFrames} vs ${maxFrames}`);
+    }
+    if (shard.weaponPersonas !== weaponPersonas) {
+      throw new Error(
+        `Shard persona-mode mismatch for "${weapon}": ${shard.weaponPersonas} vs ${weaponPersonas}`,
+      );
     }
     if (
       shard.seeds.length !== shard.allRecords.length ||
@@ -199,6 +207,7 @@ export function mergeWeaponSweepShards(
     seeds: [...expectedSeeds],
     weapons: [weapon],
     maxFrames,
+    weaponPersonas,
     budgetSec: maxFrames / 60,
     summaries: [summary],
     allRecords,
