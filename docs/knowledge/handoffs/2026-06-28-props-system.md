@@ -6,6 +6,10 @@
 
 ---
 
+## Systems touched
+
+mapgen, lighting
+
 ## What Was Delivered
 
 Full 4-phase props system as described in the plan, implemented directly (not delegated to a subagent — previous session lost work by delegating):

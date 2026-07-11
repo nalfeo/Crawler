@@ -3,6 +3,10 @@
 Date: 2026-07-04
 Branch: `feat/dynamic-barriers` (stacked on `feat/spawner-battle-arena`).
 
+## Systems touched
+
+mapgen, enemies
+
 ## Summary
 
 PR #764 shipped a `raiseFence` / `lowerFence` helper pair in

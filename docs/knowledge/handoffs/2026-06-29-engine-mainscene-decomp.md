@@ -1,5 +1,9 @@
 # Session Handoff: Engine — MainGameScene god-class decomposition
 
+## Systems touched
+
+hud-ux
+
 ## Date
 
 2026-06-29

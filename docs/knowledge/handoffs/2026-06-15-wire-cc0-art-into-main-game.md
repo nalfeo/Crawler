@@ -1,5 +1,9 @@
 # Session Handoff: Wire CC0 tiny-dungeon art into the main game
 
+## Systems touched
+
+sprite-pipeline, sprite-workflow
+
 ## Date
 
 2026-06-15

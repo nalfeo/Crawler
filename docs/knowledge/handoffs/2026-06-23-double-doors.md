@@ -1,5 +1,9 @@
 # Session Handoff: Double Doors
 
+## Systems touched
+
+mapgen
+
 ## Date
 
 2026-06-23

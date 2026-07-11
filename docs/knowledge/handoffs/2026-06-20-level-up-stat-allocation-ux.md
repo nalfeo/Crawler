@@ -1,5 +1,9 @@
 # Session Handoff: Level-Up Stat Allocation UX
 
+## Systems touched
+
+hud-ux, inventory
+
 ## Date
 
 2026-06-20

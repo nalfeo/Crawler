@@ -1,5 +1,9 @@
 # Session Handoff: Wire secondary stats (crit/dodge) into combat — PR1 (ITEM 5)
 
+## Systems touched
+
+weapons, vfx
+
 ## Date
 
 2026-06-25

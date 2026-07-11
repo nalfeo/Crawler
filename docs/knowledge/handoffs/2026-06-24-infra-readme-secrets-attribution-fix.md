@@ -4,6 +4,10 @@
 **Session:** address-review-comments-pr-262
 **Branch:** copilot/asset-generation-azure-queue
 
+## Systems touched
+
+azure-infra
+
 ## What was done
 
 Fixed a documentation ambiguity in `infra/README.md` (PR #262, reviewer comment on `infra/README.md:126`).

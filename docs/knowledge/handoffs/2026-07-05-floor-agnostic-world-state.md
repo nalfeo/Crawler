@@ -18,7 +18,7 @@ Also removed `enableFloor1` from `SimulationOptions` — simulation step now che
 
 ## Systems touched
 
-`core`, `engine`, `game`
+mapgen, enemies
 
 ## Files touched
 

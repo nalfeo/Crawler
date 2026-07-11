@@ -1,5 +1,9 @@
 # Session Handoff: Revert Swarm-Kite Regression (Floor 1 Gate)
 
+## Systems touched
+
+ai-combat-balance, ai-behavior-tree
+
 ## Date
 
 2026-06-23

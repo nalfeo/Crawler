@@ -1,5 +1,9 @@
 # Handoff — Gemini provider for codex-repair
 
+## Systems touched
+
+azure-infra
+
 ## Summary
 
 Added a `gemini` provider to the codex-repair pipeline alongside `codex`, so the

@@ -1,5 +1,9 @@
 # Session Handoff: PhaserBridge module decomposition
 
+## Systems touched
+
+hud-ux
+
 ## Date
 
 2026-06-29

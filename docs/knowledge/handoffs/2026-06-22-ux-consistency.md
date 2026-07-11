@@ -5,6 +5,10 @@
 **Branch:** current working branch  
 **Apple estimate:** 🍎🍎 | **Actual:** 🍎🍎 | **Verdict:** on target
 
+## Systems touched
+
+hud-ux
+
 ## What was done
 
 Aligned three game surfaces — floor1-lab, main game (`src/main.ts`), and ai-runner-lab visual mode — so they render and behave identically.

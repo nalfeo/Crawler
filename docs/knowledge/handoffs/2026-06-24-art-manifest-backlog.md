@@ -5,6 +5,10 @@
 **Branch:** nalfeo-art-manifest-backlog
 **Scope:** PR Group F, Item 10 — docs/data only (no generation pipeline run)
 
+## Systems touched
+
+sprite-workflow
+
 ## Problem
 
 Several recent handoffs shipped procedural/placeholder sprites for items and

@@ -13,7 +13,7 @@ All code passes type check, linting, and unit tests. Tests validate grid assembl
 
 ## Systems Touched
 
-sprites, provider
+sprite-pipeline, sprite-workflow
 
 ## Work Completed
 

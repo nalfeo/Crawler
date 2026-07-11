@@ -5,6 +5,10 @@
 **Persona:** Producer
 **Apples:** 🍎 estimated → 🍎 actual
 
+## Systems touched
+
+mapgen, quests
+
 ## Summary
 
 PR #437 made the Floor 1 headless gate pass by lowering `WELCOME_TARGET_HOPS`

@@ -8,7 +8,7 @@
 
 ## Systems touched
 
-harvestables, ai-loot
+quests, ai-behavior-tree
 
 ## What was done
 

@@ -4,6 +4,10 @@
 **Branch / PR:** `copilot/build-level-up-ux`
 **Persona:** Producer (multi-layer: game + engine + lab)
 
+## Systems touched
+
+hud-ux, inventory
+
 ## Apples
 
 **Estimate:** 🍎🍎🍎 (3, Medium) · **Actual:** 🍎🍎🍎 (3) · verdict **🎯 exact**

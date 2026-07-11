@@ -1,5 +1,9 @@
 # Session Handoff: Raise Azure Storage Queue default visibility timeout to 900s
 
+## Systems touched
+
+azure-infra, sprite-workflow
+
 ## Date
 
 2026-07-02

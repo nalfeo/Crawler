@@ -1,5 +1,9 @@
 # Session Handoff: World Gen Connectivity Fix
 
+## Systems touched
+
+mapgen
+
 ## Date
 
 2026-06-23

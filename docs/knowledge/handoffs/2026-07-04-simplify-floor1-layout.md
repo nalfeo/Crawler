@@ -10,7 +10,7 @@ Consolidated all three Floor 1 quest NPCs (Tutorial Goon, Spell Broker, Sweaty M
 
 ## Systems touched
 
-floor1-scenario, floor1-manifest, ai-bt-provider, tests
+mapgen, ai-behavior-tree
 
 ## Changes
 

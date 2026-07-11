@@ -1,5 +1,9 @@
 # Session Handoff: Test-suite CPU levers — parallelization + pool/isolation investigation
 
+## Systems touched
+
+ci-policy
+
 ## Date
 
 2026-06-27

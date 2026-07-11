@@ -6,7 +6,7 @@
 
 ## Systems touched
 
-ci, tooling
+ci-policy
 
 ## What was done
 

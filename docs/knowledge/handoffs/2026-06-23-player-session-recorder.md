@@ -6,6 +6,10 @@
 
 ---
 
+## Systems touched
+
+devtools
+
 ## What Was Done
 
 Added a dev-only player session recorder so human play can be captured at the same telemetry fidelity as the AI headless runner. The data can be used to compare human vs AI behavior and tune AI parameters.

@@ -1,5 +1,9 @@
 # Session Handoff: Apple-scaled review harness skill + pre-PR ledger guard
 
+## Systems touched
+
+ci-policy
+
 ## Date
 
 2026-06-29

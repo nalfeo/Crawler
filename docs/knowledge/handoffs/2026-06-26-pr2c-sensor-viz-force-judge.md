@@ -1,5 +1,9 @@
 # Handoff — 2026-06-26 pr2c-sensor-viz-force-judge (PR2c — FINAL PR of the PR2 7-stage epic)
 
+## Systems touched
+
+sprite-pipeline
+
 ## Date
 
 2026-06-26

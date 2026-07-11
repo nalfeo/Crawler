@@ -9,7 +9,7 @@
 
 ## Systems Touched
 
-sprites, provider
+sprite-pipeline, sprite-workflow
 
 ## Summary
 

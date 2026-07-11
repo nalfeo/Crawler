@@ -1,5 +1,9 @@
 # Session Handoff: Speed up local dev (build/test/lint + worktree setup)
 
+## Systems touched
+
+ci-policy
+
 ## Date
 
 2026-06-27

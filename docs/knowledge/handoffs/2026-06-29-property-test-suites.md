@@ -1,5 +1,9 @@
 # Session Handoff: Property-based test suites for pure game logic
 
+## Systems touched
+
+ci-policy
+
 ## Date
 
 2026-06-29

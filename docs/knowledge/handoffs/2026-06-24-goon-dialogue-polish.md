@@ -1,5 +1,9 @@
 # Session Handoff: Tutorial Goon dialogue polish (PR Group C, Item 12)
 
+## Systems touched
+
+quests
+
 ## Date
 
 2026-06-24

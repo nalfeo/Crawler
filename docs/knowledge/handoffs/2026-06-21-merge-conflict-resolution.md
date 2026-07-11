@@ -4,6 +4,10 @@
 **Branch:** copilot/resolve-integration-test-failures  
 **Complexity:** 🍎🍎 (two-layer: merge resolution + root-cause bug fix)
 
+## Systems touched
+
+weapons
+
 ## What was done
 
 ### 1. Resolved merge conflicts with main

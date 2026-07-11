@@ -6,7 +6,7 @@
 
 ## Systems touched
 
-engine-rendering, sprite-pipeline, shared-data, tests, floor-art-plans
+sprite-pipeline, sprite-workflow, enemies
 
 ## Summary
 

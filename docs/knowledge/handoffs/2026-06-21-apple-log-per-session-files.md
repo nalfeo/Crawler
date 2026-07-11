@@ -1,5 +1,9 @@
 # Handoff — 2026-06-21 apple-log-per-session-files
 
+## Systems touched
+
+ci-policy
+
 ## Apples
 
 - Estimated: 🍎🍎 (Small)
