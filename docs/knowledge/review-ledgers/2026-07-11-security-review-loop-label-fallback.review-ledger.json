@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-11",
+  "session_slug": "security-review-loop-label-fallback",
+  "task_title": "Fix security-review issue label fallback",
+  "estimated_apples": 1,
+  "stages": {}
+}
