@@ -1,5 +1,16 @@
 [
   {
+    "commit": "4e7c690da149abb542df004c9f69b6348795559e",
+    "commitDate": "2026-07-10T23:36:23Z",
+    "commitSubject": "feat: add apples:record CLI and drop 1–2🍎 file requirement (#1017)",
+    "capturedAt": "2026-07-11T00:19:11.721Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29131041547",
+    "winRate": 0.8433333333333334,
+    "totalWins": 253,
+    "totalRuns": 300,
+    "path": "by-sha/4e7c690da149abb542df004c9f69b6348795559e.json"
+  },
+  {
     "commit": "554da4b923bc52b5442bca2f20c7bbfd0d5b3d00",
     "commitDate": "2026-07-10T21:54:56Z",
     "commitSubject": "chore: codify sweep standards and repair ADR consistency docs (#1015)",
