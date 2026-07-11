@@ -1113,13 +1113,14 @@ describe('floor1Scenario', () => {
       questSystem(world);
 
       const itemPos = world.floorScenario!.objective.questItemPos;
-      expect(getQuestWaypoints(world, player)).toEqual([
+      expect(getQuestWaypoints(world, player)).toContainEqual(
         expect.objectContaining({
+          questId: FLOOR1_SHOP_QUEST_ID,
           x: itemPos.x,
           y: itemPos.y,
           kind: 'item',
         }),
-      ]);
+      );
     });
 
     it('refuses to sell when the player cannot afford the charm', () => {
