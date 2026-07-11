@@ -10,7 +10,7 @@ on:
       weapons:
         description: 'Comma-separated Floor-1 weapons'
         type: string
-        default: 'sword,bow,baseball-bat'
+        default: 'sword,bow,baseball-bat,pistol,throwing-knife,fireball'
       max_frames:
         description: 'Frame budget per run (positive integer ≤ 600000; default 19800 ≈ 330s at 60fps)'
         type: string
@@ -56,8 +56,8 @@ jobs:
             echo "::error::weapons must not contain duplicates"
             exit 1
           fi
-          if echo "$weapon_matrix" | jq -e '.[] | ascii_downcase | select(. != "sword" and . != "bow" and . != "baseball-bat")' > /dev/null 2>&1; then
-            echo "::error::weapons must be a comma-separated subset of: sword,bow,baseball-bat"
+          if echo "$weapon_matrix" | jq -e '.[] | ascii_downcase | select(. != "sword" and . != "bow" and . != "baseball-bat" and . != "pistol" and . != "throwing-knife" and . != "fireball")' > /dev/null 2>&1; then
+            echo "::error::weapons must be a comma-separated subset of: sword,bow,baseball-bat,pistol,throwing-knife,fireball"
             exit 1
           fi
           weapon_matrix=$(echo "$weapon_matrix" | jq -c '[.[] | ascii_downcase]')
