@@ -21,15 +21,18 @@ describe('real-game launch seed', () => {
     expect(generateSeed).not.toHaveBeenCalled();
   });
 
-  it('uses browser entropy and returns a non-zero seed', () => {
+  it('retries browser entropy until the seed is non-zero', () => {
+    let callCount = 0;
     const getRandomValues = vi
       .spyOn(globalThis.crypto, 'getRandomValues')
       .mockImplementation((values) => {
-        (values as Uint32Array)[0] = 1_234_567;
+        callCount += 1;
+        (values as Uint32Array)[0] = callCount === 1 ? 0 : 1_234_567;
         return values;
       });
 
     expect(generateGameLaunchSeed()).toBe(1_234_567);
+    expect(getRandomValues).toHaveBeenCalledTimes(2);
     getRandomValues.mockRestore();
   });
 
