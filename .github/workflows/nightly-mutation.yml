@@ -84,27 +84,14 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Generate app token
-        id: app-token
-        # Only mint when a baseline change was detected — token is only needed
-        # for the issue-creation step below, so avoid unnecessary API calls and
-        # secret exposure on the common "no change" path.
-        if: steps.detect-changes.outputs.changed == 'true'
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-
       - name: Create baseline update issue for copilot
         if: steps.detect-changes.outputs.changed == 'true'
         uses: actions/github-script@v7
         with:
-          # Use a GH App token so that issue assignment to @copilot is recognised
-          # by GitHub and triggers the Copilot coding agent.
-          github-token: ${{ steps.app-token.outputs.token }}
+          github-token: ${{ secrets.CRAWLER_CI_PAT }}
           script: |
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const title = `nightly-mutation: baseline update needed (run #${context.runNumber})`;
+            const title = 'nightly-mutation: baseline update needed';
             const body = [
               'Nightly mutation baseline changed and needs an automation PR.',
               '',
@@ -121,24 +108,68 @@ jobs:
               '',
               '@copilot please create this PR now.'
             ].join('\n');
-            const issue = await github.rest.issues.create({
+
+            const open = await github.paginate(github.rest.issues.listForRepo, {
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title,
-              body,
-              labels: ['automation', 'test-health']
+              state: 'open',
+              labels: 'test-health',
+              per_page: 100
             });
-            try {
-              await github.rest.issues.addAssignees({
+            let issue = open.find(candidate => candidate.title === title);
+            if (issue) {
+              issue = (await github.rest.issues.update({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: issue.data.number,
-                assignees: ['copilot-swe-agent']
-              });
-            } catch (error) {
-              core.warning(`Could not assign @copilot-swe-agent automatically: ${error.message}`);
+                issue_number: issue.number,
+                body
+              })).data;
+            } else {
+              issue = (await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['automation', 'test-health']
+              })).data;
             }
-            core.info(`Created issue #${issue.data.number}`);
+
+            const actors = await github.graphql(`
+              query($owner: String!, $repo: String!) {
+                repository(owner: $owner, name: $repo) {
+                  suggestedActors(capabilities: [CAN_BE_ASSIGNED], first: 100) {
+                    nodes {
+                      login
+                      __typename
+                      ... on Bot { id }
+                      ... on User { id }
+                    }
+                  }
+                }
+              }
+            `, { owner: context.repo.owner, repo: context.repo.repo });
+            const copilot = actors.repository.suggestedActors.nodes.find(
+              actor => ['copilot', 'copilot-swe-agent'].includes((actor.login || '').toLowerCase())
+            );
+            if (!copilot?.id) {
+              throw new Error('CRAWLER_CI_PAT cannot discover an assignable Copilot actor');
+            }
+            await github.graphql(`
+              mutation($assignableId: ID!, $actorIds: [ID!]!) {
+                replaceActorsForAssignable(input: {
+                  assignableId: $assignableId,
+                  actorIds: $actorIds
+                }) {
+                  assignable {
+                    ... on Issue { assignees(first: 20) { nodes { login } } }
+                  }
+                }
+              }
+            `, {
+              assignableId: issue.node_id,
+              actorIds: [copilot.id]
+            });
+            core.info(`Upserted issue #${issue.number} and assigned Copilot`);
 
       - name: Aggregate report
         id: aggregate

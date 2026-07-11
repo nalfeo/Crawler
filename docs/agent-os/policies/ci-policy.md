@@ -157,15 +157,35 @@ whether the underlying behavior actually changed:
 Some GitHub features silently ignore the default workflow token, which
 produces workflows that "run green" but do nothing.
 
-- **Assigning `@copilot` from a workflow needs a GitHub App token.** The
-  default `GITHUB_TOKEN` (identity `github-actions[bot]`) is silently
-  ignored when assigning `@copilot` — no error, no annotation, the Copilot
-  coding agent simply does not trigger. Use `actions/create-github-app-token@v1`
-  with repo secrets `APP_ID` + `APP_PRIVATE_KEY` to mint a real App token
-  for these steps. Affects `coverage-gap-copilot.yml`,
-  `copilot-review-ping.yml`, and `nightly-mutation.yml`.
+- **Assigning the Copilot coding agent from a workflow needs a user PAT.** The
+  default `GITHUB_TOKEN` is silently ignored, and GitHub explicitly rejects
+  GitHub App installation tokens for agent assignment. Trusted default-branch
+  recovery workflows use the repository-scoped `CRAWLER_CI_PAT` and GraphQL
+  `replaceActorsForAssignable`; the PAT is never exposed to a PR checkout.
+- **Never approve a fork workflow run automatically.** Recovery approval is
+  limited to same-repository, non-draft PRs.
 
 <!-- Source handoff: 2026-06-22-gh-app-token-copilot-assign.md -->
+
+## Unified CI Recovery
+
+- `.github/workflows/ci-recovery-router.yml` reacts to PR, review, and CI events
+  and runs every 10 minutes as a backstop.
+- `.github/workflows/ci-recovery.yml` is the only PAT-bearing PR reconciler. It
+  executes trusted default-branch code and never checks out PR code.
+- Shared per-PR concurrency uses `queue: max`, so event bursts drain FIFO instead
+  of replacing a pending reconciliation.
+- `ci-owner-pr-N` is an atomic ownership bit; one paginated
+  `<!-- crawler-ci-state:v1 -->` comment stores full state. Missing, duplicate,
+  or inconsistent state fails closed.
+- A task fingerprint hashes the latest head SHA and complete normalized blocker
+  set. The same fingerprint is never dispatched twice.
+- Shepherd leases are acquired, heartbeated, and released through the same
+  workflow. They become takeover-eligible after 30 minutes without activity,
+  plus five minutes of queue-jitter grace.
+- `CI_RECOVERY_MODE` defaults to `dry-run`; set it to `live` only after shadow
+  output and a disposable-PR smoke test are clean.
+- See ADR `docs/knowledge/adr/0058-github-native-ci-recovery-ownership.md`.
 
 ## Workflow Dispatch Permissions
 

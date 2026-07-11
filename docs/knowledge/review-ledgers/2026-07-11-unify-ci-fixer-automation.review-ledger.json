@@ -1,0 +1,60 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-11",
+  "session_slug": "unify-ci-fixer-automation",
+  "task_title": "Unify CI fixer automation around Copilot",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 14,
+      "resolved_count": 14,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "major_fork",
+      "notes": "Original centralized comment/label design was rejected. Adopted all three alternatives: default-branch trusted router with unprivileged Copilot worker; incremental cutover preserving working deterministic helpers until parity; GitHub-native serialized ownership using repository-wide per-PR Actions concurrency with queue:max and atomic dynamic-label creation. Human explicitly prohibited Azure, so no Azure dependency is used. Label is existence bit only; sticky lookup is paginated and fails closed on 0/>1; workflow-dispatch lease identifiers are non-secret within trusted-writer boundary; TTL grace exceeds queue jitter; custom-agent selection is not assumed; substantive invalid-review verdicts escalate rather than auto-resolve."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.5",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.4", "gpt-5.3-codex"],
+          "concerns_count": 4,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.4"],
+          "concerns_count": 4,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

@@ -29,7 +29,9 @@ gh pr list --repo nalfeo/Crawler --state open `
 
 A PR is **in scope** when either no _active_ (non-archived) session is sitting
 on its `headRefName`, or the owning session has been idle for more than
-30 minutes. Cross-reference:
+30 minutes. It must also have no unexpired `ci-owner-pr-N` shepherd lease and no
+active CI-recovery task in the `<!-- crawler-ci-state:v1 -->` sticky comment.
+Cross-reference:
 
 - `list_sessions_and_chats` — list every session and its branch.
 - `get_session <id>` — an **archived** session reports `archived: true` and an
@@ -48,6 +50,43 @@ Decision matrix (owner state → action):
 | active (idle >30m)      | `open_pr_session` takeover shepherd for that PR              |
 | archived / winding down | `open_pr_session` takeover shepherd for that PR              |
 
+### 2a. Acquire the GitHub-native shepherd lease
+
+Generate a non-secret ownership identifier, dispatch the trusted workflow, wait
+for that run to finish, and verify the sticky comment before launching or
+editing:
+
+```powershell
+$leaseId = "shepherd-$([guid]::NewGuid())"
+gh workflow run ci-recovery.yml --repo nalfeo/Crawler --ref main `
+  -f operation=lease-acquire -f pr_number=<n> `
+  -f trigger=pr-shepherd -f lease_id=$leaseId
+gh run list --repo nalfeo/Crawler --workflow "CI Recovery" --event workflow_dispatch --limit 10
+gh pr view <n> --repo nalfeo/Crawler --comments
+```
+
+Pass `$leaseId` in the child kickoff prompt. The child heartbeats after every
+meaningful action and at least every 20 minutes:
+
+```powershell
+gh workflow run ci-recovery.yml --repo nalfeo/Crawler --ref main `
+  -f operation=lease-heartbeat -f pr_number=<n> `
+  -f trigger=pr-shepherd -f lease_id=$leaseId
+```
+
+After all blockers are clear, release before arming auto-merge:
+
+```powershell
+gh workflow run ci-recovery.yml --repo nalfeo/Crawler --ref main `
+  -f operation=lease-release -f pr_number=<n> `
+  -f trigger=pr-shepherd -f lease_id=$leaseId
+```
+
+Workflow-dispatch inputs are visible, so the lease ID is intentionally not a
+secret. Repository write permission is the trust boundary. A lease is
+takeover-eligible after 30 minutes without a heartbeat; the workflow adds five
+minutes of queue-jitter grace before automated takeover.
+
 ### 3. Launch one shepherd per in-scope PR (in parallel)
 
 Use `open_pr_session` with a rich kickoff prompt. Recommended settings:
@@ -60,7 +99,8 @@ The kickoff prompt **must** include: the PR number + branch, the exact review
 comments to address (paste them — the session can't see your context), the
 specific failing CI check + run ID, the merge policy line
 (`gh pr merge <n> --auto --squash`, no review required), and the instruction to
-write a handoff + apple metric and report the final merge commit back.
+heartbeat/release the supplied lease, write a handoff + apple metric, and report
+the final merge commit back.
 
 > A single `open_pr_session` call sometimes returns a transient
 > "Policy hook failed" / "Tool result blocked" message even though the session

@@ -31,10 +31,11 @@ Immediately invoke the **`pr-shepherd` skill** and follow it — it is the autho
 - **No required human review.** `reviewDecision` is empty by design.
 - **Diagnose before giving up.** `gh pr checks <n>` mislabels `CANCELLED` as `fail`; confirm with `gh run list --branch <branch>` → `gh run view <run-id> --log-failed`. Fix the real failure, then re-arm.
 - **Copilot code-review threads need an owner resolve.** After replying `✅ Addressed in <sha>`, resolve them yourself via GraphQL `resolveReviewThread` — the auto-resolve bot skips them.
+- **Shared lease is mandatory.** Acquire ownership through the trusted `CI Recovery` workflow before touching the branch, heartbeat at least every 20 minutes, and release only after blockers are clear or when abandoning the work. Never create or edit `ci-owner-pr-N` labels/comments directly.
 
 ## Non-negotiable behaviors
 
-- Declare a 🍎 apple estimate before any code fix, and run `npm run verify:fast` / `bash scripts/agent/lab-gate-check.sh` after changes.
+- Declare a 🍎 apple estimate before any code fix, acquire the shared shepherd lease, and run `npm run verify:fast` / `bash scripts/agent/lab-gate-check.sh` after changes.
 - Never weaken an explicit requirement or bend gameplay to pass seeds to go green — fix the root cause.
 - Write a handoff and score apples before idling; commit with a conventional message + the `Co-authored-by: Copilot` trailer.
 

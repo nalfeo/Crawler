@@ -1,0 +1,152 @@
+import { graphql, paginate, request } from './github.mjs';
+import { shouldSkipRepoIncidentWorkflowRun } from './state.mjs';
+
+const token = process.env.CRAWLER_CI_PAT || '';
+const repository = process.env.GITHUB_REPOSITORY || '';
+const [owner, repo] = repository.split('/');
+const eventPath = process.env.GITHUB_EVENT_PATH;
+
+if (!token || !owner || !repo || !eventPath) {
+  throw new Error('Missing CRAWLER_CI_PAT, repository, or event payload');
+}
+
+const payload = JSON.parse(await (await import('node:fs/promises')).readFile(eventPath, 'utf8'));
+const run = payload.workflow_run;
+if (!run) {
+  throw new Error('Repository incident routing requires a workflow_run event');
+}
+if (shouldSkipRepoIncidentWorkflowRun(run)) {
+  process.stdout.write(
+    `skip workflow=${run.name} event=${run.event} pull_requests=${Array.isArray(run.pull_requests) ? run.pull_requests.length : 0}\n`,
+  );
+  process.exit(0);
+}
+
+const label = 'ci-incident';
+const title = `CI incident: ${run.name}`;
+const openIssues = await paginate(
+  token,
+  `/repos/${owner}/${repo}/issues?state=open&labels=${encodeURIComponent(label)}`,
+);
+const existing = openIssues.find(
+  (issue) => !issue.pull_request && String(issue.title).toLowerCase() === title.toLowerCase(),
+);
+
+if (run.conclusion === 'success') {
+  if (existing) {
+    await request(token, `/repos/${owner}/${repo}/issues/${existing.number}`, {
+      method: 'PATCH',
+      body: { state: 'closed', state_reason: 'completed' },
+    });
+    await request(token, `/repos/${owner}/${repo}/issues/${existing.number}/comments`, {
+      method: 'POST',
+      body: {
+        body: `✅ Auto-closed after successful run ${run.html_url}.`,
+      },
+    });
+    process.stdout.write(`closed incident issue=#${existing.number}\n`);
+  }
+  process.exit(0);
+}
+
+if (!['failure', 'timed_out', 'startup_failure', 'action_required'].includes(run.conclusion)) {
+  process.stdout.write(`skip workflow=${run.name} conclusion=${run.conclusion}\n`);
+  process.exit(0);
+}
+
+try {
+  await request(token, `/repos/${owner}/${repo}/labels`, {
+    method: 'POST',
+    body: {
+      name: label,
+      color: 'b60205',
+      description: 'Deduplicated repository-level CI incident',
+    },
+  });
+} catch (error) {
+  if (error.status !== 422) {
+    throw error;
+  }
+}
+
+const body = [
+  '<!-- crawler-ci-incident:v1 -->',
+  `# ${run.name} needs recovery`,
+  '',
+  `- Conclusion: \`${run.conclusion}\``,
+  `- Branch: \`${run.head_branch || 'unknown'}\``,
+  `- Head SHA: \`${run.head_sha || 'unknown'}\``,
+  `- Run: ${run.html_url}`,
+  `- Triggered by: @${run.actor?.login || 'unknown'}`,
+  '',
+  '@copilot Diagnose this repository-level failure, implement the smallest correct fix on a branch from `main`, run the required verification, open a non-draft PR, and arm squash auto-merge. Do not weaken a gate or explicit requirement.',
+].join('\n');
+
+let issue;
+if (existing) {
+  issue = (
+    await request(token, `/repos/${owner}/${repo}/issues/${existing.number}`, {
+      method: 'PATCH',
+      body: { body, labels: [label] },
+    })
+  ).data;
+} else {
+  issue = (
+    await request(token, `/repos/${owner}/${repo}/issues`, {
+      method: 'POST',
+      body: { title, body, labels: [label] },
+    })
+  ).data;
+}
+
+const actors = await graphql(
+  token,
+  `
+    query ($owner: String!, $repo: String!) {
+      repository(owner: $owner, name: $repo) {
+        suggestedActors(capabilities: [CAN_BE_ASSIGNED], first: 100) {
+          nodes {
+            login
+            __typename
+            ... on Bot {
+              id
+            }
+            ... on User {
+              id
+            }
+          }
+        }
+      }
+    }
+  `,
+  { owner, repo },
+);
+const copilot = (actors.repository?.suggestedActors?.nodes || []).find(
+  (actor) =>
+    String(actor.login || '').toLowerCase() === 'copilot-swe-agent' ||
+    String(actor.login || '').toLowerCase() === 'copilot',
+);
+if (!copilot?.id) {
+  throw new Error('CRAWLER_CI_PAT cannot discover an assignable Copilot actor');
+}
+
+await graphql(
+  token,
+  `
+    mutation ($assignableId: ID!, $actorIds: [ID!]!) {
+      replaceActorsForAssignable(input: { assignableId: $assignableId, actorIds: $actorIds }) {
+        assignable {
+          ... on Issue {
+            assignees(first: 20) {
+              nodes {
+                login
+              }
+            }
+          }
+        }
+      }
+    }
+  `,
+  { assignableId: issue.node_id, actorIds: [copilot.id] },
+);
+process.stdout.write(`${existing ? 'updated' : 'created'} incident issue=#${issue.number}\n`);

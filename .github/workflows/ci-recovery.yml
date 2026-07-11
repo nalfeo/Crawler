@@ -1,0 +1,59 @@
+name: CI Recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Reconcile or manage a shepherd lease
+        required: true
+        default: reconcile
+        type: choice
+        options:
+          - reconcile
+          - lease-acquire
+          - lease-heartbeat
+          - lease-release
+      pr_number:
+        description: Pull request number
+        required: true
+        type: string
+      trigger:
+        description: Reconciliation trigger
+        required: false
+        default: workflow_dispatch
+        type: string
+      lease_id:
+        description: Non-secret shepherd ownership identifier
+        required: false
+        default: ''
+        type: string
+
+concurrency:
+  group: crawler-ci-pr-${{ inputs.pr_number }}
+  queue: max
+
+permissions:
+  contents: read
+
+jobs:
+  reconcile:
+    name: CI recovery for PR #${{ inputs.pr_number }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout trusted recovery implementation
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Reconcile PR or update shepherd lease
+        env:
+          CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CI_RECOVERY_MODE: ${{ vars.CI_RECOVERY_MODE || 'dry-run' }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          RECOVERY_OPERATION: ${{ inputs.operation }}
+          RECOVERY_TRIGGER: ${{ inputs.trigger }}
+          LEASE_ID: ${{ inputs.lease_id }}
+        run: node .github/scripts/ci-recovery/reconcile.mjs

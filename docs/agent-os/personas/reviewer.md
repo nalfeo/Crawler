@@ -45,7 +45,8 @@
   - **`security-review.yml`** — npm audit, secret scan, CODEOWNERS, dependency
     allowlist, dynamic-execution patterns, AI prompt-injection scan.
   - **`nightly-mutation.yml`** — mutation score guards test effectiveness.
-  - **`coverage-gap-copilot.yml`** — pings for below-goal coverage on PRs.
+  - **`ci-recovery.yml`** — consolidates below-goal coverage, failed checks,
+    merge conflicts, and exact review threads into one deduplicated Copilot task.
 - Read the diff against the author's declared apple estimate and the touched
   persona's quality criteria.
 - Prefer concrete, actionable findings with a file/line and the rule violated.
