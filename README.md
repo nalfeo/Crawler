@@ -20,20 +20,25 @@ American Gladiators showmanship, Dungeon Crawler Carl absurdity.
 
 The codebase is split into five layers with strict one-way import boundaries enforced by ESLint:
 
-| Layer | Path | Role |
-| --- | --- | --- |
-| `shared` | `src/shared/` | Constants, types, pure utilities — no runtime dependencies |
-| `core` | `src/core/` | Pure ECS game logic (bitecs). **No Phaser imports allowed.** |
-| `game` | `src/game/` | Game-level systems: weapons, enemy AI, scenario scripts, crafting |
-| `engine` | `src/engine/` | Phaser 4 rendering bridge — scenes, sprites, HUD, VFX |
-| `labs` | `src/labs/` | Dev sandboxes with unrestricted imports; every system needs one before shipping |
+| Layer    | Path          | Role                                                                            |
+| -------- | ------------- | ------------------------------------------------------------------------------- |
+| `shared` | `src/shared/` | Constants, types, utilities, and data schemas shared across the codebase        |
+| `core`   | `src/core/`   | Pure ECS game logic (bitecs). **No Phaser imports allowed.**                    |
+| `game`   | `src/game/`   | Game-level systems: weapons, enemy AI, scenario scripts, crafting               |
+| `engine` | `src/engine/` | Phaser 4 rendering bridge — scenes, sprites, HUD, VFX                           |
+| `labs`   | `src/labs/`   | Dev sandboxes with unrestricted imports; every system needs one before shipping |
 
-`shared` → `core` → `game`; `engine` is a parallel rendering layer over `core`/`game`.
-`labs` can import anything. No layer may import upward.
+Legal import edges:
+
+- `src/shared/` imports no higher layers
+- `src/core/` may import `src/shared/`
+- `src/game/` may import `src/core/` and `src/shared/`
+- `src/engine/` may import `src/core/` and `src/shared/`
+- `src/labs/` may import anything
 
 The game loop runs as a deterministic ECS pipeline in `src/core/` and `src/game/`,
 driven by Phaser 4's update tick in `src/engine/scenes/MainGameScene.ts`.
-All randomness uses `SeededRandom` — `Math.random()` is banned.
+Simulation/runtime randomness uses `SeededRandom`; labs are exempt from that determinism rule.
 
 For the full systems catalogue, ADRs, specs, and agent-OS policies see [`docs/`](docs/README.md).
 
