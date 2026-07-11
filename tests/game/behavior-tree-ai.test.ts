@@ -1125,6 +1125,29 @@ describe('BehaviorTreeAI', () => {
     expect(ai.getDecision().reason).toContain('Clearing nearby threat before NPC interaction');
   });
 
+  it('clears NPC threat-clear bypass after higher-priority Progress preemption', () => {
+    const { world, shopkeeperNpcEid } = setupNpcApproachThreat('sword');
+    const ai = new BehaviorTreeAI({ seed: 12 });
+
+    for (let poll = 0; poll < NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES + 2; poll += 1) {
+      ai.poll(createInputState(), world);
+    }
+    expect(ai.getDecision().state).toBe(AIState.EXPLORE);
+
+    // Force Track A to end at Interact so Progress is pre-empted this poll.
+    world.stores.position.x[shopkeeperNpcEid] = 15;
+    world.stores.position.y[shopkeeperNpcEid] = 14;
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().state).toBe(AIState.INTERACT);
+
+    world.stores.position.x[shopkeeperNpcEid] = 38;
+    world.stores.position.y[shopkeeperNpcEid] = 14;
+    ai.poll(createInputState(), world);
+
+    expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+    expect(ai.getDecision().reason).toContain('Clearing nearby threat before NPC interaction');
+  });
+
   it('treats shared-room merchant goals as direct NPC progress targets', () => {
     const world = createTestWorld({ seed: 12 });
     const player = spawnPlayer(world, 0, 0);

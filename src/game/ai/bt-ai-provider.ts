@@ -1066,6 +1066,9 @@ export class BehaviorTreeAI implements AIInputProvider {
    * bypassed until the nearby-threat gate exits and resets tracking. `null`
    * when no bypass is active. */
   private npcApproachThreatBypassEid: number | null = null;
+  /** True when Track A reached Progress during this poll. Used to clear stale
+   * NPC threat-clear bypass state if higher-priority nodes pre-empt Progress. */
+  private npcApproachThreatProgressEvaluatedThisPoll: boolean = false;
   /**
    * Latched safe-room egress waypoint. While LeaveSafeRoom is active we keep a
    * single reachable world target until the player exits the safe room, so
@@ -1506,6 +1509,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     return sequence(
       'Progress',
       condition('Progress Objective Available', (ctx) => {
+        this.npcApproachThreatProgressEvaluatedThisPoll = true;
         const target = this.findProgressObjective(
           ctx.world,
           ctx.playerEid,
@@ -2960,9 +2964,13 @@ export class BehaviorTreeAI implements AIInputProvider {
       blackboard: {},
     };
 
+    this.npcApproachThreatProgressEvaluatedThisPoll = false;
     // Execute behavior tree (Track A sets this.decision; Track B writes
     // opportunisticPullX/Y and dodgeVecX/Y as side-effects)
     this.tree.tick(context);
+    if (!this.npcApproachThreatProgressEvaluatedThisPoll) {
+      this.resetNpcApproachThreatTracking();
+    }
 
     // Pathing A/B seam (axis 1) — three non-overlapping mode booleans (poll-invariant):
     //  • usesNavmeshRoute — route via the deterministic recast waypoint route to the
