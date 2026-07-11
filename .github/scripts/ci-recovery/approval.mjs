@@ -13,7 +13,13 @@ function normalize(value) {
     .toLowerCase();
 }
 
-export function workflowApprovalRejection({ run, repository, prNumber, prHeadRepository }) {
+export function workflowApprovalRejection({
+  run,
+  repository,
+  prNumber,
+  prHeadRepository,
+  changedFiles = [],
+}) {
   if (normalize(prHeadRepository) !== normalize(repository)) {
     return 'fork';
   }
@@ -23,9 +29,13 @@ export function workflowApprovalRejection({ run, repository, prNumber, prHeadRep
     return 'pr-not-listed';
   }
 
-  const allowedEvents = WORKFLOW_EVENT_ALLOWLIST.get(normalize(run?.path));
+  const workflowPath = normalize(run?.path);
+  const allowedEvents = WORKFLOW_EVENT_ALLOWLIST.get(workflowPath);
   if (!allowedEvents) {
     return 'not-in-allowlist';
+  }
+  if (changedFiles.some((file) => normalize(file?.filename) === workflowPath)) {
+    return 'workflow-modified';
   }
 
   const event = normalize(run?.event);

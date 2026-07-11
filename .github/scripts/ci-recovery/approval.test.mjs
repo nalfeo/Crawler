@@ -60,6 +60,23 @@ test('rejects non-allowlisted workflow paths even when the display name is spoof
   assert.equal(rejection({ path: '.github/workflows/other.yml' }), 'not-in-allowlist');
 });
 
+test('rejects an allowlisted workflow when the PR modifies its definition', () => {
+  assert.equal(
+    workflowApprovalRejection({
+      repository,
+      prNumber,
+      prHeadRepository: repository,
+      changedFiles: [{ filename: '.github/workflows/ci-recovery-router.yml' }],
+      run: {
+        path: '.github/workflows/ci-recovery-router.yml',
+        event: 'pull_request_review',
+        pull_requests: [{ number: prNumber }],
+      },
+    }),
+    'workflow-modified',
+  );
+});
+
 test('rejects off-diagonal workflow and event combinations', () => {
   assert.equal(rejection({ path: '.github/workflows/ci.yml' }), 'event=pull_request_review');
   assert.equal(rejection({ event: 'pull_request' }), 'event=pull_request');

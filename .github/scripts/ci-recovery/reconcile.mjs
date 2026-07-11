@@ -299,12 +299,18 @@ const runs =
       `/repos/${owner}/${repo}/actions/runs?head_sha=${encodeURIComponent(pr.head.sha)}&per_page=100`,
     )
   ).data.workflow_runs || [];
-for (const run of runs.filter((candidate) => candidate.conclusion === 'action_required')) {
+const actionRequiredRuns = runs.filter((candidate) => candidate.conclusion === 'action_required');
+const changedFiles =
+  actionRequiredRuns.length > 0
+    ? await paginate(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/files?per_page=100`)
+    : [];
+for (const run of actionRequiredRuns) {
   const rejection = workflowApprovalRejection({
     run,
     repository,
     prNumber,
     prHeadRepository: pr.head.repo.full_name,
+    changedFiles,
   });
   if (rejection) {
     process.stdout.write(
