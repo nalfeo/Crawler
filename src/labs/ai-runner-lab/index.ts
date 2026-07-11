@@ -483,7 +483,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     if (playerEid === undefined) {
       return;
     }
-    autoFloor1ProgressionSystem(world, playerEid, aiConfig.weaponPersonas);
+    autoFloor1ProgressionSystem(world, playerEid, ai, aiConfig.weaponPersonas);
     autoFloor2ProgressionSystem(world, playerEid);
   };
   let currentFloor = persisted?.floorId ?? 'floor1';

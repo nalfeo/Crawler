@@ -121,7 +121,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          labels='automation'
+          if gh api "repos/${{ github.repository }}/labels/security" >/dev/null 2>&1; then
+            labels='automation,security'
+          fi
           gh issue create \
             --title "security-review: $(date -u +%Y-%m-%d) findings" \
-            --label automation,security \
+            --label "$labels" \
             --body-file report.md

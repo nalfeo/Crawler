@@ -1,0 +1,206 @@
+import type { RunStats } from '../../../src/game/ai/types.js';
+
+export interface WeaponSweepRecord {
+  weapon: string;
+  seed: number;
+  outcome: RunStats['outcome'];
+  gameTimeSec: number;
+  finalLevel: number;
+  totalKills: number;
+  totalXp: number;
+  totalGold: number;
+  score: number;
+  minHealthPct: number;
+  closeCallCount: number;
+  questsCompleted: number;
+}
+
+export interface WeaponSweepSummary {
+  weapon: string;
+  runs: number;
+  victories: number;
+  winRate: number;
+  meanGameTimeSec: number;
+  meanLevel: number;
+  meanKills: number;
+  meanXp: number;
+  meanScore: number;
+  meanMinHealthPct: number;
+  meanCloseCallCount: number;
+  meanQuestsCompleted: number;
+  records: WeaponSweepRecord[];
+}
+
+export interface WeaponSweepOutput {
+  runAt: string;
+  seeds: number[];
+  weapons: string[];
+  maxFrames: number;
+  budgetSec: number;
+  summaries: WeaponSweepSummary[];
+  allRecords: WeaponSweepRecord[];
+}
+
+const VALID_RUN_OUTCOMES: ReadonlySet<RunStats['outcome']> = new Set([
+  'victory',
+  'death',
+  'timeout',
+  'stalled',
+  'error',
+]);
+
+function mean(values: readonly number[]): number {
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) > 0;
+}
+
+function isValidSweepRecord(value: unknown, expectedWeapon: string): value is WeaponSweepRecord {
+  if (!isPlainObject(value)) {
+    return false;
+  }
+  const record = value as Partial<WeaponSweepRecord>;
+  return (
+    record.weapon === expectedWeapon &&
+    isPositiveInteger(record.seed) &&
+    typeof record.outcome === 'string' &&
+    VALID_RUN_OUTCOMES.has(record.outcome as RunStats['outcome']) &&
+    isFiniteNumber(record.gameTimeSec) &&
+    isFiniteNumber(record.finalLevel) &&
+    isFiniteNumber(record.totalKills) &&
+    isFiniteNumber(record.totalXp) &&
+    isFiniteNumber(record.totalGold) &&
+    isFiniteNumber(record.score) &&
+    isFiniteNumber(record.minHealthPct) &&
+    isFiniteNumber(record.closeCallCount) &&
+    isFiniteNumber(record.questsCompleted)
+  );
+}
+
+function isValidShardShape(value: unknown, expectedWeapon: string): value is WeaponSweepOutput {
+  if (!isPlainObject(value)) {
+    return false;
+  }
+  const shard = value as Partial<WeaponSweepOutput>;
+  return (
+    typeof shard.runAt === 'string' &&
+    Array.isArray(shard.seeds) &&
+    shard.seeds.every((seed) => isPositiveInteger(seed)) &&
+    Array.isArray(shard.weapons) &&
+    shard.weapons.length === 1 &&
+    shard.weapons[0] === expectedWeapon &&
+    isPositiveInteger(shard.maxFrames) &&
+    isFiniteNumber(shard.budgetSec) &&
+    Array.isArray(shard.summaries) &&
+    shard.summaries.length === 1 &&
+    isPlainObject(shard.summaries[0]) &&
+    Array.isArray((shard.summaries[0] as { records?: unknown }).records) &&
+    Array.isArray(shard.allRecords)
+  );
+}
+
+export function summarizeWeaponRecords(
+  weapon: string,
+  records: WeaponSweepRecord[],
+): WeaponSweepSummary {
+  if (records.length === 0) {
+    throw new Error(`Cannot summarize weapon "${weapon}" without records`);
+  }
+  const victories = records.filter((record) => record.outcome === 'victory').length;
+  return {
+    weapon,
+    runs: records.length,
+    victories,
+    winRate: victories / records.length,
+    meanGameTimeSec: mean(records.map((record) => record.gameTimeSec)),
+    meanLevel: mean(records.map((record) => record.finalLevel)),
+    meanKills: mean(records.map((record) => record.totalKills)),
+    meanXp: mean(records.map((record) => record.totalXp)),
+    meanScore: mean(records.map((record) => record.score)),
+    meanMinHealthPct: mean(records.map((record) => record.minHealthPct)),
+    meanCloseCallCount: mean(records.map((record) => record.closeCallCount)),
+    meanQuestsCompleted: mean(records.map((record) => record.questsCompleted)),
+    records,
+  };
+}
+
+export function mergeWeaponSweepShards(
+  shards: readonly WeaponSweepOutput[],
+  weapon: string,
+  expectedSeeds: readonly number[],
+): WeaponSweepOutput {
+  if (shards.length === 0) {
+    throw new Error(`No sweep shards found for weapon "${weapon}"`);
+  }
+  const firstShard = shards[0] as unknown;
+  if (!isValidShardShape(firstShard, weapon)) {
+    throw new Error(`Malformed shard payload for weapon "${weapon}"`);
+  }
+  const maxFrames = firstShard.maxFrames;
+  const bySeed = new Map<number, WeaponSweepRecord>();
+
+  for (const shard of shards) {
+    if (!isValidShardShape(shard, weapon)) {
+      throw new Error(`Malformed shard payload for weapon "${weapon}"`);
+    }
+    if (shard.maxFrames !== maxFrames) {
+      throw new Error(`Shard frame-budget mismatch: ${shard.maxFrames} vs ${maxFrames}`);
+    }
+    if (
+      shard.seeds.length !== shard.allRecords.length ||
+      shard.summaries.length !== 1 ||
+      shard.summaries[0]?.records.length !== shard.allRecords.length
+    ) {
+      throw new Error(`Malformed shard coverage for weapon "${weapon}"`);
+    }
+    for (let index = 0; index < shard.seeds.length; index += 1) {
+      const seed = shard.seeds[index]!;
+      const record = shard.allRecords[index];
+      if (!isValidSweepRecord(record, weapon)) {
+        throw new Error(`Malformed shard record for ${weapon}/${seed}`);
+      }
+      if (record.seed !== seed) {
+        throw new Error(`Out-of-order shard record for ${weapon}/${seed}`);
+      }
+      if (bySeed.has(seed)) {
+        throw new Error(`Duplicate sweep record for ${weapon}/${seed}`);
+      }
+      bySeed.set(seed, record);
+    }
+  }
+
+  const expectedSet = new Set(expectedSeeds);
+  for (const seed of bySeed.keys()) {
+    if (!expectedSet.has(seed)) {
+      throw new Error(`Unexpected sweep record for ${weapon}/${seed}`);
+    }
+  }
+  const missing = expectedSeeds.filter((seed) => !bySeed.has(seed));
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing ${missing.length} sweep record(s) for ${weapon}: ${missing.join(', ')}`,
+    );
+  }
+
+  const allRecords = expectedSeeds.map((seed) => bySeed.get(seed)!);
+  const summary = summarizeWeaponRecords(weapon, allRecords);
+  return {
+    runAt: new Date().toISOString(),
+    seeds: [...expectedSeeds],
+    weapons: [weapon],
+    maxFrames,
+    budgetSec: maxFrames / 60,
+    summaries: [summary],
+    allRecords,
+  };
+}

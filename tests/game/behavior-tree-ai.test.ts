@@ -34,7 +34,11 @@ import type { TilePoint } from '../../src/core/map/pathfinding.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
-import { AIProgressSuppressionSource, AIState } from '../../src/game/ai/types.js';
+import {
+  AINpcInteractionAction,
+  AIProgressSuppressionSource,
+  AIState,
+} from '../../src/game/ai/types.js';
 import {
   ENGAGE_GIVEUP_FRAMES,
   NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES,
@@ -1242,7 +1246,7 @@ describe('BehaviorTreeAI', () => {
     expect(ai.getDecision().reason).toContain('Clearing nearby threat before NPC interaction');
   });
 
-  it('treats shared-room merchant goals as direct NPC progress targets', () => {
+  it('routes merchant progress through a reachable NPC anchor instead of raw NPC center', () => {
     const world = createTestWorld({ seed: 12 });
     const player = spawnPlayer(world, 0, 0);
     initializeFloor1Scenario(world, player);
@@ -1250,24 +1254,28 @@ describe('BehaviorTreeAI', () => {
     meetTutorialGoon(world);
     world.playerLevel.level = 2;
     world.floorScenario!.objective.questCompleted = true;
-    world.floorMap = makeOpenRoom(40, 20);
-    world.stores.position.x[player] = 14;
-    world.stores.position.y[player] = 14;
+    world.floorMap = makeSealedRoom(24, 20, 10);
+    const playerPos = world.floorMap.tileToWorld(6, 6);
+    world.stores.position.x[player] = playerPos.x;
+    world.stores.position.y[player] = playerPos.y;
 
     const shopkeeperNpcEid = world.floorScenario!.shopkeeperNpcEid;
     const spellBrokerEid = world.floorScenario!.spellQuestGiverNpcEid;
     expect(shopkeeperNpcEid).toBeDefined();
     expect(spellBrokerEid).toBeDefined();
-    world.stores.position.x[shopkeeperNpcEid!] = 40;
-    world.stores.position.y[shopkeeperNpcEid!] = 14;
-    world.stores.position.x[spellBrokerEid!] = 36;
-    world.stores.position.y[spellBrokerEid!] = 14;
+    const shopkeeperPos = world.floorMap.tileToWorld(11, 6);
+    const spellBrokerPos = world.floorMap.tileToWorld(16, 6);
+    const expectedAnchor = world.floorMap.tileToWorld(9, 6);
+    world.stores.position.x[shopkeeperNpcEid!] = shopkeeperPos.x;
+    world.stores.position.y[shopkeeperNpcEid!] = shopkeeperPos.y;
+    world.stores.position.x[spellBrokerEid!] = spellBrokerPos.x;
+    world.stores.position.y[spellBrokerEid!] = spellBrokerPos.y;
     // `shopRoomPos`/`spellQuestGiverPos` are readonly on the objective type, so
     // override them by reassigning the whole (mutable) objective with a spread.
     world.floorScenario!.objective = {
       ...world.floorScenario!.objective,
-      shopRoomPos: { x: 40, y: 14 },
-      spellQuestGiverPos: { x: 36, y: 14 },
+      shopRoomPos: shopkeeperPos,
+      spellQuestGiverPos: spellBrokerPos,
     };
 
     const ai = new BehaviorTreeAI({ seed: 12 });
@@ -1277,6 +1285,63 @@ describe('BehaviorTreeAI', () => {
     expect(decision.state).toBe(AIState.EXPLORE);
     expect(decision.targetEid).toBe(shopkeeperNpcEid);
     expect(decision.reason).toBe('Seeking Shopkeeper to start the merchant errand');
+    expect(decision.npcInteraction).toEqual({
+      npcEid: shopkeeperNpcEid,
+      action: AINpcInteractionAction.MEET_SHOPKEEPER,
+      allowWhileExploring: true,
+    });
+    expect(decision.targetX).toBe(expectedAnchor.x);
+    expect(decision.targetY).toBe(expectedAnchor.y);
+    expect(decision.targetX).not.toBe(shopkeeperPos.x);
+  });
+
+  it('does not poison the cached NPC anchor after a close-range first visit', () => {
+    const world = createTestWorld({ seed: 18 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    meetTutorialGoon(world);
+    world.playerLevel.level = 2;
+    world.floorScenario!.objective.questCompleted = true;
+    world.floorMap = makeSealedRoom(24, 20, 10);
+
+    const shopkeeperNpcEid = world.floorScenario!.shopkeeperNpcEid!;
+    const shopkeeperPos = world.floorMap.tileToWorld(11, 6);
+    const nearPlayerPos = world.floorMap.tileToWorld(9, 6);
+    const farPlayerPos = world.floorMap.tileToWorld(6, 6);
+    const expectedAnchor = world.floorMap.tileToWorld(9, 6);
+    world.stores.position.x[shopkeeperNpcEid] = shopkeeperPos.x;
+    world.stores.position.y[shopkeeperNpcEid] = shopkeeperPos.y;
+
+    const ai = new BehaviorTreeAI({ seed: 18 });
+    const resolveNpcInteractionAnchor = ai['resolveNpcInteractionAnchor'].bind(ai) as (
+      world: GameWorld,
+      playerX: number,
+      playerY: number,
+      npcX: number,
+      npcY: number,
+      npcEid: number,
+    ) => { x: number; y: number };
+
+    const firstVisit = resolveNpcInteractionAnchor(
+      world,
+      nearPlayerPos.x,
+      nearPlayerPos.y,
+      shopkeeperPos.x,
+      shopkeeperPos.y,
+      shopkeeperNpcEid,
+    );
+    expect(firstVisit).toEqual(shopkeeperPos);
+
+    const revisit = resolveNpcInteractionAnchor(
+      world,
+      farPlayerPos.x,
+      farPlayerPos.y,
+      shopkeeperPos.x,
+      shopkeeperPos.y,
+      shopkeeperNpcEid,
+    );
+    expect(revisit).toEqual(expectedAnchor);
   });
 
   it('does not engage an unseen enemy once minimap/FOV perception is initialized', () => {
@@ -1289,8 +1354,9 @@ describe('BehaviorTreeAI', () => {
     const floorMap = world.floorMap;
     const playerTile = floorMap.worldToTile(10, 10);
     const hiddenTile = floorMap.worldToTile(18, 10);
-    // Use setVisible with sub-tile coords (TL quadrant = tile * 2).
+    // Use matching visible/discovered sub-tile coords (TL quadrant = tile * 2).
     floorMap.setVisible(playerTile.x * 2, playerTile.y * 2);
+    floorMap.setDiscovered(playerTile.x * 2, playerTile.y * 2);
     // hiddenTile starts with all sub-tiles = 0 (dark), no action needed.
 
     const ai = new BehaviorTreeAI({ seed: 19 });
@@ -1299,6 +1365,7 @@ describe('BehaviorTreeAI', () => {
 
     // Once the enemy appears in FOV/minimap-known tiles, it becomes a valid target.
     floorMap.setVisible(hiddenTile.x * 2, hiddenTile.y * 2);
+    floorMap.setDiscovered(hiddenTile.x * 2, hiddenTile.y * 2);
     ai.poll(createInputState(), world);
     expect(ai.getDecision().targetEid).toBe(hiddenEnemy);
   });
@@ -1322,6 +1389,7 @@ describe('BehaviorTreeAI', () => {
     // After FOV initialization with visibility bitmap (restrictive mode).
     // Set the player tile visible (triggers hasPerceptionData = true).
     floorMap.setVisible(playerTile.x * 2, playerTile.y * 2);
+    floorMap.setDiscovered(playerTile.x * 2, playerTile.y * 2);
     // hiddenTile stays dark (all sub-tiles = 0 by default).
 
     ai.poll(createInputState(), world);

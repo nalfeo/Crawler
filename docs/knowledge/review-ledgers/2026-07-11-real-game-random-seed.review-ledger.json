@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-11",
+  "session_slug": "real-game-random-seed",
+  "task_title": "Randomize real-game launch seed",
+  "estimated_apples": 2,
+  "stages": {}
+}

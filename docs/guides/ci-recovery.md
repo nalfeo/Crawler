@@ -4,16 +4,27 @@ Crawler's CI recovery automation consolidates PR conflicts, failed checks,
 workflow approvals, and review threads into one deduplicated Copilot task.
 Repository-level workflow failures use one deduplicated incident issue per
 workflow.
+Issues opened by `nalfeo` are auto-assigned to Copilot with an instruction
+kickoff comment that points Copilot at the normal repo instructions.
 
 ## Trust boundary
 
 - `ci-recovery-router.yml` has no PAT. It translates events and the 10-minute
   backstop into per-PR `workflow_dispatch` runs.
-- `ci-recovery.yml` and `ci-recovery-incidents.yml` are the only recovery
-  workflows that receive `CRAWLER_CI_PAT`.
+- `ci-recovery.yml`, `ci-recovery-incidents.yml`, and `issue-copilot-intake.yml`
+  are the workflows that receive `CRAWLER_CI_PAT`.
+- `issue-copilot-intake.yml` also receives `CRAWLER_CI_PAT`, but only for
+  owner-opened issue assignment + kickoff-comment mutation. Issues that carry
+  the `automation` label are skipped to avoid double-handling CI-created issues.
 - PAT-bearing jobs check out only the default branch with credentials disabled.
   They never check out or execute pull-request code.
 - Fork PRs are ineligible, and fork workflow runs are never approved.
+- Workflow approval uses exact workflow-path/event pairs: `CI` and `commit-lint`
+  for pull-request events, and `CI Recovery Router` for review/review-comment
+  events. Display names and environment overrides cannot extend this allowlist,
+  and a PR that modifies the matched workflow definition cannot be auto-approved.
+- A blocked review-triggered router run is approved by the next trusted
+  event-driven or scheduled reconciliation pass.
 - The system has no Azure dependency.
 
 ## State

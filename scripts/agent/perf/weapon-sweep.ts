@@ -21,7 +21,11 @@ import { writeFileSync } from 'node:fs';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../../src/game/ai/headless-runner.js';
 import { scoreRun, type ScoreBreakdown } from '../../../src/game/ai/scoring.js';
-import type { RunStats } from '../../../src/game/ai/types.js';
+import {
+  summarizeWeaponRecords,
+  type WeaponSweepRecord as RunRecord,
+  type WeaponSweepSummary as WeaponSummary,
+} from './weapon-sweep-results.js';
 
 // ---------------------------------------------------------------------------
 // CLI arg parsing
@@ -82,37 +86,6 @@ function parseArgs(): CLIArgs {
 // Result types
 // ---------------------------------------------------------------------------
 
-interface RunRecord {
-  weapon: string;
-  seed: number;
-  outcome: RunStats['outcome'];
-  gameTimeSec: number;
-  finalLevel: number;
-  totalKills: number;
-  totalXp: number;
-  totalGold: number;
-  score: number;
-  minHealthPct: number;
-  closeCallCount: number;
-  questsCompleted: number;
-}
-
-interface WeaponSummary {
-  weapon: string;
-  runs: number;
-  victories: number;
-  winRate: number;
-  meanGameTimeSec: number;
-  meanLevel: number;
-  meanKills: number;
-  meanXp: number;
-  meanScore: number;
-  meanMinHealthPct: number;
-  meanCloseCallCount: number;
-  meanQuestsCompleted: number;
-  records: RunRecord[];
-}
-
 // ---------------------------------------------------------------------------
 // Core sweep
 // ---------------------------------------------------------------------------
@@ -171,24 +144,7 @@ async function sweep(args: CLIArgs): Promise<void> {
       );
     }
 
-    const victories = records.filter((r) => r.outcome === 'victory').length;
-    const mean = (vals: number[]): number => vals.reduce((a, b) => a + b, 0) / vals.length;
-
-    const summary: WeaponSummary = {
-      weapon,
-      runs: records.length,
-      victories,
-      winRate: victories / records.length,
-      meanGameTimeSec: mean(records.map((r) => r.gameTimeSec)),
-      meanLevel: mean(records.map((r) => r.finalLevel)),
-      meanKills: mean(records.map((r) => r.totalKills)),
-      meanXp: mean(records.map((r) => r.totalXp)),
-      meanScore: mean(records.map((r) => r.score)),
-      meanMinHealthPct: mean(records.map((r) => r.minHealthPct)),
-      meanCloseCallCount: mean(records.map((r) => r.closeCallCount)),
-      meanQuestsCompleted: mean(records.map((r) => r.questsCompleted)),
-      records,
-    };
+    const summary = summarizeWeaponRecords(weapon, records);
     summaries.push(summary);
     console.log('');
   }

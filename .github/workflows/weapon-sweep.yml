@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       weapon_matrix: ${{ steps.parse.outputs.weapon_matrix }}
-      seed_list: ${{ steps.parse.outputs.seed_list }}
+      run_matrix: ${{ steps.parse.outputs.run_matrix }}
     steps:
       - name: Validate inputs and build matrix
         id: parse
@@ -71,7 +71,18 @@ jobs:
           fi
           weapon_matrix=$(echo "$weapon_matrix" | jq -c '[.[] | ascii_downcase]')
           echo "weapon_matrix=$weapon_matrix" >> "$GITHUB_OUTPUT"
-          echo "seed_list=$(seq -s, 1 "$SEED_COUNT")" >> "$GITHUB_OUTPUT"
+          run_matrix='[]'
+          for weapon in $(echo "$weapon_matrix" | jq -r '.[]'); do
+            for shard in 0 1 2 3; do
+              seeds=$(seq 1 "$SEED_COUNT" | awk -v shard="$shard" '((NR - 1) % 4) == shard' | paste -sd, -)
+              if [ -n "$seeds" ]; then
+                run_matrix=$(echo "$run_matrix" | jq -c \
+                  --arg weapon "$weapon" --argjson shard "$shard" --arg seeds "$seeds" \
+                  '. + [{weapon: $weapon, shard: $shard, seeds: $seeds}]')
+              fi
+            done
+          done
+          echo "run_matrix=$run_matrix" >> "$GITHUB_OUTPUT"
 
   weapon-sweep:
     needs: setup
@@ -79,15 +90,15 @@ jobs:
     timeout-minutes: 300
     strategy:
       matrix:
-        weapon: ${{ fromJSON(needs.setup.outputs.weapon_matrix) }}
+        include: ${{ fromJSON(needs.setup.outputs.run_matrix) }}
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
 
-      - name: Run sweep for ${{ matrix.weapon }}
+      - name: Run sweep for ${{ matrix.weapon }} shard ${{ matrix.shard }}
         env:
-          SEEDS: ${{ needs.setup.outputs.seed_list }}
+          SEEDS: ${{ matrix.seeds }}
           WEAPON: ${{ matrix.weapon }}
           MAX_FRAMES: ${{ inputs.max_frames }}
           WEAPON_PERSONAS: ${{ inputs.weapon_personas }}
@@ -102,6 +113,40 @@ jobs:
             --weapons "$WEAPON" \
             --max-frames "$MAX_FRAMES" \
             $persona_flag \
+            --out "weapon-sweep-${{ matrix.weapon }}-${{ matrix.shard }}.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: weapon-sweep-shard-${{ matrix.weapon }}-${{ matrix.shard }}
+          path: weapon-sweep-${{ matrix.weapon }}-${{ matrix.shard }}.json
+          if-no-files-found: error
+          retention-days: 30
+
+  aggregate:
+    needs: [setup, weapon-sweep]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        weapon: ${{ fromJSON(needs.setup.outputs.weapon_matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: weapon-sweep-shard-${{ matrix.weapon }}-*
+          path: shards
+          merge-multiple: true
+
+      - name: Aggregate ${{ matrix.weapon }} shards
+        env:
+          SEED_COUNT: ${{ inputs.seed_count }}
+        run: |
+          npx tsx scripts/agent/perf/merge-weapon-sweep-shards.ts \
+            --inputs shards \
+            --weapon "${{ matrix.weapon }}" \
+            --seed-count "$SEED_COUNT" \
             --out "weapon-sweep-${{ matrix.weapon }}.json"
 
       - uses: actions/upload-artifact@v4
