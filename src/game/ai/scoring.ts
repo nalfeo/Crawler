@@ -84,6 +84,45 @@ export function scoreRun(stats: RunStats, maxGameTimeMs?: number): ScoreBreakdow
 }
 
 /**
+ * Milliseconds of safe-room dwell above which a run is *flagged* for review.
+ * The floor-collapse deadline pauses while the player is in a safe room, so a
+ * legitimate clear can spend some time there — but an inordinate amount (the
+ * maintainer's Floor-1 rule of thumb: > 60s total) usually signals a
+ * navigation stall parked near a safe room rather than intentional play. This
+ * is a DIAGNOSTIC threshold surfaced in sweep leaderboards, never a hard gate.
+ */
+export const SAFE_ROOM_FLAG_MS = 60_000;
+
+/**
+ * Collapse-relevant "active" time: wall game time minus the safe-room dwell
+ * during which the floor-collapse deadline is paused (see `floorScenario` — the
+ * deadline extends by one frame for each frame the player is in a safe room).
+ * This is the time that actually counts against the Floor-1 budget. `safeRoomMs`
+ * is optional so callers reading older artifacts (before the field existed)
+ * fall back to raw game time.
+ */
+export function activeTimeMs(stats: { gameTimeMs: number; safeRoomMs?: number }): number {
+  return Math.max(0, stats.gameTimeMs - (stats.safeRoomMs ?? 0));
+}
+
+/**
+ * The single source of truth for an *official* Floor-1 win: a victory whose
+ * collapse-relevant active time (safe-room dwell excluded) is under the budget.
+ *
+ * This replaces the scattered `outcome === 'victory' && gameTimeMs < budget`
+ * checks so every sweep, A/B harness, and headless gate credits safe-room time
+ * identically — matching the game's own collapse-deadline pause. Scoring
+ * (`scoreRun`) deliberately stays on RAW `gameTimeMs` for its time bonus so the
+ * search gradient never rewards idling in a safe room.
+ */
+export function isOfficialWin(
+  stats: { outcome: RunStats['outcome']; gameTimeMs: number; safeRoomMs?: number },
+  budgetMs: number,
+): boolean {
+  return stats.outcome === 'victory' && activeTimeMs(stats) < budgetMs;
+}
+
+/**
  * Aggregate scores across multiple seeds by computing the mean composite
  * score. Callers should convert errored runs into zero-score failure
  * breakdowns before passing them here.

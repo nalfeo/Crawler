@@ -28,11 +28,11 @@
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { RunStats } from '../../../src/game/ai/types.js';
-import { scoreRun } from '../../../src/game/ai/scoring.js';
+import { scoreRun, isOfficialWin, SAFE_ROOM_FLAG_MS } from '../../../src/game/ai/scoring.js';
 import type { SweepConfig } from './gen-configs.js';
 
 /** Current shard-artifact schema version. Bump on any breaking row/meta change. */
-export const SHARD_SCHEMA_VERSION = 1;
+export const SHARD_SCHEMA_VERSION = 2;
 
 /** One evaluated headless run. `officialWin` is the SSOT tournament win. */
 export interface RunRow {
@@ -43,6 +43,9 @@ export interface RunRow {
   outcome: RunStats['outcome'];
   officialWin: boolean;
   gameTimeMs: number;
+  /** Safe-room dwell (ms); collapse deadline pauses here, so it is excluded
+   *  from the active time behind {@link deriveRunFacts}'s official-win check. */
+  safeRoomMs: number;
   score: number;
   xp: number;
   gold: number;
@@ -55,21 +58,30 @@ export interface RunRow {
  *  so a row's (officialWin, score) can never drift between the two. */
 export type ScorableStats = Pick<
   RunStats,
-  'outcome' | 'gameTimeMs' | 'totalXp' | 'totalGold' | 'finalLevel'
+  'outcome' | 'gameTimeMs' | 'safeRoomMs' | 'totalXp' | 'totalGold' | 'finalLevel'
 >;
 
 /**
  * Derive the SSOT tournament facts for one run: whether it is an official win (a
- * victory within the time budget) and its composite score. An OVER-BUDGET
- * victory is the only outcome downgraded — scored as a timeout to strip its
- * victory/time bonus; deaths and timeouts keep their real outcome so a future
- * death penalty in scoreRun is never masked. Deterministic.
+ * victory whose safe-room-credited active time is within the budget) and its
+ * composite score. An OVER-BUDGET victory is the only outcome downgraded —
+ * scored as a timeout to strip its victory/time bonus; deaths and timeouts keep
+ * their real outcome so a future death penalty in scoreRun is never masked.
+ * Scoring stays on RAW gameTimeMs (see scoreRun) so the search gradient never
+ * rewards idling in a safe room. Deterministic.
+ *
+ * PRECONDITION: Floor-1 runs only. The safe-room active-time credit inside
+ * `isOfficialWin` is a Floor-1 mechanic (the collapse deadline only pauses in
+ * Floor-1 safe rooms) and `budgetMs` is always the Floor-1 budget. This is
+ * enforced at BOTH boundaries — sweep-eval rejects `--floor` != floor1 and
+ * mergeShards rejects a non-floor1 shard — so a non-Floor-1 run can never reach
+ * here to be misclassified with Floor-1 win semantics.
  */
 export function deriveRunFacts(
   stats: ScorableStats,
   budgetMs: number,
 ): { officialWin: boolean; score: number } {
-  const officialWin = stats.outcome === 'victory' && stats.gameTimeMs < budgetMs;
+  const officialWin = isOfficialWin(stats, budgetMs);
   const statsForScore: ScorableStats =
     stats.outcome === 'victory' && !officialWin ? { ...stats, outcome: 'timeout' } : stats;
   const { score } = scoreRun(statsForScore as RunStats, budgetMs);
@@ -81,6 +93,11 @@ export interface ShardMeta {
   schemaVersion: number;
   /** SSOT win budget in ms (FLOOR1_TIME_BUDGET_MS). */
   budgetMs: number;
+  /** The floor these runs were produced on. Only `floor1` carries the safe-room
+   *  active-time credit that {@link deriveRunFacts}/`isOfficialWin` apply, so a
+   *  non-floor1 batch is rejected rather than misclassified with Floor-1 win
+   *  semantics. */
+  floorId: string;
   /** Frame budget the runs used (slack budget). */
   maxFrames: number;
   stage: string;
@@ -109,12 +126,111 @@ function rowFacts(row: RunRow): string {
     row.outcome,
     row.officialWin,
     row.gameTimeMs,
+    row.safeRoomMs,
     row.score,
     row.xp,
     row.gold,
     row.minHealthPercent,
     row.finalLevel,
   ]);
+}
+
+/**
+ * Validate a row's safe-room credit is a real, in-range number BEFORE any
+ * consumer trusts it. `safeRoomMs` is typed `number`, but rows arrive from a
+ * `JSON.parse` cast straight to `RunRow`, so an artifact that OMITS the field
+ * (→ `undefined`), carries a `NaN`, or a value outside `[0, gameTimeMs]` slips
+ * past the type. `activeTimeMs` coalesces a missing value to `0` (silently
+ * restoring raw-time classification) and clamps a value > `gameTimeMs` to `0`
+ * active time (manufacturing an official win for ANY victory regardless of real
+ * clear time). The schema-version guard proves the field is EXPECTED at this
+ * version; this proves it is PRESENT and SANE. Throws on the first violation.
+ */
+function assertRowSafeRoomInRange(row: RunRow): void {
+  const label = rowKey(row).split('\u0000').join('/');
+  if (!Number.isFinite(row.gameTimeMs) || row.gameTimeMs < 0) {
+    throw new Error(
+      `Row ${label}: gameTimeMs=${row.gameTimeMs} is not a finite, non-negative number.`,
+    );
+  }
+  const safeRoomMs = row.safeRoomMs as number | undefined;
+  if (
+    typeof safeRoomMs !== 'number' ||
+    !Number.isFinite(safeRoomMs) ||
+    safeRoomMs < 0 ||
+    safeRoomMs > row.gameTimeMs
+  ) {
+    throw new Error(
+      `Row ${label}: safeRoomMs=${safeRoomMs} must be a finite number in ` +
+        `[0, gameTimeMs=${row.gameTimeMs}] — a missing or out-of-range value would ` +
+        `silently skew safe-room win credit at the fan-in boundary.`,
+    );
+  }
+}
+
+/**
+ * Validate a SEARCH artifact's provenance before its tuned finalist config is
+ * used to seed a fresh VALIDATE shard. Unlike shard rows — which pass through
+ * {@link mergeShards}' schema/floor/budget guards at the aggregate fan-in — the
+ * finalist config crosses the search→validate job boundary WITHOUT that vetting,
+ * then the validate stage emits a fresh, well-formed shard, so a stale or
+ * mismatched search artifact would silently seed valid-looking v{@link
+ * SHARD_SCHEMA_VERSION} validation rows and evade the merge guard entirely. A
+ * pre-v{@link SHARD_SCHEMA_VERSION} artifact in particular selected its winner
+ * under the OLD raw-time win definition, so its finalist is not comparable under
+ * the current safe-room-credited SSOT win.
+ *
+ * @param meta     the artifact's recorded provenance (absent on a legacy artifact)
+ * @param combo    the combo the artifact was produced for (`SearchArtifact.combo`)
+ * @param expected the current runner's calibration the artifact must match
+ */
+export function assertSearchArtifactProvenance(
+  meta: ShardMeta | undefined,
+  combo: string | undefined,
+  expected: { combo: string; floorId: string; budgetMs: number; maxFrames: number },
+): void {
+  if (!meta) {
+    throw new Error(
+      `Search artifact has no meta/provenance block (pre-v${SHARD_SCHEMA_VERSION} schema); ` +
+        `re-run --stage search on the current build before validating.`,
+    );
+  }
+  if (meta.schemaVersion !== SHARD_SCHEMA_VERSION) {
+    throw new Error(
+      `Search artifact schema version ${meta.schemaVersion} != current ${SHARD_SCHEMA_VERSION}; ` +
+        `its finalist was tuned under an older win definition (pre-v${SHARD_SCHEMA_VERSION} rows ` +
+        `lack safeRoomMs). Re-run --stage search.`,
+    );
+  }
+  if (meta.stage !== 'search') {
+    throw new Error(
+      `Search artifact stage '${meta.stage}' != 'search'; pass a --stage search artifact.`,
+    );
+  }
+  if (meta.floorId !== expected.floorId) {
+    throw new Error(
+      `Search artifact floorId '${meta.floorId}' != '${expected.floorId}'; ` +
+        `the finalist was tuned on a different floor.`,
+    );
+  }
+  if (meta.budgetMs !== expected.budgetMs) {
+    throw new Error(
+      `Search artifact win-budget ${meta.budgetMs} != current ${expected.budgetMs}; ` +
+        `the finalist was tuned against a different win budget.`,
+    );
+  }
+  if (meta.maxFrames !== expected.maxFrames) {
+    throw new Error(
+      `Search artifact frame-cap ${meta.maxFrames} != current ${expected.maxFrames}; ` +
+        `the finalist was tuned under a different frame budget.`,
+    );
+  }
+  if (combo !== expected.combo) {
+    throw new Error(
+      `Search artifact combo '${combo}' != requested '${expected.combo}'; ` +
+        `this finalist belongs to a different combo.`,
+    );
+  }
 }
 
 export interface MergedShards {
@@ -135,6 +251,30 @@ export function mergeShards(shards: readonly ShardArtifact[]): MergedShards {
   }
   const first = shards[0]!;
   const meta = first.meta;
+  // Reject a batch whose schema predates the current version. All shards must
+  // agree with each OTHER (checked per-shard below) AND with the current SSOT:
+  // an all-v1 batch agrees internally yet its rows lack safeRoomMs, so
+  // deriveRunFacts/isOfficialWin would silently fall back to raw-time
+  // classification — the exact bug the safeRoomMs field fixed.
+  if (meta.schemaVersion !== SHARD_SCHEMA_VERSION) {
+    throw new Error(
+      `Shard schema version ${meta.schemaVersion} != current ${SHARD_SCHEMA_VERSION}; ` +
+        `re-run the sweep — pre-v${SHARD_SCHEMA_VERSION} rows lack safeRoomMs and would ` +
+        `misclassify safe-room-credited wins.`,
+    );
+  }
+  // The safe-room active-time credit in deriveRunFacts/isOfficialWin is a
+  // Floor-1 mechanic (the collapse deadline only pauses in Floor-1 safe rooms).
+  // A non-floor1 batch would be scored with Floor-1 win semantics, so reject it
+  // outright rather than silently misclassify. sweep-eval enforces this at the
+  // producer too; this is the fan-in's own defense against a hand-crafted or
+  // legacy artifact.
+  if (meta.floorId !== 'floor1') {
+    throw new Error(
+      `Shard floorId '${meta.floorId}' is not supported: the safe-room win credit is ` +
+        `Floor-1-specific. Re-run the sweep on floor1 (non-Floor-1 win semantics are undefined).`,
+    );
+  }
   const rowsByKey = new Map<string, RunRow>();
   const configs: Record<string, SweepConfig> = {};
   let collapsedDuplicates = 0;
@@ -148,6 +288,9 @@ export function mergeShards(shards: readonly ShardArtifact[]): MergedShards {
     }
     if (shard.meta.budgetMs !== meta.budgetMs) {
       throw new Error(`Shard win-budget mismatch: ${shard.meta.budgetMs} vs ${meta.budgetMs}`);
+    }
+    if (shard.meta.floorId !== meta.floorId) {
+      throw new Error(`Shard floor mismatch: ${shard.meta.floorId} vs ${meta.floorId}`);
     }
     if (shard.meta.maxFrames !== meta.maxFrames) {
       throw new Error(`Shard frame-budget mismatch: ${shard.meta.maxFrames} vs ${meta.maxFrames}`);
@@ -187,6 +330,7 @@ export function mergeShards(shards: readonly ShardArtifact[]): MergedShards {
       configs[id] = config;
     }
     for (const row of shard.rows) {
+      assertRowSafeRoomInRange(row);
       const key = rowKey(row);
       const existing = rowsByKey.get(key);
       if (existing) {
@@ -239,6 +383,7 @@ export function assertRowsConsistent(rows: readonly RunRow[], budgetMs: number):
       {
         outcome: row.outcome,
         gameTimeMs: row.gameTimeMs,
+        safeRoomMs: row.safeRoomMs,
         totalXp: row.xp,
         totalGold: row.gold,
         finalLevel: row.finalLevel,
@@ -321,14 +466,13 @@ export function buildLeaderboard(
     }
   }
 
-  // Whether a row is an official win. Recomputed from raw facts when a budget is
-  // supplied (aggregate always supplies meta.budgetMs) so a runner's stored
-  // officialWin flag can never corrupt the wins/flips safety columns; falls back
-  // to the stored flag only for primitive ranking tests that omit the budget.
+  // Whether a row is an official win. Recomputed from raw facts (safe-room
+  // credited) when a budget is supplied (aggregate always supplies
+  // meta.budgetMs) so a runner's stored officialWin flag can never corrupt the
+  // wins/flips safety columns; falls back to the stored flag only for primitive
+  // ranking tests that omit the budget.
   const isWin = (row: RunRow): boolean =>
-    options.budgetMs !== undefined
-      ? row.outcome === 'victory' && row.gameTimeMs < options.budgetMs
-      : row.officialWin;
+    options.budgetMs !== undefined ? isOfficialWin(row, options.budgetMs) : row.officialWin;
 
   // Incumbent per-(weapon,seed) win map for flip computation.
   const incumbentKey =
@@ -433,6 +577,11 @@ export interface AggregateResult {
   lexicographicWinner: LeaderboardRow | null;
   collapsedDuplicates: number;
   totalRuns: number;
+  /** Largest safe-room dwell (ms) across all runs — surfaces the maintainer's
+   *  ">60s in safe rooms" flag at a glance. */
+  maxSafeRoomMs: number;
+  /** Count of runs whose safe-room dwell exceeded {@link SAFE_ROOM_FLAG_MS}. */
+  safeRoomFlaggedCount: number;
 }
 
 /** Full fan-in: merge → (optional completeness check) → leaderboard → both orderings. */
@@ -465,6 +614,10 @@ export function aggregate(
     lexicographicWinner !== null &&
     groupKey(compositeWinner.combo, compositeWinner.configId) !==
       groupKey(lexicographicWinner.combo, lexicographicWinner.configId);
+  const maxSafeRoomMs = merged.rows.reduce((m, r) => Math.max(m, r.safeRoomMs ?? 0), 0);
+  const safeRoomFlaggedCount = merged.rows.filter(
+    (r) => (r.safeRoomMs ?? 0) > SAFE_ROOM_FLAG_MS,
+  ).length;
   return {
     meta: merged.meta,
     byComposite,
@@ -474,6 +627,8 @@ export function aggregate(
     lexicographicWinner,
     collapsedDuplicates: merged.collapsedDuplicates,
     totalRuns: merged.rows.length,
+    maxSafeRoomMs,
+    safeRoomFlaggedCount,
   };
 }
 
@@ -493,6 +648,12 @@ export function renderMarkdown(result: AggregateResult): string {
       `> ${result.collapsedDuplicates} identical duplicate run(s) collapsed (determinism proof).`,
     );
   }
+  lines.push('');
+  lines.push(
+    `Safe-room dwell: max **${(result.maxSafeRoomMs / 1000).toFixed(1)}s** · ` +
+      `runs over ${(SAFE_ROOM_FLAG_MS / 1000).toFixed(0)}s flag: **${result.safeRoomFlaggedCount}**` +
+      (result.safeRoomFlaggedCount > 0 ? ' ⚠️ (inspect for a stuck-near-safe-room stall)' : ''),
+  );
   if (result.winnersDiverge) {
     lines.push('');
     lines.push(

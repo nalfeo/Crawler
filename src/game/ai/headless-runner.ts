@@ -305,6 +305,12 @@ export async function runHeadless(
   const inputState = createInputState();
 
   let frameCount = 0;
+  // Frames spent in a safe room, where the floor-collapse deadline is paused
+  // (floorScenario extends `objective.deadlineMs` by one DELTA each frame
+  // `world.playerInSafeRoom` is true). Counting under the exact same condition,
+  // read after the sim step that runs safeRoomSystem + floorObjectiveSystem,
+  // makes `safeRoomMs` match the game's deadline pause frame-for-frame.
+  let safeRoomFrames = 0;
   let lastProgressFrame = 0;
   let outcome: RunStats['outcome'] = 'timeout';
   let stallReason: string | undefined;
@@ -498,12 +504,20 @@ export async function runHeadless(
       runSimulationStep(world, inputState, GAME.DELTA_MS, {
         ...config.simulationOptions,
       });
+      // Commit this frame's counters the moment runSimulationStep returns: at that
+      // point world.elapsedMs has advanced and safeRoomSystem/floorObjectiveSystem
+      // have already run inside the step, so world.playerInSafeRoom reflects THIS
+      // frame's deadline pause. Incrementing here (rather than after the auto*
+      // helpers below) keeps frameCount/safeRoomFrames consistent with
+      // world.elapsedMs even if a later helper throws and we emit crash stats.
+      frameCount++;
+      if (world.playerInSafeRoom === true) {
+        safeRoomFrames++;
+      }
       // Floor objective handling (including Floor 2 objective ticks) runs inside
       // runSimulationStep, so no second explicit objective call is needed here.
       autoFloor1ProgressionSystem(world, playerEid);
       autoAllocateStatPoints(world, playerEid);
-
-      frameCount++;
 
       // Check win/loss conditions
       if (
@@ -738,6 +752,7 @@ export async function runHeadless(
       totalFrames: frameCount,
       wallTimeMs,
       gameTimeMs: world.elapsedMs,
+      safeRoomMs: safeRoomFrames * GAME.DELTA_MS,
       finalFloor: world.floor,
       finalScore,
       outcome: 'error',
@@ -810,6 +825,7 @@ export async function runHeadless(
     totalFrames: frameCount,
     wallTimeMs,
     gameTimeMs: world.elapsedMs,
+    safeRoomMs: safeRoomFrames * GAME.DELTA_MS,
     finalFloor: world.floor,
     finalScore,
     outcome,

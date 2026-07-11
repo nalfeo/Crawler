@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BUDGET_FRAMES,
+  DEFAULT_MAX_FRAMES,
   FLOOR1_WEAPONS,
   parseNonNegativeInt,
   parseNonNegativeNumber,
@@ -93,10 +94,22 @@ describe('parseSweepArgs — defaults and flags', () => {
     const args = parseSweepArgs(argv(), 1);
     expect(args.seeds).toEqual(Array.from({ length: 40 }, (_, i) => i + 1));
     expect(args.weapons).toEqual(FLOOR1_WEAPONS);
-    expect(args.maxFrames).toBe(BUDGET_FRAMES);
+    expect(args.maxFrames).toBe(DEFAULT_MAX_FRAMES);
     expect(args.out).toBeNull();
     expect(args.floorId).toBe('floor1');
     expect(args.skipEvents).toBe(false);
+  });
+
+  it('defaults maxFrames to the ~10% slack budget, not the raw win budget (safe-room-credited wins must not be truncated)', () => {
+    // The Floor-1 win is safe-room-credited: isOfficialWin compares
+    // (gameTimeMs - safeRoomMs) against the 6-min budget, so a legitimate clear
+    // can exceed 360 s of RAW game time. Capping the sim at exactly BUDGET_FRAMES
+    // (360 s raw) would force-terminate those wins before isOfficialWin sees
+    // them, miscounting them as timeouts and biasing the win rate down. The
+    // default must carry the same ~1.1x slack as the peer Floor-1 harnesses.
+    expect(DEFAULT_MAX_FRAMES).toBe(23_760);
+    expect(DEFAULT_MAX_FRAMES).toBeGreaterThan(BUDGET_FRAMES);
+    expect(parseSweepArgs(argv(), 1).maxFrames).toBe(DEFAULT_MAX_FRAMES);
   });
 
   it('parses --skip-events as a boolean flag', () => {
@@ -109,6 +122,23 @@ describe('parseSweepArgs — defaults and flags', () => {
 
   it('defaults floor2 to a single weapon when weapons are not overridden', () => {
     expect(parseSweepArgs(argv('--floor', 'floor2'), 8).weapons).toEqual(['sword']);
+  });
+
+  it('scopes the DEFAULT_MAX_FRAMES slack cap to floor1 only (regression: floor2 must keep its prior default)', () => {
+    // DEFAULT_MAX_FRAMES carries the Floor-1 safe-room slack, so it must NOT leak
+    // into other floors. A non-floor1 sweep without an explicit --max-frames must
+    // retain the prior BUDGET_FRAMES default — this Floor-1-scoped fix cannot be
+    // allowed to silently inflate a floor2 sweep's frame budget (which could turn
+    // formerly-truncated floor2 runs into victories).
+    expect(parseSweepArgs(argv(), 1).maxFrames).toBe(DEFAULT_MAX_FRAMES); // floor1 (default)
+    expect(parseSweepArgs(argv('--floor', 'floor1'), 1).maxFrames).toBe(DEFAULT_MAX_FRAMES);
+    expect(parseSweepArgs(argv('--floor', 'floor2'), 1).maxFrames).toBe(BUDGET_FRAMES);
+    expect(parseSweepArgs(argv('--floor', 'floor3'), 1).maxFrames).toBe(BUDGET_FRAMES);
+  });
+
+  it('lets an explicit --max-frames override the floor-aware default for any floor', () => {
+    expect(parseSweepArgs(argv('--floor', 'floor2', '--max-frames', '600'), 1).maxFrames).toBe(600);
+    expect(parseSweepArgs(argv('--floor', 'floor1', '--max-frames', '600'), 1).maxFrames).toBe(600);
   });
 });
 

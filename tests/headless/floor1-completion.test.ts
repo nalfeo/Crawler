@@ -55,6 +55,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
+import { isOfficialWin } from '../../src/game/ai/scoring.js';
 import type { RunStats } from '../../src/game/ai/types.js';
 import { GAME } from '../../src/shared/constants.js';
 import {
@@ -190,7 +191,7 @@ describe('Floor 1 headless completion gate', () => {
         const fails: string[] = [];
         for (const seed of SAMPLE_SEEDS) {
           const s = runs.get(seed)!;
-          if (s.outcome === 'victory' && s.gameTimeMs < FLOOR1_TIME_BUDGET_MS) {
+          if (isOfficialWin(s, FLOOR1_TIME_BUDGET_MS)) {
             wins.push(seed);
           } else {
             fails.push(
@@ -210,7 +211,7 @@ describe('Floor 1 headless completion gate', () => {
       it('every winning run finishes all quests and shows real progression', () => {
         for (const seed of SAMPLE_SEEDS) {
           const s = runs.get(seed)!;
-          if (s.outcome !== 'victory' || s.gameTimeMs >= FLOOR1_TIME_BUDGET_MS) continue;
+          if (!isOfficialWin(s, FLOOR1_TIME_BUDGET_MS)) continue;
           for (const questId of REQUIRED_QUEST_IDS) {
             expect(
               s.quests.questLogCompletions[questId],

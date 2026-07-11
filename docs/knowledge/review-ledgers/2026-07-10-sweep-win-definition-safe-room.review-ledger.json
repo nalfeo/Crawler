@@ -1,0 +1,173 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-10",
+  "session_slug": "sweep-win-definition-safe-room",
+  "task_title": "Credit safe-room time in sweep win-definition (metric-only)",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "major_fork",
+      "notes": "Adversarial review (gpt-5.4, high, 388s) REJECTED option B as written; enumerated 3 alternatives (A metric-only / local-derived counter / opt-in active-frame cap). MAJOR_FORK: dropped the global runner frame-cap rewrite, the world.safeRoomElapsedMs field, AND the scoreRun timeBonus change from the confirmed plan; pivoted to metric-only + a runner-local integer safeRoomFrames counter. Adjudication of 5 blocking + 2 non-blocking: (1 BLOCK, adopted) global maxFrames rewrite changes a shared runHeadless contract (determinism goldens/repro/--max-frames) AND is a no-op on all observed data (every over-budget safe-room victory already completed within the current 396s cap; only the scorer downgraded them) -> maintainer confirmed metric-only, NO runner change. (2 BLOCK, adopted) drop world.safeRoomElapsedMs -> runner-local integer safeRoomFrames counter reading existing world.playerInSafeRoom; safeRoomMs = frames*DELTA_MS (integer-exact, no float recovery, no world.ts/floorScenario.ts edit). (3 BLOCK, adopted) do NOT change scoreRun timeBonus to active time (feeds hill-climb.ts/weapon-sweep.ts search gradient; would reward safe-room idling) -> scoreRun stays raw; only win CLASSIFICATION uses active time. (4 BLOCK, adopted) NaN/stale-artifact threading -> activeTimeMs coalesces safeRoomMs ?? 0; RunRow/ScorableStats gain safeRoomMs; rowFacts includes it; assertRowsConsistent + buildLeaderboard recomputes migrate to isOfficialWin; BUMP SHARD_SCHEMA_VERSION 1->2. (5 BLOCK, adopted) coordinated migration of all raw-budget gates (floor1-completion, spawner-arena incl. the every-victory<360s assertion, 4 A/B isWin helpers, aggregate). (6 non-block, adopted) diagnostic surfaces maxSafeRoomMs + flaggedCount, not just a count. (7 non-block, satisfied) reproducer = isOfficialWin unit test (gameTimeMs 380s, safeRoomMs 30s -> active 350s -> win; safeRoomMs 0 -> raw-identical). SSOT helpers land in scoring.ts: SAFE_ROOM_FLAG_MS=60000, activeTimeMs, isOfficialWin."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.4", "gemini-3.1-pro"],
+          "concerns_count": 3,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "A (unanimous 3/3): floor1-completion.test.ts still filtered raw gameTimeMs -> migrated to isOfficialWin. B (gpt-5.4): crash-path safeRoomMs off-by-one -> fixed by moving frameCount++/safeRoomFrames++ to immediately after runSimulationStep(). C (gemini-3.1-pro): migrate winrate/weapon-sweep AND inflate maxFrames -> the maxFrames-inflate part REJECTED as an out-of-scope runner-behavior change; the win-definition migration part carried to round 2. resolved_count=2 (A+B fixed this round)."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4", "claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "gpt-5.4 sharpened C into an in-scope, metric-only finding: winrate-sweep.ts classified a win as outcome===victory, so at maxFrames===360s a last-frame boundary clear (gameTimeMs===360000) is a win under victory-string but a loss under isOfficialWin (strict <). sonnet-4.6 argued out-of-scope/no-op at the 360s cap. Resolved by migrating winrate-sweep 3 classification sites to isOfficialWin (metric-only, NO maxFrames change)."
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.4", "claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Both models independently confirmed the winrate-sweep migration resolves the round-2 finding with no new type/import/determinism issues. gpt-5.4 ran typecheck + an ai:winrate-sweep smoke run (both green); sonnet-4.6 confirmed the fail-record builder correctly stays outcome!==victory and the denominator (seeds.length) is unaffected."
+        },
+        {
+          "round": 4,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 5,
+          "resolved_count": 5,
+          "clean": true,
+          "notes": "Post-PR automated review (GitHub copilot-pull-request-reviewer on #1021) raised 5 in-scope findings; all adjudicated valid and FIXED (rule #12: fix, not reply-and-resolve). (1) winrate-sweep Floor-2 regression: round-2's migration hard-coded the Floor-1 6-min budget for ALL floors, so a non-Floor-1 victory would be misclassified under active-time -> added classifyOfficialWin(stats, floorId) [Floor 1 -> isOfficialWin; other floors -> raw outcome==='victory']. (2) reconciliation gap: failRecord was built only on outcome!=='victory', so over-budget Floor-1 victories counted as losses but never appeared in the printed fail list (totalRuns-totalWins != fails.length) -> compute officialWin worker-side, build failRecord on !officialWin, added officialWin:boolean to SweepTaskResult. (3) aggregate-shards accepted an all-stale-schema batch (v1 rows lack safeRoomMs) that agreed internally -> mergeShards now rejects first.meta.schemaVersion !== SHARD_SCHEMA_VERSION + added an all-stale-batch rejection test. (4) headless-runner safeRoomFrames counter had no coverage -> added a 3rd it(...) to floor1-safe-room-reacquire asserting positive, frame-aligned (frames=round(safeRoomMs/DELTA_MS); safeRoomMs~=frames*DELTA_MS), bounded safe-room dwell. (5) apple JSON legacy schema -> rewrote to canonical (session/delta/verdict/hello_kitties). verify:fast green; aggregate-shards unit test 30/30; reacquire headless test 9/9 in isolation."
+        },
+        {
+          "round": 5,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "copilot-pull-request-reviewer re-reviewed the round-4 fix commit and raised 2 NEW in-scope findings on the sweep-eval/aggregate path (same regression class as the original threads: Floor-2 misclassification + a fan-in trust-boundary hole). Both FIXED (rule #12). (1) deriveRunFacts applies Floor-1 safe-room active-time credit unconditionally, but sweep-eval accepts --floor and would score a Floor-2 batch with Floor-1 win semantics. The tool is Floor-1-calibrated by construction (budgetMs is always FLOOR1_TIME_BUDGET_MS; no Floor-2 budget exists), so threading floorId into deriveRunFacts would be uncalibrated. Instead enforce the Floor-1 precondition at BOTH boundaries: sweep-eval parseArgs now throws on --floor != floor1; ShardMeta gains a floorId field (written by buildMeta); mergeShards rejects a non-floor1 first-shard meta AND a cross-shard floorId mismatch; deriveRunFacts docstring documents the precondition. (2) the schema-version guard proves safeRoomMs is EXPECTED at v2 but not that a row HAS a sane value — an omitted field (activeTimeMs ?? 0) silently restores raw-time classification, a value > gameTimeMs clamps active time to 0 (manufacturing an official win for any victory), and NaN misclassifies as a loss. Added assertRowSafeRoomInRange validating finite gameTimeMs>=0 and finite safeRoomMs in [0, gameTimeMs], called at the mergeShards row-loop fan-in boundary. Tests: all-floor2-batch rejection + a safeRoomMs domain it.each (missing/NaN/negative/over-gameTimeMs). verify:fast green; aggregate-shards unit test 36/36."
+        },
+        {
+          "round": 6,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "copilot-pull-request-reviewer re-reviewed the round-5 fix commit (c8372d08) and raised 1 finding on scoring.ts:122: the strict `<` budget comparison could misclassify an exact-budget run because gameTimeMs is ACCUMULATED (repeated += GAME.DELTA_MS, simulation-step.ts:120) while safeRoomMs is a MULTIPLICATION (safeRoomFrames * GAME.DELTA_MS, headless-runner.ts), so activeTimeMs = gameTimeMs - safeRoomMs carries FP drift; the reviewer claimed the 21_600-frame boundary could represent slightly BELOW 360_000 and count an exact-budget run as a win, and asked to cover the case with a value accumulated from GAME.DELTA_MS. INVESTIGATED (numerical experiment in Node, faithful to the real runner which always steps GAME.DELTA_MS): 1000/60 = 16.666666666666668 rounds UP in IEEE-754, so repeated addition drifts UPWARD -> accumulate(21_600) = 360000.00000005 (ABOVE budget) -> `< 360000` = false = correctly a loss (matches the game's `elapsed >= deadline` timeout). Every mixed accumulate-minus-multiply case with 21_600 active frames also landed active > 360_000 -> correctly a loss; 21_599 frames = 359983.33 -> a win. The drift magnitude (~5e-8 ms) is ~8 orders of magnitude below the 16.67 ms frame quantum, so it can NEVER flip an adjacent-frame classification, and 360_000/(1000/60) = 21_600 is an EXACT integer so the budget maps to a real boundary frame. The reviewer's suggested `< budget + epsilon` tolerance would INTRODUCE a bug (flip the exact-budget run to a win, contradicting the timeout semantics). ADJUDICATION (rule #12 - fix the test/gate around the requirement, never the requirement around a review): production code is provably correct -> NO scoring.ts change; instead LOCKED the boundary with a test-only regression suite in scoring-official-win.test.ts that mirrors the runner's accumulation + multiplication forms and asserts exact-budget = loss / one-frame-under = win / accumulate-minus-multiply boundary correct (commit 439755fe). Directly answers the reviewer's 'cover the case using a value accumulated from GAME.DELTA_MS' ask and protects the boundary against a future DELTA_MS change. verify:fast green; scoring-official-win 16/16."
+        },
+        {
+          "round": 7,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true,
+          "notes": "copilot-pull-request-reviewer re-reviewed HEAD 5328ab3b and raised 3 AUDIT-ARTIFACT findings (about the ledger/apples files themselves, not runtime code); all addressed per rule #12. (1) [ledger] flagged that the ledger did not establish a clean review of the CURRENT diff -- code_review round-5 marked itself clean with no post-fix review, and the multi_model stage ended at round-3 (before code_review rounds 4/5/6) and still described the old outcome!==victory fail-record. ADDRESSED by running a genuine 2-model review of the current full head and recording the terminal rounds: multi_model_review round-4 (gpt-5.4 + gemini-3.1-pro) -- which caught a REAL incomplete-migration defect (winrate-sweep default cap) AND reconciles the stale round-3 outcome!==victory note -- and round-5 (gpt-5.4 + claude-sonnet-4.6) terminal-clean; this proves the harness was substantive, not rubber-stamped. (2)+(3) [apples, 2 duplicate re-posts] the calibration note carried stale brittle counts (said 17 files / 5 threads; the branch is now ~22 files and 7-8 addressed reviewer threads). ADDRESSED per the reviewer's regenerate-or-remove ask by making the apple note FULLY QUALITATIVE -- removed the file-count and thread-count entirely so the durable metric can never go stale again as follow-up fixes land. verify:fast green."
+        },
+        {
+          "round": 8,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "copilot-pull-request-reviewer re-reviewed HEAD 1d91f62a (the frame-cap fix commit) and raised 2 findings; both addressed per rule #12. (1) [winrate-sweep-args.ts] The Floor-1 DEFAULT_MAX_FRAMES slack cap (23,760) was assigned to the maxFrames default for EVERY floor at object construction, BEFORE --floor was parsed, so a `--floor floor2` sweep without an explicit --max-frames silently jumped from the prior BUDGET_FRAMES (21,600) default to 23,760 -- an out-of-scope behavior change that could flip formerly-truncated floor2 runs to victories. ADDRESSED (correct structural fix, not resolve-to-green): added a maxFramesProvided flag + a post-parse floor-aware override so the slack cap is applied ONLY on floor1; any other floor retains the prior BUDGET_FRAMES default; an explicit --max-frames still overrides for every floor. Added a regression test (floor1/default -> 23,760; floor2/floor3 -> 21,600; explicit --max-frames honored on any floor). (2) [handoff .md] The durable handoff called the PR metric-only / no runner-behavior change and said winrate-sweep kept its 360s cap with no maxFrames change, but the shipped code raised the Floor-1 default 21,600 -> 23,760 (396s). ADDRESSED: corrected the title, summary, and scope section to state the Floor-1 cap was ALIGNED to the shared slack budget (23,760/396s, byte-identical to sweep-eval.ts + the ab-*/headless peer harnesses) as a correctness requirement (a safe-room-credited win can finish past 360s raw and would otherwise be truncated before isOfficialWin classifies it), while only inflation BEYOND that shared cap was rejected. verify:fast green; winrate-sweep-args 29/29."
+        },
+        {
+          "round": 9,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "copilot-pull-request-reviewer re-reviewed HEAD 1988dad8 (the Floor-2 scoping fix commit) and raised 2 audit-artifact findings (about the PR description and the ledger, not runtime code); both addressed per rules #11/#12. (1) [PR description] The PR body still described the change as metric-only / 'no maxFrames inflation', but the shipped code raised the Floor-1 default cap 21,600 -> 23,760 (396s). ADDRESSED per rule #11 (holistic PR synthesis): rewrote the PR body via update_pull_request to accurately describe the Floor-1 slack-cap alignment (23,760/396s, byte-identical to sweep-eval.ts + peer harnesses) as a correctness requirement -- a safe-room-credited win can finish past 360s raw and would otherwise be truncated before isOfficialWin classifies it -- while stating only inflation BEYOND that shared cap was rejected; scoped to Floor 1 only. (2) [ledger] For a 4-apple change the multi_model_review stage ended at round-5, which predates the Floor-2 scoping fix in 1988dad8, so the ledger did not establish a terminal-clean multi-model review of the CURRENT head. ADDRESSED: ran a genuine 2-model review (gpt-5.4 + gemini-3.1-pro, adjudicator claude-opus-4.8) on the current diff and recorded multi_model_review round-6 -- both models NO CONCERNS on the floor-aware scoping change and the underlying committed src. This code_review round is terminal-clean: no runtime code changed this round (the fixes are PR-metadata + ledger only); the last runtime-code change (1988dad8) was independently confirmed clean by round-6's 2-model review. verify:fast green."
+        },
+        {
+          "round": 10,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "copilot-pull-request-reviewer re-reviewed HEAD b616df77 and raised 2 REAL code-soundness findings (both direct, in-scope consequences of THIS PR); both fixed in ac760e23 per rule #12 (fix, do not resolve-to-green). (1) [src/game/ai/types.ts:376 -> scripts/agent/health/fun-score-lib.ts] The PR made RunStats.safeRoomMs REQUIRED, but the `isRunStats` guard did not validate it, so normalizeFunSessions could emit a RunStats whose required field was undefined. FIXED: made the guard sound (added a finite-number check for safeRoomMs) AND added a `withDefaultedSafeRoomMs` helper that coalesces a MISSING safeRoomMs -> 0 for legacy fun-score payloads (applied in both the toSession and bare-root paths); a present-but-invalid value is still rejected (legacy compat vs. corruption). (2) [scripts/agent/perf/sweep-eval.ts:447] The `--search-artifact` validate path read the finalist without checking provenance, so a stale v1 (raw-time win) search artifact could seed fresh v2 validation rows and evade the fan-in schema guard -- the same trust-boundary class this PR already fixed at mergeShards. FIXED: added `assertSearchArtifactProvenance(meta, combo, expected)` in aggregate-shards.ts (validates schemaVersion===SHARD_SCHEMA_VERSION, stage==='search', floorId/budgetMs/maxFrames/combo match) and call it in sweep-eval.ts immediately after reading the artifact. Regression tests: 8 provenance cases + legacy-missing/present-invalid safeRoomMs normalization cases (tests/unit/ai/sweep-aggregate-shards.test.ts, tests/unit/fun-score-input.test.ts). verify:fast green. The round-10 code delta was independently re-reviewed by 2 distinct models (multi_model round-7) -- both NO CONCERNS -- so this code_review round is terminal-clean."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.4", "gemini-3.1-pro"],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "3 distinct models. Adjudication (claude-opus-4.8): A valid (unanimous) -> fix; B valid (gpt-5.4) -> fix; C valid-in-part -> the maxFrames-inflate portion rejected as an out-of-scope runner-behavior change (rules #12/#13: do not change runner behavior to move the metric), the win-definition migration portion carried to round 2. resolved_count=2 (A+B) this round."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4", "claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Genuine model DISAGREEMENT adjudicated: gpt-5.4 flagged winrate-sweep boundary/SSOT-consistency (in-scope, metric-only); claude-sonnet-4.6 argued out-of-scope/no-op. Adjudicator (claude-opus-4.8) sided with gpt-5.4: winrate-sweep is the canonical 90% Floor-1 win-rate instrument (called by deploy.yml) so its win definition MUST be the SSOT isOfficialWin; the migration is pure metric-only (no maxFrames change) and future-proofs any inflated --max-frames where victory-string and isOfficialWin genuinely diverge. weapon-sweep left as-is (330s cap strictly < 360s budget -> true no-op; self-contained balance tool). Resolved by migrating winrate-sweep."
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.4", "claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "2 distinct models independently CONFIRMED CLEAN on the final diff (winrate-sweep migration + committed src changes): correct import path, consistent officialWin at all 3 sites, fail-record builder correctly left as outcome!==victory (boundary victory has no diagnostic), scoreRun stays raw, safeRoomFrames frame-aligned with the deadline pause on normal+crash paths, no new type/determinism issues."
+        },
+        {
+          "round": 4,
+          "models": ["gpt-5.4", "gemini-3.1-pro"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Terminal-round trigger: the round-7 copilot-reviewer ledger thread asked for a genuine clean multi-model review of the CURRENT head, since rounds 1-3 predated code_review rounds 4/5/6. Ran 2 distinct models on the full committed diff (HEAD 5328ab3b). gemini-3.1-pro: CLEAN on all 6 correctness axes (safe-room accounting on normal+crash paths, activeTimeMs coalesce+clamp + aggregate boundary rejection, scoreRun raw-time gradient, Floor-1 precondition at both boundaries, fail-record reconciliation, no Date.now determinism leak). gpt-5.4: found 1 BLOCKING defect gemini missed -- winrate-sweep-args.ts defaulted maxFrames to BUDGET_FRAMES (21_600 = 360s RAW, zero slack), but this PR migrated winrate-sweep classification to the safe-room-credited isOfficialWin (gameTimeMs - safeRoomMs < budget); a safe-room-credited win finishing after 360s RAW is force-terminated by runHeadless before isOfficialWin runs -> miscounted as a timeout, biasing win-rate DOWN (opposite of the PR intent). Every peer Floor-1 harness (sweep-eval.ts IN THIS PR, the floor1-completion official gate, the ab-* and navmesh sweeps) uses the ~1.1x slack cap 23_760 (396s). Adjudicator (claude-opus-4.8): VALID -- an incomplete-migration defect inside the PR's own scope. FIXED: winrate-sweep-args.ts now exports DEFAULT_MAX_FRAMES = Math.ceil((FLOOR1_TIME_BUDGET_MS * 1.1) / GAME.DELTA_MS) (= 23_760, byte-identical to peers via the FP-safe division form; Math.ceil(BUDGET_FRAMES*1.1) would give 23_761), the default args use it, plus a regression test pinning 23_760 and > BUDGET_FRAMES. This ALSO reconciles the stale round-3 note: code_review round-4 changed the fail-record builder from outcome!==victory to !officialWin, so the round-3 'fail-record correctly left as outcome!==victory' claim is SUPERSEDED -- current code builds the fail record on !officialWin. clean:false pending a confirming round."
+        },
+        {
+          "round": 5,
+          "models": ["gpt-5.4", "claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Confirming round on the applied frame-cap fix; 2 distinct models. gpt-5.4 (re-review of the fix): confirmed it matches peers (23_760, regression test locks it) but raised a RESIDUAL -- a 396s RAW cap still cannot GUARANTEE observability of a win with >36s safe-room dwell whose active time is near budget (could finish >396s raw); suggested further cap inflation / an active-frame cap. Independently adjudicated by claude-sonnet-4.6 (2nd distinct model): residual is OUT-OF-SCOPE and the fix is terminal. Decisive load-bearing argument (gate consistency): winrate-sweep now uses the IDENTICAL 23_760-frame cap as the OFFICIAL Floor-1 gate (floor1-completion.test.ts) and every peer sweep; isOfficialWin requires outcome===victory first, so a run truncated past 23_760 frames can be an official win in NEITHER the sweep NOR the gate -- they observe/miss exactly the same set. INFLATING the sweep cap beyond the gate would let the sweep count a win the gate force-terminates as a timeout -> the sweep would report a HIGHER win-rate than the gate validates = a NEW divergence, the opposite of the SSOT alignment this PR enforces. The 23_760-frame cap IS the definition of the observable Floor-1 window; a win outside it is, by design, not a win the system can validate. Corroborating (not decisive): empirically every over-budget safe-room victory completed within 396s (plan review + maintainer); and the active-frame-cap alternative was a plan-review option the maintainer DECLINED as out-of-metric-only-scope, so reversing it silently would violate rule #12. valid_count=0 (the residual is out-of-scope, not a defect). TERMINAL CLEAN: 2 distinct models, no valid unresolved concern on the final head."
+        },
+        {
+          "round": 6,
+          "models": ["gpt-5.4", "gemini-3.1-pro"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Terminal-round trigger: round-9 copilot-reviewer ledger thread (review-ledger.json:83) noted the multi_model stage ended at round-5, which PREDATES the Floor-2 scoping fix committed in 1988dad8 (the maxFramesProvided post-parse floor-aware override). Ran 2 distinct models on the CURRENT full diff (origin/main...HEAD, which now includes 1988dad8), focused on the floor-aware scoping change. gpt-5.4 (high): NO CONCERNS -- verified the post-loop `if (!maxFramesProvided && args.floorId !== 'floor1')` override restores BUDGET_FRAMES (21,600) for floor2/floor3, keeps floor1 on DEFAULT_MAX_FRAMES (23,760), and preserves an explicit --max-frames regardless of flag order; confirmed args.floorId is final before the override runs and args.maxFrames is not read before parseSweepArgs returns; confirmed no FP/off-by-one with 23_760 via the division form; confirmed the 2 new tests assert the right invariants. gemini-3.1-pro (high): NO CONCERNS -- independently confirmed the same ordering-safety and FP-safety, PLUS re-verified the underlying committed src (scoring.ts activeTimeMs=max(0,gameTimeMs-safeRoomMs), headless-runner safeRoomFrames synchronized with world.playerInSafeRoom). Adjudicator (claude-opus-4.8): both models independently NO CONCERNS on the current head; valid_count=0. TERMINAL CLEAN: 2 distinct models, no valid concern on the final head (which includes the Floor-2 scoping fix)."
+        },
+        {
+          "round": 7,
+          "models": ["gpt-5.4", "gemini-3.1-pro"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Round-10 copilot-reviewer raised 2 REAL code-soundness findings (not audit artifacts) that changed runtime code (ac760e23), so the multi_model stage was re-run on the round-10 delta (b616df77..ac760e23) to keep it covering the current head. gpt-5.4 (high, 126s): NO CONCERNS -- verified `isRunStats` now requires finite safeRoomMs and `withDefaultedSafeRoomMs` fills ONLY when the key is truly absent (`'safeRoomMs' in obj`), so legacy-missing -> 0 while present-but-invalid (NaN/string/null) is still rejected; `assertSearchArtifactProvenance` rejects all claimed stale/mismatched classes (no-meta, wrong schemaVersion/stage/floorId/budgetMs/maxFrames/combo); the sweep-eval.ts call site passes the correct current expected values and will not false-positive on a legitimate artifact; no new determinism regressions; both targeted test files pass. gemini-3.1-pro (high, 327s): NO CONCERNS -- independently confirmed the exact missing-vs-corruption distinction via `'safeRoomMs' in obj` + `Number.isFinite`, all strict-equality (`!==`) provenance narrowing, the `if (!meta)` legacy-artifact guard, the zero-false-positive call-site mapping (buildMeta('search', args.floorId) mirrors the expected object; CLI rejects floor2 so FLOOR1_TIME_BUDGET_MS/MAX_FRAMES always correspond to args.floorId), functional purity of the `{ ...obj }` spread (no input mutation), and non-tautological tests. Adjudicator (claude-opus-4.8): 2 distinct models independently NO CONCERNS on the current head ac760e23; valid_count=0. TERMINAL CLEAN."
+        }
+      ]
+    }
+  }
+}

@@ -16,6 +16,7 @@
 import { writeFileSync } from 'node:fs';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../../src/game/ai/headless-runner.js';
+import { isOfficialWin } from '../../../src/game/ai/scoring.js';
 import {
   AIDecisionMode,
   type AIDecisionModeValue,
@@ -83,7 +84,7 @@ async function run(seed: number, weapon: string, mode: AIDecisionModeValue): Pro
 }
 
 function isWin(s: RunStats): boolean {
-  return s.outcome === 'victory' && s.gameTimeMs < FLOOR1_TIME_BUDGET_MS;
+  return isOfficialWin(s, FLOOR1_TIME_BUDGET_MS);
 }
 
 interface Row {
