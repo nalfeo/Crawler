@@ -119,11 +119,13 @@ stage). Never re-score down just to dodge a stage (rule #12).
    ```
    Exit 0 = the guard will allow your PR. Exit 1 = it prints exactly which stage
    is incomplete.
-8. Run full verify, which now includes an early PR-prereq pass:
+8. Run the focused PR-prerequisite check:
    ```
-   npm run verify
+   npm run verify:pr-prereqs
    ```
-   (`verify` runs `verify:pr-prereqs`, surfacing review-ledger/preflight blockers before PR creation.)
+   Do **not** run full `npm run verify` merely because you are opening a PR; CI
+   owns the full suite unless a human explicitly requests a local run or targeted
+   diagnosis requires it.
 9. Write the dated handoff (pr-preflight still requires it), then
    `create_pull_request`.
 
