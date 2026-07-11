@@ -600,6 +600,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SHA: ${{ steps.sha.outputs.sha }}
           BASELINE_JSON: ${{ github.workspace }}/.cache/baseline/baseline.json
+          BASELINE_INDEX_JSON: ${{ runner.temp }}/baselines-wt/index.json
           FALLBACK_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           BASELINE_BLOB_URL: ${{ github.server_url }}/${{ github.repository }}/blob/baselines/by-sha/${{ steps.sha.outputs.sha }}.json
         run: |
@@ -621,30 +622,9 @@ jobs:
             exit 0
           fi
 
-          # 2. Build the comment body from the enriched baseline.json. Guard
-          #    against a missing/unreadable file or out-of-range win-rate fields.
-          BODY=$(node -e "
-            const fs = require('node:fs');
-            const p = process.env.BASELINE_JSON;
-            let d;
-            try { d = JSON.parse(fs.readFileSync(p, 'utf8')); }
-            catch (e) { console.error('baseline.json unreadable: ' + e.message); process.exit(2); }
-            const wr = d.winRate;
-            const runs = d.totalRuns;
-            if (!Number.isFinite(wr) || wr < 0 || wr > 1 || !Number.isFinite(runs) || runs <= 0) {
-              console.error('baseline.json missing or out-of-range winRate/totalRuns');
-              process.exit(2);
-            }
-            const pct = Math.round(wr * 100);
-            const wins = Number.isFinite(d.totalWins) ? d.totalWins : '?';
-            const runUrl = (d.meta && d.meta.runUrl) || process.env.FALLBACK_RUN_URL;
-            const lines = [
-              '📊 Baseline win-rate for this release: **' + pct + '%** (' + wins + '/' + runs + ')',
-              '',
-              '🏃 [Sweep run](' + runUrl + ') · 🗂️ [Recorded baseline](' + process.env.BASELINE_BLOB_URL + ')',
-            ];
-            process.stdout.write(lines.join('\n'));
-          ") || {
+          # 2. Build the comment body from the enriched baseline and its published
+          #    history. Guard against missing/unreadable data or invalid win rates.
+          BODY=$(npx tsx scripts/agent/perf/format-baseline-comment.ts) || {
             echo "::warning::Could not build baseline comment body; skipping."
             exit 0
           }
