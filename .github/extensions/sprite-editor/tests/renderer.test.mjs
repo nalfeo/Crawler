@@ -813,6 +813,9 @@ test('stale scaling results cannot overwrite a mid-flight edit', async () => {
       };
     });
     await page.locator('.tool-panel').getByRole('button', { name: 'Scale' }).click();
+    await page.locator('#comment').fill('Keep this in-flight note');
+    await setControlValue(page, '#frame', 3);
+    await page.locator('#favorite-heart').click();
 
     await page.evaluate(() => {
       const element = document.querySelector('.sprite-canvas');
@@ -843,7 +846,47 @@ test('stale scaling results cannot overwrite a mid-flight edit', async () => {
       !status.startsWith('Scaled from'),
       `Expected no scale-completion message, got: ${status}`,
     );
+    assert.equal(await page.locator('#comment').inputValue(), 'Keep this in-flight note');
+    assert.equal(await page.locator('#frame').inputValue(), '3');
+    assert.equal(await page.locator('#favorite-heart').getAttribute('aria-pressed'), 'true');
     await page.evaluate(() => window.onmouseup());
+  });
+});
+
+test('canvas click modes remain mutually exclusive across every arming path', async () => {
+  await withEditor(async (page) => {
+    await page.getByTitle('Set anchor by click').click();
+    assert.equal(
+      await page.getByTitle('Anchor picker active').getAttribute('aria-pressed'),
+      'true',
+    );
+
+    await page.getByTitle('Pick background').click();
+    assert.equal(
+      await page.getByTitle('Background picker active').getAttribute('aria-pressed'),
+      'true',
+    );
+    assert.equal(
+      await page.getByTitle('Set anchor by click').getAttribute('aria-pressed'),
+      'false',
+    );
+
+    await page.getByTitle('Eyedropper').click();
+    assert.equal(await page.getByTitle('Eyedropper active').count(), 1);
+    assert.equal(await page.getByTitle('Pick background').getAttribute('aria-pressed'), 'false');
+    assert.equal(
+      await page.getByTitle('Set anchor by click').getAttribute('aria-pressed'),
+      'false',
+    );
+
+    await page.getByTitle('Pick background').click();
+    await page.locator('#tool-anchor').click();
+    await page.locator('.tool-panel').getByRole('button', { name: 'Set anchor by click' }).click();
+    assert.equal(await page.getByTitle('Pick background').getAttribute('aria-pressed'), 'false');
+    assert.equal(
+      await page.getByTitle('Anchor picker active').getAttribute('aria-pressed'),
+      'true',
+    );
   });
 });
 

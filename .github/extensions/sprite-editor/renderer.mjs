@@ -811,6 +811,7 @@ const CLIENT_SCRIPT = String.raw`
     var expectedEditGen = editGeneration;
     var methodId = scaleMethod;
     var factor = clampScaleFactor(scaleFactor);
+    var scaleApplied = false;
     var isCurrentScaleTarget = function () {
       if (
         !sprite ||
@@ -916,6 +917,7 @@ const CLIENT_SCRIPT = String.raw`
       sprite.holdY = Math.round(before.holdY * heightRatio);
       sprite.pivotX = Math.round(before.pivotX * widthRatio);
       sprite.pivotY = Math.round(before.pivotY * heightRatio);
+      scaleApplied = true;
 
       var after = cloneState();
       if (statesDiffer(before, after)) pushUndoState(before);
@@ -939,6 +941,7 @@ const CLIENT_SCRIPT = String.raw`
       setStatus(error.message || String(error), true);
     } finally {
       scaleInFlight = false;
+      persistFormDraftToSprite({ preserveAnchors: scaleApplied });
       renderEditor({ skipDraftPersist: true });
     }
   }
@@ -988,16 +991,19 @@ const CLIENT_SCRIPT = String.raw`
     };
   }
 
-  function persistFormDraftToSprite() {
+  function persistFormDraftToSprite(options) {
     if (!sprite || !editorEl) return;
     if (!editorEl.querySelector('#comment')) return;
+    var opts = options || {};
     var meta = currentMetadataSnapshot();
     var note = currentAnnotationSnapshot();
     if (meta) {
-      sprite.holdX = meta.holdX;
-      sprite.holdY = meta.holdY;
-      sprite.pivotX = meta.pivotX;
-      sprite.pivotY = meta.pivotY;
+      if (!opts.preserveAnchors) {
+        sprite.holdX = meta.holdX;
+        sprite.holdY = meta.holdY;
+        sprite.pivotX = meta.pivotX;
+        sprite.pivotY = meta.pivotY;
+      }
       sprite.frame = meta.frame;
       sprite.col = meta.col;
       sprite.row = meta.row;
@@ -1858,14 +1864,29 @@ const CLIENT_SCRIPT = String.raw`
 
   function armEyedropper(nextValue) {
     eyedropperArmed = nextValue;
-    if (eyedropperArmed) backgroundPickArmed = false;
+    if (eyedropperArmed) {
+      backgroundPickArmed = false;
+      setAnchorOnClick = false;
+    }
     if (canvas) canvas.style.cursor = eyedropperArmed ? 'copy' : (backgroundPickArmed || setAnchorOnClick ? 'crosshair' : 'default');
   }
 
   function armBackgroundPick(nextValue) {
     backgroundPickArmed = nextValue;
-    if (backgroundPickArmed) eyedropperArmed = false;
+    if (backgroundPickArmed) {
+      eyedropperArmed = false;
+      setAnchorOnClick = false;
+    }
     if (canvas) canvas.style.cursor = backgroundPickArmed ? 'crosshair' : (eyedropperArmed ? 'copy' : (setAnchorOnClick ? 'crosshair' : 'default'));
+  }
+
+  function armAnchorPick(nextValue) {
+    setAnchorOnClick = nextValue;
+    if (setAnchorOnClick) {
+      eyedropperArmed = false;
+      backgroundPickArmed = false;
+    }
+    if (canvas) canvas.style.cursor = setAnchorOnClick ? 'crosshair' : (eyedropperArmed ? 'copy' : (backgroundPickArmed ? 'crosshair' : 'default'));
   }
 
   function sampleDrawColor(x, y) {
@@ -2026,7 +2047,7 @@ const CLIENT_SCRIPT = String.raw`
         }
         var afterAnchor = cloneState();
         if (statesDiffer(beforeAnchor, afterAnchor)) pushUndoState(beforeAnchor);
-        setAnchorOnClick = false;
+        armAnchorPick(false);
         renderEditor();
         renderOverlay();
         setStatus('Anchor moved to (' + px.x + ', ' + px.y + ').');
@@ -2678,8 +2699,7 @@ const CLIENT_SCRIPT = String.raw`
       'aria-pressed': setAnchorOnClick ? 'true' : 'false'
     });
     clickAnchorBtn.addEventListener('click', function () {
-      setAnchorOnClick = !setAnchorOnClick;
-      if (setAnchorOnClick) armEyedropper(false);
+      armAnchorPick(!setAnchorOnClick);
       renderEditor();
     });
 
@@ -2759,10 +2779,8 @@ const CLIENT_SCRIPT = String.raw`
       'aria-pressed': setAnchorOnClick ? 'true' : 'false'
     });
     anchorQuickBtn.addEventListener('click', function () {
-      setAnchorOnClick = !setAnchorOnClick;
+      armAnchorPick(!setAnchorOnClick);
       if (setAnchorOnClick) {
-        armEyedropper(false);
-        armBackgroundPick(false);
         setStatus('Click the sprite to set its anchor.');
       }
       renderEditor();
@@ -3125,7 +3143,7 @@ const CLIENT_SCRIPT = String.raw`
       if (ev.key === 'Escape') {
         armEyedropper(false);
         armBackgroundPick(false);
-        setAnchorOnClick = false;
+        armAnchorPick(false);
         hideContextMenu();
         renderEditor();
         return;
