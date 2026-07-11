@@ -27,8 +27,9 @@ import { initNavmesh, isNavmeshReady } from '../../game/ai/navmesh/index.js';
 import {
   autoFloor1ProgressionSystem,
   autoFloor2ProgressionSystem,
-  computeAutoStatAllocation,
+  computeAiStatAllocation,
 } from '../../game/ai/auto-progression.js';
+import { getWeaponPersonaForWorld } from '../../game/ai/weapon-personas.js';
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
 import {
   acceptQuest,
@@ -127,6 +128,7 @@ interface AiRunnerLabState {
     visualNavmesh: boolean;
     threatPreviewFrames: number;
     autoPauseOnDamage: boolean;
+    weaponPersonas?: boolean;
     /** Slice 4b NAVMESH_FUSED seam weight (0 = shipped-4a control). */
     seamWeight?: number;
   };
@@ -289,6 +291,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     visualNavmesh: boolean;
     threatPreviewFrames: number;
     autoPauseOnDamage: boolean;
+    weaponPersonas: boolean;
     seamWeight: number;
   } = {
     pathingMode: persisted?.pathingMode ?? AIPathingMode.LEGACY,
@@ -297,6 +300,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     visualNavmesh: persisted?.aiConfig?.visualNavmesh ?? false,
     threatPreviewFrames: persisted?.aiConfig?.threatPreviewFrames ?? 0,
     autoPauseOnDamage: persisted?.aiConfig?.autoPauseOnDamage ?? false,
+    weaponPersonas: persisted?.aiConfig?.weaponPersonas ?? false,
     seamWeight: persisted?.aiConfig?.seamWeight ?? 0,
   };
 
@@ -360,6 +364,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         visualNavmesh: aiConfig.visualNavmesh,
         threatPreviewFrames: aiConfig.threatPreviewFrames,
         autoPauseOnDamage: aiConfig.autoPauseOnDamage,
+        weaponPersonas: aiConfig.weaponPersonas,
         seamWeight: aiConfig.seamWeight,
       },
     });
@@ -478,7 +483,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     if (playerEid === undefined) {
       return;
     }
-    autoFloor1ProgressionSystem(world, playerEid);
+    autoFloor1ProgressionSystem(world, playerEid, aiConfig.weaponPersonas);
     autoFloor2ProgressionSystem(world, playerEid);
   };
   let currentFloor = persisted?.floorId ?? 'floor1';
@@ -501,7 +506,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     inputCaptureOverride: aiInputProvider,
     worldSeed: currentSeed,
     postSystems: [...base.postSystems, aiAutoDriverSystem],
-    autoLevelUpAllocator: computeAutoStatAllocation,
+    autoLevelUpAllocator: (world: GameWorld, playerEid: number, available: number) =>
+      computeAiStatAllocation(world, playerEid, available, aiConfig.weaponPersonas),
     sessionRecorderFactory: recorderControls.factory,
   });
 
@@ -891,6 +897,12 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   };
 
   const aiModesFolder = gui.addFolder('AI Modes (A/B)');
+  aiModesFolder
+    .add(aiConfig, 'weaponPersonas')
+    .name('Weapon personas (experimental)')
+    .onChange(() => {
+      persistLabState();
+    });
   aiModesFolder
     .add(aiConfig, 'pathingMode', [
       AIPathingMode.LEGACY,
@@ -1906,6 +1918,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
           <div id="ai-scenario-description" style="margin:0 0 6px 0; font-size:11px; color:#cfd8ff;">${selectedRunTarget.startsWith('scenario:') ? (selectedScenarioPreset?.description ?? '') : 'Floor target selected — scenario overrides are disabled for this run.'}</div>
           <div id="ai-runner-status">Paused</div>
           <div id="ai-runner-debug">frame: 0</div>
+          <div><strong>Persona:</strong> <span id="ai-persona">Off</span></div>
           <div id="ai-arena-entry-frame" style="font-size:11px; color:#fcd34d;">AI lock-in frame: pending</div>
           <div id="ai-decision" style="margin-top: 8px; padding: 8px; background: #2a2a4e; border-radius: 4px;">
             <div><strong>State:</strong> <span id="ai-state">-</span></div>
@@ -1976,6 +1989,15 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       const stepSuffix = lastStepReason ? ` | step: ${lastStepReason}` : '';
       const frame = getScene()?.world?.frameCount ?? 0;
       debugElem.textContent = `frame: ${frame}${stepSuffix}`;
+    }
+    const personaElem = document.getElementById('ai-persona');
+    if (personaElem) {
+      const world = getScene()?.world;
+      personaElem.textContent = aiConfig.weaponPersonas
+        ? world
+          ? (getWeaponPersonaForWorld(world)?.name ?? 'Unmapped weapon')
+          : 'Pending loadout'
+        : 'Off';
     }
     const arenaEntryElem = document.getElementById('ai-arena-entry-frame');
     if (arenaEntryElem) {
@@ -2358,6 +2380,14 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       ).length;
       const frame = scene?.world?.frameCount ?? 0;
       debugElem.textContent = `frame: ${frame} | scenePaused: ${scene?.isSimulationPaused?.() ? 'yes' : 'no'} | npcMem: discovered=${npcMemory.discoveredNpcDefs.length}, talked=${npcMemory.talkedNpcDefs.length}, needed=${neededCount}`;
+    }
+    const personaElem = document.getElementById('ai-persona');
+    if (personaElem) {
+      personaElem.textContent = !aiConfig.weaponPersonas
+        ? 'Off'
+        : world
+          ? (getWeaponPersonaForWorld(world)?.name ?? 'Unmapped weapon')
+          : 'Pending loadout';
     }
   }, 100);
 

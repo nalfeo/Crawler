@@ -65,6 +65,7 @@ async function main(): Promise<void> {
     floorId: args.floorId,
     startPlayerLevel: args.startPlayerLevel,
     recordWeaponTelemetry: args.weaponTelemetry,
+    weaponPersonas: args.weaponPersonas,
     ...(recording
       ? {
           recordEvent: (event: SimEvent): void => {

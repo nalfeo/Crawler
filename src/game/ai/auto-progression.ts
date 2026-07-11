@@ -15,7 +15,15 @@
 import { query } from 'bitecs';
 import type { GameWorld } from '../../core/index.js';
 import { Player, Position } from '../../core/index.js';
+import {
+  equipFromBag,
+  getEffectiveStats,
+  previewEquipDelta,
+} from '../../core/systems/equipmentSystem.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../shared/constants.js';
+import { getEquipmentDefForItem } from '../../shared/equipmentDefs.js';
+import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from '../../shared/quest-types.js';
+import { PRIMARY_STATS, type PrimaryStatId, type StatId } from '../../shared/stats.js';
 import { AIState, type AIInputProvider } from './types.js';
 import { NPC_INTERACTION_RADIUS_FT } from './bt-ai-tuning.js';
 import {
@@ -32,6 +40,11 @@ import {
 } from '../index.js';
 import { confirmFloor2StairDescend } from '../floor2Scenario.js';
 import { computeAutoStatAllocation } from '../scenarios/playerStatAllocationPolicy.js';
+import {
+  computeWeaponPersonaStatAllocation,
+  getWeaponPersonaForWorld,
+  type WeaponPersona,
+} from './weapon-personas.js';
 export { computeAutoStatAllocation } from '../scenarios/playerStatAllocationPolicy.js';
 
 /** Frames between auto NPC-talk attempts (debounce repeated `meet*` calls). */
@@ -119,7 +132,11 @@ export function autoNpcInteractionSystem(
   return currentFrame;
 }
 
-export function autoFloor1ProgressionSystem(world: GameWorld, playerEid: number): void {
+export function autoFloor1ProgressionSystem(
+  world: GameWorld,
+  playerEid: number,
+  weaponPersonas = false,
+): void {
   if (!world.floorScenario) {
     return;
   }
@@ -151,7 +168,12 @@ export function autoFloor1ProgressionSystem(world: GameWorld, playerEid: number)
     }
   }
 
-  equipPurchasedGear(world, playerEid);
+  const persona = weaponPersonas ? getWeaponPersonaForWorld(world) : undefined;
+  if (persona) {
+    equipPersonaPreferredGear(world, playerEid);
+  } else {
+    equipPurchasedGear(world, playerEid);
+  }
 
   const objective = world.floorScenario.objective;
   if (!objective.staircaseUnlocked || objective.staircaseDiscovered) {
@@ -212,10 +234,87 @@ export function autoFloor2ProgressionSystem(world: GameWorld, playerEid: number)
  * Floor 1.
  *
  */
-export function autoAllocateStatPoints(world: GameWorld, playerEid: number): void {
+export function computeAiStatAllocation(
+  world: GameWorld,
+  playerEid: number,
+  available: number,
+  weaponPersonas = false,
+): Partial<Record<PrimaryStatId, number>> {
+  const persona = weaponPersonas ? getWeaponPersonaForWorld(world) : undefined;
+  return persona
+    ? computeWeaponPersonaStatAllocation(world, playerEid, available, persona)
+    : computeAutoStatAllocation(world, playerEid, available);
+}
+
+export function autoAllocateStatPoints(
+  world: GameWorld,
+  playerEid: number,
+  weaponPersonas = false,
+): void {
   const pl = world.playerLevel;
   if (pl.unspentPoints <= 0) {
     return;
   }
-  spendPoints(world, computeAutoStatAllocation(world, playerEid, pl.unspentPoints));
+  spendPoints(world, computeAiStatAllocation(world, playerEid, pl.unspentPoints, weaponPersonas));
+}
+
+function equipPersonaPreferredGear(world: GameWorld, playerEid: number): boolean {
+  const persona = getWeaponPersonaForWorld(world);
+  const bag = world.inventories.get(playerEid);
+  if (!persona || !bag) return false;
+
+  let equippedAny = false;
+  if (bag.slots.some((slot) => slot.itemId === SHOPKEEPER_EQUIPMENT_ITEM_ID)) {
+    const questGear = equipFromBag(world, playerEid, SHOPKEEPER_EQUIPMENT_ITEM_ID, { force: true });
+    equippedAny = questGear.ok || equippedAny;
+  }
+  while (true) {
+    const currentStats = getEffectiveStats(world, playerEid);
+    const currentUtility = scoreLoadoutForPersona(persona, currentStats);
+    const bestCandidate = [...new Set(bag.slots.map((slot) => slot.itemId))]
+      .map((itemId) => {
+        const def = getEquipmentDefForItem(itemId);
+        const preview = previewEquipDelta(world, playerEid, itemId);
+        if (!def || !preview?.canEquip) {
+          return undefined;
+        }
+        const nextStats = { ...currentStats };
+        for (const stat of Object.keys(preview.deltas) as StatId[]) {
+          nextStats[stat] = (nextStats[stat] ?? 0) + preview.deltas[stat];
+        }
+        const utilityGain = scoreLoadoutForPersona(persona, nextStats) - currentUtility;
+        return utilityGain > 0 ? { itemId, utilityGain } : undefined;
+      })
+      .filter(
+        (candidate): candidate is { itemId: string; utilityGain: number } =>
+          candidate !== undefined,
+      )
+      .sort(
+        (a, b) =>
+          b.utilityGain - a.utilityGain || (a.itemId < b.itemId ? -1 : a.itemId > b.itemId ? 1 : 0),
+      )[0];
+    if (!bestCandidate) {
+      break;
+    }
+    const result = equipFromBag(world, playerEid, bestCandidate.itemId, { force: true });
+    if (!result.ok) {
+      break;
+    }
+    equippedAny = true;
+  }
+  return equippedAny;
+}
+
+function scoreLoadoutForPersona(
+  persona: WeaponPersona,
+  stats: Partial<Readonly<Record<StatId, number>>>,
+): number {
+  let score = 0;
+  for (const stat of PRIMARY_STATS) {
+    score += Math.min(stats[stat] ?? 0, persona.minimumTargets[stat] ?? 0) * 100;
+  }
+  for (const [stat, weight] of Object.entries(persona.statWeights) as [StatId, number][]) {
+    score += (stats[stat] ?? 0) * weight;
+  }
+  return score;
 }

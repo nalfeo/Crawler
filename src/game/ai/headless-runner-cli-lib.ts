@@ -24,6 +24,7 @@ export interface CLIArgs {
   floorId: string;
   startPlayerLevel: number;
   weaponTelemetry: boolean;
+  weaponPersonas: boolean;
   pathingMode: AIPathingModeValue;
   decisionMode: AIDecisionModeValue;
 }
@@ -48,6 +49,7 @@ export function defaultCLIArgs(): CLIArgs {
     floorId: 'floor1',
     startPlayerLevel: 1,
     weaponTelemetry: false,
+    weaponPersonas: false,
     pathingMode: AIPathingMode.LEGACY,
     decisionMode: AIDecisionMode.LEGACY,
   };
@@ -113,6 +115,8 @@ export function parseArgs(argv: readonly string[] = process.argv): CLIArgs {
       i++;
     } else if (arg === '--weapon-telemetry') {
       args.weaponTelemetry = true;
+    } else if (arg === '--weapon-personas') {
+      args.weaponPersonas = true;
     } else if (arg === '--pathing-mode' && next) {
       if (!(PATHING_MODE_VALUES as string[]).includes(next)) {
         throw new Error(
@@ -160,6 +164,7 @@ Options:
   --floor <id>            Scenario floor id (default: floor1)
   --start-level <n>       Start at player character level N (default: 1, no boost)
   --weapon-telemetry      Collect + print per-run weapon accuracy (swings, hits, multi-hit)
+  --weapon-personas       Enable experimental weapon-specific stat/gear personas
   --pathing-mode <mode>   AI pathing A/B axis: legacy | riskRewardFused | navmesh | navmeshFused (default: legacy)
   --decision-mode <mode>  AI decision A/B axis: legacy | slackAware (default: legacy)
   --help, -h              Show this help message

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   NPC_INTERACTION_COOLDOWN,
   autoAllocateStatPoints,
@@ -7,10 +7,22 @@ import {
 } from '../../src/game/ai/auto-progression.js';
 import { NPC_INTERACTION_RADIUS_FT } from '../../src/game/ai/bt-ai-tuning.js';
 import { AIState, type AIDecision, type AIInputProvider } from '../../src/game/ai/types.js';
+import { setActiveWeaponDef } from '../../src/core/active-weapon.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
+import { equip, getEquipmentState } from '../../src/core/systems/equipmentSystem.js';
+import {
+  _clearEquipmentDefsForTest,
+  _registerEquipmentDefForTest,
+  getEquipmentDefForItem,
+} from '../../src/shared/equipmentDefs.js';
+import type { EquipmentItemDef } from '../../src/shared/equipment-types.js';
+import { addItem, hasItem } from '../../src/shared/inventory.js';
+import { ItemRarity, customTag, type ItemDef } from '../../src/shared/items.js';
 import type { NpcInstance } from '../../src/shared/npc-types.js';
+import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from '../../src/shared/quest-types.js';
 import type { GameWorld } from '../../src/core/world.js';
 import type { FloorScenarioState } from '../../src/shared/floor-types.js';
+import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 function makeFloor1(overrides: Partial<FloorScenarioState['objective']> = {}): FloorScenarioState {
@@ -91,6 +103,17 @@ function addNpc(world: GameWorld, eid: number, instance: Partial<NpcInstance>): 
     nearbyPlayer: true,
     ...instance,
   });
+}
+
+function makeCatalogItem(id: string): ItemDef {
+  return {
+    id,
+    name: id,
+    description: 'test item',
+    tags: [customTag('test')],
+    rarity: ItemRarity.Common,
+    maxStack: 1,
+  };
 }
 
 describe('autoNpcInteractionSystem', () => {
@@ -332,6 +355,10 @@ describe('autoAllocateStatPoints', () => {
 });
 
 describe('autoFloor1ProgressionSystem', () => {
+  afterEach(() => {
+    _clearEquipmentDefsForTest();
+  });
+
   it('is a no-op when floor1 is null', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
@@ -383,5 +410,77 @@ describe('autoFloor1ProgressionSystem', () => {
     autoFloor1ProgressionSystem(world, player);
     // confirmFloor1StairDescend sets staircaseDiscovered
     expect(world.floorScenario.objective.staircaseDiscovered).toBe(true);
+  });
+
+  it('equips only persona-scored gear, so different weapons keep different loadouts', () => {
+    const swordWorld = createTestWorld();
+    const swordPlayer = spawnPlayer(swordWorld, 0, 0);
+    swordWorld.floorScenario = makeFloor1({ staircaseUnlocked: false });
+    setActiveWeaponDef(swordWorld, getWeaponDef('sword')!);
+    const swordBag = swordWorld.inventories.get(swordPlayer)!;
+    addItem(swordBag, 'signet-of-focus', 1);
+
+    const fireballWorld = createTestWorld();
+    const fireballPlayer = spawnPlayer(fireballWorld, 0, 0);
+    fireballWorld.floorScenario = makeFloor1({ staircaseUnlocked: false });
+    setActiveWeaponDef(fireballWorld, getWeaponDef('fireball')!);
+    const fireballBag = fireballWorld.inventories.get(fireballPlayer)!;
+    addItem(fireballBag, 'signet-of-focus', 1);
+
+    autoFloor1ProgressionSystem(swordWorld, swordPlayer, true);
+    autoFloor1ProgressionSystem(fireballWorld, fireballPlayer, true);
+
+    expect(hasItem(swordBag, 'signet-of-focus')).toBe(true);
+    expect(hasItem(fireballBag, 'signet-of-focus')).toBe(false);
+    const fireballEquipment = getEquipmentState(fireballWorld, fireballPlayer)!;
+    expect(fireballEquipment.instances.get(fireballEquipment.equipped.ringRight!)?.def.id).toBe(
+      'signet-of-focus',
+    );
+  });
+
+  it("still equips the Merchant's Charm even when persona scoring is zero", () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    world.floorScenario = makeFloor1({ staircaseUnlocked: false });
+    setActiveWeaponDef(world, getWeaponDef('sword')!);
+    const bag = world.inventories.get(player)!;
+    addItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID, 1);
+
+    autoFloor1ProgressionSystem(world, player, true);
+
+    expect(hasItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID)).toBe(false);
+    const equipment = getEquipmentState(world, player)!;
+    expect(equipment.instances.get(equipment.equipped.neck!)?.def.id).toBe(
+      SHOPKEEPER_EQUIPMENT_ITEM_ID,
+    );
+  });
+
+  it('can swap out weaker equipped gear for a better persona-scored replacement', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    world.floorScenario = makeFloor1({ staircaseUnlocked: false });
+    setActiveWeaponDef(world, getWeaponDef('fireball')!);
+
+    const circlet: EquipmentItemDef = {
+      id: 'arcanist-circlet',
+      name: 'Arcanist Circlet',
+      slots: ['head'],
+      statBonuses: { intelligence: 2, cooldownReduction: 0.05 },
+      rarity: 'rare',
+    };
+    _registerEquipmentDefForTest(circlet);
+
+    expect(equip(world, player, getEquipmentDefForItem('iron-helm')!, { force: true }).ok).toBe(
+      true,
+    );
+    const bag = world.inventories.get(player)!;
+    addItem(bag, 'arcanist-circlet', 1, [makeCatalogItem('arcanist-circlet')]);
+
+    autoFloor1ProgressionSystem(world, player, true);
+
+    expect(hasItem(bag, 'arcanist-circlet')).toBe(false);
+    expect(hasItem(bag, 'iron-helm')).toBe(true);
+    const equipment = getEquipmentState(world, player)!;
+    expect(equipment.instances.get(equipment.equipped.head!)?.def.id).toBe('arcanist-circlet');
   });
 });
