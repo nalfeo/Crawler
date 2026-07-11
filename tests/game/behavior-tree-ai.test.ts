@@ -204,9 +204,27 @@ describe('BehaviorTreeAI', () => {
 
     const decision = ai.getDecision();
     expect(decision.reason).toContain('Tutorial Goon');
-    expect(decision.targetEid).toBe(world.floorScenario?.guideNpcEid ?? -1);
-    expect(decision.targetX).toBe(world.floorScenario?.objective.welcomeOfficePos.x);
-    expect(decision.targetY).toBe(world.floorScenario?.objective.welcomeOfficePos.y);
+    const guideNpcEid = world.floorScenario?.guideNpcEid ?? -1;
+    expect(decision.targetEid).toBe(guideNpcEid);
+    expect(decision.targetX).not.toBeNull();
+    expect(decision.targetY).not.toBeNull();
+    if (guideNpcEid >= 0 && world.floorMap) {
+      const floorMap = world.floorMap;
+      const npcX = world.stores.position.x[guideNpcEid] ?? 0;
+      const npcY = world.stores.position.y[guideNpcEid] ?? 0;
+      const anchorX = decision.targetX ?? 0;
+      const anchorY = decision.targetY ?? 0;
+      // Anchor must land on a passable tile (reachable by the pathfinder).
+      const anchorTile = floorMap.worldToTile(anchorX, anchorY);
+      expect(floorMap.tileMap.isPassable(anchorTile.x, anchorTile.y)).toBe(true);
+      // Anchor must be no farther from the NPC than the player spawn — the BFS
+      // anchor is the closest reachable tile to the NPC by Euclidean distance.
+      const anchorToNpc = Math.hypot(anchorX - npcX, anchorY - npcY);
+      const playerX = world.stores.position.x[player] ?? 0;
+      const playerY = world.stores.position.y[player] ?? 0;
+      const playerToNpc = Math.hypot(playerX - npcX, playerY - npcY);
+      expect(anchorToNpc).toBeLessThanOrEqual(playerToNpc);
+    }
   });
 
   it('labels EXPLORE fallback caused by suppressed fixed-position post-tutorial progress navigation', () => {

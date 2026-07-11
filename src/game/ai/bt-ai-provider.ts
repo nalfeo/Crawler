@@ -918,6 +918,15 @@ export class BehaviorTreeAI implements AIInputProvider {
    */
   private resolvedGoalCache: { rawKey: string; resolved: TilePoint } | null = null;
   /**
+   * Per-floor cache for BFS-derived NPC interaction anchors. Keyed by npcEid.
+   * The anchor is stable while the floor map and passability don't change, so
+   * we compute it once and reuse every AI tick instead of re-running the full
+   * BFS flood fill each frame.
+   * `null` value = computed but no reachable anchor found (also cached to avoid
+   * redundant BFS retries).
+   */
+  private readonly npcInteractionAnchorCache = new Map<number, { x: number; y: number } | null>();
+  /**
    * Cross-poll memo for {@link resolveReachableGoalTile}. That helper runs up to
    * O(radius^2) full A* searches in its fallback branch and the AI calls it every
    * poll while navigating, so re-deriving the same answer each frame dominated
@@ -3118,6 +3127,10 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (signature !== this.navSignature) {
       this.navSignature = signature;
       this.navEpoch += 1;
+      // A door flip or floor change means passability changed — cached NPC
+      // interaction anchors may now be stale (a newly-opened door could expose
+      // a closer reachable tile). Invalidate so the next BFS runs fresh.
+      this.npcInteractionAnchorCache.clear();
     }
   }
 
@@ -5462,13 +5475,14 @@ export class BehaviorTreeAI implements AIInputProvider {
         return this.recordSuppressedProgressNavigation(world, reason, 'pre-chain');
       }
       return maybeDetourToQuestGiver(
-        this.createProgressTarget(
-          objective.welcomeOfficePos.x,
-          objective.welcomeOfficePos.y,
+        this.createNpcProgressTarget(
+          world,
           playerX,
           playerY,
-          reason,
           tutorialGoonEid,
+          reason,
+          objective.welcomeOfficePos.x,
+          objective.welcomeOfficePos.y,
         ),
       );
     }
@@ -5746,6 +5760,131 @@ export class BehaviorTreeAI implements AIInputProvider {
       distance: Math.hypot(x - playerX, y - playerY),
       reason,
     };
+  }
+
+  private createNpcProgressTarget(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    npcEid: number,
+    reason: string,
+    fallbackX: number,
+    fallbackY: number,
+  ): ProgressTarget {
+    const hasLiveNpc =
+      npcEid >= 0 && entityExists(world.ecs, npcEid) && hasComponent(world.ecs, npcEid, Npc);
+    if (!hasLiveNpc) {
+      return this.createProgressTarget(fallbackX, fallbackY, playerX, playerY, reason, -1);
+    }
+
+    const npcX = world.stores.position.x[npcEid];
+    const npcY = world.stores.position.y[npcEid];
+    if (npcX === undefined || npcY === undefined) {
+      return this.createProgressTarget(fallbackX, fallbackY, playerX, playerY, reason, -1);
+    }
+
+    const approach = this.resolveNpcInteractionAnchor(world, playerX, playerY, npcX, npcY, npcEid);
+    return this.createProgressTarget(approach.x, approach.y, playerX, playerY, reason, npcEid);
+  }
+
+  private resolveNpcInteractionAnchor(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    npcX: number,
+    npcY: number,
+    npcEid: number,
+  ): { x: number; y: number } {
+    // Serve cached result when available — the anchor is a pure function of
+    // (floorMap, npcTile, passability graph) and is stable for the floor lifetime.
+    if (this.npcInteractionAnchorCache.has(npcEid)) {
+      const cached = this.npcInteractionAnchorCache.get(npcEid)!;
+      return cached ?? { x: npcX, y: npcY };
+    }
+
+    const floorMap = world.floorMap;
+    if (!floorMap) {
+      return { x: npcX, y: npcY };
+    }
+
+    // If we're already within normal interaction range, target the NPC directly.
+    if (Math.hypot(npcX - playerX, npcY - playerY) < NPC_INTERACTION_RADIUS_FT) {
+      const result = { x: npcX, y: npcY };
+      this.npcInteractionAnchorCache.set(npcEid, result);
+      return result;
+    }
+
+    const startTile = floorMap.worldToTile(playerX, playerY);
+    const npcTile = floorMap.worldToTile(npcX, npcY);
+    // Search a bounded neighborhood around the NPC tile for the nearest
+    // reachable approach tile (by world distance to NPC), then treat that tile
+    // center as the interaction anchor.
+    const searchRadiusTiles = 40;
+    const tileMap = floorMap.tileMap;
+    const width = tileMap.width;
+    const height = tileMap.height;
+    const passable =
+      this.doorAwarePassable ?? ((tx: number, ty: number): boolean => tileMap.isPassable(tx, ty));
+
+    if (!tileMap.inBounds(startTile.x, startTile.y) || !passable(startTile.x, startTile.y)) {
+      return { x: npcX, y: npcY };
+    }
+
+    const dist = new Int32Array(width * height).fill(-1);
+    const queue = new Int32Array(width * height);
+    const startIndex = startTile.y * width + startTile.x;
+    floodReachabilityDepth(
+      dist,
+      queue,
+      width,
+      height,
+      startIndex,
+      NAVIGATION_MAX_PATH_LENGTH - 1,
+      passable,
+    );
+
+    let bestTile: TilePoint | null = null;
+    let bestNpcDistance = Number.POSITIVE_INFINITY;
+    let bestPathDepth = Number.POSITIVE_INFINITY;
+    for (let dy = -searchRadiusTiles; dy <= searchRadiusTiles; dy++) {
+      for (let dx = -searchRadiusTiles; dx <= searchRadiusTiles; dx++) {
+        const tx = npcTile.x + dx;
+        const ty = npcTile.y + dy;
+        if (!tileMap.inBounds(tx, ty) || !passable(tx, ty)) {
+          continue;
+        }
+        const depth = dist[ty * width + tx]!;
+        if (depth < 1) {
+          continue;
+        }
+        const worldPos = floorMap.tileToWorld(tx, ty);
+        const npcDistance = Math.hypot(worldPos.x - npcX, worldPos.y - npcY);
+        if (
+          npcDistance < bestNpcDistance ||
+          (npcDistance === bestNpcDistance && depth < bestPathDepth)
+        ) {
+          bestTile = { x: tx, y: ty };
+          bestNpcDistance = npcDistance;
+          bestPathDepth = depth;
+        }
+      }
+    }
+
+    if (!bestTile) {
+      // No reachable tile within search radius — cache null so we don't retry
+      // BFS every frame, then fall back to raw NPC position. The watchdog will
+      // eventually suppress this goal and route via enemies instead.
+      console.warn(
+        `[BT] resolveNpcInteractionAnchor: no reachable tile within ${searchRadiusTiles} tiles ` +
+          `of NPC eid=${npcEid} at (${npcX.toFixed(1)}, ${npcY.toFixed(1)}). ` +
+          `Falling back to raw NPC position — progression may stall.`,
+      );
+      this.npcInteractionAnchorCache.set(npcEid, null);
+      return { x: npcX, y: npcY };
+    }
+    const result = floorMap.tileToWorld(bestTile.x, bestTile.y);
+    this.npcInteractionAnchorCache.set(npcEid, result);
+    return result;
   }
 
   /**
@@ -6983,6 +7122,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.ignoredLootUntilFrame.clear();
     this.ignoredEnemyUntilFrame.clear();
     this.targetReachableCache.clear();
+    this.npcInteractionAnchorCache.clear();
     this.engageTargetEid = null;
     this.engageNoProgressFrames = 0;
     this.engageBestDistance = Number.POSITIVE_INFINITY;

@@ -7,6 +7,7 @@ import type { RunStats } from '../../src/game/ai/types.js';
 const PRECHAIN_REPRO_CASES = [
   { seed: 21, weapon: 'sword' },
   { seed: 21, weapon: 'baseball-bat' },
+  { seed: 69, weapon: 'sword' },
 ] as const;
 
 const MAX_FRAMES = 7_200;
@@ -33,7 +34,7 @@ describe('Floor 1 pre-chain tutorial-goon lock regression', () => {
           forceWeaponId: weapon,
           maxFrames: MAX_FRAMES,
         });
-      });
+      }, 480_000);
 
       it('completes floor1-find-welcome before the bounded run times out', () => {
         expect(
