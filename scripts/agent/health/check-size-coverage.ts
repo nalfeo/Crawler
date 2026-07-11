@@ -67,7 +67,7 @@ async function main(): Promise<void> {
     );
   } else {
     report.error(
-      `Size coverage FAILED: ${count} sprite-fallback reads across ${uniqueEids} entities during headless run (seed=${COVERAGE_SEED}, frames=${stats.totalFrames}). Add Size to the spawner that produced those entities. Enable globalThis.__CRAWLER_PHYSICS_BODY_SHIM_WARN__ to identify the eids.`,
+      `Size coverage FAILED: ${count} sprite-fallback reads across ${uniqueEids} entities during headless run (seed=${COVERAGE_SEED}, frames=${stats.totalFrames}). Add Size to the spawner that produced those entities. Check the logger output (core:physics-body) for per-eid warn messages identifying which eids are missing Size.`,
       { file: 'src/core/spawners/' },
     );
   }
