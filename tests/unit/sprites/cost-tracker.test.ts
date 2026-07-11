@@ -283,6 +283,5 @@ describe('JudgeBudget concurrency', () => {
     };
     expect(parsed.callCount).toBe(20);
     expect(parsed.spentUsd).toBeCloseTo(0.0009, 6);
-  }, // Give the two sub-processes generous headroom on a loaded CI runner.
-  30_000);
+  }, 30_000); // Give the two sub-processes generous headroom on a loaded CI runner.
 });
