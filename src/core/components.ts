@@ -44,10 +44,7 @@ export const Stats = {};
 /** Tag: entity has a skill set (player only in v1). */
 export const SkillHolder = {};
 
-// --- Weapon System Components ---
-/** Marks an entity as a weapon with type, stats, and cooldown tracking. */
-export const Weapon = {};
-/** Links an entity to its owner (e.g., weapon→player, projectile→player). */
+/** Links an entity to its owner (e.g., projectile→player). */
 export const Owner = {};
 /** Assigns a team to prevent friendly fire. */
 export const Team = {};
@@ -236,14 +233,6 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
     },
     broadcastScore: { current: new Float32Array(maxEntities) },
     droppedItem: { itemIndex: new Uint16Array(maxEntities) },
-    weapon: {
-      weaponType: new Uint8Array(maxEntities),
-      baseDamage: new Float32Array(maxEntities),
-      cooldownMs: new Float32Array(maxEntities),
-      lastFireMs: new Float32Array(maxEntities),
-      range: new Float32Array(maxEntities),
-      projectileSpeed: new Float32Array(maxEntities),
-    },
     owner: {
       eid: new Uint16Array(maxEntities),
     },

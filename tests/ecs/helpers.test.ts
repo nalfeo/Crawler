@@ -50,7 +50,6 @@ describe('helpers facade', () => {
       'spawnXpGem',
       'spawnGold',
       'spawnDroppedItem',
-      'spawnWeapon',
       'spawnProjectile',
       'spawnEnemyProjectile',
       'spawnAoeProjectile',

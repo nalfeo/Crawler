@@ -9,12 +9,9 @@ import {
   Player,
   Position,
   Stats,
-  Team,
-  Weapon,
 } from '../core/components.js';
 import {
   spawnAoeProjectile,
-  spawnAreaAttack,
   spawnBeam,
   clearEntityStores,
   spawnMeleeSwing,
@@ -936,84 +933,5 @@ export function weaponSystem(world: GameWorld): void {
       weaponType: def.weaponType,
       elapsedMs: world.elapsedMs,
     });
-  }
-}
-
-/** Process weapon entities (for multi-weapon support). */
-export function weaponEntitySystem(world: GameWorld): void {
-  const weaponEntities = query(world.ecs, [Weapon, Owner]);
-  const { weapon, owner, position, team } = world.stores;
-
-  for (const weid of weaponEntities) {
-    const ownerEid = owner.eid[weid]!;
-    if (!hasComponent(world.ecs, ownerEid, Position)) {
-      continue;
-    }
-    if (hasComponent(world.ecs, ownerEid, Player) && isEntityInSafeSpace(world, ownerEid)) {
-      continue;
-    }
-
-    const cooldownMs = weapon.cooldownMs[weid]!;
-    const lastFireMs = weapon.lastFireMs[weid]!;
-
-    if (world.elapsedMs - lastFireMs < cooldownMs) {
-      continue;
-    }
-
-    const px = position.x[ownerEid]!;
-    const py = position.y[ownerEid]!;
-    const target = getNearestEnemyTarget(world, px, py);
-    if (!target) {
-      continue;
-    }
-    const weaponType = weapon.weaponType[weid]!;
-    const rawRange = weapon.range[weid] ?? 0;
-    if (rawRange > 0) {
-      let gateRangeFt = rawRange * ATTACK_TARGET_GATE_MULTIPLIER;
-      if (weaponType === WeaponType.MELEE) {
-        gateRangeFt += target.radiusFt;
-      }
-      if (target.distanceSq > gateRangeFt * gateRangeFt) {
-        continue;
-      }
-    }
-    const baseDamage = weapon.baseDamage[weid]!;
-    const projSpeed = weapon.projectileSpeed[weid]!;
-    // Lead moving targets for forward-fired projectiles (RANGED / default).
-    const projDir = computeLeadDirection(
-      target.deltaX,
-      target.deltaY,
-      target.velocityX,
-      target.velocityY,
-      projSpeed,
-    );
-
-    switch (weaponType) {
-      case WeaponType.RANGED:
-        spawnProjectile(world, px, py, projDir.x * projSpeed, projDir.y * projSpeed, baseDamage);
-        break;
-      case WeaponType.MELEE: {
-        const range = weapon.range[weid]!;
-        const ownerTeam = hasComponent(world.ecs, ownerEid, Team)
-          ? team.id[ownerEid]!
-          : TeamId.PLAYER;
-        spawnAreaAttack(
-          world,
-          px,
-          py,
-          ownerEid,
-          baseDamage,
-          range,
-          WEAPON.MELEE_DURATION_MS,
-          ownerTeam,
-        );
-        break;
-      }
-      default:
-        spawnProjectile(world, px, py, projDir.x * projSpeed, projDir.y * projSpeed, baseDamage);
-        break;
-    }
-
-    weapon.lastFireMs[weid] = world.elapsedMs;
   }
 }

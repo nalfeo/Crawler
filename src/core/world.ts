@@ -35,7 +35,6 @@ import {
   Spawner,
   BroadcastScore,
   DroppedItem,
-  Weapon,
   Owner,
   Team,
   Lifetime,
@@ -395,7 +394,6 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Spawner, stores.spawner);
   wireStore(ecs, BroadcastScore, stores.broadcastScore);
   wireStore(ecs, DroppedItem, stores.droppedItem);
-  wireStore(ecs, Weapon, stores.weapon);
   wireStore(ecs, Owner, stores.owner);
   wireStore(ecs, Team, stores.team);
   wireStore(ecs, Lifetime, stores.lifetime);

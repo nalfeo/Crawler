@@ -1,25 +1,15 @@
-import { addComponent, query, set } from 'bitecs';
+import { query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import {
-  AreaDamage,
-  LineDamage,
-  MeleeSwing,
-  Owner,
-  Projectile,
-  Team,
-  Trap,
-  Weapon,
-} from '../../src/core/components.js';
-import { createEntity, spawnEnemy, spawnPlayer, spawnWeapon } from '../../src/core/helpers.js';
+import { LineDamage, MeleeSwing, Projectile, Trap } from '../../src/core/components.js';
+import { createEntity, spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import {
   clearActiveWeapon,
   computeEffectiveAccuracy,
   getActiveWeapon,
   setActiveWeapon,
-  weaponEntitySystem,
   weaponSystem,
 } from '../../src/game/weaponSystem.js';
-import { WEAPON, WeaponType, TeamId, type WeaponTypeValue } from '../../src/shared/constants.js';
+import { WEAPON, type WeaponTypeValue } from '../../src/shared/constants.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { makeOpenFloorMap } from '../helpers/map-fixtures.js';
@@ -87,117 +77,6 @@ describe('weaponSystem coverage paths', () => {
     weaponSystem(world);
 
     expect(query(world.ecs, [Projectile]).length).toBe(0);
-  });
-});
-
-describe('weaponEntitySystem coverage paths', () => {
-  it('skips firing when owner has no position', () => {
-    const world = createTestWorld();
-    const owner = createEntity(world);
-    const weapon = spawnWeapon(world, owner, WeaponType.RANGED, 12, 100, 0, 300, TeamId.PLAYER);
-    world.elapsedMs = 100;
-
-    weaponEntitySystem(world);
-
-    expect(query(world.ecs, [Projectile]).length).toBe(0);
-    expect(world.stores.weapon.lastFireMs[weapon]).toBe(-100);
-  });
-
-  it('fires ranged weapon entities and respects cooldown gating', () => {
-    const world = createTestWorld();
-    const owner = spawnPlayer(world, 1.25, 2.5);
-    spawnEnemy(world, 12.5, 2.5, 50);
-    const weapon = spawnWeapon(world, owner, WeaponType.RANGED, 20, 50, 0, 200, TeamId.PLAYER);
-
-    world.elapsedMs = 50;
-    weaponEntitySystem(world);
-    expect(query(world.ecs, [Projectile]).length).toBe(1);
-    expect(world.stores.weapon.lastFireMs[weapon]).toBe(50);
-
-    world.elapsedMs = 75;
-    weaponEntitySystem(world);
-    expect(query(world.ecs, [Projectile]).length).toBe(1);
-    expect(world.stores.weapon.lastFireMs[weapon]).toBe(50);
-  });
-
-  it('uses owner team for melee attacks and falls back to player team', () => {
-    const world = createTestWorld();
-    const owner = spawnPlayer(world, 0, 0);
-    // Enemy at 50px is still reachable once melee gate includes enemy collision radius.
-    spawnEnemy(world, 6.25, 0, 50);
-    addComponent(world.ecs, owner, set(Team, { id: TeamId.ENEMY }));
-    spawnWeapon(world, owner, WeaponType.MELEE, 15, 10, 33, 0, TeamId.PLAYER);
-    world.elapsedMs = 10;
-
-    weaponEntitySystem(world);
-
-    const firstArea = query(world.ecs, [AreaDamage, Team])[0];
-    expect(firstArea).toBeDefined();
-    expect(world.stores.team.id[firstArea!]).toBe(TeamId.ENEMY);
-    expect(world.stores.areaDamage.radius[firstArea!]).toBe(33);
-
-    const owner2 = spawnPlayer(world, 0.625, 0.625);
-    spawnEnemy(world, 3.125, 0.625, 50);
-    spawnWeapon(world, owner2, WeaponType.MELEE, 10, 10, 20, 0, TeamId.PLAYER);
-    world.elapsedMs = 20;
-    weaponEntitySystem(world);
-
-    const areas = Array.from(query(world.ecs, [AreaDamage, Owner, Team]));
-    const owner2Area = areas.find((eid) => (world.stores.owner.eid[eid] ?? -1) === owner2);
-    expect(owner2Area).toBeDefined();
-    expect(world.stores.team.id[owner2Area!]).toBe(TeamId.PLAYER);
-  });
-
-  it('falls back to projectile spawn for unknown weapon type', () => {
-    const world = createTestWorld();
-    const owner = spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 12.5, 0, 50);
-    const weapon = createEntity(world);
-    addComponent(
-      world.ecs,
-      weapon,
-      set(Weapon, {
-        weaponType: 255,
-        baseDamage: 9,
-        cooldownMs: 10,
-        lastFireMs: 0,
-        range: 0,
-        projectileSpeed: 120,
-      }),
-    );
-    addComponent(world.ecs, weapon, set(Owner, { eid: owner }));
-    world.elapsedMs = 10;
-
-    weaponEntitySystem(world);
-
-    expect(query(world.ecs, [Projectile]).length).toBe(1);
-    expect(world.stores.weapon.lastFireMs[weapon]).toBe(10);
-  });
-
-  it('skips firing when the owner has a position but no enemy is present', () => {
-    const world = createTestWorld();
-    const owner = spawnPlayer(world, 0, 0);
-    const weapon = spawnWeapon(world, owner, WeaponType.RANGED, 12, 50, 100, 300, TeamId.PLAYER);
-    world.elapsedMs = 50;
-
-    weaponEntitySystem(world);
-
-    expect(query(world.ecs, [Projectile]).length).toBe(0);
-    expect(world.stores.weapon.lastFireMs[weapon]).toBe(-50);
-  });
-
-  it('skips firing when the nearest enemy is beyond the weapon gate range', () => {
-    const world = createTestWorld();
-    const owner = spawnPlayer(world, 0, 0);
-    // Enemy is found (no FOV map) but sits far beyond the 10px gate range.
-    spawnEnemy(world, 625, 0, 50);
-    const weapon = spawnWeapon(world, owner, WeaponType.RANGED, 12, 50, 10, 300, TeamId.PLAYER);
-    world.elapsedMs = 50;
-
-    weaponEntitySystem(world);
-
-    expect(query(world.ecs, [Projectile]).length).toBe(0);
-    expect(world.stores.weapon.lastFireMs[weapon]).toBe(-50);
   });
 });
 

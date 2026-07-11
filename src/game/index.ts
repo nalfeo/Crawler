@@ -19,7 +19,6 @@ export type {
 } from './spawners/index.js';
 export {
   weaponSystem,
-  weaponEntitySystem,
   setActiveWeapon,
   clearActiveWeapon,
   getActiveWeapon,

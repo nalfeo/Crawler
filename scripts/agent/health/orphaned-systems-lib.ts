@@ -164,19 +164,6 @@ export const ALLOWLIST: Readonly<Record<string, AllowlistEntry>> = {
     removeWhen:
       'Floor 2 objective/director ordering is refactored into explicit pipeline stages in both visual and headless runners.',
   },
-  // Latent, never-wired multi-weapon feature (same failure class as
-  // spawnerSystem, not yet fixed). weaponEntitySystem processes [Weapon, Owner]
-  // entities, but spawnWeapon (the only producer) and the system itself are
-  // called ONLY in tests — nothing in runtime spawns weapon entities. Tracked
-  // in #666 for a wire-or-delete product decision; do NOT treat as permanent.
-  weaponEntitySystem: {
-    reason:
-      'Latent multi-weapon-entity feature: processes [Weapon, Owner] entities, but its only producer (spawnWeapon) and the system are called only in tests — nothing wires it into a real pipeline. Player weapon uses the singleton weaponSystem.',
-    trackedIssue: '#666',
-    owner: 'weapons',
-    removeWhen:
-      'the feature is wired into a real pipeline (visual + headless) or removed as YAGNI per #666.',
-  },
 };
 
 /** True if `name` looks like an ECS system identifier (`*System`). */
