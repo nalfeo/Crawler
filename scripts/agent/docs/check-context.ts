@@ -22,9 +22,10 @@
  * aggregate them without halting. This is a deterministic, LLM-free check.
  */
 
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import process from 'node:process';
 import { Report, fromRepo } from '../shared/report.js';
+import { existsOnDisk, looksLikePath, pathExistsOnDisk } from '../shared/path-utils.js';
 
 const CONTEXT_FILES = ['AGENTS.md', '.github/copilot-instructions.md'];
 const CONTEXT_DIRS = ['docs/agent-os/personas', 'docs/agent-os/policies'];
@@ -40,21 +41,6 @@ const PERSONA_REQUIRED_SECTIONS = [
   '## Collaborates with',
 ];
 
-const PATH_PREFIXES = [
-  './',
-  'src/',
-  'scripts/',
-  'tests/',
-  'docs/',
-  '.github/',
-  '.specify/',
-  'public/',
-  'briefs/',
-  'data/',
-  'tools/',
-];
-const PATH_EXTS = ['.ts', '.tsx', '.md', '.json', '.yml', '.yaml', '.sh', '.mjs', '.cjs'];
-
 /** Path references we know are runtime-generated or intentional. */
 const ALLOWLIST = new Set<string>([
   'files/guard-telemetry.jsonl',
@@ -68,34 +54,6 @@ const ALLOWLIST = new Set<string>([
   'docs/knowledge/handoffs/YYYY-MM-DD-<slug>.md',
   'docs/knowledge/review-ledgers/<date>-<slug>.review-ledger.json',
 ]);
-
-function looksLikePath(s: string): boolean {
-  if (s.includes(' ') || s.startsWith('http') || s.startsWith('npm ') || s.startsWith('bash '))
-    return false;
-  if (s.includes('<') || s.includes('>')) return false;
-  if (/\bYYYY\b/.test(s) || /<[^>]+>/.test(s)) return false;
-  if (PATH_PREFIXES.some((p) => s.startsWith(p))) return true;
-  if (PATH_EXTS.some((ext) => s.endsWith(ext)) && s.includes('/')) return true;
-  return false;
-}
-
-function existsOnDisk(rel: string): boolean {
-  try {
-    statSync(fromRepo(rel.replace(/\/+$/, '')));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function parentDirExists(globPath: string): boolean {
-  const first = globPath.search(/[*?{]/);
-  if (first < 0) return existsOnDisk(globPath);
-  // Find the last '/' before the first wildcard to get the true parent directory
-  const slashBefore = globPath.lastIndexOf('/', first);
-  const parent = slashBefore < 0 ? '' : globPath.slice(0, slashBefore);
-  return !parent || existsOnDisk(parent);
-}
 
 interface PackageJson {
   readonly scripts?: Readonly<Record<string, string>>;
@@ -125,12 +83,7 @@ function adrFileExists(num: string): boolean {
 function listContextDocs(): string[] {
   const all = new Set<string>();
   for (const f of CONTEXT_FILES) {
-    try {
-      statSync(fromRepo(f));
-      all.add(f);
-    } catch {
-      // skip missing
-    }
+    if (existsOnDisk(f)) all.add(f);
   }
   for (const dir of CONTEXT_DIRS) {
     try {
@@ -165,8 +118,8 @@ function checkDocPaths(
       // Skip allowlisted entries
       if (ALLOWLIST.has(candidate)) continue;
 
-      // npm run script check
-      const npmRunMatch = candidate.match(/^npm run ([a-zA-Z0-9:_-]+)$/);
+      // npm run script check — match `npm run <script>` with optional `-- <flags>` suffix
+      const npmRunMatch = candidate.match(/^npm run ([a-zA-Z0-9:_-]+)(?:\s.*)?$/);
       if (npmRunMatch) {
         const script = npmRunMatch[1];
         if (script && !packageScripts.has(script)) {
@@ -181,10 +134,7 @@ function checkDocPaths(
 
       // Path reference check
       if (!looksLikePath(candidate)) continue;
-      const resolved = candidate.startsWith('./') ? candidate.slice(2) : candidate;
-      const isGlob = candidate.includes('*') || candidate.includes('{');
-      const ok = isGlob ? parentDirExists(resolved) : existsOnDisk(resolved);
-      if (!ok) {
+      if (!pathExistsOnDisk(candidate)) {
         report.warn(`Context doc path does not exist: \`${candidate}\``, {
           file: docRel,
           line: idx + 1,

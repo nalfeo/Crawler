@@ -17,46 +17,16 @@
  */
 
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import process from 'node:process';
 import { Report, fromRepo } from '../shared/report.js';
+import { existsOnDisk, looksLikePath, pathExistsOnDisk } from '../shared/path-utils.js';
 
 const SPECS_DIR = '.specify/specs';
 const ADR_DIR = 'docs/knowledge/adr';
 
 /** Sections every non-README spec must have. */
 const REQUIRED_SECTIONS = ['## Context', '## Requirements'];
-
-/** Path prefixes we treat as code references worth checking. */
-const CODE_PREFIXES = ['src/', 'scripts/', 'tests/', 'docs/', '.github/', '.specify/'];
-const PATH_EXTS = ['.ts', '.tsx', '.md', '.json', '.yml', '.yaml', '.sh'];
-
-function looksLikePath(s: string): boolean {
-  if (s.includes(' ') || s.startsWith('http')) return false;
-  if (s.includes('<') || s.includes('>')) return false;
-  if (/\bYYYY\b/.test(s) || /\bNNNN\b/.test(s) || /\bNN-/.test(s)) return false;
-  if (CODE_PREFIXES.some((p) => s.startsWith(p))) return true;
-  if (PATH_EXTS.some((ext) => s.endsWith(ext)) && s.includes('/')) return true;
-  return false;
-}
-
-function existsOnDisk(rel: string): boolean {
-  try {
-    statSync(fromRepo(rel.replace(/\/+$/, '')));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function parentDirExists(globPath: string): boolean {
-  const first = globPath.search(/[*?{]/);
-  if (first < 0) return existsOnDisk(globPath);
-  // Find the last '/' before the first wildcard to get the true parent directory
-  const slashBefore = globPath.lastIndexOf('/', first);
-  const parent = slashBefore < 0 ? '' : globPath.slice(0, slashBefore);
-  return !parent || existsOnDisk(parent);
-}
 
 /** Last git commit timestamp (Unix seconds) for a repo-relative path. */
 function lastCommitTs(rel: string): number | null {
@@ -77,9 +47,12 @@ function lastCommitTs(rel: string): number | null {
 /** Extract `> **Code source-of-truth:** path1, path2` values from spec text. */
 function extractSourceOfTruth(text: string): string[] {
   const paths: string[] = [];
-  const match = text.match(/\*\*Code source-of-truth:\*\*\s*(.+)/);
+  // Use `s` flag (dotAll) so the match captures across lines if needed;
+  // strip any inline HTML comments before splitting on commas/whitespace.
+  const match = text.match(/\*\*Code source-of-truth:\*\*\s*([^\n]+)/);
   if (!match || !match[1]) return paths;
-  const raw = match[1].replace(/<!--.*?-->/g, '');
+  // Remove HTML comments (use [\s\S] to match multiline comments safely)
+  const raw = match[1].replace(/<!--[\s\S]*?-->/g, '');
   // Split on commas or whitespace, strip markdown emphasis/backticks
   const parts = raw.split(/[,\s]+/).map((p) => p.replace(/[`*_]/g, '').trim());
   for (const p of parts) {
@@ -163,9 +136,7 @@ async function main(): Promise<void> {
     const sourceOfTruthPaths = extractSourceOfTruth(text);
     const specTs = lastCommitTs(specRel);
     for (const codePath of sourceOfTruthPaths) {
-      const resolved = codePath.startsWith('./') ? codePath.slice(2) : codePath;
-      const isGlob = resolved.includes('*') || resolved.includes('{');
-      const ok = isGlob ? parentDirExists(resolved) : existsOnDisk(resolved);
+      const ok = pathExistsOnDisk(codePath);
       if (!ok) {
         report.warn(`Spec source-of-truth path does not exist: \`${codePath}\``, {
           file: specRel,
@@ -174,7 +145,9 @@ async function main(): Promise<void> {
         continue;
       }
       // Check for staleness: if source code was modified after the spec
+      const isGlob = codePath.includes('*') || codePath.includes('{');
       if (!isGlob && specTs !== null) {
+        const resolved = codePath.startsWith('./') ? codePath.slice(2) : codePath;
         const codeTs = lastCommitTs(resolved);
         if (codeTs !== null && codeTs > specTs) {
           const daysDrift = Math.floor((codeTs - specTs) / 86400);
@@ -200,10 +173,7 @@ async function main(): Promise<void> {
         if (!raw) continue;
         const candidate = raw.replace(/[.,;)\]]+$/, '');
         if (!looksLikePath(candidate)) continue;
-        const resolved = candidate.startsWith('./') ? candidate.slice(2) : candidate;
-        const isGlob = candidate.includes('*') || candidate.includes('{');
-        const ok = isGlob ? parentDirExists(resolved) : existsOnDisk(resolved);
-        if (!ok) {
+        if (!pathExistsOnDisk(candidate)) {
           report.warn(`Spec references missing path: \`${candidate}\``, {
             file: specRel,
             line: idx + 1,
@@ -235,3 +205,4 @@ main().catch((err) => {
   );
   process.exit(2);
 });
+
