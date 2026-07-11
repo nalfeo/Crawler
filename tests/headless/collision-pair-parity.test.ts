@@ -196,12 +196,28 @@ interface CollisionFingerprint {
  *   seed  13:  4/211.00000286102295/0/0    →  4/215.00000381469727/20/2
  *   seed  42:  4/205.2999997138977/10/6    →  4/193.14999961853027/5/2
  *   seed 137:  3/180.4399995803833/10/2    →  4/216.71999943256378/8/0
+ *
+ * ## 2026-07-11 re-baseline — merge: floor1 NPC anchor/routability hardening (#1043)
+ *
+ * Merged `fix: harden floor1 npc objective anchors and critical npc routability`
+ * into the pipeline-unification branch. That fix preserves valid authored stamped
+ * NPC tiles instead of always scattering, and excludes locked doors from
+ * spawn-routability certification. Combined with the pipeline-unification ordering
+ * change, only seed 137 drifts further. Verified deterministic across two
+ * back-to-back invocations.
+ * Before → after (kills / damageDealt / damageTaken / score):
+ *   seed   7:  3/157.86999559402466/10/0   →  unchanged
+ *   seed  13:  4/215.00000381469727/20/2   →  unchanged
+ *   seed  42:  4/193.14999961853027/5/2    →  unchanged
+ *   seed 137:  4/216.71999943256378/8/0    →  4/225.55999952554703/8/2
  */
-// Re-baselined after pipeline unification (issue #663, 2026-07-11): the headless
-// pipeline now derives pre/post systems from createFloorMainSceneOptions() so
-// weaponSystem and floor1EnemyDirectorSystem run at the same pipeline position
-// as in the visual game. This shifts combat cadence in the 1500-frame parity
-// slice. The class-D determinism tests (two invocations) remain unchanged.
+// Re-baselined after merging floor1 NPC anchor/routability hardening (#1043) +
+// pipeline unification (issue #663, 2026-07-11): critical welcome-room NPCs now
+// preserve valid authored stamped tiles and spawn-routability excludes locked
+// doors; the headless pipeline now derives pre/post systems from
+// createFloorMainSceneOptions() so weaponSystem and floor1EnemyDirectorSystem
+// run at the same pipeline position as in the visual game. Both changes alter
+// early collision occupancy in this 1500-frame slice and drift seed 42/137.
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
@@ -231,9 +247,9 @@ const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
     totalFrames: 1500,
     outcome: 'timeout',
     kills: 4,
-    damageDealt: 216.71999943256378,
+    damageDealt: 225.55999952554703,
     damageTaken: 8,
-    finalScore: 0,
+    finalScore: 2,
   },
 };
 
