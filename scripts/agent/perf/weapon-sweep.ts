@@ -35,12 +35,20 @@ interface CLIArgs {
   weaponPersonas: boolean;
 }
 
-const FLOOR1_WEAPONS = ['sword', 'bow', 'baseball-bat', 'pistol', 'throwing-knife', 'fireball'];
+const DEFAULT_FLOOR1_WEAPONS = ['sword', 'bow', 'baseball-bat'];
+const ALLOWED_FLOOR1_WEAPONS = [
+  'sword',
+  'bow',
+  'baseball-bat',
+  'pistol',
+  'throwing-knife',
+  'fireball',
+];
 
 function parseArgs(): CLIArgs {
   const args: CLIArgs = {
     seeds: [2, 4, 7],
-    weapons: FLOOR1_WEAPONS,
+    weapons: DEFAULT_FLOOR1_WEAPONS,
     maxFrames: 19_800, // ~330 s at 60 fps — same budget as the hill-climb baseline
     out: '/tmp/weapon-sweep.json',
     weaponPersonas: false,
@@ -66,10 +74,10 @@ function parseArgs(): CLIArgs {
     }
   }
 
-  const invalidWeapons = args.weapons.filter((weapon) => !FLOOR1_WEAPONS.includes(weapon));
+  const invalidWeapons = args.weapons.filter((weapon) => !ALLOWED_FLOOR1_WEAPONS.includes(weapon));
   if (invalidWeapons.length > 0) {
     throw new Error(
-      `Invalid --weapons entries: ${invalidWeapons.join(', ')}. Allowed: ${FLOOR1_WEAPONS.join(', ')}`,
+      `Invalid --weapons entries: ${invalidWeapons.join(', ')}. Allowed: ${ALLOWED_FLOOR1_WEAPONS.join(', ')}`,
     );
   }
 
