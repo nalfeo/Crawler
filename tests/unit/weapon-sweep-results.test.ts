@@ -70,4 +70,16 @@ describe('mergeWeaponSweepShards', () => {
       'Out-of-order shard record for sword/1',
     );
   });
+
+  it('rejects malformed records with missing numeric fields', () => {
+    const malformed = shard([1]);
+    malformed.allRecords[0] = {
+      weapon: 'sword',
+      seed: 1,
+      outcome: 'victory',
+    } as unknown as WeaponSweepRecord;
+    expect(() => mergeWeaponSweepShards([malformed], 'sword', [1])).toThrow(
+      'Out-of-order shard record for sword/1',
+    );
+  });
 });

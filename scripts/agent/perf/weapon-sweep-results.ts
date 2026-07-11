@@ -41,8 +41,75 @@ export interface WeaponSweepOutput {
   allRecords: WeaponSweepRecord[];
 }
 
+const VALID_RUN_OUTCOMES: ReadonlySet<RunStats['outcome']> = new Set([
+  'victory',
+  'death',
+  'timeout',
+  'stalled',
+  'error',
+]);
+
 function mean(values: readonly number[]): number {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) > 0;
+}
+
+function isValidSweepRecord(
+  value: unknown,
+  expectedWeapon: string,
+  expectedSeed: number,
+): value is WeaponSweepRecord {
+  if (!isPlainObject(value)) {
+    return false;
+  }
+  const record = value as Partial<WeaponSweepRecord>;
+  return (
+    record.weapon === expectedWeapon &&
+    record.seed === expectedSeed &&
+    typeof record.outcome === 'string' &&
+    VALID_RUN_OUTCOMES.has(record.outcome as RunStats['outcome']) &&
+    isFiniteNumber(record.gameTimeSec) &&
+    isFiniteNumber(record.finalLevel) &&
+    isFiniteNumber(record.totalKills) &&
+    isFiniteNumber(record.totalXp) &&
+    isFiniteNumber(record.totalGold) &&
+    isFiniteNumber(record.score) &&
+    isFiniteNumber(record.minHealthPct) &&
+    isFiniteNumber(record.closeCallCount) &&
+    isFiniteNumber(record.questsCompleted)
+  );
+}
+
+function isValidShardShape(value: unknown, expectedWeapon: string): value is WeaponSweepOutput {
+  if (!isPlainObject(value)) {
+    return false;
+  }
+  const shard = value as Partial<WeaponSweepOutput>;
+  return (
+    typeof shard.runAt === 'string' &&
+    Array.isArray(shard.seeds) &&
+    shard.seeds.every((seed) => isPositiveInteger(seed)) &&
+    Array.isArray(shard.weapons) &&
+    shard.weapons.length === 1 &&
+    shard.weapons[0] === expectedWeapon &&
+    isPositiveInteger(shard.maxFrames) &&
+    isFiniteNumber(shard.budgetSec) &&
+    Array.isArray(shard.summaries) &&
+    shard.summaries.length === 1 &&
+    isPlainObject(shard.summaries[0]) &&
+    Array.isArray(shard.allRecords)
+  );
 }
 
 export function summarizeWeaponRecords(
@@ -78,15 +145,19 @@ export function mergeWeaponSweepShards(
   if (shards.length === 0) {
     throw new Error(`No sweep shards found for weapon "${weapon}"`);
   }
-  const maxFrames = shards[0]!.maxFrames;
+  const firstShard = shards[0] as unknown;
+  if (!isValidShardShape(firstShard, weapon)) {
+    throw new Error(`Malformed shard payload for weapon "${weapon}"`);
+  }
+  const maxFrames = firstShard.maxFrames;
   const bySeed = new Map<number, WeaponSweepRecord>();
 
   for (const shard of shards) {
+    if (!isValidShardShape(shard, weapon)) {
+      throw new Error(`Malformed shard payload for weapon "${weapon}"`);
+    }
     if (shard.maxFrames !== maxFrames) {
       throw new Error(`Shard frame-budget mismatch: ${shard.maxFrames} vs ${maxFrames}`);
-    }
-    if (shard.weapons.length !== 1 || shard.weapons[0] !== weapon) {
-      throw new Error(`Shard weapon mismatch: expected only "${weapon}"`);
     }
     if (
       shard.seeds.length !== shard.allRecords.length ||
@@ -98,7 +169,7 @@ export function mergeWeaponSweepShards(
     for (let index = 0; index < shard.seeds.length; index += 1) {
       const seed = shard.seeds[index]!;
       const record = shard.allRecords[index];
-      if (!record || record.seed !== seed || record.weapon !== weapon) {
+      if (!isValidSweepRecord(record, weapon, seed)) {
         throw new Error(`Out-of-order shard record for ${weapon}/${seed}`);
       }
       if (bySeed.has(seed)) {
