@@ -37,6 +37,12 @@ import {
   DOOR_CLOSED_FRAME,
   DOOR_OPEN_FRAME,
 } from '../sprites/door-visuals.js';
+import { getTerrainPack } from '../../shared/terrain-pack-registry.js';
+import {
+  resolveDoorPoolVariant,
+  resolveDoorOrientationFromFlanks,
+} from '../../shared/terrain-pack-variants.js';
+import { TERRAIN_PACK_CELL_PX, type TerrainPackId } from '../../shared/terrain-pack-types.js';
 import { createBarrierOverlay } from '../BarrierOverlay.js';
 import { createInputCapture } from '../InputCapture.js';
 import { createModalPickerUI } from '../ModalPickerUI.js';
@@ -228,6 +234,15 @@ export interface MainGameSceneOptions {
    * the global defaults.
    */
   lightingConfig?: Partial<LightingConfig>;
+  /**
+   * Registry-backed terrain-pack id (see `terrain-pack-types.ts`). When
+   * present, `drawFloorTerrain()`/`updateDoorOverlay()` resolve wall/floor/
+   * corridor/door art from the pack via `buildTerrainLayer` and
+   * `resolveDoorPoolVariant` instead of the legacy `TILE_SPRITES`/Kenney/
+   * generated path. Omitted for Floor 1 (see `createFloorMainSceneOptions`),
+   * so its rendering stays byte-for-byte on the legacy path.
+   */
+  terrainPackId?: TerrainPackId;
   /** Floor-specific Director narration copy. */
   director?: {
     intro: string;
@@ -324,12 +339,27 @@ export class MainGameScene extends Phaser.Scene {
    * a REAL booted scene — that approved generated tile textures actually stamp
    * (`generatedCount > 0`). Terrain bakes into ONE RenderTexture, so display-list
    * counting cannot see per-tile provenance; these counts are the only seam.
+   *
+   * `packWallCount`/`packFloorCount`/`packCorridorCount` are the terrain-pack
+   * equivalents (non-zero only when `options.terrainPackId` is set, e.g.
+   * Floor 2) — the seam proving Floor 2 uses blob47 atlas frame stamping
+   * instead of the legacy generated-single-image bypass.
    */
   private terrainRenderSummary: {
     generatedCount: number;
     spriteCount: number;
     colorCount: number;
-  } = { generatedCount: 0, spriteCount: 0, colorCount: 0 };
+    packWallCount: number;
+    packFloorCount: number;
+    packCorridorCount: number;
+  } = {
+    generatedCount: 0,
+    spriteCount: 0,
+    colorCount: 0,
+    packWallCount: 0,
+    packFloorCount: 0,
+    packCorridorCount: 0,
+  };
 
   /**
    * Diagnostic door-render counts from the last `updateDoorOverlay()` pass. Read
@@ -340,7 +370,12 @@ export class MainGameScene extends Phaser.Scene {
    * `renderableClosedCount` is the sum of the three CLOSED buckets so the e2e can
    * tell "no eligible closed doors on the map" (0) apart from "wrong branch taken"
    * (generated !== renderable). Doors are drawn per-frame, so these reflect the
-   * most recent overlay pass.
+   * most recent overlay pass. `packDoorCount` is non-zero only when a
+   * terrain-pack door variant was actually stamped (highest precedence, ahead
+   * of `closedGeneratedCount`/Kenney/color). `missingPackDoorTextureCount`
+   * is non-zero when a pack is configured but its door texture key was not
+   * found in the Phaser texture cache — lets observers distinguish "no pack"
+   * from "pack loaded but door assets missing".
    */
   private doorRenderSummary: {
     closedGeneratedCount: number;
@@ -349,6 +384,8 @@ export class MainGameScene extends Phaser.Scene {
     openKenneyCount: number;
     openColorCount: number;
     renderableClosedCount: number;
+    packDoorCount: number;
+    missingPackDoorTextureCount: number;
   } = {
     closedGeneratedCount: 0,
     closedKenneyCount: 0,
@@ -356,6 +393,8 @@ export class MainGameScene extends Phaser.Scene {
     openKenneyCount: 0,
     openColorCount: 0,
     renderableClosedCount: 0,
+    packDoorCount: 0,
+    missingPackDoorTextureCount: 0,
   };
 
   /** Dynamic darkness overlay rendered from a configurable light field. */
@@ -368,6 +407,8 @@ export class MainGameScene extends Phaser.Scene {
 
   /** Per-door sprite Images (Tiny Dungeon door art), rebuilt on door updates. */
   private doorImages: Phaser.GameObjects.Image[] = [];
+
+  private warnedMissingPackDoorTexture = false;
 
   private staircaseMarker?: Phaser.GameObjects.Arc;
 
@@ -1400,6 +1441,9 @@ export class MainGameScene extends Phaser.Scene {
     generatedCount: number;
     spriteCount: number;
     colorCount: number;
+    packWallCount: number;
+    packFloorCount: number;
+    packCorridorCount: number;
   } {
     return this.terrainRenderSummary;
   }
@@ -1417,6 +1461,8 @@ export class MainGameScene extends Phaser.Scene {
     openKenneyCount: number;
     openColorCount: number;
     renderableClosedCount: number;
+    packDoorCount: number;
+    missingPackDoorTextureCount: number;
   } {
     return this.doorRenderSummary;
   }
@@ -1656,10 +1702,25 @@ export class MainGameScene extends Phaser.Scene {
       this.fovSubFactor = floorMap.setSubFactor(this.fovSubFactor);
     }
 
-    const { rt, generatedCount, spriteCount, colorCount } = buildTerrainLayer(this, floorMap);
+    const {
+      rt,
+      generatedCount,
+      spriteCount,
+      colorCount,
+      packWallCount,
+      packFloorCount,
+      packCorridorCount,
+    } = buildTerrainLayer(this, floorMap, { terrainPackId: this.options.terrainPackId });
     rt.setDepth(-20);
     this.mapRt = rt;
-    this.terrainRenderSummary = { generatedCount, spriteCount, colorCount };
+    this.terrainRenderSummary = {
+      generatedCount,
+      spriteCount,
+      colorCount,
+      packWallCount,
+      packFloorCount,
+      packCorridorCount,
+    };
 
     if (colorCount > 0) {
       logger.debug('Terrain layer: tiles using color fallback', {
@@ -2257,6 +2318,8 @@ export class MainGameScene extends Phaser.Scene {
         openKenneyCount: 0,
         openColorCount: 0,
         renderableClosedCount: 0,
+        packDoorCount: 0,
+        missingPackDoorTextureCount: 0,
       };
       return;
     }
@@ -2269,6 +2332,7 @@ export class MainGameScene extends Phaser.Scene {
 
     const tileSize = floorMap.config.tileSizeFt * PIXELS_PER_FOOT;
     const hasSheet = this.textures.exists(DOOR_SHEET_KEY);
+    const pack = this.options.terrainPackId ? getTerrainPack(this.options.terrainPackId) : null;
 
     // Derive the generated closed-door scale ONCE from the texture's ACTUAL
     // loaded width (mirrors terrain-renderer's resolveGeneratedScale): a usable
@@ -2308,6 +2372,9 @@ export class MainGameScene extends Phaser.Scene {
     let closedColorCount = 0;
     let openKenneyCount = 0;
     let openColorCount = 0;
+    let packDoorCount = 0;
+    let missingPackDoorTextureCount = 0;
+    const packDoorScale = tileSize / TERRAIN_PACK_CELL_PX;
 
     const tm = floorMap.tileMap;
     // A wall is an in-bounds tile that is neither passable nor a door.
@@ -2331,6 +2398,37 @@ export class MainGameScene extends Phaser.Scene {
         const isOpen = tm.isPassable(x, y);
         const cx = x * tileSize + tileSize / 2;
         const cy = y * tileSize + tileSize / 2;
+
+        // Terrain-pack precedence (refinement #5's pure resolver): a loaded
+        // pack door variant wins over the generated/Kenney/color fallback
+        // chain entirely. `horizontalDoorway` takes priority over
+        // `verticalDoorway` when a tile satisfies both (a rare 4-way
+        // intersection edge case) — arbitrary but stable/deterministic.
+        //
+        // Axis semantics (Fix 2): `horizontalDoorway` = walls left+right →
+        // passage runs top-to-bottom → vertical art; NOT `horizontalDoorway`
+        // = walls top+bottom → passage runs left-to-right → horizontal art.
+        if (pack) {
+          const orientation = resolveDoorOrientationFromFlanks(horizontalDoorway);
+          const variant = resolveDoorPoolVariant(pack.doorSet, { isOpen, orientation });
+          if (this.textures.exists(variant.textureKey)) {
+            addDoorImage(cx, cy, variant.textureKey, undefined, packDoorScale);
+            packDoorCount += 1;
+            continue;
+          } else {
+            // Pack is configured but its door texture is missing from the cache.
+            // Fall through to the legacy chain and warn once per scene.
+            missingPackDoorTextureCount += 1;
+            if (!this.warnedMissingPackDoorTexture) {
+              logger.warn('[terrain-pack] door texture missing; falling back to legacy chain', {
+                textureKey: variant.textureKey,
+                packId: this.options.terrainPackId,
+              });
+              this.warnedMissingPackDoorTexture = true;
+            }
+          }
+        }
+
         const mode = resolveDoorRenderMode(isOpen, { hasGeneratedClosed, hasSheet });
 
         switch (mode.kind) {
@@ -2376,6 +2474,8 @@ export class MainGameScene extends Phaser.Scene {
       openKenneyCount,
       openColorCount,
       renderableClosedCount: closedGeneratedCount + closedKenneyCount + closedColorCount,
+      packDoorCount,
+      missingPackDoorTextureCount,
     };
   }
 

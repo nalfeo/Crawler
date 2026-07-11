@@ -103,7 +103,6 @@ describe('buildIndustrialCavePack (authored)', () => {
     }
     expect(hasOpaquePixel).toBe(true);
   });
-
   it('produces 3-5 floor variants, 3-5 corridor variants, and exactly 4 door PNGs', () => {
     expect(result.manifest.floorPool.length).toBeGreaterThanOrEqual(3);
     expect(result.manifest.floorPool.length).toBeLessThanOrEqual(5);

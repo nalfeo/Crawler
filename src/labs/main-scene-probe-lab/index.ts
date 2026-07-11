@@ -12,11 +12,26 @@
  * the CURRENT boot wiring and camera-follow invariant BEFORE a future session
  * decomposes the class, so that refactor can prove equivalence.
  *
- * It deliberately boots via `createFloor1GameConfig` + `createFloor1MainSceneOptions`
- * (the exact path the shipped game uses) with a FIXED `worldSeed`, so every boot
- * is deterministic. The probe reaches the scene's runtime fields through a
- * structural cast — MainGameScene's members are TS `private` (not `#private`),
- * so they are readable at runtime, mirroring `ai-runner-lab`.
+ * It boots via `createFloorGameConfig` + `createFloorMainSceneOptions` with the
+ * floor selected by the optional `?floor=<id>` query param (defaults to `floor1`
+ * for any absent or unrecognised value) and a FIXED `worldSeed`, so every boot is
+ * deterministic. The probe reaches the scene's runtime fields through a structural
+ * cast — MainGameScene's members are TS `private` (not `#private`), so they are
+ * readable at runtime, mirroring `ai-runner-lab`.
+ *
+ * Supported floors
+ * ----------------
+ * | Param          | Floor booted                                              |
+ * | -------------- | --------------------------------------------------------- |
+ * | (absent)       | floor1 (default)                                          |
+ * | ?floor=floor1  | floor1                                                    |
+ * | ?floor=floor2  | floor2 (terrain-pack atlas path, different ambient/mobs)  |
+ * | anything else  | floor1 (safe fallback)                                    |
+ *
+ * The terrain-pack fields (`packWallCount`, `packFloorCount`, `packCorridorCount`)
+ * in `TerrainRenderSummary` are non-zero ONLY when a pack-backed floor (e.g.
+ * floor2) is booted — proving the atlas-frame pack path is used rather than the
+ * generated single-image bypass that dominates Floor 1.
  *
  * Determinism for the camera guard: with the simulation paused and no pending
  * advance-steps, MainGameScene.update() runs `updateCamera()` and early-returns
@@ -27,8 +42,8 @@
  */
 import { query } from 'bitecs';
 import Phaser from 'phaser';
-import { createFloor1GameConfig } from '../../bootstrap/floor-game-config.js';
-import { createFloor1MainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
+import { createFloorGameConfig } from '../../bootstrap/floor-game-config.js';
+import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { Harvestable } from '../../core/components.js';
 import type { GameWorld } from '../../core/index.js';
 import { acceptQuest } from '../../core/systems/questSystem.js';
@@ -58,6 +73,18 @@ const PROBE_SEED = 4242;
 const HARVESTABLE_BRIEF_IDS: readonly string[] = HARVESTABLE_DEFS.map((def) =>
   generatedBriefIdForHarvestable(def.id),
 ).filter((briefId): briefId is string => typeof briefId === 'string');
+
+const SUPPORTED_FLOOR_IDS = new Set(['floor1', 'floor2']);
+
+/**
+ * Parse the optional `?floor=<id>` query param and return a validated floor id.
+ * Any absent or unrecognised value falls back to `'floor1'` so every existing
+ * e2e (which omits the param) continues to boot floor1 without change.
+ */
+function readFloorParam(): string {
+  const raw = new URLSearchParams(window.location.search).get('floor');
+  return raw !== null && SUPPORTED_FLOOR_IDS.has(raw) ? raw : 'floor1';
+}
 
 /**
  * Parse an optional `?ambient=<0..1>` query param used only by the
@@ -105,6 +132,9 @@ interface MainSceneInternals {
     generatedCount: number;
     spriteCount: number;
     colorCount: number;
+    packWallCount: number;
+    packFloorCount: number;
+    packCorridorCount: number;
   };
   getDoorRenderSummary(): {
     closedGeneratedCount: number;
@@ -113,6 +143,8 @@ interface MainSceneInternals {
     openKenneyCount: number;
     openColorCount: number;
     renderableClosedCount: number;
+    packDoorCount: number;
+    missingPackDoorTextureCount: number;
   };
 }
 
@@ -218,6 +250,11 @@ export interface HarvestableRenderSummary {
  * to display-list counting — this summary (read from the scene's stored counts)
  * is the observe seam proving approved generated tile textures actually stamp
  * (`generatedCount > 0`), rather than falling back to Kenney frames or color.
+ *
+ * Pack fields (`packWallCount`, `packFloorCount`, `packCorridorCount`) are the
+ * terrain-pack atlas-frame path used by pack-backed floors (e.g. floor2). They
+ * are non-zero ONLY on a floor whose `terrainPackId` resolves a pack — proving
+ * the atlas-frame variant runs rather than the generated single-image bypass.
  */
 export interface TerrainRenderSummary {
   /** Tiles stamped from a GENERATED single-texture (approved art wired). */
@@ -226,6 +263,12 @@ export interface TerrainRenderSummary {
   readonly spriteCount: number;
   /** Tiles drawn as a solid-color fill (no texture at all). */
   readonly colorCount: number;
+  /** Wall tiles stamped via the terrain-pack atlas-frame path. */
+  readonly packWallCount: number;
+  /** Floor tiles stamped via the terrain-pack atlas-frame path. */
+  readonly packFloorCount: number;
+  /** Corridor tiles stamped via the terrain-pack atlas-frame path. */
+  readonly packCorridorCount: number;
 }
 
 /**
@@ -235,6 +278,12 @@ export interface TerrainRenderSummary {
  * is the observe seam proving CLOSED doors stamp the approved generated texture
  * (`closedGeneratedCount === renderableClosedCount`) rather than the Kenney
  * placeholder. The five kind buckets are mutually exclusive.
+ *
+ * `packDoorCount` is non-zero only when a terrain-pack-backed floor is booted
+ * and doors render via the pack's atlas variant (separate from the
+ * `closedGeneratedCount`/Kenney/color buckets). `missingPackDoorTextureCount`
+ * counts pack-door draws where the pack's texture key was not loaded — a
+ * configuration/asset gap rather than a render fallback.
  */
 export interface DoorRenderSummary {
   /** Closed doors rendered from the approved GENERATED texture. */
@@ -249,6 +298,10 @@ export interface DoorRenderSummary {
   readonly openColorCount: number;
   /** Sum of the three CLOSED buckets — total closed doors actually rendered. */
   readonly renderableClosedCount: number;
+  /** Doors rendered via the terrain-pack atlas variant (non-zero on pack floors). */
+  readonly packDoorCount: number;
+  /** Pack-door draws where the pack texture key was not loaded (config/asset gap). */
+  readonly missingPackDoorTextureCount: number;
 }
 
 /**
@@ -304,7 +357,10 @@ export interface MainSceneProbeApi {
   /**
    * Tile-provenance counts from the last terrain bake. Used by the
    * terrain-generated-tiles e2e to prove — in the REAL booted scene — that
-   * approved generated tile textures stamp (`generatedCount > 0`).
+   * approved generated tile textures stamp (`generatedCount > 0`). Pack fields
+   * (`packWallCount`, `packFloorCount`, `packCorridorCount`) are non-zero only
+   * on a floor whose `terrainPackId` resolves a pack (e.g. floor2), proving the
+   * atlas-frame pack path runs rather than the generated single-image bypass.
    */
   getTerrainRenderSummary(): TerrainRenderSummary;
   /**
@@ -332,16 +388,21 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
 
   const hint = document.createElement('p');
   hint.textContent =
-    'Characterization harness booting the real MainGameScene. e2e drives window.__mainSceneProbe to pin boot wiring + the camera-follow invariant.';
+    'Characterization harness booting the real MainGameScene. e2e drives window.__mainSceneProbe to pin boot wiring + the camera-follow invariant. Add ?floor=floor2 to boot Floor 2 for terrain-pack observation.';
   hint.style.marginTop = '12px';
   hint.style.color = '#7ee0ff';
   hint.style.lineHeight = '1.6';
   controls.append(hint);
 
-  // The bootstrap ships Floor 1's authored per-floor ambient via `lightingConfig`;
+  // Resolve which floor to boot. `?floor=floor2` selects Floor 2 (terrain-pack
+  // atlas path). Any absent or unrecognised value falls back to `'floor1'` so
+  // every existing e2e (which omits the param) boots floor1 unchanged.
+  const floorId = readFloorParam();
+
+  // The bootstrap ships the floor's authored per-floor ambient via `lightingConfig`;
   // an optional `?ambient=` override lets the lighting-defaults e2e exercise a
   // distinguishing value end-to-end (see readAmbientOverride). Absent → default.
-  const baseOptions = createFloor1MainSceneOptions();
+  const baseOptions = createFloorMainSceneOptions(floorId);
   const ambientOverride = readAmbientOverride();
   const sceneOptions = {
     ...baseOptions,
@@ -350,7 +411,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       ? { lightingConfig: { ...baseOptions.lightingConfig, ambient: ambientOverride } }
       : {}),
   };
-  const config = createFloor1GameConfig(gameHost, sceneOptions);
+  const config = createFloorGameConfig(gameHost, sceneOptions, floorId);
   const game = new Phaser.Game(config);
 
   const getScene = (): MainSceneInternals | null =>
@@ -703,6 +764,9 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         generatedCount: summary?.generatedCount ?? 0,
         spriteCount: summary?.spriteCount ?? 0,
         colorCount: summary?.colorCount ?? 0,
+        packWallCount: summary?.packWallCount ?? 0,
+        packFloorCount: summary?.packFloorCount ?? 0,
+        packCorridorCount: summary?.packCorridorCount ?? 0,
       };
     },
 
@@ -715,6 +779,8 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         openKenneyCount: summary?.openKenneyCount ?? 0,
         openColorCount: summary?.openColorCount ?? 0,
         renderableClosedCount: summary?.renderableClosedCount ?? 0,
+        packDoorCount: summary?.packDoorCount ?? 0,
+        missingPackDoorTextureCount: summary?.missingPackDoorTextureCount ?? 0,
       };
     },
   };
@@ -734,6 +800,6 @@ registerLab(LAB_ID, {
   category: 'Meta' as LabCategory,
   name: 'Main Scene Probe Lab',
   description:
-    'Characterization harness that boots the real MainGameScene via the shipped floor bootstrap (fixed seed) and exposes window.__mainSceneProbe for boot-wiring + camera-follow e2e guards.',
+    'Characterization harness that boots the real MainGameScene via the shipped floor bootstrap (fixed seed) and exposes window.__mainSceneProbe for boot-wiring + camera-follow e2e guards. Add ?floor=floor2 to boot Floor 2 for terrain-pack atlas observation.',
   create: createMainSceneProbeLab,
 });
