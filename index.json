@@ -77,6 +77,17 @@
     "path": "by-sha/ba89b115834f5b78116b019e493eef94255d5493.json"
   },
   {
+    "commit": "150fba221558e4dc1cad0ef989d5553358cee56b",
+    "commitDate": "2026-07-11T15:37:45-07:00",
+    "commitSubject": "ci: include all six floor-1 starters in weapon sweep (#1065)",
+    "capturedAt": "2026-07-11T23:13:35.820Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29170986743",
+    "winRate": 0.9233333333333333,
+    "totalWins": 277,
+    "totalRuns": 300,
+    "path": "by-sha/150fba221558e4dc1cad0ef989d5553358cee56b.json"
+  },
+  {
     "commit": "51eef86e3a3718198ff20693602ec8c26541a6df",
     "commitDate": "2026-07-11T15:30:00-07:00",
     "commitSubject": "feat(ai): add optional merchant weapon purchases (#1034)",
