@@ -29,7 +29,7 @@ import {
   autoFloor2ProgressionSystem,
   computeAiStatAllocation,
 } from '../../game/ai/auto-progression.js';
-import { getWeaponPersona } from '../../game/ai/weapon-personas.js';
+import { getWeaponPersonaForWorld } from '../../game/ai/weapon-personas.js';
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
 import {
   acceptQuest,
@@ -46,7 +46,6 @@ import {
   Gold,
   DroppedItem,
   Harvestable,
-  getActiveWeaponDef,
 } from '../../core/index.js';
 import type { GameWorld } from '../../core/world.js';
 import { setGoalFlag } from '../../core/door-lock.js';
@@ -1994,9 +1993,10 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     const personaElem = document.getElementById('ai-persona');
     if (personaElem) {
       const world = getScene()?.world;
-      const weaponId = world ? getActiveWeaponDef(world)?.id : undefined;
       personaElem.textContent = aiConfig.weaponPersonas
-        ? (getWeaponPersona(weaponId)?.name ?? 'Unmapped weapon')
+        ? world
+          ? (getWeaponPersonaForWorld(world)?.name ?? 'Unmapped weapon')
+          : 'Pending loadout'
         : 'Off';
     }
     const arenaEntryElem = document.getElementById('ai-arena-entry-frame');
@@ -2380,6 +2380,14 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       ).length;
       const frame = scene?.world?.frameCount ?? 0;
       debugElem.textContent = `frame: ${frame} | scenePaused: ${scene?.isSimulationPaused?.() ? 'yes' : 'no'} | npcMem: discovered=${npcMemory.discoveredNpcDefs.length}, talked=${npcMemory.talkedNpcDefs.length}, needed=${neededCount}`;
+    }
+    const personaElem = document.getElementById('ai-persona');
+    if (personaElem) {
+      personaElem.textContent = !aiConfig.weaponPersonas
+        ? 'Off'
+        : world
+          ? (getWeaponPersonaForWorld(world)?.name ?? 'Unmapped weapon')
+          : 'Pending loadout';
     }
   }, 100);
 

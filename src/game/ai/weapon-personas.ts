@@ -1,4 +1,5 @@
 import type { GameWorld } from '../../core/world.js';
+import { getActiveWeaponDef } from '../../core/active-weapon.js';
 import type { EquipmentItemDef } from '../../shared/equipment-types.js';
 import { PRIMARY_STATS, type PrimaryStatId, type StatId } from '../../shared/stats.js';
 
@@ -86,6 +87,12 @@ export const WEAPON_PERSONAS: Readonly<Record<string, WeaponPersona>> = {
 
 export function getWeaponPersona(weaponId: string | undefined): WeaponPersona | undefined {
   return weaponId === undefined ? undefined : WEAPON_PERSONAS[weaponId];
+}
+
+export function getWeaponPersonaForWorld(world: GameWorld): WeaponPersona | undefined {
+  return getWeaponPersona(
+    getActiveWeaponDef(world)?.id ?? world.floorScenario?.selectedWeaponId ?? undefined,
+  );
 }
 
 function currentPrimaryStat(world: GameWorld, playerEid: number, stat: PrimaryStatId): number {

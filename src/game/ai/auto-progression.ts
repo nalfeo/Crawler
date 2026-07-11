@@ -14,7 +14,7 @@
  */
 import { query } from 'bitecs';
 import type { GameWorld } from '../../core/index.js';
-import { getActiveWeaponDef, Player, Position } from '../../core/index.js';
+import { Player, Position } from '../../core/index.js';
 import { equip } from '../../core/systems/equipmentSystem.js';
 import type { EquipmentItemDef } from '../../shared/equipment-types.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../shared/constants.js';
@@ -39,7 +39,7 @@ import { confirmFloor2StairDescend } from '../floor2Scenario.js';
 import { computeAutoStatAllocation } from '../scenarios/playerStatAllocationPolicy.js';
 import {
   computeWeaponPersonaStatAllocation,
-  getWeaponPersona,
+  getWeaponPersonaForWorld,
   scoreEquipmentForPersona,
 } from './weapon-personas.js';
 export { computeAutoStatAllocation } from '../scenarios/playerStatAllocationPolicy.js';
@@ -234,7 +234,7 @@ export function computeAiStatAllocation(
   available: number,
   weaponPersonas = false,
 ): Partial<Record<PrimaryStatId, number>> {
-  const persona = weaponPersonas ? getWeaponPersona(getActiveWeaponDef(world)?.id) : undefined;
+  const persona = weaponPersonas ? getWeaponPersonaForWorld(world) : undefined;
   return persona
     ? computeWeaponPersonaStatAllocation(world, playerEid, available, persona)
     : computeAutoStatAllocation(world, playerEid, available);
@@ -253,7 +253,7 @@ export function autoAllocateStatPoints(
 }
 
 function equipPersonaPreferredGear(world: GameWorld, playerEid: number): boolean {
-  const persona = getWeaponPersona(getActiveWeaponDef(world)?.id);
+  const persona = getWeaponPersonaForWorld(world);
   const bag = world.inventories.get(playerEid);
   if (!persona || !bag) return false;
 

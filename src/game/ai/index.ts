@@ -18,6 +18,7 @@ export { runHeadless } from './headless-runner.js';
 export {
   WEAPON_PERSONAS,
   getWeaponPersona,
+  getWeaponPersonaForWorld,
   computeWeaponPersonaStatAllocation,
   scoreEquipmentForPersona,
   type WeaponPersona,
