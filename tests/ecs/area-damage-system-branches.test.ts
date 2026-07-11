@@ -170,7 +170,7 @@ describe('areaDamageSystem lethal-hit kill attribution', () => {
     const collision = collisionSystem(world);
     areaDamageSystem(world, collision);
     // Enemy HP should now be ≤ 0
-    expect((world.stores.health.current[enemy] ?? 1)).toBeLessThanOrEqual(0);
+    expect(world.stores.health.current[enemy] ?? 1).toBeLessThanOrEqual(0);
 
     dropSystem(world, { spawnLoot: false });
 

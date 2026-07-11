@@ -414,7 +414,7 @@ describe('meleeSwingSystem lethal-hit kill attribution', () => {
     // No collisionResult provided — meleeSwingSystem falls back to the full scan
     meleeSwingSystem(world);
     // Enemy HP should now be ≤ 0
-    expect((world.stores.health.current[enemy] ?? 1)).toBeLessThanOrEqual(0);
+    expect(world.stores.health.current[enemy] ?? 1).toBeLessThanOrEqual(0);
 
     dropSystem(world, { spawnLoot: false });
 
