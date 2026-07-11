@@ -1,0 +1,62 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-10",
+  "session_slug": "floor1-staircase-boss-lockin-survival",
+  "task_title": "Fix Floor 1 staircase boss lock-in survival",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Adversarial review compared planner-layer override, dynamic hysteresis/sticky add clear, and synthetic harness-first strategies. Adopted adjustments: no raw enemy-count trigger, immediate-threat-only survival override, sticky add target to avoid boss/add thrash, no reason-string parsing in regressions, and explicit negative BT coverage (boss remains target when add is not immediate)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.5",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.4"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "gpt-5.4 surfaced sticky-target priority and progress-suppression concerns; adjudication marked them valid and fixes were landed."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.4"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "both models reported no high-confidence concerns after fixes."
+        }
+      ]
+    }
+  }
+}

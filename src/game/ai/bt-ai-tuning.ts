@@ -593,6 +593,12 @@ export const NPC_APPROACH_THREAT_RADIUS_FT = 8;
 // same strike band. The value is chosen directly, not derived from
 // CONTACT_SAFE_ORBIT_FT.
 export const ARENA_LOCKIN_ADD_HYSTERESIS_FT = 3;
+// In boss-room lock-in, melee should peel nearby adds once local pressure grows
+// beyond this crowd threshold (excluding the boss). This keeps enclosed fights
+// from becoming a pure boss tunnel while the swarm snowballs.
+export const ARENA_LOCKIN_MELEE_CROWD_ADD_THRESHOLD = 10;
+// Radius (ft) used to measure local add pressure for melee boss lock-ins.
+export const ARENA_LOCKIN_MELEE_CROWD_RADIUS_FT = 20;
 
 // --- Predictive safe-gap travel steering (travel-steering.ts) ---
 // Replaces the additive single-closest-threat "dodge nudge" during travel with a
