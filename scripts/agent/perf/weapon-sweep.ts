@@ -35,15 +35,9 @@ interface CLIArgs {
   weaponPersonas: boolean;
 }
 
-const ALLOWED_FLOOR1_WEAPONS = [
-  'sword',
-  'bow',
-  'baseball-bat',
-  'pistol',
-  'throwing-knife',
-  'fireball',
-];
-const DEFAULT_FLOOR1_WEAPONS = ALLOWED_FLOOR1_WEAPONS.slice(0, 3);
+const DEFAULT_FLOOR1_WEAPONS = ['sword', 'bow', 'baseball-bat'];
+const EXTRA_FLOOR1_WEAPONS = ['pistol', 'throwing-knife', 'fireball'];
+const ALLOWED_FLOOR1_WEAPONS = [...DEFAULT_FLOOR1_WEAPONS, ...EXTRA_FLOOR1_WEAPONS];
 
 function parseArgs(): CLIArgs {
   const args: CLIArgs = {
