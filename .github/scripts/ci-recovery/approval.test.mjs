@@ -77,6 +77,26 @@ test('rejects an allowlisted workflow when the PR modifies its definition', () =
   );
 });
 
+test('rejects when changed-files list is incomplete', () => {
+  assert.equal(
+    workflowApprovalRejection({
+      repository,
+      prNumber,
+      prHeadRepository: repository,
+      expectedChangedFiles: 4001,
+      changedFiles: Array.from({ length: 3000 }, (_, index) => ({
+        filename: `.github/workflows/workflow-${index}.yml`,
+      })),
+      run: {
+        path: '.github/workflows/ci-recovery-router.yml',
+        event: 'pull_request_review',
+        pull_requests: [{ number: prNumber }],
+      },
+    }),
+    'changed-files-incomplete',
+  );
+});
+
 test('rejects off-diagonal workflow and event combinations', () => {
   assert.equal(rejection({ path: '.github/workflows/ci.yml' }), 'event=pull_request_review');
   assert.equal(rejection({ event: 'pull_request' }), 'event=pull_request');

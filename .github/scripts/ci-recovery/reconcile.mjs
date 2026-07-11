@@ -311,6 +311,7 @@ for (const run of actionRequiredRuns) {
     prNumber,
     prHeadRepository: pr.head.repo.full_name,
     changedFiles,
+    expectedChangedFiles: pr.changed_files,
   });
   if (rejection) {
     process.stdout.write(

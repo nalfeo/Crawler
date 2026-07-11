@@ -19,6 +19,7 @@ export function workflowApprovalRejection({
   prNumber,
   prHeadRepository,
   changedFiles = [],
+  expectedChangedFiles = null,
 }) {
   if (normalize(prHeadRepository) !== normalize(repository)) {
     return 'fork';
@@ -33,6 +34,9 @@ export function workflowApprovalRejection({
   const allowedEvents = WORKFLOW_EVENT_ALLOWLIST.get(workflowPath);
   if (!allowedEvents) {
     return 'not-in-allowlist';
+  }
+  if (Number.isInteger(expectedChangedFiles) && expectedChangedFiles !== changedFiles.length) {
+    return 'changed-files-incomplete';
   }
   if (changedFiles.some((file) => normalize(file?.filename) === workflowPath)) {
     return 'workflow-modified';
