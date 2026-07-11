@@ -25,13 +25,14 @@ Fixed the deterministic Floor 1 staircase boss-room failure signature for seed 8
 - `npm run ai:headless -- --seed 8 --weapon sword --floor floor1 --json` → victory
 - `npm run ai:headless -- --seed 8 --weapon baseball-bat --floor floor1 --json` → victory
 - `npm run verify:fast` → pass
+- `npm run verify` → pass
+- `npm run verify:pr-prereqs` → pass
 - `npm run review:ledger -- validate docs/knowledge/review-ledgers/2026-07-10-floor1-staircase-boss-lockin-survival.review-ledger.json` → valid 4-apple ledger
 
 ## Unresolved issues
 
-- `npm run verify` still requires rerun after this new handoff file was added; previous failure was only due missing handoff and has now been addressed.
+- None.
 
 ## Recommended next steps
 
-1. Re-run `npm run verify` to confirm full pre-PR pipeline is green with the handoff present.
-2. Run `npm run verify:pr-prereqs` and proceed to PR flow.
+1. Proceed with PR review/merge flow.

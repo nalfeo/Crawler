@@ -76,6 +76,17 @@ function startStaircaseBossLockin(
   return bossEid;
 }
 
+function markEnemyIgnored(ai: BehaviorTreeAI, eid: number, untilFrame: number): void {
+  (ai as unknown as { ignoredEnemyUntilFrame: Map<number, number> }).ignoredEnemyUntilFrame.set(
+    eid,
+    untilFrame,
+  );
+}
+
+function setStickyBossAdd(ai: BehaviorTreeAI, eid: number | null): void {
+  (ai as unknown as { bossLockinStickyAddEid: number | null }).bossLockinStickyAddEid = eid;
+}
+
 describe('BT — arena lock-in priority (1.5)', () => {
   it('selects the spawner as the movement target when locked in an arena', () => {
     const world = createTestWorld({ seed: 42 });
@@ -162,29 +173,6 @@ describe('BT — arena lock-in priority (1.5)', () => {
     expect(decision.state).not.toBe(AIState.COLLECT);
   });
 
-  it('boss lock-in: clears an immediate add at defensive melee HP before resuming the boss', () => {
-    const world = createTestWorld({ seed: 42 });
-    const player = spawnPlayer(world, 0, 0);
-    initializeFloor1Scenario(world, player);
-    selectFloor1StarterWeapon(world, 0);
-    world.stores.health.max[player] = 100;
-    world.stores.health.current[player] = 30; // below MELEE_DEFENSIVE_HP_FRACTION (0.4), above retreat
-
-    const px = world.stores.position.x[player]!;
-    const py = world.stores.position.y[player]!;
-    const bossEid = startStaircaseBossLockin(world, px, py, 4, 0);
-    const addEid = spawnEnemy(world, px + 4, py + 1, 40);
-
-    const ai = new BehaviorTreeAI({ seed: 42 });
-    ai.poll(createInputState(), world);
-
-    const decision = ai.getDecision();
-    expect(decision.state).toBe(AIState.ENGAGE);
-    expect(decision.targetEid).toBe(addEid);
-    expect(decision.targetEid).not.toBe(bossEid);
-    expect(decision.reason).toContain('immediate add');
-  });
-
   it('boss lock-in: keeps targeting the boss when add pressure is not immediate', () => {
     const world = createTestWorld({ seed: 42 });
     const player = spawnPlayer(world, 0, 0);
@@ -207,29 +195,58 @@ describe('BT — arena lock-in priority (1.5)', () => {
     expect(decision.reason).toContain('boss');
   });
 
-  it('boss lock-in: peels nearby adds under melee crowd pressure even at healthy HP', () => {
+  it('boss lock-in: ignored closest add is neither selected nor counted for crowd pressure', () => {
     const world = createTestWorld({ seed: 42 });
     const player = spawnPlayer(world, 0, 0);
     initializeFloor1Scenario(world, player);
     selectFloor1StarterWeapon(world, 0);
     world.stores.health.max[player] = 100;
-    world.stores.health.current[player] = 80; // healthy: crowd pressure, not low-hp survival mode
+    world.stores.health.current[player] = 80;
 
     const px = world.stores.position.x[player]!;
     const py = world.stores.position.y[player]!;
     const bossEid = startStaircaseBossLockin(world, px, py, 4, 0);
-    for (let i = 0; i < 10; i += 1) {
-      const angle = (i / 10) * Math.PI * 2;
-      const radius = 4 + (i % 3);
+    const ignoredAddEid = spawnEnemy(world, px + 4, py + 0.5, 40);
+    for (let i = 0; i < 9; i += 1) {
+      const angle = ((i + 1) / 10) * Math.PI * 2;
+      const radius = 4.5 + (i % 2);
       spawnEnemy(world, px + Math.cos(angle) * radius, py + Math.sin(angle) * radius, 40);
     }
 
     const ai = new BehaviorTreeAI({ seed: 42 });
+    markEnemyIgnored(ai, ignoredAddEid, world.frameCount + 300);
     ai.poll(createInputState(), world);
 
     const decision = ai.getDecision();
     expect(decision.state).toBe(AIState.ENGAGE);
-    expect(decision.targetEid).not.toBe(bossEid);
-    expect(decision.reason).toContain('add pressure');
+    expect(decision.targetEid).toBe(bossEid);
+    expect(decision.targetEid).not.toBe(ignoredAddEid);
+    expect(decision.reason).toContain('boss');
+  });
+
+  it('boss lock-in: drops sticky add when that sticky enemy is currently ignored', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 30;
+
+    const px = world.stores.position.x[player]!;
+    const py = world.stores.position.y[player]!;
+    const bossEid = startStaircaseBossLockin(world, px, py, 4, 0);
+    const ignoredStickyAddEid = spawnEnemy(world, px + 3.8, py + 0.4, 40);
+    spawnEnemy(world, px + 4.4, py + 1.2, 40);
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    setStickyBossAdd(ai, ignoredStickyAddEid);
+    markEnemyIgnored(ai, ignoredStickyAddEid, world.frameCount + 300);
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(decision.targetEid).toBe(bossEid);
+    expect(decision.targetEid).not.toBe(ignoredStickyAddEid);
+    expect(decision.reason).toContain('boss');
   });
 });

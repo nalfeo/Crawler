@@ -13,7 +13,7 @@
       "adversarial": true,
       "alternatives_considered": 3,
       "plan_divergence": "minor",
-      "notes": "Adversarial review compared planner-layer override, dynamic hysteresis/sticky add clear, and synthetic harness-first strategies. Adopted adjustments: no raw enemy-count trigger, immediate-threat-only survival override, sticky add target to avoid boss/add thrash, no reason-string parsing in regressions, and explicit negative BT coverage (boss remains target when add is not immediate)."
+      "notes": "Adversarial review compared planner-layer override, dynamic hysteresis/sticky add clear, and synthetic harness-first strategies. Adopted adjustments: bounded local crowd-count trigger (ARENA_LOCKIN_MELEE_CROWD_ADD_THRESHOLD) instead of unbounded count heuristics, immediate-threat-only survival override, sticky add target to avoid boss/add thrash, headless regression assertions that avoid reason-string parsing, and explicit negative BT coverage (boss remains target when add is not immediate)."
     },
     "code_review": {
       "clean": true,

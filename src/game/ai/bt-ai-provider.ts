@@ -214,8 +214,6 @@ import {
   NPC_INTERACTION_RADIUS_FT,
   NPC_APPROACH_THREAT_RADIUS_FT,
   ARENA_LOCKIN_ADD_HYSTERESIS_FT,
-  ARENA_LOCKIN_MELEE_CROWD_ADD_THRESHOLD,
-  ARENA_LOCKIN_MELEE_CROWD_RADIUS_FT,
   TRAVEL_STEERING_ENABLED,
   TRAVEL_BODY_RADIUS_FT,
   TRAVEL_HARD_GAP_FT,
@@ -833,11 +831,6 @@ export class BehaviorTreeAI implements AIInputProvider {
    */
   private lastArenaLockinEid: number | null = null;
   private lastArenaLockinKind: 'spawner' | 'boss' | null = null;
-  /**
-   * Sticky non-boss add target while in boss-room lock-in. Prevents per-frame
-   * boss<->add oscillation once we have switched to clearing an immediate threat.
-   */
-  private bossLockinStickyAddEid: number | null = null;
 
   private retreating: boolean = false;
   /**
@@ -1349,7 +1342,6 @@ export class BehaviorTreeAI implements AIInputProvider {
           }
           this.lastArenaLockinEid = null;
           this.lastArenaLockinKind = null;
-          this.bossLockinStickyAddEid = null;
           return false;
         }
         if (this.lastArenaLockinEid !== target.eid || this.lastArenaLockinKind !== target.kind) {
@@ -1388,99 +1380,13 @@ export class BehaviorTreeAI implements AIInputProvider {
           nearestEnemy.distance <= engageRadius &&
           nearestEnemy.distance + ARENA_LOCKIN_ADD_HYSTERESIS_FT < targetDistance
         ) {
-          const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, nearestEnemy, {
-            inBossLockin: true,
-          });
+          const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, nearestEnemy);
           this.decision.state = AIState.ENGAGE;
           this.decision.targetEid = nearestEnemy.eid;
           this.decision.targetX = plan.targetX;
           this.decision.targetY = plan.targetY;
           this.decision.reason = `Boss-room lock-in — clearing add ${String(nearestEnemy.eid)} before boss`;
-          this.bossLockinStickyAddEid = nearestEnemy.eid;
           return BTStatus.SUCCESS;
-        }
-
-        if (target.kind === 'boss') {
-          const activeWeapon = getActiveWeapon(ctx.world);
-          const meleeWeapon = activeWeapon?.weaponType === WeaponType.MELEE;
-          const weaponReachFt = activeWeapon
-            ? Math.max(activeWeapon.range, activeWeapon.aoeRadius)
-            : CONTACT_SAFE_ORBIT_FT;
-          const strikeGateFt = Math.max(
-            CONTACT_SAFE_ORBIT_FT,
-            weaponReachFt * ATTACK_GATE_MULTIPLIER,
-          );
-          const immediateThreatRadiusFt = Math.min(engageRadius, strikeGateFt);
-          const nearestAdd = this.findNearestPerceivedEnemy(
-            ctx.world,
-            ctx.playerX,
-            ctx.playerY,
-            engageRadius,
-            target.eid,
-          );
-          const stickyAdd = this.bossLockinStickyAddEid
-            ? this.getLiveEnemyTarget(
-                ctx.world,
-                this.bossLockinStickyAddEid,
-                ctx.playerX,
-                ctx.playerY,
-                false,
-              )
-            : null;
-          const stickyStillImmediate =
-            meleeWeapon &&
-            stickyAdd &&
-            stickyAdd.eid !== target.eid &&
-            stickyAdd.distance <= immediateThreatRadiusFt + ARENA_LOCKIN_ADD_HYSTERESIS_FT;
-          const crowdAddCount = meleeWeapon
-            ? this.countNearbyEnemies(
-                ctx.world,
-                ctx.playerX,
-                ctx.playerY,
-                ARENA_LOCKIN_MELEE_CROWD_RADIUS_FT,
-                target.eid,
-              )
-            : 0;
-          const meleeCrowdControlMode =
-            meleeWeapon &&
-            nearestAdd !== null &&
-            nearestAdd.distance <= ARENA_LOCKIN_MELEE_CROWD_RADIUS_FT &&
-            crowdAddCount >= ARENA_LOCKIN_MELEE_CROWD_ADD_THRESHOLD;
-          const meleeSurvivalMode =
-            meleeWeapon &&
-            ctx.healthPercent <= MELEE_DEFENSIVE_HP_FRACTION &&
-            nearestAdd !== null &&
-            nearestAdd.distance <= immediateThreatRadiusFt;
-          let selectedAdd: WorldTarget | null = null;
-          let addDecisionMode: 'survival' | 'sticky' | 'pressure' | null = null;
-          if (meleeSurvivalMode) {
-            selectedAdd = nearestAdd;
-            addDecisionMode = 'survival';
-          } else if (stickyStillImmediate) {
-            selectedAdd = stickyAdd;
-            addDecisionMode = 'sticky';
-          } else if (meleeCrowdControlMode) {
-            selectedAdd = nearestAdd;
-            addDecisionMode = 'pressure';
-          }
-          if (selectedAdd) {
-            const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, selectedAdd, {
-              inBossLockin: true,
-            });
-            this.decision.state = AIState.ENGAGE;
-            this.decision.targetEid = selectedAdd.eid;
-            this.decision.targetX = plan.targetX;
-            this.decision.targetY = plan.targetY;
-            this.decision.reason =
-              addDecisionMode === 'survival'
-                ? `Boss-room lock-in — clearing immediate add ${String(selectedAdd.eid)} before boss`
-                : `Boss-room lock-in — relieving add pressure via ${String(selectedAdd.eid)} before boss`;
-            this.bossLockinStickyAddEid = selectedAdd.eid;
-            return BTStatus.SUCCESS;
-          }
-          this.bossLockinStickyAddEid = null;
-        } else {
-          this.bossLockinStickyAddEid = null;
         }
 
         // Route the objective through the appropriate movement plan:
@@ -1501,9 +1407,7 @@ export class BehaviorTreeAI implements AIInputProvider {
             y: target.y,
             distance: targetDistance,
           };
-          const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, bossWt, {
-            inBossLockin: true,
-          });
+          const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, bossWt);
           this.decision.targetX = plan.targetX;
           this.decision.targetY = plan.targetY;
           this.decision.reason = `Boss-room lock-in — ${plan.reason} (boss ${String(target.eid)})`;
@@ -4912,15 +4816,18 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerX: number,
     playerY: number,
     maxRadius: number = this.config.scanRadius,
-    excludedEid: number | null = null,
   ): WorldTarget | null {
     const enemies = query(world.ecs, [Enemy, Position, Health]);
     const candidates: WorldTarget[] = [];
 
     for (const eid of enemies) {
       if (eid === undefined) continue;
-      if (excludedEid !== null && eid === excludedEid) continue;
-      if (this.isEnemyIgnored(world, eid)) continue;
+
+      const ignoredUntil = this.ignoredEnemyUntilFrame.get(eid);
+      if (ignoredUntil !== undefined) {
+        if (ignoredUntil > world.frameCount) continue;
+        this.ignoredEnemyUntilFrame.delete(eid);
+      }
 
       const x = world.stores.position.x[eid] ?? 0;
       const y = world.stores.position.y[eid] ?? 0;
@@ -4951,113 +4858,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     return null;
-  }
-
-  private findNearestPerceivedEnemy(
-    world: GameWorld,
-    playerX: number,
-    playerY: number,
-    maxRadius: number = this.config.scanRadius,
-    excludedEid: number | null = null,
-  ): WorldTarget | null {
-    let nearest: WorldTarget | null = null;
-    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
-      if (eid === undefined) continue;
-      if (excludedEid !== null && eid === excludedEid) continue;
-      if (this.isEnemyIgnored(world, eid)) continue;
-      const health = world.stores.health.current[eid] ?? 0;
-      if (health <= 0) continue;
-      const x = world.stores.position.x[eid] ?? 0;
-      const y = world.stores.position.y[eid] ?? 0;
-      if (!this.canPerceiveWorldPosition(world, x, y)) continue;
-      const distance = Math.hypot(x - playerX, y - playerY);
-      if (distance > maxRadius) continue;
-      if (nearest === null || distance < nearest.distance) {
-        nearest = { eid, x, y, distance };
-      }
-    }
-    return nearest;
-  }
-
-  private countNearbyEnemies(
-    world: GameWorld,
-    playerX: number,
-    playerY: number,
-    radius: number,
-    excludedEid: number | null = null,
-  ): number {
-    const radiusSq = radius * radius;
-    let count = 0;
-    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
-      if (eid === undefined) continue;
-      if (excludedEid !== null && eid === excludedEid) continue;
-      if (this.isEnemyIgnored(world, eid)) continue;
-      const health = world.stores.health.current[eid] ?? 0;
-      if (health <= 0) continue;
-      const x = world.stores.position.x[eid] ?? 0;
-      const y = world.stores.position.y[eid] ?? 0;
-      if (!this.canPerceiveWorldPosition(world, x, y)) continue;
-      const dx = x - playerX;
-      const dy = y - playerY;
-      if (dx * dx + dy * dy <= radiusSq) {
-        count += 1;
-      }
-    }
-    return count;
-  }
-
-  /**
-   * Return a living, perceived, reachable enemy target for a specific eid.
-   * Used for sticky lock-in targets so add-clearing remains stable across polls.
-   */
-  private getLiveEnemyTarget(
-    world: GameWorld,
-    eid: number,
-    playerX: number,
-    playerY: number,
-    requireReachable = true,
-  ): WorldTarget | null {
-    if (!entityExists(world.ecs, eid)) {
-      return null;
-    }
-    if (!hasComponent(world.ecs, eid, Enemy)) {
-      return null;
-    }
-    if (this.isEnemyIgnored(world, eid)) {
-      return null;
-    }
-    const health = world.stores.health.current[eid] ?? 0;
-    if (health <= 0) {
-      return null;
-    }
-
-    const x = world.stores.position.x[eid] ?? 0;
-    const y = world.stores.position.y[eid] ?? 0;
-    if (!this.canPerceiveWorldPosition(world, x, y)) {
-      return null;
-    }
-    const distance = Math.hypot(x - playerX, y - playerY);
-    const target: WorldTarget = { eid, x, y, distance };
-    if (
-      !requireReachable ||
-      distance <= DIRECT_MOVE_EPSILON_FT ||
-      this.isTargetReachable(world, playerX, playerY, target)
-    ) {
-      return target;
-    }
-    return null;
-  }
-
-  private isEnemyIgnored(world: GameWorld, eid: number): boolean {
-    const ignoredUntil = this.ignoredEnemyUntilFrame.get(eid);
-    if (ignoredUntil === undefined) {
-      return false;
-    }
-    if (ignoredUntil > world.frameCount) {
-      return true;
-    }
-    this.ignoredEnemyUntilFrame.delete(eid);
-    return false;
   }
 
   /**
@@ -6369,7 +6169,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerX: number,
     playerY: number,
     target: WorldTarget,
-    options?: { inBossLockin?: boolean },
   ): { targetX: number; targetY: number; reason: string } {
     const weapon = getActiveWeapon(world);
     if (!weapon) {
@@ -6401,41 +6200,12 @@ export class BehaviorTreeAI implements AIInputProvider {
         reason: `Engaging enemy at distance ${target.distance.toFixed(1)}ft`,
       };
     }
-    if (options?.inBossLockin) {
-      // In enclosed boss lock-ins, melee orbiting can pin movement against walls
-      // while adds pile up. Hold direct pressure so autoswing stays on-target and
-      // cleave naturally trims nearby adds.
-      const strikeGateFt = reachFt * ATTACK_GATE_MULTIPLIER;
-      if (target.distance <= strikeGateFt) {
-        return {
-          targetX: target.x,
-          targetY: target.y,
-          reason: `Pressuring lock-in melee target at ${target.distance.toFixed(1)}ft`,
-        };
-      }
-      const engageBandFt = Math.max(DIRECT_MOVE_EPSILON_FT, reachFt * MELEE_HOLD_FRACTION);
-      const deltaX = target.x - playerX;
-      const deltaY = target.y - playerY;
-      const scale = (target.distance - engageBandFt) / target.distance;
-      return {
-        targetX: playerX + deltaX * scale,
-        targetY: playerY + deltaY * scale,
-        reason: `Closing on lock-in melee target from ${target.distance.toFixed(1)}ft`,
-      };
-    }
     // Actual gate at which a melee swing connects (weaponSystem fires when an enemy
     // is within reach*1.5 and the cooldown has elapsed — independent of whether the
     // player is moving). Once inside it we KITE instead of parking.
     const strikeGateFt = reachFt * ATTACK_GATE_MULTIPLIER;
     if (target.distance <= strikeGateFt) {
-      return this.computeMeleeKiteTarget(
-        world,
-        playerX,
-        playerY,
-        target,
-        reachFt,
-        options?.inBossLockin ?? false,
-      );
+      return this.computeMeleeKiteTarget(world, playerX, playerY, target, reachFt);
     }
 
     // Out of strike range: close in toward the orbit band (just inside the gate) so
@@ -6671,7 +6441,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
     target: WorldTarget,
     reachFt: number,
-    inBossLockin: boolean,
   ): { targetX: number; targetY: number; reason: string } {
     const readiness = getActiveWeaponReadiness(world);
     const ready = readiness?.ready ?? true;
@@ -6711,16 +6480,13 @@ export class BehaviorTreeAI implements AIInputProvider {
     // can sit just beyond the enemy's own attackRange and poke from safety. At healthy
     // HP we keep the tighter recover band for maximum DPS / AoE cleave.
     const defensive = this.getPlayerHealthFraction(world) < MELEE_DEFENSIVE_HP_FRACTION;
-    // Boss lock-ins are enclosed; a wide "safe orbit" can pin movement against
-    // walls while adds accumulate. Keep melee on the tighter recover orbit there.
-    const allowWideDefensiveOrbit = defensive && !inBossLockin;
-    const safeOrbitCap = allowWideDefensiveOrbit ? reachFt * ATTACK_GATE_MULTIPLIER : outerOrbit;
+    const safeOrbitCap = defensive ? reachFt * ATTACK_GATE_MULTIPLIER : outerOrbit;
     if (enemyAttackFt > 0) {
       const safeOrbit = enemyAttackFt + KITE_DODGE_BUFFER_FT;
       if (safeOrbit <= safeOrbitCap) {
         // We can stand outside the enemy's strike range and still land hits.
         desiredOrbit = Math.min(safeOrbitCap, Math.max(desiredOrbit, safeOrbit));
-      } else if (allowWideDefensiveOrbit) {
+      } else if (defensive) {
         // Enemy outranges our gate (e.g. a ranged boss): get as far out as the gate
         // allows rather than parking in the strike band.
         desiredOrbit = Math.max(desiredOrbit, safeOrbitCap);
@@ -7263,7 +7029,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.retreatThreatEid = null;
     this.lastArenaLockinEid = null;
     this.lastArenaLockinKind = null;
-    this.bossLockinStickyAddEid = null;
     this.opportunisticPullX = 0;
     this.opportunisticPullY = 0;
     this.farmPullX = 0;
