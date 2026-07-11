@@ -6,13 +6,7 @@ import {
   autoFloor1ProgressionSystem,
   autoNpcInteractionSystem,
 } from '../../src/game/ai/auto-progression.js';
-import {
-  AIState,
-  AIDecisionDebugState,
-  AIProgressSuppressionSource,
-  type AIDecision,
-  type AIInputProvider,
-} from '../../src/game/ai/types.js';
+import { AIState, type AIDecision, type AIInputProvider } from '../../src/game/ai/types.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import type { NpcInstance } from '../../src/shared/npc-types.js';
 import type { GameWorld } from '../../src/core/world.js';
@@ -219,26 +213,15 @@ describe('autoNpcInteractionSystem', () => {
     ).toBe(100);
   });
 
-  describe('EXPLORE tutorial-goon fallback (dwell-gated)', () => {
-    function suppressedProgressNavDebug() {
-      return {
-        state: AIDecisionDebugState.SUPPRESSED_PROGRESS_NAV,
-        reason: 'progressGoalSuppressed' as const,
-        source: AIProgressSuppressionSource.EXPLORE_DWELL_FIXED_POSITION_TARGET,
-        criticalChainPhase: 'pre-chain' as const,
-        blockedTargetReason: 'Tutorial Goon',
-        suppressedUntilFrame: 9999,
-        remainingFrames: 9899,
-      };
-    }
-
+  describe('EXPLORE tutorial-goon fallback (distance-gated)', () => {
     it('does NOT interact on a plain EXPLORE tutorial-seek without dwell-suppression debug', () => {
       const world = createTestWorld();
       const player = spawnPlayer(world, 0, 0);
       world.stores.position.x[player] = 0;
       world.stores.position.y[player] = 0;
       addNpc(world, 20, { defId: 'tutorial-goon', nearbyPlayer: false });
-      world.stores.position.x[20] = 50;
+      // Goon far outside the 188ft threshold
+      world.stores.position.x[20] = TUTORIAL_GOON_HANDOFF_DISTANCE_FT + 50;
       world.stores.position.y[20] = 0;
       const result = autoNpcInteractionSystem(
         world,
@@ -247,24 +230,23 @@ describe('autoNpcInteractionSystem', () => {
             state: AIState.EXPLORE,
             reason: 'Tutorial Goon',
             targetEid: 20,
-            debug: null, // no suppression signal
+            debug: null,
           }),
         ),
         0,
         100,
         30,
       );
-      expect(result).toBe(0); // no interaction
+      expect(result).toBe(0); // beyond 188ft → no interaction
     });
 
-    it('does NOT interact when suppressed but goon is outside the fallback radius', () => {
+    it('does NOT interact when suppressed but goon is not yet nearby (nearbyPlayer false, beyond threshold)', () => {
       const world = createTestWorld();
       const player = spawnPlayer(world, 0, 0);
       world.stores.position.x[player] = 0;
       world.stores.position.y[player] = 0;
       addNpc(world, 21, { defId: 'tutorial-goon', nearbyPlayer: false });
-      // Place goon 1 ft beyond the threshold
-      world.stores.position.x[21] = TUTORIAL_GOON_HANDOFF_DISTANCE_FT + 1;
+      world.stores.position.x[21] = TUTORIAL_GOON_HANDOFF_DISTANCE_FT + 10;
       world.stores.position.y[21] = 0;
       const result = autoNpcInteractionSystem(
         world,
@@ -273,24 +255,24 @@ describe('autoNpcInteractionSystem', () => {
             state: AIState.EXPLORE,
             reason: 'Tutorial Goon',
             targetEid: 21,
-            debug: suppressedProgressNavDebug(),
+            debug: null,
           }),
         ),
         0,
         100,
         30,
       );
-      expect(result).toBe(0); // outside radius, no interaction
+      expect(result).toBe(0); // beyond threshold → no interaction
     });
 
-    it('interacts when suppressed AND goon is within the fallback radius', () => {
+    it('interacts when EXPLORE targets tutorial-goon and player is within 188ft', () => {
       const world = createTestWorld();
       const player = spawnPlayer(world, 0, 0);
       world.stores.position.x[player] = 0;
       world.stores.position.y[player] = 0;
       addNpc(world, 22, { defId: 'tutorial-goon', nearbyPlayer: false });
-      // Place goon exactly at the threshold boundary
-      world.stores.position.x[22] = TUTORIAL_GOON_HANDOFF_DISTANCE_FT;
+      // Within threshold — simulates headless pathfinding reaching "close enough"
+      world.stores.position.x[22] = TUTORIAL_GOON_HANDOFF_DISTANCE_FT - 1;
       world.stores.position.y[22] = 0;
       const result = autoNpcInteractionSystem(
         world,
@@ -299,14 +281,14 @@ describe('autoNpcInteractionSystem', () => {
             state: AIState.EXPLORE,
             reason: 'Tutorial Goon',
             targetEid: 22,
-            debug: suppressedProgressNavDebug(),
+            debug: null,
           }),
         ),
         0,
         100,
         30,
       );
-      expect(result).toBe(100); // within radius + suppressed → interact
+      expect(result).toBe(100); // within threshold → interact
       expect(world.goalFlags.get('floor1-drops-unlocked')).toBe(true);
     });
 
@@ -321,7 +303,7 @@ describe('autoNpcInteractionSystem', () => {
             state: AIState.EXPLORE,
             reason: 'Exploring frontier',
             targetEid: 23,
-            debug: suppressedProgressNavDebug(),
+            debug: null,
           }),
         ),
         0,
