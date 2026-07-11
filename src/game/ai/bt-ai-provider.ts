@@ -32,6 +32,7 @@ import {
 } from '../../core/map/pathfinding.js';
 import { buildDoorAwarePassable, getNavigationBlockedDoors } from '../../core/door-navigation.js';
 import { isPointInSafeSpace } from '../../core/safe-space.js';
+import { resolveFloor2SettlementAnchor } from '../../core/floor2-settlement-anchor.js';
 import { RoomRole } from '../../shared/map-types.js';
 import {
   type AILockedDoorMemory,
@@ -93,7 +94,10 @@ import {
   getShopkeeperStage,
   SHOPKEEPER_EQUIPMENT_COST,
 } from '../floorScenario.js';
-import { FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID } from '../floor2Scenario.js';
+import {
+  FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID,
+  FLOOR2_SETTLEMENT_FOUND_GOAL_ID,
+} from '../floor2Scenario.js';
 import { getActiveWeapon, getActiveWeaponReadiness } from '../weaponSystem.js';
 // AI tuning constants (pure values; identical runtime behavior) live in
 // ./bt-ai-tuning.ts. Imported here so every reference in this file is unchanged.
@@ -1536,7 +1540,12 @@ export class BehaviorTreeAI implements AIInputProvider {
         // already inside engagement range, clear the threat first instead of
         // pathing straight through it toward the NPC.
         const tutorialAccepted = ctx.world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID);
-        if (targetIsNpc && tutorialAccepted && target.distance > NPC_INTERACTION_RADIUS_FT) {
+        if (
+          targetIsNpc &&
+          tutorialAccepted &&
+          !this.isFloor2IntroductionPending(ctx.world) &&
+          target.distance > NPC_INTERACTION_RADIUS_FT
+        ) {
           const nearestEnemy = this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY);
           const npcThreatRadius = Math.min(
             this.getEngageRadius(ctx.world),
@@ -2020,6 +2029,7 @@ export class BehaviorTreeAI implements AIInputProvider {
    */
   private buildOpportunisticCollect(): BTNode {
     return action('Opportunistic Collect', (ctx) => {
+      if (this.isFloor2IntroductionPending(ctx.world)) return BTStatus.FAILURE;
       // Track A is handling collection, survival/fighting takes priority, and NPC
       // interaction must not be deflected.
       if (
@@ -2239,6 +2249,7 @@ export class BehaviorTreeAI implements AIInputProvider {
    */
   private buildOpportunisticFarm(): BTNode {
     return action('Opportunistic Farm', (ctx) => {
+      if (this.isFloor2IntroductionPending(ctx.world)) return BTStatus.FAILURE;
       // Dormant unless a non-zero farm weight is configured; skip the enemy scan
       // entirely when the pull would be multiplied to nothing.
       if (this.config.farmPullWeight <= 0) return BTStatus.FAILURE;
@@ -5219,6 +5230,14 @@ export class BehaviorTreeAI implements AIInputProvider {
     return null;
   }
 
+  private isFloor2IntroductionPending(world: GameWorld): boolean {
+    return (
+      world.floorExtendedState?.familyState != null &&
+      (world.goalFlags.get(FLOOR2_SETTLEMENT_FOUND_GOAL_ID) !== true ||
+        world.goalFlags.get(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID) !== true)
+    );
+  }
+
   private findFloor2ProgressObjective(
     world: GameWorld,
     playerEid: number,
@@ -5226,6 +5245,37 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
   ): ProgressTarget | null {
     const floor2State = world.floorExtendedState?.familyState;
+    const settlement = world.floorExtendedState?.settlement;
+    const settlementAnchor = resolveFloor2SettlementAnchor(world);
+    const settlementFound = world.goalFlags.get(FLOOR2_SETTLEMENT_FOUND_GOAL_ID) === true;
+    if (!settlementFound) {
+      return settlementAnchor
+        ? this.createProgressTarget(
+            settlementAnchor.x,
+            settlementAnchor.y,
+            playerX,
+            playerY,
+            'Heading to the Floor 2 settlement',
+          )
+        : null;
+    }
+
+    const brokerIntroduced = world.goalFlags.get(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID) === true;
+    if (!brokerIntroduced) {
+      if (!settlementAnchor) {
+        return null;
+      }
+      return this.createNpcProgressTarget(
+        world,
+        playerX,
+        playerY,
+        settlement?.brokerEid ?? -1,
+        'Heading to the Floor 2 Broker introduction',
+        settlementAnchor.x,
+        settlementAnchor.y,
+      );
+    }
+
     if (
       floor2State?.staircaseSpawned &&
       floor2State.staircaseUnlocked &&
@@ -5540,7 +5590,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (world.floorExtendedState?.familyState) {
       const floor2Target = this.findFloor2ProgressObjective(world, playerEid, playerX, playerY);
       if (floor2Target) {
-        return maybeDetourToQuestGiver(floor2Target);
+        return this.isFloor2IntroductionPending(world)
+          ? floor2Target
+          : maybeDetourToQuestGiver(floor2Target);
       }
     }
     const objective = floorScenario?.objective;

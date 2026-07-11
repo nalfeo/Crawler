@@ -4,8 +4,7 @@
  *
  * The floor is large enough that surviving is easy but *finding* the next
  * objective is not. This resolver answers "where do I go next?" by mapping each
- * active quest's first incomplete objective onto a known Floor 1 location
- * (an NPC, the fetch item, a boss room, or the stairs).
+ * active quest's first incomplete objective onto a known floor location.
  *
  * Deterministic: reads only world state (quest log, goal flags, objective
  * positions, NPC entity positions). No Math.random(), no Date.now(), no
@@ -15,6 +14,7 @@ import type { GameWorld } from '../world.js';
 import { getActiveQuests, getQuestObjectiveViews, getTrackedQuest } from './questSystem.js';
 import { getQuestDef } from '../../shared/quest-types.js';
 import type { FloorObjectiveState } from '../../shared/floor-types.js';
+import { resolveFloor2SettlementAnchor } from '../floor2-settlement-anchor.js';
 
 /** Coarse classification used by the HUD to colour the marker/arrow. */
 export type QuestWaypointKind = 'npc' | 'item' | 'combat' | 'stairs';
@@ -48,18 +48,26 @@ function entityPos(world: GameWorld, eid: number | null): Vec2 | null {
   return { x, y };
 }
 
-/** Map a Floor 1 quest goal flag to a known room position. */
-function goalFlagPos(objective: FloorObjectiveState, goalId: string): Vec2 | null {
+/** Map a quest goal flag to a known room position. */
+function goalFlagPos(
+  world: GameWorld,
+  objective: FloorObjectiveState | undefined,
+  goalId: string,
+): Vec2 | null {
   switch (goalId) {
+    case 'floor2-settlement-found':
+      return resolveFloor2SettlementAnchor(world);
+    case 'floor2.objective.staircaseDiscovered':
+      return world.floorExtendedState?.familyState?.staircasePos ?? null;
     case 'floor1-shop-quest-complete':
     case 'floor1-shop-prize-returned':
-      return objective.shopRoomPos;
+      return objective?.shopRoomPos ?? null;
     case 'floor1-boss-battle-complete':
     case 'floor1-boss-spellbook-claimed':
-      return objective.spellQuestGiverPos;
+      return objective?.spellQuestGiverPos ?? null;
     case 'floor1-defeat-boss':
     case 'floor1.objective.staircaseDiscovered':
-      return objective.staircasePos;
+      return objective?.staircasePos ?? null;
     // Grind-anywhere goals (e.g. reach level 2) have no fixed location.
     default:
       return null;
@@ -69,7 +77,7 @@ function goalFlagPos(objective: FloorObjectiveState, goalId: string): Vec2 | nul
 /** Resolve a single objective to a target position + marker kind, if any. */
 function objectiveTarget(
   world: GameWorld,
-  objective: FloorObjectiveState,
+  objective: FloorObjectiveState | undefined,
   objId: string,
   kind: string,
   npcId: string | undefined,
@@ -77,6 +85,7 @@ function objectiveTarget(
 ): { pos: Vec2; kind: QuestWaypointKind } | null {
   switch (kind) {
     case 'talk': {
+      if (!objective) return null;
       const f = world.floorScenario;
       const eid =
         npcId === 'tutorial-goon'
@@ -94,26 +103,31 @@ function objectiveTarget(
       return pos ? { pos, kind: 'npc' } : null;
     }
     case 'collect':
+      if (!objective) return null;
       // The lone collect objective is the merchant's fetch item.
       return {
         pos: entityPos(world, world.floorScenario?.questItemEid ?? null) ?? objective.questItemPos,
         kind: 'item',
       };
     case 'counter':
+      if (!objective) return null;
       // Only the single-target boss counter has a fixed location; broad kill
       // quotas (rats/slimes) are satisfied anywhere, so no waypoint.
       return objId === 'kill-slime-rat' ? { pos: objective.slimeRatRoomPos, kind: 'combat' } : null;
     case 'goal': {
-      const pos = goalId ? goalFlagPos(objective, goalId) : null;
+      const pos = goalId ? goalFlagPos(world, objective, goalId) : null;
       if (!pos) {
         return null;
       }
       const isStairs =
-        goalId === 'floor1-defeat-boss' || goalId === 'floor1.objective.staircaseDiscovered';
+        goalId === 'floor1-defeat-boss' ||
+        goalId === 'floor1.objective.staircaseDiscovered' ||
+        goalId === 'floor2.objective.staircaseDiscovered';
       return { pos, kind: isStairs ? 'stairs' : 'npc' };
     }
     case 'haveEquippable':
     case 'equip':
+      if (!objective) return null;
       // Buy/equip steps point back to the shop.
       return { pos: objective.shopRoomPos, kind: 'npc' };
     default:
@@ -128,10 +142,6 @@ function objectiveTarget(
  */
 export function getQuestWaypoints(world: GameWorld, playerEid?: number): QuestWaypoint[] {
   const objective = world.floorScenario?.objective;
-  if (!objective) {
-    return [];
-  }
-
   const waypoints: QuestWaypoint[] = [];
   for (const quest of getActiveQuests(world)) {
     const def = getQuestDef(quest.questId);

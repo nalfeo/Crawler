@@ -2,8 +2,8 @@
  * HudFamilyRelationships — Floor-2 HUD widget (ADR 0040 · D8, FR20).
  *
  * Renders one row per present family (color swatch, name, 0–100 band-colored
- * bar, boss-alive/dead icon, status tag). Hidden on floors where
- * `world.floorExtendedState?.familyState == null`.
+ * bar, boss-alive/dead icon, status tag). Hidden until family reputation is
+ * activated by the Floor 2 Broker introduction.
  *
  * Reactive: uses a snapshot fingerprint (per-family relation + band + boss
  * flag) as a dirty flag, so a full row re-render only happens when something
@@ -19,6 +19,7 @@ import { applyCrispText } from './ui-scale.js';
 import { loadFamilies, type FamilyDef } from '../shared/data/families.js';
 import {
   resolveFamilyRows,
+  shouldShowFamilyRelationships,
   displayNameForRow,
   type FamilyRow,
 } from './family-relationships-state.js';
@@ -200,7 +201,7 @@ export function createHudFamilyRelationships(
   }
 
   function sync(world: GameWorld): void {
-    const shouldShow = world.floorExtendedState?.familyState != null;
+    const shouldShow = shouldShowFamilyRelationships(world);
     if (shouldShow !== lastVisible) {
       setPanelVisible(shouldShow);
       lastVisible = shouldShow;

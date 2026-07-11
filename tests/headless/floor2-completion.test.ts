@@ -4,7 +4,12 @@ import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { getEquipmentState } from '../../src/core/systems/equipmentSystem.js';
 import { MERCHANTS_CHARM_DEF } from '../../src/shared/equipmentDefs.js';
 import { setGoalFlag } from '../../src/core/door-lock.js';
-import { FLOOR2_VICTORY_GOAL_ID } from '../../src/game/floor2Scenario.js';
+import {
+  FLOOR2_SETTLEMENT_FOUND_GOAL_ID,
+  FLOOR2_VICTORY_GOAL_ID,
+} from '../../src/game/floor2Scenario.js';
+import { resolveFloor2SettlementAnchor } from '../../src/core/floor2-settlement-anchor.js';
+import { AIState } from '../../src/game/ai/types.js';
 
 describe('Floor 2 headless completion', () => {
   it('starts direct Floor 2 headless runs at level 5 with the charm equipped', async () => {
@@ -33,6 +38,32 @@ describe('Floor 2 headless completion', () => {
     expect(Object.keys(stats.familyTrashKills ?? {}).length).toBeGreaterThanOrEqual(3);
     expect(Object.keys(stats.familyTrashKills ?? {}).length).toBeLessThanOrEqual(4);
     expect(Object.values(stats.familyTrashKills ?? {}).every((count) => count === 0)).toBe(true);
+  });
+
+  it('uses the settlement as the first real headless Floor 2 progression target', async () => {
+    const ai = new BehaviorTreeAI({ seed: 92 });
+    let settlementAnchor: { x: number; y: number } | null = null;
+    let settlementFound = true;
+
+    await runHeadless(ai, {
+      seed: 92,
+      floorId: 'floor2',
+      maxFrames: 1,
+      onFinish: (world) => {
+        settlementAnchor = resolveFloor2SettlementAnchor(world);
+        settlementFound = world.goalFlags.get(FLOOR2_SETTLEMENT_FOUND_GOAL_ID) === true;
+      },
+    });
+
+    expect(settlementFound).toBe(false);
+    expect(settlementAnchor).not.toBeNull();
+    expect(ai.getDecision()).toMatchObject({
+      state: AIState.EXPLORE,
+      targetEid: -1,
+      targetX: settlementAnchor!.x,
+      targetY: settlementAnchor!.y,
+      reason: 'Heading to the Floor 2 settlement',
+    });
   });
 
   it('exercises floor 2 den-progress and boss-targeting flow without win gating', async () => {

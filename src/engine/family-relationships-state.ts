@@ -98,6 +98,14 @@ function findFamilyDef(families: readonly FamilyDef[], id: FamilyId): FamilyDef 
 /** Max characters the row's name column can show before falling back to the short label. */
 export const FAMILY_NAME_MAX_CHARS = 18;
 
+/** Whether the family widget is unlocked for the current world. */
+export function shouldShowFamilyRelationships(
+  world: Pick<FactionRelationsWorldFacet, 'floorExtendedState'>,
+): boolean {
+  const familyState = world.floorExtendedState?.familyState;
+  return familyState != null && familyState.reputationSystemActive !== false;
+}
+
 /**
  * Choose the label to show in a row's name column. Prefers the full family
  * name; when it's wider than `maxChars`, falls back to the shorter
@@ -128,7 +136,7 @@ export function resolveFamilyRows(
   families: readonly FamilyDef[],
 ): FamilyRow[] {
   const floor2 = world.floorExtendedState?.familyState;
-  if (!floor2) return [];
+  if (!floor2 || !shouldShowFamilyRelationships(world)) return [];
   const rows: FamilyRow[] = [];
   for (const familyId of floor2.presentFamilies) {
     const def = findFamilyDef(families, familyId);
