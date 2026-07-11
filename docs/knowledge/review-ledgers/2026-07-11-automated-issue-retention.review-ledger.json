@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-11",
+  "session_slug": "automated-issue-retention",
+  "task_title": "Retain latest automated bug reports",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-5",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "Adopted job-level serialization, explicit create-before-close fail-safe ordering, anchored stream regexes, dedicated tracking-issues module and test glob, explicit ESM loading from github-script, label/UTC fidelity, and partial-failure retry coverage."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
