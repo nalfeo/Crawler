@@ -8,7 +8,6 @@ import {
   preloadGeneratedSprites,
 } from '../generatedAssets/index.js';
 import { emptyGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
-import { preloadTerrainPacks } from '../sprites/terrain-pack-visuals.js';
 
 const logger = createLogger('engine:boot-scene');
 const GENERATED_SPRITE_LOAD_TIMEOUT_MS = 15000;
@@ -57,13 +56,6 @@ export class BootScene extends Phaser.Scene {
         spacing: sheet.spacing,
       });
     }
-
-    // Static terrain-pack registry (refinement #1): every shipped pack's
-    // wall atlas + floor/corridor pool + door assets are queued up front so
-    // no floor transition (e.g. onto Floor 2's industrial-cave pack) ever
-    // hits a missing-texture miss.
-    const terrainPackEntries = preloadTerrainPacks(this.load);
-    logger.info('Preloading terrain-pack assets', { count: terrainPackEntries.length });
 
     // Seed an empty registry so consumers (e.g. InventoryUI) always read
     // a non-null value even before the manifest fetch resolves.
