@@ -43,7 +43,13 @@ export const VALID_TYPES = [
 
 /**
  * Returns true if the message is exempt from conventional-commit validation.
- * Keep in sync with the ignores array in commitlint.config.cjs.
+ *
+ * These rules are intentionally a 1-to-1 mirror of the `ignores` array in
+ * commitlint.config.cjs.  The two exact-string rules below are scoped to
+ * specific historical commits that cannot be rewritten (no force-push policy)
+ * — keep them here so the pre-push safety-net never falsely rejects commits
+ * that commitlint itself would pass.  Do NOT add new exact-string ignores here
+ * without also adding the same rule to commitlint.config.cjs.
  */
 export function isIgnored(message) {
   const subject = (message || '').split('\n')[0];
@@ -52,6 +58,7 @@ export function isIgnored(message) {
     subject.startsWith('Apply remaining changes') ||
     subject.startsWith('Changes before error encountered') ||
     /^.+\s+\(#\d+\)$/.test(subject) ||
+    // Historical exact-match exceptions — see commitlint.config.cjs ignores for rationale.
     subject.startsWith('refine: improve warning details and test clarity') ||
     subject.startsWith('Merge rebased commits (keep local rebase history)')
   );

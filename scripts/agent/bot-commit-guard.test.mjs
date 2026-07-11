@@ -309,9 +309,12 @@ test('checkPush: returns empty array for whitespace-only input', () => {
 });
 
 test('checkPush: skips delete operations (localSha=0000)', () => {
+  // A push that deletes a remote branch has localSha=0000…0000; the guard must
+  // skip range inspection entirely for those lines (no commits to check).
+  // Full range-inspection tests require a live git repo and are covered by the
+  // integration layer; this unit test verifies the early-exit condition only.
   const input =
     'refs/heads/my-branch 0000000000000000000000000000000000000000 refs/heads/my-branch abc123\n';
-  // No git available in test env for range inspection, but delete op (local=0000) must be skipped
   const violations = checkPush(input);
   assert.deepEqual(violations, []);
 });
