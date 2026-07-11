@@ -866,7 +866,7 @@ const CLIENT_SCRIPT = String.raw`
           targetHeight: nextHeight,
           factor: factor,
           methodId: methodId,
-          opencvUrl: OPENCV_JS_URL
+          opencvUrl: new URL(OPENCV_JS_URL, window.location.href).href
         });
         bitmap = workerResult.bitmap;
         engine = workerResult.engine || 'browser';
@@ -1253,8 +1253,9 @@ const CLIENT_SCRIPT = String.raw`
     return { x: x, y: y };
   }
 
-  function captureLastSavedSnapshot() {
-    if (!canvas) return;
+  function captureLastSavedSnapshot(sourceCanvas) {
+    var snapshotSource = sourceCanvas || canvas;
+    if (!snapshotSource) return;
     if (!comparisonBeforeCanvas) {
       comparisonBeforeCanvas = h('canvas', {
         id: 'comparison-before-canvas',
@@ -1262,12 +1263,12 @@ const CLIENT_SCRIPT = String.raw`
         'aria-label': 'Before edit preview'
       });
     }
-    comparisonBeforeCanvas.width = canvas.width;
-    comparisonBeforeCanvas.height = canvas.height;
+    comparisonBeforeCanvas.width = snapshotSource.width;
+    comparisonBeforeCanvas.height = snapshotSource.height;
     var comparisonCtx = comparisonBeforeCanvas.getContext('2d');
     comparisonCtx.imageSmoothingEnabled = false;
     comparisonCtx.clearRect(0, 0, comparisonBeforeCanvas.width, comparisonBeforeCanvas.height);
-    comparisonCtx.drawImage(canvas, 0, 0);
+    comparisonCtx.drawImage(snapshotSource, 0, 0);
     comparisonActionLabel = 'Last saved';
     applyZoomScale();
     var labelEl = document.getElementById('comparison-before-label');
@@ -2080,6 +2081,10 @@ const CLIENT_SCRIPT = String.raw`
     var expectedKey = sprite.key;
     var saveToken = ++saveTokenCounter;
     var submittedFingerprint = currentEditorFingerprint();
+    var submittedCanvas = h('canvas');
+    submittedCanvas.width = canvas.width;
+    submittedCanvas.height = canvas.height;
+    submittedCanvas.getContext('2d').drawImage(canvas, 0, 0);
     setStatus('Saving…');
     try {
       var body = {
@@ -2096,6 +2101,7 @@ const CLIENT_SCRIPT = String.raw`
       if (saveToken !== saveTokenCounter) return false;
       if (!sprite || sprite.key !== expectedKey) return false;
       if (currentEditorFingerprint() !== submittedFingerprint) {
+        captureLastSavedSnapshot(submittedCanvas);
         setStatus('Saved submitted state; newer edits remain unsaved.');
         return false;
       }

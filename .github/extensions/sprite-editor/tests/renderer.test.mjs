@@ -7,6 +7,45 @@ import { chromium } from 'playwright';
 import { renderHtml } from '../renderer.mjs';
 
 const EXTENSION_SOURCE = readFileSync(new URL('../extension.mjs', import.meta.url), 'utf8');
+const FAKE_OPENCV_JS = String.raw`
+  self.cv = Promise.resolve((function () {
+    function Mat(data, width, height) {
+      this.data = data || new Uint8ClampedArray();
+      this.cols = width || 0;
+      this.rows = height || 0;
+    }
+    Mat.prototype.delete = function () {};
+    function Size(width, height) {
+      this.width = width;
+      this.height = height;
+    }
+    var cv = {
+      Mat: Mat,
+      Size: Size,
+      INTER_NEAREST: 1,
+      INTER_NEAREST_EXACT: 11,
+      INTER_LINEAR: 2,
+      INTER_LINEAR_EXACT: 12,
+      INTER_CUBIC: 13,
+      INTER_AREA: 14,
+      INTER_LANCZOS4: 15
+    };
+    cv.matFromImageData = function (imageData) {
+      return new Mat(new Uint8ClampedArray(imageData.data), imageData.width, imageData.height);
+    };
+    cv.resize = function (_src, dst, dsize, _fx, _fy, interpolation) {
+      var pixels = new Uint8ClampedArray(dsize.width * dsize.height * 4);
+      for (var offset = 0; offset < pixels.length; offset += 4) {
+        pixels[offset] = interpolation;
+        pixels[offset + 3] = 255;
+      }
+      dst.data = pixels;
+      dst.cols = dsize.width;
+      dst.rows = dsize.height;
+    };
+    return cv;
+  })());
+`;
 const TWO_BY_TWO_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAE0lEQVR42mP4DwQMIAAkG4DkfwBLSQd6Nhz6dgAAAABJRU5ErkJggg==',
   'base64',
@@ -71,6 +110,11 @@ async function withEditor(run, options = {}) {
       const sprite = fixtureSprites.find((entry) => entry.key === url.searchParams.get('key'));
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ sprite }));
+      return;
+    }
+    if (url.pathname === '/vendor/opencv.js' && options.openCvFixture) {
+      res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+      res.end(FAKE_OPENCV_JS);
       return;
     }
     if (req.method === 'POST' && url.pathname === '/api/save') {
@@ -456,6 +500,7 @@ test('scaling restores dimensions, pixels, and anchors through undo and redo', a
           pixels: Array.from(context.getImageData(0, 0, element.width, element.height).data),
         };
       });
+
     const initial = await readCanvas('.sprite-canvas');
 
     await page.locator('#tool-scale').click();
@@ -547,11 +592,56 @@ test('scaling restores dimensions, pixels, and anchors through undo and redo', a
   });
 });
 
+test('Promise-based OpenCV worker executes every advertised interpolation mapping', async () => {
+  await withEditor(
+    async (page) => {
+      await page.locator('#tool-scale').click();
+      const cases = [
+        { method: 'nearest', factor: 2, interpolation: 11 },
+        { method: 'bilinear', factor: 2, interpolation: 12 },
+        { method: 'bicubic', factor: 2, interpolation: 13 },
+        { method: 'area', factor: 0.5, interpolation: 14 },
+        { method: 'lanczos4', factor: 2, interpolation: 15 },
+      ];
+
+      for (const testCase of cases) {
+        await setControlValue(page, '#scale-method', testCase.method);
+        await setControlValue(page, '#scale-factor', testCase.factor);
+        await page.locator('.tool-panel').getByRole('button', { name: 'Scale' }).click();
+        try {
+          await page.waitForFunction(
+            () => document.querySelector('#status')?.textContent.endsWith('(OpenCV worker)'),
+            null,
+            { timeout: 5_000 },
+          );
+        } catch (error) {
+          const status = await page.locator('#status').textContent();
+          throw new Error(`${testCase.method} did not use OpenCV; status: ${status}`, {
+            cause: error,
+          });
+        }
+        assert.equal(
+          await page
+            .locator('.sprite-canvas')
+            .evaluate((element) => element.getContext('2d').getImageData(0, 0, 1, 1).data[0]),
+          testCase.interpolation,
+          `${testCase.method} should reach cv.resize with its mapped interpolation`,
+        );
+        await page.getByRole('button', { name: 'Undo' }).click();
+      }
+    },
+    { openCvFixture: true },
+  );
+});
+
 test('save preserves edits made while the request is in flight', async () => {
   await withEditor(
     async (page) => {
       await page.getByTitle('Erase mode').click();
       await clickCanvasPixel(page, 0, 0);
+      const submittedPng = await page
+        .locator('.sprite-canvas')
+        .evaluate((element) => element.toDataURL());
       await page.getByRole('button', { name: 'Save' }).click();
       await page.waitForFunction(
         () => document.querySelector('#status')?.textContent === 'Saving…',
@@ -561,6 +651,14 @@ test('save preserves edits made while the request is in flight', async () => {
         () =>
           document.querySelector('#status')?.textContent ===
           'Saved submitted state; newer edits remain unsaved.',
+      );
+      assert.equal(
+        await page.locator('#comparison-before-canvas').evaluate((element) => element.toDataURL()),
+        submittedPng,
+      );
+      assert.notEqual(
+        await page.locator('.sprite-canvas').evaluate((element) => element.toDataURL()),
+        submittedPng,
       );
 
       let dialogMessage = '';
