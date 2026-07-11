@@ -5,5 +5,6 @@
   "actual_apples": 1,
   "delta": 0,
   "verdict": "exact",
-  "hello_kitties": 0.2
+  "hello_kitties": 0.2,
+  "notes": "Small targeted provider factory behavior change plus unit-test update; included generated workflow assets and registry updates after live issue-pipeline run."
 }
