@@ -1,5 +1,16 @@
 [
   {
+    "commit": "3fb5cf43d93e75095a818c95ee5fb29a62df7afb",
+    "commitDate": "2026-07-11T01:50:05Z",
+    "commitSubject": "fix(ai): credit paused safe-room time in Floor-1 official-win definition (#1021)",
+    "capturedAt": "2026-07-11T02:33:45.593Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29135555470",
+    "winRate": 0.8566666666666667,
+    "totalWins": 257,
+    "totalRuns": 300,
+    "path": "by-sha/3fb5cf43d93e75095a818c95ee5fb29a62df7afb.json"
+  },
+  {
     "commit": "4e7c690da149abb542df004c9f69b6348795559e",
     "commitDate": "2026-07-10T23:36:23Z",
     "commitSubject": "feat: add apples:record CLI and drop 1–2🍎 file requirement (#1017)",
