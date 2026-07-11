@@ -31,6 +31,12 @@ import { createFloor1GameConfig } from '../../bootstrap/floor-game-config.js';
 import { createFloor1MainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { Harvestable } from '../../core/components.js';
 import type { GameWorld } from '../../core/index.js';
+import { acceptQuest } from '../../core/systems/questSystem.js';
+import {
+  FLOOR1_BOSS_BATTLE_QUEST_ID,
+  FLOOR1_FIND_WELCOME_QUEST_ID,
+  FLOOR1_SHOP_QUEST_ID,
+} from '../../shared/quest-types.js';
 import { PIXELS_PER_FOOT } from '../../shared/units.js';
 import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
@@ -266,6 +272,10 @@ export interface MainSceneProbeApi {
   setPlayerFeet(x: number, y: number): void;
   /** Move the player onto the first NPC and mark it interactable for probe tests. */
   primeNpcInteractionTarget(): ProbePoint | null;
+  /** Seed three off-screen quests through the real scene's live world. */
+  primeQuestWaypointArrows(): void;
+  /** Visible quest arrow ids on the real MainGameScene display list. */
+  getVisibleQuestArrowIds(): string[];
   /** Queue the Achievements toggle through the real MainGameScene request path. */
   requestAchievementsToggle(): void;
   /** Queue Inventory ([I]) and Equipment ([G]) toggles through scene request paths. */
@@ -518,6 +528,47 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       world.stores.velocity.x[eid] = 0;
       world.stores.velocity.y[eid] = 0;
       return { x, y };
+    },
+
+    primeQuestWaypointArrows: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      const eid = playerEidOf(scene);
+      const objective = world?.floorScenario?.objective;
+      if (!scene || !world || !objective || eid < 0) {
+        return;
+      }
+      if (world.state === 'loadout') {
+        sceneOptions.selectLoadoutOption?.(world, 0);
+        scene.modalPicker?.close();
+      }
+      scene.setSimulationPaused(true);
+      acceptQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
+      acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
+      acceptQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+      const px = world.stores.position.x[eid] ?? 0;
+      const py = world.stores.position.y[eid] ?? 0;
+      objective.welcomeOfficePos.x = px + 100;
+      objective.welcomeOfficePos.y = py;
+      objective.shopRoomPos.x = px + 100;
+      objective.shopRoomPos.y = py + 1;
+      objective.slimeRatRoomPos.x = px + 100;
+      objective.slimeRatRoomPos.y = py - 1;
+    },
+
+    getVisibleQuestArrowIds: (): string[] => {
+      const phaserScene = getPhaserScene();
+      if (!phaserScene) {
+        return [];
+      }
+      return phaserScene.children.list
+        .filter(
+          (child): child is Phaser.GameObjects.Triangle =>
+            child instanceof Phaser.GameObjects.Triangle &&
+            child.visible &&
+            child.name.startsWith('quest-direction-arrow:'),
+        )
+        .map((arrow) => arrow.name.slice('quest-direction-arrow:'.length));
     },
 
     requestAchievementsToggle: () => {

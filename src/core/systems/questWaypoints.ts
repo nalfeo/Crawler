@@ -1,10 +1,10 @@
 /**
- * Quest waypoints — resolves the tracked quest's active objective to a world
+ * Quest waypoints — resolves each visible active quest's current objective to a world
  * position so the HUD can render a map marker + off-screen direction arrow.
  *
  * The floor is large enough that surviving is easy but *finding* the next
- * objective is not. This resolver answers "where do I go next?" by mapping the
- * tracked quest's first incomplete objective onto a known Floor 1 location
+ * objective is not. This resolver answers "where do I go next?" by mapping each
+ * active quest's first incomplete objective onto a known Floor 1 location
  * (an NPC, the fetch item, a boss room, or the stairs).
  *
  * Deterministic: reads only world state (quest log, goal flags, objective
@@ -12,7 +12,7 @@
  * rendering imports — consumed by the engine HUD layer.
  */
 import type { GameWorld } from '../world.js';
-import { getTrackedQuest, getQuestObjectiveViews } from './questSystem.js';
+import { getActiveQuests, getQuestObjectiveViews, getTrackedQuest } from './questSystem.js';
 import { getQuestDef } from '../../shared/quest-types.js';
 import type { FloorObjectiveState } from '../../shared/floor-types.js';
 
@@ -20,10 +20,12 @@ import type { FloorObjectiveState } from '../../shared/floor-types.js';
 export type QuestWaypointKind = 'npc' | 'item' | 'combat' | 'stairs';
 
 export interface QuestWaypoint {
+  /** Stable identity used to retain one HUD arrow per active quest. */
+  readonly questId: string;
   /** Target position in feet (world space). */
   readonly x: number;
   readonly y: number;
-  /** Human-readable label, mirrors the tracked objective's label. */
+  /** Human-readable label, mirrors the active objective's label. */
   readonly label: string;
   readonly kind: QuestWaypointKind;
 }
@@ -120,38 +122,59 @@ function objectiveTarget(
 }
 
 /**
- * Waypoints for the tracked quest's active step. Returns at most one entry; an
- * empty array means "no location to guide to" (grind-anywhere or no quest).
+ * Waypoints for every visible active quest's current step, in quest-log insertion
+ * order. Quests without a fixed location (for example, grind-anywhere objectives)
+ * are omitted.
  */
 export function getQuestWaypoints(world: GameWorld, playerEid?: number): QuestWaypoint[] {
   const objective = world.floorScenario?.objective;
   if (!objective) {
     return [];
   }
-  const tracked = getTrackedQuest(world);
-  if (!tracked) {
-    return [];
+
+  const waypoints: QuestWaypoint[] = [];
+  for (const quest of getActiveQuests(world)) {
+    const def = getQuestDef(quest.questId);
+    if (!def || def.hidden) {
+      continue;
+    }
+    const activeView = getQuestObjectiveViews(world, quest, playerEid).find((view) => view.active);
+    if (!activeView) {
+      continue;
+    }
+    const { def: objDef } = activeView;
+    const target = objectiveTarget(
+      world,
+      objective,
+      objDef.id,
+      objDef.kind,
+      objDef.npcId,
+      objDef.goalId,
+    );
+    if (!target) {
+      continue;
+    }
+    waypoints.push({
+      questId: quest.questId,
+      x: target.pos.x,
+      y: target.pos.y,
+      label: objDef.label,
+      kind: target.kind,
+    });
   }
-  const def = getQuestDef(tracked.questId);
-  if (!def) {
-    return [];
+  return waypoints;
+}
+
+/** The tracked quest's fixed waypoint, or undefined when its objective has no location. */
+export function getTrackedQuestWaypoint(
+  world: GameWorld,
+  playerEid?: number,
+): QuestWaypoint | undefined {
+  const trackedQuest = getTrackedQuest(world);
+  if (!trackedQuest) {
+    return undefined;
   }
-  const views = getQuestObjectiveViews(world, tracked, playerEid);
-  const activeView = views.find((v) => v.active);
-  if (!activeView) {
-    return [];
-  }
-  const { def: objDef } = activeView;
-  const target = objectiveTarget(
-    world,
-    objective,
-    objDef.id,
-    objDef.kind,
-    objDef.npcId,
-    objDef.goalId,
+  return getQuestWaypoints(world, playerEid).find(
+    (waypoint) => waypoint.questId === trackedQuest.questId,
   );
-  if (!target) {
-    return [];
-  }
-  return [{ x: target.pos.x, y: target.pos.y, label: objDef.label, kind: target.kind }];
 }

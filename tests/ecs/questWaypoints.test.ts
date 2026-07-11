@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { spawnPlayer } from '../../src/core/helpers.js';
-import { acceptQuest } from '../../src/core/systems/questSystem.js';
-import { getQuestWaypoints } from '../../src/core/systems/questWaypoints.js';
+import { acceptQuest, setTrackedQuest } from '../../src/core/systems/questSystem.js';
+import {
+  getQuestWaypoints,
+  getTrackedQuestWaypoint,
+} from '../../src/core/systems/questWaypoints.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_FIND_WELCOME_QUEST_ID,
@@ -152,5 +155,64 @@ describe('getQuestWaypoints', () => {
 
     const wps = getQuestWaypoints(world);
     expect(wps[0]).toMatchObject({ x: 64, y: 48, kind: 'npc' });
+  });
+
+  it('returns one waypoint for every active quest that has a directional target', () => {
+    const world = withFloor1(createTestWorld());
+    spawnPlayer(world, 0, 0);
+    acceptQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
+    acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
+    acceptQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+    acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
+
+    const wps = getQuestWaypoints(world);
+
+    expect(wps.map((wp) => wp.questId)).toEqual([
+      FLOOR1_FIND_WELCOME_QUEST_ID,
+      FLOOR1_SHOP_QUEST_ID,
+      FLOOR1_BOSS_BATTLE_QUEST_ID,
+    ]);
+  });
+
+  it('preserves quest insertion order when a later quest is tracked', () => {
+    const world = withFloor1(createTestWorld());
+    spawnPlayer(world, 0, 0);
+    acceptQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
+    acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
+    acceptQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+    setTrackedQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+
+    expect(getQuestWaypoints(world).map((wp) => wp.questId)).toEqual([
+      FLOOR1_FIND_WELCOME_QUEST_ID,
+      FLOOR1_SHOP_QUEST_ID,
+      FLOOR1_BOSS_BATTLE_QUEST_ID,
+    ]);
+    expect(getTrackedQuestWaypoint(world)?.questId).toBe(FLOOR1_BOSS_BATTLE_QUEST_ID);
+  });
+
+  it('returns no tracked waypoint when the tracked objective has no fixed target', () => {
+    const world = withFloor1(createTestWorld());
+    spawnPlayer(world, 0, 0);
+    acceptQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
+    acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
+    setTrackedQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
+
+    expect(getQuestWaypoints(world).map((wp) => wp.questId)).toEqual([
+      FLOOR1_FIND_WELCOME_QUEST_ID,
+    ]);
+    expect(getTrackedQuestWaypoint(world)).toBeUndefined();
+  });
+
+  it('does not return waypoints for completed quests', () => {
+    const world = withFloor1(createTestWorld());
+    spawnPlayer(world, 0, 0);
+    const completed = acceptQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
+    acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
+    if (!completed) {
+      throw new Error('Expected the test quest to be accepted.');
+    }
+    completed.status = 'complete';
+
+    expect(getQuestWaypoints(world).map((wp) => wp.questId)).toEqual([FLOOR1_SHOP_QUEST_ID]);
   });
 });

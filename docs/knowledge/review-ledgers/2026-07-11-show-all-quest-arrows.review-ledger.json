@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-11",
+  "session_slug": "show-all-quest-arrows",
+  "task_title": "Show all active quest arrows",
+  "estimated_apples": 2,
+  "stages": {}
+}

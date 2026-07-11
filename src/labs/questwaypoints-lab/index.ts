@@ -11,7 +11,11 @@ import { createHudUI } from '../../engine/HudUI.js';
 import { createGameWorld, type GameWorld } from '../../core/world.js';
 import { spawnPlayer } from '../../core/index.js';
 import { acceptQuest } from '../../core/systems/questSystem.js';
-import { FLOOR1_FIND_WELCOME_QUEST_ID } from '../../shared/quest-types.js';
+import {
+  FLOOR1_BOSS_BATTLE_QUEST_ID,
+  FLOOR1_FIND_WELCOME_QUEST_ID,
+  FLOOR1_SHOP_QUEST_ID,
+} from '../../shared/quest-types.js';
 import { ftToPx } from '../../shared/units.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
@@ -23,6 +27,16 @@ const PLAYER_FT = { x: 80, y: 45 };
 interface Settings {
   distanceFt: number;
   angleDeg: number;
+}
+
+export interface QuestWaypointProbeApi {
+  visibleQuestIds(): string[];
+}
+
+declare global {
+  interface Window {
+    __questWaypointProbe?: QuestWaypointProbeApi;
+  }
 }
 
 function makeFloorScenario(): NonNullable<GameWorld['floorScenario']> {
@@ -80,7 +94,7 @@ function createQuestWaypointLab(canvasHost: HTMLElement, controls: HTMLElement):
   if (!(gui instanceof GUI)) {
     throw new Error('Lab runner did not initialize lil-gui.');
   }
-  const settings: Settings = { distanceFt: 60, angleDeg: 30 };
+  const settings: Settings = { distanceFt: 60, angleDeg: 270 };
 
   const root = document.createElement('div');
   root.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden;';
@@ -91,8 +105,8 @@ function createQuestWaypointLab(canvasHost: HTMLElement, controls: HTMLElement):
   let playerEid = -1;
   let hudUi: ReturnType<typeof createHudUI> | undefined;
 
-  function targetFeet(): { x: number; y: number } {
-    const rad = (settings.angleDeg * Math.PI) / 180;
+  function targetFeet(angleOffsetDeg = 0): { x: number; y: number } {
+    const rad = ((settings.angleDeg + angleOffsetDeg) * Math.PI) / 180;
     return {
       x: PLAYER_FT.x + Math.cos(rad) * settings.distanceFt,
       y: PLAYER_FT.y + Math.sin(rad) * settings.distanceFt,
@@ -110,6 +124,8 @@ function createQuestWaypointLab(canvasHost: HTMLElement, controls: HTMLElement):
       playerEid = spawnPlayer(world, PLAYER_FT.x, PLAYER_FT.y);
       world.floorScenario = makeFloorScenario();
       acceptQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
+      acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
+      acceptQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
 
       this.add.rectangle(0, 0, GAME.WIDTH, GAME.HEIGHT, 0x05070f).setOrigin(0, 0);
       this.add
@@ -121,14 +137,35 @@ function createQuestWaypointLab(canvasHost: HTMLElement, controls: HTMLElement):
       this.marker = this.add.circle(0, 0, 6, 0xfcd34d).setDepth(5);
       this.cameras.main.setZoom(CAMERA.BASE_ZOOM);
       hudUi = createHudUI(this);
+      window.__questWaypointProbe = {
+        visibleQuestIds: () =>
+          this.children.list
+            .filter(
+              (child): child is Phaser.GameObjects.Triangle =>
+                child instanceof Phaser.GameObjects.Triangle &&
+                child.visible &&
+                child.name.startsWith('quest-direction-arrow:'),
+            )
+            .map((arrow) => arrow.name.slice('quest-direction-arrow:'.length)),
+      };
       this.events.once('shutdown', () => hudUi?.destroy());
     }
     update(): void {
       if (!world || !hudUi) return;
+      const floorScenario = world.floorScenario;
+      if (!floorScenario) {
+        throw new Error('Quest waypoint lab requires a floor scenario.');
+      }
       const t = targetFeet();
-      const pos = world.floorScenario!.objective.welcomeOfficePos as { x: number; y: number };
+      const pos = floorScenario.objective.welcomeOfficePos as { x: number; y: number };
       pos.x = t.x;
       pos.y = t.y;
+      const shop = targetFeet(12);
+      floorScenario.objective.shopRoomPos.x = shop.x;
+      floorScenario.objective.shopRoomPos.y = shop.y;
+      const combat = targetFeet(-12);
+      floorScenario.objective.slimeRatRoomPos.x = combat.x;
+      floorScenario.objective.slimeRatRoomPos.y = combat.y;
       this.marker?.setPosition(ftToPx(t.x), ftToPx(t.y));
       this.cameras.main.centerOn(ftToPx(PLAYER_FT.x), ftToPx(PLAYER_FT.y));
       hudUi.sync(world, playerEid);
@@ -154,6 +191,7 @@ function createQuestWaypointLab(canvasHost: HTMLElement, controls: HTMLElement):
   createGame();
 
   return () => {
+    delete window.__questWaypointProbe;
     hudUi?.destroy();
     game?.destroy(true);
     root.remove();
@@ -163,6 +201,6 @@ function createQuestWaypointLab(canvasHost: HTMLElement, controls: HTMLElement):
 registerLab('questwaypoints-lab', {
   category: 'Meta' as LabCategory,
   name: 'Quest Waypoint Lab',
-  description: 'Off-screen quest direction arrow + waypoint resolver demo.',
+  description: 'Three active quests with distinct off-screen arrows + waypoint resolver demo.',
   create: createQuestWaypointLab,
 });

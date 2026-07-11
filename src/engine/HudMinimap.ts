@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { hasComponent, query } from 'bitecs';
 import { Enemy, FamilyMembership, Npc, Position } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
-import { getQuestWaypoints } from '../core/systems/questWaypoints.js';
+import { getTrackedQuestWaypoint } from '../core/systems/questWaypoints.js';
 import { RoomRole, type RoomData, TerrainType } from '../shared/map-types.js';
 import type { FloorMap } from '../core/map/FloorMap.js';
 import { loadFamilies, type FamilyDef } from '../shared/data/families.js';
@@ -616,7 +616,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
 
     // Quest waypoint — the tracked objective marker. Drawn even in unexplored
     // tiles so it actively guides the player to the next goal on a big floor.
-    const overlayWaypoint = getQuestWaypoints(world, playerEid)[0];
+    const overlayWaypoint = getTrackedQuestWaypoint(world, playerEid);
     if (overlayWaypoint) {
       const wpTile = floorMap.worldToTile(overlayWaypoint.x, overlayWaypoint.y);
       if (
@@ -795,7 +795,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     }
 
     // Quest waypoint blip — primary tracked objective, always shown.
-    const radarWaypoint = getQuestWaypoints(world, playerEid)[0];
+    const radarWaypoint = getTrackedQuestWaypoint(world, playerEid);
     if (radarWaypoint) {
       const wpTile = floorMap.worldToTile(radarWaypoint.x, radarWaypoint.y);
       const wx = localX(wpTile.x + 0.5);
