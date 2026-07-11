@@ -77,6 +77,17 @@
     "path": "by-sha/ba89b115834f5b78116b019e493eef94255d5493.json"
   },
   {
+    "commit": "51eef86e3a3718198ff20693602ec8c26541a6df",
+    "commitDate": "2026-07-11T15:30:00-07:00",
+    "commitSubject": "feat(ai): add optional merchant weapon purchases (#1034)",
+    "capturedAt": "2026-07-11T22:58:27.285Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29170777124",
+    "winRate": 0.9233333333333333,
+    "totalWins": 277,
+    "totalRuns": 300,
+    "path": "by-sha/51eef86e3a3718198ff20693602ec8c26541a6df.json"
+  },
+  {
     "commit": "c73862e9ef0715922b00159a73cbab666e3b3e1f",
     "commitDate": "2026-07-11T10:20:00-07:00",
     "commitSubject": "docs: stop routine pre-PR full verification (#1040)",
