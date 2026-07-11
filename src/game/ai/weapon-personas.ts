@@ -1,16 +1,14 @@
 import type { GameWorld } from '../../core/world.js';
 import { getActiveWeaponDef } from '../../core/active-weapon.js';
 import type { EquipmentItemDef } from '../../shared/equipment-types.js';
-import { PRIMARY_STATS, type PrimaryStatId, type StatId } from '../../shared/stats.js';
+import {
+  PRIMARY_STATS,
+  isAllocatablePrimaryStat,
+  type PrimaryStatId,
+  type StatId,
+} from '../../shared/stats.js';
 
-const ALLOCATABLE_STATS = [
-  'strength',
-  'dexterity',
-  'constitution',
-  'intelligence',
-  'wisdom',
-  'luck',
-] as const satisfies readonly PrimaryStatId[];
+const ALLOCATABLE_STATS = PRIMARY_STATS.filter(isAllocatablePrimaryStat);
 const MINIMUM_TARGET_ORDER = [
   'constitution',
   'strength',
@@ -119,7 +117,11 @@ function chooseWeightedStat(
   persona: WeaponPersona,
   allocation: Partial<Record<PrimaryStatId, number>>,
 ): PrimaryStatId {
-  let best: PrimaryStatId = ALLOCATABLE_STATS[0];
+  const firstAllocatableStat = ALLOCATABLE_STATS[0];
+  if (firstAllocatableStat === undefined) {
+    throw new Error('No allocatable primary stats configured');
+  }
+  let best: PrimaryStatId = firstAllocatableStat;
   let bestRatio = Infinity;
   let bestWeight = -Infinity;
   for (const stat of ALLOCATABLE_STATS) {
@@ -156,7 +158,7 @@ export function computeWeaponPersonaStatAllocation(
 export function scoreEquipmentForPersona(
   equipment: EquipmentItemDef,
   persona: WeaponPersona,
-  currentStats: Partial<Readonly<Record<PrimaryStatId, number>>>,
+  currentStats: Partial<Readonly<Record<StatId, number>>>,
 ): number {
   let score = 0;
   for (const stat of PRIMARY_STATS) {

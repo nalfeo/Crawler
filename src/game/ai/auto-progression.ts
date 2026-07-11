@@ -15,11 +15,13 @@
 import { query } from 'bitecs';
 import type { GameWorld } from '../../core/index.js';
 import { Player, Position } from '../../core/index.js';
-import { equip } from '../../core/systems/equipmentSystem.js';
-import type { EquipmentItemDef } from '../../shared/equipment-types.js';
+import {
+  equipFromBag,
+  getEffectiveStats,
+  previewEquipDelta,
+} from '../../core/systems/equipmentSystem.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../shared/constants.js';
-import { getEquipmentDefForItem, isEquippableItem } from '../../shared/equipmentDefs.js';
-import { removeItem } from '../../shared/inventory.js';
+import { getEquipmentDefForItem } from '../../shared/equipmentDefs.js';
 import type { PrimaryStatId } from '../../shared/stats.js';
 import { AIState, type AIInputProvider } from './types.js';
 import { NPC_INTERACTION_RADIUS_FT } from './bt-ai-tuning.js';
@@ -165,7 +167,10 @@ export function autoFloor1ProgressionSystem(
     }
   }
 
-  if (!weaponPersonas || !equipPersonaPreferredGear(world, playerEid)) {
+  const persona = weaponPersonas ? getWeaponPersonaForWorld(world) : undefined;
+  if (persona) {
+    equipPersonaPreferredGear(world, playerEid);
+  } else {
     equipPurchasedGear(world, playerEid);
   }
 
@@ -257,29 +262,39 @@ function equipPersonaPreferredGear(world: GameWorld, playerEid: number): boolean
   const bag = world.inventories.get(playerEid);
   if (!persona || !bag) return false;
 
-  const currentStats = Object.fromEntries(
-    Object.entries(world.stores.coreStatPoints).map(([stat, values]) => [
-      stat,
-      values[playerEid] ?? 0,
-    ]),
-  ) as Partial<Record<PrimaryStatId, number>>;
-  const candidates = bag.slots
-    .map((slot) => getEquipmentDefForItem(slot.itemId))
-    .filter((def): def is EquipmentItemDef => def !== undefined && isEquippableItem(def.id))
-    .sort(
-      (a, b) =>
-        scoreEquipmentForPersona(b, persona, currentStats) -
-          scoreEquipmentForPersona(a, persona, currentStats) ||
-        (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
-    );
-
   let equippedAny = false;
-  for (const def of candidates) {
-    const result = equip(world, playerEid, def, { force: true });
-    if (result.ok) {
-      removeItem(bag, def.id, 1);
-      equippedAny = true;
+  while (true) {
+    const currentStats = getEffectiveStats(world, playerEid);
+    const bestCandidate = [...new Set(bag.slots.map((slot) => slot.itemId))]
+      .map((itemId) => {
+        const def = getEquipmentDefForItem(itemId);
+        const preview = previewEquipDelta(world, playerEid, itemId);
+        if (!def || !preview?.canEquip) {
+          return undefined;
+        }
+        const deltaScore =
+          scoreEquipmentForPersona(def, persona, currentStats) -
+          preview.swappedOut.reduce(
+            (score, swapped) => score + scoreEquipmentForPersona(swapped, persona, currentStats),
+            0,
+          );
+        return deltaScore > 0 ? { itemId, deltaScore } : undefined;
+      })
+      .filter(
+        (candidate): candidate is { itemId: string; deltaScore: number } => candidate !== undefined,
+      )
+      .sort(
+        (a, b) =>
+          b.deltaScore - a.deltaScore || (a.itemId < b.itemId ? -1 : a.itemId > b.itemId ? 1 : 0),
+      )[0];
+    if (!bestCandidate) {
+      break;
     }
+    const result = equipFromBag(world, playerEid, bestCandidate.itemId, { force: true });
+    if (!result.ok) {
+      break;
+    }
+    equippedAny = true;
   }
   return equippedAny;
 }
