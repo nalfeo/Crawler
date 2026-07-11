@@ -285,6 +285,10 @@ export function familyFeudSystem(world: GameWorld): void {
 
     const familyId = getMobFamilyId(world, eid);
     if (familyId === undefined) continue;
+    if ((world.stores.familyMembership.isBoss[eid] ?? 0) === 1) {
+      const encounter = world.floorExtendedState?.familyState?.bossEncounters?.get(familyId);
+      if (encounter?.started && !encounter.defeated) continue;
+    }
 
     const relation = getRelation(world, familyId);
     const band = bandFor(relation);

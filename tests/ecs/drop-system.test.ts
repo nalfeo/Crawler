@@ -36,6 +36,7 @@ import { createTestWorld } from '../helpers/world-factory.js';
 import { MINI_SLIME_SPAWN_ANIM_MS } from '../../src/shared/spawn-anim.js';
 import type { EntitySpriteMappings } from '../../src/shared/data/entity-sprite-mappings.js';
 import ENTITY_SPRITE_MAPPINGS from '../../src/shared/data/entity-sprite-mappings.json';
+import { asFamilyId, asResourceId } from '../../src/core/faction-relations.js';
 
 // 64 deterministic seeds gives ample headroom to find at least one 35% split roll
 // without making the regression test search unbounded.
@@ -91,6 +92,41 @@ describe('dropSystem', () => {
     // BASIC_MELEE table always drops XP (chance 1.0)
     const gems = query(world.ecs, [XpGem, Position]);
     expect(gems.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('uses the configured Floor 2 encounter loot table for family bosses', () => {
+    const world = createTestWorld({ floor: 2 });
+    const bossEid = spawnEnemy(world, 100, 200, 10);
+    const familyId = asFamilyId('geese');
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [familyId],
+        contestedResource: asResourceId('gold-veins'),
+        betrayerFlag: false,
+        bossEncounters: new Map([
+          [
+            familyId,
+            {
+              familyId,
+              roomId: 1,
+              doorEids: [],
+              activeGoalId: 'boss-active',
+              started: true,
+              bossEid,
+              defeated: false,
+              displayName: 'Goose Boss',
+              lootTableId: 'boss',
+            },
+          ],
+        ]),
+      },
+    };
+    setComponent(world.ecs, bossEid, Health, { current: 0, max: 10 });
+
+    dropSystem(world);
+
+    expect(query(world.ecs, [XpGem]).length).toBeGreaterThanOrEqual(10);
+    expect(query(world.ecs, [Gold]).length).toBeGreaterThanOrEqual(20);
   });
 
   it('emits a death combat event', () => {

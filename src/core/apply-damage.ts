@@ -198,6 +198,9 @@ export function applyDamage(
     if (isCrit) event.isCrit = true;
     if (sourceEid !== undefined) event.sourceEid = sourceEid;
     world.combatEvents.push(event);
+    if (sourceEid !== undefined && current - dealt <= 0) {
+      world.lethalDamageSourceByTarget.set(target, sourceEid);
+    }
 
     // Floor 2 Slice 3 ally-defend: record who last hit the player into a
     // DURABLE per-world signal. The transient `combatEvents` queue above is

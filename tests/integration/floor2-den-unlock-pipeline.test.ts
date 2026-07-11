@@ -21,6 +21,7 @@ import { acceptQuest, questSystem } from '../../src/core/systems/questSystem.js'
 import { FamilyMembership, spawnEnemy, spawnPlayer } from '../../src/core/index.js';
 import { doorSystem } from '../../src/core/systems/doorSystem.js';
 import { enemyAISystem } from '../../src/game/enemyAISystem.js';
+import { familyFeudSystem, getFamilyAIDecision } from '../../src/game/systems/familyFeudSystem.js';
 
 /**
  * Slice 4 integration — the full unlock/defeat pipeline end-to-end.
@@ -103,6 +104,16 @@ describe('Floor 2 Slice 4 — den-unlock pipeline', () => {
     doorSystem(world);
     expect(encounter.started).toBe(true);
     expect(world.stores.enemyBehavior.aggroedPermanently[encounter.bossEid!]).toBe(1);
+    world.factionRelations.set(target.familyId, 50);
+    familyFeudSystem(world);
+    enemyAISystem(world);
+    expect(getFamilyAIDecision(world, encounter.bossEid!)).toBeUndefined();
+    expect(
+      Math.hypot(
+        world.stores.velocity.x[encounter.bossEid!] ?? 0,
+        world.stores.velocity.y[encounter.bossEid!] ?? 0,
+      ),
+    ).toBeGreaterThan(0);
     expect(world.goalFlags.get(encounter.activeGoalId)).toBe(true);
     for (const doorEid of encounter.doorEids) {
       expect(world.stores.doorState.isLocked[doorEid]).toBe(1);
@@ -318,6 +329,21 @@ describe('Floor 2 Slice 4 — den-unlock pipeline', () => {
     floor2ObjectiveTick(world);
     expect(floor2State!.trashKillsByFamily?.get(target.familyId)).toBe(100);
     expect(world.goalFlags.get(denUnlockGoalId(target.familyId))).toBe(true);
+
+    world.combatEvents.length = 0;
+    pushTrashDeath(playerEid, 101);
+    expect(floor2State!.trashKillsByFamily?.get(target.familyId)).toBe(101);
+
+    const retainedEvents = world.combatEvents;
+    let numericEventReads = 0;
+    world.combatEvents = new Proxy(retainedEvents, {
+      get(targetEvents, property, receiver) {
+        if (typeof property === 'string' && /^\d+$/.test(property)) numericEventReads += 1;
+        return Reflect.get(targetEvents, property, receiver);
+      },
+    });
+    floor2ObjectiveTick(world);
+    expect(numericEventReads).toBeLessThanOrEqual(2);
   });
 
   it('ignores death events that are missing family metadata and membership', () => {

@@ -174,7 +174,7 @@ describe('Fireball kill attribution', () => {
     expect(learned).toBe(true);
 
     // Spawn a near-dead enemy (HP=1) so the first fireball blast kills it outright.
-    const dummyEid = spawnStationaryEnemyNearPlayer(world, playerEid, 3);
+    const dummyEid = spawnStationaryEnemyNearPlayer(world, playerEid, 5);
     setComponent(world.ecs, dummyEid, Health, { current: 1, max: 500 });
 
     // statsSystem only writes stores.stats.damage when the player has the Stats
@@ -185,9 +185,15 @@ describe('Fireball kill attribution', () => {
     // the blast is lethal against the HP=1 dummy.
     world.stores.stats.damage[playerEid] = 10;
 
-    // dropSystem runs inside the visual pipeline on every frame, so death events
-    // are emitted during the step; no separate dropSystem call is needed.
-    stepVisualPipeline(world, options, 10);
+    // Frame N: dropSystem runs before abilitySystem, so the fireball kills in
+    // postSystems after this frame's death pass.
+    stepVisualPipeline(world, options, 1);
+    expect(world.stores.health.current[dummyEid]).toBe(0);
+    expect(world.lethalDamageSourceByTarget.get(dummyEid)).toBe(playerEid);
+
+    // Mirror PhaserBridge: CombatVfx drains transient hits before frame N+1.
+    world.combatEvents.length = 0;
+    stepVisualPipeline(world, options, 1);
 
     const deathEvents = world.combatEvents.filter(
       (e) => e.type === 'death' && e.targetEid === dummyEid,

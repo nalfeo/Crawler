@@ -106,13 +106,17 @@ function getEnemyLootTables(
   areaTable?: LootTable;
   floorTable?: LootTable;
 } {
-  // Detect boss entities by checking the floor 1 boss battle registry.
+  // Detect boss entities by checking both floor encounter registries.
   // dropSystem runs before floorObjectiveSystem each frame, so bossEid is still
   // set when we process the death; it gets nulled out later that same tick.
-  if (world.floorScenario?.objective?.bossBattles) {
-    for (const battle of world.floorScenario.objective.bossBattles.values()) {
-      if (battle.bossEid === eid) {
-        // Use the loot table ID stored on the encounter config; fall back to BOSS.
+  const bossRegistries = [
+    world.floorScenario?.objective?.bossBattles,
+    world.floorExtendedState?.familyState?.bossEncounters,
+  ];
+  for (const registry of bossRegistries) {
+    if (registry) {
+      for (const battle of registry.values()) {
+        if (battle.bossEid !== eid) continue;
         const bossTable =
           (battle.lootTableId ? getLootTable(battle.lootTableId) : undefined) ?? LOOT_TABLES.BOSS;
         return { typeTable: bossTable };
@@ -352,6 +356,8 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
         break;
       }
     }
+    killingSourceEid ??= world.lethalDamageSourceByTarget.get(eid);
+    world.lethalDamageSourceByTarget.delete(eid);
 
     // Apply death knockback (small impulse in the killing blow direction)
     const knockbackDist = Math.min(DEATH_KNOCKBACK_MAX, DEATH_KNOCKBACK_BASE + overkill * 2);

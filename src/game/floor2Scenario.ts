@@ -130,7 +130,7 @@ import { computeAutoStatAllocation } from './scenarios/playerStatAllocationPolic
 const FLOOR2_BOSS_HP_SCALE = 0.03;
 const FLOOR2_BOSS_CONTACT_DAMAGE = 2;
 const FLOOR2_DIRECT_START_LEVEL = 5;
-const floor2ProcessedCombatEvents = new WeakMap<GameWorld, WeakSet<object>>();
+const floor2CombatEventCursor = new WeakMap<GameWorld, { cursor: number; lastEvent?: object }>();
 
 export function resolveFloor2ArchetypeAIType(archetype: EnemyArchetypeDef): number {
   if (archetype.aiType === 'ranged') return AI_TYPE.RANGED;
@@ -597,18 +597,21 @@ export function floor2ObjectiveTick(world: GameWorld): void {
   }
 
   const decapitated = ensureDecapitatedSet(world);
-  let processedEvents = floor2ProcessedCombatEvents.get(world);
-  if (!processedEvents) {
-    processedEvents = new WeakSet<object>();
-    floor2ProcessedCombatEvents.set(world, processedEvents);
+  const cursorState = floor2CombatEventCursor.get(world) ?? { cursor: 0 };
+  floor2CombatEventCursor.set(world, cursorState);
+  const combatEvents = world.combatEvents;
+  if (
+    cursorState.cursor > combatEvents.length ||
+    (cursorState.cursor > 0 && combatEvents[cursorState.cursor - 1] !== cursorState.lastEvent)
+  ) {
+    cursorState.cursor = 0;
   }
   const familyIdField = world.stores.familyMembership.familyId;
   const isBossField = world.stores.familyMembership.isBoss;
 
-  for (const event of world.combatEvents) {
+  for (let eventIndex = cursorState.cursor; eventIndex < combatEvents.length; eventIndex += 1) {
+    const event = combatEvents[eventIndex]!;
     if (event.type !== 'death') continue;
-    if (processedEvents.has(event as object)) continue;
-    processedEvents.add(event as object);
     const eid = event.targetEid;
     if (eid === undefined) continue;
     const storeIsBoss = (isBossField[eid] ?? 0) as 0 | 1;
@@ -650,6 +653,8 @@ export function floor2ObjectiveTick(world: GameWorld): void {
       setGoalFlag(world, encounter.activeGoalId, false);
     }
   }
+  cursorState.cursor = combatEvents.length;
+  cursorState.lastEvent = combatEvents.at(-1);
 
   for (const familyId of floor2State.presentFamilies) {
     const questId = `floor2-den-${familyId}-unlock`;

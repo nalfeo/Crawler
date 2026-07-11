@@ -60,5 +60,13 @@
         }
       ]
     }
-  }
+  },
+  "supplemental_reviews": [
+    {
+      "reason": "Post-PR review fixes for boss targeting, Floor 2 boss loot, render-drain-safe kill ownership, and incremental combat-event consumption.",
+      "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+      "concerns_count": 0,
+      "clean": true
+    }
+  ]
 }
