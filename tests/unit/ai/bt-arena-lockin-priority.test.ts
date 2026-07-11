@@ -83,10 +83,6 @@ function markEnemyIgnored(ai: BehaviorTreeAI, eid: number, untilFrame: number): 
   );
 }
 
-function setStickyBossAdd(ai: BehaviorTreeAI, eid: number | null): void {
-  (ai as unknown as { bossLockinStickyAddEid: number | null }).bossLockinStickyAddEid = eid;
-}
-
 describe('BT — arena lock-in priority (1.5)', () => {
   it('selects the spawner as the movement target when locked in an arena', () => {
     const world = createTestWorld({ seed: 42 });
@@ -224,7 +220,7 @@ describe('BT — arena lock-in priority (1.5)', () => {
     expect(decision.reason).toContain('boss');
   });
 
-  it('boss lock-in: drops sticky add when that sticky enemy is currently ignored', () => {
+  it('boss lock-in: ignores a nearby ignored add and stays on the boss target', () => {
     const world = createTestWorld({ seed: 42 });
     const player = spawnPlayer(world, 0, 0);
     initializeFloor1Scenario(world, player);
@@ -239,7 +235,6 @@ describe('BT — arena lock-in priority (1.5)', () => {
     spawnEnemy(world, px + 4.4, py + 1.2, 40);
 
     const ai = new BehaviorTreeAI({ seed: 42 });
-    setStickyBossAdd(ai, ignoredStickyAddEid);
     markEnemyIgnored(ai, ignoredStickyAddEid, world.frameCount + 300);
     ai.poll(createInputState(), world);
 

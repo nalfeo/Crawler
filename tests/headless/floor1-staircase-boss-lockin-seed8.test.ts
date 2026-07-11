@@ -7,6 +7,8 @@ import { GAME } from '../../src/shared/constants.js';
 const SEED = 8;
 const FLOOR1_TIME_BUDGET_MS = 6 * 60 * 1000;
 const MAX_FRAMES = Math.ceil((FLOOR1_TIME_BUDGET_MS * 1.1) / GAME.DELTA_MS);
+// Keep this below Vitest headless project timeout (180s) so runHeadless's own
+// timeout path emits the diagnostic instead of a suite-level timeout abort.
 const MAX_WALL_TIME_MS = 170_000;
 const WEAPONS = ['sword', 'baseball-bat'] as const;
 
