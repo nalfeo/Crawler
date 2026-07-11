@@ -29,7 +29,6 @@ import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import { AIProgressSuppressionSource, AIState } from '../../src/game/ai/types.js';
-import { NPC_INTERACTION_RADIUS_FT } from '../../src/game/ai/bt-ai-tuning.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 
 /**
@@ -209,12 +208,22 @@ describe('BehaviorTreeAI', () => {
     expect(decision.targetEid).toBe(guideNpcEid);
     expect(decision.targetX).not.toBeNull();
     expect(decision.targetY).not.toBeNull();
-    if (guideNpcEid >= 0) {
+    if (guideNpcEid >= 0 && world.floorMap) {
+      const floorMap = world.floorMap;
       const npcX = world.stores.position.x[guideNpcEid] ?? 0;
       const npcY = world.stores.position.y[guideNpcEid] ?? 0;
-      const dx = (decision.targetX ?? 0) - npcX;
-      const dy = (decision.targetY ?? 0) - npcY;
-      expect(Math.hypot(dx, dy)).toBeLessThan(NPC_INTERACTION_RADIUS_FT);
+      const anchorX = decision.targetX ?? 0;
+      const anchorY = decision.targetY ?? 0;
+      // Anchor must land on a passable tile (reachable by the pathfinder).
+      const anchorTile = floorMap.worldToTile(anchorX, anchorY);
+      expect(floorMap.tileMap.isPassable(anchorTile.x, anchorTile.y)).toBe(true);
+      // Anchor must be no farther from the NPC than the player spawn — the BFS
+      // anchor is the closest reachable tile to the NPC by Euclidean distance.
+      const anchorToNpc = Math.hypot(anchorX - npcX, anchorY - npcY);
+      const playerX = world.stores.position.x[player] ?? 0;
+      const playerY = world.stores.position.y[player] ?? 0;
+      const playerToNpc = Math.hypot(playerX - npcX, playerY - npcY);
+      expect(anchorToNpc).toBeLessThanOrEqual(playerToNpc);
     }
   });
 

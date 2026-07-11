@@ -3127,6 +3127,10 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (signature !== this.navSignature) {
       this.navSignature = signature;
       this.navEpoch += 1;
+      // A door flip or floor change means passability changed — cached NPC
+      // interaction anchors may now be stale (a newly-opened door could expose
+      // a closer reachable tile). Invalidate so the next BFS runs fresh.
+      this.npcInteractionAnchorCache.clear();
     }
   }
 
@@ -7118,6 +7122,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.ignoredLootUntilFrame.clear();
     this.ignoredEnemyUntilFrame.clear();
     this.targetReachableCache.clear();
+    this.npcInteractionAnchorCache.clear();
     this.engageTargetEid = null;
     this.engageNoProgressFrames = 0;
     this.engageBestDistance = Number.POSITIVE_INFINITY;
