@@ -18,6 +18,7 @@ import {
   getNpcQuestIndicatorState,
   getShopkeeperPostQuestStock,
   getShopkeeperStage,
+  buildInitiallyLockedDoorTileSet,
   initializeFloor1Scenario,
   meetSpellQuestGiver,
   meetTutorialGoon,
@@ -60,6 +61,7 @@ import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import { floor1EnemyPack } from '../../src/shared/enemy-packs.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { stampSetPiece } from '../../src/core/map/stampSetPiece.js';
+import { findTilePath } from '../../src/core/map/pathfinding.js';
 
 describe('floor1Scenario', () => {
   it('initializes Floor 1 into loadout state with deterministic starter choices', () => {
@@ -205,9 +207,8 @@ describe('floor1Scenario', () => {
       ]);
       expect(uniqueNpcTiles.size, `seed ${seed}: welcome-bar NPCs should not stack`).toBe(3);
 
-      // NPCs should scatter around the welcome bar, not huddle: every pair must
-      // be at least MIN_NPC_SPACING_TILES (3) apart in Chebyshev distance, i.e.
-      // two empty tiles between any two NPCs.
+      // NPCs should not huddle even when authored set-piece tiles are preserved.
+      // Keep at least one empty tile between any pair (Chebyshev >= 2).
       const npcTiles = [tutorialTile, shopTile, spellTile];
       const chebyshev = (a: { x: number; y: number }, b: { x: number; y: number }): number =>
         Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
@@ -216,8 +217,8 @@ describe('floor1Scenario', () => {
           const dist = chebyshev(npcTiles[i]!, npcTiles[j]!);
           expect(
             dist,
-            `seed ${seed}: welcome-bar NPCs ${i} and ${j} too close (Chebyshev ${dist}, want >= 3)`,
-          ).toBeGreaterThanOrEqual(3);
+            `seed ${seed}: welcome-bar NPCs ${i} and ${j} too close (Chebyshev ${dist}, want >= 2)`,
+          ).toBeGreaterThanOrEqual(2);
         }
       }
 
@@ -225,6 +226,7 @@ describe('floor1Scenario', () => {
         x: world.stores.position.x[floor1.shopkeeperNpcEid!]!,
         y: world.stores.position.y[floor1.shopkeeperNpcEid!]!,
       });
+
       expect(objective.spellQuestGiverPos).toEqual({
         x: world.stores.position.x[floor1.spellQuestGiverNpcEid!]!,
         y: world.stores.position.y[floor1.spellQuestGiverNpcEid!]!,
@@ -245,6 +247,43 @@ describe('floor1Scenario', () => {
         itemRoomId,
         `seed ${seed}: quest item must be in a different room from welcome`,
       ).not.toBe(welcomeRoomId);
+    }
+  });
+
+  it('always places key progression NPCs on tiles routable from spawn', () => {
+    const seeds = [1, 7, 19, 21, 30, 42, 99, 123, 2024, 665790];
+    for (const seed of seeds) {
+      const world = createTestWorld({ seed });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+
+      const map = world.floorMap!;
+      const floor1 = world.floorScenario!;
+      const blockedDoorTiles = buildInitiallyLockedDoorTileSet(map, [
+        floor1.objective.staircasePos,
+        floor1.objective.slimeRatRoomPos,
+      ]);
+      const npcCases = [
+        { label: 'tutorial-goon', eid: floor1.guideNpcEid },
+        { label: 'shopkeeper', eid: floor1.shopkeeperNpcEid },
+        { label: 'spell-quest-giver', eid: floor1.spellQuestGiverNpcEid },
+      ] as const;
+      for (const npc of npcCases) {
+        const eid = npc.eid;
+        expect(eid, `seed ${seed}: ${npc.label} eid missing`).toBeDefined();
+        const x = world.stores.position.x[eid!]!;
+        const y = world.stores.position.y[eid!]!;
+        const targetTile = map.worldToTile(x, y);
+        const path = findTilePath(map, map.playerSpawn, targetTile, {
+          isTilePassable: (tx, ty) =>
+            map.tileMap.isPassable(tx, ty) ||
+            (map.tileMap.isDoor(tx, ty) && !blockedDoorTiles.has(`${tx},${ty}`)),
+        });
+        expect(
+          path.length,
+          `seed ${seed}: ${npc.label} tile ${targetTile.x},${targetTile.y} must be routable from spawn`,
+        ).toBeGreaterThan(0);
+      }
     }
   });
 

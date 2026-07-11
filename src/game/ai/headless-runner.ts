@@ -516,7 +516,7 @@ export async function runHeadless(
       }
       // Floor objective handling (including Floor 2 objective ticks) runs inside
       // runSimulationStep, so no second explicit objective call is needed here.
-      autoFloor1ProgressionSystem(world, playerEid, config.weaponPersonas);
+      autoFloor1ProgressionSystem(world, playerEid, aiProvider, config.weaponPersonas);
       autoFloor2ProgressionSystem(world, playerEid);
       autoAllocateStatPoints(world, playerEid, config.weaponPersonas);
 

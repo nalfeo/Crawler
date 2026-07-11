@@ -22,10 +22,10 @@ import {
 } from '../../core/systems/equipmentSystem.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../shared/constants.js';
 import { getEquipmentDefForItem } from '../../shared/equipmentDefs.js';
+import { NPC_INTERACT_RANGE_FT } from '../../shared/npc-types.js';
 import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from '../../shared/quest-types.js';
 import { PRIMARY_STATS, type PrimaryStatId, type StatId } from '../../shared/stats.js';
 import { AIState, type AIInputProvider } from './types.js';
-import { NPC_INTERACTION_RADIUS_FT } from './bt-ai-tuning.js';
 import {
   confirmFloor1StairDescend,
   equipPurchasedGear,
@@ -49,6 +49,48 @@ export { computeAutoStatAllocation } from '../scenarios/playerStatAllocationPoli
 
 /** Frames between auto NPC-talk attempts (debounce repeated `meet*` calls). */
 export const NPC_INTERACTION_COOLDOWN = 30; // frames
+
+function isTargetedNpcActionable(
+  world: GameWorld,
+  aiProvider: AIInputProvider | undefined,
+  targetEid: number,
+  nearbyPlayer: boolean,
+): boolean {
+  if (nearbyPlayer) {
+    return true;
+  }
+  if (!aiProvider) {
+    return false;
+  }
+
+  const decision = aiProvider.getDecision();
+  const intent = decision.npcInteraction;
+  if (
+    decision.state !== AIState.EXPLORE ||
+    decision.targetEid !== targetEid ||
+    !intent?.allowWhileExploring ||
+    intent.npcEid !== targetEid ||
+    decision.targetX === null ||
+    decision.targetY === null
+  ) {
+    return false;
+  }
+
+  const playerEids = query(world.ecs, [Player, Position]);
+  const playerEid = playerEids[0];
+  if (playerEid === undefined) {
+    return false;
+  }
+  const px = world.stores.position.x[playerEid] ?? 0;
+  const py = world.stores.position.y[playerEid] ?? 0;
+  const npcX = world.stores.position.x[targetEid];
+  const npcY = world.stores.position.y[targetEid];
+  if (npcX === undefined || npcY === undefined) {
+    return false;
+  }
+  return Math.hypot(npcX - px, npcY - py) <= NPC_INTERACT_RANGE_FT;
+}
+
 /**
  * Headless-compatible NPC interaction system.
  * Automatically meets NPCs when the player is nearby (simulates pressing E).
@@ -65,10 +107,9 @@ export function autoNpcInteractionSystem(
   }
 
   const decision = aiProvider.getDecision();
-  const isSeekingTutorialGoon =
-    decision.state === AIState.EXPLORE && decision.reason.includes('Tutorial Goon');
-  const tutorialSeekFallback = isSeekingTutorialGoon;
-  if (decision.state !== AIState.INTERACT && !tutorialSeekFallback) {
+  const exploreInteractionFallback =
+    decision.state === AIState.EXPLORE && decision.npcInteraction?.allowWhileExploring === true;
+  if (decision.state !== AIState.INTERACT && !exploreInteractionFallback) {
     return lastInteractionFrame;
   }
 
@@ -82,30 +123,7 @@ export function autoNpcInteractionSystem(
     return lastInteractionFrame;
   }
 
-  // For INTERACT state: use the real game proximity gate (nearbyPlayer).
-  // For EXPLORE tutorial-goon fallback: keep the same ordinary bounded interaction
-  // range as normal interaction semantics.
-  let withinInteractionRange = targetNpc.nearbyPlayer;
-  if (tutorialSeekFallback && !withinInteractionRange && targetNpc.defId === 'tutorial-goon') {
-    const playerEids = query(world.ecs, [Player, Position]);
-    const playerEid = playerEids[0];
-    if (playerEid !== undefined) {
-      const px = world.stores.position.x[playerEid] ?? 0;
-      const py = world.stores.position.y[playerEid] ?? 0;
-      if (decision.targetX !== null && decision.targetY !== null) {
-        // Use the BT-selected objective anchor for the fallback proximity check.
-        // This keeps interaction bounded while allowing tutorial-goon handoff when
-        // the nearest reachable interaction tile is offset from NPC center.
-        withinInteractionRange =
-          Math.hypot(decision.targetX - px, decision.targetY - py) < NPC_INTERACTION_RADIUS_FT;
-      } else {
-        const nx = world.stores.position.x[targetEid] ?? 0;
-        const ny = world.stores.position.y[targetEid] ?? 0;
-        withinInteractionRange = Math.hypot(nx - px, ny - py) < NPC_INTERACTION_RADIUS_FT;
-      }
-    }
-  }
-  if (!withinInteractionRange) {
+  if (!isTargetedNpcActionable(world, aiProvider, targetEid, targetNpc.nearbyPlayer)) {
     return lastInteractionFrame;
   }
 
@@ -135,6 +153,7 @@ export function autoNpcInteractionSystem(
 export function autoFloor1ProgressionSystem(
   world: GameWorld,
   playerEid: number,
+  aiProvider?: AIInputProvider,
   weaponPersonas = false,
 ): void {
   if (!world.floorScenario) {
@@ -154,8 +173,11 @@ export function autoFloor1ProgressionSystem(
     selectSpellFromBossBattle(world, playerEid, 'heal');
   }
 
-  for (const [, instance] of world.npcs.entries()) {
-    if (!instance.nearbyPlayer || instance.defId !== 'shopkeeper') {
+  for (const [npcEid, instance] of world.npcs.entries()) {
+    if (instance.defId !== 'shopkeeper') {
+      continue;
+    }
+    if (!isTargetedNpcActionable(world, aiProvider, npcEid, instance.nearbyPlayer)) {
       continue;
     }
 

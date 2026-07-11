@@ -1,0 +1,53 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-11",
+  "session_slug": "floor1-npc-objective-anchors",
+  "task_title": "Generalize Floor 1 NPC objective anchors",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Alt A: core NPC proximity only — rejected because the AI still needs explicit targeted NPC-progress intent. Alt B: persist static scenario anchors — rejected because the existing reachable-anchor helper already derives deterministic live-map anchors and widening its use is smaller. Alt C: direct objectives only — rejected because detours and repeated revisits would keep split semantics. Chosen design: shared NPC-targeted progress helper + structured metadata + shared bounded actionability rule; review tightened cache/proximity invariants and detour coverage without changing the core direction."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.3-codex",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4", "claude-sonnet-5"],
+          "concerns_count": 3,
+          "valid_count": 2,
+          "resolved_count": 0,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4", "claude-sonnet-5"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

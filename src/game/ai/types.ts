@@ -108,6 +108,31 @@ export interface AISuppressedProgressNavDebug {
 
 export type AIDecisionDebug = AISuppressedProgressNavDebug;
 
+export const AINpcInteractionAction = {
+  GENERIC_INTERACTION: 'generic-interaction',
+  MEET_BROKER_INTRO: 'meet-broker-intro',
+  ACCEPT_TUTORIAL_QUEST: 'accept-tutorial-quest',
+  MEET_SHOPKEEPER: 'meet-shopkeeper',
+  RETURN_SHOPKEEPER_PRIZE: 'return-shopkeeper-prize',
+  BUY_SHOPKEEPER_EQUIPMENT: 'buy-shopkeeper-equipment',
+  ACCEPT_SPELL_QUEST: 'accept-spell-quest',
+  CLAIM_SPELL_REWARD: 'claim-spell-reward',
+} as const;
+
+export type AINpcInteractionActionValue =
+  (typeof AINpcInteractionAction)[keyof typeof AINpcInteractionAction];
+
+/** Explicit NPC interaction intent carried through progress decisions. */
+export interface AINpcInteractionIntent {
+  npcEid: number;
+  action: AINpcInteractionActionValue;
+  /**
+   * True when the AI is still in EXPLORE because it is walking to a reachable
+   * interaction anchor for this NPC, so bounded auto-interaction is allowed.
+   */
+  allowWhileExploring: boolean;
+}
+
 /**
  * AI decision context - what the AI is currently thinking about.
  */
@@ -121,6 +146,8 @@ export interface AIDecision {
   targetY: number | null;
   /** Human-readable reason for current decision */
   reason: string;
+  /** Structured NPC interaction intent for the current target, if any. */
+  npcInteraction: AINpcInteractionIntent | null;
   /** Telemetry-only refinement; never drives gameplay behavior. */
   debug: AIDecisionDebug | null;
 }

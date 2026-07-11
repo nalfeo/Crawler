@@ -21,6 +21,7 @@ class ScriptedDecisionProvider implements AIInputProvider {
     targetX: null,
     targetY: null,
     reason: 'scripted explore',
+    npcInteraction: null,
     debug: null,
   };
 
@@ -34,6 +35,7 @@ class ScriptedDecisionProvider implements AIInputProvider {
             targetX: null,
             targetY: null,
             reason: 'scripted suppressed fallback',
+            npcInteraction: null,
             debug: {
               state: AIDecisionDebugState.SUPPRESSED_PROGRESS_NAV,
               reason: 'progressGoalSuppressed',
@@ -50,6 +52,7 @@ class ScriptedDecisionProvider implements AIInputProvider {
             targetX: null,
             targetY: null,
             reason: 'scripted explore',
+            npcInteraction: null,
             debug: null,
           };
   }
