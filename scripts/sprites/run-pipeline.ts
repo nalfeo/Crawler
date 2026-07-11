@@ -12,12 +12,14 @@
  * `scoreCandidate`, `judgeVariant`) keep their own unit tests.
  */
 
+import path from 'node:path';
+import { writeFileSync } from 'node:fs';
 import { PNG } from 'pngjs';
 import { buildAnchorOverlay } from './anchor-overlay.js';
 import type { Brief, PaletteColors } from './brief-schema.js';
 import type { JudgeBudget } from './cost-tracker.js';
 import type { JudgeCache } from './judge-cache.js';
-import { judgeVariant, type JudgeScorecard } from './judge.js';
+import { judgeVariant, PROMPT_TEMPLATE_VERSION, type JudgeScorecard } from './judge.js';
 import { type PostprocessOptions, postprocessWithTrace } from './postprocess.js';
 import type { ManualAnchorOverride } from './postprocess-overrides.js';
 import { scoreCandidate } from './score-candidate.js';
@@ -345,9 +347,56 @@ export async function runJudgePass(args: JudgePassArgs): Promise<JudgePassResult
           'disable judging.',
       );
     }
-    // Budget gate runs BEFORE the call so a blown budget skips cheaply. Cache
-    // hits cost $0 of Azure spend, so they bypass the gate.
-    if (args.judgeBudget && args.judgeBudget.wouldExceed() && !args.judgeCache) {
+
+    // Cache-aware budget gate: check the cache FIRST.
+    //
+    // - Cache hit  → replay the verdict for free (zero Azure spend); skip the
+    //   budget gate entirely and do NOT call judgeVariant.
+    // - Cache miss → apply the budget gate normally; skip if over-budget,
+    //   otherwise proceed with the Azure call.
+    //
+    // This makes the budget cap a true hard ceiling: only actual provider calls
+    // consume budget. Previously `!args.judgeCache` bypassed the gate whenever a
+    // cache was present, allowing mid-brief spending to exceed the cap.
+    //
+    // Key consistency: both this pre-flight lookup and the judgeVariant call below
+    // use `args.visionProvider.modelDeployment` and `PROMPT_TEMPLATE_VERSION`, so
+    // the key is identical in both places. Corrupt cache entries are handled by
+    // JudgeCache.get(), which catches parse errors and returns null — so `hit` is
+    // always a valid JudgeScorecard or null.
+    if (args.judgeCache) {
+      const cacheKey = args.judgeCache.computeKey({
+        modelDeployment: args.visionProvider.modelDeployment,
+        promptTemplateVersion: PROMPT_TEMPLATE_VERSION,
+        variantPng: e.processed,
+        referencePngs: args.referencePngs,
+        briefMatchInstructions: brief.prompt,
+      });
+      const hit = args.judgeCache.get(cacheKey);
+      if (hit) {
+        // Re-stamp variantIndex so the replayed card is correct for this run.
+        const replayed: JudgeScorecard = { ...hit, variantIndex: e.index };
+        if (args.store.backend === 'local') {
+          const processedDir = args.store.resolve(args.storeKey('processed'));
+          try {
+            writeFileSync(
+              path.join(processedDir, `${pad2(e.index)}.judge.json`),
+              `${JSON.stringify(replayed, null, 2)}\n`,
+            );
+          } catch {
+            // Sidecar write is best-effort; scorecard is still returned and
+            // embedded in the run summary regardless.
+            logger.warn(`judge sidecar write failed for variant ${e.index} (cache hit)`);
+          }
+        }
+        judgePlan.set(e.index, replayed);
+        judgeSkipReason.set(e.index, null);
+        continue;
+      }
+    }
+
+    // Budget gate: reached only on cache miss (or when no cache is configured).
+    if (args.judgeBudget && args.judgeBudget.wouldExceed()) {
       args.judgeBudget.recordSkip();
       const warn = args.warn ?? logger.warn.bind(logger);
       warn(`judge-budget exhausted: skipping variant ${e.index} (${args.judgeBudget.format()})`);
@@ -355,7 +404,9 @@ export async function runJudgePass(args: JudgePassArgs): Promise<JudgePassResult
       judgeSkipReason.set(e.index, 'over-budget');
       continue;
     }
-    const cacheMissesBefore = args.judgeCache?.stats.misses ?? 0;
+
+    // Cache miss (or no cache): issue the provider call. Pass the cache so the
+    // result is stored for future runs. Budget is charged for every provider call.
     const scorecard = await judgeVariant({
       processed: e.processed,
       referencePngs: args.referencePngs,
@@ -376,8 +427,7 @@ export async function runJudgePass(args: JudgePassArgs): Promise<JudgePassResult
       ...(args.now ? { now: args.now } : {}),
       ...(args.env ? { env: args.env } : {}),
     });
-    const newAzureCall = args.judgeCache ? args.judgeCache.stats.misses > cacheMissesBefore : true;
-    if (newAzureCall && args.judgeBudget && scorecard.usage) {
+    if (args.judgeBudget && scorecard.usage) {
       args.judgeBudget.recordCall(scorecard.usage);
     }
     judgePlan.set(e.index, scorecard);

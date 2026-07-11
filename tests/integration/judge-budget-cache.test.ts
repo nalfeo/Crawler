@@ -408,4 +408,49 @@ describe('runFull + JudgeCache (integration)', () => {
       expect(c.judgeScorecard).not.toBeNull();
     }
   });
+
+  it('cache miss after budget exhaustion is skipped; budget gate is a true hard ceiling with cache', async () => {
+    harness = setupHarness();
+    // 4 distinct variants — all will be cache misses (fresh empty cache).
+    const variants = [0, 1, 2, 3].map((i) => perturbedGoodSword(i));
+    const sheet = tileVariantsIntoSheet(variants, 2, 2);
+
+    const cacheDir = path.join(harness.root, 'judge-cache');
+    const cache = new JudgeCache({ cacheDir }); // intentionally empty
+
+    // gpt-4o rates: 1500 prompt @ $2.50/M + 80 completion @ $10/M = $0.00455/call.
+    // $0.001 cap: first call goes through; post-call spend exceeds cap so calls 2-4 skip.
+    const stateFile = path.join(harness.root, 'cost-state.json');
+    const budget = new JudgeBudget({
+      budgetUsd: 0.001,
+      modelDeployment: 'gpt-4o',
+      stateFile,
+      reset: true,
+    });
+    const { provider, callCount } = makeCountingVisionProvider(makePerfectScorecard());
+
+    const result = await runFull({
+      briefPath: harness.briefPath,
+      preloaded: harness.preloaded,
+      provider: makeMockImageProvider(sheet),
+      visionProvider: provider,
+      judgeBudget: budget,
+      judgeCache: cache,
+      repoRoot: harness.root,
+      outputRoot: harness.outputRoot,
+      now: fixedClock,
+      env: {},
+    });
+
+    // Budget gate must fire even when a cache is present — all variants are
+    // cache misses, so the gate should apply identically to the no-cache case.
+    expect(callCount()).toBe(1);
+    const skipped = result.summary.candidates.filter((c) => c.judgeSkipReason === 'over-budget');
+    expect(skipped.length).toBe(3);
+    expect(result.summary.judgeBudget!.callsThisRun).toBe(1);
+    expect(result.summary.judgeBudget!.callsSkippedDueToBudget).toBe(3);
+    expect(result.summary.judgeBudget!.spentUsd).toBeGreaterThan(0);
+    // Cache populated the one successful call for future replay.
+    expect(cache.stats.misses).toBe(1);
+  });
 });

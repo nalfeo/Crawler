@@ -393,13 +393,3 @@ gallery's input contract. Schema:
   failed (no briefs matched, glob error), or budget wiring rejected
   (e.g. missing `--judge-budget-usd` and `SPRITES_JUDGE_BUDGET_USD`
   without `--no-budget`).
-
-### Known interaction: cache bypasses per-variant budget gate
-
-When a `JudgeCache` is supplied, `generateOne` skips the per-variant
-`wouldExceed()` check inside the run (`scripts/sprites/generate-one.ts`
-~L305). Rationale: cache hits don't bill, and we can't tell hit-vs-miss
-without trying the lookup. Net effect for the batch: a brief that
-starts under-budget runs all its variants even if mid-brief spending
-crosses the cap; the BATCH gate then stops the NEXT brief. If you
-want hard per-variant cutoff, disable the cache with `--no-judge-cache`.
