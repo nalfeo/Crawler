@@ -150,7 +150,19 @@ export function isRunPlanUrgent(
   if (!plan) {
     return false;
   }
+
   return plan.urgency >= urgencyThreshold || plan.slackMs < 0;
+}
+
+export function canFarmOptionalMerchantPurchase(
+  plan: Pick<Floor1RunPlan, 'slackMs'> | null,
+  goldDeficit: number,
+  goldFarmMs: number,
+): boolean {
+  if (!plan || goldDeficit <= 0 || goldFarmMs <= 0) {
+    return false;
+  }
+  return plan.slackMs >= goldDeficit * goldFarmMs;
 }
 
 const EPSILON = 1e-6;
