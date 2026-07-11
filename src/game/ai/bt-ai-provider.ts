@@ -896,15 +896,6 @@ export class BehaviorTreeAI implements AIInputProvider {
   private progressGoalSuppressedUntilFrame: number = 0;
   private progressGoalSuppressionSource: AIProgressSuppressionSourceValue | null = null;
   private pendingSuppressedProgressNavDebug: AISuppressedProgressNavDebug | null = null;
-  /**
-   * Cumulative fog-of-war "seen" bitmap (one byte per tile, 1 = ever seen),
-   * OR-accumulated from {@link FloorMap.visible} every poll. This is exactly the
-   * information the minimap shows the player (HudMinimap folds each frame's FOV
-   * into a persistent `visited` array the same way), so steering toward its
-   * frontier — the boundary between seen and unseen tiles — is legitimate
-   * exploration, not omniscience. Lazily sized on first use; `null` until then.
-   */
-  private exploredSeen: Uint8Array | null = null;
   /** True once FOV has exposed at least one tile this run (perception initialized). */
   private hasPerceptionData = false;
   /** Reused per-tile BFS visited scratch for {@link findNearestFrontier}; sized to the floor. */
@@ -2941,11 +2932,9 @@ export class BehaviorTreeAI implements AIInputProvider {
       this.getPlayerSpeedFtPerFrame(world, playerEid),
     );
 
-    // Fold this frame's field-of-view into the cumulative fog-of-war "seen"
-    // bitmap so frontier exploration (pickExploreTarget) can steer toward unseen
-    // ground. Mirrors how the minimap accumulates per-frame FOV into a persistent
-    // visited array, so the AI only ever "knows" what the player has actually seen.
-    this.accumulateSeenTiles(world);
+    // FloorMap already maintains the same persistent tile-level discovery memory
+    // that the AI used to rebuild by scanning the entire map every poll.
+    this.hasPerceptionData ||= world.floorMap?.hasVisibleTiles() ?? false;
 
     // Reset opportunistic vectors from Track B so stale data never carries over.
     this.opportunisticPullX = 0;
@@ -6268,38 +6257,6 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   /**
-   * Fold this frame's field-of-view into the cumulative "seen" fog-of-war bitmap.
-   *
-   * {@link FloorMap.visible} is line-of-sight only — the FOV system clears and
-   * recomputes it every frame — so we OR it into {@link exploredSeen} to retain
-   * everywhere the player has ever seen. This mirrors HudMinimap's `visited`
-   * accumulation exactly, so the frontier search below only ever steers toward
-   * ground the player could legitimately know about.
-   */
-  private accumulateSeenTiles(world: GameWorld): void {
-    const floorMap = world.floorMap;
-    if (!floorMap) {
-      return;
-    }
-    const W = floorMap.width;
-    const H = floorMap.height;
-    const tileCount = W * H;
-    if (!this.exploredSeen || this.exploredSeen.length !== tileCount) {
-      this.exploredSeen = new Uint8Array(tileCount);
-    }
-    const seen = this.exploredSeen;
-    for (let ty = 0; ty < H; ty++) {
-      for (let tx = 0; tx < W; tx++) {
-        const i = ty * W + tx;
-        if (!seen[i] && floorMap.isVisible(tx, ty)) {
-          seen[i] = 1;
-          this.hasPerceptionData = true;
-        }
-      }
-    }
-  }
-
-  /**
    * Enemy/NPC perception rule: only entities in current FOV or on minimap-known
    * tiles are considered known. Before perception initializes (e.g. isolated unit
    * tests without an FOV step), fall back to permissive behavior.
@@ -6312,9 +6269,8 @@ export class BehaviorTreeAI implements AIInputProvider {
       return false;
     }
     if (!this.hasPerceptionData) return true;
-    const idx = tile.y * floorMap.width + tile.x;
     if (floorMap.isVisible(tile.x, tile.y)) return true;
-    return this.exploredSeen?.[idx] === 1;
+    return floorMap.isDiscovered(tile.x, tile.y);
   }
 
   /**
@@ -6338,8 +6294,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
   ): { x: number; y: number } | null {
     const floorMap = world.floorMap;
-    const seen = this.exploredSeen;
-    if (!floorMap || !seen) {
+    if (!floorMap || !this.hasPerceptionData) {
       return null;
     }
 
@@ -6362,7 +6317,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       width,
       height,
       index: (tx, ty) => tileMap.index(tx, ty),
-      isSeen: (idx) => seen[idx] !== 0,
+      isSeen: (idx) => floorMap.isDiscoveredIndex(idx),
       isPassable: (tx, ty) => passable(tx, ty),
       tileDistanceFt: (tx, ty) => {
         const wp = floorMap.tileToWorld(tx, ty);
@@ -7369,7 +7324,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.resolveGoalMemoEpoch = -1;
     this.navEpoch = 0;
     this.navSignature = null;
-    this.exploredSeen = null;
     this.hasPerceptionData = false;
     this.frontierBfsVisited = null;
     this.retreating = false;

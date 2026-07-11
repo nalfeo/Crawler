@@ -291,7 +291,13 @@ export class FloorMap implements FloorMapData {
     if (tx < 0 || tx >= this.config.widthTiles || ty < 0 || ty >= this.config.heightTiles) {
       return false;
     }
+
     return this.tileVisible[ty * this.config.widthTiles + tx] !== 0;
+  }
+
+  /** True when the current FOV pass has exposed at least one tile. */
+  hasVisibleTiles(): boolean {
+    return this.lastFovMaxX >= this.lastFovMinX && this.lastFovMaxY >= this.lastFovMinY;
   }
 
   /**
@@ -381,7 +387,13 @@ export class FloorMap implements FloorMapData {
     if (tx < 0 || tx >= this.config.widthTiles || ty < 0 || ty >= this.config.heightTiles) {
       return false;
     }
+
     return this.tileDiscovered[ty * this.config.widthTiles + tx] !== 0;
+  }
+
+  /** O(1) tile-index lookup used by deterministic frontier searches. */
+  isDiscoveredIndex(index: number): boolean {
+    return index >= 0 && index < this.tileDiscovered.length && this.tileDiscovered[index] !== 0;
   }
 
   /** Check if the sub-tile containing world position `(wx, wy)` was discovered. */

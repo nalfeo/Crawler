@@ -121,6 +121,20 @@ describe('TileMap', () => {
       map.openDoor(-1, 0); // should not throw
       map.closeDoor(5, 5); // should not throw
     });
+
+    it('increments transparency revision only when transparency changes', () => {
+      const map = new TileMap(5, 5);
+      expect(map.transparencyRevision).toBe(0);
+
+      map.setFlags(2, 2, TilePresets.DOOR_CLOSED);
+      expect(map.transparencyRevision).toBe(0);
+      map.openDoor(2, 2);
+      expect(map.transparencyRevision).toBe(1);
+      map.openDoor(2, 2);
+      expect(map.transparencyRevision).toBe(1);
+      map.closeDoor(2, 2);
+      expect(map.transparencyRevision).toBe(2);
+    });
   });
 
   describe('fill operations', () => {

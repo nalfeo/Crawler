@@ -1354,8 +1354,9 @@ describe('BehaviorTreeAI', () => {
     const floorMap = world.floorMap;
     const playerTile = floorMap.worldToTile(10, 10);
     const hiddenTile = floorMap.worldToTile(18, 10);
-    // Use setVisible with sub-tile coords (TL quadrant = tile * 2).
+    // Use matching visible/discovered sub-tile coords (TL quadrant = tile * 2).
     floorMap.setVisible(playerTile.x * 2, playerTile.y * 2);
+    floorMap.setDiscovered(playerTile.x * 2, playerTile.y * 2);
     // hiddenTile starts with all sub-tiles = 0 (dark), no action needed.
 
     const ai = new BehaviorTreeAI({ seed: 19 });
@@ -1364,6 +1365,7 @@ describe('BehaviorTreeAI', () => {
 
     // Once the enemy appears in FOV/minimap-known tiles, it becomes a valid target.
     floorMap.setVisible(hiddenTile.x * 2, hiddenTile.y * 2);
+    floorMap.setDiscovered(hiddenTile.x * 2, hiddenTile.y * 2);
     ai.poll(createInputState(), world);
     expect(ai.getDecision().targetEid).toBe(hiddenEnemy);
   });
@@ -1387,6 +1389,7 @@ describe('BehaviorTreeAI', () => {
     // After FOV initialization with visibility bitmap (restrictive mode).
     // Set the player tile visible (triggers hasPerceptionData = true).
     floorMap.setVisible(playerTile.x * 2, playerTile.y * 2);
+    floorMap.setDiscovered(playerTile.x * 2, playerTile.y * 2);
     // hiddenTile stays dark (all sub-tiles = 0 by default).
 
     ai.poll(createInputState(), world);
