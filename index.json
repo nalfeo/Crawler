@@ -1,5 +1,16 @@
 [
   {
+    "commit": "0300bd245a9fbd89849508dab8ac38c32ad83978",
+    "commitDate": "2026-07-11T05:02:55Z",
+    "commitSubject": "ci: add release baseline win-rate trends (#1026)",
+    "capturedAt": "2026-07-11T05:45:18.020Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29140753504",
+    "winRate": 0.8566666666666667,
+    "totalWins": 257,
+    "totalRuns": 300,
+    "path": "by-sha/0300bd245a9fbd89849508dab8ac38c32ad83978.json"
+  },
+  {
     "commit": "07838432da39881c92d76372588ae0dd5afa68d1",
     "commitDate": "2026-07-11T03:25:59Z",
     "commitSubject": "feat: complete Floor 2 direct-start and family boss progression (#1018)",
