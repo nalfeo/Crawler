@@ -1,5 +1,16 @@
 [
   {
+    "commit": "efa1b4949baef22da84486542953d2a553579275",
+    "commitDate": "2026-07-11T18:52:17Z",
+    "commitSubject": "fix: flatten blood puddles as they spread and fade (#1045)",
+    "capturedAt": "2026-07-11T19:46:20.913Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29164612372",
+    "winRate": 0.9,
+    "totalWins": 270,
+    "totalRuns": 300,
+    "path": "by-sha/efa1b4949baef22da84486542953d2a553579275.json"
+  },
+  {
     "commit": "ba89b115834f5b78116b019e493eef94255d5493",
     "commitDate": "2026-07-11T18:25:54Z",
     "commitSubject": "docs: overhaul README with game description, architecture overview, and better section order (#1033)",
