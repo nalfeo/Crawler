@@ -65,18 +65,14 @@ function isPositiveInteger(value: unknown): value is number {
   return Number.isInteger(value) && (value as number) > 0;
 }
 
-function isValidSweepRecord(
-  value: unknown,
-  expectedWeapon: string,
-  expectedSeed: number,
-): value is WeaponSweepRecord {
+function isValidSweepRecord(value: unknown, expectedWeapon: string): value is WeaponSweepRecord {
   if (!isPlainObject(value)) {
     return false;
   }
   const record = value as Partial<WeaponSweepRecord>;
   return (
     record.weapon === expectedWeapon &&
-    record.seed === expectedSeed &&
+    isPositiveInteger(record.seed) &&
     typeof record.outcome === 'string' &&
     VALID_RUN_OUTCOMES.has(record.outcome as RunStats['outcome']) &&
     isFiniteNumber(record.gameTimeSec) &&
@@ -108,6 +104,7 @@ function isValidShardShape(value: unknown, expectedWeapon: string): value is Wea
     Array.isArray(shard.summaries) &&
     shard.summaries.length === 1 &&
     isPlainObject(shard.summaries[0]) &&
+    Array.isArray((shard.summaries[0] as { records?: unknown }).records) &&
     Array.isArray(shard.allRecords)
   );
 }
@@ -169,7 +166,10 @@ export function mergeWeaponSweepShards(
     for (let index = 0; index < shard.seeds.length; index += 1) {
       const seed = shard.seeds[index]!;
       const record = shard.allRecords[index];
-      if (!isValidSweepRecord(record, weapon, seed)) {
+      if (!isValidSweepRecord(record, weapon)) {
+        throw new Error(`Malformed shard record for ${weapon}/${seed}`);
+      }
+      if (record.seed !== seed) {
         throw new Error(`Out-of-order shard record for ${weapon}/${seed}`);
       }
       if (bySeed.has(seed)) {

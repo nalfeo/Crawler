@@ -79,7 +79,15 @@ describe('mergeWeaponSweepShards', () => {
       outcome: 'victory',
     } as unknown as WeaponSweepRecord;
     expect(() => mergeWeaponSweepShards([malformed], 'sword', [1])).toThrow(
-      'Out-of-order shard record for sword/1',
+      'Malformed shard record for sword/1',
+    );
+  });
+
+  it('rejects malformed summary payloads without records arrays', () => {
+    const malformed = shard([1]);
+    malformed.summaries = [{} as (typeof malformed.summaries)[number]];
+    expect(() => mergeWeaponSweepShards([malformed], 'sword', [1])).toThrow(
+      'Malformed shard payload for weapon "sword"',
     );
   });
 });
