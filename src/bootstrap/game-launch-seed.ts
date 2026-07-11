@@ -2,8 +2,12 @@ export type LaunchSeedGenerator = () => number;
 
 export function generateGameLaunchSeed(): number {
   const values = new Uint32Array(1);
-  globalThis.crypto.getRandomValues(values);
-  return ((values[0] ?? 0) % 1_000_000) + 1;
+  let seed = 0;
+  while (seed === 0) {
+    globalThis.crypto.getRandomValues(values);
+    seed = values[0]!;
+  }
+  return seed;
 }
 
 export function resolveGameLaunchSeed(

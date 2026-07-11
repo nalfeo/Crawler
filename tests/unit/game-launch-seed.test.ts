@@ -21,7 +21,7 @@ describe('real-game launch seed', () => {
     expect(generateSeed).not.toHaveBeenCalled();
   });
 
-  it('uses browser entropy and returns a non-zero six-digit seed', () => {
+  it('uses browser entropy and returns a non-zero seed', () => {
     const getRandomValues = vi
       .spyOn(globalThis.crypto, 'getRandomValues')
       .mockImplementation((values) => {
@@ -29,7 +29,7 @@ describe('real-game launch seed', () => {
         return values;
       });
 
-    expect(generateGameLaunchSeed()).toBe(234_568);
+    expect(generateGameLaunchSeed()).toBe(1_234_567);
     getRandomValues.mockRestore();
   });
 
