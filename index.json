@@ -1,5 +1,16 @@
 [
   {
+    "commit": "ba89b115834f5b78116b019e493eef94255d5493",
+    "commitDate": "2026-07-11T18:25:54Z",
+    "commitSubject": "docs: overhaul README with game description, architecture overview, and better section order (#1033)",
+    "capturedAt": "2026-07-11T19:26:42.955Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29164180394",
+    "winRate": 0.9,
+    "totalWins": 270,
+    "totalRuns": 300,
+    "path": "by-sha/ba89b115834f5b78116b019e493eef94255d5493.json"
+  },
+  {
     "commit": "c73862e9ef0715922b00159a73cbab666e3b3e1f",
     "commitDate": "2026-07-11T10:20:00-07:00",
     "commitSubject": "docs: stop routine pre-PR full verification (#1040)",
