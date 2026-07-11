@@ -1,5 +1,16 @@
 [
   {
+    "commit": "a8e26a5189fd587c0abba2371f0d0d3387484344",
+    "commitDate": "2026-07-11T19:24:33Z",
+    "commitSubject": "fix: harden floor1 npc objective anchors and critical npc routability (#1043)",
+    "capturedAt": "2026-07-11T20:08:50.585Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29165482251",
+    "winRate": 0.9233333333333333,
+    "totalWins": 277,
+    "totalRuns": 300,
+    "path": "by-sha/a8e26a5189fd587c0abba2371f0d0d3387484344.json"
+  },
+  {
     "commit": "222aedd13232be71f2b950ec54584c32b447ffa4",
     "commitDate": "2026-07-11T19:14:40Z",
     "commitSubject": "fix: approve trusted CI recovery review runs (#1047)",
