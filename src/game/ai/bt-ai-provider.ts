@@ -1019,6 +1019,14 @@ export class BehaviorTreeAI implements AIInputProvider {
    * baseline did. The valve therefore bounds a single sticky commitment, not the
    * runner's total time near an unreachable NPC. */
   private committedDetourNoProgressFrames: number = 0;
+  /**
+   * Latched safe-room egress waypoint. While LeaveSafeRoom is active we keep a
+   * single reachable world target until the player exits the safe room, so
+   * threat-relative ENGAGE pursuit cannot flip the heading each frame.
+   */
+  private safeRoomEgressTargetX: number | null = null;
+  private safeRoomEgressTargetY: number | null = null;
+  private safeRoomEgressThreatEid: number | null = null;
 
   constructor(config: AIConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -1616,7 +1624,37 @@ export class BehaviorTreeAI implements AIInputProvider {
       'LeaveSafeRoom',
       condition('In Safe Room With Threat', (ctx) => {
         if (!ctx.world.playerInSafeRoom) {
+          this.clearSafeRoomEgressWaypoint();
           return false;
+        }
+        if (this.safeRoomEgressTargetX !== null && this.safeRoomEgressTargetY !== null) {
+          const waypointInSafeSpace = isPointInSafeSpace(
+            ctx.world,
+            this.safeRoomEgressTargetX,
+            this.safeRoomEgressTargetY,
+          );
+          const distToWaypoint = Math.hypot(
+            this.safeRoomEgressTargetX - ctx.playerX,
+            this.safeRoomEgressTargetY - ctx.playerY,
+          );
+          if (!waypointInSafeSpace && distToWaypoint > WAYPOINT_ARRIVE_FT) {
+            const threatEid = this.safeRoomEgressThreatEid;
+            const threatX =
+              typeof threatEid === 'number' ? ctx.world.stores.position.x[threatEid] : undefined;
+            const threatY =
+              typeof threatEid === 'number' ? ctx.world.stores.position.y[threatEid] : undefined;
+            const threatDistance =
+              typeof threatX === 'number' && typeof threatY === 'number'
+                ? Math.hypot(threatX - ctx.playerX, threatY - ctx.playerY)
+                : null;
+            ctx.blackboard['safeRoomEgress'] = {
+              x: this.safeRoomEgressTargetX,
+              y: this.safeRoomEgressTargetY,
+              threatDistance,
+            };
+            return true;
+          }
+          this.clearSafeRoomEgressWaypoint();
         }
         // During the tutorial's pre-level-2 grind, relying on the default 50ft
         // scan can deadlock in the safe room when the nearest swarm is just
@@ -1631,28 +1669,92 @@ export class BehaviorTreeAI implements AIInputProvider {
           forceTutorialEgress ? Number.POSITIVE_INFINITY : this.config.scanRadius,
         );
         if (!nearest) {
+          this.clearSafeRoomEgressWaypoint();
           return false;
         }
-        ctx.blackboard['safeRoomThreat'] = nearest;
+        const egress = this.computeSafeRoomEgressWaypoint(
+          ctx.world,
+          ctx.playerX,
+          ctx.playerY,
+          nearest,
+        );
+        if (egress === null) {
+          this.clearSafeRoomEgressWaypoint();
+          return false;
+        }
+        this.safeRoomEgressTargetX = egress.x;
+        this.safeRoomEgressTargetY = egress.y;
+        this.safeRoomEgressThreatEid = nearest.eid;
+        ctx.blackboard['safeRoomEgress'] = {
+          x: egress.x,
+          y: egress.y,
+          threatDistance: nearest.distance,
+        };
         return true;
       }),
       action('Set Leave Safe Room State', (ctx) => {
-        const threat = ctx.blackboard['safeRoomThreat'] as WorldTarget;
-        // Overshoot past the enemy so the move target is firmly outside the safe
-        // room even though the enemy itself hugs the boundary. A* clamps the
-        // target to the nearest reachable tile, so this reliably steps the player
-        // out where the weapon can finally fire.
-        const dx = threat.x - ctx.playerX;
-        const dy = threat.y - ctx.playerY;
-        const len = Math.hypot(dx, dy) || 1;
+        const egress = ctx.blackboard['safeRoomEgress'] as {
+          x: number;
+          y: number;
+          threatDistance: number | null;
+        };
         this.decision.state = AIState.ENGAGE;
-        this.decision.targetEid = threat.eid;
-        this.decision.targetX = threat.x + (dx / len) * SAFE_ROOM_EXIT_OVERSHOOT_FT;
-        this.decision.targetY = threat.y + (dy / len) * SAFE_ROOM_EXIT_OVERSHOOT_FT;
-        this.decision.reason = `Leaving safe room to engage enemy at ${threat.distance.toFixed(1)}ft`;
+        // Keep targetEid null while egressing: ENGAGE's pursuit fallback and
+        // pointer-lock both prefer targetEid, which would otherwise re-couple this
+        // state to a moving threat and reintroduce mouth oscillation.
+        this.decision.targetEid = null;
+        this.decision.targetX = egress.x;
+        this.decision.targetY = egress.y;
+        const threatText =
+          typeof egress.threatDistance === 'number'
+            ? ` (enemy ${egress.threatDistance.toFixed(1)}ft)`
+            : '';
+        this.decision.reason = `Leaving safe room via latched egress waypoint${threatText}`;
         return BTStatus.SUCCESS;
       }),
     );
+  }
+
+  private clearSafeRoomEgressWaypoint(): void {
+    this.safeRoomEgressTargetX = null;
+    this.safeRoomEgressTargetY = null;
+    this.safeRoomEgressThreatEid = null;
+  }
+
+  private computeSafeRoomEgressWaypoint(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    threat: WorldTarget,
+  ): { x: number; y: number } | null {
+    const dx = threat.x - playerX;
+    const dy = threat.y - playerY;
+    const len = Math.hypot(dx, dy);
+    if (len <= 0) {
+      return null;
+    }
+    const rawTargetX = threat.x + (dx / len) * SAFE_ROOM_EXIT_OVERSHOOT_FT;
+    const rawTargetY = threat.y + (dy / len) * SAFE_ROOM_EXIT_OVERSHOOT_FT;
+    const floorMap = world.floorMap;
+    if (!floorMap) {
+      return { x: rawTargetX, y: rawTargetY };
+    }
+    const startTile = floorMap.worldToTile(playerX, playerY);
+    const goalTile = floorMap.worldToTile(rawTargetX, rawTargetY);
+    const resolvedTile = this.resolveReachableGoalTile(floorMap, startTile, goalTile);
+    const resolved = floorMap.tileToWorld(resolvedTile.x, resolvedTile.y);
+    if (!isPointInSafeSpace(world, resolved.x, resolved.y)) {
+      return resolved;
+    }
+    const fallbackRawX = threat.x + (dx / len) * (SAFE_ROOM_EXIT_OVERSHOOT_FT * 2);
+    const fallbackRawY = threat.y + (dy / len) * (SAFE_ROOM_EXIT_OVERSHOOT_FT * 2);
+    const fallbackTile = floorMap.worldToTile(fallbackRawX, fallbackRawY);
+    const fallbackResolvedTile = this.resolveReachableGoalTile(floorMap, startTile, fallbackTile);
+    const fallbackResolved = floorMap.tileToWorld(fallbackResolvedTile.x, fallbackResolvedTile.y);
+    if (!isPointInSafeSpace(world, fallbackResolved.x, fallbackResolved.y)) {
+      return fallbackResolved;
+    }
+    return null;
   }
 
   /**
@@ -2600,6 +2702,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     const playerHealth = world.stores.health.current[playerEid] ?? 1;
     const playerMaxHealth = world.stores.health.max[playerEid] ?? 1;
     const healthPercent = playerHealth / playerMaxHealth;
+    if (!world.playerInSafeRoom) {
+      this.clearSafeRoomEgressWaypoint();
+    }
 
     // Update stuck detection. Standing on a harvestable to gather it nets ~zero
     // displacement on purpose, so suppress the stuck counter while harvesting —
@@ -6924,5 +7029,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.committedDetourNpcEid = null;
     this.committedDetourBestDistance = Number.POSITIVE_INFINITY;
     this.committedDetourNoProgressFrames = 0;
+    this.clearSafeRoomEgressWaypoint();
   }
 }
