@@ -39,9 +39,8 @@
  *
  * To recalibrate, run `npm run ai:winrate-sweep -- --seeds 1-N --weapons sword,
  * bow,baseball-bat` and set each weapon floor below its measured rate by a noise
- * margin. Tighten the bow floor toward 90% once issue #453 (bow kite/pursuit
- * combat) lands. Bow runs simulate the full frame budget and are markedly slower
- * in wall time than sword/bat.
+ * margin. Bow runs simulate the full frame budget and are markedly slower in
+ * wall time than sword/bat.
  *
  * ## Assertions are on deterministic *game* time, never wall time
  *
@@ -96,23 +95,22 @@ const REQUIRED_QUEST_IDS = [
  * (seeds 1..N) so it cannot be gamed by cherry-picking the easy ones — adding a
  * failing seed in range lowers the rate exactly as it should (AGENTS.md r13).
  *
- * Measured 2026-06-29 (240×140 map, welcome ~5 hops) over seeds 1–12:
- * sword 83%, bow 67%, bat 92%. Over the gated 1–8 prefix: sword 7/8 (88%),
- * bow 6/8 (75%), bat 8/8 (100%). Bow is the laggard — its kite/pursuit combat
- * inefficiency is tracked in issue #453; thresholds below sit under measured so
- * routine variance can't flake the gate, while a real regression still trips it.
+ * Measured 2026-07-11 after the ranged NPC-approach fix over seeds 1–100:
+ * sword 91%, bow 94%, bat 89%. Over the gated 1–8 prefix: sword 7/8 (88%),
+ * bow 8/8 (100%), bat 7/8 (88%). Thresholds below sit under measured so a
+ * single prefix loss does not fail CI, while a real regression still trips it.
  */
 const SAMPLE_SEEDS = Array.from({ length: 8 }, (_, i) => i + 1) as readonly number[];
 
 /**
- * Per-weapon minimum win-rate. Floors set below the measured 1–8 rates (sword
- * 88%, bow 75%, bat 100%) so deterministic-but-noisy seed variance never flakes
- * CI, yet a real navigation/combat regression that sinks multiple seeds trips
- * it. Raise the bow floor toward 90% once #453 lands.
+ * Per-weapon minimum win-rate. Floors sit one loss below the measured 1–8 rates
+ * so a single seed regression remains tolerable, while multiple losses trip CI.
+ * The bow's 87.5% floor is the closest representable threshold to the 90% broad
+ * target in an eight-seed deterministic sample.
  */
 const MIN_WIN_RATE: Readonly<Record<string, number>> = {
   sword: 0.75,
-  bow: 0.5,
+  bow: 0.875,
   'baseball-bat': 0.75,
 };
 

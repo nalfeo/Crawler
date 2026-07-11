@@ -82,11 +82,22 @@ Three additional diagnosed bow seeds also won in the real runner:
   - The command stopped only at PR preflight because this handoff and telemetry record did not yet
     exist.
 - Review ledger validation — valid 4-apple ledger.
+- Canonical cloud sweep run `29143378604` completed successfully on commit `be30a9a2`:
+
+  | Weapon       | Pre-fix wins | Post-fix wins | Change |
+  | ------------ | ------------ | ------------- | ------ |
+  | sword        | 91/100       | 91/100        | —      |
+  | bow          | 78/100       | 94/100        | +16pp  |
+  | baseball-bat | 88/100       | 89/100        | +1pp   |
+
+  The bow cleared the 90% target without regressing either comparison weapon. The contiguous gated
+  prefix also improved to 8/8 bow wins. Each weapon had one run above the 60-second safe-room
+  diagnostic threshold, so the sweep showed no bow-specific safe-room anomaly.
+
+- Tightened the deterministic eight-seed bow gate from 50% to 87.5%, the closest representable
+  threshold below the 90% broad target. The measured post-fix prefix is 100%.
 
 ## Unresolved / next steps
 
-1. Commit and push the branch, then dispatch the canonical cloud A/B sweep:
-   `legacy+legacy`, rounds `0`, seeds `1-100`, weapons `sword,bow,baseball-bat`, workers `4`.
-2. Require bow win rate to move toward the 90% target with no sword/baseball-bat regression.
-3. After cloud results, update this handoff, tighten the bow Floor-1 gate only if justified by the
-   measured broad-seed result, and open the PR.
+1. Commit and push the cloud evidence and tightened bow gate.
+2. Open the PR and begin shepherding.
