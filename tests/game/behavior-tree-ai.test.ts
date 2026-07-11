@@ -939,6 +939,33 @@ describe('BehaviorTreeAI', () => {
     expect(unlockedDecision.targetEid).not.toBe(brokerEid);
   });
 
+  it('routes to spawned Floor 2 exit stairs as the terminal progress objective', () => {
+    const world = createTestWorld({ seed: 53, floor: 2 });
+    spawnPlayer(world, 8, 8);
+    world.floorMap = makeOpenRoom(40, 20);
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [],
+        contestedResource: 'gold-veins' as never,
+        betrayerFlag: false,
+        reputationSystemActive: true,
+        staircaseSpawned: true,
+        staircaseUnlocked: true,
+        staircaseDiscovered: false,
+        staircasePos: { x: 80, y: 40 },
+      },
+    };
+
+    const ai = new BehaviorTreeAI({ seed: 53 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.EXPLORE);
+    expect(decision.targetX).toBe(80);
+    expect(decision.targetY).toBe(40);
+    expect(decision.reason).toBe('Heading to the Floor 2 exit stairs');
+  });
+
   it('engages nearby enemies before long NPC approach paths', () => {
     const world = createTestWorld({ seed: 12 });
     const player = spawnPlayer(world, 0, 0);

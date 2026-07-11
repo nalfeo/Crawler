@@ -54,6 +54,7 @@ describe('AI playthrough level-up UX wiring', () => {
   it('AI Runner Lab wires the allocator and no longer auto-spends stat points', () => {
     const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf-8');
     expect(source).toContain('autoLevelUpAllocator: computeAutoStatAllocation');
+    expect(source).toContain('autoFloor2ProgressionSystem(world, playerEid);');
     expect(source).toContain(
       'const config = createFloorGameConfig(canvas, sceneOptions, currentFloor);',
     );
