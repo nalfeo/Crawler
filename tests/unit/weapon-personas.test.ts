@@ -36,7 +36,7 @@ describe('weapon AI personas', () => {
   it('satisfies minimum targets before applying weighted preferences', () => {
     const world = createTestWorld({ seed: 42 });
     const playerEid = spawnPlayer(world, 0, 0);
-    const persona = WEAPON_PERSONAS.fireball;
+    const persona = WEAPON_PERSONAS.fireball!;
     const allocation = computeWeaponPersonaStatAllocation(world, playerEid, 6, persona);
     expect(allocation).toEqual({ constitution: 6 });
   });
@@ -61,7 +61,7 @@ describe('weapon AI personas', () => {
   });
 
   it('ranks gear that closes a minimum-target deficit above weighted offense', () => {
-    const persona = WEAPON_PERSONAS.sword;
+    const persona = WEAPON_PERSONAS.sword!;
     const constitutionGear: EquipmentItemDef = {
       id: 'test-constitution',
       name: 'Constitution Gear',
