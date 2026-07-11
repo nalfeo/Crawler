@@ -1291,12 +1291,14 @@ describe('floor1Scenario', () => {
       initializeFloor1Scenario(worldA, playerA);
       worldA.goalFlags.set('floor1-shop-quest-complete', true);
       worldA.floorScenario!.starterChoices = [...FLOOR1_LOADOUT_CHOICE_IDS];
+      expect(worldA.floorScenario?.starterChoices).toEqual([...FLOOR1_LOADOUT_CHOICE_IDS]);
 
       const worldB = createTestWorld({ seed: 5 });
       const playerB = spawnPlayer(worldB, 0, 0);
       initializeFloor1Scenario(worldB, playerB);
       worldB.goalFlags.set('floor1-shop-quest-complete', true);
       worldB.floorScenario!.starterChoices = [...FLOOR1_LOADOUT_CHOICE_IDS];
+      expect(worldB.floorScenario?.starterChoices).toEqual([...FLOOR1_LOADOUT_CHOICE_IDS]);
 
       const stockA = getShopkeeperPostQuestStock(worldA);
       const stockB = getShopkeeperPostQuestStock(worldB);
@@ -1312,7 +1314,9 @@ describe('floor1Scenario', () => {
         fireball: 'fireball',
       };
       const expectedItemIds = new Set(
-        FLOOR1_LOADOUT_CHOICE_IDS.map((weaponId) => starterToItem[weaponId]),
+        FLOOR1_LOADOUT_CHOICE_IDS.map((weaponId) => starterToItem[weaponId]).filter(
+          (itemId): itemId is string => itemId !== undefined,
+        ),
       );
       for (const entry of stockA) {
         expect(expectedItemIds.has(entry.itemId)).toBe(true);

@@ -1,17 +1,7 @@
 import type { GameWorld } from '../../core/world.js';
-import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { type ModalPickerScenario } from '../../shared/modal-picker.js';
+import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { equipStarterOrFallback } from './starterWeaponEquip.js';
-
-export type Floor1LoadoutChoiceId = 'sword' | 'bow' | 'baseball-bat';
-
-export const DEFAULT_FLOOR1_LOADOUT_CHOICE: Floor1LoadoutChoiceId = 'sword';
-
-export const FLOOR1_LOADOUT_CHOICE_IDS: readonly Floor1LoadoutChoiceId[] = [
-  'sword',
-  'bow',
-  'baseball-bat',
-];
 
 const FLOOR1_LOADOUT_OPTIONS = [
   {
@@ -30,6 +20,13 @@ const FLOOR1_LOADOUT_OPTIONS = [
     description: 'Baseball Bat: wide slow swing that launches enemies across the room.',
   },
 ] as const;
+
+export type Floor1LoadoutChoiceId = (typeof FLOOR1_LOADOUT_OPTIONS)[number]['id'];
+
+export const DEFAULT_FLOOR1_LOADOUT_CHOICE: Floor1LoadoutChoiceId = 'sword';
+
+export const FLOOR1_LOADOUT_CHOICE_IDS: readonly Floor1LoadoutChoiceId[] =
+  FLOOR1_LOADOUT_OPTIONS.map((option) => option.id);
 
 function resolveFloor1LoadoutChoice(choiceId: string | undefined): Floor1LoadoutChoiceId {
   if (choiceId === 'sword' || choiceId === 'bow' || choiceId === 'baseball-bat') {
