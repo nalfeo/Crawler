@@ -22,7 +22,8 @@ import {
 } from '../../core/systems/equipmentSystem.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../shared/constants.js';
 import { getEquipmentDefForItem } from '../../shared/equipmentDefs.js';
-import type { PrimaryStatId } from '../../shared/stats.js';
+import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from '../../shared/quest-types.js';
+import { PRIMARY_STATS, type PrimaryStatId, type StatId } from '../../shared/stats.js';
 import { AIState, type AIInputProvider } from './types.js';
 import { NPC_INTERACTION_RADIUS_FT } from './bt-ai-tuning.js';
 import {
@@ -42,7 +43,7 @@ import { computeAutoStatAllocation } from '../scenarios/playerStatAllocationPoli
 import {
   computeWeaponPersonaStatAllocation,
   getWeaponPersonaForWorld,
-  scoreEquipmentForPersona,
+  type WeaponPersona,
 } from './weapon-personas.js';
 export { computeAutoStatAllocation } from '../scenarios/playerStatAllocationPolicy.js';
 
@@ -263,8 +264,13 @@ function equipPersonaPreferredGear(world: GameWorld, playerEid: number): boolean
   if (!persona || !bag) return false;
 
   let equippedAny = false;
+  if (bag.slots.some((slot) => slot.itemId === SHOPKEEPER_EQUIPMENT_ITEM_ID)) {
+    const questGear = equipFromBag(world, playerEid, SHOPKEEPER_EQUIPMENT_ITEM_ID, { force: true });
+    equippedAny = questGear.ok || equippedAny;
+  }
   while (true) {
     const currentStats = getEffectiveStats(world, playerEid);
+    const currentUtility = scoreLoadoutForPersona(persona, currentStats);
     const bestCandidate = [...new Set(bag.slots.map((slot) => slot.itemId))]
       .map((itemId) => {
         const def = getEquipmentDefForItem(itemId);
@@ -272,20 +278,20 @@ function equipPersonaPreferredGear(world: GameWorld, playerEid: number): boolean
         if (!def || !preview?.canEquip) {
           return undefined;
         }
-        const deltaScore =
-          scoreEquipmentForPersona(def, persona, currentStats) -
-          preview.swappedOut.reduce(
-            (score, swapped) => score + scoreEquipmentForPersona(swapped, persona, currentStats),
-            0,
-          );
-        return deltaScore > 0 ? { itemId, deltaScore } : undefined;
+        const nextStats = { ...currentStats };
+        for (const stat of Object.keys(preview.deltas) as StatId[]) {
+          nextStats[stat] = (nextStats[stat] ?? 0) + preview.deltas[stat];
+        }
+        const utilityGain = scoreLoadoutForPersona(persona, nextStats) - currentUtility;
+        return utilityGain > 0 ? { itemId, utilityGain } : undefined;
       })
       .filter(
-        (candidate): candidate is { itemId: string; deltaScore: number } => candidate !== undefined,
+        (candidate): candidate is { itemId: string; utilityGain: number } =>
+          candidate !== undefined,
       )
       .sort(
         (a, b) =>
-          b.deltaScore - a.deltaScore || (a.itemId < b.itemId ? -1 : a.itemId > b.itemId ? 1 : 0),
+          b.utilityGain - a.utilityGain || (a.itemId < b.itemId ? -1 : a.itemId > b.itemId ? 1 : 0),
       )[0];
     if (!bestCandidate) {
       break;
@@ -297,4 +303,18 @@ function equipPersonaPreferredGear(world: GameWorld, playerEid: number): boolean
     equippedAny = true;
   }
   return equippedAny;
+}
+
+function scoreLoadoutForPersona(
+  persona: WeaponPersona,
+  stats: Partial<Readonly<Record<StatId, number>>>,
+): number {
+  let score = 0;
+  for (const stat of PRIMARY_STATS) {
+    score += Math.min(stats[stat] ?? 0, persona.minimumTargets[stat] ?? 0) * 100;
+  }
+  for (const [stat, weight] of Object.entries(persona.statWeights) as [StatId, number][]) {
+    score += (stats[stat] ?? 0) * weight;
+  }
+  return score;
 }

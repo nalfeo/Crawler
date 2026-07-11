@@ -19,6 +19,7 @@ import type { EquipmentItemDef } from '../../src/shared/equipment-types.js';
 import { addItem, hasItem } from '../../src/shared/inventory.js';
 import { ItemRarity, customTag, type ItemDef } from '../../src/shared/items.js';
 import type { NpcInstance } from '../../src/shared/npc-types.js';
+import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from '../../src/shared/quest-types.js';
 import type { GameWorld } from '../../src/core/world.js';
 import type { FloorScenarioState } from '../../src/shared/floor-types.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
@@ -434,6 +435,23 @@ describe('autoFloor1ProgressionSystem', () => {
     const fireballEquipment = getEquipmentState(fireballWorld, fireballPlayer)!;
     expect(fireballEquipment.instances.get(fireballEquipment.equipped.ringRight!)?.def.id).toBe(
       'signet-of-focus',
+    );
+  });
+
+  it("still equips the Merchant's Charm even when persona scoring is zero", () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    world.floorScenario = makeFloor1({ staircaseUnlocked: false });
+    setActiveWeaponDef(world, getWeaponDef('sword')!);
+    const bag = world.inventories.get(player)!;
+    addItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID, 1);
+
+    autoFloor1ProgressionSystem(world, player, true);
+
+    expect(hasItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID)).toBe(false);
+    const equipment = getEquipmentState(world, player)!;
+    expect(equipment.instances.get(equipment.equipped.neck!)?.def.id).toBe(
+      SHOPKEEPER_EQUIPMENT_ITEM_ID,
     );
   });
 
