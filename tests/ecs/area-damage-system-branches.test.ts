@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { spawnAreaAttack, spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { areaDamageSystem, clearAreaDamageHits } from '../../src/core/systems/areaDamageSystem.js';
 import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
+import { dropSystem } from '../../src/core/systems/dropSystem.js';
 import { Health, Position, Sprite, Team } from '../../src/core/components.js';
 import { TeamId } from '../../src/shared/constants.js';
 import { makeMapWithSafeRoom } from '../helpers/map-fixtures.js';
@@ -154,5 +155,27 @@ describe('areaDamageSystem hit-gated weapon-skill XP', () => {
 
     expect(world.stores.health.current[enemy]).toBe(35);
     expect(world.skillUsageEvents).toHaveLength(0);
+  });
+});
+
+describe('areaDamageSystem lethal-hit kill attribution', () => {
+  it('retains player EID as sourceEid in the death event after a lethal area hit', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 100, 100);
+    // HP=1 so the 40-damage area hit is lethal
+    const enemy = spawnEnemy(world, 110, 100, 1);
+    world.elapsedMs = 100;
+    spawnAreaAttack(world, 100, 100, player, 15, 40, 200, TeamId.PLAYER);
+
+    const collision = collisionSystem(world);
+    areaDamageSystem(world, collision);
+    // Enemy HP should now be ≤ 0
+    expect((world.stores.health.current[enemy] ?? 1)).toBeLessThanOrEqual(0);
+
+    dropSystem(world, { spawnLoot: false });
+
+    const deathEvents = world.combatEvents.filter((e) => e.type === 'death');
+    expect(deathEvents).toHaveLength(1);
+    expect(deathEvents[0]!.sourceEid).toBe(player);
   });
 });

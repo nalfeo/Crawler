@@ -24,7 +24,8 @@ import {
 } from '../../src/core/helpers.js';
 import { dropSystem } from '../../src/core/systems/dropSystem.js';
 import { meleeSwingSystem } from '../../src/core/systems/meleeSwingSystem.js';
-import { MeleeStyle } from '../../src/shared/constants.js';
+import { MeleeStyle, TeamId } from '../../src/shared/constants.js';
+import { spawnMeleeSwing } from '../../src/core/spawners/melee.js';
 import {
   initializeFloor1Scenario,
   meetTutorialGoon,
@@ -395,5 +396,30 @@ describe('dropSystem', () => {
     expect(query(world.ecs, [XpGem]).length).toBe(0);
     expect(query(world.ecs, [Gold]).length).toBe(0);
     expect(query(world.ecs, [DroppedItem]).length).toBe(itemsAtInit);
+  });
+});
+
+describe('meleeSwingSystem lethal-hit kill attribution', () => {
+  it('retains player EID as sourceEid in the death event after a lethal melee hit', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    // HP=1 so the 15-damage melee hit is lethal; place enemy at (2, 0) within blade reach
+    const enemy = spawnEnemy(world, 2, 0, 1);
+    // Spawn the swing at t=0; at progress=0.5 (t=500ms) the 360-degree slash sweeps
+    // to the right (angle=0) so the blade from (0,0) to (4,0) covers the enemy at (2,0).
+    world.elapsedMs = 0;
+    spawnMeleeSwing(world, 0, 0, player, 15, 4, 1000, 1, 0, 360, TeamId.PLAYER, MeleeStyle.SLASH);
+    world.elapsedMs = 500; // progress = 0.5 → blade tip at (4, 0) → enemy at (2, 0) on segment
+
+    // No collisionResult provided — meleeSwingSystem falls back to the full scan
+    meleeSwingSystem(world);
+    // Enemy HP should now be ≤ 0
+    expect((world.stores.health.current[enemy] ?? 1)).toBeLessThanOrEqual(0);
+
+    dropSystem(world, { spawnLoot: false });
+
+    const deathEvents = world.combatEvents.filter((e) => e.type === 'death');
+    expect(deathEvents).toHaveLength(1);
+    expect(deathEvents[0]!.sourceEid).toBe(player);
   });
 });

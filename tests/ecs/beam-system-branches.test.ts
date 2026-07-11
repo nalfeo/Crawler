@@ -2,6 +2,7 @@ import { addComponent, addEntity, removeEntity, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { spawnBeam, spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { beamSystem } from '../../src/core/systems/beamSystem.js';
+import { dropSystem } from '../../src/core/systems/dropSystem.js';
 import { Health, Position, Sprite, Team } from '../../src/core/components.js';
 import { TeamId } from '../../src/shared/constants.js';
 import { makeMapWithSafeRoom } from '../helpers/map-fixtures.js';
@@ -125,5 +126,26 @@ describe('beamSystem hit-gated weapon-skill XP', () => {
 
     expect(world.stores.health.current[enemy]).toBe(35);
     expect(world.skillUsageEvents).toHaveLength(0);
+  });
+});
+
+describe('beamSystem lethal-hit kill attribution', () => {
+  it('retains player EID as sourceEid in the death event after a lethal beam hit', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    // HP=1 so the 15-damage beam hit is lethal
+    const enemy = spawnEnemy(world, 30, 0, 1);
+    world.elapsedMs = 1000;
+    spawnBeam(world, 0, 0, 1, 0, 100, 15, 500, 0, player, TeamId.PLAYER);
+
+    beamSystem(world);
+    // Enemy HP should now be ≤ 0
+    expect((world.stores.health.current[enemy] ?? 1)).toBeLessThanOrEqual(0);
+
+    dropSystem(world, { spawnLoot: false });
+
+    const deathEvents = world.combatEvents.filter((e) => e.type === 'death');
+    expect(deathEvents).toHaveLength(1);
+    expect(deathEvents[0]!.sourceEid).toBe(player);
   });
 });
