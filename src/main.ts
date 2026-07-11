@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { createFloorGameConfig } from './bootstrap/floor-game-config.js';
+import { resolveGameLaunchSeed } from './bootstrap/game-launch-seed.js';
 import { GAME } from './shared/constants.js';
 import {
   createLogger,
@@ -33,10 +34,11 @@ logger.info('Game bootstrapped', {
 });
 
 async function bootstrapGame(): Promise<void> {
-  let floorId =
-    (typeof window !== 'undefined'
-      ? new URL(window.location.href).searchParams.get('floor')
-      : null) ?? 'floor1';
+  const searchParams =
+    typeof window !== 'undefined'
+      ? new URL(window.location.href).searchParams
+      : new URLSearchParams();
+  let floorId = (typeof window !== 'undefined' ? searchParams.get('floor') : null) ?? 'floor1';
 
   // Validate floorId is known by checking if we can get the manifest
   const { getFloorManifest } = await import('./shared/floor-registry.js');
@@ -46,7 +48,10 @@ async function bootstrapGame(): Promise<void> {
   }
 
   const { createFloorMainSceneOptions } = await import('./bootstrap/floor-main-scene-options.js');
-  const sceneOptions = createFloorMainSceneOptions(floorId);
+  const sceneOptions = {
+    ...createFloorMainSceneOptions(floorId),
+    worldSeed: resolveGameLaunchSeed(searchParams),
+  };
   const config = createFloorGameConfig('game-container', sceneOptions, floorId);
   new Phaser.Game(config);
 }
