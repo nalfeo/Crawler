@@ -72,5 +72,4 @@ describe('createFloor1MainSceneOptions', () => {
 
     expect(world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID)).toBe(true);
   });
-
 });
