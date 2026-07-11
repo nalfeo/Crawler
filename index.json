@@ -44,6 +44,17 @@
     "path": "by-sha/4e7c690da149abb542df004c9f69b6348795559e.json"
   },
   {
+    "commit": "cb04c19498acdc6d32501e0834fded7874d694df",
+    "commitDate": "2026-07-10T22:18:54-07:00",
+    "commitSubject": "fix(ai): replace 188ft tutorial-goon fallback with BFS reachable-anchor navigation (#1027)",
+    "capturedAt": "2026-07-11T06:01:44.895Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29141211646",
+    "winRate": 0.8666666666666667,
+    "totalWins": 260,
+    "totalRuns": 300,
+    "path": "by-sha/cb04c19498acdc6d32501e0834fded7874d694df.json"
+  },
+  {
     "commit": "554da4b923bc52b5442bca2f20c7bbfd0d5b3d00",
     "commitDate": "2026-07-10T21:54:56Z",
     "commitSubject": "chore: codify sweep standards and repair ADR consistency docs (#1015)",
