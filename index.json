@@ -44,6 +44,17 @@
     "path": "by-sha/47ee0d0fd78a96879288ecf6ab432b75f2c48fd4.json"
   },
   {
+    "commit": "468006b07e003b73dccb55d896371aa1f68852e7",
+    "commitDate": "2026-07-10T17:43:32-07:00",
+    "commitSubject": "fix(ai): resolve floor1 class-D pre-chain tutorial-goon progression lock (#1019)",
+    "capturedAt": "2026-07-11T01:25:57.444Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29133503458",
+    "winRate": 0.84,
+    "totalWins": 252,
+    "totalRuns": 300,
+    "path": "by-sha/468006b07e003b73dccb55d896371aa1f68852e7.json"
+  },
+  {
     "commit": "5fc10da90f0fcf24fc0e992dd284886f228cbaec",
     "commitDate": "2026-07-10T12:53:02-07:00",
     "commitSubject": "fix(ai): restore floor1 safe-room progression reacquisition (#1016)",
