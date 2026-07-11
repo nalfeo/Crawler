@@ -194,11 +194,15 @@ jobs:
               path.resolve(process.env.GITHUB_WORKSPACE, '.github/scripts/tracking-issues/freshness.mjs')
             );
             const { getWorkflowRunFreshness } = await import(helperUrl.href);
-            const freshness = await getWorkflowRunFreshness({ github, context });
+            const freshness = await getWorkflowRunFreshness({
+              github,
+              context,
+              titlePatterns: [/^nightly-mutation: \d{4}-\d{2}-\d{2} regression$/]
+            });
             core.setOutput('is_latest', freshness.isLatest ? 'true' : 'false');
             if (!freshness.isLatest) {
               core.warning(
-                `Skipping stale nightly mutation report for run ${context.runId}; newer run ${freshness.newerRun.id} (run_number ${freshness.newerRun.run_number}) already exists.`
+                `Skipping stale nightly mutation report for run ${context.runId}; newer filed issue #${freshness.newerIssue.number} from run_number ${freshness.newerIssueMetadata?.runNumber ?? 'unknown'} already exists.`
               );
             }
 
@@ -215,12 +219,16 @@ jobs:
               path.resolve(process.env.GITHUB_WORKSPACE, '.github/scripts/tracking-issues/supersede.mjs')
             );
             const { supersedeTrackingIssues } = await import(helperUrl.href);
+            const freshnessHelperUrl = pathToFileURL(
+              path.resolve(process.env.GITHUB_WORKSPACE, '.github/scripts/tracking-issues/freshness.mjs')
+            );
+            const { withTrackingIssueRunMetadata } = await import(freshnessHelperUrl.href);
             const date = new Date().toISOString().slice(0, 10);
             const issue = (await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: `nightly-mutation: ${date} regression`,
-              body: fs.readFileSync('report.md', 'utf8'),
+              body: withTrackingIssueRunMetadata(fs.readFileSync('report.md', 'utf8'), { context }),
               labels: ['automation', 'test-health']
             })).data;
 

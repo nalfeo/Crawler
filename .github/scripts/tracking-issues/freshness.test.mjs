@@ -5,94 +5,81 @@ import { getWorkflowRunFreshness } from './freshness.mjs';
 
 const context = {
   runId: 401,
+  runNumber: 55,
+  refName: 'main',
   repo: { owner: 'nalfeo', repo: 'Crawler' },
 };
 
-function createGithub({ currentRun, workflowRuns }) {
+function createGithub(openIssues) {
   const calls = [];
   const github = {
     paginate: async (_method, params) => {
-      calls.push({ type: 'list', params });
-      return workflowRuns;
+      calls.push(params);
+      return openIssues;
     },
-    rest: {
-      actions: {
-        async getWorkflowRun(params) {
-          calls.push({ type: 'get', params });
-          return { data: currentRun };
-        },
-        listWorkflowRuns() {},
-      },
-    },
+    rest: { issues: { listForRepo() {} } },
   };
   return { github, calls };
 }
 
-test('treats the highest matching run number as the latest run', async () => {
-  const currentRun = {
-    id: 401,
-    workflow_id: 12,
-    run_number: 55,
-    event: 'schedule',
-    head_branch: 'main',
-  };
-  const { github, calls } = createGithub({
-    currentRun,
-    workflowRuns: [
-      currentRun,
-      { id: 398, workflow_id: 12, run_number: 54, event: 'schedule', head_branch: 'main' },
-    ],
-  });
-
-  const freshness = await getWorkflowRunFreshness({ github, context });
-
-  assert.equal(freshness.isLatest, true);
-  assert.equal(freshness.newerRun, null);
-  assert.deepEqual(calls, [
+test('treats the current run as latest when no newer filed report exists', async () => {
+  const { github, calls } = createGithub([
     {
-      type: 'get',
-      params: { owner: 'nalfeo', repo: 'Crawler', run_id: 401 },
+      number: 12,
+      title: 'nightly-mutation: 2026-07-11 regression',
+      body: '<!-- tracking-issue-run-number:54 -->\n<!-- tracking-issue-head-branch:main -->',
     },
     {
-      type: 'list',
-      params: {
-        owner: 'nalfeo',
-        repo: 'Crawler',
-        workflow_id: 12,
-        branch: 'main',
-        per_page: 100,
-      },
+      number: 13,
+      title: 'nightly-mutation: 2026-07-12 regression',
+      body: 'legacy issue without metadata',
     },
   ]);
-});
 
-test('marks the run stale when a newer run for the same branch already exists', async () => {
-  const currentRun = {
-    id: 401,
-    workflow_id: 12,
-    run_number: 55,
-    event: 'schedule',
-    head_branch: 'main',
-  };
-  const newerRun = {
-    id: 409,
-    workflow_id: 12,
-    run_number: 56,
-    event: 'workflow_dispatch',
-    head_branch: 'main',
-  };
-  const { github } = createGithub({
-    currentRun,
-    workflowRuns: [
-      newerRun,
-      currentRun,
-      { id: 410, workflow_id: 12, run_number: 57, event: 'workflow_dispatch', head_branch: 'main' },
-      { id: 411, workflow_id: 12, run_number: 58, event: 'schedule', head_branch: 'release' },
-    ],
+  const freshness = await getWorkflowRunFreshness({
+    github,
+    context,
+    titlePatterns: [/^nightly-mutation: \d{4}-\d{2}-\d{2} regression$/],
   });
 
-  const freshness = await getWorkflowRunFreshness({ github, context });
+  assert.equal(freshness.isLatest, true);
+  assert.equal(freshness.newerIssue, null);
+  assert.deepEqual(calls, [{ owner: 'nalfeo', repo: 'Crawler', state: 'open', per_page: 100 }]);
+});
+
+test('marks the run stale only when a newer filed report exists for the same branch', async () => {
+  const newerIssue = {
+    number: 19,
+    title: 'docs-update: 2026-07-12 findings',
+    body: [
+      '<!-- tracking-issue-run-id:409 -->',
+      '<!-- tracking-issue-run-number:56 -->',
+      '<!-- tracking-issue-head-branch:main -->',
+      '',
+      'report body',
+    ].join('\n'),
+  };
+  const { github } = createGithub([
+    newerIssue,
+    {
+      number: 18,
+      title: 'docs-update: 2026-07-11 findings',
+      body: '<!-- tracking-issue-run-number:57 -->\n<!-- tracking-issue-head-branch:release -->',
+    },
+    {
+      number: 17,
+      title: 'docs-update: 2026-07-10 findings',
+      body: '<!-- tracking-issue-run-number:58 -->\n<!-- tracking-issue-head-branch:main -->',
+      pull_request: { url: 'https://example.test/pr/17' },
+    },
+  ]);
+
+  const freshness = await getWorkflowRunFreshness({
+    github,
+    context,
+    titlePatterns: [/^docs-update: \d{4}-\d{2}-\d{2} findings$/],
+  });
 
   assert.equal(freshness.isLatest, false);
-  assert.deepEqual(freshness.newerRun, newerRun);
+  assert.deepEqual(freshness.newerIssue, newerIssue);
 });
