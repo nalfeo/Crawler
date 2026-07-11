@@ -150,4 +150,25 @@ describe('normalizeFunSessions', () => {
     ).toThrow(/missing a valid RunStats payload/);
     expect(() => normalizeFunSessions({ data: [makeRun()] })).toThrow(/Unsupported input shape/);
   });
+
+  it('normalizes a legacy payload missing safeRoomMs to 0 (array + single-root paths)', () => {
+    const legacyRun: Record<string, unknown> = { ...makeRun() };
+    delete legacyRun.safeRoomMs;
+    expect('safeRoomMs' in legacyRun).toBe(false);
+
+    const fromArray = normalizeFunSessions([legacyRun]);
+    expect(fromArray[0]?.run.safeRoomMs).toBe(0);
+
+    const fromRoot = normalizeFunSessions(legacyRun);
+    expect(fromRoot[0]?.run.safeRoomMs).toBe(0);
+  });
+
+  it('rejects a present-but-invalid safeRoomMs (corruption, not a missing legacy field)', () => {
+    expect(() => normalizeFunSessions([makeRun({ safeRoomMs: Number.NaN })])).toThrow(
+      /missing a valid RunStats payload/,
+    );
+    expect(() =>
+      normalizeFunSessions([makeRun({ safeRoomMs: 'lots' as unknown as number })]),
+    ).toThrow(/missing a valid RunStats payload/);
+  });
 });

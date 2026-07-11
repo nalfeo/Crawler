@@ -168,6 +168,71 @@ function assertRowSafeRoomInRange(row: RunRow): void {
   }
 }
 
+/**
+ * Validate a SEARCH artifact's provenance before its tuned finalist config is
+ * used to seed a fresh VALIDATE shard. Unlike shard rows — which pass through
+ * {@link mergeShards}' schema/floor/budget guards at the aggregate fan-in — the
+ * finalist config crosses the search→validate job boundary WITHOUT that vetting,
+ * then the validate stage emits a fresh, well-formed shard, so a stale or
+ * mismatched search artifact would silently seed valid-looking v{@link
+ * SHARD_SCHEMA_VERSION} validation rows and evade the merge guard entirely. A
+ * pre-v{@link SHARD_SCHEMA_VERSION} artifact in particular selected its winner
+ * under the OLD raw-time win definition, so its finalist is not comparable under
+ * the current safe-room-credited SSOT win.
+ *
+ * @param meta     the artifact's recorded provenance (absent on a legacy artifact)
+ * @param combo    the combo the artifact was produced for (`SearchArtifact.combo`)
+ * @param expected the current runner's calibration the artifact must match
+ */
+export function assertSearchArtifactProvenance(
+  meta: ShardMeta | undefined,
+  combo: string | undefined,
+  expected: { combo: string; floorId: string; budgetMs: number; maxFrames: number },
+): void {
+  if (!meta) {
+    throw new Error(
+      `Search artifact has no meta/provenance block (pre-v${SHARD_SCHEMA_VERSION} schema); ` +
+        `re-run --stage search on the current build before validating.`,
+    );
+  }
+  if (meta.schemaVersion !== SHARD_SCHEMA_VERSION) {
+    throw new Error(
+      `Search artifact schema version ${meta.schemaVersion} != current ${SHARD_SCHEMA_VERSION}; ` +
+        `its finalist was tuned under an older win definition (pre-v${SHARD_SCHEMA_VERSION} rows ` +
+        `lack safeRoomMs). Re-run --stage search.`,
+    );
+  }
+  if (meta.stage !== 'search') {
+    throw new Error(
+      `Search artifact stage '${meta.stage}' != 'search'; pass a --stage search artifact.`,
+    );
+  }
+  if (meta.floorId !== expected.floorId) {
+    throw new Error(
+      `Search artifact floorId '${meta.floorId}' != '${expected.floorId}'; ` +
+        `the finalist was tuned on a different floor.`,
+    );
+  }
+  if (meta.budgetMs !== expected.budgetMs) {
+    throw new Error(
+      `Search artifact win-budget ${meta.budgetMs} != current ${expected.budgetMs}; ` +
+        `the finalist was tuned against a different win budget.`,
+    );
+  }
+  if (meta.maxFrames !== expected.maxFrames) {
+    throw new Error(
+      `Search artifact frame-cap ${meta.maxFrames} != current ${expected.maxFrames}; ` +
+        `the finalist was tuned under a different frame budget.`,
+    );
+  }
+  if (combo !== expected.combo) {
+    throw new Error(
+      `Search artifact combo '${combo}' != requested '${expected.combo}'; ` +
+        `this finalist belongs to a different combo.`,
+    );
+  }
+}
+
 export interface MergedShards {
   meta: ShardMeta;
   rows: RunRow[];

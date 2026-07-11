@@ -23,6 +23,7 @@ import {
   aggregate,
   assertComplete,
   assertRowsConsistent,
+  assertSearchArtifactProvenance,
   buildLeaderboard,
   deriveRunFacts,
   mergeShards,
@@ -457,5 +458,83 @@ describe('renderMarkdown', () => {
     expect(md).toContain('AI combo eval');
     expect(md).toContain('Ranked by Σ composite score');
     expect(md).toContain('Composite-score winner ≠ win-count winner');
+  });
+});
+
+describe('assertSearchArtifactProvenance', () => {
+  const SEARCH_META: ShardMeta = { ...META, stage: 'search' };
+  const EXPECTED = {
+    combo: 'navmeshFused+slackAware',
+    floorId: 'floor1',
+    budgetMs: META.budgetMs,
+    maxFrames: META.maxFrames,
+  } as const;
+
+  it('accepts a matching, current-schema search artifact', () => {
+    expect(() =>
+      assertSearchArtifactProvenance(SEARCH_META, EXPECTED.combo, EXPECTED),
+    ).not.toThrow();
+  });
+
+  it('rejects a legacy artifact with no meta/provenance block', () => {
+    expect(() => assertSearchArtifactProvenance(undefined, EXPECTED.combo, EXPECTED)).toThrow(
+      /no meta\/provenance block/,
+    );
+  });
+
+  it('rejects a pre-safe-room (older schema) artifact whose finalist used the raw-time win', () => {
+    expect(() =>
+      assertSearchArtifactProvenance(
+        { ...SEARCH_META, schemaVersion: SHARD_SCHEMA_VERSION - 1 },
+        EXPECTED.combo,
+        EXPECTED,
+      ),
+    ).toThrow(/schema version .* != current/);
+  });
+
+  it('rejects a non-search-stage artifact', () => {
+    expect(() =>
+      assertSearchArtifactProvenance(
+        { ...SEARCH_META, stage: 'validate' },
+        EXPECTED.combo,
+        EXPECTED,
+      ),
+    ).toThrow(/stage 'validate' != 'search'/);
+  });
+
+  it('rejects an artifact tuned on a different floor', () => {
+    expect(() =>
+      assertSearchArtifactProvenance(
+        { ...SEARCH_META, floorId: 'floor2' },
+        EXPECTED.combo,
+        EXPECTED,
+      ),
+    ).toThrow(/floorId 'floor2' != 'floor1'/);
+  });
+
+  it('rejects an artifact tuned against a different win budget', () => {
+    expect(() =>
+      assertSearchArtifactProvenance(
+        { ...SEARCH_META, budgetMs: EXPECTED.budgetMs - 1 },
+        EXPECTED.combo,
+        EXPECTED,
+      ),
+    ).toThrow(/win-budget .* != current/);
+  });
+
+  it('rejects an artifact tuned under a different frame cap', () => {
+    expect(() =>
+      assertSearchArtifactProvenance(
+        { ...SEARCH_META, maxFrames: EXPECTED.maxFrames - 1 },
+        EXPECTED.combo,
+        EXPECTED,
+      ),
+    ).toThrow(/frame-cap .* != current/);
+  });
+
+  it('rejects an artifact whose finalist belongs to a different combo', () => {
+    expect(() => assertSearchArtifactProvenance(SEARCH_META, 'legacy+legacy', EXPECTED)).toThrow(
+      /combo 'legacy\+legacy' != requested/,
+    );
   });
 });

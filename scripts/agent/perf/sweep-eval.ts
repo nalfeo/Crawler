@@ -61,6 +61,7 @@ import {
 } from './gen-configs.js';
 import {
   SHARD_SCHEMA_VERSION,
+  assertSearchArtifactProvenance,
   deriveRunFacts,
   type RunRow,
   type ShardArtifact,
@@ -459,6 +460,15 @@ async function main(argv: readonly string[]): Promise<void> {
     throw new Error('--search-artifact <path> is required for --stage validate');
   }
   const search = JSON.parse(readFileSync(args.searchArtifact, 'utf8')) as SearchArtifact;
+  // The finalist config crosses the search→validate boundary WITHOUT passing
+  // through the aggregate fan-in guard, so vet its provenance here: a stale
+  // (pre-safe-room) or mismatched artifact must not seed v2 validation rows.
+  assertSearchArtifactProvenance(search.meta as ShardMeta | undefined, search.combo, {
+    combo: comboId(combo),
+    floorId: args.floorId,
+    budgetMs: FLOOR1_TIME_BUDGET_MS,
+    maxFrames: MAX_FRAMES,
+  });
   const finalist = search.configs[search.bestConfigId];
   if (!finalist) {
     throw new Error(`Search artifact missing config for bestConfigId ${search.bestConfigId}`);
