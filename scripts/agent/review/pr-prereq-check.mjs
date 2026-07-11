@@ -58,6 +58,16 @@ function captureTelemetry(cwd, slug) {
   });
 }
 
+function captureErrorDetail(err) {
+  if (typeof err?.stderr === 'string' && err.stderr.trim()) {
+    return err.stderr.trim();
+  }
+  if (typeof err?.message === 'string' && err.message.trim()) {
+    return err.message.trim();
+  }
+  return 'unknown telemetry:capture failure';
+}
+
 export function summarizePrereqResult(preflightDecision, ledgerDecision) {
   const failures = [];
   const notes = [];
@@ -112,14 +122,11 @@ export function telemetryCaptureNote(cwd, files, addedFiles = [], opts = {}) {
     try {
       captureOutput = runCapture(cwd, slug) ?? '';
     } catch (err) {
-      const detail = String(
-        err?.stderr?.toString?.().trim() || err?.message || 'unknown telemetry:capture failure',
-      );
       return section(
         'guard-telemetry',
         `Automatic guard-telemetry capture failed for session "${slug}". Run ` +
           `\`npm run telemetry:capture -- ${slug}\` manually before PR.\n\n` +
-          `Last error: ${detail}`,
+          `Last error: ${captureErrorDetail(err)}`,
       );
     }
 

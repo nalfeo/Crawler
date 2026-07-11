@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Buffer } from 'node:buffer';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -142,7 +141,7 @@ test('telemetryCaptureNote surfaces automatic-capture failure details', () => {
       {
         captureTelemetry() {
           const error = new Error('boom');
-          error.stderr = Buffer.from('capture exploded\n');
+          error.stderr = 'capture exploded\n';
           throw error;
         },
       },
