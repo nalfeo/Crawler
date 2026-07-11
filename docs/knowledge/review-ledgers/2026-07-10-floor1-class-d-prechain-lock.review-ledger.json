@@ -1,0 +1,55 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-10",
+  "session_slug": "floor1-class-d-prechain-lock",
+  "task_title": "Fix floor1 class D pre-chain lock",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Adversarial review compared three alternatives: (A) entity-backed tutorial objective, (B) phase/objective-scoped suppression, (C) interaction-first forcing. We keep a localized suppression-path fix but explicitly validate target semantics against guideNpcEid/welcomeOffice alignment, add seed69 + class-A guard checks, and include regression assertions on floor1-find-welcome progression and suppressedProgressNav reduction for seed21 sword+baseball-bat."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "Raised high-confidence concerns about remote emergency tutorial handoff and dead fallback threshold branch in autoNpcInteractionSystem."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Validated follow-up fix for explore-dwell suppression to include non-enemy NPC progress targets (guideNpcEid) and confirmed no remaining high-confidence issues."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-sonnet-5",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Model disagreement on tutorial handoff radius was adjudicated as a non-blocking, headless-only AI-driver tradeoff for class-D lock recovery after failed stricter alternatives; follow-up debt captured in handoff."
+        }
+      ]
+    }
+  }
+}

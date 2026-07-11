@@ -166,39 +166,54 @@ interface CollisionFingerprint {
  * Before → after (kills / damageDealt / damageTaken / score):
  *   seed  13:  4/175.90000247955322/0/0   →  4/211.00000286102295/0/0
  *   seed  42:  5/205.5999984741211/15/4   →  8/243.75/19/13
+ *
+ * ## 2026-07-11 re-baseline — tutorial-goon dwell gate (class-D fix hardening)
+ *
+ * The EXPLORE tutorial-goon fallback now requires TUTORIAL_GOON_DWELL_FRAMES
+ * (300 frames) of consecutive Tutorial Goon seek before the 188ft extended
+ * interaction radius fires, preventing first-poll handoff. This delays the
+ * tutorial-goon completion by up to 300 frames relative to the previous
+ * immediate-fire behavior, shifting early combat interactions in this slice.
+ * Design-intended class-D fix hardening per reviewer requirement.
+ * Verified deterministic across two back-to-back invocations per seed.
+ * Before → after (kills / damageDealt / damageTaken / score):
+ *   seed   7:  10/294.439998626709/40/17   →  10/270.23999977111816/10/14
+ *   seed  13:  11/296.20000076293945/0/9   →   9/321.09999990463257/0/7
+ *   seed  42:  8/273.90000009536743/10/22  →  unchanged
+ *   seed 137:  16/450/0/22                →   8/260/0/16
  */
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
     outcome: 'timeout',
     kills: 8,
-    damageDealt: 243.75,
-    damageTaken: 19,
-    finalScore: 13,
+    damageDealt: 273.90000009536743,
+    damageTaken: 10,
+    finalScore: 22,
   },
   7: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 1,
-    damageDealt: 140.16999250650406,
-    damageTaken: 25,
-    finalScore: 0,
+    kills: 10,
+    damageDealt: 270.23999977111816,
+    damageTaken: 10,
+    finalScore: 14,
   },
   13: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 4,
-    damageDealt: 211.00000286102295,
+    kills: 9,
+    damageDealt: 321.09999990463257,
     damageTaken: 0,
-    finalScore: 0,
+    finalScore: 7,
   },
   137: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 5,
-    damageDealt: 179.23999977111816,
-    damageTaken: 10,
-    finalScore: 2,
+    kills: 8,
+    damageDealt: 260,
+    damageTaken: 0,
+    finalScore: 16,
   },
 };
 

@@ -1474,7 +1474,8 @@ export class BehaviorTreeAI implements AIInputProvider {
         // If a quest NPC is the current progress objective but a nearby threat is
         // already inside engagement range, clear the threat first instead of
         // pathing straight through it toward the NPC.
-        if (targetIsNpc && target.distance > NPC_INTERACTION_RADIUS_FT) {
+        const tutorialAccepted = ctx.world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID);
+        if (targetIsNpc && tutorialAccepted && target.distance > NPC_INTERACTION_RADIUS_FT) {
           const nearestEnemy = this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY);
           const npcThreatRadius = Math.min(
             this.getEngageRadius(ctx.world),
@@ -2281,7 +2282,12 @@ export class BehaviorTreeAI implements AIInputProvider {
    * the current frontier is unreachable — clear it so the Explore node selects a
    * fresh target next tick.
    */
-  private updateExploreWatchdog(playerX: number, playerY: number, currentFrame: number): void {
+  private updateExploreWatchdog(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    currentFrame: number,
+  ): void {
     if (this.decision.state !== AIState.EXPLORE) {
       this.exploreDwell.reset();
       return;
@@ -2299,14 +2305,26 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.pathIndex = 0;
     this.pathGoalKey = null;
     // If the frozen target was a position-based progress goal (non-enemy,
-    // targetEid < 0 — e.g. Tutorial Goon, Shopkeeper, boss room), suppress ALL
+    // e.g. Tutorial Goon, Shopkeeper, boss room), suppress ALL
     // position progress goals temporarily. Without this the BT immediately
     // re-assigns the same unreachable position on the next frame, the dwell
     // counter resets to 0, and the AI freezes forever without ever fighting.
-    if (this.decision.targetEid === null || this.decision.targetEid < 0) {
+    const targetEid = this.decision.targetEid;
+    const fixedPositionProgressTarget =
+      targetEid === null ||
+      targetEid < 0 ||
+      // Only suppress for NPC-backed progress goals (Tutorial Goon, Shopkeeper,
+      // etc.). Gold piles, dropped items, and Floor-2 resource targets are also
+      // non-enemy entity-backed but must not start the progress suppression window
+      // — they are not stuck navigation targets, just collectible goals that may
+      // temporarily be unreachable.
+      (targetEid >= 0 &&
+        hasComponent(world.ecs, targetEid, Npc) &&
+        !hasComponent(world.ecs, targetEid, Enemy));
+    if (fixedPositionProgressTarget) {
       this.progressGoalSuppressedUntilFrame = currentFrame + PROGRESS_SUPPRESS_FRAMES;
       this.progressGoalSuppressionSource =
-        this.decision.targetEid === null
+        targetEid === null
           ? AIProgressSuppressionSource.EXPLORE_DWELL_FRONTIER_TARGET
           : AIProgressSuppressionSource.EXPLORE_DWELL_FIXED_POSITION_TARGET;
     }
@@ -2631,7 +2649,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     // Abandon EXPLORE frontiers we cannot reach (behind a locked door or across an
     // unpathable gap). Without this the AI wiggles against the obstacle forever,
     // never re-picking because it never closes within 50px of the target.
-    this.updateExploreWatchdog(playerX, playerY, world.frameCount);
+    this.updateExploreWatchdog(world, playerX, playerY, world.frameCount);
 
     // State-agnostic backstop: break cross-state thrash (ENGAGE<->COLLECT every
     // frame at a navigation choke) that none of the per-state watchdogs above can
@@ -5294,9 +5312,24 @@ export class BehaviorTreeAI implements AIInputProvider {
     const progressSuppressed = world.frameCount < this.progressGoalSuppressedUntilFrame;
 
     if (!tutorialAccepted) {
+      const tutorialGoonEid = floorScenario.guideNpcEid ?? -1;
       const reason = 'Seeking Tutorial Goon to unlock the floor quest';
-      if (progressSuppressed)
+      if (progressSuppressed) {
+        const nearestEnemy = this.findNearestEnemy(world, playerX, playerY);
+        if (nearestEnemy) {
+          return maybeDetourToQuestGiver(
+            this.createProgressTarget(
+              nearestEnemy.x,
+              nearestEnemy.y,
+              playerX,
+              playerY,
+              'Clearing threats while reacquiring Tutorial Goon',
+              nearestEnemy.eid,
+            ),
+          );
+        }
         return this.recordSuppressedProgressNavigation(world, reason, 'pre-chain');
+      }
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.welcomeOfficePos.x,
@@ -5304,6 +5337,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           playerX,
           playerY,
           reason,
+          tutorialGoonEid,
         ),
       );
     }
