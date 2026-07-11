@@ -31,7 +31,16 @@ function analyzeEgress(
   const firstLeavingEvent = events.find(
     (event) => event.inSafe === true && event.reason.includes('Leaving safe room'),
   );
-  const firstLeavingMs: number | null = firstLeavingEvent?.gameMs ?? null;
+  let firstLeavingMs: number | null = firstLeavingEvent?.gameMs ?? null;
+  if (firstLeavingMs === null) {
+    // In seed2+bow, doorway straddle can flip sampled reason strings before the
+    // first explicit "Leaving safe room" sample lands. Anchor the egress window to
+    // the first in-safe sample with a detected nearby enemy in that case.
+    const firstInSafeWithDetectedThreat = samples.find(
+      (sample) => sample.inSafe === true && typeof sample.nearestEnemyDist === 'number',
+    );
+    firstLeavingMs = firstInSafeWithDetectedThreat?.gameMs ?? null;
+  }
   let firstExitMs: number | null = null;
   let longestLeavingSafeStreakMs = 0;
   let activeStreakMs = 0;
@@ -112,11 +121,11 @@ describe('Floor 1 seed2 bow safe-room egress regression', () => {
   });
 
   it('exits safe-room mode within 10 game-seconds after leave-safe-room first activates', () => {
-    if (probe.firstLeavingMs === null) {
-      return;
-    }
-    expect(probe.firstExitMs).not.toBeNull();
-    expect(probe.firstExitMs! - probe.firstLeavingMs).toBeLessThanOrEqual(EGRESS_DEADLINE_MS);
+    const firstLeavingMs = probe.firstLeavingMs;
+    const firstExitMs = probe.firstExitMs;
+    expect(firstLeavingMs).not.toBeNull();
+    expect(firstExitMs).not.toBeNull();
+    expect(firstExitMs! - firstLeavingMs!).toBeLessThanOrEqual(EGRESS_DEADLINE_MS);
   });
 
   it('stays out long enough for normal combat progression to resume', () => {

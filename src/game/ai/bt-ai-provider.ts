@@ -283,6 +283,7 @@ import {
 } from './tactical-opportunity-evaluator.js';
 
 const logger = createLogger('game:bt-ai-provider');
+const SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES = 30;
 
 /**
  * Urgency (0..1) at/above which {@link AIDecisionMode.SLACK_AWARE} treats the
@@ -1027,6 +1028,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   private safeRoomEgressTargetX: number | null = null;
   private safeRoomEgressTargetY: number | null = null;
   private safeRoomEgressThreatEid: number | null = null;
+  private safeRoomEgressOutsideFrames: number = 0;
 
   constructor(config: AIConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -1624,7 +1626,6 @@ export class BehaviorTreeAI implements AIInputProvider {
       'LeaveSafeRoom',
       condition('In Safe Room With Threat', (ctx) => {
         if (!ctx.world.playerInSafeRoom) {
-          this.clearSafeRoomEgressWaypoint();
           return false;
         }
         if (this.safeRoomEgressTargetX !== null && this.safeRoomEgressTargetY !== null) {
@@ -1719,6 +1720,33 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.safeRoomEgressTargetX = null;
     this.safeRoomEgressTargetY = null;
     this.safeRoomEgressThreatEid = null;
+    this.safeRoomEgressOutsideFrames = 0;
+  }
+
+  private updateSafeRoomEgressWaypointLatch(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+  ): void {
+    if (this.safeRoomEgressTargetX === null || this.safeRoomEgressTargetY === null) {
+      this.safeRoomEgressOutsideFrames = 0;
+      return;
+    }
+    const targetX = this.safeRoomEgressTargetX;
+    const targetY = this.safeRoomEgressTargetY;
+    const distToWaypoint = Math.hypot(targetX - playerX, targetY - playerY);
+    if (distToWaypoint <= WAYPOINT_ARRIVE_FT) {
+      this.clearSafeRoomEgressWaypoint();
+      return;
+    }
+    if (world.playerInSafeRoom) {
+      this.safeRoomEgressOutsideFrames = 0;
+      return;
+    }
+    this.safeRoomEgressOutsideFrames += 1;
+    if (this.safeRoomEgressOutsideFrames >= SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES) {
+      this.clearSafeRoomEgressWaypoint();
+    }
   }
 
   private computeSafeRoomEgressWaypoint(
@@ -2702,9 +2730,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     const playerHealth = world.stores.health.current[playerEid] ?? 1;
     const playerMaxHealth = world.stores.health.max[playerEid] ?? 1;
     const healthPercent = playerHealth / playerMaxHealth;
-    if (!world.playerInSafeRoom) {
-      this.clearSafeRoomEgressWaypoint();
-    }
+    this.updateSafeRoomEgressWaypointLatch(world, playerX, playerY);
 
     // Update stuck detection. Standing on a harvestable to gather it nets ~zero
     // displacement on purpose, so suppress the stuck counter while harvesting —
