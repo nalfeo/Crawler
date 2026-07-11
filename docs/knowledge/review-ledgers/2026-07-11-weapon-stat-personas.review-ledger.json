@@ -14,8 +14,23 @@
       "notes": "Kept shared Floor 2 allocator untouched; persona behavior lives behind AI-only wrappers. Gear scope is persona-ranked equipping rather than changing generic bulk helpers. Persona resolves from selectedWeaponId with unknown fallback to legacy. Name stays lab-local. Verification adds same-seed off/on headless checks plus lab debug observation."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     }
   }
 }

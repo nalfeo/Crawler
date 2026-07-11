@@ -268,8 +268,8 @@ function equipPersonaPreferredGear(world: GameWorld, playerEid: number): boolean
     .filter((def): def is EquipmentItemDef => def !== undefined && isEquippableItem(def.id))
     .sort(
       (a, b) =>
-        scoreEquipmentForPersona(a, persona, currentStats) -
-          scoreEquipmentForPersona(b, persona, currentStats) ||
+        scoreEquipmentForPersona(b, persona, currentStats) -
+          scoreEquipmentForPersona(a, persona, currentStats) ||
         (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
     );
 
