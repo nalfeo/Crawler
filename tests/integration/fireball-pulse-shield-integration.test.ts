@@ -163,3 +163,42 @@ describe('Pulse Shield auto-triggers in the shipped visual pipeline', () => {
     expect(waves.length).toBeGreaterThanOrEqual(1);
   });
 });
+
+describe('Fireball kill attribution', () => {
+  it('retains casterEid as sourceEid in the death event after a lethal fireball hit', () => {
+    const { world, playerEid } = createPlayingFloor1World(7);
+    const options = createFloor1MainSceneOptions();
+
+    world.goalFlags.set('floor1-boss-battle-complete', true);
+    const learned = selectSpellFromBossBattle(world, playerEid, 'fireball');
+    expect(learned).toBe(true);
+
+    // Spawn a near-dead enemy (HP=1) so the first fireball blast kills it outright.
+    const dummyEid = spawnStationaryEnemyNearPlayer(world, playerEid, 5);
+    setComponent(world.ecs, dummyEid, Health, { current: 1, max: 500 });
+
+    // statsSystem only writes stores.stats.damage when the player has the Stats
+    // component (added by levelSystem on first level-up). In a fresh Floor 1
+    // scenario the player hasn't levelled, so stats.damage stays 0, which makes
+    // castFireball use baseDamage=0 (0 ?? 10 === 0 for a Float32Array slot) and
+    // applyDamage short-circuits on amount<=0. Seed the damage stat directly so
+    // the blast is lethal against the HP=1 dummy.
+    world.stores.stats.damage[playerEid] = 10;
+
+    // Frame N: dropSystem runs before abilitySystem, so the fireball kills in
+    // postSystems after this frame's death pass.
+    stepVisualPipeline(world, options, 1);
+    expect(world.stores.health.current[dummyEid]).toBe(0);
+    expect(world.lethalDamageSourceByTarget.get(dummyEid)).toBe(playerEid);
+
+    // Mirror PhaserBridge: CombatVfx drains transient hits before frame N+1.
+    world.combatEvents.length = 0;
+    stepVisualPipeline(world, options, 1);
+
+    const deathEvents = world.combatEvents.filter(
+      (e) => e.type === 'death' && e.targetEid === dummyEid,
+    );
+    expect(deathEvents).toHaveLength(1);
+    expect(deathEvents[0]!.sourceEid).toBe(playerEid);
+  });
+});

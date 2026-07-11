@@ -247,6 +247,9 @@ declare global {
         modalOpen: boolean;
       };
       forceCompletionModal: () => void;
+      /** Dev-only: direct world + player access for screenshot/automation scripts. */
+      getWorld?: () => GameWorld;
+      getPlayerEid?: () => number;
       lighting: {
         getConfig: () => LightingConfig;
         setConfig: (partial: Partial<LightingConfig>) => void;
@@ -697,6 +700,12 @@ export class MainGameScene extends Phaser.Scene {
             this.showFloorCompletionScreenIfNeeded();
           }
         },
+        ...((import.meta as { env?: { DEV?: boolean } }).env?.DEV
+          ? {
+              getWorld: () => this.world,
+              getPlayerEid: () => this.playerEid,
+            }
+          : {}),
         lighting: {
           getConfig: () => ({ ...this.lighting }),
           setConfig: (partial: Partial<LightingConfig>) => this.setLightingConfig(partial),

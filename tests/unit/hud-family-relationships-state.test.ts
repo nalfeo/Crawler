@@ -84,7 +84,7 @@ describe('familyRowFromRelation', () => {
 
     const dead = familyRowFromRelation(fam, 10, true);
     expect(dead.bossDefeated).toBe(true);
-    expect(dead.statusTag).toBe('At War');
+    expect(dead.statusTag).toBe('Defeated');
   });
 
   it('parses the family hud color', () => {
@@ -185,7 +185,7 @@ describe('resolveFamilyRows', () => {
     const rows = resolveFamilyRows(world as never, [goblins, kobolds, orcs]);
     expect(rows.map((r) => r.familyId)).toEqual(['goblins', 'kobolds', 'orcs']);
     expect(rows[0]!.statusTag).toBe('Allied');
-    expect(rows[1]!.statusTag).toBe('At War');
+    expect(rows[1]!.statusTag).toBe('Defeated');
     expect(rows[1]!.bossDefeated).toBe(true);
     expect(rows[2]!.statusTag).toBe('Neutral');
   });

@@ -4978,6 +4978,22 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerX: number,
     playerY: number,
   ): ProgressTarget | null {
+    const floor2State = world.floorExtendedState?.familyState;
+    if (
+      floor2State?.staircaseSpawned &&
+      floor2State.staircaseUnlocked &&
+      !floor2State.staircaseDiscovered &&
+      floor2State.staircasePos
+    ) {
+      return this.createProgressTarget(
+        floor2State.staircasePos.x,
+        floor2State.staircasePos.y,
+        playerX,
+        playerY,
+        'Heading to the Floor 2 exit stairs',
+      );
+    }
+
     const trackedQuestId = getTrackedQuest(world)?.questId ?? null;
     const candidates: Array<{ questId: string; target: ProgressTarget }> = [];
     for (const quest of getActiveQuests(world)) {

@@ -30,17 +30,20 @@
  * 0011 (data-driven quest packs), ADR 0023 (special-room sealing already
  * applied by CaveSystemGenerator + the generic sealing pass).
  */
-import { addComponent, hasComponent, query, set, setComponent } from 'bitecs';
+import { addComponent, hasComponent, query, removeComponent, set, setComponent } from 'bitecs';
 import {
+  BaseStats,
   BroadcastScore,
   Damage,
   DoorState,
   Enemy,
   FamilyMembership,
   Health,
+  Invincible,
   Player,
   Position,
   Size,
+  Stats,
   Sprite,
   type GameWorld,
 } from '../core/index.js';
@@ -84,16 +87,28 @@ import {
 import { loadFamilies, type FamilyDef } from '../shared/data/families.js';
 import { initializeFloor2Settlement } from './floor2Settlement.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
-import { setActiveWeapon } from './weaponSystem.js';
-import { addStatModifier, removeStatModifiers } from './systems/statsSystem.js';
+import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
+import { equip, initializeBaseStats, unequip } from '../core/systems/equipmentSystem.js';
+import {
+  addStatModifier,
+  removeStatModifiers,
+  spendPoints,
+  statsSystem,
+} from './systems/statsSystem.js';
 import {
   installQuestPacks,
   type QuestPackDef,
   type QuestPackQuestSource,
   getQuestPacks,
   FLOOR2_FIND_SETTLEMENT_QUEST_ID,
+  FLOOR2_LEAVE_FLOOR_QUEST_ID,
 } from '../shared/quest-types.js';
-import { acceptQuest, addQuestCounter, setTrackedQuest } from '../core/systems/questSystem.js';
+import {
+  acceptQuest,
+  addQuestCounter,
+  questSystem,
+  setTrackedQuest,
+} from '../core/systems/questSystem.js';
 import type { SeededRandom } from '../shared/random.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
 import { setEnemyAppearanceKey } from '../core/spawners/combatants.js';
@@ -109,11 +124,20 @@ import {
   ensureBossBattleSpellReward,
 } from './floorScenario.js';
 import { pickFromSpawnZones, type SpawnZoneWeights } from './spawn-zones.js';
+import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
+import { applyStartPlayerLevel } from './scenarios/playerLevelProgression.js';
+import { computeAutoStatAllocation } from './scenarios/playerStatAllocationPolicy.js';
 
-const FLOOR2_DEN_UNLOCK_KILL_TARGET = 3;
 const FLOOR2_BOSS_HP_SCALE = 0.03;
 const FLOOR2_BOSS_CONTACT_DAMAGE = 2;
-const floor2ProcessedCombatEvents = new WeakMap<GameWorld, WeakSet<object>>();
+const FLOOR2_DIRECT_START_LEVEL = 5;
+const floor2CombatEventCursor = new WeakMap<GameWorld, { cursor: number; lastEvent?: object }>();
+
+export function resolveFloor2ArchetypeAIType(archetype: EnemyArchetypeDef): number {
+  if (archetype.aiType === 'ranged') return AI_TYPE.RANGED;
+  if (archetype.id.includes('slime')) return AI_TYPE.LEAPER;
+  return AI_TYPE.CHASE;
+}
 
 export const FLOOR2_CAVE_SYSTEM_DEFAULTS = {
   initialFill: 0.55,
@@ -162,6 +186,8 @@ export const FLOOR2_TIMEOUT_GOAL_ID = 'floor2-timeout';
 export const FLOOR2_SETTLEMENT_FOUND_GOAL_ID = 'floor2-settlement-found';
 /** Latched when the player completes the Broker's intro dialogue (all lines read). */
 export const FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID = 'floor2-broker-intro-complete';
+/** Latched when the player actually takes the popped Floor 2 stairs. */
+export const FLOOR2_STAIRS_DISCOVERED_GOAL_ID = 'floor2.objective.staircaseDiscovered';
 
 /**
  * Call when the player finishes reading the Broker's introductory dialogue.
@@ -245,7 +271,7 @@ export function buildDenUnlockQuestPack(
           {
             objectiveId: `${questId}-kills`,
             label,
-            target: FLOOR2_DEN_UNLOCK_KILL_TARGET,
+            target: archetype.killTarget,
           },
         ],
       },
@@ -300,10 +326,7 @@ export function spawnFamilyBoss(
   if (!archetype) {
     throw new Error(`No boss archetype registered for family "${familyId}"`);
   }
-  const behaviorType =
-    archetype.aiType === 'ranged'
-      ? AI_TYPE.CHASE // ranged variants still chase; ranged attack cadence is a Slice 3 concern
-      : AI_TYPE.CHASE;
+  const behaviorType = resolveFloor2ArchetypeAIType(archetype);
   const eid = spawnBehaviorEnemy(
     world,
     x,
@@ -312,7 +335,7 @@ export function spawnFamilyBoss(
     behaviorType,
     archetype.speed,
     archetype.detectRange,
-    Math.max(160, archetype.detectRange * 4),
+    behaviorType === AI_TYPE.RANGED ? Math.max(160, archetype.detectRange * 4) : 0,
   );
   setComponent(world.ecs, eid, Sprite, {
     textureId: archetype.spriteTexture,
@@ -333,8 +356,6 @@ export function spawnFamilyBoss(
   addComponent(world.ecs, eid, set(FamilyMembership, { familyId: familyIdIndex, isBoss: 1 }));
   // Bosses hit hard on contact; ranged behaviour is layered later.
   setComponent(world.ecs, eid, Damage, { amount: FLOOR2_BOSS_CONTACT_DAMAGE });
-  // Keep bosses permanently aggressive inside their den.
-  world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
   return eid;
 }
 
@@ -351,6 +372,7 @@ function installBossDenDoorLocks(
   world: GameWorld,
   denRoom: RoomData,
   unlockGoalId: string,
+  activeGoalId: string,
 ): number[] {
   const created: number[] = [];
   for (const door of denRoom.doors) {
@@ -370,6 +392,10 @@ function installBossDenDoorLocks(
       unlock: {
         operator: 'all',
         conditions: [{ type: 'goal', goalId: unlockGoalId }],
+      },
+      relock: {
+        operator: 'all',
+        conditions: [{ type: 'goal', goalId: activeGoalId }],
       },
     });
     created.push(doorEid);
@@ -435,6 +461,8 @@ export function initializeFloor2Bosses(
   installQuestPacks([...existing.filter((p) => p.packId !== denPack.packId), denPack]);
 
   const decapitated = ensureDecapitatedSet(world);
+  floor2State.trashKillsByFamily = new Map<FamilyId, number>();
+  floor2State.bossEncounters = new Map();
   const objectives: Floor2DenObjective[] = [];
   for (let familyIndex = 0; familyIndex < floor2State.presentFamilies.length; familyIndex += 1) {
     const familyId = floor2State.presentFamilies[familyIndex]!;
@@ -443,11 +471,14 @@ export function initializeFloor2Bosses(
 
     const unlockGoalId = denUnlockGoalId(familyId);
     const defeatGoalId = bossDefeatGoalId(familyId);
+    const activeGoalId = `floor2-den-${familyId}-boss-active`;
     // Seed the flags false so anything that inspects them (Slice 5's win
     // evaluator, HUD) sees a deterministic starting state.
     setGoalFlag(world, unlockGoalId, false);
     setGoalFlag(world, defeatGoalId, false);
+    setGoalFlag(world, activeGoalId, false);
     decapitated.delete(familyId);
+    floor2State.trashKillsByFamily.set(familyId, 0);
 
     const denRoom = findBossDenRoom(floorMap, familyIndex);
     if (!denRoom) {
@@ -455,10 +486,23 @@ export function initializeFloor2Bosses(
       // reachability guarantee in CaveSystemGenerator should prevent this.
       continue;
     }
-    installBossDenDoorLocks(world, denRoom, unlockGoalId);
+    const doorEids = installBossDenDoorLocks(world, denRoom, unlockGoalId, activeGoalId);
     const spawnTile = pickBossSpawnTile(denRoom);
     const spawnWorld = floorMap.tileToWorld(spawnTile.x, spawnTile.y);
-    spawnFamilyBoss(world, spawnWorld.x, spawnWorld.y, familyIndex, familyId);
+    const bossEid = spawnFamilyBoss(world, spawnWorld.x, spawnWorld.y, familyIndex, familyId);
+    addComponent(world.ecs, bossEid, Invincible);
+    const bossArchetype = getFloor2BossArchetype(familyId);
+    floor2State.bossEncounters.set(familyId, {
+      familyId,
+      roomId: denRoom.id,
+      doorEids,
+      activeGoalId,
+      started: false,
+      bossEid,
+      defeated: false,
+      displayName: bossArchetype?.name ?? `${familyId} Boss`,
+      lootTableId: 'boss',
+    });
 
     objectives.push({
       familyId,
@@ -518,6 +562,30 @@ export function floor2ObjectiveTick(world: GameWorld): void {
     }
   }
 
+  if (playerEid !== undefined && floorMap && floor2State.bossEncounters) {
+    const playerTile = floorMap.worldToTile(
+      world.stores.position.x[playerEid] ?? 0,
+      world.stores.position.y[playerEid] ?? 0,
+    );
+    const playerRoomId = floorMap.roomGraph.getRoomAt(playerTile.x, playerTile.y);
+    for (const encounter of floor2State.bossEncounters.values()) {
+      if (
+        encounter.started ||
+        encounter.defeated ||
+        playerRoomId !== encounter.roomId ||
+        world.goalFlags.get(denUnlockGoalId(encounter.familyId)) !== true
+      ) {
+        continue;
+      }
+      encounter.started = true;
+      if (encounter.bossEid !== null) {
+        removeComponent(world.ecs, encounter.bossEid, Invincible);
+        world.stores.enemyBehavior.aggroedPermanently[encounter.bossEid] = 1;
+      }
+      setGoalFlag(world, encounter.activeGoalId, true);
+    }
+  }
+
   // Activate the reputation system once the Broker has explained the floor
   // (player completed all of the Broker's intro dialogue lines). meetBroker()
   // latches FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID; MainGameScene fires it when
@@ -532,18 +600,21 @@ export function floor2ObjectiveTick(world: GameWorld): void {
   }
 
   const decapitated = ensureDecapitatedSet(world);
-  let processedEvents = floor2ProcessedCombatEvents.get(world);
-  if (!processedEvents) {
-    processedEvents = new WeakSet<object>();
-    floor2ProcessedCombatEvents.set(world, processedEvents);
+  const cursorState = floor2CombatEventCursor.get(world) ?? { cursor: 0 };
+  floor2CombatEventCursor.set(world, cursorState);
+  const combatEvents = world.combatEvents;
+  if (
+    cursorState.cursor > combatEvents.length ||
+    (cursorState.cursor > 0 && combatEvents[cursorState.cursor - 1] !== cursorState.lastEvent)
+  ) {
+    cursorState.cursor = 0;
   }
   const familyIdField = world.stores.familyMembership.familyId;
   const isBossField = world.stores.familyMembership.isBoss;
 
-  for (const event of world.combatEvents) {
+  for (let eventIndex = cursorState.cursor; eventIndex < combatEvents.length; eventIndex += 1) {
+    const event = combatEvents[eventIndex]!;
     if (event.type !== 'death') continue;
-    if (processedEvents.has(event as object)) continue;
-    processedEvents.add(event as object);
     const eid = event.targetEid;
     if (eid === undefined) continue;
     const storeIsBoss = (isBossField[eid] ?? 0) as 0 | 1;
@@ -559,6 +630,12 @@ export function floor2ObjectiveTick(world: GameWorld): void {
     const familyId = floor2State.presentFamilies[familyIndex];
     if (!familyId) continue;
     if (isBoss === 0) {
+      const sourceEid = event.sourceEid;
+      if (sourceEid === undefined || !hasComponent(world.ecs, sourceEid, Player)) {
+        continue;
+      }
+      const kills = (floor2State.trashKillsByFamily?.get(familyId) ?? 0) + 1;
+      floor2State.trashKillsByFamily?.set(familyId, kills);
       addQuestCounter(
         world,
         `floor2-den-${familyId}-unlock`,
@@ -571,7 +648,16 @@ export function floor2ObjectiveTick(world: GameWorld): void {
 
     decapitated.add(familyId);
     setGoalFlag(world, bossDefeatGoalId(familyId), true);
+    const encounter = floor2State.bossEncounters?.get(familyId);
+    if (encounter) {
+      encounter.started = true;
+      encounter.defeated = true;
+      encounter.bossEid = null;
+      setGoalFlag(world, encounter.activeGoalId, false);
+    }
   }
+  cursorState.cursor = combatEvents.length;
+  cursorState.lastEvent = combatEvents.at(-1);
 
   for (const familyId of floor2State.presentFamilies) {
     const questId = `floor2-den-${familyId}-unlock`;
@@ -639,8 +725,7 @@ export function floor2VictorySystem(world: GameWorld): void {
 
   if (!soleAllyWin && !allBossesResolved) return;
 
-  setGoalFlag(world, FLOOR2_VICTORY_GOAL_ID, true);
-  popFloor2ResourceHeartStairs(world);
+  latchFloor2Victory(world);
 }
 
 /**
@@ -654,6 +739,10 @@ export function confirmFloor2StairDescend(world: GameWorld, _playerEid: number):
   if (!floor2State.staircaseSpawned || !floor2State.staircaseUnlocked) return false;
   if (floor2State.staircaseDiscovered) return false;
   floor2State.staircaseDiscovered = true;
+  setGoalFlag(world, FLOOR2_STAIRS_DISCOVERED_GOAL_ID, true);
+  // The visual scene switches to safe_room immediately after this callback returns,
+  // so complete any goal-backed finale quests before the state flip.
+  questSystem(world);
   world.state = 'safe_room';
   return true;
 }
@@ -739,12 +828,15 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
   setGoalFlag(world, FLOOR2_TIMEOUT_GOAL_ID, false);
   setGoalFlag(world, FLOOR2_SETTLEMENT_FOUND_GOAL_ID, false);
   setGoalFlag(world, FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, false);
+  setGoalFlag(world, FLOOR2_STAIRS_DISCOVERED_GOAL_ID, false);
+  setGoalFlag(world, 'floor2-leave-floor-complete', false);
 
   // All Floor 1 progressive systems are active from the start of Floor 2.
   // Players arrive here having already unlocked these features on Floor 1.
   world.featureUnlocks.inventory = true;
   world.featureUnlocks.equipment = true;
   world.featureUnlocks.spells = true;
+  applyFloor2DirectStartPlayerState(world, playerEid);
   ensureBossBattleSpellReward(world, playerEid);
   setGoalFlag(world, 'floor1-drops-unlocked', true);
 
@@ -865,7 +957,7 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
       const weaponDef = getWeaponDef(picked);
       if (weaponDef) {
         selectedWeaponId = weaponDef.id;
-        setActiveWeapon(world, weaponDef);
+        equipStarterOrFallback(world, weaponDef.id, weaponDef);
       }
     }
   }
@@ -876,13 +968,13 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
     if (fallbackId) {
       const fallbackDef = getWeaponDef(fallbackId);
       if (fallbackDef) {
-        setActiveWeapon(world, fallbackDef);
+        equipStarterOrFallback(world, fallbackDef.id, fallbackDef);
       }
     }
   }
 
   if (floor2Config?.governor?.autoVictoryOnStart === true) {
-    setGoalFlag(world, FLOOR2_VICTORY_GOAL_ID, true);
+    latchFloor2Victory(world);
   }
   world.state = 'playing';
   world.floorObjectiveTick = floor2ObjectiveTick;
@@ -941,6 +1033,34 @@ function popFloor2ResourceHeartStairs(world: GameWorld): void {
   floor2State.staircaseSpawned = true;
   floor2State.staircaseUnlocked = true;
   setGoalFlag(world, FLOOR2_STAIRS_POPPED_GOAL_ID, true);
+  if (!world.questLog.has(FLOOR2_LEAVE_FLOOR_QUEST_ID)) {
+    acceptQuest(world, FLOOR2_LEAVE_FLOOR_QUEST_ID);
+    setTrackedQuest(world, FLOOR2_LEAVE_FLOOR_QUEST_ID);
+  }
+}
+
+function latchFloor2Victory(world: GameWorld): void {
+  setGoalFlag(world, FLOOR2_VICTORY_GOAL_ID, true);
+  popFloor2ResourceHeartStairs(world);
+}
+
+function applyFloor2DirectStartPlayerState(world: GameWorld, playerEid: number): void {
+  if (!hasComponent(world.ecs, playerEid, BaseStats)) {
+    initializeBaseStats(world, playerEid);
+  }
+  if (!hasComponent(world.ecs, playerEid, Stats)) {
+    addComponent(world.ecs, playerEid, Stats);
+  }
+
+  applyStartPlayerLevel(world, FLOOR2_DIRECT_START_LEVEL);
+  const allocations = computeAutoStatAllocation(world, playerEid, world.playerLevel.unspentPoints);
+  if (Object.keys(allocations).length > 0) {
+    spendPoints(world, allocations);
+  }
+  statsSystem(world);
+
+  unequip(world, playerEid, 'neck', { force: true });
+  equip(world, playerEid, MERCHANTS_CHARM_DEF, { force: true });
 }
 
 function findResourceHeartStairTile(world: GameWorld): { x: number; y: number } | null {
@@ -1261,13 +1381,18 @@ function spawnFloor2AmbientArchetype(world: GameWorld, x: number, y: number): nu
     speed = scaled.speed;
   }
 
-  // Determine AI type based on archetype
-  let aiType: number = AI_TYPE.CHASE;
-  if (selectedArchetype.id.includes('slime')) {
-    aiType = AI_TYPE.LEAPER;
-  }
-
-  const eid = spawnBehaviorEnemy(world, x, y, hp, aiType, speed, selectedArchetype.detectRange, 0);
+  const aiType = resolveFloor2ArchetypeAIType(selectedArchetype);
+  const attackRange = aiType === AI_TYPE.RANGED ? selectedArchetype.detectRange * 0.65 : 0;
+  const eid = spawnBehaviorEnemy(
+    world,
+    x,
+    y,
+    hp,
+    aiType,
+    speed,
+    selectedArchetype.detectRange,
+    attackRange,
+  );
   setComponent(world.ecs, eid, Sprite, {
     textureId: selectedArchetype.spriteTexture,
     width: selectedArchetype.spriteWidth,

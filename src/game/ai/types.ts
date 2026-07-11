@@ -403,6 +403,8 @@ export interface RunStats {
   totalXp: number;
   /** Gold held by the player at run end */
   totalGold: number;
+  /** Durable player-attributed Floor 2 trash kills by family id. */
+  familyTrashKills?: Record<string, number>;
   /** ID of the starting weapon selected for this run */
   startingWeapon: string;
   /** Optional telemetry rollups for AI decision-state accounting. */

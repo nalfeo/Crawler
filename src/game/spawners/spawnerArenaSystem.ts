@@ -161,6 +161,7 @@ function unlockRoomDoors(world: GameWorld, spawnerEid: number, doorEids: number[
   for (const doorEid of doorEids) {
     clearDoorLockConfig(world, doorEid);
     doorState.isLocked[doorEid] = 0;
+    doorState.logicalOpen[doorEid] = 1;
   }
 }
 

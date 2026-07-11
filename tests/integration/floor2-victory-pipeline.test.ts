@@ -7,12 +7,17 @@ import { createTestWorld } from '../helpers/world-factory.js';
 import {
   FLOOR2_STAIRS_POPPED_GOAL_ID,
   FLOOR2_VICTORY_GOAL_ID,
+  FLOOR2_STAIRS_DISCOVERED_GOAL_ID,
+  confirmFloor2StairDescend,
   floor2ObjectiveTick,
   initializeFloor2Bosses,
 } from '../../src/game/floor2Scenario.js';
 import { selectFloor2Roster } from '../../src/core/faction-relations.js';
 import { loadFamilies } from '../../src/shared/data/families.js';
 import { loadResources } from '../../src/shared/data/resources.js';
+import { FLOOR2_LEAVE_FLOOR_QUEST_ID } from '../../src/shared/quest-types.js';
+import { createInputState } from '../../src/shared/input.js';
+import { runSimulationStep } from '../../src/game/ai/simulation-step.js';
 
 function smallCaveConfig(seed: number): MapConfig {
   return {
@@ -79,15 +84,22 @@ describe('Floor 2 Slice 5 — victory pipeline', () => {
       } as (typeof world.combatEvents)[number]);
     }
 
-    floor2ObjectiveTick(world);
+    world.floorObjectiveTick = floor2ObjectiveTick;
+    runSimulationStep(world, createInputState(), 16);
 
     expect(world.goalFlags.get(FLOOR2_VICTORY_GOAL_ID)).toBe(true);
     expect(world.goalFlags.get(FLOOR2_STAIRS_POPPED_GOAL_ID)).toBe(true);
+    expect(world.questLog.get(FLOOR2_LEAVE_FLOOR_QUEST_ID)?.status).toBe('active');
+    expect(world.questLog.get(FLOOR2_LEAVE_FLOOR_QUEST_ID)?.tracked).toBe(true);
     const floor2 = world.floorExtendedState?.familyState as {
       staircaseSpawned?: boolean;
       staircasePos?: { x: number; y: number };
     };
     expect(floor2.staircaseSpawned).toBe(true);
     expect(floor2.staircasePos).toBeDefined();
+
+    expect(confirmFloor2StairDescend(world, 0)).toBe(true);
+    expect(world.goalFlags.get(FLOOR2_STAIRS_DISCOVERED_GOAL_ID)).toBe(true);
+    expect(world.questLog.get(FLOOR2_LEAVE_FLOOR_QUEST_ID)?.status).toBe('complete');
   });
 });

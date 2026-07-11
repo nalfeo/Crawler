@@ -24,7 +24,8 @@ import {
 } from '../../src/core/helpers.js';
 import { dropSystem } from '../../src/core/systems/dropSystem.js';
 import { meleeSwingSystem } from '../../src/core/systems/meleeSwingSystem.js';
-import { MeleeStyle } from '../../src/shared/constants.js';
+import { MeleeStyle, TeamId } from '../../src/shared/constants.js';
+import { spawnMeleeSwing } from '../../src/core/spawners/melee.js';
 import {
   initializeFloor1Scenario,
   meetTutorialGoon,
@@ -35,6 +36,7 @@ import { createTestWorld } from '../helpers/world-factory.js';
 import { MINI_SLIME_SPAWN_ANIM_MS } from '../../src/shared/spawn-anim.js';
 import type { EntitySpriteMappings } from '../../src/shared/data/entity-sprite-mappings.js';
 import ENTITY_SPRITE_MAPPINGS from '../../src/shared/data/entity-sprite-mappings.json';
+import { asFamilyId, asResourceId } from '../../src/core/faction-relations.js';
 
 // 64 deterministic seeds gives ample headroom to find at least one 35% split roll
 // without making the regression test search unbounded.
@@ -92,12 +94,60 @@ describe('dropSystem', () => {
     expect(gems.length).toBeGreaterThanOrEqual(1);
   });
 
+  it('uses the configured Floor 2 encounter loot table for family bosses', () => {
+    const world = createTestWorld({ floor: 2 });
+    const bossEid = spawnEnemy(world, 100, 200, 10);
+    const familyId = asFamilyId('geese');
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [familyId],
+        contestedResource: asResourceId('gold-veins'),
+        betrayerFlag: false,
+        bossEncounters: new Map([
+          [
+            familyId,
+            {
+              familyId,
+              roomId: 1,
+              doorEids: [],
+              activeGoalId: 'boss-active',
+              started: true,
+              bossEid,
+              defeated: false,
+              displayName: 'Goose Boss',
+              lootTableId: 'boss',
+            },
+          ],
+        ]),
+      },
+    };
+    setComponent(world.ecs, bossEid, Health, { current: 0, max: 10 });
+
+    dropSystem(world);
+
+    expect(query(world.ecs, [XpGem]).length).toBeGreaterThanOrEqual(10);
+    expect(query(world.ecs, [Gold]).length).toBeGreaterThanOrEqual(20);
+  });
+
   it('emits a death combat event', () => {
     const world = createTestWorld();
+    const playerEid = spawnPlayer(world, 0, 0);
     spawnEnemy(world, 50, 60, 10);
 
     const enemies = query(world.ecs, [Enemy]);
     const eid = enemies[0] as number;
+    world.combatEvents.push({
+      type: 'hit',
+      x: 50,
+      y: 60,
+      amount: 10,
+      targetType: 'enemy',
+      timestamp: 0,
+      targetEid: eid,
+      sourceEid: playerEid,
+      sourceX: 0,
+      sourceY: 0,
+    });
     setComponent(world.ecs, eid, Health, { current: 0, max: 10 });
 
     dropSystem(world);
@@ -108,6 +158,7 @@ describe('dropSystem', () => {
     expect(deathEvents[0]!.y).toBe(60);
     expect(deathEvents[0]!.overkill).toBe(0);
     expect(deathEvents[0]!.targetType).toBe('enemy');
+    expect(deathEvents[0]!.sourceEid).toBe(playerEid);
   });
 
   it('does not double-process the same entity', () => {
@@ -381,5 +432,30 @@ describe('dropSystem', () => {
     expect(query(world.ecs, [XpGem]).length).toBe(0);
     expect(query(world.ecs, [Gold]).length).toBe(0);
     expect(query(world.ecs, [DroppedItem]).length).toBe(itemsAtInit);
+  });
+});
+
+describe('meleeSwingSystem lethal-hit kill attribution', () => {
+  it('retains player EID as sourceEid in the death event after a lethal melee hit', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    // HP=1 so the 15-damage melee hit is lethal; place enemy at (2, 0) within blade reach
+    const enemy = spawnEnemy(world, 2, 0, 1);
+    // Spawn the swing at t=0; at progress=0.5 (t=500ms) the 360-degree slash sweeps
+    // to the right (angle=0) so the blade from (0,0) to (4,0) covers the enemy at (2,0).
+    world.elapsedMs = 0;
+    spawnMeleeSwing(world, 0, 0, player, 15, 4, 1000, 1, 0, 360, TeamId.PLAYER, MeleeStyle.SLASH);
+    world.elapsedMs = 500; // progress = 0.5 → blade tip at (4, 0) → enemy at (2, 0) on segment
+
+    // No collisionResult provided — meleeSwingSystem falls back to the full scan
+    meleeSwingSystem(world);
+    // Enemy HP should now be ≤ 0
+    expect(world.stores.health.current[enemy] ?? 1).toBeLessThanOrEqual(0);
+
+    dropSystem(world, { spawnLoot: false });
+
+    const deathEvents = world.combatEvents.filter((e) => e.type === 'death');
+    expect(deathEvents).toHaveLength(1);
+    expect(deathEvents[0]!.sourceEid).toBe(player);
   });
 });

@@ -120,6 +120,7 @@ export function areaDamageSystem(world: GameWorld, collisionResult: CollisionRes
         undefined,
         x,
         y,
+        ownerEid >= 0 ? ownerEid : undefined,
       );
 
       if (dealt > 0 && ownerEid !== -1 && hasComponent(world.ecs, target, Enemy)) {

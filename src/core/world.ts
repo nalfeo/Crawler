@@ -154,6 +154,11 @@ export interface GameWorld {
   /** Combat events emitted this frame — consumed and drained by the render layer. */
   combatEvents: CombatEvent[];
   /**
+   * Lethal damage ownership that must survive the render layer draining
+   * `combatEvents` before `dropSystem` processes the target next frame.
+   */
+  lethalDamageSourceByTarget: Map<number, number>;
+  /**
    * Durable record of the most recent damaging hit that landed on the player,
    * written at the `applyDamage` choke point. Unlike {@link combatEvents} —
    * which the render layer drains every rendered frame (`combatVfx.update`)
@@ -445,6 +450,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     doorLockConfigs: new Map(),
     goalFlags: new Map(),
     combatEvents: [],
+    lethalDamageSourceByTarget: new Map(),
     maxKnockbackStepThisFrame: 0,
     vfxEvents: [],
     announcements: [],

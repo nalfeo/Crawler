@@ -1,0 +1,78 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-10",
+  "session_slug": "floor2-family-boss-progression",
+  "task_title": "Complete Floor 2 family boss progression",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.5",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "major_fork",
+      "notes": "Reviewer rejected the initial loose plan. Adopted explicit Floor 2 per-family encounter state, player-attributed durable kill counters, relock goal semantics, shared Floor1/Floor2 boss-bar resolution, centralized archetype AI mapping, and RunStats family-kill artifact contract. Alt A minimal floor2Scenario imperative patch rejected due door/source coupling. Alt B reuse Floor1 floorScenario bossBattles rejected because Floor2 deliberately owns state in floorExtendedState. Alt C explicit Floor2 encounter state selected."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": false,
+          "notes": "Three valid findings: Floor 2 bosses ran AI before den entry, chase bosses received projectile attack range, and resolved spawner arenas left logicalOpen false after clearing their lock config. Fixed by deriving an inactive Floor 2 boss set in enemyAISystem, arming permanent aggro only on encounter activation, assigning attack range only to AI_TYPE.RANGED bosses, and opening arena doors when they resolve. Added regression coverage for inactive bosses, ranged-only boss projectiles, full den door lifecycle, and arena door release."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gemini-3.5-flash"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Both final-round reviewers independently confirmed the first-round fixes and the complete Floor 2 progression diff are clean. Claude explicitly re-verified boss activation, ranged dispatch, arena and den door semantics, player-only kill attribution, HUD resolution, and headless telemetry; Gemini reported no significant issues."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.6-sol",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "clean": false,
+          "notes": "Adjudicator accepted all three independent findings as runtime correctness defects. The fixes preserve explicit Floor 2 encounter ownership: inactive encounter bosses are skipped by AI, activation sets aggro and the relock goal, only ranged archetypes receive attack range, and arena resolution sets both isLocked=0 and logicalOpen=1."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gemini-3.5-flash"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Both independent reviewers converged on no significant issues after the fixes. Adjudicator accepts the clean result at the two-round cap."
+        }
+      ]
+    }
+  },
+  "supplemental_reviews": [
+    {
+      "reason": "Post-PR review fixes for boss targeting, Floor 2 boss loot, render-drain-safe kill ownership, and incremental combat-event consumption.",
+      "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+      "concerns_count": 0,
+      "clean": true
+    },
+    {
+      "reason": "Post-PR review fix making pre-entry den bosses invulnerable until encounter activation.",
+      "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+      "concerns_count": 0,
+      "clean": true
+    }
+  ]
+}

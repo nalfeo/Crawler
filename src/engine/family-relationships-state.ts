@@ -24,7 +24,7 @@ export const BAND_BAR_COLORS: Readonly<Record<FactionBand, number>> = Object.fre
 });
 
 /** Player-facing status tag shown on each row. */
-export type FamilyStatusTag = 'Allied' | 'At War' | 'Neutral';
+export type FamilyStatusTag = 'Allied' | 'At War' | 'Neutral' | 'Defeated';
 
 /** Map a band to the row's short status label (FR20). */
 export function statusTagForBand(band: FactionBand): FamilyStatusTag {
@@ -86,7 +86,7 @@ export function familyRowFromRelation(
     band,
     barColor: BAND_BAR_COLORS[band],
     bossDefeated,
-    statusTag: statusTagForBand(band),
+    statusTag: bossDefeated ? 'Defeated' : statusTagForBand(band),
   };
 }
 

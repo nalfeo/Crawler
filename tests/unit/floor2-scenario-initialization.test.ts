@@ -2,12 +2,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { query } from 'bitecs';
 import { spawnPlayer } from '../../src/core/spawners/combatants.js';
 import { DoorState } from '../../src/core/index.js';
+import { getEquipmentState } from '../../src/core/systems/equipmentSystem.js';
 import { SeededRandom } from '../../src/shared/random.js';
 import { BiomeType, RoomRole } from '../../src/shared/map-types.js';
 import type { MapConfig } from '../../src/shared/map-types.js';
 import { CaveSystemGenerator } from '../../src/core/map/generators/cave-system.js';
 import type { FloorMap } from '../../src/core/map/FloorMap.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../src/shared/constants.js';
+import { MERCHANTS_CHARM_DEF } from '../../src/shared/equipmentDefs.js';
 import {
   FLOOR2_CAVE_SYSTEM_DEFAULTS,
   FLOOR2_SETTLEMENT_FOUND_GOAL_ID,
@@ -158,6 +160,26 @@ describe('initializeFloor2Scenario manifest validation', () => {
     ).toBe(true);
     // Den-unlock quests are passive background counters — they must be hidden.
     expect(denQuestIds.every((questId) => getQuestDef(questId)?.hidden === true)).toBe(true);
+  });
+
+  it('starts a direct Floor 2 run at level 5 with spent stats and the charm equipped', () => {
+    const { world, playerEid } = createScenarioWorld();
+
+    initializeFloor2Scenario(world, playerEid);
+
+    expect(world.playerLevel.level).toBe(5);
+    expect(world.playerLevel.unspentPoints).toBe(0);
+    expect(world.stores.coreStatPoints.strength[playerEid]).toBe(6);
+    expect(world.stores.coreStatPoints.constitution[playerEid]).toBe(6);
+    expect(world.stores.health.max[playerEid]).toBe(190);
+    expect(world.stores.health.current[playerEid]).toBe(190);
+
+    const equipment = getEquipmentState(world, playerEid);
+    const neckInstanceId = equipment?.equipped.neck ?? null;
+    expect(neckInstanceId).not.toBeNull();
+    expect(
+      neckInstanceId === null ? undefined : equipment?.instances.get(neckInstanceId)?.def.id,
+    ).toBe(MERCHANTS_CHARM_DEF.id);
   });
 
   it('completes the starter quest the first time the player enters the settlement area', () => {

@@ -90,6 +90,38 @@ describe('buildDenUnlockQuestPack', () => {
       expect(hasObjectives || hasTemplate).toBe(true);
     }
   });
+
+  it('uses the selected archetype kill target for each family quest', () => {
+    const families = loadFamilies();
+    const resources = loadResources();
+    const archetypes = loadDenUnlockArchetypes();
+    const familyDefs = new Map(families.map((f) => [f.id as never, f] as const));
+    const roster = selectFloor2Roster(new SeededRandom(202), families, resources);
+    const assignments = selectDenUnlockObjectives(
+      new SeededRandom(21),
+      roster.presentFamilies,
+      archetypes,
+    );
+    const pack = buildDenUnlockQuestPack(assignments, familyDefs, archetypes);
+
+    for (const quest of pack.quests) {
+      const familyId = roster.presentFamilies.find((f) => quest.id === `floor2-den-${f}-unlock`);
+      expect(familyId).toBeDefined();
+      const archetypeId = assignments.get(familyId!);
+      expect(archetypeId).toBeDefined();
+      const archetype = archetypes.find(
+        (entry): entry is Extract<(typeof archetypes)[number], { kind: 'killTargets' }> =>
+          entry.id === archetypeId && entry.kind === 'killTargets',
+      );
+      expect(archetype).toBeDefined();
+      const template = quest.template;
+      expect(template?.kind).toBe('killTargets');
+      if (!template || template.kind !== 'killTargets') {
+        continue;
+      }
+      expect(template.targets[0]?.target).toBe(archetype?.killTarget);
+    }
+  });
 });
 
 function beforeAllReset() {

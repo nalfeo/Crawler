@@ -195,6 +195,20 @@ describe('enemy projectile damage', () => {
     expect(hasComponent(world.ecs, proj, Projectile)).toBe(false);
   });
 
+  it('preserves the player owner on projectile hit events for kill attribution', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 200, 200);
+    const enemy = spawnBehaviorEnemy(world, 50, 50, 10, AI_TYPE.CHASE, 2, 200, 0);
+    spawnProjectile(world, 50, 50, 1, 0, 10, 0, 0, 1, player);
+
+    damageSystem(world, collisionSystem(world));
+
+    const hit = world.combatEvents.find(
+      (event) => event.type === 'hit' && event.targetEid === enemy,
+    );
+    expect(hit?.sourceEid).toBe(player);
+  });
+
   it('enemy projectile respects player invincibility window', () => {
     const world = createTestWorld();
     world.elapsedMs = 100;

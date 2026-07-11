@@ -106,13 +106,17 @@ function getEnemyLootTables(
   areaTable?: LootTable;
   floorTable?: LootTable;
 } {
-  // Detect boss entities by checking the floor 1 boss battle registry.
+  // Detect boss entities by checking both floor encounter registries.
   // dropSystem runs before floorObjectiveSystem each frame, so bossEid is still
   // set when we process the death; it gets nulled out later that same tick.
-  if (world.floorScenario?.objective?.bossBattles) {
-    for (const battle of world.floorScenario.objective.bossBattles.values()) {
-      if (battle.bossEid === eid) {
-        // Use the loot table ID stored on the encounter config; fall back to BOSS.
+  const bossRegistries = [
+    world.floorScenario?.objective?.bossBattles,
+    world.floorExtendedState?.familyState?.bossEncounters,
+  ];
+  for (const registry of bossRegistries) {
+    if (registry) {
+      for (const battle of registry.values()) {
+        if (battle.bossEid !== eid) continue;
         const bossTable =
           (battle.lootTableId ? getLootTable(battle.lootTableId) : undefined) ?? LOOT_TABLES.BOSS;
         return { typeTable: bossTable };
@@ -335,24 +339,25 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
     // Find the killing blow direction from the most recent hit event on this entity
     let killDirX = 0;
     let killDirY = 0;
+    let killingSourceEid: number | undefined;
     for (let i = world.combatEvents.length - 1; i >= 0; i--) {
       const evt = world.combatEvents[i]!;
-      if (
-        evt.targetEid === eid &&
-        evt.type === 'hit' &&
-        evt.sourceX !== undefined &&
-        evt.sourceY !== undefined
-      ) {
-        const dx = x - evt.sourceX;
-        const dy = y - evt.sourceY;
-        const dist = Math.hypot(dx, dy);
-        if (dist > 0.01) {
-          killDirX = dx / dist;
-          killDirY = dy / dist;
+      if (evt.targetEid === eid && evt.type === 'hit') {
+        killingSourceEid = evt.sourceEid;
+        if (evt.sourceX !== undefined && evt.sourceY !== undefined) {
+          const dx = x - evt.sourceX;
+          const dy = y - evt.sourceY;
+          const dist = Math.hypot(dx, dy);
+          if (dist > 0.01) {
+            killDirX = dx / dist;
+            killDirY = dy / dist;
+          }
         }
         break;
       }
     }
+    killingSourceEid ??= world.lethalDamageSourceByTarget.get(eid);
+    world.lethalDamageSourceByTarget.delete(eid);
 
     // Apply death knockback (small impulse in the killing blow direction)
     const knockbackDist = Math.min(DEATH_KNOCKBACK_MAX, DEATH_KNOCKBACK_BASE + overkill * 2);
@@ -473,6 +478,7 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
       targetType: 'enemy',
       timestamp: world.elapsedMs,
       targetEid: eid,
+      sourceEid: killingSourceEid,
       overkill,
       knockbackDirX: killDirX,
       knockbackDirY: killDirY,

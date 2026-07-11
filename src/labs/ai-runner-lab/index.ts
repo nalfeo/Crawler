@@ -26,6 +26,7 @@ import {
 import { initNavmesh, isNavmeshReady } from '../../game/ai/navmesh/index.js';
 import {
   autoFloor1ProgressionSystem,
+  autoFloor2ProgressionSystem,
   computeAutoStatAllocation,
 } from '../../game/ai/auto-progression.js';
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
@@ -478,6 +479,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       return;
     }
     autoFloor1ProgressionSystem(world, playerEid);
+    autoFloor2ProgressionSystem(world, playerEid);
   };
   let currentFloor = persisted?.floorId ?? 'floor1';
   const recorderControls = createSessionRecorderControls({

@@ -1,22 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { hasComponent } from 'bitecs';
+import { hasComponent, query } from 'bitecs';
 import { SeededRandom } from '../../src/shared/random.js';
 import { BiomeType, RoomRole } from '../../src/shared/map-types.js';
 import type { MapConfig } from '../../src/shared/map-types.js';
 import { CaveSystemGenerator } from '../../src/core/map/generators/cave-system.js';
 import { createTestWorld } from '../helpers/world-factory.js';
-import { FamilyMembership } from '../../src/core/index.js';
+import { EnemyProjectile, FamilyMembership, spawnPlayer } from '../../src/core/index.js';
 import {
   findBossDenRoom,
   initializeFloor2Bosses,
   spawnFamilyBoss,
   bossDefeatGoalId,
   denUnlockGoalId,
+  resolveFloor2ArchetypeAIType,
 } from '../../src/game/floor2Scenario.js';
 import { asFamilyId } from '../../src/core/faction-relations.js';
 import { loadFamilies } from '../../src/shared/data/families.js';
 import { loadResources } from '../../src/shared/data/resources.js';
 import { selectFloor2Roster } from '../../src/core/faction-relations.js';
+import { floor2EnemyPack } from '../../src/shared/enemy-packs.js';
+import { AI_TYPE, enemyAISystem } from '../../src/game/enemyAISystem.js';
 
 function smallCaveConfig(seed: number): MapConfig {
   return {
@@ -121,5 +124,36 @@ describe('spawnFamilyBoss / initializeFloor2Bosses', () => {
   it('spawnFamilyBoss throws when no archetype is registered for the family', () => {
     const world = createTestWorld({ seed: 1, floor: 2 });
     expect(() => spawnFamilyBoss(world, 10, 10, 0, asFamilyId('no-such-family'))).toThrow();
+  });
+
+  it('routes ranged Floor 2 archetypes into the existing ranged combat AI', () => {
+    const ranged = floor2EnemyPack.archetypes.find((archetype) => archetype.aiType === 'ranged');
+    const chase = floor2EnemyPack.archetypes.find((archetype) => archetype.aiType === 'chase');
+    expect(ranged).toBeDefined();
+    expect(chase).toBeDefined();
+    expect(resolveFloor2ArchetypeAIType(ranged!)).toBe(AI_TYPE.RANGED);
+    expect(resolveFloor2ArchetypeAIType(chase!)).toBe(AI_TYPE.CHASE);
+  });
+
+  it('spawns a ranged family boss that attacks the player', () => {
+    const world = createTestWorld({ floor: 2 });
+    world.elapsedMs = 100;
+    spawnPlayer(world, 0, 0);
+    spawnFamilyBoss(world, 50, 0, 0, asFamilyId('llamas'));
+
+    enemyAISystem(world);
+
+    expect(query(world.ecs, [EnemyProjectile])).toHaveLength(1);
+  });
+
+  it('does not give chase bosses a ranged projectile attack', () => {
+    const world = createTestWorld({ floor: 2 });
+    world.elapsedMs = 100;
+    spawnPlayer(world, 0, 0);
+    spawnFamilyBoss(world, 50, 0, 0, asFamilyId('goblins'));
+
+    enemyAISystem(world);
+
+    expect(query(world.ecs, [EnemyProjectile])).toHaveLength(0);
   });
 });

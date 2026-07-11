@@ -4,6 +4,7 @@ import {
   FLOOR1_SHOP_QUEST_ID,
   FLOOR1_TUTORIAL_QUEST_ID,
   FLOOR2_FIND_SETTLEMENT_QUEST_ID,
+  FLOOR2_LEAVE_FLOOR_QUEST_ID,
   getQuestDef,
   getAllQuestDefs,
   getQuestPacks,
@@ -58,6 +59,14 @@ describe('quest content packs', () => {
         label: 'Find the settlement',
         kind: 'goal',
         goalId: 'floor2-settlement-found',
+      },
+    ]);
+    expect(getQuestDef(FLOOR2_LEAVE_FLOOR_QUEST_ID)?.objectives).toEqual([
+      {
+        id: 'take-stairs',
+        label: 'Take the stairs out of Floor 2',
+        kind: 'goal',
+        goalId: 'floor2.objective.staircaseDiscovered',
       },
     ]);
   });
@@ -126,6 +135,7 @@ describe('quest content packs', () => {
     expect(ids).toContain(FLOOR1_SHOP_QUEST_ID);
     expect(ids).toContain(FLOOR1_BOSS_UNLOCK_QUEST_ID);
     expect(ids).toContain(FLOOR2_FIND_SETTLEMENT_QUEST_ID);
+    expect(ids).toContain(FLOOR2_LEAVE_FLOOR_QUEST_ID);
   });
 
   it('rejects a quest source that provides both objectives and a template', () => {

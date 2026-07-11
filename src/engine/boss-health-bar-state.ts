@@ -7,7 +7,7 @@
  */
 import { entityExists } from 'bitecs';
 import type { GameWorld } from '../core/world.js';
-import type { Floor1BossEncounterState } from '../shared/floor-types.js';
+import type { FloorBossEncounterState } from '../shared/floor-types.js';
 
 /** Fill colours keyed to the remaining-health band. */
 export const BOSS_BAR_COLORS = {
@@ -39,7 +39,7 @@ export interface BossHealthBarState {
  * entity is already gone.
  */
 export function resolveBossHealthBar(
-  bossBattles: ReadonlyMap<string, Floor1BossEncounterState> | undefined,
+  bossBattles: ReadonlyMap<unknown, FloorBossEncounterState> | undefined,
   ecs: GameWorld['ecs'],
   health: GameWorld['stores']['health'],
 ): BossHealthBarState | null {

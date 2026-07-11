@@ -106,7 +106,7 @@ function castFireball(
     const dx = ex - centerX;
     const dy = ey - centerY;
     if (dx * dx + dy * dy <= radiusSq) {
-      applyDamage(world, enemyEid, damage, ex, ey, undefined, centerX, centerY);
+      applyDamage(world, enemyEid, damage, ex, ey, undefined, centerX, centerY, casterEid);
     }
   }
 }
