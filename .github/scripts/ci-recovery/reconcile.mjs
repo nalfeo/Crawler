@@ -302,7 +302,7 @@ const runs =
 const actionRequiredRuns = runs.filter((candidate) => candidate.conclusion === 'action_required');
 const changedFiles =
   actionRequiredRuns.length > 0
-    ? await paginate(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/files?per_page=100`)
+    ? await paginate(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/files`)
     : [];
 for (const run of actionRequiredRuns) {
   const rejection = workflowApprovalRejection({
