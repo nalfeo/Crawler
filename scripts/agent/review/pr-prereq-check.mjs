@@ -59,6 +59,9 @@ function captureTelemetry(cwd, slug) {
 }
 
 function captureErrorDetail(err) {
+  if (!err) {
+    return 'telemetry:capture subprocess failed: no error details available';
+  }
   if (typeof err?.stderr === 'string' && err.stderr.trim()) {
     return `telemetry:capture subprocess failed: ${err.stderr.trim()}`;
   }
