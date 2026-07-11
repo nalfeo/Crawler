@@ -55,6 +55,17 @@
     "path": "by-sha/3fb5cf43d93e75095a818c95ee5fb29a62df7afb.json"
   },
   {
+    "commit": "6adb048dbc07de8da3bc5a5b5a11e178431d912c",
+    "commitDate": "2026-07-11T01:13:22-07:00",
+    "commitSubject": "fix(ai): prevent ranged NPC approach livelocks (#1036)",
+    "capturedAt": "2026-07-11T08:49:37.020Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29145967988",
+    "winRate": 0.9,
+    "totalWins": 270,
+    "totalRuns": 300,
+    "path": "by-sha/6adb048dbc07de8da3bc5a5b5a11e178431d912c.json"
+  },
+  {
     "commit": "80652c52c9ba4866dfa2969673908306064205b1",
     "commitDate": "2026-07-11T00:43:23-07:00",
     "commitSubject": "feat: add weapon-specific AI runner stat personas (#1029)",
