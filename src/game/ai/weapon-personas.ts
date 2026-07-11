@@ -24,7 +24,7 @@ export interface WeaponPersona {
   readonly statWeights: Partial<Readonly<Record<StatId, number>>>;
 }
 
-export const WEAPON_PERSONAS: Readonly<Record<string, WeaponPersona>> = {
+export const WEAPON_PERSONAS: Readonly<Partial<Record<string, WeaponPersona>>> = {
   sword: {
     name: 'Vanguard',
     minimumTargets: { constitution: 6, strength: 4 },
