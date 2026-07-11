@@ -865,7 +865,7 @@ describe('BehaviorTreeAI', () => {
     expect(decision.reason).toContain('Interacting with shopkeeper');
   });
 
-  it('keeps hunting after forced safe-room egress until far threats re-enter normal scan', () => {
+  it('latches a leave-safe-room waypoint, then resumes hunting after egress', () => {
     const world = createTestWorld({ seed: 31 });
     const player = spawnPlayer(world, 0, 0);
     initializeFloor1Scenario(world, player);
@@ -885,10 +885,23 @@ describe('BehaviorTreeAI', () => {
 
     const decision = ai.getDecision();
     expect(decision.state).toBe(AIState.ENGAGE);
-    expect(decision.targetEid).toBe(farThreat);
+    expect(decision.targetEid).toBeNull();
     expect(decision.reason).toContain('Leaving safe room');
     expect(decision.targetX).not.toBeNull();
-    expect(decision.targetX!).toBeGreaterThan(84);
+    expect(decision.targetY).not.toBeNull();
+    const firstTargetX = decision.targetX!;
+    const firstTargetY = decision.targetY!;
+
+    // Threat movement should not retarget the egress waypoint while still in a safe room.
+    world.stores.position.x[farThreat] = 120;
+    world.stores.position.y[farThreat] = 12;
+    ai.poll(input, world);
+    const latched = ai.getDecision();
+    expect(latched.state).toBe(AIState.ENGAGE);
+    expect(latched.targetEid).toBeNull();
+    expect(latched.reason).toContain('Leaving safe room');
+    expect(latched.targetX).toBeCloseTo(firstTargetX, 6);
+    expect(latched.targetY).toBeCloseTo(firstTargetY, 6);
 
     // Next frame outside safe room, threat still >50ft away: the AI should keep
     // committing to the same far threat (Hunt), not drop to EXPLORE.
