@@ -9,6 +9,8 @@ import {
 } from '../../src/core/helpers.js';
 import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
 import { damageSystem } from '../../src/core/systems/damageSystem.js';
+import { setActiveWeapon, weaponSystem } from '../../src/game/weaponSystem.js';
+import { WEAPON_DEFS } from '../../src/shared/weaponDefs.js';
 import { makeMapWithSafeRoom } from '../helpers/map-fixtures.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -134,5 +136,57 @@ describe('damageSystem hit-gated weapon-skill XP', () => {
 
     expect(world.stores.health.current[enemy]).toBeLessThan(50);
     expect(world.skillUsageEvents).toHaveLength(0);
+  });
+
+  it('attributes XP to the original weapon after a mid-flight switch', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    const bowDef = WEAPON_DEFS.get('bow')!;
+    const pistolDef = WEAPON_DEFS.get('pistol')!;
+    world.rng.next = () => 0;
+    const bowTarget = spawnEnemy(world, 50, 0, 50);
+
+    setActiveWeapon(world, bowDef);
+    world.elapsedMs = bowDef.cooldownMs;
+    weaponSystem(world);
+
+    const bowEntry = [...world.attackWeaponSkillsByEntity.entries()].find(
+      ([, skills]) => skills.typeSkillId === bowDef.weaponTypeSkillId,
+    );
+    expect(bowEntry).toBeDefined();
+    const [bowProjectile] = bowEntry!;
+
+    const pistolTarget = spawnEnemy(world, 4, 0, 50);
+    setActiveWeapon(world, pistolDef);
+    weaponSystem(world);
+
+    const pistolEntry = [...world.attackWeaponSkillsByEntity.entries()].find(
+      ([eid, skills]) =>
+        eid !== bowProjectile && skills.typeSkillId === pistolDef.weaponTypeSkillId,
+    );
+    expect(pistolEntry).toBeDefined();
+    const [pistolProjectile] = pistolEntry!;
+
+    world.stores.position.x[pistolProjectile] = world.stores.position.x[pistolTarget] ?? 0;
+    world.stores.position.y[pistolProjectile] = world.stores.position.y[pistolTarget] ?? 0;
+    world.stores.velocity.x[pistolProjectile] = 0;
+    world.stores.velocity.y[pistolProjectile] = 0;
+    damageSystem(world, collisionSystem(world));
+
+    expect(world.stores.health.current[pistolTarget]).toBeLessThan(50);
+    world.skillUsageEvents.length = 0;
+
+    world.stores.position.x[bowProjectile] = world.stores.position.x[bowTarget] ?? 0;
+    world.stores.position.y[bowProjectile] = world.stores.position.y[bowTarget] ?? 0;
+    world.stores.velocity.x[bowProjectile] = 0;
+    world.stores.velocity.y[bowProjectile] = 0;
+    damageSystem(world, collisionSystem(world));
+
+    expect(world.stores.health.current[bowTarget]).toBeLessThan(50);
+    const fired = world.skillUsageEvents.filter((event) => event.metric === 'weapon_fired');
+    expect(fired).toHaveLength(2);
+    expect(fired.map((event) => event.skillId).sort()).toEqual(
+      [bowDef.weaponClassSkillId, bowDef.weaponTypeSkillId].sort(),
+    );
   });
 });
