@@ -400,6 +400,7 @@ const CLIENT_SCRIPT = String.raw`
   var undoStack = [];
   var redoStack = [];
   var maxHistory = 60;
+  var editGeneration = 0;
   var strokeSnapshot = null;
   var contextMenu = null;
   var baselineFingerprint = null;
@@ -796,14 +797,28 @@ const CLIENT_SCRIPT = String.raw`
     var expectedKey = sprite ? sprite.key : null;
     var expectedCanvas = canvas;
     var expectedLoadToken = loadTokenCounter;
+    var expectedEditGen = editGeneration;
     var methodId = scaleMethod;
     var factor = clampScaleFactor(scaleFactor);
     var isCurrentScaleTarget = function () {
+      if (
+        !sprite ||
+        sprite.key !== expectedKey ||
+        canvas !== expectedCanvas ||
+        loadTokenCounter !== expectedLoadToken ||
+        editGeneration !== expectedEditGen
+      ) {
+        return false;
+      }
+      var currentState = cloneState();
+      var currentMetadata = currentMetadataSnapshot();
       return (
-        !!sprite &&
-        sprite.key === expectedKey &&
-        canvas === expectedCanvas &&
-        loadTokenCounter === expectedLoadToken
+        !statesDiffer(before, currentState) &&
+        currentMetadata &&
+        currentMetadata.holdX === before.holdX &&
+        currentMetadata.holdY === before.holdY &&
+        currentMetadata.pivotX === before.pivotX &&
+        currentMetadata.pivotY === before.pivotY
       );
     };
     if (factor === 1) {
@@ -1365,20 +1380,20 @@ const CLIENT_SCRIPT = String.raw`
 
   function collectConnectedBackgroundMask(data, width, height, referenceColor, limitSq, softLimitSq, seedPoints) {
     var mask = new Uint8Array(width * height);
-    var queue = new Int32Array(width * height);
+    var visited = new Uint8Array(width * height);
+    var queue = [];
     var head = 0;
-    var tail = 0;
     function enqueue(x, y) {
       if (x < 0 || y < 0 || x >= width || y >= height) return;
       var index = y * width + x;
-      if (mask[index]) return;
-      mask[index] = 1;
-      queue[tail++] = index;
+      if (visited[index]) return;
+      visited[index] = 1;
+      queue.push(index);
     }
     for (var i = 0; i < seedPoints.length; i++) {
       enqueue(seedPoints[i].x, seedPoints[i].y);
     }
-    while (head < tail) {
+    while (head < queue.length) {
       var pixelIndex = queue[head++];
       var px = pixelIndex % width;
       var py = (pixelIndex - px) / width;
@@ -1391,10 +1406,8 @@ const CLIENT_SCRIPT = String.raw`
         referenceColor.g,
         referenceColor.b
       );
-      if (distSq > softLimitSq) {
-        mask[pixelIndex] = 0;
-        continue;
-      }
+      if (distSq > softLimitSq) continue;
+      mask[pixelIndex] = 1;
       if (px > 0) enqueue(px - 1, py);
       if (px + 1 < width) enqueue(px + 1, py);
       if (py > 0) enqueue(px, py - 1);
@@ -1572,7 +1585,7 @@ const CLIENT_SCRIPT = String.raw`
       var matte = resolveBackgroundReference(imageData);
       var limitSq = tolerance * tolerance * 3;
       var softLimitSq = Math.max(limitSq + softness * softness * 3, limitSq + 1);
-      var seedPoints = sampledBackgroundPoint
+      var seedPoints = methodId === 'flood-fill' && sampledBackgroundPoint
         ? [{ x: sampledBackgroundPoint.x, y: sampledBackgroundPoint.y }]
         : [
             { x: 0, y: 0 },
@@ -1586,8 +1599,8 @@ const CLIENT_SCRIPT = String.raw`
         }
         return { message: 'Background removal alpha-threshold applied.' };
       }
-      var connectedMask = collectConnectedBackgroundMask(data, width, height, matte, limitSq, softLimitSq, seedPoints);
-      if (methodId === 'flood-fill' || sampledBackgroundPoint) {
+      if (methodId === 'flood-fill') {
+        var connectedMask = collectConnectedBackgroundMask(data, width, height, matte, limitSq, softLimitSq, seedPoints);
         for (var idx2 = 0; idx2 < connectedMask.length; idx2++) {
           if (!connectedMask[idx2]) continue;
           var offset2 = idx2 * 4;
@@ -1643,7 +1656,7 @@ const CLIENT_SCRIPT = String.raw`
               bgLimitSq,
               referenceColor
             );
-          } else {
+          } else if (methodId === 'opaque-average') {
             target = findNeighborOpaqueAverage(
               data,
               width,
@@ -1658,8 +1671,7 @@ const CLIENT_SCRIPT = String.raw`
             ) {
               target = null;
             }
-          }
-          if (!target && methodId === 'despill') {
+          } else if (methodId === 'despill') {
             var baseStrength = Math.max(0.2, strength);
             target = {
               r: clampChannel(data[offset] + (data[offset] - referenceColor.r) * baseStrength),
@@ -1780,6 +1792,7 @@ const CLIENT_SCRIPT = String.raw`
 
   function pushUndoState(state) {
     if (!state) return;
+    editGeneration++;
     undoStack.push(state);
     if (undoStack.length > maxHistory) undoStack.shift();
     redoStack = [];
@@ -1790,6 +1803,7 @@ const CLIENT_SCRIPT = String.raw`
       setStatus('Nothing to undo.');
       return;
     }
+    editGeneration++;
     var previous = undoStack.pop();
     var current = cloneState();
     if (current) redoStack.push(current);
@@ -1804,6 +1818,7 @@ const CLIENT_SCRIPT = String.raw`
       setStatus('Nothing to redo.');
       return;
     }
+    editGeneration++;
     var next = redoStack.pop();
     var current = cloneState();
     if (current) undoStack.push(current);

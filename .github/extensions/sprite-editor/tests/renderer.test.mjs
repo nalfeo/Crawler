@@ -128,6 +128,77 @@ async function withEditor(run) {
   }
 }
 
+function rgba(r, g, b, a = 255) {
+  return [r, g, b, a];
+}
+
+async function paintSprite(page, width, height, pixels) {
+  await page.evaluate(
+    ({ width: nextWidth, height: nextHeight, pixels: nextPixels }) => {
+      const spriteCanvas = document.querySelector('.sprite-canvas');
+      const overlayCanvas = document.querySelector('.overlay-canvas');
+      const beforeCanvas = document.querySelector('#comparison-before-canvas');
+      const imageData = new ImageData(new Uint8ClampedArray(nextPixels), nextWidth, nextHeight);
+      spriteCanvas.width = nextWidth;
+      spriteCanvas.height = nextHeight;
+      spriteCanvas.style.width = `${nextWidth}px`;
+      spriteCanvas.style.height = `${nextHeight}px`;
+      const spriteCtx = spriteCanvas.getContext('2d');
+      spriteCtx.clearRect(0, 0, nextWidth, nextHeight);
+      spriteCtx.putImageData(imageData, 0, 0);
+      if (overlayCanvas) {
+        overlayCanvas.width = nextWidth;
+        overlayCanvas.height = nextHeight;
+        overlayCanvas.style.width = `${nextWidth}px`;
+        overlayCanvas.style.height = `${nextHeight}px`;
+        overlayCanvas.getContext('2d').clearRect(0, 0, nextWidth, nextHeight);
+      }
+      if (beforeCanvas) {
+        beforeCanvas.width = nextWidth;
+        beforeCanvas.height = nextHeight;
+        beforeCanvas.style.width = `${nextWidth}px`;
+        beforeCanvas.style.height = `${nextHeight}px`;
+        const beforeCtx = beforeCanvas.getContext('2d');
+        beforeCtx.clearRect(0, 0, nextWidth, nextHeight);
+        beforeCtx.putImageData(imageData, 0, 0);
+      }
+    },
+    { width, height, pixels },
+  );
+}
+
+async function readCanvasPixels(page, selector = '.sprite-canvas') {
+  return page.locator(selector).evaluate((element) => {
+    const context = element.getContext('2d');
+    return Array.from(context.getImageData(0, 0, element.width, element.height).data);
+  });
+}
+
+async function clickCanvasPixel(page, x, y) {
+  await page.evaluate(
+    ({ x: pixelX, y: pixelY }) => {
+      const element = document.querySelector('.sprite-canvas');
+      const rect = element.getBoundingClientRect();
+      const scaleX = rect.width / Math.max(1, element.width);
+      const scaleY = rect.height / Math.max(1, element.height);
+      element.onmousedown({
+        button: 0,
+        clientX: rect.left + (pixelX + 0.5) * scaleX,
+        clientY: rect.top + (pixelY + 0.5) * scaleY,
+      });
+      window.onmouseup();
+    },
+    { x, y },
+  );
+}
+
+async function setControlValue(page, selector, value) {
+  await page.locator(selector).evaluate((element, nextValue) => {
+    element.value = String(nextValue);
+    element.dispatchEvent(new Event('change', { bubbles: true }));
+  }, value);
+}
+
 test('sprite editor wires OpenCV scaling controls and methods', () => {
   const html = renderHtml('x');
   assert.match(html, /\/vendor\/opencv\.js/);
@@ -465,6 +536,73 @@ test('stale scaling results cannot overwrite a newly selected sprite', async () 
   });
 });
 
+test('stale scaling results cannot overwrite a mid-flight edit', async () => {
+  await withEditor(async (page) => {
+    await page.evaluate(() => {
+      window.Worker = class DelayedFailureWorker {
+        listeners = {};
+
+        addEventListener(type, listener) {
+          this.listeners[type] = listener;
+        }
+
+        postMessage() {
+          setTimeout(() => this.listeners.error?.(new Event('error')), 150);
+        }
+
+        terminate() {}
+      };
+    });
+
+    await page.locator('#tool-scale').click();
+    await page.locator('#scale-factor').evaluate((element) => {
+      element.value = '2';
+      element.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    const beforeScale = await page.locator('.sprite-canvas').evaluate((element) => {
+      const context = element.getContext('2d');
+      return {
+        width: element.width,
+        height: element.height,
+        firstPixel: Array.from(context.getImageData(0, 0, 1, 1).data),
+      };
+    });
+    await page.locator('.tool-panel').getByRole('button', { name: 'Scale' }).click();
+
+    await page.evaluate(() => {
+      const element = document.querySelector('.sprite-canvas');
+      const rect = element.getBoundingClientRect();
+      const drawBtn = document.querySelector('#tool-draw');
+      if (drawBtn) drawBtn.click();
+      element.onmousedown({
+        button: 0,
+        clientX: rect.left + 0.5,
+        clientY: rect.top + 0.5,
+      });
+    });
+
+    await page.waitForTimeout(300);
+
+    assert.deepEqual(
+      await page.locator('.sprite-canvas').evaluate((element) => [element.width, element.height]),
+      [beforeScale.width, beforeScale.height],
+    );
+    assert.notDeepEqual(
+      await page
+        .locator('.sprite-canvas')
+        .evaluate((element) => Array.from(element.getContext('2d').getImageData(0, 0, 1, 1).data)),
+      beforeScale.firstPixel,
+    );
+    const status = await page.locator('#status').textContent();
+    assert.ok(
+      !status.startsWith('Scaled from'),
+      `Expected no scale-completion message, got: ${status}`,
+    );
+    await page.evaluate(() => window.onmouseup());
+  });
+});
+
 test('mutually exclusive reactions stay scoped to the sprite being edited', async () => {
   await withEditor(async (page) => {
     const heart = page.locator('#favorite-heart');
@@ -495,5 +633,132 @@ test('mutually exclusive reactions stay scoped to the sprite being edited', asyn
     );
     assert.equal(await page.locator('#favorite-heart').getAttribute('aria-pressed'), 'false');
     assert.equal(await page.locator('#dislike-button').getAttribute('aria-pressed'), 'true');
+  });
+});
+
+test('sampled flood-fill removes every reachable background pixel despite rejected neighbors', async () => {
+  await withEditor(async (page) => {
+    await paintSprite(page, 3, 4, [
+      ...rgba(255, 255, 255),
+      ...rgba(255, 255, 255),
+      ...rgba(255, 255, 255),
+      ...rgba(12, 12, 12),
+      ...rgba(12, 12, 12),
+      ...rgba(255, 255, 255),
+      ...rgba(12, 12, 12),
+      ...rgba(255, 255, 255),
+      ...rgba(255, 255, 255),
+      ...rgba(255, 255, 255),
+      ...rgba(255, 255, 255),
+      ...rgba(12, 12, 12),
+    ]);
+    await page.getByTitle('Pick background').click();
+    await clickCanvasPixel(page, 0, 0);
+    await page.locator('#tool-background').click();
+    await setControlValue(page, '#background-removal-method', 'flood-fill');
+    await setControlValue(page, '#background-removal-tolerance', 0);
+    await setControlValue(page, '#background-removal-softness', 0);
+    await page.locator('.tool-panel').getByRole('button', { name: 'Remove BG' }).click();
+    await page.waitForFunction(
+      () =>
+        document.querySelector('#status')?.textContent ===
+        'Background removal sampled-region applied.',
+    );
+
+    const pixels = await readCanvasPixels(page);
+    const alphaAt = (x, y) => pixels[(y * 3 + x) * 4 + 3];
+    for (const [x, y] of [
+      [0, 0],
+      [1, 0],
+      [2, 0],
+      [2, 1],
+      [1, 2],
+      [2, 2],
+      [0, 3],
+      [1, 3],
+    ]) {
+      assert.equal(alphaAt(x, y), 0, `expected sampled flood-fill to clear ${x},${y}`);
+    }
+    for (const [x, y] of [
+      [0, 1],
+      [1, 1],
+      [0, 2],
+      [2, 3],
+    ]) {
+      assert.equal(alphaAt(x, y), 255, `expected solid pixel ${x},${y} to remain opaque`);
+    }
+  });
+});
+
+test('sampled background still honors color-key as a global removal method', async () => {
+  await withEditor(async (page) => {
+    await paintSprite(page, 4, 2, [
+      ...rgba(0, 180, 255),
+      ...rgba(0, 180, 255),
+      ...rgba(160, 40, 40),
+      ...rgba(160, 40, 40),
+      ...rgba(160, 40, 40),
+      ...rgba(160, 40, 40),
+      ...rgba(160, 40, 40),
+      ...rgba(0, 180, 255),
+    ]);
+    await page.getByTitle('Pick background').click();
+    await clickCanvasPixel(page, 0, 0);
+    await page.locator('#tool-background').click();
+    await setControlValue(page, '#background-removal-method', 'color-key');
+    await setControlValue(page, '#background-removal-tolerance', 0);
+    await setControlValue(page, '#background-removal-softness', 0);
+    await page.locator('.tool-panel').getByRole('button', { name: 'Remove BG' }).click();
+    await page.waitForFunction(
+      () =>
+        document.querySelector('#status')?.textContent === 'Background removal color-key applied.',
+    );
+
+    const pixels = await readCanvasPixels(page);
+    const alphaAt = (x, y) => pixels[(y * 4 + x) * 4 + 3];
+    assert.equal(alphaAt(0, 0), 0);
+    assert.equal(alphaAt(1, 0), 0);
+    assert.equal(alphaAt(3, 1), 0, 'disconnected sampled color should be removed by color-key');
+    assert.equal(alphaAt(2, 0), 255);
+    assert.equal(alphaAt(1, 1), 255);
+  });
+});
+
+test('despill uses its own background-push target instead of opaque-average neighbors', async () => {
+  await withEditor(async (page) => {
+    await paintSprite(page, 4, 4, [
+      ...rgba(0, 255, 0),
+      ...rgba(180, 40, 40),
+      ...rgba(180, 40, 40),
+      ...rgba(180, 40, 40),
+      ...rgba(180, 40, 40),
+      ...rgba(180, 40, 40),
+      ...rgba(0, 0, 0, 0),
+      ...rgba(180, 40, 40),
+      ...rgba(180, 40, 40),
+      ...rgba(180, 40, 40),
+      ...rgba(20, 220, 20),
+      ...rgba(180, 40, 40),
+      ...rgba(180, 40, 40),
+      ...rgba(180, 40, 40),
+      ...rgba(180, 40, 40),
+      ...rgba(180, 40, 40),
+    ]);
+    await page.getByTitle('Pick background').click();
+    await clickCanvasPixel(page, 0, 0);
+    await page.locator('#tool-fringe').click();
+    await setControlValue(page, '#fringe-normalize-method', 'despill');
+    await setControlValue(page, '#fringe-normalize-strength', 100);
+    await setControlValue(page, '#fringe-normalize-threshold', 40);
+    await page.locator('.tool-panel').getByRole('button', { name: 'Normalize fringe' }).click();
+    await page.waitForFunction(() =>
+      document
+        .querySelector('#status')
+        ?.textContent?.startsWith('Fringe normalize despill applied to '),
+    );
+
+    const pixels = await readCanvasPixels(page);
+    const offset = (2 * 4 + 2) * 4;
+    assert.deepEqual(pixels.slice(offset, offset + 4), [40, 185, 40, 255]);
   });
 });
