@@ -1,0 +1,22 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "bow-ranged-tempo-fix",
+  "date": "2026-07-11",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 12,
+  "guards": {
+    "pr-preflight": {
+      "allow": 6
+    },
+    "pr-review-ledger": {
+      "allow": 6
+    }
+  },
+  "tools": {
+    "create_pull_request": 12
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

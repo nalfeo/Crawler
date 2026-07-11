@@ -29,6 +29,10 @@ import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import { AIProgressSuppressionSource, AIState } from '../../src/game/ai/types.js';
+import {
+  ENGAGE_GIVEUP_FRAMES,
+  NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES,
+} from '../../src/game/ai/bt-ai-tuning.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 
 /**
@@ -142,6 +146,37 @@ function enterKillGrindStage(world: GameWorld): void {
   meetTutorialGoon(world);
   world.playerLevel.level = 2;
   world.floorScenario!.objective.questCompleted = false;
+}
+
+function setupNpcApproachThreat(weaponId: string): {
+  world: GameWorld;
+  player: number;
+  enemies: number[];
+  shopkeeperNpcEid: number;
+} {
+  const world = createTestWorld({ seed: 12 });
+  const player = spawnPlayer(world, 0, 0);
+  initializeFloor1Scenario(world, player);
+  selectFloor1StarterWeapon(world, 0);
+  setActiveWeapon(world, getWeaponDef(weaponId)!);
+  meetTutorialGoon(world);
+  world.playerLevel.level = 2;
+  world.floorScenario!.objective.questCompleted = true;
+  world.floorMap = makeOpenRoom(40, 20);
+  world.stores.position.x[player] = 14;
+  world.stores.position.y[player] = 14;
+
+  const shopkeeperNpcEid = world.floorScenario!.shopkeeperNpcEid;
+  expect(shopkeeperNpcEid).toBeDefined();
+  world.stores.position.x[shopkeeperNpcEid!] = 38;
+  world.stores.position.y[shopkeeperNpcEid!] = 14;
+  world.floorScenario!.objective = {
+    ...world.floorScenario!.objective,
+    shopRoomPos: { x: 38, y: 14 },
+  };
+
+  const enemies = [spawnEnemy(world, 22, 14, 20), spawnEnemy(world, 21, 15, 20)];
+  return { world, player, enemies, shopkeeperNpcEid: shopkeeperNpcEid! };
 }
 
 /**
@@ -999,30 +1034,95 @@ describe('BehaviorTreeAI', () => {
   });
 
   it('engages nearby enemies before long NPC approach paths', () => {
-    const world = createTestWorld({ seed: 12 });
-    const player = spawnPlayer(world, 0, 0);
-    initializeFloor1Scenario(world, player);
-    selectFloor1StarterWeapon(world, 0);
-    meetTutorialGoon(world);
-    world.playerLevel.level = 2;
-    world.floorScenario!.objective.questCompleted = true;
-    world.floorMap = makeOpenRoom(40, 20);
-    world.stores.position.x[player] = 14;
-    world.stores.position.y[player] = 14;
-
-    const shopkeeperNpcEid = world.floorScenario!.shopkeeperNpcEid;
-    expect(shopkeeperNpcEid).toBeDefined();
-    world.stores.position.x[shopkeeperNpcEid!] = 38;
-    world.stores.position.y[shopkeeperNpcEid!] = 14;
-
-    spawnEnemy(world, 22, 14, 20);
-
+    const { world } = setupNpcApproachThreat('sword');
     const ai = new BehaviorTreeAI({ seed: 12 });
     ai.poll(createInputState(), world);
 
     const decision = ai.getDecision();
     expect(decision.state).toBe(AIState.ENGAGE);
     expect(decision.reason).toContain('Clearing nearby threat before NPC interaction');
+  });
+
+  it.each(['bow', 'fireball', 'boomerang', 'laser'])(
+    'keeps %s travelling toward an NPC while auto-fire handles nearby threats',
+    (weaponId) => {
+      const { world, shopkeeperNpcEid } = setupNpcApproachThreat(weaponId);
+      const ai = new BehaviorTreeAI({ seed: 12 });
+      ai.poll(createInputState(), world);
+
+      const decision = ai.getDecision();
+      expect(decision.state).toBe(AIState.EXPLORE);
+      expect(decision.targetEid).toBe(shopkeeperNpcEid);
+      expect(decision.targetX).toBe(38);
+      expect(decision.targetY).toBe(14);
+      expect(decision.reason).not.toContain('Clearing nearby threat');
+    },
+  );
+
+  it('abandons a melee NPC threat clear after sustained no progress', () => {
+    const { world, shopkeeperNpcEid } = setupNpcApproachThreat('sword');
+    const ai = new BehaviorTreeAI({ seed: 12 });
+
+    // Poll past the per-enemy ENGAGE_GIVEUP_FRAMES watchdog: the nearest enemy
+    // gets blacklisted and the second in-range enemy takes over, but the
+    // per-NPC no-progress valve spans that switch, so ENGAGE must persist.
+    for (let poll = 0; poll < ENGAGE_GIVEUP_FRAMES + 2; poll += 1) {
+      ai.poll(createInputState(), world);
+    }
+    expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+    expect(ai.getDecision().reason).toContain('Clearing nearby threat before NPC interaction');
+
+    // Keep polling until the per-NPC valve itself times out (total polls =
+    // NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES + 2), proving the new valve — not
+    // the old per-enemy ignore — is what eventually gives up.
+    for (
+      let poll = ENGAGE_GIVEUP_FRAMES + 2;
+      poll < NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES + 2;
+      poll += 1
+    ) {
+      ai.poll(createInputState(), world);
+    }
+
+    expect(ai.getDecision()).toMatchObject({
+      state: AIState.EXPLORE,
+      targetEid: shopkeeperNpcEid,
+      targetX: 38,
+      targetY: 14,
+    });
+
+    ai.reset();
+    ai.poll(createInputState(), world);
+
+    expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+    expect(ai.getDecision().reason).toContain('Clearing nearby threat before NPC interaction');
+  });
+
+  it('resets NPC threat-clear progress when the nearby-threat gate exits', () => {
+    const { world, enemies } = setupNpcApproachThreat('sword');
+    const ai = new BehaviorTreeAI({ seed: 12 });
+
+    // Latch the no-progress bypass first, so the reset below is the ONLY thing
+    // that can restore ENGAGE (proves the no-nearby-threat reset call matters).
+    for (let poll = 0; poll < NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES + 2; poll += 1) {
+      ai.poll(createInputState(), world);
+    }
+    expect(ai.getDecision().state).toBe(AIState.EXPLORE);
+
+    for (const enemy of enemies) {
+      world.stores.position.x[enemy] = 100;
+    }
+    ai.poll(createInputState(), world);
+
+    const originalEnemyX = [22, 21];
+    enemies.forEach((enemy, index) => {
+      const x = originalEnemyX[index];
+      expect(x).toBeDefined();
+      world.stores.position.x[enemy] = x!;
+    });
+    ai.poll(createInputState(), world);
+
+    expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+    expect(ai.getDecision().reason).toContain('Clearing nearby threat before NPC interaction');
   });
 
   it('treats shared-room merchant goals as direct NPC progress targets', () => {

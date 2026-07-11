@@ -581,6 +581,13 @@ export const NPC_INTERACTION_RADIUS_FT = 12.5;
 // Clamp for the "clear a nearby threat before approaching an NPC" check: a threat
 // must be within min(engageRadius, this) feet to pre-empt the NPC approach.
 export const NPC_APPROACH_THREAT_RADIUS_FT = 8;
+// Stop re-entering threat-clear ENGAGE when it has failed to reduce the distance
+// to the same NPC for this many consecutive polls. The bypass stays latched until
+// the gate exits, so one small improvement cannot restart the same livelock.
+// This spans the 120-frame per-enemy give-up window so enemy rotation cannot reset
+// the NPC-level valve, but fires before the 300-frame global dwell watchdog.
+// ~3s at 60fps.
+export const NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES = 180;
 
 // Arena lock-in "add-first" hysteresis. When the AI is locked in a spawner /
 // boss arena, an adjacent add gets priority over the objective only if it is
