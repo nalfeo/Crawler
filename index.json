@@ -1,5 +1,16 @@
 [
   {
+    "commit": "18fae996ce72cc6f397320cd50ed1685206ad7ab",
+    "commitDate": "2026-07-11T22:46:53Z",
+    "commitSubject": "feat(ai): add six-weapon personas with persona-aware sweep CI (#1039)",
+    "capturedAt": "2026-07-11T23:19:27.015Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29171202754",
+    "winRate": 0.9233333333333333,
+    "totalWins": 277,
+    "totalRuns": 300,
+    "path": "by-sha/18fae996ce72cc6f397320cd50ed1685206ad7ab.json"
+  },
+  {
     "commit": "521ed104ee0204448525518d72a6d8c4acfdb7d9",
     "commitDate": "2026-07-11T20:29:36Z",
     "commitSubject": "ci: consolidate CI automation — issue intake, security-review fix, issue retention (#1035)",
