@@ -25,7 +25,7 @@
  *   npm run ai:winrate-sweep                       # seeds 1-40 × {sword,bow,bat}
  *   npm run ai:winrate-sweep -- --seeds 1-60       # range
  *   npm run ai:winrate-sweep -- --weapons sword    # one weapon
- *   npm run ai:winrate-sweep -- --max-frames 21600 --out files/sweep.json
+ *   npm run ai:winrate-sweep -- --max-frames 23760 --out files/sweep.json
  *   npm run ai:winrate-sweep -- --workers 8 --skip-events
  *
  * A failing seed runs to the budget, so a sweep over many seeds with many
