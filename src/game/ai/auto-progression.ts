@@ -38,19 +38,37 @@ export const NPC_INTERACTION_COOLDOWN = 30; // frames
  * Structural headless/live-game gap: tile pathfinding may not reach within
  * NPC_INTERACT_RANGE_FT (10 ft) of the tutorial goon if the NPC spawn position
  * has limited walkable tiles adjacent to it. This threshold allows the headless
- * driver to trigger `meetTutorialGoon` when the AI actively navigates toward the
- * goon and reaches "close enough" — even without setting `nearbyPlayer`.
+ * driver to trigger `meetTutorialGoon` when the AI has been actively navigating
+ * toward the goon for at least TUTORIAL_GOON_DWELL_FRAMES and is "close enough".
  *
- * The gate fires during normal EXPLORE (reason includes 'Tutorial Goon') so it
- * only activates when the BT is genuinely targeting the goon, not on any random
- * EXPLORE frame. The goon does not spawn within this radius of the player start
- * position (validated across seed21 sword + bat), so first-frame completion is
- * not observed in practice.
+ * The combination of the dwell gate + reason check prevents first-frame
+ * completion: the player never spawns within this radius in known seeds, but the
+ * dwell requirement provides a second defense against premature handoff.
  *
  * Follow-up: replace with a proper "can't-get-closer" pathfinder signal to
  * remove this magic-number dependency (tracked in class-D handoff notes).
  */
 export const TUTORIAL_GOON_HANDOFF_DISTANCE_FT = 188;
+
+/**
+ * Minimum consecutive frames seeking tutorial-goon before the 188-ft extended
+ * interaction radius fires. Prevents first-poll handoff if the goon happens to
+ * spawn near the player start position in an unusual seed layout.
+ * ~5 seconds at 60 fps; well below the ~300+ frames seed21+bat spends seeking.
+ */
+export const TUTORIAL_GOON_DWELL_FRAMES = 300;
+
+/**
+ * Per-world frame counter tracking how many consecutive frames the AI has been
+ * in EXPLORE + "Tutorial Goon" reason state. WeakMap so GC reclaims entries when
+ * the world is released between headless runs / test cases.
+ */
+const _tutorialGoonSeekFrames = new WeakMap<GameWorld, number>();
+
+/** Test-only: directly set the dwell counter for a world without running the system N times. */
+export function _setTutorialGoonSeekFramesForTest(world: GameWorld, frames: number): void {
+  _tutorialGoonSeekFrames.set(world, frames);
+}
 
 /**
  * Headless-compatible NPC interaction system.
@@ -68,14 +86,20 @@ export function autoNpcInteractionSystem(
   }
 
   const decision = aiProvider.getDecision();
-  // Fallback for tutorial-goon seek: allow EXPLORE-state interaction when the
-  // BT is actively targeting the tutorial goon. Without this, EXPLORE decisions
-  // are not actionable (only INTERACT fires normally), so the pre-chain handoff
-  // never triggers even when the player has navigated near the goon.
-  // Proximity is gated via TUTORIAL_GOON_HANDOFF_DISTANCE_FT (see constant
-  // doc for why 10 ft nearbyPlayer is insufficient in headless mode).
-  const tutorialSeekFallback =
+  // Track consecutive frames in Tutorial Goon seek to gate the extended-radius
+  // fallback (prevents first-poll handoff before the AI has spent meaningful
+  // time pursuing the goon — see TUTORIAL_GOON_DWELL_FRAMES).
+  const isSeekingTutorialGoon =
     decision.state === AIState.EXPLORE && decision.reason.includes('Tutorial Goon');
+  const prevSeekFrames = _tutorialGoonSeekFrames.get(world) ?? 0;
+  _tutorialGoonSeekFrames.set(world, isSeekingTutorialGoon ? prevSeekFrames + 1 : 0);
+
+  // Fallback for tutorial-goon seek: allow EXPLORE-state interaction only after
+  // the AI has been actively targeting the goon for TUTORIAL_GOON_DWELL_FRAMES.
+  // The dwell gate guards against completing floor1-find-welcome on the first poll
+  // if an unusual seed spawns the goon near the player start.
+  const tutorialSeekFallback =
+    isSeekingTutorialGoon && prevSeekFrames >= TUTORIAL_GOON_DWELL_FRAMES;
   if (decision.state !== AIState.INTERACT && !tutorialSeekFallback) {
     return lastInteractionFrame;
   }
