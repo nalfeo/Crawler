@@ -1,0 +1,28 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-11",
+  "session_slug": "merchant-weapon-purchase",
+  "task_title": "Add optional AI merchant weapon purchase",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Adopted a shared observable per-world accessor module over an opaque local WeakMap; latch stock selection immediately on the buy branch; compare deficit farm time to canonical slack without mutating planner segments or double-counting safety; add explicit post-quest farm/return/buy states; use forced bag equip semantics; latch terminal purchase to prevent repeats; share one typed world opt-in between BT and auto-progression; add explicit RNG/order/slack/CLI/equip tests. Rejected embedding optional work into canonical plan because it would make the detour mandatory; rejected max-cost proxy because the contract requires selected-weapon deficit."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    }
+  }
+}

@@ -45,6 +45,7 @@ import { applyStartPlayerLevel } from '../scenarios/playerLevelProgression.js';
 import { computeFloorProgressScore } from './bt-ai-provider.js';
 import { initNavmesh } from './navmesh/index.js';
 import { QuestProgressStallTracker, formatQuestStallReason } from './quest-stall.js';
+import { configureMerchantWeaponPurchase } from './merchant-weapon-intent.js';
 
 const logger = createLogger('game:headless-runner');
 
@@ -146,6 +147,8 @@ export interface HeadlessRunnerConfig {
   recordWeaponTelemetry?: boolean;
   /** Opt into weapon-specific stat and gear personas. Default false until balanced. */
   weaponPersonas?: boolean;
+  /** Enable the optional seeded post-quest merchant weapon purchase. Default false. */
+  merchantWeaponPurchase?: boolean;
 }
 
 const DEFAULT_CONFIG: Required<
@@ -163,6 +166,7 @@ const DEFAULT_CONFIG: Required<
   startPlayerLevel: 1,
   recordWeaponTelemetry: false,
   weaponPersonas: false,
+  merchantWeaponPurchase: false,
 };
 
 function applyConfiguredHostileDamageMultiplier(
@@ -259,6 +263,7 @@ export async function runHeadless(
 
   // Create world and spawn player
   const world = createGameWorld({ seed: mergedConfig.seed });
+  configureMerchantWeaponPurchase(world, mergedConfig.merchantWeaponPurchase);
   if (mergedConfig.recordWeaponTelemetry) {
     world.weaponTelemetry = createWeaponTelemetry();
   }

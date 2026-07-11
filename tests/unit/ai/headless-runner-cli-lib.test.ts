@@ -12,7 +12,7 @@ import { AIDecisionMode, AIPathingMode } from '../../../src/game/ai/types.js';
 
 // parseArgs skips argv[0] (node) and argv[1] (script), matching process.argv.
 function cli(...flags: string[]): ReturnType<typeof parseArgs> {
-  return parseArgs(['node', 'headless-runner-cli.js', ...flags]);
+  return parseArgs(['node', 'headless-runner-cli.js', ...flags], {});
 }
 
 describe('headless-runner-cli parseArgs — A/B mode flags', () => {
@@ -20,7 +20,7 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
     const args = cli();
     expect(args.pathingMode).toBe(AIPathingMode.LEGACY);
     expect(args.decisionMode).toBe(AIDecisionMode.LEGACY);
-    expect(args).toEqual(defaultCLIArgs());
+    expect(args).toEqual(defaultCLIArgs({}));
   });
 
   it('parses a valid --decision-mode', () => {
@@ -55,5 +55,14 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
 
   it('throws on an invalid --pathing-mode', () => {
     expect(() => cli('--pathing-mode', 'bogus')).toThrow(/Invalid --pathing-mode/);
+  });
+
+  it('keeps merchant weapon purchase off by default and enables it by flag or environment', () => {
+    expect(cli().merchantWeaponPurchase).toBe(false);
+    expect(cli('--merchant-weapon-purchase').merchantWeaponPurchase).toBe(true);
+    expect(
+      parseArgs(['node', 'headless-runner-cli.js'], { AI_MERCHANT_WEAPON_PURCHASE: 'true' })
+        .merchantWeaponPurchase,
+    ).toBe(true);
   });
 });

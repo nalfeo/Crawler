@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  canFarmOptionalMerchantPurchase,
   estimateFloor1RunPlan,
   type Floor1RunPlannerSnapshot,
   type RunPlannerParams,
@@ -59,6 +60,26 @@ function snapshot(overrides: Partial<Floor1RunPlannerSnapshot> = {}): Floor1RunP
 }
 
 describe('estimateFloor1RunPlan', () => {
+  it('gates optional merchant farming against existing slack without adding work to the plan', () => {
+    const runPlan = estimateFloor1RunPlan(
+      snapshot({
+        tutorialAccepted: true,
+        playerLevel: 2,
+        questCompleted: true,
+        shopStage: 'complete',
+      }),
+      PARAMS,
+    );
+
+    expect(canFarmOptionalMerchantPurchase(runPlan, 2, PARAMS.goldFarmMs)).toBe(
+      runPlan.slackMs >= 2 * PARAMS.goldFarmMs,
+    );
+    expect(canFarmOptionalMerchantPurchase({ slackMs: 5_999 }, 2, 3_000)).toBe(false);
+    expect(canFarmOptionalMerchantPurchase({ slackMs: 6_000 }, 2, 3_000)).toBe(true);
+    expect(canFarmOptionalMerchantPurchase({ slackMs: 6_000 }, 2, 0)).toBe(false);
+    expect(canFarmOptionalMerchantPurchase(null, 2, 3_000)).toBe(false);
+  });
+
   it('computes a critical path, required time, slack, and urgency', () => {
     const plan = estimateFloor1RunPlan(snapshot(), PARAMS);
 
