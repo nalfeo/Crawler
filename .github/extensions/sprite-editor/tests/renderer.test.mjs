@@ -497,6 +497,21 @@ test('sprite editor keeps every edit action within two clicks and preserves tool
   });
 });
 
+test('keyboard activation preserves focus across rerendering quick actions', async () => {
+  await withEditor(async (page) => {
+    for (const id of [
+      'draw-mode-toggle',
+      'eyedropper-toggle',
+      'background-picker-quick',
+      'anchor-picker-quick',
+    ]) {
+      await page.locator(`#${id}`).focus();
+      await page.keyboard.press('Enter');
+      assert.equal(await page.evaluate(() => document.activeElement?.id), id);
+    }
+  });
+});
+
 test('scaling restores dimensions, pixels, and anchors through undo and redo', async () => {
   await withEditor(async (page) => {
     const readCanvas = (selector) =>

@@ -2502,6 +2502,7 @@ const CLIENT_SCRIPT = String.raw`
     var modeToggleBtn = h(
       'button',
       {
+        id: 'draw-mode-toggle',
         type: 'button',
         class: 'tool-btn icon-btn',
         text: drawMode === 'draw' ? '✏️' : '⌫',
@@ -2550,7 +2551,7 @@ const CLIENT_SCRIPT = String.raw`
     var scaleDirty = hasDirtyScaleSettings();
     var applyScaleBtn = h(
       'button',
-      { type: 'button', class: 'apply-action' },
+      { id: 'apply-scale', type: 'button', class: 'apply-action' },
       [
         h('span', { class: 'scale-btn-label' }, [
           h('span', { class: 'inline-spinner' + (scaleInFlight ? '' : ' hidden') }),
@@ -2565,6 +2566,7 @@ const CLIENT_SCRIPT = String.raw`
     var eyedropperBtn = h(
       'button',
       {
+        id: 'eyedropper-toggle',
         type: 'button',
         class: 'tool-btn icon-btn' + (eyedropperArmed ? ' on' : ''),
         text: '💧',
@@ -2685,6 +2687,7 @@ const CLIENT_SCRIPT = String.raw`
     var pickBackgroundBtn = h(
       'button',
       {
+        id: 'background-picker-panel',
         type: 'button',
         class: 'tool-btn' + (backgroundPickArmed ? ' on' : ''),
         text: backgroundPickArmed ? 'Picking background…' : 'Pick background',
@@ -2766,16 +2769,17 @@ const CLIENT_SCRIPT = String.raw`
     revertBtn.disabled = mutationInFlight;
     revertBtn.title = 'Revert PNG and metadata to HEAD';
     revertBtn.addEventListener('click', revertCurrent);
-    var undoBtn = h('button', { type: 'button', text: 'Undo' });
+    var undoBtn = h('button', { id: 'undo-edit', type: 'button', text: 'Undo' });
     undoBtn.disabled = undoStack.length === 0;
     undoBtn.addEventListener('click', undo);
-    var redoBtn = h('button', { type: 'button', text: 'Redo' });
+    var redoBtn = h('button', { id: 'redo-edit', type: 'button', text: 'Redo' });
     redoBtn.disabled = redoStack.length === 0;
     redoBtn.addEventListener('click', redo);
 
     var toggleAnchorBtn = h(
       'button',
       {
+        id: 'anchor-overlay-toggle',
         type: 'button',
         class: 'tool-btn' + (showAnchor ? ' on' : ''),
         text: 'Anchor +',
@@ -2791,6 +2795,7 @@ const CLIENT_SCRIPT = String.raw`
     });
 
     var clickAnchorBtn = h('button', {
+      id: 'anchor-picker-panel',
       type: 'button',
       class: 'tool-btn' + (setAnchorOnClick ? ' on' : ''),
       text: setAnchorOnClick ? 'Click target active' : 'Set anchor by click',
@@ -2801,7 +2806,11 @@ const CLIENT_SCRIPT = String.raw`
       renderEditor();
     });
 
-    var holeBtn = h('button', { type: 'button', text: showHoleOverlay ? 'Hide hole overlay' : 'Show hole overlay' });
+    var holeBtn = h('button', {
+      id: 'hole-overlay-toggle',
+      type: 'button',
+      text: showHoleOverlay ? 'Hide hole overlay' : 'Show hole overlay',
+    });
     holeBtn.addEventListener('click', function () {
       showHoleOverlay = !showHoleOverlay;
       renderEditor();
@@ -2856,6 +2865,7 @@ const CLIENT_SCRIPT = String.raw`
     ]);
 
     var backgroundQuickBtn = h('button', {
+      id: 'background-picker-quick',
       type: 'button',
       class: 'tool-btn icon-btn' + (backgroundPickArmed ? ' on' : ''),
       text: '◉',
@@ -2869,6 +2879,7 @@ const CLIENT_SCRIPT = String.raw`
       renderEditor();
     });
     var anchorQuickBtn = h('button', {
+      id: 'anchor-picker-quick',
       type: 'button',
       class: 'tool-btn icon-btn' + (setAnchorOnClick ? ' on' : ''),
       text: '⌖',
