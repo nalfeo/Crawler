@@ -11,8 +11,8 @@ kickoff comment that points Copilot at the normal repo instructions.
 
 - `ci-recovery-router.yml` has no PAT. It translates events and the 10-minute
   backstop into per-PR `workflow_dispatch` runs.
-- `ci-recovery.yml` and `ci-recovery-incidents.yml` are the only recovery
-  workflows that receive `CRAWLER_CI_PAT`.
+- `ci-recovery.yml`, `ci-recovery-incidents.yml`, and `issue-copilot-intake.yml`
+  are the workflows that receive `CRAWLER_CI_PAT`.
 - `issue-copilot-intake.yml` also receives `CRAWLER_CI_PAT`, but only for
   owner-opened issue assignment + kickoff-comment mutation. Issues that carry
   the `automation` label are skipped to avoid double-handling CI-created issues.

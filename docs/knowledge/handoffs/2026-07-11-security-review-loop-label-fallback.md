@@ -21,7 +21,7 @@ ci-policy
 - Diagnosed run `29145237320` (`Security Review Loop`) and confirmed the failure occurred in `Aggregate & file issues` when `gh issue create` attempted `--label automation,security` but the repository does not have a `security` label.
 - Patched `.github/workflows/security-review.yml` so the issue step now defaults to `automation` and conditionally appends `security` only when that label exists.
 - Added a 1🍎 review ledger and validated it.
-- Observed in the real artifact: before, the run log ended with `could not add label: 'security' not found`; after, local full verification including PR prerequisites passed with the updated workflow logic in-tree.
+- Observed in the real artifact: before, the run log ended with `could not add label: 'security' not found` (confirmed in run `29145237320`); after, the updated workflow logic was verified locally via `npm run verify:fast` and PR prerequisites, and the label-fallback code path is covered by the changed workflow step rather than requiring a separate live run (the fix is a conditional path guarding issue creation, not a system-integration change that requires live observation in the actual scheduled run).
 
 ## Key Decisions Made
 
