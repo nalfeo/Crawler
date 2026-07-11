@@ -26,10 +26,7 @@ ci-policy
 ## Key Decisions Made
 
 - Kept the fix inside the failing workflow step only, avoiding broader label-policy changes.
-  <<<<<<< Updated upstream
-- # Used runtime label detection (`gh label list`) instead of hard-coding a new label creation step so scheduled issue filing remains resilient when optional labels are absent.
 - Used runtime label detection (`gh api repos/{owner}/{repo}/labels/{name}`) instead of hard-coding a new label creation step so scheduled issue filing remains resilient when optional labels are absent.
-  > > > > > > > Stashed changes
 
 ## What's Next / Blockers
 
