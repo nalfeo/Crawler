@@ -6,10 +6,37 @@
  * without launching an actual sweep.
  */
 import { availableParallelism } from 'node:os';
+import { GAME } from '../../../src/shared/constants.js';
 
 export const FLOOR1_WEAPONS = ['sword', 'bow', 'baseball-bat'];
-/** Floor 1 design budget: 6 minutes of game time at 60 fps. */
+/** Floor 1 design WIN budget: 6 minutes of game time. */
+const FLOOR1_TIME_BUDGET_MS = 6 * 60 * 1000;
+/** Floor 1 design WIN budget in frames at 60 fps (`FLOOR1_TIME_BUDGET_MS / GAME.DELTA_MS`). */
 export const BUDGET_FRAMES = 21_600;
+
+/**
+ * Default simulation frame cap = the win budget + ~10 % slack, computed with the
+ * IDENTICAL formula (and therefore the identical value, 23_760) used by
+ * sweep-eval.ts and the ab-* / headless Floor-1 harnesses. The FP-safe division
+ * form is load-bearing: `Math.ceil(BUDGET_FRAMES * 1.1)` would round up to 23_761
+ * because `21_600 * 1.1 === 23760.000000000004`, so the peer formula is kept
+ * verbatim to stay byte-for-byte consistent across every Floor-1 sweep.
+ *
+ * The slack is REQUIRED: the Floor-1 win is safe-room-credited — `isOfficialWin`
+ * compares `gameTimeMs - safeRoomMs` against the 6-min budget, so a legitimate
+ * clear can run PAST 360 s of RAW game time while still being under the ACTIVE
+ * budget. Capping the sim at exactly BUDGET_FRAMES (360 s raw) would
+ * force-terminate those safe-room-credited wins before they finish and miscount
+ * them as timeouts — biasing the reported win rate DOWN, the opposite of the
+ * safe-room win-definition fix's intent.
+ *
+ * This slack cap is derived from the Floor-1 budget + the Floor-1 safe-room-credited
+ * win definition, so it is applied ONLY when `--floor floor1` (the default). Any
+ * other floor retains the prior `BUDGET_FRAMES` default (see `parseSweepArgs`); an
+ * explicit `--max-frames` still overrides for every floor. This keeps the Floor-1
+ * safe-room fix from silently changing another floor's truncation behavior.
+ */
+export const DEFAULT_MAX_FRAMES = Math.ceil((FLOOR1_TIME_BUDGET_MS * 1.1) / GAME.DELTA_MS);
 
 export interface CLIArgs {
   seeds: number[];
@@ -127,10 +154,11 @@ export function parseSweepArgs(
 ): CLIArgs {
   let weaponsProvided = false;
   let workersProvided = false;
+  let maxFramesProvided = false;
   const args: CLIArgs = {
     seeds: Array.from({ length: 40 }, (_, i) => i + 1),
     weapons: FLOOR1_WEAPONS,
-    maxFrames: BUDGET_FRAMES,
+    maxFrames: DEFAULT_MAX_FRAMES,
     out: null,
     enemyDamageMultiplier: 1,
     floorId: 'floor1',
@@ -149,6 +177,7 @@ export function parseSweepArgs(
       i++;
     } else if (arg === '--max-frames' && next) {
       args.maxFrames = parsePositiveInt('--max-frames', next);
+      maxFramesProvided = true;
       i++;
     } else if (arg === '--out' && next) {
       args.out = next;
@@ -173,6 +202,14 @@ export function parseSweepArgs(
     args.weapons.length === FLOOR1_WEAPONS.length
   ) {
     args.weapons = ['sword'];
+  }
+  // DEFAULT_MAX_FRAMES carries the Floor-1 safe-room slack (see its docstring) and
+  // is Floor-1-specific. A non-Floor-1 sweep that did not explicitly pass
+  // --max-frames retains the prior BUDGET_FRAMES default, so this Floor-1-scoped
+  // safe-room win-definition fix never silently alters another floor's truncation
+  // behavior. An explicit --max-frames overrides for every floor.
+  if (!maxFramesProvided && args.floorId !== 'floor1') {
+    args.maxFrames = BUDGET_FRAMES;
   }
   if (!workersProvided) {
     args.workers = Math.max(1, Math.min(parallelism, args.seeds.length * args.weapons.length));

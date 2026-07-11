@@ -23,6 +23,7 @@ import {
   aggregate,
   assertComplete,
   assertRowsConsistent,
+  assertSearchArtifactProvenance,
   buildLeaderboard,
   deriveRunFacts,
   mergeShards,
@@ -41,6 +42,7 @@ const VICTORY_SCORE = 1_000_000;
 const META: ShardMeta = {
   schemaVersion: SHARD_SCHEMA_VERSION,
   budgetMs: 360_000,
+  floorId: 'floor1',
   maxFrames: 23_760,
   stage: 'test',
   runnerOs: 'linux',
@@ -56,6 +58,7 @@ function row(
     outcome: 'victory',
     officialWin: true,
     gameTimeMs: 100_000,
+    safeRoomMs: 0,
     score: VICTORY_SCORE,
     xp: 100,
     gold: 50,
@@ -95,6 +98,7 @@ function consistent(
     {
       outcome: base.outcome,
       gameTimeMs: base.gameTimeMs,
+      safeRoomMs: base.safeRoomMs,
       totalXp: base.xp,
       totalGold: base.gold,
       finalLevel: base.finalLevel,
@@ -125,6 +129,7 @@ describe('mergeShards', () => {
   it.each([
     ['schema version', { schemaVersion: 999 }, /schema version mismatch/],
     ['win budget', { budgetMs: 1 }, /win-budget mismatch/],
+    ['floor', { floorId: 'floor2' }, /floor mismatch/],
     ['frame budget', { maxFrames: 1 }, /frame-budget mismatch/],
     ['stage', { stage: 'other' }, /stage mismatch/],
     ['runner OS', { runnerOs: 'windows' }, /runner-OS mismatch/],
@@ -138,6 +143,53 @@ describe('mergeShards', () => {
   ])('throws on %s provenance mismatch', (_label, override, pattern) => {
     const r = row({ combo: 'legacy+legacy', configId: 'c', weapon: 'sword', seed: 1 });
     expect(() => mergeShards([shard([r]), shard([r], override)])).toThrow(pattern as RegExp);
+  });
+
+  it('rejects an all-stale-schema batch that agrees internally but predates the SSOT', () => {
+    // Every shard reports the SAME older schema version, so the per-shard
+    // "agrees with each other" check passes — but the batch still predates the
+    // current SSOT. Pre-v2 rows lack safeRoomMs, which would silently revert to
+    // raw-time win classification, so the batch must be rejected outright.
+    const r = row({ combo: 'legacy+legacy', configId: 'c', weapon: 'sword', seed: 1 });
+    const stale = { schemaVersion: SHARD_SCHEMA_VERSION - 1 };
+    expect(() => mergeShards([shard([r], stale), shard([{ ...r }], stale)])).toThrow(
+      /schema version .* != current/,
+    );
+  });
+
+  it('rejects an all-floor2 batch — safe-room win credit is Floor-1-specific', () => {
+    // Every shard agrees on floorId=floor2, so the per-shard cross-shard check
+    // passes, but deriveRunFacts/isOfficialWin apply Floor-1 safe-room credit
+    // unconditionally. A non-floor1 batch would be misclassified with Floor-1
+    // win semantics, so the fan-in rejects it outright (defense-in-depth behind
+    // sweep-eval's own producer-side --floor guard).
+    const r = row({ combo: 'legacy+legacy', configId: 'c', weapon: 'sword', seed: 1 });
+    const floor2 = { floorId: 'floor2' };
+    expect(() => mergeShards([shard([r], floor2), shard([{ ...r }], floor2)])).toThrow(
+      /floorId 'floor2' is not supported/,
+    );
+  });
+
+  it.each([
+    ['a missing (undefined)', undefined],
+    ['a NaN', NaN],
+    ['a negative', -1],
+    ['an over-gameTimeMs', 200_000],
+  ])('rejects %s safeRoomMs at the fan-in boundary', (_label, safeRoomMs) => {
+    // safeRoomMs is typed `number` but arrives via JSON.parse cast to RunRow, so
+    // an omitted/NaN/out-of-range value slips past the type. activeTimeMs would
+    // coalesce a missing value to 0 (raw-time classification) or clamp a value >
+    // gameTimeMs to 0 active time (manufacturing an official win), so the merge
+    // boundary must reject it. gameTimeMs stays 100_000 so 200_000 is over-range.
+    const r = row({
+      combo: 'legacy+legacy',
+      configId: 'c',
+      weapon: 'sword',
+      seed: 1,
+      gameTimeMs: 100_000,
+      safeRoomMs: safeRoomMs as number,
+    });
+    expect(() => mergeShards([shard([r])])).toThrow(/safeRoomMs/);
   });
 
   it('throws on a conflicting config definition for the same id', () => {
@@ -406,5 +458,83 @@ describe('renderMarkdown', () => {
     expect(md).toContain('AI combo eval');
     expect(md).toContain('Ranked by Σ composite score');
     expect(md).toContain('Composite-score winner ≠ win-count winner');
+  });
+});
+
+describe('assertSearchArtifactProvenance', () => {
+  const SEARCH_META: ShardMeta = { ...META, stage: 'search' };
+  const EXPECTED = {
+    combo: 'navmeshFused+slackAware',
+    floorId: 'floor1',
+    budgetMs: META.budgetMs,
+    maxFrames: META.maxFrames,
+  } as const;
+
+  it('accepts a matching, current-schema search artifact', () => {
+    expect(() =>
+      assertSearchArtifactProvenance(SEARCH_META, EXPECTED.combo, EXPECTED),
+    ).not.toThrow();
+  });
+
+  it('rejects a legacy artifact with no meta/provenance block', () => {
+    expect(() => assertSearchArtifactProvenance(undefined, EXPECTED.combo, EXPECTED)).toThrow(
+      /no meta\/provenance block/,
+    );
+  });
+
+  it('rejects a pre-safe-room (older schema) artifact whose finalist used the raw-time win', () => {
+    expect(() =>
+      assertSearchArtifactProvenance(
+        { ...SEARCH_META, schemaVersion: SHARD_SCHEMA_VERSION - 1 },
+        EXPECTED.combo,
+        EXPECTED,
+      ),
+    ).toThrow(/schema version .* != current/);
+  });
+
+  it('rejects a non-search-stage artifact', () => {
+    expect(() =>
+      assertSearchArtifactProvenance(
+        { ...SEARCH_META, stage: 'validate' },
+        EXPECTED.combo,
+        EXPECTED,
+      ),
+    ).toThrow(/stage 'validate' != 'search'/);
+  });
+
+  it('rejects an artifact tuned on a different floor', () => {
+    expect(() =>
+      assertSearchArtifactProvenance(
+        { ...SEARCH_META, floorId: 'floor2' },
+        EXPECTED.combo,
+        EXPECTED,
+      ),
+    ).toThrow(/floorId 'floor2' != 'floor1'/);
+  });
+
+  it('rejects an artifact tuned against a different win budget', () => {
+    expect(() =>
+      assertSearchArtifactProvenance(
+        { ...SEARCH_META, budgetMs: EXPECTED.budgetMs - 1 },
+        EXPECTED.combo,
+        EXPECTED,
+      ),
+    ).toThrow(/win-budget .* != current/);
+  });
+
+  it('rejects an artifact tuned under a different frame cap', () => {
+    expect(() =>
+      assertSearchArtifactProvenance(
+        { ...SEARCH_META, maxFrames: EXPECTED.maxFrames - 1 },
+        EXPECTED.combo,
+        EXPECTED,
+      ),
+    ).toThrow(/frame-cap .* != current/);
+  });
+
+  it('rejects an artifact whose finalist belongs to a different combo', () => {
+    expect(() => assertSearchArtifactProvenance(SEARCH_META, 'legacy+legacy', EXPECTED)).toThrow(
+      /combo 'legacy\+legacy' != requested/,
+    );
   });
 });

@@ -367,6 +367,13 @@ export interface RunStats {
   wallTimeMs: number;
   /** Simulated game time (ms) */
   gameTimeMs: number;
+  /**
+   * Cumulative simulated time (ms) the player spent in a safe room. The
+   * floor-collapse deadline pauses during this time, so it is excluded from the
+   * collapse-relevant "active" time used for the official win definition (see
+   * `isOfficialWin` / `activeTimeMs` in scoring.ts).
+   */
+  safeRoomMs: number;
   /** Final floor reached */
   finalFloor: number;
   /** Final score */

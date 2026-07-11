@@ -187,6 +187,7 @@ export function isRunStats(value: unknown): value is RunStats {
     typeof run.outcome === 'string' &&
     VALID_OUTCOMES.has(run.outcome as RunStats['outcome']) &&
     hasNumberField(run, 'gameTimeMs') &&
+    hasNumberField(run, 'safeRoomMs') &&
     typeof run.startingWeapon === 'string' &&
     hasNumberField(run, 'finalLevel') &&
     hasNumberField(run, 'totalXp') &&
@@ -209,13 +210,23 @@ export function isRunStats(value: unknown): value is RunStats {
 }
 
 export function normalizeFunSessions(payload: unknown): FunSession[] {
+  // Legacy fun-score payloads predate the required `safeRoomMs` field (added when
+  // the official win definition began crediting safe-room time). Coalesce a
+  // MISSING `safeRoomMs` to 0 so historical artifacts stay ingestible, while a
+  // present-but-invalid value still fails `isRunStats` (corruption, not legacy).
+  const withDefaultedSafeRoomMs = (candidate: unknown): unknown => {
+    if (typeof candidate !== 'object' || candidate === null) return candidate;
+    const obj = candidate as UnknownRecord;
+    if ('safeRoomMs' in obj) return candidate;
+    return { ...obj, safeRoomMs: 0 };
+  };
   const toSession = (candidate: unknown, index: number): FunSession => {
     if (typeof candidate !== 'object' || candidate === null) {
       throw new Error(`Entry ${index + 1} is not an object.`);
     }
     const obj = candidate as UnknownRecord;
     const id = typeof obj.id === 'string' ? obj.id : `run-${index + 1}`;
-    const runCandidate = 'run' in obj ? obj.run : obj;
+    const runCandidate = withDefaultedSafeRoomMs('run' in obj ? obj.run : obj);
     if (!isRunStats(runCandidate)) {
       throw new Error(`Entry ${index + 1} is missing a valid RunStats payload.`);
     }
@@ -233,8 +244,9 @@ export function normalizeFunSessions(payload: unknown): FunSession[] {
     if (Array.isArray(root.runs)) {
       return root.runs.map((entry, index) => toSession(entry, index));
     }
-    if (isRunStats(root)) {
-      return [{ id: 'run-1', run: root }];
+    const bareRun = withDefaultedSafeRoomMs(root);
+    if (isRunStats(bareRun)) {
+      return [{ id: 'run-1', run: bareRun }];
     }
   }
   throw new Error(

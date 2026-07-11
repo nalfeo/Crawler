@@ -7,6 +7,7 @@ function makeRunStats(overrides: Partial<RunStats>): RunStats {
     totalFrames: 0,
     wallTimeMs: 0,
     gameTimeMs: 0,
+    safeRoomMs: 0,
     finalFloor: 1,
     finalScore: 0,
     outcome: 'timeout',

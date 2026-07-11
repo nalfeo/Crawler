@@ -17,11 +17,16 @@
  *                    carries a flip baseline; the aggregator collapses the
  *                    identical incumbent copies as a determinism proof).
  *
- * The SSOT tournament win is `outcome==='victory' && gameTimeMs < FLOOR1_TIME_BUDGET_MS`
- * (matches the official gate + ab-* harnesses). The composite score reuses
- * `scoreRun`, but a clear that exceeds the 6-min budget is scored as a NON-win
- * (its outcome is downgraded before scoring) so the headline Σ-score metric can
- * never reward a config for a run the tournament counts as a loss.
+ * The SSOT tournament win is `isOfficialWin(stats, FLOOR1_TIME_BUDGET_MS)`:
+ * `outcome==='victory' && (gameTimeMs - safeRoomMs) < FLOOR1_TIME_BUDGET_MS`
+ * (matches the official gate + ab-* harnesses). Safe-room time is credited
+ * because the floor-collapse deadline PAUSES while the player rests in a safe
+ * room, so a clear that is over budget in raw game time but under it in active
+ * time is a legitimate win. The composite score reuses `scoreRun` on RAW time
+ * (so the search gradient never rewards safe-room idling); a clear whose ACTIVE
+ * time exceeds the 6-min budget is scored as a NON-win (its outcome is
+ * downgraded before scoring) so the headline Σ-score metric can never reward a
+ * config for a run the tournament counts as a loss.
  *
  * Deterministic RESULTS: seeded runs only. The scored facts — every `scoreRun`
  * input, `RunRow` field, and emitted artifact row — read neither `Math.random` nor
@@ -56,6 +61,7 @@ import {
 } from './gen-configs.js';
 import {
   SHARD_SCHEMA_VERSION,
+  assertSearchArtifactProvenance,
   deriveRunFacts,
   type RunRow,
   type ShardArtifact,
@@ -116,6 +122,7 @@ async function runOne(task: EvalTask, shared: EvalShared): Promise<RunRow> {
     outcome: stats.outcome,
     officialWin,
     gameTimeMs: stats.gameTimeMs,
+    safeRoomMs: stats.safeRoomMs,
     score,
     xp: stats.totalXp,
     gold: stats.totalGold,
@@ -318,10 +325,11 @@ function packageLockHash(): string {
   }
 }
 
-function buildMeta(stage: string): ShardMeta {
+function buildMeta(stage: string, floorId: string): ShardMeta {
   return {
     schemaVersion: SHARD_SCHEMA_VERSION,
     budgetMs: FLOOR1_TIME_BUDGET_MS,
+    floorId,
     maxFrames: MAX_FRAMES,
     stage,
     runnerOs: `${process.platform}-${process.arch}`,
@@ -408,6 +416,13 @@ function parseArgs(argv: readonly string[]): CliArgs {
   if (!args.combo) {
     throw new Error('--combo is required (e.g. --combo legacy+legacy)');
   }
+  if (args.floorId !== 'floor1') {
+    throw new Error(
+      `--floor '${args.floorId}' is not supported: this sweep is Floor-1-calibrated ` +
+        `(the 6-minute budget and safe-room active-time credit are Floor-1-specific). ` +
+        `Non-Floor-1 win semantics are undefined here.`,
+    );
+  }
   return args;
 }
 
@@ -429,7 +444,7 @@ async function main(argv: readonly string[]): Promise<void> {
       floorId: args.floorId,
     });
     const artifact: SearchArtifact = {
-      meta: buildMeta('search'),
+      meta: buildMeta('search', args.floorId),
       combo: comboId(combo),
       bestConfigId: result.bestConfigId,
       configs: result.configs,
@@ -445,6 +460,15 @@ async function main(argv: readonly string[]): Promise<void> {
     throw new Error('--search-artifact <path> is required for --stage validate');
   }
   const search = JSON.parse(readFileSync(args.searchArtifact, 'utf8')) as SearchArtifact;
+  // The finalist config crosses the search→validate boundary WITHOUT passing
+  // through the aggregate fan-in guard, so vet its provenance here: a stale
+  // (pre-safe-room) or mismatched artifact must not seed v2 validation rows.
+  assertSearchArtifactProvenance(search.meta as ShardMeta | undefined, search.combo, {
+    combo: comboId(combo),
+    floorId: args.floorId,
+    budgetMs: FLOOR1_TIME_BUDGET_MS,
+    maxFrames: MAX_FRAMES,
+  });
   const finalist = search.configs[search.bestConfigId];
   if (!finalist) {
     throw new Error(`Search artifact missing config for bestConfigId ${search.bestConfigId}`);
@@ -495,7 +519,7 @@ async function main(argv: readonly string[]): Promise<void> {
       )),
     );
   }
-  const artifact: ShardArtifact = { meta: buildMeta('validate'), configs, rows };
+  const artifact: ShardArtifact = { meta: buildMeta('validate', args.floorId), configs, rows };
   emit(artifact, args.out);
   console.log(`⏱  ${((Date.now() - start) / 1000).toFixed(0)}s · ${rows.length} runs`);
 }

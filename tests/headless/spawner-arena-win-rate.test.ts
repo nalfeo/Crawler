@@ -47,6 +47,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
+import { isOfficialWin, activeTimeMs } from '../../src/game/ai/scoring.js';
 import type { RunStats } from '../../src/game/ai/types.js';
 import { GAME } from '../../src/shared/constants.js';
 
@@ -93,7 +94,7 @@ describe('spawner battle-arena · headless Floor-1 sweep', () => {
     const fails: string[] = [];
     for (const seed of SAMPLE_SEEDS) {
       const s = runs.get(seed)!;
-      if (s.outcome === 'victory' && s.gameTimeMs < FLOOR1_TIME_BUDGET_MS) {
+      if (isOfficialWin(s, FLOOR1_TIME_BUDGET_MS)) {
         wins.push(seed);
       } else {
         fails.push(`${seed}:${s.outcome}@${(s.gameTimeMs / 1000).toFixed(0)}s lv${s.finalLevel}`);
@@ -201,10 +202,14 @@ describe('spawner battle-arena · headless Floor-1 sweep', () => {
     for (const seed of SAMPLE_SEEDS) {
       const s = runs.get(seed)!;
       if (s.outcome !== 'victory') continue;
+      // Credit safe-room dwell: the floor-collapse deadline pauses in safe rooms,
+      // so a legitimate win is bounded by ACTIVE time (game time − safe-room time),
+      // not raw game time. A safe-room-credited over-budget-raw victory is valid.
       expect(
-        s.gameTimeMs,
-        `[seed ${seed}] won at ${(s.gameTimeMs / 1000).toFixed(0)}s — over the ` +
-          `${FLOOR1_TIME_BUDGET_MS / 1000}s AI budget (arena feature regression?)`,
+        activeTimeMs(s),
+        `[seed ${seed}] won at ${(activeTimeMs(s) / 1000).toFixed(0)}s active ` +
+          `(${(s.gameTimeMs / 1000).toFixed(0)}s raw, ${(s.safeRoomMs / 1000).toFixed(0)}s safe-room) — ` +
+          `over the ${FLOOR1_TIME_BUDGET_MS / 1000}s AI budget (arena feature regression?)`,
       ).toBeLessThan(FLOOR1_TIME_BUDGET_MS);
     }
   });
