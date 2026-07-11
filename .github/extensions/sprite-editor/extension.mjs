@@ -286,26 +286,42 @@ function applyMetadataUpdate(payload, data, key) {
   if (!entry) {
     throw new CanvasError('not_found', `Manifest entry "${key}" not found.`);
   }
-  const holdX = clampInt(
-    payload?.metadata?.holdX,
-    entry?.anchors?.hold?.x ?? entry?.anchor?.x ?? 0,
-  );
-  const holdY = clampInt(
-    payload?.metadata?.holdY,
-    entry?.anchors?.hold?.y ?? entry?.anchor?.y ?? 0,
-  );
-  const pivotX = clampInt(payload?.metadata?.pivotX, entry?.anchors?.centerOfGravity?.x ?? holdX);
-  const pivotY = clampInt(payload?.metadata?.pivotY, entry?.anchors?.centerOfGravity?.y ?? holdY);
-  entry.anchor = { x: holdX, y: holdY, source: 'manual' };
-  entry.anchors = {
-    ...(entry.anchors ?? {}),
-    hold: { x: holdX, y: holdY, source: 'manual' },
-    centerOfGravity: { x: pivotX, y: pivotY, source: 'manual' },
-  };
-  entry.effectiveAnchorSource = 'manual';
-  entry.facingDirection = normalizeFacing(payload?.metadata?.facingDirection);
-
   const summary = data.summaryByKey.get(key);
+  const currentHoldX = clampInt(summary?.holdX, entry?.anchors?.hold?.x ?? entry?.anchor?.x ?? 0);
+  const currentHoldY = clampInt(summary?.holdY, entry?.anchors?.hold?.y ?? entry?.anchor?.y ?? 0);
+  const currentPivotX = clampInt(
+    summary?.pivotX,
+    entry?.anchors?.centerOfGravity?.x ?? currentHoldX,
+  );
+  const currentPivotY = clampInt(
+    summary?.pivotY,
+    entry?.anchors?.centerOfGravity?.y ?? currentHoldY,
+  );
+  const holdX = clampInt(payload?.metadata?.holdX, currentHoldX);
+  const holdY = clampInt(payload?.metadata?.holdY, currentHoldY);
+  const pivotX = clampInt(payload?.metadata?.pivotX, currentPivotX);
+  const pivotY = clampInt(payload?.metadata?.pivotY, currentPivotY);
+  const anchorChanged =
+    holdX !== currentHoldX ||
+    holdY !== currentHoldY ||
+    pivotX !== currentPivotX ||
+    pivotY !== currentPivotY;
+  if (anchorChanged) {
+    entry.anchor = { x: holdX, y: holdY, source: 'manual' };
+    entry.anchors = {
+      ...(entry.anchors ?? {}),
+      hold: { x: holdX, y: holdY, source: 'manual' },
+      centerOfGravity: { x: pivotX, y: pivotY, source: 'manual' },
+    };
+    entry.effectiveAnchorSource = 'manual';
+  }
+  const hasFacingDirection =
+    payload?.metadata?.facingDirection === 'left' || payload?.metadata?.facingDirection === 'right';
+  const facingDirection = normalizeFacing(payload?.metadata?.facingDirection);
+  if (hasFacingDirection && facingDirection !== summary?.facingDirection) {
+    entry.facingDirection = facingDirection;
+  }
+
   const catalogId =
     typeof payload?.metadata?.catalogId === 'string'
       ? payload.metadata.catalogId
@@ -316,9 +332,12 @@ function applyMetadataUpdate(payload, data, key) {
     return typeof item.assetPath === 'string' && item.assetPath === entry.assetPath;
   });
   if (catalogEntry) {
-    catalogEntry.frame = clampInt(payload?.metadata?.frame, catalogEntry.frame ?? 0);
-    catalogEntry.col = clampInt(payload?.metadata?.col, catalogEntry.col ?? 0);
-    catalogEntry.row = clampInt(payload?.metadata?.row, catalogEntry.row ?? 0);
+    const frame = clampInt(payload?.metadata?.frame, summary?.frame ?? catalogEntry.frame ?? 0);
+    const col = clampInt(payload?.metadata?.col, summary?.col ?? catalogEntry.col ?? 0);
+    const row = clampInt(payload?.metadata?.row, summary?.row ?? catalogEntry.row ?? 0);
+    if (frame !== summary?.frame) catalogEntry.frame = frame;
+    if (col !== summary?.col) catalogEntry.col = col;
+    if (row !== summary?.row) catalogEntry.row = row;
   }
 }
 
@@ -340,9 +359,17 @@ async function saveSprite(payload) {
   const data = loadData();
   const entry = data.manifest.entries?.[key];
   if (!entry) throw new CanvasError('not_found', `Unknown sprite key "${key}".`);
+  const hasMetadata =
+    payload?.metadata !== null &&
+    typeof payload?.metadata === 'object' &&
+    !Array.isArray(payload.metadata);
+  const hasAnnotation =
+    payload?.annotation !== null &&
+    typeof payload?.annotation === 'object' &&
+    !Array.isArray(payload.annotation);
   try {
-    applyMetadataUpdate(payload, data, key);
-    applyAnnotationUpdate(payload, data, key);
+    if (hasMetadata) applyMetadataUpdate(payload, data, key);
+    if (hasAnnotation) applyAnnotationUpdate(payload, data, key);
 
     if (typeof payload?.pngDataUrl === 'string' && payload.pngDataUrl.length > 0) {
       const bytes = decodePngDataUrl(payload.pngDataUrl);
@@ -352,9 +379,11 @@ async function saveSprite(payload) {
       writeFileSync(pngPath, bytes);
     }
 
-    writeJsonFile(MANIFEST_PATH, data.manifest);
-    writeJsonFile(CATALOG_PATH, data.catalog);
-    writeJsonFile(ANNOTATIONS_PATH, data.annotations);
+    if (hasMetadata) {
+      writeJsonFile(MANIFEST_PATH, data.manifest);
+      writeJsonFile(CATALOG_PATH, data.catalog);
+    }
+    if (hasAnnotation) writeJsonFile(ANNOTATIONS_PATH, data.annotations);
     const fresh = loadData().summaryByKey.get(key);
     return { ok: true, sprite: fresh ?? null };
   } finally {

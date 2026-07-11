@@ -256,6 +256,7 @@ test('sprite editor wires OpenCV scaling controls and methods', () => {
   assert.match(html, /SCALE_FACTOR_MAX = 8/);
   assert.match(html, /MAX_SCALE_DIMENSION = 4096/);
   assert.match(html, /MAX_SCALE_PIXELS = 16 \* 1024 \* 1024/);
+  assert.match(html, /MAX_HISTORY_BYTES = 64 \* 1024 \* 1024/);
   assert.match(html, /Nearest \(pixel-perfect\)/);
   assert.match(html, /Bilinear/);
   assert.match(html, /Bicubic/);
@@ -324,6 +325,9 @@ test('sprite editor wires OpenCV scaling controls and methods', () => {
   assert.match(html, /'aria-label': 'Dislike and flag for regeneration'/);
   assert.match(html, /role: 'status'/);
   assert.doesNotMatch(html, /id="app" aria-live/);
+  assert.match(EXTENSION_SOURCE, /if \(hasMetadata\) applyMetadataUpdate/);
+  assert.match(EXTENSION_SOURCE, /if \(hasAnnotation\) applyAnnotationUpdate/);
+  assert.match(EXTENSION_SOURCE, /if \(anchorChanged\)/);
 });
 
 test('sprite editor pins and verifies the OpenCV vendor asset', () => {
@@ -697,6 +701,53 @@ test('scaling rejects target allocations above the safe pixel budget', async () 
   });
 });
 
+test('history evicts old full-frame snapshots to stay within its byte budget', async () => {
+  await withEditor(async (page) => {
+    await page.getByTitle('Erase mode').click();
+    await page.evaluate(() => {
+      const spriteCanvas = document.querySelector('.sprite-canvas');
+      const overlayCanvas = document.querySelector('.overlay-canvas');
+      spriteCanvas.width = 2048;
+      spriteCanvas.height = 2048;
+      overlayCanvas.width = 2048;
+      overlayCanvas.height = 2048;
+      spriteCanvas.getContext('2d').putImageData(new ImageData(2048, 2048), 0, 0);
+    });
+    for (let x = 0; x < 5; x += 1) {
+      await clickCanvasPixel(page, x, 0);
+    }
+
+    for (let count = 0; count < 4; count += 1) {
+      await page.keyboard.press('Control+z');
+      assert.equal(await page.locator('#status').textContent(), 'Undo.');
+    }
+    await page.keyboard.press('Control+z');
+    assert.equal(await page.locator('#status').textContent(), 'Nothing to undo.');
+  });
+});
+
+test('form-only dirty checks reuse the cached canvas fingerprint', async () => {
+  await withEditor(async (page) => {
+    await page.locator('.sprite-canvas').evaluate((element) => {
+      const originalToDataUrl = element.toDataURL.bind(element);
+      window.__spriteFingerprintCalls = 0;
+      element.toDataURL = (...args) => {
+        window.__spriteFingerprintCalls += 1;
+        return originalToDataUrl(...args);
+      };
+    });
+
+    await page.locator('#comment').fill('a');
+    await page.locator('#comment').fill('ab');
+    await setControlValue(page, '#frame', 2);
+    assert.equal(await page.evaluate(() => window.__spriteFingerprintCalls), 0);
+
+    await page.getByTitle('Erase mode').click();
+    await clickCanvasPixel(page, 0, 0);
+    assert.equal(await page.evaluate(() => window.__spriteFingerprintCalls), 1);
+  });
+});
+
 test('Unsaved badge tracks brush, comment, and reaction mutations immediately', async () => {
   await withEditor(async (page) => {
     const badge = page.locator('.dirty-badge');
@@ -892,6 +943,7 @@ test('stale scaling results cannot overwrite a mid-flight edit', async () => {
     await page.locator('#favorite-heart').click();
 
     await page.evaluate(() => {
+      document.querySelector('[aria-label="Erase mode"]')?.click();
       const element = document.querySelector('.sprite-canvas');
       const rect = element.getBoundingClientRect();
       const drawBtn = document.querySelector('#tool-draw');

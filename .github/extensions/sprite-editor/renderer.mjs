@@ -400,6 +400,7 @@ const CLIENT_SCRIPT = String.raw`
   var undoStack = [];
   var redoStack = [];
   var maxHistory = 60;
+  var cachedCanvasFingerprint = null;
   var editGeneration = 0;
   var strokeSnapshot = null;
   var contextMenu = null;
@@ -444,6 +445,7 @@ const CLIENT_SCRIPT = String.raw`
   var SCALE_WORKER_TIMEOUT_MS = 10000;
   var MAX_SCALE_DIMENSION = 4096;
   var MAX_SCALE_PIXELS = 16 * 1024 * 1024;
+  var MAX_HISTORY_BYTES = 64 * 1024 * 1024;
   var ZOOM_MIN = 0.5;
   var ZOOM_MAX = 20;
   var ZOOM_STEP = 0.5;
@@ -925,6 +927,7 @@ const CLIENT_SCRIPT = String.raw`
         ctx.drawImage(bitmap, 0, 0);
         if (typeof bitmap.close === 'function') bitmap.close();
       }
+      invalidateCanvasFingerprint();
       overlayCanvas.width = canvas.width;
       overlayCanvas.height = canvas.height;
       ctx.imageSmoothingEnabled = false;
@@ -1039,8 +1042,20 @@ const CLIENT_SCRIPT = String.raw`
       key: sprite.key,
       metadata: currentMetadataSnapshot(),
       annotation: currentAnnotationSnapshot(),
-      pngDataUrl: canvasToPngDataUrl()
+      pngDataUrl: currentCanvasFingerprint()
     });
+  }
+
+  function currentCanvasFingerprint() {
+    if (!canvas) return null;
+    if (cachedCanvasFingerprint === null) {
+      cachedCanvasFingerprint = canvasToPngDataUrl();
+    }
+    return cachedCanvasFingerprint;
+  }
+
+  function invalidateCanvasFingerprint() {
+    cachedCanvasFingerprint = null;
   }
 
   function resetBaseline() {
@@ -1254,6 +1269,7 @@ const CLIENT_SCRIPT = String.raw`
     ctx.imageSmoothingEnabled = false;
     overlayCtx.imageSmoothingEnabled = false;
     ctx.drawImage(img, 0, 0);
+    invalidateCanvasFingerprint();
     comparisonBeforeCanvas = null;
     comparisonActionLabel = 'Last saved';
     captureLastSavedSnapshot();
@@ -1303,6 +1319,7 @@ const CLIENT_SCRIPT = String.raw`
 
   function applyBrush(x, y) {
     if (!ctx || !canvas) return;
+    invalidateCanvasFingerprint();
     var half = Math.floor(brushSize / 2);
     var left = Math.max(0, x - half);
     var top = Math.max(0, y - half);
@@ -1527,6 +1544,7 @@ const CLIENT_SCRIPT = String.raw`
     );
     var result = applyFn(working) || {};
     ctx.putImageData(working, 0, 0);
+    invalidateCanvasFingerprint();
     var after = cloneState();
     if (!statesDiffer(before, after)) {
       setStatus(result.message || (label + ' made no visible change.'));
@@ -1813,6 +1831,7 @@ const CLIENT_SCRIPT = String.raw`
     }
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.putImageData(state.imageData, 0, 0);
+    invalidateCanvasFingerprint();
     sprite.holdX = state.holdX;
     sprite.holdY = state.holdY;
     sprite.pivotX = state.pivotX;
@@ -1833,8 +1852,25 @@ const CLIENT_SCRIPT = String.raw`
     undoStack.push(state);
     if (undoStack.length > maxHistory) undoStack.shift();
     redoStack = [];
+    trimHistoryToBudget();
     refreshAppliedActionButtons();
     updateDirtyIndicator();
+  }
+
+  function historyStateBytes(state) {
+    return state && state.imageData && state.imageData.data
+      ? state.imageData.data.byteLength
+      : 0;
+  }
+
+  function trimHistoryToBudget() {
+    var totalBytes = undoStack.concat(redoStack).reduce(function (sum, state) {
+      return sum + historyStateBytes(state);
+    }, 0);
+    while (totalBytes > MAX_HISTORY_BYTES && undoStack.length + redoStack.length > 1) {
+      var removed = undoStack.length > 0 ? undoStack.shift() : redoStack.shift();
+      totalBytes -= historyStateBytes(removed);
+    }
   }
 
   function refreshAppliedActionButtons() {
@@ -1866,6 +1902,7 @@ const CLIENT_SCRIPT = String.raw`
     var previous = undoStack.pop();
     var current = cloneState();
     if (current) redoStack.push(current);
+    trimHistoryToBudget();
     applyState(previous);
     renderEditor();
     renderOverlay();
@@ -1881,6 +1918,8 @@ const CLIENT_SCRIPT = String.raw`
     var next = redoStack.pop();
     var current = cloneState();
     if (current) undoStack.push(current);
+    if (undoStack.length > maxHistory) undoStack.shift();
+    trimHistoryToBudget();
     applyState(next);
     renderEditor();
     renderOverlay();
