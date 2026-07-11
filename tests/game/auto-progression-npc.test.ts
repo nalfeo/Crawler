@@ -458,8 +458,8 @@ describe('autoFloor1ProgressionSystem', () => {
     const fireballBag = fireballWorld.inventories.get(fireballPlayer)!;
     addItem(fireballBag, 'signet-of-focus', 1);
 
-    autoFloor1ProgressionSystem(swordWorld, swordPlayer, true);
-    autoFloor1ProgressionSystem(fireballWorld, fireballPlayer, true);
+    autoFloor1ProgressionSystem(swordWorld, swordPlayer, undefined, true);
+    autoFloor1ProgressionSystem(fireballWorld, fireballPlayer, undefined, true);
 
     expect(hasItem(swordBag, 'signet-of-focus')).toBe(true);
     expect(hasItem(fireballBag, 'signet-of-focus')).toBe(false);
@@ -477,7 +477,7 @@ describe('autoFloor1ProgressionSystem', () => {
     const bag = world.inventories.get(player)!;
     addItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID, 1);
 
-    autoFloor1ProgressionSystem(world, player, true);
+    autoFloor1ProgressionSystem(world, player, undefined, true);
 
     expect(hasItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID)).toBe(false);
     const equipment = getEquipmentState(world, player)!;
@@ -507,7 +507,7 @@ describe('autoFloor1ProgressionSystem', () => {
     const bag = world.inventories.get(player)!;
     addItem(bag, 'arcanist-circlet', 1, [makeCatalogItem('arcanist-circlet')]);
 
-    autoFloor1ProgressionSystem(world, player, true);
+    autoFloor1ProgressionSystem(world, player, undefined, true);
 
     expect(hasItem(bag, 'arcanist-circlet')).toBe(false);
     expect(hasItem(bag, 'iron-helm')).toBe(true);
