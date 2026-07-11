@@ -292,11 +292,7 @@ function reportViolations(violations) {
   for (const { sha, header, result } of violations) {
     process.stderr.write(`  Commit ${sha}: "${header}"\n`);
     process.stderr.write(`  Error:  ${result.error}\n`);
-    if (result.fixable) {
-      process.stderr.write(`  Fix:    ${result.suggestion}\n`);
-    } else {
-      process.stderr.write(`  Fix:    ${result.suggestion}\n`);
-    }
+    process.stderr.write(`  Fix:    ${result.suggestion}\n`);
     process.stderr.write('\n');
   }
   process.stderr.write(

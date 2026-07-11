@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# commit-msg hook: validate and auto-fix the commit subject before finalising.
+# commit-msg hook: validate and auto-fix the commit subject before finalizing.
 # Installed automatically by `npm install` (see scripts/agent/setup-git-hooks.mjs).
 set -eu
 
