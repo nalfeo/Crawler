@@ -1,0 +1,32 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-11",
+  "session_slug": "class-d-anchor-hardening",
+  "task_title": "Floor1 class-D anchor hardening: BFS reachable-anchor replaces 188ft fallback",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "major_fork",
+      "notes": "Reviewer flagged BFS per-frame cost, null fallback silence, no dwell gate, EID hardening, 40-tile radius bound. All 6 addressed: added npcInteractionAnchorCache, null caches+warns, dwell-gate removal justified by 12.5ft proximity requirement.",
+      "model": "gpt-5.4",
+      "concerns_resolved": 6
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 5,
+          "resolved_count": 5,
+          "clean": true,
+          "notes": "All 5 concerns evaluated: impassable cache miss correct (no BFS cost), stale door anchor benign (only adds reachable tiles), dist[] non-null assertion safe, no-dwell gate safe with 12.5ft requirement, targetX/Y atomically set. No bugs found."
+        }
+      ]
+    }
+  }
+}

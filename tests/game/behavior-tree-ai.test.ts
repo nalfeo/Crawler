@@ -29,6 +29,7 @@ import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import { AIProgressSuppressionSource, AIState } from '../../src/game/ai/types.js';
+import { NPC_INTERACTION_RADIUS_FT } from '../../src/game/ai/bt-ai-tuning.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 
 /**
@@ -204,9 +205,17 @@ describe('BehaviorTreeAI', () => {
 
     const decision = ai.getDecision();
     expect(decision.reason).toContain('Tutorial Goon');
-    expect(decision.targetEid).toBe(world.floorScenario?.guideNpcEid ?? -1);
-    expect(decision.targetX).toBe(world.floorScenario?.objective.welcomeOfficePos.x);
-    expect(decision.targetY).toBe(world.floorScenario?.objective.welcomeOfficePos.y);
+    const guideNpcEid = world.floorScenario?.guideNpcEid ?? -1;
+    expect(decision.targetEid).toBe(guideNpcEid);
+    expect(decision.targetX).not.toBeNull();
+    expect(decision.targetY).not.toBeNull();
+    if (guideNpcEid >= 0) {
+      const npcX = world.stores.position.x[guideNpcEid] ?? 0;
+      const npcY = world.stores.position.y[guideNpcEid] ?? 0;
+      const dx = (decision.targetX ?? 0) - npcX;
+      const dy = (decision.targetY ?? 0) - npcY;
+      expect(Math.hypot(dx, dy)).toBeLessThan(NPC_INTERACTION_RADIUS_FT);
+    }
   });
 
   it('labels EXPLORE fallback caused by suppressed fixed-position post-tutorial progress navigation', () => {

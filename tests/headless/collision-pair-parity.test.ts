@@ -182,38 +182,46 @@ interface CollisionFingerprint {
  *   seed  42:  8/273.90000009536743/10/22  →  unchanged
  *   seed 137:  16/450/0/22                →   8/260/0/16
  */
+// Re-baselined after floor1 class-D hardening (2026-07-11): replaced 188ft
+// tutorial-goon shortcut with BFS reachable-anchor navigation. The anchor
+// approach physically navigates the player to a passable tile near the NPC room
+// entrance, taking more frames than the old 300-frame dwell + distance gate.
+// This shifts the pre-chain / combat split inside the 1500-frame window,
+// producing lower kill/score counts. Determinism (two-invocation check) is
+// unchanged. The class-D regression tests (seed21+sword/bat, seed69+sword)
+// confirm correct end-to-end progression completion.
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 8,
-    damageDealt: 273.90000009536743,
+    kills: 4,
+    damageDealt: 205.2999997138977,
     damageTaken: 10,
-    finalScore: 22,
+    finalScore: 6,
   },
   7: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 10,
-    damageDealt: 270.23999977111816,
-    damageTaken: 10,
-    finalScore: 14,
+    kills: 0,
+    damageDealt: 121.19999653100967,
+    damageTaken: 25,
+    finalScore: 0,
   },
   13: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 9,
-    damageDealt: 321.09999990463257,
+    kills: 4,
+    damageDealt: 211.00000286102295,
     damageTaken: 0,
-    finalScore: 7,
+    finalScore: 0,
   },
   137: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 8,
-    damageDealt: 260,
-    damageTaken: 0,
-    finalScore: 16,
+    kills: 3,
+    damageDealt: 180.4399995803833,
+    damageTaken: 10,
+    finalScore: 2,
   },
 };
 

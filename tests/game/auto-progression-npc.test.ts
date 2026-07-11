@@ -1,13 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   NPC_INTERACTION_COOLDOWN,
-  TUTORIAL_GOON_HANDOFF_DISTANCE_FT,
-  TUTORIAL_GOON_DWELL_FRAMES,
-  _setTutorialGoonSeekFramesForTest,
   autoAllocateStatPoints,
   autoFloor1ProgressionSystem,
   autoNpcInteractionSystem,
 } from '../../src/game/ai/auto-progression.js';
+import { NPC_INTERACTION_RADIUS_FT } from '../../src/game/ai/bt-ai-tuning.js';
 import { AIState, type AIDecision, type AIInputProvider } from '../../src/game/ai/types.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import type { NpcInstance } from '../../src/shared/npc-types.js';
@@ -215,17 +213,16 @@ describe('autoNpcInteractionSystem', () => {
     ).toBe(100);
   });
 
-  describe('EXPLORE tutorial-goon fallback (distance-gated, dwell-gated)', () => {
-    it('does NOT interact on first poll even when within 188ft — dwell not reached', () => {
+  describe('EXPLORE tutorial-goon fallback (normal interaction range)', () => {
+    it('does NOT interact when tutorial-goon is outside normal interaction range', () => {
       const world = createTestWorld();
       const player = spawnPlayer(world, 0, 0);
       world.stores.position.x[player] = 0;
       world.stores.position.y[player] = 0;
       addNpc(world, 20, { defId: 'tutorial-goon', nearbyPlayer: false });
-      // Goon within the 188ft threshold, but dwell counter starts at 0
-      world.stores.position.x[20] = TUTORIAL_GOON_HANDOFF_DISTANCE_FT - 1;
+      // Outside the bounded interaction radius.
+      world.stores.position.x[20] = NPC_INTERACTION_RADIUS_FT + 1;
       world.stores.position.y[20] = 0;
-      // First poll (prevSeekFrames = 0 < TUTORIAL_GOON_DWELL_FRAMES)
       const result = autoNpcInteractionSystem(
         world,
         fakeProvider(
@@ -240,20 +237,17 @@ describe('autoNpcInteractionSystem', () => {
         100,
         30,
       );
-      expect(result).toBe(0); // within range but dwell not met → no interaction
+      expect(result).toBe(0);
     });
 
-    it('does NOT interact when beyond 188ft regardless of dwell', () => {
+    it('interacts when EXPLORE targets tutorial-goon and player is within interaction range', () => {
       const world = createTestWorld();
       const player = spawnPlayer(world, 0, 0);
       world.stores.position.x[player] = 0;
       world.stores.position.y[player] = 0;
       addNpc(world, 21, { defId: 'tutorial-goon', nearbyPlayer: false });
-      // Beyond 188ft threshold
-      world.stores.position.x[21] = TUTORIAL_GOON_HANDOFF_DISTANCE_FT + 10;
+      world.stores.position.x[21] = NPC_INTERACTION_RADIUS_FT - 0.25;
       world.stores.position.y[21] = 0;
-      // Simulate dwell threshold reached
-      _setTutorialGoonSeekFramesForTest(world, TUTORIAL_GOON_DWELL_FRAMES);
       const result = autoNpcInteractionSystem(
         world,
         fakeProvider(
@@ -268,20 +262,14 @@ describe('autoNpcInteractionSystem', () => {
         100,
         30,
       );
-      expect(result).toBe(0); // beyond range → no interaction even with dwell
+      expect(result).toBe(100);
+      expect(world.goalFlags.get('floor1-drops-unlocked')).toBe(true);
     });
 
-    it('interacts when EXPLORE targets tutorial-goon, within 188ft, and dwell reached', () => {
+    it('interacts when tutorial-goon is marked nearbyPlayer during EXPLORE fallback', () => {
       const world = createTestWorld();
-      const player = spawnPlayer(world, 0, 0);
-      world.stores.position.x[player] = 0;
-      world.stores.position.y[player] = 0;
-      addNpc(world, 22, { defId: 'tutorial-goon', nearbyPlayer: false });
-      // Within threshold — simulates headless pathfinding reaching "close enough"
-      world.stores.position.x[22] = TUTORIAL_GOON_HANDOFF_DISTANCE_FT - 1;
-      world.stores.position.y[22] = 0;
-      // Simulate dwell threshold reached (AI has been seeking for TUTORIAL_GOON_DWELL_FRAMES)
-      _setTutorialGoonSeekFramesForTest(world, TUTORIAL_GOON_DWELL_FRAMES);
+      spawnPlayer(world, 0, 0);
+      addNpc(world, 22, { defId: 'tutorial-goon', nearbyPlayer: true });
       const result = autoNpcInteractionSystem(
         world,
         fakeProvider(
@@ -296,7 +284,7 @@ describe('autoNpcInteractionSystem', () => {
         100,
         30,
       );
-      expect(result).toBe(100); // within range + dwell met → interact
+      expect(result).toBe(100);
       expect(world.goalFlags.get('floor1-drops-unlocked')).toBe(true);
     });
 
