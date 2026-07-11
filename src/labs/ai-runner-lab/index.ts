@@ -30,6 +30,7 @@ import {
   computeAiStatAllocation,
 } from '../../game/ai/auto-progression.js';
 import { getWeaponPersonaForWorld } from '../../game/ai/weapon-personas.js';
+import { configureMerchantWeaponPurchase } from '../../game/ai/merchant-weapon-intent.js';
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
 import {
   acceptQuest,
@@ -129,6 +130,7 @@ interface AiRunnerLabState {
     threatPreviewFrames: number;
     autoPauseOnDamage: boolean;
     weaponPersonas?: boolean;
+    merchantWeaponPurchase?: boolean;
     /** Slice 4b NAVMESH_FUSED seam weight (0 = shipped-4a control). */
     seamWeight?: number;
   };
@@ -292,6 +294,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     threatPreviewFrames: number;
     autoPauseOnDamage: boolean;
     weaponPersonas: boolean;
+    merchantWeaponPurchase: boolean;
     seamWeight: number;
   } = {
     pathingMode: persisted?.pathingMode ?? AIPathingMode.LEGACY,
@@ -301,6 +304,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     threatPreviewFrames: persisted?.aiConfig?.threatPreviewFrames ?? 0,
     autoPauseOnDamage: persisted?.aiConfig?.autoPauseOnDamage ?? false,
     weaponPersonas: persisted?.aiConfig?.weaponPersonas ?? false,
+    merchantWeaponPurchase: persisted?.aiConfig?.merchantWeaponPurchase ?? false,
     seamWeight: persisted?.aiConfig?.seamWeight ?? 0,
   };
 
@@ -365,6 +369,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         threatPreviewFrames: aiConfig.threatPreviewFrames,
         autoPauseOnDamage: aiConfig.autoPauseOnDamage,
         weaponPersonas: aiConfig.weaponPersonas,
+        merchantWeaponPurchase: aiConfig.merchantWeaponPurchase,
         seamWeight: aiConfig.seamWeight,
       },
     });
@@ -483,6 +488,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     if (playerEid === undefined) {
       return;
     }
+    configureMerchantWeaponPurchase(world, aiConfig.merchantWeaponPurchase);
     autoFloor1ProgressionSystem(world, playerEid, ai, aiConfig.weaponPersonas);
     autoFloor2ProgressionSystem(world, playerEid);
   };
@@ -874,6 +880,12 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   aiFolder
     .add(aiConfig, 'autoPauseOnDamage')
     .name('Auto pause on damage')
+    .onChange(() => {
+      persistLabState();
+    });
+  aiFolder
+    .add(aiConfig, 'merchantWeaponPurchase')
+    .name('Merchant weapon purchase')
     .onChange(() => {
       persistLabState();
     });

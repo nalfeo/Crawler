@@ -277,6 +277,7 @@ import {
   type RunPlannerCurrentTargetKind,
   type RunPlannerParams,
 } from './run-planner.js';
+import { getMerchantWeaponIntent, updateMerchantWeaponIntent } from './merchant-weapon-intent.js';
 import {
   estimateObjectiveTravelMs,
   type ObjectiveTravelAdapters,
@@ -299,6 +300,7 @@ const SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES = 30;
  * amber threshold used by the lab Slack HUD row.
  */
 const SLACK_AWARE_URGENCY_THRESHOLD = 0.66;
+const MERCHANT_DECISION_RUN_PLAN_CACHE_FRAMES = 30;
 
 // Below this magnitude a heading is treated as "no direction" (skip steering /
 // neutral continuity) — matches the pure module's own zero-vector epsilon.
@@ -809,6 +811,8 @@ export class BehaviorTreeAI implements AIInputProvider {
    * whenever no Floor-1 run plan is available, so LEGACY stays byte-identical.
    */
   private decisionRunPlan: Floor1RunPlan | null = null;
+  private merchantDecisionRunPlan: Floor1RunPlan | null = null;
+  private merchantDecisionRunPlanFrame: number = -Infinity;
   /**
    * Set each poll by the Progress condition: whether findProgressObjective
    * returned a target this frame. Read only by the SLACK_AWARE Explore guard so
@@ -2954,16 +2958,29 @@ export class BehaviorTreeAI implements AIInputProvider {
     // dedicated field fills that gap. estimateCurrentRunPlan is a pure, RNG-free
     // read; in LEGACY it is never computed, so behavior stays byte-identical.
     this.progressTargetAvailableThisPoll = false;
-    this.decisionRunPlan =
+    const merchantWeaponIntent = getMerchantWeaponIntent(world);
+    const playerSpeedFtPerFrame = this.getPlayerSpeedFtPerFrame(world, playerEid);
+    const currentRunPlan =
       this.config.decisionMode === AIDecisionMode.SLACK_AWARE
-        ? this.estimateCurrentRunPlan(
-            world,
-            playerEid,
-            playerX,
-            playerY,
-            this.getPlayerSpeedFtPerFrame(world, playerEid),
-          )
-        : null;
+        ? this.estimateCurrentRunPlan(world, playerEid, playerX, playerY, playerSpeedFtPerFrame)
+        : merchantWeaponIntent.enabled
+          ? this.getMerchantDecisionRunPlan(
+              world,
+              playerEid,
+              playerX,
+              playerY,
+              playerSpeedFtPerFrame,
+            )
+          : null;
+    if (!merchantWeaponIntent.enabled) {
+      this.merchantDecisionRunPlan = null;
+      this.merchantDecisionRunPlanFrame = -Infinity;
+    }
+    this.decisionRunPlan =
+      this.config.decisionMode === AIDecisionMode.SLACK_AWARE ? currentRunPlan : null;
+    if (merchantWeaponIntent.enabled) {
+      updateMerchantWeaponIntent(world, currentRunPlan, RUN_PLANNER_GOLD_FARM_MS);
+    }
 
     // Build context for behavior tree
     const context: BTContext = {
@@ -3840,6 +3857,30 @@ export class BehaviorTreeAI implements AIInputProvider {
       },
     };
     return estimateFloor1RunPlan(snapshot, this.getRunPlannerParams(playerSpeedFtPerFrame));
+  }
+
+  private getMerchantDecisionRunPlan(
+    world: GameWorld,
+    playerEid: number,
+    playerX: number,
+    playerY: number,
+    playerSpeedFtPerFrame: number,
+  ): Floor1RunPlan | null {
+    if (
+      this.merchantDecisionRunPlan === null ||
+      world.frameCount - this.merchantDecisionRunPlanFrame >=
+        MERCHANT_DECISION_RUN_PLAN_CACHE_FRAMES
+    ) {
+      this.merchantDecisionRunPlan = this.estimateCurrentRunPlan(
+        world,
+        playerEid,
+        playerX,
+        playerY,
+        playerSpeedFtPerFrame,
+      );
+      this.merchantDecisionRunPlanFrame = world.frameCount;
+    }
+    return this.merchantDecisionRunPlan;
   }
 
   private getLootOpportunityValue(world: GameWorld, eid: number, kind: TacticalPickupKind): number {
@@ -5760,55 +5801,49 @@ export class BehaviorTreeAI implements AIInputProvider {
       // AI commit to gold instead of treating distant enemies as "nothing to do"
       // and exploring away from them.
       const goldOwed = SHOPKEEPER_EQUIPMENT_COST - world.playerGold;
-      const goldPile = this.findNearestGold(world, playerX, playerY, GOLD_FARM_GOLD_SCAN_RADIUS_FT);
+      const target = this.findMerchantGoldFarmTarget(
+        world,
+        playerX,
+        playerY,
+        goldOwed,
+        'merchant charm',
+      );
+      return target ? maybeDetourToQuestGiver(target) : null;
+    }
 
-      // Prefer a *nearby* pile we can realistically walk onto. The stuck handler
-      // blacklists piles we get wedged against, so a deadlocked coin eventually
-      // drops out of this scan and we fall through to hunting.
-      if (goldPile && goldPile.distance <= GOLD_FARM_COLLECT_RADIUS_FT) {
-        return maybeDetourToQuestGiver(
-          this.createProgressTarget(
-            goldPile.x,
-            goldPile.y,
-            playerX,
-            playerY,
-            `Collecting gold for the merchant charm (${goldOwed}g to go)`,
-            goldPile.eid,
-          ),
-        );
-      }
-
-      // No close coin: close on the swarm so auto-fire drops fresh gold right at
-      // the kill, which the branch above then sweeps up on a later tick.
-      const prey = this.findNearestEnemy(world, playerX, playerY, GOLD_FARM_ENEMY_SCAN_RADIUS_FT);
-      if (prey) {
-        return maybeDetourToQuestGiver(
-          this.createProgressTarget(
-            prey.x,
-            prey.y,
-            playerX,
-            playerY,
-            `Hunting the swarm for charm gold (${goldOwed}g to go)`,
-            prey.eid,
-          ),
-        );
-      }
-
-      // Nothing nearby to fight: a distant pile is still better than wandering.
-      if (goldPile) {
-        return maybeDetourToQuestGiver(
-          this.createProgressTarget(
-            goldPile.x,
-            goldPile.y,
-            playerX,
-            playerY,
-            `Collecting gold for the merchant charm (${goldOwed}g to go)`,
-            goldPile.eid,
-          ),
-        );
-      }
-
-      return null;
+    const merchantWeaponIntent = getMerchantWeaponIntent(world);
+    if (
+      shopStage === 'complete' &&
+      merchantWeaponIntent.enabled &&
+      merchantWeaponIntent.status === 'farming'
+    ) {
+      const goldOwed = Math.max(0, merchantWeaponIntent.cost - world.playerGold);
+      const target = this.findMerchantGoldFarmTarget(
+        world,
+        playerX,
+        playerY,
+        goldOwed,
+        'merchant weapon',
+      );
+      return target ? maybeDetourToQuestGiver(target) : null;
+    }
+    if (
+      shopStage === 'complete' &&
+      merchantWeaponIntent.enabled &&
+      merchantWeaponIntent.status === 'returning'
+    ) {
+      const reason = 'Returning to the Shopkeeper to buy the selected weapon';
+      if (progressSuppressed) return this.recordSuppressedProgressNavigation(world, reason, 'shop');
+      return maybeDetourToQuestGiver(
+        this.createProgressTarget(
+          objective.shopRoomPos.x,
+          objective.shopRoomPos.y,
+          playerX,
+          playerY,
+          reason,
+          floorScenario.shopkeeperNpcEid ?? -1,
+        ),
+      );
     }
 
     if (!objective.questCompleted) {
@@ -5912,6 +5947,48 @@ export class BehaviorTreeAI implements AIInputProvider {
       );
     }
 
+    return null;
+  }
+
+  private findMerchantGoldFarmTarget(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    goldOwed: number,
+    purchaseLabel: string,
+  ): ProgressTarget | null {
+    const goldPile = this.findNearestGold(world, playerX, playerY, GOLD_FARM_GOLD_SCAN_RADIUS_FT);
+    if (goldPile && goldPile.distance <= GOLD_FARM_COLLECT_RADIUS_FT) {
+      return this.createProgressTarget(
+        goldPile.x,
+        goldPile.y,
+        playerX,
+        playerY,
+        `Collecting gold for the ${purchaseLabel} (${goldOwed}g to go)`,
+        goldPile.eid,
+      );
+    }
+    const prey = this.findNearestEnemy(world, playerX, playerY, GOLD_FARM_ENEMY_SCAN_RADIUS_FT);
+    if (prey) {
+      return this.createProgressTarget(
+        prey.x,
+        prey.y,
+        playerX,
+        playerY,
+        `Hunting the swarm for ${purchaseLabel} gold (${goldOwed}g to go)`,
+        prey.eid,
+      );
+    }
+    if (goldPile) {
+      return this.createProgressTarget(
+        goldPile.x,
+        goldPile.y,
+        playerX,
+        playerY,
+        `Collecting gold for the ${purchaseLabel} (${goldOwed}g to go)`,
+        goldPile.eid,
+      );
+    }
     return null;
   }
 
@@ -7348,6 +7425,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.lastTravelSteering = null;
     this.lastRunPlan = null;
     this.decisionRunPlan = null;
+    this.merchantDecisionRunPlan = null;
+    this.merchantDecisionRunPlanFrame = -Infinity;
     this.progressTargetAvailableThisPoll = false;
     this.lastPlayerToStairsTravelMs = null;
     this.lastPlayerToStairsRefreshFrame = -Infinity;
