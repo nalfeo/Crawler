@@ -1,5 +1,16 @@
 [
   {
+    "commit": "4d930a1f2f2201ec37db713b1c67817e3cf62362",
+    "commitDate": "2026-07-11T08:12:24-07:00",
+    "commitSubject": "fix(floor2): guide settlement progression (#1042)",
+    "capturedAt": "2026-07-11T15:58:30.814Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29157798198",
+    "winRate": 0.9,
+    "totalWins": 270,
+    "totalRuns": 300,
+    "path": "by-sha/4d930a1f2f2201ec37db713b1c67817e3cf62362.json"
+  },
+  {
     "commit": "6eba0f310e23befc723f9a509273d70e239e38e2",
     "commitDate": "2026-07-11T07:11:19Z",
     "commitSubject": "ci: unify automated PR recovery (#1032)",
