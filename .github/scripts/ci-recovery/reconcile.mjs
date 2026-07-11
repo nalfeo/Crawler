@@ -13,6 +13,7 @@ import {
   shouldResolveThread,
   STATE_MARKER,
 } from './state.mjs';
+import { workflowApprovalRejection } from './approval.mjs';
 import { graphql, listReviewThreads, paginate, request } from './github.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
@@ -298,38 +299,23 @@ const runs =
       `/repos/${owner}/${repo}/actions/runs?head_sha=${encodeURIComponent(pr.head.sha)}&per_page=100`,
     )
   ).data.workflow_runs || [];
-// Workflows this automation is permitted to approve when action_required.
-// Must be PR workflows on the same repo. Extend via CI_RECOVERY_APPROVE_ALLOWLIST
-// (comma-separated names, case-insensitive). Defaults are conservative.
-const approveAllowlist = new Set(
-  (process.env.CI_RECOVERY_APPROVE_ALLOWLIST || 'CI,commit-lint')
-    .split(',')
-    .map((name) => name.trim().toLowerCase())
-    .filter(Boolean),
-);
-const allowedRunEvents = new Set(['pull_request', 'pull_request_target']);
-for (const run of runs.filter((candidate) => candidate.conclusion === 'action_required')) {
-  // All guards must pass before any approval or blocker is emitted.
-  if (pr.head.repo.full_name.toLowerCase() !== repository.toLowerCase()) {
-    process.stdout.write(`skip action_required run=${run.id} name="${run.name}" reason=fork\n`);
-    continue;
-  }
-  if (!allowedRunEvents.has(String(run.event ?? ''))) {
+const actionRequiredRuns = runs.filter((candidate) => candidate.conclusion === 'action_required');
+const changedFiles =
+  actionRequiredRuns.length > 0
+    ? await paginate(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/files`)
+    : [];
+for (const run of actionRequiredRuns) {
+  const rejection = workflowApprovalRejection({
+    run,
+    repository,
+    prNumber,
+    prHeadRepository: pr.head.repo.full_name,
+    changedFiles,
+    expectedChangedFiles: pr.changed_files,
+  });
+  if (rejection) {
     process.stdout.write(
-      `skip action_required run=${run.id} name="${run.name}" reason=event=${run.event}\n`,
-    );
-    continue;
-  }
-  const runPrs = Array.isArray(run.pull_requests) ? run.pull_requests : [];
-  if (!runPrs.some((pullRequest) => pullRequest.number === prNumber)) {
-    process.stdout.write(
-      `skip action_required run=${run.id} name="${run.name}" reason=pr-not-listed\n`,
-    );
-    continue;
-  }
-  if (!approveAllowlist.has(String(run.name ?? '').toLowerCase())) {
-    process.stdout.write(
-      `skip action_required run=${run.id} name="${run.name}" reason=not-in-allowlist\n`,
+      `skip action_required run=${run.id} name="${run.name}" reason=${rejection}\n`,
     );
     continue;
   }
