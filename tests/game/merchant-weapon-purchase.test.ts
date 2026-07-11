@@ -158,6 +158,21 @@ describe('merchant weapon purchase intent', () => {
     );
   });
 
+  it('abandons the purchase intent after a hard purchase failure so it cannot loop forever', () => {
+    const world = completedMerchantWorld(1);
+    const playerEid = spawnPlayer(world, 0, 0);
+    configureMerchantWeaponPurchase(world, true);
+    world.playerGold = 1_000;
+    updateMerchantWeaponIntent(world, plan(1_000_000), GOLD_FARM_MS);
+    expect(getMerchantWeaponIntent(world).status).toBe('returning');
+
+    // Simulate spending gold after intent latches returning so purchase can fail.
+    world.playerGold = 0;
+    expect(executeMerchantWeaponPurchase(world, playerEid)).toBe(false);
+    expect(getMerchantWeaponIntent(world).status).toBe('abandoned');
+    expect(executeMerchantWeaponPurchase(world, playerEid)).toBe(false);
+  });
+
   it('configure off preserves latched decision, does not consume RNG or execute purchase, and re-enable resumes without a second decision', () => {
     // Seed 1 → buys (rng.next() < 0.5) and selects a weapon (one more rng step).
     const world = completedMerchantWorld(1);

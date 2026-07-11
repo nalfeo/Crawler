@@ -109,19 +109,23 @@ export function executeMerchantWeaponPurchase(world: GameWorld, playerEid: numbe
   if (!intent.enabled || intent.status !== 'returning' || !intent.itemId) {
     return false;
   }
+  const abandon = (): false => {
+    intents.set(world, { ...intent, status: 'abandoned' });
+    return false;
+  };
   const bag = world.inventories.get(playerEid);
   if (!bag) {
-    return false;
+    return abandon();
   }
   if (
     !hasItem(bag, intent.itemId) &&
     !purchaseShopkeeperPostQuestItem(world, playerEid, intent.itemId)
   ) {
-    return false;
+    return abandon();
   }
   const equipped = equipFromBag(world, playerEid, intent.itemId, { force: true });
   if (!equipped.ok) {
-    return false;
+    return abandon();
   }
   intents.set(world, { ...intent, status: 'purchased' });
   return true;

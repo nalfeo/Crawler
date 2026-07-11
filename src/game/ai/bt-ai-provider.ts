@@ -300,6 +300,7 @@ const SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES = 30;
  * amber threshold used by the lab Slack HUD row.
  */
 const SLACK_AWARE_URGENCY_THRESHOLD = 0.66;
+const MERCHANT_DECISION_RUN_PLAN_CACHE_FRAMES = 30;
 
 // Below this magnitude a heading is treated as "no direction" (skip steering /
 // neutral continuity) — matches the pure module's own zero-vector epsilon.
@@ -810,6 +811,8 @@ export class BehaviorTreeAI implements AIInputProvider {
    * whenever no Floor-1 run plan is available, so LEGACY stays byte-identical.
    */
   private decisionRunPlan: Floor1RunPlan | null = null;
+  private merchantDecisionRunPlan: Floor1RunPlan | null = null;
+  private merchantDecisionRunPlanFrame: number = -Infinity;
   /**
    * Set each poll by the Progress condition: whether findProgressObjective
    * returned a target this frame. Read only by the SLACK_AWARE Explore guard so
@@ -2956,17 +2959,23 @@ export class BehaviorTreeAI implements AIInputProvider {
     // read; in LEGACY it is never computed, so behavior stays byte-identical.
     this.progressTargetAvailableThisPoll = false;
     const merchantWeaponIntent = getMerchantWeaponIntent(world);
-    const needsRunPlan =
-      this.config.decisionMode === AIDecisionMode.SLACK_AWARE || merchantWeaponIntent.enabled;
-    const currentRunPlan = needsRunPlan
-      ? this.estimateCurrentRunPlan(
-          world,
-          playerEid,
-          playerX,
-          playerY,
-          this.getPlayerSpeedFtPerFrame(world, playerEid),
-        )
-      : null;
+    const playerSpeedFtPerFrame = this.getPlayerSpeedFtPerFrame(world, playerEid);
+    const currentRunPlan =
+      this.config.decisionMode === AIDecisionMode.SLACK_AWARE
+        ? this.estimateCurrentRunPlan(world, playerEid, playerX, playerY, playerSpeedFtPerFrame)
+        : merchantWeaponIntent.enabled
+          ? this.getMerchantDecisionRunPlan(
+              world,
+              playerEid,
+              playerX,
+              playerY,
+              playerSpeedFtPerFrame,
+            )
+          : null;
+    if (!merchantWeaponIntent.enabled) {
+      this.merchantDecisionRunPlan = null;
+      this.merchantDecisionRunPlanFrame = -Infinity;
+    }
     this.decisionRunPlan =
       this.config.decisionMode === AIDecisionMode.SLACK_AWARE ? currentRunPlan : null;
     if (merchantWeaponIntent.enabled) {
@@ -3848,6 +3857,30 @@ export class BehaviorTreeAI implements AIInputProvider {
       },
     };
     return estimateFloor1RunPlan(snapshot, this.getRunPlannerParams(playerSpeedFtPerFrame));
+  }
+
+  private getMerchantDecisionRunPlan(
+    world: GameWorld,
+    playerEid: number,
+    playerX: number,
+    playerY: number,
+    playerSpeedFtPerFrame: number,
+  ): Floor1RunPlan | null {
+    if (
+      this.merchantDecisionRunPlan === null ||
+      world.frameCount - this.merchantDecisionRunPlanFrame >=
+        MERCHANT_DECISION_RUN_PLAN_CACHE_FRAMES
+    ) {
+      this.merchantDecisionRunPlan = this.estimateCurrentRunPlan(
+        world,
+        playerEid,
+        playerX,
+        playerY,
+        playerSpeedFtPerFrame,
+      );
+      this.merchantDecisionRunPlanFrame = world.frameCount;
+    }
+    return this.merchantDecisionRunPlan;
   }
 
   private getLootOpportunityValue(world: GameWorld, eid: number, kind: TacticalPickupKind): number {
@@ -7392,6 +7425,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.lastTravelSteering = null;
     this.lastRunPlan = null;
     this.decisionRunPlan = null;
+    this.merchantDecisionRunPlan = null;
+    this.merchantDecisionRunPlanFrame = -Infinity;
     this.progressTargetAvailableThisPoll = false;
     this.lastPlayerToStairsTravelMs = null;
     this.lastPlayerToStairsRefreshFrame = -Infinity;
