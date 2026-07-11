@@ -1,5 +1,16 @@
 [
   {
+    "commit": "7c509d7ff4bd7e3f11c560bc009559e9de04c966",
+    "commitDate": "2026-07-11T19:35:53Z",
+    "commitSubject": "perf: speed up headless runs and shard weapon sweeps (#1048)",
+    "capturedAt": "2026-07-11T20:13:37.033Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29165857677",
+    "winRate": 0.9233333333333333,
+    "totalWins": 277,
+    "totalRuns": 300,
+    "path": "by-sha/7c509d7ff4bd7e3f11c560bc009559e9de04c966.json"
+  },
+  {
     "commit": "a8e26a5189fd587c0abba2371f0d0d3387484344",
     "commitDate": "2026-07-11T19:24:33Z",
     "commitSubject": "fix: harden floor1 npc objective anchors and critical npc routability (#1043)",
