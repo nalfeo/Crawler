@@ -146,7 +146,10 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
     ctx.fillText(`Pack: ${pack.id}  •  Wall Atlas (${ATLAS_COLS}×${ATLAS_ROWS})`, PADDING, y + 13);
     y += LABEL_HEIGHT + 4;
 
-    const atlasEntry = getOrLoad(pack.wallAutotile.textureKey, pack.wallAutotile.imagePath);
+    const atlasEntry = getOrLoad(
+      pack.wallAutotile.textureKey,
+      pack.wallAutotile.imagePath,
+    );
 
     for (let row = 0; row < ATLAS_ROWS; row++) {
       for (let col = 0; col < ATLAS_COLS; col++) {
