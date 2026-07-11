@@ -1680,8 +1680,18 @@ export function enemyAISystem(world: GameWorld): void {
   const doorRevision = floorMap ? getDoorRevision(world, floorMap.tileMap) : 0;
   const groundFlow = getGroundFlowField(world, playerX, playerY, doorRevision);
   const playerHiddenInSafeRoom = world.playerInSafeRoom;
+  const inactiveFloor2Bosses = new Set(
+    [...(world.floorExtendedState?.familyState?.bossEncounters?.values() ?? [])]
+      .filter((encounter) => !encounter.started && encounter.bossEid !== null)
+      .map((encounter) => encounter.bossEid as number),
+  );
 
   for (const eid of enemies) {
+    if (inactiveFloor2Bosses.has(eid)) {
+      setVelocity(world, eid, 0, 0);
+      pathStates.delete(eid);
+      continue;
+    }
     // Corpses in their death-linger window keep Enemy/Velocity components until
     // deathTimerSystem removes them. They must not chase, fire, or steer — zero
     // their velocity and skip AI. The death knockback slide is applied

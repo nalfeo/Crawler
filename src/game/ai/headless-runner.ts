@@ -232,6 +232,10 @@ function computeSpawnerArenaMetrics(world: GameWorld): {
   return { total, triggered, resolved, barrierArmed, resolvedArmed, bankedXpTotal };
 }
 
+function collectFamilyTrashKills(world: GameWorld): Record<string, number> {
+  return Object.fromEntries(world.floorExtendedState?.familyState?.trashKillsByFamily ?? []);
+}
+
 /**
  * Run a complete game simulation headlessly with an AI player.
  *
@@ -765,6 +769,7 @@ export async function runHeadless(
       finalLevel: world.playerLevel?.level ?? 0,
       totalXp: world.playerLevel?.xp ?? 0,
       totalGold: world.playerGold,
+      familyTrashKills: collectFamilyTrashKills(world),
       startingWeapon,
       aiTelemetry: buildAiTelemetry(),
       spawnerArenas: computeSpawnerArenaMetrics(world),
@@ -837,6 +842,7 @@ export async function runHeadless(
     finalLevel: world.playerLevel?.level ?? 0,
     totalXp: world.playerLevel?.xp ?? 0,
     totalGold: world.playerGold,
+    familyTrashKills: collectFamilyTrashKills(world),
     startingWeapon,
     aiTelemetry: buildAiTelemetry(),
     spawnerArenas: computeSpawnerArenaMetrics(world),

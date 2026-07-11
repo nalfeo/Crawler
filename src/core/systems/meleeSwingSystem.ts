@@ -350,7 +350,17 @@ export function meleeSwingSystem(world: GameWorld, collisionResult?: CollisionRe
       }
 
       if (hitDamage > 0) {
-        const dealt = applyDamage(world, target, hitDamage, tx, ty, undefined, px, py);
+        const dealt = applyDamage(
+          world,
+          target,
+          hitDamage,
+          tx,
+          ty,
+          undefined,
+          px,
+          py,
+          ownerEid >= 0 ? ownerEid : undefined,
+        );
         if (dealt > 0 && ownerEid !== -1 && hasComponent(world.ecs, target, Enemy)) {
           emitWeaponHitSkillEvents(world, ownerEid);
           recordWeaponEnemyHit(world, eid, target);

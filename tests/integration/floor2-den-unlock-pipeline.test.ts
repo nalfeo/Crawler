@@ -17,8 +17,10 @@ import {
 import { selectFloor2Roster } from '../../src/core/faction-relations.js';
 import { loadFamilies } from '../../src/shared/data/families.js';
 import { loadResources } from '../../src/shared/data/resources.js';
-import { acceptQuest } from '../../src/core/systems/questSystem.js';
-import { FamilyMembership } from '../../src/core/index.js';
+import { acceptQuest, questSystem } from '../../src/core/systems/questSystem.js';
+import { FamilyMembership, spawnEnemy, spawnPlayer } from '../../src/core/index.js';
+import { doorSystem } from '../../src/core/systems/doorSystem.js';
+import { enemyAISystem } from '../../src/game/enemyAISystem.js';
 
 /**
  * Slice 4 integration — the full unlock/defeat pipeline end-to-end.
@@ -79,6 +81,34 @@ describe('Floor 2 Slice 4 — den-unlock pipeline', () => {
     expect(world.goalFlags.get(denUnlockGoalId(target.familyId))).toBe(true);
     expect(isDenUnlocked(world, target.familyId)).toBe(true);
 
+    world.floorMap = floorMap;
+    const encounter = world.floorExtendedState!.familyState!.bossEncounters!.get(target.familyId)!;
+    doorSystem(world);
+    for (const doorEid of encounter.doorEids) {
+      expect(world.stores.doorState.isLocked[doorEid]).toBe(0);
+      expect(world.stores.doorState.logicalOpen[doorEid]).toBe(1);
+    }
+    const denRoom = floorMap.roomGraph.get(encounter.roomId);
+    expect(denRoom).toBeDefined();
+    const denTile = denRoom!.interiorCells?.[0] ?? {
+      x: denRoom!.bounds.x + 1,
+      y: denRoom!.bounds.y + 1,
+    };
+    const playerPos = floorMap.tileToWorld(denTile.x, denTile.y);
+    spawnPlayer(world, playerPos.x, playerPos.y);
+    enemyAISystem(world);
+    expect(world.stores.velocity.x[encounter.bossEid!]).toBe(0);
+    expect(world.stores.velocity.y[encounter.bossEid!]).toBe(0);
+    floor2ObjectiveTick(world);
+    doorSystem(world);
+    expect(encounter.started).toBe(true);
+    expect(world.stores.enemyBehavior.aggroedPermanently[encounter.bossEid!]).toBe(1);
+    expect(world.goalFlags.get(encounter.activeGoalId)).toBe(true);
+    for (const doorEid of encounter.doorEids) {
+      expect(world.stores.doorState.isLocked[doorEid]).toBe(1);
+      expect(world.stores.doorState.logicalOpen[doorEid]).toBe(0);
+    }
+
     // Locate the boss entity and its familyIndex.
     const bossField = world.stores.familyMembership.isBoss;
     const familyIdxField = world.stores.familyMembership.familyId;
@@ -109,9 +139,16 @@ describe('Floor 2 Slice 4 — den-unlock pipeline', () => {
     } as (typeof world.combatEvents)[number]);
 
     floor2ObjectiveTick(world);
+    doorSystem(world);
 
     expect(world.goalFlags.get(bossDefeatGoalId(target.familyId))).toBe(true);
     expect(isFamilySpawnGated(world, target.familyId)).toBe(true);
+    expect(encounter.defeated).toBe(true);
+    expect(world.goalFlags.get(encounter.activeGoalId)).toBe(false);
+    for (const doorEid of encounter.doorEids) {
+      expect(world.stores.doorState.isLocked[doorEid]).toBe(0);
+      expect(world.stores.doorState.logicalOpen[doorEid]).toBe(1);
+    }
 
     // Other families remain un-gated.
     for (const other of objectives.slice(1)) {
@@ -217,7 +254,7 @@ describe('Floor 2 Slice 4 — den-unlock pipeline', () => {
     expect(isFamilySpawnGated(world, target.familyId)).toBe(true);
   });
 
-  it('counts each non-boss death event once even when combatEvents is replayed', () => {
+  it('requires 100 player-attributed family kills and ignores non-player kills', () => {
     const seed = 99;
     const gen = new CaveSystemGenerator({ presentCount: 3 });
     const floorMap = gen.generate(smallCaveConfig(seed), new SeededRandom(seed));
@@ -237,6 +274,8 @@ describe('Floor 2 Slice 4 — den-unlock pipeline', () => {
     const objectives = initializeFloor2Bosses(world, floorMap, floor2State!);
     const target = objectives[0]!;
     expect(acceptQuest(world, target.questId)).toBeTruthy();
+    const playerEid = spawnPlayer(world, 0, 0);
+    const enemySourceEid = spawnEnemy(world, 0, 0, 10);
 
     const familyIdxField = world.stores.familyMembership.familyId;
     const bossField = world.stores.familyMembership.isBoss;
@@ -250,24 +289,35 @@ describe('Floor 2 Slice 4 — den-unlock pipeline', () => {
     }
     expect(trashEid).toBeGreaterThanOrEqual(0);
 
-    const deathEvent = {
-      type: 'death',
-      x: 0,
-      y: 0,
-      amount: 999,
-      targetType: 'enemy',
-      timestamp: world.elapsedMs,
-      targetEid: trashEid,
-      familyIndex: presentIndex,
-      isBoss: 0,
-    } as (typeof world.combatEvents)[number];
+    const pushTrashDeath = (sourceEid: number, sequence: number): void => {
+      world.combatEvents.push({
+        type: 'death',
+        x: 0,
+        y: 0,
+        amount: 999,
+        targetType: 'enemy',
+        timestamp: world.elapsedMs + sequence,
+        targetEid: trashEid,
+        sourceEid,
+        familyIndex: presentIndex,
+        isBoss: 0,
+      } as (typeof world.combatEvents)[number]);
+      floor2ObjectiveTick(world);
+    };
 
-    world.combatEvents.push(deathEvent);
-    floor2ObjectiveTick(world);
-    floor2ObjectiveTick(world);
-    floor2ObjectiveTick(world);
-
+    pushTrashDeath(enemySourceEid, 0);
+    expect(floor2State!.trashKillsByFamily?.get(target.familyId)).toBe(0);
+    for (let i = 1; i <= 99; i += 1) {
+      pushTrashDeath(playerEid, i);
+    }
+    expect(floor2State!.trashKillsByFamily?.get(target.familyId)).toBe(99);
     expect(world.goalFlags.get(denUnlockGoalId(target.familyId))).toBe(false);
+
+    pushTrashDeath(playerEid, 100);
+    questSystem(world);
+    floor2ObjectiveTick(world);
+    expect(floor2State!.trashKillsByFamily?.get(target.familyId)).toBe(100);
+    expect(world.goalFlags.get(denUnlockGoalId(target.familyId))).toBe(true);
   });
 
   it('ignores death events that are missing family metadata and membership', () => {

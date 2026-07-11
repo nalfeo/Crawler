@@ -13,6 +13,7 @@
 import type { SeededRandom } from '../shared/random.js';
 import type { FamilyDef } from '../shared/data/families.js';
 import type { ResourceDef } from '../shared/data/resources.js';
+import type { FloorBossEncounterState } from '../shared/floor-types.js';
 import tuning from '../shared/data/tuning.json';
 
 /**
@@ -95,6 +96,17 @@ export interface Floor2State {
   staircaseUnlocked?: boolean;
   /** True once the player confirms descent — terminal run state. */
   staircaseDiscovered?: boolean;
+  /** Durable player-attributed non-boss kills, keyed by family id. */
+  trashKillsByFamily?: Map<FamilyId, number>;
+  /** Runtime den boss encounters, keyed by family id. */
+  bossEncounters?: Map<FamilyId, Floor2FamilyBossEncounterState>;
+}
+
+export interface Floor2FamilyBossEncounterState extends FloorBossEncounterState {
+  familyId: FamilyId;
+  roomId: number;
+  doorEids: number[];
+  activeGoalId: string;
 }
 
 /** Default starting relation applied to every present family (from tuning.json). */

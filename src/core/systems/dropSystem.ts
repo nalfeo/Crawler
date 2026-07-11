@@ -335,20 +335,19 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
     // Find the killing blow direction from the most recent hit event on this entity
     let killDirX = 0;
     let killDirY = 0;
+    let killingSourceEid: number | undefined;
     for (let i = world.combatEvents.length - 1; i >= 0; i--) {
       const evt = world.combatEvents[i]!;
-      if (
-        evt.targetEid === eid &&
-        evt.type === 'hit' &&
-        evt.sourceX !== undefined &&
-        evt.sourceY !== undefined
-      ) {
-        const dx = x - evt.sourceX;
-        const dy = y - evt.sourceY;
-        const dist = Math.hypot(dx, dy);
-        if (dist > 0.01) {
-          killDirX = dx / dist;
-          killDirY = dy / dist;
+      if (evt.targetEid === eid && evt.type === 'hit') {
+        killingSourceEid = evt.sourceEid;
+        if (evt.sourceX !== undefined && evt.sourceY !== undefined) {
+          const dx = x - evt.sourceX;
+          const dy = y - evt.sourceY;
+          const dist = Math.hypot(dx, dy);
+          if (dist > 0.01) {
+            killDirX = dx / dist;
+            killDirY = dy / dist;
+          }
         }
         break;
       }
@@ -473,6 +472,7 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
       targetType: 'enemy',
       timestamp: world.elapsedMs,
       targetEid: eid,
+      sourceEid: killingSourceEid,
       overkill,
       knockbackDirX: killDirX,
       knockbackDirY: killDirY,

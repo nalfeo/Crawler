@@ -132,6 +132,12 @@ const FLOOR2_BOSS_CONTACT_DAMAGE = 2;
 const FLOOR2_DIRECT_START_LEVEL = 5;
 const floor2ProcessedCombatEvents = new WeakMap<GameWorld, WeakSet<object>>();
 
+export function resolveFloor2ArchetypeAIType(archetype: EnemyArchetypeDef): number {
+  if (archetype.aiType === 'ranged') return AI_TYPE.RANGED;
+  if (archetype.id.includes('slime')) return AI_TYPE.LEAPER;
+  return AI_TYPE.CHASE;
+}
+
 export const FLOOR2_CAVE_SYSTEM_DEFAULTS = {
   initialFill: 0.55,
   smoothingPasses: 8,
@@ -319,10 +325,7 @@ export function spawnFamilyBoss(
   if (!archetype) {
     throw new Error(`No boss archetype registered for family "${familyId}"`);
   }
-  const behaviorType =
-    archetype.aiType === 'ranged'
-      ? AI_TYPE.CHASE // ranged variants still chase; ranged attack cadence is a Slice 3 concern
-      : AI_TYPE.CHASE;
+  const behaviorType = resolveFloor2ArchetypeAIType(archetype);
   const eid = spawnBehaviorEnemy(
     world,
     x,
@@ -331,7 +334,7 @@ export function spawnFamilyBoss(
     behaviorType,
     archetype.speed,
     archetype.detectRange,
-    Math.max(160, archetype.detectRange * 4),
+    behaviorType === AI_TYPE.RANGED ? Math.max(160, archetype.detectRange * 4) : 0,
   );
   setComponent(world.ecs, eid, Sprite, {
     textureId: archetype.spriteTexture,
@@ -352,8 +355,6 @@ export function spawnFamilyBoss(
   addComponent(world.ecs, eid, set(FamilyMembership, { familyId: familyIdIndex, isBoss: 1 }));
   // Bosses hit hard on contact; ranged behaviour is layered later.
   setComponent(world.ecs, eid, Damage, { amount: FLOOR2_BOSS_CONTACT_DAMAGE });
-  // Keep bosses permanently aggressive inside their den.
-  world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
   return eid;
 }
 
@@ -370,6 +371,7 @@ function installBossDenDoorLocks(
   world: GameWorld,
   denRoom: RoomData,
   unlockGoalId: string,
+  activeGoalId: string,
 ): number[] {
   const created: number[] = [];
   for (const door of denRoom.doors) {
@@ -389,6 +391,10 @@ function installBossDenDoorLocks(
       unlock: {
         operator: 'all',
         conditions: [{ type: 'goal', goalId: unlockGoalId }],
+      },
+      relock: {
+        operator: 'all',
+        conditions: [{ type: 'goal', goalId: activeGoalId }],
       },
     });
     created.push(doorEid);
@@ -454,6 +460,8 @@ export function initializeFloor2Bosses(
   installQuestPacks([...existing.filter((p) => p.packId !== denPack.packId), denPack]);
 
   const decapitated = ensureDecapitatedSet(world);
+  floor2State.trashKillsByFamily = new Map<FamilyId, number>();
+  floor2State.bossEncounters = new Map();
   const objectives: Floor2DenObjective[] = [];
   for (let familyIndex = 0; familyIndex < floor2State.presentFamilies.length; familyIndex += 1) {
     const familyId = floor2State.presentFamilies[familyIndex]!;
@@ -462,11 +470,14 @@ export function initializeFloor2Bosses(
 
     const unlockGoalId = denUnlockGoalId(familyId);
     const defeatGoalId = bossDefeatGoalId(familyId);
+    const activeGoalId = `floor2-den-${familyId}-boss-active`;
     // Seed the flags false so anything that inspects them (Slice 5's win
     // evaluator, HUD) sees a deterministic starting state.
     setGoalFlag(world, unlockGoalId, false);
     setGoalFlag(world, defeatGoalId, false);
+    setGoalFlag(world, activeGoalId, false);
     decapitated.delete(familyId);
+    floor2State.trashKillsByFamily.set(familyId, 0);
 
     const denRoom = findBossDenRoom(floorMap, familyIndex);
     if (!denRoom) {
@@ -474,10 +485,22 @@ export function initializeFloor2Bosses(
       // reachability guarantee in CaveSystemGenerator should prevent this.
       continue;
     }
-    installBossDenDoorLocks(world, denRoom, unlockGoalId);
+    const doorEids = installBossDenDoorLocks(world, denRoom, unlockGoalId, activeGoalId);
     const spawnTile = pickBossSpawnTile(denRoom);
     const spawnWorld = floorMap.tileToWorld(spawnTile.x, spawnTile.y);
-    spawnFamilyBoss(world, spawnWorld.x, spawnWorld.y, familyIndex, familyId);
+    const bossEid = spawnFamilyBoss(world, spawnWorld.x, spawnWorld.y, familyIndex, familyId);
+    const bossArchetype = getFloor2BossArchetype(familyId);
+    floor2State.bossEncounters.set(familyId, {
+      familyId,
+      roomId: denRoom.id,
+      doorEids,
+      activeGoalId,
+      started: false,
+      bossEid,
+      defeated: false,
+      displayName: bossArchetype?.name ?? `${familyId} Boss`,
+      lootTableId: 'boss',
+    });
 
     objectives.push({
       familyId,
@@ -537,6 +560,29 @@ export function floor2ObjectiveTick(world: GameWorld): void {
     }
   }
 
+  if (playerEid !== undefined && floorMap && floor2State.bossEncounters) {
+    const playerTile = floorMap.worldToTile(
+      world.stores.position.x[playerEid] ?? 0,
+      world.stores.position.y[playerEid] ?? 0,
+    );
+    const playerRoomId = floorMap.roomGraph.getRoomAt(playerTile.x, playerTile.y);
+    for (const encounter of floor2State.bossEncounters.values()) {
+      if (
+        encounter.started ||
+        encounter.defeated ||
+        playerRoomId !== encounter.roomId ||
+        world.goalFlags.get(denUnlockGoalId(encounter.familyId)) !== true
+      ) {
+        continue;
+      }
+      encounter.started = true;
+      if (encounter.bossEid !== null) {
+        world.stores.enemyBehavior.aggroedPermanently[encounter.bossEid] = 1;
+      }
+      setGoalFlag(world, encounter.activeGoalId, true);
+    }
+  }
+
   // Activate the reputation system once the Broker has explained the floor
   // (player completed all of the Broker's intro dialogue lines). meetBroker()
   // latches FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID; MainGameScene fires it when
@@ -578,6 +624,12 @@ export function floor2ObjectiveTick(world: GameWorld): void {
     const familyId = floor2State.presentFamilies[familyIndex];
     if (!familyId) continue;
     if (isBoss === 0) {
+      const sourceEid = event.sourceEid;
+      if (sourceEid === undefined || !hasComponent(world.ecs, sourceEid, Player)) {
+        continue;
+      }
+      const kills = (floor2State.trashKillsByFamily?.get(familyId) ?? 0) + 1;
+      floor2State.trashKillsByFamily?.set(familyId, kills);
       addQuestCounter(
         world,
         `floor2-den-${familyId}-unlock`,
@@ -590,6 +642,13 @@ export function floor2ObjectiveTick(world: GameWorld): void {
 
     decapitated.add(familyId);
     setGoalFlag(world, bossDefeatGoalId(familyId), true);
+    const encounter = floor2State.bossEncounters?.get(familyId);
+    if (encounter) {
+      encounter.started = true;
+      encounter.defeated = true;
+      encounter.bossEid = null;
+      setGoalFlag(world, encounter.activeGoalId, false);
+    }
   }
 
   for (const familyId of floor2State.presentFamilies) {
@@ -1314,13 +1373,18 @@ function spawnFloor2AmbientArchetype(world: GameWorld, x: number, y: number): nu
     speed = scaled.speed;
   }
 
-  // Determine AI type based on archetype
-  let aiType: number = AI_TYPE.CHASE;
-  if (selectedArchetype.id.includes('slime')) {
-    aiType = AI_TYPE.LEAPER;
-  }
-
-  const eid = spawnBehaviorEnemy(world, x, y, hp, aiType, speed, selectedArchetype.detectRange, 0);
+  const aiType = resolveFloor2ArchetypeAIType(selectedArchetype);
+  const attackRange = aiType === AI_TYPE.RANGED ? selectedArchetype.detectRange * 0.65 : 0;
+  const eid = spawnBehaviorEnemy(
+    world,
+    x,
+    y,
+    hp,
+    aiType,
+    speed,
+    selectedArchetype.detectRange,
+    attackRange,
+  );
   setComponent(world.ecs, eid, Sprite, {
     textureId: selectedArchetype.spriteTexture,
     width: selectedArchetype.spriteWidth,

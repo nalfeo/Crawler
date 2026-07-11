@@ -7,9 +7,10 @@
  */
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
-import { GAME, FLOOR } from '../shared/constants.js';
+import { GAME } from '../shared/constants.js';
 import { PIXEL_UI_DEPTH, createBeveledPanel } from './pixel-ui.js';
 import { applyCrispText } from './ui-scale.js';
+import { resolveFloorTimerRemainingMs } from './floor-timer-state.js';
 
 // ---------------------------------------------------------------------------
 // Layout constants
@@ -94,14 +95,7 @@ export function createHudFloorTimer(
     panel.setVisible(true);
     timerText.setVisible(true);
 
-    let remainingMs: number;
-
-    if (world.floorScenario?.objective) {
-      remainingMs = Math.max(0, world.floorScenario.objective.deadlineMs - world.elapsedMs);
-    } else {
-      const maxMs = FLOOR.MAX_DURATION_S * 1000;
-      remainingMs = Math.max(0, maxMs - world.elapsedMs);
-    }
+    const remainingMs = resolveFloorTimerRemainingMs(world);
 
     const timerStr = formatTimer(remainingMs);
     timerText.setText(`Floor ${world.floor}   ${timerStr}`);

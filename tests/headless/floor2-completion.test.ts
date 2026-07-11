@@ -12,7 +12,7 @@ describe('Floor 2 headless completion', () => {
     let observedUnspent = -1;
     let observedCharmId: string | undefined;
 
-    await runHeadless(new BehaviorTreeAI({ seed: 91 }), {
+    const stats = await runHeadless(new BehaviorTreeAI({ seed: 91 }), {
       seed: 91,
       floorId: 'floor2',
       maxFrames: 1,
@@ -30,6 +30,9 @@ describe('Floor 2 headless completion', () => {
     expect(observedLevel).toBe(5);
     expect(observedUnspent).toBe(0);
     expect(observedCharmId).toBe(MERCHANTS_CHARM_DEF.id);
+    expect(Object.keys(stats.familyTrashKills ?? {}).length).toBeGreaterThanOrEqual(3);
+    expect(Object.keys(stats.familyTrashKills ?? {}).length).toBeLessThanOrEqual(4);
+    expect(Object.values(stats.familyTrashKills ?? {}).every((count) => count === 0)).toBe(true);
   });
 
   it('exercises floor 2 den-progress and boss-targeting flow without win gating', async () => {
@@ -47,6 +50,7 @@ describe('Floor 2 headless completion', () => {
         questId.startsWith('floor2-den-'),
       ),
     ).toBe(true);
+    expect(stats.familyTrashKills).toBeDefined();
   }, 300_000);
 
   it('does not treat floor2-victory alone as headless completion before exit', async () => {

@@ -396,6 +396,7 @@ describe('spawnerArenaSystem sealed-room door lifecycle', () => {
     expect(world.stores.spawner.arenaState[spawnerEid]).toBe(2); // resolved
     // Door lock is released and the cached door list is deleted.
     expect(world.stores.doorState.isLocked[doorEid]).toBe(0);
+    expect(world.stores.doorState.logicalOpen[doorEid]).toBe(1);
     expect(world.spawnerArenaDoors.has(spawnerEid)).toBe(false);
     // Goal flag flips complete so doorSystem/quest logic can react.
     expect(world.goalFlags.get(goalId)).toBe(true);

@@ -193,7 +193,8 @@ export function createHudFamilyRelationships(
     }
 
     rv.statusText.setText(row.statusTag);
-    if (row.statusTag === 'Allied') rv.statusText.setColor('#86efac');
+    if (row.statusTag === 'Defeated') rv.statusText.setColor('#94a3b8');
+    else if (row.statusTag === 'Allied') rv.statusText.setColor('#86efac');
     else if (row.statusTag === 'At War') rv.statusText.setColor('#fca5a5');
     else rv.statusText.setColor('#cbd5e1');
   }

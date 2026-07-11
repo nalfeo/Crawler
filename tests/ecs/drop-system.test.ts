@@ -94,10 +94,23 @@ describe('dropSystem', () => {
 
   it('emits a death combat event', () => {
     const world = createTestWorld();
+    const playerEid = spawnPlayer(world, 0, 0);
     spawnEnemy(world, 50, 60, 10);
 
     const enemies = query(world.ecs, [Enemy]);
     const eid = enemies[0] as number;
+    world.combatEvents.push({
+      type: 'hit',
+      x: 50,
+      y: 60,
+      amount: 10,
+      targetType: 'enemy',
+      timestamp: 0,
+      targetEid: eid,
+      sourceEid: playerEid,
+      sourceX: 0,
+      sourceY: 0,
+    });
     setComponent(world.ecs, eid, Health, { current: 0, max: 10 });
 
     dropSystem(world);
@@ -108,6 +121,7 @@ describe('dropSystem', () => {
     expect(deathEvents[0]!.y).toBe(60);
     expect(deathEvents[0]!.overkill).toBe(0);
     expect(deathEvents[0]!.targetType).toBe('enemy');
+    expect(deathEvents[0]!.sourceEid).toBe(playerEid);
   });
 
   it('does not double-process the same entity', () => {

@@ -119,6 +119,9 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
 
   if (hasComponent(world.ecs, enemy, Health)) {
     const amount = getDamageAmount(world, projectile, DEFAULT_PROJECTILE_DAMAGE);
+    const ownerEid = hasComponent(world.ecs, projectile, Owner)
+      ? (world.stores.owner.eid[projectile] ?? -1)
+      : -1;
     const dealt = applyDamage(
       world,
       enemy,
@@ -128,13 +131,11 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
       undefined,
       world.stores.position.x[projectile] ?? 0,
       world.stores.position.y[projectile] ?? 0,
+      ownerEid >= 0 ? ownerEid : undefined,
     );
 
     // Emit weapon skill XP for the projectile's owner when damage lands on an enemy.
     if (dealt > 0 && hasComponent(world.ecs, enemy, Enemy)) {
-      const ownerEid = hasComponent(world.ecs, projectile, Owner)
-        ? (world.stores.owner.eid[projectile] ?? -1)
-        : -1;
       if (ownerEid !== -1) {
         emitWeaponHitSkillEvents(world, ownerEid);
       }
