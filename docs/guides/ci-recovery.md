@@ -14,7 +14,8 @@ kickoff comment that points Copilot at the normal repo instructions.
 - `ci-recovery.yml` and `ci-recovery-incidents.yml` are the only recovery
   workflows that receive `CRAWLER_CI_PAT`.
 - `issue-copilot-intake.yml` also receives `CRAWLER_CI_PAT`, but only for
-  owner-opened issue assignment + kickoff-comment mutation.
+  owner-opened issue assignment + kickoff-comment mutation. Issues that carry
+  the `automation` label are skipped to avoid double-handling CI-created issues.
 - PAT-bearing jobs check out only the default branch with credentials disabled.
   They never check out or execute pull-request code.
 - Fork PRs are ineligible, and fork workflow runs are never approved.
