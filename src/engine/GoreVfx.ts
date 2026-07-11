@@ -40,6 +40,8 @@ const BLOOD_POOL_INITIAL_SCALE = 0.25;
  * of its 30 s life instead of snapping to full width in the first frame.
  */
 const BLOOD_POOL_EXPAND_PHASE = 0.7;
+/** Vertical scale reached as the pool finishes spreading and fading. */
+const BLOOD_POOL_FINAL_VERTICAL_SCALE = 0.5;
 /** Maximum simultaneous blood pools before oldest is evicted. */
 const MAX_BLOOD_POOLS = 150;
 /** Number of overlapping sub-lobes drawn per pool for irregular spread. */
@@ -197,6 +199,7 @@ export function createGoreVfx(
       );
     }
     pool.obj.setAlpha(alpha);
+    pool.obj.setScale(1, 1 - (1 - BLOOD_POOL_FINAL_VERTICAL_SCALE) * progress);
     pool.lastProgress = progress;
     pool.lastAlpha = alpha;
   }

@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-11",
+  "session_slug": "ci-recovery-review-approval",
+  "task_title": "Approve trusted CI recovery review runs",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Adopted path identity, removed name override, expanded negatives, and documented scheduled recovery. Discovery concern disproved against live runs because queried head SHA matches. Attempt number does not affect policy."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.4"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.4"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

@@ -50,6 +50,7 @@ import {
   clearEntityStores,
   spawnBehaviorEnemy,
   spawnNpc,
+  type SpawnNpcOptions,
   addSetPieceProp,
   createEntity,
   spawnDroppedItem,
@@ -383,6 +384,11 @@ function tileKey(x: number, y: number): string {
  * huddle. Relaxed automatically when a room is too small to honour it.
  */
 const MIN_NPC_SPACING_TILES = 3;
+const FLOOR1_CRITICAL_PROGRESS_NPC_IDS = new Set([
+  'tutorial-goon',
+  'shopkeeper',
+  'spell-quest-giver',
+]);
 
 /** Chebyshev distance from (tx,ty) to the nearest already-occupied tile. */
 function minChebyshevDistanceToOccupied(
@@ -433,9 +439,12 @@ function resolveFreeNpcTileInRoom(
   room: RoomData,
   occupiedTiles: ReadonlySet<string>,
   rng: SeededRandom,
+  isAllowed: ((tx: number, ty: number) => boolean) | null = null,
 ): TilePoint | null {
   const isFree = (tx: number, ty: number): boolean =>
-    floorMap.tileMap.isPassable(tx, ty) && !occupiedTiles.has(tileKey(tx, ty));
+    floorMap.tileMap.isPassable(tx, ty) &&
+    !occupiedTiles.has(tileKey(tx, ty)) &&
+    (isAllowed === null || isAllowed(tx, ty));
 
   if (room.interiorCells && room.interiorCells.length > 0) {
     const freeCells = room.interiorCells.filter((cell) => isFree(cell.x, cell.y));
@@ -470,6 +479,88 @@ function resolveFreeNpcTileInRoom(
   return null;
 }
 
+function isCriticalProgressNpcType(npcTypeId: string): boolean {
+  return FLOOR1_CRITICAL_PROGRESS_NPC_IDS.has(npcTypeId);
+}
+
+function buildReachableFromSpawnMask(
+  floorMap: FloorMap,
+  blockedDoorTiles: ReadonlySet<string>,
+): Uint8Array {
+  const width = floorMap.width;
+  const height = floorMap.height;
+  const mask = new Uint8Array(width * height);
+  const spawn = floorMap.playerSpawn;
+  if (!floorMap.tileMap.inBounds(spawn.x, spawn.y)) {
+    return mask;
+  }
+  const startIndex = spawn.y * width + spawn.x;
+  mask[startIndex] = 1;
+  const stack = [startIndex];
+  while (stack.length > 0) {
+    const index = stack.pop()!;
+    const tx = index % width;
+    const ty = (index - tx) / width;
+    for (const [nx, ny] of [
+      [tx + 1, ty],
+      [tx - 1, ty],
+      [tx, ty + 1],
+      [tx, ty - 1],
+    ] as const) {
+      if (!floorMap.tileMap.inBounds(nx, ny)) {
+        continue;
+      }
+      const neighborIndex = ny * width + nx;
+      if (mask[neighborIndex]) {
+        continue;
+      }
+      const doorTile = floorMap.tileMap.isDoor(nx, ny);
+      if (
+        !floorMap.tileMap.isPassable(nx, ny) &&
+        (!doorTile || blockedDoorTiles.has(tileKey(nx, ny)))
+      ) {
+        continue;
+      }
+      mask[neighborIndex] = 1;
+      stack.push(neighborIndex);
+    }
+  }
+  return mask;
+}
+
+export function buildInitiallyLockedDoorTileSet(
+  floorMap: FloorMap,
+  lockedRoomCenters: ReadonlyArray<{ x: number; y: number }>,
+): Set<string> {
+  const blocked = new Set<string>();
+  const seenRooms = new Set<number>();
+  for (const center of lockedRoomCenters) {
+    const centerTile = floorMap.worldToTile(center.x, center.y);
+    const roomId = floorMap.roomGraph.getRoomAt(centerTile.x, centerTile.y);
+    if (roomId < 0 || seenRooms.has(roomId)) {
+      continue;
+    }
+    seenRooms.add(roomId);
+    const room = floorMap.roomGraph.get(roomId);
+    for (const door of room?.doors ?? []) {
+      blocked.add(tileKey(door.x, door.y));
+    }
+  }
+  return blocked;
+}
+
+function isSpawnReachableTile(
+  floorMap: FloorMap,
+  reachableMask: Uint8Array,
+  tx: number,
+  ty: number,
+): boolean {
+  if (!floorMap.tileMap.inBounds(tx, ty)) {
+    return false;
+  }
+  return reachableMask[ty * floorMap.width + tx] === 1;
+}
+
 function resolveNpcSpawnPosition(
   world: GameWorld,
   preferredPos: { x: number; y: number },
@@ -480,7 +571,6 @@ function resolveNpcSpawnPosition(
   if (!floorMap) {
     return preferredPos;
   }
-
   const preferredTile = floorMap.worldToTile(preferredPos.x, preferredPos.y);
   const roomId = floorMap.roomGraph.getRoomAt(preferredTile.x, preferredTile.y);
   const room = roomId >= 0 ? floorMap.roomGraph.get(roomId) : undefined;
@@ -501,6 +591,84 @@ function resolveNpcSpawnPosition(
   }
 
   return preferredPos;
+}
+
+function resolveRoutableNpcSpawnPosition(
+  world: GameWorld,
+  preferredPos: { x: number; y: number },
+  occupiedTiles: Set<string>,
+  rng: SeededRandom,
+  reachableMask: Uint8Array,
+): { x: number; y: number } {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return preferredPos;
+  }
+  const preferredTile = floorMap.worldToTile(preferredPos.x, preferredPos.y);
+  if (
+    floorMap.tileMap.isPassable(preferredTile.x, preferredTile.y) &&
+    isSpawnReachableTile(floorMap, reachableMask, preferredTile.x, preferredTile.y) &&
+    !occupiedTiles.has(tileKey(preferredTile.x, preferredTile.y))
+  ) {
+    // Preserve an authored/stamped NPC tile when it is already valid; only
+    // scatter within the room if that tile fails passable/routable/occupancy checks.
+    occupiedTiles.add(tileKey(preferredTile.x, preferredTile.y));
+    return floorMap.tileToWorld(preferredTile.x, preferredTile.y);
+  }
+  const roomId = floorMap.roomGraph.getRoomAt(preferredTile.x, preferredTile.y);
+  const room = roomId >= 0 ? floorMap.roomGraph.get(roomId) : undefined;
+  if (room) {
+    const freeTile = resolveFreeNpcTileInRoom(floorMap, room, occupiedTiles, rng, (tx, ty) =>
+      isSpawnReachableTile(floorMap, reachableMask, tx, ty),
+    );
+    if (freeTile) {
+      occupiedTiles.add(tileKey(freeTile.x, freeTile.y));
+      return floorMap.tileToWorld(freeTile.x, freeTile.y);
+    }
+  }
+  if (
+    floorMap.tileMap.isPassable(preferredTile.x, preferredTile.y) &&
+    !occupiedTiles.has(tileKey(preferredTile.x, preferredTile.y)) &&
+    isSpawnReachableTile(floorMap, reachableMask, preferredTile.x, preferredTile.y)
+  ) {
+    occupiedTiles.add(tileKey(preferredTile.x, preferredTile.y));
+    return floorMap.tileToWorld(preferredTile.x, preferredTile.y);
+  }
+
+  let bestTile: TilePoint | null = null;
+  let bestDistanceSq = Number.POSITIVE_INFINITY;
+  let bestSpacing = -1;
+  for (let ty = 0; ty < floorMap.height; ty += 1) {
+    for (let tx = 0; tx < floorMap.width; tx += 1) {
+      if (
+        floorMap.tileMap.isPassable(tx, ty) &&
+        !occupiedTiles.has(tileKey(tx, ty)) &&
+        isSpawnReachableTile(floorMap, reachableMask, tx, ty)
+      ) {
+        const dx = tx - preferredTile.x;
+        const dy = ty - preferredTile.y;
+        const distanceSq = dx * dx + dy * dy;
+        const spacing = minChebyshevDistanceToOccupied(tx, ty, occupiedTiles);
+        const isBetter =
+          distanceSq < bestDistanceSq ||
+          (distanceSq === bestDistanceSq &&
+            (spacing > bestSpacing ||
+              (spacing === bestSpacing &&
+                (bestTile === null || ty < bestTile.y || (ty === bestTile.y && tx < bestTile.x)))));
+        if (isBetter) {
+          bestTile = { x: tx, y: ty };
+          bestDistanceSq = distanceSq;
+          bestSpacing = spacing;
+        }
+      }
+    }
+  }
+  if (bestTile !== null) {
+    occupiedTiles.add(tileKey(bestTile.x, bestTile.y));
+    return floorMap.tileToWorld(bestTile.x, bestTile.y);
+  }
+
+  return resolveNpcSpawnPosition(world, preferredPos, occupiedTiles, rng);
 }
 
 /**
@@ -1047,6 +1215,9 @@ function spawnNpcFromPlacement(
   },
   occupiedTiles: Set<string>,
   rng: SeededRandom,
+  requireRoutable: boolean,
+  reachableMask: Uint8Array | null,
+  spawnOptions: SpawnNpcOptions = {},
 ): number {
   // Resolve position from room role or explicit position
   let x: number;
@@ -1056,6 +1227,11 @@ function spawnNpcFromPlacement(
     // Explicit position override
     x = placement.position.x;
     y = placement.position.y;
+  } else if (isCriticalProgressNpcType(placement.npcTypeId)) {
+    // Floor-1 progression NPCs intentionally live in the welcome hub so the
+    // entire questline remains discoverable without extra room-hunting variance.
+    x = objectiveTiles.welcomeOfficePos.x;
+    y = objectiveTiles.welcomeOfficePos.y;
   } else if (placement.roomRole) {
     // Resolve from room role
     switch (placement.roomRole) {
@@ -1091,8 +1267,11 @@ function spawnNpcFromPlacement(
     y = objectiveTiles.welcomeOfficePos.y;
   }
 
-  const spawnPos = resolveNpcSpawnPosition(world, { x, y }, occupiedTiles, rng);
-  return spawnNpc(world, spawnPos.x, spawnPos.y, placement.npcTypeId);
+  const spawnPos =
+    requireRoutable && reachableMask !== null
+      ? resolveRoutableNpcSpawnPosition(world, { x, y }, occupiedTiles, rng, reachableMask)
+      : resolveNpcSpawnPosition(world, { x, y }, occupiedTiles, rng);
+  return spawnNpc(world, spawnPos.x, spawnPos.y, placement.npcTypeId, spawnOptions);
 }
 
 /** Id of the authored set piece stamped into Floor 1's welcome-office hub room. */
@@ -1412,6 +1591,13 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   const floor1State = world.floorScenario;
   const npcPlacements = floor1Manifest.npcPlacements;
   const occupiedNpcTiles = new Set<string>();
+  const spawnReachableMask =
+    world.floorMap == null
+      ? null
+      : buildReachableFromSpawnMask(
+          world.floorMap,
+          buildInitiallyLockedDoorTileSet(world.floorMap, [staircasePos, slimeRatRoomPos]),
+        );
   // Dedicated deterministic stream for NPC tile scatter so shared-room hubs (the
   // welcome bar) spread out per seed without consuming — or being perturbed by —
   // the shared gameplay RNG that drives enemies, loot, and props.
@@ -1439,45 +1625,60 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     // Data-driven NPC spawning
     for (const placement of npcPlacements) {
       const stamped = stampedNpcByType.get(placement.npcTypeId);
+      const requireRoutable = isCriticalProgressNpcType(placement.npcTypeId);
       // Only honour the authored tile when it is actually passable. Most Floor 1
       // rooms are rectangular so the centred stamp always lands on floor, but a
       // hub-shaped room could clamp a far tile onto an interior wall — fall back
       // to the scatter resolver for that NPC so it never spawns unreachable.
-      const stampedPassable =
+      const stampedPassableAndRoutable =
         stamped !== undefined &&
-        (world.floorMap?.tileMap.isPassable(stamped.tileX, stamped.tileY) ?? false);
-      let eid: number;
-      if (stamped && stampedPassable) {
-        // Fixed authored position from the set piece — no scatter.
-        eid = spawnNpc(world, stamped.x, stamped.y, placement.npcTypeId, {
-          ...(stamped.spriteOverride !== undefined
-            ? { spriteOverride: stamped.spriteOverride }
-            : {}),
-          ...(stamped.widthFt !== undefined ? { widthFt: stamped.widthFt } : {}),
-          ...(stamped.heightFt !== undefined ? { heightFt: stamped.heightFt } : {}),
-          ...(stamped.flipX !== undefined ? { flipX: stamped.flipX } : {}),
-          ...(stamped.flipY !== undefined ? { flipY: stamped.flipY } : {}),
-          ...(stamped.rotationDeg !== undefined ? { rotationDeg: stamped.rotationDeg } : {}),
-          ...(stamped.z !== undefined ? { z: stamped.z } : {}),
-        });
-        occupiedNpcTiles.add(tileKey(stamped.tileX, stamped.tileY));
-      } else {
-        eid = spawnNpcFromPlacement(
-          world,
-          placement,
-          {
-            welcomeOfficePos,
-            safeRoomPos,
-            staircasePos,
-            slimeRatRoomPos,
-            spellQuestGiverPos,
-            shopRoomPos,
-            questItemPos,
-          },
-          occupiedNpcTiles,
-          npcPlacementRng,
-        );
-      }
+        (world.floorMap?.tileMap.isPassable(stamped.tileX, stamped.tileY) ?? false) &&
+        (!requireRoutable ||
+          (world.floorMap != null &&
+            spawnReachableMask !== null &&
+            isSpawnReachableTile(
+              world.floorMap,
+              spawnReachableMask,
+              stamped.tileX,
+              stamped.tileY,
+            )));
+      const resolvedPlacement = stamped
+        ? stampedPassableAndRoutable
+          ? { ...placement, position: { x: stamped.x, y: stamped.y } }
+          : { ...placement, position: welcomeOfficePos }
+        : placement;
+      const spawnOptions: SpawnNpcOptions =
+        stamped !== undefined
+          ? {
+              ...(stamped.spriteOverride !== undefined
+                ? { spriteOverride: stamped.spriteOverride }
+                : {}),
+              ...(stamped.widthFt !== undefined ? { widthFt: stamped.widthFt } : {}),
+              ...(stamped.heightFt !== undefined ? { heightFt: stamped.heightFt } : {}),
+              ...(stamped.flipX !== undefined ? { flipX: stamped.flipX } : {}),
+              ...(stamped.flipY !== undefined ? { flipY: stamped.flipY } : {}),
+              ...(stamped.rotationDeg !== undefined ? { rotationDeg: stamped.rotationDeg } : {}),
+              ...(stamped.z !== undefined ? { z: stamped.z } : {}),
+            }
+          : {};
+      const eid = spawnNpcFromPlacement(
+        world,
+        resolvedPlacement,
+        {
+          welcomeOfficePos,
+          safeRoomPos,
+          staircasePos,
+          slimeRatRoomPos,
+          spellQuestGiverPos,
+          shopRoomPos,
+          questItemPos,
+        },
+        occupiedNpcTiles,
+        npcPlacementRng,
+        requireRoutable,
+        spawnReachableMask,
+        spawnOptions,
+      );
 
       // Store EIDs by NPC type and point each objective anchor at the NPC's
       // actual spawned tile. All three (including the goon's welcome anchor)

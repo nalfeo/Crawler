@@ -27,11 +27,14 @@ interface GraphicsShape {
   x: number;
   y: number;
   fillEllipses: Array<{ x: number; y: number; w: number; h: number }>;
+  scaleX: number;
+  scaleY: number;
   clear: () => GraphicsShape;
   fillStyle: () => GraphicsShape;
   fillEllipse: (x: number, y: number, w: number, h: number) => GraphicsShape;
   setDepth: () => GraphicsShape;
   setAlpha: () => GraphicsShape;
+  setScale: (x: number, y: number) => GraphicsShape;
   destroy: () => void;
 }
 
@@ -66,6 +69,8 @@ function createGoreSceneStub(): {
           x,
           y,
           fillEllipses: [],
+          scaleX: 1,
+          scaleY: 1,
           clear() {
             shape.fillEllipses = [];
             return shape;
@@ -81,6 +86,11 @@ function createGoreSceneStub(): {
             return shape;
           },
           setAlpha() {
+            return shape;
+          },
+          setScale(scaleX: number, scaleY: number) {
+            shape.scaleX = scaleX;
+            shape.scaleY = scaleY;
             return shape;
           },
           destroy() {
@@ -204,5 +214,27 @@ describe('blood pool spread shape', () => {
     // strictly bigger by 15 s (spread continues into the second half).
     expect(footprintAt5s).toBeGreaterThan(footprintAtSpawn * 1.5);
     expect(footprintAt15s).toBeGreaterThan(footprintAt5s);
+  });
+
+  it('flattens vertically to half height across its lifetime without narrowing', () => {
+    const { scene, graphicsShapes } = createGoreSceneStub();
+    const vfx = createGoreVfx(scene, { intensity: 1, hitGoreEnabled: false });
+    const world = createTestWorld();
+
+    world.combatEvents.push(deathEvent(100, 50));
+    vfx.update(world, 1000, 16, 0);
+
+    const pool = graphicsShapes[0]!;
+    expect(pool.scaleX).toBe(1);
+    expect(pool.scaleY).toBe(1);
+
+    world.combatEvents.length = 0;
+    vfx.update(world, 1000 + 15_000, 16, 0);
+    expect(pool.scaleX).toBe(1);
+    expect(pool.scaleY).toBeCloseTo(0.75);
+
+    vfx.update(world, 1000 + 29_970, 16, 0);
+    expect(pool.scaleX).toBe(1);
+    expect(pool.scaleY).toBeCloseTo(0.5, 2);
   });
 });

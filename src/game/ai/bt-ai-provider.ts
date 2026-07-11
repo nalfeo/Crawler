@@ -68,11 +68,14 @@ import {
   AIDecisionMode,
   AIPathingMode,
   AIDecisionDebugState,
+  AINpcInteractionAction,
   AIProgressSuppressionSource,
   type AIInputProvider,
   type AIDecision,
   type AIConfig,
   type AIDecisionModeValue,
+  type AINpcInteractionActionValue,
+  type AINpcInteractionIntent,
   type AIPathingModeValue,
   type AIProgressSuppressionSourceValue,
   type AISuppressedProgressNavDebug,
@@ -526,6 +529,7 @@ interface LootTarget extends WorldTarget {
 
 interface ProgressTarget extends WorldTarget {
   reason: string;
+  npcInteraction: AINpcInteractionIntent | null;
 }
 
 /**
@@ -629,7 +633,7 @@ export function computeCollapsePanicProfile(
 
 interface NpcTarget extends WorldTarget {
   defId: string;
-  interactionReason: string;
+  interactionReason: AINpcInteractionActionValue;
 }
 
 interface TacticalOpportunityEnemySnapshot extends WorldTarget {
@@ -892,15 +896,6 @@ export class BehaviorTreeAI implements AIInputProvider {
   private progressGoalSuppressedUntilFrame: number = 0;
   private progressGoalSuppressionSource: AIProgressSuppressionSourceValue | null = null;
   private pendingSuppressedProgressNavDebug: AISuppressedProgressNavDebug | null = null;
-  /**
-   * Cumulative fog-of-war "seen" bitmap (one byte per tile, 1 = ever seen),
-   * OR-accumulated from {@link FloorMap.visible} every poll. This is exactly the
-   * information the minimap shows the player (HudMinimap folds each frame's FOV
-   * into a persistent `visited` array the same way), so steering toward its
-   * frontier — the boundary between seen and unseen tiles — is legitimate
-   * exploration, not omniscience. Lazily sized on first use; `null` until then.
-   */
-  private exploredSeen: Uint8Array | null = null;
   /** True once FOV has exposed at least one tile this run (perception initialized). */
   private hasPerceptionData = false;
   /** Reused per-tile BFS visited scratch for {@link findNearestFrontier}; sized to the floor. */
@@ -1100,6 +1095,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       targetX: null,
       targetY: null,
       reason: 'Initializing',
+      npcInteraction: null,
       debug: null,
     };
 
@@ -1501,6 +1497,11 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.decision.targetY = nearest.y;
         this.talkedNpcDefs.add(nearest.defId);
         this.decision.reason = `Interacting with ${nearest.defId} (${nearest.interactionReason}) at ${nearest.distance.toFixed(0)}ft`;
+        this.decision.npcInteraction = {
+          npcEid: nearest.eid,
+          action: nearest.interactionReason,
+          allowWhileExploring: false,
+        };
         return BTStatus.SUCCESS;
       }),
     );
@@ -1594,6 +1595,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.decision.targetX = target.x;
         this.decision.targetY = target.y;
         this.decision.reason = target.reason;
+        this.decision.npcInteraction = target.npcInteraction ? { ...target.npcInteraction } : null;
         return BTStatus.SUCCESS;
       }),
     );
@@ -2821,6 +2823,7 @@ export class BehaviorTreeAI implements AIInputProvider {
 
   poll(state: InputState, world: GameWorld): void {
     this.pendingSuppressedProgressNavDebug = null;
+    this.decision.npcInteraction = null;
     this.decision.debug = null;
     if (world.frameCount >= this.progressGoalSuppressedUntilFrame) {
       this.progressGoalSuppressionSource = null;
@@ -2929,11 +2932,9 @@ export class BehaviorTreeAI implements AIInputProvider {
       this.getPlayerSpeedFtPerFrame(world, playerEid),
     );
 
-    // Fold this frame's field-of-view into the cumulative fog-of-war "seen"
-    // bitmap so frontier exploration (pickExploreTarget) can steer toward unseen
-    // ground. Mirrors how the minimap accumulates per-frame FOV into a persistent
-    // visited array, so the AI only ever "knows" what the player has actually seen.
-    this.accumulateSeenTiles(world);
+    // FloorMap already maintains the same persistent tile-level discovery memory
+    // that the AI used to rebuild by scanning the entire map every poll.
+    this.hasPerceptionData ||= world.floorMap?.hasVisibleTiles() ?? false;
 
     // Reset opportunistic vectors from Track B so stale data never carries over.
     this.opportunisticPullX = 0;
@@ -4057,7 +4058,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         nearestRelevant.y,
       )
     ) {
-      return this.commitDetourTo(nearestRelevant, playerX, playerY);
+      return this.commitDetourTo(world, nearestRelevant, playerX, playerY);
     }
 
     // C. Honor an existing commitment, re-derived live (bypassing the
@@ -4065,7 +4066,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     //    playerInSafeRoom mouth-boundary flicker. This is the core fix.
     const committed = this.getCommittedQuestGiverDetour(world, playerEid, playerX, playerY, target);
     if (committed) {
-      return this.detourTargetFor(committed, playerX, playerY);
+      return this.detourTargetFor(world, committed, playerX, playerY);
     }
 
     // D. No commitment → fresh candidate selection with the STRICT base cap.
@@ -4090,7 +4091,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       return target;
     }
 
-    return this.commitDetourTo(nearestRelevant, playerX, playerY);
+    return this.commitDetourTo(world, nearestRelevant, playerX, playerY);
   }
 
   /** Interaction-range predicate, matching the `Interact` BT node exactly (strict
@@ -4140,27 +4141,39 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   /** Build a "Detouring to …" progress target pointing at the given NPC. */
-  private detourTargetFor(npc: NpcTarget, playerX: number, playerY: number): ProgressTarget {
+  private detourTargetFor(
+    world: GameWorld,
+    npc: NpcTarget,
+    playerX: number,
+    playerY: number,
+  ): ProgressTarget {
     const readableReason = npc.interactionReason.replaceAll('-', ' ');
-    return this.createProgressTarget(
-      npc.x,
-      npc.y,
+    return this.createNpcProgressTarget(
+      world,
       playerX,
       playerY,
-      `Detouring to ${npc.defId} (${readableReason})`,
       npc.eid,
+      `Detouring to ${npc.defId} (${readableReason})`,
+      npc.x,
+      npc.y,
+      npc.interactionReason,
     );
   }
 
   /** Latch a detour commitment on the given NPC (resetting the no-progress valve
    * when the committed entity changes) and return the detour target. */
-  private commitDetourTo(npc: NpcTarget, playerX: number, playerY: number): ProgressTarget {
+  private commitDetourTo(
+    world: GameWorld,
+    npc: NpcTarget,
+    playerX: number,
+    playerY: number,
+  ): ProgressTarget {
     if (this.committedDetourNpcEid !== npc.eid) {
       this.committedDetourNpcEid = npc.eid;
       this.committedDetourBestDistance = npc.distance;
       this.committedDetourNoProgressFrames = 0;
     }
-    return this.detourTargetFor(npc, playerX, playerY);
+    return this.detourTargetFor(world, npc, playerX, playerY);
   }
 
   /** Clear any active detour commitment and its no-progress bookkeeping. */
@@ -5273,6 +5286,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         'Heading to the Floor 2 Broker introduction',
         settlementAnchor.x,
         settlementAnchor.y,
+        AINpcInteractionAction.MEET_BROKER_INTRO,
       );
     }
 
@@ -5638,6 +5652,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           reason,
           objective.welcomeOfficePos.x,
           objective.welcomeOfficePos.y,
+          AINpcInteractionAction.ACCEPT_TUTORIAL_QUEST,
         ),
       );
     }
@@ -5682,13 +5697,15 @@ export class BehaviorTreeAI implements AIInputProvider {
       const reason = 'Seeking Shopkeeper to start the merchant errand';
       if (progressSuppressed) return this.recordSuppressedProgressNavigation(world, reason, 'shop');
       return maybeDetourToQuestGiver(
-        this.createProgressTarget(
-          objective.shopRoomPos.x,
-          objective.shopRoomPos.y,
+        this.createNpcProgressTarget(
+          world,
           playerX,
           playerY,
-          reason,
           floorScenario.shopkeeperNpcEid ?? -1,
+          reason,
+          objective.shopRoomPos.x,
+          objective.shopRoomPos.y,
+          AINpcInteractionAction.MEET_SHOPKEEPER,
         ),
       );
     }
@@ -5700,7 +5717,18 @@ export class BehaviorTreeAI implements AIInputProvider {
         : 'Seeking the merchant fetch item';
       if (progressSuppressed) return this.recordSuppressedProgressNavigation(world, reason, 'shop');
       return maybeDetourToQuestGiver(
-        this.createProgressTarget(target.x, target.y, playerX, playerY, reason),
+        hasFetchItem
+          ? this.createNpcProgressTarget(
+              world,
+              playerX,
+              playerY,
+              floorScenario.shopkeeperNpcEid ?? -1,
+              reason,
+              target.x,
+              target.y,
+              AINpcInteractionAction.RETURN_SHOPKEEPER_PRIZE,
+            )
+          : this.createProgressTarget(target.x, target.y, playerX, playerY, reason),
       );
     }
 
@@ -5710,13 +5738,15 @@ export class BehaviorTreeAI implements AIInputProvider {
         if (progressSuppressed)
           return this.recordSuppressedProgressNavigation(world, reason, 'shop');
         return maybeDetourToQuestGiver(
-          this.createProgressTarget(
-            objective.shopRoomPos.x,
-            objective.shopRoomPos.y,
+          this.createNpcProgressTarget(
+            world,
             playerX,
             playerY,
-            reason,
             floorScenario.shopkeeperNpcEid ?? -1,
+            reason,
+            objective.shopRoomPos.x,
+            objective.shopRoomPos.y,
+            AINpcInteractionAction.BUY_SHOPKEEPER_EQUIPMENT,
           ),
         );
       }
@@ -5790,13 +5820,15 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (progressSuppressed)
         return this.recordSuppressedProgressNavigation(world, reason, 'spell-broker');
       return maybeDetourToQuestGiver(
-        this.createProgressTarget(
-          objective.spellQuestGiverPos.x,
-          objective.spellQuestGiverPos.y,
+        this.createNpcProgressTarget(
+          world,
           playerX,
           playerY,
-          reason,
           floorScenario.spellQuestGiverNpcEid ?? -1,
+          reason,
+          objective.spellQuestGiverPos.x,
+          objective.spellQuestGiverPos.y,
+          AINpcInteractionAction.ACCEPT_SPELL_QUEST,
         ),
       );
     }
@@ -5821,13 +5853,15 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (progressSuppressed)
         return this.recordSuppressedProgressNavigation(world, reason, 'spell-broker');
       return maybeDetourToQuestGiver(
-        this.createProgressTarget(
-          objective.spellQuestGiverPos.x,
-          objective.spellQuestGiverPos.y,
+        this.createNpcProgressTarget(
+          world,
           playerX,
           playerY,
-          reason,
           floorScenario.spellQuestGiverNpcEid ?? -1,
+          reason,
+          objective.spellQuestGiverPos.x,
+          objective.spellQuestGiverPos.y,
+          AINpcInteractionAction.CLAIM_SPELL_REWARD,
         ),
       );
     }
@@ -5914,6 +5948,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       y,
       distance: Math.hypot(x - playerX, y - playerY),
       reason,
+      npcInteraction: null,
     };
   }
 
@@ -5925,6 +5960,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     reason: string,
     fallbackX: number,
     fallbackY: number,
+    interactionAction: AINpcInteractionActionValue,
   ): ProgressTarget {
     const hasLiveNpc =
       npcEid >= 0 && entityExists(world.ecs, npcEid) && hasComponent(world.ecs, npcEid, Npc);
@@ -5939,7 +5975,18 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     const approach = this.resolveNpcInteractionAnchor(world, playerX, playerY, npcX, npcY, npcEid);
-    return this.createProgressTarget(approach.x, approach.y, playerX, playerY, reason, npcEid);
+    return {
+      eid: npcEid,
+      x: approach.x,
+      y: approach.y,
+      distance: Math.hypot(approach.x - playerX, approach.y - playerY),
+      reason,
+      npcInteraction: {
+        npcEid,
+        action: interactionAction,
+        allowWhileExploring: true,
+      },
+    };
   }
 
   private resolveNpcInteractionAnchor(
@@ -5962,11 +6009,10 @@ export class BehaviorTreeAI implements AIInputProvider {
       return { x: npcX, y: npcY };
     }
 
-    // If we're already within normal interaction range, target the NPC directly.
-    if (Math.hypot(npcX - playerX, npcY - playerY) < NPC_INTERACTION_RADIUS_FT) {
-      const result = { x: npcX, y: npcY };
-      this.npcInteractionAnchorCache.set(npcEid, result);
-      return result;
+    // If we're already within the real interaction range, target the NPC directly,
+    // but do not cache that player-relative fast path for future revisits.
+    if (Math.hypot(npcX - playerX, npcY - playerY) <= NPC_INTERACTION_RADIUS_FT) {
+      return { x: npcX, y: npcY };
     }
 
     const startTile = floorMap.worldToTile(playerX, playerY);
@@ -6026,7 +6072,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (!bestTile) {
-      // No reachable tile within search radius — cache null so we don't retry
+      // No reachable tile within the search radius — cache null so we don't retry
       // BFS every frame, then fall back to raw NPC position. The watchdog will
       // eventually suppress this goal and route via enemies instead.
       console.warn(
@@ -6211,38 +6257,6 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   /**
-   * Fold this frame's field-of-view into the cumulative "seen" fog-of-war bitmap.
-   *
-   * {@link FloorMap.visible} is line-of-sight only — the FOV system clears and
-   * recomputes it every frame — so we OR it into {@link exploredSeen} to retain
-   * everywhere the player has ever seen. This mirrors HudMinimap's `visited`
-   * accumulation exactly, so the frontier search below only ever steers toward
-   * ground the player could legitimately know about.
-   */
-  private accumulateSeenTiles(world: GameWorld): void {
-    const floorMap = world.floorMap;
-    if (!floorMap) {
-      return;
-    }
-    const W = floorMap.width;
-    const H = floorMap.height;
-    const tileCount = W * H;
-    if (!this.exploredSeen || this.exploredSeen.length !== tileCount) {
-      this.exploredSeen = new Uint8Array(tileCount);
-    }
-    const seen = this.exploredSeen;
-    for (let ty = 0; ty < H; ty++) {
-      for (let tx = 0; tx < W; tx++) {
-        const i = ty * W + tx;
-        if (!seen[i] && floorMap.isVisible(tx, ty)) {
-          seen[i] = 1;
-          this.hasPerceptionData = true;
-        }
-      }
-    }
-  }
-
-  /**
    * Enemy/NPC perception rule: only entities in current FOV or on minimap-known
    * tiles are considered known. Before perception initializes (e.g. isolated unit
    * tests without an FOV step), fall back to permissive behavior.
@@ -6255,9 +6269,8 @@ export class BehaviorTreeAI implements AIInputProvider {
       return false;
     }
     if (!this.hasPerceptionData) return true;
-    const idx = tile.y * floorMap.width + tile.x;
     if (floorMap.isVisible(tile.x, tile.y)) return true;
-    return this.exploredSeen?.[idx] === 1;
+    return floorMap.isDiscovered(tile.x, tile.y);
   }
 
   /**
@@ -6281,8 +6294,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
   ): { x: number; y: number } | null {
     const floorMap = world.floorMap;
-    const seen = this.exploredSeen;
-    if (!floorMap || !seen) {
+    if (!floorMap || !this.hasPerceptionData) {
       return null;
     }
 
@@ -6305,7 +6317,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       width,
       height,
       index: (tx, ty) => tileMap.index(tx, ty),
-      isSeen: (idx) => seen[idx] !== 0,
+      isSeen: (idx) => floorMap.isDiscoveredIndex(idx),
       isPassable: (tx, ty) => passable(tx, ty),
       tileDistanceFt: (tx, ty) => {
         const wp = floorMap.tileToWorld(tx, ty);
@@ -7030,7 +7042,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         y,
         distance: Math.hypot(x - playerX, y - playerY),
         defId: instance.defId,
-        interactionReason: interactionReason ?? '',
+        interactionReason: interactionReason ?? AINpcInteractionAction.GENERIC_INTERACTION,
         relevant: Boolean(interactionReason),
       });
     }
@@ -7058,7 +7070,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     world: GameWorld,
     playerEid: number,
     npcEid: number,
-  ): string | null {
+  ): AINpcInteractionActionValue | null {
     const instance = world.npcs.get(npcEid);
     if (!instance) {
       return null;
@@ -7071,7 +7083,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (instance.defId === 'the-broker') {
         return world.goalFlags.get(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID) === true
           ? null
-          : 'meet-broker-intro';
+          : AINpcInteractionAction.MEET_BROKER_INTRO;
       }
       // Floor 2 currently has no scripted non-broker NPC interaction goals in the
       // BT pipeline; treat them as irrelevant so headless progression does not
@@ -7081,7 +7093,7 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     const floorScenario = world.floorScenario;
     if (!floorScenario) {
-      return 'generic-interaction';
+      return AINpcInteractionAction.GENERIC_INTERACTION;
     }
 
     const objective = floorScenario.objective;
@@ -7091,20 +7103,22 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     switch (instance.defId) {
       case 'tutorial-goon':
-        return world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID) ? null : 'accept-tutorial-quest';
+        return world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID)
+          ? null
+          : AINpcInteractionAction.ACCEPT_TUTORIAL_QUEST;
       case 'shopkeeper':
         if (world.playerLevel.level < FLOOR1_QUEST_UNLOCK_LEVEL) {
           // The merchant errand is gated behind reaching level 2.
           return null;
         }
         if (shopStage === 'not-met') {
-          return 'meet-shopkeeper';
+          return AINpcInteractionAction.MEET_SHOPKEEPER;
         }
         if (shopStage === 'awaiting-prize' && hasFetchItem) {
-          return 'return-shopkeeper-prize';
+          return AINpcInteractionAction.RETURN_SHOPKEEPER_PRIZE;
         }
         if (shopStage === 'ready-to-buy' && world.playerGold >= SHOPKEEPER_EQUIPMENT_COST) {
-          return 'buy-shopkeeper-equipment';
+          return AINpcInteractionAction.BUY_SHOPKEEPER_EQUIPMENT;
         }
         return null;
       case 'spell-quest-giver':
@@ -7116,10 +7130,10 @@ export class BehaviorTreeAI implements AIInputProvider {
           return null;
         }
         if (!world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID)) {
-          return 'accept-spell-quest';
+          return AINpcInteractionAction.ACCEPT_SPELL_QUEST;
         }
         if (objective.bossBattles.get('slime-rat')!.defeated && !world.featureUnlocks.spells) {
-          return 'claim-spell-reward';
+          return AINpcInteractionAction.CLAIM_SPELL_REWARD;
         }
         return null;
       default:
@@ -7253,6 +7267,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       targetX: null,
       targetY: null,
       reason: 'Reset',
+      npcInteraction: null,
       debug: null,
     };
     this.pathWaypoints = [];
@@ -7309,7 +7324,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.resolveGoalMemoEpoch = -1;
     this.navEpoch = 0;
     this.navSignature = null;
-    this.exploredSeen = null;
     this.hasPerceptionData = false;
     this.frontierBfsVisited = null;
     this.retreating = false;

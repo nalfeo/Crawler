@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { addEntity, addComponent, set } from 'bitecs';
 import { createTestWorld } from '../../tests/helpers/world-factory';
 import { fovSystem } from '../../src/core/systems/fovSystem';
@@ -223,6 +223,38 @@ describe('FOV System', () => {
     fovSystem(world);
     expect(floorMap.isVisible(2, 2)).toBe(true);
     expect(floorMap.isVisible(10, 10)).toBe(false);
+  });
+
+  it('reuses visibility while the sub-tile origin and transparency are unchanged', () => {
+    const floorMap = makeSmallMap();
+    world.floorMap = floorMap;
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(Position, { x: 320, y: 320 }));
+    addComponent(world.ecs, eid, Player);
+    const transparency = vi.spyOn(floorMap.tileMap, 'isTransparent');
+
+    fovSystem(world);
+    const firstPassCalls = transparency.mock.calls.length;
+    fovSystem(world);
+
+    expect(firstPassCalls).toBeGreaterThan(0);
+    expect(transparency).toHaveBeenCalledTimes(firstPassCalls);
+  });
+
+  it('recomputes visibility after a transparency mutation at the same origin', () => {
+    const floorMap = makeSmallMap();
+    world.floorMap = floorMap;
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(Position, { x: 320, y: 320 }));
+    addComponent(world.ecs, eid, Player);
+    const transparency = vi.spyOn(floorMap.tileMap, 'isTransparent');
+
+    fovSystem(world);
+    const firstPassCalls = transparency.mock.calls.length;
+    floorMap.tileMap.setFlags(11, 10, TilePresets.WALL);
+    fovSystem(world);
+
+    expect(transparency.mock.calls.length).toBeGreaterThan(firstPassCalls);
   });
 
   it('should handle player at map edge gracefully', () => {

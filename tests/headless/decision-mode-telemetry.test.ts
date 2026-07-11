@@ -65,6 +65,7 @@ describe('headless decision-mode telemetry', () => {
         targetX: null,
         targetY: null,
         reason: 'bare',
+        npcInteraction: null,
         debug: null,
       };
       poll(_state: InputState, _world: GameWorld): void {}

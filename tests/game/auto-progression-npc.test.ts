@@ -5,8 +5,12 @@ import {
   autoFloor1ProgressionSystem,
   autoNpcInteractionSystem,
 } from '../../src/game/ai/auto-progression.js';
-import { NPC_INTERACTION_RADIUS_FT } from '../../src/game/ai/bt-ai-tuning.js';
-import { AIState, type AIDecision, type AIInputProvider } from '../../src/game/ai/types.js';
+import {
+  AINpcInteractionAction,
+  AIState,
+  type AIDecision,
+  type AIInputProvider,
+} from '../../src/game/ai/types.js';
 import { setActiveWeaponDef } from '../../src/core/active-weapon.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { equip, getEquipmentState } from '../../src/core/systems/equipmentSystem.js';
@@ -19,6 +23,7 @@ import type { EquipmentItemDef } from '../../src/shared/equipment-types.js';
 import { addItem, hasItem } from '../../src/shared/inventory.js';
 import { ItemRarity, customTag, type ItemDef } from '../../src/shared/items.js';
 import type { NpcInstance } from '../../src/shared/npc-types.js';
+import { NPC_INTERACT_RANGE_FT } from '../../src/shared/npc-types.js';
 import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from '../../src/shared/quest-types.js';
 import type { GameWorld } from '../../src/core/world.js';
 import type { FloorScenarioState } from '../../src/shared/floor-types.js';
@@ -90,8 +95,9 @@ function decision(partial: Partial<AIDecision>): AIDecision {
     targetX: null,
     targetY: null,
     reason: 'test',
-    debug: null,
     ...partial,
+    npcInteraction: partial.npcInteraction ?? null,
+    debug: partial.debug ?? null,
   };
 }
 
@@ -236,24 +242,29 @@ describe('autoNpcInteractionSystem', () => {
     ).toBe(100);
   });
 
-  describe('EXPLORE tutorial-goon fallback (normal interaction range)', () => {
-    it('does NOT interact when tutorial-goon is outside normal interaction range', () => {
+  describe('EXPLORE explicit NPC interaction intent', () => {
+    it('does NOT interact when only the anchor is in range but the NPC is still too far', () => {
       const world = createTestWorld();
       const player = spawnPlayer(world, 0, 0);
       world.stores.position.x[player] = 0;
       world.stores.position.y[player] = 0;
-      addNpc(world, 20, { defId: 'tutorial-goon', nearbyPlayer: false });
-      // Outside the bounded interaction radius.
-      world.stores.position.x[20] = NPC_INTERACTION_RADIUS_FT + 1;
-      world.stores.position.y[20] = 0;
+      addNpc(world, 21, { defId: 'tutorial-goon', nearbyPlayer: false });
+      world.stores.position.x[21] = 20;
+      world.stores.position.y[21] = 0;
       const result = autoNpcInteractionSystem(
         world,
         fakeProvider(
           decision({
             state: AIState.EXPLORE,
-            reason: 'Tutorial Goon',
-            targetEid: 20,
-            debug: null,
+            reason: 'Seeking Tutorial Goon to unlock the floor quest',
+            targetEid: 21,
+            targetX: NPC_INTERACT_RANGE_FT - 0.25,
+            targetY: 0,
+            npcInteraction: {
+              npcEid: 21,
+              action: AINpcInteractionAction.ACCEPT_TUTORIAL_QUEST,
+              allowWhileExploring: true,
+            },
           }),
         ),
         0,
@@ -261,46 +272,62 @@ describe('autoNpcInteractionSystem', () => {
         30,
       );
       expect(result).toBe(0);
+      expect(world.goalFlags.get('floor1-drops-unlocked')).toBeUndefined();
     });
 
-    it('interacts when EXPLORE targets tutorial-goon and player is within interaction range', () => {
+    it('interacts when EXPLORE carries explicit shopkeeper intent and the player is close enough to the NPC', () => {
       const world = createTestWorld();
       const player = spawnPlayer(world, 0, 0);
       world.stores.position.x[player] = 0;
       world.stores.position.y[player] = 0;
-      addNpc(world, 21, { defId: 'tutorial-goon', nearbyPlayer: false });
-      world.stores.position.x[21] = NPC_INTERACTION_RADIUS_FT - 0.25;
-      world.stores.position.y[21] = 0;
+      addNpc(world, 22, { defId: 'shopkeeper', nearbyPlayer: false });
+      world.stores.position.x[22] = NPC_INTERACT_RANGE_FT - 0.5;
+      world.stores.position.y[22] = 0;
       const result = autoNpcInteractionSystem(
         world,
         fakeProvider(
           decision({
             state: AIState.EXPLORE,
-            reason: 'Tutorial Goon',
-            targetEid: 21,
-            debug: null,
-          }),
-        ),
-        0,
-        100,
-        30,
-      );
-      expect(result).toBe(100);
-      expect(world.goalFlags.get('floor1-drops-unlocked')).toBe(true);
-    });
-
-    it('interacts when tutorial-goon is marked nearbyPlayer during EXPLORE fallback', () => {
-      const world = createTestWorld();
-      spawnPlayer(world, 0, 0);
-      addNpc(world, 22, { defId: 'tutorial-goon', nearbyPlayer: true });
-      const result = autoNpcInteractionSystem(
-        world,
-        fakeProvider(
-          decision({
-            state: AIState.EXPLORE,
-            reason: 'Tutorial Goon',
+            reason: 'Returning to the Shopkeeper to buy the charm',
             targetEid: 22,
-            debug: null,
+            targetX: 1,
+            targetY: 0,
+            npcInteraction: {
+              npcEid: 22,
+              action: AINpcInteractionAction.BUY_SHOPKEEPER_EQUIPMENT,
+              allowWhileExploring: true,
+            },
+          }),
+        ),
+        0,
+        100,
+        30,
+      );
+      expect(result).toBe(100);
+    });
+
+    it('interacts when EXPLORE carries explicit tutorial-goon intent and the player is close enough to the NPC', () => {
+      const world = createTestWorld();
+      const player = spawnPlayer(world, 0, 0);
+      world.stores.position.x[player] = 0;
+      world.stores.position.y[player] = 0;
+      addNpc(world, 24, { defId: 'tutorial-goon', nearbyPlayer: false });
+      world.stores.position.x[24] = NPC_INTERACT_RANGE_FT - 0.25;
+      world.stores.position.y[24] = 0;
+      const result = autoNpcInteractionSystem(
+        world,
+        fakeProvider(
+          decision({
+            state: AIState.EXPLORE,
+            reason: 'Seeking Tutorial Goon to unlock the floor quest',
+            targetEid: 24,
+            targetX: 1,
+            targetY: 0,
+            npcInteraction: {
+              npcEid: 24,
+              action: AINpcInteractionAction.ACCEPT_TUTORIAL_QUEST,
+              allowWhileExploring: true,
+            },
           }),
         ),
         0,
@@ -311,10 +338,14 @@ describe('autoNpcInteractionSystem', () => {
       expect(world.goalFlags.get('floor1-drops-unlocked')).toBe(true);
     });
 
-    it('does NOT trigger for a generic EXPLORE decision unrelated to tutorial-goon', () => {
+    it('does NOT trigger for a generic EXPLORE decision without explicit NPC intent', () => {
       const world = createTestWorld();
-      spawnPlayer(world, 0, 0);
+      const player = spawnPlayer(world, 0, 0);
+      world.stores.position.x[player] = 0;
+      world.stores.position.y[player] = 0;
       addNpc(world, 23, { defId: 'shopkeeper', nearbyPlayer: false });
+      world.stores.position.x[23] = NPC_INTERACT_RANGE_FT - 0.5;
+      world.stores.position.y[23] = 0;
       const result = autoNpcInteractionSystem(
         world,
         fakeProvider(
@@ -322,14 +353,15 @@ describe('autoNpcInteractionSystem', () => {
             state: AIState.EXPLORE,
             reason: 'Exploring frontier',
             targetEid: 23,
-            debug: null,
+            targetX: 1,
+            targetY: 0,
           }),
         ),
         0,
         100,
         30,
       );
-      expect(result).toBe(0); // reason does not include 'Tutorial Goon'
+      expect(result).toBe(0);
     });
   });
 });
@@ -427,8 +459,8 @@ describe('autoFloor1ProgressionSystem', () => {
     const fireballBag = fireballWorld.inventories.get(fireballPlayer)!;
     addItem(fireballBag, 'signet-of-focus', 1);
 
-    autoFloor1ProgressionSystem(swordWorld, swordPlayer, true);
-    autoFloor1ProgressionSystem(fireballWorld, fireballPlayer, true);
+    autoFloor1ProgressionSystem(swordWorld, swordPlayer, undefined, true);
+    autoFloor1ProgressionSystem(fireballWorld, fireballPlayer, undefined, true);
 
     expect(hasItem(swordBag, 'signet-of-focus')).toBe(true);
     expect(hasItem(fireballBag, 'signet-of-focus')).toBe(false);
@@ -446,7 +478,7 @@ describe('autoFloor1ProgressionSystem', () => {
     const bag = world.inventories.get(player)!;
     addItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID, 1);
 
-    autoFloor1ProgressionSystem(world, player, true);
+    autoFloor1ProgressionSystem(world, player, undefined, true);
 
     expect(hasItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID)).toBe(false);
     const equipment = getEquipmentState(world, player)!;
@@ -476,7 +508,7 @@ describe('autoFloor1ProgressionSystem', () => {
     const bag = world.inventories.get(player)!;
     addItem(bag, 'arcanist-circlet', 1, [makeCatalogItem('arcanist-circlet')]);
 
-    autoFloor1ProgressionSystem(world, player, true);
+    autoFloor1ProgressionSystem(world, player, undefined, true);
 
     expect(hasItem(bag, 'arcanist-circlet')).toBe(false);
     expect(hasItem(bag, 'iron-helm')).toBe(true);
