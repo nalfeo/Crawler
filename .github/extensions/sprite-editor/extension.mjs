@@ -386,6 +386,7 @@ async function saveSprite(payload) {
       wrotePng = true;
     }
 
+    // Metadata edits and PNG saves both mutate the manifest; PNG writes refresh contentHash.
     if (hasMetadata || wrotePng) {
       writeJsonFile(MANIFEST_PATH, data.manifest);
     }

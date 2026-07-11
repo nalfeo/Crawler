@@ -84,6 +84,15 @@ const SECOND_SPRITE = {
   favorite: false,
 };
 
+function normalizeSavedAnnotationForFixture(annotation) {
+  // Keep this trim().slice(0, 1000) normalization in sync with applyAnnotationUpdate() in extension.mjs.
+  return {
+    ...annotation,
+    comment:
+      typeof annotation?.comment === 'string' ? annotation.comment.trim().slice(0, 1000) : '',
+  };
+}
+
 async function withEditor(run, options = {}) {
   const html = renderHtml('test');
   const fixtureSprites = [structuredClone(SPRITE), structuredClone(SECOND_SPRITE)];
@@ -128,13 +137,7 @@ async function withEditor(run, options = {}) {
           const index = fixtureSprites.findIndex((entry) => entry.key === payload.key);
           if (index >= 0) {
             const annotation = options.normalizeSavedComment
-              ? {
-                  ...payload.annotation,
-                  comment:
-                    typeof payload?.annotation?.comment === 'string'
-                      ? payload.annotation.comment.trim().slice(0, 1000)
-                      : '',
-                }
+              ? normalizeSavedAnnotationForFixture(payload.annotation)
               : payload.annotation;
             fixtureSprites[index] = {
               ...fixtureSprites[index],

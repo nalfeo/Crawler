@@ -1037,25 +1037,20 @@ const CLIENT_SCRIPT = String.raw`
   }
 
   function serializeEditorFingerprint(key, metadata, annotation, pngDataUrl) {
-    return JSON.stringify({
-      key: key,
-      metadata: metadata,
-      annotation: annotation,
-      pngDataUrl: pngDataUrl
-    });
+    return JSON.stringify({ key, metadata, annotation, pngDataUrl });
   }
 
   function metadataSnapshotFromSprite(spriteState) {
     if (!spriteState) return null;
     return {
-      holdX: Number(spriteState.holdX) || 0,
-      holdY: Number(spriteState.holdY) || 0,
-      pivotX: Number(spriteState.pivotX) || 0,
-      pivotY: Number(spriteState.pivotY) || 0,
-      frame: Number(spriteState.frame) || 0,
-      col: Number(spriteState.col) || 0,
-      row: Number(spriteState.row) || 0,
-      facingDirection: spriteState.facingDirection === 'left' ? 'left' : 'right'
+      holdX: Number(spriteState.holdX ?? 0),
+      holdY: Number(spriteState.holdY ?? 0),
+      pivotX: Number(spriteState.pivotX ?? 0),
+      pivotY: Number(spriteState.pivotY ?? 0),
+      frame: Number(spriteState.frame ?? 0),
+      col: Number(spriteState.col ?? 0),
+      row: Number(spriteState.row ?? 0),
+      facingDirection: spriteState.facingDirection === 'left' ? 'left' : 'right',
     };
   }
 
@@ -1063,7 +1058,7 @@ const CLIENT_SCRIPT = String.raw`
     return {
       favorite: !!(spriteState && spriteState.favorite),
       disliked: !!(spriteState && spriteState.disliked),
-      comment: spriteState && spriteState.comment ? String(spriteState.comment) : ''
+      comment: spriteState && spriteState.comment ? String(spriteState.comment) : '',
     };
   }
 
@@ -2259,9 +2254,12 @@ const CLIENT_SCRIPT = String.raw`
       if (saveToken !== saveTokenCounter) return false;
       if (!sprite || sprite.key !== expectedKey) return false;
       if (currentEditorFingerprint() !== submittedFingerprint) {
-        baselineFingerprint =
-          editorFingerprintForSprite(data.sprite || sprite, submittedCanvasFingerprint) ||
-          submittedFingerprint;
+        var savedSprite = data && data.sprite ? data.sprite : sprite;
+        var savedBaselineFingerprint = editorFingerprintForSprite(
+          savedSprite,
+          submittedCanvasFingerprint
+        );
+        baselineFingerprint = savedBaselineFingerprint ?? submittedFingerprint;
         captureLastSavedSnapshot(submittedCanvas);
         updateDirtyIndicator();
         setStatus('Saved submitted state; newer edits remain unsaved.');
