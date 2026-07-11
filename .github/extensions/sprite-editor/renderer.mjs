@@ -586,7 +586,7 @@ const CLIENT_SCRIPT = String.raw`
     var widest = comparisonBeforeCanvas ? Math.max(canvas.width, comparisonBeforeCanvas.width) : canvas.width;
     var tallest = comparisonBeforeCanvas ? Math.max(canvas.height, comparisonBeforeCanvas.height) : canvas.height;
     var fitScale = Math.min(availableWidth / widest, availableHeight / tallest);
-    var next = clampPixelScale(fitScale);
+    var next = Math.min(ZOOM_MAX, fitScale);
     if (next === pixelScale) return false;
     pixelScale = next;
     applyZoomScale();

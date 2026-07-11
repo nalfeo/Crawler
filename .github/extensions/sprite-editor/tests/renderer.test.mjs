@@ -331,6 +331,8 @@ test('sprite editor pins and verifies the OpenCV vendor asset', () => {
     EXTENSION_SOURCE,
     /63366510248adf3a7eddf3e793dd825404efb7df3749f4d6f8557c7fa4ca8aa0/,
   );
+  assert.match(EXTENSION_SOURCE, /embeds its WASM payload in opencv\.js/);
+  assert.match(EXTENSION_SOURCE, /path: \/\^\\\/vendor\\\/opencv\\\.js\$\//);
   assert.match(EXTENSION_SOURCE, /createHash\('sha256'\)\.update\(body\)\.digest\('hex'\)/);
   assert.match(EXTENSION_SOURCE, /vendor asset integrity check failed/);
 });
@@ -632,6 +634,30 @@ test('Promise-based OpenCV worker executes every advertised interpolation mappin
     },
     { openCvFixture: true },
   );
+});
+
+test('Zoom to fit can shrink large sprites below the interactive zoom floor', async () => {
+  await withEditor(async (page) => {
+    await page.evaluate(() => {
+      const canvasWrap = document.querySelector('[data-canvas-wrap]');
+      Object.defineProperty(canvasWrap, 'clientWidth', { configurable: true, value: 500 });
+      Object.defineProperty(canvasWrap, 'clientHeight', { configurable: true, value: 400 });
+      for (const selector of ['.sprite-canvas', '.overlay-canvas', '#comparison-before-canvas']) {
+        const canvas = document.querySelector(selector);
+        canvas.width = 2048;
+        canvas.height = 2048;
+      }
+    });
+    await page.getByTitle('Zoom to fit').click();
+
+    const fitted = await page.locator('.sprite-canvas').evaluate((element) => ({
+      width: Number.parseFloat(element.style.width),
+      height: Number.parseFloat(element.style.height),
+    }));
+    assert.ok(fitted.width <= 230, `expected fitted width <= 230px, got ${fitted.width}px`);
+    assert.ok(fitted.height <= 356, `expected fitted height <= 356px, got ${fitted.height}px`);
+    assert.ok(fitted.width < 2048 * 0.5, 'fit scale should be allowed below 0.5x');
+  });
 });
 
 test('save preserves edits made while the request is in flight', async () => {

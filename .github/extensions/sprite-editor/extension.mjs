@@ -23,6 +23,7 @@ const ASSETS_ROOT = path.join(REPO_ROOT, 'public', 'assets');
 const MAX_WRITE_BYTES = 6 * 1024 * 1024;
 const MAX_RESULTS = 500;
 const OPENCV_VENDOR_BASE = 'https://docs.opencv.org/4.13.0';
+// The pinned 4.13.0 distribution embeds its WASM payload in opencv.js.
 const OPENCV_VENDOR_HASHES = new Map([
   ['opencv.js', '63366510248adf3a7eddf3e793dd825404efb7df3749f4d6f8557c7fa4ca8aa0'],
 ]);
@@ -628,7 +629,7 @@ const jsonRoutes = [
 const binaryRoutes = [
   {
     method: 'GET',
-    path: /^\/vendor\/opencv(?:_js)?(?:\.worker)?\.(?:js|wasm)$/u,
+    path: /^\/vendor\/opencv\.js$/u,
     handler: async ({ url }) => {
       const fileName = path.posix.basename(url.pathname);
       return fetchOpenCvVendorAsset(fileName);
