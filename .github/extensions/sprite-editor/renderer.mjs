@@ -410,8 +410,6 @@ const CLIENT_SCRIPT = String.raw`
   var revertTokenCounter = 0;
   var scaleFactor = 1;
   var scaleMethod = 'nearest';
-  var lastAppliedScaleFactor = 1;
-  var lastAppliedScaleMethod = 'nearest';
   var edgeCleanupMethod = 'defringe';
   var edgeCleanupAmount = 60;
   var edgeCleanupAlphaCutoff = 24;
@@ -500,10 +498,7 @@ const CLIENT_SCRIPT = String.raw`
   }
 
   function hasDirtyScaleSettings() {
-    return (
-      clampScaleFactor(scaleFactor) !== clampScaleFactor(lastAppliedScaleFactor) ||
-      String(scaleMethod) !== String(lastAppliedScaleMethod)
-    );
+    return clampScaleFactor(scaleFactor) !== 1;
   }
 
   function clampPercent(value, fallback) {
@@ -522,7 +517,8 @@ const CLIENT_SCRIPT = String.raw`
     return [
       String(edgeCleanupMethod || 'defringe'),
       String(clampPercent(edgeCleanupAmount, 60)),
-      String(clampByte(edgeCleanupAlphaCutoff, 24))
+      String(clampByte(edgeCleanupAlphaCutoff, 24)),
+      String(editGeneration)
     ].join('|');
   }
 
@@ -534,7 +530,8 @@ const CLIENT_SCRIPT = String.raw`
       sampledBackgroundColor
         ? [sampledBackgroundColor.r, sampledBackgroundColor.g, sampledBackgroundColor.b, sampledBackgroundColor.a].join(',')
         : 'auto',
-      sampledBackgroundPoint ? [sampledBackgroundPoint.x, sampledBackgroundPoint.y].join(',') : 'auto'
+      sampledBackgroundPoint ? [sampledBackgroundPoint.x, sampledBackgroundPoint.y].join(',') : 'auto',
+      String(editGeneration)
     ].join('|');
   }
 
@@ -550,7 +547,8 @@ const CLIENT_SCRIPT = String.raw`
     return [
       String(fringeNormalizeMethod || 'opaque-average'),
       String(clampPercent(fringeNormalizeStrength, 70)),
-      String(clampByte(fringeNormalizeThreshold, 28))
+      String(clampByte(fringeNormalizeThreshold, 28)),
+      String(editGeneration)
     ].join('|');
   }
 
@@ -676,6 +674,18 @@ const CLIENT_SCRIPT = String.raw`
       '    var started = Date.now();',
       '    if (!self.cv) {',
       '      try { importScripts(opencvUrl); } catch (_err) { return null; }',
+      '    }',
+      '    if (self.cv && typeof self.cv.then === "function") {',
+      '      var remainingMs = Math.max(0, workerTimeoutMs - (Date.now() - started));',
+      '      try {',
+      '        self.cv = await Promise.race([',
+      '          self.cv,',
+      '          new Promise(function (resolve) { setTimeout(function () { resolve(null); }, remainingMs); })',
+      '        ]);',
+      '      } catch (_err) {',
+      '        return null;',
+      '      }',
+      '      if (!self.cv) return null;',
       '    }',
       '    while (Date.now() - started < workerTimeoutMs) {',
       '      if (self.cv && typeof self.cv.Mat === "function") return self.cv;',
@@ -822,8 +832,6 @@ const CLIENT_SCRIPT = String.raw`
       );
     };
     if (factor === 1) {
-      lastAppliedScaleFactor = factor;
-      lastAppliedScaleMethod = scaleMethod;
       setStatus('Scale factor 1x leaves sprite unchanged.');
       renderEditor();
       return;
@@ -926,8 +934,6 @@ const CLIENT_SCRIPT = String.raw`
       successMessage += engine === 'opencv' ? ' (OpenCV worker)' : ' (browser worker)';
       setStatus(successMessage);
       if (prevData === canvas.toDataURL('image/png')) setStatus('Scale completed; output image data unchanged.');
-      lastAppliedScaleFactor = factor;
-      lastAppliedScaleMethod = methodId;
     } catch (error) {
       setStatus(error.message || String(error), true);
     } finally {
@@ -1230,8 +1236,6 @@ const CLIENT_SCRIPT = String.raw`
     strokeSnapshot = null;
     sampledBackgroundColor = null;
     sampledBackgroundPoint = null;
-    lastAppliedScaleFactor = clampScaleFactor(scaleFactor);
-    lastAppliedScaleMethod = scaleMethod;
     lastAppliedEdgeCleanupSignature = null;
     lastAppliedBackgroundRemovalSignature = null;
     lastAppliedFringeNormalizeSignature = null;
@@ -1796,6 +1800,16 @@ const CLIENT_SCRIPT = String.raw`
     undoStack.push(state);
     if (undoStack.length > maxHistory) undoStack.shift();
     redoStack = [];
+    refreshAppliedActionButtons();
+  }
+
+  function refreshAppliedActionButtons() {
+    var edgeButton = document.getElementById('apply-edge-cleanup');
+    var backgroundButton = document.getElementById('apply-background-removal');
+    var fringeButton = document.getElementById('apply-fringe-normalize');
+    if (edgeButton) edgeButton.disabled = !hasDirtyEdgeCleanupSettings();
+    if (backgroundButton) backgroundButton.disabled = !hasDirtyBackgroundRemovalSettings();
+    if (fringeButton) fringeButton.disabled = !hasDirtyFringeNormalizeSettings();
   }
 
   function undo() {
@@ -2065,6 +2079,7 @@ const CLIENT_SCRIPT = String.raw`
     if (!sprite) return;
     var expectedKey = sprite.key;
     var saveToken = ++saveTokenCounter;
+    var submittedFingerprint = currentEditorFingerprint();
     setStatus('Saving…');
     try {
       var body = {
@@ -2080,6 +2095,10 @@ const CLIENT_SCRIPT = String.raw`
       });
       if (saveToken !== saveTokenCounter) return false;
       if (!sprite || sprite.key !== expectedKey) return false;
+      if (currentEditorFingerprint() !== submittedFingerprint) {
+        setStatus('Saved submitted state; newer edits remain unsaved.');
+        return false;
+      }
       sprite = data.sprite || sprite;
       captureLastSavedSnapshot();
       renderEditor({ skipDraftPersist: true });
@@ -2475,6 +2494,7 @@ const CLIENT_SCRIPT = String.raw`
     });
     var edgeCleanupDirty = hasDirtyEdgeCleanupSettings();
     var edgeCleanupBtn = h('button', {
+      id: 'apply-edge-cleanup',
       type: 'button',
       class: 'apply-action',
       text: 'Edge cleanup',
@@ -2526,6 +2546,7 @@ const CLIENT_SCRIPT = String.raw`
     });
     var backgroundRemovalDirty = hasDirtyBackgroundRemovalSettings();
     var backgroundRemovalBtn = h('button', {
+      id: 'apply-background-removal',
       type: 'button',
       class: 'apply-action',
       text: 'Remove BG',
@@ -2593,6 +2614,7 @@ const CLIENT_SCRIPT = String.raw`
     });
     var fringeNormalizeDirty = hasDirtyFringeNormalizeSettings();
     var fringeNormalizeBtn = h('button', {
+      id: 'apply-fringe-normalize',
       type: 'button',
       class: 'apply-action',
       text: 'Normalize fringe',
@@ -2884,6 +2906,7 @@ const CLIENT_SCRIPT = String.raw`
             id: 'favorite-heart',
             type: 'button',
             class: 'heart-btn' + (sprite.favorite ? ' on' : ''),
+            'aria-label': 'Like as exemplar',
             'aria-pressed': sprite.favorite ? 'true' : 'false',
             text: sprite.favorite ? '♥' : '♡'
           },
@@ -2895,6 +2918,7 @@ const CLIENT_SCRIPT = String.raw`
             id: 'dislike-button',
             type: 'button',
             class: 'dislike-btn' + (sprite.disliked ? ' on' : ''),
+            'aria-label': 'Dislike and flag for regeneration',
             'aria-pressed': sprite.disliked ? 'true' : 'false',
             title: 'Flag for re-processing or regeneration',
             text: '👎'

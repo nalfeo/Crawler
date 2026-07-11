@@ -43,7 +43,7 @@ const SECOND_SPRITE = {
   favorite: false,
 };
 
-async function withEditor(run) {
+async function withEditor(run, options = {}) {
   const html = renderHtml('test');
   const fixtureSprites = [structuredClone(SPRITE), structuredClone(SECOND_SPRITE)];
   let currentPng = TWO_BY_TWO_PNG;
@@ -77,20 +77,24 @@ async function withEditor(run) {
         body += chunk;
       });
       req.on('end', () => {
-        const payload = JSON.parse(body);
-        const index = fixtureSprites.findIndex((entry) => entry.key === payload.key);
-        if (index >= 0) {
-          fixtureSprites[index] = {
-            ...fixtureSprites[index],
-            ...payload.metadata,
-            ...payload.annotation,
-          };
-        }
-        if (typeof payload.pngDataUrl === 'string') {
-          currentPng = Buffer.from(payload.pngDataUrl.split(',')[1], 'base64');
-        }
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ sprite: fixtureSprites[index] }));
+        const respond = () => {
+          const payload = JSON.parse(body);
+          const index = fixtureSprites.findIndex((entry) => entry.key === payload.key);
+          if (index >= 0) {
+            fixtureSprites[index] = {
+              ...fixtureSprites[index],
+              ...payload.metadata,
+              ...payload.annotation,
+            };
+          }
+          if (typeof payload.pngDataUrl === 'string') {
+            currentPng = Buffer.from(payload.pngDataUrl.split(',')[1], 'base64');
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ sprite: fixtureSprites[index] }));
+        };
+        if (options.saveDelayMs) setTimeout(respond, options.saveDelayMs);
+        else respond();
       });
       return;
     }
@@ -255,6 +259,8 @@ test('sprite editor wires OpenCV scaling controls and methods', () => {
   assert.match(html, /function zoomToFit\(canvasWrap\)/);
   assert.match(html, /canvasWrap\.addEventListener\(\s*'wheel'/);
   assert.match(html, /function resolveInterpolation\(cv, methodId, factor\)/);
+  assert.match(html, /typeof self\.cv\.then === ["']function["']/);
+  assert.match(html, /self\.cv = await Promise\.race/);
   assert.match(html, /if \(id === ["']area["']\) return factor < 1 \? cv\.INTER_AREA/);
   assert.match(html, /cv\.resize\(src, dst, dsize, 0, 0, interpolation\)/);
   assert.match(html, /class: 'app-bar'/);
@@ -266,6 +272,8 @@ test('sprite editor wires OpenCV scaling controls and methods', () => {
   assert.match(html, /captureLastSavedSnapshot/);
   assert.doesNotMatch(html, /captureComparisonBefore/);
   assert.match(html, /id: 'dislike-button'/);
+  assert.match(html, /'aria-label': 'Like as exemplar'/);
+  assert.match(html, /'aria-label': 'Dislike and flag for regeneration'/);
   assert.match(html, /role: 'status'/);
   assert.doesNotMatch(html, /id="app" aria-live/);
 });
@@ -382,10 +390,13 @@ test('sprite editor keeps every edit action within two clicks and preserves tool
       element.dispatchEvent(new Event('change', { bubbles: true }));
     });
     await page.getByRole('button', { name: 'Edge cleanup' }).click();
+    assert.equal(await page.getByRole('button', { name: 'Edge cleanup' }).isEnabled(), false);
     assert.equal(await page.locator('#comparison-before-label').textContent(), 'Last saved');
 
     await brushStroke(0, 1);
+    assert.equal(await page.getByRole('button', { name: 'Edge cleanup' }).isEnabled(), true);
     await page.getByRole('button', { name: 'Undo' }).click();
+    assert.equal(await page.getByRole('button', { name: 'Edge cleanup' }).isEnabled(), true);
     await page.getByRole('button', { name: 'Redo' }).click();
     assert.equal(
       await page.locator('#comparison-before-canvas').evaluate((element) => element.toDataURL()),
@@ -474,6 +485,10 @@ test('scaling restores dimensions, pixels, and anchors through undo and redo', a
       ),
       ['2', '2', '2', '2'],
     );
+    assert.equal(
+      await page.locator('.tool-panel').getByRole('button', { name: 'Scale' }).isEnabled(),
+      true,
+    );
 
     await page.getByRole('button', { name: 'Undo' }).click();
     assert.deepEqual(await readCanvas('.sprite-canvas'), initial);
@@ -487,6 +502,10 @@ test('scaling restores dimensions, pixels, and anchors through undo and redo', a
       ),
       ['1', '1', '1', '1'],
     );
+    assert.equal(
+      await page.locator('.tool-panel').getByRole('button', { name: 'Scale' }).isEnabled(),
+      true,
+    );
 
     await page.getByRole('button', { name: 'Redo' }).click();
     assert.deepEqual(await readCanvas('.sprite-canvas'), scaled);
@@ -496,7 +515,55 @@ test('scaling restores dimensions, pixels, and anchors through undo and redo', a
       ),
       ['2', '2', '2', '2'],
     );
+    assert.equal(
+      await page.locator('.tool-panel').getByRole('button', { name: 'Scale' }).isEnabled(),
+      true,
+    );
+    await page.getByRole('button', { name: 'Save' }).click();
+    await page.waitForFunction(
+      () => document.querySelector('#status')?.textContent === 'Saved to disk.',
+    );
+    await page.getByRole('button', { name: /Second Fixture/ }).click();
+    await page.waitForFunction(
+      () => document.querySelector('.sprite-title')?.textContent === 'Second Fixture',
+    );
+    assert.equal(
+      await page.locator('.tool-panel').getByRole('button', { name: 'Scale' }).isEnabled(),
+      true,
+    );
   });
+});
+
+test('save preserves edits made while the request is in flight', async () => {
+  await withEditor(
+    async (page) => {
+      await page.getByTitle('Erase mode').click();
+      await clickCanvasPixel(page, 0, 0);
+      await page.getByRole('button', { name: 'Save' }).click();
+      await page.waitForFunction(
+        () => document.querySelector('#status')?.textContent === 'Saving…',
+      );
+      await clickCanvasPixel(page, 1, 0);
+      await page.waitForFunction(
+        () =>
+          document.querySelector('#status')?.textContent ===
+          'Saved submitted state; newer edits remain unsaved.',
+      );
+
+      let dialogMessage = '';
+      page.on('dialog', async (dialog) => {
+        if (!dialogMessage) dialogMessage = dialog.message();
+        await dialog.dismiss();
+      });
+      await page.getByRole('button', { name: /Second Fixture/ }).click();
+      await page.waitForFunction(
+        () => document.querySelector('#status')?.textContent === 'Stayed on current sprite.',
+      );
+      assert.match(dialogMessage, /Unsaved edits detected/);
+      assert.equal(await page.locator('.sprite-title').textContent(), 'Fixture Sprite');
+    },
+    { saveDelayMs: 200 },
+  );
 });
 
 test('stale scaling results cannot overwrite a newly selected sprite', async () => {
@@ -607,6 +674,8 @@ test('mutually exclusive reactions stay scoped to the sprite being edited', asyn
   await withEditor(async (page) => {
     const heart = page.locator('#favorite-heart');
     const dislike = page.locator('#dislike-button');
+    assert.equal(await heart.getAttribute('aria-label'), 'Like as exemplar');
+    assert.equal(await dislike.getAttribute('aria-label'), 'Dislike and flag for regeneration');
     assert.equal(await heart.getAttribute('aria-pressed'), 'false');
     assert.equal(await dislike.getAttribute('aria-pressed'), 'false');
     await heart.click();
