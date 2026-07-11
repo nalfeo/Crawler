@@ -1,5 +1,16 @@
 [
   {
+    "commit": "222aedd13232be71f2b950ec54584c32b447ffa4",
+    "commitDate": "2026-07-11T19:14:40Z",
+    "commitSubject": "fix: approve trusted CI recovery review runs (#1047)",
+    "capturedAt": "2026-07-11T20:02:01.176Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29165368790",
+    "winRate": 0.9,
+    "totalWins": 270,
+    "totalRuns": 300,
+    "path": "by-sha/222aedd13232be71f2b950ec54584c32b447ffa4.json"
+  },
+  {
     "commit": "80bb599f484db07869a1fad5a562ffd7707d8a36",
     "commitDate": "2026-07-11T19:03:41Z",
     "commitSubject": "fix: randomize real-game launch seeds (#1046)",
