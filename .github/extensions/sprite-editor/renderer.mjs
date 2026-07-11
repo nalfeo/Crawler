@@ -1036,14 +1036,55 @@ const CLIENT_SCRIPT = String.raw`
     sprite.comment = note.comment;
   }
 
+  function serializeEditorFingerprint(key, metadata, annotation, pngDataUrl) {
+    return JSON.stringify({
+      key: key,
+      metadata: metadata,
+      annotation: annotation,
+      pngDataUrl: pngDataUrl
+    });
+  }
+
+  function metadataSnapshotFromSprite(spriteState) {
+    if (!spriteState) return null;
+    return {
+      holdX: Number(spriteState.holdX) || 0,
+      holdY: Number(spriteState.holdY) || 0,
+      pivotX: Number(spriteState.pivotX) || 0,
+      pivotY: Number(spriteState.pivotY) || 0,
+      frame: Number(spriteState.frame) || 0,
+      col: Number(spriteState.col) || 0,
+      row: Number(spriteState.row) || 0,
+      facingDirection: spriteState.facingDirection === 'left' ? 'left' : 'right'
+    };
+  }
+
+  function annotationSnapshotFromSprite(spriteState) {
+    return {
+      favorite: !!(spriteState && spriteState.favorite),
+      disliked: !!(spriteState && spriteState.disliked),
+      comment: spriteState && spriteState.comment ? String(spriteState.comment) : ''
+    };
+  }
+
+  function editorFingerprintForSprite(spriteState, pngDataUrl) {
+    if (!spriteState) return null;
+    return serializeEditorFingerprint(
+      spriteState.key,
+      metadataSnapshotFromSprite(spriteState),
+      annotationSnapshotFromSprite(spriteState),
+      pngDataUrl
+    );
+  }
+
   function currentEditorFingerprint() {
     if (!sprite) return null;
-    return JSON.stringify({
-      key: sprite.key,
-      metadata: currentMetadataSnapshot(),
-      annotation: currentAnnotationSnapshot(),
-      pngDataUrl: currentCanvasFingerprint()
-    });
+    return serializeEditorFingerprint(
+      sprite.key,
+      currentMetadataSnapshot(),
+      currentAnnotationSnapshot(),
+      currentCanvasFingerprint()
+    );
   }
 
   function currentCanvasFingerprint() {
@@ -2193,7 +2234,13 @@ const CLIENT_SCRIPT = String.raw`
     var saveToken = ++saveTokenCounter;
     setStatus('Saving…');
     try {
-      var submittedFingerprint = currentEditorFingerprint();
+      var submittedCanvasFingerprint = currentCanvasFingerprint();
+      var submittedFingerprint = serializeEditorFingerprint(
+        sprite.key,
+        currentMetadataSnapshot(),
+        currentAnnotationSnapshot(),
+        submittedCanvasFingerprint
+      );
       var submittedCanvas = h('canvas');
       submittedCanvas.width = canvas.width;
       submittedCanvas.height = canvas.height;
@@ -2202,7 +2249,7 @@ const CLIENT_SCRIPT = String.raw`
         key: sprite.key,
         metadata: metadataFromForm(),
         annotation: annotationFromForm(),
-        pngDataUrl: canvasToPngDataUrl()
+        pngDataUrl: submittedCanvasFingerprint
       };
       var data = await fetchJson('/api/save', {
         method: 'POST',
@@ -2212,7 +2259,9 @@ const CLIENT_SCRIPT = String.raw`
       if (saveToken !== saveTokenCounter) return false;
       if (!sprite || sprite.key !== expectedKey) return false;
       if (currentEditorFingerprint() !== submittedFingerprint) {
-        baselineFingerprint = submittedFingerprint;
+        baselineFingerprint =
+          editorFingerprintForSprite(data.sprite || sprite, submittedCanvasFingerprint) ||
+          submittedFingerprint;
         captureLastSavedSnapshot(submittedCanvas);
         updateDirtyIndicator();
         setStatus('Saved submitted state; newer edits remain unsaved.');

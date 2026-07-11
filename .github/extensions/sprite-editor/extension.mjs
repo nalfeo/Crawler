@@ -61,6 +61,10 @@ function writeJsonFile(filePath, value) {
   writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
+function sha256Hex(value) {
+  return createHash('sha256').update(value).digest('hex');
+}
+
 function normalizeFacing(value) {
   return value === 'left' ? 'left' : 'right';
 }
@@ -367,6 +371,7 @@ async function saveSprite(payload) {
     payload?.annotation !== null &&
     typeof payload?.annotation === 'object' &&
     !Array.isArray(payload.annotation);
+  let wrotePng = false;
   try {
     if (hasMetadata) applyMetadataUpdate(payload, data, key);
     if (hasAnnotation) applyAnnotationUpdate(payload, data, key);
@@ -377,10 +382,14 @@ async function saveSprite(payload) {
       const pngPath = resolveAssetDiskPath(entry.assetPath);
       if (!pngPath) throw new CanvasError('invalid_path', 'Refusing to write outside assets root.');
       writeFileSync(pngPath, bytes);
+      entry.contentHash = sha256Hex(bytes);
+      wrotePng = true;
     }
 
-    if (hasMetadata) {
+    if (hasMetadata || wrotePng) {
       writeJsonFile(MANIFEST_PATH, data.manifest);
+    }
+    if (hasMetadata) {
       writeJsonFile(CATALOG_PATH, data.catalog);
     }
     if (hasAnnotation) writeJsonFile(ANNOTATIONS_PATH, data.annotations);
@@ -571,7 +580,7 @@ async function fetchOpenCvVendorAsset(fileName) {
     };
   }
   const body = Buffer.from(await upstream.arrayBuffer());
-  const actualHash = createHash('sha256').update(body).digest('hex');
+  const actualHash = sha256Hex(body);
   if (actualHash !== expectedHash) {
     log(`Rejected ${fileName}: expected SHA-256 ${expectedHash}, received ${actualHash}`, 'error');
     return { status: 502, body: 'vendor asset integrity check failed' };

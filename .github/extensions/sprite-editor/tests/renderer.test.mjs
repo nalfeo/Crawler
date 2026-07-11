@@ -127,10 +127,19 @@ async function withEditor(run, options = {}) {
           const payload = JSON.parse(body);
           const index = fixtureSprites.findIndex((entry) => entry.key === payload.key);
           if (index >= 0) {
+            const annotation = options.normalizeSavedComment
+              ? {
+                  ...payload.annotation,
+                  comment:
+                    typeof payload?.annotation?.comment === 'string'
+                      ? payload.annotation.comment.trim().slice(0, 1000)
+                      : '',
+                }
+              : payload.annotation;
             fixtureSprites[index] = {
               ...fixtureSprites[index],
               ...payload.metadata,
-              ...payload.annotation,
+              ...annotation,
             };
           }
           if (typeof payload.pngDataUrl === 'string') {
@@ -328,6 +337,11 @@ test('sprite editor wires OpenCV scaling controls and methods', () => {
   assert.match(EXTENSION_SOURCE, /if \(hasMetadata\) applyMetadataUpdate/);
   assert.match(EXTENSION_SOURCE, /if \(hasAnnotation\) applyAnnotationUpdate/);
   assert.match(EXTENSION_SOURCE, /if \(anchorChanged\)/);
+  assert.match(EXTENSION_SOURCE, /entry\.contentHash = sha256Hex\(bytes\)/);
+  assert.match(
+    EXTENSION_SOURCE,
+    /if \(hasMetadata \|\| wrotePng\) {\s*writeJsonFile\(MANIFEST_PATH, data\.manifest\)/,
+  );
 });
 
 test('sprite editor pins and verifies the OpenCV vendor asset', () => {
@@ -339,7 +353,8 @@ test('sprite editor pins and verifies the OpenCV vendor asset', () => {
   );
   assert.match(EXTENSION_SOURCE, /embeds its WASM payload in opencv\.js/);
   assert.match(EXTENSION_SOURCE, /path: \/\^\\\/vendor\\\/opencv\\\.js\$\//);
-  assert.match(EXTENSION_SOURCE, /createHash\('sha256'\)\.update\(body\)\.digest\('hex'\)/);
+  assert.match(EXTENSION_SOURCE, /function sha256Hex\(value\)/);
+  assert.match(EXTENSION_SOURCE, /const actualHash = sha256Hex\(body\)/);
   assert.match(EXTENSION_SOURCE, /vendor asset integrity check failed/);
 });
 
@@ -880,6 +895,42 @@ test('save moves the clean baseline to the submitted state when Undo wins the ra
       assert.match(dialogMessages[0], /Unsaved edits detected/);
     },
     { saveDelayMs: 200 },
+  );
+});
+
+test('save race baseline uses the normalized server response, not raw submitted comment text', async () => {
+  await withEditor(
+    async (page) => {
+      await page.getByTitle('Erase mode').click();
+      await page.locator('#comment').fill(' note ');
+      await page.getByRole('button', { name: 'Save' }).click();
+      await page.waitForFunction(
+        () => document.querySelector('#status')?.textContent === 'Saving…',
+      );
+
+      await clickCanvasPixel(page, 0, 0);
+      await page.locator('#comment').fill('other');
+      await page.locator('#comment').fill(' note ');
+      await page.waitForFunction(
+        () =>
+          document.querySelector('#status')?.textContent ===
+          'Saved submitted state; newer edits remain unsaved.',
+      );
+
+      assert.equal(await page.locator('.dirty-badge').textContent(), 'Unsaved');
+
+      const dialogMessages = [];
+      page.on('dialog', async (dialog) => {
+        dialogMessages.push(dialog.message());
+        await dialog.dismiss();
+      });
+      await page.getByRole('button', { name: /Second Fixture/ }).click();
+      await page.waitForFunction(
+        () => document.querySelector('#status')?.textContent === 'Stayed on current sprite.',
+      );
+      assert.match(dialogMessages[0], /Unsaved edits detected/);
+    },
+    { saveDelayMs: 200, normalizeSavedComment: true },
   );
 });
 
