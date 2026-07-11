@@ -20,6 +20,7 @@ export {
   getWeaponPersona,
   getWeaponPersonaForWorld,
   computeWeaponPersonaStatAllocation,
+  scoreEquipmentForPersona,
   type WeaponPersona,
 } from './weapon-personas.js';
 export { scoreRun, aggregateScores } from './scoring.js';

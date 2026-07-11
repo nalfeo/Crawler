@@ -1,0 +1,60 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-11",
+  "session_slug": "floor2-progression-ux-fixes",
+  "task_title": "Fix Floor 2 settlement progression and HUD gating",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 12,
+      "resolved_count": 12,
+      "adversarial": true,
+      "alternatives_considered": 6,
+      "plan_divergence": "major_fork",
+      "notes": "Round 1 rejected one-phase Broker targeting: room-entry and intro are distinct, Track-B drift required suppression, SAFE retag forbids role lookup, broker fallback and real-artifact coverage were missing. Round 2 approved the two-phase plan with changes: neutral core anchor helper, split Floor-1 waypoint guard, highest-non-safety semantics, bounded phase-B fallback, and distinct phase-A marker/phase-B headless/HUD artifacts. Alternatives considered: room-anchor plus Broker phase, shared resolver, generic goal resolver, first-class meet-Broker quest, mutable critical-chain state, and live-Broker-only targeting."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-5", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

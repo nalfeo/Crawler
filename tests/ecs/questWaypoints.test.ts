@@ -12,7 +12,9 @@ import {
   FLOOR1_MEET_NPCS_QUEST_ID,
   FLOOR1_SHOP_QUEST_ID,
   FLOOR1_TUTORIAL_QUEST_ID,
+  FLOOR2_LEAVE_FLOOR_QUEST_ID,
 } from '../../src/shared/quest-types.js';
+import { asFamilyId, asResourceId } from '../../src/core/faction-relations.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import type { GameWorld } from '../../src/core/world.js';
 
@@ -214,5 +216,39 @@ describe('getQuestWaypoints', () => {
     completed.status = 'complete';
 
     expect(getQuestWaypoints(world).map((wp) => wp.questId)).toEqual([FLOOR1_SHOP_QUEST_ID]);
+  });
+
+  it('returns a stairs waypoint for the Floor 2 leave-floor quest when staircasePos is set', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [asFamilyId('rats')],
+        contestedResource: asResourceId('cheese'),
+        betrayerFlag: false,
+        staircasePos: { x: 300, y: 400 },
+      },
+    };
+    acceptQuest(world, FLOOR2_LEAVE_FLOOR_QUEST_ID);
+
+    const wps = getQuestWaypoints(world);
+    expect(wps).toHaveLength(1);
+    expect(wps[0]).toMatchObject({ x: 300, y: 400, kind: 'stairs' });
+  });
+
+  it('returns no waypoint for the Floor 2 leave-floor quest when staircasePos is absent', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [asFamilyId('rats')],
+        contestedResource: asResourceId('cheese'),
+        betrayerFlag: false,
+        // staircasePos intentionally omitted — staircase not yet spawned
+      },
+    };
+    acceptQuest(world, FLOOR2_LEAVE_FLOOR_QUEST_ID);
+
+    expect(getQuestWaypoints(world)).toEqual([]);
   });
 });

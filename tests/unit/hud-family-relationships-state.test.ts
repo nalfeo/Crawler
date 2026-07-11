@@ -7,6 +7,7 @@ import {
   familyRowFromRelation,
   parseHexColor,
   resolveFamilyRows,
+  shouldShowFamilyRelationships,
   statusTagForBand,
 } from '../../src/engine/family-relationships-state.js';
 import { asFamilyId, type FamilyId } from '../../src/core/faction-relations.js';
@@ -141,6 +142,7 @@ describe('resolveFamilyRows', () => {
         presentFamilies: FamilyId[];
         contestedResource: string;
         betrayerFlag: boolean;
+        reputationSystemActive?: boolean;
       };
     } | null;
     factionRelations: Map<FamilyId, number>;
@@ -162,6 +164,31 @@ describe('resolveFamilyRows', () => {
       goalFlags: new Map(),
     };
     expect(resolveFamilyRows(world as never, [goblins])).toEqual([]);
+  });
+
+  it('keeps family reputation hidden until the Broker introduction activates it', () => {
+    const world: StubWorld = {
+      floorExtendedState: {
+        familyState: {
+          presentFamilies: [asFamilyId('goblins')],
+          contestedResource: 'x' as never,
+          betrayerFlag: false,
+          reputationSystemActive: false,
+        },
+      },
+      factionRelations: new Map<FamilyId, number>([[asFamilyId('goblins'), 50]]),
+      factionRelationEvents: [],
+      factionRelationDeltas: [],
+      goalFlags: new Map(),
+    };
+
+    expect(shouldShowFamilyRelationships(world as never)).toBe(false);
+    expect(resolveFamilyRows(world as never, [goblins])).toEqual([]);
+
+    world.floorExtendedState!.familyState!.reputationSystemActive = true;
+
+    expect(shouldShowFamilyRelationships(world as never)).toBe(true);
+    expect(resolveFamilyRows(world as never, [goblins])).toHaveLength(1);
   });
 
   it('produces one row per present family in roster order', () => {

@@ -1,0 +1,53 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-11",
+  "session_slug": "bow-ranged-tempo-fix",
+  "task_title": "Bow ranged goal-directed kiting + NPC-approach escape (#453)",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "adversarial": true,
+      "alternatives_considered": 4,
+      "plan_divergence": "major_fork",
+      "notes": "Reviewer rejected generic goal-biased ENGAGE kiting: existing ENGAGE anti-stall/fallback pursuit can override it, raw point objectives lose identity, blended drift can dilute retreat, and all projectile families would inherit unproven behavior. Revised plan adopts refined Alt C at the NPC gate: projectile weapons stay in Progress/EXPLORE, preserving travel steering while state-independent auto-fire handles threats; add a reusable progress-aware no-progress valve for melee/geometry stalls. Generic ranged kite math and all non-NPC engagement callers remain unchanged."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview", "claude-sonnet-4.6"],
+          "concerns_count": 5,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

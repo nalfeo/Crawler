@@ -135,8 +135,11 @@ Run:
 ```bash
 npm run verify:fast
 bash scripts/agent/lab-gate-check.sh
-npm run verify
+npm run verify:pr-prereqs
 ```
+
+Reserve local full `npm run verify` runs for explicit human requests or targeted
+diagnosis.
 
 ## 9. Final checklist
 
@@ -146,4 +149,4 @@ npm run verify
 - Unit tests use `createTestWorld()`
 - Property tests exist for important invariants
 - Matching lab exists in `src/labs/`
-- Full verification passes
+- `verify:pr-prereqs` passes

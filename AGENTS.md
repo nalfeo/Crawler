@@ -7,7 +7,7 @@
 3. Before planning work in a system, read the relevant section of `docs/knowledge/handoffs/INDEX.md` and skim the top 3-5 listed handoffs for that system. Fall back to a broader scan of `docs/knowledge/handoffs/` only if the index has no coverage for your target system.
 4. Load durable facts: call the memory MCP `read_graph` (or `search_nodes`) and skim `docs/knowledge/memory/` — see `docs/guides/agent-memory.md`
 5. Run `bash scripts/agent/verify-fast.sh` after every meaningful change
-6. Run `bash scripts/agent/verify.sh` before committing (includes `verify:pr-prereqs`, so review-harness + other PR prerequisites fail early instead of waiting for `create_pull_request`)
+6. Run `npm run verify:pr-prereqs` before creating a PR so review-harness and other PR blockers surface early. Do **not** run full `npm run verify` merely because you are committing or opening a PR; CI owns the full suite unless a human explicitly requests a local run or targeted diagnosis requires it.
 7. Write a handoff file before ending implementation sessions (merge-intent changes); investigation sessions without merge-intent fixes may skip this
 8. If `files/guard-telemetry.jsonl` exists, run `npm run telemetry:capture -- <session-slug>` to write a committed per-session summary under `docs/knowledge/metrics/guard-telemetry/` (the durable, contamination-filtered collection path). The trimmed handoff template no longer carries a telemetry block — the committed summary file is the record.
 

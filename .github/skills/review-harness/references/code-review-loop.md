@@ -1,6 +1,8 @@
 # Code-review loop (≥3🍎) and multi-model review (>3🍎)
 
-These stages happen **after** you implement and `npm run verify` is green.
+These stages happen **after** you implement and `npm run verify:fast` is green.
+Full `npm run verify` is not a routine pre-PR requirement; CI owns the full suite
+unless a human explicitly requests a local run or targeted diagnosis requires it.
 
 ## Pick the right review agent(s)
 

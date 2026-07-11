@@ -46,7 +46,7 @@ The loop you own: **scope → brief → generate → judge/review → approve �
 
 - **Never weaken a gate to go green** — no loosening sensors, no lowering the judge bar, no bending gameplay/requirements. Fix the brief/prompt/post-proc/config, or escalate to the human (project rules #12/#13, persona constraint).
 - **Post every generated sheet inline**, report pipeline transitions to your coordinator, and keep generation flowing rather than sitting idle.
-- Declare the apple estimate up front; run `npm run verify:fast` after any code change and `npm run verify` before committing wiring.
+- Declare the apple estimate up front and run `npm run verify:fast` after any code change. Do **not** run full `npm run verify` merely because you are committing wiring or opening a PR; CI owns the full suite unless a human explicitly requests a local run or targeted diagnosis requires it.
 - Write a dated handoff (`docs/knowledge/handoffs/`) with `## Systems touched` before ending; score apples at handoff.
 - Conventional commits + the `Co-authored-by: Copilot` trailer.
 

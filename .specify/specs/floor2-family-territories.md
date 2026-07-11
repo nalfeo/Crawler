@@ -161,6 +161,11 @@ tuned **easy**, gated on a **90%+ seed win-rate**, never on cherry-picked seeds.
     boss-alive/skull indicator, and an allied/at-war tag. It reads
     `world.factionRelations` and the boss goal flags and updates live as relations
     shift. The minimap tints territories by family color and colors enemy dots by family.
+    **Activation gate:** the widget is hidden until `world.floorExtendedState?.familyState`
+    exists and `reputationSystemActive` is not explicitly `false`; real Floor 2
+    initialization sets `reputationSystemActive: false` until the Broker introduction
+    tick flips it. Fixtures and lab worlds that omit the field remain visible for
+    backward compatibility (see ADR [0059-floor2-settlement-progression-contract](../adr/0059-floor2-settlement-progression-contract.md)).
 
 ## Design
 
