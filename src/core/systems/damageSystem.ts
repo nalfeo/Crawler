@@ -16,7 +16,7 @@ import { applyDamage } from '../apply-damage.js';
 import { clearEntityStores } from '../helpers.js';
 import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
-import { emitWeaponHitSkillEvents } from '../weapon-skill-bridge.js';
+import { emitWeaponHitSkillEvents, clearAttackSkillSource } from '../weapon-skill-bridge.js';
 import { recordWeaponEnemyHit, pruneAttackEntity } from '../weapon-telemetry.js';
 
 const DEFAULT_PROJECTILE_DAMAGE = 10;
@@ -65,8 +65,9 @@ export function clearProjectilePierceHits(world: GameWorld, eid: number): void {
 
 function destroyEntity(world: GameWorld, eid: number): void {
   clearEntityStores(world, eid);
-  // Clean up pierce hit tracking
+  // Clean up pierce hit tracking and skill source
   clearProjectilePierceHits(world, eid);
+  clearAttackSkillSource(world, eid);
   pruneAttackEntity(world, eid);
   removeEntity(world.ecs, eid);
 }
@@ -134,11 +135,9 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
       ownerEid >= 0 ? ownerEid : undefined,
     );
 
-    // Emit weapon skill XP for the projectile's owner when damage lands on an enemy.
+    // Emit weapon skill XP for the projectile's attack source when damage lands on an enemy.
     if (dealt > 0 && hasComponent(world.ecs, enemy, Enemy)) {
-      if (ownerEid !== -1) {
-        emitWeaponHitSkillEvents(world, ownerEid);
-      }
+      emitWeaponHitSkillEvents(world, projectile);
       recordWeaponEnemyHit(world, projectile, enemy);
     }
 

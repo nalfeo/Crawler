@@ -362,7 +362,7 @@ export function meleeSwingSystem(world: GameWorld, collisionResult?: CollisionRe
           ownerEid >= 0 ? ownerEid : undefined,
         );
         if (dealt > 0 && ownerEid !== -1 && hasComponent(world.ecs, target, Enemy)) {
-          emitWeaponHitSkillEvents(world, ownerEid);
+          emitWeaponHitSkillEvents(world, eid);
           recordWeaponEnemyHit(world, eid, target);
         }
         hitSet.add(target);

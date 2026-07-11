@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { addComponent } from 'bitecs';
-import { SkillHolder, Stats } from '../../src/core/components.js';
+import { addComponent, query } from 'bitecs';
+import { MeleeSwing, SkillHolder, Stats } from '../../src/core/components.js';
 import { spawnEnemy, spawnMeleeSwing, spawnPlayer } from '../../src/core/helpers.js';
 import { meleeSwingSystem } from '../../src/core/systems/meleeSwingSystem.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -397,11 +397,11 @@ describe('weapon skill hit gate', () => {
     expect(world.combatEvents.some((e) => e.type === 'miss')).toBe(true);
     // skillUsageEvents must be empty — miss should produce no events
     expect(world.skillUsageEvents).toHaveLength(0);
-    // attackerWeaponSkills is only populated after a successful accuracy check
-    expect(world.attackerWeaponSkills.size).toBe(0);
+    // attackSkillSources is only populated after a successful accuracy check
+    expect(world.attackSkillSources.size).toBe(0);
   });
 
-  it('attackerWeaponSkills is populated after a successful accuracy check', () => {
+  it('attackSkillSources is populated (keyed by attack EID) after a successful accuracy check', () => {
     const { world, player } = setupPlayerWithWeaponSkills();
     const def = WEAPON_DEFS.get('sword')!;
 
@@ -415,25 +415,25 @@ describe('weapon skill hit gate', () => {
     world.elapsedMs = def.cooldownMs;
     weaponSystem(world);
 
-    const skills = world.attackerWeaponSkills.get(player);
-    expect(skills).toBeDefined();
-    expect(skills?.classSkillId).toBe(def.weaponClassSkillId);
-    expect(skills?.typeSkillId).toBe(def.weaponTypeSkillId);
+    // The skill source should be keyed by the spawned attack entity (MeleeSwing),
+    // not by the player EID — that is the per-attack attribution fix.
+    const swingEids = query(world.ecs, [MeleeSwing]);
+    expect(swingEids.length).toBeGreaterThan(0);
+    const swingEid = swingEids[0]!;
+    const source = world.attackSkillSources.get(swingEid);
+    expect(source).toBeDefined();
+    expect(source?.attackerEid).toBe(player);
+    expect(source?.classSkillId).toBe(def.weaponClassSkillId);
+    expect(source?.typeSkillId).toBe(def.weaponTypeSkillId);
   });
 
   it('skill XP emitted when melee swing hits an enemy', () => {
     const { world, player } = setupPlayerWithWeaponSkills();
     const def = WEAPON_DEFS.get('sword')!;
 
-    // Register weapon skills as if a successful attack was dispatched
-    world.attackerWeaponSkills.set(player, {
-      classSkillId: def.weaponClassSkillId,
-      typeSkillId: def.weaponTypeSkillId,
-    });
-
-    // Spawn enemy close enough for the swing to hit
-    const enemy = spawnEnemy(world, 1.25, 0, 50);
-    spawnMeleeSwing(
+    // Register weapon skills keyed by the attack entity (MeleeSwing) EID —
+    // per-attack attribution so the correct weapon is credited on hit.
+    const swingEid = spawnMeleeSwing(
       world,
       0,
       0,
@@ -446,6 +446,14 @@ describe('weapon skill hit gate', () => {
       def.swingArcDeg,
       TeamId.PLAYER,
     );
+    world.attackSkillSources.set(swingEid, {
+      attackerEid: player,
+      classSkillId: def.weaponClassSkillId,
+      typeSkillId: def.weaponTypeSkillId,
+    });
+
+    // Spawn enemy close enough for the swing to hit
+    const enemy = spawnEnemy(world, 1.25, 0, 50);
 
     meleeSwingSystem(world);
 
@@ -470,13 +478,8 @@ describe('weapon skill hit gate', () => {
     const { world, player } = setupPlayerWithWeaponSkills();
     const def = WEAPON_DEFS.get('sword')!;
 
-    world.attackerWeaponSkills.set(player, {
-      classSkillId: def.weaponClassSkillId,
-      typeSkillId: def.weaponTypeSkillId,
-    });
-
-    // Spawn swing with NO enemies in the world
-    spawnMeleeSwing(
+    // Spawn swing with NO enemies in the world; register skill source for the attack entity
+    const swingEid = spawnMeleeSwing(
       world,
       0,
       0,
@@ -489,6 +492,11 @@ describe('weapon skill hit gate', () => {
       def.swingArcDeg,
       TeamId.PLAYER,
     );
+    world.attackSkillSources.set(swingEid, {
+      attackerEid: player,
+      classSkillId: def.weaponClassSkillId,
+      typeSkillId: def.weaponTypeSkillId,
+    });
 
     meleeSwingSystem(world);
 

@@ -20,6 +20,12 @@ interface AoeSnapshot {
    * untagged (e.g. an enemy AoE projectile).
    */
   activationId: number | undefined;
+  /**
+   * Per-attack skill source captured from the source projectile. Propagated to
+   * the spawned explosion so the area-damage hit credits the correct weapon's
+   * skills even after the player has switched weapons.
+   */
+  skillSource: { attackerEid: number; classSkillId: string; typeSkillId: string } | undefined;
 }
 
 const trackedSnapshots = new WeakMap<GameWorld, AoeSnapshot[]>();
@@ -53,6 +59,7 @@ export function aoeOnImpactPreDamage(world: GameWorld): void {
       ownerEid: hasComponent(world.ecs, eid, Owner) ? (owner.eid[eid] ?? 0) : -1,
       teamId: hasComponent(world.ecs, eid, Team) ? (team.id[eid] ?? 0) : 0,
       activationId: getActivationForEntity(world, eid),
+      skillSource: world.attackSkillSources.get(eid),
     });
   }
 }
@@ -73,7 +80,7 @@ export function aoeOnImpactPostDamage(world: GameWorld): void {
       // Fold the explosion into the source projectile's cast so a fireball stays
       // a single weapon-telemetry activation (no-op wrapper when telemetry off).
       withActivationId(world, snap.activationId, () => {
-        spawnAreaAttack(
+        const aoeEid = spawnAreaAttack(
           world,
           snap.x,
           snap.y,
@@ -83,6 +90,11 @@ export function aoeOnImpactPostDamage(world: GameWorld): void {
           50,
           snap.teamId,
         );
+        // Propagate the skill source so the explosion credits the same weapon
+        // as the projectile that spawned it.
+        if (snap.skillSource !== undefined) {
+          world.attackSkillSources.set(aoeEid, snap.skillSource);
+        }
       });
     }
   }

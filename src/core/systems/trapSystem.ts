@@ -3,6 +3,7 @@ import { Enemy, Health, Owner, Player, Position, Team, Trap } from '../component
 import { clearEntityStores, spawnAreaAttack } from '../helpers.js';
 import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
+import { clearAttackSkillSource } from '../weapon-skill-bridge.js';
 import type { CollisionResult } from './collisionSystem.js';
 
 /** Arms traps and triggers them when enemies enter trigger radius. */
@@ -67,9 +68,29 @@ export function trapSystem(world: GameWorld, collisionResult: CollisionResult): 
       const explosionDamage = trap.explosionDamage[eid] ?? 0;
       const explosionTeam = trapTeam >= 0 ? trapTeam : 0;
 
-      // Spawn explosion AoE (hits once, very short duration)
-      spawnAreaAttack(world, x, y, ownerEid, explosionDamage, explosionRadius, 50, explosionTeam);
+      // Capture skill source before destroying the trap entity so the
+      // explosion inherits the correct weapon attribution.
+      const skillSource = world.attackSkillSources.get(eid);
 
+      // Spawn explosion AoE (hits once, very short duration)
+      const aoeEid = spawnAreaAttack(
+        world,
+        x,
+        y,
+        ownerEid,
+        explosionDamage,
+        explosionRadius,
+        50,
+        explosionTeam,
+      );
+
+      // Propagate the skill source so the explosion credits the same weapon
+      // as the trap that spawned it.
+      if (skillSource !== undefined) {
+        world.attackSkillSources.set(aoeEid, skillSource);
+      }
+
+      clearAttackSkillSource(world, eid);
       clearEntityStores(world, eid);
       removeEntity(world.ecs, eid);
     }

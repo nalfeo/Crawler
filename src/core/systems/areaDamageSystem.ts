@@ -124,7 +124,7 @@ export function areaDamageSystem(world: GameWorld, collisionResult: CollisionRes
       );
 
       if (dealt > 0 && ownerEid !== -1 && hasComponent(world.ecs, target, Enemy)) {
-        emitWeaponHitSkillEvents(world, ownerEid);
+        emitWeaponHitSkillEvents(world, eid);
         recordWeaponEnemyHit(world, eid, target);
       }
 

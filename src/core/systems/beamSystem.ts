@@ -246,7 +246,7 @@ export function beamSystem(world: GameWorld, collisionResult?: CollisionResult):
           ownerEid >= 0 ? ownerEid : undefined,
         );
         if (dealt > 0 && ownerEid !== -1 && hasComponent(world.ecs, target, Enemy)) {
-          emitWeaponHitSkillEvents(world, ownerEid);
+          emitWeaponHitSkillEvents(world, eid);
         }
       }
     }

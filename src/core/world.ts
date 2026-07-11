@@ -132,11 +132,15 @@ export interface GameWorld {
   /** Usage events emitted this frame — cleared at end of skillSystem after processing. */
   skillUsageEvents: SkillUsageEvent[];
   /**
-   * Active weapon skill IDs keyed by attacker EID (player).
-   * Set by weaponSystem after a successful accuracy check; read by damage
-   * systems (melee/projectile/beam/area) to emit skill XP when damage lands.
+   * Per-attack skill source IDs keyed by attack entity EID (projectile, melee
+   * swing, beam, area, or trap entity). Set by weaponSystem after a successful
+   * accuracy check; read by damage systems to emit skill XP when damage lands.
+   * Keying by attack entity rather than attacker prevents misattribution when
+   * the player switches weapons while a projectile is in flight. Cleared when
+   * the attack entity expires or is destroyed. AoE-on-impact and trap
+   * explosions propagate the source to the spawned explosion entity.
    */
-  attackerWeaponSkills: Map<number, { classSkillId: string; typeSkillId: string }>;
+  attackSkillSources: Map<number, { attackerEid: number; classSkillId: string; typeSkillId: string }>;
   /** Per-entity ability state keyed by holder eid. */
   abilityStatesByEntity: Map<number, AbilityState>;
   /** Trigger events emitted this frame — cleared at end of abilitySystem. */
@@ -441,7 +445,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     playerSkills: new Map(),
     skillStatesByEntity: new Map(),
     skillUsageEvents: [],
-    attackerWeaponSkills: new Map(),
+    attackSkillSources: new Map(),
     abilityStatesByEntity: new Map(),
     abilityTriggerEvents: [],
     statsDirty: true,
