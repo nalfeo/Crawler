@@ -1,0 +1,53 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-11",
+  "session_slug": "deterministic-boss-spawn-placement",
+  "task_title": "Place Floor 1 bosses at deterministic safe distances",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-4.8",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 5,
+      "plan_divergence": "major_fork",
+      "notes": "Adversarial reviews rejected health-triggered and contact-escape AI special cases, then corrected the spawn design to maximum-safety scoring, passable shortcut origin, sealed-door reachability, and aggregate validation for intentional RNG re-phasing."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 2,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-5", "gpt-5.3-codex"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

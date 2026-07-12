@@ -24,6 +24,7 @@ import {
 } from '../../../src/game/floorScenario.js';
 import { createTestWorld } from '../../helpers/world-factory.js';
 import { AIState } from '../../../src/game/ai/types.js';
+import { activateHostileEncounter } from '../../../src/game/hostile-encounter-lifecycle.js';
 
 const RATS_NEST_INDEX = getSpawnerArchetypeIndex('rats-nest');
 const RATS_NEST = getSpawnerArchetype('rats-nest')!;
@@ -120,6 +121,54 @@ describe('BT — arena lock-in priority (1.5)', () => {
 
     const decision = ai.getDecision();
     expect(decision.reason).toContain('Tutorial Goon');
+  });
+
+  it('invalidates stale pre-encounter targeting before reacting to a new lock-in', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    const input = createInputState();
+    const ai = new BehaviorTreeAI({ seed: 42 });
+
+    ai.poll(input, world);
+    const staleTargetEid = ai.getDecision().targetEid;
+    const px = world.stores.position.x[player]!;
+    const py = world.stores.position.y[player]!;
+    const bossEid = startStaircaseBossLockin(world, px, py, 4, 0);
+    markEnemyIgnored(ai, bossEid, world.frameCount + 300);
+    world.frameCount = 17;
+    activateHostileEncounter(world);
+
+    ai.poll(input, world);
+
+    expect(ai.getDecision().targetEid).toBe(bossEid);
+    expect(ai.getDecision().targetEid).not.toBe(staleTargetEid);
+    expect(ai.getDecision().reason).toContain('boss');
+    expect(ai.getHostileEncounterLifecycleDebug()).toEqual({
+      observedRevision: 1,
+      invalidationCount: 1,
+      lastInvalidationFrame: 17,
+    });
+  });
+
+  it('does not invalidate decisions again on ordinary non-transition polls', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    const input = createInputState();
+    const ai = new BehaviorTreeAI({ seed: 42 });
+
+    activateHostileEncounter(world);
+    ai.poll(input, world);
+    const firstDecision = ai.getDecision();
+    ai.poll(input, world);
+
+    expect(ai.getHostileEncounterLifecycleDebug().invalidationCount).toBe(1);
+    expect(ai.getDecision().state).toBe(firstDecision.state);
+    expect(ai.getDecision().targetEid).toBe(firstDecision.targetEid);
+    expect(ai.getDecision().reason).toBe(firstDecision.reason);
   });
 
   it('retreat (priority 1) still wins over arena lock-in at low HP with a nearby threat', () => {

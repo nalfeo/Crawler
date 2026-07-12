@@ -192,6 +192,9 @@ export function ensureRoomsReachable(
   playerSpawn: { x: number; y: number },
 ): void {
   const bossRoom = roomGraph.getFirstRoomByRole(RoomRole.BOSS_STAIR);
+  if (bossRoom) {
+    ensureBossArenaInterior(tileMap, terrain, w, h, bossRoom);
+  }
   const bossBlocked = bossRoom ? buildRoomBlockMask(bossRoom, w, h) : null;
 
   // Phase 1 — every non-spawn, non-boss room reachable without the boss room.
@@ -226,6 +229,61 @@ export function ensureRoomsReachable(
       if (status.hasInterior && !status.connected) {
         carveRoomConnector(tileMap, terrain, w, h, bossRoom, reachableOpen, null);
       }
+    }
+  }
+}
+
+/**
+ * Guarantees enough deterministic interior floor for separated boss placement.
+ * Valid rectangular and elliptical boss rooms already contain this centered
+ * block, so the repair is byte-identical unless generation left the arena
+ * partially or wholly walled.
+ */
+function ensureBossArenaInterior(
+  tileMap: TileMap,
+  terrain: Uint8Array,
+  w: number,
+  h: number,
+  room: { bounds: RoomBounds; doors: readonly DoorLocation[] },
+): void {
+  const { x, y, width, height } = room.bounds;
+  const interiorWidth = Math.max(0, width - 2);
+  const interiorHeight = Math.max(0, height - 2);
+  if (interiorWidth === 0 || interiorHeight === 0) return;
+
+  const arenaWidth = Math.min(5, interiorWidth);
+  const arenaHeight = Math.min(5, interiorHeight);
+  const arenaX = x + 1 + Math.floor((interiorWidth - arenaWidth) / 2);
+  const arenaY = y + 1 + Math.floor((interiorHeight - arenaHeight) / 2);
+  const centerX = arenaX + Math.floor(arenaWidth / 2);
+  const centerY = arenaY + Math.floor(arenaHeight / 2);
+
+  const carveInterior = (tx: number, ty: number): void => {
+    if (tx <= x || ty <= y || tx >= x + width - 1 || ty >= y + height - 1) return;
+    if (tx < 0 || ty < 0 || tx >= w || ty >= h) return;
+    const idx = ty * w + tx;
+    if ((tileMap.flags[idx]! & TileFlags.DOOR) !== 0) return;
+    tileMap.flags[idx] = TilePresets.FLOOR;
+    terrain[idx] = TerrainType.BOSS_STAIR_FLOOR;
+  };
+
+  for (let ty = arenaY; ty < arenaY + arenaHeight; ty += 1) {
+    for (let tx = arenaX; tx < arenaX + arenaWidth; tx += 1) {
+      carveInterior(tx, ty);
+    }
+  }
+
+  for (const door of room.doors) {
+    const side = getDoorSide(room.bounds, door);
+    const inwardX = side === 'left' ? door.x + 1 : side === 'right' ? door.x - 1 : door.x;
+    const inwardY = side === 'top' ? door.y + 1 : side === 'bottom' ? door.y - 1 : door.y;
+    const stepX = inwardX <= centerX ? 1 : -1;
+    for (let tx = inwardX; tx !== centerX + stepX; tx += stepX) {
+      carveInterior(tx, inwardY);
+    }
+    const stepY = inwardY <= centerY ? 1 : -1;
+    for (let ty = inwardY; ty !== centerY + stepY; ty += stepY) {
+      carveInterior(centerX, ty);
     }
   }
 }

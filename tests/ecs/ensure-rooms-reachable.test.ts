@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import fc from 'fast-check';
 import { TileMap } from '../../src/core/map/TileMap';
 import { RoomGraph } from '../../src/core/map/RoomGraph';
 import { ensureRoomsReachable } from '../../src/core/map/generators/DungeonGenerator';
@@ -131,6 +132,85 @@ describe('ensureRoomsReachable', () => {
     expect(interiorReachable(tileMap, W, H, bossBounds, seen)).toBe(true);
     // The door tile itself must remain a door (gating preserved, not carved open).
     expect((tileMap.flags[door.y * W + door.x]! & TileFlags.DOOR) !== 0).toBe(true);
+  });
+
+  it('repairs an all-wall boss room with a centered arena and door path', () => {
+    const repairW = 32;
+    const repairH = 24;
+    const { tileMap, terrain } = makeMap(repairW, repairH);
+    const spawnBounds: RoomBounds = { x: 1, y: 8, width: 6, height: 6 };
+    const bossBounds: RoomBounds = { x: 12, y: 3, width: 17, height: 17 };
+    carveRoom(tileMap, terrain, repairW, spawnBounds);
+    carveCorridorH(tileMap, terrain, repairW, 10, 5, 28);
+    const door: DoorLocation = { x: 28, y: 4, connectsTo: 0 };
+    setDoor(tileMap, repairW, door.x, door.y);
+
+    const graph = new RoomGraph();
+    graph.add(spawnBounds, [], [], RoomRole.SPAWN);
+    graph.add(bossBounds, [door], [], RoomRole.BOSS_STAIR);
+
+    ensureRoomsReachable(tileMap, terrain, graph, repairW, repairH, { x: 3, y: 10 });
+
+    for (let y = 9; y <= 13; y += 1) {
+      for (let x = 18; x <= 22; x += 1) {
+        expect(tileMap.isPassable(x, y)).toBe(true);
+        expect(terrain[y * repairW + x]).toBe(TerrainType.BOSS_STAIR_FLOOR);
+      }
+    }
+    expect(tileMap.isPassable(27, 4)).toBe(true);
+    expect(tileMap.isPassable(20, 4)).toBe(true);
+    expect(tileMap.isPassable(20, 9)).toBe(true);
+    expect((tileMap.flags[door.y * repairW + door.x]! & TileFlags.DOOR) !== 0).toBe(true);
+  });
+
+  it('is a byte-identical no-op for valid connected boss arenas across room sizes', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 7, max: 21 }),
+        fc.integer({ min: 7, max: 21 }),
+        (bossWidth, bossHeight) => {
+          const mapWidth = bossWidth + 14;
+          const mapHeight = bossHeight + 6;
+          const { tileMap, terrain } = makeMap(mapWidth, mapHeight);
+          const spawnBounds: RoomBounds = { x: 1, y: 2, width: 6, height: 6 };
+          const bossBounds: RoomBounds = {
+            x: 10,
+            y: 2,
+            width: bossWidth,
+            height: bossHeight,
+          };
+          carveRoom(tileMap, terrain, mapWidth, spawnBounds);
+          carveRoom(tileMap, terrain, mapWidth, bossBounds);
+          for (let y = bossBounds.y + 1; y < bossBounds.y + bossBounds.height - 1; y += 1) {
+            for (let x = bossBounds.x + 1; x < bossBounds.x + bossBounds.width - 1; x += 1) {
+              terrain[y * mapWidth + x] = TerrainType.BOSS_STAIR_FLOOR;
+            }
+          }
+          const door: DoorLocation = {
+            x: bossBounds.x,
+            y: bossBounds.y + 1,
+            connectsTo: 0,
+          };
+          setDoor(tileMap, mapWidth, door.x, door.y);
+          carveCorridorH(tileMap, terrain, mapWidth, door.y, 5, door.x - 1);
+
+          const graph = new RoomGraph();
+          graph.add(spawnBounds, [], [], RoomRole.SPAWN);
+          graph.add(bossBounds, [door], [], RoomRole.BOSS_STAIR);
+          const flagsBefore = Uint8Array.from(tileMap.flags);
+          const terrainBefore = Uint8Array.from(terrain);
+
+          ensureRoomsReachable(tileMap, terrain, graph, mapWidth, mapHeight, {
+            x: 3,
+            y: door.y,
+          });
+
+          expect(tileMap.flags).toEqual(flagsBefore);
+          expect(terrain).toEqual(terrainBefore);
+        },
+      ),
+      { numRuns: 50 },
+    );
   });
 
   it('is a strict no-op when every room is already reachable', () => {
