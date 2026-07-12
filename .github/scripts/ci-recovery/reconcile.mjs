@@ -26,7 +26,7 @@ const leaseId = (process.env.LEASE_ID || '').trim();
 const mode = (process.env.CI_RECOVERY_MODE || 'dry-run').toLowerCase();
 const pat = process.env.CRAWLER_CI_PAT || '';
 const readToken = pat || process.env.GITHUB_TOKEN || '';
-const live = shouldMutateRecoveryState(mode, operation);
+const shouldMutate = shouldMutateRecoveryState(mode, operation);
 const now = new Date();
 
 if (!owner || !repo || !Number.isInteger(prNumber) || !readToken) {
@@ -35,8 +35,8 @@ if (!owner || !repo || !Number.isInteger(prNumber) || !readToken) {
 if (!['off', 'dry-run', 'live'].includes(mode)) {
   throw new Error(`Unsupported CI_RECOVERY_MODE: ${mode}`);
 }
-if (live && !pat) {
-  throw new Error('CRAWLER_CI_PAT is required when CI_RECOVERY_MODE=live');
+if (shouldMutate && !pat) {
+  throw new Error('CRAWLER_CI_PAT is required for CI recovery mutations');
 }
 if (mode === 'off') {
   process.stdout.write('CI recovery is disabled\n');
@@ -80,7 +80,7 @@ assertOwnershipInvariant({ labelExists, state });
 
 async function updateState(nextState) {
   state = nextState;
-  if (!live) {
+  if (!shouldMutate) {
     process.stdout.write(`dry-run state=${JSON.stringify(nextState)}\n`);
     return;
   }
@@ -103,7 +103,7 @@ async function acquire(nextOwner, nextLeaseId = null) {
   if (labelExists) {
     throw new Error(`PR #${prNumber} is already owned by ${state?.owner || 'unknown'}`);
   }
-  if (live) {
+  if (shouldMutate) {
     await request(pat, `/repos/${owner}/${repo}/labels`, {
       method: 'POST',
       body: {
@@ -137,7 +137,7 @@ async function release(reason, nextState = null) {
   if (!labelExists) {
     return;
   }
-  if (live) {
+  if (shouldMutate) {
     await request(
       pat,
       `/repos/${owner}/${repo}/issues/${prNumber}/labels/${encodeURIComponent(labelName)}`,
@@ -225,7 +225,7 @@ if (!state && !labelExists && copilotAssigned) {
 for (const thread of review.threads.filter(
   (candidate) => !candidate.isResolved && shouldResolveThread(candidate, pr.head.sha),
 )) {
-  if (live) {
+  if (shouldMutate) {
     await graphql(
       pat,
       `
@@ -241,7 +241,7 @@ for (const thread of review.threads.filter(
     );
   }
   thread.isResolved = true;
-  process.stdout.write(`${live ? 'resolved' : 'would-resolve'} thread=${thread.id}\n`);
+  process.stdout.write(`${shouldMutate ? 'resolved' : 'would-resolve'} thread=${thread.id}\n`);
 }
 
 const blockers = [];
@@ -320,7 +320,7 @@ for (const run of actionRequiredRuns) {
     );
     continue;
   }
-  if (live) {
+  if (shouldMutate) {
     try {
       await request(pat, `/repos/${owner}/${repo}/actions/runs/${run.id}/approve`, {
         method: 'POST',
@@ -384,7 +384,7 @@ if (normalized.length === 0) {
     );
     process.exit(0);
   }
-  if (live) {
+  if (shouldMutate) {
     await graphql(
       pat,
       `
@@ -451,7 +451,7 @@ const taskBody = [
   'When a thread is addressed, reply in that exact thread with `✅ Addressed in <sha>: <one-line note>` and resolve it. Run the repository-required verification and push one consolidated repair commit.',
 ].join('\n');
 
-if (live) {
+if (shouldMutate) {
   await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
     method: 'POST',
     body: { body: taskBody },
@@ -528,11 +528,13 @@ await updateState(
     headSha: pr.head.sha,
     fingerprint,
     owner: 'automation',
-    status: live ? 'dispatched' : 'active',
+    status: shouldMutate ? 'dispatched' : 'active',
     trigger,
     blockers: normalized,
     attempt: (state?.attempt || 0) + 1,
     updatedAt: now.toISOString(),
   }),
 );
-process.stdout.write(`${live ? 'assigned' : 'dry-run would-assign'} copilot pr=#${prNumber}\n`);
+process.stdout.write(
+  `${shouldMutate ? 'assigned' : 'dry-run would-assign'} copilot pr=#${prNumber}\n`,
+);
