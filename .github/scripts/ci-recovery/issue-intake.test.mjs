@@ -8,7 +8,7 @@ const issue = {
   number: 1067,
 };
 
-test('assigns Copilot through GraphQL before posting the kickoff comment', async () => {
+test('posts kickoff comment before assigning Copilot and preserves existing assignees', async () => {
   const calls = [];
   const graphql = async (_token, query, variables) => {
     if (query.includes('suggestedActors')) {
@@ -17,6 +17,9 @@ test('assigns Copilot through GraphQL before posting the kickoff comment', async
         repository: {
           suggestedActors: {
             nodes: [{ id: 'BOT_COPILOT', login: 'copilot-swe-agent', __typename: 'Bot' }],
+          },
+          issue: {
+            assignees: { nodes: [{ id: 'USER_NALFEO', login: 'nalfeo' }] },
           },
         },
       };
@@ -27,7 +30,7 @@ test('assigns Copilot through GraphQL before posting the kickoff comment', async
       replaceActorsForAssignable: {
         assignable: {
           assignees: {
-            nodes: [{ login: 'copilot-swe-agent' }],
+            nodes: [{ login: 'nalfeo' }, { login: 'copilot-swe-agent' }],
           },
         },
       },
@@ -39,7 +42,7 @@ test('assigns Copilot through GraphQL before posting the kickoff comment', async
   };
   const request = async (_token, path, options) => {
     calls.push(['request', path, options]);
-    return { data: {} };
+    return { data: { id: 12345 } };
   };
 
   const result = await runIssueIntake({
@@ -53,24 +56,25 @@ test('assigns Copilot through GraphQL before posting the kickoff comment', async
   });
 
   assert.deepEqual(result, { assignee: 'copilot-swe-agent', comment: 'posted' });
+  // comment is posted before assignment so Copilot sees it at session start
   assert.deepEqual(
     calls.map(([name]) => name),
-    ['discover', 'assign', 'comments', 'request'],
+    ['discover', 'comments', 'request', 'assign'],
   );
-  assert.deepEqual(calls[1][1], {
+  // existing assignee is preserved alongside Copilot
+  assert.deepEqual(calls[3][1], {
     assignableId: 'ISSUE_1067',
-    actorIds: ['BOT_COPILOT'],
+    actorIds: ['USER_NALFEO', 'BOT_COPILOT'],
   });
-  assert.equal(calls[3][1], '/repos/nalfeo/Crawler/issues/1067/comments');
-  assert.deepEqual(calls[3][2], {
+  assert.equal(calls[2][1], '/repos/nalfeo/Crawler/issues/1067/comments');
+  assert.deepEqual(calls[2][2], {
     method: 'POST',
     body: { body: ISSUE_INTAKE_BODY },
   });
 });
 
-test('does not post a kickoff comment when assignment does not persist', async () => {
-  let commentsRead = false;
-  let requestMade = false;
+test('deletes the kickoff comment when assignment does not persist', async () => {
+  const requestCalls = [];
   let graphqlCall = 0;
   const graphql = async () => {
     graphqlCall += 1;
@@ -80,6 +84,7 @@ test('does not post a kickoff comment when assignment does not persist', async (
           suggestedActors: {
             nodes: [{ id: 'BOT_COPILOT', login: 'copilot-swe-agent', __typename: 'Bot' }],
           },
+          issue: { assignees: { nodes: [] } },
         },
       };
     }
@@ -97,13 +102,10 @@ test('does not post a kickoff comment when assignment does not persist', async (
   await assert.rejects(
     runIssueIntake({
       graphql,
-      paginate: async () => {
-        commentsRead = true;
-        return [];
-      },
-      request: async () => {
-        requestMade = true;
-        return { data: {} };
+      paginate: async () => [],
+      request: async (_token, path, options) => {
+        requestCalls.push({ path, method: options?.method });
+        return { data: { id: 12345 } };
       },
       token: 'token',
       owner: 'nalfeo',
@@ -112,6 +114,9 @@ test('does not post a kickoff comment when assignment does not persist', async (
     }),
     /Copilot assignment did not persist on issue #1067/,
   );
-  assert.equal(commentsRead, false);
-  assert.equal(requestMade, false);
+  // comment is posted then cleaned up so no misleading instruction comment lingers
+  assert.equal(requestCalls.length, 2);
+  assert.equal(requestCalls[0].method, 'POST');
+  assert.equal(requestCalls[1].method, 'DELETE');
+  assert.ok(requestCalls[1].path.includes('/12345'));
 });
