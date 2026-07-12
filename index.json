@@ -1,5 +1,16 @@
 [
   {
+    "commit": "0bbbbfc748da9f92e1e3f2665c1cac014de1fbf5",
+    "commitDate": "2026-07-12T16:44:48Z",
+    "commitSubject": "fix: auto-capture guard telemetry during PR prerequisite checks (#1062)",
+    "capturedAt": "2026-07-12T17:19:08.557Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29200886606",
+    "winRate": 0.9233333333333333,
+    "totalWins": 277,
+    "totalRuns": 300,
+    "path": "by-sha/0bbbbfc748da9f92e1e3f2665c1cac014de1fbf5.json"
+  },
+  {
     "commit": "76f4dbbafd06af96f5505a852c7e689f5e48b2a1",
     "commitDate": "2026-07-12T08:04:41-07:00",
     "commitSubject": "feat(terrain): add deterministic 47-mask terrain packs (#1044)",
