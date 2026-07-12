@@ -29,7 +29,7 @@ export type RuntimeTerrainPackId = z.infer<typeof runtimeTerrainPackIdSchema>;
  * Build-only / fixture packs — used only by tooling and tests.
  * MUST NOT appear in floor manifests and MUST NOT be preloaded at boot.
  */
-export const BUILD_ONLY_TERRAIN_PACK_IDS = ['caeles-fixture'] as const;
+const BUILD_ONLY_TERRAIN_PACK_IDS = ['caeles-fixture'] as const;
 
 /**
  * Union of all registered pack IDs (runtime + build-only). Used only by the

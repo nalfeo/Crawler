@@ -14,7 +14,7 @@ import { compositeInto, createImage, nearestNeighborResize, type RgbaImage } fro
 import { QUADRANT_SRC_PX, quadrantKitKey } from './quadrant-kit.js';
 
 /** Explicit composed-cell source size before downsampling — pinned, not inferred. */
-export const WALL_CELL_SRC_PX = QUADRANT_SRC_PX * 2; // 256
+const WALL_CELL_SRC_PX = QUADRANT_SRC_PX * 2; // 256
 
 /** Where each corner's quadrant is pasted within the composed 256x256 cell. */
 const QUADRANT_ORIGIN: Record<QuadrantCorner, { x: number; y: number }> = {
@@ -28,7 +28,7 @@ const QUADRANT_ORIGIN: Record<QuadrantCorner, { x: number; y: number }> = {
  * Compose the full-resolution (256x256) wall cell for `canonicalMask` from a
  * pre-generated quadrant kit (see `generateQuadrantKit`).
  */
-export function composeWallCellSrc(
+function composeWallCellSrc(
   canonicalMask: number,
   quadrantKit: ReadonlyMap<string, RgbaImage>,
 ): RgbaImage {

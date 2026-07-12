@@ -214,7 +214,6 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
       pack.wallAutotile.masks.find((m) => m.maskId === 0)!.frameIndex,
     );
   });
-
   it('stamps a deterministic floorPool variant for STONE_FLOOR tiles', () => {
     const { scene, rt } = createPackScene(allPackKeys);
     const floorMap = makeFloorMap(

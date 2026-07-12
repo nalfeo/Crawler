@@ -44,7 +44,7 @@ export function setPixel(
   img.data[idx + 3] = a;
 }
 
-export function getPixel(img: RgbaImage, x: number, y: number): [number, number, number, number] {
+function getPixel(img: RgbaImage, x: number, y: number): [number, number, number, number] {
   assertInBounds(img, x, y);
   const idx = (y * img.width + x) * 4;
   return [img.data[idx]!, img.data[idx + 1]!, img.data[idx + 2]!, img.data[idx + 3]!];
