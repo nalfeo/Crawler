@@ -67,7 +67,6 @@ const MAX_WIGGLE_MS = 45_000;
  * by local BT stuck-frame resets.
  */
 const MAX_STUCK_MS = 30_000;
-const STUCK_NET_DISP_EPSILON_FT = 2;
 const STUCK_ANCHOR_RADIUS_FT = 12;
 
 // ---------------------------------------------------------------------------
@@ -146,10 +145,10 @@ function computeLongestNearZeroDispMs(events: readonly SimEvent[]): number {
     const sample = samples[i]!;
     const next = samples[i + 1]!;
     const dt = Math.max(0, next.gameMs - sample.gameMs);
-    const isNearZeroDisp = sample.netDisp <= STUCK_NET_DISP_EPSILON_FT;
     const isSafeRoomPause = sample.inSafe === true;
     const isProgressSuppressionHold = sample.state === 'suppressedProgressNav';
-    if (!hasAnchor && isNearZeroDisp) {
+    const isExcluded = isSafeRoomPause || isProgressSuppressionHold;
+    if (!hasAnchor && !isExcluded) {
       hasAnchor = true;
       anchorX = sample.px;
       anchorY = sample.py;
@@ -158,7 +157,7 @@ function computeLongestNearZeroDispMs(events: readonly SimEvent[]): number {
       ? Math.hypot(sample.px - anchorX, sample.py - anchorY)
       : Infinity;
     const isNearAnchor = distFromAnchor <= STUCK_ANCHOR_RADIUS_FT;
-    if (!isSafeRoomPause && !isProgressSuppressionHold && isNearZeroDisp && isNearAnchor) {
+    if (!isExcluded && isNearAnchor) {
       currentMs += dt;
       longestMs = Math.max(longestMs, currentMs);
     } else {
@@ -242,6 +241,15 @@ describe('computeLongestNearZeroDispMs', () => {
       events.push(makeSyntheticSample(i * 1000, 340, 340));
     }
     expect(computeLongestNearZeroDispMs(events)).toBeLessThan(30_000);
+  });
+
+  it('detects bounded oscillation inside the anchor radius', () => {
+    const events: SimEvent[] = [];
+    for (let i = 0; i <= 35; i += 1) {
+      const px = i % 2 === 0 ? 400 : 408;
+      events.push(makeSyntheticSample(i * 1000, px, 400, { netDisp: 8, pathTravel: 8 }));
+    }
+    expect(computeLongestNearZeroDispMs(events)).toBeGreaterThan(30_000);
   });
 });
 
