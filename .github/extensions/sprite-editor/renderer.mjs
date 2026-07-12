@@ -739,10 +739,12 @@ const CLIENT_SCRIPT = String.raw`
       '    var engine = "browser";',
       '    var cv = await ensureCv(String(payload.opencvUrl || ""));',
       '    if (cv) {',
+      '      var src = null;',
+      '      var dst = null;',
       '      try {',
       '        var srcImageData = sourceCtx.getImageData(0, 0, sourceWidth, sourceHeight);',
-      '        var src = cv.matFromImageData(srcImageData);',
-      '        var dst = new cv.Mat();',
+      '        src = cv.matFromImageData(srcImageData);',
+      '        dst = new cv.Mat();',
       '        var dsize = new cv.Size(targetWidth, targetHeight);',
       '        var interpolation = resolveInterpolation(cv, methodId, factor);',
       '        cv.resize(src, dst, dsize, 0, 0, interpolation);',
@@ -750,11 +752,12 @@ const CLIENT_SCRIPT = String.raw`
       '        var outCtx = outCanvas.getContext("2d", { alpha: true, willReadFrequently: true });',
       '        var outImageData = new ImageData(new Uint8ClampedArray(dst.data), targetWidth, targetHeight);',
       '        outCtx.putImageData(outImageData, 0, 0);',
-      '        src.delete();',
-      '        dst.delete();',
       '        engine = "opencv";',
       '      } catch (_cvErr) {',
       '        outCanvas = null;',
+      '      } finally {',
+      '        if (src && typeof src.delete === "function") src.delete();',
+      '        if (dst && typeof dst.delete === "function") dst.delete();',
       '      }',
       '    }',
       '    if (!outCanvas) outCanvas = scaleWithBrowser(sourceCanvas, targetWidth, targetHeight, methodId, factor);',
@@ -939,6 +942,12 @@ const CLIENT_SCRIPT = String.raw`
       sprite.holdY = Math.round(before.holdY * heightRatio);
       sprite.pivotX = Math.round(before.pivotX * widthRatio);
       sprite.pivotY = Math.round(before.pivotY * heightRatio);
+      if (sampledBackgroundPoint) {
+        sampledBackgroundPoint = {
+          x: Math.min(canvas.width - 1, Math.max(0, Math.round(sampledBackgroundPoint.x * widthRatio))),
+          y: Math.min(canvas.height - 1, Math.max(0, Math.round(sampledBackgroundPoint.y * heightRatio)))
+        };
+      }
       scaleApplied = true;
 
       var after = cloneState();
@@ -1210,25 +1219,40 @@ const CLIENT_SCRIPT = String.raw`
             {
               label: item.favorite ? 'Unfavorite' : 'Favorite',
               onClick: async function () {
+                if (mutationInFlight) {
+                  setStatus('A save or revert is already in progress.');
+                  return;
+                }
                 try {
                   var dirtyDecision = await confirmLeaveIfDirty();
                   if (dirtyDecision.status === 'save_failed' || dirtyDecision.status === 'cancelled') return;
+                  setMutationInFlight(true);
+                  var currentFavorite = !!item.favorite;
+                  var currentDisliked = !!item.disliked;
+                  var currentComment = item.comment ? String(item.comment) : '';
+                  if (sprite && sprite.key === item.key) {
+                    currentFavorite = !!sprite.favorite;
+                    currentDisliked = !!sprite.disliked;
+                    currentComment = sprite.comment ? String(sprite.comment) : '';
+                  }
                   await fetchJson('/api/save', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                       key: item.key,
                       annotation: {
-                        favorite: !item.favorite,
-                        disliked: !item.favorite ? false : !!item.disliked,
-                        comment: item.comment || ''
+                        favorite: !currentFavorite,
+                        disliked: !currentFavorite ? false : currentDisliked,
+                        comment: currentComment
                       }
                     })
                   });
                   await loadList({ skipDirtyGuard: true });
-                  setStatus((!item.favorite ? 'Marked' : 'Unmarked') + ' favorite.');
+                  setStatus((!currentFavorite ? 'Marked' : 'Unmarked') + ' favorite.');
                 } catch (error) {
                   setStatus(error.message || String(error), true);
+                } finally {
+                  setMutationInFlight(false);
                 }
               }
             }
@@ -1620,7 +1644,18 @@ const CLIENT_SCRIPT = String.raw`
           var alpha = data[offset + 3];
           if (alpha === 0) continue;
           var distSq = colorDistanceSq(data[offset], data[offset + 1], data[offset + 2], matte.r, matte.g, matte.b);
+          var fringeCandidate = isFringeCandidate(
+            data,
+            width,
+            height,
+            x,
+            y,
+            matte,
+            bgLimitSq,
+            Math.max(10, alphaCutoff)
+          );
           if (methodId === 'defringe') {
+            if (!fringeCandidate) continue;
             if (alpha <= alphaCutoff) {
               data[offset + 3] = 0;
               continue;
@@ -1634,6 +1669,7 @@ const CLIENT_SCRIPT = String.raw`
             continue;
           }
           if (methodId === 'matte-neutralize') {
+            if (!fringeCandidate) continue;
             if (alpha === 255 && distSq <= bgLimitSq) {
               var opaqueNeighbor = findNeighborOpaqueAverage(data, width, height, x, y, Math.max(alphaCutoff, 96));
               if (opaqueNeighbor) {
