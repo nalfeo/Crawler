@@ -1,5 +1,16 @@
 [
   {
+    "commit": "14b7972b97d162126985c88ce23099bb95e7c4f7",
+    "commitDate": "2026-07-12T20:57:42Z",
+    "commitSubject": "feat(devtools): turn sprite editor into a complete editing workspace (#1030)",
+    "capturedAt": "2026-07-12T21:33:30.234Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29208966634",
+    "winRate": 0.9233333333333333,
+    "totalWins": 277,
+    "totalRuns": 300,
+    "path": "by-sha/14b7972b97d162126985c88ce23099bb95e7c4f7.json"
+  },
+  {
     "commit": "9b0a390b8fcea59cff00a0d0dc9f5a4a5722d01b",
     "commitDate": "2026-07-12T20:46:46Z",
     "commitSubject": "feat(labs): sprite mode, terrain-pack map preview, retire tile-render lab (#1076)",
