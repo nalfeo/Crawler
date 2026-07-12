@@ -7,6 +7,7 @@ import {
   makeState,
   normalizeBlockers,
   reviewThreadBlockerId,
+  shouldMutateRecoveryState,
   ownerLabel,
   parseStateComment,
   renderStateComment,
@@ -27,6 +28,7 @@ const mode = (process.env.CI_RECOVERY_MODE || 'dry-run').toLowerCase();
 const pat = process.env.CRAWLER_CI_PAT || '';
 const readToken = pat || process.env.GITHUB_TOKEN || '';
 const live = mode === 'live';
+const shouldMutate = shouldMutateRecoveryState(mode, operation);
 const mergeTrainMode = (process.env.MERGE_TRAIN_MODE || 'off').toLowerCase();
 const mergeTrainAdmissionChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
 const now = new Date();
@@ -37,8 +39,8 @@ if (!owner || !repo || !Number.isInteger(prNumber) || !readToken) {
 if (!['off', 'dry-run', 'live'].includes(mode)) {
   throw new Error(`Unsupported CI_RECOVERY_MODE: ${mode}`);
 }
-if (live && !pat) {
-  throw new Error('CRAWLER_CI_PAT is required when CI_RECOVERY_MODE=live');
+if (shouldMutate && !pat) {
+  throw new Error('CRAWLER_CI_PAT is required for CI recovery mutations');
 }
 if (mode === 'off') {
   process.stdout.write('CI recovery is disabled\n');
@@ -90,7 +92,7 @@ assertOwnershipInvariant({ labelExists, state });
 
 async function updateState(nextState) {
   state = nextState;
-  if (!live) {
+  if (!shouldMutate) {
     process.stdout.write(`dry-run state=${JSON.stringify(nextState)}\n`);
     return;
   }
@@ -113,7 +115,7 @@ async function acquire(nextOwner, nextLeaseId = null) {
   if (labelExists) {
     throw new Error(`PR #${prNumber} is already owned by ${state?.owner || 'unknown'}`);
   }
-  if (live) {
+  if (shouldMutate) {
     await request(pat, `/repos/${owner}/${repo}/labels`, {
       method: 'POST',
       body: {
@@ -147,7 +149,7 @@ async function release(reason, nextState = null) {
   if (!labelExists) {
     return;
   }
-  if (live) {
+  if (shouldMutate) {
     await request(
       pat,
       `/repos/${owner}/${repo}/issues/${prNumber}/labels/${encodeURIComponent(labelName)}`,
