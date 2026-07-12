@@ -30,8 +30,8 @@
  * in the issue; sword also clears fastest so the sample stays quick). This broad
  * sweep enforces both wiggle and stuck ceilings.
  *
- * Extended stuck matrix: seeds 2, 13, 15, 17 × bow/bat — the exact repro seed
- * cluster's cross-weapon axis. This matrix enforces both wiggle and contiguous
+ * Extended stuck matrix: seeds 2, 13, 15, 17 × bow/bat plus seed 8 × bow (current
+ * post-fix wiggle hotspot). This matrix enforces both wiggle and contiguous
  * near-zero displacement ceilings.
  *
  * ## Budget
@@ -43,8 +43,8 @@
  * produces a valid event log for the portion simulated, which is enough to flag a
  * sustained park episode.
  *
- * At ~1 900 simulated-FPS each truncated run takes ≈ 8 s wall time; the 20-seed
- * sword sweep is ~160 s, comfortably inside the 10-minute hook timeout.
+ * At ~1 900 simulated-FPS each truncated run takes ≈ 12 s wall time; the 20-seed
+ * sword sweep is ~240 s, comfortably inside the 10-minute hook timeout.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
@@ -103,6 +103,36 @@ interface ParkProbe {
   longestWiggleMs: number;
   longestStuckMs: number;
   summary: EventSummary;
+}
+
+function makeSyntheticSample(
+  gameMs: number,
+  px: number,
+  py: number,
+  overrides: Partial<SimEvent> = {},
+): SimEvent {
+  return {
+    type: 'sample',
+    frame: Math.floor(gameMs / 16),
+    gameMs,
+    px,
+    py,
+    state: 'EXPLORE',
+    reason: 'synthetic',
+    targetEid: null,
+    targetDist: null,
+    enemyCount: 0,
+    nearestEnemyDist: null,
+    level: 1,
+    xp: 0,
+    kills: 0,
+    health: 100,
+    stuckFrames: 0,
+    pathLen: 0,
+    netDisp: 0,
+    pathTravel: 0,
+    ...overrides,
+  };
 }
 
 function computeLongestNearZeroDispMs(events: readonly SimEvent[]): number {
@@ -176,10 +206,44 @@ function assertNoSustainedStuck(probe: ParkProbe, label: string): void {
 
 /**
  * Hook timeout for the 20-seed sword sweep: 20 runs × ~12 s each on a slow CI
- * runner = ~160 s. Use 10 minutes to give CI plenty of headroom without masking
+ * runner = ~240 s. Use 10 minutes to give CI plenty of headroom without masking
  * a genuine performance regression (the per-run budget already bounds each run).
  */
 const SWEEP_HOOK_TIMEOUT_MS = 10 * 60 * 1000;
+
+// ---------------------------------------------------------------------------
+// Deterministic synthetic coverage for the stuck-detector helper
+// ---------------------------------------------------------------------------
+
+describe('computeLongestNearZeroDispMs', () => {
+  it('detects a >30s contiguous near-zero displacement episode', () => {
+    const events: SimEvent[] = [];
+    for (let i = 0; i <= 31; i += 1) {
+      events.push(makeSyntheticSample(i * 1000, 100, 100));
+    }
+    expect(computeLongestNearZeroDispMs(events)).toBeGreaterThan(30_000);
+  });
+
+  it('excludes safe-room stationary windows', () => {
+    const events: SimEvent[] = [];
+    for (let i = 0; i <= 40; i += 1) {
+      events.push(makeSyntheticSample(i * 1000, 200, 200, { inSafe: true }));
+    }
+    expect(computeLongestNearZeroDispMs(events)).toBe(0);
+  });
+
+  it('resets accumulation when movement leaves the anchor radius', () => {
+    const events: SimEvent[] = [];
+    for (let i = 0; i <= 20; i += 1) {
+      events.push(makeSyntheticSample(i * 1000, 300, 300));
+    }
+    events.push(makeSyntheticSample(21_000, 340, 340, { netDisp: 40, pathTravel: 40 }));
+    for (let i = 22; i <= 38; i += 1) {
+      events.push(makeSyntheticSample(i * 1000, 340, 340));
+    }
+    expect(computeLongestNearZeroDispMs(events)).toBeLessThan(30_000);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Sweep: seeds 1–20 × sword
@@ -190,7 +254,7 @@ describe('Floor-1 park watchdog — seeds 1–20 (sword)', () => {
 
   // Run all 20 seeds sequentially inside a single beforeAll so the simulation
   // cost is paid once; each seed then gets its own it() assertions.
-  // 20 × ~8 s wall time per truncated run ≈ 160 s on a CI runner.
+  // 20 × ~12 s wall time per truncated run ≈ 240 s on a CI runner.
   beforeAll(async () => {
     for (const seed of SEEDS_1_TO_20) {
       probes.set(seed, await runParkProbe(seed, 'sword'));

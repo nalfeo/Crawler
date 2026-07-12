@@ -35,7 +35,7 @@ win-rate capped at ~75%."
   75% → 87.5% → 90%.
 
 **New regression guard added:**
-`tests/headless/floor1-park-watchdog.test.ts` (38 tests)
+`tests/headless/floor1-park-watchdog.test.ts` (41 tests)
 
 Coverage:
 
@@ -63,7 +63,7 @@ Observed in the REAL headless AI pipeline (`src/game/ai/headless-runner.ts` via
 
 - Winrate sweep (seeds 1–20, 3 weapons, 23 760-frame budget): 54/60 = 90.0%.
   Failures are combat-related, not exploration stalls.
-- `tests/headless/floor1-park-watchdog.test.ts`: 38/38 passing (326 s wall time).
+- `tests/headless/floor1-park-watchdog.test.ts`: 41/41 passing (328 s wall time).
 - `npm run verify:fast`: 85 test files / 1155 tests — all passing.
 
 ## What's Next
@@ -91,6 +91,6 @@ ai-pathfinding
 
 ## Test Results
 
-- `npx vitest run --project headless tests/headless/floor1-park-watchdog.test.ts` → 38/38 pass (326 s)
+- `npx vitest run --project headless tests/headless/floor1-park-watchdog.test.ts` → 41/41 pass (328 s)
 - `npm run verify:fast` → 85 test files / 1155 tests — green
 - `npm run ai:winrate-sweep -- --seeds 1-20` → 54/60 = 90.0% (meets target)
