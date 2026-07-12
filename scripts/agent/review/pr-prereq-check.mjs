@@ -13,6 +13,66 @@ function section(title, body) {
   return `\n[${title}]\n${body.trim()}`;
 }
 
+function todayStamp() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function hasTelemetryCapture(files) {
+  return (files || []).some(
+    (f) => f.startsWith('docs/knowledge/metrics/guard-telemetry/') && f.endsWith('.json'),
+  );
+}
+
+function handoffSlug(file) {
+  return file.match(/^docs\/knowledge\/handoffs\/\d{4}-\d{2}-\d{2}-(.+)\.md$/)?.[1] ?? null;
+}
+
+function ledgerSlug(file) {
+  return (
+    file.match(
+      /^docs\/knowledge\/review-ledgers\/\d{4}-\d{2}-\d{2}-(.+)\.review-ledger\.json$/,
+    )?.[1] ?? null
+  );
+}
+
+function uniqueSlug(files, parser) {
+  const slugs = [...new Set((files || []).map(parser).filter(Boolean))];
+  return slugs.length === 1 ? slugs[0] : null;
+}
+
+export function inferTelemetrySessionSlug(_files, addedFiles = []) {
+  return uniqueSlug(addedFiles, handoffSlug) ?? uniqueSlug(addedFiles, ledgerSlug);
+}
+
+function normalizeSlug(slug) {
+  return slug
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function captureTelemetry(cwd, slug) {
+  const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  return execFileSync(npmCommand, ['run', 'telemetry:capture', '--', slug], {
+    cwd,
+    encoding: 'utf-8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
+function captureErrorDetail(err) {
+  if (!err) {
+    return 'telemetry:capture subprocess failed: no error details available';
+  }
+  if (typeof err?.stderr === 'string' && err.stderr.trim()) {
+    return `telemetry:capture subprocess failed: ${err.stderr.trim()}`;
+  }
+  if (typeof err?.message === 'string' && err.message.trim()) {
+    return `telemetry:capture subprocess failed: ${err.message.trim()}`;
+  }
+  return 'telemetry:capture subprocess failed: unknown error';
+}
+
 export function summarizePrereqResult(preflightDecision, ledgerDecision) {
   const failures = [];
   const notes = [];
@@ -55,17 +115,39 @@ export function evaluatePrereqs(files, addedFiles, cwd, opts = {}) {
   return summarizePrereqResult(preflightDecision, ledgerDecision);
 }
 
-export function telemetryCaptureNote(cwd, files) {
+export function telemetryCaptureNote(cwd, files, addedFiles = [], opts = {}) {
   const artifact = join(cwd, 'files', 'guard-telemetry.jsonl');
   if (!existsSync(artifact)) return null;
-  const hasCapture = (files || []).some(
-    (f) => f.startsWith('docs/knowledge/metrics/guard-telemetry/') && f.endsWith('.json'),
-  );
+  const hasCapture = hasTelemetryCapture(files);
   if (hasCapture) return null;
+  const rawSlug = inferTelemetrySessionSlug(files, addedFiles);
+  const slug = rawSlug ? normalizeSlug(rawSlug) : null;
+  const runCapture = opts.captureTelemetry ?? captureTelemetry;
+  if (slug) {
+    let captureOutput;
+    try {
+      captureOutput = runCapture(cwd, slug) ?? '';
+    } catch (err) {
+      return section(
+        'guard-telemetry',
+        `Automatic guard-telemetry capture failed for session "${slug}". Run ` +
+          `\`npm run telemetry:capture -- ${slug}\` manually before PR.\n\n` +
+          `Last error: ${captureErrorDetail(err)}`,
+      );
+    }
+
+    const captureFile = `docs/knowledge/metrics/guard-telemetry/${todayStamp()}-${slug}.json`;
+    if (captureOutput.includes('Captured ') || existsSync(join(cwd, captureFile))) {
+      return section(
+        'guard-telemetry',
+        `Auto-captured guard telemetry to \`${captureFile}\`. Stage or commit it with the rest of the session artifacts.`,
+      );
+    }
+  }
   return section(
     'guard-telemetry',
     'files/guard-telemetry.jsonl exists but no capture file is staged. Run ' +
-      '`npm run telemetry:capture -- <session-slug>` to commit a durable per-session ' +
+      `\`npm run telemetry:capture -- ${slug ?? '<session-slug>'}\` to commit a durable per-session ` +
       'summary (non-blocking).',
   );
 }
@@ -141,7 +223,7 @@ function main() {
   }
 
   const result = evaluatePrereqs(diff.files, diff.addedFiles, cwd);
-  const telemetryNote = telemetryCaptureNote(cwd, diff.files);
+  const telemetryNote = telemetryCaptureNote(cwd, diff.files, diff.addedFiles);
   if (telemetryNote) {
     result.notes.push(telemetryNote);
   }
