@@ -1,5 +1,16 @@
 [
   {
+    "commit": "76f4dbbafd06af96f5505a852c7e689f5e48b2a1",
+    "commitDate": "2026-07-12T08:04:41-07:00",
+    "commitSubject": "feat(terrain): add deterministic 47-mask terrain packs (#1044)",
+    "capturedAt": "2026-07-12T15:38:39.545Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29197666821",
+    "winRate": 0.9233333333333333,
+    "totalWins": 277,
+    "totalRuns": 300,
+    "path": "by-sha/76f4dbbafd06af96f5505a852c7e689f5e48b2a1.json"
+  },
+  {
     "commit": "9b59adde65c070f014591916a4d70d8151c41eb1",
     "commitDate": "2026-07-11T23:17:18-07:00",
     "commitSubject": "fix: assign Copilot through GraphQL issue intake (#1069)",
