@@ -226,8 +226,8 @@ export function validateCompatibleBoundaries(
  * headroom below the measured rate while still failing loudly if a future
  * re-import regresses the assignment quality.
  */
-export const AUTHORED_MIN_EDGE_PASS_RATE = 1.0;
-export const VENDORED_MIN_EDGE_PASS_RATE = 0.85;
+const AUTHORED_MIN_EDGE_PASS_RATE = 1.0;
+const VENDORED_MIN_EDGE_PASS_RATE = 0.85;
 
 function defaultMinEdgePassRateFor(manifest: TerrainPackDef): number {
   return manifest.provenance.kind === 'authored'

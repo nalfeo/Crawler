@@ -18,7 +18,6 @@ import { TERRAIN_PACK_CELL_PX } from '../../../src/shared/terrain-pack-types.js'
 
 export const ATLAS_GRID_COLS = 8;
 export const ATLAS_GRID_ROWS = 6;
-export const ATLAS_GRID_CELLS = ATLAS_GRID_COLS * ATLAS_GRID_ROWS; // 48
 export const ATLAS_WIDTH_PX = ATLAS_GRID_COLS * TERRAIN_PACK_CELL_PX; // 512
 export const ATLAS_HEIGHT_PX = ATLAS_GRID_ROWS * TERRAIN_PACK_CELL_PX; // 384
 
@@ -35,11 +34,4 @@ export interface MaskFrameAssignment {
  */
 export function buildMaskFrameAssignments(): readonly MaskFrameAssignment[] {
   return BLOB47_CANONICAL_MASKS.map((maskId, frameIndex) => ({ maskId, frameIndex }));
-}
-
-/** Pixel origin (top-left) of `frameIndex` within the atlas grid. */
-export function frameOriginPx(frameIndex: number): { x: number; y: number } {
-  const col = frameIndex % ATLAS_GRID_COLS;
-  const row = Math.floor(frameIndex / ATLAS_GRID_COLS);
-  return { x: col * TERRAIN_PACK_CELL_PX, y: row * TERRAIN_PACK_CELL_PX };
 }

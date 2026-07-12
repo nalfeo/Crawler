@@ -38,7 +38,7 @@ import {
   type SurfacePalette,
 } from './procedural-surfaces.js';
 
-export const INDUSTRIAL_CAVE_PACK_ID = 'industrial-cave' as const;
+const INDUSTRIAL_CAVE_PACK_ID = 'industrial-cave' as const;
 
 const FLOOR_PALETTES: readonly SurfacePalette[] = [
   { base: [46, 42, 40, 255], speckle: [58, 53, 50, 255], speckleDensity: 0.08 },

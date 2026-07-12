@@ -11,7 +11,7 @@
  * alone (see `QUADRANT_EDGE_BAND_PX` below).
  */
 import type { QuadrantCorner, QuadrantState } from '../../../src/shared/terrain-pack-mask.js';
-import { CORNER_ADJACENCY, QUADRANT_CORNERS } from '../../../src/shared/terrain-pack-mask.js';
+import { QUADRANT_CORNERS } from '../../../src/shared/terrain-pack-mask.js';
 import { createImage, fillRect, type RgbaImage } from './png-buffer.js';
 
 /** Source quadrant size in px — 4 quadrants of this size compose one 256x256 wall cell. */
@@ -21,9 +21,9 @@ export const QUADRANT_SRC_PX = 128;
 const EDGE_BAND_PX = QUADRANT_SRC_PX / 2;
 
 /** Industrial-cave wall color (opaque dark rock). Deterministic, original palette choice. */
-export const WALL_COLOR: readonly [number, number, number, number] = [58, 56, 64, 255];
+const WALL_COLOR: readonly [number, number, number, number] = [58, 56, 64, 255];
 /** Slightly lighter accent used for the innermost solid block, for visual depth (not semantic). */
-export const WALL_ACCENT_COLOR: readonly [number, number, number, number] = [72, 70, 80, 255];
+const WALL_ACCENT_COLOR: readonly [number, number, number, number] = [72, 70, 80, 255];
 
 /**
  * All 5 states for a given corner, as (edgeABandRect, edgeBBandRect, innerCornerRect) predicates
@@ -59,7 +59,7 @@ const QUADRANT_GEOMETRY: Record<QuadrantCorner, QuadrantGeometry> = {
  * cell edge's wall/no-wall coverage depends only on the corresponding
  * cardinal bit, which is what the compatible-boundary validator checks.
  */
-export function renderQuadrant(corner: QuadrantCorner, state: QuadrantState): RgbaImage {
+function renderQuadrant(corner: QuadrantCorner, state: QuadrantState): RgbaImage {
   const img = createImage(QUADRANT_SRC_PX, QUADRANT_SRC_PX);
   const geom = QUADRANT_GEOMETRY[corner];
   // 'edgeA'/'edgeB' each mean exactly one adjacent cardinal — normalize per corner naming:
@@ -105,6 +105,3 @@ export function generateQuadrantKit(): ReadonlyMap<string, RgbaImage> {
 export function quadrantKitKey(corner: QuadrantCorner, state: QuadrantState): string {
   return `${corner}:${state}`;
 }
-
-// Re-exported for callers that only need adjacency, avoiding a second import path.
-export { CORNER_ADJACENCY };

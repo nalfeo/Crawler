@@ -38,9 +38,6 @@ export const MASK_BIT = {
 
 export type MaskDirection = keyof typeof MASK_BIT;
 
-/** The four cardinal directions, in the order used for wall-edge classification. */
-export const CARDINAL_DIRECTIONS = ['N', 'E', 'S', 'W'] as const;
-
 /** The four corner (diagonal) directions and their two adjacent cardinals. */
 export const CORNER_ADJACENCY = {
   NE: ['N', 'E'],

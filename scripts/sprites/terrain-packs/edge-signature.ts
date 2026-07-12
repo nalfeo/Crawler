@@ -47,7 +47,7 @@ export const VENDORED_EDGE_SAMPLING: EdgeSamplingConfig = {
 };
 
 /** Mean luminance of an RGBA image; fully-transparent pixels count as background (255, "open-like"). */
-export function meanLuminance(img: RgbaImage): number {
+function meanLuminance(img: RgbaImage): number {
   let sum = 0;
   let count = 0;
   for (let i = 0; i < img.data.length; i += 4) {
@@ -63,11 +63,7 @@ export function meanLuminance(img: RgbaImage): number {
 }
 
 /** Extract a thin sample band along one edge of a (square) cell per the given sampling config. */
-export function sampleEdgeBand(
-  cell: RgbaImage,
-  edge: CellEdge,
-  config: EdgeSamplingConfig,
-): RgbaImage {
+function sampleEdgeBand(cell: RgbaImage, edge: CellEdge, config: EdgeSamplingConfig): RgbaImage {
   const size = cell.width;
   const bandThickness = Math.max(2, Math.round(size * config.bandThicknessFraction));
   const marginStart = Math.round(size * config.marginFraction);

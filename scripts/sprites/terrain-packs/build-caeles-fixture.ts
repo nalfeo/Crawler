@@ -67,16 +67,16 @@ import {
 } from './png-buffer.js';
 import type { BuildOutputFile } from './build-industrial-cave.js';
 
-export const CAELES_FIXTURE_PACK_ID = 'caeles-fixture' as const;
+const CAELES_FIXTURE_PACK_ID = 'caeles-fixture' as const;
 
 /** Explicit source dimensions of the vendored template — pinned, not inferred (refinement #4). */
-export const SOURCE_CELL_PX = 32;
-export const SOURCE_GRID_COLS = 8;
-export const SOURCE_GRID_ROWS = 6;
-export const SOURCE_WIDTH_PX = SOURCE_GRID_COLS * SOURCE_CELL_PX; // 256
-export const SOURCE_HEIGHT_PX = SOURCE_GRID_ROWS * SOURCE_CELL_PX; // 192
+const SOURCE_CELL_PX = 32;
+const SOURCE_GRID_COLS = 8;
+const SOURCE_GRID_ROWS = 6;
+const SOURCE_WIDTH_PX = SOURCE_GRID_COLS * SOURCE_CELL_PX; // 256
+const SOURCE_HEIGHT_PX = SOURCE_GRID_ROWS * SOURCE_CELL_PX; // 192
 
-export const CAELES_PROVENANCE = {
+const CAELES_PROVENANCE = {
   kind: 'vendored' as const,
   originalFilename: 'template8x6.png',
   sourceUrl: 'https://opengameart.org/content/seamless-tileset-template-ii',
@@ -104,7 +104,7 @@ export const CAELES_PROVENANCE = {
 };
 
 /** Read the 48 source cells (row-major) from the vendored template PNG bytes. */
-export function sliceSourceCells(templatePng: Buffer): readonly RgbaImage[] {
+function sliceSourceCells(templatePng: Buffer): readonly RgbaImage[] {
   const img = decodePng(templatePng);
   if (img.width !== SOURCE_WIDTH_PX || img.height !== SOURCE_HEIGHT_PX) {
     throw new Error(
@@ -149,7 +149,7 @@ export function sliceSourceCells(templatePng: Buffer): readonly RgbaImage[] {
  *
  * Returns a Map from maskId -> pool cell index (0-based, excludes the spare).
  */
-export function assignPoolCellsToMasks(
+function assignPoolCellsToMasks(
   poolCells: readonly RgbaImage[],
   spareCell: RgbaImage,
 ): Map<number, number> {
