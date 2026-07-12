@@ -82,7 +82,7 @@ None.
 ## Branch State
 
 - Branch: `copilot/fix-ai-runner-exploring-issue`
-- PR: #652 (closes issue #652)
+- PR: #1056 (closes issue #652)
 - All tests passing: yes.
 
 ## Systems touched

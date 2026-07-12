@@ -12,13 +12,13 @@
  * For every (seed, weapon) pair in the matrix it records the full {@link SimEvent}
  * stream, reduces it with {@link summarizeEvents}, and asserts:
  *
- *   - `longestWiggleMs`  < 90 s — wiggle = moving a lot but going nowhere
+ *   - `longestWiggleMs`  < 45 s — wiggle = moving a lot but going nowhere
  *     (oscillation/thrash). The pre-fix worst case was 194 s (seed 13) / 338 s
  *     (seed 15 post-spawner). A healthy run's longest wiggle is a few seconds.
  *
- *   - `longestStuckMs`   < 30 s — stuck = near-zero displacement. The global
- *     dwell watchdog fires every 5 s, so 30 s provides a wide margin while
- *     catching any multi-second park that bypasses all watchdogs.
+ *   - `longestStuckMs`   < 30 s — stuck = contiguous near-zero displacement
+ *     measured directly from sampled movement, not from BT `stuckFrames`
+ *     (which are reset by local recovery).
  *
  * Thresholds sit far above healthy baselines (sword: longest wiggle ≤ 1.25 s,
  * longest stuck ≈ 0 s; bat: ≤ 1.25 s / ≈ 0 s) so normal combat kiting and
@@ -37,22 +37,22 @@
  *
  * ## Budget
  *
- * Each run uses a bounded frame budget (12 000 frames ≈ 200 s game time) — well
- * past the park onset window (seed 13 wedged at ~150 s, seed 15 at ~340 s across
- * the full run, but the 33% spike appeared within 200 s). A completing run inside
+ * Each run uses a bounded frame budget (12 000 frames ≈ 200 s game time). With a
+ * 45 s wiggle ceiling this still observes known onset windows plus threshold with
+ * margin (e.g. seed 13 wedge onset around ~150 s). A completing run inside
  * the budget records the full event history; a run that exceeds the budget still
  * produces a valid event log for the portion simulated, which is enough to flag a
  * sustained park episode.
  *
- * At ~1 900 simulated-FPS each truncated run takes ≈ 6 s wall time; the 20-seed
- * sword sweep is ~120 s, comfortably inside the 180 s hook timeout.
+ * At ~1 900 simulated-FPS each truncated run takes ≈ 8 s wall time; the 20-seed
+ * sword sweep is ~160 s, comfortably inside the 10-minute hook timeout.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { summarizeEvents, type EventSummary, type SimEvent } from '../../src/game/ai/event-log.js';
 
-/** Bounded frame budget: covers the park-onset window without running to completion. */
+/** Bounded frame budget: covers park onset + a full 45 s sustained episode window. */
 const PARK_SLICE_FRAMES = 12_000;
 
 /**
@@ -60,15 +60,16 @@ const PARK_SLICE_FRAMES = 12_000;
  * Pre-fix worst cases: 194 s (seed 13 nav-wedge), 338 s (seed 15 ENGAGE thrash).
  * Current healthy baselines: ≤ 1.25 s per run.
  */
-const MAX_WIGGLE_MS = 90_000;
+const MAX_WIGGLE_MS = 45_000;
 
 /**
- * Maximum sustained stuck (near-zero displacement) episode allowed.
- * Global dwell watchdog fires every 5 s, so any remaining stuck episode that
- * bypasses all watchdogs would exceed 5 s → a 30 s ceiling catches the bug class
- * while tolerating harvesting pauses and normal kite-back frames.
+ * Maximum sustained contiguous near-zero displacement episode allowed.
+ * This is measured directly from sampled net displacement so it cannot be masked
+ * by local BT stuck-frame resets.
  */
 const MAX_STUCK_MS = 30_000;
+const STUCK_NET_DISP_EPSILON_FT = 2;
+const STUCK_PATH_TRAVEL_EPSILON_FT = 1;
 
 // ---------------------------------------------------------------------------
 // Seeds from the issue acceptance criteria and the original repro table
@@ -104,6 +105,27 @@ interface ParkProbe {
   summary: EventSummary;
 }
 
+function computeLongestNearZeroDispMs(events: readonly SimEvent[]): number {
+  const samples = events.filter((event) => event.type === 'sample');
+  let currentMs = 0;
+  let longestMs = 0;
+  for (let i = 0; i < samples.length - 1; i += 1) {
+    const sample = samples[i]!;
+    const next = samples[i + 1]!;
+    const dt = Math.max(0, next.gameMs - sample.gameMs);
+    const isExploreSample = sample.state.startsWith('EXPLORE');
+    const isNearZeroDisp = sample.netDisp <= STUCK_NET_DISP_EPSILON_FT;
+    const isNearZeroTravel = sample.pathTravel <= STUCK_PATH_TRAVEL_EPSILON_FT;
+    if (isExploreSample && isNearZeroDisp && isNearZeroTravel) {
+      currentMs += dt;
+      longestMs = Math.max(longestMs, currentMs);
+    } else {
+      currentMs = 0;
+    }
+  }
+  return longestMs;
+}
+
 async function runParkProbe(seed: number, weapon: string): Promise<ParkProbe> {
   const events: SimEvent[] = [];
   const ai = new BehaviorTreeAI({ seed });
@@ -118,7 +140,7 @@ async function runParkProbe(seed: number, weapon: string): Promise<ParkProbe> {
   const summary = summarizeEvents(events);
   return {
     longestWiggleMs: summary.wiggleEpisodes[0]?.durationMs ?? 0,
-    longestStuckMs: summary.stuckEpisodes[0]?.durationMs ?? 0,
+    longestStuckMs: computeLongestNearZeroDispMs(events),
     summary,
   };
 }
@@ -139,7 +161,7 @@ function assertNoSustainedPark(probe: ParkProbe, label: string): void {
 
 /**
  * Hook timeout for the 20-seed sword sweep: 20 runs × ~12 s each on a slow CI
- * runner = ~240 s. Use 10 minutes to give CI plenty of headroom without masking
+ * runner = ~160 s. Use 10 minutes to give CI plenty of headroom without masking
  * a genuine performance regression (the per-run budget already bounds each run).
  */
 const SWEEP_HOOK_TIMEOUT_MS = 10 * 60 * 1000;
@@ -153,7 +175,7 @@ describe('Floor-1 park watchdog — seeds 1–20 (sword)', () => {
 
   // Run all 20 seeds sequentially inside a single beforeAll so the simulation
   // cost is paid once; each seed then gets its own it() assertions.
-  // 20 × ~12 s wall time per truncated run ≈ 240 s on a CI runner.
+  // 20 × ~8 s wall time per truncated run ≈ 160 s on a CI runner.
   beforeAll(async () => {
     for (const seed of SEEDS_1_TO_20) {
       probes.set(seed, await runParkProbe(seed, 'sword'));
