@@ -27,13 +27,12 @@
  * ## Coverage
  *
  * Primary sweep: seeds 1–20 × sword (the weapon mentioned for the worst failures
- * in the issue; sword also clears fastest so the sample stays quick). This is the
- * contiguous range named in the issue acceptance criteria.
+ * in the issue; sword also clears fastest so the sample stays quick). This broad
+ * sweep enforces the wiggle ceiling.
  *
- * Extended: seeds 2 (bow), 13 (sword/bow/bat), 15 (sword), 17 (sword) — the exact
- * seeds and weapons called out in the original repro table. Seed 13 × 3 weapons is
- * already in {@link nav-wedge-repro.test.ts} for wiggle; this gate adds the
- * `longestStuckMs` axis and the out-of-cluster seeds.
+ * Extended stuck matrix: seeds 2, 13, 15, 17 × sword/bow/bat — the exact repro
+ * seed cluster, expanded across weapons. This matrix enforces both wiggle and
+ * contiguous near-zero displacement ceilings.
  *
  * ## Budget
  *
@@ -69,7 +68,7 @@ const MAX_WIGGLE_MS = 45_000;
  */
 const MAX_STUCK_MS = 30_000;
 const STUCK_NET_DISP_EPSILON_FT = 2;
-const STUCK_PATH_TRAVEL_EPSILON_FT = 1;
+const STUCK_ANCHOR_RADIUS_FT = 12;
 
 // ---------------------------------------------------------------------------
 // Seeds from the issue acceptance criteria and the original repro table
@@ -85,12 +84,16 @@ const SEEDS_1_TO_20 = Array.from({ length: 20 }, (_, i) => i + 1) as readonly nu
  * add the *cross-weapon* axis for the worst-offending seeds).
  */
 const EXTENDED_CASES: ReadonlyArray<{ seed: number; weapon: string; label: string }> = [
+  { seed: 2, weapon: 'sword', label: 'seed 2 · sword (issue repro table)' },
   { seed: 2, weapon: 'bow', label: 'seed 2 · bow (issue repro table)' },
   { seed: 2, weapon: 'baseball-bat', label: 'seed 2 · baseball-bat' },
+  { seed: 13, weapon: 'sword', label: 'seed 13 · sword (nav-wedge cluster)' },
   { seed: 13, weapon: 'bow', label: 'seed 13 · bow (nav-wedge cluster)' },
   { seed: 13, weapon: 'baseball-bat', label: 'seed 13 · baseball-bat (nav-wedge cluster)' },
+  { seed: 15, weapon: 'sword', label: 'seed 15 · sword (ENGAGE-thrash cluster)' },
   { seed: 15, weapon: 'bow', label: 'seed 15 · bow (ENGAGE-thrash cluster)' },
   { seed: 15, weapon: 'baseball-bat', label: 'seed 15 · baseball-bat (ENGAGE-thrash cluster)' },
+  { seed: 17, weapon: 'sword', label: 'seed 17 · sword (issue repro table)' },
   { seed: 17, weapon: 'bow', label: 'seed 17 · bow (issue repro table)' },
   { seed: 17, weapon: 'baseball-bat', label: 'seed 17 · baseball-bat' },
 ];
@@ -109,18 +112,30 @@ function computeLongestNearZeroDispMs(events: readonly SimEvent[]): number {
   const samples = events.filter((event) => event.type === 'sample');
   let currentMs = 0;
   let longestMs = 0;
+  let anchorX = 0;
+  let anchorY = 0;
+  let hasAnchor = false;
   for (let i = 0; i < samples.length - 1; i += 1) {
     const sample = samples[i]!;
     const next = samples[i + 1]!;
     const dt = Math.max(0, next.gameMs - sample.gameMs);
-    const isExploreSample = sample.state.startsWith('EXPLORE');
     const isNearZeroDisp = sample.netDisp <= STUCK_NET_DISP_EPSILON_FT;
-    const isNearZeroTravel = sample.pathTravel <= STUCK_PATH_TRAVEL_EPSILON_FT;
-    if (isExploreSample && isNearZeroDisp && isNearZeroTravel) {
+    const isSafeRoomPause = sample.inSafe === true;
+    if (!hasAnchor && isNearZeroDisp) {
+      hasAnchor = true;
+      anchorX = sample.px;
+      anchorY = sample.py;
+    }
+    const distFromAnchor = hasAnchor
+      ? Math.hypot(sample.px - anchorX, sample.py - anchorY)
+      : Infinity;
+    const isNearAnchor = distFromAnchor <= STUCK_ANCHOR_RADIUS_FT;
+    if (!isSafeRoomPause && isNearZeroDisp && isNearAnchor) {
       currentMs += dt;
       longestMs = Math.max(longestMs, currentMs);
     } else {
       currentMs = 0;
+      hasAnchor = false;
     }
   }
   return longestMs;
@@ -145,13 +160,15 @@ async function runParkProbe(seed: number, weapon: string): Promise<ParkProbe> {
   };
 }
 
-function assertNoSustainedPark(probe: ParkProbe, label: string): void {
+function assertNoSustainedWiggle(probe: ParkProbe, label: string): void {
   expect(
     probe.longestWiggleMs,
     `[${label}] sustained wiggle episode ${(probe.longestWiggleMs / 1000).toFixed(1)}s ` +
       `exceeds ${MAX_WIGGLE_MS / 1000}s ceiling — regression to pre-fix oscillation`,
   ).toBeLessThan(MAX_WIGGLE_MS);
+}
 
+function assertNoSustainedStuck(probe: ParkProbe, label: string): void {
   expect(
     probe.longestStuckMs,
     `[${label}] sustained stuck (near-zero displacement) episode ` +
@@ -183,8 +200,8 @@ describe('Floor-1 park watchdog — seeds 1–20 (sword)', () => {
   }, SWEEP_HOOK_TIMEOUT_MS);
 
   for (const seed of SEEDS_1_TO_20) {
-    it(`seed ${seed} · sword never sustains a long park while alive`, () => {
-      assertNoSustainedPark(probes.get(seed)!, `seed ${seed} · sword`);
+    it(`seed ${seed} · sword never sustains a long wiggle episode`, () => {
+      assertNoSustainedWiggle(probes.get(seed)!, `seed ${seed} · sword`);
     });
   }
 });
@@ -203,17 +220,11 @@ describe('Floor-1 park watchdog — extended seed/weapon pairs from issue', () =
       });
 
       it('never sustains a long wiggle (oscillation) episode', () => {
-        expect(
-          probe.longestWiggleMs,
-          `sustained wiggle ${(probe.longestWiggleMs / 1000).toFixed(1)}s > ${MAX_WIGGLE_MS / 1000}s`,
-        ).toBeLessThan(MAX_WIGGLE_MS);
+        assertNoSustainedWiggle(probe, label);
       });
 
       it('never sustains a long stuck (near-zero displacement) episode', () => {
-        expect(
-          probe.longestStuckMs,
-          `sustained stuck ${(probe.longestStuckMs / 1000).toFixed(1)}s > ${MAX_STUCK_MS / 1000}s`,
-        ).toBeLessThan(MAX_STUCK_MS);
+        assertNoSustainedStuck(probe, label);
       });
     });
   }

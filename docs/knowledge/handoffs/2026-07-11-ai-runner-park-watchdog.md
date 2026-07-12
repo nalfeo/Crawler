@@ -35,23 +35,22 @@ win-rate capped at ~75%."
   75% → 87.5% → 90%.
 
 **New regression guard added:**
-`tests/headless/floor1-park-watchdog.test.ts` (36 tests)
+`tests/headless/floor1-park-watchdog.test.ts` (44 tests)
 
 Coverage:
 
 - **Seeds 1–20 × sword** — bounded 12 000-frame (~200 s game time) budget per seed.
-  Asserts `longestWiggleMs < 90 s` and `longestStuckMs < 30 s` per seed.
+  Asserts `longestWiggleMs < 45 s` per seed.
   Explicit `beforeAll` timeout of 10 minutes to survive slow CI runners.
 - **Extended (seed, weapon) pairs from the issue repro table** — seeds 2, 13, 15, 17
-  × {bow, baseball-bat} (the cross-weapon axis; seed 13 × 3 weapons was already
-  covered by nav-wedge-repro.test.ts for wiggle; this adds the stuck axis and the
-  remaining seeds).
+  × {sword, bow, baseball-bat}. This matrix enforces both wiggle and stuck
+  ceilings on the known repro cluster.
 
 Thresholds:
 
-- `MAX_WIGGLE_MS = 90 000` (90 s) — sits far below the pre-fix worst cases (194 s
-  seed 13, 338 s seed 15) while tolerating all current behavior (worst seen: 33 s
-  seed 8 bow in ENGAGE during combat, not EXPLORE).
+- `MAX_WIGGLE_MS = 45 000` (45 s) — sits far below the pre-fix worst cases (194 s
+  seed 13, 338 s seed 15) while fitting the 200 s observation window for known
+  ~150 s onset.
 - `MAX_STUCK_MS = 30 000` (30 s) — the global dwell watchdog fires every 5 s
   (GLOBAL_DWELL_FRAMES = 300), so 30 s provides wide margin against the bug class
   while tolerating harvesting pauses.
