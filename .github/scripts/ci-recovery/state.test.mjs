@@ -17,6 +17,7 @@ import {
   renderStateComment,
   shouldResolveThread,
   shouldSkipRepoIncidentWorkflowRun,
+  shouldMutateRecoveryState,
 } from './state.mjs';
 
 test('normalizes blocker order before fingerprinting', () => {
@@ -162,6 +163,15 @@ test('expires shepherd leases after TTL plus queue grace', () => {
   assert.equal(isLeaseExpired(state, new Date('2026-07-11T12:34:59.000Z')), false);
   assert.equal(isLeaseExpired(state, new Date('2026-07-11T12:35:01.000Z')), true);
   assert.equal(ownerLabel(42), 'ci-owner-pr-42');
+});
+
+test('lease operations persist while automated recovery is in dry-run mode', () => {
+  assert.equal(shouldMutateRecoveryState('dry-run', 'lease-acquire'), true);
+  assert.equal(shouldMutateRecoveryState('dry-run', 'lease-heartbeat'), true);
+  assert.equal(shouldMutateRecoveryState('dry-run', 'lease-release'), true);
+  assert.equal(shouldMutateRecoveryState('dry-run', 'reconcile'), false);
+  assert.equal(shouldMutateRecoveryState('live', 'reconcile'), true);
+  assert.equal(shouldMutateRecoveryState('off', 'lease-acquire'), false);
 });
 
 test('rejects duplicate dispatches for the same head and blocker fingerprint', () => {

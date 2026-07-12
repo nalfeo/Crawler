@@ -7,6 +7,7 @@ import {
   makeState,
   normalizeBlockers,
   reviewThreadBlockerId,
+  shouldMutateRecoveryState,
   ownerLabel,
   parseStateComment,
   renderStateComment,
@@ -25,7 +26,7 @@ const leaseId = (process.env.LEASE_ID || '').trim();
 const mode = (process.env.CI_RECOVERY_MODE || 'dry-run').toLowerCase();
 const pat = process.env.CRAWLER_CI_PAT || '';
 const readToken = pat || process.env.GITHUB_TOKEN || '';
-const live = mode === 'live';
+const live = shouldMutateRecoveryState(mode, operation);
 const now = new Date();
 
 if (!owner || !repo || !Number.isInteger(prNumber) || !readToken) {
