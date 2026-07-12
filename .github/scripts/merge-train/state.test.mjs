@@ -8,8 +8,10 @@ import {
   normalizeMode,
   queueEntries,
   renderStatus,
+  resolveAdmissionChecks,
   successfulChecks,
   trainCheckState,
+  unsatisfiedChecks,
 } from './state.mjs';
 
 const pr = (number, overrides = {}) => ({
@@ -28,6 +30,11 @@ test('normalizes supported modes and rejects unknown values', () => {
   assert.equal(normalizeMode('LIVE'), 'live');
   assert.equal(normalizeMode(''), 'off');
   assert.throws(() => normalizeMode('unsafe'), /Unsupported/);
+});
+
+test('parses admission checks and falls back to defaults when empty', () => {
+  assert.deepEqual(resolveAdmissionChecks(' ci, commit-lint '), ['ci', 'commit-lint']);
+  assert.deepEqual(resolveAdmissionChecks(''), ['ci', 'commit-lint', 'Security checks']);
 });
 
 test('orders eligible same-repository PRs by creation time', () => {
@@ -69,6 +76,14 @@ test('required checks use the latest attempt and require success', () => {
   ];
   assert.equal(successfulChecks(runs, ['ci', 'commit-lint']), true);
   assert.equal(successfulChecks(runs, ['ci', 'missing']), false);
+});
+
+test('unsatisfied checks keep completed non-successful admissions waiting', () => {
+  const runs = [
+    { id: 1, name: 'ci', status: 'completed', conclusion: 'skipped' },
+    { id: 2, name: 'commit-lint', status: 'completed', conclusion: 'success' },
+  ];
+  assert.deepEqual(unsatisfiedChecks(runs, ['ci', 'commit-lint']), ['ci']);
 });
 
 test('train check state distinguishes missing, pending, failed, and successful checks', () => {

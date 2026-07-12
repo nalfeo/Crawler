@@ -21,6 +21,16 @@ export function normalizeMode(value) {
   return mode;
 }
 
+export function resolveAdmissionChecks(value, defaults = DEFAULT_ADMISSION_CHECKS) {
+  const checks = Array.isArray(value)
+    ? value
+    : String(value || '')
+        .split(',')
+        .map((name) => name.trim())
+        .filter(Boolean);
+  return checks.length > 0 ? checks : [...defaults];
+}
+
 export function queueEntries(pullRequests, repository) {
   return pullRequests
     .filter(
@@ -84,12 +94,16 @@ export function latestChecksByName(checkRuns) {
   return checks;
 }
 
-export function successfulChecks(checkRuns, requiredNames = DEFAULT_ADMISSION_CHECKS) {
+export function unsatisfiedChecks(checkRuns, requiredNames = DEFAULT_ADMISSION_CHECKS) {
   const checks = latestChecksByName(checkRuns);
-  return requiredNames.every((name) => {
+  return requiredNames.filter((name) => {
     const check = checks.get(name.toLowerCase());
-    return check?.status === 'completed' && check.conclusion === 'success';
+    return check?.status !== 'completed' || check.conclusion !== 'success';
   });
+}
+
+export function successfulChecks(checkRuns, requiredNames = DEFAULT_ADMISSION_CHECKS) {
+  return unsatisfiedChecks(checkRuns, requiredNames).length === 0;
 }
 
 export function trainCheckState(checkRuns) {

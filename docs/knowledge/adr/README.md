@@ -174,7 +174,7 @@ hundreds of inbound references.
 - [Slicer cuts only at real gutters — data-driven grid salvage](0052-slicer-never-cut-through-art.md) — the slicer never invents a cut; grid/count are read from the sheet (brief is a soft anchor), runt edge cells are trimmed, and the generation count gate is relaxed. Reverses the 2026-07-07 force-count reconciliation that chopped art on the right edge.
 - [GitHub-first broad-sweep execution and investigation-session process boundary](0056-github-first-broad-sweep-and-investigation-session-policy.md) — broad sweeps (>10 runs) default to GitHub workflow dispatch; investigation sessions stay process-light unless shipping merge-intent code.
 - [GitHub-native CI recovery ownership](0058-github-native-ci-recovery-ownership.md) — trusted, deduplicated CI recovery and shepherd ownership.
-- [Repository-managed speculative merge train](0059-repository-managed-speculative-merge-train.md) — validates two cumulative candidates and advances `main` only to the exact tested SHA.
+- [Repository-managed speculative merge train](0060-repository-managed-speculative-merge-train.md) — validates two cumulative candidates and advances `main` only to the exact tested SHA.
 
 ---
 

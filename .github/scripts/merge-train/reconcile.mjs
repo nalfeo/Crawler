@@ -2,16 +2,21 @@ import { execFileSync } from 'node:child_process';
 
 import { listReviewThreads, paginate, request } from '../ci-recovery/github.mjs';
 import {
+  buildCandidate,
+  isMergeTrainConflictError,
+  promoteExactCandidate,
+  trainCheckTitle,
+} from './reconcile-lib.mjs';
+import {
   BLOCKED_LABEL,
   CANDIDATE_CHECK_NAME,
   candidateFingerprint,
   candidateRef,
-  commitTimestamp,
-  DEFAULT_ADMISSION_CHECKS,
   normalizeMode,
   QUEUE_LABEL,
   queueEntries,
   REQUIRED_CHECK_NAME,
+  resolveAdmissionChecks,
   renderStatus,
   STATUS_MARKER,
   successfulChecks,
@@ -23,12 +28,7 @@ const [owner, repo] = repository.split('/');
 const token = process.env.MERGE_TRAIN_TOKEN || process.env.GITHUB_TOKEN || '';
 const mode = normalizeMode(process.env.MERGE_TRAIN_MODE);
 const live = mode === 'live';
-const admissionChecks = (process.env.MERGE_TRAIN_ADMISSION_CHECKS || '')
-  .split(',')
-  .map((name) => name.trim())
-  .filter(Boolean);
-const requiredAdmissionChecks =
-  admissionChecks.length > 0 ? admissionChecks : DEFAULT_ADMISSION_CHECKS;
+const requiredAdmissionChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
 
 if (!owner || !repo || !token) {
   throw new Error('Merge train requires GITHUB_REPOSITORY and a GitHub token');
@@ -125,60 +125,6 @@ async function eligible(pr) {
   return { ok: true };
 }
 
-function buildCandidate(baseSha, entries, refName) {
-  git(['fetch', 'origin', 'main', '--prune']);
-  for (const entry of entries) {
-    git([
-      'fetch',
-      'origin',
-      `refs/pull/${entry.number}/head:refs/remotes/merge-train/pr-${entry.number}`,
-      '--force',
-    ]);
-  }
-  git(['checkout', '--detach', baseSha]);
-  for (const entry of entries) {
-    try {
-      git(['merge', '--squash', '--no-commit', `refs/remotes/merge-train/pr-${entry.number}`]);
-    } catch (error) {
-      try {
-        git(['merge', '--abort']);
-      } catch {}
-      git(['reset', '--hard', baseSha]);
-      throw new Error(
-        `PR #${entry.number} conflicts in the cumulative candidate: ${error.message}`,
-      );
-    }
-    const title = String(entry.title)
-      .replace(/[\r\n]+/g, ' ')
-      .trim();
-    const timestamp = commitTimestamp(entry);
-    git(
-      [
-        'commit',
-        '-m',
-        `${title} (#${entry.number})`,
-        '-m',
-        `Merge-Train-PR: ${entry.number}\nMerge-Train-Original-Head: ${entry.head.sha}`,
-      ],
-      {
-        env: {
-          GIT_AUTHOR_DATE: timestamp,
-          GIT_COMMITTER_DATE: timestamp,
-          GIT_AUTHOR_NAME: 'crawler-merge-train[bot]',
-          GIT_AUTHOR_EMAIL: 'crawler-merge-train[bot]@users.noreply.github.com',
-          GIT_COMMITTER_NAME: 'crawler-merge-train[bot]',
-          GIT_COMMITTER_EMAIL: 'crawler-merge-train[bot]@users.noreply.github.com',
-        },
-      },
-    );
-  }
-  const sha = git(['rev-parse', 'HEAD']);
-  if (live) {
-    git(['push', '--force', 'origin', `${sha}:refs/heads/${refName}`]);
-  }
-  return sha;
-}
-
 async function createTrainCheck(
   sha,
   fingerprint,
@@ -196,10 +142,7 @@ async function createTrainCheck(
       external_id: fingerprint,
       ...(conclusion ? { conclusion } : {}),
       output: {
-        title:
-          status === 'completed'
-            ? 'Merge-train validation could not start'
-            : 'Merge-train validation queued',
+        title: trainCheckTitle(status, conclusion),
         summary: `Fingerprint: ${fingerprint}`,
       },
     },
@@ -229,79 +172,6 @@ async function dispatchValidation(sha, fingerprint, entries) {
     await createTrainCheck(sha, fingerprint, 'completed', 'failure');
     throw error;
   }
-}
-
-async function promote(pr, candidateSha, expectedBase, position) {
-  const currentPr = (await request(token, `/repos/${owner}/${repo}/pulls/${pr.number}`)).data;
-  const currentMain = (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data
-    .object.sha;
-  if (
-    currentMain !== expectedBase ||
-    currentPr.head.sha !== pr.head.sha ||
-    currentPr.title !== pr.title ||
-    currentPr.state !== 'open'
-  ) {
-    process.stdout.write(`stale promotion pr=#${pr.number}; rebuilding on next reconcile\n`);
-    return false;
-  }
-  const admission = await eligible(currentPr);
-  if (!admission.ok) {
-    process.stdout.write(`blocked promotion pr=#${pr.number} reason=${admission.reason}\n`);
-    return false;
-  }
-  const parent = git(['rev-parse', `${candidateSha}^`]);
-  if (parent !== expectedBase) {
-    throw new Error(`Candidate ${candidateSha} is not a direct child of current main`);
-  }
-  if (!live) {
-    process.stdout.write(`dry-run would-promote pr=#${pr.number} sha=${candidateSha}\n`);
-    return false;
-  }
-  const promotionFingerprint = candidateFingerprint(expectedBase, [currentPr]);
-  await createTrainCheck(
-    candidateSha,
-    promotionFingerprint,
-    'completed',
-    'success',
-    REQUIRED_CHECK_NAME,
-  );
-  const headRef = currentPr.head.ref;
-  if (!/^[A-Za-z0-9._/-]+$/.test(headRef)) {
-    throw new Error(`Unsafe PR head ref: ${headRef}`);
-  }
-  try {
-    git([
-      'push',
-      '--atomic',
-      'origin',
-      `${candidateSha}:refs/heads/${headRef}`,
-      `${candidateSha}:refs/heads/main`,
-      `--force-with-lease=refs/heads/${headRef}:${currentPr.head.sha}`,
-      `--force-with-lease=refs/heads/main:${expectedBase}`,
-    ]);
-  } catch (error) {
-    await createTrainCheck(
-      candidateSha,
-      promotionFingerprint,
-      'completed',
-      'failure',
-      REQUIRED_CHECK_NAME,
-    );
-    throw error;
-  }
-  await removeLabel(pr.number, QUEUE_LABEL);
-  await removeLabel(pr.number, BLOCKED_LABEL);
-  await updateStatus(
-    pr.number,
-    renderStatus({
-      position,
-      candidateSha,
-      state: 'merged',
-      detail: 'The exact validated candidate fast-forwarded main.',
-    }),
-  );
-  process.stdout.write(`promoted pr=#${pr.number} sha=${candidateSha}\n`);
-  return true;
 }
 
 await ensureLabel(QUEUE_LABEL, '1f6feb', 'Ready for the repository-managed merge train');
@@ -346,19 +216,34 @@ for (let index = 0; index < train.length; index += 1) {
   const refName = candidateRef(index + 1, fingerprint);
   let candidateSha;
   try {
-    candidateSha = buildCandidate(mainSha, entries, refName);
+    candidateSha = buildCandidate({ baseSha: mainSha, entries, refName, git, live });
     await removeLabel(train[index].number, BLOCKED_LABEL);
   } catch (error) {
-    await setLabel(train[index].number, BLOCKED_LABEL);
-    await removeLabel(train[index].number, QUEUE_LABEL);
+    if (isMergeTrainConflictError(error)) {
+      await setLabel(train[index].number, BLOCKED_LABEL);
+      await removeLabel(train[index].number, QUEUE_LABEL);
+      await updateStatus(
+        train[index].number,
+        renderStatus({
+          position: index + 1,
+          candidateSha: '',
+          state: 'blocked',
+          detail: error.message,
+        }),
+      );
+      break;
+    }
     await updateStatus(
       train[index].number,
       renderStatus({
         position: index + 1,
         candidateSha: '',
-        state: 'blocked',
+        state: 'waiting',
         detail: error.message,
       }),
+    );
+    process.stdout.write(
+      `retryable candidate build failure pr=#${train[index].number} error=${error.message}\n`,
     );
     break;
   }
@@ -394,7 +279,24 @@ for (let index = 0; index < train.length; index += 1) {
     }),
   );
   if (index === 0 && state === 'success') {
-    await promote(train[0], candidateSha, mainSha, 1);
+    await promoteExactCandidate({
+      pr: train[0],
+      candidateSha,
+      expectedBase: mainSha,
+      position: 1,
+      repository,
+      live,
+      fetchCurrentPr: async () =>
+        (await request(token, `/repos/${owner}/${repo}/pulls/${train[0].number}`)).data,
+      fetchCurrentMain: async () =>
+        (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data.object.sha,
+      eligible,
+      git,
+      createTrainCheck,
+      removeLabel,
+      updateStatus,
+      requiredCheckName: REQUIRED_CHECK_NAME,
+    });
     break;
   }
 }

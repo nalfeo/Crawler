@@ -30,7 +30,7 @@ ci-policy
   queue ordering.
 - Integrated CI recovery and auto-rebase: clean PRs enter the train in live mode,
   and queued/blocked PRs are not rewritten by legacy automation.
-- Added eight deterministic state tests, ADR 0059, operator rollout guidance, and
+- Added eight deterministic state tests, ADR 0060, operator rollout guidance, and
   four-apple review-harness evidence.
 - Observed in the deterministic merge-train artifact (`node --test
 ".github/scripts/merge-train/*.test.mjs"`): before, no queue state model
