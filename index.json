@@ -44,6 +44,17 @@
     "path": "by-sha/0bbbbfc748da9f92e1e3f2665c1cac014de1fbf5.json"
   },
   {
+    "commit": "1574af3f54a50151db457e4d1968524cc398aa79",
+    "commitDate": "2026-07-12T15:12:53-07:00",
+    "commitSubject": "fix(ci): persist shepherd leases during CI recovery dry-run (#1072)",
+    "capturedAt": "2026-07-12T22:48:27.465Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29211301229",
+    "winRate": 0.9233333333333333,
+    "totalWins": 277,
+    "totalRuns": 300,
+    "path": "by-sha/1574af3f54a50151db457e4d1968524cc398aa79.json"
+  },
+  {
     "commit": "76f4dbbafd06af96f5505a852c7e689f5e48b2a1",
     "commitDate": "2026-07-12T08:04:41-07:00",
     "commitSubject": "feat(terrain): add deterministic 47-mask terrain packs (#1044)",
