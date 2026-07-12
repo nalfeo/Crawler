@@ -196,6 +196,26 @@ const cases: Case[] = [
   {
     name: 'workflow change',
     files: ['.github/workflows/ci.yml'],
+    expected: F(false, false, true, false, false),
+  },
+  {
+    name: 'github actions change',
+    files: ['.github/actions/setup-node/action.yml'],
+    expected: F(false, false, true, false, false),
+  },
+  {
+    name: 'github extensions change',
+    files: ['.github/extensions/copilot-guards/guard.ts'],
+    expected: F(false, false, true, false, false),
+  },
+  {
+    name: 'mixed workflow + engine (non-gameplay)',
+    files: ['.github/workflows/ci.yml', 'src/engine/render/foo.ts'],
+    expected: F(false, false, true, false, false),
+  },
+  {
+    name: 'workflow + game code (gameplay-unsafe)',
+    files: ['.github/workflows/ci.yml', 'src/game/combat.ts'],
     expected: F(false, false, false, false, false),
   },
   // Sprite pipeline paths: gameplay_safe=true, sprites_only=true, sprites_touched=true.
