@@ -44,6 +44,17 @@
     "path": "by-sha/0bbbbfc748da9f92e1e3f2665c1cac014de1fbf5.json"
   },
   {
+    "commit": "66309457be4940840961a6264ead10b38d8378d3",
+    "commitDate": "2026-07-12T16:07:16-07:00",
+    "commitSubject": "feat: add an exact-SHA speculative merge train (#1064)",
+    "capturedAt": "2026-07-12T23:43:15.529Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29213043198",
+    "winRate": 0.9233333333333333,
+    "totalWins": 277,
+    "totalRuns": 300,
+    "path": "by-sha/66309457be4940840961a6264ead10b38d8378d3.json"
+  },
+  {
     "commit": "1574af3f54a50151db457e4d1968524cc398aa79",
     "commitDate": "2026-07-12T15:12:53-07:00",
     "commitSubject": "fix(ci): persist shepherd leases during CI recovery dry-run (#1072)",
