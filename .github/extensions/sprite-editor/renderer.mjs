@@ -1125,6 +1125,12 @@ const CLIENT_SCRIPT = String.raw`
 
   async function loadList(options) {
     var opts = options || {};
+    var expectedFingerprint =
+      typeof opts.expectedFingerprint === 'string' ? opts.expectedFingerprint : null;
+    if (expectedFingerprint && currentEditorFingerprint() !== expectedFingerprint) {
+      setStatus('Skipped list refresh to preserve newer edits.');
+      return;
+    }
     if (!opts.skipDirtyGuard) {
       var dirtyDecision = await confirmLeaveIfDirty();
       if (dirtyDecision.status === 'save_failed') return;
@@ -1146,6 +1152,10 @@ const CLIENT_SCRIPT = String.raw`
     try {
       var data = await fetchJson('/api/list?' + qs.toString());
       if (listToken !== listTokenCounter) return;
+      if (expectedFingerprint && currentEditorFingerprint() !== expectedFingerprint) {
+        setStatus('Skipped list refresh to preserve newer edits.');
+        return;
+      }
       sprites = data.sprites || [];
       if (totalEl) totalEl.textContent = String(data.total || 0);
       refreshTagsDatalist(data.availableTags || []);
@@ -1277,14 +1287,14 @@ const CLIENT_SCRIPT = String.raw`
         return false;
       }
     }
-    var expectedEditGen = editGeneration;
+    var expectedFingerprint = currentEditorFingerprint();
     var loadToken = ++loadTokenCounter;
     setStatus('Loading sprite…');
     try {
       var data = await fetchJson('/api/sprite?key=' + encodeURIComponent(key));
       if (loadToken !== loadTokenCounter) return false;
-      if (editGeneration !== expectedEditGen) {
-        setStatus('Stayed on current sprite: edits changed while the new sprite was loading.');
+      if (expectedFingerprint && currentEditorFingerprint() !== expectedFingerprint) {
+        setStatus('Stayed on current sprite: newer edits were made while loading.');
         return false;
       }
       var nextSprite = data.sprite || null;
@@ -1295,8 +1305,8 @@ const CLIENT_SCRIPT = String.raw`
       }
       await loadImage(loadToken, nextSprite.key);
       if (loadToken !== loadTokenCounter) return false;
-      if (editGeneration !== expectedEditGen) {
-        setStatus('Stayed on current sprite: edits changed while the image was loading.');
+      if (expectedFingerprint && currentEditorFingerprint() !== expectedFingerprint) {
+        setStatus('Stayed on current sprite: newer edits were made while loading.');
         return false;
       }
       sprite = nextSprite;
@@ -2340,7 +2350,12 @@ const CLIENT_SCRIPT = String.raw`
       captureLastSavedSnapshot();
       renderEditor({ skipDraftPersist: true });
       resetBaseline();
-      if (options.refreshList !== false) await loadList({ skipDirtyGuard: true });
+      if (options.refreshList !== false) {
+        await loadList({
+          skipDirtyGuard: true,
+          expectedFingerprint: currentEditorFingerprint()
+        });
+      }
       setStatus('Saved to disk.');
       return true;
     } catch (error) {
