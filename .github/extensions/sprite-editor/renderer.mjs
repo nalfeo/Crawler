@@ -1227,6 +1227,7 @@ const CLIENT_SCRIPT = String.raw`
                   var dirtyDecision = await confirmLeaveIfDirty();
                   if (dirtyDecision.status === 'save_failed' || dirtyDecision.status === 'cancelled') return;
                   setMutationInFlight(true);
+                  var editorFingerprintAtStart = currentEditorFingerprint();
                   var currentFavorite = !!item.favorite;
                   var currentDisliked = !!item.disliked;
                   var currentComment = item.comment ? String(item.comment) : '';
@@ -1247,7 +1248,9 @@ const CLIENT_SCRIPT = String.raw`
                       }
                     })
                   });
-                  await loadList({ skipDirtyGuard: true });
+                  if (currentEditorFingerprint() === editorFingerprintAtStart) {
+                    await loadList({ skipDirtyGuard: true });
+                  }
                   setStatus((!currentFavorite ? 'Marked' : 'Unmarked') + ' favorite.');
                 } catch (error) {
                   setStatus(error.message || String(error), true);
@@ -1284,18 +1287,19 @@ const CLIENT_SCRIPT = String.raw`
         setStatus('Stayed on current sprite: edits changed while the new sprite was loading.');
         return false;
       }
-      sprite = data.sprite || null;
-      if (!sprite) {
+      var nextSprite = data.sprite || null;
+      if (!nextSprite) {
         renderEditor();
         setStatus('Sprite not found.', true);
         return false;
       }
-      await loadImage(loadToken);
+      await loadImage(loadToken, nextSprite.key);
       if (loadToken !== loadTokenCounter) return false;
       if (editGeneration !== expectedEditGen) {
         setStatus('Stayed on current sprite: edits changed while the image was loading.');
         return false;
       }
+      sprite = nextSprite;
       renderEditor({ skipDraftPersist: true });
       resetBaseline();
       if (opts.updateSelection !== false) {
@@ -1317,10 +1321,10 @@ const CLIENT_SCRIPT = String.raw`
     return canvas.toDataURL('image/png');
   }
 
-  async function loadImage(loadToken) {
-    if (!sprite) return;
+  async function loadImage(loadToken, spriteKey) {
+    if (!spriteKey) return;
     var img = new Image();
-    img.src = '/img/sprite?key=' + encodeURIComponent(sprite.key) + '&_ts=' + Date.now();
+    img.src = '/img/sprite?key=' + encodeURIComponent(spriteKey) + '&_ts=' + Date.now();
     await new Promise(function (resolve, reject) {
       img.onload = resolve;
       img.onerror = reject;
@@ -1863,7 +1867,10 @@ const CLIENT_SCRIPT = String.raw`
       holdX: sprite ? Number(sprite.holdX || 0) : 0,
       holdY: sprite ? Number(sprite.holdY || 0) : 0,
       pivotX: sprite ? Number(sprite.pivotX || 0) : 0,
-      pivotY: sprite ? Number(sprite.pivotY || 0) : 0
+      pivotY: sprite ? Number(sprite.pivotY || 0) : 0,
+      sampledBackgroundPoint: sampledBackgroundPoint
+        ? { x: Number(sampledBackgroundPoint.x), y: Number(sampledBackgroundPoint.y) }
+        : null
     };
   }
 
@@ -1875,6 +1882,12 @@ const CLIENT_SCRIPT = String.raw`
       a.pivotX !== b.pivotX ||
       a.pivotY !== b.pivotY
     ) {
+      return true;
+    }
+    var aSample = a.sampledBackgroundPoint;
+    var bSample = b.sampledBackgroundPoint;
+    if (!!aSample !== !!bSample) return true;
+    if (aSample && bSample && (aSample.x !== bSample.x || aSample.y !== bSample.y)) {
       return true;
     }
     if (
@@ -1925,6 +1938,12 @@ const CLIENT_SCRIPT = String.raw`
     if (yInput) yInput.value = String(state.holdY);
     if (pivotXInput) pivotXInput.value = String(state.pivotX);
     if (pivotYInput) pivotYInput.value = String(state.pivotY);
+    sampledBackgroundPoint = state.sampledBackgroundPoint
+      ? {
+          x: Math.min(canvas.width - 1, Math.max(0, Math.round(state.sampledBackgroundPoint.x))),
+          y: Math.min(canvas.height - 1, Math.max(0, Math.round(state.sampledBackgroundPoint.y)))
+        }
+      : null;
   }
 
   function pushUndoState(state) {
@@ -2353,7 +2372,7 @@ const CLIENT_SCRIPT = String.raw`
       if (!sprite || sprite.key !== expectedKey) return;
       sprite = data.sprite || sprite;
       var loadToken = ++loadTokenCounter;
-      await loadImage(loadToken);
+      await loadImage(loadToken, sprite.key);
       if (loadToken !== loadTokenCounter) return;
       renderEditor({ skipDraftPersist: true });
       resetBaseline();
@@ -3132,7 +3151,7 @@ const CLIENT_SCRIPT = String.raw`
       fieldNum('col', 'Column', sprite.col == null ? 0 : sprite.col),
       fieldNum('row', 'Row', sprite.row == null ? 0 : sprite.row),
       (function () {
-        var wrap = h('div', { class: 'field' }, [h('label', { text: 'Facing' })]);
+        var wrap = h('div', { class: 'field' }, [h('label', { for: 'facing', text: 'Facing' })]);
         var select = h('select', { id: 'facing' }, [
           h('option', { value: 'right', text: 'right' }),
           h('option', { value: 'left', text: 'left' })
