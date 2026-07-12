@@ -33,7 +33,7 @@ import {
 } from '../../src/game/systems/emergentEventSystem.js';
 import { _resetEmergentEventCache } from '../../src/shared/data/emergent-events.js';
 import { runSimulationStep as runHeadlessStep } from '../../src/game/ai/simulation-step.js';
-import { createFloor1MainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
+import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 import { createInputState } from '../../src/shared/input.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -232,8 +232,8 @@ describe('Floor 2 emergent events · end-to-end propagation through the pipeline
     // The headless pipeline includes familyRelationshipSystem AND
     // emergentEventSystem — draining the queue observably. Pass canonical
     // preSystems (the single source of truth for ordering, issue #663).
-    const floor1Opts = createFloor1MainSceneOptions();
-    runHeadlessStep(world, createInputState(), 16, { preSystems: floor1Opts.preSystems });
+    const floor2Opts = createFloorMainSceneOptions('floor2');
+    runHeadlessStep(world, createInputState(), 16, { preSystems: floor2Opts.preSystems });
     expect(world.factionRelationDeltas).toHaveLength(0);
 
     // Family index 0 got the tribute-delivered lever (+10 from tuning).

@@ -11,34 +11,8 @@
  * divergences for `weaponSystem` and `floor1EnemyDirectorSystem` tracked in
  * issue #663.
  */
-import {
-  playerInputSystem,
-  movementSystem,
-  returningProjectileSystem,
-  collisionSystem,
-  corpseStepSystem,
-  aoeOnImpactPreDamage,
-  aoeOnImpactPostDamage,
-  damageSystem,
-  areaDamageSystem,
-  meleeSwingSystem,
-  knockbackSystem,
-  beamSystem,
-  trapSystem,
-  itemPickupSystem,
-  harvestSystem,
-  dropSystem,
-  deathTimerSystem,
-  spawnAnimSystem,
-  healthSystem,
-  lifetimeSystem,
-  projectileCleanupSystem,
-  doorSystem,
-  fovSystem,
-  safeRoomSystem,
-  npcSystem,
-  type GameWorld,
-} from '../../core/index.js';
+import { type GameWorld } from '../../core/index.js';
+import { runCoreSimulationStep } from '../../core/systems/simulation-core-step.js';
 import type { InputState } from '../../shared/input.js';
 
 /**
@@ -115,51 +89,10 @@ export function runSimulationStep(
   world.frameCount += 1;
   world.elapsedMs += deltaMs;
 
-  playerInputSystem(world, input);
-
-  for (const sys of options.preSystems ?? []) {
-    sys(world);
-  }
-
-  movementSystem(world);
-  returningProjectileSystem(world);
-  const collision = collisionSystem(world);
-  aoeOnImpactPreDamage(world);
-  damageSystem(world, collision);
-  aoeOnImpactPostDamage(world);
-  areaDamageSystem(world, collision);
-  // meleeSwingSystem uses this frame's fresh spatial-hash grid (built by
-  // collisionSystem above) as a superset broad-phase. That is only sound while
-  // nothing moves a combat target between the grid build and here — do NOT insert
-  // a target-translating system into this seam without re-proving determinism.
-  // The invariant is guarded by tests/headless/melee-broadphase-pipeline-determinism.test.ts.
-  meleeSwingSystem(world, options.meleeBroadPhase === false ? undefined : collision);
-  knockbackSystem(world);
-  // beamSystem reuses the same grid, but knockbackSystem above has since moved
-  // entities, so the grid is STALE by up to world.maxKnockbackStepThisFrame.
-  // beamSystem inflates its broad-phase radius by that bound to stay a guaranteed
-  // superset; guarded by tests/headless/beam-broadphase-pipeline-determinism.test.ts.
-  beamSystem(world, options.beamBroadPhase === false ? undefined : collision);
-  trapSystem(world, collision);
-  itemPickupSystem(world, collision);
-  harvestSystem(world);
-  dropSystem(world);
-  // Corpse step: the player brushing a still-lingering corpse has a small
-  // chance to burst it into shards. See engine/sim/simulation-step.ts for the
-  // full ordering rationale — same seam here (after dropSystem, before
-  // deathTimerSystem) so a triggered corpse is reaped this frame.
-  corpseStepSystem(world);
-  deathTimerSystem(world);
-  spawnAnimSystem(world);
-  healthSystem(world);
-  lifetimeSystem(world);
-  projectileCleanupSystem(world);
-  doorSystem(world);
-  fovSystem(world);
-  safeRoomSystem(world);
-  npcSystem(world);
-
-  for (const sys of options.postSystems ?? []) {
-    sys(world);
-  }
+  runCoreSimulationStep(world, input, {
+    preSystems: options.preSystems,
+    postSystems: options.postSystems,
+    meleeBroadPhase: options.meleeBroadPhase,
+    beamBroadPhase: options.beamBroadPhase,
+  });
 }

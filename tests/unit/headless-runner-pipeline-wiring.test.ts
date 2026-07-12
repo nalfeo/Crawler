@@ -22,12 +22,11 @@ describe('headless pipeline wiring — pipeline-parity contract (issue #663)', (
   });
 
   it('headless-runner builds pre/post systems from createFloorMainSceneOptions', () => {
-    // The runner must call createFloorMainSceneOptions and spread/use its
-    // preSystems and postSystems into the step options.
+    // The runner must call createFloorMainSceneOptions and pass the merged
+    // canonical arrays directly into runSimulationStep.
     expect(HEADLESS_RUNNER_SRC).toMatch(/createFloorMainSceneOptions\(/);
-    // It must consume .preSystems from those options.
-    expect(HEADLESS_RUNNER_SRC).toContain('preSystems');
-    expect(HEADLESS_RUNNER_SRC).toContain('postSystems');
+    expect(HEADLESS_RUNNER_SRC).toContain('preSystems: mergedPreSystems');
+    expect(HEADLESS_RUNNER_SRC).toContain('postSystems: mergedPostSystems');
   });
 
   it('headless simulation-step does NOT hardcode game-layer systems', () => {

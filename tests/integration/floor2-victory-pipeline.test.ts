@@ -18,7 +18,7 @@ import { loadResources } from '../../src/shared/data/resources.js';
 import { FLOOR2_LEAVE_FLOOR_QUEST_ID } from '../../src/shared/quest-types.js';
 import { createInputState } from '../../src/shared/input.js';
 import { runSimulationStep } from '../../src/game/ai/simulation-step.js';
-import { questSystem, achievementSystem } from '../../src/game/index.js';
+import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 
 function smallCaveConfig(seed: number): MapConfig {
   return {
@@ -86,18 +86,9 @@ describe('Floor 2 Slice 5 — victory pipeline', () => {
     }
 
     world.floorObjectiveTick = floor2ObjectiveTick;
-    // TODO(#663-followup): Replace inline postSystems with canonical
-    // createFloor2MainSceneOptions().postSystems once a floor2 bootstrap
-    // options function is added (currently there is only createFloor1MainSceneOptions).
+    const floor2Options = createFloorMainSceneOptions('floor2');
     runSimulationStep(world, createInputState(), 16, {
-      postSystems: [
-        // floorObjectiveSystem delegates to world.floorObjectiveTick, which is
-        // set above to floor2ObjectiveTick. questSystem and achievementSystem
-        // must follow so quest state latches in the same step.
-        (w) => w.floorObjectiveTick?.(w),
-        questSystem,
-        achievementSystem,
-      ],
+      postSystems: floor2Options.postSystems,
     });
 
     expect(world.goalFlags.get(FLOOR2_VICTORY_GOAL_ID)).toBe(true);
