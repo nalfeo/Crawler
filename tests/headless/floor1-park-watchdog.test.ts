@@ -189,6 +189,7 @@ async function runParkProbe(seed: number, weapon: string): Promise<ParkProbe> {
 }
 
 function assertNoSustainedWiggle(probe: ParkProbe, label: string): void {
+  expect(probe.summary.totalSamples, `[${label}] expected sampled telemetry`).toBeGreaterThan(0);
   expect(
     probe.longestWiggleMs,
     `[${label}] sustained wiggle episode ${(probe.longestWiggleMs / 1000).toFixed(1)}s ` +
