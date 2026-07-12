@@ -9,13 +9,24 @@
  *   - Pack selector  — switch between registered packs (caeles-fixture, industrial-cave)
  *   - Cell size      — zoom level for the wall-atlas grid preview
  *   - Show grid      — draw frame boundaries on the wall atlas
+ *   - Map Preview    — generate a full dungeon floor and render it with the active pack
  */
 
 import GUI from 'lil-gui';
+import { getGenerator } from '../../core/map/generators/registry.js';
 import { getAllTerrainPackIds, getTerrainPack } from '../../shared/terrain-pack-registry.js';
 import { resolvePublicAssetUrl } from '../../engine/generatedAssets/preload.js';
 import { registerLab } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
+import { BiomeType, TerrainType, TileFlags, type MapConfig } from '../../shared/map-types.js';
+import { SeededRandom } from '../../shared/random.js';
+import { computeRawMask8, normalizeBlob47Mask } from '../../shared/terrain-pack-mask.js';
+import {
+  pickPoolVariant,
+  resolveDoorOrientationFromFlanks,
+  resolveDoorPoolVariant,
+} from '../../shared/terrain-pack-variants.js';
+import { TERRAIN_FALLBACK_COLORS, colorToCss } from '../../shared/terrain-colors.js';
 import type { TerrainPackId } from '../../shared/terrain-pack-types.js';
 
 const LAB_ID = 'terrain-pack-lab';
@@ -26,16 +37,44 @@ const PACK_IDS = getAllTerrainPackIds();
 const ATLAS_COLS = 8;
 const ATLAS_ROWS = 6;
 
+/** Terrain types considered walls for 47-mask connectivity. */
+const PACK_WALL_TERRAINS = new Set<number>([
+  TerrainType.STONE_WALL,
+  TerrainType.CAVE_WALL,
+  TerrainType.VOID,
+]);
+
+/** Terrain types rendered using the floor pool. */
+const PACK_FLOOR_TERRAINS = new Set<number>([
+  TerrainType.STONE_FLOOR,
+  TerrainType.BOSS_STAIR_FLOOR,
+  TerrainType.SAFE_ROOM_FLOOR,
+]);
+
+/** Terrain types rendered using the corridor pool. */
+const PACK_CORRIDOR_TERRAINS = new Set<number>([TerrainType.CORRIDOR]);
+
+/** CSS fallback per terrain, derived from the engine fallback colour table. */
+const FALLBACK_CSS: Record<number, string> = Object.fromEntries(
+  Object.entries(TERRAIN_FALLBACK_COLORS).map(([k, v]) => [k, colorToCss(v)]),
+);
+
 interface LabSettings {
   packId: string;
   cellSize: number;
   showGrid: boolean;
+  mapBiome: BiomeType;
+  mapSeed: number;
+  mapCellSize: number;
 }
 
 const DEFAULT_SETTINGS: LabSettings = {
   packId: PACK_IDS[0] ?? 'caeles-fixture',
   cellSize: 64,
   showGrid: true,
+  mapBiome: BiomeType.DUNGEON,
+  mapSeed: 1,
+  mapCellSize: 8,
 };
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
@@ -67,6 +106,25 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
 
   const ctx = canvas.getContext('2d')!;
 
+  // ── Map preview canvas ────────────────────────────────────────────────────
+  const mapLabel = document.createElement('div');
+  mapLabel.textContent = 'Map Preview';
+  mapLabel.style.cssText =
+    'color:#ccc;font:600 13px/1 monospace;margin:12px 0 4px 0;text-align:center';
+  canvasHost.appendChild(mapLabel);
+
+  const mapCanvas = document.createElement('canvas');
+  mapCanvas.style.display = 'block';
+  mapCanvas.style.margin = '0 auto';
+  canvasHost.appendChild(mapCanvas);
+
+  const mapStatsEl = document.createElement('div');
+  mapStatsEl.style.cssText =
+    'color:#999;font:11px/1.4 monospace;text-align:center;white-space:pre;margin-top:4px';
+  canvasHost.appendChild(mapStatsEl);
+
+  const mapCtx = mapCanvas.getContext('2d')!;
+
   // ── Image cache ───────────────────────────────────────────────────────────
   // Maps textureKey → { img, loaded, error }
   const imageCache = new Map<string, ReturnType<typeof loadImage>>();
@@ -91,6 +149,7 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
     rafId = requestAnimationFrame(() => {
       rafId = 0;
       render();
+      renderMapPreview();
     });
   }
 
@@ -272,6 +331,132 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
     }
   }
 
+  // ── Map preview rendering ─────────────────────────────────────────────────
+  function renderMapPreview(): void {
+    const pack = getTerrainPack(settings.packId as TerrainPackId);
+    const cell = settings.mapCellSize;
+    const biome = settings.mapBiome;
+    const seed = settings.mapSeed;
+
+    const mapConfig: MapConfig = {
+      biome,
+      seed,
+      widthTiles: 80,
+      heightTiles: 50,
+      tileSizeFt: 4,
+      maxRooms: 18,
+      floorDensity: 0.45,
+      roomWidthRange: [5, 14],
+      roomHeightRange: [5, 10],
+    };
+
+    const generator = getGenerator(biome);
+    const map = generator.generate(mapConfig, new SeededRandom(seed));
+
+    mapCanvas.width = map.width * cell;
+    mapCanvas.height = map.height * cell;
+    mapCtx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
+
+    const atlasEntry = getOrLoad(`${settings.packId}:wall-autotile`, pack.wallAutotile.imagePath);
+
+    const ATLAS_FW = pack.wallAutotile.cellPx;
+    const ATLAS_FH = pack.wallAutotile.cellPx;
+    const ATLAS_SPACING = 0;
+    const ATLAS_COLS_PACK = pack.wallAutotile.gridCols;
+
+    /** Build a direct maskId → frameIndex lookup from the masks array. */
+    const maskToFrame = new Map<number, number>(
+      pack.wallAutotile.masks.map((e) => [e.maskId, e.frameIndex]),
+    );
+
+    for (let ty = 0; ty < map.height; ty++) {
+      for (let tx = 0; tx < map.width; tx++) {
+        const idx = ty * map.width + tx;
+        const terrain = map.terrain[idx] as number;
+        const flags = map.flags[idx] ?? 0;
+        const dx = tx * cell;
+        const dy = ty * cell;
+
+        if (PACK_WALL_TERRAINS.has(terrain)) {
+          // Compute 47-mask for this wall tile
+          const rawMask = computeRawMask8(tx, ty, map.width, map.height, (nx, ny) => {
+            const ni = ny * map.width + nx;
+            return PACK_WALL_TERRAINS.has(map.terrain[ni] as number);
+          });
+          const maskIndex = normalizeBlob47Mask(rawMask);
+          const frameNum = maskToFrame.get(maskIndex) ?? 0;
+          const acol = frameNum % ATLAS_COLS_PACK;
+          const arow = Math.floor(frameNum / ATLAS_COLS_PACK);
+          const srcX = acol * (ATLAS_FW + ATLAS_SPACING);
+          const srcY = arow * (ATLAS_FH + ATLAS_SPACING);
+
+          if (atlasEntry.loaded) {
+            mapCtx.drawImage(atlasEntry.img, srcX, srcY, ATLAS_FW, ATLAS_FH, dx, dy, cell, cell);
+          } else {
+            mapCtx.fillStyle = FALLBACK_CSS[terrain] ?? '#553c75';
+            mapCtx.fillRect(dx, dy, cell, cell);
+          }
+        } else if ((flags & TileFlags.DOOR) !== 0) {
+          const leftTerrain = tx > 0 ? (map.terrain[idx - 1] as number) : TerrainType.VOID;
+          const rightTerrain =
+            tx < map.width - 1 ? (map.terrain[idx + 1] as number) : TerrainType.VOID;
+          const isHorizontal =
+            PACK_WALL_TERRAINS.has(leftTerrain) || PACK_WALL_TERRAINS.has(rightTerrain);
+          const orientation = resolveDoorOrientationFromFlanks(isHorizontal);
+          const doorVariant = resolveDoorPoolVariant(pack.doorSet, {
+            isOpen: false,
+            orientation,
+          });
+          if (doorVariant) {
+            const doorEntry = getOrLoad(doorVariant.textureKey, doorVariant.imagePath);
+            if (doorEntry.loaded) {
+              mapCtx.drawImage(doorEntry.img, dx, dy, cell, cell);
+            } else {
+              mapCtx.fillStyle = '#8b5cf6';
+              mapCtx.fillRect(dx, dy, cell, cell);
+            }
+          } else {
+            mapCtx.fillStyle = '#8b5cf6';
+            mapCtx.fillRect(dx, dy, cell, cell);
+          }
+        } else if (PACK_FLOOR_TERRAINS.has(terrain)) {
+          const variant = pickPoolVariant(pack.floorPool, seed, tx, ty);
+          if (variant) {
+            const entry = getOrLoad(variant.textureKey, variant.imagePath);
+            if (entry.loaded) {
+              mapCtx.drawImage(entry.img, dx, dy, cell, cell);
+            } else {
+              mapCtx.fillStyle = FALLBACK_CSS[terrain] ?? '#4a3f35';
+              mapCtx.fillRect(dx, dy, cell, cell);
+            }
+          } else {
+            mapCtx.fillStyle = FALLBACK_CSS[terrain] ?? '#4a3f35';
+            mapCtx.fillRect(dx, dy, cell, cell);
+          }
+        } else if (PACK_CORRIDOR_TERRAINS.has(terrain)) {
+          const variant = pickPoolVariant(pack.corridorPool, seed, tx, ty);
+          if (variant) {
+            const entry = getOrLoad(variant.textureKey, variant.imagePath);
+            if (entry.loaded) {
+              mapCtx.drawImage(entry.img, dx, dy, cell, cell);
+            } else {
+              mapCtx.fillStyle = FALLBACK_CSS[terrain] ?? '#2d2d4e';
+              mapCtx.fillRect(dx, dy, cell, cell);
+            }
+          } else {
+            mapCtx.fillStyle = FALLBACK_CSS[terrain] ?? '#2d2d4e';
+            mapCtx.fillRect(dx, dy, cell, cell);
+          }
+        } else {
+          mapCtx.fillStyle = FALLBACK_CSS[terrain] ?? '#0a0a0f';
+          mapCtx.fillRect(dx, dy, cell, cell);
+        }
+      }
+    }
+
+    mapStatsEl.textContent = `${map.width}×${map.height}  Rooms: ${map.rooms.length}  Biome: ${biome}  Seed: ${seed}`;
+  }
+
   // ── GUI controls ──────────────────────────────────────────────────────────
   gui
     .add(settings, 'packId', PACK_IDS as unknown as string[])
@@ -302,11 +487,54 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
       scheduleRender();
     });
 
+  // ── Map Preview GUI folder ─────────────────────────────────────────────────
+  const mapFolder = gui.addFolder('Map Preview');
+  mapFolder
+    .add(settings, 'mapBiome', [BiomeType.DUNGEON, BiomeType.CAVE_SYSTEM] as BiomeType[])
+    .name('Biome')
+    .onChange((v: BiomeType) => {
+      settings.mapBiome = v;
+      saveLabState(LAB_ID, settings);
+      scheduleRender();
+    });
+  mapFolder
+    .add(settings, 'mapSeed', 1, 2_000_000, 1)
+    .name('Seed')
+    .onChange((v: number) => {
+      settings.mapSeed = v;
+      saveLabState(LAB_ID, settings);
+      scheduleRender();
+    });
+  mapFolder
+    .add(settings, 'mapCellSize', 4, 24, 2)
+    .name('Cell Size')
+    .onChange((v: number) => {
+      settings.mapCellSize = v;
+      saveLabState(LAB_ID, settings);
+      scheduleRender();
+    });
+  mapFolder
+    .add(
+      {
+        nextSeed: () => {
+          settings.mapSeed = settings.mapSeed >= 2_000_000 ? 1 : settings.mapSeed + 1;
+          gui.controllersRecursive().forEach((c) => c.updateDisplay());
+          saveLabState(LAB_ID, settings);
+          scheduleRender();
+        },
+      },
+      'nextSeed',
+    )
+    .name('➕ Next Seed');
+
   scheduleRender();
 
   return () => {
     if (rafId) cancelAnimationFrame(rafId);
     canvas.remove();
+    mapCanvas.remove();
+    mapLabel.remove();
+    mapStatsEl.remove();
   };
 }
 
