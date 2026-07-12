@@ -310,9 +310,14 @@ import {
 } from './tactical-opportunity-evaluator.js';
 
 const logger = createLogger('game:bt-ai-provider');
-/** Exported for `tests/game/behavior-tree-ai.test.ts` so the retained-egress
- * clear-window tests reference the real constant instead of a magic number. */
-export const SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES = 30;
+/**
+ * Consecutive outside-safe polls required before active egress ownership clears.
+ * The legacy 30-frame waypoint latch did not own movement outside the room; using
+ * that duration for an exclusive lease made normal runs charge past the exit.
+ * Two polls reject a one-frame mouth-boundary flicker without extending egress
+ * steering into outside combat.
+ */
+export const SAFE_ROOM_EGRESS_ACTIVE_CLEAR_FRAMES = 2;
 
 /**
  * Data-only execution payload shared by every migrated movement-intent owner
@@ -2189,11 +2194,11 @@ export class BehaviorTreeAI implements AIInputProvider {
    * greedy priority selector — it is computed unconditionally every poll
    * (see the call site in `poll()`) and handed to the arbiter as a real
    * {@link NavigationCommitment} consumer: the commitment's `clearWindowFrames`
-   * (not a hand-rolled counter) lets a retained egress lease survive up to
-   * {@link SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES} consecutive outside-safe
-   * polls before releasing, so the AI commits to leaving instead of
-   * oscillating across the boundary or abandoning egress the instant it
-   * crosses the threshold.
+   * (not a hand-rolled counter) requires
+   * {@link SAFE_ROOM_EGRESS_ACTIVE_CLEAR_FRAMES} consecutive outside-safe polls
+   * before releasing. This rejects a one-frame boundary flicker without
+   * conflating the legacy non-owning 30-frame waypoint latch with exclusive
+   * outside-safe movement ownership.
    *
    * Returns `null` when there is nothing to propose (no latched waypoint and
    * the player is not currently inside a safe room).
@@ -2283,7 +2288,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       arrivalDistanceFt: WAYPOINT_ARRIVE_FT,
       progressEpsilonFt: STUCK_PROGRESS_EPSILON_FT,
       maxOwnerNoProgressFrames: null,
-      clearWindowFrames: SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES,
+      clearWindowFrames: SAFE_ROOM_EGRESS_ACTIVE_CLEAR_FRAMES,
       arrival: 'reseed',
     };
     const facts: NavigationCommitmentFacts = {

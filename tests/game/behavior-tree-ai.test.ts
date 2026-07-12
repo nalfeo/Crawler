@@ -14,7 +14,7 @@ import { createInputState } from '../../src/shared/input.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import {
   BehaviorTreeAI,
-  SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES,
+  SAFE_ROOM_EGRESS_ACTIVE_CLEAR_FRAMES,
 } from '../../src/game/ai/bt-ai-provider.js';
 import { MovementIntentOwner } from '../../src/game/ai/movement-intent-arbiter.js';
 import { hasClearLineOfSight } from '../../src/game/ai/bt-ai-geometry.js';
@@ -1047,18 +1047,18 @@ describe('BehaviorTreeAI', () => {
     expect(latched.targetX).toBeCloseTo(firstTargetX, 6);
     expect(latched.targetY).toBeCloseTo(firstTargetY, 6);
 
-    // Step outside the safe room: the egress lease is retained for a
-    // SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES-poll clear window (NavigationCommitment
-    // owns this clock now — the provider no longer runs a duplicate
-    // safeRoomEgressOutsideFrames counter). It must not release early just
-    // because the original threat wandered off.
+    // Step outside the safe room: the egress lease is retained for the active
+    // clear window (NavigationCommitment owns this clock now — the provider no
+    // longer runs a duplicate safeRoomEgressOutsideFrames counter). It must not
+    // release on the first outside sample just because the original threat
+    // wandered off.
     world.playerInSafeRoom = false;
     world.stores.position.x[player] = 20;
     world.stores.position.y[player] = 10;
 
     for (
       let outsideFrame = 1;
-      outsideFrame < SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES;
+      outsideFrame < SAFE_ROOM_EGRESS_ACTIVE_CLEAR_FRAMES;
       outsideFrame += 1
     ) {
       ai.poll(input, world);
@@ -1068,10 +1068,10 @@ describe('BehaviorTreeAI', () => {
       expect(stillRetained.reason).toContain('Leaving safe room');
     }
 
-    // The SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES-th consecutive outside-safe poll
-    // clears the commitment and the legacy Hunt fallback resumes on the same
-    // far threat (the tree's own Hunt pick, since the arbiter's release this
-    // exact poll selects nothing and leaves it untouched).
+    // The configured consecutive outside-safe poll clears the commitment and
+    // the legacy Hunt fallback resumes on the same far threat (the tree's own
+    // Hunt pick, since the arbiter's release this exact poll selects nothing
+    // and leaves it untouched).
     ai.poll(input, world);
     const postExit = ai.getDecision();
     expect(postExit.state).toBe(AIState.ENGAGE);
@@ -1143,7 +1143,7 @@ describe('BehaviorTreeAI', () => {
       }
     });
 
-    it('keeps a retained egress lease through the entire 30-frame outside clear window despite a critical-HP Retreat proposal', () => {
+    it('keeps a retained egress lease through the active outside clear window despite a critical-HP Retreat proposal', () => {
       const { world, ai, input, player } = establishRetainedEgressUnderCriticalRetreatThreat(102);
 
       world.playerInSafeRoom = false;
@@ -1152,7 +1152,7 @@ describe('BehaviorTreeAI', () => {
 
       for (
         let outsideFrame = 1;
-        outsideFrame < SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES;
+        outsideFrame < SAFE_ROOM_EGRESS_ACTIVE_CLEAR_FRAMES;
         outsideFrame += 1
       ) {
         ai.poll(input, world);
@@ -1173,15 +1173,15 @@ describe('BehaviorTreeAI', () => {
 
       for (
         let outsideFrame = 1;
-        outsideFrame < SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES;
+        outsideFrame < SAFE_ROOM_EGRESS_ACTIVE_CLEAR_FRAMES;
         outsideFrame += 1
       ) {
         ai.poll(input, world);
       }
 
-      // The 30th consecutive outside-safe poll clears the egress commitment
-      // and acquires the already-eligible Retreat proposal in the same
-      // resolution.
+      // The configured consecutive outside-safe poll clears the egress
+      // commitment and acquires the already-eligible Retreat proposal in the
+      // same resolution.
       ai.poll(input, world);
       const releaseFrame = ai.getDecision();
       expect(releaseFrame.state).toBe(AIState.RETREAT);
@@ -1376,16 +1376,13 @@ describe('BehaviorTreeAI', () => {
       ai.poll(input, world);
       expect(ai.getMovementIntentDebug()?.owner).toBe(MovementIntentOwner.SAFE_ROOM_EGRESS);
 
-      // Step outside — egress remains retained, well within the 30-frame window.
+      // A barrier-verified locked arena appears at the exit. On the first
+      // outside-safe poll, egress is still retained inside its active debounce,
+      // so the physical lock must exercise the explicit preemption path.
+      const spawnerEid = makeLockedSpawnerNearPlayer(world, 20, 10);
       world.playerInSafeRoom = false;
       world.stores.position.x[player] = 20;
       world.stores.position.y[player] = 10;
-      ai.poll(input, world);
-      expect(ai.getDecision().reason).toContain('Leaving safe room');
-      expect(ai.getMovementIntentDebug()?.owner).toBe(MovementIntentOwner.SAFE_ROOM_EGRESS);
-
-      // A barrier-verified locked arena appears right next to the player.
-      const spawnerEid = makeLockedSpawnerNearPlayer(world, 20, 10);
       ai.poll(input, world);
 
       const decision = ai.getDecision();

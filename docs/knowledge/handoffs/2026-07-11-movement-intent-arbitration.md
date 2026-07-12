@@ -28,8 +28,10 @@ ai-behavior-tree, ai-pathfinding, ai-combat-balance, quests, ci-policy
   SafeRoomEgress, and Progression proposal metadata into the arbiter seam while
   retaining legacy fallback for Engage, Collect, Hunt, and Explore.
 - Made SafeRoomEgress the first production NavigationCommitment consumer. Its
-  waypoint remains owned for 30 consecutive outside-safe frames, then releases
-  and hands off to an eligible challenger in the same resolution.
+  normal clear path requires two consecutive outside-safe frames, rejecting a
+  one-frame mouth-boundary flicker before handing off to an eligible challenger
+  in the same resolution. An allowed barrier-verified ArenaLockin may still
+  preempt on the first outside-safe frame.
 - Preserved legal same-safe noncombat objectives and a retained merchant-fetch
   route crossing safe space without allowing enemy-backed Progression to park
   there.
@@ -65,6 +67,10 @@ completes the merchant quest, and times out later in boss/combat progression.
 - Non-selected egress proposals cannot mutate the waypoint latch. This prevents
   an ineligible proposal from becoming eligible one frame later after crossing
   the safe-space boundary.
+- Active egress uses a two-frame outside-safe clear window. The old 30-frame
+  provider latch was non-owning outside the room; reusing its duration for an
+  exclusive lease caused the first cloud gate to fall from 556/600 to 524/600
+  by steering normal runs through outside combat.
 - The dependent Retreat slice must consume these modules directly and provide
   immutable facts/policy only; it must not create a parallel commitment reducer
   or private progress counters.
@@ -95,6 +101,10 @@ completes the merchant quest, and times out later in boss/combat progression.
 - The initial preemption path reused the retained owner's NavigationCommitment
   when installing a challenger. The early signal was a selected egress lease
   whose stored navigation target still named Progression.
+- The first cloud implementation conflated a 30-frame non-owning waypoint latch
+  with 30 frames of exclusive movement ownership. The source-vs-branch cloud
+  artifacts showed 44 lost official wins and only 12 gains, with repeated
+  cross-weapon seed flips, before the active clear window was corrected.
 - The egress builder initially latched a waypoint before declaring itself
   unavailable. Seed 76 exposed the resulting next-frame Progression↔egress
   oscillation.

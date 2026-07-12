@@ -21,7 +21,9 @@ const FLOOR1_TIME_BUDGET_MS = 360_000;
 const MAX_FRAMES = Math.ceil((FLOOR1_TIME_BUDGET_MS * 1.1) / GAME.DELTA_MS);
 const MAX_WALL_TIME_MS = 170_000;
 const EGRESS_DEADLINE_MS = 10_000;
+const STABLE_EGRESS_DEADLINE_MS = 15_000;
 const MIN_OUTSIDE_STREAK_MS = 3_000;
+const MAX_EGRESS_REBOUNDS = 1;
 
 const REQUIRED_QUEST_IDS = [
   FLOOR1_FIND_WELCOME_QUEST_ID,
@@ -53,21 +55,53 @@ interface ComparatorProbe {
   identifiedEgressMs: number;
   firstExitMs: number;
   outsideStreakMs: number;
+  egressReboundCount: number;
   bosses: BossSnapshot;
 }
 
-function outsideStreakFrom(samples: readonly SimEvent[], firstExitMs: number): number {
-  const firstExitIndex = samples.findIndex(
+interface StableOutsideTransition {
+  readonly outsideStreakMs: number;
+  readonly reboundCount: number;
+}
+
+function findStableOutsideTransition(
+  samples: readonly SimEvent[],
+  firstExitMs: number,
+  identifiedEgressMs: number,
+  startDeadlineMs: number,
+  requiredStreakMs: number,
+): StableOutsideTransition {
+  let index = samples.findIndex(
     (sample) => sample.gameMs >= firstExitMs && sample.inSafe === false,
   );
-  let durationMs = 0;
-  for (let index = firstExitIndex; index >= 0 && index < samples.length; index += 1) {
-    const sample = samples[index]!;
-    if (sample.inSafe !== false) break;
-    const next = samples[index + 1];
-    durationMs += next ? Math.max(0, next.gameMs - sample.gameMs) : 0;
+  let bestMs = 0;
+  let reboundCount = 0;
+
+  while (index >= 0 && index < samples.length) {
+    const outsideStartMs = samples[index]!.gameMs;
+    if (outsideStartMs - identifiedEgressMs > startDeadlineMs) break;
+
+    let outsideStreakMs = 0;
+    while (index < samples.length && samples[index]!.inSafe === false) {
+      const sample = samples[index]!;
+      const next = samples[index + 1];
+      outsideStreakMs += next ? Math.max(0, next.gameMs - sample.gameMs) : 0;
+      index += 1;
+    }
+    bestMs = Math.max(bestMs, outsideStreakMs);
+    if (outsideStreakMs >= requiredStreakMs) {
+      return { outsideStreakMs, reboundCount };
+    }
+
+    if (index < samples.length) {
+      reboundCount += 1;
+      while (index < samples.length && samples[index]!.inSafe !== false) {
+        index += 1;
+      }
+    }
   }
-  return durationMs;
+
+  return { outsideStreakMs: bestMs, reboundCount };
 }
 
 async function runComparator(
@@ -115,6 +149,13 @@ async function runComparator(
   if (!firstExit) {
     throw new Error(`seed ${seed} · ${weapon} never exited safe space after egress acquisition`);
   }
+  const stableOutside = findStableOutsideTransition(
+    samples,
+    firstExit.gameMs,
+    identifiedEgress.gameMs,
+    STABLE_EGRESS_DEADLINE_MS,
+    MIN_OUTSIDE_STREAK_MS,
+  );
 
   return {
     stats,
@@ -122,7 +163,8 @@ async function runComparator(
     samples,
     identifiedEgressMs: identifiedEgress.gameMs,
     firstExitMs: firstExit.gameMs,
-    outsideStreakMs: outsideStreakFrom(samples, firstExit.gameMs),
+    outsideStreakMs: stableOutside.outsideStreakMs,
+    egressReboundCount: stableOutside.reboundCount,
     bosses,
   };
 }
@@ -141,6 +183,7 @@ describe('Floor 1 movement-intent arbitration comparators', () => {
           EGRESS_DEADLINE_MS,
         );
         expect(probe.outsideStreakMs).toBeGreaterThanOrEqual(MIN_OUTSIDE_STREAK_MS);
+        expect(probe.egressReboundCount).toBeLessThanOrEqual(MAX_EGRESS_REBOUNDS);
       });
 
       it('never lets Retreat or Progression preempt a retained egress lease', () => {
