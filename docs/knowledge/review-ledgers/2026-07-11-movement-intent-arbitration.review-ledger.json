@@ -27,9 +27,15 @@
         },
         {
           "round": 2,
-          "models": ["claude-sonnet-5", "gpt-5.4", "claude-sonnet-4.6"],
-          "concerns_count": 2,
-          "resolved_count": 2,
+          "models": [
+            "claude-sonnet-5",
+            "gpt-5.4",
+            "claude-sonnet-4.6",
+            "gpt-5.5",
+            "gemini-3.5-flash"
+          ],
+          "concerns_count": 4,
+          "resolved_count": 4,
           "clean": true
         }
       ]
@@ -48,10 +54,17 @@
         },
         {
           "round": 2,
-          "models": ["gpt-5.4-mini", "claude-opus-4.6", "gpt-5.4", "claude-sonnet-4.6"],
-          "concerns_count": 3,
-          "valid_count": 3,
-          "resolved_count": 3,
+          "models": [
+            "gpt-5.4-mini",
+            "claude-opus-4.6",
+            "gpt-5.4",
+            "claude-sonnet-4.6",
+            "gpt-5.5",
+            "gemini-3.5-flash"
+          ],
+          "concerns_count": 7,
+          "valid_count": 5,
+          "resolved_count": 5,
           "clean": true
         }
       ]

@@ -3,6 +3,7 @@ import {
   MOVEMENT_INTENT_ACQUISITION_PRIORITIES,
   MovementIntentOwner,
   canPreemptMovementIntent,
+  movementIntentTelemetry,
   movementIntentTargetFingerprint,
   resolveMovementIntent,
   type MovementIntentArbiterFacts,
@@ -245,6 +246,123 @@ describe('movement intent arbiter', () => {
     expect(result.selected).toBe(retainedEgress);
     expect(result.transition).toBe('retained');
     expect(result.nextState.current?.owner).toBe(MovementIntentOwner.SAFE_ROOM_EGRESS);
+    expect(result.nextState.current?.yielded).toBe(false);
+  });
+
+  it('yields execution without transferring a latched commitment', () => {
+    const egress = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS);
+    const state = acquireState(egress, outsideSafe);
+    const retainedEgress = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS, {
+      commitment: {
+        policy: { ...policy, clearWindowFrames: 30 },
+        facts: {
+          ...egress.commitment.facts,
+          ownsMovement: false,
+          clearCondition: true,
+          frame: 2,
+        },
+      },
+    });
+    const retreat = proposal(MovementIntentOwner.RETREAT, {
+      commitment: {
+        policy,
+        facts: { ...egress.commitment.facts, frame: 2 },
+      },
+    });
+
+    const result = resolveMovementIntent(state, [retainedEgress, retreat], outsideSafe);
+
+    expect(result.transition).toBe('yielded');
+    expect(result.reason).toBe('yieldedWhileCommitmentLatched');
+    expect(result.selected).toBe(retreat);
+    expect(result.nextState.current?.owner).toBe(MovementIntentOwner.SAFE_ROOM_EGRESS);
+    expect(result.nextState.current?.yielded).toBe(true);
+    expect(result.nextState.navigation?.target).toEqual(egress.target);
+    expect(result.nextState.navigation?.ownerNoProgressFrames).toBe(
+      state.navigation?.ownerNoProgressFrames,
+    );
+    expect(movementIntentTelemetry(result)).toMatchObject({
+      owner: MovementIntentOwner.RETREAT,
+      key: retreat.key,
+      latchedOwner: MovementIntentOwner.SAFE_ROOM_EGRESS,
+      latchedKey: retainedEgress.key,
+      latchedYielding: true,
+      transition: 'yielded',
+    });
+  });
+
+  it('yields to legacy fallback when no temporary proposal is available', () => {
+    const egress = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS);
+    const state = acquireState(egress, outsideSafe);
+    const retainedEgress = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS, {
+      commitment: {
+        policy: { ...policy, clearWindowFrames: 30 },
+        facts: {
+          ...egress.commitment.facts,
+          ownsMovement: false,
+          clearCondition: true,
+          frame: 2,
+        },
+      },
+    });
+
+    const result = resolveMovementIntent(state, [retainedEgress], outsideSafe);
+
+    expect(result.transition).toBe('yielded');
+    expect(result.selected).toBeNull();
+    expect(result.nextState.current?.owner).toBe(MovementIntentOwner.SAFE_ROOM_EGRESS);
+    expect(movementIntentTelemetry(result)).toMatchObject({
+      owner: null,
+      latchedOwner: MovementIntentOwner.SAFE_ROOM_EGRESS,
+      latchedYielding: true,
+      transition: 'yielded',
+    });
+  });
+
+  it('does not reactivate a yielded lease when its clear condition resets', () => {
+    const egress = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS);
+    let state = acquireState(egress, outsideSafe);
+    state = resolveMovementIntent(
+      state,
+      [
+        proposal(MovementIntentOwner.SAFE_ROOM_EGRESS, {
+          commitment: {
+            policy: { ...policy, clearWindowFrames: 30 },
+            facts: {
+              ...egress.commitment.facts,
+              ownsMovement: false,
+              clearCondition: true,
+              frame: 2,
+            },
+          },
+        }),
+      ],
+      outsideSafe,
+    ).nextState;
+
+    const resetInside = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS, {
+      commitment: {
+        policy: { ...policy, clearWindowFrames: 30 },
+        facts: {
+          ...egress.commitment.facts,
+          ownsMovement: true,
+          clearCondition: false,
+          frame: 3,
+        },
+      },
+    });
+    const interaction = proposal(MovementIntentOwner.INTERACTION_APPROACH, {
+      commitment: {
+        policy,
+        facts: { ...egress.commitment.facts, frame: 3 },
+      },
+    });
+    const result = resolveMovementIntent(state, [resetInside, interaction], insideSafe);
+
+    expect(result.transition).toBe('yielded');
+    expect(result.selected).toBe(interaction);
+    expect(result.nextState.current?.yielded).toBe(true);
+    expect(result.nextState.navigation?.clearWindowFrames).toBe(0);
   });
 
   it('releases current lease when commitment clears', () => {

@@ -705,6 +705,9 @@ export async function runHeadless(
           ? [
               movementIntent.owner ?? 'none',
               movementIntent.key ?? 'none',
+              movementIntent.latchedOwner ?? 'none',
+              movementIntent.latchedKey ?? 'none',
+              movementIntent.latchedYielding ? 'yielding' : 'active',
               movementIntent.transition,
               movementIntent.reason,
               movementIntent.priorOwner ?? 'none',

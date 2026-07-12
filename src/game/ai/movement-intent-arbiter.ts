@@ -75,6 +75,8 @@ export interface MovementIntentLease {
   readonly targetFingerprint: string;
   readonly executionToken: string;
   readonly reason: string;
+  /** Once true, this latch may observe clear conditions but cannot retake movement. */
+  readonly yielded: boolean;
 }
 
 export interface MovementIntentArbiterState {
@@ -89,6 +91,7 @@ export interface MovementIntentArbiterFacts {
 export type MovementIntentTransition =
   | 'acquired'
   | 'retained'
+  | 'yielded'
   | 'preempted'
   | 'released'
   | 'rejected';
@@ -96,6 +99,7 @@ export type MovementIntentTransition =
 export type MovementIntentResolutionReason =
   | 'acquiredBestEligible'
   | 'retainedLease'
+  | 'yieldedWhileCommitmentLatched'
   | 'preemptedByAllowedPair'
   | 'releasedNoRetainedProposal'
   | 'releasedByCommitment'
@@ -112,8 +116,13 @@ export interface MovementIntentResolution<TPayload = undefined> {
 }
 
 export interface MovementIntentTelemetry {
+  /** Proposal executing movement this frame, or null for legacy fallback/no movement. */
   readonly owner: MovementIntentOwnerValue | null;
   readonly key: string | null;
+  /** Durable lease whose NavigationCommitment remains latched across this frame. */
+  readonly latchedOwner: MovementIntentOwnerValue | null;
+  readonly latchedKey: string | null;
+  readonly latchedYielding: boolean;
   readonly transition: MovementIntentTransition;
   readonly reason: MovementIntentResolutionReason;
   readonly priorOwner: MovementIntentOwnerValue | null;
@@ -171,9 +180,13 @@ export function resolveMovementIntent<TPayload = undefined>(
     return acquire(selected, current.owner, current.key, 'acquired');
   }
 
+  const retainedOwnsMovement = !current.yielded && retained.proposal.commitment.facts.ownsMovement;
   const retainedCommitment = advanceNavigationCommitment(
     state.navigation ?? { target: retained.proposal.target, reason: 'initialized' },
-    retained.proposal.commitment.facts,
+    {
+      ...retained.proposal.commitment.facts,
+      ownsMovement: retainedOwnsMovement,
+    },
     retained.proposal.commitment.policy,
   );
 
@@ -198,30 +211,49 @@ export function resolveMovementIntent<TPayload = undefined>(
     (ranked) => ranked !== retained && canPreemptMovementIntent(current, ranked.proposal, facts),
   );
   const challenger = chooseBest(allowedChallengers);
-  if (challenger === null) {
+  if (challenger !== null) {
+    return acquire(challenger, current.owner, current.key, 'preempted');
+  }
+
+  if (!retainedOwnsMovement) {
+    const temporaryOwner = chooseBest(eligible.filter((ranked) => ranked !== retained));
     return {
-      selected: retained.proposal,
+      selected: temporaryOwner?.proposal ?? null,
       nextState: {
-        current: leaseFromProposal(retained),
+        current: leaseFromProposal(retained, true),
         navigation: retainedCommitment.state,
       },
-      transition: 'retained',
-      reason: 'retainedLease',
+      transition: 'yielded',
+      reason: 'yieldedWhileCommitmentLatched',
       priorOwner: current.owner,
       priorKey: current.key,
       commitment: retainedCommitment,
     };
   }
 
-  return acquire(challenger, current.owner, current.key, 'preempted');
+  return {
+    selected: retained.proposal,
+    nextState: {
+      current: leaseFromProposal(retained),
+      navigation: retainedCommitment.state,
+    },
+    transition: 'retained',
+    reason: 'retainedLease',
+    priorOwner: current.owner,
+    priorKey: current.key,
+    commitment: retainedCommitment,
+  };
 }
 
 export function movementIntentTelemetry<TPayload>(
   resolution: MovementIntentResolution<TPayload>,
 ): MovementIntentTelemetry {
   return {
-    owner: resolution.nextState.current?.owner ?? null,
-    key: resolution.nextState.current?.key ?? null,
+    owner: resolution.selected?.owner ?? null,
+    key: resolution.selected?.key ?? null,
+    latchedOwner: resolution.nextState.current?.owner ?? null,
+    latchedKey: resolution.nextState.current?.key ?? null,
+    latchedYielding: resolution.nextState.current?.yielded ?? false,
     transition: resolution.transition,
     reason: resolution.reason,
     priorOwner: resolution.priorOwner,
@@ -383,7 +415,10 @@ function compareCodeUnits(left: string, right: string): number {
   return left < right ? -1 : 1;
 }
 
-function leaseFromProposal<TPayload>(ranked: RankedProposal<TPayload>): MovementIntentLease {
+function leaseFromProposal<TPayload>(
+  ranked: RankedProposal<TPayload>,
+  yielded = false,
+): MovementIntentLease {
   return {
     owner: ranked.proposal.owner,
     key: ranked.proposal.key,
@@ -393,6 +428,7 @@ function leaseFromProposal<TPayload>(ranked: RankedProposal<TPayload>): Movement
     targetFingerprint: ranked.targetFingerprint,
     executionToken: ranked.proposal.execution.token,
     reason: ranked.proposal.execution.reason,
+    yielded,
   };
 }
 

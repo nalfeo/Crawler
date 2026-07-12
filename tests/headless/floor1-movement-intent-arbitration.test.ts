@@ -23,7 +23,8 @@ const MAX_WALL_TIME_MS = 170_000;
 const EGRESS_DEADLINE_MS = 10_000;
 const STABLE_EGRESS_DEADLINE_MS = 15_000;
 const MIN_OUTSIDE_STREAK_MS = 3_000;
-const MAX_EGRESS_REBOUNDS = 1;
+const MAX_EGRESS_REBOUNDS = 6;
+const MAX_EGRESS_REBOUND_MS = 3_000;
 
 const REQUIRED_QUEST_IDS = [
   FLOOR1_FIND_WELCOME_QUEST_ID,
@@ -56,12 +57,14 @@ interface ComparatorProbe {
   firstExitMs: number;
   outsideStreakMs: number;
   egressReboundCount: number;
+  egressReboundMs: number;
   bosses: BossSnapshot;
 }
 
 interface StableOutsideTransition {
   readonly outsideStreakMs: number;
   readonly reboundCount: number;
+  readonly reboundMs: number;
 }
 
 function findStableOutsideTransition(
@@ -76,6 +79,7 @@ function findStableOutsideTransition(
   );
   let bestMs = 0;
   let reboundCount = 0;
+  let reboundMs = 0;
 
   while (index >= 0 && index < samples.length) {
     const outsideStartMs = samples[index]!.gameMs;
@@ -90,18 +94,21 @@ function findStableOutsideTransition(
     }
     bestMs = Math.max(bestMs, outsideStreakMs);
     if (outsideStreakMs >= requiredStreakMs) {
-      return { outsideStreakMs, reboundCount };
+      return { outsideStreakMs, reboundCount, reboundMs };
     }
 
     if (index < samples.length) {
       reboundCount += 1;
       while (index < samples.length && samples[index]!.inSafe !== false) {
+        const sample = samples[index]!;
+        const next = samples[index + 1];
+        reboundMs += next ? Math.max(0, next.gameMs - sample.gameMs) : 0;
         index += 1;
       }
     }
   }
 
-  return { outsideStreakMs: bestMs, reboundCount };
+  return { outsideStreakMs: bestMs, reboundCount, reboundMs };
 }
 
 async function runComparator(
@@ -165,6 +172,7 @@ async function runComparator(
     firstExitMs: firstExit.gameMs,
     outsideStreakMs: stableOutside.outsideStreakMs,
     egressReboundCount: stableOutside.reboundCount,
+    egressReboundMs: stableOutside.reboundMs,
     bosses,
   };
 }
@@ -184,6 +192,7 @@ describe('Floor 1 movement-intent arbitration comparators', () => {
         );
         expect(probe.outsideStreakMs).toBeGreaterThanOrEqual(MIN_OUTSIDE_STREAK_MS);
         expect(probe.egressReboundCount).toBeLessThanOrEqual(MAX_EGRESS_REBOUNDS);
+        expect(probe.egressReboundMs).toBeLessThanOrEqual(MAX_EGRESS_REBOUND_MS);
       });
 
       it('never lets Retreat or Progression preempt a retained egress lease', () => {

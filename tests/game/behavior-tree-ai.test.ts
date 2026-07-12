@@ -15,6 +15,7 @@ import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import {
   BehaviorTreeAI,
   SAFE_ROOM_EGRESS_ACTIVE_CLEAR_FRAMES,
+  SAFE_ROOM_EGRESS_LATCH_CLEAR_FRAMES,
 } from '../../src/game/ai/bt-ai-provider.js';
 import { MovementIntentOwner } from '../../src/game/ai/movement-intent-arbiter.js';
 import { hasClearLineOfSight } from '../../src/game/ai/bt-ai-geometry.js';
@@ -1047,18 +1048,16 @@ describe('BehaviorTreeAI', () => {
     expect(latched.targetX).toBeCloseTo(firstTargetX, 6);
     expect(latched.targetY).toBeCloseTo(firstTargetY, 6);
 
-    // Step outside the safe room: the egress lease is retained for the active
-    // clear window (NavigationCommitment owns this clock now — the provider no
-    // longer runs a duplicate safeRoomEgressOutsideFrames counter). It must not
-    // release on the first outside sample just because the original threat
-    // wandered off.
+    // Step outside the safe room: egress owns the short active window, then
+    // yields execution while NavigationCommitment preserves the long latch
+    // without a duplicate provider counter.
     world.playerInSafeRoom = false;
     world.stores.position.x[player] = 20;
     world.stores.position.y[player] = 10;
 
     for (
       let outsideFrame = 1;
-      outsideFrame < SAFE_ROOM_EGRESS_ACTIVE_CLEAR_FRAMES;
+      outsideFrame <= SAFE_ROOM_EGRESS_ACTIVE_CLEAR_FRAMES;
       outsideFrame += 1
     ) {
       ai.poll(input, world);
@@ -1068,19 +1067,32 @@ describe('BehaviorTreeAI', () => {
       expect(stillRetained.reason).toContain('Leaving safe room');
     }
 
-    // The configured consecutive outside-safe poll clears the commitment and
-    // the legacy Hunt fallback resumes on the same far threat (the tree's own
-    // Hunt pick, since the arbiter's release this exact poll selects nothing
-    // and leaves it untouched).
+    // The next poll yields execution to the legacy Hunt fallback without
+    // transferring or resetting the latched egress commitment.
     ai.poll(input, world);
-    const postExit = ai.getDecision();
-    expect(postExit.state).toBe(AIState.ENGAGE);
-    expect(postExit.targetEid).toBe(farThreat);
-    expect(postExit.reason).toContain('Hunting enemy');
+    const yielded = ai.getDecision();
+    expect(yielded.state).toBe(AIState.ENGAGE);
+    expect(yielded.targetEid).toBe(farThreat);
+    expect(yielded.reason).toContain('Hunting enemy');
+    expect(ai.getMovementIntentDebug()).toMatchObject({
+      owner: null,
+      latchedOwner: MovementIntentOwner.SAFE_ROOM_EGRESS,
+      transition: 'yielded',
+    });
+
+    for (
+      let outsideFrame = SAFE_ROOM_EGRESS_ACTIVE_CLEAR_FRAMES + 2;
+      outsideFrame < SAFE_ROOM_EGRESS_LATCH_CLEAR_FRAMES;
+      outsideFrame += 1
+    ) {
+      ai.poll(input, world);
+      expect(ai.getDecision().reason).toContain('Hunting enemy');
+      expect(ai.getMovementIntentDebug()?.latchedOwner).toBe(MovementIntentOwner.SAFE_ROOM_EGRESS);
+    }
 
     ai.poll(input, world);
     expect(ai.getDecision().reason).toContain('Hunting enemy');
-    expect(ai.getMovementIntentDebug()?.owner).not.toBe(MovementIntentOwner.SAFE_ROOM_EGRESS);
+    expect(ai.getMovementIntentDebug()?.latchedOwner).toBeNull();
   });
 
   describe('movement-intent arbiter integration', () => {
@@ -1143,7 +1155,7 @@ describe('BehaviorTreeAI', () => {
       }
     });
 
-    it('keeps a retained egress lease through the active outside clear window despite a critical-HP Retreat proposal', () => {
+    it('keeps active egress ownership through the short outside window despite a critical-HP Retreat proposal', () => {
       const { world, ai, input, player } = establishRetainedEgressUnderCriticalRetreatThreat(102);
 
       world.playerInSafeRoom = false;
@@ -1152,7 +1164,7 @@ describe('BehaviorTreeAI', () => {
 
       for (
         let outsideFrame = 1;
-        outsideFrame < SAFE_ROOM_EGRESS_ACTIVE_CLEAR_FRAMES;
+        outsideFrame <= SAFE_ROOM_EGRESS_ACTIVE_CLEAR_FRAMES;
         outsideFrame += 1
       ) {
         ai.poll(input, world);
@@ -1164,6 +1176,77 @@ describe('BehaviorTreeAI', () => {
       }
     });
 
+    it('yields movement to critical-HP Retreat while preserving the egress latch', () => {
+      const { world, ai, input, player } = establishRetainedEgressUnderCriticalRetreatThreat(103);
+
+      world.playerInSafeRoom = false;
+      world.stores.position.x[player] = 20;
+      world.stores.position.y[player] = 10;
+
+      for (
+        let outsideFrame = 1;
+        outsideFrame <= SAFE_ROOM_EGRESS_ACTIVE_CLEAR_FRAMES;
+        outsideFrame += 1
+      ) {
+        ai.poll(input, world);
+      }
+      ai.poll(input, world);
+
+      const yielded = ai.getDecision();
+      expect(yielded.state).toBe(AIState.RETREAT);
+      expect(ai.getMovementIntentDebug()).toMatchObject({
+        owner: MovementIntentOwner.RETREAT,
+        latchedOwner: MovementIntentOwner.SAFE_ROOM_EGRESS,
+        transition: 'yielded',
+      });
+    });
+
+    it('does not silently reacquire yielded egress when reentry reaches the latched waypoint', () => {
+      const world = createTestWorld({ seed: 108 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+      meetTutorialGoon(world);
+      world.playerLevel.level = 0;
+      world.floorMap = makeOpenRoom(40, 20);
+      world.stores.position.x[player] = 14;
+      world.stores.position.y[player] = 10;
+      world.playerInSafeRoom = true;
+      spawnEnemy(world, 84, 10, 20);
+
+      const ai = new BehaviorTreeAI({ seed: 108 });
+      const input = createInputState();
+      ai.poll(input, world);
+      const egressTarget = ai.getDecision();
+      expect(egressTarget.targetX).not.toBeNull();
+      expect(egressTarget.targetY).not.toBeNull();
+
+      world.playerInSafeRoom = false;
+      world.stores.position.x[player] = 20;
+      world.stores.position.y[player] = 10;
+      for (
+        let outsideFrame = 1;
+        outsideFrame <= SAFE_ROOM_EGRESS_ACTIVE_CLEAR_FRAMES;
+        outsideFrame += 1
+      ) {
+        ai.poll(input, world);
+      }
+      ai.poll(input, world);
+      expect(ai.getMovementIntentDebug()?.transition).toBe('yielded');
+
+      world.playerInSafeRoom = true;
+      world.stores.position.x[player] = egressTarget.targetX!;
+      world.stores.position.y[player] = egressTarget.targetY!;
+      ai.poll(input, world);
+
+      expect(ai.getDecision().reason).not.toContain('Leaving safe room');
+      expect(ai.getMovementIntentDebug()).toMatchObject({
+        latchedOwner: MovementIntentOwner.SAFE_ROOM_EGRESS,
+        latchedYielding: true,
+        transition: 'yielded',
+      });
+    });
+
     it('lets a critical-HP outside-safe Retreat acquire on the exact frame the egress commitment clears', () => {
       const { world, ai, input, player } = establishRetainedEgressUnderCriticalRetreatThreat(103);
 
@@ -1173,15 +1256,14 @@ describe('BehaviorTreeAI', () => {
 
       for (
         let outsideFrame = 1;
-        outsideFrame < SAFE_ROOM_EGRESS_ACTIVE_CLEAR_FRAMES;
+        outsideFrame < SAFE_ROOM_EGRESS_LATCH_CLEAR_FRAMES;
         outsideFrame += 1
       ) {
         ai.poll(input, world);
       }
 
-      // The configured consecutive outside-safe poll clears the egress
-      // commitment and acquires the already-eligible Retreat proposal in the
-      // same resolution.
+      // The long latch's final outside-safe poll clears egress and acquires the
+      // already-executing Retreat proposal in the same resolution.
       ai.poll(input, world);
       const releaseFrame = ai.getDecision();
       expect(releaseFrame.state).toBe(AIState.RETREAT);

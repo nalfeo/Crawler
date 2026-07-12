@@ -318,6 +318,8 @@ const logger = createLogger('game:bt-ai-provider');
  * steering into outside combat.
  */
 export const SAFE_ROOM_EGRESS_ACTIVE_CLEAR_FRAMES = 2;
+/** Long non-owning debounce that preserves the egress target across mouth flicker. */
+export const SAFE_ROOM_EGRESS_LATCH_CLEAR_FRAMES = 30;
 
 /**
  * Data-only execution payload shared by every migrated movement-intent owner
@@ -2193,12 +2195,12 @@ export class BehaviorTreeAI implements AIInputProvider {
    * Unlike the other 5 migrated owners this is NOT gated behind the tree's
    * greedy priority selector — it is computed unconditionally every poll
    * (see the call site in `poll()`) and handed to the arbiter as a real
-   * {@link NavigationCommitment} consumer: the commitment's `clearWindowFrames`
-   * (not a hand-rolled counter) requires
-   * {@link SAFE_ROOM_EGRESS_ACTIVE_CLEAR_FRAMES} consecutive outside-safe polls
-   * before releasing. This rejects a one-frame boundary flicker without
-   * conflating the legacy non-owning 30-frame waypoint latch with exclusive
-   * outside-safe movement ownership.
+   * {@link NavigationCommitment} consumer: egress owns the first
+   * {@link SAFE_ROOM_EGRESS_ACTIVE_CLEAR_FRAMES} consecutive outside-safe polls,
+   * then yields execution while its reducer-owned target remains latched through
+   * {@link SAFE_ROOM_EGRESS_LATCH_CLEAR_FRAMES}. This preserves the legacy
+   * mouth-flicker debounce without extending exclusive egress steering into
+   * outside combat.
    *
    * Returns `null` when there is nothing to propose (no latched waypoint and
    * the player is not currently inside a safe room).
@@ -2225,12 +2227,18 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (latchedX !== null && latchedY !== null) {
       const arrivedAtLatched =
         Math.hypot(latchedX - playerX, latchedY - playerY) <= WAYPOINT_ARRIVE_FT;
-      if (arrivedAtLatched && world.playerInSafeRoom) {
+      const yieldedEgress =
+        this.movementIntentState.current?.owner === MovementIntentOwner.SAFE_ROOM_EGRESS &&
+        this.movementIntentState.current.yielded;
+      if (arrivedAtLatched && world.playerInSafeRoom && !yieldedEgress) {
         // Arrived at the latched waypoint but still inside a safe room (the
         // waypoint's own outside-safe-space guarantee was invalidated, e.g. by
         // safe-room boundary geometry). Explicitly reseed/reacquire a fresh
         // reachable egress target below — never teleport the player, only
         // recompute the target.
+        // A yielded lease must keep its fingerprint stable: changing the target
+        // here would look like a fresh acquisition and silently reactivate
+        // exclusive egress movement after reentry.
         this.clearSafeRoomEgressWaypoint();
         latchedX = null;
         latchedY = null;
@@ -2284,16 +2292,21 @@ export class BehaviorTreeAI implements AIInputProvider {
       latchedX,
       latchedY,
     );
+    const priorOutsideClearFrames =
+      this.movementIntentState.current?.owner === MovementIntentOwner.SAFE_ROOM_EGRESS
+        ? (this.movementIntentState.navigation?.clearWindowFrames ?? 0)
+        : 0;
     const policy: NavigationCommitmentPolicy = {
       arrivalDistanceFt: WAYPOINT_ARRIVE_FT,
       progressEpsilonFt: STUCK_PROGRESS_EPSILON_FT,
       maxOwnerNoProgressFrames: null,
-      clearWindowFrames: SAFE_ROOM_EGRESS_ACTIVE_CLEAR_FRAMES,
+      clearWindowFrames: SAFE_ROOM_EGRESS_LATCH_CLEAR_FRAMES,
       arrival: 'reseed',
     };
     const facts: NavigationCommitmentFacts = {
       latched: true,
-      ownsMovement: true,
+      ownsMovement:
+        world.playerInSafeRoom || priorOutsideClearFrames < SAFE_ROOM_EGRESS_ACTIVE_CLEAR_FRAMES,
       targetValid: true,
       distanceFt: Math.hypot(latchedX - playerX, latchedY - playerY),
       arrived: false,

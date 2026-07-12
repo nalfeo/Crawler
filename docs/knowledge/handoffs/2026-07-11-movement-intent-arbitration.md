@@ -28,15 +28,16 @@ ai-behavior-tree, ai-pathfinding, ai-combat-balance, quests, ci-policy
   SafeRoomEgress, and Progression proposal metadata into the arbiter seam while
   retaining legacy fallback for Engage, Collect, Hunt, and Explore.
 - Made SafeRoomEgress the first production NavigationCommitment consumer. Its
-  normal clear path requires two consecutive outside-safe frames, rejecting a
-  one-frame mouth-boundary flicker before handing off to an eligible challenger
-  in the same resolution. An allowed barrier-verified ArenaLockin may still
-  preempt on the first outside-safe frame.
+  active phase owns two consecutive outside-safe frames, then enters a durable
+  non-owning yield while its target and 30-frame clear clock remain latched.
+  Temporary movement can execute without acquiring the lease; an allowed
+  barrier-verified ArenaLockin may still preempt on the first outside-safe frame.
 - Preserved legal same-safe noncombat objectives and a retained merchant-fetch
   route crossing safe space without allowing enemy-backed Progression to park
   there.
 - Added structured movement owner/lifecycle telemetry to headless events and
-  run stats, including illegal in-safe Retreat/enemy-Progression counts.
+  run stats, separating execution owner from latched owner and including illegal
+  in-safe Retreat/enemy-Progression counts.
 - Added pure reducer/arbiter tests, provider contract tests, telemetry coverage,
   and real-headless official-win comparators for seed 74 bow+pistol and seed 49
   throwing-knife.
@@ -61,16 +62,20 @@ completes the merchant quest, and times out later in boss/combat progression.
 - Retained SafeRoomEgress cannot be preempted by Retreat or Progression.
   Immediate interaction may preempt inside safe space; a barrier-verified
   ArenaLockin may preempt outside. ArenaLockin yields only to outside Retreat.
+- A retained owner can enter a durable generic `yielded` phase. The best eligible
+  temporary proposal executes without acquiring the lease, while
+  NavigationCommitment advances only its owner-independent clear clock and
+  freezes motion progress. Yield cannot silently reactivate after reentry.
 - Preemption initializes the challenger's NavigationCommitment. Reusing the
   retained owner's commitment would make lease owner and navigation target
   diverge.
 - Non-selected egress proposals cannot mutate the waypoint latch. This prevents
   an ineligible proposal from becoming eligible one frame later after crossing
   the safe-space boundary.
-- Active egress uses a two-frame outside-safe clear window. The old 30-frame
-  provider latch was non-owning outside the room; reusing its duration for an
-  exclusive lease caused the first cloud gate to fall from 556/600 to 524/600
-  by steering normal runs through outside combat.
+- Active egress uses two outside-safe frames, then yields while the old
+  30-frame non-owning debounce remains reducer-owned. Reusing all 30 frames for
+  exclusive movement fell from 556/600 to 524/600; shortening the whole latch
+  to two frames produced 523/600 and 40 safe-room signatures.
 - The dependent Retreat slice must consume these modules directly and provide
   immutable facts/policy only; it must not create a parallel commitment reducer
   or private progress counters.
@@ -95,6 +100,9 @@ completes the merchant quest, and times out later in boss/combat progression.
   does not protect against state latched before arbitration.
 - The arbiter and commitment reducer need separate target assertions because a
   correct lease owner can still carry the previous owner's reducer state.
+- A yielded lease must keep a stable target fingerprint. Provider-side waypoint
+  reseeding would otherwise look like a fresh acquisition and silently restore
+  movement ownership after reentry.
 
 ### Mistakes Made
 
@@ -105,6 +113,9 @@ completes the merchant quest, and times out later in boss/combat progression.
   with 30 frames of exclusive movement ownership. The source-vs-branch cloud
   artifacts showed 44 lost official wins and only 12 gains, with repeated
   cross-weapon seed flips, before the active clear window was corrected.
+- The first correction shortened both movement ownership and target retention.
+  Its cloud gate exposed the opposite failure mode: 40 safe-room signatures.
+  The final contract separates active ownership from a durable non-owning latch.
 - The egress builder initially latched a waypoint before declaring itself
   unavailable. Seed 76 exposed the resulting next-frame Progression↔egress
   oscillation.

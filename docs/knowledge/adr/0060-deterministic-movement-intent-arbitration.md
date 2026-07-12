@@ -15,7 +15,7 @@ Accepted
 ## Context
 
 - **CTX-001**: The current behavior-tree movement stack contains several independently-authored movement authorities: retreat, arena lock-in, interaction, safe-room egress, and progression. A static priority ladder can pick an initial winner, but it does not encode which retained movement owner may be interrupted by which challenger.
-- **CTX-002**: Safe-room egress needs lease semantics that differ from simple priority. Once egress owns movement, critical HP is not enough to steal control; egress remains dominant until it clears, except for immediate same-safe interaction or a real physical cage outside safe space.
+- **CTX-002**: Safe-room egress needs lease semantics that differ from simple priority. While egress actively owns movement, critical HP is not enough to steal control. After clearing the room mouth, the target must remain latched without continuing to steer through outside combat.
 - **CTX-003**: ADR 0045 made arena lock-in a higher-priority behavior-tree slot and correctly preserved the pure lock-in detector plus the outside-safe Retreat-over-Arena rule. Its static priority-ladder authority section is now too coarse for safe-room egress and other retained-intent cases.
 - **CTX-004**: The AI runner must remain deterministic, pure at the decision-foundation layer, independent of Phaser, and suitable for later integration into `bt-ai-provider.ts` without constructing provider-specific `AIDecision` objects.
 
@@ -26,7 +26,8 @@ Accepted
 - **DEC-003**: Add a navigation-commitment model with two clocks. The clear-window clock advances on deterministic frames where its owner-independent clear condition is true and resets when that condition is false. The motion-progress clock advances only while the retained owner owns movement; loss of ownership freezes best-so-far distance and no-progress frames without resetting them.
 - **DEC-004**: Supersede the static priority-ladder authority portion of ADR 0045. ADR 0045 remains authoritative for the arena lock-in detector and for outside-safe Retreat-over-Arena semantics. ADR 0060 becomes authoritative for retained movement-intent arbitration and safe-room egress preemption.
 - **DEC-005**: Encode safe-room egress as an explicit pairwise lease rule: retained egress cannot be preempted by retreat, progression, or interaction approach; immediate interaction can preempt only while the player is inside safe space; arena lock-in can preempt only when a physical lock cages the player outside safe space.
-- **DEC-006**: Keep active egress ownership only through a two-frame consecutive outside-safe debounce. The superseded provider's 30-frame waypoint latch was non-owning outside safe space; carrying that duration into an exclusive movement lease materially regressed the 600-run win rate by steering through outside combat. Two frames reject a one-frame room-mouth classification flicker while handing normal combat movement back immediately afterward.
+- **DEC-006**: Keep active egress ownership only through a two-frame consecutive outside-safe debounce, then enter a durable `yielded` lease phase. During yield, the 30-frame clear window and target remain solely in `MovementIntentArbiterState.navigation`, motion progress is frozen, and the best eligible temporary proposal executes without acquiring or resetting the egress lease. A yielded lease cannot silently reactivate when its clear condition resets.
+- **DEC-007**: Report execution ownership separately from latch ownership. `MovementIntentTelemetry.owner/key` identify the proposal that executed this frame; `latchedOwner/latchedKey/latchedYielding` identify the durable commitment. The `yielded` lifecycle transition makes this handoff observable.
 
 ## Consequences
 
@@ -36,11 +37,13 @@ Accepted
 - **POS-002**: Safe-room egress becomes stable under low-health pressure, avoiding critical-HP retreat oscillation while still allowing immediate in-room interactions and real outside-safe cages to take control.
 - **POS-003**: Deterministic tie-breaks make replay debugging practical: priority desc, declaration ordinal, owner/key, and target fingerprint fully order all eligible proposals.
 - **POS-004**: The pure foundation is unit-testable without ECS, Phaser, or headless-runner fixtures.
+- **POS-005**: A long mouth-flicker debounce no longer implies long exclusive steering. The first cloud attempt with 30 exclusive outside frames produced 524/600 wins; shortening the entire latch to two frames produced 523/600 and 40 safe-room signatures. Latched yield preserves both responsibilities independently.
 
 ### Negative
 
 - **NEG-001**: Intent producers must supply explicit facts: zone, target relation, target validity, physical lock, and navigation facts. Missing facts are rejected or throw validation errors instead of silently defaulting.
 - **NEG-002**: Retained preemption now requires maintaining a pairwise matrix, so new movement owners must be deliberately added to the matrix rather than relying on priority alone.
+- **NEG-003**: A resolution can now have different execution and latch owners, so telemetry consumers must use `owner` for actual movement and `latchedOwner` for commitment lifecycle analysis.
 
 ### Risks
 
