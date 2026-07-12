@@ -21,6 +21,7 @@ import { loadLabState, saveLabState } from '../lab-persistence.js';
 import { BiomeType, TerrainType, TileFlags, type MapConfig } from '../../shared/map-types.js';
 import { SeededRandom } from '../../shared/random.js';
 import { computeRawMask8, normalizeBlob47Mask } from '../../shared/terrain-pack-mask.js';
+import type { FloorMap } from '../../core/map/FloorMap.js';
 import {
   pickPoolVariant,
   resolveDoorOrientationFromFlanks,
@@ -41,12 +42,7 @@ const ATLAS_ROWS = 6;
 const PACK_WALL_TERRAINS = new Set<number>([TerrainType.STONE_WALL, TerrainType.CAVE_WALL]);
 
 /** Terrain types rendered using the floor pool. */
-const PACK_FLOOR_TERRAINS = new Set<number>([
-  TerrainType.STONE_FLOOR,
-  TerrainType.CAVE_FLOOR,
-  TerrainType.BOSS_STAIR_FLOOR,
-  TerrainType.SAFE_ROOM_FLOOR,
-]);
+const PACK_FLOOR_TERRAINS = new Set<number>([TerrainType.STONE_FLOOR, TerrainType.CAVE_FLOOR]);
 
 /** Terrain types rendered using the corridor pool. */
 const PACK_CORRIDOR_TERRAINS = new Set<number>([TerrainType.CORRIDOR]);
@@ -125,6 +121,8 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
   // ── Image cache ───────────────────────────────────────────────────────────
   // Maps textureKey → { img, loaded, error }
   const imageCache = new Map<string, ReturnType<typeof loadImage>>();
+  let cachedMapKey = '';
+  let cachedMap: FloorMap | null = null;
 
   function getOrLoad(textureKey: string, imagePath: string): ReturnType<typeof loadImage> {
     let entry = imageCache.get(textureKey);
@@ -347,11 +345,17 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
       roomHeightRange: [5, 10],
     };
 
-    const generator = getGenerator(biome);
-    const map = generator.generate(mapConfig, new SeededRandom(seed));
+    const mapKey = `${biome}:${seed}`;
+    if (!cachedMap || cachedMapKey !== mapKey) {
+      const generator = getGenerator(biome);
+      cachedMap = generator.generate(mapConfig, new SeededRandom(seed));
+      cachedMapKey = mapKey;
+    }
+    const map = cachedMap;
 
     mapCanvas.width = map.width * cell;
     mapCanvas.height = map.height * cell;
+    mapCtx.imageSmoothingEnabled = false;
     mapCtx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
 
     const atlasEntry = getOrLoad(`${settings.packId}:wall-autotile`, pack.wallAutotile.imagePath);
@@ -398,7 +402,7 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
           const rightTerrain =
             tx < map.width - 1 ? (map.terrain[idx + 1] as number) : TerrainType.VOID;
           const isHorizontal =
-            PACK_WALL_TERRAINS.has(leftTerrain) || PACK_WALL_TERRAINS.has(rightTerrain);
+            PACK_WALL_TERRAINS.has(leftTerrain) && PACK_WALL_TERRAINS.has(rightTerrain);
           const orientation = resolveDoorOrientationFromFlanks(isHorizontal);
           const doorVariant = resolveDoorPoolVariant(pack.doorSet, {
             isOpen: (flags & TileFlags.PASSABLE) !== 0,

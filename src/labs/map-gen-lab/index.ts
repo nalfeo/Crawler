@@ -828,6 +828,7 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     offscreen.width = map.width * CELL_SIZE;
     offscreen.height = map.height * CELL_SIZE;
     const octx = offscreen.getContext('2d')!;
+    octx.imageSmoothingEnabled = false;
     const spriteMode = settings.showSpriteMode;
     const coverageMode = settings.showCoverageOverlay;
     for (let y = 0; y < map.height; y++) {
@@ -840,21 +841,20 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
         if (spriteMode || coverageMode) {
           const tileInfo = TILE_SPRITES[terrainType as TerrainType];
           const sheet = tileInfo ? spriteSheets.get(tileInfo.sheetKey) : undefined;
-          const frame =
-            tileInfo && sheet?.loaded
-              ? resolveFrame(
-                  tileInfo,
-                  map.terrain as Uint8Array,
-                  map.width,
-                  map.height,
-                  x,
-                  y,
-                  terrainType as TerrainType,
-                )
-              : undefined;
+          const frame = tileInfo
+            ? resolveFrame(
+                tileInfo,
+                map.terrain as Uint8Array,
+                map.width,
+                map.height,
+                x,
+                y,
+                terrainType as TerrainType,
+              )
+            : undefined;
           const covered = frame !== undefined;
 
-          if (spriteMode && covered && sheet) {
+          if (spriteMode && covered && sheet?.loaded && !sheet.error) {
             drawSpriteFrame(octx, sheet, frame!, dx, dy, CELL_SIZE, CELL_SIZE);
           } else {
             octx.fillStyle =
@@ -862,7 +862,7 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
             octx.fillRect(dx, dy, CELL_SIZE, CELL_SIZE);
           }
 
-          if (coverageMode) {
+          if (coverageMode && terrainType !== TerrainType.VOID) {
             octx.fillStyle = covered ? 'rgba(0,255,0,0.35)' : 'rgba(255,0,0,0.35)';
             octx.fillRect(dx, dy, CELL_SIZE, CELL_SIZE);
           }

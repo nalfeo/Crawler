@@ -9,7 +9,7 @@
  * ordered fallbacks.
  *
  * Why e2e (not a lab-only claim): a green unit test proves `buildTerrainLayer`
- * chooses the generated branch in isolation, and a green tile-render-lab only
+ * chooses the generated branch in isolation, and a green map-gen-lab sprite mode only
  * knows Kenney frames — NEITHER proves the REAL MainGameScene loads the approved
  * PNGs and stamps them at floor-build time (AGENTS.md rule #10/#15: lab-only
  * validation is insufficient; observe in a real artifact). The
