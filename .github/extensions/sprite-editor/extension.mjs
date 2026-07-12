@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { Buffer } from 'node:buffer';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,6 +22,12 @@ const ANNOTATIONS_PATH = path.join(
 const ASSETS_ROOT = path.join(REPO_ROOT, 'public', 'assets');
 const MAX_WRITE_BYTES = 6 * 1024 * 1024;
 const MAX_RESULTS = 500;
+const OPENCV_VENDOR_BASE = 'https://docs.opencv.org/4.13.0';
+// The pinned 4.13.0 distribution embeds its WASM payload in opencv.js.
+const OPENCV_VENDOR_HASHES = new Map([
+  ['opencv.js', '63366510248adf3a7eddf3e793dd825404efb7df3749f4d6f8557c7fa4ca8aa0'],
+]);
+const openCvVendorCache = new Map();
 
 let sessionRef = null;
 const instances = new Map();
@@ -52,6 +59,10 @@ function readJsonFile(filePath) {
 
 function writeJsonFile(filePath, value) {
   writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+function sha256Hex(value) {
+  return createHash('sha256').update(value).digest('hex');
 }
 
 function normalizeFacing(value) {
@@ -119,6 +130,7 @@ function computeSummary(entryKey, manifestEntry, catalogEntry, note) {
     ? catalogEntry.tags.filter((tag) => typeof tag === 'string' && tag.trim().length > 0)
     : [];
   const favorite = note?.favorite === true;
+  const disliked = note?.disliked === true && !favorite;
   const comment = typeof note?.comment === 'string' ? note.comment : '';
   return {
     key: entryKey,
@@ -144,6 +156,7 @@ function computeSummary(entryKey, manifestEntry, catalogEntry, note) {
     row: typeof catalogEntry?.row === 'number' ? catalogEntry.row : null,
     tags,
     favorite,
+    disliked,
     comment,
     variantCount: 1,
     variantPosition: 1,
@@ -277,26 +290,42 @@ function applyMetadataUpdate(payload, data, key) {
   if (!entry) {
     throw new CanvasError('not_found', `Manifest entry "${key}" not found.`);
   }
-  const holdX = clampInt(
-    payload?.metadata?.holdX,
-    entry?.anchors?.hold?.x ?? entry?.anchor?.x ?? 0,
-  );
-  const holdY = clampInt(
-    payload?.metadata?.holdY,
-    entry?.anchors?.hold?.y ?? entry?.anchor?.y ?? 0,
-  );
-  const pivotX = clampInt(payload?.metadata?.pivotX, entry?.anchors?.centerOfGravity?.x ?? holdX);
-  const pivotY = clampInt(payload?.metadata?.pivotY, entry?.anchors?.centerOfGravity?.y ?? holdY);
-  entry.anchor = { x: holdX, y: holdY, source: 'manual' };
-  entry.anchors = {
-    ...(entry.anchors ?? {}),
-    hold: { x: holdX, y: holdY, source: 'manual' },
-    centerOfGravity: { x: pivotX, y: pivotY, source: 'manual' },
-  };
-  entry.effectiveAnchorSource = 'manual';
-  entry.facingDirection = normalizeFacing(payload?.metadata?.facingDirection);
-
   const summary = data.summaryByKey.get(key);
+  const currentHoldX = clampInt(summary?.holdX, entry?.anchors?.hold?.x ?? entry?.anchor?.x ?? 0);
+  const currentHoldY = clampInt(summary?.holdY, entry?.anchors?.hold?.y ?? entry?.anchor?.y ?? 0);
+  const currentPivotX = clampInt(
+    summary?.pivotX,
+    entry?.anchors?.centerOfGravity?.x ?? currentHoldX,
+  );
+  const currentPivotY = clampInt(
+    summary?.pivotY,
+    entry?.anchors?.centerOfGravity?.y ?? currentHoldY,
+  );
+  const holdX = clampInt(payload?.metadata?.holdX, currentHoldX);
+  const holdY = clampInt(payload?.metadata?.holdY, currentHoldY);
+  const pivotX = clampInt(payload?.metadata?.pivotX, currentPivotX);
+  const pivotY = clampInt(payload?.metadata?.pivotY, currentPivotY);
+  const anchorChanged =
+    holdX !== currentHoldX ||
+    holdY !== currentHoldY ||
+    pivotX !== currentPivotX ||
+    pivotY !== currentPivotY;
+  if (anchorChanged) {
+    entry.anchor = { x: holdX, y: holdY, source: 'manual' };
+    entry.anchors = {
+      ...(entry.anchors ?? {}),
+      hold: { x: holdX, y: holdY, source: 'manual' },
+      centerOfGravity: { x: pivotX, y: pivotY, source: 'manual' },
+    };
+    entry.effectiveAnchorSource = 'manual';
+  }
+  const hasFacingDirection =
+    payload?.metadata?.facingDirection === 'left' || payload?.metadata?.facingDirection === 'right';
+  const facingDirection = normalizeFacing(payload?.metadata?.facingDirection);
+  if (hasFacingDirection && facingDirection !== summary?.facingDirection) {
+    entry.facingDirection = facingDirection;
+  }
+
   const catalogId =
     typeof payload?.metadata?.catalogId === 'string'
       ? payload.metadata.catalogId
@@ -307,9 +336,12 @@ function applyMetadataUpdate(payload, data, key) {
     return typeof item.assetPath === 'string' && item.assetPath === entry.assetPath;
   });
   if (catalogEntry) {
-    catalogEntry.frame = clampInt(payload?.metadata?.frame, catalogEntry.frame ?? 0);
-    catalogEntry.col = clampInt(payload?.metadata?.col, catalogEntry.col ?? 0);
-    catalogEntry.row = clampInt(payload?.metadata?.row, catalogEntry.row ?? 0);
+    const frame = clampInt(payload?.metadata?.frame, summary?.frame ?? catalogEntry.frame ?? 0);
+    const col = clampInt(payload?.metadata?.col, summary?.col ?? catalogEntry.col ?? 0);
+    const row = clampInt(payload?.metadata?.row, summary?.row ?? catalogEntry.row ?? 0);
+    if (frame !== summary?.frame) catalogEntry.frame = frame;
+    if (col !== summary?.col) catalogEntry.col = col;
+    if (row !== summary?.row) catalogEntry.row = row;
   }
 }
 
@@ -318,10 +350,11 @@ function applyAnnotationUpdate(payload, data, key) {
     data.annotations = { version: 1, sprites: {} };
   }
   const favorite = payload?.annotation?.favorite === true;
+  const disliked = payload?.annotation?.disliked === true && !favorite;
   const rawComment =
     typeof payload?.annotation?.comment === 'string' ? payload.annotation.comment : '';
   const comment = rawComment.trim().slice(0, 1000);
-  data.annotations.sprites[key] = { favorite, comment };
+  data.annotations.sprites[key] = { favorite, disliked, comment };
 }
 
 async function saveSprite(payload) {
@@ -330,9 +363,18 @@ async function saveSprite(payload) {
   const data = loadData();
   const entry = data.manifest.entries?.[key];
   if (!entry) throw new CanvasError('not_found', `Unknown sprite key "${key}".`);
+  const hasMetadata =
+    payload?.metadata !== null &&
+    typeof payload?.metadata === 'object' &&
+    !Array.isArray(payload.metadata);
+  const hasAnnotation =
+    payload?.annotation !== null &&
+    typeof payload?.annotation === 'object' &&
+    !Array.isArray(payload.annotation);
+  let wrotePng = false;
   try {
-    applyMetadataUpdate(payload, data, key);
-    applyAnnotationUpdate(payload, data, key);
+    if (hasMetadata) applyMetadataUpdate(payload, data, key);
+    if (hasAnnotation) applyAnnotationUpdate(payload, data, key);
 
     if (typeof payload?.pngDataUrl === 'string' && payload.pngDataUrl.length > 0) {
       const bytes = decodePngDataUrl(payload.pngDataUrl);
@@ -340,11 +382,21 @@ async function saveSprite(payload) {
       const pngPath = resolveAssetDiskPath(entry.assetPath);
       if (!pngPath) throw new CanvasError('invalid_path', 'Refusing to write outside assets root.');
       writeFileSync(pngPath, bytes);
+      entry.contentHash = sha256Hex(bytes);
+      wrotePng = true;
     }
 
-    writeJsonFile(MANIFEST_PATH, data.manifest);
-    writeJsonFile(CATALOG_PATH, data.catalog);
-    writeJsonFile(ANNOTATIONS_PATH, data.annotations);
+    // Metadata edits and PNG saves both mutate the manifest; PNG writes refresh contentHash.
+    if (hasMetadata || wrotePng) {
+      writeJsonFile(MANIFEST_PATH, data.manifest);
+    }
+    if (hasMetadata) {
+      writeJsonFile(CATALOG_PATH, data.catalog);
+    }
+    if (hasAnnotation) writeJsonFile(ANNOTATIONS_PATH, data.annotations);
+    cache.manifest = null;
+    cache.catalog = null;
+    cache.annotations = null;
     const fresh = loadData().summaryByKey.get(key);
     return { ok: true, sprite: fresh ?? null };
   } finally {
@@ -512,6 +564,56 @@ function parseListFilters(url, input = null) {
   };
 }
 
+async function fetchOpenCvVendorAsset(fileName) {
+  const expectedHash = OPENCV_VENDOR_HASHES.get(fileName);
+  if (!expectedHash) {
+    return { status: 404, body: 'unknown vendor asset' };
+  }
+  const cached = openCvVendorCache.get(fileName);
+  if (cached) return cached;
+  const url = `${OPENCV_VENDOR_BASE}/${fileName}`;
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(() => abortController.abort(), 10_000);
+  let upstream;
+  try {
+    upstream = await fetch(url, { signal: abortController.signal });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      return { status: 504, body: `timed out fetching ${fileName}` };
+    }
+    return { status: 502, body: `failed to fetch ${fileName}` };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+  if (!upstream.ok) {
+    const body = await upstream.text().catch(() => '');
+    return {
+      status: upstream.status,
+      headers: {
+        'Content-Type': upstream.headers.get('content-type') ?? 'text/plain; charset=utf-8',
+      },
+      body: body || `failed to fetch ${fileName}`,
+    };
+  }
+  const body = Buffer.from(await upstream.arrayBuffer());
+  const actualHash = sha256Hex(body);
+  if (actualHash !== expectedHash) {
+    log(`Rejected ${fileName}: expected SHA-256 ${expectedHash}, received ${actualHash}`, 'error');
+    return { status: 502, body: 'vendor asset integrity check failed' };
+  }
+  const verified = {
+    status: 200,
+    headers: {
+      'Cache-Control': 'private, max-age=86400',
+      'Content-Type': upstream.headers.get('content-type') ?? 'application/octet-stream',
+      'X-Content-Type-Options': 'nosniff',
+    },
+    body,
+  };
+  openCvVendorCache.set(fileName, verified);
+  return verified;
+}
+
 function listSprites(filters) {
   const data = loadData();
   const filtered = data.summaries.filter((summary) => matchesFilters(summary, filters));
@@ -579,6 +681,14 @@ const jsonRoutes = [
 ];
 
 const binaryRoutes = [
+  {
+    method: 'GET',
+    path: /^\/vendor\/opencv\.js$/u,
+    handler: async ({ url }) => {
+      const fileName = path.posix.basename(url.pathname);
+      return fetchOpenCvVendorAsset(fileName);
+    },
+  },
   {
     method: 'GET',
     path: '/img/sprite',

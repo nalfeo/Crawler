@@ -1,0 +1,246 @@
+{
+  "version": 1,
+  "sprites": {
+    "ability-icon-fireball-v1-var-0": {
+      "favorite": true,
+      "comment": ""
+    },
+    "baby-slime-v1-var-1": {
+      "favorite": true,
+      "comment": ""
+    },
+    "baby-slime-v1-var-8": {
+      "favorite": false,
+      "comment": ""
+    },
+    "sunpetal-flower-v1-var-0": {
+      "favorite": false,
+      "comment": ""
+    },
+    "welcome-room-rug-var-0": {
+      "favorite": false,
+      "comment": ""
+    },
+    "purple-potion-bottle-v1-var-4": {
+      "favorite": false,
+      "comment": ""
+    },
+    "prop-rubble-pile-var-1": {
+      "favorite": false,
+      "comment": ""
+    },
+    "moonbloom-flower-v1-var-0": {
+      "favorite": false,
+      "comment": ""
+    },
+    "bone-shard-var-1": {
+      "favorite": false,
+      "comment": ""
+    },
+    "ability-icon-fireball-v1-var-11": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "imp-elite-hellfire-capo-v1-var-3": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "imp-elite-hellfire-capo-v1-var-5": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "baseball-bat-v3-var-6": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "bent-pipe-v1-var-5": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "bent-pipe-v1-var-1": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "cactusfolk-boss-var-1": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "cave-floor-var-8": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "cave-wall-var-5": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "classified-dossier-var-1": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "classified-dossier-var-2": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "classified-dossier-var-5": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "crabfolk-armored-var-0": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "crabfolk-boss-var-10": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "directors-cue-card-var-0": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "faerie-boss-var-1": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "frost-lichen-v1-var-12": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "gnome-boss-var-7": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "goblin-boss-var-0": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "green-slime-baby-v1-var-2": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "imp-flinger-var-2": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "imps-boss-var-5": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "kobold-boss-var-0": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "llama-boss-var-8": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "molefolk-boss-var-0": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "myconid-boss-var-0": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "npc-spell-broker-var-1": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "npc-welcome-goon-var-0": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "panda-bruiser-var-1": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "prop-wall-sconce-v1-var-1": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "prop-wall-sconce-v1-var-2": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "prop-wall-sconce-v1-var-4": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "prop-wall-sconce-v1-var-6": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "prop-wall-sconce-v1-var-7": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "prop-wall-sconce-v1-var-8": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "prop-wall-sconce-v1-var-9": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "raccoons-boss-var-0": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "rat-king-v1-var-7": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "rat-queen-v1-var-7": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "ratfolk-boss-var-0": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "npc-sweaty-merchant-var-0": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    }
+  }
+}
