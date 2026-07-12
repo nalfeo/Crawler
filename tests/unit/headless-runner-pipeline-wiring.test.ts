@@ -25,11 +25,15 @@ describe('headless pipeline wiring — pipeline-parity contract (issue #663)', (
     // The runner must call createFloorMainSceneOptions and pass the merged
     // canonical arrays directly into runSimulationStep.
     expect(HEADLESS_RUNNER_SRC).toMatch(/createFloorMainSceneOptions\(/);
-    expect(HEADLESS_RUNNER_SRC).toContain('preSystems: mergedPreSystems');
-    expect(HEADLESS_RUNNER_SRC).toContain('postSystems: mergedPostSystems');
+    expect(HEADLESS_RUNNER_SRC).toMatch(
+      /runSimulationStep\(\s*world,\s*inputState,\s*GAME\.DELTA_MS,\s*\{[\s\S]*preSystems:\s*mergedPreSystems[\s\S]*postSystems:\s*mergedPostSystems[\s\S]*\}\s*\)/,
+    );
   });
 
   it('headless simulation-step does NOT hardcode game-layer systems', () => {
+    // simulation-step must remain core-only; no game-layer imports.
+    expect(HEADLESS_STEP_SRC).not.toMatch(/from ['"]\.\.\/\.\.\/game\//);
+
     // The headless step must be a pure core ECS pipeline — no hardcoded
     // weaponSystem, floor1EnemyDirectorSystem, statsSystem, etc.  Game-layer
     // systems are injected via preSystems/postSystems by the runner.
