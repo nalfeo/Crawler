@@ -13,6 +13,9 @@ kickoff comment that points Copilot at the normal repo instructions.
   backstop into per-PR `workflow_dispatch` runs.
 - `ci-recovery.yml`, `ci-recovery-incidents.yml`, and `issue-copilot-intake.yml`
   are the workflows that receive `CRAWLER_CI_PAT`.
+- Explicit shepherd lease operations persist even while automated recovery is in
+  `dry-run`; repository write permission to dispatch the trusted workflow is the
+  authorization boundary.
 - `issue-copilot-intake.yml` also receives `CRAWLER_CI_PAT`, but only for
   owner-opened issue assignment + kickoff-comment mutation. Issues that carry
   the `automation` label are skipped to avoid double-handling CI-created issues.
@@ -83,7 +86,8 @@ gh variable set CI_RECOVERY_MODE --repo nalfeo/Crawler --body dry-run
 
 Shepherds acquire, heartbeat, and release ownership through `ci-recovery.yml`;
 they never edit the label or sticky comment directly. The lease ID is visible
-and is not a secret. Repository write permission is the trust boundary.
+and is not a secret. Lease mutations remain live while automated reconciliation
+is in `dry-run`; repository write permission is the trust boundary.
 
 Heartbeat after meaningful activity and at least every 20 minutes. The lease is
 takeover-eligible after 30 minutes without activity, plus five minutes of

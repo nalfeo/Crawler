@@ -9,6 +9,10 @@ export const DEFAULT_LEASE_GRACE_MINUTES = 5;
 const validOwners = new Set(['automation', 'shepherd', 'none']);
 const validStatuses = new Set(['active', 'dispatched', 'escalated', 'idle']);
 
+export function shouldMutateRecoveryState(mode, operation) {
+  return mode === 'live' || (mode === 'dry-run' && operation.startsWith('lease-'));
+}
+
 function compact(value) {
   return String(value ?? '')
     .replace(/\s+/g, ' ')
