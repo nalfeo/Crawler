@@ -1217,8 +1217,8 @@ describe('floor1Scenario', () => {
         bow: 'frost-bow',
         'baseball-bat': 'bone-club',
         pistol: 'plasma-pistol',
-        'throwing-knife': 'rusty-shiv',
-        fireball: 'crystal-wand',
+        'throwing-knife': 'throwing-knife',
+        fireball: 'fireball',
       };
       const starterChoices = new Set(worldA.floorScenario?.starterChoices ?? []);
       const expectedItemIds = new Set(

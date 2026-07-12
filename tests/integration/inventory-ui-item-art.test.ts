@@ -45,14 +45,13 @@ import type { GameWorld } from '../../src/core/world.js';
 
 const REPO_MANIFEST = path.resolve(__dirname, '../../public/assets/generated/manifest.json');
 
-/** The 15 single-lineage item icons normalized this pass + the bat weaponId alias. */
+/** The 14 active single-lineage item icons + the bat weaponId alias. */
 const ITEM_ART_EXPECTATIONS: ReadonlyArray<{ itemId: string; concept: string }> = [
   { itemId: 'bone-shard', concept: 'bone-shard' },
   { itemId: 'camera-lens', concept: 'camera-lens' },
   { itemId: 'classified-dossier', concept: 'classified-dossier' },
   { itemId: 'copper-ore', concept: 'copper-ore' },
   { itemId: 'crystal-fiber', concept: 'crystal-fiber' },
-  { itemId: 'crystal-wand', concept: 'crystal-wand' },
   { itemId: 'directors-cue-card', concept: 'directors-cue-card' },
   { itemId: 'dragon-scale', concept: 'dragon-scale' },
   { itemId: 'flame-dagger', concept: 'flame-dagger' },

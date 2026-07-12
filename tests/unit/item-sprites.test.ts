@@ -223,7 +223,8 @@ describe('itemArtIdentitySet', () => {
     // item identity, not sprite `type` (classified-dossier art is `character`).
     expect(identity.has('iron-ore')).toBe(true); // material
     expect(identity.has('flame-dagger')).toBe(true); // weapon-typed item
-    expect(identity.has('crystal-wand')).toBe(true); // weapon-typed item
+    expect(identity.has('throwing-knife')).toBe(true); // starter weapon item
+    expect(identity.has('fireball')).toBe(true); // starter weapon item
     expect(identity.has('classified-dossier')).toBe(true); // character-typed art
     expect(identity.has('bone-club')).toBe(true); // the bat item id
   });
@@ -259,7 +260,7 @@ describe('canonicalItemBriefId', () => {
 
   it('strips a single trailing -vN for a weapon-typed item', () => {
     expect(canonicalItemBriefId('flame-dagger-v2', identity)).toBe('flame-dagger');
-    expect(canonicalItemBriefId('crystal-wand-v1', identity)).toBe('crystal-wand');
+    expect(canonicalItemBriefId('fireball-v1', identity)).toBe('fireball');
   });
 
   it('strips -vN for character-typed item art (classified-dossier)', () => {
