@@ -175,6 +175,7 @@ async function runParkProbe(seed: number, weapon: string): Promise<ParkProbe> {
     seed,
     forceWeaponId: weapon,
     maxFrames: PARK_SLICE_FRAMES,
+    maxWallTimeMs: Number.POSITIVE_INFINITY,
     recordEvent: (event: SimEvent): void => {
       events.push(event);
     },
