@@ -2466,6 +2466,7 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     .name('Sprite mode (Kenney)')
     .onChange(() => {
       cachedTerrainCanvas = null;
+      updateLegend();
       render();
     });
   overlayFolder
@@ -2473,6 +2474,7 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     .name('Coverage overlay')
     .onChange(() => {
       cachedTerrainCanvas = null;
+      updateLegend();
       render();
     });
 

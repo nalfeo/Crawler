@@ -38,15 +38,12 @@ const ATLAS_COLS = 8;
 const ATLAS_ROWS = 6;
 
 /** Terrain types considered walls for 47-mask connectivity. */
-const PACK_WALL_TERRAINS = new Set<number>([
-  TerrainType.STONE_WALL,
-  TerrainType.CAVE_WALL,
-  TerrainType.VOID,
-]);
+const PACK_WALL_TERRAINS = new Set<number>([TerrainType.STONE_WALL, TerrainType.CAVE_WALL]);
 
 /** Terrain types rendered using the floor pool. */
 const PACK_FLOOR_TERRAINS = new Set<number>([
   TerrainType.STONE_FLOOR,
+  TerrainType.CAVE_FLOOR,
   TerrainType.BOSS_STAIR_FLOOR,
   TerrainType.SAFE_ROOM_FLOOR,
 ]);
@@ -404,7 +401,7 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
             PACK_WALL_TERRAINS.has(leftTerrain) || PACK_WALL_TERRAINS.has(rightTerrain);
           const orientation = resolveDoorOrientationFromFlanks(isHorizontal);
           const doorVariant = resolveDoorPoolVariant(pack.doorSet, {
-            isOpen: false,
+            isOpen: (flags & TileFlags.PASSABLE) !== 0,
             orientation,
           });
           if (doorVariant) {
