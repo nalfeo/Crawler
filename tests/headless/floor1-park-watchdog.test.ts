@@ -92,6 +92,7 @@ const EXTENDED_CASES: ReadonlyArray<{ seed: number; weapon: string; label: strin
   { seed: 15, weapon: 'baseball-bat', label: 'seed 15 · baseball-bat (ENGAGE-thrash cluster)' },
   { seed: 17, weapon: 'bow', label: 'seed 17 · bow (issue repro table)' },
   { seed: 17, weapon: 'baseball-bat', label: 'seed 17 · baseball-bat' },
+  { seed: 8, weapon: 'bow', label: 'seed 8 · bow (current worst post-fix wiggle hotspot)' },
 ];
 
 // ---------------------------------------------------------------------------
