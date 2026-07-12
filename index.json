@@ -1,5 +1,16 @@
 [
   {
+    "commit": "9b0a390b8fcea59cff00a0d0dc9f5a4a5722d01b",
+    "commitDate": "2026-07-12T20:46:46Z",
+    "commitSubject": "feat(labs): sprite mode, terrain-pack map preview, retire tile-render lab (#1076)",
+    "capturedAt": "2026-07-12T21:22:12.033Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29208611294",
+    "winRate": 0.9233333333333333,
+    "totalWins": 277,
+    "totalRuns": 300,
+    "path": "by-sha/9b0a390b8fcea59cff00a0d0dc9f5a4a5722d01b.json"
+  },
+  {
     "commit": "30a787d97ab8883aaaa9f0158299059c58bc237a",
     "commitDate": "2026-07-12T19:43:28Z",
     "commitSubject": "test(headless): Floor-1 park watchdog guard for stuck/wiggle regression (issue #652) (#1056)",
