@@ -1246,18 +1246,26 @@ const CLIENT_SCRIPT = String.raw`
                     currentDisliked = !!sprite.disliked;
                     currentComment = sprite.comment ? String(sprite.comment) : '';
                   }
+                  var nextAnnotation = {
+                    favorite: !currentFavorite,
+                    disliked: !currentFavorite ? false : currentDisliked,
+                    comment: currentComment
+                  };
                   await fetchJson('/api/save', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                       key: item.key,
-                      annotation: {
-                        favorite: !currentFavorite,
-                        disliked: !currentFavorite ? false : currentDisliked,
-                        comment: currentComment
-                      }
+                      annotation: nextAnnotation
                     })
                   });
+                  if (sprite && sprite.key === item.key) {
+                    sprite.favorite = nextAnnotation.favorite;
+                    sprite.disliked = nextAnnotation.disliked;
+                    sprite.comment = nextAnnotation.comment;
+                    renderEditor({ skipDraftPersist: true });
+                    resetBaseline();
+                  }
                   if (currentEditorFingerprint() === editorFingerprintAtStart) {
                     await loadList({ skipDirtyGuard: true });
                   }
