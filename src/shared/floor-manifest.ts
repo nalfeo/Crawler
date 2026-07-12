@@ -19,6 +19,7 @@ import floor1ManifestJson from './data/floors/floor1.manifest.json';
 import floor2ManifestJson from './data/floors/floor2.manifest.json';
 import { npcPlacementDefSchema } from './npc-placements.js';
 import { BiomeType } from './map-types.js';
+import { runtimeTerrainPackIdSchema } from './terrain-pack-types.js';
 
 /**
  * Floor manifest configuration schema.
@@ -196,6 +197,14 @@ export const floorManifestDefSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * Optional terrain pack id (registry-backed, see `terrain-pack-types.ts`)
+     * this floor's renderer should use for walls/floor-pool/corridor-pool/
+     * doors. Omitted entirely by floors that use the legacy 16-mask
+     * `TILE_SPRITES` autotile + generated-single-image path (e.g. Floor 1) —
+     * a typo'd id fails this Zod enum, never silently falls back at runtime.
+     */
+    terrainPackId: runtimeTerrainPackIdSchema.optional(),
   })
   .strict();
 

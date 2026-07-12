@@ -1,0 +1,265 @@
+{
+  "id": "caeles-fixture",
+  "name": "Caeles Seamless Template (CC0 fixture)",
+  "provenance": {
+    "kind": "vendored",
+    "originalFilename": "template8x6.png",
+    "sourceUrl": "https://opengameart.org/content/seamless-tileset-template-ii",
+    "fileUrl": "https://opengameart.org/sites/default/files/template8x6.png",
+    "title": "Seamless Tileset Template II",
+    "author": "caeles",
+    "license": "CC0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "sha256": "34f07db7bb4872406f35507c515e2fca78bbabbf5a112a20c995bcf554992d76",
+    "derivationNote": "Sliced into 48 32px cells (8x6 grid, row-major). The 48th (last) cell is reserved as a spare, used only to derive floor/corridor/door art and as a bootstrap \"solid\" reference (the source template has no dedicated art for those surfaces). The remaining 47 cells are assigned to the 47 canonical blob47 masks via a deterministic two-phase greedy content-aware match (see assignPoolCellsToMasks in build-caeles-fixture.ts): phase 1 classifies edges against the bootstrap open (cell 0) / solid (spare) references and locks in masks 0 and 255 first; phase 2 reclassifies the remaining cells against those two actually-assigned cells (self-consistent with what validate.ts's compatible-boundary check will later sample from the atlas) and greedily assigns every other mask in ascending mask-value order, breaking ties by lowest cell index. Each assigned cell is nearest-neighbor upscaled 32x32 -> 64x64 (factor 2, explicit source/destination size, no implicit resizing). Floor/corridor/door pool images are derived by deterministically cropping/recoloring the spare cell (documented here, not literal additional vendored artwork) because the source template has no dedicated floor/corridor/door art."
+  },
+  "wallAutotile": {
+    "imagePath": "assets/terrain-packs/caeles-fixture/wall-atlas.png",
+    "textureKey": "terrain-pack-caeles-fixture-walls",
+    "cellPx": 64,
+    "gridCols": 8,
+    "gridRows": 6,
+    "masks": [
+      {
+        "maskId": 0,
+        "frameIndex": 0
+      },
+      {
+        "maskId": 1,
+        "frameIndex": 1
+      },
+      {
+        "maskId": 2,
+        "frameIndex": 2
+      },
+      {
+        "maskId": 3,
+        "frameIndex": 3
+      },
+      {
+        "maskId": 4,
+        "frameIndex": 4
+      },
+      {
+        "maskId": 5,
+        "frameIndex": 5
+      },
+      {
+        "maskId": 6,
+        "frameIndex": 6
+      },
+      {
+        "maskId": 7,
+        "frameIndex": 7
+      },
+      {
+        "maskId": 8,
+        "frameIndex": 8
+      },
+      {
+        "maskId": 9,
+        "frameIndex": 9
+      },
+      {
+        "maskId": 10,
+        "frameIndex": 10
+      },
+      {
+        "maskId": 11,
+        "frameIndex": 11
+      },
+      {
+        "maskId": 12,
+        "frameIndex": 12
+      },
+      {
+        "maskId": 13,
+        "frameIndex": 13
+      },
+      {
+        "maskId": 14,
+        "frameIndex": 14
+      },
+      {
+        "maskId": 15,
+        "frameIndex": 15
+      },
+      {
+        "maskId": 19,
+        "frameIndex": 16
+      },
+      {
+        "maskId": 23,
+        "frameIndex": 17
+      },
+      {
+        "maskId": 27,
+        "frameIndex": 18
+      },
+      {
+        "maskId": 31,
+        "frameIndex": 19
+      },
+      {
+        "maskId": 38,
+        "frameIndex": 20
+      },
+      {
+        "maskId": 39,
+        "frameIndex": 21
+      },
+      {
+        "maskId": 46,
+        "frameIndex": 22
+      },
+      {
+        "maskId": 47,
+        "frameIndex": 23
+      },
+      {
+        "maskId": 55,
+        "frameIndex": 24
+      },
+      {
+        "maskId": 63,
+        "frameIndex": 25
+      },
+      {
+        "maskId": 76,
+        "frameIndex": 26
+      },
+      {
+        "maskId": 77,
+        "frameIndex": 27
+      },
+      {
+        "maskId": 78,
+        "frameIndex": 28
+      },
+      {
+        "maskId": 79,
+        "frameIndex": 29
+      },
+      {
+        "maskId": 95,
+        "frameIndex": 30
+      },
+      {
+        "maskId": 110,
+        "frameIndex": 31
+      },
+      {
+        "maskId": 111,
+        "frameIndex": 32
+      },
+      {
+        "maskId": 127,
+        "frameIndex": 33
+      },
+      {
+        "maskId": 137,
+        "frameIndex": 34
+      },
+      {
+        "maskId": 139,
+        "frameIndex": 35
+      },
+      {
+        "maskId": 141,
+        "frameIndex": 36
+      },
+      {
+        "maskId": 143,
+        "frameIndex": 37
+      },
+      {
+        "maskId": 155,
+        "frameIndex": 38
+      },
+      {
+        "maskId": 159,
+        "frameIndex": 39
+      },
+      {
+        "maskId": 175,
+        "frameIndex": 40
+      },
+      {
+        "maskId": 191,
+        "frameIndex": 41
+      },
+      {
+        "maskId": 205,
+        "frameIndex": 42
+      },
+      {
+        "maskId": 207,
+        "frameIndex": 43
+      },
+      {
+        "maskId": 223,
+        "frameIndex": 44
+      },
+      {
+        "maskId": 239,
+        "frameIndex": 45
+      },
+      {
+        "maskId": 255,
+        "frameIndex": 46
+      }
+    ]
+  },
+  "floorPool": [
+    {
+      "id": "floor-0",
+      "imagePath": "assets/terrain-packs/caeles-fixture/floor-0.png",
+      "textureKey": "terrain-pack-caeles-fixture-floor-0"
+    },
+    {
+      "id": "floor-1",
+      "imagePath": "assets/terrain-packs/caeles-fixture/floor-1.png",
+      "textureKey": "terrain-pack-caeles-fixture-floor-1"
+    },
+    {
+      "id": "floor-2",
+      "imagePath": "assets/terrain-packs/caeles-fixture/floor-2.png",
+      "textureKey": "terrain-pack-caeles-fixture-floor-2"
+    }
+  ],
+  "corridorPool": [
+    {
+      "id": "corridor-0",
+      "imagePath": "assets/terrain-packs/caeles-fixture/corridor-0.png",
+      "textureKey": "terrain-pack-caeles-fixture-corridor-0"
+    },
+    {
+      "id": "corridor-1",
+      "imagePath": "assets/terrain-packs/caeles-fixture/corridor-1.png",
+      "textureKey": "terrain-pack-caeles-fixture-corridor-1"
+    },
+    {
+      "id": "corridor-2",
+      "imagePath": "assets/terrain-packs/caeles-fixture/corridor-2.png",
+      "textureKey": "terrain-pack-caeles-fixture-corridor-2"
+    }
+  ],
+  "doorSet": {
+    "openHorizontal": {
+      "imagePath": "assets/terrain-packs/caeles-fixture/door-open-horizontal.png",
+      "textureKey": "terrain-pack-caeles-fixture-door-open-horizontal"
+    },
+    "openVertical": {
+      "imagePath": "assets/terrain-packs/caeles-fixture/door-open-vertical.png",
+      "textureKey": "terrain-pack-caeles-fixture-door-open-vertical"
+    },
+    "closedHorizontal": {
+      "imagePath": "assets/terrain-packs/caeles-fixture/door-closed-horizontal.png",
+      "textureKey": "terrain-pack-caeles-fixture-door-closed-horizontal"
+    },
+    "closedVertical": {
+      "imagePath": "assets/terrain-packs/caeles-fixture/door-closed-vertical.png",
+      "textureKey": "terrain-pack-caeles-fixture-door-closed-vertical"
+    }
+  }
+}

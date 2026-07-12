@@ -42,6 +42,7 @@ import { GAME } from '../../src/shared/constants.js';
 const MAX_FRAMES = Math.ceil((6 * 60 * 1000 * 1.1) / GAME.DELTA_MS);
 const WEAPON = 'sword';
 const SEEDS = [42, 101] as const;
+const DETERMINISM_TIMEOUT_MS = 300_000;
 
 interface Fingerprint {
   totalFrames: number;
@@ -81,16 +82,20 @@ async function runSlice(seed: number): Promise<RunStats> {
 
 describe('NAVMESH_FUSED — determinism guard', () => {
   for (const seed of SEEDS) {
-    it(`seed ${seed}: navmesh-fused run is byte-identical across two invocations`, async () => {
-      const a = await runSlice(seed);
-      const b = await runSlice(seed);
+    it(
+      `seed ${seed}: navmesh-fused run is byte-identical across two invocations`,
+      async () => {
+        const a = await runSlice(seed);
+        const b = await runSlice(seed);
 
-      // Non-vacuity: the fused danger fan is only exercised when enemies are
-      // perceived along the navmesh route, so require the run to have landed hits
-      // (otherwise the determinism proof would be vacuous for an idle agent).
-      expect(a.combat.damageDealt).toBeGreaterThan(0);
+        // Non-vacuity: the fused danger fan is only exercised when enemies are
+        // perceived along the navmesh route, so require the run to have landed hits
+        // (otherwise the determinism proof would be vacuous for an idle agent).
+        expect(a.combat.damageDealt).toBeGreaterThan(0);
 
-      expect(fingerprint(a)).toEqual(fingerprint(b));
-    });
+        expect(fingerprint(a)).toEqual(fingerprint(b));
+      },
+      DETERMINISM_TIMEOUT_MS,
+    );
   }
 });

@@ -143,6 +143,8 @@ const SOURCE_PATH_TO_LABS = {
   // Engine / rendering
   'src/engine/terrain': ['tile-render-lab'],
   'src/engine/sprites/tile': ['tile-render-lab', 'tile-explorer'],
+  'src/engine/sprites/terrain-pack': ['terrain-pack-lab'],
+  'src/shared/terrain-pack': ['terrain-pack-lab'],
   'src/engine/GoreVfx': ['gore-lab'],
   'src/engine/hud': ['hud-lab'],
   // Shared
