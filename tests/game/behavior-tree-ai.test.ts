@@ -8,9 +8,15 @@ import {
   spawnPlayer,
   spawnXpGem,
 } from '../../src/core/helpers.js';
+import { spawnSpawner } from '../../src/core/spawners/combatants.js';
+import { getSpawnerArchetype, getSpawnerArchetypeIndex } from '../../src/game/spawners/registry.js';
 import { createInputState } from '../../src/shared/input.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
-import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
+import {
+  BehaviorTreeAI,
+  SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES,
+} from '../../src/game/ai/bt-ai-provider.js';
+import { MovementIntentOwner } from '../../src/game/ai/movement-intent-arbiter.js';
 import { hasClearLineOfSight } from '../../src/game/ai/bt-ai-geometry.js';
 import {
   initializeFloor1Scenario,
@@ -43,8 +49,8 @@ import {
   ENGAGE_GIVEUP_FRAMES,
   NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES,
 } from '../../src/game/ai/bt-ai-tuning.js';
-import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
-import { FLOOR1_TUTORIAL_QUEST_ID } from '../../src/shared/quest-types.js';
+import { BiomeType, RoomRole, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
+import { FLOOR1_SHOP_QUEST_ID, FLOOR1_TUTORIAL_QUEST_ID } from '../../src/shared/quest-types.js';
 
 /**
  * Build an all-open room (walls only on the border) so A* has a clear straight
@@ -74,6 +80,53 @@ function makeOpenRoom(widthTiles: number, heightTiles: number): FloorMap {
     }
   }
   return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 1, y: 1 });
+}
+
+/**
+ * Build an all-open room (walls only on the border, identical floor plan to
+ * {@link makeOpenRoom}) but with the RoomGraph split into two role-tagged
+ * regions: a SAFE room spanning tile columns [0, safeWidthTiles) and a NORMAL
+ * room spanning the remainder. Both regions share the same open floor (no
+ * interior wall), so A* can freely cross the boundary — only the semantic
+ * role differs. This lets `isPlayerAndNpcInSameSafeRoom` /
+ * `isPointInSafeSpace` (both driven by `RoomGraph.getRoomsByRole`) resolve
+ * real SAFE-room membership, which the plain `makeOpenRoom` fixture (empty
+ * RoomGraph) can never satisfy.
+ */
+function makeSafeZoneOpenRoom(
+  widthTiles: number,
+  heightTiles: number,
+  safeWidthTiles: number,
+): FloorMap {
+  const tileMap = new TileMap(widthTiles, heightTiles);
+  const terrain = new Uint8Array(widthTiles * heightTiles);
+  const config: MapConfig = {
+    widthTiles,
+    heightTiles,
+    tileSizeFt: 4,
+    biome: BiomeType.ARENA,
+    seed: 1,
+    roomWidthRange: [4, 8],
+    roomHeightRange: [4, 8],
+    maxRooms: 2,
+    floorDensity: 1,
+  };
+  for (let y = 0; y < heightTiles; y += 1) {
+    for (let x = 0; x < widthTiles; x += 1) {
+      const idx = y * widthTiles + x;
+      const isBorder = x === 0 || y === 0 || x === widthTiles - 1 || y === heightTiles - 1;
+      tileMap.flags[idx] = isBorder ? TilePresets.WALL : TilePresets.FLOOR;
+    }
+  }
+  const roomGraph = new RoomGraph();
+  roomGraph.add({ x: 0, y: 0, width: safeWidthTiles, height: heightTiles }, [], [], RoomRole.SAFE);
+  roomGraph.add(
+    { x: safeWidthTiles, y: 0, width: widthTiles - safeWidthTiles, height: heightTiles },
+    [],
+    [],
+    RoomRole.NORMAL,
+  );
+  return new FloorMap(config, tileMap, roomGraph, terrain, { x: 1, y: 1 });
 }
 
 /**
@@ -157,6 +210,33 @@ function enterKillGrindStage(world: GameWorld): void {
   meetTutorialGoon(world);
   world.playerLevel.level = 2;
   world.floorScenario!.objective.questCompleted = false;
+}
+
+const RATS_NEST_INDEX = getSpawnerArchetypeIndex('rats-nest');
+const RATS_NEST = getSpawnerArchetype('rats-nest')!;
+
+/**
+ * Place a barrier-verified, locked spawner arena right next to the player.
+ * Mirrors `tests/unit/ai/bt-arena-lockin-priority.test.ts`'s fixture: we set
+ * `arenaState`/`arenaKind`/`spawnerArenaBarriers` directly instead of running
+ * the full spawner-arena state machine, scoping the test to BT/arbiter
+ * priority selection rather than arena-lock mechanics (covered elsewhere).
+ */
+function makeLockedSpawnerNearPlayer(world: GameWorld, px: number, py: number): number {
+  const spawnerEid = spawnSpawner(world, px + 2, py, RATS_NEST.hp, {
+    defIndex: RATS_NEST_INDEX,
+    contactDamage: RATS_NEST.contactDamage,
+    arenaRadiusFt: 6,
+  });
+  world.stores.spawner.arenaState[spawnerEid] = 1; // locked
+  world.stores.spawner.arenaKind[spawnerEid] = 1; // open-fence
+  world.spawnerArenaBarriers.set(spawnerEid, {
+    id: 1,
+    kind: 'fence',
+    tiles: [],
+    shape: { type: 'ring', cxFt: px + 2, cyFt: py, innerRadiusFt: 5, outerRadiusFt: 6 },
+  });
+  return spawnerEid;
 }
 
 function setupNpcApproachThreat(weaponId: string): {
@@ -967,17 +1047,377 @@ describe('BehaviorTreeAI', () => {
     expect(latched.targetX).toBeCloseTo(firstTargetX, 6);
     expect(latched.targetY).toBeCloseTo(firstTargetY, 6);
 
-    // Next frame outside safe room, threat still >50ft away: the AI should keep
-    // committing to the same far threat (Hunt), not drop to EXPLORE.
+    // Step outside the safe room: the egress lease is retained for a
+    // SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES-poll clear window (NavigationCommitment
+    // owns this clock now — the provider no longer runs a duplicate
+    // safeRoomEgressOutsideFrames counter). It must not release early just
+    // because the original threat wandered off.
     world.playerInSafeRoom = false;
     world.stores.position.x[player] = 20;
     world.stores.position.y[player] = 10;
 
+    for (
+      let outsideFrame = 1;
+      outsideFrame < SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES;
+      outsideFrame += 1
+    ) {
+      ai.poll(input, world);
+      const stillRetained = ai.getDecision();
+      expect(stillRetained.state).toBe(AIState.ENGAGE);
+      expect(stillRetained.targetEid).toBeNull();
+      expect(stillRetained.reason).toContain('Leaving safe room');
+    }
+
+    // The SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES-th consecutive outside-safe poll
+    // clears the commitment and the legacy Hunt fallback resumes on the same
+    // far threat (the tree's own Hunt pick, since the arbiter's release this
+    // exact poll selects nothing and leaves it untouched).
     ai.poll(input, world);
     const postExit = ai.getDecision();
     expect(postExit.state).toBe(AIState.ENGAGE);
     expect(postExit.targetEid).toBe(farThreat);
     expect(postExit.reason).toContain('Hunting enemy');
+
+    ai.poll(input, world);
+    expect(ai.getDecision().reason).toContain('Hunting enemy');
+    expect(ai.getMovementIntentDebug()?.owner).not.toBe(MovementIntentOwner.SAFE_ROOM_EGRESS);
+  });
+
+  describe('movement-intent arbiter integration', () => {
+    /**
+     * Wound the player critically and place a threat within
+     * `retreatDangerRadius` while inside a safe room, then poll once. The
+     * tree's own Retreat branch fires every poll from here on (its condition
+     * has no zone gate), but on this first poll the retained SafeRoomEgress
+     * lease must win the arbiter: RETREAT's typed proposal is tagged
+     * `zone: 'outsideSafe'`, which the arbiter filters out while
+     * `playerInSafeRoom` is true, leaving egress as the sole eligible
+     * candidate.
+     */
+    function establishRetainedEgressUnderCriticalRetreatThreat(seed: number): {
+      world: GameWorld;
+      ai: BehaviorTreeAI;
+      input: ReturnType<typeof createInputState>;
+      player: number;
+    } {
+      const world = createTestWorld({ seed });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+      meetTutorialGoon(world);
+      world.playerLevel.level = 0;
+      world.floorMap = makeOpenRoom(40, 20);
+      world.stores.position.x[player] = 14;
+      world.stores.position.y[player] = 10;
+      world.playerInSafeRoom = true;
+      world.stores.health.current[player] = 10;
+      world.stores.health.max[player] = 100;
+
+      spawnEnemy(world, 24, 10, 20);
+
+      const ai = new BehaviorTreeAI({ seed });
+      const input = createInputState();
+      ai.poll(input, world);
+
+      const decision = ai.getDecision();
+      expect(decision.state).toBe(AIState.ENGAGE);
+      expect(decision.reason).toContain('Leaving safe room');
+      expect(ai.getMovementIntentDebug()?.owner).toBe(MovementIntentOwner.SAFE_ROOM_EGRESS);
+      expect(ai.getMovementIntentDebug()?.transition).toBe('acquired');
+
+      return { world, ai, input, player };
+    }
+
+    it('retains an egress lease over a critical-HP Retreat proposal while still inside the safe room', () => {
+      const { world, ai, input } = establishRetainedEgressUnderCriticalRetreatThreat(101);
+
+      // The threat stays close, so the tree's own Retreat branch keeps
+      // firing every poll — egress must keep winning while still inside.
+      for (let i = 0; i < 5; i += 1) {
+        ai.poll(input, world);
+        const decision = ai.getDecision();
+        expect(decision.state).toBe(AIState.ENGAGE);
+        expect(decision.reason).toContain('Leaving safe room');
+        expect(ai.getMovementIntentDebug()?.owner).toBe(MovementIntentOwner.SAFE_ROOM_EGRESS);
+        expect(ai.getMovementIntentDebug()?.transition).toBe('retained');
+      }
+    });
+
+    it('keeps a retained egress lease through the entire 30-frame outside clear window despite a critical-HP Retreat proposal', () => {
+      const { world, ai, input, player } = establishRetainedEgressUnderCriticalRetreatThreat(102);
+
+      world.playerInSafeRoom = false;
+      world.stores.position.x[player] = 20;
+      world.stores.position.y[player] = 10;
+
+      for (
+        let outsideFrame = 1;
+        outsideFrame < SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES;
+        outsideFrame += 1
+      ) {
+        ai.poll(input, world);
+        const decision = ai.getDecision();
+        expect(decision.state).toBe(AIState.ENGAGE);
+        expect(decision.reason).toContain('Leaving safe room');
+        expect(ai.getMovementIntentDebug()?.owner).toBe(MovementIntentOwner.SAFE_ROOM_EGRESS);
+        expect(ai.getMovementIntentDebug()?.transition).toBe('retained');
+      }
+    });
+
+    it('lets a critical-HP outside-safe Retreat acquire on the exact frame the egress commitment clears', () => {
+      const { world, ai, input, player } = establishRetainedEgressUnderCriticalRetreatThreat(103);
+
+      world.playerInSafeRoom = false;
+      world.stores.position.x[player] = 20;
+      world.stores.position.y[player] = 10;
+
+      for (
+        let outsideFrame = 1;
+        outsideFrame < SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES;
+        outsideFrame += 1
+      ) {
+        ai.poll(input, world);
+      }
+
+      // The 30th consecutive outside-safe poll clears the egress commitment
+      // and acquires the already-eligible Retreat proposal in the same
+      // resolution.
+      ai.poll(input, world);
+      const releaseFrame = ai.getDecision();
+      expect(releaseFrame.state).toBe(AIState.RETREAT);
+      expect(ai.getMovementIntentDebug()?.owner).toBe(MovementIntentOwner.RETREAT);
+      expect(ai.getMovementIntentDebug()?.transition).toBe('acquired');
+      expect(ai.getMovementIntentDebug()?.priorOwner).toBe(MovementIntentOwner.SAFE_ROOM_EGRESS);
+    });
+
+    it('does not let an in-safe enemy-backed Progression proposal park movement; egress wins instead', () => {
+      const world = createTestWorld({ seed: 104 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+      enterKillGrindStage(world);
+      world.floorMap = makeOpenRoom(40, 20);
+      world.stores.position.x[player] = 14;
+      world.stores.position.y[player] = 10;
+      world.playerInSafeRoom = true;
+
+      const rat = spawnEnemy(world, 14.75, 10, 20);
+      world.floorScenario!.enemyArchetypes.set(rat, 'rat');
+
+      const ai = new BehaviorTreeAI({ seed: 104 });
+      ai.poll(createInputState(), world);
+
+      const decision = ai.getDecision();
+      expect(decision.reason).not.toContain('Hunting quest enemies');
+      expect(decision.state).toBe(AIState.ENGAGE);
+      expect(decision.reason).toContain('Leaving safe room');
+      expect(ai.getMovementIntentDebug()?.owner).toBe(MovementIntentOwner.SAFE_ROOM_EGRESS);
+    });
+
+    it('lets noncombat Progression carry an objective route through safe space', () => {
+      const world = createTestWorld({ seed: 105 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+      enterKillGrindStage(world);
+      world.floorScenario!.objective.questCompleted = true;
+      world.floorMap = makeSafeZoneOpenRoom(40, 20, 15);
+      world.stores.position.x[player] = 80;
+      world.stores.position.y[player] = 40;
+      world.playerInSafeRoom = false;
+
+      acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
+      world.questLog.get(FLOOR1_SHOP_QUEST_ID)!.done['meet-merchant'] = true;
+      world.floorScenario!.objective = {
+        ...world.floorScenario!.objective,
+        questItemPos: { x: 120, y: 40 },
+      };
+      spawnEnemy(world, 50, 40, 20);
+
+      const ai = new BehaviorTreeAI({ seed: 105 });
+      ai.poll(createInputState(), world);
+      expect(ai.getMovementIntentDebug()?.owner).toBe(MovementIntentOwner.PROGRESSION);
+
+      world.stores.position.x[player] = 20;
+      world.playerInSafeRoom = true;
+      ai.poll(createInputState(), world);
+
+      const decision = ai.getDecision();
+      expect(decision.reason).not.toContain('Leaving safe room');
+      expect(ai.getMovementIntentDebug()?.owner).toBe(MovementIntentOwner.PROGRESSION);
+
+      world.stores.position.x[player] = 80;
+      world.playerInSafeRoom = false;
+      ai.poll(createInputState(), world);
+      expect(ai.getDecision().reason).not.toContain('Leaving safe room');
+      expect(ai.getMovementIntentDebug()?.owner).toBe(MovementIntentOwner.PROGRESSION);
+    });
+
+    it('allows an immediate same-safe interaction to preempt a retained egress lease', () => {
+      const world = createTestWorld({ seed: 31 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+      enterKillGrindStage(world);
+      // findNearestRelevantNpc filters NPCs outside "safe space" while the
+      // player is in a safe room, so the shopkeeper must sit inside a real
+      // RoomRole.SAFE room for Interact to ever find it here — a plain
+      // makeOpenRoom (no RoomGraph safe rooms) would hide it entirely.
+      world.floorMap = makeSafeZoneOpenRoom(40, 20, 15);
+      world.playerInSafeRoom = true;
+      world.stores.position.x[player] = 20;
+      world.stores.position.y[player] = 40;
+
+      const shopkeeperNpcEid = world.floorScenario!.shopkeeperNpcEid;
+      expect(shopkeeperNpcEid).toBeDefined();
+      // Poll 1: shopkeeper far outside the safe zone entirely (filtered by
+      // findNearestRelevantNpc), so it cannot preempt anything yet.
+      world.stores.position.x[shopkeeperNpcEid!] = 140;
+      world.stores.position.y[shopkeeperNpcEid!] = 40;
+      const guideNpcEid = world.floorScenario!.guideNpcEid;
+      if (guideNpcEid != null) {
+        world.stores.position.x[guideNpcEid] = 140;
+        world.stores.position.y[guideNpcEid] = 40;
+      }
+      const spellBrokerEid = world.floorScenario!.spellQuestGiverNpcEid;
+      if (spellBrokerEid != null) {
+        world.stores.position.x[spellBrokerEid] = 140;
+        world.stores.position.y[spellBrokerEid] = 40;
+      }
+      // A quest enemy inside the safe zone gives the egress waypoint a
+      // direction whose overshoot lands just outside the safe zone.
+      const questEnemy = spawnEnemy(world, 50, 40, 20);
+      world.floorScenario!.enemyArchetypes.set(questEnemy, 'rat');
+
+      const ai = new BehaviorTreeAI({ seed: 31 });
+      const input = createInputState();
+      ai.poll(input, world);
+
+      const first = ai.getDecision();
+      expect(first.state).toBe(AIState.ENGAGE);
+      expect(first.reason).toContain('Leaving safe room');
+      expect(ai.getMovementIntentDebug()?.owner).toBe(MovementIntentOwner.SAFE_ROOM_EGRESS);
+      expect(ai.getMovementIntentDebug()?.transition).toBe('acquired');
+
+      // Bring the shopkeeper into immediate interaction range inside the
+      // same safe zone as the player.
+      world.stores.position.x[shopkeeperNpcEid!] = 22;
+      world.stores.position.y[shopkeeperNpcEid!] = 40;
+      ai.poll(input, world);
+
+      const second = ai.getDecision();
+      expect(second.state).toBe(AIState.INTERACT);
+      expect(second.targetEid).toBe(shopkeeperNpcEid);
+      expect(ai.getMovementIntentDebug()?.owner).toBe(MovementIntentOwner.INTERACTION_IMMEDIATE);
+      expect(ai.getMovementIntentDebug()?.transition).toBe('preempted');
+    });
+
+    it('never lets an InteractionApproach proposal preempt a retained egress lease', () => {
+      const world = createTestWorld({ seed: 105 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+      enterKillGrindStage(world);
+      world.floorMap = makeSafeZoneOpenRoom(40, 20, 15);
+      world.stores.position.x[player] = 20;
+      world.stores.position.y[player] = 40;
+      world.playerInSafeRoom = true;
+
+      const shopkeeperNpcEid = world.floorScenario!.shopkeeperNpcEid;
+      expect(shopkeeperNpcEid).toBeDefined();
+      // Poll 1: shopkeeper is far away, entirely outside the safe zone —
+      // domain unavailable, so only the latched egress waypoint is eligible.
+      world.stores.position.x[shopkeeperNpcEid!] = 140;
+      world.stores.position.y[shopkeeperNpcEid!] = 40;
+
+      spawnEnemy(world, 50, 40, 20);
+
+      const ai = new BehaviorTreeAI({ seed: 105 });
+      const input = createInputState();
+      ai.poll(input, world);
+
+      const first = ai.getDecision();
+      expect(first.state).toBe(AIState.ENGAGE);
+      expect(first.reason).toContain('Leaving safe room');
+      expect(ai.getMovementIntentDebug()?.owner).toBe(MovementIntentOwner.SAFE_ROOM_EGRESS);
+      expect(ai.getMovementIntentDebug()?.transition).toBe('acquired');
+
+      // Poll 2: move the shopkeeper into the SAME safe zone as the player,
+      // still outside immediate interaction range — this legally satisfies
+      // InteractionApproach's domain-availability check, but it must never
+      // preempt the retained egress lease.
+      world.stores.position.x[shopkeeperNpcEid!] = 40;
+      world.stores.position.y[shopkeeperNpcEid!] = 40;
+      ai.poll(input, world);
+
+      const second = ai.getDecision();
+      expect(second.state).toBe(AIState.ENGAGE);
+      expect(second.reason).toContain('Leaving safe room');
+      expect(ai.getMovementIntentDebug()?.owner).toBe(MovementIntentOwner.SAFE_ROOM_EGRESS);
+      expect(ai.getMovementIntentDebug()?.transition).toBe('retained');
+    });
+
+    it('allows a barrier-verified outside-safe ArenaLockin to preempt a retained egress lease', () => {
+      const world = createTestWorld({ seed: 31 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+      meetTutorialGoon(world);
+      world.playerLevel.level = 0;
+      world.floorMap = makeOpenRoom(40, 20);
+      world.stores.position.x[player] = 14;
+      world.stores.position.y[player] = 10;
+      world.playerInSafeRoom = true;
+
+      spawnEnemy(world, 84, 10, 20);
+
+      const ai = new BehaviorTreeAI({ seed: 31 });
+      const input = createInputState();
+      ai.poll(input, world);
+      expect(ai.getMovementIntentDebug()?.owner).toBe(MovementIntentOwner.SAFE_ROOM_EGRESS);
+
+      // Step outside — egress remains retained, well within the 30-frame window.
+      world.playerInSafeRoom = false;
+      world.stores.position.x[player] = 20;
+      world.stores.position.y[player] = 10;
+      ai.poll(input, world);
+      expect(ai.getDecision().reason).toContain('Leaving safe room');
+      expect(ai.getMovementIntentDebug()?.owner).toBe(MovementIntentOwner.SAFE_ROOM_EGRESS);
+
+      // A barrier-verified locked arena appears right next to the player.
+      const spawnerEid = makeLockedSpawnerNearPlayer(world, 20, 10);
+      ai.poll(input, world);
+
+      const decision = ai.getDecision();
+      expect(decision.state).toBe(AIState.ENGAGE);
+      expect(decision.targetEid).toBe(spawnerEid);
+      expect(decision.reason.toLowerCase()).toContain('arena');
+      expect(ai.getMovementIntentDebug()?.owner).toBe(MovementIntentOwner.ARENA_LOCKIN);
+      expect(ai.getMovementIntentDebug()?.transition).toBe('preempted');
+    });
+
+    it('reset() clears movement-intent ownership and telemetry', () => {
+      const world = createTestWorld({ seed: 106 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+      meetTutorialGoon(world);
+      world.playerLevel.level = 0;
+      world.floorMap = makeOpenRoom(40, 20);
+      world.stores.position.x[player] = 14;
+      world.stores.position.y[player] = 10;
+      world.playerInSafeRoom = true;
+      spawnEnemy(world, 84, 10, 20);
+
+      const ai = new BehaviorTreeAI({ seed: 106 });
+      ai.poll(createInputState(), world);
+
+      expect(ai.getMovementIntentDebug()).not.toBeNull();
+      expect(ai.getMovementIntentDebug()?.owner).toBe(MovementIntentOwner.SAFE_ROOM_EGRESS);
+
+      ai.reset();
+      expect(ai.getMovementIntentDebug()).toBeNull();
+    });
   });
 
   it('prioritizes the broker while floor2 reputation is locked, then drops broker targeting after intro completion', () => {

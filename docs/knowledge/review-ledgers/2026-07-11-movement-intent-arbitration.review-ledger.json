@@ -1,0 +1,60 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-11",
+  "session_slug": "movement-intent-arbitration",
+  "task_title": "Deterministic movement intent arbitration",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 16,
+      "resolved_count": 16,
+      "adversarial": true,
+      "alternatives_considered": 5,
+      "plan_divergence": "major_fork",
+      "notes": "Two xhigh adversarial passes rejected provider-local safe-room exceptions, blanket selector reorder, mini-selector duplication, and implicit lease overlays. Adopted data-only descriptors, exhaustive pairwise preemption, tile-stable keys, a pure two-clock NavigationCommitment primitive, structured lifecycle telemetry, SafeRoomEgress as consumer one, Retreat as consumer two, 5-apple scope, and pre-merge 600-run cloud validation."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 6,
+          "valid_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4-mini", "claude-opus-4.6"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

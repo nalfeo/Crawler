@@ -33,6 +33,7 @@ import {
   type LevelUpEvent,
 } from './types.js';
 import { AI_STATE_NAME, getDecisionEventState, type SimEvent } from './event-log.js';
+import { MovementIntentOwner, type MovementIntentTelemetry } from './movement-intent-arbiter.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
 import { getScenarioDefinition } from '../scenarioDefinitions.js';
 import {
@@ -368,6 +369,7 @@ export async function runHeadless(
     };
     getDecisionMode?: () => string;
     getPathingMode?: () => AIPathingModeValue;
+    getMovementIntentDebug?: () => MovementIntentTelemetry | null;
     disposeNavmesh?: () => void;
   };
   let lastFrameX = world.stores.position.x[playerEid] ?? 0;
@@ -376,12 +378,37 @@ export async function runHeadless(
   let lastSampleX = lastFrameX;
   let lastSampleY = lastFrameY;
   let lastLoggedState: string | null = null;
+  let lastLoggedMovementIntentSignature: string | null = null;
   const decisionStateCounts: Record<string, number> = {};
   const decisionStateMs: Record<string, number> = {};
+  const movementIntentOwnerCounts: Record<string, number> = {};
+  const movementIntentLifecycleCounts: Record<string, number> = {};
+  let inSafeMovementIntentViolationCount = 0;
 
   const recordDecisionState = (state: string): void => {
     decisionStateCounts[state] = (decisionStateCounts[state] ?? 0) + 1;
     decisionStateMs[state] = (decisionStateMs[state] ?? 0) + GAME.DELTA_MS;
+  };
+
+  const recordMovementIntent = (
+    movementIntent: MovementIntentTelemetry | null,
+    inSafe: boolean,
+  ): void => {
+    const owner = movementIntent?.owner ?? 'legacyFallback';
+    movementIntentOwnerCounts[owner] = (movementIntentOwnerCounts[owner] ?? 0) + 1;
+    if (movementIntent) {
+      const lifecycle = `${movementIntent.transition}:${movementIntent.owner ?? 'none'}`;
+      movementIntentLifecycleCounts[lifecycle] =
+        (movementIntentLifecycleCounts[lifecycle] ?? 0) + 1;
+      if (
+        inSafe &&
+        (movementIntent.owner === MovementIntentOwner.RETREAT ||
+          (movementIntent.owner === MovementIntentOwner.PROGRESSION &&
+            movementIntent.executionToken?.startsWith('progression:enemy:') === true))
+      ) {
+        inSafeMovementIntentViolationCount += 1;
+      }
+    }
   };
 
   const buildAiTelemetry = (): NonNullable<RunStats['aiTelemetry']> => {
@@ -391,6 +418,9 @@ export async function runHeadless(
       decisionStateMs: { ...decisionStateMs },
       suppressedProgressNavCount: decisionStateCounts[suppressedState] ?? 0,
       suppressedProgressNavMs: decisionStateMs[suppressedState] ?? 0,
+      movementIntentOwnerCounts: { ...movementIntentOwnerCounts },
+      movementIntentLifecycleCounts: { ...movementIntentLifecycleCounts },
+      inSafeMovementIntentViolationCount,
     };
   };
 
@@ -435,6 +465,7 @@ export async function runHeadless(
     const tacticalDebug = navProvider.getTacticalRunDebug?.();
     const runPlan = tacticalDebug?.decisionRunPlan ?? tacticalDebug?.runPlan ?? null;
     const decisionMode = navProvider.getDecisionMode?.();
+    const movementIntent = navProvider.getMovementIntentDebug?.() ?? null;
     return {
       type,
       frame: frameCount,
@@ -444,6 +475,7 @@ export async function runHeadless(
       state: emittedState,
       ...(decisionDebug ? { baseState, decisionDebug } : {}),
       reason: decision.reason,
+      ...(navProvider.getMovementIntentDebug ? { movementIntent } : {}),
       targetEid: decision.targetEid,
       targetDist: targetDist === null ? null : Math.round(targetDist),
       enemyCount: enemyEids.length,
@@ -494,6 +526,8 @@ export async function runHeadless(
       // AI decides input for this frame
       aiProvider.poll(inputState, world);
       recordDecisionState(getDecisionEventState(aiProvider.getDecision()));
+      const movementIntent = navProvider.getMovementIntentDebug?.() ?? null;
+      recordMovementIntent(movementIntent, world.playerInSafeRoom === true);
 
       // Auto-interact with nearby NPCs (simulates pressing E)
       lastNpcInteractionFrame = autoNpcInteractionSystem(
@@ -666,6 +700,20 @@ export async function runHeadless(
         if (decisionState !== lastLoggedState) {
           recordEvent(buildEvent('state', enemyEids, `state -> ${decisionState}`));
           lastLoggedState = decisionState;
+        }
+        const movementIntentSignature = movementIntent
+          ? [
+              movementIntent.owner ?? 'none',
+              movementIntent.key ?? 'none',
+              movementIntent.transition,
+              movementIntent.reason,
+              movementIntent.priorOwner ?? 'none',
+              movementIntent.priorKey ?? 'none',
+            ].join('|')
+          : 'unavailable';
+        if (movementIntentSignature !== lastLoggedMovementIntentSignature) {
+          recordEvent(buildEvent('movementIntent', enemyEids, movementIntentSignature));
+          lastLoggedMovementIntentSignature = movementIntentSignature;
         }
         if (frameCount % sampleInterval === 0) {
           recordEvent(buildEvent('sample', enemyEids));

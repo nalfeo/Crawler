@@ -342,6 +342,12 @@ export interface AIDecisionTelemetryMetrics {
   suppressedProgressNavCount: number;
   /** Simulated time classified as suppressed progress navigation. */
   suppressedProgressNavMs: number;
+  /** Poll-frame counts by movement-intent owner; `legacyFallback` means no migrated owner. */
+  movementIntentOwnerCounts?: Record<string, number>;
+  /** Lifecycle counts keyed as `<transition>:<owner-or-none>`. */
+  movementIntentLifecycleCounts?: Record<string, number>;
+  /** Frames where Retreat or enemy-backed Progression illegally owned movement in safe space. */
+  inSafeMovementIntentViolationCount?: number;
 }
 
 /**

@@ -10,6 +10,7 @@
  * Pure module: no `fs`, no Phaser. Safe to import from labs and tests.
  */
 import { AIState, type AIDecision, type AIDecisionDebug, type AIStateValue } from './types.js';
+import type { MovementIntentTelemetry } from './movement-intent-arbiter.js';
 
 /** Human-readable name for each {@link AIState} value. */
 export const AI_STATE_NAME: Record<AIStateValue, string> = {
@@ -26,7 +27,15 @@ export function getDecisionEventState(decision: Pick<AIDecision, 'state' | 'debu
 }
 
 /** Discriminator for the kind of telemetry record. */
-export type SimEventType = 'sample' | 'state' | 'kill' | 'levelup' | 'quest' | 'npc' | 'control';
+export type SimEventType =
+  | 'sample'
+  | 'state'
+  | 'movementIntent'
+  | 'kill'
+  | 'levelup'
+  | 'quest'
+  | 'npc'
+  | 'control';
 
 /**
  * A single telemetry record. Every record carries the full frame context so
@@ -51,6 +60,8 @@ export interface SimEvent {
   decisionDebug?: AIDecisionDebug | null;
   /** Human-readable reason the AI gave for its decision. */
   reason: string;
+  /** Structured movement ownership/lifecycle snapshot, when the provider exposes it. */
+  movementIntent?: MovementIntentTelemetry | null;
   /** Target entity id, if any. */
   targetEid: number | null;
   /** Distance to the AI's chosen target (ft), if any. */

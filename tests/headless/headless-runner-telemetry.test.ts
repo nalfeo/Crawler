@@ -89,6 +89,9 @@ describe('headless runner AI telemetry', () => {
       },
       suppressedProgressNavCount: 1,
       suppressedProgressNavMs: GAME.DELTA_MS,
+      movementIntentOwnerCounts: { legacyFallback: 3 },
+      movementIntentLifecycleCounts: {},
+      inSafeMovementIntentViolationCount: 0,
     });
   });
 
