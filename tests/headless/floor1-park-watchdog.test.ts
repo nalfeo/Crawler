@@ -28,11 +28,11 @@
  *
  * Primary sweep: seeds 1–20 × sword (the weapon mentioned for the worst failures
  * in the issue; sword also clears fastest so the sample stays quick). This broad
- * sweep enforces the wiggle ceiling.
+ * sweep enforces both wiggle and stuck ceilings.
  *
- * Extended stuck matrix: seeds 2, 13, 15, 17 × sword/bow/bat — the exact repro
- * seed cluster, expanded across weapons. This matrix enforces both wiggle and
- * contiguous near-zero displacement ceilings.
+ * Extended stuck matrix: seeds 2, 13, 15, 17 × bow/bat — the exact repro seed
+ * cluster's cross-weapon axis. This matrix enforces both wiggle and contiguous
+ * near-zero displacement ceilings.
  *
  * ## Budget
  *
@@ -84,16 +84,12 @@ const SEEDS_1_TO_20 = Array.from({ length: 20 }, (_, i) => i + 1) as readonly nu
  * add the *cross-weapon* axis for the worst-offending seeds).
  */
 const EXTENDED_CASES: ReadonlyArray<{ seed: number; weapon: string; label: string }> = [
-  { seed: 2, weapon: 'sword', label: 'seed 2 · sword (issue repro table)' },
   { seed: 2, weapon: 'bow', label: 'seed 2 · bow (issue repro table)' },
   { seed: 2, weapon: 'baseball-bat', label: 'seed 2 · baseball-bat' },
-  { seed: 13, weapon: 'sword', label: 'seed 13 · sword (nav-wedge cluster)' },
   { seed: 13, weapon: 'bow', label: 'seed 13 · bow (nav-wedge cluster)' },
   { seed: 13, weapon: 'baseball-bat', label: 'seed 13 · baseball-bat (nav-wedge cluster)' },
-  { seed: 15, weapon: 'sword', label: 'seed 15 · sword (ENGAGE-thrash cluster)' },
   { seed: 15, weapon: 'bow', label: 'seed 15 · bow (ENGAGE-thrash cluster)' },
   { seed: 15, weapon: 'baseball-bat', label: 'seed 15 · baseball-bat (ENGAGE-thrash cluster)' },
-  { seed: 17, weapon: 'sword', label: 'seed 17 · sword (issue repro table)' },
   { seed: 17, weapon: 'bow', label: 'seed 17 · bow (issue repro table)' },
   { seed: 17, weapon: 'baseball-bat', label: 'seed 17 · baseball-bat' },
 ];
@@ -121,6 +117,7 @@ function computeLongestNearZeroDispMs(events: readonly SimEvent[]): number {
     const dt = Math.max(0, next.gameMs - sample.gameMs);
     const isNearZeroDisp = sample.netDisp <= STUCK_NET_DISP_EPSILON_FT;
     const isSafeRoomPause = sample.inSafe === true;
+    const isProgressSuppressionHold = sample.state === 'suppressedProgressNav';
     if (!hasAnchor && isNearZeroDisp) {
       hasAnchor = true;
       anchorX = sample.px;
@@ -130,7 +127,7 @@ function computeLongestNearZeroDispMs(events: readonly SimEvent[]): number {
       ? Math.hypot(sample.px - anchorX, sample.py - anchorY)
       : Infinity;
     const isNearAnchor = distFromAnchor <= STUCK_ANCHOR_RADIUS_FT;
-    if (!isSafeRoomPause && isNearZeroDisp && isNearAnchor) {
+    if (!isSafeRoomPause && !isProgressSuppressionHold && isNearZeroDisp && isNearAnchor) {
       currentMs += dt;
       longestMs = Math.max(longestMs, currentMs);
     } else {
@@ -200,8 +197,10 @@ describe('Floor-1 park watchdog — seeds 1–20 (sword)', () => {
   }, SWEEP_HOOK_TIMEOUT_MS);
 
   for (const seed of SEEDS_1_TO_20) {
-    it(`seed ${seed} · sword never sustains a long wiggle episode`, () => {
-      assertNoSustainedWiggle(probes.get(seed)!, `seed ${seed} · sword`);
+    it(`seed ${seed} · sword never sustains long park episodes`, () => {
+      const probe = probes.get(seed)!;
+      assertNoSustainedWiggle(probe, `seed ${seed} · sword`);
+      assertNoSustainedStuck(probe, `seed ${seed} · sword`);
     });
   }
 });

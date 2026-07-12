@@ -35,16 +35,16 @@ win-rate capped at ~75%."
   75% → 87.5% → 90%.
 
 **New regression guard added:**
-`tests/headless/floor1-park-watchdog.test.ts` (44 tests)
+`tests/headless/floor1-park-watchdog.test.ts` (36 tests)
 
 Coverage:
 
 - **Seeds 1–20 × sword** — bounded 12 000-frame (~200 s game time) budget per seed.
-  Asserts `longestWiggleMs < 45 s` per seed.
+  Asserts `longestWiggleMs < 45 s` and `longestStuckMs < 30 s` per seed.
   Explicit `beforeAll` timeout of 10 minutes to survive slow CI runners.
 - **Extended (seed, weapon) pairs from the issue repro table** — seeds 2, 13, 15, 17
-  × {sword, bow, baseball-bat}. This matrix enforces both wiggle and stuck
-  ceilings on the known repro cluster.
+  × {bow, baseball-bat}. This matrix enforces both wiggle and stuck ceilings on
+  the known repro cluster's cross-weapon axis.
 
 Thresholds:
 
