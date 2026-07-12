@@ -2032,6 +2032,13 @@ const CLIENT_SCRIPT = String.raw`
   function autoTuneCleanupFromBackgroundSample(x, y) {
     var sample = readPixelSample(x, y);
     if (!sample) return;
+    if (sample.a === 0) {
+      sampledBackgroundColor = null;
+      sampledBackgroundPoint = null;
+      renderEditor();
+      setStatus('Background sample ignored: picked pixel is fully transparent.');
+      return;
+    }
     sampledBackgroundColor = {
       r: sample.r,
       g: sample.g,
@@ -2410,7 +2417,7 @@ const CLIENT_SCRIPT = String.raw`
   }
 
   function fieldNum(id, label, value, onChange) {
-    var wrap = h('div', { class: 'field' }, [h('label', { text: label })]);
+    var wrap = h('div', { class: 'field' }, [h('label', { for: id, text: label })]);
     var input = h('input', { id: id, type: 'number', min: '0', value: String(value == null ? 0 : value) });
     input.addEventListener('change', function () {
       if (typeof onChange === 'function') {
@@ -3180,25 +3187,37 @@ const CLIENT_SCRIPT = String.raw`
     metaGrid.addEventListener('change', updateDirtyIndicator);
     canvasWrap.scrollLeft = canvasScrollLeft;
     canvasWrap.scrollTop = canvasScrollTop;
-    var syncAnchorFromInputs = function () {
+    var syncAnchorAndPivotFromInputs = function () {
       var before = cloneState();
       if (!sprite) return;
       var xInput = document.getElementById('holdX');
       var yInput = document.getElementById('holdY');
+      var pivotXInput = document.getElementById('pivotX');
+      var pivotYInput = document.getElementById('pivotY');
       var holdX = Number(xInput ? xInput.value : sprite.holdX || 0);
       var holdY = Number(yInput ? yInput.value : sprite.holdY || 0);
+      var pivotX = Number(pivotXInput ? pivotXInput.value : sprite.pivotX || 0);
+      var pivotY = Number(pivotYInput ? pivotYInput.value : sprite.pivotY || 0);
       sprite.holdX = Number.isFinite(holdX) ? Math.max(0, Math.round(holdX)) : 0;
       sprite.holdY = Number.isFinite(holdY) ? Math.max(0, Math.round(holdY)) : 0;
+      sprite.pivotX = Number.isFinite(pivotX) ? Math.max(0, Math.round(pivotX)) : 0;
+      sprite.pivotY = Number.isFinite(pivotY) ? Math.max(0, Math.round(pivotY)) : 0;
       if (xInput) xInput.value = String(sprite.holdX);
       if (yInput) yInput.value = String(sprite.holdY);
+      if (pivotXInput) pivotXInput.value = String(sprite.pivotX);
+      if (pivotYInput) pivotYInput.value = String(sprite.pivotY);
       var after = cloneState();
       if (statesDiffer(before, after)) pushUndoState(before);
       renderOverlay();
     };
     var holdXField = document.getElementById('holdX');
     var holdYField = document.getElementById('holdY');
-    if (holdXField) holdXField.addEventListener('change', syncAnchorFromInputs);
-    if (holdYField) holdYField.addEventListener('change', syncAnchorFromInputs);
+    var pivotXField = document.getElementById('pivotX');
+    var pivotYField = document.getElementById('pivotY');
+    if (holdXField) holdXField.addEventListener('change', syncAnchorAndPivotFromInputs);
+    if (holdYField) holdYField.addEventListener('change', syncAnchorAndPivotFromInputs);
+    if (pivotXField) pivotXField.addEventListener('change', syncAnchorAndPivotFromInputs);
+    if (pivotYField) pivotYField.addEventListener('change', syncAnchorAndPivotFromInputs);
     if (focusedId) {
       var focusTarget = document.getElementById(focusedId);
       if (focusTarget) focusTarget.focus({ preventScroll: true });

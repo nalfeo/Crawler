@@ -759,6 +759,25 @@ test('history evicts old full-frame snapshots to stay within its byte budget', a
   });
 });
 
+test('pivot edits are synchronized to history so Undo does not discard them with image edits', async () => {
+  await withEditor(async (page) => {
+    await page.locator('#tool-scale').click();
+    await setControlValue(page, '#scale-factor', 2);
+    await page.locator('.tool-panel').getByRole('button', { name: 'Scale' }).click();
+    await page.waitForFunction(() => document.querySelector('.sprite-canvas')?.width === 4);
+
+    await setControlValue(page, '#pivotX', 1);
+    assert.equal(await page.locator('#pivotX').inputValue(), '1');
+
+    await page.getByRole('button', { name: 'Undo' }).click();
+    assert.equal(await page.locator('#pivotX').inputValue(), '0');
+    assert.equal(await page.locator('.sprite-canvas').evaluate((element) => element.width), 4);
+
+    await page.getByRole('button', { name: 'Undo' }).click();
+    assert.equal(await page.locator('.sprite-canvas').evaluate((element) => element.width), 2);
+  });
+});
+
 test('form-only dirty checks reuse the cached canvas fingerprint', async () => {
   await withEditor(async (page) => {
     await page.locator('.sprite-canvas').evaluate((element) => {
@@ -1121,6 +1140,14 @@ test('mutually exclusive reactions stay scoped to the sprite being edited', asyn
   });
 });
 
+test('numeric metadata controls have accessible names via label association', async () => {
+  await withEditor(async (page) => {
+    for (const name of ['Anchor X', 'Anchor Y', 'Pivot X', 'Pivot Y', 'Frame', 'Column', 'Row']) {
+      assert.equal(await page.getByRole('spinbutton', { name }).count(), 1);
+    }
+  });
+});
+
 test('transparent corners require an explicit background sample for color cleanup', async () => {
   await withEditor(async (page) => {
     const pixels = new Array(8 * 8 * 4).fill(0);
@@ -1147,6 +1174,32 @@ test('transparent corners require an explicit background sample for color cleanu
       'Pick a background color before fringe normalization.',
     );
     assert.deepEqual(await readCanvasPixels(page), before);
+  });
+});
+
+test('background picking ignores fully transparent pixels', async () => {
+  await withEditor(async (page) => {
+    await paintSprite(page, 4, 4, new Array(4 * 4 * 4).fill(0));
+    await page.getByTitle('Pick background').click();
+    await clickCanvasPixel(page, 0, 0);
+    assert.equal(
+      await page.locator('#status').textContent(),
+      'Background sample ignored: picked pixel is fully transparent.',
+    );
+    assert.equal(
+      await page.locator('#background-picker-quick').getAttribute('aria-pressed'),
+      'true',
+    );
+
+    await page.locator('#tool-background').click();
+    await setControlValue(page, '#background-removal-method', 'color-key');
+    await setControlValue(page, '#background-removal-tolerance', 0);
+    await setControlValue(page, '#background-removal-softness', 0);
+    await page.locator('.tool-panel').getByRole('button', { name: 'Remove BG' }).click();
+    assert.equal(
+      await page.locator('#status').textContent(),
+      'Pick a background color before background removal.',
+    );
   });
 });
 
