@@ -1,0 +1,52 @@
+name: Merge Train
+
+on:
+  push:
+    branches: [main]
+  pull_request_target:
+    types: [labeled, unlabeled, synchronize, edited, closed, ready_for_review]
+  workflow_run:
+    workflows: ['Merge Train Validation']
+    types: [completed]
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: crawler-merge-train
+  queue: max
+
+permissions:
+  actions: write
+  checks: read
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  reconcile:
+    if: ${{ github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Generate repository app token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Checkout trusted merge-train implementation
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Reconcile two-candidate train
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MERGE_TRAIN_TOKEN: ${{ steps.app-token.outputs.token }}
+          MERGE_TRAIN_MODE: ${{ vars.MERGE_TRAIN_MODE || 'off' }}
+          MERGE_TRAIN_ADMISSION_CHECKS: ${{ vars.MERGE_TRAIN_ADMISSION_CHECKS || 'ci,commit-lint,Security checks' }}
+        run: node .github/scripts/merge-train/reconcile.mjs

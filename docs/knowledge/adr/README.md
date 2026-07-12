@@ -6,7 +6,7 @@ consequences. New decisions that affect **2+ systems** require an ADR (see the
 constitution and `.github/copilot-instructions.md`).
 
 - **Template:** `docs/knowledge/adr/TEMPLATE.md`
-- **Count:** 110 ADR files — 90 numbered (0001–0059, with number reuse and gaps in this index — see below) + 20 date-prefixed
+- **Count:** 111 ADR files — 91 numbered (0001–0060, with number reuse and gaps in this index — see below) + 20 date-prefixed
 - **Status convention:** `## Status` heading with one of
   `Proposed | Accepted | Deprecated | Superseded by NNNN`
 
@@ -173,6 +173,8 @@ hundreds of inbound references.
 - [Replace dual-plan synthesis with an adversarial plan review](0051-adversarial-plan-review-fold.md) — retires the 4–5🍎 second-author stage (2/17 decisive-fork rate) for one red-teaming reviewer; adds a `plan_divergence` instrumentation enum at ≥3🍎.
 - [Slicer cuts only at real gutters — data-driven grid salvage](0052-slicer-never-cut-through-art.md) — the slicer never invents a cut; grid/count are read from the sheet (brief is a soft anchor), runt edge cells are trimmed, and the generation count gate is relaxed. Reverses the 2026-07-07 force-count reconciliation that chopped art on the right edge.
 - [GitHub-first broad-sweep execution and investigation-session process boundary](0056-github-first-broad-sweep-and-investigation-session-policy.md) — broad sweeps (>10 runs) default to GitHub workflow dispatch; investigation sessions stay process-light unless shipping merge-intent code.
+- [GitHub-native CI recovery ownership](0058-github-native-ci-recovery-ownership.md) — trusted, deduplicated CI recovery and shepherd ownership.
+- [Repository-managed speculative merge train](0060-repository-managed-speculative-merge-train.md) — validates two cumulative candidates and advances `main` only to the exact tested SHA.
 
 ---
 
@@ -269,3 +271,4 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0055 | [Floor 2 Progression Gates: Feature Unlocks, Reputation, Hidden Quests](0055-floor2-progression-gates.md)                                          | Accepted           | 2026-07-10 |
 | 0056 | [GitHub-First Broad-Sweep Execution and Investigation Session Process Boundary](0056-github-first-broad-sweep-and-investigation-session-policy.md) | Accepted           | 2026-07-10 |
 | 0059 | [Floor 2 Settlement Progression Contract](0059-floor2-settlement-progression-contract.md)                                                          | Accepted           | 2026-07-11 |
+| 0060 | [Repository-Managed Speculative Merge Train](0060-repository-managed-speculative-merge-train.md)                                                   | Accepted           | 2026-07-11 |

@@ -1,0 +1,28 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-11",
+  "session_slug": "speculative-merge-train",
+  "task_title": "Implement a two-candidate speculative merge train",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 13,
+      "resolved_count": 13,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "major_fork",
+      "notes": "Reviewer rejected push-triggered synthetic CI and direct-main-only promotion. Alt A single-head queue is simpler but gives up approved latency goal. Alt B staging PR preserves audit but cannot guarantee the final exact tested SHA. Alt C rebase plus normal squash merge creates an untested final SHA. Adopted trusted workflow_dispatch validation with no privileged token in candidate-executing jobs; immutable two-candidate commits; queued labels suppress normal auto-merge/rebase; promotion first rewrites the original same-repo PR head to the tested candidate then fast-forwards main to that exact SHA, allowing GitHub to record the PR merged. Candidate fingerprints include base/head/title/review state; admission is mandatory for same-repo ready PRs; all mutation is globally FIFO, idempotent, fail-closed, and dry-run by default."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    }
+  }
+}

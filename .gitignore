@@ -55,3 +55,6 @@ files/
 # Codex repair local runtime artifacts (prompt/context/results)
 .github/scripts/codex/runtime/
 .env.codex.local
+
+# actionlint binary (downloaded for local use; not committed)
+actionlint

@@ -16,6 +16,7 @@ import {
 } from './state.mjs';
 import { workflowApprovalRejection } from './approval.mjs';
 import { graphql, listReviewThreads, paginate, request } from './github.mjs';
+import { resolveAdmissionChecks, unsatisfiedChecks } from '../merge-train/state.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
@@ -26,7 +27,10 @@ const leaseId = (process.env.LEASE_ID || '').trim();
 const mode = (process.env.CI_RECOVERY_MODE || 'dry-run').toLowerCase();
 const pat = process.env.CRAWLER_CI_PAT || '';
 const readToken = pat || process.env.GITHUB_TOKEN || '';
+const live = mode === 'live';
 const shouldMutate = shouldMutateRecoveryState(mode, operation);
+const mergeTrainMode = (process.env.MERGE_TRAIN_MODE || 'off').toLowerCase();
+const mergeTrainAdmissionChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
 const now = new Date();
 
 if (!owner || !repo || !Number.isInteger(prNumber) || !readToken) {
@@ -55,6 +59,14 @@ if (pr.head?.repo?.full_name?.toLowerCase() !== repository.toLowerCase()) {
 }
 if ((pr.labels || []).some((label) => label.name === 'ci-recovery-opt-out')) {
   process.stdout.write(`skip pr=#${prNumber} reason=opt-out\n`);
+  process.exit(0);
+}
+if ((pr.labels || []).some((label) => label.name === 'merge-train-blocked')) {
+  process.stdout.write(`skip pr=#${prNumber} reason=merge-train-blocked\n`);
+  process.exit(0);
+}
+if ((pr.labels || []).some((label) => label.name === 'merge-train')) {
+  process.stdout.write(`skip pr=#${prNumber} reason=merge-train-owned\n`);
   process.exit(0);
 }
 
@@ -225,7 +237,7 @@ if (!state && !labelExists && copilotAssigned) {
 for (const thread of review.threads.filter(
   (candidate) => !candidate.isResolved && shouldResolveThread(candidate, pr.head.sha),
 )) {
-  if (shouldMutate) {
+  if (live) {
     await graphql(
       pat,
       `
@@ -241,7 +253,7 @@ for (const thread of review.threads.filter(
     );
   }
   thread.isResolved = true;
-  process.stdout.write(`${shouldMutate ? 'resolved' : 'would-resolve'} thread=${thread.id}\n`);
+  process.stdout.write(`${live ? 'resolved' : 'would-resolve'} thread=${thread.id}\n`);
 }
 
 const blockers = [];
@@ -268,13 +280,8 @@ const rawCheckRuns =
 // Collapse to the latest attempt per logical name so a successful rerun
 // replaces a previously failed run before any blocker classification.
 const checkRuns = collapseCheckRunsByName(rawCheckRuns);
-const requiredCheckNames = new Set(['ci', 'commit-lint']);
-const requiredChecks = new Map();
 for (const check of checkRuns) {
   const checkName = String(check.name || '').toLowerCase();
-  if (requiredCheckNames.has(checkName)) {
-    requiredChecks.set(checkName, check);
-  }
   if (
     check.status === 'completed' &&
     ['failure', 'timed_out', 'startup_failure', 'stale'].includes(check.conclusion) &&
@@ -288,10 +295,7 @@ for (const check of checkRuns) {
     });
   }
 }
-const waitingRequiredChecks = [...requiredCheckNames].filter((name) => {
-  const check = requiredChecks.get(name);
-  return !check || check.status !== 'completed';
-});
+const waitingRequiredChecks = unsatisfiedChecks(checkRuns, mergeTrainAdmissionChecks);
 
 const runs =
   (
@@ -320,7 +324,7 @@ for (const run of actionRequiredRuns) {
     );
     continue;
   }
-  if (shouldMutate) {
+  if (live) {
     try {
       await request(pat, `/repos/${owner}/${repo}/actions/runs/${run.id}/approve`, {
         method: 'POST',
@@ -384,7 +388,27 @@ if (normalized.length === 0) {
     );
     process.exit(0);
   }
-  if (shouldMutate) {
+  if (live && mergeTrainMode === 'live') {
+    try {
+      await request(pat, `/repos/${owner}/${repo}/labels`, {
+        method: 'POST',
+        body: {
+          name: 'merge-train',
+          color: '1f6feb',
+          description: 'Ready for the repository-managed merge train',
+        },
+      });
+    } catch (error) {
+      if (error.status !== 422) throw error;
+    }
+    await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/labels`, {
+      method: 'POST',
+      body: { labels: ['merge-train'] },
+    });
+    process.stdout.write(`queued merge-train pr=#${prNumber}\n`);
+    process.exit(0);
+  }
+  if (live) {
     await graphql(
       pat,
       `
@@ -451,7 +475,7 @@ const taskBody = [
   'When a thread is addressed, reply in that exact thread with `✅ Addressed in <sha>: <one-line note>` and resolve it. Run the repository-required verification and push one consolidated repair commit.',
 ].join('\n');
 
-if (shouldMutate) {
+if (live) {
   await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
     method: 'POST',
     body: { body: taskBody },
@@ -528,13 +552,11 @@ await updateState(
     headSha: pr.head.sha,
     fingerprint,
     owner: 'automation',
-    status: shouldMutate ? 'dispatched' : 'active',
+    status: live ? 'dispatched' : 'active',
     trigger,
     blockers: normalized,
     attempt: (state?.attempt || 0) + 1,
     updatedAt: now.toISOString(),
   }),
 );
-process.stdout.write(
-  `${shouldMutate ? 'assigned' : 'dry-run would-assign'} copilot pr=#${prNumber}\n`,
-);
+process.stdout.write(`${live ? 'assigned' : 'dry-run would-assign'} copilot pr=#${prNumber}\n`);
