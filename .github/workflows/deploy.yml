@@ -269,7 +269,7 @@ jobs:
     if: >
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
-    timeout-minutes: 60
+    timeout-minutes: 120
     # A job-level permissions block replaces the workflow default entirely, so
     # these are NOT inherited and must be listed explicitly. `gh pr comment` on
     # the released PR (final step) posts via the issue-comments API, so grant
