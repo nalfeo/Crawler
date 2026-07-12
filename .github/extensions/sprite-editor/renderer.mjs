@@ -1274,11 +1274,16 @@ const CLIENT_SCRIPT = String.raw`
         return false;
       }
     }
+    var expectedEditGen = editGeneration;
     var loadToken = ++loadTokenCounter;
     setStatus('Loading sprite…');
     try {
       var data = await fetchJson('/api/sprite?key=' + encodeURIComponent(key));
       if (loadToken !== loadTokenCounter) return false;
+      if (editGeneration !== expectedEditGen) {
+        setStatus('Stayed on current sprite: edits changed while the new sprite was loading.');
+        return false;
+      }
       sprite = data.sprite || null;
       if (!sprite) {
         renderEditor();
@@ -1287,6 +1292,10 @@ const CLIENT_SCRIPT = String.raw`
       }
       await loadImage(loadToken);
       if (loadToken !== loadTokenCounter) return false;
+      if (editGeneration !== expectedEditGen) {
+        setStatus('Stayed on current sprite: edits changed while the image was loading.');
+        return false;
+      }
       renderEditor({ skipDraftPersist: true });
       resetBaseline();
       if (opts.updateSelection !== false) {

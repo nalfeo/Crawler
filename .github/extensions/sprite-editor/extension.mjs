@@ -572,7 +572,19 @@ async function fetchOpenCvVendorAsset(fileName) {
   const cached = openCvVendorCache.get(fileName);
   if (cached) return cached;
   const url = `${OPENCV_VENDOR_BASE}/${fileName}`;
-  const upstream = await fetch(url);
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(() => abortController.abort(), 10_000);
+  let upstream;
+  try {
+    upstream = await fetch(url, { signal: abortController.signal });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      return { status: 504, body: `timed out fetching ${fileName}` };
+    }
+    return { status: 502, body: `failed to fetch ${fileName}` };
+  } finally {
+    clearTimeout(timeoutId);
+  }
   if (!upstream.ok) {
     const body = await upstream.text().catch(() => '');
     return {
