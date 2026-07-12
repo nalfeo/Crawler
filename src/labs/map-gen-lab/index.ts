@@ -622,7 +622,13 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
 
   // ── Sprite sheet infrastructure (used when showSpriteMode or showCoverageOverlay) ──
   const spriteSheets = new Map<string, SheetImage>();
+  const spriteSheetKeysInUse = new Set(
+    Object.values(TILE_SPRITES)
+      .filter((visual): visual is NonNullable<typeof visual> => visual !== undefined)
+      .map((visual) => visual.sheetKey),
+  );
   for (const sheet of SHEETS) {
+    if (!spriteSheetKeysInUse.has(sheet.key)) continue;
     const entry: SheetImage = {
       img: new Image(),
       loaded: false,
