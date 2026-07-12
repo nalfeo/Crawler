@@ -394,6 +394,9 @@ async function saveSprite(payload) {
       writeJsonFile(CATALOG_PATH, data.catalog);
     }
     if (hasAnnotation) writeJsonFile(ANNOTATIONS_PATH, data.annotations);
+    cache.manifest = null;
+    cache.catalog = null;
+    cache.annotations = null;
     const fresh = loadData().summaryByKey.get(key);
     return { ok: true, sprite: fresh ?? null };
   } finally {

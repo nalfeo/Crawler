@@ -1120,7 +1120,9 @@ test('mutually exclusive reactions stay scoped to the sprite being edited', asyn
     assert.equal(await heart.getAttribute('aria-pressed'), 'false');
     assert.equal(await dislike.getAttribute('aria-pressed'), 'true');
 
-    page.on('dialog', (dialog) => dialog.accept());
+    page.on('dialog', async (dialog) => {
+      await dialog.accept();
+    });
     await page.getByRole('button', { name: /Second Fixture/ }).click();
     await page.waitForFunction(
       () => document.querySelector('.sprite-title')?.textContent === 'Second Fixture',
