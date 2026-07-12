@@ -20,6 +20,7 @@ interface AoeSnapshot {
    * untagged (e.g. an enemy AoE projectile).
    */
   activationId: number | undefined;
+  skillIds: { classSkillId: string; typeSkillId: string } | undefined;
 }
 
 const trackedSnapshots = new WeakMap<GameWorld, AoeSnapshot[]>();
@@ -53,6 +54,11 @@ export function aoeOnImpactPreDamage(world: GameWorld): void {
       ownerEid: hasComponent(world.ecs, eid, Owner) ? (owner.eid[eid] ?? 0) : -1,
       teamId: hasComponent(world.ecs, eid, Team) ? (team.id[eid] ?? 0) : 0,
       activationId: getActivationForEntity(world, eid),
+      skillIds:
+        world.attackWeaponSkillsByEntity.get(eid) ??
+        (hasComponent(world.ecs, eid, Owner)
+          ? world.attackerWeaponSkills.get(owner.eid[eid] ?? -1)
+          : undefined),
     });
   }
 }
@@ -73,7 +79,7 @@ export function aoeOnImpactPostDamage(world: GameWorld): void {
       // Fold the explosion into the source projectile's cast so a fireball stays
       // a single weapon-telemetry activation (no-op wrapper when telemetry off).
       withActivationId(world, snap.activationId, () => {
-        spawnAreaAttack(
+        const explosionEid = spawnAreaAttack(
           world,
           snap.x,
           snap.y,
@@ -83,6 +89,9 @@ export function aoeOnImpactPostDamage(world: GameWorld): void {
           50,
           snap.teamId,
         );
+        if (snap.skillIds !== undefined) {
+          world.attackWeaponSkillsByEntity.set(explosionEid, snap.skillIds);
+        }
       });
     }
   }

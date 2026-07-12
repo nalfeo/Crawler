@@ -376,7 +376,7 @@ function fireMeleeAttack(
   player: number,
   def: WeaponDef,
   dir: { x: number; y: number },
-): void {
+): number {
   // Remove any existing swing — only one active at a time
   const existingSwings = query(world.ecs, [MeleeSwing, Owner]);
   for (const eid of existingSwings) {
@@ -389,7 +389,7 @@ function fireMeleeAttack(
 
   const px = world.stores.position.x[player]!;
   const py = world.stores.position.y[player]!;
-  spawnMeleeSwing(
+  return spawnMeleeSwing(
     world,
     px,
     py,
@@ -426,10 +426,10 @@ function fireRangedAttack(
   player: number,
   def: WeaponDef,
   dir: { x: number; y: number },
-): void {
+): number {
   const px = world.stores.position.x[player]!;
   const py = world.stores.position.y[player]!;
-  spawnProjectile(
+  return spawnProjectile(
     world,
     px,
     py,
@@ -448,10 +448,10 @@ function fireMagicAttack(
   player: number,
   def: WeaponDef,
   dir: { x: number; y: number },
-): void {
+): number {
   const px = world.stores.position.x[player]!;
   const py = world.stores.position.y[player]!;
-  spawnAoeProjectile(
+  return spawnAoeProjectile(
     world,
     px,
     py,
@@ -471,11 +471,11 @@ function fireThrownAttack(
   player: number,
   def: WeaponDef,
   dir: { x: number; y: number },
-): void {
+): number {
   const px = world.stores.position.x[player]!;
   const py = world.stores.position.y[player]!;
   if (def.returnSpeed > 0 && def.maxRange > 0) {
-    spawnReturningProjectile(
+    return spawnReturningProjectile(
       world,
       px,
       py,
@@ -488,11 +488,10 @@ function fireThrownAttack(
       TeamId.PLAYER,
       def.pierce,
     );
-    return;
   }
 
   if (def.bounceCount > 0) {
-    spawnBouncingProjectile(
+    return spawnBouncingProjectile(
       world,
       px,
       py,
@@ -504,10 +503,9 @@ function fireThrownAttack(
       def.range,
       player,
     );
-    return;
   }
 
-  spawnProjectile(
+  return spawnProjectile(
     world,
     px,
     py,
@@ -526,10 +524,10 @@ function fireBeamAttack(
   player: number,
   def: WeaponDef,
   dir: { x: number; y: number },
-): void {
+): number {
   const px = world.stores.position.x[player]!;
   const py = world.stores.position.y[player]!;
-  spawnBeam(
+  return spawnBeam(
     world,
     px,
     py,
@@ -544,10 +542,10 @@ function fireBeamAttack(
   );
 }
 
-function fireTrapAttack(world: GameWorld, player: number, def: WeaponDef): void {
+function fireTrapAttack(world: GameWorld, player: number, def: WeaponDef): number {
   const px = world.stores.position.x[player] ?? 0;
   const py = world.stores.position.y[player] ?? 0;
-  spawnTrap(
+  return spawnTrap(
     world,
     px,
     py,
@@ -695,42 +693,42 @@ function dispatchAttackInner(
     return;
   }
 
-  // Register the active weapon's skill IDs so damage systems can emit XP on hit.
-  //
-  // Known limitation: this map is keyed by attacker (player) EID rather than by
-  // the in-flight attack, and is overwritten on every successful dispatch, so it
-  // holds at most one entry per living player (not an unbounded leak). The only
-  // misattribution window is firing a slow projectile, switching weapons, firing
-  // the new weapon, then landing the original projectile — it would then credit
-  // the new weapon's skills. Melee/beam/area attacks resolve within their own
-  // short lifetime so are unaffected in practice. Per-attack attribution is
-  // tracked as a follow-up (see issue #292).
+  // Register attacker-level fallback skill IDs and attack-level skill IDs.
+  // Damage systems prefer the per-attack map so delayed hits stay attributed to
+  // the weapon that spawned the attack, even after later weapon switches.
   world.attackerWeaponSkills.set(player, {
     classSkillId: def.weaponClassSkillId,
     typeSkillId: def.weaponTypeSkillId,
   });
+  let attackEid: number | undefined;
 
   switch (def.weaponType) {
     case WeaponType.MELEE:
-      fireMeleeAttack(world, player, def, dir);
+      attackEid = fireMeleeAttack(world, player, def, dir);
       break;
     case WeaponType.RANGED:
-      fireRangedAttack(world, player, def, dir);
+      attackEid = fireRangedAttack(world, player, def, dir);
       break;
     case WeaponType.MAGIC:
-      fireMagicAttack(world, player, def, dir);
+      attackEid = fireMagicAttack(world, player, def, dir);
       break;
     case WeaponType.THROWN:
-      fireThrownAttack(world, player, def, dir);
+      attackEid = fireThrownAttack(world, player, def, dir);
       break;
     case WeaponType.BEAM:
-      fireBeamAttack(world, player, def, dir);
+      attackEid = fireBeamAttack(world, player, def, dir);
       break;
     case WeaponType.TRAP:
-      fireTrapAttack(world, player, def);
+      attackEid = fireTrapAttack(world, player, def);
       break;
     default:
       break;
+  }
+  if (attackEid !== undefined) {
+    world.attackWeaponSkillsByEntity.set(attackEid, {
+      classSkillId: def.weaponClassSkillId,
+      typeSkillId: def.weaponTypeSkillId,
+    });
   }
 }
 

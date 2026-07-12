@@ -4,7 +4,7 @@ import { applyDamage } from '../apply-damage.js';
 import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
 import type { CollisionResult } from './collisionSystem.js';
-import { emitWeaponHitSkillEvents } from '../weapon-skill-bridge.js';
+import { emitWeaponHitSkillEventsForSource } from '../weapon-skill-bridge.js';
 import { recordWeaponEnemyHit, pruneAttackEntity } from '../weapon-telemetry.js';
 
 const hitSets = new WeakMap<GameWorld, Map<number, Set<number>>>();
@@ -124,7 +124,7 @@ export function areaDamageSystem(world: GameWorld, collisionResult: CollisionRes
       );
 
       if (dealt > 0 && ownerEid !== -1 && hasComponent(world.ecs, target, Enemy)) {
-        emitWeaponHitSkillEvents(world, ownerEid);
+        emitWeaponHitSkillEventsForSource(world, ownerEid, eid);
         recordWeaponEnemyHit(world, eid, target);
       }
 

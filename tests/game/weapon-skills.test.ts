@@ -1,7 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { addComponent } from 'bitecs';
 import { SkillHolder, Stats } from '../../src/core/components.js';
-import { spawnEnemy, spawnMeleeSwing, spawnPlayer } from '../../src/core/helpers.js';
+import {
+  spawnEnemy,
+  spawnMeleeSwing,
+  spawnPlayer,
+  spawnProjectile,
+} from '../../src/core/helpers.js';
+import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
+import { damageSystem } from '../../src/core/systems/damageSystem.js';
 import { meleeSwingSystem } from '../../src/core/systems/meleeSwingSystem.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { skillSystem } from '../../src/game/systems/skillSystem.js';
@@ -494,5 +501,42 @@ describe('weapon skill hit gate', () => {
 
     // No skill events since no enemy was hit
     expect(world.skillUsageEvents).toHaveLength(0);
+  });
+
+  it('attributes delayed projectile XP to the projectile source weapon after switching and firing again', () => {
+    const { world, player } = setupPlayerWithWeaponSkills();
+    const bowDef = WEAPON_DEFS.get('bow')!;
+    const pistolDef = WEAPON_DEFS.get('pistol')!;
+    const distantEnemy = spawnEnemy(world, 100, 0, 50);
+
+    // Simulate a bow projectile fired first.
+    const projectile = spawnProjectile(world, 0, 0, 0, 0, 10, 0, 0, 1, player);
+    world.attackerWeaponSkills.set(player, {
+      classSkillId: bowDef.weaponClassSkillId,
+      typeSkillId: bowDef.weaponTypeSkillId,
+    });
+    world.attackWeaponSkillsByEntity.set(projectile, {
+      classSkillId: bowDef.weaponClassSkillId,
+      typeSkillId: bowDef.weaponTypeSkillId,
+    });
+
+    // Switch and "fire" a second weapon before the first projectile lands.
+    world.attackerWeaponSkills.set(player, {
+      classSkillId: pistolDef.weaponClassSkillId,
+      typeSkillId: pistolDef.weaponTypeSkillId,
+    });
+
+    // Land the original projectile now.
+    world.stores.position.x[projectile] = world.stores.position.x[distantEnemy] ?? 0;
+    world.stores.position.y[projectile] = world.stores.position.y[distantEnemy] ?? 0;
+    world.stores.velocity.x[projectile] = 0;
+    world.stores.velocity.y[projectile] = 0;
+    damageSystem(world, collisionSystem(world));
+
+    const fired = world.skillUsageEvents.filter((e) => e.metric === 'weapon_fired');
+    expect(fired).toHaveLength(2);
+    expect(fired.map((e) => e.skillId).sort()).toEqual(
+      [bowDef.weaponClassSkillId, bowDef.weaponTypeSkillId].sort(),
+    );
   });
 });
