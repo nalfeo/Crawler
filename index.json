@@ -1,5 +1,16 @@
 [
   {
+    "commit": "30a787d97ab8883aaaa9f0158299059c58bc237a",
+    "commitDate": "2026-07-12T19:43:28Z",
+    "commitSubject": "test(headless): Floor-1 park watchdog guard for stuck/wiggle regression (issue #652) (#1056)",
+    "capturedAt": "2026-07-12T20:19:42.566Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29206578664",
+    "winRate": 0.9233333333333333,
+    "totalWins": 277,
+    "totalRuns": 300,
+    "path": "by-sha/30a787d97ab8883aaaa9f0158299059c58bc237a.json"
+  },
+  {
     "commit": "0bbbbfc748da9f92e1e3f2665c1cac014de1fbf5",
     "commitDate": "2026-07-12T16:44:48Z",
     "commitSubject": "fix: auto-capture guard telemetry during PR prerequisite checks (#1062)",
