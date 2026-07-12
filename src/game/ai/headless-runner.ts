@@ -509,17 +509,6 @@ export async function runHeadless(
       // Track state before frame
       const previousPlayerHealth = world.stores.health.current[playerEid] ?? 0;
 
-      // Mirror MainGameScene.update(): reset `level_up` to `playing` before each
-      // frame so postSystems (levelSystem → floorObjectiveSystem) can see the
-      // correct state. The visual game does this in the scene update loop between
-      // frames; the headless runner has no UI, so we reset it here instead of
-      // blocking on a stat-allocation screen.
-      // `readRunState` is used to escape TypeScript's narrowing on world.state
-      // (which was narrowed to 'playing' at the loop entry guard above).
-      if (readRunState(world) === 'level_up') {
-        world.state = 'playing';
-      }
-
       // AI decides input for this frame.
       aiProvider.poll(inputState, world);
       recordDecisionState(getDecisionEventState(aiProvider.getDecision()));
@@ -533,6 +522,17 @@ export async function runHeadless(
         NPC_INTERACTION_COOLDOWN,
       );
       applyConfiguredHostileDamageMultiplier(world, hostileDamageMultiplier);
+
+      // Mirror MainGameScene.update(): reset `level_up` to `playing` before each
+      // simulation step so postSystems (levelSystem → floorObjectiveSystem) can
+      // see the correct state. The visual game does this in the scene update loop
+      // between frames; the headless runner has no UI, so we reset it here instead
+      // of blocking on a stat-allocation screen.
+      // `readRunState` is used to escape TypeScript's narrowing on world.state
+      // (which was narrowed to 'playing' at the loop entry guard above).
+      if (readRunState(world) === 'level_up') {
+        world.state = 'playing';
+      }
 
       // Run one simulation step using the canonical preSystems/postSystems derived
       // from createFloorMainSceneOptions() — the same source the visual pipeline
