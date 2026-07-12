@@ -1,5 +1,16 @@
 [
   {
+    "commit": "9b59adde65c070f014591916a4d70d8151c41eb1",
+    "commitDate": "2026-07-11T23:17:18-07:00",
+    "commitSubject": "fix: assign Copilot through GraphQL issue intake (#1069)",
+    "capturedAt": "2026-07-12T06:52:24.113Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29182582120",
+    "winRate": 0.9233333333333333,
+    "totalWins": 277,
+    "totalRuns": 300,
+    "path": "by-sha/9b59adde65c070f014591916a4d70d8151c41eb1.json"
+  },
+  {
     "commit": "18fae996ce72cc6f397320cd50ed1685206ad7ab",
     "commitDate": "2026-07-11T22:46:53Z",
     "commitSubject": "feat(ai): add six-weapon personas with persona-aware sweep CI (#1039)",
