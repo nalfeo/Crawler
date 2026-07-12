@@ -43,8 +43,8 @@
  * produces a valid event log for the portion simulated, which is enough to flag a
  * sustained park episode.
  *
- * At ~1 900 simulated-FPS each truncated run takes ≈ 12 s wall time; the 20-seed
- * sword sweep is ~240 s, comfortably inside the 10-minute hook timeout.
+ * At ~1 000 simulated-FPS on CI each truncated run takes ≈ 12 s wall time; the
+ * 20-seed sword sweep is ~240 s, comfortably inside the 10-minute hook timeout.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
