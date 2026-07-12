@@ -20,6 +20,14 @@ function isTrustedMarkerComment(comment) {
   );
 }
 
+async function deleteCommentIfCreated(request, token, owner, repo, commentId) {
+  if (typeof commentId === 'number' && commentId > 0) {
+    await request(token, `/repos/${owner}/${repo}/issues/comments/${commentId}`, {
+      method: 'DELETE',
+    });
+  }
+}
+
 export async function runIssueIntake({ graphql, paginate, request, token, owner, repo, issue }) {
   // Discover Copilot actor and fetch current issue assignees in one query so we can
   // preserve existing assignees in the replaceActorsForAssignable mutation.
@@ -84,7 +92,7 @@ export async function runIssueIntake({ graphql, paginate, request, token, owner,
       method: 'POST',
       body: { body: ISSUE_INTAKE_BODY },
     });
-    newCommentId = created?.data?.id ?? null;
+    newCommentId = typeof created?.data?.id === 'number' ? created.data.id : null;
   }
 
   let assignment;
@@ -109,11 +117,7 @@ export async function runIssueIntake({ graphql, paginate, request, token, owner,
       { assignableId: issue.node_id, actorIds },
     );
   } catch (err) {
-    if (newCommentId) {
-      await request(token, `/repos/${owner}/${repo}/issues/comments/${newCommentId}`, {
-        method: 'DELETE',
-      });
-    }
+    await deleteCommentIfCreated(request, token, owner, repo, newCommentId);
     throw err;
   }
 
@@ -122,11 +126,7 @@ export async function runIssueIntake({ graphql, paginate, request, token, owner,
       String(assignee.login || '').toLowerCase(),
     ) || [];
   if (!assignedLogins.includes(String(copilot.login).toLowerCase())) {
-    if (newCommentId) {
-      await request(token, `/repos/${owner}/${repo}/issues/comments/${newCommentId}`, {
-        method: 'DELETE',
-      });
-    }
+    await deleteCommentIfCreated(request, token, owner, repo, newCommentId);
     throw new Error(`Copilot assignment did not persist on issue #${issue.number}`);
   }
 
