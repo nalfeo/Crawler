@@ -65,7 +65,7 @@ test('inferTelemetrySessionSlug falls back to the ledger slug', () => {
   assert.equal(
     inferTelemetrySessionSlug(
       [CODE_FILE, 'docs/knowledge/review-ledgers/2026-06-29-prereq-check.review-ledger.json'],
-      [],
+      ['docs/knowledge/review-ledgers/2026-06-29-prereq-check.review-ledger.json'],
     ),
     'prereq-check',
   );

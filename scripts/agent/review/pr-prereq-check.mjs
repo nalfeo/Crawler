@@ -40,13 +40,15 @@ function uniqueSlug(files, parser) {
   return slugs.length === 1 ? slugs[0] : null;
 }
 
-export function inferTelemetrySessionSlug(files, addedFiles = []) {
-  return (
-    uniqueSlug(addedFiles, handoffSlug) ??
-    uniqueSlug(files, handoffSlug) ??
-    uniqueSlug(addedFiles, ledgerSlug) ??
-    uniqueSlug(files, ledgerSlug)
-  );
+export function inferTelemetrySessionSlug(_files, addedFiles = []) {
+  return uniqueSlug(addedFiles, handoffSlug) ?? uniqueSlug(addedFiles, ledgerSlug);
+}
+
+function normalizeSlug(slug) {
+  return slug
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 function captureTelemetry(cwd, slug) {
@@ -118,7 +120,8 @@ export function telemetryCaptureNote(cwd, files, addedFiles = [], opts = {}) {
   if (!existsSync(artifact)) return null;
   const hasCapture = hasTelemetryCapture(files);
   if (hasCapture) return null;
-  const slug = inferTelemetrySessionSlug(files, addedFiles);
+  const rawSlug = inferTelemetrySessionSlug(files, addedFiles);
+  const slug = rawSlug ? normalizeSlug(rawSlug) : null;
   const runCapture = opts.captureTelemetry ?? captureTelemetry;
   if (slug) {
     let captureOutput;
