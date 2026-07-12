@@ -12,7 +12,7 @@
  * issue #663.
  */
 import { type GameWorld } from '../../core/index.js';
-import { runCoreSimulationStep } from '../../core/systems/simulation-core-step.js';
+import { runCoreSimulationStep } from '../../core/simulation-core-step.js';
 import type { InputState } from '../../shared/input.js';
 
 /**

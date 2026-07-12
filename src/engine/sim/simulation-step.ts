@@ -2,7 +2,7 @@ import { fovSystem, type GameWorld } from '../../core/index.js';
 import {
   runCoreSimulationStep,
   type CoreSimulationSystem,
-} from '../../core/systems/simulation-core-step.js';
+} from '../../core/simulation-core-step.js';
 import type { InputState } from '../../shared/input.js';
 
 /**
