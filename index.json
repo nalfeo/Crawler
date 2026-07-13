@@ -11,6 +11,17 @@
     "path": "by-sha/ee39d8df0b666614087389b1ed4be993eb261643.json"
   },
   {
+    "commit": "b7a14a795797f21c8954a0af4f1087b014c2ba71",
+    "commitDate": "2026-07-13T14:01:16-07:00",
+    "commitSubject": "fix: make Floor 1 boss entry survivable (#1110)",
+    "capturedAt": "2026-07-13T21:40:48.551Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29285399992",
+    "winRate": 0.9266666666666666,
+    "totalWins": 278,
+    "totalRuns": 300,
+    "path": "by-sha/b7a14a795797f21c8954a0af4f1087b014c2ba71.json"
+  },
+  {
     "commit": "3d37b9764ad5dde22245b75db17271cb5867d353",
     "commitDate": "2026-07-13T12:38:26-07:00",
     "commitSubject": "ci: require detailed plan comment from issue-assigned Copilot (#1112)",
