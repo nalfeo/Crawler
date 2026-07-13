@@ -18,6 +18,7 @@ Recovered PR #1054 from the latest behind-`main` blocker by merging current `ori
 - The new mainline delta was the merged HUD vitals polish from PR #1116; the merge required no manual conflict resolution.
 - The weapon-skill attribution branch content stayed otherwise unchanged; this recovery only advanced the branch ancestry to current `main`.
 - No review threads were listed in the latest recovery request, so this pass only needed the ancestry repair plus normal validation.
+- Final parallel validation surfaced one real HUD-edge-case in the merged mainline code, so `computeVitalsScale` now treats a full-height cluster as max-scale-safe and `tests/unit/hud-ui-layout.test.ts` covers that boundary.
 - Added a fresh 2🍎 review ledger plus this coordinating handoff so the session has its own valid recovery paperwork.
 
 ## Files touched

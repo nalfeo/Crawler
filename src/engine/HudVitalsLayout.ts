@@ -83,9 +83,11 @@ export function computeVitalsScale(input: VitalsScaleInput): number {
       ? (input.neighborLeftEdge - VITALS_ABILITY_GUTTER) / input.clusterRightEdge
       : VITALS_MAX_SCALE;
   const verticalCap =
-    GAME.HEIGHT > input.clusterTopEdge
-      ? GAME.HEIGHT / (GAME.HEIGHT - input.clusterTopEdge)
-      : VITALS_MAX_SCALE;
+    GAME.HEIGHT === input.clusterTopEdge
+      ? VITALS_MAX_SCALE
+      : GAME.HEIGHT > input.clusterTopEdge
+        ? GAME.HEIGHT / (GAME.HEIGHT - input.clusterTopEdge)
+        : VITALS_MAX_SCALE;
   const capped = Math.min(input.desiredScale, VITALS_MAX_SCALE, neighborCap, verticalCap);
   return Math.max(1, Math.floor(capped * 100) / 100);
 }
