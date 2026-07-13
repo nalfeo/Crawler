@@ -1,5 +1,16 @@
 [
   {
+    "commit": "0e453f9ab71dbcb84b6c114405c62bac9fc8f088",
+    "commitDate": "2026-07-13T03:42:54Z",
+    "commitSubject": "fix(ai): attribute weapon HUD and XP to equipped attack source (#1080)",
+    "capturedAt": "2026-07-13T04:19:58.862Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29222530924",
+    "winRate": 0.92,
+    "totalWins": 276,
+    "totalRuns": 300,
+    "path": "by-sha/0e453f9ab71dbcb84b6c114405c62bac9fc8f088.json"
+  },
+  {
     "commit": "14b7972b97d162126985c88ce23099bb95e7c4f7",
     "commitDate": "2026-07-12T20:57:42Z",
     "commitSubject": "feat(devtools): turn sprite editor into a complete editing workspace (#1030)",
