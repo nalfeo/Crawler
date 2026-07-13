@@ -149,6 +149,7 @@ describe('abilities hotbar and loadout UX', () => {
     const selectedId = before.selectedAbilityId;
 
     expect(selectedId).not.toBeNull();
+    if (selectedId === null) return;
     expect(before.equippedAbilityIds).toContain(selectedId);
     await page.waitForTimeout(250);
     expect((await page.evaluate(() => window.__abilitiesProbe!.getSnapshot())).frameCount).toBe(
