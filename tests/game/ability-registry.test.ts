@@ -99,20 +99,18 @@ describe('ability registry', () => {
     });
 
     it('rejects a shortLabel longer than 8 characters', () => {
-      expect(() =>
-        parseAbilityCatalog([{ ...basePassive, shortLabel: 'TOOLONGXX' }]),
-      ).toThrow();
+      expect(() => parseAbilityCatalog([{ ...basePassive, shortLabel: 'TOOLONGXX' }])).toThrow();
     });
 
     it('accepts a shortLabel at the 8-character boundary', () => {
-      expect(() =>
-        parseAbilityCatalog([{ ...basePassive, shortLabel: 'EXACTLY8' }]),
-      ).not.toThrow();
+      expect(() => parseAbilityCatalog([{ ...basePassive, shortLabel: 'EXACTLY8' }])).not.toThrow();
     });
 
     it('accepts a valid optional iconBriefId', () => {
       expect(() =>
-        parseAbilityCatalog([{ ...basePassive, shortLabel: 'OK', iconBriefId: 'ability-icon-fireball-v1' }]),
+        parseAbilityCatalog([
+          { ...basePassive, shortLabel: 'OK', iconBriefId: 'ability-icon-fireball-v1' },
+        ]),
       ).not.toThrow();
     });
 

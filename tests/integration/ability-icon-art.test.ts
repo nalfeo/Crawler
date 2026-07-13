@@ -21,7 +21,10 @@ import {
   fetchGeneratedSpriteRegistry,
   GENERATED_SPRITE_REGISTRY_KEY,
 } from '../../src/engine/generatedAssets/index.js';
-import { emptyGeneratedSpriteRegistry, type GeneratedSpriteRegistry } from '../../src/shared/generated-assets.js';
+import {
+  emptyGeneratedSpriteRegistry,
+  type GeneratedSpriteRegistry,
+} from '../../src/shared/generated-assets.js';
 import { getAbilityIconEntry } from '../../src/engine/ability-icon.js';
 
 const REPO_MANIFEST = path.resolve(__dirname, '../../public/assets/generated/manifest.json');
