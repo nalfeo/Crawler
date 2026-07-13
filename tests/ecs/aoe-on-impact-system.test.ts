@@ -86,7 +86,7 @@ describe('aoeOnImpactSystem', () => {
 
     const explosions = Array.from(query(world.ecs, [AreaDamage]));
     expect(explosions).toHaveLength(1);
-    const explosionEid = explosions[0];
+    const explosionEid = explosions[0]!;
     expect(world.attackWeaponSkillsByEntity.get(explosionEid)).toEqual(skillIds);
   });
 });

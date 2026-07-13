@@ -147,7 +147,7 @@ describe('trapSystem', () => {
 
     // The explosion must carry the trap's original skill IDs, not the switched ones.
     const explosionEntities = Array.from(query(world.ecs, [AreaDamage]));
-    const explosionEid = explosionEntities[0];
+    const explosionEid = explosionEntities[0]!;
     expect(world.attackWeaponSkillsByEntity.get(explosionEid)).toEqual(trapSkillIds);
 
     // The trap's own attribution entry must be cleared on removal.
