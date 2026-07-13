@@ -1,3 +1,4 @@
+import { addComponent, addEntity, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import {
   spawnBehaviorEnemy,
@@ -10,6 +11,8 @@ import {
 } from '../../src/core/helpers.js';
 import { createInputState } from '../../src/shared/input.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
+import { DoorState } from '../../src/core/components.js';
+import { setDoorLockConfig, setGoalFlag } from '../../src/core/door-lock.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { hasClearLineOfSight } from '../../src/game/ai/bt-ai-geometry.js';
 import {
@@ -28,7 +31,7 @@ import type { GameWorld } from '../../src/core/world.js';
 import { resolveFloor2SettlementAnchor } from '../../src/core/floor2-settlement-anchor.js';
 import { acceptQuest } from '../../src/core/systems/questSystem.js';
 import { createTestWorld } from '../helpers/world-factory.js';
-import { makeDiagonalCornerMap } from '../helpers/map-fixtures.js';
+import { makeDiagonalCornerMap, makeWalledSafeRoomMap } from '../helpers/map-fixtures.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
 import type { TilePoint } from '../../src/core/map/pathfinding.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
@@ -36,6 +39,7 @@ import { TileMap } from '../../src/core/map/TileMap.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import {
   AINpcInteractionAction,
+  AIPathingMode,
   AIProgressSuppressionSource,
   AIState,
 } from '../../src/game/ai/types.js';
@@ -929,7 +933,14 @@ describe('BehaviorTreeAI', () => {
     expect(decision.reason).toContain('Interacting with shopkeeper');
   });
 
-  it('latches a leave-safe-room waypoint, then resumes hunting after egress', () => {
+  it('never lets safe-room egress seize semantic ownership: no route data means pure pass-through', () => {
+    // `makeOpenRoom` uses an empty RoomGraph (no registered SAFE room), so the
+    // safe-room route constraint layer has no origin-room data to activate on
+    // — it must pass straight through and leave the real semantic winner
+    // (whatever Track A picks for a far threat) completely untouched. This
+    // replaces the old test that asserted the deleted `LeaveSafeRoom` node's
+    // ownership behavior (manufactured ENGAGE + nulled targetEid + a latched
+    // waypoint + the literal "Leaving safe room" reason string).
     const world = createTestWorld({ seed: 31 });
     const player = spawnPlayer(world, 0, 0);
     initializeFloor1Scenario(world, player);
@@ -948,36 +959,343 @@ describe('BehaviorTreeAI', () => {
     ai.poll(input, world);
 
     const decision = ai.getDecision();
-    expect(decision.state).toBe(AIState.ENGAGE);
-    expect(decision.targetEid).toBeNull();
-    expect(decision.reason).toContain('Leaving safe room');
-    expect(decision.targetX).not.toBeNull();
-    expect(decision.targetY).not.toBeNull();
-    const firstTargetX = decision.targetX!;
-    const firstTargetY = decision.targetY!;
+    expect(decision.reason).not.toContain('Leaving safe room');
+    expect(ai.getSafeRoomRouteDebug().phase).toBe('idle');
 
-    // Threat movement should not retarget the egress waypoint while still in a safe room.
+    // Threat movement must not be masked by any route override (there is
+    // none to mask it with) — the semantic decision keeps tracking the real,
+    // live threat position on every poll.
     world.stores.position.x[farThreat] = 120;
     world.stores.position.y[farThreat] = 12;
     ai.poll(input, world);
-    const latched = ai.getDecision();
-    expect(latched.state).toBe(AIState.ENGAGE);
-    expect(latched.targetEid).toBeNull();
-    expect(latched.reason).toContain('Leaving safe room');
-    expect(latched.targetX).toBeCloseTo(firstTargetX, 6);
-    expect(latched.targetY).toBeCloseTo(firstTargetY, 6);
+    expect(ai.getDecision().reason).not.toContain('Leaving safe room');
+    expect(ai.getSafeRoomRouteDebug().phase).toBe('idle');
 
-    // Next frame outside safe room, threat still >50ft away: the AI should keep
-    // committing to the same far threat (Hunt), not drop to EXPLORE.
+    // Leaving the safe room (raw boolean flips) changes nothing about this
+    // pass-through — still idle, still no manufactured egress state.
     world.playerInSafeRoom = false;
     world.stores.position.x[player] = 20;
     world.stores.position.y[player] = 10;
+    ai.poll(input, world);
+    expect(ai.getDecision().reason).not.toContain('Leaving safe room');
+    expect(ai.getSafeRoomRouteDebug().phase).toBe('idle');
+  });
+
+  it('PROVIDER: real BT + door-aware A* walks a semantic EXPLORE target out through the one legal door, preserving ownership end-to-end', () => {
+    // Full happy-path lifecycle wired through the REAL BehaviorTreeAI + REAL
+    // findTilePath (not the pure-reducer fake deps). `makeWalledSafeRoomMap`
+    // has actual WALL tiles ringing the SAFE room with a single door gap, so
+    // this proves the constraint activates strictly AFTER Track A's own
+    // semantic selection, drives movement via a short-term routed waypoint
+    // (not a beeline for the raw, far-away NPC), and never perturbs
+    // `decision.state/targetEid/reason` at any point in the multi-poll walk.
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    world.floorMap = makeWalledSafeRoomMap({ door: true });
+    world.stores.position.x[player] = 14;
+    world.stores.position.y[player] = 14;
+    world.playerInSafeRoom = true;
+    const guideNpcEid = world.floorScenario!.guideNpcEid;
+    expect(guideNpcEid).not.toBeNull();
+    // Parked well outside the safe room, in the open exterior corridor.
+    world.stores.position.x[guideNpcEid!] = 42;
+    world.stores.position.y[guideNpcEid!] = 14;
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    const input = createInputState();
 
     ai.poll(input, world);
-    const postExit = ai.getDecision();
-    expect(postExit.state).toBe(AIState.ENGAGE);
-    expect(postExit.targetEid).toBe(farThreat);
-    expect(postExit.reason).toContain('Hunting enemy');
+    const firstDecision = ai.getDecision();
+    // Semantic owner untouched: Track A's own EXPLORE-toward-Tutorial-Goon
+    // selection, not a manufactured egress state.
+    expect(firstDecision.state).toBe(AIState.EXPLORE);
+    expect(firstDecision.targetEid).toBe(guideNpcEid);
+    expect(firstDecision.reason).toContain('Seeking Tutorial Goon');
+
+    const firstDebug = ai.getSafeRoomRouteDebug();
+    expect(firstDebug.phase).toBe('active');
+    expect(firstDebug.originRoomId).toBe(0);
+    expect(firstDebug.totalActivations).toBe(1);
+    expect(firstDebug.totalBlocked).toBe(0);
+    // Movement heads toward the nearby door (east), not a beeline for the
+    // NPC 28ft further east still — proves the routed waypoint substitution,
+    // not raw target coordinates, is driving locomotion while inside the room.
+    expect(input.moveX).toBeGreaterThan(0);
+    expect(Math.abs(input.moveY)).toBeLessThan(0.05);
+
+    // Walk the player along the AI's own emitted heading (unit-test scale:
+    // no real movement system runs here) until the route completes or a
+    // generous bound is hit — the trajectory is fully deterministic (same
+    // seed, same fixture, same stepping) so a fixed bound is safe.
+    let completed = false;
+    for (let i = 0; i < 40 && !completed; i += 1) {
+      world.stores.position.x[player]! += input.moveX;
+      world.stores.position.y[player]! += input.moveY;
+      ai.poll(input, world);
+      const decision = ai.getDecision();
+      expect(decision.state).toBe(AIState.EXPLORE);
+      expect(decision.targetEid).toBe(guideNpcEid);
+      const debug = ai.getSafeRoomRouteDebug();
+      expect(debug.totalBlocked).toBe(0);
+      if (debug.totalCompletions > 0) {
+        completed = true;
+        expect(debug.phase).toBe('idle');
+      }
+    }
+    expect(completed).toBe(true);
+  });
+
+  it('PROVIDER: a door slamming shut (real ECS door-lock relock) mid-egress freezes movement without disturbing semantic ownership', () => {
+    // Uses the same real spawnDoor/setDoorLockConfig/setGoalFlag machinery as
+    // tests/ecs/door-navigation.test.ts so the door's navigability is driven
+    // entirely by the ECS lock system (raw tile flag is DOOR_CLOSED, i.e. no
+    // PASSABLE bit — accessibility comes only from `blockedDoorTiles`). The
+    // door starts unlocked (egress activates normally), then a relock
+    // condition is satisfied mid-route, bumping `navEpoch` for real and
+    // making the module's own live `findPath` detect the new blockage on the
+    // very next poll even though Track A's cached target selection doesn't
+    // need to re-derive anything.
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    world.floorMap = makeWalledSafeRoomMap({ door: false });
+    world.stores.position.x[player] = 14;
+    world.stores.position.y[player] = 14;
+    world.playerInSafeRoom = true;
+    const guideNpcEid = world.floorScenario!.guideNpcEid;
+    expect(guideNpcEid).not.toBeNull();
+    world.stores.position.x[guideNpcEid!] = 42;
+    world.stores.position.y[guideNpcEid!] = 14;
+
+    const door = addEntity(world.ecs);
+    addComponent(
+      world.ecs,
+      door,
+      set(DoorState, { tileX: 6, tileY: 3, logicalOpen: 1, isLocked: 0 }),
+    );
+    setDoorLockConfig(world, door, {
+      unlock: { operator: 'all', conditions: [{ type: 'goal', goalId: 'egress-mid-test-open' }] },
+      relock: { operator: 'all', conditions: [{ type: 'goal', goalId: 'egress-mid-test-shut' }] },
+    });
+    setGoalFlag(world, 'egress-mid-test-open', true);
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    const input = createInputState();
+
+    ai.poll(input, world);
+    const openDecision = ai.getDecision();
+    expect(openDecision.state).toBe(AIState.EXPLORE);
+    expect(openDecision.targetEid).toBe(guideNpcEid);
+    const openDebug = ai.getSafeRoomRouteDebug();
+    expect(openDebug.phase).toBe('active');
+    expect(openDebug.totalBlocked).toBe(0);
+    expect(input.moveX).toBeGreaterThan(0);
+
+    // Slam the door shut for real, mid-egress.
+    setGoalFlag(world, 'egress-mid-test-shut', true);
+
+    ai.poll(input, world);
+    const blockedDecision = ai.getDecision();
+    // Semantic ownership is completely unaffected by the door closing.
+    expect(blockedDecision.state).toBe(AIState.EXPLORE);
+    expect(blockedDecision.targetEid).toBe(guideNpcEid);
+    expect(blockedDecision.reason).toBe(openDecision.reason);
+    const blockedDebug = ai.getSafeRoomRouteDebug();
+    expect(blockedDebug.phase).toBe('blocked');
+    expect(blockedDebug.lastReseedCause).toBe('nav-epoch-change');
+    expect(blockedDebug.totalBlocked).toBe(1);
+    // The final authoritative blocked clamp zeroes all motion layers immediately
+    // on the first blocked poll — no gradual decay via smoothing.
+    expect(Math.abs(input.moveX)).toBeLessThan(0.01);
+    expect(Math.abs(input.moveY)).toBeLessThan(0.01);
+    for (let i = 0; i < 20; i += 1) {
+      ai.poll(input, world);
+      expect(ai.getDecision().state).toBe(AIState.EXPLORE);
+      expect(ai.getDecision().targetEid).toBe(guideNpcEid);
+      expect(ai.getSafeRoomRouteDebug().phase).toBe('blocked');
+      // Movement stays persistently zero on every blocked poll.
+      expect(Math.abs(input.moveX)).toBeLessThan(0.01);
+      expect(Math.abs(input.moveY)).toBeLessThan(0.01);
+    }
+  });
+
+  it('PROVIDER: engage watchdog fires when route is blocked (not active) even while playerInSafeRoom', () => {
+    // The narrowed watchdog guard (playerInSafeRoom && phase === 'active') must
+    // evaluate false once the route is blocked, letting the watchdog accumulate
+    // and eventually blacklist the enemy. Progress(3) must not fire so ENGAGE(4)
+    // can; meetTutorialGoon accepts the tutorial quest so findProgressObjective
+    // returns null for a level-1 player, giving ENGAGE priority.
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    meetTutorialGoon(world, player); // accept tutorial → Progress returns null at level 1
+    selectFloor1StarterWeapon(world, 0);
+    world.floorMap = makeWalledSafeRoomMap({ door: false });
+    world.stores.position.x[player] = 14;
+    world.stores.position.y[player] = 14; // tile (4,4), inside origin room
+    world.playerInSafeRoom = true;
+
+    const guideNpcEid = world.floorScenario!.guideNpcEid;
+    expect(guideNpcEid).not.toBeNull();
+    world.stores.position.x[guideNpcEid!] = 42;
+    world.stores.position.y[guideNpcEid!] = 14;
+
+    // Enemy at world (28,14) — 14 ft from player, within the default 20 ft
+    // engage radius and reachable through the open door at tile (6,3).
+    const enemyEid = spawnEnemy(world, 28, 14, 100);
+
+    // Door entity matching the gap tile — starts logically open.
+    const door = addEntity(world.ecs);
+    addComponent(
+      world.ecs,
+      door,
+      set(DoorState, { tileX: 6, tileY: 3, logicalOpen: 1, isLocked: 0 }),
+    );
+    setDoorLockConfig(world, door, {
+      unlock: { operator: 'all', conditions: [{ type: 'goal', goalId: 'watchdog-test-open' }] },
+      relock: { operator: 'all', conditions: [{ type: 'goal', goalId: 'watchdog-test-shut' }] },
+    });
+    setGoalFlag(world, 'watchdog-test-open', true);
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    const inputState = createInputState();
+
+    // Poll 1: door open → route 'active' (path to enemy through door), enemy
+    // reachable (cached) → ENGAGE.
+    ai.poll(inputState, world);
+    expect(ai.getSafeRoomRouteDebug().phase).toBe('active');
+    expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+    expect(ai.getDecision().targetEid).toBe(enemyEid);
+
+    // Slam the door — navEpoch bumps, route becomes 'blocked' next poll.
+    setGoalFlag(world, 'watchdog-test-shut', true);
+
+    // Poll 2: route transitions to 'blocked'. Watchdog runs before
+    // updateSafeRoomRoute so it still sees phase='active' this frame → resets
+    // the counter once more.
+    ai.poll(inputState, world);
+    expect(ai.getSafeRoomRouteDebug().phase).toBe('blocked');
+
+    // From poll 3 onward the watchdog sees phase='blocked' → guard is false →
+    // counter increments each frame. After ENGAGE_GIVEUP_FRAMES the enemy is
+    // blacklisted and the decision's targetEid changes. Bounded loop with a
+    // small buffer to avoid coupling to the exact internal threshold.
+    let abandoned = false;
+    for (let i = 0; i < ENGAGE_GIVEUP_FRAMES + 10; i++) {
+      ai.poll(inputState, world);
+      // Check abandonment first: on the poll where the watchdog fires the enemy
+      // is blacklisted and the decision immediately transitions (same poll,
+      // post-tree-tick) to a non-ENGAGE state. Once the enemy is dropped the
+      // route constraint lifts and movement legitimately resumes — asserting
+      // zero-movement on that poll would be a false failure.
+      if (ai.getDecision().targetEid !== enemyEid) {
+        abandoned = true;
+        break;
+      }
+      // Still targeting the enemy: route is blocked → movement must be zero.
+      expect(Math.abs(inputState.moveX)).toBeLessThan(0.01);
+      expect(Math.abs(inputState.moveY)).toBeLessThan(0.01);
+    }
+    expect(abandoned).toBe(true);
+  });
+
+  it("PROVIDER: teleporting player outside a blocked route's origin room clears the route to idle and resumes locomotion", () => {
+    // Sealed room (door: null) — route is immediately blocked. After an
+    // external event moves the player outside the origin room the next poll
+    // must transition the route to idle (via the origin-room-leave guard) and
+    // resume movement toward the semantic target without re-running A*.
+    // The tutorial quest is intentionally NOT accepted so Progress(3) picks the
+    // guide NPC as its EXPLORE target — which persists through both polls and
+    // lets us assert semantic continuity across the route state change.
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    world.floorMap = makeWalledSafeRoomMap({ door: null });
+    world.stores.position.x[player] = 14;
+    world.stores.position.y[player] = 14; // tile (4,4), inside origin room
+    world.playerInSafeRoom = true;
+
+    // Guide NPC east of the sealed walls. Placed at (48,14) so it is 16 ft
+    // from the post-teleport player position (32,14) — above the 12.5 ft
+    // NPC_INTERACTION_RADIUS_FT threshold — preventing INTERACT(2) from firing
+    // and letting Progress(3) keep it as the EXPLORE target.
+    const guideNpcEid = world.floorScenario!.guideNpcEid;
+    expect(guideNpcEid).not.toBeNull();
+    world.stores.position.x[guideNpcEid!] = 48;
+    world.stores.position.y[guideNpcEid!] = 14;
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    const inputState = createInputState();
+
+    // Poll 1: sealed room → route blocked, movement zeroed.
+    ai.poll(inputState, world);
+    expect(ai.getSafeRoomRouteDebug().phase).toBe('blocked');
+    expect(Math.abs(inputState.moveX)).toBeLessThan(0.01);
+    expect(Math.abs(inputState.moveY)).toBeLessThan(0.01);
+
+    // Semantic ownership (EXPLORE → guide NPC) survives the blocked route.
+    const blockedDecision = ai.getDecision();
+    expect(blockedDecision.state).toBe(AIState.EXPLORE);
+    expect(blockedDecision.targetEid).toBe(guideNpcEid);
+
+    // External teleport: move player outside the sealed room walls (well past
+    // the x=6 east wall) and clear the safe-room flag.
+    world.stores.position.x[player] = 32; // tile (8,4) — exterior
+    world.playerInSafeRoom = false;
+
+    // Poll 2: origin-room-leave guard fires → route idle, blocked = false.
+    ai.poll(inputState, world);
+    expect(ai.getSafeRoomRouteDebug().phase).toBe('idle');
+
+    // Semantic decision is unchanged; raw-target locomotion resumes (non-zero
+    // movement confirms the blocked=true zero-movement clamp was lifted).
+    const afterDecision = ai.getDecision();
+    expect(afterDecision.state).toBe(AIState.EXPLORE);
+    expect(afterDecision.targetEid).toBe(guideNpcEid);
+    expect(Math.hypot(inputState.moveX, inputState.moveY)).toBeGreaterThan(0);
+  });
+
+  it('PROVIDER: RISK_REWARD_FUSED mode cannot leak motion when route is blocked (fused/Track-B follow layer zeroed by authoritative clamp)', () => {
+    // Sealed room (door: null) + RISK_REWARD_FUSED pathing. The fused scorer
+    // runs computeRiskRewardFusedHeading with state.moveX=0/state.moveY=0 and
+    // any non-zero danger/pull can produce a non-zero heading that overwrites the
+    // early zero set by the null moveTarget gate. The final authoritative blocked
+    // clamp must zero all four state fields (moveX, moveY, smoothMoveX,
+    // smoothMoveY) to prevent this downstream leak.
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    world.floorMap = makeWalledSafeRoomMap({ door: null });
+    world.stores.position.x[player] = 14;
+    world.stores.position.y[player] = 14;
+    world.playerInSafeRoom = true;
+
+    const guideNpcEid = world.floorScenario!.guideNpcEid;
+    expect(guideNpcEid).not.toBeNull();
+    world.stores.position.x[guideNpcEid!] = 48;
+    world.stores.position.y[guideNpcEid!] = 14;
+
+    // Enemy close enough to populate the fused scorer's danger field — this
+    // gives the scorer non-trivial overlap-danger even when the base heading
+    // is zero, exercising the motion-leak path the clamp must suppress.
+    spawnEnemy(world, 18, 14, 100);
+
+    const ai = new BehaviorTreeAI({ seed: 42, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
+    const inputState = createInputState();
+
+    // Poll multiple frames: route is always 'blocked', fused scorer runs,
+    // but the authoritative clamp must keep movement exactly zero every poll.
+    for (let i = 0; i < 10; i += 1) {
+      ai.poll(inputState, world);
+      expect(ai.getSafeRoomRouteDebug().phase).toBe('blocked');
+      expect(Math.abs(inputState.moveX)).toBeLessThan(0.01);
+      expect(Math.abs(inputState.moveY)).toBeLessThan(0.01);
+    }
   });
 
   it('prioritizes the broker while floor2 reputation is locked, then drops broker targeting after intro completion', () => {

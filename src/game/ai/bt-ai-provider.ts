@@ -45,6 +45,17 @@ import {
   updateLockedDoorMemory,
 } from './exploration.js';
 import { detectArenaLockin, type ArenaLockinTarget } from './arena-lockin.js';
+import {
+  createInitialSafeRoomRouteState,
+  pickCanonicalCommitment,
+  updateSafeRoomRouteState,
+  toSafeRoomRouteDebugSnapshot,
+  type SafeRoomRouteState,
+  type SafeRoomRouteInput,
+  type SafeRoomRouteDeps,
+  type SafeRoomRouteDebugSnapshot,
+  type SemanticCommitmentCandidate,
+} from './safe-room-route.js';
 import { normalizeInputDirection } from '../../shared/input.js';
 import { hasItem } from '../../shared/inventory.js';
 import { SeededRandom } from '../../shared/random.js';
@@ -155,7 +166,6 @@ import {
   GLOBAL_DWELL_FRAMES,
   GLOBAL_DWELL_ENEMY_PROGRESS_FT,
   QUEST_PROGRESS_STALL_FRAMES,
-  SAFE_ROOM_EXIT_OVERSHOOT_FT,
   REACHABILITY_CACHE_TTL_FRAMES,
   REACHABILITY_GOAL_SEARCH_RADIUS_TILES,
   NAVIGATION_ANGLE_OFFSETS,
@@ -292,11 +302,6 @@ import {
 } from './tactical-opportunity-evaluator.js';
 
 const logger = createLogger('game:bt-ai-provider');
-const SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES = 30;
-const SAFE_ROOM_EGRESS_NO_PROGRESS_FRAMES = 45;
-const SAFE_ROOM_EGRESS_PROGRESS_EPSILON_FT = 3;
-const SAFE_ROOM_EGRESS_MAX_ACTIVE_FRAMES = 300;
-const SAFE_ROOM_EGRESS_SUPPRESS_FRAMES = 120;
 
 /**
  * Urgency (0..1) at/above which {@link AIDecisionMode.SLACK_AWARE} treats the
@@ -1076,19 +1081,10 @@ export class BehaviorTreeAI implements AIInputProvider {
   /** True when Track A reached Progress during this poll. Used to clear stale
    * NPC threat-clear bypass state if higher-priority nodes pre-empt Progress. */
   private npcApproachThreatProgressEvaluatedThisPoll: boolean = false;
-  /**
-   * Latched safe-room egress waypoint. While LeaveSafeRoom is active we keep a
-   * single reachable world target until the player exits the safe room, so
-   * threat-relative ENGAGE pursuit cannot flip the heading each frame.
-   */
-  private safeRoomEgressTargetX: number | null = null;
-  private safeRoomEgressTargetY: number | null = null;
-  private safeRoomEgressThreatEid: number | null = null;
-  private safeRoomEgressOutsideFrames: number = 0;
-  private safeRoomEgressBestDistanceFt: number = Number.POSITIVE_INFINITY;
-  private safeRoomEgressNoProgressFrames: number = 0;
-  private safeRoomEgressActiveFrames: number = 0;
-  private safeRoomEgressSuppressFrames: number = 0;
+  /** Data-only safe-room route constraint state — see `safe-room-route.ts`.
+   * Carries the current phase/commitment/path across polls; owned entirely by
+   * `updateSafeRoomRouteState`, never mutated directly here. */
+  private safeRoomRouteState: SafeRoomRouteState = createInitialSafeRoomRouteState();
 
   constructor(config: AIConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -1123,9 +1119,13 @@ export class BehaviorTreeAI implements AIInputProvider {
    *
    * - **Track A** (Movement Goal): the exclusive priority Selector that picks
    *   one movement target per frame. Retreat > ArenaLockin > Interact >
-   *   Progress > LeaveSafeRoom > Engage > Collect > Hunt > Explore. Owns
-   *   `this.decision` and `state.moveX/moveY`. See ADR 0045 for the
-   *   arena-lockin priority-slot decision.
+   *   Progress > Engage > Collect > Hunt > Explore. Owns `this.decision` and
+   *   `state.moveX/moveY`. See ADR 0045 for the arena-lockin priority-slot
+   *   decision. Safe-room egress is no longer a Track A owner — see
+   *   `safe-room-route.ts` and its ADR: a generic route-constraint layer runs
+   *   *after* Track A has already picked a winner and only ever prepends a
+   *   short, door-aware exit segment to movement execution, never touching
+   *   `this.decision`.
    *
    * - **Track B** (Opportunistic): a side-effectful parallel that runs every
    *   frame regardless of Track A's outcome and writes into
@@ -1151,8 +1151,6 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.buildInteractBehavior(),
         // Priority 3: Seek progression objectives.
         this.buildProgressBehavior(),
-        // Priority 3.5: Leave a safe room when enemies are present.
-        this.buildLeaveSafeRoomBehavior(),
         // Priority 4: Engage enemies
         this.buildEngageBehavior(),
         // Priority 5: Collect nearby loot
@@ -1744,216 +1742,6 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   /**
-   * Leave-safe-room behavior: when the player is standing in a safe room and a
-   * living enemy exists, drive *past* the nearest enemy to exit the safe zone.
-   * The weapon is hard-disabled inside safe rooms (weaponSystem safe-space
-   * gate), so holding melee range there is a permanent stalemate and the engage
-   * watchdog would otherwise blacklist the entire wave as "unreachable". This
-   * outranks Engage/Collect so the AI commits to leaving instead of oscillating
-   * across the boundary.
-   */
-  private buildLeaveSafeRoomBehavior(): BTNode {
-    return sequence(
-      'LeaveSafeRoom',
-      condition('In Safe Room With Threat', (ctx) => {
-        if (!ctx.world.playerInSafeRoom) {
-          this.safeRoomEgressSuppressFrames = 0;
-          return false;
-        }
-        if (this.safeRoomEgressSuppressFrames > 0) {
-          this.safeRoomEgressSuppressFrames -= 1;
-          return false;
-        }
-        if (this.safeRoomEgressTargetX !== null && this.safeRoomEgressTargetY !== null) {
-          const waypointInSafeSpace = isPointInSafeSpace(
-            ctx.world,
-            this.safeRoomEgressTargetX,
-            this.safeRoomEgressTargetY,
-          );
-          const distToWaypoint = Math.hypot(
-            this.safeRoomEgressTargetX - ctx.playerX,
-            this.safeRoomEgressTargetY - ctx.playerY,
-          );
-          if (!waypointInSafeSpace && distToWaypoint > WAYPOINT_ARRIVE_FT) {
-            if (
-              distToWaypoint + SAFE_ROOM_EGRESS_PROGRESS_EPSILON_FT <
-              this.safeRoomEgressBestDistanceFt
-            ) {
-              this.safeRoomEgressBestDistanceFt = distToWaypoint;
-              this.safeRoomEgressNoProgressFrames = 0;
-            } else {
-              this.safeRoomEgressNoProgressFrames += 1;
-            }
-            if (this.safeRoomEgressNoProgressFrames > SAFE_ROOM_EGRESS_NO_PROGRESS_FRAMES) {
-              this.clearSafeRoomEgressWaypoint();
-              // Drop LeaveSafeRoom for this poll so lower-priority logic can
-              // pick an alternate move target instead of instantly re-latching
-              // the same waypoint and oscillating.
-              this.safeRoomEgressSuppressFrames = SAFE_ROOM_EGRESS_SUPPRESS_FRAMES;
-              return false;
-            } else {
-              const threatEid = this.safeRoomEgressThreatEid;
-              const threatX =
-                typeof threatEid === 'number' ? ctx.world.stores.position.x[threatEid] : undefined;
-              const threatY =
-                typeof threatEid === 'number' ? ctx.world.stores.position.y[threatEid] : undefined;
-              const threatDistance =
-                typeof threatX === 'number' && typeof threatY === 'number'
-                  ? Math.hypot(threatX - ctx.playerX, threatY - ctx.playerY)
-                  : null;
-              ctx.blackboard['safeRoomEgress'] = {
-                x: this.safeRoomEgressTargetX,
-                y: this.safeRoomEgressTargetY,
-                threatDistance,
-              };
-              return true;
-            }
-          }
-          this.clearSafeRoomEgressWaypoint();
-        }
-        // During the tutorial's pre-level-2 grind, relying on the default 50ft
-        // scan can deadlock in the safe room when the nearest swarm is just
-        // outside that radius. Use an unbounded threat search only for this phase
-        // so the AI always acquires an egress target and leaves the safe room.
-        const tutorialAccepted = ctx.world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID);
-        const forceTutorialEgress = tutorialAccepted && (ctx.world.playerLevel.level ?? 0) < 2;
-        const nearest = this.findNearestEnemy(
-          ctx.world,
-          ctx.playerX,
-          ctx.playerY,
-          forceTutorialEgress ? Number.POSITIVE_INFINITY : this.config.scanRadius,
-        );
-        if (!nearest) {
-          this.clearSafeRoomEgressWaypoint();
-          return false;
-        }
-        const egress = this.computeSafeRoomEgressWaypoint(
-          ctx.world,
-          ctx.playerX,
-          ctx.playerY,
-          nearest,
-        );
-        if (egress === null) {
-          this.clearSafeRoomEgressWaypoint();
-          return false;
-        }
-        this.safeRoomEgressTargetX = egress.x;
-        this.safeRoomEgressTargetY = egress.y;
-        this.safeRoomEgressThreatEid = nearest.eid;
-        this.safeRoomEgressBestDistanceFt = Math.hypot(
-          egress.x - ctx.playerX,
-          egress.y - ctx.playerY,
-        );
-        this.safeRoomEgressNoProgressFrames = 0;
-        ctx.blackboard['safeRoomEgress'] = {
-          x: egress.x,
-          y: egress.y,
-          threatDistance: nearest.distance,
-        };
-        return true;
-      }),
-      action('Set Leave Safe Room State', (ctx) => {
-        this.safeRoomEgressActiveFrames += 1;
-        if (this.safeRoomEgressActiveFrames > SAFE_ROOM_EGRESS_MAX_ACTIVE_FRAMES) {
-          this.clearSafeRoomEgressWaypoint();
-          this.safeRoomEgressSuppressFrames = SAFE_ROOM_EGRESS_SUPPRESS_FRAMES;
-          return BTStatus.FAILURE;
-        }
-        const egress = ctx.blackboard['safeRoomEgress'] as {
-          x: number;
-          y: number;
-          threatDistance: number | null;
-        };
-        this.decision.state = AIState.ENGAGE;
-        // Keep targetEid null while egressing: ENGAGE's pursuit fallback and
-        // pointer-lock both prefer targetEid, which would otherwise re-couple this
-        // state to a moving threat and reintroduce mouth oscillation.
-        this.decision.targetEid = null;
-        this.decision.targetX = egress.x;
-        this.decision.targetY = egress.y;
-        const threatText =
-          typeof egress.threatDistance === 'number'
-            ? ` (enemy ${egress.threatDistance.toFixed(1)}ft)`
-            : '';
-        this.decision.reason = `Leaving safe room via latched egress waypoint${threatText}`;
-        return BTStatus.SUCCESS;
-      }),
-    );
-  }
-
-  private clearSafeRoomEgressWaypoint(): void {
-    this.safeRoomEgressTargetX = null;
-    this.safeRoomEgressTargetY = null;
-    this.safeRoomEgressThreatEid = null;
-    this.safeRoomEgressOutsideFrames = 0;
-    this.safeRoomEgressBestDistanceFt = Number.POSITIVE_INFINITY;
-    this.safeRoomEgressNoProgressFrames = 0;
-    this.safeRoomEgressActiveFrames = 0;
-  }
-
-  private updateSafeRoomEgressWaypointLatch(
-    world: GameWorld,
-    playerX: number,
-    playerY: number,
-  ): void {
-    if (this.safeRoomEgressTargetX === null || this.safeRoomEgressTargetY === null) {
-      this.safeRoomEgressOutsideFrames = 0;
-      return;
-    }
-    const targetX = this.safeRoomEgressTargetX;
-    const targetY = this.safeRoomEgressTargetY;
-    const distToWaypoint = Math.hypot(targetX - playerX, targetY - playerY);
-    if (distToWaypoint <= WAYPOINT_ARRIVE_FT) {
-      this.clearSafeRoomEgressWaypoint();
-      return;
-    }
-    if (world.playerInSafeRoom) {
-      this.safeRoomEgressOutsideFrames = 0;
-      return;
-    }
-    this.safeRoomEgressOutsideFrames += 1;
-    if (this.safeRoomEgressOutsideFrames >= SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES) {
-      this.clearSafeRoomEgressWaypoint();
-    }
-  }
-
-  private computeSafeRoomEgressWaypoint(
-    world: GameWorld,
-    playerX: number,
-    playerY: number,
-    threat: WorldTarget,
-  ): { x: number; y: number } | null {
-    const dx = threat.x - playerX;
-    const dy = threat.y - playerY;
-    const len = Math.hypot(dx, dy);
-    if (len <= 0) {
-      return null;
-    }
-    const rawTargetX = threat.x + (dx / len) * SAFE_ROOM_EXIT_OVERSHOOT_FT;
-    const rawTargetY = threat.y + (dy / len) * SAFE_ROOM_EXIT_OVERSHOOT_FT;
-    const floorMap = world.floorMap;
-    if (!floorMap) {
-      return { x: rawTargetX, y: rawTargetY };
-    }
-    const startTile = floorMap.worldToTile(playerX, playerY);
-    const goalTile = floorMap.worldToTile(rawTargetX, rawTargetY);
-    const resolvedTile = this.resolveReachableGoalTile(floorMap, startTile, goalTile);
-    const resolved = floorMap.tileToWorld(resolvedTile.x, resolvedTile.y);
-    if (!isPointInSafeSpace(world, resolved.x, resolved.y)) {
-      return resolved;
-    }
-    const fallbackRawX = threat.x + (dx / len) * (SAFE_ROOM_EXIT_OVERSHOOT_FT * 2);
-    const fallbackRawY = threat.y + (dy / len) * (SAFE_ROOM_EXIT_OVERSHOOT_FT * 2);
-    const fallbackTile = floorMap.worldToTile(fallbackRawX, fallbackRawY);
-    const fallbackResolvedTile = this.resolveReachableGoalTile(floorMap, startTile, fallbackTile);
-    const fallbackResolved = floorMap.tileToWorld(fallbackResolvedTile.x, fallbackResolvedTile.y);
-    if (!isPointInSafeSpace(world, fallbackResolved.x, fallbackResolved.y)) {
-      return fallbackResolved;
-    }
-    return null;
-  }
-
-  /**
    * Engage behavior: attack enemies.
    */
   private buildEngageBehavior(): BTNode {
@@ -2372,10 +2160,13 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     // Inside a safe room the weapon is hard-disabled, so the player can neither
     // close the final ft nor drop the enemy's HP. That is not "unreachable" —
-    // the LeaveSafeRoom behavior is actively walking the player out. Resetting
-    // the no-progress counter here prevents the watchdog from blacklisting the
-    // entire wave (which would collapse Engage into a COLLECT wiggle deadlock).
-    if (world.playerInSafeRoom) {
+    // the safe-room route constraint is actively walking the player out toward
+    // the door. Resetting the no-progress counter prevents the watchdog from
+    // blacklisting the entire wave (which would collapse Engage into a COLLECT
+    // wiggle deadlock). Only suppress while the route is *actively* navigating
+    // (phase === 'active'); a blocked route means no legal exit exists and the
+    // player is truly stuck — the watchdog must fire so recovery can happen.
+    if (world.playerInSafeRoom && this.safeRoomRouteState.phase === 'active') {
       this.engageTargetEid = eid;
       this.engageNoProgressFrames = 0;
       this.engageBestDistance = Number.POSITIVE_INFINITY;
@@ -2657,9 +2448,12 @@ export class BehaviorTreeAI implements AIInputProvider {
    * approached — or simply lets auto-fire mow the wave as it gives chase.
    */
   private updateGlobalDwellWatchdog(world: GameWorld, playerX: number, playerY: number): void {
-    // Inside a safe room the weapon is disabled and LeaveSafeRoom is actively
-    // walking the player out — not a deadlock. Reset so it cannot false-fire.
-    if (world.playerInSafeRoom) {
+    // Inside a safe room the weapon is disabled and the safe-room route
+    // constraint is walking the player out toward the door — not a deadlock.
+    // Only suppress while the route is *actively* navigating (phase ===
+    // 'active'); a blocked route means no legal exit and the player is truly
+    // stuck, so the global dwell watchdog must be allowed to fire for recovery.
+    if (world.playerInSafeRoom && this.safeRoomRouteState.phase === 'active') {
       this.globalDwellActive = false;
       this.globalDwellFrames = 0;
       return;
@@ -2901,7 +2695,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     const playerHealth = world.stores.health.current[playerEid] ?? 1;
     const playerMaxHealth = world.stores.health.max[playerEid] ?? 1;
     const healthPercent = playerHealth / playerMaxHealth;
-    this.updateSafeRoomEgressWaypointLatch(world, playerX, playerY);
 
     // Update stuck detection. Standing on a harvestable to gather it nets ~zero
     // displacement on purpose, so suppress the stuck counter while harvesting —
@@ -3046,6 +2839,12 @@ export class BehaviorTreeAI implements AIInputProvider {
       this.resetNpcApproachThreatTracking();
     }
 
+    // Post-selection safe-room route constraint (see safe-room-route.ts). Runs
+    // strictly AFTER Track A has already picked a semantic winner and never
+    // touches `this.decision` — it only proposes an optional movement-only
+    // override target substituted into the moveToward call below.
+    const safeRoomRoute = this.updateSafeRoomRoute(world, playerX, playerY);
+
     // Pathing A/B seam (axis 1) — three non-overlapping mode booleans (poll-invariant):
     //  • usesNavmeshRoute — route via the deterministic recast waypoint route to the
     //    BT-chosen goal (NAVMESH and NAVMESH_FUSED) instead of grid-A* moveToward.
@@ -3066,29 +2865,27 @@ export class BehaviorTreeAI implements AIInputProvider {
       this.config.pathingMode === AIPathingMode.RISK_REWARD_FUSED ||
       this.config.pathingMode === AIPathingMode.NAVMESH_FUSED;
 
-    // Execute decision: move toward target (Track A direction)
-    if (this.decision.targetX !== null && this.decision.targetY !== null) {
+    // Execute decision: move toward target (Track A direction), substituting
+    // the safe-room route's short-term exit waypoint for the raw semantic
+    // target when one is active. `this.decision.targetX/Y` themselves are
+    // NEVER mutated — only these local variables change, so interaction/
+    // telemetry code that reads `decision.targetX/Y` directly is unaffected.
+    // When blocked (no legal route out of the origin safe room), movement is
+    // zeroed while the semantic owner/decision is preserved untouched.
+    const moveTargetX = safeRoomRoute.blocked
+      ? null
+      : (safeRoomRoute.moveTarget?.x ?? this.decision.targetX);
+    const moveTargetY = safeRoomRoute.blocked
+      ? null
+      : (safeRoomRoute.moveTarget?.y ?? this.decision.targetY);
+    if (moveTargetX !== null && moveTargetY !== null) {
       // NAVMESH-routed modes swap grid-A* for the deterministic recast waypoint route
       // to the SAME BT-chosen goal; the fused follow layer (NAVMESH_FUSED) then
       // deflects that route below, while pure NAVMESH follows it as plain locomotion.
       if (usesNavmeshRoute) {
-        this.moveTowardViaNavmesh(
-          state,
-          world,
-          playerX,
-          playerY,
-          this.decision.targetX,
-          this.decision.targetY,
-        );
+        this.moveTowardViaNavmesh(state, world, playerX, playerY, moveTargetX, moveTargetY);
       } else {
-        this.moveToward(
-          state,
-          world,
-          playerX,
-          playerY,
-          this.decision.targetX,
-          this.decision.targetY,
-        );
+        this.moveToward(state, world, playerX, playerY, moveTargetX, moveTargetY);
       }
     } else {
       state.moveX = 0;
@@ -3228,6 +3025,19 @@ export class BehaviorTreeAI implements AIInputProvider {
       }
     }
 
+    // Final authoritative blocked clamp: the early moveTarget null guard zeroed
+    // movement before the fused/Track-B/travel/smoothing/anti-stall layers ran,
+    // but those layers may reintroduce motion on the same poll. This post-all-
+    // layers clamp is the single authoritative gate that ensures movement stays
+    // zero on every blocked poll regardless of which downstream layers fired.
+    // No early return: semantic decision and watchdog processing continue below.
+    if (safeRoomRoute.blocked) {
+      state.moveX = 0;
+      state.moveY = 0;
+      this.smoothMoveX = 0;
+      this.smoothMoveY = 0;
+    }
+
     state.action = false;
 
     if (this.decision.state === AIState.ENGAGE && this.decision.targetEid !== null) {
@@ -3321,6 +3131,86 @@ export class BehaviorTreeAI implements AIInputProvider {
       maxPathLength: NAVIGATION_MAX_PATH_LENGTH,
       ...(this.doorAwarePassable ? { isTilePassable: this.doorAwarePassable } : {}),
     };
+  }
+
+  /**
+   * Resolve the current semantic winner into a route "candidate" — the coarse
+   * `AIState` plus an already-resolved anchor identity/position. When the
+   * winning target is a live entity, the anchor uses that entity's LIVE
+   * position (not a possibly-stale tactical stand-off point), so a threat
+   * that has genuinely left the safe room is never hidden behind a target
+   * point that still reads as "inside". See `safe-room-route.ts` for how this
+   * feeds the stable, non-coordinate commitment identity.
+   */
+  private buildSafeRoomRouteCandidate(world: GameWorld): SemanticCommitmentCandidate {
+    const targetEid = this.decision.targetEid;
+    if (targetEid !== null && targetEid >= 0 && entityExists(world.ecs, targetEid)) {
+      const ex = world.stores.position.x[targetEid];
+      const ey = world.stores.position.y[targetEid];
+      if (typeof ex === 'number' && typeof ey === 'number') {
+        return { state: this.decision.state, targetEid, targetX: ex, targetY: ey };
+      }
+    }
+    return {
+      state: this.decision.state,
+      targetEid: null,
+      targetX: this.decision.targetX,
+      targetY: this.decision.targetY,
+    };
+  }
+
+  /**
+   * Post-selection safe-room route constraint. Consulted every poll AFTER the
+   * behavior tree has already picked a winning semantic intent; never mutates
+   * `this.decision`. When the winning target lies outside the player's origin
+   * safe room, this prepends a short, stable, door-aware exit segment (reusing
+   * the existing grid A* + `navEpoch` cache-invalidation signal — no separate
+   * pathfinding library, no per-poll A*) and returns an optional movement-only
+   * override target. See `safe-room-route.ts` for the full design rationale
+   * and ADR reference.
+   */
+  private updateSafeRoomRoute(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+  ): { moveTarget: { x: number; y: number } | null; blocked: boolean } {
+    const floorMap = world.floorMap;
+    if (!floorMap) {
+      if (this.safeRoomRouteState.phase !== 'idle') {
+        this.safeRoomRouteState = createInitialSafeRoomRouteState();
+      }
+      return { moveTarget: null, blocked: false };
+    }
+    const candidate = pickCanonicalCommitment([this.buildSafeRoomRouteCandidate(world)]);
+    if (!candidate) {
+      return { moveTarget: null, blocked: false };
+    }
+    const input: SafeRoomRouteInput = {
+      playerX,
+      playerY,
+      playerInSafeRoom: world.playerInSafeRoom,
+      navEpoch: this.navEpoch,
+      candidate,
+    };
+    const deps: SafeRoomRouteDeps = {
+      worldToTile: (x, y) => floorMap.worldToTile(x, y),
+      tileToWorld: (tx, ty) => floorMap.tileToWorld(tx, ty),
+      getRoomAt: (tx, ty) => floorMap.roomGraph.getRoomAt(tx, ty),
+      isSafeRoomId: (roomId) => floorMap.roomGraph.get(roomId)?.role === RoomRole.SAFE,
+      findPath: (start, goal) => findTilePath(floorMap, start, goal, this.groundPathOptions()),
+    };
+    const result = updateSafeRoomRouteState(this.safeRoomRouteState, input, deps);
+    this.safeRoomRouteState = result.state;
+    return { moveTarget: result.moveTarget, blocked: result.blocked };
+  }
+
+  /**
+   * Compact, durable safe-room route diagnostics snapshot (phase, origin room,
+   * segment progress, lifetime activation/completion/blocked/reseed counters).
+   * Exposed for headless-runner `SimEvent`/`RunStats` telemetry.
+   */
+  getSafeRoomRouteDebug(): SafeRoomRouteDebugSnapshot {
+    return toSafeRoomRouteDebugSnapshot(this.safeRoomRouteState);
   }
 
   /**
@@ -7484,6 +7374,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.committedDetourBestDistance = Number.POSITIVE_INFINITY;
     this.committedDetourNoProgressFrames = 0;
     this.resetNpcApproachThreatTracking();
-    this.clearSafeRoomEgressWaypoint();
+    this.safeRoomRouteState = createInitialSafeRoomRouteState();
   }
 }

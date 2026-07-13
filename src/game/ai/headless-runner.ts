@@ -33,6 +33,7 @@ import {
   type LevelUpEvent,
 } from './types.js';
 import { AI_STATE_NAME, getDecisionEventState, type SimEvent } from './event-log.js';
+import type { SafeRoomRouteDebugSnapshot } from './safe-room-route.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
 import { getScenarioDefinition } from '../scenarioDefinitions.js';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
@@ -369,6 +370,7 @@ export async function runHeadless(
     };
     getDecisionMode?: () => string;
     getPathingMode?: () => AIPathingModeValue;
+    getSafeRoomRouteDebug?: () => SafeRoomRouteDebugSnapshot;
     disposeNavmesh?: () => void;
   };
   let lastFrameX = world.stores.position.x[playerEid] ?? 0;
@@ -392,6 +394,19 @@ export async function runHeadless(
       decisionStateMs: { ...decisionStateMs },
       suppressedProgressNavCount: decisionStateCounts[suppressedState] ?? 0,
       suppressedProgressNavMs: decisionStateMs[suppressedState] ?? 0,
+    };
+  };
+
+  const buildSafeRoomRouteTelemetry = (): RunStats['safeRoomRouteTelemetry'] => {
+    const debug = navProvider.getSafeRoomRouteDebug?.();
+    if (!debug) {
+      return undefined;
+    }
+    return {
+      activations: debug.totalActivations,
+      completions: debug.totalCompletions,
+      blockedCount: debug.totalBlocked,
+      reseeds: debug.totalReseeds,
     };
   };
 
@@ -436,6 +451,7 @@ export async function runHeadless(
     const tacticalDebug = navProvider.getTacticalRunDebug?.();
     const runPlan = tacticalDebug?.decisionRunPlan ?? tacticalDebug?.runPlan ?? null;
     const decisionMode = navProvider.getDecisionMode?.();
+    const safeRoomRoute = navProvider.getSafeRoomRouteDebug?.();
     return {
       type,
       frame: frameCount,
@@ -464,6 +480,7 @@ export async function runHeadless(
       inSafe: world.playerInSafeRoom === true,
       ...(runPlan ? { slackMs: Math.round(runPlan.slackMs), urgency: runPlan.urgency } : {}),
       ...(decisionMode ? { decisionMode } : {}),
+      ...(safeRoomRoute ? { safeRoomRoute } : {}),
       ...(note ? { note } : {}),
     };
   };
@@ -833,6 +850,7 @@ export async function runHeadless(
       ...(world.weaponTelemetry
         ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
         : {}),
+      safeRoomRouteTelemetry: buildSafeRoomRouteTelemetry(),
     };
     if (mergedConfig.onFinish) {
       try {
@@ -907,6 +925,7 @@ export async function runHeadless(
     ...(world.weaponTelemetry
       ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
       : {}),
+    safeRoomRouteTelemetry: buildSafeRoomRouteTelemetry(),
   };
 
   if (mergedConfig.debug || mergedConfig.progressInterval > 0) {

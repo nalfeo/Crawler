@@ -35,7 +35,7 @@ import { writeFileSync } from 'node:fs';
 import { isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../../src/game/ai/headless-runner.js';
-import { isOfficialWin } from '../../../src/game/ai/scoring.js';
+import { activeTimeMs, isOfficialWin } from '../../../src/game/ai/scoring.js';
 import { summarizeEvents, type SimEvent } from '../../../src/game/ai/event-log.js';
 import type { RunStats } from '../../../src/game/ai/types.js';
 import {
@@ -153,7 +153,14 @@ interface RunMetric {
   weapon: string;
   seed: number;
   win: boolean;
+  outcome: RunStats['outcome'];
+  gameTimeMs: number;
+  safeRoomMs: number;
+  activeTimeMs: number;
   gameTimeSec: number;
+  questLogAccepts: Record<string, number>;
+  questLogCompletions: Record<string, number>;
+  questsFailed: string[];
   damageTaken: number;
   damageTakenPerSec: number;
   xp: number;
@@ -161,6 +168,10 @@ interface RunMetric {
   kills: number;
   minHealthPercent: number;
   finalHealthPercent: number;
+  safeRoomRouteActivations: number;
+  safeRoomRouteCompletions: number;
+  safeRoomRouteBlocked: number;
+  safeRoomRouteReseeds: number;
 }
 
 function mean(nums: number[]): number {
@@ -178,6 +189,10 @@ function aggregateOf(rows: RunMetric[]): Record<string, number> {
     kills: mean(rows.map((r) => r.kills)),
     minHealthPercent: mean(rows.map((r) => r.minHealthPercent)),
     gameTimeSec: mean(rows.map((r) => r.gameTimeSec)),
+    safeRoomRouteActivations: mean(rows.map((r) => r.safeRoomRouteActivations)),
+    safeRoomRouteCompletions: mean(rows.map((r) => r.safeRoomRouteCompletions)),
+    safeRoomRouteBlocked: mean(rows.map((r) => r.safeRoomRouteBlocked)),
+    safeRoomRouteReseeds: mean(rows.map((r) => r.safeRoomRouteReseeds)),
   };
 }
 
@@ -273,7 +288,14 @@ async function sweep(args: CLIArgs): Promise<void> {
         weapon,
         seed,
         win: officialWin,
+        outcome: stats.outcome,
+        gameTimeMs: stats.gameTimeMs,
+        safeRoomMs: stats.safeRoomMs,
+        activeTimeMs: activeTimeMs(stats),
         gameTimeSec: Math.round(gameTimeSec),
+        questLogAccepts: stats.quests.questLogAccepts,
+        questLogCompletions: stats.quests.questLogCompletions,
+        questsFailed: stats.quests.questsFailed,
         damageTaken: stats.combat.damageTaken,
         damageTakenPerSec: gameTimeSec > 0 ? stats.combat.damageTaken / gameTimeSec : 0,
         xp: stats.totalXp,
@@ -281,6 +303,10 @@ async function sweep(args: CLIArgs): Promise<void> {
         kills: stats.combat.totalKills,
         minHealthPercent: stats.health.minHealthPercent,
         finalHealthPercent: stats.health.finalHealthPercent,
+        safeRoomRouteActivations: stats.safeRoomRouteTelemetry?.activations ?? 0,
+        safeRoomRouteCompletions: stats.safeRoomRouteTelemetry?.completions ?? 0,
+        safeRoomRouteBlocked: stats.safeRoomRouteTelemetry?.blockedCount ?? 0,
+        safeRoomRouteReseeds: stats.safeRoomRouteTelemetry?.reseeds ?? 0,
       });
       if (officialWin) {
         wins++;

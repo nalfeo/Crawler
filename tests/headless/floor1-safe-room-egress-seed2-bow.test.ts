@@ -28,14 +28,23 @@ function analyzeEgress(
   longestLeavingSafeStreakMs: number;
   longestOutOfSafeStreakMs: number;
 } {
-  const firstLeavingEvent = events.find(
-    (event) => event.inSafe === true && event.reason.includes('Leaving safe room'),
+  // The old `LeaveSafeRoom` behavior-tree owner (and its `reason.includes(
+  // 'Leaving safe room')` telemetry signature) was deleted by the safe-room
+  // route constraint redesign — see
+  // `docs/knowledge/adr/2026-07-13-safe-room-route-constraint-layer.md`. The
+  // successor signal is the post-selection route overlay's lifecycle: a
+  // monotonically-increasing `totalActivations` counter is the proxy for
+  // "the AI has committed to leaving", and `phase === 'active'` is the proxy
+  // for "currently executing the legal exit segment" while the raw in/out
+  // boundary flag may still (flickerily) read in-safe.
+  const firstActivationEvent = events.find(
+    (event) => (event.safeRoomRoute?.totalActivations ?? 0) >= 1,
   );
-  let firstLeavingMs: number | null = firstLeavingEvent?.gameMs ?? null;
+  let firstLeavingMs: number | null = firstActivationEvent?.gameMs ?? null;
   if (firstLeavingMs === null) {
-    // In seed2+bow, doorway straddle can flip sampled reason strings before the
-    // first explicit "Leaving safe room" sample lands. Anchor the egress window to
-    // the first in-safe sample with a detected nearby enemy in that case.
+    // In seed2+bow, doorway straddle can flip sampled telemetry before the
+    // first explicit route activation sample lands. Anchor the egress window
+    // to the first in-safe sample with a detected nearby enemy in that case.
     const firstInSafeWithDetectedThreat = samples.find(
       (sample) => sample.inSafe === true && typeof sample.nearestEnemyDist === 'number',
     );
@@ -51,7 +60,7 @@ function analyzeEgress(
     const sample = samples[i]!;
     const next = samples[i + 1];
     const dt = next ? Math.max(0, next.gameMs - sample.gameMs) : 0;
-    const isLeavingSafe = sample.inSafe === true && sample.reason.includes('Leaving safe room');
+    const isLeavingSafe = sample.inSafe === true && sample.safeRoomRoute?.phase === 'active';
     if (isLeavingSafe) {
       if (firstLeavingMs === null) {
         firstLeavingMs = sample.gameMs;
@@ -135,7 +144,7 @@ describe('Floor 1 seed2 bow safe-room egress regression', () => {
         (sample) =>
           sample.inSafe === false &&
           sample.state === 'ENGAGE' &&
-          !sample.reason.includes('Leaving safe room'),
+          sample.safeRoomRoute?.phase !== 'active',
       ),
     ).toBe(true);
   });
@@ -143,5 +152,16 @@ describe('Floor 1 seed2 bow safe-room egress regression', () => {
   it('does not reproduce the multi-minute leaving-safe-room deadlock signature', () => {
     expect(probe.longestLeavingSafeStreakMs).toBeLessThan(MAX_LEAVING_SAFE_STREAK_MS);
     expect(probe.stats.outcome).not.toBe('timeout');
+  });
+
+  it('surfaces safe-room route telemetry end-to-end in RunStats for cloud divergence evidence', () => {
+    // The route overlay replaces the deleted `LeaveSafeRoom` owner node; a real
+    // full run must still activate at least once (there is a legal exit door in
+    // this fixture) and must never get durably stuck (activations should
+    // eventually resolve via completion rather than piling up as blocked).
+    const telemetry = probe.stats.safeRoomRouteTelemetry;
+    expect(telemetry).toBeDefined();
+    expect(telemetry!.activations).toBeGreaterThan(0);
+    expect(telemetry!.completions).toBeGreaterThan(0);
   });
 });
