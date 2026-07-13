@@ -18,8 +18,7 @@ import {
 } from '../core/systems/questWaypoints.js';
 import { GAME } from '../shared/constants.js';
 import { PIXELS_PER_FOOT } from '../shared/units.js';
-import { applyCrispText, getUiScale, onUiScaleChange } from './ui-scale.js';
-import { NAV_RADAR_MAX_SCALE } from './navigation-hud-layout.js';
+import { applyCrispText } from './ui-scale.js';
 
 const DEPTH = 1000;
 const CX = GAME.WIDTH / 2;
@@ -29,13 +28,10 @@ const RING_INSET = 96;
 const RX = GAME.WIDTH / 2 - RING_INSET;
 const RY = GAME.HEIGHT / 2 - RING_INSET;
 const ARROW_SIZE = 22;
-/** Base font size for waypoint labels (authored at design scale 1). */
-const LABEL_BASE_FONT_PX = 11;
-/** Cap applied to uiScale — shared with the radar scale cap. */
-const ARROW_MAX_SCALE = NAV_RADAR_MAX_SCALE;
 const SCREEN_MARGIN = 80;
 const MIN_ARROW_SEPARATION = 48;
 const FAN_ANGLE_STEP = Math.PI / 24;
+const LABEL_OFFSET = ARROW_SIZE + 4;
 const LABEL_CHAR_WIDTH = 7;
 const LABEL_HEIGHT = 16;
 const LABEL_COLLISION_PADDING = 6;
@@ -75,18 +71,16 @@ function labelLayout(
   screenX: number,
   screenY: number,
   text: string,
-  uiScale = 1,
 ): { x: number; y: number; width: number; height: number } {
-  const charWidth = LABEL_CHAR_WIDTH * uiScale;
-  const height = LABEL_HEIGHT * uiScale;
-  const viewportPad = LABEL_VIEWPORT_PADDING * uiScale;
-  const labelOffset = (ARROW_SIZE + 4) * uiScale;
-  const width = Math.min(text.length * charWidth, GAME.WIDTH - viewportPad * 2);
+  const width = Math.min(text.length * LABEL_CHAR_WIDTH, GAME.WIDTH - LABEL_VIEWPORT_PADDING * 2);
   return {
-    x: Math.min(GAME.WIDTH - viewportPad - width / 2, Math.max(viewportPad + width / 2, screenX)),
-    y: screenY + (screenY >= CY ? -labelOffset : labelOffset),
+    x: Math.min(
+      GAME.WIDTH - LABEL_VIEWPORT_PADDING - width / 2,
+      Math.max(LABEL_VIEWPORT_PADDING + width / 2, screenX),
+    ),
+    y: screenY + (screenY >= CY ? -LABEL_OFFSET : LABEL_OFFSET),
     width,
-    height,
+    height: LABEL_HEIGHT,
   };
 }
 
@@ -106,7 +100,6 @@ export function resolveDirectionArrowStates(
   playerX: number,
   playerY: number,
   zoom: number,
-  uiScale = 1,
 ): DirectionArrowState[] {
   const scale = PIXELS_PER_FOOT * (zoom || 1);
   const states: DirectionArrowState[] = [];
@@ -130,13 +123,13 @@ export function resolveDirectionArrowStates(
     const labelText = `${waypoint.label}  ${Math.round(distanceFt)}'`;
     let screenX = CX + Math.cos(targetAngle) * RX;
     let screenY = CY + Math.sin(targetAngle) * RY;
-    let label = labelLayout(screenX, screenY, labelText, uiScale);
+    let label = labelLayout(screenX, screenY, labelText);
     const maxAttempts = Math.max(24, waypoints.length * 8);
     for (let attempt = 0; attempt <= maxAttempts; attempt += 1) {
       const displayAngle = targetAngle + fanOffset(attempt);
       const candidateX = CX + Math.cos(displayAngle) * RX;
       const candidateY = CY + Math.sin(displayAngle) * RY;
-      const candidateLabel = labelLayout(candidateX, candidateY, labelText, uiScale);
+      const candidateLabel = labelLayout(candidateX, candidateY, labelText);
       const clear = states.every(
         (state) =>
           Math.hypot(candidateX - state.screenX, candidateY - state.screenY) >=
@@ -188,19 +181,6 @@ export function createHudDirectionArrows(scene: Phaser.Scene): {
   destroy(): void;
 } {
   const visuals = new Map<string, ArrowVisual>();
-  let currentScale = Math.min(Math.max(1, getUiScale(scene)), ARROW_MAX_SCALE);
-
-  function applyScaleToVisual(visual: ArrowVisual): void {
-    visual.arrow.setScale(currentScale);
-    visual.label.setFontSize(`${Math.round(LABEL_BASE_FONT_PX * currentScale)}px`);
-  }
-
-  const offScaleChange = onUiScaleChange(scene, () => {
-    currentScale = Math.min(Math.max(1, getUiScale(scene)), ARROW_MAX_SCALE);
-    for (const visual of visuals.values()) {
-      applyScaleToVisual(visual);
-    }
-  });
 
   function createVisual(questId: string): ArrowVisual {
     // Isosceles triangle pointing up (+x apex after rotation by angle+90°).
@@ -210,13 +190,12 @@ export function createHudDirectionArrows(scene: Phaser.Scene): {
       .setOrigin(0.5, 0.5)
       .setScrollFactor(0)
       .setDepth(DEPTH)
-      .setScale(currentScale)
       .setName(`quest-direction-arrow:${questId}`)
       .setVisible(false);
     const label = scene.add
       .text(CX, CY, '', {
         fontFamily: 'monospace',
-        fontSize: `${Math.round(LABEL_BASE_FONT_PX * currentScale)}px`,
+        fontSize: '11px',
         fontStyle: 'bold',
         color: '#fde68a',
         stroke: '#02040a',
@@ -277,13 +256,7 @@ export function createHudDirectionArrows(scene: Phaser.Scene): {
       }
     }
 
-    const states = resolveDirectionArrowStates(
-      waypoints,
-      px,
-      py,
-      scene.cameras.main.zoom || 1,
-      currentScale,
-    );
+    const states = resolveDirectionArrowStates(waypoints, px, py, scene.cameras.main.zoom || 1);
     const stateByQuestId = new Map(states.map((state) => [state.questId, state]));
     for (const waypoint of waypoints) {
       const state = stateByQuestId.get(waypoint.questId);
@@ -326,7 +299,6 @@ export function createHudDirectionArrows(scene: Phaser.Scene): {
   }
 
   function destroy(): void {
-    offScaleChange();
     for (const visual of visuals.values()) {
       destroyVisual(visual);
     }

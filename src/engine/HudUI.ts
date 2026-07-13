@@ -128,14 +128,13 @@ export function createHudUI(scene: Phaser.Scene): {
     skillTracker.sync(world, playerEid);
     minimap.sync(world, playerEid);
     abilityBar.sync(world, playerEid);
+    familyRelationships.sync(world);
     const mapOpen = minimap.isOverlayOpen();
     questTracker.setVisible(!mapOpen);
     directionArrows.setVisible(!mapOpen);
-    familyRelationships.setVisible(!mapOpen);
     if (!mapOpen) {
       questTracker.sync(world, playerEid);
       directionArrows.sync(world, playerEid);
-      familyRelationships.sync(world);
     }
   }
 
