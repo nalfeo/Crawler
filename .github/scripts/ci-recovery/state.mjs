@@ -33,10 +33,10 @@ export function normalizeBlockers(blockers) {
     .sort((left, right) => `${left.kind}\0${left.id}`.localeCompare(`${right.kind}\0${right.id}`));
 }
 
-export function blockerFingerprint(headSha, blockers) {
+export function blockerFingerprint(blockers) {
   const normalized = normalizeBlockers(blockers);
   return createHash('sha256')
-    .update(JSON.stringify({ headSha: compact(headSha), blockers: normalized }))
+    .update(JSON.stringify({ blockers: normalized }))
     .digest('hex');
 }
 
