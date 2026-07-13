@@ -34,9 +34,12 @@ existed.
 1. `ensureRoomsReachable()` guarantees every `BOSS_STAIR` room a centered 5x5
    passable arena, or the largest bounded interior for smaller rooms, plus fixed
    horizontal-then-vertical paths from each declared door to the arena center.
-   Repair runs before connectivity cleanup, uses fixed iteration order and no
-   RNG, and is byte-identical when the required arena and paths are already
-   valid.
+   The same helper repairs the dynamically selected Slime Rat encounter room
+   after objective selection and special-room sealing, so load-bearing doors
+   added by sealing are included. Repair uses fixed iteration order and no RNG,
+   chooses the 5x5 window with the most existing floor, preserves the selected
+   room's floor terrain, and is byte-identical when an arena already connects to
+   every door through passable interior.
 2. Both live-entry Floor 1 bosses use one deterministic exhaustive placement
    selector. Candidates must be structurally passable, contained by the exact
    room, reachable from the live player with declared doors blocked, and not a
@@ -56,7 +59,11 @@ existed.
    The behavior-tree provider consumes a revision once, clears transient cached
    decision/navigation state, and immediately runs the normal provider at the
    earliest deterministic pipeline-safe poll.
-5. Acceptance uses real headless Floor 1 artifacts under the unchanged
+5. Both Floor 1 boss activation predicates require the live player's tile to be
+   owned by the target room in `RoomGraph`. Rectangular bounds alone are
+   insufficient for irregular rooms because they can include passable tiles
+   disconnected from the room's actual interior.
+6. Acceptance uses real headless Floor 1 artifacts under the unchanged
    360-second official-win definition. No seed, weapon, boss ID, damage, timer,
    or boss-specific movement branches are permitted.
 

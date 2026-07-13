@@ -57,5 +57,23 @@
         }
       ]
     }
-  }
+  },
+  "post_cloud_followups": [
+    {
+      "trigger": "First 600-run sweep at ebffc203",
+      "finding": "Passable room-boundary entry tiles were rejected because RoomGraph does not own perimeter tiles.",
+      "resolution": "Admit an occupied passable perimeter or declared-door tile as a virtual flood origin while excluding it from boss candidates.",
+      "review_models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+      "adjudicator_model": "gpt-5.6-sol",
+      "clean_after_resolution": true
+    },
+    {
+      "trigger": "Replacement 600-run sweep at 8078c4fe",
+      "finding": "Dynamically selected Slime Rat rooms could contain disconnected RoomGraph-owned fragments, and pre-sealing repair omitted load-bearing doors added by sealSpecialRooms.",
+      "resolution": "Generalize the deterministic topology-aware 5x5 repair to the dynamic encounter room, preserve valid L-shaped rooms byte-identically, use exact RoomGraph ownership, and run repair after sealing against the final authoritative door set.",
+      "review_models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+      "adjudicator_model": "gpt-5.6-sol",
+      "clean_after_resolution": true
+    }
+  ]
 }

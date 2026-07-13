@@ -239,12 +239,13 @@ export function ensureRoomsReachable(
  * block, so the repair is byte-identical unless generation left the arena
  * partially or wholly walled.
  */
-function ensureBossArenaInterior(
+export function ensureBossArenaInterior(
   tileMap: TileMap,
   terrain: Uint8Array,
   w: number,
   h: number,
   room: { bounds: RoomBounds; doors: readonly DoorLocation[] },
+  floorTerrain: TerrainType = TerrainType.BOSS_STAIR_FLOOR,
 ): void {
   const { x, y, width, height } = room.bounds;
   const interiorWidth = Math.max(0, width - 2);
@@ -253,24 +254,84 @@ function ensureBossArenaInterior(
 
   const arenaWidth = Math.min(5, interiorWidth);
   const arenaHeight = Math.min(5, interiorHeight);
-  const arenaX = x + 1 + Math.floor((interiorWidth - arenaWidth) / 2);
-  const arenaY = y + 1 + Math.floor((interiorHeight - arenaHeight) / 2);
+  const roomCenterX = x + (width - 1) / 2;
+  const roomCenterY = y + (height - 1) / 2;
+  let arenaX = x + 1;
+  let arenaY = y + 1;
+  let bestPassableCount = -1;
+  let bestCenterDistanceSq = Number.POSITIVE_INFINITY;
+  for (let candidateY = y + 1; candidateY <= y + height - 1 - arenaHeight; candidateY += 1) {
+    for (let candidateX = x + 1; candidateX <= x + width - 1 - arenaWidth; candidateX += 1) {
+      let passableCount = 0;
+      for (let ty = candidateY; ty < candidateY + arenaHeight; ty += 1) {
+        for (let tx = candidateX; tx < candidateX + arenaWidth; tx += 1) {
+          if (tileMap.isPassable(tx, ty)) passableCount += 1;
+        }
+      }
+      const candidateCenterX = candidateX + Math.floor(arenaWidth / 2);
+      const candidateCenterY = candidateY + Math.floor(arenaHeight / 2);
+      const dx = candidateCenterX - roomCenterX;
+      const dy = candidateCenterY - roomCenterY;
+      const centerDistanceSq = dx * dx + dy * dy;
+      if (
+        passableCount > bestPassableCount ||
+        (passableCount === bestPassableCount && centerDistanceSq < bestCenterDistanceSq)
+      ) {
+        arenaX = candidateX;
+        arenaY = candidateY;
+        bestPassableCount = passableCount;
+        bestCenterDistanceSq = centerDistanceSq;
+      }
+    }
+  }
   const centerX = arenaX + Math.floor(arenaWidth / 2);
   const centerY = arenaY + Math.floor(arenaHeight / 2);
+  const requiredTiles = new Set<number>();
 
-  const carveInterior = (tx: number, ty: number): void => {
+  const requireInterior = (tx: number, ty: number): void => {
     if (tx <= x || ty <= y || tx >= x + width - 1 || ty >= y + height - 1) return;
     if (tx < 0 || ty < 0 || tx >= w || ty >= h) return;
     const idx = ty * w + tx;
     if ((tileMap.flags[idx]! & TileFlags.DOOR) !== 0) return;
-    tileMap.flags[idx] = TilePresets.FLOOR;
-    terrain[idx] = TerrainType.BOSS_STAIR_FLOOR;
+    requiredTiles.add(idx);
   };
 
   for (let ty = arenaY; ty < arenaY + arenaHeight; ty += 1) {
     for (let tx = arenaX; tx < arenaX + arenaWidth; tx += 1) {
-      carveInterior(tx, ty);
+      requireInterior(tx, ty);
     }
+  }
+
+  if (bestPassableCount === arenaWidth * arenaHeight) {
+    const reachable = new Uint8Array(w * h);
+    const stack = [centerY * w + centerX];
+    reachable[stack[0]!] = 1;
+    while (stack.length > 0) {
+      const idx = stack.pop()!;
+      const tx = idx % w;
+      const ty = (idx - tx) / w;
+      for (const [nextX, nextY] of [
+        [tx + 1, ty],
+        [tx - 1, ty],
+        [tx, ty + 1],
+        [tx, ty - 1],
+      ] as const) {
+        if (nextX <= x || nextY <= y || nextX >= x + width - 1 || nextY >= y + height - 1) {
+          continue;
+        }
+        const nextIdx = nextY * w + nextX;
+        if (reachable[nextIdx] === 1 || !tileMap.isPassable(nextX, nextY)) continue;
+        reachable[nextIdx] = 1;
+        stack.push(nextIdx);
+      }
+    }
+    const allDoorsReachArena = room.doors.every((door) => {
+      const side = getDoorSide(room.bounds, door);
+      const inwardX = side === 'left' ? door.x + 1 : side === 'right' ? door.x - 1 : door.x;
+      const inwardY = side === 'top' ? door.y + 1 : side === 'bottom' ? door.y - 1 : door.y;
+      return reachable[inwardY * w + inwardX] === 1;
+    });
+    if (allDoorsReachArena) return;
   }
 
   for (const door of room.doors) {
@@ -279,12 +340,22 @@ function ensureBossArenaInterior(
     const inwardY = side === 'top' ? door.y + 1 : side === 'bottom' ? door.y - 1 : door.y;
     const stepX = inwardX <= centerX ? 1 : -1;
     for (let tx = inwardX; tx !== centerX + stepX; tx += stepX) {
-      carveInterior(tx, inwardY);
+      requireInterior(tx, inwardY);
     }
     const stepY = inwardY <= centerY ? 1 : -1;
     for (let ty = inwardY; ty !== centerY + stepY; ty += stepY) {
-      carveInterior(centerX, ty);
+      requireInterior(centerX, ty);
     }
+  }
+
+  const needsRepair = [...requiredTiles].some(
+    (idx) => (tileMap.flags[idx]! & TileFlags.PASSABLE) === 0,
+  );
+  if (!needsRepair) return;
+
+  for (const idx of requiredTiles) {
+    tileMap.flags[idx] = TilePresets.FLOOR;
+    terrain[idx] = floorTerrain;
   }
 }
 

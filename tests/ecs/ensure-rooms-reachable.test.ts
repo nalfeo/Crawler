@@ -3,6 +3,7 @@ import fc from 'fast-check';
 import { TileMap } from '../../src/core/map/TileMap';
 import { RoomGraph } from '../../src/core/map/RoomGraph';
 import { ensureRoomsReachable } from '../../src/core/map/generators/DungeonGenerator';
+import { ensureBossArenaInterior } from '../../src/core/map/generators/dungeon/reachability';
 import { TileFlags, TilePresets, TerrainType, RoomRole } from '../../src/shared/map-types';
 import { makeAllWallMap as makeMap } from '../helpers/map-fixtures';
 import type { DoorLocation, RoomBounds } from '../../src/shared/map-types';
@@ -161,6 +162,69 @@ describe('ensureRoomsReachable', () => {
     expect(tileMap.isPassable(20, 4)).toBe(true);
     expect(tileMap.isPassable(20, 9)).toBe(true);
     expect((tileMap.flags[door.y * repairW + door.x]! & TileFlags.DOOR) !== 0).toBe(true);
+  });
+
+  it('repairs a dynamically declared encounter room using its existing floor terrain', () => {
+    const repairW = 32;
+    const repairH = 24;
+    const { tileMap, terrain } = makeMap(repairW, repairH);
+    const roomBounds: RoomBounds = { x: 12, y: 3, width: 17, height: 17 };
+    const door: DoorLocation = { x: 28, y: 4, connectsTo: 0 };
+    setDoor(tileMap, repairW, door.x, door.y);
+    const graph = new RoomGraph();
+    const roomId = graph.add(roomBounds, [door], [], RoomRole.NORMAL);
+
+    ensureBossArenaInterior(
+      tileMap,
+      terrain,
+      repairW,
+      repairH,
+      graph.get(roomId)!,
+      TerrainType.STONE_FLOOR,
+    );
+
+    for (let y = 9; y <= 13; y += 1) {
+      for (let x = 18; x <= 22; x += 1) {
+        expect(tileMap.isPassable(x, y)).toBe(true);
+        expect(terrain[y * repairW + x]).toBe(TerrainType.STONE_FLOOR);
+      }
+    }
+    expect(tileMap.isPassable(27, 4)).toBe(true);
+    expect(tileMap.isPassable(20, 4)).toBe(true);
+    expect(tileMap.isPassable(20, 9)).toBe(true);
+    expect((tileMap.flags[door.y * repairW + door.x]! & TileFlags.DOOR) !== 0).toBe(true);
+  });
+
+  it('is a byte-identical no-op for a connected L-shaped encounter room', () => {
+    const repairW = 24;
+    const repairH = 20;
+    const { tileMap, terrain } = makeMap(repairW, repairH);
+    const roomBounds: RoomBounds = { x: 4, y: 3, width: 16, height: 14 };
+    carveRoom(tileMap, terrain, repairW, roomBounds);
+    const door: DoorLocation = { x: 4, y: 12, connectsTo: 0 };
+    setDoor(tileMap, repairW, door.x, door.y);
+    for (let ty = 4; ty < 10; ty += 1) {
+      for (let tx = 5; tx < 12; tx += 1) {
+        tileMap.flags[ty * repairW + tx] = TilePresets.WALL;
+        terrain[ty * repairW + tx] = TerrainType.STONE_WALL;
+      }
+    }
+    const graph = new RoomGraph();
+    const roomId = graph.add(roomBounds, [door], [], RoomRole.NORMAL);
+    const flagsBefore = Uint8Array.from(tileMap.flags);
+    const terrainBefore = Uint8Array.from(terrain);
+
+    ensureBossArenaInterior(
+      tileMap,
+      terrain,
+      repairW,
+      repairH,
+      graph.get(roomId)!,
+      TerrainType.STONE_FLOOR,
+    );
+
+    expect(tileMap.flags).toEqual(flagsBefore);
+    expect(terrain).toEqual(terrainBefore);
   });
 
   it('is a byte-identical no-op for valid connected boss arenas across room sizes', () => {

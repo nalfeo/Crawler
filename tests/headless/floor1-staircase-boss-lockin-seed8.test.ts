@@ -16,8 +16,10 @@ const CASES = [
   { seed: 8, weapon: 'pistol' },
   { seed: 94, weapon: 'throwing-knife' },
 ] as const;
-const PERIMETER_ENTRY_CASES = [
+const ROOM_ENTRY_CASES = [
   { seed: 7, weapon: 'sword' },
+  { seed: 12, weapon: 'sword' },
+  { seed: 25, weapon: 'sword' },
   { seed: 69, weapon: 'sword' },
 ] as const;
 
@@ -70,8 +72,8 @@ describe('Floor 1 staircase boss-entry survival regressions', () => {
     });
   }
 
-  for (const { seed, weapon } of PERIMETER_ENTRY_CASES) {
-    it(`seed ${seed} + ${weapon} activates boss encounters from a passable perimeter entry without error`, async () => {
+  for (const { seed, weapon } of ROOM_ENTRY_CASES) {
+    it(`seed ${seed} + ${weapon} activates boss encounters only from room-owned interior without error`, async () => {
       const run = await runFloor1Case(seed, weapon);
       expect(run.stats.outcome).not.toBe('error');
       expect(run.bosses.slimeRatDefeated).toBe(true);

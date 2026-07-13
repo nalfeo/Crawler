@@ -24,6 +24,11 @@ mapgen, boss-rooms, ai-behavior-tree, ai-combat-balance
 - Added deterministic `BOSS_STAIR` geometry repair in `ensureRoomsReachable()`. It
   guarantees a centered 5x5 passable arena, bounded for smaller rooms, and fixed
   door-to-center paths before connectivity cleanup.
+- Reused the same no-op-on-valid repair for the dynamically selected Slime Rat
+  encounter room after objective selection and sealing, preserving that room's existing
+  floor terrain and accounting for load-bearing doors added by sealing. It chooses the
+  5x5 window with the most existing floor and leaves connected L-shaped rooms
+  byte-identical.
 - Replaced center-biased random Floor 1 boss spawning with exhaustive structural
   reachability and maximum-minimum-distance scoring against the live player and every
   declared door. Both Floor 1 bosses use the same selector, with a preferred 8-ft
@@ -51,8 +56,11 @@ mapgen, boss-rooms, ai-behavior-tree, ai-combat-balance
   connectivity: the player can occupy a temporarily blocked tile, so including barrier
   overlays in the flood origin can crash encounter activation.
 - Treat the player's occupied passable perimeter entry or declared doorway as a virtual
-  flood origin, matching the existing encounter-start bounds predicate. It is never a
-  boss candidate, and every other declared doorway remains sealed for traversal.
+  flood origin when the selector is called directly. It is never a boss candidate, and
+  every other declared doorway remains sealed for traversal.
+- Require RoomGraph ownership—not rectangular bounds—for both Floor 1 boss activation
+  predicates. This prevents irregular-room bounding boxes from starting lock-in while
+  the player is on a disconnected tile.
 - Keep placement RNG-free and deterministic. The removed random draws intentionally
   re-phase the later shared RNG stream; aggregate cloud outcomes, not preservation of
   individual winner identities, are the acceptance signal.
@@ -61,11 +69,12 @@ mapgen, boss-rooms, ai-behavior-tree, ai-combat-balance
 
 ## What's Next / Blockers
 
-- The first canonical cloud sweep preserved all four focused wins but scored 543/600.
-  Seeds 7 and 69 produced the same placement exception for all six weapons because the
-  encounter trigger accepted a passable perimeter entry that RoomGraph does not own as
-  interior. The generic origin contract and direct/real-headless regressions now cover
-  that boundary.
+- The first canonical cloud sweep preserved all four focused wins but scored 543/600;
+  seeds 7 and 69 produced the same placement-origin exception across all six weapons.
+  The second sweep scored 546/600; seeds 12 and 25 exposed the deeper trigger defect:
+  irregular-room bounds included passable tiles disconnected from RoomGraph-owned
+  interior. Generic origin handling plus exact room-owned activation and real-headless
+  regressions now cover both boundaries.
 - Rerun the canonical 100-seed x 6-weapon GitHub sweep. The branch remains blocked from
   PR creation unless all four focused configurations win and aggregate performance is at
   least the 556/600 baseline under the unchanged 360-second limit.

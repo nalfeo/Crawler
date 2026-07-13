@@ -115,6 +115,7 @@ import { hashStringToSeed, SeededRandom } from '../shared/random.js';
 import { computeMobLevelScale } from '../shared/mob-scaling.js';
 import { pickFromSpawnZones, type SpawnZoneWeights } from './spawn-zones.js';
 import { selectBossSpawnPlacement } from './boss-spawn-placement.js';
+import { ensureBossArenaInterior } from '../core/map/generators/dungeon/reachability.js';
 
 // Derived constants computed from config at module initialization.
 // The camera/viewport is a render-pixel concept, so convert it to feet at this
@@ -1461,9 +1462,23 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   // becomes a door so the room stays enclosed without softlocking the floor.
   const slimeRatTile = floorMap.worldToTile(slimeRatRoomPos.x, slimeRatRoomPos.y);
   const slimeRatRoomId = floorMap.roomGraph.getRoomAt(slimeRatTile.x, slimeRatTile.y);
+  const slimeRatEncounterRoom =
+    slimeRatRoomId >= 0 ? (floorMap.roomGraph.get(slimeRatRoomId) ?? null) : null;
+  const slimeRatRoomFloorTerrain =
+    floorMap.terrain[slimeRatTile.y * floorMap.width + slimeRatTile.x] ?? TerrainType.STONE_FLOOR;
   sealSpecialRooms(floorMap, {
     extraRoomIds: slimeRatRoomId >= 0 ? [slimeRatRoomId] : [],
   });
+  if (slimeRatEncounterRoom) {
+    ensureBossArenaInterior(
+      floorMap.tileMap,
+      floorMap.terrain,
+      floorMap.width,
+      floorMap.height,
+      slimeRatEncounterRoom,
+      slimeRatRoomFloorTerrain,
+    );
+  }
 
   // Welcome wayfinding signs are planted further down, after NPCs spawn, so a
   // sign can detect and avoid landing on top of an NPC (see placeWelcomeSigns).
@@ -1991,16 +2006,10 @@ function resolveBossSpawnPosition(
   return floorMap.tileToWorld(fallbackTile.x, fallbackTile.y);
 }
 
-function isInRoom(
-  world: GameWorld,
-  px: number,
-  py: number,
-  room: { bounds: { x: number; y: number; width: number; height: number } } | null,
-): boolean {
+function isInRoom(world: GameWorld, px: number, py: number, room: RoomData | null): boolean {
   if (!world.floorMap || !room) return false;
   const tile = world.floorMap.worldToTile(px, py);
-  const { x, y, width, height } = room.bounds;
-  return tile.x >= x && tile.x < x + width && tile.y >= y && tile.y < y + height;
+  return world.floorMap.roomGraph.getRoomAt(tile.x, tile.y) === room.id;
 }
 
 function isFullyInsideBossRoom(world: GameWorld, px: number, py: number): boolean {
