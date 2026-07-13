@@ -17,6 +17,7 @@ Recovered PR #1054 from the latest behind-`main` blocker by merging current `ori
 
 - The new mainline delta was only the CI-recovery lineage-marker fix in `.github/scripts/ci-recovery/*`; the merge required no manual conflict resolution.
 - The weapon-skill attribution branch content stayed otherwise unchanged; this recovery only advanced the branch ancestry to current `main`.
+- Follow-up validation surfaced one real nit in the merged CI-recovery code, so `reconcile.mjs` now logs compare-lineage failures before treating them as non-reachable markers.
 - Added a fresh 2🍎 review ledger plus this coordinating handoff so the session has its own valid recovery paperwork.
 
 ## Files touched

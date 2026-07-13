@@ -253,7 +253,17 @@ for (const markerSha of markerShasNeedingLineageCheck) {
     if (compare?.status === 'identical' || compare?.status === 'ahead') {
       reachableMarkerShas.add(markerSha);
     }
-  } catch {
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        event: 'ci-recovery.marker-sha-compare-failed',
+        message: 'Treating marker as non-reachable after compare failure.',
+        markerSha,
+        prHeadSha: pr.head.sha,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? (error.stack ?? null) : null,
+      }),
+    );
     // Treat any error (404 not found, 422 unresolvable/ambiguous SHA,
     // network errors, etc.) as a non-reachable marker so recovery can proceed.
   }

@@ -205,6 +205,9 @@ const addressedInPrefixPattern = /✅\s*addressed\s+in\s+<?([^\s>]+)>?/i;
 const hexShaPattern = /^[0-9a-f]{7,40}$/i;
 
 function parseMarkerShaToken(rawToken) {
+  // Marker replies often leave copied SHAs/URLs with trailing Markdown
+  // punctuation such as `abc1234)` or `<https://...>).` Strip those trailing
+  // wrappers before parsing.
   const token = String(rawToken ?? '')
     .replace(/[):.,;!?]+$/g, '')
     .trim();
