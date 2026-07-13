@@ -22,6 +22,7 @@ import { createHudDirectionArrows } from './HudDirectionArrows.js';
 import { createHudFamilyRelationships } from './HudFamilyRelationships.js';
 import { getUiScale, onUiScaleChange } from './ui-scale.js';
 import { GAME } from '../shared/constants.js';
+import type { ScreenBounds } from './ui-scale.js';
 
 /**
  * Upper bound on HUD magnification. The HUD is authored to fill the full 1280px
@@ -41,6 +42,8 @@ export function createHudUI(scene: Phaser.Scene): {
   sync(world: GameWorld, playerEid: number): void;
   isMapOverlayOpen(): boolean;
   closeMapOverlay(): void;
+  getAbilityBarBounds(): ScreenBounds;
+  getAbilitySlotBounds(index: number): ScreenBounds | null;
   setVisible(visible: boolean): void;
   destroy(): void;
 } {
@@ -160,6 +163,8 @@ export function createHudUI(scene: Phaser.Scene): {
     sync,
     isMapOverlayOpen: minimap.isOverlayOpen,
     closeMapOverlay: minimap.closeOverlay,
+    getAbilityBarBounds: abilityBar.getPanelScreenBounds,
+    getAbilitySlotBounds: abilityBar.getSlotScreenBounds,
     setVisible,
     destroy,
   };

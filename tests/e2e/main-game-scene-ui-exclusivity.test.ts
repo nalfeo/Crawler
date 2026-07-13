@@ -32,11 +32,11 @@ describe('MainGameScene UI exclusivity', () => {
     await bootPlayingSafeScene();
 
     await mainSceneProbe.queueAbilitiesAndAchievementsToggle(page);
-    const state = await waitForState(page, (s) => s.modalOpen, {
-      label: 'abilities modal opened',
+    const state = await waitForState(page, (s) => s.abilityLoadoutOpen, {
+      label: 'abilities loadout opened',
     });
 
-    expect(state.modalOpen, 'abilities should open the modal picker').toBe(true);
+    expect(state.abilityLoadoutOpen, 'abilities should open the dedicated loadout').toBe(true);
     expect(state.achievementsOpen, 'achievements must stay closed under same-frame B+V').toBe(
       false,
     );
@@ -68,6 +68,39 @@ describe('MainGameScene UI exclusivity', () => {
     expect(state.primarySurfaceCount, 'only the achievements surface should remain open').toBe(1);
   });
 
+  it('does not leak keyboard or pointer interactions through the abilities loadout', async () => {
+    for (const interaction of ['keyboard', 'pointer'] as const) {
+      await bootPlayingSafeScene();
+      const npcTarget = await mainSceneProbe.primeNpcInteractionTarget(page);
+      expect(npcTarget, 'probe should expose at least one NPC interaction target').not.toBeNull();
+
+      await mainSceneProbe.queueAbilitiesToggle(page);
+      await waitForState(page, (s) => s.abilityLoadoutOpen, {
+        label: `abilities loadout opened for ${interaction} input`,
+      });
+
+      if (interaction === 'keyboard') {
+        await page.keyboard.down('e');
+      } else {
+        await page.mouse.click(800, 450);
+      }
+      await page.keyboard.press('b');
+      await waitForState(page, (s) => !s.abilityLoadoutOpen, {
+        label: `abilities loadout closed after ${interaction} input`,
+      });
+      if (interaction === 'keyboard') {
+        await page.keyboard.up('e');
+      }
+      await page.waitForTimeout(250);
+
+      const state = await mainSceneProbe.getState(page);
+      expect(
+        state.conversationOpen,
+        `${interaction} input inside the abilities loadout must not start NPC dialogue after close`,
+      ).toBe(false);
+    }
+  });
+
   it('blocks character-surface toggles and hides corner shortcuts while NPC dialogue is open', async () => {
     await bootPlayingSafeScene();
 
@@ -89,6 +122,9 @@ describe('MainGameScene UI exclusivity', () => {
     expect(state.equipmentOpen, 'equipment must stay closed during conversation').toBe(false);
     expect(state.achievementsOpen, 'achievements must stay closed during conversation').toBe(false);
     expect(state.modalOpen, 'abilities modal must stay closed during conversation').toBe(false);
+    expect(state.abilityLoadoutOpen, 'abilities loadout must stay closed during conversation').toBe(
+      false,
+    );
     expect(
       state.inventoryButtonVisible,
       'inventory shortcut should hide while a blocking conversation is open',

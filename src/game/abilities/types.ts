@@ -15,8 +15,10 @@ export type AbilityCategory = 'combat' | 'defense' | 'utility';
 export interface AbilityDefinitionBase {
   id: string;
   name: string;
+  shortLabel: string;
   description: string;
   category: AbilityCategory;
+  iconBriefId?: string;
   flavorText?: string;
 }
 
@@ -132,8 +134,10 @@ const baseAbilitySchema = z
       .trim()
       .regex(/^[a-z0-9-]+$/),
     name: z.string().trim().min(1),
+    shortLabel: z.string().trim().min(1).max(8),
     description: z.string().trim().min(1),
     category: z.enum(['combat', 'defense', 'utility']),
+    iconBriefId: z.string().trim().min(1).optional(),
     flavorText: z.string().trim().min(1).optional(),
   })
   .strict();

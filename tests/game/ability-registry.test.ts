@@ -23,6 +23,7 @@ describe('ability registry', () => {
         {
           id: 'dup',
           name: 'One',
+          shortLabel: 'ONE',
           description: 'desc',
           category: 'combat',
           kind: 'passive',
@@ -31,6 +32,7 @@ describe('ability registry', () => {
         {
           id: 'dup',
           name: 'Two',
+          shortLabel: 'TWO',
           description: 'desc',
           category: 'combat',
           kind: 'passive',
@@ -46,6 +48,7 @@ describe('ability registry', () => {
         {
           id: 'spell-bad',
           name: 'Bad',
+          shortLabel: 'BAD',
           description: 'desc',
           category: 'combat',
           kind: 'spell',
@@ -64,6 +67,7 @@ describe('ability registry', () => {
         {
           id: 'spell-manual',
           name: 'Manual',
+          shortLabel: 'MANUAL',
           description: 'desc',
           category: 'combat',
           kind: 'spell',

@@ -89,6 +89,7 @@ interface MainSceneInternals {
   inventoryUI?: { isOpen(): boolean };
   equipmentUI?: { isOpen(): boolean };
   achievementsUI?: { isOpen(): boolean };
+  abilityLoadoutUI?: { isOpen(): boolean; close(): void };
   inventoryButton?: { visible: boolean };
   equipButton?: { visible: boolean };
   achievementsButton?: { visible: boolean };
@@ -153,6 +154,8 @@ export interface MainSceneState {
   readonly bridgePresent: boolean;
   /** True while the loadout / modal picker overlay is open. */
   readonly modalOpen: boolean;
+  /** True while the dedicated abilities management surface is open. */
+  readonly abilityLoadoutOpen: boolean;
   /** True when inventory is open. */
   readonly inventoryOpen: boolean;
   /** True when equipment is open. */
@@ -167,7 +170,7 @@ export interface MainSceneState {
   readonly inventoryButtonVisible: boolean;
   readonly equipButtonVisible: boolean;
   readonly achievementsButtonVisible: boolean;
-  /** Number of primary surfaces currently open (modal/inventory/equipment/achievements). */
+  /** Number of primary surfaces currently open. */
   readonly primarySurfaceCount: number;
   /** True when safe-room-gated surfaces should be allowed. */
   readonly safeContext: boolean;
@@ -408,6 +411,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       const playerFeet =
         position && eid >= 0 ? { x: position.x[eid] ?? 0, y: position.y[eid] ?? 0 } : null;
       const modalOpen = scene?.modalPicker?.isOpen() ?? false;
+      const abilityLoadoutOpen = scene?.abilityLoadoutUI?.isOpen() ?? false;
       const inventoryOpen = scene?.inventoryUI?.isOpen() ?? false;
       const equipmentOpen = scene?.equipmentUI?.isOpen() ?? false;
       const achievementsOpen = scene?.achievementsUI?.isOpen() ?? false;
@@ -422,6 +426,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         hudPresent: scene?.hudUi != null,
         bridgePresent: scene?.bridge != null,
         modalOpen,
+        abilityLoadoutOpen,
         inventoryOpen,
         equipmentOpen,
         achievementsOpen,
@@ -430,9 +435,13 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         inventoryButtonVisible: scene?.inventoryButton?.visible ?? false,
         equipButtonVisible: scene?.equipButton?.visible ?? false,
         achievementsButtonVisible: scene?.achievementsButton?.visible ?? false,
-        primarySurfaceCount: [modalOpen, inventoryOpen, equipmentOpen, achievementsOpen].filter(
-          Boolean,
-        ).length,
+        primarySurfaceCount: [
+          modalOpen,
+          abilityLoadoutOpen,
+          inventoryOpen,
+          equipmentOpen,
+          achievementsOpen,
+        ].filter(Boolean).length,
         safeContext: (world?.playerInSafeRoom ?? false) || world?.state === 'safe_room',
         simulationPaused: scene?.isSimulationPaused() ?? false,
         displayObjectCount: phaserScene?.children.list.length ?? 0,
