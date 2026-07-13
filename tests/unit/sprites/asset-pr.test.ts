@@ -96,7 +96,7 @@ describe('planConsolidation', () => {
     expect(plan.prTitle).toBe('feat(sprites): add 2 approved assets (2 check-ins)');
   });
 
-  it('emits a PR title with a recognisable shape', () => {
+  it('emits a PR title with a recognizable shape', () => {
     // Regression guard for the bug where the emitted title had no type prefix.
     const single = planConsolidation({ issues: [issues[0]!], now: NOW });
     const multi = planConsolidation({ issues, now: NOW });
