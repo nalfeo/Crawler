@@ -188,14 +188,15 @@ done <<<"$changed"
 
 # gameplay_safe: every changed file is provably unable to change the deterministic
 # Floor-1 simulation. Allowlist = surfaces the headless runner never imports
-# (src/engine, src/labs), plus e2e tests, docs, static assets, sprite-pipeline
-# scripts/tests, and sprite catalog plumbing. Anything else — src/core, src/game,
-# most src/shared, tests/headless, non-sprite scripts, .github, root config —
-# forces the gate to run. Consumed by ci.yml to skip the headless job on
-# pull_requests only.
+# (src/engine, src/labs), plus e2e tests, docs, static assets, CI/workflow config,
+# sprite-pipeline scripts/tests, and sprite catalog plumbing. Anything else —
+# src/core, src/game, most src/shared, tests/headless — forces the gate to run.
+# Consumed by ci.yml to skip the headless job on pull_requests only.
 # The sprite pipeline (scripts/sprites/, tests/unit/sprites/, tests/integration/sprites/,
 # and the 8 root pipeline integration tests) is also safe: the headless runner imports
 # only src/core, src/shared, src/game/ai and never touches scripts/sprites/.
+# .github/** (workflows, actions, extensions, instructions) is safe: CI/workflow YAML
+# cannot affect the deterministic ECS sim the headless runner executes.
 gameplay_safe=true
 while IFS= read -r file; do
   [ -z "$file" ] && continue
@@ -205,6 +206,7 @@ while IFS= read -r file; do
     tests/e2e/*) ;;
     docs/*) ;;
     public/*) ;;
+    .github/*) ;;
     src/shared/data/sprite-catalog.json) ;;
     package.json)
       if package_json_gameplay_safe; then

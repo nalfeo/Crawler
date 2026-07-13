@@ -525,6 +525,80 @@ test('reconcile ignores stale action-required run when a newer run of the same w
   assert.deepEqual(mutatingCalls, [], 'no mutating calls expected');
 });
 
+// ---------------------------------------------------------------------------
+// Regression: copilot assignee alone must never suppress recovery (#1092)
+// ---------------------------------------------------------------------------
+
+/**
+ * GraphQL response with Copilot as an assignee but no review threads.
+ * Simulates a PR where Copilot is assigned but there is no active lease or
+ * state comment — the old guard would exit here with existing-copilot-assignment.
+ */
+function gqlCopilotAssigned() {
+  return {
+    data: {
+      repository: {
+        pullRequest: {
+          id: 'PR_test_id',
+          assignees: {
+            nodes: [{ id: 'U_copilot', login: 'copilot' }],
+          },
+          reviewThreads: {
+            pageInfo: { hasNextPage: false, endCursor: null },
+            nodes: [],
+          },
+        },
+      },
+    },
+  };
+}
+
+test('reconcile proceeds when copilot is assigned but no lease/state exists', async (t) => {
+  // PR has Copilot as assignee, no owner label, no state comment, and one
+  // failed CI check — recovery MUST proceed to detect the blocker, not exit
+  // early with reason=existing-copilot-assignment.
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    // GraphQL returns Copilot as assignee but no review threads
+    [`POST /graphql`]: () => ({ body: gqlCopilotAssigned() }),
+    // One failed check gives the reconciler a blocker to detect
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          {
+            id: 1,
+            name: 'ci',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  assert.equal(code, 0, `expected exit 0; stderr: ${stderr}`);
+  assert.doesNotMatch(
+    stdout,
+    /reason=existing-copilot-assignment/,
+    'copilot assignee alone must not suppress recovery',
+  );
+  // dry-run must reach blocker detection and print a would-assign line
+  assert.match(stdout, /dry-run would-assign copilot/, 'expected dry-run to reach dispatch');
+});
 test('reconcile does not escalate router action-required run when it is the only obstruction', async (t) => {
   // The CI Recovery Router is a non-required infrastructure workflow; its
   // action_required status must remain a skip, not a blocker, preserving the
