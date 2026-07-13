@@ -59,6 +59,8 @@ export interface HudFamilyRelationshipsOptions {
 export interface HudFamilyRelationshipsState {
   readonly visible: boolean;
   readonly bounds: ScreenBounds | null;
+  /** Raw Phaser display-object visibility for the backing panel (not the logical gate). */
+  readonly panelVisible: boolean;
 }
 
 export function createHudFamilyRelationships(
@@ -250,11 +252,12 @@ export function createHudFamilyRelationships(
   function getState(): HudFamilyRelationshipsState {
     const visible = masterVisible && lastVisible && (parent?.visible ?? true);
     if (!visible) {
-      return { visible: false, bounds: null };
+      return { visible: false, bounds: null, panelVisible: title.visible };
     }
     const bounds = parent?.getBounds();
     return {
       visible: true,
+      panelVisible: title.visible,
       bounds: bounds
         ? { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }
         : { x: panelX, y: panelY, width: PANEL_WIDTH, height: panelHeight },

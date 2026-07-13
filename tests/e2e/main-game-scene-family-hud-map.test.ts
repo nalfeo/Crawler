@@ -69,7 +69,8 @@ describe('MainGameScene Floor 2 family HUD fullscreen-map gate', () => {
 
         const docked = await waitForFamilyHud(
           page,
-          (state) => !state.mapOverlayOpen && state.visible && state.bounds !== null,
+          (state) =>
+            !state.mapOverlayOpen && state.visible && state.bounds !== null && state.panelVisible,
           'docked Floor 2 family panel',
         );
         await mainSceneProbe.setSimulationPaused(page, true);
@@ -97,16 +98,23 @@ describe('MainGameScene Floor 2 family HUD fullscreen-map gate', () => {
         await page.keyboard.press('m');
         const mapOpen = await waitForFamilyHud(
           page,
-          (state) => state.mapOverlayOpen && !state.visible && state.bounds === null,
+          (state) =>
+            state.mapOverlayOpen && !state.visible && state.bounds === null && !state.panelVisible,
           'family panel suppression under fullscreen map',
         );
-        expect(mapOpen).toEqual({ mapOverlayOpen: true, visible: false, bounds: null });
+        expect(mapOpen).toEqual({
+          mapOverlayOpen: true,
+          visible: false,
+          bounds: null,
+          panelVisible: false,
+        });
         await captureEvidence(page, viewport, 'map-open');
 
         await page.keyboard.press('Escape');
         const restored = await waitForFamilyHud(
           page,
-          (state) => !state.mapOverlayOpen && state.visible && state.bounds !== null,
+          (state) =>
+            !state.mapOverlayOpen && state.visible && state.bounds !== null && state.panelVisible,
           'family panel restoration after fullscreen map closes',
         );
         expect(restored.bounds).toEqual(docked.bounds);

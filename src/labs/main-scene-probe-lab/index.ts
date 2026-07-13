@@ -100,6 +100,7 @@ interface MainSceneInternals {
     getFamilyRelationshipsState(): {
       visible: boolean;
       bounds: ScreenBounds | null;
+      panelVisible: boolean;
     };
   };
   inventoryUI?: { isOpen(): boolean };
@@ -201,6 +202,8 @@ export interface FamilyHudProbeState {
   readonly mapOverlayOpen: boolean;
   readonly visible: boolean;
   readonly bounds: ScreenBounds | null;
+  /** Raw Phaser display-object visibility — false proves the panel is actually hidden, not just logically gated. */
+  readonly panelVisible: boolean;
 }
 
 /**
@@ -537,6 +540,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         mapOverlayOpen: hud?.isMapOverlayOpen() ?? false,
         visible: family?.visible ?? false,
         bounds: family?.bounds ?? null,
+        panelVisible: family?.panelVisible ?? false,
       };
     },
 
