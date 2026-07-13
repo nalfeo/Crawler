@@ -101,6 +101,31 @@ describe('MainGameScene UI exclusivity', () => {
     }
   });
 
+  it('does not open inventory after pressing I inside the abilities loadout', async () => {
+    await bootPlayingSafeScene();
+
+    await mainSceneProbe.queueAbilitiesToggle(page);
+    await waitForState(page, (s) => s.abilityLoadoutOpen, {
+      label: 'abilities loadout opened for inventory latch check',
+    });
+
+    await page.keyboard.press('i');
+    await page.keyboard.press('b');
+    await waitForState(page, (s) => !s.abilityLoadoutOpen, {
+      label: 'abilities loadout closed after inventory latch check',
+    });
+    await page.waitForTimeout(250);
+
+    const state = await mainSceneProbe.getState(page);
+    expect(
+      state.inventoryOpen,
+      'I pressed inside the abilities loadout must not open inventory',
+    ).toBe(false);
+    expect(state.equipmentOpen, 'equipment must stay closed').toBe(false);
+    expect(state.achievementsOpen, 'achievements must stay closed').toBe(false);
+    expect(state.primarySurfaceCount, 'no character surface should open after close').toBe(0);
+  });
+
   it('blocks character-surface toggles and hides corner shortcuts while NPC dialogue is open', async () => {
     await bootPlayingSafeScene();
 

@@ -871,8 +871,16 @@ export class MainGameScene extends Phaser.Scene {
   private clearPendingInteractionInput(): void {
     this.queuedInteraction = false;
     this.tappedInteraction = false;
-    if (this.keyE) {
-      Phaser.Input.Keyboard.JustDown(this.keyE);
+    for (const key of [
+      this.keyE,
+      this.keyInventory,
+      this.keyEquip,
+      this.keyAchievements,
+      this.keyEsc,
+    ]) {
+      if (key) {
+        Phaser.Input.Keyboard.JustDown(key);
+      }
     }
   }
 
