@@ -74,6 +74,14 @@
       "review_models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
       "adjudicator_model": "gpt-5.6-sol",
       "clean_after_resolution": true
+    },
+    {
+      "trigger": "Maintainer gate decision after the second 600-run sweep",
+      "finding": "A third broad sweep was unnecessary for the geometry-specific fixes.",
+      "resolution": "The maintainer explicitly replaced the >=556/600 aggregate gate with 28 targeted cloud cases: former failure seeds 7, 12, 25, and 69 across all six weapons plus the four original controls. Runs 29226968319, 29227705981, and 29227710372 passed 28/28 with zero deaths, stalls, timeouts, or errors under the unchanged 360-second budget.",
+      "review_models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+      "adjudicator_model": "gpt-5.6-sol",
+      "clean_after_resolution": true
     }
   ]
 }

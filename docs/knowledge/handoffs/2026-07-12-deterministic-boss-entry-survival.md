@@ -75,11 +75,14 @@ mapgen, boss-rooms, ai-behavior-tree, ai-combat-balance
   irregular-room bounds included passable tiles disconnected from RoomGraph-owned
   interior. Generic origin handling plus exact room-owned activation and real-headless
   regressions now cover both boundaries.
-- The maintainer replaced a third broad 600-run sweep with a targeted cloud panel for
-  the previously failing geometry seeds 7, 12, 25, and 69 across all six weapons.
-  Workflow run `29226968319` at `ebbe2dde` produced 24/24 official wins, zero errors,
-  and a maximum completion time of 323.65 seconds under the unchanged 360-second
-  budget.
+- The maintainer explicitly replaced the prior `>=556/600` aggregate requirement with
+  a focused cloud gate. The exact target set combines the previously failing geometry
+  seeds 7, 12, 25, and 69 across all six weapons with the original controls: seed 8
+  using baseball-bat, bow, and pistol, plus seed 94 using throwing-knife.
+- Runs `29226968319`, `29227705981`, and `29227710372` produced 28/28 official wins
+  with zero deaths, stalls, timeouts, or errors. Maximum completion time was 323.65
+  seconds under the unchanged 360-second budget. The earlier broad shards remain
+  cancelled.
 
 ## What's Next / Blockers
 
