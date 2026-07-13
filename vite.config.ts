@@ -74,7 +74,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: getVitePortForMode(mode, { cwd: __dirname, env: process.env }),
-      open: mode === 'lab' ? '/lab.html' : mode === 'devtools' ? '/devtools.html' : '/',
+      open: mode === 'devtools' ? '/devtools.html' : mode === 'lab' ? false : '/',
       watch: {
         // Ignore directories written by the sprite pipeline so that creating/updating
         // YAML briefs or generated assets does not trigger a full Vite page reload.
