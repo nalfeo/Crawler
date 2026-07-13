@@ -561,7 +561,7 @@ function fireTrapAttack(world: GameWorld, player: number, def: WeaponDef): numbe
 /**
  * Emit weapon_fired skill usage events for the active weapon's class and type skills.
  * Used directly in labs/tests to simulate a weapon hit without running the full
- * attack pipeline. In live gameplay, damage systems call emitWeaponHitSkillEvents
+ * attack pipeline. In live gameplay, damage systems call emitWeaponHitSkillEventsForSource
  * instead (see src/core/weapon-skill-bridge.ts).
  */
 export function emitWeaponSkillEvents(world: GameWorld, player: number, def: WeaponDef): void {
