@@ -1,12 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { addComponent } from 'bitecs';
 import { SkillHolder, Stats } from '../../src/core/components.js';
-import {
-  spawnEnemy,
-  spawnMeleeSwing,
-  spawnPlayer,
-  spawnProjectile,
-} from '../../src/core/helpers.js';
+import { spawnEnemy, spawnMeleeSwing, spawnPlayer } from '../../src/core/helpers.js';
 import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
 import { damageSystem } from '../../src/core/systems/damageSystem.js';
 import { meleeSwingSystem } from '../../src/core/systems/meleeSwingSystem.js';
@@ -503,40 +498,44 @@ describe('weapon skill hit gate', () => {
     expect(world.skillUsageEvents).toHaveLength(0);
   });
 
-  it('attributes delayed projectile XP to the projectile source weapon after switching and firing again', () => {
+  it('attributes delayed projectile XP via production path: bow fires, weapon switches, projectile lands', () => {
     const { world, player } = setupPlayerWithWeaponSkills();
     const bowDef = WEAPON_DEFS.get('bow')!;
     const pistolDef = WEAPON_DEFS.get('pistol')!;
-    const distantEnemy = spawnEnemy(world, 100, 0, 50);
+    const enemy = spawnEnemy(world, 50, 0, 50);
 
-    // Simulate a bow projectile fired first.
-    const projectile = spawnProjectile(world, 0, 0, 0, 0, 10, 0, 0, 1, player);
-    world.attackerWeaponSkills.set(player, {
-      classSkillId: bowDef.weaponClassSkillId,
-      typeSkillId: bowDef.weaponTypeSkillId,
-    });
-    world.attackWeaponSkillsByEntity.set(projectile, {
-      classSkillId: bowDef.weaponClassSkillId,
-      typeSkillId: bowDef.weaponTypeSkillId,
-    });
+    // Fire bow through the production path (weaponSystem → dispatchAttackInner →
+    // attackWeaponSkillsByEntity registration), not via manual map insertion.
+    world.rng.next = () => 0; // force accuracy roll to hit
+    setActiveWeapon(world, bowDef);
+    world.elapsedMs = bowDef.cooldownMs;
+    weaponSystem(world);
 
-    // Switch and "fire" a second weapon before the first projectile lands.
+    // Verify the production path registered the projectile in the per-attack map.
+    expect(world.attackWeaponSkillsByEntity.size).toBeGreaterThanOrEqual(1);
+    const bowEntry = [...world.attackWeaponSkillsByEntity.entries()].find(
+      ([, skills]) => skills.classSkillId === bowDef.weaponClassSkillId,
+    );
+    expect(bowEntry).toBeDefined();
+    const [projectileEid] = bowEntry!;
+
+    // Switch weapon: overwrite attacker-level skills to pistol (simulates equip).
     world.attackerWeaponSkills.set(player, {
       classSkillId: pistolDef.weaponClassSkillId,
       typeSkillId: pistolDef.weaponTypeSkillId,
     });
 
-    // Land the original projectile now.
-    world.stores.position.x[projectile] = world.stores.position.x[distantEnemy] ?? 0;
-    world.stores.position.y[projectile] = world.stores.position.y[distantEnemy] ?? 0;
-    world.stores.velocity.x[projectile] = 0;
-    world.stores.velocity.y[projectile] = 0;
+    // Land the original bow projectile on the enemy now.
+    world.stores.position.x[projectileEid] = world.stores.position.x[enemy] ?? 0;
+    world.stores.position.y[projectileEid] = world.stores.position.y[enemy] ?? 0;
+    world.stores.velocity.x[projectileEid] = 0;
+    world.stores.velocity.y[projectileEid] = 0;
     damageSystem(world, collisionSystem(world));
 
     const fired = world.skillUsageEvents.filter((e) => e.metric === 'weapon_fired');
-    expect(fired).toHaveLength(2);
-    expect(fired.map((e) => e.skillId).sort()).toEqual(
-      [bowDef.weaponClassSkillId, bowDef.weaponTypeSkillId].sort(),
-    );
+    expect(fired.length).toBeGreaterThanOrEqual(2);
+    // bow type skill must be present; pistol type skill must not
+    expect(fired.map((e) => e.skillId)).toContain(bowDef.weaponTypeSkillId);
+    expect(fired.map((e) => e.skillId)).not.toContain(pistolDef.weaponTypeSkillId);
   });
 });

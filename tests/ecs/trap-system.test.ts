@@ -122,4 +122,35 @@ describe('trapSystem', () => {
     expect(query(world.ecs, [Trap])).toHaveLength(1);
     expect(query(world.ecs, [AreaDamage])).toHaveLength(0);
   });
+
+  it('propagates per-trap skill IDs to the spawned explosion, not the attacker current skills', () => {
+    const world = createTestWorld();
+    const owner = spawnPlayer(world, 0, 0);
+    const trap = spawnTrap(world, 0, 0, 25, 16, 30, 0, owner, 2);
+
+    const trapSkillIds = { classSkillId: 'blade', typeSkillId: 'sword' };
+    const switchedSkillIds = { classSkillId: 'ranged', typeSkillId: 'bow' };
+
+    // Record the per-trap attribution at the time the trap was placed.
+    world.attackWeaponSkillsByEntity.set(trap, trapSkillIds);
+    // Attacker switches weapon after placing the trap.
+    world.attackerWeaponSkills.set(owner, switchedSkillIds);
+
+    const enemy = spawnEnemy(world, 5, 0, 30);
+    addComponent(world.ecs, enemy, set(Team, { id: 4 }));
+
+    trapSystem(world, collisionSystem(world));
+
+    // Trap should have triggered and been removed.
+    expect(query(world.ecs, [Trap])).toHaveLength(0);
+    expect(query(world.ecs, [AreaDamage])).toHaveLength(1);
+
+    // The explosion must carry the trap's original skill IDs, not the switched ones.
+    const explosionEntities = Array.from(query(world.ecs, [AreaDamage]));
+    const explosionEid = explosionEntities[0];
+    expect(world.attackWeaponSkillsByEntity.get(explosionEid)).toEqual(trapSkillIds);
+
+    // The trap's own attribution entry must be cleared on removal.
+    expect(world.attackWeaponSkillsByEntity.has(trap)).toBe(false);
+  });
 });

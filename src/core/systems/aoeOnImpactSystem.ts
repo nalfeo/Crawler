@@ -45,20 +45,19 @@ export function aoeOnImpactPreDamage(world: GameWorld): void {
   for (const eid of entities) {
     if (eid === undefined) continue;
 
+    const ownerEid = hasComponent(world.ecs, eid, Owner) ? (owner.eid[eid] ?? 0) : -1;
     snapshots.push({
       eid,
       x: position.x[eid] ?? 0,
       y: position.y[eid] ?? 0,
       radius: aoeOnImpact.radius[eid] ?? 0,
       damage: aoeOnImpact.damage[eid] ?? 0,
-      ownerEid: hasComponent(world.ecs, eid, Owner) ? (owner.eid[eid] ?? 0) : -1,
+      ownerEid,
       teamId: hasComponent(world.ecs, eid, Team) ? (team.id[eid] ?? 0) : 0,
       activationId: getActivationForEntity(world, eid),
       skillIds:
         world.attackWeaponSkillsByEntity.get(eid) ??
-        (hasComponent(world.ecs, eid, Owner)
-          ? world.attackerWeaponSkills.get(owner.eid[eid] ?? -1)
-          : undefined),
+        (ownerEid >= 0 ? world.attackerWeaponSkills.get(ownerEid) : undefined),
     });
   }
 }

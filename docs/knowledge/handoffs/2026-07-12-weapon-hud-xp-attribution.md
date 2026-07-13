@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-12  
 **Persona:** Producer → Systems/AI + HUD  
-**Apples:** 🍎🍎 estimated → 🍎🍎 actual
+**Apples:** 🍎🍎🍎🍎 estimated → 🍎🍎🍎🍎 actual (re-scored from 2 after code review flagged 15-file, 3-layer scope)
 
 ## Systems touched
 
