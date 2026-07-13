@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-13",
+  "session_slug": "ci-recovery-assignee-fix",
+  "task_title": "Remove copilot-assignee short-circuit from recovery gate",
+  "estimated_apples": 1,
+  "stages": {}
+}
