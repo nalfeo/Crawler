@@ -5,6 +5,11 @@ import {
   loadFloorConfigFromManifest,
   loadFloor1ConfigFromManifest,
 } from '../../src/shared/floor-config.js';
+import {
+  STARTER_WEAPON_ID_TO_ITEM_ID,
+  getEquipmentDefForStarterWeapon,
+} from '../../src/shared/equipmentDefs.js';
+import { getItemById } from '../../src/shared/items.js';
 
 describe('floor1Config', () => {
   it('should load and validate the manifest-derived floor1 config', () => {
@@ -17,6 +22,14 @@ describe('floor1Config', () => {
     expect(floor1Config.starterWeapons).toContain('pistol');
     expect(floor1Config.starterWeapons).toContain('throwing-knife');
     expect(floor1Config.starterWeapons).toContain('fireball');
+  });
+
+  it('uses canonical throwing knife and fireball identities across starter equipment', () => {
+    for (const weaponId of ['throwing-knife', 'fireball']) {
+      expect(STARTER_WEAPON_ID_TO_ITEM_ID.get(weaponId)).toBe(weaponId);
+      expect(getEquipmentDefForStarterWeapon(weaponId)?.weaponId).toBe(weaponId);
+      expect(getItemById(weaponId)?.name).toBe(getEquipmentDefForStarterWeapon(weaponId)?.name);
+    }
   });
 
   it('should have valid timer configuration', () => {

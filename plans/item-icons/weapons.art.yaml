@@ -1,15 +1,15 @@
 id: item-icons-weapons
 title: 'Item Icons — Weapons'
-summary: 'Backlog of weapon inventory icons that currently render procedural placeholder PNGs (manifest sourceRun "placeholder"). Each entry needs real authored pixel art generated via the sprite pipeline when provider access is available. The registry lookup key for each sprite must match the item id slug exactly so InventoryUI picks it up automatically.'
+summary: 'Backlog of weapon inventory icons that currently render either manifest-backed placeholder PNGs or InventoryUI text fallbacks. Each entry needs real authored pixel art generated via the sprite pipeline when provider access is available. The registry lookup key for each sprite must match the item id slug exactly so InventoryUI picks it up automatically.'
 assets:
-  - id: rusty-shiv
+  - id: throwing-knife
     type: weapon
-    label: 'Rusty Shiv'
-    brief: 'Rusty Shiv — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Tetanus included at no extra charge.'
+    label: 'Throwing Knife'
+    brief: 'Throwing Knife — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Balanced for a clean throw and a cleaner escape.'
     placeholderInUse: true
     integration:
       kind: sprite-registry
-      id: rusty-shiv
+      id: throwing-knife
 
   - id: iron-sword
     type: weapon
@@ -83,14 +83,14 @@ assets:
       kind: sprite-registry
       id: plasma-pistol
 
-  - id: crystal-wand
+  - id: fireball
     type: weapon
-    label: 'Flare Gun'
-    brief: 'Flare Gun — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Short-range firepower in a familiar package.'
+    label: 'Fireball'
+    brief: 'Fireball — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show the flaming orb in a clean side or three-quarter profile so the weapon type reads at a glance. A compact sphere of bad decisions and splash damage.'
     placeholderInUse: true
     integration:
       kind: sprite-registry
-      id: crystal-wand
+      id: fireball
 
   - id: toxic-blowgun
     type: weapon

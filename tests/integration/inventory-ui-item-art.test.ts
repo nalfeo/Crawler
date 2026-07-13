@@ -5,7 +5,7 @@
  * it drives the production `createInventoryUI` factory — the exact
  * `InventoryUI.ts` render branch shipped to players — against the REAL shipped
  * `public/assets/generated/manifest.json`, and records which texture the panel
- * actually renders for each of the 15 previously-stuck item icons (+ the
+ * actually renders for each of the 14 previously-stuck item icons (+ the
  * `bone-club` → `baseball-bat` weaponId alias).
  *
  * A green resolver unit test alone does NOT satisfy rule #10: it proves the
@@ -45,14 +45,13 @@ import type { GameWorld } from '../../src/core/world.js';
 
 const REPO_MANIFEST = path.resolve(__dirname, '../../public/assets/generated/manifest.json');
 
-/** The 15 single-lineage item icons normalized this pass + the bat weaponId alias. */
+/** The 14 active single-lineage item icons + the bat weaponId alias. */
 const ITEM_ART_EXPECTATIONS: ReadonlyArray<{ itemId: string; concept: string }> = [
   { itemId: 'bone-shard', concept: 'bone-shard' },
   { itemId: 'camera-lens', concept: 'camera-lens' },
   { itemId: 'classified-dossier', concept: 'classified-dossier' },
   { itemId: 'copper-ore', concept: 'copper-ore' },
   { itemId: 'crystal-fiber', concept: 'crystal-fiber' },
-  { itemId: 'crystal-wand', concept: 'crystal-wand' },
   { itemId: 'directors-cue-card', concept: 'directors-cue-card' },
   { itemId: 'dragon-scale', concept: 'dragon-scale' },
   { itemId: 'flame-dagger', concept: 'flame-dagger' },
@@ -194,7 +193,7 @@ describe('InventoryUI real render path over the shipped manifest (observe-before
     const scene = makeRecordingScene(registry, record);
     const world = seedWorldWithStuckItems();
 
-    // A tall panel guarantees all 16 cells render (4 rows) rather than paginating.
+    // A tall panel guarantees all 15 cells render (4 rows) rather than paginating.
     const ui = createInventoryUI(scene as never, { height: 2000 });
     ui.toggle(world); // open + applyLayout + renderItems
 

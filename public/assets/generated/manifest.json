@@ -1688,69 +1688,6 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
-    "crystal-wand-var-1": {
-      "briefId": "crystal-wand",
-      "spriteName": "crystal-wand-var-1",
-      "assetPath": "generated/crystal-wand-var-1.png",
-      "approvedAt": "2026-07-02T03:03:33.298Z",
-      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-z5CePE/crystal-wand-v2/2026-07-01T23-23-40-adcf0b5a",
-      "variantIndex": 1,
-      "anchor": null,
-      "anchors": {
-        "hold": null,
-        "centerOfGravity": {
-          "x": 32,
-          "y": 27,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "6/8",
-      "judgeScore": "2",
-      "type": "weapon",
-      "contentHash": "ad890d8f05abdae278f3d56292726bbdf83c68c7dc4eb8aff89e0e0d06d4144f"
-    },
-    "crystal-wand-var-10": {
-      "briefId": "crystal-wand",
-      "spriteName": "crystal-wand-var-10",
-      "assetPath": "generated/crystal-wand-var-10.png",
-      "approvedAt": "2026-07-02T03:03:42.310Z",
-      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-O5zYAG/crystal-wand-v2/2026-07-01T23-23-40-adcf0b5a",
-      "variantIndex": 10,
-      "anchor": null,
-      "anchors": {
-        "hold": null,
-        "centerOfGravity": {
-          "x": 32,
-          "y": 28,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "6/8",
-      "judgeScore": "2",
-      "type": "weapon",
-      "contentHash": "15050745902be375b291fe70c7f6db6048972ae319067b53e9a81f5f2daf95a9"
-    },
-    "crystal-wand-var-3": {
-      "briefId": "crystal-wand",
-      "spriteName": "crystal-wand-var-3",
-      "assetPath": "generated/crystal-wand-var-3.png",
-      "approvedAt": "2026-07-02T03:03:39.040Z",
-      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-zSO3oR/crystal-wand-v2/2026-07-01T23-23-40-adcf0b5a",
-      "variantIndex": 3,
-      "anchor": null,
-      "anchors": {
-        "hold": null,
-        "centerOfGravity": {
-          "x": 32,
-          "y": 26,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "6/8",
-      "judgeScore": "2",
-      "type": "weapon",
-      "contentHash": "3edc81b4ebf805c0600de7c2a2e052c35c2b19e3b59cd1067e93e7aa544bf99f"
-    },
     "director-mic-placeholder": {
       "briefId": "director-mic",
       "spriteName": "director-mic",
@@ -4921,18 +4858,6 @@
       "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rusted-scrap-v1/2026-07-08T00-01-17-ca094eed/postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
-    },
-    "rusty-shiv-placeholder": {
-      "briefId": "rusty-shiv",
-      "spriteName": "rusty-shiv",
-      "assetPath": "generated/rusty-shiv-placeholder.png",
-      "approvedAt": "2026-06-24T03:52:54.362Z",
-      "sourceRun": "placeholder",
-      "variantIndex": 0,
-      "anchor": null,
-      "sensorScore": "placeholder",
-      "judgeScore": null,
-      "type": null
     },
     "season-badge-placeholder": {
       "briefId": "season-badge",
