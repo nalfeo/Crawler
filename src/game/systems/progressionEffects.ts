@@ -210,6 +210,8 @@ function castMagicMissile(
   damagePercent: number,
   rangeTiles: number,
 ): void {
+  const casterX = world.stores.position.x[casterEid] ?? 0;
+  const casterY = world.stores.position.y[casterEid] ?? 0;
   const target = findNearestLivingEnemy(world, casterEid, tilesToFeet(world, rangeTiles));
   if (!target) return;
   const damage = Math.round((world.stores.stats.damage[casterEid] ?? 10) * damagePercent);
@@ -226,8 +228,8 @@ function castMagicMissile(
     target.x,
     target.y,
     undefined,
-    target.x,
-    target.y,
+    casterX,
+    casterY,
     casterEid,
   );
 }
@@ -346,6 +348,8 @@ function castLifeDrain(
   rangeTiles: number,
   healPercent: number,
 ): void {
+  const casterX = world.stores.position.x[casterEid] ?? 0;
+  const casterY = world.stores.position.y[casterEid] ?? 0;
   const target = findNearestLivingEnemy(world, casterEid, tilesToFeet(world, rangeTiles));
   if (!target) return;
   const damage = Math.round((world.stores.stats.damage[casterEid] ?? 10) * damagePercent);
@@ -356,8 +360,8 @@ function castLifeDrain(
     target.x,
     target.y,
     undefined,
-    target.x,
-    target.y,
+    casterX,
+    casterY,
     casterEid,
   );
   const max = world.stores.health.max[casterEid] ?? 100;

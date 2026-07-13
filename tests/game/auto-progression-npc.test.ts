@@ -414,6 +414,19 @@ describe('autoFloor1ProgressionSystem', () => {
     expect(getOfferedBossRewardSpellIds(world)).toContain(learnedSpellId);
   });
 
+  it('prefers heal from the offered trio when auto-claiming the boss reward', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    world.floorScenario = makeFloor1();
+    world.floorScenario.offeredRewardSpellIds = ['curse', 'heal', 'haste'];
+    world.goalFlags.set('floor1-boss-battle-complete', true);
+    world.featureUnlocks.spells = false;
+
+    autoFloor1ProgressionSystem(world, player);
+
+    expect(world.abilityStatesByEntity.get(player)?.learnedSpellIds).toEqual(['heal']);
+  });
+
   it('does not attempt staircase descend when staircase is not unlocked', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);

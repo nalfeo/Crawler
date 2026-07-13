@@ -166,7 +166,9 @@ export function autoFloor1ProgressionSystem(
   }
 
   if (world.goalFlags.get('floor1-boss-battle-complete') === true && !world.featureUnlocks.spells) {
-    const offeredSpellId = getOfferedBossRewardSpellIds(world)[0];
+    const offeredSpellIds = getOfferedBossRewardSpellIds(world);
+    const offeredSpellId =
+      offeredSpellIds.find((spellId) => spellId === 'heal') ?? offeredSpellIds[0];
     if (offeredSpellId !== undefined) {
       selectSpellFromBossBattle(world, playerEid, offeredSpellId);
     }
