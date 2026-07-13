@@ -16,7 +16,12 @@
       "notes": "Rejected vague generic-picker restyle. Alt A dedicated AbilityLoadoutUI chosen to isolate ability management and preserve all ModalPicker callers. Alt B opt-in ModalPicker variant rejected because ability loadout input, scrolling, and row semantics would still complicate a one-shot generic picker. Alt C ui-probe-lab fixture rejected in favor of the real MainGameScene-backed abilities lab with stable design-space probes. Resolutions: pinned header/footer plus scroll viewport; canonical ability registry data; separate hotbar/play and picker/modal states; stable bounds only; viewport/input/occlusion coverage; deterministic geometry authoritative; repeated LLM findings require probe evidence."
     },
     "code_review": {
-      "clean": true,
+      "clean": false,
+      "escalated_to_human": {
+        "after_round": 2,
+        "reason": "Round 2 was non-clean with remaining concerns; the 2-round cap requires human escalation. The round-3 entry recorded previously violated the bounded-loop policy (review-harness-policy.md:84-100) and has been removed.",
+        "unresolved_concerns": 1
+      },
       "rounds": [
         {
           "round": 1,
@@ -29,20 +34,18 @@
           "round": 2,
           "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
           "concerns_count": 1,
-          "resolved_count": 1,
+          "resolved_count": 0,
           "clean": false
-        },
-        {
-          "round": 3,
-          "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
-          "concerns_count": 1,
-          "resolved_count": 1,
-          "clean": true
         }
       ]
     },
     "multi_model_review": {
-      "clean": true,
+      "clean": false,
+      "escalated_to_human": {
+        "after_round": 2,
+        "reason": "Round 2 was non-clean with remaining concerns; the 2-round cap requires human escalation. The round-3 entry recorded previously violated the bounded-loop policy (review-harness-policy.md:84-100) and has been removed.",
+        "unresolved_concerns": 1
+      },
       "adjudicator_model": "gpt-5.6-sol",
       "rounds": [
         {
@@ -58,16 +61,8 @@
           "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
           "concerns_count": 1,
           "valid_count": 1,
-          "resolved_count": 1,
+          "resolved_count": 0,
           "clean": false
-        },
-        {
-          "round": 3,
-          "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
-          "concerns_count": 1,
-          "valid_count": 1,
-          "resolved_count": 1,
-          "clean": true
         }
       ]
     }
