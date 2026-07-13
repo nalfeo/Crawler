@@ -10,6 +10,14 @@ export const ISSUE_INTAKE_BODY = [
   '- Follow `AGENTS.md` and `.github/copilot-instructions.md` exactly.',
   '- Keep all required verification/review-harness/ledger steps for code-touching work.',
   '- Do not weaken gates, policy checks, or explicit human requirements to get green.',
+  '',
+  '**Before writing any code**, post a detailed plan comment on this issue that covers:',
+  '- High-level design and approach for the work.',
+  '- Key decisions made (e.g. which systems, skills, or libraries are involved; alternatives considered).',
+  '- A checklist of the concrete steps you will take.',
+  '',
+  'Post this plan comment on the issue itself so the maintainer can review it before you open a PR.',
+  'Then, when you open the PR, include the same high-level summary in the PR description.',
 ].join('\n');
 
 function isTrustedMarkerComment(comment) {

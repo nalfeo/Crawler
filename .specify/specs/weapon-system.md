@@ -82,8 +82,11 @@ clamp(0, 1, def.baseAccuracy + stats.accuracy[player])`. Miss when
      `MISS_DEFLECT_MIN_RAD = π/6`, `MISS_DEFLECT_MAX_RAD = π/3`); beam/trap skip
      the animation. No skill XP.
 5. **Dispatch** — on a hit, register the weapon's skill IDs in
-   `world.attackerWeaponSkills` (keyed by player) so the damage path can credit
-   skill XP when the blow lands, then spawn the attack entity.
+   `world.attackerWeaponSkills` (keyed by player) as a legacy/fallback source,
+   then spawn the attack entity and register that spawned EID in
+   `world.attackWeaponSkillsByEntity`. Damage systems prefer the per-attack map
+   so delayed hits keep the weapon that spawned them even after later weapon
+   switches.
 
 ### Spawn helpers (`src/core/helpers.ts`)
 
