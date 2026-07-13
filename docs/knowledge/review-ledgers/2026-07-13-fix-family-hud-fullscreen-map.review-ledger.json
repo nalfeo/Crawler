@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-13",
+  "session_slug": "fix-family-hud-fullscreen-map",
+  "task_title": "Hide Floor 2 family HUD behind fullscreen map",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Adopted per-frame map-state polling in HudUI.sync so M/Escape/close-button paths converge; composed family visibility with both whole-HUD hidden state and map-open state; removed unnecessary per-row gate state; E2E will poll production probe visibility after broker activation and assert exact viewport/canvas bounds."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
