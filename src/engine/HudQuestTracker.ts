@@ -121,6 +121,8 @@ export function createHudQuestTracker(
     .rectangle(2, 2, NAV_QUEST_WIDTH - 4, TITLE_H, COLORS.titleStrip, 1)
     .setOrigin(0, 0)
     .setScrollFactor(0)
+    // 0.5 places the strip between panel chrome (999) and content (1000) so
+    // root.sort('depth') renders: panel → strip → icon/text.
     .setDepth(PIXEL_UI_DEPTH.panel + 0.5);
 
   const titleIcon = addPixelIcon(scene, PIXEL_ICON.quest, 14, 2 + TITLE_H / 2, {
