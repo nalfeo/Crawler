@@ -353,7 +353,7 @@ function castLifeDrain(
   const target = findNearestLivingEnemy(world, casterEid, tilesToFeet(world, rangeTiles));
   if (!target) return;
   const damage = Math.round((world.stores.stats.damage[casterEid] ?? 10) * damagePercent);
-  applyDamage(
+  const dealt = applyDamage(
     world,
     target.eid,
     damage,
@@ -364,9 +364,10 @@ function castLifeDrain(
     casterY,
     casterEid,
   );
+  if (dealt <= 0) return;
   const max = world.stores.health.max[casterEid] ?? 100;
   const current = world.stores.health.current[casterEid] ?? 0;
-  const healAmount = Math.max(1, Math.round(damage * healPercent));
+  const healAmount = Math.max(1, Math.round(dealt * healPercent));
   world.stores.health.current[casterEid] = Math.min(max, current + healAmount);
   pushVfxEvent(world.vfxEvents, {
     kind: 'lifeDrainBurst',

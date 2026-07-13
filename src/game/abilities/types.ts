@@ -39,7 +39,7 @@ const triggerConditionSchema = z.discriminatedUnion('kind', [
   z
     .object({
       kind: z.literal('skill_usage'),
-      metric: z.enum(['hits_landed', 'damage_dealt', 'distance_dodged_near_threat']),
+      metric: z.enum(['hits_landed', 'damage_dealt', 'distance_dodged_near_threat', 'weapon_fired']),
       skillId: z.string().trim().min(1).optional(),
       minAmount: z.number().nonnegative().optional(),
     })

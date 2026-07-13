@@ -60,6 +60,7 @@ import { createTestWorld } from '../helpers/world-factory.js';
 import {
   FLOOR1_BOSS_REWARD_SPELL_IDS,
   FLOOR1_BOSS_REWARD_SPELL_OFFER_COUNT,
+  DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID,
 } from '../../src/shared/abilities.js';
 import { flattenSetPieceLayers, getSetPieceDef } from '../../src/shared/set-piece-types.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
@@ -934,15 +935,14 @@ describe('floor1Scenario', () => {
       // Quest completion signal (questSystem sets this via onCompleteGoalFlag).
       world.goalFlags.set('floor1-boss-battle-complete', true);
       expect(world.featureUnlocks.spells).toBe(false);
-      const fallbackSpellId = getOfferedBossRewardSpellIds(world)[0]!;
 
       const granted = ensureBossBattleSpellReward(world, player);
 
       expect(granted).toBe(true);
       expect(world.featureUnlocks.spells).toBe(true);
       const state = world.abilityStatesByEntity.get(player);
-      expect(state?.learnedSpellIds).toContain(fallbackSpellId);
-      expect(state?.equippedActiveAbilityIds).toContain(fallbackSpellId);
+      expect(state?.learnedSpellIds).toContain(DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID);
+      expect(state?.equippedActiveAbilityIds).toContain(DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID);
     });
 
     it('repairs a desync where the unlock flag is set but no spell was learned', () => {
@@ -950,13 +950,14 @@ describe('floor1Scenario', () => {
       // Degenerate state: flag flipped true with an empty spellbook.
       world.featureUnlocks.spells = true;
       expect(world.abilityStatesByEntity.get(player)).toBeUndefined();
-      const fallbackSpellId = getOfferedBossRewardSpellIds(world)[0]!;
 
       const granted = ensureBossBattleSpellReward(world, player);
 
       expect(granted).toBe(true);
       expect(world.featureUnlocks.spells).toBe(true);
-      expect(world.abilityStatesByEntity.get(player)?.learnedSpellIds).toContain(fallbackSpellId);
+      expect(world.abilityStatesByEntity.get(player)?.learnedSpellIds).toContain(
+        DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID,
+      );
     });
 
     it('preserves an explicit modal/AI pick and never double-grants (idempotent)', () => {
@@ -1011,13 +1012,14 @@ describe('floor1Scenario', () => {
       expect(world.goalFlags.get('floor1-boss-battle-complete')).toBe(true);
 
       // No modal, no AI: the hardening fallback alone guarantees the invariant.
+      // The safety net always grants DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID ('heal')
+      // regardless of which spells were offered, to keep the headless RNG trajectory stable.
       expect(world.featureUnlocks.spells).toBe(false);
-      const fallbackSpellId = getOfferedBossRewardSpellIds(world)[0]!;
       const granted = ensureBossBattleSpellReward(world, player);
       expect(granted).toBe(true);
       expect(world.featureUnlocks.spells).toBe(true);
       expect(world.abilityStatesByEntity.get(player)?.equippedActiveAbilityIds).toContain(
-        fallbackSpellId,
+        DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID,
       );
     });
   });

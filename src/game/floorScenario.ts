@@ -3569,8 +3569,7 @@ export function ensureBossBattleSpellReward(world: GameWorld, playerEid: number)
   }
 
   // No spell learned yet: grant the deterministic default reward + unlock.
-  const fallbackSpellId =
-    world.floorScenario?.offeredRewardSpellIds?.[0] ?? DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID;
+  const fallbackSpellId = DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID;
   memorizeSpell(world, playerEid, fallbackSpellId);
   world.featureUnlocks.spells = true;
   return true;

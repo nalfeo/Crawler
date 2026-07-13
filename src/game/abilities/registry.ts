@@ -99,7 +99,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     kind: 'spell',
     mpCost: 8,
     cooldownFrames: 1_200,
-    trigger: { kind: 'skill_usage', metric: 'hits_landed', minAmount: 12 },
+    trigger: { kind: 'skill_usage', metric: 'weapon_fired', minAmount: 1 },
     effects: [
       {
         type: 'spell_timed_buff',
@@ -107,7 +107,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
         vfxColor: 0xfef3c7,
         modifiers: [
           { stat: 'damage', op: 'add', value: 4 },
-          { stat: 'attackSpeed', op: 'multiply', value: 0.2 },
+          { stat: 'accuracy', op: 'add', value: 0.1 },
           { stat: 'moveSpeed', op: 'add', value: 0.05 },
         ],
       },
@@ -174,7 +174,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     kind: 'spell',
     mpCost: 7,
     cooldownFrames: 1_080,
-    trigger: { kind: 'skill_usage', metric: 'damage_dealt', minAmount: 40 },
+    trigger: { kind: 'skill_usage', metric: 'weapon_fired', minAmount: 1 },
     effects: [
       {
         type: 'spell_timed_buff',
@@ -182,7 +182,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
         vfxColor: 0x67e8f9,
         modifiers: [
           { stat: 'moveSpeed', op: 'add', value: 0.125 },
-          { stat: 'attackSpeed', op: 'multiply', value: 0.25 },
+          { stat: 'projectileSpeed', op: 'add', value: 50 },
         ],
       },
     ],
