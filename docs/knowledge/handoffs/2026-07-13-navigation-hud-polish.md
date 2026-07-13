@@ -40,3 +40,17 @@ without changing or coupling to the family widget.
 Direction-arrow fanning and the pure reservation test move together in the first
 dependent follow-up. Visual-review probes/setup and the cross-surface browser
 regression move together in a second dependent follow-up.
+
+## Runtime observation
+
+Clean docked/fullscreen captures were taken at both required viewports after
+explicitly closing the UX lab's default Guide dialogue:
+
+- `files/navigation-hud/split-base-clean-1280x720-{docked,fullscreen}.png`
+- `files/navigation-hud/split-base-clean-960x540-{docked,fullscreen}.png`
+
+The earlier captures with dialogue over the map/bottom HUD were fixture
+contamination, not intentional stress evidence. Investigation also found that the
+real game can currently open the map during an active conversation because the
+minimap keyboard listener toggles independently; that pre-existing exclusivity bug
+is being handled in a separate bounded PR and is not folded into this slice.
