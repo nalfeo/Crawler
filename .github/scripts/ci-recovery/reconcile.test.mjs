@@ -335,6 +335,86 @@ test('reconcile in dry-run makes no mutating API calls', async (t) => {
   assert.deepEqual(mutatingCalls, [], 'reconcile in dry-run must not issue any mutating API calls');
 });
 
+test('reconcile treats mergeable_state=behind as non-conflict and does not dispatch recovery', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), mergeable: true, mergeable_state: 'behind' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  const windowsAsyncCloseCrash =
+    process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr);
+  assert.ok(code === 0 || windowsAsyncCloseCrash, `expected exit 0; stderr: ${stderr}`);
+  assert.match(stdout, /(dry-run would-arm-auto-merge|wait pr=#42 required-checks=)/);
+  assert.doesNotMatch(stdout, /dry-run would-assign copilot/);
+  assert.doesNotMatch(stdout, /merge-conflict/);
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+test('reconcile still emits merge-conflict blocker for dirty or mergeable=false PRs', async (t) => {
+  const conflictFixtures = [
+    { name: 'dirty', pr: { ...basePr(), mergeable: true, mergeable_state: 'dirty' } },
+    { name: 'mergeable-false', pr: { ...basePr(), mergeable: false, mergeable_state: 'clean' } },
+  ];
+
+  for (const fixture of conflictFixtures) {
+    const { server, port, mutatingCalls } = await startServer({
+      [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: fixture.pr }),
+      [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+      [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+        status: 404,
+        body: { message: 'Not Found' },
+      }),
+      [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+      [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+        body: { check_runs: [] },
+      }),
+      [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    });
+
+    t.after(() => server.close());
+
+    const { code, stdout, stderr } = await runScript(port, {
+      RECOVERY_OPERATION: 'reconcile',
+      CI_RECOVERY_MODE: 'dry-run',
+    });
+
+    assert.equal(code, 0, `fixture=${fixture.name} expected exit 0; stderr: ${stderr}`);
+    assert.match(
+      stdout,
+      /dry-run would-assign copilot/,
+      `fixture=${fixture.name} expected dispatch`,
+    );
+    assert.match(
+      stdout,
+      /merge-conflict/,
+      `fixture=${fixture.name} expected merge-conflict blocker`,
+    );
+    assert.deepEqual(
+      mutatingCalls,
+      [],
+      `fixture=${fixture.name} dry-run must not issue any mutating API calls`,
+    );
+  }
+});
+
 test('reconcile ignores same-repository action-required runs without approval or dispatch', async (t) => {
   const runId = 29220010234;
   const { server, port, mutatingCalls } = await startServer({
