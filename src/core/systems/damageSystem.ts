@@ -16,7 +16,7 @@ import { applyDamage } from '../apply-damage.js';
 import { clearEntityStores } from '../helpers.js';
 import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
-import { emitWeaponHitSkillEvents } from '../weapon-skill-bridge.js';
+import { emitWeaponHitSkillEventsForSource } from '../weapon-skill-bridge.js';
 import { recordWeaponEnemyHit, pruneAttackEntity } from '../weapon-telemetry.js';
 
 const DEFAULT_PROJECTILE_DAMAGE = 10;
@@ -137,7 +137,7 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
     // Emit weapon skill XP for the projectile's owner when damage lands on an enemy.
     if (dealt > 0 && hasComponent(world.ecs, enemy, Enemy)) {
       if (ownerEid !== -1) {
-        emitWeaponHitSkillEvents(world, ownerEid);
+        emitWeaponHitSkillEventsForSource(world, ownerEid, projectile);
       }
       recordWeaponEnemyHit(world, projectile, enemy);
     }
