@@ -11,6 +11,17 @@
     "path": "by-sha/ee39d8df0b666614087389b1ed4be993eb261643.json"
   },
   {
+    "commit": "3d37b9764ad5dde22245b75db17271cb5867d353",
+    "commitDate": "2026-07-13T12:38:26-07:00",
+    "commitSubject": "ci: require detailed plan comment from issue-assigned Copilot (#1112)",
+    "capturedAt": "2026-07-13T20:30:36.726Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29280623307",
+    "winRate": 0.92,
+    "totalWins": 276,
+    "totalRuns": 300,
+    "path": "by-sha/3d37b9764ad5dde22245b75db17271cb5867d353.json"
+  },
+  {
     "commit": "965e676d7390578fd0dc495709158c39317eb2fd",
     "commitDate": "2026-07-13T12:12:25-07:00",
     "commitSubject": "ci: auto-publish Copilot-created draft PRs using CRAWLER_CI_PAT (#1082)",
