@@ -11,6 +11,17 @@
     "path": "by-sha/1bec980c17ebfe0453be6502737c5630a62a0fff.json"
   },
   {
+    "commit": "fd4f9d6c290299349544b83c72d26714b0251602",
+    "commitDate": "2026-07-13T10:10:25-07:00",
+    "commitSubject": "fix(ci-recovery): accept addressed commit links on lineage (#1122)",
+    "capturedAt": "2026-07-13T17:51:17.735Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29269971610",
+    "winRate": 0.92,
+    "totalWins": 276,
+    "totalRuns": 300,
+    "path": "by-sha/fd4f9d6c290299349544b83c72d26714b0251602.json"
+  },
+  {
     "commit": "4d6a94251f17fb5ab9ef04879beb0562ae7bbeb6",
     "commitDate": "2026-07-13T08:29:16-07:00",
     "commitSubject": "chore: remove commit/PR name linter rule (#1109)",
