@@ -230,10 +230,8 @@ const review = await listReviewThreads(readToken, owner, repo, prNumber);
 const copilotAssigned = review.assignees.some((actor) =>
   ['copilot', 'copilot-swe-agent'].includes(String(actor.login || '').toLowerCase()),
 );
-if (!state && !labelExists && copilotAssigned) {
-  process.stdout.write(`skip pr=#${prNumber} reason=existing-copilot-assignment\n`);
-  process.exit(0);
-}
+// NOTE: copilotAssigned alone must never suppress recovery.
+// Only lease/state ownership (labelExists + state) should suppress.
 for (const thread of review.threads.filter(
   (candidate) => !candidate.isResolved && shouldResolveThread(candidate, pr.head.sha),
 )) {
@@ -308,7 +306,9 @@ const runs =
 // of a workflow replaces a stale action_required run before any blocker classification.
 const latestRunsByKey = new Map();
 for (const run of runs) {
-  const key = `${String(run.path ?? '').trim().toLowerCase()}::${String(run.event ?? '')}`;
+  const key = `${String(run.path ?? '')
+    .trim()
+    .toLowerCase()}::${String(run.event ?? '')}`;
   const existing = latestRunsByKey.get(key);
   if (!existing || run.id > existing.id) {
     latestRunsByKey.set(key, run);
