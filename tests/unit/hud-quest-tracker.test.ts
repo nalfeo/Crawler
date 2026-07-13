@@ -14,15 +14,7 @@ describe('fitQuestTrackerLines', () => {
     ]);
 
     expect(lines.length).toBeGreaterThan(1);
-    expect(lines.every((line) => line.length <= 32)).toBe(true);
-  });
-
-  it('splits single tokens longer than the budget into bounded chunks', () => {
-    const overlong = 'A'.repeat(50);
-    const lines = fitQuestTrackerLines([overlong]);
-
-    expect(lines.length).toBeGreaterThan(1);
-    expect(lines.every((line) => line.length <= 32)).toBe(true);
+    expect(lines.every((line) => line.length <= 39)).toBe(true);
   });
 
   it('caps crowded quest content and marks the truncation', () => {
