@@ -11,6 +11,17 @@
     "path": "by-sha/0e453f9ab71dbcb84b6c114405c62bac9fc8f088.json"
   },
   {
+    "commit": "ee7a235efb7fe2a31f5887830d6dd47f5149169f",
+    "commitDate": "2026-07-12T21:49:02-07:00",
+    "commitSubject": "fix(ci): ignore same-repo action-required approvals (#1094)",
+    "capturedAt": "2026-07-13T05:24:23.073Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29225094867",
+    "winRate": 0.92,
+    "totalWins": 276,
+    "totalRuns": 300,
+    "path": "by-sha/ee7a235efb7fe2a31f5887830d6dd47f5149169f.json"
+  },
+  {
     "commit": "14b7972b97d162126985c88ce23099bb95e7c4f7",
     "commitDate": "2026-07-12T20:57:42Z",
     "commitSubject": "feat(devtools): turn sprite editor into a complete editing workspace (#1030)",
