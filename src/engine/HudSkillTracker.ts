@@ -56,19 +56,33 @@ const COLORS = {
   inactive: '#64748b',
 } as const;
 
+const truncateCache = new Map<string, string>();
+
 function setTextWithinWidth(
   textObject: Phaser.GameObjects.Text,
   value: string,
   maxWidth: number,
 ): void {
+  const cacheKey = `${value}|${maxWidth}`;
+  const cached = truncateCache.get(cacheKey);
+  if (cached !== undefined) {
+    if (textObject.text !== cached) textObject.setText(cached);
+    return;
+  }
+
   textObject.setText(value);
-  if (textObject.width <= maxWidth) return;
+  if (textObject.width <= maxWidth) {
+    truncateCache.set(cacheKey, value);
+    return;
+  }
 
   const glyphs = Array.from(value);
   do {
     glyphs.pop();
     textObject.setText(`${glyphs.join('')}…`);
   } while (glyphs.length > 0 && textObject.width > maxWidth);
+
+  truncateCache.set(cacheKey, textObject.text);
 }
 
 export function createHudSkillTracker(
