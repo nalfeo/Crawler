@@ -201,17 +201,48 @@ export const TRUSTED_BOT_LOGINS = new Set([
   'copilot',
 ]);
 
-// Matches "✅ Addressed in <sha>:" where sha is 7–40 hex chars.
-const addressedInShaPattern = /✅\s*addressed\s+in\s+([0-9a-f]{7,40})\b/i;
+const addressedInPrefixPattern = /✅\s*addressed\s+in\s+<?([^\s>]+)>?/i;
+const hexShaPattern = /^[0-9a-f]{7,40}$/i;
 
-/** Returns true if body contains "✅ Addressed in <sha>:" and the SHA is an
- *  unambiguous prefix (≥7 hex chars) of headSha. */
-export function markerNamesHead(body, headSha) {
-  const match = String(body ?? '').match(addressedInShaPattern);
-  if (!match) return false;
-  const markerSha = match[1].toLowerCase();
+function parseMarkerShaToken(rawToken) {
+  const token = String(rawToken ?? '')
+    .replace(/[):.,;!?]+$/g, '')
+    .trim();
+  if (!token) return null;
+  if (hexShaPattern.test(token)) {
+    return token.toLowerCase();
+  }
+  try {
+    const parsed = new URL(token);
+    const commitMatch = parsed.pathname.match(/\/commit\/([0-9a-f]{7,40})\b/i);
+    if (!commitMatch) return null;
+    return commitMatch[1].toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/** Extracts the SHA from a trusted marker body:
+ *  "✅ Addressed in <sha-or-commit-url>".
+ *  Returns null when no valid marker payload exists. */
+export function extractAddressedMarkerSha(body) {
+  const match = String(body ?? '').match(addressedInPrefixPattern);
+  if (!match) return null;
+  return parseMarkerShaToken(match[1]);
+}
+
+/** Returns true if body contains "✅ Addressed in <sha-or-commit-url>" and the
+ *  extracted commit names the current head (full or ≥7-char prefix), or is a
+ *  known ancestor from reachableCommitShas. */
+export function markerNamesHead(body, headSha, reachableCommitShas = null) {
+  const markerSha = extractAddressedMarkerSha(body);
+  if (!markerSha) return false;
   const head = String(headSha ?? '').toLowerCase();
-  return head.length >= markerSha.length && head.startsWith(markerSha);
+  if (head.length >= markerSha.length && head.startsWith(markerSha)) {
+    return true;
+  }
+  if (!reachableCommitShas) return false;
+  return reachableCommitShas.has(markerSha);
 }
 
 function isTrustedComment(comment) {
@@ -227,11 +258,11 @@ function isTrustedComment(comment) {
  * A reopened thread with later reviewer feedback keeps returning false even if
  * an earlier comment had a valid marker.
  */
-export function shouldResolveThread(thread, headSha) {
+export function shouldResolveThread(thread, headSha, reachableCommitShas = null) {
   const comments = thread.comments?.nodes ?? [];
   if (comments.length === 0) return false;
   const last = comments[comments.length - 1];
-  return isTrustedComment(last) && markerNamesHead(last.body, headSha);
+  return isTrustedComment(last) && markerNamesHead(last.body, headSha, reachableCommitShas);
 }
 
 /**
