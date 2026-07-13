@@ -27,6 +27,7 @@ import { getUiScale, onUiScaleChange } from './ui-scale.js';
 import { computeVitalsScale } from './HudVitalsLayout.js';
 import { GAME } from '../shared/constants.js';
 import type { ScreenBounds } from './ui-scale.js';
+import { resolveNavigationHudLayout } from './navigation-hud-layout.js';
 
 /**
  * Keep the ability bar smaller than the rest of the HUD on narrow screens so
@@ -34,6 +35,16 @@ import type { ScreenBounds } from './ui-scale.js';
  * clear space and never collide with the slots row.
  */
 const ABILITY_BAR_MAX_SCALE = 1.0;
+
+export interface NavigationHudBounds {
+  readonly radar: ScreenBounds | null;
+  readonly questTracker: ScreenBounds | null;
+  readonly familyPanel: null;
+  readonly arrows: readonly ScreenBounds[];
+  readonly mapOverlay: ScreenBounds | null;
+  readonly mapClose: ScreenBounds | null;
+}
+
 export function createHudUI(scene: Phaser.Scene): {
   sync(world: GameWorld, playerEid: number): void;
   isMapOverlayOpen(): boolean;
@@ -42,6 +53,7 @@ export function createHudUI(scene: Phaser.Scene): {
   getAbilitySlotBounds(index: number): ScreenBounds | null;
   getFamilyRelationshipsState(): HudFamilyRelationshipsState;
   setVisible(visible: boolean): void;
+  getNavigationBounds(): NavigationHudBounds;
   destroy(): void;
 } {
   const depth = 1000;
@@ -156,8 +168,25 @@ export function createHudUI(scene: Phaser.Scene): {
     directionArrows.setVisible(!mapOpen);
     if (!mapOpen) {
       questTracker.sync(world, playerEid);
-      directionArrows.sync(world, playerEid);
+      const layout = resolveNavigationHudLayout(getUiScale(scene), world.floor);
+      const forbiddenRegions = [
+        ...layout.criticalHudRegions,
+        layout.radarBounds,
+        questTracker.getBounds(),
+      ].filter((bounds): bounds is ScreenBounds => bounds !== null);
+      directionArrows.sync(world, playerEid, forbiddenRegions);
     }
+  }
+
+  function getNavigationBounds(): NavigationHudBounds {
+    return {
+      radar: minimap.getDockedBounds(),
+      questTracker: questTracker.getBounds(),
+      familyPanel: null,
+      arrows: directionArrows.getBounds(),
+      mapOverlay: minimap.getOverlayBounds(),
+      mapClose: minimap.getOverlayCloseBounds(),
+    };
   }
 
   function destroy(): void {
@@ -189,6 +218,7 @@ export function createHudUI(scene: Phaser.Scene): {
     getAbilitySlotBounds: abilityBar.getSlotScreenBounds,
     getFamilyRelationshipsState: familyRelationships.getState,
     setVisible,
+    getNavigationBounds,
     destroy,
   };
 }
