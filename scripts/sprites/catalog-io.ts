@@ -58,7 +58,13 @@ function uniqueTmpPath(base: string): string {
  */
 export async function formatJsonFiles(files: readonly string[]): Promise<void> {
   if (files.length === 0) return;
-  await execFileAsync(process.execPath, [getPrettierBin(), '--parser', 'json', '--write', ...files]);
+  await execFileAsync(process.execPath, [
+    getPrettierBin(),
+    '--parser',
+    'json',
+    '--write',
+    ...files,
+  ]);
 }
 
 /**
