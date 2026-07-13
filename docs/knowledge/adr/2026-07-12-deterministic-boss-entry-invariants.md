@@ -43,6 +43,10 @@ existed.
    door tile. The selector maximizes the minimum Euclidean distance to the player
    and nearest declared door, prefers at least 8 ft, and otherwise returns the
    safest legal fallback. Ties use center proximity and then row-major order.
+   If the live player occupies a passable perimeter entry or declared doorway
+   on the activation frame, that tile is admitted only as the flood origin; it
+   remains excluded from boss candidates and cannot connect traversal through
+   other sealed doors.
 3. Structural reachability deliberately ignores dynamic barrier overlays.
    Barriers are transient state and can mark the player's occupied flood origin
    as blocked; treating them as room connectivity can crash encounter

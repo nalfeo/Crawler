@@ -33,8 +33,9 @@ mapgen, boss-rooms, ai-behavior-tree, ai-combat-balance
   observes the spawned threat at the earliest pipeline-safe poll.
 - Added direct and property-based coverage proving malformed boss rooms are repaired,
   valid connected boss arenas are byte-identical across varied dimensions, placement
-  ignores dynamic barrier overlays without escaping structural reachability, and both
-  bosses share the encounter lifecycle.
+  ignores dynamic barrier overlays without escaping structural reachability, occupied
+  passable perimeter entries and declared doorways remain valid sealed-room flood origins,
+  and both bosses share the encounter lifecycle.
 - Updated deterministic dungeon goldens for the intentional geometry correction.
 - Observed in the real headless Floor 1 pipeline: before, all four representative
   configurations died or failed under 360 seconds; after, seed 8 with baseball-bat,
@@ -49,6 +50,9 @@ mapgen, boss-rooms, ai-behavior-tree, ai-combat-balance
 - Use structural tile passability for spawn reachability. Dynamic barriers are not
   connectivity: the player can occupy a temporarily blocked tile, so including barrier
   overlays in the flood origin can crash encounter activation.
+- Treat the player's occupied passable perimeter entry or declared doorway as a virtual
+  flood origin, matching the existing encounter-start bounds predicate. It is never a
+  boss candidate, and every other declared doorway remains sealed for traversal.
 - Keep placement RNG-free and deterministic. The removed random draws intentionally
   re-phase the later shared RNG stream; aggregate cloud outcomes, not preservation of
   individual winner identities, are the acceptance signal.
@@ -57,10 +61,14 @@ mapgen, boss-rooms, ai-behavior-tree, ai-combat-balance
 
 ## What's Next / Blockers
 
-- Run PR prerequisites, commit, and push the reviewed branch.
-- Dispatch the canonical 100-seed x 6-weapon GitHub sweep. The branch is blocked from
-  PR creation unless all four focused configurations remain official wins and the
-  aggregate is at least the 556/600 baseline under the unchanged 360-second limit.
+- The first canonical cloud sweep preserved all four focused wins but scored 543/600.
+  Seeds 7 and 69 produced the same placement exception for all six weapons because the
+  encounter trigger accepted a passable perimeter entry that RoomGraph does not own as
+  interior. The generic origin contract and direct/real-headless regressions now cover
+  that boundary.
+- Rerun the canonical 100-seed x 6-weapon GitHub sweep. The branch remains blocked from
+  PR creation unless all four focused configurations win and aggregate performance is at
+  least the 556/600 baseline under the unchanged 360-second limit.
 - Open the dedicated PR after the cloud gate passes; do not merge it.
 
 ## Retrospective
@@ -79,7 +87,9 @@ geometry. The early signal was that exhaustive placement still returned contact 
 and fresh AI repoll did not improve survival. A temporary generic opening-spacing
 experiment improved only one of four cases before the final diagnostic proved every
 retreat target was unreachable; that behavior was removed rather than retained as a
-mask.
+mask. The first post-sweep crash fix assumed the rejected origin was a declared door;
+the direct real-headless reproduction showed it was instead a passable perimeter tile
+accepted by the encounter bounds predicate but omitted from RoomGraph interior ownership.
 
 ### Opportunities for Future Improvement
 

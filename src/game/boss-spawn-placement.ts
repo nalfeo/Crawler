@@ -47,7 +47,11 @@ function isBetterCandidate(
  * Reachability uses structural semantics only — exact room membership,
  * declared doors blocked, and `tileMap.isPassable(tx,ty)`. Dynamic barrier
  * overlays are intentionally excluded so a barrier sitting on the player tile
- * at the moment of encounter start cannot make the flood-fill abort.
+ * at the moment of encounter start cannot make the flood-fill abort. RoomGraph
+ * owns interior tiles only, while encounter activation uses full room bounds,
+ * so an occupied passable perimeter entry (or declared doorway) is admitted as
+ * the flood origin. It remains excluded from boss candidates and cannot connect
+ * through any other doorway.
  */
 export function selectBossSpawnPlacement(
   floorMap: FloorMap,
@@ -63,6 +67,16 @@ export function selectBossSpawnPlacement(
 
   const playerTile = floorMap.worldToTile(playerPosition.x, playerPosition.y);
   const blockedDoors = new Set(room.doors.map((door) => tileKey(door.x, door.y)));
+  const playerIndex = playerTile.y * floorMap.width + playerTile.x;
+  const playerOccupiesDeclaredDoor = blockedDoors.has(tileKey(playerTile.x, playerTile.y));
+  const playerWithinRoomBounds =
+    playerTile.x >= room.bounds.x &&
+    playerTile.x < room.bounds.x + room.bounds.width &&
+    playerTile.y >= room.bounds.y &&
+    playerTile.y < room.bounds.y + room.bounds.height;
+  const playerIsValidEntryOrigin =
+    playerOccupiesDeclaredDoor ||
+    (playerWithinRoomBounds && floorMap.tileMap.isPassable(playerTile.x, playerTile.y));
   // Use structural passability only (tile flags + room membership + declared
   // door blocking). Dynamic barrier overlays must not affect spawn-graph
   // reachability — a barrier on the player tile would otherwise cause the
@@ -70,12 +84,12 @@ export function selectBossSpawnPlacement(
   const isReachableRoomTile = (idx: number): boolean => {
     const tx = idx % floorMap.width;
     const ty = Math.floor(idx / floorMap.width);
+    if (idx === playerIndex && playerIsValidEntryOrigin) return true;
     if (blockedDoors.has(tileKey(tx, ty))) return false;
     if (floorMap.roomGraph.getRoomAt(tx, ty) !== room.id) return false;
     return floorMap.tileMap.isPassable(tx, ty);
   };
 
-  const playerIndex = playerTile.y * floorMap.width + playerTile.x;
   const reachable = floodFill(playerIndex, floorMap.width, floorMap.height, isReachableRoomTile);
   if (reachable[playerIndex] !== 1) {
     throw new Error(
@@ -92,7 +106,14 @@ export function selectBossSpawnPlacement(
   for (let ty = room.bounds.y; ty < maxY; ty += 1) {
     for (let tx = room.bounds.x; tx < maxX; tx += 1) {
       const idx = ty * floorMap.width + tx;
-      if (reachable[idx] !== 1 || floorMap.tileMap.isDoor(tx, ty)) continue;
+      if (
+        idx === playerIndex ||
+        reachable[idx] !== 1 ||
+        floorMap.roomGraph.getRoomAt(tx, ty) !== room.id ||
+        floorMap.tileMap.isDoor(tx, ty)
+      ) {
+        continue;
+      }
 
       const position = floorMap.tileToWorld(tx, ty);
       const playerDistanceFt = Math.hypot(

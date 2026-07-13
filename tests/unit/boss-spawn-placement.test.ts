@@ -142,6 +142,32 @@ describe('selectBossSpawnPlacement', () => {
     expect(withBarriers.safetyFt).toBe(baseline.safetyFt);
   });
 
+  it('uses an occupied declared doorway as the sealed-room flood origin', () => {
+    const { floorMap, room } = makeBossRoom(9, 9, [
+      { x: 0, y: 4 },
+      { x: 4, y: 0 },
+    ]);
+    const playerPosition = floorMap.tileToWorld(0, 4);
+
+    const placement = selectBossSpawnPlacement(floorMap, room, playerPosition, 8);
+
+    expect(placement.preferredMinimumSatisfied).toBe(true);
+    expect(floorMap.roomGraph.getRoomAt(placement.tile.x, placement.tile.y)).toBe(room.id);
+    expect(room.doors).not.toContainEqual({ ...placement.tile, connectsTo: -1 });
+  });
+
+  it('uses an occupied passable perimeter entry as the sealed-room flood origin', () => {
+    const { floorMap, room } = makeBossRoom(9, 9, [{ x: 0, y: 4 }]);
+    floorMap.tileMap.setFlags(0, 3, TilePresets.FLOOR);
+    const playerPosition = floorMap.tileToWorld(0, 3);
+
+    const placement = selectBossSpawnPlacement(floorMap, room, playerPosition, 8);
+
+    expect(placement.preferredMinimumSatisfied).toBe(true);
+    expect(placement.tile).not.toEqual({ x: 0, y: 3 });
+    expect(floorMap.roomGraph.getRoomAt(placement.tile.x, placement.tile.y)).toBe(room.id);
+  });
+
   it('fails explicitly when the player is not on a reachable room tile', () => {
     const { floorMap, room } = makeBossRoom(5, 5, [], [{ x: 2, y: 2 }]);
     const playerPosition = floorMap.tileToWorld(2, 2);

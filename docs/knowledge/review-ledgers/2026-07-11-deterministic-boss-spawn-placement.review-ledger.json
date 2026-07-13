@@ -24,6 +24,14 @@
           "concerns_count": 0,
           "resolved_count": 0,
           "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Post-cloud focused review found no traversal leak or determinism bug, but noted that perimeter flood origins were excluded by scoring rather than by the candidate predicate. The selector now explicitly rejects the player origin and every non-room-owned candidate."
         }
       ]
     },
