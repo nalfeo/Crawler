@@ -1,0 +1,21 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-13",
+  "session_slug": "loot-skill-hud-polish",
+  "task_title": "Polish loot counter and skill tracker HUD",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Adopted exact full-canvas viewport assertions, hud-lab-only stress seeding/bounds, explicit formatter boundary cases, rendered Phaser text-width truncation, and <=10-file consolidation. No architecture change; HudUI and adjacent widgets remain untouched."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    }
+  }
+}
