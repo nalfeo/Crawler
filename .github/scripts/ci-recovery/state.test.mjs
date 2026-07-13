@@ -5,6 +5,7 @@ import {
   assertOwnershipInvariant,
   blockerFingerprint,
   collapseCheckRunsByName,
+  extractAddressedMarkerSha,
   isDuplicateDispatch,
   isLeaseExpired,
   makeState,
@@ -256,9 +257,58 @@ test('shouldResolveThread accepts latest trusted marker naming current head', ()
 test('markerNamesHead accepts full SHA and unambiguous prefix', () => {
   assert.equal(markerNamesHead('✅ Addressed in abc1234def: note', 'abc1234def0000'), true);
   assert.equal(markerNamesHead('✅ Addressed in abc1234def0000: note', 'abc1234def0000'), true);
+  assert.equal(
+    markerNamesHead(
+      '✅ Addressed in <https://github.com/nalfeo/Crawler/commit/def5678abc1234ff00aa11bb22cc33dd44ee55ff>',
+      'abc1234def0000',
+      new Set(['def5678abc1234ff00aa11bb22cc33dd44ee55ff']),
+    ),
+    true,
+  );
+  assert.equal(
+    markerNamesHead(
+      '✅ Addressed in https://github.com/nalfeo/Crawler/commit/def5678abc1234ff00aa11bb22cc33dd44ee55ff',
+      'abc1234def0000',
+    ),
+    false,
+  );
   assert.equal(markerNamesHead('✅ Addressed in xyz9999: note', 'abc1234def0000'), false);
   assert.equal(markerNamesHead('<!-- addressed -->', 'abc1234def0000'), false);
   assert.equal(markerNamesHead('✅ Addressed in abc12: note', 'abc12345'), false); // < 7 chars
+});
+
+test('extractAddressedMarkerSha parses raw SHA and commit URL markers', () => {
+  assert.equal(extractAddressedMarkerSha('✅ Addressed in abc1234def: note'), 'abc1234def');
+  assert.equal(
+    extractAddressedMarkerSha(
+      '✅ Addressed in <https://github.com/nalfeo/Crawler/commit/def5678abc1234ff00aa11bb22cc33dd44ee55ff>',
+    ),
+    'def5678abc1234ff00aa11bb22cc33dd44ee55ff',
+  );
+  assert.equal(extractAddressedMarkerSha('✅ Addressed in not-a-commit-link'), null);
+});
+
+test('shouldResolveThread accepts latest trusted commit URL marker on head lineage', () => {
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: '✅ Addressed in <https://github.com/nalfeo/Crawler/commit/def5678abc1234ff00aa11bb22cc33dd44ee55ff>',
+          authorAssociation: 'MEMBER',
+          author: { login: 'reviewer' },
+        },
+      ],
+    },
+  };
+  assert.equal(
+    shouldResolveThread(
+      thread,
+      'abc123456789abcdef',
+      new Set(['def5678abc1234ff00aa11bb22cc33dd44ee55ff']),
+    ),
+    true,
+  );
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef', new Set()), false);
 });
 
 test('collapseCheckRunsByName keeps latest attempt by id', () => {
