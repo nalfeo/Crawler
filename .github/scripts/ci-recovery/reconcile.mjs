@@ -231,7 +231,7 @@ const copilotAssigned = review.assignees.some((actor) =>
   ['copilot', 'copilot-swe-agent'].includes(String(actor.login || '').toLowerCase()),
 );
 // NOTE: copilotAssigned alone must never suppress recovery.
-// Only the explicit lease/state ownership guards below should suppress.
+// Only lease/state ownership (labelExists + state) should suppress.
 for (const thread of review.threads.filter(
   (candidate) => !candidate.isResolved && shouldResolveThread(candidate, pr.head.sha),
 )) {
