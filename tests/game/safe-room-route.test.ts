@@ -24,10 +24,13 @@ import {
   createInitialSafeRoomRouteState,
   updateSafeRoomRouteState,
   toSafeRoomRouteDebugSnapshot,
+  abortSafeRoomRoute,
+  SAFE_ROOM_ROUTE_ARRIVE_FT,
   type SemanticCommitmentCandidate,
   type SafeRoomRouteDeps,
 } from '../../src/game/ai/safe-room-route.js';
 import { AIState } from '../../src/game/ai/types.js';
+import { WAYPOINT_ARRIVE_FT } from '../../src/game/ai/bt-ai-tuning.js';
 import type { TilePoint } from '../../src/core/map/pathfinding.js';
 
 // --- Tiny fake world -------------------------------------------------------
@@ -243,6 +246,50 @@ describe('safe-room-route: initial state', () => {
     expect(state.totalCompletions).toBe(0);
     expect(state.totalBlocked).toBe(0);
     expect(state.totalReseeds).toBe(0);
+  });
+});
+
+describe('safe-room-route: arrival radius stays in sync with moveToward', () => {
+  it('SAFE_ROOM_ROUTE_ARRIVE_FT equals WAYPOINT_ARRIVE_FT', () => {
+    // Route-segment completion must agree with moveToward's own waypoint-
+    // arrival semantics (see the module doc on SAFE_ROOM_ROUTE_ARRIVE_FT).
+    // This module intentionally does not import WAYPOINT_ARRIVE_FT to avoid
+    // coupling to bt-ai-tuning.ts, so this test is the only thing that
+    // catches the two literals drifting apart if either is ever retuned.
+    expect(SAFE_ROOM_ROUTE_ARRIVE_FT).toBe(WAYPOINT_ARRIVE_FT);
+  });
+});
+
+describe('safe-room-route: abortSafeRoomRoute (external interrupt release)', () => {
+  it('releases to idle while preserving lifetime diagnostic counters', () => {
+    const active = {
+      ...initial(),
+      phase: 'active' as const,
+      originRoomId: 3,
+      navEpoch: 1,
+      commitmentKey: 'engage:eid:7',
+      path: [{ x: 1, y: 1 }],
+      segmentIndex: 0,
+      lastReseedCause: 'activation' as const,
+      totalActivations: 4,
+      totalCompletions: 2,
+      totalBlocked: 1,
+      totalReseeds: 3,
+    };
+    const aborted = abortSafeRoomRoute(active);
+    expect(aborted.phase).toBe('idle');
+    expect(aborted.originRoomId).toBeNull();
+    expect(aborted.navEpoch).toBeNull();
+    expect(aborted.commitmentKey).toBeNull();
+    expect(aborted.path).toEqual([]);
+    expect(aborted.segmentIndex).toBe(0);
+    // Lifetime counters are diagnostics-only and must survive an external
+    // abort (e.g. a hostile-encounter invalidation) — only
+    // createInitialSafeRoomRouteState() (true cold start) zeroes these.
+    expect(aborted.totalActivations).toBe(4);
+    expect(aborted.totalCompletions).toBe(2);
+    expect(aborted.totalBlocked).toBe(1);
+    expect(aborted.totalReseeds).toBe(3);
   });
 });
 

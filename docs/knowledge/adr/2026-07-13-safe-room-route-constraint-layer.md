@@ -154,6 +154,36 @@ or sticky latch anywhere in `src/`.
   commitment-key granularity could cause repeated reseeds; mitigated by
   keying on quantized position/entity id (not raw coordinates) plus explicit
   moving-target-identity-stability tests.
+- **Landing-session reconciliation (2026-07-13, post-#1110) — accepted,
+  documented risks from the adversarial code-review round:**
+  - **No instantaneous-teleport release for an `active` route.** The
+    `'blocked'` phase releases to idle the moment the player's own room
+    differs from `originRoomId` (a stable, non-flickering signal), but the
+    `'active'` phase intentionally does NOT use raw room-membership for
+    release — doing so would reintroduce the exact door-tile-boundary
+    flicker this design replaced (a door/wall tile classifies as no room,
+    i.e. `getRoomAt` returns a negative id, so releasing the instant the
+    player's tile is non-`originRoomId` would hand control back mid-doorway).
+    This means a hypothetical future mechanic that discontinuously
+    repositions the player (teleport/recall) while a route is `'active'`
+    — without going through `invalidateTransientDecisionForHostileEncounter`,
+    `reset()`, or another explicit interrupt — could leave a stale
+    `moveTarget` alive for a few polls until proximity-based completion (or
+    the next `navEpoch`/commitment change) resolves it. No such mechanic
+    exists in `src/game/` today (verified: no teleport/recall/respawn
+    repositioning outside tests). Any future one MUST call
+    `abortSafeRoomRoute()` explicitly as part of its transition, the same way
+    `invalidateTransientDecisionForHostileEncounter()` does.
+  - **One-poll lag in the Engage/GlobalDwell watchdog route-active guard.**
+    `updateEngageWatchdog`/`updateGlobalDwellWatchdog` run before
+    `updateSafeRoomRoute` each poll (they must — `updateSafeRoomRoute` reads
+    `this.decision`, which those watchdogs' callers only obtain after
+    `tree.tick()`), so on the exact poll a route transitions idle→active both
+    watchdogs still see the previous poll's `phase`. This adds at most one
+    unsuppressed frame to each watchdog's counter, which is noise relative to
+    the multi-frame `ENGAGE_GIVEUP_FRAMES`/`GLOBAL_DWELL_FRAMES` thresholds.
+    Accepted; reordering risks destabilizing the many other systems whose
+    behavior depends on this poll's established call sequence.
 
 ## Alternatives Considered
 

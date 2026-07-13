@@ -158,9 +158,11 @@ const SAFE_ROOM_ROUTE_EXIT_BUFFER_TILES = 1;
  * here so route-segment completion agrees with the AI's own local-navigation
  * arrival semantics. This module intentionally does not import
  * `WAYPOINT_ARRIVE_FT` from `bt-ai-tuning.ts` to keep zero coupling to the
- * provider's tuning module; the literal (1 ft) is kept in sync by the
- * provider-level tests in `tests/game/behavior-tree-ai.test.ts`. */
-const SAFE_ROOM_ROUTE_ARRIVE_FT = 1;
+ * provider's tuning module; instead the literal is exported test-only and a
+ * dedicated test in `tests/game/safe-room-route.test.ts` asserts it stays
+ * equal to `WAYPOINT_ARRIVE_FT` so the two arrival radii cannot silently
+ * diverge. */
+export const SAFE_ROOM_ROUTE_ARRIVE_FT = 1;
 
 function quantize(value: number): number {
   return Math.round(value / COMMITMENT_QUANTIZE_FT) * COMMITMENT_QUANTIZE_FT;
@@ -239,9 +241,30 @@ function toIdle(prev: SafeRoomRouteState): SafeRoomRouteState {
   };
 }
 
+/**
+ * Externally-triggered abort (e.g. a hostile encounter invalidating the
+ * semantic decision, or the caller losing floor-map data): releases to idle
+ * WITHOUT touching the lifetime diagnostic counters. Prefer this over
+ * {@link createInitialSafeRoomRouteState} for any mid-run interrupt — the
+ * fresh-state constructor is only for true cold-start (provider construction/
+ * `reset()`), since it zeroes `totalActivations`/`totalCompletions`/
+ * `totalBlocked`/`totalReseeds`, silently discarding lifetime telemetry that
+ * sweep artifacts and divergence investigations rely on.
+ */
+export function abortSafeRoomRoute(prev: SafeRoomRouteState): SafeRoomRouteState {
+  return toIdle(prev);
+}
+
 /** Initial `segmentIndex` skipping any leading path tiles identical to the
  * player's own current tile — mirrors `moveToward`'s own `pathIndex` init
- * convention exactly, so a same-tile first waypoint never wastes a frame. */
+ * convention exactly, so a same-tile first waypoint never wastes a frame.
+ * Always returns an index `< path.length` for a non-empty path (bounded by
+ * `Math.min(1, path.length - 1)` in the degenerate single-tile case), so a
+ * freshly-activated route is never "already complete" on its own first poll
+ * — the degenerate single-tile-path case (player already standing on the
+ * only exit tile) resolves one poll later via the endpoint-distance
+ * completion check in {@link updateSafeRoomRouteState}'s steady-state
+ * branch, not via an early-completion guard here. */
 function initialSegmentIndex(path: readonly TilePoint[], playerTile: TilePoint): number {
   const idx = path.findIndex((tile) => tile.x !== playerTile.x || tile.y !== playerTile.y);
   return idx === -1 ? Math.min(1, path.length - 1) : idx;
@@ -300,12 +323,6 @@ function computeRoute(
     segmentIndex,
     lastReseedCause: cause,
   };
-  if (segmentIndex >= path.length) {
-    // Degenerate single-tile path (player already standing on the only exit
-    // tile) — treat as immediately complete rather than dereference past the
-    // array end.
-    return completeRoute(state);
-  }
   // Feed the legal prefix ENDPOINT to the existing door-aware movement
   // controller. Passing each intermediate path tile back through a second A*
   // layer can turn a door-center tile into an unreachable local goal for the

@@ -47,6 +47,7 @@ import {
 import { detectArenaLockin, type ArenaLockinTarget } from './arena-lockin.js';
 import {
   createInitialSafeRoomRouteState,
+  abortSafeRoomRoute,
   pickCanonicalCommitment,
   updateSafeRoomRouteState,
   toSafeRoomRouteDebugSnapshot,
@@ -2731,9 +2732,11 @@ export class BehaviorTreeAI implements AIInputProvider {
     // while the player is still walking a safe-room exit segment) must not
     // leave a stale `moveTarget` alive past this invalidation — the semantic
     // decision above was just reset to EXPLORE, so any in-flight route
-    // commitment is now stale by definition. Reset to idle so the next poll
-    // re-derives a route (if any) from the fresh post-invalidation winner.
-    this.safeRoomRouteState = createInitialSafeRoomRouteState();
+    // commitment is now stale by definition. Release to idle (not a fresh
+    // cold-start reset) so the next poll re-derives a route (if any) from the
+    // fresh post-invalidation winner WITHOUT discarding lifetime diagnostic
+    // counters — this is a mid-run interrupt, not a true cold start.
+    this.safeRoomRouteState = abortSafeRoomRoute(this.safeRoomRouteState);
   }
 
   poll(state: InputState, world: GameWorld): void {
@@ -3264,7 +3267,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     const floorMap = world.floorMap;
     if (!floorMap) {
       if (this.safeRoomRouteState.phase !== 'idle') {
-        this.safeRoomRouteState = createInitialSafeRoomRouteState();
+        this.safeRoomRouteState = abortSafeRoomRoute(this.safeRoomRouteState);
       }
       return { moveTarget: null, blocked: false };
     }

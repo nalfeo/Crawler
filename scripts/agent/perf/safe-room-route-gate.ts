@@ -42,6 +42,30 @@ export interface SafeRoomBaselineManifest {
   safeRoomFlagCells: string[];
 }
 
+/** Canonical, order-independent comparator for `"weapon:seed"` cell keys:
+ * weapon lexicographically, then seed NUMERICALLY (not lexicographically —
+ * "bow:2" must sort before "bow:10"). Cell arrays are sorted through this
+ * before hashing so the pinned digest is stable regardless of the source
+ * array's on-disk/in-memory insertion order (a plain `JSON.stringify` of an
+ * unsorted array would make the "immutable" digest fragile to harmless
+ * reordering). */
+function compareCellKeys(a: string, b: string): number {
+  const [weaponA, seedA] = a.split(':');
+  const [weaponB, seedB] = b.split(':');
+  if (weaponA !== weaponB) {
+    return (weaponA ?? '').localeCompare(weaponB ?? '');
+  }
+  return Number(seedA) - Number(seedB);
+}
+
+function canonicalCellDigest(lossCells: readonly string[], flagCells: readonly string[]): string {
+  const sortedLosses = [...lossCells].sort(compareCellKeys);
+  const sortedFlags = [...flagCells].sort(compareCellKeys);
+  return createHash('sha256')
+    .update(JSON.stringify([sortedLosses, sortedFlags]))
+    .digest('hex');
+}
+
 export interface SafeRoomRouteRunMetric {
   weapon: string;
   seed: number;
@@ -103,9 +127,10 @@ export function evaluateSafeRoomRouteGate(
   const seenCells = new Set<string>();
   const baselineLosses = new Set(baseline.officialLossCells);
   const baselineFlags = new Set(baseline.safeRoomFlagCells);
-  const baselineCellDigest = createHash('sha256')
-    .update(JSON.stringify([baseline.officialLossCells, baseline.safeRoomFlagCells]))
-    .digest('hex');
+  const baselineCellDigest = canonicalCellDigest(
+    baseline.officialLossCells,
+    baseline.safeRoomFlagCells,
+  );
   const candidateFlags = new Set<string>();
   let officialWins = 0;
   let maxSafeRoomMs = 0;
