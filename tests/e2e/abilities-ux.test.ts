@@ -148,8 +148,9 @@ describe('abilities hotbar and loadout UX', () => {
     const before = await page.evaluate(() => window.__abilitiesProbe!.getSnapshot());
     const selectedId = before.selectedAbilityId;
 
-    expect(selectedId).not.toBeNull();
-    if (selectedId === null) return;
+    if (!selectedId) {
+      throw new Error('abilities loadout must expose a selected ability');
+    }
     expect(before.equippedAbilityIds).toContain(selectedId);
     await page.waitForTimeout(250);
     expect((await page.evaluate(() => window.__abilitiesProbe!.getSnapshot())).frameCount).toBe(
