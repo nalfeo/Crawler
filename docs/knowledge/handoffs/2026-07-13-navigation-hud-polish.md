@@ -24,7 +24,9 @@ hud-ux, mobile-ux
 - `npm run verify:fast`
 - Pure responsive-layout assertions cover the 1280x720 primary and 960x540
   secondary viewports, including maximum tracker/radar clearance and Floor 2
-  family-reservation clearance.
+  family-reservation clearance at both sizes. Floor 2 uses the upper-left
+  navigation lane at both viewports so a maximum-height tracker cannot intersect
+  the existing family HUD.
 - `npm run review:ledger -- validate docs/knowledge/review-ledgers/2026-07-13-navigation-hud-polish.review-ledger.json`
 - `npm run verify:pr-prereqs`
 

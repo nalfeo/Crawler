@@ -45,8 +45,8 @@ export function resolveNavigationHudLayout(uiScale: number, floor: number): Navi
   };
 
   const questScale = Math.min(Math.max(1, uiScale), NAV_QUEST_MAX_SCALE);
-  const mobileFloorTwo = floor >= 2 && uiScale > 1.2;
-  const questPosition = mobileFloorTwo
+  const floorTwo = floor >= 2;
+  const questPosition = floorTwo
     ? { x: 16, y: 78 }
     : {
         x: GAME.WIDTH - 16 - NAV_QUEST_WIDTH * questScale,
