@@ -46,3 +46,13 @@ export function createFloorGameConfig(
     },
   };
 }
+
+/**
+ * @deprecated Use createFloorGameConfig instead
+ */
+export function createFloor1GameConfig(
+  parent: string | HTMLElement,
+  sceneOptions: MainGameSceneOptions,
+): Phaser.Types.Core.GameConfig {
+  return createFloorGameConfig(parent, sceneOptions, 'floor1');
+}
