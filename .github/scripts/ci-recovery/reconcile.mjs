@@ -291,14 +291,11 @@ for (const thread of unresolvedThreads.filter((candidate) =>
 }
 
 const blockers = [];
-if (pr.mergeable === false || ['dirty', 'behind'].includes(pr.mergeable_state)) {
+if (pr.mergeable === false || pr.mergeable_state === 'dirty') {
   blockers.push({
-    kind: pr.mergeable === false || pr.mergeable_state === 'dirty' ? 'merge-conflict' : 'rebase',
+    kind: 'merge-conflict',
     id: pr.head.sha,
-    summary:
-      pr.mergeable === false || pr.mergeable_state === 'dirty'
-        ? 'The PR conflicts with main and needs a conflict-aware rebase.'
-        : 'The PR branch is behind main and must be rebased.',
+    summary: 'The PR conflicts with main and must be merged/rebased cleanly onto main.',
     url: pr.html_url,
   });
 }
@@ -501,7 +498,7 @@ const taskBody = [
   `<!-- crawler-ci-task:v1 fingerprint=${fingerprint} -->`,
   '@copilot Please recover this PR from the exact blockers below.',
   '',
-  '**Required order:** conflict/rebase, review feedback, CI failures, validation, then thread resolution.',
+  '**Required order:** merge-conflict resolution, review feedback, CI failures, validation, then thread resolution.',
   '',
   ...normalized.flatMap((blocker, index) => [
     `${index + 1}. **${blocker.kind}** \`${blocker.id}\`${blocker.path ? ` at \`${blocker.path}${blocker.line ? `:${blocker.line}` : ''}\`` : ''}`,

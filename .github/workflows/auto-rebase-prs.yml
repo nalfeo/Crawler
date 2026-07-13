@@ -40,8 +40,16 @@ jobs:
       - name: Rebase active PR branches onto main
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MERGE_QUEUE_ENABLED: ${{ vars.MERGE_QUEUE_ENABLED || 'false' }}
         run: |
           set -euo pipefail
+
+          case "${MERGE_QUEUE_ENABLED,,}" in
+            true|1|yes|on)
+              echo "Merge queue mode enabled (MERGE_QUEUE_ENABLED=$MERGE_QUEUE_ENABLED); auto-rebase no-op."
+              exit 0
+              ;;
+          esac
 
           echo "🔄 Fetching active PRs targeting main..."
           prs_json=$(gh pr list \
