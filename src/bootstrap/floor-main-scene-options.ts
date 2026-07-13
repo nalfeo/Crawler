@@ -23,6 +23,7 @@ import {
 import {
   confirmFloor1StairDescend,
   equipPurchasedGear,
+  getBossRewardSpellOptions,
   getNpcQuestIndicatorState,
   getShopkeeperPostQuestStock,
   getShopkeeperStage,
@@ -71,6 +72,7 @@ export function createFloorMainSceneOptions(floorId: string = 'floor1') {
     selectSpellFromBossBattle: (world: GameWorld, playerEid: number, spellId: string) => {
       selectSpellFromBossBattle(world, playerEid, spellId as Floor1BossRewardSpellId);
     },
+    getSpellRewardOptions: (world: GameWorld) => getBossRewardSpellOptions(world),
     allocateStatPoints: (
       world: GameWorld,
       _playerEid: number,

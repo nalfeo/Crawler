@@ -21,12 +21,7 @@ import {
 import { LIGHTING_OVERLAY_DEPTH, UI_DEPTH_CUTOFF } from '../../shared/render-depths.js';
 import { ftToPx, pxToFt, PIXELS_PER_FOOT } from '../../shared/units.js';
 import { getRenderScale } from '../render-scale.js';
-import {
-  ACTIVE_ABILITY_SLOT_LIMIT,
-  FLOOR1_BOSS_REWARD_SPELL_IDS,
-  type AbilityState,
-  type Floor1BossRewardSpellId,
-} from '../../shared/abilities.js';
+import { ACTIVE_ABILITY_SLOT_LIMIT, type AbilityState } from '../../shared/abilities.js';
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import { createInputState, type InputState } from '../../shared/input.js';
 import { buildTerrainLayer } from '../terrain-renderer.js';
@@ -186,6 +181,9 @@ export interface MainGameSceneOptions {
   };
   /** Spell selection callback for floor1 boss battle reward. */
   selectSpellFromBossBattle?: (world: GameWorld, playerEid: number, spellId: string) => void;
+  getSpellRewardOptions?: (
+    world: GameWorld,
+  ) => Array<{ id: string; label: string; description: string }>;
   /**
    * Apply level-up stat allocations (game-layer `spendPoints` injected from
    * main.ts). When omitted, the level-up screen is skipped and the run resumes
@@ -2100,29 +2098,10 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
-    // The three available spells for the boss battle reward
-    const spellIds = FLOOR1_BOSS_REWARD_SPELL_IDS;
-
-    const options = spellIds.map((spellId) => {
-      // Spell name and description (matching ability definitions)
-      const spellNames: Record<Floor1BossRewardSpellId, string> = {
-        fireball: 'Fireball',
-        heal: 'Heal',
-        'pulse-shield': 'Pulse Shield',
-      };
-
-      const spellDescriptions: Record<Floor1BossRewardSpellId, string> = {
-        fireball: 'Unleash a fireball that damages enemies in an area',
-        heal: 'Restore your health',
-        'pulse-shield': 'Create a shockwave that knocks back nearby enemies',
-      };
-
-      return {
-        id: spellId,
-        label: spellNames[spellId],
-        description: spellDescriptions[spellId],
-      };
-    });
+    const options = this.options.getSpellRewardOptions?.(this.world) ?? [];
+    if (options.length === 0) {
+      return;
+    }
 
     this.modalPicker.open(
       {
@@ -2131,7 +2110,7 @@ export class MainGameScene extends Phaser.Scene {
         body: 'Choose a spellbook to unlock your ability system. Your pick is slotted onto your abilities bar and will auto-trigger by its combat rules.',
         options,
         allowCancel: false,
-        initialSelectedId: 'fireball',
+        initialSelectedId: options[0]?.id,
       },
       {
         onConfirm: ({ option }) => {

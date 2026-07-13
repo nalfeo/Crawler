@@ -4,6 +4,10 @@ import {
   getAbilityDefinition,
   parseAbilityCatalog,
 } from '../../src/game/abilities/registry.js';
+import {
+  FLOOR1_BOSS_REWARD_SPELL_IDS,
+  FLOOR1_BOSS_REWARD_SPELL_OFFER_COUNT,
+} from '../../src/shared/abilities.js';
 
 describe('ability registry', () => {
   it('returns undefined for unknown ability id', () => {
@@ -15,6 +19,14 @@ describe('ability registry', () => {
     expect(kinds.has('active')).toBe(true);
     expect(kinds.has('passive')).toBe(true);
     expect(kinds.has('spell')).toBe(true);
+  });
+
+  it('exposes a 10-spell floor1 reward pool and every reward id resolves to a spell definition', () => {
+    expect(FLOOR1_BOSS_REWARD_SPELL_IDS).toHaveLength(10);
+    expect(FLOOR1_BOSS_REWARD_SPELL_OFFER_COUNT).toBe(3);
+    for (const spellId of FLOOR1_BOSS_REWARD_SPELL_IDS) {
+      expect(getAbilityDefinition(spellId)?.kind).toBe('spell');
+    }
   });
 
   it('rejects duplicate ids', () => {

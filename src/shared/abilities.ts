@@ -1,7 +1,19 @@
 import type { UsageMetric } from './skills.js';
 
 export const ACTIVE_ABILITY_SLOT_LIMIT = 10;
-export const FLOOR1_BOSS_REWARD_SPELL_IDS = ['fireball', 'heal', 'pulse-shield'] as const;
+export const FLOOR1_BOSS_REWARD_SPELL_OFFER_COUNT = 3;
+export const FLOOR1_BOSS_REWARD_SPELL_IDS = [
+  'fireball',
+  'heal',
+  'pulse-shield',
+  'magic-missile',
+  'frost-nova',
+  'bless',
+  'stoneskin',
+  'curse',
+  'vampiric-touch',
+  'haste',
+] as const;
 export type Floor1BossRewardSpellId = (typeof FLOOR1_BOSS_REWARD_SPELL_IDS)[number];
 
 /**

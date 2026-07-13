@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { EffectiveStats, SkillHolder, Size, Stats, Enemy } from '../../src/core/components.js';
 import { SHAPE_BOX } from '../../src/core/physics-defs.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
+import { getStatusEffects } from '../../src/core/status-effects.js';
 import { knockbackSystem } from '../../src/core/systems/knockbackSystem.js';
 import { makeWalledMap } from '../helpers/map-fixtures.js';
 import { ACTIVE_ABILITY_SLOT_LIMIT } from '../../src/game/abilities/types.js';
@@ -521,6 +522,97 @@ describe('abilitySystem', () => {
     expect(glows).toHaveLength(1);
     expect(glows[0]!.x).toBe(0);
     expect(glows[0]!.y).toBe(0);
+  });
+
+  it('casts magic missile at the nearest enemy and emits an arcaneBoltImpact VFX event', () => {
+    const { world, player } = setupPlayer();
+    world.featureUnlocks.spells = true;
+    world.playerMp = 20;
+    memorizeSpell(world, player, 'magic-missile');
+    const target = spawnEnemy(world, 2, 0, 100);
+    spawnEnemy(world, 8, 0, 100);
+
+    world.vfxEvents.length = 0;
+    world.frameCount = 100;
+    abilitySystem(world);
+
+    expect(world.stores.health.current[target]).toBeLessThan(100);
+    const impacts = world.vfxEvents.filter((e) => e.kind === 'arcaneBoltImpact');
+    expect(impacts).toHaveLength(1);
+    expect(impacts[0]!.x).toBeCloseTo(2);
+  });
+
+  it('casts frost nova, damaging and slowing nearby enemies, and emits a frostNovaBurst VFX event', () => {
+    const { world, player } = setupPlayer();
+    world.featureUnlocks.spells = true;
+    world.playerMp = 20;
+    memorizeSpell(world, player, 'frost-nova');
+    const enemy = spawnEnemy(world, 2, 0, 100);
+    spawnEnemy(world, -2, 0, 100);
+    spawnEnemy(world, 0, 2, 100);
+
+    world.vfxEvents.length = 0;
+    world.frameCount = 100;
+    abilitySystem(world);
+
+    expect(world.stores.health.current[enemy]).toBeLessThan(100);
+    expect(getStatusEffects(world, enemy).some((effect) => effect.stat === 'speed')).toBe(true);
+    const bursts = world.vfxEvents.filter((e) => e.kind === 'frostNovaBurst');
+    expect(bursts).toHaveLength(1);
+    expect(bursts[0]!.radiusFt).toBeGreaterThan(0);
+  });
+
+  it('force-fires bless as a timed buff and emits a buffAura VFX event', () => {
+    const { world, player } = setupPlayer();
+    world.featureUnlocks.spells = true;
+    memorizeSpell(world, player, 'bless');
+
+    world.vfxEvents.length = 0;
+    world.frameCount = 100;
+    expect(forceActivateAbility(world, player, 'bless')).toBe(true);
+
+    const blessMods = world.statModifiers.filter((m) => m.sourceId === `bless:active:${player}`);
+    expect(blessMods).toHaveLength(3);
+    expect(blessMods.every((mod) => (mod.expiresFrame ?? 0) > 100)).toBe(true);
+    const auras = world.vfxEvents.filter((e) => e.kind === 'buffAura');
+    expect(auras).toHaveLength(1);
+  });
+
+  it('force-fires curse as a slow burst and emits a curseBurst VFX event', () => {
+    const { world, player } = setupPlayer();
+    world.featureUnlocks.spells = true;
+    memorizeSpell(world, player, 'curse');
+    const enemy = spawnEnemy(world, 2, 0, 100);
+    spawnEnemy(world, -2, 0, 100);
+    spawnEnemy(world, 0, 2, 100);
+    spawnEnemy(world, 0, -2, 100);
+
+    world.vfxEvents.length = 0;
+    world.frameCount = 100;
+    expect(forceActivateAbility(world, player, 'curse')).toBe(true);
+
+    expect(getStatusEffects(world, enemy).some((effect) => effect.stat === 'speed')).toBe(true);
+    const bursts = world.vfxEvents.filter((e) => e.kind === 'curseBurst');
+    expect(bursts).toHaveLength(1);
+  });
+
+  it('force-fires vampiric touch, damaging the target, healing the caster, and emitting a lifeDrainBurst VFX event', () => {
+    const { world, player } = setupPlayer();
+    world.featureUnlocks.spells = true;
+    memorizeSpell(world, player, 'vampiric-touch');
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 50;
+    const enemy = spawnEnemy(world, 2, 0, 100);
+
+    world.vfxEvents.length = 0;
+    world.frameCount = 100;
+    expect(forceActivateAbility(world, player, 'vampiric-touch')).toBe(true);
+
+    expect(world.stores.health.current[player]).toBeGreaterThan(50);
+    expect(world.stores.health.current[enemy]).toBeLessThan(100);
+    const bursts = world.vfxEvents.filter((e) => e.kind === 'lifeDrainBurst');
+    expect(bursts).toHaveLength(1);
+    expect(bursts[0]!.x).toBeCloseTo(2);
   });
 
   describe('forceActivateAbility', () => {

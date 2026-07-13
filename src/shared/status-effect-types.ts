@@ -26,7 +26,7 @@ export type StatusEffectStat = 'speed' | 'hpRegen';
 export type StatusEffectOp = 'add' | 'multiply';
 
 /** Where an effect came from — used (with `sourceId`) for stack identity. */
-export type StatusEffectSourceType = 'skill' | 'trap' | 'aura' | 'equipment' | 'debug';
+export type StatusEffectSourceType = 'skill' | 'trap' | 'aura' | 'equipment' | 'ability' | 'debug';
 
 /**
  * How a newly-applied effect interacts with an existing effect of the same
