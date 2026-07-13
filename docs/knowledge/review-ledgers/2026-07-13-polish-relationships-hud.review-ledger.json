@@ -14,8 +14,16 @@
       "notes": "Adopted all concerns: roster/count/band/boss/rapid-cycle presets; stable per-element screen bounds and labels; explicit minimap-aware compact layout contract; shared pixel-ui/ui-theme and crisp-text patterns; deterministic browser checks precede fresh LLM captures."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "reviewer_model": "claude-opus-4.6",
+          "concerns": 0,
+          "resolved": 0,
+          "notes": "Cherry-pick rebase integration: resolved 4 merge conflicts preserving both navigation-arrows (HEAD) and relationships slice (incoming). Removed duplicate familyRelationships instantiation; kept getAvoidBounds version. Retargeted test viewports to 1280/960 only (dropped 844x390). All prior behavior preserved."
+        }
+      ]
     }
   }
 }

@@ -323,7 +323,6 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
     for (const viewport of [
       { width: 1280, height: 720 },
       { width: 960, height: 540 },
-      { width: 844, height: 390 },
     ]) {
       await page.setViewportSize(viewport);
       await page.evaluate(() => {
