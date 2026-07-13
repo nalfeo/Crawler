@@ -19,7 +19,10 @@ import { createHudQuestTracker } from './HudQuestTracker.js';
 import { createHudAbilityBar } from './HudAbilityBar.js';
 import { createHudSkillTracker } from './HudSkillTracker.js';
 import { createHudDirectionArrows } from './HudDirectionArrows.js';
-import { createHudFamilyRelationships } from './HudFamilyRelationships.js';
+import {
+  createHudFamilyRelationships,
+  type HudFamilyRelationshipsState,
+} from './HudFamilyRelationships.js';
 import { getUiScale, onUiScaleChange } from './ui-scale.js';
 import { GAME } from '../shared/constants.js';
 import type { ScreenBounds } from './ui-scale.js';
@@ -44,6 +47,7 @@ export function createHudUI(scene: Phaser.Scene): {
   closeMapOverlay(): void;
   getAbilityBarBounds(): ScreenBounds;
   getAbilitySlotBounds(index: number): ScreenBounds | null;
+  getFamilyRelationshipsState(): HudFamilyRelationshipsState;
   setVisible(visible: boolean): void;
   destroy(): void;
 } {
@@ -109,6 +113,10 @@ export function createHudUI(scene: Phaser.Scene): {
   // open, so the whole HUD is hidden and sync() is a no-op.
   let hidden = false;
 
+  function syncFamilyRelationshipsVisibility(): void {
+    familyRelationships.setVisible(!hidden && !minimap.isOverlayOpen());
+  }
+
   function setVisible(visible: boolean): void {
     hidden = !visible;
     for (const group of [bottomLeft, bottomCenter, topCenter, topRight, bottomRight]) {
@@ -116,9 +124,11 @@ export function createHudUI(scene: Phaser.Scene): {
     }
     minimap.setHudVisible(visible);
     directionArrows.setVisible(visible);
+    syncFamilyRelationshipsVisibility();
   }
 
   function sync(world: GameWorld, playerEid: number): void {
+    syncFamilyRelationshipsVisibility();
     if (hidden) {
       return;
     }
@@ -165,6 +175,7 @@ export function createHudUI(scene: Phaser.Scene): {
     closeMapOverlay: minimap.closeOverlay,
     getAbilityBarBounds: abilityBar.getPanelScreenBounds,
     getAbilitySlotBounds: abilityBar.getSlotScreenBounds,
+    getFamilyRelationshipsState: familyRelationships.getState,
     setVisible,
     destroy,
   };

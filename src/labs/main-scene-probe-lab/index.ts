@@ -12,7 +12,7 @@
  * the CURRENT boot wiring and camera-follow invariant BEFORE a future session
  * decomposes the class, so that refactor can prove equivalence.
  *
- * It deliberately boots via `createFloor1GameConfig` + `createFloor1MainSceneOptions`
+ * It deliberately boots via `createFloorGameConfig` + `createFloorMainSceneOptions`
  * (the exact path the shipped game uses) with a FIXED `worldSeed`, so every boot
  * is deterministic. The probe reaches the scene's runtime fields through a
  * structural cast — MainGameScene's members are TS `private` (not `#private`),
@@ -27,8 +27,11 @@
  */
 import { query } from 'bitecs';
 import Phaser from 'phaser';
-import { createFloor1GameConfig } from '../../bootstrap/floor-game-config.js';
-import { createFloor1MainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
+import {
+  createFloor1GameConfig,
+  createFloorGameConfig,
+} from '../../bootstrap/floor-game-config.js';
+import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { Harvestable } from '../../core/components.js';
 import type { GameWorld } from '../../core/index.js';
 import { acceptQuest } from '../../core/systems/questSystem.js';
@@ -39,6 +42,7 @@ import {
 } from '../../shared/quest-types.js';
 import { PIXELS_PER_FOOT } from '../../shared/units.js';
 import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
+import type { ScreenBounds } from '../../engine/ui-scale.js';
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
@@ -76,6 +80,12 @@ function readAmbientOverride(): number | null {
   return Number.isFinite(value) && value >= 0 && value <= 1 ? value : null;
 }
 
+function readFloorId(): 'floor1' | 'floor2' {
+  return new URLSearchParams(window.location.search).get('floor') === 'floor2'
+    ? 'floor2'
+    : 'floor1';
+}
+
 /**
  * The slice of MainGameScene's runtime shape this probe reads. The fields are
  * declared `private` in the class but are plain instance properties at runtime,
@@ -85,7 +95,14 @@ interface MainSceneInternals {
   world?: GameWorld;
   playerEid?: number;
   bridge?: unknown;
-  hudUi?: unknown;
+  hudUi?: {
+    isMapOverlayOpen(): boolean;
+    getFamilyRelationshipsState(): {
+      visible: boolean;
+      bounds: ScreenBounds | null;
+      panelVisible: boolean;
+    };
+  };
   inventoryUI?: { isOpen(): boolean };
   equipmentUI?: { isOpen(): boolean };
   achievementsUI?: { isOpen(): boolean };
@@ -184,6 +201,14 @@ export interface MainSceneState {
   readonly cameraCenter: ProbePoint | null;
 }
 
+export interface FamilyHudProbeState {
+  readonly mapOverlayOpen: boolean;
+  readonly visible: boolean;
+  readonly bounds: ScreenBounds | null;
+  /** Raw Phaser display-object visibility — false proves the panel is actually hidden, not just logically gated. */
+  readonly panelVisible: boolean;
+}
+
 /**
  * Per-def render tally for a single harvestable node type. Lets the e2e assert
  * that *each* type with live nodes renders all of them as sprites — a
@@ -269,6 +294,10 @@ export interface MainSceneProbeApi {
   unlockSafeRoomSurfaces(): void;
   /** Resolve the opening loadout modal (pick option 0) and freeze the sim. */
   resolveLoadout(): void;
+  /** Activate the Floor 2 reputation HUD through the shipped broker callback. */
+  activateFamilyRelationships(): void;
+  /** Mounted family-HUD visibility and bounds plus fullscreen-map state. */
+  getFamilyHudState(): FamilyHudProbeState;
   /** Pause / unpause the simulation. */
   setSimulationPaused(paused: boolean): void;
   /** Overwrite the player's FEET position and zero its velocity. */
@@ -341,10 +370,11 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
   hint.style.lineHeight = '1.6';
   controls.append(hint);
 
-  // The bootstrap ships Floor 1's authored per-floor ambient via `lightingConfig`;
+  const floorId = readFloorId();
+  // The bootstrap ships each floor's authored ambient via `lightingConfig`;
   // an optional `?ambient=` override lets the lighting-defaults e2e exercise a
   // distinguishing value end-to-end (see readAmbientOverride). Absent → default.
-  const baseOptions = createFloor1MainSceneOptions();
+  const baseOptions = createFloorMainSceneOptions(floorId);
   const ambientOverride = readAmbientOverride();
   const sceneOptions = {
     ...baseOptions,
@@ -353,7 +383,10 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       ? { lightingConfig: { ...baseOptions.lightingConfig, ambient: ambientOverride } }
       : {}),
   };
-  const config = createFloor1GameConfig(gameHost, sceneOptions);
+  const config =
+    floorId === 'floor1'
+      ? createFloor1GameConfig(gameHost, sceneOptions)
+      : createFloorGameConfig(gameHost, sceneOptions, floorId);
   const game = new Phaser.Game(config);
 
   const getScene = (): MainSceneInternals | null =>
@@ -498,6 +531,26 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       // Freeze the sim so the player stays put while the camera keeps following
       // — the deterministic seam the camera guard relies on.
       scene.setSimulationPaused(true);
+    },
+
+    activateFamilyRelationships: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (scene && world) {
+        sceneOptions.broker?.met(world);
+        scene.setSimulationPaused(false);
+      }
+    },
+
+    getFamilyHudState: (): FamilyHudProbeState => {
+      const hud = getScene()?.hudUi;
+      const family = hud?.getFamilyRelationshipsState();
+      return {
+        mapOverlayOpen: hud?.isMapOverlayOpen() ?? false,
+        visible: family?.visible ?? false,
+        bounds: family?.bounds ?? null,
+        panelVisible: family?.panelVisible ?? false,
+      };
     },
 
     setSimulationPaused: (paused: boolean) => {

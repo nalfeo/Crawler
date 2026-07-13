@@ -13,6 +13,7 @@ import { E2E_LAB_BASE_URL } from '../e2e-constants.js';
 // Type-only import (erased at runtime — does NOT execute the lab's registerLab).
 import type {
   HarvestableRenderSummary,
+  FamilyHudProbeState,
   MainSceneProbeApi,
   MainSceneState,
   NpcRenderInfo,
@@ -33,12 +34,13 @@ const LAB_ID = 'main-scene-probe-lab';
 export async function loadMainSceneProbeLab(
   page: Page,
   params: Record<string, string | number> = {},
+  baseUrl = E2E_LAB_BASE_URL,
 ): Promise<void> {
   const query = new URLSearchParams({ lab: LAB_ID });
   for (const [key, value] of Object.entries(params)) {
     query.set(key, String(value));
   }
-  const url = `${E2E_LAB_BASE_URL}/lab.html?${query.toString()}`;
+  const url = `${baseUrl}/lab.html?${query.toString()}`;
   // `commit` (not `networkidle`/`load`): Vite keeps a persistent HMR socket open
   // and may trigger a one-off optimize-deps page reload on the first load of a
   // lab, so waiting on network state is flaky. We commit the navigation and poll
@@ -72,6 +74,10 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.unlockSafeRoomSurfaces()),
   resolveLoadout: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.resolveLoadout()),
+  activateFamilyRelationships: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.activateFamilyRelationships()),
+  getFamilyHudState: (page: Page): Promise<FamilyHudProbeState> =>
+    page.evaluate(() => window.__mainSceneProbe!.getFamilyHudState()),
   setSimulationPaused: (page: Page, paused: boolean): Promise<void> =>
     page.evaluate((p) => window.__mainSceneProbe!.setSimulationPaused(p), paused),
   setPlayerFeet: (page: Page, x: number, y: number): Promise<void> =>
