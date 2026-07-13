@@ -167,7 +167,7 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
     "width": 80,
   },
   "caves#10": {
-    "flagsHash": "6bb23424",
+    "flagsHash": "6173fb02",
     "height": 60,
     "rooms": [
       {
@@ -322,7 +322,7 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       },
     ],
     "spawn": "10,17",
-    "terrainHash": "cc341ebf",
+    "terrainHash": "009708d1",
     "width": 80,
   },
   "caves#2": {
@@ -4564,7 +4564,7 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
     "width": 80,
   },
   "variety#10": {
-    "flagsHash": "6bb23424",
+    "flagsHash": "6173fb02",
     "height": 60,
     "rooms": [
       {
@@ -4709,7 +4709,7 @@ exports[`DungeonGenerator golden-map determinism > produces byte-identical Floor
       },
     ],
     "spawn": "10,17",
-    "terrainHash": "3a525b7f",
+    "terrainHash": "6eb54591",
     "width": 80,
   },
   "variety#2": {

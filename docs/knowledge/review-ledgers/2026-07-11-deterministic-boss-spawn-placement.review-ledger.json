@@ -1,0 +1,87 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-11",
+  "session_slug": "deterministic-boss-spawn-placement",
+  "task_title": "Place Floor 1 bosses at deterministic safe distances",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-4.8",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 5,
+      "plan_divergence": "major_fork",
+      "notes": "Adversarial reviews rejected health-triggered and contact-escape AI special cases, then corrected the spawn design to maximum-safety scoring, passable shortcut origin, sealed-door reachability, and aggregate validation for intentional RNG re-phasing."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Post-cloud focused review found no traversal leak or determinism bug, but noted that perimeter flood origins were excluded by scoring rather than by the candidate predicate. The selector now explicitly rejects the player origin and every non-room-owned candidate."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 2,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-5", "gpt-5.3-codex"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  },
+  "post_cloud_followups": [
+    {
+      "trigger": "First 600-run sweep at ebffc203",
+      "finding": "Passable room-boundary entry tiles were rejected because RoomGraph does not own perimeter tiles.",
+      "resolution": "Admit an occupied passable perimeter or declared-door tile as a virtual flood origin while excluding it from boss candidates.",
+      "review_models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+      "adjudicator_model": "gpt-5.6-sol",
+      "clean_after_resolution": true
+    },
+    {
+      "trigger": "Replacement 600-run sweep at 8078c4fe",
+      "finding": "Dynamically selected Slime Rat rooms could contain disconnected RoomGraph-owned fragments, and pre-sealing repair omitted load-bearing doors added by sealSpecialRooms.",
+      "resolution": "Generalize the deterministic topology-aware 5x5 repair to the dynamic encounter room, preserve valid L-shaped rooms byte-identically, use exact RoomGraph ownership, and run repair after sealing against the final authoritative door set.",
+      "review_models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+      "adjudicator_model": "gpt-5.6-sol",
+      "clean_after_resolution": true
+    },
+    {
+      "trigger": "Maintainer gate decision after the second 600-run sweep",
+      "finding": "A third broad sweep was unnecessary for the geometry-specific fixes.",
+      "resolution": "The maintainer explicitly replaced the >=556/600 aggregate gate with 28 targeted cloud cases: former failure seeds 7, 12, 25, and 69 across all six weapons plus the four original controls. Runs 29226968319, 29227705981, and 29227710372 passed 28/28 with zero deaths, stalls, timeouts, or errors under the unchanged 360-second budget.",
+      "review_models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+      "adjudicator_model": "gpt-5.6-sol",
+      "clean_after_resolution": true
+    }
+  ]
+}
