@@ -45,14 +45,48 @@ export function resolveNavigationHudLayout(uiScale: number, floor: number): Navi
   };
 
   const questScale = Math.min(Math.max(1, uiScale), NAV_QUEST_MAX_SCALE);
+  const hudScale = Math.min(Math.max(1, uiScale), HUD_MAX_SCALE);
   const floorTwo = floor >= 2;
+
+  // Top-center critical region: scales with hudScale (topCenter group uses same
+  // anchored transform as HudUI.applyScale). At scale 1 the content spans
+  // x=410..870 (width 460), y=0..118. Anchored at (cx*(1−s), 0) with scale s.
+  const topCenterRegion: ScreenBounds = {
+    x: GAME.WIDTH / 2 - 230 * hudScale,
+    y: 0,
+    width: 460 * hudScale,
+    height: 118 * hudScale,
+  };
+
+  // For Floor 2 the tracker uses the upper-left navigation lane.  It must clear
+  // the scaled top-center critical band (boss bar / announcement) at all scales.
+  const floorTwoY = Math.ceil(topCenterRegion.height) + 8;
   const questPosition = floorTwo
-    ? { x: 16, y: 78 }
+    ? { x: 16, y: floorTwoY }
     : {
         x: GAME.WIDTH - 16 - NAV_QUEST_WIDTH * questScale,
         y: radarBounds.y + radarBounds.height + PANEL_GAP,
       };
-  const hudScale = Math.min(Math.max(1, uiScale), HUD_MAX_SCALE);
+
+  // Bottom-left critical region: scales with hudScale (bottomLeft group anchored
+  // at (0, h*(1−s)) with scale s). At scale 1: x=0..390, y=496..720.
+  const bottomLeftRegion: ScreenBounds = {
+    x: 0,
+    y: GAME.HEIGHT - 224 * hudScale,
+    width: 390 * hudScale,
+    height: 224 * hudScale,
+  };
+
+  // Floor 2 max panel height is clamped so the tracker (including scale) never
+  // overlaps the bottom-left critical band.  Uses design-space units; the tracker
+  // will multiply by questScale when computing its panel height.
+  const questMaxHeight = floorTwo
+    ? Math.min(
+        NAV_QUEST_MAX_HEIGHT,
+        Math.floor((bottomLeftRegion.y - questPosition.y - 1) / questScale),
+      )
+    : NAV_QUEST_MAX_HEIGHT;
+
   const floorTwoFamilyRegion: ScreenBounds[] =
     floor >= 2
       ? [
@@ -70,10 +104,11 @@ export function resolveNavigationHudLayout(uiScale: number, floor: number): Navi
     radarBounds,
     questScale,
     questPosition,
-    questMaxHeight: NAV_QUEST_MAX_HEIGHT,
+    questMaxHeight,
     criticalHudRegions: [
-      { x: GAME.WIDTH / 2 - 230, y: 0, width: 460, height: 118 },
-      { x: 0, y: GAME.HEIGHT - 224, width: 390, height: 224 },
+      topCenterRegion,
+      bottomLeftRegion,
+      // Bottom-center: ability bar is always scale 1 (ABILITY_BAR_MAX_SCALE = 1).
       { x: GAME.WIDTH / 2 - 310, y: GAME.HEIGHT - 122, width: 620, height: 122 },
       ...floorTwoFamilyRegion,
     ],
