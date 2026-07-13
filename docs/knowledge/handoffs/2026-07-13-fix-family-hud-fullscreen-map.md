@@ -45,6 +45,7 @@ hud-ux
 ## Verification
 
 - `npm run verify:fast`
+- `npm run lint:dead-code`
 - `npx vitest run --project e2e tests/e2e/main-game-scene-family-hud-map.test.ts`
   with the session lab server
 - 3-apple separate-model plan review and clean code-review round
@@ -52,6 +53,10 @@ hud-ux
 
 ## Notes
 
-- Guard telemetry was unavailable (`files/guard-telemetry.jsonl` absent).
+- Guard telemetry was captured in
+  `docs/knowledge/metrics/guard-telemetry/2026-07-13-fix-family-hud-fullscreen-map.json`.
+- The CI Advisory pass exposed the probe as the final consumer of the deprecated
+  `createFloor1GameConfig` compatibility export. The probe now preserves that
+  wrapper for its default Floor 1 path while using the generic config for Floor 2.
 - No ADR was needed: this is a local HUD visibility correction, not a
   cross-system decision.

@@ -27,7 +27,10 @@
  */
 import { query } from 'bitecs';
 import Phaser from 'phaser';
-import { createFloorGameConfig } from '../../bootstrap/floor-game-config.js';
+import {
+  createFloor1GameConfig,
+  createFloorGameConfig,
+} from '../../bootstrap/floor-game-config.js';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { Harvestable } from '../../core/components.js';
 import type { GameWorld } from '../../core/index.js';
@@ -374,7 +377,10 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       ? { lightingConfig: { ...baseOptions.lightingConfig, ambient: ambientOverride } }
       : {}),
   };
-  const config = createFloorGameConfig(gameHost, sceneOptions, floorId);
+  const config =
+    floorId === 'floor1'
+      ? createFloor1GameConfig(gameHost, sceneOptions)
+      : createFloorGameConfig(gameHost, sceneOptions, floorId);
   const game = new Phaser.Game(config);
 
   const getScene = (): MainSceneInternals | null =>
