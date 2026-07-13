@@ -44,7 +44,7 @@ function shepherdStateComment(id = 777) {
   const state = makeState({
     prNumber: PR_NUM,
     headSha: HEAD_SHA,
-    fingerprint: blockerFingerprint(HEAD_SHA, []),
+    fingerprint: blockerFingerprint([]),
     owner: 'shepherd',
     status: 'active',
     leaseId: LEASE_ID,
