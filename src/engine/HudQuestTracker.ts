@@ -68,13 +68,23 @@ export function fitQuestTrackerLines(
     const words = rawLine.trim().split(/\s+/).filter(Boolean);
     let current = indent;
     for (const word of words) {
-      const candidate = current.trim().length === 0 ? `${indent}${word}` : `${current} ${word}`;
-      if (candidate.length <= maxChars || current.trim().length === 0) {
-        current = candidate;
-        continue;
+      // Hard-split any token that alone exceeds maxChars into bounded pieces so
+      // the panel never overflows its fixed character budget.
+      const pieces: string[] =
+        word.length > maxChars
+          ? Array.from({ length: Math.ceil(word.length / maxChars) }, (_, i) =>
+              word.slice(i * maxChars, (i + 1) * maxChars),
+            )
+          : [word];
+      for (const piece of pieces) {
+        const candidate = current.trim().length === 0 ? `${indent}${piece}` : `${current} ${piece}`;
+        if (candidate.length <= maxChars) {
+          current = candidate;
+        } else {
+          wrapped.push(current);
+          current = `${indent}  ${piece}`;
+        }
       }
-      wrapped.push(current);
-      current = `${indent}  ${word}`;
     }
     if (current.trim().length > 0) {
       wrapped.push(current);
@@ -155,6 +165,9 @@ export function createHudQuestTracker(
     .setScrollFactor(0)
     .setDepth(PIXEL_UI_DEPTH.content);
   root.add([titleStrip, titleText, chevron, body]);
+  // Phaser containers render children in insertion order; sort by depth so the
+  // declared depth values (panel < titleStrip < content) take effect correctly.
+  root.sort('depth');
   const detachCrispText = applyCrispText(scene, [titleText, chevron, body]);
 
   let collapsed = readCollapsedPref();

@@ -19,6 +19,7 @@ import {
 import { GAME } from '../shared/constants.js';
 import { PIXELS_PER_FOOT } from '../shared/units.js';
 import { applyCrispText, getUiScale, onUiScaleChange } from './ui-scale.js';
+import { NAV_RADAR_MAX_SCALE } from './navigation-hud-layout.js';
 
 const DEPTH = 1000;
 const CX = GAME.WIDTH / 2;
@@ -30,8 +31,8 @@ const RY = GAME.HEIGHT / 2 - RING_INSET;
 const ARROW_SIZE = 22;
 /** Base font size for waypoint labels (authored at design scale 1). */
 const LABEL_BASE_FONT_PX = 11;
-/** Cap applied to uiScale so arrows don't overwhelm the screen on large mobile. */
-const ARROW_MAX_SCALE = 1.4;
+/** Cap applied to uiScale — shared with the radar scale cap. */
+const ARROW_MAX_SCALE = NAV_RADAR_MAX_SCALE;
 const SCREEN_MARGIN = 80;
 const MIN_ARROW_SEPARATION = 48;
 const FAN_ANGLE_STEP = Math.PI / 24;
@@ -82,10 +83,7 @@ function labelLayout(
   const labelOffset = (ARROW_SIZE + 4) * uiScale;
   const width = Math.min(text.length * charWidth, GAME.WIDTH - viewportPad * 2);
   return {
-    x: Math.min(
-      GAME.WIDTH - viewportPad - width / 2,
-      Math.max(viewportPad + width / 2, screenX),
-    ),
+    x: Math.min(GAME.WIDTH - viewportPad - width / 2, Math.max(viewportPad + width / 2, screenX)),
     y: screenY + (screenY >= CY ? -labelOffset : labelOffset),
     width,
     height,
@@ -279,7 +277,13 @@ export function createHudDirectionArrows(scene: Phaser.Scene): {
       }
     }
 
-    const states = resolveDirectionArrowStates(waypoints, px, py, scene.cameras.main.zoom || 1, currentScale);
+    const states = resolveDirectionArrowStates(
+      waypoints,
+      px,
+      py,
+      scene.cameras.main.zoom || 1,
+      currentScale,
+    );
     const stateByQuestId = new Map(states.map((state) => [state.questId, state]));
     for (const waypoint of waypoints) {
       const state = stateByQuestId.get(waypoint.questId);
