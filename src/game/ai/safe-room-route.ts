@@ -86,7 +86,22 @@ export interface SafeRoomRouteState {
   /** Index of the next path tile the player has not yet reached. */
   readonly segmentIndex: number;
   /** Reseed cause of the last recompute, for diagnostics only. */
-  readonly lastReseedCause: 'activation' | 'commitment-change' | 'nav-epoch-change' | null;
+  readonly lastReseedCause:
+    | 'activation'
+    | 'commitment-change'
+    | 'nav-epoch-change'
+    | 'no-progress'
+    | null;
+  /** Closest distance-to-endpoint (feet) observed since the current route
+   * (re)activated. `Infinity` while idle. Drives the no-progress watchdog —
+   * diagnostic-adjacent but DOES influence behavior (unlike the lifetime
+   * counters below), so it is reset on every (re)activation, not preserved
+   * across an abort. */
+  readonly bestEndpointDistanceFt: number;
+  /** Consecutive polls since `bestEndpointDistanceFt` last improved by at
+   * least {@link SAFE_ROOM_ROUTE_PROGRESS_EPSILON_FT}. Resets to 0 while
+   * idle or on any real improvement. */
+  readonly noProgressFrames: number;
   // Durable lifetime counters (diagnostics only; never influence behavior).
   readonly totalActivations: number;
   readonly totalCompletions: number;
@@ -164,6 +179,27 @@ const SAFE_ROOM_ROUTE_EXIT_BUFFER_TILES = 1;
  * diverge. */
 export const SAFE_ROOM_ROUTE_ARRIVE_FT = 1;
 
+/** No-progress watchdog thresholds for an `'active'` route. A route's
+ * completion is normally driven purely by proximity to its precomputed exit
+ * path (never by re-checking `world.playerInSafeRoom`), which assumes the
+ * player is always free to close on the endpoint. That assumption breaks
+ * when something ELSE holds the player in place near the doorway — most
+ * commonly sustained melee combat with an enemy that follows/roots them —
+ * since the route intentionally does not reseed on ordinary external winner
+ * changes (see the module doc), so without a bound it can stay `'active'`
+ * and keep overriding movement toward a now-unreachable-in-practice endpoint
+ * indefinitely, permanently blocking the AI's own combat movement even after
+ * the player has already physically crossed the threshold. Discovered via
+ * the canonical 600-run cloud gate (2026-07-13): 84/100 of one weapon's
+ * stuck runs had an unfinished route with zero measured progress. Mirrors
+ * the no-progress release the deleted `LeaveSafeRoom` owner node used to
+ * provide (`SAFE_ROOM_EGRESS_NO_PROGRESS_FRAMES`/`_PROGRESS_EPSILON_FT`) —
+ * reintroduced here as a bounded stall detector on the ONE thing this module
+ * actually owns (its own path-following progress), not as a reseed-on-any-
+ * winner-change regression. */
+const SAFE_ROOM_ROUTE_NO_PROGRESS_FRAMES = 45;
+const SAFE_ROOM_ROUTE_PROGRESS_EPSILON_FT = 3;
+
 function quantize(value: number): number {
   return Math.round(value / COMMITMENT_QUANTIZE_FT) * COMMITMENT_QUANTIZE_FT;
 }
@@ -222,6 +258,8 @@ export function createInitialSafeRoomRouteState(): SafeRoomRouteState {
     path: [],
     segmentIndex: 0,
     lastReseedCause: null,
+    bestEndpointDistanceFt: Number.POSITIVE_INFINITY,
+    noProgressFrames: 0,
     totalActivations: 0,
     totalCompletions: 0,
     totalBlocked: 0,
@@ -238,6 +276,8 @@ function toIdle(prev: SafeRoomRouteState): SafeRoomRouteState {
     commitmentKey: null,
     path: [],
     segmentIndex: 0,
+    bestEndpointDistanceFt: Number.POSITIVE_INFINITY,
+    noProgressFrames: 0,
   };
 }
 
@@ -291,6 +331,8 @@ function computeRoute(
       path: [],
       segmentIndex: 0,
       lastReseedCause: cause,
+      bestEndpointDistanceFt: Number.POSITIVE_INFINITY,
+      noProgressFrames: 0,
       totalBlocked: prev.totalBlocked + 1,
     };
     return { state, moveTarget: null, blocked: true };
@@ -322,6 +364,11 @@ function computeRoute(
     path,
     segmentIndex,
     lastReseedCause: cause,
+    // Fresh no-progress watchdog baseline for this (re)activation — a prior
+    // route's stall history must never carry over and immediately trip the
+    // watchdog on a brand new, perfectly healthy path.
+    bestEndpointDistanceFt: Number.POSITIVE_INFINITY,
+    noProgressFrames: 0,
   };
   // Feed the legal prefix ENDPOINT to the existing door-aware movement
   // controller. Passing each intermediate path tile back through a second A*
@@ -481,12 +528,36 @@ export function updateSafeRoomRouteState(
   }
   const endpoint = path[path.length - 1]!;
   const endpointWorld = deps.tileToWorld(endpoint.x, endpoint.y);
-  if (
-    Math.hypot(input.playerX - endpointWorld.x, input.playerY - endpointWorld.y) <=
-    SAFE_ROOM_ROUTE_ARRIVE_FT
-  ) {
+  const distToEndpointFt = Math.hypot(
+    input.playerX - endpointWorld.x,
+    input.playerY - endpointWorld.y,
+  );
+  if (distToEndpointFt <= SAFE_ROOM_ROUTE_ARRIVE_FT) {
     return completeRoute({ ...current, segmentIndex: path.length });
   }
+
+  // No-progress watchdog: this route is the sole authority over movement
+  // while active (the final blocked-motion-equivalent clamp substitutes its
+  // moveTarget for the semantic target every poll), so if something else —
+  // most commonly sustained combat with an enemy that holds/roots the player
+  // near the doorway — prevents genuine forward progress toward the
+  // endpoint, this module must release control back to the semantic target
+  // rather than override movement indefinitely toward a goal the player
+  // cannot currently reach. See the constant doc for how this was found.
+  const improved =
+    distToEndpointFt <= current.bestEndpointDistanceFt - SAFE_ROOM_ROUTE_PROGRESS_EPSILON_FT;
+  const bestEndpointDistanceFt = improved ? distToEndpointFt : current.bestEndpointDistanceFt;
+  const noProgressFrames = improved ? 0 : current.noProgressFrames + 1;
+  if (noProgressFrames > SAFE_ROOM_ROUTE_NO_PROGRESS_FRAMES) {
+    return passThrough(
+      toIdle({
+        ...current,
+        lastReseedCause: 'no-progress',
+        totalReseeds: current.totalReseeds + 1,
+      }),
+    );
+  }
+
   let segmentIndex = current.segmentIndex;
   while (segmentIndex < path.length) {
     const waypoint = path[segmentIndex]!;
@@ -497,10 +568,16 @@ export function updateSafeRoomRouteState(
     }
     segmentIndex += 1;
   }
+  const advanced: SafeRoomRouteState = {
+    ...current,
+    segmentIndex,
+    bestEndpointDistanceFt,
+    noProgressFrames,
+  };
   if (segmentIndex >= path.length) {
-    return completeRoute({ ...current, segmentIndex });
+    return completeRoute(advanced);
   }
-  return { state: { ...current, segmentIndex }, moveTarget: endpointWorld, blocked: false };
+  return { state: advanced, moveTarget: endpointWorld, blocked: false };
 }
 
 /** Compact, durable diagnostics snapshot for provider/telemetry exposure. */
@@ -510,6 +587,11 @@ export interface SafeRoomRouteDebugSnapshot {
   readonly segmentIndex: number;
   readonly pathLength: number;
   readonly lastReseedCause: SafeRoomRouteState['lastReseedCause'];
+  /** Consecutive polls since the current route last made measurable progress
+   * toward its endpoint. `0` while idle/blocked or immediately after
+   * improvement. Surfaced so a divergence investigation can see how close an
+   * active route was to tripping the no-progress watchdog. */
+  readonly noProgressFrames: number;
   readonly totalActivations: number;
   readonly totalCompletions: number;
   readonly totalBlocked: number;
@@ -525,6 +607,7 @@ export function toSafeRoomRouteDebugSnapshot(
     segmentIndex: state.segmentIndex,
     pathLength: state.path.length,
     lastReseedCause: state.lastReseedCause,
+    noProgressFrames: state.noProgressFrames,
     totalActivations: state.totalActivations,
     totalCompletions: state.totalCompletions,
     totalBlocked: state.totalBlocked,

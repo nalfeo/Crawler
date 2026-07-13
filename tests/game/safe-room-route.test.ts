@@ -502,6 +502,67 @@ describe('safe-room-route: steady-state segment advance (no reseed / no per-poll
   });
 });
 
+describe('safe-room-route: no-progress watchdog', () => {
+  // Regression coverage for the canonical 600-run cloud gate finding
+  // (2026-07-13): an 'active' route that never measurably closes on its
+  // endpoint (e.g. because sustained combat holds the player in place near
+  // the doorway) must eventually release control back to the semantic
+  // target instead of overriding movement toward an unreachable-in-practice
+  // goal forever.
+  it('releases to idle after sustained zero progress toward the endpoint', () => {
+    const { findPath } = countingFindPath(straightLinePath);
+    const deps = makeDeps({ findPath });
+    let result = updateSafeRoomRouteState(initial(), input(), deps);
+    expect(result.state.phase).toBe('active');
+
+    // Player never moves — simulates being held in place (combat/knockback)
+    // right where the route activated. Poll well past the watchdog's frame
+    // threshold using the SAME input every time (stable commitment/navEpoch,
+    // so only the no-progress path can release this route).
+    for (let i = 0; i < 60; i += 1) {
+      result = updateSafeRoomRouteState(result.state, input(), deps);
+      if (result.state.phase === 'idle') break;
+    }
+
+    expect(result.state.phase).toBe('idle');
+    expect(result.state.lastReseedCause).toBe('no-progress');
+    expect(result.blocked).toBe(false);
+    expect(result.moveTarget).toBeNull();
+    // A no-progress release is a genuine "gave up on this commitment" event
+    // for diagnostics, distinct from a normal activation/completion.
+    expect(result.state.totalReseeds).toBeGreaterThan(0);
+  });
+
+  it('does not release while the player keeps making steady incremental progress', () => {
+    const { findPath } = countingFindPath(straightLinePath);
+    const deps = makeDeps({ findPath });
+    let result = updateSafeRoomRouteState(initial(), input(), deps);
+    expect(result.state.phase).toBe('active');
+
+    // Advance a small, steady 0.2ft per poll for far more polls than the
+    // no-progress threshold (60 > 45). Cumulative movement periodically
+    // crosses the 3ft progress epsilon (about every 15 polls), resetting the
+    // watchdog well before it could ever reach its threshold — genuine slow
+    // but steady progress must never be mistaken for a stall.
+    let playerX = 3 * REALISTIC_TILE_FT;
+    for (let i = 0; i < 60; i += 1) {
+      playerX += 0.2;
+      result = updateSafeRoomRouteState(result.state, input({ playerX }), deps);
+      expect(result.state.phase).not.toBe('idle');
+    }
+    expect(result.state.lastReseedCause).not.toBe('no-progress');
+    expect(result.state.phase).toBe('active');
+  });
+
+  it('resets the no-progress baseline on a fresh (re)activation', () => {
+    const { findPath } = countingFindPath(straightLinePath);
+    const deps = makeDeps({ findPath });
+    const activated = updateSafeRoomRouteState(initial(), input(), deps);
+    expect(activated.state.noProgressFrames).toBe(0);
+    expect(activated.state.bestEndpointDistanceFt).toBeGreaterThan(0);
+  });
+});
+
 describe('safe-room-route: completion (path-prefix/door-edge, not playerInSafeRoom flicker)', () => {
   it('completes and returns to idle once the player has walked the full exit path', () => {
     const { findPath, callCount } = countingFindPath(straightLinePath);
@@ -747,9 +808,13 @@ describe('safe-room-route: purity and debug snapshot', () => {
   it('never mutates the input state or candidate (referential purity)', () => {
     const deps = makeDeps();
     const before = initial();
-    const beforeSnapshot = JSON.parse(JSON.stringify(before)) as unknown;
+    // structuredClone (not a JSON round-trip) so Infinity survives the
+    // snapshot comparison — bestEndpointDistanceFt starts at
+    // Number.POSITIVE_INFINITY, which JSON.stringify would lossily collapse
+    // to null and mask a real mutation.
+    const beforeSnapshot = structuredClone(before);
     const testInput = input();
-    const inputSnapshot = JSON.parse(JSON.stringify(testInput)) as unknown;
+    const inputSnapshot = structuredClone(testInput);
 
     updateSafeRoomRouteState(before, testInput, deps);
 
@@ -766,6 +831,7 @@ describe('safe-room-route: purity and debug snapshot', () => {
       segmentIndex: 1,
       pathLength: 5,
       lastReseedCause: 'activation',
+      noProgressFrames: 0,
       totalActivations: 1,
       totalCompletions: 0,
       totalBlocked: 0,
