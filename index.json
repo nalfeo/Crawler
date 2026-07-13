@@ -1,5 +1,16 @@
 [
   {
+    "commit": "ee39d8df0b666614087389b1ed4be993eb261643",
+    "commitDate": "2026-07-13T18:06:38Z",
+    "commitSubject": "fix(hud): polish core vitals layout (#1116)",
+    "capturedAt": "2026-07-13T18:57:59.962Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29274525190",
+    "winRate": 0.92,
+    "totalWins": 276,
+    "totalRuns": 300,
+    "path": "by-sha/ee39d8df0b666614087389b1ed4be993eb261643.json"
+  },
+  {
     "commit": "1bec980c17ebfe0453be6502737c5630a62a0fff",
     "commitDate": "2026-07-13T11:09:07Z",
     "commitSubject": "fix(hud): hide Floor 2 family panel behind fullscreen map (#1118)",
