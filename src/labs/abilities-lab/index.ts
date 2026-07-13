@@ -47,6 +47,7 @@ import {
   weaponSystem,
   type AbilityDefinition,
 } from '../../game/index.js';
+import { ACTIVE_ABILITY_SLOT_LIMIT } from '../../shared/abilities.js';
 import { BiomeType } from '../../shared/map-types.js';
 import type { MapConfig } from '../../shared/map-types.js';
 import { WEAPON_DEFS } from '../../shared/weaponDefs.js';
@@ -196,8 +197,19 @@ function loadSnapshot(): AbilitiesLabSnapshot {
     ...(saved?.settings ?? {}),
   };
   const equipped: Record<string, boolean> = {};
+  let defaultActiveCount = 0;
   for (const def of ABILITIES) {
-    equipped[def.id] = saved?.equipped?.[def.id] ?? true;
+    const savedValue = saved?.equipped?.[def.id];
+    if (savedValue !== undefined) {
+      equipped[def.id] = savedValue;
+    } else if (def.kind === 'passive') {
+      equipped[def.id] = true;
+    } else {
+      // Default non-passive abilities to enabled only up to the active slot limit
+      // so the lab never crashes with "Active ability slot cap reached" on first load.
+      equipped[def.id] = defaultActiveCount < ACTIVE_ABILITY_SLOT_LIMIT;
+      if (equipped[def.id]) defaultActiveCount += 1;
+    }
   }
   return { settings, equipped };
 }
@@ -245,9 +257,19 @@ function syncEquippedAbilities(
     if (def.kind === 'passive') {
       grantPassiveAbility(world, playerEid, def.id);
     } else if (def.kind === 'spell') {
-      memorizeSpell(world, playerEid, def.id);
+      try {
+        memorizeSpell(world, playerEid, def.id);
+      } catch (err) {
+        if (!(err instanceof Error && err.message.startsWith('Active ability slot cap'))) throw err;
+        // Silently skip when the active slot limit is already full.
+      }
     } else {
-      equipActiveAbility(world, playerEid, def.id);
+      try {
+        equipActiveAbility(world, playerEid, def.id);
+      } catch (err) {
+        if (!(err instanceof Error && err.message.startsWith('Active ability slot cap'))) throw err;
+        // Silently skip when the active slot limit is already full.
+      }
     }
   }
 }
