@@ -1150,8 +1150,13 @@ export function createHudMinimap(scene: Phaser.Scene): {
     },
     getDockedBounds: (): ScreenBounds | null => {
       if (masterHidden || !hudMapBg.visible) return null;
-      const b = hudMapBg.getBounds();
-      return { x: b.x, y: b.y, width: b.width, height: b.height };
+      const dial = hudMapBg.getBounds();
+      const label = hudMapLabel.getBounds();
+      const x = Math.min(dial.x, label.x);
+      const y = Math.min(dial.y, label.y);
+      const right = Math.max(dial.right, label.right);
+      const bottom = Math.max(dial.bottom, label.bottom);
+      return { x, y, width: right - x, height: bottom - y };
     },
     destroy,
   };

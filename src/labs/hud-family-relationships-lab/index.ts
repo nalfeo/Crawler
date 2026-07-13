@@ -49,6 +49,13 @@ export interface FamilyRelProbeApi {
   ready(): boolean;
   setRelation(familyIndex: number, value: number): void;
   setBossDefeated(familyIndex: number, defeated: boolean): void;
+  setStressState(state: 'representative' | 'worst-case'): void;
+  cycleRapidState(iterations?: number): void;
+  getLayout(): {
+    family: ReturnType<ReturnType<typeof createHudUI>['getFamilyRelationshipsLayout']>;
+    minimap: ReturnType<ReturnType<typeof createHudUI>['getMinimapBounds']>;
+    bottomCenter: ReturnType<ReturnType<typeof createHudUI>['getBottomCenterBounds']>;
+  };
 }
 
 interface FamilySettings {
@@ -144,7 +151,12 @@ function createHudFamilyRelationshipsLab(
   }
 
   const families = loadFamilies();
-  const present: FamilyDef[] = families.slice(0, PRESENT_COUNT);
+  const present: FamilyDef[] = [...families]
+    .sort(
+      (a, b) =>
+        Math.max(b.name.length, b.species.length) - Math.max(a.name.length, a.species.length),
+    )
+    .slice(0, PRESENT_COUNT);
   const settingsById = new Map<string, FamilySettings>(
     present.map((f, i) => [f.id, { relation: 50 + i * 10, bossDefeated: false }]),
   );
@@ -179,6 +191,9 @@ function createHudFamilyRelationshipsLab(
     _sentinel?: never;
   }
   const probeWindow = window as unknown as { __familyRelProbe?: FamilyRelProbeApiLocal };
+  const visualProbeWindow = window as unknown as {
+    __uiProbe?: { ready(): boolean };
+  };
 
   class FamilyRelLabScene extends Phaser.Scene {
     constructor() {
@@ -202,20 +217,6 @@ function createHudFamilyRelationshipsLab(
       world = w;
 
       this.add.rectangle(0, 0, GAME.WIDTH, GAME.HEIGHT, 0x05070f).setOrigin(0, 0);
-      this.add
-        .text(
-          GAME.WIDTH / 2,
-          GAME.HEIGHT / 2,
-          'HudFamilyRelationships Lab\nAdjust relations + boss flags →',
-          {
-            fontFamily: 'monospace',
-            fontSize: '16px',
-            color: '#4b5563',
-            align: 'center',
-          },
-        )
-        .setOrigin(0.5, 0.5);
-
       hudUi = createHudUI(this);
       sceneReady = true;
 
@@ -229,11 +230,38 @@ function createHudFamilyRelationshipsLab(
           const fam = present[i];
           if (fam) settingsById.get(fam.id)!.bossDefeated = defeated;
         },
+        setStressState: (state) => {
+          const relations = state === 'worst-case' ? [0, 25, 50, 100] : [20, 40, 65, 85];
+          present.forEach((fam, index) => {
+            const settings = settingsById.get(fam.id)!;
+            settings.relation = relations[index]!;
+            settings.bossDefeated = state === 'worst-case' && index % 2 === 1;
+          });
+        },
+        cycleRapidState: (iterations = 24) => {
+          for (let step = 0; step < iterations; step += 1) {
+            present.forEach((fam, index) => {
+              const settings = settingsById.get(fam.id)!;
+              settings.relation = (step * 17 + index * 29) % 101;
+              settings.bossDefeated = (step + index) % 3 === 0;
+            });
+          }
+        },
+        getLayout: () => {
+          if (!hudUi) throw new Error('HUD is not ready');
+          return {
+            family: hudUi.getFamilyRelationshipsLayout(),
+            minimap: hudUi.getMinimapBounds(),
+            bottomCenter: hudUi.getBottomCenterBounds(),
+          };
+        },
       };
+      visualProbeWindow.__uiProbe = { ready: () => sceneReady && hudSynced };
 
       this.events.once('shutdown', () => {
         sceneReady = false;
         if (probeWindow.__familyRelProbe) delete probeWindow.__familyRelProbe;
+        if (visualProbeWindow.__uiProbe) delete visualProbeWindow.__uiProbe;
         hudUi?.destroy();
         hudUi = undefined;
       });
