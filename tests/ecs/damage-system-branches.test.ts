@@ -138,13 +138,13 @@ describe('damageSystem hit-gated weapon-skill XP', () => {
     expect(world.skillUsageEvents).toHaveLength(0);
   });
 
-  it('keeps delayed projectile XP on the original weapon after switching and firing again', () => {
+  it('attributes XP to the original weapon after a mid-flight switch', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     const bowDef = WEAPON_DEFS.get('bow')!;
     const pistolDef = WEAPON_DEFS.get('pistol')!;
-    const bowTarget = spawnEnemy(world, 50, 0, 50);
     world.rng.next = () => 0;
+    const bowTarget = spawnEnemy(world, 50, 0, 50);
 
     setActiveWeapon(world, bowDef);
     world.elapsedMs = bowDef.cooldownMs;
