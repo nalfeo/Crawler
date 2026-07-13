@@ -45,6 +45,7 @@ worth the overhead (issue #1105).
 
 - `node --test .github/extensions/copilot-guards/tests/pr-preflight.test.mjs` → 14/14 pass
 - `npm run verify:fast` — full typecheck + lint + unit tests pass
+- Review ledger: `docs/knowledge/review-ledgers/2026-07-13-remove-commit-lint.review-ledger.json` (1🍎, no stages required)
 
 ## Systems touched
 

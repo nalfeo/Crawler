@@ -21,14 +21,13 @@ Loaded automatically because it lives under `.github/extensions/`.
 | `edit-phaser-in-core`        | `edit`, `create` (src/core)             | **deny** | `import 'phaser'`, `require('phaser')`, `import('phaser')` inside `src/core/**`.                                                                                                                                       |
 | `edit-repo-md-junk`          | `create` (`*.md`)                       | **deny** | New `.md` files outside the allowlist (see below). Use the session artifacts folder for planning notes.                                                                                                                |
 | `edit-guard-self-protection` | `edit`, `create` (this extension)       | **ask**  | Modifications to `.github/extensions/copilot-guards/**` unless `COPILOT_GUARDS_EDIT=1`.                                                                                                                                |
-| `pr-preflight`               | `create_pull_request`                   | **deny** | Aggregated PR checks (semantic title, handoff, lab-gate, forbidden paths, cross-system ADR warning).                                                                                                                   |
+| `pr-preflight`               | `create_pull_request`                   | **deny** | Aggregated PR checks (handoff, lab-gate, forbidden paths, cross-system ADR warning).                                                                                                                                   |
 | `pr-review-ledger`           | `create_pull_request`                   | **deny** | Code-touching PR without a valid, complete **review ledger** for its declared apple tier. Docs/art/deps-only diffs are skipped. See [review-harness-policy](../../../docs/agent-os/policies/review-harness-policy.md). |
 
 ### `pr-preflight` checks in detail
 
 | Check            | What                                                                                                                      |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Semantic title   | Title must match `<type>(scope?)!?: <subject>` where type ∈ feat,fix,chore,lab,docs,refactor,test,perf,ci,build.          |
 | Handoff required | A `docs/knowledge/handoffs/YYYY-MM-DD-<slug>.md` file must be added in the branch diff. Skipped for docs-only diffs.      |
 | Lab gate         | Runs `scripts/agent/lab-gate-check.sh` **only** when the diff touches `src/core/systems/**` or `src/labs/**`. Cached.     |
 | Forbidden paths  | Hard-deny on `.env*`, `*.pem`, `*.key`, `id_rsa*`, `.copilot/`, `session-state/`, `generated/`, `*.log`, `node_modules/`. |
@@ -85,7 +84,7 @@ These exist for legitimate edge cases (hotfixes, intentional maintenance). Every
 - **TypeScript / ESLint correctness.** Already covered by `npm run typecheck` and `npm run lint`. Pre-tool hooks would be redundant and slow.
 - **Test coverage.** Too subjective at the pre-tool level. CI enforces coverage thresholds.
 - **"Read your persona."** Can't be deterministically verified.
-- **Conventional commit on every commit subject.** The project's CI uses `amannn/action-semantic-pull-request`, which checks PR title only. We match that policy in `pr-preflight`; we don't fail individual WIP commits inside a feature branch.
+- **Conventional commit / semantic PR title format.** Conventional commit enforcement was removed (PR #1109). Commit and PR title format is no longer enforced by CI or preflight.
 - **`gh pr merge --delete-branch`.** This deletes the PR head branch (cleanup), not `main`. Blocking it would block normal post-merge cleanup. We do block deletion of `main`/`master` itself.
 - **Co-authored-by trailer on commits.** Considered but deferred (modify-vs-warn ambiguity). Add a new `shell-commit-trailer` guard if you want this.
 - **Review-ledger _truthfulness_.** The `pr-review-ledger` guard validates that a review ledger is **complete** for its apple tier, not that the reviews honestly happened or that the reported counts are accurate. Like the handoff requirement, it is an honor-system artifact — the forcing function and audit trail are the value. Project rule #12 forbids weakening a stage to go green.
