@@ -300,6 +300,15 @@ describe('HudMinimap enlarged overlay architectural guards', () => {
     expect(source).toContain(".text(0, 0, 'DRAG: PAN  |  WHEEL / +/-: ZOOM  |  M: CLOSE', {");
   });
 
+  it('scales fullscreen title and hint text with responsive ui scale', () => {
+    expect(source).toContain(
+      'panelTitle.setFontSize(`${Math.round(12 * Math.min(getUiScale(scene), 1.5))}px`)',
+    );
+    expect(source).toContain(
+      'panelHint.setFontSize(`${Math.max(8, Math.round(8 * Math.min(getUiScale(scene), 1.5)))}px`);',
+    );
+  });
+
   it('has a close button marked with ✕', () => {
     expect(source).toContain(".text(0, 0, '✕', {");
     expect(source).toContain('const closeButtonBg = scene.add');

@@ -11,4 +11,12 @@ describe('HudUI mobile layout guards', () => {
     expect(source).toContain('.setScale(bottomCenterScale)');
     expect(source).toContain('h * (1 - bottomCenterScale)');
   });
+
+  it('hides floor2 family panel while fullscreen map is open', () => {
+    const source = readFileSync('src/engine/HudUI.ts', 'utf-8');
+
+    expect(source).toContain('familyRelationships.setVisible(!mapOpen);');
+    expect(source).toContain('if (!mapOpen) {');
+    expect(source).toContain('familyRelationships.sync(world);');
+  });
 });

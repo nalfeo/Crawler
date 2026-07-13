@@ -103,4 +103,14 @@ describe('resolveDirectionArrowStates', () => {
 
     expect(states.map((state) => state.questId)).toEqual(['far']);
   });
+
+  it('scales label collision dimensions with uiScale', () => {
+    const [base] = resolveDirectionArrowStates([waypoint('far', 100, 0)], 0, 0, 1, 1);
+    const [scaled] = resolveDirectionArrowStates([waypoint('far', 100, 0)], 0, 0, 1, 1.4);
+
+    expect(base).toBeDefined();
+    expect(scaled).toBeDefined();
+    expect(scaled!.labelWidth).toBeGreaterThan(base!.labelWidth);
+    expect(scaled!.labelHeight).toBeGreaterThan(base!.labelHeight);
+  });
 });
