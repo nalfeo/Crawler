@@ -372,7 +372,13 @@ export function labTuningSavePlugin(): Plugin {
                 }),
               );
             }
-          })();
+          })().catch((err: unknown) => {
+            if (!res.writableEnded) {
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: err instanceof Error ? err.message : 'Internal error' }));
+            }
+          });
         });
       });
 

@@ -17,6 +17,7 @@
  * noisy diffs.
  */
 import { execFile, execFileSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -43,7 +44,7 @@ function getPrettierBin(): string {
 
 /** Generate a unique temp file path to avoid collisions under concurrent writers. */
 function uniqueTmpPath(base: string): string {
-  return `${base}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  return `${base}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
 }
 
 /**
