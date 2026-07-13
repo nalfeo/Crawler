@@ -10,6 +10,11 @@ export const NAV_QUEST_MAX_SCALE = 1.45;
 
 const RADAR_LABEL_HEIGHT = 22;
 const PANEL_GAP = 14;
+const HUD_MAX_SCALE = 1.6;
+const FAMILY_PANEL_WIDTH = 232;
+const FAMILY_PANEL_HEIGHT = 174;
+const FAMILY_PANEL_RIGHT_OFFSET = 244;
+const FAMILY_PANEL_BOTTOM_OFFSET = 334;
 
 export interface NavigationHudLayout {
   readonly radarScale: number;
@@ -47,6 +52,18 @@ export function resolveNavigationHudLayout(uiScale: number, floor: number): Navi
         x: GAME.WIDTH - 16 - NAV_QUEST_WIDTH * questScale,
         y: radarBounds.y + radarBounds.height + PANEL_GAP,
       };
+  const hudScale = Math.min(Math.max(1, uiScale), HUD_MAX_SCALE);
+  const floorTwoFamilyRegion: ScreenBounds[] =
+    floor >= 2
+      ? [
+          {
+            x: GAME.WIDTH - FAMILY_PANEL_RIGHT_OFFSET * hudScale,
+            y: GAME.HEIGHT - FAMILY_PANEL_BOTTOM_OFFSET * hudScale,
+            width: FAMILY_PANEL_WIDTH * hudScale,
+            height: FAMILY_PANEL_HEIGHT * hudScale,
+          },
+        ]
+      : [];
 
   return {
     radarScale,
@@ -58,6 +75,7 @@ export function resolveNavigationHudLayout(uiScale: number, floor: number): Navi
       { x: GAME.WIDTH / 2 - 230, y: 0, width: 460, height: 118 },
       { x: 0, y: GAME.HEIGHT - 224, width: 390, height: 224 },
       { x: GAME.WIDTH / 2 - 310, y: GAME.HEIGHT - 122, width: 620, height: 122 },
+      ...floorTwoFamilyRegion,
     ],
   };
 }

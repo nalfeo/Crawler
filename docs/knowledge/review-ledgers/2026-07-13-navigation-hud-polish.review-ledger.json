@@ -2,16 +2,16 @@
   "schema_version": "review-ledger/v1",
   "date": "2026-07-13",
   "session_slug": "navigation-hud-polish",
-  "task_title": "Polish navigation HUD",
+  "task_title": "Polish responsive quest tracker and minimap",
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
       "completed": true,
       "reviewer_model": "gpt-5.4",
-      "concerns_count": 7,
-      "resolved_count": 7,
+      "concerns_count": 4,
+      "resolved_count": 4,
       "plan_divergence": "minor",
-      "notes": "Approved with minor changes: baseline both Floor 1 ux-snapshot and Floor 2 family HUD artifacts; instrument pure shared bounds and probe APIs before styling; hide arrows/tracker under fullscreen map; define hard tracker height and truncation rules; feed critical HUD/family forbidden rects into arrow layout; finalize radar chrome extents before tracker placement; preserve tracker collapse and minimap input/touch regressions."
+      "notes": "Approved with minor changes relevant to this split: define hard tracker height and truncation rules; finalize radar chrome extents before tracker placement; hide the tracker and existing arrows under fullscreen map; preserve tracker collapse and minimap input/touch behavior. Arrow fanning and probe concerns moved to the dependent follow-up."
     },
     "code_review": {
       "clean": true,

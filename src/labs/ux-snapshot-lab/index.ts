@@ -15,7 +15,7 @@ import Phaser from 'phaser';
 import { addComponent } from 'bitecs';
 import { GAME, FLOOR } from '../../shared/constants.js';
 import { pxToFt, PIXELS_PER_FOOT } from '../../shared/units.js';
-import { createHudUI, type NavigationHudBounds } from '../../engine/HudUI.js';
+import { createHudUI } from '../../engine/HudUI.js';
 import { createDialogueBox, type DialogueBox } from '../../engine/DialogueBox.js';
 import { createModalPickerUI } from '../../engine/ModalPickerUI.js';
 import { createInventoryUI } from '../../engine/InventoryUI.js';
@@ -28,12 +28,7 @@ import { TileMap } from '../../core/map/TileMap.js';
 import { RoomGraph } from '../../core/map/RoomGraph.js';
 import { BiomeType, RoomRole, TerrainType, TilePresets } from '../../shared/map-types.js';
 import { acceptQuest } from '../../core/systems/questSystem.js';
-import {
-  FLOOR1_BOSS_UNLOCK_QUEST_ID,
-  FLOOR1_FIND_WELCOME_QUEST_ID,
-  FLOOR1_SHOP_QUEST_ID,
-  FLOOR1_TUTORIAL_QUEST_ID,
-} from '../../shared/quest-types.js';
+import { FLOOR1_TUTORIAL_QUEST_ID, FLOOR1_BOSS_UNLOCK_QUEST_ID } from '../../shared/quest-types.js';
 import { xpRequiredForLevel } from '../../shared/xpMath.js';
 import { SeededRandom } from '../../shared/random.js';
 import { registerLab, type LabCategory } from '../registry.js';
@@ -69,12 +64,6 @@ interface UxLabSettings {
   showAbilities: boolean;
   showInventory: boolean;
   showEquipment: boolean;
-}
-
-export interface NavigationHudProbeApi {
-  ready(): boolean;
-  setStressState(floor?: number): void;
-  getBounds(): NavigationHudBounds;
 }
 
 const LAB_ID = 'ux-snapshot-lab';
@@ -238,10 +227,6 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
   let modalPicker: ReturnType<typeof createModalPickerUI> | undefined;
   let inventoryUI: ReturnType<typeof createInventoryUI> | undefined;
   let equipmentUI: ReturnType<typeof createEquipmentUI> | undefined;
-  const probeWindow = window as unknown as {
-    __navigationHudProbe?: NavigationHudProbeApi;
-    __uiProbe?: { ready(): boolean };
-  };
 
   const openSampleModal = (): void => {
     modalPicker?.open(
@@ -280,24 +265,6 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
     if (settings.activeQuests >= 2) {
       acceptQuest(w, FLOOR1_BOSS_UNLOCK_QUEST_ID);
     }
-  }
-
-  function setNavigationStress(floor = 1): void {
-    if (!world || !hudUi || !world.floorScenario) {
-      return;
-    }
-    settings.showDialog = false;
-    dialogueBox?.setVisible(false);
-    world.floor = floor;
-    world.questLog.clear();
-    acceptQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
-    acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
-    world.floorScenario.objective = {
-      ...world.floorScenario.objective,
-      welcomeOfficePos: { x: pxToFt(-1600), y: pxToFt(-900) },
-      questItemPos: { x: pxToFt(2800), y: pxToFt(1500) },
-      shopRoomPos: { x: pxToFt(2800), y: pxToFt(1500) },
-    };
   }
 
   class UxSnapshotScene extends Phaser.Scene {
@@ -529,22 +496,6 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
       }
 
       hudUi = createHudUI(this);
-      probeWindow.__navigationHudProbe = {
-        ready: () => Boolean(world && hudUi),
-        setStressState: setNavigationStress,
-        getBounds: () =>
-          hudUi?.getNavigationBounds() ?? {
-            radar: null,
-            questTracker: null,
-            familyPanel: null,
-            arrows: [],
-            mapOverlay: null,
-            mapClose: null,
-          },
-      };
-      probeWindow.__uiProbe = {
-        ready: () => probeWindow.__navigationHudProbe?.ready() ?? false,
-      };
 
       inventoryUI = createInventoryUI(this);
       equipmentUI = createEquipmentUI(this);
@@ -582,8 +533,6 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
       dialogueBox.setVisible(settings.showDialog);
 
       this.events.once('shutdown', () => {
-        delete probeWindow.__navigationHudProbe;
-        delete probeWindow.__uiProbe;
         hudUi?.destroy();
         hudUi = undefined;
         inventoryUI?.destroy();
@@ -701,8 +650,6 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
   createGame();
 
   return () => {
-    delete probeWindow.__navigationHudProbe;
-    delete probeWindow.__uiProbe;
     hudUi?.destroy();
     inventoryUI?.destroy();
     equipmentUI?.destroy();
