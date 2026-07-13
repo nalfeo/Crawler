@@ -31,7 +31,7 @@ Accepted
 - **DEC-006**: Shepherds acquire, heartbeat, and release ownership only through the trusted workflow. Lease IDs are ownership identifiers, not secrets. A lease expires after 30 minutes plus a five-minute queue-jitter grace period.
 - **DEC-007**: Give Copilot one consolidated task ordered as conflict/rebase, review feedback, CI failures, validation, and thread resolution.
 - **DEC-008**: Require a different-model validator for listed review threads. Automatically resolve only marker-confirmed fixes or deterministic non-applicability; substantive disagreement remains unresolved and escalates.
-- **DEC-009**: Automatically approve only same-repository workflow runs. Never approve fork workflow runs.
+- **DEC-009**: Never call GitHub's workflow-approval endpoint. That endpoint applies only to fork-PR workflow runs; CI recovery already rejects fork PRs at ingress. Same-repository required-check runs (`ci`, `commit-lint`) that are parked in `action_required` are escalated as `ci-retrigger` blockers instead — the operator or Copilot must push one commit under a different App or human identity to retrigger them. Non-required infrastructure runs (e.g. CI Recovery Router) that land in `action_required` are logged and skipped.
 - **DEC-010**: Arm squash auto-merge only for the latest head when checks are green, mergeability is clean, all review threads are resolved, and no lease, escalation, or active task remains.
 - **DEC-011**: Default rollout to `dry-run`; repository variable `CI_RECOVERY_MODE=live` is required for privileged mutations.
 

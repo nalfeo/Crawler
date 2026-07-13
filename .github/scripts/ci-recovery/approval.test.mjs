@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { workflowApprovalRejection } from './approval.mjs';
+import { workflowApprovalRejection, REQUIRED_CHECK_WORKFLOW_PATHS } from './approval.mjs';
 
 const repository = 'nalfeo/Crawler';
 const prNumber = 42;
@@ -22,16 +22,19 @@ function rejection(overrides = {}) {
   });
 }
 
-test('allows CI Recovery Router review events for a same-repository PR', () => {
-  assert.equal(rejection(), null);
-  assert.equal(rejection({ event: 'pull_request_review_comment' }), null);
+test('skips same-repository CI Recovery Router runs as non-approvable', () => {
+  assert.equal(rejection(), 'same-repository');
+  assert.equal(rejection({ event: 'pull_request_review_comment' }), 'same-repository');
 });
 
-test('allows existing CI workflows only for pull-request events', () => {
-  assert.equal(rejection({ path: '.github/workflows/ci.yml', event: 'pull_request' }), null);
+test('skips same-repository CI workflows only after validating pull-request events', () => {
+  assert.equal(
+    rejection({ path: '.github/workflows/ci.yml', event: 'pull_request' }),
+    'same-repository',
+  );
   assert.equal(
     rejection({ path: '.github/workflows/commit-lint.yml', event: 'pull_request_target' }),
-    null,
+    'same-repository',
   );
 });
 
@@ -126,5 +129,30 @@ test('rejects off-diagonal workflow and event combinations', () => {
 });
 
 test('applies the same policy to rerun attempts', () => {
-  assert.equal(rejection({ run_attempt: 2 }), null);
+  assert.equal(rejection({ run_attempt: 2 }), 'same-repository');
+});
+
+test('REQUIRED_CHECK_WORKFLOW_PATHS contains exactly the admission-required CI check paths', () => {
+  // This export is the source of truth used by reconcile.mjs to distinguish
+  // required-check escalation blockers from non-required infrastructure runs.
+  assert.ok(
+    REQUIRED_CHECK_WORKFLOW_PATHS instanceof Set,
+    'REQUIRED_CHECK_WORKFLOW_PATHS must be a Set',
+  );
+  assert.ok(REQUIRED_CHECK_WORKFLOW_PATHS.has('.github/workflows/ci.yml'), 'must include ci.yml');
+  assert.ok(
+    REQUIRED_CHECK_WORKFLOW_PATHS.has('.github/workflows/commit-lint.yml'),
+    'must include commit-lint.yml',
+  );
+  // The CI Recovery Router is a non-required infrastructure workflow and must
+  // NOT be in this set (its action_required status is logged and skipped).
+  assert.ok(
+    !REQUIRED_CHECK_WORKFLOW_PATHS.has('.github/workflows/ci-recovery-router.yml'),
+    'must NOT include ci-recovery-router.yml',
+  );
+  assert.equal(
+    REQUIRED_CHECK_WORKFLOW_PATHS.size,
+    2,
+    'must contain exactly two entries (ci.yml and commit-lint.yml)',
+  );
 });

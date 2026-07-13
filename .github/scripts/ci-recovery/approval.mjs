@@ -7,6 +7,16 @@ const WORKFLOW_EVENT_ALLOWLIST = new Map([
   ],
 ]);
 
+// Workflow paths that correspond to admission-required CI checks (ci and commit-lint).
+// These paths are in the allowlist but are never approvable via the GitHub
+// workflow-approval endpoint (which applies only to fork PRs).  When reconcile.mjs
+// encounters an action_required run whose normalized path is in this set it
+// escalates a ci-retrigger blocker instead of silently logging a skip.
+export const REQUIRED_CHECK_WORKFLOW_PATHS = new Set([
+  '.github/workflows/ci.yml',
+  '.github/workflows/commit-lint.yml',
+]);
+
 function normalize(value) {
   return String(value ?? '')
     .trim()
@@ -53,5 +63,11 @@ export function workflowApprovalRejection({
     return `event=${run?.event}`;
   }
 
-  return null;
+  // GitHub's workflow-approval endpoint applies only to fork PRs; same-repository
+  // runs cannot be unblocked via that endpoint.  CI recovery already rejects fork
+  // PRs at ingress, so this path is only reached for same-repository runs.
+  // reconcile.mjs escalates runs whose path is in REQUIRED_CHECK_WORKFLOW_PATHS
+  // as ci-retrigger blockers; non-required runs (e.g. the CI Recovery Router)
+  // are logged and skipped.
+  return 'same-repository';
 }
