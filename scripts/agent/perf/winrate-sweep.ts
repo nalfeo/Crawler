@@ -22,7 +22,7 @@
  *
  * Usage
  * -----
- *   npm run ai:winrate-sweep                       # seeds 1-40 × {sword,bow,bat,pistol,knife,fireball}
+ *   npm run ai:winrate-sweep                       # seeds 1-40 × {sword,bow,baseball-bat,pistol,throwing-knife,fireball}
  *   npm run ai:winrate-sweep -- --seeds 1-60       # range
  *   npm run ai:winrate-sweep -- --weapons sword    # one weapon
  *   npm run ai:winrate-sweep -- --max-frames 23760 --out files/sweep.json
