@@ -38,6 +38,8 @@ interface CliOptions {
   uxGoal: string;
   setupFile: string | null;
   screenshotName: string;
+  viewportWidth: number;
+  viewportHeight: number;
   waitMs: number;
   clip: { x: number; y: number; width: number; height: number } | null;
   /**
@@ -206,6 +208,8 @@ function parseArgs(argv: string[]): CliOptions {
       'clear slot layout, readable typography, strong hierarchy, coherent spacing, icon-first item representation',
     setupFile: null,
     screenshotName: 'ux-surface',
+    viewportWidth: 1600,
+    viewportHeight: 1000,
     waitMs: 350,
     clip: null,
     rebuttals: [],
@@ -275,6 +279,19 @@ function parseArgs(argv: string[]): CliOptions {
     }
     if (arg === '--screenshot-name' && next) {
       opts.screenshotName = next.trim().replace(/[^a-zA-Z0-9_-]+/g, '-');
+      i += 1;
+      continue;
+    }
+    if ((arg === '--viewport-width' || arg === '--viewport-height') && next) {
+      const value = Number(next);
+      if (!Number.isInteger(value) || value < 320 || value > 7680) {
+        throw new Error(`invalid ${arg} "${next}" (expected integer 320..7680)`);
+      }
+      if (arg === '--viewport-width') {
+        opts.viewportWidth = value;
+      } else {
+        opts.viewportHeight = value;
+      }
       i += 1;
       continue;
     }
@@ -540,12 +557,17 @@ Return ONLY this JSON schema:
 }
 
 async function captureScreenshot(
-  opts: Pick<CliOptions, 'labUrl' | 'setupFile' | 'waitMs' | 'clip'>,
+  opts: Pick<
+    CliOptions,
+    'labUrl' | 'setupFile' | 'waitMs' | 'clip' | 'viewportWidth' | 'viewportHeight'
+  >,
   outPath: string,
   cropsDir: string | null,
 ): Promise<CaptureResult> {
   const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const context = await browser.newContext({
+    viewport: { width: opts.viewportWidth, height: opts.viewportHeight },
+  });
   const page = await context.newPage();
 
   console.log(`[visual-review-agent] navigating to: ${opts.labUrl}`);
@@ -554,9 +576,14 @@ async function captureScreenshot(
     () => {
       const globalWithProbe = window as unknown as {
         __uiProbe?: { ready?: () => boolean };
+        __mainSceneProbe?: { ready?: () => boolean };
       };
-      return globalWithProbe.__uiProbe?.ready?.() === true;
+      return (
+        globalWithProbe.__uiProbe?.ready?.() === true ||
+        globalWithProbe.__mainSceneProbe?.ready?.() === true
+      );
     },
+    undefined,
     { timeout: 45_000 },
   );
   await page.waitForTimeout(250);

@@ -40,6 +40,7 @@ import {
 import { PIXELS_PER_FOOT } from '../../shared/units.js';
 import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
+import type { ModalPickerLayoutSnapshot } from '../../engine/ModalPickerUI.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 const LAB_ID = 'main-scene-probe-lab';
@@ -93,7 +94,12 @@ interface MainSceneInternals {
   inventoryButton?: { visible: boolean };
   equipButton?: { visible: boolean };
   achievementsButton?: { visible: boolean };
-  modalPicker?: { isOpen(): boolean; close(): void };
+  modalPicker?: {
+    isOpen(): boolean;
+    close(): void;
+    getLayoutSnapshot(): ModalPickerLayoutSnapshot | null;
+  };
+  openSpellSelectionModal?(): void;
   conversationNpcEid?: number | null;
   queuedInteraction?: boolean;
   queuedAbilitiesToggle?: boolean;
@@ -269,6 +275,10 @@ export interface MainSceneProbeApi {
   unlockSafeRoomSurfaces(): void;
   /** Resolve the opening loadout modal (pick option 0) and freeze the sim. */
   resolveLoadout(): void;
+  /** Trigger the shipped Floor-1 boss reward condition and open its real picker path. */
+  openBossRewardPicker(): void;
+  /** Measured layout for the currently open real modal picker. */
+  getModalPickerLayout(): ModalPickerLayoutSnapshot | null;
   /** Pause / unpause the simulation. */
   setSimulationPaused(paused: boolean): void;
   /** Overwrite the player's FEET position and zero its velocity. */
@@ -456,6 +466,28 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         world.playerInSafeRoom = enabled;
       }
     },
+
+    openBossRewardPicker: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!scene || !world) {
+        throw new Error('MainGameScene is not ready');
+      }
+      if (world.state === 'loadout') {
+        scene.modalPicker?.close();
+        sceneOptions.selectLoadoutOption?.(world, 0);
+      }
+      world.state = 'playing';
+      world.goalFlags.set('floor1-boss-battle-complete', true);
+      world.featureUnlocks.spells = false;
+      scene.modalPicker?.close();
+      scene.openSpellSelectionModal?.();
+      if (!scene.modalPicker?.isOpen()) {
+        throw new Error('real boss reward picker did not open');
+      }
+    },
+
+    getModalPickerLayout: () => getScene()?.modalPicker?.getLayoutSnapshot() ?? null,
 
     unlockSafeRoomSurfaces: () => {
       const scene = getScene();
