@@ -33,6 +33,17 @@
     "path": "by-sha/30a787d97ab8883aaaa9f0158299059c58bc237a.json"
   },
   {
+    "commit": "02d751e42060b267ecb379f78aae73c77bb417ab",
+    "commitDate": "2026-07-12T17:59:46-07:00",
+    "commitSubject": "fix: unify visual/headless simulation pipelines — eliminate weaponSystem and director ordering divergences (#663) (#1057)",
+    "capturedAt": "2026-07-13T01:36:28.906Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29216732121",
+    "winRate": 0.92,
+    "totalWins": 276,
+    "totalRuns": 300,
+    "path": "by-sha/02d751e42060b267ecb379f78aae73c77bb417ab.json"
+  },
+  {
     "commit": "0bbbbfc748da9f92e1e3f2665c1cac014de1fbf5",
     "commitDate": "2026-07-12T16:44:48Z",
     "commitSubject": "fix: auto-capture guard telemetry during PR prerequisite checks (#1062)",
