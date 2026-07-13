@@ -67,7 +67,7 @@ mapgen, boss-rooms, ai-behavior-tree, ai-combat-balance
 - Make encounter-start repoll a reusable lifecycle invariant rather than branching on
   floor, boss, seed, weapon, or final-stair state.
 
-## What's Next / Blockers
+## Cloud validation
 
 - The first canonical cloud sweep preserved all four focused wins but scored 543/600;
   seeds 7 and 69 produced the same placement-origin exception across all six weapons.
@@ -75,10 +75,16 @@ mapgen, boss-rooms, ai-behavior-tree, ai-combat-balance
   irregular-room bounds included passable tiles disconnected from RoomGraph-owned
   interior. Generic origin handling plus exact room-owned activation and real-headless
   regressions now cover both boundaries.
-- Rerun the canonical 100-seed x 6-weapon GitHub sweep. The branch remains blocked from
-  PR creation unless all four focused configurations win and aggregate performance is at
-  least the 556/600 baseline under the unchanged 360-second limit.
-- Open the dedicated PR after the cloud gate passes; do not merge it.
+- The maintainer replaced a third broad 600-run sweep with a targeted cloud panel for
+  the previously failing geometry seeds 7, 12, 25, and 69 across all six weapons.
+  Workflow run `29226968319` at `ebbe2dde` produced 24/24 official wins, zero errors,
+  and a maximum completion time of 323.65 seconds under the unchanged 360-second
+  budget.
+
+## What's Next / Blockers
+
+- No implementation or validation blocker remains. Open the dedicated PR and do not
+  merge it.
 
 ## Retrospective
 
