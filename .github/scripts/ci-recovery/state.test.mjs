@@ -254,6 +254,26 @@ test('shouldResolveThread accepts latest trusted marker naming current head', ()
   assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), true);
 });
 
+test('shouldResolveThread accepts trusted copilot-swe-agent markers without bot suffix', () => {
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: 'Needs fixing.',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+        {
+          body: '✅ Addressed in abc1234: resolved in the current head',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-swe-agent' },
+        },
+      ],
+    },
+  };
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), true);
+});
+
 test('markerNamesHead accepts full SHA and unambiguous prefix', () => {
   assert.equal(markerNamesHead('✅ Addressed in abc1234def: note', 'abc1234def0000'), true);
   assert.equal(markerNamesHead('✅ Addressed in abc1234def0000: note', 'abc1234def0000'), true);

@@ -197,6 +197,7 @@ export function isDuplicateDispatch(state, fingerprint) {
 export const TRUSTED_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 export const TRUSTED_BOT_LOGINS = new Set([
   'copilot-swe-agent[bot]',
+  'copilot-swe-agent',
   'github-actions[bot]',
   'copilot',
 ]);
