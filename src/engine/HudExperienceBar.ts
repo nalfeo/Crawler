@@ -23,8 +23,8 @@ const PAD = 7;
 const ICON_SIZE = 16;
 const BAR_WIDTH = 200;
 const BAR_HEIGHT = 12;
-/** Must match `VITALS_ROW_HEIGHTS.xp` in HudVitalsLayout.ts. */
 const PANEL_W = PAD + ICON_SIZE + 6 + BAR_WIDTH + PAD;
+/** Must match `VITALS_ROW_HEIGHTS.xp` in HudVitalsLayout.ts. */
 const PANEL_H = PAD + BAR_HEIGHT + PAD;
 
 const BAR_X = VITALS_X;

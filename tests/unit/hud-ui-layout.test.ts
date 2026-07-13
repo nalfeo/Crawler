@@ -40,4 +40,18 @@ describe('HudUI mobile layout guards', () => {
     expect(clusterRightEdge * scale + VITALS_ABILITY_GUTTER).toBeLessThanOrEqual(neighborLeftEdge);
     expect(GAME.HEIGHT - scale * (GAME.HEIGHT - VITALS_PANEL_Y.skill)).toBeGreaterThanOrEqual(0);
   });
+
+  it('treats a full-height vitals cluster as max-scale-safe', () => {
+    // clusterTopEdge === GAME.HEIGHT would make the legacy vertical-cap divisor
+    // zero; the layout should treat that as "already on-canvas" and keep the
+    // requested scale instead of producing Infinity.
+    expect(
+      computeVitalsScale({
+        desiredScale: 2,
+        clusterRightEdge: 252,
+        clusterTopEdge: GAME.HEIGHT,
+        neighborLeftEdge: 999,
+      }),
+    ).toBe(2);
+  });
 });
