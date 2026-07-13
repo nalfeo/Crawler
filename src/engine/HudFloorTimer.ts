@@ -10,6 +10,7 @@ import type { GameWorld } from '../core/world.js';
 import { GAME } from '../shared/constants.js';
 import { PIXEL_UI_DEPTH, createBeveledPanel } from './pixel-ui.js';
 import { applyCrispText } from './ui-scale.js';
+import type { ScreenBounds } from './ui-scale.js';
 import { resolveFloorTimerRemainingMs } from './floor-timer-state.js';
 
 // ---------------------------------------------------------------------------
@@ -17,7 +18,9 @@ import { resolveFloorTimerRemainingMs } from './floor-timer-state.js';
 // ---------------------------------------------------------------------------
 
 const CENTER_X = GAME.WIDTH / 2;
-const TOP_Y = 14;
+const TOP_Y = 12;
+const PANEL_HEIGHT = 42;
+const MIN_PANEL_WIDTH = 184;
 
 const COLORS = {
   neutral: '#e5e7eb',
@@ -33,13 +36,28 @@ export function createHudFloorTimer(
   options: { parent?: Phaser.GameObjects.Container } = {},
 ): {
   sync(world: GameWorld): void;
+  getLayoutBounds(): { panel: ScreenBounds; text: ScreenBounds };
   destroy(): void;
 } {
   const parent = options.parent;
-  const panel = createBeveledPanel(scene, CENTER_X - 80, TOP_Y, 160, 38, { parent });
+  const panel = createBeveledPanel(
+    scene,
+    CENTER_X - MIN_PANEL_WIDTH / 2,
+    TOP_Y,
+    MIN_PANEL_WIDTH,
+    PANEL_HEIGHT,
+    { parent },
+  );
+
+  const urgencyRail = scene.add
+    .rectangle(CENTER_X, TOP_Y + 4, MIN_PANEL_WIDTH - 8, 2, 0x4a5878)
+    .setOrigin(0.5, 0)
+    .setScrollFactor(0)
+    .setDepth(PIXEL_UI_DEPTH.content);
+  parent?.add(urgencyRail);
 
   const timerText = scene.add
-    .text(CENTER_X, TOP_Y + 19, '', {
+    .text(CENTER_X, TOP_Y + PANEL_HEIGHT / 2, '', {
       fontFamily: 'monospace',
       fontSize: '18px',
       color: COLORS.neutral,
@@ -88,11 +106,13 @@ export function createHudFloorTimer(
   function sync(world: GameWorld): void {
     if (world.hideFloorTimer) {
       panel.setVisible(false);
+      urgencyRail.setVisible(false);
       timerText.setVisible(false);
       stopPulse();
       return;
     }
     panel.setVisible(true);
+    urgencyRail.setVisible(true);
     timerText.setVisible(true);
 
     const remainingMs = resolveFloorTimerRemainingMs(world);
@@ -101,19 +121,22 @@ export function createHudFloorTimer(
     timerText.setText(`Floor ${world.floor}   ${timerStr}`);
 
     // Resize the panel to hug the text.
-    const w = Math.ceil(timerText.width) + 28;
-    const h = 38;
+    const w = Math.max(MIN_PANEL_WIDTH, Math.ceil(timerText.width) + 28);
     panel.setPosition(CENTER_X - w / 2, TOP_Y);
-    panel.setSize(w, h);
+    panel.setSize(w, PANEL_HEIGHT);
+    urgencyRail.setSize(w - 8, 2);
 
     if (remainingMs <= RED_THRESHOLD_MS) {
       timerText.setColor(COLORS.red);
+      urgencyRail.setFillStyle(0xe23b3b);
       startPulse();
     } else if (remainingMs <= AMBER_THRESHOLD_MS) {
       timerText.setColor(COLORS.amber);
+      urgencyRail.setFillStyle(0xf2b542);
       stopPulse();
     } else {
       timerText.setColor(COLORS.neutral);
+      urgencyRail.setFillStyle(0x4a5878);
       stopPulse();
     }
   }
@@ -122,8 +145,22 @@ export function createHudFloorTimer(
     detachCrispText();
     pulseTween?.stop();
     panel.destroy();
+    urgencyRail.destroy();
     timerText.destroy();
   }
 
-  return { sync, destroy };
+  function getLayoutBounds(): { panel: ScreenBounds; text: ScreenBounds } {
+    const panelBounds = panel.getBounds();
+    return {
+      panel: panelBounds,
+      text: {
+        x: timerText.x - timerText.width / 2,
+        y: timerText.y - timerText.height / 2,
+        width: timerText.width,
+        height: timerText.height,
+      },
+    };
+  }
+
+  return { sync, getLayoutBounds, destroy };
 }
