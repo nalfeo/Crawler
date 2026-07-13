@@ -338,11 +338,6 @@ export const QUEST_PROGRESS_SCORE_WEIGHT = 1000;
 // genuine deadlocks into wins with margin to spare.
 export const QUEST_PROGRESS_STALL_FRAMES = 12_000;
 
-// How far (ft) beyond the nearest enemy the leave-safe-room move target is placed.
-// The weapon is disabled inside safe rooms, so the AI must decisively exit rather
-// than nudge a few ft against the boundary. Sized larger than a tile (4ft) so the
-// clamped A* goal lands outside the safe-room rect even when the enemy hugs it.
-export const SAFE_ROOM_EXIT_OVERSHOOT_FT = 12;
 // How long (frames) a per-enemy reachability result is reused before recomputing.
 // Player movement changes reachability slowly (~0.4ft/frame), so a short TTL keeps
 // the A* cost bounded without noticeably lagging behind door/room openings.

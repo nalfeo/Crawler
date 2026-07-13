@@ -124,6 +124,75 @@ export function makeMapWithSafeRoomDoor(): FloorMap {
   return new FloorMap(config, tileMap, graph, new Uint8Array(w * h), { x: 2, y: 2 });
 }
 
+export interface WalledSafeRoomMapOptions {
+  /** Feet per tile. Default 4. */
+  tileSizeFt?: number;
+  /**
+   * East-wall gap tile (6,3) state: `true` = open door, `false` = closed
+   * (but still legally passable to door-aware A*), `null` = no gap at all —
+   * a fully sealed wall ring with no legal exit. Default `true`.
+   */
+  door?: boolean | null;
+}
+
+/**
+ * 14×10 map with a SAFE room walled on all four sides — bounds (1,1)-(6,6),
+ * so the true `RoomGraph.getRoomAt` interior (1 tile inset) is (2,2)-(5,5) —
+ * and a single gap in the east wall at tile (6,3) leading into an open
+ * exterior corridor (x 7-12, y 1-8). Unlike {@link makeMapWithSafeRoom} /
+ * {@link makeMapWithSafeRoomDoor} (all-floor maps with no real wall
+ * perimeter), this fixture has actual `WALL` tiles ringing the room so
+ * door-aware A* must genuinely route through the single gap. Player spawns
+ * at the room's center tile (3,3). Pass `{ door: null }` for a fully sealed
+ * variant with no legal exit (the "blocked / no route" fixture). Built for
+ * the safe-room route constraint suite (`safe-room-route.ts`).
+ */
+export function makeWalledSafeRoomMap(options: WalledSafeRoomMapOptions = {}): FloorMap {
+  const { tileSizeFt = 4, door = true } = options;
+  const width = 14;
+  const height = 10;
+  const config: MapConfig = {
+    widthTiles: width,
+    heightTiles: height,
+    tileSizeFt,
+    biome: BiomeType.DUNGEON,
+    seed: 1,
+    roomWidthRange: [4, 8],
+    roomHeightRange: [4, 8],
+    maxRooms: 1,
+    floorDensity: 0.5,
+  };
+
+  const doorTile = { x: 6, y: 3 };
+  const tileMap = new TileMap(width, height);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const idx = y * width + x;
+      const isDoorGap = door !== null && x === doorTile.x && y === doorTile.y;
+      if (isDoorGap) {
+        tileMap.flags[idx] = door ? TilePresets.DOOR_OPEN : TilePresets.DOOR_CLOSED;
+        continue;
+      }
+      const isOuterBorder = x === 0 || x === width - 1 || y === 0 || y === height - 1;
+      const inBoxXRange = x >= 1 && x <= 6;
+      const inBoxYRange = y >= 1 && y <= 6;
+      const isBoxWall =
+        ((x === 1 || x === 6) && inBoxYRange) || ((y === 1 || y === 6) && inBoxXRange);
+      tileMap.flags[idx] = isOuterBorder || isBoxWall ? TilePresets.WALL : TilePresets.FLOOR;
+    }
+  }
+
+  const graph = new RoomGraph();
+  graph.add(
+    { x: 1, y: 1, width: 6, height: 6 },
+    door !== null ? [{ x: doorTile.x, y: doorTile.y, connectsTo: -1 }] : [],
+    [],
+    RoomRole.SAFE,
+  );
+
+  return new FloorMap(config, tileMap, graph, new Uint8Array(width * height), { x: 3, y: 3 });
+}
+
 // ---------------------------------------------------------------------------
 // Door maps
 // ---------------------------------------------------------------------------

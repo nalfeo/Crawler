@@ -10,6 +10,7 @@
  * Pure module: no `fs`, no Phaser. Safe to import from labs and tests.
  */
 import { AIState, type AIDecision, type AIDecisionDebug, type AIStateValue } from './types.js';
+import type { SafeRoomRouteDebugSnapshot } from './safe-room-route.js';
 
 /** Human-readable name for each {@link AIState} value. */
 export const AI_STATE_NAME: Record<AIStateValue, string> = {
@@ -85,6 +86,12 @@ export interface SimEvent {
   urgency?: number | null;
   /** A/B decision-mode axis the AI ran under (e.g. 'legacy' | 'slackAware'). */
   decisionMode?: string;
+  /** Safe-room route constraint snapshot this sample (phase/segment/lifetime
+   * counters) — see `safe-room-route.ts`. Present whenever the AI provider
+   * exposes `getSafeRoomRouteDebug()` (every `BehaviorTreeAI`), regardless of
+   * whether a route is currently active, so a divergence investigation can
+   * always see the overlay's state at the moment of interest. */
+  safeRoomRoute?: SafeRoomRouteDebugSnapshot;
   /** Optional annotation for non-sample events. */
   note?: string;
 }

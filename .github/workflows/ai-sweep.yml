@@ -32,6 +32,13 @@ name: AI Sweep Eval
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: 'Evaluation mode: tournament or safe-room-route canonical 600-run gate'
+        type: choice
+        options:
+          - tournament
+          - safe-room-route
+        default: tournament
       combos:
         description: 'Combos to evaluate: "all" or a CSV of ids (e.g. legacy+legacy,navmeshFused+legacy)'
         type: string
@@ -71,6 +78,7 @@ jobs:
   # matrix (adversarial-review cardinality guard).
   preflight:
     name: Preflight (derive + cap combo matrix)
+    if: inputs.mode == 'tournament'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -109,6 +117,7 @@ jobs:
   # One job per combo: full in-process coordinate-ascent knob search on TRAIN seeds.
   search:
     name: Search ${{ matrix.combo }}
+    if: inputs.mode == 'tournament'
     needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 300
@@ -150,6 +159,7 @@ jobs:
   # control on the validation panel (full graduation run touches holdout here once).
   validate:
     name: Validate ${{ matrix.combo }}
+    if: inputs.mode == 'tournament'
     needs: [preflight, search]
     runs-on: ubuntu-latest
     timeout-minutes: 180
@@ -192,6 +202,7 @@ jobs:
   # Fan-in: merge every validate shard → recompute totals from rows → leaderboard.
   aggregate:
     name: Aggregate → leaderboard
+    if: inputs.mode == 'tournament'
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -220,5 +231,67 @@ jobs:
         with:
           name: leaderboard
           path: leaderboard.json
+          if-no-files-found: error
+          retention-days: 30
+
+  safe-room-route-shard:
+    name: Safe-room route · ${{ matrix.weapon }} · seeds 1–100
+    if: inputs.mode == 'safe-room-route'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        weapon: [sword, bow, baseball-bat, pistol, throwing-knife, fireball]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+
+      - name: Run canonical 100-seed shard
+        env:
+          WEAPON: ${{ matrix.weapon }}
+          WORKERS: ${{ inputs.workers }}
+        run: |
+          set -euo pipefail
+          npm run ai:winrate-sweep -- \
+            --seeds 1-100 --weapons "$WEAPON" --workers "$WORKERS" \
+            --out "safe-room-route-$WEAPON.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: safe-room-route-${{ matrix.weapon }}
+          path: safe-room-route-*.json
+          if-no-files-found: error
+          retention-days: 30
+
+  safe-room-route-gate:
+    name: Safe-room route · canonical 600 gate
+    if: inputs.mode == 'safe-room-route'
+    needs: safe-room-route-shard
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: safe-room-route-*
+          merge-multiple: true
+          path: candidate
+
+      - name: Enforce approved canonical gates
+        run: |
+          set -euo pipefail
+          npx tsx scripts/agent/perf/safe-room-route-gate.ts \
+            --candidate-dir candidate --out safe-room-route-gate.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: safe-room-route-canonical-600
+          path: |
+            candidate/*.json
+            safe-room-route-gate.json
           if-no-files-found: error
           retention-days: 30

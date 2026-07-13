@@ -449,4 +449,28 @@ export interface RunStats {
    * `undefined` otherwise, so default runs and the Floor-1 gate are unaffected.
    */
   weaponTelemetry?: WeaponTelemetrySummary;
+  /**
+   * Durable safe-room route constraint telemetry rollup (lifetime activation/
+   * completion/blocked/reseed counters — see `safe-room-route.ts`). Always
+   * populated by `runHeadless` (the provider's debug getter always returns a
+   * snapshot); optional only so pre-existing hand-built `RunStats` test
+   * fixtures that predate this field remain valid.
+   */
+  safeRoomRouteTelemetry?: SafeRoomRouteTelemetrySummary;
+}
+
+/** Lifetime rollup of the safe-room route constraint's activity over a full
+ * run. See `safe-room-route.ts`'s `SafeRoomRouteDebugSnapshot` for the
+ * per-poll snapshot this is sourced from. */
+export interface SafeRoomRouteTelemetrySummary {
+  /** Number of times the route overlay activated (player was in a known safe
+   * room and picked an external semantic target). */
+  activations: number;
+  /** Number of times an activated route reached its final segment. */
+  completions: number;
+  /** Number of times no legal door-aware exit path was found. */
+  blockedCount: number;
+  /** Number of times an active/blocked route was reseeded (commitment-key or
+   * navEpoch change) rather than freshly activated. */
+  reseeds: number;
 }
