@@ -107,7 +107,7 @@ describe('resolveDirectionArrowStates', () => {
 
   it('fans arrows away from reserved HUD regions', () => {
     const reserved = [{ x: 1080, y: 0, width: 200, height: 340 }];
-    const [state] = resolveDirectionArrowStates([waypoint('right', 100, -10)], 0, 0, 1, 1, reserved);
+    const [state] = resolveDirectionArrowStates([waypoint('right', 100, -10)], 0, 0, 1, reserved);
 
     expect(state).toBeDefined();
     expect(state!.screenY).toBeGreaterThan(340);
