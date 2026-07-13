@@ -126,6 +126,37 @@ describe('MainGameScene UI exclusivity', () => {
     expect(state.primarySurfaceCount, 'no character surface should open after close').toBe(0);
   });
 
+  it('does not move after closing the abilities loadout with S held', async () => {
+    await bootPlayingSafeScene();
+    await mainSceneProbe.setSimulationPaused(page, false);
+    await waitForState(page, (s) => !s.simulationPaused, {
+      label: 'simulation resumed for held movement check',
+    });
+
+    await mainSceneProbe.queueAbilitiesToggle(page);
+    await waitForState(page, (s) => s.abilityLoadoutOpen, {
+      label: 'abilities loadout opened for held movement check',
+    });
+
+    await page.keyboard.down('s');
+    try {
+      await page.keyboard.press('b');
+      const closed = await waitForState(page, (s) => !s.abilityLoadoutOpen, {
+        label: 'abilities loadout closed with S held',
+      });
+      await page.waitForTimeout(250);
+      const after = await mainSceneProbe.getState(page);
+
+      if (!closed.playerFeet || !after.playerFeet) {
+        throw new Error('player position must remain available during the held movement check');
+      }
+      expect(after.playerFeet.x).toBeCloseTo(closed.playerFeet.x, 3);
+      expect(after.playerFeet.y).toBeCloseTo(closed.playerFeet.y, 3);
+    } finally {
+      await page.keyboard.up('s');
+    }
+  });
+
   it('blocks character-surface toggles and hides corner shortcuts while NPC dialogue is open', async () => {
     await bootPlayingSafeScene();
 

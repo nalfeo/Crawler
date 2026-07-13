@@ -144,6 +144,7 @@ function resolveSetPieceLightEmission(
 export interface MainGameSceneOptions {
   inputCaptureOverride?: {
     poll: (state: InputState, world: GameWorld) => void;
+    reset?: () => void;
     destroy?: () => void;
   };
   /**
@@ -555,6 +556,7 @@ export class MainGameScene extends Phaser.Scene {
     if (this.options.inputCaptureOverride) {
       this.inputCapture = {
         poll: (state: InputState) => this.options.inputCaptureOverride?.poll(state, this.world),
+        reset: () => this.options.inputCaptureOverride?.reset?.(),
         destroy: () => this.options.inputCaptureOverride?.destroy?.(),
       };
     } else {
@@ -871,6 +873,10 @@ export class MainGameScene extends Phaser.Scene {
   private clearPendingInteractionInput(): void {
     this.queuedInteraction = false;
     this.tappedInteraction = false;
+    this.inputCapture?.reset();
+    this.inputState.moveX = 0;
+    this.inputState.moveY = 0;
+    this.inputState.action = false;
     for (const key of [
       this.keyE,
       this.keyInventory,
