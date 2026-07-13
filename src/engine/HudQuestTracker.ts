@@ -65,42 +65,16 @@ export function fitQuestTrackerLines(
   const wrapped: string[] = [];
   for (const rawLine of lines) {
     const indent = rawLine.match(/^\s*/)?.[0] ?? '';
-    const contIndent = `${indent}  `;
     const words = rawLine.trim().split(/\s+/).filter(Boolean);
-    // current holds the line being built; starts with just the line prefix.
     let current = indent;
     for (const word of words) {
-      const hasContent = current.trim().length > 0;
-      const candidate = hasContent ? `${current} ${word}` : `${current}${word}`;
-      if (candidate.length <= maxChars) {
+      const candidate = current.trim().length === 0 ? `${indent}${word}` : `${current} ${word}`;
+      if (candidate.length <= maxChars || current.trim().length === 0) {
         current = candidate;
         continue;
       }
-      // Word does not fit on the current line; flush it if it has real content.
-      if (hasContent) {
-        wrapped.push(current);
-        current = contIndent;
-      }
-      // Place word at the start of the (possibly continuation) line prefix,
-      // hard-splitting the token if it exceeds the remaining budget.
-      const linePrefix = current;
-      if (`${linePrefix}${word}`.length <= maxChars) {
-        current = `${linePrefix}${word}`;
-      } else {
-        // Token is longer than a full line: split into budget-sized chunks.
-        let remaining = word;
-        let prefix = linePrefix;
-        while (remaining.length > 0) {
-          const budget = maxChars - prefix.length;
-          if (remaining.length <= budget) {
-            current = `${prefix}${remaining}`;
-            break;
-          }
-          wrapped.push(`${prefix}${remaining.slice(0, budget)}`);
-          remaining = remaining.slice(budget);
-          prefix = contIndent;
-        }
-      }
+      wrapped.push(current);
+      current = `${indent}  ${word}`;
     }
     if (current.trim().length > 0) {
       wrapped.push(current);
@@ -181,10 +155,6 @@ export function createHudQuestTracker(
     .setScrollFactor(0)
     .setDepth(PIXEL_UI_DEPTH.content);
   root.add([titleStrip, titleText, chevron, body]);
-  // Phaser containers render in insertion order; sort by depth so the declared
-  // values (panel < titleStrip < content) take effect and titleIcon stays above
-  // the opaque title strip.
-  root.sort('depth');
   const detachCrispText = applyCrispText(scene, [titleText, chevron, body]);
 
   let collapsed = readCollapsedPref();
@@ -192,7 +162,6 @@ export function createHudQuestTracker(
   let masterVisible = true;
   let panelHeight = TITLE_H + PAD;
   let currentScale = 1;
-  let currentQuestMaxHeight = NAV_QUEST_MAX_HEIGHT;
   let lastWorld: GameWorld | null = null;
   let lastPlayerEid: number | undefined;
   chevron.setText(collapsed ? '▸' : '▾');
@@ -227,7 +196,6 @@ export function createHudQuestTracker(
   function applyLayout(floor: number): void {
     const layout = resolveNavigationHudLayout(getUiScale(scene), floor);
     currentScale = layout.questScale;
-    currentQuestMaxHeight = layout.questMaxHeight;
     root.setScale(currentScale).setPosition(layout.questPosition.x, layout.questPosition.y);
   }
 
@@ -278,7 +246,7 @@ export function createHudQuestTracker(
 
     panelHeight = collapsed
       ? TITLE_H + PAD
-      : Math.min(currentQuestMaxHeight, TITLE_H + 14 + Math.ceil(body.height) + PAD + 8);
+      : Math.min(NAV_QUEST_MAX_HEIGHT, TITLE_H + 14 + Math.ceil(body.height) + PAD + 8);
     panel.setPosition(0, 0);
     panel.setSize(NAV_QUEST_WIDTH, panelHeight);
     titleStrip.setPosition(2, 2).setSize(NAV_QUEST_WIDTH - 4, TITLE_H);

@@ -60,7 +60,6 @@ export function createHudFamilyRelationships(
   options: HudFamilyRelationshipsOptions = {},
 ): {
   sync(world: GameWorld): void;
-  setVisible(visible: boolean): void;
   destroy(): void;
 } {
   const parent = options.parent;
@@ -156,9 +155,6 @@ export function createHudFamilyRelationships(
 
   let lastFingerprint = '';
   let lastVisible = true;
-  // Master gate: when false (fullscreen map open, inventory, etc.) the panel
-  // stays hidden regardless of shouldShowFamilyRelationships.
-  let masterVisible = true;
 
   function setPanelVisible(visible: boolean): void {
     panel.setVisible(visible);
@@ -207,7 +203,7 @@ export function createHudFamilyRelationships(
   function sync(world: GameWorld): void {
     const shouldShow = shouldShowFamilyRelationships(world);
     if (shouldShow !== lastVisible) {
-      setPanelVisible(shouldShow && masterVisible);
+      setPanelVisible(shouldShow);
       lastVisible = shouldShow;
       if (!shouldShow) {
         lastFingerprint = '';
@@ -230,12 +226,6 @@ export function createHudFamilyRelationships(
   setPanelVisible(false);
   lastVisible = false;
 
-  function setVisible(visible: boolean): void {
-    masterVisible = visible;
-    // Show only when both the master gate and shouldShowFamilyRelationships allow it.
-    setPanelVisible(visible && lastVisible);
-  }
-
   function destroy(): void {
     detachCrispText();
     for (const r of rowVisuals) r.container.destroy();
@@ -243,5 +233,5 @@ export function createHudFamilyRelationships(
     panel.destroy();
   }
 
-  return { sync, setVisible, destroy };
+  return { sync, destroy };
 }
