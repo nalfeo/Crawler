@@ -1047,6 +1047,40 @@ describe('BehaviorTreeAI', () => {
     expect(completed).toBe(true);
   });
 
+  it('PROVIDER: downstream reward/fused steering cannot bend an active exit segment back into the safe room', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    world.floorMap = makeWalledSafeRoomMap({ door: true });
+    world.stores.position.x[player] = 14;
+    world.stores.position.y[player] = 14;
+    world.playerInSafeRoom = true;
+    const guideNpcEid = world.floorScenario!.guideNpcEid!;
+    world.stores.position.x[guideNpcEid] = 42;
+    world.stores.position.y[guideNpcEid] = 14;
+    const ai = new BehaviorTreeAI({
+      seed: 42,
+      pathingMode: AIPathingMode.RISK_REWARD_FUSED,
+      collectPullWeight: 2,
+    });
+    const input = createInputState();
+    ai.poll(input, world); // establish the eastward routed heading
+    // Strong on-path, off-axis Track-B pull that would otherwise deflect the
+    // routed eastward heading north while the player is still inside the room.
+    spawnXpGem(world, 18, 18, 5);
+    ai.poll(input, world);
+
+    expect(ai.getSafeRoomRouteDebug().phase).toBe('active');
+    expect(ai.getDecision()).toMatchObject({
+      state: AIState.EXPLORE,
+      targetEid: guideNpcEid,
+    });
+    expect(ai.getTravelSteeringDebug()).not.toBeNull();
+    expect(input.moveX).toBeGreaterThan(0);
+    expect(Math.abs(input.moveY)).toBeLessThan(0.05);
+  });
+
   it('PROVIDER: a door slamming shut (real ECS door-lock relock) mid-egress freezes movement without disturbing semantic ownership', () => {
     // Uses the same real spawnDoor/setDoorLockConfig/setGoalFlag machinery as
     // tests/ecs/door-navigation.test.ts so the door's navigability is driven

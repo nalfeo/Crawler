@@ -35,6 +35,13 @@ ai-pathfinding, ai-behavior-tree, ai-combat-balance, quests, ci-policy
 - Added a dispatchable `safe-room-route` mode to the existing AI sweep workflow:
   exactly six weapons × seeds 1–100, with an immutable `a8e26a51` baseline
   manifest and deterministic 600-run comparator.
+- Used the first canonical cloud result (565/600 wins, 4 flags, but three new
+  throwing-knife flags) to identify a route lifecycle storm. External semantic
+  winner changes now preserve the current legal exit segment, same-room targets
+  release immediately, and downstream steering cannot overwrite active route
+  locomotion. A follow-up real-headless regression exposed and fixed a nested-A\*
+  door-center wedge by routing the existing mover to the legal prefix endpoint
+  while retaining the full path as the geometry certificate.
 - Observed in the real headless pipeline — before: immutable baseline artifacts
   at `a8e26a51` recorded 556/600 official wins and 11 runs over 60s safe dwell;
   after: the exact approved 10-case local panel produced 10/10 official wins,
@@ -58,8 +65,8 @@ ai-pathfinding, ai-behavior-tree, ai-combat-balance, quests, ci-policy
 
 ## What's Next / Blockers
 
-Push the implementation commit, dispatch `ai-sweep.yml` in `safe-room-route`
-mode against this branch, download the canonical artifact, and record the final
+Push the reviewed cloud-follow-up correction, rerun `ai-sweep.yml` in
+`safe-room-route` mode, download the canonical artifact, and record the final
 600-run result before opening the dedicated PR. Do not merge the PR.
 
 ## Retrospective
@@ -76,6 +83,10 @@ when each individual helper appears locally correct.
 The first cloud comparator revision checked only baseline cardinalities. A
 reviewer reproduced that a same-size synthetic loss/flag manifest could pass.
 Pinning the exact provenance and content digest closed that trust-boundary gap.
+The first route-storm correction then made active movement too locally
+authoritative: feeding each intermediate door-path tile through a second A\*
+controller could wedge on a door center. The existing seed2 headless regression
+caught the resulting 359.8-second active streak before push.
 
 ### Opportunities for Future Improvement
 

@@ -309,7 +309,7 @@ describe('safe-room-route: activation + door-edge exit path', () => {
     expect(result.state.path).toEqual(EXPECTED_ACTIVATION_PATH);
     expect(result.state.path[result.state.path.length - 1]).toEqual({ x: 7, y: 0 });
     expect(result.state.segmentIndex).toBe(1);
-    expect(result.moveTarget).toEqual({ x: 4 * REALISTIC_TILE_FT, y: 0 });
+    expect(result.moveTarget).toEqual({ x: 7 * REALISTIC_TILE_FT, y: 0 });
     expect(result.blocked).toBe(false);
     expect(callCount()).toBe(1);
   });
@@ -335,7 +335,7 @@ describe('safe-room-route: activation + door-edge exit path', () => {
       { x: 7, y: 0 },
     ]);
     expect(result.state.segmentIndex).toBe(1);
-    expect(result.moveTarget).toEqual({ x: 6 * REALISTIC_TILE_FT, y: 0 });
+    expect(result.moveTarget).toEqual({ x: 7 * REALISTIC_TILE_FT, y: 0 });
   });
 
   it('truncates the exit path to a short prefix regardless of how far the real (possibly moving) target is', () => {
@@ -373,7 +373,7 @@ describe('safe-room-route: activation + door-edge exit path', () => {
       );
       expect(result.state.phase).toBe('active');
       expect(result.state.path).toEqual(EXPECTED_ACTIVATION_PATH);
-      expect(result.moveTarget).toEqual({ x: 4 * REALISTIC_TILE_FT, y: 0 });
+      expect(result.moveTarget).toEqual({ x: 7 * REALISTIC_TILE_FT, y: 0 });
     }
   });
 });
@@ -391,7 +391,7 @@ describe('safe-room-route: steady-state segment advance (no reseed / no per-poll
       deps,
     );
     expect(result.state.segmentIndex).toBe(2); // advanced to tile x=5
-    expect(result.moveTarget).toEqual({ x: 5 * REALISTIC_TILE_FT, y: 0 });
+    expect(result.moveTarget).toEqual({ x: 7 * REALISTIC_TILE_FT, y: 0 });
     expect(callCount()).toBe(1); // steady-state advance never re-invokes findPath
   });
 
@@ -409,7 +409,7 @@ describe('safe-room-route: steady-state segment advance (no reseed / no per-poll
     for (const [tx, ty] of [
       [38, 2],
       [50, -6],
-      [20, 9],
+      [28, 9],
     ] as const) {
       result = updateSafeRoomRouteState(
         result.state,
@@ -503,8 +503,8 @@ describe('safe-room-route: completion (path-prefix/door-edge, not playerInSafeRo
   });
 });
 
-describe('safe-room-route: reseed on commitment or navEpoch change', () => {
-  it('reseeds (recomputes) when the semantic commitment changes while a route is active', () => {
+describe('safe-room-route: stable segment and topology reseeds', () => {
+  it('keeps the current legal segment when the external semantic commitment changes', () => {
     const { findPath, callCount } = countingFindPath(straightLinePath);
     const deps = makeDeps({ findPath });
     let result = updateSafeRoomRouteState(initial(), input(), deps);
@@ -518,9 +518,33 @@ describe('safe-room-route: reseed on commitment or navEpoch change', () => {
       deps,
     );
     expect(result.state.phase).toBe('active');
-    expect(result.state.lastReseedCause).toBe('commitment-change');
-    expect(result.state.totalReseeds).toBe(1);
-    expect(callCount()).toBe(2);
+    expect(result.state.commitmentKey).toContain('eid:99');
+    expect(result.state.lastReseedCause).toBe('activation');
+    expect(result.state.totalReseeds).toBe(0);
+    expect(callCount()).toBe(1);
+  });
+
+  it('releases immediately when the live target enters the origin room without changing key or navEpoch', () => {
+    const { findPath, callCount } = countingFindPath(straightLinePath);
+    const deps = makeDeps({ findPath });
+    let result = updateSafeRoomRouteState(initial(), input(), deps);
+    expect(result.state.phase).toBe('active');
+
+    result = updateSafeRoomRouteState(
+      result.state,
+      input({
+        candidate: candidate({
+          targetX: 4 * REALISTIC_TILE_FT,
+          targetY: 0,
+        }),
+      }),
+      deps,
+    );
+
+    expect(result.state.phase).toBe('idle');
+    expect(result.moveTarget).toBeNull();
+    expect(result.blocked).toBe(false);
+    expect(callCount()).toBe(1);
   });
 
   it('recomputes (but can stay active) on a navEpoch change alone, when still reachable', () => {
@@ -583,7 +607,7 @@ describe('safe-room-route: reseed on commitment or navEpoch change', () => {
     expect(callCount()).toBe(1);
   });
 
-  it('checks commitment change before navEpoch change so a simultaneous change never double-recomputes', () => {
+  it('uses one topology reseed when commitment and navEpoch change together', () => {
     const { findPath, callCount } = countingFindPath(straightLinePath);
     const deps = makeDeps({ findPath });
     let result = updateSafeRoomRouteState(initial(), input({ navEpoch: 1 }), deps);
@@ -597,7 +621,7 @@ describe('safe-room-route: reseed on commitment or navEpoch change', () => {
       }),
       deps,
     );
-    expect(result.state.lastReseedCause).toBe('commitment-change');
+    expect(result.state.lastReseedCause).toBe('nav-epoch-change');
     expect(result.state.totalReseeds).toBe(1); // exactly one reseed, not two
     expect(callCount()).toBe(2); // exactly one recompute, not two
   });
