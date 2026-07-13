@@ -155,6 +155,7 @@ export function createHudQuestTracker(
     .setScrollFactor(0)
     .setDepth(PIXEL_UI_DEPTH.content);
   root.add([titleStrip, titleText, chevron, body]);
+  root.sort('depth');
   const detachCrispText = applyCrispText(scene, [titleText, chevron, body]);
 
   let collapsed = readCollapsedPref();
