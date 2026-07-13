@@ -408,6 +408,10 @@ export function createHudMinimap(scene: Phaser.Scene): {
     overlayDimmer.setSize(width, height);
     panelBg.setPosition(panelX + panelW / 2, panelY + panelH / 2).setSize(panelW, panelH);
     panelTitle.setPosition(panelX + 18, panelY + 14);
+    // Scale hint text responsively (base 8px → up to 12px at max mobile scale)
+    // so instructions remain legible on narrow FIT viewports where the canvas shrinks.
+    const hintFontSize = Math.max(8, Math.round(8 * Math.min(getUiScale(scene), 1.5)));
+    panelHint.setFontSize(`${hintFontSize}px`);
     panelHint.setPosition(panelX + 18, panelY + panelH - 27);
     const closeButtonSize = Math.min(
       OVERLAY_CLOSE_BUTTON_MAX_SIZE,
