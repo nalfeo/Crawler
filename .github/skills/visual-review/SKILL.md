@@ -46,8 +46,11 @@ npm run review:visual:llm -- \
   --setup-file "scripts/agent/review/setup/<target-state>.js" \
   --ux-name "<surface name>" \
   --ux-goal "<quality intent>" \
+  --viewport "<width>x<height>" \
   --screenshot-name "<artifact-prefix>"
 ```
+
+`--viewport` is optional and defaults to `1600x1000`. Dimensions must be positive integers.
 
 ### Example (equipment panel)
 
