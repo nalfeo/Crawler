@@ -101,16 +101,21 @@ The 5-apple review ledger is valid after:
 
 ## Required cloud gate
 
-Before opening the dedicated PR, dispatch the six-shard 600-run workflow on
-this branch and require all of:
+GitHub run `29223141212` evaluated commit `1a25b4b3` across the canonical 600
+validation rows. It **failed** the gate:
 
-- at least 556/600 official wins;
-- at most 11 rows with more than 60 seconds of safe-room dwell;
-- zero new more-than-60-second safe-room flags among baseline official wins;
-- bow seed 97 timeout eliminated;
-- the original seven rows preserve legal quest, door, and interaction
-  progression;
-- unchanged 360-second official-win requirement.
+- 511/600 official wins (required at least 556; baseline 556);
+- 58 rows over 60 seconds of safe-room dwell (required at most 11; baseline
+  11);
+- 49 new over-60-second flags among baseline official wins (required zero);
+- 62 baseline official wins became non-wins, while 17 baseline non-wins became
+  wins;
+- bow seed 97 remained a timeout with 345.9 seconds in safe rooms;
+- pistol seed 76 remained a timeout with 162.6 seconds in safe rooms;
+- the unchanged 360-second official-win requirement was preserved.
+
+The candidate therefore is not PR-ready. No threshold was changed and no PR was
+opened.
 
 ## Boundaries
 
@@ -122,6 +127,7 @@ this branch and require all of:
 
 ## Pending
 
-- Run PR prerequisites and commit/push this branch.
-- Dispatch and evaluate the GitHub-only 600-run gate.
-- Open the dedicated unmerged PR only if every hard gate passes.
+- Human decision on the failed holistic architecture. The completed artifacts
+  are under session artifact
+  `files/cloud-sweep-alt-a/29223141212/`, including `gate-report.json`.
+- Do not open a PR unless a future candidate passes every hard gate.
