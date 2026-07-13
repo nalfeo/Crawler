@@ -73,6 +73,16 @@ export interface VitalsScaleInput {
   neighborLeftEdge: number;
 }
 
+function computeVerticalCap(clusterTopEdge: number): number {
+  if (GAME.HEIGHT === clusterTopEdge) {
+    return VITALS_MAX_SCALE;
+  }
+  if (GAME.HEIGHT > clusterTopEdge) {
+    return GAME.HEIGHT / (GAME.HEIGHT - clusterTopEdge);
+  }
+  return VITALS_MAX_SCALE;
+}
+
 /**
  * Cap responsive magnification so the bottom-left cluster remains on-canvas
  * and keeps a fixed gutter from the independently anchored ability bar.
@@ -82,12 +92,7 @@ export function computeVitalsScale(input: VitalsScaleInput): number {
     input.clusterRightEdge > 0
       ? (input.neighborLeftEdge - VITALS_ABILITY_GUTTER) / input.clusterRightEdge
       : VITALS_MAX_SCALE;
-  const verticalCap =
-    GAME.HEIGHT === input.clusterTopEdge
-      ? VITALS_MAX_SCALE
-      : GAME.HEIGHT > input.clusterTopEdge
-        ? GAME.HEIGHT / (GAME.HEIGHT - input.clusterTopEdge)
-        : VITALS_MAX_SCALE;
+  const verticalCap = computeVerticalCap(input.clusterTopEdge);
   const capped = Math.min(input.desiredScale, VITALS_MAX_SCALE, neighborCap, verticalCap);
   return Math.max(1, Math.floor(capped * 100) / 100);
 }

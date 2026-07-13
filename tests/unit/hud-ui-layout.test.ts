@@ -42,6 +42,9 @@ describe('HudUI mobile layout guards', () => {
   });
 
   it('treats a full-height vitals cluster as max-scale-safe', () => {
+    // clusterTopEdge === GAME.HEIGHT would make the legacy vertical-cap divisor
+    // zero; the layout should treat that as "already on-canvas" and keep the
+    // requested scale instead of producing Infinity.
     expect(
       computeVitalsScale({
         desiredScale: 2,
