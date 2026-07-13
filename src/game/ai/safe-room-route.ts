@@ -318,9 +318,22 @@ function toIdle(prev: SafeRoomRouteState): SafeRoomRouteState {
  * `reset()`), since it zeroes `totalActivations`/`totalCompletions`/
  * `totalBlocked`/`totalReseeds`, silently discarding lifetime telemetry that
  * sweep artifacts and divergence investigations rely on.
+ *
+ * ALSO clears any live no-progress suppression window: an abort is a genuine
+ * "start fresh" moment (e.g. hostile-encounter invalidation just discarded
+ * the entire semantic decision and dozens of other transient fields), so a
+ * leftover cooldown from an unrelated earlier stall must not block the next
+ * commitment even if it happens to reuse the same key. This is intentionally
+ * a SEPARATE code path from the no-progress release itself (which sets
+ * suppression via a direct `toIdle(...)` call, not this function) — only an
+ * external abort clears it.
  */
 export function abortSafeRoomRoute(prev: SafeRoomRouteState): SafeRoomRouteState {
-  return toIdle(prev);
+  return {
+    ...toIdle(prev),
+    suppressedCommitmentKey: null,
+    suppressFramesRemaining: 0,
+  };
 }
 
 /** Initial `segmentIndex` skipping any leading path tiles identical to the

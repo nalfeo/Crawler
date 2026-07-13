@@ -294,6 +294,22 @@ describe('safe-room-route: abortSafeRoomRoute (external interrupt release)', () 
     expect(aborted.totalBlocked).toBe(1);
     expect(aborted.totalReseeds).toBe(3);
   });
+
+  it('clears any live no-progress suppression window (multi-model review regression)', () => {
+    // A suppression window left over from an EARLIER, unrelated stall must
+    // not survive an external abort — an abort (e.g. hostile-encounter
+    // invalidation) already discards the entire semantic decision, so a
+    // stale cooldown blocking reactivation of a coincidentally-reused
+    // commitment key would be an unintended, hard-to-diagnose behavior leak.
+    const suppressed = {
+      ...initial(),
+      suppressedCommitmentKey: 'engage:eid:7',
+      suppressFramesRemaining: 90,
+    };
+    const aborted = abortSafeRoomRoute(suppressed);
+    expect(aborted.suppressedCommitmentKey).toBeNull();
+    expect(aborted.suppressFramesRemaining).toBe(0);
+  });
 });
 
 describe('safe-room-route: idle pass-through (no constraint applied)', () => {
