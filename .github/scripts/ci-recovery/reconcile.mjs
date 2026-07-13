@@ -7,6 +7,7 @@ import {
   makeState,
   normalizeBlockers,
   reviewThreadBlockerId,
+  extractAddressedMarkerSha,
   shouldMutateRecoveryState,
   ownerLabel,
   parseStateComment,
@@ -232,14 +233,33 @@ const copilotAssigned = review.assignees.some((actor) =>
 );
 // NOTE: copilotAssigned alone must never suppress recovery.
 // Only lease/state ownership (labelExists + state) should suppress.
-for (const thread of review.threads.filter(
-  (candidate) =>
-    !candidate.isResolved &&
-    shouldResolveThread(candidate, {
-      owner,
-      repo,
-      prNumber,
-    }),
+const unresolvedThreads = review.threads.filter((candidate) => !candidate.isResolved);
+const headSha = String(pr.head.sha || '').toLowerCase();
+const markerShasNeedingLineageCheck = new Set();
+for (const thread of unresolvedThreads) {
+  const comments = thread.comments?.nodes ?? [];
+  if (comments.length === 0) continue;
+  const markerSha = extractAddressedMarkerSha(comments[comments.length - 1]?.body);
+  if (markerSha && !headSha.startsWith(markerSha)) {
+    markerShasNeedingLineageCheck.add(markerSha);
+  }
+}
+const reachableMarkerShas = new Set();
+for (const markerSha of markerShasNeedingLineageCheck) {
+  try {
+    const compare = (
+      await request(readToken, `/repos/${owner}/${repo}/compare/${markerSha}...${pr.head.sha}`)
+    ).data;
+    if (compare?.status === 'identical' || compare?.status === 'ahead') {
+      reachableMarkerShas.add(markerSha);
+    }
+  } catch {
+    // Treat any error (404 not found, 422 unresolvable/ambiguous SHA,
+    // network errors, etc.) as a non-reachable marker so recovery can proceed.
+  }
+}
+for (const thread of unresolvedThreads.filter((candidate) =>
+  shouldResolveThread(candidate, pr.head.sha, reachableMarkerShas),
 )) {
   if (live) {
     await graphql(
@@ -483,7 +503,7 @@ const taskBody = [
   '',
   '**Review-thread protocol:** For every listed review thread, invoke a separate review agent using a model different from your primary model to validate whether the comment is still applicable to the current head. Fix valid findings. Resolve only deterministic non-applicability (outdated/removed line or file, duplicate already addressed) or a validated `✅ Addressed` result. For substantive disagreement, reply with the validator evidence and leave the thread unresolved for escalation.',
   '',
-  'When a thread is addressed, reply in that exact thread with `✅ Addressed in <same-pr-discussion-link>: <one-line note>` and resolve it. Use a https://github.com/<owner>/<repo>/pull/<pr>#discussion_r... link on this PR. Run the repository-required verification and push one consolidated repair commit.',
+  'When a thread is addressed, reply in that exact thread with `✅ Addressed in <sha>: <one-line note>` and resolve it. Run the repository-required verification and push one consolidated repair commit.',
 ].join('\n');
 
 if (live) {
