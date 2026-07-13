@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-13",
+  "session_slug": "game-intro-screen",
+  "task_title": "Game intro screen with Director welcome, name and gender selection",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "plan_divergence": "convergent",
+      "notes": "Reviewer flagged: (1) intro data applied too late (after configureWorld) - fixed by moving application before configureWorld; (2) HTML input alignment on resize - accepted as non-blocking for a brief intro screen. Design converged."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.5"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Reviewer flagged String.replace() only replaces first occurrence - fixed to use /{playerName}/g regex for all occurrences."
+        }
+      ]
+    }
+  }
+}

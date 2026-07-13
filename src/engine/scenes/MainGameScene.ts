@@ -553,6 +553,16 @@ export class MainGameScene extends Phaser.Scene {
 
   create(): void {
     this.world = createGameWorld({ seed: this.options.worldSeed });
+
+    // Apply player identity selected in IntroScene BEFORE configureWorld, so
+    // scenario initializers (e.g. initializeFloor1Scenario) see the chosen name.
+    const introData = this.game.registry.get(INTRO_DATA_REGISTRY_KEY) as
+      | { playerName: string; playerGender: 'female' | 'male' | 'other' }
+      | undefined;
+    if (introData) {
+      this.world.playerName = introData.playerName;
+      this.world.playerGender = introData.playerGender;
+    }
     this.inputState = createInputState();
     if (this.options.inputCaptureOverride) {
       this.inputCapture = {
@@ -593,18 +603,6 @@ export class MainGameScene extends Phaser.Scene {
     this.playerEid = spawnPlayer(this.world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
     this.options.configureWorld?.(this.world, this.playerEid);
 
-    // Apply player identity selected in IntroScene (if available).
-    const introData = this.game.registry.get(INTRO_DATA_REGISTRY_KEY) as
-      | { playerName: string; playerGender: 'female' | 'male' | 'other' }
-      | undefined;
-    if (introData) {
-      this.world.playerName = introData.playerName;
-      this.world.playerGender = introData.playerGender;
-      // Sync the floor-scenario protagonist name so HUD and dialogues match.
-      if (this.world.floorScenario) {
-        this.world.floorScenario.protagonistName = introData.playerName;
-      }
-    }
     logger.info('Main game scene created', {
       state: this.world.state,
       preSystems: this.options.preSystems?.length ?? 0,
@@ -2651,8 +2649,8 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private queueDirectorCommentary(text: string): void {
-    // Substitute {playerName} with the player's chosen name.
-    const resolved = text.replace('{playerName}', this.world.playerName);
+    // Substitute {playerName} with the player's chosen name (all occurrences).
+    const resolved = text.replace(/{playerName}/g, this.world.playerName);
     this.directorCommentaryText?.setText(`${DIRECTOR_LABEL_TEXT}: ${resolved}`).setVisible(true);
     this.commentaryHideAtMs = this.time.now + DIRECTOR_COMMENTARY_MS;
   }

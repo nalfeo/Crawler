@@ -83,11 +83,22 @@ describe('Director intro template', () => {
 
   it('MainGameScene queueDirectorCommentary substitutes {playerName}', () => {
     const source = readFileSync('src/engine/scenes/MainGameScene.ts', 'utf-8');
-    expect(source).toContain("replace('{playerName}', this.world.playerName)");
+    // Uses global regex to replace all occurrences.
+    expect(source).toContain('replace(/{playerName}/g, this.world.playerName)');
   });
 
   it('floor1 floorScenario protagonistName derives from world.playerName', () => {
     const source = readFileSync('src/game/floorScenario.ts', 'utf-8');
     expect(source).toContain('protagonistName: world.playerName');
+  });
+
+  it('MainGameScene applies intro data before configureWorld (so scenario init sees chosen name)', () => {
+    const source = readFileSync('src/engine/scenes/MainGameScene.ts', 'utf-8');
+    // Intro data must be applied before configureWorld is called.
+    const introIdx = source.indexOf('INTRO_DATA_REGISTRY_KEY');
+    const configureIdx = source.indexOf('configureWorld?.(');
+    expect(introIdx).toBeGreaterThan(0);
+    expect(configureIdx).toBeGreaterThan(0);
+    expect(introIdx).toBeLessThan(configureIdx);
   });
 });
