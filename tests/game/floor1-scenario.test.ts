@@ -44,7 +44,7 @@ import {
 import { getQuestWaypoints } from '../../src/core/systems/questWaypoints.js';
 import { doorSystem } from '../../src/core/systems/doorSystem.js';
 import { addItem, hasItem } from '../../src/shared/inventory.js';
-import { TileFlags, RoomRole, TerrainType } from '../../src/shared/map-types.js';
+import { TileFlags, RoomRole, TerrainType, TilePresets } from '../../src/shared/map-types.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
@@ -68,6 +68,35 @@ import { floor1EnemyPack } from '../../src/shared/enemy-packs.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { stampSetPiece } from '../../src/core/map/stampSetPiece.js';
 import { findTilePath } from '../../src/core/map/pathfinding.js';
+import { selectBossSpawnPlacement } from '../../src/game/boss-spawn-placement.js';
+import { floor1Config } from '../../src/shared/floor-config.js';
+
+function roomPerimeterEntryCandidates(room: {
+  bounds: { x: number; y: number; width: number; height: number };
+}): Array<{
+  perimeter: { x: number; y: number };
+  interior: { x: number; y: number };
+}> {
+  const { x, y, width, height } = room.bounds;
+  return [
+    ...Array.from({ length: Math.max(0, width - 2) }, (_, index) => ({
+      perimeter: { x: x + 1 + index, y },
+      interior: { x: x + 1 + index, y: y + 1 },
+    })),
+    ...Array.from({ length: Math.max(0, width - 2) }, (_, index) => ({
+      perimeter: { x: x + 1 + index, y: y + height - 1 },
+      interior: { x: x + 1 + index, y: y + height - 2 },
+    })),
+    ...Array.from({ length: Math.max(0, height - 2) }, (_, index) => ({
+      perimeter: { x, y: y + 1 + index },
+      interior: { x: x + 1, y: y + 1 + index },
+    })),
+    ...Array.from({ length: Math.max(0, height - 2) }, (_, index) => ({
+      perimeter: { x: x + width - 1, y: y + 1 + index },
+      interior: { x: x + width - 2, y: y + 1 + index },
+    })),
+  ];
+}
 
 describe('floor1Scenario', () => {
   it('initializes Floor 1 into loadout state with deterministic starter choices', () => {
@@ -632,8 +661,24 @@ describe('floor1Scenario', () => {
 
     world.stores.position.x[player] = objective.slimeRatRoomPos.x;
     world.stores.position.y[player] = objective.slimeRatRoomPos.y;
+    const floorMap = world.floorMap!;
+    const slimeRatTile = floorMap.worldToTile(
+      objective.slimeRatRoomPos.x,
+      objective.slimeRatRoomPos.y,
+    );
+    const slimeRatRoom = floorMap.roomGraph.get(
+      floorMap.roomGraph.getRoomAt(slimeRatTile.x, slimeRatTile.y),
+    )!;
+    const expectedSlimeRatPlacement = selectBossSpawnPlacement(
+      floorMap,
+      slimeRatRoom,
+      objective.slimeRatRoomPos,
+      floor1Config.bossVariants!.ratSlime.spawnRadiusMin,
+    );
+    expect(world.hostileEncounterRevision).toBe(0);
     floorObjectiveSystem(world);
     expect(objective.bossBattles.get('slime-rat')!.started).toBe(true);
+    expect(world.hostileEncounterRevision).toBe(1);
     if (
       world.floorScenario &&
       (world.floorScenario.bossRoomDoorEids.get('slime-rat') ?? []).length > 0
@@ -646,9 +691,13 @@ describe('floor1Scenario', () => {
     if (slimeRatBossEid === null) {
       throw new Error('Expected Slime Rat boss to exist');
     }
+    expect(world.stores.position.x[slimeRatBossEid]).toBe(expectedSlimeRatPlacement.position.x);
+    expect(world.stores.position.y[slimeRatBossEid]).toBe(expectedSlimeRatPlacement.position.y);
+    expect(expectedSlimeRatPlacement.preferredMinimumSatisfied).toBe(true);
     removeEntity(world.ecs, slimeRatBossEid);
     floorObjectiveSystem(world);
     expect(objective.bossBattles.get('slime-rat')!.defeated).toBe(true);
+    expect(world.hostileEncounterRevision).toBe(1);
     if (
       world.floorScenario &&
       (world.floorScenario.bossRoomDoorEids.get('slime-rat') ?? []).length > 0
@@ -664,14 +713,25 @@ describe('floor1Scenario', () => {
 
     world.stores.position.x[player] = objective.staircasePos.x;
     world.stores.position.y[player] = objective.staircasePos.y;
+    const staircaseRoom = floorMap.bossStairRoom!;
+    const expectedStaircasePlacement = selectBossSpawnPlacement(
+      floorMap,
+      staircaseRoom,
+      objective.staircasePos,
+      floor1Config.bossVariants!.ratSlime.spawnRadiusMin,
+    );
     floorObjectiveSystem(world);
     expect(objective.bossBattles.get('staircase')!.started).toBe(true);
+    expect(world.hostileEncounterRevision).toBe(2);
     expect(objective.staircaseDiscovered).toBe(false);
 
     const bossEid = objective.bossBattles.get('staircase')!.bossEid;
     if (bossEid === null) {
       throw new Error('Expected staircase boss to exist');
     }
+    expect(world.stores.position.x[bossEid]).toBe(expectedStaircasePlacement.position.x);
+    expect(world.stores.position.y[bossEid]).toBe(expectedStaircasePlacement.position.y);
+    expect(expectedStaircasePlacement.preferredMinimumSatisfied).toBe(true);
 
     removeEntity(world.ecs, bossEid);
     floorObjectiveSystem(world);
@@ -1435,6 +1495,9 @@ describe('floor1Scenario', () => {
 
       const result = startFloor1BossEncounter(world, player);
       expect(result).toBe(true);
+      const playerX = world.stores.position.x[player] ?? 0;
+      const playerY = world.stores.position.y[player] ?? 0;
+      expect(floorMap.isPassableAt(playerX, playerY)).toBe(true);
 
       const bossEid = world.floorScenario?.objective?.bossBattles.get('staircase')?.bossEid;
       expect(bossEid).not.toBeNull();
@@ -1444,6 +1507,71 @@ describe('floor1Scenario', () => {
       const by = world.stores.position.y[bossEid!] ?? 0;
       const tile = floorMap.worldToTile(bx, by);
       expect(floorMap.tileMap.isPassable(tile.x, tile.y)).toBe(true);
+      expect(floorMap.roomGraph.getRoomAt(tile.x, tile.y)).toBe(floorMap.bossStairRoom.id);
+    });
+
+    it('starts the staircase encounter only after the player steps onto a room-owned interior tile', () => {
+      const world = createTestWorld({ seed: 42 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+
+      const floorMap = world.floorMap!;
+      const bossRoom = floorMap.bossStairRoom;
+      expect(bossRoom).toBeDefined();
+      if (!bossRoom) return;
+
+      const perimeterEntry = (() => {
+        const doorTiles = new Set(bossRoom.doors.map((door) => `${door.x},${door.y}`));
+        return roomPerimeterEntryCandidates(bossRoom).find(
+          ({ perimeter, interior }) =>
+            !doorTiles.has(`${perimeter.x},${perimeter.y}`) &&
+            floorMap.roomGraph.getRoomAt(interior.x, interior.y) === bossRoom.id &&
+            floorMap.tileMap.isPassable(interior.x, interior.y),
+        );
+      })();
+      expect(perimeterEntry).toBeDefined();
+      if (!perimeterEntry) return;
+
+      floorMap.tileMap.setFlags(
+        perimeterEntry.perimeter.x,
+        perimeterEntry.perimeter.y,
+        TilePresets.FLOOR,
+      );
+      expect(
+        floorMap.roomGraph.getRoomAt(perimeterEntry.perimeter.x, perimeterEntry.perimeter.y),
+      ).toBe(-1);
+      expect(
+        floorMap.tileMap.isPassable(perimeterEntry.perimeter.x, perimeterEntry.perimeter.y),
+      ).toBe(true);
+
+      const objective = world.floorScenario!.objective;
+      const slimeRatBattle = objective.bossBattles.get('slime-rat')!;
+      slimeRatBattle.started = true;
+      slimeRatBattle.defeated = true;
+      slimeRatBattle.bossEid = null;
+      const staircaseBattle = objective.bossBattles.get('staircase')!;
+      expect(staircaseBattle.started).toBe(false);
+
+      const perimeterWorld = floorMap.tileToWorld(
+        perimeterEntry.perimeter.x,
+        perimeterEntry.perimeter.y,
+      );
+      world.stores.position.x[player] = perimeterWorld.x;
+      world.stores.position.y[player] = perimeterWorld.y;
+      floorObjectiveSystem(world);
+      expect(staircaseBattle.started).toBe(false);
+      expect(staircaseBattle.bossEid).toBeNull();
+
+      const interiorWorld = floorMap.tileToWorld(
+        perimeterEntry.interior.x,
+        perimeterEntry.interior.y,
+      );
+      world.stores.position.x[player] = interiorWorld.x;
+      world.stores.position.y[player] = interiorWorld.y;
+      floorObjectiveSystem(world);
+      expect(staircaseBattle.started).toBe(true);
+      expect(staircaseBattle.bossEid).not.toBeNull();
     });
 
     it('regression: seed 665790 rat-tail fetch item is accessible without entering the boss room', () => {

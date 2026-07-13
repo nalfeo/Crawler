@@ -177,9 +177,10 @@ function buildRoomBlockMask(
  *
  * Determinism & safety:
  * - Consumes NO RNG, so downstream procedural placement is unaffected.
- * - A strict no-op for already-reachable rooms (including rooms legitimately
- *   reachable only through the boss room) — a well-formed seed's tile flags and
- *   terrain are left byte-identical.
+ * - Byte-identical for already-reachable rooms whose boss arenas are already
+ *   valid (including rooms legitimately reachable only through the boss room);
+ *   malformed boss interiors are deterministically repaired before connector
+ *   cleanup runs.
  *
  * Exported for unit testing. Not part of the public map API.
  */
@@ -192,6 +193,9 @@ export function ensureRoomsReachable(
   playerSpawn: { x: number; y: number },
 ): void {
   const bossRoom = roomGraph.getFirstRoomByRole(RoomRole.BOSS_STAIR);
+  if (bossRoom) {
+    ensureBossArenaInterior(tileMap, terrain, w, h, bossRoom);
+  }
   const bossBlocked = bossRoom ? buildRoomBlockMask(bossRoom, w, h) : null;
 
   // Phase 1 — every non-spawn, non-boss room reachable without the boss room.
@@ -227,6 +231,133 @@ export function ensureRoomsReachable(
         carveRoomConnector(tileMap, terrain, w, h, bossRoom, reachableOpen, null);
       }
     }
+  }
+}
+
+/**
+ * Guarantees enough deterministic interior floor for separated boss placement.
+ * The repair first prefers the interior window with the most existing passable
+ * floor and uses center proximity only as a tiebreaker, so valid arenas stay
+ * byte-identical unless generation left the interior partially or wholly
+ * walled.
+ */
+export function ensureBossArenaInterior(
+  tileMap: TileMap,
+  terrain: Uint8Array,
+  w: number,
+  h: number,
+  room: { bounds: RoomBounds; doors: readonly DoorLocation[] },
+  floorTerrain: TerrainType = TerrainType.BOSS_STAIR_FLOOR,
+): void {
+  const { x, y, width, height } = room.bounds;
+  const interiorWidth = Math.max(0, width - 2);
+  const interiorHeight = Math.max(0, height - 2);
+  if (interiorWidth === 0 || interiorHeight === 0) return;
+
+  const arenaWidth = Math.min(5, interiorWidth);
+  const arenaHeight = Math.min(5, interiorHeight);
+  const roomCenterX = x + (width - 1) / 2;
+  const roomCenterY = y + (height - 1) / 2;
+  let arenaX = x + 1;
+  let arenaY = y + 1;
+  let bestPassableCount = -1;
+  let bestCenterDistanceSq = Number.POSITIVE_INFINITY;
+  for (let candidateY = y + 1; candidateY <= y + height - 1 - arenaHeight; candidateY += 1) {
+    for (let candidateX = x + 1; candidateX <= x + width - 1 - arenaWidth; candidateX += 1) {
+      let passableCount = 0;
+      for (let ty = candidateY; ty < candidateY + arenaHeight; ty += 1) {
+        for (let tx = candidateX; tx < candidateX + arenaWidth; tx += 1) {
+          if (tileMap.isPassable(tx, ty)) passableCount += 1;
+        }
+      }
+      const candidateCenterX = candidateX + Math.floor(arenaWidth / 2);
+      const candidateCenterY = candidateY + Math.floor(arenaHeight / 2);
+      const dx = candidateCenterX - roomCenterX;
+      const dy = candidateCenterY - roomCenterY;
+      const centerDistanceSq = dx * dx + dy * dy;
+      if (
+        passableCount > bestPassableCount ||
+        (passableCount === bestPassableCount && centerDistanceSq < bestCenterDistanceSq)
+      ) {
+        arenaX = candidateX;
+        arenaY = candidateY;
+        bestPassableCount = passableCount;
+        bestCenterDistanceSq = centerDistanceSq;
+      }
+    }
+  }
+  const centerX = arenaX + Math.floor(arenaWidth / 2);
+  const centerY = arenaY + Math.floor(arenaHeight / 2);
+  const requiredTiles = new Set<number>();
+
+  const requireInterior = (tx: number, ty: number): void => {
+    if (tx <= x || ty <= y || tx >= x + width - 1 || ty >= y + height - 1) return;
+    if (tx < 0 || ty < 0 || tx >= w || ty >= h) return;
+    const idx = ty * w + tx;
+    if ((tileMap.flags[idx]! & TileFlags.DOOR) !== 0) return;
+    requiredTiles.add(idx);
+  };
+
+  for (let ty = arenaY; ty < arenaY + arenaHeight; ty += 1) {
+    for (let tx = arenaX; tx < arenaX + arenaWidth; tx += 1) {
+      requireInterior(tx, ty);
+    }
+  }
+
+  if (bestPassableCount === arenaWidth * arenaHeight) {
+    const reachable = new Uint8Array(w * h);
+    const stack = [centerY * w + centerX];
+    reachable[stack[0]!] = 1;
+    while (stack.length > 0) {
+      const idx = stack.pop()!;
+      const tx = idx % w;
+      const ty = (idx - tx) / w;
+      for (const [nextX, nextY] of [
+        [tx + 1, ty],
+        [tx - 1, ty],
+        [tx, ty + 1],
+        [tx, ty - 1],
+      ] as const) {
+        if (nextX <= x || nextY <= y || nextX >= x + width - 1 || nextY >= y + height - 1) {
+          continue;
+        }
+        const nextIdx = nextY * w + nextX;
+        if (reachable[nextIdx] === 1 || !tileMap.isPassable(nextX, nextY)) continue;
+        reachable[nextIdx] = 1;
+        stack.push(nextIdx);
+      }
+    }
+    const allDoorsReachArena = room.doors.every((door) => {
+      const side = getDoorSide(room.bounds, door);
+      const inwardX = side === 'left' ? door.x + 1 : side === 'right' ? door.x - 1 : door.x;
+      const inwardY = side === 'top' ? door.y + 1 : side === 'bottom' ? door.y - 1 : door.y;
+      return reachable[inwardY * w + inwardX] === 1;
+    });
+    if (allDoorsReachArena) return;
+  }
+
+  for (const door of room.doors) {
+    const side = getDoorSide(room.bounds, door);
+    const inwardX = side === 'left' ? door.x + 1 : side === 'right' ? door.x - 1 : door.x;
+    const inwardY = side === 'top' ? door.y + 1 : side === 'bottom' ? door.y - 1 : door.y;
+    const stepX = inwardX <= centerX ? 1 : -1;
+    for (let tx = inwardX; tx !== centerX + stepX; tx += stepX) {
+      requireInterior(tx, inwardY);
+    }
+    const stepY = inwardY <= centerY ? 1 : -1;
+    for (let ty = inwardY; ty !== centerY + stepY; ty += stepY) {
+      requireInterior(centerX, ty);
+    }
+  }
+
+  const needsRepair = [...requiredTiles].some(
+    (idx) => (tileMap.flags[idx]! & TileFlags.PASSABLE) === 0,
+  );
+  if (!needsRepair) return;
+
+  for (const idx of requiredTiles) {
+    tileMap.flags[idx] = TilePresets.FLOOR;
+    terrain[idx] = floorTerrain;
   }
 }
 
