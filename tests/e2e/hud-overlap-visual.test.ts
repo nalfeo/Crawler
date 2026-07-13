@@ -14,6 +14,14 @@ interface CanvasRect {
   height: number;
 }
 
+interface Bounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  text?: string;
+}
+
 async function getCanvasRect(page: Page): Promise<CanvasRect> {
   return page.evaluate(() => {
     const canvas = document.querySelector('#lab-canvas canvas') as HTMLCanvasElement | null;
@@ -28,6 +36,32 @@ function gameToScreen(rect: CanvasRect, gx: number, gy: number): { x: number; y:
     x: Math.round(rect.x + gx * (rect.width / GAME_W)),
     y: Math.round(rect.y + gy * (rect.height / GAME_H)),
   };
+}
+
+function boundsToScreen(rect: CanvasRect, bounds: Bounds): Bounds {
+  return {
+    x: rect.x + bounds.x * (rect.width / GAME_W),
+    y: rect.y + bounds.y * (rect.height / GAME_H),
+    width: bounds.width * (rect.width / GAME_W),
+    height: bounds.height * (rect.height / GAME_H),
+    text: bounds.text,
+  };
+}
+
+function contains(outer: Bounds, inner: Bounds, tolerance = 0.5): boolean {
+  return (
+    inner.x >= outer.x - tolerance &&
+    inner.y >= outer.y - tolerance &&
+    inner.x + inner.width <= outer.x + outer.width + tolerance &&
+    inner.y + inner.height <= outer.y + outer.height + tolerance
+  );
+}
+
+function overlaps(a: Bounds, b: Bounds, tolerance = 0.5): boolean {
+  return (
+    Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x) > tolerance &&
+    Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y) > tolerance
+  );
 }
 
 function nonBackgroundRatio(
@@ -76,6 +110,124 @@ async function setBossFightActive(page: Page, active: boolean): Promise<void> {
     probe.setBossFightActive(next);
   }, active);
 }
+
+async function hideLabShell(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    document.getElementById('app-header')?.style.setProperty('display', 'none');
+    document.getElementById('lab-controls')?.style.setProperty('display', 'none');
+    document.getElementById('controls-toggle')?.style.setProperty('display', 'none');
+    window.dispatchEvent(new Event('resize'));
+  });
+  await page.waitForTimeout(500);
+}
+
+async function loadLootSkillProbe(page: Page): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await loadHudLab(page);
+    const available = await page.evaluate(
+      () =>
+        typeof (window as { __hudProbe?: HudProbeApi }).__hudProbe?.setLootSkillStressState ===
+        'function',
+    );
+    if (available) return;
+    await page.goto('about:blank', { waitUntil: 'commit' });
+  }
+  throw new Error('Current hud-lab stress probe did not load after three attempts');
+}
+
+describe('loot and skill HUD containment', () => {
+  let browser: Browser;
+
+  beforeAll(async () => {
+    browser = await chromium.launch({ headless: true });
+  });
+
+  afterAll(async () => {
+    await closeQuietly(browser);
+  });
+
+  it.each([
+    { width: 1280, height: 720 },
+    { width: 960, height: 540 },
+  ])(
+    'contains stress text and stays clear of adjacent HUD at $width×$height',
+    async ({ width, height }) => {
+      const context = await browser.newContext({
+        viewport: { width, height },
+        deviceScaleFactor: 1,
+      });
+      const page = await context.newPage();
+      try {
+        await loadLootSkillProbe(page);
+        await hideLabShell(page);
+        const canvas = await getCanvasRect(page);
+        expect(canvas).toEqual({ x: 0, y: 0, width, height });
+
+        const layout = await page.evaluate(() => {
+          const probe = (window as { __hudProbe?: HudProbeApi }).__hudProbe;
+          if (!probe) throw new Error('__hudProbe not available');
+          probe.setLootSkillStressState();
+          return probe.getLootSkillLayout();
+        });
+        await page.waitForTimeout(200);
+
+        const viewport: Bounds = { x: 0, y: 0, width, height };
+        const regions = Object.fromEntries(
+          Object.entries(layout.regions).map(([name, bounds]) => [
+            name,
+            boundsToScreen(canvas, bounds),
+          ]),
+        );
+        const region = (name: string): Bounds => {
+          const result = regions[name];
+          if (!result) throw new Error(`Missing HUD region: ${name}`);
+          return result;
+        };
+
+        for (const [name, bounds] of Object.entries(regions)) {
+          expect(contains(viewport, bounds), `${name} must remain inside the viewport`).toBe(true);
+        }
+        expect(
+          contains(region('hud-loot-gold-value-bounds'), region('hud-loot-gold-text')),
+          'gold text must remain inside its reserved value column',
+        ).toBe(true);
+        expect(
+          contains(region('hud-loot-junk-value-bounds'), region('hud-loot-junk-text')),
+          'junk text must remain inside its reserved value column',
+        ).toBe(true);
+
+        for (const row of ['class', 'type']) {
+          const name = region(`hud-skill-${row}-name-text`);
+          const level = region(`hud-skill-${row}-level`);
+          expect(
+            name.x + name.width,
+            `${row} skill name must end before its level column`,
+          ).toBeLessThanOrEqual(level.x - 3);
+        }
+        expect(region('hud-skill-type-name-text').text).toMatch(/…$/);
+
+        const lootPanel = region('hud-loot-panel-bounds');
+        const skillPanel = region('hud-skill-panel-bounds');
+        expect(overlaps(lootPanel, skillPanel), 'loot and skill panels must not overlap').toBe(
+          false,
+        );
+
+        for (const bounds of [...layout.adjacentRegions, ...layout.otherHudGroups]) {
+          const adjacent = boundsToScreen(canvas, bounds);
+          expect(overlaps(lootPanel, adjacent), 'loot panel must not overlap adjacent HUD').toBe(
+            false,
+          );
+          expect(overlaps(skillPanel, adjacent), 'skill panel must not overlap adjacent HUD').toBe(
+            false,
+          );
+        }
+      } finally {
+        await closeQuietly(context);
+      }
+    },
+    120_000,
+  );
+});
 
 describe('hud ability bar visual regression guard (mobile scale)', () => {
   let browser: Browser;
