@@ -25,7 +25,7 @@ jobs:
         env:
           REVIEWER_LOGIN: nalfeo
         with:
-          github-token: ${{ github.token }}
+          github-token: ${{ secrets.CRAWLER_CI_PAT || github.token }}
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
