@@ -5,7 +5,7 @@
  * it drives the production `createInventoryUI` factory — the exact
  * `InventoryUI.ts` render branch shipped to players — against the REAL shipped
  * `public/assets/generated/manifest.json`, and records which texture the panel
- * actually renders for each of the 15 previously-stuck item icons (+ the
+ * actually renders for each of the 14 previously-stuck item icons (+ the
  * `bone-club` → `baseball-bat` weaponId alias).
  *
  * A green resolver unit test alone does NOT satisfy rule #10: it proves the
@@ -193,7 +193,7 @@ describe('InventoryUI real render path over the shipped manifest (observe-before
     const scene = makeRecordingScene(registry, record);
     const world = seedWorldWithStuckItems();
 
-    // A tall panel guarantees all 16 cells render (4 rows) rather than paginating.
+    // A tall panel guarantees all 15 cells render (4 rows) rather than paginating.
     const ui = createInventoryUI(scene as never, { height: 2000 });
     ui.toggle(world); // open + applyLayout + renderItems
 

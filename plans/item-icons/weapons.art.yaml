@@ -1,6 +1,6 @@
 id: item-icons-weapons
 title: 'Item Icons — Weapons'
-summary: 'Backlog of weapon inventory icons that currently render procedural placeholder PNGs (manifest sourceRun "placeholder"). Each entry needs real authored pixel art generated via the sprite pipeline when provider access is available. The registry lookup key for each sprite must match the item id slug exactly so InventoryUI picks it up automatically.'
+summary: 'Backlog of weapon inventory icons that currently render either manifest-backed placeholder PNGs or InventoryUI text fallbacks. Each entry needs real authored pixel art generated via the sprite pipeline when provider access is available. The registry lookup key for each sprite must match the item id slug exactly so InventoryUI picks it up automatically.'
 assets:
   - id: throwing-knife
     type: weapon
