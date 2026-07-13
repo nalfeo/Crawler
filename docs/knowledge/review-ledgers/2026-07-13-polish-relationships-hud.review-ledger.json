@@ -18,9 +18,10 @@
       "rounds": [
         {
           "round": 1,
-          "reviewer_model": "claude-opus-4.6",
-          "concerns": 0,
-          "resolved": 0,
+          "models": ["claude-opus-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
           "notes": "Cherry-pick rebase integration: resolved 4 merge conflicts preserving both navigation-arrows (HEAD) and relationships slice (incoming). Removed duplicate familyRelationships instantiation; kept getAvoidBounds version. Retargeted test viewports to 1280/960 only (dropped 844x390). All prior behavior preserved."
         }
       ]

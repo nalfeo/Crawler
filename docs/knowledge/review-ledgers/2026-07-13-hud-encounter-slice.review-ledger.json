@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-13",
+  "session_slug": "hud-encounter-slice",
+  "task_title": "Add encounter stack layout with boss bar and announcement positioning",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "plan_divergence": "convergent",
+      "notes": "Encounter stack layout is a pure-function module with deterministic vertical positioning. No architectural divergence — design follows established HUD slice pattern from nav-base and relationships slices."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Clean merge of encounter layout into existing HudUI facade. BeveledPanel.getBounds() unification is correct — all callers use plain object shape. No concerns."
+        }
+      ]
+    }
+  }
+}
