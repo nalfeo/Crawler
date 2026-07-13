@@ -1,14 +1,43 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { GAME } from '../../src/shared/constants.js';
+import {
+  computeVitalsScale,
+  VITALS_ABILITY_GUTTER,
+  VITALS_BOTTOM_MARGIN,
+  VITALS_PANEL_GUTTER,
+  VITALS_PANEL_Y,
+  VITALS_ROW_HEIGHTS,
+} from '../../src/engine/HudVitalsLayout.js';
 
 describe('HudUI mobile layout guards', () => {
-  it('uses a lower scale cap for the bottom-center ability bar group', () => {
-    const source = readFileSync('src/engine/HudUI.ts', 'utf-8');
+  it('keeps the authored vitals stack separated and on-canvas', () => {
+    expect(VITALS_PANEL_Y.loot - (VITALS_PANEL_Y.skill + VITALS_ROW_HEIGHTS.skill)).toBe(8);
+    expect(VITALS_PANEL_Y.xp - (VITALS_PANEL_Y.loot + VITALS_ROW_HEIGHTS.loot)).toBe(
+      VITALS_PANEL_GUTTER,
+    );
+    expect(VITALS_PANEL_Y.health - (VITALS_PANEL_Y.xp + VITALS_ROW_HEIGHTS.xp)).toBe(
+      VITALS_PANEL_GUTTER,
+    );
+    expect(VITALS_PANEL_Y.mana - (VITALS_PANEL_Y.health + VITALS_ROW_HEIGHTS.health)).toBe(
+      VITALS_PANEL_GUTTER,
+    );
+    expect(GAME.HEIGHT - (VITALS_PANEL_Y.mana + VITALS_ROW_HEIGHTS.mana)).toBe(
+      VITALS_BOTTOM_MARGIN,
+    );
+  });
 
-    expect(source).toContain('const HUD_MAX_SCALE = 1.6;');
-    expect(source).toContain('const ABILITY_BAR_MAX_SCALE = 1.0;');
-    expect(source).toContain('const bottomCenterScale = Math.min(s, ABILITY_BAR_MAX_SCALE);');
-    expect(source).toContain('.setScale(bottomCenterScale)');
-    expect(source).toContain('h * (1 - bottomCenterScale)');
+  it('caps the 960x540 responsive scale before the ability bar', () => {
+    const clusterRightEdge = 252;
+    const neighborLeftEdge = 284;
+    const scale = computeVitalsScale({
+      desiredScale: GAME.WIDTH / 960,
+      clusterRightEdge,
+      clusterTopEdge: VITALS_PANEL_Y.skill,
+      neighborLeftEdge,
+    });
+
+    expect(scale).toBe(1.07);
+    expect(clusterRightEdge * scale + VITALS_ABILITY_GUTTER).toBeLessThanOrEqual(neighborLeftEdge);
+    expect(GAME.HEIGHT - scale * (GAME.HEIGHT - VITALS_PANEL_Y.skill)).toBeGreaterThanOrEqual(0);
   });
 });
