@@ -33,12 +33,11 @@
  *                                                   [--assets-dir <path>]
  *   npm run sprites:normalize-item-art -- --dry-run
  */
-import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { parseSpriteCatalog } from '../../src/shared/sprite-catalog.js';
+import { formatJsonFiles } from './catalog-io.js';
 
 // ---------------------------------------------------------------------------
 // Allowlist — the ONLY concepts this migration is permitted to touch.
@@ -566,22 +565,14 @@ function main(): void {
   //    catalog are Prettier-formatted; a raw `JSON.stringify(…, 2)` differs from
   //    Prettier's style (e.g. Prettier keeps short arrays inline), which would
   //    otherwise show up as wholesale whitespace churn and fail `format:check`.
-  //    Formatting here collapses the diff to exactly the migrated entries.
-  formatWithPrettier([manifestPath, catalogPath]);
+  //    formatJsonFiles (catalog-io.ts) is the shared formatting helper so all
+  //    write paths stay in sync.
+  formatJsonFiles([manifestPath, catalogPath]);
 
   process.stdout.write(
     `Applied: renamed ${plan.renames.length}, retired ${plan.retires.length}. ` +
       `Wrote + formatted manifest + catalog.\n`,
   );
-}
-
-/** Run the repo's Prettier over the given files (used after `--apply` writes). */
-function formatWithPrettier(files: readonly string[]): void {
-  // Resolve Prettier's JS entry and run it via `node` directly — no shell, so this
-  // is cross-platform and avoids the child-process shell deprecation warning.
-  const require = createRequire(import.meta.url);
-  const prettierBin = require.resolve('prettier/bin/prettier.cjs');
-  execFileSync(process.execPath, [prettierBin, '--write', ...files], { stdio: 'inherit' });
 }
 
 /**

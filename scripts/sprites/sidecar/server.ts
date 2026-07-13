@@ -91,6 +91,7 @@ import {
   toRepoRelativePath,
 } from '../brief-durability.js';
 import { parseSpriteCatalog } from '../../../src/shared/sprite-catalog.js';
+import { writeCatalogJson } from '../catalog-io.js';
 import { LocalRunStore } from '../store/local-store.js';
 import { StoreNotFoundError, type RunStore } from '../store/types.js';
 import { createWorkerController, type WorkerController } from './worker-controller.js';
@@ -1867,7 +1868,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       const catalog = parseSpriteCatalog(JSON.parse(readFileSync(catalogAbs, 'utf8')) as unknown);
       const provider = await resolveProvider(providerMode);
       const result = await runMetadataPipeline(catalog, { provider, ids, force, minScore });
-      writeFileSync(catalogAbs, `${JSON.stringify(result.updated, null, 2)}\n`, 'utf8');
+      writeCatalogJson(catalogAbs, result.updated);
       return {
         provider: provider.name,
         changedCount: result.changedCount,

@@ -9,7 +9,7 @@
  *   or: { "file": "weapons.json", "id": "sword", "path": "baseDamage", "value": 20 }
  *   or: { "file": "tuning.json", "values": { "player.speed": 4.0, "damage.defaultContactDamage": 8 } }
  */
-import { readFileSync, renameSync, writeFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { resolve, relative, isAbsolute } from 'path';
 import { spawn } from 'child_process';
@@ -21,6 +21,7 @@ import {
   resolveProvider,
   type MetadataProviderMode,
 } from '../scripts/sprites/metadata-pipeline.js';
+import { writeCatalogJson } from '../scripts/sprites/catalog-io.js';
 import {
   ensureSentence,
   parseSpriteCatalog,
@@ -347,11 +348,9 @@ export function labTuningSavePlugin(): Plugin {
 
             const merged = sortCatalog([...catalog, ...toAdd]);
 
-            // Validate full catalog and write atomically via temp file + rename
+            // Validate full catalog and write atomically with Prettier formatting
             const validated = parseSpriteCatalog(merged);
-            const tmpPath = catalogPath + '.tmp';
-            writeFileSync(tmpPath, JSON.stringify(validated, null, 2) + '\n', 'utf-8');
-            renameSync(tmpPath, catalogPath);
+            writeCatalogJson(catalogPath, validated);
 
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
@@ -427,11 +426,7 @@ export function labTuningSavePlugin(): Plugin {
                   hydrated,
                 ]);
                 catalog = parseSpriteCatalog(merged);
-                writeFileSync(
-                  absoluteCatalogPath,
-                  JSON.stringify(catalog, null, 2) + '\n',
-                  'utf-8',
-                );
+                writeCatalogJson(absoluteCatalogPath, catalog);
                 existingEntry = hydrated;
               }
             }
@@ -448,11 +443,7 @@ export function labTuningSavePlugin(): Plugin {
               force: payload.force ?? true,
               minScore: payload.minScore,
             });
-            writeFileSync(
-              absoluteCatalogPath,
-              JSON.stringify(result.updated, null, 2) + '\n',
-              'utf-8',
-            );
+            writeCatalogJson(absoluteCatalogPath, result.updated);
 
             const updatedEntry = result.updated.find(
               (entry: SpriteCatalogRecord) => entry.id === payload.id,
