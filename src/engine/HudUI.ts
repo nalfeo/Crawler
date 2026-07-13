@@ -20,8 +20,9 @@ import { createHudAbilityBar } from './HudAbilityBar.js';
 import { createHudSkillTracker } from './HudSkillTracker.js';
 import { createHudDirectionArrows } from './HudDirectionArrows.js';
 import { createHudFamilyRelationships } from './HudFamilyRelationships.js';
-import { getUiScale, onUiScaleChange } from './ui-scale.js';
+import { getUiScale, onUiScaleChange, type ScreenBounds } from './ui-scale.js';
 import { GAME } from '../shared/constants.js';
+import { resolveNavigationHudLayout } from './navigation-hud-layout.js';
 
 /**
  * Upper bound on HUD magnification. The HUD is authored to fill the full 1280px
@@ -37,11 +38,21 @@ const HUD_MAX_SCALE = 1.6;
  */
 const ABILITY_BAR_MAX_SCALE = 1.0;
 
+export interface NavigationHudBounds {
+  readonly radar: ScreenBounds | null;
+  readonly questTracker: ScreenBounds | null;
+  readonly familyPanel: null;
+  readonly arrows: readonly ScreenBounds[];
+  readonly mapOverlay: ScreenBounds | null;
+  readonly mapClose: ScreenBounds | null;
+}
+
 export function createHudUI(scene: Phaser.Scene): {
   sync(world: GameWorld, playerEid: number): void;
   isMapOverlayOpen(): boolean;
   closeMapOverlay(): void;
   setVisible(visible: boolean): void;
+  getNavigationBounds(): NavigationHudBounds;
   destroy(): void;
 } {
   const depth = 1000;
@@ -135,8 +146,25 @@ export function createHudUI(scene: Phaser.Scene): {
     if (!mapOpen) {
       familyRelationships.sync(world);
       questTracker.sync(world, playerEid);
-      directionArrows.sync(world, playerEid);
+      const layout = resolveNavigationHudLayout(getUiScale(scene), world.floor);
+      const forbiddenRegions = [
+        ...layout.criticalHudRegions,
+        layout.radarBounds,
+        questTracker.getBounds(),
+      ].filter((bounds): bounds is ScreenBounds => bounds !== null);
+      directionArrows.sync(world, playerEid, forbiddenRegions);
     }
+  }
+
+  function getNavigationBounds(): NavigationHudBounds {
+    return {
+      radar: minimap.getDockedBounds(),
+      questTracker: questTracker.getBounds(),
+      familyPanel: null,
+      arrows: directionArrows.getBounds(),
+      mapOverlay: minimap.getOverlayBounds(),
+      mapClose: minimap.getOverlayCloseBounds(),
+    };
   }
 
   function destroy(): void {
@@ -165,6 +193,7 @@ export function createHudUI(scene: Phaser.Scene): {
     isMapOverlayOpen: minimap.isOverlayOpen,
     closeMapOverlay: minimap.closeOverlay,
     setVisible,
+    getNavigationBounds,
     destroy,
   };
 }
