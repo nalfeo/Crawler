@@ -1,0 +1,28 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-13",
+  "session_slug": "safe-room-route-constraint-foundation",
+  "task_title": "Safe-room navigation-layer route constraint foundation",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Alt A: fold exit-prefix logic into moveToward/moveTowardViaNavmesh directly (no new module) - rejected: still needs a commitment/identity concept to avoid re-triggering every frame, and mixing route lifecycle into the already-large mover method reduces testability; kept as a documented future simplification, not required now. Alt B: fix playerInSafeRoom flicker at the source with a stable room/portal-crossing signal - rejected as insufficient alone (does not solve the proven BT-owner/priority-fight regression); accepted as a good complementary future fix, out of scope. Alt C: generic movement-constraint hook instead of safe-room-specific module - rejected for now (YAGNI, no second consumer yet); kept the API narrowly scoped but documented the generalization path. Chosen: post-selection pure route-constraint overlay (unchanged from WIP). divergence=minor (implementation-detail fixes only, no re-architecture). Concerns resolved: (1) pinned a8e26a51 baseline may be stale post-#1110 boss-arena fix - will run a fresh control-sweep verification on current main before trusting the digest comparator, using a8e26a51 only as historical context per coordinator mandate; (2) sticky-route-across-external-winner-change flagged as risky by reviewer - explicitly kept per non-negotiable coordinator architecture mandate, already empirically validated via a real cloud sweep in the WIP iteration (ece63a13 fix) showing this is the correct behavior; documented as considered-and-overridden, not a gap; (3) route state not explicitly reset on hostile-encounter invalidation (#1110) - fixed: added safeRoomRouteState reset inside invalidateTransientDecisionForHostileEncounter() so a stale moveTarget cannot survive that invalidation; (4) commitment-key granularity (state+eid vs quantized position) - accepted as-is, matches already-tested WIP design, no action, flagged as low-risk future refinement; (5) full-path certificate vs mover-actual-route disagreement - mitigated by design (only the truncated prefix ENDPOINT is handed to the existing moveToward/moveTowardViaNavmesh, so there is only one A* decision-maker for the actual walked route); accepted; (6) narrow wedge-fix evidence (single seed2 canary) - accepted risk, bounded by the 600-run cross-topology sweep gate itself; no new synthetic fixtures added; (7) blocked-mode recovery contract - already satisfied by existing invariants (room-exit release, one-retry-on-commitment-change-while-blocked, now also encounter-invalidation release)."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    }
+  }
+}

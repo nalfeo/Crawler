@@ -248,10 +248,11 @@ function formatSummary(result: SafeRoomRouteGateResult): string {
 function main(argv: string[]): void {
   const candidateIndex = argv.indexOf('--candidate-dir');
   const outIndex = argv.indexOf('--out');
-  if (candidateIndex < 0 || argv[candidateIndex + 1] === undefined) {
+  const candidateArg = candidateIndex < 0 ? undefined : argv[candidateIndex + 1];
+  if (candidateArg === undefined) {
     throw new Error('Usage: safe-room-route-gate.ts --candidate-dir <dir> [--out <summary.json>]');
   }
-  const candidateDir = resolve(argv[candidateIndex + 1]);
+  const candidateDir = resolve(candidateArg);
   const fixturePath = fileURLToPath(
     new URL('./fixtures/safe-room-baseline-a8e26a51.json', import.meta.url),
   );
@@ -267,8 +268,9 @@ function main(argv: string[]): void {
   const result = evaluateSafeRoomRouteGate(rows, baseline);
   const json = JSON.stringify(result, null, 2);
   const summary = formatSummary(result);
-  if (outIndex >= 0 && argv[outIndex + 1] !== undefined) {
-    writeFileSync(resolve(argv[outIndex + 1]), `${json}\n`);
+  const outArg = outIndex < 0 ? undefined : argv[outIndex + 1];
+  if (outArg !== undefined) {
+    writeFileSync(resolve(outArg), `${json}\n`);
   }
   if (process.env.GITHUB_STEP_SUMMARY) {
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);

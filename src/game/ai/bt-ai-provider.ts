@@ -2727,6 +2727,13 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.progressTargetAvailableThisPoll = false;
     this.lastTacticalOpportunityEvaluation = null;
     this.tacticalTravelOwnsLoot = false;
+    // A hostile encounter activating mid-route (e.g. a boss arena locking in
+    // while the player is still walking a safe-room exit segment) must not
+    // leave a stale `moveTarget` alive past this invalidation — the semantic
+    // decision above was just reset to EXPLORE, so any in-flight route
+    // commitment is now stale by definition. Reset to idle so the next poll
+    // re-derives a route (if any) from the fresh post-invalidation winner.
+    this.safeRoomRouteState = createInitialSafeRoomRouteState();
   }
 
   poll(state: InputState, world: GameWorld): void {

@@ -1165,7 +1165,7 @@ describe('BehaviorTreeAI', () => {
     const world = createTestWorld({ seed: 42 });
     const player = spawnPlayer(world, 0, 0);
     initializeFloor1Scenario(world, player);
-    meetTutorialGoon(world, player); // accept tutorial → Progress returns null at level 1
+    meetTutorialGoon(world); // accept tutorial → Progress returns null at level 1
     selectFloor1StarterWeapon(world, 0);
     world.floorMap = makeWalledSafeRoomMap({ door: false });
     world.stores.position.x[player] = 14;
