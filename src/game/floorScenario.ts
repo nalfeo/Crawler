@@ -1428,7 +1428,7 @@ export function meetTutorialGoon(world: GameWorld): void {
  * Initialize weapon skill states for the player entity, seeding every registered
  * skill at level 0 so the skill system and HUD can track progress from the start.
  */
-function initializePlayerWeaponSkills(world: GameWorld, playerEid: number): void {
+export function initializePlayerWeaponSkills(world: GameWorld, playerEid: number): void {
   const allSkills = getAllSkillDefinitions();
   const skillMap = new Map<string, SkillState>();
   for (const skill of allSkills) {

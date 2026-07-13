@@ -358,6 +358,17 @@ describe('initializeFloor2Scenario manifest validation', () => {
     expect(cave?.maxRetries).toBe(FLOOR2_CAVE_SYSTEM_DEFAULTS.maxRetries);
   });
 
+  it('seeds weapon skill states for the player so the HUD skill tracker has data to show', () => {
+    const { world, playerEid } = createScenarioWorld();
+    initializeFloor2Scenario(world, playerEid);
+
+    // Both v1 (playerSkills) and v2 (skillStatesByEntity) maps must be populated
+    // so HudSkillTracker can read skill progress regardless of which path it uses.
+    expect(world.playerSkills.size).toBeGreaterThan(0);
+    expect(world.skillStatesByEntity.has(playerEid)).toBe(true);
+    expect(world.skillStatesByEntity.get(playerEid)!.size).toBeGreaterThan(0);
+  });
+
   it('activates all Floor 1 feature unlocks at Floor 2 start', () => {
     const { world, playerEid } = createScenarioWorld();
     initializeFloor2Scenario(world, playerEid);

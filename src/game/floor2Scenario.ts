@@ -122,6 +122,7 @@ import {
   resolveAmbientSpawnPoint,
   getSpawnerState,
   ensureBossBattleSpellReward,
+  initializePlayerWeaponSkills,
 } from './floorScenario.js';
 import { pickFromSpawnZones, type SpawnZoneWeights } from './spawn-zones.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
@@ -837,6 +838,8 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
   world.featureUnlocks.equipment = true;
   world.featureUnlocks.spells = true;
   applyFloor2DirectStartPlayerState(world, playerEid);
+  // Initialize weapon skill states for the player so HUD and skill system track progress.
+  initializePlayerWeaponSkills(world, playerEid);
   ensureBossBattleSpellReward(world, playerEid);
   setGoalFlag(world, 'floor1-drops-unlocked', true);
 
