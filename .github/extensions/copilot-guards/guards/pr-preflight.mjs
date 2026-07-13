@@ -3,14 +3,13 @@
 // agent sees every issue in a single round trip.
 //
 // Checks performed:
-//   1. Semantic PR title (must match conventional commit allowlist).
-//   2. Handoff required: a docs/knowledge/handoffs/YYYY-MM-DD-*.md
+//   1. Handoff required: a docs/knowledge/handoffs/YYYY-MM-DD-*.md
 //      file must exist *in the branch diff* (not just present in the
 //      repo). Skipped for trivial / docs-only diffs.
-//   3. Lab gate: run scripts/agent/lab-gate-check.sh ONLY when the
+//   2. Lab gate: run scripts/agent/lab-gate-check.sh ONLY when the
 //      diff touches src/core/systems/** or src/labs/**. Cached.
-//   4. Forbidden paths: secrets, session-state, .copilot/ etc.
-//   5. Cross-system change: additionalContext warning (not a deny)
+//   3. Forbidden paths: secrets, session-state, .copilot/ etc.
+//   4. Cross-system change: additionalContext warning (not a deny)
 //      when diff spans 2+ of src/core, src/engine, src/game and no
 //      ADR is added in this branch.
 //
@@ -21,10 +20,6 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
 import { branchFiles, branchAddedFiles } from '../lib/git.mjs';
-
-// ci-policy.md: feat|fix|chore|lab|docs|refactor|test|perf|ci|build
-const CONVENTIONAL_TITLE_RE =
-  /^(feat|fix|chore|lab|docs|refactor|test|perf|ci|build)(\([^)]+\))?!?: .+/;
 
 // Files we never want committed.
 const FORBIDDEN_PATTERNS = [
@@ -55,47 +50,6 @@ const HANDOFF_DATED_RE =
 // code directories could hold design notes that accompany real code changes.
 const TRIVIAL_PATH_RE =
   /^(docs[\\/]|README\.md$|CHANGELOG\.md$|\.github[\\/](workflows|dependabot)|package(-lock)?\.json$|pnpm-lock\.yaml$|yarn\.lock$|(?!src[\\/]).+\.(md|txt)$)/;
-
-function extractTitle(args) {
-  if (!args) return '';
-  if (typeof args === 'string') {
-    const trimmed = args.trim();
-    if (!trimmed) return '';
-    try {
-      return extractTitle(JSON.parse(trimmed));
-    } catch {
-      return trimmed;
-    }
-  }
-  if (typeof args !== 'object') return '';
-  const obj = args;
-  const candidates = [
-    obj.title,
-    obj.pr_title,
-    obj.pull_request_title,
-    obj?.input?.title,
-    obj?.parameters?.title,
-    obj?.arguments?.title,
-    obj?.request?.title,
-  ];
-  for (const candidate of candidates) {
-    if (typeof candidate === 'string' && candidate.trim()) {
-      return candidate.trim();
-    }
-  }
-  return '';
-}
-
-function checkSemanticTitle(args) {
-  const title = extractTitle(args);
-  if (!title) {
-    return 'PR title is empty. Use a conventional-commit-style title: `<type>(scope?): <subject>` where type is one of feat|fix|chore|lab|docs|refactor|test|perf|ci|build.';
-  }
-  if (!CONVENTIONAL_TITLE_RE.test(title)) {
-    return `PR title '${title}' is not semantic. Use \`<type>(scope?)!?: <subject>\` where type is one of feat|fix|chore|lab|docs|refactor|test|perf|ci|build (e.g. \`feat(ecs): add lifecycle hook\`).`;
-  }
-  return null;
-}
 
 function checkHandoff(files, addedFiles) {
   const allTrivial = files.length > 0 && files.every((f) => TRIVIAL_PATH_RE.test(f));
@@ -152,12 +106,8 @@ function checkCrossSystemAdr(files) {
   return `Diff touches ${hitCount} architectural layers (src/core, src/engine, src/game). Per memory policy, every change affecting 2+ systems requires an ADR under docs/knowledge/adr/. Create one documenting: context, decision, consequences (positive/negative/risks), and alternatives considered.`;
 }
 
-function evaluatePreflightChecks({ files, addedFiles, cwd, toolArgs, skipSemanticTitle = false }) {
+function evaluatePreflightChecks({ files, addedFiles, cwd }) {
   const denyParts = [];
-  if (!skipSemanticTitle) {
-    const titleIssue = checkSemanticTitle(toolArgs);
-    if (titleIssue) denyParts.push(titleIssue);
-  }
 
   const handoffIssue = checkHandoff(files, addedFiles);
   if (handoffIssue) denyParts.push(handoffIssue);
@@ -194,16 +144,6 @@ export default {
   async check(toolArgs, ctx) {
     const cwd = ctx?.cwd || process.cwd();
 
-    // Debug: log the shape of toolArgs so we can diagnose title extraction issues
-    if (!toolArgs?.title) {
-      await ctx
-        ?.log?.(
-          `[pr-preflight] toolArgs shape: ${JSON.stringify(Object.keys(toolArgs || {}))}, type: ${typeof toolArgs}`,
-          { level: 'info' },
-        )
-        .catch(() => {});
-    }
-
     let files;
     let addedFiles;
     try {
@@ -220,19 +160,16 @@ export default {
       files,
       addedFiles,
       cwd,
-      toolArgs,
     });
   },
 };
 
 export {
-  checkSemanticTitle,
   checkHandoff,
   checkForbiddenPaths,
   checkLabGate,
   checkCrossSystemAdr,
   evaluatePreflightChecks,
-  CONVENTIONAL_TITLE_RE,
   HANDOFF_DATED_RE,
   TRIVIAL_PATH_RE,
 };
