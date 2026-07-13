@@ -20,6 +20,7 @@ import { CLASS_SKILL_THRESHOLDS, TYPE_SKILL_THRESHOLDS } from '../shared/weapon-
 import { PIXEL_UI, PIXEL_UI_DEPTH, createBeveledPanel } from './pixel-ui.js';
 import { SKILL_HARD_CAP, SKILL_NATURAL_CAP } from '../shared/skills.js';
 import { applyCrispText } from './ui-scale.js';
+import { BLUE_STEEL, hex } from './ui-theme.js';
 
 // ---------------------------------------------------------------------------
 // Layout constants
@@ -30,11 +31,11 @@ const ROW_H = 14;
 const ROW_GAP = 4;
 const TITLE_H = 16;
 /** Width for skill name label (truncated). */
-const NAME_W = 88;
+const NAME_W = 78;
 /** Width for "Lv XX" text. */
 const LV_W = 34;
 /** Width for progress bar. */
-const BAR_W = 72;
+const BAR_W = 64;
 const BAR_H = 6;
 
 const PANEL_W = PAD + NAME_W + 4 + LV_W + 4 + BAR_W + PAD;
@@ -45,7 +46,8 @@ const PANEL_X = 16;
 const PANEL_Y = GAME.HEIGHT - 124 - 8 - PANEL_H;
 
 const COLORS = {
-  title: '#fcd34d',
+  title: hex(BLUE_STEEL.accent),
+  titleStrip: BLUE_STEEL.sectionHeader,
   classSkill: '#86efac',
   typeSkill: '#93c5fd',
   barBg: PIXEL_UI.trackFill,
@@ -54,9 +56,19 @@ const COLORS = {
   inactive: '#64748b',
 } as const;
 
-function truncate(name: string, maxLen: number): string {
-  if (name.length <= maxLen) return name;
-  return `${name.slice(0, maxLen - 1)}…`;
+function setTextWithinWidth(
+  textObject: Phaser.GameObjects.Text,
+  value: string,
+  maxWidth: number,
+): void {
+  textObject.setText(value);
+  if (textObject.width <= maxWidth) return;
+
+  const glyphs = Array.from(value);
+  do {
+    glyphs.pop();
+    textObject.setText(`${glyphs.join('')}…`);
+  } while (glyphs.length > 0 && textObject.width > maxWidth);
 }
 
 export function createHudSkillTracker(
@@ -68,10 +80,16 @@ export function createHudSkillTracker(
 } {
   const parent = options.parent;
   const panel = createBeveledPanel(scene, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, { parent });
+  const panelBounds = scene.add
+    .zone(PANEL_X, PANEL_Y, PANEL_W, PANEL_H)
+    .setOrigin(0, 0)
+    .setName('hud-skill-panel-bounds');
+  parent?.add(panelBounds);
 
   // Title strip
   const titleStrip = scene.add
-    .rectangle(PANEL_X + 2, PANEL_Y + 2, PANEL_W - 4, TITLE_H, 0x1a2a1a, 1)
+    .rectangle(PANEL_X + 2, PANEL_Y + 2, PANEL_W - 4, TITLE_H, COLORS.titleStrip, 1)
+    .setName('hud-skill-title-strip')
     .setOrigin(0, 0)
     .setScrollFactor(0)
     .setDepth(PIXEL_UI_DEPTH.panel + 1);
@@ -83,6 +101,7 @@ export function createHudSkillTracker(
       fontStyle: 'bold',
       color: COLORS.title,
     })
+    .setName('hud-skill-title-text')
     .setOrigin(0, 0.5)
     .setScrollFactor(0)
     .setDepth(PIXEL_UI_DEPTH.content);
@@ -108,6 +127,7 @@ export function createHudSkillTracker(
         fontSize: '10px',
         color: labelColor,
       })
+      .setName(`hud-skill-${rowIndex === 0 ? 'class' : 'type'}-name-text`)
       .setOrigin(0, 0.5)
       .setScrollFactor(0)
       .setDepth(PIXEL_UI_DEPTH.content);
@@ -119,6 +139,7 @@ export function createHudSkillTracker(
         fontStyle: 'bold',
         color: labelColor,
       })
+      .setName(`hud-skill-${rowIndex === 0 ? 'class' : 'type'}-level`)
       .setOrigin(0, 0.5)
       .setScrollFactor(0)
       .setDepth(PIXEL_UI_DEPTH.content);
@@ -126,12 +147,14 @@ export function createHudSkillTracker(
     const barX = PANEL_X + PAD + NAME_W + 4 + LV_W + 4;
     const barBgRect = scene.add
       .rectangle(barX, cy, BAR_W, BAR_H, COLORS.barBg, 1)
+      .setName(`hud-skill-${rowIndex === 0 ? 'class' : 'type'}-bar-bg`)
       .setOrigin(0, 0.5)
       .setScrollFactor(0)
       .setDepth(PIXEL_UI_DEPTH.content);
 
     const barFillRect = scene.add
       .rectangle(barX, cy, 1, BAR_H, barColor, 1)
+      .setName(`hud-skill-${rowIndex === 0 ? 'class' : 'type'}-bar-fill`)
       .setOrigin(0, 0.5)
       .setScrollFactor(0)
       .setDepth(PIXEL_UI_DEPTH.content + 1);
@@ -174,7 +197,7 @@ export function createHudSkillTracker(
     const holderSkills = world.skillStatesByEntity.get(playerEid);
     const state = holderSkills?.get(skillId) ?? world.playerSkills.get(skillId);
     if (state === undefined) {
-      row.nameText.setText(truncate(skillName, 10));
+      setTextWithinWidth(row.nameText, skillName, NAME_W);
       row.levelText.setText('Lv 0');
       row.barFill.setSize(1, BAR_H);
       return;
@@ -183,7 +206,7 @@ export function createHudSkillTracker(
     const cap = Math.min(SKILL_NATURAL_CAP + state.itemBonus, SKILL_HARD_CAP);
     const level = state.level;
 
-    row.nameText.setText(truncate(skillName, 10));
+    setTextWithinWidth(row.nameText, skillName, NAME_W);
     row.levelText.setText(`Lv ${level}`);
 
     // Progress toward next level — 0 when at cap.
@@ -235,6 +258,7 @@ export function createHudSkillTracker(
   function destroy(): void {
     detachCrispText();
     panel.destroy();
+    panelBounds.destroy();
     titleStrip.destroy();
     titleText.destroy();
     for (const row of [classRow, typeRow]) {
