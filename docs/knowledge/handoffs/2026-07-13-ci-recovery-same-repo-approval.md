@@ -23,6 +23,11 @@ ci-policy
   and workflow-modification checks.
 - Removed the unreachable workflow-approval POST and blocker path. CI recovery
   still rejects fork PRs before reconciliation and does not execute PR code.
+- Escalated required `CI` and `commit-lint` runs parked in `action_required` as
+  actionable `ci-retrigger` blockers while continuing to ignore non-required
+  router runs.
+- Updated ADR 0058 and the CI recovery guide to match GitHub's fork-only workflow
+  approval API and the retrigger behavior.
 - Added a live-mode subprocess regression based on rollout run `29220010234`.
   It proves the reconciler logs `reason=same-repository`, makes no mutating API
   calls, creates no recovery blocker, and waits for required checks.
@@ -32,8 +37,9 @@ ci-policy
 - Before: disposable PR #1083 reached POST
   `/actions/runs/29220010234/approve`, received GitHub's fork-only 403, and
   produced a spurious `workflow-approval` blocker.
-- After: the Node 22 CI-runtime recovery suite passes all 15 focused tests,
-  including the live-mode no-approval/no-dispatch regression.
+- After: the Node 22 CI-runtime recovery suite passes all 18 focused tests,
+  including the live-mode no-approval/no-dispatch regression and required-check
+  retrigger escalation.
 - `npm run verify:fast` passed.
 
 ## Review
@@ -42,6 +48,9 @@ ci-policy
   cleanup adjustments.
 - The code-review loop found no implementation defect; its only finding was the
   pending ledger stage, which was recorded and validated.
+- Two post-PR review findings were independently validated and fixed: required
+  checks no longer wait permanently, and operator documentation matches runtime
+  behavior. The final review round found no remaining concerns.
 
 ## Retrospective
 
