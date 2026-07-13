@@ -141,8 +141,10 @@ const SOURCE_PATH_TO_LABS = {
   'src/game/systems/propPlacer': ['prop-lab'],
   'src/shared/decorationDefs': ['prop-lab'],
   // Engine / rendering
-  'src/engine/terrain': ['tile-render-lab'],
-  'src/engine/sprites/tile': ['tile-render-lab', 'tile-explorer'],
+  'src/engine/terrain': ['map-gen-lab', 'terrain-pack-lab'],
+  'src/engine/sprites/tile': ['map-gen-lab', 'tile-explorer'],
+  'src/engine/sprites/terrain-pack': ['terrain-pack-lab'],
+  'src/shared/terrain-pack': ['terrain-pack-lab'],
   'src/engine/GoreVfx': ['gore-lab'],
   'src/engine/hud': ['hud-lab'],
   // Shared

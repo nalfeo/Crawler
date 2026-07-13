@@ -257,7 +257,6 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     { itemId: 'classified-dossier', concept: 'classified-dossier' },
     { itemId: 'copper-ore', concept: 'copper-ore' },
     { itemId: 'crystal-fiber', concept: 'crystal-fiber' },
-    { itemId: 'crystal-wand', concept: 'crystal-wand' },
     { itemId: 'directors-cue-card', concept: 'directors-cue-card' },
     { itemId: 'dragon-scale', concept: 'dragon-scale' },
     { itemId: 'flame-dagger', concept: 'flame-dagger' },

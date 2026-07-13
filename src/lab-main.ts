@@ -47,7 +47,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'barrier-lab': '/src/labs/barrier-lab/index.ts',
   'map-gen-lab': '/src/labs/map-gen-lab/index.ts',
   'pathfinding-lab': '/src/labs/pathfinding-lab/index.ts',
-  'tile-render-lab': '/src/labs/tile-render-lab/index.ts',
+  'terrain-pack-lab': '/src/labs/terrain-pack-lab/index.ts',
   'npc-lab': '/src/labs/npc-lab/index.ts',
   'quest-lab': '/src/labs/quest-lab/index.ts',
   'quest-content-lab': '/src/labs/quest-content-lab/index.ts',

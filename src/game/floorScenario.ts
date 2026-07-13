@@ -3124,12 +3124,12 @@ export interface ShopkeeperStockItem {
 }
 
 const SHOPKEEPER_POST_QUEST_ITEM_COSTS: Readonly<Record<string, number>> = {
-  'rusty-shiv': 18,
+  'throwing-knife': 18,
   'iron-sword': 24,
   'bone-club': 20,
   'frost-bow': 26,
   'plasma-pistol': 30,
-  'crystal-wand': 28,
+  fireball: 28,
 };
 
 function findPlayerEid(world: GameWorld): number | undefined {

@@ -20,6 +20,10 @@ import {
   getEffectiveStats,
   previewEquipDelta,
 } from '../../core/systems/equipmentSystem.js';
+import {
+  executeMerchantWeaponPurchase,
+  getMerchantWeaponIntent,
+} from './merchant-weapon-intent.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../shared/constants.js';
 import { getEquipmentDefForItem } from '../../shared/equipmentDefs.js';
 import { NPC_INTERACT_RANGE_FT } from '../../shared/npc-types.js';
@@ -186,6 +190,11 @@ export function autoFloor1ProgressionSystem(
     }
 
     if (purchaseShopkeeperEquipment(world, playerEid)) {
+      break;
+    }
+
+    if (getMerchantWeaponIntent(world).status === 'returning') {
+      executeMerchantWeaponPurchase(world, playerEid);
       break;
     }
   }

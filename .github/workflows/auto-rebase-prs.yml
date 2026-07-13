@@ -46,8 +46,8 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --state open \
             --base main \
-            --json number,isDraft,headRefName,headRepository,headRepositoryOwner \
-            --jq '[.[] | select(.isDraft == false)]')
+            --json number,isDraft,headRefName,headRepository,headRepositoryOwner,labels \
+            --jq '[.[] | select(.isDraft == false and ([.labels[].name] | index("merge-train") | not))]')
 
           pr_count=$(echo "$prs_json" | jq 'length')
           if [ "$pr_count" -eq 0 ]; then

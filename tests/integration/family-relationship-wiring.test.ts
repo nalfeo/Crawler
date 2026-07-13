@@ -37,7 +37,11 @@ describe('familyRelationshipSystem is wired into the headless pipeline', () => {
     queueFactionRelationDelta(world, { familyId: goblins, delta: 10, reason: 'wiring proof' });
 
     expect(world.factionRelationDeltas).toHaveLength(1);
-    runHeadlessStep(world, createInputState(), 16, {});
+    // Pass the canonical preSystems (which include familyRelationshipSystem) —
+    // the headless step now delegates system ordering to its caller, mirroring
+    // the visual pipeline (issue #663 unification).
+    const options = createFloor1MainSceneOptions();
+    runHeadlessStep(world, createInputState(), 16, { preSystems: options.preSystems });
     expect(world.factionRelationDeltas).toHaveLength(0);
     expect(world.factionRelations.get(goblins)).toBe(DEFAULT_RELATION + 10);
   });

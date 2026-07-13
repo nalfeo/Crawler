@@ -129,12 +129,8 @@ describe('areaDamageSystem hit-gated weapon-skill XP', () => {
     const player = spawnPlayer(world, 100, 100);
     const enemy = spawnEnemy(world, 110, 100, 50);
     world.elapsedMs = 100;
-    const aoeEid = spawnAreaAttack(world, 100, 100, player, 15, 40, 200, TeamId.PLAYER);
-    world.attackSkillSources.set(aoeEid, {
-      attackerEid: player,
-      classSkillId: 'arcane',
-      typeSkillId: 'fireball',
-    });
+    world.attackerWeaponSkills.set(player, { classSkillId: 'arcane', typeSkillId: 'fireball' });
+    spawnAreaAttack(world, 100, 100, player, 15, 40, 200, TeamId.PLAYER);
 
     const collision = collisionSystem(world);
     areaDamageSystem(world, collision);
@@ -146,12 +142,12 @@ describe('areaDamageSystem hit-gated weapon-skill XP', () => {
     expect(fired.every((e) => e.holderEid === player)).toBe(true);
   });
 
-  it('emits no skill events when the explosion has no registered skill source', () => {
+  it('emits no skill events when the explosion owner has no registered weapon skills', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 100, 100);
     const enemy = spawnEnemy(world, 110, 100, 50);
     world.elapsedMs = 100;
-    // Area attack spawned but no attackSkillSources entry registered for it.
+    // Owner present but no prior dispatch registered skills for the player.
     spawnAreaAttack(world, 100, 100, player, 15, 40, 200, TeamId.PLAYER);
 
     const collision = collisionSystem(world);

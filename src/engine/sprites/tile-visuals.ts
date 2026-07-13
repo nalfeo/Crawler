@@ -98,7 +98,7 @@ export interface TileVisualDef {
    *
    * Index into this array with the value returned by `neighborMask()`. Each
    * entry is a frame index in the same sheet as `sheetKey`. When this field
-   * is present, `buildTerrainLayer` (and the tile-render-lab) will call
+   * is present, `buildTerrainLayer` (and the map-gen-lab sprite mode) will call
    * `neighborMask` for every tile and use `frames[mask]` instead of `frame`.
    *
    * Bit encoding: N=bit0, E=bit1, S=bit2, W=bit3 (see module doc above).
@@ -226,7 +226,7 @@ function rpg(col: number, row: number): number {
  * S=bit2, W=bit3). The Tiny Dungeon sheet has no directional wall corner
  * variants, so every mask entry uses the same frame — this keeps wall areas
  * cohesive rather than mixing in unrelated tiles. Tune these in
- * ?lab=tile-render-lab once purpose-built autotile sheets are available.
+ * ?lab=map-gen-lab once purpose-built autotile sheets are available.
  */
 export const TILE_SPRITES: Readonly<Partial<Record<TerrainType, TileVisualDef>>> = {
   // ── Stone dungeon biome ────────────────────────────────────────────────────

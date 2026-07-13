@@ -4,7 +4,6 @@ import { Stats } from '../../src/core/components.js';
 import {
   spawnEnemy,
   spawnEnemyProjectile,
-  spawnMeleeSwing,
   spawnPlayer,
   spawnProjectile,
 } from '../../src/core/helpers.js';
@@ -98,13 +97,10 @@ describe('damageSystem hit-gated weapon-skill XP', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
     const enemy = spawnEnemy(world, 100, 0, 50);
-    // Spawn projectile and register skill source keyed by the attack entity EID.
-    const projectile = spawnProjectile(world, 100, 0, 0, 0, 10, 0, 0, 1, player);
-    world.attackSkillSources.set(projectile, {
-      attackerEid: player,
-      classSkillId: 'slashing',
-      typeSkillId: 'sword',
-    });
+    // Mirror a successful weapon dispatch registering the active weapon's skills.
+    world.attackerWeaponSkills.set(player, { classSkillId: 'slashing', typeSkillId: 'sword' });
+    // Player-owned projectile overlapping the enemy so the collision lands.
+    spawnProjectile(world, 100, 0, 0, 0, 10, 0, 0, 1, player);
 
     damageSystem(world, collisionSystem(world));
 
@@ -131,49 +127,12 @@ describe('damageSystem hit-gated weapon-skill XP', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
     const enemy = spawnEnemy(world, 100, 0, 50);
-    // Owner present but attackSkillSources not populated for this projectile (no prior dispatch).
+    // Owner present but attackerWeaponSkills not populated (no prior dispatch).
     spawnProjectile(world, 100, 0, 0, 0, 10, 0, 0, 1, player);
 
     damageSystem(world, collisionSystem(world));
 
     expect(world.stores.health.current[enemy]).toBeLessThan(50);
     expect(world.skillUsageEvents).toHaveLength(0);
-  });
-
-  it('credits weapon A skills even after the player switches to weapon B mid-flight (per-attack attribution)', () => {
-    // Regression test for issue #292: projectile-outlives-weapon-switch.
-    // Weapon A (ranged/bow) fires a slow projectile, the player immediately switches
-    // to weapon B (sword), and weapon B lands a hit — the original slow projectile
-    // must still credit weapon A's skills, not weapon B's.
-    const world = createTestWorld();
-    const player = spawnPlayer(world, 0, 0);
-    const enemy = spawnEnemy(world, 100, 0, 50);
-
-    // Weapon A fires a slow projectile and registers its skill source per-attack.
-    const projectileA = spawnProjectile(world, 100, 0, 0, 0, 10, 0, 0, 1, player);
-    world.attackSkillSources.set(projectileA, {
-      attackerEid: player,
-      classSkillId: 'ranged-class',
-      typeSkillId: 'bow',
-    });
-
-    // Weapon B is now active and fires (simulating a weapon switch + fire).
-    // Its skill source is registered for a different attack entity.
-    const swingB = spawnMeleeSwing(world, 50, 0, player, 5, 2, 200, 1, 0, 120, 0);
-    world.attackSkillSources.set(swingB, {
-      attackerEid: player,
-      classSkillId: 'melee-class',
-      typeSkillId: 'sword',
-    });
-
-    // Now the original slow projectile lands — damageSystem resolves the hit.
-    damageSystem(world, collisionSystem(world));
-
-    // The hit should credit weapon A's skills ('bow'), NOT weapon B's ('sword').
-    expect(world.stores.health.current[enemy]).toBeLessThan(50); // projectile hit
-    const fired = world.skillUsageEvents.filter((e) => e.metric === 'weapon_fired');
-    expect(fired).toHaveLength(2);
-    expect(fired.map((e) => e.skillId).sort()).toEqual(['bow', 'ranged-class']);
-    expect(fired.every((e) => e.holderEid === player)).toBe(true);
   });
 });

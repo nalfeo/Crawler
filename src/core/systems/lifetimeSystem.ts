@@ -4,7 +4,6 @@ import { clearEntityStores } from '../helpers.js';
 import { clearAreaDamageHits } from './areaDamageSystem.js';
 import { clearProjectilePierceHits } from './damageSystem.js';
 import { clearMeleeSwingHits } from './meleeSwingSystem.js';
-import { clearAttackSkillSource } from '../weapon-skill-bridge.js';
 import type { GameWorld } from '../world.js';
 
 /** Removes entities whose Lifetime.expiresAtMs has passed. */
@@ -22,7 +21,6 @@ export function lifetimeSystem(world: GameWorld): void {
       clearAreaDamageHits(world, eid);
       clearMeleeSwingHits(world, eid);
       clearProjectilePierceHits(world, eid);
-      clearAttackSkillSource(world, eid);
       clearEntityStores(world, eid);
       removeEntity(world.ecs, eid);
     }

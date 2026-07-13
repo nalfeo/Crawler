@@ -44,6 +44,9 @@ import {
 } from './spawn-table-model.js';
 import { stampSetPiece, type StampedSetPiece } from '../../core/map/stampSetPiece.js';
 import { getSetPieceDef, getSetPieceFootprint } from '../../shared/set-piece-types.js';
+import { SHEETS } from '../../engine/sprites/index.js';
+import { TILE_SPRITES, resolveFrame } from '../../engine/sprites/tile-visuals.js';
+import { TERRAIN_FALLBACK_COLORS, colorToCss } from '../../shared/terrain-colors.js';
 
 const LAB_ID = 'map-gen-lab';
 const CELL_SIZE = 8;
@@ -107,6 +110,8 @@ interface MapGenLabSettings {
   showSpecialMobs: boolean;
   showSpecialRooms: boolean;
   showLegend: boolean;
+  showSpriteMode: boolean;
+  showCoverageOverlay: boolean;
 }
 
 // The set piece the overlay stamps into a generated room, and the anchor-role
@@ -138,6 +143,21 @@ const TERRAIN_COLORS: Record<number, string> = {
   [TerrainType.TREE]: '#1c5a2d',
   [TerrainType.RUBBLE]: '#4a3f35',
 };
+
+/** CSS hex strings for sprite-mode fallbacks, derived from the engine fallback colour table. */
+const TERRAIN_FALLBACK_CSS: Record<number, string> = Object.fromEntries(
+  Object.entries(TERRAIN_FALLBACK_COLORS).map(([k, v]) => [k, colorToCss(v)]),
+);
+
+interface SheetImage {
+  img: HTMLImageElement;
+  loaded: boolean;
+  error: boolean;
+  frameWidth: number;
+  frameHeight: number;
+  spacing: number;
+  cols: number;
+}
 
 const ROOM_COLORS = [
   'rgba(66, 153, 225, 0.25)',
@@ -402,6 +422,8 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     showSpecialMobs: true,
     showSpecialRooms: true,
     showLegend: true,
+    showSpriteMode: false,
+    showCoverageOverlay: false,
     ...savedState,
   };
   if (
@@ -598,6 +620,68 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   let dragStartPanX = 0;
   let dragStartPanY = 0;
 
+  // ── Sprite sheet infrastructure (used when showSpriteMode or showCoverageOverlay) ──
+  const spriteSheets = new Map<string, SheetImage>();
+  const spriteSheetKeysInUse = new Set(
+    Object.values(TILE_SPRITES)
+      .filter((visual): visual is NonNullable<typeof visual> => visual !== undefined)
+      .map((visual) => visual.sheetKey),
+  );
+  for (const sheet of SHEETS) {
+    if (!spriteSheetKeysInUse.has(sheet.key)) continue;
+    const entry: SheetImage = {
+      img: new Image(),
+      loaded: false,
+      error: false,
+      frameWidth: sheet.frameWidth,
+      frameHeight: sheet.frameHeight,
+      spacing: sheet.spacing,
+      cols: sheet.cols,
+    };
+    entry.img.addEventListener('load', () => {
+      entry.loaded = true;
+      if (settings.showSpriteMode || settings.showCoverageOverlay) {
+        cachedTerrainCanvas = null;
+        render();
+      }
+    });
+    entry.img.addEventListener('error', () => {
+      entry.error = true;
+      if (settings.showSpriteMode || settings.showCoverageOverlay) {
+        cachedTerrainCanvas = null;
+        render();
+      }
+    });
+    entry.img.src = sheet.path;
+    spriteSheets.set(sheet.key, entry);
+  }
+
+  function drawSpriteFrame(
+    sctx: CanvasRenderingContext2D,
+    sheet: SheetImage,
+    frame: number,
+    destX: number,
+    destY: number,
+    destW: number,
+    destH: number,
+  ): void {
+    const col = frame % sheet.cols;
+    const row = Math.floor(frame / sheet.cols);
+    const srcX = col * (sheet.frameWidth + sheet.spacing);
+    const srcY = row * (sheet.frameHeight + sheet.spacing);
+    sctx.drawImage(
+      sheet.img,
+      srcX,
+      srcY,
+      sheet.frameWidth,
+      sheet.frameHeight,
+      destX,
+      destY,
+      destW,
+      destH,
+    );
+  }
+
   const availableFloors = getAvailableFloorIds().filter(
     (id): id is Exclude<FloorConstraintId, 'none'> => id === 'floor1' || id === 'floor2',
   );
@@ -740,18 +824,58 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     return mapConfig;
   }
 
-  /** Build offscreen terrain canvas once per map — reused by every render(). */
+  /** Build offscreen terrain canvas once per map — reused by every render().
+   *  In sprite mode, replaces colour blocks with scaled Kenney sprite frames.
+   *  The coverage overlay bakes green/red tints into the offscreen canvas so
+   *  the main render pass sees sprite-covered (green tint) vs fallback (red tint) tiles.
+   */
   function buildTerrainCanvas(map: FloorMap): HTMLCanvasElement {
     const offscreen = document.createElement('canvas');
     offscreen.width = map.width * CELL_SIZE;
     offscreen.height = map.height * CELL_SIZE;
     const octx = offscreen.getContext('2d')!;
+    octx.imageSmoothingEnabled = false;
+    const spriteMode = settings.showSpriteMode;
+    const coverageMode = settings.showCoverageOverlay;
     for (let y = 0; y < map.height; y++) {
       for (let x = 0; x < map.width; x++) {
         const idx = y * map.width + x;
         const terrainType = map.terrain[idx] as number;
-        octx.fillStyle = TERRAIN_COLORS[terrainType] ?? '#0a0a0f';
-        octx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+        const dx = x * CELL_SIZE;
+        const dy = y * CELL_SIZE;
+
+        if (spriteMode || coverageMode) {
+          const tileInfo = TILE_SPRITES[terrainType as TerrainType];
+          const sheet = tileInfo ? spriteSheets.get(tileInfo.sheetKey) : undefined;
+          const frame = tileInfo
+            ? resolveFrame(
+                tileInfo,
+                map.terrain as Uint8Array,
+                map.width,
+                map.height,
+                x,
+                y,
+                terrainType as TerrainType,
+              )
+            : undefined;
+          const covered = frame !== undefined;
+
+          if (spriteMode && covered && sheet?.loaded && !sheet.error) {
+            drawSpriteFrame(octx, sheet, frame!, dx, dy, CELL_SIZE, CELL_SIZE);
+          } else {
+            octx.fillStyle =
+              TERRAIN_FALLBACK_CSS[terrainType] ?? TERRAIN_COLORS[terrainType] ?? '#0a0a0f';
+            octx.fillRect(dx, dy, CELL_SIZE, CELL_SIZE);
+          }
+
+          if (coverageMode && terrainType !== TerrainType.VOID) {
+            octx.fillStyle = covered ? 'rgba(0,255,0,0.35)' : 'rgba(255,0,0,0.35)';
+            octx.fillRect(dx, dy, CELL_SIZE, CELL_SIZE);
+          }
+        } else {
+          octx.fillStyle = TERRAIN_COLORS[terrainType] ?? '#0a0a0f';
+          octx.fillRect(dx, dy, CELL_SIZE, CELL_SIZE);
+        }
       }
     }
     return offscreen;
@@ -1596,6 +1720,11 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
       lines.push('Gold diamonds: quest items / objective locations');
     if (settings.showSpecialMobs) lines.push('Red squares/dots: special mobs / spawners');
     if (settings.showSpecialRooms) lines.push('Colored room outlines: special rooms');
+    if (settings.showSpriteMode) lines.push('Sprite mode: Kenney tileset replaces colour blocks');
+    if (settings.showCoverageOverlay)
+      lines.push('🟩 green tint = sprite found  🟥 red tint = colour fallback');
+    else if (!settings.showSpriteMode)
+      lines.push('Use "Sprite mode" + "Coverage overlay" to audit sprite coverage.');
     lines.push('Hover map markers/areas to inspect details.');
     legendEl.textContent = lines.join('\n');
   }
@@ -2338,6 +2467,22 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   overlayFolder.add(settings, 'showSpecialMobs').name('Special mobs/spawners').onChange(render);
   overlayFolder.add(settings, 'showSpecialRooms').name('Special room labels').onChange(render);
   overlayFolder.add(settings, 'showLegend').name('Legend panel').onChange(updateLegend);
+  overlayFolder
+    .add(settings, 'showSpriteMode')
+    .name('Sprite mode (Kenney)')
+    .onChange(() => {
+      cachedTerrainCanvas = null;
+      updateLegend();
+      render();
+    });
+  overlayFolder
+    .add(settings, 'showCoverageOverlay')
+    .name('Coverage overlay')
+    .onChange(() => {
+      cachedTerrainCanvas = null;
+      updateLegend();
+      render();
+    });
 
   const nextSeedCtl = gui
     .add(

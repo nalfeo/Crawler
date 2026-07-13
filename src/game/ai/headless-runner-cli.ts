@@ -40,6 +40,7 @@ async function main(): Promise<void> {
   }
   console.log(`Pathing mode:  ${args.pathingMode}`);
   console.log(`Decision mode: ${args.decisionMode}`);
+  console.log(`Merchant weapon purchase: ${args.merchantWeaponPurchase ? 'enabled' : 'disabled'}`);
   console.log('');
 
   const ai = new BehaviorTreeAI({
@@ -66,6 +67,7 @@ async function main(): Promise<void> {
     startPlayerLevel: args.startPlayerLevel,
     recordWeaponTelemetry: args.weaponTelemetry,
     weaponPersonas: args.weaponPersonas,
+    merchantWeaponPurchase: args.merchantWeaponPurchase,
     ...(recording
       ? {
           recordEvent: (event: SimEvent): void => {

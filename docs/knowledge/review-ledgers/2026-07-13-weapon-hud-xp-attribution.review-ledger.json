@@ -1,0 +1,64 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-13",
+  "session_slug": "weapon-hud-xp-attribution",
+  "task_title": "Weapon HUD + XP attribution fix",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "adversarial": true,
+      "alternatives_considered": 2,
+      "plan_divergence": "minor",
+      "notes": "Adversarial red-team against the per-attack attribution map design. Alt A (CHOSEN): add `attackWeaponSkillsByEntity` map in GameWorld keyed by attack entity EID; all hit-time skill emitters prefer it over the attacker-level map; trap/AoE-on-impact propagate attribution through secondary spawns. Alt B: store skill IDs as ECS component data on each attack entity — REJECTED: adds component overhead for all attack entities, complicates fast-path hit detection, no clean path for AoE-on-impact secondary entities which lose their original component data on destroy. Alt C: snapshot skill IDs onto the projectile's metadata bag at spawn — REJECTED: no metadata bag exists; would require a new non-ECS side table which is structurally equivalent to Alt A but less explicit. Concerns raised and resolved: (C1) trap explosions and AoE secondary spawns must inherit attribution from their parent — resolved by explicit propagation in trapSystem and aoeOnImpactSystem; (C2) entity recycling could bleed stale skill IDs to new owners — resolved by `clearEntityStores` cleanup; (C3) HUD fallback to stale `selectedWeaponId` must be removed entirely (not silenced) — resolved, fallback deleted. plan_divergence=minor: the adversarial review confirmed the chosen design; Alt B and Alt C were structurally inferior and rejected at argument."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["github-copilot-reviewer"],
+          "concerns_count": 5,
+          "resolved_count": 5,
+          "clean": false,
+          "notes": "Copilot code review surfaced 5 concerns: (C1) ownerEid fallback inconsistency in aoeOnImpactSystem — uses ?? 0 for ownership but ?? -1 for skill lookup; (C2) test manually inserts per-attack attribution instead of exercising the dispatchAttackInner production path; (C3) no regression for AoE attribution snapshot/propagation; (C4) no regression for trap attribution inheritance after weapon switch; (C5) apple tier understated at 2 (should be 4 for 15-file, 3-layer, ADR-requiring change). All 5 addressed in fix commit."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Post-fix verification: ownerEid extracted to local variable (consistent fallback in both ownership and skill lookup); delayed-projectile test exercises weaponSystem production path; AoE attribution test added to aoe-on-impact-system.test.ts; trap attribution regression added to trap-system.test.ts. All unit tests pass (verify:fast green)."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-sonnet-4.6",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["github-copilot-reviewer", "claude-sonnet-4.6"],
+          "concerns_count": 5,
+          "valid_count": 5,
+          "resolved_count": 5,
+          "clean": false,
+          "notes": "Two-reviewer pass: github-copilot-reviewer raised 5 concerns (see code_review R1); claude-sonnet-4.6 adjudicator validated all 5 as actionable. Primary finding: consistency bug in aoeOnImpactSystem fallback (HIGH — could misattribute XP to entity 0 on recycled EIDs); missing test coverage for AoE and trap attribution seams (MEDIUM); production-path gap in delayed-projectile test (MEDIUM); tier underestimate (LOW, process). All 5 valid, all 5 resolved."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.4-mini"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Re-review of fix commit: consistency fix applied, production-path test in place, AoE and trap regressions added. No new concerns."
+        }
+      ]
+    }
+  }
+}

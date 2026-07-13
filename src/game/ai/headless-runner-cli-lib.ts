@@ -27,12 +27,15 @@ export interface CLIArgs {
   weaponPersonas: boolean;
   pathingMode: AIPathingModeValue;
   decisionMode: AIDecisionModeValue;
+  merchantWeaponPurchase: boolean;
 }
 
 const PATHING_MODE_VALUES = Object.values(AIPathingMode) as AIPathingModeValue[];
 const DECISION_MODE_VALUES = Object.values(AIDecisionMode) as AIDecisionModeValue[];
 
-export function defaultCLIArgs(): CLIArgs {
+export function defaultCLIArgs(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): CLIArgs {
   return {
     seed: 12345,
     maxFrames: 100_000,
@@ -52,6 +55,9 @@ export function defaultCLIArgs(): CLIArgs {
     weaponPersonas: false,
     pathingMode: AIPathingMode.LEGACY,
     decisionMode: AIDecisionMode.LEGACY,
+    merchantWeaponPurchase:
+      env.AI_MERCHANT_WEAPON_PURCHASE === '1' ||
+      env.AI_MERCHANT_WEAPON_PURCHASE?.toLowerCase() === 'true',
   };
 }
 
@@ -60,8 +66,11 @@ export function defaultCLIArgs(): CLIArgs {
  * process argv (defaults to `process.argv`); tokens 0/1 (node + script) are
  * skipped so callers can pass a real `process.argv` array unchanged.
  */
-export function parseArgs(argv: readonly string[] = process.argv): CLIArgs {
-  const args = defaultCLIArgs();
+export function parseArgs(
+  argv: readonly string[] = process.argv,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): CLIArgs {
+  const args = defaultCLIArgs(env);
 
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
@@ -117,6 +126,8 @@ export function parseArgs(argv: readonly string[] = process.argv): CLIArgs {
       args.weaponTelemetry = true;
     } else if (arg === '--weapon-personas') {
       args.weaponPersonas = true;
+    } else if (arg === '--merchant-weapon-purchase') {
+      args.merchantWeaponPurchase = true;
     } else if (arg === '--pathing-mode' && next) {
       if (!(PATHING_MODE_VALUES as string[]).includes(next)) {
         throw new Error(
@@ -165,6 +176,8 @@ Options:
   --start-level <n>       Start at player character level N (default: 1, no boost)
   --weapon-telemetry      Collect + print per-run weapon accuracy (swings, hits, multi-hit)
   --weapon-personas       Enable experimental weapon-specific stat/gear personas
+  --merchant-weapon-purchase
+                           Enable optional post-quest merchant weapon purchase
   --pathing-mode <mode>   AI pathing A/B axis: legacy | riskRewardFused | navmesh | navmeshFused (default: legacy)
   --decision-mode <mode>  AI decision A/B axis: legacy | slackAware (default: legacy)
   --help, -h              Show this help message

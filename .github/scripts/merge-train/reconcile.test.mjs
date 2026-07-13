@@ -1,0 +1,361 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import {
+  buildCandidate,
+  isMergeTrainConflictError,
+  promotionStaleReason,
+  promoteExactCandidate,
+  trainCheckTitle,
+} from './reconcile-lib.mjs';
+
+const baseSha = 'a'.repeat(40);
+const candidateSha = 'b'.repeat(40);
+const prSha = '1'.repeat(40);
+
+function makePr(overrides = {}) {
+  return {
+    number: 42,
+    title: 'feat: exact merge train',
+    state: 'open',
+    draft: false,
+    labels: [{ name: 'merge-train' }],
+    base: { ref: 'main' },
+    head: {
+      sha: prSha,
+      ref: 'feature/exact-train',
+      repo: { full_name: 'nalfeo/Crawler' },
+    },
+    ...overrides,
+  };
+}
+
+function createGitStub({
+  fetchedSha = prSha,
+  parentSha = baseSha,
+  failPush = false,
+  failMerge = false,
+  failDirectShaFetch = false,
+  noSquashChanges = false,
+}) {
+  const calls = [];
+  const refs = new Map();
+  const git = (args, options = {}) => {
+    calls.push({ args, options });
+    if (args[0] === 'fetch') {
+      const spec = args[2];
+      if (failDirectShaFetch && spec.startsWith(`${prSha}:`)) {
+        throw new Error('direct sha fetch unavailable');
+      }
+      const [, dest] = spec.split(':');
+      if (dest)
+        refs.set(
+          dest,
+          /^[0-9a-f]{40}$/i.test(spec.split(':')[0]) ? spec.split(':')[0] : fetchedSha,
+        );
+      return '';
+    }
+    if (args[0] === 'merge' && failMerge) throw new Error('CONFLICT');
+    if (args[0] === 'push' && failPush) throw new Error('lease rejected');
+    if (args[0] === 'diff' && args[1] === '--cached' && args[2] === '--quiet') {
+      if (noSquashChanges) return '';
+      throw new Error('staged diff present');
+    }
+    if (args[0] === 'rev-parse' && args[1] === 'HEAD') return candidateSha;
+    if (args[0] === 'rev-parse' && args[1] === `${candidateSha}^`) return parentSha;
+    if (args[0] === 'rev-parse') return refs.get(args[1]) || fetchedSha;
+    return '';
+  };
+  return { git, calls };
+}
+
+test('buildCandidate fetches the API-observed head SHA instead of refs/pull/<n>/head', () => {
+  const entry = makePr();
+  const { git, calls } = createGitStub({});
+  const sha = buildCandidate({
+    baseSha,
+    entries: [entry],
+    refName: 'merge-train/candidate-1',
+    git,
+    live: false,
+  });
+  assert.equal(sha, candidateSha);
+  const fetchCall = calls.find(
+    (call) => call.args[0] === 'fetch' && call.args[2].includes('refs/remotes/merge-train/pr-42'),
+  );
+  assert.ok(fetchCall);
+  assert.match(fetchCall.args[2], new RegExp(`^${prSha}:refs/remotes/merge-train/pr-42$`));
+});
+
+test('buildCandidate treats exact-SHA mismatches as retryable operational failures', () => {
+  const entry = makePr();
+  const git = (args) => {
+    if (args[0] === 'fetch' || args[0] === 'checkout' || args[0] === 'commit') return '';
+    if (args[0] === 'rev-parse' && args[1] === 'HEAD') return candidateSha;
+    if (args[0] === 'rev-parse') return '2'.repeat(40);
+    return '';
+  };
+  assert.throws(
+    () =>
+      buildCandidate({
+        baseSha,
+        entries: [entry],
+        refName: 'merge-train/candidate-1',
+        git,
+        live: false,
+      }),
+    (error) => {
+      assert.equal(isMergeTrainConflictError(error), false);
+      assert.match(error.message, /head changed while building candidate/);
+      return true;
+    },
+  );
+});
+
+test('buildCandidate falls back to the branch ref when the direct SHA fetch is unavailable', () => {
+  const entry = makePr();
+  const { git, calls } = createGitStub({ failDirectShaFetch: true });
+  const sha = buildCandidate({
+    baseSha,
+    entries: [entry],
+    refName: 'merge-train/candidate-1',
+    git,
+    live: false,
+  });
+  assert.equal(sha, candidateSha);
+  assert.ok(
+    calls.some(
+      (call) =>
+        call.args[0] === 'fetch' &&
+        call.args[2] === `refs/heads/${entry.head.ref}:refs/remotes/merge-train/pr-${entry.number}`,
+    ),
+  );
+});
+
+test('buildCandidate rejects a fallback ref that no longer matches the API head SHA', () => {
+  const entry = makePr();
+  const { git } = createGitStub({ failDirectShaFetch: true, fetchedSha: '2'.repeat(40) });
+  assert.throws(
+    () =>
+      buildCandidate({
+        baseSha,
+        entries: [entry],
+        refName: 'merge-train/candidate-1',
+        git,
+        live: false,
+      }),
+    (error) => {
+      assert.equal(isMergeTrainConflictError(error), false);
+      assert.match(error.message, /head changed while building candidate/);
+      return true;
+    },
+  );
+});
+
+test('buildCandidate classifies squash conflicts separately from retryable failures', () => {
+  const entry = makePr();
+  const { git } = createGitStub({ failMerge: true });
+  assert.throws(
+    () =>
+      buildCandidate({
+        baseSha,
+        entries: [entry],
+        refName: 'merge-train/candidate-1',
+        git,
+        live: false,
+      }),
+    (error) => {
+      assert.equal(isMergeTrainConflictError(error), true);
+      assert.match(error.message, /conflicts in the cumulative candidate/);
+      return true;
+    },
+  );
+});
+
+test('buildCandidate blocks already-applied squash diffs instead of retry-looping forever', () => {
+  const entry = makePr();
+  const { git } = createGitStub({ noSquashChanges: true });
+  assert.throws(
+    () =>
+      buildCandidate({
+        baseSha,
+        entries: [entry],
+        refName: 'merge-train/candidate-1',
+        git,
+        live: false,
+      }),
+    (error) => {
+      assert.equal(isMergeTrainConflictError(error), true);
+      assert.match(error.message, /no longer changes main/);
+      return true;
+    },
+  );
+});
+
+test('promotion stale-state guard mirrors queue admission boundaries', () => {
+  const original = makePr();
+  assert.match(
+    promotionStaleReason({
+      currentMain: baseSha,
+      currentPr: makePr({ labels: [] }),
+      expectedBase: baseSha,
+      pr: original,
+      repository: 'nalfeo/Crawler',
+    }),
+    /no longer has the merge-train label/,
+  );
+  assert.match(
+    promotionStaleReason({
+      currentMain: baseSha,
+      currentPr: makePr({ draft: true }),
+      expectedBase: baseSha,
+      pr: original,
+      repository: 'nalfeo/Crawler',
+    }),
+    /now a draft/,
+  );
+  assert.match(
+    promotionStaleReason({
+      currentMain: baseSha,
+      currentPr: makePr({ base: { ref: 'release' } }),
+      expectedBase: baseSha,
+      pr: original,
+      repository: 'nalfeo/Crawler',
+    }),
+    /retargeted to release/,
+  );
+  assert.match(
+    promotionStaleReason({
+      currentMain: baseSha,
+      currentPr: makePr({ labels: [{ name: 'merge-train' }, { name: 'merge-train-blocked' }] }),
+      expectedBase: baseSha,
+      pr: original,
+      repository: 'nalfeo/Crawler',
+    }),
+    /marked merge-train-blocked/,
+  );
+});
+
+test('promoteExactCandidate publishes the required check only after state and ref validation', async () => {
+  const pr = makePr();
+  const currentPr = makePr();
+  const { git, calls } = createGitStub({});
+  const checkCalls = [];
+  const statusCalls = [];
+  const removedLabels = [];
+  const promoted = await promoteExactCandidate({
+    pr,
+    candidateSha,
+    expectedBase: baseSha,
+    position: 1,
+    repository: 'nalfeo/Crawler',
+    live: true,
+    fetchCurrentPr: async () => currentPr,
+    fetchCurrentMain: async () => baseSha,
+    eligible: async () => ({ ok: true }),
+    git,
+    createTrainCheck: async (...args) => checkCalls.push(args),
+    removeLabel: async (...args) => removedLabels.push(args),
+    updateStatus: async (...args) => statusCalls.push(args),
+    requiredCheckName: 'merge-train',
+  });
+  assert.equal(promoted, true);
+  assert.equal(checkCalls.length, 1);
+  assert.deepEqual(checkCalls[0].slice(2), ['completed', 'success', 'merge-train']);
+  const pushCall = calls.find((call) => call.args[0] === 'push');
+  assert.ok(pushCall);
+  assert.ok(pushCall.args.includes('--atomic'));
+  assert.ok(pushCall.args.includes(`--force-with-lease=refs/heads/${pr.head.ref}:${pr.head.sha}`));
+  assert.ok(pushCall.args.includes(`--force-with-lease=refs/heads/main:${baseSha}`));
+  assert.deepEqual(removedLabels, [
+    [pr.number, 'merge-train'],
+    [pr.number, 'merge-train-blocked'],
+  ]);
+  assert.equal(statusCalls.length, 1);
+});
+
+test('promoteExactCandidate refuses stale queue state before publishing the required check', async () => {
+  const pr = makePr();
+  const { git } = createGitStub({});
+  const checkCalls = [];
+  const promoted = await promoteExactCandidate({
+    pr,
+    candidateSha,
+    expectedBase: baseSha,
+    position: 1,
+    repository: 'nalfeo/Crawler',
+    live: true,
+    fetchCurrentPr: async () => makePr({ labels: [] }),
+    fetchCurrentMain: async () => baseSha,
+    eligible: async () => ({ ok: true }),
+    git,
+    createTrainCheck: async (...args) => checkCalls.push(args),
+    removeLabel: async () => {},
+    updateStatus: async () => {},
+    requiredCheckName: 'merge-train',
+  });
+  assert.equal(promoted, false);
+  assert.equal(checkCalls.length, 0);
+});
+
+test('promoteExactCandidate refuses unsafe head refs before publishing the required check', async () => {
+  const pr = makePr();
+  const { git } = createGitStub({});
+  const checkCalls = [];
+  await assert.rejects(
+    () =>
+      promoteExactCandidate({
+        pr,
+        candidateSha,
+        expectedBase: baseSha,
+        position: 1,
+        repository: 'nalfeo/Crawler',
+        live: true,
+        fetchCurrentPr: async () => makePr({ head: { ...makePr().head, ref: 'bad ref' } }),
+        fetchCurrentMain: async () => baseSha,
+        eligible: async () => ({ ok: true }),
+        git,
+        createTrainCheck: async (...args) => checkCalls.push(args),
+        removeLabel: async () => {},
+        updateStatus: async () => {},
+        requiredCheckName: 'merge-train',
+      }),
+    /Unsafe PR head ref/,
+  );
+  assert.equal(checkCalls.length, 0);
+});
+
+test('promoteExactCandidate marks the required check failed when the atomic push loses its lease', async () => {
+  const pr = makePr();
+  const { git } = createGitStub({ failPush: true });
+  const checkCalls = [];
+  await assert.rejects(
+    () =>
+      promoteExactCandidate({
+        pr,
+        candidateSha,
+        expectedBase: baseSha,
+        position: 1,
+        repository: 'nalfeo/Crawler',
+        live: true,
+        fetchCurrentPr: async () => makePr(),
+        fetchCurrentMain: async () => baseSha,
+        eligible: async () => ({ ok: true }),
+        git,
+        createTrainCheck: async (...args) => checkCalls.push(args),
+        removeLabel: async () => {},
+        updateStatus: async () => {},
+        requiredCheckName: 'merge-train',
+      }),
+    /lease rejected/,
+  );
+  assert.equal(checkCalls.length, 2);
+  assert.deepEqual(checkCalls[0].slice(2), ['completed', 'success', 'merge-train']);
+  assert.deepEqual(checkCalls[1].slice(2), ['completed', 'failure', 'merge-train']);
+});
+
+test('trainCheckTitle distinguishes queued, failed, and successful completed checks', () => {
+  assert.equal(trainCheckTitle('in_progress'), 'Merge-train validation queued');
+  assert.equal(trainCheckTitle('completed', 'failure'), 'Merge-train validation could not start');
+  assert.equal(trainCheckTitle('completed', 'success'), 'Candidate promoted to main');
+});

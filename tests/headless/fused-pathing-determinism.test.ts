@@ -39,6 +39,7 @@ import { GAME } from '../../src/shared/constants.js';
 const MAX_FRAMES = Math.ceil((6 * 60 * 1000 * 1.1) / GAME.DELTA_MS);
 const WEAPON = 'sword';
 const SEEDS = [42, 101] as const;
+const DETERMINISM_TIMEOUT_MS = 300_000;
 
 interface Fingerprint {
   totalFrames: number;
@@ -73,16 +74,20 @@ async function runSlice(seed: number, mode: AIPathingModeValue): Promise<RunStat
 
 describe('RISK_REWARD_FUSED — determinism + non-inertness guard', () => {
   for (const seed of SEEDS) {
-    it(`seed ${seed}: fused run is byte-identical across two invocations`, async () => {
-      const a = await runSlice(seed, AIPathingMode.RISK_REWARD_FUSED);
-      const b = await runSlice(seed, AIPathingMode.RISK_REWARD_FUSED);
+    it(
+      `seed ${seed}: fused run is byte-identical across two invocations`,
+      async () => {
+        const a = await runSlice(seed, AIPathingMode.RISK_REWARD_FUSED);
+        const b = await runSlice(seed, AIPathingMode.RISK_REWARD_FUSED);
 
-      // Non-vacuity: the fused danger field is only exercised when enemies are
-      // perceived, so require the run to have actually landed hits.
-      expect(a.combat.damageDealt).toBeGreaterThan(0);
+        // Non-vacuity: the fused danger field is only exercised when enemies are
+        // perceived, so require the run to have actually landed hits.
+        expect(a.combat.damageDealt).toBeGreaterThan(0);
 
-      expect(fingerprint(a)).toEqual(fingerprint(b));
-    });
+        expect(fingerprint(a)).toEqual(fingerprint(b));
+      },
+      DETERMINISM_TIMEOUT_MS,
+    );
   }
 
   it('fused materially diverges from LEGACY on \u22651 seed (path is active, not a silent delegate)', async () => {

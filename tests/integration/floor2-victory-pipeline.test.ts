@@ -18,6 +18,7 @@ import { loadResources } from '../../src/shared/data/resources.js';
 import { FLOOR2_LEAVE_FLOOR_QUEST_ID } from '../../src/shared/quest-types.js';
 import { createInputState } from '../../src/shared/input.js';
 import { runSimulationStep } from '../../src/game/ai/simulation-step.js';
+import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 
 function smallCaveConfig(seed: number): MapConfig {
   return {
@@ -85,7 +86,10 @@ describe('Floor 2 Slice 5 — victory pipeline', () => {
     }
 
     world.floorObjectiveTick = floor2ObjectiveTick;
-    runSimulationStep(world, createInputState(), 16);
+    const floor2Options = createFloorMainSceneOptions('floor2');
+    runSimulationStep(world, createInputState(), 16, {
+      postSystems: floor2Options.postSystems,
+    });
 
     expect(world.goalFlags.get(FLOOR2_VICTORY_GOAL_ID)).toBe(true);
     expect(world.goalFlags.get(FLOOR2_STAIRS_POPPED_GOAL_ID)).toBe(true);

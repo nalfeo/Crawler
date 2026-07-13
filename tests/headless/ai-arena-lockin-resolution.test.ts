@@ -30,6 +30,7 @@ import { setActiveWeapon } from '../../src/game/weaponSystem.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { GAME } from '../../src/shared/constants.js';
+import { createFloor1MainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 
 const RATS_NEST_INDEX = getSpawnerArchetypeIndex('rats-nest');
 const RATS_NEST = getSpawnerArchetype('rats-nest')!;
@@ -85,6 +86,8 @@ function runOneArena(seed: number): {
   const ai = new BehaviorTreeAI({ seed });
   const input = createInputState();
 
+  const { preSystems } = createFloor1MainSceneOptions();
+
   let firstArenaFrame = -1;
   for (let f = 0; f < RESOLUTION_BUDGET_FRAMES; f += 1) {
     ai.poll(input, world);
@@ -92,7 +95,10 @@ function runOneArena(seed: number): {
       const d = ai.getDecision();
       if (d.targetEid === spawnerEid) firstArenaFrame = f;
     }
-    runSimulationStep(world, input, GAME.DELTA_MS, {});
+    // Use canonical preSystems (single source of truth, issue #663). Systems
+    // that require world.floorScenario are no-ops on this minimal world;
+    // spawnerArenaSystem is required to transition arenaState → 2.
+    runSimulationStep(world, input, GAME.DELTA_MS, { preSystems });
     if (world.stores.spawner.arenaState[spawnerEid] === 2) {
       return { resolved: true, frames: f + 1, reason: 'ok' };
     }

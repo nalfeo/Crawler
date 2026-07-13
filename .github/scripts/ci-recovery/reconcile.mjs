@@ -7,14 +7,16 @@ import {
   makeState,
   normalizeBlockers,
   reviewThreadBlockerId,
+  shouldMutateRecoveryState,
   ownerLabel,
   parseStateComment,
   renderStateComment,
   shouldResolveThread,
   STATE_MARKER,
 } from './state.mjs';
-import { workflowApprovalRejection } from './approval.mjs';
+import { workflowApprovalRejection, REQUIRED_CHECK_WORKFLOW_PATHS } from './approval.mjs';
 import { graphql, listReviewThreads, paginate, request } from './github.mjs';
+import { resolveAdmissionChecks, unsatisfiedChecks } from '../merge-train/state.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
@@ -26,6 +28,9 @@ const mode = (process.env.CI_RECOVERY_MODE || 'dry-run').toLowerCase();
 const pat = process.env.CRAWLER_CI_PAT || '';
 const readToken = pat || process.env.GITHUB_TOKEN || '';
 const live = mode === 'live';
+const shouldMutate = shouldMutateRecoveryState(mode, operation);
+const mergeTrainMode = (process.env.MERGE_TRAIN_MODE || 'off').toLowerCase();
+const mergeTrainAdmissionChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
 const now = new Date();
 
 if (!owner || !repo || !Number.isInteger(prNumber) || !readToken) {
@@ -34,8 +39,8 @@ if (!owner || !repo || !Number.isInteger(prNumber) || !readToken) {
 if (!['off', 'dry-run', 'live'].includes(mode)) {
   throw new Error(`Unsupported CI_RECOVERY_MODE: ${mode}`);
 }
-if (live && !pat) {
-  throw new Error('CRAWLER_CI_PAT is required when CI_RECOVERY_MODE=live');
+if (shouldMutate && !pat) {
+  throw new Error('CRAWLER_CI_PAT is required for CI recovery mutations');
 }
 if (mode === 'off') {
   process.stdout.write('CI recovery is disabled\n');
@@ -54,6 +59,14 @@ if (pr.head?.repo?.full_name?.toLowerCase() !== repository.toLowerCase()) {
 }
 if ((pr.labels || []).some((label) => label.name === 'ci-recovery-opt-out')) {
   process.stdout.write(`skip pr=#${prNumber} reason=opt-out\n`);
+  process.exit(0);
+}
+if ((pr.labels || []).some((label) => label.name === 'merge-train-blocked')) {
+  process.stdout.write(`skip pr=#${prNumber} reason=merge-train-blocked\n`);
+  process.exit(0);
+}
+if ((pr.labels || []).some((label) => label.name === 'merge-train')) {
+  process.stdout.write(`skip pr=#${prNumber} reason=merge-train-owned\n`);
   process.exit(0);
 }
 
@@ -79,7 +92,7 @@ assertOwnershipInvariant({ labelExists, state });
 
 async function updateState(nextState) {
   state = nextState;
-  if (!live) {
+  if (!shouldMutate) {
     process.stdout.write(`dry-run state=${JSON.stringify(nextState)}\n`);
     return;
   }
@@ -102,7 +115,7 @@ async function acquire(nextOwner, nextLeaseId = null) {
   if (labelExists) {
     throw new Error(`PR #${prNumber} is already owned by ${state?.owner || 'unknown'}`);
   }
-  if (live) {
+  if (shouldMutate) {
     await request(pat, `/repos/${owner}/${repo}/labels`, {
       method: 'POST',
       body: {
@@ -136,7 +149,7 @@ async function release(reason, nextState = null) {
   if (!labelExists) {
     return;
   }
-  if (live) {
+  if (shouldMutate) {
     await request(
       pat,
       `/repos/${owner}/${repo}/issues/${prNumber}/labels/${encodeURIComponent(labelName)}`,
@@ -267,13 +280,8 @@ const rawCheckRuns =
 // Collapse to the latest attempt per logical name so a successful rerun
 // replaces a previously failed run before any blocker classification.
 const checkRuns = collapseCheckRunsByName(rawCheckRuns);
-const requiredCheckNames = new Set(['ci', 'commit-lint']);
-const requiredChecks = new Map();
 for (const check of checkRuns) {
   const checkName = String(check.name || '').toLowerCase();
-  if (requiredCheckNames.has(checkName)) {
-    requiredChecks.set(checkName, check);
-  }
   if (
     check.status === 'completed' &&
     ['failure', 'timed_out', 'startup_failure', 'stale'].includes(check.conclusion) &&
@@ -287,10 +295,7 @@ for (const check of checkRuns) {
     });
   }
 }
-const waitingRequiredChecks = [...requiredCheckNames].filter((name) => {
-  const check = requiredChecks.get(name);
-  return !check || check.status !== 'completed';
-});
+const waitingRequiredChecks = unsatisfiedChecks(checkRuns, mergeTrainAdmissionChecks);
 
 const runs =
   (
@@ -299,7 +304,21 @@ const runs =
       `/repos/${owner}/${repo}/actions/runs?head_sha=${encodeURIComponent(pr.head.sha)}&per_page=100`,
     )
   ).data.workflow_runs || [];
-const actionRequiredRuns = runs.filter((candidate) => candidate.conclusion === 'action_required');
+// Collapse to the latest run per (normalized path, event) so a successful rerun
+// of a workflow replaces a stale action_required run before any blocker classification.
+const latestRunsByKey = new Map();
+for (const run of runs) {
+  const key = `${String(run.path ?? '')
+    .trim()
+    .toLowerCase()}::${String(run.event ?? '')}`;
+  const existing = latestRunsByKey.get(key);
+  if (!existing || run.id > existing.id) {
+    latestRunsByKey.set(key, run);
+  }
+}
+const actionRequiredRuns = [...latestRunsByKey.values()].filter(
+  (candidate) => candidate.conclusion === 'action_required',
+);
 const changedFiles =
   actionRequiredRuns.length > 0
     ? await paginate(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/files`)
@@ -313,35 +332,28 @@ for (const run of actionRequiredRuns) {
     changedFiles,
     expectedChangedFiles: pr.changed_files,
   });
-  if (rejection) {
+  const runPath = String(run?.path ?? '')
+    .trim()
+    .toLowerCase();
+  if (rejection === 'same-repository' && REQUIRED_CHECK_WORKFLOW_PATHS.has(runPath)) {
+    // This is a required CI check parked in action_required because the commit
+    // was pushed by the same App identity (see AGENTS.md § Bot-pushed CI checks).
+    // The GitHub approval endpoint does not apply to same-repository runs, so we
+    // escalate an actionable retrigger blocker instead.
+    blockers.push({
+      kind: 'ci-retrigger',
+      id: `action-required:${String(run.name || run.id)}`,
+      summary: `${run.name} is parked in action_required because the commit was pushed by the same App identity. Push one commit under a different identity to retrigger CI — e.g. git commit --allow-empty -m "chore: retrigger CI".`,
+      url: run.html_url,
+    });
+    process.stdout.write(
+      `escalate action_required run=${run.id} name="${run.name}" reason=required-check-parked\n`,
+    );
+  } else {
     process.stdout.write(
       `skip action_required run=${run.id} name="${run.name}" reason=${rejection}\n`,
     );
-    continue;
   }
-  if (live) {
-    try {
-      await request(pat, `/repos/${owner}/${repo}/actions/runs/${run.id}/approve`, {
-        method: 'POST',
-      });
-      process.stdout.write(`approved workflow run=${run.id} name="${run.name}"\n`);
-      continue;
-    } catch (error) {
-      blockers.push({
-        kind: 'workflow-approval',
-        id: run.name,
-        summary: `Workflow ${run.name} needs approval and automatic approval failed: ${error.message}`,
-        url: run.html_url,
-      });
-      continue;
-    }
-  }
-  blockers.push({
-    kind: 'workflow-approval',
-    id: run.name,
-    summary: `Workflow ${run.name} needs approval.`,
-    url: run.html_url,
-  });
 }
 
 for (const thread of review.threads.filter((candidate) => !candidate.isResolved)) {
@@ -381,6 +393,26 @@ if (normalized.length === 0) {
     process.stdout.write(
       `wait pr=#${prNumber} required-checks=${waitingRequiredChecks.join(',')}\n`,
     );
+    process.exit(0);
+  }
+  if (live && mergeTrainMode === 'live') {
+    try {
+      await request(pat, `/repos/${owner}/${repo}/labels`, {
+        method: 'POST',
+        body: {
+          name: 'merge-train',
+          color: '1f6feb',
+          description: 'Ready for the repository-managed merge train',
+        },
+      });
+    } catch (error) {
+      if (error.status !== 422) throw error;
+    }
+    await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/labels`, {
+      method: 'POST',
+      body: { labels: ['merge-train'] },
+    });
+    process.stdout.write(`queued merge-train pr=#${prNumber}\n`);
     process.exit(0);
   }
   if (live) {

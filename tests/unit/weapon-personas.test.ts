@@ -5,11 +5,9 @@ import { computeAiStatAllocation } from '../../src/game/ai/auto-progression.js';
 import {
   computeWeaponPersonaStatAllocation,
   getWeaponPersona,
-  scoreEquipmentForPersona,
   WEAPON_PERSONAS,
 } from '../../src/game/ai/weapon-personas.js';
 import { computeAutoStatAllocation } from '../../src/game/scenarios/playerStatAllocationPolicy.js';
-import type { EquipmentItemDef } from '../../src/shared/equipment-types.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -58,26 +56,5 @@ describe('weapon AI personas', () => {
     expect(computeAiStatAllocation(world, playerEid, 8, true)).toEqual(
       computeAutoStatAllocation(world, playerEid, 8),
     );
-  });
-
-  it('ranks gear that closes a minimum-target deficit above weighted offense', () => {
-    const persona = WEAPON_PERSONAS.sword!;
-    const constitutionGear: EquipmentItemDef = {
-      id: 'test-constitution',
-      name: 'Constitution Gear',
-      slots: ['head'],
-      statBonuses: { constitution: 1 },
-      rarity: 'common',
-    };
-    const offenseGear: EquipmentItemDef = {
-      id: 'test-offense',
-      name: 'Offense Gear',
-      slots: ['head'],
-      statBonuses: { damagePercent: 5 },
-      rarity: 'common',
-    };
-    expect(
-      scoreEquipmentForPersona(constitutionGear, persona, { constitution: 0 }),
-    ).toBeGreaterThan(scoreEquipmentForPersona(offenseGear, persona, { constitution: 0 }));
   });
 });

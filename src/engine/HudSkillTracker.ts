@@ -5,18 +5,18 @@
  * and type skill (specific family, fast-levelling, accuracy bonus) with their
  * current level and a small progress bar toward the next level threshold.
  *
- * Reads the active weapon from `world.floorScenario.selectedWeaponId`, looks up its
- * WeaponDef for the skill IDs, then reads SkillState from
+ * Reads the active weapon from core active-weapon state, looks up its WeaponDef
+ * for the skill IDs, then reads SkillState from
  * `world.skillStatesByEntity` (v2 path) falling back to `world.playerSkills`.
  *
  * Hidden when no weapon is selected or no skill state exists.
  * Engine layer only (Phaser allowed). No imports from game/labs.
  */
 import Phaser from 'phaser';
+import { getActiveWeaponDef } from '../core/active-weapon.js';
 import type { GameWorld } from '../core/world.js';
 import { GAME } from '../shared/constants.js';
 import { CLASS_SKILL_THRESHOLDS, TYPE_SKILL_THRESHOLDS } from '../shared/weapon-skills.js';
-import { getWeaponDef } from '../shared/weaponDefs.js';
 import { PIXEL_UI, PIXEL_UI_DEPTH, createBeveledPanel } from './pixel-ui.js';
 import { SKILL_HARD_CAP, SKILL_NATURAL_CAP } from '../shared/skills.js';
 import { applyCrispText } from './ui-scale.js';
@@ -204,13 +204,7 @@ export function createHudSkillTracker(
   }
 
   function sync(world: GameWorld, playerEid: number): void {
-    const weaponId = world.floorScenario?.selectedWeaponId ?? null;
-    if (!weaponId) {
-      setAllVisible(false);
-      return;
-    }
-
-    const def = getWeaponDef(weaponId);
+    const def = getActiveWeaponDef(world);
     if (!def) {
       setAllVisible(false);
       return;

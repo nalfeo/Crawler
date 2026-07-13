@@ -561,7 +561,7 @@ function fireTrapAttack(world: GameWorld, player: number, def: WeaponDef): numbe
 /**
  * Emit weapon_fired skill usage events for the active weapon's class and type skills.
  * Used directly in labs/tests to simulate a weapon hit without running the full
- * attack pipeline. In live gameplay, damage systems call emitWeaponHitSkillEvents
+ * attack pipeline. In live gameplay, damage systems call emitWeaponHitSkillEventsForSource
  * instead (see src/core/weapon-skill-bridge.ts).
  */
 export function emitWeaponSkillEvents(world: GameWorld, player: number, def: WeaponDef): void {
@@ -693,12 +693,15 @@ function dispatchAttackInner(
     return;
   }
 
-  // Register per-attack skill source so damage systems can emit XP on hit.
-  // Keying by attack entity EID (not player EID) ensures a projectile fired by
-  // weapon A still credits weapon A's skills even after the player switches to
-  // weapon B — each in-flight attack carries its own attribution. Cleared when
-  // the attack entity expires or is destroyed (see clearAttackSkillSource).
-  let attackEid = -1;
+  // Register attacker-level fallback skill IDs and attack-level skill IDs.
+  // Damage systems prefer the per-attack map so delayed hits stay attributed to
+  // the weapon that spawned the attack, even after later weapon switches.
+  world.attackerWeaponSkills.set(player, {
+    classSkillId: def.weaponClassSkillId,
+    typeSkillId: def.weaponTypeSkillId,
+  });
+  let attackEid: number | undefined;
+
   switch (def.weaponType) {
     case WeaponType.MELEE:
       attackEid = fireMeleeAttack(world, player, def, dir);
@@ -721,9 +724,8 @@ function dispatchAttackInner(
     default:
       break;
   }
-  if (attackEid !== -1) {
-    world.attackSkillSources.set(attackEid, {
-      attackerEid: player,
+  if (attackEid !== undefined) {
+    world.attackWeaponSkillsByEntity.set(attackEid, {
       classSkillId: def.weaponClassSkillId,
       typeSkillId: def.weaponTypeSkillId,
     });

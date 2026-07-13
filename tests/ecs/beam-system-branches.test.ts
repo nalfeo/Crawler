@@ -102,12 +102,8 @@ describe('beamSystem hit-gated weapon-skill XP', () => {
     const player = spawnPlayer(world, 0, 0);
     const enemy = spawnEnemy(world, 30, 0, 50);
     world.elapsedMs = 1000;
-    const beam = spawnBeam(world, 0, 0, 1, 0, 100, 15, 500, 0, player, TeamId.PLAYER);
-    world.attackSkillSources.set(beam, {
-      attackerEid: player,
-      classSkillId: 'energy',
-      typeSkillId: 'laser',
-    });
+    world.attackerWeaponSkills.set(player, { classSkillId: 'energy', typeSkillId: 'laser' });
+    spawnBeam(world, 0, 0, 1, 0, 100, 15, 500, 0, player, TeamId.PLAYER);
 
     beamSystem(world);
 
@@ -118,12 +114,12 @@ describe('beamSystem hit-gated weapon-skill XP', () => {
     expect(fired.every((e) => e.holderEid === player)).toBe(true);
   });
 
-  it('emits no skill events when the beam has no registered skill source', () => {
+  it('emits no skill events when the beam owner has no registered weapon skills', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
     const enemy = spawnEnemy(world, 30, 0, 50);
     world.elapsedMs = 1000;
-    // Beam spawned but no attackSkillSources entry registered for it.
+    // Owner present but no prior dispatch registered skills for the player.
     spawnBeam(world, 0, 0, 1, 0, 100, 15, 500, 0, player, TeamId.PLAYER);
 
     beamSystem(world);

@@ -23,13 +23,14 @@ function record(seed: number, weapon = 'sword'): WeaponSweepRecord {
   };
 }
 
-function shard(seeds: number[]): WeaponSweepOutput {
+function shard(seeds: number[], weaponPersonas = false): WeaponSweepOutput {
   const records = seeds.map((seed) => record(seed));
   return {
     runAt: 'ignored',
     seeds,
     weapons: ['sword'],
     maxFrames: 19_800,
+    weaponPersonas,
     budgetSec: 330,
     summaries: [summarizeWeaponRecords('sword', records)],
     allRecords: records,
@@ -49,6 +50,7 @@ describe('mergeWeaponSweepShards', () => {
       winRate: 0.5,
       meanScore: 12.5,
     });
+    expect(result.weaponPersonas).toBe(false);
   });
 
   it('rejects duplicate seed coverage', () => {
@@ -89,5 +91,20 @@ describe('mergeWeaponSweepShards', () => {
     expect(() => mergeWeaponSweepShards([malformed], 'sword', [1])).toThrow(
       'Malformed shard payload for weapon "sword"',
     );
+  });
+
+  it('preserves persona mode when all shards agree', () => {
+    const result = mergeWeaponSweepShards(
+      [shard([1, 3], true), shard([2, 4], true)],
+      'sword',
+      [1, 2, 3, 4],
+    );
+    expect(result.weaponPersonas).toBe(true);
+  });
+
+  it('rejects mixed persona-mode shard payloads', () => {
+    expect(() =>
+      mergeWeaponSweepShards([shard([1], true), shard([2], false)], 'sword', [1, 2]),
+    ).toThrow('Shard persona-mode mismatch for "sword": false vs true');
   });
 });

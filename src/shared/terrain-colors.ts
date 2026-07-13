@@ -2,7 +2,7 @@
  * Fallback colours for TerrainTypes that have no sprite mapping.
  *
  * This is the single source of truth for terrain fallback colours. Both the
- * engine renderer (terrain-renderer.ts) and the tile-render-lab consume this
+ * engine renderer (terrain-renderer.ts) and the map-gen-lab consume this
  * table so the two can never drift out of sync.
  */
 

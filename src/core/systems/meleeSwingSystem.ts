@@ -14,7 +14,7 @@ import { applyDamage } from '../apply-damage.js';
 import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
 import { MeleeStyle } from '../../shared/constants.js';
-import { emitWeaponHitSkillEvents } from '../weapon-skill-bridge.js';
+import { emitWeaponHitSkillEventsForSource } from '../weapon-skill-bridge.js';
 import { recordWeaponEnemyHit, pruneAttackEntity } from '../weapon-telemetry.js';
 import type { CollisionResult } from './collisionSystem.js';
 
@@ -362,7 +362,7 @@ export function meleeSwingSystem(world: GameWorld, collisionResult?: CollisionRe
           ownerEid >= 0 ? ownerEid : undefined,
         );
         if (dealt > 0 && ownerEid !== -1 && hasComponent(world.ecs, target, Enemy)) {
-          emitWeaponHitSkillEvents(world, eid);
+          emitWeaponHitSkillEventsForSource(world, ownerEid, eid);
           recordWeaponEnemyHit(world, eid, target);
         }
         hitSet.add(target);
