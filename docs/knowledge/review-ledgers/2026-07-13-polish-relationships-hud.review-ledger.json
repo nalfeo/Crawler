@@ -1,0 +1,21 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-13",
+  "session_slug": "polish-relationships-hud",
+  "task_title": "Polish Floor 2 relationships HUD",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Adopted all concerns: roster/count/band/boss/rapid-cycle presets; stable per-element screen bounds and labels; explicit minimap-aware compact layout contract; shared pixel-ui/ui-theme and crisp-text patterns; deterministic browser checks precede fresh LLM captures."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    }
+  }
+}
