@@ -4512,6 +4512,20 @@ export class BehaviorTreeAI implements AIInputProvider {
             state.moveY = 0;
             return;
           }
+          // Abandon the EXPLORE target immediately when A* finds no path. If the
+          // target is unreachable (e.g. behind a locked door), falling through to
+          // moveWithLocalNavigation causes large-amplitude wiggling that repeatedly
+          // resets the DwellTracker escape circle, preventing the watchdog from
+          // ever firing. Clearing the target here stops the wiggle and lets the
+          // DwellTracker accumulate until it suppresses the progress goal so the AI
+          // can explore elsewhere.
+          if (this.decision.state === AIState.EXPLORE) {
+            this.decision.targetX = null;
+            this.decision.targetY = null;
+            state.moveX = 0;
+            state.moveY = 0;
+            return;
+          }
         }
       }
     }
@@ -5465,7 +5479,14 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (!quest.questId.startsWith('floor2-den-')) {
         continue;
       }
-      const target = this.findFloor2QuestProgressTarget(world, playerEid, playerX, playerY, quest);
+      const target = this.findFloor2QuestProgressTarget(
+        world,
+        playerEid,
+        playerX,
+        playerY,
+        quest,
+        world.frameCount < this.progressGoalSuppressedUntilFrame,
+      );
       if (target) {
         candidates.push({ questId: quest.questId, target });
       }
@@ -5517,6 +5538,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerX: number,
     playerY: number,
     activeQuest: QuestState,
+    progressSuppressed: boolean = false,
   ): ProgressTarget | null {
     const familyId = this.parseFloor2FamilyId(activeQuest.questId);
     if (!familyId) {
@@ -5585,8 +5607,13 @@ export class BehaviorTreeAI implements AIInputProvider {
             familyEnemy.eid,
           );
         }
+        // When progress goals are suppressed (the AI recently failed to reach a
+        // fixed-position target), skip the territory fallback so the AI explores
+        // elsewhere rather than immediately re-targeting the same unreachable room.
+        // Entity-based targets (familyEnemy above, bossTarget below) are never
+        // suppressed — only the position-based territory sweep is gated.
         if (!denUnlocked) {
-          return territoryTarget;
+          return progressSuppressed ? null : territoryTarget;
         }
         return bossTarget
           ? this.createProgressTarget(
@@ -5597,7 +5624,9 @@ export class BehaviorTreeAI implements AIInputProvider {
               `Pressuring the ${familyId} den`,
               bossTarget.eid,
             )
-          : territoryTarget;
+          : progressSuppressed
+            ? null
+            : territoryTarget;
       case 'collect':
         if (objective.itemId) {
           const itemTarget = this.findNearestQuestItem(world, objective.itemId, playerX, playerY);
