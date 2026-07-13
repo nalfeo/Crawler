@@ -31,9 +31,12 @@ export function createInputCapture(
 ): {
   /** Read current hardware state into the InputState */
   poll(state: InputState): void;
+  /** Clear active input and ignore held keys until their matching keyup. */
+  reset(): void;
   destroy(): void;
 } {
   const keysDown = new Set<string>();
+  const suppressedKeys = new Set<string>();
   const activeTouches = new Map<
     number,
     { zone: 'move' | 'action'; startX: number; startY: number; x: number; y: number }
@@ -55,14 +58,19 @@ export function createInputCapture(
   }
 
   const onKeyDown = (e: KeyboardEvent) => {
+    if (suppressedKeys.has(e.code)) {
+      return;
+    }
     keysDown.add(e.code);
   };
   const onKeyUp = (e: KeyboardEvent) => {
     keysDown.delete(e.code);
+    suppressedKeys.delete(e.code);
   };
   // Clear all keys and touches when the window loses focus (alt-tab, etc.)
   const onBlur = () => {
     keysDown.clear();
+    suppressedKeys.clear();
     activeTouches.clear();
     logger.debug('Window blur cleared keyboard and touch state');
   };
@@ -259,6 +267,13 @@ export function createInputCapture(
         state.pointerY = pointer.worldY;
       }
     },
+    reset(): void {
+      for (const code of keysDown) {
+        suppressedKeys.add(code);
+      }
+      keysDown.clear();
+      activeTouches.clear();
+    },
     destroy(): void {
       window.removeEventListener('keydown', onKeyDown, true);
       window.removeEventListener('keyup', onKeyUp, true);
@@ -276,6 +291,7 @@ export function createInputCapture(
       touchTarget.removeEventListener('pointerup', onPointerUp as EventListener);
       touchTarget.removeEventListener('pointercancel', onPointerCancel as EventListener);
       keysDown.clear();
+      suppressedKeys.clear();
       activeTouches.clear();
       logger.info('Input capture listeners removed');
     },

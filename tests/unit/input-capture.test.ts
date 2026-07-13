@@ -300,6 +300,45 @@ describe('InputCapture (raw DOM)', () => {
     expect(state.action).toBe(false);
   });
 
+  it('reset blocks held keyboard input until each key is released', () => {
+    pressKey('KeyS');
+    pressKey('Space');
+    capture.poll(state);
+    expect(state.moveY).toBe(1);
+    expect(state.action).toBe(true);
+
+    capture.reset();
+    pressKey('KeyS');
+    pressKey('Space');
+    capture.poll(state);
+    expect(state.moveX).toBe(0);
+    expect(state.moveY).toBe(0);
+    expect(state.action).toBe(false);
+
+    releaseKey('KeyS');
+    releaseKey('Space');
+    pressKey('KeyS');
+    pressKey('Space');
+    capture.poll(state);
+    expect(state.moveY).toBe(1);
+    expect(state.action).toBe(true);
+  });
+
+  it('reset clears active touch movement and action state', () => {
+    startTouch(1, 100, 200);
+    moveTouch(1, 160, 200);
+    startTouch(2, 600, 300);
+    capture.poll(state);
+    expect(state.moveX).toBeGreaterThan(0);
+    expect(state.action).toBe(true);
+
+    capture.reset();
+    capture.poll(state);
+    expect(state.moveX).toBe(0);
+    expect(state.moveY).toBe(0);
+    expect(state.action).toBe(false);
+  });
+
   it('first touch drag controls movement anywhere on the screen', () => {
     startTouch(1, 600, 300);
     moveTouch(1, 660, 300);
