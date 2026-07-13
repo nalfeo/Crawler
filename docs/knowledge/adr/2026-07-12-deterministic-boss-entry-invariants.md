@@ -31,15 +31,16 @@ existed.
 
 ## Decision
 
-1. `ensureRoomsReachable()` guarantees every `BOSS_STAIR` room a centered 5x5
-   passable arena, or the largest bounded interior for smaller rooms, plus fixed
-   horizontal-then-vertical paths from each declared door to the arena center.
-   The same helper repairs the dynamically selected Slime Rat encounter room
-   after objective selection and special-room sealing, so load-bearing doors
-   added by sealing are included. Repair uses fixed iteration order and no RNG,
-   chooses the 5x5 window with the most existing floor, preserves the selected
-   room's floor terrain, and is byte-identical when an arena already connects to
-   every door through passable interior.
+1. `ensureRoomsReachable()` guarantees every `BOSS_STAIR` room a deterministic
+   5x5 passable arena window, or the largest bounded interior for smaller
+   rooms, plus fixed horizontal-then-vertical paths from each declared door to
+   that window's center. The same helper repairs the dynamically selected Slime
+   Rat encounter room after objective selection and special-room sealing, so
+   load-bearing doors added by sealing are included. Repair uses fixed
+   iteration order and no RNG, chooses the 5x5 window with the most existing
+   floor, uses center proximity only as a tiebreaker, preserves the selected
+   room's floor terrain, and is byte-identical when an arena already connects
+   to every door through passable interior.
 2. Both live-entry Floor 1 bosses use one deterministic exhaustive placement
    selector. Candidates must be structurally passable, contained by the exact
    room, reachable from the live player with declared doors blocked, and not a
@@ -96,8 +97,10 @@ existed.
   unavailable distance.
 - A future dynamic obstacle policy could conflict with structural placement if
   it is incorrectly folded back into the connectivity flood.
-- Geometry changes can alter aggregate balance, so the branch requires the
-  100-seed x 6-weapon cloud sweep and must retain at least 556/600 official wins.
+- Geometry changes can alter aggregate balance, so acceptance records the
+  maintainer-approved targeted cloud panel for the previously failing geometry
+  seeds 7, 12, 25, and 69 across all six weapons and must retain 24/24
+  official wins under the unchanged 360-second rule.
 
 ## Alternatives Considered
 

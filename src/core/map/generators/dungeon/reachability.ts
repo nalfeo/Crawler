@@ -235,9 +235,10 @@ export function ensureRoomsReachable(
 
 /**
  * Guarantees enough deterministic interior floor for separated boss placement.
- * Valid rectangular and elliptical boss rooms already contain this centered
- * block, so the repair is byte-identical unless generation left the arena
- * partially or wholly walled.
+ * The repair first prefers the interior window with the most existing passable
+ * floor and uses center proximity only as a tiebreaker, so valid arenas stay
+ * byte-identical unless generation left the interior partially or wholly
+ * walled.
  */
 export function ensureBossArenaInterior(
   tileMap: TileMap,
