@@ -20,6 +20,7 @@ permissions:
 
 jobs:
   rebase-prs:
+    if: ${{ !contains(fromJSON('["true","1","yes","on","TRUE","YES","ON","True","Yes","On"]'), vars.MERGE_QUEUE_ENABLED) }}
     runs-on: ubuntu-latest
     if: ${{ vars.MERGE_QUEUE_ENABLED != 'true' && vars.MERGE_QUEUE_ENABLED != '1' && vars.MERGE_QUEUE_ENABLED != 'yes' && vars.MERGE_QUEUE_ENABLED != 'on' }}
     steps:
