@@ -11,6 +11,17 @@
     "path": "by-sha/ee39d8df0b666614087389b1ed4be993eb261643.json"
   },
   {
+    "commit": "965e676d7390578fd0dc495709158c39317eb2fd",
+    "commitDate": "2026-07-13T12:12:25-07:00",
+    "commitSubject": "ci: auto-publish Copilot-created draft PRs using CRAWLER_CI_PAT (#1082)",
+    "capturedAt": "2026-07-13T20:01:41.381Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29278936229",
+    "winRate": 0.92,
+    "totalWins": 276,
+    "totalRuns": 300,
+    "path": "by-sha/965e676d7390578fd0dc495709158c39317eb2fd.json"
+  },
+  {
     "commit": "377b0a44dc3814ed4422ce7e5009df1440da8287",
     "commitDate": "2026-07-13T12:11:23-07:00",
     "commitSubject": "fix: per-attack weapon skill XP attribution to prevent misattribution on weapon switch mid-flight (#1054)",
