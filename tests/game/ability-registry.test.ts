@@ -23,6 +23,7 @@ describe('ability registry', () => {
         {
           id: 'dup',
           name: 'One',
+          shortLabel: 'ONE',
           description: 'desc',
           category: 'combat',
           kind: 'passive',
@@ -31,6 +32,7 @@ describe('ability registry', () => {
         {
           id: 'dup',
           name: 'Two',
+          shortLabel: 'TWO',
           description: 'desc',
           category: 'combat',
           kind: 'passive',
@@ -46,6 +48,7 @@ describe('ability registry', () => {
         {
           id: 'spell-bad',
           name: 'Bad',
+          shortLabel: 'BAD',
           description: 'desc',
           category: 'combat',
           kind: 'spell',
@@ -64,6 +67,7 @@ describe('ability registry', () => {
         {
           id: 'spell-manual',
           name: 'Manual',
+          shortLabel: 'MANUAL',
           description: 'desc',
           category: 'combat',
           kind: 'spell',
@@ -74,5 +78,46 @@ describe('ability registry', () => {
         },
       ]),
     ).toThrow();
+  });
+
+  describe('shortLabel validation', () => {
+    const basePassive = {
+      id: 'test-ability',
+      name: 'Test',
+      description: 'desc',
+      category: 'combat' as const,
+      kind: 'passive' as const,
+      effects: [{ type: 'stat_add' as const, stat: 'damage' as const, value: 1 }],
+    };
+
+    it('rejects a blank shortLabel', () => {
+      expect(() => parseAbilityCatalog([{ ...basePassive, shortLabel: '' }])).toThrow();
+    });
+
+    it('rejects a whitespace-only shortLabel', () => {
+      expect(() => parseAbilityCatalog([{ ...basePassive, shortLabel: '   ' }])).toThrow();
+    });
+
+    it('rejects a shortLabel longer than 8 characters', () => {
+      expect(() => parseAbilityCatalog([{ ...basePassive, shortLabel: 'TOOLONGXX' }])).toThrow();
+    });
+
+    it('accepts a shortLabel at the 8-character boundary', () => {
+      expect(() => parseAbilityCatalog([{ ...basePassive, shortLabel: 'EXACTLY8' }])).not.toThrow();
+    });
+
+    it('accepts a valid optional iconBriefId', () => {
+      expect(() =>
+        parseAbilityCatalog([
+          { ...basePassive, shortLabel: 'OK', iconBriefId: 'ability-icon-fireball-v1' },
+        ]),
+      ).not.toThrow();
+    });
+
+    it('rejects a blank iconBriefId when provided', () => {
+      expect(() =>
+        parseAbilityCatalog([{ ...basePassive, shortLabel: 'OK', iconBriefId: '' }]),
+      ).toThrow();
+    });
   });
 });
