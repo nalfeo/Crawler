@@ -552,6 +552,23 @@ function gqlCopilotAssigned() {
   };
 }
 
+function gqlReviewThreads(threads) {
+  return {
+    data: {
+      repository: {
+        pullRequest: {
+          id: 'PR_test_id',
+          assignees: { nodes: [] },
+          reviewThreads: {
+            pageInfo: { hasNextPage: false, endCursor: null },
+            nodes: threads,
+          },
+        },
+      },
+    },
+  };
+}
+
 test('reconcile proceeds when copilot is assigned but no lease/state exists', async (t) => {
   // PR has Copilot as assignee, no owner label, no state comment, and one
   // failed CI check — recovery MUST proceed to detect the blocker, not exit
@@ -597,6 +614,73 @@ test('reconcile proceeds when copilot is assigned but no lease/state exists', as
   );
   // dry-run must reach blocker detection and print a would-assign line
   assert.match(stdout, /dry-run would-assign copilot/, 'expected dry-run to reach dispatch');
+});
+
+test('reconcile resolves only ancestor lineage markers from compare status', async (t) => {
+  const ancestorMarkerSha = 'def5678abc1234ff00aa11bb22cc33dd44ee55ff';
+  const descendantMarkerSha = 'fedcba98765432100123456789abcdef12345678';
+  const threadToResolve = 'thread-ancestor';
+  const threadToKeep = 'thread-descendant';
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({
+      body: gqlReviewThreads([
+        {
+          id: threadToResolve,
+          isResolved: false,
+          comments: {
+            nodes: [
+              {
+                body: `✅ Addressed in ${ancestorMarkerSha}`,
+                authorAssociation: 'OWNER',
+                author: { login: 'dev' },
+              },
+            ],
+          },
+        },
+        {
+          id: threadToKeep,
+          isResolved: false,
+          comments: {
+            nodes: [
+              {
+                body: `✅ Addressed in ${descendantMarkerSha}`,
+                authorAssociation: 'OWNER',
+                author: { login: 'dev' },
+              },
+            ],
+          },
+        },
+      ]),
+    }),
+    [`GET /repos/${OWNER}/${REPO}/compare/${ancestorMarkerSha}...${HEAD_SHA}`]: () => ({
+      body: { status: 'ahead' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/compare/${descendantMarkerSha}...${HEAD_SHA}`]: () => ({
+      body: { status: 'behind' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  assert.equal(code, 0, `expected exit 0; stderr: ${stderr}`);
+  assert.match(stdout, new RegExp(`would-resolve thread=${threadToResolve}`));
+  assert.doesNotMatch(stdout, new RegExp(`would-resolve thread=${threadToKeep}`));
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
 });
 
 test('reconcile does not escalate router action-required run when it is the only obstruction', async (t) => {
