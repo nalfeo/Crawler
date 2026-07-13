@@ -11,6 +11,17 @@
     "path": "by-sha/1bec980c17ebfe0453be6502737c5630a62a0fff.json"
   },
   {
+    "commit": "2802bdb7cd390fde3cc567133a3216b411e1b9b3",
+    "commitDate": "2026-07-13T08:25:51-07:00",
+    "commitSubject": "feat: add visual review viewport option (#1115)",
+    "capturedAt": "2026-07-13T16:32:12.712Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29263789382",
+    "winRate": 0.92,
+    "totalWins": 276,
+    "totalRuns": 300,
+    "path": "by-sha/2802bdb7cd390fde3cc567133a3216b411e1b9b3.json"
+  },
+  {
     "commit": "587ce77e9cb1ee5353dd032586ac0f4cf8432e85",
     "commitDate": "2026-07-13T05:50:31Z",
     "commitSubject": "fix(ci-recovery): remove copilot-assignee short-circuit from recovery gate (#1108)",
