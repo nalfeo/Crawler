@@ -26,6 +26,9 @@ import {
   toSafeRoomRouteDebugSnapshot,
   abortSafeRoomRoute,
   SAFE_ROOM_ROUTE_ARRIVE_FT,
+  SAFE_ROOM_ROUTE_NO_PROGRESS_FRAMES,
+  SAFE_ROOM_ROUTE_PROGRESS_EPSILON_FT,
+  SAFE_ROOM_ROUTE_SUPPRESS_FRAMES,
   type SemanticCommitmentCandidate,
   type SafeRoomRouteDeps,
 } from '../../src/game/ai/safe-room-route.js';
@@ -503,6 +506,26 @@ describe('safe-room-route: steady-state segment advance (no reseed / no per-poll
 });
 
 describe('safe-room-route: no-progress watchdog', () => {
+  // The first steady-state poll after activation always "improves" (any
+  // finite distance beats the Infinity baseline, resetting noProgressFrames
+  // to 0), so release requires NO_PROGRESS_FRAMES + 1 further stalled polls
+  // after that baseline-setting one: NO_PROGRESS_FRAMES + 2 total polls
+  // after the activation poll itself. Verified by direct trace against the
+  // real reducer (not hand-derived) to avoid re-introducing an off-by-one.
+  // Shared here so every test below drives to release with the exact right
+  // count instead of duplicating (and risking re-drifting) this arithmetic.
+  const POLLS_AFTER_ACTIVATION_TO_RELEASE = SAFE_ROOM_ROUTE_NO_PROGRESS_FRAMES + 2;
+
+  function driveToNoProgressRelease(
+    deps: SafeRoomRouteDeps,
+  ): ReturnType<typeof updateSafeRoomRouteState> {
+    let result = updateSafeRoomRouteState(initial(), input(), deps);
+    for (let i = 0; i < POLLS_AFTER_ACTIVATION_TO_RELEASE; i += 1) {
+      result = updateSafeRoomRouteState(result.state, input(), deps);
+    }
+    return result;
+  }
+
   // Regression coverage for the canonical 600-run cloud gate finding
   // (2026-07-13): an 'active' route that never measurably closes on its
   // endpoint (e.g. because sustained combat holds the player in place near
@@ -512,17 +535,7 @@ describe('safe-room-route: no-progress watchdog', () => {
   it('releases to idle after sustained zero progress toward the endpoint', () => {
     const { findPath } = countingFindPath(straightLinePath);
     const deps = makeDeps({ findPath });
-    let result = updateSafeRoomRouteState(initial(), input(), deps);
-    expect(result.state.phase).toBe('active');
-
-    // Player never moves — simulates being held in place (combat/knockback)
-    // right where the route activated. Poll well past the watchdog's frame
-    // threshold using the SAME input every time (stable commitment/navEpoch,
-    // so only the no-progress path can release this route).
-    for (let i = 0; i < 60; i += 1) {
-      result = updateSafeRoomRouteState(result.state, input(), deps);
-      if (result.state.phase === 'idle') break;
-    }
+    const result = driveToNoProgressRelease(deps);
 
     expect(result.state.phase).toBe('idle');
     expect(result.state.lastReseedCause).toBe('no-progress');
@@ -533,20 +546,37 @@ describe('safe-room-route: no-progress watchdog', () => {
     expect(result.state.totalReseeds).toBeGreaterThan(0);
   });
 
-  it('does not release while the player keeps making steady incremental progress', () => {
+  it('releases at exactly the computed poll count, not one poll before', () => {
     const { findPath } = countingFindPath(straightLinePath);
     const deps = makeDeps({ findPath });
     let result = updateSafeRoomRouteState(initial(), input(), deps);
     expect(result.state.phase).toBe('active');
 
-    // Advance a small, steady 0.2ft per poll for far more polls than the
-    // no-progress threshold (60 > 45). Cumulative movement periodically
-    // crosses the 3ft progress epsilon (about every 15 polls), resetting the
-    // watchdog well before it could ever reach its threshold — genuine slow
-    // but steady progress must never be mistaken for a stall.
+    // One poll short of the release point: still active.
+    for (let i = 0; i < POLLS_AFTER_ACTIVATION_TO_RELEASE - 1; i += 1) {
+      result = updateSafeRoomRouteState(result.state, input(), deps);
+    }
+    expect(result.state.phase).toBe('active');
+    // The exact release poll.
+    result = updateSafeRoomRouteState(result.state, input(), deps);
+    expect(result.state.phase).toBe('idle');
+    expect(result.state.lastReseedCause).toBe('no-progress');
+  });
+
+  it('does not release while the player keeps making steady progress right at the epsilon/threshold boundary', () => {
+    const { findPath } = countingFindPath(straightLinePath);
+    const deps = makeDeps({ findPath });
+    let result = updateSafeRoomRouteState(initial(), input(), deps);
+    expect(result.state.phase).toBe('active');
+
+    // Advance by exactly enough to clear the progress epsilon one poll
+    // BEFORE the no-progress threshold would fire — the tightest genuine
+    // "steady progress" case the watchdog must tolerate. A looser step size
+    // would pass vacuously without ever approaching the real boundary.
+    const stepFt = SAFE_ROOM_ROUTE_PROGRESS_EPSILON_FT / SAFE_ROOM_ROUTE_NO_PROGRESS_FRAMES;
     let playerX = 3 * REALISTIC_TILE_FT;
-    for (let i = 0; i < 60; i += 1) {
-      playerX += 0.2;
+    for (let i = 0; i < SAFE_ROOM_ROUTE_NO_PROGRESS_FRAMES * 3; i += 1) {
+      playerX += stepFt;
       result = updateSafeRoomRouteState(result.state, input({ playerX }), deps);
       expect(result.state.phase).not.toBe('idle');
     }
@@ -560,6 +590,67 @@ describe('safe-room-route: no-progress watchdog', () => {
     const activated = updateSafeRoomRouteState(initial(), input(), deps);
     expect(activated.state.noProgressFrames).toBe(0);
     expect(activated.state.bestEndpointDistanceFt).toBeGreaterThan(0);
+  });
+
+  it('suppresses immediate reactivation of the SAME commitment after a no-progress release (no thrash)', () => {
+    // Regression coverage for a multi-model review finding: without
+    // suppression, an unchanged stuck input reactivates the identical route
+    // one poll after release and thrashes active/idle forever, recomputing
+    // A* every cycle.
+    const { findPath, callCount } = countingFindPath(straightLinePath);
+    const deps = makeDeps({ findPath });
+    let result = driveToNoProgressRelease(deps);
+    expect(result.state.phase).toBe('idle');
+    const callsAtRelease = callCount();
+
+    // Many more polls with the IDENTICAL stuck input: must stay idle
+    // (suppressed), and must NOT recompute A* again while suppressed.
+    for (let i = 0; i < SAFE_ROOM_ROUTE_SUPPRESS_FRAMES - 1; i += 1) {
+      result = updateSafeRoomRouteState(result.state, input(), deps);
+      expect(result.state.phase).toBe('idle');
+    }
+    expect(callCount()).toBe(callsAtRelease);
+    expect(result.state.suppressFramesRemaining).toBeGreaterThan(0);
+  });
+
+  it('does not suppress a genuinely different commitment after a no-progress release', () => {
+    const { findPath } = countingFindPath(straightLinePath);
+    const deps = makeDeps({ findPath });
+    const result = driveToNoProgressRelease(deps);
+    expect(result.state.phase).toBe('idle');
+
+    // A different semantic target (different eid) is a different commitment
+    // key — must activate immediately despite the still-live suppression
+    // window for the OLD commitment.
+    const reactivated = updateSafeRoomRouteState(
+      result.state,
+      input({ candidate: candidate({ targetEid: 999 }) }),
+      deps,
+    );
+    expect(reactivated.state.phase).toBe('active');
+  });
+
+  it('reactivates the same commitment once the suppression window expires', () => {
+    const { findPath } = countingFindPath(straightLinePath);
+    const deps = makeDeps({ findPath });
+    let result = driveToNoProgressRelease(deps);
+    expect(result.state.phase).toBe('idle');
+
+    // Fully expend the suppression countdown — still idle at the very last
+    // suppressed poll (the countdown reaching zero and the actual
+    // reactivation attempt happen on separate polls; see the idle-branch
+    // logic in updateSafeRoomRouteState).
+    for (let i = 0; i < SAFE_ROOM_ROUTE_SUPPRESS_FRAMES; i += 1) {
+      result = updateSafeRoomRouteState(result.state, input(), deps);
+    }
+    expect(result.state.phase).toBe('idle');
+    expect(result.state.suppressFramesRemaining).toBe(0);
+
+    // One more poll: suppression has expired, so the same (still stuck, but
+    // now eligible again) commitment reactivates rather than staying idle
+    // forever.
+    result = updateSafeRoomRouteState(result.state, input(), deps);
+    expect(result.state.phase).toBe('active');
   });
 });
 
@@ -832,6 +923,7 @@ describe('safe-room-route: purity and debug snapshot', () => {
       pathLength: 5,
       lastReseedCause: 'activation',
       noProgressFrames: 0,
+      suppressFramesRemaining: 0,
       totalActivations: 1,
       totalCompletions: 0,
       totalBlocked: 0,

@@ -47,6 +47,7 @@ import {
   ENGAGE_GIVEUP_FRAMES,
   NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES,
 } from '../../src/game/ai/bt-ai-tuning.js';
+import { SAFE_ROOM_ROUTE_NO_PROGRESS_FRAMES } from '../../src/game/ai/safe-room-route.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 import { FLOOR1_TUTORIAL_QUEST_ID } from '../../src/shared/quest-types.js';
 
@@ -1234,6 +1235,77 @@ describe('BehaviorTreeAI', () => {
       expect(Math.abs(inputState.moveY)).toBeLessThan(0.01);
     }
     expect(abandoned).toBe(true);
+  });
+
+  it('PROVIDER: no-progress watchdog releases an active route stuck near the doorway back to ENGAGE movement', () => {
+    // End-to-end regression for the canonical 600-run cloud gate finding
+    // (2026-07-13): a route that activates (door open, legal path found) but
+    // never measurably progresses toward its endpoint — e.g. because
+    // sustained combat holds the player in place — must release back to
+    // raw semantic movement instead of permanently overriding it. This
+    // reproduces the exact real-pipeline failure (not just the pure-reducer
+    // logic in safe-room-route.test.ts): player position is deliberately
+    // held FIXED across many polls (standing in place fighting, as combat
+    // knockback/positioning would in the real game) while ENGAGE keeps
+    // winning Track A, and asserts the provider's decision AND movement
+    // output both recover.
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    meetTutorialGoon(world); // accept tutorial → Progress returns null at level 1
+    selectFloor1StarterWeapon(world, 0);
+    world.floorMap = makeWalledSafeRoomMap({ door: false });
+    world.stores.position.x[player] = 14;
+    world.stores.position.y[player] = 14; // tile (4,4), inside origin room
+    world.playerInSafeRoom = true;
+
+    const guideNpcEid = world.floorScenario!.guideNpcEid;
+    expect(guideNpcEid).not.toBeNull();
+    world.stores.position.x[guideNpcEid!] = 42;
+    world.stores.position.y[guideNpcEid!] = 14;
+
+    // Enemy reachable through the (permanently open, unlocked) door.
+    const enemyEid = spawnEnemy(world, 28, 14, 100);
+    const door = addEntity(world.ecs);
+    addComponent(
+      world.ecs,
+      door,
+      set(DoorState, { tileX: 6, tileY: 3, logicalOpen: 1, isLocked: 0 }),
+    );
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    const inputState = createInputState();
+
+    // Poll 1: route activates toward the door, ENGAGE wins, movement heads
+    // toward the door (route override), not straight at the enemy.
+    ai.poll(inputState, world);
+    expect(ai.getSafeRoomRouteDebug().phase).toBe('active');
+    expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+    expect(ai.getDecision().targetEid).toBe(enemyEid);
+    expect(Math.abs(inputState.moveX)).toBeGreaterThan(0);
+
+    // Player position is intentionally NEVER updated between polls — this is
+    // the exact stuck-in-place signature the local headless repro found
+    // (sword seed 2: route stuck at a fixed segment for 3900+ consecutive
+    // frames while combat held the player near the doorway).
+    let releasedAtPoll = -1;
+    for (let i = 0; i < SAFE_ROOM_ROUTE_NO_PROGRESS_FRAMES + 5; i += 1) {
+      ai.poll(inputState, world);
+      // Semantic ownership must never waver while the route is stuck.
+      expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+      expect(ai.getDecision().targetEid).toBe(enemyEid);
+      if (ai.getSafeRoomRouteDebug().phase === 'idle') {
+        releasedAtPoll = i;
+        break;
+      }
+    }
+
+    expect(releasedAtPoll).toBeGreaterThan(-1);
+    expect(ai.getSafeRoomRouteDebug().lastReseedCause).toBe('no-progress');
+    // With the route override lifted, movement execution falls back to the
+    // raw semantic target (the enemy) — the AI's own combat movement is no
+    // longer permanently blocked by a stale exit segment.
+    expect(Math.abs(inputState.moveX) + Math.abs(inputState.moveY)).toBeGreaterThan(0);
   });
 
   it("PROVIDER: teleporting player outside a blocked route's origin room clears the route to idle and resumes locomotion", () => {

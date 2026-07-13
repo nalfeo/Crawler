@@ -102,6 +102,19 @@ export interface SafeRoomRouteState {
    * least {@link SAFE_ROOM_ROUTE_PROGRESS_EPSILON_FT}. Resets to 0 while
    * idle or on any real improvement. */
   readonly noProgressFrames: number;
+  /** Commitment key a no-progress release just gave up on, or `null` when
+   * nothing is suppressed. While non-null and {@link suppressFramesRemaining}
+   * is positive, re-activation is skipped for THIS EXACT commitment (a
+   * different commitment always activates immediately — suppression is
+   * scoped to "stop immediately re-fighting the same losing battle", never a
+   * blanket freeze). Without this, a stall that keeps re-selecting the same
+   * external target would thrash active(45 polls)/idle(1 poll) forever,
+   * recomputing A* every cycle — confirmed via direct reducer repro during
+   * multi-model review (2026-07-13). */
+  readonly suppressedCommitmentKey: string | null;
+  /** Countdown of polls remaining before {@link suppressedCommitmentKey}
+   * becomes eligible to reactivate. `0` when nothing is suppressed. */
+  readonly suppressFramesRemaining: number;
   // Durable lifetime counters (diagnostics only; never influence behavior).
   readonly totalActivations: number;
   readonly totalCompletions: number;
@@ -196,9 +209,22 @@ export const SAFE_ROOM_ROUTE_ARRIVE_FT = 1;
  * provide (`SAFE_ROOM_EGRESS_NO_PROGRESS_FRAMES`/`_PROGRESS_EPSILON_FT`) —
  * reintroduced here as a bounded stall detector on the ONE thing this module
  * actually owns (its own path-following progress), not as a reseed-on-any-
- * winner-change regression. */
-const SAFE_ROOM_ROUTE_NO_PROGRESS_FRAMES = 45;
-const SAFE_ROOM_ROUTE_PROGRESS_EPSILON_FT = 3;
+ * winner-change regression. Exported so tests assert against the real
+ * thresholds instead of duplicating magic numbers that could silently drift. */
+export const SAFE_ROOM_ROUTE_NO_PROGRESS_FRAMES = 45;
+export const SAFE_ROOM_ROUTE_PROGRESS_EPSILON_FT = 3;
+
+/** Cooldown (polls) after a no-progress release before the SAME commitment
+ * (same `commitmentKey`) is eligible to reactivate. A different commitment
+ * (e.g. the semantic winner genuinely changed) is never subject to this
+ * suppression and activates immediately — this only stops the reducer from
+ * immediately re-fighting the identical losing battle. Without this, a
+ * multi-model review round found the reducer would thrash
+ * active(~45 polls)/idle(1 poll) forever under an unchanged stuck input,
+ * recomputing A* every cycle. Mirrors the deleted `LeaveSafeRoom` owner
+ * node's `SAFE_ROOM_EGRESS_SUPPRESS_FRAMES` (same value, previously
+ * calibrated and shipped). */
+export const SAFE_ROOM_ROUTE_SUPPRESS_FRAMES = 120;
 
 function quantize(value: number): number {
   return Math.round(value / COMMITMENT_QUANTIZE_FT) * COMMITMENT_QUANTIZE_FT;
@@ -260,6 +286,8 @@ export function createInitialSafeRoomRouteState(): SafeRoomRouteState {
     lastReseedCause: null,
     bestEndpointDistanceFt: Number.POSITIVE_INFINITY,
     noProgressFrames: 0,
+    suppressedCommitmentKey: null,
+    suppressFramesRemaining: 0,
     totalActivations: 0,
     totalCompletions: 0,
     totalBlocked: 0,
@@ -333,6 +361,8 @@ function computeRoute(
       lastReseedCause: cause,
       bestEndpointDistanceFt: Number.POSITIVE_INFINITY,
       noProgressFrames: 0,
+      suppressedCommitmentKey: null,
+      suppressFramesRemaining: 0,
       totalBlocked: prev.totalBlocked + 1,
     };
     return { state, moveTarget: null, blocked: true };
@@ -369,6 +399,12 @@ function computeRoute(
     // watchdog on a brand new, perfectly healthy path.
     bestEndpointDistanceFt: Number.POSITIVE_INFINITY,
     noProgressFrames: 0,
+    // A successful (re)activation always clears any prior suppression —
+    // suppression only exists to stop the idle branch from immediately
+    // reattempting the identical commitment; once a route is genuinely
+    // active again there is nothing left to suppress.
+    suppressedCommitmentKey: null,
+    suppressFramesRemaining: 0,
   };
   // Feed the legal prefix ENDPOINT to the existing door-aware movement
   // controller. Passing each intermediate path tile back through a second A*
@@ -456,6 +492,23 @@ export function updateSafeRoomRouteState(
   if (prev.phase === 'idle') {
     if (!input.playerInSafeRoom) {
       return passThrough(prev);
+    }
+    if (
+      prev.suppressFramesRemaining > 0 &&
+      prev.suppressedCommitmentKey !== null &&
+      commitmentKey === prev.suppressedCommitmentKey
+    ) {
+      // Cooling down on the exact commitment a no-progress release just gave
+      // up on — count down without re-running A* every poll. A DIFFERENT
+      // commitment (the semantic winner genuinely changed) is never subject
+      // to this and activates immediately below; suppression only stops
+      // immediately re-fighting the identical losing battle.
+      const remaining = prev.suppressFramesRemaining - 1;
+      return passThrough({
+        ...prev,
+        suppressFramesRemaining: remaining,
+        ...(remaining <= 0 ? { suppressedCommitmentKey: null } : {}),
+      });
     }
     const activated = tryActivate(prev, input, deps, commitmentKey, 'activation');
     if (activated.state.phase !== 'idle') {
@@ -554,6 +607,14 @@ export function updateSafeRoomRouteState(
         ...current,
         lastReseedCause: 'no-progress',
         totalReseeds: current.totalReseeds + 1,
+        // Suppress immediate reactivation of THIS EXACT commitment — without
+        // this, an unchanged stuck input reactivates the identical route one
+        // poll later and thrashes active/idle forever, recomputing A* every
+        // cycle (found via multi-model review). A genuinely different
+        // commitment next poll bypasses this immediately (see the idle
+        // branch above).
+        suppressedCommitmentKey: current.commitmentKey,
+        suppressFramesRemaining: SAFE_ROOM_ROUTE_SUPPRESS_FRAMES,
       }),
     );
   }
@@ -592,6 +653,10 @@ export interface SafeRoomRouteDebugSnapshot {
    * improvement. Surfaced so a divergence investigation can see how close an
    * active route was to tripping the no-progress watchdog. */
   readonly noProgressFrames: number;
+  /** Polls remaining before a suppressed commitment (one a no-progress
+   * release just gave up on) becomes eligible to reactivate. `0` when
+   * nothing is suppressed. */
+  readonly suppressFramesRemaining: number;
   readonly totalActivations: number;
   readonly totalCompletions: number;
   readonly totalBlocked: number;
@@ -608,6 +673,7 @@ export function toSafeRoomRouteDebugSnapshot(
     pathLength: state.path.length,
     lastReseedCause: state.lastReseedCause,
     noProgressFrames: state.noProgressFrames,
+    suppressFramesRemaining: state.suppressFramesRemaining,
     totalActivations: state.totalActivations,
     totalCompletions: state.totalCompletions,
     totalBlocked: state.totalBlocked,
