@@ -374,3 +374,136 @@ test('reconcile ignores same-repository action-required runs without approval or
     'same-repository action-required runs must not trigger approval or recovery dispatch',
   );
 });
+
+test('reconcile escalates required-check action-required runs as ci-retrigger blockers', async (t) => {
+  const ciRunId = 29220010235;
+  const lintRunId = 29220010236;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({
+      body: {
+        workflow_runs: [
+          {
+            id: ciRunId,
+            name: 'CI',
+            path: '.github/workflows/ci.yml',
+            event: 'pull_request',
+            conclusion: 'action_required',
+            pull_requests: [{ number: PR_NUM }],
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/${ciRunId}`,
+          },
+          {
+            id: lintRunId,
+            name: 'commit-lint',
+            path: '.github/workflows/commit-lint.yml',
+            event: 'pull_request',
+            conclusion: 'action_required',
+            pull_requests: [{ number: PR_NUM }],
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/${lintRunId}`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/files`]: () => ({ body: [] }),
+    // acquire label + state comment when a new blocker is found
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: LABEL } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 999, body: '' },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  assert.equal(code, 0, `expected exit 0; stderr: ${stderr}`);
+  assert.match(
+    stdout,
+    new RegExp(`escalate action_required run=${ciRunId} .* reason=required-check-parked`),
+  );
+  assert.match(
+    stdout,
+    new RegExp(`escalate action_required run=${lintRunId} .* reason=required-check-parked`),
+  );
+  // Must NOT attempt approval or produce an un-actionable wait-only exit
+  assert.doesNotMatch(stdout, /workflow-approval|approved workflow|would-approve/);
+  assert.doesNotMatch(
+    stdout,
+    /^wait pr=/m,
+    'must not exit with a permanent wait when a required-check is parked',
+  );
+  // dry-run must make no mutating API calls
+  assert.deepEqual(
+    mutatingCalls,
+    [],
+    'dry-run must not issue any mutating API calls even with ci-retrigger blockers',
+  );
+});
+
+test('reconcile does not escalate router action-required run when it is the only obstruction', async (t) => {
+  // The CI Recovery Router is a non-required infrastructure workflow; its
+  // action_required status must remain a skip, not a blocker, preserving the
+  // rollout guard that prevents spurious Copilot dispatches.
+  const routerRunId = 29220010237;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({
+      body: {
+        workflow_runs: [
+          {
+            id: routerRunId,
+            name: 'CI Recovery Router',
+            path: '.github/workflows/ci-recovery-router.yml',
+            event: 'pull_request_review',
+            conclusion: 'action_required',
+            pull_requests: [{ number: PR_NUM }],
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/${routerRunId}`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/files`]: () => ({ body: [] }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  assert.equal(code, 0, `expected exit 0; stderr: ${stderr}`);
+  assert.match(
+    stdout,
+    new RegExp(`skip action_required run=${routerRunId} .* reason=same-repository`),
+  );
+  assert.doesNotMatch(stdout, /escalate action_required/);
+  assert.doesNotMatch(stdout, /ci-retrigger/);
+  assert.deepEqual(
+    mutatingCalls,
+    [],
+    'router-only action_required must not trigger any mutating calls',
+  );
+});

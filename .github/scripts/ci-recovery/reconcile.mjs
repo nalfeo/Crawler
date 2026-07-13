@@ -14,7 +14,7 @@ import {
   shouldResolveThread,
   STATE_MARKER,
 } from './state.mjs';
-import { workflowApprovalRejection } from './approval.mjs';
+import { workflowApprovalRejection, REQUIRED_CHECK_WORKFLOW_PATHS } from './approval.mjs';
 import { graphql, listReviewThreads, paginate, request } from './github.mjs';
 import { resolveAdmissionChecks, unsatisfiedChecks } from '../merge-train/state.mjs';
 
@@ -318,9 +318,28 @@ for (const run of actionRequiredRuns) {
     changedFiles,
     expectedChangedFiles: pr.changed_files,
   });
-  process.stdout.write(
-    `skip action_required run=${run.id} name="${run.name}" reason=${rejection}\n`,
-  );
+  const runPath = String(run?.path ?? '')
+    .trim()
+    .toLowerCase();
+  if (rejection === 'same-repository' && REQUIRED_CHECK_WORKFLOW_PATHS.has(runPath)) {
+    // This is a required CI check parked in action_required because the commit
+    // was pushed by the same App identity (see AGENTS.md § Bot-pushed CI checks).
+    // The GitHub approval endpoint does not apply to same-repository runs, so we
+    // escalate an actionable retrigger blocker instead.
+    blockers.push({
+      kind: 'ci-retrigger',
+      id: `action-required:${String(run.name || run.id)}`,
+      summary: `${run.name} is parked in action_required because the commit was pushed by the same App identity. Push one commit under a different identity to retrigger CI — e.g. git commit --allow-empty -m "chore: retrigger CI".`,
+      url: run.html_url,
+    });
+    process.stdout.write(
+      `escalate action_required run=${run.id} name="${run.name}" reason=required-check-parked\n`,
+    );
+  } else {
+    process.stdout.write(
+      `skip action_required run=${run.id} name="${run.name}" reason=${rejection}\n`,
+    );
+  }
 }
 
 for (const thread of review.threads.filter((candidate) => !candidate.isResolved)) {

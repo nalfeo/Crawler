@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { workflowApprovalRejection } from './approval.mjs';
+import { workflowApprovalRejection, REQUIRED_CHECK_WORKFLOW_PATHS } from './approval.mjs';
 
 const repository = 'nalfeo/Crawler';
 const prNumber = 42;
@@ -130,4 +130,29 @@ test('rejects off-diagonal workflow and event combinations', () => {
 
 test('applies the same policy to rerun attempts', () => {
   assert.equal(rejection({ run_attempt: 2 }), 'same-repository');
+});
+
+test('REQUIRED_CHECK_WORKFLOW_PATHS contains exactly the admission-required CI check paths', () => {
+  // This export is the source of truth used by reconcile.mjs to distinguish
+  // required-check escalation blockers from non-required infrastructure runs.
+  assert.ok(
+    REQUIRED_CHECK_WORKFLOW_PATHS instanceof Set,
+    'REQUIRED_CHECK_WORKFLOW_PATHS must be a Set',
+  );
+  assert.ok(REQUIRED_CHECK_WORKFLOW_PATHS.has('.github/workflows/ci.yml'), 'must include ci.yml');
+  assert.ok(
+    REQUIRED_CHECK_WORKFLOW_PATHS.has('.github/workflows/commit-lint.yml'),
+    'must include commit-lint.yml',
+  );
+  // The CI Recovery Router is a non-required infrastructure workflow and must
+  // NOT be in this set (its action_required status is logged and skipped).
+  assert.ok(
+    !REQUIRED_CHECK_WORKFLOW_PATHS.has('.github/workflows/ci-recovery-router.yml'),
+    'must NOT include ci-recovery-router.yml',
+  );
+  assert.equal(
+    REQUIRED_CHECK_WORKFLOW_PATHS.size,
+    2,
+    'must contain exactly two entries (ci.yml and commit-lint.yml)',
+  );
 });
