@@ -19,7 +19,7 @@ import {
 import { GAME } from '../shared/constants.js';
 import { PIXELS_PER_FOOT } from '../shared/units.js';
 import { applyCrispText, getUiScale, onUiScaleChange, type ScreenBounds } from './ui-scale.js';
-import { NAV_RADAR_MAX_SCALE, boundsOverlap } from './navigation-hud-layout.js';
+import { boundsOverlap } from './navigation-hud-layout.js';
 import { BLUE_STEEL } from './ui-theme.js';
 
 const DEPTH = 1000;
@@ -34,6 +34,7 @@ const LABEL_BASE_FONT_PX = 8;
 const SCREEN_MARGIN = 80;
 const MIN_ARROW_SEPARATION = 48;
 const FAN_ANGLE_STEP = Math.PI / 24;
+const ARROW_MAX_SCALE = 1.4;
 const LABEL_CHAR_WIDTH = 8;
 const LABEL_LINE_HEIGHT = 15;
 const LABEL_HORIZONTAL_PADDING = 14;
@@ -172,7 +173,7 @@ export function resolveDirectionArrowStates(
 ): DirectionArrowState[] {
   const scale = PIXELS_PER_FOOT * (zoom || 1);
   const rawUiScale = typeof uiScaleOrForbiddenRegions === 'number' ? uiScaleOrForbiddenRegions : 1;
-  const clampedScale = Math.min(Math.max(1, rawUiScale), NAV_RADAR_MAX_SCALE);
+  const clampedScale = Math.min(Math.max(1, rawUiScale), ARROW_MAX_SCALE);
   const effectiveForbiddenRegions =
     typeof uiScaleOrForbiddenRegions === 'number' ? forbiddenRegions : uiScaleOrForbiddenRegions;
   const states: DirectionArrowState[] = [];
@@ -265,8 +266,8 @@ export function createHudDirectionArrows(scene: Phaser.Scene): {
   destroy(): void;
 } {
   const visuals = new Map<string, ArrowVisual>();
-  // Responsive scale (capped at NAV_RADAR_MAX_SCALE to match the radar).
-  let currentArrowScale = Math.min(Math.max(1, getUiScale(scene)), NAV_RADAR_MAX_SCALE);
+  // Responsive scale (capped to match the docked radar cap in navigation-hud-layout).
+  let currentArrowScale = Math.min(Math.max(1, getUiScale(scene)), ARROW_MAX_SCALE);
 
   function applyScaleToVisual(visual: ArrowVisual): void {
     visual.arrow.setScale(currentArrowScale);
@@ -321,7 +322,7 @@ export function createHudDirectionArrows(scene: Phaser.Scene): {
 
   // Re-apply scale to all existing visuals and update currentArrowScale.
   const offUiScaleChange = onUiScaleChange(scene, () => {
-    currentArrowScale = Math.min(Math.max(1, getUiScale(scene)), NAV_RADAR_MAX_SCALE);
+    currentArrowScale = Math.min(Math.max(1, getUiScale(scene)), ARROW_MAX_SCALE);
     for (const visual of visuals.values()) {
       applyScaleToVisual(visual);
     }
