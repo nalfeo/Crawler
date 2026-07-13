@@ -5538,7 +5538,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerX: number,
     playerY: number,
     activeQuest: QuestState,
-    progressSuppressed: boolean = false,
+    progressSuppressed: boolean,
   ): ProgressTarget | null {
     const familyId = this.parseFloor2FamilyId(activeQuest.questId);
     if (!familyId) {
