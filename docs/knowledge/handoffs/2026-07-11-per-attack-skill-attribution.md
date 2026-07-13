@@ -9,27 +9,36 @@
 
 Fixed a weapon-skill XP misattribution bug where firing a slow projectile with weapon A, switching to weapon B, and letting the projectile land would credit weapon B's skills instead of weapon A's.
 
+**Merged implementation note:** the final branch keeps `world.attackerWeaponSkills`
+as an attacker-level fallback and adds `world.attackWeaponSkillsByEntity` as the
+preferred per-attack attribution source. The earlier `attackSkillSources`
+prototype described below was superseded during merge resolution.
+
 ## Root cause
 
 `world.attackerWeaponSkills` was a `Map<playerEid, {classSkillId, typeSkillId}>` keyed by the attacker (player) EID. Every `dispatchAttack` call overwrote the single map entry for that player, so any in-flight projectile from a prior weapon would pick up the most-recently-dispatched weapon's skills on hit.
 
 ## Fix
 
-Replaced the per-attacker map with a per-attack-entity sidecar `world.attackSkillSources: Map<attackEid, {attackerEid, classSkillId, typeSkillId}>` keyed by the spawned attack entity EID. Each in-flight attack entity now carries its own skill attribution, immune to subsequent weapon dispatches.
+Kept the per-attacker fallback map and added a per-attack-entity sidecar
+`world.attackWeaponSkillsByEntity: Map<attackEid, {classSkillId, typeSkillId}>`
+keyed by the spawned attack entity EID. Damage systems now prefer the
+per-attack entry so each in-flight attack keeps its own skill attribution,
+immune to subsequent weapon dispatches.
 
 ## Files changed
 
-- `src/core/world.ts` — `attackerWeaponSkills` → `attackSkillSources`
-- `src/core/weapon-skill-bridge.ts` — look up by attack EID; new `clearAttackSkillSource()` export
+- `src/core/world.ts` — retained `attackerWeaponSkills`; added `attackWeaponSkillsByEntity`
+- `src/core/weapon-skill-bridge.ts` — look up by attack EID, then fall back to attacker EID
 - `src/game/weaponSystem.ts` — all 6 fire functions return spawned EID; `dispatchAttackInner` registers per-attack source
-- `src/core/systems/damageSystem.ts` — pass attack EID to `emitWeaponHitSkillEvents`; `destroyEntity` clears source
+- `src/core/systems/damageSystem.ts` — pass attack EID to `emitWeaponHitSkillEvents`
 - `src/core/systems/areaDamageSystem.ts` — pass area attack EID
 - `src/core/systems/beamSystem.ts` — pass beam entity EID
 - `src/core/systems/meleeSwingSystem.ts` — pass melee swing EID
-- `src/core/systems/lifetimeSystem.ts` — clear source on entity expiry
 - `src/core/systems/aoeOnImpactSystem.ts` — snapshot + propagate skill source to explosion entity
 - `src/core/systems/trapSystem.ts` — capture + propagate skill source to explosion entity
-- `tests/game/weapon-skills.test.ts` — updated to use `attackSkillSources` by attack EID
+- `src/core/spawners/entity-core.ts` — clear per-attack attribution on entity recycle
+- `tests/game/weapon-skills.test.ts` — regression coverage for delayed-hit attribution
 - `tests/ecs/damage-system-branches.test.ts` — updated + new weapon-switch regression test
 - `tests/ecs/beam-system-branches.test.ts` — updated to use beam EID
 - `tests/ecs/area-damage-system-branches.test.ts` — updated to use area attack EID
@@ -37,6 +46,10 @@ Replaced the per-attacker map with a per-attack-entity sidecar `world.attackSkil
 ## Systems touched
 
 weapon-system, skill-system, damage-pipeline
+
+## Related ADR
+
+- [`docs/knowledge/adr/2026-07-12-active-weapon-hud-and-per-attack-xp-attribution.md`](../adr/2026-07-12-active-weapon-hud-and-per-attack-xp-attribution.md)
 
 ## Key design notes
 

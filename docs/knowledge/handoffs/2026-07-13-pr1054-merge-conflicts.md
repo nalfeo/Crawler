@@ -34,3 +34,7 @@ cd /home/runner/work/Crawler/Crawler
 npx vitest run tests/game/weapon-skills.test.ts tests/ecs/aoe-on-impact-system.test.ts tests/ecs/trap-system.test.ts tests/ecs/damage-system-branches.test.ts tests/ecs/beam-system-branches.test.ts tests/ecs/area-damage-system-branches.test.ts
 npm run verify:fast
 ```
+
+## Review ledger
+
+- `docs/knowledge/review-ledgers/2026-07-13-pr1054-merge-conflicts.review-ledger.json`
