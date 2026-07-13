@@ -266,7 +266,7 @@ export function createHudDirectionArrows(scene: Phaser.Scene): {
   destroy(): void;
 } {
   const visuals = new Map<string, ArrowVisual>();
-  // Responsive scale (capped to match the docked radar cap in navigation-hud-layout).
+  // Responsive scale (capped at 1.4 to match the docked radar's scale behavior).
   let currentArrowScale = Math.min(Math.max(1, getUiScale(scene)), ARROW_MAX_SCALE);
 
   function applyScaleToVisual(visual: ArrowVisual): void {
