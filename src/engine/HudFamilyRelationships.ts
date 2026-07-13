@@ -23,6 +23,7 @@ import {
   displayNameForRow,
   type FamilyRow,
 } from './family-relationships-state.js';
+import type { ScreenBounds } from './ui-scale.js';
 
 const PANEL_WIDTH = 232;
 const TITLE_H = 22;
@@ -55,11 +56,20 @@ export interface HudFamilyRelationshipsOptions {
   families?: readonly FamilyDef[];
 }
 
+export interface HudFamilyRelationshipsState {
+  readonly visible: boolean;
+  readonly bounds: ScreenBounds | null;
+  /** Raw Phaser display-object visibility for the backing panel (not the logical gate). */
+  readonly panelVisible: boolean;
+}
+
 export function createHudFamilyRelationships(
   scene: Phaser.Scene,
   options: HudFamilyRelationshipsOptions = {},
 ): {
   sync(world: GameWorld): void;
+  setVisible(visible: boolean): void;
+  getState(): HudFamilyRelationshipsState;
   destroy(): void;
 } {
   const parent = options.parent;
@@ -155,11 +165,13 @@ export function createHudFamilyRelationships(
 
   let lastFingerprint = '';
   let lastVisible = true;
+  let masterVisible = true;
 
   function setPanelVisible(visible: boolean): void {
-    panel.setVisible(visible);
-    title.setVisible(visible);
-    for (const r of rowVisuals) r.container.setVisible(visible);
+    const effectiveVisible = visible && masterVisible;
+    panel.setVisible(effectiveVisible);
+    title.setVisible(effectiveVisible);
+    for (const r of rowVisuals) r.container.setVisible(effectiveVisible);
   }
 
   function fingerprintFor(rows: FamilyRow[]): string {
@@ -203,14 +215,14 @@ export function createHudFamilyRelationships(
   function sync(world: GameWorld): void {
     const shouldShow = shouldShowFamilyRelationships(world);
     if (shouldShow !== lastVisible) {
-      setPanelVisible(shouldShow);
       lastVisible = shouldShow;
+      setPanelVisible(shouldShow);
       if (!shouldShow) {
         lastFingerprint = '';
         return;
       }
     }
-    if (!shouldShow) return;
+    if (!shouldShow || !masterVisible) return;
 
     const rows = resolveFamilyRows(world, families).slice(0, MAX_ROWS);
     const fp = fingerprintFor(rows);
@@ -226,6 +238,35 @@ export function createHudFamilyRelationships(
   setPanelVisible(false);
   lastVisible = false;
 
+  function setVisible(visible: boolean): void {
+    if (visible === masterVisible) {
+      return;
+    }
+    masterVisible = visible;
+    if (visible) {
+      lastFingerprint = '';
+    }
+    setPanelVisible(lastVisible);
+  }
+
+  function getState(): HudFamilyRelationshipsState {
+    const parentVisible = parent?.visible ?? true;
+    const visible =
+      parentVisible &&
+      (panel.visible || title.visible || rowVisuals.some((row) => row.container.visible));
+    if (!visible) {
+      return { visible: false, bounds: null, panelVisible: parentVisible && panel.visible };
+    }
+    const bounds = parent?.getBounds();
+    return {
+      visible: true,
+      panelVisible: parentVisible && panel.visible,
+      bounds: bounds
+        ? { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }
+        : { x: panelX, y: panelY, width: PANEL_WIDTH, height: panelHeight },
+    };
+  }
+
   function destroy(): void {
     detachCrispText();
     for (const r of rowVisuals) r.container.destroy();
@@ -233,5 +274,5 @@ export function createHudFamilyRelationships(
     panel.destroy();
   }
 
-  return { sync, destroy };
+  return { sync, setVisible, getState, destroy };
 }
