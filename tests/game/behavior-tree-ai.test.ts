@@ -1204,6 +1204,37 @@ describe('BehaviorTreeAI', () => {
     expect(ai.getDecision().reason).not.toMatch(/territory/i);
   });
 
+  it('does not re-target Floor 2 staircase progress when progressGoalSuppressedUntilFrame is in the future', () => {
+    const world = createTestWorld({ seed: 59, floor: 2 });
+    spawnPlayer(world, 14, 14);
+    world.floorMap = makeSealedRoom(50, 18, 14);
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [],
+        contestedResource: 'gold-veins' as never,
+        betrayerFlag: false,
+        reputationSystemActive: true,
+        staircaseSpawned: true,
+        staircaseUnlocked: true,
+        staircaseDiscovered: false,
+        staircasePos: { x: 90, y: 34 },
+      },
+    };
+    world.goalFlags.set(FLOOR2_SETTLEMENT_FOUND_GOAL_ID, true);
+    world.goalFlags.set(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
+
+    const ai = new BehaviorTreeAI({ seed: 59 });
+    (
+      ai as unknown as { progressGoalSuppressedUntilFrame: number }
+    ).progressGoalSuppressedUntilFrame = Number.MAX_SAFE_INTEGER;
+
+    for (let frame = 0; frame < 8; frame++) {
+      world.frameCount = frame;
+      ai.poll(createInputState(), world);
+      expect(ai.getDecision().reason).not.toBe('Heading to the Floor 2 exit stairs');
+    }
+  });
+
   it('engages nearby enemies before long NPC approach paths', () => {
     const { world } = setupNpcApproachThreat('sword');
     const ai = new BehaviorTreeAI({ seed: 12 });

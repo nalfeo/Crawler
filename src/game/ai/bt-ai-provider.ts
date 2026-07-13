@@ -5429,7 +5429,11 @@ export class BehaviorTreeAI implements AIInputProvider {
     const settlement = world.floorExtendedState?.settlement;
     const settlementAnchor = resolveFloor2SettlementAnchor(world);
     const settlementFound = world.goalFlags.get(FLOOR2_SETTLEMENT_FOUND_GOAL_ID) === true;
+    const progressSuppressed = world.frameCount < this.progressGoalSuppressedUntilFrame;
     if (!settlementFound) {
+      if (progressSuppressed) {
+        return null;
+      }
       return settlementAnchor
         ? this.createProgressTarget(
             settlementAnchor.x,
@@ -5443,6 +5447,9 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     const brokerIntroduced = world.goalFlags.get(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID) === true;
     if (!brokerIntroduced) {
+      if (progressSuppressed) {
+        return null;
+      }
       if (!settlementAnchor) {
         return null;
       }
@@ -5464,6 +5471,9 @@ export class BehaviorTreeAI implements AIInputProvider {
       !floor2State.staircaseDiscovered &&
       floor2State.staircasePos
     ) {
+      if (progressSuppressed) {
+        return null;
+      }
       return this.createProgressTarget(
         floor2State.staircasePos.x,
         floor2State.staircasePos.y,
@@ -5485,7 +5495,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         playerX,
         playerY,
         quest,
-        world.frameCount < this.progressGoalSuppressedUntilFrame,
+        progressSuppressed,
       );
       if (target) {
         candidates.push({ questId: quest.questId, target });

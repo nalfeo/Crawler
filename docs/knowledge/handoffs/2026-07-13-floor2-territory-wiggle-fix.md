@@ -7,7 +7,7 @@
 
 ## Systems touched
 
-`ai`, `floor2`
+`ai-behavior-tree`
 
 ## Problem
 
@@ -71,13 +71,33 @@ behind wall)'` — seals a map at wall column 14, places staircase at tile (22, 
 the future'` — calls `initializeFloor2Scenario`, marks prerequisites, injects
   `progressGoalSuppressedUntilFrame = Number.MAX_SAFE_INTEGER` via private cast, and
   asserts `decision.reason` does not match `/territory/i`.
+- `'does not re-target Floor 2 staircase progress when progressGoalSuppressedUntilFrame
+is in the future'` — sets an unreachable staircase objective behind a sealed wall,
+  forces suppression active, polls 8 frames, and asserts the decision reason never
+  reverts to `"Heading to the Floor 2 exit stairs"`.
+
+## Observe-before-done evidence (real headless pipeline)
+
+- **Before fix** (detached pre-fix commit `671f88e`):
+  - `npm run ai:headless -- --seed 42 --weapon sword --floor floor2 --json`
+  - Result: `Outcome: STALLED` with `Stall: quest progress frozen for 360s`, `Final Level: 6`, `Kills: 67`, `Game Time: 896.1s`.
+- **After fix** (current head):
+  - `npm run ai:headless -- --seed 42 --weapon sword --floor floor2 --json`
+  - Result: no stall classification (`Outcome: TIMEOUT`), with `Final Level: 12`, `Kills: 327`, `Game Time: 1200.0s`.
+
+This demonstrates the seed-42 run no longer gets trapped in the prior stalled
+progress signature and instead continues active progression/combat for the full run window.
+
+## Review ledger
+
+- `docs/knowledge/review-ledgers/2026-07-13-floor2-territory-wiggle-fix.review-ledger.json`
 
 ## Key implementation notes
 
 - `resolveReachableGoalTile` uses a ring search up to `PATH_GOAL_SEARCH_RADIUS_TILES = 6`
   tiles. The test places the goal > 6 tiles from the wall so the ring never finds a
   reachable left-side fallback tile, ensuring A\* gets the unreachable raw goal.
-- `makeToward` returning early does NOT bypass the Track B blend or smoothing — those
+- `moveToward` returning early does NOT bypass the Track B blend or smoothing — those
   run after the call returns. With no enemies/loot, the blend is zero, so `input.moveX`
   stays 0.
 - The parameter change from `progressSuppressed: boolean = false` to `progressSuppressed:
