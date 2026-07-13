@@ -12,4 +12,12 @@ describe('HudSkillTracker weapon source', () => {
     expect(source).not.toMatch(/floorScenario\?\.selectedWeaponId/);
     expect(source).not.toMatch(/getWeaponDef\(/);
   });
+
+  it('calls setAllVisible(false) when no active weapon is equipped', () => {
+    const source = readFileSync('src/engine/HudSkillTracker.ts', 'utf8');
+
+    // The guard must be: if (!def) { setAllVisible(false); return; }
+    // This ensures removing the false-branch would break this test.
+    expect(source).toMatch(/if\s*\(!def\)\s*\{[\s\S]*?setAllVisible\(false\)/);
+  });
 });
