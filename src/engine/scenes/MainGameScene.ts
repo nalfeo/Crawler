@@ -20,6 +20,7 @@ import {
 } from '../../shared/constants.js';
 import { LIGHTING_OVERLAY_DEPTH, UI_DEPTH_CUTOFF } from '../../shared/render-depths.js';
 import { ftToPx, pxToFt, PIXELS_PER_FOOT } from '../../shared/units.js';
+import { INTRO_DATA_REGISTRY_KEY } from '../../shared/intro-config.js';
 import { getRenderScale } from '../render-scale.js';
 import {
   ACTIVE_ABILITY_SLOT_LIMIT,
@@ -116,7 +117,7 @@ const INTERACTION_HINT_BOTTOM_MARGIN = 12;
 const SET_PIECE_LIGHT_RADIUS_FT = 20;
 const SET_PIECE_LIGHT_INTENSITY = 0.7;
 const FLOOR_1_COMMENTARY = {
-  intro: 'Floor 1 opens. Rhea Vale enters the dungeon and the cameras are rolling.',
+  intro: 'Floor 1 opens. {playerName} enters the dungeon and the cameras are rolling.',
   questAccepted: 'Tutorial Goon unlocks XP drops. First milestone: hit level 2 for the audience.',
   questCompleted: 'Quota complete. Boss room is live for the next segment.',
   bossBattleStarted: 'Boss encounter started. This is the ratings spike moment.',
@@ -591,6 +592,19 @@ export class MainGameScene extends Phaser.Scene {
 
     this.playerEid = spawnPlayer(this.world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
     this.options.configureWorld?.(this.world, this.playerEid);
+
+    // Apply player identity selected in IntroScene (if available).
+    const introData = this.game.registry.get(INTRO_DATA_REGISTRY_KEY) as
+      | { playerName: string; playerGender: 'female' | 'male' | 'other' }
+      | undefined;
+    if (introData) {
+      this.world.playerName = introData.playerName;
+      this.world.playerGender = introData.playerGender;
+      // Sync the floor-scenario protagonist name so HUD and dialogues match.
+      if (this.world.floorScenario) {
+        this.world.floorScenario.protagonistName = introData.playerName;
+      }
+    }
     logger.info('Main game scene created', {
       state: this.world.state,
       preSystems: this.options.preSystems?.length ?? 0,
@@ -2637,7 +2651,9 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private queueDirectorCommentary(text: string): void {
-    this.directorCommentaryText?.setText(`${DIRECTOR_LABEL_TEXT}: ${text}`).setVisible(true);
+    // Substitute {playerName} with the player's chosen name.
+    const resolved = text.replace('{playerName}', this.world.playerName);
+    this.directorCommentaryText?.setText(`${DIRECTOR_LABEL_TEXT}: ${resolved}`).setVisible(true);
     this.commentaryHideAtMs = this.time.now + DIRECTOR_COMMENTARY_MS;
   }
 

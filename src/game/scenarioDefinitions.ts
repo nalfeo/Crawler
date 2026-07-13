@@ -15,7 +15,7 @@ export interface ScenarioDefinition {
 }
 
 const FLOOR_1_DIRECTOR = {
-  intro: 'Floor 1 opens. Rhea Vale enters the dungeon and the cameras are rolling.',
+  intro: 'Floor 1 opens. {playerName} enters the dungeon and the cameras are rolling.',
   victory: 'Floor 1 cleared. Queueing the transfer to the next floor.',
   timeout: 'Time expired before the stairs. Floor 1 run ends here.',
 } as const;

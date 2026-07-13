@@ -124,6 +124,13 @@ export interface GameWorld {
   floor: number;
   /** Game state */
   state: 'loading' | 'loadout' | 'playing' | 'paused' | 'safe_room' | 'game_over' | 'level_up';
+  /**
+   * Player's chosen display name. Defaults to the floor-1 protagonist ('Rhea Vale').
+   * Set by IntroScene before the run starts; headless/lab runs keep the default.
+   */
+  playerName: string;
+  /** Player's chosen gender. Defaults to 'female'. Set by IntroScene. */
+  playerGender: 'female' | 'male' | 'other';
 
   // --- Stats/Skills/Levels (player-singleton, stored at world level) ---
 
@@ -443,6 +450,8 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     hostileEncounterRevision: 0,
     floor: options.floor ?? 1,
     state: 'playing',
+    playerName: 'Rhea Vale',
+    playerGender: 'female',
     playerLevel: {
       xp: 0,
       level: 0,
