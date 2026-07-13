@@ -15,7 +15,7 @@ import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
 import { GAME } from '../shared/constants.js';
 import { PIXEL_UI, PIXEL_UI_DEPTH, createBeveledPanel } from './pixel-ui.js';
-import { applyCrispText } from './ui-scale.js';
+import { applyCrispText, type ScreenBounds } from './ui-scale.js';
 import { loadFamilies, type FamilyDef } from '../shared/data/families.js';
 import {
   resolveFamilyRows,
@@ -60,6 +60,7 @@ export function createHudFamilyRelationships(
   options: HudFamilyRelationshipsOptions = {},
 ): {
   sync(world: GameWorld): void;
+  getBounds(): ScreenBounds | null;
   destroy(): void;
 } {
   const parent = options.parent;
@@ -233,5 +234,19 @@ export function createHudFamilyRelationships(
     panel.destroy();
   }
 
-  return { sync, destroy };
+  function getBounds(): ScreenBounds | null {
+    if (!lastVisible) {
+      return null;
+    }
+    const scaleX = parent?.scaleX ?? 1;
+    const scaleY = parent?.scaleY ?? 1;
+    return {
+      x: (parent?.x ?? 0) + panelX * scaleX,
+      y: (parent?.y ?? 0) + panelY * scaleY,
+      width: PANEL_WIDTH * scaleX,
+      height: panelHeight * scaleY,
+    };
+  }
+
+  return { sync, getBounds, destroy };
 }

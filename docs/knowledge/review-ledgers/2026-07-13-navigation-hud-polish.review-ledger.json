@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-13",
+  "session_slug": "navigation-hud-polish",
+  "task_title": "Polish navigation HUD",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "Approved with minor changes: baseline both Floor 1 ux-snapshot and Floor 2 family HUD artifacts; instrument pure shared bounds and probe APIs before styling; hide arrows/tracker under fullscreen map; define hard tracker height and truncation rules; feed critical HUD/family forbidden rects into arrow layout; finalize radar chrome extents before tracker placement; preserve tracker collapse and minimap input/touch regressions."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
