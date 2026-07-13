@@ -11,6 +11,17 @@
     "path": "by-sha/1bec980c17ebfe0453be6502737c5630a62a0fff.json"
   },
   {
+    "commit": "d33bce8fc01f2331629b959fd808c57b9349be14",
+    "commitDate": "2026-07-13T10:49:48-07:00",
+    "commitSubject": "feat: polish abilities loadout and hotbar UX (#1095)",
+    "capturedAt": "2026-07-13T18:38:54.538Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29273087229",
+    "winRate": 0.92,
+    "totalWins": 276,
+    "totalRuns": 300,
+    "path": "by-sha/d33bce8fc01f2331629b959fd808c57b9349be14.json"
+  },
+  {
     "commit": "fd4f9d6c290299349544b83c72d26714b0251602",
     "commitDate": "2026-07-13T10:10:25-07:00",
     "commitSubject": "fix(ci-recovery): accept addressed commit links on lineage (#1122)",
