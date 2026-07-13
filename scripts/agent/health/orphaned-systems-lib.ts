@@ -83,10 +83,12 @@ export const MIN_EXPECTED_SYSTEMS = 10;
  *
  * - `src/bootstrap/floor-main-scene-options.ts` — defines the visual game's
  *   Floor 1 `preSystems`/`postSystems` arrays (fed to the engine sim step).
- * - `src/engine/sim/simulation-step.ts` — the visual pipeline's fixed ordered
- *   ECS loop run by `MainGameScene`.
- * - `src/game/ai/simulation-step.ts` — the hand-maintained headless pipeline run
- *   by the Floor 1 win-rate gate + headless runner.
+ * - `src/core/simulation-core-step.ts` — shared deterministic core ECS step used
+ *   by both visual and headless wrappers.
+ * - `src/engine/sim/simulation-step.ts` — visual wrapper around the shared core
+ *   step, plus scene hooks.
+ * - `src/game/ai/simulation-step.ts` — headless wrapper around the shared core
+ *   step used by the Floor 1 win-rate gate + headless runner.
  * - `src/game/ai/headless-runner.ts` — the headless AI driver (auto-progression
  *   / auto-NPC systems live here, not in the sim steps).
  * - `src/engine/scenes/MainGameScene.ts` — the scene itself; a few systems are
@@ -103,6 +105,7 @@ export const MIN_EXPECTED_SYSTEMS = 10;
  */
 export const WIRING_SITES: ReadonlyArray<string> = [
   'src/bootstrap/floor-main-scene-options.ts',
+  'src/core/simulation-core-step.ts',
   'src/engine/sim/simulation-step.ts',
   'src/game/ai/simulation-step.ts',
   'src/game/ai/headless-runner.ts',

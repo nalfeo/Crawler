@@ -31,6 +31,7 @@ import { spawnSpawner } from '../../src/core/helpers.js';
 import { getSpawnerArchetype, getSpawnerArchetypeIndex } from '../../src/game/spawners/registry.js';
 import { runSimulationStep } from '../../src/game/ai/simulation-step.js';
 import { getScenarioDefinition } from '../../src/game/scenarioDefinitions.js';
+import { createFloor1MainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 import { createInputState } from '../../src/shared/input.js';
 import { GAME } from '../../src/shared/constants.js';
 import type { GameWorld } from '../../src/core/world.js';
@@ -97,6 +98,15 @@ describe.each(SEEDS)('spawner-arena caging on natural Floor-1 (seed %i)', (seed)
     setComponent(world.ecs, playerEid, Position, { x: sx + 1, y: sy });
     const inputState = createInputState();
 
+    // Canonical pre/post systems from the shared source of truth (same as the
+    // visual pipeline uses). spawnerArenaSystem in preSystems is what arms the
+    // arena; without it the spawner stays idle.
+    const sceneSystems = createFloor1MainSceneOptions();
+    const simOpts = {
+      preSystems: sceneSystems.preSystems,
+      postSystems: sceneSystems.postSystems,
+    } as const;
+
     // Give the player near-invulnerable HP so ambient enemies don't end the
     // run before the caging assertions land — we're testing the barrier
     // primitive, not survival. Refresh every tick to counter any damage.
@@ -105,7 +115,7 @@ describe.each(SEEDS)('spawner-arena caging on natural Floor-1 (seed %i)', (seed)
     world.stores.health.current[playerEid] = KEEP_ALIVE_HP;
 
     // Tick once to arm the arena.
-    runSimulationStep(world, inputState, GAME.DELTA_MS);
+    runSimulationStep(world, inputState, GAME.DELTA_MS, simOpts);
     expect(world.stores.spawner.arenaState[spawnerEid]).toBe(1);
 
     // arenaKind 0 = sealed-room (doorway barrier → blocked TILES),
@@ -144,7 +154,7 @@ describe.each(SEEDS)('spawner-arena caging on natural Floor-1 (seed %i)', (seed)
       const len = Math.hypot(dx, dy) || 1;
       inputState.moveX = dx / len;
       inputState.moveY = dy / len;
-      runSimulationStep(world, inputState, GAME.DELTA_MS);
+      runSimulationStep(world, inputState, GAME.DELTA_MS, simOpts);
 
       const npx = world.stores.position.x[playerEid]!;
       const npy = world.stores.position.y[playerEid]!;
@@ -181,7 +191,7 @@ describe.each(SEEDS)('spawner-arena caging on natural Floor-1 (seed %i)', (seed)
     inputState.moveY = 0;
     for (let tick = 0; tick < 20; tick += 1) {
       world.stores.health.current[playerEid] = KEEP_ALIVE_HP;
-      runSimulationStep(world, inputState, GAME.DELTA_MS);
+      runSimulationStep(world, inputState, GAME.DELTA_MS, simOpts);
       if ((world.stores.spawner.arenaState[spawnerEid] ?? 0) === 2) break;
     }
     expect(world.stores.spawner.arenaState[spawnerEid]).toBe(2);

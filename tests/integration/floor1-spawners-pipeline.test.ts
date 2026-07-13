@@ -65,11 +65,17 @@ describe('Floor 1 is spawner-free by config — headless AI pipeline', () => {
   it('keeps Floor 1 spawner-free (no children) when the simulation pipeline runs', () => {
     const world = createPlayingFloor1World(7);
     const input = createInputState();
+    const options = createFloor1MainSceneOptions();
 
     // Run long enough that several passive pulses would have happened if any
     // spawner existed; with none present spawnerSystem is a no-op.
+    // Use canonical preSystems/postSystems so spawnerSystem is actually wired.
     for (let frame = 0; frame < 600; frame += 1) {
-      runSimulationStep(world, input, GAME.DELTA_MS, {});
+      if (world.state === 'level_up') world.state = 'playing';
+      runSimulationStep(world, input, GAME.DELTA_MS, {
+        preSystems: options.preSystems,
+        postSystems: options.postSystems,
+      });
     }
 
     expect(query(world.ecs, [Spawner]).length).toBe(0);

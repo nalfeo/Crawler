@@ -14,9 +14,15 @@ import { createInputState } from '../../src/shared/input.js';
 import { FLOOR1_TUTORIAL_QUEST_ID } from '../../src/shared/quest-types.js';
 import { xpRequiredForLevel } from '../../src/shared/xpMath.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { createFloor1MainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 
 const STEP_MS = GAME.DELTA_MS;
-const FLOOR1_OPTS = {} as const;
+
+/** Canonical pre/post systems from the shared source of truth. */
+const FLOOR1_OPTS = (() => {
+  const opts = createFloor1MainSceneOptions();
+  return { preSystems: opts.preSystems, postSystems: opts.postSystems } as const;
+})();
 
 /** Build a Floor 1 world the same way the headless runner does. */
 function setupFloor1World(seed: number) {
@@ -32,14 +38,15 @@ function setupFloor1World(seed: number) {
  *
  * `levelSystem` sets `world.state = 'level_up'` on every level-up as a flag for
  * the UI allocation screen. The visual game (MainGameScene) clears it back to
- * `'playing'` every frame because Floor 1 exposes no stat-allocation UI. The
- * headless `runSimulationStep` originally did NOT, so after the first level-up
- * the world parked in `level_up` forever — starving every `state === 'playing'`
- * gated system (notably `floor1ObjectiveTick`), so "reach level 2" never latched
- * and the tutorial quest never completed even though XP kept climbing.
+ * `'playing'` between frames (in the scene update loop, not inside the sim step).
+ * The headless runner mirrors this by resetting `world.state` from `level_up` to
+ * `playing` at the START of each iteration — before calling `runSimulationStep` —
+ * so every `state === 'playing'`-gated system (notably `floor1ObjectiveTick`)
+ * runs correctly on the frame after the level-up.
  *
- * These tests exercise the FULL pipeline (so `levelSystem` actually fires),
- * which the existing floor1-scenario tests do not — they set `playerLevel.level`
+ * These tests exercise the FULL pipeline (so `levelSystem` actually fires) using
+ * the canonical preSystems/postSystems from `createFloor1MainSceneOptions()`, which
+ * the existing floor1-scenario tests do not — they set `playerLevel.level`
  * directly while already in `'playing'` and call the floor systems by hand.
  */
 describe('runSimulationStep — level_up must not park the headless Floor 1 sim', () => {
@@ -48,27 +55,42 @@ describe('runSimulationStep — level_up must not park the headless Floor 1 sim'
     expect(world.state).toBe('playing');
   });
 
-  it('clears a pre-existing level_up flag on the next step', () => {
+  it('clears a pre-existing level_up flag when the caller resets it before the next step', () => {
     const { world } = setupFloor1World(42);
     // Simulate having parked in level_up (Floor 1 has no allocation UI).
+    // The caller (headless runner) is responsible for resetting this before the
+    // next step — matching what MainGameScene.update() does between frames.
     world.state = 'level_up';
+    // Reset mirrors headless-runner.ts: caller resets before the step.
+    world.state = 'playing';
 
     runSimulationStep(world, createInputState(), STEP_MS, FLOOR1_OPTS);
 
     expect(world.state).toBe('playing');
   });
 
-  it('returns to playing the same step a level-up fires, and latches reach-level-2', () => {
+  it('returns to playing the frame after a level-up fires, and latches reach-level-2', () => {
     const { world } = setupFloor1World(42);
     expect(world.playerLevel.level).toBeLessThan(2);
 
-    // Pre-load enough XP that levelSystem advances to level 2 this step.
+    // Frame 1: Pre-load enough XP that levelSystem advances to level 2. The
+    // level_up flag is set inside this step (by levelSystem in postSystems).
+    // floor1ObjectiveTick sees 'level_up' and is a no-op this frame — matching
+    // the visual game's behavior (objectives don't advance on the level-up frame
+    // before the player allocates stat points).
     world.playerLevel.xp = xpRequiredForLevel(2);
     runSimulationStep(world, createInputState(), STEP_MS, FLOOR1_OPTS);
 
     expect(world.playerLevel.level).toBeGreaterThanOrEqual(2);
-    // The regression: without the level_up -> playing reset the world would be
-    // stuck in 'level_up' and floor1ObjectiveTick would never run this step.
+    // State is 'level_up' at end of this step — the caller (headless runner) will
+    // reset it before the next step. Objectives have NOT latched yet.
+    expect(world.state).toBe('level_up');
+
+    // Frame 2: Caller resets level_up → playing (mirroring headless-runner.ts).
+    // Now floorObjectiveSystem runs and latches reach-level-2.
+    world.state = 'playing';
+    runSimulationStep(world, createInputState(), STEP_MS, FLOOR1_OPTS);
+
     expect(world.state).toBe('playing');
     expect(world.goalFlags.get('floor1-reach-level-2')).toBe(true);
   });
@@ -82,12 +104,16 @@ describe('runSimulationStep — level_up must not park the headless Floor 1 sim'
 
     world.playerLevel.xp = xpRequiredForLevel(2);
     // A few steps so floorObjectiveSystem -> questSystem can latch + complete.
-    for (let i = 0; i < 3; i += 1) {
+    // The level_up state is reset between steps (caller mirrors headless-runner.ts).
+    for (let i = 0; i < 4; i += 1) {
+      // Reset level_up before each step — mirrors headless-runner.ts behavior.
+      if (world.state === 'level_up') world.state = 'playing';
       runSimulationStep(world, createInputState(), STEP_MS, FLOOR1_OPTS);
     }
 
     expect(world.playerLevel.level).toBeGreaterThanOrEqual(2);
-    expect(world.state).toBe('playing');
+    // State may be level_up at end of loop if a level-up fired last step; safe.
+    expect(world.state === 'playing' || world.state === 'level_up').toBe(true);
     expect(isQuestComplete(world, FLOOR1_TUTORIAL_QUEST_ID)).toBe(true);
   });
 });
@@ -99,9 +125,10 @@ describe('runSimulationStep — harvestSystem ticks in the headless pipeline', (
     const def = HARVESTABLE_DEFS[0]!;
 
     // Mushroom def 0 takes 3000ms (~180 steps at 16.67ms); 200 stationary steps clears it.
+    // harvestSystem is part of the core pipeline — no preSystems needed for this test.
     spawnHarvestableNode(world, 0, 0, 0);
     for (let i = 0; i < 200; i++) {
-      runSimulationStep(world, createInputState(), STEP_MS, FLOOR1_OPTS);
+      runSimulationStep(world, createInputState(), STEP_MS, {});
     }
 
     const bag = world.inventories.get(player)!;

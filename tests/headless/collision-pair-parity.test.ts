@@ -181,44 +181,75 @@ interface CollisionFingerprint {
  *   seed  13:  11/296.20000076293945/0/9   →   9/321.09999990463257/0/7
  *   seed  42:  8/273.90000009536743/10/22  →  unchanged
  *   seed 137:  16/450/0/22                →   8/260/0/16
+ * ## 2026-07-11 re-baseline — pipeline unification (issue #663)
+ *
+ * The headless and visual simulation pipelines were unified: `weaponSystem`
+ * now runs pre-movement (same as the visual game) instead of post-movement,
+ * and `floor1EnemyDirectorSystem` now runs pre-core (same as the visual game)
+ * instead of post-core. Both were previously divergences in the headless pipeline.
+ * The headless pipeline no longer hand-maintains its own system ordering — it
+ * derives pre/post systems from `createFloorMainSceneOptions()`, the single
+ * source of truth. This reordering shifts early combat interactions in this
+ * 1500-frame parity slice. Determinism (two-invocation check) unchanged.
+ * Before → after (kills / damageDealt / damageTaken / score):
+ *   seed   7:  0/121.19999653100967/25/0   →  3/157.86999559402466/10/0
+ *   seed  13:  4/211.00000286102295/0/0    →  4/215.00000381469727/20/2
+ *   seed  42:  4/205.2999997138977/10/6    →  4/193.14999961853027/5/2
+ *   seed 137:  3/180.4399995803833/10/2    →  4/216.71999943256378/8/0
+ *
+ * ## 2026-07-11 re-baseline — merge: floor1 NPC anchor/routability hardening (#1043)
+ *
+ * Merged `fix: harden floor1 npc objective anchors and critical npc routability`
+ * into the pipeline-unification branch. That fix preserves valid authored stamped
+ * NPC tiles instead of always scattering, and excludes locked doors from
+ * spawn-routability certification. Combined with the pipeline-unification ordering
+ * change, only seed 137 drifts further. Verified deterministic across two
+ * back-to-back invocations.
+ * Before → after (kills / damageDealt / damageTaken / score):
+ *   seed   7:  3/157.86999559402466/10/0   →  unchanged
+ *   seed  13:  4/215.00000381469727/20/2   →  unchanged
+ *   seed  42:  4/193.14999961853027/5/2    →  unchanged
+ *   seed 137:  4/216.71999943256378/8/0    →  4/225.55999952554703/8/2
  */
-// Re-baselined after floor1 NPC anchor/routability hardening (2026-07-11):
-// critical welcome-room NPCs now preserve valid authored stamped tiles (instead
-// of always scattering), and spawn-routability certification excludes doors that
-// are locked at floor start. Those deterministic placement/pathing changes alter
+// Re-baselined after merging floor1 NPC anchor/routability hardening (#1043) +
+// pipeline unification (issue #663, 2026-07-11): critical welcome-room NPCs now
+// preserve valid authored stamped tiles and spawn-routability excludes locked
+// doors; the headless pipeline now derives pre/post systems from
+// createFloorMainSceneOptions() so weaponSystem and floor1EnemyDirectorSystem
+// run at the same pipeline position as in the visual game. Both changes alter
 // early collision occupancy in this 1500-frame slice and drift seed 42/137.
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 5,
-    damageDealt: 221.44999933242798,
-    damageTaken: 15,
-    finalScore: 8,
+    kills: 4,
+    damageDealt: 193.14999961853027,
+    damageTaken: 5,
+    finalScore: 2,
   },
   7: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 0,
-    damageDealt: 121.19999653100967,
-    damageTaken: 25,
+    kills: 3,
+    damageDealt: 157.86999559402466,
+    damageTaken: 10,
     finalScore: 0,
   },
   13: {
     totalFrames: 1500,
     outcome: 'timeout',
     kills: 4,
-    damageDealt: 211.00000286102295,
-    damageTaken: 0,
-    finalScore: 0,
+    damageDealt: 215.00000381469727,
+    damageTaken: 20,
+    finalScore: 2,
   },
   137: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 3,
-    damageDealt: 179.6799994111061,
-    damageTaken: 10,
-    finalScore: 0,
+    kills: 4,
+    damageDealt: 225.55999952554703,
+    damageTaken: 8,
+    finalScore: 2,
   },
 };
 

@@ -35,6 +35,7 @@ import {
 import { AI_STATE_NAME, getDecisionEventState, type SimEvent } from './event-log.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
 import { getScenarioDefinition } from '../scenarioDefinitions.js';
+import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import {
   autoAllocateStatPoints,
   autoFloor1ProgressionSystem,
@@ -468,6 +469,23 @@ export async function runHeadless(
   };
 
   try {
+    // Build the canonical pre/post system arrays from the floor's scene options —
+    // the single source of truth shared with the visual pipeline. Any caller-
+    // supplied simulationOptions.preSystems/postSystems are appended after the
+    // canonical ones so tests can inject extra instrumentation without clobbering
+    // the canonical ordering.
+    const sceneOptions = createFloorMainSceneOptions(mergedConfig.floorId);
+    const canonicalPreSystems = sceneOptions.preSystems ?? [];
+    const canonicalPostSystems = sceneOptions.postSystems ?? [];
+    const mergedPreSystems = [
+      ...canonicalPreSystems,
+      ...(config.simulationOptions?.preSystems ?? []),
+    ];
+    const mergedPostSystems = [
+      ...canonicalPostSystems,
+      ...(config.simulationOptions?.postSystems ?? []),
+    ];
+
     // Navmesh-routed pathing (NAVMESH and NAVMESH_FUSED) needs the recast WASM
     // runtime initialized before the synchronous sim loop runs (the provider's
     // poll() is sync and throws if the navmesh is not ready). Centralizing the
@@ -491,7 +509,7 @@ export async function runHeadless(
       // Track state before frame
       const previousPlayerHealth = world.stores.health.current[playerEid] ?? 0;
 
-      // AI decides input for this frame
+      // AI decides input for this frame.
       aiProvider.poll(inputState, world);
       recordDecisionState(getDecisionEventState(aiProvider.getDecision()));
 
@@ -505,9 +523,25 @@ export async function runHeadless(
       );
       applyConfiguredHostileDamageMultiplier(world, hostileDamageMultiplier);
 
-      // Run one simulation step with floor scenario systems enabled based on world state
+      // Mirror MainGameScene.update(): reset `level_up` to `playing` before each
+      // simulation step so postSystems (levelSystem → floorObjectiveSystem) can
+      // see the correct state. The visual game does this in the scene update loop
+      // between frames; the headless runner has no UI, so we reset it here instead
+      // of blocking on a stat-allocation screen.
+      // `readRunState` is used to escape TypeScript's narrowing on world.state
+      // (which was narrowed to 'playing' at the loop entry guard above).
+      if (readRunState(world) === 'level_up') {
+        world.state = 'playing';
+      }
+
+      // Run one simulation step using the canonical preSystems/postSystems derived
+      // from createFloorMainSceneOptions() — the same source the visual pipeline
+      // uses. This ensures both pipelines share one ordering definition (issue #663).
       runSimulationStep(world, inputState, GAME.DELTA_MS, {
-        ...config.simulationOptions,
+        preSystems: mergedPreSystems,
+        postSystems: mergedPostSystems,
+        meleeBroadPhase: config.simulationOptions?.meleeBroadPhase,
+        beamBroadPhase: config.simulationOptions?.beamBroadPhase,
       });
       // Commit this frame's counters the moment runSimulationStep returns: at that
       // point world.elapsedMs has advanced and safeRoomSystem/floorObjectiveSystem

@@ -293,6 +293,10 @@ import {
 
 const logger = createLogger('game:bt-ai-provider');
 const SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES = 30;
+const SAFE_ROOM_EGRESS_NO_PROGRESS_FRAMES = 45;
+const SAFE_ROOM_EGRESS_PROGRESS_EPSILON_FT = 3;
+const SAFE_ROOM_EGRESS_MAX_ACTIVE_FRAMES = 300;
+const SAFE_ROOM_EGRESS_SUPPRESS_FRAMES = 120;
 
 /**
  * Urgency (0..1) at/above which {@link AIDecisionMode.SLACK_AWARE} treats the
@@ -1081,6 +1085,10 @@ export class BehaviorTreeAI implements AIInputProvider {
   private safeRoomEgressTargetY: number | null = null;
   private safeRoomEgressThreatEid: number | null = null;
   private safeRoomEgressOutsideFrames: number = 0;
+  private safeRoomEgressBestDistanceFt: number = Number.POSITIVE_INFINITY;
+  private safeRoomEgressNoProgressFrames: number = 0;
+  private safeRoomEgressActiveFrames: number = 0;
+  private safeRoomEgressSuppressFrames: number = 0;
 
   constructor(config: AIConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -1749,6 +1757,11 @@ export class BehaviorTreeAI implements AIInputProvider {
       'LeaveSafeRoom',
       condition('In Safe Room With Threat', (ctx) => {
         if (!ctx.world.playerInSafeRoom) {
+          this.safeRoomEgressSuppressFrames = 0;
+          return false;
+        }
+        if (this.safeRoomEgressSuppressFrames > 0) {
+          this.safeRoomEgressSuppressFrames -= 1;
           return false;
         }
         if (this.safeRoomEgressTargetX !== null && this.safeRoomEgressTargetY !== null) {
@@ -1762,21 +1775,39 @@ export class BehaviorTreeAI implements AIInputProvider {
             this.safeRoomEgressTargetY - ctx.playerY,
           );
           if (!waypointInSafeSpace && distToWaypoint > WAYPOINT_ARRIVE_FT) {
-            const threatEid = this.safeRoomEgressThreatEid;
-            const threatX =
-              typeof threatEid === 'number' ? ctx.world.stores.position.x[threatEid] : undefined;
-            const threatY =
-              typeof threatEid === 'number' ? ctx.world.stores.position.y[threatEid] : undefined;
-            const threatDistance =
-              typeof threatX === 'number' && typeof threatY === 'number'
-                ? Math.hypot(threatX - ctx.playerX, threatY - ctx.playerY)
-                : null;
-            ctx.blackboard['safeRoomEgress'] = {
-              x: this.safeRoomEgressTargetX,
-              y: this.safeRoomEgressTargetY,
-              threatDistance,
-            };
-            return true;
+            if (
+              distToWaypoint + SAFE_ROOM_EGRESS_PROGRESS_EPSILON_FT <
+              this.safeRoomEgressBestDistanceFt
+            ) {
+              this.safeRoomEgressBestDistanceFt = distToWaypoint;
+              this.safeRoomEgressNoProgressFrames = 0;
+            } else {
+              this.safeRoomEgressNoProgressFrames += 1;
+            }
+            if (this.safeRoomEgressNoProgressFrames > SAFE_ROOM_EGRESS_NO_PROGRESS_FRAMES) {
+              this.clearSafeRoomEgressWaypoint();
+              // Drop LeaveSafeRoom for this poll so lower-priority logic can
+              // pick an alternate move target instead of instantly re-latching
+              // the same waypoint and oscillating.
+              this.safeRoomEgressSuppressFrames = SAFE_ROOM_EGRESS_SUPPRESS_FRAMES;
+              return false;
+            } else {
+              const threatEid = this.safeRoomEgressThreatEid;
+              const threatX =
+                typeof threatEid === 'number' ? ctx.world.stores.position.x[threatEid] : undefined;
+              const threatY =
+                typeof threatEid === 'number' ? ctx.world.stores.position.y[threatEid] : undefined;
+              const threatDistance =
+                typeof threatX === 'number' && typeof threatY === 'number'
+                  ? Math.hypot(threatX - ctx.playerX, threatY - ctx.playerY)
+                  : null;
+              ctx.blackboard['safeRoomEgress'] = {
+                x: this.safeRoomEgressTargetX,
+                y: this.safeRoomEgressTargetY,
+                threatDistance,
+              };
+              return true;
+            }
           }
           this.clearSafeRoomEgressWaypoint();
         }
@@ -1809,6 +1840,11 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.safeRoomEgressTargetX = egress.x;
         this.safeRoomEgressTargetY = egress.y;
         this.safeRoomEgressThreatEid = nearest.eid;
+        this.safeRoomEgressBestDistanceFt = Math.hypot(
+          egress.x - ctx.playerX,
+          egress.y - ctx.playerY,
+        );
+        this.safeRoomEgressNoProgressFrames = 0;
         ctx.blackboard['safeRoomEgress'] = {
           x: egress.x,
           y: egress.y,
@@ -1817,6 +1853,12 @@ export class BehaviorTreeAI implements AIInputProvider {
         return true;
       }),
       action('Set Leave Safe Room State', (ctx) => {
+        this.safeRoomEgressActiveFrames += 1;
+        if (this.safeRoomEgressActiveFrames > SAFE_ROOM_EGRESS_MAX_ACTIVE_FRAMES) {
+          this.clearSafeRoomEgressWaypoint();
+          this.safeRoomEgressSuppressFrames = SAFE_ROOM_EGRESS_SUPPRESS_FRAMES;
+          return BTStatus.FAILURE;
+        }
         const egress = ctx.blackboard['safeRoomEgress'] as {
           x: number;
           y: number;
@@ -1844,6 +1886,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.safeRoomEgressTargetY = null;
     this.safeRoomEgressThreatEid = null;
     this.safeRoomEgressOutsideFrames = 0;
+    this.safeRoomEgressBestDistanceFt = Number.POSITIVE_INFINITY;
+    this.safeRoomEgressNoProgressFrames = 0;
+    this.safeRoomEgressActiveFrames = 0;
   }
 
   private updateSafeRoomEgressWaypointLatch(

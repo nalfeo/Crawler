@@ -28,6 +28,7 @@ import { createTestWorld } from '../helpers/world-factory.js';
 import { setActiveWeapon } from '../../src/game/weaponSystem.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { GAME } from '../../src/shared/constants.js';
+import { createFloor1MainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 
 const RATS_NEST_INDEX = getSpawnerArchetypeIndex('rats-nest');
 const RATS_NEST = getSpawnerArchetype('rats-nest')!;
@@ -68,6 +69,12 @@ describe('AI arena lock-in — integration', () => {
     const ai = new BehaviorTreeAI({ seed: 1 });
     const input = createInputState();
 
+    // Use canonical preSystems (single source of truth, issue #663). Systems
+    // that require world.floorScenario (floor1EnemyDirectorSystem etc.) are
+    // no-ops on this minimal world; spawnerArenaSystem is required to transition
+    // arenaState → 2 after the spawner's HP reaches 0.
+    const { preSystems } = createFloor1MainSceneOptions();
+
     // First tick: the priority selector must choose the spawner.
     ai.poll(input, world);
     expect(ai.getDecision().targetEid).toBe(spawnerEid);
@@ -80,7 +87,7 @@ describe('AI arena lock-in — integration', () => {
     let resolvedFrame = -1;
     for (let f = 0; f < MAX_FRAMES; f += 1) {
       ai.poll(input, world);
-      runSimulationStep(world, input, GAME.DELTA_MS, {});
+      runSimulationStep(world, input, GAME.DELTA_MS, { preSystems });
       if (world.stores.spawner.arenaState[spawnerEid] === 2) {
         resolvedFrame = f;
         break;
