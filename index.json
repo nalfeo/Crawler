@@ -11,6 +11,17 @@
     "path": "by-sha/0e453f9ab71dbcb84b6c114405c62bac9fc8f088.json"
   },
   {
+    "commit": "4fd9ebfd6965c9cae84b76a52765ea6831bf693d",
+    "commitDate": "2026-07-12T22:20:30-07:00",
+    "commitSubject": "ci: skip headless win-rate sweep on .github/** PR changes (#1078)",
+    "capturedAt": "2026-07-13T05:54:12.842Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29226357083",
+    "winRate": 0.92,
+    "totalWins": 276,
+    "totalRuns": 300,
+    "path": "by-sha/4fd9ebfd6965c9cae84b76a52765ea6831bf693d.json"
+  },
+  {
     "commit": "ee7a235efb7fe2a31f5887830d6dd47f5149169f",
     "commitDate": "2026-07-12T21:49:02-07:00",
     "commitSubject": "fix(ci): ignore same-repo action-required approvals (#1094)",
