@@ -1,47 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  checkSemanticTitle,
   checkHandoff,
   checkForbiddenPaths,
   checkCrossSystemAdr,
-  CONVENTIONAL_TITLE_RE,
   HANDOFF_DATED_RE,
   TRIVIAL_PATH_RE,
 } from '../guards/pr-preflight.mjs';
-
-test('CONVENTIONAL_TITLE_RE accepts every allowed type', () => {
-  for (const t of [
-    'feat',
-    'fix',
-    'chore',
-    'lab',
-    'docs',
-    'refactor',
-    'test',
-    'perf',
-    'ci',
-    'build',
-  ]) {
-    assert.match(`${t}: subject`, CONVENTIONAL_TITLE_RE);
-    assert.match(`${t}(scope): subject`, CONVENTIONAL_TITLE_RE);
-    assert.match(`${t}!: subject`, CONVENTIONAL_TITLE_RE);
-    assert.match(`${t}(scope)!: subject`, CONVENTIONAL_TITLE_RE);
-  }
-});
-
-test('CONVENTIONAL_TITLE_RE rejects invalid', () => {
-  assert.doesNotMatch('style: foo', CONVENTIONAL_TITLE_RE);
-  assert.doesNotMatch('Feat: capitalized', CONVENTIONAL_TITLE_RE);
-  assert.doesNotMatch('feat:nospace', CONVENTIONAL_TITLE_RE);
-  assert.doesNotMatch('just a sentence', CONVENTIONAL_TITLE_RE);
-});
-
-test('checkSemanticTitle reports missing and bad titles', () => {
-  assert.ok(checkSemanticTitle({ title: '' }));
-  assert.ok(checkSemanticTitle({ title: 'Some Title' }));
-  assert.equal(checkSemanticTitle({ title: 'feat(guards): add stuff' }), null);
-});
 
 test('HANDOFF_DATED_RE matches required form', () => {
   assert.match('docs/knowledge/handoffs/2026-06-04-enforcement-hooks.md', HANDOFF_DATED_RE);

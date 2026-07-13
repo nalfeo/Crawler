@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-13",
+  "session_slug": "remove-commit-lint",
+  "task_title": "Remove conventional commit / PR title lint enforcement",
+  "estimated_apples": 1,
+  "stages": {}
+}

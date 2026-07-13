@@ -25,25 +25,7 @@ Then load the relevant persona, recent handoffs, and any needed policy or guide 
 - If a decision affects 2+ systems, write or update an ADR
 - If you add an ECS system, create its lab as part of the same change
 
-## 4. Use conventional commits
-
-Accepted prefixes:
-
-- `feat:`
-- `fix:`
-- `chore:`
-- `lab:`
-- `docs:`
-- `refactor:`
-- `test:`
-- `perf:`
-- `ci:`
-- `build:`
-- `revert:`
-
-Choose the narrowest accurate type.
-
-## 5. Verify fast before push
+## 4. Verify fast before push
 
 After every meaningful change run:
 
@@ -53,7 +35,7 @@ npm run verify:fast
 
 This is the minimum bar before pushing branch updates.
 
-## 6. Verify before opening or updating a PR
+## 5. Verify before opening or updating a PR
 
 Before a pull request, run:
 
@@ -73,7 +55,7 @@ real-pipeline wiring guard (`check:wired-systems`, ADR 0039) must pass — a lab
 alone is not sufficient proof that the system runs in the real game or headless
 pipeline.
 
-## 6a. Apple-scaled review harness (before requesting review)
+## 5a. Apple-scaled review harness (before requesting review)
 
 Before opening or updating a PR that touches code, run the apple-scaled review
 harness and append the result to the review ledger. See
@@ -83,7 +65,7 @@ Record the apple estimate (declared before writing code) and actuals + verdict
 at handoff time per
 [`docs/agent-os/policies/complexity-policy.md`](../agent-os/policies/complexity-policy.md).
 
-## 6b. Observe before done (real-artifact validation)
+## 5b. Observe before done (real-artifact validation)
 
 For any change that adds/moves a system or alters runtime behavior, name the
 **real pipeline artifact** you observed the behavior in — `npm run dev`, the
@@ -92,16 +74,15 @@ lab proves isolated correctness but can never prove the real game or headless
 pipeline actually calls the system. See constitution Principle 13 and rule #14
 in `AGENTS.md`.
 
-## 7. Open a reviewable PR
+## 6. Open a reviewable PR
 
 Before requesting review:
 
 - make sure the branch is up to date with `main`
 - ensure CI passes deterministically
-- use a semantic PR title consistent with the conventional commit family
 - keep the PR scoped so reviewers can understand intent quickly
 
-## 8. Follow the handoff protocol
+## 7. Follow the handoff protocol
 
 Before ending the session, write a handoff in `docs/knowledge/handoffs/`.
 
@@ -113,7 +94,7 @@ Include at least:
 - open risks or follow-ups
 - the recommended next action
 
-## 9. Special rule: lab gate
+## 8. Special rule: lab gate
 
 No ECS system ships without a corresponding lab in `src/labs/`.
 

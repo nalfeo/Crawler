@@ -110,10 +110,6 @@ export function planConsolidation(input: PlanConsolidationInput): ConsolidationP
 
   const noun = assets.length === 1 ? 'asset' : 'assets';
   const commitMessage = `feat(sprites): consolidate ${assets.length} approved ${noun} from ${input.issues.length} check-in(s)`;
-  // PRs squash-merge, so the PR title becomes the commit subject on `main` and
-  // is linted by the `commit-lint` CI job as a conventional commit. Prefix with
-  // the same `feat(sprites):` type used for `commitMessage` so an asset PR is
-  // never blocked on a malformed subject.
   const prTitle = `feat(sprites): add ${assets.length} approved ${noun} (${input.issues.length} check-in${input.issues.length === 1 ? '' : 's'})`;
   const prBody = renderPrBody(input.issues, assets, baseBranch);
 
