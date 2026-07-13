@@ -2891,6 +2891,8 @@ export class BehaviorTreeAI implements AIInputProvider {
       state.moveX = 0;
       state.moveY = 0;
     }
+    const constrainedRouteMove =
+      safeRoomRoute.moveTarget !== null ? { moveX: state.moveX, moveY: state.moveY } : null;
 
     // Track B (reward pull) is blended differently per mode: LEGACY blends it
     // additively AFTER travel steering (below); the fused scorer folds Track A +
@@ -3036,6 +3038,16 @@ export class BehaviorTreeAI implements AIInputProvider {
       state.moveY = 0;
       this.smoothMoveX = 0;
       this.smoothMoveY = 0;
+    } else if (constrainedRouteMove) {
+      // An active route segment is the final locomotion constraint. Semantic
+      // ownership remains untouched, but reward/fused/travel/smoothing layers
+      // cannot bend this frame back through the safe-room mouth and recreate
+      // the segment. The captured heading came from the existing door-aware
+      // moveToward path to the reducer's next legal waypoint.
+      state.moveX = constrainedRouteMove.moveX;
+      state.moveY = constrainedRouteMove.moveY;
+      this.smoothMoveX = constrainedRouteMove.moveX;
+      this.smoothMoveY = constrainedRouteMove.moveY;
     }
 
     state.action = false;

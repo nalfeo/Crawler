@@ -49,9 +49,9 @@
         {
           "round": 2,
           "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
-          "concerns_count": 2,
-          "valid_count": 2,
-          "resolved_count": 2,
+          "concerns_count": 4,
+          "valid_count": 4,
+          "resolved_count": 4,
           "clean": true
         }
       ]

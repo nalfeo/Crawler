@@ -306,8 +306,14 @@ function computeRoute(
     // array end.
     return completeRoute(state);
   }
-  const waypoint = path[segmentIndex]!;
-  const moveTarget = deps.tileToWorld(waypoint.x, waypoint.y);
+  // Feed the legal prefix ENDPOINT to the existing door-aware movement
+  // controller. Passing each intermediate path tile back through a second A*
+  // layer can turn a door-center tile into an unreachable local goal for the
+  // player's collision body. The full path remains the geometry certificate
+  // and progress record; moveToward owns its intermediate waypoint/wedge
+  // recovery exactly once.
+  const endpoint = path[path.length - 1]!;
+  const moveTarget = deps.tileToWorld(endpoint.x, endpoint.y);
   return { state, moveTarget, blocked: false };
 }
 
@@ -362,6 +368,14 @@ function tryActivate(
   );
 }
 
+function candidateRoomId(input: SafeRoomRouteInput, deps: SafeRoomRouteDeps): number {
+  const anchorTile = deps.worldToTile(
+    input.candidate.targetX ?? input.playerX,
+    input.candidate.targetY ?? input.playerY,
+  );
+  return deps.getRoomAt(anchorTile.x, anchorTile.y);
+}
+
 /**
  * Advance the safe-room route overlay by exactly one poll. Pure function: same
  * inputs always produce the same outputs, and neither `input` nor `deps` are
@@ -389,22 +403,35 @@ export function updateSafeRoomRouteState(
     return activated;
   }
 
-  // active/blocked: reseed on commitment-key change first, then navEpoch
-  // change — checked in this order so a simultaneous change never double-
-  // recomputes within the same poll.
-  if (commitmentKey !== prev.commitmentKey) {
-    const reseeded = tryActivate(
-      { ...prev, totalReseeds: prev.totalReseeds + 1 },
-      input,
-      deps,
-      commitmentKey,
-      'commitment-change',
-    );
-    return reseeded;
+  // A live entity can enter the origin room without changing its stable
+  // commitment key. Re-check geometry every poll so same-space interactions
+  // release immediately instead of waiting for a topology epoch.
+  if (candidateRoomId(input, deps) === prev.originRoomId) {
+    return passThrough(toIdle(prev));
   }
-  if (input.navEpoch !== prev.navEpoch) {
+
+  let current = prev;
+
+  // An active path is a geometry segment, not a lease on the semantic target.
+  // External-to-external winner changes do not invalidate that already-legal
+  // prefix: keep advancing it and only update diagnostic identity. A blocked
+  // route is different — a new external target may have a legal path, so it
+  // gets one deterministic retry.
+  if (commitmentKey !== prev.commitmentKey) {
+    if (prev.phase === 'blocked') {
+      return tryActivate(
+        { ...prev, totalReseeds: prev.totalReseeds + 1 },
+        input,
+        deps,
+        commitmentKey,
+        'commitment-change',
+      );
+    }
+    current = { ...prev, commitmentKey };
+  }
+  if (input.navEpoch !== current.navEpoch) {
     return tryActivate(
-      { ...prev, totalReseeds: prev.totalReseeds + 1 },
+      { ...current, totalReseeds: current.totalReseeds + 1 },
       input,
       deps,
       commitmentKey,
@@ -412,7 +439,7 @@ export function updateSafeRoomRouteState(
     );
   }
 
-  if (prev.phase === 'blocked') {
+  if (current.phase === 'blocked') {
     // Before freezing: if the player has left the origin room (different room
     // id or exterior), the route constraint no longer applies — return idle
     // pass-through so movement resumes freely toward the semantic target. Use
@@ -421,21 +448,29 @@ export function updateSafeRoomRouteState(
     // actual room transition.
     const playerTile = deps.worldToTile(input.playerX, input.playerY);
     const currentRoomId = deps.getRoomAt(playerTile.x, playerTile.y);
-    if (currentRoomId !== prev.originRoomId) {
-      return passThrough(toIdle(prev));
+    if (currentRoomId !== current.originRoomId) {
+      return passThrough(toIdle(current));
     }
     // Stay frozen — no per-poll A* while blocked and nothing changed.
-    return { state: prev, moveTarget: null, blocked: true };
+    return { state: current, moveTarget: null, blocked: true };
   }
 
   // Steady state: advance the monotonic segment index. Loop so a fast player
   // crossing multiple short segments in one poll (e.g. a low-frame-rate poll
   // interval) still lands on the correct next unreached waypoint.
-  const path = prev.path;
+  const path = current.path;
   if (path.length === 0) {
-    return completeRoute(prev);
+    return completeRoute(current);
   }
-  let segmentIndex = prev.segmentIndex;
+  const endpoint = path[path.length - 1]!;
+  const endpointWorld = deps.tileToWorld(endpoint.x, endpoint.y);
+  if (
+    Math.hypot(input.playerX - endpointWorld.x, input.playerY - endpointWorld.y) <=
+    SAFE_ROOM_ROUTE_ARRIVE_FT
+  ) {
+    return completeRoute({ ...current, segmentIndex: path.length });
+  }
+  let segmentIndex = current.segmentIndex;
   while (segmentIndex < path.length) {
     const waypoint = path[segmentIndex]!;
     const worldPoint = deps.tileToWorld(waypoint.x, waypoint.y);
@@ -446,11 +481,9 @@ export function updateSafeRoomRouteState(
     segmentIndex += 1;
   }
   if (segmentIndex >= path.length) {
-    return completeRoute({ ...prev, segmentIndex });
+    return completeRoute({ ...current, segmentIndex });
   }
-  const waypoint = path[segmentIndex]!;
-  const moveTarget = deps.tileToWorld(waypoint.x, waypoint.y);
-  return { state: { ...prev, segmentIndex }, moveTarget, blocked: false };
+  return { state: { ...current, segmentIndex }, moveTarget: endpointWorld, blocked: false };
 }
 
 /** Compact, durable diagnostics snapshot for provider/telemetry exposure. */
