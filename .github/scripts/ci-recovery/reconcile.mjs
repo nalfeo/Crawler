@@ -318,35 +318,9 @@ for (const run of actionRequiredRuns) {
     changedFiles,
     expectedChangedFiles: pr.changed_files,
   });
-  if (rejection) {
-    process.stdout.write(
-      `skip action_required run=${run.id} name="${run.name}" reason=${rejection}\n`,
-    );
-    continue;
-  }
-  if (live) {
-    try {
-      await request(pat, `/repos/${owner}/${repo}/actions/runs/${run.id}/approve`, {
-        method: 'POST',
-      });
-      process.stdout.write(`approved workflow run=${run.id} name="${run.name}"\n`);
-      continue;
-    } catch (error) {
-      blockers.push({
-        kind: 'workflow-approval',
-        id: run.name,
-        summary: `Workflow ${run.name} needs approval and automatic approval failed: ${error.message}`,
-        url: run.html_url,
-      });
-      continue;
-    }
-  }
-  blockers.push({
-    kind: 'workflow-approval',
-    id: run.name,
-    summary: `Workflow ${run.name} needs approval.`,
-    url: run.html_url,
-  });
+  process.stdout.write(
+    `skip action_required run=${run.id} name="${run.name}" reason=${rejection}\n`,
+  );
 }
 
 for (const thread of review.threads.filter((candidate) => !candidate.isResolved)) {

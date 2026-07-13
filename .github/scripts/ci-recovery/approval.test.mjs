@@ -22,16 +22,19 @@ function rejection(overrides = {}) {
   });
 }
 
-test('allows CI Recovery Router review events for a same-repository PR', () => {
-  assert.equal(rejection(), null);
-  assert.equal(rejection({ event: 'pull_request_review_comment' }), null);
+test('skips same-repository CI Recovery Router runs as non-approvable', () => {
+  assert.equal(rejection(), 'same-repository');
+  assert.equal(rejection({ event: 'pull_request_review_comment' }), 'same-repository');
 });
 
-test('allows existing CI workflows only for pull-request events', () => {
-  assert.equal(rejection({ path: '.github/workflows/ci.yml', event: 'pull_request' }), null);
+test('skips same-repository CI workflows only after validating pull-request events', () => {
+  assert.equal(
+    rejection({ path: '.github/workflows/ci.yml', event: 'pull_request' }),
+    'same-repository',
+  );
   assert.equal(
     rejection({ path: '.github/workflows/commit-lint.yml', event: 'pull_request_target' }),
-    null,
+    'same-repository',
   );
 });
 
@@ -126,5 +129,5 @@ test('rejects off-diagonal workflow and event combinations', () => {
 });
 
 test('applies the same policy to rerun attempts', () => {
-  assert.equal(rejection({ run_attempt: 2 }), null);
+  assert.equal(rejection({ run_attempt: 2 }), 'same-repository');
 });

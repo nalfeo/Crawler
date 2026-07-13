@@ -53,5 +53,7 @@ export function workflowApprovalRejection({
     return `event=${run?.event}`;
   }
 
-  return null;
+  // GitHub's approval endpoint only accepts workflow runs from fork PRs, while
+  // CI recovery intentionally rejects fork PRs before reconciliation.
+  return 'same-repository';
 }

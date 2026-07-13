@@ -113,8 +113,7 @@ function startServer(routes) {
         if (handler) {
           const result = handler(req.url, parsed) ?? {};
           const status = result.status ?? 200;
-          const bodyStr =
-            result.body !== undefined ? JSON.stringify(result.body) : '{}';
+          const bodyStr = result.body !== undefined ? JSON.stringify(result.body) : '{}';
           res.writeHead(status, { 'Content-Type': 'application/json' });
           res.end(bodyStr);
         } else {
@@ -184,19 +183,13 @@ test('lease-acquire in dry-run writes the owner label and state comment', async 
   assert.equal(code, 0, `expected exit 0; stderr: ${stderr}`);
 
   const labelCreate = mutatingCalls.find(
-    (c) =>
-      c.method === 'POST' &&
-      c.url === `/repos/${OWNER}/${REPO}/labels`,
+    (c) => c.method === 'POST' && c.url === `/repos/${OWNER}/${REPO}/labels`,
   );
   const labelAttach = mutatingCalls.find(
-    (c) =>
-      c.method === 'POST' &&
-      c.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`,
+    (c) => c.method === 'POST' && c.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`,
   );
   const commentCreate = mutatingCalls.find(
-    (c) =>
-      c.method === 'POST' &&
-      c.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+    (c) => c.method === 'POST' && c.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
   );
 
   assert.ok(labelCreate, 'expected POST to create the owner label');
@@ -274,13 +267,10 @@ test('lease-release in dry-run removes the owner label and writes idle state', a
 
   const labelDetach = mutatingCalls.find(
     (c) =>
-      c.method === 'DELETE' &&
-      c.url.startsWith(`/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/`),
+      c.method === 'DELETE' && c.url.startsWith(`/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/`),
   );
   const labelDelete = mutatingCalls.find(
-    (c) =>
-      c.method === 'DELETE' &&
-      c.url === `/repos/${OWNER}/${REPO}/labels/${LABEL}`,
+    (c) => c.method === 'DELETE' && c.url === `/repos/${OWNER}/${REPO}/labels/${LABEL}`,
   );
   const commentUpdate = mutatingCalls.find(
     (c) =>
@@ -332,9 +322,55 @@ test('reconcile in dry-run makes no mutating API calls', async (t) => {
   });
 
   assert.equal(code, 0, `expected exit 0; stderr: ${stderr}`);
+  assert.deepEqual(mutatingCalls, [], 'reconcile in dry-run must not issue any mutating API calls');
+});
+
+test('reconcile ignores same-repository action-required runs without approval or dispatch', async (t) => {
+  const runId = 29220010234;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({
+      body: {
+        workflow_runs: [
+          {
+            id: runId,
+            name: 'CI Recovery Router',
+            path: '.github/workflows/ci-recovery-router.yml',
+            event: 'pull_request_review',
+            conclusion: 'action_required',
+            pull_requests: [{ number: PR_NUM }],
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/${runId}`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/files`]: () => ({ body: [] }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'required-check',
+  });
+
+  assert.equal(code, 0, `expected exit 0; stderr: ${stderr}`);
+  assert.match(stdout, new RegExp(`skip action_required run=${runId} .* reason=same-repository`));
+  assert.match(stdout, /wait pr=#42 required-checks=required-check/);
+  assert.doesNotMatch(stdout, /workflow-approval|approved workflow|would-approve/);
   assert.deepEqual(
     mutatingCalls,
     [],
-    'reconcile in dry-run must not issue any mutating API calls',
+    'same-repository action-required runs must not trigger approval or recovery dispatch',
   );
 });
