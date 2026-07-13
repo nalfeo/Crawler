@@ -37,6 +37,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
   {
     id: 'magic-missile',
     name: 'Magic Missile',
+    shortLabel: 'MISSILE',
     description: 'Launch a precise arcane bolt into the nearest enemy.',
     category: 'combat',
     kind: 'spell',
@@ -48,6 +49,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
   {
     id: 'frost-nova',
     name: 'Frost Nova',
+    shortLabel: 'FROST',
     description: 'Burst freezing magic around you, damaging and slowing nearby foes.',
     category: 'combat',
     kind: 'spell',
@@ -67,6 +69,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
   {
     id: 'bless',
     name: 'Bless',
+    shortLabel: 'BLESS',
     description: 'Call down a brief blessing that sharpens your strikes and footwork.',
     category: 'utility',
     kind: 'spell',
@@ -89,6 +92,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
   {
     id: 'stoneskin',
     name: 'Stoneskin',
+    shortLabel: 'STONE',
     description: 'Harden your flesh into living granite for a few desperate moments.',
     category: 'defense',
     kind: 'spell',
@@ -107,6 +111,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
   {
     id: 'curse',
     name: 'Curse',
+    shortLabel: 'CURSE',
     description: 'Blight a cluster of enemies, dragging their movement into a crawl.',
     category: 'utility',
     kind: 'spell',
@@ -126,6 +131,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
   {
     id: 'vampiric-touch',
     name: 'Vampiric Touch',
+    shortLabel: 'VAMP',
     description: 'Rip vitality from the nearest foe and pour it back into yourself.',
     category: 'combat',
     kind: 'spell',
@@ -142,6 +148,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
   {
     id: 'haste',
     name: 'Haste',
+    shortLabel: 'HASTE',
     description: 'Flood your limbs with quicksilver speed after a strong damage spike.',
     category: 'utility',
     kind: 'spell',
