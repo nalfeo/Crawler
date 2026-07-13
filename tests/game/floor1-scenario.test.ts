@@ -1285,21 +1285,26 @@ describe('floor1Scenario', () => {
       expect(world.playerGold).toBe(SHOPKEEPER_EQUIPMENT_COST - 1);
     });
 
-    it('offers 2 deterministic extra starter-weapon options from the Floor 1 loadout set', () => {
-      const worldA = createTestWorld({ seed: 5 });
+    it('offers the other 2 canonical starter-weapon options after the Floor 1 quest completes', () => {
+      const worldA = createTestWorld({ seed: 1 });
       const playerA = spawnPlayer(worldA, 0, 0);
       initializeFloor1Scenario(worldA, playerA);
       worldA.goalFlags.set('floor1-shop-quest-complete', true);
       // Reproduce the reported in-game case: the visible Floor 1 starter set is
-      // sword/bow/baseball-bat, so the merchant must stay inside that set.
+      // sword/bow/baseball-bat, so the merchant must offer the two non-selected
+      // canonical weapons instead of re-selling the chosen starter.
       worldA.floorScenario!.starterChoices = [...FLOOR1_LOADOUT_CHOICE_IDS];
+      worldA.floorScenario!.selectedWeaponId = 'sword';
+      worldA.floorScenario!.selectedChoiceIndex = 0;
       expect(worldA.floorScenario?.starterChoices).toEqual([...FLOOR1_LOADOUT_CHOICE_IDS]);
 
-      const worldB = createTestWorld({ seed: 5 });
+      const worldB = createTestWorld({ seed: 1 });
       const playerB = spawnPlayer(worldB, 0, 0);
       initializeFloor1Scenario(worldB, playerB);
       worldB.goalFlags.set('floor1-shop-quest-complete', true);
       worldB.floorScenario!.starterChoices = [...FLOOR1_LOADOUT_CHOICE_IDS];
+      worldB.floorScenario!.selectedWeaponId = 'sword';
+      worldB.floorScenario!.selectedChoiceIndex = 0;
       expect(worldB.floorScenario?.starterChoices).toEqual([...FLOOR1_LOADOUT_CHOICE_IDS]);
 
       const stockA = getShopkeeperPostQuestStock(worldA);
@@ -1307,22 +1312,10 @@ describe('floor1Scenario', () => {
       expect(stockA).toEqual(stockB);
       expect(stockA).toHaveLength(2);
       expect(new Set(stockA.map((entry) => entry.itemId)).size).toBe(2);
-      const starterToItem: Record<string, string> = {
-        sword: 'iron-sword',
-        bow: 'frost-bow',
-        'baseball-bat': 'bone-club',
-        pistol: 'plasma-pistol',
-        'throwing-knife': 'throwing-knife',
-        fireball: 'fireball',
-      };
-      const expectedItemIds = new Set(
-        FLOOR1_LOADOUT_CHOICE_IDS.map((weaponId) => starterToItem[weaponId]).filter(
-          (itemId): itemId is string => itemId !== undefined,
-        ),
+      expect(new Set(stockA.map((entry) => entry.itemId))).toEqual(
+        new Set(['frost-bow', 'bone-club']),
       );
-      for (const entry of stockA) {
-        expect(expectedItemIds.has(entry.itemId)).toBe(true);
-      }
+      expect(stockA.some((entry) => entry.itemId === 'iron-sword')).toBe(false);
     });
 
     it('sells post-quest stock items only after the merchant quest is complete', () => {

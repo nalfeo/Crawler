@@ -3197,8 +3197,13 @@ export function getShopkeeperPostQuestStock(world: GameWorld): ShopkeeperStockIt
     seen.add(weaponId);
     starterPool.push(weaponId);
   }
-  const selectedAtStart = new Set(world.floorScenario?.starterChoices ?? []);
-  const remainingWeaponIds = starterPool.filter((weaponId) => !selectedAtStart.has(weaponId));
+  const selectedChoiceIndex = world.floorScenario?.selectedChoiceIndex;
+  const selectedWeaponId =
+    world.floorScenario?.selectedWeaponId ??
+    (selectedChoiceIndex === null || selectedChoiceIndex === undefined
+      ? undefined
+      : world.floorScenario?.starterChoices[selectedChoiceIndex]);
+  const remainingWeaponIds = starterPool.filter((weaponId) => weaponId !== selectedWeaponId);
   const stockRng = new SeededRandom(
     hashStringToSeed(`${world.seed}:floor1-shopkeeper-post-quest-stock`),
   );
