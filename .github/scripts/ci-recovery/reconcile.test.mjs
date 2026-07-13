@@ -737,3 +737,111 @@ test('reconcile does not escalate router action-required run when it is the only
     'router-only action_required must not trigger any mutating calls',
   );
 });
+
+// ---------------------------------------------------------------------------
+// Ownership boundary: behind vs dirty/unmergeable PR (#1130)
+// A PR that is merely `behind` main must never emit a merge-conflict blocker.
+// A PR that is `dirty` or `mergeable: false` must emit one.
+// ---------------------------------------------------------------------------
+
+test('reconcile emits no merge-conflict blocker for a PR that is only behind main', async (t) => {
+  const behindPr = {
+    ...basePr(),
+    mergeable: true,
+    mergeable_state: 'behind',
+  };
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: behindPr }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  assert.equal(code, 0, `expected exit 0; stderr: ${stderr}`);
+  assert.doesNotMatch(stdout, /merge-conflict/, 'behind PR must not produce a merge-conflict blocker');
+  assert.doesNotMatch(stdout, /dry-run would-assign copilot/, 'behind PR must not dispatch recovery');
+  assert.deepEqual(mutatingCalls, [], 'no mutating calls expected for a behind PR');
+});
+
+test('reconcile emits a merge-conflict blocker for a dirty PR', async (t) => {
+  const dirtyPr = {
+    ...basePr(),
+    mergeable: true,
+    mergeable_state: 'dirty',
+  };
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: dirtyPr }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  assert.equal(code, 0, `expected exit 0; stderr: ${stderr}`);
+  assert.match(stdout, /merge-conflict/, 'dirty PR must produce a merge-conflict blocker');
+  assert.match(stdout, /dry-run would-assign copilot/, 'dirty PR must dispatch recovery');
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating calls even for dirty PR');
+});
+
+test('reconcile emits a merge-conflict blocker for a non-mergeable PR', async (t) => {
+  const nonMergeablePr = {
+    ...basePr(),
+    mergeable: false,
+    mergeable_state: 'blocked',
+  };
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: nonMergeablePr }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  assert.equal(code, 0, `expected exit 0; stderr: ${stderr}`);
+  assert.match(stdout, /merge-conflict/, 'non-mergeable PR must produce a merge-conflict blocker');
+  assert.match(stdout, /dry-run would-assign copilot/, 'non-mergeable PR must dispatch recovery');
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating calls even for non-mergeable PR');
+});
