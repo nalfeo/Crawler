@@ -335,6 +335,86 @@ test('reconcile in dry-run makes no mutating API calls', async (t) => {
   assert.deepEqual(mutatingCalls, [], 'reconcile in dry-run must not issue any mutating API calls');
 });
 
+test('reconcile treats mergeable_state=behind as non-conflict and does not dispatch recovery', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), mergeable: true, mergeable_state: 'behind' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  const windowsAsyncCloseCrash =
+    process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr);
+  assert.ok(code === 0 || windowsAsyncCloseCrash, `expected exit 0; stderr: ${stderr}`);
+  assert.match(stdout, /(dry-run would-arm-auto-merge|wait pr=#42 required-checks=)/);
+  assert.doesNotMatch(stdout, /dry-run would-assign copilot/);
+  assert.doesNotMatch(stdout, /merge-conflict/);
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+test('reconcile still emits merge-conflict blocker for dirty or mergeable=false PRs', async (t) => {
+  const conflictFixtures = [
+    { name: 'dirty', pr: { ...basePr(), mergeable: true, mergeable_state: 'dirty' } },
+    { name: 'mergeable-false', pr: { ...basePr(), mergeable: false, mergeable_state: 'clean' } },
+  ];
+
+  for (const fixture of conflictFixtures) {
+    const { server, port, mutatingCalls } = await startServer({
+      [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: fixture.pr }),
+      [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+      [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+        status: 404,
+        body: { message: 'Not Found' },
+      }),
+      [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+      [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+        body: { check_runs: [] },
+      }),
+      [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    });
+
+    t.after(() => server.close());
+
+    const { code, stdout, stderr } = await runScript(port, {
+      RECOVERY_OPERATION: 'reconcile',
+      CI_RECOVERY_MODE: 'dry-run',
+    });
+
+    assert.equal(code, 0, `fixture=${fixture.name} expected exit 0; stderr: ${stderr}`);
+    assert.match(
+      stdout,
+      /dry-run would-assign copilot/,
+      `fixture=${fixture.name} expected dispatch`,
+    );
+    assert.match(
+      stdout,
+      /merge-conflict/,
+      `fixture=${fixture.name} expected merge-conflict blocker`,
+    );
+    assert.deepEqual(
+      mutatingCalls,
+      [],
+      `fixture=${fixture.name} dry-run must not issue any mutating API calls`,
+    );
+  }
+});
+
 test('reconcile ignores same-repository action-required runs without approval or dispatch', async (t) => {
   const runId = 29220010234;
   const { server, port, mutatingCalls } = await startServer({
@@ -736,4 +816,112 @@ test('reconcile does not escalate router action-required run when it is the only
     [],
     'router-only action_required must not trigger any mutating calls',
   );
+});
+
+// ---------------------------------------------------------------------------
+// Ownership boundary: behind vs dirty/unmergeable PR (#1130)
+// A PR that is merely `behind` main must never emit a merge-conflict blocker.
+// A PR that is `dirty` or `mergeable: false` must emit one.
+// ---------------------------------------------------------------------------
+
+test('reconcile emits no merge-conflict blocker for a PR that is only behind main', async (t) => {
+  const behindPr = {
+    ...basePr(),
+    mergeable: true,
+    mergeable_state: 'behind',
+  };
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: behindPr }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  assert.equal(code, 0, `expected exit 0; stderr: ${stderr}`);
+  assert.doesNotMatch(stdout, /merge-conflict/, 'behind PR must not produce a merge-conflict blocker');
+  assert.doesNotMatch(stdout, /dry-run would-assign copilot/, 'behind PR must not dispatch recovery');
+  assert.deepEqual(mutatingCalls, [], 'no mutating calls expected for a behind PR');
+});
+
+test('reconcile emits a merge-conflict blocker for a dirty PR', async (t) => {
+  const dirtyPr = {
+    ...basePr(),
+    mergeable: true,
+    mergeable_state: 'dirty',
+  };
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: dirtyPr }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  assert.equal(code, 0, `expected exit 0; stderr: ${stderr}`);
+  assert.match(stdout, /merge-conflict/, 'dirty PR must produce a merge-conflict blocker');
+  assert.match(stdout, /dry-run would-assign copilot/, 'dirty PR must dispatch recovery');
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating calls even for dirty PR');
+});
+
+test('reconcile emits a merge-conflict blocker for a non-mergeable PR', async (t) => {
+  const nonMergeablePr = {
+    ...basePr(),
+    mergeable: false,
+    mergeable_state: 'blocked',
+  };
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: nonMergeablePr }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  assert.equal(code, 0, `expected exit 0; stderr: ${stderr}`);
+  assert.match(stdout, /merge-conflict/, 'non-mergeable PR must produce a merge-conflict blocker');
+  assert.match(stdout, /dry-run would-assign copilot/, 'non-mergeable PR must dispatch recovery');
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating calls even for non-mergeable PR');
 });

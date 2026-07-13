@@ -22,6 +22,7 @@ permissions:
 
 jobs:
   rebase-prs:
+    if: ${{ !contains(fromJSON('["true","1","yes","on","TRUE","YES","ON","True","Yes","On"]'), vars.MERGE_QUEUE_ENABLED) }}
     runs-on: ubuntu-latest
     steps:
       - name: Generate app token
