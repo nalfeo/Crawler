@@ -3,6 +3,8 @@ name: commit-lint
 on:
   pull_request:
     types: [opened, synchronize, reopened, edited]
+    paths:
+      - '**'
 
 permissions:
   contents: read
