@@ -22,6 +22,7 @@ import { LIGHTING_OVERLAY_DEPTH, UI_DEPTH_CUTOFF } from '../../shared/render-dep
 import { ftToPx, pxToFt, PIXELS_PER_FOOT } from '../../shared/units.js';
 import { getRenderScale } from '../render-scale.js';
 import { ACTIVE_ABILITY_SLOT_LIMIT, type AbilityState } from '../../shared/abilities.js';
+import { getAbilityPresentation } from '../../shared/ability-presentation.js';
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import { createInputState, type InputState } from '../../shared/input.js';
 import { buildTerrainLayer } from '../terrain-renderer.js';
@@ -34,6 +35,7 @@ import {
 } from '../sprites/door-visuals.js';
 import { createBarrierOverlay } from '../BarrierOverlay.js';
 import { createInputCapture } from '../InputCapture.js';
+import { createAbilityLoadoutUI, type AbilityLoadoutEntry } from '../AbilityLoadoutUI.js';
 import { createModalPickerUI } from '../ModalPickerUI.js';
 import { createDialogueBox, type DialogueBox } from '../DialogueBox.js';
 import { getUiScale, onUiScaleChange } from '../ui-scale.js';
@@ -137,6 +139,7 @@ function resolveSetPieceLightEmission(
 export interface MainGameSceneOptions {
   inputCaptureOverride?: {
     poll: (state: InputState, world: GameWorld) => void;
+    reset?: () => void;
     destroy?: () => void;
   };
   /**
@@ -300,6 +303,7 @@ export class MainGameScene extends Phaser.Scene {
   private warnedMissingDependencies = false;
 
   private modalPicker?: ReturnType<typeof createModalPickerUI>;
+  private abilityLoadoutUI?: ReturnType<typeof createAbilityLoadoutUI>;
 
   /**
    * Dev-only: human player session recorder. Non-null only when
@@ -550,6 +554,7 @@ export class MainGameScene extends Phaser.Scene {
     if (this.options.inputCaptureOverride) {
       this.inputCapture = {
         poll: (state: InputState) => this.options.inputCaptureOverride?.poll(state, this.world),
+        reset: () => this.options.inputCaptureOverride?.reset?.(),
         destroy: () => this.options.inputCaptureOverride?.destroy?.(),
       };
     } else {
@@ -603,6 +608,7 @@ export class MainGameScene extends Phaser.Scene {
 
     this.bridge = createPhaserBridge(this);
     this.modalPicker = createModalPickerUI(this);
+    this.abilityLoadoutUI = createAbilityLoadoutUI(this);
     this.keyOne = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.ONE);
     this.keyTwo = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.TWO);
     this.keyThree = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.THREE);
@@ -730,6 +736,8 @@ export class MainGameScene extends Phaser.Scene {
       this.inputCapture = undefined;
       this.modalPicker?.destroy();
       this.modalPicker = undefined;
+      this.abilityLoadoutUI?.destroy();
+      this.abilityLoadoutUI = undefined;
       this.bridge?.destroy();
       this.bridge = undefined;
       this.mapRt?.destroy();
@@ -830,6 +838,9 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private handlePointerDown(pointer: Phaser.Input.Pointer): void {
+    if (this.abilityLoadoutUI?.isOpen()) {
+      return;
+    }
     if (this.isTouchPointer(pointer)) {
       return;
     }
@@ -851,10 +862,30 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private handleKeyboardE(): void {
-    if (this.modalPicker?.isOpen()) {
+    if (this.modalPicker?.isOpen() || this.abilityLoadoutUI?.isOpen()) {
       return;
     }
     this.queuedInteraction = true;
+  }
+
+  private clearPendingInteractionInput(): void {
+    this.queuedInteraction = false;
+    this.tappedInteraction = false;
+    this.inputCapture?.reset();
+    this.inputState.moveX = 0;
+    this.inputState.moveY = 0;
+    this.inputState.action = false;
+    for (const key of [
+      this.keyE,
+      this.keyInventory,
+      this.keyEquip,
+      this.keyAchievements,
+      this.keyEsc,
+    ]) {
+      if (key) {
+        Phaser.Input.Keyboard.JustDown(key);
+      }
+    }
   }
 
   private isTextEntryTarget(event: KeyboardEvent): boolean {
@@ -867,7 +898,19 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private handleWindowKeyDown = (event: KeyboardEvent): void => {
-    if (this.modalPicker?.isOpen() || this.isTextEntryTarget(event)) {
+    if (this.isTextEntryTarget(event)) {
+      return;
+    }
+    if (this.abilityLoadoutUI?.isOpen()) {
+      if (event.code === 'KeyB' && !event.repeat) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        this.queuedAbilitiesToggle = false;
+        this.abilityLoadoutUI.close();
+      }
+      return;
+    }
+    if (this.modalPicker?.isOpen()) {
       return;
     }
     if (event.code === 'KeyE') {
@@ -936,6 +979,7 @@ export class MainGameScene extends Phaser.Scene {
       this.conversationNpcEid !== null ||
       (this.hudUi?.isMapOverlayOpen() ?? false) ||
       (this.modalPicker?.isOpen() ?? false) ||
+      (this.abilityLoadoutUI?.isOpen() ?? false) ||
       (this.levelUpUI?.isOpen() ?? false) ||
       (this.inventoryUI?.isOpen() ?? false) ||
       (this.equipmentUI?.isOpen() ?? false) ||
@@ -964,6 +1008,11 @@ export class MainGameScene extends Phaser.Scene {
     this.refreshCameraMasks();
 
     if (this.modalPicker?.isOpen()) {
+      this.updateOverlayText();
+      return;
+    }
+
+    if (this.abilityLoadoutUI?.isOpen()) {
       this.updateOverlayText();
       return;
     }
@@ -1184,6 +1233,7 @@ export class MainGameScene extends Phaser.Scene {
     const isUiLockOpen = (): boolean =>
       this.conversationNpcEid !== null ||
       (this.modalPicker?.isOpen() ?? false) ||
+      (this.abilityLoadoutUI?.isOpen() ?? false) ||
       (this.levelUpUI?.isOpen() ?? false);
 
     // Toggle the on-screen touch buttons in step with the key affordances.
@@ -2127,7 +2177,11 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private openAbilitiesConfigModal(): void {
-    if (!this.modalPicker || this.world.state !== 'playing' || this.modalPicker.isOpen()) {
+    if (
+      !this.abilityLoadoutUI ||
+      this.world.state !== 'playing' ||
+      this.abilityLoadoutUI.isOpen()
+    ) {
       return;
     }
     let state = this.world.abilityStatesByEntity.get(this.playerEid);
@@ -2142,85 +2196,68 @@ export class MainGameScene extends Phaser.Scene {
       } satisfies AbilityState;
       this.world.abilityStatesByEntity.set(this.playerEid, state);
     }
-    const learned =
-      state.learnedSpellIds.length > 0 ? state.learnedSpellIds : state.equippedActiveAbilityIds;
-    if (learned.length === 0) {
+    const availableIds = [
+      ...new Set([...state.equippedActiveAbilityIds, ...state.learnedSpellIds]),
+    ];
+    if (availableIds.length === 0) {
       this.flashHint('No learned spells yet. Defeat the Slime Rat and claim a spellbook first.');
       return;
     }
 
-    const options = learned.map((abilityId) => {
-      const equipped = state.equippedActiveAbilityIds.includes(abilityId);
-      const spellMeta: Record<
-        string,
-        { name: string; mpCost: number; cooldownSec: number; description: string }
-      > = {
-        fireball: {
-          name: 'Fireball',
-          mpCost: 5,
-          cooldownSec: 5,
-          description: 'Launches a fireball at the nearest enemy, favoring clusters.',
-        },
-        heal: {
-          name: 'Heal',
-          mpCost: 10,
-          cooldownSec: 30,
-          description: 'Restores health when missing HP is high enough.',
-        },
-        'pulse-shield': {
-          name: 'Pulse Shield',
-          mpCost: 10,
-          cooldownSec: 20,
-          description: 'Knocks back nearby enemies when you are in danger.',
-        },
-      };
-      const meta = spellMeta[abilityId];
-      const label = meta?.name ?? abilityId;
-      return {
-        id: abilityId,
-        label: equipped ? `${label} (Equipped)` : label,
-        description: `${meta?.description ?? 'Configured ability'} • ${
-          meta ? `${meta.mpCost} MP • ${meta.cooldownSec}s CD` : 'Spell'
-        } • ${formatAbilityTrigger(abilityId)}`,
-      };
-    });
+    const buildEntries = (): AbilityLoadoutEntry[] =>
+      availableIds.map((abilityId) => {
+        const presentation = getAbilityPresentation(abilityId);
+        const cooldownSeconds = presentation?.cooldownFrames ? presentation.cooldownFrames / 60 : 0;
+        return {
+          id: abilityId,
+          name: presentation?.name ?? abilityId,
+          shortLabel: presentation?.shortLabel ?? abilityId.slice(0, 5).toUpperCase(),
+          description: presentation?.description ?? 'Configured auto ability.',
+          category: presentation?.category ?? 'utility',
+          details: `${presentation?.kind === 'spell' ? 'SPELL' : 'AUTO'}  •  ${
+            presentation?.mpCost ?? 0
+          } MP  •  ${cooldownSeconds}s CD  •  ${formatAbilityTrigger(abilityId)}`,
+          equipped: state.equippedActiveAbilityIds.includes(abilityId),
+        };
+      });
 
-    this.modalPicker.open(
-      {
-        title: 'Abilities',
-        subtitle: `Slots used: ${state.equippedActiveAbilityIds.length}/${ACTIVE_ABILITY_SLOT_LIMIT}`,
-        body: 'Select a learned spell to toggle it on/off your abilities bar. Equipped spells auto-trigger from cooldown + combat rules.',
-        options,
-        allowCancel: true,
-        initialSelectedId: learned[0],
-      },
-      {
-        onConfirm: ({ option }) => {
-          const abilityId = option.id;
-          const equipped = state.equippedActiveAbilityIds.includes(abilityId);
-          if (equipped) {
-            const idx = state.equippedActiveAbilityIds.indexOf(abilityId);
-            if (idx >= 0) {
-              state.equippedActiveAbilityIds.splice(idx, 1);
-            }
-            this.flashHint(
-              `${option.label.replace(' (Equipped)', '')} removed from abilities bar.`,
-            );
-          } else if (state.equippedActiveAbilityIds.length >= ACTIVE_ABILITY_SLOT_LIMIT) {
-            this.flashHint(
-              `Abilities bar is full (${ACTIVE_ABILITY_SLOT_LIMIT} slots). Unequip one first.`,
-            );
-          } else {
-            state.equippedActiveAbilityIds.push(abilityId);
-            this.flashHint(`${option.label} added to abilities bar.`);
-          }
+    this.clearPendingInteractionInput();
+    this.abilityLoadoutUI.open({
+      entries: buildEntries(),
+      slotLimit: ACTIVE_ABILITY_SLOT_LIMIT,
+      onToggle: (abilityId) => {
+        const presentation = getAbilityPresentation(abilityId);
+        const name = presentation?.name ?? abilityId;
+        const equippedIndex = state.equippedActiveAbilityIds.indexOf(abilityId);
+        if (equippedIndex >= 0) {
+          state.equippedActiveAbilityIds.splice(equippedIndex, 1);
           this.updateOverlayText();
-        },
-        onCancel: () => {
-          this.updateOverlayText();
-        },
+          return {
+            entries: buildEntries(),
+            feedback: `${name} removed from the auto bar.`,
+            tone: 'success',
+          };
+        }
+        if (state.equippedActiveAbilityIds.length >= ACTIVE_ABILITY_SLOT_LIMIT) {
+          return {
+            entries: buildEntries(),
+            feedback: `All ${ACTIVE_ABILITY_SLOT_LIMIT} slots are full. Remove an ability first.`,
+            tone: 'warning',
+          };
+        }
+        state.equippedActiveAbilityIds.push(abilityId);
+        this.updateOverlayText();
+        return {
+          entries: buildEntries(),
+          feedback: `${name} equipped to the auto bar.`,
+          tone: 'success',
+        };
       },
-    );
+      onClose: () => {
+        this.clearPendingInteractionInput();
+        this.updateOverlayText();
+      },
+    });
   }
 
   private updateDoorOverlay(): void {
@@ -2533,6 +2570,7 @@ export class MainGameScene extends Phaser.Scene {
       (this.inventoryUI?.isOpen() ?? false) ||
       (this.achievementsUI?.isOpen() ?? false) ||
       (this.modalPicker?.isOpen() ?? false) ||
+      (this.abilityLoadoutUI?.isOpen() ?? false) ||
       (this.levelUpUI?.isOpen() ?? false);
     if (panelOpen !== this.hudHiddenForPanel) {
       this.hudHiddenForPanel = panelOpen;
