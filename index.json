@@ -1,5 +1,16 @@
 [
   {
+    "commit": "587ce77e9cb1ee5353dd032586ac0f4cf8432e85",
+    "commitDate": "2026-07-13T05:50:31Z",
+    "commitSubject": "fix(ci-recovery): remove copilot-assignee short-circuit from recovery gate (#1108)",
+    "capturedAt": "2026-07-13T06:20:11.953Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29227756022",
+    "winRate": 0.92,
+    "totalWins": 276,
+    "totalRuns": 300,
+    "path": "by-sha/587ce77e9cb1ee5353dd032586ac0f4cf8432e85.json"
+  },
+  {
     "commit": "0e453f9ab71dbcb84b6c114405c62bac9fc8f088",
     "commitDate": "2026-07-13T03:42:54Z",
     "commitSubject": "fix(ai): attribute weapon HUD and XP to equipped attack source (#1080)",
