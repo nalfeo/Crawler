@@ -60,6 +60,7 @@ export function createHudFamilyRelationships(
   options: HudFamilyRelationshipsOptions = {},
 ): {
   sync(world: GameWorld): void;
+  setVisible(visible: boolean): void;
   destroy(): void;
 } {
   const parent = options.parent;
@@ -155,6 +156,7 @@ export function createHudFamilyRelationships(
 
   let lastFingerprint = '';
   let lastVisible = true;
+  let masterVisible = true;
 
   function setPanelVisible(visible: boolean): void {
     panel.setVisible(visible);
@@ -201,6 +203,7 @@ export function createHudFamilyRelationships(
   }
 
   function sync(world: GameWorld): void {
+    if (!masterVisible) return;
     const shouldShow = shouldShowFamilyRelationships(world);
     if (shouldShow !== lastVisible) {
       setPanelVisible(shouldShow);
@@ -226,6 +229,14 @@ export function createHudFamilyRelationships(
   setPanelVisible(false);
   lastVisible = false;
 
+  function setVisible(visible: boolean): void {
+    masterVisible = visible;
+    if (!visible) {
+      setPanelVisible(false);
+      lastFingerprint = '';
+    }
+  }
+
   function destroy(): void {
     detachCrispText();
     for (const r of rowVisuals) r.container.destroy();
@@ -233,5 +244,5 @@ export function createHudFamilyRelationships(
     panel.destroy();
   }
 
-  return { sync, destroy };
+  return { sync, setVisible, destroy };
 }

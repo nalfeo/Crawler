@@ -408,7 +408,9 @@ export function createHudMinimap(scene: Phaser.Scene): {
     overlayDimmer.setSize(width, height);
     panelBg.setPosition(panelX + panelW / 2, panelY + panelH / 2).setSize(panelW, panelH);
     panelTitle.setPosition(panelX + 18, panelY + 14);
+    panelTitle.setFontSize(`${Math.round(12 * Math.min(getUiScale(scene), 1.5))}px`);
     panelHint.setPosition(panelX + 18, panelY + panelH - 27);
+    panelHint.setFontSize(`${Math.max(8, Math.round(8 * Math.min(getUiScale(scene), 1.5)))}px`);
     const closeButtonSize = Math.min(
       OVERLAY_CLOSE_BUTTON_MAX_SIZE,
       Math.round(OVERLAY_CLOSE_BUTTON_SIZE * getUiScale(scene)),

@@ -63,18 +63,43 @@ export function fitQuestTrackerLines(
   maxLines = MAX_BODY_LINES,
 ): string[] {
   const wrapped: string[] = [];
+
+  /** Flush `text` as one or more lines prefixed by `prefix`, each ≤ maxChars. */
+  function pushWithPrefix(prefix: string, text: string): void {
+    const budget = Math.max(1, maxChars - prefix.length);
+    let pos = 0;
+    while (pos < text.length) {
+      wrapped.push(prefix + text.slice(pos, pos + budget));
+      pos += budget;
+    }
+  }
+
   for (const rawLine of lines) {
     const indent = rawLine.match(/^\s*/)?.[0] ?? '';
+    const contIndent = `${indent}  `;
     const words = rawLine.trim().split(/\s+/).filter(Boolean);
-    let current = indent;
+    let current = '';
+
     for (const word of words) {
-      const candidate = current.trim().length === 0 ? `${indent}${word}` : `${current} ${word}`;
-      if (candidate.length <= maxChars || current.trim().length === 0) {
+      const prefix = current.length === 0 ? indent : contIndent;
+      const candidate = current.length === 0 ? `${indent}${word}` : `${current} ${word}`;
+
+      if (candidate.length <= maxChars) {
         current = candidate;
-        continue;
+      } else {
+        // Flush the current accumulated line (if any).
+        if (current.length > 0) {
+          wrapped.push(current);
+        }
+        // Try the word on a fresh continuation line; hard-split if it still overflows.
+        const fresh = `${contIndent}${word}`;
+        if (fresh.length <= maxChars) {
+          current = fresh;
+        } else {
+          pushWithPrefix(prefix, word);
+          current = '';
+        }
       }
-      wrapped.push(current);
-      current = `${indent}  ${word}`;
     }
     if (current.trim().length > 0) {
       wrapped.push(current);
@@ -110,7 +135,9 @@ export function createHudQuestTracker(
     .rectangle(2, 2, NAV_QUEST_WIDTH - 4, TITLE_H, COLORS.titleStrip, 1)
     .setOrigin(0, 0)
     .setScrollFactor(0)
-    .setDepth(PIXEL_UI_DEPTH.panel + 1);
+    // Must be below the icon/text (PIXEL_UI_DEPTH.content = 1000); root.sort('depth')
+    // is called after all children are added to enforce the correct draw order.
+    .setDepth(PIXEL_UI_DEPTH.panel);
 
   const titleIcon = addPixelIcon(scene, PIXEL_ICON.quest, 14, 2 + TITLE_H / 2, {
     depth: PIXEL_UI_DEPTH.content,
@@ -155,6 +182,9 @@ export function createHudQuestTracker(
     .setScrollFactor(0)
     .setDepth(PIXEL_UI_DEPTH.content);
   root.add([titleStrip, titleText, chevron, body]);
+  // Sort by depth so titleStrip (panel level) renders below titleIcon/text (content level)
+  // regardless of insertion order.
+  root.sort('depth');
   const detachCrispText = applyCrispText(scene, [titleText, chevron, body]);
 
   let collapsed = readCollapsedPref();

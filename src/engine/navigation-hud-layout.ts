@@ -45,14 +45,17 @@ export function resolveNavigationHudLayout(uiScale: number, floor: number): Navi
   };
 
   const questScale = Math.min(Math.max(1, uiScale), NAV_QUEST_MAX_SCALE);
+  const hudScale = Math.min(Math.max(1, uiScale), HUD_MAX_SCALE);
   const floorTwo = floor >= 2;
+  // Floor 2 uses the upper-left navigation lane to keep the family panel (bottom-right)
+  // and the radar (top-right) clear. Y is derived from the scaled top-center critical
+  // band so the tracker always starts below it regardless of uiScale.
   const questPosition = floorTwo
-    ? { x: 16, y: 78 }
+    ? { x: 16, y: Math.ceil(118 * hudScale) + 8 }
     : {
         x: GAME.WIDTH - 16 - NAV_QUEST_WIDTH * questScale,
         y: radarBounds.y + radarBounds.height + PANEL_GAP,
       };
-  const hudScale = Math.min(Math.max(1, uiScale), HUD_MAX_SCALE);
   const floorTwoFamilyRegion: ScreenBounds[] =
     floor >= 2
       ? [
@@ -72,8 +75,11 @@ export function resolveNavigationHudLayout(uiScale: number, floor: number): Navi
     questPosition,
     questMaxHeight: NAV_QUEST_MAX_HEIGHT,
     criticalHudRegions: [
-      { x: GAME.WIDTH / 2 - 230, y: 0, width: 460, height: 118 },
-      { x: 0, y: GAME.HEIGHT - 224, width: 390, height: 224 },
+      // topCenter: scales around cx, matching HudUI.applyScale() anchor at (cx*(1-s), 0)
+      { x: GAME.WIDTH / 2 - 230 * hudScale, y: 0, width: 460 * hudScale, height: 118 * hudScale },
+      // bottomLeft: anchors at bottom-left, matching HudUI.applyScale() anchor at (0, h*(1-s))
+      { x: 0, y: GAME.HEIGHT - 224 * hudScale, width: 390 * hudScale, height: 224 * hudScale },
+      // bottomCenter: ability bar is capped at scale 1.0 so this region remains unscaled
       { x: GAME.WIDTH / 2 - 310, y: GAME.HEIGHT - 122, width: 620, height: 122 },
       ...floorTwoFamilyRegion,
     ],
