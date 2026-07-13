@@ -88,14 +88,10 @@ export async function runIssueIntake({ graphql, paginate, request, token, owner,
       });
     }
   } else {
-    const created = await request(
-      token,
-      `/repos/${owner}/${repo}/issues/${issue.number}/comments`,
-      {
-        method: 'POST',
-        body: { body: ISSUE_INTAKE_BODY },
-      },
-    );
+    const created = await request(token, `/repos/${owner}/${repo}/issues/${issue.number}/comments`, {
+      method: 'POST',
+      body: { body: ISSUE_INTAKE_BODY },
+    });
     newCommentId = typeof created?.data?.id === 'number' ? created.data.id : null;
   }
 
