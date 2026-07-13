@@ -7,8 +7,9 @@ import {
   renameSync,
   writeFileSync,
 } from 'node:fs';
-import { resolve } from 'node:path';
+import { basename, resolve } from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import type { Page } from 'playwright';
 import { AzureOpenAIVisionProvider } from '../../sprites/provider/azure-vision.js';
@@ -30,7 +31,7 @@ import {
 } from './art-ledger.js';
 import type { ArtLedger, ArtLedgerEntry } from './art-ledger.js';
 
-interface CliOptions {
+export interface CliOptions {
   labUrl: string;
   outputDir: string;
   minScore: number;
@@ -39,6 +40,7 @@ interface CliOptions {
   setupFile: string | null;
   screenshotName: string;
   waitMs: number;
+  viewport: { width: number; height: number };
   clip: { x: number; y: number; width: number; height: number } | null;
   /**
    * Author rebuttals to prior findings, each a self-contained line. Injected
@@ -196,7 +198,22 @@ interface CaptureResult {
   evidenceRegions: EvidenceRegionShot[];
 }
 
-function parseArgs(argv: string[]): CliOptions {
+const DEFAULT_VIEWPORT = { width: 1600, height: 1000 } as const;
+
+function parseViewport(value: string | undefined): { width: number; height: number } {
+  const match = /^([1-9]\d*)x([1-9]\d*)$/i.exec(value ?? '');
+  if (!match) {
+    throw new Error(`invalid --viewport "${value ?? ''}" (expected positive integer WIDTHxHEIGHT)`);
+  }
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height)) {
+    throw new Error(`invalid --viewport "${value}" (dimensions exceed safe integer range)`);
+  }
+  return { width, height };
+}
+
+export function parseArgs(argv: string[]): CliOptions {
   const opts: CliOptions = {
     labUrl: 'http://127.0.0.1:4176/lab.html?lab=ui-probe-lab',
     outputDir: resolve(process.cwd(), 'files', 'visual-review'),
@@ -207,6 +224,7 @@ function parseArgs(argv: string[]): CliOptions {
     setupFile: null,
     screenshotName: 'ux-surface',
     waitMs: 350,
+    viewport: { ...DEFAULT_VIEWPORT },
     clip: null,
     rebuttals: [],
     artReview: false,
@@ -284,6 +302,11 @@ function parseArgs(argv: string[]): CliOptions {
         throw new Error(`invalid --wait-ms "${next}" (expected 0..60000)`);
       }
       opts.waitMs = waitMs;
+      i += 1;
+      continue;
+    }
+    if (arg === '--viewport') {
+      opts.viewport = parseViewport(next);
       i += 1;
       continue;
     }
@@ -540,12 +563,12 @@ Return ONLY this JSON schema:
 }
 
 async function captureScreenshot(
-  opts: Pick<CliOptions, 'labUrl' | 'setupFile' | 'waitMs' | 'clip'>,
+  opts: Pick<CliOptions, 'labUrl' | 'setupFile' | 'waitMs' | 'clip' | 'viewport'>,
   outPath: string,
   cropsDir: string | null,
 ): Promise<CaptureResult> {
   const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const context = await browser.newContext({ viewport: opts.viewport });
   const page = await context.newPage();
 
   console.log(`[visual-review-agent] navigating to: ${opts.labUrl}`);
@@ -1615,12 +1638,14 @@ async function main(): Promise<number> {
   return 0;
 }
 
-main()
-  .then((code) => {
-    process.exit(code);
-  })
-  .catch((err: unknown) => {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`[visual-review-agent] ${message}`);
-    process.exit(1);
-  });
+if (process.argv[1] && basename(process.argv[1]) === basename(fileURLToPath(import.meta.url))) {
+  main()
+    .then((code) => {
+      process.exit(code);
+    })
+    .catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[visual-review-agent] ${message}`);
+      process.exit(1);
+    });
+}
