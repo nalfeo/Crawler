@@ -22,8 +22,10 @@ mapgen, boss-rooms, ai-behavior-tree, ai-combat-balance
   player reached lock-in healthy, then died because seed 8's declared 17x17 staircase
   boss room contained only one passable interior tile.
 - Added deterministic `BOSS_STAIR` geometry repair in `ensureRoomsReachable()`. It
-  guarantees a centered 5x5 passable arena, bounded for smaller rooms, and fixed
-  door-to-center paths before connectivity cleanup.
+  guarantees a 5x5 passable arena window (or the largest bounded interior for
+  smaller rooms), choosing the window with the most existing floor and using
+  center proximity only as a tiebreaker, plus fixed door-to-center paths before
+  connectivity cleanup.
 - Reused the same no-op-on-valid repair for the dynamically selected Slime Rat
   encounter room after objective selection and sealing, preserving that room's existing
   floor terrain and accounting for load-bearing doors added by sealing. It chooses the

@@ -73,7 +73,7 @@ describe('Floor 1 staircase boss-entry survival regressions', () => {
   }
 
   for (const { seed, weapon } of ROOM_ENTRY_CASES) {
-    it(`seed ${seed} + ${weapon} activates boss encounters only from room-owned interior without error`, async () => {
+    it(`seed ${seed} + ${weapon} survives the room-entry regression panel without error`, async () => {
       const run = await runFloor1Case(seed, weapon);
       expect(run.stats.outcome).not.toBe('error');
       expect(run.bosses.slimeRatDefeated).toBe(true);

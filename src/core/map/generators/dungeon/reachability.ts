@@ -177,9 +177,10 @@ function buildRoomBlockMask(
  *
  * Determinism & safety:
  * - Consumes NO RNG, so downstream procedural placement is unaffected.
- * - A strict no-op for already-reachable rooms (including rooms legitimately
- *   reachable only through the boss room) — a well-formed seed's tile flags and
- *   terrain are left byte-identical.
+ * - Byte-identical for already-reachable rooms whose boss arenas are already
+ *   valid (including rooms legitimately reachable only through the boss room);
+ *   malformed boss interiors are deterministically repaired before connector
+ *   cleanup runs.
  *
  * Exported for unit testing. Not part of the public map API.
  */

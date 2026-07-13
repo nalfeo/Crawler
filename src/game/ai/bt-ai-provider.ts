@@ -800,9 +800,9 @@ export class BehaviorTreeAI implements AIInputProvider {
   private lastPlayerX: number = 0;
   private lastPlayerY: number = 0;
   /** Smoothed output direction, updated each poll via {@link MOVE_SMOOTH_FACTOR}.
-   * Initialized to (0, 0) at construction and persists across all polls for the
-   * lifetime of this AI instance; never explicitly reset, so the blend always
-   * carries over from the previous frame. */
+   * Initialized to (0, 0) at construction and persists across ordinary polls for
+   * the lifetime of this AI instance. Hostile-encounter invalidation explicitly
+   * zeroes it so a newly locked arena does not inherit pre-encounter steering. */
   private smoothMoveX: number = 0;
   private smoothMoveY: number = 0;
   /** Last travel-steering result (or null when steering did not drive the most

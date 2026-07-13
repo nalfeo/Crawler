@@ -48,10 +48,10 @@ function isBetterCandidate(
  * declared doors blocked, and `tileMap.isPassable(tx,ty)`. Dynamic barrier
  * overlays are intentionally excluded so a barrier sitting on the player tile
  * at the moment of encounter start cannot make the flood-fill abort. RoomGraph
- * owns interior tiles only, while encounter activation uses full room bounds,
- * so an occupied passable perimeter entry (or declared doorway) is admitted as
- * the flood origin. It remains excluded from boss candidates and cannot connect
- * through any other doorway.
+ * owns interior tiles only, so direct-call entry handling separately admits an
+ * occupied passable perimeter entry (or declared doorway) as the flood origin.
+ * It remains excluded from boss candidates and cannot connect through any
+ * other doorway.
  */
 export function selectBossSpawnPlacement(
   floorMap: FloorMap,
