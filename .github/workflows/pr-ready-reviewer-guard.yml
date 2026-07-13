@@ -25,7 +25,7 @@ jobs:
         env:
           REVIEWER_LOGIN: nalfeo
         with:
-          github-token: ${{ secrets.CRAWLER_CI_PAT || github.token }}
+          github-token: ${{ secrets.CRAWLER_CI_PAT }}
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
@@ -50,6 +50,7 @@ jobs:
 
             let draftsPublished = 0;
             let reviewerRemovals = 0;
+            const publishFailures = [];
 
             for (const pr of openPrs) {
               const prNumber = pr.number;
@@ -73,7 +74,8 @@ jobs:
                   draftsPublished += 1;
                   core.info(`Marked PR #${prNumber} as ready for review.`);
                 } catch (error) {
-                  core.warning(`Could not mark PR #${prNumber} ready: ${error.message}`);
+                  publishFailures.push(`PR #${prNumber}: ${error.message}`);
+                  core.error(`Could not mark PR #${prNumber} ready: ${error.message}`);
                 }
               }
 
@@ -105,3 +107,9 @@ jobs:
             core.info(
               `Done. Drafts published: ${draftsPublished}. Reviewer removals: ${reviewerRemovals}.`,
             );
+
+            if (publishFailures.length > 0) {
+              core.setFailed(
+                `Failed to publish ${publishFailures.length} draft PR(s):\n${publishFailures.join('\n')}`,
+              );
+            }
