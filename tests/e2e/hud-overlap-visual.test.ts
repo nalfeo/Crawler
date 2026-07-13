@@ -190,3 +190,110 @@ describe('hud visual regression overlap guard', () => {
     ).toBeLessThan(bossBandRatio * 0.8);
   });
 });
+
+function expectContained(outer: CanvasRect, inner: CanvasRect, message: string): void {
+  expect(inner.x, `${message}: left edge`).toBeGreaterThanOrEqual(outer.x);
+  expect(inner.y, `${message}: top edge`).toBeGreaterThanOrEqual(outer.y);
+  expect(inner.x + inner.width, `${message}: right edge`).toBeLessThanOrEqual(
+    outer.x + outer.width,
+  );
+  expect(inner.y + inner.height, `${message}: bottom edge`).toBeLessThanOrEqual(
+    outer.y + outer.height,
+  );
+}
+
+function overlapArea(a: CanvasRect, b: CanvasRect): number {
+  const width = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
+  const height = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+  return width * height;
+}
+
+describe('encounter HUD responsive geometry', () => {
+  const viewports = [
+    { name: 'desktop', width: 1280, height: 720 },
+    { name: 'compact-landscape', width: 960, height: 540 },
+  ] as const;
+  const presets = [
+    'timer-normal',
+    'timer-urgent',
+    'boss-floor1-long',
+    'boss-floor2-long',
+    'banner-long',
+    'banner-queue',
+    'simultaneous',
+  ] as const;
+
+  let browser: Browser;
+
+  beforeAll(async () => {
+    browser = await chromium.launch({ headless: true });
+  });
+
+  afterAll(async () => {
+    await closeQuietly(browser);
+  });
+
+  for (const viewport of viewports) {
+    it(`contains all text and separates encounter surfaces at ${viewport.width}x${viewport.height}`, async () => {
+      const context = await browser.newContext({
+        viewport: { width: viewport.width, height: viewport.height },
+      });
+      try {
+        for (const preset of presets) {
+          const page = await context.newPage();
+          await loadHudLab(page);
+          const bounds = await page.evaluate((nextPreset) => {
+            const probe = (window as { __hudProbe?: HudProbeApi }).__hudProbe;
+            if (!probe) throw new Error('__hudProbe not available');
+            probe.setEncounterPreset(nextPreset);
+            probe.freezeAnimations();
+            return probe.getEncounterBounds();
+          }, preset);
+
+          const canvasBounds = { x: 0, y: 0, width: GAME_W, height: GAME_H };
+          const panels = [
+            ['timer', bounds.timerPanel],
+            ['boss', bounds.bossPanel],
+            ['announcement', bounds.announcementPanel],
+            ['quest', bounds.questPanel],
+            ['minimap', bounds.minimap],
+          ].filter((entry): entry is [string, CanvasRect] => entry[1] !== null);
+
+          for (const [name, panel] of panels) {
+            expectContained(canvasBounds, panel, `${viewport.name}/${preset}/${name} canvas`);
+          }
+          expectContained(
+            bounds.timerPanel,
+            bounds.timerText,
+            `${viewport.name}/${preset}/timer text`,
+          );
+          if (bounds.bossPanel && bounds.bossText) {
+            expectContained(
+              bounds.bossPanel,
+              bounds.bossText,
+              `${viewport.name}/${preset}/boss text`,
+            );
+          }
+          if (bounds.announcementPanel && bounds.announcementText) {
+            expectContained(
+              bounds.announcementPanel,
+              bounds.announcementText,
+              `${viewport.name}/${preset}/announcement text`,
+            );
+          }
+          for (let i = 0; i < panels.length; i += 1) {
+            for (let j = i + 1; j < panels.length; j += 1) {
+              expect(
+                overlapArea(panels[i]![1], panels[j]![1]),
+                `${viewport.name}/${preset}: ${panels[i]![0]} overlaps ${panels[j]![0]}`,
+              ).toBe(0);
+            }
+          }
+          await page.close();
+        }
+      } finally {
+        await context.close();
+      }
+    }, 120_000);
+  }
+});

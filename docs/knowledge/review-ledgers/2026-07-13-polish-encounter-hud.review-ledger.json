@@ -1,0 +1,21 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-13",
+  "session_slug": "polish-encounter-hud",
+  "task_title": "Polish encounter HUD cluster",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Adopted reviewer changes: instrument read-only probe before baseline capture; centralize row ownership in one coordinator; add settled capture presets; define clipping as transformed canvas containment plus text-within-panel; include worst-case quest tracker and docked minimap adjacency at both required viewports."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    }
+  }
+}

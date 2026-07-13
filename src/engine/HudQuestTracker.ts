@@ -17,7 +17,7 @@ import {
 } from '../core/systems/questSystem.js';
 import { getQuestDef, MAX_ACTIVE_QUESTS } from '../shared/quest-types.js';
 import { PIXEL_UI_DEPTH, PIXEL_ICON, createBeveledPanel, addPixelIcon } from './pixel-ui.js';
-import { applyCrispText } from './ui-scale.js';
+import { applyCrispText, type ScreenBounds } from './ui-scale.js';
 
 const RIGHT_X = GAME.WIDTH - 16;
 // Sit below the top-right minimap panel (which ends at y≈190) so the two
@@ -58,6 +58,7 @@ export function createHudQuestTracker(
   options: { parent?: Phaser.GameObjects.Container } = {},
 ): {
   sync(world: GameWorld, playerEid?: number): void;
+  getLayoutBounds(): ScreenBounds | null;
   destroy(): void;
 } {
   const parent = options.parent;
@@ -211,5 +212,9 @@ export function createHudQuestTracker(
     body.destroy();
   }
 
-  return { sync, destroy };
+  return {
+    sync,
+    getLayoutBounds: () => (titleStrip.visible ? panel.getBounds() : null),
+    destroy,
+  };
 }

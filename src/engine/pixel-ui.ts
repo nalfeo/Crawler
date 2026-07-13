@@ -70,6 +70,7 @@ export interface BeveledPanel {
   setPosition(x: number, y: number): void;
   /** Resize (origin stays at the panel's top-left corner). */
   setSize(width: number, height: number): void;
+  getBounds(): { x: number; y: number; width: number; height: number };
   destroy(): void;
 }
 
@@ -154,6 +155,9 @@ export function createBeveledPanel(
       pw = nw;
       ph = nh;
       reflow();
+    },
+    getBounds(): { x: number; y: number; width: number; height: number } {
+      return { x: px, y: py, width: pw, height: ph };
     },
     destroy(): void {
       body.destroy();

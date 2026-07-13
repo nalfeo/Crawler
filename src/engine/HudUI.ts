@@ -22,6 +22,19 @@ import { createHudDirectionArrows } from './HudDirectionArrows.js';
 import { createHudFamilyRelationships } from './HudFamilyRelationships.js';
 import { getUiScale, onUiScaleChange } from './ui-scale.js';
 import { GAME } from '../shared/constants.js';
+import type { ScreenBounds } from './ui-scale.js';
+import { ENCOUNTER_FIRST_ROW_Y, resolveEncounterStackLayout } from './hud-encounter-layout.js';
+
+export interface HudEncounterProbeBounds {
+  timerPanel: ScreenBounds;
+  timerText: ScreenBounds;
+  bossPanel: ScreenBounds | null;
+  bossText: ScreenBounds | null;
+  announcementPanel: ScreenBounds | null;
+  announcementText: ScreenBounds | null;
+  questPanel: ScreenBounds | null;
+  minimap: ScreenBounds | null;
+}
 
 /**
  * Upper bound on HUD magnification. The HUD is authored to fill the full 1280px
@@ -41,6 +54,7 @@ export function createHudUI(scene: Phaser.Scene): {
   sync(world: GameWorld, playerEid: number): void;
   isMapOverlayOpen(): boolean;
   closeMapOverlay(): void;
+  getEncounterProbeBounds(): HudEncounterProbeBounds;
   setVisible(visible: boolean): void;
   destroy(): void;
 } {
@@ -125,6 +139,12 @@ export function createHudUI(scene: Phaser.Scene): {
     floorTimer.sync(world);
     bossBar.sync(world);
     announcementBanner.sync(world);
+    const encounterLayout = resolveEncounterStackLayout(
+      bossBar.getLayoutBounds() !== null,
+      announcementBanner.getLayoutBounds() !== null,
+    );
+    bossBar.setTop(encounterLayout.bossTop ?? ENCOUNTER_FIRST_ROW_Y);
+    announcementBanner.setTop(encounterLayout.announcementTop ?? ENCOUNTER_FIRST_ROW_Y);
     lootCounter.sync(world);
     skillTracker.sync(world, playerEid);
     minimap.sync(world, playerEid);
@@ -156,10 +176,40 @@ export function createHudUI(scene: Phaser.Scene): {
     bottomRight.destroy();
   }
 
+  function transformBounds(
+    bounds: ScreenBounds,
+    group: Phaser.GameObjects.Container,
+  ): ScreenBounds {
+    return {
+      x: group.x + bounds.x * group.scaleX,
+      y: group.y + bounds.y * group.scaleY,
+      width: bounds.width * group.scaleX,
+      height: bounds.height * group.scaleY,
+    };
+  }
+
+  function getEncounterProbeBounds(): HudEncounterProbeBounds {
+    const timer = floorTimer.getLayoutBounds();
+    const boss = bossBar.getLayoutBounds();
+    const announcement = announcementBanner.getLayoutBounds();
+    const quest = questTracker.getLayoutBounds();
+    return {
+      timerPanel: transformBounds(timer.panel, topCenter),
+      timerText: transformBounds(timer.text, topCenter),
+      bossPanel: boss ? transformBounds(boss.panel, topCenter) : null,
+      bossText: boss ? transformBounds(boss.text, topCenter) : null,
+      announcementPanel: announcement ? transformBounds(announcement.panel, topCenter) : null,
+      announcementText: announcement ? transformBounds(announcement.text, topCenter) : null,
+      questPanel: quest ? transformBounds(quest, topRight) : null,
+      minimap: minimap.getDockedBounds(),
+    };
+  }
+
   return {
     sync,
     isMapOverlayOpen: minimap.isOverlayOpen,
     closeMapOverlay: minimap.closeOverlay,
+    getEncounterProbeBounds,
     setVisible,
     destroy,
   };
