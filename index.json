@@ -11,6 +11,17 @@
     "path": "by-sha/ee39d8df0b666614087389b1ed4be993eb261643.json"
   },
   {
+    "commit": "41a13e6ae875be5a9bd46a2117600af2ed8a3f50",
+    "commitDate": "2026-07-13T15:40:09-07:00",
+    "commitSubject": "CI: skip pull_request workflows for zero-diff PRs (#1104)",
+    "capturedAt": "2026-07-13T23:18:43.187Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29291131277",
+    "winRate": 0.9266666666666666,
+    "totalWins": 278,
+    "totalRuns": 300,
+    "path": "by-sha/41a13e6ae875be5a9bd46a2117600af2ed8a3f50.json"
+  },
+  {
     "commit": "faf94e4dbb5bdcfdc97ea6af48b414ba5096b678",
     "commitDate": "2026-07-13T14:41:52-07:00",
     "commitSubject": "fix(hud): polish loot counter and skill tracker UX (#1127)",
