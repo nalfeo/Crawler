@@ -75,8 +75,6 @@ export interface MovementIntentLease {
   readonly targetFingerprint: string;
   readonly executionToken: string;
   readonly reason: string;
-  /** Once true, this latch may observe clear conditions but cannot retake movement. */
-  readonly yielded: boolean;
 }
 
 export interface MovementIntentArbiterState {
@@ -91,15 +89,15 @@ export interface MovementIntentArbiterFacts {
 export type MovementIntentTransition =
   | 'acquired'
   | 'retained'
-  | 'yielded'
   | 'preempted'
   | 'released'
   | 'rejected';
 
 export type MovementIntentResolutionReason =
   | 'acquiredBestEligible'
+  | 'acquiredAfterMissingRetainedLease'
+  | 'acquiredAfterCommitmentRelease'
   | 'retainedLease'
-  | 'yieldedWhileCommitmentLatched'
   | 'preemptedByAllowedPair'
   | 'releasedNoRetainedProposal'
   | 'releasedByCommitment'
@@ -113,16 +111,16 @@ export interface MovementIntentResolution<TPayload = undefined> {
   readonly priorOwner: MovementIntentOwnerValue | null;
   readonly priorKey: string | null;
   readonly commitment: NavigationCommitmentAdvanceResult | null;
+  readonly proposalCount: number;
+  readonly eligibleProposalCount: number;
+  readonly proposalDigest: string;
+  readonly eligibleProposalDigest: string;
 }
 
 export interface MovementIntentTelemetry {
-  /** Proposal executing movement this frame, or null for legacy fallback/no movement. */
+  /** Active movement owner this frame, or null for legacy fallback/no movement. */
   readonly owner: MovementIntentOwnerValue | null;
   readonly key: string | null;
-  /** Durable lease whose NavigationCommitment remains latched across this frame. */
-  readonly latchedOwner: MovementIntentOwnerValue | null;
-  readonly latchedKey: string | null;
-  readonly latchedYielding: boolean;
   readonly transition: MovementIntentTransition;
   readonly reason: MovementIntentResolutionReason;
   readonly priorOwner: MovementIntentOwnerValue | null;
@@ -130,6 +128,10 @@ export interface MovementIntentTelemetry {
   readonly commitmentStatus: NavigationCommitmentAdvanceResult['status'] | null;
   readonly commitmentReason: NavigationCommitmentAdvanceResult['reason'] | null;
   readonly executionToken: string | null;
+  readonly proposalCount: number;
+  readonly eligibleProposalCount: number;
+  readonly proposalDigest: string;
+  readonly eligibleProposalDigest: string;
 }
 
 interface RankedProposal<TPayload> {
@@ -150,61 +152,56 @@ export function resolveMovementIntent<TPayload = undefined>(
   validateArbiterState(state);
   validateArbiterFacts(facts);
 
-  const eligible = proposals
-    .map((proposal) => rankProposal(proposal))
-    .filter((ranked) => isProposalEligible(ranked.proposal, facts));
+  const ranked = proposals.map((proposal) => rankProposal(proposal));
+  const eligible = ranked.filter((candidate) => isProposalEligible(candidate.proposal, facts));
+  const meta = buildResolutionMeta(ranked, eligible);
 
   const current = state.current;
   if (current === null) {
-    const selected = chooseBest(eligible);
-    if (selected === null) {
-      return rejected(state, 'rejectedNoEligibleProposals', null, null);
-    }
-    return acquire(selected, null, null, 'acquired');
+    return acquireFromCandidates(
+      eligible,
+      null,
+      null,
+      'acquired',
+      'acquiredBestEligible',
+      'rejectedNoEligibleProposals',
+      null,
+      meta,
+    );
   }
 
-  const retained = eligible.find((ranked) => leaseMatchesProposal(current, ranked));
+  const retained = eligible.find((candidate) => leaseMatchesProposal(current, candidate));
   if (retained === undefined) {
-    const selected = chooseBest(eligible);
-    if (selected === null) {
-      return {
-        selected: null,
-        nextState: emptyState(),
-        transition: 'released',
-        reason: 'releasedNoRetainedProposal',
-        priorOwner: current.owner,
-        priorKey: current.key,
-        commitment: null,
-      };
-    }
-    return acquire(selected, current.owner, current.key, 'acquired');
+    return acquireFromCandidates(
+      eligible,
+      current.owner,
+      current.key,
+      'acquired',
+      'acquiredAfterMissingRetainedLease',
+      'releasedNoRetainedProposal',
+      null,
+      meta,
+    );
   }
 
-  const retainedOwnsMovement = !current.yielded && retained.proposal.commitment.facts.ownsMovement;
   const retainedCommitment = advanceNavigationCommitment(
     state.navigation ?? { target: retained.proposal.target, reason: 'initialized' },
-    {
-      ...retained.proposal.commitment.facts,
-      ownsMovement: retainedOwnsMovement,
-    },
+    retained.proposal.commitment.facts,
     retained.proposal.commitment.policy,
   );
 
   if (retainedCommitment.state === null) {
     const challengersAfterRelease = eligible.filter((ranked) => ranked !== retained);
-    const selected = chooseBest(challengersAfterRelease);
-    if (selected === null) {
-      return {
-        selected: null,
-        nextState: emptyState(),
-        transition: 'released',
-        reason: 'releasedByCommitment',
-        priorOwner: current.owner,
-        priorKey: current.key,
-        commitment: retainedCommitment,
-      };
-    }
-    return acquire(selected, current.owner, current.key, 'acquired');
+    return acquireFromCandidates(
+      challengersAfterRelease,
+      current.owner,
+      current.key,
+      'acquired',
+      'acquiredAfterCommitmentRelease',
+      'releasedByCommitment',
+      retainedCommitment,
+      meta,
+    );
   }
 
   const allowedChallengers = eligible.filter(
@@ -212,23 +209,17 @@ export function resolveMovementIntent<TPayload = undefined>(
   );
   const challenger = chooseBest(allowedChallengers);
   if (challenger !== null) {
-    return acquire(challenger, current.owner, current.key, 'preempted');
-  }
-
-  if (!retainedOwnsMovement) {
-    const temporaryOwner = chooseBest(eligible.filter((ranked) => ranked !== retained));
-    return {
-      selected: temporaryOwner?.proposal ?? null,
-      nextState: {
-        current: leaseFromProposal(retained, true),
-        navigation: retainedCommitment.state,
-      },
-      transition: 'yielded',
-      reason: 'yieldedWhileCommitmentLatched',
-      priorOwner: current.owner,
-      priorKey: current.key,
-      commitment: retainedCommitment,
-    };
+    const preempted = tryAcquireCandidate(
+      challenger,
+      current.owner,
+      current.key,
+      'preempted',
+      'preemptedByAllowedPair',
+      meta,
+    );
+    if (preempted !== null) {
+      return preempted;
+    }
   }
 
   return {
@@ -242,6 +233,7 @@ export function resolveMovementIntent<TPayload = undefined>(
     priorOwner: current.owner,
     priorKey: current.key,
     commitment: retainedCommitment,
+    ...meta,
   };
 }
 
@@ -251,9 +243,6 @@ export function movementIntentTelemetry<TPayload>(
   return {
     owner: resolution.selected?.owner ?? null,
     key: resolution.selected?.key ?? null,
-    latchedOwner: resolution.nextState.current?.owner ?? null,
-    latchedKey: resolution.nextState.current?.key ?? null,
-    latchedYielding: resolution.nextState.current?.yielded ?? false,
     transition: resolution.transition,
     reason: resolution.reason,
     priorOwner: resolution.priorOwner,
@@ -261,6 +250,10 @@ export function movementIntentTelemetry<TPayload>(
     commitmentStatus: resolution.commitment?.status ?? null,
     commitmentReason: resolution.commitment?.reason ?? null,
     executionToken: resolution.selected?.execution.token ?? null,
+    proposalCount: resolution.proposalCount,
+    eligibleProposalCount: resolution.eligibleProposalCount,
+    proposalDigest: resolution.proposalDigest,
+    eligibleProposalDigest: resolution.eligibleProposalDigest,
   };
 }
 
@@ -314,57 +307,12 @@ const explicitPreemptionPairs: Record<
   ],
 };
 
-function acquire<TPayload>(
-  ranked: RankedProposal<TPayload>,
-  priorOwner: MovementIntentOwnerValue | null,
-  priorKey: string | null,
-  transition: Extract<MovementIntentTransition, 'acquired' | 'preempted'>,
-): MovementIntentResolution<TPayload> {
-  const commitment = advanceNavigationCommitment(
-    { target: ranked.proposal.target, reason: 'initialized' },
-    ranked.proposal.commitment.facts,
-    ranked.proposal.commitment.policy,
-  );
-  return acquireWithCommitment(ranked, priorOwner, priorKey, transition, commitment);
-}
-
-function acquireWithCommitment<TPayload>(
-  ranked: RankedProposal<TPayload>,
-  priorOwner: MovementIntentOwnerValue | null,
-  priorKey: string | null,
-  transition: Extract<MovementIntentTransition, 'acquired' | 'preempted'>,
-  commitment: NavigationCommitmentAdvanceResult,
-): MovementIntentResolution<TPayload> {
-  if (commitment.state === null) {
-    return {
-      selected: null,
-      nextState: emptyState(),
-      transition: 'released',
-      reason: 'releasedByCommitment',
-      priorOwner,
-      priorKey,
-      commitment,
-    };
-  }
-  return {
-    selected: ranked.proposal,
-    nextState: {
-      current: leaseFromProposal(ranked),
-      navigation: commitment.state,
-    },
-    transition,
-    reason: transition === 'preempted' ? 'preemptedByAllowedPair' : 'acquiredBestEligible',
-    priorOwner,
-    priorKey,
-    commitment,
-  };
-}
-
 function rejected<TPayload>(
   state: MovementIntentArbiterState,
   reason: Extract<MovementIntentResolutionReason, 'rejectedNoEligibleProposals'>,
   priorOwner: MovementIntentOwnerValue | null,
   priorKey: string | null,
+  meta: ResolutionMeta,
 ): MovementIntentResolution<TPayload> {
   return {
     selected: null,
@@ -374,6 +322,7 @@ function rejected<TPayload>(
     priorOwner,
     priorKey,
     commitment: null,
+    ...meta,
   };
 }
 
@@ -415,10 +364,7 @@ function compareCodeUnits(left: string, right: string): number {
   return left < right ? -1 : 1;
 }
 
-function leaseFromProposal<TPayload>(
-  ranked: RankedProposal<TPayload>,
-  yielded = false,
-): MovementIntentLease {
+function leaseFromProposal<TPayload>(ranked: RankedProposal<TPayload>): MovementIntentLease {
   return {
     owner: ranked.proposal.owner,
     key: ranked.proposal.key,
@@ -428,7 +374,6 @@ function leaseFromProposal<TPayload>(
     targetFingerprint: ranked.targetFingerprint,
     executionToken: ranked.proposal.execution.token,
     reason: ranked.proposal.execution.reason,
-    yielded,
   };
 }
 
@@ -462,6 +407,143 @@ function rankProposal<TPayload>(
     proposal,
     priority: proposal.priority ?? MOVEMENT_INTENT_ACQUISITION_PRIORITIES[proposal.owner],
     targetFingerprint: movementIntentTargetFingerprint(proposal.target),
+  };
+}
+
+interface ResolutionMeta {
+  readonly proposalCount: number;
+  readonly eligibleProposalCount: number;
+  readonly proposalDigest: string;
+  readonly eligibleProposalDigest: string;
+}
+
+function buildResolutionMeta<TPayload>(
+  ranked: ReadonlyArray<RankedProposal<TPayload>>,
+  eligible: ReadonlyArray<RankedProposal<TPayload>>,
+): ResolutionMeta {
+  return {
+    proposalCount: ranked.length,
+    eligibleProposalCount: eligible.length,
+    proposalDigest: digestRankedProposals(ranked),
+    eligibleProposalDigest: digestRankedProposals(eligible),
+  };
+}
+
+function digestRankedProposals<TPayload>(ranked: ReadonlyArray<RankedProposal<TPayload>>): string {
+  if (ranked.length === 0) return 'none';
+  const keys = ranked
+    .map((candidate) =>
+      [
+        String(candidate.priority),
+        String(candidate.proposal.declarationOrdinal),
+        candidate.proposal.owner,
+        candidate.proposal.key,
+        candidate.targetFingerprint,
+        candidate.proposal.eligibility.zone,
+        candidate.proposal.eligibility.targetRelation,
+        candidate.proposal.eligibility.domainAvailable ? '1' : '0',
+        candidate.proposal.eligibility.physicalLock === true ? '1' : '0',
+      ].join(':'),
+    )
+    .sort(compareCodeUnits);
+  let hash = 0x811c9dc5;
+  for (const key of keys) {
+    for (let i = 0; i < key.length; i += 1) {
+      hash ^= key.charCodeAt(i);
+      hash = Math.imul(hash, 0x01000193);
+    }
+    hash ^= 124;
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `fnv1a32:${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+function acquireFromCandidates<TPayload>(
+  candidates: ReadonlyArray<RankedProposal<TPayload>>,
+  priorOwner: MovementIntentOwnerValue | null,
+  priorKey: string | null,
+  transition: Extract<MovementIntentTransition, 'acquired' | 'preempted'>,
+  acquisitionReason: Extract<
+    MovementIntentResolutionReason,
+    'acquiredBestEligible' | 'acquiredAfterMissingRetainedLease' | 'acquiredAfterCommitmentRelease'
+  >,
+  fallbackReason: Extract<
+    MovementIntentResolutionReason,
+    'rejectedNoEligibleProposals' | 'releasedNoRetainedProposal' | 'releasedByCommitment'
+  >,
+  fallbackCommitment: NavigationCommitmentAdvanceResult | null,
+  meta: ResolutionMeta,
+): MovementIntentResolution<TPayload> {
+  const sorted = [...candidates].sort(compareRankedProposal);
+  let latestReleaseCommitment: NavigationCommitmentAdvanceResult | null = fallbackCommitment;
+  for (const candidate of sorted) {
+    const acquired = tryAcquireCandidate(
+      candidate,
+      priorOwner,
+      priorKey,
+      transition,
+      acquisitionReason,
+      meta,
+    );
+    if (acquired !== null) {
+      return acquired;
+    }
+    latestReleaseCommitment = advanceNavigationCommitment(
+      { target: candidate.proposal.target, reason: 'initialized' },
+      candidate.proposal.commitment.facts,
+      candidate.proposal.commitment.policy,
+    );
+  }
+
+  if (fallbackReason === 'rejectedNoEligibleProposals') {
+    return rejected(
+      { current: null, navigation: null },
+      'rejectedNoEligibleProposals',
+      priorOwner,
+      priorKey,
+      meta,
+    );
+  }
+  return {
+    selected: null,
+    nextState: emptyState(),
+    transition: 'released',
+    reason: fallbackReason,
+    priorOwner,
+    priorKey,
+    commitment: latestReleaseCommitment,
+    ...meta,
+  };
+}
+
+function tryAcquireCandidate<TPayload>(
+  ranked: RankedProposal<TPayload>,
+  priorOwner: MovementIntentOwnerValue | null,
+  priorKey: string | null,
+  transition: Extract<MovementIntentTransition, 'acquired' | 'preempted'>,
+  reason: MovementIntentResolutionReason,
+  meta: ResolutionMeta,
+): MovementIntentResolution<TPayload> | null {
+  const commitment = advanceNavigationCommitment(
+    { target: ranked.proposal.target, reason: 'initialized' },
+    ranked.proposal.commitment.facts,
+    ranked.proposal.commitment.policy,
+  );
+  if (commitment.state === null) {
+    return null;
+  }
+  return {
+    selected: ranked.proposal,
+    nextState: {
+      current: leaseFromProposal(ranked),
+      navigation: commitment.state,
+    },
+    transition,
+    reason,
+    priorOwner,
+    priorKey,
+    commitment,
+    ...meta,
   };
 }
 
@@ -521,6 +603,9 @@ function validateTarget(target: MovementIntentTarget): void {
 function validateArbiterState(state: MovementIntentArbiterState): void {
   if (state.current === null && state.navigation !== null) {
     throw new Error('Movement intent navigation state requires a current lease');
+  }
+  if (state.current !== null && state.navigation === null) {
+    throw new Error('Movement intent lease requires navigation state');
   }
 }
 

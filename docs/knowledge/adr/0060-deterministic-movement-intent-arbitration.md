@@ -2,73 +2,79 @@
 
 ## Status
 
-Accepted
+Accepted (amended 2026-07-12)
 
 ## Date
 
-2026-07-11
+2026-07-11 (amended 2026-07-12)
 
 ## Estimated Complexity
 
-🍎 x 5 — introduces a new deterministic AI movement-arbitration foundation, a navigation-commitment clock model, exhaustive unit coverage, and supersedes part of an existing AI priority ADR.
+🍎 x 5 — foundational arbitration + provider integration + deterministic headless comparators.
 
 ## Context
 
-- **CTX-001**: The current behavior-tree movement stack contains several independently-authored movement authorities: retreat, arena lock-in, interaction, safe-room egress, and progression. A static priority ladder can pick an initial winner, but it does not encode which retained movement owner may be interrupted by which challenger.
-- **CTX-002**: Safe-room egress needs lease semantics that differ from simple priority. While egress actively owns movement, critical HP is not enough to steal control. After clearing the room mouth, the target must remain latched without continuing to steer through outside combat.
-- **CTX-003**: ADR 0045 made arena lock-in a higher-priority behavior-tree slot and correctly preserved the pure lock-in detector plus the outside-safe Retreat-over-Arena rule. Its static priority-ladder authority section is now too coarse for safe-room egress and other retained-intent cases.
-- **CTX-004**: The AI runner must remain deterministic, pure at the decision-foundation layer, independent of Phaser, and suitable for later integration into `bt-ai-provider.ts` without constructing provider-specific `AIDecision` objects.
+- Floor-1 movement had multiple competing authorities (Retreat, ArenaLockin, interaction, SafeRoomEgress, Progression) with partial priority rules and hidden coupling.
+- The previously attempted yielded/post-selector model split “execution owner” from “latched owner” and introduced `pendingMovementIntentProposal`/temporary execution semantics that were hard to reason about and failed the approved comparator behaviors.
+- Safe-room egress needs deterministic, geometry-backed completion (legal origin-boundary cross + outside margin), not sticky latch heuristics.
+- The foundation must stay pure/deterministic and reusable by `bt-ai-provider.ts` without provider-private ownership clocks.
 
 ## Decision
 
-- **DEC-001**: Build a custom pure TypeScript foundation for movement-intent arbitration instead of adopting a state-machine, behavior-tree, or planning library. The foundation is data-only, has no dependencies, reads no wall clock, and performs deterministic sorting and explicit pairwise preemption.
-- **DEC-002**: Centralize acquisition priorities for the approved owners: retreat 600, arena lock-in 500, immediate interaction 400, interaction approach 350, safe-room egress 300, and progression 200. These priorities decide only acquisition and tie-break ordering; retained preemption must pass an explicit pairwise rule.
-- **DEC-003**: Add a navigation-commitment model with two clocks. The clear-window clock advances on deterministic frames where its owner-independent clear condition is true and resets when that condition is false. The motion-progress clock advances only while the retained owner owns movement; loss of ownership freezes best-so-far distance and no-progress frames without resetting them.
-- **DEC-004**: Supersede the static priority-ladder authority portion of ADR 0045. ADR 0045 remains authoritative for the arena lock-in detector and for outside-safe Retreat-over-Arena semantics. ADR 0060 becomes authoritative for retained movement-intent arbitration and safe-room egress preemption.
-- **DEC-005**: Encode safe-room egress as an explicit pairwise lease rule: retained egress cannot be preempted by retreat, progression, or interaction approach; immediate interaction can preempt only while the player is inside safe space; arena lock-in can preempt only when a physical lock cages the player outside safe space.
-- **DEC-006**: Keep active egress ownership only through a two-frame consecutive outside-safe debounce, then enter a durable `yielded` lease phase. During yield, the 30-frame clear window and target remain solely in `MovementIntentArbiterState.navigation`, motion progress is frozen, and the best eligible temporary proposal executes without acquiring or resetting the egress lease. A yielded lease cannot silently reactivate when its clear condition resets.
-- **DEC-007**: Report execution ownership separately from latch ownership. `MovementIntentTelemetry.owner/key` identify the proposal that executed this frame; `latchedOwner/latchedKey/latchedYielding` identify the durable commitment. The `yielded` lifecycle transition makes this handoff observable.
+- **DEC-001**: Keep a pure custom TypeScript arbitration foundation (`movement-intent-arbiter.ts` + `navigation-commitment.ts`), no runtime library dependency.
+- **DEC-002**: Acquisition priorities are fixed and global: Retreat 600, ArenaLockin 500, InteractionImmediate 400, InteractionApproach 350, SafeRoomEgress 300, Progression 200.
+- **DEC-003**: Arbiter state owns exactly one active lease plus one navigation commitment. Remove pending proposals, temporary migrated-intent execution, yielded latch state, and owner-vs-latch split telemetry.
+- **DEC-004**: All migrated owners generate proposals every poll in a side-effect-free phase, independent of tree winner ordering. Arbiter resolves among eligible proposals deterministically. Only the selected proposal’s deferred effect is applied, exactly once.
+- **DEC-005**: Pairwise retained-preemption contract is explicit:
+  - retained SafeRoomEgress rejects Retreat, Progression, and InteractionApproach;
+  - InteractionImmediate may preempt egress only while inside safe space;
+  - ArenaLockin may preempt egress only outside safe with verified physical lock;
+  - retained ArenaLockin yields only to outside-safe Retreat.
+- **DEC-006**: Completion handoff semantics are release → acquire in the same resolution when commitment releases (`acquiredAfterCommitmentRelease`), never illegal preemption for egress→Retreat/Progression.
+- **DEC-007**: `NavigationCommitment` remains owner-agnostic and two-clock:
+  - owner-motion no-progress advances only while movement ownership is active;
+  - clear-window clock advances on owner-independent clear condition while latched.
+- **DEC-008**: SafeRoomEgress uses an episode + geometry certificate:
+  - capture stable origin safe-room tile set and stable waypoint when episode starts;
+  - complete only after legal origin-boundary crossing plus outside margin;
+  - re-entry before completion keeps/reseeds same episode;
+  - re-entry after completion starts a new episode.
+- **DEC-009**: Telemetry records one lifecycle owner stream plus bounded proposal counts/digests (`proposalCount`, `eligibleProposalCount`, order-independent digests).
+- **DEC-010**: This ADR supersedes:
+  - ADR 0045’s static movement-priority authority section for retained movement arbitration;
+  - the earlier ADR 0060 yielded/post-selector DEC branch (latched yielding + temporary executor split), now explicitly rejected.
 
 ## Consequences
 
 ### Positive
 
-- **POS-001**: Provider integration can propose movement intents from existing behavior-tree branches without each branch knowing every other branch's special case.
-- **POS-002**: Safe-room egress becomes stable under low-health pressure, avoiding critical-HP retreat oscillation while still allowing immediate in-room interactions and real outside-safe cages to take control.
-- **POS-003**: Deterministic tie-breaks make replay debugging practical: priority desc, declaration ordinal, owner/key, and target fingerprint fully order all eligible proposals.
-- **POS-004**: The pure foundation is unit-testable without ECS, Phaser, or headless-runner fixtures.
-- **POS-005**: A long mouth-flicker debounce no longer implies long exclusive steering. The first cloud attempt with 30 exclusive outside frames produced 524/600 wins; shortening the entire latch to two frames produced 523/600 and 40 safe-room signatures. Latched yield preserves both responsibilities independently.
+- Deterministic, permutation-invariant arbitration with explicit pairwise rules.
+- No losing-proposal state mutation; producer effects are committed only on selection.
+- Safe-room egress completion is geometry-evidenced instead of sticky timing heuristics.
+- Headless telemetry is simpler (single owner lifecycle) while adding proposal diagnostics.
 
 ### Negative
 
-- **NEG-001**: Intent producers must supply explicit facts: zone, target relation, target validity, physical lock, and navigation facts. Missing facts are rejected or throw validation errors instead of silently defaulting.
-- **NEG-002**: Retained preemption now requires maintaining a pairwise matrix, so new movement owners must be deliberately added to the matrix rather than relying on priority alone.
-- **NEG-003**: A resolution can now have different execution and latch owners, so telemetry consumers must use `owner` for actual movement and `latchedOwner` for commitment lifecycle analysis.
+- Producer code must maintain data-only proposal/facts/effect separation.
+- More explicit fact plumbing (zone, target relation, domain availability, physical lock, validity).
+- Additional test surface for episode/certificate edge cases.
 
 ### Risks
 
-- **RSK-001**: A later provider integration could accidentally keep legacy priority-ladder checks in parallel with the arbiter. Integration should route ownership changes through this foundation and use legacy branches only as proposal producers.
-- **RSK-002**: Overly broad physical-lock facts would let arena lock-in steal egress too often. The fact must remain tied to ADR 0045's barrier-verified detector.
-- **RSK-003**: Navigation-commitment thresholds are policy values supplied by callers; poor thresholds can cause premature release or excessive retention even though the clock mechanics are deterministic.
+- Overly strict legal-step checks can delay egress completion; too-loose checks risk false certification.
+- Stale target caches must be revalidated every poll for entity-backed targets.
+- Future producers must not reintroduce side effects into proposal generation.
 
 ## Alternatives Considered
 
-### Buy a finite-state-machine library
+### Keep static priority ladder only
 
-- **ALT-001**: **Description**: Model movement ownership as states and transitions using an off-the-shelf state-machine package.
-- **ALT-002**: **Rejection Reason**: The problem is not generic state dispatch; it is deterministic proposal selection with target fingerprints, per-proposal facts, and pairwise retained preemption. A library would add dependency and integration surface without removing the custom game-specific matrix.
+Rejected — cannot encode retained-owner pairwise semantics or deterministic completion handoff.
 
-### Buy a planning or utility-AI framework
+### Keep yielded/post-selector pseudo-arbitration
 
-- **ALT-003**: **Description**: Replace the behavior-tree movement ladder with a GOAP, utility AI, or planner package.
-- **ALT-004**: **Rejection Reason**: This foundation must preserve existing BT proposal logic and only arbitrate approved movement intents. A planner would be larger than the requested pure slice, harder to keep byte-replay deterministic, and risky for the 90% Floor-1 win-rate target.
+Rejected — split ownership semantics (`yielded` + temporary execution) caused fragile behavior and failed approved Alternative A criteria.
 
-### Keep ADR 0045's static priority ladder
+### Adopt FSM/planner library
 
-- **ALT-005**: **Description**: Continue resolving movement by the existing priority slot ordering: retreat, arena, interaction, progression, safe-room egress, and fallback behaviors.
-- **ALT-006**: **Rejection Reason**: Static priority cannot express retained egress semantics. It would allow critical-HP retreat to steal movement from safe-room egress, violating the approved behavior that egress wins until cleared unless immediate interaction or a real outside-safe physical cage applies.
-
-### Encode special cases directly in `bt-ai-provider.ts`
-
-- **ALT-007**: **Description**: Add ad hoc `if` checks around the provider's existing behavior-tree decisions.
-- **ALT-008**: **Rejection Reason**: That preserves hidden coupling and makes exhaustive pairwise tests difficult. The approved foundation needs pure data objects that can be tested independently and integrated later without touching provider state.
+Rejected — adds dependency/integration cost without replacing game-specific deterministic ranking + pairwise preemption contract.

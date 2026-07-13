@@ -2,11 +2,11 @@
 
 ## Date
 
-2026-07-11
+2026-07-11 (updated 2026-07-12)
 
 ## Persona
 
-Producer → Systems Engineer → QA Engineer
+Producer -> Systems Engineer -> QA Engineer
 
 ## Systems touched
 
@@ -14,122 +14,114 @@ ai-behavior-tree, ai-pathfinding, ai-combat-balance, quests, ci-policy
 
 ## Apples
 
-5🍎 estimated, 5🍎 actual (exact). Full record:
-`docs/knowledge/metrics/apples/2026-07-12-movement-intent-arbitration.json`.
+5 apples estimated, 5 apples actual. Full record:
+`docs/knowledge/metrics/apples/2026-07-13-movement-intent-arbitration.json`.
 
-## What Was Done
+## Outcome
 
-- Added the pure `navigation-commitment.ts` reducer. It owns stable target
-  identity, validity/arrival, quantized best-so-far distance, owner-motion
-  no-progress frames, and owner-independent clear-window frames.
-- Added the pure `movement-intent-arbiter.ts` lease resolver with centralized
-  acquisition priorities and an exhaustive pairwise preemption contract.
-- Migrated Retreat, ArenaLockin, immediate/approach interaction,
-  SafeRoomEgress, and Progression proposal metadata into the arbiter seam while
-  retaining legacy fallback for Engage, Collect, Hunt, and Explore.
-- Made SafeRoomEgress the first production NavigationCommitment consumer. Its
-  active phase owns two consecutive outside-safe frames, then enters a durable
-  non-owning yield while its target and 30-frame clear clock remain latched.
-  Temporary movement can execute without acquiring the lease; an allowed
-  barrier-verified ArenaLockin may still preempt on the first outside-safe frame.
-- Preserved legal same-safe noncombat objectives and a retained merchant-fetch
-  route crossing safe space without allowing enemy-backed Progression to park
-  there.
-- Added structured movement owner/lifecycle telemetry to headless events and
-  run stats, separating execution owner from latched owner and including illegal
-  in-safe Retreat/enemy-Progression counts.
-- Added pure reducer/arbiter tests, provider contract tests, telemetry coverage,
-  and real-headless official-win comparators for seed 74 bow+pistol and seed 49
-  throwing-knife.
-- Recorded ADR 0060 and completed the adversarial, two-round, multi-model
-  review ledger.
+Implemented the human-approved Alternative A redesign:
 
-Observed in the real headless pipeline — before: the seven sweep rows spent
-roughly 143–351 seconds in safe rooms and timed out; after: five rows are
-official wins, seed 48 throwing-knife hands off to an outside-safe Retreat
-failure owned by the dependent kiting slice, and seed 76 pistol has zero
-merchant-Progression→egress churn, only 30 seconds total safe-room time,
-completes the merchant quest, and times out later in boss/combat progression.
+- all migrated movement owners generate data-only proposals every poll;
+- the arbiter owns exactly one active lease and one `NavigationCommitment`;
+- only the selected proposal commits its deferred provider effect;
+- no `pendingMovementIntentProposal`, temporary migrated executor, sticky
+  yielded lease, or execution-owner/latch-owner split remains;
+- SafeRoomEgress owns a stable origin-room episode and waypoint until an
+  observed legal boundary crossing plus exterior margin completes it;
+- completion releases egress and acquires the best eligible challenger in the
+  same resolution with a fresh commitment;
+- immediate same-safe-space interaction can preempt egress, while retained
+  egress still rejects newly arriving Retreat, Progression, and approach-only
+  interaction challengers.
 
-## Key Decisions Made
+The original yielded/post-selector implementation was tested in three 600-run
+cloud candidates and rejected (524, 523, and 532 official wins respectively).
+ADR 0060 now records that design fork and supersession.
 
-- `NavigationCommitmentState` is the sole persistent owner of generic
-  target/progress/no-progress/clear-window facts. Provider payloads and
-  intent-private counters do not live in arbiter state.
-- Motion no-progress advances only while the intent owns movement. A latched
-  owner-independent clear condition advances regardless of temporary movement
-  ownership.
-- Retained SafeRoomEgress cannot be preempted by Retreat or Progression.
-  Immediate interaction may preempt inside safe space; a barrier-verified
-  ArenaLockin may preempt outside. ArenaLockin yields only to outside Retreat.
-- A retained owner can enter a durable generic `yielded` phase. The best eligible
-  temporary proposal executes without acquiring the lease, while
-  NavigationCommitment advances only its owner-independent clear clock and
-  freezes motion progress. Yield cannot silently reactivate after reentry.
-- Preemption initializes the challenger's NavigationCommitment. Reusing the
-  retained owner's commitment would make lease owner and navigation target
-  diverge.
-- Non-selected egress proposals cannot mutate the waypoint latch. This prevents
-  an ineligible proposal from becoming eligible one frame later after crossing
-  the safe-space boundary.
-- Active egress uses two outside-safe frames, then yields while the old
-  30-frame non-owning debounce remains reducer-owned. Reusing all 30 frames for
-  exclusive movement fell from 556/600 to 524/600; shortening the whole latch
-  to two frames produced 523/600 and 40 safe-room signatures.
-- The dependent Retreat slice must consume these modules directly and provide
-  immutable facts/policy only; it must not create a parallel commitment reducer
-  or private progress counters.
+## Stable consumer contract
 
-## What's Next / Blockers
+- `src/game/ai/movement-intent-arbiter.ts` owns proposal ranking, pairwise
+  preemption, one active lease, and same-resolution handoff.
+- `src/game/ai/navigation-commitment.ts` owns stable target identity,
+  validity/arrival, quantized best-so-far progress, owner-motion no-progress,
+  and owner-independent clear-window state.
+- Consumers provide immutable proposal eligibility, target, commitment facts,
+  and execution payloads. They do not persist parallel progress counters.
+- Motion no-progress advances only while the lease owns movement. The
+  owner-independent clear condition advances whenever its commitment is
+  active.
+- Retreat remains priority 600 and is eligible in either zone. This preserves
+  critical-health retreat when the player reaches a safe room without changing
+  the explicit rule that an already-retained egress lease rejects a new Retreat
+  challenger.
+- Future Retreat and route slices must consume these modules directly; no
+  provider-private or safe-room-specific ownership primitive is allowed.
 
-- Commit and push this branch, dispatch the GitHub 600-run Floor 1 sweep, and
-  require at least 556/600 official wins plus no safe-room ownership signature
-  regression before opening the dedicated unmerged PR.
-- The Retreat/kiting slice remains intentionally blocked until this PR merges.
-  It owns seed 48's outside-safe Retreat behavior and must not add a private
-  safe-room exception.
-- Final travel and general route efficiency remain separate future slices.
+## Validation
 
-## Retrospective
+Green deterministic checks:
 
-### Lessons Learned
+- `tests/unit/ai/navigation-commitment.test.ts`
+- `tests/unit/ai/movement-intent-arbiter.test.ts`
+- `tests/unit/ai/safe-room-egress-certificate.test.ts`
+- `tests/game/behavior-tree-ai.test.ts`
+- `tests/headless/floor1-movement-intent-arbitration.test.ts`
+- `npm run verify:fast`
 
-- Ownership telemetry identified the first wrong transition much faster than
-  decision-reason parsing.
-- Proposal builders must be side-effect-free until selected; eligibility alone
-  does not protect against state latched before arbitration.
-- The arbiter and commitment reducer need separate target assertions because a
-  correct lease owner can still carry the previous owner's reducer state.
-- A yielded lease must keep a stable target fingerprint. Provider-side waypoint
-  reseeding would otherwise look like a fresh acquisition and silently restore
-  movement ownership after reentry.
+The approved ten-row local panel initially produced 8/10 official wins with
+zero movement-intent violations:
 
-### Mistakes Made
+| Case              | Result | Game time | Safe-room time |
+| ----------------- | ------ | --------: | -------------: |
+| bow 74            | win    |    265.0s |          19.6s |
+| pistol 74         | win    |    271.0s |          28.5s |
+| throwing-knife 49 | win    |    232.1s |          25.2s |
+| pistol 28         | win    |    289.5s |          14.5s |
+| throwing-knife 28 | win    |    290.3s |          12.8s |
+| bow 79            | win    |    250.0s |          10.1s |
+| pistol 79         | death  |     92.2s |          19.0s |
+| throwing-knife 79 | death  |     41.5s |           4.5s |
+| fireball 79       | win    |    235.2s |           9.2s |
+| throwing-knife 91 | win    |    278.0s |          11.8s |
 
-- The initial preemption path reused the retained owner's NavigationCommitment
-  when installing a challenger. The early signal was a selected egress lease
-  whose stored navigation target still named Progression.
-- The first cloud implementation conflated a 30-frame non-owning waypoint latch
-  with 30 frames of exclusive movement ownership. The source-vs-branch cloud
-  artifacts showed 44 lost official wins and only 12 gains, with repeated
-  cross-weapon seed flips, before the active clear window was corrected.
-- The first correction shortened both movement ownership and target retention.
-  Its cloud gate exposed the opposite failure mode: 40 safe-room signatures.
-  The final contract separates active ownership from a durable non-owning latch.
-- The egress builder initially latched a waypoint before declaring itself
-  unavailable. Seed 76 exposed the resulting next-frame Progression↔egress
-  oscillation.
-- Parallel read-only reviewers shared the worktree and one temporarily edited
-  untracked foundation files. The deterministic matrix tests exposed the
-  contamination; future review prompts should be backed by isolated diffs or
-  enforced read-only worktrees.
+Artifact-only tracing found the shared seed-79 regression: Retreat proposals
+were incorrectly `outsideSafe`, so entering safety invalidated a critical-HP
+Retreat lease and let egress eject the player. Retreat is now zone-neutral and
+its losing proposal path no longer mutates Retreat state. Provider regression
+tests and `verify:fast` are green after the fix. The local ten-run budget was
+not exceeded; final falsification is delegated to the required GitHub sweep.
 
-### Opportunities for Future Improvement
+The 5-apple review ledger is valid after:
 
-- Add tooling that snapshots or isolates the working tree before multi-model
-  review so a reviewer cannot contaminate another review round.
-- Migrate the remaining legacy movement producers only when they need durable
-  ownership; avoid speculative expansion of the arbiter surface.
-- Promote the seven-row signature classifier into the cloud sweep artifact so
-  safe-room dwell, illegal owners, and churn are reported without ad hoc JSONL
-  scripts.
+- an adversarial plan review (`claude-opus-4.8`);
+- two code-review rounds (`claude-sonnet-5`);
+- independent review by `gpt-5.4` and `gemini-3.1-pro-preview`;
+- adjudication and fixes for stale migrated-winner debug telemetry and one
+  invalid TypeScript test cast.
+
+## Required cloud gate
+
+Before opening the dedicated PR, dispatch the six-shard 600-run workflow on
+this branch and require all of:
+
+- at least 556/600 official wins;
+- at most 11 rows with more than 60 seconds of safe-room dwell;
+- zero new more-than-60-second safe-room flags among baseline official wins;
+- bow seed 97 timeout eliminated;
+- the original seven rows preserve legal quest, door, and interaction
+  progression;
+- unchanged 360-second official-win requirement.
+
+## Boundaries
+
+- No teleport, through-wall interaction, official-time reduction, threshold
+  tuning, or weapon tuning.
+- General Retreat/kiting remains a dependent slice and stays blocked until this
+  PR merges.
+- Final travel and general route efficiency remain separate work.
+
+## Pending
+
+- Run PR prerequisites and commit/push this branch.
+- Dispatch and evaluate the GitHub-only 600-run gate.
+- Open the dedicated unmerged PR only if every hard gate passes.

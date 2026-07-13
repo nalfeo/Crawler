@@ -4,7 +4,6 @@ import {
   MovementIntentOwner,
   canPreemptMovementIntent,
   movementIntentTelemetry,
-  movementIntentTargetFingerprint,
   resolveMovementIntent,
   type MovementIntentArbiterFacts,
   type MovementIntentArbiterState,
@@ -92,7 +91,21 @@ function acquireState(
   const result = resolveMovementIntent({ current: null, navigation: null }, [current], facts);
   expect(result.selected).toBe(current);
   expect(result.nextState.current).not.toBeNull();
+  expect(result.nextState.navigation).not.toBeNull();
   return result.nextState;
+}
+
+function permute<T>(items: readonly T[]): T[][] {
+  if (items.length <= 1) return [items.slice()];
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += 1) {
+    const head = items[i]!;
+    const rest = [...items.slice(0, i), ...items.slice(i + 1)];
+    for (const tail of permute(rest)) {
+      out.push([head, ...tail]);
+    }
+  }
+  return out;
 }
 
 function expectedPreemption(
@@ -142,195 +155,139 @@ describe('movement intent arbiter', () => {
     });
   });
 
-  it('acquires the highest-priority eligible proposal', () => {
+  it('enforces singular lease ownership invariants', () => {
+    expect(() =>
+      resolveMovementIntent(
+        {
+          current: null,
+          navigation: {
+            target: targetFor(MovementIntentOwner.RETREAT),
+            acquiredFrame: 1,
+            bestDistanceFt: 1,
+            ownerNoProgressFrames: 0,
+            clearWindowFrames: 0,
+            lastProgressFrame: 1,
+            lastReason: 'initialized',
+          },
+        },
+        [],
+        outsideSafe,
+      ),
+    ).toThrow(/requires a current lease/);
+
+    expect(() =>
+      resolveMovementIntent(
+        {
+          current: {
+            owner: MovementIntentOwner.RETREAT,
+            key: 'retreat',
+            priority: 600,
+            declarationOrdinal: 0,
+            target: targetFor(MovementIntentOwner.RETREAT),
+            targetFingerprint: 'entity:retreat:1:1:2',
+            executionToken: 'retreat',
+            reason: 'retreat',
+          },
+          navigation: null,
+        },
+        [proposal(MovementIntentOwner.RETREAT)],
+        outsideSafe,
+      ),
+    ).toThrow(/requires navigation state/);
+  });
+
+  it('is permutation-invariant under synthetic equal-priority ties', () => {
+    const tieSet = [
+      proposal(MovementIntentOwner.INTERACTION_APPROACH, {
+        key: 'b',
+        priority: 777,
+        declarationOrdinal: 1,
+        target: targetFor(MovementIntentOwner.INTERACTION_APPROACH, 8),
+      }),
+      proposal(MovementIntentOwner.ARENA_LOCKIN, {
+        key: 'alpha',
+        priority: 777,
+        declarationOrdinal: 1,
+        target: targetFor(MovementIntentOwner.ARENA_LOCKIN, 9),
+        eligibility: {
+          zone: 'any',
+          targetRelation: 'any',
+          domainAvailable: true,
+          physicalLock: true,
+        },
+      }),
+      proposal(MovementIntentOwner.INTERACTION_IMMEDIATE, {
+        key: 'z',
+        priority: 777,
+        declarationOrdinal: 1,
+        target: targetFor(MovementIntentOwner.INTERACTION_IMMEDIATE, 10),
+      }),
+    ];
+
+    const winners = permute(tieSet).map((ordered) => {
+      const result = resolveMovementIntent(
+        { current: null, navigation: null },
+        ordered,
+        outsideSafe,
+      );
+      return {
+        owner: result.selected?.owner ?? null,
+        key: result.selected?.key ?? null,
+        digest: result.proposalDigest,
+      };
+    });
+
+    expect(new Set(winners.map((winner) => `${winner.owner}:${winner.key}`)).size).toBe(1);
+    expect(new Set(winners.map((winner) => winner.digest)).size).toBe(1);
+  });
+
+  it('acquires highest priority eligible when no lease exists', () => {
     const progression = proposal(MovementIntentOwner.PROGRESSION);
     const retreat = proposal(MovementIntentOwner.RETREAT);
+
     const result = resolveMovementIntent(
       { current: null, navigation: null },
       [progression, retreat],
       outsideSafe,
     );
 
-    expect(result.selected).toBe(retreat);
     expect(result.transition).toBe('acquired');
     expect(result.reason).toBe('acquiredBestEligible');
-    expect(result.priorOwner).toBeNull();
-  });
-
-  it('uses deterministic tie-breaks after priority', () => {
-    const late = proposal(MovementIntentOwner.INTERACTION_APPROACH, {
-      key: 'b',
-      priority: 350,
-      declarationOrdinal: 2,
-      target: targetFor(MovementIntentOwner.INTERACTION_APPROACH, 8),
-    });
-    const early = proposal(MovementIntentOwner.INTERACTION_APPROACH, {
-      key: 'z',
-      priority: 350,
-      declarationOrdinal: 1,
-      target: targetFor(MovementIntentOwner.INTERACTION_APPROACH, 9),
-    });
-    const result = resolveMovementIntent(
-      { current: null, navigation: null },
-      [late, early],
-      outsideSafe,
-    );
-
-    expect(result.selected).toBe(early);
-
-    const byOwnerKey = resolveMovementIntent(
-      { current: null, navigation: null },
-      [
-        proposal(MovementIntentOwner.INTERACTION_APPROACH, {
-          key: 'b',
-          priority: 350,
-          declarationOrdinal: 1,
-          target: targetFor(MovementIntentOwner.INTERACTION_APPROACH, 8),
-        }),
-        proposal(MovementIntentOwner.INTERACTION_APPROACH, {
-          key: 'a',
-          priority: 350,
-          declarationOrdinal: 1,
-          target: targetFor(MovementIntentOwner.INTERACTION_APPROACH, 9),
-        }),
-      ],
-      outsideSafe,
-    );
-    expect(byOwnerKey.selected?.key).toBe('a');
-
-    const byTarget = resolveMovementIntent(
-      { current: null, navigation: null },
-      [
-        proposal(MovementIntentOwner.INTERACTION_APPROACH, {
-          key: 'same',
-          priority: 350,
-          declarationOrdinal: 1,
-          target: targetFor(MovementIntentOwner.INTERACTION_APPROACH, 12),
-        }),
-        proposal(MovementIntentOwner.INTERACTION_APPROACH, {
-          key: 'same',
-          priority: 350,
-          declarationOrdinal: 1,
-          target: targetFor(MovementIntentOwner.INTERACTION_APPROACH, 3),
-        }),
-      ],
-      outsideSafe,
-    );
-    expect(byTarget.selected?.target.tileX).toBe(3);
-  });
-
-  it('retains a current lease when challengers are default-denied', () => {
-    const egress = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS);
-    const state = acquireState(egress, outsideSafe);
-    const retreat = proposal(MovementIntentOwner.RETREAT, {
-      commitment: {
-        policy,
-        facts: {
-          ...egress.commitment.facts,
-          frame: 2,
-        },
-      },
-    });
-    const retainedEgress = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS, {
-      commitment: {
-        policy,
-        facts: {
-          ...egress.commitment.facts,
-          frame: 2,
-        },
-      },
-    });
-
-    const result = resolveMovementIntent(state, [retainedEgress, retreat], outsideSafe);
-
-    expect(result.selected).toBe(retainedEgress);
-    expect(result.transition).toBe('retained');
-    expect(result.nextState.current?.owner).toBe(MovementIntentOwner.SAFE_ROOM_EGRESS);
-    expect(result.nextState.current?.yielded).toBe(false);
-  });
-
-  it('yields execution without transferring a latched commitment', () => {
-    const egress = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS);
-    const state = acquireState(egress, outsideSafe);
-    const retainedEgress = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS, {
-      commitment: {
-        policy: { ...policy, clearWindowFrames: 30 },
-        facts: {
-          ...egress.commitment.facts,
-          ownsMovement: false,
-          clearCondition: true,
-          frame: 2,
-        },
-      },
-    });
-    const retreat = proposal(MovementIntentOwner.RETREAT, {
-      commitment: {
-        policy,
-        facts: { ...egress.commitment.facts, frame: 2 },
-      },
-    });
-
-    const result = resolveMovementIntent(state, [retainedEgress, retreat], outsideSafe);
-
-    expect(result.transition).toBe('yielded');
-    expect(result.reason).toBe('yieldedWhileCommitmentLatched');
     expect(result.selected).toBe(retreat);
-    expect(result.nextState.current?.owner).toBe(MovementIntentOwner.SAFE_ROOM_EGRESS);
-    expect(result.nextState.current?.yielded).toBe(true);
-    expect(result.nextState.navigation?.target).toEqual(egress.target);
-    expect(result.nextState.navigation?.ownerNoProgressFrames).toBe(
-      state.navigation?.ownerNoProgressFrames,
-    );
-    expect(movementIntentTelemetry(result)).toMatchObject({
-      owner: MovementIntentOwner.RETREAT,
-      key: retreat.key,
-      latchedOwner: MovementIntentOwner.SAFE_ROOM_EGRESS,
-      latchedKey: retainedEgress.key,
-      latchedYielding: true,
-      transition: 'yielded',
-    });
+    expect(result.nextState.current?.owner).toBe(MovementIntentOwner.RETREAT);
+    expect(result.nextState.navigation?.target).toEqual(retreat.target);
   });
 
-  it('yields to legacy fallback when no temporary proposal is available', () => {
-    const egress = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS);
-    const state = acquireState(egress, outsideSafe);
-    const retainedEgress = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS, {
+  it('completes egress as released then acquired in the same resolution', () => {
+    const egress = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS, {
       commitment: {
-        policy: { ...policy, clearWindowFrames: 30 },
+        policy,
         facts: {
-          ...egress.commitment.facts,
-          ownsMovement: false,
-          clearCondition: true,
-          frame: 2,
+          latched: true,
+          ownsMovement: true,
+          targetValid: true,
+          distanceFt: 3,
+          arrived: false,
+          clearCondition: false,
+          frame: 1,
         },
       },
     });
-
-    const result = resolveMovementIntent(state, [retainedEgress], outsideSafe);
-
-    expect(result.transition).toBe('yielded');
-    expect(result.selected).toBeNull();
-    expect(result.nextState.current?.owner).toBe(MovementIntentOwner.SAFE_ROOM_EGRESS);
-    expect(movementIntentTelemetry(result)).toMatchObject({
-      owner: null,
-      latchedOwner: MovementIntentOwner.SAFE_ROOM_EGRESS,
-      latchedYielding: true,
-      transition: 'yielded',
-    });
-  });
-
-  it('does not reactivate a yielded lease when its clear condition resets', () => {
-    const egress = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS);
     let state = acquireState(egress, outsideSafe);
     state = resolveMovementIntent(
       state,
       [
         proposal(MovementIntentOwner.SAFE_ROOM_EGRESS, {
+          key: egress.key,
+          target: egress.target,
           commitment: {
-            policy: { ...policy, clearWindowFrames: 30 },
+            policy,
             facts: {
-              ...egress.commitment.facts,
-              ownsMovement: false,
+              latched: true,
+              ownsMovement: true,
+              targetValid: true,
+              distanceFt: 2,
+              arrived: false,
               clearCondition: true,
               frame: 2,
             },
@@ -340,93 +297,38 @@ describe('movement intent arbiter', () => {
       outsideSafe,
     ).nextState;
 
-    const resetInside = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS, {
+    const retreat = proposal(MovementIntentOwner.RETREAT, {
       commitment: {
-        policy: { ...policy, clearWindowFrames: 30 },
+        policy,
         facts: {
-          ...egress.commitment.facts,
+          latched: true,
           ownsMovement: true,
+          targetValid: true,
+          distanceFt: 4,
+          arrived: false,
           clearCondition: false,
           frame: 3,
         },
       },
     });
-    const interaction = proposal(MovementIntentOwner.INTERACTION_APPROACH, {
-      commitment: {
-        policy,
-        facts: { ...egress.commitment.facts, frame: 3 },
-      },
-    });
-    const result = resolveMovementIntent(state, [resetInside, interaction], insideSafe);
 
-    expect(result.transition).toBe('yielded');
-    expect(result.selected).toBe(interaction);
-    expect(result.nextState.current?.yielded).toBe(true);
-    expect(result.nextState.navigation?.clearWindowFrames).toBe(0);
-  });
-
-  it('releases current lease when commitment clears', () => {
-    const egress = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS);
-    let state = acquireState(egress, outsideSafe);
-    const firstClear = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS, {
-      commitment: {
-        policy,
-        facts: {
-          ...egress.commitment.facts,
-          clearCondition: true,
-          frame: 2,
-        },
-      },
-    });
-    state = resolveMovementIntent(state, [firstClear], outsideSafe).nextState;
-
-    const secondClear = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS, {
-      commitment: {
-        policy,
-        facts: {
-          ...egress.commitment.facts,
-          clearCondition: true,
-          frame: 3,
-        },
-      },
-    });
-    const result = resolveMovementIntent(state, [secondClear], outsideSafe);
-
-    expect(result.transition).toBe('released');
-    expect(result.reason).toBe('releasedByCommitment');
-    expect(result.selected).toBeNull();
-    expect(result.nextState.current).toBeNull();
-  });
-
-  it('acquires an eligible successor on the exact frame the retained commitment clears', () => {
-    const egress = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS);
-    let state = acquireState(egress, outsideSafe);
-    state = resolveMovementIntent(
-      state,
-      [
-        proposal(MovementIntentOwner.SAFE_ROOM_EGRESS, {
-          commitment: {
-            policy,
-            facts: { ...egress.commitment.facts, clearCondition: true, frame: 2 },
-          },
-        }),
-      ],
-      outsideSafe,
-    ).nextState;
-
-    const retreat = proposal(MovementIntentOwner.RETREAT, {
-      commitment: {
-        policy,
-        facts: { ...egress.commitment.facts, frame: 3 },
-      },
-    });
     const result = resolveMovementIntent(
       state,
       [
         proposal(MovementIntentOwner.SAFE_ROOM_EGRESS, {
+          key: egress.key,
+          target: egress.target,
           commitment: {
             policy,
-            facts: { ...egress.commitment.facts, clearCondition: true, frame: 3 },
+            facts: {
+              latched: true,
+              ownsMovement: true,
+              targetValid: true,
+              distanceFt: 2,
+              arrived: false,
+              clearCondition: true,
+              frame: 3,
+            },
           },
         }),
         retreat,
@@ -435,72 +337,64 @@ describe('movement intent arbiter', () => {
     );
 
     expect(result.transition).toBe('acquired');
-    expect(result.selected).toBe(retreat);
+    expect(result.reason).toBe('acquiredAfterCommitmentRelease');
     expect(result.priorOwner).toBe(MovementIntentOwner.SAFE_ROOM_EGRESS);
+    expect(result.selected).toBe(retreat);
     expect(result.nextState.current?.owner).toBe(MovementIntentOwner.RETREAT);
-    expect(result.nextState.navigation).not.toBeNull();
+    expect(result.nextState.navigation?.target).toEqual(retreat.target);
   });
 
-  it('releases current lease when commitment target invalidates or stalls', () => {
+  it('starts a fresh challenger commitment after release', () => {
     const current = proposal(MovementIntentOwner.INTERACTION_APPROACH);
-    const invalidState = acquireState(current, outsideSafe);
-    const invalidResult = resolveMovementIntent(
-      invalidState,
+    let state = acquireState(current, outsideSafe);
+
+    state = resolveMovementIntent(
+      state,
       [
         proposal(MovementIntentOwner.INTERACTION_APPROACH, {
+          key: current.key,
+          target: current.target,
           commitment: {
             policy,
             facts: {
-              ...current.commitment.facts,
+              latched: true,
+              ownsMovement: true,
               targetValid: false,
+              distanceFt: 2,
+              arrived: false,
+              clearCondition: false,
               frame: 2,
             },
           },
         }),
       ],
       outsideSafe,
-    );
-    expect(invalidResult.transition).toBe('released');
-    expect(invalidResult.commitment?.reason).toBe('targetInvalid');
+    ).nextState;
 
-    let stallState = acquireState(current, outsideSafe);
-    for (let frame = 2; frame <= 3; frame += 1) {
-      stallState = resolveMovementIntent(
-        stallState,
-        [
-          proposal(MovementIntentOwner.INTERACTION_APPROACH, {
-            commitment: {
-              policy,
-              facts: {
-                ...current.commitment.facts,
-                frame,
-              },
-            },
-          }),
-        ],
-        outsideSafe,
-      ).nextState;
-    }
-    const stalled = resolveMovementIntent(
-      stallState,
-      [
-        proposal(MovementIntentOwner.INTERACTION_APPROACH, {
-          commitment: {
-            policy,
-            facts: {
-              ...current.commitment.facts,
-              frame: 4,
-            },
-          },
-        }),
-      ],
-      outsideSafe,
-    );
-    expect(stalled.transition).toBe('released');
-    expect(stalled.commitment?.reason).toBe('stalled');
+    const challenger = proposal(MovementIntentOwner.RETREAT, {
+      commitment: {
+        policy,
+        facts: {
+          latched: true,
+          ownsMovement: true,
+          targetValid: true,
+          distanceFt: 7,
+          arrived: false,
+          clearCondition: false,
+          frame: 3,
+        },
+      },
+    });
+
+    const reacquired = resolveMovementIntent(state, [challenger], outsideSafe);
+
+    expect(reacquired.selected).toBe(challenger);
+    expect(reacquired.nextState.navigation?.acquiredFrame).toBe(3);
+    expect(reacquired.nextState.navigation?.ownerNoProgressFrames).toBe(0);
+    expect(reacquired.nextState.navigation?.target).toEqual(challenger.target);
   });
 
-  it('applies the exhaustive pairwise preemption matrix deterministically', () => {
+  it('implements explicit pairwise preemption semantics', () => {
     for (const current of owners) {
       for (const challenger of owners) {
         const challengerProposal = proposal(challenger);
@@ -514,221 +408,57 @@ describe('movement intent arbiter', () => {
     }
   });
 
-  it('preempts retained egress only by immediate interaction inside safe', () => {
-    const egress = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS);
-    const insideState = acquireState(egress, insideSafe);
-    const retainedEgress = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS, {
-      commitment: { policy, facts: { ...egress.commitment.facts, frame: 2 } },
-    });
+  it('never uses yielded or temporary executor lifecycle states', () => {
+    const current = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS);
+    const state = acquireState(current, insideSafe);
     const immediate = proposal(MovementIntentOwner.INTERACTION_IMMEDIATE, {
-      commitment: { policy, facts: { ...egress.commitment.facts, frame: 2 } },
-    });
-
-    const result = resolveMovementIntent(insideState, [retainedEgress, immediate], insideSafe);
-
-    expect(result.transition).toBe('preempted');
-    expect(result.selected).toBe(immediate);
-    expect(result.nextState.navigation?.target).toEqual(immediate.target);
-  });
-
-  it('preempts retained egress by arena only when physically caged outside safe', () => {
-    const egress = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS);
-    const state = acquireState(egress, outsideSafe);
-    const retainedEgress = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS, {
-      commitment: { policy, facts: { ...egress.commitment.facts, frame: 2 } },
-    });
-    const arenaWithoutLock = proposal(MovementIntentOwner.ARENA_LOCKIN, {
-      eligibility: {
-        zone: 'outsideSafe',
-        targetRelation: 'outsideCurrentSafeSpace',
-        domainAvailable: true,
-        physicalLock: false,
-      },
-      commitment: { policy, facts: { ...egress.commitment.facts, frame: 2 } },
-    });
-
-    const denied = resolveMovementIntent(state, [retainedEgress, arenaWithoutLock], outsideSafe);
-    expect(denied.transition).toBe('retained');
-
-    const arenaWithLock = proposal(MovementIntentOwner.ARENA_LOCKIN, {
-      eligibility: {
-        zone: 'outsideSafe',
-        targetRelation: 'outsideCurrentSafeSpace',
-        domainAvailable: true,
-        physicalLock: true,
-      },
-      commitment: { policy, facts: { ...egress.commitment.facts, frame: 2 } },
-    });
-    const allowed = resolveMovementIntent(state, [retainedEgress, arenaWithLock], outsideSafe);
-
-    expect(allowed.transition).toBe('preempted');
-    expect(allowed.selected).toBe(arenaWithLock);
-  });
-
-  it('preserves outside-safe retreat-over-arena retention semantics', () => {
-    const arena = proposal(MovementIntentOwner.ARENA_LOCKIN);
-    const state = acquireState(arena, outsideSafe);
-    const retainedArena = proposal(MovementIntentOwner.ARENA_LOCKIN, {
-      commitment: { policy, facts: { ...arena.commitment.facts, frame: 2 } },
-    });
-    const retreat = proposal(MovementIntentOwner.RETREAT, {
-      commitment: { policy, facts: { ...arena.commitment.facts, frame: 2 } },
-    });
-
-    const result = resolveMovementIntent(state, [retainedArena, retreat], outsideSafe);
-
-    expect(result.transition).toBe('preempted');
-    expect(result.selected).toBe(retreat);
-  });
-
-  it('rejects invalid targets, unavailable domains, and wrong zones before acquisition', () => {
-    const invalid = proposal(MovementIntentOwner.RETREAT, {
-      target: { ...targetFor(MovementIntentOwner.RETREAT), valid: false },
-    });
-    const unavailable = proposal(MovementIntentOwner.ARENA_LOCKIN, {
-      eligibility: {
-        zone: 'any',
-        targetRelation: 'any',
-        domainAvailable: false,
-        physicalLock: true,
-      },
-    });
-    const wrongZone = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS, {
-      eligibility: {
-        zone: 'insideSafe',
-        targetRelation: 'outsideCurrentSafeSpace',
-        domainAvailable: true,
-      },
-    });
-
-    const result = resolveMovementIntent(
-      { current: null, navigation: null },
-      [invalid, unavailable, wrongZone],
-      outsideSafe,
-    );
-
-    expect(result.transition).toBe('rejected');
-    expect(result.selected).toBeNull();
-  });
-
-  it('uses target fingerprint for retained lease matching', () => {
-    const current = proposal(MovementIntentOwner.INTERACTION_APPROACH, {
-      target: targetFor(MovementIntentOwner.INTERACTION_APPROACH, 4),
-    });
-    const state = acquireState(current, outsideSafe);
-    const sameTileMoved = proposal(MovementIntentOwner.INTERACTION_APPROACH, {
-      target: {
-        ...targetFor(MovementIntentOwner.INTERACTION_APPROACH, 4),
-        x: 99,
-        y: 100,
-      },
-      commitment: { policy, facts: { ...current.commitment.facts, frame: 2 } },
-    });
-    const changedTile = proposal(MovementIntentOwner.INTERACTION_APPROACH, {
-      target: targetFor(MovementIntentOwner.INTERACTION_APPROACH, 5),
-      commitment: { policy, facts: { ...current.commitment.facts, frame: 2 } },
-    });
-
-    expect(movementIntentTargetFingerprint(sameTileMoved.target)).toBe(
-      movementIntentTargetFingerprint(current.target),
-    );
-    expect(movementIntentTargetFingerprint(changedTile.target)).not.toBe(
-      movementIntentTargetFingerprint(current.target),
-    );
-    expect(resolveMovementIntent(state, [sameTileMoved], outsideSafe).transition).toBe('retained');
-    expect(resolveMovementIntent(state, [changedTile], outsideSafe).transition).toBe('acquired');
-  });
-
-  it('does not mutate proposals or previous state', () => {
-    const current = proposal(MovementIntentOwner.PROGRESSION);
-    const challenger = proposal(MovementIntentOwner.RETREAT);
-    const state = acquireState(current, outsideSafe);
-    const proposalBefore = structuredClone(challenger);
-    const stateBefore = structuredClone(state);
-
-    resolveMovementIntent(state, [current, challenger], outsideSafe);
-
-    expect(challenger).toEqual(proposalBefore);
-    expect(state).toEqual(stateBefore);
-  });
-
-  it('replays deterministically for the same proposal stream', () => {
-    const stream = [
-      [proposal(MovementIntentOwner.PROGRESSION)],
-      [
-        proposal(MovementIntentOwner.PROGRESSION, {
-          commitment: {
-            policy,
-            facts: {
-              ...proposal(MovementIntentOwner.PROGRESSION).commitment.facts,
-              frame: 2,
-            },
-          },
-        }),
-        proposal(MovementIntentOwner.RETREAT, {
-          commitment: {
-            policy,
-            facts: {
-              ...proposal(MovementIntentOwner.RETREAT).commitment.facts,
-              frame: 2,
-            },
-          },
-        }),
-      ],
-    ];
-
-    const replay = (): ReadonlyArray<unknown> => {
-      let state: MovementIntentArbiterState = { current: null, navigation: null };
-      return stream.map((proposals) => {
-        const result = resolveMovementIntent(state, proposals, outsideSafe);
-        state = result.nextState;
-        return result;
-      });
-    };
-
-    expect(replay()).toEqual(replay());
-  });
-
-  it('throws on malformed proposals instead of silently defaulting', () => {
-    expect(() =>
-      resolveMovementIntent(
-        { current: null, navigation: null },
-        [proposal(MovementIntentOwner.PROGRESSION, { declarationOrdinal: -1 })],
-        outsideSafe,
-      ),
-    ).toThrow(/declarationOrdinal/);
-    expect(() =>
-      resolveMovementIntent(
-        { current: null, navigation: null },
-        [
-          proposal(MovementIntentOwner.PROGRESSION, {
-            target: { ...targetFor(MovementIntentOwner.PROGRESSION), tileX: -1 },
-          }),
-        ],
-        outsideSafe,
-      ),
-    ).toThrow(/target.tileX/);
-  });
-
-  it('does not retain a lease whose commitment clears on acquisition', () => {
-    const immediatelyClear = proposal(MovementIntentOwner.SAFE_ROOM_EGRESS, {
       commitment: {
-        policy: { ...policy, clearWindowFrames: 0 },
+        policy,
         facts: {
-          ...proposal(MovementIntentOwner.SAFE_ROOM_EGRESS).commitment.facts,
-          clearCondition: true,
+          latched: true,
+          ownsMovement: true,
+          targetValid: true,
+          distanceFt: 2,
+          arrived: false,
+          clearCondition: false,
+          frame: 2,
         },
       },
     });
-
     const result = resolveMovementIntent(
-      { current: null, navigation: null },
-      [immediatelyClear],
-      outsideSafe,
+      state,
+      [
+        proposal(MovementIntentOwner.SAFE_ROOM_EGRESS, {
+          key: current.key,
+          target: current.target,
+          commitment: {
+            policy,
+            facts: {
+              latched: true,
+              ownsMovement: true,
+              targetValid: true,
+              distanceFt: 2,
+              arrived: false,
+              clearCondition: false,
+              frame: 2,
+            },
+          },
+        }),
+        immediate,
+      ],
+      insideSafe,
     );
 
-    expect(result.transition).toBe('released');
-    expect(result.selected).toBeNull();
-    expect(result.nextState).toEqual({ current: null, navigation: null });
+    expect(result.transition).toBe('preempted');
+    expect(result.transition).not.toBe('yielded');
+    expect(result.nextState.current).toMatchObject({
+      owner: MovementIntentOwner.INTERACTION_IMMEDIATE,
+    });
+    expect('yielded' in (result.nextState.current ?? {})).toBe(false);
+
+    const telemetry = movementIntentTelemetry(result);
+    expect('latchedOwner' in telemetry).toBe(false);
+    expect('latchedKey' in telemetry).toBe(false);
+    expect('latchedYielding' in telemetry).toBe(false);
   });
 });

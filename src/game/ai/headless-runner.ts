@@ -705,13 +705,14 @@ export async function runHeadless(
           ? [
               movementIntent.owner ?? 'none',
               movementIntent.key ?? 'none',
-              movementIntent.latchedOwner ?? 'none',
-              movementIntent.latchedKey ?? 'none',
-              movementIntent.latchedYielding ? 'yielding' : 'active',
               movementIntent.transition,
               movementIntent.reason,
               movementIntent.priorOwner ?? 'none',
               movementIntent.priorKey ?? 'none',
+              String(movementIntent.proposalCount),
+              String(movementIntent.eligibleProposalCount),
+              movementIntent.proposalDigest,
+              movementIntent.eligibleProposalDigest,
             ].join('|')
           : 'unavailable';
         if (movementIntentSignature !== lastLoggedMovementIntentSignature) {

@@ -33,7 +33,7 @@ import {
 import { buildDoorAwarePassable, getNavigationBlockedDoors } from '../../core/door-navigation.js';
 import { isPointInSafeSpace } from '../../core/safe-space.js';
 import { resolveFloor2SettlementAnchor } from '../../core/floor2-settlement-anchor.js';
-import { RoomRole } from '../../shared/map-types.js';
+import { RoomRole, type RoomData } from '../../shared/map-types.js';
 import {
   type AILockedDoorMemory,
   type FrontierGrid,
@@ -62,6 +62,11 @@ import type {
   NavigationCommitmentFacts,
   NavigationCommitmentPolicy,
 } from './navigation-commitment.js';
+import {
+  advanceSafeRoomEgressCertificate,
+  createSafeRoomEgressCertificateState,
+  type SafeRoomEgressCertificateState,
+} from './safe-room-egress-certificate.js';
 import { normalizeInputDirection } from '../../shared/input.js';
 import { hasItem } from '../../shared/inventory.js';
 import { SeededRandom } from '../../shared/random.js';
@@ -311,15 +316,10 @@ import {
 
 const logger = createLogger('game:bt-ai-provider');
 /**
- * Consecutive outside-safe polls required before active egress ownership clears.
- * The legacy 30-frame waypoint latch did not own movement outside the room; using
- * that duration for an exclusive lease made normal runs charge past the exit.
- * Two polls reject a one-frame mouth-boundary flicker without extending egress
- * steering into outside combat.
+ * Consecutive legal outside-origin-safe polls required after a certified boundary
+ * crossing before a SafeRoomEgress episode is considered complete.
  */
-export const SAFE_ROOM_EGRESS_ACTIVE_CLEAR_FRAMES = 2;
-/** Long non-owning debounce that preserves the egress target across mouth flicker. */
-export const SAFE_ROOM_EGRESS_LATCH_CLEAR_FRAMES = 30;
+export const SAFE_ROOM_EGRESS_OUTSIDE_MARGIN_FRAMES = 2;
 
 /**
  * Data-only execution payload shared by every migrated movement-intent owner
@@ -334,6 +334,47 @@ interface MovementIntentExecutionPayload {
   readonly targetX: number;
   readonly targetY: number;
   readonly npcInteraction: AINpcInteractionIntent | null;
+}
+
+interface MovementIntentCandidate {
+  readonly proposal: MovementIntentProposal<MovementIntentExecutionPayload>;
+  readonly applySelectedEffect: () => void;
+}
+
+interface SafeRoomEgressEpisodeState {
+  readonly episodeId: number;
+  readonly originSafeRoomKey: string;
+  readonly originSafeTiles: ReadonlySet<string>;
+  readonly waypointX: number;
+  readonly waypointY: number;
+  readonly threatEid: number | null;
+  readonly certificate: SafeRoomEgressCertificateState;
+  readonly completionReason: string | null;
+  readonly reseedReason: string | null;
+}
+
+interface SafeRoomDescriptor {
+  readonly key: string;
+  readonly tiles: ReadonlySet<string>;
+}
+
+interface QuestDetourCommitmentState {
+  readonly committedNpcEid: number | null;
+  readonly bestDistance: number;
+  readonly noProgressFrames: number;
+}
+
+interface NpcApproachThreatState {
+  readonly npcEid: number | null;
+  readonly bestDistance: number;
+  readonly noProgressFrames: number;
+  readonly bypassEid: number | null;
+}
+
+interface MovementIntentProgressPreview {
+  readonly target: ProgressTarget | null;
+  readonly nextDetourState: QuestDetourCommitmentState;
+  readonly pendingSuppressedProgressNavDebug: AISuppressedProgressNavDebug | null;
 }
 
 /**
@@ -1131,14 +1172,9 @@ export class BehaviorTreeAI implements AIInputProvider {
   /** True when Track A reached Progress during this poll. Used to clear stale
    * NPC threat-clear bypass state if higher-priority nodes pre-empt Progress. */
   private npcApproachThreatProgressEvaluatedThisPoll: boolean = false;
-  /**
-   * Latched safe-room egress waypoint. While LeaveSafeRoom is active we keep a
-   * single reachable world target until the player exits the safe room, so
-   * threat-relative ENGAGE pursuit cannot flip the heading each frame.
-   */
-  private safeRoomEgressTargetX: number | null = null;
-  private safeRoomEgressTargetY: number | null = null;
-  private safeRoomEgressThreatEid: number | null = null;
+  /** Active safe-room egress episode (stable origin safe-room + waypoint). */
+  private safeRoomEgressEpisode: SafeRoomEgressEpisodeState | null = null;
+  private nextSafeRoomEgressEpisodeId = 1;
 
   /**
    * Movement-intent arbiter lease + navigation-commitment state. Persists
@@ -1152,15 +1188,6 @@ export class BehaviorTreeAI implements AIInputProvider {
    * `null` before the first poll / after `reset()`. Exposed read-only via
    * {@link getMovementIntentDebug}. */
   private movementIntentTelemetrySnapshot: MovementIntentTelemetry | null = null;
-  /**
-   * The typed movement-intent proposal contributed by whichever migrated
-   * producer branch the tree's greedy selector picked this poll, or `null`
-   * when the tree picked a legacy (Engage/Collect/Hunt/Explore) behavior.
-   * Set explicitly by each producer's action node (never derived by parsing
-   * `decision.reason`), reset to `null` at the top of every poll.
-   */
-  private pendingMovementIntentProposal: MovementIntentProposal<MovementIntentExecutionPayload> | null =
-    null;
 
   constructor(config: AIConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -1214,28 +1241,22 @@ export class BehaviorTreeAI implements AIInputProvider {
    *   objective.
    */
   private buildTree(): BehaviorTree {
+    // Keep references to migrated Track-A branch builders until that dead code is
+    // removed in a dedicated cleanup slice; proposal generation now owns these
+    // intents outside the legacy selector.
+    void this.buildRetreatBehavior;
+    void this.buildArenaLockinBehavior;
+    void this.buildInteractBehavior;
+    void this.buildProgressBehavior;
+
     const root = parallel(
       'AI Root',
       BTParallelPolicy.OBSERVE,
-      // Track A: exclusive priority selector (original logic, unchanged)
+      // Track A: legacy fallback selector. Migrated owners are generated in an
+      // explicit side-effect-free proposal phase in `poll()` and arbitrated by
+      // resolveMovementIntent.
       selector(
         'Track A: Movement Goal',
-        // Priority 1: Retreat when low health
-        this.buildRetreatBehavior(),
-        // Priority 1.5: Prioritize objective when locked inside a spawner
-        // arena or boss room — see `arena-lockin.ts` + ADR 0045.
-        this.buildArenaLockinBehavior(),
-        // Priority 2: Interact with nearby NPCs
-        this.buildInteractBehavior(),
-        // Priority 3: Seek progression objectives.
-        this.buildProgressBehavior(),
-        // Priority 3.5 ("Leave a safe room when enemies are present") is no
-        // longer a tree node — it is computed unconditionally every poll (not
-        // gated behind the tree's greedy short-circuit) and contributed as a
-        // SafeRoomEgress movement-intent proposal so the arbiter can retain it
-        // across polls where the tree itself would have picked something
-        // else. See `buildSafeRoomEgressProposal` + the post-tick resolution
-        // block in `poll()`.
         // Priority 4: Engage enemies
         this.buildEngageBehavior(),
         // Priority 5: Collect nearby loot
@@ -1326,8 +1347,8 @@ export class BehaviorTreeAI implements AIInputProvider {
    * inert (`clearWindowFrames: 0`, `clearCondition: false`,
    * `arrivalDistanceFt: 0`) — turnover happens purely via eligibility/target-
    * fingerprint changes and the foundation's explicit preemption rules, never
-   * via this commitment auto-releasing. Only SafeRoomEgress uses a real
-   * (persistent) commitment; see {@link buildSafeRoomEgressProposal}.
+   * via this commitment auto-releasing. SafeRoomEgress episode completion is
+   * proven by the geometry certificate reducer and by proposal presence.
    */
   private buildNeutralMovementIntentCommitment(
     world: GameWorld,
@@ -1354,13 +1375,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     return { policy, facts };
   }
 
-  /**
-   * Record the typed movement-intent proposal contributed by the tree's
-   * currently-executing producer branch for this poll. Called explicitly by
-   * each of the 5 non-egress migrated owners' action nodes with local,
-   * data-only metadata — never derived by parsing `decision.reason`.
-   */
-  private proposeMovementIntent(
+  private createMovementIntentProposal(
     world: GameWorld,
     playerX: number,
     playerY: number,
@@ -1373,7 +1388,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     targetY: number,
     payload: MovementIntentExecutionPayload,
     reason: string,
-  ): void {
+  ): MovementIntentProposal<MovementIntentExecutionPayload> {
     const target = this.buildMovementIntentTarget(
       world,
       key,
@@ -1382,7 +1397,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       targetX,
       targetY,
     );
-    this.pendingMovementIntentProposal = {
+    return {
       owner,
       key,
       declarationOrdinal: MOVEMENT_INTENT_DECLARATION_ORDINAL[owner],
@@ -1391,6 +1406,799 @@ export class BehaviorTreeAI implements AIInputProvider {
       commitment: this.buildNeutralMovementIntentCommitment(world, playerX, playerY, target),
       execution: { token: key, payload, reason },
     };
+  }
+
+  private collectMovementIntentCandidates(
+    world: GameWorld,
+    playerEid: number,
+    playerX: number,
+    playerY: number,
+    previousPlayerX: number,
+    previousPlayerY: number,
+    healthPercent: number,
+    progressPreview: MovementIntentProgressPreview,
+  ): MovementIntentCandidate[] {
+    const candidates: MovementIntentCandidate[] = [];
+
+    const retreat = this.buildRetreatMovementIntentCandidate(
+      world,
+      playerX,
+      playerY,
+      healthPercent,
+    );
+    if (retreat) candidates.push(retreat);
+
+    const arena = this.buildArenaLockinMovementIntentCandidate(world, playerX, playerY);
+    if (arena) candidates.push(arena);
+
+    const immediate = this.buildInteractionImmediateMovementIntentCandidate(
+      world,
+      playerEid,
+      playerX,
+      playerY,
+    );
+    if (immediate) candidates.push(immediate);
+
+    const progressCandidates = this.buildProgressMovementIntentCandidates(
+      world,
+      playerX,
+      playerY,
+      progressPreview,
+    );
+    candidates.push(...progressCandidates);
+
+    const progressionProposal =
+      progressCandidates.find(
+        (candidate) => candidate.proposal.owner === MovementIntentOwner.PROGRESSION,
+      )?.proposal ?? null;
+    this.observeSafeRoomEgressEpisode(world, previousPlayerX, previousPlayerY, playerX, playerY);
+    const egress = this.buildSafeRoomEgressMovementIntentCandidate(
+      world,
+      playerX,
+      playerY,
+      progressionProposal,
+    );
+    if (egress) candidates.push(egress);
+
+    return candidates;
+  }
+
+  private observeMovementIntentProgressPreview(
+    world: GameWorld,
+    playerEid: number,
+    playerX: number,
+    playerY: number,
+  ): MovementIntentProgressPreview {
+    this.npcApproachThreatProgressEvaluatedThisPoll = true;
+    const progressPreview = this.previewProgressObjective(world, playerEid, playerX, playerY);
+    this.progressTargetAvailableThisPoll = progressPreview.target !== null;
+    this.pendingSuppressedProgressNavDebug = progressPreview.pendingSuppressedProgressNavDebug;
+    return progressPreview;
+  }
+
+  private buildRetreatMovementIntentCandidate(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    healthPercent: number,
+  ): MovementIntentCandidate | null {
+    if (healthPercent >= this.config.retreatThreshold) {
+      return null;
+    }
+    const threat = this.findNearestEnemy(world, playerX, playerY);
+    const radius = this.retreating
+      ? this.config.retreatDangerRadius * RETREAT_HYSTERESIS_MULT
+      : this.config.retreatDangerRadius;
+    if (!threat || threat.distance > radius) {
+      return null;
+    }
+
+    const arrived =
+      this.retreatTargetX !== null &&
+      this.retreatTargetY !== null &&
+      Math.hypot(this.retreatTargetX - playerX, this.retreatTargetY - playerY) <=
+        RETREAT_REPICK_ARRIVE_FT;
+    const stale = world.frameCount - this.retreatRepickFrame >= RETREAT_REPICK_INTERVAL_FRAMES;
+    const shouldRepick =
+      this.retreatTargetX === null || this.retreatTargetY === null || arrived || stale;
+    const retreatTarget = shouldRepick
+      ? this.pickRetreatTarget(world, playerX, playerY, threat)
+      : { x: this.retreatTargetX!, y: this.retreatTargetY! };
+    const reason = `Low health (${(healthPercent * 100).toFixed(0)}%) near threat`;
+    const proposal = this.createMovementIntentProposal(
+      world,
+      playerX,
+      playerY,
+      MovementIntentOwner.RETREAT,
+      'retreat',
+      { zone: 'any', targetRelation: 'any', domainAvailable: true },
+      'position',
+      null,
+      retreatTarget.x,
+      retreatTarget.y,
+      {
+        state: AIState.RETREAT,
+        targetEid: null,
+        targetX: retreatTarget.x,
+        targetY: retreatTarget.y,
+        npcInteraction: null,
+      },
+      reason,
+    );
+    return {
+      proposal,
+      applySelectedEffect: () => {
+        this.retreating = true;
+        this.retreatThreatEid = threat.eid;
+        this.retreatTargetX = retreatTarget.x;
+        this.retreatTargetY = retreatTarget.y;
+        if (shouldRepick) {
+          this.retreatRepickFrame = world.frameCount;
+        }
+      },
+    };
+  }
+
+  private buildArenaLockinMovementIntentCandidate(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+  ): MovementIntentCandidate | null {
+    const target = detectArenaLockin(world, playerX, playerY);
+    if (target === null) {
+      return null;
+    }
+
+    const targetDistance = Math.hypot(target.x - playerX, target.y - playerY) || 0;
+    if (target.kind === 'boss') {
+      const nearestEnemy = this.findNearestEnemy(world, playerX, playerY);
+      const engageRadius = this.getEngageRadius(world);
+      if (
+        nearestEnemy &&
+        nearestEnemy.eid !== target.eid &&
+        nearestEnemy.distance <= engageRadius &&
+        nearestEnemy.distance + ARENA_LOCKIN_ADD_HYSTERESIS_FT < targetDistance
+      ) {
+        const plan = this.planEngagement(world, playerX, playerY, nearestEnemy);
+        const reason = `Boss-room lock-in — clearing add ${String(nearestEnemy.eid)} before boss`;
+        const proposal = this.createMovementIntentProposal(
+          world,
+          playerX,
+          playerY,
+          MovementIntentOwner.ARENA_LOCKIN,
+          'arenaLockin',
+          { zone: 'any', targetRelation: 'any', domainAvailable: true, physicalLock: true },
+          'entity',
+          nearestEnemy.eid,
+          plan.targetX,
+          plan.targetY,
+          {
+            state: AIState.ENGAGE,
+            targetEid: nearestEnemy.eid,
+            targetX: plan.targetX,
+            targetY: plan.targetY,
+            npcInteraction: null,
+          },
+          reason,
+        );
+        return {
+          proposal,
+          applySelectedEffect: () => {
+            this.lastArenaLockinEid = target.eid;
+            this.lastArenaLockinKind = target.kind;
+          },
+        };
+      }
+    }
+
+    let arenaTargetX: number;
+    let arenaTargetY: number;
+    let reason: string;
+    if (target.kind === 'boss') {
+      const bossWt: WorldTarget = {
+        eid: target.eid,
+        x: target.x,
+        y: target.y,
+        distance: targetDistance,
+      };
+      const plan = this.planEngagement(world, playerX, playerY, bossWt);
+      arenaTargetX = plan.targetX;
+      arenaTargetY = plan.targetY;
+      reason = `Boss-room lock-in — ${plan.reason} (boss ${String(target.eid)})`;
+    } else {
+      arenaTargetX = target.x;
+      arenaTargetY = target.y;
+      reason = `Arena lock-in — attacking spawner ${String(target.eid)} at ${targetDistance.toFixed(1)}ft`;
+    }
+    const proposal = this.createMovementIntentProposal(
+      world,
+      playerX,
+      playerY,
+      MovementIntentOwner.ARENA_LOCKIN,
+      'arenaLockin',
+      { zone: 'any', targetRelation: 'any', domainAvailable: true, physicalLock: true },
+      'entity',
+      target.eid,
+      arenaTargetX,
+      arenaTargetY,
+      {
+        state: AIState.ENGAGE,
+        targetEid: target.eid,
+        targetX: arenaTargetX,
+        targetY: arenaTargetY,
+        npcInteraction: null,
+      },
+      reason,
+    );
+    return {
+      proposal,
+      applySelectedEffect: () => {
+        this.lastArenaLockinEid = target.eid;
+        this.lastArenaLockinKind = target.kind;
+      },
+    };
+  }
+
+  private buildInteractionImmediateMovementIntentCandidate(
+    world: GameWorld,
+    playerEid: number,
+    playerX: number,
+    playerY: number,
+  ): MovementIntentCandidate | null {
+    const nearest = this.findNearestRelevantNpc(world, playerEid, playerX, playerY);
+    if (!nearest || nearest.distance >= NPC_INTERACTION_RADIUS_FT) {
+      return null;
+    }
+    const npcInteraction: AINpcInteractionIntent = {
+      npcEid: nearest.eid,
+      action: nearest.interactionReason,
+      allowWhileExploring: false,
+    };
+    const reason = `Interacting with ${nearest.defId} (${nearest.interactionReason}) at ${nearest.distance.toFixed(0)}ft`;
+    const proposal = this.createMovementIntentProposal(
+      world,
+      playerX,
+      playerY,
+      MovementIntentOwner.INTERACTION_IMMEDIATE,
+      `interactionImmediate:${String(nearest.eid)}`,
+      { zone: 'any', targetRelation: 'sameSafeSpace', domainAvailable: true },
+      'entity',
+      nearest.eid,
+      nearest.x,
+      nearest.y,
+      {
+        state: AIState.INTERACT,
+        targetEid: nearest.eid,
+        targetX: nearest.x,
+        targetY: nearest.y,
+        npcInteraction,
+      },
+      reason,
+    );
+    return {
+      proposal,
+      applySelectedEffect: () => {
+        this.talkedNpcDefs.add(nearest.defId);
+      },
+    };
+  }
+
+  private buildProgressMovementIntentCandidates(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    preview: MovementIntentProgressPreview,
+  ): MovementIntentCandidate[] {
+    const target = preview.target;
+    if (!target) {
+      this.resetNpcApproachThreatTracking();
+      return [];
+    }
+    const applyDetourState = () => this.setQuestDetourCommitmentState(preview.nextDetourState);
+    const targetIsNpc =
+      target.eid >= 0 &&
+      entityExists(world.ecs, target.eid) &&
+      hasComponent(world.ecs, target.eid, Npc);
+    const tutorialAccepted = world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID);
+    if (
+      targetIsNpc &&
+      tutorialAccepted &&
+      !this.isFloor2IntroductionPending(world) &&
+      target.distance > NPC_INTERACTION_RADIUS_FT
+    ) {
+      const nearestEnemy = this.findNearestEnemy(world, playerX, playerY);
+      const npcThreatRadius = Math.min(this.getEngageRadius(world), NPC_APPROACH_THREAT_RADIUS_FT);
+      if (nearestEnemy && nearestEnemy.distance <= npcThreatRadius) {
+        const weapon = getActiveWeapon(world);
+        const projectileWeapon = weapon ? isProjectileWeaponType(weapon.weaponType) : false;
+        if (!projectileWeapon) {
+          const shouldClearPreview = this.previewShouldClearThreatBeforeNpc(target);
+          if (shouldClearPreview.shouldClearThreat) {
+            const plan = this.planEngagement(world, playerX, playerY, nearestEnemy);
+            const reason = `Clearing nearby threat before NPC interaction — ${plan.reason}`;
+            const proposal = this.createMovementIntentProposal(
+              world,
+              playerX,
+              playerY,
+              MovementIntentOwner.PROGRESSION,
+              `progression:enemy:${String(nearestEnemy.eid)}`,
+              { zone: 'outsideSafe', targetRelation: 'any', domainAvailable: true },
+              'entity',
+              nearestEnemy.eid,
+              plan.targetX,
+              plan.targetY,
+              {
+                state: AIState.ENGAGE,
+                targetEid: nearestEnemy.eid,
+                targetX: plan.targetX,
+                targetY: plan.targetY,
+                npcInteraction: null,
+              },
+              reason,
+            );
+            return [
+              {
+                proposal,
+                applySelectedEffect: () => {
+                  applyDetourState();
+                  this.setNpcApproachThreatState(shouldClearPreview.nextThreatState);
+                },
+              },
+            ];
+          }
+        } else {
+          this.resetNpcApproachThreatTracking();
+        }
+      } else {
+        this.resetNpcApproachThreatTracking();
+      }
+    } else {
+      this.resetNpcApproachThreatTracking();
+    }
+
+    const enemyTarget = this.progressTargetAsEnemy(world, target, playerX, playerY);
+    if (enemyTarget) {
+      const plan = this.planEngagement(world, playerX, playerY, enemyTarget);
+      const reason = `${target.reason} — ${plan.reason}`;
+      const proposal = this.createMovementIntentProposal(
+        world,
+        playerX,
+        playerY,
+        MovementIntentOwner.PROGRESSION,
+        `progression:enemy:${String(enemyTarget.eid)}`,
+        { zone: 'outsideSafe', targetRelation: 'any', domainAvailable: true },
+        'entity',
+        enemyTarget.eid,
+        plan.targetX,
+        plan.targetY,
+        {
+          state: AIState.ENGAGE,
+          targetEid: enemyTarget.eid,
+          targetX: plan.targetX,
+          targetY: plan.targetY,
+          npcInteraction: null,
+        },
+        reason,
+      );
+      return [{ proposal, applySelectedEffect: applyDetourState }];
+    }
+
+    if (targetIsNpc) {
+      const domainAvailable =
+        !world.playerInSafeRoom ||
+        target.eid === this.committedDetourNpcEid ||
+        this.isPlayerAndNpcInSameSafeRoom(world, playerX, playerY, target.x, target.y);
+      const proposal = this.createMovementIntentProposal(
+        world,
+        playerX,
+        playerY,
+        MovementIntentOwner.INTERACTION_APPROACH,
+        `interactionApproach:${String(target.eid)}`,
+        { zone: 'any', targetRelation: 'sameSafeSpace', domainAvailable },
+        'entity',
+        target.eid,
+        target.x,
+        target.y,
+        {
+          state: AIState.EXPLORE,
+          targetEid: target.eid,
+          targetX: target.x,
+          targetY: target.y,
+          npcInteraction: target.npcInteraction ? { ...target.npcInteraction } : null,
+        },
+        target.reason,
+      );
+      return [{ proposal, applySelectedEffect: applyDetourState }];
+    }
+
+    const targetInSafeSpace =
+      world.playerInSafeRoom && isPointInSafeSpace(world, target.x, target.y);
+    const targetKind = target.eid >= 0 ? 'entity' : 'position';
+    const targetEid = target.eid >= 0 ? target.eid : null;
+    const proposal = this.createMovementIntentProposal(
+      world,
+      playerX,
+      playerY,
+      MovementIntentOwner.PROGRESSION,
+      target.movementIntentKey ??
+        (targetEid === null ? 'progression:position' : `progression:${String(targetEid)}`),
+      {
+        zone: 'any',
+        targetRelation: targetInSafeSpace ? 'sameSafeSpace' : 'outsideCurrentSafeSpace',
+        domainAvailable: true,
+      },
+      targetKind,
+      targetEid,
+      target.x,
+      target.y,
+      {
+        state: AIState.EXPLORE,
+        targetEid: target.eid,
+        targetX: target.x,
+        targetY: target.y,
+        npcInteraction: target.npcInteraction ? { ...target.npcInteraction } : null,
+      },
+      target.reason,
+    );
+    return [{ proposal, applySelectedEffect: applyDetourState }];
+  }
+
+  private previewProgressObjective(
+    world: GameWorld,
+    playerEid: number,
+    playerX: number,
+    playerY: number,
+  ): MovementIntentProgressPreview {
+    const previousDetourState = this.getQuestDetourCommitmentState();
+    const previousSuppressedDebug = this.pendingSuppressedProgressNavDebug
+      ? { ...this.pendingSuppressedProgressNavDebug }
+      : null;
+    const target = this.findProgressObjective(world, playerEid, playerX, playerY);
+    const nextDetourState = this.getQuestDetourCommitmentState();
+    const nextSuppressedDebug = this.pendingSuppressedProgressNavDebug
+      ? { ...this.pendingSuppressedProgressNavDebug }
+      : null;
+    this.setQuestDetourCommitmentState(previousDetourState);
+    this.pendingSuppressedProgressNavDebug = previousSuppressedDebug;
+    return {
+      target,
+      nextDetourState,
+      pendingSuppressedProgressNavDebug: nextSuppressedDebug,
+    };
+  }
+
+  private previewShouldClearThreatBeforeNpc(target: ProgressTarget): {
+    shouldClearThreat: boolean;
+    nextThreatState: NpcApproachThreatState;
+  } {
+    const previousState = this.getNpcApproachThreatState();
+    const shouldClearThreat = this.shouldClearThreatBeforeNpc(target);
+    const nextThreatState = this.getNpcApproachThreatState();
+    this.setNpcApproachThreatState(previousState);
+    return { shouldClearThreat, nextThreatState };
+  }
+
+  private getQuestDetourCommitmentState(): QuestDetourCommitmentState {
+    return {
+      committedNpcEid: this.committedDetourNpcEid,
+      bestDistance: this.committedDetourBestDistance,
+      noProgressFrames: this.committedDetourNoProgressFrames,
+    };
+  }
+
+  private setQuestDetourCommitmentState(state: QuestDetourCommitmentState): void {
+    this.committedDetourNpcEid = state.committedNpcEid;
+    this.committedDetourBestDistance = state.bestDistance;
+    this.committedDetourNoProgressFrames = state.noProgressFrames;
+  }
+
+  private getNpcApproachThreatState(): NpcApproachThreatState {
+    return {
+      npcEid: this.npcApproachThreatNpcEid,
+      bestDistance: this.npcApproachThreatBestDistance,
+      noProgressFrames: this.npcApproachThreatNoProgressFrames,
+      bypassEid: this.npcApproachThreatBypassEid,
+    };
+  }
+
+  private setNpcApproachThreatState(state: NpcApproachThreatState): void {
+    this.npcApproachThreatNpcEid = state.npcEid;
+    this.npcApproachThreatBestDistance = state.bestDistance;
+    this.npcApproachThreatNoProgressFrames = state.noProgressFrames;
+    this.npcApproachThreatBypassEid = state.bypassEid;
+  }
+
+  private buildSafeRoomEgressMovementIntentCandidate(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    progressionProposal: MovementIntentProposal<MovementIntentExecutionPayload> | null,
+  ): MovementIntentCandidate | null {
+    const episode = this.safeRoomEgressEpisode;
+    if (!episode || episode.certificate.completed) {
+      return null;
+    }
+    const legalNonCombatProgression =
+      world.playerInSafeRoom &&
+      progressionProposal?.owner === MovementIntentOwner.PROGRESSION &&
+      progressionProposal.eligibility.targetRelation === 'sameSafeSpace';
+    if (legalNonCombatProgression) {
+      return null;
+    }
+
+    const threatEid = episode.threatEid;
+    const threatX = typeof threatEid === 'number' ? world.stores.position.x[threatEid] : undefined;
+    const threatY = typeof threatEid === 'number' ? world.stores.position.y[threatEid] : undefined;
+    const threatDistance =
+      typeof threatX === 'number' && typeof threatY === 'number'
+        ? Math.hypot(threatX - playerX, threatY - playerY)
+        : null;
+    const threatText =
+      typeof threatDistance === 'number' ? ` (enemy ${threatDistance.toFixed(1)}ft)` : '';
+    const target = this.buildMovementIntentTarget(
+      world,
+      `safeRoomEgress:${String(episode.episodeId)}`,
+      'position',
+      null,
+      episode.waypointX,
+      episode.waypointY,
+    );
+    const policy: NavigationCommitmentPolicy = {
+      arrivalDistanceFt: WAYPOINT_ARRIVE_FT,
+      progressEpsilonFt: STUCK_PROGRESS_EPSILON_FT,
+      maxOwnerNoProgressFrames: 120,
+      clearWindowFrames: 0,
+      arrival: 'reseed',
+    };
+    const facts: NavigationCommitmentFacts = {
+      latched: true,
+      ownsMovement: true,
+      targetValid: true,
+      distanceFt: Math.hypot(episode.waypointX - playerX, episode.waypointY - playerY),
+      arrived: false,
+      clearCondition: false,
+      frame: world.frameCount,
+    };
+    const proposal = {
+      owner: MovementIntentOwner.SAFE_ROOM_EGRESS,
+      key: `safeRoomEgress:${String(episode.episodeId)}`,
+      declarationOrdinal: MOVEMENT_INTENT_DECLARATION_ORDINAL[MovementIntentOwner.SAFE_ROOM_EGRESS],
+      eligibility: {
+        zone: 'any',
+        targetRelation: 'outsideCurrentSafeSpace',
+        domainAvailable: true,
+      },
+      target,
+      commitment: { policy, facts },
+      execution: {
+        token: `safeRoomEgress:${String(episode.episodeId)}`,
+        payload: {
+          state: AIState.ENGAGE,
+          targetEid: null,
+          targetX: episode.waypointX,
+          targetY: episode.waypointY,
+          npcInteraction: null,
+        },
+        reason: `Leaving safe room via committed egress waypoint${threatText}`,
+      },
+    } satisfies MovementIntentProposal<MovementIntentExecutionPayload>;
+    return { proposal, applySelectedEffect: () => {} };
+  }
+
+  private observeSafeRoomEgressEpisode(
+    world: GameWorld,
+    previousPlayerX: number,
+    previousPlayerY: number,
+    playerX: number,
+    playerY: number,
+  ): void {
+    let episode = this.safeRoomEgressEpisode;
+    if (!episode || episode.certificate.completed) {
+      episode = this.createSafeRoomEgressEpisode(world, playerX, playerY);
+      this.safeRoomEgressEpisode = episode;
+      if (!episode) return;
+    }
+
+    const floorMap = world.floorMap;
+    if (!floorMap) {
+      return;
+    }
+    const previousTile = floorMap.worldToTile(previousPlayerX, previousPlayerY);
+    const currentTile = floorMap.worldToTile(playerX, playerY);
+    const previousInsideOriginSafe = episode.originSafeTiles.has(
+      this.safeRoomTileKey(previousTile.x, previousTile.y),
+    );
+    const currentInsideOriginSafe = episode.originSafeTiles.has(
+      this.safeRoomTileKey(currentTile.x, currentTile.y),
+    );
+    const legalStep = this.isSafeRoomEgressLegalStep(world, previousTile, currentTile);
+    const certificate = advanceSafeRoomEgressCertificate(
+      episode.certificate,
+      {
+        previousInsideOriginSafe,
+        currentInsideOriginSafe,
+        legalStep,
+      },
+      { outsideMarginFrames: SAFE_ROOM_EGRESS_OUTSIDE_MARGIN_FRAMES },
+    );
+    let nextEpisode: SafeRoomEgressEpisodeState = {
+      ...episode,
+      certificate,
+      completionReason:
+        certificate.completed && !episode.certificate.completed
+          ? 'legalBoundaryCrossWithOutsideMargin'
+          : episode.completionReason,
+      reseedReason: episode.reseedReason,
+    };
+
+    const arrivedAtWaypoint = Math.hypot(
+      playerX - nextEpisode.waypointX,
+      playerY - nextEpisode.waypointY,
+    );
+    if (
+      !certificate.completed &&
+      currentInsideOriginSafe &&
+      arrivedAtWaypoint <= WAYPOINT_ARRIVE_FT
+    ) {
+      const reseeded = this.reseedSafeRoomEgressEpisode(world, nextEpisode, playerX, playerY);
+      if (reseeded) {
+        nextEpisode = reseeded;
+      }
+    }
+    this.safeRoomEgressEpisode = nextEpisode;
+  }
+
+  private createSafeRoomEgressEpisode(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+  ): SafeRoomEgressEpisodeState | null {
+    if (!world.playerInSafeRoom) {
+      return null;
+    }
+    const originSafeRoom = this.findSafeRoomForWorldPosition(world, playerX, playerY);
+    if (!originSafeRoom) {
+      return null;
+    }
+    const tutorialAccepted = world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID);
+    const forceTutorialEgress = tutorialAccepted && (world.playerLevel.level ?? 0) < 2;
+    const nearest = this.findNearestEnemy(
+      world,
+      playerX,
+      playerY,
+      forceTutorialEgress ? Number.POSITIVE_INFINITY : this.config.scanRadius,
+    );
+    if (!nearest) {
+      return null;
+    }
+    const egress = this.computeSafeRoomEgressWaypoint(world, playerX, playerY, nearest);
+    if (egress === null) {
+      return null;
+    }
+    return {
+      episodeId: this.nextSafeRoomEgressEpisodeId++,
+      originSafeRoomKey: originSafeRoom.key,
+      originSafeTiles: originSafeRoom.tiles,
+      waypointX: egress.x,
+      waypointY: egress.y,
+      threatEid: nearest.eid,
+      certificate: createSafeRoomEgressCertificateState(),
+      completionReason: null,
+      reseedReason: null,
+    };
+  }
+
+  private reseedSafeRoomEgressEpisode(
+    world: GameWorld,
+    episode: SafeRoomEgressEpisodeState,
+    playerX: number,
+    playerY: number,
+  ): SafeRoomEgressEpisodeState | null {
+    const tutorialAccepted = world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID);
+    const forceTutorialEgress = tutorialAccepted && (world.playerLevel.level ?? 0) < 2;
+    const nearest = this.findNearestEnemy(
+      world,
+      playerX,
+      playerY,
+      forceTutorialEgress ? Number.POSITIVE_INFINITY : this.config.scanRadius,
+    );
+    if (!nearest) {
+      return episode;
+    }
+    const egress = this.computeSafeRoomEgressWaypoint(world, playerX, playerY, nearest);
+    if (!egress) {
+      return episode;
+    }
+    return {
+      ...episode,
+      waypointX: egress.x,
+      waypointY: egress.y,
+      threatEid: nearest.eid,
+      certificate: createSafeRoomEgressCertificateState(),
+      reseedReason: 'arrivedInsideOriginSafe',
+    };
+  }
+
+  private findSafeRoomForWorldPosition(
+    world: GameWorld,
+    x: number,
+    y: number,
+  ): SafeRoomDescriptor | null {
+    const floorMap = world.floorMap;
+    if (!floorMap) {
+      return null;
+    }
+    const tile = floorMap.worldToTile(x, y);
+    const safeRooms = floorMap.roomGraph.getRoomsByRole(RoomRole.SAFE);
+    for (const room of safeRooms) {
+      const tiles = this.safeRoomTiles(room);
+      if (tiles.has(this.safeRoomTileKey(tile.x, tile.y))) {
+        const key =
+          typeof room.id === 'number'
+            ? String(room.id)
+            : `${room.bounds.x}:${room.bounds.y}:${room.bounds.width}:${room.bounds.height}`;
+        return { key, tiles };
+      }
+    }
+    return null;
+  }
+
+  private safeRoomTiles(room: RoomData): ReadonlySet<string> {
+    const tiles = new Set<string>();
+    if (room.interiorCells && room.interiorCells.length > 0) {
+      for (const cell of room.interiorCells) {
+        tiles.add(this.safeRoomTileKey(cell.x, cell.y));
+      }
+      return tiles;
+    }
+    const {
+      bounds: { x, y, width, height },
+    } = room;
+    for (let tx = x; tx < x + width; tx += 1) {
+      for (let ty = y; ty < y + height; ty += 1) {
+        tiles.add(this.safeRoomTileKey(tx, ty));
+      }
+    }
+    return tiles;
+  }
+
+  private safeRoomTileKey(tileX: number, tileY: number): string {
+    return `${String(tileX)},${String(tileY)}`;
+  }
+
+  private isSafeRoomEgressLegalStep(
+    world: GameWorld,
+    previousTile: TilePoint,
+    currentTile: TilePoint,
+  ): boolean {
+    const floorMap = world.floorMap;
+    if (!floorMap) {
+      return false;
+    }
+    const deltaX = currentTile.x - previousTile.x;
+    const deltaY = currentTile.y - previousTile.y;
+    const absDx = Math.abs(deltaX);
+    const absDy = Math.abs(deltaY);
+    const isStationary = absDx === 0 && absDy === 0;
+    const isAdjacentStep = absDx <= 1 && absDy <= 1;
+    if (!isStationary && !isAdjacentStep) {
+      return false;
+    }
+    const passable = this.doorAwarePassable
+      ? this.doorAwarePassable
+      : (tx: number, ty: number): boolean => floorMap.tileMap.isPassable(tx, ty);
+    if (!passable(previousTile.x, previousTile.y) || !passable(currentTile.x, currentTile.y)) {
+      return false;
+    }
+    if (absDx === 1 && absDy === 1) {
+      const stepX = Math.sign(deltaX);
+      const stepY = Math.sign(deltaY);
+      return (
+        passable(previousTile.x + stepX, previousTile.y) ||
+        passable(previousTile.x, previousTile.y + stepY)
+      );
+    }
+    return true;
   }
 
   private buildRetreatBehavior(): BTNode {
@@ -1428,7 +2236,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           this.retreatTargetY = null;
           this.decision.targetX = ctx.playerX;
           this.decision.targetY = ctx.playerY;
-          this.proposeMovementIntent(
+          this.createMovementIntentProposal(
             ctx.world,
             ctx.playerX,
             ctx.playerY,
@@ -1476,7 +2284,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         // proposal is filtered out by the arbiter's zone check, letting a
         // retained SafeRoomEgress lease (or, once outside, the arbiter's
         // hard-coded egress preemption table) own movement instead.
-        this.proposeMovementIntent(
+        this.createMovementIntentProposal(
           ctx.world,
           ctx.playerX,
           ctx.playerY,
@@ -1686,7 +2494,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           this.decision.targetX = plan.targetX;
           this.decision.targetY = plan.targetY;
           this.decision.reason = `Boss-room lock-in — clearing add ${String(nearestEnemy.eid)} before boss`;
-          this.proposeMovementIntent(
+          this.createMovementIntentProposal(
             ctx.world,
             ctx.playerX,
             ctx.playerY,
@@ -1748,7 +2556,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         // "Retreat can preempt Arena outside a safe room" rule is hard-coded
         // in the foundation's `canPreemptMovementIntent`, not reimplemented
         // here.
-        this.proposeMovementIntent(
+        this.createMovementIntentProposal(
           ctx.world,
           ctx.playerX,
           ctx.playerY,
@@ -1808,7 +2616,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         // Real interaction range is already guaranteed by the "NPC Nearby"
         // condition (distance < NPC_INTERACTION_RADIUS_FT), so
         // domainAvailable is unconditionally true here.
-        this.proposeMovementIntent(
+        this.createMovementIntentProposal(
           ctx.world,
           ctx.playerX,
           ctx.playerY,
@@ -1898,7 +2706,7 @@ export class BehaviorTreeAI implements AIInputProvider {
               // but guard explicitly so a retained SafeRoomEgress lease can
               // never be starved by an in-safe Progression proposal (see
               // requirement: "in-safe enemy-backed Progression cannot park").
-              this.proposeMovementIntent(
+              this.createMovementIntentProposal(
                 ctx.world,
                 ctx.playerX,
                 ctx.playerY,
@@ -1942,7 +2750,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           // Enemy-backed Progression (quest kill-grinds, farming) is eligible
           // outside a safe room only — never allowed to park movement while
           // the player is still inside safe, per the frozen-egress semantic.
-          this.proposeMovementIntent(
+          this.createMovementIntentProposal(
             ctx.world,
             ctx.playerX,
             ctx.playerY,
@@ -1994,7 +2802,7 @@ export class BehaviorTreeAI implements AIInputProvider {
               target.x,
               target.y,
             );
-          this.proposeMovementIntent(
+          this.createMovementIntentProposal(
             ctx.world,
             ctx.playerX,
             ctx.playerY,
@@ -2023,7 +2831,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           // Marking that relation lets SafeRoomEgress declare itself unavailable
           // during the legal objective instead of expelling the player before
           // auto-collection/arrival can complete.
-          this.proposeMovementIntent(
+          this.createMovementIntentProposal(
             ctx.world,
             ctx.playerX,
             ctx.playerY,
@@ -2182,170 +2990,6 @@ export class BehaviorTreeAI implements AIInputProvider {
         return BTStatus.SUCCESS;
       }),
     );
-  }
-
-  /**
-   * SafeRoomEgress movement-intent proposal: when the player is standing in a
-   * safe room and a living enemy exists, drive *past* the nearest enemy to
-   * exit the safe zone. The weapon is hard-disabled inside safe rooms
-   * (weaponSystem safe-space gate), so holding melee range there is a
-   * permanent stalemate and the engage watchdog would otherwise blacklist the
-   * entire wave as "unreachable".
-   *
-   * Unlike the other 5 migrated owners this is NOT gated behind the tree's
-   * greedy priority selector — it is computed unconditionally every poll
-   * (see the call site in `poll()`) and handed to the arbiter as a real
-   * {@link NavigationCommitment} consumer: egress owns the first
-   * {@link SAFE_ROOM_EGRESS_ACTIVE_CLEAR_FRAMES} consecutive outside-safe polls,
-   * then yields execution while its reducer-owned target remains latched through
-   * {@link SAFE_ROOM_EGRESS_LATCH_CLEAR_FRAMES}. This preserves the legacy
-   * mouth-flicker debounce without extending exclusive egress steering into
-   * outside combat.
-   *
-   * Returns `null` when there is nothing to propose (no latched waypoint and
-   * the player is not currently inside a safe room).
-   */
-  private buildSafeRoomEgressProposal(
-    world: GameWorld,
-    playerX: number,
-    playerY: number,
-  ): MovementIntentProposal<MovementIntentExecutionPayload> | null {
-    const legalNonCombatProgression =
-      world.playerInSafeRoom &&
-      this.pendingMovementIntentProposal?.owner === MovementIntentOwner.PROGRESSION &&
-      (this.pendingMovementIntentProposal.eligibility.targetRelation === 'sameSafeSpace' ||
-        (this.pendingMovementIntentProposal.key === 'progression:merchant-fetch' &&
-          this.movementIntentState.current?.owner === MovementIntentOwner.PROGRESSION &&
-          this.movementIntentState.current.key === this.pendingMovementIntentProposal.key));
-    if (legalNonCombatProgression) {
-      this.clearSafeRoomEgressWaypoint();
-      return null;
-    }
-
-    let latchedX = this.safeRoomEgressTargetX;
-    let latchedY = this.safeRoomEgressTargetY;
-    if (latchedX !== null && latchedY !== null) {
-      const arrivedAtLatched =
-        Math.hypot(latchedX - playerX, latchedY - playerY) <= WAYPOINT_ARRIVE_FT;
-      const yieldedEgress =
-        this.movementIntentState.current?.owner === MovementIntentOwner.SAFE_ROOM_EGRESS &&
-        this.movementIntentState.current.yielded;
-      if (arrivedAtLatched && world.playerInSafeRoom && !yieldedEgress) {
-        // Arrived at the latched waypoint but still inside a safe room (the
-        // waypoint's own outside-safe-space guarantee was invalidated, e.g. by
-        // safe-room boundary geometry). Explicitly reseed/reacquire a fresh
-        // reachable egress target below — never teleport the player, only
-        // recompute the target.
-        // A yielded lease must keep its fingerprint stable: changing the target
-        // here would look like a fresh acquisition and silently reactivate
-        // exclusive egress movement after reentry.
-        this.clearSafeRoomEgressWaypoint();
-        latchedX = null;
-        latchedY = null;
-      }
-    }
-    if (latchedX === null || latchedY === null) {
-      if (!world.playerInSafeRoom) {
-        return null;
-      }
-      // During the tutorial's pre-level-2 grind, relying on the default scan
-      // radius can deadlock in the safe room when the nearest swarm is just
-      // outside that radius. Use an unbounded threat search only for this
-      // phase so the AI always acquires an egress target and leaves.
-      const tutorialAccepted = world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID);
-      const forceTutorialEgress = tutorialAccepted && (world.playerLevel.level ?? 0) < 2;
-      const nearest = this.findNearestEnemy(
-        world,
-        playerX,
-        playerY,
-        forceTutorialEgress ? Number.POSITIVE_INFINITY : this.config.scanRadius,
-      );
-      if (!nearest) {
-        this.clearSafeRoomEgressWaypoint();
-        return null;
-      }
-      const egress = this.computeSafeRoomEgressWaypoint(world, playerX, playerY, nearest);
-      if (egress === null) {
-        this.clearSafeRoomEgressWaypoint();
-        return null;
-      }
-      this.safeRoomEgressTargetX = egress.x;
-      this.safeRoomEgressTargetY = egress.y;
-      this.safeRoomEgressThreatEid = nearest.eid;
-      latchedX = egress.x;
-      latchedY = egress.y;
-    }
-    const threatEid = this.safeRoomEgressThreatEid;
-    const threatX = typeof threatEid === 'number' ? world.stores.position.x[threatEid] : undefined;
-    const threatY = typeof threatEid === 'number' ? world.stores.position.y[threatEid] : undefined;
-    const threatDistance =
-      typeof threatX === 'number' && typeof threatY === 'number'
-        ? Math.hypot(threatX - playerX, threatY - playerY)
-        : null;
-    const threatText =
-      typeof threatDistance === 'number' ? ` (enemy ${threatDistance.toFixed(1)}ft)` : '';
-    const target = this.buildMovementIntentTarget(
-      world,
-      'safeRoomEgress',
-      'position',
-      null,
-      latchedX,
-      latchedY,
-    );
-    const priorOutsideClearFrames =
-      this.movementIntentState.current?.owner === MovementIntentOwner.SAFE_ROOM_EGRESS
-        ? (this.movementIntentState.navigation?.clearWindowFrames ?? 0)
-        : 0;
-    const policy: NavigationCommitmentPolicy = {
-      arrivalDistanceFt: WAYPOINT_ARRIVE_FT,
-      progressEpsilonFt: STUCK_PROGRESS_EPSILON_FT,
-      maxOwnerNoProgressFrames: null,
-      clearWindowFrames: SAFE_ROOM_EGRESS_LATCH_CLEAR_FRAMES,
-      arrival: 'reseed',
-    };
-    const facts: NavigationCommitmentFacts = {
-      latched: true,
-      ownsMovement:
-        world.playerInSafeRoom || priorOutsideClearFrames < SAFE_ROOM_EGRESS_ACTIVE_CLEAR_FRAMES,
-      targetValid: true,
-      distanceFt: Math.hypot(latchedX - playerX, latchedY - playerY),
-      arrived: false,
-      clearCondition: !world.playerInSafeRoom,
-      frame: world.frameCount,
-    };
-    return {
-      owner: MovementIntentOwner.SAFE_ROOM_EGRESS,
-      key: 'safeRoomEgress',
-      declarationOrdinal: MOVEMENT_INTENT_DECLARATION_ORDINAL[MovementIntentOwner.SAFE_ROOM_EGRESS],
-      eligibility: {
-        zone: 'any',
-        targetRelation: 'outsideCurrentSafeSpace',
-        domainAvailable: true,
-      },
-      target,
-      commitment: { policy, facts },
-      execution: {
-        token: 'safeRoomEgress',
-        payload: {
-          state: AIState.ENGAGE,
-          // Keep targetEid null while egressing: ENGAGE's pursuit fallback and
-          // pointer-lock both prefer targetEid, which would otherwise
-          // re-couple this state to a moving threat and reintroduce mouth
-          // oscillation.
-          targetEid: null,
-          targetX: latchedX,
-          targetY: latchedY,
-          npcInteraction: null,
-        },
-        reason: `Leaving safe room via latched egress waypoint${threatText}`,
-      },
-    };
-  }
-
-  private clearSafeRoomEgressWaypoint(): void {
-    this.safeRoomEgressTargetX = null;
-    this.safeRoomEgressTargetY = null;
-    this.safeRoomEgressThreatEid = null;
   }
 
   private computeSafeRoomEgressWaypoint(
@@ -2779,6 +3423,42 @@ export class BehaviorTreeAI implements AIInputProvider {
       this.farmPullY = dy / dist;
       return BTStatus.SUCCESS;
     });
+  }
+
+  private refreshFarmPullFromResolvedDecision(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    healthPercent: number,
+  ): void {
+    this.farmPullX = 0;
+    this.farmPullY = 0;
+    if (this.isFloor2IntroductionPending(world)) return;
+    if (this.config.farmPullWeight <= 0) return;
+    if (this.getCollapsePanicProfile(world).beeline) return;
+    if (healthPercent < FARM_MIN_HEALTH_FRACTION) return;
+    if (this.decision.state !== AIState.EXPLORE) return;
+    if (this.decision.targetX === null || this.decision.targetY === null) return;
+
+    const hx = this.decision.targetX - playerX;
+    const hy = this.decision.targetY - playerY;
+    const hlen = Math.hypot(hx, hy);
+    if (hlen < DETOUR_MIN_HEADING_MAGNITUDE) return;
+    const headX = hx / hlen;
+    const headY = hy / hlen;
+
+    const nearest = this.findNearestEnemy(world, playerX, playerY, FARM_FORWARD_SCAN_RADIUS_FT);
+    if (!nearest) return;
+
+    const dx = nearest.x - playerX;
+    const dy = nearest.y - playerY;
+    const dist = Math.hypot(dx, dy);
+    if (dist <= 0) return;
+    const dot = (dx / dist) * headX + (dy / dist) * headY;
+    if (dot < FARM_FORWARD_DOT_MIN) return;
+
+    this.farmPullX = dx / dist;
+    this.farmPullY = dy / dist;
   }
 
   /**
@@ -3332,12 +4012,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     const playerHealth = world.stores.health.current[playerEid] ?? 1;
     const playerMaxHealth = world.stores.health.max[playerEid] ?? 1;
     const healthPercent = playerHealth / playerMaxHealth;
-    // SafeRoomEgress ownership no longer flows through a private hand-rolled
-    // hysteresis clock — it is reset each poll and re-derived after the tree
-    // ticks (see the movement-intent resolution block below), so it can be
-    // retained by the arbiter across a poll where the tree itself would have
-    // picked something else.
-    this.pendingMovementIntentProposal = null;
+    const previousPlayerX = this.lastPlayerX;
+    const previousPlayerY = this.lastPlayerY;
 
     // Update stuck detection. Standing on a harvestable to gather it nets ~zero
     // displacement on purpose, so suppress the stuck counter while harvesting —
@@ -3439,6 +4115,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     // dedicated field fills that gap. estimateCurrentRunPlan is a pure, RNG-free
     // read; in LEGACY it is never computed, so behavior stays byte-identical.
     this.progressTargetAvailableThisPoll = false;
+    this.npcApproachThreatProgressEvaluatedThisPoll = false;
     const merchantWeaponIntent = getMerchantWeaponIntent(world);
     const playerSpeedFtPerFrame = this.getPlayerSpeedFtPerFrame(world, playerEid);
     const currentRunPlan =
@@ -3462,6 +4139,12 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (merchantWeaponIntent.enabled) {
       updateMerchantWeaponIntent(world, currentRunPlan, RUN_PLANNER_GOLD_FARM_MS);
     }
+    const movementIntentProgressPreview = this.observeMovementIntentProgressPreview(
+      world,
+      playerEid,
+      playerX,
+      playerY,
+    );
 
     // Build context for behavior tree
     const context: BTContext = {
@@ -3474,70 +4157,60 @@ export class BehaviorTreeAI implements AIInputProvider {
       blackboard: {},
     };
 
-    this.npcApproachThreatProgressEvaluatedThisPoll = false;
     // Execute behavior tree (Track A sets this.decision; Track B writes
     // opportunisticPullX/Y and dodgeVecX/Y as side-effects)
     this.tree.tick(context);
+
+    const movementIntentCandidates = this.collectMovementIntentCandidates(
+      world,
+      playerEid,
+      playerX,
+      playerY,
+      previousPlayerX,
+      previousPlayerY,
+      healthPercent,
+      movementIntentProgressPreview,
+    );
+
+    // Movement-intent arbitration over side-effect-free full proposal generation.
     if (!this.npcApproachThreatProgressEvaluatedThisPoll) {
       this.resetNpcApproachThreatTracking();
     }
-
-    // Movement-intent arbiter resolution. The tree's own greedy priority
-    // Selector already assigned a provisional `this.decision` above (and, for
-    // the 6 migrated owners, tagged `this.pendingMovementIntentProposal` with
-    // typed, data-only metadata — see each producer's action node). SafeRoomEgress
-    // is computed independently here every poll, regardless of what the tree
-    // picked, so a retained egress lease can survive a poll where the tree's
-    // own short-circuit would have chosen something else entirely (e.g. Hunt).
-    // `resolveMovementIntent` is the single source of truth for final
-    // ownership: it is fed every candidate proposal for this poll and decides
-    // whether to retain the current lease, acquire a fresh one, allow an
-    // explicit preemption, or release with no successor. Only when it
-    // actually selects a proposal do we override `this.decision` — when it
-    // returns `selected: null` (rejected, or released with no eligible
-    // successor this exact poll) `this.decision` is left exactly as the tree
-    // already set it, so the legacy Engage/Collect/Hunt/Explore fallback (or
-    // the tree's own next-highest-priority migrated pick, which will win
-    // fairly on the very next poll once the arbiter's lease is actually
-    // cleared) executes untouched. This is also what lets a critical-HP
-    // outside-safe Retreat proposal — tagged directly by the tree above,
-    // ahead of SafeRoomEgress in tree priority — take effect on the exact
-    // poll a retained egress lease's clear window elapses: the tree already
-    // wrote RETREAT into `this.decision` before this block ever runs, and a
-    // `released`/`selected: null` resolution simply leaves that untouched.
-    const egressProposal = this.buildSafeRoomEgressProposal(world, playerX, playerY);
-    const movementIntentProposals: Array<MovementIntentProposal<MovementIntentExecutionPayload>> =
-      [];
-    if (this.pendingMovementIntentProposal) {
-      movementIntentProposals.push(this.pendingMovementIntentProposal);
-    }
-    if (egressProposal) {
-      movementIntentProposals.push(egressProposal);
+    const movementIntentProposals = movementIntentCandidates.map((candidate) => candidate.proposal);
+    const hasRetreatProposal = movementIntentProposals.some(
+      (proposal) => proposal.owner === MovementIntentOwner.RETREAT,
+    );
+    const selectedEffects = new Map<string, () => void>();
+    for (const candidate of movementIntentCandidates) {
+      selectedEffects.set(
+        `${candidate.proposal.owner}:${candidate.proposal.execution.token}`,
+        candidate.applySelectedEffect,
+      );
     }
     const movementIntentFacts: MovementIntentArbiterFacts = {
       playerZone: world.playerInSafeRoom ? 'insideSafe' : 'outsideSafe',
     };
-    const priorMovementIntentOwner = this.movementIntentState.current?.owner ?? null;
     const movementIntentResolution = resolveMovementIntent(
       this.movementIntentState,
       movementIntentProposals,
       movementIntentFacts,
     );
+    if (
+      this.safeRoomEgressEpisode &&
+      movementIntentResolution.priorOwner === MovementIntentOwner.SAFE_ROOM_EGRESS &&
+      (movementIntentResolution.reason === 'acquiredAfterCommitmentRelease' ||
+        movementIntentResolution.reason === 'releasedByCommitment')
+    ) {
+      this.safeRoomEgressEpisode = null;
+    }
     this.movementIntentState = movementIntentResolution.nextState;
     this.movementIntentTelemetrySnapshot = movementIntentTelemetry(movementIntentResolution);
-    if (
-      priorMovementIntentOwner === MovementIntentOwner.SAFE_ROOM_EGRESS &&
-      this.movementIntentState.current?.owner !== MovementIntentOwner.SAFE_ROOM_EGRESS &&
-      !world.playerInSafeRoom
-    ) {
-      // The retained egress commitment has completed its outside-clear window
-      // (or handed off to an outside-safe physical lock/Retreat). Drop the
-      // provider latch with the lease so the stale waypoint cannot reacquire on
-      // the next poll. In-safe immediate-interaction preemption deliberately
-      // preserves the latch, allowing egress to resume after the interaction.
-      this.clearSafeRoomEgressWaypoint();
+    if (!hasRetreatProposal && this.retreating) {
+      this.endRetreat(world);
     }
     if (movementIntentResolution.selected) {
+      const selectedEffectKey = `${movementIntentResolution.selected.owner}:${movementIntentResolution.selected.execution.token}`;
+      selectedEffects.get(selectedEffectKey)?.();
       const payload = movementIntentResolution.selected.execution.payload;
       this.decision.state = payload.state;
       this.decision.targetEid = payload.targetEid;
@@ -3545,7 +4218,9 @@ export class BehaviorTreeAI implements AIInputProvider {
       this.decision.targetY = payload.targetY;
       this.decision.npcInteraction = payload.npcInteraction;
       this.decision.reason = movementIntentResolution.selected.execution.reason;
+      this.decision.debug = null;
     }
+    this.refreshFarmPullFromResolvedDecision(world, playerX, playerY, healthPercent);
 
     // Pathing A/B seam (axis 1) — three non-overlapping mode booleans (poll-invariant):
     //  • usesNavmeshRoute — route via the deterministic recast waypoint route to the
@@ -8008,9 +8683,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.committedDetourBestDistance = Number.POSITIVE_INFINITY;
     this.committedDetourNoProgressFrames = 0;
     this.resetNpcApproachThreatTracking();
-    this.clearSafeRoomEgressWaypoint();
+    this.safeRoomEgressEpisode = null;
+    this.nextSafeRoomEgressEpisodeId = 1;
     this.movementIntentState = { current: null, navigation: null };
     this.movementIntentTelemetrySnapshot = null;
-    this.pendingMovementIntentProposal = null;
   }
 }

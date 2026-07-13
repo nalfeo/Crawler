@@ -7,35 +7,29 @@
   "stages": {
     "plan_review": {
       "completed": true,
-      "reviewer_model": "gpt-5.4",
-      "concerns_count": 16,
-      "resolved_count": 16,
+      "reviewer_model": "claude-opus-4.8",
+      "concerns_count": 10,
+      "resolved_count": 10,
       "adversarial": true,
-      "alternatives_considered": 5,
-      "plan_divergence": "major_fork",
-      "notes": "Two xhigh adversarial passes rejected provider-local safe-room exceptions, blanket selector reorder, mini-selector duplication, and implicit lease overlays. Adopted data-only descriptors, exhaustive pairwise preemption, tile-stable keys, a pure two-clock NavigationCommitment primitive, structured lifecycle telemetry, SafeRoomEgress as consumer one, Retreat as consumer two, 5-apple scope, and pre-merge 600-run cloud validation."
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Alternative A retained after explicit human selection over the reviewer's minimal-surface and lazy-generation alternatives. Implementation adds a producer side-effect firing matrix, non-mutating proposal generation, observed-trajectory room certificate over one captured origin tile set, release+acquire same-poll handoff, stable egress episode target across interaction preemption, live target revalidation, deterministic total ordering, generation/selection confluence tests, and bounded perf/parking guards. The already-approved architecture requirement rejects keeping post-selector pseudo-arbitration."
     },
     "code_review": {
       "clean": true,
       "rounds": [
         {
           "round": 1,
-          "models": ["claude-sonnet-4.6"],
-          "concerns_count": 2,
-          "resolved_count": 2,
-          "clean": false
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
         },
         {
           "round": 2,
-          "models": [
-            "claude-sonnet-5",
-            "gpt-5.4",
-            "claude-sonnet-4.6",
-            "gpt-5.5",
-            "gemini-3.5-flash"
-          ],
-          "concerns_count": 4,
-          "resolved_count": 4,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 1,
+          "resolved_count": 1,
           "clean": true
         }
       ]
@@ -46,25 +40,10 @@
       "rounds": [
         {
           "round": 1,
-          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
-          "concerns_count": 6,
-          "valid_count": 2,
-          "resolved_count": 2,
-          "clean": false
-        },
-        {
-          "round": 2,
-          "models": [
-            "gpt-5.4-mini",
-            "claude-opus-4.6",
-            "gpt-5.4",
-            "claude-sonnet-4.6",
-            "gpt-5.5",
-            "gemini-3.5-flash"
-          ],
-          "concerns_count": 7,
-          "valid_count": 5,
-          "resolved_count": 5,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
           "clean": true
         }
       ]
