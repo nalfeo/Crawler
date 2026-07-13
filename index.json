@@ -11,6 +11,17 @@
     "path": "by-sha/ee39d8df0b666614087389b1ed4be993eb261643.json"
   },
   {
+    "commit": "377b0a44dc3814ed4422ce7e5009df1440da8287",
+    "commitDate": "2026-07-13T12:11:23-07:00",
+    "commitSubject": "fix: per-attack weapon skill XP attribution to prevent misattribution on weapon switch mid-flight (#1054)",
+    "capturedAt": "2026-07-13T19:59:22.530Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29278628232",
+    "winRate": 0.92,
+    "totalWins": 276,
+    "totalRuns": 300,
+    "path": "by-sha/377b0a44dc3814ed4422ce7e5009df1440da8287.json"
+  },
+  {
     "commit": "1bec980c17ebfe0453be6502737c5630a62a0fff",
     "commitDate": "2026-07-13T11:09:07Z",
     "commitSubject": "fix(hud): hide Floor 2 family panel behind fullscreen map (#1118)",
