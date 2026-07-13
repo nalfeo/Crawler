@@ -9,12 +9,12 @@ hud-ux
 Polished the loot counter (`HudLootCounter`) and skill tracker (`HudSkillTracker`)
 panels for the 1280x720 and 960x540 acceptance viewports:
 
-- Added `hud-loot-format.ts`: compact number formatter (999 → 999, 1000 → 1.0K,
+- Added `hud-loot-format.ts`: compact number formatter (999 → 999, 1000 → 1K,
   1M → 1.0M) to prevent text overflow at high loot counts.
 - `HudLootCounter`: responsive icon/text scaling within the beveled panel bounds.
 - `HudSkillTracker`: pixel-measured text truncation via `setTextWithinWidth` with
   memoization cache to avoid per-frame canvas churn.
-- New `src/labs/hud-lab/` for visual dev testing of loot + skill panels.
+- Extended existing `src/labs/hud-lab/` with visual dev testing probes for loot + skill panels.
 - New `tests/e2e/hud-overlap-visual.test.ts`: deterministic 1280×720 and 960×540
   containment assertions (no overlap, no viewport overflow).
 - New `tests/unit/hud-loot-counter-format.test.ts`: boundary value tests for the

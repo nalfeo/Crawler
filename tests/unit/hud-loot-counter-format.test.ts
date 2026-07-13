@@ -4,8 +4,9 @@ import { formatCompactLootValue } from '../../src/engine/hud-loot-format.js';
 describe('formatCompactLootValue', () => {
   it.each([
     [0, '0'],
-    [9_999, '9999'],
-    [10_000, '10K'],
+    [999, '999'],
+    [1_000, '1K'],
+    [9_999, '10K'],
     [999_499, '999K'],
     [999_500, '1.0M'],
     [9_949_999, '9.9M'],
