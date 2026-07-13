@@ -202,47 +202,52 @@ export const TRUSTED_BOT_LOGINS = new Set([
 ]);
 
 const addressedInPrefixPattern = /✅\s*addressed\s+in\s+<?([^\s>]+)>?/i;
-const hexShaPattern = /^[0-9a-f]{7,40}$/i;
+const markerAllowedHosts = new Set(['github.com', 'www.github.com']);
 
-function parseMarkerShaToken(rawToken) {
+function parseMarkerUrlToken(rawToken) {
   const token = String(rawToken ?? '')
     .replace(/[):.,;!?]+$/g, '')
     .trim();
   if (!token) return null;
-  if (hexShaPattern.test(token)) {
-    return token.toLowerCase();
-  }
   try {
-    const parsed = new URL(token);
-    const commitMatch = parsed.pathname.match(/\/commit\/([0-9a-f]{7,40})\b/i);
-    if (!commitMatch) return null;
-    return commitMatch[1].toLowerCase();
+    return new URL(token);
   } catch {
     return null;
   }
 }
 
-/** Extracts the SHA from a trusted marker body:
- *  "✅ Addressed in <sha-or-commit-url>".
+/** Extracts a URL from a trusted marker body:
+ *  "✅ Addressed in <link>".
  *  Returns null when no valid marker payload exists. */
-export function extractAddressedMarkerSha(body) {
+export function extractAddressedMarkerUrl(body) {
   const match = String(body ?? '').match(addressedInPrefixPattern);
   if (!match) return null;
-  return parseMarkerShaToken(match[1]);
+  return parseMarkerUrlToken(match[1]);
 }
 
-/** Returns true if body contains "✅ Addressed in <sha>:" and the SHA is an
- *  unambiguous prefix (≥7 hex chars) of headSha, or a known ancestor SHA
- *  extracted from a commit URL marker. */
-export function markerNamesHead(body, headSha, reachableCommitShas = null) {
-  const markerSha = extractAddressedMarkerSha(body);
-  if (!markerSha) return false;
-  const head = String(headSha ?? '').toLowerCase();
-  if (head.length >= markerSha.length && head.startsWith(markerSha)) {
-    return true;
+function markerLinksToCurrentPr(url, { owner, repo, prNumber }) {
+  if (!url) {
+    return false;
   }
-  if (!reachableCommitShas) return false;
-  return reachableCommitShas.has(markerSha);
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    return false;
+  }
+  if (url.username || url.password) {
+    return false;
+  }
+  if (!markerAllowedHosts.has(url.hostname.toLowerCase())) {
+    return false;
+  }
+  const match = url.pathname.match(/^\/([^/]+)\/([^/]+)\/pull\/(\d+)\/?$/i);
+  if (!match) return false;
+  const samePr =
+    match[1].toLowerCase() === String(owner ?? '').toLowerCase() &&
+    match[2].toLowerCase() === String(repo ?? '').toLowerCase() &&
+    Number.parseInt(match[3], 10) === prNumber;
+  if (!samePr) {
+    return false;
+  }
+  return /^#discussion_r\d+$/i.test(url.hash);
 }
 
 function isTrustedComment(comment) {
@@ -254,15 +259,16 @@ function isTrustedComment(comment) {
 
 /**
  * Returns true only when the last comment in the thread is a trusted marker
- * that explicitly names the current head SHA (full or ≥7-char prefix).
+ * with a URL that points to the current PR.
  * A reopened thread with later reviewer feedback keeps returning false even if
  * an earlier comment had a valid marker.
  */
-export function shouldResolveThread(thread, headSha, reachableCommitShas = null) {
+export function shouldResolveThread(thread, prContext) {
   const comments = thread.comments?.nodes ?? [];
   if (comments.length === 0) return false;
   const last = comments[comments.length - 1];
-  return isTrustedComment(last) && markerNamesHead(last.body, headSha, reachableCommitShas);
+  const markerUrl = extractAddressedMarkerUrl(last.body);
+  return isTrustedComment(last) && markerLinksToCurrentPr(markerUrl, prContext);
 }
 
 /**

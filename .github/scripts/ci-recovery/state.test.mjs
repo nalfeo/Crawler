@@ -5,17 +5,16 @@ import {
   assertOwnershipInvariant,
   blockerFingerprint,
   collapseCheckRunsByName,
-  extractAddressedMarkerSha,
+  extractAddressedMarkerUrl,
   isDuplicateDispatch,
   isLeaseExpired,
-  makeState,
-  reviewThreadBlockerId,
-  reviewThreadCommentDigest,
-  markerNamesHead,
   normalizeBlockers,
   ownerLabel,
   parseStateComment,
   renderStateComment,
+  makeState,
+  reviewThreadBlockerId,
+  reviewThreadCommentDigest,
   shouldResolveThread,
   shouldSkipRepoIncidentWorkflowRun,
   shouldMutateRecoveryState,
@@ -204,7 +203,7 @@ test('shouldResolveThread rejects old marker with later reviewer comment', () =>
     comments: {
       nodes: [
         {
-          body: '✅ Addressed in abc1234: fixed it',
+          body: '✅ Addressed in https://github.com/nalfeo/Crawler/pull/1122#discussion_r1: fixed it',
           authorAssociation: 'OWNER',
           author: { login: 'dev' },
         },
@@ -216,25 +215,31 @@ test('shouldResolveThread rejects old marker with later reviewer comment', () =>
       ],
     },
   };
-  assert.equal(shouldResolveThread(thread, 'abc12345678'), false);
+  assert.equal(
+    shouldResolveThread(thread, { owner: 'nalfeo', repo: 'Crawler', prNumber: 1122 }),
+    false,
+  );
 });
 
-test('shouldResolveThread rejects marker with wrong SHA', () => {
+test('shouldResolveThread rejects marker link to different PR', () => {
   const thread = {
     comments: {
       nodes: [
         {
-          body: '✅ Addressed in def5678: fixed',
+          body: '✅ Addressed in https://github.com/nalfeo/Crawler/pull/999#discussion_r99: fixed',
           authorAssociation: 'OWNER',
           author: { login: 'dev' },
         },
       ],
     },
   };
-  assert.equal(shouldResolveThread(thread, 'abc12345678'), false);
+  assert.equal(
+    shouldResolveThread(thread, { owner: 'nalfeo', repo: 'Crawler', prNumber: 1122 }),
+    false,
+  );
 });
 
-test('shouldResolveThread accepts latest trusted marker naming current head', () => {
+test('shouldResolveThread accepts latest trusted same-PR discussion link', () => {
   const thread = {
     comments: {
       nodes: [
@@ -244,71 +249,66 @@ test('shouldResolveThread accepts latest trusted marker naming current head', ()
           author: { login: 'reviewer' },
         },
         {
-          body: '✅ Addressed in abc1234: resolved the issue',
+          body: '✅ Addressed in <https://github.com/nalfeo/Crawler/pull/1122#discussion_r12345>: resolved the issue',
           authorAssociation: 'OWNER',
           author: { login: 'dev' },
         },
       ],
     },
   };
-  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), true);
-});
-
-test('markerNamesHead accepts full SHA and unambiguous prefix', () => {
-  assert.equal(markerNamesHead('✅ Addressed in abc1234def: note', 'abc1234def0000'), true);
-  assert.equal(markerNamesHead('✅ Addressed in abc1234def0000: note', 'abc1234def0000'), true);
   assert.equal(
-    markerNamesHead(
-      '✅ Addressed in <https://github.com/nalfeo/Crawler/commit/def5678abc1234ff00aa11bb22cc33dd44ee55ff>',
-      'abc1234def0000',
-      new Set(['def5678abc1234ff00aa11bb22cc33dd44ee55ff']),
-    ),
+    shouldResolveThread(thread, { owner: 'nalfeo', repo: 'Crawler', prNumber: 1122 }),
     true,
   );
-  assert.equal(
-    markerNamesHead(
-      '✅ Addressed in https://github.com/nalfeo/Crawler/commit/def5678abc1234ff00aa11bb22cc33dd44ee55ff',
-      'abc1234def0000',
-    ),
-    false,
-  );
-  assert.equal(markerNamesHead('✅ Addressed in xyz9999: note', 'abc1234def0000'), false);
-  assert.equal(markerNamesHead('<!-- addressed -->', 'abc1234def0000'), false);
-  assert.equal(markerNamesHead('✅ Addressed in abc12: note', 'abc12345'), false); // < 7 chars
 });
 
-test('extractAddressedMarkerSha parses raw SHA and commit URL markers', () => {
-  assert.equal(extractAddressedMarkerSha('✅ Addressed in abc1234def: note'), 'abc1234def');
-  assert.equal(
-    extractAddressedMarkerSha(
-      '✅ Addressed in <https://github.com/nalfeo/Crawler/commit/def5678abc1234ff00aa11bb22cc33dd44ee55ff>',
-    ),
-    'def5678abc1234ff00aa11bb22cc33dd44ee55ff',
+test('extractAddressedMarkerUrl parses URL marker token', () => {
+  const parsed = extractAddressedMarkerUrl(
+    '✅ Addressed in <https://github.com/nalfeo/Crawler/pull/1122#discussion_r12345>: note',
   );
-  assert.equal(extractAddressedMarkerSha('✅ Addressed in not-a-commit-link'), null);
+  assert.equal(parsed?.hostname, 'github.com');
+  assert.equal(parsed?.pathname, '/nalfeo/Crawler/pull/1122');
+  assert.equal(parsed?.hash, '#discussion_r12345');
 });
 
-test('shouldResolveThread accepts latest trusted commit URL marker on head lineage', () => {
+test('extractAddressedMarkerUrl rejects non-URL token', () => {
+  assert.equal(extractAddressedMarkerUrl('✅ Addressed in abc1234def: note'), null);
+});
+
+test('shouldResolveThread rejects non-URL token marker', () => {
   const thread = {
     comments: {
       nodes: [
         {
-          body: '✅ Addressed in <https://github.com/nalfeo/Crawler/commit/def5678abc1234ff00aa11bb22cc33dd44ee55ff>',
-          authorAssociation: 'MEMBER',
-          author: { login: 'reviewer' },
+          body: '✅ Addressed in abc1234def: note',
+          authorAssociation: 'OWNER',
+          author: { login: 'dev' },
         },
       ],
     },
   };
   assert.equal(
-    shouldResolveThread(
-      thread,
-      'abc123456789abcdef',
-      new Set(['def5678abc1234ff00aa11bb22cc33dd44ee55ff']),
-    ),
-    true,
+    shouldResolveThread(thread, { owner: 'nalfeo', repo: 'Crawler', prNumber: 1122 }),
+    false,
   );
-  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef', new Set()), false);
+});
+
+test('shouldResolveThread rejects same-PR non-discussion URL marker', () => {
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: '✅ Addressed in https://github.com/nalfeo/Crawler/pull/1122: note',
+          authorAssociation: 'OWNER',
+          author: { login: 'dev' },
+        },
+      ],
+    },
+  };
+  assert.equal(
+    shouldResolveThread(thread, { owner: 'nalfeo', repo: 'Crawler', prNumber: 1122 }),
+    false,
+  );
 });
 
 test('collapseCheckRunsByName keeps latest attempt by id', () => {
