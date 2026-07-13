@@ -140,7 +140,7 @@ export function createBeveledPanel(
 
   return {
     get visible(): boolean {
-      return body.visible && top.visible && left.visible && bottom.visible && right.visible;
+      return body.visible || top.visible || left.visible || bottom.visible || right.visible;
     },
     setVisible(visible: boolean): void {
       body.setVisible(visible);

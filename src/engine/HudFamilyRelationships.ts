@@ -250,18 +250,17 @@ export function createHudFamilyRelationships(
   }
 
   function getState(): HudFamilyRelationshipsState {
+    const parentVisible = parent?.visible ?? true;
     const visible =
-      panel.visible &&
-      title.visible &&
-      rowVisuals.every((row) => row.container.visible) &&
-      (parent?.visible ?? true);
+      parentVisible &&
+      (panel.visible || title.visible || rowVisuals.some((row) => row.container.visible));
     if (!visible) {
-      return { visible: false, bounds: null, panelVisible: title.visible };
+      return { visible: false, bounds: null, panelVisible: parentVisible && panel.visible };
     }
     const bounds = parent?.getBounds();
     return {
       visible: true,
-      panelVisible: title.visible,
+      panelVisible: parentVisible && panel.visible,
       bounds: bounds
         ? { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }
         : { x: panelX, y: panelY, width: PANEL_WIDTH, height: panelHeight },
