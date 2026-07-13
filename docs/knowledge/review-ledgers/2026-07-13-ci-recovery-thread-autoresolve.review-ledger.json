@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-13",
+  "session_slug": "ci-recovery-thread-autoresolve",
+  "task_title": "Fix CI recovery review-thread auto-resolution trust list",
+  "estimated_apples": 2,
+  "stages": {}
+}

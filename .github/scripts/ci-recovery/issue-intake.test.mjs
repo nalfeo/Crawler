@@ -8,6 +8,24 @@ const issue = {
   number: 1067,
 };
 
+test('kickoff comment body includes the required planning instructions', () => {
+  assert.match(ISSUE_INTAKE_BODY, /\*\*Before writing any code\*\*/);
+  assert.match(ISSUE_INTAKE_BODY, /High-level design and approach for the work\./);
+  assert.match(
+    ISSUE_INTAKE_BODY,
+    /Key decisions made \(e\.g\. which systems, skills, or libraries are involved; alternatives considered\)\./,
+  );
+  assert.match(ISSUE_INTAKE_BODY, /A checklist of the concrete steps you will take\./);
+  assert.match(
+    ISSUE_INTAKE_BODY,
+    /Post this plan comment on the issue itself so the maintainer can review it before you open a PR\./,
+  );
+  assert.match(
+    ISSUE_INTAKE_BODY,
+    /Then, when you open the PR, include the same high-level summary in the PR description\./,
+  );
+});
+
 test('posts kickoff comment before assigning Copilot and preserves existing assignees', async () => {
   const calls = [];
   const graphql = async (_token, query, variables) => {
@@ -71,6 +89,11 @@ test('posts kickoff comment before assigning Copilot and preserves existing assi
     method: 'POST',
     body: { body: ISSUE_INTAKE_BODY },
   });
+  assert.match(calls[2][2].body.body, /\*\*Before writing any code\*\*/);
+  assert.match(
+    calls[2][2].body.body,
+    /Then, when you open the PR, include the same high-level summary in the PR description\./,
+  );
 });
 
 test('deletes the kickoff comment when assignment does not persist', async () => {

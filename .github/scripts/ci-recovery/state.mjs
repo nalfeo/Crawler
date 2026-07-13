@@ -197,6 +197,7 @@ export function isDuplicateDispatch(state, fingerprint) {
 export const TRUSTED_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 export const TRUSTED_BOT_LOGINS = new Set([
   'copilot-swe-agent[bot]',
+  'copilot-swe-agent',
   'github-actions[bot]',
   'copilot',
 ]);
@@ -205,6 +206,9 @@ const addressedInPrefixPattern = /✅\s*addressed\s+in\s+<?([^\s>]+)>?/i;
 const hexShaPattern = /^[0-9a-f]{7,40}$/i;
 
 function parseMarkerShaToken(rawToken) {
+  // Marker replies often leave copied SHAs/URLs with trailing Markdown
+  // punctuation such as `abc1234)` or `<https://...>).` Strip those trailing
+  // wrappers before parsing.
   const token = String(rawToken ?? '')
     .replace(/[):.,;!?]+$/g, '')
     .trim();
