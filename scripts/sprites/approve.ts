@@ -51,7 +51,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import path from 'node:path';
 import { canonicalItemBriefId, itemArtIdentitySet } from '../../src/shared/item-sprites.js';
 import { toSpriteType, type SpriteType } from '../../src/shared/sprite-types.js';
-import { formatJsonFiles } from './catalog-io.js';
+import { formatJsonFilesSync } from './catalog-io.js';
 
 /** Subset of `node:fs` calls approveVariant needs. Exposed for tests. */
 export interface ApproveFs {
@@ -531,10 +531,10 @@ function upsertCatalog(
   fs.mkdirSync(path.dirname(catalogPath), { recursive: true });
   fs.writeFileSync(catalogPath, `${JSON.stringify(filtered, null, 2)}\n`);
   // Apply Prettier so the on-disk format matches the committed style enforced
-  // by `format:check`. All catalog write paths must go through formatJsonFiles
+  // by `format:check`. All catalog write paths must go through formatJsonFilesSync
   // to ensure deterministic formatting regardless of which tool last wrote the
   // file. See scripts/sprites/catalog-io.ts.
-  formatJsonFiles([catalogPath]);
+  formatJsonFilesSync([catalogPath]);
 }
 
 function parseSummary(raw: string, summaryPath: string): RunSummaryShape {

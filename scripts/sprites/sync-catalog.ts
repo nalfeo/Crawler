@@ -160,7 +160,7 @@ export function syncCatalog(
   return parseSpriteCatalog(next);
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const outputPath = resolve(args.outPath);
   const exists = existsSync(outputPath);
@@ -169,7 +169,7 @@ function main(): void {
 
   // Compare against the Prettier-formatted representation so the check and
   // write paths both use the same canonical output format.
-  const nextJson = formatCatalogJsonToString(outputPath, next);
+  const nextJson = await formatCatalogJsonToString(outputPath, next);
   const currentJson = exists ? readFileSync(outputPath, 'utf-8') : '';
   const changed = nextJson !== currentJson;
 
@@ -186,11 +186,11 @@ function main(): void {
     return;
   }
 
-  writeCatalogJson(outputPath, next);
+  await writeCatalogJson(outputPath, next);
   process.stdout.write(`Updated sprite catalog: ${args.outPath}\n`);
 }
 
 const entry = process.argv[1];
 if (entry && import.meta.url === pathToFileURL(entry).href) {
-  main();
+  void main();
 }

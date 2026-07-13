@@ -16,7 +16,7 @@
  * a Prettier pass) will produce a different on-disk format and cause
  * noisy diffs.
  */
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -27,6 +27,9 @@ import {
 } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 
 /** Lazily-resolved absolute path to Prettier's CJS entry point. */
 let _prettierBin: string | undefined;
@@ -38,13 +41,32 @@ function getPrettierBin(): string {
   return _prettierBin;
 }
 
+/** Generate a unique temp file path to avoid collisions under concurrent writers. */
+function uniqueTmpPath(base: string): string {
+  return `${base}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+}
+
 /**
- * Run the repo's Prettier over `files` (must already exist on disk).
- * Accepts multiple paths so callers that write several related files
- * (e.g. manifest + catalog) can format them in a single subprocess call.
- * Passes `--parser json` so Prettier handles files regardless of extension.
+ * Run the repo's Prettier over `files` asynchronously (must already exist on
+ * disk). Accepts multiple paths so callers can format related files in a
+ * single subprocess call. Passes `--parser json` so Prettier handles files
+ * regardless of extension.
+ *
+ * Prefer this in long-running processes (Vite plugin, sidecar server) to
+ * avoid blocking the Node.js event loop.
  */
-export function formatJsonFiles(files: readonly string[]): void {
+export async function formatJsonFiles(files: readonly string[]): Promise<void> {
+  if (files.length === 0) return;
+  await execFileAsync(process.execPath, [getPrettierBin(), '--parser', 'json', '--write', ...files]);
+}
+
+/**
+ * Synchronous variant of `formatJsonFiles`. Use only in contexts where async
+ * is not practical (e.g. `approve.ts` which uses an injected-fs abstraction
+ * for tests). Prefer `formatJsonFiles` in new code and in long-running process
+ * handlers.
+ */
+export function formatJsonFilesSync(files: readonly string[]): void {
   if (files.length === 0) return;
   execFileSync(process.execPath, [getPrettierBin(), '--parser', 'json', '--write', ...files], {
     stdio: 'inherit',
@@ -55,16 +77,22 @@ export function formatJsonFiles(files: readonly string[]): void {
  * Write `data` as Prettier-formatted JSON to `filePath`.
  *
  * - Creates parent directories if needed.
- * - Uses an atomic write (temp file → rename) to avoid partial reads.
- * - Runs Prettier on the final path so the on-disk format matches what
- *   `format:check` enforces.
+ * - Uses a unique temp path (PID + random suffix) to avoid collisions under
+ *   concurrent writers.
+ * - Runs Prettier against the temp file, then does a single atomic rename into
+ *   place — no second write after the rename.
  */
-export function writeCatalogJson(filePath: string, data: unknown): void {
+export async function writeCatalogJson(filePath: string, data: unknown): Promise<void> {
   mkdirSync(path.dirname(filePath), { recursive: true });
-  const tmpPath = `${filePath}.tmp`;
-  writeFileSync(tmpPath, `${JSON.stringify(data, null, 2)}\n`, 'utf-8');
-  renameSync(tmpPath, filePath);
-  formatJsonFiles([filePath]);
+  const tmpPath = uniqueTmpPath(filePath);
+  try {
+    writeFileSync(tmpPath, `${JSON.stringify(data, null, 2)}\n`, 'utf-8');
+    await formatJsonFiles([tmpPath]);
+    renameSync(tmpPath, filePath);
+  } catch (err) {
+    if (existsSync(tmpPath)) unlinkSync(tmpPath);
+    throw err;
+  }
 }
 
 /**
@@ -72,14 +100,18 @@ export function writeCatalogJson(filePath: string, data: unknown): void {
  * the target path. Useful for `--check` / diff modes that need to compare
  * what *would* be written against what is currently on disk.
  *
- * Internally writes to a temp file beside `referencePath`, formats it,
+ * Internally writes to a unique temp file beside `referencePath`, formats it,
  * reads the result, and cleans up.
  */
-export function formatCatalogJsonToString(referencePath: string, data: unknown): string {
-  const tmpPath = `${referencePath}.format-tmp`;
+export async function formatCatalogJsonToString(
+  referencePath: string,
+  data: unknown,
+): Promise<string> {
+  const tmpPath = uniqueTmpPath(referencePath);
+  mkdirSync(path.dirname(tmpPath), { recursive: true });
   try {
     writeFileSync(tmpPath, `${JSON.stringify(data, null, 2)}\n`, 'utf-8');
-    formatJsonFiles([tmpPath]);
+    await formatJsonFiles([tmpPath]);
     return readFileSync(tmpPath, 'utf-8');
   } finally {
     if (existsSync(tmpPath)) {

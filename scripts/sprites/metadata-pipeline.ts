@@ -547,7 +547,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  writeCatalogJson(absoluteCatalogPath, result.updated);
+  await writeCatalogJson(absoluteCatalogPath, result.updated);
 }
 
 const entry = process.argv[1];

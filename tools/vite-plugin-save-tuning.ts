@@ -296,81 +296,83 @@ export function labTuningSavePlugin(): Plugin {
           body += chunk.toString();
         });
         req.on('end', () => {
-          try {
-            const payload = JSON.parse(body) as { entries: unknown[] };
-            if (!Array.isArray(payload.entries) || payload.entries.length === 0) {
-              res.statusCode = 400;
-              res.end(JSON.stringify({ error: 'Missing or empty "entries" array.' }));
-              return;
-            }
-
-            const catalogPath = resolve(DATA_DIR, 'sprite-catalog.json');
-            const raw = JSON.parse(readFileSync(catalogPath, 'utf-8'));
-            const catalog = parseSpriteCatalog(raw);
-            const existingIds = new Set(catalog.map((e: SpriteCatalogRecord) => e.id));
-            const existingFrames = new Set(
-              catalog
-                .filter((e: SpriteCatalogRecord) => e.kind === 'sprite')
-                .map((e: SpriteCatalogRecord) =>
-                  e.kind === 'sprite' ? `${e.sheetKey}:${e.frame}` : '',
-                ),
-            );
-
-            // Validate new entries and skip duplicates (including intra-request)
-            const toAdd: SpriteCatalogRecord[] = [];
-            const skipped: string[] = [];
-
-            for (const entry of payload.entries) {
-              const record = entry as Record<string, unknown>;
-              const id = record['id'] as string;
-              if (existingIds.has(id)) {
-                skipped.push(id);
-                continue;
+          void (async () => {
+            try {
+              const payload = JSON.parse(body) as { entries: unknown[] };
+              if (!Array.isArray(payload.entries) || payload.entries.length === 0) {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ error: 'Missing or empty "entries" array.' }));
+                return;
               }
-              const frameKey =
-                record['kind'] === 'sprite' ? `${record['sheetKey']}:${record['frame']}` : '';
-              if (frameKey && existingFrames.has(frameKey)) {
-                skipped.push(id);
-                continue;
-              }
-              // Update sets to prevent intra-request duplicates
-              existingIds.add(id);
-              if (frameKey) existingFrames.add(frameKey);
-              toAdd.push(record as unknown as SpriteCatalogRecord);
-            }
 
-            if (toAdd.length === 0) {
+              const catalogPath = resolve(DATA_DIR, 'sprite-catalog.json');
+              const raw = JSON.parse(readFileSync(catalogPath, 'utf-8'));
+              const catalog = parseSpriteCatalog(raw);
+              const existingIds = new Set(catalog.map((e: SpriteCatalogRecord) => e.id));
+              const existingFrames = new Set(
+                catalog
+                  .filter((e: SpriteCatalogRecord) => e.kind === 'sprite')
+                  .map((e: SpriteCatalogRecord) =>
+                    e.kind === 'sprite' ? `${e.sheetKey}:${e.frame}` : '',
+                  ),
+              );
+
+              // Validate new entries and skip duplicates (including intra-request)
+              const toAdd: SpriteCatalogRecord[] = [];
+              const skipped: string[] = [];
+
+              for (const entry of payload.entries) {
+                const record = entry as Record<string, unknown>;
+                const id = record['id'] as string;
+                if (existingIds.has(id)) {
+                  skipped.push(id);
+                  continue;
+                }
+                const frameKey =
+                  record['kind'] === 'sprite' ? `${record['sheetKey']}:${record['frame']}` : '';
+                if (frameKey && existingFrames.has(frameKey)) {
+                  skipped.push(id);
+                  continue;
+                }
+                // Update sets to prevent intra-request duplicates
+                existingIds.add(id);
+                if (frameKey) existingFrames.add(frameKey);
+                toAdd.push(record as unknown as SpriteCatalogRecord);
+              }
+
+              if (toAdd.length === 0) {
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ ok: true, added: 0, skipped: skipped.length }));
+                return;
+              }
+
+              const merged = sortCatalog([...catalog, ...toAdd]);
+
+              // Validate full catalog and write atomically with Prettier formatting
+              const validated = parseSpriteCatalog(merged);
+              await writeCatalogJson(catalogPath, validated);
+
               res.statusCode = 200;
               res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify({ ok: true, added: 0, skipped: skipped.length }));
-              return;
+              res.end(
+                JSON.stringify({
+                  ok: true,
+                  added: toAdd.length,
+                  skipped: skipped.length,
+                  addedIds: toAdd.map((e) => (e as Record<string, unknown>)['id']),
+                }),
+              );
+            } catch (err) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(
+                JSON.stringify({
+                  error: err instanceof Error ? err.message : 'Unknown error',
+                }),
+              );
             }
-
-            const merged = sortCatalog([...catalog, ...toAdd]);
-
-            // Validate full catalog and write atomically with Prettier formatting
-            const validated = parseSpriteCatalog(merged);
-            writeCatalogJson(catalogPath, validated);
-
-            res.statusCode = 200;
-            res.setHeader('Content-Type', 'application/json');
-            res.end(
-              JSON.stringify({
-                ok: true,
-                added: toAdd.length,
-                skipped: skipped.length,
-                addedIds: toAdd.map((e) => (e as Record<string, unknown>)['id']),
-              }),
-            );
-          } catch (err) {
-            res.statusCode = 400;
-            res.setHeader('Content-Type', 'application/json');
-            res.end(
-              JSON.stringify({
-                error: err instanceof Error ? err.message : 'Unknown error',
-              }),
-            );
-          }
+          })();
         });
       });
 
@@ -426,7 +428,7 @@ export function labTuningSavePlugin(): Plugin {
                   hydrated,
                 ]);
                 catalog = parseSpriteCatalog(merged);
-                writeCatalogJson(absoluteCatalogPath, catalog);
+                await writeCatalogJson(absoluteCatalogPath, catalog);
                 existingEntry = hydrated;
               }
             }
@@ -443,7 +445,7 @@ export function labTuningSavePlugin(): Plugin {
               force: payload.force ?? true,
               minScore: payload.minScore,
             });
-            writeCatalogJson(absoluteCatalogPath, result.updated);
+            await writeCatalogJson(absoluteCatalogPath, result.updated);
 
             const updatedEntry = result.updated.find(
               (entry: SpriteCatalogRecord) => entry.id === payload.id,

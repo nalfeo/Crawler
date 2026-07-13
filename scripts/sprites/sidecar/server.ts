@@ -1868,7 +1868,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       const catalog = parseSpriteCatalog(JSON.parse(readFileSync(catalogAbs, 'utf8')) as unknown);
       const provider = await resolveProvider(providerMode);
       const result = await runMetadataPipeline(catalog, { provider, ids, force, minScore });
-      writeCatalogJson(catalogAbs, result.updated);
+      await writeCatalogJson(catalogAbs, result.updated);
       return {
         provider: provider.name,
         changedCount: result.changedCount,

@@ -453,7 +453,7 @@ function describePlan(plan: MigrationPlan): string {
   return lines.join('\n');
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const concepts = args.includeBaseballBat
     ? [...ITEM_ART_CONCEPTS, BASEBALL_BAT_CONCEPT]
@@ -567,7 +567,7 @@ function main(): void {
   //    otherwise show up as wholesale whitespace churn and fail `format:check`.
   //    formatJsonFiles (catalog-io.ts) is the shared formatting helper so all
   //    write paths stay in sync.
-  formatJsonFiles([manifestPath, catalogPath]);
+  await formatJsonFiles([manifestPath, catalogPath]);
 
   process.stdout.write(
     `Applied: renamed ${plan.renames.length}, retired ${plan.retires.length}. ` +
@@ -586,5 +586,5 @@ export function filesByteEqual(a: string, b: string): boolean {
 
 const entry = process.argv[1];
 if (entry && import.meta.url === pathToFileURL(entry).href) {
-  main();
+  void main();
 }
