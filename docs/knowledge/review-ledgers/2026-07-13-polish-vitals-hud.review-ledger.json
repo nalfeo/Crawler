@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-13",
+  "session_slug": "polish-vitals-hud",
+  "task_title": "Fix core vitals HUD layout",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "Plan review narrowed proof to deterministic geometry, explicit responsive gutters, canonical viewport contracts, and bounded visual evidence. Parent scope audit then reduced implementation to the core mana/stack/scale slice without changing the reviewed architecture."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

@@ -1,39 +1,46 @@
 /**
  * HudManaBar — fixed-position mana (MP) bar rendered in the Phaser scene.
  *
- * Uses two Rectangle GameObjects (shell + fill) to match the health bar pattern.
- * Only visible when spells feature is unlocked. Color: blue gradient.
+ * Rebuilt on the shared pixel-UI builders (see engine/pixel-ui) so it reads as
+ * the same "modern pixel game" chrome as HudHealthBar/HudExperienceBar rather
+ * than a standalone raw-rectangle widget: a beveled panel holds a pixel mana
+ * icon, an inset sky-blue stat bar with a glossy shine, and a centered
+ * "current / max" readout. Only visible when the spells feature is unlocked.
+ *
+ * Stacked directly beneath HudHealthBar via the shared bottom-left vitals
+ * layout (see HudVitalsLayout.ts). The previous `GAME.HEIGHT - 24` anchor put
+ * the padded value label against and partly below the canvas edge; the shared
+ * stack now reserves an explicit bottom margin and inter-panel gap.
  */
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
-import { GAME } from '../shared/constants.js';
+import {
+  PIXEL_UI,
+  PIXEL_UI_DEPTH,
+  PIXEL_ICON,
+  createBeveledPanel,
+  createStatBar,
+  addPixelIcon,
+} from './pixel-ui.js';
 import { applyCrispText } from './ui-scale.js';
+import { VITALS_X, VITALS_PANEL_Y } from './HudVitalsLayout.js';
 
 // ---------------------------------------------------------------------------
 // Layout constants
 // ---------------------------------------------------------------------------
 
-const BAR_X = 16;
-const BAR_Y = GAME.HEIGHT - 24;
-const BAR_WIDTH = 220;
-const BAR_HEIGHT = 16;
-const BORDER = 2;
-const LABEL_OFFSET_X = BAR_WIDTH + 10;
-const DEPTH = 1000;
+const PAD = 7;
+const ICON_SIZE = 16;
+const BAR_WIDTH = 200;
+const BAR_HEIGHT = 12;
+/** Must match `VITALS_ROW_HEIGHTS.mana` (26) in HudVitalsLayout.ts. */
+const PANEL_W = PAD + ICON_SIZE + 6 + BAR_WIDTH + PAD;
+const PANEL_H = PAD + BAR_HEIGHT + PAD;
 
-const COLORS = {
-  shell: 0x1e293b,
-  shellBorder: 0x334155,
-  barFull: 0x3b82f6, // blue
-  labelText: '#f8fafc',
-  labelBg: 0x0f172a,
-} as const;
+const PANEL_X = VITALS_X;
+const PANEL_Y = VITALS_PANEL_Y.mana;
 
 export interface HudManaBarOptions {
-  /** Horizontal position of left edge. Defaults to 16. */
-  x?: number;
-  /** Vertical position of top edge. Defaults to below health bar. */
-  y?: number;
   /** Optional container to parent all created objects into (for group scaling). */
   parent?: Phaser.GameObjects.Container;
 }
@@ -45,95 +52,72 @@ export function createHudManaBar(
   sync(world: GameWorld): void;
   destroy(): void;
 } {
-  const x = options.x ?? BAR_X;
-  const y = options.y ?? BAR_Y;
   const parent = options.parent;
 
-  // Shell (background track)
-  const shell = scene.add
-    .rectangle(
-      x + BAR_WIDTH / 2,
-      y + BAR_HEIGHT / 2,
-      BAR_WIDTH + BORDER * 2,
-      BAR_HEIGHT + BORDER * 2,
-      COLORS.shell,
-    )
-    .setStrokeStyle(1, COLORS.shellBorder)
-    .setScrollFactor(0)
-    .setDepth(DEPTH);
+  const panel = createBeveledPanel(scene, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, { parent });
 
-  // Fill rectangle — anchored left, scaled by width
-  const fill = scene.add
-    .rectangle(x, y + BAR_HEIGHT / 2, BAR_WIDTH, BAR_HEIGHT, COLORS.barFull)
-    .setOrigin(0, 0.5)
-    .setScrollFactor(0)
-    .setDepth(DEPTH + 1);
+  const iconCx = PANEL_X + PAD + ICON_SIZE / 2;
+  const iconCy = PANEL_Y + PANEL_H / 2;
+  const icon = addPixelIcon(scene, PIXEL_ICON.mana, iconCx, iconCy, {
+    depth: PIXEL_UI_DEPTH.overlay,
+    parent,
+  });
 
-  // MP text label
+  const innerBarX = PANEL_X + PAD + ICON_SIZE + 6;
+  const innerBarY = PANEL_Y + (PANEL_H - BAR_HEIGHT) / 2;
+
+  const bar = createStatBar(scene, innerBarX, innerBarY, BAR_WIDTH, BAR_HEIGHT, {
+    fill: PIXEL_UI.mpFill,
+    depth: PIXEL_UI_DEPTH.content,
+    parent,
+  });
+
   const label = scene.add
-    .text(x + LABEL_OFFSET_X, y + BAR_HEIGHT / 2, '', {
+    .text(innerBarX + BAR_WIDTH / 2, innerBarY + BAR_HEIGHT / 2, '', {
       fontFamily: 'monospace',
-      fontSize: '12px',
-      color: COLORS.labelText,
-      backgroundColor: `#${COLORS.labelBg.toString(16).padStart(6, '0')}cc`,
-      padding: { x: 6, y: 2 },
+      fontSize: '11px',
+      color: '#f8fafc',
+      stroke: '#02040a',
+      strokeThickness: 3,
     })
-    .setOrigin(0, 0.5)
+    .setOrigin(0.5, 0.5)
     .setScrollFactor(0)
-    .setDepth(DEPTH + 1);
+    .setDepth(PIXEL_UI_DEPTH.overlay);
+  parent?.add(label);
+  const detachCrispText = applyCrispText(scene, [label]);
 
-  // Icon label "⚡ MP"
-  const icon = scene.add
-    .text(x, y - 14, '⚡ MP', {
-      fontFamily: 'monospace',
-      fontSize: '10px',
-      color: '#94a3b8',
-    })
-    .setScrollFactor(0)
-    .setDepth(DEPTH);
+  function setAllVisible(visible: boolean): void {
+    panel.setVisible(visible);
+    icon.setVisible(visible);
+    bar.setVisible(visible);
+    label.setVisible(visible);
+  }
 
-  // Initially hidden until feature unlock
-  shell.setVisible(false);
-  fill.setVisible(false);
-  label.setVisible(false);
-  icon.setVisible(false);
-
-  parent?.add([shell, fill, label, icon]);
-  const detachCrispText = applyCrispText(scene, [label, icon]);
+  // Initially hidden until feature unlock.
+  setAllVisible(false);
 
   function sync(world: GameWorld): void {
-    // Only show mana bar when spells feature is unlocked
     const isVisible = world.featureUnlocks.spells;
-
     if (!isVisible) {
-      shell.setVisible(false);
-      fill.setVisible(false);
-      label.setVisible(false);
-      icon.setVisible(false);
+      setAllVisible(false);
       return;
     }
-
-    shell.setVisible(true);
-    fill.setVisible(true);
-    label.setVisible(true);
-    icon.setVisible(true);
+    setAllVisible(true);
 
     const current = world.playerMp;
     const max = world.playerMaxMp;
     const pct = max > 0 ? Math.max(0, Math.min(1, current / max)) : 0;
 
-    const fillWidth = Math.round(pct * BAR_WIDTH);
-    fill.setSize(Math.max(1, fillWidth), BAR_HEIGHT);
-
+    bar.setPercent(pct);
     label.setText(`${Math.ceil(current)} / ${Math.ceil(max)}`);
   }
 
   function destroy(): void {
     detachCrispText();
-    shell.destroy();
-    fill.destroy();
-    label.destroy();
+    panel.destroy();
     icon.destroy();
+    bar.destroy();
+    label.destroy();
   }
 
   return { sync, destroy };

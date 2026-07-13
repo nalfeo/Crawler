@@ -24,23 +24,16 @@ import {
   type HudFamilyRelationshipsState,
 } from './HudFamilyRelationships.js';
 import { getUiScale, onUiScaleChange } from './ui-scale.js';
+import { computeVitalsScale } from './HudVitalsLayout.js';
 import { GAME } from '../shared/constants.js';
 import type { ScreenBounds } from './ui-scale.js';
 
-/**
- * Upper bound on HUD magnification. The HUD is authored to fill the full 1280px
- * design width, so independently-anchored corner groups would collide if scaled
- * too aggressively. A conservative cap keeps mobile text/icons larger while
- * avoiding overlap. At scale 1 (desktop) the layout is pixel-identical.
- */
-const HUD_MAX_SCALE = 1.6;
 /**
  * Keep the ability bar smaller than the rest of the HUD on narrow screens so
  * bottom-center UX affordances (Talk/Descend prompt, dialogue hint area) keep
  * clear space and never collide with the slots row.
  */
 const ABILITY_BAR_MAX_SCALE = 1.0;
-
 export function createHudUI(scene: Phaser.Scene): {
   sync(world: GameWorld, playerEid: number): void;
   isMapOverlayOpen(): boolean;
@@ -90,8 +83,24 @@ export function createHudUI(scene: Phaser.Scene): {
     group.sort('depth');
   }
 
+  // Measure the bottom-left vitals cluster's natural (unscaled, unpositioned)
+  // design-space extent exactly once, right after all 5 widgets are added and
+  // depth-sorted but before the first applyScale() call transforms the group.
+  // Deriving the scale cap from real rendered geometry (rather than a
+  // hand-maintained magic number) is what keeps this cap correct if any
+  // widget's own width/height ever changes.
+  const bottomLeftNaturalBounds = bottomLeft.getBounds();
+  const bottomLeftRightEdge = bottomLeftNaturalBounds.right;
+  const bottomLeftTopEdge = bottomLeftNaturalBounds.top;
+  const abilityBarLeftEdge = bottomCenter.getBounds().left;
+
   function applyScale(): void {
-    const s = Math.min(getUiScale(scene), HUD_MAX_SCALE);
+    const s = computeVitalsScale({
+      desiredScale: getUiScale(scene),
+      clusterRightEdge: bottomLeftRightEdge,
+      clusterTopEdge: bottomLeftTopEdge,
+      neighborLeftEdge: abilityBarLeftEdge,
+    });
     const bottomCenterScale = Math.min(s, ABILITY_BAR_MAX_SCALE);
     const w = GAME.WIDTH;
     const h = GAME.HEIGHT;

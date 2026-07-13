@@ -8,7 +8,6 @@
  */
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
-import { GAME } from '../shared/constants.js';
 import {
   PIXEL_UI,
   PIXEL_UI_DEPTH,
@@ -18,6 +17,7 @@ import {
   addPixelIcon,
 } from './pixel-ui.js';
 import { applyCrispText } from './ui-scale.js';
+import { VITALS_X, VITALS_PANEL_Y } from './HudVitalsLayout.js';
 
 // ---------------------------------------------------------------------------
 // Layout constants
@@ -27,11 +27,14 @@ const PAD = 7;
 const ICON_SIZE = 16;
 const BAR_WIDTH = 200;
 const BAR_HEIGHT = 18;
+/** Must match `VITALS_ROW_HEIGHTS.health` in HudVitalsLayout.ts. */
 const PANEL_W = PAD + ICON_SIZE + 6 + BAR_WIDTH + PAD;
 const PANEL_H = PAD + BAR_HEIGHT + PAD;
 
-const BAR_X = 16;
-const BAR_Y = GAME.HEIGHT - 52;
+const BAR_X = VITALS_X;
+/** Panel top edge comes from the shared vitals stack; BAR_Y derives the bar's own
+ * (icon-centered) anchor back out of the panel's fixed position. */
+const BAR_Y = VITALS_PANEL_Y.health - BAR_HEIGHT / 2 + PANEL_H / 2;
 
 const LOW_HP_THRESHOLD = 0.25;
 

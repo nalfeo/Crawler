@@ -7,7 +7,6 @@
  */
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
-import { GAME } from '../shared/constants.js';
 import { xpRequiredForLevel } from '../shared/xpMath.js';
 import {
   PIXEL_UI,
@@ -18,16 +17,18 @@ import {
   addPixelIcon,
 } from './pixel-ui.js';
 import { applyCrispText } from './ui-scale.js';
+import { VITALS_X, VITALS_PANEL_Y } from './HudVitalsLayout.js';
 
 const PAD = 7;
 const ICON_SIZE = 16;
 const BAR_WIDTH = 200;
 const BAR_HEIGHT = 12;
+/** Must match `VITALS_ROW_HEIGHTS.xp` in HudVitalsLayout.ts. */
 const PANEL_W = PAD + ICON_SIZE + 6 + BAR_WIDTH + PAD;
 const PANEL_H = PAD + BAR_HEIGHT + PAD;
 
-const BAR_X = 16;
-const BAR_Y = GAME.HEIGHT - 84;
+const BAR_X = VITALS_X;
+const BAR_Y = VITALS_PANEL_Y.xp - BAR_HEIGHT / 2 + PANEL_H / 2;
 
 export function createHudExperienceBar(
   scene: Phaser.Scene,
