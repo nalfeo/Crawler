@@ -44,11 +44,7 @@ Neither layer may call `Math.random()` or `Date.now()`.
 - Promotion to Tier 1 (hot memory) requires evidence of 3+ sessions needing the knowledge
 - Nothing is deleted — only archived
 
-### 8. Conventional Commits
-
-Use Conventional Commit prefixes enforced by commitlint: `feat:`, `fix:`, `chore:`, `docs:`, `lab:`, `refactor:`, `test:`, `perf:`, `ci:`, `build:`, `revert:`. CI enforces commit format.
-
-### 9. Coverage Requirements
+### 8. Coverage Requirements
 
 - `src/core/` and `src/game/`: 90% line coverage target
 - `src/shared/`: 90% target

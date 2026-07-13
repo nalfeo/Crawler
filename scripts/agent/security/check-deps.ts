@@ -27,7 +27,6 @@ const TRUSTED_SCOPES = [
   '@eslint/',
   '@vitejs/',
   '@vitest/',
-  '@commitlint/',
   '@fastify/',
   '@stryker-mutator/',
   '@azure/',
