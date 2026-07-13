@@ -53,7 +53,6 @@ export function createHudUI(scene: Phaser.Scene): {
   const bottomLeft = makeGroup(); // health, mana, xp, loot
   const bottomCenter = makeGroup(); // ability bar
   const topCenter = makeGroup(); // floor timer + boss bar
-  const topRight = makeGroup(); // quest tracker
   const bottomRight = makeGroup(); // family relationships (Floor 2)
 
   const healthBar = createHudHealthBar(scene, { parent: bottomLeft });
@@ -65,7 +64,7 @@ export function createHudUI(scene: Phaser.Scene): {
   const floorTimer = createHudFloorTimer(scene, { parent: topCenter });
   const bossBar = createHudBossBar(scene, { parent: topCenter });
   const announcementBanner = createHudAnnouncementBanner(scene, { parent: topCenter });
-  const questTracker = createHudQuestTracker(scene, { parent: topRight });
+  const questTracker = createHudQuestTracker(scene);
   const familyRelationships = createHudFamilyRelationships(scene, { parent: bottomRight });
 
   // Minimap manages its own dynamic children/overlay and screen-space layout,
@@ -79,7 +78,7 @@ export function createHudUI(scene: Phaser.Scene): {
 
   // Phaser containers render children in insertion order; pixel-ui builders set
   // explicit depths, so sort each group to preserve intended layering.
-  for (const group of [bottomLeft, bottomCenter, topCenter, topRight, bottomRight]) {
+  for (const group of [bottomLeft, bottomCenter, topCenter, bottomRight]) {
     group.sort('depth');
   }
 
@@ -111,7 +110,6 @@ export function createHudUI(scene: Phaser.Scene): {
       .setScale(bottomCenterScale)
       .setPosition(cx * (1 - bottomCenterScale), h * (1 - bottomCenterScale));
     topCenter.setScale(s).setPosition(cx * (1 - s), 0);
-    topRight.setScale(s).setPosition(w * (1 - s), 0);
     bottomRight.setScale(s).setPosition(w * (1 - s), h * (1 - s));
   }
 
@@ -128,9 +126,10 @@ export function createHudUI(scene: Phaser.Scene): {
 
   function setVisible(visible: boolean): void {
     hidden = !visible;
-    for (const group of [bottomLeft, bottomCenter, topCenter, topRight, bottomRight]) {
+    for (const group of [bottomLeft, bottomCenter, topCenter, bottomRight]) {
       group.setVisible(visible);
     }
+    questTracker.setVisible(visible);
     minimap.setHudVisible(visible);
     directionArrows.setVisible(visible);
     syncFamilyRelationshipsVisibility();
@@ -150,10 +149,15 @@ export function createHudUI(scene: Phaser.Scene): {
     lootCounter.sync(world);
     skillTracker.sync(world, playerEid);
     minimap.sync(world, playerEid);
-    questTracker.sync(world, playerEid);
-    directionArrows.sync(world, playerEid);
     abilityBar.sync(world, playerEid);
     familyRelationships.sync(world);
+    const mapOpen = minimap.isOverlayOpen();
+    questTracker.setVisible(!mapOpen);
+    directionArrows.setVisible(!mapOpen);
+    if (!mapOpen) {
+      questTracker.sync(world, playerEid);
+      directionArrows.sync(world, playerEid);
+    }
   }
 
   function destroy(): void {
@@ -174,7 +178,6 @@ export function createHudUI(scene: Phaser.Scene): {
     bottomLeft.destroy();
     bottomCenter.destroy();
     topCenter.destroy();
-    topRight.destroy();
     bottomRight.destroy();
   }
 
