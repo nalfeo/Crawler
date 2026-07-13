@@ -2,11 +2,11 @@ import { GAME } from '../shared/constants.js';
 import type { ScreenBounds } from './ui-scale.js';
 
 export const NAV_RADAR_DIAMETER = 152;
-export const NAV_RADAR_MARGIN = 12;
-export const NAV_RADAR_MAX_SCALE = 1.4;
+const NAV_RADAR_MARGIN = 12;
+const NAV_RADAR_MAX_SCALE = 1.4;
 export const NAV_QUEST_WIDTH = 312;
 export const NAV_QUEST_MAX_HEIGHT = 196;
-export const NAV_QUEST_MAX_SCALE = 1.45;
+const NAV_QUEST_MAX_SCALE = 1.45;
 
 const RADAR_LABEL_HEIGHT = 22;
 const PANEL_GAP = 14;
