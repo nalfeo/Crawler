@@ -304,7 +304,19 @@ const runs =
       `/repos/${owner}/${repo}/actions/runs?head_sha=${encodeURIComponent(pr.head.sha)}&per_page=100`,
     )
   ).data.workflow_runs || [];
-const actionRequiredRuns = runs.filter((candidate) => candidate.conclusion === 'action_required');
+// Collapse to the latest run per (normalized path, event) so a successful rerun
+// of a workflow replaces a stale action_required run before any blocker classification.
+const latestRunsByKey = new Map();
+for (const run of runs) {
+  const key = `${String(run.path ?? '').trim().toLowerCase()}::${String(run.event ?? '')}`;
+  const existing = latestRunsByKey.get(key);
+  if (!existing || run.id > existing.id) {
+    latestRunsByKey.set(key, run);
+  }
+}
+const actionRequiredRuns = [...latestRunsByKey.values()].filter(
+  (candidate) => candidate.conclusion === 'action_required',
+);
 const changedFiles =
   actionRequiredRuns.length > 0
     ? await paginate(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/files`)
