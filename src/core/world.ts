@@ -112,6 +112,12 @@ export interface GameWorld {
   frameCount: number;
   /** Time elapsed in current floor (ms) */
   elapsedMs: number;
+  /**
+   * Monotonic signal for newly activated hostile encounter lock-ins.
+   * AI providers consume this at poll boundaries to discard transient plans
+   * made before the encounter existed.
+   */
+  hostileEncounterRevision: number;
   /** Optional hostile-damage multiplier for simulation/testing modes (default 1). */
   hostileDamageMultiplier?: number;
   /** Current floor number (1-indexed) */
@@ -434,6 +440,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     seed: options.seed ?? 42,
     frameCount: 0,
     elapsedMs: 0,
+    hostileEncounterRevision: 0,
     floor: options.floor ?? 1,
     state: 'playing',
     playerLevel: {

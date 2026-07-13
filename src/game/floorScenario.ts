@@ -62,6 +62,7 @@ import {
 } from '../core/helpers.js';
 import { setGoalFlag, setDoorLockConfig } from '../core/door-lock.js';
 import { AI_TYPE } from './enemyAISystem.js';
+import { activateHostileEncounter } from './hostile-encounter-lifecycle.js';
 import { roomHopDistances } from './room-hops.js';
 import { getItemById, getItemIndex } from '../shared/items.js';
 import { GAME, PLAYER_SPEED } from '../shared/constants.js';
@@ -113,6 +114,8 @@ import { getSpawnerArchetype, getSpawnerArchetypeIndex } from './spawners/regist
 import { hashStringToSeed, SeededRandom } from '../shared/random.js';
 import { computeMobLevelScale } from '../shared/mob-scaling.js';
 import { pickFromSpawnZones, type SpawnZoneWeights } from './spawn-zones.js';
+import { selectBossSpawnPlacement } from './boss-spawn-placement.js';
+import { ensureBossArenaInterior } from '../core/map/generators/dungeon/reachability.js';
 
 // Derived constants computed from config at module initialization.
 // The camera/viewport is a render-pixel concept, so convert it to feet at this
@@ -1459,9 +1462,23 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   // becomes a door so the room stays enclosed without softlocking the floor.
   const slimeRatTile = floorMap.worldToTile(slimeRatRoomPos.x, slimeRatRoomPos.y);
   const slimeRatRoomId = floorMap.roomGraph.getRoomAt(slimeRatTile.x, slimeRatTile.y);
+  const slimeRatEncounterRoom =
+    slimeRatRoomId >= 0 ? (floorMap.roomGraph.get(slimeRatRoomId) ?? null) : null;
+  const slimeRatRoomFloorTerrain =
+    floorMap.terrain[slimeRatTile.y * floorMap.width + slimeRatTile.x] ?? TerrainType.STONE_FLOOR;
   sealSpecialRooms(floorMap, {
     extraRoomIds: slimeRatRoomId >= 0 ? [slimeRatRoomId] : [],
   });
+  if (slimeRatEncounterRoom) {
+    ensureBossArenaInterior(
+      floorMap.tileMap,
+      floorMap.terrain,
+      floorMap.width,
+      floorMap.height,
+      slimeRatEncounterRoom,
+      slimeRatRoomFloorTerrain,
+    );
+  }
 
   // Welcome wayfinding signs are planted further down, after NPCs spawn, so a
   // sign can detect and avoid landing on top of an NPC (see placeWelcomeSigns).
@@ -1950,61 +1967,26 @@ function resolveSpawnPosition(
 
 function resolveBossSpawnPosition(
   world: GameWorld,
-  bossRoom: { bounds: { x: number; y: number; width: number; height: number } } | null,
+  bossRoom: RoomData | null,
   stairX: number,
   stairY: number,
+  playerX: number,
+  playerY: number,
 ): { x: number; y: number } {
   const floorMap = world.floorMap;
   if (floorMap && bossRoom) {
-    const center = centerOfRoom(bossRoom);
-    const minX = Math.max(bossRoom.bounds.x + 2, center.x - 2);
-    const maxX = Math.min(bossRoom.bounds.x + bossRoom.bounds.width - 3, center.x + 2);
-    const minY = Math.max(bossRoom.bounds.y + 2, center.y - 2);
-    const maxY = Math.min(bossRoom.bounds.y + bossRoom.bounds.height - 3, center.y + 2);
-    for (let attempt = 0; attempt < 24; attempt += 1) {
-      const tx = world.rng.nextInt(minX, maxX);
-      const ty = world.rng.nextInt(minY, maxY);
-      const candidate = floorMap.tileToWorld(tx, ty);
-      if (floorMap.isPassableAt(candidate.x, candidate.y)) {
-        return candidate;
-      }
-    }
-    const centerCandidate = floorMap.tileToWorld(center.x, center.y);
-    if (floorMap.isPassableAt(centerCandidate.x, centerCandidate.y)) {
-      return centerCandidate;
-    }
-    // Full interior scan: iterate every interior tile and return the first passable
-    // one found (early-exit). Handles seeds where variety post-processing leaves
-    // only isolated passable tiles outside the center search area (e.g. seed 665790).
-    const { x: bx, y: by, width: bw, height: bh } = bossRoom.bounds;
-    for (let scanY = by + 1; scanY < by + bh - 1; scanY++) {
-      for (let scanX = bx + 1; scanX < bx + bw - 1; scanX++) {
-        const scanCandidate = floorMap.tileToWorld(scanX, scanY);
-        if (floorMap.isPassableAt(scanCandidate.x, scanCandidate.y)) {
-          return scanCandidate;
-        }
-      }
-    }
+    return selectBossSpawnPlacement(
+      floorMap,
+      bossRoom,
+      { x: playerX, y: playerY },
+      floor1Config.bossVariants!.ratSlime.spawnRadiusMin,
+    ).position;
   }
   if (!floorMap) {
     return { x: stairX + floor1Config.bossVariants!.ratSlime.spawnRadiusMin, y: stairY };
   }
-  for (let attempt = 0; attempt < 16; attempt += 1) {
-    const angle = world.rng.next() * Math.PI * 2;
-    const radius =
-      floor1Config.bossVariants!.ratSlime.spawnRadiusMin +
-      world.rng.next() *
-        (floor1Config.bossVariants!.ratSlime.spawnRadiusMax -
-          floor1Config.bossVariants!.ratSlime.spawnRadiusMin);
-    const x = stairX + Math.cos(angle) * radius;
-    const y = stairY + Math.sin(angle) * radius;
-    if (floorMap.isPassableAt(x, y)) {
-      const tile = floorMap.worldToTile(x, y);
-      return floorMap.tileToWorld(tile.x, tile.y);
-    }
-  }
   const fallbackTile = floorMap.worldToTile(stairX, stairY);
-  if (floorMap.tileMap.isPassable(fallbackTile.x, fallbackTile.y)) {
+  if (floorMap.isPassableAt(stairX, stairY)) {
     return floorMap.tileToWorld(fallbackTile.x, fallbackTile.y);
   }
   const maxRadius = Math.max(floorMap.width, floorMap.height);
@@ -2024,16 +2006,10 @@ function resolveBossSpawnPosition(
   return floorMap.tileToWorld(fallbackTile.x, fallbackTile.y);
 }
 
-function isInRoom(
-  world: GameWorld,
-  px: number,
-  py: number,
-  room: { bounds: { x: number; y: number; width: number; height: number } } | null,
-): boolean {
+function isInRoom(world: GameWorld, px: number, py: number, room: RoomData | null): boolean {
   if (!world.floorMap || !room) return false;
   const tile = world.floorMap.worldToTile(px, py);
-  const { x, y, width, height } = room.bounds;
-  return tile.x >= x && tile.x < x + width && tile.y >= y && tile.y < y + height;
+  return world.floorMap.roomGraph.getRoomAt(tile.x, tile.y) === room.id;
 }
 
 function isFullyInsideBossRoom(world: GameWorld, px: number, py: number): boolean {
@@ -2051,13 +2027,7 @@ function isFullyInsideBossRoom(world: GameWorld, px: number, py: number): boolea
   return true;
 }
 
-function roomAtPosition(
-  world: GameWorld,
-  pos: { x: number; y: number },
-): {
-  bounds: { x: number; y: number; width: number; height: number };
-  doors: readonly { x: number; y: number }[];
-} | null {
+function roomAtPosition(world: GameWorld, pos: { x: number; y: number }): RoomData | null {
   const floorMap = world.floorMap;
   if (!floorMap) {
     return null;
@@ -2090,7 +2060,7 @@ function isFullyInsideObjectiveRoom(
   return true;
 }
 
-function spawnFloor1StairBoss(world: GameWorld): number {
+function spawnFloor1StairBoss(world: GameWorld, playerX: number, playerY: number): number {
   const objective = world.floorScenario?.objective;
   if (!objective) {
     throw new Error('Cannot spawn stair boss without floor1 objective state.');
@@ -2101,6 +2071,8 @@ function spawnFloor1StairBoss(world: GameWorld): number {
     bossRoom,
     objective.staircasePos.x,
     objective.staircasePos.y,
+    playerX,
+    playerY,
   );
   // Boss uses chaser movement and fires independently via attackRange + cooldown.
   const eid = spawnBehaviorEnemy(
@@ -2146,7 +2118,7 @@ function spawnFloor1StairBoss(world: GameWorld): number {
   return eid;
 }
 
-function spawnFloor1SlimeRatBoss(world: GameWorld): number {
+function spawnFloor1SlimeRatBoss(world: GameWorld, playerX: number, playerY: number): number {
   const objective = world.floorScenario?.objective;
   if (!objective) {
     throw new Error('Cannot spawn Slime Rat without floor1 objective state.');
@@ -2157,6 +2129,8 @@ function spawnFloor1SlimeRatBoss(world: GameWorld): number {
     bossRoom,
     objective.slimeRatRoomPos.x,
     objective.slimeRatRoomPos.y,
+    playerX,
+    playerY,
   );
   const eid = spawnBehaviorEnemy(
     world,
@@ -2192,7 +2166,7 @@ function spawnFloor1SlimeRatBoss(world: GameWorld): number {
   return eid;
 }
 
-function beginFloor1SlimeRatBattle(world: GameWorld): void {
+function beginFloor1SlimeRatBattle(world: GameWorld, playerX: number, playerY: number): void {
   const floorScenario = world.floorScenario;
   const objective = floorScenario?.objective;
   const slimeRatBattle = objective?.bossBattles.get('slime-rat');
@@ -2228,10 +2202,11 @@ function beginFloor1SlimeRatBattle(world: GameWorld): void {
       });
     }
   }
-  slimeRatBattle.bossEid = spawnFloor1SlimeRatBoss(world);
+  slimeRatBattle.bossEid = spawnFloor1SlimeRatBoss(world, playerX, playerY);
+  activateHostileEncounter(world);
 }
 
-function beginFloor1BossBattle(world: GameWorld): void {
+function beginFloor1BossBattle(world: GameWorld, playerX: number, playerY: number): void {
   const floorScenario = world.floorScenario;
   const objective = floorScenario?.objective;
   const staircaseBattle = objective?.bossBattles.get('staircase');
@@ -2244,7 +2219,7 @@ function beginFloor1BossBattle(world: GameWorld): void {
   objective.staircaseUnlocked = false;
   setGoalFlag(world, 'floor1-boss-active', true);
 
-  staircaseBattle.bossEid = spawnFloor1StairBoss(world);
+  staircaseBattle.bossEid = spawnFloor1StairBoss(world, playerX, playerY);
   const floorMap = world.floorMap;
   const bossRoom = floorMap?.bossStairRoom;
   if (bossRoom) {
@@ -2267,6 +2242,7 @@ function beginFloor1BossBattle(world: GameWorld): void {
       },
     });
   }
+  activateHostileEncounter(world);
 }
 
 export function floor1PlayerStatSystem(world: GameWorld): void {
@@ -2947,7 +2923,7 @@ function floor1ObjectiveTick(world: GameWorld): void {
     isFullyInsideObjectiveRoom(world, playerX, playerY, objective.slimeRatRoomPos) &&
     !slimeRatBattle.started
   ) {
-    beginFloor1SlimeRatBattle(world);
+    beginFloor1SlimeRatBattle(world, playerX, playerY);
   }
 
   const slimeRatEid = slimeRatBattle.bossEid;
@@ -2976,7 +2952,7 @@ function floor1ObjectiveTick(world: GameWorld): void {
     isFullyInsideBossRoom(world, playerX, playerY) &&
     !staircaseBattle.started
   ) {
-    beginFloor1BossBattle(world);
+    beginFloor1BossBattle(world, playerX, playerY);
   }
 
   const staircaseEid = staircaseBattle.bossEid;
@@ -3075,13 +3051,12 @@ export function startFloor1BossEncounter(world: GameWorld, playerEid: number): b
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.combatComplete`, true);
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.lootComplete`, true);
 
-  const center = centerOfRoom(bossRoom);
-  const bossEntryPoint = floorMap.tileToWorld(center.x, center.y);
+  const bossEntryPoint = resolvePassableRoomCenter(floorMap, bossRoom);
   setComponent(world.ecs, playerEid, Position, bossEntryPoint);
   world.stores.velocity.x[playerEid] = 0;
   world.stores.velocity.y[playerEid] = 0;
 
-  beginFloor1BossBattle(world);
+  beginFloor1BossBattle(world, bossEntryPoint.x, bossEntryPoint.y);
   return true;
 }
 

@@ -754,6 +754,9 @@ export class BehaviorTreeAI implements AIInputProvider {
   private readonly rng: SeededRandom;
   private readonly tree: BehaviorTree;
   private decision: AIDecision;
+  private observedHostileEncounterRevision: number = 0;
+  private hostileEncounterInvalidationCount: number = 0;
+  private lastHostileEncounterInvalidationFrame: number = -1;
   private pathWaypoints: TilePoint[] = [];
   private pathIndex: number = 0;
   private pathGoalKey: string | null = null;
@@ -797,9 +800,9 @@ export class BehaviorTreeAI implements AIInputProvider {
   private lastPlayerX: number = 0;
   private lastPlayerY: number = 0;
   /** Smoothed output direction, updated each poll via {@link MOVE_SMOOTH_FACTOR}.
-   * Initialized to (0, 0) at construction and persists across all polls for the
-   * lifetime of this AI instance; never explicitly reset, so the blend always
-   * carries over from the previous frame. */
+   * Initialized to (0, 0) at construction and persists across ordinary polls for
+   * the lifetime of this AI instance. Hostile-encounter invalidation explicitly
+   * zeroes it so a newly locked arena does not inherit pre-encounter steering. */
   private smoothMoveX: number = 0;
   private smoothMoveY: number = 0;
   /** Last travel-steering result (or null when steering did not drive the most
@@ -1206,6 +1209,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           this.endRetreat(ctx.world);
           return false;
         }
+
         const threat = this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY);
         // Hysteresis: an enemy must close to within retreatDangerRadius to START
         // a retreat, but the AI keeps retreating until the gap exceeds
@@ -2870,7 +2874,71 @@ export class BehaviorTreeAI implements AIInputProvider {
     return sum;
   }
 
+  private invalidateTransientDecisionForHostileEncounter(world: GameWorld): void {
+    this.observedHostileEncounterRevision = world.hostileEncounterRevision;
+    this.hostileEncounterInvalidationCount += 1;
+    this.lastHostileEncounterInvalidationFrame = world.frameCount;
+    this.decision = {
+      state: AIState.EXPLORE,
+      targetEid: null,
+      targetX: null,
+      targetY: null,
+      reason: 'Hostile encounter activated',
+      npcInteraction: null,
+      debug: null,
+    };
+    this.pathWaypoints = [];
+    this.pathIndex = 0;
+    this.pathGoalKey = null;
+    this.navWaypoints = [];
+    this.navPathIndex = 0;
+    this.navGoalKey = null;
+    this.moveWedgeFrames = 0;
+    this.stuckFrames = 0;
+    this.smoothMoveX = 0;
+    this.smoothMoveY = 0;
+    this.ignoredEnemyUntilFrame.clear();
+    this.targetReachableCache.clear();
+    this.engageTargetEid = null;
+    this.engageNoProgressFrames = 0;
+    this.engageBestDistance = Number.POSITIVE_INFINITY;
+    this.engageBestHp = Number.POSITIVE_INFINITY;
+    this.collectDwellActive = false;
+    this.collectDwellFrames = 0;
+    this.exploreDwell.reset();
+    this.progressGoalSuppressedUntilFrame = 0;
+    this.progressGoalSuppressionSource = null;
+    this.pendingSuppressedProgressNavDebug = null;
+    this.globalDwellActive = false;
+    this.globalDwellFrames = 0;
+    this.questProgressActive = false;
+    this.questProgressStallFrames = 0;
+    this.retreating = false;
+    this.retreatTargetX = null;
+    this.retreatTargetY = null;
+    this.retreatThreatEid = null;
+    this.lastArenaLockinEid = null;
+    this.lastArenaLockinKind = null;
+    this.opportunisticPullX = 0;
+    this.opportunisticPullY = 0;
+    this.farmPullX = 0;
+    this.farmPullY = 0;
+    this.dodgeVecX = 0;
+    this.dodgeVecY = 0;
+    this.prevFusedDirX = 0;
+    this.prevFusedDirY = 0;
+    this.lastTravelSteering = null;
+    this.lastRunPlan = null;
+    this.decisionRunPlan = null;
+    this.progressTargetAvailableThisPoll = false;
+    this.lastTacticalOpportunityEvaluation = null;
+    this.tacticalTravelOwnsLoot = false;
+  }
+
   poll(state: InputState, world: GameWorld): void {
+    if (world.hostileEncounterRevision !== this.observedHostileEncounterRevision) {
+      this.invalidateTransientDecisionForHostileEncounter(world);
+    }
     this.pendingSuppressedProgressNavDebug = null;
     this.decision.npcInteraction = null;
     this.decision.debug = null;
@@ -7382,7 +7450,22 @@ export class BehaviorTreeAI implements AIInputProvider {
     return this.tree;
   }
 
+  getHostileEncounterLifecycleDebug(): {
+    observedRevision: number;
+    invalidationCount: number;
+    lastInvalidationFrame: number;
+  } {
+    return {
+      observedRevision: this.observedHostileEncounterRevision,
+      invalidationCount: this.hostileEncounterInvalidationCount,
+      lastInvalidationFrame: this.lastHostileEncounterInvalidationFrame,
+    };
+  }
+
   reset(): void {
+    this.observedHostileEncounterRevision = 0;
+    this.hostileEncounterInvalidationCount = 0;
+    this.lastHostileEncounterInvalidationFrame = -1;
     this.decision = {
       state: AIState.EXPLORE,
       targetEid: null,
