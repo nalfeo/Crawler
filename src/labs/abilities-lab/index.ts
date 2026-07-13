@@ -27,6 +27,7 @@ import {
 } from '../../core/index.js';
 import { initializeBaseStats } from '../../core/systems/equipmentSystem.js';
 import type { MainGameSceneOptions } from '../../engine/scenes/MainGameScene.js';
+import type { ScreenBounds } from '../../engine/ui-scale.js';
 import {
   abilitySystem,
   configureEnemySpawner,
@@ -260,6 +261,50 @@ interface LabRuntime {
   playerEid?: number;
 }
 
+interface AbilityLoadoutProbe {
+  open(config: never): void;
+  close(): void;
+  isOpen(): boolean;
+  getPanelScreenBounds(): ScreenBounds;
+  getListViewportScreenBounds(): ScreenBounds;
+  getVisibleRowScreenBounds(): ScreenBounds[];
+  getVisibleAbilityIds(): string[];
+  getFooterScreenBounds(): ScreenBounds;
+  getSelectedAbilityId(): string | null;
+}
+
+interface AbilitiesSceneProbe {
+  world?: GameWorld;
+  playerEid?: number;
+  queuedAbilitiesToggle?: boolean;
+  abilityLoadoutUI?: AbilityLoadoutProbe;
+  hudUi?: {
+    getAbilityBarBounds(): ScreenBounds;
+    getAbilitySlotBounds(index: number): ScreenBounds | null;
+  };
+}
+
+export interface AbilitiesProbeSnapshot {
+  readonly open: boolean;
+  readonly frameCount: number;
+  readonly panel: ScreenBounds | null;
+  readonly listViewport: ScreenBounds | null;
+  readonly visibleRows: readonly ScreenBounds[];
+  readonly visibleAbilityIds: readonly string[];
+  readonly footer: ScreenBounds | null;
+  readonly hotbar: ScreenBounds | null;
+  readonly slots: readonly ScreenBounds[];
+  readonly selectedAbilityId: string | null;
+  readonly equippedAbilityIds: readonly string[];
+}
+
+export interface AbilitiesProbeApi {
+  ready(): boolean;
+  openLoadout(): void;
+  closeLoadout(): void;
+  getSnapshot(): AbilitiesProbeSnapshot;
+}
+
 function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () => void {
   const gui = (controls as ControlsWithGui).__labGui;
   if (!(gui instanceof GUI)) {
@@ -267,6 +312,26 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
   }
 
   const { settings, equipped } = loadSnapshot();
+  const reviewMode = new URLSearchParams(window.location.search).get('review') === '1';
+  const reviewStyleRestorers: Array<() => void> = [];
+  const applyReviewStyle = (element: HTMLElement | null, styles: Partial<CSSStyleDeclaration>) => {
+    if (!element) return;
+    const previous = new Map<string, string>();
+    for (const [property, value] of Object.entries(styles)) {
+      previous.set(property, element.style.getPropertyValue(property));
+      element.style.setProperty(property, String(value));
+    }
+    reviewStyleRestorers.push(() => {
+      for (const [property, value] of previous) element.style.setProperty(property, value);
+    });
+  };
+  if (reviewMode) {
+    applyReviewStyle(document.querySelector<HTMLElement>('#app-header'), { display: 'none' });
+    applyReviewStyle(document.querySelector<HTMLElement>('#controls-toggle'), { display: 'none' });
+    applyReviewStyle(controls, { display: 'none' });
+    applyReviewStyle(canvasHost.parentElement, { width: '100vw', height: '100vh' });
+    applyReviewStyle(canvasHost, { width: '100vw', height: '100vh' });
+  }
 
   // Mutable runtime updated by the scene's configureWorld hook. Shared with the
   // debug hotbar overlay so click handlers can address the live world.
@@ -296,6 +361,7 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
   hotbarWrap.style.gap = '6px';
   hotbarWrap.style.pointerEvents = 'auto';
   hotbarWrap.style.zIndex = '20';
+  hotbarWrap.style.display = reviewMode ? 'none' : 'flex';
 
   const hotbarLabel = document.createElement('div');
   hotbarLabel.textContent = 'DEBUG HOTBAR — click a slot to force-fire';
@@ -327,6 +393,7 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
   hud.style.fontSize = '12px';
   hud.style.fontFamily = 'Arial, sans-serif';
   hud.style.zIndex = '20';
+  hud.style.display = reviewMode ? 'none' : 'block';
 
   const hint = document.createElement('p');
   hint.textContent =
@@ -509,6 +576,64 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
   const config = createFloorGameConfig(gameHost, sceneOptions);
   let game = new Phaser.Game(config);
 
+  const getScene = (): AbilitiesSceneProbe | null => {
+    const scene = game.scene.getScene('MainGameScene');
+    return scene ? (scene as unknown as AbilitiesSceneProbe) : null;
+  };
+  const probeWindow = window as unknown as { __abilitiesProbe?: AbilitiesProbeApi };
+  const probe: AbilitiesProbeApi = {
+    ready: () => {
+      const scene = getScene();
+      return (
+        scene?.world != null &&
+        (scene.playerEid ?? -1) >= 0 &&
+        scene.hudUi != null &&
+        scene.abilityLoadoutUI != null
+      );
+    },
+    openLoadout: () => {
+      const scene = getScene();
+      if (scene) scene.queuedAbilitiesToggle = true;
+    },
+    closeLoadout: () => {
+      getScene()?.abilityLoadoutUI?.close();
+    },
+    getSnapshot: () => {
+      const scene = getScene();
+      const loadout = scene?.abilityLoadoutUI;
+      const world = scene?.world;
+      const playerEid = scene?.playerEid ?? -1;
+      const open = loadout?.isOpen() ?? false;
+      const slots: ScreenBounds[] = [];
+      for (let index = 0; index < 10; index += 1) {
+        const bounds = scene?.hudUi?.getAbilitySlotBounds(index);
+        if (bounds) slots.push(bounds);
+      }
+      return {
+        open,
+        frameCount: world?.frameCount ?? -1,
+        panel: open ? (loadout?.getPanelScreenBounds() ?? null) : null,
+        listViewport: open ? (loadout?.getListViewportScreenBounds() ?? null) : null,
+        visibleRows: open ? (loadout?.getVisibleRowScreenBounds() ?? []) : [],
+        visibleAbilityIds: open ? (loadout?.getVisibleAbilityIds() ?? []) : [],
+        footer: open ? (loadout?.getFooterScreenBounds() ?? null) : null,
+        hotbar: scene?.hudUi?.getAbilityBarBounds() ?? null,
+        slots,
+        selectedAbilityId: open ? (loadout?.getSelectedAbilityId() ?? null) : null,
+        equippedAbilityIds:
+          world && playerEid >= 0
+            ? [...(world.abilityStatesByEntity.get(playerEid)?.equippedActiveAbilityIds ?? [])]
+            : [],
+      };
+    },
+  };
+  probeWindow.__abilitiesProbe = probe;
+  const genericProbeWindow = window as unknown as {
+    __uiProbe?: { ready(): boolean };
+  };
+  const readyAlias = { ready: probe.ready };
+  if (reviewMode) genericProbeWindow.__uiProbe = readyAlias;
+
   function restartScene(): void {
     // Rebuild the entire Phaser game so every closure (configureWorld,
     // preSystems) captures the current toggle state and the arena regen
@@ -631,7 +756,10 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
 
   return () => {
     window.clearInterval(hudInterval);
+    if (probeWindow.__abilitiesProbe === probe) delete probeWindow.__abilitiesProbe;
+    if (genericProbeWindow.__uiProbe === readyAlias) delete genericProbeWindow.__uiProbe;
     game.destroy(true);
+    for (const restore of reviewStyleRestorers.reverse()) restore();
     hint.remove();
     root.remove();
   };
