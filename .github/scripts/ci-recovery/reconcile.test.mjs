@@ -120,8 +120,9 @@ function startServer(routes) {
           });
           handler = entry?.[1];
         }
-        if (handler) {
-          const result = handler(req.url, parsed) ?? {};
+        const routeHandler = typeof handler === 'function' ? handler : undefined;
+        if (routeHandler) {
+          const result = routeHandler(req.url, parsed) ?? {};
           const status = result.status ?? 200;
           const bodyStr = result.body !== undefined ? JSON.stringify(result.body) : '{}';
           res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -598,7 +599,6 @@ test('reconcile proceeds when copilot is assigned but no lease/state exists', as
   // dry-run must reach blocker detection and print a would-assign line
   assert.match(stdout, /dry-run would-assign copilot/, 'expected dry-run to reach dispatch');
 });
-
 test('reconcile does not escalate router action-required run when it is the only obstruction', async (t) => {
   // The CI Recovery Router is a non-required infrastructure workflow; its
   // action_required status must remain a skip, not a blocker, preserving the
