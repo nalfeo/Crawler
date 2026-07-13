@@ -1308,6 +1308,80 @@ describe('BehaviorTreeAI', () => {
     expect(Math.abs(inputState.moveX) + Math.abs(inputState.moveY)).toBeGreaterThan(0);
   });
 
+  it('PROVIDER: RETREAT/ENGAGE health-driven churn accumulates stall memory instead of resetting it each cycle', () => {
+    // End-to-end regression for the SECOND canonical 600-run cloud gate
+    // finding (2026-07-13): heavy combat toggling Track A's winner between
+    // an in-room RETREAT (fleeing to safety) and an out-of-room ENGAGE every
+    // few polls must not let the route's no-progress watchdog reset to a
+    // fresh budget on every ENGAGE resumption — otherwise no single burst
+    // between interruptions ever accumulates enough stalled polls to detect
+    // a genuine, long-running stall. This drives real health-based RETREAT
+    // via the provider's own low-HP threshold (not a synthetic candidate),
+    // toggling deterministically for many more cycles than a single 45-poll
+    // budget could survive if each cycle reset the counter.
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    meetTutorialGoon(world);
+    selectFloor1StarterWeapon(world, 0);
+    world.floorMap = makeWalledSafeRoomMap({ door: false });
+    world.stores.position.x[player] = 14;
+    world.stores.position.y[player] = 14; // tile (4,4), inside origin room
+    world.playerInSafeRoom = true;
+    world.stores.health.max[player] = 100;
+
+    const guideNpcEid = world.floorScenario!.guideNpcEid;
+    expect(guideNpcEid).not.toBeNull();
+    world.stores.position.x[guideNpcEid!] = 42;
+    world.stores.position.y[guideNpcEid!] = 14;
+
+    // Enemy reachable through the (permanently open, unlocked) door.
+    const enemyEid = spawnEnemy(world, 28, 14, 100);
+    const door = addEntity(world.ecs);
+    addComponent(
+      world.ecs,
+      door,
+      set(DoorState, { tileX: 6, tileY: 3, logicalOpen: 1, isLocked: 0 }),
+    );
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    const inputState = createInputState();
+
+    // Poll 1 at full health: route activates toward the door via ENGAGE.
+    world.stores.health.current[player] = 100;
+    ai.poll(inputState, world);
+    expect(ai.getSafeRoomRouteDebug().phase).toBe('active');
+    expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+    expect(ai.getDecision().targetEid).toBe(enemyEid);
+
+    // Toggle health-driven RETREAT/ENGAGE churn for well over one no-progress
+    // budget's worth of polls — position is deliberately NEVER updated
+    // (simulates being held near the doorway), so a per-activation-reset
+    // design would never accumulate enough stall to release; the fix must.
+    let releasedAtPoll = -1;
+    const totalPolls = SAFE_ROOM_ROUTE_NO_PROGRESS_FRAMES * 2;
+    for (let i = 0; i < totalPolls; i += 1) {
+      // Cycle every 4 polls: critically low HP (forces RETREAT, flee target
+      // typically resolves inside the room) then recovered (ENGAGE resumes).
+      world.stores.health.current[player] = i % 4 < 2 ? 5 : 100;
+      ai.poll(inputState, world);
+      if (
+        ai.getSafeRoomRouteDebug().phase === 'idle' &&
+        !ai.getSafeRoomRouteDebug().attemptActive
+      ) {
+        releasedAtPoll = i;
+        break;
+      }
+    }
+
+    // The attempt must eventually release (either via the no-progress
+    // watchdog or the dormant decay) rather than being wiped and silently
+    // restarted every single RETREAT/ENGAGE cycle — proving stall memory
+    // survives the churn instead of being erased by it.
+    expect(releasedAtPoll).toBeGreaterThan(-1);
+    expect(releasedAtPoll).toBeLessThan(totalPolls);
+  });
+
   it("PROVIDER: teleporting player outside a blocked route's origin room clears the route to idle and resumes locomotion", () => {
     // Sealed room (door: null) — route is immediately blocked. After an
     // external event moves the player outside the origin room the next poll

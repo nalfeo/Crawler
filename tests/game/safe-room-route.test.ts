@@ -29,6 +29,7 @@ import {
   SAFE_ROOM_ROUTE_NO_PROGRESS_FRAMES,
   SAFE_ROOM_ROUTE_PROGRESS_EPSILON_FT,
   SAFE_ROOM_ROUTE_SUPPRESS_FRAMES,
+  SAFE_ROOM_ROUTE_ATTEMPT_DORMANT_FRAMES,
   type SemanticCommitmentCandidate,
   type SafeRoomRouteDeps,
 } from '../../src/game/ai/safe-room-route.js';
@@ -670,6 +671,164 @@ describe('safe-room-route: no-progress watchdog', () => {
   });
 });
 
+describe('safe-room-route: exit-frontier-scoped egress attempt (churn stability)', () => {
+  // Regression coverage for the second canonical 600-run cloud gate finding
+  // (2026-07-13): heavy combat can make Track A's winner toggle rapidly
+  // among external states (e.g. ENGAGE) and IN-ROOM states (e.g. RETREAT
+  // fleeing to safety) every ~10-20 polls. Each toggle into an in-room
+  // target correctly fires the same-room bypass immediately (Retreat must
+  // never be delayed), but a naive per-activation no-progress watchdog gets
+  // reset to a fresh Infinity/0 baseline every time ENGAGE resumes — so no
+  // single burst ever accumulates enough stalled polls to trip the
+  // watchdog, even after 100+ seconds of the player never actually leaving
+  // the room. This is a GENERIC state-machine property test, not tied to
+  // any specific seed/weapon/production scenario.
+  it('accumulates no-progress across a same-room-bypass interlude instead of resetting (no thrash-proof escape)', () => {
+    const { findPath } = countingFindPath(straightLinePath);
+    const deps = makeDeps({ findPath });
+
+    // Activate a normal external (ENGAGE) egress attempt; player never moves
+    // (simulates being held in place near the doorway).
+    let result = updateSafeRoomRouteState(initial(), input(), deps);
+    expect(result.state.phase).toBe('active');
+
+    // Burn most of the no-progress budget on the initial ENGAGE burst.
+    const burstPolls = SAFE_ROOM_ROUTE_NO_PROGRESS_FRAMES - 5;
+    for (let i = 0; i < burstPolls; i += 1) {
+      result = updateSafeRoomRouteState(result.state, input(), deps);
+    }
+    expect(result.state.phase).toBe('active');
+    const noProgressBeforeInterlude = result.state.noProgressFrames;
+    expect(noProgressBeforeInterlude).toBeGreaterThan(0);
+
+    // Interrupt with a handful of RETREAT-to-safety polls (same-room target —
+    // a point well inside the origin room). The same-room bypass must fire
+    // immediately every poll (movement responsiveness unaffected) but must
+    // NOT reset the accumulated no-progress count back to 0.
+    const retreatToSafety = candidate({
+      state: AIState.RETREAT,
+      targetEid: null,
+      targetX: 1 * REALISTIC_TILE_FT,
+      targetY: 0,
+    });
+    for (let i = 0; i < 5; i += 1) {
+      result = updateSafeRoomRouteState(result.state, input({ candidate: retreatToSafety }), deps);
+      expect(result.state.phase).toBe('idle'); // bypassed immediately every poll
+      expect(result.moveTarget).toBeNull(); // raw Retreat target drives movement, unobstructed
+    }
+    // The interlude must not have reset the stall memory.
+    expect(result.state.noProgressFrames).toBeGreaterThanOrEqual(noProgressBeforeInterlude);
+
+    // ENGAGE resumes (same door). Because the interlude preserved the
+    // accumulated stall count instead of resetting it, only a FEW more
+    // polls (not another full 45-poll budget) should be needed to trip the
+    // watchdog — proving the fix, since a per-activation-reset design would
+    // require the FULL budget again from scratch here.
+    let released = false;
+    for (let i = 0; i < 10; i += 1) {
+      result = updateSafeRoomRouteState(result.state, input(), deps);
+      if (result.state.phase === 'idle' && result.state.lastReseedCause === 'no-progress') {
+        released = true;
+        break;
+      }
+    }
+    expect(released).toBe(true);
+  });
+
+  it('does not penalize a genuinely different door with another doorstall (multi-door room)', () => {
+    // A tiny two-door fake world: tiles x in [0,5] are the origin safe room;
+    // x=6,y=0 is door A (leads to exterior tile x=7,y=0); x=0,y=6 is door B
+    // (leads to exterior tile x=0,y=7) — a different exit entirely, reached
+    // by going through y instead of x. Distinct topology from the shared
+    // 1D-corridor fixture used elsewhere in this file, so this test is
+    // self-contained.
+    const DOOR_A_ORIGIN_ROOM = 0;
+    const EXT = -1;
+    const getRoomAtTwoDoor = (tx: number, ty: number): number => {
+      if (tx >= 0 && tx <= 5 && ty === 0) return DOOR_A_ORIGIN_ROOM;
+      if (tx === 0 && ty >= 0 && ty <= 5) return DOOR_A_ORIGIN_ROOM;
+      return EXT;
+    };
+    const findPathTwoDoor = (start: TilePoint, goal: TilePoint): TilePoint[] => {
+      // Straight line along whichever axis the goal differs on — enough to
+      // exercise two independent doors deterministically.
+      const path: TilePoint[] = [];
+      if (goal.y === 0) {
+        const step = goal.x >= start.x ? 1 : -1;
+        for (let x = start.x; x !== goal.x + step; x += step) path.push({ x, y: 0 });
+      } else if (goal.x === 0) {
+        const step = goal.y >= start.y ? 1 : -1;
+        for (let y = start.y; y !== goal.y + step; y += step) path.push({ x: 0, y });
+      }
+      return path;
+    };
+    const deps: SafeRoomRouteDeps = {
+      worldToTile,
+      tileToWorld,
+      getRoomAt: getRoomAtTwoDoor,
+      isSafeRoomId: (id) => id === DOOR_A_ORIGIN_ROOM,
+      findPath: findPathTwoDoor,
+    };
+
+    // Stall out an attempt through door A (exit at x=6,y=0 → exterior x=7).
+    const doorACandidate = candidate({ targetX: 9 * REALISTIC_TILE_FT, targetY: 0 });
+    let result = updateSafeRoomRouteState(
+      initial(),
+      input({ playerX: 3 * REALISTIC_TILE_FT, playerY: 0, candidate: doorACandidate }),
+      deps,
+    );
+    expect(result.state.phase).toBe('active');
+    for (let i = 0; i < SAFE_ROOM_ROUTE_NO_PROGRESS_FRAMES + 2; i += 1) {
+      result = updateSafeRoomRouteState(
+        result.state,
+        input({ playerX: 3 * REALISTIC_TILE_FT, playerY: 0, candidate: doorACandidate }),
+        deps,
+      );
+    }
+    expect(result.state.phase).toBe('idle');
+    expect(result.state.lastReseedCause).toBe('no-progress');
+
+    // A genuinely different target through door B (exit at x=0,y=6) must
+    // activate immediately and with a FRESH, unpenalized budget — door A's
+    // stall must never leak into door B's attempt.
+    const doorBCandidate = candidate({
+      targetEid: 999,
+      targetX: 0,
+      targetY: 9 * REALISTIC_TILE_FT,
+    });
+    const doorBResult = updateSafeRoomRouteState(
+      result.state,
+      input({ playerX: 0, playerY: 3 * REALISTIC_TILE_FT, candidate: doorBCandidate }),
+      deps,
+    );
+    expect(doorBResult.state.phase).toBe('active');
+    expect(doorBResult.state.noProgressFrames).toBe(0);
+  });
+
+  it('retires a stale attempt after a sustained (not merely blipped) same-room dwell', () => {
+    const { findPath } = countingFindPath(straightLinePath);
+    const deps = makeDeps({ findPath });
+    let result = updateSafeRoomRouteState(initial(), input(), deps);
+    expect(result.state.phase).toBe('active');
+    expect(toSafeRoomRouteDebugSnapshot(result.state).attemptActive).toBe(true);
+
+    // Genuinely settle: sustained same-room dwell for far longer than any
+    // realistic single combat interruption — must eventually retire the
+    // attempt rather than let stall memory linger indefinitely.
+    const insideCandidate = candidate({
+      state: AIState.COLLECT,
+      targetEid: null,
+      targetX: 1 * REALISTIC_TILE_FT,
+      targetY: 0,
+    });
+    for (let i = 0; i < SAFE_ROOM_ROUTE_ATTEMPT_DORMANT_FRAMES + 2; i += 1) {
+      result = updateSafeRoomRouteState(result.state, input({ candidate: insideCandidate }), deps);
+    }
+    expect(toSafeRoomRouteDebugSnapshot(result.state).attemptActive).toBe(false);
+    expect(result.state.bestEndpointDistanceFt).toBe(Number.POSITIVE_INFINITY);
+  });
+});
+
 describe('safe-room-route: completion (path-prefix/door-edge, not playerInSafeRoom flicker)', () => {
   it('completes and returns to idle once the player has walked the full exit path', () => {
     const { findPath, callCount } = countingFindPath(straightLinePath);
@@ -939,6 +1098,7 @@ describe('safe-room-route: purity and debug snapshot', () => {
       pathLength: 5,
       lastReseedCause: 'activation',
       noProgressFrames: 0,
+      attemptActive: true,
       suppressFramesRemaining: 0,
       totalActivations: 1,
       totalCompletions: 0,

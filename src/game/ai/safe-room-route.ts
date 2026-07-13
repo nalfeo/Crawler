@@ -92,16 +92,51 @@ export interface SafeRoomRouteState {
     | 'nav-epoch-change'
     | 'no-progress'
     | null;
-  /** Closest distance-to-endpoint (feet) observed since the current route
-   * (re)activated. `Infinity` while idle. Drives the no-progress watchdog —
-   * diagnostic-adjacent but DOES influence behavior (unlike the lifetime
-   * counters below), so it is reset on every (re)activation, not preserved
-   * across an abort. */
+  /** Closest distance (feet) to {@link attemptExitTile} observed since the
+   * current egress ATTEMPT began (see `attemptExitKey` — this is now scoped
+   * to "trying to reach this specific door", not to a single unbroken
+   * `'active'` burst). `Infinity` when no attempt is tracked. Drives the
+   * no-progress watchdog — diagnostic-adjacent but DOES influence behavior
+   * (unlike the lifetime counters below). */
   readonly bestEndpointDistanceFt: number;
-  /** Consecutive polls since `bestEndpointDistanceFt` last improved by at
-   * least {@link SAFE_ROOM_ROUTE_PROGRESS_EPSILON_FT}. Resets to 0 while
-   * idle or on any real improvement. */
+  /** Consecutive MEASURED polls since `bestEndpointDistanceFt` last improved
+   * by at least {@link SAFE_ROOM_ROUTE_PROGRESS_EPSILON_FT}. Persists across
+   * brief same-room-bypass interludes (e.g. Retreat fleeing to a point
+   * inside the room) as long as the attempt itself survives — see
+   * `attemptExitKey`/`attemptDormantFrames` — so combat-driven Retreat/
+   * Engage/Collect churn near a doorway cannot silently reset this counter
+   * to 0 every cycle and mask a genuine multi-second stall (found via the
+   * canonical 600-run cloud gate, 2026-07-13: 3 previously-clean seeds
+   * regressed to timeouts because each individual burst between rapid
+   * same-room interruptions looked locally healthy). */
   readonly noProgressFrames: number;
+  /** Stable identity of the door/exit tile the current egress ATTEMPT is
+   * measured against: `"${originRoomId}:${tileX},${tileY}"` of the first
+   * tile classified outside the origin room (the pre-buffer exit-index
+   * tile — topologically stable regardless of which specific external
+   * target/state chose this door). `null` when no attempt is tracked. A
+   * fresh (re)activation only CONTINUES `bestEndpointDistanceFt`/
+   * `noProgressFrames` when its resolved exit tile matches this key;
+   * otherwise it starts a brand-new attempt. Scoping to the specific exit
+   * (not the whole room) means an unrelated, easily-reachable target
+   * through a DIFFERENT door in a multi-door room is never penalized by a
+   * stall on this one. */
+  readonly attemptExitKey: string | null;
+  /** The exit tile itself (see {@link attemptExitKey}), stored so progress
+   * can be measured every poll — including same-room-bypass interludes,
+   * where there is no `path` to derive it from. `null` when no attempt is
+   * tracked. */
+  readonly attemptExitTile: TilePoint | null;
+  /** Consecutive polls where the CURRENT candidate needed no egress at all
+   * (a same-room-bypass poll) while an attempt was still live. A generous
+   * decay safety-valve: if this exceeds
+   * {@link SAFE_ROOM_ROUTE_ATTEMPT_DORMANT_FRAMES} the attempt is retired
+   * (the player has genuinely settled, not just blipped through a transient
+   * Retreat-to-safety detour) — chosen far above any realistic single
+   * combat-driven interruption so rapid state oscillation cannot exploit it
+   * to keep re-arming a fresh budget. Resets to 0 whenever the attempt is
+   * actively measured (steady-state active polls). */
+  readonly attemptDormantFrames: number;
   /** Commitment key a no-progress release just gave up on, or `null` when
    * nothing is suppressed. While non-null and {@link suppressFramesRemaining}
    * is positive, re-activation is skipped for THIS EXACT commitment (a
@@ -226,6 +261,23 @@ export const SAFE_ROOM_ROUTE_PROGRESS_EPSILON_FT = 3;
  * calibrated and shipped). */
 export const SAFE_ROOM_ROUTE_SUPPRESS_FRAMES = 120;
 
+/** Decay safety-valve (polls) for an egress ATTEMPT (see `attemptExitKey`).
+ * A same-room-bypass poll (no egress needed this poll — e.g. Retreat fleeing
+ * to a point inside the room) does NOT clear the attempt's stall bookkeeping
+ * on its own — that is the entire point of tracking progress at the
+ * attempt level instead of per-`'active'`-burst — but an attempt still must
+ * not linger forever if the player has genuinely settled (killed the
+ * swarm, is calmly shopping/crafting) rather than merely blipped through a
+ * transient interruption. `attemptDormantFrames` counts CONSECUTIVE
+ * same-room-bypass polls; crossing this threshold fully retires the
+ * attempt. Chosen (30s @ 60fps) far above any realistic single combat-
+ * driven Retreat/Engage/Collect oscillation period (observed ~10-20 frames
+ * in the regression trace) specifically so rapid state churn CANNOT exploit
+ * it to keep re-arming a fresh no-progress budget every cycle — a much
+ * shorter threshold was rejected in adversarial review for exactly this
+ * gameability risk. */
+export const SAFE_ROOM_ROUTE_ATTEMPT_DORMANT_FRAMES = 1800;
+
 function quantize(value: number): number {
   return Math.round(value / COMMITMENT_QUANTIZE_FT) * COMMITMENT_QUANTIZE_FT;
 }
@@ -286,6 +338,9 @@ export function createInitialSafeRoomRouteState(): SafeRoomRouteState {
     lastReseedCause: null,
     bestEndpointDistanceFt: Number.POSITIVE_INFINITY,
     noProgressFrames: 0,
+    attemptExitKey: null,
+    attemptExitTile: null,
+    attemptDormantFrames: 0,
     suppressedCommitmentKey: null,
     suppressFramesRemaining: 0,
     totalActivations: 0,
@@ -295,6 +350,13 @@ export function createInitialSafeRoomRouteState(): SafeRoomRouteState {
   };
 }
 
+/** Base idle transition. Deliberately does NOT touch the egress-attempt
+ * fields (`bestEndpointDistanceFt`/`noProgressFrames`/`attemptExitKey`/
+ * `attemptExitTile`/`attemptDormantFrames`) — different callers need
+ * different attempt-clearing behavior (a transient same-room-bypass MUST
+ * preserve the attempt; a genuine completion/give-up/room-exit MUST clear
+ * it), so each call site decides explicitly via `retireAttempt(...)` or by
+ * passing already-updated attempt fields through the spread below. */
 function toIdle(prev: SafeRoomRouteState): SafeRoomRouteState {
   return {
     ...prev,
@@ -304,8 +366,24 @@ function toIdle(prev: SafeRoomRouteState): SafeRoomRouteState {
     commitmentKey: null,
     path: [],
     segmentIndex: 0,
+  };
+}
+
+/** Fully retires a live egress attempt: clears `bestEndpointDistanceFt`/
+ * `noProgressFrames`/`attemptExitKey`/`attemptExitTile`/`attemptDormantFrames`
+ * back to their cold-start values. Used wherever an attempt is genuinely
+ * done — success, give-up, the player physically leaving the origin room,
+ * or an external abort — as opposed to a transient same-room-bypass
+ * interlude, which deliberately preserves the attempt (see
+ * `measureAttemptProgress`). */
+function retireAttempt(state: SafeRoomRouteState): SafeRoomRouteState {
+  return {
+    ...state,
     bestEndpointDistanceFt: Number.POSITIVE_INFINITY,
     noProgressFrames: 0,
+    attemptExitKey: null,
+    attemptExitTile: null,
+    attemptDormantFrames: 0,
   };
 }
 
@@ -319,18 +397,19 @@ function toIdle(prev: SafeRoomRouteState): SafeRoomRouteState {
  * `totalBlocked`/`totalReseeds`, silently discarding lifetime telemetry that
  * sweep artifacts and divergence investigations rely on.
  *
- * ALSO clears any live no-progress suppression window: an abort is a genuine
- * "start fresh" moment (e.g. hostile-encounter invalidation just discarded
- * the entire semantic decision and dozens of other transient fields), so a
- * leftover cooldown from an unrelated earlier stall must not block the next
- * commitment even if it happens to reuse the same key. This is intentionally
- * a SEPARATE code path from the no-progress release itself (which sets
- * suppression via a direct `toIdle(...)` call, not this function) — only an
- * external abort clears it.
+ * ALSO retires any live egress attempt and suppression window: an abort is a
+ * genuine "start fresh" moment (e.g. hostile-encounter invalidation just
+ * discarded the entire semantic decision and dozens of other transient
+ * fields), so leftover stall bookkeeping or a cooldown from an unrelated
+ * earlier attempt must not linger or block the next commitment even if it
+ * happens to resolve to the same door. This is intentionally a SEPARATE code
+ * path from the no-progress release itself and from a transient same-room
+ * bypass (both of which manage attempt state directly) — only an external
+ * abort forces a full retire.
  */
 export function abortSafeRoomRoute(prev: SafeRoomRouteState): SafeRoomRouteState {
   return {
-    ...toIdle(prev),
+    ...retireAttempt(toIdle(prev)),
     suppressedCommitmentKey: null,
     suppressFramesRemaining: 0,
   };
@@ -349,6 +428,43 @@ export function abortSafeRoomRoute(prev: SafeRoomRouteState): SafeRoomRouteState
 function initialSegmentIndex(path: readonly TilePoint[], playerTile: TilePoint): number {
   const idx = path.findIndex((tile) => tile.x !== playerTile.x || tile.y !== playerTile.y);
   return idx === -1 ? Math.min(1, path.length - 1) : idx;
+}
+
+/** Stable identity for an egress attempt: room id + the specific door/exit
+ * tile. Two (re)activations that resolve the SAME door produce the same
+ * key regardless of which external target/state chose it, which is what
+ * lets `bestEndpointDistanceFt`/`noProgressFrames` survive brief same-room
+ * interludes and rapid semantic-winner churn between them — while a
+ * genuinely DIFFERENT door (multi-door room, different target) still gets
+ * its own independent, unpenalized attempt. */
+function attemptExitKeyFor(originRoomId: number, exitTile: TilePoint): string {
+  return `${originRoomId}:${exitTile.x},${exitTile.y}`;
+}
+
+/** Measures this poll's progress against the current egress attempt's fixed
+ * exit tile (not the per-activation buffered path endpoint, which can shift
+ * slightly between reactivations even for "the same door"). Shared by the
+ * steady-state `'active'` branch and the same-room-bypass interlude so both
+ * update the SAME persistent counters with the SAME epsilon logic — this is
+ * what lets stall detection span a burst of Retreat/Engage/Collect churn
+ * instead of being wiped every time the semantic winner changes. Returns
+ * `prev`'s values unchanged when no attempt is tracked. */
+function measureAttemptProgress(
+  prev: SafeRoomRouteState,
+  deps: SafeRoomRouteDeps,
+  playerX: number,
+  playerY: number,
+): { bestDistanceFt: number; noProgressFrames: number } {
+  if (!prev.attemptExitTile) {
+    return { bestDistanceFt: prev.bestEndpointDistanceFt, noProgressFrames: prev.noProgressFrames };
+  }
+  const exitWorld = deps.tileToWorld(prev.attemptExitTile.x, prev.attemptExitTile.y);
+  const distFt = Math.hypot(playerX - exitWorld.x, playerY - exitWorld.y);
+  const improved = distFt <= prev.bestEndpointDistanceFt - SAFE_ROOM_ROUTE_PROGRESS_EPSILON_FT;
+  return {
+    bestDistanceFt: improved ? distFt : prev.bestEndpointDistanceFt,
+    noProgressFrames: improved ? 0 : prev.noProgressFrames + 1,
+  };
 }
 
 function computeRoute(
@@ -372,6 +488,10 @@ function computeRoute(
       path: [],
       segmentIndex: 0,
       lastReseedCause: cause,
+      // No legal path at all ⇒ no exit tile is resolvable, so there is
+      // nothing stable left to measure an attempt against; a subsequent
+      // successful (re)activation always re-derives (continuing or fresh)
+      // from its own resolved exit tile regardless of what is left here.
       bestEndpointDistanceFt: Number.POSITIVE_INFINITY,
       noProgressFrames: 0,
       suppressedCommitmentKey: null,
@@ -394,6 +514,14 @@ function computeRoute(
       break;
     }
   }
+  const exitTile = fullPath[exitIndex]!;
+  const exitKey = attemptExitKeyFor(originRoomId, exitTile);
+  // Continue the SAME egress attempt (carry forward its stall bookkeeping)
+  // only when this (re)activation resolves to the identical door as the
+  // attempt already in flight; a genuinely different door always starts a
+  // fresh, unpenalized attempt.
+  const continuingAttempt = prev.attemptExitKey === exitKey;
+
   const truncatedEnd = Math.min(fullPath.length - 1, exitIndex + SAFE_ROOM_ROUTE_EXIT_BUFFER_TILES);
   const path = fullPath.slice(0, truncatedEnd + 1);
   const segmentIndex = initialSegmentIndex(path, playerTile);
@@ -407,11 +535,17 @@ function computeRoute(
     path,
     segmentIndex,
     lastReseedCause: cause,
-    // Fresh no-progress watchdog baseline for this (re)activation — a prior
-    // route's stall history must never carry over and immediately trip the
-    // watchdog on a brand new, perfectly healthy path.
-    bestEndpointDistanceFt: Number.POSITIVE_INFINITY,
-    noProgressFrames: 0,
+    // Attempt-scoped watchdog baseline: continue if this (re)activation
+    // targets the SAME door as the in-flight attempt (see `exitKey` above),
+    // otherwise start fresh — a genuinely new door must never inherit a
+    // different door's stall history.
+    bestEndpointDistanceFt: continuingAttempt
+      ? prev.bestEndpointDistanceFt
+      : Number.POSITIVE_INFINITY,
+    noProgressFrames: continuingAttempt ? prev.noProgressFrames : 0,
+    attemptExitKey: exitKey,
+    attemptExitTile: exitTile,
+    attemptDormantFrames: 0,
     // A successful (re)activation always clears any prior suppression —
     // suppression only exists to stop the idle branch from immediately
     // reattempting the identical commitment; once a route is genuinely
@@ -432,7 +566,7 @@ function computeRoute(
 
 function completeRoute(prev: SafeRoomRouteState): SafeRoomRouteUpdateResult {
   const state: SafeRoomRouteState = {
-    ...toIdle(prev),
+    ...retireAttempt(toIdle(prev)),
     totalCompletions: prev.totalCompletions + 1,
   };
   return { state, moveTarget: null, blocked: false };
@@ -443,6 +577,39 @@ function completeRoute(prev: SafeRoomRouteState): SafeRoomRouteUpdateResult {
  * allocates nothing per poll. */
 function passThrough(prev: SafeRoomRouteState): SafeRoomRouteUpdateResult {
   return { state: prev, moveTarget: null, blocked: false };
+}
+
+/** Same-safe-space bypass: the current poll's candidate doesn't need egress
+ * at all (its target/anchor is inside the origin room — e.g. Retreat
+ * fleeing to a point of safety inside the same room). Normal distance gates
+ * apply directly (`moveTarget: null`) EVERY poll this fires, with no delay —
+ * a life-critical Retreat-to-safety must never be held up by a stale egress
+ * waypoint. Unlike a full `toIdle`, this deliberately PRESERVES the live
+ * egress attempt's stall bookkeeping (see `measureAttemptProgress`): a
+ * transient interruption must not silently reset the no-progress watchdog,
+ * or rapid Retreat/Engage/Collect churn near a doorway could erase it every
+ * cycle and mask a genuine multi-second stall (the exact regression found by
+ * the canonical 600-run cloud gate, 2026-07-13). The attempt is only fully
+ * retired after a GENEROUS sustained run of same-room polls (see
+ * `SAFE_ROOM_ROUTE_ATTEMPT_DORMANT_FRAMES`), signaling the player has
+ * genuinely settled rather than merely blipped through a detour. */
+function sameRoomBypass(
+  prev: SafeRoomRouteState,
+  input: SafeRoomRouteInput,
+  deps: SafeRoomRouteDeps,
+): SafeRoomRouteUpdateResult {
+  const idled = prev.phase === 'idle' ? prev : toIdle(prev);
+  const measured = measureAttemptProgress(prev, deps, input.playerX, input.playerY);
+  const dormantFrames = prev.attemptExitTile ? prev.attemptDormantFrames + 1 : 0;
+  if (dormantFrames > SAFE_ROOM_ROUTE_ATTEMPT_DORMANT_FRAMES) {
+    return passThrough(retireAttempt(idled));
+  }
+  return passThrough({
+    ...idled,
+    bestEndpointDistanceFt: measured.bestDistanceFt,
+    noProgressFrames: measured.noProgressFrames,
+    attemptDormantFrames: dormantFrames,
+  });
 }
 
 function tryActivate(
@@ -456,8 +623,10 @@ function tryActivate(
   const originRoomId = deps.getRoomAt(playerTile.x, playerTile.y);
   if (originRoomId < 0 || !deps.isSafeRoomId(originRoomId)) {
     // No known origin safe room (no room graph data, or the player is not
-    // classified into a registered SAFE room) — nothing to constrain.
-    return passThrough(prev.phase === 'idle' ? prev : toIdle(prev));
+    // classified into a registered SAFE room) — nothing to constrain, and no
+    // stable room context to keep an attempt meaningfully scoped to, so
+    // retire it fully rather than preserving stale bookkeeping.
+    return passThrough(retireAttempt(prev.phase === 'idle' ? prev : toIdle(prev)));
   }
   const anchorTile = deps.worldToTile(
     input.candidate.targetX ?? input.playerX,
@@ -465,9 +634,7 @@ function tryActivate(
   );
   const anchorRoomId = deps.getRoomAt(anchorTile.x, anchorTile.y);
   if (anchorRoomId === originRoomId) {
-    // Same-safe-space bypass: the selected target is inside the same origin
-    // room, so normal distance gates apply directly — no route needed.
-    return passThrough(prev.phase === 'idle' ? prev : toIdle(prev));
+    return sameRoomBypass(prev, input, deps);
   }
   return computeRoute(
     prev,
@@ -537,7 +704,7 @@ export function updateSafeRoomRouteState(
   // commitment key. Re-check geometry every poll so same-space interactions
   // release immediately instead of waiting for a topology epoch.
   if (candidateRoomId(input, deps) === prev.originRoomId) {
-    return passThrough(toIdle(prev));
+    return sameRoomBypass(prev, input, deps);
   }
 
   let current = prev;
@@ -575,11 +742,12 @@ export function updateSafeRoomRouteState(
     // pass-through so movement resumes freely toward the semantic target. Use
     // room membership (not the raw `playerInSafeRoom` boolean) to avoid
     // mouth-boundary flicker where `playerInSafeRoom` lags one tile behind the
-    // actual room transition.
+    // actual room transition. The player has genuinely left, so retire the
+    // attempt fully rather than preserving stale stall bookkeeping.
     const playerTile = deps.worldToTile(input.playerX, input.playerY);
     const currentRoomId = deps.getRoomAt(playerTile.x, playerTile.y);
     if (currentRoomId !== current.originRoomId) {
-      return passThrough(toIdle(current));
+      return passThrough(retireAttempt(toIdle(current)));
     }
     // Stay frozen — no per-poll A* while blocked and nothing changed.
     return { state: current, moveTarget: null, blocked: true };
@@ -609,26 +777,28 @@ export function updateSafeRoomRouteState(
   // near the doorway — prevents genuine forward progress toward the
   // endpoint, this module must release control back to the semantic target
   // rather than override movement indefinitely toward a goal the player
-  // cannot currently reach. See the constant doc for how this was found.
-  const improved =
-    distToEndpointFt <= current.bestEndpointDistanceFt - SAFE_ROOM_ROUTE_PROGRESS_EPSILON_FT;
-  const bestEndpointDistanceFt = improved ? distToEndpointFt : current.bestEndpointDistanceFt;
-  const noProgressFrames = improved ? 0 : current.noProgressFrames + 1;
-  if (noProgressFrames > SAFE_ROOM_ROUTE_NO_PROGRESS_FRAMES) {
+  // cannot currently reach. Measured against the STABLE exit-frontier tile
+  // (`attemptExitTile`), not the buffered endpoint above, and persists
+  // across same-room-bypass interludes via `measureAttemptProgress` — see
+  // the constant doc and `sameRoomBypass` for how/why this was found.
+  const measured = measureAttemptProgress(current, deps, input.playerX, input.playerY);
+  if (measured.noProgressFrames > SAFE_ROOM_ROUTE_NO_PROGRESS_FRAMES) {
     return passThrough(
-      toIdle({
-        ...current,
-        lastReseedCause: 'no-progress',
-        totalReseeds: current.totalReseeds + 1,
-        // Suppress immediate reactivation of THIS EXACT commitment — without
-        // this, an unchanged stuck input reactivates the identical route one
-        // poll later and thrashes active/idle forever, recomputing A* every
-        // cycle (found via multi-model review). A genuinely different
-        // commitment next poll bypasses this immediately (see the idle
-        // branch above).
-        suppressedCommitmentKey: current.commitmentKey,
-        suppressFramesRemaining: SAFE_ROOM_ROUTE_SUPPRESS_FRAMES,
-      }),
+      retireAttempt(
+        toIdle({
+          ...current,
+          lastReseedCause: 'no-progress',
+          totalReseeds: current.totalReseeds + 1,
+          // Suppress immediate reactivation of THIS EXACT commitment — without
+          // this, an unchanged stuck input reactivates the identical route one
+          // poll later and thrashes active/idle forever, recomputing A* every
+          // cycle (found via multi-model review). A genuinely different
+          // commitment next poll bypasses this immediately (see the idle
+          // branch above).
+          suppressedCommitmentKey: current.commitmentKey,
+          suppressFramesRemaining: SAFE_ROOM_ROUTE_SUPPRESS_FRAMES,
+        }),
+      ),
     );
   }
 
@@ -645,8 +815,9 @@ export function updateSafeRoomRouteState(
   const advanced: SafeRoomRouteState = {
     ...current,
     segmentIndex,
-    bestEndpointDistanceFt,
-    noProgressFrames,
+    bestEndpointDistanceFt: measured.bestDistanceFt,
+    noProgressFrames: measured.noProgressFrames,
+    attemptDormantFrames: 0,
   };
   if (segmentIndex >= path.length) {
     return completeRoute(advanced);
@@ -661,11 +832,18 @@ export interface SafeRoomRouteDebugSnapshot {
   readonly segmentIndex: number;
   readonly pathLength: number;
   readonly lastReseedCause: SafeRoomRouteState['lastReseedCause'];
-  /** Consecutive polls since the current route last made measurable progress
-   * toward its endpoint. `0` while idle/blocked or immediately after
-   * improvement. Surfaced so a divergence investigation can see how close an
-   * active route was to tripping the no-progress watchdog. */
+  /** Consecutive polls since the current EGRESS ATTEMPT last made measurable
+   * progress toward its exit tile — persists across same-room-bypass
+   * interludes as long as the attempt survives (see `attemptExitKey`). `0`
+   * while no attempt is tracked or immediately after improvement. Surfaced
+   * so a divergence investigation can see how close an attempt was to
+   * tripping the no-progress watchdog even across a burst of semantic
+   * churn. */
   readonly noProgressFrames: number;
+  /** Whether an egress attempt is currently tracked (`attemptExitKey !==
+   * null`) — i.e. stall bookkeeping is live even if `phase` is
+   * momentarily `'idle'` via a same-room-bypass interlude. */
+  readonly attemptActive: boolean;
   /** Polls remaining before a suppressed commitment (one a no-progress
    * release just gave up on) becomes eligible to reactivate. `0` when
    * nothing is suppressed. */
@@ -686,6 +864,7 @@ export function toSafeRoomRouteDebugSnapshot(
     pathLength: state.path.length,
     lastReseedCause: state.lastReseedCause,
     noProgressFrames: state.noProgressFrames,
+    attemptActive: state.attemptExitKey !== null,
     suppressFramesRemaining: state.suppressFramesRemaining,
     totalActivations: state.totalActivations,
     totalCompletions: state.totalCompletions,
