@@ -65,6 +65,33 @@ import { findTilePath } from '../../src/core/map/pathfinding.js';
 import { selectBossSpawnPlacement } from '../../src/game/boss-spawn-placement.js';
 import { floor1Config } from '../../src/shared/floor-config.js';
 
+function roomPerimeterEntryCandidates(room: {
+  bounds: { x: number; y: number; width: number; height: number };
+}): Array<{
+  perimeter: { x: number; y: number };
+  interior: { x: number; y: number };
+}> {
+  const { x, y, width, height } = room.bounds;
+  return [
+    ...Array.from({ length: Math.max(0, width - 2) }, (_, index) => ({
+      perimeter: { x: x + 1 + index, y },
+      interior: { x: x + 1 + index, y: y + 1 },
+    })),
+    ...Array.from({ length: Math.max(0, width - 2) }, (_, index) => ({
+      perimeter: { x: x + 1 + index, y: y + height - 1 },
+      interior: { x: x + 1 + index, y: y + height - 2 },
+    })),
+    ...Array.from({ length: Math.max(0, height - 2) }, (_, index) => ({
+      perimeter: { x, y: y + 1 + index },
+      interior: { x: x + 1, y: y + 1 + index },
+    })),
+    ...Array.from({ length: Math.max(0, height - 2) }, (_, index) => ({
+      perimeter: { x: x + width - 1, y: y + 1 + index },
+      interior: { x: x + width - 2, y: y + 1 + index },
+    })),
+  ];
+}
+
 describe('floor1Scenario', () => {
   it('initializes Floor 1 into loadout state with deterministic starter choices', () => {
     const world = createTestWorld({ seed: 42 });
@@ -1468,37 +1495,7 @@ describe('floor1Scenario', () => {
 
       const perimeterEntry = (() => {
         const doorTiles = new Set(bossRoom.doors.map((door) => `${door.x},${door.y}`));
-        const candidates = [
-          ...Array.from({ length: Math.max(0, bossRoom.bounds.width - 2) }, (_, index) => ({
-            perimeter: { x: bossRoom.bounds.x + 1 + index, y: bossRoom.bounds.y },
-            interior: { x: bossRoom.bounds.x + 1 + index, y: bossRoom.bounds.y + 1 },
-          })),
-          ...Array.from({ length: Math.max(0, bossRoom.bounds.width - 2) }, (_, index) => ({
-            perimeter: {
-              x: bossRoom.bounds.x + 1 + index,
-              y: bossRoom.bounds.y + bossRoom.bounds.height - 1,
-            },
-            interior: {
-              x: bossRoom.bounds.x + 1 + index,
-              y: bossRoom.bounds.y + bossRoom.bounds.height - 2,
-            },
-          })),
-          ...Array.from({ length: Math.max(0, bossRoom.bounds.height - 2) }, (_, index) => ({
-            perimeter: { x: bossRoom.bounds.x, y: bossRoom.bounds.y + 1 + index },
-            interior: { x: bossRoom.bounds.x + 1, y: bossRoom.bounds.y + 1 + index },
-          })),
-          ...Array.from({ length: Math.max(0, bossRoom.bounds.height - 2) }, (_, index) => ({
-            perimeter: {
-              x: bossRoom.bounds.x + bossRoom.bounds.width - 1,
-              y: bossRoom.bounds.y + 1 + index,
-            },
-            interior: {
-              x: bossRoom.bounds.x + bossRoom.bounds.width - 2,
-              y: bossRoom.bounds.y + 1 + index,
-            },
-          })),
-        ];
-        return candidates.find(
+        return roomPerimeterEntryCandidates(bossRoom).find(
           ({ perimeter, interior }) =>
             !doorTiles.has(`${perimeter.x},${perimeter.y}`) &&
             floorMap.roomGraph.getRoomAt(interior.x, interior.y) === bossRoom.id &&
