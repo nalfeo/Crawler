@@ -184,7 +184,7 @@ export function createHudUI(scene: Phaser.Scene): {
       questTracker: questTracker.getBounds(),
       familyPanel: null,
       arrows: directionArrows.getBounds(),
-      mapOverlay: minimap.getOverlayBounds(),
+      mapOverlay: null,
       mapClose: minimap.getOverlayCloseBounds(),
     };
   }
