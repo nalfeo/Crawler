@@ -1,5 +1,16 @@
 [
   {
+    "commit": "1bec980c17ebfe0453be6502737c5630a62a0fff",
+    "commitDate": "2026-07-13T11:09:07Z",
+    "commitSubject": "fix(hud): hide Floor 2 family panel behind fullscreen map (#1118)",
+    "capturedAt": "2026-07-13T11:54:42.588Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29246126518",
+    "winRate": 0.92,
+    "totalWins": 276,
+    "totalRuns": 300,
+    "path": "by-sha/1bec980c17ebfe0453be6502737c5630a62a0fff.json"
+  },
+  {
     "commit": "587ce77e9cb1ee5353dd032586ac0f4cf8432e85",
     "commitDate": "2026-07-13T05:50:31Z",
     "commitSubject": "fix(ci-recovery): remove copilot-assignee short-circuit from recovery gate (#1108)",
