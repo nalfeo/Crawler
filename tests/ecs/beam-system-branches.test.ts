@@ -103,8 +103,7 @@ describe('beamSystem hit-gated weapon-skill XP', () => {
     const enemy = spawnEnemy(world, 30, 0, 50);
     world.elapsedMs = 1000;
     const beam = spawnBeam(world, 0, 0, 1, 0, 100, 15, 500, 0, player, TeamId.PLAYER);
-    world.attackSkillSources.set(beam, {
-      attackerEid: player,
+    world.attackWeaponSkillsByEntity.set(beam, {
       classSkillId: 'energy',
       typeSkillId: 'laser',
     });
@@ -123,7 +122,7 @@ describe('beamSystem hit-gated weapon-skill XP', () => {
     const player = spawnPlayer(world, 0, 0);
     const enemy = spawnEnemy(world, 30, 0, 50);
     world.elapsedMs = 1000;
-    // Beam spawned but no attackSkillSources entry registered for it.
+    // Beam spawned but no attackWeaponSkillsByEntity entry registered for it.
     spawnBeam(world, 0, 0, 1, 0, 100, 15, 500, 0, player, TeamId.PLAYER);
 
     beamSystem(world);

@@ -130,8 +130,7 @@ describe('areaDamageSystem hit-gated weapon-skill XP', () => {
     const enemy = spawnEnemy(world, 110, 100, 50);
     world.elapsedMs = 100;
     const aoeEid = spawnAreaAttack(world, 100, 100, player, 15, 40, 200, TeamId.PLAYER);
-    world.attackSkillSources.set(aoeEid, {
-      attackerEid: player,
+    world.attackWeaponSkillsByEntity.set(aoeEid, {
       classSkillId: 'arcane',
       typeSkillId: 'fireball',
     });
@@ -151,7 +150,7 @@ describe('areaDamageSystem hit-gated weapon-skill XP', () => {
     const player = spawnPlayer(world, 100, 100);
     const enemy = spawnEnemy(world, 110, 100, 50);
     world.elapsedMs = 100;
-    // Area attack spawned but no attackSkillSources entry registered for it.
+    // Area attack spawned but no attackWeaponSkillsByEntity entry registered for it.
     spawnAreaAttack(world, 100, 100, player, 15, 40, 200, TeamId.PLAYER);
 
     const collision = collisionSystem(world);
