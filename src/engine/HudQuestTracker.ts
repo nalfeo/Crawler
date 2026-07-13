@@ -65,16 +65,27 @@ export function fitQuestTrackerLines(
   const wrapped: string[] = [];
   for (const rawLine of lines) {
     const indent = rawLine.match(/^\s*/)?.[0] ?? '';
-    const words = rawLine.trim().split(/\s+/).filter(Boolean);
+    const contIndent = `${indent}  `;
+    // Use the tighter continuation budget so every pre-split chunk fits on
+    // both a primary and a continuation line without overflowing.
+    const tokenBudget = Math.max(1, maxChars - contIndent.length);
+    // Expand words: hard-split any token that exceeds the budget.
+    const rawWords = rawLine.trim().split(/\s+/).filter(Boolean);
+    const words: string[] = [];
+    for (const w of rawWords) {
+      for (let i = 0; i < w.length; i += tokenBudget) {
+        words.push(w.slice(i, i + tokenBudget));
+      }
+    }
     let current = indent;
     for (const word of words) {
       const candidate = current.trim().length === 0 ? `${indent}${word}` : `${current} ${word}`;
-      if (candidate.length <= maxChars || current.trim().length === 0) {
+      if (candidate.length <= maxChars) {
         current = candidate;
         continue;
       }
       wrapped.push(current);
-      current = `${indent}  ${word}`;
+      current = `${contIndent}${word}`;
     }
     if (current.trim().length > 0) {
       wrapped.push(current);
@@ -110,7 +121,7 @@ export function createHudQuestTracker(
     .rectangle(2, 2, NAV_QUEST_WIDTH - 4, TITLE_H, COLORS.titleStrip, 1)
     .setOrigin(0, 0)
     .setScrollFactor(0)
-    .setDepth(PIXEL_UI_DEPTH.panel + 1);
+    .setDepth(PIXEL_UI_DEPTH.panel + 0.5);
 
   const titleIcon = addPixelIcon(scene, PIXEL_ICON.quest, 14, 2 + TITLE_H / 2, {
     depth: PIXEL_UI_DEPTH.content,

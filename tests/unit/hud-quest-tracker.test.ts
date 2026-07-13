@@ -17,6 +17,22 @@ describe('fitQuestTrackerLines', () => {
     expect(lines.every((line) => line.length <= 39)).toBe(true);
   });
 
+  it('hard-splits a single token that exceeds the 32-character budget', () => {
+    const token = 'AVERYLONGTOKENTHATEXCEEDSTHIRTYTWOCHARSANDKEEPSGOING';
+    const lines = fitQuestTrackerLines([token]);
+
+    expect(lines.length).toBeGreaterThan(1);
+    expect(lines.every((line) => line.length <= 32)).toBe(true);
+  });
+
+  it('hard-splits an overlong first token on an indented line', () => {
+    const longWord = 'SUPERLONGWORDEXCEEDINGBUDGETCOMPLETELY';
+    const lines = fitQuestTrackerLines([`  ${longWord}`]);
+
+    expect(lines.every((line) => line.length <= 32)).toBe(true);
+    // No line should exceed the 32-char budget.
+  });
+
   it('caps crowded quest content and marks the truncation', () => {
     const lines = fitQuestTrackerLines(
       Array.from({ length: 12 }, (_, index) => `Quest objective ${index} with a long description`),

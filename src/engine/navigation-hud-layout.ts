@@ -57,10 +57,13 @@ export function resolveNavigationHudLayout(uiScale: number, floor: number): Navi
     floor >= 2
       ? [
           {
+            // Conservative union of bounds at scale=1 and scale=hudScale so
+            // the reservation covers the actual family panel regardless of
+            // which scale computeVitalsScale applies at runtime.
             x: GAME.WIDTH - FAMILY_PANEL_RIGHT_OFFSET * hudScale,
             y: GAME.HEIGHT - FAMILY_PANEL_BOTTOM_OFFSET * hudScale,
-            width: FAMILY_PANEL_WIDTH * hudScale,
-            height: FAMILY_PANEL_HEIGHT * hudScale,
+            width: FAMILY_PANEL_RIGHT_OFFSET * (hudScale - 1) + FAMILY_PANEL_WIDTH,
+            height: FAMILY_PANEL_BOTTOM_OFFSET * (hudScale - 1) + FAMILY_PANEL_HEIGHT,
           },
         ]
       : [];
