@@ -254,6 +254,10 @@ declare global {
       /** Dev-only: direct world + player access for screenshot/automation scripts. */
       getWorld?: () => GameWorld;
       getPlayerEid?: () => number;
+      getIntroData?: () =>
+        | { playerName: string; playerGender: 'female' | 'male' | 'other' }
+        | undefined;
+      getDirectorCommentaryText?: () => string | null;
       lighting: {
         getConfig: () => LightingConfig;
         setConfig: (partial: Partial<LightingConfig>) => void;
@@ -722,6 +726,11 @@ export class MainGameScene extends Phaser.Scene {
           ? {
               getWorld: () => this.world,
               getPlayerEid: () => this.playerEid,
+              getIntroData: () =>
+                this.game.registry.get(INTRO_DATA_REGISTRY_KEY) as
+                  | { playerName: string; playerGender: 'female' | 'male' | 'other' }
+                  | undefined,
+              getDirectorCommentaryText: () => this.directorCommentaryText?.text ?? null,
             }
           : {}),
         lighting: {
@@ -2650,7 +2659,7 @@ export class MainGameScene extends Phaser.Scene {
 
   private queueDirectorCommentary(text: string): void {
     // Substitute {playerName} with the player's chosen name (all occurrences).
-    const resolved = text.replace(/{playerName}/g, this.world.playerName);
+    const resolved = text.replace(/{playerName}/g, () => this.world.playerName);
     this.directorCommentaryText?.setText(`${DIRECTOR_LABEL_TEXT}: ${resolved}`).setVisible(true);
     this.commentaryHideAtMs = this.time.now + DIRECTOR_COMMENTARY_MS;
   }

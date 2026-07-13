@@ -14,6 +14,7 @@
 import Phaser from 'phaser';
 import { GAME } from '../../shared/constants.js';
 import { PIXEL_UI } from '../pixel-ui.js';
+import { getRenderScale } from '../render-scale.js';
 import { BootScene } from './BootScene.js';
 import {
   INTRO_DATA_REGISTRY_KEY,
@@ -23,6 +24,20 @@ import {
 } from '../../shared/intro-config.js';
 
 export type { PlayerGender };
+
+declare global {
+  interface Window {
+    __introDebug?: {
+      getState: () => {
+        renderScale: number;
+        cameraZoom: number;
+        cameraOriginX: number;
+        cameraOriginY: number;
+        selectedGender: PlayerGender;
+      };
+    };
+  }
+}
 
 const GENDER_OPTIONS: ReadonlyArray<{ id: PlayerGender; label: string }> = [
   { id: 'female', label: 'She / Her' },
@@ -64,14 +79,18 @@ const GOLD_COLOR = '#fcd34d';
 const SLATE_LIGHT = '#cbd5e1';
 const SLATE_DIM = '#94a3b8';
 const INPUT_BG = '#0a0e18';
-const BUTTON_DEFAULT_COLOR = 0x1e293b;
-const BUTTON_SELECTED_COLOR = 0x3b4f72;
 const BUTTON_TEXT_DEFAULT = '#94a3b8';
 const BUTTON_TEXT_SELECTED = '#f8fafc';
 const CONFIRM_COLOR = 0x1e4620;
 const CONFIRM_HOVER_COLOR = 0x276129;
 const CONFIRM_TEXT = '#86efac';
 const DIRECTOR_LABEL = 'DIRECTOR';
+const BUTTON_DEFAULT_BORDER = '#1e293b';
+const BUTTON_SELECTED_BORDER = '#4a6fa5';
+const BUTTON_DEFAULT_BACKGROUND = '#1e293b';
+const BUTTON_SELECTED_BACKGROUND = '#3b4f72';
+const NAME_INPUT_ARIA_LABEL = 'Player name';
+const GENDER_GROUP_ARIA_LABEL = 'Player gender';
 
 const PANEL_W = 640;
 const PANEL_H = 420;
@@ -83,10 +102,11 @@ export class IntroScene extends Phaser.Scene {
   static readonly KEY = 'IntroScene';
 
   private nameInput?: HTMLInputElement;
+  private genderFieldset?: HTMLFieldSetElement;
   private selectedGender: PlayerGender = DEFAULT_PLAYER_GENDER;
-  private genderButtons: Array<{
-    bg: Phaser.GameObjects.Rectangle;
-    label: Phaser.GameObjects.Text;
+  private genderControls: Array<{
+    input: HTMLInputElement;
+    label: HTMLLabelElement;
     id: PlayerGender;
   }> = [];
 
@@ -95,17 +115,19 @@ export class IntroScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.handleShutdown());
+
     // Auto-skip when running inside a lab or headless environment.
     if (isLabContext()) {
       this.advanceToGame();
       return;
     }
 
+    const renderScale = getRenderScale(this);
+    this.cameras.main.setOrigin(0, 0);
+    this.cameras.main.setZoom(renderScale);
     this.buildUI();
-  }
-
-  shutdown(): void {
-    this.removeNameInput();
+    this.installDebugProbe();
   }
 
   // ---------------------------------------------------------------------------
@@ -201,8 +223,8 @@ export class IntroScene extends Phaser.Scene {
 
     y += 24;
 
-    // Gender selection buttons.
-    this.createGenderButtons(boxX, y, boxW);
+    // Gender selection radios.
+    this.createGenderControls(boxX, y, boxW);
 
     y += 52;
 
@@ -226,6 +248,7 @@ export class IntroScene extends Phaser.Scene {
     input.value = DEFAULT_PLAYER_NAME;
     input.spellcheck = false;
     input.autocomplete = 'off';
+    input.setAttribute('aria-label', NAME_INPUT_ARIA_LABEL);
 
     // Position the input element over the canvas area.
     Object.assign(input.style, {
@@ -259,66 +282,126 @@ export class IntroScene extends Phaser.Scene {
     this.time.delayedCall(80, () => input.focus());
   }
 
-  private removeNameInput(): void {
+  private removeDomControls(): void {
     if (this.nameInput) {
       this.nameInput.remove();
       this.nameInput = undefined;
     }
+    if (this.genderFieldset) {
+      this.genderFieldset.remove();
+      this.genderFieldset = undefined;
+    }
+    this.genderControls.length = 0;
   }
 
   // ---------------------------------------------------------------------------
-  // Gender buttons
+  // Gender controls
   // ---------------------------------------------------------------------------
 
-  private createGenderButtons(startX: number, y: number, totalW: number): void {
-    const count = GENDER_OPTIONS.length;
-    const gap = 8;
-    const btnW = Math.floor((totalW - gap * (count - 1)) / count);
-    const btnH = 34;
-
-    GENDER_OPTIONS.forEach((opt, i) => {
-      const bx = startX + i * (btnW + gap);
-      const isSelected = opt.id === DEFAULT_PLAYER_GENDER;
-
-      const bg = this.add
-        .rectangle(bx, y, btnW, btnH, isSelected ? BUTTON_SELECTED_COLOR : BUTTON_DEFAULT_COLOR, 1)
-        .setOrigin(0, 0)
-        .setDepth(DEPTH + 1)
-        .setStrokeStyle(1, isSelected ? 0x4a6fa5 : 0x1e293b, 1)
-        .setInteractive({ useHandCursor: true });
-
-      const label = this.add
-        .text(bx + btnW / 2, y + btnH / 2, opt.label, {
-          fontFamily: 'monospace',
-          fontSize: '13px',
-          color: isSelected ? BUTTON_TEXT_SELECTED : BUTTON_TEXT_DEFAULT,
-        })
-        .setOrigin(0.5, 0.5)
-        .setDepth(DEPTH + 2);
-
-      bg.on('pointerdown', () => this.selectGender(opt.id));
-      bg.on('pointerover', () => {
-        if (opt.id !== this.selectedGender) {
-          bg.setFillStyle(0x253448, 1);
-        }
-      });
-      bg.on('pointerout', () => {
-        if (opt.id !== this.selectedGender) {
-          bg.setFillStyle(BUTTON_DEFAULT_COLOR, 1);
-        }
-      });
-
-      this.genderButtons.push({ bg, label, id: opt.id });
+  private createGenderControls(startX: number, gameY: number, totalW: number): void {
+    const canvasRect = this.game.canvas.getBoundingClientRect();
+    const scaleX = canvasRect.width / GAME.WIDTH;
+    const scaleY = canvasRect.height / GAME.HEIGHT;
+    const fieldset = document.createElement('fieldset');
+    fieldset.setAttribute('aria-label', GENDER_GROUP_ARIA_LABEL);
+    Object.assign(fieldset.style, {
+      position: 'fixed',
+      left: `${canvasRect.left + startX * scaleX}px`,
+      top: `${canvasRect.top + gameY * scaleY}px`,
+      width: `${totalW * scaleX}px`,
+      margin: '0',
+      padding: '0',
+      border: '0',
+      display: 'grid',
+      gridTemplateColumns: `repeat(${GENDER_OPTIONS.length}, 1fr)`,
+      gap: `${8 * scaleX}px`,
+      zIndex: '10000',
     });
+
+    const legend = document.createElement('legend');
+    legend.textContent = 'How do you identify?';
+    Object.assign(legend.style, {
+      position: 'absolute',
+      width: '1px',
+      height: '1px',
+      padding: '0',
+      margin: '-1px',
+      overflow: 'hidden',
+      clip: 'rect(0 0 0 0)',
+      whiteSpace: 'nowrap',
+      border: '0',
+    });
+    fieldset.appendChild(legend);
+
+    fieldset.addEventListener('keydown', (event: KeyboardEvent) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        this.handleConfirm();
+      }
+      event.stopPropagation();
+    });
+
+    for (const opt of GENDER_OPTIONS) {
+      const label = document.createElement('label');
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = 'player-gender';
+      input.value = opt.id;
+      input.checked = opt.id === DEFAULT_PLAYER_GENDER;
+      Object.assign(input.style, {
+        margin: '0',
+        accentColor: BUTTON_SELECTED_BACKGROUND,
+      });
+      input.addEventListener('change', () => this.selectGender(opt.id));
+      input.addEventListener('focus', () => this.updateGenderControlStyles());
+      input.addEventListener('blur', () => this.updateGenderControlStyles());
+
+      label.appendChild(input);
+      label.append(opt.label);
+      Object.assign(label.style, {
+        position: 'relative',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '8px',
+        minHeight: `${34 * scaleY}px`,
+        padding: '0 8px',
+        fontFamily: 'monospace',
+        fontSize: `${13 * Math.min(scaleX, scaleY)}px`,
+        color: BUTTON_TEXT_DEFAULT,
+        cursor: 'pointer',
+        userSelect: 'none',
+        boxSizing: 'border-box',
+      });
+
+      this.genderControls.push({ input, label, id: opt.id });
+      fieldset.appendChild(label);
+    }
+
+    document.body.appendChild(fieldset);
+    this.genderFieldset = fieldset;
+    this.updateGenderControlStyles();
   }
 
   private selectGender(id: PlayerGender): void {
     this.selectedGender = id;
-    for (const btn of this.genderButtons) {
-      const selected = btn.id === id;
-      btn.bg.setFillStyle(selected ? BUTTON_SELECTED_COLOR : BUTTON_DEFAULT_COLOR, 1);
-      btn.bg.setStrokeStyle(1, selected ? 0x4a6fa5 : 0x1e293b, 1);
-      btn.label.setColor(selected ? BUTTON_TEXT_SELECTED : BUTTON_TEXT_DEFAULT);
+    for (const control of this.genderControls) {
+      control.input.checked = control.id === id;
+    }
+    this.updateGenderControlStyles();
+  }
+
+  private updateGenderControlStyles(): void {
+    for (const control of this.genderControls) {
+      const selected = control.id === this.selectedGender;
+      const focused = document.activeElement === control.input;
+      Object.assign(control.label.style, {
+        background: selected ? BUTTON_SELECTED_BACKGROUND : BUTTON_DEFAULT_BACKGROUND,
+        border: `1px solid ${selected ? BUTTON_SELECTED_BORDER : BUTTON_DEFAULT_BORDER}`,
+        color: selected ? BUTTON_TEXT_SELECTED : BUTTON_TEXT_DEFAULT,
+        outline: focused ? `2px solid ${GOLD_COLOR}` : 'none',
+        outlineOffset: '2px',
+      });
     }
   }
 
@@ -377,7 +460,29 @@ export class IntroScene extends Phaser.Scene {
   }
 
   private advanceToGame(): void {
-    this.removeNameInput();
+    this.removeDomControls();
     this.scene.start(BootScene.KEY);
+  }
+
+  private handleShutdown(): void {
+    this.removeDomControls();
+    if (typeof window !== 'undefined' && window.__introDebug) {
+      delete window.__introDebug;
+    }
+  }
+
+  private installDebugProbe(): void {
+    if (typeof window === 'undefined' || !(import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
+      return;
+    }
+    window.__introDebug = {
+      getState: () => ({
+        renderScale: getRenderScale(this),
+        cameraZoom: this.cameras.main.zoom,
+        cameraOriginX: this.cameras.main.originX,
+        cameraOriginY: this.cameras.main.originY,
+        selectedGender: this.selectedGender,
+      }),
+    };
   }
 }

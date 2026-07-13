@@ -13,10 +13,9 @@ describe('createFloor1GameConfig', () => {
     expect(source).toContain("default: 'arcade'");
     expect(source).toContain('mode: Phaser.Scale.FIT');
     expect(source).toContain('autoCenter: Phaser.Scale.CENTER_BOTH');
-    // IntroScene leads the scene list so labs auto-skip via URL detection.
-    expect(source).toContain('new IntroScene()');
-    expect(source).toContain('BootScene');
-    expect(source).toContain('new MainGameScene(sceneOptions)');
+    expect(source).toMatch(
+      /scene:\s*\[\s*new IntroScene\(\),\s*BootScene,\s*new MainGameScene\(sceneOptions\)\s*\]/,
+    );
   });
 
   it('makes the main game boot through the shared helper', () => {

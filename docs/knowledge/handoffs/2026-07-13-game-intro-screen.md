@@ -24,12 +24,18 @@ engine, game, shared, bootstrap
   `shared/` so engine tests can import without pulling Phaser.
 - **`src/engine/scenes/IntroScene.ts`** — Phaser scene. Auto-skips in lab/headless
   contexts via `isLabContext()` (checks `window === undefined`, `?lab=` URL param,
-  and `lab.html` pathname). Uses a native HTML `<input>` positioned over the canvas
-  for name entry; Phaser rectangles/text for gender buttons and confirm. Stores
+  and `lab.html` pathname). Uses a native HTML `<input>` plus native radio controls
+  positioned over the canvas for accessible name + gender entry, cleans them up on
+  the Phaser `shutdown` event, applies the live render scale to the intro camera,
+  and stores
   `{ playerName, playerGender }` in `game.registry[INTRO_DATA_REGISTRY_KEY]` then
   starts `BootScene`.
-- **`tests/unit/intro-scene-wiring.test.ts`** — 13 tests covering wiring, defaults,
-  skip logic, template, and data ordering.
+- **`tests/unit/intro-scene-wiring.test.ts`** — Source guards covering wiring,
+  defaults, shutdown/accessibility, render scale, template replacement, and data
+  ordering.
+- **`tests/e2e/intro-scene-flow.test.ts`** — Deterministic browser coverage for blank
+  name defaulting, trimmed custom names, alternate gender selection, registry
+  hand-off, scene transition, and resulting Director commentary.
 
 ### Modified files
 
@@ -43,7 +49,7 @@ engine, game, shared, bootstrap
 - **`src/engine/scenes/MainGameScene.ts`** — Reads intro registry data after
   `createGameWorld()` and **before** `configureWorld()` so scenario initializers
   see the chosen name. `queueDirectorCommentary()` substitutes `{playerName}` via
-  global regex `/{playerName}/g`.
+  a replacer callback so `$` sequences in player names stay literal.
 - **`src/game/floorScenario.ts`** — `protagonistName` now set from `world.playerName`
   instead of `floor1Config.protagonist`.
 - **`tests/game/floor1-game-config.test.ts`** — Updated scene-list assertion for
@@ -54,15 +60,15 @@ engine, game, shared, bootstrap
 - **URL-based skip** (`isLabContext`): labs use `lab.html?lab=<id>` so the check
   fires without per-lab call-site changes. Headless (Node.js) skips via
   `typeof window === 'undefined'`.
-- **Native `<input>` for name entry**: Phaser DOM plugin requires explicit game
-  config opt-in; a positioned DOM element is simpler and self-cleaning via
-  `shutdown()`.
+- **Native DOM form controls**: Phaser DOM plugin requires explicit game config
+  opt-in; positioned DOM controls are simpler, screen-reader accessible, and clean
+  up through the Phaser `shutdown` lifecycle hook.
 - **Registry hand-off**: `game.registry` is the standard Phaser inter-scene data
   bus; no global mutable module state needed.
 - **Apply intro data before `configureWorld`**: ensures `initializeFloor1Scenario`
   reads `world.playerName` (which sets `floorScenario.protagonistName`) correctly.
 - **Global regex for template substitution**: `/{playerName}/g` replaces all
-  occurrences; future director lines can repeat the placeholder safely.
+  occurrences; the callback form preserves literal `$` sequences in player names.
 
 ## Known limitations
 

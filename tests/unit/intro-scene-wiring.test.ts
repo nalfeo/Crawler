@@ -61,6 +61,32 @@ describe('IntroScene wiring', () => {
     const source = readFileSync('src/engine/scenes/IntroScene.ts', 'utf-8');
     expect(source).toContain("typeof window === 'undefined'");
   });
+
+  it('IntroScene cleans up DOM controls from the Phaser shutdown lifecycle', () => {
+    const source = readFileSync('src/engine/scenes/IntroScene.ts', 'utf-8');
+    expect(source).toContain(
+      'this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.handleShutdown())',
+    );
+    expect(source).toContain('this.removeDomControls();');
+  });
+
+  it('IntroScene gives the native name input an accessible label', () => {
+    const source = readFileSync('src/engine/scenes/IntroScene.ts', 'utf-8');
+    expect(source).toContain("input.setAttribute('aria-label', NAME_INPUT_ARIA_LABEL);");
+  });
+
+  it('IntroScene uses native radio inputs for keyboard-accessible gender selection', () => {
+    const source = readFileSync('src/engine/scenes/IntroScene.ts', 'utf-8');
+    expect(source).toContain("input.type = 'radio';");
+    expect(source).toContain("fieldset.setAttribute('aria-label', GENDER_GROUP_ARIA_LABEL);");
+  });
+
+  it('IntroScene applies the live render scale before building its UI', () => {
+    const source = readFileSync('src/engine/scenes/IntroScene.ts', 'utf-8');
+    expect(source).toContain("import { getRenderScale } from '../render-scale.js';");
+    expect(source).toContain('this.cameras.main.setOrigin(0, 0);');
+    expect(source).toContain('this.cameras.main.setZoom(renderScale);');
+  });
 });
 
 describe('GameWorld player identity defaults', () => {
@@ -83,8 +109,13 @@ describe('Director intro template', () => {
 
   it('MainGameScene queueDirectorCommentary substitutes {playerName}', () => {
     const source = readFileSync('src/engine/scenes/MainGameScene.ts', 'utf-8');
-    // Uses global regex to replace all occurrences.
-    expect(source).toContain('replace(/{playerName}/g, this.world.playerName)');
+    expect(source).toMatch(/replace\(\/\{playerName\}\/g,\s*\(\)\s*=>\s*this\.world\.playerName\)/);
+  });
+
+  it('callback substitution preserves dollar tokens in player names', () => {
+    const template = 'Director: Welcome, {playerName}.';
+    const playerName = 'A$&B';
+    expect(template.replace(/{playerName}/g, () => playerName)).toBe('Director: Welcome, A$&B.');
   });
 
   it('floor1 floorScenario protagonistName derives from world.playerName', () => {
@@ -94,8 +125,7 @@ describe('Director intro template', () => {
 
   it('MainGameScene applies intro data before configureWorld (so scenario init sees chosen name)', () => {
     const source = readFileSync('src/engine/scenes/MainGameScene.ts', 'utf-8');
-    // Intro data must be applied before configureWorld is called.
-    const introIdx = source.indexOf('INTRO_DATA_REGISTRY_KEY');
+    const introIdx = source.indexOf('this.game.registry.get(INTRO_DATA_REGISTRY_KEY)');
     const configureIdx = source.indexOf('configureWorld?.(');
     expect(introIdx).toBeGreaterThan(0);
     expect(configureIdx).toBeGreaterThan(0);
