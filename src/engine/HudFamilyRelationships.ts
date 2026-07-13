@@ -250,7 +250,11 @@ export function createHudFamilyRelationships(
   }
 
   function getState(): HudFamilyRelationshipsState {
-    const visible = masterVisible && lastVisible && (parent?.visible ?? true);
+    const visible =
+      panel.visible &&
+      title.visible &&
+      rowVisuals.every((row) => row.container.visible) &&
+      (parent?.visible ?? true);
     if (!visible) {
       return { visible: false, bounds: null, panelVisible: title.visible };
     }
