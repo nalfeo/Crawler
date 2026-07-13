@@ -120,8 +120,9 @@ function startServer(routes) {
           });
           handler = entry?.[1];
         }
-        if (handler) {
-          const result = handler(req.url, parsed) ?? {};
+        const routeHandler = typeof handler === 'function' ? handler : undefined;
+        if (routeHandler) {
+          const result = routeHandler(req.url, parsed) ?? {};
           const status = result.status ?? 200;
           const bodyStr = result.body !== undefined ? JSON.stringify(result.body) : '{}';
           res.writeHead(status, { 'Content-Type': 'application/json' });
