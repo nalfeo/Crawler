@@ -207,7 +207,7 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   mat('celestial-ingot', 'Celestial Ingot', "Forged in a star that hasn't been born yet.", L),
 
   // ── Weapons (20) ────────────────────────────────────────────────────
-  wpn('rusty-shiv', 'Rusty Shiv', 'Tetanus included at no extra charge.', C),
+  wpn('throwing-knife', 'Throwing Knife', 'Balanced for a clean throw and a cleaner escape.', C),
   wpn('iron-sword', 'Sword', 'Serviceable. Boring. Gets the job done.', C),
   wpn('flame-dagger', 'Flame Dagger', 'The blade is warm. Always.', U),
   wpn('frost-bow', 'Bow', 'Reliable and easy to carry.', U),
@@ -216,7 +216,7 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   wpn('star-lance', 'Star Lance', 'Looks like a comet. Hits like one too.', L),
   wpn('bone-club', 'Baseball Bat', 'Heavy swing, simple results.', C, [customTag('Smelly Stuff')]),
   wpn('plasma-pistol', 'Pistol', 'A standard sidearm with no sci-fi extras.', R),
-  wpn('crystal-wand', 'Flare Gun', 'Short-range firepower in a familiar package.', U),
+  wpn('fireball', 'Fireball', 'A compact sphere of bad decisions and splash damage.', U),
   wpn('toxic-blowgun', 'Toxic Blowgun', "One puff and they're napping.", U),
   wpn('chain-whip', 'Chain Whip', 'Satisfying crack included.', R),
   wpn('obsidian-axe', 'Obsidian Axe', 'So sharp it cuts light.', R),

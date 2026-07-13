@@ -22,12 +22,17 @@ kickoff comment that points Copilot at the normal repo instructions.
 - PAT-bearing jobs check out only the default branch with credentials disabled.
   They never check out or execute pull-request code.
 - Fork PRs are ineligible, and fork workflow runs are never approved.
-- Workflow approval uses exact workflow-path/event pairs: `CI` and `commit-lint`
-  for pull-request events, and `CI Recovery Router` for review/review-comment
-  events. Display names and environment overrides cannot extend this allowlist,
-  and a PR that modifies the matched workflow definition cannot be auto-approved.
-- A blocked review-triggered router run is approved by the next trusted
-  event-driven or scheduled reconciliation pass.
+- GitHub's workflow-approval endpoint applies only to fork-PR workflow runs; CI
+  recovery never calls it. Required-check runs (`CI`, `commit-lint`) whose
+  `action_required` conclusion indicates a same-App-push stall are classified
+  against an exact path/event allowlist and then escalated as `ci-retrigger`
+  blockers. Display names and environment overrides cannot extend this allowlist,
+  and a PR that modifies a matched workflow definition is skipped rather than
+  escalated. The retrigger fix is one commit under a different identity (e.g.
+  `git commit --allow-empty -m "chore: retrigger CI"`).
+- Non-required infrastructure runs (e.g. the CI Recovery Router) in
+  `action_required` are logged and skipped; they re-trigger naturally on the
+  next qualifying review or scheduled event.
 - The system has no Azure dependency.
 
 ## State

@@ -137,6 +137,11 @@ export interface GameWorld {
    * systems (melee/projectile/beam/area) to emit skill XP when damage lands.
    */
   attackerWeaponSkills: Map<number, { classSkillId: string; typeSkillId: string }>;
+  /**
+   * Weapon skill IDs keyed by spawned attack entity EID (projectile/beam/swing/trap/AoE).
+   * Preferred over `attackerWeaponSkills` so delayed hits keep the weapon that spawned them.
+   */
+  attackWeaponSkillsByEntity: Map<number, { classSkillId: string; typeSkillId: string }>;
   /** Per-entity ability state keyed by holder eid. */
   abilityStatesByEntity: Map<number, AbilityState>;
   /** Trigger events emitted this frame — cleared at end of abilitySystem. */
@@ -442,6 +447,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     skillStatesByEntity: new Map(),
     skillUsageEvents: [],
     attackerWeaponSkills: new Map(),
+    attackWeaponSkillsByEntity: new Map(),
     abilityStatesByEntity: new Map(),
     abilityTriggerEvents: [],
     statsDirty: true,

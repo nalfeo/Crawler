@@ -55,14 +55,13 @@ export interface ItemArtConcept {
   readonly keepVersion?: number;
 }
 
-/** 15 single-real-lineage Floor-1 item concepts (materials / weapons / misc / key). */
+/** 14 single-real-lineage Floor-1 item concepts (materials / weapons / misc / key). */
 export const ITEM_ART_CONCEPTS: readonly ItemArtConcept[] = [
   { concept: 'bone-shard' },
   { concept: 'camera-lens' },
   { concept: 'classified-dossier' },
   { concept: 'copper-ore' },
   { concept: 'crystal-fiber' },
-  { concept: 'crystal-wand' },
   { concept: 'directors-cue-card' },
   { concept: 'dragon-scale' },
   { concept: 'flame-dagger' },

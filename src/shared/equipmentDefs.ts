@@ -115,16 +115,16 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     weaponId: 'pistol',
   }),
   weapon({
-    id: 'rusty-shiv',
-    name: 'Rusty Shiv',
+    id: 'throwing-knife',
+    name: 'Throwing Knife',
     slots: ['mainHand'],
     statBonuses: {},
     rarity: 'common',
     weaponId: 'throwing-knife',
   }),
   weapon({
-    id: 'crystal-wand',
-    name: 'Flare Gun',
+    id: 'fireball',
+    name: 'Fireball',
     slots: ['mainHand'],
     statBonuses: {},
     rarity: 'uncommon',
@@ -273,8 +273,8 @@ export const STARTER_WEAPON_ID_TO_ITEM_ID: ReadonlyMap<string, string> = new Map
   ['bow', 'frost-bow'],
   ['baseball-bat', 'bone-club'],
   ['pistol', 'plasma-pistol'],
-  ['throwing-knife', 'rusty-shiv'],
-  ['fireball', 'crystal-wand'],
+  ['throwing-knife', 'throwing-knife'],
+  ['fireball', 'fireball'],
 ]);
 
 /** itemId → equipment definition for items that can be worn. */

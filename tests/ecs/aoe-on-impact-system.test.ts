@@ -71,4 +71,22 @@ describe('aoeOnImpactSystem', () => {
     expect(() => aoeOnImpactPostDamage(world)).not.toThrow();
     expect(countAreaAttacks(world)).toBe(0);
   });
+
+  it('propagates source skill IDs to the spawned explosion AreaDamage entity', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 200, 200);
+    const proj = spawnAoeProjectile(world, 100, 100, 1, 0, 10, 30, 20, player, TeamId.PLAYER);
+
+    const skillIds = { classSkillId: 'blade', typeSkillId: 'sword' };
+    world.attackWeaponSkillsByEntity.set(proj, skillIds);
+
+    aoeOnImpactPreDamage(world);
+    removeEntity(world.ecs, proj);
+    aoeOnImpactPostDamage(world);
+
+    const explosions = Array.from(query(world.ecs, [AreaDamage]));
+    expect(explosions).toHaveLength(1);
+    const explosionEid = explosions[0]!;
+    expect(world.attackWeaponSkillsByEntity.get(explosionEid)).toEqual(skillIds);
+  });
 });

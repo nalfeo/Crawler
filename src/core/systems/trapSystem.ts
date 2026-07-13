@@ -68,7 +68,22 @@ export function trapSystem(world: GameWorld, collisionResult: CollisionResult): 
       const explosionTeam = trapTeam >= 0 ? trapTeam : 0;
 
       // Spawn explosion AoE (hits once, very short duration)
-      spawnAreaAttack(world, x, y, ownerEid, explosionDamage, explosionRadius, 50, explosionTeam);
+      const explosionEid = spawnAreaAttack(
+        world,
+        x,
+        y,
+        ownerEid,
+        explosionDamage,
+        explosionRadius,
+        50,
+        explosionTeam,
+      );
+      const trapSkillIds =
+        world.attackWeaponSkillsByEntity.get(eid) ??
+        (ownerEid >= 0 ? world.attackerWeaponSkills.get(ownerEid) : undefined);
+      if (trapSkillIds !== undefined) {
+        world.attackWeaponSkillsByEntity.set(explosionEid, trapSkillIds);
+      }
 
       clearEntityStores(world, eid);
       removeEntity(world.ecs, eid);
