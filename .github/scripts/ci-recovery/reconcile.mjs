@@ -7,6 +7,7 @@ import {
   makeState,
   normalizeBlockers,
   reviewThreadBlockerId,
+  extractAddressedMarkerSha,
   shouldMutateRecoveryState,
   ownerLabel,
   parseStateComment,
@@ -232,8 +233,34 @@ const copilotAssigned = review.assignees.some((actor) =>
 );
 // NOTE: copilotAssigned alone must never suppress recovery.
 // Only lease/state ownership (labelExists + state) should suppress.
-for (const thread of review.threads.filter(
-  (candidate) => !candidate.isResolved && shouldResolveThread(candidate, pr.head.sha),
+const unresolvedThreads = review.threads.filter((candidate) => !candidate.isResolved);
+const headSha = String(pr.head.sha || '').toLowerCase();
+const markerShasNeedingLineageCheck = new Set();
+for (const thread of unresolvedThreads) {
+  const comments = thread.comments?.nodes ?? [];
+  if (comments.length === 0) continue;
+  const markerSha = extractAddressedMarkerSha(comments[comments.length - 1]?.body);
+  if (markerSha && !headSha.startsWith(markerSha)) {
+    markerShasNeedingLineageCheck.add(markerSha);
+  }
+}
+const reachableMarkerShas = new Set();
+for (const markerSha of markerShasNeedingLineageCheck) {
+  try {
+    const compare = (
+      await request(readToken, `/repos/${owner}/${repo}/compare/${markerSha}...${pr.head.sha}`)
+    ).data;
+    if (compare?.status === 'identical' || compare?.status === 'behind') {
+      reachableMarkerShas.add(markerSha);
+    }
+  } catch (error) {
+    if (error?.status !== 404) {
+      throw error;
+    }
+  }
+}
+for (const thread of unresolvedThreads.filter((candidate) =>
+  shouldResolveThread(candidate, pr.head.sha, reachableMarkerShas),
 )) {
   if (live) {
     await graphql(
