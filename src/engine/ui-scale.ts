@@ -244,10 +244,11 @@ export function getTextResolution(scene: Phaser.Scene): number {
 export function applyCrispText(
   scene: Phaser.Scene,
   texts: ReadonlyArray<Phaser.GameObjects.Text>,
+  minimumResolution = 1,
 ): () => void {
   let lastResolution = 0;
   const apply = (): void => {
-    const resolution = getTextResolution(scene);
+    const resolution = Math.max(minimumResolution, getTextResolution(scene));
     if (resolution === lastResolution) {
       return;
     }

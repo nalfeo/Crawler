@@ -25,6 +25,8 @@ import {
 } from './HudFamilyRelationships.js';
 import { getUiScale, onUiScaleChange } from './ui-scale.js';
 import { GAME } from '../shared/constants.js';
+import type { FamilyRelationshipsLayout } from './HudFamilyRelationships.js';
+import type { ScreenBounds } from './ui-scale.js';
 
 /**
  * Upper bound on HUD magnification. The HUD is authored to fill the full 1280px
@@ -46,6 +48,9 @@ export function createHudUI(scene: Phaser.Scene): {
   closeMapOverlay(): void;
   getFamilyRelationshipsState(): HudFamilyRelationshipsState;
   setVisible(visible: boolean): void;
+  getFamilyRelationshipsLayout(): FamilyRelationshipsLayout;
+  getMinimapBounds(): ScreenBounds | null;
+  getBottomCenterBounds(): ScreenBounds;
   destroy(): void;
 } {
   const depth = 1000;
@@ -70,12 +75,19 @@ export function createHudUI(scene: Phaser.Scene): {
   const bossBar = createHudBossBar(scene, { parent: topCenter });
   const announcementBanner = createHudAnnouncementBanner(scene, { parent: topCenter });
   const questTracker = createHudQuestTracker(scene, { parent: topRight });
-  const familyRelationships = createHudFamilyRelationships(scene, { parent: bottomRight });
-
   // Minimap manages its own dynamic children/overlay and screen-space layout,
   // so it scales its docked radar dial internally (see HudMinimap.updateLayout)
   // rather than being grouped into a corner container here.
   const minimap = createHudMinimap(scene);
+  const familyRelationships = createHudFamilyRelationships(scene, {
+    parent: bottomRight,
+    getAvoidBounds: () => {
+      const bounds = [minimap.getDockedBounds()];
+      const b = bottomCenter.getBounds();
+      bounds.push({ x: b.x, y: b.y, width: b.width, height: b.height });
+      return bounds.filter((item): item is ScreenBounds => item !== null);
+    },
+  });
 
   // Off-screen quest waypoint arrows live full-screen (edge-pinned), so they
   // own their depth rather than belonging to a scaled corner group.
@@ -172,6 +184,12 @@ export function createHudUI(scene: Phaser.Scene): {
     closeMapOverlay: minimap.closeOverlay,
     getFamilyRelationshipsState: familyRelationships.getState,
     setVisible,
+    getFamilyRelationshipsLayout: familyRelationships.getLayout,
+    getMinimapBounds: minimap.getDockedBounds,
+    getBottomCenterBounds: () => {
+      const b = bottomCenter.getBounds();
+      return { x: b.x, y: b.y, width: b.width, height: b.height };
+    },
     destroy,
   };
 }
