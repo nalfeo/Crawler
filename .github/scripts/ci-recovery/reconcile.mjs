@@ -253,10 +253,9 @@ for (const markerSha of markerShasNeedingLineageCheck) {
     if (compare?.status === 'identical' || compare?.status === 'behind') {
       reachableMarkerShas.add(markerSha);
     }
-  } catch (error) {
-    if (error?.status !== 404) {
-      throw error;
-    }
+  } catch {
+    // Treat any error (404 not found, 422 unresolvable/ambiguous SHA,
+    // network errors, etc.) as a non-reachable marker so recovery can proceed.
   }
 }
 for (const thread of unresolvedThreads.filter((candidate) =>
