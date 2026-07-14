@@ -35,6 +35,28 @@ export function trainCheckTitle(status, conclusion) {
     : 'Merge-train validation could not start';
 }
 
+/**
+ * Returns the newest completed main-health run that should gate promotion.
+ * "Authoritative" means:
+ * - scheduled main CI runs (full-health signal), or
+ * - direct/non-train push runs on main.
+ * Train-promoted push runs are intentionally skipped via isAttestedTrainPushSha()
+ * because those fast-path pushes can skip broad CI by design.
+ */
+export async function latestAuthoritativeMainHealthRun(workflowRuns, isAttestedTrainPushSha) {
+  for (const run of workflowRuns || []) {
+    if (run?.status !== 'completed') continue;
+    if (run?.event === 'schedule') return run;
+    if (run?.event !== 'push') continue;
+    const headSha = String(run?.head_sha || '');
+    if (headSha && (await isAttestedTrainPushSha(headSha))) {
+      continue;
+    }
+    return run;
+  }
+  return null;
+}
+
 function hasLabel(pr, name) {
   return (pr.labels || []).some((label) => label.name === name);
 }

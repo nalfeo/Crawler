@@ -6,6 +6,7 @@ import {
   buildCandidate,
   isMergeTrainConflictError,
   isMergeTrainNoopError,
+  latestAuthoritativeMainHealthRun,
   promoteExactBatch,
   trainCheckTitle,
 } from './reconcile-lib.mjs';
@@ -37,6 +38,7 @@ const token = process.env.MERGE_TRAIN_TOKEN || process.env.GITHUB_TOKEN || '';
 const enabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
 const requiredAdmissionChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
 const trustedAppId = Number.parseInt(process.env.MERGE_TRAIN_APP_ID || '', 10);
+const FINGERPRINT_SHAPE = /^[0-9a-f]{64}$/;
 
 if (!owner || !repo || !token || !Number.isInteger(trustedAppId)) {
   throw new Error('Merge train requires GITHUB_REPOSITORY, a GitHub token, and MERGE_TRAIN_APP_ID');
@@ -189,16 +191,35 @@ async function dispatchRecovery(prNumber, trigger) {
 }
 
 async function mainHealthAllowsPromotion() {
+  const attestedTrainPushBySha = new Map();
+  const isAttestedTrainPushSha = async (sha) => {
+    if (attestedTrainPushBySha.has(sha)) {
+      return attestedTrainPushBySha.get(sha);
+    }
+    const checks = await checkRuns(sha);
+    const attested = checks.some(
+      (check) =>
+        check.name === REQUIRED_CHECK_NAME &&
+        check.status === 'completed' &&
+        check.conclusion === 'success' &&
+        Number(check.app?.id) === trustedAppId &&
+        typeof check.external_id === 'string' &&
+        FINGERPRINT_SHAPE.test(check.external_id),
+    );
+    attestedTrainPushBySha.set(sha, attested);
+    return attested;
+  };
   const response = await request(
     token,
-    `/repos/${owner}/${repo}/actions/workflows/ci.yml/runs?event=schedule&branch=main&per_page=20`,
+    `/repos/${owner}/${repo}/actions/workflows/ci.yml/runs?branch=main&per_page=20`,
   );
-  const latestCompleted = (response.data.workflow_runs || []).find(
-    (run) => run.status === 'completed',
+  const latestCompleted = await latestAuthoritativeMainHealthRun(
+    response.data.workflow_runs || [],
+    isAttestedTrainPushSha,
   );
   if (!latestCompleted || latestCompleted.conclusion === 'success') return true;
   process.stdout.write(
-    `paused merge train; latest completed hourly main CI concluded ${latestCompleted.conclusion}\n`,
+    `paused merge train; latest completed authoritative main CI run event=${latestCompleted.event} concluded ${latestCompleted.conclusion}\n`,
   );
   return false;
 }

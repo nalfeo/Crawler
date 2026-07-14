@@ -44,6 +44,23 @@ const mergeTrainEnabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
 const mergeTrainAdmissionChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
 const now = new Date();
 const REBASE_PENDING_TIMEOUT_MS = 15 * 60 * 1000;
+const REBASE_FAILURE_MAX_ATTEMPTS = 3;
+const REBASE_FAILURE_BASE_BACKOFF_MS = 60 * 1000;
+const REBASE_FAILURE_MAX_BACKOFF_MS = 10 * 60 * 1000;
+
+/**
+ * Exponential backoff for explicit auto-rebase-failure retries:
+ * delay = 60s * 2^(attempt-1), capped at 10 minutes.
+ * Example: attempt 1 => 60s, 2 => 120s, 3 => 240s.
+ */
+function calculateRebaseFailureBackoffMs(attempt) {
+  const parsedAttempt = Number.parseInt(String(attempt ?? ''), 10);
+  const safeAttempt = Number.isFinite(parsedAttempt) && parsedAttempt > 0 ? parsedAttempt : 1;
+  return Math.min(
+    REBASE_FAILURE_MAX_BACKOFF_MS,
+    REBASE_FAILURE_BASE_BACKOFF_MS * 2 ** (safeAttempt - 1),
+  );
+}
 
 if (!owner || !repo || !Number.isInteger(prNumber) || !readToken) {
   throw new Error('Missing repository, PR number, or GitHub token');
@@ -400,9 +417,18 @@ if (
 }
 const rebaseDispatchPendingForHead =
   state?.headSha === pr.head.sha && state?.trigger === 'rebase-dispatched';
+const rebaseDispatchAttemptsForHead =
+  rebaseDispatchPendingForHead && Number.isInteger(state?.attempt) ? state.attempt : 0;
 const rebaseDispatchTimedOut =
   rebaseDispatchPendingForHead &&
   now.getTime() - Date.parse(state.updatedAt) >= REBASE_PENDING_TIMEOUT_MS;
+const autoRebaseFailed = trigger === 'auto-rebase-failure';
+const rebaseFailureBackoffActive =
+  autoRebaseFailed &&
+  rebaseDispatchPendingForHead &&
+  rebaseDispatchAttemptsForHead < REBASE_FAILURE_MAX_ATTEMPTS &&
+  now.getTime() - Date.parse(state.updatedAt) <
+    calculateRebaseFailureBackoffMs(rebaseDispatchAttemptsForHead);
 if (
   mergeTrainEnabled &&
   hasMergeConflict &&
@@ -414,11 +440,19 @@ if (
   process.stdout.write(`wait pr=#${prNumber} reason=conflict-rebase-pending\n`);
   process.exit(0);
 }
+if (mergeTrainEnabled && hasMergeConflict && autoRebaseFailed && rebaseFailureBackoffActive) {
+  process.stdout.write(
+    `wait pr=#${prNumber} reason=conflict-rebase-retry-backoff attempt=${rebaseDispatchAttemptsForHead}\n`,
+  );
+  process.exit(0);
+}
 if (
   mergeTrainEnabled &&
   hasMergeConflict &&
   trigger !== 'auto-rebase-conflict' &&
-  (!rebaseDispatchPendingForHead || rebaseDispatchTimedOut)
+  (autoRebaseFailed
+    ? rebaseDispatchAttemptsForHead < REBASE_FAILURE_MAX_ATTEMPTS
+    : !rebaseDispatchPendingForHead || rebaseDispatchTimedOut)
 ) {
   const conflictBlocker = {
     kind: 'merge-conflict',
@@ -434,7 +468,7 @@ if (
     status: 'idle',
     trigger: 'rebase-dispatched',
     blockers: [conflictBlocker],
-    attempt: state?.attempt || 0,
+    attempt: rebaseDispatchAttemptsForHead + 1,
     updatedAt: now.toISOString(),
   });
   if (labelExists) {

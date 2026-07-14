@@ -5,6 +5,7 @@ import {
   buildCandidate,
   isMergeTrainConflictError,
   isMergeTrainNoopError,
+  latestAuthoritativeMainHealthRun,
   promoteExactBatch,
   promotionStaleReason,
   promoteExactCandidate,
@@ -87,6 +88,45 @@ test('buildCandidate fetches the API-observed head SHA instead of refs/pull/<n>/
   );
   assert.ok(fetchCall);
   assert.match(fetchCall.args[2], new RegExp(`^${prSha}:refs/remotes/merge-train/pr-42$`));
+});
+
+test('latestAuthoritativeMainHealthRun ignores attested merge-train push fast-paths', async () => {
+  const run = await latestAuthoritativeMainHealthRun(
+    [
+      {
+        id: 3,
+        status: 'completed',
+        event: 'push',
+        conclusion: 'success',
+        head_sha: 'a'.repeat(40),
+      },
+      {
+        id: 2,
+        status: 'completed',
+        event: 'schedule',
+        conclusion: 'failure',
+        head_sha: 'b'.repeat(40),
+      },
+    ],
+    async (sha) => sha === 'a'.repeat(40),
+  );
+  assert.equal(run?.id, 2);
+});
+
+test('latestAuthoritativeMainHealthRun accepts non-train push runs as authoritative', async () => {
+  const run = await latestAuthoritativeMainHealthRun(
+    [
+      {
+        id: 7,
+        status: 'completed',
+        event: 'push',
+        conclusion: 'failure',
+        head_sha: 'c'.repeat(40),
+      },
+    ],
+    async () => false,
+  );
+  assert.equal(run?.id, 7);
 });
 
 test('buildCandidate treats exact-SHA mismatches as retryable operational failures', () => {

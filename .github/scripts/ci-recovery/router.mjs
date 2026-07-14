@@ -2,7 +2,13 @@ import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 import { paginate, request } from './github.mjs';
-import { parseEnabledFlag, QUEUE_LABEL } from '../merge-train/state.mjs';
+import {
+  BLOCKED_LABEL,
+  NOOP_LABEL,
+  parseEnabledFlag,
+  QUEUE_LABEL,
+  VALIDATION_FAILED_LABEL,
+} from '../merge-train/state.mjs';
 
 const DEFAULT_MAX_DISPATCH_PER_RUN = 8;
 const REPAIR_WINDOW_SIZE = 6;
@@ -14,6 +20,14 @@ const MANAGED_COMMENT_MARKERS = [
 const DEFAULT_RETRY_MAX_ATTEMPTS = 6;
 const DEFAULT_RETRY_BASE_DELAY_MS = 1000;
 const DEFAULT_RETRY_MAX_DELAY_MS = 30000;
+// Labels owned by merge-train automation that must be drained during
+// flag-off cleanup before legacy routing resumes normal operation.
+const TRAIN_OWNED_LABELS = new Set([
+  QUEUE_LABEL,
+  BLOCKED_LABEL,
+  NOOP_LABEL,
+  VALIDATION_FAILED_LABEL,
+]);
 
 function parsePositiveInt(raw, fallback) {
   const parsed = Number.parseInt(String(raw ?? ''), 10);
@@ -158,8 +172,21 @@ export function collectPrNumbers({
   }
 
   if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
+    let orderedPulls = scheduledPulls;
+    if (trainEnabled === false) {
+      const withTrainLabels = [];
+      const withoutTrainLabels = [];
+      for (const pullRequest of scheduledPulls) {
+        if ((pullRequest.labels || []).some((label) => TRAIN_OWNED_LABELS.has(label.name))) {
+          withTrainLabels.push(pullRequest);
+        } else {
+          withoutTrainLabels.push(pullRequest);
+        }
+      }
+      orderedPulls = withTrainLabels.concat(withoutTrainLabels);
+    }
     const normalizedRepo = repository.toLowerCase();
-    for (const pullRequest of scheduledPulls) {
+    for (const pullRequest of orderedPulls) {
       if (
         !pullRequest.draft &&
         pullRequest.head?.repo?.full_name?.toLowerCase() === normalizedRepo

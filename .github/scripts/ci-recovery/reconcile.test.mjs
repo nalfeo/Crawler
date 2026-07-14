@@ -765,7 +765,7 @@ test('train mode dispatches exactly one conflict-only rebase', async (t) => {
 });
 
 /** A previously-dispatched conflict-only rebase state comment for HEAD_SHA. */
-function rebaseDispatchedStateComment(id, updatedAt) {
+function rebaseDispatchedStateComment(id, updatedAt, attempt = 1) {
   const state = makeState({
     prNumber: PR_NUM,
     headSha: HEAD_SHA,
@@ -788,6 +788,7 @@ function rebaseDispatchedStateComment(id, updatedAt) {
         url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}`,
       },
     ],
+    attempt,
     updatedAt,
   });
   return { id, body: renderStateComment(state) };
@@ -869,6 +870,76 @@ test('train mode redispatches a conflict-only rebase once the prior dispatch tim
     ).length,
     1,
   );
+});
+
+test('train mode retries auto-rebase-failure for the same head before timeout once backoff elapses', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), mergeable: false, mergeable_state: 'dirty' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [
+        rebaseDispatchedStateComment(902, new Date(Date.now() - 2 * 60 * 1000).toISOString(), 1),
+      ],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/902`]: () => ({ body: { id: 902, body: '' } }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`]: () => ({
+      body: {},
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'auto-rebase-failure',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.equal(
+    mutatingCalls.filter(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`,
+    ).length,
+    1,
+  );
+});
+
+test('train mode waits during bounded backoff for auto-rebase-failure retries', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), mergeable: false, mergeable_state: 'dirty' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [rebaseDispatchedStateComment(903, new Date().toISOString(), 1)],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'auto-rebase-failure',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /wait pr=#42 reason=conflict-rebase-retry-backoff attempt=1/);
+  assert.deepEqual(mutatingCalls, []);
 });
 
 test('reconcile ignores same-repository action-required runs without approval or dispatch', async (t) => {

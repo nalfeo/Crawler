@@ -41,6 +41,33 @@ test('collectPrNumbers applies dispatch cap for schedule sweeps', () => {
   assert.deepEqual(numbers, [1, 2, 3, 4, 5]);
 });
 
+test('flag-off schedule sweeps prioritize PRs with train-owned labels before dispatch cap', () => {
+  const scheduledPulls = [
+    ...Array.from({ length: 8 }, (_, index) => ({
+      number: index + 1,
+      draft: false,
+      labels: [],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    })),
+    {
+      number: 99,
+      draft: false,
+      labels: [{ name: 'merge-train-blocked' }],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+  ];
+  const numbers = collectPrNumbers({
+    payload: { repository: { default_branch: 'main' } },
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls,
+    maxDispatchPerRun: 8,
+    trainEnabled: false,
+  });
+
+  assert.deepEqual(numbers, [99, 1, 2, 3, 4, 5, 6, 7]);
+});
+
 test('collectPrNumbers keeps event-scoped PR dispatch uncapped for non-schedule events', () => {
   const numbers = collectPrNumbers({
     payload: { pull_request: { number: 42 } },
