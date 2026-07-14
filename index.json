@@ -55,6 +55,17 @@
     "path": "by-sha/2139297d72686a7ac9f21c0d80d0c1f1dbfb9172.json"
   },
   {
+    "commit": "230c462e1ae941e027e3689edd1afbecdb05daf7",
+    "commitDate": "2026-07-14T07:59:40-07:00",
+    "commitSubject": "feat(ci): add build-expiry merge train (#1143)",
+    "capturedAt": "2026-07-14T16:01:22.158Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29343957666",
+    "winRate": 0.945,
+    "totalWins": 567,
+    "totalRuns": 600,
+    "path": "by-sha/230c462e1ae941e027e3689edd1afbecdb05daf7.json"
+  },
+  {
     "commit": "0abd8dec26a0f26001c2f6666e17b17140fdf04e",
     "commitDate": "2026-07-14T07:55:40Z",
     "commitSubject": "Restrict Floor 1 merchant stock to canonical loadout weapons (#1070)",
