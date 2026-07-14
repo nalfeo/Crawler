@@ -1,5 +1,16 @@
 [
   {
+    "commit": "4fcb3767a69f6000e0fb112e55f5b9ae674a1bdc",
+    "commitDate": "2026-07-14T08:18:23Z",
+    "commitSubject": "chore: remove dead Codex/Gemini CLI repair automation references (#1126)",
+    "capturedAt": "2026-07-14T09:17:14.304Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29318189097",
+    "winRate": 0.945,
+    "totalWins": 567,
+    "totalRuns": 600,
+    "path": "by-sha/4fcb3767a69f6000e0fb112e55f5b9ae674a1bdc.json"
+  },
+  {
     "commit": "2139297d72686a7ac9f21c0d80d0c1f1dbfb9172",
     "commitDate": "2026-07-14T08:05:41Z",
     "commitSubject": "fix: seed weapon skill states on Floor 2 so HUD skill tracker renders (#1089)",
