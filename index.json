@@ -1,5 +1,16 @@
 [
   {
+    "commit": "9455f8c77008cdd7c25f14fa3f60a94f45e09997",
+    "commitDate": "2026-07-13T23:33:35Z",
+    "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#1119)",
+    "capturedAt": "2026-07-14T00:07:51.871Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29293616372",
+    "winRate": 0.9266666666666666,
+    "totalWins": 278,
+    "totalRuns": 300,
+    "path": "by-sha/9455f8c77008cdd7c25f14fa3f60a94f45e09997.json"
+  },
+  {
     "commit": "ee39d8df0b666614087389b1ed4be993eb261643",
     "commitDate": "2026-07-13T18:06:38Z",
     "commitSubject": "fix(hud): polish core vitals layout (#1116)",
