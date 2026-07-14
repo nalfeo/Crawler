@@ -589,7 +589,11 @@ if (normalized.length === 0) {
   });
   if (labelExists) {
     await release('converged', convergedState);
-  } else {
+  } else if (stateComments.length > 0) {
+    // Update an existing state comment to reflect convergence, but do not
+    // create a brand-new comment for a PR that is simply waiting for required
+    // checks to complete — no mutation is needed until checks pass and the
+    // router re-invokes reconcile.
     await updateState(convergedState);
   }
   if (waitingRequiredChecks.length > 0) {
