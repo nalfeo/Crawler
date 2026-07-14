@@ -580,8 +580,8 @@ test('reconcile ignores same-repository action-required runs without approval or
       (call) =>
         call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
     ).length,
-    1,
-    'converged admission state should still be persisted',
+    0,
+    'label-free PRs waiting on required checks should not create state comments',
   );
 });
 
