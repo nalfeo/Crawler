@@ -11,9 +11,7 @@ export const DEFAULT_ADMISSION_CHECKS = ['ci', 'Security checks'];
 export const MAX_TRAIN_SIZE = 6;
 
 function compact(value) {
-  return String(value ?? '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return String(value ?? '').replace(/\s+/g, ' ');
 }
 
 export function parseEnabledFlag(value) {

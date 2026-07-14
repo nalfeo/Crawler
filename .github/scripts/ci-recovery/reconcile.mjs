@@ -333,8 +333,8 @@ const blockers = [];
 const hasMergeConflict = pr.mergeable === false || pr.mergeable_state === 'dirty';
 const labels = new Set((pr.labels || []).map((label) => label.name));
 const trainBlocked = labels.has(BLOCKED_LABEL);
-const trainNoop = labels.has(NOOP_LABEL);
-const validationFailed = labels.has(VALIDATION_FAILED_LABEL);
+let trainNoop = labels.has(NOOP_LABEL);
+let validationFailed = labels.has(VALIDATION_FAILED_LABEL);
 const incomingConflictPredecessor = trigger.match(/^merge-train-cumulative-conflict:(\d+)$/);
 const storedConflictPredecessor = state?.trigger?.match(/^merge-train-cumulative-conflict:(\d+)$/);
 const conflictPredecessor = Number.parseInt(
@@ -393,6 +393,10 @@ if (
   await removePrLabel(BLOCKED_LABEL);
   await removePrLabel(NOOP_LABEL);
   await removePrLabel(VALIDATION_FAILED_LABEL);
+  // Clear in-memory flags so later blocker branches do not immediately
+  // recreate the stale no-op/validation blocker for the new head.
+  trainNoop = false;
+  validationFailed = false;
 }
 const rebaseDispatchPendingForHead =
   state?.headSha === pr.head.sha && state?.trigger === 'rebase-dispatched';
@@ -614,6 +618,12 @@ if (normalized.length === 0) {
       `wait pr=#${prNumber} required-checks=${waitingRequiredChecks.join(',')}\n`,
     );
     process.exit(0);
+  }
+  // Required checks are satisfied. If this PR never went through recovery (no
+  // state comment exists), persist convergedState now so merge-train/eligible()
+  // finds exactly one record and does not de-admit the queued PR as stale.
+  if (!labelExists && stateComments.length === 0) {
+    await updateState(convergedState);
   }
   if (live && mergeTrainEnabled) {
     await removePrLabel(BLOCKED_LABEL);

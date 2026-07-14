@@ -1,21 +1,17 @@
 const WORKFLOW_EVENT_ALLOWLIST = new Map([
   ['.github/workflows/ci.yml', new Set(['pull_request', 'pull_request_target'])],
-  ['.github/workflows/commit-lint.yml', new Set(['pull_request', 'pull_request_target'])],
   [
     '.github/workflows/ci-recovery-router.yml',
     new Set(['pull_request_review', 'pull_request_review_comment']),
   ],
 ]);
 
-// Workflow paths that correspond to admission-required CI checks (ci and commit-lint).
-// These paths are in the allowlist but are never approvable via the GitHub
-// workflow-approval endpoint (which applies only to fork PRs).  When reconcile.mjs
-// encounters an action_required run whose normalized path is in this set it
-// escalates a ci-retrigger blocker instead of silently logging a skip.
-export const REQUIRED_CHECK_WORKFLOW_PATHS = new Set([
-  '.github/workflows/ci.yml',
-  '.github/workflows/commit-lint.yml',
-]);
+// Workflow paths that correspond to admission-required CI checks (ci only; commit-lint
+// was removed in PR #1109). These paths are in the allowlist but are never approvable
+// via the GitHub workflow-approval endpoint (which applies only to fork PRs). When
+// reconcile.mjs encounters an action_required run whose normalized path is in this set
+// it escalates a ci-retrigger blocker instead of silently logging a skip.
+export const REQUIRED_CHECK_WORKFLOW_PATHS = new Set(['.github/workflows/ci.yml']);
 
 function normalize(value) {
   return String(value ?? '')

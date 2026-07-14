@@ -827,7 +827,9 @@ test('reconcile escalates required-check action-required runs as ci-retrigger bl
     stdout,
     new RegExp(`escalate action_required run=${ciRunId} .* reason=required-check-parked`),
   );
-  assert.match(
+  // commit-lint was removed in PR #1109; its workflow path is no longer in
+  // REQUIRED_CHECK_WORKFLOW_PATHS and must not produce a required-check-parked escalation.
+  assert.doesNotMatch(
     stdout,
     new RegExp(`escalate action_required run=${lintRunId} .* reason=required-check-parked`),
   );
