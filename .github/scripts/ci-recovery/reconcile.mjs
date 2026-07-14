@@ -380,19 +380,32 @@ if (
   }
   await removePrLabel(BLOCKED_LABEL);
 }
-if (mergeTrainEnabled && trainBlocked && trigger.endsWith(':synchronize')) {
+// A synchronize webhook is the normal signal that the head moved past the
+// labeled failure, but a scheduled/manual sweep must self-heal the same way
+// when the persisted state head no longer matches the live PR head (e.g. a
+// missed, delayed, or coalesced synchronize event).
+const headMovedSinceState = Boolean(state?.headSha) && state.headSha !== pr.head.sha;
+if (
+  mergeTrainEnabled &&
+  trainBlocked &&
+  (trigger.endsWith(':synchronize') || headMovedSinceState)
+) {
   await removePrLabel(BLOCKED_LABEL);
   await removePrLabel(NOOP_LABEL);
   await removePrLabel(VALIDATION_FAILED_LABEL);
 }
+const rebaseDispatchPendingForHead =
+  state?.headSha === pr.head.sha && state?.trigger === 'rebase-dispatched';
+const rebaseDispatchTimedOut =
+  rebaseDispatchPendingForHead &&
+  now.getTime() - Date.parse(state.updatedAt) >= REBASE_PENDING_TIMEOUT_MS;
 if (
   mergeTrainEnabled &&
   hasMergeConflict &&
   trigger !== 'auto-rebase-conflict' &&
   trigger !== 'auto-rebase-failure' &&
-  state?.headSha === pr.head.sha &&
-  state?.trigger === 'rebase-dispatched' &&
-  now.getTime() - Date.parse(state.updatedAt) < REBASE_PENDING_TIMEOUT_MS
+  rebaseDispatchPendingForHead &&
+  !rebaseDispatchTimedOut
 ) {
   process.stdout.write(`wait pr=#${prNumber} reason=conflict-rebase-pending\n`);
   process.exit(0);
@@ -401,7 +414,7 @@ if (
   mergeTrainEnabled &&
   hasMergeConflict &&
   trigger !== 'auto-rebase-conflict' &&
-  !(state?.headSha === pr.head.sha && state?.trigger === 'rebase-dispatched')
+  (!rebaseDispatchPendingForHead || rebaseDispatchTimedOut)
 ) {
   const conflictBlocker = {
     kind: 'merge-conflict',

@@ -269,7 +269,12 @@ async function dispatchValidation(sha, fingerprint, entries) {
       },
     );
   } catch (error) {
-    await createTrainCheck(sha, fingerprint, 'completed', 'failure');
+    // Model a dispatch/API failure (workflow_dispatch rejected, token
+    // issue, transient network error) as an infrastructure problem, not a
+    // candidate code failure: use `cancelled` so trainCheckState() treats
+    // it as retryable ("missing") on the next reconciliation instead of
+    // being bisected as if the candidate's code actually failed CI.
+    await createTrainCheck(sha, fingerprint, 'completed', 'cancelled');
     throw error;
   }
 }
@@ -356,7 +361,12 @@ for (let index = 0; index < train.length; index += 1) {
     process.exit(0);
   }
   git(['fetch', 'origin', `${refName}:refs/remotes/origin/${refName}`, '--force']);
-  const state = trainCheckState(await checkRuns(candidateSha), fingerprint, trustedAppId);
+  const state = trainCheckState(
+    await checkRuns(candidateSha),
+    fingerprint,
+    trustedAppId,
+    new Date(),
+  );
   candidates.push({ candidateSha, entries, fingerprint, refName, state });
   await updateStatus(
     train[index].number,

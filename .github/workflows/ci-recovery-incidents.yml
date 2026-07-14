@@ -21,11 +21,21 @@ permissions:
 
 jobs:
   route-incident:
+    # Only pull_request-triggered CI is out of scope here (it has its own
+    # per-PR feedback). Every other workflow always routes. For the `CI`
+    # workflow specifically: push-triggered runs always route, whether they
+    # are a direct/administrative push or a train-promoted push, because a
+    # failure either way is real (train-promoted pushes are attested green
+    # via the `merge-train` check and so won't spuriously fire on success).
+    # Scheduled `CI` runs only route while the train is enabled, matching
+    # `ci.yml`'s own gating of the schedule trigger (`changes` job) — when the
+    # train is disabled, a scheduled run is a no-op success that must not be
+    # allowed to auto-close a real, still-open incident.
     if: >-
       github.event.workflow_run.event != 'pull_request' &&
       (github.event.workflow_run.name != 'CI' ||
-       github.event.workflow_run.event == 'schedule' ||
-       vars.MERGE_TRAIN_ENABLED != 'true')
+       github.event.workflow_run.event == 'push' ||
+       (github.event.workflow_run.event == 'schedule' && vars.MERGE_TRAIN_ENABLED == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -38,4 +48,5 @@ jobs:
       - name: Deduplicate incident and assign Copilot
         env:
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
+          MERGE_TRAIN_APP_ID: ${{ secrets.APP_ID }}
         run: node .github/scripts/ci-recovery/incident.mjs

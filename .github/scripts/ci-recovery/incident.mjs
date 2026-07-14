@@ -5,6 +5,15 @@ const token = process.env.CRAWLER_CI_PAT || '';
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
 const eventPath = process.env.GITHUB_EVENT_PATH;
+// The same trust gate `ci.yml` uses for merge-train promotion evidence: a
+// check named "merge-train" is only real provenance when it was created by
+// the trusted repository App and its external_id is a fingerprint-shaped
+// SHA-256 hex digest. Without both checks, anyone able to post a check-run
+// named "merge-train" (a compromised token, a different app install, a
+// spoofed run) could inject arbitrary text into an incident issue body that
+// @copilot is asked to act on.
+const trustedAppId = Number.parseInt(process.env.MERGE_TRAIN_APP_ID || '', 10);
+const FINGERPRINT_SHAPE = /^[0-9a-f]{64}$/;
 
 if (!token || !owner || !repo || !eventPath) {
   throw new Error('Missing CRAWLER_CI_PAT, repository, or event payload');
@@ -88,7 +97,14 @@ const body = [
       )
     ).data.check_runs;
     const promotion = (checks || [])
-      .filter((check) => check.name === 'merge-train')
+      .filter(
+        (check) =>
+          check.name === 'merge-train' &&
+          Number.isInteger(trustedAppId) &&
+          Number(check.app?.id) === trustedAppId &&
+          typeof check.external_id === 'string' &&
+          FINGERPRINT_SHAPE.test(check.external_id),
+      )
       .sort((left, right) => right.id - left.id)[0];
     return promotion?.output?.summary
       ? ['', '## Merge-train promotion provenance', '', promotion.output.summary]

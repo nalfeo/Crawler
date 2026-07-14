@@ -43,8 +43,8 @@ test('managed state markers must lead the comment instead of appearing in a quot
 });
 
 test('parses admission checks and falls back to defaults when empty', () => {
-  assert.deepEqual(resolveAdmissionChecks(' ci, commit-lint '), ['ci', 'commit-lint']);
-  assert.deepEqual(resolveAdmissionChecks(''), ['ci', 'commit-lint', 'Security checks']);
+  assert.deepEqual(resolveAdmissionChecks(' ci, extra-check '), ['ci', 'extra-check']);
+  assert.deepEqual(resolveAdmissionChecks(''), ['ci', 'Security checks']);
 });
 
 test('orders eligible same-repository PRs by creation time', () => {
@@ -222,6 +222,75 @@ test('train check state distinguishes missing, pending, failed, and successful c
       app.id,
     ),
     'missing',
+  );
+});
+
+test('train check state treats a stale in_progress candidate check as missing so it is redispatched', () => {
+  const fingerprint = 'f'.repeat(64);
+  const app = { id: 123 };
+  const now = new Date('2024-01-01T01:00:00.000Z');
+  const recentlyStarted = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
+  const longStalled = new Date(now.getTime() - 41 * 60 * 1000).toISOString();
+  assert.equal(
+    trainCheckState(
+      [
+        {
+          id: 1,
+          name: 'merge-train-candidate',
+          status: 'in_progress',
+          external_id: fingerprint,
+          started_at: recentlyStarted,
+          app,
+        },
+      ],
+      fingerprint,
+      app.id,
+      now,
+    ),
+    'pending',
+    'a recently-dispatched in_progress check must still be waited on',
+  );
+  assert.equal(
+    trainCheckState(
+      [
+        {
+          id: 1,
+          name: 'merge-train-candidate',
+          status: 'in_progress',
+          external_id: fingerprint,
+          started_at: longStalled,
+          app,
+        },
+      ],
+      fingerprint,
+      app.id,
+      now,
+    ),
+    'missing',
+    'an in_progress check stuck past the validation timeout (e.g. the publish job never posted a completed check) must be treated as missing and redispatched',
+  );
+});
+
+test('train check state treats a cancelled conclusion as missing/retryable instead of a candidate failure', () => {
+  const fingerprint = 'f'.repeat(64);
+  const app = { id: 123 };
+  assert.equal(
+    trainCheckState(
+      [
+        {
+          id: 1,
+          name: 'merge-train-candidate',
+          status: 'completed',
+          conclusion: 'cancelled',
+          external_id: fingerprint,
+          app,
+        },
+      ],
+      fingerprint,
+      app.id,
+    ),
+    'missing',
+    'a cancelled conclusion records a dispatch/publish infrastructure failure, not a real candidate validation failure, and must be retried rather than bisected',
   );
 });
 

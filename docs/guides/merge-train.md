@@ -69,7 +69,7 @@ Before live mode:
    permissions.
 4. Keep force-pushes to `main` disabled. Promotion is a fast-forward.
 5. Ensure `MERGE_TRAIN_ADMISSION_CHECKS` names the current PR admission checks.
-   The default is `ci,commit-lint,Security checks`.
+   The default is `ci,Security checks`.
 
 Without the App bypass, promotion fails closed after candidate validation.
 

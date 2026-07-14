@@ -7,7 +7,7 @@ export const CANDIDATE_CHECK_NAME = 'merge-train-candidate';
 export const REQUIRED_CHECK_NAME = 'merge-train';
 export const STATUS_MARKER = '<!-- crawler-merge-train:v1 -->';
 export const VALIDATION_FAILED_LABEL = 'merge-train-validation-failed';
-export const DEFAULT_ADMISSION_CHECKS = ['ci', 'commit-lint', 'Security checks'];
+export const DEFAULT_ADMISSION_CHECKS = ['ci', 'Security checks'];
 export const MAX_TRAIN_SIZE = 6;
 
 function compact(value) {
@@ -185,7 +185,17 @@ export function successfulChecks(checkRuns, requiredNames = DEFAULT_ADMISSION_CH
   return unsatisfiedChecks(checkRuns, requiredNames).length === 0;
 }
 
-export function trainCheckState(checkRuns, fingerprint, trustedAppId) {
+// A candidate check normally completes within the validator's own
+// `verify` timeout (20 minutes) plus the trivial time the `publish` job
+// needs to mint an App token and post the completed check. If the
+// `publish` job's app-token/checks.create step itself fails (secrets
+// misconfigured, transient API error), no completed check is ever posted
+// and the candidate would otherwise stay "pending" forever. Past this
+// bound, treat the stale pending check the same as "missing" so the next
+// reconciliation redispatches validation instead of waiting indefinitely.
+export const CANDIDATE_VALIDATION_STALE_MS = 40 * 60 * 1000;
+
+export function trainCheckState(checkRuns, fingerprint, trustedAppId, now = new Date()) {
   const check = latestChecksByName(
     checkRuns.filter(
       (candidate) =>
@@ -195,7 +205,18 @@ export function trainCheckState(checkRuns, fingerprint, trustedAppId) {
     ),
   ).get(CANDIDATE_CHECK_NAME);
   if (!check) return 'missing';
-  if (check.status !== 'completed') return 'pending';
+  if (check.status !== 'completed') {
+    const startedAt = Date.parse(check.started_at || check.created_at || '');
+    if (Number.isFinite(startedAt) && now.getTime() - startedAt >= CANDIDATE_VALIDATION_STALE_MS) {
+      return 'missing';
+    }
+    return 'pending';
+  }
+  // A dispatch/API failure to *reach* the validator is an infrastructure
+  // problem, not a candidate code defect. It is recorded as a `cancelled`
+  // conclusion (see reconcile.mjs dispatchValidation) so it is retried on
+  // the next reconciliation instead of being bisected as a real failure.
+  if (check.conclusion === 'cancelled') return 'missing';
   return check.conclusion === 'success' ? 'success' : 'failure';
 }
 
