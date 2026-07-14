@@ -434,6 +434,7 @@ test('train mode dispatches exactly one conflict-only rebase', async (t) => {
       status: 404,
       body: { message: 'Not Found' },
     }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
     [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
       body: { id: 999, body: '' },
     }),
