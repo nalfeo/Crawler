@@ -11,11 +11,15 @@ export const DEFAULT_ADMISSION_CHECKS = ['ci', 'Security checks'];
 export const MAX_TRAIN_SIZE = 6;
 
 function compact(value) {
-  return String(value ?? '').replace(/\s+/g, ' ');
+  return String(value ?? '').trim().replace(/\s+/g, ' ');
 }
 
 export function parseEnabledFlag(value) {
-  const normalized = compact(value || 'false');
+  // Do not trim — exact match is required for consistency with workflow
+  // expressions (vars.MERGE_TRAIN_ENABLED == 'true') and the shell guard
+  // (case "$train_enabled" in true|false). Whitespace-padded values must
+  // fail validation to prevent split-brain rollout.
+  const normalized = String(value || 'false').replace(/\s+/g, ' ');
   if (!['true', 'false'].includes(normalized)) {
     throw new Error(`MERGE_TRAIN_ENABLED must be true or false, received: ${normalized}`);
   }
